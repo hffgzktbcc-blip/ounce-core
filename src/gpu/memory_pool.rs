@@ -89,7 +89,7 @@ impl NvnMemoryPool {
     }
 }
 
-/// Manages all initialized `NVN` memory pools across the emulator runtime.
+/// Manages all initialized `NVN` memory pools across the execution runtime.
 #[derive(Debug, Default)]
 pub struct NvnMemoryPoolManager {
     pub pools: HashMap<u32, NvnMemoryPool>,

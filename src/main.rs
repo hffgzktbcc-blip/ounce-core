@@ -123,8 +123,8 @@ fn main() {
 
 fn print_banner() {
     println!("============================================================");
-    println!("  OUNCE-CORE: Nintendo Switch 2 (Tegra T239) Emulator Core");
-    println!("  Target: ARMv8.2-A AArch64 | Horizon OS 64-bit Microkernel");
+    println!("  OUNCE-CORE: NVIDIA Tegra T239 / Horizon Research Runtime");
+    println!("  Target: ARMv8.2-A+ AArch64 | Horizon OS 64-bit Microkernel");
     println!("============================================================\n");
 }
 
@@ -266,7 +266,7 @@ fn print_specs() {
     let ptr_width = std::mem::size_of::<usize>() * 8;
     let profile = if cfg!(debug_assertions) { "Debug" } else { "Release [Optimized]" };
 
-    let header_text = format!("  🎮  {}OUNCE-CORE v0.3.0{} — NINTENDO SWITCH 2 HARDWARE & EMULATOR SYSTEM PROFILE", s.bold, s.reset);
+    let header_text = format!("  🎮  {}OUNCE-CORE v0.3.0{} — TEGRA T239 HARDWARE & RUNTIME SYSTEM PROFILE", s.bold, s.reset);
     let header_width = visible_width(&header_text);
     let pad = if BOX_WIDTH - 2 > header_width { (BOX_WIDTH - 2) - header_width } else { 0 };
 
@@ -274,8 +274,8 @@ fn print_specs() {
     println!("{}│{}{}{}│{}", s.cyan, header_text, " ".repeat(pad), s.cyan, s.reset);
     println!("{}╰{}╯{}", s.cyan, "─".repeat(BOX_WIDTH - 2), s.reset);
     println!();
-    println!("  {}Target Platform{}   : {}Nintendo Switch 2{} (Codename: 'Ounce' / NVIDIA Tegra T239 'Drake')", s.bold, s.reset, s.green, s.reset);
-    println!("  {}Firmware Target{}   : {}Horizon OS 64-bit Microkernel{} (System Firmware 23.0.1)", s.bold, s.reset, s.green, s.reset);
+    println!("  {}Target Platform{}   : {}NVIDIA Tegra T239 'Drake'{} (Codename: 'Ounce' / Horizon OS FW 23.0.1 ABI)", s.bold, s.reset, s.green, s.reset);
+    println!("  {}Execution Model{}   : {}Clean-Room AArch64 Systems Research Runtime & Translation Layer{}", s.bold, s.reset, s.green, s.reset);
     println!("  {}Host Environment{}  : {}-{}-{}bit ({})", s.bold, s.reset, host_arch, host_os, ptr_width, profile);
     println!("  {}Legal Posture{}     : {}100% Clean-Room Reverse Engineered · Zero Proprietary Keys or Dumps{}", s.bold, s.reset, s.green, s.reset);
     println!();
@@ -582,7 +582,7 @@ fn run_built_in_demo() {
         0xD40000E1, // SVC #0x07 (svcExitProcess)
     ];
 
-    println!("[Test 1] AArch64 Fibonacci Computation (N=10)");
+    println!("[Stage 01/18] AArch64 Arithmetic & Branching Execution (Fibonacci N=10)");
     let (cpu, mut mmu, kernel) = setup_vm();
     let mut code_bytes = Vec::new();
     for inst in &fib_program {
@@ -595,7 +595,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 100_000);
 
     // Test Program 2: Horizon OS Console Output (svcOutputDebugString)
-    println!("\n[Test 2] Horizon OS Debug String (svcOutputDebugString)");
+    println!("\n[Stage 02/18] Horizon OS Debug Output Subsystem (svcOutputDebugString)");
     let (cpu, mut mmu, kernel) = setup_vm();
 
     let message = "Hello from Nintendo Switch 2 (Tegra T239) Homebrew on Ounce-Core!\n";
@@ -621,7 +621,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
 
     // Test Program 3: Stack & Subroutine Call (STP, LDP, BL, RET)
-    println!("\n[Test 3] Stack Frames & Subroutines (STP, LDP, BL, RET)");
+    println!("\n[Stage 03/18] Stack Frame & Subroutine Management (STP, LDP, BL, RET)");
     let (cpu, mut mmu, kernel) = setup_vm();
 
     #[rustfmt::skip]
@@ -648,7 +648,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
 
     // Test Program 4: Horizon OS HIPC / CMIF Service Manager ("sm:" -> "nvdrv") & Floating-Point Math
-    println!("\n[Test 4] Horizon HIPC/CMIF ('sm:' -> 'nvdrv') & IEEE-754 Floating-Point (FADD)");
+    println!("\n[Stage 04/18] Horizon CMIF IPC & IEEE-754 Vector Math (FADD)");
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
     // Pre-populate D1 = 12.5 and D2 = 29.5 so FADD D0, D1, D2 computes 42.0
@@ -696,7 +696,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
 
     // Test Program 5: RomFS Virtual Filesystem & 48kHz Stereo PCM Audio Synthesizer (audout:u)
-    println!("\n[Test 5] Virtual Filesystem ('romfs:/title.txt') & 48kHz Stereo PCM Audio ('audout:u')");
+    println!("\n[Stage 05/18] Virtual Filesystem (RomFS) & Linear PCM Audio (audout:u)");
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
     let vfs_path = b"romfs:/title.txt";
@@ -761,11 +761,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
     println!();
 
-    // ---------------------------------------------------------
-    // Test 6: NSP/NCA AES-128-CTR Decryption, Ampere SASS -> GLSL
-    //         Shader Decompiler, & 8-Core Multi-Thread Execution
-    // ---------------------------------------------------------
-    println!("--- Test 6: AES-128-CTR NCA Decryption, Ampere SASS->GLSL & Multi-Threading ---");
+    println!("[Stage 06/18] AES-128-CTR NCA Decryption, SASS Decompiler & Multi-Threading");
 
     // 6a. Build an encrypted Switch 2 .nsp -> .nca -> ExeFS package and decrypt it
     let title_key: [u8; 16] = [
@@ -896,7 +892,7 @@ fn run_built_in_demo() {
     // Test 7: Unified .nsp Package Boot, Futex/Mutex Arbitration,
     //         & 2D-Textured 3D Triangle Rasterization
     // ---------------------------------------------------------
-    println!("--- Test 7: Unified .nsp Boot, Futex Synchronization & 2D-Textured 3D Rendering ---");
+    println!("\n[Stage 07/18] Unified NSP Boot, Futex Arbiters & 2D-Textured Rasterization");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1002,7 +998,7 @@ fn run_built_in_demo() {
     // Test 8: Switch 2 crt0 Startup (svcGetInfo 12GB LPDDR5 + 8-Core Mask),
     //         Basic-Block JIT Loop & 3D Z-Buffer Depth Occlusion
     // ---------------------------------------------------------
-    println!("--- Test 8: Switch 2 crt0 (svcGetInfo), Basic-Block JIT & 3D Z-Buffer Occlusion ---");
+    println!("\n[Stage 08/18] Horizon crt0 Initialization, Basic-Block JIT & Depth Occlusion");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1083,7 +1079,7 @@ fn run_built_in_demo() {
     // Test 9: 128-bit NEON Vector SIMD (V0.4S), Ampere T239 DLSS
     //         2x Super-Resolution Upscaler & SaveData ('save:/profile.sav')
     // ---------------------------------------------------------
-    println!("--- Test 9: 128-bit NEON Vector SIMD (V0.4S), T239 DLSS Upscaler & SaveData ---");
+    println!("\n[Stage 09/18] 128-bit NEON SIMD, Tensor DLSS 2x Reconstruction & SaveData");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1188,7 +1184,7 @@ fn run_built_in_demo() {
     // Test 10: Real Switch 2 `ns2jb` Native FS Payload (Firmware 23.0.1)
     //          Executes the unaltered 72-byte `test-function.bin` from `pepsipu/ns2jb`
     // ---------------------------------------------------------
-    println!("--- Test 10: Real Switch 2 `ns2jb` Native FS Payload (`test-function.bin`, FW 23.0.1) ---");
+    println!("\n[Stage 10/18] Native FS Payload Execution (BTI/PAC & Horizon SVCs)");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1234,7 +1230,7 @@ fn run_built_in_demo() {
     // Test 11: Switch 2 `RO` `NSO0` Module Execution & Tipc Interface Verification
     //          Boots the NSO0 binary through `sm:` Tipc & `"NS2ROEXE"` IPC reply
     // ---------------------------------------------------------
-    println!("--- Test 11: Switch 2 `RO` `NSO0` Module & Tipc Interface Verification ---");
+    println!("\n[Stage 11/18] Horizon Dynamic Linker (RO NSO0) & TIPC Handshake");
 
     let (cpu, mut mmu, kernel) = setup_vm();
     let nso_bytes = loader::NroLoader::get_test_nso_payload();
@@ -1250,7 +1246,7 @@ fn run_built_in_demo() {
     // Test 12: Captured Switch 2 Firmware 23.0.1 `nnSdk` & `nnCompatThin` Dumps
     //          Executes `nnSdk::GetThreadAvailableCoreMask` (0xFF) wrapped by `nnCompatThin` (`AND X0, X0, #7` -> 0x07)
     // ---------------------------------------------------------
-    println!("--- Test 12: Captured Switch 2 FW 23.0.1 `nnSdk` & `nnCompatThin` CoreMask Wrapper ---");
+    println!("\n[Stage 12/18] Captured Horizon OS 23.0.1 nnSdk CoreMask Stubs");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
     const NNSDK_GET_CORE_MASK: [u8; 64] = [
@@ -1304,7 +1300,7 @@ fn run_built_in_demo() {
     // ---------------------------------------------------------
     // Test 13: Switch 2 Firmware 23.0.1 Timing, Event (`LDAXR`/`STLXR`) & POSIX Thread Dumps (`pepsipu/ns2jb`)
     // ---------------------------------------------------------
-    println!("--- Test 13: Switch 2 Firmware 23.0.1 Timing, Event & POSIX Thread Dumps (pepsipu/ns2jb) ---");
+    println!("\n[Stage 13/18] Hardware Timing, Event Management & Thread Arbitration");
     {
         const FW23_TIMING_FREQ: [u8; 12] = [
             0x00, 0x00, 0x9f, 0x52, 0x80, 0x24, 0xa0, 0x72, 0xc0, 0x03, 0x5f, 0xd6,
@@ -1365,7 +1361,7 @@ fn run_built_in_demo() {
     // ---------------------------------------------------------
     // Test 14: Switch 2 `.XCI` 64GB GameCard Cartridge Boot (`HEAD` -> `HFS0` `secure` -> `NCA3` -> `NSO0`)
     // ---------------------------------------------------------
-    println!("--- Test 14: Switch 2 .XCI 64GB Cartridge Boot (HFS0 Secure -> NCA3 -> NSO0) ---");
+    println!("\n[Stage 14/18] High-Speed GameCard (.XCI) Boot (HFS0 -> NCA3 -> NSO0)");
     {
         let (mut cpu14, mut mmu14, kernel14) = setup_vm();
         let nso14 = loader::NroLoader::get_test_nso_payload();
@@ -1389,7 +1385,7 @@ fn run_built_in_demo() {
     //          Guest builds an NVN command buffer (Clear Color + Draw) and submits via SVC #0x2D,
     //          verifies RomFS asset mounting, and exits cleanly.
     // ---------------------------------------------------------
-    println!("--- Test 15: Switch 2 NVN 3D Command Buffer & Multi-Section RomFS Asset Loading ---");
+    println!("\n[Stage 15/18] NVN 3D Command Buffer Execution & Multi-Section RomFS Mount");
     {
         let (mut cpu15, mut mmu15, mut kernel15) = setup_vm();
         let key15: [u8; 16] = [
@@ -1502,7 +1498,7 @@ fn run_built_in_demo() {
     //            4. audren:u DSP mixer processing stereo voices into 48kHz audio sinks
     //            5. Persistent SaveData syncing to disk
     // ---------------------------------------------------------
-    println!("--- Test 16: Switch 2 audren DSP Audio, NVN Memory Pools & Vulkan Pipeline ---");
+    println!("\n[Stage 16/18] audren:u DSP Voice Mixing, NVN Memory Pools & SPIR-V Pipeline");
     {
         let (mut cpu16, mut mmu16, mut kernel16) = setup_vm();
 
@@ -1618,7 +1614,7 @@ fn run_built_in_demo() {
     //            5. fsp-srv RomFS storage mount (OpenDataStorageByCurrentProcess, GetSize)
     //            6. End-to-end guest AArch64 retail handshake exit code verification (0x777)
     // ---------------------------------------------------------
-    println!("--- Test 17: Switch 2 Horizon Big 5 Retail App Handshake & Gamepad Input ---");
+    println!("\n[Stage 17/18] Horizon Big 5 Retail Services Handshake & Joy-Con 2 Polling");
     {
         let (mut cpu17, mut mmu17, mut kernel17) = setup_vm();
         let tls_addr = 0x8000_0000u64;
@@ -1847,7 +1843,7 @@ fn run_built_in_demo() {
     //            4. Submitting an NVN fast-path command stream binding the texture descriptor
     //            5. Guest AArch64 retail verification loop exiting with code 0x888
     // ---------------------------------------------------------
-    println!("--- Test 18: Dynamic Module Linker (ro:1 LoadNro) & NVN Texture Pools ---");
+    println!("\n[Stage 18/18] ro:1 Dynamic Module Relocation & NVN Texture Descriptor Binding");
     {
         let (mut cpu18, mut mmu18, mut kernel18) = setup_vm();
         let tls_addr = 0x8000_0000u64;
