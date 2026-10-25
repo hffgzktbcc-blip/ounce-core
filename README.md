@@ -154,18 +154,19 @@ Development of `ounce-core` strictly follows established clean-room reverse-engi
 
 ```
 ounce-core/
+├── assets/           # Vector branding artwork (logo.svg, banner.svg, architecture.svg)
 ├── src/
 │   ├── audio/        # audren:u DSP voice mixer & audout:u PCM output sinks
-│   ├── cpu/          # AArch64 decoder, registers, interpreter, and Tier-1/Tier-2 JIT engines
+│   ├── cpu/          # AArch64 decoder, interpreter, Tier-1/2 JIT, and Tier-3 Super-Block engine
 │   ├── crypto/       # Clean-room AES-128-CTR multi-section cryptographic engine
 │   ├── fs/           # Virtual File System (VFS), Level 3 RomFS parser & persistent storage
 │   ├── gpu/          # Ampere GPU rasterizer, NVN driver HLE, SASS decompiler, and DLSS engine
 │   ├── hid/          # Joy-Con 2 physical controller state, button bitmasks, and deadzone filters
-│   ├── kernel/       # Horizon OS microkernel, SVC dispatcher, TIPC/CMIF IPC, and thread scheduler
+│   ├── kernel/       # Horizon OS microkernel, SVC dispatcher, TIPC/CMIF IPC, and nnSdk C++ runtime
 │   ├── loader/       # Container parsers (XCI, NSP, PFS0, HFS0, NCA3, NSO0, NRO0)
 │   ├── mmu/          # Sparse 4KB page-table memory management unit & virtual address regions
 │   ├── ui/           # Headless Package Inspector and CLI visual telemetry
-│   └── main.rs       # Entry point, CLI dispatcher, and 18-stage integration verification harness
+│   └── main.rs       # Entry point, CLI dispatcher, and 20-stage integration verification harness
 ├── Cargo.toml        # Minimal pure-Rust dependency configuration
 └── README.md         # Architecture specification and technical documentation
 ```
@@ -174,7 +175,7 @@ ounce-core/
 
 ## Verified Integration Verification Suite
 
-The repository includes a comprehensive 18-stage full-stack integration verification harness (`cargo run --release -- test`) and 38 granular unit tests (`cargo test --release`):
+The repository includes a comprehensive 20-stage full-stack integration verification harness (`cargo run --release -- test`) and 41 granular unit tests (`cargo test --release`):
 
 | Stage | Subsystem Under Verification | Verification Vector / Exit Assertion |
 | :---: | :--- | :--- |
@@ -196,6 +197,8 @@ The repository includes a comprehensive 18-stage full-stack integration verifica
 | **16** | audren:u DSP & Vulkan Pipeline | Sub-allocates `nvnMemoryPool` VRAM, renders 48kHz audio DSP voice, and loads SPIR-V 1.5 |
 | **17** | Horizon Big 5 Retail Handshake | Executes retail handshake across `set:sys`, `am:appletOE`, `vi:m`, `hid`, and `fsp-srv` (Exit: `0x777`) |
 | **18** | ro:1 Dynamic Linker & Texture Pools | Links secondary NRO via `ro:1` `LoadNro` and binds `NvnTexturePool` BC7 descriptors (Exit: `0x888`) |
+| **19** | Nintendo SDK (`nnSdk`) C++ Runtime | Initializes `nn::mem::StandardAllocator`, `nn::os::SleepThread`, and `nn::fs::OpenFile` (Exit: `0x999`) |
+| **20** | Tier-3 JIT Super-Block Execution | Multi-block trace unrolling with fused execution achieving >100 MIPS (Exit: `0xAAA`) |
 
 ---
 
@@ -213,13 +216,13 @@ The repository includes a comprehensive 18-stage full-stack integration verifica
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core
 
-# Execute all 38 unit tests
+# Execute all 41 unit tests
 cargo test --release
 
 # Display hardware architecture specifications and engine status
 cargo run --release -- info
 
-# Execute the 18-stage full-stack integration verification suite
+# Execute the 20-stage full-stack integration verification suite
 cargo run --release -- test
 
 # Audit package headers, ISA security features, and extract RomFS assets
