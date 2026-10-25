@@ -33,6 +33,7 @@ pub struct HorizonKernel {
     pub audio: AudioOutServer,
     pub scheduler: ThreadScheduler,
     pub sync: SyncManager,
+    pub nvn: crate::gpu::nvn::NvnDriver,
     pub reply_receive_step: u32,
 }
 
@@ -54,6 +55,7 @@ impl HorizonKernel {
             audio: AudioOutServer::new(),
             scheduler: ThreadScheduler::new(),
             sync: SyncManager::new(),
+            nvn: crate::gpu::nvn::NvnDriver::new(),
             reply_receive_step: 0,
         }
     }
@@ -478,6 +480,21 @@ impl HorizonKernel {
                 }
                 cpu.regs.write_x(0, 0);
                 cpu.regs.write_x(1, bytes_written as u64);
+                SvcResult::Success
+            }
+
+            // 0x2D: svcNvnSubmitCommandBuffer(cmd_stream_addr, max_words) - Fast-path NVN Command Stream Submission
+            0x2D => {
+                let cmd_stream_addr = cpu.regs.read_x(0);
+                let max_words = cpu.regs.read_x(1) as usize;
+                let count = self.nvn.submit_guest_command_stream(
+                    mmu,
+                    &mut self.nvgpu,
+                    cmd_stream_addr,
+                    max_words,
+                );
+                cpu.regs.write_x(0, 0);
+                cpu.regs.write_x(1, count as u64);
                 SvcResult::Success
             }
 

@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use std::io::Cursor;
 use crate::mmu::{Memory, MemoryError};
 use std::collections::HashMap;
 
@@ -58,6 +60,23 @@ impl VirtualFileSystem {
     /// Mounts or overwrites a virtual file in the VFS.
     pub fn mount_file(&mut self, path: &str, data: &[u8]) {
         self.files.insert(path.to_string(), data.to_vec());
+    }
+
+    /// Retrieves a reference to raw file data if it exists in the VFS.
+    pub fn get_file(&self, path: &str) -> Option<&[u8]> {
+        self.files.get(path).map(|v| v.as_slice())
+    }
+
+    /// Mounts all files from a binary Level 3 `RomFsArchive` under `romfs:/...`.
+    pub fn mount_romfs_archive(&mut self, archive: &RomFsArchive) {
+        for entry in &archive.entries {
+            let full_path = if entry.path.starts_with('/') {
+                format!("romfs:{}", entry.path)
+            } else {
+                format!("romfs:/{}", entry.path)
+            };
+            self.mount_file(&full_path, &entry.data);
+        }
     }
 
     /// Opens a file by virtual path and returns a VFS file handle.
@@ -123,6 +142,181 @@ impl VirtualFileSystem {
         self.files.insert(path.to_string(), buf);
         self.total_bytes_written += len as u64;
         Ok(len)
+    }
+}
+
+pub const ROMFS_HEADER_SIZE: usize = 0x50;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RomFsEntry {
+    pub path: String,
+    pub data: Vec<u8>,
+}
+
+/// Nintendo Switch / Switch 2 Level 3 `RomFS` Binary Image Parser & Builder.
+/// Represents game assets (3D meshes, textures, sound banks, level data) mounted from NCA Section 1.
+#[derive(Debug, Clone, Default)]
+pub struct RomFsArchive {
+    pub entries: Vec<RomFsEntry>,
+}
+
+impl RomFsArchive {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds a file entry to the RomFS archive.
+    pub fn add_file(&mut self, path: &str, data: &[u8]) {
+        self.entries.push(RomFsEntry {
+            path: path.to_string(),
+            data: data.to_vec(),
+        });
+    }
+
+    /// Builds an authentic Nintendo Level 3 `RomFS` binary image.
+    pub fn build(files: &[(&str, &[u8])]) -> Vec<u8> {
+        // Compute tables
+        // File meta table format per file:
+        // [0x00] parent_dir_offset: u32
+        // [0x04] sibling_file_offset: u32
+        // [0x08] data_offset: u64
+        // [0x10] data_size: u64
+        // [0x18] next_hash: u32
+        // [0x1C] name_len: u32
+        // [0x20..] name_bytes (aligned to 4 bytes)
+        let mut file_meta = Vec::new();
+        let mut file_data = Vec::new();
+        let mut current_data_offset = 0u64;
+
+        for (i, (name, data)) in files.iter().enumerate() {
+            let sibling_offset = if i + 1 < files.len() {
+                (file_meta.len() + 0x20 + ((name.len() + 3) & !3)) as u32
+            } else {
+                0xFFFF_FFFF
+            };
+
+            file_meta.write_u32::<LittleEndian>(0).unwrap(); // parent_dir = 0 (root)
+            file_meta.write_u32::<LittleEndian>(sibling_offset).unwrap();
+            file_meta.write_u64::<LittleEndian>(current_data_offset).unwrap();
+            file_meta.write_u64::<LittleEndian>(data.len() as u64).unwrap();
+            file_meta.write_u32::<LittleEndian>(0xFFFF_FFFF).unwrap(); // next_hash
+            file_meta.write_u32::<LittleEndian>(name.len() as u32).unwrap();
+            file_meta.extend_from_slice(name.as_bytes());
+            while file_meta.len() % 4 != 0 {
+                file_meta.push(0);
+            }
+
+            file_data.extend_from_slice(data);
+            // Align file data to 16 bytes
+            while file_data.len() % 16 != 0 {
+                file_data.push(0);
+            }
+            current_data_offset = file_data.len() as u64;
+        }
+
+        // Header: 0x50 bytes
+        let header_size = ROMFS_HEADER_SIZE as u64;
+        let dir_hash_offset = header_size;
+        let dir_hash_size = 4u64;
+        let dir_meta_offset = dir_hash_offset + dir_hash_size;
+        let dir_meta_size = 24u64; // minimal root directory entry
+        let file_hash_offset = dir_meta_offset + dir_meta_size;
+        let file_hash_size = 4u64;
+        let file_meta_offset = file_hash_offset + file_hash_size;
+        let file_meta_size = file_meta.len() as u64;
+        let data_offset = (file_meta_offset + file_meta_size + 0x1FF) & !0x1FF; // align to 512 bytes
+
+        let mut out = Vec::with_capacity(data_offset as usize + file_data.len());
+        out.write_u64::<LittleEndian>(header_size).unwrap();
+        out.write_u64::<LittleEndian>(dir_hash_offset).unwrap();
+        out.write_u64::<LittleEndian>(dir_hash_size).unwrap();
+        out.write_u64::<LittleEndian>(dir_meta_offset).unwrap();
+        out.write_u64::<LittleEndian>(dir_meta_size).unwrap();
+        out.write_u64::<LittleEndian>(file_hash_offset).unwrap();
+        out.write_u64::<LittleEndian>(file_hash_size).unwrap();
+        out.write_u64::<LittleEndian>(file_meta_offset).unwrap();
+        out.write_u64::<LittleEndian>(file_meta_size).unwrap();
+        out.write_u64::<LittleEndian>(data_offset).unwrap();
+
+        out.write_u32::<LittleEndian>(0xFFFF_FFFF).unwrap(); // dir_hash
+        // Root dir meta: [parent=0, sibling=0xFFFFFFFF, child_dir=0xFFFFFFFF, child_file=0, next_hash=0xFFFFFFFF, name_len=0]
+        out.write_u32::<LittleEndian>(0).unwrap();
+        out.write_u32::<LittleEndian>(0xFFFF_FFFF).unwrap();
+        out.write_u32::<LittleEndian>(0xFFFF_FFFF).unwrap();
+        out.write_u32::<LittleEndian>(0).unwrap(); // first child file
+        out.write_u32::<LittleEndian>(0xFFFF_FFFF).unwrap();
+        out.write_u32::<LittleEndian>(0).unwrap(); // name_len = 0
+
+        out.write_u32::<LittleEndian>(0xFFFF_FFFF).unwrap(); // file_hash
+        out.extend_from_slice(&file_meta);
+
+        // Pad to data_offset
+        while out.len() < data_offset as usize {
+            out.push(0);
+        }
+        out.extend_from_slice(&file_data);
+        out
+    }
+
+    /// Parses a Level 3 `RomFS` binary image and extracts its files.
+    pub fn parse(raw: &[u8]) -> Result<Self, VfsError> {
+        if raw.len() < ROMFS_HEADER_SIZE {
+            return Err(VfsError::NotFound("RomFS binary too small".to_string()));
+        }
+
+        let mut rdr = Cursor::new(raw);
+        let header_size = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+        let _dir_hash_off = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+        let _dir_hash_sz = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+        let _dir_meta_off = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+        let _dir_meta_sz = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+        let _file_hash_off = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+        let _file_hash_sz = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+        let file_meta_off = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+        let file_meta_sz = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+        let data_offset = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+
+        if header_size < ROMFS_HEADER_SIZE || file_meta_off + file_meta_sz > raw.len() || data_offset > raw.len() {
+            return Err(VfsError::NotFound("Invalid RomFS Level 3 header".to_string()));
+        }
+
+        let mut entries = Vec::new();
+        let mut cur = file_meta_off;
+        let end = file_meta_off + file_meta_sz;
+
+        while cur + 0x20 <= end {
+            rdr.set_position(cur as u64);
+            let _parent = rdr.read_u32::<LittleEndian>().unwrap();
+            let sibling_offset = rdr.read_u32::<LittleEndian>().unwrap() as usize;
+            let rel_data_offset = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+            let data_size = rdr.read_u64::<LittleEndian>().unwrap() as usize;
+            let _next_hash = rdr.read_u32::<LittleEndian>().unwrap();
+            let name_len = rdr.read_u32::<LittleEndian>().unwrap() as usize;
+
+            let name_start = cur + 0x20;
+            let name_end = name_start + name_len;
+            if name_end > end {
+                break;
+            }
+            let name = String::from_utf8_lossy(&raw[name_start..name_end]).to_string();
+
+            let abs_data_start = data_offset + rel_data_offset;
+            let abs_data_end = abs_data_start + data_size;
+            let data = if abs_data_end <= raw.len() {
+                raw[abs_data_start..abs_data_end].to_vec()
+            } else {
+                Vec::new()
+            };
+
+            entries.push(RomFsEntry { path: name, data });
+
+            if sibling_offset == 0xFFFF_FFFF || sibling_offset == 0 {
+                break;
+            }
+            cur = file_meta_off + sibling_offset;
+        }
+
+        Ok(Self { entries })
     }
 }
 

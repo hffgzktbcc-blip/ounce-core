@@ -21,25 +21,31 @@
    - Switch 2 Firmware 23.0.1 SVCs (`svcSetHeapSize`, `svcQueryMemory`, `svcCreateThread`, `svcStartThread`, `svcWaitSynchronization`, `svcArbitrateLock`, `svcArbitrateUnlock`, `svcConnectToNamedPort`, `svcSendSyncRequest`, `svcGetProcessId`, `svcGetThreadId`, `svcGetInfo` with Switch 2 `0x040000000000xxxx` ProgramIds, `svcAcceptSession`, `svcReplyAndReceive`).
    - Both **CMIF (`SFCI` / `SFCO`)** and **Switch 2 `sm:` Tipc (`0x10` `RegisterClient`, `0x12` `RegisterService`)** IPC protocols.
 
-4. **NVIDIA T239 Ampere 3D Rasterizer, Tensor DLSS 2x & SASS-to-SPIR-V Compiler (`src/gpu`)**
+4. **NVIDIA T239 Ampere 3D Rasterizer, NVN Graphics API, Tensor DLSS 2x & SASS Compiler (`src/gpu`)**
+   - Official Nintendo Switch 2 **`NVN` Graphics API HLE Driver (`src/gpu/nvn.rs`)**, providing `NvnCommandBuffer`, fast-path **`SVC #0x2D` (`svcNvnSubmitCommandBuffer`)**, and `nvdrv` `IOCTL_NVN_SUBMIT` (`0xC018_4E01`).
    - Maxwell3D / Ampere `NvGpuEngine` pushbuffer processor with perspective-correct UV texturing, Z-buffer depth occlusion, and live HUD telemetry.
    - `TensorCoreEngine` 2x AI Super-Resolution (640x360 -> 1280x720 edge-directed Lanczos/Tensor upscaler).
-   - NVIDIA Ampere SASS (`IADD3`, `IMAD`, `FMUL`, `FFMA`, `LDG.E`, `STG.E`, `EXIT`) to GLSL & binary Vulkan SPIR-V v1.5 compiler (`src/gpu/shader.rs`).
+   - NVIDIA Ampere SM86/SM87 SASS decompiler, GLSL 450 transpiler, and binary Vulkan SPIR-V 1.5 (`0x07230203`) emitter with extended commercial opcodes: **`LOP3.LUT` (3-input truth-table bitwise evaluation)**, **`ISETP` / `FSETP` (integer & float condition code predicates)**, **`SEL` (predicated multiplexer)**, and **`MUFU` (hardware `Rcp`, `Rsq`, `Sin`, `Cos`, `Exp2`, `Log2`)** (`src/gpu/shader.rs`).
 
-5. **Real Switch 2 Hardware Verification Suite (`cargo test --release` & `cargo run --release -- test`)**
+5. **Nintendo Level 3 RomFS & Multi-Section NCA3 Package System (`src/fs`, `src/loader`)**
+   - Multi-section `NCA3` AES-128-CTR decryption engine decrypting both Section 0 (`ExeFS` code) and Section 1 (`RomFS` game assets).
+   - Authentic Nintendo Level 3 `RomFS` (`RomFsArchive`) builder and parser with directory/file hash tables, mounting directly into Horizon `VirtualFileSystem` under `romfs:/...`.
+
+6. **Real Switch 2 Hardware Verification Suite (`cargo test --release` & `cargo run --release -- test`)**
    - **Test 10 (`test_ns2jb_real_switch2_fs_payload`)**: Executes the unaltered 72-byte native Switch 2 `FS` (`0x0400000000000000`) payload from [`pepsipu/ns2jb`](https://gitlab.com/pepsipu/ns2jb) (`BTI c`, `PACIBSP`, `svcGetProcessId`, `svcGetThreadId`, `svcGetSystemTick`, `RETAB`).
    - **Test 11 (`test_ns2jb_full_4757_byte_ro_nso_module`)**: Boots the complete, unaltered **4,757-byte Switch 2 `RO` (`0x0400000000000037`) `NSO0` module** (`ns2jb_ro_payload.bin`), executes **1,585 AArch64 instructions across 78 JIT basic blocks in ~215µs (7.38 MIPS)**, registers `"ro:1"` and `"ro:dmnt"` over Switch 2 Tipc, accepts a session, processes command `0x524f0001`, and verifies the `"NS2ROEXE"` (`0x4558454f5232534e`) proof response.
    - **Test 12 (`test_switch2_fw23_nnsdk_and_nncompatthin_dumps`)**: Executes captured Switch 2 Firmware 23.0.1 `nnSdk` (`GetThreadAvailableCoreMask` -> `0xFF`) and `nnCompatThin` (`AND X0, X0, #7` + `RETAB` -> `0x07`) machine code dumps from hardware.
    - **Test 13 (`test_switch2_fw23_timing_event_and_thread_dumps`)**: Executes captured Switch 2 Firmware 23.0.1 `nn::os::InitializeEvent`, `nn::os::TryWaitEvent`, `nn::os::ClearEvent` (`LDAR`/`LDAXR`/`STLXR`/`CLREX`/`DMB ISH`), `nn::os::GetSystemTick` (`CNTPCT_EL0`), `nn::os::GetSystemTickFrequency` (`19,200,000 Hz`), `nn::os::GetCurrentThread` (`TPIDRRO_EL0 + 0x1F8`), and `pthread_setschedprio` machine code dumps from `pepsipu/ns2jb`.
    - **Test 14 (`test_xci_cartridge_hfs0_and_nso_boot_pipeline`)**: Parses a Switch 2 64GB `.xci` Game Card image (`HEAD` at `0x100`), walks the `HFS0` `secure` partition, decrypts the AES-128-CTR `NCA3` container, extracts `ExeFS` `main`, and boots the 4,757-byte Switch 2 `NSO0` binary end-to-end.
+   - **Test 15 (`test_nvn_and_romfs_asset_boot`)**: Boots an encrypted multi-section `NCA3` package containing Section 0 (`ExeFS`) and Section 1 (`RomFS`), automatically decrypts and mounts assets (`romfs:/shaders/t239_ampere.glsl`, `romfs:/textures/switch2_logo.bin`, `romfs:/manifest.json`), executes guest AArch64 code building an `NVN` command buffer, and submits via fast-path `SVC #0x2D` (`svcNvnSubmitCommandBuffer`).
 
 ## Quick Start
 
 ```bash
-# Run all 24 unit tests
+# Run all 27 unit tests
 cargo test --release
 
-# Run the 14-stage full-stack integration & real Switch 2 binary verification suite
+# Run the 15-stage full-stack integration & real Switch 2 binary verification suite
 cargo run --release -- test
 
 # Boot an XCI, NSP, NCA3, NSO0, or NRO0 executable directly

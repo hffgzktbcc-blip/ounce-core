@@ -149,6 +149,47 @@ impl NvgpuChannel {
             | (method as u32 & 0x1FFF)
     }
 
+    /// Parses and executes a slice of pre-extracted GPFIFO pushbuffer words directly.
+    pub fn process_pushbuffer_slice(&mut self, mmu: &mut Memory, words: &[u32]) {
+        let mut offset = 0;
+        let word_count = words.len();
+
+        while offset < word_count {
+            let header = words[offset];
+            offset += 1;
+
+            let mode_val = (header >> 29) & 0x7;
+            let count = ((header >> 16) & 0x1FFF) as usize;
+            let subchannel = ((header >> 13) & 0x7) as u8;
+            let method = (header & 0x1FFF) as u16;
+
+            let mode = match mode_val {
+                0 => SubmissionMode::NonIncreasing,
+                1 => SubmissionMode::Increasing,
+                _ => SubmissionMode::Once,
+            };
+
+            let mut args = Vec::with_capacity(count);
+            for _ in 0..count {
+                if offset >= word_count {
+                    break;
+                }
+                args.push(words[offset]);
+                offset += 1;
+            }
+
+            self.execute_command(
+                mmu,
+                GpuCommand {
+                    subchannel,
+                    method,
+                    mode,
+                    args,
+                },
+            );
+        }
+    }
+
     /// Parses and executes a stream of GPFIFO pushbuffer words from guest memory.
     pub fn process_pushbuffer(&mut self, mmu: &mut Memory, pb_addr: u64, word_count: usize) {
         let mut offset = 0;

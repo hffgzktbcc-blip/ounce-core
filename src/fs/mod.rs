@@ -2,4 +2,4 @@
 
 pub mod romfs;
 
-pub use romfs::{VirtualFileSystem, VfsError};
+pub use romfs::{RomFsArchive, RomFsEntry, VfsError, VirtualFileSystem};

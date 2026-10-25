@@ -170,6 +170,9 @@ impl IpcManager {
 
                     if ioctl_cmd == NVGPU_IOCTL_CHANNEL_SUBMIT_GPFIFO && pb_addr != 0 && word_count > 0 {
                         nvgpu.process_pushbuffer(mmu, pb_addr, word_count);
+                    } else if ioctl_cmd == 0xC018_4E01 && pb_addr != 0 && word_count > 0 {
+                        let mut nvn = crate::gpu::nvn::NvnDriver::new();
+                        nvn.submit_guest_command_stream(mmu, nvgpu, pb_addr, word_count);
                     } else if ioctl_cmd == 0x80B0_4705 && pb_addr != 0 {
                         // NVGPU_GPU_IOCTL_GET_CHARACTERISTICS: Write NVIDIA T239 Ampere GA10B (SM 8.7) characteristics
                         let _ = mmu.write_u32(pb_addr, 0x0170);      // arch = NVGPU_GPU_ARCH_GA100 (Ampere)
