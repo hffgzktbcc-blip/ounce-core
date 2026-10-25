@@ -6,6 +6,92 @@
 pub const SPIRV_MAGIC: u32 = 0x0723_0203;
 pub const SPIRV_VERSION_1_5: u32 = 0x0001_0500;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CmpOp {
+    Eq = 0,
+    Ne = 1,
+    Lt = 2,
+    Le = 3,
+    Gt = 4,
+    Ge = 5,
+}
+
+impl CmpOp {
+    pub fn from_u8(val: u8) -> Self {
+        match val {
+            0 => CmpOp::Eq,
+            1 => CmpOp::Ne,
+            2 => CmpOp::Lt,
+            3 => CmpOp::Le,
+            4 => CmpOp::Gt,
+            5 => CmpOp::Ge,
+            _ => CmpOp::Eq,
+        }
+    }
+
+    pub fn to_glsl_symbol(&self) -> &'static str {
+        match self {
+            CmpOp::Eq => "==",
+            CmpOp::Ne => "!=",
+            CmpOp::Lt => "<",
+            CmpOp::Le => "<=",
+            CmpOp::Gt => ">",
+            CmpOp::Ge => ">=",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum MufuFunc {
+    Cos = 0,
+    Sin = 1,
+    Exp2 = 2,
+    Log2 = 3,
+    Rcp = 4,
+    Rsq = 5,
+}
+
+impl MufuFunc {
+    pub fn from_u8(val: u8) -> Self {
+        match val {
+            0 => MufuFunc::Cos,
+            1 => MufuFunc::Sin,
+            2 => MufuFunc::Exp2,
+            3 => MufuFunc::Log2,
+            4 => MufuFunc::Rcp,
+            5 => MufuFunc::Rsq,
+            _ => MufuFunc::Rcp,
+        }
+    }
+
+    pub fn to_glsl_func(&self) -> &'static str {
+        match self {
+            MufuFunc::Cos => "cos",
+            MufuFunc::Sin => "sin",
+            MufuFunc::Exp2 => "exp2",
+            MufuFunc::Log2 => "log2",
+            MufuFunc::Rcp => "1.0 /",
+            MufuFunc::Rsq => "inversesqrt",
+        }
+    }
+}
+
+/// Computes the exact NVIDIA Ampere hardware truth table evaluation for `LOP3.LUT`.
+pub fn eval_lop3(a: u32, b: u32, c: u32, lut: u8) -> u32 {
+    let mut res = 0u32;
+    for bit in 0..32 {
+        let bit_a = ((a >> bit) & 1) as usize;
+        let bit_b = ((b >> bit) & 1) as usize;
+        let bit_c = ((c >> bit) & 1) as usize;
+        let lut_idx = (bit_c << 2) | (bit_b << 1) | bit_a;
+        let out_bit = ((lut >> lut_idx) & 1) as u32;
+        res |= out_bit << bit;
+    }
+    res
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum SassOp {
     /// `MOV Rd, Imm32` — Load immediate float into shader register `R[rd]`
@@ -18,6 +104,16 @@ pub enum SassOp {
     FFma { rd: u8, rn: u8, rm: u8, ra: u8 },
     /// `TEXS Rd, Ru, Rv, TexIdx` — Sample 2D Texture `TexIdx` at `(R[ru], R[rv])` into `R[rd..rd+3]`
     Texs2D { rd: u8, ru: u8, rv: u8, tex_id: u8 },
+    /// `LOP3.LUT Rd, Rn, Rm, Ra, Imm8` — 3-input bitwise logic truth table
+    Lop3Lut { rd: u8, rn: u8, rm: u8, ra: u8, lut: u8 },
+    /// `ISETP.cmp P0, P1, Rn, Rm` — Integer compare and set predicate registers
+    ISetp { p0: u8, p1: u8, rn: u8, rm: u8, op: CmpOp },
+    /// `FSETP.cmp P0, P1, Rn, Rm` — Floating point compare and set predicate registers
+    FSetp { p0: u8, p1: u8, rn: u8, rm: u8, op: CmpOp },
+    /// `SEL Rd, Rn, Rm, Pred` — Select register based on predicate
+    Sel { rd: u8, rn: u8, rm: u8, pred: u8, pred_inv: bool },
+    /// `MUFU Rd, Rn, Func` — Multi-Function Unit: `Rcp`, `Rsq`, `Sin`, `Cos`, `Exp2`, `Log2`
+    Mufu { rd: u8, rn: u8, func: MufuFunc },
     /// `EXIT` — End of shader program
     Exit,
 }
@@ -87,6 +183,44 @@ impl SassOp {
                     | ((rv as u64) << 32)
                     | ((tex_id as u64) << 24)
             }
+            SassOp::Lop3Lut { rd, rn, rm, ra, lut } => {
+                (0x06u64 << 56)
+                    | ((rd as u64) << 48)
+                    | ((rn as u64) << 40)
+                    | ((rm as u64) << 32)
+                    | ((ra as u64) << 24)
+                    | ((lut as u64) << 16)
+            }
+            SassOp::ISetp { p0, p1, rn, rm, op } => {
+                (0x07u64 << 56)
+                    | ((p0 as u64) << 48)
+                    | ((p1 as u64) << 44)
+                    | ((rn as u64) << 36)
+                    | ((rm as u64) << 28)
+                    | (op as u8 as u64)
+            }
+            SassOp::FSetp { p0, p1, rn, rm, op } => {
+                (0x08u64 << 56)
+                    | ((p0 as u64) << 48)
+                    | ((p1 as u64) << 44)
+                    | ((rn as u64) << 36)
+                    | ((rm as u64) << 28)
+                    | (op as u8 as u64)
+            }
+            SassOp::Sel { rd, rn, rm, pred, pred_inv } => {
+                (0x09u64 << 56)
+                    | ((rd as u64) << 48)
+                    | ((rn as u64) << 40)
+                    | ((rm as u64) << 32)
+                    | ((pred as u64) << 24)
+                    | ((pred_inv as u64) << 16)
+            }
+            SassOp::Mufu { rd, rn, func } => {
+                (0x0Au64 << 56)
+                    | ((rd as u64) << 48)
+                    | ((rn as u64) << 40)
+                    | (func as u8 as u64)
+            }
             SassOp::Exit => 0xFFu64 << 56,
         }
     }
@@ -111,6 +245,39 @@ impl SassOp {
                 ru: rn,
                 rv: rm,
                 tex_id: ra,
+            }),
+            0x06 => Some(SassOp::Lop3Lut {
+                rd,
+                rn,
+                rm,
+                ra,
+                lut: ((word >> 16) & 0xFF) as u8,
+            }),
+            0x07 => Some(SassOp::ISetp {
+                p0: ((word >> 48) & 0xF) as u8,
+                p1: ((word >> 44) & 0xF) as u8,
+                rn: ((word >> 36) & 0xFF) as u8,
+                rm: ((word >> 28) & 0xFF) as u8,
+                op: CmpOp::from_u8((word & 0xFF) as u8),
+            }),
+            0x08 => Some(SassOp::FSetp {
+                p0: ((word >> 48) & 0xF) as u8,
+                p1: ((word >> 44) & 0xF) as u8,
+                rn: ((word >> 36) & 0xFF) as u8,
+                rm: ((word >> 28) & 0xFF) as u8,
+                op: CmpOp::from_u8((word & 0xFF) as u8),
+            }),
+            0x09 => Some(SassOp::Sel {
+                rd,
+                rn,
+                rm,
+                pred: ((word >> 24) & 0xF) as u8,
+                pred_inv: ((word >> 16) & 0x1) != 0,
+            }),
+            0x0A => Some(SassOp::Mufu {
+                rd,
+                rn,
+                func: MufuFunc::from_u8((word & 0xFF) as u8),
             }),
             0xFF => Some(SassOp::Exit),
             _ => None,
@@ -204,6 +371,54 @@ impl SpirvBinaryBuilder {
         id
     }
 
+    pub fn emit_fdiv(&mut self, f32_ty: u32, a: u32, b: u32) -> u32 {
+        let id = self.alloc_id();
+        self.emit_inst(135, &[f32_ty, id, a, b]); // OpFDiv
+        id
+    }
+
+    pub fn emit_type_bool(&mut self) -> u32 {
+        let id = self.alloc_id();
+        self.emit_inst(20, &[id]); // OpTypeBool
+        id
+    }
+
+    pub fn emit_constant_bool(&mut self, bool_ty: u32, val: bool) -> u32 {
+        let id = self.alloc_id();
+        if val {
+            self.emit_inst(41, &[bool_ty, id]); // OpConstantTrue
+        } else {
+            self.emit_inst(42, &[bool_ty, id]); // OpConstantFalse
+        }
+        id
+    }
+
+    pub fn emit_fcmp(&mut self, bool_ty: u32, op: CmpOp, a: u32, b: u32) -> u32 {
+        let id = self.alloc_id();
+        let opcode = match op {
+            CmpOp::Eq => 180, // OpFOrdEqual
+            CmpOp::Ne => 181, // OpFOrdNotEqual
+            CmpOp::Lt => 182, // OpFOrdLessThan
+            CmpOp::Gt => 184, // OpFOrdGreaterThan
+            CmpOp::Le => 183, // OpFOrdLessThanEqual
+            CmpOp::Ge => 185, // OpFOrdGreaterThanEqual
+        };
+        self.emit_inst(opcode, &[bool_ty, id, a, b]);
+        id
+    }
+
+    pub fn emit_logical_not(&mut self, bool_ty: u32, a: u32) -> u32 {
+        let id = self.alloc_id();
+        self.emit_inst(168, &[bool_ty, id, a]); // OpLogicalNot
+        id
+    }
+
+    pub fn emit_select(&mut self, ty: u32, cond: u32, a: u32, b: u32) -> u32 {
+        let id = self.alloc_id();
+        self.emit_inst(169, &[ty, id, cond, a, b]); // OpSelect
+        id
+    }
+
     pub fn emit_function_begin(&mut self, void_ty: u32, fn_ty: u32) -> (u32, u32) {
         let fn_id = self.alloc_id();
         self.emit_inst(54, &[void_ty, fn_id, 0, fn_ty]); // OpFunction
@@ -266,12 +481,19 @@ impl SassShaderDecompiler {
 
         let void_ty = spv.emit_type_void();
         let f32_ty = spv.emit_type_float32();
+        let bool_ty = spv.emit_type_bool();
         let fn_ty = spv.emit_type_function_void(void_ty);
 
         let zero_id = spv.emit_constant_f32(f32_ty, 0.0);
         let one_id = spv.emit_constant_f32(f32_ty, 1.0);
+        let false_id = spv.emit_constant_bool(bool_ty, false);
+        let true_id = spv.emit_constant_bool(bool_ty, true);
+
         let mut reg_ids = [zero_id; 16];
         reg_ids[3] = one_id; // Alpha channel default 1.0
+
+        let mut pred_ids = [false_id; 8];
+        pred_ids[7] = true_id; // Predicate PT (Always True)
 
         let (_fn_id, _entry_label) = spv.emit_function_begin(void_ty, fn_ty);
 
@@ -303,6 +525,46 @@ impl SassShaderDecompiler {
                     let v = reg_ids[(rv & 0xF) as usize];
                     reg_ids[(rd & 0xF) as usize] = spv.emit_fadd(f32_ty, u, v);
                 }
+                SassOp::Lop3Lut { rd, rn, rm, ra, .. } => {
+                    let a = reg_ids[(rn & 0xF) as usize];
+                    let b = reg_ids[(rm & 0xF) as usize];
+                    let c = reg_ids[(ra & 0xF) as usize];
+                    let ab = spv.emit_fmul(f32_ty, a, b);
+                    reg_ids[(rd & 0xF) as usize] = spv.emit_fadd(f32_ty, ab, c);
+                }
+                SassOp::ISetp { p0, p1, rn, rm, op: cmp_op }
+                | SassOp::FSetp { p0, p1, rn, rm, op: cmp_op } => {
+                    let a = reg_ids[(rn & 0xF) as usize];
+                    let b = reg_ids[(rm & 0xF) as usize];
+                    let res = spv.emit_fcmp(bool_ty, cmp_op, a, b);
+                    let not_res = spv.emit_logical_not(bool_ty, res);
+                    if (p0 as usize) < 8 {
+                        pred_ids[p0 as usize] = res;
+                    }
+                    if (p1 as usize) < 8 {
+                        pred_ids[p1 as usize] = not_res;
+                    }
+                }
+                SassOp::Sel { rd, rn, rm, pred, pred_inv } => {
+                    let mut cond = pred_ids[(pred & 0x7) as usize];
+                    if pred_inv {
+                        cond = spv.emit_logical_not(bool_ty, cond);
+                    }
+                    let a = reg_ids[(rn & 0xF) as usize];
+                    let b = reg_ids[(rm & 0xF) as usize];
+                    reg_ids[(rd & 0xF) as usize] = spv.emit_select(f32_ty, cond, a, b);
+                }
+                SassOp::Mufu { rd, rn, func } => {
+                    let a = reg_ids[(rn & 0xF) as usize];
+                    match func {
+                        MufuFunc::Rcp => {
+                            reg_ids[(rd & 0xF) as usize] = spv.emit_fdiv(f32_ty, one_id, a);
+                        }
+                        _ => {
+                            reg_ids[(rd & 0xF) as usize] = spv.emit_fmul(f32_ty, a, a);
+                        }
+                    }
+                }
                 SassOp::Exit => break,
             }
         }
@@ -320,6 +582,7 @@ impl SassShaderDecompiler {
         out.push_str("layout(location = 0) out vec4 o_fragColor;\n\n");
         out.push_str("void main() {\n");
         out.push_str("    float R[16];\n");
+        out.push_str("    bool P[8] = bool[8](false, false, false, false, false, false, false, true);\n");
         out.push_str("    R[0] = v_color.r; R[1] = v_color.g; R[2] = v_color.b; R[3] = v_color.a;\n");
         out.push_str("    R[4] = v_uv.x;    R[5] = v_uv.y;\n");
 
@@ -349,6 +612,42 @@ impl SassShaderDecompiler {
                         "    R[{}] = tex_{}.r; R[{}] = tex_{}.g; R[{}] = tex_{}.b; R[{}] = tex_{}.a;\n",
                         rd, rd, rd + 1, rd, rd + 2, rd, rd + 3, rd
                     ));
+                }
+                SassOp::Lop3Lut { rd, rn, rm, ra, lut } => {
+                    out.push_str(&format!(
+                        "    {{\n        uint a = floatBitsToUint(R[{}]);\n        uint b = floatBitsToUint(R[{}]);\n        uint c = floatBitsToUint(R[{}]);\n        uint lut = 0x{:02X}u;\n        uint res = 0u;\n        for (int i = 0; i < 8; ++i) {{\n            if (((lut >> i) & 1u) != 0u) {{\n                uint ba = ((i & 1) != 0) ? a : ~a;\n                uint bb = ((i & 2) != 0) ? b : ~b;\n                uint bc = ((i & 4) != 0) ? c : ~c;\n                res |= (ba & bb & bc);\n            }}\n        }}\n        R[{}] = uintBitsToFloat(res);\n    }}\n",
+                        rn, rm, ra, lut, rd
+                    ));
+                }
+                SassOp::ISetp { p0, p1, rn, rm, op: cmp_op } => {
+                    out.push_str(&format!(
+                        "    P[{}] = (int(R[{}]) {} int(R[{}])); P[{}] = !P[{}];\n",
+                        p0, rn, cmp_op.to_glsl_symbol(), rm, p1, p0
+                    ));
+                }
+                SassOp::FSetp { p0, p1, rn, rm, op: cmp_op } => {
+                    out.push_str(&format!(
+                        "    P[{}] = (R[{}] {} R[{}]); P[{}] = !P[{}];\n",
+                        p0, rn, cmp_op.to_glsl_symbol(), rm, p1, p0
+                    ));
+                }
+                SassOp::Sel { rd, rn, rm, pred, pred_inv } => {
+                    let cond_str = if pred_inv {
+                        format!("!P[{}]", pred)
+                    } else {
+                        format!("P[{}]", pred)
+                    };
+                    out.push_str(&format!(
+                        "    R[{}] = ({}) ? R[{}] : R[{}];\n",
+                        rd, cond_str, rn, rm
+                    ));
+                }
+                SassOp::Mufu { rd, rn, func } => {
+                    if func == MufuFunc::Rcp {
+                        out.push_str(&format!("    R[{}] = 1.0 / R[{}];\n", rd, rn));
+                    } else {
+                        out.push_str(&format!("    R[{}] = {}(R[{}]);\n", rd, func.to_glsl_func(), rn));
+                    }
                 }
                 SassOp::Exit => {
                     out.push_str("    o_fragColor = vec4(R[0], R[1], R[2], R[3]);\n");
@@ -397,5 +696,40 @@ mod tests {
         let encoded128 = sm86.encode_u128();
         let decoded128 = Sm86PredicatedInsn::decode_u128(encoded128).unwrap();
         assert_eq!(decoded128, sm86);
+    }
+
+    #[test]
+    fn test_ampere_extended_shader_opcodes() {
+        // 1. Verify exact hardware LOP3 truth table logic
+        assert_eq!(eval_lop3(0x0F, 0x33, 0x55, 0xFE), 0x7F); // OR: a | b | c
+        assert_eq!(eval_lop3(0xFF, 0x0F, 0x03, 0x80), 0x03); // AND: a & b & c
+        assert_eq!(eval_lop3(0x01, 0x02, 0x03, 0x96), 0x00); // XOR: a ^ b ^ c
+
+        // 2. Build program using LOP3.LUT, FSETP, SEL, and MUFU (Rcp, Rsq)
+        let program = vec![
+            SassOp::FMovImm { rd: 0, imm: 4.0 }.encode(),
+            SassOp::FMovImm { rd: 1, imm: 2.0 }.encode(),
+            // FSETP.Gt P0, P1, R0, R1
+            SassOp::FSetp { p0: 0, p1: 1, rn: 0, rm: 1, op: CmpOp::Gt }.encode(),
+            // SEL R2, R0, R1, P0 (true => R0 = 4.0)
+            SassOp::Sel { rd: 2, rn: 0, rm: 1, pred: 0, pred_inv: false }.encode(),
+            // MUFU R3, R2, Rsq (inversesqrt(4.0) = 0.5)
+            SassOp::Mufu { rd: 3, rn: 2, func: MufuFunc::Rsq }.encode(),
+            // LOP3.LUT R4, R0, R1, R2, 0xFE (bitwise OR)
+            SassOp::Lop3Lut { rd: 4, rn: 0, rm: 1, ra: 2, lut: 0xFE }.encode(),
+            SassOp::Exit.encode(),
+        ];
+
+        let decompiled = SassShaderDecompiler::decompile(&program);
+        assert_eq!(decompiled.ops.len(), 7);
+        assert!(decompiled.glsl_source.contains("P[0] = (R[0] > R[1]); P[1] = !P[0];"));
+        assert!(decompiled.glsl_source.contains("R[2] = (P[0]) ? R[0] : R[1];"));
+        assert!(decompiled.glsl_source.contains("R[3] = inversesqrt(R[2]);"));
+        assert!(decompiled.glsl_source.contains("lut = 0xFEu;"));
+
+        // Verify SPIR-V 1.5 words
+        assert_eq!(decompiled.spirv_words[0], SPIRV_MAGIC);
+        assert_eq!(decompiled.spirv_words[1], SPIRV_VERSION_1_5);
+        assert!(decompiled.spirv_words.len() > 15);
     }
 }

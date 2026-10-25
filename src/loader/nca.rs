@@ -333,17 +333,20 @@ impl XciCartridge {
 }
 
 /// Nintendo Content Archive (`NCA3`) Decryptor & Section Extractor.
-/// Uses AES-128-CTR to decrypt the ExeFS / Code section of an NCA container.
+/// Uses AES-128-CTR to decrypt the ExeFS (Section 0) and RomFS (Section 1) of an NCA container.
 pub struct NcaImage {
     pub title_id: u64,
     pub section_offset: usize,
     pub section_size: usize,
     pub ctr_iv: [u8; 16],
     pub decrypted_payload: Vec<u8>,
+    pub romfs_offset: usize,
+    pub romfs_size: usize,
+    pub decrypted_romfs: Option<Vec<u8>>,
 }
 
 impl NcaImage {
-    /// Parses an NCA3 image and decrypts Section 0 (ExeFS) using AES-128-CTR with the provided title/area key.
+    /// Parses an NCA3 image and decrypts Section 0 (ExeFS) and Section 1 (RomFS) using AES-128-CTR.
     pub fn parse_and_decrypt(raw: &[u8], section_key: &[u8; 16]) -> Result<Self, LoadError> {
         if raw.len() < 0x400 {
             return Err(LoadError::TooSmall);
@@ -370,7 +373,7 @@ impl NcaImage {
             return Err(LoadError::TooSmall);
         }
 
-        // Section 0 CTR IV stored at 0x400 + 0x140 (or 0x340 in simplified header)
+        // Section 0 CTR IV stored at 0x340
         let mut ctr_iv = [0u8; 16];
         ctr_iv.copy_from_slice(&raw[0x340..0x350]);
 
@@ -378,20 +381,64 @@ impl NcaImage {
         let cipher = Aes128::new(section_key);
         cipher.crypt_ctr(&ctr_iv, &mut decrypted_payload);
 
+        // Section 1 (RomFS) table entry at 0x248
+        rdr.set_position(0x248);
+        let romfs_start = rdr.read_u32::<LittleEndian>().unwrap() as usize;
+        let romfs_end = rdr.read_u32::<LittleEndian>().unwrap() as usize;
+        let mut decrypted_romfs = None;
+        let mut romfs_offset = 0;
+        let mut romfs_size = 0;
+
+        if romfs_end > romfs_start {
+            romfs_offset = romfs_start * 0x200;
+            romfs_size = (romfs_end - romfs_start) * 0x200;
+            if romfs_offset + romfs_size <= raw.len() {
+                let mut romfs_ctr_iv = [0u8; 16];
+                romfs_ctr_iv.copy_from_slice(&raw[0x350..0x360]);
+                let mut romfs_buf = raw[romfs_offset..romfs_offset + romfs_size].to_vec();
+                let cipher_romfs = Aes128::new(section_key);
+                cipher_romfs.crypt_ctr(&romfs_ctr_iv, &mut romfs_buf);
+                decrypted_romfs = Some(romfs_buf);
+            }
+        }
+
         Ok(Self {
             title_id,
             section_offset,
             section_size,
             ctr_iv,
             decrypted_payload,
+            romfs_offset,
+            romfs_size,
+            decrypted_romfs,
         })
     }
 
-    /// Synthesizes an AES-128-CTR encrypted `NCA3` container holding the given `exefs_pfs0` payload.
+    /// Synthesizes an AES-128-CTR encrypted `NCA3` container holding the given `exefs_pfs0` payload
+    /// and optional `romfs_binary` payload in Section 1.
     pub fn build_encrypted(title_id: u64, section_key: &[u8; 16], ctr_iv: &[u8; 16], payload: &[u8]) -> Vec<u8> {
+        Self::build_encrypted_with_romfs(title_id, section_key, ctr_iv, &[0x55u8; 16], payload, None)
+    }
+
+    /// Synthesizes an encrypted `NCA3` container with both Section 0 (ExeFS) and Section 1 (RomFS).
+    pub fn build_encrypted_with_romfs(
+        title_id: u64,
+        section_key: &[u8; 16],
+        ctr_iv_0: &[u8; 16],
+        ctr_iv_1: &[u8; 16],
+        exefs_payload: &[u8],
+        romfs_payload: Option<&[u8]>,
+    ) -> Vec<u8> {
         let header_size = 0x400;
-        let aligned_payload_len = (payload.len() + 0x1FF) & !0x1FF;
-        let mut nca = vec![0u8; header_size + aligned_payload_len];
+        let aligned_exefs_len = (exefs_payload.len() + 0x1FF) & !0x1FF;
+        let aligned_romfs_len = if let Some(r) = romfs_payload {
+            (r.len() + 0x1FF) & !0x1FF
+        } else {
+            0
+        };
+
+        let total_size = header_size + aligned_exefs_len + aligned_romfs_len;
+        let mut nca = vec![0u8; total_size];
 
         // Write NCA3 magic at 0x200
         (&mut nca[0x200..0x204]).write_u32::<LittleEndian>(NCA3_MAGIC).unwrap();
@@ -399,18 +446,34 @@ impl NcaImage {
         (&mut nca[0x210..0x218]).write_u64::<LittleEndian>(title_id).unwrap();
 
         // Write Section 0 bounds in 0x200 media units at 0x240
-        let media_start = (header_size / 0x200) as u32;
-        let media_end = ((header_size + aligned_payload_len) / 0x200) as u32;
-        (&mut nca[0x240..0x244]).write_u32::<LittleEndian>(media_start).unwrap();
-        (&mut nca[0x244..0x248]).write_u32::<LittleEndian>(media_end).unwrap();
+        let sec0_start = (header_size / 0x200) as u32;
+        let sec0_end = ((header_size + aligned_exefs_len) / 0x200) as u32;
+        (&mut nca[0x240..0x244]).write_u32::<LittleEndian>(sec0_start).unwrap();
+        (&mut nca[0x244..0x248]).write_u32::<LittleEndian>(sec0_end).unwrap();
 
-        // Write CTR IV at 0x340
-        nca[0x340..0x350].copy_from_slice(ctr_iv);
+        // Write Section 0 CTR IV at 0x340
+        nca[0x340..0x350].copy_from_slice(ctr_iv_0);
 
-        // Copy plaintext and encrypt in-place with AES-128-CTR
-        nca[header_size..header_size + payload.len()].copy_from_slice(payload);
-        let cipher = Aes128::new(section_key);
-        cipher.crypt_ctr(ctr_iv, &mut nca[header_size..header_size + aligned_payload_len]);
+        // Copy Section 0 plaintext and encrypt
+        nca[header_size..header_size + exefs_payload.len()].copy_from_slice(exefs_payload);
+        let cipher0 = Aes128::new(section_key);
+        cipher0.crypt_ctr(ctr_iv_0, &mut nca[header_size..header_size + aligned_exefs_len]);
+
+        // If Section 1 (RomFS) present:
+        if let Some(romfs) = romfs_payload {
+            let sec1_start = sec0_end;
+            let sec1_end = ((header_size + aligned_exefs_len + aligned_romfs_len) / 0x200) as u32;
+            (&mut nca[0x248..0x24C]).write_u32::<LittleEndian>(sec1_start).unwrap();
+            (&mut nca[0x24C..0x250]).write_u32::<LittleEndian>(sec1_end).unwrap();
+
+            // Write Section 1 CTR IV at 0x350
+            nca[0x350..0x360].copy_from_slice(ctr_iv_1);
+
+            let sec1_offset = header_size + aligned_exefs_len;
+            nca[sec1_offset..sec1_offset + romfs.len()].copy_from_slice(romfs);
+            let cipher1 = Aes128::new(section_key);
+            cipher1.crypt_ctr(ctr_iv_1, &mut nca[sec1_offset..sec1_offset + aligned_romfs_len]);
+        }
 
         nca
     }
@@ -437,6 +500,16 @@ impl BootLoader {
         section_key: &[u8; 16],
         mmu: &mut Memory,
     ) -> Result<BootPackageInfo, LoadError> {
+        Self::load_package_with_vfs(raw, base_addr, section_key, mmu, None)
+    }
+
+    pub fn load_package_with_vfs(
+        raw: &[u8],
+        base_addr: u64,
+        section_key: &[u8; 16],
+        mmu: &mut Memory,
+        mut vfs: Option<&mut crate::fs::VirtualFileSystem>,
+    ) -> Result<BootPackageInfo, LoadError> {
         // 0. Check if outer container is a Switch / Switch 2 `.xci` Game Card image ("HEAD" at 0x100)
         if raw.len() >= 0x200 && (&raw[0x100..0x104] == b"HEAD") {
             let xci = XciCartridge::parse(raw)?;
@@ -444,7 +517,7 @@ impl BootLoader {
             let files = secure.list_files();
             if let Some(&nca_name) = files.iter().find(|&&name| name.ends_with(".nca")) {
                 let nca_bytes = secure.extract_file(nca_name).ok_or(LoadError::TooSmall)?;
-                let mut info = Self::load_nca_bytes(nca_bytes, base_addr, section_key, mmu)?;
+                let mut info = Self::load_nca_bytes(nca_bytes, base_addr, section_key, mmu, vfs.as_deref_mut())?;
                 info.format = "XCI (GameCard HEAD) -> HFS0 (secure) -> NCA3 -> ExeFS";
                 return Ok(info);
             } else if let Some(main_bytes) = secure.extract_file("main") {
@@ -464,7 +537,7 @@ impl BootLoader {
             let files = hfs0.list_files();
             if let Some(&nca_name) = files.iter().find(|&&name| name.ends_with(".nca")) {
                 let nca_bytes = hfs0.extract_file(nca_name).ok_or(LoadError::TooSmall)?;
-                let mut info = Self::load_nca_bytes(nca_bytes, base_addr, section_key, mmu)?;
+                let mut info = Self::load_nca_bytes(nca_bytes, base_addr, section_key, mmu, vfs.as_deref_mut())?;
                 info.format = "HFS0 -> NCA3 (AES-128-CTR) -> ExeFS";
                 return Ok(info);
             }
@@ -477,7 +550,7 @@ impl BootLoader {
             let files = pfs0.list_files();
             if let Some(&nca_name) = files.iter().find(|&&name| name.ends_with(".nca")) {
                 let nca_bytes = pfs0.extract_file(nca_name).ok_or(LoadError::TooSmall)?;
-                let mut info = Self::load_nca_bytes(nca_bytes, base_addr, section_key, mmu)?;
+                let mut info = Self::load_nca_bytes(nca_bytes, base_addr, section_key, mmu, vfs.as_deref_mut())?;
                 info.format = "NSP -> NCA3 (AES-128-CTR) -> ExeFS";
                 return Ok(info);
             } else if let Some(main_bytes) = pfs0.extract_file("main") {
@@ -493,7 +566,7 @@ impl BootLoader {
 
         // 2. Check if image is a raw encrypted NCA3 container (magic "NCA3" at 0x200)
         if raw.len() >= 0x400 && (&raw[0x200..0x204] == b"NCA3") {
-            return Self::load_nca_bytes(raw, base_addr, section_key, mmu);
+            return Self::load_nca_bytes(raw, base_addr, section_key, mmu, vfs.as_deref_mut());
         }
 
         // 3. Otherwise treat as NRO0 or raw AArch64 executable
@@ -505,9 +578,17 @@ impl BootLoader {
         base_addr: u64,
         section_key: &[u8; 16],
         mmu: &mut Memory,
+        vfs: Option<&mut crate::fs::VirtualFileSystem>,
     ) -> Result<BootPackageInfo, LoadError> {
         let decrypted = NcaImage::parse_and_decrypt(nca_bytes, section_key)?;
         let title_id = decrypted.title_id;
+
+        // If Section 1 (RomFS) is present and a VFS was provided, automatically parse and mount it!
+        if let (Some(romfs_bytes), Some(vfs_ref)) = (&decrypted.decrypted_romfs, vfs) {
+            if let Ok(archive) = crate::fs::RomFsArchive::parse(romfs_bytes) {
+                vfs_ref.mount_romfs_archive(&archive);
+            }
+        }
 
         // Check if decrypted Section 0 is an ExeFS (PFS0) archive
         if decrypted.decrypted_payload.len() >= 16 && (&decrypted.decrypted_payload[0..4] == b"PFS0")
@@ -648,5 +729,66 @@ mod tests {
         assert_eq!(boot_info.format, "XCI (GameCard HEAD) -> HFS0 (secure) -> NCA3 -> ExeFS");
         assert_eq!(boot_info.title_id, title_id);
         assert_eq!(boot_info.code_size, 4388);
+    }
+
+    #[test]
+    fn test_nca_multi_section_romfs_mount() {
+        let key: [u8; 16] = [
+            0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
+            0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
+        ];
+        let iv0: [u8; 16] = [
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+            0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+        ];
+        let iv1: [u8; 16] = [
+            0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+            0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+        ];
+
+        // 1. Create RomFS binary archive with game assets
+        let romfs_data = crate::fs::RomFsArchive::build(&[
+            ("/textures/hero.png", b"\x89PNG\r\n\x1a\nHERO_TEXTURE"),
+            ("/config/game.json", b"{\"title\":\"Switch 2 Game\",\"fps\":60}"),
+        ]);
+
+        // 2. Create ExeFS (PFS0) with main code
+        let main_code = b"MOCK_AARCH64_MAIN_EXECUTABLE_CODE_FOR_NCA_SECTION_0";
+        let exefs_bytes = Pfs0Archive::build(&[("main", main_code), ("main.npdm", b"META")]);
+
+        // 3. Encrypt both Section 0 (ExeFS) and Section 1 (RomFS) into NCA3
+        let title_id = 0x0100_F2C0_115B_7000;
+        let encrypted_nca = NcaImage::build_encrypted_with_romfs(
+            title_id,
+            &key,
+            &iv0,
+            &iv1,
+            &exefs_bytes,
+            Some(&romfs_data),
+        );
+
+        // 4. Wrap inside .nsp
+        let nsp_bytes = Pfs0Archive::build(&[("game.nca", &encrypted_nca)]);
+
+        // 5. Load through Unified BootLoader with VirtualFileSystem
+        let mut mmu = Memory::new();
+        let mut vfs = crate::fs::VirtualFileSystem::new();
+        let boot_info = BootLoader::load_package_with_vfs(
+            &nsp_bytes,
+            0x8000_0000,
+            &key,
+            &mut mmu,
+            Some(&mut vfs),
+        ).unwrap();
+
+        assert_eq!(boot_info.title_id, title_id);
+        assert_eq!(boot_info.format, "NSP -> NCA3 (AES-128-CTR) -> ExeFS");
+
+        // Verify that RomFS Section 1 was decrypted and automatically mounted into VFS!
+        let tex = vfs.get_file("romfs:/textures/hero.png").expect("hero.png mounted");
+        assert_eq!(tex, b"\x89PNG\r\n\x1a\nHERO_TEXTURE");
+
+        let cfg = vfs.get_file("romfs:/config/game.json").expect("game.json mounted");
+        assert_eq!(cfg, b"{\"title\":\"Switch 2 Game\",\"fps\":60}");
     }
 }

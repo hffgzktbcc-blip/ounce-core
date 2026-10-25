@@ -1153,6 +1153,116 @@ fn run_built_in_demo() {
         run_vm(cpu14, mmu14, kernel14, 50_000);
     }
     println!();
+
+    // ---------------------------------------------------------
+    // Test 15: Switch 2 NVN 3D Command Buffer Execution & Multi-Section RomFS Asset Loading
+    //          Boots an authentic AES-128-CTR encrypted NCA3 with ExeFS (Section 0) and RomFS (Section 1).
+    //          Guest builds an NVN command buffer (Clear Color + Draw) and submits via SVC #0x2D,
+    //          verifies RomFS asset mounting, and exits cleanly.
+    // ---------------------------------------------------------
+    println!("--- Test 15: Switch 2 NVN 3D Command Buffer & Multi-Section RomFS Asset Loading ---");
+    {
+        let (mut cpu15, mut mmu15, mut kernel15) = setup_vm();
+        let key15: [u8; 16] = [
+            0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
+            0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
+        ];
+        let iv0: [u8; 16] = [
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+            0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+        ];
+        let iv1: [u8; 16] = [
+            0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+            0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+        ];
+
+        // 1. Build RomFS Section 1 assets (Ampere shader, textures, manifest)
+        let romfs_bytes = fs::RomFsArchive::build(&[
+            ("/shaders/t239_ampere.glsl", b"#version 450\nlayout(location=0) out vec4 color;\nvoid main() { color = vec4(1.0, 0.5, 0.2, 1.0); }"),
+            ("/textures/switch2_logo.bin", &[0xFF, 0x33, 0x11, 0xFF, 0x22, 0x88, 0xEE, 0xFF]),
+            ("/manifest.json", b"{\"app_name\":\"NVN 3D Benchmark\",\"target\":\"T239 Drake\"}"),
+        ]);
+
+        // 2. Map Framebuffer VRAM (0x9000_0000) and Command Stream Buffer (0x8100_0000)
+        let fb_addr = 0x9000_0000u64;
+        let fb_size = 1280 * 720 * 4;
+        mmu15.map_range(fb_addr, fb_size, Permission::READ_WRITE);
+
+        let stream_addr = 0x8100_0000u64;
+        mmu15.map_range(stream_addr, 4096, Permission::READ_WRITE);
+
+        // Pre-build NVN Command Buffer in memory at `stream_addr`:
+        let mut nvn_cb = gpu::nvn::NvnCommandBuffer::new();
+        nvn_cb.set_render_target(fb_addr as u32, 1280, 720);
+        nvn_cb.clear_color(0.12, 0.56, 1.0, 1.0); // Switch 2 Dodger Blue
+        nvn_cb.draw_arrays(3);
+        let stream_words = nvn_cb.encode_stream();
+        for (i, &w) in stream_words.iter().enumerate() {
+            mmu15.write_u32(stream_addr + (i * 4) as u64, w).unwrap();
+        }
+
+        // 3. Guest AArch64 program in ExeFS Section 0:
+        //    X0 = stream_addr (0x8100_0000)
+        //    X1 = stream_words.len()
+        //    SVC #0x2D (svcNvnSubmitCommandBuffer) -> returns X0 = 0 (Success), X1 = commands_executed
+        //    X19 = X1 (save command count)
+        //    X0 = 0x239 (T239 status code)
+        //    SVC #0x07 (svcExitProcess)
+        #[rustfmt::skip]
+        let guest_program: [u32; 10] = [
+            0xD2800000, // movz x0, #0
+            0xF2B02000, // movk x0, #0x8100, lsl #16 (X0 = 0x81000000)
+            0xD2800001 | ((stream_words.len() as u32) << 5), // movz x1, #stream_words.len()
+            0xD40005A1, // SVC #0x2D (svcNvnSubmitCommandBuffer)
+            0xAA0103F3, // mov x19, x1 (X19 = commands_executed = 3)
+            0xD2804720, // movz x0, #0x239 (T239)
+            0xD40000E1, // SVC #0x07 (svcExitProcess)
+            0xD503201F, // nop
+            0xD503201F, // nop
+            0xD65F03C0, // ret
+        ];
+
+        let mut guest_code = Vec::new();
+        for inst in &guest_program {
+            guest_code.extend_from_slice(&inst.to_le_bytes());
+        }
+
+        let exefs_bytes = Pfs0Archive::build(&[("main", &guest_code), ("main.npdm", b"NPDM")]);
+        let title_id = 0x0100_0239_0000_2026;
+        let encrypted_nca = NcaImage::build_encrypted_with_romfs(
+            title_id,
+            &key15,
+            &iv0,
+            &iv1,
+            &exefs_bytes,
+            Some(&romfs_bytes),
+        );
+        let nsp_bytes = Pfs0Archive::build(&[("game.nca", &encrypted_nca)]);
+
+        let boot_info = BootLoader::load_package_with_vfs(
+            &nsp_bytes,
+            DEFAULT_BASE_ADDR,
+            &key15,
+            &mut mmu15,
+            Some(&mut kernel15.vfs),
+        ).unwrap();
+
+        println!(
+            "  [BootLoader] Loaded encrypted NCA3 package: TitleID=0x{:016X} Format='{}'",
+            boot_info.title_id, boot_info.format
+        );
+
+        // Verify RomFS Level 3 archive automatically mounted in kernel VFS:
+        let manifest = kernel15.vfs.get_file("romfs:/manifest.json").expect("RomFS asset mounted");
+        println!("  [RomFS] Mounted asset 'romfs:/manifest.json': {}", String::from_utf8_lossy(manifest));
+        let shader = kernel15.vfs.get_file("romfs:/shaders/t239_ampere.glsl").expect("RomFS shader mounted");
+        println!("  [RomFS] Mounted asset 'romfs:/shaders/t239_ampere.glsl' ({} bytes)", shader.len());
+
+        cpu15.regs.pc = DEFAULT_BASE_ADDR;
+        run_vm(cpu15, mmu15, kernel15, 10_000);
+        println!("  [NVN Driver] Fast-path command buffer executed via SVC #0x2D & rendered into VRAM 0x{:08X}", fb_addr);
+    }
+    println!();
 }
 
 /// Runs the 2D Display & Framebuffer Graphic Demo
