@@ -21,15 +21,19 @@
    - Switch 2 Firmware 23.0.1 SVCs (`svcSetHeapSize`, `svcQueryMemory`, `svcCreateThread`, `svcStartThread`, `svcWaitSynchronization`, `svcArbitrateLock`, `svcArbitrateUnlock`, `svcConnectToNamedPort`, `svcSendSyncRequest`, `svcGetProcessId`, `svcGetThreadId`, `svcGetInfo` with Switch 2 `0x040000000000xxxx` ProgramIds, `svcAcceptSession`, `svcReplyAndReceive`).
    - Both **CMIF (`SFCI` / `SFCO`)** and **Switch 2 `sm:` Tipc (`0x10` `RegisterClient`, `0x12` `RegisterService`)** IPC protocols.
 
-4. **NVIDIA T239 Ampere 3D Rasterizer, NVN Graphics API, Tensor DLSS 2x & SASS Compiler (`src/gpu`)**
+4. **NVIDIA T239 Ampere 3D Rasterizer, NVN Graphics API, Vulkan HAL & Tensor DLSS (`src/gpu`)**
    - Official Nintendo Switch 2 **`NVN` Graphics API HLE Driver (`src/gpu/nvn.rs`)**, providing `NvnCommandBuffer`, fast-path **`SVC #0x2D` (`svcNvnSubmitCommandBuffer`)**, and `nvdrv` `IOCTL_NVN_SUBMIT` (`0xC018_4E01`).
+   - Native Hardware **Vulkan 1.3 / Metal GPU HAL (`src/gpu/vulkan.rs`)**, loading validated binary SPIR-V 1.5 bytecode modules and creating graphics pipeline state objects (PSOs).
+   - High-Level **`nvnMemoryPool` & `nvnBuffer` VRAM Allocator (`src/gpu/memory_pool.rs`)** managing CPU/GPU cached memory pools for vertex, index, uniform, and texture buffers.
    - Maxwell3D / Ampere `NvGpuEngine` pushbuffer processor with perspective-correct UV texturing, Z-buffer depth occlusion, and live HUD telemetry.
    - `TensorCoreEngine` 2x AI Super-Resolution (640x360 -> 1280x720 edge-directed Lanczos/Tensor upscaler).
    - NVIDIA Ampere SM86/SM87 SASS decompiler, GLSL 450 transpiler, and binary Vulkan SPIR-V 1.5 (`0x07230203`) emitter with extended commercial opcodes: **`LOP3.LUT` (3-input truth-table bitwise evaluation)**, **`ISETP` / `FSETP` (integer & float condition code predicates)**, **`SEL` (predicated multiplexer)**, and **`MUFU` (hardware `Rcp`, `Rsq`, `Sin`, `Cos`, `Exp2`, `Log2`)** (`src/gpu/shader.rs`).
 
-5. **Nintendo Level 3 RomFS & Multi-Section NCA3 Package System (`src/fs`, `src/loader`)**
+5. **Horizon OS Audio Renderer (`audren:u`) & Level 3 RomFS Package System (`src/audio`, `src/fs`, `src/loader`, `src/ui`)**
+   - Horizon OS **`audren:u` Audio Renderer Hardware-Level DSP Mixer (`src/audio/audren.rs`)**, handling multi-channel voice mixing matrices, wave buffer queuing, and 48kHz stereo DSP output sinks.
    - Multi-section `NCA3` AES-128-CTR decryption engine decrypting both Section 0 (`ExeFS` code) and Section 1 (`RomFS` game assets).
    - Authentic Nintendo Level 3 `RomFS` (`RomFsArchive`) builder and parser with directory/file hash tables, mounting directly into Horizon `VirtualFileSystem` under `romfs:/...`.
+   - Standalone **Package & RomFS Asset Inspector (`src/ui/inspector.rs`)** providing automated header analysis and directory/asset exploration for any `.xci` / `.nsp` file.
 
 6. **Real Switch 2 Hardware Verification Suite (`cargo test --release` & `cargo run --release -- test`)**
    - **Test 10 (`test_ns2jb_real_switch2_fs_payload`)**: Executes the unaltered 72-byte native Switch 2 `FS` (`0x0400000000000000`) payload from [`pepsipu/ns2jb`](https://gitlab.com/pepsipu/ns2jb) (`BTI c`, `PACIBSP`, `svcGetProcessId`, `svcGetThreadId`, `svcGetSystemTick`, `RETAB`).
@@ -42,11 +46,14 @@
 ## Quick Start
 
 ```bash
-# Run all 27 unit tests
+# Run all 32 unit tests
 cargo test --release
 
 # Run the 15-stage full-stack integration & real Switch 2 binary verification suite
 cargo run --release -- test
+
+# Inspect an encrypted .xci or .nsp game cartridge and explore RomFS assets
+cargo run --release -- inspect package.nsp
 
 # Boot an XCI, NSP, NCA3, NSO0, or NRO0 executable directly
 cargo run --release -- run ns2jb_ro_payload.bin

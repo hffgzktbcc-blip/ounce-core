@@ -26,6 +26,8 @@ pub enum ServiceType {
     FspSrv,
     /// Audio Out ("audout:u")
     AudOut,
+    /// Audio Renderer ("audren:u")
+    AudRen,
     /// Applet OE Application Proxy ("appletOE")
     AppletOE,
     /// System Settings ("set:sys")
@@ -140,6 +142,7 @@ impl IpcManager {
                         "hid" => ServiceType::Hid,
                         "fsp-srv" => ServiceType::FspSrv,
                         "audout:u" => ServiceType::AudOut,
+                        "audren:u" => ServiceType::AudRen,
                         "appletOE" => ServiceType::AppletOE,
                         "set:sys" => ServiceType::SetSys,
                         other => ServiceType::Generic(other.to_string()),
@@ -218,6 +221,25 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0
                 }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::AudRen => match cmd_id {
+                // Command 0: OpenAudioRenderer -> returns IAudioRenderer session handle
+                0 => {
+                    let renderer_h = self.allocate_handle(ServiceType::AudRen);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[renderer_h], Some(renderer_h));
+                    0
+                }
+                // Command 1: GetAudioRendererWorkBufferSize -> returns 0x40000 (256 KB)
+                1 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0x40000], None);
+                    0
+                }
+                // Command 4: RequestUpdateAudioRenderer -> returns 0 (Success)
                 _ => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0

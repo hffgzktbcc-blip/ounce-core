@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::ipc::{IpcManager, ServiceType};
 use super::scheduler::ThreadScheduler;
 use super::sync::SyncManager;
@@ -31,6 +33,7 @@ pub struct HorizonKernel {
     pub nvgpu: NvgpuChannel,
     pub vfs: VirtualFileSystem,
     pub audio: AudioOutServer,
+    pub audren: crate::audio::AudioRenderer,
     pub scheduler: ThreadScheduler,
     pub sync: SyncManager,
     pub nvn: crate::gpu::nvn::NvnDriver,
@@ -53,6 +56,7 @@ impl HorizonKernel {
             nvgpu: NvgpuChannel::new(),
             vfs: VirtualFileSystem::new(),
             audio: AudioOutServer::new(),
+            audren: crate::audio::AudioRenderer::new(Default::default()),
             scheduler: ThreadScheduler::new(),
             sync: SyncManager::new(),
             nvn: crate::gpu::nvn::NvnDriver::new(),

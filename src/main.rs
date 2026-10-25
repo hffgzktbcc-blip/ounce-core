@@ -7,6 +7,7 @@ mod hid;
 mod kernel;
 mod loader;
 mod mmu;
+mod ui;
 
 use cpu::{Cpu, StepResult};
 use gpu::nvgpu::{
@@ -87,6 +88,24 @@ fn main() {
             };
             build_and_boot_showcase_nsp(out_path);
         }
+        "inspect" => {
+            if args.len() < 3 {
+                eprintln!("Error: Please provide path to package (.xci, .nsp, .nca, .nro)");
+                return;
+            }
+            let file_path = &args[2];
+            let default_key: [u8; 16] = [
+                0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
+                0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
+            ];
+            match std::fs::read(file_path) {
+                Ok(bytes) => match ui::PackageInspector::inspect_bytes(file_path, &bytes, &default_key) {
+                    Ok(report) => ui::PackageInspector::print_report(&report),
+                    Err(e) => eprintln!("Inspector error: {}", e),
+                },
+                Err(e) => eprintln!("Failed to read file '{}': {}", file_path, e),
+            }
+        }
         "info" => {
             print_specs();
         }
@@ -99,6 +118,7 @@ fn main() {
 fn print_usage() {
     println!("Usage:");
     println!("  cargo run -- test                 Run built-in AArch64, FP, & Horizon IPC test programs");
+    println!("  cargo run -- inspect <file>       Inspect .xci/.nsp package headers and explore RomFS assets");
     println!("  cargo run -- showcase [file.nsp]  Build & boot an encrypted Switch 2 .nsp cartridge on disk");
     println!("  cargo run -- gpu3d [frames]       Launch NVGPU 3D Triangle Rasterizer Demo (GPFIFO Pushbuffers)");
     println!("  cargo run -- play [frames]        Launch interactive playable game (Arrow Keys / WASD to move)");
