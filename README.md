@@ -1,12 +1,14 @@
-# ounce-core
+<p align="center">
+  <img src="assets/banner.svg" alt="ounce-core: Clean-Room Hardware Research Runtime for NVIDIA Tegra T239" width="100%" />
+</p>
 
-### Clean-Room Hardware Research Runtime & Architecture Compatibility Layer for NVIDIA Tegra T239 (Horizon ABI)
-
-[![Build Status](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml)
-[![Language](https://img.shields.io/badge/language-Rust%202024-orange.svg)](https://www.rust-lang.org/)
-[![License](https://img.shields.io/badge/license-Clean--Room%20Research-blue.svg)](LICENSE)
-[![Target Platform](https://img.shields.io/badge/target-NVIDIA%20Tegra%20T239%20%28Drake%29-76b900.svg)](https://www.nvidia.com/)
-[![Cryptographic Security](https://img.shields.io/badge/keys-Zero%20Proprietary%20Keys-success.svg)](#clean-room-legal-disclaimer--compliance-protocol)
+<p align="center">
+  <a href="https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml"><img src="https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg" alt="Build Status" /></a>
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/language-Rust%202024-orange.svg" alt="Language" /></a>
+  <a href="#clean-room-legal-disclaimer--compliance-protocol"><img src="https://img.shields.io/badge/methodology-Clean--Room%20Research-blue.svg" alt="Methodology" /></a>
+  <a href="https://www.nvidia.com/"><img src="https://img.shields.io/badge/target-Tegra%20T239%20%7C%20ARMv8.5--A-76b900.svg" alt="Target Platform" /></a>
+  <a href="#clean-room-legal-disclaimer--compliance-protocol"><img src="https://img.shields.io/badge/keys-Zero%20Proprietary%20Keys-success.svg" alt="Zero Keys" /></a>
+</p>
 
 ---
 
