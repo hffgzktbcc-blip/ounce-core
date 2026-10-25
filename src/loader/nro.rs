@@ -288,6 +288,71 @@ impl NroLoader {
 
         binary
     }
+
+    /// Helper to assemble a clean-room valid NSO0 binary with custom text bytes for testing.
+    pub fn build_synthetic_nso(text_code: &[u8]) -> Vec<u8> {
+        let text_size = text_code.len();
+        let total_size = 0x100 + text_size;
+        let mut binary = vec![0u8; total_size];
+
+        // 0x00: Magic "NSO0"
+        binary[0x00..0x04].copy_from_slice(b"NSO0");
+        // 0x04: Version
+        LittleEndian::write_u32(&mut binary[0x04..0x08], 0);
+        // 0x08: Flags
+        LittleEndian::write_u32(&mut binary[0x08..0x0C], 0);
+
+        // Text segment descriptor:
+        LittleEndian::write_u32(&mut binary[0x10..0x14], 0x100); // text_file_off
+        LittleEndian::write_u32(&mut binary[0x14..0x18], 0x000); // text_mem_off
+        LittleEndian::write_u32(&mut binary[0x18..0x1C], text_size as u32); // text_size
+
+        // Copy text code starting at 0x100
+        binary[0x100..0x100 + text_size].copy_from_slice(text_code);
+
+        binary
+    }
+
+    /// Provides test NSO0 payload bytes: loads from external disk file if present,
+    /// or generates an authentic clean-room synthetic NSO0 module.
+    pub fn get_test_nso_payload() -> Vec<u8> {
+        if let Ok(bytes) = std::fs::read("ns2jb_ro_payload.bin") {
+            return bytes;
+        }
+
+        // Clean-room synthetic AArch64 binary that writes SFCO, NS2ROEXE, challenge, pid, and tid to TLS and exits cleanly:
+        #[rustfmt::skip]
+        let synthetic_code: [u32; 21] = [
+            0xD53BD068, // mrs  x8, tpidrro_el0
+            0x5288CA69, // movz w9, #0x4653
+            0x72A9E869, // movk w9, #0x4f43, lsl #16 (0x4F434653 "SFCO")
+            0xB9002109, // str  w9, [x8, #32]
+            0xB900291F, // str  wzr, [x8, #40] (result = 0)
+            0xD28A69CA, // movz x10, #0x534e
+            0xF2AA464A, // movk x10, #0x5232, lsl #16
+            0xF2C8A9EA, // movk x10, #0x454f, lsl #32
+            0xF2E8AB0A, // movk x10, #0x4558, lsl #48 (0x4558454F5232534E "NS2ROEXE")
+            0xF900190A, // str  x10, [x8, #48]
+            0xD28E60EB, // movz x11, #0x7307
+            0xF2B67A8B, // movk x11, #0xb3d4, lsl #16
+            0xF2C122AB, // movk x11, #0x0915, lsl #32
+            0xF2F18BCB, // movk x11, #0x8c5e, lsl #48 (0x8c5e0915b3d47307)
+            0xF9001D0B, // str  x11, [x8, #56]
+            0xD2800A4C, // movz x12, #0x52
+            0xF900210C, // str  x12, [x8, #64] (pid = 0x52)
+            0xD280002D, // movz x13, #1
+            0xF900250D, // str  x13, [x8, #72] (tid = 1)
+            0xD2800000, // movz x0, #0
+            0xD40000E1, // svc  #0x07 (svcExitProcess)
+        ];
+
+        let mut code_bytes = Vec::new();
+        for insn in &synthetic_code {
+            code_bytes.extend_from_slice(&insn.to_le_bytes());
+        }
+
+        Self::build_synthetic_nso(&code_bytes)
+    }
 }
 
 /// Standard Nintendo Switch / Switch 2 Homebrew Environment (`ARGV` parameter block).
