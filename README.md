@@ -41,54 +41,112 @@ Development of `ounce-core` strictly follows established clean-room reverse-engi
 
 ---
 
-## Hardware Architecture & Subsystem Overview
+## Hardware Architecture & Subsystem Specification
 
-```mermaid
-flowchart TD
-    subgraph ContainerSubsystem ["1. Package Ingestion & Demuxing"]
-        XCI["GameCard Container (.xci)"] --> HFS0["HFS0 Partition Parser"]
-        NSP["Submission Package (.nsp)"] --> PFS0["PFS0 Archive Parser"]
-        HFS0 --> NCA["NCA3 AES-128-CTR Decryptor"]
-        PFS0 --> NCA
-        NCA --> ExeFS["ExeFS / NSO0 / NRO0 Binary Loader"]
-        NCA --> RomFS["Level 3 RomFS Hash Table Traversal"]
-    end
+<p align="center">
+  <img src="assets/architecture.svg" alt="NVIDIA Tegra T239 & Horizon OS Hardware Architecture Diagram" width="100%" />
+</p>
 
-    subgraph ComputeExecution ["2. CPU Execution & Horizon Microkernel"]
-        ExeFS --> CPU["ARMv8.2-A / v8.5-A Execution Engine (AArch64)"]
-        CPU --> PAC["ARMv8.3-A PAC / ARMv8.5-A BTI Verification"]
-        CPU --> JIT["Tier-1 Basic-Block Cache + Tier-2 Chained JIT"]
-        CPU --> MMU["4KB Sparse Page Table MMU (39/48-bit Virtual Space)"]
-        CPU --> Kernel["Horizon 64-bit Microkernel (FW 23.0.1 ABI)"]
-        Kernel --> IPC["TIPC & CMIF IPC Dispatch Subsystem"]
-    end
+`ounce-core` implements an authentic, clean-room representation of the NVIDIA Tegra T239 SoC across six fundamental hardware domains:
 
-    subgraph PeripheralsGPU ["3. GPU, Audio DSP & Hardware Acceleration"]
-        Kernel --> NVN["Switch 2 NVN Driver HLE (svcNvnSubmitCommandBuffer)"]
-        NVN --> SASS["Ampere SASS -> Vulkan SPIR-V 1.5 Transpiler"]
-        NVN --> DLSS["Hardware Tensor Core DLSS 2x Super-Resolution"]
-        NVN --> Rasterizer["32-bit RGBA8888 Framebuffer with Z-Depth Occlusion"]
-        Kernel --> AudRen["audren:u 48kHz Multi-Channel DSP Audio Renderer"]
-        Kernel --> HID["Joy-Con 2 Shared Memory Controller Interface"]
-    end
+### 1. Central Processing Unit (CPU) & Vector Execution Engine
 ```
+   ┌─────────────────────────────────────────────────────────────────────────────┐
+   │                    8× ARM Cortex-A78C Micro-Core Cluster                     │
+   │  [Core 0: Main]   [Core 1: Worker]  [Core 2: Worker]  [Core 3: Worker]       │
+   │  [Core 4: Audio]  [Core 5: Worker]  [Core 6: Worker]  [Core 7: Horizon OS]   │
+   ├─────────────────────────────────────────────────────────────────────────────┤
+   │  • ARMv8.3-A PAC: PACIBSP, PACIASP, AUTIBSP, RETAA, RETAB (Pointer Auth)     │
+   │  • ARMv8.5-A BTI: BTI c, BTI j, BTI jc (Branch Target Identification)       │
+   │  • 128-bit NEON: FADD, FMUL, FSUB, FMA Vector SIMD & IEEE-754 Precision     │
+   │  • Execution HAL: Tier-1 Basic-Block Cache + Tier-2 Chained JIT (>7.5 MIPS) │
+   └─────────────────────────────────────────────────────────────────────────────┘
+```
+- **Octa-Core Topology**: Models 8× ARM Cortex-A78C cores running an authentic preemptive thread scheduler with SMP core affinity masks (`0xFF`).
+- **ISA Security Features**: Emulates ARMv8.3-A Pointer Authentication (PAC) preventing return-oriented programming (ROP) and ARMv8.5-A Branch Target Identification (BTI) enforcing landing-pad validation.
+- **Dual-Tier Execution**: Tier-1 Basic-Block Translation Cache maps guest basic blocks into pre-decoded fast-paths; Tier-2 Direct-Chained JIT eliminates interpreter dispatch loop overhead for hot jump targets.
 
----
+### 2. Graphics Processing Unit (GPU) & NVN Driver HLE
+```
+   ┌─────────────────────────────────────────────────────────────────────────────┐
+   │                NVIDIA Ampere GA10B/GA10F Custom SoC Derivative              │
+   │   12 Streaming Multiprocessors (~1,536 CUDA Cores, SM 8.7 Feature Set)     │
+   ├─────────────────────────────────────────────────────────────────────────────┤
+   │  • NVN Driver HLE: NvnCommandBuffer, NvnMemoryPool, NvnTexturePool          │
+   │  • Fast-Path Submission: SVC #0x2D (svcNvnSubmitCommandBuffer)              │
+   │  • SASS Transpiler: Ampere SM87 Machine ISA -> Vulkan SPIR-V 1.5 (0x07230203)│
+   │  • Extended Opcodes: LOP3.LUT, ISETP/FSETP, MUFU (Sin/Cos/Rcp), SEL         │
+   │  • AI Super-Resolution: Hardware Tensor Core Engine (Tensor DLSS 2× Scaling)│
+   │  • Graphics Pipeline: Double-Buffered 32-bit RGBA8888 VRAM + Z-Buffer Depth │
+   └─────────────────────────────────────────────────────────────────────────────┘
+```
+- **Official NVN Driver HLE**: Provides complete high-level emulation for Nintendo Switch 2's primary graphics API (`NvnCommandBuffer`, `NvnMemoryPool`, `NvnTexturePool`), communicating via fast-path `SVC #0x2D` (`svcNvnSubmitCommandBuffer`) and `nvdrv` `IOCTL_NVN_SUBMIT` (`0xC018_4E01`).
+- **Ampere SASS Transpiler**: Decompiles native Ampere SM87 shader bytecode into validated Vulkan SPIR-V 1.5 binaries (`0x07230203`) with hardware LUT evaluation (`LOP3.LUT`), condition code predicates (`ISETP`/`FSETP`), and mathematical function units (`MUFU`).
+- **Hardware Tensor DLSS**: Embedded edge-directed tensor reconstruction upscaling 540p handheld renders to 1080p and 1080p docked renders to 4K.
 
-## Technical Specifications
+### 3. Memory Subsystem & Sparse Virtual MMU
+```
+   ┌─────────────────────────────────────────────────────────────────────────────┐
+   │              12 GB LPDDR5X DRAM (128-bit Bus @ 6400 MT/s, 102.4 GB/s)       │
+   ├─────────────────────────────────────────────────────────────────────────────┤
+   │  Virtual Regions:                                                           │
+   │  • Code / RoData / Data : Base: 0x8000_0000 (Executable guest text & data)  │
+   │  • Dynamic User Heap    : Base: 0x1_0000_0000 (svcSetHeapSize arena)        │
+   │  • Thread Stack / TLS   : Base: 0x7FFF_FE0000 (1MB stacks with guard pages) │
+   │  • VRAM Framebuffer     : Base: 0x9000_0000 (1280×720 handheld / 1080p dock)│
+   │  • Asynchronous Ring    : Base: 0x9400_0000 (GPFIFO command buffer queue)   │
+   │  • Memory Protection    : Strict W^X (Write XOR Execute) page permissions   │
+   └─────────────────────────────────────────────────────────────────────────────┘
+```
+- **Physical Memory Model**: Simulates the 12GB LPDDR5X memory architecture across a 128-bit wide bus providing ~102.4 GB/s theoretical bandwidth.
+- **Sparse 4KB Virtual MMU**: 39-bit and 48-bit Horizon virtual address space management with cross-process memory mirroring (`svcMapProcessMemory`, `svcMapProcessCodeMemory`) and page permission enforcement.
 
-| Subsystem | Target Hardware Specification | Runtime Implementation Model |
-| :--- | :--- | :--- |
-| **CPU Architecture** | NVIDIA Tegra T239 (8× ARM Cortex-A78C) | Pure-Rust ARMv8.2-A/v8.5-A AArch64 interpreter with Tier-1 BB Cache and Tier-2 Direct-Chained JIT |
-| **Instruction Security** | ARMv8.3-A PAC + ARMv8.5-A BTI | Runtime Pointer Authentication (`PACIBSP`, `AUTIBSP`, `RETAA`, `RETAB`) & Branch Target Identification (`BTI c`, `BTI j`) |
-| **SIMD & Floating-Point** | 128-bit ARM NEON & IEEE-754 FP | Vector SIMD registers (`V0`–`V31`) with `FADD`, `FMUL`, `FSUB`, `FMA`, and NEON vector operations |
-| **Memory Subsystem** | 12 GB LPDDR5X (128-bit @ 6400 MT/s) | Sparse 4KB page-table MMU with 39-bit and 48-bit Horizon virtual address spaces |
-| **Graphics Processor** | NVIDIA Ampere GA10B/GA10F Custom SoC | NVN API HLE driver, GPFIFO pushbuffer engine, SASS-to-SPIR-V transpiler (`0x07230203`), Tensor DLSS 2x upscaler |
-| **Shader ISA Support** | Ampere SM87 Machine Instructions | Extended opcode mapping: `LOP3.LUT`, `ISETP`/`FSETP`, `MUFU` (trig/reciprocal), `SEL` (predicated multiplexer) |
-| **Audio Subsystem** | Horizon `audren:u` DSP Audio Renderer | Multi-channel DSP voice mixing matrix, wave buffer queueing, 48kHz stereo 16-bit linear PCM sink (`audout:u`) |
-| **Input Controllers** | Joy-Con 2 (Rail / Wireless BT / Grip) | Shared memory polling (`0x200` handle) with analog stick radial deadzone filtering |
-| **Container Formats** | High-Speed GameCard (`.xci`), Package (`.nsp`) | Hardware AES-128-CTR multi-section decryptor, HFS0, PFS0, and Level 3 RomFS hierarchical hash tables |
-| **Operating System** | Horizon 64-bit Microkernel (FW 23.0.1) | TIPC (0x10/0x12) and CMIF IPC, preemptive multi-core scheduler, Big 5 services (`set:sys`, `am:appletOE`, `vi:m`, `hid`, `fsp-srv`, `ro:1`) |
+### 4. Audio Digital Signal Processor (DSP) & Joy-Con 2 Input
+```
+   ┌─────────────────────────────────────────────────────────────────────────────┐
+   │                 Audio DSP Mixer & Controller Peripheral HAL                 │
+   ├─────────────────────────────────────────────────────────────────────────────┤
+   │  • audren:u DSP Mixer  : Multi-channel voice matrix & wave buffer queues    │
+   │  • audout:u PCM Sink   : 48kHz Stereo 16-bit linear PCM audio stream        │
+   │  • Joy-Con 2 Interface : Rail Attached, Wireless BT, and Dual-Grip modes    │
+   │  • Shared Memory (hid) : Handle 0x200 polling with radial deadzone filters  │
+   └─────────────────────────────────────────────────────────────────────────────┘
+```
+- **audren:u Audio Renderer**: Clean-room DSP voice mixer performing real-time multi-channel voice interpolation, volume matrix ramping, and circular DMA buffer transfers.
+- **Joy-Con 2 Controller Framework**: Subsystem polling over shared memory handle `0x200` with hardware button bitmasking, analog stick radial deadzone filtering, and support for attached rail and wireless Bluetooth configurations.
+
+### 5. Storage Containers & Cryptographic Engine
+```
+   ┌─────────────────────────────────────────────────────────────────────────────┐
+   │                  Storage Formats & Cryptographic Engine                     │
+   ├─────────────────────────────────────────────────────────────────────────────┤
+   │  • GameCard Media (.xci) : 64GB High-Speed GameCard, HEAD at 0x100, HFS0    │
+   │  • Package Archive (.nsp): Nintendo Submission Package (PFS0 Archive)       │
+   │  • Cryptography (NCA3)   : Hardware AES-128-CTR multi-section decryptor     │
+   │  • Filesystem (RomFS)    : Level 3 hierarchical directory/file hash tables  │
+   └─────────────────────────────────────────────────────────────────────────────┘
+```
+- **Universal Container Parser**: Ingests, validates, and unpacks `.xci`, `.nsp`, `.nca`, `.nso`, and `.nro` containers.
+- **AES-128-CTR Cryptographic Engine**: Multi-section decryptor simultaneously processing Section 0 (`ExeFS` code) and Section 1 (`RomFS` data) with automated IV calculation.
+- **Level 3 RomFS Engine**: Implements authentic hierarchical directory and file hash buckets, mounting directly into the Horizon `VirtualFileSystem` under `romfs:/...`.
+
+### 6. Horizon OS 64-Bit Microkernel & HLE Services
+```
+   ┌─────────────────────────────────────────────────────────────────────────────┐
+   │             Horizon OS 64-bit Microkernel (Target FW 23.0.1 ABI)            │
+   ├─────────────────────────────────────────────────────────────────────────────┤
+   │  • IPC Protocols : Switch 2 Tipc (0x10/0x12) & Horizon CMIF (SFCI/SFCO)     │
+   │  • set:sys       : Firmware Version 23.0.1 reporting & device locale        │
+   │  • am:appletOE   : Applet proxy lifecycle, focus state & foreground rights  │
+   │  • vi:m          : Display management, vsync timing & stray layer creation  │
+   │  • fsp-srv       : Data storage access & Program RomFS filesystem mounts    │
+   │  • ro:1          : Dynamic Module Linker (LoadNro/LoadNrr MOD0 relocation)  │
+   │  • nvdrv         : GPU driver device nodes (/dev/nvhost-ctrl, /dev/nvmap)   │
+   └─────────────────────────────────────────────────────────────────────────────┘
+```
+- **TIPC & CMIF Dual-Protocol IPC**: Handles both legacy Horizon CMIF (`SFCI`/`SFCO`) and native Switch 2 `sm:` TIPC (`0x10` `RegisterClient`, `0x12` `RegisterService`).
+- **Complete Big 5 Initialization Sequence**: Fulfills the mandatory retail bootstrap sequence (`set:sys`, `am:appletOE`, `vi:m`, `hid`, `fsp-srv`) verified with guest exit code `0x777`.
+- **Dynamic Module Linker (`ro:1`)**: Resolves `MOD0` relocations (`R_AARCH64_RELATIVE`), allocates guest memory for secondary NRO modules, and configures homebrew ABI ARGV blocks.
 
 ---
 
