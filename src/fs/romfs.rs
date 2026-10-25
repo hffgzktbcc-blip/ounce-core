@@ -24,6 +24,8 @@ pub struct VirtualFileSystem {
     /// Maps open file handles to virtual paths
     open_handles: HashMap<u32, String>,
     next_handle: u32,
+    pub save_dir: Option<std::path::PathBuf>,
+    pub sdmc_dir: Option<std::path::PathBuf>,
     pub total_bytes_read: u64,
     pub total_bytes_written: u64,
 }
@@ -40,6 +42,8 @@ impl VirtualFileSystem {
             files: HashMap::new(),
             open_handles: HashMap::new(),
             next_handle: 1,
+            save_dir: None,
+            sdmc_dir: None,
             total_bytes_read: 0,
             total_bytes_written: 0,
         };
@@ -57,14 +61,52 @@ impl VirtualFileSystem {
         vfs
     }
 
+    /// Sets the host filesystem backing directory for persistent `save:/` storage.
+    pub fn set_save_directory(&mut self, path: impl AsRef<std::path::Path>) {
+        let p = path.as_ref().to_path_buf();
+        let _ = std::fs::create_dir_all(&p);
+        self.save_dir = Some(p);
+    }
+
+    /// Sets the host filesystem backing directory for persistent `sdmc:/` storage.
+    pub fn set_sdmc_directory(&mut self, path: impl AsRef<std::path::Path>) {
+        let p = path.as_ref().to_path_buf();
+        let _ = std::fs::create_dir_all(&p);
+        self.sdmc_dir = Some(p);
+    }
+
     /// Mounts or overwrites a virtual file in the VFS.
     pub fn mount_file(&mut self, path: &str, data: &[u8]) {
         self.files.insert(path.to_string(), data.to_vec());
+        self.sync_file_to_disk(path, data);
     }
 
-    /// Retrieves a reference to raw file data if it exists in the VFS.
+    /// Retrieves a reference to raw file data if it exists in the VFS or on disk.
     pub fn get_file(&self, path: &str) -> Option<&[u8]> {
         self.files.get(path).map(|v| v.as_slice())
+    }
+
+    fn sync_file_to_disk(&self, path: &str, data: &[u8]) {
+        if let Some(ref s_dir) = self.save_dir {
+            if path.starts_with("save:/") {
+                let rel = &path[6..];
+                let disk_path = s_dir.join(rel);
+                if let Some(parent) = disk_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(&disk_path, data);
+            }
+        }
+        if let Some(ref s_dir) = self.sdmc_dir {
+            if path.starts_with("sdmc:/") {
+                let rel = &path[6..];
+                let disk_path = s_dir.join(rel);
+                if let Some(parent) = disk_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(&disk_path, data);
+            }
+        }
     }
 
     /// Mounts all files from a binary Level 3 `RomFsArchive` under `romfs:/...`.
@@ -139,7 +181,8 @@ impl VirtualFileSystem {
     ) -> Result<usize, VfsError> {
         let mut buf = vec![0u8; len];
         mmu.read_bytes(guest_src_addr, &mut buf)?;
-        self.files.insert(path.to_string(), buf);
+        self.files.insert(path.to_string(), buf.clone());
+        self.sync_file_to_disk(path, &buf);
         self.total_bytes_written += len as u64;
         Ok(len)
     }
@@ -341,5 +384,36 @@ mod tests {
         let mut buf = [0u8; 12];
         mmu.read_bytes(dst_addr, &mut buf).unwrap();
         assert_eq!(&buf, b"Switch2RomFS");
+    }
+
+    #[test]
+    fn test_vfs_persistent_save_and_sdmc() {
+        let temp_save_dir = std::env::temp_dir().join("ounce_test_savedata");
+        let _ = std::fs::remove_dir_all(&temp_save_dir);
+
+        let mut vfs = VirtualFileSystem::new();
+        vfs.set_save_directory(&temp_save_dir);
+
+        let mut mmu = Memory::new();
+        let src_addr = 0x80060000u64;
+        mmu.map_range(src_addr, 4096, Permission::READ_WRITE);
+        mmu.write_bytes(src_addr, b"SAVED_GAME_STATE_SLOT_1").unwrap();
+
+        let n = vfs
+            .write_file_from_guest("save:/slot1.sav", src_addr, 23, &mmu)
+            .unwrap();
+        assert_eq!(n, 23);
+
+        // Verify written to memory
+        assert_eq!(vfs.get_file("save:/slot1.sav"), Some(b"SAVED_GAME_STATE_SLOT_1".as_slice()));
+
+        // Verify persisted to disk!
+        let disk_file = temp_save_dir.join("slot1.sav");
+        assert!(disk_file.exists());
+        let disk_contents = std::fs::read(&disk_file).unwrap();
+        assert_eq!(disk_contents, b"SAVED_GAME_STATE_SLOT_1");
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&temp_save_dir);
     }
 }
