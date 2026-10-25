@@ -27,8 +27,8 @@ jobs:
       - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Run 32 unit tests
+      - name: Run 33 unit tests
         run: cargo test --release
 
-      - name: Run 15-stage Switch 2 full-stack & ns2jb hardware verification suite
+      - name: Run 16-stage Switch 2 full-stack & ns2jb hardware verification suite
         run: cargo run --release -- test

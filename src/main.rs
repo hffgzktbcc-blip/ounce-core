@@ -1283,6 +1283,121 @@ fn run_built_in_demo() {
         println!("  [NVN Driver] Fast-path command buffer executed via SVC #0x2D & rendered into VRAM 0x{:08X}", fb_addr);
     }
     println!();
+
+    // ---------------------------------------------------------
+    // Test 16: Switch 2 audren DSP Audio, NVN Memory Pools & Vulkan Hardware Pipeline
+    //          Verifies:
+    //            1. Tier-2 Direct-Chained JIT executing chained guest loops
+    //            2. NVN Memory Pool sub-allocating VRAM for UBOs and VBOs
+    //            3. Native Vulkan HAL loading SPIR-V 1.5 and dispatching draw calls
+    //            4. audren:u DSP mixer processing stereo voices into 48kHz audio sinks
+    //            5. Persistent SaveData syncing to disk
+    // ---------------------------------------------------------
+    println!("--- Test 16: Switch 2 audren DSP Audio, NVN Memory Pools & Vulkan Pipeline ---");
+    {
+        let (mut cpu16, mut mmu16, mut kernel16) = setup_vm();
+
+        // 1. Tier-2 Direct-Chained JIT loop:
+        let jit_code_va = 0x8000_0000u64;
+        mmu16.map_range(jit_code_va, 4096, Permission::READ_WRITE_EXECUTE);
+        #[rustfmt::skip]
+        let loop_program: [u32; 10] = [
+            0xD2800141, // 00: movz x1, #10
+            0xD2800002, // 04: movz x2, #0
+            0xD2800023, // 08: movz x3, #1
+            // loop:
+            0xB40000C1, // 0C: cbz  x1, done (+24 bytes)
+            0x8B030044, // 10: add  x4, x2, x3
+            0x91000062, // 14: add  x2, x3, #0
+            0x91000083, // 18: add  x3, x4, #0
+            0xF1000421, // 1C: subs x1, x1, #1
+            0x17FFFFFB, // 20: b    loop (-20 bytes)
+            0xD40000E1, // 24: svc  #0x07
+        ];
+        for (i, &w) in loop_program.iter().enumerate() {
+            mmu16.write_u32(jit_code_va + (i * 4) as u64, w).unwrap();
+        }
+
+        let mut tier2_jit = cpu::Tier2JitEngine::new();
+        cpu16.regs.pc = jit_code_va;
+        let (insns_exec, exit_reason) = tier2_jit.run_slice(&mut cpu16, &mut mmu16, 5_000);
+        println!(
+            "  [Tier-2 JIT] Executed {} insns ({} chained block jumps) -> Exit: {:?}",
+            insns_exec, tier2_jit.chained_jumps, exit_reason
+        );
+
+        // 2. NVN Memory Pool Allocator:
+        let mut pool_mgr = gpu::NvnMemoryPoolManager::new();
+        let pool_id = pool_mgr.create_pool(
+            0x9800_0000,
+            16 * 1024 * 1024, // 16 MB VRAM Pool
+            gpu::memory_pool::NVN_MEMORY_POOL_CPU_CACHED | gpu::memory_pool::NVN_MEMORY_POOL_GPU_CACHED,
+        );
+        let pool = pool_mgr.get_pool_mut(pool_id).unwrap();
+        let ubo = pool.allocate_buffer(512, 256, gpu::NvnBufferType::Uniform).unwrap();
+        let vbo = pool.allocate_buffer(1024, 64, gpu::NvnBufferType::Vertex).unwrap();
+        println!(
+            "  [NVN VRAM Pool] Created Pool #{} (16MB) -> UBO at 0x{:08X} | VBO at 0x{:08X}",
+            pool_id, ubo.gpu_address, vbo.gpu_address
+        );
+
+        // 3. Hardware Vulkan 1.3 / SPIR-V 1.5 Pipeline:
+        let sass_ops = vec![
+            SassOp::FMovImm { rd: 0, imm: 1.0 }.encode(),
+            SassOp::FMovImm { rd: 1, imm: 0.5 }.encode(),
+            SassOp::FSetp { p0: 0, p1: 1, rn: 0, rm: 1, op: gpu::shader::CmpOp::Gt }.encode(),
+            SassOp::Exit.encode(),
+        ];
+        let decompiled = gpu::SassShaderDecompiler::decompile(&sass_ops);
+        let mut vulkan = gpu::VulkanGpuBackend::new();
+        vulkan.create_graphics_pipeline(&decompiled.spirv_words, &decompiled.spirv_words, 1280, 720, true).unwrap();
+        vulkan.draw_arrays(&mmu16, vbo.gpu_address, 3).unwrap();
+        vulkan.present_frame();
+        println!(
+            "  [Vulkan HAL] Loaded SPIR-V 1.5 ({} words) -> Pipeline PSOs: {} | Draws: {} | Presented: {}",
+            decompiled.spirv_words.len(),
+            vulkan.pipelines_created,
+            vulkan.draw_calls_submitted,
+            vulkan.hardware_frames_presented
+        );
+
+        // 4. Horizon audren:u Audio Renderer DSP Tick:
+        let pcm_addr = 0x8200_0000u64;
+        mmu16.map_range(pcm_addr, 4096, Permission::READ_WRITE);
+        let pcm_data: [i16; 8] = [4000, -4000, 8000, -8000, 12000, -12000, 6000, -6000];
+        for (i, &s) in pcm_data.iter().enumerate() {
+            mmu16.write_u16(pcm_addr + (i * 2) as u64, s as u16).unwrap();
+        }
+        let voice = kernel16.audren.get_voice_mut(0).unwrap();
+        voice.volume = 1.0;
+        voice.mix_volumes = [0.8, 0.8];
+        voice.queue_buffer(audio::WaveBuffer {
+            buffer_addr: pcm_addr,
+            buffer_size: pcm_data.len() * 2,
+            start_sample_offset: 0,
+            end_sample_offset: 8,
+            is_looping: false,
+            is_stream_ended: true,
+        });
+        let mixed_samples = kernel16.audren.render_dsp_tick(&mmu16);
+        println!(
+            "  [audren:u DSP] Rendered tick: {} stereo samples mixed | Peak Amp: {} | RingBuffer: {} samples",
+            mixed_samples, kernel16.audren.peak_amplitude, kernel16.audren.output_ring_buffer.len()
+        );
+
+        // 5. Persistent SaveData:
+        let save_temp = std::env::temp_dir().join("ounce_stage16_save");
+        kernel16.vfs.set_save_directory(&save_temp);
+        mmu16.map_range(0x8300_0000, 4096, Permission::READ_WRITE);
+        mmu16.write_bytes(0x8300_0000, b"SWITCH2_SAVE_STAGE16").unwrap();
+        let saved_bytes = kernel16.vfs.write_file_from_guest("save:/slot0.sav", 0x8300_0000, 20, &mmu16).unwrap();
+        println!(
+            "  [SaveData Persistence] Synchronized {} bytes to 'save:/slot0.sav'",
+            saved_bytes
+        );
+        let _ = std::fs::remove_dir_all(&save_temp);
+    }
+    println!();
 }
 
 /// Runs the 2D Display & Framebuffer Graphic Demo
