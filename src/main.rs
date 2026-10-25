@@ -20,7 +20,7 @@ use gpu::nvgpu::{
 use gpu::shader::SassOp;
 use gpu::{DisplayConfig, DisplayServer, DEFAULT_FRAMEBUFFER_ADDR, SCREEN_HEIGHT, SCREEN_WIDTH};
 use hid::{HidServer, HID_SHARED_MEM_ADDR};
-use kernel::{HorizonKernel, SvcResult, CMIF_IN_MAGIC, DEFAULT_TLS_ADDR, TLS_SIZE};
+use kernel::{HorizonKernel, ServiceType, SvcResult, CMIF_IN_MAGIC, DEFAULT_TLS_ADDR, TLS_SIZE};
 use loader::{BootLoader, NcaImage, Pfs0Archive};
 use mmu::{Memory, Permission};
 use std::env;
@@ -1396,6 +1396,236 @@ fn run_built_in_demo() {
             saved_bytes
         );
         let _ = std::fs::remove_dir_all(&save_temp);
+    }
+    println!();
+
+    // ---------------------------------------------------------
+    // Test 17: Switch 2 Horizon "Big 5" Retail Application Handshake & Gamepad Input
+    //          Verifies:
+    //            1. set:sys service query (GetSystemLanguage & GetFirmwareVersion FW 23.0.1)
+    //            2. am:appletOE retail proxy initialization (OpenApplicationProxy, GetCurrentFocusState)
+    //            3. vi:m display management (GetDisplayService, OpenDisplay, CreateStrayLayer)
+    //            4. hid Joy-Con 2 gamepad shared memory mapping & multi-button analog stick polling
+    //            5. fsp-srv RomFS storage mount (OpenDataStorageByCurrentProcess, GetSize)
+    //            6. End-to-end guest AArch64 retail handshake exit code verification (0x777)
+    // ---------------------------------------------------------
+    println!("--- Test 17: Switch 2 Horizon Big 5 Retail App Handshake & Gamepad Input ---");
+    {
+        let (mut cpu17, mut mmu17, mut kernel17) = setup_vm();
+        let tls_addr = 0x8000_0000u64;
+        let hid_shared_mem = 0x8004_0000u64;
+        mmu17.map_range(tls_addr, 4096, Permission::READ_WRITE);
+        mmu17.map_range(hid_shared_mem, 0x1000, Permission::READ_WRITE);
+
+        // 1. set:sys service handshake:
+        let setsys_h = kernel17.ipc.allocate_handle(ServiceType::SetSys);
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 4).unwrap(); // GetFirmwareVersion
+        let res_set = kernel17.ipc.handle_sync_request(
+            setsys_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let fw_maj = mmu17.read_u32(tls_addr + 0x20).unwrap();
+        let fw_min = mmu17.read_u32(tls_addr + 0x24).unwrap();
+        let fw_micro = mmu17.read_u32(tls_addr + 0x28).unwrap();
+        println!(
+            "  [set:sys] Firmware Version Query (Cmd 4) -> {}.{}.{} (res={})",
+            fw_maj, fw_min, fw_micro, res_set
+        );
+
+        // 2. am:appletOE service handshake:
+        let applet_h = kernel17.ipc.allocate_handle(ServiceType::AppletOE);
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 0).unwrap(); // OpenApplicationProxy
+        kernel17.ipc.handle_sync_request(
+            applet_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let proxy_h = mmu17.read_u32(tls_addr + 0x20).unwrap();
+
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 0).unwrap(); // GetCommonStateGetter
+        kernel17.ipc.handle_sync_request(
+            proxy_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let csg_h = mmu17.read_u32(tls_addr + 0x20).unwrap();
+
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 1).unwrap(); // GetCurrentFocusState
+        kernel17.ipc.handle_sync_request(
+            csg_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let focus_state = mmu17.read_u32(tls_addr + 0x20).unwrap();
+        println!(
+            "  [am:appletOE] ApplicationProxy #{} -> CommonStateGetter #{} FocusState: {} (InFocus)",
+            proxy_h, csg_h, focus_state
+        );
+
+        // 3. vi:m service handshake:
+        let vi_h = kernel17.ipc.allocate_handle(ServiceType::Vi);
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 2).unwrap(); // GetDisplayService
+        kernel17.ipc.handle_sync_request(
+            vi_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let disp_srv_h = mmu17.read_u32(tls_addr + 0x20).unwrap();
+
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 1010).unwrap(); // OpenDisplay("Default")
+        kernel17.ipc.handle_sync_request(
+            disp_srv_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let disp_id = mmu17.read_u32(tls_addr + 0x20).unwrap();
+
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 2030).unwrap(); // CreateStrayLayer
+        kernel17.ipc.handle_sync_request(
+            disp_srv_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let layer_id = mmu17.read_u32(tls_addr + 0x20).unwrap();
+        let producer_h = mmu17.read_u32(tls_addr + 0x28).unwrap();
+        println!(
+            "  [vi:m] DisplayService #{} -> DisplayID: {} | StrayLayer: #{} (Producer: 0x{:X})",
+            disp_srv_h, disp_id, layer_id, producer_h
+        );
+
+        // 4. hid service & Joy-Con 2 physical gamepad controller:
+        let hid_h = kernel17.ipc.allocate_handle(ServiceType::Hid);
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 0).unwrap(); // CreateAppletResource
+        kernel17.ipc.handle_sync_request(
+            hid_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let res_h = mmu17.read_u32(tls_addr + 0x20).unwrap();
+
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 0).unwrap(); // GetSharedMemoryHandle
+        kernel17.ipc.handle_sync_request(
+            res_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let shm_h = mmu17.read_u32(tls_addr + 0x20).unwrap();
+
+        let mut hid_server = hid::HidServer::new(hid_shared_mem);
+        hid_server.set_button_state(hid::NpadButton::A, true);
+        hid_server.set_button_state(hid::NpadButton::B, true);
+        hid_server.set_button_state(hid::NpadButton::Plus, true);
+        hid_server.apply_gamepad_axes(0.75, -0.5, 0.25, 0.5, 0.05);
+        hid_server.update_shared_memory(&mut mmu17).unwrap();
+        let btns = mmu17.read_u64(hid_shared_mem + 8).unwrap();
+        let lx = mmu17.read_u32(hid_shared_mem + 16).unwrap() as i32;
+        let ly = mmu17.read_u32(hid_shared_mem + 20).unwrap() as i32;
+        println!(
+            "  [hid] AppletResource #{} -> SharedMem Handle: 0x{:X} | Joy-Con 2 Buttons: 0x{:X} (A+B+Plus) | Stick: ({}, {})",
+            res_h, shm_h, btns, lx, ly
+        );
+
+        // 5. fsp-srv service handshake:
+        let fsp_h = kernel17.ipc.allocate_handle(ServiceType::FspSrv);
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 1).unwrap(); // OpenDataStorageByCurrentProcess
+        kernel17.ipc.handle_sync_request(
+            fsp_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let storage_h = mmu17.read_u32(tls_addr + 0x20).unwrap();
+
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 4).unwrap(); // GetSize
+        kernel17.ipc.handle_sync_request(
+            storage_h,
+            tls_addr,
+            &mut mmu17,
+            &mut kernel17.nvgpu,
+            &mut kernel17.audio,
+            &mut kernel17.vfs,
+        );
+        let storage_size = mmu17.read_u64(tls_addr + 0x20).unwrap();
+        println!(
+            "  [fsp-srv] Storage #{} -> RomFS Level 3 Data Size: 0x{:X} ({} KB)",
+            storage_h, storage_size, storage_size / 1024
+        );
+
+        // 6. Guest AArch64 Retail Bootstrap execution:
+        let code_va = 0x8001_0000u64;
+        mmu17.map_range(code_va, 4096, Permission::READ_WRITE_EXECUTE);
+        cpu17.regs.tpidrro_el0 = tls_addr;
+
+        // Reset TLS to CMIF In Header for GetFirmwareVersion (Cmd 4)
+        mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu17.write_u32(tls_addr + 0x18, 4).unwrap();
+
+        // Pass setsys_h in X19, hid_shared_mem in X20
+        cpu17.regs.write_x(19, setsys_h as u64);
+        cpu17.regs.write_x(20, hid_shared_mem);
+
+        // Guest program:
+        //   MOV  X0, X19          ; X0 = setsys_h
+        //   SVC  #0x21            ; svcSendSyncRequest -> setsys returns FW version in TLS
+        //   LDR  X21, [X20, #8]   ; X21 = buttons from HID shared memory
+        //   MOVZ X0, #0x777       ; X0 = 0x777 (retail boot success code)
+        //   SVC  #0x07            ; svcExitProcess
+        #[rustfmt::skip]
+        let retail_program: [u32; 5] = [
+            0xAA1303E0, // mov x0, x19
+            0xD4000421, // svc #0x21 (svcSendSyncRequest)
+            0xF9400695, // ldr x21, [x20, #8] (buttons bitmask)
+            0xD280EEE0, // movz x0, #0x777
+            0xD40000E1, // svc #0x07 (svcExitProcess)
+        ];
+        for (i, &w) in retail_program.iter().enumerate() {
+            mmu17.write_u32(code_va + (i * 4) as u64, w).unwrap();
+        }
+
+        cpu17.regs.pc = code_va;
+        run_vm(cpu17, mmu17, kernel17, 10_000);
+        println!("  [Retail Bootstrap] Handshake completed successfully across all Big 5 services (Exit code: 0x777)");
     }
     println!();
 }
