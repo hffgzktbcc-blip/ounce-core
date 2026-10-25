@@ -290,6 +290,46 @@ impl NroLoader {
     }
 }
 
+/// Standard Nintendo Switch / Switch 2 Homebrew Environment (`ARGV` parameter block).
+pub struct HomebrewEnvironment;
+
+impl HomebrewEnvironment {
+    /// Formats and initializes the standard `ARGV` block in guest memory at `env_addr` (e.g., 0x7FFF_FE00)
+    /// and configures guest CPU registers (`X0` = argv pointer, `X1` = main thread handle).
+    pub fn setup(
+        cpu: &mut crate::cpu::Cpu,
+        mmu: &mut Memory,
+        env_addr: u64,
+        argv: &[&str],
+    ) -> Result<(), MemoryError> {
+        mmu.map_range(env_addr, 0x1000, Permission::READ_WRITE);
+
+        // Header: "ARGV" (0x56475241) at offset 0x00
+        // Argc at offset 0x04
+        // Pointers at offset 0x08..
+        let magic: [u8; 4] = *b"ARGV";
+        mmu.write_bytes(env_addr, &magic)?;
+        mmu.write_u32(env_addr + 4, argv.len() as u32)?;
+
+        let mut str_offset = env_addr + 0x100;
+        for (i, &arg) in argv.iter().enumerate() {
+            let ptr_addr = env_addr + 8 + (i * 8) as u64;
+            mmu.write_u64(ptr_addr, str_offset)?;
+            mmu.write_bytes(str_offset, arg.as_bytes())?;
+            mmu.write_u8(str_offset + arg.len() as u64, 0)?; // Null terminator
+            str_offset += (arg.len() + 1 + 7) as u64 & !7; // Align to 8 bytes
+        }
+
+        // Set AArch64 entry ABI:
+        // X0 = Context / argv block address
+        // X1 = Main thread handle (0xFFFF_FFFF_FFFF_FFFF)
+        cpu.regs.write_x(0, env_addr);
+        cpu.regs.write_x(1, 0xFFFF_FFFF_FFFF_FFFF);
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,5 +367,29 @@ mod tests {
 
         // Verify pointer at base + 0x300 was relocated to base_addr + 0x450 (0x80000450)
         assert_eq!(mmu.read_u64(base_addr + 0x300).unwrap(), 0x80000450);
+    }
+
+    #[test]
+    fn test_homebrew_environment_setup() {
+        let mut cpu = crate::cpu::Cpu::new();
+        let mut mmu = Memory::new();
+        let env_addr = 0x7FFF_FE00u64;
+
+        HomebrewEnvironment::setup(&mut cpu, &mut mmu, env_addr, &["sdmc:/block_fall.nro", "--debug"]).unwrap();
+
+        assert_eq!(cpu.regs.read_x(0), env_addr);
+        assert_eq!(cpu.regs.read_x(1), 0xFFFF_FFFF_FFFF_FFFF);
+
+        let mut magic = [0u8; 4];
+        mmu.read_bytes(env_addr, &mut magic).unwrap();
+        assert_eq!(&magic, b"ARGV");
+
+        let argc = mmu.read_u32(env_addr + 4).unwrap();
+        assert_eq!(argc, 2);
+
+        let arg0_ptr = mmu.read_u64(env_addr + 8).unwrap();
+        let mut str_buf = [0u8; 21];
+        mmu.read_bytes(arg0_ptr, &mut str_buf).unwrap();
+        assert_eq!(&str_buf, b"sdmc:/block_fall.nro\0");
     }
 }

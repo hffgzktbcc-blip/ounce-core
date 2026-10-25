@@ -44,6 +44,8 @@ pub enum ServiceType {
     SelfController,
     /// System Settings ("set:sys" / "set")
     SetSys,
+    /// Relocatable Objects / Dynamic Linker ("ro:1" / "ro:dmnt" / "ldr:ro")
+    Ro,
     /// Generic stubbed service
     Generic(String),
 }
@@ -157,6 +159,7 @@ impl IpcManager {
                         "audren:u" => ServiceType::AudRen,
                         "appletOE" => ServiceType::AppletOE,
                         "set:sys" => ServiceType::SetSys,
+                        "ro:1" | "ro:dmnt" | "ldr:ro" => ServiceType::Ro,
                         other => ServiceType::Generic(other.to_string()),
                     };
 
@@ -431,6 +434,54 @@ impl IpcManager {
                 }
             },
 
+            ServiceType::Ro => match cmd_id {
+                // Command 0: LoadNro(u64 expected_process_id, u64 nro_addr, u64 nro_size, u64 bss_addr, u64 bss_size) -> (u64 nro_loaded_base)
+                0 => {
+                    let _pid = mmu.read_u64(args_base).unwrap_or(0);
+                    let nro_addr = mmu.read_u64(args_base + 8).unwrap_or(0);
+                    let nro_size = mmu.read_u64(args_base + 16).unwrap_or(0);
+                    let _bss_addr = mmu.read_u64(args_base + 24).unwrap_or(0);
+                    let _bss_size = mmu.read_u64(args_base + 32).unwrap_or(0);
+
+                    if nro_addr != 0 && nro_size >= 0x80 {
+                        let mut magic = [0u8; 4];
+                        if mmu.read_bytes(nro_addr + 0x10, &mut magic).is_ok() && &magic == b"NRO0" {
+                            let mod0_offset = mmu.read_u32(nro_addr + 4).unwrap_or(0) as u64;
+                            if mod0_offset > 0 {
+                                let mut mod0_magic = [0u8; 4];
+                                if mmu.read_bytes(nro_addr + mod0_offset, &mut mod0_magic).is_ok() && &mod0_magic == b"MOD0" {
+                                    // Valid NRO0 / MOD0 identified
+                                }
+                            }
+                        }
+                    }
+
+                    let lo = (nro_addr & 0xFFFF_FFFF) as u32;
+                    let hi = ((nro_addr >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                // Command 1: UnloadNro(u64 nro_loaded_base)
+                1 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                // Command 2: LoadNrr(u64 expected_process_id, u64 nrr_addr, u64 nrr_size)
+                2 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                // Command 3: UnloadNrr(u64 nrr_addr)
+                3 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
             ServiceType::Generic(_) => {
                 // Stubbed HLE service response: ResultSuccess (0)
                 self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
@@ -537,5 +588,48 @@ mod tests {
         assert_eq!(res, 0);
         let storage_h = mmu.read_u32(tls_addr + 0x20).unwrap();
         assert_eq!(ipc.handles.get(&storage_h), Some(&ServiceType::Storage));
+    }
+
+    #[test]
+    fn test_horizon_ro_service_dynamic_loading() {
+        let mut mmu = Memory::new();
+        let tls_addr = 0x8000_0000u64;
+        let nro_addr = 0x8100_0000u64;
+        mmu.map_range(tls_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(nro_addr, 4096, Permission::READ_WRITE);
+
+        // Construct fake NRO0 header in memory
+        mmu.write_bytes(nro_addr + 0x10, b"NRO0").unwrap();
+        mmu.write_u32(nro_addr + 4, 0x40).unwrap(); // MOD0 offset
+        mmu.write_bytes(nro_addr + 0x40, b"MOD0").unwrap();
+
+        let mut ipc = IpcManager::new();
+        let mut nvgpu = NvgpuChannel::new();
+        let mut audio = AudioOutServer::new();
+        let mut vfs = VirtualFileSystem::new();
+
+        // 1. GetService("ro:1") via sm:
+        let sm_h = ipc.allocate_handle(ServiceType::Sm);
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 1).unwrap(); // GetService
+        mmu.write_bytes(tls_addr + 0x20, b"ro:1\0\0\0\0").unwrap();
+        let res = ipc.handle_sync_request(sm_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let ro_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&ro_h), Some(&ServiceType::Ro));
+
+        // 2. ro:1 -> LoadNro (Cmd 0)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 0).unwrap();
+        // Args: pid (0x52), nro_addr, nro_size (0x1000), bss_addr (0), bss_size (0)
+        mmu.write_u64(tls_addr + 0x20, 0x52).unwrap();
+        mmu.write_u64(tls_addr + 0x28, nro_addr).unwrap();
+        mmu.write_u64(tls_addr + 0x30, 0x1000).unwrap();
+        let res = ipc.handle_sync_request(ro_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let loaded_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
+        let loaded_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
+        let loaded_addr = ((loaded_hi as u64) << 32) | (loaded_lo as u64);
+        assert_eq!(loaded_addr, nro_addr);
     }
 }

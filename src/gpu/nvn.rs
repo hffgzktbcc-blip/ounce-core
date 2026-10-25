@@ -27,7 +27,73 @@ pub const NVN_CMD_BIND_VERTEX_BUFFER: u32 = 0x07;
 pub const NVN_CMD_DRAW_ARRAYS: u32 = 0x08;
 pub const NVN_CMD_DRAW_TEXTURED: u32 = 0x09;
 pub const NVN_CMD_DLSS_UPSCALE: u32 = 0x0A;
+pub const NVN_CMD_BIND_TEXTURE_DESCRIPTOR: u32 = 0x0B;
 pub const NVN_CMD_END: u32 = 0xFF;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NvnTextureFormat {
+    Rgba8,
+    Rgba16f,
+    Bc1,
+    Bc3,
+    Bc7,
+    Depth24Stencil8,
+}
+
+#[derive(Debug, Clone)]
+pub struct NvnTextureDescriptor {
+    pub id: u32,
+    pub format: NvnTextureFormat,
+    pub width: u32,
+    pub height: u32,
+    pub depth: u32,
+    pub levels: u32,
+    pub gpu_address: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NvnTexturePool {
+    pub descriptors: std::collections::HashMap<u32, NvnTextureDescriptor>,
+    pub next_id: u32,
+}
+
+impl NvnTexturePool {
+    pub fn new() -> Self {
+        Self {
+            descriptors: std::collections::HashMap::new(),
+            next_id: 1,
+        }
+    }
+
+    pub fn register_texture(
+        &mut self,
+        format: NvnTextureFormat,
+        width: u32,
+        height: u32,
+        levels: u32,
+        gpu_address: u64,
+    ) -> u32 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.descriptors.insert(
+            id,
+            NvnTextureDescriptor {
+                id,
+                format,
+                width,
+                height,
+                depth: 1,
+                levels,
+                gpu_address,
+            },
+        );
+        id
+    }
+
+    pub fn get_descriptor(&self, id: u32) -> Option<&NvnTextureDescriptor> {
+        self.descriptors.get(&id)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum NvnCmd {
@@ -36,6 +102,7 @@ pub enum NvnCmd {
     SetDepthTest { enabled: bool },
     BindProgram { shader_addr: u32 },
     BindTexture { tex_addr: u32, width: u32, height: u32 },
+    BindTextureDescriptor { descriptor_id: u32 },
     BindVertexBuffer { vb_addr: u32 },
     DrawArrays { vertex_count: u32 },
     DrawTextured { vertex_count: u32 },
@@ -75,6 +142,10 @@ impl NvnCommandBuffer {
 
     pub fn bind_texture(&mut self, tex_addr: u32, width: u32, height: u32) {
         self.commands.push(NvnCmd::BindTexture { tex_addr, width, height });
+    }
+
+    pub fn bind_texture_descriptor(&mut self, descriptor_id: u32) {
+        self.commands.push(NvnCmd::BindTextureDescriptor { descriptor_id });
     }
 
     pub fn bind_vertex_buffer(&mut self, vb_addr: u32) {
@@ -123,6 +194,9 @@ impl NvnCommandBuffer {
                 }
                 NvnCmd::BindTexture { tex_addr, width, height } => {
                     out.extend_from_slice(&[NVN_CMD_BIND_TEXTURE, tex_addr, width, height]);
+                }
+                NvnCmd::BindTextureDescriptor { descriptor_id } => {
+                    out.extend_from_slice(&[NVN_CMD_BIND_TEXTURE_DESCRIPTOR, descriptor_id]);
                 }
                 NvnCmd::BindVertexBuffer { vb_addr } => {
                     out.extend_from_slice(&[NVN_CMD_BIND_VERTEX_BUFFER, vb_addr]);
@@ -223,6 +297,15 @@ impl NvnCommandBuffer {
                     pb.push(width);
                     pb.push(height);
                 }
+                NvnCmd::BindTextureDescriptor { descriptor_id } => {
+                    pb.push(NvgpuChannel::encode_header(
+                        SubmissionMode::Increasing,
+                        2,
+                        METHOD_BIND_TEXTURE_2D,
+                        1,
+                    ));
+                    pb.push(descriptor_id);
+                }
                 NvnCmd::BindVertexBuffer { vb_addr } => {
                     pb.push(NvgpuChannel::encode_header(
                         SubmissionMode::Increasing,
@@ -279,6 +362,7 @@ pub struct NvnDriver {
     pub queues_initialized: u32,
     pub command_buffers_submitted: u64,
     pub nvn_commands_executed: u64,
+    pub texture_pool: NvnTexturePool,
 }
 
 impl NvnDriver {
@@ -346,6 +430,11 @@ impl NvnDriver {
                     let h = mmu.read_u32(cmd_stream_addr + ((idx + 2) * 4) as u64).unwrap_or(0);
                     idx += 3;
                     cb.bind_texture(addr, w, h);
+                }
+                NVN_CMD_BIND_TEXTURE_DESCRIPTOR if idx + 1 <= max_words => {
+                    let id = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
+                    idx += 1;
+                    cb.bind_texture_descriptor(id);
                 }
                 NVN_CMD_BIND_VERTEX_BUFFER if idx + 1 <= max_words => {
                     let addr = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
@@ -435,5 +524,26 @@ mod tests {
         assert_eq!(nvgpu.dlss.frames_upscaled, 1);
         assert_eq!(NvnDriver::get_device_integer(NVN_DEVICE_INFO_API_MAJOR_VERSION), 55);
         assert_eq!(NvnDriver::get_device_integer(NVN_DEVICE_INFO_SUPPORTS_T239_DLSS), 1);
+    }
+
+    #[test]
+    fn test_nvn_texture_pool_descriptor_and_stream_binding() {
+        let mut pool = NvnTexturePool::new();
+        let tex_id = pool.register_texture(NvnTextureFormat::Bc7, 512, 512, 10, 0x9400_0000);
+        let desc = pool.get_descriptor(tex_id).expect("Texture descriptor found");
+        assert_eq!(desc.id, tex_id);
+        assert_eq!(desc.format, NvnTextureFormat::Bc7);
+        assert_eq!(desc.width, 512);
+        assert_eq!(desc.height, 512);
+        assert_eq!(desc.levels, 10);
+        assert_eq!(desc.gpu_address, 0x9400_0000);
+
+        let mut cb = NvnCommandBuffer::new();
+        cb.bind_texture_descriptor(tex_id);
+        let stream = cb.encode_stream();
+        assert_eq!(stream, vec![NVN_CMD_BIND_TEXTURE_DESCRIPTOR, tex_id, NVN_CMD_END]);
+
+        let gpfifo = cb.compile_to_gpfifo();
+        assert_eq!(gpfifo.len(), 2);
     }
 }

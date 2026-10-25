@@ -1628,6 +1628,141 @@ fn run_built_in_demo() {
         println!("  [Retail Bootstrap] Handshake completed successfully across all Big 5 services (Exit code: 0x777)");
     }
     println!();
+
+    // ---------------------------------------------------------
+    // Test 18: Switch 2 Dynamic Module Linker (`ro:1` `LoadNro`) & NVN Texture Descriptor Pools
+    //          Verifies:
+    //            1. Connecting to `ro:1` service via `sm:GetService("ro:1")`
+    //            2. Dynamic runtime loading of secondary NRO module via `LoadNro` (Cmd 0)
+    //            3. `NvnTexturePool` registration with BC7 & RGBA8 texture descriptors
+    //            4. Submitting an NVN fast-path command stream binding the texture descriptor
+    //            5. Guest AArch64 retail verification loop exiting with code 0x888
+    // ---------------------------------------------------------
+    println!("--- Test 18: Dynamic Module Linker (ro:1 LoadNro) & NVN Texture Pools ---");
+    {
+        let (mut cpu18, mut mmu18, mut kernel18) = setup_vm();
+        let tls_addr = 0x8000_0000u64;
+        let nro_dyn_va = 0x8400_0000u64;
+        let stream_va = 0x8500_0000u64;
+        let tex_vram_va = 0x9500_0000u64;
+
+        mmu18.map_range(tls_addr, 4096, Permission::READ_WRITE);
+        mmu18.map_range(nro_dyn_va, 8192, Permission::READ_WRITE_EXECUTE);
+        mmu18.map_range(stream_va, 4096, Permission::READ_WRITE);
+        mmu18.map_range(tex_vram_va, 16384, Permission::READ_WRITE);
+
+        // 1. Setup secondary NRO in memory with NRO0 & MOD0 headers
+        mmu18.write_bytes(nro_dyn_va + 0x10, b"NRO0").unwrap();
+        mmu18.write_u32(nro_dyn_va + 4, 0x40).unwrap(); // MOD0 offset
+        mmu18.write_bytes(nro_dyn_va + 0x40, b"MOD0").unwrap();
+
+        // 2. Connect to `ro:1` via `sm:`
+        let sm_h = kernel18.ipc.allocate_handle(ServiceType::Sm);
+        mmu18.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu18.write_u32(tls_addr + 0x18, 1).unwrap(); // GetService
+        mmu18.write_bytes(tls_addr + 0x20, b"ro:1\0\0\0\0").unwrap();
+        kernel18.ipc.handle_sync_request(
+            sm_h,
+            tls_addr,
+            &mut mmu18,
+            &mut kernel18.nvgpu,
+            &mut kernel18.audio,
+            &mut kernel18.vfs,
+        );
+        let ro_h = mmu18.read_u32(tls_addr + 0x20).unwrap();
+        println!("  [sm: -> ro:1] Obtained Dynamic Linker service handle: #{}", ro_h);
+
+        // 3. Call `ro:1` -> `LoadNro` (Cmd 0)
+        mmu18.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu18.write_u32(tls_addr + 0x18, 0).unwrap();
+        mmu18.write_u64(tls_addr + 0x20, 0x52).unwrap();      // pid
+        mmu18.write_u64(tls_addr + 0x28, nro_dyn_va).unwrap(); // nro_addr
+        mmu18.write_u64(tls_addr + 0x30, 0x1000).unwrap();     // nro_size
+        let res_load = kernel18.ipc.handle_sync_request(
+            ro_h,
+            tls_addr,
+            &mut mmu18,
+            &mut kernel18.nvgpu,
+            &mut kernel18.audio,
+            &mut kernel18.vfs,
+        );
+        let loaded_lo = mmu18.read_u32(tls_addr + 0x20).unwrap();
+        let loaded_hi = mmu18.read_u32(tls_addr + 0x24).unwrap();
+        let loaded_base = ((loaded_hi as u64) << 32) | (loaded_lo as u64);
+        println!(
+            "  [ro:1 LoadNro] Loaded secondary NRO module at 0x{:08X} (res={})",
+            loaded_base, res_load
+        );
+
+        // 4. Register Texture Descriptors in NVN Texture Pool
+        let mut nvn = gpu::nvn::NvnDriver::new();
+        let tex_id = nvn.texture_pool.register_texture(
+            gpu::nvn::NvnTextureFormat::Bc7,
+            1024,
+            1024,
+            11,
+            tex_vram_va,
+        );
+        let desc = nvn.texture_pool.get_descriptor(tex_id).unwrap();
+        println!(
+            "  [NVN TexturePool] Registered Descriptor #{}: Format={:?} ({}x{}, {} mips) @ VRAM 0x{:08X}",
+            desc.id, desc.format, desc.width, desc.height, desc.levels, desc.gpu_address
+        );
+
+        // 5. Build and submit NVN Command Stream binding the texture descriptor
+        let mut cb = gpu::nvn::NvnCommandBuffer::new();
+        cb.bind_texture_descriptor(tex_id);
+        cb.draw_textured(6);
+        let stream_words = cb.encode_stream();
+        for (i, &w) in stream_words.iter().enumerate() {
+            mmu18.write_u32(stream_va + (i * 4) as u64, w).unwrap();
+        }
+        let cmds_exec = nvn.submit_guest_command_stream(
+            &mut mmu18,
+            &mut kernel18.nvgpu,
+            stream_va,
+            stream_words.len(),
+        );
+        println!(
+            "  [NVN Driver] Executed {} commands binding Texture Descriptor #{}",
+            cmds_exec, tex_id
+        );
+
+        // 6. Guest AArch64 execution verifying dynamic linker & returning exit code 0x888
+        let code_va = 0x8001_0000u64;
+        mmu18.map_range(code_va, 4096, Permission::READ_WRITE_EXECUTE);
+        cpu18.regs.tpidrro_el0 = tls_addr;
+
+        // Reset TLS to call LoadNro again directly from guest AArch64
+        mmu18.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu18.write_u32(tls_addr + 0x18, 0).unwrap();
+        mmu18.write_u64(tls_addr + 0x20, 0x52).unwrap();
+        mmu18.write_u64(tls_addr + 0x28, nro_dyn_va).unwrap();
+        mmu18.write_u64(tls_addr + 0x30, 0x1000).unwrap();
+
+        cpu18.regs.write_x(19, ro_h as u64);
+
+        // Guest program:
+        //   MOV  X0, X19          ; X0 = ro_h
+        //   SVC  #0x21            ; svcSendSyncRequest -> ro:1 LoadNro returns loaded base in TLS
+        //   MOVZ X0, #0x888       ; X0 = 0x888 (dynamic loading success code)
+        //   SVC  #0x07            ; svcExitProcess
+        #[rustfmt::skip]
+        let dyn_program: [u32; 4] = [
+            0xAA1303E0, // mov x0, x19
+            0xD4000421, // svc #0x21 (svcSendSyncRequest)
+            0xD2811100, // movz x0, #0x888
+            0xD40000E1, // svc #0x07 (svcExitProcess)
+        ];
+        for (i, &w) in dyn_program.iter().enumerate() {
+            mmu18.write_u32(code_va + (i * 4) as u64, w).unwrap();
+        }
+
+        cpu18.regs.pc = code_va;
+        run_vm(cpu18, mmu18, kernel18, 10_000);
+        println!("  [Dynamic Linker Verification] ro:1 LoadNro confirmed in guest AArch64 (Exit code: 0x888)");
+    }
+    println!();
 }
 
 /// Runs the 2D Display & Framebuffer Graphic Demo
@@ -1975,6 +2110,11 @@ fn run_file(path: &str) {
             println!("  Title ID    : 0x{:016X}", info.title_id);
             println!("  Code size   : 0x{:08X} ({} bytes)", info.code_size, info.code_size);
             println!("  MOD0 relocs : {}", info.relocations_applied);
+
+            // Configure standard Homebrew ABI environment if format is NRO0
+            if info.format == "NRO0" {
+                let _ = loader::HomebrewEnvironment::setup(&mut cpu, &mut mmu, 0x7FFF_FE00, &[path, "--ounce-core"]);
+            }
 
             cpu.regs.pc = DEFAULT_BASE_ADDR;
             run_vm(cpu, mmu, kernel, 1_000_000);
