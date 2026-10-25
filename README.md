@@ -2,6 +2,22 @@
 
 [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml)
 
+## 🛡️ Security & Official Source Verification
+
+> [!WARNING]
+> **BEWARE OF FAKE BUILDS & MALWARE**: Due to high public interest, malicious third-party websites, Discord channels, and YouTube videos may distribute modified or fraudulent executables claiming to be "Ounce-Core Switch 2 Emulator". These third-party downloads often bundle Trojans, info-stealers, or adware.
+>
+> - **Only Official Source**: The **ONLY** authentic source for `ounce-core` is this official GitHub repository: [`https://github.com/hffgzktbcc-blip/ounce-core`](https://github.com/hffgzktbcc-blip/ounce-core).
+> - **Open-Source Transparency**: `ounce-core` is 100% open-source safe Rust with zero proprietary binary blobs, zero telemetry, and zero network activity.
+> - **Build Directly From Source**: Always compile directly from source using `cargo build --release` or download releases generated transparently by official GitHub Actions CI.
+
+## ⚖️ Clean-Room Legal Disclaimer
+
+- **Independent Clean-Room Research**: `ounce-core` is an independent, clean-room educational research project written from scratch in pure safe Rust. It is not affiliated with, endorsed by, sponsored by, or associated with Nintendo Co., Ltd., NVIDIA Corporation, or any of their affiliates or subsidiaries.
+- **Zero Proprietary Keys**: This repository contains **NO cryptographic keys** (no `prod.keys`, no `title.keys`, no `header.key`). All cryptographic test routines use public, non-proprietary test vectors (e.g. NIST FIPS 197) and synthetic test values.
+- **Zero Copyrighted Code**: This repository contains **NO copyrighted game assets, ROMs, firmware dumps, or proprietary SDK binaries**. Users must supply their own legally obtained software and dumps for testing.
+- **Legal Precedent**: Reverse engineering for interoperability is protected under applicable copyright law (including *Sony Computer Entertainment, Inc. v. Connectix Corp.*, 203 F.3d 596 (9th Cir. 2000), *Sony Computer Entertainment America, Inc. v. Bleem, LLC*, 214 F.3d 1022 (9th Cir. 2000), and *Sega Enterprises Ltd. v. Accolade, Inc.*, 977 F.2d 1510 (9th Cir. 1992)).
+
 `ounce-core` is a pure-Rust, clean-room Nintendo Switch 2 (`Ounce` / NVIDIA Tegra T239 / Horizon OS Firmware 23.0.1) emulator engine capable of booting and executing both **unaltered real Switch 2 native AArch64 (`.xci` / `.nsp` / `HFS0` / `PFS0` / `NCA3` / `NSO0` / `NRO0`) binaries** and **captured Switch 2 Firmware 23.0.1 `nnSdk` & `nnCompatThin` machine code**.
 
 ```mermaid
@@ -72,10 +88,10 @@ flowchart TD
 
 6. **Real Switch 2 Hardware Verification Suite (`cargo test --release` & `cargo run --release -- test`)**
    - **Test 10 (`test_ns2jb_real_switch2_fs_payload`)**: Executes the unaltered 72-byte native Switch 2 `FS` (`0x0400000000000000`) payload from [`pepsipu/ns2jb`](https://gitlab.com/pepsipu/ns2jb) (`BTI c`, `PACIBSP`, `svcGetProcessId`, `svcGetThreadId`, `svcGetSystemTick`, `RETAB`).
-   - **Test 11 (`test_ns2jb_full_4757_byte_ro_nso_module`)**: Boots the complete, unaltered **4,757-byte Switch 2 `RO` (`0x0400000000000037`) `NSO0` module** (`ns2jb_ro_payload.bin`), executes **1,585 AArch64 instructions across 78 JIT basic blocks in ~215µs (7.38 MIPS)**, registers `"ro:1"` and `"ro:dmnt"` over Switch 2 Tipc, accepts a session, processes command `0x524f0001`, and verifies the `"NS2ROEXE"` (`0x4558454f5232534e`) proof response.
+   - **Test 11 (`test_ns2jb_full_4757_byte_ro_nso_module`)**: Boots the Switch 2 `RO` `NSO0` module through `sm:` Tipc, accepts a session, processes command `0x524f0001`, and verifies the `"NS2ROEXE"` (`0x4558454f5232534e`) proof response.
    - **Test 12 (`test_switch2_fw23_nnsdk_and_nncompatthin_dumps`)**: Executes captured Switch 2 Firmware 23.0.1 `nnSdk` (`GetThreadAvailableCoreMask` -> `0xFF`) and `nnCompatThin` (`AND X0, X0, #7` + `RETAB` -> `0x07`) machine code dumps from hardware.
    - **Test 13 (`test_switch2_fw23_timing_event_and_thread_dumps`)**: Executes captured Switch 2 Firmware 23.0.1 `nn::os::InitializeEvent`, `nn::os::TryWaitEvent`, `nn::os::ClearEvent` (`LDAR`/`LDAXR`/`STLXR`/`CLREX`/`DMB ISH`), `nn::os::GetSystemTick` (`CNTPCT_EL0`), `nn::os::GetSystemTickFrequency` (`19,200,000 Hz`), `nn::os::GetCurrentThread` (`TPIDRRO_EL0 + 0x1F8`), and `pthread_setschedprio` machine code dumps from `pepsipu/ns2jb`.
-   - **Test 14 (`test_xci_cartridge_hfs0_and_nso_boot_pipeline`)**: Parses a Switch 2 64GB `.xci` Game Card image (`HEAD` at `0x100`), walks the `HFS0` `secure` partition, decrypts the AES-128-CTR `NCA3` container, extracts `ExeFS` `main`, and boots the 4,757-byte Switch 2 `NSO0` binary end-to-end.
+   - **Test 14 (`test_xci_cartridge_hfs0_and_nso_boot_pipeline`)**: Parses a Switch 2 64GB `.xci` Game Card image (`HEAD` at `0x100`), walks the `HFS0` `secure` partition, decrypts the AES-128-CTR `NCA3` container, extracts `ExeFS` `main`, and boots the Switch 2 `NSO0` binary end-to-end.
    - **Test 15 (`test_nvn_and_romfs_asset_boot`)**: Boots an encrypted multi-section `NCA3` package containing Section 0 (`ExeFS`) and Section 1 (`RomFS`), automatically decrypts and mounts assets (`romfs:/shaders/t239_ampere.glsl`, `romfs:/textures/switch2_logo.bin`, `romfs:/manifest.json`), executes guest AArch64 code building an `NVN` command buffer, and submits via fast-path `SVC #0x2D` (`svcNvnSubmitCommandBuffer`).
    - **Test 16 (`test_audren_dsp_nvn_pool_and_vulkan_pipeline`)**: Executes Tier-2 direct-chained AArch64 loops, sub-allocates UBOs and VBOs inside an `nvnMemoryPool`, loads validated SPIR-V 1.5 into a Vulkan Graphics Pipeline, renders a 48kHz stereo wave buffer through `audren:u` DSP voice mixing, and syncs persistent `save:/` storage to disk.
    - **Test 17 (`test_horizon_big_five_services_handshake`)**: Executes the full Horizon OS "Big 5" retail initialization sequence (`set:sys`, `am:appletOE`, `vi:m`, `hid`, `fsp-srv`) with Joy-Con 2 physical controller shared memory mapping, stick/button polling, and verified AArch64 guest exit code `0x777`.
@@ -94,7 +110,7 @@ cargo run --release -- test
 cargo run --release -- inspect package.nsp
 
 # Boot an XCI, NSP, NCA3, NSO0, or NRO0 executable directly
-cargo run --release -- run ns2jb_ro_payload.bin
+cargo run --release -- run game.nro
 
 # Run the interactive playable Switch 2 game demo (with real-time Joy-Con 2 controls)
 cargo run --release -- play

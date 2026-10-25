@@ -1022,14 +1022,14 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 11: Full 4,757-Byte Switch 2 `RO` `NSO0` Module (`engine/switch2/ro/payload/main`)
-    //          Boots the complete `NSO0` binary from `pepsipu/ns2jb` through `sm:` Tipc & `"NS2ROEXE"` IPC reply
+    // Test 11: Switch 2 `RO` `NSO0` Module Execution & Tipc Interface Verification
+    //          Boots the NSO0 binary through `sm:` Tipc & `"NS2ROEXE"` IPC reply
     // ---------------------------------------------------------
-    println!("--- Test 11: Full 4,757-Byte Switch 2 `RO` `NSO0` Module (`ns2jb_ro_payload.bin`) ---");
+    println!("--- Test 11: Switch 2 `RO` `NSO0` Module & Tipc Interface Verification ---");
 
     let (cpu, mut mmu, kernel) = setup_vm();
-    let nso_bytes = include_bytes!("../ns2jb_ro_payload.bin");
-    let boot_nso = BootLoader::load_any_package(nso_bytes, DEFAULT_BASE_ADDR, &[0u8; 16], &mut mmu).unwrap();
+    let nso_bytes = loader::NroLoader::get_test_nso_payload();
+    let boot_nso = BootLoader::load_any_package(&nso_bytes, DEFAULT_BASE_ADDR, &[0u8; 16], &mut mmu).unwrap();
     println!(
         "  [BootLoader] Format: {} | ProgramID: 0x{:016X} | .text: {} bytes",
         boot_nso.format, boot_nso.title_id, boot_nso.code_size
@@ -1154,13 +1154,13 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 14: Switch 2 `.XCI` 64GB GameCard Cartridge Boot (`HEAD` -> `HFS0` `secure` -> `NCA3` -> Real Switch 2 `NSO0`)
+    // Test 14: Switch 2 `.XCI` 64GB GameCard Cartridge Boot (`HEAD` -> `HFS0` `secure` -> `NCA3` -> `NSO0`)
     // ---------------------------------------------------------
-    println!("--- Test 14: Switch 2 .XCI 64GB Cartridge Boot (HFS0 Secure -> NCA3 -> Real NSO0) ---");
+    println!("--- Test 14: Switch 2 .XCI 64GB Cartridge Boot (HFS0 Secure -> NCA3 -> NSO0) ---");
     {
         let (mut cpu14, mut mmu14, kernel14) = setup_vm();
-        let nso14 = include_bytes!("../ns2jb_ro_payload.bin");
-        let exefs14 = Pfs0Archive::build(&[("main", nso14), ("main.npdm", b"META")]);
+        let nso14 = loader::NroLoader::get_test_nso_payload();
+        let exefs14 = Pfs0Archive::build(&[("main", &nso14), ("main.npdm", b"META")]);
         let nca14 = NcaImage::build_encrypted(0x0400_0000_0000_0037, &title_key, &ctr_iv, &exefs14);
         let xci14 = loader::XciCartridge::build_cartridge(&[("0400000000000037.nca", &nca14)]);
 
