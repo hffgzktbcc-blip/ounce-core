@@ -4,6 +4,41 @@
 
 `ounce-core` is a pure-Rust, clean-room Nintendo Switch 2 (`Ounce` / NVIDIA Tegra T239 / Horizon OS Firmware 23.0.1) emulator engine capable of booting and executing both **unaltered real Switch 2 native AArch64 (`.xci` / `.nsp` / `HFS0` / `PFS0` / `NCA3` / `NSO0` / `NRO0`) binaries** and **captured Switch 2 Firmware 23.0.1 `nnSdk` & `nnCompatThin` machine code**.
 
+```mermaid
+flowchart TD
+    subgraph PackageLoader ["1. Package & Asset Loading"]
+        XCI[".xci Cartridge (64GB GameCard)"] --> HFS0["HFS0 Secure Partition"]
+        NSP[".nsp Digital Package"] --> PFS0["PFS0 Archive"]
+        HFS0 --> NCA["AES-128-CTR NCA3 (Section 0 + 1)"]
+        PFS0 --> NCA
+        NCA --> ExeFS["ExeFS: 'main' / NSO0 / NRO0"]
+        NCA --> RomFS["RomFS Level 3: 'romfs:/...'"]
+    end
+
+    subgraph CPUKernel ["2. Execution & Horizon OS Kernel"]
+        ExeFS --> CPU["ARMv8.3/8.5-A AArch64 Core (PAC/BTI)"]
+        CPU --> JIT["Tier-2 Direct-Chained JIT Engine"]
+        CPU --> SVC["Horizon OS SVCs (FW 23.0.1)"]
+        CPU --> IPC["sm: Tipc & CMIF Services"]
+        IPC --> SrvSet["set:sys (FW Version, Lang)"]
+        IPC --> SrvApp["am:appletOE (Focus, Rights)"]
+        IPC --> SrvVi["vi:m (Display, StrayLayer)"]
+        IPC --> SrvHid["hid (Joy-Con 2 SharedMem)"]
+        IPC --> SrvFsp["fsp-srv (RomFS Storage)"]
+        IPC --> SrvRo["ro:1 (Dynamic NRO Linker)"]
+    end
+
+    subgraph GraphicsAudio ["3. Hardware GPU & Audio Subsystems"]
+        CPU --> NVN["NVN Driver (NvnCommandBuffer / Pool)"]
+        NVN --> SASS["Ampere SASS -> SPIR-V 1.5 Decompiler"]
+        SASS --> Vulkan["Vulkan 1.3 / Metal Graphics HAL"]
+        NVN --> DLSS["TensorCoreEngine 2x AI Upscaler"]
+        Vulkan --> FB["720p/1080p Framebuffer (minifb / Window)"]
+        DLSS --> FB
+        CPU --> AudRen["audren:u 48kHz Stereo DSP Mixer"]
+    end
+```
+
 ## Key Features & Architecture
 
 1. **Pure-Rust ARMv8.3-A / ARMv8.5-A AArch64 CPU, NEON & Basic-Block JIT Cache (`src/cpu`)**
@@ -55,9 +90,15 @@ cargo test --release
 # Run the 18-stage full-stack integration & real Switch 2 binary verification suite
 cargo run --release -- test
 
-# Inspect an encrypted .xci or .nsp game cartridge and explore RomFS assets
+# Inspect an encrypted .xci, .nsp, .nro or raw dump with ISA security audit (PAC/BTI) & RomFS extraction
 cargo run --release -- inspect package.nsp
 
 # Boot an XCI, NSP, NCA3, NSO0, or NRO0 executable directly
 cargo run --release -- run ns2jb_ro_payload.bin
+
+# Run the interactive playable Switch 2 game demo (with real-time Joy-Con 2 controls)
+cargo run --release -- play
+
+# Run the 3D graphics & DLSS benchmark
+cargo run --release -- 3d 120
 ```

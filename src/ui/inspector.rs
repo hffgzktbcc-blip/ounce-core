@@ -26,6 +26,7 @@ pub struct PackageReport {
     pub title_id: u64,
     pub code_size: usize,
     pub romfs_files: Vec<(String, usize)>,
+    pub security_features: Vec<String>,
 }
 
 /// Standalone Nintendo Switch 2 Package & RomFS Asset Inspector.
@@ -39,6 +40,33 @@ impl PackageInspector {
         let mut format = "Unknown".to_string();
         let mut title_id = 0u64;
         let mut code_size = 0usize;
+
+        let mut security_features = Vec::new();
+        let mut has_pac = false;
+        let mut has_bti = false;
+
+        // Scan 32-bit words for Switch 2 architectural security extensions
+        for chunk in raw.chunks_exact(4) {
+            let inst = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            match inst {
+                0xD503237F | 0xD503233F | 0xD50323FF | 0xD65F0FFF | 0xD65F0BFF => {
+                    has_pac = true;
+                }
+                0xD503245F | 0xD503241F | 0xD50324DF => {
+                    has_bti = true;
+                }
+                _ => {}
+            }
+        }
+        if has_pac {
+            security_features.push("ARMv8.3-A PAC (Pointer Authentication)".to_string());
+        }
+        if has_bti {
+            security_features.push("ARMv8.5-A BTI (Branch Target Identification)".to_string());
+        }
+        if security_features.is_empty() {
+            security_features.push("Standard AArch64 (ARMv8.0-A)".to_string());
+        }
 
         // Check if XCI
         if raw.len() >= 0x200 && (&raw[0x100..0x104] == b"HEAD") {
@@ -102,6 +130,7 @@ impl PackageInspector {
             title_id,
             code_size,
             romfs_files,
+            security_features,
         })
     }
 
@@ -115,6 +144,7 @@ impl PackageInspector {
         println!("  Format        : {}", report.format);
         println!("  Title ID      : 0x{:016X}", report.title_id);
         println!("  Code (.text)  : {} ({} bytes)", format_bytes(report.code_size), report.code_size);
+        println!("  ISA Security  : {}", report.security_features.join(" | "));
         println!("------------------------------------------------------------");
         if report.romfs_files.is_empty() {
             println!("  RomFS Assets  : None or Section 1 not present.");
