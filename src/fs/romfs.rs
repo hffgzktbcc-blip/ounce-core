@@ -81,6 +81,48 @@ impl VirtualFileSystem {
         self.sync_file_to_disk(path, data);
     }
 
+    /// Recursively mounts all files from a host filesystem directory under the given VFS prefix (e.g. "romfs").
+    pub fn mount_host_directory(
+        &mut self,
+        dir_path: &std::path::Path,
+        vfs_prefix: &str,
+    ) -> std::io::Result<usize> {
+        let mut count = 0;
+        if !dir_path.exists() || !dir_path.is_dir() {
+            return Ok(0);
+        }
+        let clean_prefix = vfs_prefix.trim_end_matches(':');
+
+        fn scan_dir(
+            dir: &std::path::Path,
+            root: &std::path::Path,
+            prefix: &str,
+            files: &mut HashMap<String, Vec<u8>>,
+            count: &mut usize,
+        ) -> std::io::Result<()> {
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    scan_dir(&path, root, prefix, files, count)?;
+                } else if path.is_file() {
+                    if let Ok(rel) = path.strip_prefix(root) {
+                        let rel_str = rel.to_string_lossy().replace('\\', "/");
+                        let vfs_path = format!("{}:/{}", prefix, rel_str);
+                        if let Ok(data) = std::fs::read(&path) {
+                            files.insert(vfs_path, data);
+                            *count += 1;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        scan_dir(dir_path, dir_path, clean_prefix, &mut self.files, &mut count)?;
+        Ok(count)
+    }
+
     /// Retrieves a reference to raw file data if it exists in the VFS or on disk.
     pub fn get_file(&self, path: &str) -> Option<&[u8]> {
         self.files.get(path).map(|v| v.as_slice())
@@ -415,5 +457,37 @@ mod tests {
 
         // Clean up
         let _ = std::fs::remove_dir_all(&temp_save_dir);
+    }
+
+    #[test]
+    fn test_vfs_mount_host_directory_recursive() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ounce_vfs_host_mount_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let sub = temp_dir.join("sub/folder");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(temp_dir.join("root_asset.txt"), b"RootAsset").unwrap();
+        std::fs::write(sub.join("nested_mesh.bin"), b"MeshBinaryData").unwrap();
+
+        let mut vfs = VirtualFileSystem::new();
+        let mounted = vfs
+            .mount_host_directory(&temp_dir, "romfs")
+            .expect("Failed to mount host dir");
+        assert_eq!(mounted, 2);
+
+        assert_eq!(
+            vfs.get_file("romfs:/root_asset.txt"),
+            Some(b"RootAsset".as_slice())
+        );
+        assert_eq!(
+            vfs.get_file("romfs:/sub/folder/nested_mesh.bin"),
+            Some(b"MeshBinaryData".as_slice())
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
