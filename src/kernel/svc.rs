@@ -37,6 +37,7 @@ pub struct HorizonKernel {
     pub scheduler: ThreadScheduler,
     pub sync: SyncManager,
     pub nvn: crate::gpu::nvn::NvnDriver,
+    pub nnsdk: super::nnsdk::NnSdkRuntime,
     pub reply_receive_step: u32,
 }
 
@@ -60,6 +61,7 @@ impl HorizonKernel {
             scheduler: ThreadScheduler::new(),
             sync: SyncManager::new(),
             nvn: crate::gpu::nvn::NvnDriver::new(),
+            nnsdk: super::nnsdk::NnSdkRuntime::new(),
             reply_receive_step: 0,
         }
     }
@@ -499,6 +501,27 @@ impl HorizonKernel {
                 );
                 cpu.regs.write_x(0, 0);
                 cpu.regs.write_x(1, count as u64);
+                SvcResult::Success
+            }
+
+            // 0x30: svcNnSdkDispatch(func_id, arg0, arg1, arg2, arg3) - Nintendo SDK C++ HLE Dispatch
+            0x30 => {
+                let func_id = cpu.regs.read_w(0);
+                let arg0 = cpu.regs.read_x(1);
+                let arg1 = cpu.regs.read_x(2);
+                let arg2 = cpu.regs.read_x(3);
+                let arg3 = cpu.regs.read_x(4);
+                let (res, out_val) = self.nnsdk.dispatch_call(
+                    func_id,
+                    arg0,
+                    arg1,
+                    arg2,
+                    arg3,
+                    &mut self.vfs,
+                    mmu,
+                );
+                cpu.regs.write_x(0, res as u64);
+                cpu.regs.write_x(1, out_val);
                 SvcResult::Success
             }
 
