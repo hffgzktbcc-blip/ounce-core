@@ -43,14 +43,15 @@
    - **Test 14 (`test_xci_cartridge_hfs0_and_nso_boot_pipeline`)**: Parses a Switch 2 64GB `.xci` Game Card image (`HEAD` at `0x100`), walks the `HFS0` `secure` partition, decrypts the AES-128-CTR `NCA3` container, extracts `ExeFS` `main`, and boots the 4,757-byte Switch 2 `NSO0` binary end-to-end.
    - **Test 15 (`test_nvn_and_romfs_asset_boot`)**: Boots an encrypted multi-section `NCA3` package containing Section 0 (`ExeFS`) and Section 1 (`RomFS`), automatically decrypts and mounts assets (`romfs:/shaders/t239_ampere.glsl`, `romfs:/textures/switch2_logo.bin`, `romfs:/manifest.json`), executes guest AArch64 code building an `NVN` command buffer, and submits via fast-path `SVC #0x2D` (`svcNvnSubmitCommandBuffer`).
    - **Test 16 (`test_audren_dsp_nvn_pool_and_vulkan_pipeline`)**: Executes Tier-2 direct-chained AArch64 loops, sub-allocates UBOs and VBOs inside an `nvnMemoryPool`, loads validated SPIR-V 1.5 into a Vulkan Graphics Pipeline, renders a 48kHz stereo wave buffer through `audren:u` DSP voice mixing, and syncs persistent `save:/` storage to disk.
+   - **Test 17 (`test_horizon_big_five_services_handshake`)**: Executes the full Horizon OS "Big 5" retail initialization sequence (`set:sys`, `am:appletOE`, `vi:m`, `hid`, `fsp-srv`) with Joy-Con 2 physical controller shared memory mapping, stick/button polling, and verified AArch64 guest exit code `0x777`.
 
 ## Quick Start
 
 ```bash
-# Run all 33 unit tests
+# Run all 35 unit tests
 cargo test --release
 
-# Run the 16-stage full-stack integration & real Switch 2 binary verification suite
+# Run the 17-stage full-stack integration & real Switch 2 binary verification suite
 cargo run --release -- test
 
 # Inspect an encrypted .xci or .nsp game cartridge and explore RomFS assets

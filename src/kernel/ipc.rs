@@ -20,17 +20,29 @@ pub enum ServiceType {
     Nvdrv,
     /// Video Interface ("vi:u" / "vi:m" / "vi:s")
     Vi,
+    /// Application Display Service ("IApplicationDisplayService")
+    ApplicationDisplayService,
     /// Human Interface Devices ("hid")
     Hid,
+    /// Applet Resource ("IAppletResource")
+    AppletResource,
     /// Filesystem Proxy ("fsp-srv")
     FspSrv,
+    /// Storage Data Proxy ("IStorage")
+    Storage,
     /// Audio Out ("audout:u")
     AudOut,
     /// Audio Renderer ("audren:u")
     AudRen,
-    /// Applet OE Application Proxy ("appletOE")
+    /// Applet OE Root ("appletOE")
     AppletOE,
-    /// System Settings ("set:sys")
+    /// Application Proxy ("IApplicationProxy")
+    ApplicationProxy,
+    /// Common State Getter ("ICommonStateGetter")
+    CommonStateGetter,
+    /// Self Controller ("ISelfController")
+    SelfController,
+    /// System Settings ("set:sys" / "set")
     SetSys,
     /// Generic stubbed service
     Generic(String),
@@ -247,23 +259,170 @@ impl IpcManager {
             },
 
             ServiceType::AppletOE => match cmd_id {
-                // Command 0: OpenApplicationProxy -> returns new AppletOE sub-session handle
+                // Command 0: OpenApplicationProxy -> returns new ApplicationProxy sub-session handle
                 0 => {
-                    let proxy_h = self.allocate_handle(ServiceType::AppletOE);
+                    let proxy_h = self.allocate_handle(ServiceType::ApplicationProxy);
                     self.write_cmif_response(tls_addr, mmu, 0, &[proxy_h], Some(proxy_h));
                     0
                 }
-                // Command 1 / GetCurrentFocusState -> returns 1 (InFocus)
                 _ => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[1], None);
                     0
                 }
             },
 
-            ServiceType::SetSys => match cmd_id {
-                // Command 3 / 4: GetFirmwareVersion -> returns Switch 2 Firmware 23.0.1 ("Ounce" / ns2jb target)
-                3 | 4 => {
+            ServiceType::ApplicationProxy => match cmd_id {
+                // Command 0: GetCommonStateGetter -> returns ICommonStateGetter
+                0 => {
+                    let h = self.allocate_handle(ServiceType::CommonStateGetter);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[h], Some(h));
+                    0
+                }
+                // Command 1: GetSelfController -> returns ISelfController
+                1 => {
+                    let h = self.allocate_handle(ServiceType::SelfController);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[h], Some(h));
+                    0
+                }
+                // Command 4: GetDisplayVersion -> returns [23, 0, 1]
+                4 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[23, 0, 1], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::CommonStateGetter => match cmd_id {
+                // Command 1 / 5: GetCurrentFocusState -> returns 1 (InFocus)
+                1 | 5 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[1], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::SelfController => match cmd_id {
+                // Command 16: AcquireForegroundRights -> returns ResultSuccess (0)
+                16 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::Vi => match cmd_id {
+                // Command 2: GetDisplayService -> returns IApplicationDisplayService
+                2 => {
+                    let disp_h = self.allocate_handle(ServiceType::ApplicationDisplayService);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[disp_h], Some(disp_h));
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::ApplicationDisplayService => match cmd_id {
+                // Command 1010: OpenDisplay("Default") -> returns DisplayId = 0
+                1010 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0, 0], None);
+                    0
+                }
+                // Command 2030: CreateStrayLayer -> returns LayerId = 1, IGraphicBufferProducer = 0x100
+                2030 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[1, 0, 0x100], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::Hid => match cmd_id {
+                // Command 0: CreateAppletResource -> returns IAppletResource
+                0 => {
+                    let res_h = self.allocate_handle(ServiceType::AppletResource);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[res_h], Some(res_h));
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::AppletResource => match cmd_id {
+                // Command 0: GetSharedMemoryHandle -> returns handle 0x200 (HID Shared Mem)
+                0 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0x200], Some(0x200));
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::FspSrv => match cmd_id {
+                // Command 0 / 1 / 200: OpenDataStorageByCurrentProcess / OpenDataStorageByProgramId -> returns IStorage
+                0 | 1 | 200 => {
+                    let storage_h = self.allocate_handle(ServiceType::Storage);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[storage_h], Some(storage_h));
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::Storage => match cmd_id {
+                // Command 4: GetSize -> returns 0x40000 (256 KB)
+                4 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0x40000, 0], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::SetSys => match cmd_id {
+                // Command 0 / 1: GetAvailableLanguageCodes -> returns count=1, code=1 (en-US)
+                0 | 1 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[1, 0x01], None);
+                    0
+                }
+                // Command 2: GetRegionCode -> returns 1 (USA / NorthAmerica)
+                2 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[1], None);
+                    0
+                }
+                // Command 3: GetSystemLanguage -> returns 1 (en-US)
+                3 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[1], None);
+                    0
+                }
+                // Command 4: GetFirmwareVersion -> returns Switch 2 Firmware 23.0.1 ("Ounce" / ns2jb target)
+                4 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[23, 0, 1], None);
+                    0
+                }
+                // Command 5: GetColorSetId -> returns 1 (BasicBlack)
+                5 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[1], None);
                     0
                 }
                 _ => {
@@ -272,7 +431,7 @@ impl IpcManager {
                 }
             },
 
-            ServiceType::Vi | ServiceType::Hid | ServiceType::FspSrv | ServiceType::Generic(_) => {
+            ServiceType::Generic(_) => {
                 // Stubbed HLE service response: ResultSuccess (0)
                 self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                 0
@@ -312,5 +471,71 @@ impl IpcManager {
         for (i, &w) in out_words.iter().enumerate() {
             let _ = mmu.write_u32(cmif_base + 16 + (i * 4) as u64, w);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::AudioOutServer;
+    use crate::fs::VirtualFileSystem;
+    use crate::gpu::nvgpu::NvgpuChannel;
+    use crate::mmu::Permission;
+
+    #[test]
+    fn test_horizon_big_five_services_handshake() {
+        let mut mmu = Memory::new();
+        let tls_addr = 0x8000_0000u64;
+        mmu.map_range(tls_addr, 4096, Permission::READ_WRITE);
+
+        let mut ipc = IpcManager::new();
+        let mut nvgpu = NvgpuChannel::new();
+        let mut audio = AudioOutServer::new();
+        let mut vfs = VirtualFileSystem::new();
+
+        // 1. set:sys -> GetSystemLanguage (Cmd 3)
+        let setsys_h = ipc.allocate_handle(ServiceType::SetSys);
+        // Write CMIF In Header: "SFCI" (0x49434653) at TLS + 0x10, cmd_id = 3 at TLS + 0x18
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 3).unwrap();
+        let res = ipc.handle_sync_request(setsys_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        assert_eq!(mmu.read_u32(tls_addr + 0x20).unwrap(), 1); // en-US
+
+        // 2. am:appletOE -> OpenApplicationProxy (Cmd 0)
+        let applet_h = ipc.allocate_handle(ServiceType::AppletOE);
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 0).unwrap();
+        let res = ipc.handle_sync_request(applet_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let proxy_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&proxy_h), Some(&ServiceType::ApplicationProxy));
+
+        // 3. vi:m -> GetDisplayService (Cmd 2)
+        let vi_h = ipc.allocate_handle(ServiceType::Vi);
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 2).unwrap();
+        let res = ipc.handle_sync_request(vi_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let disp_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&disp_h), Some(&ServiceType::ApplicationDisplayService));
+
+        // 4. hid -> CreateAppletResource (Cmd 0)
+        let hid_h = ipc.allocate_handle(ServiceType::Hid);
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 0).unwrap();
+        let res = ipc.handle_sync_request(hid_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let res_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&res_h), Some(&ServiceType::AppletResource));
+
+        // 5. fsp-srv -> OpenDataStorageByCurrentProcess (Cmd 1)
+        let fsp_h = ipc.allocate_handle(ServiceType::FspSrv);
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 1).unwrap();
+        let res = ipc.handle_sync_request(fsp_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let storage_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&storage_h), Some(&ServiceType::Storage));
     }
 }
