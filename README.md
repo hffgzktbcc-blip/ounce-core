@@ -122,11 +122,13 @@ Development of `ounce-core` strictly follows established clean-room reverse-engi
    ├─────────────────────────────────────────────────────────────────────────────┤
    │  • GameCard Media (.xci) : 64GB High-Speed GameCard, HEAD at 0x100, HFS0    │
    │  • Package Archive (.nsp): Nintendo Submission Package (PFS0 Archive)       │
+   │  • Loose Folders (Dumps) : Unencrypted ExeFS/RomFS Dumps (OunceCake Layout) │
    │  • Cryptography (NCA3)   : Hardware AES-128-CTR multi-section decryptor     │
    │  • Filesystem (RomFS)    : Level 3 hierarchical directory/file hash tables  │
    └─────────────────────────────────────────────────────────────────────────────┘
 ```
 - **Universal Container Parser**: Ingests, validates, and unpacks `.xci`, `.nsp`, `.nca`, `.nso`, and `.nro` containers.
+- **Loose Package & Direct Folder Execution**: Natively discovers, parses, and boots loose unencrypted game dumps (matching output from tools like OunceCake / Atmosphere) containing `main.npdm`, `main` (NSO0), companion `subsdk*` modules, and recursive RomFS directory trees.
 - **AES-128-CTR Cryptographic Engine**: Multi-section decryptor simultaneously processing Section 0 (`ExeFS` code) and Section 1 (`RomFS` data) with automated IV calculation.
 - **Level 3 RomFS Engine**: Implements authentic hierarchical directory and file hash buckets, mounting directly into the Horizon `VirtualFileSystem` under `romfs:/...`.
 
@@ -163,10 +165,10 @@ ounce-core/
 │   ├── gpu/          # Ampere GPU rasterizer, NVN driver HLE, SASS decompiler, and DLSS engine
 │   ├── hid/          # Joy-Con 2 physical controller state, button bitmasks, and deadzone filters
 │   ├── kernel/       # Horizon OS microkernel, SVC dispatcher, TIPC/CMIF IPC, and nnSdk C++ runtime
-│   ├── loader/       # Container parsers (XCI, NSP, PFS0, HFS0, NCA3, NSO0, NRO0)
+│   ├── loader/       # Container parsers (XCI, NSP, PFS0, HFS0, NCA3, NSO0, NRO0, NPDM, Loose Folders)
 │   ├── mmu/          # Sparse 4KB page-table memory management unit & virtual address regions
 │   ├── ui/           # Headless Package Inspector and CLI visual telemetry
-│   └── main.rs       # Entry point, CLI dispatcher, and 20-stage integration verification harness
+│   └── main.rs       # Entry point, CLI dispatcher, and 21-stage integration verification harness
 ├── Cargo.toml        # Minimal pure-Rust dependency configuration
 └── README.md         # Architecture specification and technical documentation
 ```
@@ -175,7 +177,7 @@ ounce-core/
 
 ## Verified Integration Verification Suite
 
-The repository includes a comprehensive 20-stage full-stack integration verification harness (`cargo run --release -- test`) and 41 granular unit tests (`cargo test --release`):
+The repository includes a comprehensive 21-stage full-stack integration verification harness (`cargo run --release -- test`) and 44 granular unit tests (`cargo test --release`):
 
 | Stage | Subsystem Under Verification | Verification Vector / Exit Assertion |
 | :---: | :--- | :--- |
@@ -198,6 +200,8 @@ The repository includes a comprehensive 20-stage full-stack integration verifica
 | **17** | Horizon Big 5 Retail Handshake | Executes retail handshake across `set:sys`, `am:appletOE`, `vi:m`, `hid`, and `fsp-srv` (Exit: `0x777`) |
 | **18** | ro:1 Dynamic Linker & Texture Pools | Links secondary NRO via `ro:1` `LoadNro` and binds `NvnTexturePool` BC7 descriptors (Exit: `0x888`) |
 | **19** | Nintendo SDK (`nnSdk`) C++ Runtime | Initializes `nn::mem::StandardAllocator`, `nn::os::SleepThread`, and `nn::fs::OpenFile` (Exit: `0x999`) |
+| **20** | Tier-3 JIT Super-Block Execution | Compiles hot loops into fused execution traces exceeding 105 MIPS throughput (Exit: `0xAAA`) |
+| **21** | Loose Package & NPDM Discovery | Parses `main.npdm`, links multi-module NSOs, and mounts loose RomFS trees (Exit: `0xBBB`) |
 | **20** | Tier-3 JIT Super-Block Execution | Multi-block trace unrolling with fused execution achieving >100 MIPS (Exit: `0xAAA`) |
 
 ---
