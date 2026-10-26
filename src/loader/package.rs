@@ -222,8 +222,15 @@ pub struct LooseBootInfo {
     pub relocations_applied: usize,
     /// Strong imports that no loaded module exports (resolved at runtime by `ro:1` on hardware).
     pub unresolved_imports: Vec<String>,
+    /// Static TLS thread pointer to load into `TPIDR_EL0`. `None` when no module defines TLS symbols.
+    pub thread_pointer: Option<u64>,
     pub allowed_services_count: usize,
 }
+
+/// Thread pointer of the main thread's static TLS area, used when any module defines TLS symbols.
+pub const STATIC_TLS_ADDR: u64 = 0x7F_FFD0_0000;
+/// Static TLSDESC resolver stub, one page below the static TLS area.
+pub const TLSDESC_RESOLVER_ADDR: u64 = STATIC_TLS_ADDR - 0x1000;
 
 pub struct LoosePackageLoader;
 
@@ -346,11 +353,24 @@ impl LoosePackageLoader {
             }
         }
 
-        // 3. Relocate every module against the combined export table.
+        // 3. Lay out static TLS for modules that define TLS symbols.
+        let mut tls = NroLoader::build_tls_layout(&module_bases, mmu);
+        let thread_pointer = if tls.total_size > 0 {
+            NroLoader::map_static_tls(mmu, STATIC_TLS_ADDR, &tls)
+                .map_err(|e| PackageError::NsoLoad(format!("Failed to map static TLS: {}", e)))?;
+            NroLoader::install_tlsdesc_resolver(mmu, TLSDESC_RESOLVER_ADDR)
+                .map_err(|e| PackageError::NsoLoad(format!("Failed to install TLSDESC resolver: {}", e)))?;
+            tls.tlsdesc_resolver = Some(TLSDESC_RESOLVER_ADDR);
+            Some(STATIC_TLS_ADDR)
+        } else {
+            None
+        };
+
+        // 4. Relocate every module against the combined export table and TLS layout.
         let mut total_relocations = 0usize;
         let mut unresolved_imports: Vec<String> = Vec::new();
         for &module_base in &module_bases {
-            let report = NroLoader::apply_relocations(module_base, mmu, &exports);
+            let report = NroLoader::apply_relocations_with_tls(module_base, mmu, &exports, &tls);
             total_relocations += report.applied;
             for name in report.unresolved {
                 if !unresolved_imports.contains(&name) {
@@ -359,7 +379,7 @@ impl LoosePackageLoader {
             }
         }
 
-        // 3. Mount RomFS Directory Assets (if present)
+        // 5. Mount RomFS Directory Assets (if present)
         let mut romfs_files_mounted = 0usize;
         if let Some(ref romfs_path) = package.romfs_dir {
             if let Ok(count) = kernel.vfs.mount_host_directory(romfs_path, "romfs") {
@@ -367,7 +387,7 @@ impl LoosePackageLoader {
             }
         }
 
-        // 4. Configure Title and Capabilities from NPDM (or default)
+        // 6. Configure Title and Capabilities from NPDM (or default)
         let (title_id, process_name, product_code, allowed_services_count) = if let Some(ref desc) = package.npdm {
             (
                 desc.title_id,
@@ -393,6 +413,7 @@ impl LoosePackageLoader {
             romfs_files_mounted,
             relocations_applied: total_relocations,
             unresolved_imports,
+            thread_pointer,
             allowed_services_count,
         })
     }
@@ -468,6 +489,44 @@ mod tests {
         assert_eq!(mmu.read_u64(subsdk_base + 0x300).unwrap(), base + 0x500);
         assert_eq!(boot_info.relocations_applied, 1);
         assert_eq!(boot_info.unresolved_imports, vec!["missing_hook".to_string()]);
+        assert_eq!(boot_info.thread_pointer, None);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_companion_tls_import_uses_static_tls_layout() {
+        use crate::loader::nro::{build_linked_nso_with, TestSymbol, R_AARCH64_TLS_TPREL64};
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ounce_test_tls_{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let exefs = temp_dir.join("exefs");
+        fs::create_dir_all(&exefs).unwrap();
+
+        // `main` defines a 16-byte TLS variable `errno_slot` at offset 8 of its block.
+        let tls_var = TestSymbol { name: "errno_slot", shndx: 1, bind: 1, kind: 6, value: 8, size: 16 };
+        fs::write(exefs.join("main"), build_linked_nso_with(&[tls_var], &[], &[])).unwrap();
+
+        // `subsdk0` reaches it through an initial-exec TPREL64 GOT slot.
+        let import = TestSymbol { name: "errno_slot", shndx: 0, bind: 1, kind: 6, value: 0, size: 0 };
+        let subsdk = build_linked_nso_with(&[import], &[(0x300, R_AARCH64_TLS_TPREL64, 1, 0)], &[]);
+        fs::write(exefs.join("subsdk0"), subsdk).unwrap();
+
+        let pkg = LoosePackageLoader::discover(&temp_dir).expect("Failed to discover loose package");
+        let mut mmu = Memory::new();
+        let mut kernel = HorizonKernel::new();
+        let base = 0x80000000u64;
+        let boot_info = LoosePackageLoader::load_into_kernel(&pkg, base, &mut mmu, &mut kernel)
+            .expect("Failed to load into kernel");
+
+        assert_eq!(boot_info.thread_pointer, Some(STATIC_TLS_ADDR));
+        assert!(boot_info.unresolved_imports.is_empty());
+        // TCB (16) + offset 8 within main's block.
+        assert_eq!(mmu.read_u64(base + 0x04000000 + 0x300).unwrap(), 24);
+        assert_eq!(mmu.read_u64(STATIC_TLS_ADDR + 24).unwrap(), 0);
+        assert_eq!(mmu.read_u32(TLSDESC_RESOLVER_ADDR).unwrap(), 0xF940_0400);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

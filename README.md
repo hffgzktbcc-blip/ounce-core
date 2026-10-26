@@ -63,7 +63,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | Audio | Implemented | Software 64-voice mixer; real-time 48 kHz stereo host audio sink via `cpal`. |
 | Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs`. |
 | Containers | Implemented (parsing) | PFS0/NSP, HFS0/XCI, NCA3, NSO0, NRO0, NPDM, RomFS, unencrypted loose directories. |
-| Dynamic linking | Implemented (subset) | MOD0 `.dynamic` parsing; `R_AARCH64_RELATIVE`, `ABS64`, `GLOB_DAT`, `JUMP_SLOT`; imports resolved across modules in loose packages; unresolved imports reported. Not implemented: TLS relocations, `DT_GNU_HASH`, running `DT_INIT`/`DT_FINI`. |
+| Dynamic linking | Implemented (subset) | MOD0 `.dynamic` parsing; `R_AARCH64_RELATIVE`, `ABS64`, `GLOB_DAT`, `JUMP_SLOT`; imports resolved across modules in loose packages; unresolved imports reported; `DT_GNU_HASH` symbol counts; TLS relocations (`TPREL64`, `DTPMOD64`, `DTPREL64`, `TLSDESC`) against a static TLS layout; `DT_INIT`/`INIT_ARRAY`/`FINI_ARRAY`/`DT_FINI` runner (opt-in, `OUNCE_RUN_INIT=1`). Limits: NSO/NRO carry no `PT_TLS`, so TLS block sizes come from `STT_TLS` symbols, alignment is assumed 16, and blocks start zeroed (no `.tdata` template). Guest SVCs inside initialisers are not serviced. |
 | Crypto | Implemented | AES-128 checked against FIPS-197 vectors. AES-128-CTR is used for NCA sections when the user supplies keys. |
 
 **Known limitations**
