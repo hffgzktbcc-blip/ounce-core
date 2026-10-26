@@ -55,14 +55,14 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | Memory | Implemented | 4 KB-page MMU with per-page permissions. No DRAM timing model. |
 | Kernel (SVC) | Implemented (subset) | Threads, events, mutexes, memory and process queries needed by the test programs. |
 | IPC | Implemented (subset) | CMIF and TIPC message formats. Services are synthetic. |
-| Services | Modelled | `sm:`, `set:sys`, `am`, `vi`, `hid`, `fsp-srv`, `pl:u` (placeholder font data), `time:u`, `nvdrv`, `ro:1`. |
-| GPU | Modelled | Command-buffer model, software rasterizer, texture and ASTC/BC7 block decoders. No GPU API is called. |
+| Services | Modelled | `sm:`, `set:sys` (Drake T239 model, language, nickname), `am`, `vi`, `hid`, `fsp-srv` (directory enumeration, persistent save/sdmc partitions), `pl:u` (placeholder font data), `time:u` / `time:s` (nanosecond steady clock, UTC epoch timestamp), `nvdrv`, `ro:1`. |
+| GPU | Modelled | Command-buffer model, software rasterizer with indexed geometry (`METHOD_SET_INDEX_ARRAY_ADDR`, `METHOD_DRAW_INDEXED`), NVN driver, texture and ASTC/BC7 block decoders. No GPU API is called. |
 | Shader translation | Partial | A SASS-subset decoder that emits SPIR-V 1.5 bytes. Not validated against a driver. |
 | Vulkan HAL (`gpu/vulkan.rs`) | Model only | Structures and SPIR-V module checks. It does not call a Vulkan loader or driver. |
 | Host presentation (`gpu/present/`) | Implemented | Guest framebuffer shown through a GPU swapchain (`wgpu`: Vulkan on Linux/Windows, Metal on macOS; feature `gpu-present`), a software window (`minifb`) or headless. Presentation only: guest rendering stays on the CPU. |
 | Upscaler (`gpu/dlss.rs`) | Modelled | 2× bilinear interpolation with sharpening. **Not DLSS**; there is no neural network. |
-| Audio | Implemented | Software 64-voice mixer; real-time 48 kHz stereo host audio sink via `cpal`. |
-| Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs`. |
+| Audio | Implemented | Software 64-voice mixer; continuous non-blocking ring-buffer streaming from `audout:u` and `audren:u` to 48 kHz stereo host audio sink via `cpal` with polyphonic resampling, underrun tracking and latency metrics. |
+| Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs` (analog stick threshold synthesis to D-pad bitmasks). |
 | Containers | Implemented (parsing) | PFS0/NSP, HFS0/XCI, NCA3, NSO0, NRO0, NPDM, RomFS, unencrypted loose directories. |
 | Dynamic linking | Implemented (subset) | MOD0 `.dynamic` parsing; `R_AARCH64_RELATIVE`, `ABS64`, `GLOB_DAT`, `JUMP_SLOT`; imports resolved across modules in loose packages; `DT_REL`/`DT_RELA` tables; unresolved imports reported; `DT_GNU_HASH` symbol counts; TLS relocations (`TPREL64`, `DTPMOD64`, `DTPREL64`, `TLSDESC`) against a static TLS layout; `DT_INIT`/`INIT_ARRAY`/`FINI_ARRAY`/`DT_FINI` runner (opt-in, `OUNCE_RUN_INIT=1`). `PT_TLS` templates (`.tdata` copied, `.tbss` zeroed, `p_align` honoured) when supplied from an ELF; each `svcCreateThread` thread gets its own TLS area and `TPIDR_EL0`. Limits: NSO/NRO carry no `PT_TLS`, so for them TLS block sizes come from `STT_TLS` symbols, alignment is assumed 16, and blocks start zeroed. Guest SVCs inside initialisers are not serviced. |
 | Crypto | Implemented | AES-128 checked against FIPS-197 vectors. AES-128-CTR is used for NCA sections when the user supplies keys. |
@@ -100,8 +100,8 @@ ounce-core/
 ## Verification
 
 ```bash
-cargo test --release            # unit tests
-cargo run --release -- test     # 25-stage integration harness
+cargo test --release --features gpu-present  # 103 unit tests
+cargo run --release --features gpu-present -- test  # 25-stage integration harness (exits 0xEEE)
 ```
 
 The harness runs synthetic AArch64 programs through the CPU, kernel and service models. Each stage passes when its guest program returns the expected exit code. Host timings are printed for information only.
