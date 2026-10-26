@@ -45,12 +45,30 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - Initialisers are not run by default because a program's own `crt0` normally runs them; the runner does not service SVCs and reports them instead.
   - Validated on synthetic test modules only (homebrew and synthetic workloads are the scope).
 * **Completed: Milestone 3B controller input mappings & Metal verification** (2026-10-26)
-  - PR #11 and PR #12 merged to `main`.
+  - PR #11, #12, #13 merged to `main`.
   - Verified `--present=gpu` on real Apple Silicon (Apple M3 Metal integrated GPU) executing both `3d` and `play` benchmark modes.
   - Added physical gamepad analog stick threshold synthesis to D-pad directional buttons in `HostGamepadManager::poll` so physical thumbsticks seamlessly drive games reading `NpadButton` bitmasks.
   - Added `HostGamepadManager::active_gamepad_name` and attached gamepad detection logging to interactive VM runner.
+* **Completed: Milestone 3B live audio streaming & ring-buffer pacing** (2026-10-26)
+  - Continuous non-blocking audio streaming from `audout:u` and `audren:u` to `HostAudioSink` via sample queue with capacity management (`DEFAULT_MAX_CAPACITY = 192_000` samples / 2 seconds) and graceful eviction to preserve low latency.
+  - Real-time latency tracking (`queue_latency_ms`), atomic underrun tracking, played/dropped sample counters, and snapshot metrics in `HostAudioSink`.
+  - Added waveform synthesizer (`Sine`, `Square`, `Sawtooth`, `Triangle`) in `audout` producing 48 kHz stereo 16-bit PCM for diagnostic testing and interactive demos.
+  - Multi-voice polyphonic mixing in `audren` DSP renderer with fractional sample rate conversion (interpolated resampling to 48 kHz stereo) and per-voice pitch/gain scaling.
+* **Completed: Milestone 3C GPU indexed rendering & NVN elements** (2026-10-26)
+  - Added `METHOD_SET_INDEX_ARRAY_ADDR` (`0x05F2`) and `METHOD_DRAW_INDEXED` (`0x05F4`) to Tegra T239 `NvgpuChannel` pushbuffer command execution.
+  - Added 16-bit and 32-bit index buffer reading with vertex fetching and barycentric triangle rasterization in `rasterize_indexed_triangles`.
+  - Added `NVN_CMD_BIND_INDEX_BUFFER` (`0x0D`) and `NVN_CMD_DRAW_ELEMENTS` (`0x0E`) opcodes to `NvnCommandBuffer`, stream encoder/decoder, and GPFIFO compiler.
+* **Completed: Milestone 5 Horizon OS filesystem & time/settings services** (2026-10-26)
+  - `VirtualFileSystem`: directory iteration & enumeration (`list_directory`) returning sorted directory entries across in-memory and disk hierarchies (`sdmc:/`, `save:/`).
+  - Added recursive directory creation, file deletion, and directory deletion with free/total virtual disk space queries.
+  - `fsp-srv` CMIF IPC handling for `IFileSystem` (`CreateFile`, `DeleteFile`, `CreateDirectory`, `DeleteDirectory`, `OpenFile`, `OpenDirectory`, `GetFreeSpaceSize`, `GetTotalSpaceSize`) and `IDirectory` (`ReadDirectory`, `GetEntryCount`).
+  - `time:u` / `time:s` high-resolution monotonic clock matching host `Instant` with nanosecond precision, and UTC epoch timestamp calculation via `ISystemClock::GetCurrentTime`.
+  - `set:sys` queries for system language, console model (`0x02` Drake / Tegra T239), and device nickname (`Ounce-T239`).
+* **Verification & Quality Gates**:
+  - `cargo test --release --features gpu-present`: **103 passed, 0 failed**.
+  - `cargo run --release --features gpu-present -- test`: **25/25 architecture stages passing (exit code 0xEEE)**.
+  - Safe Rust provenance: `grep -rn "unsafe" src` returns **0 hits**, strictly preserving `#![forbid(unsafe_code)]`.
 * **Next**:
-  - Live audio buffer ring-buffer draining from `audout`/`audren` to `HostAudioSink` (Copilot track).
   - Later milestone: translate NVN draws into host GPU work.
   - M4 (Tier-4 native JIT in `crates/ounce-recompiler`) is on hold until the user asks for it.
   - Build tooling note: building from source on Debian/Ubuntu needs `libasound2-dev libudev-dev`.
