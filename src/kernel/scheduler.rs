@@ -16,6 +16,10 @@ pub enum ThreadState {
 pub const THREAD_TLS_POOL_BASE: u64 = 0x7F_FC00_0000;
 /// Size of the per-thread TLS pool.
 pub const THREAD_TLS_POOL_SIZE: u64 = 0x100_0000;
+/// Sentinel return address loaded into the Link Register (X30) of created threads.
+/// When a thread function terminates via standard `RET` instead of calling `svcExitThread`,
+/// PC reaches this sentinel and the scheduler transitions the thread to `ThreadState::Exited`.
+pub const THREAD_RETURN_SENTINEL: u64 = 0xFFFF_0000_0000_E717;
 
 /// Initial contents of a thread's static TLS area, from the thread pointer (`TPIDR_EL0`) onward:
 /// the TCB, then each module's `.tdata` followed by zeroed `.tbss`. Built by the loader.
@@ -99,6 +103,7 @@ impl ThreadScheduler {
         cpu_context.regs.pc = entry_pc;
         cpu_context.regs.sp = stack_top;
         cpu_context.regs.write_x(0, arg_x0);
+        cpu_context.regs.write_x(30, THREAD_RETURN_SENTINEL);
 
         let kthread = KThread {
             handle,
@@ -147,6 +152,11 @@ impl ThreadScheduler {
         thread.state = ThreadState::Running;
 
         for _ in 0..max_cycles {
+            if thread.cpu_context.regs.pc == THREAD_RETURN_SENTINEL {
+                thread.state = ThreadState::Exited;
+                self.total_threads_completed += 1;
+                return true;
+            }
             match thread.cpu_context.step(mmu) {
                 Ok(StepResult::Svc(0x0A)) | Ok(StepResult::Svc(0x07)) => {
                     // 0x0A = svcExitThread, 0x07 = svcExitProcess
@@ -154,7 +164,13 @@ impl ThreadScheduler {
                     self.total_threads_completed += 1;
                     return true;
                 }
-                Ok(_) => {}
+                Ok(_) => {
+                    if thread.cpu_context.regs.pc == THREAD_RETURN_SENTINEL {
+                        thread.state = ThreadState::Exited;
+                        self.total_threads_completed += 1;
+                        return true;
+                    }
+                }
                 Err(_) => {
                     thread.state = ThreadState::Exited;
                     return false;
@@ -272,5 +288,34 @@ mod tests {
         let handle = sched.create_thread(0x8000_0000, 0, 0x7000_1000, 44, 0);
         assert_eq!(sched.setup_thread_tls(handle, &mut mmu), None);
         assert_eq!(sched.threads[&handle].cpu_context.regs.tpidr_el0, 0);
+    }
+
+    #[test]
+    fn test_thread_exit_via_ret_sentinel() {
+        let mut mmu = Memory::new();
+        let mut sched = ThreadScheduler::new();
+        let code_addr = 0x80010000u64;
+        let stack_top = 0x70002000u64;
+        let shared_addr = 0x80020000u64;
+        mmu.map_range(code_addr, 4096, Permission::READ_WRITE_EXECUTE);
+        mmu.map_range(0x70000000, 0x4000, Permission::READ_WRITE);
+        mmu.map_range(shared_addr, 4096, Permission::READ_WRITE);
+
+        // Worker writes 0x4242 to [X0] and then simply returns via `RET` (X30 sentinel).
+        let worker_code: [u32; 3] = [
+            0xD2884841, // MOVZ X1, #0x4242
+            0xF9000001, // STR  X1, [X0]
+            0xD65F03C0, // RET  (branches to X30 = THREAD_RETURN_SENTINEL)
+        ];
+        for (i, &insn) in worker_code.iter().enumerate() {
+            mmu.write_u32(code_addr + (i * 4) as u64, insn).unwrap();
+        }
+
+        let handle = sched.create_thread(code_addr, shared_addr, stack_top, 44, 1);
+        assert_eq!(sched.threads[&handle].cpu_context.regs.read_x(30), THREAD_RETURN_SENTINEL);
+        assert!(sched.start_and_run_thread(handle, &mut mmu, 100));
+        assert_eq!(sched.threads[&handle].state, ThreadState::Exited);
+        assert_eq!(sched.total_threads_completed, 1);
+        assert_eq!(mmu.read_u64(shared_addr).unwrap(), 0x4242);
     }
 }
