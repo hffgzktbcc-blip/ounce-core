@@ -680,7 +680,7 @@ impl NvnDriver {
             NVN_DEVICE_INFO_API_MINOR_VERSION => 15,
             NVN_DEVICE_INFO_UNIFORM_BUFFER_ALIGNMENT => 256,
             NVN_DEVICE_INFO_MAX_TEXTURE_ANISOTROPY => 16,
-            NVN_DEVICE_INFO_SUPPORTS_T239_DLSS => 1,       // Hardware Tensor Core DLSS
+            NVN_DEVICE_INFO_SUPPORTS_T239_DLSS => 1,       // 2x upscaler model (not DLSS)
             NVN_DEVICE_INFO_T239_SM_VERSION => 0x0807,     // Ampere GA10B SM 8.7
             _ => 1,
         }

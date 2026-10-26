@@ -1,3 +1,13 @@
 /target
 **/*.rs.bk
 .DS_Store
+
+# Never commit user-supplied keys, firmware, game containers or dumps
+*.keys
+*.nsp
+*.xci
+*.nca
+*.nro
+*.nso
+*.npdm
+ns2jb*

@@ -259,7 +259,7 @@ fn print_usage() {
     println!();
     println!("  {}GRAPHICS & INTERACTIVE DEMOS:{}", s.bold, s.reset);
     println!("    {}play{} [frames]           Launch interactive game with real-time Joy-Con 2 controls", s.green, s.reset);
-    println!("    {}3d{} [frames]             Run Tegra Ampere 3D GPU Pushbuffer Rasterizer & DLSS benchmark", s.green, s.reset);
+    println!("    {}3d{} [frames]             Run software 3D pushbuffer rasterizer benchmark", s.green, s.reset);
     println!("    {}gfx{} [frames]            Launch 2D high-bandwidth VRAM Framebuffer Display Demo (1280x720)", s.green, s.reset);
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
@@ -291,9 +291,9 @@ fn print_specs() {
     println!("{}╰{}╯{}", s.cyan, "─".repeat(BOX_WIDTH - 2), s.reset);
     println!();
     println!("  {}Target Platform{}   : {}NVIDIA Tegra T239 'Drake'{} (Codename: 'Ounce' / Horizon OS FW 23.0.1 ABI)", s.bold, s.reset, s.green, s.reset);
-    println!("  {}Execution Model{}   : {}Clean-Room AArch64 Systems Research Runtime & Translation Layer{}", s.bold, s.reset, s.green, s.reset);
+    println!("  {}Execution Model{}   : {}AArch64 Systems Research Runtime & Translation Layer{}", s.bold, s.reset, s.green, s.reset);
     println!("  {}Host Environment{}  : {}-{}-{}bit ({})", s.bold, s.reset, host_arch, host_os, ptr_width, profile);
-    println!("  {}Legal Posture{}     : {}100% Clean-Room Reverse Engineered · Zero Proprietary Keys or Dumps{}", s.bold, s.reset, s.green, s.reset);
+    println!("  {}Legal Posture{}     : {}No proprietary keys, firmware, or game data are distributed{}", s.bold, s.reset, s.green, s.reset);
     println!();
 
     print_box_top(&s, "CPU Subsystem: ARMv8.2-A / ARMv8.3-A / ARMv8.5-A");
@@ -312,7 +312,7 @@ fn print_specs() {
     print_row(&s, "Driver HLE          : ", "Switch 2 NVN HLE (CommandBuffer, Memory & Texture Pools)");
     print_row(&s, "Pushbuffer ISA      : ", "GPFIFO Channel Methods (0x100..0x10A, Texture Descriptor 0x0B)");
     print_row(&s, "Shader Pipeline     : ", "Ampere SASS Bytecode Transpiler -> Vulkan SPIR-V 1.5 Binaries");
-    print_row(&s, "AI Super-Sampling   : ", "Hardware Tensor Core Engine (Tensor DLSS 2x Super-Resolution)");
+    print_row(&s, "Upscaler Model      : ", "2x upscaler model (bilinear + sharpen, not DLSS)");
     print_row(&s, "Rasterizer Engine   : ", "Double-Buffered 32-bit RGBA8888 VRAM, Depth Z-Buffer, UV Interp");
     print_box_bottom(&s);
     println!();
@@ -337,7 +337,7 @@ fn print_specs() {
     print_row(&s, "GameCard Media      : ", "Switch 2 64GB High-Speed GameCard (.xci / HEAD at 0x100 / HFS0)");
     print_row(&s, "Digital Packages    : ", "Nintendo Submission Package (.nsp / PFS0 Hierarchical Archive)");
     print_row(&s, "Loose Folders       : ", "Unencrypted ExeFS/RomFS Dumps (OunceCake / Atmosphere Direct Boot)");
-    print_row(&s, "Decryption Engine   : ", "Clean-Room Hardware AES-128-CTR Multi-Section Decryption");
+    print_row(&s, "Decryption Engine   : ", "AES-128-CTR Multi-Section Decryption (user-supplied keys)");
     print_row(&s, "RomFS Filesystem    : ", "Level 3 Directory & File Hash Tables with Hierarchical Trees");
     print_box_bottom(&s);
     println!();
@@ -350,8 +350,8 @@ fn print_specs() {
     print_box_bottom(&s);
     println!();
 
-    print_box_top(&s, "Clean-Room Compliance & Security Verification");
-    print_row(&s, "Clean-Room Status   : ", "100% Reverse-Engineered Architecture without Proprietary IP");
+    print_box_top(&s, "Compliance & Security Verification");
+    print_row(&s, "Distribution Status: ", "No proprietary keys, firmware, or game data are distributed");
     print_row(&s, "Zero-Key Engine     : ", "Runs homebrew binaries without requiring extracted prod.keys");
     let val_validation = format!("{}50 Unit Tests PASS{} · {}23 Integration Stages PASS (0xDDD){}", s.green, s.reset, s.green, s.reset);
     print_row(&s, "Validation Status   : ", &val_validation);
@@ -548,7 +548,7 @@ fn run_vm_internal(
     }
     if kernel.nvgpu.dlss.frames_upscaled > 0 || kernel.vfs.total_bytes_written > 0 {
         println!(
-            "  -> Ampere Tensor/DLSS Upscaler: {} Frames ({} Output Pixels) | SaveData Written: {} Bytes",
+            "  -> 2x Upscaler Model: {} Frames ({} Output Pixels) | SaveData Written: {} Bytes",
             kernel.nvgpu.dlss.frames_upscaled,
             kernel.nvgpu.dlss.output_pixels_generated,
             kernel.vfs.total_bytes_written
@@ -1093,10 +1093,10 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 9: 128-bit NEON Vector SIMD (V0.4S), Ampere T239 DLSS
+    // Test 9: 128-bit NEON Vector SIMD (V0.4S), 2x upscaler model
     //         2x Super-Resolution Upscaler & SaveData ('save:/profile.sav')
     // ---------------------------------------------------------
-    println!("\n[Stage 09/23] 128-bit NEON SIMD, Tensor DLSS 2x Reconstruction & SaveData");
+    println!("\n[Stage 09/23] 128-bit NEON SIMD, 2x Upscaler Model & SaveData");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1155,7 +1155,7 @@ fn run_built_in_demo() {
     //  4. FADD V0.4S, V3.4S, V1.4S  ; 4-lane SIMD add      -> [30.0, 80.0, 150.0, 240.0]
     //  5. STR  Q0, [X10, #32]       ; Store 128-bit result vector to [0x80020020]
     //  6. SVC  #0x2C                ; svcWriteSaveDataFile("save:/profile.sav", [0x80020020], 16 bytes)
-    //  7. SVC  #0x29                ; svcSubmitGpuPushbuffer (T239 DLSS 2x Super-Resolution Upscale!)
+    //  7. SVC  #0x29                ; svcSubmitGpuPushbuffer (2x upscaler model)
     //  8. Read back saved profile data via SVC #0x2A ("save:/profile.sav") into [0x80020040]
     //  9. Load lane 0 float (30.0f) into S0 and bytes_read (16) into X0, then exit!
     #[rustfmt::skip]
@@ -1173,7 +1173,7 @@ fn run_built_in_demo() {
         0xD2800203, // MOVZ X3, #16      (data_len = 16 bytes)
         0xD4000581, // SVC  #0x2C        (svcWriteSaveDataFile)
 
-        // Dispatch Ampere Tensor Core / DLSS 2x Super-Resolution Upscaler (SVC #0x29)
+        // Dispatch 2x upscaler model (SVC #0x29)
         0x910001A0, // ADD  X0, X13, #0  (pb_addr9)
         0x910001C1, // ADD  X1, X14, #0  (word_count)
         0xD4000521, // SVC  #0x29        (svcSubmitGpuPushbuffer)
@@ -1198,10 +1198,11 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 10: Real Switch 2 `ns2jb` Native FS Payload (Firmware 23.0.1)
-    //          Executes the unaltered 72-byte `test-function.bin` from `pepsipu/ns2jb`
+    // Test 10: Native FS Payload (BTI landing pad, Horizon process/thread queries & stack spill)
+    //          Clean-room AArch64 program that queries svcGetProcessId / svcGetThreadId /
+    //          svcGetInfo(SystemTick) and stores the results into a guest output buffer.
     // ---------------------------------------------------------
-    println!("\n[Stage 10/23] Native FS Payload Execution (BTI/PAC & Horizon SVCs)");
+    println!("\n[Stage 10/23] Native FS Payload Execution (BTI & Horizon SVCs)");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1209,10 +1210,28 @@ fn run_built_in_demo() {
     mmu.map_range(DEFAULT_BASE_ADDR, 4096, Permission::READ_WRITE_EXECUTE);
     mmu.map_range(out_buf10, 4096, Permission::READ_WRITE);
 
-    // Exact 72-byte native AArch64 binary from `gitlab.com/pepsipu/ns2jb` (`engine/switch2/process/test-function.bin`)
-    const NS2JB_TEST_FUNCTION_BIN: [u8; 72] = [0; 72];
-
-    mmu.write_bytes(DEFAULT_BASE_ADDR, &NS2JB_TEST_FUNCTION_BIN).unwrap();
+    // Source (hand-written, assembled with llvm-mc --triple=aarch64 -mattr=+v8.5a):
+    //   bti c
+    //   str x30, [sp, #-16]!
+    //   mov x9, x0
+    //   mov x10, x1
+    //   movn w1, #0x7ffe       // CurrentProcess pseudo-handle (0xFFFF8001)
+    //   svc #0x24             // svcGetProcessId
+    //   str x0, [x9]
+    //   str x1, [x9, #8]
+    //   movn w1, #0x7fff       // CurrentThread pseudo-handle (0xFFFF8000)
+    //   svc #0x25             // svcGetThreadId
+    //   str x0, [x9, #16]
+    //   str x1, [x9, #24]
+    //   svc #0x1e             // svcGetSystemTick
+    //   str x0, [x9, #32]
+    //   eor x0, x10, x10, lsl #1
+    //   str x0, [x9, #40]
+    //   ldr x30, [sp], #16
+    //   ret
+    for (i, &w) in kernel::svc::FS_QUERY_PAYLOAD.iter().enumerate() {
+        mmu.write_u32(DEFAULT_BASE_ADDR + (i * 4) as u64, w).unwrap();
+    }
     // Place svcExitProcess (0xD40000E1) at return address 0x80000100
     mmu.write_u32(DEFAULT_BASE_ADDR + 0x100, 0xD400_00E1).unwrap();
 
@@ -1231,7 +1250,7 @@ fn run_built_in_demo() {
     println!("\n[Stage 11/23] Horizon Dynamic Linker (RO NSO0) & TIPC Handshake");
 
     let (cpu, mut mmu, kernel) = setup_vm();
-    let nso_bytes = loader::NroLoader::get_test_nso_payload();
+    let nso_bytes = loader::NroLoader::synthetic_nso_payload();
     let boot_nso = BootLoader::load_any_package(&nso_bytes, DEFAULT_BASE_ADDR, &[0u8; 16], &mut mmu).unwrap();
     println!(
         "  [BootLoader] Format: {} | ProgramID: 0x{:016X} | .text: {} bytes",
@@ -1241,48 +1260,53 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 12: Captured Switch 2 Firmware 23.0.1 `nnSdk` & `nnCompatThin` Dumps
-    //          Executes `nnSdk::GetThreadAvailableCoreMask` (0xFF) wrapped by `nnCompatThin` (`AND X0, X0, #7` -> 0x07)
+    // Test 12: Synthetic Thread-Affinity Wrapper (BL into a leaf returning an 8-core mask, then AND X0, X0, #7)
+    //          Expected: leaf returns 0xFF, wrapper returns 0x07.
     // ---------------------------------------------------------
-    println!("\n[Stage 12/23] Captured Horizon OS 23.0.1 nnSdk CoreMask Stubs");
+    println!("\n[Stage 12/23] Synthetic Thread-Affinity Wrapper (BL + AND X0, X0, #7)");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
-    const NNSDK_GET_CORE_MASK: [u8; 64] = [0; 64];
-    const NNCOMPATTHIN_WRAPPER: [u8; 76] = [0; 76];
+    let code12 = 0x8000_7000u64;
+    mmu.map_range(code12, 0x1000, Permission::READ_WRITE_EXECUTE);
 
-    let nnsdk_base = 0x8013_0000u64;
-    let compat_base = 0x8000_7000u64;
-    mmu.map_range(compat_base, 0x8000, Permission::READ_WRITE_EXECUTE);
-    mmu.map_range(nnsdk_base, 0x30000, Permission::READ_WRITE_EXECUTE);
-
-    let nnsdk_fn_va = 0x8013_06D8u64;
-    let svc_stub_va = 0x8015_84ACu64;
-    mmu.write_bytes(nnsdk_fn_va, &NNSDK_GET_CORE_MASK).unwrap();
-    for (i, &w) in [0xAA00_03E4u32, 0xD400_03C1, 0xF900_0081, 0x5280_0000, 0xD65F_03C0].iter().enumerate() {
-        mmu.write_u32(svc_stub_va + (i * 4) as u64, w).unwrap();
+    // core_mask @ +0x00:   movz x0, #0xff ; ret
+    // compat_wrap @ +0x10: stp x29,x30,[sp,#-16]! ; mov x29,sp ; bl core_mask ; and x0,x0,#7 ; ldp x29,x30,[sp],#16 ; ret
+    let core_mask12: [u32; 2] = [
+        0xD2801FE0, // movz x0, #0xff
+        0xD65F03C0, // ret
+    ];
+    let compat_wrap12: [u32; 6] = [
+        0xA9BF7BFD, // stp x29, x30, [sp, #-16]!
+        0x910003FD, // mov x29, sp
+        0x97FFFFFA, // bl core_mask (-0x18)
+        0x92400800, // and x0, x0, #7
+        0xA8C17BFD, // ldp x29, x30, [sp], #16
+        0xD65F03C0, // ret
+    ];
+    for (i, &w) in core_mask12.iter().enumerate() {
+        mmu.write_u32(code12 + (i * 4) as u64, w).unwrap();
     }
-
-    let compat_fn_va = 0x8000_7970u64;
-    let resolver_stub_va = 0x8000_B0B0u64;
-    mmu.write_bytes(compat_fn_va, &NNCOMPATTHIN_WRAPPER).unwrap();
-    for (i, &w) in [0xD280_DB08u32, 0xF2B0_0268, 0xF900_0008, 0x5280_0000, 0xD65F_03C0].iter().enumerate() {
-        mmu.write_u32(resolver_stub_va + (i * 4) as u64, w).unwrap();
+    for (i, &w) in compat_wrap12.iter().enumerate() {
+        mmu.write_u32(code12 + 0x10 + (i * 4) as u64, w).unwrap();
     }
-    mmu.write_u32(compat_base, 0xD400_00E1).unwrap();
+    mmu.write_u32(code12 + 0x100, 0xD400_00E1).unwrap(); // svcExitProcess as return target
 
-    cpu.regs.pc = compat_fn_va;
-    cpu.regs.write_x(30, compat_base);
+    cpu.regs.write_x(30, code12 + 0x100);
+    cpu.regs.pc = code12 + 0x10;
     run_vm(cpu, mmu, kernel, 10_000);
     println!();
 
     // ---------------------------------------------------------
-    // Test 13: Switch 2 Firmware 23.0.1 Timing, Event (`LDAXR`/`STLXR`) & POSIX Thread Dumps (`pepsipu/ns2jb`)
+    // Test 13: Timing, Event & Thread Arbitration (synthetic leaf routines)
+    //          event_init:     str w1, [x0] ; str w2, [x0, #4] ; ret
+    //          event_try_wait: ldar w0, [x0] ; ret
+    //          get_freq:       movz x0, #0xf800 ; movk x0, #0x124, lsl #16 ; ret  (19,200,000 Hz)
     // ---------------------------------------------------------
-    println!("\n[Stage 13/23] Hardware Timing, Event Management & Thread Arbitration");
+    println!("\n[Stage 13/23] Timing, Event Management & Thread Arbitration");
     {
-        const FW23_TIMING_FREQ: [u8; 12] = [0; 12];
-        const FW23_EVENT_INIT: [u8; 40] = [0; 40];
-        const FW23_EVENT_TRY_WAIT: [u8; 76] = [0; 76];
+        let event_init13: [u32; 3] = [0xB9000001, 0xB9000402, 0xD65F03C0];
+        let event_try_wait13: [u32; 2] = [0x88DFFC00, 0xD65F03C0];
+        let get_freq13: [u32; 3] = [0xD29F0000, 0xF2A02480, 0xD65F03C0];
 
         let (mut cpu13, mut mmu13, kernel13) = setup_vm();
         let code13 = 0x8000_0000u64;
@@ -1293,23 +1317,25 @@ fn run_built_in_demo() {
         // Build a harness at `code13` that calls:
         //   1. `nn::os::InitializeEvent(data13, 1, 1)` at `code13 + 0x100`
         //   2. `nn::os::TryWaitEvent(data13)` at `code13 + 0x200` -> W0 = 1
-        //   3. `nn::os::GetSystemTickFrequency()` at `code13 + 0x300` -> W0 = 19,200,000
+        //   3. `get_freq13` (GetSystemTickFrequency stand-in) at `code13 + 0x300` -> X0 = 19,200,000
         //   4. Combines `(freq + try_wait) = 19,200,001` into X0 and calls `svcExitProcess`!
-        mmu13.write_bytes(code13 + 0x100, &FW23_EVENT_INIT).unwrap();
-        mmu13.write_bytes(code13 + 0x200, &FW23_EVENT_TRY_WAIT).unwrap();
-        mmu13.write_bytes(code13 + 0x300, &FW23_TIMING_FREQ).unwrap();
+        for (base, routine) in [(0x100u64, &event_init13[..]), (0x200, &event_try_wait13[..]), (0x300, &get_freq13[..])] {
+            for (i, &w) in routine.iter().enumerate() {
+                mmu13.write_u32(code13 + base + (i * 4) as u64, w).unwrap();
+            }
+        }
 
         let harness13: [u32; 12] = [
             0xD280_0000, // movz x0, #0
             0xF2B0_6000, // movk x0, #0x8300, lsl #16 (x0 = data13)
             0xD280_0021, // movz x1, #1 (initially_signaled = true)
             0xD280_0022, // movz x2, #1 (clear_mode = ManualClear)
-            0x9400_003C, // bl #0x100 (FW23_EVENT_INIT)
+            0x9400_003C, // bl #0x100 (event_init13)
             0xD280_0000, // movz x0, #0
             0xF2B0_6000, // movk x0, #0x8300, lsl #16 (x0 = data13)
-            0x9400_0079, // bl #0x200 (FW23_EVENT_TRY_WAIT -> W0 = 1)
+            0x9400_0079, // bl #0x200 (event_try_wait13 -> W0 = 1)
             0xAA00_03F3, // mov x19, x0 (save try_wait result = 1 in X19)
-            0x9400_00B7, // bl #0x300 (FW23_TIMING_FREQ -> X0 = 19,200,000)
+            0x9400_00B7, // bl #0x300 (get_freq13 -> X0 = 19,200,000)
             0x8B13_0000, // add x0, x0, x19 (X0 = 19,200,001)
             0xD400_00E1, // svc #0x07 (svcExitProcess)
         ];
@@ -1327,7 +1353,7 @@ fn run_built_in_demo() {
     println!("\n[Stage 14/23] High-Speed GameCard (.XCI) Boot (HFS0 -> NCA3 -> NSO0)");
     {
         let (mut cpu14, mut mmu14, kernel14) = setup_vm();
-        let nso14 = loader::NroLoader::get_test_nso_payload();
+        let nso14 = loader::NroLoader::synthetic_nso_payload();
         let exefs14 = Pfs0Archive::build(&[("main", &nso14), ("main.npdm", b"META")]);
         let nca14 = NcaImage::build_encrypted(0x0400_0000_0000_0037, &title_key, &ctr_iv, &exefs14);
         let xci14 = loader::XciCartridge::build_cartridge(&[("0400000000000037.nca", &nca14)]);
@@ -2027,7 +2053,7 @@ fn run_built_in_demo() {
     // Stage 20: Tier-3 JIT Super-Block Execution & Multi-Asset Package Pipeline
     //            1. Multi-asset package booting with Tier-3 trace compilation
     //            2. Fusing hot basic blocks into uninterrupted Super-Block traces
-    //            3. Validating >100 MIPS throughput on host execution
+    //            3. Reporting measured host throughput (informational, not a pass/fail gate)
     //            4. Final verification exit code 0xAAA
     // ---------------------------------------------------------
     println!("\n[Stage 20/23] Tier-3 JIT Super-Block Execution & Multi-Asset Package Pipeline");
@@ -2067,7 +2093,7 @@ fn run_built_in_demo() {
             "  [Tier-3 JIT Engine] Executed {} insns ({} Super-Blocks fused) | Exit: {:?}",
             insns_exec, tier3_engine.total_super_block_executions, exit
         );
-        println!("  [Tier-3 Throughput] Measured execution performance: {:.2} MIPS", tier3_engine.mips_rate.max(105.4));
+        println!("  [Tier-3 Throughput] Measured execution performance: {:.2} MIPS", tier3_engine.mips_rate);
         println!("  [Tier-3 Verification] Super-Block compilation verified in guest AArch64 (Exit code: 0xAAA)");
     }
 
@@ -2200,7 +2226,7 @@ fn run_built_in_demo() {
 
     // ---------------------------------------------------------
     // Stage 22: Commercial Bootstrap HAL: pl:u Shared Fonts, time:u System Clock & ASTC/BC7 Decompression
-    //            1. Querying Horizon Shared Font Service (pl:u) and verifying BFTTF memory mapping
+    //            1. Querying Horizon Shared Font Service (pl:u) and verifying shared font memory mapping
     //            2. Querying Horizon Standard Clock (time:u -> ISystemClock) for 64-bit timestamps
     //            3. Querying /dev/nvhost-as-gpu GPU address space & 4MB L2 cache size
     //            4. Decoding ASTC 4x4 void-extent and BC7 texture blocks into VRAM
@@ -2242,7 +2268,7 @@ fn run_built_in_demo() {
         let font_addr_hi = mmu22.read_u32(tls_addr + 0x24).unwrap();
         let font_addr = ((font_addr_hi as u64) << 32) | (font_addr_lo as u64);
         println!(
-            "  [pl:u Shared Font] Mapped BFTTF font asset at guest VMA 0x{:08X} (1 MB)",
+            "  [pl:u Shared Font] Mapped shared font placeholder at guest VMA 0x{:08X} (1 MB)",
             font_addr
         );
 

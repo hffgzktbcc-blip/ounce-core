@@ -11,7 +11,7 @@ pub struct VulkanDeviceInfo {
     pub driver_version: u32,
     pub device_type: &'static str,
     pub supports_mesh_shaders: bool,
-    pub supports_dlss_tensor: bool,
+    pub supports_dlss_tensor: bool, // model flag only; no DLSS is implemented
 }
 
 impl Default for VulkanDeviceInfo {
