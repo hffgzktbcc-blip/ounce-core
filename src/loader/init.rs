@@ -3,8 +3,8 @@
 //! Runs module initialisers (`DT_PREINIT_ARRAY`, `DT_INIT`, `DT_INIT_ARRAY`) and finalisers
 //! (`DT_FINI_ARRAY`, `DT_FINI`) on the guest CPU.
 //!
-//! This is opt-in. On Horizon the SDK's own startup code normally runs constructors, and `rtld`
-//! does so when it is present, so running them here as well would run them twice.
+//! This is opt-in. A program's own `crt0` (for example libnx homebrew) normally runs its
+//! constructors, so running them here as well would run them twice.
 
 use super::nro::NroLoader;
 use crate::cpu::{Cpu, StepResult};

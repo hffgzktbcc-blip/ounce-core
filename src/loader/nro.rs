@@ -16,7 +16,12 @@ pub const DT_RELAENT: i64 = 9;
 pub const DT_SYMENT: i64 = 11;
 pub const DT_INIT: i64 = 12;
 pub const DT_FINI: i64 = 13;
+pub const DT_REL: i64 = 17;
+pub const DT_RELSZ: i64 = 18;
+pub const DT_RELENT: i64 = 19;
+pub const DT_PLTREL: i64 = 20;
 pub const DT_JMPREL: i64 = 23;
+pub const PT_TLS: u32 = 7;
 pub const R_AARCH64_ABS64: u32 = 257;
 pub const R_AARCH64_GLOB_DAT: u32 = 1025;
 pub const R_AARCH64_JUMP_SLOT: u32 = 1026;
@@ -40,6 +45,7 @@ pub const TLS_BLOCK_ALIGN: u64 = 16;
 pub const TLSDESC_RESOLVER_CODE: [u32; 2] = [0xF940_0400, 0xD65F_03C0];
 
 const RELA_ENTRY_SIZE: u64 = 24;
+const REL_ENTRY_SIZE: u64 = 16;
 const SYM_ENTRY_SIZE: u64 = 24;
 const SHN_UNDEF: u16 = 0;
 const STB_LOCAL: u8 = 0;
@@ -52,8 +58,13 @@ pub struct DynamicInfo {
     pub rela: Option<u64>,
     pub rela_size: u64,
     pub rela_entry_size: u64,
+    pub rel: Option<u64>,
+    pub rel_size: u64,
+    pub rel_entry_size: u64,
     pub jmprel: Option<u64>,
     pub pltrel_size: u64,
+    /// `DT_PLTREL`: `DT_REL` or `DT_RELA`, the entry format of `DT_JMPREL`. Absent means `DT_RELA`.
+    pub pltrel: Option<u64>,
     pub symtab: Option<u64>,
     pub strtab: Option<u64>,
     pub syment: u64,
@@ -76,8 +87,23 @@ pub struct TlsBlock {
     pub module_id: u64,
     /// Offset of the block from the thread pointer (`TPIDR_EL0`).
     pub tp_offset: u64,
-    /// Block size, derived from the module's `STT_TLS` symbols.
+    /// Block size: `PT_TLS` `p_memsz` when known, otherwise the end of the furthest `STT_TLS` symbol.
     pub size: u64,
+    /// Block alignment: `PT_TLS` `p_align` when known, otherwise `TLS_BLOCK_ALIGN`.
+    pub align: u64,
+    /// Guest address of the `.tdata` initialisation image (0 when there is none).
+    pub init_addr: u64,
+    /// Bytes of `.tdata` to copy (`p_filesz`). The rest of the block (`.tbss`) is zeroed.
+    pub init_size: u64,
+}
+
+/// A module's `PT_TLS` program header. `vaddr` is relative to the module's load base.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TlsTemplate {
+    pub vaddr: u64,
+    pub filesz: u64,
+    pub memsz: u64,
+    pub align: u64,
 }
 
 /// Static TLS layout for a set of modules, in the AArch64 variant I model: the thread pointer
@@ -90,6 +116,8 @@ pub struct TlsLayout {
     pub exports: HashMap<String, (u64, u64)>,
     /// Bytes from the thread pointer to the end of the last block (includes the TCB).
     pub total_size: u64,
+    /// Largest block alignment. The thread pointer must be aligned to this.
+    pub align: u64,
     /// Guest address of the static TLSDESC resolver. `R_AARCH64_TLSDESC` is unsupported while `None`.
     pub tlsdesc_resolver: Option<u64>,
 }
@@ -350,6 +378,10 @@ impl NroLoader {
                 DT_RELA => info.rela = Some(d_val),
                 DT_RELASZ => info.rela_size = d_val,
                 DT_RELAENT => info.rela_entry_size = d_val,
+                DT_REL => info.rel = Some(d_val),
+                DT_RELSZ => info.rel_size = d_val,
+                DT_RELENT => info.rel_entry_size = d_val,
+                DT_PLTREL => info.pltrel = Some(d_val),
                 DT_JMPREL => info.jmprel = Some(d_val),
                 DT_PLTRELSZ => info.pltrel_size = d_val,
                 DT_SYMTAB => info.symtab = Some(d_val),
@@ -487,21 +519,37 @@ impl NroLoader {
     }
 
     /// Lays out one static TLS block per module that defines TLS symbols, in `module_bases` order.
-    /// NSO/NRO images have no `PT_TLS`, so each block's size is the end of its furthest `STT_TLS`
-    /// symbol and its alignment is assumed to be `TLS_BLOCK_ALIGN`. TLS that is only reached through
-    /// local relocations (no symbol) is not counted.
+    /// NSO/NRO images have no `PT_TLS`; see `build_tls_layout_with_templates` for modules that do.
     pub fn build_tls_layout(module_bases: &[u64], mmu: &Memory) -> TlsLayout {
-        let mut layout = TlsLayout::default();
+        Self::build_tls_layout_with_templates(module_bases, mmu, &HashMap::new())
+    }
+
+    /// Lays out one static TLS block per module, in `module_bases` order, in the AArch64 variant I
+    /// model. A module with a `PT_TLS` entry in `templates` (keyed by module base) gets its block size,
+    /// alignment and `.tdata` image from it. Otherwise the size is the end of its furthest `STT_TLS`
+    /// symbol, the alignment is `TLS_BLOCK_ALIGN`, and the block starts zeroed. TLS that is only
+    /// reached through local relocations (no symbol) is not counted in that fallback.
+    pub fn build_tls_layout_with_templates(
+        module_bases: &[u64],
+        mmu: &Memory,
+        templates: &HashMap<u64, TlsTemplate>,
+    ) -> TlsLayout {
+        let mut layout = TlsLayout { align: TLS_BLOCK_ALIGN, ..Default::default() };
         let mut cursor = TLS_TCB_SIZE;
         for &base in module_bases {
             let symbols = Self::tls_symbols(base, mmu);
-            let size = symbols.iter().map(|(_, off, sz, _)| off + sz).max().unwrap_or(0);
+            let symbol_size = symbols.iter().map(|(_, off, sz, _)| off + sz).max().unwrap_or(0);
+            let template = templates.get(&base);
+            let size = template.map_or(symbol_size, |t| t.memsz.max(symbol_size));
             if size == 0 {
                 continue;
             }
-            cursor = (cursor + TLS_BLOCK_ALIGN - 1) & !(TLS_BLOCK_ALIGN - 1);
+            let align = template.map_or(TLS_BLOCK_ALIGN, |t| t.align.max(1).next_power_of_two());
+            cursor = (cursor + align - 1) & !(align - 1);
             let module_id = layout.blocks.len() as u64 + 1;
-            layout.blocks.insert(base, TlsBlock { module_id, tp_offset: cursor, size });
+            let (init_addr, init_size) = template.map_or((0, 0), |t| (base + t.vaddr, t.filesz.min(size)));
+            layout.blocks.insert(base, TlsBlock { module_id, tp_offset: cursor, size, align, init_addr, init_size });
+            layout.align = layout.align.max(align);
             cursor += size;
             for (name, off, _, bind) in symbols {
                 if bind != STB_LOCAL && !name.is_empty() {
@@ -513,6 +561,43 @@ impl NroLoader {
         layout
     }
 
+    /// Reads the `PT_TLS` program header of a little-endian ELF64 file. `None` if the file is not
+    /// ELF64 or has no `PT_TLS`.
+    pub fn parse_pt_tls(elf: &[u8]) -> Option<TlsTemplate> {
+        if elf.len() < 0x40 || &elf[0..4] != b"\x7fELF" || elf[4] != 2 || elf[5] != 1 {
+            return None;
+        }
+        let phoff = LittleEndian::read_u64(&elf[0x20..0x28]) as usize;
+        let phentsize = LittleEndian::read_u16(&elf[0x36..0x38]) as usize;
+        let phnum = LittleEndian::read_u16(&elf[0x38..0x3A]) as usize;
+        if phentsize < 0x38 {
+            return None;
+        }
+        (0..phnum).find_map(|i| {
+            let start = phoff.checked_add(i * phentsize)?;
+            let ph = elf.get(start..start + 0x38)?;
+            (LittleEndian::read_u32(&ph[0..4]) == PT_TLS).then(|| TlsTemplate {
+                vaddr: LittleEndian::read_u64(&ph[0x10..0x18]),
+                filesz: LittleEndian::read_u64(&ph[0x20..0x28]),
+                memsz: LittleEndian::read_u64(&ph[0x28..0x30]),
+                align: LittleEndian::read_u64(&ph[0x30..0x38]),
+            })
+        })
+    }
+
+    /// The initial contents of one thread's static TLS area, from the thread pointer onward:
+    /// a zeroed TCB, then each block's `.tdata` image followed by zeroed `.tbss`.
+    pub fn tls_thread_image(layout: &TlsLayout, mmu: &Memory) -> crate::kernel::ThreadTlsImage {
+        let mut bytes = vec![0u8; layout.total_size as usize];
+        for block in layout.blocks.values() {
+            if block.init_size > 0 {
+                let start = block.tp_offset as usize;
+                let _ = mmu.read_bytes(block.init_addr, &mut bytes[start..start + block.init_size as usize]);
+            }
+        }
+        crate::kernel::ThreadTlsImage { bytes, align: layout.align.max(1) }
+    }
+
     /// Writes the static TLSDESC resolver stub at `addr` (mapped read/execute by the caller or here).
     pub fn install_tlsdesc_resolver(mmu: &mut Memory, addr: u64) -> Result<(), MemoryError> {
         mmu.map_range(addr, 0x1000, Permission::READ_WRITE_EXECUTE);
@@ -522,13 +607,17 @@ impl NroLoader {
         Ok(())
     }
 
-    /// Maps and zeroes a static TLS area of `layout.total_size` bytes at `thread_pointer`.
-    /// The caller sets `TPIDR_EL0` to `thread_pointer`. Blocks start zeroed: without `PT_TLS` there is
-    /// no `.tdata` template to copy, so initialised thread-local variables read as 0.
-    pub fn map_static_tls(mmu: &mut Memory, thread_pointer: u64, layout: &TlsLayout) -> Result<(), MemoryError> {
-        let size = ((layout.total_size.max(TLS_TCB_SIZE) + 0xFFF) & !0xFFF) as usize;
-        mmu.map_range(thread_pointer, size, Permission::READ_WRITE);
-        mmu.write_bytes(thread_pointer, &vec![0u8; size])
+    /// Maps a static TLS area at `thread_pointer` and writes `image` into it.
+    /// The caller sets `TPIDR_EL0` to `thread_pointer`, which must be aligned to `image.align`.
+    pub fn map_static_tls(
+        mmu: &mut Memory,
+        thread_pointer: u64,
+        image: &crate::kernel::ThreadTlsImage,
+    ) -> Result<(), MemoryError> {
+        let size = image.mapped_size();
+        mmu.map_range(thread_pointer, size as usize, Permission::READ_WRITE);
+        mmu.write_bytes(thread_pointer, &vec![0u8; size as usize])?;
+        mmu.write_bytes(thread_pointer, &image.bytes)
     }
 
     /// Reads a `DT_*_ARRAY` of function pointers, skipping 0 and -1 entries. Entries are read as stored,
@@ -642,29 +731,44 @@ impl NroLoader {
             Some(i) => i,
             None => return report,
         };
-        let entry_size = if info.rela_entry_size == 0 { RELA_ENTRY_SIZE } else { info.rela_entry_size };
+        let rela_entry = if info.rela_entry_size == 0 { RELA_ENTRY_SIZE } else { info.rela_entry_size };
+        let rel_entry = if info.rel_entry_size == 0 { REL_ENTRY_SIZE } else { info.rel_entry_size };
 
+        // (table, size in bytes, entry size, has explicit addend)
         let mut tables = Vec::new();
         if let Some(rela) = info.rela {
-            tables.push((rela, info.rela_size));
+            tables.push((rela, info.rela_size, rela_entry, true));
+        }
+        if let Some(rel) = info.rel {
+            tables.push((rel, info.rel_size, rel_entry, false));
         }
         if let Some(jmprel) = info.jmprel {
-            tables.push((jmprel, info.pltrel_size));
+            if info.pltrel == Some(DT_REL as u64) {
+                tables.push((jmprel, info.pltrel_size, rel_entry, false));
+            } else {
+                tables.push((jmprel, info.pltrel_size, rela_entry, true));
+            }
         }
 
-        for (table, table_size) in tables {
+        for (table, table_size, entry_size, has_addend) in tables {
             for i in 0..table_size / entry_size {
                 let entry_addr = base_addr + table + i * entry_size;
                 let mut raw = [0u8; 24];
-                if mmu.read_bytes(entry_addr, &mut raw).is_err() {
+                let len = if has_addend { 24 } else { 16 };
+                if mmu.read_bytes(entry_addr, &mut raw[..len]).is_err() {
                     continue;
                 }
                 let r_offset = LittleEndian::read_u64(&raw[0..8]);
                 let r_info = LittleEndian::read_u64(&raw[8..16]);
-                let r_addend = LittleEndian::read_u64(&raw[16..24]);
                 let sym_index = r_info >> 32;
                 let r_type = (r_info & 0xFFFF_FFFF) as u32;
                 let target_va = base_addr + r_offset;
+                // `Elf64_Rel` has no addend field: the addend is the value already stored at the target.
+                let r_addend = if has_addend {
+                    LittleEndian::read_u64(&raw[16..24])
+                } else {
+                    mmu.read_u64(target_va).unwrap_or(0)
+                };
 
                 match r_type {
                     R_AARCH64_RELATIVE => {
@@ -1104,9 +1208,10 @@ mod tests {
         assert!(report.unsupported.contains(&R_AARCH64_TLSDESC));
 
         let mut layout = NroLoader::build_tls_layout(&[provider, consumer], &mmu);
-        assert_eq!(layout.blocks[&provider], TlsBlock { module_id: 1, tp_offset: 16, size: 12 });
+        let fallback = |module_id, tp_offset, size| TlsBlock { module_id, tp_offset, size, align: 16, init_addr: 0, init_size: 0 };
+        assert_eq!(layout.blocks[&provider], fallback(1, 16, 12));
         // 16 + 12 = 28, aligned up to 32.
-        assert_eq!(layout.blocks[&consumer], TlsBlock { module_id: 2, tp_offset: 32, size: 0x20 });
+        assert_eq!(layout.blocks[&consumer], fallback(2, 32, 0x20));
         assert_eq!(layout.total_size, 64);
         assert_eq!(layout.exports.get("tls_b"), Some(&(provider, 8)));
 
@@ -1155,6 +1260,116 @@ mod tests {
         assert_eq!(report.applied, 1);
         assert_eq!(mmu.read_u64(base + 0x300).unwrap(), 0xDEAD_BEEF);
         assert_eq!(mmu.read_u64(base + 0x308).unwrap(), 0);
+    }
+
+    /// Minimal ELF64 header with one `PT_LOAD` and one `PT_TLS` program header.
+    fn elf_with_pt_tls(tls: TlsTemplate) -> Vec<u8> {
+        let mut elf = vec![0u8; 0x40 + 2 * 0x38];
+        elf[0..4].copy_from_slice(b"\x7fELF");
+        elf[4] = 2; // ELFCLASS64
+        elf[5] = 1; // little-endian
+        LittleEndian::write_u64(&mut elf[0x20..0x28], 0x40); // e_phoff
+        LittleEndian::write_u16(&mut elf[0x36..0x38], 0x38); // e_phentsize
+        LittleEndian::write_u16(&mut elf[0x38..0x3A], 2); // e_phnum
+        LittleEndian::write_u32(&mut elf[0x40..0x44], 1); // PT_LOAD
+        let ph = 0x78;
+        LittleEndian::write_u32(&mut elf[ph..ph + 4], PT_TLS);
+        LittleEndian::write_u64(&mut elf[ph + 0x10..ph + 0x18], tls.vaddr);
+        LittleEndian::write_u64(&mut elf[ph + 0x18..ph + 0x20], tls.vaddr); // p_paddr
+        LittleEndian::write_u64(&mut elf[ph + 0x20..ph + 0x28], tls.filesz);
+        LittleEndian::write_u64(&mut elf[ph + 0x28..ph + 0x30], tls.memsz);
+        LittleEndian::write_u64(&mut elf[ph + 0x30..ph + 0x38], tls.align);
+        elf
+    }
+
+    #[test]
+    fn test_parse_pt_tls() {
+        let tls = TlsTemplate { vaddr: 0x1800, filesz: 8, memsz: 0x30, align: 64 };
+        assert_eq!(NroLoader::parse_pt_tls(&elf_with_pt_tls(tls)), Some(tls));
+        assert_eq!(NroLoader::parse_pt_tls(b"NSO0 not an elf file, padded out to sixty-four bytes........"), None);
+        let mut no_tls = elf_with_pt_tls(tls);
+        no_tls[0x78] = 1; // second header becomes PT_LOAD
+        assert_eq!(NroLoader::parse_pt_tls(&no_tls), None);
+    }
+
+    #[test]
+    fn test_pt_tls_template_initialises_tdata_and_zeroes_tbss() {
+        let mut mmu = Memory::new();
+        let base = 0x8000_0000u64;
+        // One TLS symbol at offset 0; the template is larger (memsz 0x30) and 64-byte aligned.
+        write_test_module_with(&mut mmu, base, &[tls_sym("counter", 1, 0, 8)], &[], &[], &[], false);
+        // .tdata at +0x1800: 8 initialised bytes. The bytes after it in the image must not leak into .tbss.
+        mmu.write_u64(base + 0x1800, 0x1122_3344_5566_7788).unwrap();
+        mmu.write_u64(base + 0x1808, 0xFFFF_FFFF_FFFF_FFFF).unwrap();
+
+        let tls = NroLoader::parse_pt_tls(&elf_with_pt_tls(TlsTemplate { vaddr: 0x1800, filesz: 8, memsz: 0x30, align: 64 })).unwrap();
+        let layout = NroLoader::build_tls_layout_with_templates(&[base], &mmu, &HashMap::from([(base, tls)]));
+        let block = layout.blocks[&base];
+        assert_eq!(block.tp_offset, 64); // TCB (16) rounded up to p_align
+        assert_eq!(block.size, 0x30);
+        assert_eq!(layout.align, 64);
+        assert_eq!(layout.total_size, 64 + 0x30);
+
+        let image = NroLoader::tls_thread_image(&layout, &mmu);
+        assert_eq!(image.align, 64);
+        assert_eq!(LittleEndian::read_u64(&image.bytes[64..72]), 0x1122_3344_5566_7788);
+        assert!(image.bytes[72..].iter().all(|&b| b == 0));
+        assert!(image.bytes[..64].iter().all(|&b| b == 0));
+
+        let tp = 0x9000_0000u64;
+        NroLoader::map_static_tls(&mut mmu, tp, &image).unwrap();
+        assert_eq!(mmu.read_u64(tp + 64).unwrap(), 0x1122_3344_5566_7788);
+        assert_eq!(mmu.read_u64(tp + 72).unwrap(), 0);
+    }
+
+    #[test]
+    fn test_rel_table_uses_implicit_addend() {
+        let mut mmu = Memory::new();
+        let base = 0x8000_0000u64;
+        write_test_module_with(
+            &mut mmu,
+            base,
+            &[TestSymbol { name: "target", shndx: 1, bind: 1, kind: 2, value: 0x500, size: 0 }],
+            &[],
+            &[],
+            &[(DT_REL, 0xC00), (DT_RELSZ, 32), (DT_RELENT, 16)],
+            false,
+        );
+        // Elf64_Rel: r_offset, r_info. The addend is the value already at r_offset.
+        mmu.write_u64(base + 0xC00, 0x300).unwrap();
+        mmu.write_u64(base + 0xC08, R_AARCH64_RELATIVE as u64).unwrap();
+        mmu.write_u64(base + 0xC10, 0x308).unwrap();
+        mmu.write_u64(base + 0xC18, (1u64 << 32) | R_AARCH64_ABS64 as u64).unwrap();
+        mmu.write_u64(base + 0x300, 0x450).unwrap();
+        mmu.write_u64(base + 0x308, 0x10).unwrap();
+
+        let info = NroLoader::parse_dynamic(base, &mmu).unwrap();
+        assert_eq!((info.rel, info.rel_size, info.rel_entry_size), (Some(0xC00), 32, 16));
+
+        let report = NroLoader::apply_relocations(base, &mut mmu, &HashMap::new());
+        assert_eq!(report.applied, 2);
+        assert_eq!(mmu.read_u64(base + 0x300).unwrap(), base + 0x450);
+        assert_eq!(mmu.read_u64(base + 0x308).unwrap(), base + 0x510);
+    }
+
+    #[test]
+    fn test_jmprel_in_rel_format() {
+        let mut mmu = Memory::new();
+        let base = 0x8000_0000u64;
+        write_test_module_with(
+            &mut mmu,
+            base,
+            &[],
+            &[],
+            &[],
+            &[(DT_PLTREL, DT_REL as u64), (DT_JMPREL, 0xC00), (DT_PLTRELSZ, 16)],
+            false,
+        );
+        mmu.write_u64(base + 0xC00, 0x300).unwrap();
+        mmu.write_u64(base + 0xC08, R_AARCH64_RELATIVE as u64).unwrap();
+        mmu.write_u64(base + 0x300, 0x20).unwrap();
+        assert_eq!(NroLoader::apply_mod0_relocations(base, &mut mmu), 1);
+        assert_eq!(mmu.read_u64(base + 0x300).unwrap(), base + 0x20);
     }
 
     #[test]

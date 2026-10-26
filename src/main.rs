@@ -2999,7 +2999,7 @@ fn run_directory_package(dir_path: &str, gui_mode: bool) {
                 cpu.regs.tpidr_el0 = tp;
                 println!("  Static TLS   : TPIDR_EL0 = 0x{:X}", tp);
             }
-            // Opt-in: the title's own startup code normally runs its constructors.
+            // Opt-in: the program's own crt0 normally runs its constructors.
             if std::env::var_os("OUNCE_RUN_INIT").is_some() {
                 let report = loader::run_initializers(&mut cpu, &mut mmu, &info.modules_loaded, STACK_TOP, 1_000_000);
                 println!("  Initialisers : {} ran, {} failed", report.completed, report.failed.len());
