@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-/// Clean-room FIPS-197 AES-128 & Nintendo Key Hierarchy Engine (`prod.keys`).
+/// FIPS-197 AES-128 & key hierarchy engine (keys supplied by the user at runtime).
 ///
 /// Supports AES-128-ECB, AES-128-CTR (used for NCA ExeFS/RomFS sections),
 /// and AES-128-XTS (used for NCA headers with 0x200-byte sector tweaks).
@@ -233,7 +233,7 @@ mod tests {
         let key = ks.keys128.get("key_area_key_application_00").unwrap();
         let aes = Aes128::new(key);
         let iv = [0xAAu8; 16];
-        let original = b"Nintendo Switch 2 Encrypted NCA Section Payload!";
+        let original = b"Synthetic encrypted section payload (test vector)";
         let mut buf = original.to_vec();
 
         // Encrypt with CTR

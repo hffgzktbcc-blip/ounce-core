@@ -352,7 +352,7 @@ impl NvgpuChannel {
                     self.rasterize_triangles(mmu, vertex_count, true);
                 }
             }
-            // 0x0900: Dispatch Ampere Tensor Core / DLSS 2x Super-Resolution Upscaler
+            // 0x0900: Dispatch 2x upscaler model (bilinear + sharpen, not DLSS)
             // Args: [src_addr, src_w, src_h, dst_addr]
             METHOD_DISPATCH_DLSS_UPSCALE => {
                 if cmd.args.len() >= 4 {

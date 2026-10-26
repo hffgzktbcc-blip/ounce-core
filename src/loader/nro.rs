@@ -314,13 +314,9 @@ impl NroLoader {
     }
 
     /// Provides test NSO0 payload bytes: loads from external disk file if present,
-    /// or generates an authentic clean-room synthetic NSO0 module.
-    pub fn get_test_nso_payload() -> Vec<u8> {
-        if let Ok(bytes) = std::fs::read("ns2jb_ro_payload.bin") {
-            return bytes;
-        }
-
-        // Clean-room synthetic AArch64 binary that writes SFCO, NS2ROEXE, challenge, pid, and tid to TLS and exits cleanly:
+    /// or generates a synthetic NSO0 module.
+    pub fn synthetic_nso_payload() -> Vec<u8> {
+        // Clean-room synthetic AArch64 NSO0 (generated in-process; never read from disk) that writes SFCO, NS2ROEXE, challenge, pid, and tid to TLS and exits cleanly:
         #[rustfmt::skip]
         let synthetic_code: [u32; 21] = [
             0xD53BD068, // mrs  x8, tpidrro_el0
