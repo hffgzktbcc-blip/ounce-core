@@ -15,8 +15,8 @@
 
 `ounce-core` is an experimental, non-commercial AArch64 execution and high-level-emulation (HLE) research runtime written in Rust. It contains an interpreter, three execution tiers, a paged memory model, a subset of Horizon-style supervisor calls (SVCs) and services, and software models of graphics, audio and input. It is a test harness for studying these subsystems. It is not a console emulator and makes no claim of compatibility with any commercial software.
 
-- Safe Rust only: `grep -rn unsafe src` returns no matches.
-- Five runtime dependencies: `byteorder`, `cpal` (host audio playback), `gilrs` (gamepad input), `minifb` (host window), `thiserror`.
+- Safe Rust only: the crate is `#![forbid(unsafe_code)]`, and `grep -rnE "unsafe[ ({]" src` returns no matches.
+- Five runtime dependencies: `byteorder`, `cpal` (host audio playback), `gilrs` (gamepad input), `minifb` (host window), `thiserror`. The optional `gpu-present` feature adds `wgpu`, `winit` and `pollster` for GPU presentation.
 - No network code, no telemetry. The only URL in the source is the project's own repository link in the CLI banner.
 
 ---
@@ -59,6 +59,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | GPU | Modelled | Command-buffer model, software rasterizer, texture and ASTC/BC7 block decoders. No GPU API is called. |
 | Shader translation | Partial | A SASS-subset decoder that emits SPIR-V 1.5 bytes. Not validated against a driver. |
 | Vulkan HAL (`gpu/vulkan.rs`) | Model only | Structures and SPIR-V module checks. It does not call a Vulkan loader or driver. |
+| Host presentation (`gpu/present/`) | Implemented | Guest framebuffer shown through a GPU swapchain (`wgpu`: Vulkan on Linux/Windows, Metal on macOS; feature `gpu-present`), a software window (`minifb`) or headless. Presentation only: guest rendering stays on the CPU. |
 | Upscaler (`gpu/dlss.rs`) | Modelled | 2× bilinear interpolation with sharpening. **Not DLSS**; there is no neural network. |
 | Audio | Implemented | Software 64-voice mixer; real-time 48 kHz stereo host audio sink via `cpal`. |
 | Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs`. |
@@ -141,6 +142,7 @@ The harness runs synthetic AArch64 programs through the CPU, kernel and service 
 - Rust 1.85 or newer (edition 2024).
 - Host: `aarch64` or `x86_64`, Linux, macOS or Windows.
 - Prebuilt Linux binaries dynamically link to the system ALSA and udev libraries. On Debian/Ubuntu: `sudo apt install libasound2 libudev1`. On Fedora: `sudo dnf install alsa-lib systemd-libs`. On Arch: `sudo pacman -S alsa-lib systemd-libs`. Building from source also needs the development headers (`libasound2-dev libudev-dev` on Debian/Ubuntu).
+- GPU presentation (optional): build with `--features gpu-present`. macOS uses Metal and needs nothing extra. Windows uses Vulkan or DX12 from the installed GPU driver. Linux needs a Vulkan driver plus `libvulkan1` and `libxkbcommon-x11-0` on Debian/Ubuntu (`vulkan-loader libxkbcommon-x11` on Fedora, `vulkan-icd-loader libxkbcommon-x11` on Arch); `mesa-vulkan-drivers` gives a software Vulkan driver for machines without a GPU. If the GPU path cannot start, the runtime falls back to the software window and then to headless.
 
 ### Commands
 
@@ -152,7 +154,11 @@ cargo run --release -- run ./dumps/title --gui   # Boot an unencrypted loose dir
 cargo run --release -- demo-dir ./demo --gui     # Generate a synthetic loose package and boot it
 cargo run --release -- play                      # Keyboard-driven controller and graphics demo
 cargo run --release -- 3d 120                    # Software rasterizer benchmark
+cargo run --release --features gpu-present -- gfx --present=gpu   # Present through the GPU swapchain
+cargo run --release -- gfx 60 --present=headless # No window; OUNCE_DUMP_FRAMES=<dir> writes PPM frames
 ```
+
+`--present=auto|gpu|minifb|headless` (or `OUNCE_PRESENT`) picks the presentation backend; `auto` tries the GPU first when the feature is compiled in. `WGPU_BACKEND` (`vulkan`, `metal`, `dx12`, `gl`) and `WGPU_ADAPTER_NAME` select the GPU, and `OUNCE_VSYNC=0` disables vsync.
 
 ---
 

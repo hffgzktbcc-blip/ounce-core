@@ -38,3 +38,37 @@ jobs:
 
       - name: Run 24-stage integration verification suite
         run: cargo run --release -- test
+
+  gpu-present:
+    name: GPU presentation feature (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # lavapipe (mesa-vulkan-drivers) is a software Vulkan driver, so the offscreen
+      # GPU blit test really runs on runners without a GPU instead of skipping.
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: gpu-present
+
+      - name: Build with gpu-present
+        run: cargo build --release --features gpu-present
+
+      - name: Run unit tests with gpu-present
+        run: cargo test --release --features gpu-present -- --nocapture
+
