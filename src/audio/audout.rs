@@ -5,7 +5,7 @@ use crate::mmu::Memory;
 pub const AUDIO_SAMPLE_RATE: u32 = 48_000;
 pub const AUDIO_CHANNELS: u32 = 2; // Stereo
 
-/// Emulates the Horizon OS `audout:u` / `audren` 48kHz Stereo 16-bit PCM Audio Engine.
+/// Horizon OS `audout:u` / `audren` 48kHz Stereo 16-bit PCM Audio Sink Implementation.
 #[derive(Debug)]
 pub struct AudioOutServer {
     pub sample_rate: u32,

@@ -16,7 +16,7 @@
 
 `ounce-core` is an open-source, clean-room systems research runtime and architecture compatibility layer for the **NVIDIA Tegra T239 ("Drake") SoC** and **Horizon OS 64-bit ABI**. Written entirely in pure safe Rust, the project models the hardware subsystems, virtual memory management, instruction execution, and microkernel supervisor interfaces of next-generation ARMv8-A platforms.
 
-> **Project Scope**: `ounce-core` is developed strictly as a systems architecture research platform and interoperability compatibility layer. It provides clean-room binary execution, container auditing, and hardware emulation primitives for educational and diagnostic research. It is not an end-user video game distribution software.
+> **Project Scope**: `ounce-core` is developed strictly as a systems architecture research platform and interoperability compatibility layer. It provides clean-room binary execution, container auditing, and hardware simulation and translation primitives for educational and diagnostic research. It is not an end-user video game distribution software.
 
 ---
 
@@ -63,7 +63,7 @@ Development of `ounce-core` strictly follows established clean-room reverse-engi
    └─────────────────────────────────────────────────────────────────────────────┘
 ```
 - **Octa-Core Topology**: Models 8× ARM Cortex-A78C cores running an authentic preemptive thread scheduler with SMP core affinity masks (`0xFF`).
-- **ISA Security Features**: Emulates ARMv8.3-A Pointer Authentication (PAC) preventing return-oriented programming (ROP) and ARMv8.5-A Branch Target Identification (BTI) enforcing landing-pad validation.
+- **ISA Security Features**: Models ARMv8.3-A Pointer Authentication (PAC) preventing return-oriented programming (ROP) and ARMv8.5-A Branch Target Identification (BTI) enforcing landing-pad validation.
 - **Dual-Tier Execution**: Tier-1 Basic-Block Translation Cache maps guest basic blocks into pre-decoded fast-paths; Tier-2 Direct-Chained JIT eliminates interpreter dispatch loop overhead for hot jump targets.
 
 ### 2. Graphics Processing Unit (GPU) & NVN Driver HLE
@@ -81,7 +81,7 @@ Development of `ounce-core` strictly follows established clean-room reverse-engi
    │  • Graphics Pipeline: Double-Buffered 32-bit RGBA8888 VRAM + Z-Buffer Depth │
    └─────────────────────────────────────────────────────────────────────────────┘
 ```
-- **Official NVN Driver HLE**: Provides complete high-level emulation for Nintendo Switch 2's primary graphics API (`NvnCommandBuffer`, `NvnMemoryPool`, `NvnTexturePool`), communicating via fast-path `SVC #0x2D` (`svcNvnSubmitCommandBuffer`) and `nvdrv` `IOCTL_NVN_SUBMIT` (`0xC018_4E01`).
+- **Official NVN Driver HLE**: Provides high-level implementation (HLE) for NVIDIA Tegra T239's primary graphics API (`NvnCommandBuffer`, `NvnMemoryPool`, `NvnTexturePool`), communicating via fast-path `SVC #0x2D` (`svcNvnSubmitCommandBuffer`) and `nvdrv` `IOCTL_NVN_SUBMIT` (`0xC018_4E01`).
 - **Ampere SASS Transpiler**: Decompiles native Ampere SM87 shader bytecode into validated Vulkan SPIR-V 1.5 binaries (`0x07230203`) with hardware LUT evaluation (`LOP3.LUT`), condition code predicates (`ISETP`/`FSETP`), and mathematical function units (`MUFU`).
 - **Hardware Tensor DLSS**: Embedded edge-directed tensor reconstruction upscaling 540p handheld renders to 1080p and 1080p docked renders to 4K.
 
@@ -169,7 +169,7 @@ ounce-core/
 │   ├── loader/       # Container parsers (XCI, NSP, PFS0, HFS0, NCA3, NSO0, NRO0, NPDM, Loose Folders)
 │   ├── mmu/          # Sparse 4KB page-table memory management unit & virtual address regions
 │   ├── ui/           # Headless Package Inspector and CLI visual telemetry
-│   └── main.rs       # Entry point, CLI dispatcher, and 23-stage integration verification harness
+│   └── main.rs       # Entry point, CLI dispatcher, and 24-stage integration verification harness
 ├── Cargo.toml        # Minimal pure-Rust dependency configuration
 └── README.md         # Architecture specification and technical documentation
 ```
@@ -178,7 +178,7 @@ ounce-core/
 
 ## Verified Integration Verification Suite
 
-The repository includes a comprehensive 23-stage full-stack integration verification harness (`cargo run --release -- test`) and 50 granular unit tests (`cargo test --release`):
+The repository includes a comprehensive 24-stage full-stack integration verification harness (`cargo run --release -- test`) and 52 granular unit tests (`cargo test --release`):
 
 | Stage | Subsystem Under Verification | Verification Vector / Exit Assertion |
 | :---: | :--- | :--- |
@@ -205,6 +205,7 @@ The repository includes a comprehensive 23-stage full-stack integration verifica
 | **21** | Loose Package & NPDM Discovery | Parses `main.npdm`, links multi-module NSOs, and mounts loose RomFS trees (Exit: `0xBBB`) |
 | **22** | Commercial Bootstrap HAL | BFTTF shared fonts (`pl:u`), epoch clock (`time:u`), ASTC 4x4 decompression (Exit: `0xCCC`) |
 | **23** | Commercial Applet & GPU HAL | `IApplicationFunctions`, `ISelfController`, Ampere characteristics, ASTC 8x8 (Exit: `0xDDD`) |
+| **24** | Commercial Shader & Ring HAL | FP16 SASS vector math (`HADD2`, `HMUL2`, `HFMA2`), dynamic NVN buffer cycle (Exit: `0xEEE`) |
 
 ---
 
@@ -222,13 +223,13 @@ The repository includes a comprehensive 23-stage full-stack integration verifica
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core
 
-# Execute all 50 unit tests
+# Execute all 52 unit tests
 cargo test --release
 
 # Display hardware architecture specifications and engine status
 cargo run --release -- info
 
-# Execute the 23-stage full-stack integration verification suite
+# Execute the 24-stage full-stack integration verification suite
 cargo run --release -- test
 
 # Audit package headers, NPDM metadata, or unencrypted loose dump directories
