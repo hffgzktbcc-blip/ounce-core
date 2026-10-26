@@ -337,7 +337,7 @@ fn print_specs() {
     print_row(&s, "GameCard Media      : ", "Switch 2 64GB High-Speed GameCard (.xci / HEAD at 0x100 / HFS0)");
     print_row(&s, "Digital Packages    : ", "Nintendo Submission Package (.nsp / PFS0 Hierarchical Archive)");
     print_row(&s, "Loose Folders       : ", "Unencrypted ExeFS/RomFS Dumps (OunceCake / Atmosphere Direct Boot)");
-    print_row(&s, "Decryption Engine   : ", "AES-128-CTR Multi-Section Decryption (user-supplied keys)");
+    print_row(&s, "Decryption Engine   : ", "Synthetic test vector decryption (commercial retail decryption disabled)");
     print_row(&s, "RomFS Filesystem    : ", "Level 3 Directory & File Hash Tables with Hierarchical Trees");
     print_box_bottom(&s);
     println!();
@@ -353,7 +353,7 @@ fn print_specs() {
     print_box_top(&s, "Compliance & Security Verification");
     print_row(&s, "Distribution Status: ", "No proprietary keys, firmware, or game data are distributed");
     print_row(&s, "Zero-Key Engine     : ", "Runs homebrew binaries without requiring extracted prod.keys");
-    let val_validation = format!("{}52 Unit Tests PASS{} · {}24 Integration Stages PASS (0xEEE){}", s.green, s.reset, s.green, s.reset);
+    let val_validation = format!("{}50 Unit Tests PASS{} · {}24 Integration Stages PASS (0xEEE){}", s.green, s.reset, s.green, s.reset);
     print_row(&s, "Validation Status   : ", &val_validation);
     let val_source = format!("{}https://github.com/hffgzktbcc-blip/ounce-core{}", s.cyan, s.reset);
     print_row(&s, "Official Source     : ", &val_source);

@@ -11,6 +11,12 @@ pub const HFS0_MAGIC: u32 = 0x30534648; // "HFS0" in Little Endian
 pub const XCI_HEAD_MAGIC: u32 = 0x44414548; // "HEAD" in Little Endian (at offset 0x100)
 pub const NCA3_MAGIC: u32 = 0x3341434E; // "NCA3" in Little Endian
 
+/// NIST FIPS 197 reference test key used exclusively for synthetic container testing.
+pub const SYNTHETIC_TEST_KEY: [u8; 16] = [
+    0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
+    0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
+];
+
 #[derive(Debug, Clone)]
 pub struct Pfs0FileEntry {
     pub name: String,
@@ -347,7 +353,14 @@ pub struct NcaImage {
 
 impl NcaImage {
     /// Parses an NCA3 image and decrypts Section 0 (ExeFS) and Section 1 (RomFS) using AES-128-CTR.
+    /// In accordance with clean-room policy, decryption is restricted strictly to synthetic test vectors.
     pub fn parse_and_decrypt(raw: &[u8], section_key: &[u8; 16]) -> Result<Self, LoadError> {
+        if section_key != &SYNTHETIC_TEST_KEY {
+            return Err(LoadError::RestrictedCipher(
+                "Commercial retail key decryption is disabled by policy. Container decryption is restricted strictly to synthetic test images. For research binaries, provide unencrypted loose packages.".into(),
+            ));
+        }
+
         if raw.len() < 0x400 {
             return Err(LoadError::TooSmall);
         }
@@ -790,5 +803,18 @@ mod tests {
 
         let cfg = vfs.get_file("romfs:/config/game.json").expect("game.json mounted");
         assert_eq!(cfg, b"{\"title\":\"Switch 2 Game\",\"fps\":60}");
+    }
+
+    #[test]
+    fn test_commercial_key_decryption_rejected_by_policy() {
+        let dummy_nca = vec![0u8; 0x1000];
+        let non_synthetic_key = [0x99u8; 16]; // Simulated retail/custom key
+        let res = NcaImage::parse_and_decrypt(&dummy_nca, &non_synthetic_key);
+        match res {
+            Err(LoadError::RestrictedCipher(msg)) => {
+                assert!(msg.contains("Commercial retail key decryption is disabled"));
+            }
+            _ => panic!("Expected RestrictedCipher error for non-synthetic key"),
+        }
     }
 }

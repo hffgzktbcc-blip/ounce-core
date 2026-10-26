@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_package_inspector_romfs_extraction() {
-        let key: [u8; 16] = [0x2b; 16];
+        let key = crate::loader::nca::SYNTHETIC_TEST_KEY;
         let iv0: [u8; 16] = [0x10; 16];
         let iv1: [u8; 16] = [0x20; 16];
 

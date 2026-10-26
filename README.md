@@ -157,7 +157,7 @@ cargo run --release -- 3d 120                    # Software rasterizer benchmark
 ## Known Issues
 
 - **Git history.** Earlier commits (for example `1c1d7c8` and `603a5f3`) contain third-party-derived byte sequences and two binary test files that were later deleted (`ns2jb_ro_payload.bin`, `switch2_showcase.nsp`). Current source does not contain them, but the history does. Removing them requires rewriting published history.
-- **Commercial container decryption.** `loader/nca.rs` and `crypto/` can decrypt NCA sections when the user supplies keys. Decrypting encrypted commercial software can fall under anti-circumvention law in some jurisdictions. This has not been reviewed by counsel.
+- **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
 - **License scope.** The MIT license applies to this tree. It does not clear any third-party material still present in git history.
 
 ---
