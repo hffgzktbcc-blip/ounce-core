@@ -1,6 +1,6 @@
 # M4 design: Tier-4 native recompiler
 
-Status: **draft, awaiting approval.** No code until the user approves this document.
+Status: **approved 2026-10-26** (recommended options: Cranelift, memory plan A then B, `native-jit` + `--cpu=`, workspace). Step 1 in progress.
 Date: 2026-10-26. Base: `main` @ 4ecacae (v0.3.1, 25 stages `0xEEE`, `#![forbid(unsafe_code)]` in `src/main.rs`).
 
 ## 1. Goal and scope
