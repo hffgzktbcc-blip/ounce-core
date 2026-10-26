@@ -3,6 +3,8 @@
 /// Nvidia Ampere (`SM86` / Tegra T239 "Drake") SASS Shader Decompiler,
 /// GLSL 450 Transpiler, & Binary Vulkan SPIR-V 1.5 (`0x07230203`) Bytecode Emitter.
 
+use crate::gpu::tensor::HmmaShape;
+
 pub const SPIRV_MAGIC: u32 = 0x0723_0203;
 pub const SPIRV_VERSION_1_5: u32 = 0x0001_0500;
 
@@ -120,8 +122,36 @@ pub enum SassOp {
     HMul2 { rd: u8, rn: u8, rm: u8 },
     /// `HFMA2 Rd, Rn, Rm, Ra` — FP16x2 Fused Multiply-Add: `R[rd] = R[rn] * R[rm] + R[ra]`
     HFma2 { rd: u8, rn: u8, rm: u8, ra: u8 },
+    /// `HMMA.1688.F32.F16 Rd, Rn, Rm, Ra` — warp-level tensor core matrix
+    /// multiply-accumulate, shape `m16n8k8`, FP16 multiplicands and FP32
+    /// accumulate. `Rn` names the lane's 4-register `A` fragment, `Rm` its
+    /// 2-register `B` fragment, `Ra` the 4-register `C` fragment and `Rd` the
+    /// 4-register `D` fragment.
+    ///
+    /// Semantics follow the public PTX instruction
+    /// `mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32`; the arithmetic lives
+    /// in [`crate::gpu::tensor`]. See that module for the sourcing note: no
+    /// public NVIDIA specification documents the real `HMMA` SASS encoding, so
+    /// the opcode byte below is this project's own synthetic test encoding.
+    Hmma1688 { rd: u8, rn: u8, rm: u8, ra: u8 },
+    /// `HMMA.16816.F32.F16 Rd, Rn, Rm, Ra` — as [`SassOp::Hmma1688`] but shape
+    /// `m16n8k16`, with an 8-register `A` fragment and a 4-register `B`
+    /// fragment per lane (public PTX
+    /// `mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32`).
+    Hmma16816 { rd: u8, rn: u8, rm: u8, ra: u8 },
     /// `EXIT` — End of shader program
     Exit,
+}
+
+impl SassOp {
+    /// The tensor core MMA shape this op issues, if it is an `HMMA`.
+    pub fn hmma_shape(&self) -> Option<HmmaShape> {
+        match self {
+            SassOp::Hmma1688 { .. } => Some(HmmaShape::M16N8K8),
+            SassOp::Hmma16816 { .. } => Some(HmmaShape::M16N8K16),
+            _ => None,
+        }
+    }
 }
 
 /// 128-bit Nvidia Ampere `SM86` Predicated Instruction (`@P0`..`@PT`)
@@ -246,6 +276,20 @@ impl SassOp {
                     | ((rm as u64) << 32)
                     | ((ra as u64) << 24)
             }
+            SassOp::Hmma1688 { rd, rn, rm, ra } => {
+                (0x0Eu64 << 56)
+                    | ((rd as u64) << 48)
+                    | ((rn as u64) << 40)
+                    | ((rm as u64) << 32)
+                    | ((ra as u64) << 24)
+            }
+            SassOp::Hmma16816 { rd, rn, rm, ra } => {
+                (0x0Fu64 << 56)
+                    | ((rd as u64) << 48)
+                    | ((rn as u64) << 40)
+                    | ((rm as u64) << 32)
+                    | ((ra as u64) << 24)
+            }
             SassOp::Exit => 0xFFu64 << 56,
         }
     }
@@ -307,6 +351,8 @@ impl SassOp {
             0x0B => Some(SassOp::HAdd2 { rd, rn, rm }),
             0x0C => Some(SassOp::HMul2 { rd, rn, rm }),
             0x0D => Some(SassOp::HFma2 { rd, rn, rm, ra }),
+            0x0E => Some(SassOp::Hmma1688 { rd, rn, rm, ra }),
+            0x0F => Some(SassOp::Hmma16816 { rd, rn, rm, ra }),
             0xFF => Some(SassOp::Exit),
             _ => None,
         }
@@ -610,6 +656,21 @@ impl SassShaderDecompiler {
                     let prod = spv.emit_fmul(f32_ty, a, b);
                     reg_ids[(rd & 0xF) as usize] = spv.emit_fadd(f32_ty, prod, c);
                 }
+                // A warp-level MMA has no plain SPIR-V 1.5 equivalent: the
+                // cross-lane reduction needs a cooperative-matrix extension.
+                // The full operation is executed by `gpu::tensor`; what is
+                // emitted here is the lane-local partial product written into
+                // the four accumulator registers, so the module stays valid.
+                SassOp::Hmma1688 { rd, rn, rm, ra } | SassOp::Hmma16816 { rd, rn, rm, ra } => {
+                    let a = reg_ids[(rn & 0xF) as usize];
+                    let b = reg_ids[(rm & 0xF) as usize];
+                    let prod = spv.emit_fmul(f32_ty, a, b);
+                    for i in 0..4u8 {
+                        let c = reg_ids[(ra.wrapping_add(i) & 0xF) as usize];
+                        reg_ids[(rd.wrapping_add(i) & 0xF) as usize] =
+                            spv.emit_fadd(f32_ty, prod, c);
+                    }
+                }
                 SassOp::Exit => break,
             }
         }
@@ -705,6 +766,38 @@ impl SassShaderDecompiler {
                         "    R[{}] = fma(R[{}], R[{}], R[{}]); // HFMA2 FP16x2\n",
                         rd, rn, rm, ra
                     ));
+                }
+                SassOp::Hmma1688 { rd, rn, rm, ra } | SassOp::Hmma16816 { rd, rn, rm, ra } => {
+                    // `unwrap_or` is unreachable: both arms carry a shape.
+                    let shape = op.hmma_shape().unwrap_or(HmmaShape::M16N8K8);
+                    out.push_str(&format!(
+                        "    // {} ({})\n",
+                        shape.mnemonic(),
+                        shape.ptx_mnemonic()
+                    ));
+                    out.push_str(&format!(
+                        "    // Warp-level MMA: A frag R[{}..{}], B frag R[{}..{}], C frag R[{}..{}] -> D frag R[{}..{}]\n",
+                        rn,
+                        rn as usize + shape.a_regs_per_lane() - 1,
+                        rm,
+                        rm as usize + shape.b_regs_per_lane() - 1,
+                        ra,
+                        ra as usize + shape.cd_regs_per_lane() - 1,
+                        rd,
+                        rd as usize + shape.cd_regs_per_lane() - 1,
+                    ));
+                    out.push_str(
+                        "    // GLSL 450 has no cross-lane matrix reduction; the warp operation is\n    // executed by the gpu::tensor model. Emitted below is the lane-local partial only.\n",
+                    );
+                    for i in 0..shape.cd_regs_per_lane() {
+                        out.push_str(&format!(
+                            "    R[{}] = fma(R[{}], R[{}], R[{}]);\n",
+                            rd as usize + i,
+                            rn,
+                            rm,
+                            ra as usize + i
+                        ));
+                    }
                 }
                 SassOp::Exit => {
                     out.push_str("    o_fragColor = vec4(R[0], R[1], R[2], R[3]);\n");
@@ -810,6 +903,54 @@ mod tests {
         assert!(decompiled.glsl_source.contains("R[3] = R[0] + R[1]; // HADD2 FP16x2"));
         assert!(decompiled.glsl_source.contains("R[4] = R[0] * R[1]; // HMUL2 FP16x2"));
         assert!(decompiled.glsl_source.contains("R[5] = fma(R[0], R[1], R[2]); // HFMA2 FP16x2"));
+
+        assert_eq!(decompiled.spirv_words[0], SPIRV_MAGIC);
+        assert_eq!(decompiled.spirv_words[1], SPIRV_VERSION_1_5);
+        assert!(decompiled.spirv_words.len() > 20);
+    }
+
+    #[test]
+    fn test_ampere_hmma_tensor_core_opcodes() {
+        let program = vec![
+            // HMMA.1688.F32.F16 R8, R0, R4, R8 (A frag R0..R3, B frag R4..R5)
+            SassOp::Hmma1688 { rd: 8, rn: 0, rm: 4, ra: 8 }.encode(),
+            // HMMA.16816.F32.F16 R12, R0, R8, R12 (A frag R0..R7, B frag R8..R11)
+            SassOp::Hmma16816 { rd: 12, rn: 0, rm: 8, ra: 12 }.encode(),
+            SassOp::Exit.encode(),
+        ];
+
+        // Round-trip through the synthetic 64-bit encoding.
+        let decompiled = SassShaderDecompiler::decompile(&program);
+        assert_eq!(decompiled.ops.len(), 3);
+        assert_eq!(
+            decompiled.ops[0],
+            SassOp::Hmma1688 { rd: 8, rn: 0, rm: 4, ra: 8 }
+        );
+        assert_eq!(
+            decompiled.ops[1],
+            SassOp::Hmma16816 { rd: 12, rn: 0, rm: 8, ra: 12 }
+        );
+        assert_eq!(decompiled.ops[0].hmma_shape(), Some(HmmaShape::M16N8K8));
+        assert_eq!(decompiled.ops[1].hmma_shape(), Some(HmmaShape::M16N8K16));
+        assert_eq!(SassOp::Exit.hmma_shape(), None);
+
+        // 128-bit predicated form round-trips too (@P1 HMMA.16816).
+        let sm86 = Sm86PredicatedInsn {
+            pred_reg: 1,
+            pred_invert: false,
+            op: SassOp::Hmma16816 { rd: 12, rn: 0, rm: 8, ra: 12 },
+        };
+        assert_eq!(Sm86PredicatedInsn::decode_u128(sm86.encode_u128()).unwrap(), sm86);
+
+        // GLSL names the shape and the public PTX equivalent it models.
+        assert!(decompiled.glsl_source.contains("HMMA.1688.F32.F16"));
+        assert!(
+            decompiled
+                .glsl_source
+                .contains("mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32")
+        );
+        assert!(decompiled.glsl_source.contains("A frag R[0..7]"));
+        assert!(decompiled.glsl_source.contains("R[8] = fma(R[0], R[4], R[8]);"));
 
         assert_eq!(decompiled.spirv_words[0], SPIRV_MAGIC);
         assert_eq!(decompiled.spirv_words[1], SPIRV_VERSION_1_5);

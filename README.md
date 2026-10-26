@@ -90,7 +90,7 @@ ounce-core/
 │   ├── loader/       # Container parsers and synthetic image builders
 │   ├── mmu/          # Paged memory model
 │   ├── ui/           # Headless package inspector and CLI telemetry
-│   └── main.rs       # CLI and the 24-stage integration harness
+│   └── main.rs       # CLI and the 25-stage integration harness
 ├── Cargo.toml
 └── README.md
 ```
@@ -101,7 +101,7 @@ ounce-core/
 
 ```bash
 cargo test --release            # unit tests
-cargo run --release -- test     # 24-stage integration harness
+cargo run --release -- test     # 25-stage integration harness
 ```
 
 The harness runs synthetic AArch64 programs through the CPU, kernel and service models. Each stage passes when its guest program returns the expected exit code. Host timings are printed for information only.
@@ -132,6 +132,7 @@ The harness runs synthetic AArch64 programs through the CPU, kernel and service 
 | 22 | Shared font & clock | `pl:u` placeholder mapping, `time:u`, ASTC 4×4 | `0xCCC` |
 | 23 | Applet & GPU model | `IApplicationFunctions`, `ISelfController`, ASTC 8×8 | `0xDDD` |
 | 24 | FP16 SASS & NVN ring | FP16 SASS vector math (`HADD2`, `HMUL2`, `HFMA2`), dynamic NVN buffer cycling | `0xEEE` |
+| 25 | Tensor core MMA | Warp-level FP16 matrix multiply-accumulate (`HMMA.1688`, `HMMA.16816`) with FP32 accumulate, checked against IEEE binary16 vectors | `0xEEE` |
 
 ---
 
@@ -148,7 +149,7 @@ The harness runs synthetic AArch64 programs through the CPU, kernel and service 
 
 ```bash
 cargo run --release -- info                      # Show modelled hardware and engine status
-cargo run --release -- test                      # Run the 24-stage harness
+cargo run --release -- test                      # Run the 25-stage harness
 cargo run --release -- inspect ./dumps/title     # Inspect a user-supplied unencrypted directory
 cargo run --release -- run ./dumps/title --gui   # Boot an unencrypted loose directory in a window
 cargo run --release -- demo-dir ./demo --gui     # Generate a synthetic loose package and boot it
@@ -172,4 +173,4 @@ cargo run --release -- gfx 60 --present=headless # No window; OUNCE_DUMP_FRAMES=
 
 ## Contributing
 
-Changes must keep the test suite and the 24-stage harness passing. New test inputs must be synthetic or written by hand from the public AArch64 and SPIR-V specifications. Do not add firmware, keys, game content, or code or data copied from other projects.
+Changes must keep the test suite and the 25-stage harness passing. New test inputs must be synthetic or written by hand from the public AArch64 and SPIR-V specifications. Do not add firmware, keys, game content, or code or data copied from other projects.
