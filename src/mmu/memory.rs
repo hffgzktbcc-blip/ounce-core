@@ -99,12 +99,24 @@ impl Memory {
     }
 
     /// Allocate and map a contiguous virtual memory range.
+    ///
+    /// Accounts for intra-page byte offsets (`base_addr & (PAGE_SIZE - 1)`), ensuring that
+    /// multi-page unaligned ranges intersecting page boundaries map all required pages.
     pub fn map_range(&mut self, base_addr: u64, size: usize, perm: Permission) {
+        if size == 0 {
+            return;
+        }
+
         let start_page = base_addr >> 12;
-        let num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+        let page_offset = (base_addr as usize) & (PAGE_SIZE - 1);
+        let num_pages = ((page_offset as u128 + size as u128 + (PAGE_SIZE as u128 - 1))
+            / (PAGE_SIZE as u128)) as usize;
 
         for i in 0..num_pages {
-            let page_idx = start_page + i as u64;
+            let page_idx = match start_page.checked_add(i as u64) {
+                Some(idx) => idx,
+                None => break,
+            };
             self.pages.insert(page_idx, Page::new(perm));
         }
     }
@@ -232,5 +244,203 @@ impl Memory {
         let mut buf = [0u8; 8];
         LittleEndian::write_u64(&mut buf, val);
         self.write_bytes(addr, &buf)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_range_zero_size() {
+        let mut mmu = Memory::new();
+        mmu.map_range(0x1000, 0, Permission::READ_WRITE);
+        mmu.map_range(0x1FFF, 0, Permission::READ_WRITE);
+        assert_eq!(mmu.pages.len(), 0);
+        assert!(!mmu.is_mapped(0x1000));
+        assert!(!mmu.is_mapped(0x1FFF));
+        assert_eq!(mmu.bucket_stats().total_pages, 0);
+    }
+
+    #[test]
+    fn test_map_range_aligned_single_and_multi_page() {
+        let mut mmu = Memory::new();
+        // 1 page at 0x1000..0x2000
+        mmu.map_range(0x1000, PAGE_SIZE, Permission::READ_WRITE);
+        assert_eq!(mmu.pages.len(), 1);
+        assert!(mmu.is_mapped(0x1000));
+        assert!(mmu.is_mapped(0x1FFF));
+        assert!(!mmu.is_mapped(0x2000));
+
+        // 2 pages at 0x4000..0x6000
+        mmu.map_range(0x4000, PAGE_SIZE * 2, Permission::READ_ONLY);
+        assert_eq!(mmu.pages.len(), 3);
+        assert!(mmu.is_mapped(0x4000));
+        assert!(mmu.is_mapped(0x5FFF));
+        assert!(!mmu.is_mapped(0x6000));
+    }
+
+    #[test]
+    fn test_map_range_unaligned_single_page() {
+        let mut mmu = Memory::new();
+        // 0x1001..0x1500 (inside page 1)
+        mmu.map_range(0x1001, 0x4FF, Permission::READ_WRITE);
+        assert_eq!(mmu.pages.len(), 1);
+        assert!(mmu.is_mapped(0x1000));
+        assert!(!mmu.is_mapped(0x2000));
+
+        // 0x1FFF..0x2000 (last byte of page 1, size = 1)
+        let mut mmu2 = Memory::new();
+        mmu2.map_range(0x1FFF, 1, Permission::READ_WRITE);
+        assert_eq!(mmu2.pages.len(), 1);
+        assert!(mmu2.is_mapped(0x1FFF));
+        assert!(!mmu2.is_mapped(0x2000));
+    }
+
+    #[test]
+    fn test_map_range_unaligned_two_pages_boundary_crossing() {
+        let mut mmu = Memory::new();
+        // R3 core requirement: 2 bytes across 0x1FFF..0x2001
+        mmu.map_range(0x1FFF, 2, Permission::READ_WRITE);
+
+        assert_eq!(mmu.pages.len(), 2, "Both intersecting pages must be mapped");
+        assert!(mmu.is_mapped(0x1FFF), "Page 1 must be mapped");
+        assert!(mmu.is_mapped(0x2000), "Page 2 must be mapped");
+        assert_eq!(mmu.bucket_stats().total_pages, 2);
+
+        // Byte operations across boundary
+        mmu.write_bytes(0x1FFF, &[0xDE, 0xAD]).unwrap();
+        let mut read_buf = [0u8; 2];
+        mmu.read_bytes(0x1FFF, &mut read_buf).unwrap();
+        assert_eq!(read_buf, [0xDE, 0xAD]);
+
+        // Scalar u16 across boundary
+        mmu.write_u16(0x1FFF, 0xBEEF).unwrap();
+        assert_eq!(mmu.read_u16(0x1FFF).unwrap(), 0xBEEF);
+
+        // Verify byte distribution in little endian
+        assert_eq!(mmu.read_u8(0x1FFF).unwrap(), 0xEF);
+        assert_eq!(mmu.read_u8(0x2000).unwrap(), 0xBE);
+    }
+
+    #[test]
+    fn test_map_range_unaligned_multi_page_three_pages() {
+        let mut mmu = Memory::new();
+        // 0x1FFF..0x3001 (size = 4098): 1 byte in Page 1, 4096 in Page 2, 1 byte in Page 3
+        mmu.map_range(0x1FFF, 4098, Permission::READ_WRITE);
+
+        assert_eq!(mmu.pages.len(), 3, "Three intersecting pages must be mapped");
+        assert!(mmu.is_mapped(0x1FFF));
+        assert!(mmu.is_mapped(0x2000));
+        assert!(mmu.is_mapped(0x3000));
+        assert!(!mmu.is_mapped(0x4000));
+
+        mmu.write_u8(0x1FFF, 0x11).unwrap();
+        mmu.write_u8(0x2800, 0x22).unwrap();
+        mmu.write_u8(0x3000, 0x33).unwrap();
+
+        assert_eq!(mmu.read_u8(0x1FFF).unwrap(), 0x11);
+        assert_eq!(mmu.read_u8(0x2800).unwrap(), 0x22);
+        assert_eq!(mmu.read_u8(0x3000).unwrap(), 0x33);
+    }
+
+    #[test]
+    fn test_cross_page_scalar_reads_and_writes() {
+        let mut mmu = Memory::new();
+        mmu.map_range(0x1000, PAGE_SIZE * 2, Permission::READ_WRITE);
+
+        // Cross-page u32: 0x1FFE (2 bytes in page 1, 2 bytes in page 2)
+        mmu.write_u32(0x1FFE, 0x12345678).unwrap();
+        assert_eq!(mmu.read_u32(0x1FFE).unwrap(), 0x12345678);
+        assert_eq!(mmu.read_u8(0x1FFE).unwrap(), 0x78);
+        assert_eq!(mmu.read_u8(0x1FFF).unwrap(), 0x56);
+        assert_eq!(mmu.read_u8(0x2000).unwrap(), 0x34);
+        assert_eq!(mmu.read_u8(0x2001).unwrap(), 0x12);
+
+        // Cross-page u64: 0x1FFC (4 bytes in page 1, 4 bytes in page 2)
+        mmu.write_u64(0x1FFC, 0x0123456789ABCDEF).unwrap();
+        assert_eq!(mmu.read_u64(0x1FFC).unwrap(), 0x0123456789ABCDEF);
+    }
+
+    #[test]
+    fn test_permission_checks_across_page_boundary() {
+        let mut mmu = Memory::new();
+        // Page 1: READ_WRITE
+        mmu.map_range(0x1000, PAGE_SIZE, Permission::READ_WRITE);
+        // Page 2: READ_ONLY
+        mmu.map_range(0x2000, PAGE_SIZE, Permission::READ_ONLY);
+
+        // Read across boundary: both have read permission -> Ok
+        mmu.write_u8(0x1FFF, 0xAA).unwrap();
+        let val = mmu.read_u16(0x1FFF);
+        assert!(val.is_ok());
+
+        // Write across boundary: Page 2 lacks write permission -> Err
+        let write_res = mmu.write_u16(0x1FFF, 0xBBBB);
+        match write_res {
+            Err(MemoryError::PermissionDenied { addr, required, actual }) => {
+                assert_eq!(addr, 0x2000);
+                assert_eq!(required, "WRITE");
+                assert_eq!(actual, Permission::READ_ONLY);
+            }
+            other => panic!("Expected PermissionDenied at 0x2000, got {:?}", other),
+        }
+
+        // Page 3: NONE
+        mmu.map_range(0x3000, PAGE_SIZE, Permission::NONE);
+        let read_p3 = mmu.read_u16(0x2FFF);
+        match read_p3 {
+            Err(MemoryError::PermissionDenied { addr, required, actual }) => {
+                assert_eq!(addr, 0x3000);
+                assert_eq!(required, "READ");
+                assert_eq!(actual, Permission::NONE);
+            }
+            other => panic!("Expected PermissionDenied at 0x3000, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_unmapped_access_across_page_boundary() {
+        let mut mmu = Memory::new();
+        // Only page 1 is mapped
+        mmu.map_range(0x1000, PAGE_SIZE, Permission::READ_WRITE);
+
+        // Attempt read across boundary into unmapped page 2
+        match mmu.read_u16(0x1FFF) {
+            Err(MemoryError::Unmapped { addr }) => assert_eq!(addr, 0x2000),
+            other => panic!("Expected Unmapped at 0x2000, got {:?}", other),
+        }
+
+        // Attempt write across boundary into unmapped page 2
+        match mmu.write_u16(0x1FFF, 0x42) {
+            Err(MemoryError::Unmapped { addr }) => assert_eq!(addr, 0x2000),
+            other => panic!("Expected Unmapped at 0x2000, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_unaligned_mapping_preserves_telemetry_buckets() {
+        let mut mmu = Memory::new();
+        // Map 2 unaligned pages in VRAM region (0x9000_0000..0xA000_0000)
+        mmu.map_range(0x9000_0FFF, 2, Permission::READ_WRITE);
+        let stats = mmu.bucket_stats();
+        assert_eq!(stats.total_pages, 2);
+        assert_eq!(stats.vram_bytes, PAGE_SIZE * 2);
+        assert_eq!(stats.total_bytes, PAGE_SIZE * 2);
+    }
+
+    #[test]
+    fn test_map_range_arithmetic_overflow_safety() {
+        let mut mmu = Memory::new();
+        // High 64-bit address space (0x7FFF_FFFF_EFFF)
+        mmu.map_range(0x7FFF_FFFF_EFFF, 2, Permission::READ_WRITE);
+        assert_eq!(mmu.pages.len(), 2);
+        assert!(mmu.is_mapped(0x7FFF_FFFF_E000));
+        assert!(mmu.is_mapped(0x7FFF_FFFF_F000));
+
+        // Near u64 boundary: start_page is 0x000F_FFFF_FFFF_FFFF
+        let mut mmu_top = Memory::new();
+        mmu_top.map_range(0xFFFF_FFFF_FFFF_FFF0, 32, Permission::READ_WRITE);
+        assert!(mmu_top.pages.len() >= 1);
     }
 }
