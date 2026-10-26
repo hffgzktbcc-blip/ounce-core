@@ -220,6 +220,8 @@ pub struct LooseBootInfo {
     pub modules_loaded: Vec<(String, u64, usize)>,
     pub romfs_files_mounted: usize,
     pub relocations_applied: usize,
+    /// Strong imports that no loaded module exports (resolved at runtime by `ro:1` on hardware).
+    pub unresolved_imports: Vec<String>,
     pub allowed_services_count: usize,
 }
 
@@ -317,23 +319,42 @@ impl LoosePackageLoader {
         kernel: &mut HorizonKernel,
     ) -> Result<LooseBootInfo, PackageError> {
         let mut modules_loaded = Vec::new();
-        let mut total_relocations = 0usize;
 
-        // 1. Load Main Executable (`main`)
+        // 1. Map every module's segments before relocating, so imports can resolve across modules.
+        //    `main` sits at `base_addr`; companions (`sdk`, `subsdk*`) follow in 64 MB slots.
         let main_bytes = fs::read(&package.main_nso)?;
-        let main_header = NroLoader::load_nso_into_memory(&main_bytes, base_addr, mmu)
+        NroLoader::load_nso_segments(&main_bytes, base_addr, mmu)
             .map_err(|e| PackageError::NsoLoad(format!("Failed to load 'main': {}", e)))?;
-
         modules_loaded.push(("main".to_string(), base_addr, main_bytes.len()));
-        total_relocations += main_header.relocations_applied;
+        let mut module_bases = vec![base_addr];
 
-        // 2. Load Companion Modules (`sdk`, `subsdk*`) at consecutive 16MB virtual slots
         for (i, (mod_name, mod_path)) in package.companion_nsos.iter().enumerate() {
             let mod_base = base_addr + ((i as u64 + 1) * 0x04000000);
             if let Ok(mod_bytes) = fs::read(mod_path) {
-                if let Ok(hdr) = NroLoader::load_nso_into_memory(&mod_bytes, mod_base, mmu) {
+                if NroLoader::load_nso_segments(&mod_bytes, mod_base, mmu).is_ok() {
                     modules_loaded.push((mod_name.clone(), mod_base, mod_bytes.len()));
-                    total_relocations += hdr.relocations_applied;
+                    module_bases.push(mod_base);
+                }
+            }
+        }
+
+        // 2. Build one export table. `main` is first, so its definitions win over duplicates.
+        let mut exports: HashMap<String, u64> = HashMap::new();
+        for &module_base in &module_bases {
+            for (name, addr) in NroLoader::collect_exports(module_base, mmu) {
+                exports.entry(name).or_insert(addr);
+            }
+        }
+
+        // 3. Relocate every module against the combined export table.
+        let mut total_relocations = 0usize;
+        let mut unresolved_imports: Vec<String> = Vec::new();
+        for &module_base in &module_bases {
+            let report = NroLoader::apply_relocations(module_base, mmu, &exports);
+            total_relocations += report.applied;
+            for name in report.unresolved {
+                if !unresolved_imports.contains(&name) {
+                    unresolved_imports.push(name);
                 }
             }
         }
@@ -371,6 +392,7 @@ impl LoosePackageLoader {
             modules_loaded,
             romfs_files_mounted,
             relocations_applied: total_relocations,
+            unresolved_imports,
             allowed_services_count,
         })
     }
@@ -400,6 +422,54 @@ mod tests {
         assert_eq!(parsed.default_cpu_core, 2);
         assert!(parsed.allowed_services.contains(&"sm:".to_string()));
         assert!(parsed.allowed_services.contains(&"nvdrv".to_string()));
+    }
+
+    #[test]
+    fn test_companion_imports_resolve_against_main_exports() {
+        use crate::loader::nro::{build_linked_nso, R_AARCH64_GLOB_DAT};
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ounce_test_link_{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let exefs = temp_dir.join("exefs");
+        fs::create_dir_all(&exefs).unwrap();
+
+        let npdm_bytes = NpdmDescriptor::create_synthetic(
+            "LinkDemo",
+            "OUNCE-P-LINK",
+            0x0100023900002027,
+            40,
+            0,
+            &["sm:", "fsp-srv"],
+        );
+        fs::write(exefs.join("main.npdm"), &npdm_bytes).unwrap();
+
+        // `main` exports `ounce_add` at +0x500.
+        let main_nso = build_linked_nso(&[("ounce_add", 1, 1, 0x500)], &[], &[]);
+        fs::write(exefs.join("main"), &main_nso).unwrap();
+
+        // `subsdk0` imports `ounce_add` (resolved from `main`) and `missing_hook` (exported by nobody).
+        let subsdk_nso = build_linked_nso(
+            &[("ounce_add", 0, 1, 0), ("missing_hook", 0, 1, 0)],
+            &[(0x300, R_AARCH64_GLOB_DAT, 1, 0), (0x308, R_AARCH64_GLOB_DAT, 2, 0)],
+            &[],
+        );
+        fs::write(exefs.join("subsdk0"), &subsdk_nso).unwrap();
+
+        let pkg = LoosePackageLoader::discover(&temp_dir).expect("Failed to discover loose package");
+        let mut mmu = Memory::new();
+        let mut kernel = HorizonKernel::new();
+        let base = 0x80000000u64;
+        let boot_info = LoosePackageLoader::load_into_kernel(&pkg, base, &mut mmu, &mut kernel)
+            .expect("Failed to load into kernel");
+
+        let subsdk_base = base + 0x04000000;
+        assert_eq!(mmu.read_u64(subsdk_base + 0x300).unwrap(), base + 0x500);
+        assert_eq!(boot_info.relocations_applied, 1);
+        assert_eq!(boot_info.unresolved_imports, vec!["missing_hook".to_string()]);
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]

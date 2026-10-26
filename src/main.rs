@@ -2221,6 +2221,11 @@ fn run_built_in_demo() {
                 m_name, m_addr, m_sz
             );
         }
+        println!(
+            "    -> Relocations: {} applied | Unresolved imports: {}",
+            boot_info.relocations_applied,
+            if boot_info.unresolved_imports.is_empty() { "none".to_string() } else { boot_info.unresolved_imports.join(", ") }
+        );
 
         let asset = kernel21
             .vfs

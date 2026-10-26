@@ -63,6 +63,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | Audio | Implemented | Software 64-voice mixer; real-time 48 kHz stereo host audio sink via `cpal`. |
 | Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs`. |
 | Containers | Implemented (parsing) | PFS0/NSP, HFS0/XCI, NCA3, NSO0, NRO0, NPDM, RomFS, unencrypted loose directories. |
+| Dynamic linking | Implemented (subset) | MOD0 `.dynamic` parsing; `R_AARCH64_RELATIVE`, `ABS64`, `GLOB_DAT`, `JUMP_SLOT`; imports resolved across modules in loose packages; unresolved imports reported. Not implemented: TLS relocations, `DT_GNU_HASH`, running `DT_INIT`/`DT_FINI`. |
 | Crypto | Implemented | AES-128 checked against FIPS-197 vectors. AES-128-CTR is used for NCA sections when the user supplies keys. |
 
 **Known limitations**
@@ -139,6 +140,7 @@ The harness runs synthetic AArch64 programs through the CPU, kernel and service 
 
 - Rust 1.85 or newer (edition 2024).
 - Host: `aarch64` or `x86_64`, Linux, macOS or Windows.
+- Prebuilt Linux binaries dynamically link to `libasound2` and `libudev1`. On Debian/Ubuntu: `sudo apt install libasound2 libudev1`.
 
 ### Commands
 
