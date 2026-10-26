@@ -1534,10 +1534,19 @@ dependencies = [
  "cpal",
  "gilrs",
  "minifb",
+ "ounce-recompiler",
  "pollster",
  "thiserror 2.0.21",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "ounce-recompiler"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
