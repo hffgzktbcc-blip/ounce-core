@@ -1,6 +1,6 @@
 # M4 design: Tier-4 native recompiler
 
-Status: **approved 2026-10-26** (recommended options: Cranelift, memory plan A then B, `native-jit` + `--cpu=`, workspace). Step 1 in progress.
+Status: **approved 2026-10-26** (recommended options: Cranelift, memory plan A then B, `native-jit` + `--cpu=`, workspace). Step 1 done (section 12).
 Date: 2026-10-26. Base: `main` @ 4ecacae (v0.3.1, 25 stages `0xEEE`, `#![forbid(unsafe_code)]` in `src/main.rs`).
 
 ## 1. Goal and scope
@@ -149,3 +149,13 @@ Each PR keeps the gates: default build unchanged, all unit tests, 25 stages `0xE
 2. Approve memory plan A then B, with fastmem (C) not planned.
 3. Approve the `native-jit` feature name and `--cpu=tier3|tier4` flag.
 4. Approve converting the root `Cargo.toml` into a workspace.
+
+## 12. Implementation notes
+
+Step 1 (workspace, crate skeleton, executable memory):
+- `crates/ounce-recompiler/src/exec.rs` holds all `unsafe`; `lib.rs` has `#![deny(unsafe_code)]`, so the compiler rejects `unsafe` anywhere else in the crate.
+- `ExecBuffer::seal` maps, copies once and seals. Buffers are never reopened for writing; step 2 adds an arena on the same rules.
+- Apple Silicon: macOS requires `MAP_JIT` regions to be mapped with `PROT_READ | PROT_WRITE | PROT_EXEC`; W^X is enforced per thread by `pthread_jit_write_protect_np`, which is toggled only around the copy. This is the one place the mapping itself is RWX.
+- Linux aarch64 uses inline `DC CVAU` / `IC IVAU` / `DSB ISH` / `ISB` (line sizes from `CTR_EL0`) rather than linking `__clear_cache`.
+- Cranelift is not a dependency yet; it arrives with step 2. Step 1's self-test emits a hand-written `return 42` per host (aarch64, x86_64).
+- Verified: x86_64 Linux locally (tests + `jit-selftest`); `cargo clippy` clean for `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`. Execution on macOS (Apple Silicon) and Windows is covered by the `native-jit` CI job.

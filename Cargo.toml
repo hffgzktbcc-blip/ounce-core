@@ -4,8 +4,15 @@ version = "0.3.1"
 edition = "2024"
 description = "Clean-room systems research runtime and architecture compatibility layer for NVIDIA Tegra T239 (Horizon OS FW 23.0.1 ABI)"
 
+[workspace]
+members = [".", "crates/ounce-recompiler"]
+# `cargo test` / `cargo run` at the root keep targeting ounce-core only.
+default-members = ["."]
+
 [features]
 default = []
+# Tier-4 native recompiler (M4, docs/design/m4-native-jit.md). Off by default.
+native-jit = ["dep:ounce-recompiler"]
 # Host GPU presentation (Vulkan on Linux/Windows, Metal on macOS) via wgpu.
 gpu-present = ["dep:wgpu", "dep:winit", "dep:pollster"]
 
@@ -14,6 +21,7 @@ byteorder = "1.5.0"
 cpal = "0.18.2"
 gilrs = "0.11.2"
 minifb = "0.29.0"
+ounce-recompiler = { path = "crates/ounce-recompiler", optional = true }
 pollster = { version = "0.4", optional = true }
 thiserror = "2.0.21"
 wgpu = { version = "30.0.1", optional = true }

@@ -75,5 +75,5 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - Safe Rust provenance: `grep -rn "unsafe" src` returns **0 hits**, strictly preserving `#![forbid(unsafe_code)]`.
 * **Next**:
   - Later milestone: translate NVN draws into host GPU work.
-  - M4 (Tier-4 native JIT in `crates/ounce-recompiler`): design approved, `docs/design/m4-native-jit.md`. Step 1 (workspace, crate skeleton, W^X exec buffer) in progress.
+  - M4 (Tier-4 native JIT in `crates/ounce-recompiler`): design approved, `docs/design/m4-native-jit.md`. Step 1 done on `claude/m4-exec-buffer`: root `Cargo.toml` is a workspace (default member = root), `crates/ounce-recompiler` with `unsafe` confined to `src/exec.rs` (`#![deny(unsafe_code)]` elsewhere), W^X `ExecBuffer` per host, `host_selftest()` returning 42, feature `native-jit`, command `jit-selftest`, CI job `native-jit` on Linux/macOS/Windows. Next: step 2 (IR + Cranelift lowering, callback memory, `--cpu=`). Code-write invalidation for the safe tiers is owned by the "Fix stale block cache on code writes" thread; Tier-4 hooks into it in step 4.
   - Build tooling note: building from source on Debian/Ubuntu needs `libasound2-dev libudev-dev`.

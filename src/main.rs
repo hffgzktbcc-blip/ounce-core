@@ -68,6 +68,7 @@ fn main() {
             print_banner();
             run_built_in_demo();
         }
+        "jit-selftest" => run_jit_selftest(),
         "gfx" | "display" => {
             print_banner();
             let max_frames = if args.len() >= 3 {
@@ -282,6 +283,7 @@ fn print_usage() {
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
     println!("    {}test{}                    Execute 25-stage full-stack verification & hardware benchmark suite", s.green, s.reset);
+    println!("    {}jit-selftest{}            Check that this host can run Tier-4 native code (needs --features native-jit)", s.green, s.reset);
     println!("    {}info{}                    Display comprehensive hardware architecture and engine status", s.green, s.reset);
     println!("    {}help{}                    Display this command-line manual and option reference", s.green, s.reset);
     println!();
@@ -3574,5 +3576,26 @@ mod harness_gate_tests {
         assert!(!gate.expect(6, "host check", false));
         assert_eq!(gate.passed, 2);
         assert_eq!(gate.failures.len(), 4);
+    }
+}
+
+/// Checks that this host can run natively generated code (Tier-4, feature `native-jit`).
+fn run_jit_selftest() {
+    #[cfg(feature = "native-jit")]
+    match ounce_recompiler::host_selftest() {
+        Ok(value) => println!(
+            "[Tier-4] Native code self-test passed on {}: generated function returned {}",
+            ounce_recompiler::host_arch().unwrap_or("unknown"),
+            value
+        ),
+        Err(e) => {
+            eprintln!("[Tier-4] Native code self-test failed: {}", e);
+            std::process::exit(1);
+        }
+    }
+    #[cfg(not(feature = "native-jit"))]
+    {
+        eprintln!("[Tier-4] Not available: rebuild with `--features native-jit`.");
+        std::process::exit(1);
     }
 }

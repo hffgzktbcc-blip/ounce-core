@@ -1,0 +1,21 @@
+[package]
+name = "ounce-recompiler"
+version = "0.1.0"
+edition = "2024"
+description = "Tier-4 native recompiler for ounce-core. All unsafe code of the project lives in this crate's exec module."
+license = "MIT"
+publish = false
+
+[dependencies]
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+] }
