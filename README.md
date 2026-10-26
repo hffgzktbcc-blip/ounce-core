@@ -156,9 +156,9 @@ cargo run --release -- 3d 120                    # Software rasterizer benchmark
 
 ## Known Issues
 
-- **Git history.** Earlier commits (for example `1c1d7c8` and `603a5f3`) contain third-party-derived byte sequences and two binary test files that were later deleted (`ns2jb_ro_payload.bin`, `switch2_showcase.nsp`). Current source does not contain them, but the history does. Removing them requires rewriting published history.
+- **Git history.** Repository Git history was rewritten across all commits to remove historical third-party byte sequences and test binary assets; remote GitHub backend cache and pull request ref purge is pending support ticket resolution.
 - **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
-- **License scope.** The MIT license applies to this tree. It does not clear any third-party material still present in git history.
+- **License scope.** The MIT license applies to this tree. Rewritten history removes prior external code sequences.
 
 ---
 
