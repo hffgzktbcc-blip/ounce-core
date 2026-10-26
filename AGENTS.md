@@ -44,9 +44,13 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - `TPIDRRO_EL0` stays the Horizon IPC thread-local region; only `TPIDR_EL0` points at the ELF TLS area.
   - Initialisers are not run by default because a program's own `crt0` normally runs them; the runner does not service SVCs and reports them instead.
   - Validated on synthetic test modules only (homebrew and synthetic workloads are the scope).
+* **Completed: Milestone 3B controller input mappings & Metal verification** (2026-10-26)
+  - PR #11 and PR #12 merged to `main`.
+  - Verified `--present=gpu` on real Apple Silicon (Apple M3 Metal integrated GPU) executing both `3d` and `play` benchmark modes.
+  - Added physical gamepad analog stick threshold synthesis to D-pad directional buttons in `HostGamepadManager::poll` so physical thumbsticks seamlessly drive games reading `NpadButton` bitmasks.
+  - Added `HostGamepadManager::active_gamepad_name` and attached gamepad detection logging to interactive VM runner.
 * **Next**:
-  - Review and merge PR #11 (README terminology) and PR #12 (homebrew multi-module TLS lifecycle).
-  - Manual check of `--present=gpu` on a Mac (Metal) and a Windows machine.
+  - Live audio buffer ring-buffer draining from `audout`/`audren` to `HostAudioSink` (Copilot track).
   - Later milestone: translate NVN draws into host GPU work.
   - M4 (Tier-4 native JIT in `crates/ounce-recompiler`) is on hold until the user asks for it.
   - Build tooling note: building from source on Debian/Ubuntu needs `libasound2-dev libudev-dev`.

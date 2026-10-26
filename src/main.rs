@@ -427,6 +427,9 @@ fn run_vm_internal(
     let mut instructions_executed = 0;
     let mut frames_presented = 0;
     let mut gamepad_mgr = HostGamepadManager::new();
+    if let Some(pad_name) = gamepad_mgr.active_gamepad_name() {
+        println!("[HID] Physical gamepad attached: {}", pad_name);
+    }
     let host_audio = HostAudioSink::new();
 
     loop {
