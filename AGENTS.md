@@ -7,7 +7,7 @@ This document establishes operating rules for AI coding assistants (Antigravity,
 * **Ensure full functionality**: Any code changes must ensure the entire suite compiles and runs cleanly.
 * **Pass all verification gates**:
   - `cargo test --release` (88+ tests must pass).
-  - `cargo run --release -- test` (all 25 verification stages must pass exiting `0xEEE`).
+  - `cargo run --release -- test` must exit 0 and print `[Harness] All N checks passed across 25 stages.` Every stage asserts its own guest exit code (see README stage table); any failure prints `[Gate] FAIL` and the process exits 1.
   - `grep -rn "unsafe" src` must return 0 hits (pure safe Rust only).
 
 ## 2. Core Architectural & Legal Boundary
@@ -38,6 +38,11 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - Design doc: `docs/design/m3a-presentation.md`. Backend = `wgpu` + `winit` behind feature `gpu-present` (Vulkan on Linux/Windows, native Metal on macOS). Headless + `minifb` stay; default build unchanged.
   - `src/gpu/present/`: `PresentBackend` trait implemented for `HeadlessBackend`, `MinifbBackend`, and `WgpuPresentBackend` with letterboxing and vsync configuration.
   - CI: `gpu-present` job runs on Linux/macOS/Windows with Mesa Lavapipe on Linux.
+* **Completed: Harness stage gating** (branch `claude/project-thread-jvrok0`, 2026-10-26)
+  - `run_vm` / `run_vm_internal` return a `VmOutcome { stop, x0, d0 }`; `VmStop` records why the guest stopped (`ExitProcess`, `Break`, `UnhandledSvc`, `Halt`, `Fault`, `Budget`, `WindowClosed`, `FrameLimit`). Non-harness callers ignore it.
+  - `StageGate` in `src/main.rs`: a stage passes only if the guest stopped through `svcExitProcess` with the expected `X0`. Success lines ("Verified", "Handshake completed", ...) now print only on pass; `gate.finish()` exits 1 on any failure, so CI goes red.
+  - Expected `X0` per stage: documented codes from the README table where one exists (01 `55`, 03 `42`, 12 `0x7`, 13 `0x124F801`, 17–25 `0x777`..`0xEEE`). Stages the README lists as "—" are pinned to their current deterministic exit value (02 `0`, 05 `0x3840`, 06 `0x1E61`, 07 `0xFF40C0FF`, 08 `0xFF00FFFF`, 09 `0x10`, 10 `0x606A00`, 11 `0`, 14 `0`, 15 `0x239`) as regression gates. Stage 04 also checks `D0 = 42.0`. Stage 16 (no guest exit) gates on the Tier-2 guest's Fib(10) = 55 in `X2` via `svc #7` and the 20-byte SaveData write. Stage 20 gates on the Tier-3 guest's `X0 = 0xAAA`.
+  - If a stage's guest program is changed on purpose, update its expected value in the `gate.expect_exit` call next to `run_vm`.
 * **Deliberate deviations and limits (do not "fix" by guessing)**:
   - `DT_INIT_ARRAYSZ` is 27 per the ELF spec (26 is `DT_FINI_ARRAY`).
   - NSO/NRO images carry no program headers, so `PT_TLS` is only available for ELF input (`NroLoader::parse_pt_tls`) or resolved via `__tdata_lma` devkitA64 linker script fallback symbols.
