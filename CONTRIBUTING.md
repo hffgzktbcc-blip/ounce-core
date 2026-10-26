@@ -21,6 +21,7 @@ This is a strict clean-room project. Every line of code, test case, and document
 * **No Keys or Game Content**: No encryption keys (`prod.keys`, `title.keys`), firmware dumps, or game data may be committed, even in unit tests. All test inputs must be synthetic or hand-written directly in source.
 * **Developer Certificate of Origin (DCO)**: Sign off all commits using `git commit -s` to certify you have the right to submit the code under the project's MIT license.
 * **Specification References**: Include a one-line reference in your PR description indicating where the implemented behavior or instruction encoding is documented in the public specification.
+* **Prior Exposure Disclosure**: If you have previously worked with proprietary material for this platform (an SDK, dumped firmware, leaked documentation, or a decompilation project), say so in an issue before contributing. It does not rule out documentation or tooling work, but it does rule you out of the areas that material touched.
 
 ---
 
@@ -38,6 +39,8 @@ This is a strict clean-room project. Every line of code, test case, and document
   - Bootstrapping or compatibility work for commercial retail games.
   - Re-enabling or bypassing retail container decryption (commercial key decryption is disabled by policy in `loader/nca.rs`).
   - Circumventing digital rights management or copyright protection mechanisms.
+
+**Terminology**: Describe `ounce-core` only as a research runtime or compatibility layer, in code, comments, documentation, commit messages, and PR text. Do not describe it as a console or game-playing product.
 
 ---
 
@@ -65,6 +68,7 @@ Before submitting a pull request, ensure your branch passes all required gates:
    grep -rn "unsafe" src
    ```
    Must return zero matches. All code within `src/` must remain pure safe Rust.
+   If work genuinely needs `unsafe`, it belongs in a separate, isolated crate under `crates/`, and that must be agreed in an issue first.
 
 ---
 
