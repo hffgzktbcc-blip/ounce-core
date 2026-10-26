@@ -81,11 +81,22 @@ fn main() {
         "run" => {
             print_banner();
             if args.len() < 3 {
-                eprintln!("Error: Please provide path to .nsp, .nca, or .nro package");
+                eprintln!("Error: Please provide path to .nsp, .nca, .nro or loose directory");
                 return;
             }
             let file_path = &args[2];
-            run_file(file_path);
+            let gui_mode = args.iter().any(|a| a == "--gui" || a == "--window" || a == "-g");
+            run_file(file_path, gui_mode);
+        }
+        "demo-dir" | "dir-demo" | "loose-demo" => {
+            print_banner();
+            let out_dir = if args.len() >= 3 && !args[2].starts_with('-') {
+                &args[2]
+            } else {
+                "switch2_demo_pkg"
+            };
+            let gui_mode = args.iter().any(|a| a == "--gui" || a == "--window" || a == "-g");
+            build_and_boot_demo_dir(out_dir, gui_mode);
         }
         "package" | "showcase" => {
             print_banner();
@@ -241,7 +252,8 @@ fn print_usage() {
     println!("  {}USAGE:{}", s.bold, s.reset);
     println!("    cargo run --release -- {}<COMMAND>{} [OPTIONS]\n", s.green, s.reset);
     println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
-    println!("    {}run{} <file|dir>          Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder", s.green, s.reset);
+    println!("    {}run{} <file|dir> [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder", s.green, s.reset);
+    println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose Switch 2 directory package (OunceCake format)", s.green, s.reset);
     println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted Switch 2 .nsp cartridge package", s.green, s.reset);
     println!("    {}inspect{} <file|dir>      Audit .xci/.nsp/.nca/.nro headers, loose NPDM metadata & RomFS assets", s.green, s.reset);
     println!();
@@ -2615,7 +2627,7 @@ fn inspect_directory_package(dir_path: &str) {
     }
 }
 
-fn run_directory_package(dir_path: &str) {
+fn run_directory_package(dir_path: &str, gui_mode: bool) {
     println!("[Loader] Bootstrapping loose directory package (OunceCake format): {}", dir_path);
     let pkg = match loader::LoosePackageLoader::discover(dir_path) {
         Ok(p) => p,
@@ -2638,8 +2650,26 @@ fn run_directory_package(dir_path: &str) {
             }
             println!("  RomFS Assets : {} files mounted into VFS", info.romfs_files_mounted);
 
-            cpu.regs.pc = DEFAULT_BASE_ADDR;
-            run_vm(cpu, mmu, kernel, 1_000_000);
+            let fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
+            mmu.map_range(DEFAULT_FRAMEBUFFER_ADDR, fb_size, Permission::READ_WRITE);
+            mmu.map_range(HID_SHARED_MEM_ADDR, 0x1000, Permission::READ_WRITE);
+
+            if gui_mode {
+                println!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");
+                let mut display = DisplayServer::new(
+                    DEFAULT_FRAMEBUFFER_ADDR,
+                    DisplayConfig {
+                        title: format!("Ounce-Core | {} [Tegra T239]", info.process_name),
+                        ..Default::default()
+                    },
+                );
+                let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
+                cpu.regs.pc = DEFAULT_BASE_ADDR;
+                run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0);
+            } else {
+                cpu.regs.pc = DEFAULT_BASE_ADDR;
+                run_vm(cpu, mmu, kernel, 100_000);
+            }
         }
         Err(e) => {
             eprintln!("[Loader Error] Failed to load loose package into VM: {}", e);
@@ -2647,9 +2677,9 @@ fn run_directory_package(dir_path: &str) {
     }
 }
 
-fn run_file(path: &str) {
+fn run_file(path: &str, gui_mode: bool) {
     if std::path::Path::new(path).is_dir() {
-        run_directory_package(path);
+        run_directory_package(path, gui_mode);
         return;
     }
     println!("[Loader] Reading package/executable: {}", path);
@@ -2680,13 +2710,136 @@ fn run_file(path: &str) {
                 let _ = loader::HomebrewEnvironment::setup(&mut cpu, &mut mmu, 0x7FFF_FE00, &[path, "--ounce-core"]);
             }
 
-            cpu.regs.pc = DEFAULT_BASE_ADDR;
-            run_vm(cpu, mmu, kernel, 1_000_000);
+            let fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
+            mmu.map_range(DEFAULT_FRAMEBUFFER_ADDR, fb_size, Permission::READ_WRITE);
+            mmu.map_range(HID_SHARED_MEM_ADDR, 0x1000, Permission::READ_WRITE);
+
+            if gui_mode {
+                println!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");
+                let mut display = DisplayServer::new(
+                    DEFAULT_FRAMEBUFFER_ADDR,
+                    DisplayConfig {
+                        title: format!("Ounce-Core | 0x{:016X} [T239]", info.title_id),
+                        ..Default::default()
+                    },
+                );
+                let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
+                cpu.regs.pc = DEFAULT_BASE_ADDR;
+                run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0);
+            } else {
+                cpu.regs.pc = DEFAULT_BASE_ADDR;
+                run_vm(cpu, mmu, kernel, 100_000);
+            }
         }
         Err(e) => {
             eprintln!("[Loader Error] {}", e);
         }
     }
+}
+
+/// Synthesizes a clean-room unencrypted loose Switch 2 directory package (OunceCake format)
+/// on disk and executes it directly through `run_directory_package`.
+fn build_and_boot_demo_dir(out_dir: &str, gui_mode: bool) {
+    println!("============================================================");
+    println!("  📁 CREATING UNENCRYPTED LOOSE SWITCH 2 PACKAGE: {}", out_dir);
+    println!("============================================================");
+
+    let exefs = std::path::Path::new(out_dir).join("exefs");
+    let romfs = std::path::Path::new(out_dir).join("romfs");
+    let _ = std::fs::create_dir_all(&exefs);
+    let _ = std::fs::create_dir_all(&romfs);
+
+    // 1. Synthesize NPDM
+    let npdm_bytes = loader::NpdmDescriptor::create_synthetic(
+        "T239DrakeDemo",
+        "OUNCE-P-DEMO",
+        0x0100202600023900,
+        44,
+        0,
+        &["sm:", "set:sys", "am:appletOE", "vi:m", "hid", "fsp-srv", "ro:1", "nvdrv"],
+    );
+    let _ = std::fs::write(exefs.join("main.npdm"), &npdm_bytes);
+
+    // 2. Interactive Switch 2 AArch64 Game Program
+    #[rustfmt::skip]
+    let demo_insns: Vec<u32> = vec![
+        // Init Registers: X5 = X (200), X6 = Y (200), X7 = Color (Emerald Green 0x00FF88)
+        0xD2801905, // MOVZ X5, #200
+        0xD2801906, // MOVZ X6, #200
+        0xD2800007, // MOVZ X7, #0
+        0xF2A001E7, // MOVK X7, #0x00FF, LSL #16
+        0xF2801107, // MOVK X7, #0x88, LSL #0 (0x00FF0088)
+        0xD2800009, // MOVZ X9, #0
+        0xF2A20009, // MOVK X9, #0x1000, LSL #16 (X9 = 0x10000000 HID Shared Memory)
+        0xD280000A, // MOVZ X10, #0
+        0xF2B2000A, // MOVK X10, #0x9000, LSL #16 (X10 = 0x90000000 VRAM FB)
+        0xD280010B, // MOVZ X11, #8 (speed = 8 px)
+
+        // frame_loop: Read buttons
+        0xB9400928, // LDR  W8, [X9, #8] (Read buttons bitmask)
+
+        // DLeft
+        0x5282000D, // MOVZ W13, #0x1000
+        0x0A0D010C, // AND  W12, W8, W13
+        0x3400004C, // CBZ  W12, +8
+        0xCB0B00A5, // SUBS X5, X5, X11
+
+        // DRight
+        0x5288000D, // MOVZ W13, #0x4000
+        0x0A0D010C, // AND  W12, W8, W13
+        0x3400004C, // CBZ  W12, +8
+        0x8B0B00A5, // ADD  X5, X5, X11
+
+        // DUp
+        0x5284000D, // MOVZ W13, #0x2000
+        0x0A0D010C, // AND  W12, W8, W13
+        0x3400004C, // CBZ  W12, +8
+        0xCB0B00C6, // SUBS X6, X6, X11
+
+        // DDown
+        0x5290000D, // MOVZ W13, #0x8000
+        0x0A0D010C, // AND  W12, W8, W13
+        0x3400004C, // CBZ  W12, +8
+        0x8B0B00C6, // ADD  X6, X6, X11
+
+        // Draw Player Sprite (40x40 block)
+        0x9100014E, // ADD  X14, X10, #0 (FB base)
+        0x8B0500AF, // ADD  X15, X5, X5 (X * 2)
+        0x8B0F01EF, // ADD  X15, X15, X15 (X * 4)
+        0x8B0F01CE, // ADD  X14, X14, X15 (FB + X*4)
+        0xD2800510, // MOVZ X16, #40
+
+        // pixel_loop:
+        0xB90001C7, // STR  W7, [X14, #0]
+        0x910011CE, // ADD  X14, X14, #4
+        0xF1000610, // SUBS X16, X16, #1
+        0x54FFFFAC, // B.NE pixel_loop (-3 insns)
+
+        // VSync Flip
+        0xD4000301, // SVC  #0x18 (svcWaitForVsync)
+        0x17FFFFEB, // B    frame_loop (-21 insns)
+    ];
+
+    let mut code_bytes = Vec::new();
+    for insn in &demo_insns {
+        code_bytes.extend_from_slice(&insn.to_le_bytes());
+    }
+    let main_nso = loader::NroLoader::build_synthetic_nso(&code_bytes);
+    let _ = std::fs::write(exefs.join("main"), &main_nso);
+
+    // 3. RomFS Assets
+    let _ = std::fs::write(
+        romfs.join("manifest.json"),
+        b"{\"app\":\"T239DrakeDemo\",\"architecture\":\"ARMv8.2-A\",\"gpu\":\"Ampere\"}",
+    );
+    let _ = std::fs::create_dir_all(romfs.join("assets"));
+    let _ = std::fs::write(
+        romfs.join("assets/readme.txt"),
+        b"Loose Switch 2 Game Dump layout created by Ounce-Core.",
+    );
+
+    println!("  -> Created unencrypted ExeFS and RomFS in '{}'\n", out_dir);
+    run_directory_package(out_dir, gui_mode);
 }
 
 /// Builds a self-contained, AES-128-CTR encrypted Switch 2 `.nsp` cartridge file on disk
@@ -2740,5 +2893,5 @@ fn build_and_boot_showcase_nsp(out_path: &str) {
         out_path
     );
 
-    run_file(out_path);
+    run_file(out_path, false);
 }
