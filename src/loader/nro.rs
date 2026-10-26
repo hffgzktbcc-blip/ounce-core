@@ -2,11 +2,65 @@
 
 use crate::mmu::{Memory, MemoryError, Permission};
 use byteorder::{ByteOrder, LittleEndian};
+use std::collections::HashMap;
 
 pub const R_AARCH64_RELATIVE: u32 = 1027;
 pub const DT_NULL: i64 = 0;
 pub const DT_RELA: i64 = 7;
 pub const DT_RELASZ: i64 = 8;
+pub const DT_HASH: i64 = 4;
+pub const DT_PLTRELSZ: i64 = 2;
+pub const DT_STRTAB: i64 = 5;
+pub const DT_SYMTAB: i64 = 6;
+pub const DT_RELAENT: i64 = 9;
+pub const DT_SYMENT: i64 = 11;
+pub const DT_INIT: i64 = 12;
+pub const DT_FINI: i64 = 13;
+pub const DT_JMPREL: i64 = 23;
+pub const R_AARCH64_ABS64: u32 = 257;
+pub const R_AARCH64_GLOB_DAT: u32 = 1025;
+pub const R_AARCH64_JUMP_SLOT: u32 = 1026;
+
+const RELA_ENTRY_SIZE: u64 = 24;
+const SYM_ENTRY_SIZE: u64 = 24;
+const SHN_UNDEF: u16 = 0;
+const STB_LOCAL: u8 = 0;
+const STB_WEAK: u8 = 2;
+
+/// Parsed `.dynamic` section of a MOD0-described module. Pointer values are image-relative offsets.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct DynamicInfo {
+    pub rela: Option<u64>,
+    pub rela_size: u64,
+    pub rela_entry_size: u64,
+    pub jmprel: Option<u64>,
+    pub pltrel_size: u64,
+    pub symtab: Option<u64>,
+    pub strtab: Option<u64>,
+    pub syment: u64,
+    pub hash: Option<u64>,
+    pub init: Option<u64>,
+    pub fini: Option<u64>,
+}
+
+/// Outcome of applying one module's relocation tables.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct RelocationReport {
+    /// Relocations written to guest memory.
+    pub applied: usize,
+    /// Strong undefined symbols with no provider in the import table.
+    pub unresolved: Vec<String>,
+    /// Relocation types this loader does not implement.
+    pub unsupported: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Symbol {
+    name: u32,
+    bind: u8,
+    shndx: u16,
+    value: u64,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
@@ -120,8 +174,21 @@ impl NroLoader {
     }
 
     /// Loads an uncompressed Nintendo Shared Object (`NSO0`) executable into virtual memory
-    /// (such as Switch 2 `RO` / `FS` system modules and retail ExeFS `main` binaries).
+    /// (such as Switch 2 `RO` / `FS` system modules and retail ExeFS `main` binaries) and applies
+    /// its relocations against its own symbols only. Modules that import from other modules should
+    /// use `load_nso_segments` and then `apply_relocations` with a combined export table.
     pub fn load_nso_into_memory(
+        bytes: &[u8],
+        base_addr: u64,
+        mmu: &mut Memory,
+    ) -> Result<NroHeader, LoadError> {
+        let mut header = Self::load_nso_segments(bytes, base_addr, mmu)?;
+        header.relocations_applied = Self::apply_mod0_relocations(base_addr, mmu);
+        Ok(header)
+    }
+
+    /// Maps an NSO0 image's segments into memory without applying any relocations.
+    pub fn load_nso_segments(
         bytes: &[u8],
         base_addr: u64,
         mmu: &mut Memory,
@@ -180,8 +247,6 @@ impl NroLoader {
             }
         }
 
-        let relocations_applied = Self::apply_mod0_relocations(base_addr, mmu);
-
         Ok(NroHeader {
             version: LittleEndian::read_u32(&bytes[0x04..0x08]),
             size: bytes.len() as u32,
@@ -193,32 +258,33 @@ impl NroLoader {
             data_offset: data_mem_off as u32,
             data_size: data_size as u32,
             bss_size: bss_size as u32,
-            relocations_applied,
+            relocations_applied: 0,
         })
     }
 
-    /// Inspects the MOD0 structure at `*(base_addr + 4)` and applies `.rela.dyn` relocations.
-    pub fn apply_mod0_relocations(base_addr: u64, mmu: &mut Memory) -> usize {
+    /// Returns the address of the `.dynamic` section located through the MOD0 header, if any.
+    fn dynamic_table_addr(base_addr: u64, mmu: &Memory) -> Option<u64> {
         let mod0_rel = match mmu.read_u32(base_addr + 4) {
             Ok(off) if off > 0 => off as u64,
-            _ => return 0,
+            _ => return None,
         };
-
         let mod0_addr = base_addr + mod0_rel;
         let mut magic = [0u8; 4];
         if mmu.read_bytes(mod0_addr, &mut magic).is_err() || &magic != b"MOD0" {
-            return 0;
+            return None;
         }
+        let dyn_rel = mmu.read_u32(mod0_addr + 4).ok()? as i32 as i64;
+        Some((mod0_addr as i64 + dyn_rel) as u64)
+    }
 
-        let dyn_rel = mmu.read_u32(mod0_addr + 4).unwrap_or(0) as i32 as i64;
-        let dyn_addr = (mod0_addr as i64 + dyn_rel) as u64;
-
-        let mut rela_offset: Option<u64> = None;
-        let mut rela_size: u64 = 0;
+    /// Parses the `.dynamic` section described by the MOD0 header.
+    pub fn parse_dynamic(base_addr: u64, mmu: &Memory) -> Option<DynamicInfo> {
+        let dyn_addr = Self::dynamic_table_addr(base_addr, mmu)?;
+        let mut info = DynamicInfo::default();
 
         // Walk Elf64_Dyn entries (16 bytes each: d_tag i64, d_val u64)
-        for i in 0..128 {
-            let entry_addr = dyn_addr + (i * 16) as u64;
+        for i in 0..256u64 {
+            let entry_addr = dyn_addr + i * 16;
             let d_tag = match mmu.read_u64(entry_addr) {
                 Ok(t) => t as i64,
                 Err(_) => break,
@@ -228,37 +294,188 @@ impl NroLoader {
             }
             let d_val = mmu.read_u64(entry_addr + 8).unwrap_or(0);
             match d_tag {
-                DT_RELA => rela_offset = Some(d_val),
-                DT_RELASZ => rela_size = d_val,
+                DT_RELA => info.rela = Some(d_val),
+                DT_RELASZ => info.rela_size = d_val,
+                DT_RELAENT => info.rela_entry_size = d_val,
+                DT_JMPREL => info.jmprel = Some(d_val),
+                DT_PLTRELSZ => info.pltrel_size = d_val,
+                DT_SYMTAB => info.symtab = Some(d_val),
+                DT_STRTAB => info.strtab = Some(d_val),
+                DT_SYMENT => info.syment = d_val,
+                DT_HASH => info.hash = Some(d_val),
+                DT_INIT => info.init = Some(d_val),
+                DT_FINI => info.fini = Some(d_val),
                 _ => {}
             }
         }
+        Some(info)
+    }
 
-        let rela_base = match rela_offset {
-            Some(off) => base_addr + off,
-            None => return 0,
+    fn sym_stride(info: &DynamicInfo) -> u64 {
+        if info.syment == 0 { SYM_ENTRY_SIZE } else { info.syment }
+    }
+
+    /// Reads one Elf64_Sym entry (24 bytes).
+    fn read_symbol(mmu: &Memory, addr: u64) -> Option<Symbol> {
+        let mut raw = [0u8; 24];
+        mmu.read_bytes(addr, &mut raw).ok()?;
+        Some(Symbol {
+            name: LittleEndian::read_u32(&raw[0..4]),
+            bind: raw[4] >> 4,
+            shndx: LittleEndian::read_u16(&raw[6..8]),
+            value: LittleEndian::read_u64(&raw[8..16]),
+        })
+    }
+
+    fn symbol_name(base_addr: u64, mmu: &Memory, info: &DynamicInfo, name_off: u32) -> String {
+        let strtab = match info.strtab {
+            Some(s) => base_addr + s + name_off as u64,
+            None => return String::new(),
         };
+        let mut name = Vec::new();
+        for i in 0..256u64 {
+            let mut b = [0u8; 1];
+            if mmu.read_bytes(strtab + i, &mut b).is_err() || b[0] == 0 {
+                break;
+            }
+            name.push(b[0]);
+        }
+        String::from_utf8_lossy(&name).into_owned()
+    }
 
-        let num_entries = (rela_size / 24) as usize;
-        let mut applied = 0;
+    /// Symbol count from `DT_HASH` (the `nchain` field). Modules without `DT_HASH` export nothing.
+    fn symbol_count(base_addr: u64, mmu: &Memory, info: &DynamicInfo) -> u64 {
+        info.hash
+            .and_then(|h| mmu.read_u32(base_addr + h + 4).ok())
+            .unwrap_or(0) as u64
+    }
 
-        for i in 0..num_entries {
-            let entry_addr = rela_base + (i * 24) as u64;
-            let r_offset = mmu.read_u64(entry_addr).unwrap_or(0);
-            let r_info = mmu.read_u64(entry_addr + 8).unwrap_or(0);
-            let r_addend = mmu.read_u64(entry_addr + 16).unwrap_or(0) as i64;
+    /// Collects the module's defined, non-local symbols as `name -> absolute address`.
+    /// The first definition of a name wins.
+    pub fn collect_exports(base_addr: u64, mmu: &Memory) -> HashMap<String, u64> {
+        let mut exports = HashMap::new();
+        let info = match Self::parse_dynamic(base_addr, mmu) {
+            Some(i) => i,
+            None => return exports,
+        };
+        let symtab = match info.symtab {
+            Some(s) => base_addr + s,
+            None => return exports,
+        };
+        let stride = Self::sym_stride(&info);
+        for idx in 1..Self::symbol_count(base_addr, mmu, &info) {
+            let Some(sym) = Self::read_symbol(mmu, symtab + idx * stride) else { break };
+            if sym.shndx == SHN_UNDEF || sym.bind == STB_LOCAL {
+                continue;
+            }
+            let name = Self::symbol_name(base_addr, mmu, &info, sym.name);
+            if !name.is_empty() {
+                exports.entry(name).or_insert(base_addr + sym.value);
+            }
+        }
+        exports
+    }
 
-            let r_type = (r_info & 0xFFFF_FFFF) as u32;
-            if r_type == R_AARCH64_RELATIVE {
+    /// Address of the symbol referenced by a relocation. Defined symbols resolve locally;
+    /// undefined ones come from `imports`, and undefined weak symbols resolve to 0.
+    fn resolve_symbol(
+        base_addr: u64,
+        mmu: &Memory,
+        info: &DynamicInfo,
+        sym_index: u64,
+        imports: &HashMap<String, u64>,
+    ) -> Result<u64, String> {
+        if sym_index == 0 {
+            return Ok(0);
+        }
+        let unnamed = || format!("<symbol #{}>", sym_index);
+        let symtab = info.symtab.map(|s| base_addr + s).ok_or_else(unnamed)?;
+        let sym = Self::read_symbol(mmu, symtab + sym_index * Self::sym_stride(info)).ok_or_else(unnamed)?;
+        if sym.shndx != SHN_UNDEF {
+            return Ok(base_addr + sym.value);
+        }
+        let name = Self::symbol_name(base_addr, mmu, info, sym.name);
+        if let Some(&value) = imports.get(&name) {
+            return Ok(value);
+        }
+        if sym.bind == STB_WEAK {
+            return Ok(0);
+        }
+        Err(name)
+    }
+
+    /// Applies the module's `.rela.dyn` and `.rela.plt` tables. Imports are looked up in `imports`.
+    pub fn apply_relocations(
+        base_addr: u64,
+        mmu: &mut Memory,
+        imports: &HashMap<String, u64>,
+    ) -> RelocationReport {
+        let mut report = RelocationReport::default();
+        let info = match Self::parse_dynamic(base_addr, mmu) {
+            Some(i) => i,
+            None => return report,
+        };
+        let entry_size = if info.rela_entry_size == 0 { RELA_ENTRY_SIZE } else { info.rela_entry_size };
+
+        let mut tables = Vec::new();
+        if let Some(rela) = info.rela {
+            tables.push((rela, info.rela_size));
+        }
+        if let Some(jmprel) = info.jmprel {
+            tables.push((jmprel, info.pltrel_size));
+        }
+
+        for (table, table_size) in tables {
+            for i in 0..table_size / entry_size {
+                let entry_addr = base_addr + table + i * entry_size;
+                let mut raw = [0u8; 24];
+                if mmu.read_bytes(entry_addr, &mut raw).is_err() {
+                    continue;
+                }
+                let r_offset = LittleEndian::read_u64(&raw[0..8]);
+                let r_info = LittleEndian::read_u64(&raw[8..16]);
+                let r_addend = LittleEndian::read_u64(&raw[16..24]);
+                let sym_index = r_info >> 32;
+                let r_type = (r_info & 0xFFFF_FFFF) as u32;
                 let target_va = base_addr + r_offset;
-                let relocated_val = (base_addr as i64 + r_addend) as u64;
-                if mmu.write_u64(target_va, relocated_val).is_ok() {
-                    applied += 1;
+
+                match r_type {
+                    R_AARCH64_RELATIVE => {
+                        if mmu.write_u64(target_va, base_addr.wrapping_add(r_addend)).is_ok() {
+                            report.applied += 1;
+                        }
+                    }
+                    R_AARCH64_ABS64 | R_AARCH64_GLOB_DAT | R_AARCH64_JUMP_SLOT => {
+                        let symbol_value = match Self::resolve_symbol(base_addr, mmu, &info, sym_index, imports) {
+                            Ok(v) => v,
+                            Err(name) => {
+                                report.unresolved.push(name);
+                                continue;
+                            }
+                        };
+                        let value = if r_type == R_AARCH64_ABS64 {
+                            symbol_value.wrapping_add(r_addend)
+                        } else {
+                            symbol_value
+                        };
+                        if mmu.write_u64(target_va, value).is_ok() {
+                            report.applied += 1;
+                        }
+                    }
+                    other => {
+                        if !report.unsupported.contains(&other) {
+                            report.unsupported.push(other);
+                        }
+                    }
                 }
             }
         }
+        report
+    }
 
-        applied
+    /// Applies the module's relocations using only its own symbols, returning the number applied.
+    pub fn apply_mod0_relocations(base_addr: u64, mmu: &mut Memory) -> usize {
+        Self::apply_relocations(base_addr, mmu, &HashMap::new()).applied
     }
 
     /// Helper to assemble a minimal valid NRO binary with custom text bytes for testing.
@@ -394,9 +611,135 @@ impl HomebrewEnvironment {
     }
 }
 
+/// Writes a MOD0 module: `.dynamic` at +0x120, symbols at +0x800, strings at +0x900,
+/// `DT_HASH` at +0x880, `.rela.dyn` at +0xA00 and `.rela.plt` at +0xB00.
+/// `symbols` are `(name, shndx, bind, value)`; relocations are `(r_offset, r_type, sym_index, addend)`.
+#[cfg(test)]
+fn write_test_module(
+    mmu: &mut Memory,
+    base: u64,
+    symbols: &[(&str, u16, u8, u64)],
+    rela: &[(u64, u32, u64, u64)],
+    jmprel: &[(u64, u32, u64, u64)],
+) {
+    mmu.map_range(base, 0x2000, Permission::READ_WRITE_EXECUTE);
+    mmu.write_u32(base + 4, 0x100).unwrap();
+    mmu.write_bytes(base + 0x100, b"MOD0").unwrap();
+    mmu.write_u32(base + 0x104, 0x20).unwrap();
+
+    let entries: [(i64, u64); 10] = [
+        (DT_HASH, 0x880),
+        (DT_STRTAB, 0x900),
+        (DT_SYMTAB, 0x800),
+        (DT_SYMENT, 24),
+        (DT_RELA, 0xA00),
+        (DT_RELASZ, 24 * rela.len() as u64),
+        (DT_RELAENT, 24),
+        (DT_JMPREL, 0xB00),
+        (DT_PLTRELSZ, 24 * jmprel.len() as u64),
+        (DT_NULL, 0),
+    ];
+    for (i, (tag, val)) in entries.iter().enumerate() {
+        mmu.write_u64(base + 0x120 + (i as u64) * 16, *tag as u64).unwrap();
+        mmu.write_u64(base + 0x128 + (i as u64) * 16, *val).unwrap();
+    }
+
+    // DT_HASH: only `nchain` (the symbol count, including the null symbol) matters here.
+    mmu.write_u32(base + 0x884, (symbols.len() + 1) as u32).unwrap();
+
+    // Symbol 0 is the null symbol; string offset 0 is the empty string.
+    let mut strtab_off = 1u32;
+    for (i, (name, shndx, bind, value)) in symbols.iter().enumerate() {
+        let sym = base + 0x800 + ((i as u64) + 1) * 24;
+        mmu.write_u32(sym, strtab_off).unwrap();
+        mmu.write_bytes(sym + 4, &[(bind << 4) | 0x2]).unwrap();
+        mmu.write_bytes(sym + 6, &shndx.to_le_bytes()).unwrap();
+        mmu.write_u64(sym + 8, *value).unwrap();
+        mmu.write_bytes(base + 0x900 + strtab_off as u64, name.as_bytes()).unwrap();
+        mmu.write_bytes(base + 0x900 + strtab_off as u64 + name.len() as u64, &[0]).unwrap();
+        strtab_off += name.len() as u32 + 1;
+    }
+
+    for (table_base, table) in [(0xA00u64, rela), (0xB00u64, jmprel)] {
+        for (i, (offset, r_type, sym, addend)) in table.iter().enumerate() {
+            let e = base + table_base + (i as u64) * 24;
+            mmu.write_u64(e, *offset).unwrap();
+            mmu.write_u64(e + 8, (sym << 32) | (*r_type as u64)).unwrap();
+            mmu.write_u64(e + 16, *addend).unwrap();
+        }
+    }
+}
+
+/// Builds a complete NSO0 file whose `.text` is a MOD0 module described by `symbols`, `rela`, and `jmprel`
+/// (same layout as `write_test_module`). Used by tests that need a real loadable image with imports/exports.
+#[cfg(test)]
+pub(crate) fn build_linked_nso(
+    symbols: &[(&str, u16, u8, u64)],
+    rela: &[(u64, u32, u64, u64)],
+    jmprel: &[(u64, u32, u64, u64)],
+) -> Vec<u8> {
+    const IMAGE_SIZE: usize = 0x2000;
+    let scratch_base = 0x8000_0000u64;
+    let mut scratch = Memory::new();
+    write_test_module(&mut scratch, scratch_base, symbols, rela, jmprel);
+    let mut image = vec![0u8; IMAGE_SIZE];
+    scratch.read_bytes(scratch_base, &mut image).unwrap();
+
+    let mut nso = vec![0u8; 0x100];
+    nso[0..4].copy_from_slice(b"NSO0");
+    nso[0x10..0x14].copy_from_slice(&0x100u32.to_le_bytes()); // .text file offset
+    nso[0x14..0x18].copy_from_slice(&0u32.to_le_bytes()); // .text memory offset
+    nso[0x18..0x1C].copy_from_slice(&(IMAGE_SIZE as u32).to_le_bytes()); // .text size
+    nso.extend_from_slice(&image);
+    nso
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_cross_module_imports_and_exports() {
+        let mut mmu = Memory::new();
+        let provider = 0x8000_0000u64;
+        let consumer = 0x8001_0000u64;
+
+        // Provider defines `ounce_add` at +0x500.
+        write_test_module(&mut mmu, provider, &[("ounce_add", 1, 1, 0x500)], &[], &[]);
+
+        // Consumer imports `ounce_add` (GLOB_DAT, JUMP_SLOT, ABS64 + 0x10), an undefined weak symbol,
+        // a missing strong symbol, and uses an unimplemented relocation type (9999).
+        write_test_module(
+            &mut mmu,
+            consumer,
+            &[("ounce_add", 0, 1, 0), ("weak_missing", 0, 2, 0), ("missing_fn", 0, 1, 0)],
+            &[
+                (0x300, R_AARCH64_GLOB_DAT, 1, 0),
+                (0x310, R_AARCH64_ABS64, 1, 0x10),
+                (0x318, R_AARCH64_GLOB_DAT, 2, 0),
+                (0x320, R_AARCH64_GLOB_DAT, 3, 0),
+                (0x328, 9999, 0, 0),
+            ],
+            &[(0x308, R_AARCH64_JUMP_SLOT, 1, 0)],
+        );
+        mmu.write_u64(consumer + 0x320, 0xDEAD_BEEF).unwrap();
+
+        let exports = NroLoader::collect_exports(provider, &mmu);
+        assert_eq!(exports.len(), 1);
+        assert_eq!(exports.get("ounce_add"), Some(&(provider + 0x500)));
+
+        let report = NroLoader::apply_relocations(consumer, &mut mmu, &exports);
+        assert_eq!(report.applied, 4);
+        assert_eq!(report.unresolved, vec!["missing_fn".to_string()]);
+        assert_eq!(report.unsupported, vec![9999]);
+
+        assert_eq!(mmu.read_u64(consumer + 0x300).unwrap(), provider + 0x500);
+        assert_eq!(mmu.read_u64(consumer + 0x308).unwrap(), provider + 0x500);
+        assert_eq!(mmu.read_u64(consumer + 0x310).unwrap(), provider + 0x510);
+        assert_eq!(mmu.read_u64(consumer + 0x318).unwrap(), 0);
+        // Unresolved slot is left untouched rather than written with a bogus address.
+        assert_eq!(mmu.read_u64(consumer + 0x320).unwrap(), 0xDEAD_BEEF);
+    }
 
     #[test]
     fn test_mod0_relocations() {
