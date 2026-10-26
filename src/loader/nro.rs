@@ -550,6 +550,11 @@ impl NroLoader {
             let (init_addr, init_size) = match template {
                 Some(t) => (base + t.vaddr, t.filesz.min(size)),
                 None => {
+                    // Only fires when a module exports these names in `.dynsym`. libnx's `switch.ld`
+                    // defines `__tdata_lma`/`__tdata_lma_end` with `PROVIDE_HIDDEN`, so libnx NROs and
+                    // NSOs never export them and their block starts zeroed here. That is harmless for
+                    // libnx: its crt0 path (`newlibSetup`, `threadCreate`) copies `.tdata` itself and
+                    // keeps its own thread pointer at `TPIDRRO_EL0 + 0x1F8`, not in `TPIDR_EL0`.
                     let exports = Self::collect_exports(base, mmu);
                     if let (Some(&lma_start), Some(&lma_end)) = (exports.get("__tdata_lma"), exports.get("__tdata_lma_end")) {
                         if lma_end >= lma_start {
