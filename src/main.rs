@@ -402,13 +402,99 @@ fn setup_vm() -> (Cpu, Memory, HorizonKernel) {
     (cpu, mmu, kernel)
 }
 
+/// Why a guest run stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VmStop {
+    /// The guest called `svcExitProcess`.
+    ExitProcess,
+    /// The guest called `svcBreak`.
+    Break,
+    /// The guest called an SVC the kernel model does not handle.
+    UnhandledSvc,
+    /// The CPU halted on an undecodable or unsupported instruction.
+    Halt,
+    /// The CPU or MMU returned an error.
+    Fault,
+    /// The instruction budget ran out before the guest exited.
+    Budget,
+    /// The host window was closed.
+    WindowClosed,
+    /// The requested number of frames was presented.
+    FrameLimit,
+}
+
+/// Final guest state of a run, used by the verification harness.
+#[derive(Debug, Clone, Copy)]
+struct VmOutcome {
+    stop: VmStop,
+    x0: u64,
+    d0: f64,
+}
+
 fn run_vm(
     cpu: Cpu,
     mmu: Memory,
     kernel: HorizonKernel,
     max_instructions: usize,
-) {
-    run_vm_internal(cpu, mmu, kernel, None, None, max_instructions, 0);
+) -> VmOutcome {
+    run_vm_internal(cpu, mmu, kernel, None, None, max_instructions, 0)
+}
+
+/// Pass/fail bookkeeping for the integration harness. A stage passes only
+/// when its guest exits through `svcExitProcess` with the expected `X0`.
+#[derive(Debug, Default)]
+struct StageGate {
+    passed: usize,
+    failures: Vec<String>,
+}
+
+impl StageGate {
+    /// Checks a guest run and prints the verdict. Returns `true` on pass.
+    fn expect_exit(&mut self, stage: u32, outcome: &VmOutcome, expected_x0: u64) -> bool {
+        if outcome.stop == VmStop::ExitProcess && outcome.x0 == expected_x0 {
+            self.passed += 1;
+            println!("  [Gate] Stage {:02} PASS (X0 = 0x{:X})", stage, outcome.x0);
+            true
+        } else {
+            let msg = format!(
+                "Stage {:02}: expected svcExitProcess with X0 = 0x{:X}, got {:?} with X0 = 0x{:X}",
+                stage, expected_x0, outcome.stop, outcome.x0
+            );
+            println!("  [Gate] FAIL {}", msg);
+            self.failures.push(msg);
+            false
+        }
+    }
+
+    /// Records a host-side check that has no guest exit code. Returns `ok`.
+    fn expect(&mut self, stage: u32, what: &str, ok: bool) -> bool {
+        if ok {
+            self.passed += 1;
+            println!("  [Gate] Stage {:02} PASS ({})", stage, what);
+        } else {
+            let msg = format!("Stage {:02}: {} failed", stage, what);
+            println!("  [Gate] FAIL {}", msg);
+            self.failures.push(msg);
+        }
+        ok
+    }
+
+    /// Prints the summary and exits the process with status 1 on any failure.
+    fn finish(self) {
+        if self.failures.is_empty() {
+            println!("[Harness] All {} checks passed across 25 stages.", self.passed);
+        } else {
+            eprintln!(
+                "[Harness] {} check(s) failed, {} passed:",
+                self.failures.len(),
+                self.passed
+            );
+            for f in &self.failures {
+                eprintln!("  - {}", f);
+            }
+            std::process::exit(1);
+        }
+    }
 }
 
 fn run_vm_internal(
@@ -419,7 +505,7 @@ fn run_vm_internal(
     mut hid: Option<&mut HidServer>,
     max_instructions: usize,
     max_frames: usize,
-) {
+) -> VmOutcome {
     println!("[VM] Starting execution at PC: 0x{:016X}", cpu.regs.pc);
     println!("[VM] Stack Pointer: 0x{:016X}", cpu.regs.sp);
 
@@ -431,6 +517,7 @@ fn run_vm_internal(
         println!("[HID] Physical gamepad attached: {}", pad_name);
     }
     let host_audio = HostAudioSink::new();
+    let mut stop = VmStop::Budget;
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -473,6 +560,7 @@ fn run_vm_internal(
                         if let Some(ref mut disp) = display {
                             if !disp.present_frame(&mmu) {
                                 println!("\n[Display] Window closed by user. Shutting down.");
+                                stop = VmStop::WindowClosed;
                                 break;
                             }
                         } else {
@@ -481,11 +569,13 @@ fn run_vm_internal(
 
                         if max_frames > 0 && frames_presented >= max_frames {
                             println!("\n[Display] Rendered {} benchmark frames. Exiting.", frames_presented);
+                            stop = VmStop::FrameLimit;
                             break;
                         }
                     }
                     SvcResult::ExitProcess => {
                         println!("\n[VM] Process exited gracefully (svcExitProcess).");
+                        stop = VmStop::ExitProcess;
                         break;
                     }
                     SvcResult::Break { reason, info1, info2 } => {
@@ -493,21 +583,25 @@ fn run_vm_internal(
                             "\n[VM] Hit svcBreak: reason=0x{:X}, info1=0x{:X}, info2=0x{:X}",
                             reason, info1, info2
                         );
+                        stop = VmStop::Break;
                         break;
                     }
                     SvcResult::Unhandled(id) => {
                         println!("\n[VM] Stopping on unhandled SVC #0x{:02X}.", id);
+                        stop = VmStop::UnhandledSvc;
                         break;
                     }
                 }
             }
             Ok(StepResult::Halt(msg)) => {
                 println!("\n[VM] CPU Halted: {}", msg);
+                stop = VmStop::Halt;
                 break;
             }
             Err(e) => {
                 eprintln!("\n[VM Error] {}", e);
                 eprintln!("  Final PC: 0x{:016X}", cpu.regs.pc);
+                stop = VmStop::Fault;
                 break;
             }
         }
@@ -610,10 +704,17 @@ fn run_vm_internal(
         cpu.regs.read_x(0),
         cpu.regs.read_d(0)
     );
+
+    VmOutcome {
+        stop,
+        x0: cpu.regs.read_x(0),
+        d0: cpu.regs.read_d(0),
+    }
 }
 
 fn run_built_in_demo() {
     println!("--- Running Built-in Test Suite ---\n");
+    let mut gate = StageGate::default();
 
     // Test Program 1: Fibonacci Sequence (computes Fib(10) = 55 in X0)
     #[rustfmt::skip]
@@ -643,7 +744,8 @@ fn run_built_in_demo() {
     mmu.map_range(DEFAULT_BASE_ADDR, 4096, Permission::READ_WRITE_EXECUTE);
     mmu.write_bytes(DEFAULT_BASE_ADDR, &code_bytes).unwrap();
 
-    run_vm(cpu, mmu, kernel, 100_000);
+    let outcome = run_vm(cpu, mmu, kernel, 100_000);
+    gate.expect_exit(1, &outcome, 55);
 
     // Test Program 2: Horizon OS Console Output (svcOutputDebugString)
     println!("\n[Stage 02/25] Horizon OS Debug Output Subsystem (svcOutputDebugString)");
@@ -669,7 +771,8 @@ fn run_built_in_demo() {
     mmu.map_range(DEFAULT_BASE_ADDR, 4096, Permission::READ_WRITE_EXECUTE);
     mmu.write_bytes(DEFAULT_BASE_ADDR, &print_bytes).unwrap();
 
-    run_vm(cpu, mmu, kernel, 10_000);
+    let outcome = run_vm(cpu, mmu, kernel, 10_000);
+    gate.expect_exit(2, &outcome, 0);
 
     // Test Program 3: Stack & Subroutine Call (STP, LDP, BL, RET)
     println!("\n[Stage 03/25] Stack Frame & Subroutine Management (STP, LDP, BL, RET)");
@@ -696,7 +799,8 @@ fn run_built_in_demo() {
     mmu.map_range(DEFAULT_BASE_ADDR, 4096, Permission::READ_WRITE_EXECUTE);
     mmu.write_bytes(DEFAULT_BASE_ADDR, &call_bytes).unwrap();
 
-    run_vm(cpu, mmu, kernel, 10_000);
+    let outcome = run_vm(cpu, mmu, kernel, 10_000);
+    gate.expect_exit(3, &outcome, 42);
 
     // Test Program 4: Horizon OS HIPC / CMIF Service Manager ("sm:" -> "nvdrv") & Floating-Point Math
     println!("\n[Stage 04/25] Horizon CMIF IPC & IEEE-754 Vector Math (FADD)");
@@ -744,7 +848,10 @@ fn run_built_in_demo() {
     }
     mmu.write_bytes(DEFAULT_BASE_ADDR, &ipc_bytes).unwrap();
 
-    run_vm(cpu, mmu, kernel, 10_000);
+    let outcome = run_vm(cpu, mmu, kernel, 10_000);
+    if gate.expect_exit(4, &outcome, 0x1_0002) {
+        gate.expect(4, "D0 = 42.0", outcome.d0 == 42.0);
+    }
 
     // Test Program 5: RomFS Virtual Filesystem & 48kHz Stereo PCM Audio Synthesizer (audout:u)
     println!("\n[Stage 05/25] Virtual Filesystem (RomFS) & Linear PCM Audio (audout:u)");
@@ -809,7 +916,8 @@ fn run_built_in_demo() {
     }
     mmu.write_bytes(DEFAULT_BASE_ADDR, &vfs_audio_bytes).unwrap();
 
-    run_vm(cpu, mmu, kernel, 10_000);
+    let outcome = run_vm(cpu, mmu, kernel, 10_000);
+    gate.expect_exit(5, &outcome, 0x3840);
     println!();
 
     println!("[Stage 06/25] AES-128-CTR NCA Decryption, SASS Decompiler & Multi-Threading");
@@ -936,7 +1044,8 @@ fn run_built_in_demo() {
 
     // Run VM and inspect shader + scheduler state
     let mut display_none: Option<&mut DisplayServer> = None;
-    run_vm_internal(cpu, mmu, kernel, display_none.as_mut().map(|x| &mut **x), None, 10_000, 0);
+    let outcome = run_vm_internal(cpu, mmu, kernel, display_none.as_mut().map(|x| &mut **x), None, 10_000, 0);
+    gate.expect_exit(6, &outcome, 0x1E61);
     println!();
 
     // ---------------------------------------------------------
@@ -1042,7 +1151,8 @@ fn run_built_in_demo() {
         boot_info.format, boot_info.title_id, boot_info.code_size
     );
 
-    run_vm(cpu, mmu, kernel, 10_000);
+    let outcome = run_vm(cpu, mmu, kernel, 10_000);
+    gate.expect_exit(7, &outcome, 0xFF40_C0FF);
     println!();
 
     // ---------------------------------------------------------
@@ -1123,7 +1233,8 @@ fn run_built_in_demo() {
     }
     mmu.write_bytes(DEFAULT_BASE_ADDR, &test8_bytes).unwrap();
 
-    run_vm(cpu, mmu, kernel, 10_000);
+    let outcome = run_vm(cpu, mmu, kernel, 10_000);
+    gate.expect_exit(8, &outcome, 0xFF00_FFFF);
     println!();
 
     // ---------------------------------------------------------
@@ -1228,7 +1339,8 @@ fn run_built_in_demo() {
     }
     mmu.write_bytes(DEFAULT_BASE_ADDR, &test9_bytes).unwrap();
 
-    run_vm(cpu, mmu, kernel, 10_000);
+    let outcome = run_vm(cpu, mmu, kernel, 10_000);
+    gate.expect_exit(9, &outcome, 0x10);
     println!();
 
     // ---------------------------------------------------------
@@ -1274,7 +1386,8 @@ fn run_built_in_demo() {
     cpu.regs.write_x(1, challenge_nonce);
     cpu.regs.write_x(30, DEFAULT_BASE_ADDR + 0x100); // LR -> svcExitProcess
 
-    run_vm(cpu, mmu, kernel, 10_000);
+    let outcome = run_vm(cpu, mmu, kernel, 10_000);
+    gate.expect_exit(10, &outcome, 0x60_6A00);
     println!();
 
     // ---------------------------------------------------------
@@ -1290,7 +1403,8 @@ fn run_built_in_demo() {
         "  [BootLoader] Format: {} | ProgramID: 0x{:016X} | .text: {} bytes",
         boot_nso.format, boot_nso.title_id, boot_nso.code_size
     );
-    run_vm(cpu, mmu, kernel, 50_000);
+    let outcome = run_vm(cpu, mmu, kernel, 50_000);
+    gate.expect_exit(11, &outcome, 0);
     println!();
 
     // ---------------------------------------------------------
@@ -1327,7 +1441,8 @@ fn run_built_in_demo() {
 
     cpu.regs.write_x(30, code12 + 0x100);
     cpu.regs.pc = code12 + 0x10;
-    run_vm(cpu, mmu, kernel, 10_000);
+    let outcome = run_vm(cpu, mmu, kernel, 10_000);
+    gate.expect_exit(12, &outcome, 0x7);
     println!();
 
     // ---------------------------------------------------------
@@ -1377,7 +1492,8 @@ fn run_built_in_demo() {
             mmu13.write_u32(code13 + (i * 4) as u64, w).unwrap();
         }
         cpu13.regs.pc = code13;
-        run_vm(cpu13, mmu13, kernel13, 10_000);
+        let outcome = run_vm(cpu13, mmu13, kernel13, 10_000);
+        gate.expect_exit(13, &outcome, 0x124_F801);
     }
     println!();
 
@@ -1398,7 +1514,8 @@ fn run_built_in_demo() {
             info14.format, info14.title_id, info14.code_size
         );
         cpu14.regs.pc = DEFAULT_BASE_ADDR;
-        run_vm(cpu14, mmu14, kernel14, 50_000);
+        let outcome = run_vm(cpu14, mmu14, kernel14, 50_000);
+        gate.expect_exit(14, &outcome, 0);
     }
     println!();
 
@@ -1507,8 +1624,10 @@ fn run_built_in_demo() {
         println!("  [RomFS] Mounted asset 'romfs:/shaders/t239_ampere.glsl' ({} bytes)", shader.len());
 
         cpu15.regs.pc = DEFAULT_BASE_ADDR;
-        run_vm(cpu15, mmu15, kernel15, 10_000);
-        println!("  [NVN Driver] Fast-path command buffer executed via SVC #0x2D & rendered into VRAM 0x{:08X}", fb_addr);
+        let outcome = run_vm(cpu15, mmu15, kernel15, 10_000);
+        if gate.expect_exit(15, &outcome, 0x239) {
+            println!("  [NVN Driver] Fast-path command buffer executed via SVC #0x2D & rendered into VRAM 0x{:08X}", fb_addr);
+        }
     }
     println!();
 
@@ -1624,6 +1743,14 @@ fn run_built_in_demo() {
             saved_bytes
         );
         let _ = std::fs::remove_dir_all(&save_temp);
+
+        // Stage 16 has no guest exit code; gate on the Tier-2 guest's Fibonacci
+        // result (Fib(10) = 55 in X2, reached through svcExitProcess) and the
+        // SaveData write size.
+        let tier2_ok = matches!(exit_reason, cpu::tier2_jit::BlockExit::Svc { svc_id: 7 })
+            && cpu16.regs.read_x(2) == 55;
+        gate.expect(16, "Tier-2 guest Fib(10) = 55 via svcExitProcess", tier2_ok);
+        gate.expect(16, "SaveData wrote 20 bytes", saved_bytes == 20);
     }
     println!();
 
@@ -1852,8 +1979,10 @@ fn run_built_in_demo() {
         }
 
         cpu17.regs.pc = code_va;
-        run_vm(cpu17, mmu17, kernel17, 10_000);
-        println!("  [Retail Bootstrap] Handshake completed successfully across all Big 5 services (Exit code: 0x777)");
+        let outcome = run_vm(cpu17, mmu17, kernel17, 10_000);
+        if gate.expect_exit(17, &outcome, 0x777) {
+            println!("  [Retail Bootstrap] Handshake completed successfully across all Big 5 services (Exit code: 0x777)");
+        }
     }
     println!();
 
@@ -1987,8 +2116,10 @@ fn run_built_in_demo() {
         }
 
         cpu18.regs.pc = code_va;
-        run_vm(cpu18, mmu18, kernel18, 10_000);
-        println!("  [Dynamic Linker Verification] ro:1 LoadNro confirmed in guest AArch64 (Exit code: 0x888)");
+        let outcome = run_vm(cpu18, mmu18, kernel18, 10_000);
+        if gate.expect_exit(18, &outcome, 0x888) {
+            println!("  [Dynamic Linker Verification] ro:1 LoadNro confirmed in guest AArch64 (Exit code: 0x888)");
+        }
     }
 
     // ---------------------------------------------------------
@@ -2079,8 +2210,10 @@ fn run_built_in_demo() {
         }
 
         cpu19.regs.pc = code_va;
-        run_vm(cpu19, mmu19, kernel19, 10_000);
-        println!("  [nnSdk Runtime Verification] StandardAllocator & nn::fs validated in guest AArch64 (Exit code: 0x999)");
+        let outcome = run_vm(cpu19, mmu19, kernel19, 10_000);
+        if gate.expect_exit(19, &outcome, 0x999) {
+            println!("  [nnSdk Runtime Verification] StandardAllocator & nn::fs validated in guest AArch64 (Exit code: 0x999)");
+        }
     }
 
     // ---------------------------------------------------------
@@ -2128,7 +2261,9 @@ fn run_built_in_demo() {
             insns_exec, tier3_engine.total_super_block_executions, exit
         );
         println!("  [Tier-3 Throughput] Measured execution performance: {:.2} MIPS", tier3_engine.mips_rate);
-        println!("  [Tier-3 Verification] Super-Block compilation verified in guest AArch64 (Exit code: 0xAAA)");
+        if gate.expect(20, "Tier-3 guest X0 = 0xAAA", cpu20.regs.read_x(0) == 0xAAA) {
+            println!("  [Tier-3 Verification] Super-Block compilation verified in guest AArch64 (Exit code: 0xAAA)");
+        }
     }
 
     // ---------------------------------------------------------
@@ -2257,8 +2392,10 @@ fn run_built_in_demo() {
         );
 
         cpu21.regs.pc = base_va;
-        run_vm(cpu21, mmu21, kernel21, 10_000);
-        println!("  [Loose Package Verification] Multi-module execution & loose RomFS verified (Exit code: 0xBBB)");
+        let outcome = run_vm(cpu21, mmu21, kernel21, 10_000);
+        if gate.expect_exit(21, &outcome, 0xBBB) {
+            println!("  [Loose Package Verification] Multi-module execution & loose RomFS verified (Exit code: 0xBBB)");
+        }
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
@@ -2385,8 +2522,10 @@ fn run_built_in_demo() {
         }
 
         cpu22.regs.pc = base_va;
-        run_vm(cpu22, mmu22, kernel22, 10_000);
-        println!("  [Commercial HAL Verification] pl:u fonts, time:u clock, and ASTC 4x4 verified (Exit code: 0xCCC)");
+        let outcome = run_vm(cpu22, mmu22, kernel22, 10_000);
+        if gate.expect_exit(22, &outcome, 0xCCC) {
+            println!("  [Commercial HAL Verification] pl:u fonts, time:u clock, and ASTC 4x4 verified (Exit code: 0xCCC)");
+        }
     }
 
     // ---------------------------------------------------------
@@ -2545,8 +2684,10 @@ fn run_built_in_demo() {
         }
 
         cpu23.regs.pc = base_va;
-        run_vm(cpu23, mmu23, kernel23, 10_000);
-        println!("  [Full-Stack Verification] Commercial Applet HAL & ASTC 8x8 Verified (Exit code: 0xDDD)");
+        let outcome = run_vm(cpu23, mmu23, kernel23, 10_000);
+        if gate.expect_exit(23, &outcome, 0xDDD) {
+            println!("  [Full-Stack Verification] Commercial Applet HAL & ASTC 8x8 Verified (Exit code: 0xDDD)");
+        }
     }
 
     // ---------------------------------------------------------
@@ -2613,8 +2754,10 @@ fn run_built_in_demo() {
         }
 
         cpu24.regs.pc = base_va;
-        run_vm(cpu24, mmu24, kernel24, 10_000);
-        println!("  [Full-Stack Verification] FP16 SASS & Dynamic NVN Ring Pipeline Verified (Exit code: 0xEEE)");
+        let outcome = run_vm(cpu24, mmu24, kernel24, 10_000);
+        if gate.expect_exit(24, &outcome, 0xEEE) {
+            println!("  [Full-Stack Verification] FP16 SASS & Dynamic NVN Ring Pipeline Verified (Exit code: 0xEEE)");
+        }
     }
 
     // ---------------------------------------------------------
@@ -2746,10 +2889,13 @@ fn run_built_in_demo() {
         }
 
         cpu25.regs.pc = base_va;
-        run_vm(cpu25, mmu25, kernel25, 10_000);
-        println!("  [Full-Stack Verification] Complete 25-Stage Architecture Pipeline Verified (Exit code: 0xEEE)");
+        let outcome = run_vm(cpu25, mmu25, kernel25, 10_000);
+        if gate.expect_exit(25, &outcome, 0xEEE) {
+            println!("  [Full-Stack Verification] Complete 25-Stage Architecture Pipeline Verified (Exit code: 0xEEE)");
+        }
     }
     println!();
+    gate.finish();
 }
 
 /// Runs the 2D Display & Framebuffer Graphic Demo
@@ -3405,4 +3551,28 @@ fn build_and_boot_showcase_nsp(out_path: &str) {
     );
 
     run_file(out_path, false);
+}
+
+#[cfg(test)]
+mod harness_gate_tests {
+    use super::*;
+
+    fn outcome(stop: VmStop, x0: u64) -> VmOutcome {
+        VmOutcome { stop, x0, d0: 0.0 }
+    }
+
+    #[test]
+    fn test_stage_gate_requires_exit_process_and_expected_x0() {
+        let mut gate = StageGate::default();
+        assert!(gate.expect_exit(1, &outcome(VmStop::ExitProcess, 0xEEE), 0xEEE));
+        // Right exit path, wrong value.
+        assert!(!gate.expect_exit(2, &outcome(VmStop::ExitProcess, 0xBAD), 0xEEE));
+        // Right value, but the guest never reached svcExitProcess.
+        assert!(!gate.expect_exit(3, &outcome(VmStop::Budget, 0xEEE), 0xEEE));
+        assert!(!gate.expect_exit(4, &outcome(VmStop::Halt, 0xEEE), 0xEEE));
+        assert!(gate.expect(5, "host check", true));
+        assert!(!gate.expect(6, "host check", false));
+        assert_eq!(gate.passed, 2);
+        assert_eq!(gate.failures.len(), 4);
+    }
 }
