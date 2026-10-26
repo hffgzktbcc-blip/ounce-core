@@ -292,11 +292,34 @@ impl HostGamepadManager {
                     let ry = gamepad.value(Axis::RightStickY);
                     hid.apply_gamepad_axes(lx, ly, rx, ry, 0.1);
 
+                    // Synthesize directional buttons from left stick for games reading DPad
+                    if lx < -0.5 {
+                        hid.set_button_state(NpadButton::DLeft, true);
+                    } else if lx > 0.5 {
+                        hid.set_button_state(NpadButton::DRight, true);
+                    }
+                    if ly > 0.5 {
+                        hid.set_button_state(NpadButton::DUp, true);
+                    } else if ly < -0.5 {
+                        hid.set_button_state(NpadButton::DDown, true);
+                    }
+
                     // Primary controller drives Player 1
                     break;
                 }
             }
         }
+    }
+
+    /// Returns the name of the first connected physical host gamepad, if any.
+    pub fn active_gamepad_name(&self) -> Option<String> {
+        let gilrs = self.gilrs.as_ref()?;
+        for (_id, gamepad) in gilrs.gamepads() {
+            if gamepad.is_connected() {
+                return Some(gamepad.name().to_string());
+            }
+        }
+        None
     }
 }
 
@@ -332,6 +355,17 @@ mod tests {
         let mut mgr = HostGamepadManager::new();
         let mut hid = HidServer::new(0x1000_0000);
         mgr.poll(&mut hid);
+        let _ = mgr.active_gamepad_name();
         // Successfully polled without panicking
+    }
+
+    #[test]
+    fn test_gamepad_stick_axes_and_deadzone() {
+        let mut hid = HidServer::new(0x1000_0000);
+        hid.apply_gamepad_axes(-0.8, 0.7, 0.05, -0.05, 0.1);
+        assert_eq!(hid.state.analog_lx, (-0.8f32 * 32767.0) as i32);
+        assert_eq!(hid.state.analog_ly, (0.7f32 * 32767.0) as i32);
+        assert_eq!(hid.state.analog_rx, 0); // filtered by deadzone
+        assert_eq!(hid.state.analog_ry, 0); // filtered by deadzone
     }
 }
