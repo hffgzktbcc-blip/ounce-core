@@ -547,7 +547,27 @@ impl NroLoader {
             let align = template.map_or(TLS_BLOCK_ALIGN, |t| t.align.max(1).next_power_of_two());
             cursor = (cursor + align - 1) & !(align - 1);
             let module_id = layout.blocks.len() as u64 + 1;
-            let (init_addr, init_size) = template.map_or((0, 0), |t| (base + t.vaddr, t.filesz.min(size)));
+            let (init_addr, init_size) = match template {
+                Some(t) => (base + t.vaddr, t.filesz.min(size)),
+                None => {
+                    let exports = Self::collect_exports(base, mmu);
+                    if let (Some(&lma_start), Some(&lma_end)) = (exports.get("__tdata_lma"), exports.get("__tdata_lma_end")) {
+                        if lma_end >= lma_start {
+                            (lma_start, (lma_end - lma_start).min(size))
+                        } else {
+                            (0, 0)
+                        }
+                    } else if let (Some(&start), Some(&end)) = (exports.get("__tdata_start"), exports.get("__tdata_end")) {
+                        if end >= start {
+                            (start, (end - start).min(size))
+                        } else {
+                            (0, 0)
+                        }
+                    } else {
+                        (0, 0)
+                    }
+                }
+            };
             layout.blocks.insert(base, TlsBlock { module_id, tp_offset: cursor, size, align, init_addr, init_size });
             layout.align = layout.align.max(align);
             cursor += size;
@@ -1124,6 +1144,27 @@ pub(crate) fn build_linked_nso_with(
     nso
 }
 
+/// Minimal ELF64 header with one `PT_LOAD` and one `PT_TLS` program header.
+#[cfg(test)]
+pub(crate) fn elf_with_pt_tls(tls: TlsTemplate) -> Vec<u8> {
+    let mut elf = vec![0u8; 0x40 + 2 * 0x38];
+    elf[0..4].copy_from_slice(b"\x7fELF");
+    elf[4] = 2; // ELFCLASS64
+    elf[5] = 1; // little-endian
+    LittleEndian::write_u64(&mut elf[0x20..0x28], 0x40); // e_phoff
+    LittleEndian::write_u16(&mut elf[0x36..0x38], 0x38); // e_phentsize
+    LittleEndian::write_u16(&mut elf[0x38..0x3A], 2); // e_phnum
+    LittleEndian::write_u32(&mut elf[0x40..0x44], 1); // PT_LOAD
+    let ph = 0x78;
+    LittleEndian::write_u32(&mut elf[ph..ph + 4], PT_TLS);
+    LittleEndian::write_u64(&mut elf[ph + 0x10..ph + 0x18], tls.vaddr);
+    LittleEndian::write_u64(&mut elf[ph + 0x18..ph + 0x20], tls.vaddr); // p_paddr
+    LittleEndian::write_u64(&mut elf[ph + 0x20..ph + 0x28], tls.filesz);
+    LittleEndian::write_u64(&mut elf[ph + 0x28..ph + 0x30], tls.memsz);
+    LittleEndian::write_u64(&mut elf[ph + 0x30..ph + 0x38], tls.align);
+    elf
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1260,26 +1301,6 @@ mod tests {
         assert_eq!(report.applied, 1);
         assert_eq!(mmu.read_u64(base + 0x300).unwrap(), 0xDEAD_BEEF);
         assert_eq!(mmu.read_u64(base + 0x308).unwrap(), 0);
-    }
-
-    /// Minimal ELF64 header with one `PT_LOAD` and one `PT_TLS` program header.
-    fn elf_with_pt_tls(tls: TlsTemplate) -> Vec<u8> {
-        let mut elf = vec![0u8; 0x40 + 2 * 0x38];
-        elf[0..4].copy_from_slice(b"\x7fELF");
-        elf[4] = 2; // ELFCLASS64
-        elf[5] = 1; // little-endian
-        LittleEndian::write_u64(&mut elf[0x20..0x28], 0x40); // e_phoff
-        LittleEndian::write_u16(&mut elf[0x36..0x38], 0x38); // e_phentsize
-        LittleEndian::write_u16(&mut elf[0x38..0x3A], 2); // e_phnum
-        LittleEndian::write_u32(&mut elf[0x40..0x44], 1); // PT_LOAD
-        let ph = 0x78;
-        LittleEndian::write_u32(&mut elf[ph..ph + 4], PT_TLS);
-        LittleEndian::write_u64(&mut elf[ph + 0x10..ph + 0x18], tls.vaddr);
-        LittleEndian::write_u64(&mut elf[ph + 0x18..ph + 0x20], tls.vaddr); // p_paddr
-        LittleEndian::write_u64(&mut elf[ph + 0x20..ph + 0x28], tls.filesz);
-        LittleEndian::write_u64(&mut elf[ph + 0x28..ph + 0x30], tls.memsz);
-        LittleEndian::write_u64(&mut elf[ph + 0x30..ph + 0x38], tls.align);
-        elf
     }
 
     #[test]

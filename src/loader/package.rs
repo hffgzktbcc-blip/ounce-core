@@ -353,8 +353,37 @@ impl LoosePackageLoader {
             }
         }
 
-        // 3. Lay out static TLS for modules that define TLS symbols.
-        let mut tls = NroLoader::build_tls_layout(&module_bases, mmu);
+        // 3. Lay out static TLS for modules that define TLS symbols or have PT_TLS templates.
+        let mut templates = HashMap::new();
+        let check_elf = |name: &str, nso_path: &Path| -> Option<PathBuf> {
+            let candidates = [
+                package.exefs_dir.join(format!("{}.elf", name)),
+                nso_path.with_extension("elf"),
+                package.root_dir.join(format!("{}.elf", name)),
+            ];
+            candidates.into_iter().find(|p| p.is_file())
+        };
+
+        if let Some(elf_path) = check_elf("main", &package.main_nso) {
+            if let Ok(bytes) = fs::read(&elf_path) {
+                if let Some(tmpl) = NroLoader::parse_pt_tls(&bytes) {
+                    templates.insert(base_addr, tmpl);
+                }
+            }
+        }
+
+        for (i, (mod_name, mod_path)) in package.companion_nsos.iter().enumerate() {
+            let mod_base = base_addr + ((i as u64 + 1) * 0x04000000);
+            if let Some(elf_path) = check_elf(mod_name, mod_path) {
+                if let Ok(bytes) = fs::read(&elf_path) {
+                    if let Some(tmpl) = NroLoader::parse_pt_tls(&bytes) {
+                        templates.insert(mod_base, tmpl);
+                    }
+                }
+            }
+        }
+
+        let mut tls = NroLoader::build_tls_layout_with_templates(&module_bases, mmu, &templates);
         if tls.total_size > 0 {
             NroLoader::install_tlsdesc_resolver(mmu, TLSDESC_RESOLVER_ADDR)
                 .map_err(|e| PackageError::NsoLoad(format!("Failed to install TLSDESC resolver: {}", e)))?;
@@ -639,6 +668,194 @@ mod tests {
         assert_eq!(config, b"\x01\x02\x03\x04");
 
         // Clean up
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_homebrew_multimodule_tls_and_thread_lifecycle() {
+        use crate::loader::nro::{
+            build_linked_nso_with, elf_with_pt_tls, TestSymbol, TlsTemplate,
+            R_AARCH64_GLOB_DAT, R_AARCH64_TLS_TPREL64,
+        };
+        use crate::mmu::Permission;
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ounce_test_homebrew_{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let exefs = temp_dir.join("exefs");
+        fs::create_dir_all(&exefs).unwrap();
+
+        let npdm_bytes = NpdmDescriptor::create_synthetic(
+            "HomebrewTest",
+            "OUNCE-P-HBRW",
+            0x0100023900002028,
+            44,
+            0,
+            &["sm:", "fsp-srv", "nvdrv"],
+        );
+        fs::write(exefs.join("main.npdm"), &npdm_bytes).unwrap();
+
+        // 1. `main` module:
+        //    - Defines TLS variable `g_worker_seed` (size 8, offset 0 in TLS segment)
+        //    - Defines exported function `main_compute` at offset 0x600
+        let tls_var = TestSymbol { name: "g_worker_seed", shndx: 1, bind: 1, kind: 6, value: 0, size: 8 };
+        let main_fn = TestSymbol { name: "main_compute", shndx: 1, bind: 1, kind: 2, value: 0x600, size: 8 };
+
+        let mut main_nso = build_linked_nso_with(&[tls_var, main_fn], &[], &[]);
+        // Code for main_compute at offset 0x600 (file offset 0x100 + 0x600 = 0x700):
+        // ADD X0, X0, #0x42 (0x91010800)
+        // RET               (0xD65F03C0)
+        let compute_code: [u32; 2] = [0x91010800, 0xD65F03C0];
+        for (i, &insn) in compute_code.iter().enumerate() {
+            let pos = 0x100 + 0x600 + i * 4;
+            main_nso[pos..pos + 4].copy_from_slice(&insn.to_le_bytes());
+        }
+        // Initial non-zero TLS data for g_worker_seed in .tdata at offset 0x1800
+        const INITIAL_TLS_VAL: u64 = 0x1337_CAFE_BABE_0001;
+        main_nso[0x100 + 0x1800..0x100 + 0x1808].copy_from_slice(&INITIAL_TLS_VAL.to_le_bytes());
+        fs::write(exefs.join("main"), &main_nso).unwrap();
+
+        // Companion main.elf with PT_TLS template describing the .tdata segment at vaddr 0x1800
+        let main_elf = elf_with_pt_tls(TlsTemplate {
+            vaddr: 0x1800,
+            filesz: 8,
+            memsz: 16,
+            align: 16,
+        });
+        fs::write(exefs.join("main.elf"), &main_elf).unwrap();
+
+        // 2. `subsdk0` module:
+        //    - Imports `main_compute` from `main` (relocated at GOT offset 0x300 via R_AARCH64_GLOB_DAT)
+        //    - Imports `g_worker_seed` from `main` (relocated at GOT offset 0x308 via R_AARCH64_TLS_TPREL64)
+        //    - Worker thread entry point at offset 0x600
+        let import_var = TestSymbol { name: "g_worker_seed", shndx: 0, bind: 1, kind: 6, value: 0, size: 0 };
+        let import_fn = TestSymbol { name: "main_compute", shndx: 0, bind: 1, kind: 2, value: 0, size: 0 };
+        let mut subsdk_nso = build_linked_nso_with(
+            &[import_var, import_fn],
+            &[
+                (0x300, R_AARCH64_GLOB_DAT, 2, 0),
+                (0x308, R_AARCH64_TLS_TPREL64, 1, 0),
+            ],
+            &[],
+        );
+
+        // Worker thread function in subsdk0 at offset 0x600:
+        // Reads initial TLS value, stores to shared[0], modifies TLS to 0x9999, calls main_compute(0x100),
+        // stores computation result (0x142) to shared[1], and returns via RET.
+        let worker_insns: [u32; 14] = [
+            0xA9BF7BFD, // STP X29, X30, [SP, #-16]! (save LR = THREAD_RETURN_SENTINEL to stack)
+            0xD53BD041, // MRS X1, TPIDR_EL0
+            0xF9400822, // LDR X2, [X1, #16] (g_worker_seed: TCB 16 + offset 0)
+            0xF9000002, // STR X2, [X0]      (shared[0] = initial TLS value)
+            0xD2933323, // MOVZ X3, #0x9999
+            0xF9000823, // STR X3, [X1, #16] (update worker TLS = 0x9999)
+            0x10FFE744, // ADR X4, #-0x318   (address of GOT slot 0x300 for main_compute)
+            0xF9400084, // LDR X4, [X4]      (load address of main_compute)
+            0xAA0003F3, // MOV X19, X0       (save shared buffer pointer in X19)
+            0xD2802000, // MOVZ X0, #0x100   (argument = 0x100)
+            0xD63F0080, // BLR X4            (call main_compute: returns 0x100 + 0x42 = 0x142)
+            0xF9000660, // STR X0, [X19, #8] (shared[1] = 0x142)
+            0xA8C17BFD, // LDP X29, X30, [SP], #16  (restore LR = THREAD_RETURN_SENTINEL)
+            0xD65F03C0, // RET               (exits cleanly via THREAD_RETURN_SENTINEL)
+        ];
+        for (i, &insn) in worker_insns.iter().enumerate() {
+            let pos = 0x100 + 0x600 + i * 4;
+            subsdk_nso[pos..pos + 4].copy_from_slice(&insn.to_le_bytes());
+        }
+        fs::write(exefs.join("subsdk0"), &subsdk_nso).unwrap();
+
+        // Load loose package into kernel
+        let pkg = LoosePackageLoader::discover(&temp_dir).expect("Failed to discover loose package");
+        let mut mmu = Memory::new();
+        let mut kernel = HorizonKernel::new();
+        let base_addr = 0x8000_0000u64;
+        let boot_info = LoosePackageLoader::load_into_kernel(&pkg, base_addr, &mut mmu, &mut kernel)
+            .expect("Failed to load into kernel");
+
+        assert_eq!(boot_info.thread_pointer, Some(STATIC_TLS_ADDR));
+        assert_eq!(boot_info.relocations_applied, 2);
+        assert!(boot_info.unresolved_imports.is_empty());
+
+        // Verify main thread's initial TLS value was loaded from .tdata template
+        let main_tls_val = mmu.read_u64(STATIC_TLS_ADDR + 16).unwrap();
+        assert_eq!(main_tls_val, INITIAL_TLS_VAL);
+
+        // Verify subsdk0's GOT slot 0x300 points to main_compute
+        let subsdk_base = base_addr + 0x04000000;
+        assert_eq!(mmu.read_u64(subsdk_base + 0x300).unwrap(), base_addr + 0x600);
+        // Verify subsdk0's GOT slot 0x308 has TLS offset 16 (TCB 16 + 0)
+        assert_eq!(mmu.read_u64(subsdk_base + 0x308).unwrap(), 16);
+
+        // Allocate shared memory and stack for worker thread
+        let shared_buf = 0x9000_2000u64;
+        let worker_stack = 0x7000_3000u64;
+        mmu.map_range(shared_buf, 4096, Permission::READ_WRITE);
+        mmu.map_range(0x7000_0000, 0x4000, Permission::READ_WRITE);
+
+        // Create and start worker thread in subsdk0 via Horizon kernel scheduler
+        let worker_entry = subsdk_base + 0x600;
+        let handle = kernel.scheduler.create_thread(worker_entry, shared_buf, worker_stack, 44, 1);
+        let worker_tls = kernel.scheduler.setup_thread_tls(handle, &mut mmu).expect("Failed to setup worker TLS");
+        assert_ne!(worker_tls, STATIC_TLS_ADDR);
+
+        // Verify worker thread starts with a fresh copy of the initial non-zero TLS value
+        assert_eq!(mmu.read_u64(worker_tls + 16).unwrap(), INITIAL_TLS_VAL);
+
+        // Run worker thread to completion
+        let finished = kernel.scheduler.start_and_run_thread(handle, &mut mmu, 500);
+        assert!(finished);
+        assert_eq!(kernel.scheduler.threads[&handle].state, crate::kernel::ThreadState::Exited);
+        assert_eq!(kernel.scheduler.total_threads_completed, 1);
+
+        // Check shared buffer:
+        // shared[0] was initial TLS value read by worker
+        assert_eq!(mmu.read_u64(shared_buf).unwrap(), INITIAL_TLS_VAL);
+        // shared[1] was return value of main_compute (0x100 + 0x42 = 0x142)
+        assert_eq!(mmu.read_u64(shared_buf + 8).unwrap(), 0x142);
+
+        // Verify thread isolation:
+        // Worker's TLS was updated to 0x9999
+        assert_eq!(mmu.read_u64(worker_tls + 16).unwrap(), 0x9999);
+        // Main thread's TLS at STATIC_TLS_ADDR remained UNTOUCHED!
+        assert_eq!(mmu.read_u64(STATIC_TLS_ADDR + 16).unwrap(), INITIAL_TLS_VAL);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_homebrew_devkita64_linker_script_tls_fallback() {
+        use crate::loader::nro::{build_linked_nso_with, TestSymbol};
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ounce_test_devkita64_{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let exefs = temp_dir.join("exefs");
+        fs::create_dir_all(&exefs).unwrap();
+
+        // `main` defines TLS variable and exports devkitA64 linker script symbols:
+        // __tdata_lma at 0x1800, __tdata_lma_end at 0x1808.
+        let tls_sym = TestSymbol { name: "errno_val", shndx: 1, bind: 1, kind: 6, value: 0, size: 8 };
+        let lma_start = TestSymbol { name: "__tdata_lma", shndx: 1, bind: 1, kind: 1, value: 0x1800, size: 0 };
+        let lma_end = TestSymbol { name: "__tdata_lma_end", shndx: 1, bind: 1, kind: 1, value: 0x1808, size: 0 };
+
+        let mut main_nso = build_linked_nso_with(&[tls_sym, lma_start, lma_end], &[], &[]);
+        const ERRNO_INIT: u64 = 0xDEADC0DE_0000002A;
+        main_nso[0x100 + 0x1800..0x100 + 0x1808].copy_from_slice(&ERRNO_INIT.to_le_bytes());
+        fs::write(exefs.join("main"), &main_nso).unwrap();
+
+        let pkg = LoosePackageLoader::discover(&temp_dir).expect("Failed to discover loose package");
+        let mut mmu = Memory::new();
+        let mut kernel = HorizonKernel::new();
+        let base_addr = 0x8000_0000u64;
+        let boot_info = LoosePackageLoader::load_into_kernel(&pkg, base_addr, &mut mmu, &mut kernel)
+            .expect("Failed to load into kernel");
+
+        assert_eq!(boot_info.thread_pointer, Some(STATIC_TLS_ADDR));
+        // Verify .tdata was properly initialized using __tdata_lma fallback symbols without an ELF file
+        assert_eq!(mmu.read_u64(STATIC_TLS_ADDR + 16).unwrap(), ERRNO_INIT);
+
         let _ = fs::remove_dir_all(&temp_dir);
     }
 }
