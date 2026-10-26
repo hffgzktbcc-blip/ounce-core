@@ -7,6 +7,7 @@ pub mod nvgpu;
 pub mod nvn;
 pub mod present;
 pub mod shader;
+pub mod tensor;
 pub mod vulkan;
 
 pub use display::{DisplayConfig, DisplayServer, PresentationMode, DEFAULT_FRAMEBUFFER_ADDR, SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -19,4 +20,5 @@ pub use nvgpu::{
 };
 pub use nvn::{NvnCmd, NvnCommandBuffer, NvnDriver};
 pub use shader::{DecompiledShader, SassOp, SassShaderDecompiler};
+pub use tensor::{HmmaShape, TensorCoreUnit, WarpFragments};
 pub use vulkan::{VulkanDeviceInfo, VulkanGpuBackend, VulkanShaderModule};

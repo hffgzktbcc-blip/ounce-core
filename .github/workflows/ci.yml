@@ -36,5 +36,5 @@ jobs:
       - name: Run unit tests
         run: cargo test --release
 
-      - name: Run 24-stage integration verification suite
+      - name: Run 25-stage integration verification suite
         run: cargo run --release -- test
