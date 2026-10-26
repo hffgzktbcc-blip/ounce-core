@@ -4,9 +4,17 @@ version = "0.3.0"
 edition = "2024"
 description = "Clean-room systems research runtime and architecture compatibility layer for NVIDIA Tegra T239 (Horizon OS FW 23.0.1 ABI)"
 
+[features]
+default = []
+# Host GPU presentation (Vulkan on Linux/Windows, Metal on macOS) via wgpu.
+gpu-present = ["dep:wgpu", "dep:winit", "dep:pollster"]
+
 [dependencies]
 byteorder = "1.5.0"
 cpal = "0.18.2"
 gilrs = "0.11.2"
 minifb = "0.29.0"
+pollster = { version = "0.4", optional = true }
 thiserror = "2.0.21"
+wgpu = { version = "30.0.1", optional = true }
+winit = { version = "0.30", optional = true }
