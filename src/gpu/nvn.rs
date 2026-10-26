@@ -4,7 +4,8 @@ use byteorder::{ByteOrder, LittleEndian};
 use super::nvgpu::{
     NvgpuChannel, SubmissionMode, METHOD_BIND_SHADER_PROGRAM, METHOD_BIND_TEXTURE_2D,
     METHOD_CLEAR_SURFACE, METHOD_DISPATCH_DLSS_UPSCALE, METHOD_DRAW_ARRAYS,
-    METHOD_DRAW_TEXTURED_ARRAYS, METHOD_SET_CLEAR_COLOR, METHOD_SET_DEPTH_TEST_ENABLE,
+    METHOD_DRAW_INDEXED, METHOD_DRAW_TEXTURED_ARRAYS, METHOD_SET_CLEAR_COLOR,
+    METHOD_SET_DEPTH_TEST_ENABLE, METHOD_SET_INDEX_ARRAY_ADDR,
     METHOD_SET_RENDER_TARGET_ADDR, METHOD_SET_VERTEX_ARRAY_ADDR, METHOD_SET_VIEWPORT_DIMS,
 };
 use crate::mmu::Memory;
@@ -30,6 +31,8 @@ pub const NVN_CMD_DRAW_TEXTURED: u32 = 0x09;
 pub const NVN_CMD_DLSS_UPSCALE: u32 = 0x0A;
 pub const NVN_CMD_BIND_TEXTURE_DESCRIPTOR: u32 = 0x0B;
 pub const NVN_CMD_BUFFER_CYCLE: u32 = 0x0C;
+pub const NVN_CMD_BIND_INDEX_BUFFER: u32 = 0x0D;
+pub const NVN_CMD_DRAW_ELEMENTS: u32 = 0x0E;
 pub const NVN_CMD_END: u32 = 0xFF;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -412,6 +415,8 @@ pub enum NvnCmd {
     DrawTextured { vertex_count: u32 },
     DlssUpscale { src_addr: u32, src_w: u32, src_h: u32, dst_addr: u32 },
     BufferCycle { buffer_id: u32 },
+    BindIndexBuffer { ib_addr: u32, is_32bit: bool },
+    DrawElements { index_count: u32, textured: bool },
 }
 
 /// High-Level `NVN` Command Buffer Builder (`NVNcommandBuffer`).
@@ -478,6 +483,14 @@ impl NvnCommandBuffer {
         self.commands.push(NvnCmd::BufferCycle { buffer_id });
     }
 
+    pub fn bind_index_buffer(&mut self, ib_addr: u32, is_32bit: bool) {
+        self.commands.push(NvnCmd::BindIndexBuffer { ib_addr, is_32bit });
+    }
+
+    pub fn draw_elements(&mut self, index_count: u32, textured: bool) {
+        self.commands.push(NvnCmd::DrawElements { index_count, textured });
+    }
+
     /// Serializes this `NVNcommandBuffer` into a guest-memory binary `NVN` stream.
     pub fn encode_stream(&self) -> Vec<u32> {
         let mut out = Vec::new();
@@ -532,6 +545,12 @@ impl NvnCommandBuffer {
                 }
                 NvnCmd::BufferCycle { buffer_id } => {
                     out.extend_from_slice(&[NVN_CMD_BUFFER_CYCLE, buffer_id]);
+                }
+                NvnCmd::BindIndexBuffer { ib_addr, is_32bit } => {
+                    out.extend_from_slice(&[NVN_CMD_BIND_INDEX_BUFFER, ib_addr, is_32bit as u32]);
+                }
+                NvnCmd::DrawElements { index_count, textured } => {
+                    out.extend_from_slice(&[NVN_CMD_DRAW_ELEMENTS, index_count, textured as u32]);
                 }
             }
         }
@@ -671,6 +690,26 @@ impl NvnCommandBuffer {
                     ));
                     pb.push(buffer_id);
                 }
+                NvnCmd::BindIndexBuffer { ib_addr, is_32bit } => {
+                    pb.push(NvgpuChannel::encode_header(
+                        SubmissionMode::Increasing,
+                        2,
+                        METHOD_SET_INDEX_ARRAY_ADDR,
+                        2,
+                    ));
+                    pb.push(ib_addr);
+                    pb.push(is_32bit as u32);
+                }
+                NvnCmd::DrawElements { index_count, textured } => {
+                    pb.push(NvgpuChannel::encode_header(
+                        SubmissionMode::Increasing,
+                        2,
+                        METHOD_DRAW_INDEXED,
+                        2,
+                    ));
+                    pb.push(index_count);
+                    pb.push(textured as u32);
+                }
             }
         }
         pb
@@ -788,6 +827,18 @@ impl NvnDriver {
                     cb.cycle_buffer(buf_id);
                     self.current_buffer_index = buf_id;
                     self.total_buffer_cycles += 1;
+                }
+                NVN_CMD_BIND_INDEX_BUFFER if idx + 2 <= max_words => {
+                    let addr = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
+                    let is_32 = mmu.read_u32(cmd_stream_addr + ((idx + 1) * 4) as u64).unwrap_or(0) != 0;
+                    idx += 2;
+                    cb.bind_index_buffer(addr, is_32);
+                }
+                NVN_CMD_DRAW_ELEMENTS if idx + 2 <= max_words => {
+                    let count = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
+                    let textured = mmu.read_u32(cmd_stream_addr + ((idx + 1) * 4) as u64).unwrap_or(0) != 0;
+                    idx += 2;
+                    cb.draw_elements(count, textured);
                 }
                 _ => break,
             }
@@ -963,5 +1014,60 @@ mod tests {
         assert_eq!(executed, 2);
         assert_eq!(nvn.current_buffer_index, 2);
         assert_eq!(nvn.total_buffer_cycles, 2);
+    }
+
+    #[test]
+    fn test_nvn_draw_elements() {
+        let mut mmu = Memory::new();
+        let mut nvgpu = NvgpuChannel::new();
+        let mut nvn = NvnDriver::new();
+
+        let rt_addr = 0x9000_0000u32;
+        let vb_addr = 0x8002_0000u32;
+        let ib_addr = 0x8003_0000u32;
+        let stream_addr = 0x8001_0000u64;
+
+        mmu.map_range(rt_addr as u64, 0x4000, Permission::READ_WRITE);
+        mmu.map_range(vb_addr as u64, 0x1000, Permission::READ_WRITE);
+        mmu.map_range(ib_addr as u64, 0x1000, Permission::READ_WRITE);
+        mmu.map_range(stream_addr, 0x1000, Permission::READ_WRITE);
+
+        // Quad vertices (x, y, z, r, g, b) with Yellow color (1.0, 1.0, 0.0)
+        let quad_verts: [f32; 24] = [
+            -0.8,  0.8, 0.5, 1.0, 1.0, 0.0,
+            -0.8, -0.8, 0.5, 1.0, 1.0, 0.0,
+             0.8, -0.8, 0.5, 1.0, 1.0, 0.0,
+             0.8,  0.8, 0.5, 1.0, 1.0, 0.0,
+        ];
+        for (i, &val) in quad_verts.iter().enumerate() {
+            mmu.write_u32(vb_addr as u64 + (i * 4) as u64, val.to_bits()).unwrap();
+        }
+
+        // 2 Triangles via 16-bit indices: (0, 1, 2) and (0, 2, 3)
+        let indices: [u16; 6] = [0, 1, 2, 0, 2, 3];
+        for (i, &idx) in indices.iter().enumerate() {
+            mmu.write_u16(ib_addr as u64 + (i * 2) as u64, idx).unwrap();
+        }
+
+        let mut cb = NvnCommandBuffer::new();
+        cb.set_render_target(rt_addr, 16, 16);
+        cb.clear_color(0.0, 0.0, 0.0, 1.0);
+        cb.bind_vertex_buffer(vb_addr);
+        cb.bind_index_buffer(ib_addr, false);
+        cb.draw_elements(6, false);
+
+        let stream = cb.encode_stream();
+        for (i, &w) in stream.iter().enumerate() {
+            mmu.write_u32(stream_addr + (i * 4) as u64, w).unwrap();
+        }
+
+        let executed = nvn.submit_guest_command_stream(&mut mmu, &mut nvgpu, stream_addr, stream.len());
+        assert_eq!(executed, 5);
+        assert_eq!(nvgpu.state.total_triangles_rendered, 2);
+        assert_eq!(nvgpu.state.total_draw_calls, 1);
+
+        // Center pixel (8, 8) should be filled with Yellow (RGBA: 0xFF, 0xFF, 0x00, 0xFF -> 0xFF00FFFF)
+        let center_px = mmu.read_u32(rt_addr as u64 + (8 * 16 + 8) * 4).unwrap();
+        assert_eq!(center_px, 0xFF00FFFF);
     }
 }

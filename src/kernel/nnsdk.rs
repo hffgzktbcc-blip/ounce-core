@@ -180,6 +180,7 @@ pub struct NnFsManager {
     pub next_handle: u32,
     pub mounted_rom: bool,
     pub mounted_save: bool,
+    pub mounted_sdmc: bool,
 }
 
 impl NnFsManager {
@@ -189,6 +190,7 @@ impl NnFsManager {
             next_handle: 100,
             mounted_rom: false,
             mounted_save: false,
+            mounted_sdmc: false,
         }
     }
 
@@ -202,6 +204,36 @@ impl NnFsManager {
     pub fn mount_save_data(&mut self) -> u32 {
         self.mounted_save = true;
         RESULT_SUCCESS
+    }
+
+    pub fn mount_sd_card(&mut self) -> u32 {
+        self.mounted_sdmc = true;
+        RESULT_SUCCESS
+    }
+
+    pub fn create_directory(&mut self, path: &str, vfs: &mut VirtualFileSystem) -> u32 {
+        match vfs.create_directory(path) {
+            Ok(_) => RESULT_SUCCESS,
+            Err(_) => RESULT_FS_PATH_NOT_FOUND,
+        }
+    }
+
+    pub fn delete_file(&mut self, path: &str, vfs: &mut VirtualFileSystem) -> u32 {
+        match vfs.delete_file(path) {
+            Ok(_) => RESULT_SUCCESS,
+            Err(_) => RESULT_FS_PATH_NOT_FOUND,
+        }
+    }
+
+    pub fn delete_directory(&mut self, path: &str, vfs: &mut VirtualFileSystem) -> u32 {
+        match vfs.delete_directory(path) {
+            Ok(_) => RESULT_SUCCESS,
+            Err(_) => RESULT_FS_PATH_NOT_FOUND,
+        }
+    }
+
+    pub fn list_directory(&self, path: &str, vfs: &VirtualFileSystem) -> Result<Vec<String>, u32> {
+        vfs.list_directory(path).map_err(|_| RESULT_FS_PATH_NOT_FOUND)
     }
 
     pub fn open_file(&mut self, path: &str, mode: u32, vfs: &VirtualFileSystem) -> (u32, u32) {
@@ -470,5 +502,23 @@ mod tests {
         runtime.os.sleep_thread(1_000_000);
         assert_eq!(runtime.os.total_sleep_nanos, 1_000_000);
         assert_eq!(runtime.os.system_tick_freq, 19_200_000);
+    }
+
+    #[test]
+    fn test_nnsdk_fs_directory_and_sdmc_operations() {
+        let mut vfs = VirtualFileSystem::new();
+        let mut fs_mgr = NnFsManager::new();
+
+        assert_eq!(fs_mgr.mount_sd_card(), RESULT_SUCCESS);
+        assert!(fs_mgr.mounted_sdmc);
+
+        assert_eq!(fs_mgr.create_directory("sdmc:/switch/apps", &mut vfs), RESULT_SUCCESS);
+        vfs.mount_file("sdmc:/switch/apps/hbmenu.nro", b"NRO0_PAYLOAD");
+
+        let entries = fs_mgr.list_directory("sdmc:/switch/apps", &vfs).unwrap();
+        assert_eq!(entries, vec!["hbmenu.nro".to_string()]);
+
+        assert_eq!(fs_mgr.delete_file("sdmc:/switch/apps/hbmenu.nro", &mut vfs), RESULT_SUCCESS);
+        assert_eq!(fs_mgr.delete_directory("sdmc:/switch", &mut vfs), RESULT_SUCCESS);
     }
 }

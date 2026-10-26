@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
+use std::collections::{HashMap, HashSet};
+use crate::mmu::{Memory, MemoryError};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::Cursor;
-use crate::mmu::{Memory, MemoryError};
-use std::collections::HashMap;
 
 #[derive(Debug, thiserror::Error)]
 pub enum VfsError {
@@ -15,6 +15,25 @@ pub enum VfsError {
 
     #[error("Memory error during VFS transfer: {0}")]
     Memory(#[from] MemoryError),
+
+    #[error("I/O error in VFS: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+/// Normalizes a virtual path to standard format (e.g. "romfs:/path" or "/path").
+fn normalize_vfs_path(path: &str) -> String {
+    let p = path.replace('\\', "/");
+    let p = p.trim();
+    if p.is_empty() {
+        return "/".to_string();
+    }
+    if let Some(idx) = p.find(':') {
+        let scheme = &p[..idx];
+        let rest = p[idx + 1..].trim_start_matches('/');
+        format!("{}:/{}", scheme, rest)
+    } else {
+        format!("/{}", p.trim_start_matches('/'))
+    }
 }
 
 /// Horizon OS Virtual Filesystem (RomFS, SDMC, and SaveData).
@@ -24,6 +43,8 @@ pub struct VirtualFileSystem {
     /// Maps open file handles to virtual paths
     open_handles: HashMap<u32, String>,
     next_handle: u32,
+    /// Explicitly tracked directories in VFS
+    directories: HashSet<String>,
     pub save_dir: Option<std::path::PathBuf>,
     pub sdmc_dir: Option<std::path::PathBuf>,
     pub total_bytes_read: u64,
@@ -38,10 +59,17 @@ impl Default for VirtualFileSystem {
 
 impl VirtualFileSystem {
     pub fn new() -> Self {
+        let mut directories = HashSet::new();
+        directories.insert("romfs:/".to_string());
+        directories.insert("romfs:/shader".to_string());
+        directories.insert("save:/".to_string());
+        directories.insert("sdmc:/".to_string());
+
         let mut vfs = Self {
             files: HashMap::new(),
             open_handles: HashMap::new(),
             next_handle: 1,
+            directories,
             save_dir: None,
             sdmc_dir: None,
             total_bytes_read: 0,
@@ -77,8 +105,16 @@ impl VirtualFileSystem {
 
     /// Mounts or overwrites a virtual file in the VFS.
     pub fn mount_file(&mut self, path: &str, data: &[u8]) {
-        self.files.insert(path.to_string(), data.to_vec());
-        self.sync_file_to_disk(path, data);
+        let norm = normalize_vfs_path(path);
+        self.files.insert(norm.clone(), data.to_vec());
+        if let Some(idx) = norm.rfind('/') {
+            let parent = &norm[..idx];
+            if !parent.is_empty() {
+                self.directories.insert(parent.to_string());
+                self.directories.insert(format!("{}/", parent));
+            }
+        }
+        self.sync_file_to_disk(&norm, data);
     }
 
     /// Recursively mounts all files from a host filesystem directory under the given VFS prefix (e.g. "romfs").
@@ -221,12 +257,265 @@ impl VirtualFileSystem {
         len: usize,
         mmu: &Memory,
     ) -> Result<usize, VfsError> {
+        let norm = normalize_vfs_path(path);
         let mut buf = vec![0u8; len];
         mmu.read_bytes(guest_src_addr, &mut buf)?;
-        self.files.insert(path.to_string(), buf.clone());
-        self.sync_file_to_disk(path, &buf);
+        self.files.insert(norm.clone(), buf.clone());
+        if let Some(idx) = norm.rfind('/') {
+            let parent = &norm[..idx];
+            if !parent.is_empty() {
+                self.directories.insert(parent.to_string());
+                self.directories.insert(format!("{}/", parent));
+            }
+        }
+        self.sync_file_to_disk(&norm, &buf);
         self.total_bytes_written += len as u64;
         Ok(len)
+    }
+
+    /// Enumerates directory contents, returning the direct child file and folder names.
+    pub fn list_directory(&self, path: &str) -> Result<Vec<String>, VfsError> {
+        let norm = normalize_vfs_path(path);
+        let prefix = if norm.ends_with('/') {
+            norm.clone()
+        } else {
+            format!("{}/", norm)
+        };
+
+        let mut entries = std::collections::BTreeSet::new();
+        let mut dir_found = false;
+
+        let norm_no_slash = norm.trim_end_matches('/');
+        if norm == "romfs:/" || norm == "save:/" || norm == "sdmc:/"
+            || norm_no_slash == "romfs:" || norm_no_slash == "save:" || norm_no_slash == "sdmc:"
+            || self.directories.contains(&norm) || self.directories.contains(norm_no_slash)
+        {
+            dir_found = true;
+        }
+
+        // 1. Files in memory
+        for file_path in self.files.keys() {
+            if file_path.starts_with(&prefix) {
+                dir_found = true;
+                let rel = &file_path[prefix.len()..];
+                if !rel.is_empty() {
+                    let entry = match rel.find('/') {
+                        Some(idx) => &rel[..idx],
+                        None => rel,
+                    };
+                    if !entry.is_empty() {
+                        entries.insert(entry.to_string());
+                    }
+                }
+            }
+        }
+
+        // 2. Explicit directories
+        for d in &self.directories {
+            let d_clean = d.trim_end_matches('/');
+            let prefix_clean = prefix.trim_end_matches('/');
+            if d_clean.starts_with(prefix_clean) && d_clean.len() > prefix_clean.len() {
+                let rel = d_clean[prefix_clean.len()..].trim_start_matches('/');
+                if !rel.is_empty() {
+                    let entry = match rel.find('/') {
+                        Some(idx) => &rel[..idx],
+                        None => rel,
+                    };
+                    if !entry.is_empty() {
+                        entries.insert(entry.to_string());
+                    }
+                }
+            }
+        }
+
+        // 3. Disk inspection for save:/ and sdmc:/
+        if norm.starts_with("save:/") {
+            if let Some(ref s_dir) = self.save_dir {
+                let rel = norm["save:/".len()..].trim_matches('/');
+                let disk_dir = if rel.is_empty() {
+                    s_dir.clone()
+                } else {
+                    s_dir.join(rel)
+                };
+                if disk_dir.is_dir() {
+                    dir_found = true;
+                    if let Ok(rd) = std::fs::read_dir(&disk_dir) {
+                        for e in rd.flatten() {
+                            let name = e.file_name().to_string_lossy().to_string();
+                            entries.insert(name);
+                        }
+                    }
+                }
+            }
+        } else if norm.starts_with("sdmc:/") {
+            if let Some(ref s_dir) = self.sdmc_dir {
+                let rel = norm["sdmc:/".len()..].trim_matches('/');
+                let disk_dir = if rel.is_empty() {
+                    s_dir.clone()
+                } else {
+                    s_dir.join(rel)
+                };
+                if disk_dir.is_dir() {
+                    dir_found = true;
+                    if let Ok(rd) = std::fs::read_dir(&disk_dir) {
+                        for e in rd.flatten() {
+                            let name = e.file_name().to_string_lossy().to_string();
+                            entries.insert(name);
+                        }
+                    }
+                }
+            }
+        }
+
+        if !dir_found {
+            return Err(VfsError::NotFound(path.to_string()));
+        }
+
+        Ok(entries.into_iter().collect())
+    }
+
+    /// Creates a directory in the VFS and persistent storage if mounted.
+    pub fn create_directory(&mut self, path: &str) -> Result<(), VfsError> {
+        let norm = normalize_vfs_path(path);
+        let clean = norm.trim_end_matches('/').to_string();
+        self.directories.insert(clean.clone());
+        self.directories.insert(format!("{}/", clean));
+
+        // Register intermediate parent directories
+        let mut curr = clean.as_str();
+        while let Some(idx) = curr.rfind('/') {
+            let parent = &curr[..idx];
+            if !parent.is_empty() && parent != "save:" && parent != "sdmc:" && parent != "romfs:" {
+                self.directories.insert(parent.to_string());
+                self.directories.insert(format!("{}/", parent));
+                curr = parent;
+            } else {
+                break;
+            }
+        }
+
+        if clean.starts_with("save:/") {
+            if let Some(ref s_dir) = self.save_dir {
+                let rel = clean["save:/".len()..].trim_matches('/');
+                if !rel.is_empty() {
+                    let disk_path = s_dir.join(rel);
+                    std::fs::create_dir_all(&disk_path)?;
+                }
+            }
+        } else if clean.starts_with("sdmc:/") {
+            if let Some(ref s_dir) = self.sdmc_dir {
+                let rel = clean["sdmc:/".len()..].trim_matches('/');
+                if !rel.is_empty() {
+                    let disk_path = s_dir.join(rel);
+                    std::fs::create_dir_all(&disk_path)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Deletes a file from the VFS and persistent storage if mounted.
+    pub fn delete_file(&mut self, path: &str) -> Result<(), VfsError> {
+        let norm = normalize_vfs_path(path);
+        let removed = self.files.remove(&norm).is_some();
+        self.open_handles.retain(|_, v| v != &norm);
+
+        let mut disk_removed = false;
+        if norm.starts_with("save:/") {
+            if let Some(ref s_dir) = self.save_dir {
+                let rel = norm["save:/".len()..].trim_matches('/');
+                let disk_path = s_dir.join(rel);
+                if disk_path.is_file() {
+                    let _ = std::fs::remove_file(&disk_path);
+                    disk_removed = true;
+                }
+            }
+        } else if norm.starts_with("sdmc:/") {
+            if let Some(ref s_dir) = self.sdmc_dir {
+                let rel = norm["sdmc:/".len()..].trim_matches('/');
+                let disk_path = s_dir.join(rel);
+                if disk_path.is_file() {
+                    let _ = std::fs::remove_file(&disk_path);
+                    disk_removed = true;
+                }
+            }
+        }
+
+        if !removed && !disk_removed {
+            return Err(VfsError::NotFound(path.to_string()));
+        }
+        Ok(())
+    }
+
+    /// Deletes a directory and its contents from the VFS and persistent storage.
+    pub fn delete_directory(&mut self, path: &str) -> Result<(), VfsError> {
+        let norm = normalize_vfs_path(path);
+        let clean = norm.trim_end_matches('/').to_string();
+        let prefix = format!("{}/", clean);
+
+        let dir_existed = self.directories.remove(&clean) || self.directories.remove(&prefix);
+
+        let to_remove: Vec<String> = self.files.keys()
+            .filter(|k| k.starts_with(&prefix))
+            .cloned()
+            .collect();
+        for k in &to_remove {
+            self.files.remove(k);
+            self.open_handles.retain(|_, v| v != k);
+        }
+
+        let subdirs_removed = {
+            let before = self.directories.len();
+            self.directories.retain(|d| !d.starts_with(&prefix) && d != &clean);
+            self.directories.len() < before
+        };
+
+        let mut disk_removed = false;
+        if clean.starts_with("save:/") {
+            if let Some(ref s_dir) = self.save_dir {
+                let rel = clean["save:/".len()..].trim_matches('/');
+                let disk_path = s_dir.join(rel);
+                if disk_path.is_dir() {
+                    let _ = std::fs::remove_dir_all(&disk_path);
+                    disk_removed = true;
+                }
+            }
+        } else if clean.starts_with("sdmc:/") {
+            if let Some(ref s_dir) = self.sdmc_dir {
+                let rel = clean["sdmc:/".len()..].trim_matches('/');
+                let disk_path = s_dir.join(rel);
+                if disk_path.is_dir() {
+                    let _ = std::fs::remove_dir_all(&disk_path);
+                    disk_removed = true;
+                }
+            }
+        }
+
+        if !dir_existed && !subdirs_removed && to_remove.is_empty() && !disk_removed {
+            return Err(VfsError::NotFound(path.to_string()));
+        }
+        Ok(())
+    }
+
+    /// Checks if a file exists in the VFS.
+    pub fn file_exists(&self, path: &str) -> bool {
+        let norm = normalize_vfs_path(path);
+        self.files.contains_key(&norm)
+    }
+
+    /// Checks if a directory exists in the VFS.
+    pub fn directory_exists(&self, path: &str) -> bool {
+        self.list_directory(path).is_ok()
+    }
+
+    /// Returns free space size in bytes for a virtual volume (e.g. 64 GB).
+    pub fn get_free_space_size(&self, _path: &str) -> u64 {
+        64 * 1024 * 1024 * 1024
+    }
+
+    /// Returns total space size in bytes for a virtual volume (e.g. 128 GB).
+    pub fn get_total_space_size(&self, _path: &str) -> u64 {
+        128 * 1024 * 1024 * 1024
     }
 }
 
@@ -489,5 +778,62 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_vfs_directory_enumeration_and_save_storage_helpers() {
+        let temp_save = std::env::temp_dir().join(format!(
+            "ounce_vfs_test_save_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&temp_save);
+
+        let mut vfs = VirtualFileSystem::new();
+        vfs.set_save_directory(&temp_save);
+
+        // 1. Check built-in romfs root enumeration
+        let romfs_entries = vfs.list_directory("romfs:/").unwrap();
+        assert!(romfs_entries.contains(&"title.txt".to_string()));
+        assert!(romfs_entries.contains(&"shader".to_string()));
+
+        // 2. Subdirectory enumeration
+        let shader_entries = vfs.list_directory("romfs:/shader").unwrap();
+        assert_eq!(shader_entries, vec!["default_vs.glsl".to_string()]);
+
+        // 3. Create directory in persistent save
+        vfs.create_directory("save:/profiles/slot0").unwrap();
+        assert!(vfs.directory_exists("save:/profiles"));
+        assert!(vfs.directory_exists("save:/profiles/slot0"));
+        assert!(temp_save.join("profiles/slot0").is_dir());
+
+        // 4. Create files and enumerate
+        vfs.mount_file("save:/profiles/slot0/meta.json", b"{\"name\":\"Hero\"}");
+        vfs.mount_file("save:/profiles/slot0/data.bin", b"DATA0123");
+        let slot0_files = vfs.list_directory("save:/profiles/slot0").unwrap();
+        assert_eq!(slot0_files, vec!["data.bin".to_string(), "meta.json".to_string()]);
+
+        // 5. Delete file
+        vfs.delete_file("save:/profiles/slot0/data.bin").unwrap();
+        assert!(!vfs.file_exists("save:/profiles/slot0/data.bin"));
+        assert!(!temp_save.join("profiles/slot0/data.bin").exists());
+
+        let remaining = vfs.list_directory("save:/profiles/slot0").unwrap();
+        assert_eq!(remaining, vec!["meta.json".to_string()]);
+
+        // 6. Delete directory
+        vfs.delete_directory("save:/profiles").unwrap();
+        assert!(!vfs.file_exists("save:/profiles/slot0/meta.json"));
+        assert!(!temp_save.join("profiles").exists());
+
+        // 7. Space queries
+        let free_space = vfs.get_free_space_size("save:/");
+        assert_eq!(free_space, 64 * 1024 * 1024 * 1024);
+        let total_space = vfs.get_total_space_size("save:/");
+        assert_eq!(total_space, 128 * 1024 * 1024 * 1024);
+
+        let _ = std::fs::remove_dir_all(&temp_save);
     }
 }

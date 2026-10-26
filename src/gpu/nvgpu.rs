@@ -21,6 +21,8 @@ pub const METHOD_SET_DEPTH_TEST_ENABLE: u16 = 0x04B0;
 pub const METHOD_BIND_TEXTURE_2D: u16 = 0x0500;
 pub const METHOD_DRAW_ARRAYS: u16 = 0x0585;
 pub const METHOD_DRAW_TEXTURED_ARRAYS: u16 = 0x0586;
+pub const METHOD_SET_INDEX_ARRAY_ADDR: u16 = 0x05F2;
+pub const METHOD_DRAW_INDEXED: u16 = 0x05F4;
 pub const METHOD_CLEAR_SURFACE: u16 = 0x0674;
 pub const METHOD_SET_VERTEX_ARRAY_ADDR: u16 = 0x0700;
 pub const METHOD_SET_VIEWPORT_DIMS: u16 = 0x0860;
@@ -70,6 +72,8 @@ pub struct Vertex {
 pub struct Gpu3DState {
     pub render_target_addr: u64,
     pub vertex_array_addr: u64,
+    pub index_array_addr: u64,
+    pub is_index_32: bool,
     pub texture_addr: u64,
     pub texture_width: u32,
     pub texture_height: u32,
@@ -94,6 +98,8 @@ impl Default for Gpu3DState {
         Self {
             render_target_addr: 0x90000000,
             vertex_array_addr: 0,
+            index_array_addr: 0,
+            is_index_32: false,
             texture_addr: 0,
             texture_width: 0,
             texture_height: 0,
@@ -352,6 +358,22 @@ impl NvgpuChannel {
                     self.rasterize_triangles(mmu, vertex_count, true);
                 }
             }
+            // 0x05F2: Set Index Array Address & Format (Args: [addr, is_32bit])
+            METHOD_SET_INDEX_ARRAY_ADDR => {
+                if let Some(&addr) = cmd.args.first() {
+                    self.state.index_array_addr = addr as u64;
+                    self.state.is_index_32 = cmd.args.get(1).map_or(false, |&val| val == 1);
+                }
+            }
+            // 0x05F4: Draw Indexed Elements (Args: [index_count, textured])
+            METHOD_DRAW_INDEXED => {
+                self.state.total_draw_calls += 1;
+                let index_count = cmd.args.first().copied().unwrap_or(0) as usize;
+                let textured = cmd.args.get(1).map_or(false, |&val| val == 1);
+                if index_count >= 3 {
+                    self.rasterize_indexed_triangles(mmu, index_count, textured);
+                }
+            }
             // 0x0900: Dispatch 2x upscaler model (bilinear + sharpen, not DLSS)
             // Args: [src_addr, src_w, src_h, dst_addr]
             METHOD_DISPATCH_DLSS_UPSCALE => {
@@ -404,6 +426,43 @@ impl NvgpuChannel {
         }
     }
 
+    /// Helper to fetch and transform a single vertex from guest memory.
+    fn fetch_vertex(&self, mmu: &Memory, vertex_idx: usize, stride_bytes: u64, textured: bool) -> Vertex {
+        let v_addr = self.state.vertex_array_addr + (vertex_idx as u64) * stride_bytes;
+        let px = f32::from_bits(mmu.read_u32(v_addr).unwrap_or(0));
+        let py = f32::from_bits(mmu.read_u32(v_addr + 4).unwrap_or(0));
+        let pz = f32::from_bits(mmu.read_u32(v_addr + 8).unwrap_or(0));
+        let r = f32::from_bits(mmu.read_u32(v_addr + 12).unwrap_or(0));
+        let g = f32::from_bits(mmu.read_u32(v_addr + 16).unwrap_or(0));
+        let b = f32::from_bits(mmu.read_u32(v_addr + 20).unwrap_or(0));
+        let (u, v) = if textured {
+            (
+                f32::from_bits(mmu.read_u32(v_addr + 24).unwrap_or(0)),
+                f32::from_bits(mmu.read_u32(v_addr + 28).unwrap_or(0)),
+            )
+        } else {
+            (0.0, 0.0)
+        };
+
+        // Vertex Shader Stage: gl_Position = u_mvp * vec4(px, py, pz, 1.0)
+        let m = &self.state.mvp_matrix;
+        let cx = m[0] * px + m[1] * py + m[2] * pz + m[3];
+        let cy = m[4] * px + m[5] * py + m[6] * pz + m[7];
+        let cz = m[8] * px + m[9] * py + m[10] * pz + m[11];
+        let cw = (m[12] * px + m[13] * py + m[14] * pz + m[15]).max(1e-4);
+
+        Vertex {
+            x: cx / cw,
+            y: cy / cw,
+            z: cz / cw,
+            r,
+            g,
+            b,
+            u,
+            v,
+        }
+    }
+
     /// Fetches vertices from guest memory and rasterizes shaded (and optionally 2D-textured) triangles into VRAM.
     fn rasterize_triangles(&mut self, mmu: &mut Memory, vertex_count: usize, textured: bool) {
         let w = self.state.viewport_width as f32;
@@ -415,43 +474,46 @@ impl NvgpuChannel {
         let stride_bytes = if textured { 32 } else { 24 };
         let num_tris = vertex_count / 3;
         for t in 0..num_tris {
-            let mut verts = [Vertex {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-                r: 1.0,
-                g: 1.0,
-                b: 1.0,
-                u: 0.0,
-                v: 0.0,
-            }; 3];
+            let v0 = self.fetch_vertex(mmu, t * 3 + 0, stride_bytes, textured);
+            let v1 = self.fetch_vertex(mmu, t * 3 + 1, stride_bytes, textured);
+            let v2 = self.fetch_vertex(mmu, t * 3 + 2, stride_bytes, textured);
 
-            for (i, v) in verts.iter_mut().enumerate() {
-                let v_addr = self.state.vertex_array_addr + ((t * 3 + i) * stride_bytes) as u64;
-                let px = f32::from_bits(mmu.read_u32(v_addr).unwrap_or(0));
-                let py = f32::from_bits(mmu.read_u32(v_addr + 4).unwrap_or(0));
-                let pz = f32::from_bits(mmu.read_u32(v_addr + 8).unwrap_or(0));
-                v.r = f32::from_bits(mmu.read_u32(v_addr + 12).unwrap_or(0));
-                v.g = f32::from_bits(mmu.read_u32(v_addr + 16).unwrap_or(0));
-                v.b = f32::from_bits(mmu.read_u32(v_addr + 20).unwrap_or(0));
-                if textured {
-                    v.u = f32::from_bits(mmu.read_u32(v_addr + 24).unwrap_or(0));
-                    v.v = f32::from_bits(mmu.read_u32(v_addr + 28).unwrap_or(0));
-                }
+            self.draw_single_triangle(mmu, &v0, &v1, &v2, textured);
+            self.state.total_triangles_rendered += 1;
+        }
+    }
 
-                // Vertex Shader Stage: gl_Position = u_mvp * vec4(px, py, pz, 1.0)
-                let m = &self.state.mvp_matrix;
-                let cx = m[0] * px + m[1] * py + m[2] * pz + m[3];
-                let cy = m[4] * px + m[5] * py + m[6] * pz + m[7];
-                let cz = m[8] * px + m[9] * py + m[10] * pz + m[11];
-                let cw = (m[12] * px + m[13] * py + m[14] * pz + m[15]).max(1e-4);
+    /// Fetches index buffer elements and rasterizes indexed geometry from guest vertex buffers.
+    fn rasterize_indexed_triangles(&mut self, mmu: &mut Memory, index_count: usize, textured: bool) {
+        let w = self.state.viewport_width as f32;
+        let h = self.state.viewport_height as f32;
+        if w <= 0.0 || h <= 0.0 || self.state.vertex_array_addr == 0 || self.state.index_array_addr == 0 {
+            return;
+        }
 
-                v.x = cx / cw;
-                v.y = cy / cw;
-                v.z = cz / cw;
+        let stride_bytes = if textured { 32 } else { 24 };
+        let is_32 = self.state.is_index_32;
+        let num_tris = index_count / 3;
+
+        for t in 0..num_tris {
+            let mut indices = [0usize; 3];
+            for (i, idx_slot) in indices.iter_mut().enumerate() {
+                let offset = (t * 3 + i) as u64;
+                let raw_idx = if is_32 {
+                    let addr = self.state.index_array_addr + offset * 4;
+                    mmu.read_u32(addr).unwrap_or(0) as usize
+                } else {
+                    let addr = self.state.index_array_addr + offset * 2;
+                    mmu.read_u16(addr).unwrap_or(0) as usize
+                };
+                *idx_slot = raw_idx;
             }
 
-            self.draw_single_triangle(mmu, &verts[0], &verts[1], &verts[2], textured);
+            let v0 = self.fetch_vertex(mmu, indices[0], stride_bytes, textured);
+            let v1 = self.fetch_vertex(mmu, indices[1], stride_bytes, textured);
+            let v2 = self.fetch_vertex(mmu, indices[2], stride_bytes, textured);
+
+            self.draw_single_triangle(mmu, &v0, &v1, &v2, textured);
             self.state.total_triangles_rendered += 1;
         }
     }
@@ -726,5 +788,70 @@ mod tests {
         // the center pixel (8, 8) MUST remain Pure Green (0xFF00FF00)!
         let center_px = mmu.read_u32(rt_addr + (8 * 16 + 8) * 4).unwrap();
         assert_eq!(center_px, 0xFF00FF00);
+    }
+
+    #[test]
+    fn test_nvgpu_indexed_draw() {
+        let mut mmu = Memory::new();
+        let mut gpu = NvgpuChannel::new();
+
+        let rt_addr = 0x90000000u64;
+        let vb_addr = 0x80020000u64;
+        let ib_addr = 0x80030000u64;
+        let pb_addr = 0x80010000u64;
+
+        mmu.map_range(rt_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(vb_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(ib_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(pb_addr, 4096, Permission::READ_WRITE);
+
+        // 4 Quad vertices (x, y, z, r, g, b):
+        // 0: top-left (-0.8, 0.8, 0.5) cyan (0.0, 1.0, 1.0)
+        // 1: bottom-left (-0.8, -0.8, 0.5) cyan
+        // 2: bottom-right (0.8, -0.8, 0.5) cyan
+        // 3: top-right (0.8, 0.8, 0.5) cyan
+        let quad_verts: [f32; 24] = [
+            -0.8,  0.8, 0.5, 0.0, 1.0, 1.0,
+            -0.8, -0.8, 0.5, 0.0, 1.0, 1.0,
+             0.8, -0.8, 0.5, 0.0, 1.0, 1.0,
+             0.8,  0.8, 0.5, 0.0, 1.0, 1.0,
+        ];
+        for (i, &val) in quad_verts.iter().enumerate() {
+            mmu.write_u32(vb_addr + (i * 4) as u64, val.to_bits()).unwrap();
+        }
+
+        // Two triangles using 16-bit indices:
+        // Tri 1: 0, 1, 2
+        // Tri 2: 0, 2, 3
+        let indices: [u16; 6] = [0, 1, 2, 0, 2, 3];
+        for (i, &idx) in indices.iter().enumerate() {
+            mmu.write_u16(ib_addr + (i * 2) as u64, idx).unwrap();
+        }
+
+        let pb_words: Vec<u32> = vec![
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_RENDER_TARGET_ADDR, 1),
+            rt_addr as u32,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
+            16, 16,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_CLEAR_SURFACE, 1),
+            1,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VERTEX_ARRAY_ADDR, 1),
+            vb_addr as u32,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_INDEX_ARRAY_ADDR, 2),
+            ib_addr as u32, 0, // 0 = 16-bit indices
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_DRAW_INDEXED, 2),
+            6, 0, // 6 indices, textured = false
+        ];
+        for (i, &w) in pb_words.iter().enumerate() {
+            mmu.write_u32(pb_addr + (i * 4) as u64, w).unwrap();
+        }
+
+        gpu.process_pushbuffer(&mut mmu, pb_addr, pb_words.len());
+        assert_eq!(gpu.state.total_triangles_rendered, 2);
+        assert_eq!(gpu.state.total_draw_calls, 1);
+
+        // Center pixel (8, 8) should be filled with cyan (RGBA: 0x00, 0xFF, 0xFF, 0xFF -> 0xFFFFFF00)
+        let center_px = mmu.read_u32(rt_addr + (8 * 16 + 8) * 4).unwrap();
+        assert_eq!(center_px, 0xFFFFFF00);
     }
 }

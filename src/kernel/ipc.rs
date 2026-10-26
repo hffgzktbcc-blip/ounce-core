@@ -30,6 +30,16 @@ pub enum ServiceType {
     FspSrv,
     /// Storage Data Proxy ("IStorage")
     Storage,
+    /// Filesystem Interface ("IFileSystem")
+    FileSystem(String),
+    /// Directory Enumerator ("IDirectory")
+    Directory {
+        path: String,
+        entries: Vec<String>,
+        index: usize,
+    },
+    /// File Interface ("IFile")
+    File(u32),
     /// Audio Out ("audout:u")
     AudOut,
     /// Audio Renderer ("audren:u")
@@ -54,6 +64,8 @@ pub enum ServiceType {
     Time,
     /// System Clock Interface ("ISystemClock")
     SystemClock,
+    /// System Steady Clock ("ISteadyClock")
+    SteadyClock,
     /// Play Report Service ("prepo:u" / "prepo:a")
     Prepo,
     /// Background Content Access ("bcat:u" / "bcat:a")
@@ -65,11 +77,34 @@ pub enum ServiceType {
 pub const SHARED_FONT_ADDR: u64 = 0x1800_0000;
 pub const SHARED_FONT_SIZE: usize = 0x10_0000; // 1 MB Shared Font Buffer
 
+/// Reads a null-terminated string from CMIF arguments or a guest pointer.
+fn read_cmif_string(mmu: &Memory, args_base: u64, max_len: usize) -> String {
+    let maybe_ptr = mmu.read_u64(args_base).unwrap_or(0);
+    if maybe_ptr >= 0x10000 && maybe_ptr < 0x0001_0000_0000_0000 && mmu.is_mapped(maybe_ptr) {
+        let mut buf = vec![0u8; max_len];
+        if mmu.read_bytes(maybe_ptr, &mut buf).is_ok() {
+            let len = buf.iter().position(|&b| b == 0).unwrap_or(max_len);
+            let s = String::from_utf8_lossy(&buf[..len]).trim().to_string();
+            if !s.is_empty() {
+                return s;
+            }
+        }
+    }
+    let mut buf = vec![0u8; max_len];
+    if mmu.read_bytes(args_base, &mut buf).is_ok() {
+        let len = buf.iter().position(|&b| b == 0).unwrap_or(max_len);
+        String::from_utf8_lossy(&buf[..len]).trim().to_string()
+    } else {
+        String::new()
+    }
+}
+
 /// Manages Horizon OS IPC handles and routes HIPC/CMIF messages to HLE services.
 pub struct IpcManager {
     pub handles: HashMap<u32, ServiceType>,
     next_handle: u32,
     pub total_ipc_requests: u64,
+    pub start_instant: std::time::Instant,
 }
 
 impl Default for IpcManager {
@@ -84,6 +119,7 @@ impl IpcManager {
             handles: HashMap::new(),
             next_handle: 0x10001,
             total_ipc_requests: 0,
+            start_instant: std::time::Instant::now(),
         }
     }
 
@@ -106,7 +142,7 @@ impl IpcManager {
         mmu: &mut Memory,
         nvgpu: &mut NvgpuChannel,
         audio: &mut AudioOutServer,
-        _vfs: &mut VirtualFileSystem,
+        vfs: &mut VirtualFileSystem,
     ) -> u64 {
         self.total_ipc_requests += 1;
 
@@ -463,6 +499,236 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[storage_h], Some(storage_h));
                     0
                 }
+                // Command 18: OpenSdCardFileSystem -> returns IFileSystem ("sdmc:/")
+                18 => {
+                    let fs_h = self.allocate_handle(ServiceType::FileSystem("sdmc:/".to_string()));
+                    self.write_cmif_response(tls_addr, mmu, 0, &[fs_h], Some(fs_h));
+                    0
+                }
+                // Command 51 | 52 | 53: OpenSaveDataFileSystem -> returns IFileSystem ("save:/")
+                51 | 52 | 53 => {
+                    let fs_h = self.allocate_handle(ServiceType::FileSystem("save:/".to_string()));
+                    self.write_cmif_response(tls_addr, mmu, 0, &[fs_h], Some(fs_h));
+                    0
+                }
+                // Command 10: OpenDirectory -> returns IDirectory
+                10 => {
+                    let path = read_cmif_string(mmu, args_base, 256);
+                    let target_path = if path.is_empty() { "sdmc:/".to_string() } else { path };
+                    let entries = vfs.list_directory(&target_path).unwrap_or_default();
+                    let dir_h = self.allocate_handle(ServiceType::Directory {
+                        path: target_path,
+                        entries,
+                        index: 0,
+                    });
+                    self.write_cmif_response(tls_addr, mmu, 0, &[dir_h], Some(dir_h));
+                    0
+                }
+                // Command 11: ReadDirectory
+                11 => {
+                    let path = read_cmif_string(mmu, args_base, 256);
+                    let target_path = if path.is_empty() { "sdmc:/".to_string() } else { path };
+                    let entries = vfs.list_directory(&target_path).unwrap_or_default();
+                    let count = entries.len() as u64;
+                    let lo = (count & 0xFFFF_FFFF) as u32;
+                    let hi = ((count >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                // Command 12: GetFreeSpaceSize -> returns u64 free bytes
+                12 => {
+                    let path = read_cmif_string(mmu, args_base, 256);
+                    let target_path = if path.is_empty() { "sdmc:/".to_string() } else { path };
+                    let free_bytes = vfs.get_free_space_size(&target_path);
+                    let lo = (free_bytes & 0xFFFF_FFFF) as u32;
+                    let hi = ((free_bytes >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::FileSystem(mount_prefix) => match cmd_id {
+                // Command 0: CreateFile(u32 mode, u64 size, string path)
+                0 => {
+                    let path = read_cmif_string(mmu, args_base + 16, 256);
+                    let full_path = if path.contains(":/") {
+                        path
+                    } else {
+                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
+                    };
+                    vfs.mount_file(&full_path, &[]);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                // Command 1: DeleteFile(string path)
+                1 => {
+                    let path = read_cmif_string(mmu, args_base, 256);
+                    let full_path = if path.contains(":/") {
+                        path
+                    } else {
+                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
+                    };
+                    let res = match vfs.delete_file(&full_path) {
+                        Ok(_) => 0,
+                        Err(_) => 0x0005_0202,
+                    };
+                    self.write_cmif_response(tls_addr, mmu, res, &[0], None);
+                    0
+                }
+                // Command 2: CreateDirectory(string path)
+                2 => {
+                    let path = read_cmif_string(mmu, args_base, 256);
+                    let full_path = if path.contains(":/") {
+                        path
+                    } else {
+                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
+                    };
+                    let res = match vfs.create_directory(&full_path) {
+                        Ok(_) => 0,
+                        Err(_) => 0x0005_0202,
+                    };
+                    self.write_cmif_response(tls_addr, mmu, res, &[0], None);
+                    0
+                }
+                // Command 3 | 4: DeleteDirectory / DeleteDirectoryRecursively(string path)
+                3 | 4 => {
+                    let path = read_cmif_string(mmu, args_base, 256);
+                    let full_path = if path.contains(":/") {
+                        path
+                    } else {
+                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
+                    };
+                    let res = match vfs.delete_directory(&full_path) {
+                        Ok(_) => 0,
+                        Err(_) => 0x0005_0202,
+                    };
+                    self.write_cmif_response(tls_addr, mmu, res, &[0], None);
+                    0
+                }
+                // Command 9: OpenFile(string path, u32 mode) -> returns IFile
+                9 => {
+                    let path = read_cmif_string(mmu, args_base, 256);
+                    let full_path = if path.contains(":/") {
+                        path
+                    } else {
+                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
+                    };
+                    match vfs.open_file(&full_path) {
+                        Ok(fh) => {
+                            let file_h = self.allocate_handle(ServiceType::File(fh));
+                            self.write_cmif_response(tls_addr, mmu, 0, &[file_h], Some(file_h));
+                        }
+                        Err(_) => {
+                            self.write_cmif_response(tls_addr, mmu, 0x0005_0202, &[], None);
+                        }
+                    }
+                    0
+                }
+                // Command 10: OpenDirectory(string path, u32 filter_flags) -> returns IDirectory
+                10 => {
+                    let path = read_cmif_string(mmu, args_base, 256);
+                    let full_path = if path.is_empty() || path == "/" {
+                        mount_prefix.clone()
+                    } else if path.contains(":/") {
+                        path
+                    } else {
+                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
+                    };
+                    let entries = vfs.list_directory(&full_path).unwrap_or_default();
+                    let dir_h = self.allocate_handle(ServiceType::Directory {
+                        path: full_path,
+                        entries,
+                        index: 0,
+                    });
+                    self.write_cmif_response(tls_addr, mmu, 0, &[dir_h], Some(dir_h));
+                    0
+                }
+                // Command 11: Commit
+                11 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                // Command 12: GetFreeSpaceSize -> returns u64
+                12 => {
+                    let free_bytes = vfs.get_free_space_size(&mount_prefix);
+                    let lo = (free_bytes & 0xFFFF_FFFF) as u32;
+                    let hi = ((free_bytes >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                // Command 13: GetTotalSpaceSize -> returns u64
+                13 => {
+                    let total_bytes = vfs.get_total_space_size(&mount_prefix);
+                    let lo = (total_bytes & 0xFFFF_FFFF) as u32;
+                    let hi = ((total_bytes >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::Directory { path, entries, mut index } => match cmd_id {
+                // Command 0: ReadDirectory(out_buf_addr: u64, max_entries: u64) -> count: u64
+                0 => {
+                    let buf_addr = mmu.read_u64(args_base).unwrap_or(0);
+                    let max_entries = mmu.read_u64(args_base + 8).unwrap_or(0) as usize;
+                    let count = if max_entries > 0 {
+                        (entries.len() - index).min(max_entries)
+                    } else {
+                        entries.len() - index
+                    };
+
+                    if buf_addr >= 0x10000 && mmu.is_mapped(buf_addr) {
+                        for i in 0..count {
+                            let entry_name = &entries[index + i];
+                            let entry_addr = buf_addr + (i * 0x310) as u64;
+                            let mut entry_buf = [0u8; 768];
+                            let name_bytes = entry_name.as_bytes();
+                            let l = name_bytes.len().min(767);
+                            entry_buf[..l].copy_from_slice(&name_bytes[..l]);
+                            let _ = mmu.write_bytes(entry_addr, &entry_buf);
+                            let is_dir = entry_name.contains('/') || !entry_name.contains('.');
+                            let _ = mmu.write_u32(entry_addr + 0x304, if is_dir { 0 } else { 1 });
+                        }
+                    }
+                    index += count;
+                    self.handles.insert(session_handle, ServiceType::Directory { path, entries, index });
+
+                    let lo = (count as u64 & 0xFFFF_FFFF) as u32;
+                    let hi = ((count as u64 >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                // Command 1: GetEntryCount -> count: u64
+                1 => {
+                    let count = entries.len() as u64;
+                    let lo = (count & 0xFFFF_FFFF) as u32;
+                    let hi = ((count >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::File(handle) => match cmd_id {
+                // Command 4: GetSize -> u64
+                4 => {
+                    let sz = vfs.get_file_size(handle).unwrap_or(0) as u64;
+                    let lo = (sz & 0xFFFF_FFFF) as u32;
+                    let hi = ((sz >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
                 _ => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0
@@ -482,9 +748,9 @@ impl IpcManager {
             },
 
             ServiceType::SetSys => match cmd_id {
-                // Command 0 / 1: GetAvailableLanguageCodes -> returns count=1, code=1 (en-US)
+                // Command 0 / 1: GetAvailableLanguageCodes -> returns count=1, code=0 (en-US = 0)
                 0 | 1 => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[1, 0x01], None);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[1, 0], None);
                     0
                 }
                 // Command 2: GetRegionCode -> returns 1 (USA / NorthAmerica)
@@ -492,9 +758,9 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[1], None);
                     0
                 }
-                // Command 3: GetSystemLanguage -> returns 1 (en-US)
+                // Command 3: GetSystemLanguage -> returns 0 (en-US = 0)
                 3 => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[1], None);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0
                 }
                 // Command 4: GetFirmwareVersion -> returns the target system version 23.0.1
@@ -505,6 +771,29 @@ impl IpcManager {
                 // Command 5: GetColorSetId -> returns 1 (BasicBlack)
                 5 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[1], None);
+                    0
+                }
+                // Command 6 | 77: GetDeviceNickName -> "Ounce-T239"
+                6 | 77 => {
+                    let nickname = b"Ounce-T239\0";
+                    let buf_addr = mmu.read_u64(args_base).unwrap_or(0);
+                    if buf_addr >= 0x10000 && mmu.is_mapped(buf_addr) {
+                        let _ = mmu.write_bytes(buf_addr, nickname);
+                    }
+                    let mut words = [0u32; 8];
+                    for (i, chunk) in nickname.chunks(4).enumerate() {
+                        if i < 8 {
+                            let mut b = [0u8; 4];
+                            b[..chunk.len()].copy_from_slice(chunk);
+                            words[i] = u32::from_le_bytes(b);
+                        }
+                    }
+                    self.write_cmif_response(tls_addr, mmu, 0, &words, None);
+                    0
+                }
+                // Command 8 | 67: GetProductModel / GetConsoleModel -> returns 0x02 (Drake / T239)
+                8 | 67 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0x02], None);
                     0
                 }
                 _ => {
@@ -608,10 +897,52 @@ impl IpcManager {
 
             ServiceType::Time => match cmd_id {
                 // Command 0: GetStandardUserSystemClock -> ISystemClock
-                // Command 4: GetStandardNetworkClock -> ISystemClock
-                0 | 4 => {
+                0 => {
                     let clock_h = self.allocate_handle(ServiceType::SystemClock);
                     self.write_cmif_response(tls_addr, mmu, 0, &[clock_h], Some(clock_h));
+                    0
+                }
+                // Command 1: GetStandardNetworkSystemClock -> ISystemClock
+                1 => {
+                    let clock_h = self.allocate_handle(ServiceType::SystemClock);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[clock_h], Some(clock_h));
+                    0
+                }
+                // Command 2: GetStandardSteadyClock -> ISteadyClock
+                2 => {
+                    let clock_h = self.allocate_handle(ServiceType::SteadyClock);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[clock_h], Some(clock_h));
+                    0
+                }
+                // Command 3: GetTimeZoneService
+                3 => {
+                    let tz_h = self.allocate_handle(ServiceType::Generic("ITimeZoneService".to_string()));
+                    self.write_cmif_response(tls_addr, mmu, 0, &[tz_h], Some(tz_h));
+                    0
+                }
+                // Command 4: GetStandardLocalSystemClock / GetStandardNetworkClock -> ISystemClock
+                4 => {
+                    let clock_h = self.allocate_handle(ServiceType::SystemClock);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[clock_h], Some(clock_h));
+                    0
+                }
+                // Command 20 | 100: GetCurrentSteadyClockTime / Monotonic Clock (matching host Instant with nanosecond precision)
+                20 | 100 => {
+                    let nanos = self.start_instant.elapsed().as_nanos() as u64;
+                    let lo = (nanos & 0xFFFF_FFFF) as u32;
+                    let hi = ((nanos >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                // Command 21: GetPosixTimeWithAutomaticCorrection / POSIX Time Clock (standard Horizon OS UTC epoch timestamp)
+                21 => {
+                    let now_secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(1793000000);
+                    let lo = (now_secs & 0xFFFF_FFFF) as u32;
+                    let hi = ((now_secs >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
                     0
                 }
                 _ => {
@@ -621,7 +952,7 @@ impl IpcManager {
             },
 
             ServiceType::SystemClock => match cmd_id {
-                // Command 0: GetCurrentTime -> returns 64-bit UNIX timestamp
+                // Command 0: GetCurrentTime -> returns 64-bit UTC epoch timestamp
                 0 => {
                     let now_secs = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
@@ -629,6 +960,21 @@ impl IpcManager {
                         .unwrap_or(1793000000);
                     let lo = (now_secs & 0xFFFF_FFFF) as u32;
                     let hi = ((now_secs >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::SteadyClock => match cmd_id {
+                // Command 0 | 1: GetCurrentTimePoint -> returns 64-bit monotonic clock in nanoseconds
+                0 | 1 => {
+                    let nanos = self.start_instant.elapsed().as_nanos() as u64;
+                    let lo = (nanos & 0xFFFF_FFFF) as u32;
+                    let hi = ((nanos >> 32) & 0xFFFF_FFFF) as u32;
                     self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
                     0
                 }
@@ -719,7 +1065,7 @@ mod tests {
         mmu.write_u32(tls_addr + 0x18, 3).unwrap();
         let res = ipc.handle_sync_request(setsys_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
         assert_eq!(res, 0);
-        assert_eq!(mmu.read_u32(tls_addr + 0x20).unwrap(), 1); // en-US
+        assert_eq!(mmu.read_u32(tls_addr + 0x20).unwrap(), 0); // en-US = 0
 
         // 2. am:appletOE -> OpenApplicationProxy (Cmd 0)
         let applet_h = ipc.allocate_handle(ServiceType::AppletOE);
@@ -960,5 +1306,200 @@ mod tests {
         assert_eq!(res, 0);
         let layer_id = mmu.read_u32(tls_addr + 0x20).unwrap();
         assert_eq!(layer_id, 1);
+    }
+
+    #[test]
+    fn test_fsp_srv_sdmc_and_save_partitions_and_directories() {
+        let mut mmu = Memory::new();
+        let tls_addr = 0x8000_0000u64;
+        let entry_buf = 0x8100_0000u64;
+        mmu.map_range(tls_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(entry_buf, 0x2000, Permission::READ_WRITE);
+
+        let mut ipc = IpcManager::new();
+        let mut nvgpu = NvgpuChannel::new();
+        let mut audio = AudioOutServer::new();
+        let mut vfs = VirtualFileSystem::new();
+
+        let fsp_h = ipc.allocate_handle(ServiceType::FspSrv);
+
+        // 1. Mount sdmc:/ partition via fsp-srv OpenSdCardFileSystem (Cmd 18)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 18).unwrap();
+        let res = ipc.handle_sync_request(fsp_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let sdmc_fs_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&sdmc_fs_h), Some(&ServiceType::FileSystem("sdmc:/".to_string())));
+
+        // 2. Query free space via IFileSystem (Cmd 12)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 12).unwrap();
+        let res = ipc.handle_sync_request(sdmc_fs_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let free_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
+        let free_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
+        let free_bytes = ((free_hi as u64) << 32) | (free_lo as u64);
+        assert_eq!(free_bytes, 64 * 1024 * 1024 * 1024);
+
+        // 3. Create directory and files on sdmc:/ via IFileSystem
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 2).unwrap(); // CreateDirectory
+        mmu.write_bytes(tls_addr + 0x20, b"/switch/tools\0").unwrap();
+        let res = ipc.handle_sync_request(sdmc_fs_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+
+        vfs.mount_file("sdmc:/switch/tools/ftpd.nro", b"FTPD_NRO_PAYLOAD");
+        vfs.mount_file("sdmc:/switch/tools/sys-clk.nro", b"SYSCLK_NRO_PAYLOAD");
+
+        // 4. OpenDirectory (Cmd 10) on IFileSystem
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 10).unwrap();
+        mmu.write_bytes(tls_addr + 0x20, b"/switch/tools\0").unwrap();
+        let res = ipc.handle_sync_request(sdmc_fs_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let dir_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+
+        // 5. ReadDirectory (Cmd 0) on IDirectory into guest memory buffer
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 0).unwrap();
+        mmu.write_u64(tls_addr + 0x20, entry_buf).unwrap(); // buffer addr
+        mmu.write_u64(tls_addr + 0x28, 10).unwrap(); // max entries
+        let res = ipc.handle_sync_request(dir_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let count_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(count_lo, 2);
+
+        // Verify entry names written in guest memory buffer
+        let mut entry0_name = [0u8; 8];
+        mmu.read_bytes(entry_buf, &mut entry0_name).unwrap();
+        let name0 = String::from_utf8_lossy(&entry0_name);
+        assert!(name0.starts_with("ftpd") || name0.starts_with("sys-"));
+
+        // 6. Mount save:/ partition via fsp-srv OpenSaveDataFileSystem (Cmd 51)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 51).unwrap();
+        let res = ipc.handle_sync_request(fsp_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let save_fs_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&save_fs_h), Some(&ServiceType::FileSystem("save:/".to_string())));
+
+        // 7. Direct fsp-srv commands (OpenDirectory Cmd 10 & GetFreeSpaceSize Cmd 12)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 12).unwrap();
+        mmu.write_bytes(tls_addr + 0x20, b"save:/\0").unwrap();
+        let res = ipc.handle_sync_request(fsp_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let save_free_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
+        let save_free_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
+        assert_eq!(((save_free_hi as u64) << 32) | (save_free_lo as u64), 64 * 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_time_service_monotonic_counter_and_posix_clock() {
+        let mut mmu = Memory::new();
+        let tls_addr = 0x8000_0000u64;
+        mmu.map_range(tls_addr, 4096, Permission::READ_WRITE);
+
+        let mut ipc = IpcManager::new();
+        let mut nvgpu = NvgpuChannel::new();
+        let mut audio = AudioOutServer::new();
+        let mut vfs = VirtualFileSystem::new();
+
+        let time_h = ipc.allocate_handle(ServiceType::Time);
+
+        // 1. Direct monotonic clock on time:u (Cmd 20)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 20).unwrap();
+        let res = ipc.handle_sync_request(time_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let mono_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
+        let mono_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
+        let nanos1 = ((mono_hi as u64) << 32) | (mono_lo as u64);
+
+        // Sleep briefly and query again to verify monotonic advancement
+        std::thread::sleep(std::time::Duration::from_millis(2));
+
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 20).unwrap();
+        let res = ipc.handle_sync_request(time_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let mono_lo2 = mmu.read_u32(tls_addr + 0x20).unwrap();
+        let mono_hi2 = mmu.read_u32(tls_addr + 0x24).unwrap();
+        let nanos2 = ((mono_hi2 as u64) << 32) | (mono_lo2 as u64);
+        assert!(nanos2 > nanos1);
+
+        // 2. Direct POSIX time clock on time:u (Cmd 21)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 21).unwrap();
+        let res = ipc.handle_sync_request(time_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let posix_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
+        let posix_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
+        let posix_time = ((posix_hi as u64) << 32) | (posix_lo as u64);
+        assert!(posix_time > 1700000000); // Valid UTC epoch timestamp
+
+        // 3. SteadyClock via GetStandardSteadyClock (Cmd 2)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 2).unwrap();
+        let res = ipc.handle_sync_request(time_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let steady_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&steady_h), Some(&ServiceType::SteadyClock));
+
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 0).unwrap(); // GetCurrentTimePoint
+        let res = ipc.handle_sync_request(steady_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let steady_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
+        let steady_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
+        let steady_nanos = ((steady_hi as u64) << 32) | (steady_lo as u64);
+        assert!(steady_nanos >= nanos2);
+    }
+
+    #[test]
+    fn test_setsys_language_console_model_and_device_nickname() {
+        let mut mmu = Memory::new();
+        let tls_addr = 0x8000_0000u64;
+        let nick_buf = 0x8100_0000u64;
+        mmu.map_range(tls_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(nick_buf, 4096, Permission::READ_WRITE);
+
+        let mut ipc = IpcManager::new();
+        let mut nvgpu = NvgpuChannel::new();
+        let mut audio = AudioOutServer::new();
+        let mut vfs = VirtualFileSystem::new();
+
+        let setsys_h = ipc.allocate_handle(ServiceType::SetSys);
+
+        // 1. GetSystemLanguage (Cmd 3) -> en-US = 0
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 3).unwrap();
+        let res = ipc.handle_sync_request(setsys_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        assert_eq!(mmu.read_u32(tls_addr + 0x20).unwrap(), 0); // en-US = 0
+
+        // 2. GetConsoleModel / GetProductModel (Cmd 8 and Cmd 67) -> 0x02 (Drake / T239)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 8).unwrap();
+        let res = ipc.handle_sync_request(setsys_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        assert_eq!(mmu.read_u32(tls_addr + 0x20).unwrap(), 0x02);
+
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 67).unwrap();
+        let res = ipc.handle_sync_request(setsys_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        assert_eq!(mmu.read_u32(tls_addr + 0x20).unwrap(), 0x02);
+
+        // 3. GetDeviceNickName (Cmd 6) -> "Ounce-T239" written to guest memory buffer
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 6).unwrap();
+        mmu.write_u64(tls_addr + 0x20, nick_buf).unwrap(); // pass buf addr
+        let res = ipc.handle_sync_request(setsys_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+
+        let mut read_nick = [0u8; 10];
+        mmu.read_bytes(nick_buf, &mut read_nick).unwrap();
+        assert_eq!(&read_nick, b"Ounce-T239");
     }
 }
