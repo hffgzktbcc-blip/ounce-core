@@ -714,7 +714,7 @@ mod tests {
         ];
 
         // Pack NSO0 module inside ExeFS -> encrypted NCA3 -> HFS0 `secure` -> `.xci` GameCard
-        let nso_payload = crate::loader::nro::NroLoader::get_test_nso_payload();
+        let nso_payload = crate::loader::nro::NroLoader::synthetic_nso_payload();
         let exefs_bytes = Pfs0Archive::build(&[("main", &nso_payload), ("main.npdm", b"META")]);
         let title_id = 0x0400_0000_0000_0037;
         let encrypted_nca = NcaImage::build_encrypted(title_id, &key, &iv, &exefs_bytes);

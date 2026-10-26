@@ -160,14 +160,14 @@
         <text x="268" y="31" fill="#7fa0cc" font-size="9">Pushbuffers 0x100..0x10A, Texture Op 0x0B</text>
       </g>
 
-      <!-- Row 2: SASS Transpiler & DLSS -->
+      <!-- Row 2: SASS Transpiler & Upscaler -->
       <g transform="translate(0, 48)">
         <rect width="246" height="42" rx="6" fill="#0e1724" stroke="#1f334d" stroke-width="1"/>
         <text x="12" y="20" fill="#00FFA3" font-weight="700">Ampere SASS Transpiler</text>
         <text x="12" y="34" fill="#8fa0bc" font-size="9">SM87 SASS -> Vulkan SPIR-V 1.5 Bytecode</text>
 
         <rect x="256" y="0" width="246" height="42" rx="6" fill="#0e1724" stroke="#1f334d" stroke-width="1"/>
-        <text x="268" y="20" fill="#00D2FF" font-weight="700">Tensor Core DLSS 2×</text>
+        <text x="268" y="20" fill="#00D2FF" font-weight="700">2× Upscaler (not DLSS)</text>
         <text x="268" y="34" fill="#8fa0bc" font-size="9">AI Super-Resolution Frame Reconstruction</text>
       </g>
 

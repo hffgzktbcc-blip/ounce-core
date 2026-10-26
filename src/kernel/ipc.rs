@@ -497,7 +497,7 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[1], None);
                     0
                 }
-                // Command 4: GetFirmwareVersion -> returns Switch 2 Firmware 23.0.1 ("Ounce" / ns2jb target)
+                // Command 4: GetFirmwareVersion -> returns the target system version 23.0.1
                 4 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[23, 0, 1], None);
                     0
@@ -572,7 +572,7 @@ impl IpcManager {
                     // Ensure Shared Font Memory is mapped at SHARED_FONT_ADDR
                     if !mmu.is_mapped(SHARED_FONT_ADDR) {
                         mmu.map_range(SHARED_FONT_ADDR, SHARED_FONT_SIZE, crate::mmu::Permission::READ_WRITE);
-                        let font_hdr = b"\x00\x01\x00\x00NintendoStandardFont-Regular";
+                        let font_hdr = b"OUNCEFNT\x00\x01\x00\x00"; // placeholder header only; no font glyph data is bundled
                         let _ = mmu.write_bytes(SHARED_FONT_ADDR, font_hdr);
                     }
                     let lo = (SHARED_FONT_ADDR & 0xFFFF_FFFF) as u32;
@@ -590,7 +590,7 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0x300], Some(0x300));
                     0
                 }
-                // Command 4: GetSharedFontType -> returns 0 (Standard BFTTF)
+                // Command 4: GetSharedFontType -> returns 0 (placeholder font format)
                 4 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0
@@ -832,7 +832,7 @@ mod tests {
         // Verify font header is mapped and contains font magic
         let mut font_header = [0u8; 4];
         mmu.read_bytes(SHARED_FONT_ADDR, &mut font_header).unwrap();
-        assert_eq!(&font_header, b"\x00\x01\x00\x00");
+        assert_eq!(&font_header, b"OUNC");
 
         // 3. GetService("time:u") via sm:
         mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();

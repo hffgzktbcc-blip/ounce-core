@@ -2,12 +2,9 @@
 
 use crate::mmu::Memory;
 
-/// Nvidia Tegra T239 ("Drake") Ampere Tensor Core / DLSS Super-Resolution Engine.
+/// 2x upscaler model. Not NVIDIA DLSS: there is no neural network or tensor hardware here.
 ///
-/// Emulates the Switch 2's hardware AI/Tensor upscaling pipeline (`NVN` / `NGX` DLSS):
-/// Reconstructs a high-resolution output surface (`2x` in each dimension, e.g.,
-/// $540\text{p} \to 1080\text{p}$ or $1080\text{p} \to 4\text{K}$) from a lower-resolution
-/// internal render target using sub-pixel bilinear interpolation + contrast-adaptive sharpening.
+/// Upscales a surface by 2x in each dimension using bilinear interpolation and a simple sharpening pass.
 #[derive(Debug, Default)]
 pub struct DlssEngine {
     pub frames_upscaled: u64,
