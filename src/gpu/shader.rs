@@ -114,6 +114,12 @@ pub enum SassOp {
     Sel { rd: u8, rn: u8, rm: u8, pred: u8, pred_inv: bool },
     /// `MUFU Rd, Rn, Func` — Multi-Function Unit: `Rcp`, `Rsq`, `Sin`, `Cos`, `Exp2`, `Log2`
     Mufu { rd: u8, rn: u8, func: MufuFunc },
+    /// `HADD2 Rd, Rn, Rm` — FP16x2 Half-Precision Vector Addition: `R[rd] = R[rn] + R[rm]`
+    HAdd2 { rd: u8, rn: u8, rm: u8 },
+    /// `HMUL2 Rd, Rn, Rm` — FP16x2 Half-Precision Vector Multiplication: `R[rd] = R[rn] * R[rm]`
+    HMul2 { rd: u8, rn: u8, rm: u8 },
+    /// `HFMA2 Rd, Rn, Rm, Ra` — FP16x2 Fused Multiply-Add: `R[rd] = R[rn] * R[rm] + R[ra]`
+    HFma2 { rd: u8, rn: u8, rm: u8, ra: u8 },
     /// `EXIT` — End of shader program
     Exit,
 }
@@ -221,6 +227,25 @@ impl SassOp {
                     | ((rn as u64) << 40)
                     | (func as u8 as u64)
             }
+            SassOp::HAdd2 { rd, rn, rm } => {
+                (0x0Bu64 << 56)
+                    | ((rd as u64) << 48)
+                    | ((rn as u64) << 40)
+                    | ((rm as u64) << 32)
+            }
+            SassOp::HMul2 { rd, rn, rm } => {
+                (0x0Cu64 << 56)
+                    | ((rd as u64) << 48)
+                    | ((rn as u64) << 40)
+                    | ((rm as u64) << 32)
+            }
+            SassOp::HFma2 { rd, rn, rm, ra } => {
+                (0x0Du64 << 56)
+                    | ((rd as u64) << 48)
+                    | ((rn as u64) << 40)
+                    | ((rm as u64) << 32)
+                    | ((ra as u64) << 24)
+            }
             SassOp::Exit => 0xFFu64 << 56,
         }
     }
@@ -279,6 +304,9 @@ impl SassOp {
                 rn,
                 func: MufuFunc::from_u8((word & 0xFF) as u8),
             }),
+            0x0B => Some(SassOp::HAdd2 { rd, rn, rm }),
+            0x0C => Some(SassOp::HMul2 { rd, rn, rm }),
+            0x0D => Some(SassOp::HFma2 { rd, rn, rm, ra }),
             0xFF => Some(SassOp::Exit),
             _ => None,
         }
@@ -565,6 +593,23 @@ impl SassShaderDecompiler {
                         }
                     }
                 }
+                SassOp::HAdd2 { rd, rn, rm } => {
+                    let a = reg_ids[(rn & 0xF) as usize];
+                    let b = reg_ids[(rm & 0xF) as usize];
+                    reg_ids[(rd & 0xF) as usize] = spv.emit_fadd(f32_ty, a, b);
+                }
+                SassOp::HMul2 { rd, rn, rm } => {
+                    let a = reg_ids[(rn & 0xF) as usize];
+                    let b = reg_ids[(rm & 0xF) as usize];
+                    reg_ids[(rd & 0xF) as usize] = spv.emit_fmul(f32_ty, a, b);
+                }
+                SassOp::HFma2 { rd, rn, rm, ra } => {
+                    let a = reg_ids[(rn & 0xF) as usize];
+                    let b = reg_ids[(rm & 0xF) as usize];
+                    let c = reg_ids[(ra & 0xF) as usize];
+                    let prod = spv.emit_fmul(f32_ty, a, b);
+                    reg_ids[(rd & 0xF) as usize] = spv.emit_fadd(f32_ty, prod, c);
+                }
                 SassOp::Exit => break,
             }
         }
@@ -649,6 +694,18 @@ impl SassShaderDecompiler {
                         out.push_str(&format!("    R[{}] = {}(R[{}]);\n", rd, func.to_glsl_func(), rn));
                     }
                 }
+                SassOp::HAdd2 { rd, rn, rm } => {
+                    out.push_str(&format!("    R[{}] = R[{}] + R[{}]; // HADD2 FP16x2\n", rd, rn, rm));
+                }
+                SassOp::HMul2 { rd, rn, rm } => {
+                    out.push_str(&format!("    R[{}] = R[{}] * R[{}]; // HMUL2 FP16x2\n", rd, rn, rm));
+                }
+                SassOp::HFma2 { rd, rn, rm, ra } => {
+                    out.push_str(&format!(
+                        "    R[{}] = fma(R[{}], R[{}], R[{}]); // HFMA2 FP16x2\n",
+                        rd, rn, rm, ra
+                    ));
+                }
                 SassOp::Exit => {
                     out.push_str("    o_fragColor = vec4(R[0], R[1], R[2], R[3]);\n");
                     out.push_str("    return;\n");
@@ -731,5 +788,31 @@ mod tests {
         assert_eq!(decompiled.spirv_words[0], SPIRV_MAGIC);
         assert_eq!(decompiled.spirv_words[1], SPIRV_VERSION_1_5);
         assert!(decompiled.spirv_words.len() > 15);
+    }
+
+    #[test]
+    fn test_ampere_fp16_vector_shader_opcodes() {
+        let program = vec![
+            SassOp::FMovImm { rd: 0, imm: 1.5 }.encode(),
+            SassOp::FMovImm { rd: 1, imm: 2.0 }.encode(),
+            SassOp::FMovImm { rd: 2, imm: 0.5 }.encode(),
+            // HAdd2: R3 = R0 + R1
+            SassOp::HAdd2 { rd: 3, rn: 0, rm: 1 }.encode(),
+            // HMul2: R4 = R0 * R1
+            SassOp::HMul2 { rd: 4, rn: 0, rm: 1 }.encode(),
+            // HFma2: R5 = R0 * R1 + R2
+            SassOp::HFma2 { rd: 5, rn: 0, rm: 1, ra: 2 }.encode(),
+            SassOp::Exit.encode(),
+        ];
+
+        let decompiled = SassShaderDecompiler::decompile(&program);
+        assert_eq!(decompiled.ops.len(), 7);
+        assert!(decompiled.glsl_source.contains("R[3] = R[0] + R[1]; // HADD2 FP16x2"));
+        assert!(decompiled.glsl_source.contains("R[4] = R[0] * R[1]; // HMUL2 FP16x2"));
+        assert!(decompiled.glsl_source.contains("R[5] = fma(R[0], R[1], R[2]); // HFMA2 FP16x2"));
+
+        assert_eq!(decompiled.spirv_words[0], SPIRV_MAGIC);
+        assert_eq!(decompiled.spirv_words[1], SPIRV_VERSION_1_5);
+        assert!(decompiled.spirv_words.len() > 20);
     }
 }
