@@ -24,11 +24,17 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
       - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@v2
 
       - name: Run unit tests
         run: cargo test --release
 
-      - name: Run 23-stage integration verification suite
+      - name: Run 24-stage integration verification suite
         run: cargo run --release -- test
