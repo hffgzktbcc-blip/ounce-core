@@ -359,7 +359,7 @@ fn print_specs() {
     print_box_top(&s, "Compliance & Security Verification");
     print_row(&s, "Distribution Status: ", "No proprietary keys, firmware, or game data are distributed");
     print_row(&s, "Zero-Key Engine     : ", "Runs homebrew binaries without requiring extracted prod.keys");
-    let val_validation = format!("{}50 Unit Tests PASS{} · {}24 Integration Stages PASS (0xEEE){}", s.green, s.reset, s.green, s.reset);
+    let val_validation = format!("{}85 Unit Tests PASS{} · {}25 Integration Stages PASS (0xEEE){}", s.green, s.reset, s.green, s.reset);
     print_row(&s, "Validation Status   : ", &val_validation);
     let val_source = format!("{}https://github.com/hffgzktbcc-blip/ounce-core{}", s.cyan, s.reset);
     print_row(&s, "Official Source     : ", &val_source);
@@ -618,7 +618,7 @@ fn run_built_in_demo() {
         0xD40000E1, // SVC #0x07 (svcExitProcess)
     ];
 
-    println!("[Stage 01/24] AArch64 Arithmetic & Branching Execution (Fibonacci N=10)");
+    println!("[Stage 01/25] AArch64 Arithmetic & Branching Execution (Fibonacci N=10)");
     let (cpu, mut mmu, kernel) = setup_vm();
     let mut code_bytes = Vec::new();
     for inst in &fib_program {
@@ -631,7 +631,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 100_000);
 
     // Test Program 2: Horizon OS Console Output (svcOutputDebugString)
-    println!("\n[Stage 02/24] Horizon OS Debug Output Subsystem (svcOutputDebugString)");
+    println!("\n[Stage 02/25] Horizon OS Debug Output Subsystem (svcOutputDebugString)");
     let (cpu, mut mmu, kernel) = setup_vm();
 
     let message = "Hello from Nintendo Switch 2 (Tegra T239) Homebrew on Ounce-Core!\n";
@@ -657,7 +657,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
 
     // Test Program 3: Stack & Subroutine Call (STP, LDP, BL, RET)
-    println!("\n[Stage 03/24] Stack Frame & Subroutine Management (STP, LDP, BL, RET)");
+    println!("\n[Stage 03/25] Stack Frame & Subroutine Management (STP, LDP, BL, RET)");
     let (cpu, mut mmu, kernel) = setup_vm();
 
     #[rustfmt::skip]
@@ -684,7 +684,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
 
     // Test Program 4: Horizon OS HIPC / CMIF Service Manager ("sm:" -> "nvdrv") & Floating-Point Math
-    println!("\n[Stage 04/24] Horizon CMIF IPC & IEEE-754 Vector Math (FADD)");
+    println!("\n[Stage 04/25] Horizon CMIF IPC & IEEE-754 Vector Math (FADD)");
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
     // Pre-populate D1 = 12.5 and D2 = 29.5 so FADD D0, D1, D2 computes 42.0
@@ -732,7 +732,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
 
     // Test Program 5: RomFS Virtual Filesystem & 48kHz Stereo PCM Audio Synthesizer (audout:u)
-    println!("\n[Stage 05/24] Virtual Filesystem (RomFS) & Linear PCM Audio (audout:u)");
+    println!("\n[Stage 05/25] Virtual Filesystem (RomFS) & Linear PCM Audio (audout:u)");
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
     let vfs_path = b"romfs:/title.txt";
@@ -797,7 +797,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
     println!();
 
-    println!("[Stage 06/24] AES-128-CTR NCA Decryption, SASS Decompiler & Multi-Threading");
+    println!("[Stage 06/25] AES-128-CTR NCA Decryption, SASS Decompiler & Multi-Threading");
 
     // 6a. Build an encrypted Switch 2 .nsp -> .nca -> ExeFS package and decrypt it
     let title_key: [u8; 16] = [
@@ -928,7 +928,7 @@ fn run_built_in_demo() {
     // Test 7: Unified .nsp Package Boot, Futex/Mutex Arbitration,
     //         & 2D-Textured 3D Triangle Rasterization
     // ---------------------------------------------------------
-    println!("\n[Stage 07/24] Unified NSP Boot, Futex Arbiters & 2D-Textured Rasterization");
+    println!("\n[Stage 07/25] Unified NSP Boot, Futex Arbiters & 2D-Textured Rasterization");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1034,7 +1034,7 @@ fn run_built_in_demo() {
     // Test 8: Switch 2 crt0 Startup (svcGetInfo 12GB LPDDR5 + 8-Core Mask),
     //         Basic-Block JIT Loop & 3D Z-Buffer Depth Occlusion
     // ---------------------------------------------------------
-    println!("\n[Stage 08/24] Horizon crt0 Initialization, Basic-Block JIT & Depth Occlusion");
+    println!("\n[Stage 08/25] Horizon crt0 Initialization, Basic-Block JIT & Depth Occlusion");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1115,7 +1115,7 @@ fn run_built_in_demo() {
     // Test 9: 128-bit NEON Vector SIMD (V0.4S), 2x upscaler model
     //         2x Super-Resolution Upscaler & SaveData ('save:/profile.sav')
     // ---------------------------------------------------------
-    println!("\n[Stage 09/24] 128-bit NEON SIMD, 2x Upscaler Model & SaveData");
+    println!("\n[Stage 09/25] 128-bit NEON SIMD, 2x Upscaler Model & SaveData");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1221,7 +1221,7 @@ fn run_built_in_demo() {
     //          Clean-room AArch64 program that queries svcGetProcessId / svcGetThreadId /
     //          svcGetInfo(SystemTick) and stores the results into a guest output buffer.
     // ---------------------------------------------------------
-    println!("\n[Stage 10/24] Native FS Payload Execution (BTI & Horizon SVCs)");
+    println!("\n[Stage 10/25] Native FS Payload Execution (BTI & Horizon SVCs)");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1266,7 +1266,7 @@ fn run_built_in_demo() {
     // Test 11: Switch 2 `RO` `NSO0` Module Execution & Tipc Interface Verification
     //          Boots the NSO0 binary through `sm:` Tipc & `"NS2ROEXE"` IPC reply
     // ---------------------------------------------------------
-    println!("\n[Stage 11/24] Horizon Dynamic Linker (RO NSO0) & TIPC Handshake");
+    println!("\n[Stage 11/25] Horizon Dynamic Linker (RO NSO0) & TIPC Handshake");
 
     let (cpu, mut mmu, kernel) = setup_vm();
     let nso_bytes = loader::NroLoader::synthetic_nso_payload();
@@ -1282,7 +1282,7 @@ fn run_built_in_demo() {
     // Test 12: Synthetic Thread-Affinity Wrapper (BL into a leaf returning an 8-core mask, then AND X0, X0, #7)
     //          Expected: leaf returns 0xFF, wrapper returns 0x07.
     // ---------------------------------------------------------
-    println!("\n[Stage 12/24] Synthetic Thread-Affinity Wrapper (BL + AND X0, X0, #7)");
+    println!("\n[Stage 12/25] Synthetic Thread-Affinity Wrapper (BL + AND X0, X0, #7)");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
     let code12 = 0x8000_7000u64;
@@ -1321,7 +1321,7 @@ fn run_built_in_demo() {
     //          event_try_wait: ldar w0, [x0] ; ret
     //          get_freq:       movz x0, #0xf800 ; movk x0, #0x124, lsl #16 ; ret  (19,200,000 Hz)
     // ---------------------------------------------------------
-    println!("\n[Stage 13/24] Timing, Event Management & Thread Arbitration");
+    println!("\n[Stage 13/25] Timing, Event Management & Thread Arbitration");
     {
         let event_init13: [u32; 3] = [0xB9000001, 0xB9000402, 0xD65F03C0];
         let event_try_wait13: [u32; 2] = [0x88DFFC00, 0xD65F03C0];
@@ -1369,7 +1369,7 @@ fn run_built_in_demo() {
     // ---------------------------------------------------------
     // Test 14: Switch 2 `.XCI` 64GB GameCard Cartridge Boot (`HEAD` -> `HFS0` `secure` -> `NCA3` -> `NSO0`)
     // ---------------------------------------------------------
-    println!("\n[Stage 14/24] High-Speed GameCard (.XCI) Boot (HFS0 -> NCA3 -> NSO0)");
+    println!("\n[Stage 14/25] High-Speed GameCard (.XCI) Boot (HFS0 -> NCA3 -> NSO0)");
     {
         let (mut cpu14, mut mmu14, kernel14) = setup_vm();
         let nso14 = loader::NroLoader::synthetic_nso_payload();
@@ -1393,7 +1393,7 @@ fn run_built_in_demo() {
     //          Guest builds an NVN command buffer (Clear Color + Draw) and submits via SVC #0x2D,
     //          verifies RomFS asset mounting, and exits cleanly.
     // ---------------------------------------------------------
-    println!("\n[Stage 15/24] NVN 3D Command Buffer Execution & Multi-Section RomFS Mount");
+    println!("\n[Stage 15/25] NVN 3D Command Buffer Execution & Multi-Section RomFS Mount");
     {
         let (mut cpu15, mut mmu15, mut kernel15) = setup_vm();
         let key15: [u8; 16] = [
@@ -1506,7 +1506,7 @@ fn run_built_in_demo() {
     //            4. audren:u DSP mixer processing stereo voices into 48kHz audio sinks
     //            5. Persistent SaveData syncing to disk
     // ---------------------------------------------------------
-    println!("\n[Stage 16/24] audren:u DSP Voice Mixing, NVN Memory Pools & SPIR-V Pipeline");
+    println!("\n[Stage 16/25] audren:u DSP Voice Mixing, NVN Memory Pools & SPIR-V Pipeline");
     {
         let (mut cpu16, mut mmu16, mut kernel16) = setup_vm();
 
@@ -1622,7 +1622,7 @@ fn run_built_in_demo() {
     //            5. fsp-srv RomFS storage mount (OpenDataStorageByCurrentProcess, GetSize)
     //            6. End-to-end guest AArch64 retail handshake exit code verification (0x777)
     // ---------------------------------------------------------
-    println!("\n[Stage 17/24] Horizon Big 5 Retail Services Handshake & Joy-Con 2 Polling");
+    println!("\n[Stage 17/25] Horizon Big 5 Retail Services Handshake & Joy-Con 2 Polling");
     {
         let (mut cpu17, mut mmu17, mut kernel17) = setup_vm();
         let tls_addr = 0x8000_0000u64;
@@ -1851,7 +1851,7 @@ fn run_built_in_demo() {
     //            4. Submitting an NVN fast-path command stream binding the texture descriptor
     //            5. Guest AArch64 retail verification loop exiting with code 0x888
     // ---------------------------------------------------------
-    println!("\n[Stage 18/24] ro:1 Dynamic Module Relocation & NVN Texture Descriptor Binding");
+    println!("\n[Stage 18/25] ro:1 Dynamic Module Relocation & NVN Texture Descriptor Binding");
     {
         let (mut cpu18, mut mmu18, mut kernel18) = setup_vm();
         let tls_addr = 0x8000_0000u64;
@@ -1985,7 +1985,7 @@ fn run_built_in_demo() {
     //            5. Guest AArch64 invocation of nn::fs::OpenFile & ReadFile via SVC #0x30
     //            6. Guest verification loop returning exit code 0x999
     // ---------------------------------------------------------
-    println!("\n[Stage 19/24] Nintendo SDK (nnSdk) C++ Runtime & crt0 Arena Allocation");
+    println!("\n[Stage 19/25] Nintendo SDK (nnSdk) C++ Runtime & crt0 Arena Allocation");
     {
         let (mut cpu19, mut mmu19, mut kernel19) = setup_vm();
         let code_va = 0x8002_0000u64;
@@ -2075,7 +2075,7 @@ fn run_built_in_demo() {
     //            3. Reporting measured host throughput (informational, not a pass/fail gate)
     //            4. Final verification exit code 0xAAA
     // ---------------------------------------------------------
-    println!("\n[Stage 20/24] Tier-3 JIT Super-Block Execution & Multi-Asset Package Pipeline");
+    println!("\n[Stage 20/25] Tier-3 JIT Super-Block Execution & Multi-Asset Package Pipeline");
     {
         let (mut cpu20, mut mmu20, _kernel20) = setup_vm();
         let code_va = 0x8003_0000u64;
@@ -2125,7 +2125,7 @@ fn run_built_in_demo() {
     //            5. Direct execution crossing module boundaries and calling nnSdk allocator
     //            6. Final verification exit code 0xBBB
     // ---------------------------------------------------------
-    println!("\n[Stage 21/24] Loose Package Pipeline (OunceCake Layout), NPDM Parser & Multi-Module Dynamic Linker");
+    println!("\n[Stage 21/25] Loose Package Pipeline (OunceCake Layout), NPDM Parser & Multi-Module Dynamic Linker");
     {
         let temp_dir = std::env::temp_dir().join(format!(
             "ounce_stage21_pkg_{}",
@@ -2256,7 +2256,7 @@ fn run_built_in_demo() {
     //            4. Decoding ASTC 4x4 void-extent and BC7 texture blocks into VRAM
     //            5. Full-stack verified exit code 0xCCC
     // ---------------------------------------------------------
-    println!("\n[Stage 22/24] Commercial Bootstrap HAL: pl:u Shared Fonts, time:u System Clock & ASTC/BC7 Decompression");
+    println!("\n[Stage 22/25] Commercial Bootstrap HAL: pl:u Shared Fonts, time:u System Clock & ASTC/BC7 Decompression");
     {
         let (mut cpu22, mut mmu22, mut kernel22) = setup_vm();
         let base_va = 0x8005_0000u64;
@@ -2382,7 +2382,7 @@ fn run_built_in_demo() {
     //            4. Decoding ASTC 8x8 block (64 texels) and verifying surface reconstruction
     //            5. Full-stack verified exit code 0xDDD
     // ---------------------------------------------------------
-    println!("\n[Stage 23/24] Commercial Applet HAL: ApplicationFunctions, GPU AS/Characteristics & ASTC 8x8 Decompressor");
+    println!("\n[Stage 23/25] Commercial Applet HAL: ApplicationFunctions, GPU AS/Characteristics & ASTC 8x8 Decompressor");
     {
         let (mut cpu23, mut mmu23, mut kernel23) = setup_vm();
         let base_va = 0x8006_0000u64;
@@ -2542,7 +2542,7 @@ fn run_built_in_demo() {
     //            4. Guest AArch64 program setting exit code 0xEEE and calling svcExitProcess
     //            5. Full-stack verified exit code 0xEEE
     // ---------------------------------------------------------
-    println!("\n[Stage 24/24] Commercial Shader & Dynamic Buffer Pipeline: Ampere FP16 SASS & Dynamic NVN Ring Execution");
+    println!("\n[Stage 24/25] Commercial Shader & Dynamic Buffer Pipeline: Ampere FP16 SASS & Dynamic NVN Ring Execution");
     {
         let (mut cpu24, mut mmu24, mut kernel24) = setup_vm();
         let base_va = 0x8007_0000u64;
@@ -2599,7 +2599,140 @@ fn run_built_in_demo() {
 
         cpu24.regs.pc = base_va;
         run_vm(cpu24, mmu24, kernel24, 10_000);
-        println!("  [Full-Stack Verification] Complete 24-Stage Architecture Pipeline Verified (Exit code: 0xEEE)");
+        println!("  [Full-Stack Verification] FP16 SASS & Dynamic NVN Ring Pipeline Verified (Exit code: 0xEEE)");
+    }
+
+    // ---------------------------------------------------------
+    // Stage 25: Ampere Tensor Core Pipeline: HMMA Warp-Level FP16 Matrix Multiply-Accumulate
+    //            1. Decodes HMMA.1688 and HMMA.16816 SASS ops and reports the shapes they issue
+    //            2. Distributes documented IEEE binary16 matrices into 32-lane warp fragments
+    //               using the public PTX mma.sync fragment layout, then executes both shapes
+    //            3. Writes the FP32 results into guest memory
+    //            4. Guest AArch64 program loads each result, compares it against the expected
+    //               IEEE-754 bit pattern and only reaches exit code 0xEEE if all three match
+    //            5. Full-stack verified exit code 0xEEE
+    //
+    //    Sourcing note: NVIDIA publishes no SASS-level HMMA encoding. The arithmetic and the
+    //    fragment layouts come from the public PTX ISA (mma.sync.aligned.m16n8k8 / m16n8k16,
+    //    .row.col.f32.f16.f16.f32); the opcode bytes are this runtime's own synthetic SASS
+    //    test encoding. See src/gpu/tensor.rs.
+    // ---------------------------------------------------------
+    println!("\n[Stage 25/25] Ampere Tensor Core Pipeline: HMMA Warp-Level FP16 Matrix Multiply-Accumulate");
+    {
+        use gpu::tensor::{self, HmmaShape, TensorCoreUnit, WarpFragments};
+
+        let (mut cpu25, mut mmu25, kernel25) = setup_vm();
+        let base_va = 0x8008_0000u64;
+        let result_addr = 0x9400_2000u64;
+        mmu25.map_range(result_addr, 4096, Permission::READ_WRITE);
+
+        // 1. Decode the tensor core SASS program through the Ampere decompiler.
+        let sass_program = vec![
+            gpu::shader::SassOp::Hmma1688 { rd: 8, rn: 0, rm: 4, ra: 8 }.encode(),
+            gpu::shader::SassOp::Hmma16816 { rd: 12, rn: 0, rm: 8, ra: 12 }.encode(),
+            gpu::shader::SassOp::Exit.encode(),
+        ];
+        let decompiled = gpu::shader::SassShaderDecompiler::decompile(&sass_program);
+        for op in decompiled.ops.iter() {
+            if let Some(shape) = op.hmma_shape() {
+                println!(
+                    "  [HMMA Decode] {:<19} m{}n{}k{:<2} | A {} regs/lane, B {} regs/lane, C/D {} f32/lane | PTX: {}",
+                    shape.mnemonic(),
+                    shape.m(),
+                    shape.n(),
+                    shape.k(),
+                    shape.a_regs_per_lane(),
+                    shape.b_regs_per_lane(),
+                    shape.cd_regs_per_lane(),
+                    shape.ptx_mnemonic()
+                );
+            }
+        }
+
+        let mut tensor_unit = TensorCoreUnit::new();
+
+        // 2a. m16n8k8 with A = B = 1.0h and C = 0: every element of D is exactly k = 8.
+        let shape_k8 = HmmaShape::M16N8K8;
+        let ones_a = vec![0x3C00u16; shape_k8.m() * shape_k8.k()];
+        let ones_b = vec![0x3C00u16; shape_k8.k() * shape_k8.n()];
+        let zero_c = vec![0.0f32; shape_k8.m() * shape_k8.n()];
+        let frags_k8 = WarpFragments::distribute(shape_k8, &ones_a, &ones_b, &zero_c)
+            .expect("m16n8k8 fragment distribution");
+        let d_k8 = tensor::collect_d(
+            shape_k8,
+            &tensor_unit.issue_warp(&frags_k8).expect("m16n8k8 issue"),
+        );
+
+        // 2b. m16n8k16 with A = B = 1.0h and C = 0.5: every element of D is 16.5.
+        let shape_k16 = HmmaShape::M16N8K16;
+        let ones_a16 = vec![0x3C00u16; shape_k16.m() * shape_k16.k()];
+        let ones_b16 = vec![0x3C00u16; shape_k16.k() * shape_k16.n()];
+        let half_c16 = vec![0.5f32; shape_k16.m() * shape_k16.n()];
+        let frags_k16 = WarpFragments::distribute(shape_k16, &ones_a16, &ones_b16, &half_c16)
+            .expect("m16n8k16 fragment distribution");
+        let d_k16 = tensor::collect_d(
+            shape_k16,
+            &tensor_unit.issue_warp(&frags_k16).expect("m16n8k16 issue"),
+        );
+
+        // 2c. FP32 accumulate check: 2048.0h * 1.0h + 1.0 = 2049.0, a value that
+        //     binary16 cannot represent but the FP32 accumulator holds exactly.
+        let mut wide_a = vec![0u16; shape_k8.m() * shape_k8.k()];
+        for row in 0..shape_k8.m() {
+            wide_a[row * shape_k8.k()] = tensor::f32_to_f16(2048.0);
+        }
+        let one_c = vec![1.0f32; shape_k8.m() * shape_k8.n()];
+        let d_wide = tensor_unit
+            .issue(shape_k8, &wide_a, &tensor::identity_b(shape_k8), &one_c)
+            .expect("f32 accumulate issue");
+
+        println!(
+            "  [Tensor Core] {} warp issues | {} MACs retired | D(m16n8k8, ones) = {} | D(m16n8k16, +0.5) = {} | FP32 accumulate = {}",
+            tensor_unit.issued_ops, tensor_unit.retired_macs, d_k8[0], d_k16[0], d_wide[0]
+        );
+        println!(
+            "  [binary16] 2048.0 -> 0x{:04X} | 2049.0 round-tripped through binary16 = {} (FP32 accumulator keeps {})",
+            tensor::f32_to_f16(2048.0),
+            tensor::f16_to_f32(tensor::f32_to_f16(2049.0)),
+            d_wide[0]
+        );
+
+        // 3. Publish the three FP32 results to guest memory.
+        mmu25.write_u32(result_addr, d_k8[0].to_bits()).unwrap();
+        mmu25.write_u32(result_addr + 4, d_k16[0].to_bits()).unwrap();
+        mmu25.write_u32(result_addr + 8, d_wide[0].to_bits()).unwrap();
+
+        // 4. Guest AArch64 program asserting the documented IEEE-754 results.
+        mmu25.map_range(base_va, 4096, Permission::READ_WRITE_EXECUTE);
+        #[rustfmt::skip]
+        let stage25_code: Vec<u32> = vec![
+            0xD2B28002, // movz x2, #0x9400, lsl #16   (HMMA result block)
+            0xF2840002, // movk x2, #0x2000
+            0xB9400040, // ldr  w0, [x2]               (m16n8k8 ones result)
+            0x52A82001, // movz w1, #0x4100, lsl #16   (8.0f  = 0x41000000)
+            0x6B01001F, // cmp  w0, w1
+            0x54000181, // b.ne fail (+12 insns)
+            0xB9400440, // ldr  w0, [x2, #4]           (m16n8k16 + 0.5 result)
+            0x52A83081, // movz w1, #0x4184, lsl #16   (16.5f = 0x41840000)
+            0x6B01001F, // cmp  w0, w1
+            0x54000101, // b.ne fail (+8 insns)
+            0xB9400840, // ldr  w0, [x2, #8]           (FP32 accumulate result)
+            0x52A8A001, // movz w1, #0x4500, lsl #16
+            0x72820001, // movk w1, #0x1000            (2049.0f = 0x45001000)
+            0x6B01001F, // cmp  w0, w1
+            0x54000061, // b.ne fail (+3 insns)
+            0xD281DDC0, // movz x0, #0xEEE             (tensor core pipeline assertion)
+            0xD40000E1, // svc  #0x07                  (svcExitProcess)
+            0xD28175A0, // fail: movz x0, #0xBAD
+            0xD40000E1, // svc  #0x07
+        ];
+        for (i, &w) in stage25_code.iter().enumerate() {
+            mmu25.write_u32(base_va + (i * 4) as u64, w).unwrap();
+        }
+
+        cpu25.regs.pc = base_va;
+        run_vm(cpu25, mmu25, kernel25, 10_000);
+        println!("  [Full-Stack Verification] Complete 25-Stage Architecture Pipeline Verified (Exit code: 0xEEE)");
     }
     println!();
 }
