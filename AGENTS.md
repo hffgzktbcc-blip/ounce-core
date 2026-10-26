@@ -75,5 +75,5 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - Safe Rust provenance: `grep -rn "unsafe" src` returns **0 hits**, strictly preserving `#![forbid(unsafe_code)]`.
 * **Next**:
   - Later milestone: translate NVN draws into host GPU work.
-  - M4 (Tier-4 native JIT in `crates/ounce-recompiler`) is on hold until the user asks for it.
+  - M4 (Tier-4 native JIT in `crates/ounce-recompiler`): design approved, `docs/design/m4-native-jit.md`. Step 1 (workspace, crate skeleton, W^X exec buffer) in progress.
   - Build tooling note: building from source on Debian/Ubuntu needs `libasound2-dev libudev-dev`.
