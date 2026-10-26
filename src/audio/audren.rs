@@ -136,6 +136,11 @@ impl AudioRenderer {
         self.voices.get_mut(voice_id as usize)
     }
 
+    /// Returns the count of currently playing voices.
+    pub fn active_voice_count(&self) -> usize {
+        self.voices.iter().filter(|v| v.state == PlaybackState::Playing).count()
+    }
+
     /// Mixes one DSP tick frame (typically 240 stereo samples) from all active voices into the output sink.
     pub fn render_dsp_tick(&mut self, mmu: &Memory) -> usize {
         if !self.is_active {
@@ -254,5 +259,62 @@ mod tests {
         assert_eq!(renderer.frames_rendered, 1);
         assert!(renderer.peak_amplitude >= 8000);
         assert_eq!(renderer.output_ring_buffer.len(), 8);
+    }
+
+    #[test]
+    fn test_audren_multi_voice_polyphony_and_pan() {
+        let mut mmu = Memory::new();
+        let mut renderer = AudioRenderer::new(AudioRendererConfig {
+            sample_rate: AUDREN_SAMPLE_RATE_48KHZ,
+            sample_count: 2, // 2 stereo samples
+            ..Default::default()
+        });
+
+        let buf_addr_a = 0x8200_0000u64;
+        let buf_addr_b = 0x8200_1000u64;
+        mmu.map_range(buf_addr_a, 4096, Permission::READ_WRITE);
+        mmu.map_range(buf_addr_b, 4096, Permission::READ_WRITE);
+
+        // Voice A: 10000 PCM
+        mmu.write_u16(buf_addr_a, 10000u16).unwrap();
+        mmu.write_u16(buf_addr_a + 2, 10000u16).unwrap();
+
+        // Voice B: 5000 PCM
+        mmu.write_u16(buf_addr_b, 5000u16).unwrap();
+        mmu.write_u16(buf_addr_b + 2, 5000u16).unwrap();
+
+        // Configure Voice 0 (Panned 100% Left)
+        let v0 = renderer.get_voice_mut(0).unwrap();
+        v0.mix_volumes = [1.0, 0.0];
+        v0.queue_buffer(WaveBuffer {
+            buffer_addr: buf_addr_a,
+            buffer_size: 4,
+            start_sample_offset: 0,
+            end_sample_offset: 2,
+            is_looping: false,
+            is_stream_ended: true,
+        });
+
+        // Configure Voice 1 (Panned 100% Right)
+        let v1 = renderer.get_voice_mut(1).unwrap();
+        v1.mix_volumes = [0.0, 1.0];
+        v1.queue_buffer(WaveBuffer {
+            buffer_addr: buf_addr_b,
+            buffer_size: 4,
+            start_sample_offset: 0,
+            end_sample_offset: 2,
+            is_looping: false,
+            is_stream_ended: true,
+        });
+
+        let mixed = renderer.render_dsp_tick(&mmu);
+        assert_eq!(mixed, 4); // 2 samples * 2 channels = 4 samples
+        assert_eq!(renderer.active_voice_count(), 2);
+
+        // Left channel should be ~10000, Right channel should be ~5000
+        let left_out = renderer.output_ring_buffer[0];
+        let right_out = renderer.output_ring_buffer[1];
+        assert_eq!(left_out, 10000);
+        assert_eq!(right_out, 5000);
     }
 }

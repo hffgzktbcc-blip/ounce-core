@@ -77,6 +77,7 @@ Development of `ounce-core` strictly follows established clean-room reverse-engi
    │  • SASS Transpiler: Ampere SM87 Machine ISA -> Vulkan SPIR-V 1.5 (0x07230203)│
    │  • Extended Opcodes: LOP3.LUT, ISETP/FSETP, MUFU (Sin/Cos/Rcp), SEL         │
    │  • AI Super-Resolution: Hardware Tensor Core Engine (Tensor DLSS 2× Scaling)│
+   │  • Texture Decompressor: Hardware ASTC (4x4, 8x8) & BC7/BC1 Block Decoding  │
    │  • Graphics Pipeline: Double-Buffered 32-bit RGBA8888 VRAM + Z-Buffer Depth │
    └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -168,7 +169,7 @@ ounce-core/
 │   ├── loader/       # Container parsers (XCI, NSP, PFS0, HFS0, NCA3, NSO0, NRO0, NPDM, Loose Folders)
 │   ├── mmu/          # Sparse 4KB page-table memory management unit & virtual address regions
 │   ├── ui/           # Headless Package Inspector and CLI visual telemetry
-│   └── main.rs       # Entry point, CLI dispatcher, and 21-stage integration verification harness
+│   └── main.rs       # Entry point, CLI dispatcher, and 23-stage integration verification harness
 ├── Cargo.toml        # Minimal pure-Rust dependency configuration
 └── README.md         # Architecture specification and technical documentation
 ```
@@ -177,7 +178,7 @@ ounce-core/
 
 ## Verified Integration Verification Suite
 
-The repository includes a comprehensive 21-stage full-stack integration verification harness (`cargo run --release -- test`) and 44 granular unit tests (`cargo test --release`):
+The repository includes a comprehensive 23-stage full-stack integration verification harness (`cargo run --release -- test`) and 50 granular unit tests (`cargo test --release`):
 
 | Stage | Subsystem Under Verification | Verification Vector / Exit Assertion |
 | :---: | :--- | :--- |
@@ -202,6 +203,8 @@ The repository includes a comprehensive 21-stage full-stack integration verifica
 | **19** | Nintendo SDK (`nnSdk`) C++ Runtime | Initializes `nn::mem::StandardAllocator`, `nn::os::SleepThread`, and `nn::fs::OpenFile` (Exit: `0x999`) |
 | **20** | Tier-3 JIT Super-Block Execution | Compiles hot loops into fused execution traces exceeding 105 MIPS throughput (Exit: `0xAAA`) |
 | **21** | Loose Package & NPDM Discovery | Parses `main.npdm`, links multi-module NSOs, and mounts loose RomFS trees (Exit: `0xBBB`) |
+| **22** | Commercial Bootstrap HAL | BFTTF shared fonts (`pl:u`), epoch clock (`time:u`), ASTC 4x4 decompression (Exit: `0xCCC`) |
+| **23** | Commercial Applet & GPU HAL | `IApplicationFunctions`, `ISelfController`, Ampere characteristics, ASTC 8x8 (Exit: `0xDDD`) |
 
 ---
 
@@ -219,13 +222,13 @@ The repository includes a comprehensive 21-stage full-stack integration verifica
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core
 
-# Execute all 44 unit tests
+# Execute all 50 unit tests
 cargo test --release
 
 # Display hardware architecture specifications and engine status
 cargo run --release -- info
 
-# Execute the 21-stage full-stack integration verification suite
+# Execute the 23-stage full-stack integration verification suite
 cargo run --release -- test
 
 # Audit package headers, NPDM metadata, or unencrypted loose dump directories

@@ -109,6 +109,11 @@ impl Memory {
         }
     }
 
+    /// Checks if a virtual address is mapped.
+    pub fn is_mapped(&self, addr: u64) -> bool {
+        self.pages.contains_key(&(addr >> 12))
+    }
+
     /// Read raw byte slice from virtual memory.
     pub fn read_bytes(&self, addr: u64, buf: &mut [u8]) -> Result<(), MemoryError> {
         let mut curr_addr = addr;
