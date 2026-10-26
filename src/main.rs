@@ -2995,6 +2995,19 @@ fn run_directory_package(dir_path: &str, gui_mode: bool) {
             }
             println!("  RomFS Assets : {} files mounted into VFS", info.romfs_files_mounted);
 
+            if let Some(tp) = info.thread_pointer {
+                cpu.regs.tpidr_el0 = tp;
+                println!("  Static TLS   : TPIDR_EL0 = 0x{:X}", tp);
+            }
+            // Opt-in: the program's own crt0 normally runs its constructors.
+            if std::env::var_os("OUNCE_RUN_INIT").is_some() {
+                let report = loader::run_initializers(&mut cpu, &mut mmu, &info.modules_loaded, STACK_TOP, 1_000_000);
+                println!("  Initialisers : {} ran, {} failed", report.completed, report.failed.len());
+                for (addr, err) in &report.failed {
+                    println!("    -> 0x{:X}: {}", addr, err);
+                }
+            }
+
             let fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
             mmu.map_range(DEFAULT_FRAMEBUFFER_ADDR, fb_size, Permission::READ_WRITE);
             mmu.map_range(HID_SHARED_MEM_ADDR, 0x1000, Permission::READ_WRITE);

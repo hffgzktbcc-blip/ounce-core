@@ -117,6 +117,7 @@ impl HorizonKernel {
                 let handle = self
                     .scheduler
                     .create_thread(entry_pc, arg, stack_top, prio, core_id);
+                self.scheduler.setup_thread_tls(handle, mmu);
                 cpu.regs.write_x(0, 0); // ResultSuccess
                 cpu.regs.write_x(1, handle as u64);
                 SvcResult::Success
