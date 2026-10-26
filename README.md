@@ -202,7 +202,6 @@ The repository includes a comprehensive 21-stage full-stack integration verifica
 | **19** | Nintendo SDK (`nnSdk`) C++ Runtime | Initializes `nn::mem::StandardAllocator`, `nn::os::SleepThread`, and `nn::fs::OpenFile` (Exit: `0x999`) |
 | **20** | Tier-3 JIT Super-Block Execution | Compiles hot loops into fused execution traces exceeding 105 MIPS throughput (Exit: `0xAAA`) |
 | **21** | Loose Package & NPDM Discovery | Parses `main.npdm`, links multi-module NSOs, and mounts loose RomFS trees (Exit: `0xBBB`) |
-| **20** | Tier-3 JIT Super-Block Execution | Multi-block trace unrolling with fused execution achieving >100 MIPS (Exit: `0xAAA`) |
 
 ---
 
@@ -220,24 +219,27 @@ The repository includes a comprehensive 21-stage full-stack integration verifica
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core
 
-# Execute all 41 unit tests
+# Execute all 44 unit tests
 cargo test --release
 
 # Display hardware architecture specifications and engine status
 cargo run --release -- info
 
-# Execute the 20-stage full-stack integration verification suite
+# Execute the 21-stage full-stack integration verification suite
 cargo run --release -- test
 
-# Audit package headers, ISA security features, and extract RomFS assets
-cargo run --release -- inspect package.nsp
+# Audit package headers, NPDM metadata, or unencrypted loose dump directories
+cargo run --release -- inspect ./dumps/game_title
+
+# Boot an unencrypted loose dump with interactive native window & controls
+cargo run --release -- run ./dumps/game_title --gui
+
+# Synthesize a ready-to-run loose test package and launch with GUI
+cargo run --release -- demo-dir ./switch2_demo_pkg --gui
 
 # Launch interactive Joy-Con 2 input and graphics demonstration
 cargo run --release -- play
 
 # Run the Tegra Ampere 3D GPU pushbuffer rasterizer & DLSS benchmark
 cargo run --release -- 3d 120
-
-# Load and execute an AArch64 executable or container
-cargo run --release -- run payload.nro
 ```
