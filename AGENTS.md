@@ -74,6 +74,15 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - `Memory::map_range` now computes `num_pages` with intra-page offset `(base_addr as usize) & (PAGE_SIZE - 1)`, ensuring ranges that cross page boundaries allocate all intersecting pages.
   - Zero-size allocation guards and checked addition for 64-bit address overflow safety.
   - 8 synthetic unit tests covering intra-page boundaries, permission enforcement, and unmapped access.
+* **Completed: Code-cache invalidation on guest code writes** (PR #24 on `main`, 2026-10-26)
+  - Implements the self-modifying-code rule from the M4 design (section 5) for the safe tiers only; no JIT code.
+  - `Memory` (`src/mmu/memory.rs`): pages carry `holds_code` + `code_write_gen`. A write (or `map_range` remap) to a code page bumps the global `Memory::code_write_gen()`. API: `mark_code_range(start, end)`, `code_written_since(start, end, gen)`. Writes to pages no cache has compiled from cost one bool check.
+  - Tier-2 / Tier-3 engines mark pages they compile and run `sync_code_writes` before each lookup: if the generation moved, they drop only blocks/super-blocks whose pages were written (`blocks_invalidated` / `super_blocks_invalidated` counters). `get_or_compile_block` / `get_or_compile_super_block` now take `&mut Memory`.
+  - `Tier2Block::execute` ends the block right after an interpreter-fallback store that hit cached code, so a block that patches its own later instructions sees the new code.
+  - `SuperBlock::execute` returns to the engine when the PC leaves the fused path. Fixes a pre-existing bug: traces follow `BL` to the return address, but execution jumps to the callee, so the next fused block ran at the wrong PC (callee skipped).
+  - Interpreter `JitBlockCache` was already safe: it re-reads the raw word every step and recompiles on mismatch. Test added to pin that.
+  - Tests: Tier-2 guest patches a called function, Tier-2 same-block patch, data-page writes keep blocks, Tier-3 hot super-block patch, Tier-3 `BL` into callee, interpreter patch. 107 unit tests pass (default features); harness 25/25.
+  - Not done: `IC IVAU`/`DC CVAU` are still decoded as no-ops (invalidation is write-driven, which is stricter). Tier-4 must call the same `code_written_since` check once it exists.
 * **Completed: Milestone 4 / Host GPU accelerated 3D translation via wgpu** (PR #26 on `main` @ f6456db)
   - Tegra T239 NVN/Maxwell 3D pushbuffer translation (`METHOD_DRAW_ARRAYS`, `METHOD_DRAW_INDEXED`) into host GPU pipelines via `wgpu` (Metal on macOS, Vulkan on Linux/Windows).
   - Compact sparse index deduplication and bounded remapping in `src/gpu/nvgpu.rs`, guarding host memory against extreme 32-bit index spans (`0xFFFFFFFF`).
