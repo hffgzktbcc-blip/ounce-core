@@ -2,7 +2,7 @@
 
 use crate::mmu::{Memory, MemoryError, Permission};
 use gilrs::{Axis, Button, Event, Gilrs};
-use minifb::Key;
+use crate::gpu::present::HostKey;
 
 pub const HID_SHARED_MEM_ADDR: u64 = 0x10000000;
 pub const HID_SHARED_MEM_SIZE: usize = 0x40000; // 256 KB standard Horizon HID pool
@@ -101,7 +101,7 @@ impl HidServer {
     }
 
     /// Translates host keyboard events into Nintendo Switch controller buttons.
-    pub fn poll_keyboard(&mut self, keys: &[Key]) {
+    pub fn poll_keyboard(&mut self, keys: &[HostKey]) {
         let mut buttons: u64 = 0;
         let mut lx: i32 = 0;
         let mut ly: i32 = 0;
@@ -109,38 +109,38 @@ impl HidServer {
         for key in keys {
             match key {
                 // D-Pad / Left Stick: Movement
-                Key::Left | Key::A => {
+                HostKey::Left | HostKey::A => {
                     buttons |= NpadButton::DLeft as u64;
                     lx = -32767;
                 }
-                Key::Right | Key::D => {
+                HostKey::Right | HostKey::D => {
                     buttons |= NpadButton::DRight as u64;
                     lx = 32767;
                 }
-                Key::Up | Key::W => {
+                HostKey::Up | HostKey::W => {
                     buttons |= NpadButton::DUp as u64;
                     ly = 32767;
                 }
-                Key::Down | Key::S => {
+                HostKey::Down | HostKey::S => {
                     buttons |= NpadButton::DDown as u64;
                     ly = -32767;
                 }
 
                 // Action Buttons
-                Key::Space | Key::J => buttons |= NpadButton::A as u64,
-                Key::K => buttons |= NpadButton::B as u64,
-                Key::U => buttons |= NpadButton::X as u64,
-                Key::I => buttons |= NpadButton::Y as u64,
+                HostKey::Space | HostKey::J => buttons |= NpadButton::A as u64,
+                HostKey::K => buttons |= NpadButton::B as u64,
+                HostKey::U => buttons |= NpadButton::X as u64,
+                HostKey::I => buttons |= NpadButton::Y as u64,
 
                 // Shoulder & Triggers
-                Key::Q => buttons |= NpadButton::L as u64,
-                Key::E => buttons |= NpadButton::R as u64,
-                Key::Z => buttons |= NpadButton::ZL as u64,
-                Key::C => buttons |= NpadButton::ZR as u64,
+                HostKey::Q => buttons |= NpadButton::L as u64,
+                HostKey::E => buttons |= NpadButton::R as u64,
+                HostKey::Z => buttons |= NpadButton::ZL as u64,
+                HostKey::C => buttons |= NpadButton::ZR as u64,
 
                 // System
-                Key::Enter => buttons |= NpadButton::Plus as u64,
-                Key::Backspace => buttons |= NpadButton::Minus as u64,
+                HostKey::Enter => buttons |= NpadButton::Plus as u64,
+                HostKey::Backspace => buttons |= NpadButton::Minus as u64,
                 _ => {}
             }
         }

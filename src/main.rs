@@ -1,3 +1,8 @@
+// The runtime core contains no `unsafe` code; the compiler enforces it here.
+// Any future host-level exception (a native code emitter, a raw graphics driver) lives
+// in its own workspace crate, per AGENTS.md "Unsafe Boundary".
+#![forbid(unsafe_code)]
+
 mod audio;
 mod cpu;
 mod crypto;
@@ -431,7 +436,7 @@ fn run_vm_internal(
 
                         // 1. Poll host keyboard and physical gamepad input
                         if let Some(ref mut h) = hid {
-                            if let Some(ref disp) = display {
+                            if let Some(ref mut disp) = display {
                                 let active_keys = disp.get_active_keys();
                                 h.poll_keyboard(&active_keys);
                             }

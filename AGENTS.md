@@ -8,7 +8,7 @@ This document establishes operating rules for AI coding assistants (Antigravity,
 * **Pass all verification gates**:
   - `cargo test --release` (52+ tests must pass).
   - `cargo run --release -- test` (all 24 verification stages must pass exiting `0xEEE`).
-  - `grep -rn "unsafe" src` must return 0 hits (pure safe Rust only). `ounce-core` itself is `#![forbid(unsafe_code)]` (attribute lands with M3A step 1).
+  - No `unsafe` code in `src/`. `src/main.rs` carries `#![forbid(unsafe_code)]`, so the compiler enforces it; the grep gate is now `grep -rnE "unsafe[ ({]" src` (0 hits), because a plain `grep unsafe` matches the attribute itself.
 
 ## 1a. Unsafe Boundary (user decision, 2026-10-26)
 * `ounce-core` (`src/`) never contains `unsafe`. Use safe crates first (e.g. `wgpu` for graphics).
