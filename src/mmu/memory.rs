@@ -98,13 +98,23 @@ impl Memory {
         stats
     }
 
-    /// Allocate and map a contiguous virtual memory range.
+    /// Allocate every page intersecting a contiguous virtual memory range.
+    /// An empty range leaves existing mappings unchanged.
+    ///
+    /// # Panics
+    /// Panics before changing any mappings if the range exceeds the 64-bit address space.
     pub fn map_range(&mut self, base_addr: u64, size: usize, perm: Permission) {
-        let start_page = base_addr >> 12;
-        let num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+        if size == 0 {
+            return;
+        }
 
-        for i in 0..num_pages {
-            let page_idx = start_page + i as u64;
+        let last_addr = base_addr
+            .checked_add((size - 1) as u64)
+            .expect("memory range exceeds the 64-bit address space");
+        let start_page = base_addr >> 12;
+        let last_page = last_addr >> 12;
+
+        for page_idx in start_page..=last_page {
             self.pages.insert(page_idx, Page::new(perm));
         }
     }
@@ -232,5 +242,155 @@ impl Memory {
         let mut buf = [0u8; 8];
         LittleEndian::write_u64(&mut buf, val);
         self.write_bytes(addr, &buf)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_range_covers_exactly_the_intersecting_pages() {
+        let cases = [
+            (0x0000, 1, 1),
+            (0x1000, PAGE_SIZE, 1),
+            (0x1000, PAGE_SIZE + 1, 2),
+            (0x1001, PAGE_SIZE - 1, 1),
+            (0x1001, PAGE_SIZE, 2),
+            (0x1FFF, 1, 1),
+            (0x1FFF, 2, 2),
+            (0x1FFF, PAGE_SIZE + 1, 2),
+            (0x1FFF, PAGE_SIZE + 2, 3),
+        ];
+
+        for (base_addr, size, expected_pages) in cases {
+            let mut memory = Memory::new();
+            memory.map_range(base_addr, size, Permission::READ_WRITE);
+
+            let first_page = base_addr >> 12;
+            assert_eq!(memory.pages.len(), expected_pages);
+            for page in first_page..first_page + expected_pages as u64 {
+                assert!(memory.is_mapped(page * PAGE_SIZE as u64));
+            }
+            if first_page > 0 {
+                assert!(!memory.is_mapped((first_page - 1) * PAGE_SIZE as u64));
+            }
+            assert!(!memory.is_mapped((first_page + expected_pages as u64) * PAGE_SIZE as u64));
+        }
+    }
+
+    #[test]
+    fn test_read_write_bytes_across_unaligned_mapped_pages() {
+        let mut memory = Memory::new();
+        let base_addr = 0x1FFF;
+        let data: Vec<u8> = (0..PAGE_SIZE + 2).map(|i| i as u8).collect();
+        memory.map_range(base_addr, data.len(), Permission::READ_WRITE);
+
+        memory.write_bytes(base_addr, &data).unwrap();
+        let mut actual = vec![0; data.len()];
+        memory.read_bytes(base_addr, &mut actual).unwrap();
+        assert_eq!(actual, data);
+    }
+
+    #[test]
+    fn test_read_write_scalar_across_page_boundary() {
+        let mut memory = Memory::new();
+        memory.map_range(0x1FFC, 8, Permission::READ_WRITE);
+
+        memory.write_u64(0x1FFC, 0x0123_4567_89AB_CDEF).unwrap();
+        assert_eq!(memory.read_u64(0x1FFC).unwrap(), 0x0123_4567_89AB_CDEF);
+        assert_eq!(memory.read_u32(0x2000).unwrap(), 0x0123_4567);
+    }
+
+    #[test]
+    fn test_read_only_permissions_apply_to_every_mapped_page() {
+        let mut memory = Memory::new();
+        memory.map_range(0x1FFF, 2, Permission::READ_ONLY);
+
+        let mut actual = [1; 2];
+        memory.read_bytes(0x1FFF, &mut actual).unwrap();
+        assert_eq!(actual, [0; 2]);
+
+        for addr in [0x1FFF, 0x2000] {
+            assert!(matches!(
+                memory.write_u8(addr, 1),
+                Err(MemoryError::PermissionDenied {
+                    addr: denied_addr,
+                    required: "WRITE",
+                    actual: Permission::READ_ONLY,
+                }) if denied_addr == addr
+            ));
+            assert_eq!(memory.read_u8(addr).unwrap(), 0);
+        }
+    }
+
+    #[test]
+    fn test_access_to_adjacent_unmapped_page_is_rejected() {
+        let mut memory = Memory::new();
+        memory.map_range(0x1FFF, 2, Permission::READ_WRITE);
+
+        assert!(matches!(
+            memory.read_u8(0x3000),
+            Err(MemoryError::Unmapped { addr: 0x3000 })
+        ));
+        assert!(matches!(
+            memory.write_u8(0x3000, 1),
+            Err(MemoryError::Unmapped { addr: 0x3000 })
+        ));
+    }
+
+    #[test]
+    fn test_empty_range_does_not_map_or_replace_pages() {
+        let mut memory = Memory::new();
+        memory.map_range(0x1000, PAGE_SIZE, Permission::READ_WRITE);
+        memory.write_u8(0x1FFF, 42).unwrap();
+
+        for base_addr in [0, 0x1000, 0x1FFF, 0x2000, u64::MAX] {
+            memory.map_range(base_addr, 0, Permission::NONE);
+        }
+
+        assert_eq!(memory.pages.len(), 1);
+        assert_eq!(memory.read_u8(0x1FFF).unwrap(), 42);
+        memory.write_u8(0x1FFF, 43).unwrap();
+        assert_eq!(memory.read_u8(0x1FFF).unwrap(), 43);
+    }
+
+    #[test]
+    fn test_map_range_can_end_at_the_last_address() {
+        let cases = [
+            (u64::MAX, 1, 1),
+            (u64::MAX - PAGE_SIZE as u64 + 1, PAGE_SIZE, 1),
+            (u64::MAX - PAGE_SIZE as u64, PAGE_SIZE + 1, 2),
+        ];
+
+        for (base_addr, size, expected_pages) in cases {
+            let mut memory = Memory::new();
+            memory.map_range(base_addr, size, Permission::READ_WRITE);
+
+            assert_eq!(memory.pages.len(), expected_pages);
+            assert!(memory.is_mapped(base_addr));
+            assert!(memory.is_mapped(u64::MAX));
+            assert!(!memory.is_mapped(0));
+        }
+    }
+
+    #[test]
+    fn test_overflowing_range_is_rejected_before_mapping() {
+        let mut memory = Memory::new();
+        memory.map_range(0x1000, PAGE_SIZE, Permission::READ_WRITE);
+        memory.write_u8(0x1000, 42).unwrap();
+
+        for (base_addr, size) in [
+            (u64::MAX, 2),
+            (u64::MAX - PAGE_SIZE as u64 + 1, PAGE_SIZE + 1),
+        ] {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                memory.map_range(base_addr, size, Permission::READ_WRITE);
+            }));
+
+            assert!(result.is_err());
+            assert_eq!(memory.pages.len(), 1);
+            assert_eq!(memory.read_u8(0x1000).unwrap(), 42);
+        }
     }
 }
