@@ -62,7 +62,7 @@ Before submitting a pull request, ensure your branch passes all required gates:
    ```bash
    cargo run --release -- test
    ```
-   Must complete all 24 stages and exit with status code `0xEEE`.
+   Must complete all 25 stages and exit with status code `0xEEE`.
 4. **Zero Unsafe Guarantee**:
    ```bash
    grep -rn "unsafe" src
