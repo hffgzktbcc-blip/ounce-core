@@ -53,9 +53,11 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - Plan: (1) refactor to `PresentBackend` trait + headless/minifb backends + `HostKey`, no behavior change; (2) wgpu backend; (3) CI feature job with lavapipe + docs. No code until the user approves the design PR.
   - Step 2 done (branch `claude/m3a-wgpu-backend`, stacked on step 1): `src/gpu/present/wgpu_window.rs` behind feature `gpu-present` (wgpu 30, winit 0.30 with `pump_app_events`, pollster 0.4). `FrameBlitter` uploads the RGBA8 frame and draws a fullscreen triangle, letterboxed (`viewport_rect`). `--present=auto|gpu|minifb|headless` flag (wins over `OUNCE_PRESENT`); `auto` tries GPU first when compiled in. Adapter override through wgpu's own `WGPU_BACKEND` / `WGPU_ADAPTER_NAME`; `OUNCE_VSYNC=0` disables vsync. winit init panics (missing `libxkbcommon-x11`) are caught and fall back to minifb.
   - Verified locally: offscreen pixel-exact blit test on lavapipe (`mesa-vulkan-drivers`), and `gfx 60 --present=gpu` under Xvfb presenting through Vulkan (llvmpipe). Not yet run on real macOS/Metal or Windows hardware.
+  - Step 3 done (branch `claude/m3a-ci-docs`, stacked on step 2): `ci.yml` job `gpu-present` builds and tests `--features gpu-present` on Linux/macOS/Windows (Linux installs `mesa-vulkan-drivers` so the offscreen blit test runs on lavapipe); README documents the backend, flags and runtime packages.
+  - Merge order: #5 (design) and #6 (step 1) into `main`, then retarget #8 (step 2) and the step 3 PR to `main` one after the other. Stacked PRs get no CI until retargeted.
 * **Next**:
-  - M3A step 3: CI job for `--features gpu-present` (install `mesa-vulkan-drivers` so the offscreen test runs), README runtime notes (`libxkbcommon-x11-0`, `libvulkan1`).
-  - Manual check of `--present=gpu` on a Mac (Metal) and a Windows machine.
+  - Manual check of `--present=gpu` on a Mac (Metal) and a Windows machine; nobody has run it on real hardware yet. (CI's offscreen blit test does pass on the macOS runner's Metal device.)
+  - Later milestone (not M3A): translate NVN draws into host GPU work. Needs its own design.
   - M4 (Tier-4 native JIT in `crates/ounce-recompiler`) is on hold until the user asks for it.
   - Exercise TLS and init with a multi-module homebrew build (libnx `crt0`, C++ `thread_local` / `std::thread`).
   - Build tooling note: building from source on Debian/Ubuntu needs `libasound2-dev libudev-dev`.

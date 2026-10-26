@@ -1,6 +1,6 @@
 # M3A design: GPU swapchain presentation layer
 
-Status: **backend choice approved by the user 2026-10-26 (wgpu first). Remaining open points in section 9. No code written yet.**
+Status: **approved 2026-10-26 and implemented** in three PRs: step 1 #6, step 2 #8, step 3 (CI + docs). See AGENTS.md handoff log for state.
 Date: 2026-10-26. Base: `main` @ 629cd87 (69 unit tests, 24 stages `0xEEE`, zero `unsafe` in `src/`).
 
 ## 1. Goal and scope
@@ -147,5 +147,10 @@ Each step keeps all gates green and is reviewable alone.
 ## 9. Decisions needed
 
 1. ~~Approve option C (wgpu + winit) instead of raw `ash`.~~ Approved.
-2. Approve leaving `gpu/vulkan.rs` as the guest model and putting host presentation in `gpu/present/`.
-3. OK to keep `minifb` as the default window backend for now (GPU opt-in), or make `gpu-present` default later once CI is stable.
+2. ~~Approve leaving `gpu/vulkan.rs` as the guest model and putting host presentation in `gpu/present/`.~~ Approved.
+3. ~~OK to keep `minifb` as the default window backend for now (GPU opt-in), or make `gpu-present` default later once CI is stable.~~ Approved: GPU stays opt-in for now.
+
+## 10. Implementation notes (deviations from the plan above)
+- Adapter override uses wgpu's own `WGPU_ADAPTER_NAME` / `WGPU_BACKEND` instead of new `OUNCE_ADAPTER` / `OUNCE_WGPU_BACKEND` variables.
+- Vsync toggle is `OUNCE_VSYNC=0`, not a `--no-vsync` flag.
+- winit panics during init (missing `libxkbcommon-x11`) are caught and treated as an init failure, so the fallback chain still applies.
