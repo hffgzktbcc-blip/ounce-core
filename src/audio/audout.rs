@@ -61,6 +61,11 @@ impl AudioOutServer {
         self.buffers_queued += 1;
         self.total_samples_processed += sample_count as u64;
     }
+
+    /// Drains all buffered samples for playback through the host audio sink.
+    pub fn drain_samples(&mut self) -> Vec<i16> {
+        std::mem::take(&mut self.ring_buffer)
+    }
 }
 
 #[cfg(test)]

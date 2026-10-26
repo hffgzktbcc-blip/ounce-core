@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::mmu::{Memory, MemoryError, Permission};
+use gilrs::{Axis, Button, Event, Gilrs};
 use minifb::Key;
 
 pub const HID_SHARED_MEM_ADDR: u64 = 0x10000000;
@@ -197,6 +198,108 @@ impl HidServer {
     }
 }
 
+/// Physical host USB / Bluetooth gamepad manager using gilrs.
+pub struct HostGamepadManager {
+    gilrs: Option<Gilrs>,
+    pub connected_gamepads: usize,
+}
+
+impl Default for HostGamepadManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HostGamepadManager {
+    pub fn new() -> Self {
+        let gilrs = match Gilrs::new() {
+            Ok(g) => Some(g),
+            Err(_) => None,
+        };
+        let connected_gamepads = gilrs.as_ref().map(|g| g.gamepads().count()).unwrap_or(0);
+        Self {
+            gilrs,
+            connected_gamepads,
+        }
+    }
+
+    /// Polls physical host gamepads and applies inputs to the Horizon HID server.
+    pub fn poll(&mut self, hid: &mut HidServer) {
+        if let Some(ref mut gilrs) = self.gilrs {
+            while let Some(Event { .. }) = gilrs.next_event() {
+                // Drain event pump
+            }
+
+            self.connected_gamepads = 0;
+            for (_id, gamepad) in gilrs.gamepads() {
+                if gamepad.is_connected() {
+                    self.connected_gamepads += 1;
+
+                    // Map Standard Gamepad buttons to Switch/Switch 2 NpadButtons
+                    if gamepad.is_pressed(Button::South) {
+                        hid.set_button_state(NpadButton::B, true);
+                    }
+                    if gamepad.is_pressed(Button::East) {
+                        hid.set_button_state(NpadButton::A, true);
+                    }
+                    if gamepad.is_pressed(Button::West) {
+                        hid.set_button_state(NpadButton::Y, true);
+                    }
+                    if gamepad.is_pressed(Button::North) {
+                        hid.set_button_state(NpadButton::X, true);
+                    }
+                    if gamepad.is_pressed(Button::DPadUp) {
+                        hid.set_button_state(NpadButton::DUp, true);
+                    }
+                    if gamepad.is_pressed(Button::DPadDown) {
+                        hid.set_button_state(NpadButton::DDown, true);
+                    }
+                    if gamepad.is_pressed(Button::DPadLeft) {
+                        hid.set_button_state(NpadButton::DLeft, true);
+                    }
+                    if gamepad.is_pressed(Button::DPadRight) {
+                        hid.set_button_state(NpadButton::DRight, true);
+                    }
+                    if gamepad.is_pressed(Button::LeftTrigger) {
+                        hid.set_button_state(NpadButton::L, true);
+                    }
+                    if gamepad.is_pressed(Button::RightTrigger) {
+                        hid.set_button_state(NpadButton::R, true);
+                    }
+                    if gamepad.is_pressed(Button::LeftTrigger2) {
+                        hid.set_button_state(NpadButton::ZL, true);
+                    }
+                    if gamepad.is_pressed(Button::RightTrigger2) {
+                        hid.set_button_state(NpadButton::ZR, true);
+                    }
+                    if gamepad.is_pressed(Button::LeftThumb) {
+                        hid.set_button_state(NpadButton::LStick, true);
+                    }
+                    if gamepad.is_pressed(Button::RightThumb) {
+                        hid.set_button_state(NpadButton::RStick, true);
+                    }
+                    if gamepad.is_pressed(Button::Start) {
+                        hid.set_button_state(NpadButton::Plus, true);
+                    }
+                    if gamepad.is_pressed(Button::Select) {
+                        hid.set_button_state(NpadButton::Minus, true);
+                    }
+
+                    // Map analog sticks with deadzone
+                    let lx = gamepad.value(Axis::LeftStickX);
+                    let ly = gamepad.value(Axis::LeftStickY);
+                    let rx = gamepad.value(Axis::RightStickX);
+                    let ry = gamepad.value(Axis::RightStickY);
+                    hid.apply_gamepad_axes(lx, ly, rx, ry, 0.1);
+
+                    // Primary controller drives Player 1
+                    break;
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,5 +325,13 @@ mod tests {
         assert!(lx > 20000); // 0.75 * 32767
         let rx = mmu.read_u32(hid_addr + 24).unwrap() as i32;
         assert_eq!(rx, 0); // Filtered by deadzone!
+    }
+
+    #[test]
+    fn test_host_gamepad_manager_lifecycle() {
+        let mut mgr = HostGamepadManager::new();
+        let mut hid = HidServer::new(0x1000_0000);
+        mgr.poll(&mut hid);
+        // Successfully polled without panicking
     }
 }

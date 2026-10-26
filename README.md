@@ -16,7 +16,7 @@
 `ounce-core` is an experimental, non-commercial AArch64 execution and high-level-emulation (HLE) research runtime written in Rust. It contains an interpreter, three execution tiers, a paged memory model, a subset of Horizon-style supervisor calls (SVCs) and services, and software models of graphics, audio and input. It is a test harness for studying these subsystems. It is not a console emulator and makes no claim of compatibility with any commercial software.
 
 - Safe Rust only: `grep -rn unsafe src` returns no matches.
-- Three runtime dependencies: `byteorder`, `minifb` (host window), `thiserror`.
+- Five runtime dependencies: `byteorder`, `cpal` (host audio playback), `gilrs` (gamepad input), `minifb` (host window), `thiserror`.
 - No network code, no telemetry. The only URL in the source is the project's own repository link in the CLI banner.
 
 ---
@@ -60,8 +60,8 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | Shader translation | Partial | A SASS-subset decoder that emits SPIR-V 1.5 bytes. Not validated against a driver. |
 | Vulkan HAL (`gpu/vulkan.rs`) | Model only | Structures and SPIR-V module checks. It does not call a Vulkan loader or driver. |
 | Upscaler (`gpu/dlss.rs`) | Modelled | 2× bilinear interpolation with sharpening. **Not DLSS**; there is no neural network. |
-| Audio | Modelled | Software voice mixer that writes PCM buffers. No host audio output device. |
-| Input (`hid/`) | Modelled | Controller state filled from host keyboard input in `play`. |
+| Audio | Implemented | Software 64-voice mixer; real-time 48 kHz stereo host audio sink via `cpal`. |
+| Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs`. |
 | Containers | Implemented (parsing) | PFS0/NSP, HFS0/XCI, NCA3, NSO0, NRO0, NPDM, RomFS, unencrypted loose directories. |
 | Crypto | Implemented | AES-128 checked against FIPS-197 vectors. AES-128-CTR is used for NCA sections when the user supplies keys. |
 

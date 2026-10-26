@@ -18,8 +18,9 @@ use gpu::nvgpu::{
     METHOD_SET_VIEWPORT_DIMS,
 };
 use gpu::shader::SassOp;
+use audio::HostAudioSink;
 use gpu::{DisplayConfig, DisplayServer, DEFAULT_FRAMEBUFFER_ADDR, SCREEN_HEIGHT, SCREEN_WIDTH};
-use hid::{HidServer, HID_SHARED_MEM_ADDR};
+use hid::{HidServer, HostGamepadManager, HID_SHARED_MEM_ADDR};
 use kernel::{HorizonKernel, ServiceType, SvcResult, CMIF_IN_MAGIC, DEFAULT_TLS_ADDR, TLS_SIZE};
 use loader::{BootLoader, NcaImage, Pfs0Archive};
 use mmu::{Memory, Permission};
@@ -408,6 +409,8 @@ fn run_vm_internal(
     let start = Instant::now();
     let mut instructions_executed = 0;
     let mut frames_presented = 0;
+    let mut gamepad_mgr = HostGamepadManager::new();
+    let host_audio = HostAudioSink::new();
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -426,16 +429,27 @@ fn run_vm_internal(
                     SvcResult::PresentFrame => {
                         frames_presented += 1;
 
-                        // 1. Poll host input and update Horizon HID shared memory
-                        if let Some(ref disp) = display {
-                            if let Some(ref mut h) = hid {
+                        // 1. Poll host keyboard and physical gamepad input
+                        if let Some(ref mut h) = hid {
+                            if let Some(ref disp) = display {
                                 let active_keys = disp.get_active_keys();
                                 h.poll_keyboard(&active_keys);
-                                let _ = h.update_shared_memory(&mut mmu);
                             }
+                            gamepad_mgr.poll(h);
+                            let _ = h.update_shared_memory(&mut mmu);
                         }
 
-                        // 2. Present video frame to host window
+                        // 2. Stream audio to host output sink (48 kHz stereo)
+                        let audio_samples = kernel.audio.drain_samples();
+                        if !audio_samples.is_empty() {
+                            host_audio.push_samples(&audio_samples);
+                        }
+                        let audren_samples = kernel.audren.drain_samples();
+                        if !audren_samples.is_empty() {
+                            host_audio.push_samples(&audren_samples);
+                        }
+
+                        // 3. Present video frame to host window
                         if let Some(ref mut disp) = display {
                             if !disp.present_frame(&mmu) {
                                 println!("\n[Display] Window closed by user. Shutting down.");

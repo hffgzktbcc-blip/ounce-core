@@ -216,6 +216,11 @@ impl AudioRenderer {
         self.total_samples_mixed += (samples_per_frame * 2) as u64;
         samples_per_frame * 2
     }
+
+    /// Drains all mixed output samples from the ring buffer for host audio playback.
+    pub fn drain_samples(&mut self) -> Vec<i16> {
+        std::mem::take(&mut self.output_ring_buffer)
+    }
 }
 
 #[cfg(test)]
