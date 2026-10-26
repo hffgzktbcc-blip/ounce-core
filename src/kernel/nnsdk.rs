@@ -20,7 +20,7 @@ pub struct AllocBlock {
     pub allocated: bool,
 }
 
-/// Nintendo SDK `nn::mem::StandardAllocator` High-Level Emulation.
+/// Nintendo SDK `nn::mem::StandardAllocator` High-Level Implementation.
 #[derive(Debug, Clone)]
 pub struct StandardAllocator {
     pub heap_base: u64,
@@ -173,7 +173,7 @@ pub struct NnFsFile {
     pub current_offset: i64,
 }
 
-/// Nintendo SDK `nn::fs` High-Level Emulation.
+/// Nintendo SDK `nn::fs` High-Level Implementation.
 #[derive(Debug)]
 pub struct NnFsManager {
     pub open_files: HashMap<u32, NnFsFile>,
@@ -271,7 +271,7 @@ impl NnFsManager {
     }
 }
 
-/// Nintendo SDK `nn::os` High-Level Emulation Manager.
+/// Nintendo SDK `nn::os` High-Level Implementation Manager.
 #[derive(Debug, Clone)]
 pub struct NnOsManager {
     pub system_tick_freq: u64,

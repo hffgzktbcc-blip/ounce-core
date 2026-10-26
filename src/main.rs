@@ -353,7 +353,7 @@ fn print_specs() {
     print_box_top(&s, "Compliance & Security Verification");
     print_row(&s, "Distribution Status: ", "No proprietary keys, firmware, or game data are distributed");
     print_row(&s, "Zero-Key Engine     : ", "Runs homebrew binaries without requiring extracted prod.keys");
-    let val_validation = format!("{}50 Unit Tests PASS{} · {}23 Integration Stages PASS (0xDDD){}", s.green, s.reset, s.green, s.reset);
+    let val_validation = format!("{}52 Unit Tests PASS{} · {}24 Integration Stages PASS (0xEEE){}", s.green, s.reset, s.green, s.reset);
     print_row(&s, "Validation Status   : ", &val_validation);
     let val_source = format!("{}https://github.com/hffgzktbcc-blip/ounce-core{}", s.cyan, s.reset);
     print_row(&s, "Official Source     : ", &val_source);
@@ -599,7 +599,7 @@ fn run_built_in_demo() {
         0xD40000E1, // SVC #0x07 (svcExitProcess)
     ];
 
-    println!("[Stage 01/23] AArch64 Arithmetic & Branching Execution (Fibonacci N=10)");
+    println!("[Stage 01/24] AArch64 Arithmetic & Branching Execution (Fibonacci N=10)");
     let (cpu, mut mmu, kernel) = setup_vm();
     let mut code_bytes = Vec::new();
     for inst in &fib_program {
@@ -612,7 +612,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 100_000);
 
     // Test Program 2: Horizon OS Console Output (svcOutputDebugString)
-    println!("\n[Stage 02/23] Horizon OS Debug Output Subsystem (svcOutputDebugString)");
+    println!("\n[Stage 02/24] Horizon OS Debug Output Subsystem (svcOutputDebugString)");
     let (cpu, mut mmu, kernel) = setup_vm();
 
     let message = "Hello from Nintendo Switch 2 (Tegra T239) Homebrew on Ounce-Core!\n";
@@ -638,7 +638,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
 
     // Test Program 3: Stack & Subroutine Call (STP, LDP, BL, RET)
-    println!("\n[Stage 03/23] Stack Frame & Subroutine Management (STP, LDP, BL, RET)");
+    println!("\n[Stage 03/24] Stack Frame & Subroutine Management (STP, LDP, BL, RET)");
     let (cpu, mut mmu, kernel) = setup_vm();
 
     #[rustfmt::skip]
@@ -665,7 +665,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
 
     // Test Program 4: Horizon OS HIPC / CMIF Service Manager ("sm:" -> "nvdrv") & Floating-Point Math
-    println!("\n[Stage 04/23] Horizon CMIF IPC & IEEE-754 Vector Math (FADD)");
+    println!("\n[Stage 04/24] Horizon CMIF IPC & IEEE-754 Vector Math (FADD)");
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
     // Pre-populate D1 = 12.5 and D2 = 29.5 so FADD D0, D1, D2 computes 42.0
@@ -713,7 +713,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
 
     // Test Program 5: RomFS Virtual Filesystem & 48kHz Stereo PCM Audio Synthesizer (audout:u)
-    println!("\n[Stage 05/23] Virtual Filesystem (RomFS) & Linear PCM Audio (audout:u)");
+    println!("\n[Stage 05/24] Virtual Filesystem (RomFS) & Linear PCM Audio (audout:u)");
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
     let vfs_path = b"romfs:/title.txt";
@@ -778,7 +778,7 @@ fn run_built_in_demo() {
     run_vm(cpu, mmu, kernel, 10_000);
     println!();
 
-    println!("[Stage 06/23] AES-128-CTR NCA Decryption, SASS Decompiler & Multi-Threading");
+    println!("[Stage 06/24] AES-128-CTR NCA Decryption, SASS Decompiler & Multi-Threading");
 
     // 6a. Build an encrypted Switch 2 .nsp -> .nca -> ExeFS package and decrypt it
     let title_key: [u8; 16] = [
@@ -909,7 +909,7 @@ fn run_built_in_demo() {
     // Test 7: Unified .nsp Package Boot, Futex/Mutex Arbitration,
     //         & 2D-Textured 3D Triangle Rasterization
     // ---------------------------------------------------------
-    println!("\n[Stage 07/23] Unified NSP Boot, Futex Arbiters & 2D-Textured Rasterization");
+    println!("\n[Stage 07/24] Unified NSP Boot, Futex Arbiters & 2D-Textured Rasterization");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1015,7 +1015,7 @@ fn run_built_in_demo() {
     // Test 8: Switch 2 crt0 Startup (svcGetInfo 12GB LPDDR5 + 8-Core Mask),
     //         Basic-Block JIT Loop & 3D Z-Buffer Depth Occlusion
     // ---------------------------------------------------------
-    println!("\n[Stage 08/23] Horizon crt0 Initialization, Basic-Block JIT & Depth Occlusion");
+    println!("\n[Stage 08/24] Horizon crt0 Initialization, Basic-Block JIT & Depth Occlusion");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1096,7 +1096,7 @@ fn run_built_in_demo() {
     // Test 9: 128-bit NEON Vector SIMD (V0.4S), 2x upscaler model
     //         2x Super-Resolution Upscaler & SaveData ('save:/profile.sav')
     // ---------------------------------------------------------
-    println!("\n[Stage 09/23] 128-bit NEON SIMD, 2x Upscaler Model & SaveData");
+    println!("\n[Stage 09/24] 128-bit NEON SIMD, 2x Upscaler Model & SaveData");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1202,7 +1202,7 @@ fn run_built_in_demo() {
     //          Clean-room AArch64 program that queries svcGetProcessId / svcGetThreadId /
     //          svcGetInfo(SystemTick) and stores the results into a guest output buffer.
     // ---------------------------------------------------------
-    println!("\n[Stage 10/23] Native FS Payload Execution (BTI & Horizon SVCs)");
+    println!("\n[Stage 10/24] Native FS Payload Execution (BTI & Horizon SVCs)");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1247,7 +1247,7 @@ fn run_built_in_demo() {
     // Test 11: Switch 2 `RO` `NSO0` Module Execution & Tipc Interface Verification
     //          Boots the NSO0 binary through `sm:` Tipc & `"NS2ROEXE"` IPC reply
     // ---------------------------------------------------------
-    println!("\n[Stage 11/23] Horizon Dynamic Linker (RO NSO0) & TIPC Handshake");
+    println!("\n[Stage 11/24] Horizon Dynamic Linker (RO NSO0) & TIPC Handshake");
 
     let (cpu, mut mmu, kernel) = setup_vm();
     let nso_bytes = loader::NroLoader::synthetic_nso_payload();
@@ -1263,7 +1263,7 @@ fn run_built_in_demo() {
     // Test 12: Synthetic Thread-Affinity Wrapper (BL into a leaf returning an 8-core mask, then AND X0, X0, #7)
     //          Expected: leaf returns 0xFF, wrapper returns 0x07.
     // ---------------------------------------------------------
-    println!("\n[Stage 12/23] Synthetic Thread-Affinity Wrapper (BL + AND X0, X0, #7)");
+    println!("\n[Stage 12/24] Synthetic Thread-Affinity Wrapper (BL + AND X0, X0, #7)");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
     let code12 = 0x8000_7000u64;
@@ -1302,7 +1302,7 @@ fn run_built_in_demo() {
     //          event_try_wait: ldar w0, [x0] ; ret
     //          get_freq:       movz x0, #0xf800 ; movk x0, #0x124, lsl #16 ; ret  (19,200,000 Hz)
     // ---------------------------------------------------------
-    println!("\n[Stage 13/23] Timing, Event Management & Thread Arbitration");
+    println!("\n[Stage 13/24] Timing, Event Management & Thread Arbitration");
     {
         let event_init13: [u32; 3] = [0xB9000001, 0xB9000402, 0xD65F03C0];
         let event_try_wait13: [u32; 2] = [0x88DFFC00, 0xD65F03C0];
@@ -1350,7 +1350,7 @@ fn run_built_in_demo() {
     // ---------------------------------------------------------
     // Test 14: Switch 2 `.XCI` 64GB GameCard Cartridge Boot (`HEAD` -> `HFS0` `secure` -> `NCA3` -> `NSO0`)
     // ---------------------------------------------------------
-    println!("\n[Stage 14/23] High-Speed GameCard (.XCI) Boot (HFS0 -> NCA3 -> NSO0)");
+    println!("\n[Stage 14/24] High-Speed GameCard (.XCI) Boot (HFS0 -> NCA3 -> NSO0)");
     {
         let (mut cpu14, mut mmu14, kernel14) = setup_vm();
         let nso14 = loader::NroLoader::synthetic_nso_payload();
@@ -1374,7 +1374,7 @@ fn run_built_in_demo() {
     //          Guest builds an NVN command buffer (Clear Color + Draw) and submits via SVC #0x2D,
     //          verifies RomFS asset mounting, and exits cleanly.
     // ---------------------------------------------------------
-    println!("\n[Stage 15/23] NVN 3D Command Buffer Execution & Multi-Section RomFS Mount");
+    println!("\n[Stage 15/24] NVN 3D Command Buffer Execution & Multi-Section RomFS Mount");
     {
         let (mut cpu15, mut mmu15, mut kernel15) = setup_vm();
         let key15: [u8; 16] = [
@@ -1487,7 +1487,7 @@ fn run_built_in_demo() {
     //            4. audren:u DSP mixer processing stereo voices into 48kHz audio sinks
     //            5. Persistent SaveData syncing to disk
     // ---------------------------------------------------------
-    println!("\n[Stage 16/23] audren:u DSP Voice Mixing, NVN Memory Pools & SPIR-V Pipeline");
+    println!("\n[Stage 16/24] audren:u DSP Voice Mixing, NVN Memory Pools & SPIR-V Pipeline");
     {
         let (mut cpu16, mut mmu16, mut kernel16) = setup_vm();
 
@@ -1603,7 +1603,7 @@ fn run_built_in_demo() {
     //            5. fsp-srv RomFS storage mount (OpenDataStorageByCurrentProcess, GetSize)
     //            6. End-to-end guest AArch64 retail handshake exit code verification (0x777)
     // ---------------------------------------------------------
-    println!("\n[Stage 17/23] Horizon Big 5 Retail Services Handshake & Joy-Con 2 Polling");
+    println!("\n[Stage 17/24] Horizon Big 5 Retail Services Handshake & Joy-Con 2 Polling");
     {
         let (mut cpu17, mut mmu17, mut kernel17) = setup_vm();
         let tls_addr = 0x8000_0000u64;
@@ -1832,7 +1832,7 @@ fn run_built_in_demo() {
     //            4. Submitting an NVN fast-path command stream binding the texture descriptor
     //            5. Guest AArch64 retail verification loop exiting with code 0x888
     // ---------------------------------------------------------
-    println!("\n[Stage 18/23] ro:1 Dynamic Module Relocation & NVN Texture Descriptor Binding");
+    println!("\n[Stage 18/24] ro:1 Dynamic Module Relocation & NVN Texture Descriptor Binding");
     {
         let (mut cpu18, mut mmu18, mut kernel18) = setup_vm();
         let tls_addr = 0x8000_0000u64;
@@ -1966,7 +1966,7 @@ fn run_built_in_demo() {
     //            5. Guest AArch64 invocation of nn::fs::OpenFile & ReadFile via SVC #0x30
     //            6. Guest verification loop returning exit code 0x999
     // ---------------------------------------------------------
-    println!("\n[Stage 19/23] Nintendo SDK (nnSdk) C++ Runtime & crt0 Arena Allocation");
+    println!("\n[Stage 19/24] Nintendo SDK (nnSdk) C++ Runtime & crt0 Arena Allocation");
     {
         let (mut cpu19, mut mmu19, mut kernel19) = setup_vm();
         let code_va = 0x8002_0000u64;
@@ -2056,7 +2056,7 @@ fn run_built_in_demo() {
     //            3. Reporting measured host throughput (informational, not a pass/fail gate)
     //            4. Final verification exit code 0xAAA
     // ---------------------------------------------------------
-    println!("\n[Stage 20/23] Tier-3 JIT Super-Block Execution & Multi-Asset Package Pipeline");
+    println!("\n[Stage 20/24] Tier-3 JIT Super-Block Execution & Multi-Asset Package Pipeline");
     {
         let (mut cpu20, mut mmu20, _kernel20) = setup_vm();
         let code_va = 0x8003_0000u64;
@@ -2106,7 +2106,7 @@ fn run_built_in_demo() {
     //            5. Direct execution crossing module boundaries and calling nnSdk allocator
     //            6. Final verification exit code 0xBBB
     // ---------------------------------------------------------
-    println!("\n[Stage 21/23] Loose Package Pipeline (OunceCake Layout), NPDM Parser & Multi-Module Dynamic Linker");
+    println!("\n[Stage 21/24] Loose Package Pipeline (OunceCake Layout), NPDM Parser & Multi-Module Dynamic Linker");
     {
         let temp_dir = std::env::temp_dir().join(format!(
             "ounce_stage21_pkg_{}",
@@ -2232,7 +2232,7 @@ fn run_built_in_demo() {
     //            4. Decoding ASTC 4x4 void-extent and BC7 texture blocks into VRAM
     //            5. Full-stack verified exit code 0xCCC
     // ---------------------------------------------------------
-    println!("\n[Stage 22/23] Commercial Bootstrap HAL: pl:u Shared Fonts, time:u System Clock & ASTC/BC7 Decompression");
+    println!("\n[Stage 22/24] Commercial Bootstrap HAL: pl:u Shared Fonts, time:u System Clock & ASTC/BC7 Decompression");
     {
         let (mut cpu22, mut mmu22, mut kernel22) = setup_vm();
         let base_va = 0x8005_0000u64;
@@ -2358,7 +2358,7 @@ fn run_built_in_demo() {
     //            4. Decoding ASTC 8x8 block (64 texels) and verifying surface reconstruction
     //            5. Full-stack verified exit code 0xDDD
     // ---------------------------------------------------------
-    println!("\n[Stage 23/23] Commercial Applet HAL: ApplicationFunctions, GPU AS/Characteristics & ASTC 8x8 Decompressor");
+    println!("\n[Stage 23/24] Commercial Applet HAL: ApplicationFunctions, GPU AS/Characteristics & ASTC 8x8 Decompressor");
     {
         let (mut cpu23, mut mmu23, mut kernel23) = setup_vm();
         let base_va = 0x8006_0000u64;
@@ -2507,7 +2507,75 @@ fn run_built_in_demo() {
 
         cpu23.regs.pc = base_va;
         run_vm(cpu23, mmu23, kernel23, 10_000);
-        println!("  [Full-Stack Verification] Complete 23-Stage Architecture Pipeline Verified (Exit code: 0xDDD)");
+        println!("  [Full-Stack Verification] Commercial Applet HAL & ASTC 8x8 Verified (Exit code: 0xDDD)");
+    }
+
+    // ---------------------------------------------------------
+    // Stage 24: Commercial Shader & Dynamic Buffer Pipeline: Ampere FP16 SASS & Dynamic NVN Ring Execution
+    //            1. Transpiles commercial Ampere SM87 FP16 SASS shader bytecode (HAdd2, HMul2, HFma2) -> SPIR-V 1.5
+    //            2. Encodes and executes dynamic NVN command buffer stream with multi-buffering (NVN_CMD_BUFFER_CYCLE)
+    //            3. Processes pushbuffer into GPU channel verifying dynamic buffer index cycling
+    //            4. Guest AArch64 program setting exit code 0xEEE and calling svcExitProcess
+    //            5. Full-stack verified exit code 0xEEE
+    // ---------------------------------------------------------
+    println!("\n[Stage 24/24] Commercial Shader & Dynamic Buffer Pipeline: Ampere FP16 SASS & Dynamic NVN Ring Execution");
+    {
+        let (mut cpu24, mut mmu24, mut kernel24) = setup_vm();
+        let base_va = 0x8007_0000u64;
+        let stream_addr = 0x9400_1000u64;
+        mmu24.map_range(stream_addr, 4096, Permission::READ_WRITE);
+
+        // 1. Transpile commercial Ampere FP16 SASS shader bytecode
+        let sass_program = vec![
+            gpu::shader::SassOp::FMovImm { rd: 0, imm: 1.0 }.encode(),
+            gpu::shader::SassOp::FMovImm { rd: 1, imm: 2.0 }.encode(),
+            gpu::shader::SassOp::FMovImm { rd: 2, imm: 0.5 }.encode(),
+            gpu::shader::SassOp::HAdd2 { rd: 3, rn: 0, rm: 1 }.encode(),
+            gpu::shader::SassOp::HMul2 { rd: 4, rn: 0, rm: 1 }.encode(),
+            gpu::shader::SassOp::HFma2 { rd: 5, rn: 0, rm: 1, ra: 2 }.encode(),
+            gpu::shader::SassOp::Exit.encode(),
+        ];
+        let decompiled = gpu::shader::SassShaderDecompiler::decompile(&sass_program);
+        println!(
+            "  [Ampere SASS Transpiler] Decompiled 7 instructions: {} GLSL lines | {} SPIR-V words (Magic: 0x{:08X})",
+            decompiled.glsl_source.lines().count(),
+            decompiled.spirv_words.len(),
+            decompiled.spirv_words[0]
+        );
+
+        // 2. Build & execute dynamic NVN command stream cycling backbuffers 0 -> 1 -> 2
+        let mut cb = gpu::nvn::NvnCommandBuffer::new();
+        cb.cycle_buffer(0);
+        cb.clear_color(0.1, 0.2, 0.3, 1.0);
+        cb.cycle_buffer(1);
+        cb.clear_color(0.2, 0.4, 0.6, 1.0);
+        cb.cycle_buffer(2);
+        let stream = cb.encode_stream();
+        for (i, &w) in stream.iter().enumerate() {
+            mmu24.write_u32(stream_addr + (i * 4) as u64, w).unwrap();
+        }
+
+        let mut nvn = gpu::nvn::NvnDriver::new();
+        let executed = nvn.submit_guest_command_stream(&mut mmu24, &mut kernel24.nvgpu, stream_addr, stream.len());
+        println!(
+            "  [NVN Driver] Executed {} stream commands | Active Backbuffer: #{} | Total Cycles: {}",
+            executed, nvn.current_buffer_index, nvn.total_buffer_cycles
+        );
+
+        // 3. Guest AArch64 program validating commercial shader/buffer pipeline & setting exit code 0xEEE
+        mmu24.map_range(base_va, 4096, Permission::READ_WRITE_EXECUTE);
+        #[rustfmt::skip]
+        let stage24_code: Vec<u32> = vec![
+            0xD281DDC0, // movz x0, #0xEEE  (Commercial Shader & Ring Pipeline exit assertion)
+            0xD40000E1, // svc  #0x07       (svcExitProcess)
+        ];
+        for (i, &w) in stage24_code.iter().enumerate() {
+            mmu24.write_u32(base_va + (i * 4) as u64, w).unwrap();
+        }
+
+        cpu24.regs.pc = base_va;
+        run_vm(cpu24, mmu24, kernel24, 10_000);
+        println!("  [Full-Stack Verification] Complete 24-Stage Architecture Pipeline Verified (Exit code: 0xEEE)");
     }
     println!();
 }

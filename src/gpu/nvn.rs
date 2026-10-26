@@ -29,6 +29,7 @@ pub const NVN_CMD_DRAW_ARRAYS: u32 = 0x08;
 pub const NVN_CMD_DRAW_TEXTURED: u32 = 0x09;
 pub const NVN_CMD_DLSS_UPSCALE: u32 = 0x0A;
 pub const NVN_CMD_BIND_TEXTURE_DESCRIPTOR: u32 = 0x0B;
+pub const NVN_CMD_BUFFER_CYCLE: u32 = 0x0C;
 pub const NVN_CMD_END: u32 = 0xFF;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -410,6 +411,7 @@ pub enum NvnCmd {
     DrawArrays { vertex_count: u32 },
     DrawTextured { vertex_count: u32 },
     DlssUpscale { src_addr: u32, src_w: u32, src_h: u32, dst_addr: u32 },
+    BufferCycle { buffer_id: u32 },
 }
 
 /// High-Level `NVN` Command Buffer Builder (`NVNcommandBuffer`).
@@ -472,6 +474,10 @@ impl NvnCommandBuffer {
         });
     }
 
+    pub fn cycle_buffer(&mut self, buffer_id: u32) {
+        self.commands.push(NvnCmd::BufferCycle { buffer_id });
+    }
+
     /// Serializes this `NVNcommandBuffer` into a guest-memory binary `NVN` stream.
     pub fn encode_stream(&self) -> Vec<u32> {
         let mut out = Vec::new();
@@ -523,6 +529,9 @@ impl NvnCommandBuffer {
                         src_h,
                         dst_addr,
                     ]);
+                }
+                NvnCmd::BufferCycle { buffer_id } => {
+                    out.extend_from_slice(&[NVN_CMD_BUFFER_CYCLE, buffer_id]);
                 }
             }
         }
@@ -653,6 +662,15 @@ impl NvnCommandBuffer {
                     pb.push(src_h);
                     pb.push(dst_addr);
                 }
+                NvnCmd::BufferCycle { buffer_id } => {
+                    pb.push(NvgpuChannel::encode_header(
+                        SubmissionMode::Increasing,
+                        2,
+                        METHOD_SET_RENDER_TARGET_ADDR,
+                        1,
+                    ));
+                    pb.push(buffer_id);
+                }
             }
         }
         pb
@@ -666,6 +684,8 @@ pub struct NvnDriver {
     pub command_buffers_submitted: u64,
     pub nvn_commands_executed: u64,
     pub texture_pool: NvnTexturePool,
+    pub current_buffer_index: u32,
+    pub total_buffer_cycles: u64,
 }
 
 impl NvnDriver {
@@ -761,6 +781,13 @@ impl NvnDriver {
                     let dst = mmu.read_u32(cmd_stream_addr + ((idx + 3) * 4) as u64).unwrap_or(0);
                     idx += 4;
                     cb.dispatch_dlss_upscale(src, w, h, dst);
+                }
+                NVN_CMD_BUFFER_CYCLE if idx + 1 <= max_words => {
+                    let buf_id = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
+                    idx += 1;
+                    cb.cycle_buffer(buf_id);
+                    self.current_buffer_index = buf_id;
+                    self.total_buffer_cycles += 1;
                 }
                 _ => break,
             }
@@ -914,5 +941,27 @@ mod tests {
         assert_eq!(surface.len(), 64);
         assert_eq!(surface[0], 0xFFFF00FF);
         assert_eq!(surface[63], 0xFFFF00FF);
+    }
+
+    #[test]
+    fn test_nvn_dynamic_buffer_cycling() {
+        let mut mmu = Memory::new();
+        let mut nvgpu = NvgpuChannel::new();
+        let mut nvn = NvnDriver::new();
+        let stream_addr = 0x8600_0000u64;
+        mmu.map_range(stream_addr, 4096, Permission::READ_WRITE);
+
+        let mut cb = NvnCommandBuffer::new();
+        cb.cycle_buffer(1);
+        cb.cycle_buffer(2);
+        let stream = cb.encode_stream();
+        for (i, &w) in stream.iter().enumerate() {
+            mmu.write_u32(stream_addr + (i * 4) as u64, w).unwrap();
+        }
+
+        let executed = nvn.submit_guest_command_stream(&mut mmu, &mut nvgpu, stream_addr, stream.len());
+        assert_eq!(executed, 2);
+        assert_eq!(nvn.current_buffer_index, 2);
+        assert_eq!(nvn.total_buffer_cycles, 2);
     }
 }

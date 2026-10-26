@@ -34,7 +34,7 @@
 
 **No warranty; not legal advice.** The software is provided as is. Anyone using, modifying or distributing it is responsible for complying with the copyright, anti-circumvention and other laws that apply where they are. Consult a lawyer before any use beyond private research.
 
-**License.** No license file is currently included. All rights are reserved by the author until one is added.
+**License.** MIT. See [`LICENSE`](LICENSE). The license covers the code in this repository only. It does not cover any third-party material that may appear in earlier commits (see *Known Issues*).
 
 ---
 
@@ -88,7 +88,7 @@ ounce-core/
 │   ├── loader/       # Container parsers and synthetic image builders
 │   ├── mmu/          # Paged memory model
 │   ├── ui/           # Headless package inspector and CLI telemetry
-│   └── main.rs       # CLI and the 23-stage integration harness
+│   └── main.rs       # CLI and the 24-stage integration harness
 ├── Cargo.toml
 └── README.md
 ```
@@ -99,7 +99,7 @@ ounce-core/
 
 ```bash
 cargo test --release            # unit tests
-cargo run --release -- test     # 23-stage integration harness
+cargo run --release -- test     # 24-stage integration harness
 ```
 
 The harness runs synthetic AArch64 programs through the CPU, kernel and service models. Each stage passes when its guest program returns the expected exit code. Host timings are printed for information only.
@@ -129,6 +129,7 @@ The harness runs synthetic AArch64 programs through the CPU, kernel and service 
 | 21 | Loose packages | NPDM parse, multi-module link, loose RomFS | `0xBBB` |
 | 22 | Shared font & clock | `pl:u` placeholder mapping, `time:u`, ASTC 4×4 | `0xCCC` |
 | 23 | Applet & GPU model | `IApplicationFunctions`, `ISelfController`, ASTC 8×8 | `0xDDD` |
+| 24 | FP16 SASS & NVN ring | FP16 SASS vector math (`HADD2`, `HMUL2`, `HFMA2`), dynamic NVN buffer cycling | `0xEEE` |
 
 ---
 
@@ -143,7 +144,7 @@ The harness runs synthetic AArch64 programs through the CPU, kernel and service 
 
 ```bash
 cargo run --release -- info                      # Show modelled hardware and engine status
-cargo run --release -- test                      # Run the 23-stage harness
+cargo run --release -- test                      # Run the 24-stage harness
 cargo run --release -- inspect ./dumps/title     # Inspect a user-supplied unencrypted directory
 cargo run --release -- run ./dumps/title --gui   # Boot an unencrypted loose directory in a window
 cargo run --release -- demo-dir ./demo --gui     # Generate a synthetic loose package and boot it
@@ -157,10 +158,10 @@ cargo run --release -- 3d 120                    # Software rasterizer benchmark
 
 - **Git history.** Earlier commits (for example `1c1d7c8` and `603a5f3`) contain third-party-derived byte sequences and two binary test files that were later deleted (`ns2jb_ro_payload.bin`, `switch2_showcase.nsp`). Current source does not contain them, but the history does. Removing them requires rewriting published history.
 - **Commercial container decryption.** `loader/nca.rs` and `crypto/` can decrypt NCA sections when the user supplies keys. Decrypting encrypted commercial software can fall under anti-circumvention law in some jurisdictions. This has not been reviewed by counsel.
-- **No license file.** See *Legal Notice*.
+- **License scope.** The MIT license applies to this tree. It does not clear any third-party material still present in git history.
 
 ---
 
 ## Contributing
 
-Changes must keep the test suite and the 23-stage harness passing. New test inputs must be synthetic or written by hand from the public AArch64 and SPIR-V specifications. Do not add firmware, keys, game content, or code or data copied from other projects.
+Changes must keep the test suite and the 24-stage harness passing. New test inputs must be synthetic or written by hand from the public AArch64 and SPIR-V specifications. Do not add firmware, keys, game content, or code or data copied from other projects.

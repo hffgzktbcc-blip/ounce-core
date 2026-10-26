@@ -24,7 +24,7 @@ pub enum SvcResult {
     Unhandled(u16),
 }
 
-/// Horizon OS Microkernel Emulation Layer.
+/// Horizon OS Microkernel Compatibility Layer.
 pub struct HorizonKernel {
     pub heap_base: u64,
     pub heap_size: usize,
