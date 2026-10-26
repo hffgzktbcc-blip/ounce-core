@@ -37,7 +37,18 @@ const STACK_TOP: u64 = 0x7FFFFFE000;
 const STACK_SIZE: usize = 0x100000; // 1 MB stack
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    // `--present=<auto|gpu|minifb|headless>` may appear anywhere; strip it so the
+    // positional arguments of every command stay where they were.
+    let mut args: Vec<String> = Vec::new();
+    for arg in env::args() {
+        match arg.strip_prefix("--present=") {
+            Some(value) => match gpu::BackendKind::parse(value) {
+                Some(kind) => gpu::BackendKind::set_cli_override(kind),
+                None => eprintln!("[Display] Unknown --present value '{value}' (expected auto, gpu, minifb or headless); ignoring."),
+            },
+            None => args.push(arg),
+        }
+    }
 
     if args.len() < 2 {
         print_banner();
@@ -267,6 +278,7 @@ fn print_usage() {
     println!("    {}play{} [frames]           Launch interactive game with real-time Joy-Con 2 controls", s.green, s.reset);
     println!("    {}3d{} [frames]             Run software 3D pushbuffer rasterizer benchmark", s.green, s.reset);
     println!("    {}gfx{} [frames]            Launch 2D high-bandwidth VRAM Framebuffer Display Demo (1280x720)", s.green, s.reset);
+    println!("    {}--present={}<mode>        Presentation backend: auto, gpu (needs --features gpu-present), minifb, headless", s.green, s.reset);
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
     println!("    {}test{}                    Execute 22-stage full-stack verification & hardware benchmark suite", s.green, s.reset);

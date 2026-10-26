@@ -3,7 +3,7 @@
 //! The guest framebuffer is composited on the CPU into a [`Frame`] and handed to a
 //! [`PresentBackend`]. Backends differ only in how that frame reaches the host:
 //! not at all ([`headless`]), through a software window ([`minifb_window`]), or
-//! through a GPU swapchain (added in a later step, behind the `gpu-present` feature).
+//! through a GPU swapchain (`wgpu_window`, behind the `gpu-present` feature).
 //!
 //! This module owns no guest-side GPU modelling; that stays in [`crate::gpu::vulkan`].
 
@@ -11,6 +11,13 @@
 
 pub mod headless;
 pub mod minifb_window;
+#[cfg(feature = "gpu-present")]
+pub mod wgpu_window;
+
+use std::sync::OnceLock;
+
+/// Backend chosen on the command line (`--present=`), which wins over `OUNCE_PRESENT`.
+static CLI_BACKEND: OnceLock<BackendKind> = OnceLock::new();
 
 /// Host keyboard keys the HID service maps to Horizon controller buttons.
 ///
@@ -162,7 +169,7 @@ pub enum BackendKind {
     Auto,
     Headless,
     Minifb,
-    /// Reserved for the `gpu-present` feature; currently falls back.
+    /// GPU swapchain via wgpu; needs the `gpu-present` feature, otherwise falls back.
     Gpu,
 }
 
@@ -178,37 +185,68 @@ impl BackendKind {
         }
     }
 
-    /// Reads `OUNCE_PRESENT`, defaulting to [`BackendKind::Auto`].
+    /// The `--present=` choice if one was given, else `OUNCE_PRESENT`, else [`BackendKind::Auto`].
     pub fn from_env() -> Self {
+        if let Some(kind) = CLI_BACKEND.get() {
+            return *kind;
+        }
         std::env::var("OUNCE_PRESENT")
             .ok()
             .and_then(|v| Self::parse(&v))
             .unwrap_or(Self::Auto)
     }
+
+    /// Records the `--present=` command-line choice. Only the first call takes effect.
+    pub fn set_cli_override(kind: Self) {
+        let _ = CLI_BACKEND.set(kind);
+    }
 }
 
-/// Opens a backend, falling back in order until one initialises.
-///
-/// `Auto` and `Gpu` currently resolve to minifb because the GPU backend lands in the
-/// next step; `Gpu` logs that it fell back so the choice is never silently ignored.
+/// Opens a backend, falling back in order until one initialises:
+/// GPU (when compiled in) -> software window -> headless.
 pub fn open_backend(kind: BackendKind, config: &BackendConfig) -> Box<dyn PresentBackend> {
-    let requested_gpu = matches!(kind, BackendKind::Gpu);
-    if requested_gpu {
-        eprintln!("[Display] GPU presentation is not compiled in; falling back to the software window.");
+    if kind == BackendKind::Headless {
+        return Box::new(headless::HeadlessBackend::new(config));
     }
 
-    match kind {
-        BackendKind::Headless => Box::new(headless::HeadlessBackend::new(config)),
-        BackendKind::Auto | BackendKind::Minifb | BackendKind::Gpu => {
-            match minifb_window::MinifbBackend::new(config) {
-                Ok(backend) => Box::new(backend),
-                Err(e) => {
-                    eprintln!("[Display] Software window unavailable ({e}); presenting headless.");
-                    Box::new(headless::HeadlessBackend::new(config))
-                }
-            }
+    if matches!(kind, BackendKind::Auto | BackendKind::Gpu) {
+        if let Some(backend) = open_gpu_backend(kind, config) {
+            return backend;
         }
     }
+
+    match minifb_window::MinifbBackend::new(config) {
+        Ok(backend) => Box::new(backend),
+        Err(e) => {
+            eprintln!("[Display] Software window unavailable ({e}); presenting headless.");
+            Box::new(headless::HeadlessBackend::new(config))
+        }
+    }
+}
+
+#[cfg(feature = "gpu-present")]
+fn open_gpu_backend(kind: BackendKind, config: &BackendConfig) -> Option<Box<dyn PresentBackend>> {
+    // winit loads some system libraries (e.g. libxkbcommon-x11) at runtime and panics if
+    // they are missing. Treat that like any other init failure so we can still fall back.
+    let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| wgpu_window::WgpuBackend::new(config)))
+        .unwrap_or_else(|_| Err("window system initialisation panicked (missing system library?)".to_string()));
+    match attempt {
+        Ok(backend) => Some(Box::new(backend)),
+        Err(e) => {
+            // Auto falls back quietly-ish; an explicit request says why it was not honoured.
+            let prefix = if kind == BackendKind::Gpu { "GPU presentation requested but" } else { "GPU presentation" };
+            eprintln!("[Display] {prefix} unavailable ({e}); falling back to the software window.");
+            None
+        }
+    }
+}
+
+#[cfg(not(feature = "gpu-present"))]
+fn open_gpu_backend(kind: BackendKind, _config: &BackendConfig) -> Option<Box<dyn PresentBackend>> {
+    if kind == BackendKind::Gpu {
+        eprintln!("[Display] GPU presentation is not compiled in (build with --features gpu-present); using the software window.");
+    }
+    None
 }
 
 #[cfg(test)]
