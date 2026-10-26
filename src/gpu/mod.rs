@@ -5,10 +5,12 @@ pub mod dlss;
 pub mod memory_pool;
 pub mod nvgpu;
 pub mod nvn;
+pub mod present;
 pub mod shader;
 pub mod vulkan;
 
-pub use display::{DisplayConfig, DisplayServer, DEFAULT_FRAMEBUFFER_ADDR, SCREEN_HEIGHT, SCREEN_WIDTH};
+pub use display::{DisplayConfig, DisplayServer, PresentationMode, DEFAULT_FRAMEBUFFER_ADDR, SCREEN_HEIGHT, SCREEN_WIDTH};
+pub use present::{BackendKind, Frame, HostKey, PresentBackend, PresentStatus, ScaleMode};
 pub use dlss::DlssEngine;
 pub use memory_pool::{NvnBuffer, NvnBufferType, NvnMemoryPool, NvnMemoryPoolManager};
 pub use nvgpu::{
