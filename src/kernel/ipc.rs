@@ -42,13 +42,28 @@ pub enum ServiceType {
     CommonStateGetter,
     /// Self Controller ("ISelfController")
     SelfController,
+    /// Application Functions ("IApplicationFunctions")
+    ApplicationFunctions,
     /// System Settings ("set:sys" / "set")
     SetSys,
     /// Relocatable Objects / Dynamic Linker ("ro:1" / "ro:dmnt" / "ldr:ro")
     Ro,
+    /// Shared Font Service ("pl:u" / "pl:s")
+    Pl,
+    /// Standard System Time Service ("time:u" / "time:s")
+    Time,
+    /// System Clock Interface ("ISystemClock")
+    SystemClock,
+    /// Play Report Service ("prepo:u" / "prepo:a")
+    Prepo,
+    /// Background Content Access ("bcat:u" / "bcat:a")
+    Bcat,
     /// Generic stubbed service
     Generic(String),
 }
+
+pub const SHARED_FONT_ADDR: u64 = 0x1800_0000;
+pub const SHARED_FONT_SIZE: usize = 0x10_0000; // 1 MB Shared Font Buffer
 
 /// Manages Horizon OS IPC handles and routes HIPC/CMIF messages to HLE services.
 pub struct IpcManager {
@@ -160,6 +175,10 @@ impl IpcManager {
                         "appletOE" => ServiceType::AppletOE,
                         "set:sys" => ServiceType::SetSys,
                         "ro:1" | "ro:dmnt" | "ldr:ro" => ServiceType::Ro,
+                        "pl:u" | "pl:s" => ServiceType::Pl,
+                        "time:u" | "time:s" => ServiceType::Time,
+                        "prepo:u" | "prepo:a" | "prepo:m" => ServiceType::Prepo,
+                        "bcat:u" | "bcat:a" | "bcat:m" => ServiceType::Bcat,
                         other => ServiceType::Generic(other.to_string()),
                     };
 
@@ -174,9 +193,20 @@ impl IpcManager {
             },
 
             ServiceType::Nvdrv => match cmd_id {
-                // Command 0: Open -> returns (fd = 1, error = 0)
+                // Command 0: Open -> returns (fd, error = 0)
                 0 => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[1, 0], None);
+                    let mut path_bytes = [0u8; 64];
+                    let _ = mmu.read_bytes(args_base, &mut path_bytes);
+                    let len = path_bytes.iter().position(|&b| b == 0).unwrap_or(64);
+                    let dev_name = String::from_utf8_lossy(&path_bytes[..len]);
+                    let fd = if dev_name.contains("as-gpu") {
+                        2
+                    } else if dev_name.contains("ctrl-gpu") {
+                        3
+                    } else {
+                        1
+                    };
+                    self.write_cmif_response(tls_addr, mmu, 0, &[fd, 0], None);
                     0
                 }
                 // Command 1: Ioctl(fd, ioctl_cmd, buf_addr, word_count)
@@ -198,6 +228,12 @@ impl IpcManager {
                         let _ = mmu.write_u32(pb_addr + 8, 0x00A1);  // rev = A1
                         let _ = mmu.write_u32(pb_addr + 12, 12);     // num_gpc / 12 SMs (1536 CUDA cores)
                         let _ = mmu.write_u32(pb_addr + 16, 0x0807); // sm_arch_sm_version = SM 8.7
+                    } else if ioctl_cmd == 0xC018_4102 && pb_addr != 0 {
+                        // NVGPU_AS_IOCTL_ALLOC_SPACE: Return allocated GPU VA
+                        let _ = mmu.write_u64(pb_addr, 0x0000_0000_9800_0000);
+                    } else if ioctl_cmd == 0xC018_4714 && pb_addr != 0 {
+                        // NVGPU_GPU_IOCTL_GET_L2_CACHE_SIZE: 4MB L2 Cache for Tegra T239
+                        let _ = mmu.write_u32(pb_addr, 0x0040_0000);
                     }
 
                     // Return nvdrv status = 0 (NVOS_STATUS_SUCCESS)
@@ -292,6 +328,12 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[23, 0, 1], None);
                     0
                 }
+                // Command 20: GetApplicationFunctions -> returns IApplicationFunctions
+                20 => {
+                    let h = self.allocate_handle(ServiceType::ApplicationFunctions);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[h], Some(h));
+                    0
+                }
                 _ => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0
@@ -311,8 +353,45 @@ impl IpcManager {
             },
 
             ServiceType::SelfController => match cmd_id {
+                // Command 10: CreateManagedDisplaySeparableLayer -> returns LayerId = 1
+                10 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[1, 0], None);
+                    0
+                }
                 // Command 16: AcquireForegroundRights -> returns ResultSuccess (0)
                 16 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                // Command 40: SetPerformanceConfiguration(u32 mode, u32 config)
+                40 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::ApplicationFunctions => match cmd_id {
+                // Command 1: SetTerminateResult
+                1 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                // Command 20: EnsureSaveData
+                20 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                // Command 21: GetDesiredLanguage -> returns 0 (en-US / American English)
+                21 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                // Command 40: NotifyRunning
+                40 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0
                 }
@@ -482,6 +561,95 @@ impl IpcManager {
                 }
             },
 
+            ServiceType::Pl => match cmd_id {
+                // Command 0: RequestSharedFontLoad
+                0 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                // Command 1: GetSharedFontAddress
+                1 => {
+                    // Ensure Shared Font Memory is mapped at SHARED_FONT_ADDR
+                    if !mmu.is_mapped(SHARED_FONT_ADDR) {
+                        mmu.map_range(SHARED_FONT_ADDR, SHARED_FONT_SIZE, crate::mmu::Permission::READ_WRITE);
+                        let font_hdr = b"\x00\x01\x00\x00NintendoStandardFont-Regular";
+                        let _ = mmu.write_bytes(SHARED_FONT_ADDR, font_hdr);
+                    }
+                    let lo = (SHARED_FONT_ADDR & 0xFFFF_FFFF) as u32;
+                    let hi = ((SHARED_FONT_ADDR >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                // Command 2: GetSharedFontSize
+                2 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[SHARED_FONT_SIZE as u32, 0], None);
+                    0
+                }
+                // Command 3: GetSharedFontSharedMemoryHandle
+                3 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0x300], Some(0x300));
+                    0
+                }
+                // Command 4: GetSharedFontType -> returns 0 (Standard BFTTF)
+                4 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+                // Command 5: GetSharedFontGlyphMetrics -> returns [glyph_count=256, cell_w=16, cell_h=16, baseline=12]
+                5 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[256, 16, 16, 12], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::Time => match cmd_id {
+                // Command 0: GetStandardUserSystemClock -> ISystemClock
+                // Command 4: GetStandardNetworkClock -> ISystemClock
+                0 | 4 => {
+                    let clock_h = self.allocate_handle(ServiceType::SystemClock);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[clock_h], Some(clock_h));
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::SystemClock => match cmd_id {
+                // Command 0: GetCurrentTime -> returns 64-bit UNIX timestamp
+                0 => {
+                    let now_secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(1793000000);
+                    let lo = (now_secs & 0xFFFF_FFFF) as u32;
+                    let hi = ((now_secs >> 32) & 0xFFFF_FFFF) as u32;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::Prepo => {
+                // Command 0 / 1 / 2: SaveReport / PlayReport (Telemetry stubs)
+                self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                0
+            }
+
+            ServiceType::Bcat => {
+                // Command 0 / 1: RequestDeliveryCache (BCAT content delivery stubs)
+                self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                0
+            }
+
             ServiceType::Generic(_) => {
                 // Stubbed HLE service response: ResultSuccess (0)
                 self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
@@ -631,5 +799,166 @@ mod tests {
         let loaded_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
         let loaded_addr = ((loaded_hi as u64) << 32) | (loaded_lo as u64);
         assert_eq!(loaded_addr, nro_addr);
+    }
+
+    #[test]
+    fn test_pl_u_shared_font_service_and_time_clock() {
+        let mut mmu = Memory::new();
+        let tls_addr = 0x8000_0000u64;
+        mmu.map_range(tls_addr, 4096, Permission::READ_WRITE);
+
+        let mut ipc = IpcManager::new();
+        let mut nvgpu = NvgpuChannel::new();
+        let mut audio = AudioOutServer::new();
+        let mut vfs = VirtualFileSystem::new();
+        let sm_h = ipc.allocate_handle(ServiceType::Sm);
+
+        // 1. GetService("pl:u") via sm:
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 1).unwrap(); // GetService
+        mmu.write_bytes(tls_addr + 0x20, b"pl:u\0\0\0\0").unwrap();
+        let res = ipc.handle_sync_request(sm_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let pl_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&pl_h), Some(&ServiceType::Pl));
+
+        // 2. pl:u -> GetSharedFontAddress (Cmd 1)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 1).unwrap();
+        let res = ipc.handle_sync_request(pl_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let font_addr_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(font_addr_lo as u64, SHARED_FONT_ADDR);
+        // Verify font header is mapped and contains font magic
+        let mut font_header = [0u8; 4];
+        mmu.read_bytes(SHARED_FONT_ADDR, &mut font_header).unwrap();
+        assert_eq!(&font_header, b"\x00\x01\x00\x00");
+
+        // 3. GetService("time:u") via sm:
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 1).unwrap();
+        mmu.write_bytes(tls_addr + 0x20, b"time:u\0\0").unwrap();
+        let res = ipc.handle_sync_request(sm_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let time_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&time_h), Some(&ServiceType::Time));
+
+        // 4. time:u -> GetStandardUserSystemClock (Cmd 0)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 0).unwrap();
+        let res = ipc.handle_sync_request(time_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let clock_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&clock_h), Some(&ServiceType::SystemClock));
+
+        // 5. SystemClock -> GetCurrentTime (Cmd 0)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 0).unwrap();
+        let res = ipc.handle_sync_request(clock_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let time_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
+        let time_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
+        let timestamp = ((time_hi as u64) << 32) | (time_lo as u64);
+        assert!(timestamp > 1700000000); // Valid UNIX timestamp (2024+)
+    }
+
+    #[test]
+    fn test_nvdrv_as_gpu_and_zbc_ioctls() {
+        let mut mmu = Memory::new();
+        let tls_addr = 0x8000_0000u64;
+        let buf_addr = 0x8100_0000u64;
+        mmu.map_range(tls_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(buf_addr, 4096, Permission::READ_WRITE);
+
+        let mut ipc = IpcManager::new();
+        let mut nvgpu = NvgpuChannel::new();
+        let mut audio = AudioOutServer::new();
+        let mut vfs = VirtualFileSystem::new();
+        let nvdrv_h = ipc.allocate_handle(ServiceType::Nvdrv);
+
+        // 1. Open "/dev/nvhost-as-gpu" -> returns fd = 2
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 0).unwrap(); // Open
+        mmu.write_bytes(tls_addr + 0x20, b"/dev/nvhost-as-gpu\0").unwrap();
+        let res = ipc.handle_sync_request(nvdrv_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let fd = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(fd, 2);
+
+        // 2. Ioctl on as-gpu: NVGPU_AS_IOCTL_ALLOC_SPACE (0xC018_4102)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 1).unwrap(); // Ioctl
+        mmu.write_u32(tls_addr + 0x20, fd).unwrap();
+        mmu.write_u32(tls_addr + 0x24, 0xC018_4102).unwrap();
+        mmu.write_u64(tls_addr + 0x28, buf_addr).unwrap();
+        mmu.write_u32(tls_addr + 0x30, 8).unwrap();
+        let res = ipc.handle_sync_request(nvdrv_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let gpu_va = mmu.read_u64(buf_addr).unwrap();
+        assert_eq!(gpu_va, 0x9800_0000);
+
+        // 3. Ioctl on ctrl-gpu: NVGPU_GPU_IOCTL_GET_L2_CACHE_SIZE (0xC018_4714) -> 4MB
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 1).unwrap();
+        mmu.write_u32(tls_addr + 0x20, 3).unwrap(); // fd = 3 (ctrl-gpu)
+        mmu.write_u32(tls_addr + 0x24, 0xC018_4714).unwrap();
+        mmu.write_u64(tls_addr + 0x28, buf_addr).unwrap();
+        mmu.write_u32(tls_addr + 0x30, 4).unwrap();
+        let res = ipc.handle_sync_request(nvdrv_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let l2_size = mmu.read_u32(buf_addr).unwrap();
+        assert_eq!(l2_size, 0x0040_0000); // 4MB L2
+    }
+
+    #[test]
+    fn test_application_functions_and_self_controller() {
+        let mut mmu = Memory::new();
+        let tls_addr = 0x8000_0000u64;
+        mmu.map_range(tls_addr, 4096, Permission::READ_WRITE);
+
+        let mut ipc = IpcManager::new();
+        let mut nvgpu = NvgpuChannel::new();
+        let mut audio = AudioOutServer::new();
+        let mut vfs = VirtualFileSystem::new();
+
+        // 1. am:appletOE -> OpenApplicationProxy (Cmd 0)
+        let applet_h = ipc.allocate_handle(ServiceType::AppletOE);
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 0).unwrap();
+        let res = ipc.handle_sync_request(applet_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let proxy_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+
+        // 2. ApplicationProxy -> GetApplicationFunctions (Cmd 20)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 20).unwrap();
+        let res = ipc.handle_sync_request(proxy_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let app_func_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&app_func_h), Some(&ServiceType::ApplicationFunctions));
+
+        // 3. ApplicationFunctions -> GetDesiredLanguage (Cmd 21)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 21).unwrap();
+        let res = ipc.handle_sync_request(app_func_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let lang = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(lang, 0); // en-US
+
+        // 4. ApplicationProxy -> GetSelfController (Cmd 1)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 1).unwrap();
+        let res = ipc.handle_sync_request(proxy_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let self_ctrl_h = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(ipc.handles.get(&self_ctrl_h), Some(&ServiceType::SelfController));
+
+        // 5. SelfController -> CreateManagedDisplaySeparableLayer (Cmd 10)
+        mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 10).unwrap();
+        let res = ipc.handle_sync_request(self_ctrl_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(res, 0);
+        let layer_id = mmu.read_u32(tls_addr + 0x20).unwrap();
+        assert_eq!(layer_id, 1);
     }
 }

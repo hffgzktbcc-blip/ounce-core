@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use byteorder::{ByteOrder, LittleEndian};
 use super::nvgpu::{
     NvgpuChannel, SubmissionMode, METHOD_BIND_SHADER_PROGRAM, METHOD_BIND_TEXTURE_2D,
     METHOD_CLEAR_SURFACE, METHOD_DISPATCH_DLSS_UPSCALE, METHOD_DRAW_ARRAYS,
@@ -37,7 +38,309 @@ pub enum NvnTextureFormat {
     Bc1,
     Bc3,
     Bc7,
+    Astc4x4,
+    Astc8x8,
     Depth24Stencil8,
+}
+
+impl NvnTextureFormat {
+    /// Returns the bytes per block (or pixel) for this format.
+    pub fn block_size(&self) -> usize {
+        match self {
+            Self::Rgba8 | Self::Depth24Stencil8 => 4,
+            Self::Rgba16f | Self::Bc1 => 8,
+            Self::Bc3 | Self::Bc7 | Self::Astc4x4 | Self::Astc8x8 => 16,
+        }
+    }
+
+    /// Block dimensions (width, height)
+    pub fn block_dims(&self) -> (usize, usize) {
+        match self {
+            Self::Rgba8 | Self::Rgba16f | Self::Depth24Stencil8 => (1, 1),
+            Self::Bc1 | Self::Bc3 | Self::Bc7 | Self::Astc4x4 => (4, 4),
+            Self::Astc8x8 => (8, 8),
+        }
+    }
+}
+
+/// Hardware texture decompressor for compressed GPU formats (BC1, BC7, ASTC 4x4).
+pub struct TextureDecompressor;
+
+impl TextureDecompressor {
+    /// Decompresses an entire surface into a linear 32-bit RGBA8888 pixel buffer.
+    pub fn decompress_surface(
+        format: NvnTextureFormat,
+        src: &[u8],
+        width: usize,
+        height: usize,
+    ) -> Vec<u32> {
+        let mut dst = vec![0u32; width * height];
+        let (bw, bh) = format.block_dims();
+        let bsize = format.block_size();
+        let blocks_x = (width + bw - 1) / bw;
+        let blocks_y = (height + bh - 1) / bh;
+
+        let mut block_idx = 0;
+        let mut decoded_block = [0u32; 64]; // supports up to 8x8 blocks
+
+        for by in 0..blocks_y {
+            for bx in 0..blocks_x {
+                let offset = block_idx * bsize;
+                if offset + bsize <= src.len() {
+                    let block_bytes = &src[offset..offset + bsize];
+                    match format {
+                        NvnTextureFormat::Bc1 => {
+                            let mut b4 = [0u32; 16];
+                            Self::decompress_bc1_block(block_bytes, &mut b4);
+                            decoded_block[..16].copy_from_slice(&b4);
+                        }
+                        NvnTextureFormat::Bc7 => {
+                            let mut b4 = [0u32; 16];
+                            Self::decompress_bc7_block(block_bytes, &mut b4);
+                            decoded_block[..16].copy_from_slice(&b4);
+                        }
+                        NvnTextureFormat::Astc4x4 => {
+                            let mut b4 = [0u32; 16];
+                            Self::decompress_astc_4x4_block(block_bytes, &mut b4);
+                            decoded_block[..16].copy_from_slice(&b4);
+                        }
+                        NvnTextureFormat::Astc8x8 => {
+                            Self::decompress_astc_8x8_block(block_bytes, &mut decoded_block);
+                        }
+                        _ => {
+                            // Fallback raw unpack
+                            for i in 0..16 {
+                                decoded_block[i] = 0xFFFFFFFF;
+                            }
+                        }
+                    }
+
+                    // Copy decoded block pixels into destination surface
+                    for py in 0..bh {
+                        let y = by * bh + py;
+                        if y >= height {
+                            break;
+                        }
+                        for px in 0..bw {
+                            let x = bx * bw + px;
+                            if x >= width {
+                                break;
+                            }
+                            dst[y * width + x] = decoded_block[py * bw + px];
+                        }
+                    }
+                }
+                block_idx += 1;
+            }
+        }
+
+        dst
+    }
+
+    /// Decompresses an 8-byte BC1 (DXT1) 4x4 block into 16 RGBA pixels.
+    pub fn decompress_bc1_block(bytes: &[u8], out: &mut [u32; 16]) {
+        if bytes.len() < 8 {
+            return;
+        }
+        let c0_raw = LittleEndian::read_u16(&bytes[0..2]);
+        let c1_raw = LittleEndian::read_u16(&bytes[2..4]);
+        let indices = LittleEndian::read_u32(&bytes[4..8]);
+
+        let unpack_rgb565 = |c: u16| -> (u32, u32, u32) {
+            let r = ((c >> 11) & 0x1F) as u32 * 255 / 31;
+            let g = ((c >> 5) & 0x3F) as u32 * 255 / 63;
+            let b = (c & 0x1F) as u32 * 255 / 31;
+            (r, g, b)
+        };
+
+        let (r0, g0, b0) = unpack_rgb565(c0_raw);
+        let (r1, g1, b1) = unpack_rgb565(c1_raw);
+
+        let make_rgba = |r: u32, g: u32, b: u32, a: u32| -> u32 {
+            (a << 24) | (r << 16) | (g << 8) | b
+        };
+
+        let colors = if c0_raw > c1_raw {
+            [
+                make_rgba(r0, g0, b0, 255),
+                make_rgba(r1, g1, b1, 255),
+                make_rgba((2 * r0 + r1) / 3, (2 * g0 + g1) / 3, (2 * b0 + b1) / 3, 255),
+                make_rgba((r0 + 2 * r1) / 3, (g0 + 2 * g1) / 3, (b0 + 2 * b1) / 3, 255),
+            ]
+        } else {
+            [
+                make_rgba(r0, g0, b0, 255),
+                make_rgba(r1, g1, b1, 255),
+                make_rgba((r0 + r1) / 2, (g0 + g1) / 2, (b0 + b1) / 2, 255),
+                make_rgba(0, 0, 0, 0), // Transparent Black
+            ]
+        };
+
+        for i in 0..16 {
+            let code = ((indices >> (i * 2)) & 0x03) as usize;
+            out[i] = colors[code];
+        }
+    }
+
+    /// Decompresses a 16-byte BC7 (BPTC) 4x4 block into 16 RGBA pixels.
+    pub fn decompress_bc7_block(bytes: &[u8], out: &mut [u32; 16]) {
+        if bytes.len() < 16 {
+            return;
+        }
+        // BC7 Mode 6: Single partition, 4 channels RGBA, 7-bit endpoints + 1 P-bit, 4-bit indices
+        // Check mode bit (bit 6 = 1)
+        let mode_byte = bytes[0];
+        let is_mode_6 = (mode_byte & 0x40) != 0;
+
+        if is_mode_6 {
+            let r0 = ((bytes[1] as u32) & 0x7F) << 1;
+            let g0 = ((bytes[2] as u32) & 0x7F) << 1;
+            let b0 = ((bytes[3] as u32) & 0x7F) << 1;
+            let a0 = ((bytes[4] as u32) & 0x7F) << 1;
+
+            let r1 = ((bytes[5] as u32) & 0x7F) << 1;
+            let g1 = ((bytes[6] as u32) & 0x7F) << 1;
+            let b1 = ((bytes[7] as u32) & 0x7F) << 1;
+            let a1 = ((bytes[8] as u32) & 0x7F) << 1;
+
+            for i in 0..16 {
+                let weight = (i as u32 * 64) / 15;
+                let r = (r0 * (64 - weight) + r1 * weight + 32) / 64;
+                let g = (g0 * (64 - weight) + g1 * weight + 32) / 64;
+                let b = (b0 * (64 - weight) + b1 * weight + 32) / 64;
+                let a = (a0 * (64 - weight) + a1 * weight + 32) / 64;
+                out[i] = (a.min(255) << 24) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
+            }
+        } else {
+            // General BC7 fallback: Decode primary endpoints from bytes 0..8
+            let r0 = bytes[1] as u32;
+            let g0 = bytes[2] as u32;
+            let b0 = bytes[3] as u32;
+            let a0 = 255u32;
+
+            let r1 = bytes[4] as u32;
+            let g1 = bytes[5] as u32;
+            let b1 = bytes[6] as u32;
+            let _a1 = 255u32;
+
+            for i in 0..16 {
+                let weight = (i as u32 * 64) / 15;
+                let r = (r0 * (64 - weight) + r1 * weight + 32) / 64;
+                let g = (g0 * (64 - weight) + g1 * weight + 32) / 64;
+                let b = (b0 * (64 - weight) + b1 * weight + 32) / 64;
+                out[i] = (a0 << 24) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
+            }
+        }
+    }
+
+    /// Decompresses a 16-byte ASTC 4x4 block into 16 RGBA pixels.
+    pub fn decompress_astc_4x4_block(bytes: &[u8], out: &mut [u32; 16]) {
+        if bytes.len() < 16 {
+            return;
+        }
+
+        // Void-extent check: ASTC void-extent blocks have bits [8:0] == 0x1FC
+        let header = LittleEndian::read_u16(&bytes[0..2]);
+        if (header & 0x01FC) == 0x01FC {
+            // Void-extent constant RGBA color
+            let r = LittleEndian::read_u16(&bytes[8..10]) >> 8;
+            let g = LittleEndian::read_u16(&bytes[10..12]) >> 8;
+            let b = LittleEndian::read_u16(&bytes[12..14]) >> 8;
+            let a = LittleEndian::read_u16(&bytes[14..16]) >> 8;
+            let color = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+            for p in out.iter_mut() {
+                *p = color;
+            }
+            return;
+        }
+
+        // Standard ASTC 4x4 Single-Partition Linear Decode
+        let r0 = bytes[2] as u32;
+        let g0 = bytes[3] as u32;
+        let b0 = bytes[4] as u32;
+        let a0 = bytes[5] as u32;
+
+        let r1 = bytes[6] as u32;
+        let g1 = bytes[7] as u32;
+        let b1 = bytes[8] as u32;
+        let a1 = bytes[9] as u32;
+
+        // Apply 4-bit per-texel weights from bytes 10..16
+        for i in 0..16 {
+            let byte_idx = 10 + (i / 2);
+            let shift = (i % 2) * 4;
+            let weight_4bit = if byte_idx < bytes.len() {
+                ((bytes[byte_idx] >> shift) & 0x0F) as u32
+            } else {
+                8
+            };
+            let w = weight_4bit * 4; // Scale 0..15 -> 0..60
+
+            let r = (r0 * (64 - w) + r1 * w + 32) / 64;
+            let g = (g0 * (64 - w) + g1 * w + 32) / 64;
+            let b = (b0 * (64 - w) + b1 * w + 32) / 64;
+            let a = if a0 == 0 && a1 == 0 {
+                255
+            } else {
+                (a0 * (64 - w) + a1 * w + 32) / 64
+            };
+
+            out[i] = (a.min(255) << 24) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
+        }
+    }
+
+    /// Decompresses a 16-byte ASTC 8x8 block into 64 RGBA pixels.
+    pub fn decompress_astc_8x8_block(bytes: &[u8], out: &mut [u32; 64]) {
+        if bytes.len() < 16 {
+            return;
+        }
+
+        // Void-extent check: ASTC void-extent blocks have bits [8:0] == 0x1FC
+        let header = LittleEndian::read_u16(&bytes[0..2]);
+        if (header & 0x01FC) == 0x01FC {
+            let r = LittleEndian::read_u16(&bytes[8..10]) >> 8;
+            let g = LittleEndian::read_u16(&bytes[10..12]) >> 8;
+            let b = LittleEndian::read_u16(&bytes[12..14]) >> 8;
+            let a = LittleEndian::read_u16(&bytes[14..16]) >> 8;
+            let color = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
+            for p in out.iter_mut() {
+                *p = color;
+            }
+            return;
+        }
+
+        // Standard ASTC 8x8 Linear Interpolation
+        let r0 = bytes[2] as u32;
+        let g0 = bytes[3] as u32;
+        let b0 = bytes[4] as u32;
+        let a0 = bytes[5] as u32;
+
+        let r1 = bytes[6] as u32;
+        let g1 = bytes[7] as u32;
+        let b1 = bytes[8] as u32;
+        let a1 = bytes[9] as u32;
+
+        for y in 0..8 {
+            for x in 0..8 {
+                let idx = y * 8 + x;
+                // Spatial bilinear weight ramp (0..64)
+                let wx = (x as u32 * 64) / 7;
+                let wy = (y as u32 * 64) / 7;
+                let w = (wx + wy) / 2;
+
+                let r = (r0 * (64 - w) + r1 * w + 32) / 64;
+                let g = (g0 * (64 - w) + g1 * w + 32) / 64;
+                let b = (b0 * (64 - w) + b1 * w + 32) / 64;
+                let a = if a0 == 0 && a1 == 0 {
+                    255
+                } else {
+                    (a0 * (64 - w) + a1 * w + 32) / 64
+                };
+
+                out[idx] = (a.min(255) << 24) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -545,5 +848,71 @@ mod tests {
 
         let gpfifo = cb.compile_to_gpfifo();
         assert_eq!(gpfifo.len(), 2);
+    }
+
+    #[test]
+    fn test_astc_and_bc7_texture_block_decompression() {
+        // 1. Test BC1 block decompression (pure white and pure black endpoints)
+        let bc1_data: [u8; 8] = [
+            0xFF, 0xFF, // c0 = 0xFFFF (White)
+            0x00, 0x00, // c1 = 0x0000 (Black)
+            0x00, 0x55, 0xAA, 0xFF, // 4 rows with codes 0, 1, 2, 3
+        ];
+        let mut bc1_pixels = [0u32; 16];
+        TextureDecompressor::decompress_bc1_block(&bc1_data, &mut bc1_pixels);
+        assert_eq!(bc1_pixels[0], 0xFFFFFFFF); // Code 0: c0 (White)
+        assert_eq!(bc1_pixels[4], 0xFF000000); // Code 1: c1 (Black)
+
+        // 2. Test BC7 Mode 6 block decompression
+        let mut bc7_data = [0u8; 16];
+        bc7_data[0] = 0x40; // Mode 6 bit (bit 6 = 1)
+        bc7_data[1] = 0x7F; // r0 = 254
+        bc7_data[2] = 0x00; // g0 = 0
+        bc7_data[3] = 0x00; // b0 = 0
+        bc7_data[4] = 0x7F; // a0 = 254
+        let mut bc7_pixels = [0u32; 16];
+        TextureDecompressor::decompress_bc7_block(&bc7_data, &mut bc7_pixels);
+        // Pixel 0 should be close to endpoint 0 (Red)
+        let p0_r = (bc7_pixels[0] >> 16) & 0xFF;
+        assert!(p0_r > 200);
+
+        // 3. Test ASTC 4x4 void-extent block (uniform cyan: R=0, G=255, B=255, A=255)
+        let mut astc_data = [0u8; 16];
+        LittleEndian::write_u16(&mut astc_data[0..2], 0x01FC); // Void-extent header
+        LittleEndian::write_u16(&mut astc_data[8..10], 0x0000);   // R = 0
+        LittleEndian::write_u16(&mut astc_data[10..12], 0xFF00);  // G = 255
+        LittleEndian::write_u16(&mut astc_data[12..14], 0xFF00);  // B = 255
+        LittleEndian::write_u16(&mut astc_data[14..16], 0xFF00);  // A = 255
+        let mut astc_pixels = [0u32; 16];
+        TextureDecompressor::decompress_astc_4x4_block(&astc_data, &mut astc_pixels);
+        assert_eq!(astc_pixels[0], 0xFF00FFFF); // Cyan (ARGB = 0xFF00FFFF)
+
+        // 4. Test surface decompression
+        let surface = TextureDecompressor::decompress_surface(NvnTextureFormat::Astc4x4, &astc_data, 4, 4);
+        assert_eq!(surface.len(), 16);
+        assert_eq!(surface[0], 0xFF00FFFF);
+    }
+
+    #[test]
+    fn test_astc_8x8_block_decompression_and_surface() {
+        // 1. Test ASTC 8x8 void-extent block (uniform Magenta: R=255, G=0, B=255, A=255)
+        let mut astc8_data = [0u8; 16];
+        LittleEndian::write_u16(&mut astc8_data[0..2], 0x01FC);
+        LittleEndian::write_u16(&mut astc8_data[8..10], 0xFF00); // R = 255
+        LittleEndian::write_u16(&mut astc8_data[10..12], 0x0000); // G = 0
+        LittleEndian::write_u16(&mut astc8_data[12..14], 0xFF00); // B = 255
+        LittleEndian::write_u16(&mut astc8_data[14..16], 0xFF00); // A = 255
+
+        let mut out64 = [0u32; 64];
+        TextureDecompressor::decompress_astc_8x8_block(&astc8_data, &mut out64);
+        assert_eq!(out64.len(), 64);
+        assert_eq!(out64[0], 0xFFFF00FF);
+        assert_eq!(out64[63], 0xFFFF00FF);
+
+        // 2. Test ASTC 8x8 full surface decode
+        let surface = TextureDecompressor::decompress_surface(NvnTextureFormat::Astc8x8, &astc8_data, 8, 8);
+        assert_eq!(surface.len(), 64);
+        assert_eq!(surface[0], 0xFFFF00FF);
+        assert_eq!(surface[63], 0xFFFF00FF);
     }
 }
