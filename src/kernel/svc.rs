@@ -24,6 +24,27 @@ pub enum SvcResult {
     Unhandled(u16),
 }
 
+/// ounce-core's own research SVCs (GPU, RomFS, audio, save data, NVN and SDK fast paths).
+/// Horizon's SVC numbers stop below `0x80`, so this range cannot collide with a real Horizon call
+/// that homebrew makes (for example `0x29` is `svcGetInfo`, which libnx `crt0` calls).
+pub mod ext {
+    pub const PRESENT_FRAME: u16 = 0x100;
+    pub const SUBMIT_GPU_PUSHBUFFER: u16 = 0x101;
+    pub const READ_ROMFS_FILE: u16 = 0x102;
+    pub const APPEND_AUDIO_BUFFER: u16 = 0x103;
+    pub const WRITE_SAVE_DATA_FILE: u16 = 0x104;
+    pub const NVN_SUBMIT_COMMAND_BUFFER: u16 = 0x105;
+    pub const NNSDK_DISPATCH: u16 = 0x106;
+
+    /// Encodes `svc #imm`.
+    pub const fn svc(imm: u16) -> u32 {
+        0xD400_0001 | (imm as u32) << 5
+    }
+}
+
+/// Horizon `svcGetInfo` result for an info type it does not know (`InvalidEnumValue`).
+pub const RESULT_INVALID_ENUM_VALUE: u64 = 0xF001;
+
 /// Horizon OS Microkernel Compatibility Layer.
 pub struct HorizonKernel {
     pub heap_base: u64,
@@ -66,6 +87,37 @@ impl HorizonKernel {
         }
     }
 
+    /// System tick at 19.2 MHz since the kernel was created (at least one millisecond's worth).
+    pub fn system_tick(&self) -> u64 {
+        let elapsed = self.start_time.elapsed().as_nanos();
+        (((elapsed * 19_200_000) / 1_000_000_000) as u64).max(19_200)
+    }
+
+    /// `svcGetInfo` values. `None` for info types this model does not provide.
+    /// The regions do not overlap: ASLR covers the 39-bit space that holds code (0x8000_0000), the heap,
+    /// alias and stack regions sit inside it, and the stack region holds the main thread's stack.
+    pub fn info(&self, info_type: u32, sub_type: u64) -> Option<u64> {
+        Some(match info_type {
+            0 => 0xFF,                     // CoreMask: 8x ARM Cortex-A78C cores (bits 0..7)
+            1 => 0xFFF,                    // PriorityMask
+            2 => 0x0000_0002_0000_0000,    // AliasRegionAddress
+            3 => 0x0000_0010_0000_0000,    // AliasRegionSize (64 GB)
+            4 => self.heap_base,           // HeapRegionAddress (0x1_0000_0000)
+            5 => 0x0000_0001_0000_0000,    // HeapRegionSize (4 GB)
+            6 => 12 * 1024 * 1024 * 1024,  // TotalMemorySize: 12 GB LPDDR5
+            7 => (self.heap_size as u64) + 0x10_0000, // UsedMemorySize
+            8 => 0,                        // DebuggerAttached
+            11 if sub_type < 4 => 0x9E37_79B9_7F4A_7C15u64.rotate_left(sub_type as u32 * 16) ^ self.system_tick(), // RandomEntropy
+            12 => 0x0000_0000_0800_0000,   // AslrRegionAddress
+            13 => 0x0000_007F_F800_0000,   // AslrRegionSize
+            14 => 0x0000_007F_0000_0000,   // StackRegionAddress
+            15 => 0x0000_0000_FFFF_F000,   // StackRegionSize (ends at the top of the main stack)
+            18 => 0x0400_0000_0000_0000,   // ProgramId (synthetic value)
+            20 | 21 => 0,                  // SystemResourceSizeTotal / Used
+            _ => return None,
+        })
+    }
+
     /// Dispatches a Horizon OS Supervisor Call (SVC).
     pub fn dispatch_svc(&mut self, svc_id: u16, cpu: &mut Cpu, mmu: &mut Memory) -> SvcResult {
         match svc_id {
@@ -85,18 +137,26 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
+            // 0x02: svcSetMemoryPermission(addr, size, perm) / 0x03: svcSetMemoryAttribute(addr, size, mask, attr)
+            // Permissions and attributes are not modelled; accept the request.
+            0x02 | 0x03 => {
+                cpu.regs.write_x(0, 0);
+                SvcResult::Success
+            }
+
             // 0x06: svcQueryMemory(out_mem_info, &out_page_info, query_addr)
             0x06 => {
                 let mem_info_ptr = cpu.regs.read_x(0);
                 let query_addr = cpu.regs.read_x(2);
                 let aligned_base = query_addr & !0xFFF;
 
-                // Write basic MemoryInfo structure (base_addr, size=0x1000, state=Normal, perm=RW)
+                // One-page MemoryInfo: mapped pages are Normal/RW, unmapped ones Free with no access.
+                let (state, perm) = if mmu.is_mapped(aligned_base) { (0x03, 0x03) } else { (0x00, 0x00) };
                 let _ = mmu.write_u64(mem_info_ptr, aligned_base);
                 let _ = mmu.write_u64(mem_info_ptr + 8, 0x1000);
-                let _ = mmu.write_u32(mem_info_ptr + 16, 0x03); // MemoryType::CodeStatic / Normal
+                let _ = mmu.write_u32(mem_info_ptr + 16, state);
                 let _ = mmu.write_u32(mem_info_ptr + 20, 0);
-                let _ = mmu.write_u32(mem_info_ptr + 24, 0x03); // Perm RW
+                let _ = mmu.write_u32(mem_info_ptr + 24, perm);
 
                 cpu.regs.write_x(0, 0);
                 cpu.regs.write_x(1, 0);
@@ -162,12 +222,9 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
-            // 0x0F: svcGetSystemTick()
-            // Tegra counter frequency is 19.2 MHz (19,200,000 ticks per second)
+            // 0x0F: svcSetThreadCoreMask(thread_handle, core_id, affinity_mask). Affinity is not modelled.
             0x0F => {
-                let elapsed = self.start_time.elapsed().as_nanos();
-                let ticks = ((elapsed * 19_200_000) / 1_000_000_000) as u64;
-                cpu.regs.write_x(0, ticks);
+                cpu.regs.write_x(0, 0);
                 SvcResult::Success
             }
 
@@ -213,8 +270,8 @@ impl HorizonKernel {
             }
 
             // 0x18: svcWaitSynchronization (used for VSync / display syncpoints)
-            // 0x28: svcPresentFrame (direct buffer flip request)
-            0x18 | 0x28 => {
+            // ext::PRESENT_FRAME: direct buffer flip request
+            0x18 | ext::PRESENT_FRAME => {
                 cpu.regs.write_x(0, 0); // ResultSuccess
                 SvcResult::PresentFrame
             }
@@ -258,37 +315,26 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
-            // 0x1E: svcGetSystemTick() (Horizon ABI) / svcGetInfo(&out_info, info_type, handle, info_sub_type)
+            // 0x1E: svcGetSystemTick() -> X0. The counter runs at 19.2 MHz.
             0x1E => {
-                let info_type = cpu.regs.read_w(1);
-                let elapsed = self.start_time.elapsed().as_nanos();
-                let ticks = (((elapsed * 19_200_000) / 1_000_000_000) as u64).max(19_200);
+                cpu.regs.write_x(0, self.system_tick());
+                SvcResult::Success
+            }
 
-                // svc #0x1E is svcGetSystemTick() -> X0
-                // When called after svc #0x25 (which sets X1 = 1), return ticks in X0 while also populating X1 for crt0 svcGetInfo
-                let info_val: u64 = match info_type {
-                    0 => 0xFF,                  // CoreMask: 8x ARM Cortex-A78C cores (bits 0..7)
-                    1 => 0xFFF,                 // PriorityMask
-                    2 => 0x0000_0002_0000_0000, // AliasRegionAddress (8 GB mark)
-                    3 => 0x0000_0001_0000_0000, // AliasRegionSize (4 GB)
-                    4 => self.heap_base,        // HeapRegionAddress (0x1_0000_0000)
-                    5 => 0x0000_0002_0000_0000, // HeapRegionSize (8 GB)
-                    6 => 12 * 1024 * 1024 * 1024, // TotalMemoryAvailable: 12 GB LPDDR5 (Switch 2!)
-                    7 => (self.heap_size as u64) + 0x10_0000, // TotalMemoryUsage
-                    12 => 0x0000_0000_8000_0000, // AslrRegionAddress
-                    13 => 0x0000_0010_0000_0000, // AslrRegionSize
-                    14 => 0x0000_007F_FFF0_0000, // StackRegionAddress
-                    15 => 0x0000_0000_0010_0000, // StackRegionSize (1 MB)
-                    18 => 0x0400_0000_0000_0000, // ProgramId (synthetic value)
-                    _ => ticks,
-                };
-                if info_type == 1 {
-                    // Called right after svcGetThreadId (X1 == 1) -> return system tick in X0
-                    cpu.regs.write_x(0, ticks);
-                } else {
-                    cpu.regs.write_x(0, 0); // ResultSuccess
+            // 0x29: svcGetInfo(&out_info, info_type, handle, info_sub_type) -> X0 = result, X1 = value
+            0x29 => {
+                let info_type = cpu.regs.read_w(1);
+                let sub_type = cpu.regs.read_x(3);
+                match self.info(info_type, sub_type) {
+                    Some(value) => {
+                        cpu.regs.write_x(0, 0);
+                        cpu.regs.write_x(1, value);
+                    }
+                    None => {
+                        cpu.regs.write_x(0, RESULT_INVALID_ENUM_VALUE);
+                        cpu.regs.write_x(1, 0);
+                    }
                 }
-                cpu.regs.write_x(1, info_val);
                 SvcResult::Success
             }
 
@@ -423,8 +469,34 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
-            // 0x29: svcSubmitGpuPushbuffer(pb_addr, word_count) - Fast-path NVGPU GPFIFO submission
-            0x29 => {
+            // 0x28: svcReturnFromException(result). Exceptions are not delivered to the guest, so a
+            // return from one means the guest's handler gave up: stop like svcBreak.
+            0x28 => SvcResult::Break {
+                reason: cpu.regs.read_x(0),
+                info1: 0,
+                info2: 0,
+            },
+
+            // 0x2A: svcFlushEntireDataCache() / 0x2B: svcFlushDataCache(addr, size). Memory is coherent here.
+            0x2A | 0x2B => {
+                cpu.regs.write_x(0, 0);
+                SvcResult::Success
+            }
+
+            // 0x2C: svcMapPhysicalMemory(addr, size) / 0x2D: svcUnmapPhysicalMemory(addr, size)
+            0x2C => {
+                let (addr, size) = (cpu.regs.read_x(0), cpu.regs.read_x(1) as usize);
+                mmu.map_range(addr, size, Permission::READ_WRITE);
+                cpu.regs.write_x(0, 0);
+                SvcResult::Success
+            }
+            0x2D => {
+                cpu.regs.write_x(0, 0);
+                SvcResult::Success
+            }
+
+            // ext::SUBMIT_GPU_PUSHBUFFER(pb_addr, word_count) - Fast-path NVGPU GPFIFO submission
+            ext::SUBMIT_GPU_PUSHBUFFER => {
                 let pb_addr = cpu.regs.read_x(0);
                 let word_count = cpu.regs.read_x(1) as usize;
                 if pb_addr != 0 && word_count > 0 {
@@ -434,8 +506,8 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
-            // 0x2A: svcReadRomFsFile(path_ptr, path_len, dst_addr, max_len)
-            0x2A => {
+            // ext::READ_ROMFS_FILE(path_ptr, path_len, dst_addr, max_len)
+            ext::READ_ROMFS_FILE => {
                 let path_ptr = cpu.regs.read_x(0);
                 let path_len = cpu.regs.read_x(1) as usize;
                 let dst_addr = cpu.regs.read_x(2);
@@ -457,8 +529,8 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
-            // 0x2B: svcAppendAudioBuffer(pcm_addr, sample_count)
-            0x2B => {
+            // ext::APPEND_AUDIO_BUFFER(pcm_addr, sample_count)
+            ext::APPEND_AUDIO_BUFFER => {
                 let pcm_addr = cpu.regs.read_x(0);
                 let sample_count = cpu.regs.read_x(1) as usize;
                 self.audio.append_pcm_buffer(mmu, pcm_addr, sample_count);
@@ -467,8 +539,8 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
-            // 0x2C: svcWriteSaveDataFile(path_ptr, path_len, src_addr, data_len)
-            0x2C => {
+            // ext::WRITE_SAVE_DATA_FILE(path_ptr, path_len, src_addr, data_len)
+            ext::WRITE_SAVE_DATA_FILE => {
                 let path_ptr = cpu.regs.read_x(0);
                 let path_len = cpu.regs.read_x(1) as usize;
                 let src_addr = cpu.regs.read_x(2);
@@ -490,8 +562,8 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
-            // 0x2D: svcNvnSubmitCommandBuffer(cmd_stream_addr, max_words) - Fast-path NVN Command Stream Submission
-            0x2D => {
+            // ext::NVN_SUBMIT_COMMAND_BUFFER(cmd_stream_addr, max_words) - Fast-path NVN Command Stream Submission
+            ext::NVN_SUBMIT_COMMAND_BUFFER => {
                 let cmd_stream_addr = cpu.regs.read_x(0);
                 let max_words = cpu.regs.read_x(1) as usize;
                 let count = self.nvn.submit_guest_command_stream(
@@ -505,8 +577,8 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
-            // 0x30: svcNnSdkDispatch(func_id, arg0, arg1, arg2, arg3) - Nintendo SDK C++ HLE Dispatch
-            0x30 => {
+            // ext::NNSDK_DISPATCH(func_id, arg0, arg1, arg2, arg3) - Nintendo SDK C++ HLE Dispatch
+            ext::NNSDK_DISPATCH => {
                 let func_id = cpu.regs.read_w(0);
                 let arg0 = cpu.regs.read_x(1);
                 let arg1 = cpu.regs.read_x(2);
@@ -684,5 +756,45 @@ mod tests {
         }
 
         assert_eq!(mmu.read_u64(out_buf + 40).unwrap(), challenge ^ (challenge << 1));
+    }
+
+    #[test]
+    fn horizon_numbers_and_research_range() {
+        let mut cpu = Cpu::new();
+        let mut mmu = Memory::new();
+        let mut kernel = HorizonKernel::new();
+
+        // svcGetInfo(CoreMask) and an unknown info type.
+        cpu.regs.write_x(1, 0);
+        assert_eq!(kernel.dispatch_svc(0x29, &mut cpu, &mut mmu), SvcResult::Success);
+        assert_eq!((cpu.regs.read_x(0), cpu.regs.read_x(1)), (0, 0xFF));
+        cpu.regs.write_x(1, 0xDEAD);
+        kernel.dispatch_svc(0x29, &mut cpu, &mut mmu);
+        assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_ENUM_VALUE);
+
+        // svcGetSystemTick returns the tick in X0.
+        kernel.dispatch_svc(0x1E, &mut cpu, &mut mmu);
+        assert!(cpu.regs.read_x(0) >= 19_200);
+
+        // Flush/attribute calls succeed without side effects.
+        for svc in [0x02, 0x03, 0x0F, 0x2A, 0x2B] {
+            cpu.regs.write_x(0, 0x1234);
+            assert_eq!(kernel.dispatch_svc(svc, &mut cpu, &mut mmu), SvcResult::Success);
+            assert_eq!(cpu.regs.read_x(0), 0, "svc 0x{svc:X}");
+        }
+
+        // svcQueryMemory reports unmapped pages as free.
+        mmu.map_range(0x9000, 0x1000, Permission::READ_WRITE);
+        cpu.regs.write_x(0, 0x9000);
+        cpu.regs.write_x(2, 0x5_0000_0000);
+        kernel.dispatch_svc(0x06, &mut cpu, &mut mmu);
+        assert_eq!(mmu.read_u32(0x9000 + 16).unwrap(), 0);
+
+        // The research SVCs live above Horizon's range.
+        assert_eq!(ext::svc(ext::SUBMIT_GPU_PUSHBUFFER), 0xD400_2021);
+        cpu.regs.write_x(0, 0);
+        assert_eq!(kernel.dispatch_svc(ext::SUBMIT_GPU_PUSHBUFFER, &mut cpu, &mut mmu), SvcResult::Success);
+        assert_eq!(kernel.dispatch_svc(ext::PRESENT_FRAME, &mut cpu, &mut mmu), SvcResult::PresentFrame);
+        assert!(matches!(kernel.dispatch_svc(0x28, &mut cpu, &mut mmu), SvcResult::Break { .. }));
     }
 }

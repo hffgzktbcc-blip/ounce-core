@@ -1,8 +1,8 @@
 //! Boots a real devkitA64 + libnx homebrew NRO (`tests/fixtures/nro/hello`) through its own `crt0`.
 //!
-//! The kernel's SVC table does not follow Horizon numbering for every call (for example `0x29`), so
-//! this test services the few Horizon SVCs libnx startup makes with a small shim of its own and
-//! records every SVC it sees. The fixture reports `0xEEE` when its checks pass, `0xBAD0000 | bits` otherwise.
+//! `boot` services the few Horizon SVCs libnx startup makes with a small shim of its own, so the
+//! loader is checked independently of the kernel model; `libnx_nro_runs_under_cli_setup_and_kernel`
+//! runs the same program through the CLI's setup and `HorizonKernel::dispatch_svc`. The fixture reports `0xEEE` when its checks pass, `0xBAD0000 | bits` otherwise.
 
 use super::homebrew::HomebrewConfig;
 use super::nro::NroLoader;
@@ -204,4 +204,41 @@ fn libnx_nro_runs_to_main_return() {
     );
     // Startup asked for memory layout and permissions only; the heap came from the ConfigEntry list.
     assert!(!shim.svcs.contains(&0x01), "svcSetHeapSize despite OverrideHeap");
+}
+
+/// Same NRO, booted the way `ounce-core run hello.nro fixture` boots it: `setup_vm`,
+/// `setup_homebrew_nro`, and the kernel's own SVC dispatch (no shim).
+#[test]
+fn libnx_nro_runs_under_cli_setup_and_kernel() {
+    let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
+    let info = super::BootLoader::load_any_package(&fixture(), crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu)
+        .expect("NRO loads");
+    assert_eq!(info.format, "NRO0");
+    crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "sdmc:/hello.nro", &["fixture"]).unwrap();
+    cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
+
+    let mut output = String::new();
+    let mut svcs = Vec::new();
+    for _ in 0..crate::NRO_INSTRUCTION_BUDGET {
+        match cpu.step(&mut mmu) {
+            Ok(StepResult::Continue) => {}
+            Ok(StepResult::Svc(svc)) => {
+                svcs.push(svc);
+                if svc == 0x27 {
+                    let mut buf = vec![0u8; cpu.regs.read_x(1).min(0x1000) as usize];
+                    mmu.read_bytes(cpu.regs.read_x(0), &mut buf).unwrap();
+                    output.push_str(&String::from_utf8_lossy(&buf));
+                }
+                match kernel.dispatch_svc(svc, &mut cpu, &mut mmu) {
+                    crate::kernel::SvcResult::ExitProcess => break,
+                    crate::kernel::SvcResult::Success => {}
+                    other => panic!("SVC 0x{svc:X} -> {other:?}; SVCs so far {svcs:x?}"),
+                }
+            }
+            other => panic!("guest stopped: {other:?} at 0x{:X}; SVCs {svcs:x?}", cpu.regs.pc),
+        }
+    }
+    assert_eq!(output, "ounce-fixture result=0x00000EEE", "SVCs: {svcs:x?}");
+    assert_eq!(svcs.last(), Some(&0x07), "exits through the loader return stub");
+    assert!(svcs.contains(&0x29), "libnx startup calls svcGetInfo");
 }
