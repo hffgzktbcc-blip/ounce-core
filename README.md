@@ -122,7 +122,7 @@ The harness runs synthetic AArch64 programs through the CPU, kernel and service 
 | 12 | Thread-affinity wrapper | `BL` into a leaf that returns `0xFF`, then `AND X0, X0, #7` | `0x07` |
 | 13 | Timing & events | Synthetic event init, try-wait and tick frequency | `0x124F801` (19,200,001) |
 | 14 | XCI container boot | Synthetic cartridge image → HFS0 → NCA3 → NSO0 | — |
-| 15 | NVN command buffer | `SVC #0x2D` submission, multi-section RomFS | — |
+| 15 | NVN command buffer | `SVC #0x105` (research range) submission, multi-section RomFS | — |
 | 16 | audren & Vulkan model | Memory pools, voice mixing, SPIR-V module construction | — |
 | 17 | Service handshake | `set:sys`, `am:appletOE`, `vi:m`, `hid`, `fsp-srv` | `0x777` |
 | 18 | ro:1 & texture pools | `LoadNro`, BC7 descriptor binding | `0x888` |
@@ -150,6 +150,7 @@ The harness runs synthetic AArch64 programs through the CPU, kernel and service 
 ```bash
 cargo run --release -- info                      # Show modelled hardware and engine status
 cargo run --release -- test                      # Run the 25-stage harness
+cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture  # Boot the libnx homebrew fixture (prints result=0x00000EEE)
 cargo run --release -- inspect ./dumps/title     # Inspect a user-supplied unencrypted directory
 cargo run --release -- run ./dumps/title --gui   # Boot an unencrypted loose directory in a window
 cargo run --release -- demo-dir ./demo --gui     # Generate a synthetic loose package and boot it

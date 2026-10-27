@@ -18,7 +18,7 @@ pub const NVN_DEVICE_INFO_MAX_TEXTURE_ANISOTROPY: u32 = 0x0009;
 pub const NVN_DEVICE_INFO_SUPPORTS_T239_DLSS: u32 = 0x0100;
 pub const NVN_DEVICE_INFO_T239_SM_VERSION: u32 = 0x0101;
 
-/// Guest Memory Binary Command Opcode for `nvnCommandBuffer` streams (`SVC #0x2D` / `nvdrv` `IOCTL_NVN_SUBMIT`)
+/// Guest Memory Binary Command Opcode for `nvnCommandBuffer` streams (`SVC #0x105` (`ext::NVN_SUBMIT_COMMAND_BUFFER`) / `nvdrv` `IOCTL_NVN_SUBMIT`)
 pub const NVN_CMD_SET_RENDER_TARGET: u32 = 0x01;
 pub const NVN_CMD_SET_VIEWPORT: u32 = 0x02;
 pub const NVN_CMD_CLEAR_COLOR: u32 = 0x03;

@@ -1021,7 +1021,8 @@ impl NroLoader {
     }
 }
 
-/// Standard Nintendo Switch / Switch 2 Homebrew Environment (`ARGV` parameter block).
+/// An `ARGV` parameter block. This is not the homebrew loader ABI: libnx `crt0` reads a `ConfigEntry`
+/// list from `X0` (see `HomebrewConfig`), which `ounce-core run` uses for NROs. Kept for callers of this format.
 pub struct HomebrewEnvironment;
 
 impl HomebrewEnvironment {

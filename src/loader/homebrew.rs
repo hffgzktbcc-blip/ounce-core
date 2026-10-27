@@ -87,6 +87,14 @@ impl HomebrewConfig {
         Ok(addr)
     }
 
+    /// Maps a page at `addr` holding `svc #0x07` (`svcExitProcess`) and returns its address.
+    /// Point `X30` at it: with a `ConfigEntry` list, libnx `exit` returns there instead of exiting itself.
+    pub fn install_exit_stub(mmu: &mut Memory, addr: u64) -> Result<u64, MemoryError> {
+        mmu.map_range(addr, 0x1000, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(addr, 0xD400_00E1)?;
+        Ok(addr)
+    }
+
     /// Writes the list at `addr` and sets the entry registers: `X0` = list, `X1` = `-1`.
     pub fn setup(&self, cpu: &mut crate::cpu::Cpu, mmu: &mut Memory, addr: u64) -> Result<(), MemoryError> {
         let list = self.write(mmu, addr)?;
@@ -127,5 +135,13 @@ mod tests {
         mmu.read_bytes(argv_ptr, &mut s).unwrap();
         assert_eq!(&s, b"sdmc:/hello.nro\0");
         assert_eq!(mmu.read_u32(at(3)).unwrap(), ENTRY_END_OF_LIST);
+    }
+
+    #[test]
+    fn exit_stub_calls_exit_process() {
+        let mut mmu = Memory::new();
+        let mut cpu = crate::cpu::Cpu::new();
+        cpu.regs.pc = HomebrewConfig::install_exit_stub(&mut mmu, 0x7FFE_0000).unwrap();
+        assert!(matches!(cpu.step(&mut mmu), Ok(crate::cpu::StepResult::Svc(0x07))));
     }
 }

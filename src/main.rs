@@ -111,7 +111,9 @@ fn main() {
             }
             let file_path = &args[2];
             let gui_mode = args.iter().any(|a| a == "--gui" || a == "--window" || a == "-g");
-            run_file(file_path, gui_mode);
+            // Anything after the path that is not a flag is passed to homebrew as argv[1..].
+            let guest_args: Vec<&str> = args[3..].iter().filter(|a| !a.starts_with('-')).map(|a| a.as_str()).collect();
+            run_file(file_path, &guest_args, gui_mode);
         }
         "demo-dir" | "dir-demo" | "loose-demo" => {
             print_banner();
@@ -277,7 +279,7 @@ fn print_usage() {
     println!("  {}USAGE:{}", s.bold, s.reset);
     println!("    cargo run --release -- {}<COMMAND>{} [OPTIONS]\n", s.green, s.reset);
     println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
-    println!("    {}run{} <file|dir> [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder", s.green, s.reset);
+    println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
     println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);
     println!("    {}inspect{} <file|dir>      Audit .xci/.nsp/.nca/.nro headers, loose NPDM metadata & RomFS assets", s.green, s.reset);
@@ -898,7 +900,7 @@ fn run_built_in_demo() {
     cpu.regs.write_x(7, 48);
 
     // Guest AArch64 Code:
-    //   SVC  #0x2A                ; svcReadRomFsFile("romfs:/title.txt", dst=0x80000200) -> X1 = bytes_read
+    //   SVC  #0x102                ; svcReadRomFsFile("romfs:/title.txt", dst=0x80000200) -> X1 = bytes_read
     //   ADD  X0, X4, #0           ; X0 = file_dst_addr
     //   SVC  #0x27                ; svcOutputDebugString(X0, X1) -> prints loaded RomFS file!
     //   MUL  X8, X6, X7           ; MADD X8, X6, X7, XZR -> 300 * 48 = 14400 (16-bit PCM sample)
@@ -906,12 +908,12 @@ fn run_built_in_demo() {
     //   STRH W8, [X5, #2]         ; Write Right channel PCM sample (14400)
     //   ADD  X0, X5, #0           ; X0 = pcm_buf_addr
     //   MOVZ X1, #2               ; X1 = 2 stereo samples
-    //   SVC  #0x2B                ; svcAppendAudioBuffer -> queues PCM to audout:u, returns peak in X1
+    //   SVC  #0x103                ; svcAppendAudioBuffer -> queues PCM to audout:u, returns peak in X1
     //   ADD  X0, X1, #0           ; X0 = peak audio amplitude (14400)
     //   SVC  #0x07                ; svcExitProcess
     #[rustfmt::skip]
     let vfs_audio_program: Vec<u32> = vec![
-        0xD4000541, // SVC  #0x2A (svcReadRomFsFile)
+        0xD4002041, // SVC  #0x102 (ext::READ_ROMFS_FILE)
         0x91000080, // ADD  X0, X4, #0
         0xD40004E1, // SVC  #0x27 (svcOutputDebugString)
         0x9B077CC8, // MUL  X8, X6, X7 (MADD X8, X6, X7, XZR -> 14400)
@@ -919,7 +921,7 @@ fn run_built_in_demo() {
         0x790004A8, // STRH W8, [X5, #2]
         0x910000A0, // ADD  X0, X5, #0
         0xD2800041, // MOVZ X1, #2
-        0xD4000561, // SVC  #0x2B (svcAppendAudioBuffer)
+        0xD4002061, // SVC  #0x103 (ext::APPEND_AUDIO_BUFFER)
         0x91000020, // ADD  X0, X1, #0
         0xD40000E1, // SVC  #0x07 (svcExitProcess)
     ];
@@ -1017,7 +1019,7 @@ fn run_built_in_demo() {
     }
 
     // 6c. Main thread AArch64 guest program:
-    //  1. Submits NVGPU pushbuffer (SVC #0x29) to decompile the Ampere SASS shader
+    //  1. Submits NVGPU pushbuffer (SVC #0x101) to decompile the Ampere SASS shader
     //  2. Spawns a worker KThread on Core #3 via SVC #0x08 (svcCreateThread)
     //  3. Starts the worker KThread via SVC #0x09 (svcStartThread)
     //  4. Reads the worker thread's result from [0x80060000] into X0 (expected: 7777) and exits!
@@ -1028,10 +1030,10 @@ fn run_built_in_demo() {
 
     #[rustfmt::skip]
     let main_thread_program: Vec<u32> = vec![
-        // Step 1: SVC #0x29 (svcSubmitGpuPushbuffer: X0 = pb_addr, X1 = 2 words)
+        // Step 1: SVC #0x101 (svcSubmitGpuPushbuffer: X0 = pb_addr, X1 = 2 words)
         0x91000140, // ADD  X0, X10, #0
         0xD2800041, // MOVZ X1, #2
-        0xD4000521, // SVC  #0x29
+        0xD4002021, // SVC  #0x101 (ext::SUBMIT_GPU_PUSHBUFFER)
 
         // Step 2: SVC #0x08 (svcCreateThread: X1=entry, X2=arg, X3=stack_top, X4=prio, X5=core_id)
         0x91000161, // ADD  X1, X11, #0 (worker_pc)
@@ -1138,10 +1140,10 @@ fn run_built_in_demo() {
         0x91000140, // ADD  X0, X10, #0
         0xD4000361, // SVC  #0x1B (svcArbitrateUnlock)
 
-        // 4. Submit NVGPU pushbuffer to render 2D-textured 3D triangle (SVC #0x29)
+        // 4. Submit NVGPU pushbuffer to render 2D-textured 3D triangle (SVC #0x101)
         0x91000160, // ADD  X0, X11, #0
         0x910001A1, // ADD  X1, X13, #0
-        0xD4000521, // SVC  #0x29 (svcSubmitGpuPushbuffer)
+        0xD4002021, // SVC  #0x101 (ext::SUBMIT_GPU_PUSHBUFFER)
 
         // 5. Read rendered center texel from VRAM [X12] into W0 and exit!
         0xB9400180, // LDR  W0, [X12] (Expected: 0xFF40C0FF = 4282433791)
@@ -1223,19 +1225,19 @@ fn run_built_in_demo() {
     cpu.regs.write_x(12, rt_addr8 + (8 * 16 + 8) * 4);
 
     // Guest AArch64 program:
-    //  1. Calls SVC #0x1E (svcGetInfo: X1 = 0 -> CoreMask = 0xFF for 8x Cortex-A78C cores)
+    //  1. Calls SVC #0x29 (svcGetInfo: X1 = 0 -> CoreMask = 0xFF for 8x Cortex-A78C cores)
     //  2. Saves CoreMask in X4
-    //  3. Submits NVGPU Z-Buffered 3D Draw Pushbuffer via SVC #0x29
+    //  3. Submits NVGPU Z-Buffered 3D Draw Pushbuffer via SVC #0x101
     //  4. Loads center pixel from VRAM [X12] (0xFF00FF00 = Pure Green, proving near triangle occluded far red triangle!)
     //  5. Combines (CenterPixel | CoreMask) -> 0xFF00FFFF in X0 and exits!
     #[rustfmt::skip]
     let test8_insns: Vec<u32> = vec![
         0xD2800001, // MOVZ X1, #0      (InfoType::CoreMask = 0)
-        0xD40003C1, // SVC  #0x1E       (svcGetInfo -> X1 = 0xFF)
+        0xD4000521, // SVC  #0x29       (svcGetInfo -> X1 = 0xFF)
         0x91000024, // ADD  X4, X1, #0  (X4 = 0xFF)
         0x91000140, // ADD  X0, X10, #0 (pb_addr8)
         0x91000161, // ADD  X1, X11, #0 (word_count)
-        0xD4000521, // SVC  #0x29       (svcSubmitGpuPushbuffer)
+        0xD4002021, // SVC  #0x101      (ext::SUBMIT_GPU_PUSHBUFFER)
         0xB9400180, // LDR  W0, [X12]   (0xFF00FF00)
         0xAA040000, // ORR  X0, X0, X4  (0xFF00FF00 | 0xFF = 0xFF00FFFF = 4278255615)
         0xD40000E1, // SVC  #0x07       (svcExitProcess)
@@ -1313,9 +1315,9 @@ fn run_built_in_demo() {
     //  3. FMUL V3.4S, V1.4S, V2.4S  ; 4-lane SIMD multiply -> [20.0, 60.0, 120.0, 200.0]
     //  4. FADD V0.4S, V3.4S, V1.4S  ; 4-lane SIMD add      -> [30.0, 80.0, 150.0, 240.0]
     //  5. STR  Q0, [X10, #32]       ; Store 128-bit result vector to [0x80020020]
-    //  6. SVC  #0x2C                ; svcWriteSaveDataFile("save:/profile.sav", [0x80020020], 16 bytes)
-    //  7. SVC  #0x29                ; svcSubmitGpuPushbuffer (2x upscaler model)
-    //  8. Read back saved profile data via SVC #0x2A ("save:/profile.sav") into [0x80020040]
+    //  6. SVC  #0x104                ; svcWriteSaveDataFile("save:/profile.sav", [0x80020020], 16 bytes)
+    //  7. SVC  #0x101                ; svcSubmitGpuPushbuffer (2x upscaler model)
+    //  8. Read back saved profile data via SVC #0x102 ("save:/profile.sav") into [0x80020040]
     //  9. Load lane 0 float (30.0f) into S0 and bytes_read (16) into X0, then exit!
     #[rustfmt::skip]
     let test9_insns: Vec<u32> = vec![
@@ -1325,24 +1327,24 @@ fn run_built_in_demo() {
         0x4E21D460, // FADD V0.4S, V3.4S, V1.4S
         0x3D800940, // STR  Q0, [X10, #32]
 
-        // Write 16-byte SIMD vector result to "save:/profile.sav" (SVC #0x2C)
+        // Write 16-byte SIMD vector result to "save:/profile.sav" (SVC #0x104)
         0x91000160, // ADD  X0, X11, #0  (path_ptr)
         0x91000181, // ADD  X1, X12, #0  (path_len)
         0x91008142, // ADD  X2, X10, #32 (src_addr = 0x80020020)
         0xD2800203, // MOVZ X3, #16      (data_len = 16 bytes)
-        0xD4000581, // SVC  #0x2C        (svcWriteSaveDataFile)
+        0xD4002081, // SVC  #0x104       (ext::WRITE_SAVE_DATA_FILE)
 
-        // Dispatch 2x upscaler model (SVC #0x29)
+        // Dispatch 2x upscaler model (SVC #0x101)
         0x910001A0, // ADD  X0, X13, #0  (pb_addr9)
         0x910001C1, // ADD  X1, X14, #0  (word_count)
-        0xD4000521, // SVC  #0x29        (svcSubmitGpuPushbuffer)
+        0xD4002021, // SVC  #0x101       (ext::SUBMIT_GPU_PUSHBUFFER)
 
-        // Read back "save:/profile.sav" into [0x80020040] via SVC #0x2A
+        // Read back "save:/profile.sav" into [0x80020040] via SVC #0x102
         0x91000160, // ADD  X0, X11, #0  (path_ptr)
         0x91000181, // ADD  X1, X12, #0  (path_len)
         0x91010142, // ADD  X2, X10, #64 (dst_addr = 0x80020040)
         0xD2800203, // MOVZ X3, #16      (max_len = 16)
-        0xD4000541, // SVC  #0x2A        (svcReadRomFsFile -> X1 = 16 bytes read)
+        0xD4002041, // SVC  #0x102       (ext::READ_ROMFS_FILE -> X1 = 16 bytes read)
         0x91000020, // ADD  X0, X1, #0   (X0 = 16)
         0xD40000E1, // SVC  #0x07        (svcExitProcess)
     ];
@@ -1536,7 +1538,7 @@ fn run_built_in_demo() {
     // ---------------------------------------------------------
     // Test 15: Switch 2 NVN 3D Command Buffer Execution & Multi-Section RomFS Asset Loading
     //          Boots an authentic AES-128-CTR encrypted NCA3 with ExeFS (Section 0) and RomFS (Section 1).
-    //          Guest builds an NVN command buffer (Clear Color + Draw) and submits via SVC #0x2D,
+    //          Guest builds an NVN command buffer (Clear Color + Draw) and submits via SVC #0x105,
     //          verifies RomFS asset mounting, and exits cleanly.
     // ---------------------------------------------------------
     println!("\n[Stage 15/25] NVN 3D Command Buffer Execution & Multi-Section RomFS Mount");
@@ -1583,7 +1585,7 @@ fn run_built_in_demo() {
         // 3. Guest AArch64 program in ExeFS Section 0:
         //    X0 = stream_addr (0x8100_0000)
         //    X1 = stream_words.len()
-        //    SVC #0x2D (svcNvnSubmitCommandBuffer) -> returns X0 = 0 (Success), X1 = commands_executed
+        //    SVC #0x105 (svcNvnSubmitCommandBuffer) -> returns X0 = 0 (Success), X1 = commands_executed
         //    X19 = X1 (save command count)
         //    X0 = 0x239 (T239 status code)
         //    SVC #0x07 (svcExitProcess)
@@ -1592,7 +1594,7 @@ fn run_built_in_demo() {
             0xD2800000, // movz x0, #0
             0xF2B02000, // movk x0, #0x8100, lsl #16 (X0 = 0x81000000)
             0xD2800001 | ((stream_words.len() as u32) << 5), // movz x1, #stream_words.len()
-            0xD40005A1, // SVC #0x2D (svcNvnSubmitCommandBuffer)
+            0xD40020A1, // SVC #0x105 (ext::NVN_SUBMIT_COMMAND_BUFFER)
             0xAA0103F3, // mov x19, x1 (X19 = commands_executed = 3)
             0xD2804720, // movz x0, #0x239 (T239)
             0xD40000E1, // SVC #0x07 (svcExitProcess)
@@ -1640,7 +1642,7 @@ fn run_built_in_demo() {
         cpu15.regs.pc = DEFAULT_BASE_ADDR;
         let outcome = run_vm(cpu15, mmu15, kernel15, 10_000);
         if gate.expect_exit(15, &outcome, 0x239) {
-            println!("  [NVN Driver] Fast-path command buffer executed via SVC #0x2D & rendered into VRAM 0x{:08X}", fb_addr);
+            println!("  [NVN Driver] Fast-path command buffer executed via SVC #0x105 & rendered into VRAM 0x{:08X}", fb_addr);
         }
     }
     println!();
@@ -2140,9 +2142,9 @@ fn run_built_in_demo() {
     // Stage 19: Nintendo SDK (nnSdk) C++ Runtime & crt0 Arena Allocation
     //            1. Mounting RomFS & SaveData filesystems
     //            2. nn::mem::StandardAllocator heap arena initialization
-    //            3. Guest AArch64 invocation of nn::mem::Allocate via SVC #0x30
-    //            4. Guest AArch64 invocation of nn::os::SleepThread via SVC #0x30
-    //            5. Guest AArch64 invocation of nn::fs::OpenFile & ReadFile via SVC #0x30
+    //            3. Guest AArch64 invocation of nn::mem::Allocate via SVC #0x106
+    //            4. Guest AArch64 invocation of nn::os::SleepThread via SVC #0x106
+    //            5. Guest AArch64 invocation of nn::fs::OpenFile & ReadFile via SVC #0x106
     //            6. Guest verification loop returning exit code 0x999
     // ---------------------------------------------------------
     println!("\n[Stage 19/25] Nintendo SDK (nnSdk) C++ Runtime & crt0 Arena Allocation");
@@ -2165,21 +2167,21 @@ fn run_built_in_demo() {
         let path_bytes = b"rom:/manifest.json";
         mmu19.write_bytes(path_va, path_bytes).unwrap();
 
-        // 3. Guest AArch64 program invoking nnSdk via SVC #0x30:
+        // 3. Guest AArch64 program invoking nnSdk via SVC #0x106:
         //    X0 = 0x2001 (nn::mem::StandardAllocator::Allocate)
         //    X1 = 4096   (size)
         //    X2 = 64     (alignment)
-        //    SVC #0x30   -> returns X0=0 (Success), X1=Allocated_Address
+        //    SVC #0x106   -> returns X0=0 (Success), X1=Allocated_Address
         //
         //    X0 = 0x3001 (nn::os::SleepThread)
         //    X1 = 100000 (100us)
-        //    SVC #0x30   -> returns X0=0
+        //    SVC #0x106   -> returns X0=0
         //
         //    X0 = 0x4001 (nn::fs::OpenFile)
         //    X1 = path_va
         //    X2 = 18     (path_len)
         //    X3 = 1      (mode=Read)
-        //    SVC #0x30   -> returns X0=0, X1=FileHandle
+        //    SVC #0x106   -> returns X0=0, X1=FileHandle
         //
         //    MOV X0, #0x999
         //    SVC #0x07   (Exit)
@@ -2189,13 +2191,13 @@ fn run_built_in_demo() {
             0xD2840020, // movz x0, #0x2001 (func_id: Allocate)
             0xD2820001, // movz x1, #4096   (size)
             0xD2800802, // movz x2, #64     (alignment)
-            0xD4000601, // svc  #0x30       (svcNnSdkDispatch)
+            0xD40020C1, // svc  #0x106      (ext::NNSDK_DISPATCH)
             0xAA0103F3, // mov  x19, x1     (x19 = allocated buffer)
 
             // 2. SleepThread 100 microseconds
             0xD2860020, // movz x0, #0x3001 (func_id: SleepThread)
             0xD2986A01, // movz x1, #50000  (50us)
-            0xD4000601, // svc  #0x30
+            0xD40020C1, // svc  #0x106
 
             // 3. OpenFile "rom:/manifest.json"
             0xD2880020, // movz x0, #0x4001 (func_id: OpenFile)
@@ -2203,7 +2205,7 @@ fn run_built_in_demo() {
             0xF2A00041, // movk x1, #0x8002, lsl #16 (x1 = path_va 0x80021000)
             0xD2800242, // movz x2, #18     (path_len)
             0xD2800023, // movz x3, #1      (mode: Read)
-            0xD4000601, // svc  #0x30       -> x0=0, x1=handle
+            0xD40020C1, // svc  #0x106      -> x0=0, x1=handle
             0xAA0103F4, // mov  x20, x1     (x20 = file handle)
 
             // 4. ReadFile(handle, offset=0, dest=x19, size=48)
@@ -2212,7 +2214,7 @@ fn run_built_in_demo() {
             0xD2800002, // movz x2, #0      (offset = 0)
             0xAA1303E3, // mov  x3, x19     (dest = allocated buffer)
             0xD2800604, // movz x4, #48     (size = 48)
-            0xD4000601, // svc  #0x30       -> x0=0, x1=bytes_read
+            0xD40020C1, // svc  #0x106      -> x0=0, x1=bytes_read
 
             // 5. Exit with verification code 0x999
             0xD2813320, // movz x0, #0x999
@@ -2329,7 +2331,7 @@ fn run_built_in_demo() {
         std::fs::write(exefs.join("subsdk0"), &subsdk_nso).unwrap();
 
         // 3. Write main executable NSO:
-        //    Calls StandardAllocator::Allocate via SVC #0x30, then exits with 0xBBB
+        //    Calls StandardAllocator::Allocate via SVC #0x106, then exits with 0xBBB
         #[rustfmt::skip]
         let main_program: Vec<u32> = vec![
             // Request 64KB heap allocation from StandardAllocator (Dispatch ID = 1)
@@ -2338,7 +2340,7 @@ fn run_built_in_demo() {
             0xD2800002, // movz x2, #0        (offset high)
             0xF2A00022, // movk x2, #1, lsl 16 (0x10000 = 64 KB)
             0xD2800803, // movz x3, #64       (64-byte alignment)
-            0xD4000601, // svc  #0x30        (svcNnSdkDispatch)
+            0xD40020C1, // svc  #0x106       (ext::NNSDK_DISPATCH)
 
             // Verify allocation pointer returned in X0 is non-zero
             0xB4000080, // cbz  x0, #16      (fail if null)
@@ -3210,7 +3212,7 @@ fn run_gpu3d_demo(max_frames: usize) {
     //   STR  S0, [X5, #0]     ; Store updated vertex coordinate back to Vertex Buffer
     //   ADD  X0, X6, #0       ; X0 = GPFIFO Pushbuffer address
     //   ADD  X1, X7, #0       ; X1 = Pushbuffer word count
-    //   SVC  #0x29            ; svcSubmitGpuPushbuffer -> Tegra 3D Engine clears & rasterizes triangle!
+    //   SVC  #0x101            ; svcSubmitGpuPushbuffer -> Tegra 3D Engine clears & rasterizes triangle!
     //   SVC  #0x18            ; svcWaitSynchronization (VSync Frame Flip)
     //   B    frame_loop
     #[rustfmt::skip]
@@ -3220,7 +3222,7 @@ fn run_gpu3d_demo(max_frames: usize) {
         0xBD0000A0, // STR  S0, [X5, #0]
         0x910000C0, // ADD  X0, X6, #0
         0x910000E1, // ADD  X1, X7, #0
-        0xD4000521, // SVC  #0x29 (svcSubmitGpuPushbuffer)
+        0xD4002021, // SVC  #0x101 (ext::SUBMIT_GPU_PUSHBUFFER)
         0xD4000301, // SVC  #0x18 (VSync Flip!)
         0x17FFFFF9, // B    frame_loop (-7 instructions)
     ];
@@ -3350,7 +3352,7 @@ fn run_directory_package(dir_path: &str, gui_mode: bool) {
     }
 }
 
-fn run_file(path: &str, gui_mode: bool) {
+fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
     if std::path::Path::new(path).is_dir() {
         run_directory_package(path, gui_mode);
         return;
@@ -3364,7 +3366,7 @@ fn run_file(path: &str, gui_mode: bool) {
         }
     };
 
-    let (mut cpu, mut mmu, kernel) = setup_vm();
+    let (mut cpu, mut mmu, mut kernel) = setup_vm();
     let default_key: [u8; 16] = [
         0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
         0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
@@ -3372,15 +3374,20 @@ fn run_file(path: &str, gui_mode: bool) {
 
     match BootLoader::load_any_package(&bytes, DEFAULT_BASE_ADDR, &default_key, &mut mmu) {
         Ok(info) => {
+            let is_nro = info.format == "NRO0";
             println!("[BootLoader] Successfully loaded package:");
             println!("  Format      : {}", info.format);
             println!("  Title ID    : 0x{:016X}", info.title_id);
             println!("  Code size   : 0x{:08X} ({} bytes)", info.code_size, info.code_size);
             println!("  MOD0 relocs : {}", info.relocations_applied);
 
-            // Configure standard Homebrew ABI environment if format is NRO0
-            if info.format == "NRO0" {
-                let _ = loader::HomebrewEnvironment::setup(&mut cpu, &mut mmu, 0x7FFF_FE00, &[path, "--ounce-core"]);
+            // Homebrew ABI for NRO0: ConfigEntry list in X0 (X1 = -1), a heap handed over so libnx skips
+            // svcSetHeapSize, and X30 at a svcExitProcess stub, which is where libnx's exit returns.
+            if is_nro {
+                if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, guest_args) {
+                    eprintln!("[Loader Error] homebrew environment: {}", e);
+                    return;
+                }
             }
 
             let fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
@@ -3401,13 +3408,48 @@ fn run_file(path: &str, gui_mode: bool) {
                 run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0);
             } else {
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
-                run_vm(cpu, mmu, kernel, 100_000);
+                // libnx startup alone runs tens of thousands of instructions.
+                let budget = if is_nro { NRO_INSTRUCTION_BUDGET } else { 100_000 };
+                run_vm(cpu, mmu, kernel, budget);
             }
         }
         Err(e) => {
             eprintln!("[Loader Error] {}", e);
         }
     }
+}
+
+/// Heap handed to homebrew through the `OverrideHeap` ConfigEntry.
+const NRO_HEAP_SIZE: usize = 0x200_0000; // 32 MB
+const NRO_CONFIG_ADDR: u64 = 0x7FFF_0000;
+const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
+/// `CurrentThread` pseudo-handle, passed as the main thread handle.
+const NRO_MAIN_THREAD_HANDLE: u32 = 0xFFFF_8000;
+const NRO_INSTRUCTION_BUDGET: usize = 50_000_000;
+
+/// Sets up the homebrew loader ABI for an NRO loaded at `DEFAULT_BASE_ADDR`.
+fn setup_homebrew_nro(
+    cpu: &mut Cpu,
+    mmu: &mut Memory,
+    kernel: &mut HorizonKernel,
+    path: &str,
+    guest_args: &[&str],
+) -> Result<(), mmu::MemoryError> {
+    mmu.map_range(kernel.heap_base, NRO_HEAP_SIZE, Permission::READ_WRITE);
+    kernel.heap_size = NRO_HEAP_SIZE;
+    // libnx splits the argv string on spaces and honours double quotes.
+    let quote = |a: &str| if a.contains(' ') { format!("\"{a}\"") } else { a.to_string() };
+    let argv = std::iter::once(path).chain(guest_args.iter().copied()).map(quote).collect::<Vec<_>>().join(" ");
+    loader::HomebrewConfig {
+        main_thread_handle: Some(NRO_MAIN_THREAD_HANDLE),
+        heap: Some((kernel.heap_base, NRO_HEAP_SIZE as u64)),
+        argv: Some(argv),
+        ..Default::default()
+    }
+    .setup(cpu, mmu, NRO_CONFIG_ADDR)?;
+    let stub = loader::HomebrewConfig::install_exit_stub(mmu, NRO_EXIT_STUB_ADDR)?;
+    cpu.regs.write_x(30, stub);
+    Ok(())
 }
 
 /// Synthesizes a clean-room unencrypted loose Switch 2 directory package (OunceCake format)
@@ -3532,18 +3574,18 @@ fn build_and_boot_showcase_nsp(out_path: &str) {
     ];
 
     // Self-contained AArch64 Switch 2 Showcase Binary:
-    //  1. Queries Switch 2 8-Core Cortex-A78C CoreMask (0xFF) via SVC #0x1E (svcGetInfo)
-    //  2. Queries Switch 2 12 GB LPDDR5 TotalMemoryAvailable via SVC #0x1E (info_type = 6)
+    //  1. Queries Switch 2 8-Core Cortex-A78C CoreMask (0xFF) via SVC #0x29 (svcGetInfo)
+    //  2. Queries Switch 2 12 GB LPDDR5 TotalMemoryAvailable via SVC #0x29 (info_type = 6)
     //  3. Computes (12 GB >> 30) = 12 GB in X2 and combines with CoreMask (0xFF00 | 12 = 0xFF0C = 65292)
     //  4. Exits cleanly via SVC #0x07 (svcExitProcess)
     #[rustfmt::skip]
     let showcase_insns: Vec<u32> = vec![
         0xD2800001, // MOVZ X1, #0      (InfoType::CoreMask = 0)
-        0xD40003C1, // SVC  #0x1E       (svcGetInfo -> X1 = 0xFF)
+        0xD4000521, // SVC  #0x29       (svcGetInfo -> X1 = 0xFF)
         0xD2800102, // MOVZ X2, #8
         0x9AC22024, // LSLV X4, X1, X2  (X4 = 0xFF << 8 = 0xFF00)
         0xD28000C1, // MOVZ X1, #6      (InfoType::TotalMemoryAvailable = 6 -> 12 GB)
-        0xD40003C1, // SVC  #0x1E       (svcGetInfo -> X1 = 12 * 1024^3)
+        0xD4000521, // SVC  #0x29       (svcGetInfo -> X1 = 12 * 1024^3)
         0xD28003C2, // MOVZ X2, #30
         0x9AC22425, // LSRV X5, X1, X2  (X5 = 12 GB >> 30 = 12)
         0xAA050080, // ORR  X0, X4, X5  (X0 = 0xFF0C = 65292: 8 Cores + 12 GB LPDDR5!)
@@ -3566,7 +3608,7 @@ fn build_and_boot_showcase_nsp(out_path: &str) {
         out_path
     );
 
-    run_file(out_path, false);
+    run_file(out_path, &[], false);
 }
 
 #[cfg(test)]
