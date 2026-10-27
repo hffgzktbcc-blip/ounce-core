@@ -15,7 +15,7 @@ It prints `ounce-audren played=0x00000960` (2400 samples) and `ounce-audren resu
 exactly the tone on both channels, followed by silence.
 
 To listen: `cargo run --release -- run tests/fixtures/nro/audren/audren.nro long` loops the tone for
-2 seconds; the runner plays libnx audio renderer output on the host as it is mixed, paced by the
+2 seconds at 20% volume; the runner plays libnx audio renderer output on the host as it is mixed, paced by the
 device's playback clock.
 
 Rebuild: `make -C tests/fixtures/nro/audren clean all` (byte-reproducible).

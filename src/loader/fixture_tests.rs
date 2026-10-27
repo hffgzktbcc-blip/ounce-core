@@ -378,15 +378,16 @@ fn libnx_audren_fixture_plays_a_tone() {
     assert!(frames[start + 2400..].iter().all(|&f| f == (0, 0)));
 }
 
-/// The audren fixture's "long" mode: a looping wave buffer plays for 400 frames (2 seconds of audio).
+/// The audren fixture's "long" mode: a looping wave buffer plays for 400 frames (2 seconds of audio) at
+/// 20% volume.
 #[test]
 fn libnx_audren_fixture_loops_for_two_seconds() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/audren/audren.nro");
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, _, kernel) = boot_with_kernel_state(&nro, &["long"]);
     assert!(output.ends_with("ounce-audren result=0x00000EEE\n"), "output: {output:?}");
-    // 400 frames of 240 stereo samples were mixed, with the tone all the way through.
+    // 400 frames of 240 stereo samples were mixed, with the tone at 20% volume all the way through.
     let pcm = &kernel.audren.output_ring_buffer;
     assert!(pcm.len() >= 400 * 240 * 2, "{} samples", pcm.len());
-    assert_eq!(pcm.iter().filter(|&&s| s.abs() == 8000).count() / 2, 400 * 240);
+    assert_eq!(pcm.iter().filter(|&&s| s.abs() == 1600).count() / 2, 400 * 240);
 }

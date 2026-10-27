@@ -3,7 +3,8 @@
 // pool, a stereo device sink, one voice mixed to both channels, then audrvUpdate / audrenWaitFrame until
 // the wave buffer is done. Reports through svcOutputDebugString: "ounce-audren played=0x........"
 // and "ounce-audren result=0x00000EEE" when every step worked, else 0xBAD0000 | failed steps.
-// With the argument "long" the tone loops for 2 seconds (400 frames), to listen to under `ounce-core run`.
+// With the argument "long" the tone loops for 2 seconds (400 frames) at 20% volume, to listen to under
+// `ounce-core run`.
 #include <switch.h>
 #include <malloc.h>
 #include <string.h>
@@ -73,6 +74,8 @@ int main(int argc, char **argv)
         audrvVoiceSetDestinationMix(&drv, 0, AUDREN_FINAL_MIX_ID);
         audrvVoiceSetMixFactor(&drv, 0, 1.0f, 0, 0);
         audrvVoiceSetMixFactor(&drv, 0, 1.0f, 0, 1);
+        if (long_mode)
+            audrvVoiceSetVolume(&drv, 0, 0.2f); // the listening mode plays at 20% (a full-scale square wave is loud)
         CHECK(5, audrvVoiceAddWaveBuf(&drv, 0, &wb));
         audrvVoiceStart(&drv, 0);
     }
