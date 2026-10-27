@@ -44,6 +44,11 @@ pub const DT_RELRENT: i64 = 37;
 pub const TLS_TCB_SIZE: u64 = 16;
 /// Static TLS blocks are aligned to this. NSO/NRO images carry no `PT_TLS`, so the real alignment is unknown.
 pub const TLS_BLOCK_ALIGN: u64 = 16;
+/// Limits on guest-described TLS, so a corrupt image cannot make every thread allocate gigabytes.
+/// Largest segment (including bss) the loaders will map for one image section.
+const MAX_SEGMENT_SIZE: u64 = 256 << 20;
+const MAX_TLS_TOTAL: u64 = 64 << 20;
+const MAX_TLS_ALIGN: u64 = 0x1_0000;
 /// Guest code for the static TLSDESC resolver: `ldr x0, [x0, #8]; ret`.
 pub const TLSDESC_RESOLVER_CODE: [u32; 2] = [0xF940_0400, 0xD65F_03C0];
 
@@ -157,6 +162,9 @@ pub enum LoadError {
     #[error("Invalid NRO magic: expected 'NRO0', got {0:?}")]
     InvalidMagic([u8; 4]),
 
+    #[error("Image segment layout is out of range (offset {offset:#x}, size {size:#x})")]
+    SegmentOutOfRange { offset: u64, size: u64 },
+
     #[error("Memory mapping error: {0}")]
     Memory(#[from] MemoryError),
 
@@ -210,6 +218,15 @@ impl NroLoader {
         })
     }
 
+    /// Rejects a segment that would wrap the address space or map more than `MAX_SEGMENT_SIZE`.
+    fn check_segment(base_addr: u64, offset: u64, size: u64) -> Result<(), LoadError> {
+        let end = base_addr.checked_add(offset).and_then(|a| a.checked_add(size));
+        if size > MAX_SEGMENT_SIZE || end.is_none() {
+            return Err(LoadError::SegmentOutOfRange { offset, size });
+        }
+        Ok(())
+    }
+
     /// Loads an NRO executable into virtual memory, configures segments, and applies MOD0 relocations.
     pub fn load_into_memory(
         bytes: &[u8],
@@ -217,6 +234,9 @@ impl NroLoader {
         mmu: &mut Memory,
     ) -> Result<NroHeader, LoadError> {
         let mut header = Self::parse_header(bytes)?;
+        Self::check_segment(base_addr, header.text_offset as u64, 0)?;
+        Self::check_segment(base_addr, header.rodata_offset as u64, header.rodata_size as u64)?;
+        Self::check_segment(base_addr, header.data_offset as u64, header.data_size as u64 + header.bss_size as u64)?;
 
         // 1. Map and write .text segment (Read + Write + Execute)
         let text_start = header.text_offset as usize;
@@ -247,7 +267,7 @@ impl NroLoader {
         let data_addr = base_addr + header.data_offset as u64;
         let data_start = header.data_offset as usize;
         let data_end = data_start + header.data_size as usize;
-        let total_data_size = (header.data_size + header.bss_size) as usize;
+        let total_data_size = header.data_size as usize + header.bss_size as usize;
 
         if data_end <= bytes.len() && total_data_size > 0 {
             mmu.map_range(data_addr, total_data_size, Permission::READ_WRITE);
@@ -303,7 +323,7 @@ impl NroLoader {
         let data_size = LittleEndian::read_u32(&bytes[0x38..0x3C]) as usize;
         let bss_size = LittleEndian::read_u32(&bytes[0x3C..0x40]) as usize;
 
-        if text_file_off + text_size <= bytes.len() && text_size > 0 {
+        if text_file_off.checked_add(text_size).is_some_and(|e| e <= bytes.len()) && text_size > 0 {
             mmu.map_range(
                 base_addr + text_mem_off,
                 text_size,
@@ -315,7 +335,7 @@ impl NroLoader {
             )?;
         }
 
-        if ro_file_off + ro_size <= bytes.len() && ro_size > 0 {
+        if ro_file_off.checked_add(ro_size).is_some_and(|e| e <= bytes.len()) && ro_size > 0 {
             mmu.map_range(base_addr + ro_mem_off, ro_size, Permission::READ_WRITE);
             mmu.write_bytes(
                 base_addr + ro_mem_off,
@@ -323,8 +343,11 @@ impl NroLoader {
             )?;
         }
 
+        Self::check_segment(base_addr, text_mem_off, text_size as u64)?;
+        Self::check_segment(base_addr, ro_mem_off, ro_size as u64)?;
+        Self::check_segment(base_addr, data_mem_off, data_size as u64 + bss_size as u64)?;
         let total_data = data_size + bss_size;
-        if data_file_off + data_size <= bytes.len() && total_data > 0 {
+        if data_file_off.checked_add(data_size).is_some_and(|e| e <= bytes.len()) && total_data > 0 {
             mmu.map_range(base_addr + data_mem_off, total_data, Permission::READ_WRITE);
             if data_size > 0 {
                 mmu.write_bytes(
@@ -355,13 +378,13 @@ impl NroLoader {
             Ok(off) if off > 0 => off as u64,
             _ => return None,
         };
-        let mod0_addr = base_addr + mod0_rel;
+        let mod0_addr = base_addr.wrapping_add(mod0_rel);
         let mut magic = [0u8; 4];
         if mmu.read_bytes(mod0_addr, &mut magic).is_err() || &magic != b"MOD0" {
             return None;
         }
-        let dyn_rel = mmu.read_u32(mod0_addr + 4).ok()? as i32 as i64;
-        Some((mod0_addr as i64 + dyn_rel) as u64)
+        let dyn_rel = mmu.read_u32(mod0_addr.wrapping_add(4)).ok()? as i32 as i64;
+        Some(mod0_addr.wrapping_add(dyn_rel as u64))
     }
 
     /// Parses the `.dynamic` section described by the MOD0 header.
@@ -371,7 +394,7 @@ impl NroLoader {
 
         // Walk Elf64_Dyn entries (16 bytes each: d_tag i64, d_val u64)
         for i in 0..256u64 {
-            let entry_addr = dyn_addr + i * 16;
+            let entry_addr = dyn_addr.wrapping_add(i * 16);
             let d_tag = match mmu.read_u64(entry_addr) {
                 Ok(t) => t as i64,
                 Err(_) => break,
@@ -379,7 +402,7 @@ impl NroLoader {
             if d_tag == DT_NULL {
                 break;
             }
-            let d_val = mmu.read_u64(entry_addr + 8).unwrap_or(0);
+            let d_val = mmu.read_u64(entry_addr.wrapping_add(8)).unwrap_or(0);
             match d_tag {
                 DT_RELA => info.rela = Some(d_val),
                 DT_RELASZ => info.rela_size = d_val,
@@ -431,13 +454,13 @@ impl NroLoader {
 
     fn symbol_name(base_addr: u64, mmu: &Memory, info: &DynamicInfo, name_off: u32) -> String {
         let strtab = match info.strtab {
-            Some(s) => base_addr + s + name_off as u64,
+            Some(s) => base_addr.wrapping_add(s).wrapping_add(name_off as u64),
             None => return String::new(),
         };
         let mut name = Vec::new();
         for i in 0..256u64 {
             let mut b = [0u8; 1];
-            if mmu.read_bytes(strtab + i, &mut b).is_err() || b[0] == 0 {
+            if mmu.read_bytes(strtab.wrapping_add(i), &mut b).is_err() || b[0] == 0 {
                 break;
             }
             name.push(b[0]);
@@ -449,10 +472,10 @@ impl NroLoader {
     /// hash table. Modules with neither export nothing.
     fn symbol_count(base_addr: u64, mmu: &Memory, info: &DynamicInfo) -> u64 {
         if let Some(h) = info.hash {
-            return mmu.read_u32(base_addr + h + 4).unwrap_or(0) as u64;
+            return mmu.read_u32(base_addr.wrapping_add(h).wrapping_add(4)).unwrap_or(0) as u64;
         }
         info.gnu_hash
-            .and_then(|h| Self::gnu_hash_symbol_count(mmu, base_addr + h))
+            .and_then(|h| Self::gnu_hash_symbol_count(mmu, base_addr.wrapping_add(h)))
             .unwrap_or(0)
     }
 
@@ -460,21 +483,21 @@ impl NroLoader {
     /// and chains are ordered by symbol index, so the count is one past the end of the highest bucket's chain.
     fn gnu_hash_symbol_count(mmu: &Memory, table: u64) -> Option<u64> {
         let nbuckets = mmu.read_u32(table).ok()? as u64;
-        let symoffset = mmu.read_u32(table + 4).ok()? as u64;
-        let bloom_size = mmu.read_u32(table + 8).ok()? as u64;
-        let buckets = table + 16 + bloom_size * 8;
-        let chains = buckets + nbuckets * 4;
+        let symoffset = mmu.read_u32(table.wrapping_add(4)).ok()? as u64;
+        let bloom_size = mmu.read_u32(table.wrapping_add(8)).ok()? as u64;
+        let buckets = table.wrapping_add(16 + bloom_size * 8);
+        let chains = buckets.wrapping_add(nbuckets * 4);
 
         let mut last = 0u64;
         for i in 0..nbuckets {
-            last = last.max(mmu.read_u32(buckets + i * 4).ok()? as u64);
+            last = last.max(mmu.read_u32(buckets.wrapping_add(i * 4)).ok()? as u64);
         }
         if last < symoffset {
             return Some(symoffset);
         }
         // Bound the walk so a corrupt table cannot loop for long.
         for _ in 0..0x10_0000 {
-            let hash = mmu.read_u32(chains + (last - symoffset) * 4).ok()?;
+            let hash = mmu.read_u32(chains.wrapping_add((last - symoffset) * 4)).ok()?;
             if hash & 1 != 0 {
                 return Some(last + 1);
             }
@@ -492,18 +515,18 @@ impl NroLoader {
             None => return exports,
         };
         let symtab = match info.symtab {
-            Some(s) => base_addr + s,
+            Some(s) => base_addr.wrapping_add(s),
             None => return exports,
         };
         let stride = Self::sym_stride(&info);
         for idx in 1..Self::symbol_count(base_addr, mmu, &info) {
-            let Some(sym) = Self::read_symbol(mmu, symtab + idx * stride) else { break };
+            let Some(sym) = Self::read_symbol(mmu, symtab.wrapping_add(idx.wrapping_mul(stride))) else { break };
             if sym.shndx == SHN_UNDEF || sym.bind == STB_LOCAL || sym.kind == STT_TLS {
                 continue;
             }
             let name = Self::symbol_name(base_addr, mmu, &info, sym.name);
             if !name.is_empty() {
-                exports.entry(name).or_insert(base_addr + sym.value);
+                exports.entry(name).or_insert(base_addr.wrapping_add(sym.value));
             }
         }
         exports
@@ -513,10 +536,10 @@ impl NroLoader {
     fn tls_symbols(base_addr: u64, mmu: &Memory) -> Vec<(String, u64, u64, u8)> {
         let mut out = Vec::new();
         let Some(info) = Self::parse_dynamic(base_addr, mmu) else { return out };
-        let Some(symtab) = info.symtab.map(|s| base_addr + s) else { return out };
+        let Some(symtab) = info.symtab.map(|s| base_addr.wrapping_add(s)) else { return out };
         let stride = Self::sym_stride(&info);
         for idx in 1..Self::symbol_count(base_addr, mmu, &info) {
-            let Some(sym) = Self::read_symbol(mmu, symtab + idx * stride) else { break };
+            let Some(sym) = Self::read_symbol(mmu, symtab.wrapping_add(idx.wrapping_mul(stride))) else { break };
             if sym.shndx == SHN_UNDEF || sym.kind != STT_TLS {
                 continue;
             }
@@ -546,17 +569,25 @@ impl NroLoader {
         let mut cursor = TLS_TCB_SIZE;
         for &base in module_bases {
             let symbols = Self::tls_symbols(base, mmu);
-            let symbol_size = symbols.iter().map(|(_, off, sz, _)| off + sz).max().unwrap_or(0);
+            let symbol_size = symbols.iter().map(|(_, off, sz, _)| off.saturating_add(*sz)).max().unwrap_or(0);
             let template = templates.get(&base);
             let size = template.map_or(symbol_size, |t| t.memsz.max(symbol_size));
             if size == 0 {
                 continue;
             }
-            let align = template.map_or(TLS_BLOCK_ALIGN, |t| t.align.max(1).next_power_of_two());
-            cursor = (cursor + align - 1) & !(align - 1);
+            // A block is copied into every thread's TLS area, so a corrupt size must not ask for gigabytes.
+            if size > MAX_TLS_TOTAL {
+                continue;
+            }
+            let align = template.map_or(TLS_BLOCK_ALIGN, |t| t.align.clamp(1, MAX_TLS_ALIGN).next_power_of_two());
+            let start = (cursor + align - 1) & !(align - 1);
+            if start + size > MAX_TLS_TOTAL {
+                continue;
+            }
+            cursor = start;
             let module_id = layout.blocks.len() as u64 + 1;
             let (init_addr, init_size) = match template {
-                Some(t) => (base + t.vaddr, t.filesz.min(size)),
+                Some(t) => (base.wrapping_add(t.vaddr), t.filesz.min(size)),
                 None => {
                     // Only fires when a module exports these names in `.dynsym`. libnx's `switch.ld`
                     // defines `__tdata_lma`/`__tdata_lma_end` with `PROVIDE_HIDDEN`, so libnx NROs and
@@ -607,8 +638,8 @@ impl NroLoader {
             return None;
         }
         (0..phnum).find_map(|i| {
-            let start = phoff.checked_add(i * phentsize)?;
-            let ph = elf.get(start..start + 0x38)?;
+            let start = phoff.checked_add(i.checked_mul(phentsize)?)?;
+            let ph = elf.get(start..start.checked_add(0x38)?)?;
             (LittleEndian::read_u32(&ph[0..4]) == PT_TLS).then(|| TlsTemplate {
                 vaddr: LittleEndian::read_u64(&ph[0x10..0x18]),
                 filesz: LittleEndian::read_u64(&ph[0x20..0x28]),
@@ -658,7 +689,7 @@ impl NroLoader {
     fn read_function_array(mmu: &Memory, base_addr: u64, array: Option<u64>, size: u64) -> Vec<u64> {
         let Some(array) = array else { return Vec::new() };
         (0..size / 8)
-            .filter_map(|i| mmu.read_u64(base_addr + array + i * 8).ok())
+            .map_while(|i| mmu.read_u64(base_addr.wrapping_add(array).wrapping_add(i * 8)).ok())
             .filter(|&f| f != 0 && f != u64::MAX)
             .collect()
     }
@@ -671,7 +702,7 @@ impl NroLoader {
         if is_main {
             out.extend(Self::read_function_array(mmu, base_addr, info.preinit_array, info.preinit_array_size));
         }
-        out.extend(info.init.map(|i| base_addr + i));
+        out.extend(info.init.map(|i| base_addr.wrapping_add(i)));
         out.extend(Self::read_function_array(mmu, base_addr, info.init_array, info.init_array_size));
         out
     }
@@ -681,7 +712,7 @@ impl NroLoader {
         let Some(info) = Self::parse_dynamic(base_addr, mmu) else { return Vec::new() };
         let mut out = Self::read_function_array(mmu, base_addr, info.fini_array, info.fini_array_size);
         out.reverse();
-        out.extend(info.fini.map(|f| base_addr + f));
+        out.extend(info.fini.map(|f| base_addr.wrapping_add(f)));
         out
     }
 
@@ -698,10 +729,10 @@ impl NroLoader {
             return Ok(0);
         }
         let unnamed = || format!("<symbol #{}>", sym_index);
-        let symtab = info.symtab.map(|s| base_addr + s).ok_or_else(unnamed)?;
-        let sym = Self::read_symbol(mmu, symtab + sym_index * Self::sym_stride(info)).ok_or_else(unnamed)?;
+        let symtab = info.symtab.map(|s| base_addr.wrapping_add(s)).ok_or_else(unnamed)?;
+        let sym = Self::read_symbol(mmu, symtab.wrapping_add(sym_index.wrapping_mul(Self::sym_stride(info)))).ok_or_else(unnamed)?;
         if sym.shndx != SHN_UNDEF {
-            return Ok(base_addr + sym.value);
+            return Ok(base_addr.wrapping_add(sym.value));
         }
         let name = Self::symbol_name(base_addr, mmu, info, sym.name);
         if let Some(&value) = imports.get(&name) {
@@ -727,8 +758,8 @@ impl NroLoader {
             return Ok(Some((base_addr, 0)));
         }
         let unnamed = || format!("<symbol #{}>", sym_index);
-        let symtab = info.symtab.map(|s| base_addr + s).ok_or_else(unnamed)?;
-        let sym = Self::read_symbol(mmu, symtab + sym_index * Self::sym_stride(info)).ok_or_else(unnamed)?;
+        let symtab = info.symtab.map(|s| base_addr.wrapping_add(s)).ok_or_else(unnamed)?;
+        let sym = Self::read_symbol(mmu, symtab.wrapping_add(sym_index.wrapping_mul(Self::sym_stride(info)))).ok_or_else(unnamed)?;
         if sym.shndx != SHN_UNDEF {
             return Ok(Some((base_addr, sym.value)));
         }
@@ -785,17 +816,18 @@ impl NroLoader {
 
         for (table, table_size, entry_size, has_addend) in tables {
             for i in 0..table_size / entry_size {
-                let entry_addr = base_addr + table + i * entry_size;
+                let entry_addr = base_addr.wrapping_add(table).wrapping_add(i * entry_size);
                 let mut raw = [0u8; 24];
                 let len = if has_addend { 24 } else { 16 };
                 if mmu.read_bytes(entry_addr, &mut raw[..len]).is_err() {
-                    continue;
+                    // The table ends at unmapped memory; a corrupt size must not walk 2^60 entries.
+                    break;
                 }
                 let r_offset = LittleEndian::read_u64(&raw[0..8]);
                 let r_info = LittleEndian::read_u64(&raw[8..16]);
                 let sym_index = r_info >> 32;
                 let r_type = (r_info & 0xFFFF_FFFF) as u32;
-                let target_va = base_addr + r_offset;
+                let target_va = base_addr.wrapping_add(r_offset);
                 // `Elf64_Rel` has no addend field: the addend is the value already stored at the target.
                 let r_addend = if has_addend {
                     LittleEndian::read_u64(&raw[16..24])
@@ -860,7 +892,7 @@ impl NroLoader {
                             // Static TLSDESC: the resolver returns the descriptor's second word, the TP offset.
                             _ => mmu
                                 .write_u64(target_va, resolver.unwrap_or(0))
-                                .and_then(|_| mmu.write_u64(target_va + 8, tp_offset.wrapping_add(r_addend))),
+                                .and_then(|_| mmu.write_u64(target_va.wrapping_add(8), tp_offset.wrapping_add(r_addend))),
                         };
                         if written.is_ok() {
                             report.applied += 1;
@@ -890,7 +922,7 @@ impl NroLoader {
             None => return 0,
         };
         let table = match info.relr {
-            Some(t) => base_addr + t,
+            Some(t) => base_addr.wrapping_add(t),
             None => return 0,
         };
         let mut applied = 0;
@@ -903,21 +935,21 @@ impl NroLoader {
         };
         let mut next = 0u64;
         for i in 0..info.relr_size / 8 {
-            let entry = match mmu.read_u64(table + i * 8) {
+            let entry = match mmu.read_u64(table.wrapping_add(i * 8)) {
                 Ok(e) => e,
                 Err(_) => break,
             };
             if entry & 1 == 0 {
-                let addr = base_addr + entry;
+                let addr = base_addr.wrapping_add(entry);
                 add_base(mmu, addr);
-                next = addr + 8;
+                next = addr.wrapping_add(8);
             } else {
                 for bit in 1..64u64 {
                     if entry >> bit & 1 != 0 {
-                        add_base(mmu, next + (bit - 1) * 8);
+                        add_base(mmu, next.wrapping_add((bit - 1) * 8));
                     }
                 }
-                next += 63 * 8;
+                next = next.wrapping_add(63 * 8);
             }
         }
         applied

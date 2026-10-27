@@ -49,8 +49,9 @@ impl Pfs0Archive {
         let _reserved = rdr.read_u32::<LittleEndian>().unwrap();
 
         let file_table_offset = 16;
-        let string_table_offset = file_table_offset + num_files * 24;
-        let data_base_offset = string_table_offset + string_table_size;
+        let table_end = num_files.checked_mul(24).and_then(|t| t.checked_add(file_table_offset)).ok_or(LoadError::TooSmall)?;
+        let string_table_offset = table_end;
+        let data_base_offset = string_table_offset.checked_add(string_table_size).ok_or(LoadError::TooSmall)?;
 
         if raw.len() < data_base_offset {
             return Err(LoadError::TooSmall);
@@ -64,11 +65,11 @@ impl Pfs0Archive {
             let str_offset = rdr.read_u32::<LittleEndian>().unwrap() as usize;
             let _zero = rdr.read_u32::<LittleEndian>().unwrap();
 
-            let name_start = string_table_offset + str_offset;
-            let mut name_end = name_start;
-            while name_end < data_base_offset && raw[name_end] != 0 {
-                name_end += 1;
-            }
+            let name_start = string_table_offset.saturating_add(str_offset).min(data_base_offset);
+            let name_end = raw[name_start..data_base_offset]
+                .iter()
+                .position(|&b| b == 0)
+                .map_or(data_base_offset, |n| name_start + n);
             let name = String::from_utf8_lossy(&raw[name_start..name_end]).to_string();
 
             entries.push(Pfs0FileEntry {
@@ -92,8 +93,8 @@ impl Pfs0Archive {
     pub fn extract_file(&self, name: &str) -> Option<&[u8]> {
         for entry in &self.entries {
             if entry.name == name {
-                let start = self.data_base_offset + entry.data_offset;
-                let end = start + entry.size;
+                let Some(start) = self.data_base_offset.checked_add(entry.data_offset) else { continue };
+                let Some(end) = start.checked_add(entry.size) else { continue };
                 if end <= self.raw_data.len() {
                     return Some(&self.raw_data[start..end]);
                 }
@@ -167,8 +168,9 @@ impl Hfs0Archive {
         let _reserved = rdr.read_u32::<LittleEndian>().unwrap();
 
         let file_table_offset = 16;
-        let string_table_offset = file_table_offset + num_files * 0x40;
-        let data_base_offset = string_table_offset + string_table_size;
+        let table_end = num_files.checked_mul(0x40).and_then(|t| t.checked_add(file_table_offset)).ok_or(LoadError::TooSmall)?;
+        let string_table_offset = table_end;
+        let data_base_offset = string_table_offset.checked_add(string_table_size).ok_or(LoadError::TooSmall)?;
 
         if raw.len() < data_base_offset {
             return Err(LoadError::TooSmall);
@@ -181,11 +183,11 @@ impl Hfs0Archive {
             let size = rdr.read_u64::<LittleEndian>().unwrap() as usize;
             let str_offset = rdr.read_u32::<LittleEndian>().unwrap() as usize;
 
-            let name_start = string_table_offset + str_offset;
-            let mut name_end = name_start;
-            while name_end < data_base_offset && raw[name_end] != 0 {
-                name_end += 1;
-            }
+            let name_start = string_table_offset.saturating_add(str_offset).min(data_base_offset);
+            let name_end = raw[name_start..data_base_offset]
+                .iter()
+                .position(|&b| b == 0)
+                .map_or(data_base_offset, |n| name_start + n);
             let name = String::from_utf8_lossy(&raw[name_start..name_end]).to_string();
 
             entries.push(Pfs0FileEntry {
@@ -209,8 +211,8 @@ impl Hfs0Archive {
     pub fn extract_file(&self, name: &str) -> Option<&[u8]> {
         for entry in &self.entries {
             if entry.name == name {
-                let start = self.data_base_offset + entry.data_offset;
-                let end = start + entry.size;
+                let Some(start) = self.data_base_offset.checked_add(entry.data_offset) else { continue };
+                let Some(end) = start.checked_add(entry.size) else { continue };
                 if end <= self.raw_data.len() {
                     return Some(&self.raw_data[start..end]);
                 }
@@ -382,7 +384,7 @@ impl NcaImage {
         let section_offset = media_start * 0x200;
         let section_size = (media_end.saturating_sub(media_start)) * 0x200;
 
-        if section_offset + section_size > raw.len() {
+        if section_offset.checked_add(section_size).is_none_or(|e| e > raw.len()) {
             return Err(LoadError::TooSmall);
         }
 
@@ -405,7 +407,7 @@ impl NcaImage {
         if romfs_end > romfs_start {
             romfs_offset = romfs_start * 0x200;
             romfs_size = (romfs_end - romfs_start) * 0x200;
-            if romfs_offset + romfs_size <= raw.len() {
+            if romfs_offset.checked_add(romfs_size).is_some_and(|e| e <= raw.len()) {
                 let mut romfs_ctr_iv = [0u8; 16];
                 romfs_ctr_iv.copy_from_slice(&raw[0x350..0x360]);
                 let mut romfs_buf = raw[romfs_offset..romfs_offset + romfs_size].to_vec();

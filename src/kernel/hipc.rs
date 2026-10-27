@@ -48,7 +48,7 @@ fn align16(v: u64) -> u64 {
 
 /// Parses the HIPC message at `base`. Unmapped memory reads as zero, which parses as an empty request.
 pub fn parse_request(mmu: &Memory, base: u64) -> Request {
-    let rd = |off: u64| mmu.read_u32(base + off).unwrap_or(0);
+    let rd = |off: u64| mmu.read_u32(base.wrapping_add(off)).unwrap_or(0);
     let w0 = rd(0);
     let w1 = rd(4);
     let mut req = Request {
@@ -69,7 +69,7 @@ pub fn parse_request(mmu: &Memory, base: u64) -> Request {
         let sh = rd(off);
         off += 4;
         if sh & 1 != 0 {
-            req.pid = Some(mmu.read_u64(base + off).unwrap_or(0));
+            req.pid = Some(mmu.read_u64(base.wrapping_add(off)).unwrap_or(0));
             off += 8;
         }
         for _ in 0..((sh >> 1) & 0xF) {

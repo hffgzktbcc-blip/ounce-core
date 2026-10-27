@@ -655,15 +655,17 @@ impl RomFsArchive {
         let file_meta_sz = rdr.read_u64::<LittleEndian>().unwrap() as usize;
         let data_offset = rdr.read_u64::<LittleEndian>().unwrap() as usize;
 
-        if header_size < ROMFS_HEADER_SIZE || file_meta_off + file_meta_sz > raw.len() || data_offset > raw.len() {
+        if header_size < ROMFS_HEADER_SIZE || file_meta_off.checked_add(file_meta_sz).is_none_or(|e| e > raw.len()) || data_offset > raw.len() {
             return Err(VfsError::NotFound("Invalid RomFS Level 3 header".to_string()));
         }
 
         let mut entries = Vec::new();
         let mut cur = file_meta_off;
         let end = file_meta_off + file_meta_sz;
+        // Each entry takes at least 0x20 bytes, so more than this many means the sibling chain loops.
+        let max_entries = file_meta_sz / 0x20;
 
-        while cur + 0x20 <= end {
+        while cur + 0x20 <= end && entries.len() <= max_entries {
             rdr.set_position(cur as u64);
             let _parent = rdr.read_u32::<LittleEndian>().unwrap();
             let sibling_offset = rdr.read_u32::<LittleEndian>().unwrap() as usize;
@@ -673,15 +675,17 @@ impl RomFsArchive {
             let name_len = rdr.read_u32::<LittleEndian>().unwrap() as usize;
 
             let name_start = cur + 0x20;
-            let name_end = name_start + name_len;
+            let Some(name_end) = name_start.checked_add(name_len) else { break };
             if name_end > end {
                 break;
             }
             let name = String::from_utf8_lossy(&raw[name_start..name_end]).to_string();
 
-            let abs_data_start = data_offset + rel_data_offset;
-            let abs_data_end = abs_data_start + data_size;
-            let data = if abs_data_end <= raw.len() {
+            let data = if let Some((abs_data_start, abs_data_end)) = data_offset
+                .checked_add(rel_data_offset)
+                .and_then(|s| Some((s, s.checked_add(data_size)?)))
+                .filter(|&(_, e)| e <= raw.len())
+            {
                 raw[abs_data_start..abs_data_end].to_vec()
             } else {
                 Vec::new()
@@ -692,7 +696,8 @@ impl RomFsArchive {
             if sibling_offset == 0xFFFF_FFFF || sibling_offset == 0 {
                 break;
             }
-            cur = file_meta_off + sibling_offset;
+            let Some(next) = file_meta_off.checked_add(sibling_offset) else { break };
+            cur = next;
         }
 
         Ok(Self { entries })
