@@ -3,6 +3,8 @@
 // pool, a stereo device sink, one voice mixed to both channels, then audrvUpdate / audrenWaitFrame until
 // the wave buffer is done. Reports through svcOutputDebugString: "ounce-audren played=0x........"
 // and "ounce-audren result=0x00000EEE" when every step worked, else 0xBAD0000 | failed steps.
+// With the argument "long" the tone loops for 2 seconds (400 frames) at 20% volume, to listen to under
+// `ounce-core run`.
 #include <switch.h>
 #include <malloc.h>
 #include <string.h>
@@ -40,6 +42,7 @@ static const AudioRendererConfig cfg = {
 int main(int argc, char **argv)
 {
     u32 fails = 0, played = 0;
+    bool long_mode = argc > 1 && strcmp(argv[1], "long") == 0;
     Result first_rc = 0;
 #define STEP(bit, expr) do { if (!fails) { Result rc_ = (expr); if (R_FAILED(rc_)) { fails |= 1 << (bit); first_rc = rc_; } } } while (0)
 #define CHECK(bit, cond) do { if (!fails && !(cond)) fails |= 1 << (bit); } while (0)
@@ -53,7 +56,7 @@ int main(int argc, char **argv)
     armDCacheFlush(pcm, size);
 
     AudioDriver drv;
-    AudioDriverWaveBuf wb = { .data_pcm16 = pcm, .size = size, .start_sample_offset = 0, .end_sample_offset = SAMPLES };
+    AudioDriverWaveBuf wb = { .data_pcm16 = pcm, .size = size, .start_sample_offset = 0, .end_sample_offset = SAMPLES, .is_looping = long_mode };
     static const u8 sink_channels[] = { 0, 1 };
 
     STEP(0, smInitialize());
@@ -71,17 +74,29 @@ int main(int argc, char **argv)
         audrvVoiceSetDestinationMix(&drv, 0, AUDREN_FINAL_MIX_ID);
         audrvVoiceSetMixFactor(&drv, 0, 1.0f, 0, 0);
         audrvVoiceSetMixFactor(&drv, 0, 1.0f, 0, 1);
+        if (long_mode)
+            audrvVoiceSetVolume(&drv, 0, 0.2f); // the listening mode plays at 20% (a full-scale square wave is loud)
         CHECK(5, audrvVoiceAddWaveBuf(&drv, 0, &wb));
         audrvVoiceStart(&drv, 0);
     }
-    for (int i = 0; !fails && i < 40 && wb.state != AudioDriverWaveBufState_Done; i++) {
+    if (long_mode) {
+        for (int i = 0; !fails && i < 400; i++) {
+            STEP(6, audrvUpdate(&drv));
+            audrenWaitFrame();
+        }
+        played = audrvVoiceGetPlayedSampleCount(&drv, 0); // stopping a voice clears its counters
+        audrvVoiceStop(&drv, 0);
+        STEP(6, audrvUpdate(&drv));
+    }
+    for (int i = 0; !long_mode && !fails && i < 40 && wb.state != AudioDriverWaveBufState_Done; i++) {
         STEP(6, audrvUpdate(&drv));
         audrenWaitFrame();
     }
     if (!fails) {
-        played = audrvVoiceGetPlayedSampleCount(&drv, 0);
-        CHECK(7, wb.state == AudioDriverWaveBufState_Done);
-        CHECK(7, played >= SAMPLES);
+        if (!long_mode)
+            played = audrvVoiceGetPlayedSampleCount(&drv, 0);
+        CHECK(7, long_mode || wb.state == AudioDriverWaveBufState_Done);
+        CHECK(7, played >= (long_mode ? 399 * 240 : SAMPLES));
         audrvClose(&drv);
         audrenExit();
     }
