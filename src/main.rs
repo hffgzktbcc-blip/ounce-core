@@ -565,6 +565,11 @@ fn run_vm_internal(
                                 kernel.ipc.hid.input = kernel::hid::NpadInput::from_controller(&h.state);
                             }
                         }
+                        // libnx audio renderer output plays as it is mixed (homebrew may never present a
+                        // frame), and the host device's playback clock paces the guest.
+                        if kernel.ipc.audio_renderer.is_some() {
+                            stream_audio_to_host(&mut kernel, &host_audio);
+                        }
                     }
                     SvcResult::PresentFrame => {
                         frames_presented += 1;
@@ -609,6 +614,14 @@ fn run_vm_internal(
                     }
                     SvcResult::ExitProcess => {
                         println!("\n[VM] Process exited gracefully (svcExitProcess).");
+                        if kernel.ipc.audio_renderer.is_some() {
+                            stream_audio_to_host(&mut kernel, &host_audio);
+                            // Let the last queued audio play out (bounded) before the process ends.
+                            let deadline = Instant::now() + std::time::Duration::from_secs(3);
+                            while host_audio.is_enabled && host_audio.queued_sample_count() > 0 && Instant::now() < deadline {
+                                std::thread::sleep(std::time::Duration::from_millis(5));
+                            }
+                        }
                         stop = VmStop::ExitProcess;
                         break;
                     }
@@ -3446,6 +3459,24 @@ const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
 /// as "locked by this thread". Below the scheduler's (0x2000+) and IPC's (0x10001+) handle ranges.
 const NRO_MAIN_THREAD_HANDLE: u32 = 0x1000;
 const NRO_INSTRUCTION_BUDGET: usize = 50_000_000;
+/// Mixed audio (interleaved stereo samples) allowed to queue on the host before the guest waits for
+/// playback to catch up: 100 ms at 48 kHz.
+const AUDIO_LEAD_SAMPLES: usize = 48_000 * 2 / 10;
+
+/// Hands newly mixed audio renderer samples to the host and waits while playback is more than
+/// `AUDIO_LEAD_SAMPLES` behind, so a guest's audio loop runs at real-time speed. Without an audio
+/// device (`is_enabled` false) nothing waits.
+fn stream_audio_to_host(kernel: &mut HorizonKernel, host_audio: &HostAudioSink) {
+    let pcm = kernel.audren.drain_samples();
+    if pcm.is_empty() {
+        return;
+    }
+    host_audio.push_samples(&pcm);
+    while host_audio.is_enabled && host_audio.queued_sample_count() > AUDIO_LEAD_SAMPLES {
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
 /// How often the VM copies host controller input into libnx's HID shared memory.
 const INPUT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(4);
 
