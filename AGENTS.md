@@ -103,10 +103,15 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - Random differential test now also checks Tier-3 (after #29).
   - Left: (3) differential fuzzer in CI, (5) software TLB, (6) direct block chaining and FP/SIMD; `run_vm` is still interpreter-only; code arena (one `ExecBuffer` per block today, page-sized); `SystemReg`/`TPIDR*` not translated. macOS/Windows run Tier-4 only through CI.
 * **Active Agent Threads & File Ownership**:
-  - **Claude Task 1 (`claude/m4-step2`)**: M4 Step 2 Tier-4 Native JIT recompiler. Reserved files: `crates/ounce-recompiler/src/*`, `src/cpu/tier4.rs`, `--cpu` flag in `src/main.rs`, differential tests.
-  - **Claude Task 2 (`claude/devkita64-fixture`)**: devkitA64 homebrew fixture. Reserved files: `src/loader/*`, test fixtures.
-  - **Antigravity (`fix/tier2-addsubreg-shift-correctness`)**: Closes Issue #25 (Tier-2 ADD/SUB shifted registers & signed overflow flags). Touches `src/cpu/tier2_jit.rs` only.
-  - **Shared Boundary**: Antigravity avoids Claude's reserved paths (`crates/ounce-recompiler/src/*`, `src/cpu/tier4.rs`, `src/loader/*`, `src/main.rs`). Claude avoids `src/gpu/*`, `.github/workflows/*`, and `src/cpu/tier2_jit.rs`.
+  - **Claude (Track B: Services)**: Homebrew service plumbing (`sm:`, `hid`, `fsp-srv` RomFS, `nvdrv`). Reserved files: `src/kernel/ipc.rs`, `src/kernel/sm.rs`, `src/kernel/hid.rs`, `src/kernel/nvdrv.rs`, `src/fs/romfs.rs`, test fixtures.
+  - **Antigravity (Track A: Tier-4 Recompiler Enhancements)**: Tier-4 direct block chaining, Software TLB (Option B), and differential fuzzer in CI. Branch `feat/tier4-chaining-tlb-fuzzer`. Reserved files: `crates/ounce-recompiler/*`, `src/cpu/tier4.rs`, `.github/workflows/*`.
+  - **Shared Boundary**: Antigravity avoids Claude's reserved paths (`src/kernel/*`, `src/fs/romfs.rs`, test fixtures). Claude avoids `crates/ounce-recompiler/*`, `src/cpu/tier4.rs`, `.github/workflows/*`. Neither touches `src/main.rs` without coordination.
+* **Handoff: Tier-4 Software TLB, Fast Block Chaining & CI Fuzzer** (branch `feat/tier4-chaining-tlb-fuzzer`, 2026-10-27)
+  - `crates/ounce-recompiler/src/exec.rs`: 512-entry direct-mapped `TlbEntry` software TLB (Option B). `mem_read` and `mem_write` trampolines fast-path cached page lookups in host memory without `catch_unwind` or HashMap overhead; writes to pages holding code bypass the fast path to preserve self-modifying code invalidation.
+  - `crates/ounce-recompiler/src/lib.rs`: `PageMapping` metadata on `MemoryBus::query_page`; `Recompiler` owns a persistent software TLB across block runs with `flush_tlb()`.
+  - `src/cpu/tier4.rs`: `MmuBus` implements `query_page` using `Memory::get_page`. `Tier4JitEngine` adds a 1024-entry `fast_cache` for 1-cycle block dispatch, direct block chaining counter (`chained_jumps`), and TLB flushing on `sync_code_writes`.
+  - Tests: expanded differential fuzzer to 10,000 cases with boundary pages (`DATA + 0xFF8..0x1008`) and unmapped faults; added `fibonacci_loop_block_chaining` test verifying direct loop chaining. 163 workspace tests pass.
+  - CI: added Tier-4 unit test & fuzzer step (`cargo test --release --features native-jit`) to `.github/workflows/ci.yml` across Ubuntu, macOS, and Windows.
 * **Next**:
   - Merge Issue #25 fix PR (`fix/tier2-addsubreg-shift-correctness`).
   - Coordinate review and CI verification as Claude pushes `claude/m4-step2` and `claude/devkita64-fixture`.

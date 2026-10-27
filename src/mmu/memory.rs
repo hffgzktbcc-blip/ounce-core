@@ -171,6 +171,11 @@ impl Memory {
         self.pages.contains_key(&(addr >> 12))
     }
 
+    /// Access the Page for a page number (VA >> 12), if mapped.
+    pub fn get_page(&self, page_num: u64) -> Option<&Page> {
+        self.pages.get(&page_num)
+    }
+
     /// Read raw byte slice from virtual memory.
     pub fn read_bytes(&self, addr: u64, buf: &mut [u8]) -> Result<(), MemoryError> {
         let mut curr_addr = addr;

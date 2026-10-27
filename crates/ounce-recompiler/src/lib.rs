@@ -13,8 +13,19 @@ mod backend;
 mod exec;
 pub mod ir;
 
-pub use exec::ExecError;
+pub use exec::{ExecError, TlbEntry, TLB_MASK, TLB_SIZE};
 use exec::run_return_constant;
+
+/// Direct host memory mapping info for a 4096-byte guest page (VA >> 12).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageMapping {
+    pub page_num: u64,
+    /// Host base pointer to the page bytes.
+    pub host_base: u64,
+    pub read: bool,
+    pub write: bool,
+    pub holds_code: bool,
+}
 
 /// Guest integer state as generated code sees it. `#[repr(C)]`: the backend addresses fields by
 /// offset.
@@ -45,6 +56,10 @@ pub enum WriteEffect {
 pub trait MemoryBus {
     fn read(&mut self, va: u64, size: u8) -> Result<u64, MemFault>;
     fn write(&mut self, va: u64, size: u8, value: u64) -> Result<WriteEffect, MemFault>;
+    /// Optional: provides direct host memory mapping for a guest page (VA >> 12) for software TLB acceleration.
+    fn query_page(&mut self, _page_num: u64) -> Option<PageMapping> {
+        None
+    }
 }
 
 pub(crate) const EXIT_FAULT: u32 = u32::MAX;
@@ -92,7 +107,7 @@ impl std::fmt::Display for CompileError {
 impl std::error::Error for CompileError {}
 
 /// Handle to a compiled block.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct BlockId(u32);
 
 /// Compiles IR blocks to host code and runs them.
@@ -102,6 +117,7 @@ pub struct Recompiler {
     fctx: cranelift_frontend::FunctionBuilderContext,
     blocks: Vec<Option<exec::BlockCode>>,
     free: Vec<u32>,
+    tlb: Box<[exec::TlbEntry; exec::TLB_SIZE]>,
 }
 
 impl Recompiler {
@@ -115,7 +131,13 @@ impl Recompiler {
             fctx: cranelift_frontend::FunctionBuilderContext::new(),
             blocks: Vec::new(),
             free: Vec::new(),
+            tlb: Box::new([exec::TlbEntry::default(); exec::TLB_SIZE]),
         })
+    }
+
+    /// Flushes all entries in the software TLB (e.g. after code invalidation or memory remapping).
+    pub fn flush_tlb(&mut self) {
+        self.tlb.fill(exec::TlbEntry::default());
     }
 
     pub fn compile(&mut self, block: &ir::Block) -> Result<BlockId, CompileError> {
@@ -134,9 +156,9 @@ impl Recompiler {
 
     /// Runs a compiled block. Panics if `id` was removed. A panic inside `bus` propagates after
     /// the block has returned.
-    pub fn run(&self, id: BlockId, state: &mut GuestState, bus: &mut dyn MemoryBus) -> Exit {
+    pub fn run(&mut self, id: BlockId, state: &mut GuestState, bus: &mut dyn MemoryBus) -> Exit {
         let code = self.blocks[id.0 as usize].as_ref().expect("block was removed");
-        let word = code.run(state, bus);
+        let word = code.run(state, bus, &mut self.tlb);
         let insns = (word >> 32) as u32;
         let kind = match word as u32 {
             EXIT_FAULT => ExitKind::Fault,
