@@ -1,4 +1,4 @@
-//! AMPERE_B 3D method state and the records a draw, clear or semaphore release produces.
+//! AMPERE_B / MAXWELL_B 3D method state and the records a draw, clear or semaphore release produces.
 //!
 //! The engine keeps a shadow of every class register (the last value written to each method), and
 //! turns the trigger methods (`CLEAR_SURFACE`, `BEGIN`/`DRAW_VERTEX_ARRAY`/`END`, the
@@ -120,6 +120,8 @@ pub struct Scissor {
 /// One draw: the vertex range plus the state it ran with.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DrawRecord {
+    /// The 3D class the draw was issued on (`AMPERE_B` or `MAXWELL_B`).
+    pub class: u32,
     pub topology: Topology,
     pub first_vertex: u32,
     pub vertex_count: u32,
@@ -187,7 +189,8 @@ pub enum Event {
 /// Things the state model noticed but did not act on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Diagnostic {
-    /// A method on a subchannel whose bound class is not AMPERE_B (or nothing is bound).
+    /// A method on a subchannel whose bound class is neither AMPERE_B nor MAXWELL_B (or nothing is
+    /// bound).
     ForeignSubchannel { subchannel: u8, class: Option<u32>, method: u32 },
     /// `DRAW_VERTEX_ARRAY` or `END` outside `BEGIN`/`END`.
     DrawOutsideBegin { method: u32 },
@@ -206,7 +209,7 @@ struct OpenDraw {
     instance: u32,
 }
 
-/// AMPERE_B 3D engine state for one channel.
+/// 3D engine state for one channel; decodes AMPERE_B and MAXWELL_B through one method table.
 #[derive(Debug, Clone)]
 pub struct Ampere3d {
     regs: Vec<u32>,
@@ -277,19 +280,22 @@ impl Ampere3d {
         if call.method < m::FIRST_CLASS_METHOD {
             return; // Host methods: the channel model handles them.
         }
-        if self.bound[sc] != Some(m::AMPERE_B) {
-            self.diagnostics.push(Diagnostic::ForeignSubchannel {
-                subchannel: call.subchannel,
-                class: self.bound[sc],
-                method: call.method,
-            });
-            return;
-        }
+        let class = match self.bound[sc] {
+            Some(c @ (m::AMPERE_B | m::MAXWELL_B)) => c,
+            _ => {
+                self.diagnostics.push(Diagnostic::ForeignSubchannel {
+                    subchannel: call.subchannel,
+                    class: self.bound[sc],
+                    method: call.method,
+                });
+                return;
+            }
+        };
         let method = call.method % m::METHOD_SPACE;
         self.regs[(method / 4) as usize] = call.data;
 
         match method {
-            m::CLEAR_SURFACE => self.clear(call.data),
+            m::CLEAR_SURFACE => self.clear(call.data, class),
             m::BEGIN => {
                 if self.open.is_some() {
                     self.diagnostics.push(Diagnostic::NestedBegin);
@@ -305,7 +311,7 @@ impl Ampere3d {
             m::DRAW_VERTEX_ARRAY => match self.open.clone() {
                 Some(open) => {
                     let first = self.reg(m::SET_VERTEX_ARRAY_START);
-                    self.draw(open.topology, first, call.data, open.instance);
+                    self.draw(class, open.topology, first, call.data, open.instance);
                 }
                 None => self.diagnostics.push(Diagnostic::DrawOutsideBegin { method }),
             },
@@ -321,7 +327,7 @@ impl Ampere3d {
                     self.instance += 1;
                 }
                 let topology = Topology::from_raw(call.data >> 28);
-                self.draw(topology, call.data & 0xffff, (call.data >> 16) & 0xfff, self.instance);
+                self.draw(class, topology, call.data & 0xffff, (call.data >> 16) & 0xfff, self.instance);
             }
             m::SET_REPORT_SEMAPHORE_D => self.semaphore(call.data, mem),
             _ => {}
@@ -338,18 +344,18 @@ impl Ampere3d {
             .collect()
     }
 
-    fn depth_target(&self) -> Option<DepthTarget> {
-        (self.reg(m::SET_ZT_SELECT) & 1 == 1).then(|| surface::depth_target(&self.regs))
+    fn depth_target(&self, class: u32) -> Option<DepthTarget> {
+        (self.reg(m::SET_ZT_SELECT) & 1 == 1).then(|| surface::depth_target(&self.regs, class == m::MAXWELL_B))
     }
 
-    fn clear(&mut self, data: u32) {
+    fn clear(&mut self, data: u32, class: u32) {
         let color_mask = [2, 3, 4, 5].map(|bit| (data >> bit) & 1 == 1);
         let clear_depth = data & 1 == 1;
         let clear_stencil = (data >> 1) & 1 == 1;
         let mrt = ((data >> 6) & 0xf) as usize;
         let color_target = (color_mask.iter().any(|&b| b) && mrt < m::COLOR_TARGET_COUNT)
             .then(|| surface::color_target(&self.regs, mrt));
-        let depth_target = if clear_depth || clear_stencil { self.depth_target() } else { None };
+        let depth_target = if clear_depth || clear_stencil { self.depth_target(class) } else { None };
         let record = ClearRecord {
             color: [0, 1, 2, 3].map(|i| self.reg(m::SET_COLOR_CLEAR_VALUE + 4 * i)),
             depth: f32::from_bits(self.reg(m::SET_Z_CLEAR_VALUE)),
@@ -364,21 +370,33 @@ impl Ampere3d {
         self.events.push(Event::Clear(record));
     }
 
-    fn draw(&mut self, topology: Topology, first_vertex: u32, vertex_count: u32, instance: u32) {
+    fn draw(&mut self, class: u32, topology: Topology, first_vertex: u32, vertex_count: u32, instance: u32) {
         let vertex_streams = (0..m::VERTEX_STREAM_COUNT as u32)
             .filter_map(|j| {
                 let fmt = self.reg(m::SET_VERTEX_STREAM_A_FORMAT + j * m::VERTEX_STREAM_A_STRIDE);
-                ((fmt >> 12) & 1 == 1).then(|| VertexStream {
-                    index: j as u8,
-                    gpu_va: addr40(
-                        self.reg(m::SET_VERTEX_STREAM_A_LOCATION_A + j * m::VERTEX_STREAM_A_STRIDE),
-                        self.reg(m::SET_VERTEX_STREAM_A_LOCATION_B + j * m::VERTEX_STREAM_A_STRIDE),
-                    ),
-                    stride: fmt & 0xfff,
-                    size: addr40(
+                let gpu_va = addr40(
+                    self.reg(m::SET_VERTEX_STREAM_A_LOCATION_A + j * m::VERTEX_STREAM_A_STRIDE),
+                    self.reg(m::SET_VERTEX_STREAM_A_LOCATION_B + j * m::VERTEX_STREAM_A_STRIDE),
+                );
+                let size = if class == m::MAXWELL_B {
+                    // Read as the last valid byte address (`address + size - 1`). The header gives
+                    // no unit; this is the usual nouveau convention, unverified here.
+                    let limit = addr40(
+                        self.reg(m::B197_SET_VERTEX_STREAM_LIMIT_A_A + j * m::B197_VERTEX_STREAM_LIMIT_STRIDE),
+                        self.reg(m::B197_SET_VERTEX_STREAM_LIMIT_A_B + j * m::B197_VERTEX_STREAM_LIMIT_STRIDE),
+                    );
+                    if limit >= gpu_va { limit - gpu_va + 1 } else { 0 }
+                } else {
+                    addr40(
                         self.reg(m::SET_VERTEX_STREAM_SIZE_A + j * m::VERTEX_STREAM_SIZE_STRIDE),
                         self.reg(m::SET_VERTEX_STREAM_SIZE_A + 4 + j * m::VERTEX_STREAM_SIZE_STRIDE),
-                    ),
+                    )
+                };
+                ((fmt >> 12) & 1 == 1).then(|| VertexStream {
+                    index: j as u8,
+                    gpu_va,
+                    stride: fmt & 0xfff,
+                    size,
                     frequency: self.reg(m::SET_VERTEX_STREAM_A_FREQUENCY + j * m::VERTEX_STREAM_A_STRIDE),
                 })
             })
@@ -404,11 +422,17 @@ impl Ampere3d {
                 (s & 1 == 1).then(|| ShaderStage {
                     pipeline: j as u8,
                     kind: ShaderType::from_raw((s >> 4) & 0xf),
-                    program_va: addr40(
-                        self.reg(m::SET_PIPELINE_PROGRAM_ADDRESS_A + off),
-                        self.reg(m::SET_PIPELINE_PROGRAM_ADDRESS_B + off),
-                    ),
-                    register_count: self.reg(m::SET_PIPELINE_REGISTER_COUNT + off) & 0x1ff,
+                    program_va: if class == m::MAXWELL_B {
+                        let region = addr40(self.reg(m::B197_SET_PROGRAM_REGION_A), self.reg(m::B197_SET_PROGRAM_REGION_B));
+                        region + self.reg(m::B197_SET_PIPELINE_PROGRAM + off) as u64
+                    } else {
+                        addr40(
+                            self.reg(m::SET_PIPELINE_PROGRAM_ADDRESS_A + off),
+                            self.reg(m::SET_PIPELINE_PROGRAM_ADDRESS_B + off),
+                        )
+                    },
+                    register_count: self.reg(m::SET_PIPELINE_REGISTER_COUNT + off)
+                        & if class == m::MAXWELL_B { 0xff } else { 0x1ff },
                 })
             })
             .collect();
@@ -419,12 +443,13 @@ impl Ampere3d {
         let sc_h = self.reg(m::SET_SCISSOR_HORIZONTAL);
         let sc_v = self.reg(m::SET_SCISSOR_VERTICAL);
         let record = DrawRecord {
+            class,
             topology,
             first_vertex,
             vertex_count,
             instance,
             color_targets: self.color_targets(),
-            depth_target: self.depth_target(),
+            depth_target: self.depth_target(class),
             vertex_streams,
             vertex_attributes,
             shaders,

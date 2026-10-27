@@ -1,4 +1,6 @@
-//! AMPERE_B (`0xC797`) 3D class: method decoder and state model for T239's GA10B.
+//! AMPERE_B (`0xC797`) 3D class: method decoder and state model for T239's GA10B. MAXWELL_B
+//! (`0xB197`) goes through the same decoder, since the two classes share almost all of their method
+//! offsets (see [`methods`]).
 //!
 //! Step 1 of M5 ("clear + one triangle"): pushbuffer segments decode into method writes
 //! ([`pushbuf`]), the engine keeps the class state and emits clear, draw and semaphore records
@@ -7,7 +9,7 @@
 //! open-gpu-doc headers; see [`methods`].
 //!
 //! Not wired into a channel yet: the `nvgpu.rs` routing hook (Track B) calls [`Ampere3d::submit`]
-//! for subchannels bound to AMPERE_B. Until then only the tests use it.
+//! for subchannels bound to AMPERE_B or MAXWELL_B. Until then only the tests use it.
 #![allow(dead_code)]
 
 pub mod engine;
@@ -22,6 +24,6 @@ pub use engine::{
     Ampere3d, ClearRecord, Diagnostic, DrawRecord, Event, GpuMemoryWriter, Scissor, SemaphoreOp, SemaphoreRecord,
     ShaderStage, ShaderType, Topology, VertexAttribute, VertexStream, Viewport,
 };
-pub use methods::AMPERE_B;
+pub use methods::{AMPERE_B, MAXWELL_B};
 pub use pushbuf::{MethodCall, PushbufError};
 pub use surface::{ColorFormat, ColorTarget, DepthFormat, DepthTarget, SurfaceLayout};

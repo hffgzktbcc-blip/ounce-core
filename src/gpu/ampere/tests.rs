@@ -12,6 +12,7 @@ const VB_VA: u64 = 0x01_5000_0000;
 const VS_VA: u64 = 0x01_6000_0100;
 const PS_VA: u64 = 0x01_6000_0800;
 const SEM_VA: u64 = 0x01_7000_0040;
+const SHADER_REGION: u64 = 0x01_6000_0000;
 
 #[derive(Default)]
 struct Writes(Vec<(u64, Vec<u8>)>);
@@ -51,7 +52,8 @@ fn clear_dark_blue(pb: &mut Vec<u32>) {
     pb.extend([immd_header(SC, m::CLEAR_SURFACE, 0x3c)]);
 }
 
-fn setup_triangle(pb: &mut Vec<u32>) {
+/// Same triangle state on either class; only shader addressing and stream bounds differ.
+fn setup_triangle(pb: &mut Vec<u32>, class: u32) {
     // Viewport 0: 256x256, y down, z 0..1.
     pb.extend([inc_header(SC, m::SET_VIEWPORT_SCALE_X, 6)]);
     pb.extend([128.0f32, 128.0, 1.0, 128.0, 128.0, 0.0].map(f32::to_bits));
@@ -59,7 +61,14 @@ fn setup_triangle(pb: &mut Vec<u32>) {
     pb.extend([inc_header(SC, m::SET_SCISSOR_ENABLE, 3), 1, 256 << 16, 256 << 16]);
     // Stream 0: 3 vertices of vec3 position + vec4 color = 28 bytes each.
     pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_A_FORMAT, 4), (1 << 12) | 28, hi(VB_VA), lo(VB_VA), 0]);
-    pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_SIZE_A, 2), 0, 84]);
+    if class == m::MAXWELL_B {
+        let limit = VB_VA + 84 - 1;
+        pb.extend([inc_header(SC, m::B197_SET_VERTEX_STREAM_LIMIT_A_A, 2), hi(limit), lo(limit)]);
+        // Shader code lives at region + per-pipeline offset.
+        pb.extend([inc_header(SC, m::B197_SET_PROGRAM_REGION_A, 2), hi(SHADER_REGION), lo(SHADER_REGION)]);
+    } else {
+        pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_SIZE_A, 2), 0, 84]);
+    }
     // Attribute 0: stream 0, offset 0, R32_G32_B32 float. Attribute 1: offset 12, R32_G32_B32_A32.
     let attr = |offset: u32, widths: u32| (7 << 27) | (widths << 21) | (offset << 7);
     pb.extend([inc_header(SC, m::SET_VERTEX_ATTRIBUTE_A, 3), attr(0, 0x02), attr(12, 0x01), 1 << 6]);
@@ -68,7 +77,11 @@ fn setup_triangle(pb: &mut Vec<u32>) {
         let base = pipe * m::PIPELINE_STRIDE;
         pb.extend([inc_header(SC, m::SET_PIPELINE_SHADER + base, 1), (kind << 4) | 1]);
         pb.extend([inc_header(SC, m::SET_PIPELINE_REGISTER_COUNT + base, 1), regs]);
-        pb.extend([inc_header(SC, m::SET_PIPELINE_PROGRAM_ADDRESS_A + base, 2), hi(va), lo(va)]);
+        if class == m::MAXWELL_B {
+            pb.extend([inc_header(SC, m::B197_SET_PIPELINE_PROGRAM + base, 1), (va - SHADER_REGION) as u32]);
+        } else {
+            pb.extend([inc_header(SC, m::SET_PIPELINE_PROGRAM_ADDRESS_A + base, 2), hi(va), lo(va)]);
+        }
     }
 }
 
@@ -106,16 +119,25 @@ fn pitch_target() -> ColorTarget {
 
 #[test]
 fn clear_then_one_triangle() {
+    clear_then_one_triangle_on(m::AMPERE_B);
+}
+
+#[test]
+fn clear_then_one_triangle_on_maxwell_b() {
+    clear_then_one_triangle_on(m::MAXWELL_B);
+}
+
+fn clear_then_one_triangle_on(class: u32) {
     let mut pb = Vec::new();
-    bind_class(&mut pb, m::AMPERE_B);
+    bind_class(&mut pb, class);
     bind_render_target(&mut pb, true);
     clear_dark_blue(&mut pb);
-    setup_triangle(&mut pb);
+    setup_triangle(&mut pb, class);
     draw_triangle(&mut pb);
     release_semaphore(&mut pb, 0x1234, true);
 
     let (gpu, mem) = run(&pb);
-    assert_eq!(gpu.bound_class(SC), Some(m::AMPERE_B));
+    assert_eq!(gpu.bound_class(SC), Some(class));
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     let events = gpu.events();
     assert_eq!(events.len(), 3);
@@ -128,6 +150,7 @@ fn clear_then_one_triangle() {
     assert_eq!(clear.color_target.unwrap().width_texels(), Some(256));
 
     let Event::Draw(draw) = &events[1] else { panic!("expected draw, got {:?}", events[1]) };
+    assert_eq!(draw.class, class);
     assert_eq!(draw.topology, Topology::Triangles);
     assert_eq!((draw.first_vertex, draw.vertex_count, draw.instance), (0, 3, 0));
     assert_eq!(draw.color_targets, vec![pitch_target()]);
@@ -245,15 +268,15 @@ fn several_draws_in_one_begin_use_non_incrementing_counts() {
 }
 
 #[test]
-fn maxwell_class_and_stray_draws_are_reported_not_decoded() {
+fn other_classes_and_stray_draws_are_reported_not_decoded() {
     let mut pb = Vec::new();
-    bind_class(&mut pb, 0xb197);
+    bind_class(&mut pb, 0xc7c0); // AMPERE_COMPUTE_B
     pb.extend([immd_header(SC, m::CLEAR_SURFACE, 0x3c)]);
     let (gpu, _) = run(&pb);
     assert!(gpu.events().is_empty());
     assert_eq!(
         gpu.diagnostics(),
-        &[Diagnostic::ForeignSubchannel { subchannel: SC, class: Some(0xb197), method: m::CLEAR_SURFACE }]
+        &[Diagnostic::ForeignSubchannel { subchannel: SC, class: Some(0xc7c0), method: m::CLEAR_SURFACE }]
     );
 
     let mut pb = Vec::new();
