@@ -2,7 +2,7 @@
 
 use super::instructions::{
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, ShiftType,
-    SimdOp2, SimdOp3, SimdShiftOp,
+    SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
@@ -667,6 +667,19 @@ pub fn decode(raw: u32) -> Instruction {
             };
         }
 
+        // B / H registers
+        if size < 2 && opc < 2 {
+            return Instruction::SimdLoadStore {
+                rt,
+                rn,
+                offset: (imm12 << size) as i64,
+                size_bytes: 1 << size,
+                is_load: opc == 0b01,
+                writeback: false,
+                post_index: false,
+            };
+        }
+
         if (size == 2 || size == 3) && (opc == 0b00 || opc == 0b01) {
             let is_load = opc == 0b01;
             let is_double = size == 3;
@@ -815,15 +828,30 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
-    // 27. AdvSIMD copy: DUP (general) 0 Q 0 01110000 imm5 0 0001 1 Rn Rd, UMOV ... 0 0111 1 ...
-    if (raw & 0x9FE0_8400) == 0x0E00_0400 && !u {
+    // 27. AdvSIMD copy: 0 Q op 01110000 imm5 0 imm4 1 Rn Rd
+    //     DUP (element) imm4 0000, DUP (general) 0001, INS (general) 0011, UMOV 0111; op = 1: INS (element)
+    if (raw & 0x9FE0_8400) == 0x0E00_0400 {
         let imm5 = (raw >> 16) & 0x1F;
         if imm5 & 0xF == 0 {
             return None;
         }
         let low = imm5.trailing_zeros();
         let esize = 8u8 << low;
+        let index = (imm5 >> (low + 1)) as u8;
+        if u {
+            if !q {
+                return None;
+            }
+            let src_index = (((raw >> 11) & 0xF) >> low) as u8;
+            return Some(Instruction::SimdInsElement { rd, rn, esize, dst_index: index, src_index });
+        }
         match (raw >> 11) & 0xF {
+            0b0000 if !(esize == 64 && !q) => {
+                return Some(Instruction::SimdDupElement { rd, rn, esize, index, q });
+            }
+            0b0011 if q => {
+                return Some(Instruction::SimdInsGeneral { rd, rn, esize, index });
+            }
             0b0001 if !(esize == 64 && !q) => {
                 return Some(Instruction::SimdDupGeneral { rd, rn, esize, q });
             }
@@ -833,6 +861,54 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             }
             _ => return None,
         }
+    }
+
+    // 26b. LD1/ST1 (single structure) and LD1R: 0 Q 0011010 L 0 00000 opcode S size Rn Rt,
+    //      post-index 0 Q 0011011 L 0 Rm opcode S size Rn Rt
+    let single = (raw & 0xBFBF_0000) == 0x0D00_0000;
+    let single_post = (raw & 0xBFA0_0000) == 0x0D80_0000;
+    if single || single_post {
+        let is_load = (raw & (1 << 22)) != 0;
+        let opcode = (raw >> 13) & 0x7;
+        let s_bit = (raw >> 12) & 1;
+        let sz = (raw >> 10) & 0x3;
+        let qb = (raw >> 30) & 1;
+        let (esize, index, replicate) = match opcode {
+            0b000 => (8u8, (qb << 3 | s_bit << 2 | sz) as u8, false),
+            0b010 if sz & 1 == 0 => (16, (qb << 2 | s_bit << 1 | sz >> 1) as u8, false),
+            0b100 if sz == 0 => (32, (qb << 1 | s_bit) as u8, false),
+            0b100 if sz == 1 && s_bit == 0 => (64, qb as u8, false),
+            0b110 if is_load && s_bit == 0 => (8u8 << sz, 0, true),
+            _ => return None, // LD2/LD3/LD4 single structure not implemented
+        };
+        return Some(Instruction::SimdLoadStoreSingle {
+            rt: rd,
+            rn,
+            rm: if single_post { rm } else { 31 },
+            esize,
+            index,
+            replicate,
+            q,
+            is_load,
+            post_index: single_post,
+        });
+    }
+
+    // 26c. AdvSIMD permute: 0 Q 001110 size 0 Rm 0 opc 10 Rn Rd (UZP1/TRN1/ZIP1/UZP2/TRN2/ZIP2)
+    if (raw & 0xBF20_8C00) == 0x0E00_0800 {
+        let op = match (raw >> 12) & 0x7 {
+            0b001 => SimdPermuteOp::Uzp1,
+            0b010 => SimdPermuteOp::Trn1,
+            0b011 => SimdPermuteOp::Zip1,
+            0b101 => SimdPermuteOp::Uzp2,
+            0b110 => SimdPermuteOp::Trn2,
+            0b111 => SimdPermuteOp::Zip2,
+            _ => return None,
+        };
+        if size == 3 && !q {
+            return None;
+        }
+        return Some(Instruction::SimdPermute { rd, rn, rm, op, esize: 8u8 << size, q });
     }
 
     // 28. AdvSIMD three same: 0 Q U 01110 size 1 Rm opcode 1 Rn Rd
@@ -889,11 +965,50 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdTwoMisc { rd, rn, op, esize: 8u8 << size, q });
     }
 
+    // 31. AdvSIMD modified immediate: 0 Q op 0111100000 abc cmode o2 1 defgh Rd
+    if (raw & 0x9FF8_0C00) == 0x0F00_0400 {
+        let imm8 = (((raw >> 16) & 0x7) << 5 | ((raw >> 5) & 0x1F)) as u64;
+        let cmode = (raw >> 12) & 0xF;
+        let rep32 = |v: u64| v | v << 32;
+        let rep16 = |v: u64| rep32(v | v << 16);
+        let imm = match cmode >> 1 {
+            0..=3 => rep32(imm8 << (8 * (cmode >> 1))),
+            4 | 5 => rep16(imm8 << (8 * ((cmode >> 1) & 1))),
+            6 if cmode & 1 == 0 => rep32(imm8 << 8 | 0xFF),
+            6 => rep32(imm8 << 16 | 0xFFFF),
+            _ => match (cmode & 1, u) {
+                (0, false) => rep16(imm8 | imm8 << 8),
+                (0, true) => (0..8).fold(0u64, |acc, i| acc | if imm8 >> i & 1 != 0 { 0xFF << (8 * i) } else { 0 }),
+                (_, false) => {
+                    // FMOV Vd.<2S|4S>, #imm
+                    let (a, b, cd, efgh) = (imm8 >> 7, (imm8 >> 6) & 1, (imm8 >> 4) & 3, imm8 & 0xF);
+                    rep32(a << 31 | (b ^ 1) << 30 | (if b != 0 { 0x1F } else { 0 }) << 25 | cd << 23 | efgh << 19)
+                }
+                (_, true) => {
+                    if !q {
+                        return None;
+                    }
+                    // FMOV Vd.2D, #imm
+                    let (a, b, cd, efgh) = (imm8 >> 7, (imm8 >> 6) & 1, (imm8 >> 4) & 3, imm8 & 0xF);
+                    a << 63 | (b ^ 1) << 62 | (if b != 0 { 0xFF } else { 0 }) << 54 | cd << 52 | efgh << 48
+                }
+            },
+        };
+        // cmode 0xx1 / 10x1 are ORR (op 0) / BIC (op 1); the rest move, MVNI being op 1 below cmode 1110.
+        let op = if cmode & 1 == 1 && cmode < 12 {
+            if u { SimdImmOp::Bic } else { SimdImmOp::Orr }
+        } else {
+            SimdImmOp::Mov
+        };
+        let imm = if op == SimdImmOp::Mov && u && cmode < 14 { !imm } else { imm };
+        return Some(Instruction::SimdModImm { rd, imm, op, q });
+    }
+
     // 30. AdvSIMD shift by immediate: 0 Q U 011110 immh immb opcode 1 Rn Rd (immh != 0)
     if (raw & 0x9F80_0400) == 0x0F00_0400 {
         let immh = (raw >> 19) & 0xF;
         if immh == 0 {
-            return None; // modified immediate (MOVI/MVNI/ORR/BIC), not implemented
+            return None;
         }
         let imm = (raw >> 16) & 0x7F; // immh:immb
         let esize = 8u32 << (31 - immh.leading_zeros());

@@ -447,6 +447,65 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// AdvSIMD modified immediate: `MOVI`/`MVNI`/`FMOV` (vector) and `ORR`/`BIC` (vector, immediate).
+    /// `imm` is the expanded 64-bit pattern (already inverted for `MVNI`), repeated in both halves when `q`.
+    SimdModImm {
+        rd: u8,
+        imm: u64,
+        op: SimdImmOp,
+        q: bool,
+    },
+
+    /// `DUP Vd.<T>, Vn.<Ts>[index]`
+    SimdDupElement {
+        rd: u8,
+        rn: u8,
+        esize: u8,
+        index: u8,
+        q: bool,
+    },
+
+    /// `INS Vd.<Ts>[index], Rn` (`MOV` alias)
+    SimdInsGeneral {
+        rd: u8,
+        rn: u8,
+        esize: u8,
+        index: u8,
+    },
+
+    /// `INS Vd.<Ts>[dst], Vn.<Ts>[src]` (`MOV` alias)
+    SimdInsElement {
+        rd: u8,
+        rn: u8,
+        esize: u8,
+        dst_index: u8,
+        src_index: u8,
+    },
+
+    /// `LD1`/`ST1` single structure (one lane) and `LD1R` (load one element into every lane)
+    SimdLoadStoreSingle {
+        rt: u8,
+        rn: u8,
+        /// Post-index register; 31 means "advance by the element size".
+        rm: u8,
+        esize: u8,
+        index: u8,
+        replicate: bool,
+        q: bool,
+        is_load: bool,
+        post_index: bool,
+    },
+
+    /// `UZP1/UZP2/TRN1/TRN2/ZIP1/ZIP2`
+    SimdPermute {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdPermuteOp,
+        esize: u8,
+        q: bool,
+    },
+
     /// Unimplemented or Unknown instruction (preserves raw 32-bit opcode for debugging)
     Unimplemented {
         raw: u32,
@@ -552,4 +611,21 @@ pub enum SimdShiftOp {
     Ushr,
     Shl,
     Shrn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdImmOp {
+    Mov,
+    Orr,
+    Bic,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdPermuteOp {
+    Uzp1,
+    Uzp2,
+    Trn1,
+    Trn2,
+    Zip1,
+    Zip2,
 }

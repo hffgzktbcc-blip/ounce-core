@@ -223,6 +223,11 @@ impl VirtualFileSystem {
         Ok(data.len())
     }
 
+    /// Path of an open file handle.
+    pub fn handle_path(&self, handle: u32) -> Option<&str> {
+        self.open_handles.get(&handle).map(|p| p.as_str())
+    }
+
     /// Reads bytes from a VFS file directly into guest virtual memory.
     pub fn read_file_to_guest(
         &mut self,

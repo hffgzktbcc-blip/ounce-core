@@ -127,6 +127,32 @@ pub struct Response<'a> {
     pub data: &'a [u8],
     pub copy_handles: &'a [u32],
     pub move_handles: &'a [u32],
+    /// For a domain session: the out object IDs. Adds the domain out header and appends the IDs after `data`.
+    pub domain_objects: Option<&'a [u32]>,
+}
+
+/// Domain request header that precedes the CMIF payload on a domain session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DomainHeader {
+    /// 1 = SendMessage, 2 = Close.
+    pub kind: u8,
+    pub num_in_objects: u8,
+    pub data_size: u16,
+    pub object_id: u32,
+}
+
+pub const DOMAIN_SEND_MESSAGE: u8 = 1;
+pub const DOMAIN_CLOSE: u8 = 2;
+
+/// Reads the domain header at `addr` (the aligned data start of a domain request).
+pub fn read_domain_header(mmu: &Memory, addr: u64) -> DomainHeader {
+    let w0 = mmu.read_u32(addr).unwrap_or(0);
+    DomainHeader {
+        kind: w0 as u8,
+        num_in_objects: (w0 >> 8) as u8,
+        data_size: (w0 >> 16) as u16,
+        object_id: mmu.read_u32(addr + 4).unwrap_or(0),
+    }
 }
 
 /// Writes a CMIF response at `base`. Returns the offset of the `SFCO` header.
@@ -142,9 +168,19 @@ pub fn write_response(mmu: &mut Memory, base: u64, resp: &Response) -> u64 {
             off += 4;
         }
     }
-    let cmif = align16(off);
-    // Data words cover the alignment padding, the CMIF header and the output data.
-    let num_data_words = ((cmif - off) + 16 + resp.data.len() as u64).div_ceil(4) as u32;
+    let start = align16(off);
+    let objects = resp.domain_objects.unwrap_or(&[]);
+    let cmif = if let Some(objs) = resp.domain_objects {
+        let _ = mmu.write_u32(base + start, objs.len() as u32);
+        for i in 1..4 {
+            let _ = mmu.write_u32(base + start + i * 4, 0);
+        }
+        start + 16
+    } else {
+        start
+    };
+    // Data words cover the alignment padding, the domain and CMIF headers, the output data and object IDs.
+    let num_data_words = ((cmif - off) + 16 + resp.data.len() as u64 + objects.len() as u64 * 4).div_ceil(4) as u32;
     let _ = mmu.write_u32(base, 0);
     let _ = mmu.write_u32(base + 4, num_data_words | (special as u32) << 31);
     let _ = mmu.write_u32(base + cmif, CMIF_OUT_MAGIC);
@@ -152,6 +188,9 @@ pub fn write_response(mmu: &mut Memory, base: u64, resp: &Response) -> u64 {
     let _ = mmu.write_u32(base + cmif + 8, resp.result);
     let _ = mmu.write_u32(base + cmif + 12, 0);
     let _ = mmu.write_bytes(base + cmif + 16, resp.data);
+    for (i, &id) in objects.iter().enumerate() {
+        let _ = mmu.write_u32(base + cmif + 16 + resp.data.len() as u64 + i as u64 * 4, id);
+    }
     cmif
 }
 
@@ -215,7 +254,7 @@ mod tests {
         let cmif = write_response(
             &mut mmu,
             TLS,
-            &Response { result: 0, data: &7u32.to_le_bytes(), copy_handles: &[0x11], move_handles: &[0x22] },
+            &Response { result: 0, data: &7u32.to_le_bytes(), copy_handles: &[0x11], move_handles: &[0x22], ..Default::default() },
         );
         assert_eq!(cmif, 0x20); // 8 header + 4 special + 8 handles = 20 -> 32
         assert_eq!(mmu.read_u32(TLS + 4).unwrap() >> 31, 1);
@@ -225,7 +264,26 @@ mod tests {
         assert_eq!(mmu.read_u32(TLS + 0x20).unwrap(), CMIF_OUT_MAGIC);
         assert_eq!(mmu.read_u32(TLS + 0x30).unwrap(), 7);
         // A plain response keeps the old fixed layout: SFCO at 0x10, data at 0x20.
-        let cmif = write_response(&mut mmu, TLS, &Response { result: 0, data: &[], copy_handles: &[], move_handles: &[0x33] });
+        let cmif = write_response(&mut mmu, TLS, &Response { move_handles: &[0x33], ..Default::default() });
         assert_eq!(cmif, 0x10);
+    }
+
+    #[test]
+    fn domain_response_layout() {
+        let mut mmu = tls();
+        let cmif = write_response(
+            &mut mmu,
+            TLS,
+            &Response { data: &[1, 0, 0, 0], domain_objects: Some(&[0x55]), ..Default::default() },
+        );
+        assert_eq!(cmif, 0x20); // domain out header at 0x10, SFCO at 0x20
+        assert_eq!(mmu.read_u32(TLS + 0x10).unwrap(), 1);
+        assert_eq!(mmu.read_u32(TLS + 0x20).unwrap(), CMIF_OUT_MAGIC);
+        assert_eq!(mmu.read_u32(TLS + 0x30).unwrap(), 1);
+        assert_eq!(mmu.read_u32(TLS + 0x34).unwrap(), 0x55); // object ID right after the data
+        mmu.write_u32(TLS + 0x40, DOMAIN_CLOSE as u32 | 0x10 << 16).unwrap();
+        mmu.write_u32(TLS + 0x44, 9).unwrap();
+        let h = read_domain_header(&mmu, TLS + 0x40);
+        assert_eq!((h.kind, h.data_size, h.object_id), (DOMAIN_CLOSE, 0x10, 9));
     }
 }

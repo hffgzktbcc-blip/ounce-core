@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, ShiftType, SimdShiftOp,
+    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, ShiftType, SimdImmOp, SimdShiftOp,
 };
 use super::simd;
 
@@ -1149,6 +1149,78 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdModImm { rd, imm, op, q } => {
+                let pattern = if q { imm as u128 | (imm as u128) << 64 } else { imm as u128 };
+                let width = if q { u128::MAX } else { u64::MAX as u128 };
+                let d = self.regs.read_q(rd);
+                let res = match op {
+                    SimdImmOp::Mov => pattern,
+                    SimdImmOp::Orr => (d | pattern) & width,
+                    SimdImmOp::Bic => (d & !pattern) & width,
+                };
+                self.regs.write_q(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdDupElement { rd, rn, esize, index, q } => {
+                let v = simd::lane(self.regs.read_q(rn), esize as u32, index as usize);
+                self.regs.write_q(rd, simd::dup(v, esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdInsGeneral { rd, rn, esize, index } => {
+                let mut d = self.regs.read_q(rd);
+                simd::set_lane(&mut d, esize as u32, index as usize, self.regs.read_x(rn));
+                self.regs.write_q(rd, d);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdInsElement { rd, rn, esize, dst_index, src_index } => {
+                let v = simd::lane(self.regs.read_q(rn), esize as u32, src_index as usize);
+                let mut d = self.regs.read_q(rd);
+                simd::set_lane(&mut d, esize as u32, dst_index as usize, v);
+                self.regs.write_q(rd, d);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdLoadStoreSingle { rt, rn, rm, esize, index, replicate, q, is_load, post_index } => {
+                let base = self.regs.read_x_or_sp(rn);
+                let n = esize as usize / 8;
+                if is_load {
+                    let mut buf = [0u8; 8];
+                    mmu.read_bytes(base, &mut buf[..n])?;
+                    let v = u64::from_le_bytes(buf);
+                    let res = if replicate {
+                        simd::dup(v, esize as u32, q)
+                    } else {
+                        let mut d = self.regs.read_q(rt);
+                        simd::set_lane(&mut d, esize as u32, index as usize, v);
+                        d
+                    };
+                    self.regs.write_q(rt, res);
+                } else {
+                    let v = simd::lane(self.regs.read_q(rt), esize as u32, index as usize);
+                    mmu.write_bytes(base, &v.to_le_bytes()[..n])?;
+                }
+                if post_index {
+                    let step = if rm == 31 { n as u64 } else { self.regs.read_x(rm) };
+                    self.regs.write_x_or_sp(rn, base.wrapping_add(step));
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdPermute { rd, rn, rm, op, esize, q } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::permute(op, n, m, esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::DataProc1 { rd, rn, op, is_64 } => {
                 if is_64 {
                     let x = self.regs.read_x(rn);
@@ -1408,6 +1480,14 @@ mod tests {
             (0x6cc107e0, "SimdLoadStorePair"),  // ldp d0, d1, [sp], #16
             (0xac0008a1, "SimdLoadStorePair"),  // stnp q1, q2, [x5]
             (0xd50b7423, "DcZva"),              // dc zva, x3
+            (0x4f00e41f, "SimdModImm"),         // movi v31.16b, #0
+            (0x4e1d3bde, "SimdPermute"),        // zip1 v30.16b, v30.16b, v29.16b
+            (0x0e095907, "SimdPermute"),        // uzp2 v7.8b, v8.8b, v9.8b
+            (0x4e1f0549, "SimdDupElement"),     // dup v9.16b, v10.b[15]
+            (0x6e1c2441, "SimdInsElement"),     // mov v1.s[3], v2.s[1]
+            (0x4e181cc5, "SimdInsGeneral"),     // mov v5.d[1], x6
+            (0x4d0048a4, "SimdLoadStoreSingle"), // st1 {v4.h}[5], [x5]
+            (0x3d4a001d, "SimdLoadStore"),      // ldr b29, [x0, #640]
         ];
         for &(raw, name) in table {
             let got = format!("{:?}", super::super::decoder::decode(raw));
@@ -1523,6 +1603,70 @@ mod tests {
 
         let (cpu, _) = run(&[0xd53b00e0], |_, _| {});
         assert_eq!(1u64 << (cpu.regs.read_x(0) + 2), DC_ZVA_BLOCK); // mrs x0, dczid_el0
+    }
+
+    #[test]
+    fn simd_lane_moves_and_single_structure() {
+        let (cpu, mmu) = run(
+            &[
+                0x7d400444, // ldr h4, [x2, #2]
+                0x6e0307be, // mov v30.b[1], v29.b[0]
+                0x4e0c1c83, // mov v3.s[1], w4
+                0x4e140507, // dup v7.4s, v8.s[2]
+                0x0d40183d, // ld1 {v29.b}[6], [x1]
+                0x4ddf9062, // ld1 {v2.s}[3], [x3], #4
+                0x4d8884e6, // st1 {v6.d}[1], [x7], x8
+                0x4d40c949, // ld1r {v9.4s}, [x10]
+                0x3d000065, // str b5, [x3]
+            ],
+            |c, m| {
+                m.write_u64(DATA, 0x1122_3344_5566_7788).unwrap();
+                c.regs.write_x(2, DATA);
+                c.regs.write_q(29, 0xAB);
+                c.regs.write_x(4, 0xCAFE_F00D);
+                c.regs.write_q(8, 0x0000_0002_0000_0001u128 << 64 | 0xDEAD_BEEF_0000_0000);
+                c.regs.write_x(1, DATA + 1);
+                c.regs.write_x(3, DATA + 4);
+                c.regs.write_q(6, 0x0102_0304_0506_0708u128 << 64);
+                c.regs.write_x(7, DATA + 0x100);
+                c.regs.write_x(8, 0x20);
+                c.regs.write_x(10, DATA);
+                c.regs.write_q(5, 0x99);
+            },
+        );
+        assert_eq!(cpu.regs.read_q(4), 0x5566);
+        assert_eq!(cpu.regs.read_q(30) >> 8 & 0xFF, 0xAB);
+        assert_eq!(cpu.regs.read_q(3) >> 32 & 0xFFFF_FFFF, 0xCAFE_F00D);
+        assert_eq!(cpu.regs.read_q(7), super::simd::dup(1, 32, true));
+        assert_eq!(cpu.regs.read_q(29) >> 48 & 0xFF, 0x77);
+        assert_eq!(cpu.regs.read_q(2) >> 96, 0x1122_3344);
+        assert_eq!(cpu.regs.read_x(3), DATA + 8);
+        assert_eq!(mmu.read_u64(DATA + 0x100).unwrap(), 0x0102_0304_0506_0708);
+        assert_eq!(cpu.regs.read_x(7), DATA + 0x120);
+        assert_eq!(cpu.regs.read_q(9), super::simd::dup(0x5566_7788, 32, true));
+        assert_eq!(mmu.read_u8(DATA + 8).unwrap(), 0x99); // x3 was advanced to DATA + 8
+    }
+
+    #[test]
+    fn simd_modified_immediate() {
+        let words = [0x4f00e41f, 0x4f052561, 0x6f008642, 0x6f05e4a3, 0x2f00e424, 0x4f005425, 0x6f0797e6, 0x4f03f607, 0x6f04f488, 0x4f02c749];
+        let (cpu, _) = run(&words, |c, _| {
+            c.regs.write_q(31, u128::MAX);
+            c.regs.write_q(4, u128::MAX);
+            c.regs.write_q(5, 0x10);
+            c.regs.write_q(6, u128::MAX);
+        });
+        let rep = |v: u64| v as u128 | (v as u128) << 64;
+        assert_eq!(cpu.regs.read_q(31), 0); // movi v31.16b, #0
+        assert_eq!(cpu.regs.read_q(1), rep(0x0000_AB00_0000_AB00)); // movi v1.4s, #0xab, lsl #8
+        assert_eq!(cpu.regs.read_q(2), rep(0xFFED_FFED_FFED_FFED)); // mvni v2.8h, #0x12
+        assert_eq!(cpu.regs.read_q(3), rep(0xFF00_FF00_00FF_00FF)); // movi v3.2d
+        assert_eq!(cpu.regs.read_q(4), 0xFF); // movi d4, #0xff clears the upper half
+        assert_eq!(cpu.regs.read_q(5), rep(0x0001_0000_0001_0000) | 0x10); // orr v5.4s, #1, lsl #16
+        assert_eq!(cpu.regs.read_q(6), rep(0xFF00_FF00_FF00_FF00)); // bic v6.8h, #0xff
+        assert_eq!(cpu.regs.read_q(7), rep(0x3F80_0000_3F80_0000)); // fmov v7.4s, #1.0
+        assert_eq!(cpu.regs.read_q(8), rep((-2.5f64).to_bits())); // fmov v8.2d, #-2.5
+        assert_eq!(cpu.regs.read_q(9), rep(0x0000_5AFF_0000_5AFF)); // movi v9.4s, #0x5a, msl #8
     }
 
     #[test]
