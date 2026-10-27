@@ -1,6 +1,12 @@
 #![allow(dead_code)]
 
-use super::instructions::{BranchRegOp, Condition, FpOp2, Instruction, LogicalOp, MoveWideOp, ShiftType};
+use super::instructions::{
+    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, ShiftType, SimdShiftOp,
+};
+use super::simd;
+
+/// Bytes zeroed by `DC ZVA`, as reported by `DCZID_EL0`.
+pub const DC_ZVA_BLOCK: u64 = 64;
 use super::jit_cache::JitBlockCache;
 use super::registers::CpuRegisters;
 use crate::mmu::{Memory, MemoryError};
@@ -786,12 +792,15 @@ impl Cpu {
                 // 0x5A10 = NZCV        (S3_3_C4_C2_0)
                 // 0x5F00 = CNTFRQ_EL0  (19,200,000 Hz Switch 2 hardware timer frequency)
                 // 0x5F01 = CNTPCT_EL0  (Switch 2 physical timer counter)
+                // 0x5807 = DCZID_EL0   (S3_3_C0_C0_7)
                 if is_read {
                     let val = match sysreg {
                         0x5E82 => self.regs.tpidr_el0,
                         0x5E83 => self.regs.tpidrro_el0,
                         0x5A10 => self.regs.pstate.to_bits() as u64,
                         0x5F00 => 19_200_000,
+                        // DCZID_EL0: DC ZVA permitted, block = 2^4 words = DC_ZVA_BLOCK bytes
+                        0x5807 => DC_ZVA_BLOCK.trailing_zeros() as u64 - 2,
                         0x5F01 => self.jit.cache_hits.wrapping_add(self.jit.cache_misses).wrapping_mul(16).wrapping_add(0x0123_4560),
                         _ => 0,
                     };
@@ -1111,6 +1120,194 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdLoadStorePair { rt1, rt2, rn, offset, size_bytes, is_load, writeback, post_index } => {
+                let base = self.regs.read_x_or_sp(rn);
+                let updated = (base as i64).wrapping_add(offset) as u64;
+                let addr = if post_index { base } else { updated };
+                let n = size_bytes as usize;
+                for (i, rt) in [rt1, rt2].into_iter().enumerate() {
+                    let at = addr.wrapping_add((i * n) as u64);
+                    if is_load {
+                        let mut buf = [0u8; 16];
+                        mmu.read_bytes(at, &mut buf[..n])?;
+                        self.regs.write_q(rt, u128::from_le_bytes(buf));
+                    } else {
+                        mmu.write_bytes(at, &self.regs.read_q(rt).to_le_bytes()[..n])?;
+                    }
+                }
+                if writeback {
+                    self.regs.write_x_or_sp(rn, updated);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::DcZva { rt } => {
+                let addr = self.regs.read_x(rt) & !(DC_ZVA_BLOCK - 1);
+                mmu.write_bytes(addr, &[0u8; DC_ZVA_BLOCK as usize])?;
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::DataProc1 { rd, rn, op, is_64 } => {
+                if is_64 {
+                    let x = self.regs.read_x(rn);
+                    let res = match op {
+                        DataProc1Op::Rbit => x.reverse_bits(),
+                        DataProc1Op::Rev16 => ((x & 0x00FF_00FF_00FF_00FF) << 8) | ((x >> 8) & 0x00FF_00FF_00FF_00FF),
+                        DataProc1Op::Rev32 => {
+                            (((x >> 32) as u32).swap_bytes() as u64) << 32 | (x as u32).swap_bytes() as u64
+                        }
+                        DataProc1Op::Rev64 => x.swap_bytes(),
+                        DataProc1Op::Clz => x.leading_zeros() as u64,
+                        DataProc1Op::Cls => ((x as i64 ^ ((x as i64) >> 1)) as u64).leading_zeros() as u64 - 1,
+                    };
+                    self.regs.write_x(rd, res);
+                } else {
+                    let w = self.regs.read_w(rn);
+                    let res = match op {
+                        DataProc1Op::Rbit => w.reverse_bits(),
+                        DataProc1Op::Rev16 => ((w & 0x00FF_00FF) << 8) | ((w >> 8) & 0x00FF_00FF),
+                        DataProc1Op::Rev32 | DataProc1Op::Rev64 => w.swap_bytes(),
+                        DataProc1Op::Clz => w.leading_zeros(),
+                        DataProc1Op::Cls => ((w as i32 ^ ((w as i32) >> 1)) as u32).leading_zeros() - 1,
+                    };
+                    self.regs.write_w(rd, res);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::MultiplyHigh { rd, rn, rm, is_signed } => {
+                let (n, m) = (self.regs.read_x(rn), self.regs.read_x(rm));
+                let hi = if is_signed {
+                    ((n as i64 as i128 * m as i64 as i128) >> 64) as u64
+                } else {
+                    ((n as u128 * m as u128) >> 64) as u64
+                };
+                self.regs.write_x(rd, hi);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::MultiplyLong { rd, rn, rm, ra, is_signed, is_sub } => {
+                let (n, m) = (self.regs.read_w(rn), self.regs.read_w(rm));
+                let prod = if is_signed {
+                    (n as i32 as i64).wrapping_mul(m as i32 as i64) as u64
+                } else {
+                    (n as u64).wrapping_mul(m as u64)
+                };
+                let a = self.regs.read_x(ra);
+                self.regs.write_x(rd, if is_sub { a.wrapping_sub(prod) } else { a.wrapping_add(prod) });
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdLoadStore { rt, rn, offset, size_bytes, is_load, writeback, post_index } => {
+                let base = self.regs.read_x_or_sp(rn);
+                let updated = (base as i64).wrapping_add(offset) as u64;
+                let addr = if post_index { base } else { updated };
+                let n = size_bytes as usize;
+                if is_load {
+                    let mut buf = [0u8; 16];
+                    mmu.read_bytes(addr, &mut buf[..n])?;
+                    // Loads into B/H/S/D/Q zero the rest of the vector register.
+                    self.regs.write_q(rt, u128::from_le_bytes(buf));
+                } else {
+                    mmu.write_bytes(addr, &self.regs.read_q(rt).to_le_bytes()[..n])?;
+                }
+                if writeback {
+                    self.regs.write_x_or_sp(rn, updated);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdLoadStoreReg { rt, rn, rm, option, shift, size_bytes, is_load } => {
+                let raw_m = self.regs.read_x(rm);
+                let index: u64 = match option {
+                    0b010 => (raw_m as u32) as u64,          // UXTW
+                    0b110 => ((raw_m as i32) as i64) as u64, // SXTW
+                    _ => raw_m,                              // LSL / SXTX
+                };
+                let addr = self.regs.read_x_or_sp(rn).wrapping_add(index.wrapping_shl(shift as u32));
+                let n = size_bytes as usize;
+                if is_load {
+                    let mut buf = [0u8; 16];
+                    mmu.read_bytes(addr, &mut buf[..n])?;
+                    self.regs.write_q(rt, u128::from_le_bytes(buf));
+                } else {
+                    mmu.write_bytes(addr, &self.regs.read_q(rt).to_le_bytes()[..n])?;
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdLoadStoreMulti { rt, rn, rm, regs, q, is_load, post_index } => {
+                let base = self.regs.read_x_or_sp(rn);
+                let per_reg = if q { 16 } else { 8 };
+                for r in 0..regs as u64 {
+                    let addr = base.wrapping_add(r * per_reg as u64);
+                    let reg = (rt + r as u8) % 32;
+                    if is_load {
+                        let mut buf = [0u8; 16];
+                        mmu.read_bytes(addr, &mut buf[..per_reg])?;
+                        self.regs.write_q(reg, u128::from_le_bytes(buf));
+                    } else {
+                        mmu.write_bytes(addr, &self.regs.read_q(reg).to_le_bytes()[..per_reg])?;
+                    }
+                }
+                if post_index {
+                    let step = if rm == 31 { regs as u64 * per_reg as u64 } else { self.regs.read_x(rm) };
+                    self.regs.write_x_or_sp(rn, base.wrapping_add(step));
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdDupGeneral { rd, rn, esize, q } => {
+                self.regs.write_q(rd, simd::dup(self.regs.read_x(rn), esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdMovToGeneral { rd, rn, esize, index } => {
+                let val = simd::lane(self.regs.read_q(rn), esize as u32, index as usize);
+                if esize == 64 {
+                    self.regs.write_x(rd, val);
+                } else {
+                    self.regs.write_w(rd, val as u32);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdThreeSame { rd, rn, rm, op, esize, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::three_same(op, d, n, m, esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdTwoMisc { rd, rn, op, esize, q } => {
+                self.regs.write_q(rd, simd::two_misc(op, self.regs.read_q(rn), esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdShiftImm { rd, rn, op, esize, shift, q } => {
+                let (n, e, sh) = (self.regs.read_q(rn), esize as u32, shift as u32);
+                let res = match op {
+                    SimdShiftOp::Sshr => simd::shift_imm(n, e, sh, q, true, false),
+                    SimdShiftOp::Ushr => simd::shift_imm(n, e, sh, q, false, false),
+                    SimdShiftOp::Shl => simd::shift_imm(n, e, sh, q, false, true),
+                    SimdShiftOp::Shrn => simd::shrn(self.regs.read_q(rd), n, e, sh, q),
+                };
+                self.regs.write_q(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::Unimplemented { raw } => {
                 Err(CpuError::UnimplementedInstruction { raw, pc })
             }
@@ -1137,5 +1334,219 @@ impl Cpu {
             Condition::Le => pstate.z || (pstate.n != pstate.v),
             Condition::Al | Condition::Nv => true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Encodings below were produced by the devkitA64 assembler from the mnemonic in each comment.
+    use super::*;
+    use crate::mmu::Permission;
+
+    const CODE: u64 = 0x1000;
+    const DATA: u64 = 0x8000;
+
+    /// Runs `words` from `CODE` with `setup` applied first. `DATA..DATA+0x1000` is mapped read/write.
+    fn run(words: &[u32], setup: impl FnOnce(&mut Cpu, &mut Memory)) -> (Cpu, Memory) {
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        mmu.map_range(CODE, 0x1000, Permission::READ_WRITE_EXECUTE);
+        mmu.map_range(DATA, 0x1000, Permission::READ_WRITE);
+        for (i, w) in words.iter().enumerate() {
+            mmu.write_u32(CODE + i as u64 * 4, *w).unwrap();
+        }
+        cpu.regs.pc = CODE;
+        setup(&mut cpu, &mut mmu);
+        for _ in words {
+            assert!(matches!(cpu.step(&mut mmu), Ok(StepResult::Continue)), "step failed at 0x{:X}", cpu.regs.pc);
+        }
+        (cpu, mmu)
+    }
+
+    #[test]
+    fn libnx_ops_decode() {
+        let table: &[(u32, &str)] = &[
+            (0xdac00043, "DataProc1"),          // rbit x3, x2
+            (0xdac00c84, "DataProc1"),          // rev x4, x4
+            (0x5ac008a4, "DataProc1"),          // rev w4, w5
+            (0x5ac00441, "DataProc1"),          // rev16 w1, w2
+            (0xdac00841, "DataProc1"),          // rev32 x1, x2
+            (0xdac01063, "DataProc1"),          // clz x3, x3
+            (0xdac014c5, "DataProc1"),          // cls x5, x6
+            (0x9bc17c00, "MultiplyHigh"),       // umulh x0, x0, x1
+            (0x9b447c62, "MultiplyHigh"),       // smulh x2, x3, x4
+            (0x9ba20c20, "MultiplyLong"),       // umaddl x0, w1, w2, x3
+            (0x9b228c20, "MultiplyLong"),       // smsubl x0, w1, w2, x3
+            (0x3cc0827f, "SimdLoadStore"),      // ldur q31, [x19, #8]
+            (0x3c9f0080, "SimdLoadStore"),      // stur q0, [x4, #-16]
+            (0xfc408441, "SimdLoadStore"),      // ldr d1, [x2], #8
+            (0xbc004c83, "SimdLoadStore"),      // str s3, [x4, #4]!
+            (0x3ce1681f, "SimdLoadStoreReg"),   // ldr q31, [x0, x1]
+            (0xfc24d862, "SimdLoadStoreReg"),   // str d2, [x3, w4, sxtw #3]
+            (0x4c40a021, "SimdLoadStoreMulti"), // ld1 {v1.16b-v2.16b}, [x1]
+            (0x4cdf7020, "SimdLoadStoreMulti"), // ld1 {v0.16b}, [x1], #16
+            (0x0c836044, "SimdLoadStoreMulti"), // st1 {v4.8b-v6.8b}, [x2], x3
+            (0x4e010c20, "SimdDupGeneral"),     // dup v0.16b, w1
+            (0x4e080c83, "SimdDupGeneral"),     // dup v3.2d, x4
+            (0x4e083c01, "SimdMovToGeneral"),   // mov x1, v0.d[0]
+            (0x0e0b3c22, "SimdMovToGeneral"),   // umov w2, v1.b[5]
+            (0x6e22ac20, "SimdThreeSame"),      // uminp v0.16b, v1.16b, v2.16b
+            (0x4e22bc20, "SimdThreeSame"),      // addp v0.16b, v1.16b, v2.16b
+            (0x4e201c21, "SimdThreeSame"),      // and v1.16b, v1.16b, v0.16b
+            (0x4ea41c83, "SimdThreeSame"),      // mov v3.16b, v4.16b
+            (0x6e621c20, "SimdThreeSame"),      // bsl v0.16b, v1.16b, v2.16b
+            (0x4ea28420, "SimdThreeSame"),      // add v0.4s, v1.4s, v2.4s
+            (0x6e623420, "SimdThreeSame"),      // cmhi v0.8h, v1.8h, v2.8h
+            (0x0e209800, "SimdTwoMisc"),        // cmeq v0.8b, v0.8b, #0
+            (0x0e205820, "SimdTwoMisc"),        // cnt v0.8b, v1.8b
+            (0x6e205820, "SimdTwoMisc"),        // mvn v0.16b, v1.16b
+            (0x0f0c8400, "SimdShiftImm"),       // shrn v0.8b, v0.8h, #4
+            (0x4f088420, "SimdShiftImm"),       // shrn2 v0.16b, v1.8h, #8
+            (0x6f3d0420, "SimdShiftImm"),       // ushr v0.4s, v1.4s, #3
+            (0x4f4c5420, "SimdShiftImm"),       // shl v0.2d, v1.2d, #12
+            (0xad3e0080, "SimdLoadStorePair"),  // stp q0, q0, [x4, #-64]
+            (0x6cc107e0, "SimdLoadStorePair"),  // ldp d0, d1, [sp], #16
+            (0xac0008a1, "SimdLoadStorePair"),  // stnp q1, q2, [x5]
+            (0xd50b7423, "DcZva"),              // dc zva, x3
+        ];
+        for &(raw, name) in table {
+            let got = format!("{:?}", super::super::decoder::decode(raw));
+            assert!(got.starts_with(name), "0x{raw:08X}: expected {name}, got {got}");
+        }
+    }
+
+    #[test]
+    fn scalar_bit_ops() {
+        let (cpu, _) = run(&[0xdac00043, 0xdac01063, 0xdac014c5, 0x5ac00441, 0xdac00841], |c, _| {
+            c.regs.write_x(2, 0x10); // rbit -> bit 59 set, clz -> 4
+            c.regs.write_x(6, 0xFFFF_0000_0000_0000); // cls -> 15
+        });
+        assert_eq!(cpu.regs.read_x(3), 4); // clz(rbit(0x10)) = clz(1 << 59)
+        assert_eq!(cpu.regs.read_x(5), 15);
+        // rev16 w1, w2 then rev32 x1, x2 overwrites x1: rev32 of 0x10 = 0x1000_0000
+        assert_eq!(cpu.regs.read_x(1), 0x1000_0000);
+        let (cpu, _) = run(&[0xdac00c84, 0x5ac008a4], |c, _| {
+            c.regs.write_x(4, 0x0102_0304_0506_0708);
+            c.regs.write_x(5, 0x1122_3344);
+        });
+        assert_eq!(cpu.regs.read_x(4), 0x4433_2211); // rev w4, w5 runs last
+        let (cpu, _) = run(&[0x5ac00441], |c, _| c.regs.write_x(2, 0xAABB_CCDD));
+        assert_eq!(cpu.regs.read_x(1), 0xBBAA_DDCC);
+    }
+
+    #[test]
+    fn multiply_high_and_long() {
+        let (cpu, _) = run(&[0x9bc17c00, 0x9b447c62], |c, _| {
+            c.regs.write_x(0, u64::MAX);
+            c.regs.write_x(1, 3);
+            c.regs.write_x(3, (-2i64) as u64);
+            c.regs.write_x(4, 5);
+        });
+        assert_eq!(cpu.regs.read_x(0), 2); // (2^64 - 1) * 3 >> 64
+        assert_eq!(cpu.regs.read_x(2), u64::MAX); // -10 >> 64 = -1
+        let (cpu, _) = run(&[0x9ba20c20], |c, _| {
+            c.regs.write_x(1, 0xFFFF_FFFF);
+            c.regs.write_x(2, 2);
+            c.regs.write_x(3, 1);
+        });
+        assert_eq!(cpu.regs.read_x(0), 0x1_FFFF_FFFF);
+        let (cpu, _) = run(&[0x9b228c20], |c, _| {
+            c.regs.write_x(1, 0xFFFF_FFFF); // -1 as a signed word
+            c.regs.write_x(2, 2);
+            c.regs.write_x(3, 1);
+        });
+        assert_eq!(cpu.regs.read_x(0), 3); // 1 - (-1 * 2)
+    }
+
+    #[test]
+    fn simd_loads_and_stores() {
+        let (cpu, mmu) = run(&[0x3cc0827f, 0x3c9f0080, 0xfc408441], |c, m| {
+            for i in 0..32u64 {
+                m.write_u8(DATA + i, i as u8).unwrap();
+            }
+            c.regs.write_x(19, DATA);
+            c.regs.write_q(0, 0xA5A5_A5A5_A5A5_A5A5_A5A5_A5A5_A5A5_A5A5);
+            c.regs.write_x(4, DATA + 0x100);
+            c.regs.write_x(2, DATA);
+        });
+        assert_eq!(cpu.regs.read_q(31), u128::from_le_bytes(core::array::from_fn(|i| i as u8 + 8)));
+        assert_eq!(mmu.read_u64(DATA + 0xF0).unwrap(), 0xA5A5_A5A5_A5A5_A5A5);
+        assert_eq!(cpu.regs.read_q(1), 0x0706_0504_0302_0100); // D load zeroes the upper bits
+        assert_eq!(cpu.regs.read_x(2), DATA + 8); // post-index writeback
+        assert_eq!(cpu.regs.read_x(4), DATA + 0x100); // stur does not write back
+
+        let (cpu, mmu) = run(&[0x4c40a021, 0x0c836044], |c, m| {
+            for i in 0..32u64 {
+                m.write_u8(DATA + i, 0x40 + i as u8).unwrap();
+            }
+            c.regs.write_x(1, DATA);
+            c.regs.write_x(2, DATA + 0x200);
+            c.regs.write_x(3, 0x30);
+            c.regs.write_q(4, 0x1111);
+            c.regs.write_q(5, 0x2222);
+            c.regs.write_q(6, 0x3333);
+        });
+        assert_eq!(cpu.regs.read_q(2) & 0xFF, 0x50);
+        assert_eq!(mmu.read_u64(DATA + 0x208).unwrap(), 0x2222);
+        assert_eq!(mmu.read_u64(DATA + 0x210).unwrap(), 0x3333);
+        assert_eq!(cpu.regs.read_x(2), DATA + 0x230);
+
+        let (cpu, _) = run(&[0x3ce1681f], |c, m| {
+            m.write_u64(DATA + 0x40, 0xDEAD).unwrap();
+            c.regs.write_x(0, DATA);
+            c.regs.write_x(1, 0x40);
+        });
+        assert_eq!(cpu.regs.read_q(31), 0xDEAD);
+    }
+
+    #[test]
+    fn simd_pairs_and_dc_zva() {
+        // stp q0, q0, [x3, #64]!
+        let (cpu, mmu) = run(&[0xad820060], |c, _| {
+            c.regs.write_x(3, DATA);
+            c.regs.write_q(0, u128::MAX);
+        });
+        assert_eq!(cpu.regs.read_x(3), DATA + 64); // pre-index writeback
+        assert_eq!(mmu.read_u64(DATA + 64).unwrap(), u64::MAX);
+        assert_eq!(mmu.read_u64(DATA + 64 + 24).unwrap(), u64::MAX);
+        // dc zva, x3 zeroes the aligned 64-byte block containing x3.
+        let (_, mmu2) = run(&[0xd50b7423], |c, m| {
+            for i in 0..0x100u64 {
+                m.write_u8(DATA + i, 0xEE).unwrap();
+            }
+            c.regs.write_x(3, DATA + 0x47);
+        });
+        assert_eq!(mmu2.read_u64(DATA + 0x40).unwrap(), 0);
+        assert_eq!(mmu2.read_u64(DATA + 0x78).unwrap(), 0);
+        assert_eq!(mmu2.read_u64(DATA + 0x80).unwrap(), 0xEEEE_EEEE_EEEE_EEEE);
+        assert_eq!(mmu2.read_u64(DATA + 0x38).unwrap(), 0xEEEE_EEEE_EEEE_EEEE);
+
+        let (cpu, _) = run(&[0xd53b00e0], |_, _| {});
+        assert_eq!(1u64 << (cpu.regs.read_x(0) + 2), DC_ZVA_BLOCK); // mrs x0, dczid_el0
+    }
+
+    #[test]
+    fn simd_vector_ops() {
+        // dup v0.16b, w1; cmeq v0.16b, v1.16b, #0; mov x1, v0.d[0]
+        let (cpu, _) = run(&[0x4e010c20, 0x4e209820, 0x4e083c01], |c, _| {
+            c.regs.write_x(1, 0x1AB);
+            c.regs.write_q(1, 0xFF00);
+        });
+        assert_eq!(cpu.regs.read_x(1), 0xFFFF_FFFF_FFFF_00FF);
+        // shrn v0.8b, v0.8h, #4 on 0x0AB0 halfwords
+        let (cpu, _) = run(&[0x0f0c8400], |c, _| c.regs.write_q(0, super::simd::dup(0x0AB0, 16, true)));
+        assert_eq!(cpu.regs.read_q(0), 0xABAB_ABAB_ABAB_ABAB);
+        // umov w2, v1.b[5]
+        let (cpu, _) = run(&[0x0e0b3c22], |c, _| c.regs.write_q(1, 0x7700_0000_0000));
+        assert_eq!(cpu.regs.read_x(2), 0x77);
+        // mov v3.16b, v4.16b
+        let (cpu, _) = run(&[0x4ea41c83], |c, _| c.regs.write_q(4, u128::MAX - 5));
+        assert_eq!(cpu.regs.read_q(3), u128::MAX - 5);
+        // add v0.4s, v1.4s, v2.4s wraps per lane
+        let (cpu, _) = run(&[0x4ea28420], |c, _| {
+            c.regs.write_q(1, super::simd::dup(0xFFFF_FFFF, 32, true));
+            c.regs.write_q(2, super::simd::dup(2, 32, true));
+        });
+        assert_eq!(cpu.regs.read_q(0), super::simd::dup(1, 32, true));
     }
 }

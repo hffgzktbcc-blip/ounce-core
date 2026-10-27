@@ -1,5 +1,7 @@
 // Homebrew loader fixture for ounce-core. Built with devkitA64 + libnx (see Makefile).
 // Uses no services: it checks what the loader and crt0 set up and returns 0xEEE when all of it holds.
+// libnx hands the loader 0 on exit whatever main returns, so the result also goes out through
+// svcOutputDebugString as "ounce-fixture result=0x...".
 #include <switch.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,10 +34,18 @@ int main(int argc, char **argv)
     void *p = malloc(4096); // newlib heap from the loader's OverrideHeap
     if (!p) fails |= 1 << 4;
     memset(p, 0xAB, 4096);
+    memset(p, 0, 4096); // large zero fill: newlib uses DC ZVA here when DCZID_EL0 allows it
+    for (int i = 0; i < 4096; i++)
+        if (((unsigned char *)p)[i]) { fails |= 1 << 6; break; }
     free(p);
 
     tls_counter += 1;
     if (tls_counter != 8) fails |= 1 << 5;
 
-    return fails ? (int)(0xBAD0000 | fails) : 0xEEE;
+    int result = fails ? (int)(0xBAD0000 | fails) : 0xEEE;
+    char msg[] = "ounce-fixture result=0x00000000";
+    for (int i = 0; i < 8; i++)
+        msg[sizeof(msg) - 2 - i] = "0123456789ABCDEF"[(result >> (4 * i)) & 0xF];
+    svcOutputDebugString(msg, sizeof(msg) - 1);
+    return result;
 }
