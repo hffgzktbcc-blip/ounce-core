@@ -113,6 +113,10 @@ pub struct IpcManager {
     pub request: super::hipc::Request,
     /// Process ID clients sent with `sm:` RegisterClient, if any.
     pub registered_pid: Option<u64>,
+    /// Sessions converted to CMIF domains. Domain object IDs are entries in `handles`.
+    pub domains: std::collections::HashSet<u32>,
+    /// The current request arrived on a domain: replies use the domain layout.
+    domain_reply: bool,
     next_handle: u32,
     pub total_ipc_requests: u64,
     pub start_instant: std::time::Instant,
@@ -130,6 +134,8 @@ impl IpcManager {
             handles: HashMap::new(),
             request: Default::default(),
             registered_pid: None,
+            domains: Default::default(),
+            domain_reply: false,
             next_handle: 0x10001,
             total_ipc_requests: 0,
             start_instant: std::time::Instant::now(),
@@ -159,10 +165,11 @@ impl IpcManager {
     ) -> u64 {
         self.total_ipc_requests += 1;
 
-        let service = match self.handles.get(&session_handle).cloned() {
+        let mut service = match self.handles.get(&session_handle).cloned() {
             Some(s) => s,
             None => return 0xF601, // Invalid handle result code
         };
+        self.domain_reply = false;
 
         // Check for Switch 2 Tipc (Tiny IPC) commands on `sm:` (used by native Switch 2 RO/FS modules on FW 23.0.1)
         let tipc_hdr = mmu.read_u32(tls_addr).unwrap_or(0);
@@ -190,11 +197,33 @@ impl IpcManager {
 
         // CMIF payload: the HIPC raw data aligned to 16 bytes (TLS + 0x10 when there is no special header).
         self.request = super::hipc::parse_request(mmu, tls_addr);
-        let cmif_base = tls_addr + self.request.cmif_offset;
+        let mut cmif_base = tls_addr + self.request.cmif_offset;
         let magic = mmu.read_u32(cmif_base).unwrap_or(0);
         if matches!(self.request.kind, super::hipc::TYPE_CONTROL | super::hipc::TYPE_CONTROL_WITH_CONTEXT) && magic == CMIF_IN_MAGIC {
             return self.handle_control(session_handle, &service, tls_addr, mmu, mmu.read_u32(cmif_base + 8).unwrap_or(0));
         }
+
+        // Domain sessions: a domain header names the target object, and the CMIF payload follows it.
+        if self.domains.contains(&session_handle) && self.request.kind != super::hipc::TYPE_CLOSE {
+            let dom = super::hipc::read_domain_header(mmu, cmif_base);
+            self.domain_reply = true;
+            if dom.kind == super::hipc::DOMAIN_CLOSE {
+                if dom.object_id != session_handle {
+                    self.handles.remove(&dom.object_id);
+                }
+                self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+                return 0;
+            }
+            service = match self.handles.get(&dom.object_id) {
+                Some(s) => s.clone(),
+                None => {
+                    self.write_cmif_response(tls_addr, mmu, 0xE401, &[], None);
+                    return 0;
+                }
+            };
+            cmif_base += 16;
+        }
+        let magic = mmu.read_u32(cmif_base).unwrap_or(0);
         if magic != CMIF_IN_MAGIC {
             // Write generic success even if raw HIPC control
             self.write_cmif_response(tls_addr, mmu, 0, &[], None);
@@ -502,11 +531,7 @@ impl IpcManager {
                 // Command 0: GetSharedMemoryHandle -> copy handle to the HID shared memory object
                 0 => {
                     let shm = self.allocate_handle(ServiceType::SharedMemory { size: HID_SHARED_MEMORY_SIZE });
-                    super::hipc::write_response(
-                        mmu,
-                        tls_addr,
-                        &super::hipc::Response { result: 0, data: &[], copy_handles: &[shm], move_handles: &[] },
-                    );
+                    self.reply(tls_addr, mmu, 0, &[], &[shm], None);
                     0
                 }
                 _ => {
@@ -516,8 +541,13 @@ impl IpcManager {
             },
 
             ServiceType::FspSrv => match cmd_id {
-                // Command 0 / 1 / 200: OpenDataStorageByCurrentProcess / OpenDataStorageByProgramId -> returns IStorage
-                0 | 1 | 200 => {
+                // Command 1: SetCurrentProcess(u64, PID) -> no output
+                1 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+                    0
+                }
+                // Command 0 / 200: OpenDataStorageByCurrentProcess -> returns IStorage
+                0 | 200 => {
                     let storage_h = self.allocate_handle(ServiceType::Storage);
                     self.write_cmif_response(tls_addr, mmu, 0, &[storage_h], Some(storage_h));
                     0
@@ -577,7 +607,7 @@ impl IpcManager {
             ServiceType::FileSystem(mount_prefix) => match cmd_id {
                 // Command 0: CreateFile(u32 mode, u64 size, string path)
                 0 => {
-                    let path = read_cmif_string(mmu, args_base + 16, 256);
+                    let path = self.path_arg(mmu, args_base + 16);
                     let full_path = if path.contains(":/") {
                         path
                     } else {
@@ -589,7 +619,7 @@ impl IpcManager {
                 }
                 // Command 1: DeleteFile(string path)
                 1 => {
-                    let path = read_cmif_string(mmu, args_base, 256);
+                    let path = self.path_arg(mmu, args_base);
                     let full_path = if path.contains(":/") {
                         path
                     } else {
@@ -604,7 +634,7 @@ impl IpcManager {
                 }
                 // Command 2: CreateDirectory(string path)
                 2 => {
-                    let path = read_cmif_string(mmu, args_base, 256);
+                    let path = self.path_arg(mmu, args_base);
                     let full_path = if path.contains(":/") {
                         path
                     } else {
@@ -619,7 +649,7 @@ impl IpcManager {
                 }
                 // Command 3 | 4: DeleteDirectory / DeleteDirectoryRecursively(string path)
                 3 | 4 => {
-                    let path = read_cmif_string(mmu, args_base, 256);
+                    let path = self.path_arg(mmu, args_base);
                     let full_path = if path.contains(":/") {
                         path
                     } else {
@@ -632,9 +662,9 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, res, &[0], None);
                     0
                 }
-                // Command 9: OpenFile(string path, u32 mode) -> returns IFile
-                9 => {
-                    let path = read_cmif_string(mmu, args_base, 256);
+                // Command 8: OpenFile(string path, u32 mode) -> returns IFile
+                8 => {
+                    let path = self.path_arg(mmu, args_base);
                     let full_path = if path.contains(":/") {
                         path
                     } else {
@@ -651,9 +681,9 @@ impl IpcManager {
                     }
                     0
                 }
-                // Command 10: OpenDirectory(string path, u32 filter_flags) -> returns IDirectory
-                10 => {
-                    let path = read_cmif_string(mmu, args_base, 256);
+                // Command 9: OpenDirectory(string path, u32 filter_flags) -> returns IDirectory
+                9 => {
+                    let path = self.path_arg(mmu, args_base);
                     let full_path = if path.is_empty() || path == "/" {
                         mount_prefix.clone()
                     } else if path.contains(":/") {
@@ -670,21 +700,21 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[dir_h], Some(dir_h));
                     0
                 }
-                // Command 11: Commit
-                11 => {
+                // Command 10: Commit
+                10 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0
                 }
-                // Command 12: GetFreeSpaceSize -> returns u64
-                12 => {
+                // Command 11: GetFreeSpaceSize -> returns u64
+                11 => {
                     let free_bytes = vfs.get_free_space_size(&mount_prefix);
                     let lo = (free_bytes & 0xFFFF_FFFF) as u32;
                     let hi = ((free_bytes >> 32) & 0xFFFF_FFFF) as u32;
                     self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
                     0
                 }
-                // Command 13: GetTotalSpaceSize -> returns u64
-                13 => {
+                // Command 12: GetTotalSpaceSize -> returns u64
+                12 => {
                     let total_bytes = vfs.get_total_space_size(&mount_prefix);
                     let lo = (total_bytes & 0xFFFF_FFFF) as u32;
                     let hi = ((total_bytes >> 32) & 0xFFFF_FFFF) as u32;
@@ -744,6 +774,20 @@ impl IpcManager {
             },
 
             ServiceType::File(handle) => match cmd_id {
+                // Command 0: Read(u32 option, s64 offset, u64 size) -> u64 bytes read, data in the B buffer
+                0 => {
+                    let offset = mmu.read_u64(args_base + 8).unwrap_or(0) as usize;
+                    let size = mmu.read_u64(args_base + 16).unwrap_or(0) as usize;
+                    let buf = self.request.recv_buffers.first().copied().unwrap_or_default();
+                    let len = size.min(buf.size as usize);
+                    let read = match vfs.handle_path(handle).map(str::to_string) {
+                        Some(path) => vfs.read_file_to_guest(&path, offset, buf.addr, len, mmu).unwrap_or(0),
+                        None => 0,
+                    };
+                    let n = read as u64;
+                    self.write_cmif_response(tls_addr, mmu, 0, &[n as u32, (n >> 32) as u32], None);
+                    0
+                }
                 // Command 4: GetSize -> u64
                 4 => {
                     let sz = vfs.get_file_size(handle).unwrap_or(0) as u64;
@@ -1030,6 +1074,19 @@ impl IpcManager {
         }
     }
 
+    /// A path argument: libnx sends `FsPath` in the first send static (X) buffer; older callers put a
+    /// string (or a pointer to one) in the CMIF arguments at `fallback`.
+    fn path_arg(&self, mmu: &Memory, fallback: u64) -> String {
+        if let Some(&(_, buf)) = self.request.send_statics.first() {
+            let mut bytes = vec![0u8; (buf.size as usize).min(0x301)];
+            if mmu.read_bytes(buf.addr, &mut bytes).is_ok() {
+                let len = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+                return String::from_utf8_lossy(&bytes[..len]).to_string();
+            }
+        }
+        read_cmif_string(mmu, fallback, 256)
+    }
+
     /// HIPC control requests (`TYPE_CONTROL`): domain conversion, cloning, pointer buffer size.
     fn handle_control(&mut self, session_handle: u32, service: &ServiceType, tls_addr: u64, mmu: &mut Memory, cmd_id: u32) -> u64 {
         match cmd_id {
@@ -1040,10 +1097,10 @@ impl IpcManager {
             }
             // QueryPointerBufferSize -> u16 size
             3 => self.write_cmif_response(tls_addr, mmu, 0, &[POINTER_BUFFER_SIZE], None),
-            // ConvertCurrentObjectToDomain is not supported yet: report it rather than pretend.
+            // ConvertCurrentObjectToDomain -> u32 object ID. The session's own handle is its first object.
             0 => {
-                eprintln!("[HIPC] ConvertCurrentObjectToDomain on handle 0x{session_handle:X} not supported");
-                self.write_cmif_response(tls_addr, mmu, 0xF601, &[], None);
+                self.domains.insert(session_handle);
+                self.write_cmif_response(tls_addr, mmu, 0, &[session_handle], None);
             }
             _ => self.write_cmif_response(tls_addr, mmu, 0, &[], None),
         }
@@ -1060,12 +1117,31 @@ impl IpcManager {
         move_handle: Option<u32>,
     ) {
         let data: Vec<u8> = out_words.iter().flat_map(|w| w.to_le_bytes()).collect();
-        let moves: Vec<u32> = move_handle.into_iter().collect();
-        super::hipc::write_response(
-            mmu,
-            tls_addr,
-            &super::hipc::Response { result: result_code, data: &data, copy_handles: &[], move_handles: &moves },
-        );
+        self.reply(tls_addr, mmu, result_code, &data, &[], move_handle);
+    }
+
+    /// Writes a response. `new_object` is a session this request created: a move handle on a plain session,
+    /// an out object ID on a domain. Handlers echo that handle as their first out word for the harness's
+    /// fixed-offset reads; on a domain the echo is dropped so the object ID lands right after the real data.
+    fn reply(&self, tls_addr: u64, mmu: &mut Memory, result: u32, data: &[u8], copy_handles: &[u32], new_object: Option<u32>) {
+        let objects: Vec<u32> = new_object.into_iter().collect();
+        if self.domain_reply {
+            let data = match new_object {
+                Some(h) if data.len() >= 4 && data[..4] == h.to_le_bytes() => &data[4..],
+                _ => data,
+            };
+            super::hipc::write_response(
+                mmu,
+                tls_addr,
+                &super::hipc::Response { result, data, copy_handles, domain_objects: Some(&objects), ..Default::default() },
+            );
+        } else {
+            super::hipc::write_response(
+                mmu,
+                tls_addr,
+                &super::hipc::Response { result, data, copy_handles, move_handles: &objects, ..Default::default() },
+            );
+        }
     }
 }
 
@@ -1184,10 +1260,10 @@ mod tests {
         let res_h = mmu.read_u32(tls_addr + 0x20).unwrap();
         assert_eq!(ipc.handles.get(&res_h), Some(&ServiceType::AppletResource));
 
-        // 5. fsp-srv -> OpenDataStorageByCurrentProcess (Cmd 1)
+        // 5. fsp-srv -> OpenDataStorageByCurrentProcess (Cmd 200)
         let fsp_h = ipc.allocate_handle(ServiceType::FspSrv);
         mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
-        mmu.write_u32(tls_addr + 0x18, 1).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 200).unwrap();
         let res = ipc.handle_sync_request(fsp_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
         assert_eq!(res, 0);
         let storage_h = mmu.read_u32(tls_addr + 0x20).unwrap();
@@ -1421,9 +1497,9 @@ mod tests {
         let sdmc_fs_h = mmu.read_u32(tls_addr + 0x20).unwrap();
         assert_eq!(ipc.handles.get(&sdmc_fs_h), Some(&ServiceType::FileSystem("sdmc:/".to_string())));
 
-        // 2. Query free space via IFileSystem (Cmd 12)
+        // 2. Query free space via IFileSystem (Cmd 11)
         mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
-        mmu.write_u32(tls_addr + 0x18, 12).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 11).unwrap();
         let res = ipc.handle_sync_request(sdmc_fs_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
         assert_eq!(res, 0);
         let free_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
@@ -1441,9 +1517,9 @@ mod tests {
         vfs.mount_file("sdmc:/switch/tools/ftpd.nro", b"FTPD_NRO_PAYLOAD");
         vfs.mount_file("sdmc:/switch/tools/sys-clk.nro", b"SYSCLK_NRO_PAYLOAD");
 
-        // 4. OpenDirectory (Cmd 10) on IFileSystem
+        // 4. OpenDirectory (Cmd 9) on IFileSystem
         mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
-        mmu.write_u32(tls_addr + 0x18, 10).unwrap();
+        mmu.write_u32(tls_addr + 0x18, 9).unwrap();
         mmu.write_bytes(tls_addr + 0x20, b"/switch/tools\0").unwrap();
         let res = ipc.handle_sync_request(sdmc_fs_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
         assert_eq!(res, 0);

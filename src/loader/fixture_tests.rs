@@ -212,7 +212,7 @@ fn boot_with_kernel(nro: &[u8], args: &[&str]) -> (String, Vec<u16>) {
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
     let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).expect("NRO loads");
     assert_eq!(info.format, "NRO0");
-    crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "sdmc:/fixture.nro", args).unwrap();
+    crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "fixture.nro", nro, args).unwrap();
     cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
 
     let mut output = String::new();
@@ -257,4 +257,14 @@ fn libnx_services_fixture_opens_sm_and_hid() {
     assert!(output.ends_with("ounce-services result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
     assert!(svcs.contains(&0x1F) && svcs.contains(&0x21), "connects to sm: and sends requests");
     assert!(svcs.contains(&0x13), "maps the HID shared memory");
+}
+
+/// `tests/fixtures/nro/romfs`: libnx `fsInitialize` + `romfsInit` (the NRO's own RomFS, read from the
+/// SD card filesystem through fsp-srv) and a read of `romfs:/greeting.txt`.
+#[test]
+fn libnx_romfs_fixture_reads_its_romfs() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/romfs/romfs.nro");
+    let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let (output, svcs) = boot_with_kernel(&nro, &[]);
+    assert!(output.ends_with("ounce-romfs result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
 }

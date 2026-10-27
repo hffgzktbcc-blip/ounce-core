@@ -1936,7 +1936,7 @@ fn run_built_in_demo() {
         // 5. fsp-srv service handshake:
         let fsp_h = kernel17.ipc.allocate_handle(ServiceType::FspSrv);
         mmu17.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
-        mmu17.write_u32(tls_addr + 0x18, 1).unwrap(); // OpenDataStorageByCurrentProcess
+        mmu17.write_u32(tls_addr + 0x18, 200).unwrap(); // OpenDataStorageByCurrentProcess
         kernel17.ipc.handle_sync_request(
             fsp_h,
             tls_addr,
@@ -3384,7 +3384,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
             // Homebrew ABI for NRO0: ConfigEntry list in X0 (X1 = -1), a heap handed over so libnx skips
             // svcSetHeapSize, and X30 at a svcExitProcess stub, which is where libnx's exit returns.
             if is_nro {
-                if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, guest_args) {
+                if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, &bytes, guest_args) {
                     eprintln!("[Loader Error] homebrew environment: {}", e);
                     return;
                 }
@@ -3430,18 +3430,24 @@ const NRO_MAIN_THREAD_HANDLE: u32 = 0x1000;
 const NRO_INSTRUCTION_BUDGET: usize = 50_000_000;
 
 /// Sets up the homebrew loader ABI for an NRO loaded at `DEFAULT_BASE_ADDR`.
+/// `nro` is also placed on the virtual SD card and `argv[0]` names it as `sdmc:/<file name>`, the way
+/// homebrew loaders start NROs; libnx `romfsInit` reads the NRO's RomFS back through that path.
 fn setup_homebrew_nro(
     cpu: &mut Cpu,
     mmu: &mut Memory,
     kernel: &mut HorizonKernel,
     path: &str,
+    nro: &[u8],
     guest_args: &[&str],
 ) -> Result<(), mmu::MemoryError> {
     mmu.map_range(kernel.heap_base, NRO_HEAP_SIZE, Permission::READ_WRITE);
     kernel.heap_size = NRO_HEAP_SIZE;
+    let file_name = std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or("program.nro");
+    let sd_path = format!("sdmc:/{file_name}");
+    kernel.vfs.mount_file(&sd_path, nro);
     // libnx splits the argv string on spaces and honours double quotes.
     let quote = |a: &str| if a.contains(' ') { format!("\"{a}\"") } else { a.to_string() };
-    let argv = std::iter::once(path).chain(guest_args.iter().copied()).map(quote).collect::<Vec<_>>().join(" ");
+    let argv = std::iter::once(sd_path.as_str()).chain(guest_args.iter().copied()).map(quote).collect::<Vec<_>>().join(" ");
     loader::HomebrewConfig {
         main_thread_handle: Some(NRO_MAIN_THREAD_HANDLE),
         heap: Some((kernel.heap_base, NRO_HEAP_SIZE as u64)),

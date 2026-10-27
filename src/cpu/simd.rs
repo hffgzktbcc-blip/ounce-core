@@ -4,7 +4,7 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdOp2, SimdOp3};
+use super::instructions::{SimdOp2, SimdOp3, SimdPermuteOp};
 
 #[inline]
 fn mask(esize: u32) -> u64 {
@@ -154,6 +154,34 @@ pub fn shrn(d: u128, n: u128, esize: u32, shift: u32, q: bool) -> u128 {
     if q { (d & u64::MAX as u128) | (half << 64) } else { half }
 }
 
+/// `UZP1/UZP2/TRN1/TRN2/ZIP1/ZIP2` on `esize` lanes.
+pub fn permute(op: SimdPermuteOp, n: u128, m: u128, esize: u32, q: bool) -> u128 {
+    let count = lanes(esize, q);
+    let half = count / 2;
+    let mut out = 0u128;
+    for i in 0..count {
+        let v = match op {
+            // Even (UZP1) or odd (UZP2) lanes of n then m.
+            SimdPermuteOp::Uzp1 | SimdPermuteOp::Uzp2 => {
+                let j = 2 * i + (op == SimdPermuteOp::Uzp2) as usize;
+                if j < count { lane(n, esize, j) } else { lane(m, esize, j - count) }
+            }
+            // Pairs: n[2k + p], m[2k + p] with p = 0 (TRN1) or 1 (TRN2).
+            SimdPermuteOp::Trn1 | SimdPermuteOp::Trn2 => {
+                let j = (i & !1) + (op == SimdPermuteOp::Trn2) as usize;
+                if i % 2 == 0 { lane(n, esize, j) } else { lane(m, esize, j) }
+            }
+            // Interleave the low (ZIP1) or high (ZIP2) halves.
+            SimdPermuteOp::Zip1 | SimdPermuteOp::Zip2 => {
+                let j = i / 2 + if op == SimdPermuteOp::Zip2 { half } else { 0 };
+                if i % 2 == 0 { lane(n, esize, j) } else { lane(m, esize, j) }
+            }
+        };
+        set_lane(&mut out, esize, i, v);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +225,20 @@ mod tests {
         assert_eq!(two_misc(SimdOp2::Cnt, 0xFF07, 8, false), 0x0803);
         assert_eq!(three_same(SimdOp3::Smax, 0, 0x80, 0x7F, 8, false), 0x7F);
         assert_eq!(three_same(SimdOp3::Umax, 0, 0x80, 0x7F, 8, false), 0x80);
+    }
+
+    #[test]
+    fn permutes() {
+        let n = 0x0F0E_0D0C_0B0A_0908_0706_0504_0302_0100u128;
+        let m = 0x1F1E_1D1C_1B1A_1918_1716_1514_1312_1110u128;
+        let bytes = |v: u128| v.to_le_bytes();
+        assert_eq!(bytes(permute(SimdPermuteOp::Zip1, n, m, 8, true))[..4], [0x00, 0x10, 0x01, 0x11]);
+        assert_eq!(bytes(permute(SimdPermuteOp::Zip2, n, m, 8, true))[..4], [0x08, 0x18, 0x09, 0x19]);
+        assert_eq!(bytes(permute(SimdPermuteOp::Uzp1, n, m, 8, true))[6..10], [0x0C, 0x0E, 0x10, 0x12]);
+        assert_eq!(bytes(permute(SimdPermuteOp::Uzp2, n, m, 8, true))[..2], [0x01, 0x03]);
+        assert_eq!(bytes(permute(SimdPermuteOp::Trn1, n, m, 8, true))[..4], [0x00, 0x10, 0x02, 0x12]);
+        assert_eq!(bytes(permute(SimdPermuteOp::Trn2, n, m, 8, true))[..4], [0x01, 0x11, 0x03, 0x13]);
+        assert_eq!(permute(SimdPermuteOp::Zip1, n, m, 8, false) >> 64, 0);
     }
 
     #[test]
