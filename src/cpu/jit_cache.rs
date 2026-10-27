@@ -130,4 +130,23 @@ mod tests {
         assert_eq!(jit.cache_hits, 2);
         assert_eq!(jit.cache_misses, 1);
     }
+
+    #[test]
+    fn test_interpreter_sees_patched_instruction() {
+        use crate::cpu::interpreter::Cpu;
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        let base = 0x8000_0000u64;
+        mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(base, 0xD2800020).unwrap(); // movz x0, #1
+        cpu.regs.pc = base;
+        cpu.step(&mut mmu).unwrap();
+        assert_eq!(cpu.regs.read_x(0), 1);
+
+        // The raw-word check in `fetch_or_compile` catches the patch without any invalidation.
+        mmu.write_u32(base, 0xD2800040).unwrap(); // movz x0, #2
+        cpu.regs.pc = base;
+        cpu.step(&mut mmu).unwrap();
+        assert_eq!(cpu.regs.read_x(0), 2);
+    }
 }

@@ -128,6 +128,7 @@ impl Tier2Block {
     #[inline(always)]
     pub fn execute(&self, cpu: &mut Cpu, mmu: &mut Memory) -> (usize, BlockExit) {
         let mut executed = 0usize;
+        let code_gen = mmu.code_write_gen();
 
         for &(pc, inst) in &self.insns {
             cpu.regs.pc = pc;
@@ -245,6 +246,11 @@ impl Tier2Block {
                 _ => {
                     // Fall back to interpreter for complex/uncommon instructions
                     let _ = cpu.step(mmu);
+                    // A store into cached code may have changed the rest of this block: stop here
+                    // so the engine invalidates and recompiles before running more of it.
+                    if mmu.code_write_gen() != code_gen {
+                        return (executed, BlockExit::BranchFallthrough { next_pc: cpu.regs.pc });
+                    }
                 }
             }
         }
@@ -260,6 +266,9 @@ pub struct Tier2JitEngine {
     pub total_block_entries: u64,
     pub total_instructions_executed: u64,
     pub chained_jumps: u64,
+    pub blocks_invalidated: u64,
+    /// `Memory::code_write_gen` as of the last invalidation sweep.
+    seen_code_gen: u64,
 }
 
 impl Tier2JitEngine {
@@ -269,16 +278,33 @@ impl Tier2JitEngine {
             total_block_entries: 0,
             total_instructions_executed: 0,
             chained_jumps: 0,
+            blocks_invalidated: 0,
+            seen_code_gen: 0,
         }
     }
 
+    /// Drops every cached block whose guest code pages were written since the last sweep.
+    pub fn sync_code_writes(&mut self, mmu: &Memory) {
+        let code_gen = mmu.code_write_gen();
+        if code_gen == self.seen_code_gen {
+            return;
+        }
+        let since = self.seen_code_gen;
+        let before = self.blocks.len();
+        self.blocks.retain(|_, b| !mmu.code_written_since(b.start_pc, b.end_pc, since));
+        self.blocks_invalidated += (before - self.blocks.len()) as u64;
+        self.seen_code_gen = code_gen;
+    }
+
     /// Fetches an existing compiled block or JIT-compiles it on the fly.
-    pub fn get_or_compile_block(&mut self, pc: u64, mmu: &Memory) -> Option<Arc<Tier2Block>> {
+    pub fn get_or_compile_block(&mut self, pc: u64, mmu: &mut Memory) -> Option<Arc<Tier2Block>> {
+        self.sync_code_writes(mmu);
         if let Some(block) = self.blocks.get(&pc) {
             return Some(Arc::clone(block));
         }
 
         if let Some(new_block) = Tier2Block::compile(pc, mmu) {
+            mmu.mark_code_range(new_block.start_pc, new_block.end_pc);
             let arc_block = Arc::new(new_block);
             self.blocks.insert(pc, Arc::clone(&arc_block));
             Some(arc_block)
@@ -380,5 +406,88 @@ mod tests {
         assert_eq!(cpu.regs.read_x(0), 55); // Fib(10) = 55!
         assert!(total_insns >= 60);
         assert!(jit.chained_jumps >= 9); // Loop chained 9 times!
+    }
+
+    fn load(mmu: &mut Memory, base: u64, words: &[(u64, u32)]) {
+        mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+        for &(off, w) in words {
+            mmu.write_u32(base + off, w).unwrap();
+        }
+    }
+
+    /// Runs Tier-2 slices until the guest exits with `SVC`, stepping over `RET` yields.
+    fn run_to_svc(jit: &mut Tier2JitEngine, cpu: &mut Cpu, mmu: &mut Memory) -> BlockExit {
+        for _ in 0..16 {
+            let (_, exit) = jit.run_slice(cpu, mmu, 1_000);
+            if !matches!(exit, BlockExit::Return { .. }) {
+                return exit;
+            }
+        }
+        panic!("guest never reached SVC");
+    }
+
+    #[test]
+    fn test_tier2_smc_guest_patches_called_function() {
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        let base = 0x8000_0000u64;
+        #[rustfmt::skip]
+        load(&mut mmu, base, &[
+            (0x00, 0x94000010), // bl   f (0x40)
+            (0x04, 0xB9000041), // str  w1, [x2]      ; patch f
+            (0x08, 0x9400000E), // bl   f (0x40)
+            (0x0C, 0xD4000001), // svc  #0
+            (0x40, 0xD2800020), // f: movz x0, #1
+            (0x44, 0xD65F03C0), //    ret
+        ]);
+        cpu.regs.write_x(1, 0xD280_0040); // movz x0, #2
+        cpu.regs.write_x(2, base + 0x40);
+        cpu.regs.pc = base;
+
+        let mut jit = Tier2JitEngine::new();
+        assert_eq!(run_to_svc(&mut jit, &mut cpu, &mut mmu), BlockExit::Svc { svc_id: 0 });
+        assert_eq!(cpu.regs.read_x(0), 2, "second call ran the stale cached block");
+        assert!(jit.blocks_invalidated >= 1);
+    }
+
+    #[test]
+    fn test_tier2_smc_store_ends_block_before_patched_insn() {
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        let base = 0x8000_0000u64;
+        #[rustfmt::skip]
+        load(&mut mmu, base, &[
+            (0x00, 0xB9000041), // str  w1, [x2]      ; patch 0x08 in this same block
+            (0x04, 0xD503201F), // nop
+            (0x08, 0xD2800020), // movz x0, #1
+            (0x0C, 0xD4000001), // svc  #0
+        ]);
+        cpu.regs.write_x(1, 0xD280_0040); // movz x0, #2
+        cpu.regs.write_x(2, base + 0x08);
+        cpu.regs.pc = base;
+
+        let mut jit = Tier2JitEngine::new();
+        let (_, exit) = jit.run_slice(&mut cpu, &mut mmu, 1_000);
+        assert_eq!(exit, BlockExit::Svc { svc_id: 0 });
+        assert_eq!(cpu.regs.read_x(0), 2);
+    }
+
+    #[test]
+    fn test_tier2_writes_to_data_pages_keep_blocks() {
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        let base = 0x8000_0000u64;
+        load(&mut mmu, base, &[(0x00, 0xD2800020), (0x04, 0xD4000001)]);
+        mmu.map_range(0x9000_0000, 4096, Permission::READ_WRITE);
+
+        let mut jit = Tier2JitEngine::new();
+        cpu.regs.pc = base;
+        jit.run_slice(&mut cpu, &mut mmu, 100);
+        mmu.write_u64(0x9000_0000, 0xDEAD).unwrap();
+        cpu.regs.pc = base;
+        jit.run_slice(&mut cpu, &mut mmu, 100);
+        assert_eq!(mmu.code_write_gen(), 0);
+        assert_eq!(jit.blocks_invalidated, 0);
+        assert_eq!(jit.blocks.len(), 1);
     }
 }

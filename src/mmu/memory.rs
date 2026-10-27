@@ -25,6 +25,10 @@ impl Permission {
 pub struct Page {
     pub data: Box<[u8; PAGE_SIZE]>,
     pub perm: Permission,
+    /// Set when a block cache has compiled instructions from this page.
+    pub holds_code: bool,
+    /// Value of `Memory::code_write_gen` at the last write to this page while it held code.
+    pub code_write_gen: u64,
 }
 
 impl Page {
@@ -32,6 +36,8 @@ impl Page {
         Self {
             data: Box::new([0u8; PAGE_SIZE]),
             perm,
+            holds_code: false,
+            code_write_gen: 0,
         }
     }
 }
@@ -67,13 +73,48 @@ pub struct MemoryBucketStats {
 pub struct Memory {
     /// Maps 4KB-aligned virtual page numbers (VA >> 12) to allocated pages
     pages: HashMap<u64, Page>,
+    /// Bumped on every write (or remap) that touches a page holding cached code.
+    /// Block caches compare it against the value they last saw to detect self-modifying code.
+    code_write_gen: u64,
 }
 
 impl Memory {
     pub fn new() -> Self {
         Self {
             pages: HashMap::new(),
+            code_write_gen: 0,
         }
+    }
+
+    /// Current code-write generation. Unchanged means no cached code page was written.
+    #[inline]
+    pub fn code_write_gen(&self) -> u64 {
+        self.code_write_gen
+    }
+
+    /// Flags every mapped page in `[start, end)` as holding cached code, so later writes to it
+    /// bump `code_write_gen`.
+    pub fn mark_code_range(&mut self, start: u64, end: u64) {
+        if end <= start {
+            return;
+        }
+        for page_idx in (start >> 12)..=((end - 1) >> 12) {
+            if let Some(page) = self.pages.get_mut(&page_idx) {
+                page.holds_code = true;
+            }
+        }
+    }
+
+    /// True if any page in `[start, end)` was written (or remapped) after generation `since`.
+    pub fn code_written_since(&self, start: u64, end: u64, since: u64) -> bool {
+        if end <= start {
+            return false;
+        }
+        ((start >> 12)..=((end - 1) >> 12)).any(|page_idx| match self.pages.get(&page_idx) {
+            Some(page) => page.code_write_gen > since,
+            // Unmapped since compile: the cached copy is stale too.
+            None => true,
+        })
     }
 
     /// Computes live memory allocation telemetry categorized by Horizon OS virtual address buckets.
@@ -115,7 +156,13 @@ impl Memory {
         let last_page = last_addr >> 12;
 
         for page_idx in start_page..=last_page {
-            self.pages.insert(page_idx, Page::new(perm));
+            let mut page = Page::new(perm);
+            if self.pages.get(&page_idx).is_some_and(|old| old.holds_code) {
+                // Remapping over cached code replaces it.
+                self.code_write_gen += 1;
+                page.code_write_gen = self.code_write_gen;
+            }
+            self.pages.insert(page_idx, page);
         }
     }
 
@@ -180,6 +227,10 @@ impl Memory {
 
             page.data[page_offset..page_offset + bytes_in_page]
                 .copy_from_slice(&data[offset..offset + bytes_in_page]);
+            if page.holds_code {
+                self.code_write_gen += 1;
+                page.code_write_gen = self.code_write_gen;
+            }
 
             curr_addr += bytes_in_page as u64;
             offset += bytes_in_page;
