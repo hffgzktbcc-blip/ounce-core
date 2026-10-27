@@ -169,6 +169,11 @@ pub trait PresentBackend {
     /// Shows a composited frame. Also pumps host events, so it must be called every frame.
     fn present(&mut self, frame: &Frame) -> PresentStatus;
 
+    /// Pumps host window events without presenting a new frame.
+    fn pump_events(&mut self) -> PresentStatus {
+        PresentStatus::Continue
+    }
+
     /// Low-level 3D render hook for executing draw ops against an offscreen target.
     fn render_3d(&mut self, _ops: &[Gpu3DDrawOp]) -> Result<(), PresentError> {
         Ok(())

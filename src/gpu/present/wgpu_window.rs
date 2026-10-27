@@ -1480,6 +1480,17 @@ impl PresentBackend for WgpuBackend {
         PresentStatus::Continue
     }
 
+    fn pump_events(&mut self) -> PresentStatus {
+        if let PumpStatus::Exit(_) = self.event_loop.pump_app_events(Some(Duration::ZERO), &mut self.app) {
+            self.app.closed = true;
+        }
+        if self.app.closed {
+            PresentStatus::Closed
+        } else {
+            PresentStatus::Continue
+        }
+    }
+
     fn pressed_keys(&mut self) -> Vec<HostKey> {
         self.app.keys.iter().copied().collect()
     }
