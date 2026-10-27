@@ -2,7 +2,7 @@
 //!
 //! The kernel's SVC table does not follow Horizon numbering for every call (for example `0x29`), so
 //! this test services the few Horizon SVCs libnx startup makes with a small shim of its own and
-//! records every SVC it sees. The fixture returns `0xEEE` when its checks pass, `0xBAD0000 | bits` otherwise.
+//! records every SVC it sees. The fixture reports `0xEEE` when its checks pass, `0xBAD0000 | bits` otherwise.
 
 use super::homebrew::HomebrewConfig;
 use super::nro::NroLoader;
@@ -34,6 +34,8 @@ enum Outcome {
 struct Shim {
     svcs: Vec<u16>,
     debug_output: String,
+    /// Last guest PCs executed, oldest first, for failure messages.
+    trail: std::collections::VecDeque<u64>,
 }
 
 impl Shim {
@@ -122,6 +124,10 @@ fn boot(nro: &[u8], argv: &str) -> (Outcome, Shim) {
             return (Outcome::Returned(cpu.regs.read_x(0)), shim);
         }
         let pc = cpu.regs.pc;
+        if shim.trail.len() == 24 {
+            shim.trail.pop_front();
+        }
+        shim.trail.push_back(pc - NRO_BASE);
         match cpu.step(&mut mmu) {
             Ok(StepResult::Continue) => {}
             Ok(StepResult::Svc(svc)) => {
@@ -184,19 +190,18 @@ fn libnx_nro_relr_relocations_apply() {
     assert_eq!(changed, applied);
 }
 
-/// Blocked on the CPU, not the loader: libnx's `memset`, `strlen`, `strcmp` and `__nx_dynamic` use
-/// AdvSIMD `DUP`/`CMEQ`/`UMINP`/`ADDP`/`AND`/`SHRN`/`LD1`/`MOV` (vector) and scalar `REV`, `CLZ`, `RBIT`,
-/// `UMULH`, `LDUR`, `STUR`, which the interpreter does not decode yet. Run with `cargo test -- --ignored`.
+/// Boots the NRO through libnx `crt0` to `main` and back out through `exit` to the loader return
+/// address. libnx passes the loader 0 whatever `main` returns, so the fixture's own verdict is read
+/// from its `svcOutputDebugString` line.
 #[test]
-#[ignore = "interpreter lacks AdvSIMD and a few scalar instructions libnx startup uses"]
 fn libnx_nro_runs_to_main_return() {
     let (outcome, shim) = boot(&fixture(), "sdmc:/hello.nro fixture");
-    match outcome {
-        Outcome::Returned(0xEEE) => {}
-        other => panic!(
-            "fixture did not return 0xEEE: {other:x?}\nSVCs: {:x?}\ndebug output: {}",
-            shim.svcs, shim.debug_output
-        ),
-    }
+    let ok = matches!(outcome, Outcome::Returned(0)) && shim.debug_output == "ounce-fixture result=0x00000EEE";
+    assert!(
+        ok,
+        "fixture did not report 0xEEE: {outcome:x?}\nSVCs: {:x?}\nlast PCs (image offsets): {:x?}\ndebug output: {}",
+        shim.svcs, shim.trail, shim.debug_output
+    );
+    // Startup asked for memory layout and permissions only; the heap came from the ConfigEntry list.
+    assert!(!shim.svcs.contains(&0x01), "svcSetHeapSize despite OverrideHeap");
 }
-

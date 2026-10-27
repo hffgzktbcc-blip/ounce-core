@@ -1,13 +1,18 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    BranchRegOp, Condition, FpOp2, Instruction, LogicalOp, MoveWideOp, ShiftType,
+    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, ShiftType,
+    SimdOp2, SimdOp3, SimdShiftOp,
 };
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
 pub fn decode(raw: u32) -> Instruction {
     // 1. NOP / HINT / Barrier / Cache Maintenance check:
     //    0xD503201F (NOP), 0xD503245F (BTI c), 0xD503237F (PACIBSP), DSB/DMB/ISB (0xD5033xxx), DC/IC (0xD5087xxx / 0xD50B7xxx)
+    // DC ZVA, Xt zeroes a cache-line-sized block, so it is not a no-op like the other cache operations.
+    if (raw & 0xFFFF_FFE0) == 0xD50B_7420 {
+        return Instruction::DcZva { rt: (raw & 0x1F) as u8 };
+    }
     if (raw & 0xFFFF_F01F) == 0xD503_201F
         || (raw & 0xFFFF_F000) == 0xD503_3000
         || (raw & 0xFFF0_0000) == 0xD500_0000
@@ -381,11 +386,29 @@ pub fn decode(raw: u32) -> Instruction {
 
         let mode = (raw >> 23) & 0x3;
         let (writeback, post_index) = match mode {
+            0b00 => (false, false), // Non-temporal (LDNP/STNP): same access as signed offset
             0b01 => (true, true),  // Post-index
             0b10 => (false, false), // Signed offset
-            0b11 => (true, false), // Pre-index
-            _ => return Instruction::Unimplemented { raw },
+            _ => (true, false),    // Pre-index
         };
+
+        // V == 1: SIMD&FP register pair (S, D or Q), not general registers.
+        if (raw & (1 << 26)) != 0 {
+            if opc == 3 {
+                return Instruction::Unimplemented { raw };
+            }
+            let size_bytes = 4u8 << opc;
+            return Instruction::SimdLoadStorePair {
+                rt1,
+                rt2,
+                rn,
+                offset: sign_extend(imm7, 7) * size_bytes as i64,
+                size_bytes,
+                is_load,
+                writeback,
+                post_index,
+            };
+        }
 
         return Instruction::LoadStorePair {
             rt1,
@@ -677,7 +700,217 @@ pub fn decode(raw: u32) -> Instruction {
         return Instruction::SimdVec4S { rd, rn, rm, op };
     }
 
-    Instruction::Unimplemented { raw }
+    decode_extra(raw).unwrap_or(Instruction::Unimplemented { raw })
+}
+
+/// Scalar and AdvSIMD encodings added for libnx-built homebrew (`memset`, `strlen`, `strcmp`,
+/// `__nx_dynamic`). Field layouts follow the Arm A64 encoding tables.
+fn decode_extra(raw: u32) -> Option<Instruction> {
+    let rd = (raw & 0x1F) as u8;
+    let rn = ((raw >> 5) & 0x1F) as u8;
+    let rm = ((raw >> 16) & 0x1F) as u8;
+    let q = (raw & (1 << 30)) != 0;
+    let u = (raw & (1 << 29)) != 0;
+    let size = (raw >> 22) & 0x3;
+
+    // 22. Data-Processing (1-Source): sf 1 0 11010110 00000 opcode Rn Rd
+    if (raw & 0x7FFF_E000) == 0x5AC0_0000 {
+        let is_64 = (raw & (1 << 31)) != 0;
+        let op = match ((raw >> 10) & 0x7, is_64) {
+            (0, _) => DataProc1Op::Rbit,
+            (1, _) => DataProc1Op::Rev16,
+            (2, _) => DataProc1Op::Rev32,
+            (3, true) => DataProc1Op::Rev64,
+            (4, _) => DataProc1Op::Clz,
+            (5, _) => DataProc1Op::Cls,
+            _ => return None,
+        };
+        return Some(Instruction::DataProc1 { rd, rn, op, is_64 });
+    }
+
+    // 23. Multiply High: 1 00 11011 U 10 Rm 0 11111 Rn Rd
+    if (raw & 0xFF60_FC00) == 0x9B40_7C00 {
+        let is_signed = (raw & (1 << 23)) == 0;
+        return Some(Instruction::MultiplyHigh { rd, rn, rm, is_signed });
+    }
+
+    // 24. Multiply Long: 1 00 11011 U 01 Rm o0 Ra Rn Rd
+    if (raw & 0xFF60_0000) == 0x9B20_0000 {
+        let is_signed = (raw & (1 << 23)) == 0;
+        let is_sub = (raw & (1 << 15)) != 0;
+        let ra = ((raw >> 10) & 0x1F) as u8;
+        return Some(Instruction::MultiplyLong { rd, rn, rm, ra, is_signed, is_sub });
+    }
+
+    // 25. SIMD&FP Load/Store (unscaled / post-index / pre-index): size 111 1 00 opc 0 imm9 idx Rn Rt
+    if (raw & 0x3F20_0000) == 0x3C00_0000 {
+        let opc = (raw >> 22) & 0x3;
+        let idx = (raw >> 10) & 0x3;
+        let sz = (raw >> 30) & 0x3;
+        let size_bytes = match (sz, opc & 0b10) {
+            (0, 0b10) => 16,
+            (s, 0) => 1u8 << s,
+            _ => return None,
+        };
+        if idx == 0b10 {
+            return None;
+        }
+        let offset = sign_extend(((raw >> 12) & 0x1FF) as u64, 9);
+        return Some(Instruction::SimdLoadStore {
+            rt: rd,
+            rn,
+            offset,
+            size_bytes,
+            is_load: (opc & 1) != 0,
+            writeback: idx != 0,
+            post_index: idx == 0b01,
+        });
+    }
+
+    // 25b. SIMD&FP Load/Store (register offset): size 111 1 00 opc 1 Rm option S 10 Rn Rt
+    if (raw & 0x3F20_0C00) == 0x3C20_0800 {
+        let opc = (raw >> 22) & 0x3;
+        let sz = (raw >> 30) & 0x3;
+        let (size_bytes, log2) = match (sz, opc & 0b10) {
+            (0, 0b10) => (16u8, 4u8),
+            (s, 0) => (1u8 << s, s as u8),
+            _ => return None,
+        };
+        let option = ((raw >> 13) & 0x7) as u8;
+        if option & 0b010 == 0 {
+            return None;
+        }
+        let shift = if (raw & (1 << 12)) != 0 { log2 } else { 0 };
+        return Some(Instruction::SimdLoadStoreReg {
+            rt: rd,
+            rn,
+            rm,
+            option,
+            shift,
+            size_bytes,
+            is_load: (opc & 1) != 0,
+        });
+    }
+
+    // 26. LD1/ST1 (multiple structures): 0 Q 0011000 L 000000 opcode size Rn Rt
+    //     post-index:                    0 Q 0011001 L 0 Rm    opcode size Rn Rt
+    let no_offset = (raw & 0xBFBF_0000) == 0x0C00_0000;
+    let post = (raw & 0xBFA0_0000) == 0x0C80_0000;
+    if no_offset || post {
+        let regs = match (raw >> 12) & 0xF {
+            0b0111 => 1,
+            0b1010 => 2,
+            0b0110 => 3,
+            0b0010 => 4,
+            _ => return None, // LD2/LD3/LD4 (interleaved) are not implemented
+        };
+        return Some(Instruction::SimdLoadStoreMulti {
+            rt: rd,
+            rn,
+            rm: if post { rm } else { 31 },
+            regs,
+            q,
+            is_load: (raw & (1 << 22)) != 0,
+            post_index: post,
+        });
+    }
+
+    // 27. AdvSIMD copy: DUP (general) 0 Q 0 01110000 imm5 0 0001 1 Rn Rd, UMOV ... 0 0111 1 ...
+    if (raw & 0x9FE0_8400) == 0x0E00_0400 && !u {
+        let imm5 = (raw >> 16) & 0x1F;
+        if imm5 & 0xF == 0 {
+            return None;
+        }
+        let low = imm5.trailing_zeros();
+        let esize = 8u8 << low;
+        match (raw >> 11) & 0xF {
+            0b0001 if !(esize == 64 && !q) => {
+                return Some(Instruction::SimdDupGeneral { rd, rn, esize, q });
+            }
+            0b0111 if (esize == 64) == q => {
+                let index = (imm5 >> (low + 1)) as u8;
+                return Some(Instruction::SimdMovToGeneral { rd, rn, esize, index });
+            }
+            _ => return None,
+        }
+    }
+
+    // 28. AdvSIMD three same: 0 Q U 01110 size 1 Rm opcode 1 Rn Rd
+    if (raw & 0x9F20_0400) == 0x0E20_0400 {
+        let opcode = (raw >> 11) & 0x1F;
+        let op = match (opcode, u) {
+            (0b00011, false) => [SimdOp3::And, SimdOp3::Bic, SimdOp3::Orr, SimdOp3::Orn][size as usize],
+            (0b00011, true) => [SimdOp3::Eor, SimdOp3::Bsl, SimdOp3::Bit, SimdOp3::Bif][size as usize],
+            (0b10000, false) => SimdOp3::Add,
+            (0b10000, true) => SimdOp3::Sub,
+            (0b10001, false) => SimdOp3::Cmtst,
+            (0b10001, true) => SimdOp3::Cmeq,
+            (0b00110, false) => SimdOp3::Cmgt,
+            (0b00110, true) => SimdOp3::Cmhi,
+            (0b00111, false) => SimdOp3::Cmge,
+            (0b00111, true) => SimdOp3::Cmhs,
+            (0b01100, false) => SimdOp3::Smax,
+            (0b01100, true) => SimdOp3::Umax,
+            (0b01101, false) => SimdOp3::Smin,
+            (0b01101, true) => SimdOp3::Umin,
+            (0b10100, false) => SimdOp3::Smaxp,
+            (0b10100, true) => SimdOp3::Umaxp,
+            (0b10101, false) => SimdOp3::Sminp,
+            (0b10101, true) => SimdOp3::Uminp,
+            (0b10111, false) => SimdOp3::Addp,
+            _ => return None,
+        };
+        let bitwise = opcode == 0b00011;
+        // 64-bit lanes need Q, and min/max have no 64-bit form.
+        if !bitwise && size == 3 && (!q || matches!(opcode, 0b01100 | 0b01101 | 0b10100 | 0b10101)) {
+            return None;
+        }
+        let esize = if bitwise { 8 } else { 8u8 << size };
+        return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize, q });
+    }
+
+    // 29. AdvSIMD two-register miscellaneous: 0 Q U 01110 size 10000 opcode 10 Rn Rd
+    if (raw & 0x9F3E_0C00) == 0x0E20_0800 {
+        let op = match ((raw >> 12) & 0x1F, u) {
+            (0b01000, false) => SimdOp2::Cmgt0,
+            (0b01000, true) => SimdOp2::Cmge0,
+            (0b01001, false) => SimdOp2::Cmeq0,
+            (0b01001, true) => SimdOp2::Cmle0,
+            (0b01010, false) => SimdOp2::Cmlt0,
+            (0b00101, false) if size == 0 => SimdOp2::Cnt,
+            (0b00101, true) if size == 0 => SimdOp2::Not,
+            (0b01011, false) => SimdOp2::Abs,
+            (0b01011, true) => SimdOp2::Neg,
+            _ => return None,
+        };
+        if size == 3 && !q {
+            return None;
+        }
+        return Some(Instruction::SimdTwoMisc { rd, rn, op, esize: 8u8 << size, q });
+    }
+
+    // 30. AdvSIMD shift by immediate: 0 Q U 011110 immh immb opcode 1 Rn Rd (immh != 0)
+    if (raw & 0x9F80_0400) == 0x0F00_0400 {
+        let immh = (raw >> 19) & 0xF;
+        if immh == 0 {
+            return None; // modified immediate (MOVI/MVNI/ORR/BIC), not implemented
+        }
+        let imm = (raw >> 16) & 0x7F; // immh:immb
+        let esize = 8u32 << (31 - immh.leading_zeros());
+        let (op, esize, shift) = match ((raw >> 11) & 0x1F, u) {
+            (0b00000, false) => (SimdShiftOp::Sshr, esize, 2 * esize - imm),
+            (0b00000, true) => (SimdShiftOp::Ushr, esize, 2 * esize - imm),
+            (0b01010, false) => (SimdShiftOp::Shl, esize, imm - esize),
+            (0b10000, false) if esize < 64 => (SimdShiftOp::Shrn, esize, 2 * esize - imm),
+            _ => return None,
+        };
+        if esize == 64 && !q && op != SimdShiftOp::Shrn {
+            return None;
+        }
+        return Some(Instruction::SimdShiftImm { rd, rn, op, esize: esize as u8, shift: shift as u8, q });
+    }
+
+    None
 }
 
 /// Sign-extends an `n`-bit unsigned integer to a 64-bit signed integer.

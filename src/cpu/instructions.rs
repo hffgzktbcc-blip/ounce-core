@@ -324,6 +324,129 @@ pub enum Instruction {
         is_exclusive: bool,
     },
 
+    /// SIMD&FP Load / Store Pair: `LDP/STP St/Dt/Qt, St2/Dt2/Qt2, [Xn, #offset]` (also `LDNP/STNP`)
+    SimdLoadStorePair {
+        rt1: u8,
+        rt2: u8,
+        rn: u8,
+        offset: i64,
+        size_bytes: u8, // 4, 8 or 16
+        is_load: bool,
+        writeback: bool,
+        post_index: bool,
+    },
+
+    /// `DC ZVA, Xt`: zero the `DCZID_EL0`-sized block containing `Xt`
+    DcZva {
+        rt: u8,
+    },
+
+    /// Data-Processing (1-Source): `RBIT`, `REV16`, `REV32`, `REV`, `CLZ`, `CLS`
+    DataProc1 {
+        rd: u8,
+        rn: u8,
+        op: DataProc1Op,
+        is_64: bool,
+    },
+
+    /// Multiply High: `UMULH` / `SMULH Xd, Xn, Xm` (upper 64 bits of the 128-bit product)
+    MultiplyHigh {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        is_signed: bool,
+    },
+
+    /// Multiply Long: `UMADDL`/`SMADDL`/`UMSUBL`/`SMSUBL Xd, Wn, Wm, Xa`
+    MultiplyLong {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        ra: u8,
+        is_signed: bool,
+        is_sub: bool,
+    },
+
+    /// SIMD&FP Load / Store (Unscaled, Pre/Post-Index): `LDUR/STUR Bt/Ht/St/Dt/Qt, [Xn, #imm9]`
+    SimdLoadStore {
+        rt: u8,
+        rn: u8,
+        offset: i64,
+        size_bytes: u8, // 1, 2, 4, 8 or 16
+        is_load: bool,
+        writeback: bool,
+        post_index: bool,
+    },
+
+    /// SIMD&FP Load / Store (Register Offset): `LDR/STR Bt..Qt, [Xn, Xm, LSL/UXTW/SXTW/SXTX #shift]`
+    SimdLoadStoreReg {
+        rt: u8,
+        rn: u8,
+        rm: u8,
+        option: u8,
+        shift: u8,
+        size_bytes: u8,
+        is_load: bool,
+    },
+
+    /// `LD1`/`ST1` (multiple structures, 1 to 4 consecutive registers), optionally post-indexed
+    SimdLoadStoreMulti {
+        rt: u8,
+        rn: u8,
+        /// Post-index register; 31 means "advance by the bytes transferred".
+        rm: u8,
+        regs: u8,
+        q: bool,
+        is_load: bool,
+        post_index: bool,
+    },
+
+    /// `DUP Vd.<T>, Wn/Xn`
+    SimdDupGeneral {
+        rd: u8,
+        rn: u8,
+        esize: u8, // element bits
+        q: bool,
+    },
+
+    /// `UMOV Wd/Xd, Vn.<T>[index]` (`MOV` alias for 32/64-bit lanes)
+    SimdMovToGeneral {
+        rd: u8,
+        rn: u8,
+        esize: u8,
+        index: u8,
+    },
+
+    /// AdvSIMD three registers of the same type (integer and bitwise)
+    SimdThreeSame {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdOp3,
+        esize: u8,
+        q: bool,
+    },
+
+    /// AdvSIMD two-register miscellaneous (compare against zero, `CNT`, `NOT`, `ABS`, `NEG`)
+    SimdTwoMisc {
+        rd: u8,
+        rn: u8,
+        op: SimdOp2,
+        esize: u8,
+        q: bool,
+    },
+
+    /// AdvSIMD shift by immediate: `SSHR`, `USHR`, `SHL`, `SHRN`/`SHRN2`.
+    /// `esize` is the element size of the result (for `SHRN`, half the source element).
+    SimdShiftImm {
+        rd: u8,
+        rn: u8,
+        op: SimdShiftOp,
+        esize: u8,
+        shift: u8,
+        q: bool,
+    },
+
     /// Unimplemented or Unknown instruction (preserves raw 32-bit opcode for debugging)
     Unimplemented {
         raw: u32,
@@ -368,4 +491,65 @@ pub enum FpOp2 {
     Fsub,
     Fmax,
     Fmin,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataProc1Op {
+    Rbit,
+    Rev16,
+    /// Reverse bytes in each 32-bit word (`REV` on W registers, `REV32` on X registers).
+    Rev32,
+    Rev64,
+    Clz,
+    Cls,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdOp3 {
+    And,
+    Bic,
+    Orr,
+    Orn,
+    Eor,
+    Bsl,
+    Bit,
+    Bif,
+    Add,
+    Sub,
+    Cmeq,
+    Cmtst,
+    Cmhi,
+    Cmhs,
+    Cmgt,
+    Cmge,
+    Umax,
+    Umin,
+    Smax,
+    Smin,
+    Addp,
+    Umaxp,
+    Uminp,
+    Smaxp,
+    Sminp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdOp2 {
+    Cmeq0,
+    Cmgt0,
+    Cmge0,
+    Cmle0,
+    Cmlt0,
+    Cnt,
+    Not,
+    Abs,
+    Neg,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdShiftOp {
+    Sshr,
+    Ushr,
+    Shl,
+    Shrn,
 }
