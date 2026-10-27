@@ -15,6 +15,34 @@ use std::fmt;
 
 use crate::{GuestState, MemFault, MemoryBus, WriteEffect};
 
+pub const TLB_SIZE: usize = 512;
+pub const TLB_MASK: u64 = (TLB_SIZE as u64) - 1;
+
+/// A single direct-mapped Software TLB entry (Option B).
+/// `#[repr(C)]` so Cranelift lowering can inspect fields by fixed byte offset.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TlbEntry {
+    /// Guest page number (VA >> 12). If invalid or unmapped, `u64::MAX`.
+    pub page_tag: u64,
+    /// Host pointer to start of page data (4096 bytes).
+    pub host_base: u64,
+    /// Bit 0: read permitted. Bit 1: write permitted (cleared if holds_code).
+    pub flags: u32,
+    pub _pad: u32,
+}
+
+impl Default for TlbEntry {
+    fn default() -> Self {
+        Self {
+            page_tag: u64::MAX,
+            host_base: 0,
+            flags: 0,
+            _pad: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecError {
     /// The code to seal was empty.
@@ -85,8 +113,9 @@ impl Drop for ExecBuffer {
 /// What generated block code gets as its second argument: the caller's memory bus, plus room for
 /// a panic raised inside it, which is carried across the generated frames and resumed afterwards.
 pub(crate) struct CallCtx<'a> {
-    bus: &'a mut dyn MemoryBus,
-    panic: Option<Box<dyn std::any::Any + Send>>,
+    pub(crate) bus: &'a mut dyn MemoryBus,
+    pub(crate) panic: Option<Box<dyn std::any::Any + Send>>,
+    pub(crate) tlb: &'a mut [TlbEntry; TLB_SIZE],
 }
 
 /// Status codes the memory trampolines return to generated code.
@@ -102,9 +131,39 @@ extern "C" fn mem_read(ctx: *mut CallCtx<'_>, va: u64, size: u32, out: *mut u64)
     if ctx.panic.is_some() {
         return MEM_FAULT;
     }
+    let page_num = va >> 12;
+    let idx = (page_num & TLB_MASK) as usize;
+    let offset = (va & 0xFFF) as usize;
+
+    let entry = ctx.tlb[idx];
+    if entry.page_tag == page_num && (entry.flags & 1) != 0 && offset + size as usize <= 4096 {
+        unsafe {
+            let host_ptr = (entry.host_base + offset as u64) as *const u8;
+            let val = match size {
+                1 => *host_ptr as u64,
+                2 => std::ptr::read_unaligned(host_ptr as *const u16) as u64,
+                4 => std::ptr::read_unaligned(host_ptr as *const u32) as u64,
+                8 => std::ptr::read_unaligned(host_ptr as *const u64),
+                _ => return MEM_FAULT,
+            };
+            *out = val;
+        }
+        return MEM_OK;
+    }
+
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ctx.bus.read(va, size as u8))) {
         Ok(Ok(value)) => {
             *out = value;
+            if let Some(mapping) = ctx.bus.query_page(page_num) {
+                let flags = (if mapping.read { 1 } else { 0 })
+                    | (if mapping.write && !mapping.holds_code { 2 } else { 0 });
+                ctx.tlb[idx] = TlbEntry {
+                    page_tag: page_num,
+                    host_base: mapping.host_base,
+                    flags,
+                    _pad: 0,
+                };
+            }
             MEM_OK
         }
         Ok(Err(MemFault)) => MEM_FAULT,
@@ -122,8 +181,39 @@ extern "C" fn mem_write(ctx: *mut CallCtx<'_>, va: u64, size: u32, value: u64) -
     if ctx.panic.is_some() {
         return MEM_FAULT;
     }
+    let page_num = va >> 12;
+    let idx = (page_num & TLB_MASK) as usize;
+    let offset = (va & 0xFFF) as usize;
+
+    let entry = ctx.tlb[idx];
+    if entry.page_tag == page_num && (entry.flags & 2) != 0 && offset + size as usize <= 4096 {
+        unsafe {
+            let host_ptr = (entry.host_base + offset as u64) as *mut u8;
+            match size {
+                1 => *host_ptr = value as u8,
+                2 => std::ptr::write_unaligned(host_ptr as *mut u16, value as u16),
+                4 => std::ptr::write_unaligned(host_ptr as *mut u32, value as u32),
+                8 => std::ptr::write_unaligned(host_ptr as *mut u64, value),
+                _ => return MEM_FAULT,
+            }
+        }
+        return MEM_OK;
+    }
+
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ctx.bus.write(va, size as u8, value))) {
-        Ok(Ok(WriteEffect::Done)) => MEM_OK,
+        Ok(Ok(WriteEffect::Done)) => {
+            if let Some(mapping) = ctx.bus.query_page(page_num) {
+                let flags = (if mapping.read { 1 } else { 0 })
+                    | (if mapping.write && !mapping.holds_code { 2 } else { 0 });
+                ctx.tlb[idx] = TlbEntry {
+                    page_tag: page_num,
+                    host_base: mapping.host_base,
+                    flags,
+                    _pad: 0,
+                };
+            }
+            MEM_OK
+        }
         Ok(Ok(WriteEffect::CodeWritten)) => MEM_CODE_WRITTEN,
         Ok(Err(MemFault)) => MEM_FAULT,
         Err(payload) => {
@@ -158,8 +248,8 @@ impl BlockCode {
     }
 
     /// Runs the block on `state` with `bus` and returns the packed exit word.
-    pub(crate) fn run(&self, state: &mut GuestState, bus: &mut dyn MemoryBus) -> u64 {
-        let mut ctx = CallCtx { bus, panic: None };
+    pub(crate) fn run(&self, state: &mut GuestState, bus: &mut dyn MemoryBus, tlb: &mut [TlbEntry; TLB_SIZE]) -> u64 {
+        let mut ctx = CallCtx { bus, panic: None, tlb };
         // SAFETY: `BlockCode::new` documents the function this buffer holds. Both pointers come
         // from live exclusive borrows that outlive the call; the trampolines never unwind.
         let exit = unsafe {

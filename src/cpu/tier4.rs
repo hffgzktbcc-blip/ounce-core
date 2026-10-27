@@ -20,7 +20,7 @@ use super::tier2_jit::BlockExit;
 use super::tier3_jit::Tier3JitEngine;
 use crate::mmu::Memory;
 use ounce_recompiler::ir::{BinOp, BlockBuilder, ExitTo, FaultSite, Op, Reg, Terminator, Value, Width};
-use ounce_recompiler::{BlockId, ExitKind, GuestState, MemFault, MemoryBus, Recompiler, WriteEffect};
+use ounce_recompiler::{BlockId, ExitKind, GuestState, MemFault, MemoryBus, PageMapping, Recompiler, WriteEffect};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -62,6 +62,17 @@ impl MemoryBus for MmuBus<'_> {
         };
         r.map_err(|_| MemFault)?;
         Ok(if self.mmu.code_write_gen() != gen_before { WriteEffect::CodeWritten } else { WriteEffect::Done })
+    }
+
+    fn query_page(&mut self, page_num: u64) -> Option<PageMapping> {
+        let page = self.mmu.get_page(page_num)?;
+        Some(PageMapping {
+            page_num,
+            host_base: page.data.as_ptr() as u64,
+            read: page.perm.read,
+            write: page.perm.write,
+            holds_code: page.holds_code,
+        })
     }
 }
 
@@ -616,6 +627,7 @@ pub struct Tier4JitEngine {
     pub tier3: Tier3JitEngine,
     pub native_block_runs: u64,
     pub native_insns: u64,
+    pub chained_jumps: u64,
     pub fallback_insns: u64,
     pub blocks_compiled: u64,
     /// Guest instructions covered by all translations made so far.
@@ -625,6 +637,7 @@ pub struct Tier4JitEngine {
     pub mips_rate: f64,
     /// Why native code is off, if it is (no recompiler for this host).
     pub unavailable: Option<String>,
+    fast_cache: Box<[(u64, BlockId); 1024]>,
 }
 
 impl Default for Tier4JitEngine {
@@ -656,6 +669,7 @@ impl Tier4JitEngine {
             tier3: Tier3JitEngine::new(),
             native_block_runs: 0,
             native_insns: 0,
+            chained_jumps: 0,
             fallback_insns: 0,
             blocks_compiled: 0,
             translated_insns: 0,
@@ -663,6 +677,7 @@ impl Tier4JitEngine {
             compile_failures: 0,
             mips_rate: 0.0,
             unavailable,
+            fast_cache: Box::new([(u64::MAX, BlockId::default()); 1024]),
         }
     }
 
@@ -688,7 +703,22 @@ impl Tier4JitEngine {
         }
         // Code that changed may be translatable now.
         self.no_compile.clear();
+        self.fast_cache.fill((u64::MAX, BlockId::default()));
+        if let Some(rec) = self.rec.as_mut() {
+            rec.flush_tlb();
+        }
         self.seen_code_gen = code_gen;
+    }
+
+    #[inline]
+    fn lookup_or_compile_fast(&mut self, pc: u64, mmu: &mut Memory) -> Option<BlockId> {
+        let idx = ((pc >> 2) as usize) & 1023;
+        if self.fast_cache[idx].0 == pc {
+            return Some(self.fast_cache[idx].1);
+        }
+        let id = self.lookup_or_compile(pc, mmu)?;
+        self.fast_cache[idx] = (pc, id);
+        Some(id)
     }
 
     fn lookup_or_compile(&mut self, pc: u64, mmu: &mut Memory) -> Option<BlockId> {
@@ -729,12 +759,12 @@ impl Tier4JitEngine {
     /// used up. `None` if `cpu.regs.pc` has no translation (yet).
     /// Returns (instructions, exit to report, continue on Tier-3).
     fn run_native(&mut self, cpu: &mut Cpu, mmu: &mut Memory, budget: usize) -> Option<(usize, Option<BlockExit>, bool)> {
-        let mut id = self.lookup_or_compile(cpu.regs.pc, mmu)?;
+        let mut id = self.lookup_or_compile_fast(cpu.regs.pc, mmu)?;
         let r = &mut cpu.regs;
         let mut state = GuestState { x: r.x, sp: r.sp, pc: r.pc, nzcv: r.pstate.to_bits() as u64 };
         let mut executed = 0usize;
         let outcome = loop {
-            let exit = self.rec.as_ref()?.run(id, &mut state, &mut MmuBus { mmu });
+            let exit = self.rec.as_mut()?.run(id, &mut state, &mut MmuBus { mmu });
             self.native_block_runs += 1;
             self.native_insns += exit.insns as u64;
             executed += exit.insns as usize;
@@ -746,7 +776,9 @@ impl Tier4JitEngine {
                     EXIT_RETURN => break (Some(BlockExit::Return { target: pc }), false),
                     EXIT_SVC => break (Some(BlockExit::Svc { svc_id: (code >> 16) as u16 }), false),
                     EXIT_UNSUPPORTED => break (None, true),
-                    _ => {}
+                    _ => {
+                        self.chained_jumps += 1;
+                    }
                 },
             }
             if executed >= budget {
@@ -754,7 +786,7 @@ impl Tier4JitEngine {
             }
             // Guest code pages only change through a store, which exits with `CodeWritten`, so the
             // translations looked up here are current.
-            match self.lookup_or_compile(pc, mmu) {
+            match self.lookup_or_compile_fast(pc, mmu) {
                 Some(next) => id = next,
                 None => break (None, false),
             }
@@ -929,6 +961,31 @@ mod tests {
             0xD40000E1, // svc  #7
         ], |_| {});
         assert!(e.blocks_compiled >= 3);
+    }
+
+    #[test]
+    fn fibonacci_loop_block_chaining() {
+        let (mut cpu, mut mmu) = setup(&[
+            0xD2800141, // movz x1, #10
+            0xD2800002, // movz x2, #0
+            0xD2800023, // movz x3, #1
+            // loop:
+            0xB40000C1, // cbz  x1, done
+            0x8B030044, // add  x4, x2, x3
+            0x91000062, // add  x2, x3, #0
+            0x91000083, // add  x3, x4, #0
+            0xF1000421, // subs x1, x1, #1
+            0x17FFFFFB, // b    loop
+            // done:
+            0x91000040, // add  x0, x2, #0
+            0xD40000E1, // svc  #7
+        ]);
+        let mut e = Tier4JitEngine::with_threshold(1);
+        let (_n, exit) = e.run_slice(&mut cpu, &mut mmu, 10_000);
+        assert_eq!(exit, BlockExit::Svc { svc_id: 7 });
+        assert_eq!(cpu.regs.read_x(0), 55);
+        assert!(e.native_insns >= 50);
+        assert!(e.chained_jumps >= 9, "loop must chain consecutive blocks directly (got {})", e.chained_jumps);
     }
 
     #[test]
@@ -1111,7 +1168,7 @@ mod tests {
         ];
         let mut cases = 0;
         let (mut native, mut faults, mut kinds) = (0u64, 0u32, HashSet::new());
-        while cases < 2_000 {
+        while cases < 10_000 {
             let len = 1 + (rng.next() % 12) as usize;
             let mut words = Vec::with_capacity(len + 1);
             while words.len() < len {
@@ -1124,9 +1181,11 @@ mod tests {
             words.push(0xD4000001); // svc #0
             let (mut cpu, mmu) = setup(&words);
             for r in 0..31u8 {
-                let v = match rng.next() % 4 {
+                let v = match rng.next() % 6 {
                     0 => rng.next(),
                     1 => rng.next() % 64,
+                    2 => DATA + 0xFF8 + (rng.next() % 16), // near page boundary
+                    3 => DATA + 0x1000 + (rng.next() % 0x100), // unmapped page
                     _ => DATA + (rng.next() % 0x800) & !7,
                 };
                 cpu.regs.write_x(r, v);
@@ -1145,7 +1204,7 @@ mod tests {
             }
             cases += 1;
         }
-        eprintln!("random: {native} native insns, {faults}/2000 faulted, {} instruction kinds", kinds.len());
-        assert!(native > 5_000 && faults < 1_500 && kinds.len() >= 14);
+        eprintln!("random: {native} native insns, {faults}/10000 faulted, {} instruction kinds", kinds.len());
+        assert!(native > 25_000 && faults < 7_500 && kinds.len() >= 14);
     }
 }

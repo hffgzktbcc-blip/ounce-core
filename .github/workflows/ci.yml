@@ -107,3 +107,6 @@ jobs:
 
       - name: Run Tier-4 host self-test
         run: cargo run --release --features native-jit -- jit-selftest
+
+      - name: Run Tier-4 unit tests & differential fuzzer
+        run: cargo test --release --features native-jit -- --nocapture
