@@ -1699,6 +1699,7 @@ dependencies = [
  "cpal",
  "gilrs",
  "minifb",
+ "naga",
  "ounce-recompiler",
  "pollster",
  "thiserror 2.0.21",

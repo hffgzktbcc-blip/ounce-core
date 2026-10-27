@@ -26,3 +26,7 @@ pollster = { version = "0.4", optional = true }
 thiserror = "2.0.21"
 wgpu = { version = "30.0.1", optional = true }
 winit = { version = "0.30", optional = true }
+
+[dev-dependencies]
+# Validates the WGSL emitted by src/gpu/sass in tests. Same version wgpu 30 pulls in.
+naga = { version = "30.0.1", features = ["wgsl-in"] }

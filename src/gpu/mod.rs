@@ -7,6 +7,7 @@ pub mod memory_pool;
 pub mod nvgpu;
 pub mod nvn;
 pub mod present;
+pub mod sass;
 pub mod shader;
 pub mod tensor;
 pub mod vulkan;
