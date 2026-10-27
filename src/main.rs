@@ -37,10 +37,17 @@ const STACK_TOP: u64 = 0x7FFFFFE000;
 const STACK_SIZE: usize = 0x100000; // 1 MB stack
 
 fn main() {
-    // `--present=<auto|gpu|minifb|headless>` may appear anywhere; strip it so the
+    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     for arg in env::args() {
+        if let Some(value) = arg.strip_prefix("--cpu=") {
+            match cpu::CpuTier::parse(value) {
+                Some(tier) => cpu::CpuTier::set_cli_override(tier),
+                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected tier3 or tier4); ignoring."),
+            }
+            continue;
+        }
         match arg.strip_prefix("--present=") {
             Some(value) => match gpu::BackendKind::parse(value) {
                 Some(kind) => gpu::BackendKind::set_cli_override(kind),
@@ -280,6 +287,7 @@ fn print_usage() {
     println!("    {}3d{} [frames]             Run software 3D pushbuffer rasterizer benchmark", s.green, s.reset);
     println!("    {}gfx{} [frames]            Launch 2D high-bandwidth VRAM Framebuffer Display Demo (1280x720)", s.green, s.reset);
     println!("    {}--present={}<mode>        Presentation backend: auto, gpu (needs --features gpu-present), minifb, headless", s.green, s.reset);
+    println!("    {}--cpu={}<tier>            CPU block engine for Stage 20: tier3 (default) or tier4 (needs --features native-jit)", s.green, s.reset);
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
     println!("    {}test{}                    Execute 25-stage full-stack verification & hardware benchmark suite", s.green, s.reset);
@@ -2259,14 +2267,16 @@ fn run_built_in_demo() {
         }
 
         cpu20.regs.pc = code_va;
-        let mut tier3_engine = cpu::tier3_jit::Tier3JitEngine::new();
-        let (insns_exec, exit) = tier3_engine.run_slice(&mut cpu20, &mut mmu20, 100_000);
+        // `--cpu=` / `OUNCE_CPU` picks the engine (Tier-3 by default).
+        let mut engine20 = cpu::CpuEngine::new(cpu::CpuTier::from_env());
+        let (insns_exec, exit) = engine20.run_slice(&mut cpu20, &mut mmu20, 100_000);
+        let tier = engine20.name();
 
         println!(
-            "  [Tier-3 JIT Engine] Executed {} insns ({} Super-Blocks fused) | Exit: {:?}",
-            insns_exec, tier3_engine.total_super_block_executions, exit
+            "  [{tier} JIT Engine] Executed {} insns ({}) | Exit: {:?}",
+            insns_exec, engine20.stats(), exit
         );
-        println!("  [Tier-3 Throughput] Measured execution performance: {:.2} MIPS", tier3_engine.mips_rate);
+        println!("  [{tier} Throughput] Measured execution performance: {:.2} MIPS", engine20.mips_rate());
         if gate.expect(20, "Tier-3 guest X0 = 0xAAA", cpu20.regs.read_x(0) == 0xAAA) {
             println!("  [Tier-3 Verification] Super-Block compilation verified in guest AArch64 (Exit code: 0xAAA)");
         }

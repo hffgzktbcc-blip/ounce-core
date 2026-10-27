@@ -13,6 +13,8 @@
 
 use std::fmt;
 
+use crate::{GuestState, MemFault, MemoryBus, WriteEffect};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecError {
     /// The code to seal was empty.
@@ -75,6 +77,99 @@ impl ExecBuffer {
 impl Drop for ExecBuffer {
     fn drop(&mut self) {
         os::unmap(self.ptr, self.mapped);
+    }
+}
+
+// --- Translated guest blocks (step 2). ---
+
+/// What generated block code gets as its second argument: the caller's memory bus, plus room for
+/// a panic raised inside it, which is carried across the generated frames and resumed afterwards.
+pub(crate) struct CallCtx<'a> {
+    bus: &'a mut dyn MemoryBus,
+    panic: Option<Box<dyn std::any::Any + Send>>,
+}
+
+/// Status codes the memory trampolines return to generated code.
+pub(crate) const MEM_OK: u32 = 0;
+pub(crate) const MEM_FAULT: u32 = 1;
+pub(crate) const MEM_CODE_WRITTEN: u32 = 2;
+
+/// `extern "C" fn(ctx, va, size, out) -> status`: reads through the bus into `*out`.
+extern "C" fn mem_read(ctx: *mut CallCtx<'_>, va: u64, size: u32, out: *mut u64) -> u32 {
+    // SAFETY: generated code passes the `CallCtx` pointer that `run_block` handed it (live and
+    // exclusively borrowed for the call) and a pointer to its own 8-byte, 8-aligned stack slot.
+    let (ctx, out) = unsafe { (&mut *ctx, &mut *out) };
+    if ctx.panic.is_some() {
+        return MEM_FAULT;
+    }
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ctx.bus.read(va, size as u8))) {
+        Ok(Ok(value)) => {
+            *out = value;
+            MEM_OK
+        }
+        Ok(Err(MemFault)) => MEM_FAULT,
+        Err(payload) => {
+            ctx.panic = Some(payload);
+            MEM_FAULT
+        }
+    }
+}
+
+/// `extern "C" fn(ctx, va, size, value) -> status`: writes through the bus.
+extern "C" fn mem_write(ctx: *mut CallCtx<'_>, va: u64, size: u32, value: u64) -> u32 {
+    // SAFETY: as in `mem_read`.
+    let ctx = unsafe { &mut *ctx };
+    if ctx.panic.is_some() {
+        return MEM_FAULT;
+    }
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ctx.bus.write(va, size as u8, value))) {
+        Ok(Ok(WriteEffect::Done)) => MEM_OK,
+        Ok(Ok(WriteEffect::CodeWritten)) => MEM_CODE_WRITTEN,
+        Ok(Err(MemFault)) => MEM_FAULT,
+        Err(payload) => {
+            ctx.panic = Some(payload);
+            MEM_FAULT
+        }
+    }
+}
+
+/// Addresses of the memory trampolines, embedded as constants in generated code.
+pub(crate) fn mem_read_addr() -> u64 {
+    mem_read as extern "C" fn(*mut CallCtx<'_>, u64, u32, *mut u64) -> u32 as usize as u64
+}
+
+pub(crate) fn mem_write_addr() -> u64 {
+    mem_write as extern "C" fn(*mut CallCtx<'_>, u64, u32, u64) -> u32 as usize as u64
+}
+
+/// Sealed host code for one guest block. Only `backend::compile` creates these.
+pub(crate) struct BlockCode {
+    buffer: ExecBuffer,
+}
+
+impl BlockCode {
+    /// Wraps code produced by the backend.
+    ///
+    /// The code must be an `extern "C" fn(*mut GuestState, *mut CallCtx) -> u64` that only reads
+    /// and writes the `GuestState` fields, calls `mem_read`/`mem_write` with its context pointer,
+    /// and returns. `backend::compile` is the only caller and emits exactly that.
+    pub(crate) fn new(code: &[u8]) -> Result<Self, ExecError> {
+        Ok(BlockCode { buffer: ExecBuffer::seal(code)? })
+    }
+
+    /// Runs the block on `state` with `bus` and returns the packed exit word.
+    pub(crate) fn run(&self, state: &mut GuestState, bus: &mut dyn MemoryBus) -> u64 {
+        let mut ctx = CallCtx { bus, panic: None };
+        // SAFETY: `BlockCode::new` documents the function this buffer holds. Both pointers come
+        // from live exclusive borrows that outlive the call; the trampolines never unwind.
+        let exit = unsafe {
+            let f: extern "C" fn(*mut GuestState, *mut CallCtx<'_>) -> u64 = std::mem::transmute(self.buffer.ptr);
+            f(state, &mut ctx)
+        };
+        if let Some(payload) = ctx.panic {
+            std::panic::resume_unwind(payload);
+        }
+        exit
     }
 }
 

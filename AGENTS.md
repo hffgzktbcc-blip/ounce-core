@@ -96,6 +96,12 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - `cargo run --release --features gpu-present -- test`: **25/25 architecture stages passing (exit code 0xEEE)**.
   - Host GPU hardware swapchain verified on Metal (`--present=gpu 3d 20`).
   - Safe Rust provenance: `grep -rn "unsafe" src` returns **0 hits**, strictly preserving `#![forbid(unsafe_code)]`.
+* **M4 step 2, Tier-4 IR + Cranelift backend** (Claude, branch `claude/m4-step2`, PR #28, 2026-10-27; draft until reviewed)
+  - Files: `crates/ounce-recompiler/src/{ir,backend}.rs` (new), `exec.rs` (memory trampolines + block call, still the only `unsafe`), `lib.rs` (`Recompiler`, `GuestState`, `MemoryBus`); `src/cpu/tier4.rs` (new, `native-jit`), `src/cpu/engine.rs` (new: `CpuTier`, `CpuEngine`), `src/cpu/mod.rs`; `src/main.rs` only `--cpu=` parsing, usage line, and Stage 20 using `CpuEngine` (default Tier-3, output unchanged).
+  - Works: `--cpu=tier4` (or `OUNCE_CPU=tier4`) with `--features native-jit` runs Stage 20 natively; 25/25 stages pass on both tiers. Details and numbers: `docs/design/m4-native-jit.md` section 12, step 2.
+  - Rules for the next agent: the interpreter (`Cpu::step`) is the reference; Tier-4 lowering copies its semantics, quirks included. Change both together or neither. New IR ops need a backend lowering plus a crate test. Don't add `unsafe` outside `exec.rs`.
+  - Random differential test now also checks Tier-3 (after #29).
+  - Left: (3) differential fuzzer in CI, (5) software TLB, (6) direct block chaining and FP/SIMD; `run_vm` is still interpreter-only; code arena (one `ExecBuffer` per block today, page-sized); `SystemReg`/`TPIDR*` not translated. macOS/Windows run Tier-4 only through CI.
 * **Active Agent Threads & File Ownership**:
   - **Claude Task 1 (`claude/m4-step2`)**: M4 Step 2 Tier-4 Native JIT recompiler. Reserved files: `crates/ounce-recompiler/src/*`, `src/cpu/tier4.rs`, `--cpu` flag in `src/main.rs`, differential tests.
   - **Claude Task 2 (`claude/devkita64-fixture`)**: devkitA64 homebrew fixture. Reserved files: `src/loader/*`, test fixtures.
