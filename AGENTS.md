@@ -70,11 +70,21 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - `fsp-srv` CMIF IPC handling for `IFileSystem` (`CreateFile`, `DeleteFile`, `CreateDirectory`, `DeleteDirectory`, `OpenFile`, `OpenDirectory`, `GetFreeSpaceSize`, `GetTotalSpaceSize`) and `IDirectory` (`ReadDirectory`, `GetEntryCount`).
   - `time:u` / `time:s` high-resolution monotonic clock matching host `Instant` with nanosecond precision, and UTC epoch timestamp calculation via `ISystemClock::GetCurrentTime`.
   - `set:sys` queries for system language, console model (`0x02` Drake / Tegra T239), and device nickname (`Ounce-T239`).
+* **Completed: MMU unaligned multi-page range mapping fix** (PR #20 on `main` @ 882b853, closes #14)
+  - `Memory::map_range` now computes `num_pages` with intra-page offset `(base_addr as usize) & (PAGE_SIZE - 1)`, ensuring ranges that cross page boundaries allocate all intersecting pages.
+  - Zero-size allocation guards and checked addition for 64-bit address overflow safety.
+  - 8 synthetic unit tests covering intra-page boundaries, permission enforcement, and unmapped access.
+* **Completed: Milestone 4 / Host GPU accelerated 3D translation via wgpu** (PR #26 on `main` @ f6456db)
+  - Tegra T239 NVN/Maxwell 3D pushbuffer translation (`METHOD_DRAW_ARRAYS`, `METHOD_DRAW_INDEXED`) into host GPU pipelines via `wgpu` (Metal on macOS, Vulkan on Linux/Windows).
+  - Compact sparse index deduplication and bounded remapping in `src/gpu/nvgpu.rs`, guarding host memory against extreme 32-bit index spans (`0xFFFFFFFF`).
+  - Primitive restart index filtering (`0xFFFF`, `0xFFFFFFFF`) discarding degenerate triangles.
+  - `Wgpu3DRenderer` dynamic uniform buffer management with 256-byte aligned offsets (`has_dynamic_offset: true`), per-draw texture caching and isolated bind groups, and dynamic depth-test pipeline switching.
+  - Integrated into `DisplayServer::present_frame_3d` in `--present=gpu` mode while preserving 100% CPU software rasterizer fallback for headless testing and `minifb`.
+  - 14 adversarial unit tests added, bringing suite to 125 tests passed.
 * **Verification & Quality Gates**:
-  - `cargo test --release --features gpu-present`: **103 passed, 0 failed**.
+  - `cargo test --release --features gpu-present,native-jit`: **125 passed in ounce-core, 5 passed in ounce-recompiler (130 total passed, 0 failed)**.
   - `cargo run --release --features gpu-present -- test`: **25/25 architecture stages passing (exit code 0xEEE)**.
+  - Host GPU hardware swapchain verified on Metal (`--present=gpu 3d 20`).
   - Safe Rust provenance: `grep -rn "unsafe" src` returns **0 hits**, strictly preserving `#![forbid(unsafe_code)]`.
 * **Next**:
-  - Later milestone: translate NVN draws into host GPU work.
-  - M4 (Tier-4 native JIT in `crates/ounce-recompiler`): design approved, `docs/design/m4-native-jit.md`. Step 1 done on `claude/m4-exec-buffer`: root `Cargo.toml` is a workspace (default member = root), `crates/ounce-recompiler` with `unsafe` confined to `src/exec.rs` (`#![deny(unsafe_code)]` elsewhere), W^X `ExecBuffer` per host, `host_selftest()` returning 42, feature `native-jit`, command `jit-selftest`, CI job `native-jit` on Linux/macOS/Windows. Next: step 2 (IR + Cranelift lowering, callback memory, `--cpu=`). Code-write invalidation for the safe tiers is owned by the "Fix stale block cache on code writes" thread; Tier-4 hooks into it in step 4.
-  - Build tooling note: building from source on Debian/Ubuntu needs `libasound2-dev libudev-dev`.
+  - M4 (Tier-4 native JIT in `crates/ounce-recompiler`): Step 1 merged on `main` (`crates/ounce-recompiler` workspace, `ExecBuffer`, `native-jit` feature, CI jobs on Linux/macOS/Windows). Step 2: IR + Cranelift lowering for integer ops, callback memory, `--cpu=tier3|tier4`.

@@ -51,15 +51,15 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 | Subsystem | Status | Notes |
 | :--- | :--- | :--- |
-| AArch64 CPU | Implemented (subset) | Interpreter plus Tier-1 block cache, Tier-2 chained blocks and Tier-3 super-blocks. Not the full ISA. |
-| Memory | Implemented | 4 KB-page MMU with per-page permissions. No DRAM timing model. |
+| AArch64 CPU | Implemented (subset) | Interpreter plus Tier-1 block cache, Tier-2 chained blocks and Tier-3 super-blocks. Workspace sub-crate `crates/ounce-recompiler` (feature `native-jit`) provides executable memory management (`MAP_JIT` on Apple Silicon, `VirtualProtect` on Windows, `mprotect` on Linux) for Tier-4 JIT recompilation. |
+| Memory | Implemented | 4 KB-page MMU with intra-page boundary alignment and per-page permissions. No DRAM timing model. |
 | Kernel (SVC) | Implemented (subset) | Threads, events, mutexes, memory and process queries needed by the test programs. |
 | IPC | Implemented (subset) | CMIF and TIPC message formats. Services are synthetic. |
 | Services | Modelled | `sm:`, `set:sys` (Drake T239 model, language, nickname), `am`, `vi`, `hid`, `fsp-srv` (directory enumeration, persistent save/sdmc partitions), `pl:u` (placeholder font data), `time:u` / `time:s` (nanosecond steady clock, UTC epoch timestamp), `nvdrv`, `ro:1`. |
-| GPU | Modelled | Command-buffer model, software rasterizer with indexed geometry (`METHOD_SET_INDEX_ARRAY_ADDR`, `METHOD_DRAW_INDEXED`), NVN driver, texture and ASTC/BC7 block decoders. No GPU API is called. |
+| GPU | Hardware accelerated & Modelled | Tegra T239 NVN/Maxwell 3D pushbuffer hardware translation via `wgpu` (`METHOD_DRAW_ARRAYS`, `METHOD_DRAW_INDEXED`) with 256-byte aligned dynamic uniform offsets, dynamic texture bind groups, depth buffer staging, and primitive restart filtering (`0xFFFF`/`0xFFFFFFFF`). Preserves software rasterizer fallback for headless testing and `minifb`. |
 | Shader translation | Partial | A SASS-subset decoder that emits SPIR-V 1.5 bytes. Not validated against a driver. |
 | Vulkan HAL (`gpu/vulkan.rs`) | Model only | Structures and SPIR-V module checks. It does not call a Vulkan loader or driver. |
-| Host presentation (`gpu/present/`) | Implemented | Guest framebuffer shown through a GPU swapchain (`wgpu`: Vulkan on Linux/Windows, Metal on macOS; feature `gpu-present`), a software window (`minifb`) or headless. Presentation only: guest rendering stays on the CPU. |
+| Host presentation (`gpu/present/`) | Implemented | Guest framebuffer and 3D pushbuffer geometry presented through a host GPU hardware swapchain (`wgpu`: Metal on macOS, Vulkan on Linux/Windows; feature `gpu-present`), software window (`minifb`) or headless mode. |
 | Upscaler (`gpu/dlss.rs`) | Modelled | 2× bilinear interpolation with sharpening. **Not DLSS**; there is no neural network. |
 | Audio | Implemented | Software 64-voice mixer; continuous non-blocking ring-buffer streaming from `audout:u` and `audren:u` to 48 kHz stereo host audio sink via `cpal` with polyphonic resampling, underrun tracking and latency metrics. |
 | Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs` (analog stick threshold synthesis to D-pad bitmasks). |
