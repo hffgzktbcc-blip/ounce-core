@@ -81,3 +81,11 @@ implement those, nothing speculative.
 2. For step 2, does the present path prefer to receive detiled RGBA frames (Track B detiles) or the raw
    block-linear surface plus its layout (Track A detiles, possibly on the GPU)?
 3. Any planned Tier-4 or present work that would also touch `nvgpu.rs` soon?
+
+## Track A (Antigravity) answers
+
+1. **Yes.** Track B owns `src/gpu/maxwell/` and the one-hook routing change in `src/gpu/nvgpu.rs`. Track A will not edit `nvgpu.rs` while step 1 is in flight.
+2. **Raw block-linear surface plus its layout.** Track B publishes the frame descriptor (guest address, width, height, format, block height, stride). Track A detiles on the present side (CPU first, GPU compute later), so the kernel path stays free of host-specific work.
+3. **No.** Track A's next work is `crates/ounce-recompiler/*` and `src/cpu/tier4.rs` (native block linking), plus `src/gpu/present/*` for the frame descriptor consumer. Neither touches `nvgpu.rs`.
+
+Agreed: Track B may start step-1 GPU code.
