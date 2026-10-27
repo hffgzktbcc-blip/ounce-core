@@ -209,6 +209,12 @@ fn libnx_nro_runs_to_main_return() {
 /// Boots `nro` the way `ounce-core run <nro> <args>` does: `setup_vm`, `setup_homebrew_nro`, and the
 /// kernel's own SVC dispatch (no shim). Returns the guest's debug output and every SVC it made.
 fn boot_with_kernel(nro: &[u8], args: &[&str]) -> (String, Vec<u16>) {
+    let (output, svcs, _) = boot_with_kernel_state(nro, args);
+    (output, svcs)
+}
+
+/// `boot_with_kernel`, also returning the kernel so tests can inspect service state afterwards.
+fn boot_with_kernel_state(nro: &[u8], args: &[&str]) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
     let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).expect("NRO loads");
     assert_eq!(info.format, "NRO0");
@@ -236,7 +242,7 @@ fn boot_with_kernel(nro: &[u8], args: &[&str]) -> (String, Vec<u16>) {
             other => panic!("guest stopped: {other:?} at 0x{:X}; SVCs {svcs:x?}", cpu.regs.pc),
         }
     }
-    (output, svcs)
+    (output, svcs, kernel)
 }
 
 /// The hello fixture under the CLI setup and the real kernel.
@@ -277,4 +283,17 @@ fn libnx_nvdrv_fixture_creates_an_nvmap_object() {
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, svcs) = boot_with_kernel(&nro, &[]);
     assert!(output.ends_with("ounce-nvdrv result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+}
+
+/// `tests/fixtures/nro/gpu`: libnx GPU bring-up (nvhost-ctrl, nvhost-ctrl-gpu, address space, GPFIFO
+/// channel), a mapped command buffer submitted through SUBMIT_GPFIFO, and a fence wait.
+#[test]
+fn libnx_gpu_fixture_submits_a_command_buffer() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/gpu/gpu.nro");
+    let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let (output, svcs, kernel) = boot_with_kernel_state(&nro, &[]);
+    assert!(output.ends_with("ounce-gpu result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+    // The fixture's one GPFIFO entry reached the GPU model: one header with two arguments.
+    assert_eq!(kernel.nvgpu.state.total_commands_processed, 1);
+    assert!(kernel.ipc.nvdrv.unhandled.is_empty(), "unhandled ioctls: {:x?}", kernel.ipc.nvdrv.unhandled);
 }

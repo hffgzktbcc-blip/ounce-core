@@ -76,6 +76,8 @@ pub enum ServiceType {
     SharedMemory { size: u64 },
     /// Transfer memory object from svcCreateTransferMemory: guest memory lent to a service.
     TransferMemory { addr: u64, size: u64 },
+    /// Readable event handed out by nvdrv `QueryEvent` (syncpoint and channel error events).
+    NvEvent { fd: u32, event_id: u32 },
 }
 
 /// Size of the HID shared memory block libnx maps (`0x40000`).
@@ -242,8 +244,8 @@ impl IpcManager {
         // older handler below.
         let r = &self.request;
         let has_buffers = !(r.send_statics.is_empty() && r.send_buffers.is_empty() && r.recv_buffers.is_empty());
-        if service == ServiceType::Nvdrv && (has_buffers || matches!(cmd_id, 2 | 4 | 8)) {
-            return self.handle_nvdrv(cmd_id, args_base, tls_addr, mmu);
+        if service == ServiceType::Nvdrv && (has_buffers || matches!(cmd_id, 2 | 4 | 8 | 11 | 12)) {
+            return self.handle_nvdrv(cmd_id, args_base, tls_addr, mmu, nvgpu);
         }
 
         match service {
@@ -1083,44 +1085,67 @@ impl IpcManager {
             }
 
             // Not a session: requests on it are invalid.
-            ServiceType::SharedMemory { .. } | ServiceType::TransferMemory { .. } => 0xE401,
+            ServiceType::SharedMemory { .. } | ServiceType::TransferMemory { .. } | ServiceType::NvEvent { .. } => 0xE401,
         }
     }
 
     /// `nvdrv` commands in the form libnx sends them. Each reply carries the nvdrv status word that
     /// libnx turns into a result with `nvConvertError`.
-    fn handle_nvdrv(&mut self, cmd_id: u32, args_base: u64, tls_addr: u64, mmu: &mut Memory) -> u64 {
+    fn handle_nvdrv(&mut self, cmd_id: u32, args_base: u64, tls_addr: u64, mmu: &mut Memory, nvgpu: &mut NvgpuChannel) -> u64 {
         let req = self.request.clone();
-        // An X buffer with a size, else the A buffer (libnx "auto select"); likewise C, else B.
-        let input = req.send_statics.first().map(|&(_, b)| b).filter(|b| b.size > 0).or(req.send_buffers.first().copied());
-        let output = req.recv_list.first().copied().filter(|b| b.size > 0).or(req.recv_buffers.first().copied());
+        // The i-th input is an X buffer with a size, else the i-th A buffer (libnx "auto select");
+        // outputs likewise use C, else B.
+        let input = |i: usize| {
+            req.send_statics.get(i).map(|&(_, b)| b).filter(|b| b.size > 0).or(req.send_buffers.get(i).copied())
+        };
+        let output = |i: usize| req.recv_list.get(i).copied().filter(|b| b.size > 0).or(req.recv_buffers.get(i).copied());
+        let read_buf = |mmu: &Memory, b: Option<super::hipc::Buffer>, len: usize| {
+            let mut v = vec![0u8; len];
+            if let Some(b) = b {
+                let n = len.min(b.size as usize);
+                let _ = mmu.read_bytes(b.addr, &mut v[..n]);
+            }
+            v
+        };
         match cmd_id {
             // Open(path in A) -> (fd, status)
             0 => {
-                let buf = input.unwrap_or_default();
-                let mut path = vec![0u8; (buf.size as usize).min(0x100)];
-                let _ = mmu.read_bytes(buf.addr, &mut path);
+                let buf = input(0).unwrap_or_default();
+                let path = read_buf(mmu, Some(buf), (buf.size as usize).min(0x100));
                 let len = path.iter().position(|&b| b == 0).unwrap_or(path.len());
                 let (fd, status) = self.nvdrv.open(&String::from_utf8_lossy(&path[..len]));
                 self.write_cmif_response(tls_addr, mmu, 0, &[fd, status], None);
             }
-            // Ioctl(fd, request), argument block in X/A, written back to C/B -> status
-            1 => {
+            // Ioctl(fd, request), argument block in X/A, written back to C/B -> status.
+            // Ioctl2 (11) adds an input buffer; Ioctl3 (12) adds an output buffer.
+            1 | 11 | 12 => {
+                use super::nvdrv::{ioctl_has_input, ioctl_has_output, ioctl_size, IoctlExtra};
                 let fd = mmu.read_u32(args_base).unwrap_or(0);
                 let request = mmu.read_u32(args_base + 4).unwrap_or(0);
-                let mut data = vec![0u8; super::nvdrv::ioctl_size(request)];
-                if super::nvdrv::ioctl_has_input(request) {
-                    if let Some(b) = input {
-                        let n = data.len().min(b.size as usize);
-                        let _ = mmu.read_bytes(b.addr, &mut data[..n]);
-                    }
-                }
-                let status = self.nvdrv.ioctl(fd, request, &mut data);
-                if super::nvdrv::ioctl_has_output(request) {
-                    if let Some(b) = output {
+                let size = ioctl_size(request);
+                let mut data = if ioctl_has_input(request) { read_buf(mmu, input(0), size) } else { vec![0u8; size] };
+                let inbuf = if cmd_id == 11 {
+                    let b = input(1).unwrap_or_default();
+                    read_buf(mmu, Some(b), b.size as usize)
+                } else {
+                    Vec::new()
+                };
+                let out2 = if cmd_id == 12 { output(1) } else { None };
+                let mut outbuf = vec![0u8; out2.map_or(0, |b| b.size as usize)];
+                let extra = IoctlExtra { inbuf: &inbuf, outbuf: out2.map(|_| outbuf.as_mut_slice()) };
+                let status = self.nvdrv.ioctl_ex(fd, request, &mut data, extra);
+                if ioctl_has_output(request) {
+                    if let Some(b) = output(0) {
                         let n = data.len().min(b.size as usize);
                         let _ = mmu.write_bytes(b.addr, &data[..n]);
                     }
+                }
+                if let Some(b) = out2 {
+                    let _ = mmu.write_bytes(b.addr, &outbuf);
+                }
+                // Submitted pushbuffer segments run now, on the GPU model.
+                for (addr, words) in self.nvdrv.take_submissions() {
+                    nvgpu.process_pushbuffer(mmu, addr, words);
                 }
                 self.write_cmif_response(tls_addr, mmu, 0, &[status], None);
             }
@@ -1129,8 +1154,17 @@ impl IpcManager {
                 let status = self.nvdrv.close(mmu.read_u32(args_base).unwrap_or(0));
                 self.write_cmif_response(tls_addr, mmu, 0, &[status], None);
             }
-            // QueryEvent(fd, event_id): events are not modelled.
-            4 => self.write_cmif_response(tls_addr, mmu, 0, &[super::nvdrv::NV_NOT_IMPLEMENTED], None),
+            // QueryEvent(fd, event_id) -> status, copy handle to a readable event
+            4 => {
+                let fd = mmu.read_u32(args_base).unwrap_or(0);
+                let event_id = mmu.read_u32(args_base + 4).unwrap_or(0);
+                if self.nvdrv.fds.contains_key(&fd) {
+                    let h = self.allocate_handle(ServiceType::NvEvent { fd, event_id });
+                    self.reply(tls_addr, mmu, 0, &super::nvdrv::NV_OK.to_le_bytes(), &[h], None);
+                } else {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[super::nvdrv::NV_BAD_PARAMETER], None);
+                }
+            }
             // Initialize (tmem size, process + transfer memory handles) / SetClientPID -> status
             _ => self.write_cmif_response(tls_addr, mmu, 0, &[super::nvdrv::NV_OK], None),
         }
