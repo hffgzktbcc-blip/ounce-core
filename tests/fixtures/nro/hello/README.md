@@ -1,0 +1,30 @@
+# hello.nro: libnx homebrew loader fixture
+
+A tiny homebrew program built with devkitA64 and libnx. It is homebrew only: no firmware, keys or
+retail code. `main.c` is the whole source; the binary links libnx (ISC license) and newlib.
+
+It uses no services (`__appInit`/`__appExit` are empty) and returns `0xEEE` from `main` when all
+of these hold, else `0xBAD0000 | bits`:
+
+| bit | check |
+|-----|-------|
+| 0 | the `DT_INIT_ARRAY` constructor ran |
+| 1 | pointers in `.data` were relocated (`DT_RELR`) |
+| 2 | `.bss` is zero |
+| 3 | `argv` came from the loader's `Argv` ConfigEntry (`argc == 2`, `argv[1] == "fixture"`) |
+| 4 | `malloc` works on the loader's `OverrideHeap` |
+| 5 | a `__thread` variable has its `.tdata` value |
+
+Tests: `src/loader/fixture_tests.rs`. The built `hello.nro` is checked in so tests need no toolchain.
+
+## Rebuild
+
+Needs devkitPro's `switch-dev` package (macOS: install the devkitPro pacman `.pkg` from
+github.com/devkitPro/pacman/releases, then `sudo dkp-pacman -S switch-dev`).
+
+```bash
+make -C tests/fixtures/nro/hello clean all
+```
+
+Built with devkitA64 (GCC 16.1) and libnx from `switch-dev` on 2026-10-27. A different toolchain
+version gives a different binary; the tests check behaviour, not bytes.
