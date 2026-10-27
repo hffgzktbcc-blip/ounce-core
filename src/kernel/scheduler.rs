@@ -3,6 +3,7 @@
 use crate::cpu::{Cpu, CpuRegisters, StepResult};
 use crate::mmu::{Memory, Permission};
 use std::collections::{HashMap, VecDeque};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -23,6 +24,8 @@ pub enum WaitReason {
     CondVar { cvar: u64, mutex: u64, tag: u32, timed: bool },
     /// svcWaitSynchronization: any of `handles` becoming signaled.
     Objects { handles: Vec<u32>, timed: bool },
+    /// svcSleepThread with a positive time: only the deadline wakes it.
+    Sleep,
 }
 
 /// Instructions a thread runs before `preempt` lets the next ready thread in.
@@ -40,6 +43,17 @@ pub const THREAD_TLR_POOL_PAGES: u64 = 0x800;
 pub const RESULT_TIMED_OUT: u64 = 0xEA01;
 pub const RESULT_INVALID_HANDLE: u64 = 0xE401;
 pub const RESULT_INVALID_STATE: u64 = 0xFA01;
+pub const RESULT_INVALID_PRIORITY: u64 = 0xE001;
+pub const RESULT_INVALID_CORE_ID: u64 = 0xE201;
+pub const RESULT_INVALID_COMBINATION: u64 = 0xE801;
+/// Horizon thread priorities: 0 runs first, 63 last.
+pub const LOWEST_THREAD_PRIORITY: i32 = 63;
+/// Cores a thread may name (the 8 Cortex-A78C cores; one host CPU time-shares them).
+pub const CORE_COUNT: u32 = 8;
+/// The process's ideal core, used for `-2` (`IdealCoreUseProcessValue`).
+pub const PROCESS_IDEAL_CORE: u32 = 0;
+/// The `CurrentThread` pseudo-handle.
+pub const CURRENT_THREAD_HANDLE: u32 = 0xFFFF_8000;
 /// Mutex word flag: other threads wait for this mutex.
 pub const MUTEX_HAS_LISTENERS: u32 = 0x4000_0000;
 
@@ -75,7 +89,9 @@ pub struct KThread {
     pub arg_x0: u64,
     pub stack_top: u64,
     pub priority: i32,
+    /// Ideal core; with one host CPU it decides who may preempt whom (see `preempt`).
     pub core_id: u32,
+    pub affinity_mask: u64,
     pub state: ThreadState,
     pub cpu_context: Cpu,
     /// This thread's static TLS area (its `TPIDR_EL0`), if the process uses static TLS.
@@ -84,6 +100,8 @@ pub struct KThread {
     pub wait: Option<WaitReason>,
     /// Order in which threads started waiting; the earliest waiter is served first.
     pub wait_seq: u64,
+    /// Scheduler time (`now_ns`) at which a timed wait or sleep ends.
+    pub deadline: Option<u64>,
 }
 
 /// Horizon OS 8-Core Cortex-A78C Thread Scheduler.
@@ -109,6 +127,14 @@ pub struct ThreadScheduler {
     pub(crate) pending_relock: Vec<u32>,
     /// Context switches performed, for diagnostics.
     pub switches: u64,
+    clock_start: Instant,
+    /// Time skipped while every thread slept (virtual time only).
+    skew_ns: u64,
+    /// When every thread sleeps: `false` sleeps the host until the next deadline, `true` skips to it.
+    /// Set by `OUNCE_VIRTUAL_TIME`; tests set it directly.
+    pub virtual_time: bool,
+    /// Handle the loader gave the guest for its main thread (libnx `envGetMainThreadHandle`).
+    pub main_handle: Option<u32>,
 }
 
 impl Default for ThreadScheduler {
@@ -133,6 +159,10 @@ impl ThreadScheduler {
             wait_counter: 0,
             pending_relock: Vec::new(),
             switches: 0,
+            clock_start: Instant::now(),
+            skew_ns: 0,
+            virtual_time: std::env::var_os("OUNCE_VIRTUAL_TIME").is_some(),
+            main_handle: None,
         }
     }
 
@@ -150,6 +180,8 @@ impl ThreadScheduler {
         let thread_id = self.next_thread_id;
         self.next_thread_id += 1;
 
+        // -2 (`IdealCoreUseProcessValue`, libnx's default) is the process's ideal core.
+        let core_id = if core_id as i32 == -2 { PROCESS_IDEAL_CORE } else { core_id % CORE_COUNT };
         let mut cpu_context = Cpu::new();
         cpu_context.regs.pc = entry_pc;
         cpu_context.regs.sp = stack_top;
@@ -163,12 +195,14 @@ impl ThreadScheduler {
             arg_x0,
             stack_top,
             priority,
-            core_id: core_id % 8, // 8 Cortex-A78C cores (0..7)
+            core_id,
+            affinity_mask: 1 << core_id,
             state: ThreadState::Created,
             cpu_context,
             tls_area: None,
             wait: None,
             wait_seq: 0,
+            deadline: None,
         };
 
         self.threads.insert(handle, kthread);
@@ -236,6 +270,18 @@ impl ThreadScheduler {
     }
 }
 
+/// Which ready threads a yielding thread steps aside for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YieldTo {
+    /// Any ready thread (svcSleepThread(-2)).
+    Any,
+    /// Threads that could take this core: equal or better priority, or another ideal core (svcSleepThread(0)
+    /// and (-1), and time-slice preemption).
+    SameCore,
+    /// Threads with strictly better priority on this core (preemption after a wake).
+    Better,
+}
+
 /// Cooperative scheduling of guest threads on the one CPU. Switches happen only inside SVCs: the
 /// kernel saves the live registers into the current thread and loads the next thread's.
 impl ThreadScheduler {
@@ -248,12 +294,14 @@ impl ThreadScheduler {
             arg_x0: 0,
             stack_top: 0,
             priority: 44,
-            core_id: 0,
+            core_id: PROCESS_IDEAL_CORE,
+            affinity_mask: 1 << PROCESS_IDEAL_CORE,
             state: ThreadState::Running,
             cpu_context: Cpu::new(),
             tls_area: None,
             wait: None,
             wait_seq: 0,
+            deadline: None,
         });
     }
 
@@ -286,6 +334,11 @@ impl ThreadScheduler {
         if let Some(cur) = self.threads.get_mut(&self.current) {
             cur.cpu_context.regs = cpu.regs.clone();
         }
+        self.load(cpu, next);
+    }
+
+    /// Makes `next` the running thread without saving the live registers (already saved).
+    fn load(&mut self, cpu: &mut Cpu, next: u32) {
         let thread = self.threads.get_mut(&next).expect("switching to a known thread");
         thread.state = ThreadState::Running;
         cpu.regs = thread.cpu_context.regs.clone();
@@ -296,10 +349,64 @@ impl ThreadScheduler {
 
     /// Time-slice preemption: the running thread yields when another is ready. Runners call this every
     /// `PREEMPT_INTERVAL` instructions so a thread that spins without SVCs cannot starve the others.
+    /// Only threads that could take this core from the running one get it: equal or better priority on the
+    /// same core, or any thread whose ideal core is another one (on hardware it would run in parallel).
     pub fn preempt(&mut self, cpu: &mut Cpu) {
+        self.expire_timers();
+        self.yield_to(cpu, YieldTo::SameCore);
+    }
+
+    /// Switches to a ready thread with strictly better priority on the running thread's core, if any. Called
+    /// after an SVC wakes threads, as Horizon would preempt the caller at once.
+    pub fn preempt_for_priority(&mut self, cpu: &mut Cpu) {
         if !self.ready.is_empty() {
-            self.yield_current(cpu);
+            self.yield_to(cpu, YieldTo::Better);
         }
+    }
+
+    /// Scheduler time in nanoseconds: host time since creation, plus any time skipped while all threads slept.
+    pub fn now_ns(&self) -> u64 {
+        self.clock_start.elapsed().as_nanos() as u64 + self.skew_ns
+    }
+
+    /// Lets time pass until `deadline` while nothing can run: sleeps the host, or skips ahead.
+    fn advance_to(&mut self, deadline: u64) {
+        let now = self.now_ns();
+        if deadline > now {
+            if self.virtual_time {
+                self.skew_ns += deadline - now;
+            } else {
+                std::thread::sleep(Duration::from_nanos(deadline - now));
+            }
+        }
+    }
+
+    /// Ends every timed wait and sleep whose deadline has passed, earliest deadline first.
+    pub fn expire_timers(&mut self) {
+        let now = self.now_ns();
+        let mut due: Vec<(u64, u64, u32)> = self
+            .threads
+            .values()
+            .filter(|t| t.state == ThreadState::Blocked)
+            .filter_map(|t| t.deadline.filter(|&d| d <= now).map(|d| (d, t.wait_seq, t.handle)))
+            .collect();
+        due.sort();
+        for (_, _, key) in due {
+            self.time_out(key);
+        }
+    }
+
+    /// Removes and returns the ready thread to run next among those `eligible`: best priority, then the one
+    /// that has been ready longest.
+    fn take_ready(&mut self, eligible: impl Fn(&KThread) -> bool) -> Option<u32> {
+        let index = self
+            .ready
+            .iter()
+            .enumerate()
+            .filter(|(_, k)| self.threads.get(k).is_some_and(&eligible))
+            .min_by_key(|(i, k)| (self.threads[k].priority, *i))
+            .map(|(i, _)| i)?;
+        self.ready.remove(index)
     }
 
     /// svcStartThread: the new thread runs now; the caller resumes as soon as the new thread waits or exits.
@@ -322,8 +429,14 @@ impl ThreadScheduler {
     /// Puts the running thread to sleep on `reason` and switches to the next ready thread. When no thread
     /// is ready, a timed waiter is woken with a timeout; if nothing can run at all, returns `false`
     /// without blocking (a deadlock the caller reports).
-    pub fn block_current(&mut self, cpu: &mut Cpu, reason: WaitReason) -> bool {
+    pub fn block_current(&mut self, cpu: &mut Cpu, mmu: &mut Memory, reason: WaitReason) -> bool {
+        self.block_for(cpu, mmu, reason, None)
+    }
+
+    /// `block_current` that also ends after `timeout_ns` (then with a timeout result).
+    pub fn block_for(&mut self, cpu: &mut Cpu, mmu: &mut Memory, reason: WaitReason, timeout_ns: Option<u64>) -> bool {
         self.ensure_main();
+        let deadline = timeout_ns.map(|t| self.now_ns().saturating_add(t));
         let cur = self.current;
         self.wait_counter += 1;
         let seq = self.wait_counter;
@@ -332,8 +445,9 @@ impl ThreadScheduler {
             t.state = ThreadState::Blocked;
             t.wait = Some(reason);
             t.wait_seq = seq;
+            t.deadline = deadline;
         }
-        match self.next_ready_or_timeout(cpu) {
+        match self.next_ready_or_timeout(cpu, mmu) {
             Some(next) if next == cur => {
                 // The only thing that could run was this thread's own timeout: carry on with its result.
                 let t = self.threads.get_mut(&cur).unwrap();
@@ -342,35 +456,36 @@ impl ThreadScheduler {
                 true
             }
             Some(next) => {
-                self.switch_to(cpu, next);
+                // Registers are saved already, and may hold this thread's own timeout result.
+                self.load(cpu, next);
                 true
             }
             None => {
                 let t = self.threads.get_mut(&cur).unwrap();
                 t.state = ThreadState::Running;
                 t.wait = None;
+                t.deadline = None;
                 false
             }
         }
     }
 
-    /// The next thread to run. With none ready, the earliest timed waiter times out. The current thread's
+    /// The next thread to run: the best ready one. With none ready, time passes until the next deadline (see
+    /// `advance_to`), until a thread is ready or no deadline is left (`None`: deadlock). The current thread's
     /// registers are saved first so a timeout can be written into them.
-    fn next_ready_or_timeout(&mut self, cpu: &mut Cpu) -> Option<u32> {
-        if let Some(next) = self.ready.pop_front() {
-            return Some(next);
-        }
+    fn next_ready_or_timeout(&mut self, cpu: &mut Cpu, mmu: &mut Memory) -> Option<u32> {
         let cur = self.current;
         self.threads.get_mut(&cur).unwrap().cpu_context.regs = cpu.regs.clone();
-        let timed = self
-            .threads
-            .values()
-            .filter(|t| t.state == ThreadState::Blocked)
-            .filter(|t| matches!(t.wait, Some(WaitReason::Objects { timed: true, .. }) | Some(WaitReason::CondVar { timed: true, .. })))
-            .min_by_key(|t| t.wait_seq)
-            .map(|t| t.handle)?;
-        self.time_out(timed);
-        self.ready.pop_front()
+        loop {
+            self.expire_timers();
+            // A condvar waiter that timed out is ready only once it has its mutex back.
+            self.finish_timeouts(mmu);
+            if let Some(next) = self.take_ready(|_| true) {
+                return Some(next);
+            }
+            let deadline = self.threads.values().filter(|t| t.state == ThreadState::Blocked).filter_map(|t| t.deadline).min()?;
+            self.advance_to(deadline);
+        }
     }
 
     /// A timed wait ends with a timeout. A condvar waiter then still has to get its mutex back.
@@ -382,9 +497,11 @@ impl ThreadScheduler {
                 t.cpu_context.regs.write_x(0, RESULT_TIMED_OUT);
                 // Marked as a mutex waiter; `relock_after_wake` is applied by the kernel, which has memory.
                 t.wait = Some(WaitReason::Mutex { addr: mutex, tag });
+                t.deadline = None;
                 t.state = ThreadState::Blocked;
                 self.pending_relock.push(key);
             }
+            Some(WaitReason::Sleep) => self.wake(key, 0, None),
             _ => self.wake(key, RESULT_TIMED_OUT, None),
         }
     }
@@ -398,24 +515,58 @@ impl ThreadScheduler {
             }
             t.state = ThreadState::Runnable;
             t.wait = None;
+            t.deadline = None;
             self.ready.push_back(key);
         }
     }
 
-    /// svcSleepThread / yield: the running thread goes to the back of the ready queue.
+    /// Yield to any ready thread, whatever its priority (svcSleepThread(-2)): the running thread goes to the
+    /// back of the ready queue.
     pub fn yield_current(&mut self, cpu: &mut Cpu) {
-        if let Some(next) = self.ready.pop_front() {
-            self.ensure_main();
-            let cur = self.current;
+        self.yield_to(cpu, YieldTo::Any);
+    }
+
+    /// The running thread steps aside for the best ready thread that `to` admits, and goes to the back of the
+    /// ready queue. Nothing happens when no such thread is ready.
+    pub fn yield_to(&mut self, cpu: &mut Cpu, to: YieldTo) {
+        self.ensure_main();
+        let cur = self.current;
+        let (prio, core) = self.threads.get(&cur).map_or((44, PROCESS_IDEAL_CORE), |t| (t.priority, t.core_id));
+        let next = self.take_ready(|t| match to {
+            YieldTo::Any => true,
+            YieldTo::SameCore => t.priority <= prio || t.core_id != core,
+            YieldTo::Better => t.priority < prio && t.core_id == core,
+        });
+        if let Some(next) = next {
             self.threads.get_mut(&cur).unwrap().state = ThreadState::Runnable;
             self.ready.push_back(cur);
             self.switch_to(cpu, next);
         }
     }
 
+    /// Starts a timed sleep of the running thread (svcSleepThread with a positive time).
+    pub fn sleep_current(&mut self, cpu: &mut Cpu, mmu: &mut Memory, ns: u64) {
+        cpu.regs.write_x(0, 0);
+        // Always succeeds: the thread's own deadline wakes it when nothing else does.
+        self.block_for(cpu, mmu, WaitReason::Sleep, Some(ns));
+    }
+
+    /// The scheduler key for a thread handle the guest passed: the `CurrentThread` pseudo-handle, the main
+    /// thread's handle, or a created thread's handle.
+    pub fn resolve(&mut self, handle: u32) -> Option<u32> {
+        self.ensure_main();
+        if handle == CURRENT_THREAD_HANDLE {
+            Some(self.current)
+        } else if Some(handle) == self.main_handle {
+            Some(MAIN_THREAD_KEY)
+        } else {
+            (handle != MAIN_THREAD_KEY && self.threads.contains_key(&handle)).then_some(handle)
+        }
+    }
+
     /// svcExitThread. Returns the threads that were waiting for this one to exit (to be woken by the
     /// caller), or `None` when no other thread can run and the process should end.
-    pub fn exit_current(&mut self, cpu: &mut Cpu) -> Option<()> {
+    pub fn exit_current(&mut self, cpu: &mut Cpu, mmu: &mut Memory) -> Option<()> {
         self.ensure_main();
         let cur = self.current;
         let t = self.threads.get_mut(&cur).unwrap();
@@ -423,13 +574,8 @@ impl ThreadScheduler {
         t.cpu_context.regs = cpu.regs.clone();
         self.total_threads_completed += 1;
         self.wake_object_waiters(cur);
-        let next = self.next_ready_or_timeout(cpu)?;
-        let thread = self.threads.get_mut(&next).unwrap();
-        thread.state = ThreadState::Running;
-        cpu.regs = thread.cpu_context.regs.clone();
-        cpu.exclusive = None;
-        self.current = next;
-        self.switches += 1;
+        let next = self.next_ready_or_timeout(cpu, mmu)?;
+        self.load(cpu, next);
         Some(())
     }
 
@@ -501,6 +647,7 @@ impl ThreadScheduler {
             let t = self.threads.get_mut(&key).unwrap();
             t.cpu_context.regs.write_x(0, result);
             t.wait = Some(WaitReason::Mutex { addr: mutex, tag });
+            t.deadline = None;
             if result != 0 {
                 self.pending_relock.push(key);
             }
@@ -663,5 +810,188 @@ mod tests {
         assert_eq!(sched.threads[&handle].state, ThreadState::Exited);
         assert_eq!(sched.total_threads_completed, 1);
         assert_eq!(mmu.read_u64(shared_addr).unwrap(), 0x4242);
+    }
+
+    fn ready_thread(sched: &mut ThreadScheduler, entry: u64, prio: i32, core: u32) -> u32 {
+        let h = sched.create_thread(entry, 0, 0, prio, core);
+        sched.threads.get_mut(&h).unwrap().state = ThreadState::Runnable;
+        sched.ready.push_back(h);
+        h
+    }
+
+    #[test]
+    fn ready_threads_run_in_priority_order() {
+        let (mut sched, mut cpu, mut mmu) = (ThreadScheduler::new(), Cpu::new(), Memory::new());
+        sched.virtual_time = true;
+        let low = ready_thread(&mut sched, 0x1000, 40, 0);
+        let first = ready_thread(&mut sched, 0x2000, 30, 0);
+        let second = ready_thread(&mut sched, 0x3000, 30, 0);
+        let mut order = Vec::new();
+        for _ in 0..3 {
+            assert!(sched.block_current(&mut cpu, &mut mmu, WaitReason::Mutex { addr: 0x10, tag: 1 }));
+            order.push((sched.current, cpu.regs.pc));
+        }
+        // Lower number first; equal priorities in the order they became ready.
+        assert_eq!(order, [(first, 0x2000), (second, 0x3000), (low, 0x1000)]);
+        // Nothing left to run and no deadline: deadlock.
+        assert!(!sched.block_current(&mut cpu, &mut mmu, WaitReason::Mutex { addr: 0x10, tag: 1 }));
+    }
+
+    #[test]
+    fn yields_and_preemption_respect_priority_and_core() {
+        let (mut sched, mut cpu) = (ThreadScheduler::new(), Cpu::new());
+        let worse = ready_thread(&mut sched, 0x1000, 50, 0);
+        // svcSleepThread(0) / a time slice: a worse priority on the same core does not get the core.
+        sched.yield_to(&mut cpu, YieldTo::SameCore);
+        sched.preempt(&mut cpu);
+        assert_eq!(sched.current, MAIN_THREAD_KEY);
+        // svcSleepThread(-2) yields to anyone.
+        sched.yield_current(&mut cpu);
+        assert_eq!(sched.current, worse);
+        // The main thread (44) outranks the worker (50): it takes the core back after a wake.
+        sched.preempt_for_priority(&mut cpu);
+        assert_eq!(sched.current, MAIN_THREAD_KEY);
+        // A thread whose ideal core is another one would run in parallel, so it shares the time slice.
+        let other_core = ready_thread(&mut sched, 0x2000, 60, 3);
+        sched.preempt(&mut cpu);
+        assert_eq!(sched.current, other_core);
+    }
+
+    /// A kernel with virtual time and one created thread, started (so it is the running thread).
+    fn kernel_with_worker() -> (crate::kernel::HorizonKernel, Cpu, Memory, u32) {
+        let (mut kernel, mut cpu, mut mmu) = (crate::kernel::HorizonKernel::new(), Cpu::new(), Memory::new());
+        kernel.scheduler.virtual_time = true;
+        mmu.map_range(0x9000, 0x1000, Permission::READ_WRITE);
+        cpu.regs.write_x(1, 0x5000);
+        cpu.regs.write_x(3, 0x6000);
+        cpu.regs.write_x(4, 44);
+        cpu.regs.write_x(5, (-2i32) as u32 as u64);
+        kernel.dispatch_svc(0x08, &mut cpu, &mut mmu);
+        assert_eq!(cpu.regs.read_x(0), 0);
+        let worker = cpu.regs.read_x(1) as u32;
+        cpu.regs.write_x(0, worker as u64);
+        kernel.dispatch_svc(0x09, &mut cpu, &mut mmu);
+        assert_eq!(kernel.scheduler.current, worker);
+        (kernel, cpu, mmu, worker)
+    }
+
+    const MS: u64 = 1_000_000;
+
+    #[test]
+    fn timed_sleep_wakes_at_its_deadline() {
+        let (mut kernel, mut cpu, mut mmu, worker) = kernel_with_worker();
+        // The worker sleeps 10 ms; the main thread runs.
+        let t0 = kernel.scheduler.now_ns();
+        cpu.regs.write_x(0, 10 * MS);
+        kernel.dispatch_svc(0x0B, &mut cpu, &mut mmu);
+        assert_eq!(kernel.scheduler.current, MAIN_THREAD_KEY);
+        // The main thread sleeps 2 ms: nothing else can run, so time skips to its own deadline.
+        cpu.regs.write_x(0, 2 * MS);
+        kernel.dispatch_svc(0x0B, &mut cpu, &mut mmu);
+        assert_eq!(kernel.scheduler.current, MAIN_THREAD_KEY);
+        let slept = kernel.scheduler.now_ns() - t0;
+        assert!((2 * MS..10 * MS).contains(&slept), "slept {slept} ns");
+        // A 50 ms sleep: the worker's 10 ms deadline comes first, and its sleep returns 0.
+        cpu.regs.write_x(0, 50_000_000);
+        kernel.dispatch_svc(0x0B, &mut cpu, &mut mmu);
+        assert_eq!(kernel.scheduler.current, worker);
+        assert_eq!(cpu.regs.read_x(0), 0);
+        assert!(kernel.scheduler.now_ns() - t0 >= 10 * MS);
+        // svcGetSystemTick follows the same clock (19.2 MHz).
+        kernel.dispatch_svc(0x1E, &mut cpu, &mut mmu);
+        assert!(cpu.regs.read_x(0) >= 10 * 19_200);
+        // svcGetCurrentProcessorNumber: the worker asked for the process's ideal core (-2).
+        kernel.dispatch_svc(0x10, &mut cpu, &mut mmu);
+        assert_eq!(cpu.regs.read_x(0), PROCESS_IDEAL_CORE as u64);
+    }
+
+    #[test]
+    fn timed_waits_return_timed_out() {
+        let (mut kernel, mut cpu, mut mmu, worker) = kernel_with_worker();
+        cpu.regs.write_x(0, 50_000_000);
+        kernel.dispatch_svc(0x0B, &mut cpu, &mut mmu);
+        let t0 = kernel.scheduler.now_ns();
+
+        // svcWaitSynchronization on an event nobody signals, 5 ms: times out before the worker wakes.
+        let event = kernel.sync.create_event(false);
+        mmu.write_u32(0x9000, event).unwrap();
+        cpu.regs.write_x(1, 0x9000);
+        cpu.regs.write_x(2, 1);
+        cpu.regs.write_x(3, 5_000_000);
+        kernel.dispatch_svc(0x18, &mut cpu, &mut mmu);
+        assert_eq!((kernel.scheduler.current, cpu.regs.read_x(0)), (MAIN_THREAD_KEY, RESULT_TIMED_OUT));
+        let waited = kernel.scheduler.now_ns() - t0;
+        assert!((5 * MS..50 * MS).contains(&waited), "waited {waited} ns");
+
+        // svcWaitProcessWideKeyAtomic, 1 ms: times out and owns the mutex again.
+        let (mutex, cvar, tag) = (0x9100u64, 0x9200u64, 0x1000u32);
+        mmu.write_u32(mutex, tag).unwrap();
+        cpu.regs.write_x(0, mutex);
+        cpu.regs.write_x(1, cvar);
+        cpu.regs.write_x(2, tag as u64);
+        cpu.regs.write_x(3, 1_000_000);
+        kernel.dispatch_svc(0x1C, &mut cpu, &mut mmu);
+        assert_eq!((kernel.scheduler.current, cpu.regs.read_x(0)), (MAIN_THREAD_KEY, RESULT_TIMED_OUT));
+        assert_eq!(mmu.read_u32(mutex).unwrap(), tag);
+        assert!(kernel.scheduler.pending_relock.is_empty());
+        assert_eq!(kernel.scheduler.threads[&worker].state, ThreadState::Blocked);
+    }
+
+    #[test]
+    fn thread_priority_and_core_mask_svcs() {
+        let (mut kernel, mut cpu, mut mmu, worker) = kernel_with_worker();
+        let get_prio = |kernel: &mut crate::kernel::HorizonKernel, cpu: &mut Cpu, mmu: &mut Memory, h: u32| {
+            cpu.regs.write_x(1, h as u64);
+            kernel.dispatch_svc(0x0C, cpu, mmu);
+            (cpu.regs.read_x(0), cpu.regs.read_x(1))
+        };
+        assert_eq!(get_prio(&mut kernel, &mut cpu, &mut mmu, CURRENT_THREAD_HANDLE), (0, 44));
+        assert_eq!(get_prio(&mut kernel, &mut cpu, &mut mmu, 0xBAD).0, RESULT_INVALID_HANDLE);
+
+        // Out of range is refused; a valid change sticks.
+        for (prio, result) in [(64u64, RESULT_INVALID_PRIORITY), (10, 0)] {
+            cpu.regs.write_x(0, worker as u64);
+            cpu.regs.write_x(1, prio);
+            kernel.dispatch_svc(0x0D, &mut cpu, &mut mmu);
+            assert_eq!(cpu.regs.read_x(0), result);
+        }
+        assert_eq!(get_prio(&mut kernel, &mut cpu, &mut mmu, worker), (0, 10));
+
+        // The main thread is known by the handle the loader gave it.
+        kernel.scheduler.main_handle = Some(0xD000);
+        assert_eq!(get_prio(&mut kernel, &mut cpu, &mut mmu, 0xD000), (0, 44));
+        // Lowering the running worker below the main thread hands the core back at once.
+        cpu.regs.write_x(0, CURRENT_THREAD_HANDLE as u64);
+        cpu.regs.write_x(1, 50);
+        kernel.dispatch_svc(0x0D, &mut cpu, &mut mmu);
+        assert_eq!(kernel.scheduler.current, MAIN_THREAD_KEY);
+
+        // svcSetThreadCoreMask / svcGetThreadCoreMask.
+        let set_mask = |kernel: &mut crate::kernel::HorizonKernel, cpu: &mut Cpu, mmu: &mut Memory, core: i32, mask: u64| {
+            cpu.regs.write_x(0, worker as u64);
+            cpu.regs.write_x(1, core as u32 as u64);
+            cpu.regs.write_x(2, mask);
+            kernel.dispatch_svc(0x0F, cpu, mmu);
+            cpu.regs.read_x(0)
+        };
+        assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, 2, 0b1100), 0);
+        cpu.regs.write_x(2, worker as u64);
+        kernel.dispatch_svc(0x0E, &mut cpu, &mut mmu);
+        assert_eq!((cpu.regs.read_x(0), cpu.regs.read_x(1), cpu.regs.read_x(2)), (0, 2, 0b1100));
+        assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, 1, 0b1100), RESULT_INVALID_COMBINATION);
+        assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, 0, 0), RESULT_INVALID_COMBINATION);
+        assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, 9, 0x200), RESULT_INVALID_CORE_ID);
+        assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, -3, 0b1000), 0); // keeps no core it may not use
+        assert_eq!(kernel.scheduler.threads[&worker].core_id, 3);
+        assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, -2, 0), 0);
+        assert_eq!(kernel.scheduler.threads[&worker].affinity_mask, 1 << PROCESS_IDEAL_CORE);
+
+        // svcCreateThread validates priority and core.
+        for (prio, core, result) in [(64u64, 0u64, RESULT_INVALID_PRIORITY), (44, 8, RESULT_INVALID_CORE_ID)] {
+            cpu.regs.write_x(4, prio);
+            cpu.regs.write_x(5, core);
+            kernel.dispatch_svc(0x08, &mut cpu, &mut mmu);
+            assert_eq!(cpu.regs.read_x(0), result);
+        }
     }
 }

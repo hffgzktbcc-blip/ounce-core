@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 
 use super::ipc::{IpcManager, ServiceType};
-use super::scheduler::{ThreadScheduler, WaitReason, MUTEX_HAS_LISTENERS, RESULT_INVALID_HANDLE, RESULT_TIMED_OUT};
+use super::scheduler::{
+    ThreadScheduler, WaitReason, YieldTo, CORE_COUNT, LOWEST_THREAD_PRIORITY, MUTEX_HAS_LISTENERS, PROCESS_IDEAL_CORE,
+    RESULT_INVALID_COMBINATION, RESULT_INVALID_CORE_ID, RESULT_INVALID_HANDLE, RESULT_INVALID_PRIORITY, RESULT_TIMED_OUT,
+};
 use super::sync::SyncManager;
 use crate::audio::AudioOutServer;
 use crate::cpu::Cpu;
@@ -87,9 +90,10 @@ impl HorizonKernel {
         }
     }
 
-    /// System tick at 19.2 MHz since the kernel was created (at least one millisecond's worth).
+    /// System tick at 19.2 MHz on the scheduler's clock (at least one millisecond's worth), so time skipped
+    /// while every thread slept shows up here too.
     pub fn system_tick(&self) -> u64 {
-        let elapsed = self.start_time.elapsed().as_nanos();
+        let elapsed = self.scheduler.now_ns() as u128;
         (((elapsed * 19_200_000) / 1_000_000_000) as u64).max(19_200)
     }
 
@@ -155,6 +159,7 @@ impl HorizonKernel {
     pub fn dispatch_svc(&mut self, svc_id: u16, cpu: &mut Cpu, mmu: &mut Memory) -> SvcResult {
         // Guests poll HID shared memory between SVCs, so publish the latest input before each one.
         self.ipc.hid.sync(mmu);
+        self.scheduler.expire_timers();
         self.scheduler.finish_timeouts(mmu);
         match svc_id {
             // 0x01: svcSetHeapSize(&out_addr, size)
@@ -224,6 +229,14 @@ impl HorizonKernel {
                 let stack_top = cpu.regs.read_x(3);
                 let prio = cpu.regs.read_w(4) as i32;
                 let core_id = cpu.regs.read_w(5);
+                if !(0..=LOWEST_THREAD_PRIORITY).contains(&prio) {
+                    cpu.regs.write_x(0, RESULT_INVALID_PRIORITY);
+                    return SvcResult::Success;
+                }
+                if core_id >= CORE_COUNT && core_id as i32 != -2 {
+                    cpu.regs.write_x(0, RESULT_INVALID_CORE_ID);
+                    return SvcResult::Success;
+                }
 
                 let handle = self
                     .scheduler
@@ -246,48 +259,113 @@ impl HorizonKernel {
             }
 
             // 0x0A: svcExitThread(). The process ends when no other thread can run.
-            0x0A => match self.scheduler.exit_current(cpu) {
+            0x0A => match self.scheduler.exit_current(cpu, mmu) {
                 Some(()) => SvcResult::Success,
                 None => SvcResult::ExitProcess,
             },
 
-            // 0x0B: svcSleepThread(nanoseconds). Time is not modelled: the thread yields to the others.
+            // 0x0B: svcSleepThread(nanoseconds). 0 and -1 yield to threads that could take this core (yield
+            // without / with core migration), -2 yields to any thread, a positive time sleeps that long.
             0x0B => {
+                let ns = cpu.regs.read_x(0) as i64;
                 cpu.regs.write_x(0, 0);
-                self.scheduler.yield_current(cpu);
+                if ns > 0 {
+                    self.scheduler.sleep_current(cpu, mmu, ns as u64);
+                } else if ns == -2 {
+                    self.scheduler.yield_current(cpu);
+                } else {
+                    self.scheduler.expire_timers();
+                    self.scheduler.yield_to(cpu, YieldTo::SameCore);
+                }
                 SvcResult::Success
             }
 
             // 0x0C: svcGetThreadPriority(&out_prio, thread_handle)
             0x0C => {
-                cpu.regs.write_x(0, 0);
-                cpu.regs.write_x(1, 16); // Default Horizon user thread priority
+                match self.scheduler.resolve(cpu.regs.read_w(1)) {
+                    Some(key) => {
+                        cpu.regs.write_x(0, 0);
+                        cpu.regs.write_x(1, self.scheduler.threads[&key].priority as u64);
+                    }
+                    None => cpu.regs.write_x(0, RESULT_INVALID_HANDLE),
+                }
                 SvcResult::Success
             }
 
-            // 0x0D: svcSetThreadPriority(thread_handle, prio)
+            // 0x0D: svcSetThreadPriority(thread_handle, prio). A thread that now outranks the caller runs at once.
             0x0D => {
-                cpu.regs.write_x(0, 0);
+                let prio = cpu.regs.read_w(1) as i32;
+                match self.scheduler.resolve(cpu.regs.read_w(0)) {
+                    _ if !(0..=LOWEST_THREAD_PRIORITY).contains(&prio) => cpu.regs.write_x(0, RESULT_INVALID_PRIORITY),
+                    Some(key) => {
+                        self.scheduler.threads.get_mut(&key).unwrap().priority = prio;
+                        cpu.regs.write_x(0, 0);
+                        self.scheduler.preempt_for_priority(cpu);
+                    }
+                    None => cpu.regs.write_x(0, RESULT_INVALID_HANDLE),
+                }
                 SvcResult::Success
             }
 
             // 0x0E: svcGetThreadCoreMask(&out_core_id, &out_affinity_mask, thread_handle)
             0x0E => {
-                cpu.regs.write_x(0, 0);
-                cpu.regs.write_x(1, 0);    // Preferred core 0
-                cpu.regs.write_x(2, 0xFF); // 8-core Switch 2 Cortex-A78C affinity mask
+                match self.scheduler.resolve(cpu.regs.read_w(2)) {
+                    Some(key) => {
+                        let t = &self.scheduler.threads[&key];
+                        let (core, mask) = (t.core_id, t.affinity_mask);
+                        cpu.regs.write_x(0, 0);
+                        cpu.regs.write_x(1, core as u64);
+                        cpu.regs.write_x(2, mask);
+                    }
+                    None => cpu.regs.write_x(0, RESULT_INVALID_HANDLE),
+                }
                 SvcResult::Success
             }
 
-            // 0x0F: svcSetThreadCoreMask(thread_handle, core_id, affinity_mask). Affinity is not modelled.
+            // 0x0F: svcSetThreadCoreMask(thread_handle, core_id, affinity_mask). Core -2 takes the process's
+            // ideal core, -3 keeps the thread's, -1 lets the kernel pick from the mask.
             0x0F => {
+                let core = cpu.regs.read_w(1) as i32;
+                let mask = cpu.regs.read_x(2);
+                let all = (1u64 << CORE_COUNT) - 1;
+                let Some(key) = self.scheduler.resolve(cpu.regs.read_w(0)) else {
+                    cpu.regs.write_x(0, RESULT_INVALID_HANDLE);
+                    return SvcResult::Success;
+                };
+                let current = self.scheduler.threads[&key].core_id;
+                let (core, mask) = match core {
+                    -2 => (PROCESS_IDEAL_CORE, 1 << PROCESS_IDEAL_CORE),
+                    _ if mask == 0 => {
+                        cpu.regs.write_x(0, RESULT_INVALID_COMBINATION);
+                        return SvcResult::Success;
+                    }
+                    _ if mask & !all != 0 => {
+                        cpu.regs.write_x(0, RESULT_INVALID_CORE_ID);
+                        return SvcResult::Success;
+                    }
+                    -3 | -1 if mask & (1 << current) != 0 => (current, mask),
+                    -3 | -1 => (mask.trailing_zeros(), mask),
+                    c if (0..CORE_COUNT as i32).contains(&c) && mask & (1 << c) != 0 => (c as u32, mask),
+                    c if (0..CORE_COUNT as i32).contains(&c) => {
+                        cpu.regs.write_x(0, RESULT_INVALID_COMBINATION);
+                        return SvcResult::Success;
+                    }
+                    _ => {
+                        cpu.regs.write_x(0, RESULT_INVALID_CORE_ID);
+                        return SvcResult::Success;
+                    }
+                };
+                let t = self.scheduler.threads.get_mut(&key).unwrap();
+                t.core_id = core;
+                t.affinity_mask = mask;
                 cpu.regs.write_x(0, 0);
                 SvcResult::Success
             }
 
-            // 0x10: svcGetCurrentProcessorNumber()
+            // 0x10: svcGetCurrentProcessorNumber(): the running thread's core.
             0x10 => {
-                cpu.regs.write_x(0, 0); // Running on Core 0 of 8x Cortex-A78C
+                let core = self.scheduler.resolve(super::scheduler::CURRENT_THREAD_HANDLE).map_or(0, |k| self.scheduler.threads[&k].core_id);
+                cpu.regs.write_x(0, core as u64);
                 SvcResult::Success
             }
 
@@ -298,6 +376,7 @@ impl HorizonKernel {
                 cpu.regs.write_x(0, if ok { 0 } else { 0xE401 });
                 if ok {
                     self.scheduler.wake_object_waiters(handle);
+                    self.scheduler.preempt_for_priority(cpu);
                 }
                 SvcResult::Success
             }
@@ -386,7 +465,7 @@ impl HorizonKernel {
                     cpu.regs.write_x(1, i as u64);
                 } else if timeout == 0 {
                     cpu.regs.write_x(0, RESULT_TIMED_OUT);
-                } else if !self.scheduler.block_current(cpu, WaitReason::Objects { handles, timed: timeout > 0 }) {
+                } else if !self.scheduler.block_for(cpu, mmu, WaitReason::Objects { handles, timed: timeout > 0 }, (timeout > 0).then_some(timeout as u64)) {
                     if timeout > 0 {
                         cpu.regs.write_x(0, RESULT_TIMED_OUT);
                     } else {
@@ -415,7 +494,7 @@ impl HorizonKernel {
                     // Free by the time the kernel looks: take it (callers that skipped the user-space fast path).
                     let _ = mmu.write_u32(addr, tag);
                 } else if word == owner | MUTEX_HAS_LISTENERS
-                    && !self.scheduler.block_current(cpu, WaitReason::Mutex { addr, tag })
+                    && !self.scheduler.block_current(cpu, mmu, WaitReason::Mutex { addr, tag })
                 {
                     return self.deadlock(cpu, "svcArbitrateLock");
                 }
@@ -428,6 +507,7 @@ impl HorizonKernel {
                 self.sync.total_locks_arbitrated += 1;
                 self.scheduler.release_mutex(mmu, addr);
                 cpu.regs.write_x(0, 0);
+                self.scheduler.preempt_for_priority(cpu);
                 SvcResult::Success
             }
 
@@ -450,14 +530,14 @@ impl HorizonKernel {
                         let _ = mmu.write_u32(mutex, word | MUTEX_HAS_LISTENERS);
                         let cur = self.scheduler.current;
                         self.scheduler.pending_relock.push(cur);
-                        if !self.scheduler.block_current(cpu, WaitReason::Mutex { addr: mutex, tag }) {
+                        if !self.scheduler.block_current(cpu, mmu, WaitReason::Mutex { addr: mutex, tag }) {
                             return self.deadlock(cpu, "svcWaitProcessWideKeyAtomic");
                         }
                     }
                 } else {
                     cpu.regs.write_x(0, 0);
                     let reason = WaitReason::CondVar { cvar, mutex, tag, timed: timeout > 0 };
-                    if !self.scheduler.block_current(cpu, reason) {
+                    if !self.scheduler.block_for(cpu, mmu, reason, (timeout > 0).then_some(timeout as u64)) {
                         if timeout > 0 {
                             cpu.regs.write_x(0, RESULT_TIMED_OUT);
                             let _ = mmu.write_u32(mutex, tag);
@@ -484,6 +564,7 @@ impl HorizonKernel {
                 }
                 let _ = mmu.write_u32(cvar, (waiters.len() > n) as u32);
                 cpu.regs.write_x(0, 0);
+                self.scheduler.preempt_for_priority(cpu);
                 SvcResult::Success
             }
 
@@ -989,7 +1070,7 @@ mod tests {
         assert!(cpu.regs.read_x(0) >= 19_200);
 
         // Flush/attribute calls succeed without side effects.
-        for svc in [0x02, 0x03, 0x0F, 0x2A, 0x2B] {
+        for svc in [0x02, 0x03, 0x2A, 0x2B] {
             cpu.regs.write_x(0, 0x1234);
             assert_eq!(kernel.dispatch_svc(svc, &mut cpu, &mut mmu), SvcResult::Success);
             assert_eq!(cpu.regs.read_x(0), 0, "svc 0x{svc:X}");
