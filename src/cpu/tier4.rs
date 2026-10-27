@@ -1295,6 +1295,59 @@ mod tests {
     }
 
     #[test]
+    fn stage20_benchmark_scaling() {
+        for &(outer, inner, label) in &[
+            (100u32, 50u32, "15k (Stage 20 baseline)"),
+            (2_000u32, 50u32, "308k (scaled baseline)"),
+            (50_000u32, 100u32, "15M (steady-state hot loop)"),
+        ] {
+            let mov_x1 = 0xD2800001 | (outer << 5);
+            let mov_x3 = 0xD2800003 | (inner << 5);
+            let words = [
+                mov_x1,     // movz x1, #outer
+                0xD2800002, // movz x2, #0
+                mov_x3,     // movz x3, #inner
+                0x8B030042, // add  x2, x2, x3
+                0xF1000463, // subs x3, x3, #1
+                0x54FFFFC1, // b.ne inner_loop
+                0xF1000421, // subs x1, x1, #1
+                0x54FFFF41, // b.ne outer_loop
+                0xD2815540, // movz x0, #0xAAA
+                0xD40000E1, // svc  #7
+            ];
+            let (mut cpu, mut mmu) = setup(&words);
+            let mut e3 = Tier3JitEngine::new();
+            let start3 = std::time::Instant::now();
+            let (n3, exit3) = e3.run_slice(&mut cpu, &mut mmu, 100_000_000);
+            let dur3 = start3.elapsed().as_secs_f64();
+            let mips3 = (n3 as f64 / dur3) / 1_000_000.0;
+            assert_eq!(exit3, BlockExit::Svc { svc_id: 7 });
+
+            let (mut cpu4, mut mmu4) = setup(&words);
+            let mut e4 = Tier4JitEngine::with_threshold(1);
+            let start4 = std::time::Instant::now();
+            let (n4, exit4) = e4.run_slice(&mut cpu4, &mut mmu4, 100_000_000);
+            let dur4 = start4.elapsed().as_secs_f64();
+            let mips4 = (n4 as f64 / dur4) / 1_000_000.0;
+            assert_eq!(exit4, BlockExit::Svc { svc_id: 7 });
+
+            // Warm run (already compiled blocks in e4)
+            cpu4.regs.pc = CODE;
+            cpu4.regs.write_x(0, 0);
+            let start4_warm = std::time::Instant::now();
+            let (n4_warm, exit4_warm) = e4.run_slice(&mut cpu4, &mut mmu4, 100_000_000);
+            let dur4_warm = start4_warm.elapsed().as_secs_f64();
+            let mips4_warm = (n4_warm as f64 / dur4_warm) / 1_000_000.0;
+            assert_eq!(exit4_warm, BlockExit::Svc { svc_id: 7 });
+
+            eprintln!(
+                "[Benchmark Scale {}] Tier-3: {:.2} MIPS | Tier-4 Cold: {:.2} MIPS | Tier-4 Warm: {:.2} MIPS ({} insns in {:.4}s)",
+                label, mips3, mips4, mips4_warm, n4_warm, dur4_warm
+            );
+        }
+    }
+
+    #[test]
     fn memory_pairs_writeback_and_calls_match_all_tiers() {
         #[rustfmt::skip]
         check_all_tiers(&[

@@ -251,6 +251,19 @@ impl DisplayServer {
         self.backend.as_ref().map_or(false, |b| b.is_open())
     }
 
+    /// Pumps backend window events (keyboard presses, window close, focus) without
+    /// waiting for a guest frame presentation.
+    pub fn pump_events(&mut self) -> bool {
+        if self.backend.is_none() {
+            if let Err(e) = self.init_window() {
+                eprintln!("[Display Error] {}", e);
+                return false;
+            }
+        }
+        let backend = self.backend.as_mut().expect("backend opened above");
+        backend.pump_events() != PresentStatus::Closed
+    }
+
     /// Retrieves currently pressed host keyboard keys from the presentation backend.
     pub fn get_active_keys(&mut self) -> Vec<HostKey> {
         self.backend.as_mut().map_or_else(Vec::new, |b| b.pressed_keys())

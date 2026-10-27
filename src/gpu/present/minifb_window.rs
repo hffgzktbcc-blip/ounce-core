@@ -113,6 +113,15 @@ impl PresentBackend for MinifbBackend {
         PresentStatus::Continue
     }
 
+    fn pump_events(&mut self) -> PresentStatus {
+        self.window.update();
+        if self.window.is_open() && !self.window.is_key_down(minifb::Key::Escape) {
+            PresentStatus::Continue
+        } else {
+            PresentStatus::Closed
+        }
+    }
+
     fn pressed_keys(&mut self) -> Vec<HostKey> {
         self.window.get_keys().into_iter().filter_map(host_key_from_minifb).collect()
     }
