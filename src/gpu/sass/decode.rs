@@ -21,8 +21,9 @@
 //! - [NAK, UNVERIFIED] graphics-only ops never appear in CUDA output, so `ALD` (0x321),
 //!   `AST` (0x322) and `IPA` (0x326) and their field positions are recalled from Mesa's
 //!   NAK SM70 encoder (`src/nouveau/compiler/nak/sm70_encode.rs`), which could not be
-//!   fetched from this environment. Treat them as unverified until checked against a
-//!   real `uam`/NAK-compiled shader.
+//!   fetched from this environment. Treat them as unverified until checked against an
+//!   Ampere graphics shader compiled by NAK (`uam`/deko3d emits Maxwell SASS, so it
+//!   cannot confirm these).
 //! - [inferred] `LDC` 32-bit size value 4 (CuAsm shows U8=0, S8=1, U16=2 only).
 
 use std::fmt;
