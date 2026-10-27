@@ -4,7 +4,8 @@ use crate::mmu::Memory;
 use std::time::Instant;
 
 use super::present::{
-    open_backend, BackendConfig, BackendKind, Frame, HostKey, PresentBackend, PresentStatus, ScaleMode,
+    open_backend, BackendConfig, BackendKind, Frame, Gpu3DDrawOp, HostKey, PresentBackend,
+    PresentStatus, ScaleMode,
 };
 
 pub const SCREEN_WIDTH: usize = 1280;
@@ -172,10 +173,26 @@ impl DisplayServer {
         self.draw_hud_overlay(mmu);
     }
 
-    /// Pulls the guest framebuffer from virtual memory and presents it to the host.
-    ///
-    /// Returns `false` once the host surface is gone, which stops the runtime loop.
-    pub fn present_frame(&mut self, mmu: &Memory) -> bool {
+    /// Returns true if the active presentation backend supports host GPU 3D acceleration.
+    pub fn is_gpu_accelerated(&self) -> bool {
+        self.backend.as_ref().map_or_else(
+            || {
+                #[cfg(feature = "gpu-present")]
+                {
+                    matches!(self.config.backend, BackendKind::Gpu | BackendKind::Auto)
+                }
+                #[cfg(not(feature = "gpu-present"))]
+                {
+                    false
+                }
+            },
+            |b| b.is_gpu_accelerated(),
+        )
+    }
+
+    /// Presents a frame to the host, executing hardware 3D draw calls when GPU accelerated,
+    /// or falling back to CPU software rasterization composite.
+    pub fn present_frame_3d(&mut self, mmu: &Memory, draw_ops: &[Gpu3DDrawOp]) -> bool {
         let frame_start = Instant::now();
 
         if self.backend.is_none() {
@@ -185,7 +202,15 @@ impl DisplayServer {
             }
         }
 
-        self.composite(mmu);
+        let is_gpu = self.is_gpu_accelerated();
+        if is_gpu && !draw_ops.is_empty() {
+            let backend = self.backend.as_mut().expect("backend opened above");
+            if let Err(e) = backend.render_3d(draw_ops) {
+                eprintln!("[Display Error] 3D render failed: {}", e);
+            }
+        } else {
+            self.composite(mmu);
+        }
 
         let frame_time_us = frame_start.elapsed().as_micros();
         self.swapchain.flip(frame_time_us);
@@ -212,6 +237,14 @@ impl DisplayServer {
         }
 
         true
+    }
+
+    /// Pulls the guest framebuffer from virtual memory and presents it to the host.
+    ///
+    /// Returns `false` once the host surface is gone, which stops the runtime loop.
+    #[inline]
+    pub fn present_frame(&mut self, mmu: &Memory) -> bool {
+        self.present_frame_3d(mmu, &[])
     }
 
     pub fn is_window_active(&self) -> bool {

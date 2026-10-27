@@ -28,6 +28,13 @@ pub const METHOD_SET_VERTEX_ARRAY_ADDR: u16 = 0x0700;
 pub const METHOD_SET_VIEWPORT_DIMS: u16 = 0x0860;
 pub const METHOD_DISPATCH_DLSS_UPSCALE: u16 = 0x0900;
 
+/// Maximum unique vertices extracted in a single hardware-accelerated draw call.
+/// Protects host memory against out-of-memory denial-of-service from malformed guest index buffers.
+pub const MAX_UNIQUE_VERTICES_PER_DRAW: usize = 65_536;
+
+/// Maximum number of index buffer words processed in a single draw call.
+pub const MAX_INDEX_COUNT_PER_DRAW: usize = 196_608; // 65,536 * 3
+
 /// Subchannels available on the Tegra GPU
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GpuSubchannel {
@@ -65,6 +72,94 @@ pub struct Vertex {
     pub b: f32,
     pub u: f32,
     pub v: f32,
+}
+
+/// Standardized 32-byte vertex representation for host GPU 3D rendering.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Gpu3DVertex {
+    pub position: [f32; 3], // offset 0:  x, y, z
+    pub color: [f32; 3],    // offset 12: r, g, b
+    pub uv: [f32; 2],       // offset 24: u, v (padded to 0.0, 0.0 for untextured draws)
+}
+
+impl Gpu3DVertex {
+    pub const fn new(position: [f32; 3], color: [f32; 3], uv: [f32; 2]) -> Self {
+        Self { position, color, uv }
+    }
+
+    /// Endian-safe, pure safe Rust serialization (zero unsafe).
+    pub fn to_bytes(&self) -> [u8; 32] {
+        let mut b = [0u8; 32];
+        b[0..4].copy_from_slice(&self.position[0].to_le_bytes());
+        b[4..8].copy_from_slice(&self.position[1].to_le_bytes());
+        b[8..12].copy_from_slice(&self.position[2].to_le_bytes());
+        b[12..16].copy_from_slice(&self.color[0].to_le_bytes());
+        b[16..20].copy_from_slice(&self.color[1].to_le_bytes());
+        b[20..24].copy_from_slice(&self.color[2].to_le_bytes());
+        b[24..28].copy_from_slice(&self.uv[0].to_le_bytes());
+        b[28..32].copy_from_slice(&self.uv[1].to_le_bytes());
+        b
+    }
+}
+
+/// Primitive topology for host GPU draw calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuPrimitiveTopology {
+    TriangleList,
+    TriangleStrip,
+}
+
+/// Host representation of a bound guest 2D RGBA8 texture.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Gpu3DTextureData {
+    pub width: u32,
+    pub height: u32,
+    pub rgba_bytes: Vec<u8>,
+}
+
+/// Structured 3D render operation captured from Tegra Maxwell 3D pushbuffers.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Gpu3DDrawOp {
+    ClearSurface {
+        color: [f32; 4],
+        depth: f32,
+    },
+    SetViewport {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    SetMvpMatrix {
+        matrix: [f32; 16],
+    },
+    SetDepthTest {
+        enabled: bool,
+    },
+    BindTexture {
+        texture: Option<Gpu3DTextureData>,
+    },
+    DrawArrays {
+        vertices: Vec<Gpu3DVertex>,
+        topology: GpuPrimitiveTopology,
+    },
+    DrawIndexed {
+        vertices: Vec<Gpu3DVertex>,
+        indices: Vec<u32>,
+        topology: GpuPrimitiveTopology,
+    },
+}
+
+/// Transposes a 4x4 row-major guest matrix into column-major WGSL uniform layout.
+#[inline]
+pub fn transpose_row_to_col_major(m: &[f32; 16]) -> [f32; 16] {
+    [
+        m[0], m[4], m[8],  m[12],
+        m[1], m[5], m[9],  m[13],
+        m[2], m[6], m[10], m[14],
+        m[3], m[7], m[11], m[15],
+    ]
 }
 
 /// NVGPU 3D State Engine
@@ -130,6 +225,8 @@ impl Default for Gpu3DState {
 pub struct NvgpuChannel {
     pub state: Gpu3DState,
     pub dlss: DlssEngine,
+    pub hardware_acceleration_enabled: bool,
+    pub draw_queue: Vec<Gpu3DDrawOp>,
 }
 
 impl Default for NvgpuChannel {
@@ -143,7 +240,41 @@ impl NvgpuChannel {
         Self {
             state: Gpu3DState::default(),
             dlss: DlssEngine::new(),
+            hardware_acceleration_enabled: false,
+            draw_queue: Vec::new(),
         }
+    }
+
+    /// Toggles host GPU hardware acceleration offloading for 3D draw commands.
+    #[inline]
+    pub fn set_hardware_acceleration(&mut self, enabled: bool) {
+        self.hardware_acceleration_enabled = enabled;
+    }
+
+    /// Drains all captured 3D draw operations for presentation by the host GPU.
+    #[inline]
+    pub fn drain_draw_ops(&mut self) -> Vec<Gpu3DDrawOp> {
+        std::mem::take(&mut self.draw_queue)
+    }
+
+    /// Fetches raw, unclipped vertex coordinates directly from guest memory.
+    pub fn fetch_raw_vertex(&self, mmu: &Memory, vertex_idx: usize, stride_bytes: u64, textured: bool) -> Gpu3DVertex {
+        let v_addr = self.state.vertex_array_addr + (vertex_idx as u64) * stride_bytes;
+        let px = f32::from_bits(mmu.read_u32(v_addr).unwrap_or(0));
+        let py = f32::from_bits(mmu.read_u32(v_addr + 4).unwrap_or(0));
+        let pz = f32::from_bits(mmu.read_u32(v_addr + 8).unwrap_or(0));
+        let r = f32::from_bits(mmu.read_u32(v_addr + 12).unwrap_or(0));
+        let g = f32::from_bits(mmu.read_u32(v_addr + 16).unwrap_or(0));
+        let b = f32::from_bits(mmu.read_u32(v_addr + 20).unwrap_or(0));
+        let (u, v) = if textured {
+            (
+                f32::from_bits(mmu.read_u32(v_addr + 24).unwrap_or(0)),
+                f32::from_bits(mmu.read_u32(v_addr + 28).unwrap_or(0)),
+            )
+        } else {
+            (0.0, 0.0)
+        };
+        Gpu3DVertex::new([px, py, pz], [r, g, b], [u, v])
     }
 
     /// Helper to encode a Tegra GPFIFO method header word.
@@ -268,6 +399,14 @@ impl NvgpuChannel {
                     self.state.viewport_width = cmd.args[0];
                     self.state.viewport_height = cmd.args[1];
                 }
+                if self.hardware_acceleration_enabled {
+                    self.draw_queue.push(Gpu3DDrawOp::SetViewport {
+                        x: 0.0,
+                        y: 0.0,
+                        width: self.state.viewport_width as f32,
+                        height: self.state.viewport_height as f32,
+                    });
+                }
             }
             // 0x0360: Set Clear Color (RGBA floats)
             METHOD_SET_CLEAR_COLOR => {
@@ -284,6 +423,11 @@ impl NvgpuChannel {
             METHOD_SET_MVP_MATRIX => {
                 for (i, &word) in cmd.args.iter().take(16).enumerate() {
                     self.state.mvp_matrix[i] = f32::from_bits(word);
+                }
+                if self.hardware_acceleration_enabled {
+                    self.draw_queue.push(Gpu3DDrawOp::SetMvpMatrix {
+                        matrix: self.state.mvp_matrix,
+                    });
                 }
             }
             // 0x0480: Bind and Decompile Ampere SASS Shader Program from Guest Memory
@@ -320,10 +464,22 @@ impl NvgpuChannel {
                         self.state.depth_buffer.resize(needed, 1.0);
                     }
                 }
+                if self.hardware_acceleration_enabled {
+                    self.draw_queue.push(Gpu3DDrawOp::SetDepthTest {
+                        enabled: enable,
+                    });
+                }
             }
             // 0x0674: Clear Render Target Surface in VRAM (and Z-Buffer to 1.0)
             METHOD_CLEAR_SURFACE => {
-                self.rasterize_clear(mmu);
+                if self.hardware_acceleration_enabled {
+                    self.draw_queue.push(Gpu3DDrawOp::ClearSurface {
+                        color: self.state.clear_color,
+                        depth: 1.0,
+                    });
+                } else {
+                    self.rasterize_clear(mmu);
+                }
             }
             // 0x0700: Set Vertex Array Address in Guest Memory
             METHOD_SET_VERTEX_ARRAY_ADDR => {
@@ -341,21 +497,68 @@ impl NvgpuChannel {
                     self.state.texture_width = cmd.args[1];
                     self.state.texture_height = cmd.args[2];
                 }
+                if self.hardware_acceleration_enabled {
+                    let tex_data = if self.state.texture_addr != 0
+                        && self.state.texture_width > 0
+                        && self.state.texture_height > 0
+                    {
+                        let size = (self.state.texture_width * self.state.texture_height * 4) as usize;
+                        let mut buf = vec![0u8; size];
+                        if mmu.read_bytes(self.state.texture_addr, &mut buf).is_ok() {
+                            Some(Gpu3DTextureData {
+                                width: self.state.texture_width,
+                                height: self.state.texture_height,
+                                rgba_bytes: buf,
+                            })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    self.draw_queue.push(Gpu3DDrawOp::BindTexture { texture: tex_data });
+                }
             }
             // 0x0585: Draw Arrays (Fetches 6-float vertices [x,y,z,r,g,b] and rasterizes 3D triangles)
             METHOD_DRAW_ARRAYS => {
                 self.state.total_draw_calls += 1;
-                let vertex_count = cmd.args.first().copied().unwrap_or(0) as usize;
-                if vertex_count >= 3 {
-                    self.rasterize_triangles(mmu, vertex_count, false);
+                let raw_vertex_count = cmd.args.first().copied().unwrap_or(0) as usize;
+                let vertex_count = raw_vertex_count.min(MAX_UNIQUE_VERTICES_PER_DRAW);
+                if self.hardware_acceleration_enabled {
+                    if vertex_count >= 3 && self.state.vertex_array_addr != 0 {
+                        let mut vertices = Vec::with_capacity(vertex_count);
+                        for i in 0..vertex_count {
+                            vertices.push(self.fetch_raw_vertex(mmu, i, 24, false));
+                        }
+                        self.draw_queue.push(Gpu3DDrawOp::DrawArrays {
+                            vertices,
+                            topology: GpuPrimitiveTopology::TriangleList,
+                        });
+                        self.state.total_triangles_rendered += (vertex_count / 3) as u64;
+                    }
+                } else if raw_vertex_count >= 3 {
+                    self.rasterize_triangles(mmu, raw_vertex_count, false);
                 }
             }
             // 0x0586: Draw Textured Arrays (Fetches 8-float vertices [x,y,z,r,g,b,u,v] with 2D texture sampling)
             METHOD_DRAW_TEXTURED_ARRAYS => {
                 self.state.total_draw_calls += 1;
-                let vertex_count = cmd.args.first().copied().unwrap_or(0) as usize;
-                if vertex_count >= 3 {
-                    self.rasterize_triangles(mmu, vertex_count, true);
+                let raw_vertex_count = cmd.args.first().copied().unwrap_or(0) as usize;
+                let vertex_count = raw_vertex_count.min(MAX_UNIQUE_VERTICES_PER_DRAW);
+                if self.hardware_acceleration_enabled {
+                    if vertex_count >= 3 && self.state.vertex_array_addr != 0 {
+                        let mut vertices = Vec::with_capacity(vertex_count);
+                        for i in 0..vertex_count {
+                            vertices.push(self.fetch_raw_vertex(mmu, i, 32, true));
+                        }
+                        self.draw_queue.push(Gpu3DDrawOp::DrawArrays {
+                            vertices,
+                            topology: GpuPrimitiveTopology::TriangleList,
+                        });
+                        self.state.total_triangles_rendered += (vertex_count / 3) as u64;
+                    }
+                } else if raw_vertex_count >= 3 {
+                    self.rasterize_triangles(mmu, raw_vertex_count, true);
                 }
             }
             // 0x05F2: Set Index Array Address & Format (Args: [addr, is_32bit])
@@ -368,10 +571,151 @@ impl NvgpuChannel {
             // 0x05F4: Draw Indexed Elements (Args: [index_count, textured])
             METHOD_DRAW_INDEXED => {
                 self.state.total_draw_calls += 1;
-                let index_count = cmd.args.first().copied().unwrap_or(0) as usize;
+                let raw_index_count = cmd.args.first().copied().unwrap_or(0) as usize;
                 let textured = cmd.args.get(1).map_or(false, |&val| val == 1);
-                if index_count >= 3 {
-                    self.rasterize_indexed_triangles(mmu, index_count, textured);
+
+                if self.hardware_acceleration_enabled {
+                    let index_count = raw_index_count.min(MAX_INDEX_COUNT_PER_DRAW);
+                    if index_count >= 3 && self.state.vertex_array_addr != 0 && self.state.index_array_addr != 0 {
+                        let stride_bytes = if textured { 32u64 } else { 24u64 };
+                        let is_32 = self.state.is_index_32;
+                        let restart_index: u32 = if is_32 { 0xFFFF_FFFF } else { 0x0000_FFFF };
+
+                        let num_tris = index_count / 3;
+                        let mut unique_vertices = Vec::new();
+                        let mut remapped_indices = Vec::with_capacity(num_tris * 3);
+                        let mut index_remap = std::collections::HashMap::<u32, u32>::new();
+                        let mut valid_triangles = 0u64;
+
+                        for t in 0..num_tris {
+                            let mut tri_raw = [0u32; 3];
+                            let mut skip_triangle = false;
+
+                            for (i, slot) in tri_raw.iter_mut().enumerate() {
+                                let offset = (t * 3 + i) as u64;
+                                let elem_size = if is_32 { 4u64 } else { 2u64 };
+                                let byte_offset = match offset.checked_mul(elem_size) {
+                                    Some(off) => off,
+                                    None => {
+                                        skip_triangle = true;
+                                        break;
+                                    }
+                                };
+                                let addr = match self.state.index_array_addr.checked_add(byte_offset) {
+                                    Some(a) => a,
+                                    None => {
+                                        skip_triangle = true;
+                                        break;
+                                    }
+                                };
+
+                                let idx = if is_32 {
+                                    match mmu.read_u32(addr) {
+                                        Ok(val) => val,
+                                        Err(_) => {
+                                            skip_triangle = true;
+                                            break;
+                                        }
+                                    }
+                                } else {
+                                    match mmu.read_u16(addr) {
+                                        Ok(val) => val as u32,
+                                        Err(_) => {
+                                            skip_triangle = true;
+                                            break;
+                                        }
+                                    }
+                                };
+
+                                if idx == restart_index {
+                                    skip_triangle = true;
+                                    break;
+                                }
+                                *slot = idx;
+                            }
+
+                            if skip_triangle {
+                                continue;
+                            }
+
+                            // Validate vertex memory bounds for all 3 vertices
+                            let mut tri_valid = true;
+                            for &idx in &tri_raw {
+                                let v_offset = match (idx as u64).checked_mul(stride_bytes) {
+                                    Some(off) => off,
+                                    None => {
+                                        tri_valid = false;
+                                        break;
+                                    }
+                                };
+                                let v_start = match self.state.vertex_array_addr.checked_add(v_offset) {
+                                    Some(a) => a,
+                                    None => {
+                                        tri_valid = false;
+                                        break;
+                                    }
+                                };
+                                let v_end = match v_start.checked_add(stride_bytes - 1) {
+                                    Some(a) => a,
+                                    None => {
+                                        tri_valid = false;
+                                        break;
+                                    }
+                                };
+                                if !mmu.is_mapped(v_start) || !mmu.is_mapped(v_end) {
+                                    tri_valid = false;
+                                    break;
+                                }
+                            }
+
+                            if !tri_valid {
+                                continue;
+                            }
+
+                            // Check unique vertex capacity before inserting
+                            let new_verts_needed = tri_raw
+                                .iter()
+                                .filter(|idx| !index_remap.contains_key(idx))
+                                .count();
+
+                            if unique_vertices.len() + new_verts_needed > MAX_UNIQUE_VERTICES_PER_DRAW {
+                                // Hit safe limit: truncate triangle stream for this draw call
+                                break;
+                            }
+
+                            // Remap unique indices into compact contiguous list
+                            for &idx in &tri_raw {
+                                let remapped_idx = match index_remap.entry(idx) {
+                                    std::collections::hash_map::Entry::Occupied(entry) => *entry.get(),
+                                    std::collections::hash_map::Entry::Vacant(entry) => {
+                                        let new_id = unique_vertices.len() as u32;
+                                        unique_vertices.push(self.fetch_raw_vertex(
+                                            mmu,
+                                            idx as usize,
+                                            stride_bytes,
+                                            textured,
+                                        ));
+                                        entry.insert(new_id);
+                                        new_id
+                                    }
+                                };
+                                remapped_indices.push(remapped_idx);
+                            }
+
+                            valid_triangles += 1;
+                        }
+
+                        if !remapped_indices.is_empty() {
+                            self.draw_queue.push(Gpu3DDrawOp::DrawIndexed {
+                                vertices: unique_vertices,
+                                indices: remapped_indices,
+                                topology: GpuPrimitiveTopology::TriangleList,
+                            });
+                            self.state.total_triangles_rendered += valid_triangles;
+                        }
+                    }
+                } else if raw_index_count >= 3 {
+                    self.rasterize_indexed_triangles(mmu, raw_index_count, textured);
                 }
             }
             // 0x0900: Dispatch 2x upscaler model (bilinear + sharpen, not DLSS)
@@ -854,4 +1198,318 @@ mod tests {
         let center_px = mmu.read_u32(rt_addr + (8 * 16 + 8) * 4).unwrap();
         assert_eq!(center_px, 0xFFFFFF00);
     }
+
+    #[test]
+    fn test_gpu_3d_draw_op_queueing_and_draining() {
+        let mut mmu = Memory::new();
+        let mut gpu = NvgpuChannel::new();
+        gpu.set_hardware_acceleration(true);
+        assert!(gpu.hardware_acceleration_enabled);
+
+        let rt_addr = 0x90000000u64;
+        let vb_addr = 0x80020000u64;
+        let pb_addr = 0x80010000u64;
+        mmu.map_range(rt_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(vb_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(pb_addr, 4096, Permission::READ_WRITE);
+
+        let triangle_verts: [f32; 18] = [
+            -0.5,  0.5, 0.0, 1.0, 0.0, 0.0,
+            -0.5, -0.5, 0.0, 0.0, 1.0, 0.0,
+             0.5, -0.5, 0.0, 0.0, 0.0, 1.0,
+        ];
+        for (i, &v) in triangle_verts.iter().enumerate() {
+            mmu.write_u32(vb_addr + (i * 4) as u64, v.to_bits()).unwrap();
+        }
+
+        let pb_words: Vec<u32> = vec![
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
+            1280, 720,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_CLEAR_COLOR, 4),
+            (0.1f32).to_bits(), (0.2f32).to_bits(), (0.3f32).to_bits(), (1.0f32).to_bits(),
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_MVP_MATRIX, 16),
+            (2.0f32).to_bits(), 0, 0, 0,
+            0, (2.0f32).to_bits(), 0, 0,
+            0, 0, (1.0f32).to_bits(), 0,
+            0, 0, 0, (1.0f32).to_bits(),
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_DEPTH_TEST_ENABLE, 1),
+            1,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_CLEAR_SURFACE, 1),
+            1,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VERTEX_ARRAY_ADDR, 1),
+            vb_addr as u32,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_DRAW_ARRAYS, 1),
+            3,
+        ];
+        for (i, &w) in pb_words.iter().enumerate() {
+            mmu.write_u32(pb_addr + (i * 4) as u64, w).unwrap();
+        }
+
+        gpu.process_pushbuffer(&mut mmu, pb_addr, pb_words.len());
+
+        let ops = gpu.drain_draw_ops();
+        assert!(!ops.is_empty(), "Draw queue should contain captured commands");
+        assert!(gpu.draw_queue.is_empty(), "Queue should be empty after drain");
+
+        let mut has_viewport = false;
+        let mut has_mvp = false;
+        let mut has_depth = false;
+        let mut has_clear = false;
+        let mut has_draw = false;
+
+        for op in &ops {
+            match op {
+                Gpu3DDrawOp::SetViewport { width, height, .. } => {
+                    assert_eq!(*width, 1280.0);
+                    assert_eq!(*height, 720.0);
+                    has_viewport = true;
+                }
+                Gpu3DDrawOp::SetMvpMatrix { matrix } => {
+                    assert_eq!(matrix[0], 2.0);
+                    assert_eq!(matrix[5], 2.0);
+                    has_mvp = true;
+                }
+                Gpu3DDrawOp::SetDepthTest { enabled } => {
+                    assert!(*enabled);
+                    has_depth = true;
+                }
+                Gpu3DDrawOp::ClearSurface { color, depth } => {
+                    assert_eq!(color[0], 0.1f32);
+                    assert_eq!(color[1], 0.2f32);
+                    assert_eq!(color[2], 0.3f32);
+                    assert_eq!(*depth, 1.0f32);
+                    has_clear = true;
+                }
+                Gpu3DDrawOp::DrawArrays { vertices, topology } => {
+                    assert_eq!(*topology, GpuPrimitiveTopology::TriangleList);
+                    assert_eq!(vertices.len(), 3);
+                    assert_eq!(vertices[0].position, [-0.5, 0.5, 0.0]);
+                    assert_eq!(vertices[0].color, [1.0, 0.0, 0.0]);
+                    has_draw = true;
+                }
+                _ => {}
+            }
+        }
+
+        assert!(has_viewport && has_mvp && has_depth && has_clear && has_draw);
+    }
+
+    #[test]
+    fn test_row_major_to_column_major_matrix_transposition() {
+        let row_major: [f32; 16] = [
+            1.0,  2.0,  3.0,  4.0,
+            5.0,  6.0,  7.0,  8.0,
+            9.0, 10.0, 11.0, 12.0,
+           13.0, 14.0, 15.0, 16.0,
+        ];
+        let col_major = transpose_row_to_col_major(&row_major);
+        for row in 0..4 {
+            for col in 0..4 {
+                assert_eq!(
+                    col_major[col * 4 + row],
+                    row_major[row * 4 + col],
+                    "Mismatch at row {row}, col {col}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_software_rasterizer_fallback_invariant() {
+        let mut mmu = Memory::new();
+        let mut gpu = NvgpuChannel::new();
+        // Hardware acceleration explicitly disabled (default):
+        assert!(!gpu.hardware_acceleration_enabled);
+
+        let rt_addr = 0x90000000u64;
+        let pb_addr = 0x80010000u64;
+        mmu.map_range(rt_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(pb_addr, 4096, Permission::READ_WRITE);
+
+        let pb_words: Vec<u32> = vec![
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_RENDER_TARGET_ADDR, 1),
+            rt_addr as u32,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
+            16, 16,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_CLEAR_COLOR, 4),
+            (1.0f32).to_bits(), (0.0f32).to_bits(), (0.0f32).to_bits(), (1.0f32).to_bits(),
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_CLEAR_SURFACE, 1),
+            1,
+        ];
+        for (i, &w) in pb_words.iter().enumerate() {
+            mmu.write_u32(pb_addr + (i * 4) as u64, w).unwrap();
+        }
+
+        gpu.process_pushbuffer(&mut mmu, pb_addr, pb_words.len());
+
+        // In fallback mode, draw_queue remains empty and mmu is written directly
+        assert!(gpu.draw_queue.is_empty());
+        let pixel = mmu.read_u32(rt_addr).unwrap();
+        // Red clear color: RGBA (0xFF, 0x00, 0x00, 0xFF) -> 0xFF0000FF
+        assert_eq!(pixel, 0xFF0000FF);
+    }
+
+    #[test]
+    fn test_gpu3d_vertex_serialization_endian_safety() {
+        let v = Gpu3DVertex::new([1.5, -2.5, 0.75], [0.1, 0.2, 0.3], [0.4, 0.8]);
+        let bytes = v.to_bytes();
+        assert_eq!(bytes.len(), 32);
+
+        let px = f32::from_le_bytes(bytes[0..4].try_into().unwrap());
+        let py = f32::from_le_bytes(bytes[4..8].try_into().unwrap());
+        let pz = f32::from_le_bytes(bytes[8..12].try_into().unwrap());
+        let r  = f32::from_le_bytes(bytes[12..16].try_into().unwrap());
+        let g  = f32::from_le_bytes(bytes[16..20].try_into().unwrap());
+        let b  = f32::from_le_bytes(bytes[20..24].try_into().unwrap());
+        let u  = f32::from_le_bytes(bytes[24..28].try_into().unwrap());
+        let v_coord = f32::from_le_bytes(bytes[28..32].try_into().unwrap());
+
+        assert_eq!(px, 1.5);
+        assert_eq!(py, -2.5);
+        assert_eq!(pz, 0.75);
+        assert_eq!(r, 0.1);
+        assert_eq!(g, 0.2);
+        assert_eq!(b, 0.3);
+        assert_eq!(u, 0.4);
+        assert_eq!(v_coord, 0.8);
+    }
+
+    #[test]
+    fn test_stress_indexed_draw_extreme_32bit_index_bounds() {
+        let mut mmu = Memory::new();
+        let mut gpu = NvgpuChannel::new();
+        gpu.set_hardware_acceleration(true);
+
+        let v_addr = 0x80000000u64;
+        let i_addr = 0x80010000u64;
+        let pb_addr = 0x80020000u64;
+        mmu.map_range(v_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(i_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(pb_addr, 4096, Permission::READ_WRITE);
+
+        // 3 indices: [0, 1, 0xFFFFFFFF] (primitive restart index / extreme bound)
+        mmu.write_u32(i_addr, 0).unwrap();
+        mmu.write_u32(i_addr + 4, 1).unwrap();
+        mmu.write_u32(i_addr + 8, 0xFFFFFFFF).unwrap();
+
+        let pb_words: Vec<u32> = vec![
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VERTEX_ARRAY_ADDR, 1),
+            v_addr as u32,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_INDEX_ARRAY_ADDR, 2),
+            i_addr as u32,
+            1, // is_32bit = 1
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_DRAW_INDEXED, 2),
+            3, // index_count = 3
+            0, // textured = false
+        ];
+        for (i, &w) in pb_words.iter().enumerate() {
+            mmu.write_u32(pb_addr + (i * 4) as u64, w).unwrap();
+        }
+
+        // Must complete instantaneously (<10ms) without hanging, crashing, or allocating 128 GiB
+        gpu.process_pushbuffer(&mut mmu, pb_addr, pb_words.len());
+        assert_eq!(gpu.state.total_draw_calls, 1);
+        let ops = gpu.drain_draw_ops();
+        for op in ops {
+            if let Gpu3DDrawOp::DrawIndexed { vertices, .. } = op {
+                assert!(vertices.len() <= 3, "Vertices vector must be bounded, got {}", vertices.len());
+            }
+        }
+    }
+
+    #[test]
+    fn test_indexed_draw_sparse_deduplication() {
+        let mut mmu = Memory::new();
+        let mut gpu = NvgpuChannel::new();
+        gpu.set_hardware_acceleration(true);
+
+        let v_addr = 0x80000000u64;
+        let i_addr = 0x80010000u64;
+        let pb_addr = 0x80020000u64;
+        mmu.map_range(v_addr, 65536, Permission::READ_WRITE);
+        mmu.map_range(i_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(pb_addr, 4096, Permission::READ_WRITE);
+
+        // Sparse vertex indices: 50, 100, 200, 50, 200, 300
+        let sparse_indices = [50u32, 100u32, 200u32, 50u32, 200u32, 300u32];
+        for (i, &idx) in sparse_indices.iter().enumerate() {
+            mmu.write_u32(i_addr + (i * 4) as u64, idx).unwrap();
+        }
+
+        let pb_words: Vec<u32> = vec![
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VERTEX_ARRAY_ADDR, 1),
+            v_addr as u32,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_INDEX_ARRAY_ADDR, 2),
+            i_addr as u32,
+            1, // is_32bit = 1
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_DRAW_INDEXED, 2),
+            6, // index_count = 6
+            0, // textured = false
+        ];
+        for (i, &w) in pb_words.iter().enumerate() {
+            mmu.write_u32(pb_addr + (i * 4) as u64, w).unwrap();
+        }
+
+        gpu.process_pushbuffer(&mut mmu, pb_addr, pb_words.len());
+        assert_eq!(gpu.state.total_draw_calls, 1);
+
+        let ops = gpu.drain_draw_ops();
+        assert_eq!(ops.len(), 1);
+        if let Gpu3DDrawOp::DrawIndexed { vertices, indices, .. } = &ops[0] {
+            // Deduplication MUST produce exactly 4 unique vertices (not 301 dense elements)
+            assert_eq!(vertices.len(), 4, "Sparse extraction must only fetch unique vertices");
+            assert_eq!(indices.len(), 6);
+            assert_eq!(indices, &[0, 1, 2, 0, 2, 3]);
+        } else {
+            panic!("Expected DrawIndexed op");
+        }
+    }
+
+    #[test]
+    fn test_indexed_draw_primitive_restart_filtering() {
+        let mut mmu = Memory::new();
+        let mut gpu = NvgpuChannel::new();
+        gpu.set_hardware_acceleration(true);
+
+        let v_addr = 0x80000000u64;
+        let i_addr = 0x80010000u64;
+        let pb_addr = 0x80020000u64;
+        mmu.map_range(v_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(i_addr, 4096, Permission::READ_WRITE);
+        mmu.map_range(pb_addr, 4096, Permission::READ_WRITE);
+
+        // 16-bit indices with primitive restart:
+        // Tri 1: [0, 1, 2] (valid)
+        // Tri 2: [0xFFFF, 3, 4] (invalid: contains restart)
+        // Tri 3: [2, 3, 4] (valid)
+        let raw_indices: [u16; 9] = [0, 1, 2, 0xFFFF, 3, 4, 2, 3, 4];
+        for (i, &idx) in raw_indices.iter().enumerate() {
+            mmu.write_u16(i_addr + (i * 2) as u64, idx).unwrap();
+        }
+
+        let pb_words: Vec<u32> = vec![
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VERTEX_ARRAY_ADDR, 1),
+            v_addr as u32,
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_INDEX_ARRAY_ADDR, 2),
+            i_addr as u32,
+            0, // is_32bit = 0 (16-bit)
+            NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_DRAW_INDEXED, 2),
+            9, // index_count = 9
+            0,
+        ];
+        for (i, &w) in pb_words.iter().enumerate() {
+            mmu.write_u32(pb_addr + (i * 4) as u64, w).unwrap();
+        }
+
+        gpu.process_pushbuffer(&mut mmu, pb_addr, pb_words.len());
+        let ops = gpu.drain_draw_ops();
+        assert_eq!(ops.len(), 1);
+        if let Gpu3DDrawOp::DrawIndexed { indices, .. } = &ops[0] {
+            // Degenerate triangle was dropped; 2 valid triangles (6 indices) remain
+            assert_eq!(indices.len(), 6);
+        } else {
+            panic!("Expected DrawIndexed op");
+        }
+    }
 }
+

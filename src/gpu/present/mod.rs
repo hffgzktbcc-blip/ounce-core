@@ -14,7 +14,31 @@ pub mod minifb_window;
 #[cfg(feature = "gpu-present")]
 pub mod wgpu_window;
 
+pub use crate::gpu::nvgpu::{Gpu3DDrawOp, Gpu3DTextureData, Gpu3DVertex, GpuPrimitiveTopology};
+
 use std::sync::OnceLock;
+
+/// Error conditions that can occur during host GPU 3D rendering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PresentError {
+    DeviceLost,
+    BackendNotReady,
+    RenderPassFailed(String),
+    UnsupportedBackend(&'static str),
+}
+
+impl std::fmt::Display for PresentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DeviceLost => write!(f, "host GPU device lost"),
+            Self::BackendNotReady => write!(f, "presentation backend not initialized"),
+            Self::RenderPassFailed(msg) => write!(f, "render pass error: {msg}"),
+            Self::UnsupportedBackend(name) => write!(f, "backend '{name}' does not support hardware 3D"),
+        }
+    }
+}
+
+impl std::error::Error for PresentError {}
 
 /// Backend chosen on the command line (`--present=`), which wins over `OUNCE_PRESENT`.
 static CLI_BACKEND: OnceLock<BackendKind> = OnceLock::new();
@@ -144,6 +168,16 @@ pub trait PresentBackend {
 
     /// Shows a composited frame. Also pumps host events, so it must be called every frame.
     fn present(&mut self, frame: &Frame) -> PresentStatus;
+
+    /// Low-level 3D render hook for executing draw ops against an offscreen target.
+    fn render_3d(&mut self, _ops: &[Gpu3DDrawOp]) -> Result<(), PresentError> {
+        Ok(())
+    }
+
+    /// Returns true if this backend supports hardware GPU 3D acceleration.
+    fn is_gpu_accelerated(&self) -> bool {
+        false
+    }
 
     /// Host keys held down since the last [`PresentBackend::present`].
     fn pressed_keys(&mut self) -> Vec<HostKey> {
