@@ -95,5 +95,9 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - `cargo run --release --features gpu-present -- test`: **25/25 architecture stages passing (exit code 0xEEE)**.
   - Host GPU hardware swapchain verified on Metal (`--present=gpu 3d 20`).
   - Safe Rust provenance: `grep -rn "unsafe" src` returns **0 hits**, strictly preserving `#![forbid(unsafe_code)]`.
+* **In progress (Claude): M4 step 2, Tier-4 IR + Cranelift backend** (branch `claude/m4-step2`, draft PR, started 2026-10-27)
+  - Claimed by Claude. Please don't edit these files until the PR merges: `crates/ounce-recompiler/**` (new `ir.rs`, `backend.rs`; callback trampolines in `exec.rs`), `src/cpu/tier4.rs` (new), `src/cpu/mod.rs`, root `Cargo.toml` (cranelift deps via the recompiler crate only), `docs/design/m4-native-jit.md` (section 12 notes), this file.
+  - `src/main.rs`: one small change only, the `--cpu=tier3|tier4` / `OUNCE_CPU` argument strip next to `--present=` and its usage line. No harness stage changes. Not touching `src/gpu/*` or CI.
+  - Plan: low-level SSA IR in the recompiler (no ounce-core types), AArch64 semantics lowered in `tier4.rs` to match the interpreter exactly, memory via `MemoryBus` callbacks (plan A), precise faults (state written back before every memory call), stores that hit code end the block, Tier-3 fallback for cold/unsupported code, differential tests vs interpreter and Tier-3.
 * **Next**:
   - M4 (Tier-4 native JIT in `crates/ounce-recompiler`): Step 1 merged on `main` (`crates/ounce-recompiler` workspace, `ExecBuffer`, `native-jit` feature, CI jobs on Linux/macOS/Windows). Step 2: IR + Cranelift lowering for integer ops, callback memory, `--cpu=tier3|tier4`.
