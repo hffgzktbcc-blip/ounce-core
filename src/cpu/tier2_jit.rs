@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::decoder::decode;
-use super::instructions::{BranchRegOp, Condition, Instruction, MoveWideOp};
+use super::instructions::{BranchRegOp, Condition, Instruction, MoveWideOp, ShiftType};
 use super::interpreter::Cpu;
 use super::registers::Pstate;
 use crate::mmu::Memory;
@@ -136,41 +136,122 @@ impl Tier2Block {
 
             match inst {
                 Instruction::AddSubImm { is_64, is_sub, set_flags, rd, rn, imm } => {
-                    let op1 = if is_64 { cpu.regs.read_x(rn) } else { cpu.regs.read_w(rn) as u64 };
-                    let (res, c, v) = if is_sub {
-                        let (res, c) = op1.overflowing_sub(imm);
-                        let v = ((op1 as i64) ^ (imm as i64)) < 0 && ((op1 as i64) ^ (res as i64)) < 0;
-                        (res, !c, v)
+                    if is_64 {
+                        let op1 = cpu.regs.read_x(rn);
+                        let (res, c, v) = if is_sub {
+                            let (res, borrow) = op1.overflowing_sub(imm);
+                            let v = ((op1 ^ imm) & (op1 ^ res) & (1 << 63)) != 0;
+                            (res, !borrow, v)
+                        } else {
+                            let (res, carry) = op1.overflowing_add(imm);
+                            let v = (!((op1 ^ imm)) & (op1 ^ res) & (1 << 63)) != 0;
+                            (res, carry, v)
+                        };
+                        if rd != 31 || set_flags {
+                            cpu.regs.write_x(rd, res);
+                        }
+                        if set_flags {
+                            set_nzcv_64(&mut cpu.regs.pstate, res, c, v);
+                        }
                     } else {
-                        let (res, c) = op1.overflowing_add(imm);
-                        let v = !(((op1 as i64) ^ (imm as i64)) < 0) && ((op1 as i64) ^ (res as i64)) < 0;
-                        (res, c, v)
-                    };
-                    if rd != 31 || set_flags {
-                        if is_64 { cpu.regs.write_x(rd, res); } else { cpu.regs.write_w(rd, res as u32); }
-                    }
-                    if set_flags {
-                        if is_64 { set_nzcv_64(&mut cpu.regs.pstate, res, c, v); } else { set_nzcv_32(&mut cpu.regs.pstate, res as u32, c, v); }
+                        let op1_32 = cpu.regs.read_w(rn);
+                        let imm_32 = imm as u32;
+                        let (res, c, v) = if is_sub {
+                            let (res, borrow) = op1_32.overflowing_sub(imm_32);
+                            let v = ((op1_32 ^ imm_32) & (op1_32 ^ res) & (1 << 31)) != 0;
+                            (res, !borrow, v)
+                        } else {
+                            let (res, carry) = op1_32.overflowing_add(imm_32);
+                            let v = (!((op1_32 ^ imm_32)) & (op1_32 ^ res) & (1 << 31)) != 0;
+                            (res, carry, v)
+                        };
+                        if rd != 31 || set_flags {
+                            cpu.regs.write_w(rd, res);
+                        }
+                        if set_flags {
+                            set_nzcv_32(&mut cpu.regs.pstate, res, c, v);
+                        }
                     }
                 }
 
-                Instruction::AddSubReg { is_64, is_sub, set_flags, rd, rn, rm, .. } => {
-                    let op1 = if is_64 { cpu.regs.read_x(rn) } else { cpu.regs.read_w(rn) as u64 };
-                    let op2 = if is_64 { cpu.regs.read_x(rm) } else { cpu.regs.read_w(rm) as u64 };
-                    let (res, c, v) = if is_sub {
-                        let (res, c) = op1.overflowing_sub(op2);
-                        let v = ((op1 as i64) ^ (op2 as i64)) < 0 && ((op1 as i64) ^ (res as i64)) < 0;
-                        (res, !c, v)
-                    } else {
-                        let (res, c) = op1.overflowing_add(op2);
-                        let v = !(((op1 as i64) ^ (op2 as i64)) < 0) && ((op1 as i64) ^ (res as i64)) < 0;
-                        (res, c, v)
-                    };
-                    if rd != 31 || set_flags {
-                        if is_64 { cpu.regs.write_x(rd, res); } else { cpu.regs.write_w(rd, res as u32); }
+                Instruction::AddSubReg { is_extended: true, .. } => {
+                    // Fall back to interpreter for extended-register variants
+                    let _ = cpu.step(mmu);
+                    if mmu.code_write_gen() != code_gen {
+                        return (executed, BlockExit::BranchFallthrough { next_pc: cpu.regs.pc });
                     }
-                    if set_flags {
-                        if is_64 { set_nzcv_64(&mut cpu.regs.pstate, res, c, v); } else { set_nzcv_32(&mut cpu.regs.pstate, res as u32, c, v); }
+                }
+
+                Instruction::AddSubReg {
+                    is_64,
+                    is_sub,
+                    set_flags,
+                    rd,
+                    rn,
+                    rm,
+                    shift_type,
+                    shift_amount,
+                    is_extended: false,
+                    ..
+                } => {
+                    let raw_rm = cpu.regs.read_x(rm);
+                    let op2 = if shift_amount == 0 {
+                        if is_64 { raw_rm } else { (raw_rm as u32) as u64 }
+                    } else if is_64 {
+                        let sh = (shift_amount & 63) as u32;
+                        match shift_type {
+                            ShiftType::Lsl => raw_rm.wrapping_shl(sh),
+                            ShiftType::Lsr => raw_rm.wrapping_shr(sh),
+                            ShiftType::Asr => ((raw_rm as i64).wrapping_shr(sh)) as u64,
+                            ShiftType::Ror => raw_rm.rotate_right(sh),
+                        }
+                    } else {
+                        let sh = (shift_amount & 31) as u32;
+                        let rm32 = raw_rm as u32;
+                        let shifted32 = match shift_type {
+                            ShiftType::Lsl => rm32.wrapping_shl(sh),
+                            ShiftType::Lsr => rm32.wrapping_shr(sh),
+                            ShiftType::Asr => ((rm32 as i32).wrapping_shr(sh)) as u32,
+                            ShiftType::Ror => rm32.rotate_right(sh),
+                        };
+                        shifted32 as u64
+                    };
+
+                    if is_64 {
+                        let op1 = cpu.regs.read_x(rn);
+                        let (res, c, v) = if is_sub {
+                            let (res, borrow) = op1.overflowing_sub(op2);
+                            let v = ((op1 ^ op2) & (op1 ^ res) & (1 << 63)) != 0;
+                            (res, !borrow, v)
+                        } else {
+                            let (res, carry) = op1.overflowing_add(op2);
+                            let v = (!((op1 ^ op2)) & (op1 ^ res) & (1 << 63)) != 0;
+                            (res, carry, v)
+                        };
+                        if rd != 31 || set_flags {
+                            cpu.regs.write_x(rd, res);
+                        }
+                        if set_flags {
+                            set_nzcv_64(&mut cpu.regs.pstate, res, c, v);
+                        }
+                    } else {
+                        let op1_32 = cpu.regs.read_w(rn);
+                        let op2_32 = op2 as u32;
+                        let (res, c, v) = if is_sub {
+                            let (res, borrow) = op1_32.overflowing_sub(op2_32);
+                            let v = ((op1_32 ^ op2_32) & (op1_32 ^ res) & (1 << 31)) != 0;
+                            (res, !borrow, v)
+                        } else {
+                            let (res, carry) = op1_32.overflowing_add(op2_32);
+                            let v = (!((op1_32 ^ op2_32)) & (op1_32 ^ res) & (1 << 31)) != 0;
+                            (res, carry, v)
+                        };
+                        if rd != 31 || set_flags {
+                            cpu.regs.write_w(rd, res);
+                        }
+                        if set_flags {
+                            set_nzcv_32(&mut cpu.regs.pstate, res, c, v);
+                        }
                     }
                 }
 
@@ -489,5 +570,77 @@ mod tests {
         assert_eq!(mmu.code_write_gen(), 0);
         assert_eq!(jit.blocks_invalidated, 0);
         assert_eq!(jit.blocks.len(), 1);
+    }
+
+    #[test]
+    fn test_tier2_addsubreg_shifts_and_flags() {
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        let base = 0x8000_0000u64;
+
+        #[rustfmt::skip]
+        load(&mut mmu, base, &[
+            (0x00, 0x8B020420), // add  x0, x1, x2, lsl #1
+            (0x04, 0xCB420423), // sub  x3, x1, x2, lsr #1
+            (0x08, 0x8B820824), // add  x4, x1, x2, asr #2
+            (0x0C, 0x0B020825), // add  w5, w1, w2, lsl #2
+            (0x10, 0x8B224428), // add  x8, x1, w2, uxtw #1 (extended fallback)
+            (0x14, 0xD4000001), // svc  #0
+        ]);
+
+        cpu.regs.write_x(1, 3);
+        cpu.regs.write_x(2, 4);
+        cpu.regs.pc = base;
+
+        let mut jit = Tier2JitEngine::new();
+        let (_, exit) = jit.run_slice(&mut cpu, &mut mmu, 100);
+        assert_eq!(exit, BlockExit::Svc { svc_id: 0 });
+
+        // 1. ADD X0, X1, X2, LSL #1: 3 + (4 << 1) = 11 (fixes Issue #25)
+        assert_eq!(cpu.regs.read_x(0), 11);
+        // 2. SUB X3, X1, X2, LSR #1: 3 - (4 >> 1) = 1
+        assert_eq!(cpu.regs.read_x(3), 1);
+        // 3. ADD X4, X1, X2, ASR #2: 3 + (4 >> 2) = 4
+        assert_eq!(cpu.regs.read_x(4), 4);
+        // 4. ADD W5, W1, W2, LSL #2: 3 + (4 << 2) = 19
+        assert_eq!(cpu.regs.read_x(5), 19);
+        // 5. Extended register fallback: ADD X8, X1, W2, UXTW #1: 3 + (4 << 1) = 11
+        assert_eq!(cpu.regs.read_x(8), 11);
+    }
+
+    #[test]
+    fn test_tier2_addsubreg_signed_overflow_and_flags() {
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        let base = 0x8000_0000u64;
+
+        #[rustfmt::skip]
+        load(&mut mmu, base, &[
+            (0x00, 0xEB020026), // subs x6, x1, x2, lsl #0
+            (0x04, 0x2B020027), // adds w7, w1, w2, lsl #0
+            (0x08, 0xD4000001), // svc  #0
+        ]);
+
+        // SUBS X6, X1, X2: 5 - 5 = 0 -> Z=1, C=1, N=0, V=0
+        cpu.regs.write_x(1, 5);
+        cpu.regs.write_x(2, 5);
+        cpu.regs.pc = base;
+
+        let mut jit = Tier2JitEngine::new();
+        let (_, exit) = jit.run_slice(&mut cpu, &mut mmu, 100);
+        assert_eq!(exit, BlockExit::Svc { svc_id: 0 });
+        assert_eq!(cpu.regs.read_x(6), 0);
+
+        // Test 32-bit signed overflow: 0x7FFF_FFFF + 1 = 0x8000_0000 -> N=1, V=1, Z=0, C=0
+        cpu.regs.write_w(1, 0x7FFF_FFFF);
+        cpu.regs.write_w(2, 1);
+        cpu.regs.pc = base + 4;
+        let (_, exit) = jit.run_slice(&mut cpu, &mut mmu, 100);
+        assert_eq!(exit, BlockExit::Svc { svc_id: 0 });
+        assert_eq!(cpu.regs.read_w(7), 0x8000_0000);
+        assert!(cpu.regs.pstate.n, "N flag should be set for negative 32-bit result");
+        assert!(cpu.regs.pstate.v, "V flag should be set for signed overflow");
+        assert!(!cpu.regs.pstate.z, "Z flag should be clear");
+        assert!(!cpu.regs.pstate.c, "C flag should be clear");
     }
 }
