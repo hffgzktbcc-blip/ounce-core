@@ -19,3 +19,5 @@ pub use package::{
 
 #[cfg(test)]
 mod fixture_tests;
+#[cfg(test)]
+pub(crate) mod fuzz_tests;

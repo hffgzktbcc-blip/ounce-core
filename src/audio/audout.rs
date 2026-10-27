@@ -89,8 +89,9 @@ impl AudioOutServer {
         }
 
         let mut peak = self.peak_amplitude;
-        for i in 0..sample_count {
-            let addr = sample_addr + (i * 2) as u64;
+        // A guest-supplied count can be 4 billion; only the first 1M samples are read.
+        for i in 0..sample_count.min(1 << 20) {
+            let addr = sample_addr.wrapping_add((i * 2) as u64);
             if let Ok(raw) = mmu.read_u16(addr) {
                 let sample = raw as i16;
                 let abs_val = sample.saturating_abs();

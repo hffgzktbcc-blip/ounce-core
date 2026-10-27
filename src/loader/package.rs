@@ -88,16 +88,14 @@ impl NpdmDescriptor {
         let mut allowed_services = Vec::new();
         let allowed_syscalls_mask = 0xFFFFFFFFFFFFFFFFu64;
 
-        if aci0_offset + 0x20 <= bytes.len() && aci0_size >= 0x20 {
-            let aci0_bytes = &bytes[aci0_offset..aci0_offset + aci0_size];
+        if let Some(aci0_bytes) = aci0_offset.checked_add(aci0_size).and_then(|end| bytes.get(aci0_offset..end)).filter(|_| aci0_size >= 0x20) {
             if aci0_bytes.len() >= 0x20 && &aci0_bytes[0x00..0x04] == &ACI0_MAGIC {
                 title_id = LittleEndian::read_u64(&aci0_bytes[0x10..0x18]);
 
                 let sac_offset = LittleEndian::read_u32(&aci0_bytes[0x18..0x1C]) as usize;
                 let sac_size = LittleEndian::read_u32(&aci0_bytes[0x1C..0x20]) as usize;
 
-                if sac_offset + sac_size <= aci0_bytes.len() && sac_size > 0 {
-                    let sac_data = &aci0_bytes[sac_offset..sac_offset + sac_size];
+                if let Some(sac_data) = sac_offset.checked_add(sac_size).and_then(|end| aci0_bytes.get(sac_offset..end)).filter(|d| !d.is_empty()) {
                     let mut cursor = 0;
                     while cursor < sac_data.len() {
                         let len = sac_data[cursor] as usize;

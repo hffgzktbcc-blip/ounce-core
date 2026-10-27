@@ -7,6 +7,8 @@ pub mod hid;
 pub mod audren;
 pub mod hipc;
 pub mod ipc;
+#[cfg(test)]
+mod ipc_fuzz_tests;
 pub mod sdk_hle;
 pub mod nvdrv;
 pub mod scheduler;
