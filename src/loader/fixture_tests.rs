@@ -231,8 +231,10 @@ fn boot_with_kernel_input(
     crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "fixture.nro", nro, args).unwrap();
     cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
 
+    // One CPU runs every guest thread: the kernel swaps thread registers inside `dispatch_svc`.
     let mut output = String::new();
     let mut svcs = Vec::new();
+    let mut exited = false;
     for _ in 0..crate::NRO_INSTRUCTION_BUDGET {
         match cpu.step(&mut mmu) {
             Ok(StepResult::Continue) => {}
@@ -244,7 +246,10 @@ fn boot_with_kernel_input(
                     output.push_str(&String::from_utf8_lossy(&buf));
                 }
                 match kernel.dispatch_svc(svc, &mut cpu, &mut mmu) {
-                    crate::kernel::SvcResult::ExitProcess => break,
+                    crate::kernel::SvcResult::ExitProcess => {
+                        exited = true;
+                        break;
+                    }
                     crate::kernel::SvcResult::Success => {}
                     other => panic!("SVC 0x{svc:X} -> {other:?}; SVCs so far {svcs:x?}"),
                 }
@@ -252,6 +257,12 @@ fn boot_with_kernel_input(
             other => panic!("guest stopped: {other:?} at 0x{:X}; SVCs {svcs:x?}", cpu.regs.pc),
         }
     }
+    assert!(
+        exited,
+        "guest did not exit within {} instructions (PC 0x{:X}); output so far: {output:?}",
+        crate::NRO_INSTRUCTION_BUDGET,
+        cpu.regs.pc
+    );
     (output, svcs, kernel)
 }
 
@@ -323,4 +334,21 @@ fn libnx_input_fixture_reads_host_controller() {
     );
     assert!(output.contains("ounce-input stick_l=0x1234FF00\n"), "output: {output:?}");
     assert!(output.ends_with("ounce-input result=0x00000EEE\n"), "output: {output:?}");
+}
+
+/// `tests/fixtures/nro/threads`: two libnx worker threads share a total under a `Mutex`, yield while
+/// holding it (so the other must block in svcArbitrateLock), report through a `CondVar`, and are joined
+/// with `threadWaitForExit`; each checks its own `__thread` variable.
+#[test]
+fn libnx_threads_fixture_synchronizes_two_workers() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/threads/threads.nro");
+    let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let (output, svcs, kernel) = boot_with_kernel_state(&nro, &[]);
+    assert!(output.contains("ounce-threads total=0x00000384\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+    assert!(output.ends_with("ounce-threads result=0x00000EEE\n"), "output: {output:?}");
+    // The workers really contended: some lock requests blocked and were handed over.
+    assert!(svcs.iter().filter(|&&s| s == 0x1A).count() > 0, "no svcArbitrateLock");
+    assert!(svcs.contains(&0x1C) && svcs.contains(&0x1D), "condvar wait and signal");
+    assert!(kernel.scheduler.switches > 10, "switches: {}", kernel.scheduler.switches);
+    assert_eq!(kernel.scheduler.total_threads_completed, 2);
 }

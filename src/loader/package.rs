@@ -396,6 +396,11 @@ impl LoosePackageLoader {
         for &module_base in &module_bases {
             let report = NroLoader::apply_relocations_with_tls(module_base, mmu, &exports, &tls);
             total_relocations += report.applied;
+            // Companion modules have no crt0 of their own to apply `DT_RELR`, so the loader does. `main`
+            // (at `base_addr`) relocates itself when it has a libnx-style crt0, so it is left alone.
+            if module_base != base_addr {
+                total_relocations += NroLoader::apply_relr(module_base, mmu);
+            }
             for name in report.unresolved {
                 if !unresolved_imports.contains(&name) {
                     unresolved_imports.push(name);

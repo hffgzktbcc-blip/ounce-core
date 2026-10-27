@@ -167,6 +167,18 @@ impl Memory {
     }
 
     /// Checks if a virtual address is mapped.
+    /// Moves the pages of `src..src + size` to `dst` (both page aligned): the data appears at `dst` and
+    /// `src` becomes unmapped. Models svcMapMemory, after which Horizon makes the source inaccessible.
+    /// Unmapped source pages leave the matching destination pages unmapped.
+    pub fn move_range(&mut self, src: u64, dst: u64, size: usize) {
+        let pages = (size as u64).div_ceil(PAGE_SIZE as u64);
+        for i in 0..pages {
+            if let Some(page) = self.pages.remove(&((src >> 12) + i)) {
+                self.pages.insert((dst >> 12) + i, page);
+            }
+        }
+    }
+
     /// Unmaps every page that overlaps `base_addr..base_addr + size`. Unmapped pages are skipped.
     pub fn unmap_range(&mut self, base_addr: u64, size: usize) {
         if size == 0 {
