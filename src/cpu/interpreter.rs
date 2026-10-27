@@ -248,7 +248,12 @@ impl Cpu {
                         self.regs.pstate.c = c;
                         self.regs.pstate.v = v;
                     }
-                    self.regs.write_x(rd, res);
+                    // Extended-register ADD/SUB (not ADDS/SUBS) writes SP for Rd = 31, e.g. `sub sp, sp, x12`.
+                    if is_extended && !set_flags && rd == 31 {
+                        self.regs.sp = res;
+                    } else {
+                        self.regs.write_x(rd, res);
+                    }
                 } else {
                     let op1_32 = op1 as u32;
                     let op2_32 = op2 as u32;
@@ -1493,6 +1498,13 @@ mod tests {
             let got = format!("{:?}", super::super::decoder::decode(raw));
             assert!(got.starts_with(name), "0x{raw:08X}: expected {name}, got {got}");
         }
+    }
+
+    #[test]
+    fn extended_register_sub_writes_sp() {
+        // mov x12, #0x40b0; sub sp, sp, x12 (large stack frames in GCC output)
+        let (cpu, _) = run(&[0xd288160c, 0xcb2c63ff], |c, _| c.regs.sp = 0x10_0000);
+        assert_eq!(cpu.regs.sp, 0x10_0000 - 0x40b0);
     }
 
     #[test]
