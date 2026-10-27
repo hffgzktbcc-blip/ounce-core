@@ -167,6 +167,38 @@ impl Memory {
     }
 
     /// Checks if a virtual address is mapped.
+    /// Unmaps every page that overlaps `base_addr..base_addr + size`. Unmapped pages are skipped.
+    pub fn unmap_range(&mut self, base_addr: u64, size: usize) {
+        if size == 0 {
+            return;
+        }
+        let last = base_addr.saturating_add(size as u64 - 1) >> 12;
+        for page_idx in (base_addr >> 12)..=last {
+            self.pages.remove(&page_idx);
+        }
+    }
+
+    /// The run of pages around `addr` that are all mapped or all unmapped, as `(start, end, mapped)`.
+    /// An unmapped run is bounded by the nearest mapped pages, or by the 48-bit address space.
+    pub fn region_at(&self, addr: u64) -> (u64, u64, bool) {
+        let page = addr >> 12;
+        if self.pages.contains_key(&page) {
+            let mut lo = page;
+            while lo > 0 && self.pages.contains_key(&(lo - 1)) {
+                lo -= 1;
+            }
+            let mut hi = page + 1;
+            while self.pages.contains_key(&hi) {
+                hi += 1;
+            }
+            (lo << 12, hi << 12, true)
+        } else {
+            let below = self.pages.keys().filter(|&&p| p < page).max().map_or(0, |p| p + 1);
+            let above = self.pages.keys().filter(|&&p| p > page).min().map_or(1u64 << 36, |&p| p);
+            (below << 12, above << 12, false)
+        }
+    }
+
     pub fn is_mapped(&self, addr: u64) -> bool {
         self.pages.contains_key(&(addr >> 12))
     }
