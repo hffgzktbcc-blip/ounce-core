@@ -17,7 +17,7 @@ mod ui;
 use cpu::{Cpu, StepResult};
 use gpu::nvgpu::{
     NvgpuChannel, SubmissionMode, METHOD_BIND_SHADER_PROGRAM, METHOD_BIND_TEXTURE_2D,
-    METHOD_CLEAR_SURFACE, METHOD_DISPATCH_DLSS_UPSCALE, METHOD_DRAW_ARRAYS,
+    METHOD_CLEAR_SURFACE, METHOD_DISPATCH_UPSCALE_2X, METHOD_DRAW_ARRAYS,
     METHOD_DRAW_TEXTURED_ARRAYS, METHOD_SET_CLEAR_COLOR, METHOD_SET_DEPTH_TEST_ENABLE,
     METHOD_SET_MVP_MATRIX, METHOD_SET_RENDER_TARGET_ADDR, METHOD_SET_VERTEX_ARRAY_ADDR,
     METHOD_SET_VIEWPORT_DIMS,
@@ -330,7 +330,7 @@ fn print_specs() {
     print_row(&s, "Architecture        : ", "8x ARM Cortex-A78C (Octa-Core Preemptive Multi-Core Scheduler)");
     print_row(&s, "Security Features   : ", "ARMv8.3-A Pointer Authentication (PAC) + ARMv8.5-A BTI");
     print_row(&s, "Vector Engine       : ", "128-bit ARM NEON Advanced SIMD & IEEE-754 FP Single/Double");
-    print_row(&s, "Execution Engine    : ", "Tier-1 Basic-Block Cache + Tier-2 Chained JIT (>7.5 MIPS)");
+    print_row(&s, "Execution Engine    : ", "Tier-1 block cache, Tier-2 chained blocks, Tier-3 super-blocks (host MIPS measured by Stage 20)");
     print_row(&s, "Virtual MMU         : ", "Sparse 4KB Page Table (39-bit & 48-bit Horizon Address Space)");
     print_row(&s, "Memory Sub-Regions  : ", "Code, RoData, Heap, Stack (1MB), TLS, SharedMem, VRAM, RomFS");
     print_box_bottom(&s);
@@ -726,11 +726,11 @@ fn run_vm_internal(
             kernel.nvgpu.state.total_depth_tests_rejected
         );
     }
-    if kernel.nvgpu.dlss.frames_upscaled > 0 || kernel.vfs.total_bytes_written > 0 {
+    if kernel.nvgpu.upscaler.frames_upscaled > 0 || kernel.vfs.total_bytes_written > 0 {
         println!(
             "  -> 2x Upscaler Model: {} Frames ({} Output Pixels) | SaveData Written: {} Bytes",
-            kernel.nvgpu.dlss.frames_upscaled,
-            kernel.nvgpu.dlss.output_pixels_generated,
+            kernel.nvgpu.upscaler.frames_upscaled,
+            kernel.nvgpu.upscaler.output_pixels_generated,
             kernel.vfs.total_bytes_written
         );
     }
@@ -1299,15 +1299,15 @@ fn run_built_in_demo() {
 
     let simd_addr = 0x80020000u64;
     let save_path_addr = 0x80030000u64;
-    let dlss_src_addr = 0x90000000u64;
-    let dlss_dst_addr = 0x90010000u64;
+    let upscale_src_addr = 0x90000000u64;
+    let upscale_dst_addr = 0x90010000u64;
     let pb_addr9 = 0x80010000u64;
 
     mmu.map_range(DEFAULT_BASE_ADDR, 4096, Permission::READ_WRITE_EXECUTE);
     mmu.map_range(simd_addr, 4096, Permission::READ_WRITE);
     mmu.map_range(save_path_addr, 4096, Permission::READ_WRITE);
-    mmu.map_range(dlss_src_addr, 4096, Permission::READ_WRITE);
-    mmu.map_range(dlss_dst_addr, 4096, Permission::READ_WRITE);
+    mmu.map_range(upscale_src_addr, 4096, Permission::READ_WRITE);
+    mmu.map_range(upscale_dst_addr, 4096, Permission::READ_WRITE);
     mmu.map_range(pb_addr9, 4096, Permission::READ_WRITE);
 
     // 1. Write two 128-bit 4xFloat32 vectors into Guest RAM at 0x80020000:
@@ -1324,18 +1324,18 @@ fn run_built_in_demo() {
     let save_path = b"save:/profile.sav";
     mmu.write_bytes(save_path_addr, save_path).unwrap();
 
-    // 3. Populate 8x8 low-res render surface at 0x90000000 and build DLSS 2x upscale pushbuffer (8x8 -> 16x16 = 256 pixels)
+    // 3. Populate 8x8 low-res render surface at 0x90000000 and build 2x upscale pushbuffer (8x8 -> 16x16 = 256 pixels)
     for i in 0..64u64 {
-        mmu.write_u32(dlss_src_addr + i * 4, 0xFF80C040).unwrap();
+        mmu.write_u32(upscale_src_addr + i * 4, 0xFF80C040).unwrap();
     }
-    let pb_dlss_words: Vec<u32> = vec![
-        NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_DISPATCH_DLSS_UPSCALE, 4),
-        dlss_src_addr as u32,
+    let pb_upscale_words: Vec<u32> = vec![
+        NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_DISPATCH_UPSCALE_2X, 4),
+        upscale_src_addr as u32,
         8,
         8,
-        dlss_dst_addr as u32,
+        upscale_dst_addr as u32,
     ];
-    for (i, &w) in pb_dlss_words.iter().enumerate() {
+    for (i, &w) in pb_upscale_words.iter().enumerate() {
         mmu.write_u32(pb_addr9 + (i * 4) as u64, w).unwrap();
     }
 
@@ -1343,7 +1343,7 @@ fn run_built_in_demo() {
     cpu.regs.write_x(11, save_path_addr);
     cpu.regs.write_x(12, save_path.len() as u64);
     cpu.regs.write_x(13, pb_addr9);
-    cpu.regs.write_x(14, pb_dlss_words.len() as u64);
+    cpu.regs.write_x(14, pb_upscale_words.len() as u64);
 
     // Guest AArch64 Program:
     //  1. LDR  Q1, [X10, #0]        ; Load 128-bit VecA [10.0, 20.0, 30.0, 40.0]
@@ -1573,7 +1573,7 @@ fn run_built_in_demo() {
 
     // ---------------------------------------------------------
     // Test 15: Switch 2 NVN 3D Command Buffer Execution & Multi-Section RomFS Asset Loading
-    //          Boots an authentic AES-128-CTR encrypted NCA3 with ExeFS (Section 0) and RomFS (Section 1).
+    //          Boots a synthetic AES-128-CTR encrypted NCA3 with ExeFS (Section 0) and RomFS (Section 1).
     //          Guest builds an NVN command buffer (Clear Color + Draw) and submits via SVC #0x105,
     //          verifies RomFS asset mounting, and exits cleanly.
     // ---------------------------------------------------------
@@ -1807,16 +1807,16 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 17: Switch 2 Horizon "Big 5" Retail Application Handshake & Gamepad Input
+    // Test 17: Horizon "Big 5" application bootstrap handshake (synthetic) & gamepad input
     //          Verifies:
     //            1. set:sys service query (GetSystemLanguage & GetFirmwareVersion FW 23.0.1)
-    //            2. am:appletOE retail proxy initialization (OpenApplicationProxy, GetCurrentFocusState)
+    //            2. am:appletOE application proxy initialization (OpenApplicationProxy, GetCurrentFocusState)
     //            3. vi:m display management (GetDisplayService, OpenDisplay, CreateStrayLayer)
     //            4. hid Joy-Con 2 gamepad shared memory mapping & multi-button analog stick polling
     //            5. fsp-srv RomFS storage mount (OpenDataStorageByCurrentProcess, GetSize)
-    //            6. End-to-end guest AArch64 retail handshake exit code verification (0x777)
+    //            6. End-to-end guest AArch64 application handshake exit code verification (0x777)
     // ---------------------------------------------------------
-    println!("\n[Stage 17/25] Horizon Big 5 Retail Services Handshake & Joy-Con 2 Polling");
+    println!("\n[Stage 17/25] Horizon Big 5 Services Handshake (synthetic) & Controller Polling");
     {
         let (mut cpu17, mut mmu17, mut kernel17) = setup_vm();
         let tls_addr = 0x8000_0000u64;
@@ -1999,7 +1999,7 @@ fn run_built_in_demo() {
             storage_h, storage_size, storage_size / 1024
         );
 
-        // 6. Guest AArch64 Retail Bootstrap execution:
+        // 6. Guest AArch64 synthetic bootstrap execution:
         let code_va = 0x8001_0000u64;
         mmu17.map_range(code_va, 4096, Permission::READ_WRITE_EXECUTE);
         cpu17.regs.tpidrro_el0 = tls_addr;
@@ -2016,24 +2016,24 @@ fn run_built_in_demo() {
         //   MOV  X0, X19          ; X0 = setsys_h
         //   SVC  #0x21            ; svcSendSyncRequest -> setsys returns FW version in TLS
         //   LDR  X21, [X20, #8]   ; X21 = buttons from HID shared memory
-        //   MOVZ X0, #0x777       ; X0 = 0x777 (retail boot success code)
+        //   MOVZ X0, #0x777       ; X0 = 0x777 (synthetic success code)
         //   SVC  #0x07            ; svcExitProcess
         #[rustfmt::skip]
-        let retail_program: [u32; 5] = [
+        let bootstrap_program: [u32; 5] = [
             0xAA1303E0, // mov x0, x19
             0xD4000421, // svc #0x21 (svcSendSyncRequest)
             0xF9400695, // ldr x21, [x20, #8] (buttons bitmask)
             0xD280EEE0, // movz x0, #0x777
             0xD40000E1, // svc #0x07 (svcExitProcess)
         ];
-        for (i, &w) in retail_program.iter().enumerate() {
+        for (i, &w) in bootstrap_program.iter().enumerate() {
             mmu17.write_u32(code_va + (i * 4) as u64, w).unwrap();
         }
 
         cpu17.regs.pc = code_va;
         let outcome = run_vm(cpu17, mmu17, kernel17, 10_000);
         if gate.expect_exit(17, &outcome, 0x777) {
-            println!("  [Retail Bootstrap] Handshake completed successfully across all Big 5 services (Exit code: 0x777)");
+            println!("  [Synthetic Bootstrap] Handshake completed successfully across all Big 5 services (Exit code: 0x777)");
         }
     }
     println!();
@@ -2045,7 +2045,7 @@ fn run_built_in_demo() {
     //            2. Dynamic runtime loading of secondary NRO module via `LoadNro` (Cmd 0)
     //            3. `NvnTexturePool` registration with BC7 & RGBA8 texture descriptors
     //            4. Submitting an NVN fast-path command stream binding the texture descriptor
-    //            5. Guest AArch64 retail verification loop exiting with code 0x888
+    //            5. Guest AArch64 synthetic verification loop exiting with code 0x888
     // ---------------------------------------------------------
     println!("\n[Stage 18/25] ro:1 Dynamic Module Relocation & NVN Texture Descriptor Binding");
     {
@@ -2175,7 +2175,7 @@ fn run_built_in_demo() {
     }
 
     // ---------------------------------------------------------
-    // Stage 19: Nintendo SDK (nnSdk) C++ Runtime & crt0 Arena Allocation
+    // Stage 19: SDK-style HLE Runtime & crt0 Arena Allocation
     //            1. Mounting RomFS & SaveData filesystems
     //            2. nn::mem::StandardAllocator heap arena initialization
     //            3. Guest AArch64 invocation of nn::mem::Allocate via SVC #0x106
@@ -2183,7 +2183,7 @@ fn run_built_in_demo() {
     //            5. Guest AArch64 invocation of nn::fs::OpenFile & ReadFile via SVC #0x106
     //            6. Guest verification loop returning exit code 0x999
     // ---------------------------------------------------------
-    println!("\n[Stage 19/25] Nintendo SDK (nnSdk) C++ Runtime & crt0 Arena Allocation");
+    println!("\n[Stage 19/25] SDK-style HLE Runtime & crt0 Arena Allocation");
     {
         let (mut cpu19, mut mmu19, mut kernel19) = setup_vm();
         let code_va = 0x8002_0000u64;
@@ -2191,8 +2191,8 @@ fn run_built_in_demo() {
         let heap_base = 0x1_0000_0000u64;
         let heap_size = 0x100_0000usize; // 16 MB
 
-        // 1. Initialize nnSdk runtime
-        kernel19.nnsdk.initialize_runtime(heap_base, heap_size, &mut kernel19.vfs, &mut mmu19);
+        // 1. Initialize SDK HLE runtime
+        kernel19.sdk_hle.initialize_runtime(heap_base, heap_size, &mut kernel19.vfs, &mut mmu19);
         println!(
             "  [nn::init] Initialized StandardAllocator arena at 0x{:08X} ({} MB)",
             heap_base, heap_size / 0x10_0000
@@ -2203,7 +2203,7 @@ fn run_built_in_demo() {
         let path_bytes = b"rom:/manifest.json";
         mmu19.write_bytes(path_va, path_bytes).unwrap();
 
-        // 3. Guest AArch64 program invoking nnSdk via SVC #0x106:
+        // 3. Guest AArch64 program invoking the SDK HLE via SVC #0x106:
         //    X0 = 0x2001 (nn::mem::StandardAllocator::Allocate)
         //    X1 = 4096   (size)
         //    X2 = 64     (alignment)
@@ -2222,12 +2222,12 @@ fn run_built_in_demo() {
         //    MOV X0, #0x999
         //    SVC #0x07   (Exit)
         #[rustfmt::skip]
-        let nnsdk_program: Vec<u32> = vec![
+        let sdk_hle_program: Vec<u32> = vec![
             // 1. Allocate 4096 bytes with 64-byte alignment
             0xD2840020, // movz x0, #0x2001 (func_id: Allocate)
             0xD2820001, // movz x1, #4096   (size)
             0xD2800802, // movz x2, #64     (alignment)
-            0xD40020C1, // svc  #0x106      (ext::NNSDK_DISPATCH)
+            0xD40020C1, // svc  #0x106      (ext::SDK_HLE_DISPATCH)
             0xAA0103F3, // mov  x19, x1     (x19 = allocated buffer)
 
             // 2. SleepThread 100 microseconds
@@ -2257,14 +2257,14 @@ fn run_built_in_demo() {
             0xD40000E1, // svc  #0x07 (svcExitProcess)
         ];
 
-        for (i, &w) in nnsdk_program.iter().enumerate() {
+        for (i, &w) in sdk_hle_program.iter().enumerate() {
             mmu19.write_u32(code_va + (i * 4) as u64, w).unwrap();
         }
 
         cpu19.regs.pc = code_va;
         let outcome = run_vm(cpu19, mmu19, kernel19, 10_000);
         if gate.expect_exit(19, &outcome, 0x999) {
-            println!("  [nnSdk Runtime Verification] StandardAllocator & nn::fs validated in guest AArch64 (Exit code: 0x999)");
+            println!("  [SDK HLE Verification] StandardAllocator & nn::fs validated in guest AArch64 (Exit code: 0x999)");
         }
     }
 
@@ -2326,7 +2326,7 @@ fn run_built_in_demo() {
     //            2. Parsing Nintendo Process Descriptor Metadata (main.npdm)
     //            3. Multi-module NSO0 relocation and dynamic linking (main + subsdk0)
     //            4. Mounting loose RomFS assets into virtual filesystem
-    //            5. Direct execution crossing module boundaries and calling nnSdk allocator
+    //            5. Direct execution crossing module boundaries and calling the SDK HLE allocator
     //            6. Final verification exit code 0xBBB
     // ---------------------------------------------------------
     println!("\n[Stage 21/25] Loose Package Pipeline (OunceCake Layout), NPDM Parser & Multi-Module Dynamic Linker");
@@ -2376,7 +2376,7 @@ fn run_built_in_demo() {
             0xD2800002, // movz x2, #0        (offset high)
             0xF2A00022, // movk x2, #1, lsl 16 (0x10000 = 64 KB)
             0xD2800803, // movz x3, #64       (64-byte alignment)
-            0xD40020C1, // svc  #0x106       (ext::NNSDK_DISPATCH)
+            0xD40020C1, // svc  #0x106       (ext::SDK_HLE_DISPATCH)
 
             // Verify allocation pointer returned in X0 is non-zero
             0xB4000080, // cbz  x0, #16      (fail if null)

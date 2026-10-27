@@ -11,7 +11,7 @@ pub struct VulkanDeviceInfo {
     pub driver_version: u32,
     pub device_type: &'static str,
     pub supports_mesh_shaders: bool,
-    pub supports_dlss_tensor: bool, // model flag only; no DLSS is implemented
+    pub supports_upscale_model: bool, // model flag only; no DLSS is implemented
 }
 
 impl Default for VulkanDeviceInfo {
@@ -22,7 +22,7 @@ impl Default for VulkanDeviceInfo {
             driver_version: 550_00,
             device_type: "Integrated / Discrete GPU",
             supports_mesh_shaders: true,
-            supports_dlss_tensor: true,
+            supports_upscale_model: true,
         }
     }
 }

@@ -552,7 +552,7 @@ impl RomFsArchive {
         });
     }
 
-    /// Builds an authentic Nintendo Level 3 `RomFS` binary image.
+    /// Builds a Level 3 `RomFS` binary image.
     pub fn build(files: &[(&str, &[u8])]) -> Vec<u8> {
         // Compute tables
         // File meta table format per file:

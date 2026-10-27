@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::gpu::dlss::DlssEngine;
+use crate::gpu::upscaler::UpscaleEngine;
 use crate::mmu::Memory;
 
 /// Tegra NVGPU Channel / Pushbuffer & 3D Rasterizer Engine.
@@ -26,7 +26,7 @@ pub const METHOD_DRAW_INDEXED: u16 = 0x05F4;
 pub const METHOD_CLEAR_SURFACE: u16 = 0x0674;
 pub const METHOD_SET_VERTEX_ARRAY_ADDR: u16 = 0x0700;
 pub const METHOD_SET_VIEWPORT_DIMS: u16 = 0x0860;
-pub const METHOD_DISPATCH_DLSS_UPSCALE: u16 = 0x0900;
+pub const METHOD_DISPATCH_UPSCALE_2X: u16 = 0x0900;
 
 /// Maximum unique vertices extracted in a single hardware-accelerated draw call.
 /// Protects host memory against out-of-memory denial-of-service from malformed guest index buffers.
@@ -224,7 +224,7 @@ impl Default for Gpu3DState {
 
 pub struct NvgpuChannel {
     pub state: Gpu3DState,
-    pub dlss: DlssEngine,
+    pub upscaler: UpscaleEngine,
     pub hardware_acceleration_enabled: bool,
     pub draw_queue: Vec<Gpu3DDrawOp>,
 }
@@ -239,7 +239,7 @@ impl NvgpuChannel {
     pub fn new() -> Self {
         Self {
             state: Gpu3DState::default(),
-            dlss: DlssEngine::new(),
+            upscaler: UpscaleEngine::new(),
             hardware_acceleration_enabled: false,
             draw_queue: Vec::new(),
         }
@@ -720,13 +720,13 @@ impl NvgpuChannel {
             }
             // 0x0900: Dispatch 2x upscaler model (bilinear + sharpen, not DLSS)
             // Args: [src_addr, src_w, src_h, dst_addr]
-            METHOD_DISPATCH_DLSS_UPSCALE => {
+            METHOD_DISPATCH_UPSCALE_2X => {
                 if cmd.args.len() >= 4 {
                     let src_addr = cmd.args[0] as u64;
                     let src_w = cmd.args[1];
                     let src_h = cmd.args[2];
                     let dst_addr = cmd.args[3] as u64;
-                    self.dlss.upscale_2x(mmu, src_addr, src_w, src_h, dst_addr);
+                    self.upscaler.upscale_2x(mmu, src_addr, src_w, src_h, dst_addr);
                 }
             }
             _ => {}

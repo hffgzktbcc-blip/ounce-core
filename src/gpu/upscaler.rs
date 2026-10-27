@@ -6,12 +6,12 @@ use crate::mmu::Memory;
 ///
 /// Upscales a surface by 2x in each dimension using bilinear interpolation and a simple sharpening pass.
 #[derive(Debug, Default)]
-pub struct DlssEngine {
+pub struct UpscaleEngine {
     pub frames_upscaled: u64,
     pub output_pixels_generated: u64,
 }
 
-impl DlssEngine {
+impl UpscaleEngine {
     pub fn new() -> Self {
         Self::default()
     }
@@ -92,9 +92,9 @@ mod tests {
     use crate::mmu::Permission;
 
     #[test]
-    fn test_dlss_tensor_2x_super_resolution() {
+    fn test_upscaler_2x_bilinear_sharpen() {
         let mut mmu = Memory::new();
-        let mut dlss = DlssEngine::new();
+        let mut upscaler = UpscaleEngine::new();
 
         let src_addr = 0x9000_0000u64;
         let dst_addr = 0x9001_0000u64;
@@ -112,9 +112,9 @@ mod tests {
         }
 
         // Upscale 4x4 -> 8x8 (64 output pixels)
-        dlss.upscale_2x(&mut mmu, src_addr, 4, 4, dst_addr);
-        assert_eq!(dlss.frames_upscaled, 1);
-        assert_eq!(dlss.output_pixels_generated, 64);
+        upscaler.upscale_2x(&mut mmu, src_addr, 4, 4, dst_addr);
+        assert_eq!(upscaler.frames_upscaled, 1);
+        assert_eq!(upscaler.output_pixels_generated, 64);
 
         // Check interpolated interior pixel at (3, 3) in the 8x8 output
         let center_upscaled = mmu.read_u32(dst_addr + (3 * 8 + 3) * 4).unwrap();

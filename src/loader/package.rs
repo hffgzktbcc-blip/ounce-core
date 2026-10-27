@@ -114,7 +114,7 @@ impl NpdmDescriptor {
             }
         }
 
-        // If no explicit SAC services are parsed, provide standard retail default set
+        // If no explicit SAC services are parsed, provide a default service set
         if allowed_services.is_empty() {
             allowed_services = vec![
                 "sm:".into(),

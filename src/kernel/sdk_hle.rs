@@ -20,7 +20,7 @@ pub struct AllocBlock {
     pub allocated: bool,
 }
 
-/// Nintendo SDK `nn::mem::StandardAllocator` High-Level Implementation.
+/// SDK-style HLE of (`nn::mem::StandardAllocator` High-Level Implementation.
 #[derive(Debug, Clone)]
 pub struct StandardAllocator {
     pub heap_base: u64,
@@ -173,7 +173,7 @@ pub struct NnFsFile {
     pub current_offset: i64,
 }
 
-/// Nintendo SDK `nn::fs` High-Level Implementation.
+/// SDK-style HLE of (`nn::fs` High-Level Implementation.
 #[derive(Debug)]
 pub struct NnFsManager {
     pub open_files: HashMap<u32, NnFsFile>,
@@ -196,7 +196,7 @@ impl NnFsManager {
 
     pub fn mount_rom(&mut self, vfs: &mut VirtualFileSystem) -> u32 {
         self.mounted_rom = true;
-        let manifest = b"{\"package\":\"Switch 2 Title\",\"runtime\":\"nnSdk 23.0.1\"}";
+        let manifest = b"{\"package\":\"Synthetic Test Package\",\"runtime\":\"sdk-hle\"}";
         vfs.mount_file("rom:/manifest.json", manifest);
         RESULT_SUCCESS
     }
@@ -303,7 +303,7 @@ impl NnFsManager {
     }
 }
 
-/// Nintendo SDK `nn::os` High-Level Implementation Manager.
+/// SDK-style HLE of (`nn::os` High-Level Implementation Manager.
 #[derive(Debug, Clone)]
 pub struct NnOsManager {
     pub system_tick_freq: u64,
@@ -352,9 +352,9 @@ impl NnOsManager {
     }
 }
 
-/// Unified Nintendo SDK (`nnSdk`) Runtime Engine.
+/// SDK-style HLE runtime (clean-room; no SDK code).
 #[derive(Debug)]
-pub struct NnSdkRuntime {
+pub struct SdkHleRuntime {
     pub allocator: StandardAllocator,
     pub fs: NnFsManager,
     pub os: NnOsManager,
@@ -362,7 +362,7 @@ pub struct NnSdkRuntime {
     pub total_sdk_calls: u64,
 }
 
-impl NnSdkRuntime {
+impl SdkHleRuntime {
     pub fn new() -> Self {
         Self {
             allocator: StandardAllocator::new(),
@@ -451,7 +451,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_nnsdk_standard_allocator_roundtrip() {
+    fn test_sdk_hle_standard_allocator_roundtrip() {
         let mut mmu = Memory::new();
         let mut allocator = StandardAllocator::new();
 
@@ -474,14 +474,14 @@ mod tests {
     }
 
     #[test]
-    fn test_nnsdk_fs_and_os_primitives() {
+    fn test_sdk_hle_fs_and_os_primitives() {
         let mut mmu = Memory::new();
         let mut vfs = VirtualFileSystem::new();
-        let mut runtime = NnSdkRuntime::new();
+        let mut runtime = SdkHleRuntime::new();
 
         runtime.initialize_runtime(0x8000_0000, 0x10_0000, &mut vfs, &mut mmu);
 
-        // Open and read manifest mounted by nnSdk
+        // Open and read manifest mounted by the SDK HLE
         let (res, handle) = runtime.fs.open_file("rom:/manifest.json", 1, &vfs);
         assert_eq!(res, RESULT_SUCCESS);
         assert!(handle >= 100);
@@ -494,7 +494,7 @@ mod tests {
         let mut read_back = vec![0u8; bytes];
         mmu.read_bytes(dest_buf, &mut read_back).unwrap();
         let text = String::from_utf8_lossy(&read_back);
-        assert!(text.contains("Switch 2 Title"));
+        assert!(text.contains("Synthetic Test Package"));
 
         assert_eq!(runtime.fs.close_file(handle), RESULT_SUCCESS);
 
@@ -505,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nnsdk_fs_directory_and_sdmc_operations() {
+    fn test_sdk_hle_fs_directory_and_sdmc_operations() {
         let mut vfs = VirtualFileSystem::new();
         let mut fs_mgr = NnFsManager::new();
 
