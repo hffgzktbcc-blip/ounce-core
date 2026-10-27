@@ -37,6 +37,10 @@ pub enum StepResult {
 pub struct Cpu {
     pub regs: CpuRegisters,
     pub jit: JitBlockCache,
+    /// Exclusive monitor: the address the last load-exclusive tagged. A store-exclusive succeeds only
+    /// while it is still set for that address; switching threads clears it, so an interrupted
+    /// LDXR/STXR sequence retries as on hardware.
+    pub exclusive: Option<u64>,
 }
 
 impl Default for Cpu {
@@ -50,6 +54,7 @@ impl Cpu {
         Self {
             regs: CpuRegisters::new(),
             jit: JitBlockCache::new(),
+            exclusive: None,
         }
     }
 
@@ -1100,6 +1105,15 @@ impl Cpu {
                 is_exclusive,
             } => {
                 let addr = self.regs.read_x_or_sp(rn);
+                if !is_load && is_exclusive && self.exclusive.take() != Some(addr) {
+                    // The monitor was lost (another thread ran since the load-exclusive): fail, no store.
+                    self.regs.write_w(rs, 1);
+                    self.regs.advance_pc();
+                    return Ok(StepResult::Continue);
+                }
+                if is_load && is_exclusive {
+                    self.exclusive = Some(addr);
+                }
                 if is_load {
                     let val = match size_bytes {
                         1 => mmu.read_u8(addr)? as u64,
@@ -1498,6 +1512,7 @@ mod tests {
             (0x4e181cc5, "SimdInsGeneral"),     // mov v5.d[1], x6
             (0x4d0048a4, "SimdLoadStoreSingle"), // st1 {v4.h}[5], [x5]
             (0x3d4a001d, "SimdLoadStore"),      // ldr b29, [x0, #640]
+            (0x1e2e101f, "SimdModImm"),         // fmov s31, #1.0
         ];
         for &(raw, name) in table {
             let got = format!("{:?}", super::super::decoder::decode(raw));
@@ -1684,6 +1699,14 @@ mod tests {
         assert_eq!(cpu.regs.read_q(7), rep(0x3F80_0000_3F80_0000)); // fmov v7.4s, #1.0
         assert_eq!(cpu.regs.read_q(8), rep((-2.5f64).to_bits())); // fmov v8.2d, #-2.5
         assert_eq!(cpu.regs.read_q(9), rep(0x0000_5AFF_0000_5AFF)); // movi v9.4s, #0x5a, msl #8
+
+        // fmov s31, #1.0 / fmov d0, #-2.5 (scalar): low bits only, rest zeroed.
+        let (cpu, _) = run(&[0x1e2e101f, 0x1e709000], |c, _| {
+            c.regs.write_q(31, u128::MAX);
+            c.regs.write_q(0, u128::MAX);
+        });
+        assert_eq!(cpu.regs.read_q(31), 1.0f32.to_bits() as u128);
+        assert_eq!(cpu.regs.read_q(0), (-2.5f64).to_bits() as u128);
     }
 
     #[test]

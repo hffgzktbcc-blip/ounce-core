@@ -78,6 +78,10 @@ pub enum ServiceType {
     TransferMemory { addr: u64, size: u64 },
     /// Readable event handed out by nvdrv `QueryEvent` (syncpoint and channel error events).
     NvEvent { fd: u32, event_id: u32 },
+    /// `IAudioRenderer` opened through `audren:u` (state in `IpcManager::audio_renderer`).
+    AudioRenderer,
+    /// The audio renderer's system event: signaled once per rendered frame.
+    AudioRendererEvent,
 }
 
 /// Size of the HID shared memory block libnx maps (`0x40000`).
@@ -125,6 +129,8 @@ pub struct IpcManager {
     pub nvdrv: super::nvdrv::NvDrv,
     /// HID shared memory in libnx's layout; the host's controller input goes here.
     pub hid: super::hid::HidSharedMemory,
+    /// The `IAudioRenderer` opened through `audren:u`, if any.
+    pub audio_renderer: Option<super::audren::AudioRendererModel>,
     next_handle: u32,
     pub total_ipc_requests: u64,
     pub start_instant: std::time::Instant,
@@ -146,6 +152,7 @@ impl IpcManager {
             domain_reply: false,
             nvdrv: super::nvdrv::NvDrv::new(),
             hid: Default::default(),
+            audio_renderer: None,
             next_handle: 0x10001,
             total_ipc_requests: 0,
             start_instant: std::time::Instant::now(),
@@ -380,15 +387,25 @@ impl IpcManager {
             },
 
             ServiceType::AudRen => match cmd_id {
-                // Command 0: OpenAudioRenderer -> returns IAudioRenderer session handle
+                // Command 0: OpenAudioRenderer(AudioRendererParameter, aruid; transfer memory, process)
+                // -> IAudioRenderer. The parameter block starts with sample rate, sample count, mix buffer
+                // count, submix count, voice count and sink count.
                 0 => {
-                    let renderer_h = self.allocate_handle(ServiceType::AudRen);
+                    let p = |i: u64| mmu.read_u32(args_base + i * 4).unwrap_or(0);
+                    self.audio_renderer = Some(super::audren::AudioRendererModel::new(super::audren::RendererParams {
+                        sample_rate: p(0),
+                        sample_count: p(1),
+                        mix_buffer_count: p(2),
+                        voice_count: p(4),
+                        sink_count: p(5),
+                    }));
+                    let renderer_h = self.allocate_handle(ServiceType::AudioRenderer);
                     self.write_cmif_response(tls_addr, mmu, 0, &[renderer_h], Some(renderer_h));
                     0
                 }
-                // Command 1: GetAudioRendererWorkBufferSize -> returns 0x40000 (256 KB)
+                // Command 1: GetWorkBufferSize(AudioRendererParameter) -> u64 (256 KB)
                 1 => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0x40000], None);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0x40000, 0], None);
                     0
                 }
                 // Command 4: RequestUpdateAudioRenderer -> returns 0 (Success)
@@ -1089,8 +1106,64 @@ impl IpcManager {
             }
 
             // Not a session: requests on it are invalid.
-            ServiceType::SharedMemory { .. } | ServiceType::TransferMemory { .. } | ServiceType::NvEvent { .. } => 0xE401,
+            ServiceType::SharedMemory { .. }
+            | ServiceType::TransferMemory { .. }
+            | ServiceType::NvEvent { .. }
+            | ServiceType::AudioRendererEvent => 0xE401,
+
+            ServiceType::AudioRenderer => self.handle_audio_renderer(cmd_id, tls_addr, mmu),
         }
+    }
+
+    /// `IAudioRenderer` commands (libnx `audren`).
+    fn handle_audio_renderer(&mut self, cmd_id: u32, tls_addr: u64, mmu: &mut Memory) -> u64 {
+        let Some(r) = self.audio_renderer.as_ref() else {
+            self.write_cmif_response(tls_addr, mmu, 0xE401, &[], None);
+            return 0;
+        };
+        let (params, started) = (r.params, r.started);
+        match cmd_id {
+            // GetSampleRate / GetSampleCount / GetMixBufferCount -> u32
+            0 => self.write_cmif_response(tls_addr, mmu, 0, &[params.sample_rate], None),
+            1 => self.write_cmif_response(tls_addr, mmu, 0, &[params.sample_count], None),
+            2 => self.write_cmif_response(tls_addr, mmu, 0, &[params.mix_buffer_count], None),
+            // GetState -> u32 (0 started, 1 stopped)
+            3 => {
+                let state = if started { 0 } else { 1 };
+                self.write_cmif_response(tls_addr, mmu, 0, &[state], None);
+            }
+            // RequestUpdate(in update data; out output data, out performance data), buffers A/B or X/C
+            4 | 10 => {
+                let req = self.request.clone();
+                let input = req.send_buffers.first().copied().filter(|b| b.size > 0).or(req.send_statics.first().map(|&(_, b)| b)).unwrap_or_default();
+                let output = req.recv_buffers.first().copied().filter(|b| b.size > 0).or(req.recv_list.first().copied()).unwrap_or_default();
+                let mut inb = vec![0u8; input.size.min(0x10_0000) as usize];
+                let _ = mmu.read_bytes(input.addr, &mut inb);
+                let mut outb = vec![0u8; output.size.min(0x10_0000) as usize];
+                let result = self.audio_renderer.as_mut().unwrap().update(&inb, &mut outb);
+                let _ = mmu.write_bytes(output.addr, &outb);
+                self.write_cmif_response(tls_addr, mmu, result, &[], None);
+            }
+            // Start / Stop
+            5 | 6 => {
+                self.audio_renderer.as_mut().unwrap().started = cmd_id == 5;
+                self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+            }
+            // QuerySystemEvent -> copy handle, signaled once per rendered frame
+            7 => {
+                let h = self.allocate_handle(ServiceType::AudioRendererEvent);
+                self.reply(tls_addr, mmu, 0, &[], &[h], None);
+            }
+            // GetRenderingTimeLimit -> u32 percent; SetRenderingTimeLimit and the rest accepted
+            9 => self.write_cmif_response(tls_addr, mmu, 0, &[100], None),
+            _ => self.write_cmif_response(tls_addr, mmu, 0, &[], None),
+        }
+        0
+    }
+
+    /// Whether `handle` is the audio renderer's system event.
+    pub fn is_audio_renderer_event(&self, handle: u32) -> bool {
+        self.handles.get(&handle) == Some(&ServiceType::AudioRendererEvent)
     }
 
     /// `nvdrv` commands in the form libnx sends them. Each reply carries the nvdrv status word that
