@@ -74,6 +74,8 @@ pub enum ServiceType {
     Generic(String),
     /// Shared memory object (not a session): handed out as a copy handle, mapped with svcMapSharedMemory.
     SharedMemory { size: u64 },
+    /// Transfer memory object from svcCreateTransferMemory: guest memory lent to a service.
+    TransferMemory { addr: u64, size: u64 },
 }
 
 /// Size of the HID shared memory block libnx maps (`0x40000`).
@@ -117,6 +119,8 @@ pub struct IpcManager {
     pub domains: std::collections::HashSet<u32>,
     /// The current request arrived on a domain: replies use the domain layout.
     domain_reply: bool,
+    /// `nvdrv` devices and nvmap objects for libnx-shaped requests.
+    pub nvdrv: super::nvdrv::NvDrv,
     next_handle: u32,
     pub total_ipc_requests: u64,
     pub start_instant: std::time::Instant,
@@ -136,6 +140,7 @@ impl IpcManager {
             registered_pid: None,
             domains: Default::default(),
             domain_reply: false,
+            nvdrv: super::nvdrv::NvDrv::new(),
             next_handle: 0x10001,
             total_ipc_requests: 0,
             start_instant: std::time::Instant::now(),
@@ -232,6 +237,14 @@ impl IpcManager {
 
         let cmd_id = mmu.read_u32(cmif_base + 8).unwrap_or(0);
         let args_base = cmif_base + 0x10;
+
+        // libnx-shaped nvdrv requests carry their data in buffers; the harness's inline form keeps the
+        // older handler below.
+        let r = &self.request;
+        let has_buffers = !(r.send_statics.is_empty() && r.send_buffers.is_empty() && r.recv_buffers.is_empty());
+        if service == ServiceType::Nvdrv && (has_buffers || matches!(cmd_id, 2 | 4 | 8)) {
+            return self.handle_nvdrv(cmd_id, args_base, tls_addr, mmu);
+        }
 
         match service {
             ServiceType::Sm => match cmd_id {
@@ -1070,8 +1083,58 @@ impl IpcManager {
             }
 
             // Not a session: requests on it are invalid.
-            ServiceType::SharedMemory { .. } => 0xE401,
+            ServiceType::SharedMemory { .. } | ServiceType::TransferMemory { .. } => 0xE401,
         }
+    }
+
+    /// `nvdrv` commands in the form libnx sends them. Each reply carries the nvdrv status word that
+    /// libnx turns into a result with `nvConvertError`.
+    fn handle_nvdrv(&mut self, cmd_id: u32, args_base: u64, tls_addr: u64, mmu: &mut Memory) -> u64 {
+        let req = self.request.clone();
+        // An X buffer with a size, else the A buffer (libnx "auto select"); likewise C, else B.
+        let input = req.send_statics.first().map(|&(_, b)| b).filter(|b| b.size > 0).or(req.send_buffers.first().copied());
+        let output = req.recv_list.first().copied().filter(|b| b.size > 0).or(req.recv_buffers.first().copied());
+        match cmd_id {
+            // Open(path in A) -> (fd, status)
+            0 => {
+                let buf = input.unwrap_or_default();
+                let mut path = vec![0u8; (buf.size as usize).min(0x100)];
+                let _ = mmu.read_bytes(buf.addr, &mut path);
+                let len = path.iter().position(|&b| b == 0).unwrap_or(path.len());
+                let (fd, status) = self.nvdrv.open(&String::from_utf8_lossy(&path[..len]));
+                self.write_cmif_response(tls_addr, mmu, 0, &[fd, status], None);
+            }
+            // Ioctl(fd, request), argument block in X/A, written back to C/B -> status
+            1 => {
+                let fd = mmu.read_u32(args_base).unwrap_or(0);
+                let request = mmu.read_u32(args_base + 4).unwrap_or(0);
+                let mut data = vec![0u8; super::nvdrv::ioctl_size(request)];
+                if super::nvdrv::ioctl_has_input(request) {
+                    if let Some(b) = input {
+                        let n = data.len().min(b.size as usize);
+                        let _ = mmu.read_bytes(b.addr, &mut data[..n]);
+                    }
+                }
+                let status = self.nvdrv.ioctl(fd, request, &mut data);
+                if super::nvdrv::ioctl_has_output(request) {
+                    if let Some(b) = output {
+                        let n = data.len().min(b.size as usize);
+                        let _ = mmu.write_bytes(b.addr, &data[..n]);
+                    }
+                }
+                self.write_cmif_response(tls_addr, mmu, 0, &[status], None);
+            }
+            // Close(fd) -> status
+            2 => {
+                let status = self.nvdrv.close(mmu.read_u32(args_base).unwrap_or(0));
+                self.write_cmif_response(tls_addr, mmu, 0, &[status], None);
+            }
+            // QueryEvent(fd, event_id): events are not modelled.
+            4 => self.write_cmif_response(tls_addr, mmu, 0, &[super::nvdrv::NV_NOT_IMPLEMENTED], None),
+            // Initialize (tmem size, process + transfer memory handles) / SetClientPID -> status
+            _ => self.write_cmif_response(tls_addr, mmu, 0, &[super::nvdrv::NV_OK], None),
+        }
+        0
     }
 
     /// A path argument: libnx sends `FsPath` in the first send static (X) buffer; older callers put a

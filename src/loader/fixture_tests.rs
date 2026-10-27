@@ -268,3 +268,13 @@ fn libnx_romfs_fixture_reads_its_romfs() {
     let (output, svcs) = boot_with_kernel(&nro, &[]);
     assert!(output.ends_with("ounce-romfs result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
 }
+
+/// `tests/fixtures/nro/nvdrv`: libnx `nvInitialize` (transfer memory, Initialize, cloned session),
+/// `nvMapInit` and `nvMapCreate` (nvmap CREATE, ALLOC, GET_ID ioctls).
+#[test]
+fn libnx_nvdrv_fixture_creates_an_nvmap_object() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/nvdrv/nvdrv.nro");
+    let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let (output, svcs) = boot_with_kernel(&nro, &[]);
+    assert!(output.ends_with("ounce-nvdrv result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+}

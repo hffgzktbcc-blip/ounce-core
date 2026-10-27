@@ -3,6 +3,7 @@
 pub mod hipc;
 pub mod ipc;
 pub mod nnsdk;
+pub mod nvdrv;
 pub mod scheduler;
 pub mod svc;
 pub mod sync;

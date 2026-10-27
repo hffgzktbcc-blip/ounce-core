@@ -145,3 +145,9 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - CPU: AdvSIMD modified immediate (`MOVI/MVNI/ORR/BIC/FMOV` vector), `DUP`/`INS` (element) and `INS` (general), `LD1/ST1` single structure + `LD1R`, `ZIP/UZP/TRN`, `LDR/STR` B/H unsigned offset.
   - Fixture `tests/fixtures/nro/romfs/` (sm, fs, sdmc, romfsInit, read `romfs:/greeting.txt`) -> `0x00000EEE`.
   - Next: `nvdrv` (open, ioctls, `nvmap`), HID input into the guest-mapped shared memory, IStorage Read for NSO-style `OpenDataStorageByCurrentProcess`.
+* **Handoff: libnx service handshakes, step 3 (nvdrv + nvmap)** (branch `claude/libnx-nvdrv`, stacked on #35, 2026-10-27)
+  - New `src/kernel/nvdrv.rs` (Track B reserved): device files by path, nvmap objects (`CREATE`, `FROM_ID`, `ALLOC`, `FREE`, `PARAM`, `GET_ID`, Linux Tegra nvmap UAPI layouts); other ioctls return `NV_NOT_IMPLEMENTED` and are recorded in `NvDrv::unhandled`.
+  - `src/kernel/ipc.rs`: libnx-shaped nvdrv requests (data in X/A, out through C/B, plus Close/QueryEvent/SetClientPID) go to `IpcManager::handle_nvdrv`; the harness's inline-argument nvdrv form keeps the older handler. `ServiceType::TransferMemory` added.
+  - Outside the reserved list (flagged): `src/kernel/svc.rs` `0x15` svcCreateTransferMemory; `src/kernel/mod.rs` registers the module.
+  - Fixture `tests/fixtures/nro/nvdrv/` (nvInitialize, nvMapInit, nvMapCreate, close/exit) -> `0x00000EEE`.
+  - Next: nvhost-ctrl / nvhost-as-gpu / nvhost-gpu ioctls for real GPU channels, QueryEvent events, HID input into the guest-mapped shared memory.

@@ -271,6 +271,15 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
+            // 0x15: svcCreateTransferMemory(&out_handle, addr, size, perm)
+            0x15 => {
+                let (addr, size) = (cpu.regs.read_x(1), cpu.regs.read_x(2));
+                let handle = self.ipc.allocate_handle(ServiceType::TransferMemory { addr, size });
+                cpu.regs.write_x(0, 0);
+                cpu.regs.write_x(1, handle as u64);
+                SvcResult::Success
+            }
+
             // 0x16: svcCloseHandle(handle)
             0x16 => {
                 let handle = cpu.regs.read_w(0);
