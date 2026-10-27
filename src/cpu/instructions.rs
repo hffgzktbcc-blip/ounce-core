@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub use super::pauth::{PacKey, PacModifier};
+
 /// AArch64 Condition Codes for conditional branching (`B.cond`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Condition {
@@ -187,6 +189,40 @@ pub enum Instruction {
     BranchReg {
         rn: u8,
         op: BranchRegOp,
+    },
+
+    /// Authenticated branch to register: `BRAA/BRAB/BLRAA/BLRAB Xn, Xm|SP`, the `*Z` forms
+    /// (modifier 0) and `RETAA/RETAB` (`rn` = 30, modifier SP).
+    BranchRegAuth {
+        rn: u8,
+        op: BranchRegOp,
+        key: PacKey,
+        modifier: PacModifier,
+    },
+
+    /// Pointer authentication on `rd`: `PAC*`/`AUT*`/`XPAC*`, including the HINT forms
+    /// (`PACIASP`, `AUTIA1716`, `XPACLRI`, ...). `key` is IA/DA for `XPACI`/`XPACD`.
+    Pauth {
+        rd: u8,
+        op: PauthOp,
+        key: PacKey,
+        modifier: PacModifier,
+    },
+
+    /// `PACGA Xd, Xn, Xm|SP`
+    Pacga {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+    },
+
+    /// `LDRAA/LDRAB Xt, [Xn|SP, #simm]{!}`: authenticates `Xn` with the DA/DB key and modifier 0.
+    LoadAuth {
+        rt: u8,
+        rn: u8,
+        offset: i64,
+        key: PacKey,
+        writeback: bool,
     },
 
     /// Compare and Branch: `CBZ/CBNZ Xn|Wn, label`
@@ -533,6 +569,13 @@ pub enum MoveWideOp {
     Movn = 0b00,
     Movz = 0b10,
     Movk = 0b11,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PauthOp {
+    Sign,
+    Auth,
+    Strip,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

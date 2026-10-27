@@ -15,6 +15,8 @@ pub struct Pstate {
     pub c: bool,
     /// Overflow condition flag (bit 28)
     pub v: bool,
+    /// `PSTATE.BTYPE` (FEAT_BTI). Not part of NZCV; `to_bits`/`from_bits` leave it alone.
+    pub btype: u8,
 }
 
 impl Pstate {
@@ -24,6 +26,7 @@ impl Pstate {
             z: false,
             c: false,
             v: false,
+            btype: 0,
         }
     }
 

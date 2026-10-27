@@ -29,6 +29,8 @@ pub struct Page {
     pub holds_code: bool,
     /// Value of `Memory::code_write_gen` at the last write to this page while it held code.
     pub code_write_gen: u64,
+    /// Guarded page (the stage-1 `GP` bit, FEAT_BTI): indirect branches into it need a landing pad.
+    pub guarded: bool,
 }
 
 impl Page {
@@ -38,6 +40,7 @@ impl Page {
             perm,
             holds_code: false,
             code_write_gen: 0,
+            guarded: false,
         }
     }
 }
@@ -213,6 +216,26 @@ impl Memory {
 
     pub fn is_mapped(&self, addr: u64) -> bool {
         self.pages.contains_key(&(addr >> 12))
+    }
+
+    /// Sets or clears the guarded-page flag (FEAT_BTI) on every mapped page in `[start, start + size)`.
+    /// Nothing sets it by default; remapping a page clears it.
+    pub fn set_guarded(&mut self, start: u64, size: u64, guarded: bool) {
+        if size == 0 {
+            return;
+        }
+        let end = start.saturating_add(size - 1);
+        for page_idx in (start >> 12)..=(end >> 12) {
+            if let Some(page) = self.pages.get_mut(&page_idx) {
+                page.guarded = guarded;
+            }
+        }
+    }
+
+    /// True if `addr` is in a mapped guarded page.
+    #[inline]
+    pub fn is_guarded(&self, addr: u64) -> bool {
+        self.pages.get(&(addr >> 12)).is_some_and(|p| p.guarded)
     }
 
     /// Access the Page for a page number (VA >> 12), if mapped.
