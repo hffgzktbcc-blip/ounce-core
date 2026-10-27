@@ -37,7 +37,7 @@ pub mod ext {
     pub const APPEND_AUDIO_BUFFER: u16 = 0x103;
     pub const WRITE_SAVE_DATA_FILE: u16 = 0x104;
     pub const NVN_SUBMIT_COMMAND_BUFFER: u16 = 0x105;
-    pub const NNSDK_DISPATCH: u16 = 0x106;
+    pub const SDK_HLE_DISPATCH: u16 = 0x106;
 
     /// Encodes `svc #imm`.
     pub const fn svc(imm: u16) -> u32 {
@@ -61,7 +61,7 @@ pub struct HorizonKernel {
     pub scheduler: ThreadScheduler,
     pub sync: SyncManager,
     pub nvn: crate::gpu::nvn::NvnDriver,
-    pub nnsdk: super::nnsdk::NnSdkRuntime,
+    pub sdk_hle: super::sdk_hle::SdkHleRuntime,
     pub reply_receive_step: u32,
 }
 
@@ -85,7 +85,7 @@ impl HorizonKernel {
             scheduler: ThreadScheduler::new(),
             sync: SyncManager::new(),
             nvn: crate::gpu::nvn::NvnDriver::new(),
-            nnsdk: super::nnsdk::NnSdkRuntime::new(),
+            sdk_hle: super::sdk_hle::SdkHleRuntime::new(),
             reply_receive_step: 0,
         }
     }
@@ -135,6 +135,7 @@ impl HorizonKernel {
             .iter()
             .all(|h| {
                 self.scheduler.thread_signaled(*h).is_some() || self.sync.events.contains_key(h) || self.ipc.is_audio_renderer_event(*h)
+                    || self.ipc.service_event_signaled(*h).is_some()
             })
             .then_some(handles)
     }
@@ -434,7 +435,9 @@ impl HorizonKernel {
             // 0x17: svcResetSignal(handle): clear an event (the audio renderer event re-arms per frame).
             0x17 => {
                 let handle = cpu.regs.read_w(0);
-                let ok = self.sync.clear_event(handle) || self.ipc.is_audio_renderer_event(handle);
+                let ok = self.sync.clear_event(handle)
+                    || self.ipc.is_audio_renderer_event(handle)
+                    || self.ipc.service_event_signaled(handle).is_some();
                 cpu.regs.write_x(0, if ok { 0 } else { 0xE401 });
                 SvcResult::Success
             }
@@ -452,7 +455,10 @@ impl HorizonKernel {
                 let signaled = audio_event.or_else(|| {
                     handles.iter().position(|&h| match self.scheduler.thread_signaled(h) {
                         Some(exited) => exited,
-                        None => self.sync.events.get(&h).is_some_and(|e| e.signaled),
+                        None => match self.ipc.service_event_signaled(h) {
+                            Some(signaled) => signaled,
+                            None => self.sync.events.get(&h).is_some_and(|e| e.signaled),
+                        },
                     })
                 });
                 if let Some(i) = signaled {
@@ -836,14 +842,14 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
-            // ext::NNSDK_DISPATCH(func_id, arg0, arg1, arg2, arg3) - Nintendo SDK C++ HLE Dispatch
-            ext::NNSDK_DISPATCH => {
+            // ext::SDK_HLE_DISPATCH(func_id, arg0, arg1, arg2, arg3) - SDK-style HLE dispatch
+            ext::SDK_HLE_DISPATCH => {
                 let func_id = cpu.regs.read_w(0);
                 let arg0 = cpu.regs.read_x(1);
                 let arg1 = cpu.regs.read_x(2);
                 let arg2 = cpu.regs.read_x(3);
                 let arg3 = cpu.regs.read_x(4);
-                let (res, out_val) = self.nnsdk.dispatch_call(
+                let (res, out_val) = self.sdk_hle.dispatch_call(
                     func_id,
                     arg0,
                     arg1,

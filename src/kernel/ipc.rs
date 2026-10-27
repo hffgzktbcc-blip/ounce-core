@@ -70,6 +70,22 @@ pub enum ServiceType {
     Prepo,
     /// Background Content Access ("bcat:u" / "bcat:a")
     Bcat,
+    /// Applet Manager for system and library applets ("appletAE")
+    AppletAE,
+    /// An `am` sub-interface (`kernel/applet.rs`)
+    Applet(super::applet::AppletInterface),
+    /// Device settings ("set")
+    Set,
+    /// `ITimeZoneService` from `time:u` / `time:s`
+    TimeZoneService,
+    /// Power supply ("psm") and its `IPsmSession`
+    Psm,
+    PsmSession,
+    /// Performance management ("apm") and its `ISession`
+    Apm,
+    ApmSession,
+    /// Readable event handed out by a system service (applet message queue, psm, ...).
+    ServiceEvent(&'static str),
     /// Generic stubbed service
     Generic(String),
     /// Shared memory object (not a session): handed out as a copy handle, mapped with svcMapSharedMemory.
@@ -134,6 +150,10 @@ pub struct IpcManager {
     pub hid: super::hid::HidSharedMemory,
     /// The `IAudioRenderer` opened through `audren:u`, if any.
     pub audio_renderer: Option<super::audren::AudioRendererModel>,
+    /// Applet message queue, focus and operation mode shared by every `am` session.
+    pub applet: super::applet::AppletState,
+    pub apm: super::apm::ApmState,
+    pub time: super::time::TimeState,
     next_handle: u32,
     pub total_ipc_requests: u64,
     pub start_instant: std::time::Instant,
@@ -156,6 +176,9 @@ impl IpcManager {
             nvdrv: super::nvdrv::NvDrv::new(),
             hid: Default::default(),
             audio_renderer: None,
+            applet: Default::default(),
+            apm: Default::default(),
+            time: Default::default(),
             next_handle: 0x10001,
             total_ipc_requests: 0,
             start_instant: std::time::Instant::now(),
@@ -261,6 +284,10 @@ impl IpcManager {
             return self.handle_nvdrv(cmd_id, args_base, tls_addr, mmu, nvgpu);
         }
 
+        if let Some(res) = self.handle_system_service(&service, cmd_id, args_base, tls_addr, mmu) {
+            return res;
+        }
+
         match service {
             ServiceType::Sm => match cmd_id {
                 // Command 0: RegisterClient (sends the client's PID in the special header)
@@ -284,10 +311,14 @@ impl IpcManager {
                         "audout:u" => ServiceType::AudOut,
                         "audren:u" => ServiceType::AudRen,
                         "appletOE" => ServiceType::AppletOE,
+                        "appletAE" => ServiceType::AppletAE,
+                        "set" => ServiceType::Set,
                         "set:sys" => ServiceType::SetSys,
+                        "psm" => ServiceType::Psm,
+                        "apm" | "apm:p" | "apm:am" => ServiceType::Apm,
                         "ro:1" | "ro:dmnt" | "ldr:ro" => ServiceType::Ro,
                         "pl:u" | "pl:s" => ServiceType::Pl,
-                        "time:u" | "time:s" => ServiceType::Time,
+                        "time:u" | "time:s" | "time:a" | "time:r" | "time:su" => ServiceType::Time,
                         "prepo:u" | "prepo:a" | "prepo:m" => ServiceType::Prepo,
                         "bcat:u" | "bcat:a" | "bcat:m" => ServiceType::Bcat,
                         other => ServiceType::Generic(other.to_string()),
@@ -1116,6 +1147,17 @@ impl IpcManager {
             | ServiceType::AudioRendererEvent => 0xE401,
 
             ServiceType::AudioRenderer => self.handle_audio_renderer(cmd_id, tls_addr, mmu),
+
+            // Routed by `handle_system_service` above.
+            ServiceType::AppletAE
+            | ServiceType::Applet(_)
+            | ServiceType::Set
+            | ServiceType::TimeZoneService
+            | ServiceType::Psm
+            | ServiceType::PsmSession
+            | ServiceType::Apm
+            | ServiceType::ApmSession
+            | ServiceType::ServiceEvent(_) => 0xE401,
         }
     }
 
@@ -1270,6 +1312,7 @@ impl IpcManager {
         if self.hid.handle == Some(handle) {
             self.hid.mapped(addr, mmu);
         }
+        self.time_shared_memory_mapped(handle, addr, mmu);
     }
 
     /// The guest unmapped shared memory at `addr` (svcUnmapSharedMemory).
@@ -1313,7 +1356,7 @@ impl IpcManager {
     /// Writes a response. `new_object` is a session this request created: a move handle on a plain session,
     /// an out object ID on a domain. Handlers echo that handle as their first out word for the harness's
     /// fixed-offset reads; on a domain the echo is dropped so the object ID lands right after the real data.
-    fn reply(&self, tls_addr: u64, mmu: &mut Memory, result: u32, data: &[u8], copy_handles: &[u32], new_object: Option<u32>) {
+    pub(super) fn reply(&self, tls_addr: u64, mmu: &mut Memory, result: u32, data: &[u8], copy_handles: &[u32], new_object: Option<u32>) {
         let objects: Vec<u32> = new_object.into_iter().collect();
         if self.domain_reply {
             let data = match new_object {

@@ -261,7 +261,7 @@ impl NroLoader {
     }
 
     /// Loads an uncompressed Nintendo Shared Object (`NSO0`) executable into virtual memory
-    /// (such as Switch 2 `RO` / `FS` system modules and retail ExeFS `main` binaries) and applies
+    /// (such as Switch 2 `RO` / `FS` system modules and ExeFS `main` binaries) and applies
     /// its relocations against its own symbols only. Modules that import from other modules should
     /// use `load_nso_segments` and then `apply_relocations` with a combined export table.
     pub fn load_nso_into_memory(
