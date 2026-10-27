@@ -3,7 +3,7 @@
 use byteorder::{ByteOrder, LittleEndian};
 use super::nvgpu::{
     NvgpuChannel, SubmissionMode, METHOD_BIND_SHADER_PROGRAM, METHOD_BIND_TEXTURE_2D,
-    METHOD_CLEAR_SURFACE, METHOD_DISPATCH_DLSS_UPSCALE, METHOD_DRAW_ARRAYS,
+    METHOD_CLEAR_SURFACE, METHOD_DISPATCH_UPSCALE_2X, METHOD_DRAW_ARRAYS,
     METHOD_DRAW_INDEXED, METHOD_DRAW_TEXTURED_ARRAYS, METHOD_SET_CLEAR_COLOR,
     METHOD_SET_DEPTH_TEST_ENABLE, METHOD_SET_INDEX_ARRAY_ADDR,
     METHOD_SET_RENDER_TARGET_ADDR, METHOD_SET_VERTEX_ARRAY_ADDR, METHOD_SET_VIEWPORT_DIMS,
@@ -15,7 +15,7 @@ pub const NVN_DEVICE_INFO_API_MAJOR_VERSION: u32 = 0x0000;
 pub const NVN_DEVICE_INFO_API_MINOR_VERSION: u32 = 0x0001;
 pub const NVN_DEVICE_INFO_UNIFORM_BUFFER_ALIGNMENT: u32 = 0x0004;
 pub const NVN_DEVICE_INFO_MAX_TEXTURE_ANISOTROPY: u32 = 0x0009;
-pub const NVN_DEVICE_INFO_SUPPORTS_T239_DLSS: u32 = 0x0100;
+pub const NVN_DEVICE_INFO_SUPPORTS_UPSCALE_2X: u32 = 0x0100;
 pub const NVN_DEVICE_INFO_T239_SM_VERSION: u32 = 0x0101;
 
 /// Guest Memory Binary Command Opcode for `nvnCommandBuffer` streams (`SVC #0x105` (`ext::NVN_SUBMIT_COMMAND_BUFFER`) / `nvdrv` `IOCTL_NVN_SUBMIT`)
@@ -28,7 +28,7 @@ pub const NVN_CMD_BIND_TEXTURE: u32 = 0x06;
 pub const NVN_CMD_BIND_VERTEX_BUFFER: u32 = 0x07;
 pub const NVN_CMD_DRAW_ARRAYS: u32 = 0x08;
 pub const NVN_CMD_DRAW_TEXTURED: u32 = 0x09;
-pub const NVN_CMD_DLSS_UPSCALE: u32 = 0x0A;
+pub const NVN_CMD_UPSCALE_2X: u32 = 0x0A;
 pub const NVN_CMD_BIND_TEXTURE_DESCRIPTOR: u32 = 0x0B;
 pub const NVN_CMD_BUFFER_CYCLE: u32 = 0x0C;
 pub const NVN_CMD_BIND_INDEX_BUFFER: u32 = 0x0D;
@@ -413,7 +413,7 @@ pub enum NvnCmd {
     BindVertexBuffer { vb_addr: u32 },
     DrawArrays { vertex_count: u32 },
     DrawTextured { vertex_count: u32 },
-    DlssUpscale { src_addr: u32, src_w: u32, src_h: u32, dst_addr: u32 },
+    Upscale2x { src_addr: u32, src_w: u32, src_h: u32, dst_addr: u32 },
     BufferCycle { buffer_id: u32 },
     BindIndexBuffer { ib_addr: u32, is_32bit: bool },
     DrawElements { index_count: u32, textured: bool },
@@ -470,8 +470,8 @@ impl NvnCommandBuffer {
         self.commands.push(NvnCmd::DrawTextured { vertex_count });
     }
 
-    pub fn dispatch_dlss_upscale(&mut self, src_addr: u32, src_w: u32, src_h: u32, dst_addr: u32) {
-        self.commands.push(NvnCmd::DlssUpscale {
+    pub fn dispatch_upscale_2x(&mut self, src_addr: u32, src_w: u32, src_h: u32, dst_addr: u32) {
+        self.commands.push(NvnCmd::Upscale2x {
             src_addr,
             src_w,
             src_h,
@@ -529,14 +529,14 @@ impl NvnCommandBuffer {
                 NvnCmd::DrawTextured { vertex_count } => {
                     out.extend_from_slice(&[NVN_CMD_DRAW_TEXTURED, vertex_count]);
                 }
-                NvnCmd::DlssUpscale {
+                NvnCmd::Upscale2x {
                     src_addr,
                     src_w,
                     src_h,
                     dst_addr,
                 } => {
                     out.extend_from_slice(&[
-                        NVN_CMD_DLSS_UPSCALE,
+                        NVN_CMD_UPSCALE_2X,
                         src_addr,
                         src_w,
                         src_h,
@@ -664,7 +664,7 @@ impl NvnCommandBuffer {
                     ));
                     pb.push(vertex_count);
                 }
-                NvnCmd::DlssUpscale {
+                NvnCmd::Upscale2x {
                     src_addr,
                     src_w,
                     src_h,
@@ -673,7 +673,7 @@ impl NvnCommandBuffer {
                     pb.push(NvgpuChannel::encode_header(
                         SubmissionMode::Increasing,
                         2,
-                        METHOD_DISPATCH_DLSS_UPSCALE,
+                        METHOD_DISPATCH_UPSCALE_2X,
                         4,
                     ));
                     pb.push(src_addr);
@@ -739,7 +739,7 @@ impl NvnDriver {
             NVN_DEVICE_INFO_API_MINOR_VERSION => 15,
             NVN_DEVICE_INFO_UNIFORM_BUFFER_ALIGNMENT => 256,
             NVN_DEVICE_INFO_MAX_TEXTURE_ANISOTROPY => 16,
-            NVN_DEVICE_INFO_SUPPORTS_T239_DLSS => 1,       // 2x upscaler model (not DLSS)
+            NVN_DEVICE_INFO_SUPPORTS_UPSCALE_2X => 1,       // 2x upscaler model (not DLSS)
             NVN_DEVICE_INFO_T239_SM_VERSION => 0x0807,     // Ampere GA10B SM 8.7
             _ => 1,
         }
@@ -813,13 +813,13 @@ impl NvnDriver {
                     idx += 1;
                     cb.draw_textured(count);
                 }
-                NVN_CMD_DLSS_UPSCALE if idx + 4 <= max_words => {
+                NVN_CMD_UPSCALE_2X if idx + 4 <= max_words => {
                     let src = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
                     let w = mmu.read_u32(cmd_stream_addr + ((idx + 1) * 4) as u64).unwrap_or(0);
                     let h = mmu.read_u32(cmd_stream_addr + ((idx + 2) * 4) as u64).unwrap_or(0);
                     let dst = mmu.read_u32(cmd_stream_addr + ((idx + 3) * 4) as u64).unwrap_or(0);
                     idx += 4;
-                    cb.dispatch_dlss_upscale(src, w, h, dst);
+                    cb.dispatch_upscale_2x(src, w, h, dst);
                 }
                 NVN_CMD_BUFFER_CYCLE if idx + 1 <= max_words => {
                     let buf_id = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
@@ -860,18 +860,18 @@ mod tests {
     use crate::mmu::Permission;
 
     #[test]
-    fn test_nvn_command_buffer_3d_draw_and_dlss() {
+    fn test_nvn_command_buffer_3d_draw_and_upscale() {
         let mut mmu = Memory::new();
         let mut nvgpu = NvgpuChannel::new();
         let mut nvn = NvnDriver::new();
 
         let rt_addr = 0x9000_0000u32;
-        let dlss_dst = 0x9001_0000u32;
+        let upscale_dst = 0x9001_0000u32;
         let vb_addr = 0x8002_0000u32;
         let stream_addr = 0x8001_0000u64;
 
         mmu.map_range(rt_addr as u64, 0x4000, Permission::READ_WRITE);
-        mmu.map_range(dlss_dst as u64, 0x4000, Permission::READ_WRITE);
+        mmu.map_range(upscale_dst as u64, 0x4000, Permission::READ_WRITE);
         mmu.map_range(vb_addr as u64, 0x1000, Permission::READ_WRITE);
         mmu.map_range(stream_addr, 0x1000, Permission::READ_WRITE);
 
@@ -891,7 +891,7 @@ mod tests {
         cb.set_depth_test(true);
         cb.bind_vertex_buffer(vb_addr);
         cb.draw_arrays(3);
-        cb.dispatch_dlss_upscale(rt_addr, 8, 8, dlss_dst);
+        cb.dispatch_upscale_2x(rt_addr, 8, 8, upscale_dst);
 
         let stream = cb.encode_stream();
         for (i, &w) in stream.iter().enumerate() {
@@ -902,9 +902,9 @@ mod tests {
         assert_eq!(executed, 6);
         assert_eq!(nvn.command_buffers_submitted, 1);
         assert_eq!(nvgpu.state.total_triangles_rendered, 1);
-        assert_eq!(nvgpu.dlss.frames_upscaled, 1);
+        assert_eq!(nvgpu.upscaler.frames_upscaled, 1);
         assert_eq!(NvnDriver::get_device_integer(NVN_DEVICE_INFO_API_MAJOR_VERSION), 55);
-        assert_eq!(NvnDriver::get_device_integer(NVN_DEVICE_INFO_SUPPORTS_T239_DLSS), 1);
+        assert_eq!(NvnDriver::get_device_integer(NVN_DEVICE_INFO_SUPPORTS_UPSCALE_2X), 1);
     }
 
     #[test]

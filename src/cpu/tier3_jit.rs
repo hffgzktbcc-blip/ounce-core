@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 /// A fused execution trace (Super-Block) combining multiple hot basic blocks
-/// into an unbroken straight-line execution sequence for >100 MIPS throughput.
+/// into an unbroken straight-line execution sequence to cut dispatch overhead (see Stage 20 for measured host MIPS).
 #[derive(Debug, Clone)]
 pub struct SuperBlock {
     pub entry_pc: u64,

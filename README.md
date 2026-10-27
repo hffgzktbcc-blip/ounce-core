@@ -13,11 +13,15 @@
 
 ## Abstract
 
-`ounce-core` is an experimental, non-commercial AArch64 execution and high-level service implementation research runtime written in Rust. It contains an interpreter, three execution tiers, a paged memory model, a subset of Horizon-style supervisor calls (SVCs) and services, and software models of graphics, audio and input. It is a test harness for studying these subsystems. It is a clean-room research runtime, not a tool for running commercial software, and makes no claim of compatibility with any commercial software.
+`ounce-core` is an experimental, non-commercial AArch64 execution and high-level service implementation research runtime written in Rust. It contains an interpreter, three execution tiers, a paged memory model, a subset of Horizon-style supervisor calls (SVCs) and services, software models of audio and input, and a graphics model whose output is drawn by a CPU rasterizer by default (an optional `gpu-present` build replays a subset of draw commands through `wgpu`). It is a test harness for studying these subsystems. It is a clean-room research runtime, not a tool for running commercial software, and makes no claim of compatibility with any commercial software.
 
 - Safe Rust only: the crate is `#![forbid(unsafe_code)]`, and `grep -rnE "unsafe[ ({]" src` returns no matches.
 - Five runtime dependencies: `byteorder`, `cpal` (host audio playback), `gilrs` (gamepad input), `minifb` (host window), `thiserror`. The optional `gpu-present` feature adds `wgpu`, `winit` and `pollster` for GPU presentation.
 - No network code, no telemetry. The only URL in the source is the project's own repository link in the CLI banner.
+
+## How this project is built
+
+Most of the code, tests and documentation here are written by AI coding agents (Claude Code and Antigravity), directed and reviewed by the maintainer. Agent-made commits carry the agent as author or co-author. Every change must pass CI and the stage harness before it is merged. That harness checks programs written for this repository; it does not show that any other software works. Treat anything not covered by a test as unverified.
 
 ---
 
@@ -26,9 +30,9 @@
 **What this repository does not contain**
 
 - No firmware, system archives, or code or data derived from them.
-- No encryption keys. Code that handles keys reads only files the user supplies at runtime (`prod.keys`, `title.keys`). The `.gitignore` excludes these files.
+- No encryption keys. The loader decrypts only containers built with the in-repo synthetic test key; retail keys are rejected (`LoadError::RestrictedCipher`). A `prod.keys`-format parser exists for unit tests of the key-file format only. The `.gitignore` excludes key files.
 - No game content, ROMs, or dumps. Test inputs are synthetic: they are generated at runtime or written as AArch64 instructions in source.
-- No code copied from third-party projects. Earlier revisions contained third-party-derived byte sequences; they were removed. See *Known Issues* for the git history.
+- No code copied from third-party projects. Earlier revisions contained firmware-derived and third-party-derived byte sequences; they were removed from the current tree but are still reachable in git history. See *Known Issues*.
 
 **Trademarks.** "Nintendo", "Nintendo Switch", "Switch 2", "NVIDIA", "Tegra", "Horizon" and related names are trademarks of their respective owners. This project is not affiliated with, endorsed by, or sponsored by any of them. Names appear only to describe the hardware and ABI being modelled.
 
@@ -56,11 +60,11 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | Kernel (SVC) | Implemented (subset) | Threads, events, mutexes, memory and process queries needed by the test programs. |
 | IPC | Implemented (subset) | CMIF and TIPC message formats. Services are synthetic. |
 | Services | Modelled | `sm:`, `set:sys` (Drake T239 model, language, nickname), `am`, `vi`, `hid`, `fsp-srv` (directory enumeration, persistent save/sdmc partitions), `pl:u` (placeholder font data), `time:u` / `time:s` (nanosecond steady clock, UTC epoch timestamp), `nvdrv`, `ro:1`. |
-| GPU | Hardware accelerated & Modelled | Tegra T239 NVN/Maxwell 3D pushbuffer hardware translation via `wgpu` (`METHOD_DRAW_ARRAYS`, `METHOD_DRAW_INDEXED`) with 256-byte aligned dynamic uniform offsets, dynamic texture bind groups, depth buffer staging, and primitive restart filtering (`0xFFFF`/`0xFFFFFFFF`). Preserves software rasterizer fallback for headless testing and `minifb`. |
+| GPU | Modelled; optional host-GPU replay | Guest pushbuffers (Maxwell-class 3D method numbers; Ampere class planned) are decoded by a software model and drawn by a CPU rasterizer in the default build. With the optional `gpu-present` feature, `METHOD_DRAW_ARRAYS` and `METHOD_DRAW_INDEXED` geometry is replayed through `wgpu` (Metal/Vulkan/DX12) with depth testing and textures. This is not a GPU driver or NVN implementation and is checked only by the in-repo tests. |
 | Shader translation | Partial | A SASS-subset decoder that emits SPIR-V 1.5 bytes. Not validated against a driver. |
 | Vulkan HAL (`gpu/vulkan.rs`) | Model only | Structures and SPIR-V module checks. It does not call a Vulkan loader or driver. |
 | Host presentation (`gpu/present/`) | Implemented | Guest framebuffer and 3D pushbuffer geometry presented through a host GPU hardware swapchain (`wgpu`: Metal on macOS, Vulkan on Linux/Windows; feature `gpu-present`), software window (`minifb`) or headless mode. |
-| Upscaler (`gpu/dlss.rs`) | Modelled | 2× bilinear interpolation with sharpening. **Not DLSS**; there is no neural network. |
+| Upscaler (`gpu/upscaler.rs`) | Modelled | 2× bilinear interpolation with sharpening. **Not DLSS**; there is no neural network. |
 | Audio | Implemented | Software 64-voice mixer; continuous non-blocking ring-buffer streaming from `audout:u` and `audren:u` to 48 kHz stereo host audio sink via `cpal` with polyphonic resampling, underrun tracking and latency metrics. |
 | Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs` (analog stick threshold synthesis to D-pad bitmasks). |
 | Containers | Implemented (parsing) | PFS0/NSP, HFS0/XCI, NCA3, NSO0, NRO0, NPDM, RomFS, unencrypted loose directories. |
@@ -86,7 +90,7 @@ ounce-core/
 │   ├── fs/           # Virtual filesystem, RomFS parser, save-data storage
 │   ├── gpu/          # Command-buffer model, rasterizer, shader translator, upscaler model
 │   ├── hid/          # Controller state model and deadzone filters
-│   ├── kernel/       # SVC dispatcher, IPC, scheduler, synchronization, nnSdk-style runtime
+│   ├── kernel/       # SVC dispatcher, IPC, scheduler, synchronization, SDK-style HLE runtime
 │   ├── loader/       # Container parsers and synthetic image builders
 │   ├── mmu/          # Paged memory model
 │   ├── ui/           # Headless package inspector and CLI telemetry
@@ -126,7 +130,7 @@ The harness runs synthetic AArch64 programs through the CPU, kernel and service 
 | 16 | audren & Vulkan model | Memory pools, voice mixing, SPIR-V module construction | — |
 | 17 | Service handshake | `set:sys`, `am:appletOE`, `vi:m`, `hid`, `fsp-srv` | `0x777` |
 | 18 | ro:1 & texture pools | `LoadNro`, BC7 descriptor binding | `0x888` |
-| 19 | nnSdk-style runtime | Standard allocator, `SleepThread`, `nn::fs::OpenFile` | `0x999` |
+| 19 | SDK-style HLE runtime | Standard allocator, `SleepThread`, `nn::fs::OpenFile` | `0x999` |
 | 20 | Tier-3 super-blocks | Hot-loop fusion (host MIPS printed, not gated) | `0xAAA` |
 | 21 | Loose packages | NPDM parse, multi-module link, loose RomFS | `0xBBB` |
 | 22 | Shared font & clock | `pl:u` placeholder mapping, `time:u`, ASTC 4×4 | `0xCCC` |
@@ -166,9 +170,9 @@ cargo run --release -- gfx 60 --present=headless # No window; OUNCE_DUMP_FRAMES=
 
 ## Known Issues
 
-- **Git history.** Repository Git history was rewritten across all commits to remove historical third-party byte sequences and test binary assets; remote GitHub backend cache and pull request ref purge is pending support ticket resolution.
+- **Git history.** The history has **not** been fully purged yet. Commits before `76ce766` (for example `c7f16f2` and `4be9640`) contain firmware-derived and third-party-derived byte sequences and a loader for an external payload file. They are still reachable from `main`, all branches and the `v0.3.x` tags through merge `25205cc`, and from GitHub pull request refs. A purge is in progress. Do not use or redistribute those commits.
 - **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
-- **License scope.** The MIT license applies to this tree. Rewritten history removes prior external code sequences.
+- **License scope.** The MIT license applies to this tree only. It does not cover material in the earlier commits listed above.
 
 ---
 

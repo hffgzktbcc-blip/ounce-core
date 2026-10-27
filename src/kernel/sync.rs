@@ -13,7 +13,7 @@ pub struct KEvent {
 
 /// Horizon OS Synchronization & Address Arbiter (Futex) Manager.
 ///
-/// Implements the kernel-side primitives used by Nintendo SDK (`nn::os::MutexType`,
+/// Implements the kernel-side primitives used by SDK-style code (`nn::os::MutexType`,
 /// `nn::os::ConditionVariableType`) and `libnx` (`Mutex`, `CondVar`):
 /// - `svcArbitrateLock` (`0x1A`) & `svcArbitrateUnlock` (`0x1B`)
 /// - `svcWaitProcessWideKeyAtomic` (`0x1C`) & `svcSignalProcessWideKey` (`0x1D`)

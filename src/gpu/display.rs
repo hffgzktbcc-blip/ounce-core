@@ -22,7 +22,7 @@ const HUD_BAR_WIDTH: usize = 260;
 pub enum PresentationMode {
     Handheld720p,
     Docked1080p,
-    Dlss4kReconstruction,
+    Upscale4k,
 }
 
 impl PresentationMode {
@@ -30,7 +30,7 @@ impl PresentationMode {
         match self {
             Self::Handheld720p => "720p Handheld",
             Self::Docked1080p => "1080p Docked",
-            Self::Dlss4kReconstruction => "4K DLSS",
+            Self::Upscale4k => "4K (2x upscale model)",
         }
     }
 }
