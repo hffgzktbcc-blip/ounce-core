@@ -559,6 +559,11 @@ fn run_vm_internal(
                             last_input_poll = Instant::now();
                             if let Some(ref mut h) = hid {
                                 if let Some(ref mut disp) = display {
+                                    if !disp.pump_events() {
+                                        println!("\n[Display] Window closed by user. Shutting down.");
+                                        stop = VmStop::WindowClosed;
+                                        break;
+                                    }
                                     h.poll_keyboard(&disp.get_active_keys());
                                 }
                                 gamepad_mgr.poll(h);
