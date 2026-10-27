@@ -70,7 +70,7 @@ jobs:
         run: cargo build --release --features gpu-present
 
       - name: Run unit tests with gpu-present
-        run: cargo test --release --features gpu-present -- --nocapture
+        run: cargo test --release --features gpu-present -- --nocapture --test-threads=1
 
 
   native-jit:

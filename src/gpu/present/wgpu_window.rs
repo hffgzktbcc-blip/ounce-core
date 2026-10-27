@@ -1551,12 +1551,15 @@ mod tests {
         assert_eq!(viewport_rect(0, 0, 100, 50, ScaleMode::FitAspect), (0, 0, 100, 50));
     }
 
+    static GPU_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     /// Renders a frame through the real pipeline into an offscreen texture and reads it back.
     ///
     /// Needs a GPU adapter. On machines without one (most CI runners, unless a software
     /// Vulkan driver such as lavapipe is installed) the test prints why and returns.
     #[test]
     fn test_offscreen_blit_matches_the_guest_frame() {
+        let _lock = GPU_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter = match pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, None)) {
             Ok(adapter) => adapter,
@@ -1643,6 +1646,7 @@ mod tests {
 
     #[test]
     fn test_wgpu_3d_renderer_offscreen_pipeline() {
+        let _lock = GPU_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter = match pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, None)) {
             Ok(adapter) => adapter,
@@ -1746,6 +1750,7 @@ mod tests {
 
     #[test]
     fn test_wgpu_3d_renderer_indexed_draw_and_depth() {
+        let _lock = GPU_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter = match pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, None)) {
             Ok(adapter) => adapter,
@@ -1840,6 +1845,7 @@ mod tests {
 
     #[test]
     fn test_multi_texture_bind_corruption() {
+        let _lock = GPU_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter = match pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, None)) {
             Ok(adapter) => adapter,
@@ -1960,6 +1966,7 @@ mod tests {
 
     #[test]
     fn test_multi_mvp_matrix_corruption() {
+        let _lock = GPU_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter = match pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, None)) {
             Ok(adapter) => adapter,
@@ -2093,6 +2100,7 @@ mod tests {
 
     #[test]
     fn test_dynamic_depth_test_overlay() {
+        let _lock = GPU_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter = match pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, None)) {
             Ok(adapter) => adapter,
@@ -2205,6 +2213,7 @@ mod tests {
 
     #[test]
     fn test_texture_unbind_in_frame() {
+        let _lock = GPU_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter = match pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, None)) {
             Ok(adapter) => adapter,
