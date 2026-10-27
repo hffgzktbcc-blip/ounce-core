@@ -101,6 +101,7 @@ impl Tier2Block {
                 Instruction::BranchCond { .. }
                 | Instruction::CompareBranch { .. }
                 | Instruction::BranchReg { .. }
+                | Instruction::BranchRegAuth { .. }
                 | Instruction::Svc { .. }
                 | Instruction::Unimplemented { .. } => {
                     cur_pc = cur_pc.wrapping_add(4);
@@ -129,6 +130,14 @@ impl Tier2Block {
     pub fn execute(&self, cpu: &mut Cpu, mmu: &mut Memory) -> (usize, BlockExit) {
         let mut executed = 0usize;
         let code_gen = mmu.code_write_gen();
+
+        // An indirect branch into a guarded page left a BTI check for this block's first insn.
+        if cpu.regs.pstate.btype != 0 {
+            cpu.regs.pc = self.start_pc;
+            if cpu.check_landing_pad(mmu).is_err() {
+                return (0, BlockExit::Fault { pc: self.start_pc });
+            }
+        }
 
         for &(pc, inst) in &self.insns {
             cpu.regs.pc = pc;
@@ -309,9 +318,12 @@ impl Tier2Block {
                     }
                 }
 
-                Instruction::BranchReg { op, rn } => {
-                    let target = cpu.regs.read_x(rn);
-                    cpu.regs.pc = target;
+                Instruction::BranchReg { op, .. } | Instruction::BranchRegAuth { op, .. } => {
+                    // The interpreter sets X30 for BLR, authenticates, and sets PSTATE.BTYPE.
+                    if cpu.step(mmu).is_err() {
+                        return (executed, BlockExit::Fault { pc });
+                    }
+                    let target = cpu.regs.pc;
                     if op == BranchRegOp::Ret {
                         return (executed, BlockExit::Return { target });
                     } else {

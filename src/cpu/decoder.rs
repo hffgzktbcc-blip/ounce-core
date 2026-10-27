@@ -1,31 +1,26 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, ShiftType,
+    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
     SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
 pub fn decode(raw: u32) -> Instruction {
     // 1. NOP / HINT / Barrier / Cache Maintenance check:
-    //    0xD503201F (NOP), 0xD503245F (BTI c), 0xD503237F (PACIBSP), DSB/DMB/ISB (0xD5033xxx), DC/IC (0xD5087xxx / 0xD50B7xxx)
+    //    0xD503201F (NOP), 0xD503245F (BTI c, checked by `Cpu::step` from the raw word), DSB/DMB/ISB (0xD5033xxx), DC/IC (0xD5087xxx / 0xD50B7xxx)
     // DC ZVA, Xt zeroes a cache-line-sized block, so it is not a no-op like the other cache operations.
     if (raw & 0xFFFF_FFE0) == 0xD50B_7420 {
         return Instruction::DcZva { rt: (raw & 0x1F) as u8 };
+    }
+    if let Some(inst) = decode_pauth(raw) {
+        return inst;
     }
     if (raw & 0xFFFF_F01F) == 0xD503_201F
         || (raw & 0xFFFF_F000) == 0xD503_3000
         || (raw & 0xFFF0_0000) == 0xD500_0000
     {
         return Instruction::Nop;
-    }
-
-    // 1b. Pointer-Authenticated Return: RETAA (0xD65F0BFF) / RETAB (0xD65F0FFF)
-    if raw == 0xD65F_0BFF || raw == 0xD65F_0FFF {
-        return Instruction::BranchReg {
-            rn: 30,
-            op: BranchRegOp::Ret,
-        };
     }
 
     // 2. Supervisor Call: SVC #imm16
@@ -714,6 +709,88 @@ pub fn decode(raw: u32) -> Instruction {
     }
 
     decode_extra(raw).unwrap_or(Instruction::Unimplemented { raw })
+}
+
+/// FEAT_PAuth: the HINT-space forms, the data-processing (1-source) forms, `PACGA`, the
+/// authenticated branches and `LDRAA`/`LDRAB`. Unallocated encodings in these groups return `None`.
+fn decode_pauth(raw: u32) -> Option<Instruction> {
+    use PacKey::*;
+    use PacModifier::{Reg, Zero};
+    use PauthOp::*;
+    let rd = (raw & 0x1F) as u8;
+    let rn = ((raw >> 5) & 0x1F) as u8;
+    let pauth = |rd, op, key, modifier| Some(Instruction::Pauth { rd, op, key, modifier });
+
+    // HINT #imm: 1101 0101 0000 0011 0010 CRm op2 11111
+    if (raw & 0xFFFF_F01F) == 0xD503_201F {
+        return match (raw >> 5) & 0x7F {
+            7 => pauth(30, Strip, IA, Zero), // XPACLRI
+            8 => pauth(17, Sign, IA, Reg(16)), // PACIA1716
+            10 => pauth(17, Sign, IB, Reg(16)),
+            12 => pauth(17, Auth, IA, Reg(16)), // AUTIA1716
+            14 => pauth(17, Auth, IB, Reg(16)),
+            24 => pauth(30, Sign, IA, Zero), // PACIAZ
+            25 => pauth(30, Sign, IA, Reg(31)), // PACIASP
+            26 => pauth(30, Sign, IB, Zero),
+            27 => pauth(30, Sign, IB, Reg(31)),
+            28 => pauth(30, Auth, IA, Zero), // AUTIAZ
+            29 => pauth(30, Auth, IA, Reg(31)), // AUTIASP
+            30 => pauth(30, Auth, IB, Zero),
+            31 => pauth(30, Auth, IB, Reg(31)),
+            _ => None,
+        };
+    }
+
+    // Data-processing (1 source), opcode2 = 00001: 1 1 0 11010110 00001 opcode Rn Rd
+    if (raw & 0xFFFF_8000) == 0xDAC1_0000 {
+        let opcode = (raw >> 10) & 0x3F;
+        let key = [IA, IB, DA, DB][(opcode & 3) as usize];
+        return match opcode {
+            0..=7 => pauth(rd, if opcode < 4 { Sign } else { Auth }, key, Reg(rn)),
+            8..=15 if rn == 31 => pauth(rd, if opcode < 12 { Sign } else { Auth }, key, Zero),
+            16 | 17 if rn == 31 => pauth(rd, Strip, if opcode == 16 { IA } else { DA }, Zero),
+            _ => None,
+        };
+    }
+
+    // PACGA: 1 0 0 11010110 Rm 001100 Rn Rd
+    if (raw & 0xFFE0_FC00) == 0x9AC0_3000 {
+        return Some(Instruction::Pacga { rd, rn, rm: ((raw >> 16) & 0x1F) as u8 });
+    }
+
+    // Branch (register) with pointer authentication: 1101011 Z 0 op(2) 11111 00001 M Rn Rm
+    if (raw & 0xFE9F_F800) == 0xD61F_0800 {
+        let z = (raw >> 24) & 1;
+        let opc = (raw >> 21) & 3;
+        let key = if (raw >> 10) & 1 == 0 { IA } else { IB };
+        let rm = rd;
+        let op = match opc {
+            0 => BranchRegOp::Br,
+            1 => BranchRegOp::Blr,
+            2 => BranchRegOp::Ret,
+            _ => return None,
+        };
+        let modifier = match (z, op) {
+            (0, BranchRegOp::Ret) if rn == 31 && rm == 31 => return Some(Instruction::BranchRegAuth { rn: 30, op, key, modifier: Reg(31) }),
+            (0, BranchRegOp::Br | BranchRegOp::Blr) if rm == 31 => Zero,
+            (1, BranchRegOp::Br | BranchRegOp::Blr) => Reg(rm),
+            _ => return None,
+        };
+        return Some(Instruction::BranchRegAuth { rn, op, key, modifier });
+    }
+
+    // LDRAA/LDRAB: 11 111 0 00 M S 1 imm9 W 1 Rn Rt
+    if (raw & 0xFF20_0400) == 0xF820_0400 {
+        let simm = (((raw >> 22) & 1) << 9 | (raw >> 12) & 0x1FF) as u64;
+        return Some(Instruction::LoadAuth {
+            rt: rd,
+            rn,
+            offset: sign_extend(simm, 10) << 3,
+            key: if (raw >> 23) & 1 == 0 { DA } else { DB },
+            writeback: (raw >> 11) & 1 != 0,
+        });
+    }
+    None
 }
 
 /// Scalar and AdvSIMD encodings added for libnx-built homebrew (`memset`, `strlen`, `strcmp`,
