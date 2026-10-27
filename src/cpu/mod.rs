@@ -3,6 +3,7 @@ pub mod decoder;
 pub mod engine;
 pub mod instructions;
 pub mod interpreter;
+pub mod pauth;
 pub mod jit_cache;
 pub mod registers;
 pub mod simd;

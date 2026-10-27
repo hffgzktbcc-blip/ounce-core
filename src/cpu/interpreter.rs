@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, ShiftType, SimdImmOp, SimdShiftOp,
+    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacModifier, PauthOp, ShiftType,
+    SimdImmOp, SimdShiftOp,
 };
+use super::pauth::{self, PointerAuth};
 use super::simd;
 
 /// Bytes zeroed by `DC ZVA`, as reported by `DCZID_EL0`.
@@ -21,6 +23,11 @@ pub enum CpuError {
 
     #[error("CPU halted: {0}")]
     Halted(String),
+
+    /// Branch Target exception: an indirect branch into a guarded page did not land on a valid
+    /// landing pad (`BTI`, `PACIASP`/`PACIBSP`, `BRK`, `HLT`) for `btype`.
+    #[error("Branch target exception at PC: 0x{pc:016X} (BTYPE {btype:02b})")]
+    BranchTarget { pc: u64, btype: u8 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +48,8 @@ pub struct Cpu {
     /// while it is still set for that address; switching threads clears it, so an interrupted
     /// LDXR/STXR sequence retries as on hardware.
     pub exclusive: Option<u64>,
+    /// Pointer authentication keys and EL0 controls (shared by the process's threads).
+    pub pauth: PointerAuth,
 }
 
 impl Default for Cpu {
@@ -55,13 +64,57 @@ impl Cpu {
             regs: CpuRegisters::new(),
             jit: JitBlockCache::new(),
             exclusive: None,
+            pauth: PointerAuth::default(),
         }
+    }
+
+    /// The BTI check for the instruction at PC after an indirect branch into a guarded page.
+    /// Clears `PSTATE.BTYPE`. Block engines call it on entry; `step` calls it itself.
+    pub fn check_landing_pad(&mut self, mmu: &Memory) -> Result<(), CpuError> {
+        let btype = std::mem::take(&mut self.regs.pstate.btype);
+        if btype == 0 {
+            return Ok(());
+        }
+        let pc = self.regs.pc;
+        if pauth::bti_compatible(mmu.read_u32(pc)?, btype, self.pauth.bt0) {
+            Ok(())
+        } else {
+            Err(CpuError::BranchTarget { pc, btype })
+        }
+    }
+
+    fn pac_modifier(&self, modifier: PacModifier) -> u64 {
+        match modifier {
+            PacModifier::Reg(r) => self.regs.read_x_or_sp(r),
+            PacModifier::Zero => 0,
+        }
+    }
+
+    /// Takes an indirect branch: sets PC, the link register for BLR, and `PSTATE.BTYPE`.
+    fn branch_indirect(&mut self, mmu: &Memory, pc: u64, target: u64, rn: u8, op: BranchRegOp) {
+        if op == BranchRegOp::Blr {
+            self.regs.write_x(30, pc.wrapping_add(4));
+        }
+        self.regs.pstate.btype = pauth::next_btype(
+            op == BranchRegOp::Blr,
+            op == BranchRegOp::Ret,
+            rn,
+            mmu.is_guarded(pc),
+            mmu.is_guarded(target),
+        );
+        self.regs.pc = target;
     }
 
     /// Fetches, basic-block JIT-compiles/looks up, and executes a single AArch64 instruction.
     pub fn step(&mut self, mmu: &mut Memory) -> Result<StepResult, CpuError> {
         let pc = self.regs.pc;
         let raw_inst = mmu.read_u32(pc)?;
+        if self.regs.pstate.btype != 0 {
+            let btype = std::mem::take(&mut self.regs.pstate.btype);
+            if !pauth::bti_compatible(raw_inst, btype, self.pauth.bt0) {
+                return Err(CpuError::BranchTarget { pc, btype });
+            }
+        }
         let inst = self.jit.fetch_or_compile(pc, raw_inst, mmu);
 
         match inst {
@@ -665,18 +718,46 @@ impl Cpu {
 
             Instruction::BranchReg { rn, op } => {
                 let target = self.regs.read_x(rn);
-                match op {
-                    BranchRegOp::Br => {
-                        self.regs.pc = target;
-                    }
-                    BranchRegOp::Blr => {
-                        self.regs.write_x(30, pc.wrapping_add(4));
-                        self.regs.pc = target;
-                    }
-                    BranchRegOp::Ret => {
-                        self.regs.pc = target;
-                    }
+                self.branch_indirect(mmu, pc, target, rn, op);
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::BranchRegAuth { rn, op, key, modifier } => {
+                let modifier = self.pac_modifier(modifier);
+                let target = self.pauth.auth(self.regs.read_x(rn), modifier, key);
+                self.branch_indirect(mmu, pc, target, rn, op);
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Pauth { rd, op, key, modifier } => {
+                let modifier = self.pac_modifier(modifier);
+                let ptr = self.regs.read_x(rd);
+                let val = match op {
+                    PauthOp::Sign => self.pauth.sign(ptr, modifier, key),
+                    PauthOp::Auth => self.pauth.auth(ptr, modifier, key),
+                    PauthOp::Strip => self.pauth.strip(ptr),
+                };
+                self.regs.write_x(rd, val);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Pacga { rd, rn, rm } => {
+                let val = self.pauth.pacga(self.regs.read_x(rn), self.regs.read_x_or_sp(rm));
+                self.regs.write_x(rd, val);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::LoadAuth { rt, rn, offset, key, writeback } => {
+                let base = self.pauth.auth(self.regs.read_x_or_sp(rn), 0, key);
+                let addr = base.wrapping_add(offset as u64);
+                let val = mmu.read_u64(addr)?;
+                if writeback {
+                    self.regs.write_x_or_sp(rn, addr);
                 }
+                self.regs.write_x(rt, val);
+                self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
@@ -816,6 +897,11 @@ impl Cpu {
                         0x5F00 => 19_200_000,
                         // DCZID_EL0: DC ZVA permitted, block = 2^4 words = DC_ZVA_BLOCK bytes
                         0x5807 => DC_ZVA_BLOCK.trailing_zeros() as u64 - 2,
+                        // ID_AA64ISAR1_EL1: API = 1, GPI = 1 (IMPLEMENTATION DEFINED PAC
+                        // algorithm, see `pauth`); APA/GPA = 0 (not QARMA)
+                        0x4031 => 1 << 8 | 1 << 28,
+                        // ID_AA64PFR1_EL1: BT = 1 (FEAT_BTI)
+                        0x4021 => 1,
                         0x5F01 => self.jit.cache_hits.wrapping_add(self.jit.cache_misses).wrapping_mul(16).wrapping_add(0x0123_4560),
                         _ => 0,
                     };

@@ -79,6 +79,11 @@ impl CpuEngine {
     }
 
     pub fn run_slice(&mut self, cpu: &mut Cpu, mmu: &mut Memory, max_instructions: usize) -> (usize, BlockExit) {
+        // A pending BTI check (indirect branch into a guarded page) runs before any native block;
+        // Tier-4 does not check landing pads itself yet.
+        if cpu.check_landing_pad(mmu).is_err() {
+            return (0, BlockExit::Fault { pc: cpu.regs.pc });
+        }
         match self {
             CpuEngine::Tier3(e) => e.run_slice(cpu, mmu, max_instructions),
             #[cfg(feature = "native-jit")]
