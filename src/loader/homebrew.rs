@@ -67,13 +67,20 @@ impl HomebrewConfig {
         out
     }
 
-    /// Maps one page at `addr` (page aligned), writes the list there and the argument string after it.
+    /// Maps pages at `addr` (page aligned), writes the list there and the argument string after it.
     /// Returns the list address, which goes in `X0`.
     pub fn write(&self, mmu: &mut Memory, addr: u64) -> Result<u64, MemoryError> {
-        mmu.map_range(addr, 0x1000, Permission::READ_WRITE);
-        let entries = self.entries(0);
+        // The argument string follows the list; point the Argv entry at it once the list length is known.
+        let mut entries = self.entries(0);
         let argv_addr = addr + (entries.len() as u64) * ENTRY_SIZE;
-        for (i, e) in self.entries(argv_addr).iter().enumerate() {
+        for e in entries.iter_mut().filter(|e| e.key == ENTRY_ARGV) {
+            e.value[1] = argv_addr;
+        }
+        // Map as many pages as the list and the string need (a long command line spills past one page).
+        let argv_len = self.argv.as_ref().map_or(0, |a| a.len() as u64 + 1);
+        let total = (argv_addr - addr) + argv_len;
+        mmu.map_range(addr, total.max(1).div_ceil(0x1000) as usize * 0x1000, Permission::READ_WRITE);
+        for (i, e) in entries.iter().enumerate() {
             let at = addr + i as u64 * ENTRY_SIZE;
             mmu.write_u32(at, e.key)?;
             mmu.write_u32(at + 4, e.flags)?;
@@ -135,6 +142,17 @@ mod tests {
         mmu.read_bytes(argv_ptr, &mut s).unwrap();
         assert_eq!(&s, b"sdmc:/hello.nro\0");
         assert_eq!(mmu.read_u32(at(3)).unwrap(), ENTRY_END_OF_LIST);
+    }
+
+    #[test]
+    fn long_argv_spills_into_more_pages() {
+        let mut mmu = Memory::new();
+        let argv: String = "x".repeat(0x1800);
+        let cfg = HomebrewConfig { argv: Some(argv.clone()), ..Default::default() };
+        cfg.write(&mut mmu, 0x7000_0000).unwrap();
+        let ptr = mmu.read_u64(0x7000_0000 + 16).unwrap();
+        assert_eq!(mmu.read_u8(ptr + argv.len() as u64).unwrap(), 0);
+        assert_eq!(mmu.read_u8(ptr + argv.len() as u64 - 1).unwrap(), b'x');
     }
 
     #[test]

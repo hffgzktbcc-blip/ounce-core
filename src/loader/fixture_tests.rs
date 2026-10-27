@@ -26,6 +26,7 @@ enum Outcome {
     Returned(u64),
     ExitProcess,
     Break { reason: u64, pc: u64 },
+    UnhandledSvc { svc: u16, pc: u64 },
     Fault { error: String, pc: u64 },
     StepLimit,
 }
@@ -87,8 +88,10 @@ impl Shim {
                 cpu.regs.write_x(0, 0);
                 cpu.regs.write_x(1, value);
             }
-            // Anything else succeeds with no outputs; the SVC list in the failure message shows it.
-            _ => cpu.regs.write_x(0, 0),
+            // svcSetMemoryPermission / svcSetMemoryAttribute: accepted, nothing to model here.
+            0x02 | 0x03 => cpu.regs.write_x(0, 0),
+            // Anything else is a gap in this shim, not a success: stop so the test names it.
+            other => return Some(Outcome::UnhandledSvc { svc: other, pc: cpu.regs.pc }),
         }
         None
     }

@@ -86,6 +86,9 @@ pub enum ServiceType {
 
 /// Size of the HID shared memory block libnx maps (`0x40000`).
 pub const HID_SHARED_MEMORY_SIZE: u64 = 0x40000;
+/// `sf::cmif::ResultUnknownCommandId` (module 10, description 221): the reply for commands of services
+/// this model does not implement.
+pub const RESULT_UNKNOWN_COMMAND: u32 = 221 << 9 | 10;
 /// CMIF pointer buffer size reported to `QueryPointerBufferSize`.
 pub const POINTER_BUFFER_SIZE: u32 = 0x8000;
 
@@ -1099,9 +1102,10 @@ impl IpcManager {
                 0
             }
 
-            ServiceType::Generic(_) => {
-                // Stubbed HLE service response: ResultSuccess (0)
-                self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+            ServiceType::Generic(name) => {
+                // A service this model does not implement: report it rather than pretend the call worked.
+                eprintln!("[HIPC] '{name}' command {cmd_id} not implemented");
+                self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
                 0
             }
 
