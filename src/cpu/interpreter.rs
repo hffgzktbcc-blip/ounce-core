@@ -274,7 +274,12 @@ impl Cpu {
                         self.regs.pstate.c = c;
                         self.regs.pstate.v = v;
                     }
-                    self.regs.write_w(rd, res);
+                    // WSP for Rd = 31 in the extended form, zero-extended like any W write.
+                    if is_extended && !set_flags && rd == 31 {
+                        self.regs.sp = res as u64;
+                    } else {
+                        self.regs.write_w(rd, res);
+                    }
                 }
 
                 self.regs.advance_pc();

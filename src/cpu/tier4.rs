@@ -252,7 +252,9 @@ impl Lowerer {
                     self.shifted(raw, shift_type, shift_amount, is_64)
                 };
                 let res = self.add_sub(a, b, is_sub, set_flags, is_64);
-                self.set_x(rd, res); // W32 results are already zero-extended
+                // Extended-register ADD/SUB (not ADDS/SUBS) writes SP for Rd = 31, e.g. `sub sp, sp, x12`.
+                // W32 results are already zero-extended.
+                if is_extended && !set_flags { self.set_x_or_sp(rd, res) } else { self.set_x(rd, res) }
             }
 
             Instruction::LogicalReg { rd, rn, rm, shift_type, shift_amount, invert_rm, op, set_flags, is_64 } => {
