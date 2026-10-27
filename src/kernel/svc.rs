@@ -129,8 +129,19 @@ impl HorizonKernel {
         let handles: Vec<u32> = (0..count).map(|i| mmu.read_u32(ptr + i * 4)).collect::<Result<_, _>>().ok()?;
         handles
             .iter()
-            .all(|h| self.scheduler.thread_signaled(*h).is_some() || self.sync.events.contains_key(h))
+            .all(|h| {
+                self.scheduler.thread_signaled(*h).is_some() || self.sync.events.contains_key(h) || self.ipc.is_audio_renderer_event(*h)
+            })
             .then_some(handles)
+    }
+
+    /// Renders one audio renderer frame and queues it for the host with the other audio output.
+    pub fn render_audio_frame(&mut self, mmu: &Memory) {
+        if let Some(r) = self.ipc.audio_renderer.as_mut() {
+            r.render_frame(mmu);
+            let pcm = r.drain();
+            self.audren.output_ring_buffer.extend_from_slice(&pcm);
+        }
     }
 
     /// Every thread waits and none can be woken: stop the guest with a break that says so.
@@ -341,14 +352,29 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
+            // 0x17: svcResetSignal(handle): clear an event (the audio renderer event re-arms per frame).
+            0x17 => {
+                let handle = cpu.regs.read_w(0);
+                let ok = self.sync.clear_event(handle) || self.ipc.is_audio_renderer_event(handle);
+                cpu.regs.write_x(0, if ok { 0 } else { 0xE401 });
+                SvcResult::Success
+            }
+
             // 0x18: svcWaitSynchronization(&out_index, handles, count, timeout_ns) on thread and event handles.
             // Called without 1..=64 known handles it keeps meaning VSync for the demo programs.
             0x18 if self.wait_handles(cpu, mmu).is_some() => {
                 let handles = self.wait_handles(cpu, mmu).unwrap();
                 let timeout = cpu.regs.read_x(3) as i64;
-                let signaled = handles.iter().position(|&h| match self.scheduler.thread_signaled(h) {
-                    Some(exited) => exited,
-                    None => self.sync.events.get(&h).is_some_and(|e| e.signaled),
+                // Waiting for the audio renderer's frame event is where a 5 ms frame passes: render it.
+                let audio_event = handles.iter().position(|&h| self.ipc.is_audio_renderer_event(h));
+                if audio_event.is_some() {
+                    self.render_audio_frame(mmu);
+                }
+                let signaled = audio_event.or_else(|| {
+                    handles.iter().position(|&h| match self.scheduler.thread_signaled(h) {
+                        Some(exited) => exited,
+                        None => self.sync.events.get(&h).is_some_and(|e| e.signaled),
+                    })
                 });
                 if let Some(i) = signaled {
                     if let Some(e) = self.sync.events.get_mut(&handles[i]) {

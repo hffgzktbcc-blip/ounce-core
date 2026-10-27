@@ -544,6 +544,10 @@ fn run_vm_internal(
         match cpu.step(&mut mmu) {
             Ok(StepResult::Continue) => {
                 instructions_executed += 1;
+                // Time slice: a guest thread that spins without SVCs must not starve the others.
+                if instructions_executed % kernel::scheduler::PREEMPT_INTERVAL == 0 {
+                    kernel.scheduler.preempt(&mut cpu);
+                }
             }
             Ok(StepResult::Svc(svc_id)) => {
                 instructions_executed += 1;

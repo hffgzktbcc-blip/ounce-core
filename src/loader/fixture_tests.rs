@@ -235,7 +235,10 @@ fn boot_with_kernel_input(
     let mut output = String::new();
     let mut svcs = Vec::new();
     let mut exited = false;
-    for _ in 0..crate::NRO_INSTRUCTION_BUDGET {
+    for step in 0..crate::NRO_INSTRUCTION_BUDGET {
+        if step % crate::kernel::scheduler::PREEMPT_INTERVAL == crate::kernel::scheduler::PREEMPT_INTERVAL - 1 {
+            kernel.scheduler.preempt(&mut cpu);
+        }
         match cpu.step(&mut mmu) {
             Ok(StepResult::Continue) => {}
             Ok(StepResult::Svc(svc)) => {
@@ -338,7 +341,8 @@ fn libnx_input_fixture_reads_host_controller() {
 
 /// `tests/fixtures/nro/threads`: two libnx worker threads share a total under a `Mutex`, yield while
 /// holding it (so the other must block in svcArbitrateLock), report through a `CondVar`, and are joined
-/// with `threadWaitForExit`; each checks its own `__thread` variable.
+/// with `threadWaitForExit`; each checks its own `__thread` variable. A third thread spins without
+/// SVCs and finishes only because the runner preempts it.
 #[test]
 fn libnx_threads_fixture_synchronizes_two_workers() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/threads/threads.nro");
@@ -350,5 +354,26 @@ fn libnx_threads_fixture_synchronizes_two_workers() {
     assert!(svcs.iter().filter(|&&s| s == 0x1A).count() > 0, "no svcArbitrateLock");
     assert!(svcs.contains(&0x1C) && svcs.contains(&0x1D), "condvar wait and signal");
     assert!(kernel.scheduler.switches > 10, "switches: {}", kernel.scheduler.switches);
-    assert_eq!(kernel.scheduler.total_threads_completed, 2);
+    assert_eq!(kernel.scheduler.total_threads_completed, 3); // two workers and the spinner
+}
+
+/// `tests/fixtures/nro/audren`: libnx `audrenInitialize` + audio driver play a 2400-sample tone (a square
+/// wave of +/-8000, period 48 samples) on one voice routed to both channels of a stereo device sink.
+#[test]
+fn libnx_audren_fixture_plays_a_tone() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/audren/audren.nro");
+    let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let (output, svcs, kernel) = boot_with_kernel_state(&nro, &[]);
+    assert!(output.contains("ounce-audren played=0x00000960\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+    assert!(output.ends_with("ounce-audren result=0x00000EEE\n"), "output: {output:?}");
+    // The mixed 48 kHz stereo output holds the tone, identical on both sides, then silence.
+    let pcm = &kernel.audren.output_ring_buffer;
+    let frames: Vec<(i16, i16)> = pcm.chunks_exact(2).map(|f| (f[0], f[1])).collect();
+    let start = frames.iter().position(|f| f.0 != 0).expect("some audio was mixed");
+    let tone = &frames[start..start + 2400];
+    for (i, &(l, r)) in tone.iter().enumerate() {
+        let expected = if (i / 24) % 2 == 1 { -8000 } else { 8000 };
+        assert_eq!((l, r), (expected, expected), "frame {i}");
+    }
+    assert!(frames[start + 2400..].iter().all(|&f| f == (0, 0)));
 }

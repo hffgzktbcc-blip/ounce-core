@@ -25,6 +25,9 @@ pub enum WaitReason {
     Objects { handles: Vec<u32>, timed: bool },
 }
 
+/// Instructions a thread runs before `preempt` lets the next ready thread in.
+pub const PREEMPT_INTERVAL: usize = 20_000;
+
 /// Key of the process's first thread, which exists before any svcCreateThread and has no handle there.
 pub const MAIN_THREAD_KEY: u32 = 0;
 /// Page holding `svc #0x0A`; new threads return into it, so a thread that returns from its entry exits.
@@ -286,8 +289,17 @@ impl ThreadScheduler {
         let thread = self.threads.get_mut(&next).expect("switching to a known thread");
         thread.state = ThreadState::Running;
         cpu.regs = thread.cpu_context.regs.clone();
+        cpu.exclusive = None;
         self.current = next;
         self.switches += 1;
+    }
+
+    /// Time-slice preemption: the running thread yields when another is ready. Runners call this every
+    /// `PREEMPT_INTERVAL` instructions so a thread that spins without SVCs cannot starve the others.
+    pub fn preempt(&mut self, cpu: &mut Cpu) {
+        if !self.ready.is_empty() {
+            self.yield_current(cpu);
+        }
     }
 
     /// svcStartThread: the new thread runs now; the caller resumes as soon as the new thread waits or exits.
@@ -415,6 +427,7 @@ impl ThreadScheduler {
         let thread = self.threads.get_mut(&next).unwrap();
         thread.state = ThreadState::Running;
         cpu.regs = thread.cpu_context.regs.clone();
+        cpu.exclusive = None;
         self.current = next;
         self.switches += 1;
         Some(())

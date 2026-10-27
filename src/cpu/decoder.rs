@@ -726,6 +726,19 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     let u = (raw & (1 << 29)) != 0;
     let size = (raw >> 22) & 0x3;
 
+    // 21b. FMOV (scalar, immediate): 0 0 0 11110 ftype 1 imm8 100 00000 Rd. Writes the low 32/64 bits of
+    //      Vd and zeroes the rest, which is SimdModImm without replication.
+    if (raw & 0xFF20_1FE0) == 0x1E20_1000 {
+        let imm8 = ((raw >> 13) & 0xFF) as u64;
+        let (a, b, cd, efgh) = (imm8 >> 7, (imm8 >> 6) & 1, (imm8 >> 4) & 3, imm8 & 0xF);
+        let imm = match (raw >> 22) & 0x3 {
+            0 => a << 31 | (b ^ 1) << 30 | (if b != 0 { 0x1F } else { 0 }) << 25 | cd << 23 | efgh << 19,
+            1 => a << 63 | (b ^ 1) << 62 | (if b != 0 { 0xFF } else { 0 }) << 54 | cd << 52 | efgh << 48,
+            _ => return None, // half precision is not modelled
+        };
+        return Some(Instruction::SimdModImm { rd, imm, op: SimdImmOp::Mov, q: false });
+    }
+
     // 22. Data-Processing (1-Source): sf 1 0 11010110 00000 opcode Rn Rd
     if (raw & 0x7FFF_E000) == 0x5AC0_0000 {
         let is_64 = (raw & (1 << 31)) != 0;
