@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+pub mod hipc;
 pub mod ipc;
 pub mod nnsdk;
 pub mod scheduler;

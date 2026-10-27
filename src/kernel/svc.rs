@@ -150,10 +150,12 @@ impl HorizonKernel {
                 let query_addr = cpu.regs.read_x(2);
                 let aligned_base = query_addr & !0xFFF;
 
-                // One-page MemoryInfo: mapped pages are Normal/RW, unmapped ones Free with no access.
-                let (state, perm) = if mmu.is_mapped(aligned_base) { (0x03, 0x03) } else { (0x00, 0x00) };
-                let _ = mmu.write_u64(mem_info_ptr, aligned_base);
-                let _ = mmu.write_u64(mem_info_ptr + 8, 0x1000);
+                // MemoryInfo for the whole run of mapped (Normal/RW) or unmapped (Free, no access) pages
+                // around the address. libnx virtmem needs the full extent of a free run to place mappings.
+                let (start, end, mapped) = mmu.region_at(aligned_base);
+                let (state, perm) = if mapped { (0x03, 0x03) } else { (0x00, 0x00) };
+                let _ = mmu.write_u64(mem_info_ptr, start);
+                let _ = mmu.write_u64(mem_info_ptr + 8, end - start);
                 let _ = mmu.write_u32(mem_info_ptr + 16, state);
                 let _ = mmu.write_u32(mem_info_ptr + 20, 0);
                 let _ = mmu.write_u32(mem_info_ptr + 24, perm);
@@ -257,6 +259,14 @@ impl HorizonKernel {
                 if addr != 0 && size > 0 {
                     mmu.map_range(addr, size, Permission::READ_WRITE);
                 }
+                cpu.regs.write_x(0, 0);
+                SvcResult::Success
+            }
+
+            // 0x14: svcUnmapSharedMemory(handle, addr, size)
+            0x14 => {
+                let (addr, size) = (cpu.regs.read_x(1), cpu.regs.read_x(2) as usize);
+                mmu.unmap_range(addr, size);
                 cpu.regs.write_x(0, 0);
                 SvcResult::Success
             }
@@ -783,12 +793,18 @@ mod tests {
             assert_eq!(cpu.regs.read_x(0), 0, "svc 0x{svc:X}");
         }
 
-        // svcQueryMemory reports unmapped pages as free.
+        // svcQueryMemory reports whole runs: free up to the next mapped page, mapped across contiguous pages.
         mmu.map_range(0x9000, 0x1000, Permission::READ_WRITE);
+        mmu.map_range(0x20_0000, 0x3000, Permission::READ_WRITE);
         cpu.regs.write_x(0, 0x9000);
-        cpu.regs.write_x(2, 0x5_0000_0000);
+        cpu.regs.write_x(2, 0x10_0000);
         kernel.dispatch_svc(0x06, &mut cpu, &mut mmu);
         assert_eq!(mmu.read_u32(0x9000 + 16).unwrap(), 0);
+        assert_eq!((mmu.read_u64(0x9000).unwrap(), mmu.read_u64(0x9008).unwrap()), (0xA000, 0x20_0000 - 0xA000));
+        cpu.regs.write_x(0, 0x9000);
+        cpu.regs.write_x(2, 0x20_1234);
+        kernel.dispatch_svc(0x06, &mut cpu, &mut mmu);
+        assert_eq!((mmu.read_u64(0x9000).unwrap(), mmu.read_u64(0x9008).unwrap()), (0x20_0000, 0x3000));
 
         // The research SVCs live above Horizon's range.
         assert_eq!(ext::svc(ext::SUBMIT_GPU_PUSHBUFFER), 0xD400_2021);

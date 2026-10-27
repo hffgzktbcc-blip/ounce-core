@@ -72,7 +72,14 @@ pub enum ServiceType {
     Bcat,
     /// Generic stubbed service
     Generic(String),
+    /// Shared memory object (not a session): handed out as a copy handle, mapped with svcMapSharedMemory.
+    SharedMemory { size: u64 },
 }
+
+/// Size of the HID shared memory block libnx maps (`0x40000`).
+pub const HID_SHARED_MEMORY_SIZE: u64 = 0x40000;
+/// CMIF pointer buffer size reported to `QueryPointerBufferSize`.
+pub const POINTER_BUFFER_SIZE: u32 = 0x8000;
 
 pub const SHARED_FONT_ADDR: u64 = 0x1800_0000;
 pub const SHARED_FONT_SIZE: usize = 0x10_0000; // 1 MB Shared Font Buffer
@@ -102,6 +109,10 @@ fn read_cmif_string(mmu: &Memory, args_base: u64, max_len: usize) -> String {
 /// Manages Horizon OS IPC handles and routes HIPC/CMIF messages to HLE services.
 pub struct IpcManager {
     pub handles: HashMap<u32, ServiceType>,
+    /// The request being handled, parsed from the HIPC header (PID, handles, buffers).
+    pub request: super::hipc::Request,
+    /// Process ID clients sent with `sm:` RegisterClient, if any.
+    pub registered_pid: Option<u64>,
     next_handle: u32,
     pub total_ipc_requests: u64,
     pub start_instant: std::time::Instant,
@@ -117,6 +128,8 @@ impl IpcManager {
     pub fn new() -> Self {
         Self {
             handles: HashMap::new(),
+            request: Default::default(),
+            registered_pid: None,
             next_handle: 0x10001,
             total_ipc_requests: 0,
             start_instant: std::time::Instant::now(),
@@ -175,9 +188,13 @@ impl IpcManager {
             }
         }
 
-        // CMIF payload starts at TLS + 0x10
-        let cmif_base = tls_addr + 0x10;
+        // CMIF payload: the HIPC raw data aligned to 16 bytes (TLS + 0x10 when there is no special header).
+        self.request = super::hipc::parse_request(mmu, tls_addr);
+        let cmif_base = tls_addr + self.request.cmif_offset;
         let magic = mmu.read_u32(cmif_base).unwrap_or(0);
+        if matches!(self.request.kind, super::hipc::TYPE_CONTROL | super::hipc::TYPE_CONTROL_WITH_CONTEXT) && magic == CMIF_IN_MAGIC {
+            return self.handle_control(session_handle, &service, tls_addr, mmu, mmu.read_u32(cmif_base + 8).unwrap_or(0));
+        }
         if magic != CMIF_IN_MAGIC {
             // Write generic success even if raw HIPC control
             self.write_cmif_response(tls_addr, mmu, 0, &[], None);
@@ -189,8 +206,9 @@ impl IpcManager {
 
         match service {
             ServiceType::Sm => match cmd_id {
-                // Command 0: Initialize
+                // Command 0: RegisterClient (sends the client's PID in the special header)
                 0 => {
+                    self.registered_pid = self.request.pid;
                     self.write_cmif_response(tls_addr, mmu, 0, &[], None);
                     0
                 }
@@ -481,9 +499,14 @@ impl IpcManager {
             },
 
             ServiceType::AppletResource => match cmd_id {
-                // Command 0: GetSharedMemoryHandle -> returns handle 0x200 (HID Shared Mem)
+                // Command 0: GetSharedMemoryHandle -> copy handle to the HID shared memory object
                 0 => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0x200], Some(0x200));
+                    let shm = self.allocate_handle(ServiceType::SharedMemory { size: HID_SHARED_MEMORY_SIZE });
+                    super::hipc::write_response(
+                        mmu,
+                        tls_addr,
+                        &super::hipc::Response { result: 0, data: &[], copy_handles: &[shm], move_handles: &[] },
+                    );
                     0
                 }
                 _ => {
@@ -1001,7 +1024,30 @@ impl IpcManager {
                 self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                 0
             }
+
+            // Not a session: requests on it are invalid.
+            ServiceType::SharedMemory { .. } => 0xE401,
         }
+    }
+
+    /// HIPC control requests (`TYPE_CONTROL`): domain conversion, cloning, pointer buffer size.
+    fn handle_control(&mut self, session_handle: u32, service: &ServiceType, tls_addr: u64, mmu: &mut Memory, cmd_id: u32) -> u64 {
+        match cmd_id {
+            // CloneCurrentObject / CloneCurrentObjectEx -> a new session to the same service
+            2 | 4 => {
+                let h = self.allocate_handle(service.clone());
+                self.write_cmif_response(tls_addr, mmu, 0, &[], Some(h));
+            }
+            // QueryPointerBufferSize -> u16 size
+            3 => self.write_cmif_response(tls_addr, mmu, 0, &[POINTER_BUFFER_SIZE], None),
+            // ConvertCurrentObjectToDomain is not supported yet: report it rather than pretend.
+            0 => {
+                eprintln!("[HIPC] ConvertCurrentObjectToDomain on handle 0x{session_handle:X} not supported");
+                self.write_cmif_response(tls_addr, mmu, 0xF601, &[], None);
+            }
+            _ => self.write_cmif_response(tls_addr, mmu, 0, &[], None),
+        }
+        0
     }
 
     /// Writes a standard CMIF ("SFCO") response frame back into the thread's TLS buffer.
@@ -1013,29 +1059,13 @@ impl IpcManager {
         out_words: &[u32],
         move_handle: Option<u32>,
     ) {
-        // HIPC Header at TLS + 0x00
-        let has_handle = move_handle.is_some();
-        let word0 = if has_handle { 0x80000004 } else { 0x00000004 };
-        let word1 = (4 + out_words.len()) as u32;
-        let _ = mmu.write_u32(tls_addr, word0);
-        let _ = mmu.write_u32(tls_addr + 4, word1);
-
-        if let Some(h) = move_handle {
-            // Special header descriptor: 1 move handle at TLS + 0x0C
-            let _ = mmu.write_u32(tls_addr + 8, 1 << 4);
-            let _ = mmu.write_u32(tls_addr + 12, h);
-        }
-
-        // CMIF Out Header ("SFCO") at TLS + 0x10
-        let cmif_base = tls_addr + 0x10;
-        let _ = mmu.write_u32(cmif_base, CMIF_OUT_MAGIC);
-        let _ = mmu.write_u32(cmif_base + 4, 0);
-        let _ = mmu.write_u32(cmif_base + 8, result_code);
-        let _ = mmu.write_u32(cmif_base + 12, 0);
-
-        for (i, &w) in out_words.iter().enumerate() {
-            let _ = mmu.write_u32(cmif_base + 16 + (i * 4) as u64, w);
-        }
+        let data: Vec<u8> = out_words.iter().flat_map(|w| w.to_le_bytes()).collect();
+        let moves: Vec<u32> = move_handle.into_iter().collect();
+        super::hipc::write_response(
+            mmu,
+            tls_addr,
+            &super::hipc::Response { result: result_code, data: &data, copy_handles: &[], move_handles: &moves },
+        );
     }
 }
 
@@ -1046,6 +1076,66 @@ mod tests {
     use crate::fs::VirtualFileSystem;
     use crate::gpu::nvgpu::NvgpuChannel;
     use crate::mmu::Permission;
+
+    /// libnx-shaped requests: PID in the special header, CMIF data aligned after it, and handles
+    /// returned in the right list (move for sessions, copy for shared memory).
+    #[test]
+    fn libnx_shaped_sm_and_hid_requests() {
+        let mut mmu = Memory::new();
+        let tls = 0x8000_0000u64;
+        mmu.map_range(tls, 4096, Permission::READ_WRITE);
+        let mut ipc = IpcManager::new();
+        let (mut nvgpu, mut audio, mut vfs) = (NvgpuChannel::new(), AudioOutServer::new(), VirtualFileSystem::new());
+        let sm = ipc.allocate_handle(ServiceType::Sm);
+
+        // sm: RegisterClient with PID: header 8 + special 4 + pid 8 = 20 -> CMIF at 0x20.
+        let request = |mmu: &mut Memory, with_pid: bool, cmd: u32, arg: u64| {
+            for i in 0..0x40 {
+                mmu.write_u32(tls + i * 4, 0).unwrap();
+            }
+            mmu.write_u32(tls, 4).unwrap();
+            mmu.write_u32(tls + 4, 10 | (with_pid as u32) << 31).unwrap();
+            let cmif = if with_pid {
+                mmu.write_u32(tls + 8, 1).unwrap();
+                mmu.write_u64(tls + 12, 0x77).unwrap();
+                0x20
+            } else {
+                0x10
+            };
+            mmu.write_u32(tls + cmif, CMIF_IN_MAGIC).unwrap();
+            mmu.write_u32(tls + cmif + 8, cmd).unwrap();
+            mmu.write_u64(tls + cmif + 16, arg).unwrap();
+        };
+        request(&mut mmu, true, 0, 0);
+        assert_eq!(ipc.handle_sync_request(sm, tls, &mut mmu, &mut nvgpu, &mut audio, &mut vfs), 0);
+        assert_eq!(ipc.registered_pid, Some(0x77));
+        assert_eq!(mmu.read_u32(tls + 0x10).unwrap(), CMIF_OUT_MAGIC);
+
+        // GetServiceHandle("hid") -> one move handle.
+        request(&mut mmu, false, 1, u64::from_le_bytes(*b"hid\0\0\0\0\0"));
+        ipc.handle_sync_request(sm, tls, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(mmu.read_u32(tls + 4).unwrap() >> 31, 1);
+        assert_eq!(mmu.read_u32(tls + 8).unwrap(), 1 << 5);
+        let hid = mmu.read_u32(tls + 12).unwrap();
+        assert_eq!(ipc.handles.get(&hid), Some(&ServiceType::Hid));
+
+        // hid CreateAppletResource (PID) -> IAppletResource; GetSharedMemoryHandle -> one copy handle.
+        request(&mut mmu, true, 0, 0);
+        ipc.handle_sync_request(hid, tls, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        let res = mmu.read_u32(tls + 12).unwrap();
+        assert_eq!(ipc.handles.get(&res), Some(&ServiceType::AppletResource));
+        request(&mut mmu, false, 0, 0);
+        ipc.handle_sync_request(res, tls, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(mmu.read_u32(tls + 8).unwrap(), 1 << 1);
+        let shm = mmu.read_u32(tls + 12).unwrap();
+        assert_eq!(ipc.handles.get(&shm), Some(&ServiceType::SharedMemory { size: HID_SHARED_MEMORY_SIZE }));
+
+        // Control: QueryPointerBufferSize.
+        request(&mut mmu, false, 3, 0);
+        mmu.write_u32(tls, 5).unwrap();
+        ipc.handle_sync_request(hid, tls, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
+        assert_eq!(mmu.read_u32(tls + 0x20).unwrap(), POINTER_BUFFER_SIZE);
+    }
 
     #[test]
     fn test_horizon_big_five_services_handshake() {

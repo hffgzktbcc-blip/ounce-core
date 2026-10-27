@@ -3423,8 +3423,10 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
 const NRO_HEAP_SIZE: usize = 0x200_0000; // 32 MB
 const NRO_CONFIG_ADDR: u64 = 0x7FFF_0000;
 const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
-/// `CurrentThread` pseudo-handle, passed as the main thread handle.
-const NRO_MAIN_THREAD_HANDLE: u32 = 0xFFFF_8000;
+/// Main thread handle passed to homebrew. Not the `CurrentThread` pseudo-handle (0xFFFF8000): libnx mutexes
+/// store the owner's handle and use bit 30 as their waiters flag, so a handle with bit 30 set never reads
+/// as "locked by this thread". Below the scheduler's (0x2000+) and IPC's (0x10001+) handle ranges.
+const NRO_MAIN_THREAD_HANDLE: u32 = 0x1000;
 const NRO_INSTRUCTION_BUDGET: usize = 50_000_000;
 
 /// Sets up the homebrew loader ABI for an NRO loaded at `DEFAULT_BASE_ADDR`.

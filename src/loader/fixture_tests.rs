@@ -206,15 +206,13 @@ fn libnx_nro_runs_to_main_return() {
     assert!(!shim.svcs.contains(&0x01), "svcSetHeapSize despite OverrideHeap");
 }
 
-/// Same NRO, booted the way `ounce-core run hello.nro fixture` boots it: `setup_vm`,
-/// `setup_homebrew_nro`, and the kernel's own SVC dispatch (no shim).
-#[test]
-fn libnx_nro_runs_under_cli_setup_and_kernel() {
+/// Boots `nro` the way `ounce-core run <nro> <args>` does: `setup_vm`, `setup_homebrew_nro`, and the
+/// kernel's own SVC dispatch (no shim). Returns the guest's debug output and every SVC it made.
+fn boot_with_kernel(nro: &[u8], args: &[&str]) -> (String, Vec<u16>) {
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
-    let info = super::BootLoader::load_any_package(&fixture(), crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu)
-        .expect("NRO loads");
+    let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).expect("NRO loads");
     assert_eq!(info.format, "NRO0");
-    crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "sdmc:/hello.nro", &["fixture"]).unwrap();
+    crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "sdmc:/fixture.nro", args).unwrap();
     cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
 
     let mut output = String::new();
@@ -238,7 +236,25 @@ fn libnx_nro_runs_under_cli_setup_and_kernel() {
             other => panic!("guest stopped: {other:?} at 0x{:X}; SVCs {svcs:x?}", cpu.regs.pc),
         }
     }
+    (output, svcs)
+}
+
+/// The hello fixture under the CLI setup and the real kernel.
+#[test]
+fn libnx_nro_runs_under_cli_setup_and_kernel() {
+    let (output, svcs) = boot_with_kernel(&fixture(), &["fixture"]);
     assert_eq!(output, "ounce-fixture result=0x00000EEE", "SVCs: {svcs:x?}");
     assert_eq!(svcs.last(), Some(&0x07), "exits through the loader return stub");
     assert!(svcs.contains(&0x29), "libnx startup calls svcGetInfo");
+}
+
+/// `tests/fixtures/nro/services`: libnx `smInitialize` and `hidInitialize` against the kernel's services.
+#[test]
+fn libnx_services_fixture_opens_sm_and_hid() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/services/services.nro");
+    let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let (output, svcs) = boot_with_kernel(&nro, &[]);
+    assert!(output.ends_with("ounce-services result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+    assert!(svcs.contains(&0x1F) && svcs.contains(&0x21), "connects to sm: and sends requests");
+    assert!(svcs.contains(&0x13), "maps the HID shared memory");
 }
