@@ -2,6 +2,7 @@
 //! its message buffer, so any message must produce a reply or a result code, never a panic or a hang.
 //! See `loader::fuzz_tests` for the harness (`OUNCE_FUZZ_CASES` sets the number of cases).
 
+use super::applet::AppletInterface;
 use super::hipc::{self, Buffer};
 use super::ipc::{IpcManager, ServiceType, CMIF_IN_MAGIC};
 use crate::audio::AudioOutServer;
@@ -24,6 +25,11 @@ fn services() -> Vec<ServiceType> {
         ApplicationFunctions, SetSys, Ro, Pl, Time, SystemClock, SteadyClock, Prepo, Bcat,
         Generic("fuzz:".into()), SharedMemory { size: 0x1000 }, TransferMemory { addr: BUF, size: 0x1000 },
         NvEvent { fd: 1, event_id: 0 }, AudioRenderer, AudioRendererEvent,
+        AppletAE, Applet(AppletInterface::OeRoot), Applet(AppletInterface::AeRoot), Applet(AppletInterface::CommonStateGetter),
+        Applet(AppletInterface::SelfController), Applet(AppletInterface::WindowController), Applet(AppletInterface::AudioController),
+        Applet(AppletInterface::DisplayController), Applet(AppletInterface::ApplicationFunctions),
+        Applet(AppletInterface::LibraryAppletSelfAccessor), Applet(AppletInterface::Other("fuzz")),
+        Set, TimeZoneService, Psm, PsmSession, Apm, ApmSession, ServiceEvent("fuzz"),
     ]
 }
 
