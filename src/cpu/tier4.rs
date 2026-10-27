@@ -1097,11 +1097,10 @@ mod tests {
         )
     }
 
-    /// Random straight-line blocks of translatable instructions: Tier-4 must match the interpreter
-    /// bit for bit (registers, SP, PC, NZCV, exit, data page). Tier-3 is left out here because its
-    /// Tier-2 fast paths still skip shifted/extended operands (issue #25, fixed separately).
+    /// Random straight-line blocks of translatable instructions: Tier-3 and Tier-4 must match the
+    /// interpreter bit for bit (registers, SP, PC, NZCV, exit, data page).
     #[test]
-    fn random_blocks_match_interpreter() {
+    fn random_blocks_match_interpreter_and_tier3() {
         let mut rng = Rng(0x0BAD_5EED_1234_5678);
         // Opcode classes the decoder translates: data processing (imm and reg) and loads/stores.
         let classes: [(u32, u32); 4] = [
@@ -1135,6 +1134,8 @@ mod tests {
             cpu.regs.pstate.from_bits((rng.next() as u32) & 0xF000_0000);
             let (c, m) = clone(&cpu, &mmu);
             let reference = run_interp(c, m, 1_000);
+            let (c, m) = clone(&cpu, &mmu);
+            assert_eq!(run_tier3(c, m, 1_000), reference, "Tier-3, case {cases}: {words:08X?}");
             let (t4, e) = run_tier4(cpu, mmu, 1_000);
             assert_eq!(t4, reference, "case {cases}: {words:08X?}");
             native += e.native_insns;
