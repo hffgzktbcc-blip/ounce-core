@@ -8,6 +8,7 @@ pub mod nvn;
 pub mod present;
 pub mod shader;
 pub mod tensor;
+pub mod tiling;
 pub mod vulkan;
 
 pub use display::{DisplayConfig, DisplayServer, PresentationMode, DEFAULT_FRAMEBUFFER_ADDR, SCREEN_HEIGHT, SCREEN_WIDTH};
