@@ -533,6 +533,7 @@ fn run_vm_internal(
     }
     let host_audio = HostAudioSink::new();
     let mut stop = VmStop::Budget;
+    let mut last_input_poll = Instant::now();
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -547,7 +548,20 @@ fn run_vm_internal(
             Ok(StepResult::Svc(svc_id)) => {
                 instructions_executed += 1;
                 match kernel.dispatch_svc(svc_id, &mut cpu, &mut mmu) {
-                    SvcResult::Success => {}
+                    SvcResult::Success => {
+                        // libnx homebrew reads HID shared memory between SVCs rather than per presented
+                        // frame: hand it the host controller every few milliseconds.
+                        if kernel.ipc.hid.addr.is_some() && last_input_poll.elapsed() >= INPUT_POLL_INTERVAL {
+                            last_input_poll = Instant::now();
+                            if let Some(ref mut h) = hid {
+                                if let Some(ref mut disp) = display {
+                                    h.poll_keyboard(&disp.get_active_keys());
+                                }
+                                gamepad_mgr.poll(h);
+                                kernel.ipc.hid.input = kernel::hid::NpadInput::from_controller(&h.state);
+                            }
+                        }
+                    }
                     SvcResult::PresentFrame => {
                         frames_presented += 1;
 
@@ -3428,6 +3442,8 @@ const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
 /// as "locked by this thread". Below the scheduler's (0x2000+) and IPC's (0x10001+) handle ranges.
 const NRO_MAIN_THREAD_HANDLE: u32 = 0x1000;
 const NRO_INSTRUCTION_BUDGET: usize = 50_000_000;
+/// How often the VM copies host controller input into libnx's HID shared memory.
+const INPUT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(4);
 
 /// Sets up the homebrew loader ABI for an NRO loaded at `DEFAULT_BASE_ADDR`.
 /// `nro` is also placed on the virtual SD card and `argv[0]` names it as `sdmc:/<file name>`, the way
