@@ -1,15 +1,22 @@
-//! AMPERE_B (`0xC797`) 3D class method offsets used by the step-1 decoder.
+//! 3D class method offsets used by the step-1 decoder: one shared table for AMPERE_B (`0xC797`)
+//! and MAXWELL_B (`0xB197`), plus the few per-class overrides.
 //!
-//! Every number here is copied from NVIDIA's public class header
-//! `open-gpu-doc/classes/3d/clc797.h` (`NVC797_*`, MIT licensed). Offsets are byte offsets, as in
-//! the header; the pushbuffer carries them as dword addresses (offset >> 2). Nothing is taken from
-//! the Maxwell B (`0xB197`) layout: Ampere moved shader addressing to per-pipeline 40-bit
-//! addresses (`SET_PIPELINE_PROGRAM_ADDRESS_A/B`) and vertex stream limits to
-//! `SET_VERTEX_STREAM_SIZE_A/B`, so the two classes are not interchangeable.
+//! Every number here is copied from NVIDIA's public class headers
+//! `open-gpu-doc/classes/3d/clc797.h` (`NVC797_*`) and `clb197.h` (`NVB197_*`), MIT licensed.
+//! Offsets are byte offsets, as in the headers; the pushbuffer carries them as dword addresses
+//! (offset >> 2). A diff of the two headers shows every shared constant below has the same offset
+//! and fields in both classes, except where a comment says otherwise. The differences that matter
+//! here: shader code addressing (Ampere: per-pipeline 40-bit `SET_PIPELINE_PROGRAM_ADDRESS_A/B`;
+//! Maxwell: `SET_PROGRAM_REGION_A/B` plus a per-pipeline offset in `SET_PIPELINE_PROGRAM`) and
+//! vertex stream bounds (Ampere: `SET_VERTEX_STREAM_SIZE_A/B`; Maxwell:
+//! `SET_VERTEX_STREAM_LIMIT_A_A/B`).
 
 /// AMPERE_B. Linux nouveau `include/nvif/class.h` names `0xc797` AMPERE_B, and
 /// `nvkm/engine/gr/ga102.c` lists it as the 3D class of the GA10x family (GA10B included).
 pub const AMPERE_B: u32 = 0xC797;
+/// MAXWELL_B (GM20x 3D class, `clb197.h`). Accepted so Maxwell-targeting homebrew such as deko3d
+/// decodes through the shared table.
+pub const MAXWELL_B: u32 = 0xB197;
 
 /// `NVC797_SET_OBJECT`, bits 15:0 = class id.
 pub const SET_OBJECT: u32 = 0x0000;
@@ -96,7 +103,8 @@ pub const DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_FIRST: u32 = 0x1214;
 pub const DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_SUBSEQUENT: u32 = 0x1218;
 /// `NVC797_SET_CT_SELECT`: TARGET_COUNT 3:0, TARGETn at 6:4, 9:7, ... (3 bits each).
 pub const SET_CT_SELECT: u32 = 0x121c;
-/// `NVC797_SET_ZT_SIZE_A` (WIDTH 27:0), `_B` (HEIGHT 17:0), `_C` (THIRD_DIMENSION 15:0).
+/// `NVC797_SET_ZT_SIZE_A` (WIDTH 27:0), `_B` (HEIGHT 17:0; `NVB197_`: 16:0), `_C`
+/// (THIRD_DIMENSION 15:0).
 pub const SET_ZT_SIZE_A: u32 = 0x1228;
 pub const SET_ZT_SIZE_B: u32 = 0x122c;
 pub const SET_ZT_SIZE_C: u32 = 0x1230;
@@ -122,7 +130,7 @@ pub const SET_REPORT_SEMAPHORE_D: u32 = 0x1b0c;
 
 /// `NVC797_SET_PIPELINE_SHADER(j)`: ENABLE 0:0, TYPE 7:4. Pipelines are 64 bytes apart.
 pub const SET_PIPELINE_SHADER: u32 = 0x2000;
-/// `NVC797_SET_PIPELINE_REGISTER_COUNT(j)`: V 8:0.
+/// `NVC797_SET_PIPELINE_REGISTER_COUNT(j)`: V 8:0 (`NVB197_`: V 7:0).
 pub const SET_PIPELINE_REGISTER_COUNT: u32 = 0x200c;
 /// `NVC797_SET_PIPELINE_PROGRAM_ADDRESS_A(j)` (upper 7:0), `_B(j)` (lower 31:0).
 pub const SET_PIPELINE_PROGRAM_ADDRESS_A: u32 = 0x2014;
@@ -130,6 +138,17 @@ pub const SET_PIPELINE_PROGRAM_ADDRESS_B: u32 = 0x2018;
 pub const PIPELINE_STRIDE: u32 = 64;
 /// VERTEX_CULL_BEFORE_FETCH, VERTEX, TESSELLATION_INIT, TESSELLATION, GEOMETRY, PIXEL.
 pub const PIPELINE_COUNT: usize = 6;
+
+// MAXWELL_B-only methods (`clb197.h`); on AMPERE_B these offsets are unused or mean something else.
+/// `NVB197_SET_PROGRAM_REGION_A` (address upper 7:0), `_B` (lower 31:0): base of all shader code.
+pub const B197_SET_PROGRAM_REGION_A: u32 = 0x1608;
+pub const B197_SET_PROGRAM_REGION_B: u32 = 0x160c;
+/// `NVB197_SET_PIPELINE_PROGRAM(j)`: OFFSET 31:0 from the program region.
+pub const B197_SET_PIPELINE_PROGRAM: u32 = 0x2004;
+/// `NVB197_SET_VERTEX_STREAM_LIMIT_A_A(j)` (upper 7:0), `_B(j)` (lower 31:0), 8 bytes apart.
+pub const B197_SET_VERTEX_STREAM_LIMIT_A_A: u32 = 0x1f00;
+pub const B197_SET_VERTEX_STREAM_LIMIT_A_B: u32 = 0x1f04;
+pub const B197_VERTEX_STREAM_LIMIT_STRIDE: u32 = 8;
 
 /// One past the highest method the 12-bit pushbuffer dword address can reach.
 pub const METHOD_SPACE: u32 = 0x4000;

@@ -153,12 +153,12 @@ pub(crate) fn color_target(regs: &[u32], index: usize) -> ColorTarget {
     }
 }
 
-pub(crate) fn depth_target(regs: &[u32]) -> DepthTarget {
+pub(crate) fn depth_target(regs: &[u32], maxwell: bool) -> DepthTarget {
     let r = |method: u32| regs[method as usize / 4];
     DepthTarget {
         gpu_va: addr40(r(m::SET_ZT_A), r(m::SET_ZT_B)),
         width: r(m::SET_ZT_SIZE_A) & 0x0fff_ffff,
-        height: r(m::SET_ZT_SIZE_B) & 0x3_ffff,
+        height: r(m::SET_ZT_SIZE_B) & if maxwell { 0x1_ffff } else { 0x3_ffff },
         format: DepthFormat::from_raw(r(m::SET_ZT_FORMAT) & 0x1f),
         layout: block_linear(r(m::SET_ZT_BLOCK_SIZE)),
         array_pitch: r(m::SET_ZT_ARRAY_PITCH),
