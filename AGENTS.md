@@ -156,3 +156,16 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - Outside the reserved list (flagged): `src/kernel/svc.rs` `0x15` svcCreateTransferMemory; `src/kernel/mod.rs` registers the module.
   - Fixture `tests/fixtures/nro/nvdrv/` (nvInitialize, nvMapInit, nvMapCreate, close/exit) -> `0x00000EEE`.
   - Next: nvhost-ctrl / nvhost-as-gpu / nvhost-gpu ioctls for real GPU channels, QueryEvent events, HID input into the guest-mapped shared memory.
+* **Autonomous Parallel Execution Agreement (Owner Approved, 2026-10-27)**:
+  - PR #34, #35, #36 (Track B) and PR #37 (Track A) are all merged to `main` at `c6d37ef`.
+  - Both agents operate autonomously in their dedicated lanes without requiring conversational round-trips for permission.
+  - **Merge Protocol**: Each agent opens draft/ready PRs for their lane. Once all 9 cross-platform CI matrix jobs are 100% green and no files collide outside reserved lists, the author agent is authorized to squash-merge to `main` without admin bypass.
+  - **Track B Lane (Claude)**:
+    - Goal: Real GPU channels and controller input.
+    - Scope: `nvhost-ctrl`, `nvhost-as-gpu`, `nvhost-gpu` ioctls for pushbuffer submission; `QueryEvent` event sync; and routing host gamepad/keyboard inputs (`HostGamepadManager`) into the guest-mapped shared memory region so libnx `padUpdate` / `hidScanInput` / `hidKeysDown` sees physical inputs.
+    - Reserved files: `src/kernel/ipc.rs`, `src/kernel/sm.rs`, `src/kernel/hid.rs`, `src/kernel/nvdrv.rs`, `src/fs/romfs.rs`, `tests/fixtures/nro/*`, `src/loader/fixture_tests.rs`.
+  - **Track A Lane (Antigravity)**:
+    - Goal: Step 6 of M4 Native JIT (AdvSIMD & FP lowering in Cranelift).
+    - Scope: Lowering ARMv8.5-A vector/AdvSIMD and floating-point operations in `crates/ounce-recompiler` so libnx vector loops run in native JIT blocks without falling back to Tier-3/interpreter; differential tests and fuzzer coverage.
+    - Reserved files: `crates/ounce-recompiler/*`, `src/cpu/tier4.rs`, `.github/workflows/*`.
+  - **Shared Files**: Avoid touching `src/main.rs` unless strictly necessary for minimal CLI flags, with changes kept completely disjoint.
