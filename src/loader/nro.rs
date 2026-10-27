@@ -36,6 +36,9 @@ pub const DT_FINI_ARRAYSZ: i64 = 28;
 pub const DT_PREINIT_ARRAY: i64 = 32;
 pub const DT_PREINIT_ARRAYSZ: i64 = 33;
 pub const DT_GNU_HASH: i64 = 0x6FFF_FEF5;
+pub const DT_RELRSZ: i64 = 35;
+pub const DT_RELR: i64 = 36;
+pub const DT_RELRENT: i64 = 37;
 
 /// Size of the AArch64 thread control block that sits at the thread pointer, before the first TLS block.
 pub const TLS_TCB_SIZE: u64 = 16;
@@ -78,6 +81,9 @@ pub struct DynamicInfo {
     pub fini_array_size: u64,
     pub preinit_array: Option<u64>,
     pub preinit_array_size: u64,
+    /// `DT_RELR`: packed relative relocations (current devkitA64 links libnx homebrew with these).
+    pub relr: Option<u64>,
+    pub relr_size: u64,
 }
 
 /// One module's block in the static TLS area.
@@ -397,6 +403,8 @@ impl NroLoader {
                 DT_FINI_ARRAYSZ => info.fini_array_size = d_val,
                 DT_PREINIT_ARRAY => info.preinit_array = Some(d_val),
                 DT_PREINIT_ARRAYSZ => info.preinit_array_size = d_val,
+                DT_RELR => info.relr = Some(d_val),
+                DT_RELRSZ => info.relr_size = d_val,
                 _ => {}
             }
         }
@@ -867,6 +875,52 @@ impl NroLoader {
             }
         }
         report
+    }
+
+    /// Applies the module's `DT_RELR` table: each listed word gets `base_addr` added to it.
+    /// Even entries name one word (image offset); odd entries are bitmaps over the next 63 words.
+    /// Returns the number of words relocated.
+    ///
+    /// Not part of `apply_relocations`, and so not done by `load_into_memory`: unlike RELA, adding the
+    /// base is not idempotent, and a libnx `crt0` applies `DT_RELR` itself at startup.
+    /// Call this only for an image that will not relocate itself.
+    pub fn apply_relr(base_addr: u64, mmu: &mut Memory) -> usize {
+        let info = match Self::parse_dynamic(base_addr, mmu) {
+            Some(i) => i,
+            None => return 0,
+        };
+        let table = match info.relr {
+            Some(t) => base_addr + t,
+            None => return 0,
+        };
+        let mut applied = 0;
+        let mut add_base = |mmu: &mut Memory, addr: u64| {
+            if let Ok(v) = mmu.read_u64(addr) {
+                if mmu.write_u64(addr, v.wrapping_add(base_addr)).is_ok() {
+                    applied += 1;
+                }
+            }
+        };
+        let mut next = 0u64;
+        for i in 0..info.relr_size / 8 {
+            let entry = match mmu.read_u64(table + i * 8) {
+                Ok(e) => e,
+                Err(_) => break,
+            };
+            if entry & 1 == 0 {
+                let addr = base_addr + entry;
+                add_base(mmu, addr);
+                next = addr + 8;
+            } else {
+                for bit in 1..64u64 {
+                    if entry >> bit & 1 != 0 {
+                        add_base(mmu, next + (bit - 1) * 8);
+                    }
+                }
+                next += 63 * 8;
+            }
+        }
+        applied
     }
 
     /// Applies the module's relocations using only its own symbols, returning the number applied.
@@ -1518,6 +1572,30 @@ mod tests {
 
         // Verify pointer at base + 0x300 was relocated to base_addr + 0x450 (0x80000450)
         assert_eq!(mmu.read_u64(base_addr + 0x300).unwrap(), 0x80000450);
+    }
+
+    #[test]
+    fn relr_address_and_bitmap_entries() {
+        let mut mmu = Memory::new();
+        let base = 0x8000_0000u64;
+        write_test_module_with(&mut mmu, base, &[], &[], &[], &[(DT_RELR, 0xC00), (DT_RELRSZ, 16)], false);
+        // Address entry for +0x1000, then a bitmap over the following words: words 0 and 2 (+0x1008, +0x1018).
+        mmu.write_u64(base + 0xC00, 0x1000).unwrap();
+        mmu.write_u64(base + 0xC08, 1 | 1 << 1 | 1 << 3).unwrap();
+        mmu.map_range(base + 0x1000, 0x1000, Permission::READ_WRITE);
+        for (i, v) in [0x10u64, 0x20, 0x30, 0x40].iter().enumerate() {
+            mmu.write_u64(base + 0x1000 + i as u64 * 8, *v).unwrap();
+        }
+
+        assert_eq!(NroLoader::parse_dynamic(base, &mmu).unwrap().relr, Some(0xC00));
+        assert_eq!(NroLoader::apply_relr(base, &mut mmu), 3);
+        assert_eq!(mmu.read_u64(base + 0x1000).unwrap(), base + 0x10);
+        assert_eq!(mmu.read_u64(base + 0x1008).unwrap(), base + 0x20);
+        assert_eq!(mmu.read_u64(base + 0x1010).unwrap(), 0x30);
+        assert_eq!(mmu.read_u64(base + 0x1018).unwrap(), base + 0x40);
+        // RELA-only paths leave RELR words alone.
+        assert_eq!(NroLoader::apply_mod0_relocations(base, &mut mmu), 0);
+        assert_eq!(mmu.read_u64(base + 0x1000).unwrap(), base + 0x10);
     }
 
     #[test]
