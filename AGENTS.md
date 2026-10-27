@@ -196,6 +196,8 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - `src/kernel/ipc.rs`: `audren:u` OpenAudioRenderer (parameters) / GetWorkBufferSize (u64); `IAudioRenderer` sample rate/count, mix buffers, state, RequestUpdate (4/10), Start/Stop, QuerySystemEvent. `src/kernel/svc.rs`: `0x17` svcResetSignal; renderer event as a wait object. `src/cpu/decoder.rs`: `FMOV` (scalar, immediate).
   - Fixtures: `tests/fixtures/nro/audren/` (tone through libnx's audio driver; test checks the exact mixed output) and the threads fixture's new spinner (finishes only with preemption).
   - Not done: ADPCM and PCM float voices, submixes and splitters, effects, biquad filters, voice drops, circular-buffer sinks, real-time frame pacing, and host playback for homebrew that never presents frames (the runner drains audio on presented frames).
+* **Claim: audren voice formats, submixes, biquads (Claude)** (branch `claude/audren-formats`, 2026-10-27)
+  - Reserved while open: `src/kernel/audren.rs`. Not touching `src/main.rs`, `src/gpu/*`, `src/cpu/tier4.rs`, `crates/ounce-recompiler/*`, `.github/workflows/*`.
 * **Handoff: Track A Baseline Benchmark & GUI Window Event Pacing** (branch `feat/tier4-benchmark-gui-pacing`, 2026-10-27)
   - Measured Tier-4 baseline throughput across scales on host Apple Silicon M3 (`stage20_benchmark_scaling`):
     - 15k instructions (Stage 20 size): Tier-3 ~59.5 MIPS | Tier-4 Cold (compiling 5 blocks): 11.5 MIPS | Tier-4 Warm: 247.9 MIPS.
