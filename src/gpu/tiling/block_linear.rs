@@ -2,18 +2,27 @@
 //! color surfaces).
 //!
 //! Sources (public):
-//! - NVIDIA Tegra X1 Technical Reference Manual, chapter "Memory Formats", "Block Linear":
-//!   a GOB (group of bytes) is 64 bytes wide and 8 rows tall (512 bytes); inside a GOB the
-//!   bytes are stored as 16-byte rows grouped in 32x2-byte sectors; GOBs stack vertically
-//!   into a block of `2^block_height` GOBs, then in depth `2^block_depth` times; blocks are
-//!   laid out row-major (X, then Y, then Z).
-//! - Mesa NVK `nil` (`src/nouveau/nil/tiling.rs`, `src/nouveau/nil/image.rs`): GOB extent
-//!   64 B x 8 x 1 for the Fermi color GOB type, `Tiling { x_log2, y_log2, z_log2 }` with
-//!   `x_log2` always 0 for images, and block height/depth shrunk to fit small surfaces.
+//! - Linux `include/uapi/drm/drm_fourcc.h` ("Generalized Block Linear layout",
+//!   `DRM_FORMAT_MOD_NVIDIA_BLOCK_LINEAR_2D`): GOBs are 64 B x 8 rows for Fermi through
+//!   Turing+ (gob height field `g` = 0 or 2), stacked vertically 1 to 32 GOBs per block
+//!   (log2 0..5), no block-width parameter, "16B x 2 lines sectors laid in Z-shape" inside
+//!   the GOB. It points to Tegra X1 TRM chapter 20 "Pixel Memory Formats" for the full layout.
+//! - NVIDIA Tegra X1 TRM, chapter 20: the in-GOB byte offset used by `gob_offset`
+//!   (bits `x[3:0] | y[0]<<4 | x[4]<<5 | y[2:1]<<6 | x[5]<<8`), and blocks laid out
+//!   row-major (X, then Y, then Z).
+//! - Mesa NVK `nil` (`src/nouveau/nil/tiling.rs`, `image.rs`): GOB extent and the
+//!   block height/depth clamp for small surfaces (`clamp_block_log2`). Not re-fetched
+//!   from this environment; follows what `nil` is documented to do.
 //!
-//! Not covered: Turing+ depth/stencil "ZS" GOB kinds and compressed kinds, whose in-GOB
-//! swizzle is not publicly documented. ounce-core stores depth surfaces with the color GOB
-//! swizzle, which is self-consistent across the runtime but not a hardware byte layout.
+//! Known gap: `drm_fourcc.h` also defines a "sector layout" bit-remap step below the block
+//! linear swizzle. Layout 0 is Tegra K1 to Parker/TX2 (what the TRM formula describes);
+//! layout 1 is pre-GB20x desktop, Tegra Xavier to Orin (the family T239 belongs to). The
+//! exact difference is not spelled out in public headers, so `gob_offset` is the TRM
+//! layout and is self-consistent across ounce-core, not a claim of byte-exact Orin-class
+//! memory. Callers handing surfaces to real hardware would need that remap.
+//!
+//! Not covered: Turing+ depth/stencil "ZS" GOB kinds and compressed kinds. ounce-core
+//! stores depth surfaces with the color GOB swizzle.
 
 /// Bytes per GOB row.
 pub const GOB_WIDTH_BYTES: u32 = 64;
@@ -26,7 +35,7 @@ pub const MAX_BLOCK_LOG2: u8 = 5;
 
 /// Byte offset of byte column `x` (0..64) and row `y` (0..8) inside one GOB.
 ///
-/// Tegra X1 TRM block-linear GOB formula:
+/// Tegra X1 TRM chapter 20 block-linear GOB formula:
 /// `(x/32)*256 + (y/2)*64 + ((x%32)/16)*32 + (y%2)*16 + x%16`.
 #[inline]
 pub const fn gob_offset(x: u32, y: u32) -> u32 {
