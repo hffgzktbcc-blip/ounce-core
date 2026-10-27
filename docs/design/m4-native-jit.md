@@ -1,6 +1,6 @@
 # M4 design: Tier-4 native recompiler
 
-Status: **approved 2026-10-26** (recommended options: Cranelift, memory plan A then B, `native-jit` + `--cpu=`, workspace). Step 1 done (section 12).
+Status: **approved 2026-10-26** (recommended options: Cranelift, memory plan A then B, `native-jit` + `--cpu=`, workspace). Steps 1 and 2 done (section 12).
 Date: 2026-10-26. Base: `main` @ 4ecacae (v0.3.1, 25 stages `0xEEE`, `#![forbid(unsafe_code)]` in `src/main.rs`).
 
 ## 1. Goal and scope
@@ -159,3 +159,13 @@ Step 1 (workspace, crate skeleton, executable memory):
 - Linux aarch64 uses inline `DC CVAU` / `IC IVAU` / `DSB ISH` / `ISB` (line sizes from `CTR_EL0`) rather than linking `__clear_cache`.
 - Cranelift is not a dependency yet; it arrives with step 2. Step 1's self-test emits a hand-written `return 42` per host (aarch64, x86_64).
 - Verified: x86_64 Linux locally (tests + `jit-selftest`); `cargo clippy` clean for `aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`. Execution on macOS (Apple Silicon) and Windows is covered by the `native-jit` CI job.
+
+Step 2 (IR, Cranelift backend, callback memory, Tier-4 dispatch):
+- `crates/ounce-recompiler/src/ir.rs`: SSA block IR, 64-bit values with `W32` ops that zero-extend. Ops: constants, guest register get/set (`X0`-`X30`, `SP`, packed NZCV), add/sub/mul/logic/shifts/rotate/div, sign/zero extend, NZCV for add/sub/logic, condition codes, select, load/store with a fault site, and an instruction-boundary check. Terminator: one exit or a two-way exit. Division never traps (`/0 = 0`, `MIN / -1 = MIN`), shift amounts are taken modulo the width.
+- `backend.rs` (safe): Cranelift `=0.137.0` (`codegen`, `frontend`, `native`), `opt_level=speed`, no `cranelift-jit`. Generated function: `extern "C" fn(*mut GuestState, *mut CallCtx) -> u64`; exit word `code | insns << 32`, exit `pc` in `GuestState.pc`. Guest registers are loaded/stored at every get/set, so state in memory is current at each memory call and faults are precise. Code needing relocations is rejected.
+- `exec.rs` gained the `extern "C"` memory trampolines and the block call. A panic in a `MemoryBus` is caught, the block exits as a fault, and the panic resumes after the call (never unwinds through generated frames).
+- Self-modifying code: `MemoryBus::write` reports `CodeWritten` when a store bumped `Memory::code_write_gen`; the block stops at the end of that instruction, then `Tier4JitEngine::sync_code_writes` drops translations via `code_written_since` (same rule as Tier-2/3, section 5). `invalidate_range` from the API sketch is `Recompiler::remove(BlockId)`; the guest-range bookkeeping lives in `ounce-core`.
+- `src/cpu/tier4.rs` (feature `native-jit`): lowering mirrors `Cpu::step` (the interpreter is the reference, including its `XZR`/`SP` choices). Translated: `ADD/SUB` (imm, shifted, extended, flags), `MOVZ/MOVN/MOVK`, logical imm/reg, bitfield, `EXTR`, `CSEL` family, `CCMP/CCMN`, `MADD/MSUB`, `UDIV/SDIV`, variable shifts, `ADR/ADRP`, `NOP`/hints, `LDR/STR` imm/reg/pre/post (all sizes, signed), `LDP/STP`, `B/BL/B.cond/CBZ/CBNZ/TBZ/TBNZ/BR/BLR/RET`, `SVC`. Everything else (system registers, FP/SIMD, exclusives) ends the block and runs on Tier-3. Blocks are at most 64 instructions; hotness threshold 64 entries. Consecutive translated blocks run back to back without converting state. PC maps use a multiply hash: SipHash per block lookup cost more than the block itself.
+- Selection: `cpu::CpuTier` / `cpu::CpuEngine` (`--cpu=tier3|tier4`, `OUNCE_CPU`, default Tier-3). Today only Stage 20 runs on a block engine; `run_vm` still steps the interpreter.
+- Tests: crate tests run IR through native code (flags, division, precise faults, code-write stop, panic carry). `tier4.rs`: interpreter vs Tier-3 vs Tier-4 on fixed programs (loops, calls, pairs, writeback, ALU mix, fallback), precise fault, SMC, and 2,000 seeded random straight-line blocks against the interpreter. Tier-3 is not in the random comparison while its Tier-2 fast path ignores shifted/extended operands (issue #25).
+- Measured on x86_64 Linux (cloud container, noisy): Stage 20 loop scaled to 308k instructions, Tier-4 ~115-120 MIPS vs Tier-3 ~60-75 MIPS. Stage 20 itself (15k instructions) is slower on Tier-4 (~15 MIPS) because Cranelift compile time dominates such a short run.
