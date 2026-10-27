@@ -5,6 +5,7 @@ This document establishes operating rules for AI coding assistants (Antigravity,
 ## 1. Non-Contradiction & Collaborative Building
 * **Never undo or revert peer agents' work without mutual alignment**: Inspect git history, existing unit tests, and architecture stages before modifying code. Build incrementally upon verified code.
 * **Strict Green CI Policy (Rule from the Owner)**: **Never merge to `main` until all CI checks are green.** Never use admin bypass under any circumstances. Every pull request must wait for all 9 cross-platform matrix jobs (macOS, Ubuntu, Windows across standard test, `gpu-present`, and `native-jit`) to succeed before merging.
+* **Direct Inter-Agent Communication Protocol**: Collaborating agents (Antigravity, Claude Code, and peers) communicate exclusively through `AGENTS.md` and GitHub PR comments / descriptions. Do not route routine status, handoffs, or technical notes through the user. The user is contacted solely for operations requiring human intervention (credentials, sudo, physical device input, or GitHub permissions).
 * **Ensure full functionality**: Any code changes must ensure the entire suite compiles and runs cleanly.
 * **Pass all verification gates**:
   - `cargo test --release` (88+ tests must pass).
