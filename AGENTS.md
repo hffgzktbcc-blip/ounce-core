@@ -161,13 +161,11 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - Both agents operate autonomously in their dedicated lanes without requiring conversational round-trips for permission.
   - **Merge Protocol**: Each agent opens draft/ready PRs for their lane. Once all 9 cross-platform CI matrix jobs are 100% green and no files collide outside reserved lists, the author agent is authorized to squash-merge to `main` without admin bypass.
   - **Track B Lane (Claude)**:
-    - Goal: Real GPU channels and controller input.
-    - Scope: `nvhost-ctrl`, `nvhost-as-gpu`, `nvhost-gpu` ioctls for pushbuffer submission; `QueryEvent` event sync; and routing host gamepad/keyboard inputs (`HostGamepadManager`) into the guest-mapped shared memory region so libnx `padUpdate` / `hidScanInput` / `hidKeysDown` sees physical inputs.
-    - Reserved files: `src/kernel/ipc.rs`, `src/kernel/sm.rs`, `src/kernel/hid.rs`, `src/kernel/nvdrv.rs`, `src/fs/romfs.rs`, `tests/fixtures/nro/*`, `src/loader/fixture_tests.rs`.
+    - Next Goal: Homebrew threads (`svcCreateThread`, thread-local storage, and libnx mutex arbitration via Horizon synchronization primitives) followed by audio mixing (`audren:u` 64-voice mixer).
+    - Reserved files: `src/kernel/ipc.rs`, `src/kernel/sm.rs`, `src/kernel/hid.rs`, `src/kernel/nvdrv.rs`, `src/kernel/scheduler.rs`, `src/kernel/sync.rs`, `src/fs/romfs.rs`, `tests/fixtures/nro/*`, `src/loader/fixture_tests.rs`.
   - **Track A Lane (Antigravity)**:
-    - Goal: Step 6 of M4 Native JIT (AdvSIMD & FP lowering in Cranelift).
-    - Scope: Lowering ARMv8.5-A vector/AdvSIMD and floating-point operations in `crates/ounce-recompiler` so libnx vector loops run in native JIT blocks without falling back to Tier-3/interpreter; differential tests and fuzzer coverage.
-    - Reserved files: `crates/ounce-recompiler/*`, `src/cpu/tier4.rs`, `.github/workflows/*`.
+    - Next Goal: Benchmarking and optimizing Tier-4 MIPS throughput on long workloads, Cranelift register optimization, and wiring `run --gui` interactive window presentation with live swapchain pacing.
+    - Reserved files: `crates/ounce-recompiler/*`, `src/cpu/tier4.rs`, `src/gpu/present/*`, `.github/workflows/*`.
   - **Shared Files**: Avoid touching `src/main.rs` unless strictly necessary for minimal CLI flags, with changes kept completely disjoint.
 * **Handoff: Track B step 4, GPU channels + QueryEvent** (branch `claude/libnx-gpu-channels`, 2026-10-27)
   - `src/kernel/nvdrv.rs`: `/dev/nvhost-ctrl` (syncpoint read/incr/wait, event wait/signal/register), `/dev/nvhost-ctrl-gpu` (GM20B characteristics as libnx documents them, zcull, TPC masks, ZBC slot mask, GPU time), `/dev/nvhost-as-gpu` (alloc/free space, MAP_BUFFER_EX, unmap, VA regions), `/dev/nvhost-gpu` (GPFIFO alloc, object contexts, settings, SUBMIT_GPFIFO with inline or Ioctl2 entries). Submitted GPU VAs are translated through the address space to guest addresses and run on `NvgpuChannel::process_pushbuffer` from `IpcManager::handle_nvdrv`. Work completes on submit: each submit advances the channel syncpoint and returns it as the fence.
