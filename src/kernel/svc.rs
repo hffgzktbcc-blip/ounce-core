@@ -131,6 +131,7 @@ impl HorizonKernel {
             .iter()
             .all(|h| {
                 self.scheduler.thread_signaled(*h).is_some() || self.sync.events.contains_key(h) || self.ipc.is_audio_renderer_event(*h)
+                    || self.ipc.service_event_signaled(*h).is_some()
             })
             .then_some(handles)
     }
@@ -355,7 +356,9 @@ impl HorizonKernel {
             // 0x17: svcResetSignal(handle): clear an event (the audio renderer event re-arms per frame).
             0x17 => {
                 let handle = cpu.regs.read_w(0);
-                let ok = self.sync.clear_event(handle) || self.ipc.is_audio_renderer_event(handle);
+                let ok = self.sync.clear_event(handle)
+                    || self.ipc.is_audio_renderer_event(handle)
+                    || self.ipc.service_event_signaled(handle).is_some();
                 cpu.regs.write_x(0, if ok { 0 } else { 0xE401 });
                 SvcResult::Success
             }
@@ -373,7 +376,10 @@ impl HorizonKernel {
                 let signaled = audio_event.or_else(|| {
                     handles.iter().position(|&h| match self.scheduler.thread_signaled(h) {
                         Some(exited) => exited,
-                        None => self.sync.events.get(&h).is_some_and(|e| e.signaled),
+                        None => match self.ipc.service_event_signaled(h) {
+                            Some(signaled) => signaled,
+                            None => self.sync.events.get(&h).is_some_and(|e| e.signaled),
+                        },
                     })
                 });
                 if let Some(i) = signaled {
