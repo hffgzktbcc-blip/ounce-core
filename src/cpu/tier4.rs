@@ -14,12 +14,16 @@
 //! translations are dropped through `Memory::code_written_since`, like Tier-2/3.
 
 use super::decoder::decode;
-use super::instructions::{BranchRegOp, Condition, Instruction, LogicalOp, MoveWideOp, ShiftType};
+use super::instructions::{
+    BranchRegOp, Condition, FpOp2, Instruction, LogicalOp, MoveWideOp, ShiftType, SimdImmOp, SimdOp2, SimdOp3,
+};
 use super::interpreter::Cpu;
 use super::tier2_jit::BlockExit;
 use super::tier3_jit::Tier3JitEngine;
 use crate::mmu::Memory;
-use ounce_recompiler::ir::{BinOp, BlockBuilder, ExitTo, FaultSite, Op, Reg, Terminator, Value, Width};
+use ounce_recompiler::ir::{
+    BinOp, BlockBuilder, ExitTo, FaultSite, FpBinOp, FpWidth, Op, Reg, Terminator, Value, Width,
+};
 use ounce_recompiler::{BlockId, ExitKind, GuestState, MemFault, MemoryBus, PageMapping, Recompiler, WriteEffect};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -530,7 +534,287 @@ impl Lowerer {
                 return Ok(Some(Terminator::Exit(ExitTo { code, pc: target, insns: done })));
             }
 
-            // System registers, FP/SIMD, exclusives and unknown encodings stay on Tier-3.
+            Instruction::FpMovGen { rd, rn, to_fp, is_64 } => {
+                let zero = self.k(0);
+                if to_fp {
+                    if is_64 {
+                        let val = self.x(rn);
+                        self.b.set(Reg::VLo(rd), val);
+                        self.b.set(Reg::VHi(rd), zero);
+                    } else {
+                        let xn = self.x(rn);
+                        let val = self.zext32(xn);
+                        self.b.set(Reg::VLo(rd), val);
+                        self.b.set(Reg::VHi(rd), zero);
+                    }
+                } else if is_64 {
+                    let val = self.b.get(Reg::VLo(rn));
+                    self.set_x(rd, val);
+                } else {
+                    let val = self.b.get(Reg::VLo(rn));
+                    self.set_w(rd, val);
+                }
+            }
+
+            Instruction::FpLoadStoreImm {
+                rt,
+                rn,
+                offset,
+                is_load,
+                is_double,
+            } => {
+                let base = self.x_or_sp(rn);
+                let addr = if offset != 0 {
+                    self.b.bin_imm(BinOp::Add, Width::W64, base, offset as u64)
+                } else {
+                    base
+                };
+                let fault = FaultSite { pc, insns: done };
+                let zero = self.k(0);
+                if is_load {
+                    if is_double {
+                        let val = self.b.push(Op::Load(8, addr, fault));
+                        self.b.set(Reg::VLo(rt), val);
+                        self.b.set(Reg::VHi(rt), zero);
+                    } else {
+                        let val = self.b.push(Op::Load(4, addr, fault));
+                        self.b.set(Reg::VLo(rt), val);
+                        self.b.set(Reg::VHi(rt), zero);
+                    }
+                } else {
+                    let val = self.b.get(Reg::VLo(rt));
+                    if is_double {
+                        self.b.push(Op::Store(8, addr, val, fault));
+                    } else {
+                        self.b.push(Op::Store(4, addr, val, fault));
+                    }
+                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done + 1 });
+                }
+            }
+
+            Instruction::SimdLoadStoreQ {
+                rt,
+                rn,
+                offset,
+                is_load,
+            } => {
+                let base = self.x_or_sp(rn);
+                let addr = if offset != 0 {
+                    self.b.bin_imm(BinOp::Add, Width::W64, base, offset as u64)
+                } else {
+                    base
+                };
+                let fault = FaultSite { pc, insns: done };
+                if is_load {
+                    let lo = self.b.push(Op::Load(8, addr, fault));
+                    let addr_hi = self.b.bin_imm(BinOp::Add, Width::W64, addr, 8);
+                    let hi = self.b.push(Op::Load(8, addr_hi, fault));
+                    self.b.set(Reg::VLo(rt), lo);
+                    self.b.set(Reg::VHi(rt), hi);
+                } else {
+                    let lo = self.b.get(Reg::VLo(rt));
+                    let hi = self.b.get(Reg::VHi(rt));
+                    self.b.push(Op::Store(8, addr, lo, fault));
+                    let addr_hi = self.b.bin_imm(BinOp::Add, Width::W64, addr, 8);
+                    self.b.push(Op::Store(8, addr_hi, hi, fault));
+                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done + 1 });
+                }
+            }
+
+            Instruction::FpData2 {
+                rd,
+                rn,
+                rm,
+                op,
+                is_double,
+            } => {
+                let a = self.b.get(Reg::VLo(rn));
+                let b = self.b.get(Reg::VLo(rm));
+                let fop = match op {
+                    FpOp2::Fadd => FpBinOp::Fadd,
+                    FpOp2::Fsub => FpBinOp::Fsub,
+                    FpOp2::Fmul => FpBinOp::Fmul,
+                    FpOp2::Fdiv => FpBinOp::Fdiv,
+                    FpOp2::Fmax => FpBinOp::Fmax,
+                    FpOp2::Fmin => FpBinOp::Fmin,
+                };
+                let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
+                let res = self.b.push(Op::FpBin(fop, w, a, b));
+                let zero = self.k(0);
+                self.b.set(Reg::VLo(rd), res);
+                self.b.set(Reg::VHi(rd), zero);
+            }
+
+            Instruction::FpCompare {
+                rn,
+                rm,
+                is_double,
+                ..
+            } => {
+                let a = self.b.get(Reg::VLo(rn));
+                let b = self.b.get(Reg::VLo(rm));
+                let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
+                let flags = self.b.push(Op::FpCompare(w, a, b));
+                self.b.set(Reg::Nzcv, flags);
+            }
+
+            Instruction::SimdModImm { rd, imm, op, q } => {
+                let pattern = if q { imm as u128 | ((imm as u128) << 64) } else { imm as u128 };
+                let pat_lo = pattern as u64;
+                let pat_hi = (pattern >> 64) as u64;
+                let (res_lo, res_hi) = match op {
+                    SimdImmOp::Mov => (self.k(pat_lo), self.k(pat_hi)),
+                    SimdImmOp::Orr => {
+                        let d_lo = self.b.get(Reg::VLo(rd));
+                        let d_hi = self.b.get(Reg::VHi(rd));
+                        let r_lo = self.b.bin_imm(BinOp::Or, Width::W64, d_lo, pat_lo);
+                        let r_hi = if q {
+                            self.b.bin_imm(BinOp::Or, Width::W64, d_hi, pat_hi)
+                        } else {
+                            self.k(0)
+                        };
+                        (r_lo, r_hi)
+                    }
+                    SimdImmOp::Bic => {
+                        let d_lo = self.b.get(Reg::VLo(rd));
+                        let d_hi = self.b.get(Reg::VHi(rd));
+                        let r_lo = self.b.bin_imm(BinOp::And, Width::W64, d_lo, !pat_lo);
+                        let r_hi = if q {
+                            self.b.bin_imm(BinOp::And, Width::W64, d_hi, !pat_hi)
+                        } else {
+                            self.k(0)
+                        };
+                        (r_lo, r_hi)
+                    }
+                };
+                self.b.set(Reg::VLo(rd), res_lo);
+                self.b.set(Reg::VHi(rd), res_hi);
+            }
+
+            Instruction::SimdDupGeneral { rd, rn, esize, q } => {
+                let val = self.x(rn);
+                let (lo, hi) = match esize {
+                    8 => {
+                        let b = self.b.bin_imm(BinOp::And, Width::W64, val, 0xFF);
+                        let rep = self.b.bin_imm(BinOp::Mul, Width::W64, b, 0x0101_0101_0101_0101);
+                        let hi = if q { rep } else { self.k(0) };
+                        (rep, hi)
+                    }
+                    16 => {
+                        let h = self.b.bin_imm(BinOp::And, Width::W64, val, 0xFFFF);
+                        let rep = self.b.bin_imm(BinOp::Mul, Width::W64, h, 0x0001_0001_0001_0001);
+                        let hi = if q { rep } else { self.k(0) };
+                        (rep, hi)
+                    }
+                    32 => {
+                        let w = self.zext32(val);
+                        let sh = self.b.bin_imm(BinOp::Shl, Width::W64, w, 32);
+                        let rep = self.b.bin(BinOp::Or, Width::W64, w, sh);
+                        let hi = if q { rep } else { self.k(0) };
+                        (rep, hi)
+                    }
+                    64 => {
+                        let hi = if q { val } else { self.k(0) };
+                        (val, hi)
+                    }
+                    _ => return Err(()),
+                };
+                self.b.set(Reg::VLo(rd), lo);
+                self.b.set(Reg::VHi(rd), hi);
+            }
+
+            Instruction::SimdMovToGeneral { rd, rn, esize, index } => {
+                let (reg, lane_idx) = match esize {
+                    8 => {
+                        if index < 8 { (Reg::VLo(rn), index) } else { (Reg::VHi(rn), index - 8) }
+                    }
+                    16 => {
+                        if index < 4 { (Reg::VLo(rn), index) } else { (Reg::VHi(rn), index - 4) }
+                    }
+                    32 => {
+                        if index < 2 { (Reg::VLo(rn), index) } else { (Reg::VHi(rn), index - 2) }
+                    }
+                    64 => {
+                        if index == 0 { (Reg::VLo(rn), 0) } else { (Reg::VHi(rn), 0) }
+                    }
+                    _ => return Err(()),
+                };
+                let half = self.b.get(reg);
+                let shift = (lane_idx as u64) * (esize as u64);
+                let shifted = if shift != 0 {
+                    self.b.bin_imm(BinOp::Lshr, Width::W64, half, shift)
+                } else {
+                    half
+                };
+                let mask = if esize == 64 { u64::MAX } else { (1u64 << esize) - 1 };
+                let val = self.b.bin_imm(BinOp::And, Width::W64, shifted, mask);
+                if esize == 64 {
+                    self.set_x(rd, val);
+                } else {
+                    self.set_w(rd, val);
+                }
+            }
+
+            Instruction::SimdThreeSame { rd, rn, rm, op, esize: _, q } => {
+                match op {
+                    SimdOp3::And | SimdOp3::Orr | SimdOp3::Eor | SimdOp3::Bic | SimdOp3::Orn => {
+                        let n_lo = self.b.get(Reg::VLo(rn));
+                        let n_hi = self.b.get(Reg::VHi(rn));
+                        let m_lo = self.b.get(Reg::VLo(rm));
+                        let m_hi = self.b.get(Reg::VHi(rm));
+                        let (lo, hi) = match op {
+                            SimdOp3::And => (
+                                self.b.bin(BinOp::And, Width::W64, n_lo, m_lo),
+                                if q { self.b.bin(BinOp::And, Width::W64, n_hi, m_hi) } else { self.k(0) },
+                            ),
+                            SimdOp3::Orr => (
+                                self.b.bin(BinOp::Or, Width::W64, n_lo, m_lo),
+                                if q { self.b.bin(BinOp::Or, Width::W64, n_hi, m_hi) } else { self.k(0) },
+                            ),
+                            SimdOp3::Eor => (
+                                self.b.bin(BinOp::Xor, Width::W64, n_lo, m_lo),
+                                if q { self.b.bin(BinOp::Xor, Width::W64, n_hi, m_hi) } else { self.k(0) },
+                            ),
+                            SimdOp3::Bic => {
+                                let not_m_lo = self.b.push(Op::Not(Width::W64, m_lo));
+                                let not_m_hi = self.b.push(Op::Not(Width::W64, m_hi));
+                                (
+                                    self.b.bin(BinOp::And, Width::W64, n_lo, not_m_lo),
+                                    if q { self.b.bin(BinOp::And, Width::W64, n_hi, not_m_hi) } else { self.k(0) },
+                                )
+                            }
+                            SimdOp3::Orn => {
+                                let not_m_lo = self.b.push(Op::Not(Width::W64, m_lo));
+                                let not_m_hi = self.b.push(Op::Not(Width::W64, m_hi));
+                                (
+                                    self.b.bin(BinOp::Or, Width::W64, n_lo, not_m_lo),
+                                    if q { self.b.bin(BinOp::Or, Width::W64, n_hi, not_m_hi) } else { self.k(0) },
+                                )
+                            }
+                            _ => return Err(()),
+                        };
+                        self.b.set(Reg::VLo(rd), lo);
+                        self.b.set(Reg::VHi(rd), hi);
+                    }
+                    _ => return Err(()),
+                }
+            }
+
+            Instruction::SimdTwoMisc { rd, rn, op, esize: _, q } => {
+                match op {
+                    SimdOp2::Not => {
+                        let n_lo = self.b.get(Reg::VLo(rn));
+                        let n_hi = self.b.get(Reg::VHi(rn));
+                        let lo = self.b.push(Op::Not(Width::W64, n_lo));
+                        let hi = if q { self.b.push(Op::Not(Width::W64, n_hi)) } else { self.k(0) };
+                        self.b.set(Reg::VLo(rd), lo);
+                        self.b.set(Reg::VHi(rd), hi);
+                    }
+                    _ => return Err(()),
+                }
+            }
+
+            // System registers, exclusives, and untranslated encodings stay on Tier-3.
             _ => return Err(()),
         }
         Ok(None)
@@ -763,7 +1047,7 @@ impl Tier4JitEngine {
     fn run_native(&mut self, cpu: &mut Cpu, mmu: &mut Memory, budget: usize) -> Option<(usize, Option<BlockExit>, bool)> {
         let mut id = self.lookup_or_compile_fast(cpu.regs.pc, mmu)?;
         let r = &mut cpu.regs;
-        let mut state = GuestState { x: r.x, sp: r.sp, pc: r.pc, nzcv: r.pstate.to_bits() as u64 };
+        let mut state = GuestState { x: r.x, sp: r.sp, pc: r.pc, nzcv: r.pstate.to_bits() as u64, v: r.v };
         let mut executed = 0usize;
         let outcome = loop {
             let exit = self.rec.as_mut()?.run(id, &mut state, &mut MmuBus { mmu });
@@ -798,6 +1082,7 @@ impl Tier4JitEngine {
         r.sp = state.sp;
         r.pc = state.pc;
         r.pstate.from_bits(state.nzcv as u32);
+        r.v = state.v;
         Some((executed, outcome.0, outcome.1))
     }
 
@@ -867,6 +1152,7 @@ mod tests {
         sp: u64,
         pc: u64,
         nzcv: u32,
+        v: [u128; 32],
         exit: BlockExit,
         data: Vec<u8>,
     }
@@ -874,7 +1160,15 @@ mod tests {
     fn outcome(cpu: &Cpu, mmu: &Memory, exit: BlockExit) -> Outcome {
         let mut data = vec![0u8; 0x1000];
         mmu.read_bytes(DATA, &mut data).unwrap();
-        Outcome { x: cpu.regs.x, sp: cpu.regs.sp, pc: cpu.regs.pc, nzcv: cpu.regs.pstate.to_bits(), exit, data }
+        Outcome {
+            x: cpu.regs.x,
+            sp: cpu.regs.sp,
+            pc: cpu.regs.pc,
+            nzcv: cpu.regs.pstate.to_bits(),
+            v: cpu.regs.v,
+            exit,
+            data,
+        }
     }
 
     /// Reference: the interpreter, one instruction at a time, until `SVC` or a fault.
@@ -1153,7 +1447,44 @@ mod tests {
                 | Instruction::LoadStoreImm { .. }
                 | Instruction::LoadStoreReg { .. }
                 | Instruction::LoadStorePair { .. }
+                | Instruction::FpMovGen { .. }
+                | Instruction::FpLoadStoreImm { .. }
+                | Instruction::SimdLoadStoreQ { .. }
+                | Instruction::FpData2 { .. }
+                | Instruction::FpCompare { .. }
+                | Instruction::SimdModImm { .. }
+                | Instruction::SimdDupGeneral { .. }
+                | Instruction::SimdMovToGeneral { .. }
+                | Instruction::SimdThreeSame { .. }
+                | Instruction::SimdTwoMisc { .. }
         )
+    }
+
+    #[test]
+    fn fp_and_simd_ops_match_all_tiers() {
+        #[rustfmt::skip]
+        let e = check_all_tiers(&[
+            0x1E622820, // fadd d0, d1, d2
+            0x1E222020, // fsub s0, s1, s2
+            0x1E620820, // fmul d0, d1, d2
+            0x1E621820, // fdiv d0, d1, d2
+            0x1E622020, // fcmp d1, d2
+            0x9E670020, // fmov x0, d1
+            0x9E660001, // fmov d1, x0
+            0x4F000403, // movi v3.16b, #0x20
+            0x4E081CE4, // dup  v4.16b, w7
+            0x4EA31C85, // and  v5.16b, v4.16b, v3.16b
+            0x4E2058A6, // not  v6.16b, v5.16b
+            0x4E083C87, // umov w7, v4.b[0]
+            0xD40000E1, // svc  #7
+        ], |cpu| {
+            cpu.regs.write_d(1, 12.5);
+            cpu.regs.write_d(2, 2.5);
+            cpu.regs.write_s(1, 10.0);
+            cpu.regs.write_s(2, 4.0);
+            cpu.regs.write_x(7, 0x55);
+        });
+        assert!(e.blocks_compiled >= 1);
     }
 
     /// Random straight-line blocks of translatable instructions: Tier-3 and Tier-4 must match the
@@ -1161,12 +1492,14 @@ mod tests {
     #[test]
     fn random_blocks_match_interpreter_and_tier3() {
         let mut rng = Rng(0x0BAD_5EED_1234_5678);
-        // Opcode classes the decoder translates: data processing (imm and reg) and loads/stores.
-        let classes: [(u32, u32); 4] = [
+        // Opcode classes the decoder translates: data processing (imm and reg), loads/stores, FP and SIMD.
+        let classes: [(u32, u32); 6] = [
             (0x1000_0000, 0x1C00_0000), // data processing, immediate
             (0x0A00_0000, 0x0E00_0000), // data processing, register
             (0x0800_0000, 0x0A00_0000), // loads and stores
             (0x1A00_0000, 0x1E00_0000), // data processing, register (cont.)
+            (0x1E00_0000, 0x1E00_0000), // scalar FP and data processing
+            (0x0E00_0000, 0x1E00_0000), // AdvSIMD vector instructions
         ];
         let mut cases = 0;
         let (mut native, mut faults, mut kinds) = (0u64, 0u32, HashSet::new());
@@ -1174,7 +1507,7 @@ mod tests {
             let len = 1 + (rng.next() % 12) as usize;
             let mut words = Vec::with_capacity(len + 1);
             while words.len() < len {
-                let (val, mask) = classes[(rng.next() % 4) as usize];
+                let (val, mask) = classes[(rng.next() as usize) % classes.len()];
                 let raw = ((rng.next() as u32) & !mask) | val;
                 if translatable_straight_line(decode(raw)) {
                     words.push(raw);
@@ -1191,6 +1524,11 @@ mod tests {
                     _ => DATA + (rng.next() % 0x800) & !7,
                 };
                 cpu.regs.write_x(r, v);
+            }
+            for v in 0..32u8 {
+                let lo = rng.next() as u128;
+                let hi = (rng.next() as u128) << 64;
+                cpu.regs.write_q(v, lo | hi);
             }
             cpu.regs.pstate.from_bits((rng.next() as u32) & 0xF000_0000);
             let (c, m) = clone(&cpu, &mmu);

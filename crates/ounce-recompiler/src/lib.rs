@@ -37,6 +37,8 @@ pub struct GuestState {
     pub pc: u64,
     /// N/Z/C/V in bits 31..28.
     pub nzcv: u64,
+    /// 32 128-bit SIMD / Floating-Point registers (V0 to V31).
+    pub v: [u128; 32],
 }
 
 /// A guest memory access that failed (unmapped or not permitted).
@@ -425,5 +427,33 @@ mod tests {
     #[test]
     fn host_is_supported_on_ci_targets() {
         assert!(host_arch().is_some());
+    }
+
+    #[test]
+    fn fp_ops_and_v_registers_run() {
+        let mut b = BlockBuilder::new();
+        let d1 = b.get(ir::Reg::VLo(1));
+        let d2 = b.get(ir::Reg::VLo(2));
+        let sum = b.push(ir::Op::FpBin(ir::FpBinOp::Fadd, ir::FpWidth::F64, d1, d2));
+        b.set(ir::Reg::VLo(0), sum);
+        let zero = b.konst(0);
+        b.set(ir::Reg::VHi(0), zero);
+
+        // FCMP d1 vs d2 (12.5 vs 29.5 => less => 0x8000_0000)
+        let flags = b.push(ir::Op::FpCompare(ir::FpWidth::F64, d1, d2));
+        b.set(ir::Reg::Nzcv, flags);
+
+        let e = exit_to(&mut b, 0, 0x1000, 2);
+        let block = b.finish(Terminator::Exit(e));
+
+        let mut st = GuestState::default();
+        st.v[1] = 12.5f64.to_bits() as u128;
+        st.v[2] = 29.5f64.to_bits() as u128;
+
+        let exit = run(block, &mut st, &mut TestBus::default());
+        assert_eq!(exit, Exit { kind: ExitKind::Code(0), insns: 2 });
+        assert_eq!(f64::from_bits(st.v[0] as u64), 42.0);
+        assert_eq!(st.v[0] >> 64, 0);
+        assert_eq!(st.nzcv, 0x8000_0000);
     }
 }

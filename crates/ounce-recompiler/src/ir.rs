@@ -18,12 +18,32 @@ pub enum Reg {
     Sp,
     /// Packed flags, N/Z/C/V in bits 31..28.
     Nzcv,
+    /// Low 64 bits of `V0`..`V31` (D register, or zero-extended S register).
+    VLo(u8),
+    /// High 64 bits of `V0`..`V31`.
+    VHi(u8),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Width {
     W32,
     W64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpWidth {
+    F32,
+    F64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FpBinOp {
+    Fadd,
+    Fsub,
+    Fmul,
+    Fdiv,
+    Fmax,
+    Fmin,
 }
 
 /// Two-operand integer operations.
@@ -78,6 +98,10 @@ pub enum Op {
     IsZero(Width, Value),
     /// `if c != 0 { a } else { b }`.
     Select(Value, Value, Value),
+    /// Binary floating-point operation.
+    FpBin(FpBinOp, FpWidth, Value, Value),
+    /// NZCV (bits 31..28) of float compare `a vs b`.
+    FpCompare(FpWidth, Value, Value),
     /// Reads `size` (1, 2, 4, 8) bytes through the memory bus, zero-extended.
     Load(u8, Value, FaultSite),
     /// Writes the low `size` bytes of the value. No result.
@@ -97,7 +121,12 @@ impl Op {
             Op::Const(_) | Op::GetReg(_) | Op::EndInsn { .. } => vec![],
             Op::SetReg(_, v) | Op::Not(_, v) | Op::Sext(_, v) | Op::Zext(_, v) | Op::LogicFlags(_, v) => vec![v],
             Op::Cond(_, v) | Op::IsZero(_, v) | Op::Load(_, v, _) => vec![v],
-            Op::Bin(_, _, a, b) | Op::AddFlags(_, a, b) | Op::SubFlags(_, a, b) | Op::Store(_, a, b, _) => vec![a, b],
+            Op::Bin(_, _, a, b)
+            | Op::AddFlags(_, a, b)
+            | Op::SubFlags(_, a, b)
+            | Op::Store(_, a, b, _)
+            | Op::FpBin(_, _, a, b)
+            | Op::FpCompare(_, a, b) => vec![a, b],
             Op::Select(c, a, b) => vec![c, a, b],
         }
     }
@@ -153,6 +182,9 @@ impl Block {
             match *op {
                 Op::GetReg(Reg::X(n)) | Op::SetReg(Reg::X(n), _) if n > 30 => {
                     return Err(format!("op {i}: X{n} out of range"));
+                }
+                Op::GetReg(Reg::VLo(n) | Reg::VHi(n)) | Op::SetReg(Reg::VLo(n) | Reg::VHi(n), _) if n > 31 => {
+                    return Err(format!("op {i}: V{n} out of range"));
                 }
                 Op::Sext(bits, _) | Op::Zext(bits, _) if !matches!(bits, 8 | 16 | 32 | 64) => {
                     return Err(format!("op {i}: bad extend width {bits}"));

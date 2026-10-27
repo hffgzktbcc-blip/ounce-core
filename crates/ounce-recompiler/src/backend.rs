@@ -7,11 +7,11 @@
 //! The return value is `code | insns << 32`; the exit `pc` is stored in `state.pc`.
 
 use crate::exec::{self, BlockCode, MEM_CODE_WRITTEN, MEM_FAULT};
-use crate::ir::{BinOp, Block, ExitTo, FaultSite, Op, Reg, Terminator, Value, Width};
+use crate::ir::{BinOp, Block, ExitTo, FaultSite, FpBinOp, FpWidth, Op, Reg, Terminator, Value, Width};
 use crate::{CompileError, GuestState, EXIT_CODE_WRITTEN, EXIT_FAULT};
 use cranelift_codegen::control::ControlPlane;
-use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::{self as clif, types, AbiParam, InstBuilder, MemFlagsData, StackSlotData, StackSlotKind};
+use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
+use cranelift_codegen::ir::{self as clif, types, AbiParam, Endianness, InstBuilder, MemFlagsData, StackSlotData, StackSlotKind};
 use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_codegen::Context;
@@ -36,6 +36,8 @@ fn reg_offset(reg: Reg) -> i32 {
         Reg::X(n) => offset_of!(GuestState, x) + 8 * n as usize,
         Reg::Sp => offset_of!(GuestState, sp),
         Reg::Nzcv => offset_of!(GuestState, nzcv),
+        Reg::VLo(n) => offset_of!(GuestState, v) + 16 * n as usize,
+        Reg::VHi(n) => offset_of!(GuestState, v) + 16 * n as usize + 8,
     }) as i32
 }
 
@@ -126,6 +128,10 @@ impl Lowering<'_> {
 
     fn flags() -> MemFlagsData {
         MemFlagsData::trusted()
+    }
+
+    fn bitcast_flags() -> MemFlagsData {
+        MemFlagsData::new().with_endianness(Endianness::Little)
     }
 
     fn narrow(&mut self, w: Width, v: clif::Value) -> clif::Value {
@@ -364,6 +370,75 @@ impl Lowering<'_> {
             Op::Select(c, a, bv) => {
                 let (c, a, bv) = (self.v(c), self.v(a), self.v(bv));
                 self.b.ins().select(c, a, bv)
+            }
+            Op::FpBin(op, w, a, b) => {
+                let va = self.v(a);
+                let vb = self.v(b);
+                match w {
+                    FpWidth::F32 => {
+                        let a32 = self.b.ins().ireduce(types::I32, va);
+                        let b32 = self.b.ins().ireduce(types::I32, vb);
+                        let fa = self.b.ins().bitcast(types::F32, Self::bitcast_flags(), a32);
+                        let fb = self.b.ins().bitcast(types::F32, Self::bitcast_flags(), b32);
+                        let fres = match op {
+                            FpBinOp::Fadd => self.b.ins().fadd(fa, fb),
+                            FpBinOp::Fsub => self.b.ins().fsub(fa, fb),
+                            FpBinOp::Fmul => self.b.ins().fmul(fa, fb),
+                            FpBinOp::Fdiv => self.b.ins().fdiv(fa, fb),
+                            FpBinOp::Fmax => self.b.ins().fmax(fa, fb),
+                            FpBinOp::Fmin => self.b.ins().fmin(fa, fb),
+                        };
+                        let ires32 = self.b.ins().bitcast(types::I32, Self::bitcast_flags(), fres);
+                        self.b.ins().uextend(types::I64, ires32)
+                    }
+                    FpWidth::F64 => {
+                        let fa = self.b.ins().bitcast(types::F64, Self::bitcast_flags(), va);
+                        let fb = self.b.ins().bitcast(types::F64, Self::bitcast_flags(), vb);
+                        let fres = match op {
+                            FpBinOp::Fadd => self.b.ins().fadd(fa, fb),
+                            FpBinOp::Fsub => self.b.ins().fsub(fa, fb),
+                            FpBinOp::Fmul => self.b.ins().fmul(fa, fb),
+                            FpBinOp::Fdiv => self.b.ins().fdiv(fa, fb),
+                            FpBinOp::Fmax => self.b.ins().fmax(fa, fb),
+                            FpBinOp::Fmin => self.b.ins().fmin(fa, fb),
+                        };
+                        self.b.ins().bitcast(types::I64, Self::bitcast_flags(), fres)
+                    }
+                }
+            }
+            Op::FpCompare(w, a, b) => {
+                let va = self.v(a);
+                let vb = self.v(b);
+                let (is_un, is_eq, is_lt) = match w {
+                    FpWidth::F32 => {
+                        let a32 = self.b.ins().ireduce(types::I32, va);
+                        let b32 = self.b.ins().ireduce(types::I32, vb);
+                        let fa = self.b.ins().bitcast(types::F32, Self::bitcast_flags(), a32);
+                        let fb = self.b.ins().bitcast(types::F32, Self::bitcast_flags(), b32);
+                        (
+                            self.b.ins().fcmp(FloatCC::Unordered, fa, fb),
+                            self.b.ins().fcmp(FloatCC::Equal, fa, fb),
+                            self.b.ins().fcmp(FloatCC::LessThan, fa, fb),
+                        )
+                    }
+                    FpWidth::F64 => {
+                        let fa = self.b.ins().bitcast(types::F64, Self::bitcast_flags(), va);
+                        let fb = self.b.ins().bitcast(types::F64, Self::bitcast_flags(), vb);
+                        (
+                            self.b.ins().fcmp(FloatCC::Unordered, fa, fb),
+                            self.b.ins().fcmp(FloatCC::Equal, fa, fb),
+                            self.b.ins().fcmp(FloatCC::LessThan, fa, fb),
+                        )
+                    }
+                };
+                let c_gt = self.b.ins().iconst(types::I64, 0x2000_0000);
+                let c_lt = self.b.ins().iconst(types::I64, 0x8000_0000);
+                let c_eq = self.b.ins().iconst(types::I64, 0x6000_0000);
+                let c_un = self.b.ins().iconst(types::I64, 0x3000_0000);
+
+                let r1 = self.b.ins().select(is_lt, c_lt, c_gt);
+                let r2 = self.b.ins().select(is_eq, c_eq, r1);
+                self.b.ins().select(is_un, c_un, r2)
             }
             Op::Load(size, addr, site) => {
                 let addr = self.v(addr);
