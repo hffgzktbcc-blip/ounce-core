@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::ipc::{IpcManager, ServiceType};
-use super::scheduler::ThreadScheduler;
+use super::scheduler::{ThreadScheduler, WaitReason, MUTEX_HAS_LISTENERS, RESULT_INVALID_HANDLE, RESULT_TIMED_OUT};
 use super::sync::SyncManager;
 use crate::audio::AudioOutServer;
 use crate::cpu::Cpu;
@@ -118,10 +118,33 @@ impl HorizonKernel {
         })
     }
 
+    /// Handles for svcWaitSynchronization when it is a real wait: 1..=64 handles, all of them threads
+    /// or events this kernel knows.
+    fn wait_handles(&self, cpu: &Cpu, mmu: &Memory) -> Option<Vec<u32>> {
+        let count = cpu.regs.read_x(2);
+        if !(1..=64).contains(&count) {
+            return None;
+        }
+        let ptr = cpu.regs.read_x(1);
+        let handles: Vec<u32> = (0..count).map(|i| mmu.read_u32(ptr + i * 4)).collect::<Result<_, _>>().ok()?;
+        handles
+            .iter()
+            .all(|h| self.scheduler.thread_signaled(*h).is_some() || self.sync.events.contains_key(h))
+            .then_some(handles)
+    }
+
+    /// Every thread waits and none can be woken: stop the guest with a break that says so.
+    fn deadlock(&mut self, cpu: &mut Cpu, svc: &str) -> SvcResult {
+        eprintln!("[Scheduler] deadlock in {svc}: every thread is waiting and none can wake the others");
+        cpu.regs.write_x(0, RESULT_INVALID_HANDLE);
+        SvcResult::Break { reason: 0xDEAD_10C4, info1: self.scheduler.current as u64, info2: 0 }
+    }
+
     /// Dispatches a Horizon OS Supervisor Call (SVC).
     pub fn dispatch_svc(&mut self, svc_id: u16, cpu: &mut Cpu, mmu: &mut Memory) -> SvcResult {
         // Guests poll HID shared memory between SVCs, so publish the latest input before each one.
         self.ipc.hid.sync(mmu);
+        self.scheduler.finish_timeouts(mmu);
         match svc_id {
             // 0x01: svcSetHeapSize(&out_addr, size)
             0x01 => {
@@ -142,6 +165,19 @@ impl HorizonKernel {
             // 0x02: svcSetMemoryPermission(addr, size, perm) / 0x03: svcSetMemoryAttribute(addr, size, mask, attr)
             // Permissions and attributes are not modelled; accept the request.
             0x02 | 0x03 => {
+                cpu.regs.write_x(0, 0);
+                SvcResult::Success
+            }
+
+            // 0x04: svcMapMemory(dst, src, size) / 0x05: svcUnmapMemory(dst, src, size).
+            // Horizon makes the source inaccessible while it is mapped at dst, so the pages move (and back).
+            0x04 | 0x05 => {
+                let (dst, src, size) = (cpu.regs.read_x(0), cpu.regs.read_x(1), cpu.regs.read_x(2) as usize);
+                if svc_id == 0x04 {
+                    mmu.move_range(src, dst, size);
+                } else {
+                    mmu.move_range(dst, src, size);
+                }
                 cpu.regs.write_x(0, 0);
                 SvcResult::Success
             }
@@ -182,26 +218,32 @@ impl HorizonKernel {
                     .scheduler
                     .create_thread(entry_pc, arg, stack_top, prio, core_id);
                 self.scheduler.setup_thread_tls(handle, mmu);
+                self.scheduler.prepare_thread(handle, mmu);
                 cpu.regs.write_x(0, 0); // ResultSuccess
                 cpu.regs.write_x(1, handle as u64);
                 SvcResult::Success
             }
 
-            // 0x09: svcStartThread(thread_handle)
+            // 0x09: svcStartThread(thread_handle). The new thread runs first; the caller resumes when it
+            // waits or exits.
             0x09 => {
                 let handle = cpu.regs.read_w(0);
-                let ok = self.scheduler.start_and_run_thread(handle, mmu, 10_000);
-                cpu.regs.write_x(0, if ok { 0 } else { 0xE401 });
+                if let Err(code) = self.scheduler.start_thread(cpu, handle, 0) {
+                    cpu.regs.write_x(0, code);
+                }
                 SvcResult::Success
             }
 
-            // 0x0A: svcExitThread()
-            0x0A => SvcResult::ExitProcess,
+            // 0x0A: svcExitThread(). The process ends when no other thread can run.
+            0x0A => match self.scheduler.exit_current(cpu) {
+                Some(()) => SvcResult::Success,
+                None => SvcResult::ExitProcess,
+            },
 
-            // 0x0B: svcSleepThread(nanoseconds)
+            // 0x0B: svcSleepThread(nanoseconds). Time is not modelled: the thread yields to the others.
             0x0B => {
-                let _nanos = cpu.regs.read_x(0);
                 cpu.regs.write_x(0, 0);
+                self.scheduler.yield_current(cpu);
                 SvcResult::Success
             }
 
@@ -243,6 +285,9 @@ impl HorizonKernel {
                 let handle = cpu.regs.read_w(0);
                 let ok = self.sync.signal_event(handle);
                 cpu.regs.write_x(0, if ok { 0 } else { 0xE401 });
+                if ok {
+                    self.scheduler.wake_object_waiters(handle);
+                }
                 SvcResult::Success
             }
 
@@ -289,53 +334,130 @@ impl HorizonKernel {
             0x16 => {
                 let handle = cpu.regs.read_w(0);
                 self.ipc.close_handle(handle);
+                if self.scheduler.thread_signaled(handle) == Some(true) {
+                    self.scheduler.threads.remove(&handle);
+                }
                 cpu.regs.write_x(0, 0);
                 SvcResult::Success
             }
 
-            // 0x18: svcWaitSynchronization (used for VSync / display syncpoints)
-            // ext::PRESENT_FRAME: direct buffer flip request
+            // 0x18: svcWaitSynchronization(&out_index, handles, count, timeout_ns) on thread and event handles.
+            // Called without 1..=64 known handles it keeps meaning VSync for the demo programs.
+            0x18 if self.wait_handles(cpu, mmu).is_some() => {
+                let handles = self.wait_handles(cpu, mmu).unwrap();
+                let timeout = cpu.regs.read_x(3) as i64;
+                let signaled = handles.iter().position(|&h| match self.scheduler.thread_signaled(h) {
+                    Some(exited) => exited,
+                    None => self.sync.events.get(&h).is_some_and(|e| e.signaled),
+                });
+                if let Some(i) = signaled {
+                    if let Some(e) = self.sync.events.get_mut(&handles[i]) {
+                        if e.auto_clear {
+                            e.signaled = false;
+                        }
+                    }
+                    cpu.regs.write_x(0, 0);
+                    cpu.regs.write_x(1, i as u64);
+                } else if timeout == 0 {
+                    cpu.regs.write_x(0, RESULT_TIMED_OUT);
+                } else if !self.scheduler.block_current(cpu, WaitReason::Objects { handles, timed: timeout > 0 }) {
+                    if timeout > 0 {
+                        cpu.regs.write_x(0, RESULT_TIMED_OUT);
+                    } else {
+                        return self.deadlock(cpu, "svcWaitSynchronization");
+                    }
+                }
+                SvcResult::Success
+            }
+
+            // 0x18 (VSync, see above) / ext::PRESENT_FRAME: direct buffer flip request
             0x18 | ext::PRESENT_FRAME => {
                 cpu.regs.write_x(0, 0); // ResultSuccess
                 SvcResult::PresentFrame
             }
 
-            // 0x1A: svcArbitrateLock(wait_tag, mutex_addr, req_tag)
+            // 0x1A: svcArbitrateLock(owner_tag, mutex_addr, requester_tag). Waits for the owner to hand the
+            // mutex over, unless the word no longer says "owner, with waiters" (then the caller retries).
             0x1A => {
-                let wait_tag = cpu.regs.read_w(0);
-                let mutex_addr = cpu.regs.read_x(1);
-                let req_tag = cpu.regs.read_w(2);
-                let res = self.sync.arbitrate_lock(mmu, wait_tag, mutex_addr, req_tag);
-                cpu.regs.write_x(0, res);
+                let owner = cpu.regs.read_w(0);
+                let addr = cpu.regs.read_x(1);
+                let tag = cpu.regs.read_w(2);
+                self.sync.total_locks_arbitrated += 1;
+                let word = mmu.read_u32(addr).unwrap_or(0);
+                cpu.regs.write_x(0, 0);
+                if word == 0 {
+                    // Free by the time the kernel looks: take it (callers that skipped the user-space fast path).
+                    let _ = mmu.write_u32(addr, tag);
+                } else if word == owner | MUTEX_HAS_LISTENERS
+                    && !self.scheduler.block_current(cpu, WaitReason::Mutex { addr, tag })
+                {
+                    return self.deadlock(cpu, "svcArbitrateLock");
+                }
                 SvcResult::Success
             }
 
-            // 0x1B: svcArbitrateUnlock(mutex_addr)
+            // 0x1B: svcArbitrateUnlock(mutex_addr): hand the mutex to its earliest waiter, or free it.
             0x1B => {
-                let mutex_addr = cpu.regs.read_x(0);
-                let res = self.sync.arbitrate_unlock(mmu, mutex_addr);
-                cpu.regs.write_x(0, res);
+                let addr = cpu.regs.read_x(0);
+                self.sync.total_locks_arbitrated += 1;
+                self.scheduler.release_mutex(mmu, addr);
+                cpu.regs.write_x(0, 0);
                 SvcResult::Success
             }
 
-            // 0x1C: svcWaitProcessWideKeyAtomic(mutex_addr, condvar_addr, thread_tag, timeout_ns)
+            // 0x1C: svcWaitProcessWideKeyAtomic(mutex_addr, condvar_addr, thread_tag, timeout_ns): release the
+            // mutex and wait for a signal; the thread owns the mutex again when this returns.
             0x1C => {
-                let mutex_addr = cpu.regs.read_x(0);
-                let condvar_addr = cpu.regs.read_x(1);
-                let thread_tag = cpu.regs.read_w(2);
-                let res = self
-                    .sync
-                    .wait_process_wide_key_atomic(mmu, mutex_addr, condvar_addr, thread_tag);
-                cpu.regs.write_x(0, res);
+                let mutex = cpu.regs.read_x(0);
+                let cvar = cpu.regs.read_x(1);
+                let tag = cpu.regs.read_w(2);
+                let timeout = cpu.regs.read_x(3) as i64;
+                self.scheduler.release_mutex(mmu, mutex);
+                let _ = mmu.write_u32(cvar, 1);
+                if timeout == 0 {
+                    // Times out at once, then takes the mutex back like any other waiter.
+                    let word = mmu.read_u32(mutex).unwrap_or(0);
+                    cpu.regs.write_x(0, RESULT_TIMED_OUT);
+                    if word == 0 {
+                        let _ = mmu.write_u32(mutex, tag);
+                    } else {
+                        let _ = mmu.write_u32(mutex, word | MUTEX_HAS_LISTENERS);
+                        let cur = self.scheduler.current;
+                        self.scheduler.pending_relock.push(cur);
+                        if !self.scheduler.block_current(cpu, WaitReason::Mutex { addr: mutex, tag }) {
+                            return self.deadlock(cpu, "svcWaitProcessWideKeyAtomic");
+                        }
+                    }
+                } else {
+                    cpu.regs.write_x(0, 0);
+                    let reason = WaitReason::CondVar { cvar, mutex, tag, timed: timeout > 0 };
+                    if !self.scheduler.block_current(cpu, reason) {
+                        if timeout > 0 {
+                            cpu.regs.write_x(0, RESULT_TIMED_OUT);
+                            let _ = mmu.write_u32(mutex, tag);
+                        } else {
+                            return self.deadlock(cpu, "svcWaitProcessWideKeyAtomic");
+                        }
+                    }
+                }
                 SvcResult::Success
             }
 
-            // 0x1D: svcSignalProcessWideKey(condvar_addr, count)
+            // 0x1D: svcSignalProcessWideKey(condvar_addr, count): wake up to `count` waiters (all when
+            // count <= 0); each then takes its mutex back, or waits for it.
             0x1D => {
-                let condvar_addr = cpu.regs.read_x(0);
+                let cvar = cpu.regs.read_x(0);
                 let count = cpu.regs.read_w(1) as i32;
-                let res = self.sync.signal_process_wide_key(mmu, condvar_addr, count);
-                cpu.regs.write_x(0, res);
+                self.sync.total_condvar_signals += 1;
+                let waiters = self.scheduler.waiters(|w| matches!(w, WaitReason::CondVar { cvar: c, .. } if *c == cvar));
+                let n = if count <= 0 { waiters.len() } else { (count as usize).min(waiters.len()) };
+                for &key in &waiters[..n] {
+                    if let Some(WaitReason::CondVar { mutex, tag, .. }) = self.scheduler.threads[&key].wait.clone() {
+                        self.scheduler.relock_after_wake(mmu, key, mutex, tag, 0);
+                    }
+                }
+                let _ = mmu.write_u32(cvar, (waiters.len() > n) as u32);
+                cpu.regs.write_x(0, 0);
                 SvcResult::Success
             }
 
@@ -461,8 +583,14 @@ impl HorizonKernel {
 
             // 0x25: svcGetThreadId(&out_thread_id, handle)
             0x25 => {
+                let handle = cpu.regs.read_w(1);
+                let id = match self.scheduler.threads.get(&handle) {
+                    Some(t) if handle != super::scheduler::MAIN_THREAD_KEY => t.thread_id,
+                    // The CurrentThread pseudo-handle (and the main thread's own handle) name the caller.
+                    _ => self.scheduler.current_thread_id(),
+                };
                 cpu.regs.write_x(0, 0);
-                cpu.regs.write_x(1, 1); // Main thread ID = 1
+                cpu.regs.write_x(1, id);
                 SvcResult::Success
             }
 
@@ -780,6 +908,40 @@ mod tests {
         }
 
         assert_eq!(mmu.read_u64(out_buf + 40).unwrap(), challenge ^ (challenge << 1));
+    }
+
+    #[test]
+    fn wait_synchronization_on_threads() {
+        let mut cpu = Cpu::new();
+        let mut mmu = Memory::new();
+        let mut kernel = HorizonKernel::new();
+        mmu.map_range(0x9000, 0x1000, Permission::READ_WRITE);
+
+        // A created, never started thread: not signaled.
+        cpu.regs.write_x(1, 0x5000);
+        cpu.regs.write_x(3, 0x6000);
+        kernel.dispatch_svc(0x08, &mut cpu, &mut mmu);
+        let thread = cpu.regs.read_x(1) as u32;
+        mmu.write_u32(0x9000, thread).unwrap();
+        let wait = |cpu: &mut Cpu, timeout: i64| {
+            cpu.regs.write_x(1, 0x9000);
+            cpu.regs.write_x(2, 1);
+            cpu.regs.write_x(3, timeout as u64);
+        };
+
+        // Polling times out; a timed wait with nothing else runnable times out; an endless one is a deadlock.
+        wait(&mut cpu, 0);
+        assert_eq!(kernel.dispatch_svc(0x18, &mut cpu, &mut mmu), SvcResult::Success);
+        assert_eq!(cpu.regs.read_x(0), RESULT_TIMED_OUT);
+        wait(&mut cpu, 1_000_000);
+        kernel.dispatch_svc(0x18, &mut cpu, &mut mmu);
+        assert_eq!(cpu.regs.read_x(0), RESULT_TIMED_OUT);
+        wait(&mut cpu, -1);
+        assert!(matches!(kernel.dispatch_svc(0x18, &mut cpu, &mut mmu), SvcResult::Break { reason: 0xDEAD_10C4, .. }));
+
+        // Without handles, 0x18 is still the demos' VSync.
+        cpu.regs.write_x(2, 0);
+        assert_eq!(kernel.dispatch_svc(0x18, &mut cpu, &mut mmu), SvcResult::PresentFrame);
     }
 
     #[test]

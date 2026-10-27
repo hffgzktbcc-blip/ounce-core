@@ -1,16 +1,44 @@
 #![allow(dead_code)]
 
-use crate::cpu::{Cpu, StepResult};
+use crate::cpu::{Cpu, CpuRegisters, StepResult};
 use crate::mmu::{Memory, Permission};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
     Created,
     Runnable,
     Running,
+    /// Waiting; `KThread::wait` says for what.
+    Blocked,
     Exited,
 }
+
+/// What a blocked thread waits for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WaitReason {
+    /// svcArbitrateLock: ownership of the mutex word at `addr`, then the word becomes `tag`.
+    Mutex { addr: u64, tag: u32 },
+    /// svcWaitProcessWideKeyAtomic: a signal on `cvar`, then the mutex at `mutex` (as `tag`).
+    CondVar { cvar: u64, mutex: u64, tag: u32, timed: bool },
+    /// svcWaitSynchronization: any of `handles` becoming signaled.
+    Objects { handles: Vec<u32>, timed: bool },
+}
+
+/// Key of the process's first thread, which exists before any svcCreateThread and has no handle there.
+pub const MAIN_THREAD_KEY: u32 = 0;
+/// Page holding `svc #0x0A`; new threads return into it, so a thread that returns from its entry exits.
+pub const THREAD_EXIT_STUB: u64 = 0x7F_FBFF_F000;
+/// Pool of per-thread `TPIDRRO_EL0` pages (the Horizon thread-local region: IPC buffer and, for libnx,
+/// `ThreadVars` at +0x1E0). One zeroed page per thread.
+pub const THREAD_TLR_POOL_BASE: u64 = 0x7F_FB00_0000;
+pub const THREAD_TLR_POOL_PAGES: u64 = 0x800;
+/// Horizon results.
+pub const RESULT_TIMED_OUT: u64 = 0xEA01;
+pub const RESULT_INVALID_HANDLE: u64 = 0xE401;
+pub const RESULT_INVALID_STATE: u64 = 0xFA01;
+/// Mutex word flag: other threads wait for this mutex.
+pub const MUTEX_HAS_LISTENERS: u32 = 0x4000_0000;
 
 /// Base of the pool that per-thread static TLS areas are carved from.
 pub const THREAD_TLS_POOL_BASE: u64 = 0x7F_FC00_0000;
@@ -49,6 +77,10 @@ pub struct KThread {
     pub cpu_context: Cpu,
     /// This thread's static TLS area (its `TPIDR_EL0`), if the process uses static TLS.
     pub tls_area: Option<u64>,
+    /// What the thread waits for while `Blocked`.
+    pub wait: Option<WaitReason>,
+    /// Order in which threads started waiting; the earliest waiter is served first.
+    pub wait_seq: u64,
 }
 
 /// Horizon OS 8-Core Cortex-A78C Thread Scheduler.
@@ -64,6 +96,16 @@ pub struct ThreadScheduler {
     /// Static TLS image copied into every new thread's TLS area. `None` when no module uses TLS.
     pub tls_image: Option<ThreadTlsImage>,
     next_tls_area: u64,
+    /// Thread whose registers are live in the CPU.
+    pub current: u32,
+    /// Threads ready to run, in order.
+    pub ready: VecDeque<u32>,
+    next_tlr_page: u64,
+    wait_counter: u64,
+    /// Condvar waiters that timed out and still have to reacquire their mutex.
+    pub(crate) pending_relock: Vec<u32>,
+    /// Context switches performed, for diagnostics.
+    pub switches: u64,
 }
 
 impl Default for ThreadScheduler {
@@ -82,6 +124,12 @@ impl ThreadScheduler {
             total_threads_completed: 0,
             tls_image: None,
             next_tls_area: THREAD_TLS_POOL_BASE,
+            current: MAIN_THREAD_KEY,
+            ready: VecDeque::new(),
+            next_tlr_page: 0,
+            wait_counter: 0,
+            pending_relock: Vec::new(),
+            switches: 0,
         }
     }
 
@@ -116,6 +164,8 @@ impl ThreadScheduler {
             state: ThreadState::Created,
             cpu_context,
             tls_area: None,
+            wait: None,
+            wait_seq: 0,
         };
 
         self.threads.insert(handle, kthread);
@@ -180,6 +230,289 @@ impl ThreadScheduler {
 
         thread.state = ThreadState::Runnable;
         true
+    }
+}
+
+/// Cooperative scheduling of guest threads on the one CPU. Switches happen only inside SVCs: the
+/// kernel saves the live registers into the current thread and loads the next thread's.
+impl ThreadScheduler {
+    /// The main thread's entry, created the first time the scheduler needs to save it.
+    fn ensure_main(&mut self) {
+        self.threads.entry(MAIN_THREAD_KEY).or_insert_with(|| KThread {
+            handle: MAIN_THREAD_KEY,
+            thread_id: 1,
+            entry_pc: 0,
+            arg_x0: 0,
+            stack_top: 0,
+            priority: 44,
+            core_id: 0,
+            state: ThreadState::Running,
+            cpu_context: Cpu::new(),
+            tls_area: None,
+            wait: None,
+            wait_seq: 0,
+        });
+    }
+
+    /// Gives a created thread its own zeroed thread-local region and points its `TPIDRRO_EL0` at it, and
+    /// makes it return into the exit stub. Returns the region.
+    pub fn prepare_thread(&mut self, handle: u32, mmu: &mut Memory) -> Option<u64> {
+        if !mmu.is_mapped(THREAD_EXIT_STUB) {
+            mmu.map_range(THREAD_EXIT_STUB, 0x1000, Permission::READ_WRITE_EXECUTE);
+            mmu.write_u32(THREAD_EXIT_STUB, 0xD400_0141).ok()?; // svc #0x0A
+        }
+        if self.next_tlr_page >= THREAD_TLR_POOL_PAGES {
+            return None;
+        }
+        let page = THREAD_TLR_POOL_BASE + self.next_tlr_page * 0x1000;
+        self.next_tlr_page += 1;
+        mmu.map_range(page, 0x1000, Permission::READ_WRITE);
+        let thread = self.threads.get_mut(&handle)?;
+        thread.cpu_context.regs.tpidrro_el0 = page;
+        thread.cpu_context.regs.write_x(30, THREAD_EXIT_STUB);
+        Some(page)
+    }
+
+    /// Thread ID of the running thread.
+    pub fn current_thread_id(&self) -> u64 {
+        self.threads.get(&self.current).map_or(1, |t| t.thread_id)
+    }
+
+    fn switch_to(&mut self, cpu: &mut Cpu, next: u32) {
+        self.ensure_main();
+        if let Some(cur) = self.threads.get_mut(&self.current) {
+            cur.cpu_context.regs = cpu.regs.clone();
+        }
+        let thread = self.threads.get_mut(&next).expect("switching to a known thread");
+        thread.state = ThreadState::Running;
+        cpu.regs = thread.cpu_context.regs.clone();
+        self.current = next;
+        self.switches += 1;
+    }
+
+    /// svcStartThread: the new thread runs now; the caller resumes as soon as the new thread waits or exits.
+    /// `caller_result` is what the caller sees in X0 when it resumes.
+    pub fn start_thread(&mut self, cpu: &mut Cpu, handle: u32, caller_result: u64) -> Result<(), u64> {
+        match self.threads.get(&handle).map(|t| t.state) {
+            Some(ThreadState::Created) => {}
+            Some(_) => return Err(RESULT_INVALID_STATE),
+            None => return Err(RESULT_INVALID_HANDLE),
+        }
+        cpu.regs.write_x(0, caller_result);
+        self.ensure_main();
+        let cur = self.current;
+        self.threads.get_mut(&cur).unwrap().state = ThreadState::Runnable;
+        self.ready.push_front(cur);
+        self.switch_to(cpu, handle);
+        Ok(())
+    }
+
+    /// Puts the running thread to sleep on `reason` and switches to the next ready thread. When no thread
+    /// is ready, a timed waiter is woken with a timeout; if nothing can run at all, returns `false`
+    /// without blocking (a deadlock the caller reports).
+    pub fn block_current(&mut self, cpu: &mut Cpu, reason: WaitReason) -> bool {
+        self.ensure_main();
+        let cur = self.current;
+        self.wait_counter += 1;
+        let seq = self.wait_counter;
+        {
+            let t = self.threads.get_mut(&cur).unwrap();
+            t.state = ThreadState::Blocked;
+            t.wait = Some(reason);
+            t.wait_seq = seq;
+        }
+        match self.next_ready_or_timeout(cpu) {
+            Some(next) if next == cur => {
+                // The only thing that could run was this thread's own timeout: carry on with its result.
+                let t = self.threads.get_mut(&cur).unwrap();
+                t.state = ThreadState::Running;
+                cpu.regs = t.cpu_context.regs.clone();
+                true
+            }
+            Some(next) => {
+                self.switch_to(cpu, next);
+                true
+            }
+            None => {
+                let t = self.threads.get_mut(&cur).unwrap();
+                t.state = ThreadState::Running;
+                t.wait = None;
+                false
+            }
+        }
+    }
+
+    /// The next thread to run. With none ready, the earliest timed waiter times out. The current thread's
+    /// registers are saved first so a timeout can be written into them.
+    fn next_ready_or_timeout(&mut self, cpu: &mut Cpu) -> Option<u32> {
+        if let Some(next) = self.ready.pop_front() {
+            return Some(next);
+        }
+        let cur = self.current;
+        self.threads.get_mut(&cur).unwrap().cpu_context.regs = cpu.regs.clone();
+        let timed = self
+            .threads
+            .values()
+            .filter(|t| t.state == ThreadState::Blocked)
+            .filter(|t| matches!(t.wait, Some(WaitReason::Objects { timed: true, .. }) | Some(WaitReason::CondVar { timed: true, .. })))
+            .min_by_key(|t| t.wait_seq)
+            .map(|t| t.handle)?;
+        self.time_out(timed);
+        self.ready.pop_front()
+    }
+
+    /// A timed wait ends with a timeout. A condvar waiter then still has to get its mutex back.
+    fn time_out(&mut self, key: u32) {
+        let reason = self.threads.get(&key).and_then(|t| t.wait.clone());
+        match reason {
+            Some(WaitReason::CondVar { mutex, tag, .. }) => {
+                let t = self.threads.get_mut(&key).unwrap();
+                t.cpu_context.regs.write_x(0, RESULT_TIMED_OUT);
+                // Marked as a mutex waiter; `relock_after_wake` is applied by the kernel, which has memory.
+                t.wait = Some(WaitReason::Mutex { addr: mutex, tag });
+                t.state = ThreadState::Blocked;
+                self.pending_relock.push(key);
+            }
+            _ => self.wake(key, RESULT_TIMED_OUT, None),
+        }
+    }
+
+    /// Makes a blocked thread ready with `result` in X0 (and `x1` in X1 when given).
+    pub fn wake(&mut self, key: u32, result: u64, x1: Option<u64>) {
+        if let Some(t) = self.threads.get_mut(&key) {
+            t.cpu_context.regs.write_x(0, result);
+            if let Some(v) = x1 {
+                t.cpu_context.regs.write_x(1, v);
+            }
+            t.state = ThreadState::Runnable;
+            t.wait = None;
+            self.ready.push_back(key);
+        }
+    }
+
+    /// svcSleepThread / yield: the running thread goes to the back of the ready queue.
+    pub fn yield_current(&mut self, cpu: &mut Cpu) {
+        if let Some(next) = self.ready.pop_front() {
+            self.ensure_main();
+            let cur = self.current;
+            self.threads.get_mut(&cur).unwrap().state = ThreadState::Runnable;
+            self.ready.push_back(cur);
+            self.switch_to(cpu, next);
+        }
+    }
+
+    /// svcExitThread. Returns the threads that were waiting for this one to exit (to be woken by the
+    /// caller), or `None` when no other thread can run and the process should end.
+    pub fn exit_current(&mut self, cpu: &mut Cpu) -> Option<()> {
+        self.ensure_main();
+        let cur = self.current;
+        let t = self.threads.get_mut(&cur).unwrap();
+        t.state = ThreadState::Exited;
+        t.cpu_context.regs = cpu.regs.clone();
+        self.total_threads_completed += 1;
+        self.wake_object_waiters(cur);
+        let next = self.next_ready_or_timeout(cpu)?;
+        let thread = self.threads.get_mut(&next).unwrap();
+        thread.state = ThreadState::Running;
+        cpu.regs = thread.cpu_context.regs.clone();
+        self.current = next;
+        self.switches += 1;
+        Some(())
+    }
+
+    /// Wakes threads in svcWaitSynchronization on `handle`, with the index of `handle` in X1.
+    pub fn wake_object_waiters(&mut self, handle: u32) {
+        let mut woken: Vec<(u64, u32, usize)> = self
+            .threads
+            .values()
+            .filter(|t| t.state == ThreadState::Blocked)
+            .filter_map(|t| match &t.wait {
+                Some(WaitReason::Objects { handles, .. }) => handles.iter().position(|&h| h == handle).map(|i| (t.wait_seq, t.handle, i)),
+                _ => None,
+            })
+            .collect();
+        woken.sort();
+        for (_, key, index) in woken {
+            self.wake(key, 0, Some(index as u64));
+        }
+    }
+
+    /// Whether `handle` names a thread that has exited (signaled for svcWaitSynchronization).
+    pub fn thread_signaled(&self, handle: u32) -> Option<bool> {
+        self.threads.get(&handle).filter(|_| handle != MAIN_THREAD_KEY).map(|t| t.state == ThreadState::Exited)
+    }
+
+    /// Blocked threads waiting for `pred`, earliest first.
+    pub fn waiters(&self, pred: impl Fn(&WaitReason) -> bool) -> Vec<u32> {
+        let mut v: Vec<(u64, u32)> = self
+            .threads
+            .values()
+            .filter(|t| t.state == ThreadState::Blocked && t.wait.as_ref().is_some_and(&pred))
+            .map(|t| (t.wait_seq, t.handle))
+            .collect();
+        v.sort();
+        v.into_iter().map(|(_, h)| h).collect()
+    }
+
+    /// Hands the mutex word at `addr` to its earliest waiter (waking it), or clears it.
+    pub fn release_mutex(&mut self, mmu: &mut Memory, addr: u64) {
+        let waiters = self.waiters(|w| matches!(w, WaitReason::Mutex { addr: a, .. } if *a == addr));
+        match waiters.first() {
+            Some(&next) => {
+                let tag = match self.threads[&next].wait {
+                    Some(WaitReason::Mutex { tag, .. }) => tag,
+                    _ => unreachable!(),
+                };
+                let more = if waiters.len() > 1 { MUTEX_HAS_LISTENERS } else { 0 };
+                let _ = mmu.write_u32(addr, tag | more);
+                // A condvar waiter that timed out keeps its timeout result.
+                let result = self.threads[&next].cpu_context.regs.read_x(0);
+                let keep = self.pending_relock.contains(&next);
+                self.pending_relock.retain(|&k| k != next);
+                self.wake(next, if keep { result } else { 0 }, None);
+            }
+            None => {
+                let _ = mmu.write_u32(addr, 0);
+            }
+        }
+    }
+
+    /// A thread leaving a condvar wait takes its mutex back: at once if free, else as a mutex waiter.
+    pub fn relock_after_wake(&mut self, mmu: &mut Memory, key: u32, mutex: u64, tag: u32, result: u64) {
+        let word = mmu.read_u32(mutex).unwrap_or(0);
+        if word == 0 {
+            let _ = mmu.write_u32(mutex, tag);
+            self.wake(key, result, None);
+        } else {
+            let _ = mmu.write_u32(mutex, word | MUTEX_HAS_LISTENERS);
+            let t = self.threads.get_mut(&key).unwrap();
+            t.cpu_context.regs.write_x(0, result);
+            t.wait = Some(WaitReason::Mutex { addr: mutex, tag });
+            if result != 0 {
+                self.pending_relock.push(key);
+            }
+        }
+    }
+
+    /// Applies the mutex step for condvar waiters that timed out while the scheduler was picking a thread.
+    pub fn finish_timeouts(&mut self, mmu: &mut Memory) {
+        let pending: Vec<u32> = self.pending_relock.clone();
+        for key in pending {
+            let Some(t) = self.threads.get(&key) else { continue };
+            if t.state != ThreadState::Blocked {
+                continue;
+            }
+            if let Some(WaitReason::Mutex { addr, tag }) = t.wait.clone() {
+                if mmu.read_u32(addr).unwrap_or(0) == 0 {
+                    self.pending_relock.retain(|&k| k != key);
+                    let _ = mmu.write_u32(addr, tag);
+                    self.wake(key, RESULT_TIMED_OUT, None);
+                } else {
+                    let word = mmu.read_u32(addr).unwrap_or(0);
+                    let _ = mmu.write_u32(addr, word | MUTEX_HAS_LISTENERS);
+                }
+            }
+        }
     }
 }
 
