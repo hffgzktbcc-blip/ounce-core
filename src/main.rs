@@ -3498,6 +3498,7 @@ fn setup_homebrew_nro(
 ) -> Result<(), mmu::MemoryError> {
     mmu.map_range(kernel.heap_base, NRO_HEAP_SIZE, Permission::READ_WRITE);
     kernel.heap_size = NRO_HEAP_SIZE;
+    kernel.scheduler.main_handle = Some(NRO_MAIN_THREAD_HANDLE);
     let file_name = std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or("program.nro");
     let sd_path = format!("sdmc:/{file_name}");
     kernel.vfs.mount_file(&sd_path, nro);
