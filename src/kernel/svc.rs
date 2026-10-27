@@ -120,6 +120,8 @@ impl HorizonKernel {
 
     /// Dispatches a Horizon OS Supervisor Call (SVC).
     pub fn dispatch_svc(&mut self, svc_id: u16, cpu: &mut Cpu, mmu: &mut Memory) -> SvcResult {
+        // Guests poll HID shared memory between SVCs, so publish the latest input before each one.
+        self.ipc.hid.sync(mmu);
         match svc_id {
             // 0x01: svcSetHeapSize(&out_addr, size)
             0x01 => {
@@ -254,10 +256,12 @@ impl HorizonKernel {
 
             // 0x13: svcMapSharedMemory(handle, addr, size, perm)
             0x13 => {
+                let handle = cpu.regs.read_w(0);
                 let addr = cpu.regs.read_x(1);
                 let size = cpu.regs.read_x(2) as usize;
                 if addr != 0 && size > 0 {
                     mmu.map_range(addr, size, Permission::READ_WRITE);
+                    self.ipc.shared_memory_mapped(handle, addr, mmu);
                 }
                 cpu.regs.write_x(0, 0);
                 SvcResult::Success
@@ -267,6 +271,7 @@ impl HorizonKernel {
             0x14 => {
                 let (addr, size) = (cpu.regs.read_x(1), cpu.regs.read_x(2) as usize);
                 mmu.unmap_range(addr, size);
+                self.ipc.shared_memory_unmapped(addr);
                 cpu.regs.write_x(0, 0);
                 SvcResult::Success
             }

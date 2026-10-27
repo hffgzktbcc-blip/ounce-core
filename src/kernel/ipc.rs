@@ -123,6 +123,8 @@ pub struct IpcManager {
     domain_reply: bool,
     /// `nvdrv` devices and nvmap objects for libnx-shaped requests.
     pub nvdrv: super::nvdrv::NvDrv,
+    /// HID shared memory in libnx's layout; the host's controller input goes here.
+    pub hid: super::hid::HidSharedMemory,
     next_handle: u32,
     pub total_ipc_requests: u64,
     pub start_instant: std::time::Instant,
@@ -143,6 +145,7 @@ impl IpcManager {
             domains: Default::default(),
             domain_reply: false,
             nvdrv: super::nvdrv::NvDrv::new(),
+            hid: Default::default(),
             next_handle: 0x10001,
             total_ipc_requests: 0,
             start_instant: std::time::Instant::now(),
@@ -546,6 +549,7 @@ impl IpcManager {
                 // Command 0: GetSharedMemoryHandle -> copy handle to the HID shared memory object
                 0 => {
                     let shm = self.allocate_handle(ServiceType::SharedMemory { size: HID_SHARED_MEMORY_SIZE });
+                    self.hid.handle = Some(shm);
                     self.reply(tls_addr, mmu, 0, &[], &[shm], None);
                     0
                 }
@@ -1182,6 +1186,18 @@ impl IpcManager {
             }
         }
         read_cmif_string(mmu, fallback, 256)
+    }
+
+    /// The guest mapped shared memory object `handle` at `addr` (svcMapSharedMemory).
+    pub fn shared_memory_mapped(&mut self, handle: u32, addr: u64, mmu: &mut Memory) {
+        if self.hid.handle == Some(handle) {
+            self.hid.mapped(addr, mmu);
+        }
+    }
+
+    /// The guest unmapped shared memory at `addr` (svcUnmapSharedMemory).
+    pub fn shared_memory_unmapped(&mut self, addr: u64) {
+        self.hid.unmapped(addr);
     }
 
     /// HIPC control requests (`TYPE_CONTROL`): domain conversion, cloning, pointer buffer size.

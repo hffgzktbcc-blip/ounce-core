@@ -215,7 +215,17 @@ fn boot_with_kernel(nro: &[u8], args: &[&str]) -> (String, Vec<u16>) {
 
 /// `boot_with_kernel`, also returning the kernel so tests can inspect service state afterwards.
 fn boot_with_kernel_state(nro: &[u8], args: &[&str]) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
+    boot_with_kernel_input(nro, args, Default::default())
+}
+
+/// `boot_with_kernel_state` with `input` held on the host controller for the whole run.
+fn boot_with_kernel_input(
+    nro: &[u8],
+    args: &[&str],
+    input: crate::kernel::hid::NpadInput,
+) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
+    kernel.ipc.hid.input = input;
     let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).expect("NRO loads");
     assert_eq!(info.format, "NRO0");
     crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "fixture.nro", nro, args).unwrap();
@@ -296,4 +306,21 @@ fn libnx_gpu_fixture_submits_a_command_buffer() {
     // The fixture's one GPFIFO entry reached the GPU model: one header with two arguments.
     assert_eq!(kernel.nvgpu.state.total_commands_processed, 1);
     assert!(kernel.ipc.nvdrv.unhandled.is_empty(), "unhandled ioctls: {:x?}", kernel.ipc.nvdrv.unhandled);
+}
+
+/// `tests/fixtures/nro/input`: libnx `padConfigureInput` / `padInitializeDefault` / `padUpdate` read
+/// the host controller from the HID shared memory the guest mapped.
+#[test]
+fn libnx_input_fixture_reads_host_controller() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/input/input.nro");
+    let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    // A + D-pad right held, left stick right and down.
+    let input = crate::kernel::hid::NpadInput { buttons: 1 << 0 | 1 << 14, stick_l: (0x1234, -0x100), stick_r: (0, 0) };
+    let (output, svcs, _) = boot_with_kernel_input(&nro, &[], input);
+    assert!(
+        output.contains("ounce-input buttons=0x00004001\n"),
+        "output: {output:?}\nSVCs: {svcs:x?}"
+    );
+    assert!(output.contains("ounce-input stick_l=0x1234FF00\n"), "output: {output:?}");
+    assert!(output.ends_with("ounce-input result=0x00000EEE\n"), "output: {output:?}");
 }
