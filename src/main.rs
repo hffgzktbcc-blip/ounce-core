@@ -506,6 +506,9 @@ fn run_vm_internal(
     max_instructions: usize,
     max_frames: usize,
 ) -> VmOutcome {
+    let is_gpu = display.as_ref().map_or(false, |d| d.is_gpu_accelerated());
+    kernel.nvgpu.set_hardware_acceleration(is_gpu);
+
     println!("[VM] Starting execution at PC: 0x{:016X}", cpu.regs.pc);
     println!("[VM] Stack Pointer: 0x{:016X}", cpu.regs.sp);
 
@@ -557,8 +560,9 @@ fn run_vm_internal(
                         }
 
                         // 3. Present video frame to host window
+                        let draw_ops = kernel.nvgpu.drain_draw_ops();
                         if let Some(ref mut disp) = display {
-                            if !disp.present_frame(&mmu) {
+                            if !disp.present_frame_3d(&mmu, &draw_ops) {
                                 println!("\n[Display] Window closed by user. Shutting down.");
                                 stop = VmStop::WindowClosed;
                                 break;
