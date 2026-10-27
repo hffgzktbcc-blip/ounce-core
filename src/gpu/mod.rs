@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+pub mod ampere;
 pub mod display;
 pub mod upscaler;
 pub mod memory_pool;
