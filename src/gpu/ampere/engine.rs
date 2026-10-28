@@ -3,11 +3,17 @@
 //! The engine keeps a shadow of every class register (the last value written to each method), and
 //! turns the trigger methods (`CLEAR_SURFACE`, `BEGIN`/`DRAW_VERTEX_ARRAY`/`END`, the
 //! `DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_*` one-shots, `SET_REPORT_SEMAPHORE_D`) into records that
-//! snapshot the state they used. No rasterisation happens here.
+//! snapshot the state they used. When the memory is readable, clears and draws are also rendered
+//! into guest memory ([`super::render`]); host semaphores and 3D semaphore acquires can block the
+//! channel until another agent releases them.
+
+use std::collections::VecDeque;
 
 use super::methods as m;
 use super::pushbuf::{self, MethodCall, PushbufError};
+use super::render::{self, RenderStats};
 use super::surface::{self, addr40, ColorTarget, DepthTarget};
+use super::texture::{self, Pool, Sampler, TextureHeader, TIC_ENTRY_BYTES, TSC_ENTRY_BYTES};
 
 /// `BEGIN.OP` / `DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_*.TOPOLOGY` values (same encoding).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,11 +185,94 @@ pub struct SemaphoreRecord {
     pub awaken: bool,
 }
 
+/// `SEMAPHORED.OPERATION` (`NVB06F_`/`NVC56F_`) and `SEM_EXECUTE.OPERATION` (`NVC56F_`), merged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostSemaphoreOp {
+    Release,
+    /// Wait for `value == payload`.
+    AcquireEqual,
+    /// Wait for `value >= payload`, unsigned (`SEM_EXECUTE` `ACQ_STRICT_GEQ`).
+    AcquireStrictGeq,
+    /// Wait for `value - payload >= 0` as a signed difference, so the comparison survives wrap
+    /// (`SEMAPHORED` `ACQ_GEQ` and `SEM_EXECUTE` `ACQ_CIRC_GEQ`; our reading of the names).
+    AcquireCircularGeq,
+    /// Wait for `value & payload != 0`.
+    AcquireAnd,
+    /// Wait for `!(value | payload) != 0`.
+    AcquireNor,
+    /// Atomic reduction: `REDUCTION` op code (`MIN` 0 .. `DEC` 7) and signed/unsigned format.
+    Reduction { op: u32, unsigned: bool },
+    Other(u32),
+}
+
+/// One host semaphore trigger (`SEMAPHORED` or `SEM_EXECUTE`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostSemaphoreRecord {
+    pub op: HostSemaphoreOp,
+    pub gpu_va: u64,
+    pub payload: u64,
+    /// 64-bit payload (`SEM_EXECUTE.PAYLOAD_SIZE`).
+    pub wide: bool,
+    /// Release writes the 16-byte structure (payload, then a 64-bit timestamp at +8).
+    pub timestamp: bool,
+}
+
+/// Host (channel class) methods that have an effect here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostRecord {
+    Semaphore(HostSemaphoreRecord),
+    NonStallInterrupt { handle: u32 },
+    SetReference(u32),
+    WaitForIdle,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Clear(ClearRecord),
     Draw(DrawRecord),
     Semaphore(SemaphoreRecord),
+    Host(HostRecord),
+}
+
+/// What a blocked channel waits for: a 32- or 64-bit value at `gpu_va` meeting `op` against
+/// `payload`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SemaphoreWait {
+    pub gpu_va: u64,
+    pub payload: u64,
+    pub wide: bool,
+    pub op: HostSemaphoreOp,
+}
+
+impl SemaphoreWait {
+    /// `None` when the memory cannot be read (the wait is then treated as met).
+    pub fn satisfied(&self, mem: &mut dyn GpuMemoryWriter) -> Option<bool> {
+        let mut b = [0u8; 8];
+        let n = if self.wide { 8 } else { 4 };
+        if !mem.read(self.gpu_va, &mut b[..n]) {
+            return None;
+        }
+        let v = u64::from_le_bytes(b);
+        let mask = if self.wide { u64::MAX } else { u32::MAX as u64 };
+        let p = self.payload & mask;
+        Some(match self.op {
+            HostSemaphoreOp::AcquireEqual => v == p,
+            HostSemaphoreOp::AcquireStrictGeq => v >= p,
+            HostSemaphoreOp::AcquireCircularGeq => {
+                if self.wide { (v.wrapping_sub(p) as i64) >= 0 } else { (v.wrapping_sub(p) as u32 as i32) >= 0 }
+            }
+            HostSemaphoreOp::AcquireAnd => v & p != 0,
+            HostSemaphoreOp::AcquireNor => !(v | p) & mask != 0,
+            _ => true,
+        })
+    }
+}
+
+/// One constant buffer binding (`BIND_GROUP_CONSTANT_BUFFER` captures the selector).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConstantBufferBinding {
+    pub gpu_va: u64,
+    pub size: u32,
 }
 
 /// Things the state model noticed but did not act on.
@@ -196,11 +285,24 @@ pub enum Diagnostic {
     DrawOutsideBegin { method: u32 },
     /// `BEGIN` while a previous `BEGIN` was still open.
     NestedBegin,
+    /// A clear or draw was decoded but not rendered (memory readable, state outside the software
+    /// path's scope).
+    RenderSkipped { reason: &'static str },
+    /// `SET_BLEND(target)` is enabled; the draw was written without blending.
+    BlendNotModelled { target: u8 },
 }
 
-/// Where semaphore releases land. The routing hook in `nvgpu.rs` maps GPU VAs to guest memory.
+/// Guest memory as the GPU sees it. The routing hook in `nvgpu.rs` maps GPU VAs to guest memory.
 pub trait GpuMemoryWriter {
     fn write(&mut self, gpu_va: u64, bytes: &[u8]);
+
+    /// Fills `buf` from `gpu_va`; false if any byte is unmapped. An empty read must return true
+    /// when the memory supports reads. The default (write-only memory) keeps step-1 behaviour:
+    /// records only, no rendering, and semaphore acquires never block.
+    fn read(&mut self, gpu_va: u64, buf: &mut [u8]) -> bool {
+        let _ = (gpu_va, buf);
+        false
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -212,14 +314,23 @@ struct OpenDraw {
 /// 3D engine state for one channel; decodes AMPERE_B and MAXWELL_B through one method table.
 #[derive(Debug, Clone)]
 pub struct Ampere3d {
-    regs: Vec<u32>,
+    pub(super) regs: Vec<u32>,
     bound: [Option<u32>; 8],
     open: Option<OpenDraw>,
     instance: u32,
     events: Vec<Event>,
-    diagnostics: Vec<Diagnostic>,
+    pub(super) diagnostics: Vec<Diagnostic>,
     /// Monotonic counter used for the FOUR_WORDS timestamp, so tests stay deterministic.
     ticks: u64,
+    /// Host method shadow (dword index = method / 4), for the semaphore address/payload words.
+    host_regs: [u32; m::FIRST_CLASS_METHOD as usize / 4],
+    /// Calls not yet run because the channel waits on a semaphore.
+    pending: VecDeque<MethodCall>,
+    blocked: Option<SemaphoreWait>,
+    /// `[group][slot]`, set by `BIND_GROUP_CONSTANT_BUFFER`.
+    pub(super) cbufs: [[Option<ConstantBufferBinding>; m::CONSTANT_BUFFER_SLOTS]; m::BIND_GROUP_COUNT],
+    pub(super) stats: RenderStats,
+    reference: u32,
 }
 
 impl Default for Ampere3d {
@@ -230,15 +341,67 @@ impl Default for Ampere3d {
 
 impl Ampere3d {
     pub fn new() -> Self {
+        let mut regs = vec![0; (m::METHOD_SPACE / 4) as usize];
+        // Drivers program SET_CT_WRITE; start with every channel enabled so a stream that never
+        // does still writes color (the reset value is not in the public headers).
+        for i in 0..m::COLOR_TARGET_COUNT as u32 {
+            regs[((m::SET_CT_WRITE + 4 * i) / 4) as usize] = 0x1111;
+        }
         Self {
-            regs: vec![0; (m::METHOD_SPACE / 4) as usize],
+            regs,
             bound: [None; 8],
             open: None,
             instance: 0,
             events: Vec::new(),
             diagnostics: Vec::new(),
             ticks: 0,
+            host_regs: [0; m::FIRST_CLASS_METHOD as usize / 4],
+            pending: VecDeque::new(),
+            blocked: None,
+            cbufs: [[None; m::CONSTANT_BUFFER_SLOTS]; m::BIND_GROUP_COUNT],
+            stats: RenderStats::default(),
+            reference: 0,
         }
+    }
+
+    /// What the software renderer wrote so far.
+    pub fn render_stats(&self) -> RenderStats {
+        self.stats
+    }
+
+    /// The semaphore the channel waits on, if a host or 3D acquire is not met yet.
+    pub fn blocked_on(&self) -> Option<SemaphoreWait> {
+        self.blocked
+    }
+
+    /// Last `SET_REFERENCE` value.
+    pub fn reference(&self) -> u32 {
+        self.reference
+    }
+
+    /// Constant buffer bound to `slot` of `group` (0 vertex .. 4 pixel).
+    pub fn constant_buffer(&self, group: usize, slot: usize) -> Option<ConstantBufferBinding> {
+        self.cbufs.get(group)?.get(slot).copied().flatten()
+    }
+
+    pub fn texture_header_pool(&self) -> Pool {
+        Pool::header(&self.regs)
+    }
+
+    pub fn sampler_pool(&self) -> Pool {
+        Pool::sampler(&self.regs)
+    }
+
+    /// Reads and decodes texture header `index` from the current header pool.
+    pub fn texture_header(&self, index: u32, mem: &mut dyn GpuMemoryWriter) -> Option<TextureHeader> {
+        let va = self.texture_header_pool().entry_va(index, TIC_ENTRY_BYTES)?;
+        texture::read_entry(mem, va).map(|b| TextureHeader::parse(&b))
+    }
+
+    /// Reads and decodes sampler `index` from the current sampler pool.
+    pub fn sampler(&self, index: u32, mem: &mut dyn GpuMemoryWriter) -> Option<Sampler> {
+        let va = self.sampler_pool().entry_va(index, TSC_ENTRY_BYTES)?;
+        texture::read_entry(mem, va).map(|b| Sampler::parse(&b))
     }
 
     /// Class bound to `subchannel` by `SET_OBJECT`.
@@ -263,12 +426,85 @@ impl Ampere3d {
         &self.diagnostics
     }
 
-    /// Decodes and runs one pushbuffer segment.
+    /// Decodes and runs one pushbuffer segment. If a semaphore acquire is not met, the rest of the
+    /// segment (and later segments) queue until [`Ampere3d::resume`] finds it met.
     pub fn submit(&mut self, words: &[u32], mem: &mut dyn GpuMemoryWriter) -> Result<(), PushbufError> {
-        for call in pushbuf::decode(words)? {
+        self.pending.extend(pushbuf::decode(words)?);
+        self.drain(mem);
+        Ok(())
+    }
+
+    /// Re-checks a blocking acquire and runs queued calls; true when nothing is left blocked.
+    pub fn resume(&mut self, mem: &mut dyn GpuMemoryWriter) -> bool {
+        self.drain(mem);
+        self.blocked.is_none()
+    }
+
+    fn drain(&mut self, mem: &mut dyn GpuMemoryWriter) {
+        self.blocked = None;
+        while let Some(&call) = self.pending.front() {
+            if let Some(wait) = self.acquire_for(call) {
+                if wait.satisfied(mem) == Some(false) {
+                    self.blocked = Some(wait);
+                    return;
+                }
+            }
+            self.pending.pop_front();
             self.execute(call, mem);
         }
-        Ok(())
+    }
+
+    /// The wait a call would start, if it is a semaphore acquire trigger.
+    fn acquire_for(&self, call: MethodCall) -> Option<SemaphoreWait> {
+        let host = |method: u32| self.host_regs[(method / 4) as usize];
+        match call.method {
+            m::HOST_SEMAPHORED => {
+                let wait = |op| SemaphoreWait {
+                    gpu_va: addr40(host(m::HOST_SEMAPHOREA), host(m::HOST_SEMAPHOREB) & !3),
+                    payload: host(m::HOST_SEMAPHOREC) as u64,
+                    wide: false,
+                    op,
+                };
+                match call.data & 0x1f {
+                    1 => Some(wait(HostSemaphoreOp::AcquireEqual)),
+                    4 => Some(wait(HostSemaphoreOp::AcquireCircularGeq)),
+                    8 => Some(wait(HostSemaphoreOp::AcquireAnd)),
+                    _ => None,
+                }
+            }
+            m::HOST_SEM_EXECUTE => {
+                let op = match call.data & 7 {
+                    0 => HostSemaphoreOp::AcquireEqual,
+                    2 => HostSemaphoreOp::AcquireStrictGeq,
+                    3 => HostSemaphoreOp::AcquireCircularGeq,
+                    4 => HostSemaphoreOp::AcquireAnd,
+                    5 => HostSemaphoreOp::AcquireNor,
+                    _ => return None,
+                };
+                Some(self.sem_execute_wait(call.data, op))
+            }
+            m::FIRST_CLASS_METHOD.. if call.method % m::METHOD_SPACE == m::SET_REPORT_SEMAPHORE_D => {
+                // OPERATION 1:0 = ACQUIRE; COMPARISON 16:16 EQ (0) or GE (1, read as unsigned).
+                let bound = self.bound[(call.subchannel & 7) as usize];
+                (matches!(bound, Some(m::AMPERE_B | m::MAXWELL_B)) && call.data & 3 == 1).then(|| SemaphoreWait {
+                    gpu_va: addr40(self.reg(m::SET_REPORT_SEMAPHORE_A), self.reg(m::SET_REPORT_SEMAPHORE_B)),
+                    payload: self.reg(m::SET_REPORT_SEMAPHORE_C) as u64,
+                    wide: false,
+                    op: if (call.data >> 16) & 1 == 1 { HostSemaphoreOp::AcquireStrictGeq } else { HostSemaphoreOp::AcquireEqual },
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn sem_execute_wait(&self, data: u32, op: HostSemaphoreOp) -> SemaphoreWait {
+        let host = |method: u32| self.host_regs[(method / 4) as usize];
+        SemaphoreWait {
+            gpu_va: addr40(host(m::HOST_SEM_ADDR_HI), host(m::HOST_SEM_ADDR_LO) & !3),
+            payload: ((host(m::HOST_SEM_PAYLOAD_HI) as u64) << 32) | host(m::HOST_SEM_PAYLOAD_LO) as u64,
+            wide: (data >> 24) & 1 == 1,
+            op,
+        }
     }
 
     pub fn execute(&mut self, call: MethodCall, mem: &mut dyn GpuMemoryWriter) {
@@ -278,7 +514,7 @@ impl Ampere3d {
             return;
         }
         if call.method < m::FIRST_CLASS_METHOD {
-            return; // Host methods: the channel model handles them.
+            return self.host(call, mem);
         }
         let class = match self.bound[sc] {
             Some(c @ (m::AMPERE_B | m::MAXWELL_B)) => c,
@@ -295,7 +531,7 @@ impl Ampere3d {
         self.regs[(method / 4) as usize] = call.data;
 
         match method {
-            m::CLEAR_SURFACE => self.clear(call.data, class),
+            m::CLEAR_SURFACE => self.clear(call.data, class, mem),
             m::BEGIN => {
                 if self.open.is_some() {
                     self.diagnostics.push(Diagnostic::NestedBegin);
@@ -311,7 +547,7 @@ impl Ampere3d {
             m::DRAW_VERTEX_ARRAY => match self.open.clone() {
                 Some(open) => {
                     let first = self.reg(m::SET_VERTEX_ARRAY_START);
-                    self.draw(class, open.topology, first, call.data, open.instance);
+                    self.draw(class, open.topology, first, call.data, open.instance, mem);
                 }
                 None => self.diagnostics.push(Diagnostic::DrawOutsideBegin { method }),
             },
@@ -327,11 +563,136 @@ impl Ampere3d {
                     self.instance += 1;
                 }
                 let topology = Topology::from_raw(call.data >> 28);
-                self.draw(class, topology, call.data & 0xffff, (call.data >> 16) & 0xfff, self.instance);
+                self.draw(class, topology, call.data & 0xffff, (call.data >> 16) & 0xfff, self.instance, mem);
             }
             m::SET_REPORT_SEMAPHORE_D => self.semaphore(call.data, mem),
+            m::LOAD_CONSTANT_BUFFER..m::BIND_GROUP_CONSTANT_BUFFER => {
+                let offset = self.reg(m::LOAD_CONSTANT_BUFFER_OFFSET) & 0xffff;
+                mem.write(render::selector_va(&self.regs) + offset as u64, &call.data.to_le_bytes());
+                self.regs[(m::LOAD_CONSTANT_BUFFER_OFFSET / 4) as usize] = (offset + 4) & 0xffff;
+            }
+            _ if (m::BIND_GROUP_CONSTANT_BUFFER..m::BIND_GROUP_CONSTANT_BUFFER + m::BIND_GROUP_COUNT as u32 * m::BIND_GROUP_STRIDE)
+                .contains(&method)
+                && (method - m::BIND_GROUP_CONSTANT_BUFFER) % m::BIND_GROUP_STRIDE == 0 =>
+            {
+                let group = ((method - m::BIND_GROUP_CONSTANT_BUFFER) / m::BIND_GROUP_STRIDE) as usize;
+                let slot = ((call.data >> 4) & 0x1f) as usize;
+                self.cbufs[group][slot] = (call.data & 1 == 1).then(|| ConstantBufferBinding {
+                    gpu_va: render::selector_va(&self.regs),
+                    size: self.reg(m::SET_CONSTANT_BUFFER_SELECTOR_A) & 0x1_ffff,
+                });
+            }
             _ => {}
         }
+    }
+
+    fn host(&mut self, call: MethodCall, mem: &mut dyn GpuMemoryWriter) {
+        self.host_regs[(call.method / 4) as usize] = call.data;
+        let host = |s: &Self, method: u32| s.host_regs[(method / 4) as usize];
+        let record = match call.method {
+            m::HOST_SEMAPHORED => {
+                let op = match call.data & 0x1f {
+                    1 => HostSemaphoreOp::AcquireEqual,
+                    2 => HostSemaphoreOp::Release,
+                    4 => HostSemaphoreOp::AcquireCircularGeq,
+                    8 => HostSemaphoreOp::AcquireAnd,
+                    0x10 => HostSemaphoreOp::Reduction { op: (call.data >> 27) & 0xf, unsigned: call.data >> 31 == 1 },
+                    other => HostSemaphoreOp::Other(other),
+                };
+                HostSemaphoreRecord {
+                    op,
+                    gpu_va: addr40(host(self, m::HOST_SEMAPHOREA), host(self, m::HOST_SEMAPHOREB) & !3),
+                    payload: host(self, m::HOST_SEMAPHOREC) as u64,
+                    wide: false,
+                    // RELEASE_SIZE 24:24: 0 = 16 bytes, 1 = 4 bytes.
+                    timestamp: (call.data >> 24) & 1 == 0,
+                }
+            }
+            m::HOST_SEM_EXECUTE => {
+                let op = match call.data & 7 {
+                    0 => HostSemaphoreOp::AcquireEqual,
+                    1 => HostSemaphoreOp::Release,
+                    2 => HostSemaphoreOp::AcquireStrictGeq,
+                    3 => HostSemaphoreOp::AcquireCircularGeq,
+                    4 => HostSemaphoreOp::AcquireAnd,
+                    5 => HostSemaphoreOp::AcquireNor,
+                    6 => HostSemaphoreOp::Reduction { op: (call.data >> 27) & 0xf, unsigned: call.data >> 31 == 1 },
+                    other => HostSemaphoreOp::Other(other),
+                };
+                let w = self.sem_execute_wait(call.data, op);
+                HostSemaphoreRecord {
+                    op,
+                    gpu_va: w.gpu_va,
+                    payload: w.payload,
+                    wide: w.wide,
+                    timestamp: (call.data >> 25) & 1 == 1,
+                }
+            }
+            m::HOST_NON_STALL_INTERRUPT => {
+                self.events.push(Event::Host(HostRecord::NonStallInterrupt { handle: call.data }));
+                return;
+            }
+            m::HOST_SET_REFERENCE => {
+                self.reference = call.data;
+                self.events.push(Event::Host(HostRecord::SetReference(call.data)));
+                return;
+            }
+            m::HOST_WFI => {
+                // Work completes synchronously, so the channel is always idle here.
+                self.events.push(Event::Host(HostRecord::WaitForIdle));
+                return;
+            }
+            _ => return,
+        };
+        match record.op {
+            HostSemaphoreOp::Release => self.release(record.gpu_va, record.payload, record.wide, record.timestamp, mem),
+            HostSemaphoreOp::Reduction { op, unsigned } => Self::reduce(&record, op, unsigned, mem),
+            // Acquires were checked before this call ran (see `drain`).
+            _ => {}
+        }
+        self.events.push(Event::Host(HostRecord::Semaphore(record)));
+    }
+
+    fn release(&mut self, gpu_va: u64, payload: u64, wide: bool, timestamp: bool, mem: &mut dyn GpuMemoryWriter) {
+        if timestamp {
+            self.ticks += 1;
+            let mut bytes = [0u8; 16];
+            let p = if wide { payload } else { payload & 0xffff_ffff };
+            bytes[0..8].copy_from_slice(&p.to_le_bytes());
+            bytes[8..16].copy_from_slice(&self.ticks.to_le_bytes());
+            mem.write(gpu_va, &bytes);
+        } else if wide {
+            mem.write(gpu_va, &payload.to_le_bytes());
+        } else {
+            mem.write(gpu_va, &(payload as u32).to_le_bytes());
+        }
+    }
+
+    /// 32-bit or 64-bit atomic reduction (`REDUCTION` MIN 0, MAX 1, XOR 2, AND 3, OR 4, ADD 5, INC 6,
+    /// DEC 7). INC/DEC wrap at the payload like CUDA's `atomicInc`/`atomicDec` (our reading).
+    fn reduce(rec: &HostSemaphoreRecord, op: u32, unsigned: bool, mem: &mut dyn GpuMemoryWriter) {
+        let n = if rec.wide { 8 } else { 4 };
+        let mut b = [0u8; 8];
+        if !mem.read(rec.gpu_va, &mut b[..n]) {
+            return;
+        }
+        let mask = if rec.wide { u64::MAX } else { u32::MAX as u64 };
+        let (v, p) = (u64::from_le_bytes(b) & mask, rec.payload & mask);
+        let sext = |x: u64| if rec.wide { x as i64 } else { x as u32 as i32 as i64 };
+        let r = match op {
+            0 if unsigned => v.min(p),
+            0 => if sext(v) < sext(p) { v } else { p },
+            1 if unsigned => v.max(p),
+            1 => if sext(v) > sext(p) { v } else { p },
+            2 => v ^ p,
+            3 => v & p,
+            4 => v | p,
+            5 => v.wrapping_add(p),
+            6 => if v >= p { 0 } else { v + 1 },
+            7 => if v == 0 || v > p { p } else { v - 1 },
+            _ => return,
+        } & mask;
+        mem.write(rec.gpu_va, &r.to_le_bytes()[..n]);
     }
 
     fn color_targets(&self) -> Vec<ColorTarget> {
@@ -348,7 +709,7 @@ impl Ampere3d {
         (self.reg(m::SET_ZT_SELECT) & 1 == 1).then(|| surface::depth_target(&self.regs, class == m::MAXWELL_B))
     }
 
-    fn clear(&mut self, data: u32, class: u32) {
+    fn clear(&mut self, data: u32, class: u32, mem: &mut dyn GpuMemoryWriter) {
         let color_mask = [2, 3, 4, 5].map(|bit| (data >> bit) & 1 == 1);
         let clear_depth = data & 1 == 1;
         let clear_stencil = (data >> 1) & 1 == 1;
@@ -367,10 +728,21 @@ impl Ampere3d {
             depth_target,
             layer: (data >> 10) & 0xffff,
         };
+        if mem.read(0, &mut []) {
+            self.render_clear(&record, mem);
+        }
         self.events.push(Event::Clear(record));
     }
 
-    fn draw(&mut self, class: u32, topology: Topology, first_vertex: u32, vertex_count: u32, instance: u32) {
+    fn draw(
+        &mut self,
+        class: u32,
+        topology: Topology,
+        first_vertex: u32,
+        vertex_count: u32,
+        instance: u32,
+        mem: &mut dyn GpuMemoryWriter,
+    ) {
         let vertex_streams = (0..m::VERTEX_STREAM_COUNT as u32)
             .filter_map(|j| {
                 let fmt = self.reg(m::SET_VERTEX_STREAM_A_FORMAT + j * m::VERTEX_STREAM_A_STRIDE);
@@ -466,6 +838,7 @@ impl Ampere3d {
                 ymax: sc_v >> 16,
             },
         };
+        self.render_draw(&record, mem);
         self.events.push(Event::Draw(record));
     }
 
