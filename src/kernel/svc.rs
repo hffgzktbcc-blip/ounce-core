@@ -2,8 +2,9 @@
 
 use super::ipc::{IpcManager, ServiceType};
 use super::scheduler::{
-    ThreadScheduler, WaitReason, YieldTo, CORE_COUNT, LOWEST_THREAD_PRIORITY, MUTEX_HAS_LISTENERS, PROCESS_IDEAL_CORE,
-    RESULT_INVALID_COMBINATION, RESULT_INVALID_CORE_ID, RESULT_INVALID_HANDLE, RESULT_INVALID_PRIORITY, RESULT_TIMED_OUT,
+    ThreadScheduler, ThreadState, WaitReason, YieldTo, CORE_COUNT, LOWEST_THREAD_PRIORITY, MUTEX_HAS_LISTENERS,
+    PROCESS_IDEAL_CORE, RESULT_CANCELLED, RESULT_INVALID_COMBINATION, RESULT_INVALID_CORE_ID, RESULT_INVALID_HANDLE,
+    RESULT_INVALID_PRIORITY, RESULT_INVALID_STATE, RESULT_TIMED_OUT,
 };
 use super::sync::SyncManager;
 use crate::audio::AudioOutServer;
@@ -47,6 +48,19 @@ pub mod ext {
 
 /// Horizon `svcGetInfo` result for an info type it does not know (`InvalidEnumValue`).
 pub const RESULT_INVALID_ENUM_VALUE: u64 = 0xF001;
+/// Kernel results (module 1) as libnx `result.h` names them.
+pub const RESULT_INVALID_SIZE: u64 = 0xCA01;
+pub const RESULT_INVALID_ADDRESS: u64 = 0xCC01;
+pub const RESULT_OUT_OF_MEMORY: u64 = 0xD001;
+pub const RESULT_INVALID_MEMORY_STATE: u64 = 0xD401;
+pub const RESULT_BUSY: u64 = 0xF401;
+
+/// `svcGetInfo(HeapRegionSize)`; svcSetHeapSize cannot grow the heap past it.
+pub const HEAP_REGION_SIZE: u64 = 0x0000_0001_0000_0000;
+/// svcSetHeapSize works in 2 MiB steps.
+pub const HEAP_SIZE_ALIGN: u64 = 0x20_0000;
+/// Size of `ThreadContext` as svcGetThreadContext3 writes it.
+pub const THREAD_CONTEXT_SIZE: usize = 0x320;
 
 /// Horizon OS Microkernel Compatibility Layer.
 pub struct HorizonKernel {
@@ -107,7 +121,7 @@ impl HorizonKernel {
             2 => 0x0000_0002_0000_0000,    // AliasRegionAddress
             3 => 0x0000_0010_0000_0000,    // AliasRegionSize (64 GB)
             4 => self.heap_base,           // HeapRegionAddress (0x1_0000_0000)
-            5 => 0x0000_0001_0000_0000,    // HeapRegionSize (4 GB)
+            5 => HEAP_REGION_SIZE,         // HeapRegionSize (4 GB)
             6 => 12 * 1024 * 1024 * 1024,  // TotalMemorySize: 12 GB LPDDR5
             7 => (self.heap_size as u64) + 0x10_0000, // UsedMemorySize
             8 => 0,                        // DebuggerAttached
@@ -116,8 +130,12 @@ impl HorizonKernel {
             13 => 0x0000_007F_F800_0000,   // AslrRegionSize
             14 => 0x0000_007F_0000_0000,   // StackRegionAddress
             15 => 0x0000_0000_FFFF_F000,   // StackRegionSize (ends at the top of the main stack)
+            16 | 17 => 0,                  // SystemResourceSizeTotal / Used: no system resource
             18 => 0x0400_0000_0000_0000,   // ProgramId (synthetic value)
-            20 | 21 => 0,                  // SystemResourceSizeTotal / Used
+            21 => 12 * 1024 * 1024 * 1024, // TotalNonSystemMemorySize (no system resource, so = TotalMemorySize)
+            22 => (self.heap_size as u64) + 0x10_0000, // UsedNonSystemMemorySize (= UsedMemorySize)
+            23 => 1,                       // IsApplication
+            28 => 0,                       // AliasRegionExtraSize [18.0.0+]: none
             _ => return None,
         })
     }
@@ -156,6 +174,12 @@ impl HorizonKernel {
         SvcResult::Break { reason: 0xDEAD_10C4, info1: self.scheduler.current as u64, info2: 0 }
     }
 
+    /// Consumes a pending svcCancelSynchronization on the running thread.
+    fn take_wait_cancelled(&mut self) -> bool {
+        let Some(key) = self.scheduler.resolve(super::scheduler::CURRENT_THREAD_HANDLE) else { return false };
+        std::mem::take(&mut self.scheduler.threads.get_mut(&key).unwrap().wait_cancelled)
+    }
+
     /// Dispatches a Horizon OS Supervisor Call (SVC).
     pub fn dispatch_svc(&mut self, svc_id: u16, cpu: &mut Cpu, mmu: &mut Memory) -> SvcResult {
         // Guests poll HID shared memory between SVCs, so publish the latest input before each one.
@@ -164,14 +188,25 @@ impl HorizonKernel {
         self.scheduler.finish_timeouts(mmu);
         match svc_id {
             // 0x01: svcSetHeapSize(&out_addr, size)
+            // Sizes go in 2 MiB steps up to the heap region. Growing keeps what the heap holds; shrinking unmaps the tail.
             0x01 => {
-                let requested_size = cpu.regs.read_x(1) as usize;
+                let requested = cpu.regs.read_x(1);
                 let heap_addr = self.heap_base;
-
-                if requested_size > 0 {
-                    mmu.map_range(heap_addr, requested_size, Permission::READ_WRITE);
+                if requested % HEAP_SIZE_ALIGN != 0 {
+                    cpu.regs.write_x(0, RESULT_INVALID_SIZE);
+                    return SvcResult::Success;
                 }
-                self.heap_size = requested_size;
+                if requested > HEAP_REGION_SIZE {
+                    cpu.regs.write_x(0, RESULT_OUT_OF_MEMORY);
+                    return SvcResult::Success;
+                }
+                let (old, new) = (self.heap_size as u64, requested);
+                if new > old {
+                    mmu.map_range(heap_addr + old, (new - old) as usize, Permission::READ_WRITE);
+                } else {
+                    mmu.unmap_range(heap_addr + new, (old - new) as usize);
+                }
+                self.heap_size = new as usize;
 
                 // X0 = 0 (ResultSuccess), X1 = Heap base virtual address
                 cpu.regs.write_x(0, 0);
@@ -471,6 +506,8 @@ impl HorizonKernel {
                     cpu.regs.write_x(1, i as u64);
                 } else if timeout == 0 {
                     cpu.regs.write_x(0, RESULT_TIMED_OUT);
+                } else if self.take_wait_cancelled() {
+                    cpu.regs.write_x(0, RESULT_CANCELLED);
                 } else if !self.scheduler.block_for(cpu, mmu, WaitReason::Objects { handles, timed: timeout > 0 }, (timeout > 0).then_some(timeout as u64)) {
                     if timeout > 0 {
                         cpu.regs.write_x(0, RESULT_TIMED_OUT);
@@ -485,6 +522,24 @@ impl HorizonKernel {
             0x18 | ext::PRESENT_FRAME => {
                 cpu.regs.write_x(0, 0); // ResultSuccess
                 SvcResult::PresentFrame
+            }
+
+            // 0x19: svcCancelSynchronization(thread_handle). A thread in svcWaitSynchronization leaves it with
+            // Cancelled; any other thread has its next svcWaitSynchronization cancelled.
+            0x19 => {
+                match self.scheduler.resolve(cpu.regs.read_w(0)) {
+                    Some(key) => {
+                        let waiting = matches!(self.scheduler.threads[&key].wait, Some(WaitReason::Objects { .. }));
+                        if waiting {
+                            self.scheduler.wake(key, RESULT_CANCELLED, None);
+                        } else {
+                            self.scheduler.threads.get_mut(&key).unwrap().wait_cancelled = true;
+                        }
+                        cpu.regs.write_x(0, 0);
+                    }
+                    None => cpu.regs.write_x(0, RESULT_INVALID_HANDLE),
+                }
+                SvcResult::Success
             }
 
             // 0x1A: svcArbitrateLock(owner_tag, mutex_addr, requester_tag). Waits for the owner to hand the
@@ -594,6 +649,49 @@ impl HorizonKernel {
                         cpu.regs.write_x(1, 0);
                     }
                 }
+                SvcResult::Success
+            }
+
+            // 0x32: svcSetThreadActivity(thread_handle, activity): 0 runnable, 1 paused. A paused thread keeps
+            // waiting or stays ready but is not run. The caller cannot pause itself.
+            0x32 => {
+                let handle = cpu.regs.read_w(0);
+                let activity = cpu.regs.read_x(1);
+                let result = match self.scheduler.resolve(handle) {
+                    None => RESULT_INVALID_HANDLE,
+                    _ if activity > 1 => RESULT_INVALID_ENUM_VALUE,
+                    Some(key) if key == self.scheduler.current => RESULT_BUSY,
+                    Some(key) => {
+                        let t = self.scheduler.threads.get_mut(&key).unwrap();
+                        let pause = activity == 1;
+                        if !matches!(t.state, ThreadState::Runnable | ThreadState::Blocked) || t.paused == pause {
+                            RESULT_INVALID_STATE
+                        } else {
+                            t.paused = pause;
+                            0
+                        }
+                    }
+                };
+                cpu.regs.write_x(0, result);
+                if result == 0 {
+                    self.scheduler.preempt_for_priority(cpu);
+                }
+                SvcResult::Success
+            }
+
+            // 0x33: svcGetThreadContext3(out_context, thread_handle) for a paused thread of this process.
+            0x33 => {
+                let out = cpu.regs.read_x(0);
+                let result = match self.scheduler.resolve(cpu.regs.read_w(1)) {
+                    None => RESULT_INVALID_HANDLE,
+                    Some(key) if key == self.scheduler.current => RESULT_BUSY,
+                    Some(key) if !self.scheduler.threads[&key].paused => RESULT_INVALID_STATE,
+                    Some(key) => {
+                        let ctx = thread_context3(&self.scheduler.threads[&key].cpu_context.regs);
+                        if mmu.write_bytes(out, &ctx).is_ok() { 0 } else { RESULT_INVALID_MEMORY_STATE }
+                    }
+                };
+                cpu.regs.write_x(0, result);
                 SvcResult::Success
             }
 
@@ -756,6 +854,8 @@ impl HorizonKernel {
                 SvcResult::Success
             }
             0x2D => {
+                let (addr, size) = (cpu.regs.read_x(0), cpu.regs.read_x(1) as usize);
+                mmu.unmap_range(addr, size);
                 cpu.regs.write_x(0, 0);
                 SvcResult::Success
             }
@@ -863,26 +963,129 @@ impl HorizonKernel {
                 SvcResult::Success
             }
 
-            // 0x34: svcWaitForAddress(address, arb_type, value, timeout_ns)
+            // 0x34: svcWaitForAddress(address, arb_type, value, timeout_ns). Types: 0 WaitIfLessThan,
+            // 1 DecrementAndWaitIfLessThan, 2 WaitIfEqual, 3 WaitIfEqual64. A value that fails the test returns
+            // InvalidState at once; libnx LEvent relies on that.
             0x34 => {
-                cpu.regs.write_x(0, 0);
+                let addr = cpu.regs.read_x(0);
+                let arb_type = cpu.regs.read_w(1);
+                let value = cpu.regs.read_x(2);
+                let timeout = cpu.regs.read_x(3) as i64;
+                let align = if arb_type == 3 { 8 } else { 4 };
+                let result = if arb_type > 3 {
+                    Err(RESULT_INVALID_ENUM_VALUE)
+                } else if addr % align != 0 {
+                    Err(RESULT_INVALID_ADDRESS)
+                } else if arb_type == 3 {
+                    match mmu.read_u64(addr) {
+                        Err(_) => Err(RESULT_INVALID_MEMORY_STATE),
+                        Ok(v) => Ok(v == value),
+                    }
+                } else {
+                    match mmu.read_u32(addr) {
+                        Err(_) => Err(RESULT_INVALID_MEMORY_STATE),
+                        Ok(v) if arb_type == 2 => Ok(v == value as u32),
+                        Ok(v) => {
+                            let wait = (v as i32) < (value as u32 as i32);
+                            if wait && arb_type == 1 {
+                                let _ = mmu.write_u32(addr, v.wrapping_sub(1));
+                            }
+                            Ok(wait)
+                        }
+                    }
+                };
+                match result {
+                    Err(code) => cpu.regs.write_x(0, code),
+                    Ok(false) => cpu.regs.write_x(0, RESULT_INVALID_STATE),
+                    Ok(true) if timeout == 0 => cpu.regs.write_x(0, RESULT_TIMED_OUT),
+                    Ok(true) => {
+                        cpu.regs.write_x(0, 0);
+                        let deadline = (timeout > 0).then_some(timeout as u64);
+                        if !self.scheduler.block_for(cpu, mmu, WaitReason::Address { addr }, deadline) {
+                            if timeout > 0 {
+                                cpu.regs.write_x(0, RESULT_TIMED_OUT);
+                            } else {
+                                return self.deadlock(cpu, "svcWaitForAddress");
+                            }
+                        }
+                    }
+                }
                 SvcResult::Success
             }
 
-            // 0x35: svcSignalToAddress(address, signal_type, value, count)
+            // 0x35: svcSignalToAddress(address, signal_type, value, count): wakes up to `count` waiters (all when
+            // count <= 0). Types: 0 Signal, 1 SignalAndIncrementIfEqual, 2 SignalAndModifyByWaitingCountIfEqual
+            // (the value becomes value - 1 when this wakes every waiter, value + 1 when there is none, else stays).
             0x35 => {
                 let addr = cpu.regs.read_x(0);
                 let signal_type = cpu.regs.read_w(1);
-                let val = cpu.regs.read_w(2);
-                if signal_type == 1 {
-                    // SignalAndIncrementIfEqual
-                    let cur = mmu.read_u32(addr).unwrap_or(0);
-                    if cur == val {
-                        let _ = mmu.write_u32(addr, cur.wrapping_add(1));
+                let value = cpu.regs.read_w(2);
+                let count = cpu.regs.read_w(3) as i32;
+                let waiters = self.scheduler.address_waiters(addr);
+                let woken = if count <= 0 { waiters.len() } else { (count as usize).min(waiters.len()) };
+                let new_value = match signal_type {
+                    0 => None,
+                    1 => Some(value.wrapping_add(1)),
+                    2 if waiters.is_empty() => Some(value.wrapping_add(1)),
+                    2 if woken == waiters.len() => Some(value.wrapping_sub(1)),
+                    2 => Some(value),
+                    _ => {
+                        cpu.regs.write_x(0, RESULT_INVALID_ENUM_VALUE);
+                        return SvcResult::Success;
                     }
-                } else if signal_type == 2 {
-                    // SignalAndModifyByWaitingCountIfEqual
-                    let _ = mmu.write_u32(addr, val);
+                };
+                if addr % 4 != 0 {
+                    cpu.regs.write_x(0, RESULT_INVALID_ADDRESS);
+                    return SvcResult::Success;
+                }
+                if let Some(new_value) = new_value {
+                    match mmu.read_u32(addr) {
+                        Err(_) => {
+                            cpu.regs.write_x(0, RESULT_INVALID_MEMORY_STATE);
+                            return SvcResult::Success;
+                        }
+                        Ok(v) if v != value => {
+                            cpu.regs.write_x(0, RESULT_INVALID_STATE);
+                            return SvcResult::Success;
+                        }
+                        Ok(_) => {
+                            let _ = mmu.write_u32(addr, new_value);
+                        }
+                    }
+                }
+                for &key in &waiters[..woken] {
+                    self.scheduler.wake(key, 0, None);
+                }
+                cpu.regs.write_x(0, 0);
+                self.scheduler.preempt_for_priority(cpu);
+                SvcResult::Success
+            }
+
+            // 0x50: svcCreateSharedMemory(&out_handle, size, local_perm, remote_perm)
+            0x50 => {
+                let size = cpu.regs.read_x(1);
+                if size == 0 || size % 0x1000 != 0 {
+                    cpu.regs.write_x(0, RESULT_INVALID_SIZE);
+                    return SvcResult::Success;
+                }
+                let handle = self.ipc.allocate_handle(ServiceType::SharedMemory { size });
+                cpu.regs.write_x(0, 0);
+                cpu.regs.write_x(1, handle as u64);
+                SvcResult::Success
+            }
+
+            // 0x51: svcMapTransferMemory(handle, addr, size, perm) / 0x52: svcUnmapTransferMemory(handle, addr, size).
+            // Maps a fresh view; the lender's pages are not shared (one process only).
+            0x51 | 0x52 => {
+                let (handle, addr, size) = (cpu.regs.read_w(0), cpu.regs.read_x(1), cpu.regs.read_x(2) as usize);
+                if !matches!(self.ipc.handles.get(&handle), Some(ServiceType::TransferMemory { .. })) {
+                    cpu.regs.write_x(0, RESULT_INVALID_HANDLE);
+                    return SvcResult::Success;
+                }
+                if svc_id == 0x51 {
+                    mmu.map_range(addr, size, Permission::READ_WRITE);
+                } else {
+                    mmu.unmap_range(addr, size);
                 }
                 cpu.regs.write_x(0, 0);
                 SvcResult::Success
@@ -895,13 +1098,29 @@ impl HorizonKernel {
             // 0x76: svcQueryProcessMemory(out_mem_info, &out_page_info, handle, addr)
             // 0x77: svcMapProcessCodeMemory(handle, dst_addr, src_addr, size)
             // 0x78: svcUnmapProcessCodeMemory(handle, dst_addr, src_addr, size)
-            0x73 | 0x74 | 0x75 | 0x77 | 0x78 => {
-                if svc_id == 0x74 || svc_id == 0x77 {
-                    let dst_addr = if svc_id == 0x74 {
-                        cpu.regs.read_x(0)
+            // libnx `jit.c` (JitType_SetProcessMemoryPermission) writes code at src, then maps it at dst with 0x77:
+            // the pages move to dst like svcMapMemory, and 0x78 moves them back.
+            0x77 | 0x78 => {
+                let (dst, src, size) = (cpu.regs.read_x(1), cpu.regs.read_x(2), cpu.regs.read_x(3) as usize);
+                let from = if svc_id == 0x77 { src } else { dst };
+                if (dst | src | size as u64) & 0xFFF != 0 || size == 0 {
+                    cpu.regs.write_x(0, RESULT_INVALID_ADDRESS);
+                } else if !(0..size as u64).step_by(0x1000).all(|o| mmu.is_mapped(from + o)) {
+                    cpu.regs.write_x(0, RESULT_INVALID_MEMORY_STATE);
+                } else {
+                    if svc_id == 0x77 {
+                        mmu.move_range(src, dst, size);
                     } else {
-                        cpu.regs.read_x(1)
-                    };
+                        mmu.move_range(dst, src, size);
+                    }
+                    cpu.regs.write_x(0, 0);
+                }
+                SvcResult::Success
+            }
+
+            0x73 | 0x74 | 0x75 => {
+                if svc_id == 0x74 {
+                    let dst_addr = cpu.regs.read_x(0);
                     let size = (cpu.regs.read_x(3) as usize).max(0x1000);
                     if dst_addr != 0 {
                         mmu.map_range(dst_addr, size, Permission::READ_WRITE_EXECUTE);
@@ -931,6 +1150,23 @@ impl HorizonKernel {
             }
         }
     }
+}
+
+/// `ThreadContext` (libnx `svc.h`) for svcGetThreadContext3: X0..X28, FP, LR, SP, PC, PSR, V0..V31,
+/// FPCR, FPSR, TPIDR_EL0. FPCR/FPSR are not modelled and read as 0.
+pub fn thread_context3(regs: &crate::cpu::CpuRegisters) -> [u8; THREAD_CONTEXT_SIZE] {
+    let mut out = [0u8; THREAD_CONTEXT_SIZE];
+    for (i, &x) in regs.x.iter().enumerate() {
+        out[i * 8..i * 8 + 8].copy_from_slice(&x.to_le_bytes());
+    }
+    out[0xF8..0x100].copy_from_slice(&regs.sp.to_le_bytes());
+    out[0x100..0x108].copy_from_slice(&regs.pc.to_le_bytes());
+    out[0x108..0x10C].copy_from_slice(&regs.pstate.to_bits().to_le_bytes());
+    for (i, &v) in regs.v.iter().enumerate() {
+        out[0x110 + i * 16..0x120 + i * 16].copy_from_slice(&v.to_le_bytes());
+    }
+    out[0x318..0x320].copy_from_slice(&regs.tpidr_el0.to_le_bytes());
+    out
 }
 
 /// Clean-room AArch64 FS query program, written for this project (see Stage 10 in `main.rs`).

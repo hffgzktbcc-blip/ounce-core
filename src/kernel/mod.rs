@@ -14,6 +14,8 @@ pub mod nvdrv;
 pub mod scheduler;
 pub mod set;
 pub mod svc;
+#[cfg(test)]
+mod svc_tests;
 pub mod sync;
 pub mod time;
 
