@@ -407,3 +407,25 @@ fn libnx_audren_fixture_loops_for_two_seconds() {
     assert!(pcm.len() >= 400 * 240 * 2, "{} samples", pcm.len());
     assert_eq!(pcm.iter().filter(|&&s| s.abs() == 1600).count() / 2, 400 * 240);
 }
+
+/// libnx + deko3d: device, memory blocks, shaders, queue and a submitted clear + triangle run to the
+/// end on the CPU and nvdrv models without an unhandled instruction, IPC command or ioctl.
+#[test]
+fn deko3d_fixture_runs_to_completion() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/deko3d/deko3d.nro");
+    let nro = std::fs::read(path).unwrap();
+    let (output, _, kernel) = boot_with_kernel_state(&nro, &[]);
+    assert!(output.contains("ounce-deko3d result="), "fixture did not report: {output:?}");
+    assert!(kernel.ipc.nvdrv.unhandled.is_empty(), "unhandled ioctls: {:?}", kernel.ipc.nvdrv.unhandled);
+}
+
+/// The pixels: needs the Maxwell MME macro engine (deko3d draws and clears through macros), which the
+/// 3D engine model does not have yet.
+#[test]
+#[ignore = "needs MME macros in the 3D engine"]
+fn deko3d_fixture_draws_triangle() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/deko3d/deko3d.nro");
+    let nro = std::fs::read(path).unwrap();
+    let (output, _, _) = boot_with_kernel_state(&nro, &[]);
+    assert!(output.contains("ounce-deko3d result=0x00000EEE"), "{output:?}");
+}
