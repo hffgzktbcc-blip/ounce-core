@@ -13,15 +13,17 @@
 
 ## Abstract
 
-`ounce-core` is an experimental, non-commercial AArch64 execution and high-level service implementation research runtime written in Rust. It contains an interpreter, three execution tiers, a paged memory model, a subset of Horizon-style supervisor calls (SVCs) and services, software models of audio and input, and a graphics model whose output is drawn by a CPU rasterizer by default (an optional `gpu-present` build replays a subset of draw commands through `wgpu`). It is a test harness for studying these subsystems. It is a clean-room research runtime, not a tool for running commercial software, and makes no claim of compatibility with any commercial software.
+`ounce-core` is an experimental AArch64 execution and high-level service research runtime written in Rust. It contains an interpreter, Tier-1 through Tier-3 execution engines, and an optional Tier-4 native recompiler, alongside a paged memory model, a subset of Horizon-style supervisor calls (SVCs) and services, and software models of audio, input, and graphics. The default build renders through a CPU rasterizer; `gpu-present` can replay selected draw output through `wgpu`. It is intended for systems research and makes no claim of commercial software compatibility.
 
-- Safe Rust only: the crate is `#![forbid(unsafe_code)]`, and `grep -rnE "unsafe[ ({]" src` returns no matches.
+- The root crate forbids unsafe code (`#![forbid(unsafe_code)]`). This is not a workspace-wide guarantee: the optional `ounce-recompiler` crate owns native code generation and executable-memory management, including the platform-specific unsafe boundary.
 - Five runtime dependencies: `byteorder`, `cpal` (host audio playback), `gilrs` (gamepad input), `minifb` (host window), `thiserror`. The optional `gpu-present` feature adds `wgpu`, `winit` and `pollster` for GPU presentation.
 - No network code, no telemetry. The only URL in the source is the project's own repository link in the CLI banner.
 
 ## How this project is built
 
-Most of the code, tests and documentation here are written by AI coding agents (Claude Code and Antigravity), directed and reviewed by the maintainer. Agent-made commits carry the agent as author or co-author. Every change must pass CI and the stage harness before it is merged. That harness checks programs written for this repository; it does not show that any other software works. Treat anything not covered by a test as unverified.
+The maintainer uses AI coding agents as part of development and reviews their changes. CI runs the default tests and 25-stage harness, plus separate feature-specific jobs described below. Tests cover only the behaviors they exercise.
+
+The checked-in NRO fixtures target the original Nintendo Switch homebrew environment (`libnx`). Switch 2 game support is a long-term goal, not a current capability; these fixtures and tests do not establish Switch 2 compatibility or commercial-game support.
 
 ---
 
@@ -31,8 +33,8 @@ Most of the code, tests and documentation here are written by AI coding agents (
 
 - No firmware, system archives, or code or data derived from them.
 - No encryption keys. The loader decrypts only containers built with the in-repo synthetic test key; retail keys are rejected (`LoadError::RestrictedCipher`). A `prod.keys`-format parser exists for unit tests of the key-file format only. The `.gitignore` excludes key files.
-- No game content, ROMs, or dumps. Test inputs are synthetic: they are generated at runtime or written as AArch64 instructions in source.
-- No code copied from third-party projects. Earlier revisions contained firmware-derived and third-party-derived byte sequences; they were removed from the current tree but are still reachable in git history. See *Known Issues*.
+- No retail game content, ROMs, or dumps. Tests include generated synthetic programs and checked-in homebrew NRO fixtures. The `hello.nro` fixture links libnx (ISC) and newlib; see [`tests/fixtures/nro/hello/README.md`](tests/fixtures/nro/hello/README.md) for source and build details.
+- Earlier revisions contained firmware-derived and third-party-derived byte sequences; they were removed from the current tree but remain in git history. See *Known Issues*.
 
 **Trademarks.** "Nintendo", "Nintendo Switch", "Switch 2", "NVIDIA", "Tegra", "Horizon" and related names are trademarks of their respective owners. This project is not affiliated with, endorsed by, or sponsored by any of them. Names appear only to describe the hardware and ABI being modelled.
 
@@ -55,13 +57,13 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 | Subsystem | Status | Notes |
 | :--- | :--- | :--- |
-| AArch64 CPU | Implemented (subset) | Interpreter plus Tier-1 block cache, Tier-2 chained blocks and Tier-3 super-blocks. Workspace sub-crate `crates/ounce-recompiler` (feature `native-jit`) provides executable memory management (`MAP_JIT` on Apple Silicon, `VirtualProtect` on Windows, `mprotect` on Linux) for Tier-4 JIT recompilation. |
+| AArch64 CPU | Implemented (subset) | Interpreter, Tier-1 block cache, Tier-2 decoded blocks, Tier-3 fused blocks, and optional Tier-4 native recompilation in `crates/ounce-recompiler` (`native-jit`). Guest writes to translated code stop the active block and invalidate stale translations; code-patch and differential tests cover this path. |
 | Memory | Implemented | 4 KB-page MMU with intra-page boundary alignment and per-page permissions. No DRAM timing model. |
 | Kernel (SVC) | Implemented (subset) | Threads, events, mutexes, memory and process queries needed by the test programs. |
 | IPC | Implemented (subset) | CMIF and TIPC message formats. Services are synthetic. |
 | Services | Modelled | `sm:`, `set:sys` (Drake T239 model, language, nickname), `am`, `vi`, `hid`, `fsp-srv` (directory enumeration, persistent save/sdmc partitions), `pl:u` (placeholder font data), `time:u` / `time:s` (nanosecond steady clock, UTC epoch timestamp), `nvdrv`, `ro:1`. |
-| GPU | Modelled; optional host-GPU replay | Guest pushbuffers (Maxwell-class 3D method numbers; Ampere class planned) are decoded by a software model and drawn by a CPU rasterizer in the default build. With the optional `gpu-present` feature, `METHOD_DRAW_ARRAYS` and `METHOD_DRAW_INDEXED` geometry is replayed through `wgpu` (Metal/Vulkan/DX12) with depth testing and textures. This is not a GPU driver or NVN implementation and is checked only by the in-repo tests. |
-| Shader translation | Partial | A SASS-subset decoder that emits SPIR-V 1.5 bytes. Not validated against a driver. |
+| GPU | Modelled; optional host-GPU replay | Selected `MAXWELL_B` and `AMPERE_B` 3D methods are decoded and rendered by a CPU rasterizer. `gpu-present` can replay supported draw output through `wgpu`. This is not a hardware driver or NVN implementation; many behaviors remain unsupported or unverified. |
+| Shader translation | Partial | The older SASS path emits SPIR-V 1.5; the newer Ampere path translates a limited SASS subset through SSA IR to WGSL. The newer decoder documents unverified encodings; neither path is validated against a hardware driver. |
 | Vulkan HAL (`gpu/vulkan.rs`) | Model only | Structures and SPIR-V module checks. It does not call a Vulkan loader or driver. |
 | Host presentation (`gpu/present/`) | Implemented | Guest framebuffer and 3D pushbuffer geometry presented through a host GPU hardware swapchain (`wgpu`: Metal on macOS, Vulkan on Linux/Windows; feature `gpu-present`), software window (`minifb`) or headless mode. |
 | Upscaler (`gpu/upscaler.rs`) | Modelled | 2× bilinear interpolation with sharpening. **Not DLSS**; there is no neural network. |
@@ -82,20 +84,18 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ```
 ounce-core/
-├── assets/           # Vector artwork (banner, logo, architecture diagram)
-├── src/
-│   ├── audio/        # Audio renderer model and PCM output sink
-│   ├── cpu/          # AArch64 decoder, interpreter, Tier-1/2 JIT, Tier-3 super-block engine
-│   ├── crypto/       # AES-128 and AES-128-CTR (user-supplied keys)
-│   ├── fs/           # Virtual filesystem, RomFS parser, save-data storage
-│   ├── gpu/          # Command-buffer model, rasterizer, shader translator, upscaler model
-│   ├── hid/          # Controller state model and deadzone filters
-│   ├── kernel/       # SVC dispatcher, IPC, scheduler, synchronization, SDK-style HLE runtime
-│   ├── loader/       # Container parsers and synthetic image builders
-│   ├── mmu/          # Paged memory model
-│   ├── ui/           # Headless package inspector and CLI telemetry
-│   └── main.rs       # CLI and the 25-stage integration harness
+├── .github/workflows/ # Cross-platform CI
+├── assets/            # Vector artwork
+├── crates/
+│   └── ounce-recompiler/ # Optional Tier-4 native code and executable-memory boundary
+├── docs/design/       # Architecture and implementation notes
+├── src/               # Runtime, CPU, GPU, kernel, loader and host integrations
+├── tests/fixtures/nro/ # Checked-in homebrew integration fixtures
+├── AGENTS.md
+├── Cargo.lock
 ├── Cargo.toml
+├── CONTRIBUTING.md
+├── LICENSE
 └── README.md
 ```
 
@@ -104,11 +104,13 @@ ounce-core/
 ## Verification
 
 ```bash
-cargo test --release --features gpu-present  # 103 unit tests
-cargo run --release --features gpu-present -- test  # 25-stage integration harness (exits 0xEEE)
+cargo test --release
+cargo run --release -- test
 ```
 
-The harness runs synthetic AArch64 programs through the CPU, kernel and service models. Each stage passes when its guest program returns the expected exit code. Host timings are printed for information only.
+The 25-stage harness runs synthetic AArch64 programs written for this repository through the CPU, kernel and service models. It is not an independently authored homebrew compatibility suite. Each stage passes when its guest program returns the expected exit code; host timings are informational only. Passing this harness does not establish compatibility with commercial software or general homebrew compatibility.
+
+CI coverage is feature-specific: the default job runs unit tests and the 25-stage harness; `gpu-present` builds and runs unit tests but does not run that harness; `native-jit` tests the recompiler crate, builds the feature, runs the Tier-4 host self-test and feature-enabled unit tests, but does not run the 25-stage harness. These configured checks describe CI coverage, not the result of the latest run. Test totals are omitted because they can change between revisions.
 
 | Stage | Subsystem | What it checks | Exit |
 | :---: | :--- | :--- | :---: |
@@ -131,7 +133,7 @@ The harness runs synthetic AArch64 programs through the CPU, kernel and service 
 | 17 | Service handshake | `set:sys`, `am:appletOE`, `vi:m`, `hid`, `fsp-srv` | `0x777` |
 | 18 | ro:1 & texture pools | `LoadNro`, BC7 descriptor binding | `0x888` |
 | 19 | SDK-style HLE runtime | Standard allocator, `SleepThread`, `nn::fs::OpenFile` | `0x999` |
-| 20 | Tier-3 super-blocks | Hot-loop fusion (host MIPS printed, not gated) | `0xAAA` |
+| 20 | Tier-3 / optional Tier-4 | Hot-loop benchmark; select with `--cpu=tier3|tier4` (`native-jit` required for Tier-4). Host MIPS is informational, not gated. | `0xAAA` |
 | 21 | Loose packages | NPDM parse, multi-module link, loose RomFS | `0xBBB` |
 | 22 | Shared font & clock | `pl:u` placeholder mapping, `time:u`, ASTC 4×4 | `0xCCC` |
 | 23 | Applet & GPU model | `IApplicationFunctions`, `ISelfController`, ASTC 8×8 | `0xDDD` |
@@ -162,9 +164,11 @@ cargo run --release -- play                      # Keyboard-driven controller an
 cargo run --release -- 3d 120                    # Software rasterizer benchmark
 cargo run --release --features gpu-present -- gfx --present=gpu   # Present through the GPU swapchain
 cargo run --release -- gfx 60 --present=headless # No window; OUNCE_DUMP_FRAMES=<dir> writes PPM frames
+cargo run --release --features native-jit -- jit-selftest # Check whether this host can execute Tier-4 code
+cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for the Stage 20 benchmark
 ```
 
-`--present=auto|gpu|minifb|headless` (or `OUNCE_PRESENT`) picks the presentation backend; `auto` tries the GPU first when the feature is compiled in. `WGPU_BACKEND` (`vulkan`, `metal`, `dx12`, `gl`) and `WGPU_ADAPTER_NAME` select the GPU, and `OUNCE_VSYNC=0` disables vsync.
+`--present=auto|gpu|minifb|headless` (or `OUNCE_PRESENT`) picks the presentation backend; `auto` tries the GPU first when the feature is compiled in. `WGPU_BACKEND` (`vulkan`, `metal`, `dx12`, `gl`) and `WGPU_ADAPTER_NAME` select the GPU, and `OUNCE_VSYNC=0` disables vsync. `--cpu=tier3|tier4` (or `OUNCE_CPU`) selects the Stage 20 CPU engine. Tier-4 requires `--features native-jit`; the native engine is not currently used for general `run` workloads.
 
 ---
 
