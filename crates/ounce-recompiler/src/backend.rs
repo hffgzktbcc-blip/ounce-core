@@ -141,10 +141,11 @@ pub(crate) fn compile(
             stop,
             vals: Vec::with_capacity(block.ops.len()),
         };
-        // The guest pc of a linked exit; `validate` checked it is a constant.
+        // How a linked exit finds its table slot: fixed for a constant pc, computed otherwise.
         let link_pc = |e: &ExitTo| match block.ops[e.pc.0 as usize] {
-            Op::Const(pc) if e.link => Some(pc),
-            _ => None,
+            _ if !e.link => None,
+            Op::Const(pc) => Some(LinkTarget::Const(pc)),
+            _ => Some(LinkTarget::Dynamic),
         };
         for op in &block.ops {
             let v = lw.op(op);
@@ -168,6 +169,15 @@ pub(crate) fn compile(
     }
 
     BlockCode::new(&finish(isa, ctx)?).map_err(CompileError::Exec)
+}
+
+/// Where a linked exit goes.
+#[derive(Clone, Copy)]
+enum LinkTarget {
+    /// Direct branch: the slot is a compile-time constant.
+    Const(u64),
+    /// Indirect branch or return: the slot is computed from the exit pc at run time.
+    Dynamic,
 }
 
 struct Lowering<'a> {
@@ -239,19 +249,21 @@ impl Lowering<'_> {
         self.b.ins().return_(&[word]);
     }
 
-    fn exit(&mut self, e: ExitTo, link_pc: Option<u64>) {
-        if let Some(target) = link_pc {
-            self.try_link(target, e.insns);
-        }
+    fn exit(&mut self, e: ExitTo, link: Option<LinkTarget>) {
         let pc = self.v(e.pc);
+        if let Some(target) = link {
+            self.try_link(target, pc, e.insns);
+        }
         self.b.ins().store(Self::flags(), pc, self.state, PC_OFFSET);
         self.ret(e.code, e.insns);
     }
 
-    /// Jumps straight to the block linked for `target` when the link table has one, no store in
+    /// Jumps straight to the block linked for guest `pc` when the link table has one, no store in
     /// this block hit code, and `chained_insns + insns < budget`. Falls through to the normal
-    /// return otherwise. The table slot is a compile-time constant.
-    fn try_link(&mut self, target: u64, insns: u32) {
+    /// return otherwise. For a direct branch the table slot is a compile-time constant; for an
+    /// indirect branch or return it is `(pc >> 2) & LINK_MASK` at run time (an indirect-target
+    /// cache shared with direct links). A misaligned `pc` never matches: blocks start aligned.
+    fn try_link(&mut self, target: LinkTarget, pc: clif::Value, insns: u32) {
         let ctx = self.call_ctx;
         let ret = self.b.create_block();
         let probe = self.b.create_block();
@@ -268,9 +280,19 @@ impl Lowering<'_> {
 
         self.b.switch_to_block(probe);
         let table = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, links) as i32);
-        let slot = (((target >> 2) & LINK_MASK) as usize * size_of::<LinkEntry>()) as i32;
-        let pc = self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, guest_pc) as i32);
-        let hit = self.b.ins().icmp_imm_u(IntCC::Equal, pc, target as i64);
+        let (table, slot) = match target {
+            LinkTarget::Const(t) => (table, (((t >> 2) & LINK_MASK) as usize * size_of::<LinkEntry>()) as i32),
+            LinkTarget::Dynamic => {
+                // (pc >> 2) & MASK, times 16 bytes per entry.
+                const _: () = assert!(size_of::<LinkEntry>() == 16);
+                let idx = self.b.ins().ushr_imm_u(pc, 2);
+                let idx = self.b.ins().band_imm_u(idx, LINK_MASK as i64);
+                let off = self.b.ins().ishl_imm_u(idx, 4);
+                (self.b.ins().iadd(table, off), 0)
+            }
+        };
+        let entry_pc = self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, guest_pc) as i32);
+        let hit = self.b.ins().icmp(IntCC::Equal, entry_pc, pc);
         self.b.ins().brif(hit, go, &[], ret, &[]);
 
         self.b.switch_to_block(go);
