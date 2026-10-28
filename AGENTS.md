@@ -21,7 +21,7 @@ This document establishes operating rules for AI coding assistants (Antigravity,
 
 ## 3. Active Handoff Log
 * **Completed State**:
-  - History rewrite and release v0.3.0 complete; dirty tags purged.
+  - Release v0.3.0 done. CORRECTION (2026-10-28): the git history rewrite is NOT complete; commits before `76ce766` with firmware-derived bytes are still reachable (see README Known Issues and `docs/PROVENANCE.md`). Do not describe the history as purged.
   - Phase 2 implemented: Physical gamepad input via `gilrs` and 48 kHz stereo host audio sink via `cpal`.
   - Multi-platform CI workflows verified on Linux, macOS, and Windows.
 * **Completed: ELF dynamic linking and TLS** (PR #3 + PR #4 on `main` @ 629cd87, updated 2026-10-26)
@@ -357,3 +357,6 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - New `src/gpu/present/surface.rs`: `frame_from_surface(mmu, addr, &Surface) -> Frame` reads a guest surface (block linear or pitch), detiles it with `gpu::tiling::detile` (no second detiler), swaps R/B for BGRA and forces alpha opaque. RGBA8/BGRA8 only; other formats return `SurfaceError::UnsupportedFormat`. Unmapped memory returns `SurfaceError::Unmapped`.
   - **For Track B:** this is the consumer for the frame descriptor. When vi/binder `queueBuffer` lands, build a `tiling::Surface` from the descriptor (width, height, format, `Layout::BlockLinear { height_log2, .. }`) and hand it plus the guest address to `frame_from_surface`. Not yet wired into `run --gui`: there is no descriptor producer on `main` yet.
   - Tier-4 on the M3 (main with linking, median of 5): 15M-insn hot loop ~1,317 MIPS warm (was ~506 unlinked); 308k ~1,412; 15k ~842. Tight-loop numbers only; call/memory-heavy code will be slower.
+* **Policy: provenance and clean room** (2026-10-28)
+  - New `docs/PROVENANCE.md`, `docs/CLEAN_ROOM.md`, `THIRD_PARTY.md`. Rule for both tracks: every new fixture gets a provenance row before merge; no firmware, keys, game content or code copied from other emulators; implement from public specs and our own observations. README now states honestly that fixtures link libnx/newlib and that no commercial compatibility exists.
+  - Open, needs the owner: the git history still holds firmware-derived bytes (not rewritten); no legal review yet; dependency licence audit not done.

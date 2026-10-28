@@ -32,7 +32,7 @@ Most of the code, tests and documentation here are written by AI coding agents (
 - No firmware, system archives, or code or data derived from them.
 - No encryption keys. The loader decrypts only containers built with the in-repo synthetic test key; retail keys are rejected (`LoadError::RestrictedCipher`). A `prod.keys`-format parser exists for unit tests of the key-file format only. The `.gitignore` excludes key files.
 - No game content, ROMs, or dumps. Test inputs are synthetic: they are generated at runtime or written as AArch64 instructions in source.
-- No code copied from third-party projects. Earlier revisions contained firmware-derived and third-party-derived byte sequences; they were removed from the current tree but are still reachable in git history. See *Known Issues*.
+- No third-party source code in the tree. The prebuilt homebrew test fixtures statically link libnx (ISC) and newlib; see [`THIRD_PARTY.md`](THIRD_PARTY.md) and [`docs/PROVENANCE.md`](docs/PROVENANCE.md). Earlier revisions contained firmware-derived and third-party-derived byte sequences; they were removed from the current tree but are still reachable in git history. See *Known Issues*.
 
 **Trademarks.** "Nintendo", "Nintendo Switch", "Switch 2", "NVIDIA", "Tegra", "Horizon" and related names are trademarks of their respective owners. This project is not affiliated with, endorsed by, or sponsored by any of them. Names appear only to describe the hardware and ABI being modelled.
 
@@ -172,7 +172,8 @@ cargo run --release -- gfx 60 --present=headless # No window; OUNCE_DUMP_FRAMES=
 
 - **Git history.** The history has **not** been fully purged yet. Commits before `76ce766` (for example `c7f16f2` and `4be9640`) contain firmware-derived and third-party-derived byte sequences and a loader for an external payload file. They are still reachable from `main`, all branches and the `v0.3.x` tags through merge `25205cc`, and from GitHub pull request refs. A purge is in progress. Do not use or redistribute those commits.
 - **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
-- **License scope.** The MIT license applies to this tree only. It does not cover material in the earlier commits listed above.
+- - **Compatibility.** No commercial game compatibility has been established. The test programs are homebrew built with the Switch 1 SDK (libnx); they show a general ARM64 homebrew runtime, not Switch 2 compatibility. Provenance and process: [`docs/PROVENANCE.md`](docs/PROVENANCE.md), [`docs/CLEAN_ROOM.md`](docs/CLEAN_ROOM.md). Neither has had legal review.
+**License scope.** The MIT license applies to this tree only. It does not cover material in the earlier commits listed above.
 
 ---
 
