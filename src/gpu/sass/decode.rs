@@ -25,6 +25,15 @@
 //!   Ampere graphics shader compiled by NAK (`uam`/deko3d emits Maxwell SASS, so it
 //!   cannot confirm these).
 //! - [inferred] `LDC` 32-bit size value 4 (CuAsm shows U8=0, S8=1, U16=2 only).
+//! - Textures, bound-handle `TEX` (0xb60) and `TLD` (0xb66), from [CuAsm] `TEX.SCR.LL` /
+//!   `TLD.SCR.LZ` words (see the `cuasm_tex_*` tests): Rd 16..24 and a second destination
+//!   Rd2 64..72, coordinates from Ra 24..32, extra operand Rb 32..40, handle word index
+//!   40..54 in constant buffer bank 54..59, `.SCR` 60 (meaning unknown, ignored), dimension
+//!   61..63 (1D 0, 2D 1, CUBE 3), array 63, write mask 72..76, `.AOFFI` 76, `.NDV` 77, `.DC`
+//!   78, LOD mode 87..90 (auto 0, `.LZ` 1, `.LL` 3). The bindless forms (0x361, 0x367) are
+//!   rejected. UNVERIFIED (from NAK's `OpTex` operand order, not checked against a graphics
+//!   shader): the written components are packed densely, the first two into Rd, Rd+1 and the
+//!   rest into Rd2, Rd2+1; 2D coordinates are Ra, Ra+1; `.LL` takes the level from Rb.
 
 use std::fmt;
 
@@ -79,6 +88,68 @@ pub enum IpaFreq {
     Constant,
 }
 
+/// Where a texture instruction finds its handle word (TIC index in bits 0..20, TSC index in
+/// bits 20..32).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum TexHandle {
+    /// Ampere: the word at `c[bank][offset]` (byte offset).
+    Cbuf { bank: u8, offset: u16 },
+    /// Maxwell bound form: word `index` of the constant buffer that the 3D class method
+    /// `SET_BINDLESS_TEXTURE` selects.
+    Bound { index: u16 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TexOp {
+    /// `TEX`/`TEXS`: filtered sample at normalized coordinates.
+    Sample,
+    /// `TLD`/`TLDS`: one texel at integer coordinates, no sampler.
+    Fetch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TexLod {
+    /// Implicit (derivatives in a fragment shader).
+    Auto,
+    /// `.LZ`: level 0.
+    Zero,
+    /// `.LL`: level from a register.
+    Level(u8),
+}
+
+/// A 2D texture read, normalized across encodings: coordinates `x`, `y` and the destination
+/// register of each RGBA component (`RZ` = not written).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tex {
+    pub op: TexOp,
+    pub handle: TexHandle,
+    pub lod: TexLod,
+    pub x: u8,
+    pub y: u8,
+    pub dst: [u8; 4],
+}
+
+/// Destinations for the components in `comps` (in order), packed two per register pair:
+/// the first two into `a`, `a + 1`, the rest into `b`, `b + 1`.
+pub(crate) fn pack_pairs(comps: &[usize], a: u8, b: u8) -> [u8; 4] {
+    let mut dst = [RZ; 4];
+    for (i, &c) in comps.iter().enumerate() {
+        let base = if i < 2 { a } else { b };
+        dst[c] = if base == RZ { RZ } else { base.wrapping_add((i % 2) as u8) };
+    }
+    dst
+}
+
+/// Components enabled in a 4-bit write mask, in RGBA order.
+pub(crate) fn mask_comps(mask: u32) -> Vec<usize> {
+    (0..4).filter(|c| mask & (1 << c) != 0).collect()
+}
+
+/// Second coordinate register after `ra` (`RZ` stays `RZ`).
+pub(crate) fn next_reg(ra: u8) -> u8 {
+    if ra == RZ { RZ } else { ra.wrapping_add(1) }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Instr {
     Nop,
@@ -95,6 +166,7 @@ pub enum Instr {
     /// `AST a[addr], Rs`, `comps` consecutive words from `Rs..`.
     Ast { src: u8, addr: u16, comps: u8 },
     Ipa { dst: u8, addr: u16, freq: IpaFreq, mul: u8 },
+    Tex(Tex),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -207,6 +279,35 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
             };
             Instr::Ipa { dst, addr: (bits(w, 64, 72) << 2) as u16, freq, mul: bits(w, 32, 40) as u8 }
         }
+        0xb60 | 0xb66 => {
+            let op = if full == 0xb60 { TexOp::Sample } else { TexOp::Fetch };
+            if bits(w, 61, 63) != 1 || bit(w, 63) {
+                return Err(unsup("texture dimension other than 2D"));
+            }
+            if bit(w, 76) || bit(w, 78) {
+                return Err(unsup("texture .AOFFI/.DC"));
+            }
+            let rb = bits(w, 32, 40) as u8;
+            let lod = match (bits(w, 87, 90), op) {
+                (0, TexOp::Sample) => TexLod::Auto,
+                (1, _) => TexLod::Zero,
+                (3, _) => TexLod::Level(rb),
+                _ => return Err(unsup("texture LOD mode")),
+            };
+            if !matches!(lod, TexLod::Level(_)) && rb != RZ {
+                return Err(unsup("texture extra operand register"));
+            }
+            let ra = bits(w, 24, 32) as u8;
+            Instr::Tex(Tex {
+                op,
+                handle: TexHandle::Cbuf { bank: bits(w, 54, 59) as u8, offset: (bits(w, 40, 54) * 4) as u16 },
+                lod,
+                x: ra,
+                y: next_reg(ra),
+                dst: pack_pairs(&mask_comps(bits(w, 72, 76)), dst, bits(w, 64, 72) as u8),
+            })
+        }
+        0x361 | 0x367 => return Err(unsup("bindless texture handle")),
         _ => match base {
             0x002 => {
                 if bits(w, 72, 76) != 0xf {
@@ -320,6 +421,20 @@ impl fmt::Display for Decoded {
                 IpaFreq::PassMulW => write!(f, "IPA {}, a[{addr:#x}], {}", reg(dst), reg(mul)),
                 IpaFreq::Constant => write!(f, "IPA.CONSTANT {}, a[{addr:#x}]", reg(dst)),
             },
+            Instr::Tex(t) => {
+                let name = if t.op == TexOp::Sample { "TEX" } else { "TLD" };
+                let lod = match t.lod {
+                    TexLod::Auto => String::new(),
+                    TexLod::Zero => ".LZ".into(),
+                    TexLod::Level(r) => format!(".LL({})", reg(r)),
+                };
+                let h = match t.handle {
+                    TexHandle::Cbuf { bank, offset } => format!("c[{bank:#x}][{offset:#x}]"),
+                    TexHandle::Bound { index } => format!("{index:#x}"),
+                };
+                let d: Vec<String> = t.dst.iter().map(|&r| reg(r)).collect();
+                write!(f, "{name}.2D{lod} {{{}}}, {}, {}, {h}", d.join(", "), reg(t.x), reg(t.y))
+            }
         }
     }
 }

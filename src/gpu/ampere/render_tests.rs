@@ -125,6 +125,23 @@ mod asm {
     pub fn ipa(d: u8, addr: u16, freq: u8, mul: u8) -> u128 {
         op(0x326) | rd(d) | ((RZ as u128) << 24) | ((mul as u128) << 32) | (((addr >> 2) as u128) << 64) | ((freq as u128) << 78)
     }
+    pub fn mov_imm(d: u8, imm: u32) -> u128 {
+        op(0x802) | rd(d) | ((imm as u128) << 32) | (0xf << 72)
+    }
+    /// 2D `TEX` (`TLD` when `fetch`), RGBA into `d`, `d + 1`, `d2`, `d2 + 1`, coordinates `ra`,
+    /// `ra + 1`, handle at `c[bank][4 * idx]`; `lod`: 0 auto, 1 LZ.
+    pub fn tex(fetch: bool, d: u8, d2: u8, ra: u8, bank: u8, idx: u16, lod: u8) -> u128 {
+        op(if fetch { 0xb66 } else { 0xb60 })
+            | rd(d)
+            | ((ra as u128) << 24)
+            | ((RZ as u128) << 32)
+            | ((idx as u128) << 40)
+            | ((bank as u128) << 54)
+            | (3 << 60)
+            | ((d2 as u128) << 64)
+            | (0xf << 72)
+            | ((lod as u128) << 87)
+    }
 }
 
 fn program(header: &SphBuilder, code: &[u128]) -> Vec<u8> {
@@ -418,6 +435,11 @@ mod mx {
     pub fn mufu_rcp(d: u8, s: u8) -> u64 {
         op(0x5080) | (4 << 20) | ((s as u64) << 8) | d as u64
     }
+    /// `TEXS` 2D RGBA: R `d`, G `d + 1`, B `d2`, A `d2 + 1`, coordinates (`ra`, `rb`), bound
+    /// handle `idx`.
+    pub fn texs(d: u8, d2: u8, ra: u8, rb: u8, idx: u16) -> u64 {
+        (0xd8 << 56) | (1 << 53) | (4 << 50) | ((idx as u64) << 36) | ((d2 as u64) << 28) | ((rb as u64) << 20) | PT | ((ra as u64) << 8) | d as u64
+    }
 }
 
 /// 0x50-byte header, then 32-byte bundles (control word + three instructions).
@@ -432,13 +454,9 @@ fn program_mx(header: &SphBuilder, code: &[u64]) -> Vec<u8> {
     b
 }
 
-#[test]
-fn maxwell_draw_renders_through_the_maxwell_front_end() {
-    let mut mem = Mem::standard();
-    let mut pb = Vec::new();
-    setup(&mut pb, m::MAXWELL_B, false);
-    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
-    let verts = [vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, 0.0, BLUE)];
+/// deko3d-style geometry: Maxwell passthrough vertex shader, `ps_code` behind a pixel header
+/// with target 0 and perspective varying 0, one program region with per-pipeline offsets.
+fn maxwell_geometry(pb: &mut Vec<u32>, mem: &mut Mem, verts: &[[f32; 8]], ps_code: &[u64]) {
     let bytes: Vec<u8> = verts.iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
     mem.put(VB_VA, &bytes);
     let mut vs_h = SphBuilder::vertex();
@@ -453,12 +471,8 @@ fn maxwell_draw_renders_through_the_maxwell_front_end() {
     for c in 0..4 {
         ps_h = ps_h.ps_imap(0, c, PixelImap::Perspective);
     }
-    let mut code = vec![mx::ipa(8, 0x7c, 0, 0), mx::mufu_rcp(9, 8)];
-    code.extend((0..4).map(|c| mx::ipa(c as u8, 0x80 + 4 * c, 1, 9)));
-    code.push(mx::exit());
-    // deko3d style: one program region, per-pipeline offsets from it.
     mem.put(VS_VA, &vs);
-    mem.put(PS_VA, &program_mx(&ps_h, &code));
+    mem.put(PS_VA, &program_mx(&ps_h, ps_code));
     pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_A_FORMAT, 4), (1 << 12) | 32, hi(VB_VA), lo(VB_VA), 0]);
     let limit = VB_VA + bytes.len() as u64 - 1;
     pb.extend([inc_header(SC, m::B197_SET_VERTEX_STREAM_LIMIT_A_A, 2), hi(limit), lo(limit)]);
@@ -470,6 +484,19 @@ fn maxwell_draw_renders_through_the_maxwell_front_end() {
         pb.extend([inc_header(SC, m::SET_PIPELINE_SHADER + base, 1), (kind << 4) | 1]);
         pb.extend([inc_header(SC, m::B197_SET_PIPELINE_PROGRAM + base, 1), offset]);
     }
+}
+
+#[test]
+fn maxwell_draw_renders_through_the_maxwell_front_end() {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::MAXWELL_B, false);
+    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+    let verts = [vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, 0.0, BLUE)];
+    let mut code = vec![mx::ipa(8, 0x7c, 0, 0), mx::mufu_rcp(9, 8)];
+    code.extend((0..4).map(|c| mx::ipa(c as u8, 0x80 + 4 * c, 1, 9)));
+    code.push(mx::exit());
+    maxwell_geometry(&mut pb, &mut mem, &verts, &code);
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
@@ -598,6 +625,103 @@ fn texel_fetch_and_sampling_read_tiled_and_pitch_textures() {
     assert!((s[0] - 56.0 / 255.0).abs() < 1e-6 && (s[1] - 80.0 / 255.0).abs() < 1e-6, "{s:?}");
     // Clamp to edge past the right border.
     assert_eq!(bl.sample(&point, 1.5, 0.0, &mut mem).unwrap()[0], 240.0 / 255.0);
+}
+
+/// Texture pools from [`texture_memory`] and a pixel-stage constant buffer in slot 1 whose
+/// words are `words`.
+fn texture_state(pb: &mut Vec<u32>, words: &[u32]) {
+    pb.extend([inc_header(SC, m::SET_TEX_HEADER_POOL_A, 3), hi(TIC_VA), lo(TIC_VA), 7]);
+    pb.extend([inc_header(SC, m::SET_TEX_SAMPLER_POOL_A, 3), hi(TSC_VA), lo(TSC_VA), 1]);
+    pb.extend([inc_header(SC, m::SET_CONSTANT_BUFFER_SELECTOR_A, 3), 256, hi(CB_VA), lo(CB_VA)]);
+    pb.extend([inc_header(SC, m::LOAD_CONSTANT_BUFFER_OFFSET, 1), 0]);
+    pb.push(non_inc_header(SC, m::LOAD_CONSTANT_BUFFER, words.len() as u32));
+    pb.extend(words);
+    pb.extend([inc_header(SC, m::BIND_GROUP_CONSTANT_BUFFER + 4 * m::BIND_GROUP_STRIDE, 1), (1 << 4) | 1]);
+}
+
+/// Texel colour of [`texture_memory`]'s 16x16 texture: red = 16 x, green = 16 y.
+fn texel(x: u32, y: u32) -> [u8; 4] {
+    [(x * 16) as u8, (y * 16) as u8, 0, 255]
+}
+
+/// (u, v) in the colour slot: (0, 0) at the window origin, (1, 1) at the far corner.
+fn uv_triangle() -> [[f32; 8]; 3] {
+    [vtx(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0, 1.0]), vtx(1.0, -1.0, 0.0, [1.0, 0.0, 0.0, 1.0]), vtx(-1.0, 1.0, 0.0, [0.0, 1.0, 0.0, 1.0])]
+}
+
+#[test]
+fn ampere_pixel_shader_samples_a_texture() {
+    let (mut mem, _) = texture_memory();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    // Handle word in c[1][0]: TIC 2 (block linear), TSC 0 (point, clamp).
+    texture_state(&mut pb, &[2]);
+    let mut h = SphBuilder::pixel().ps_target(0, 0xf);
+    for c in 0..2 {
+        h = h.ps_imap(0, c, PixelImap::Perspective);
+    }
+    let code = [
+        asm::ipa(8, 0x7c, 0, 0),
+        asm::mufu_rcp(9, 8),
+        asm::ipa(4, 0x80, 1, 9),
+        asm::ipa(5, 0x84, 1, 9),
+        asm::tex(false, 0, 2, 4, 1, 0, 0),
+        asm::exit(),
+    ];
+    geometry(&mut pb, &mut mem, &uv_triangle(), &program(&h, &code));
+    draw(&mut pb, 0, 3, 4);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    assert_eq!(gpu.render_stats().draws, 1);
+    let linear = rt_pixels(&mut mem);
+    // Window pixel (x, y) samples u = (x + 0.5) / 256: texel x / 16.
+    for (x, y) in [(40, 100), (100, 40), (5, 5), (130, 120)] {
+        assert_eq!(px(&linear, x, y), texel(x / 16, y / 16), "pixel ({x}, {y})");
+    }
+}
+
+#[test]
+fn ampere_pixel_shader_fetches_a_texel() {
+    let (mut mem, _) = texture_memory();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    // TIC 3 is the pitch copy; TLD needs no sampler.
+    texture_state(&mut pb, &[0, 3]);
+    let h = SphBuilder::pixel().ps_target(0, 0xf);
+    let code = [asm::mov_imm(4, 3), asm::mov_imm(5, 5), asm::tex(true, 0, 2, 4, 1, 1, 1), asm::exit()];
+    geometry(&mut pb, &mut mem, &uv_triangle(), &program(&h, &code));
+    draw(&mut pb, 0, 3, 4);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let linear = rt_pixels(&mut mem);
+    assert_eq!(px(&linear, 10, 10), texel(3, 5));
+    assert_eq!(px(&linear, 200, 20), texel(3, 5));
+}
+
+#[test]
+fn maxwell_texs_reads_the_handle_through_set_bindless_texture() {
+    let (mut mem, _) = texture_memory();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::MAXWELL_B, false);
+    // Bound handle index 2 -> c[1][8] once SET_BINDLESS_TEXTURE selects slot 1: TIC 2, TSC 0.
+    texture_state(&mut pb, &[0, 0, 2]);
+    pb.extend([inc_header(SC, m::SET_BINDLESS_TEXTURE, 1), 1]);
+    let code = [mx::ipa(8, 0x7c, 0, 0), mx::mufu_rcp(9, 8), mx::ipa(4, 0x80, 1, 9), mx::ipa(5, 0x84, 1, 9), mx::texs(0, 2, 4, 5, 2), mx::exit()];
+    maxwell_geometry(&mut pb, &mut mem, &uv_triangle(), &code);
+    draw(&mut pb, 0, 3, 4);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let linear = rt_pixels(&mut mem);
+    for (x, y) in [(40, 100), (100, 40), (130, 120)] {
+        assert_eq!(px(&linear, x, y), texel(x / 16, y / 16), "pixel ({x}, {y})");
+    }
+
+    // VIA_HEADER_BINDING: TSC index = TIC index (2), outside the 2-entry sampler pool.
+    pb.extend([inc_header(SC, m::SET_SAMPLER_BINDING, 1), 1]);
+    draw(&mut pb, 0, 3, 4);
+    let gpu = run(&pb, &mut mem);
+    assert_eq!(gpu.render_stats().draws, 1);
+    assert_eq!(gpu.diagnostics(), &[Diagnostic::RenderSkipped { reason: "sampler is not readable" }]);
 }
 
 // --- Semaphores ------------------------------------------------------------------------------

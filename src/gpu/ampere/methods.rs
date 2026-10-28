@@ -168,6 +168,13 @@ pub const SET_DEPTH_FUNC: u32 = 0x130c;
 pub const SET_BLEND: u32 = 0x1360;
 /// `NVC797_SET_TEX_SAMPLER_POOL_A` (offset upper 7:0), `_B` (lower 31:0), `_C` (MAXIMUM_INDEX 19:0).
 pub const SET_TEX_SAMPLER_POOL_A: u32 = 0x155c;
+/// `NVB197_SET_BINDLESS_TEXTURE` (`CONSTANT_BUFFER_SLOT_SELECT` 4:0): the constant buffer
+/// that bound-form texture instructions index for their handle words. Listed in `clb197.h`
+/// only; Ampere shaders name the constant buffer in the instruction instead.
+pub const SET_BINDLESS_TEXTURE: u32 = 0x2608;
+/// `NVC797_SET_SAMPLER_BINDING` (`V` 0:0): 0 `INDEPENDENTLY` (TSC index from the handle),
+/// 1 `VIA_HEADER_BINDING` (TSC index = TIC index).
+pub const SET_SAMPLER_BINDING: u32 = 0x1234;
 pub const SET_TEX_SAMPLER_POOL_B: u32 = 0x1560;
 pub const SET_TEX_SAMPLER_POOL_C: u32 = 0x1564;
 /// `NVC797_SET_TEX_HEADER_POOL_A` (offset upper 7:0), `_B` (lower 31:0), `_C` (MAXIMUM_INDEX 21:0).

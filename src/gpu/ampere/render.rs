@@ -16,8 +16,9 @@
 use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, Topology};
 use super::methods as m;
 use super::shade::{self, ShaderInputs};
+use super::texture::{Sampler, TextureHeader};
 use super::surface::{self, addr40, ColorFormat, ColorTarget, DepthFormat, DepthTarget, SurfaceLayout};
-use crate::gpu::sass::decode::IpaFreq;
+use crate::gpu::sass::decode::{IpaFreq, TexHandle, TexOp};
 use crate::gpu::sass::ir::{self, attr_slot, AttrSlot, Function, Op};
 use crate::gpu::sass::sph::{PixelImap, Sph, SphType};
 use crate::gpu::sass::{maxwell, ShaderStage as SassStage, XlateError, AMPERE_SPH_SIZE, MAXWELL_SPH_SIZE};
@@ -334,9 +335,60 @@ impl Cbufs {
     }
 }
 
+/// Largest texture level copied out of guest memory for one draw.
+const TEXTURE_READ_MAX: usize = 64 << 20;
+
+/// A texture one stage reads, copied out of guest memory once per draw.
+struct BoundTexture {
+    handle: TexHandle,
+    header: TextureHeader,
+    /// `None` when the stage only fetches.
+    sampler: Option<Sampler>,
+    bytes: Vec<u8>,
+}
+
+/// Serves reads from a copy of one texture's level 0.
+struct Snapshot<'a> {
+    base: u64,
+    bytes: &'a [u8],
+}
+
+impl GpuMemoryWriter for Snapshot<'_> {
+    fn write(&mut self, _: u64, _: &[u8]) {}
+    fn read(&mut self, gpu_va: u64, buf: &mut [u8]) -> bool {
+        let Some(at) = gpu_va.checked_sub(self.base) else { return false };
+        match self.bytes.get(at as usize..).and_then(|b| b.get(..buf.len())) {
+            Some(src) => {
+                buf.copy_from_slice(src);
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+/// Textures one stage reads.
+#[derive(Default)]
+struct Textures(Vec<BoundTexture>);
+
+impl Textures {
+    fn read(&self, op: TexOp, handle: TexHandle, x: u32, y: u32) -> [f32; 4] {
+        let Some(t) = self.0.iter().find(|t| t.handle == handle) else { return [0.0; 4] };
+        let mut mem = Snapshot { base: t.header.gpu_va, bytes: &t.bytes };
+        let texel = match (op, &t.sampler) {
+            (TexOp::Sample, Some(s)) => t.header.sample(s, f32::from_bits(x), f32::from_bits(y), &mut mem),
+            // Out-of-range fetches read zero (robust buffer access behaviour).
+            (TexOp::Fetch, _) => t.header.fetch(x, y, &mut mem),
+            (TexOp::Sample, None) => None,
+        };
+        texel.unwrap_or([0.0; 4])
+    }
+}
+
 struct VertexIn<'a> {
     attrs: &'a [[u32; 4]; 32],
     cbufs: &'a Cbufs,
+    tex: &'a Textures,
 }
 
 impl ShaderInputs for VertexIn<'_> {
@@ -351,6 +403,9 @@ impl ShaderInputs for VertexIn<'_> {
     }
     fn interp(&self, _: u16, _: IpaFreq) -> f32 {
         0.0
+    }
+    fn texture(&self, op: TexOp, handle: TexHandle, x: u32, y: u32) -> [f32; 4] {
+        self.tex.read(op, handle, x, y)
     }
 }
 
@@ -373,6 +428,7 @@ struct FragmentIn<'a> {
     z: f32,
     sph: &'a Sph,
     cbufs: &'a Cbufs,
+    tex: &'a Textures,
 }
 
 impl ShaderInputs for FragmentIn<'_> {
@@ -381,6 +437,9 @@ impl ShaderInputs for FragmentIn<'_> {
     }
     fn attr(&self, _: u16) -> u32 {
         0
+    }
+    fn texture(&self, op: TexOp, handle: TexHandle, x: u32, y: u32) -> [f32; 4] {
+        self.tex.read(op, handle, x, y)
     }
     fn interp(&self, addr: u16, freq: IpaFreq) -> f32 {
         let lerp = |f: &dyn Fn(&WinVertex) -> f32| self.l[0] * f(self.v[0]) + self.l[1] * f(self.v[1]) + self.l[2] * f(self.v[2]);
@@ -581,7 +640,12 @@ impl Ampere3d {
     fn stage_cbufs(&self, group: usize, f: &Function, mem: &mut dyn GpuMemoryWriter) -> Cbufs {
         let mut out = Cbufs::default();
         for op in &f.values {
-            if let Op::Cbuf { bank, .. } = *op {
+            let bank = match *op {
+                Op::Cbuf { bank, .. } | Op::Tex { handle: TexHandle::Cbuf { bank, .. }, .. } => Some(bank),
+                Op::Tex { handle: TexHandle::Bound { .. }, .. } => Some(self.bindless_bank()),
+                _ => None,
+            };
+            if let Some(bank) = bank {
                 if out.0.iter().any(|(b, _)| *b == bank) {
                     continue;
                 }
@@ -593,6 +657,54 @@ impl Ampere3d {
             }
         }
         out
+    }
+
+    fn bindless_bank(&self) -> u8 {
+        (self.reg(m::SET_BINDLESS_TEXTURE) & 0x1f) as u8
+    }
+
+    /// Resolves every texture handle `f` reads (handle word -> TIC/TSC) and copies each level 0
+    /// out of guest memory.
+    fn stage_textures(&self, f: &Function, cbufs: &Cbufs, mem: &mut dyn GpuMemoryWriter) -> Result<Textures, &'static str> {
+        let mut out = Textures::default();
+        for op in &f.values {
+            let Op::Tex { op, handle, .. } = *op else { continue };
+            if let Some(t) = out.0.iter_mut().find(|t| t.handle == handle) {
+                if op == TexOp::Sample && t.sampler.is_none() {
+                    t.sampler = Some(self.sampler(self.tsc_index(cbufs, handle), mem).ok_or("sampler is not readable")?);
+                }
+                continue;
+            }
+            let word = self.handle_word(cbufs, handle);
+            let header = self.texture_header(word & 0xf_ffff, mem).ok_or("texture header is not readable")?;
+            let view = header.view().ok_or("texture format or layout")?;
+            if view.size() > TEXTURE_READ_MAX {
+                return Err("texture larger than the per-draw copy limit");
+            }
+            let mut bytes = vec![0u8; view.size()];
+            if !mem.read(header.gpu_va, &mut bytes) {
+                return Err("texture data is not readable");
+            }
+            let sampler = match op {
+                TexOp::Sample => Some(self.sampler(self.tsc_index(cbufs, handle), mem).ok_or("sampler is not readable")?),
+                TexOp::Fetch => None,
+            };
+            out.0.push(BoundTexture { handle, header, sampler, bytes });
+        }
+        Ok(out)
+    }
+
+    /// Handle word: TIC index in bits 0..20, TSC index in bits 20..32.
+    fn handle_word(&self, cbufs: &Cbufs, handle: TexHandle) -> u32 {
+        match handle {
+            TexHandle::Cbuf { bank, offset } => cbufs.word(bank, offset),
+            TexHandle::Bound { index } => cbufs.word(self.bindless_bank(), index.wrapping_mul(4)),
+        }
+    }
+
+    fn tsc_index(&self, cbufs: &Cbufs, handle: TexHandle) -> u32 {
+        let word = self.handle_word(cbufs, handle);
+        if self.reg(m::SET_SAMPLER_BINDING) & 1 == 1 { word & 0xf_ffff } else { word >> 20 }
     }
 
     /// Runs one draw: vertex fetch, vertex shader, raster, pixel shader, depth, color write.
@@ -626,6 +738,10 @@ impl Ampere3d {
         // Groups: vertex 0, pixel 4 (BIND_GROUP_CONSTANT_BUFFER(j) is per stage).
         let vs_cb = self.stage_cbufs(0, &vs.func, mem);
         let ps_cb = self.stage_cbufs(4, &ps.func, mem);
+        let (vs_tex, ps_tex) = match (self.stage_textures(&vs.func, &vs_cb, mem), self.stage_textures(&ps.func, &ps_cb, mem)) {
+            (Ok(v), Ok(p)) => (v, p),
+            (Err(reason), _) | (_, Err(reason)) => return self.skip(reason),
+        };
 
         // Vertex fetch + shading.
         let mut stream_cache: Vec<(u8, Vec<u8>)> = Vec::new();
@@ -654,7 +770,7 @@ impl Ampere3d {
                 }
                 attrs[a.index as usize] = words;
             }
-            let values = shade::run(&vs.func, &VertexIn { attrs: &attrs, cbufs: &vs_cb });
+            let values = shade::run(&vs.func, &VertexIn { attrs: &attrs, cbufs: &vs_cb, tex: &vs_tex });
             let mut pos = [0.0f32, 0.0, 0.0, 1.0];
             let mut varyings = [[0.0f32; 4]; 32];
             for (addr, bits) in shade::vertex_outputs(&vs.func, &values) {
@@ -789,7 +905,7 @@ impl Ampere3d {
                             write_depth(zt.format, texel, Some(z.clamp(0.0, 1.0)), None);
                         }
                     }
-                    let input = FragmentIn { v: [v0, v1, v2], l, px, py, z, sph: &ps.sph, cbufs: &ps_cb };
+                    let input = FragmentIn { v: [v0, v1, v2], l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
                     let values = shade::run(&ps.func, &input);
                     for &(t, mask, first) in &outputs {
                         let Some(Some((ct, st))) = staged.get_mut(t) else { continue };

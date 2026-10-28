@@ -5,7 +5,10 @@
 //! - varying generic `i` -> `@location(i)`, interpolation from the fragment SPH IMAP;
 //! - fragment colour target `t` -> `@location(t) c{t}: vec4<f32>`;
 //! - constant buffer bank `b` -> `@group(0)` (vertex) or `@group(1)` (fragment),
-//!   `@binding(b)`, `var<uniform> cb{b}: array<vec4<u32>, N>`.
+//!   `@binding(b)`, `var<uniform> cb{b}: array<vec4<u32>, N>`;
+//! - texture handle `k` (in [`ShaderInterface::textures`] order) -> same group,
+//!   `@binding(32 + 2k) t{k}: texture_2d<f32>` and, when the shader samples it,
+//!   `@binding(33 + 2k) s{k}: sampler`.
 //!
 //! Semantics notes (approximations, not hardware behaviour):
 //! - `.FTZ` is dropped; WGSL leaves denormal handling to the implementation.
@@ -20,14 +23,16 @@
 //! - Fragment colours are taken from R0.. at `EXIT`, packed over the enabled components
 //!   of the enabled targets in order (our reading of Mesa nvc0's output slot assignment).
 //!   Disabled components are written as 0.0. Depth/sample-mask output is unsupported.
+//! - Textures are declared `texture_2d<f32>`: integer formats are not modelled. An implicit
+//!   LOD in a vertex shader becomes level 0 (WGSL has no derivatives there).
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use super::decode::{IpaFreq, MufuOp};
-use super::ir::{attr_slot, AttrSlot, Function, Op, Ty, Value};
+use super::decode::{IpaFreq, MufuOp, TexHandle, TexOp};
+use super::ir::{attr_slot, AttrSlot, Function, Lod, Op, Ty, Value};
 use super::sph::{PixelImap, Sph};
-use super::{ConstantBuffer, Interpolation, ShaderInterface, ShaderStage, Varying, XlateError};
+use super::{ConstantBuffer, Interpolation, ShaderInterface, ShaderStage, TextureBinding, Varying, XlateError};
 
 const COMP: [char; 4] = ['x', 'y', 'z', 'w'];
 
@@ -48,6 +53,8 @@ struct Ctx<'a> {
     sph: &'a Sph,
     /// Varying location -> interpolation (fragment) for the input struct.
     interp: BTreeMap<u32, Interpolation>,
+    /// Texture handle -> binding slot `k`.
+    textures: BTreeMap<TexHandle, u32>,
 }
 
 impl Ctx<'_> {
@@ -56,6 +63,13 @@ impl Ctx<'_> {
             Op::Const(bits) => f32_lit(bits),
             op if op.ty() == Ty::U32 => format!("bitcast<f32>(v{})", v.0),
             _ => format!("v{}", v.0),
+        }
+    }
+
+    fn as_i32(&self, v: Value) -> String {
+        match self.f.op(v) {
+            Op::Const(bits) => format!("{}i", bits as i32),
+            _ => format!("bitcast<i32>(v{})", v.0),
         }
     }
 
@@ -105,6 +119,27 @@ impl Ctx<'_> {
                     MufuOp::Tanh => format!("tanh({x})"),
                 }
             }
+            Op::Tex { op, handle, lod, x, y } => {
+                let k = self.textures[&handle];
+                match op {
+                    TexOp::Sample => {
+                        let c = format!("vec2<f32>({}, {})", self.as_f32(x), self.as_f32(y));
+                        match lod {
+                            Lod::Auto if self.f.stage == ShaderStage::Fragment => format!("textureSample(t{k}, s{k}, {c})"),
+                            Lod::Auto | Lod::Zero => format!("textureSampleLevel(t{k}, s{k}, {c}, 0.0f)"),
+                            Lod::Level(l) => format!("textureSampleLevel(t{k}, s{k}, {c}, {})", self.as_f32(l)),
+                        }
+                    }
+                    TexOp::Fetch => {
+                        let level = match lod {
+                            Lod::Level(l) => self.as_i32(l),
+                            _ => "0i".into(),
+                        };
+                        format!("textureLoad(t{k}, vec2<i32>({}, {}), {level})", self.as_i32(x), self.as_i32(y))
+                    }
+                }
+            }
+            Op::Comp(t, c) => format!("v{}.{}", t.0, COMP[c as usize]),
         }
     }
 }
@@ -145,8 +180,11 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
     // Constant buffers: size = highest vec4 touched + 1.
     let mut cbufs: BTreeMap<u8, u32> = BTreeMap::new();
     let mut inputs: BTreeMap<u32, ()> = BTreeMap::new();
+    // Texture handle -> sampled (needs a sampler binding).
+    let mut textures: BTreeMap<TexHandle, bool> = BTreeMap::new();
     for op in &f.values {
         match *op {
+            Op::Tex { op, handle, .. } => *textures.entry(handle).or_insert(false) |= op == TexOp::Sample,
             Op::Cbuf { bank, offset } => {
                 let e = cbufs.entry(bank).or_insert(0);
                 *e = (*e).max(offset as u32 / 16 + 1);
@@ -166,7 +204,8 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
             interp.insert(loc, pixel_interp(sph, loc)?);
         }
     }
-    let ctx = Ctx { f, sph, interp };
+    let slots = textures.keys().enumerate().map(|(k, &h)| (h, k as u32)).collect();
+    let ctx = Ctx { f, sph, interp, textures: slots };
 
     let mut out = String::new();
     let stage_name = match f.stage {
@@ -184,7 +223,15 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
         writeln!(out, "@group({group}) @binding({bank}) var<uniform> cb{bank}: array<vec4<u32>, {len}>;").unwrap();
         iface.constant_buffers.push(ConstantBuffer { group, binding: bank as u32, size_bytes: len * 16 });
     }
-    if !cbufs.is_empty() {
+    for (k, (&handle, &sampled)) in textures.iter().enumerate() {
+        let binding = 32 + 2 * k as u32;
+        writeln!(out, "@group({group}) @binding({binding}) var t{k}: texture_2d<f32>;").unwrap();
+        if sampled {
+            writeln!(out, "@group({group}) @binding({}) var s{k}: sampler;", binding + 1).unwrap();
+        }
+        iface.textures.push(TextureBinding { group, binding, sampler_binding: sampled.then_some(binding + 1), handle });
+    }
+    if !cbufs.is_empty() || !textures.is_empty() {
         out.push('\n');
     }
 
@@ -193,7 +240,11 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
             match op {
                 Op::Const(_) => {}
                 op => {
-                    let ty = if op.ty() == Ty::U32 { "u32" } else { "f32" };
+                    let ty = match op.ty() {
+                        Ty::U32 => "u32",
+                        Ty::F32 => "f32",
+                        Ty::Vec4 => "vec4<f32>",
+                    };
                     writeln!(out, "    let v{i}: {ty} = {};", ctx.expr(*op)).unwrap();
                 }
             }
