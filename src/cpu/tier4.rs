@@ -83,6 +83,8 @@ impl MemoryBus for MmuBus<'_> {
 /// Lowers decoded guest instructions to recompiler IR with the interpreter's semantics.
 struct Lowerer {
     b: BlockBuilder,
+    /// Mark `BR`/`BLR`/`RET` exits linkable.
+    indirect_links: bool,
 }
 
 impl Lowerer {
@@ -533,7 +535,10 @@ impl Lowerer {
                     self.set_x(30, ret);
                 }
                 let code = if op == BranchRegOp::Ret { EXIT_RETURN } else { EXIT_BRANCH };
-                return Ok(Some(Terminator::Exit(ExitTo { code, pc: target, insns: done, link: false })));
+                // Looked up at run time in the link table (indirect-target cache). A miss returns
+                // to Rust as before; a `RET` miss still ends the slice with `BlockExit::Return`.
+                let link = self.indirect_links;
+                return Ok(Some(Terminator::Exit(ExitTo { code, pc: target, insns: done, link })));
             }
 
             Instruction::FpMovGen { rd, rn, to_fp, is_64 } => {
@@ -841,7 +846,12 @@ pub struct LoweredBlock {
 /// Decodes from `pc` and lowers up to the first terminator, untranslated instruction or
 /// [`MAX_BLOCK_INSNS`]. `None` if the first instruction cannot be read or translated.
 pub fn lower_block(pc: u64, mmu: &Memory) -> Option<LoweredBlock> {
-    let mut l = Lowerer { b: BlockBuilder::new() };
+    lower_block_with(pc, mmu, true)
+}
+
+/// [`lower_block`], choosing whether indirect branches and returns are linkable.
+fn lower_block_with(pc: u64, mmu: &Memory, indirect_links: bool) -> Option<LoweredBlock> {
+    let mut l = Lowerer { b: BlockBuilder::new(), indirect_links };
     let mut cur = pc;
     let mut count = 0u32;
     let term = loop {
@@ -928,6 +938,9 @@ pub struct Tier4JitEngine {
     /// Translated blocks jump straight to each other on direct branches
     /// (docs/design/m4-native-linking.md). On by default; off runs every block from Rust.
     pub linking: bool,
+    /// With `linking`, `BR`/`BLR`/`RET` also look their target up in the link table at run time
+    /// instead of always returning to Rust. On by default; set before blocks are compiled.
+    pub indirect_links: bool,
     fast_cache: Box<[(u64, BlockId); 1024]>,
 }
 
@@ -969,6 +982,7 @@ impl Tier4JitEngine {
             mips_rate: 0.0,
             unavailable,
             linking: true,
+            indirect_links: true,
             fast_cache: Box::new([(u64::MAX, BlockId::default()); 1024]),
         }
     }
@@ -1026,7 +1040,7 @@ impl Tier4JitEngine {
         if *n < self.threshold {
             return None;
         }
-        let Some(lowered) = lower_block(pc, mmu) else {
+        let Some(lowered) = lower_block_with(pc, mmu, self.indirect_links) else {
             self.no_compile.insert(pc);
             return None;
         };
@@ -1115,7 +1129,9 @@ impl Tier4JitEngine {
     }
 
     /// Same contract as [`Tier3JitEngine::run_slice`]: runs until `max_instructions`, or returns
-    /// early on `SVC`, `RET` or a fault.
+    /// early on `SVC`, `RET` or a fault. With `indirect_links`, a `RET` whose target is already
+    /// translated continues natively, so `BlockExit::Return` only reports the others; callers
+    /// treat it as a yield either way.
     pub fn run_slice(&mut self, cpu: &mut Cpu, mmu: &mut Memory, max_instructions: usize) -> (usize, BlockExit) {
         let start = Instant::now();
         let mut executed = 0usize;
@@ -1685,8 +1701,8 @@ mod tests {
             (0x1A00_0000, 0x1E00_0000),
             (0x1E00_0000, 0x1E00_0000),
         ];
-        // Keep X28 (the loop counter) out of every register field.
-        let uses_x28 = |raw: u32| [0, 5, 10, 16].iter().any(|&sh| (raw >> sh) & 0x1F == 28);
+        // Keep X28 (the loop counter) and X30 (the return address) out of every register field.
+        let uses_x28 = |raw: u32| [0, 5, 10, 16].iter().any(|&sh| matches!((raw >> sh) & 0x1F, 28 | 30));
         let body = |rng: &mut Rng| {
             let len = 1 + (rng.next() % 8) as usize;
             let mut words = Vec::with_capacity(len);
@@ -1702,12 +1718,24 @@ mod tests {
         let (mut linked, mut faults) = (0u64, 0u32);
         for case in 0..3_000 {
             let mut words = body(&mut rng);
-            words.push(0x1400_0001); // b +4
-            words.extend(body(&mut rng));
+            let second = body(&mut rng);
+            if case % 2 == 0 {
+                words.push(0x1400_0001); // b +4
+                words.extend(&second);
+            } else {
+                // The second body becomes a function after the SVC: BL to it, RET back (links
+                // through the run-time lookup).
+                let func = words.len() + 4;
+                words.push(0x9400_0000 | (func - words.len()) as u32); // bl func
+            }
             words.push(0xF100_079C); // subs x28, x28, #1
             let back = -(words.len() as i32) as u32 & 0x7FFFF;
             words.push(0x5400_0001 | back << 5); // b.ne start
             words.push(0xD400_0001); // svc #0
+            if case % 2 == 1 {
+                words.extend(&second);
+                words.push(0xD65F_03C0); // ret
+            }
             let (mut cpu, mmu) = setup(&words);
             for r in 0..31u8 {
                 let v = match rng.next() % 5 {
@@ -1731,5 +1759,95 @@ mod tests {
         }
         eprintln!("random linked loops: {linked} links taken, {faults}/3000 faulted");
         assert!(linked > 3_000, "linking was not exercised ({linked} links)");
+    }
+
+    /// Calls and returns: `BL` (direct link), `BLR` (run-time lookup) and `RET` (run-time lookup),
+    /// matching the interpreter, plus a store that patches the called function between rounds.
+    #[test]
+    fn calls_and_returns_match_all_tiers() {
+        #[rustfmt::skip]
+        let words = [
+            0xD2800061, // 00: movz x1, #3
+            0x10000145, // 04: adr  x5, 0x2C (func)
+            0x9400000A, // 08: bl   0x30 (func + 4, skips the first add)
+            0xD63F00A0, // 0C: blr  x5
+            0xF1000421, // 10: subs x1, x1, #1
+            0x54FFFFA1, // 14: b.ne 0x08
+            0xB90000C7, // 18: str  w7, [x6]       ; patch func: add x2, x2, #1 -> #100
+            0xF1000508, // 1C: subs x8, x8, #1
+            0x54FFFF01, // 20: b.ne 0x00
+            0xAA0203E0, // 24: mov  x0, x2
+            0xD40000E1, // 28: svc  #7
+            0x91000442, // 2C: func: add x2, x2, #1
+            0x91000463, // 30:       add x3, x3, #1
+            0xD65F03C0, // 34:       ret
+        ];
+        let e = check_all_tiers(&words, |cpu| {
+            cpu.regs.write_x(6, CODE + 0x2C);
+            cpu.regs.write_x(7, 0x9101_9042); // add x2, x2, #100
+            cpu.regs.write_x(8, 2);
+        });
+        assert!(e.chained_jumps > 0 && e.blocks_invalidated >= 1);
+    }
+
+    /// Call-heavy throughput: indirect links off vs on, median of 5, checked against the
+    /// interpreter. The loop body is a BL and a BLR to a two-instruction function.
+    #[test]
+    fn stage20_call_benchmark() {
+        fn median(mut v: Vec<f64>) -> f64 {
+            v.sort_by(f64::total_cmp);
+            v[v.len() / 2]
+        }
+        #[rustfmt::skip]
+        let words = [
+            0xD2A00101, // 00: movz x1, #8, lsl 16  (524,288 rounds)
+            0x100000E5, // 04: adr  x5, 0x20 (func)
+            0x94000006, // 08: bl   0x20
+            0xD63F00A0, // 0C: blr  x5
+            0xF1000421, // 10: subs x1, x1, #1
+            0x54FFFFA1, // 14: b.ne 0x08
+            0xD2815540, // 18: movz x0, #0xAAA
+            0xD40000E1, // 1C: svc  #7
+            0x91000442, // 20: func: add x2, x2, #1
+            0xD65F03C0, // 24:       ret
+        ];
+        const LIMIT: usize = 100_000_000;
+        let (cpu, mmu) = setup(&words);
+        let (c, m) = clone(&cpu, &mmu);
+        let reference = run_interp(c, m, LIMIT);
+        assert_eq!(reference.exit, BlockExit::Svc { svc_id: 7 });
+        let mut results = [Vec::new(), Vec::new()];
+        for _ in 0..5 {
+            for (indirect, warm) in [false, true].into_iter().zip(results.iter_mut()) {
+                let (c, m) = clone(&cpu, &mmu);
+                let mut e = Tier4JitEngine::with_threshold(1);
+                e.indirect_links = indirect;
+                let cold = run_engine(|c, m, n| e.run_slice(c, m, n), c, m, LIMIT);
+                assert_eq!(cold, reference, "cold differs (indirect links {indirect})");
+                // Warm: same engine and translations, fresh guest state (the guest stores nothing).
+                let (c, m) = clone(&cpu, &mmu);
+                let t = std::time::Instant::now();
+                let mut total = 0usize;
+                let out = run_engine(
+                    |c, m, n| {
+                        let r = e.run_slice(c, m, n);
+                        total += r.0;
+                        r
+                    },
+                    c,
+                    m,
+                    LIMIT,
+                );
+                warm.push(total as f64 / t.elapsed().as_secs_f64() / 1_000_000.0);
+                assert_eq!(out, reference, "warm differs (indirect links {indirect})");
+                assert_eq!(e.fallback_insns, 0);
+            }
+        }
+        let [off, on] = results;
+        eprintln!(
+            "[Call Benchmark] median of 5, warm: Tier-4 indirect links off: {:.2} MIPS | on: {:.2} MIPS",
+            median(off),
+            median(on)
+        );
     }
 }
