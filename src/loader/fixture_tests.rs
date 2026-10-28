@@ -334,6 +334,21 @@ fn libnx_romfs_fixture_with_host_sdmc_folder() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Exercise host SD-card operations through a compiled libnx/newlib guest.
+#[test]
+fn libnx_sdmc_fixture_performs_host_file_operations() {
+    let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/sdmc/sdmc.nro")).unwrap();
+    let dir = std::env::temp_dir().join(format!("ounce_sdmc_ops_{}", std::process::id()));
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::write(dir.join("host.txt"), b"from host\n").unwrap();
+    let (output, svcs, _) = boot_with_kernel_sdmc(&nro, &[], Default::default(), Some(&dir));
+    assert!(output.ends_with("ounce-sdmc result=0x00000EEE\n"), "output: {output:?}; SVCs: {svcs:x?}");
+    assert_eq!(std::fs::read(dir.join("host.txt")).unwrap(), b"from host\n");
+    let names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(names, ["host.txt"]);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 /// `tests/fixtures/nro/nvdrv`: libnx `nvInitialize` (transfer memory, Initialize, cloned session),
 /// `nvMapInit` and `nvMapCreate` (nvmap CREATE, ALLOC, GET_ID ioctls).
 #[test]

@@ -246,6 +246,7 @@ impl IpcManager {
             return self.handle_control(session_handle, &service, tls_addr, mmu, mmu.read_u32(cmif_base + 8).unwrap_or(0));
         }
 
+        let mut object_handle = session_handle;
         // Domain sessions: a domain header names the target object, and the CMIF payload follows it.
         if self.domains.contains(&session_handle) && self.request.kind != super::hipc::TYPE_CLOSE {
             let dom = super::hipc::read_domain_header(mmu, cmif_base);
@@ -264,6 +265,7 @@ impl IpcManager {
                     return 0;
                 }
             };
+            object_handle = dom.object_id;
             cmif_base += 16;
         }
         let magic = mmu.read_u32(cmif_base).unwrap_or(0);
@@ -676,7 +678,7 @@ impl IpcManager {
 
             ServiceType::FileSystem(mount) => self.handle_filesystem(&mount, cmd_id, args_base, tls_addr, mmu, vfs),
             ServiceType::Directory { path, entries, index } => {
-                self.handle_directory(session_handle, path, entries, index, cmd_id, args_base, tls_addr, mmu, vfs)
+                self.handle_directory(object_handle, path, entries, index, cmd_id, args_base, tls_addr, mmu, vfs)
             }
             ServiceType::File(handle) => self.handle_file(handle, cmd_id, args_base, tls_addr, mmu, vfs),
 

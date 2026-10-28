@@ -1,4 +1,4 @@
-# sdmc.nro: libnx SD card fixture (source only, not built yet)
+# sdmc.nro: libnx SD card fixture
 
 Homebrew-only test program built with devkitA64 and libnx, like `../romfs`. It mounts `sdmc:/` with
 `fsdevMountSdmc()` and uses newlib stdio/POSIX calls, which libnx's fsdev turns into `fsp-srv`
@@ -19,9 +19,13 @@ Homebrew-only test program built with devkitA64 and libnx, like `../romfs`. It m
 
 Prints `ounce-sdmc result=0x00000EEE` through `svcOutputDebugString` when every step works.
 
-Build on a machine with devkitPro: `make -C tests/fixtures/nro/sdmc clean all`, commit `sdmc.nro`, then
-add a test in `src/loader/fixture_tests.rs` that writes `host.txt` into a temp folder and boots it with
-`boot_with_kernel_sdmc(.., Some(&dir))`, expecting `0xEEE` and an empty folder apart from `host.txt`.
+Build: `make -C tests/fixtures/nro/sdmc clean all`. The integration test
+`libnx_sdmc_fixture_performs_host_file_operations` boots the compiled fixture with a host folder,
+checks the guest success report, preserves `host.txt`, and checks that the guest removed its files.
+
+Built on 2026-10-28 using devkitA64 r30 (GCC 16.1.0), libnx 4.12.0 and switch-tools 1.13.1.
+Binary SHA-256: `42d46955e74b1aa01cd6181f442b54a19c7138721de15b19999e93e938004f48`.
+This project-authored fixture checks integration; it is not an independently authored homebrew sample.
 Run by hand: `cargo run --release -- run tests/fixtures/nro/sdmc/sdmc.nro --sdmc=<dir>`.
 
 The same requests are covered without devkitPro by the libnx-shaped CMIF tests in `src/kernel/fsp.rs`.
