@@ -599,6 +599,98 @@ fn dual_source_blending_skips_the_draw() {
     assert_eq!(px(&linear, 10, 10), [0, 255, 0, 255]);
 }
 
+// --- Indexed draws ---------------------------------------------------------------------------
+
+const IB_VA: u64 = VB_VA + 0x800;
+
+fn index_buffer(pb: &mut Vec<u32>, mem: &mut Mem, va: u64, bytes: &[u8]) {
+    if !bytes.is_empty() {
+        mem.put(va, bytes);
+    }
+    pb.extend([inc_header(SC, m::SET_INDEX_BUFFER_A, 2), hi(va), lo(va)]);
+}
+
+fn red_quad_vertices() -> Vec<[f32; 8]> {
+    vec![vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, RED), vtx(-1.0, 1.0, 0.0, RED), vtx(1.0, 1.0, 0.0, RED)]
+}
+
+#[test]
+fn indexed_triangles_from_a_16_bit_buffer() {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+    geometry(&mut pb, &mut mem, &red_quad_vertices(), &varying_pixel_shader());
+    let idx: Vec<u8> = [0u16, 1, 2, 2, 1, 3].iter().flat_map(|i| i.to_le_bytes()).collect();
+    index_buffer(&mut pb, &mut mem, IB_VA, &idx);
+    // FIRST 0, COUNT 6, TRIANGLES. Read sequentially, positions 4 and 5 would fetch past the
+    // four-vertex stream and skip the draw.
+    pb.extend([inc_header(SC, m::DRAW_INDEX_BUFFER16_BEGIN_END_INSTANCE_FIRST, 1), (6 << 16) | (4 << 28)]);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    assert_eq!((gpu.render_stats().draws, gpu.render_stats().triangles), (1, 2));
+    let linear = rt_pixels(&mut mem);
+    assert_eq!(px(&linear, 5, 5), [255, 0, 0, 255]);
+    assert_eq!(px(&linear, 250, 250), [255, 0, 0, 255]);
+    match gpu.events().last() {
+        Some(Event::Draw(d)) => assert_eq!(d.indices.map(|i| (i.gpu_va, i.index_bytes)), Some((IB_VA, 2))),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn indexed_strip_with_first_base_vertex_and_restart() {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+    // Vertex 0 is green and must never be fetched: the base vertex shifts every index by one.
+    let mut verts = vec![vtx(0.0, 0.0, 0.0, GREEN)];
+    verts.extend(red_quad_vertices());
+    geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
+    // 32-bit indices from FIRST 1: [0, 1, 2], restart, [2, 1, 3] as two triangle strips.
+    let restart = u32::MAX;
+    let idx: Vec<u8> = [7u32, 0, 1, 2, restart, 2, 1, 3].iter().flat_map(|i| i.to_le_bytes()).collect();
+    index_buffer(&mut pb, &mut mem, IB_VA, &idx);
+    pb.extend([inc_header(SC, m::SET_INDEX_BUFFER_E, 2), 2, 1]);
+    pb.extend([inc_header(SC, m::SET_GLOBAL_BASE_VERTEX_INDEX, 1), 1]);
+    pb.extend([inc_header(SC, m::SET_DA_PRIMITIVE_RESTART, 2), 1, restart]);
+    pb.extend([inc_header(SC, m::BEGIN, 1), 5]);
+    pb.extend([inc_header(SC, m::DRAW_INDEX_BUFFER, 1), 7]);
+    pb.extend([inc_header(SC, m::END, 1), 0]);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    assert_eq!(gpu.render_stats().triangles, 2);
+    let linear = rt_pixels(&mut mem);
+    for (x, y) in [(5, 5), (250, 250), (128, 30), (30, 128)] {
+        assert_eq!(px(&linear, x, y), [255, 0, 0, 255], "pixel ({x}, {y})");
+    }
+}
+
+#[test]
+fn index_buffer_bounds_and_mapping_are_checked() {
+    let draw_with = |va: u64, size: u32| {
+        let mut mem = Mem::standard();
+        let mut pb = Vec::new();
+        setup(&mut pb, m::AMPERE_B, false);
+        geometry(&mut pb, &mut mem, &red_quad_vertices(), &varying_pixel_shader());
+        let idx: Vec<u8> = [0u8, 1, 2].to_vec();
+        if va == IB_VA {
+            mem.put(IB_VA, &idx);
+        }
+        index_buffer(&mut pb, &mut mem, va, &[]);
+        pb.extend([inc_header(SC, m::SET_INDEX_BUFFER_SIZE_A, 2), 0, size]);
+        pb.extend([inc_header(SC, m::DRAW_INDEX_BUFFER8_BEGIN_END_INSTANCE_FIRST, 1), (3 << 16) | (4 << 28)]);
+        run(&pb, &mut mem)
+    };
+    let ok = draw_with(IB_VA, 3);
+    assert!(ok.diagnostics().is_empty(), "{:?}", ok.diagnostics());
+    let short = draw_with(IB_VA, 2);
+    assert_eq!(short.diagnostics(), &[Diagnostic::RenderSkipped { reason: "index fetch past the index buffer size" }]);
+    let unmapped = draw_with(0x02_0000_0000, 0);
+    assert_eq!(unmapped.diagnostics(), &[Diagnostic::RenderSkipped { reason: "index buffer is not readable" }]);
+}
+
 // --- Textures --------------------------------------------------------------------------------
 
 /// Block-linear 16x16 A8B8G8R8 header (version 3), 2-GOB blocks, normalized coordinates.

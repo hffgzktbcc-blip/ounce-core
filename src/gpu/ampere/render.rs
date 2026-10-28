@@ -14,7 +14,7 @@
 //! and counted), multisampling, layered targets.
 
 use super::blend::Blend;
-use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, Topology};
+use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, IndexBuffer, Topology};
 use super::methods as m;
 use super::shade::{self, ShaderInputs};
 use super::texture::{Sampler, TextureHeader};
@@ -568,6 +568,51 @@ fn triangles(topology: Topology, count: usize) -> Option<Vec<[usize; 3]>> {
     Some(t)
 }
 
+/// Reads the indices of an indexed draw: the vertex index for every position (base vertex added)
+/// and the triangles, with primitive restart splitting the topology into independent runs.
+fn indexed(rec: &DrawRecord, ib: &IndexBuffer, mem: &mut dyn GpuMemoryWriter) -> Result<(Vec<u32>, Vec<[usize; 3]>), &'static str> {
+    let n = ib.index_bytes as u64;
+    let start = rec.first_vertex as u64 * n;
+    let len = rec.vertex_count as u64 * n;
+    if ib.size.is_some_and(|size| start + len > size) {
+        return Err("index fetch past the index buffer size");
+    }
+    let mut bytes = vec![0u8; len as usize];
+    if !mem.read(ib.gpu_va + start, &mut bytes) {
+        return Err("index buffer is not readable");
+    }
+    let raw: Vec<u32> = bytes
+        .chunks_exact(n as usize)
+        .map(|c| match n {
+            1 => c[0] as u32,
+            2 => u16::from_le_bytes([c[0], c[1]]) as u32,
+            _ => u32::from_le_bytes([c[0], c[1], c[2], c[3]]),
+        })
+        .collect();
+    let mut ids = Vec::with_capacity(raw.len());
+    let mut tris = Vec::new();
+    let mut run_start = 0usize;
+    let mut flush = |ids: &Vec<u32>, from: usize, tris: &mut Vec<[usize; 3]>| -> Result<(), &'static str> {
+        let run = triangles(rec.topology, ids.len() - from).ok_or("topology other than triangles, strips, fans and quads")?;
+        tris.extend(run.into_iter().map(|t| t.map(|i| i + from)));
+        Ok(())
+    };
+    for &i in &raw {
+        if ib.restart == Some(i) {
+            flush(&ids, run_start, &mut tris)?;
+            run_start = ids.len();
+            continue;
+        }
+        let v = i as i64 + ib.base_vertex as i64;
+        if !(0..=u32::MAX as i64).contains(&v) {
+            return Err("index plus base vertex out of range");
+        }
+        ids.push(v as u32);
+    }
+    flush(&ids, run_start, &mut tris)?;
+    Ok((ids, tris))
+}
+
 fn edge(a: (f32, f32), b: (f32, f32), p: (f32, f32)) -> f32 {
     (b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0)
 }
@@ -738,8 +783,18 @@ impl Ampere3d {
         if rec.instance != 0 {
             return self.skip("instanced draw");
         }
-        let Some(tris) = triangles(rec.topology, rec.vertex_count as usize) else {
-            return self.skip("topology other than triangles, strips, fans and quads");
+        // Vertex index per position in the draw, and triangles over those positions.
+        let (ids, tris) = match &rec.indices {
+            None => {
+                let Some(tris) = triangles(rec.topology, rec.vertex_count as usize) else {
+                    return self.skip("topology other than triangles, strips, fans and quads");
+                };
+                ((0..rec.vertex_count).map(|i| rec.first_vertex.wrapping_add(i)).collect::<Vec<u32>>(), tris)
+            }
+            Some(ib) => match indexed(rec, ib, mem) {
+                Ok(v) => v,
+                Err(reason) => return self.skip(reason),
+            },
         };
         let find = |kinds: &[super::engine::ShaderType]| rec.shaders.iter().find(|s| kinds.contains(&s.kind)).copied();
         use super::engine::ShaderType as T;
@@ -768,9 +823,8 @@ impl Ampere3d {
         // Vertex fetch + shading.
         let mut stream_cache: Vec<(u8, Vec<u8>)> = Vec::new();
         let vp = rec.viewport0;
-        let mut verts = Vec::with_capacity(rec.vertex_count as usize);
-        for i in 0..rec.vertex_count {
-            let index = rec.first_vertex + i;
+        let mut verts = Vec::with_capacity(ids.len());
+        for &index in &ids {
             let mut attrs = [[0u32, 0, 0, 1.0f32.to_bits()]; 32];
             for a in &rec.vertex_attributes {
                 let Some(stream) = rec.vertex_streams.iter().find(|s| s.index == a.stream) else { continue };
