@@ -7,7 +7,7 @@
 //! Attribute addresses follow the public Maxwell+ layout used by Mesa/nouveau
 //! (position at 0x70..0x7c, generic vector `i` at 0x80 + 16 * i).
 
-use super::decode::{decode, word_at, FSrc, Instr, IpaFreq, MufuOp, Src, PT, RZ};
+use super::decode::{decode, word_at, Decoded, FSrc, Instr, IpaFreq, MufuOp, Src, PT, RZ};
 use super::{ShaderStage, XlateError};
 
 /// Upper bound on decoded instructions, so a missing `EXIT` cannot run away.
@@ -150,13 +150,25 @@ impl Builder {
 /// Decodes and lowers the code that follows the header. `code` starts at the first
 /// instruction; decoding stops at the first unconditional `EXIT`.
 pub fn lower(stage: ShaderStage, code: &[u8]) -> Result<Function, XlateError> {
+    lower_with(stage, |pc| {
+        let at = pc * 16;
+        let w = word_at(code, pc).ok_or(XlateError::MissingExit)?;
+        let d = decode(w).map_err(|e| XlateError::Decode { at, word: w, err: e })?;
+        Ok((at, d))
+    })
+}
+
+/// ISA-independent lowering: `fetch(pc)` returns the byte offset and decoded form of
+/// instruction `pc` (Ampere via [`lower`], Maxwell via [`super::maxwell::lower`]).
+pub fn lower_with(
+    stage: ShaderStage,
+    mut fetch: impl FnMut(usize) -> Result<(usize, Decoded), XlateError>,
+) -> Result<Function, XlateError> {
     let mut b = Builder { values: Vec::new(), regs: vec![None; 255], zero: None };
     let mut stores = Vec::new();
     let mut listing = Vec::new();
     for pc in 0..MAX_INSTRUCTIONS {
-        let at = pc * 16;
-        let w = word_at(code, pc).ok_or(XlateError::MissingExit)?;
-        let d = decode(w).map_err(|e| XlateError::Decode { at, word: w, err: e })?;
+        let (at, d) = fetch(pc)?;
         listing.push(d.to_string());
         let unsup = |what: &'static str| XlateError::Unsupported { at, what };
         if d.pred != PT || d.pred_neg {

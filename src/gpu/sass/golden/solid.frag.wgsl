@@ -1,4 +1,4 @@
-// ounce-core Ampere SASS -> WGSL, step 1 (fragment).
+// ounce-core SASS -> WGSL, step 1 (fragment).
 // Community-sourced decoding, not a hardware-accurate translation.
 //   MOV R0, 0x3f800000
 //   MOV R1, 0x3f000000
