@@ -1,18 +1,21 @@
 //! IR -> host machine code with Cranelift (design section 4). Safe code only: the bytes go into
 //! an `exec::BlockCode`, which owns the executable memory.
 //!
-//! Generated function: `extern "C" fn(state: *mut GuestState, ctx: *mut CallCtx) -> u64`.
+//! Generated function: `fn(state: *mut GuestState, ctx: *mut CallCtx) -> u64` with Cranelift's
+//! `tail` convention; Rust enters through one `extern "C"` trampoline per `Recompiler`
+//! (`compile_trampoline`). A linked exit (`ExitTo::link`) tail-calls the next block when the link
+//! table has it and the budget allows (docs/design/m4-native-linking.md); otherwise it returns.
 //! Guest registers are loaded from and stored to `state` at every `GetReg`/`SetReg`, so the state
 //! in memory is always current when a memory callback runs and faults are precise (section 5).
 //! The return value is `code | insns << 32`; the exit `pc` is stored in `state.pc`.
 
-use crate::exec::{self, BlockCode, MEM_CODE_WRITTEN, MEM_FAULT};
+use crate::exec::{self, BlockCode, CallCtx, LinkEntry, Trampoline, LINK_MASK, MEM_CODE_WRITTEN, MEM_FAULT};
 use crate::ir::{BinOp, Block, ExitTo, FaultSite, FpBinOp, FpWidth, Op, Reg, Terminator, Value, Width};
 use crate::{CompileError, GuestState, EXIT_CODE_WRITTEN, EXIT_FAULT};
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::{self as clif, types, AbiParam, Endianness, InstBuilder, MemFlagsData, StackSlotData, StackSlotKind};
-use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
+use cranelift_codegen::isa::{CallConv, OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
@@ -21,6 +24,9 @@ use std::mem::offset_of;
 pub(crate) fn host_isa() -> Result<OwnedTargetIsa, CompileError> {
     let mut flags = settings::builder();
     flags.set("opt_level", "speed").map_err(|e| CompileError::Backend(e.to_string()))?;
+    // Cranelift's x86_64 `return_call_indirect` needs frame pointers (it panics while emitting
+    // otherwise); linked exits use it.
+    flags.set("preserve_frame_pointers", "true").map_err(|e| CompileError::Backend(e.to_string()))?;
     let isa = cranelift_native::builder().map_err(|e| CompileError::Backend(e.to_string()))?;
     let isa = isa
         .finish(settings::Flags::new(flags))
@@ -43,6 +49,54 @@ fn reg_offset(reg: Reg) -> i32 {
 
 const PC_OFFSET: i32 = offset_of!(GuestState, pc) as i32;
 
+/// The signature every block has: `(state, ctx) -> exit word`, `tail` convention.
+fn block_sig() -> clif::Signature {
+    let mut sig = clif::Signature::new(CallConv::Tail);
+    sig.params.push(AbiParam::new(types::I64));
+    sig.params.push(AbiParam::new(types::I64));
+    sig.returns.push(AbiParam::new(types::I64));
+    sig
+}
+
+fn finish(isa: &dyn TargetIsa, ctx: &mut Context) -> Result<Vec<u8>, CompileError> {
+    let compiled = ctx
+        .compile(isa, &mut ControlPlane::default())
+        .map_err(|e| CompileError::Backend(format!("{:?}", e.inner)))?;
+    if !compiled.buffer.relocs().is_empty() {
+        return Err(CompileError::Backend("generated code needs relocations".into()));
+    }
+    Ok(compiled.code_buffer().to_vec())
+}
+
+/// `extern "C" fn(entry, state, ctx) -> u64` that calls the block at `entry` and returns its word.
+pub(crate) fn compile_trampoline(
+    isa: &dyn TargetIsa,
+    ctx: &mut Context,
+    fctx: &mut FunctionBuilderContext,
+) -> Result<Trampoline, CompileError> {
+    let mut sig = clif::Signature::new(isa.default_call_conv());
+    for _ in 0..3 {
+        sig.params.push(AbiParam::new(types::I64));
+    }
+    sig.returns.push(AbiParam::new(types::I64));
+    ctx.clear();
+    ctx.func.signature = sig;
+    {
+        let mut b = FunctionBuilder::new(&mut ctx.func, fctx);
+        let entry = b.create_block();
+        b.append_block_params_for_function_params(entry);
+        b.switch_to_block(entry);
+        let p = b.block_params(entry).to_vec();
+        let block_sig = b.import_signature(block_sig());
+        let call = b.ins().call_indirect(block_sig, p[0], &[p[1], p[2]]);
+        let word = b.inst_results(call)[0];
+        b.ins().return_(&[word]);
+        b.seal_all_blocks();
+        b.finalize(isa.frontend_config());
+    }
+    Trampoline::new(&finish(isa, ctx)?).map_err(CompileError::Exec)
+}
+
 pub(crate) fn compile(
     isa: &dyn TargetIsa,
     ctx: &mut Context,
@@ -51,14 +105,11 @@ pub(crate) fn compile(
 ) -> Result<BlockCode, CompileError> {
     block.validate().map_err(CompileError::InvalidIr)?;
 
+    // The memory trampolines are plain `extern "C"` functions.
     let call_conv = isa.default_call_conv();
-    let mut sig = clif::Signature::new(call_conv);
-    sig.params.push(AbiParam::new(types::I64));
-    sig.params.push(AbiParam::new(types::I64));
-    sig.returns.push(AbiParam::new(types::I64));
 
     ctx.clear();
-    ctx.func.signature = sig;
+    ctx.func.signature = block_sig();
     {
         let mut b = FunctionBuilder::new(&mut ctx.func, fctx);
         let entry = b.create_block();
@@ -73,41 +124,50 @@ pub(crate) fn compile(
         }
         mem_sig.returns.push(AbiParam::new(types::I32));
         let mem_sig = b.import_signature(mem_sig);
+        let tail_sig = b.import_signature(block_sig());
 
         let slot = b.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 8, 3));
         let stop = b.declare_var(types::I64);
         let zero = b.ins().iconst(types::I64, 0);
         b.def_var(stop, zero);
 
-        let mut lw = Lowering { b, state, call_ctx, mem_sig, slot, stop, vals: Vec::with_capacity(block.ops.len()) };
+        let mut lw = Lowering {
+            b,
+            state,
+            call_ctx,
+            mem_sig,
+            tail_sig,
+            slot,
+            stop,
+            vals: Vec::with_capacity(block.ops.len()),
+        };
+        // The guest pc of a linked exit; `validate` checked it is a constant.
+        let link_pc = |e: &ExitTo| match block.ops[e.pc.0 as usize] {
+            Op::Const(pc) if e.link => Some(pc),
+            _ => None,
+        };
         for op in &block.ops {
             let v = lw.op(op);
             lw.vals.push(v);
         }
         match block.term {
-            Terminator::Exit(e) => lw.exit(e),
+            Terminator::Exit(e) => lw.exit(e, link_pc(&e)),
             Terminator::Branch { cond, taken, not_taken } => {
                 let c = lw.v(cond);
                 let t = lw.b.create_block();
                 let n = lw.b.create_block();
                 lw.b.ins().brif(c, t, &[], n, &[]);
                 lw.b.switch_to_block(t);
-                lw.exit(taken);
+                lw.exit(taken, link_pc(&taken));
                 lw.b.switch_to_block(n);
-                lw.exit(not_taken);
+                lw.exit(not_taken, link_pc(&not_taken));
             }
         }
         lw.b.seal_all_blocks();
         lw.b.finalize(isa.frontend_config());
     }
 
-    let compiled = ctx
-        .compile(isa, &mut ControlPlane::default())
-        .map_err(|e| CompileError::Backend(format!("{:?}", e.inner)))?;
-    if !compiled.buffer.relocs().is_empty() {
-        return Err(CompileError::Backend("generated code needs relocations".into()));
-    }
-    BlockCode::new(compiled.code_buffer()).map_err(CompileError::Exec)
+    BlockCode::new(&finish(isa, ctx)?).map_err(CompileError::Exec)
 }
 
 struct Lowering<'a> {
@@ -115,6 +175,8 @@ struct Lowering<'a> {
     state: clif::Value,
     call_ctx: clif::Value,
     mem_sig: clif::SigRef,
+    /// Block signature, for linked tail calls.
+    tail_sig: clif::SigRef,
     slot: clif::StackSlot,
     stop: Variable,
     /// Cranelift value per IR op; `None` for ops without a result.
@@ -177,10 +239,50 @@ impl Lowering<'_> {
         self.b.ins().return_(&[word]);
     }
 
-    fn exit(&mut self, e: ExitTo) {
+    fn exit(&mut self, e: ExitTo, link_pc: Option<u64>) {
+        if let Some(target) = link_pc {
+            self.try_link(target, e.insns);
+        }
         let pc = self.v(e.pc);
         self.b.ins().store(Self::flags(), pc, self.state, PC_OFFSET);
         self.ret(e.code, e.insns);
+    }
+
+    /// Jumps straight to the block linked for `target` when the link table has one, no store in
+    /// this block hit code, and `chained_insns + insns < budget`. Falls through to the normal
+    /// return otherwise. The table slot is a compile-time constant.
+    fn try_link(&mut self, target: u64, insns: u32) {
+        let ctx = self.call_ctx;
+        let ret = self.b.create_block();
+        let probe = self.b.create_block();
+        let go = self.b.create_block();
+
+        let chained = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, chained_insns) as i32);
+        let chained = self.b.ins().iadd_imm_u(chained, insns as i64);
+        let budget = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, budget) as i32);
+        let in_budget = self.b.ins().icmp(IntCC::UnsignedLessThan, chained, budget);
+        let stop = self.b.use_var(self.stop);
+        let clean = self.b.ins().icmp_imm_u(IntCC::Equal, stop, 0);
+        let ok = self.b.ins().band(in_budget, clean);
+        self.b.ins().brif(ok, probe, &[], ret, &[]);
+
+        self.b.switch_to_block(probe);
+        let table = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, links) as i32);
+        let slot = (((target >> 2) & LINK_MASK) as usize * size_of::<LinkEntry>()) as i32;
+        let pc = self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, guest_pc) as i32);
+        let hit = self.b.ins().icmp_imm_u(IntCC::Equal, pc, target as i64);
+        self.b.ins().brif(hit, go, &[], ret, &[]);
+
+        self.b.switch_to_block(go);
+        self.b.ins().store(Self::flags(), chained, ctx, offset_of!(CallCtx, chained_insns) as i32);
+        let taken = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, links_taken) as i32);
+        let taken = self.b.ins().iadd_imm_u(taken, 1);
+        self.b.ins().store(Self::flags(), taken, ctx, offset_of!(CallCtx, links_taken) as i32);
+        let entry =
+            self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, host_entry) as i32);
+        self.b.ins().return_call_indirect(self.tail_sig, entry, &[self.state, ctx]);
+
+        self.b.switch_to_block(ret);
     }
 
     /// Branches to a cold block that stores the faulting `pc` and returns `EXIT_FAULT` when
