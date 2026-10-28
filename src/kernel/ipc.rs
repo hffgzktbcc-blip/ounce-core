@@ -1266,9 +1266,12 @@ impl IpcManager {
                 if let Some(b) = out2 {
                     let _ = mmu.write_bytes(b.addr, &outbuf);
                 }
-                // Submitted pushbuffer segments run now, on the GPU model.
-                for (addr, words) in self.nvdrv.take_submissions() {
-                    nvgpu.process_pushbuffer(mmu, addr, words);
+                // Submitted pushbuffer segments run now: on the channel's 3D engine when it allocated
+                // MAXWELL_B or AMPERE_B, else on the older synthetic-method model.
+                for (fd, addr, words) in self.nvdrv.take_channel_submissions() {
+                    if !self.nvdrv.run_3d(mmu, fd, addr, words) {
+                        nvgpu.process_pushbuffer(mmu, addr, words);
+                    }
                 }
                 self.write_cmif_response(tls_addr, mmu, 0, &[status], None);
             }

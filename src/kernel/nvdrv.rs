@@ -5,7 +5,10 @@
 //! Ioctl numbers and argument layouts follow the public Linux Tegra `nvmap` UAPI that the Switch
 //! driver keeps (`_IOWR('\x01', nr, struct)`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+
+use crate::gpu::ampere::{self, Ampere3d, Diagnostic, GpuMemoryWriter};
+use crate::mmu::Memory;
 
 /// nvdrv status codes (libnx `NvError`).
 pub const NV_OK: u32 = 0;
@@ -72,8 +75,62 @@ pub struct NvDrv {
     next_gpu_va: u64,
     /// GPFIFO channels by fd.
     pub channels: HashMap<u32, GpuChannel>,
-    /// Pushbuffer segments submitted since the last `take_submissions`, as (guest address, words).
-    submissions: Vec<(u64, usize)>,
+    /// Pushbuffer segments submitted since the last `take_submissions`, as (channel fd, guest
+    /// address, words).
+    submissions: Vec<(u32, u64, usize)>,
+    /// 3D engine state per channel fd, for channels that allocated MAXWELL_B or AMPERE_B.
+    pub engines: HashMap<u32, Ampere3d>,
+    /// Distinct 3D engine diagnostics seen so far (at most [`MAX_GPU_DIAGNOSTICS`]).
+    pub gpu_diagnostics: Vec<Diagnostic>,
+}
+
+/// Cap on [`NvDrv::gpu_diagnostics`], so a long run cannot grow it without bound.
+pub const MAX_GPU_DIAGNOSTICS: usize = 64;
+
+/// Guest memory as one channel's GPU sees it: GPU VAs go through the nvhost-as-gpu mappings.
+/// Ranges may span mappings; a byte outside a backed mapping fails the whole access.
+pub struct GuestGpuMemory<'a> {
+    pub mmu: &'a mut Memory,
+    pub mappings: &'a BTreeMap<u64, GpuMapping>,
+}
+
+impl GuestGpuMemory<'_> {
+    /// Splits `[va, va + len)` into (guest CPU address, offset into the access, length) pieces.
+    fn pieces(&self, va: u64, len: usize) -> Option<Vec<(u64, usize, usize)>> {
+        let mut out = Vec::new();
+        let mut done = 0usize;
+        while done < len {
+            let cur = va.checked_add(done as u64)?;
+            let (&base, m) = self.mappings.range(..=cur).next_back()?;
+            let end = base.checked_add(m.size)?;
+            if cur >= end || m.cpu_addr == 0 {
+                return None;
+            }
+            let n = ((end - cur) as usize).min(len - done);
+            out.push((m.cpu_addr + (cur - base), done, n));
+            done += n;
+        }
+        Some(out)
+    }
+}
+
+impl GpuMemoryWriter for GuestGpuMemory<'_> {
+    fn write(&mut self, gpu_va: u64, bytes: &[u8]) {
+        if let Some(pieces) = self.pieces(gpu_va, bytes.len()) {
+            for (cpu, off, n) in pieces {
+                let _ = self.mmu.write_bytes(cpu, &bytes[off..off + n]);
+            }
+        }
+    }
+
+    fn read(&mut self, gpu_va: u64, buf: &mut [u8]) -> bool {
+        let Some(pieces) = self.pieces(gpu_va, buf.len()) else {
+            return false;
+        };
+        pieces
+            .into_iter()
+            .all(|(cpu, off, n)| self.mmu.read_bytes(cpu, &mut buf[off..off + n]).is_ok())
+    }
 }
 
 /// A buffer mapped into the GPU address space.
@@ -130,7 +187,66 @@ impl NvDrv {
 
     /// Pushbuffer segments submitted through `SUBMIT_GPFIFO` since the last call.
     pub fn take_submissions(&mut self) -> Vec<(u64, usize)> {
+        self.take_channel_submissions()
+            .into_iter()
+            .map(|(_, addr, words)| (addr, words))
+            .collect()
+    }
+
+    /// As [`NvDrv::take_submissions`], with the channel fd each segment was submitted on.
+    pub fn take_channel_submissions(&mut self) -> Vec<(u32, u64, usize)> {
         std::mem::take(&mut self.submissions)
+    }
+
+    /// Whether channel `fd` allocated a 3D class this model decodes (MAXWELL_B or AMPERE_B).
+    pub fn has_3d_class(&self, fd: u32) -> bool {
+        self.channels.get(&fd).is_some_and(|c| {
+            c.classes
+                .iter()
+                .any(|&k| k == ampere::MAXWELL_B || k == ampere::AMPERE_B)
+        })
+    }
+
+    /// Runs one submitted segment on channel `fd`'s 3D engine, with GPU VAs translated through the
+    /// address space mappings. Returns false (nothing done) when the channel has no 3D class, so
+    /// the caller can use the older synthetic-method path instead.
+    pub fn run_3d(&mut self, mmu: &mut Memory, fd: u32, cpu_addr: u64, words: usize) -> bool {
+        if !self.has_3d_class(fd) {
+            return false;
+        }
+        let mut raw = vec![0u8; words * 4];
+        if mmu.read_bytes(cpu_addr, &mut raw).is_err() {
+            return true;
+        }
+        let words: Vec<u32> = raw
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
+            .collect();
+        let engine = self.engines.entry(fd).or_default();
+        let mut mem = GuestGpuMemory {
+            mmu,
+            mappings: &self.gpu_mappings,
+        };
+        if engine.submit(&words, &mut mem).is_err() {
+            Self::note(
+                &mut self.gpu_diagnostics,
+                Diagnostic::RenderSkipped {
+                    reason: "pushbuffer segment does not decode",
+                },
+            );
+        }
+        // Records are for tests and tools; a running guest would grow them without bound.
+        engine.take_events();
+        for d in engine.take_diagnostics() {
+            Self::note(&mut self.gpu_diagnostics, d);
+        }
+        true
+    }
+
+    fn note(list: &mut Vec<Diagnostic>, d: Diagnostic) {
+        if list.len() < MAX_GPU_DIAGNOSTICS && !list.contains(&d) {
+            list.push(d);
+        }
     }
 
     /// Guest CPU address for a GPU virtual address, if it lies in a backed mapping.
@@ -447,14 +563,14 @@ impl NvDrv {
                 let num = rd32(data, 8) as usize;
                 let inline = data.get(0x18..).unwrap_or(&[]);
                 let entries = if extra.inbuf.len() >= num * 8 { extra.inbuf } else { inline };
-                let mut segments = Vec::new();
+                let mut segments: Vec<(u32, u64, usize)> = Vec::new();
                 for i in 0..num {
                     let Some(e) = entries.get(i * 8..i * 8 + 8) else { break };
                     let desc = u64::from_le_bytes(e.try_into().unwrap());
                     let va = desc & 0xFF_FFFF_FFFC;
                     let words = ((desc >> 42) & 0x1F_FFFF) as usize;
                     if let Some(cpu) = self.gpu_to_cpu(va) {
-                        segments.push((cpu, words));
+                        segments.push((fd, cpu, words));
                     }
                 }
                 self.submissions.extend(segments);
@@ -617,6 +733,166 @@ mod tests {
         assert_eq!(nv.ioctl(gpu_fd, 0xC0B0_4705, &mut gc), NV_OK);
         assert_eq!(rd32(&gc, 0x10), 0x120);
         assert_eq!(gpu_characteristics().len(), 0xA0);
+    }
+
+    /// One nvmap object of `size` bytes backed at guest `cpu`, mapped into the GPU address space.
+    fn map_object(nv: &mut NvDrv, map_fd: u32, as_fd: u32, cpu: u64, size: u32) -> u64 {
+        let mut create = [0u8; 8];
+        wr32(&mut create, 0, size);
+        nv.ioctl(map_fd, NVMAP_IOC_CREATE, &mut create);
+        let handle = rd32(&create, 4);
+        let mut alloc = [0u8; 32];
+        wr32(&mut alloc, 0, handle);
+        wr64(&mut alloc, 24, cpu);
+        nv.ioctl(map_fd, NVMAP_IOC_ALLOC, &mut alloc);
+        let mut map = [0u8; 40];
+        wr32(&mut map, 8, handle);
+        assert_eq!(nv.ioctl(as_fd, 0xC028_4106, &mut map), NV_OK);
+        u64::from_le_bytes(map[32..40].try_into().unwrap())
+    }
+
+    /// A libnx-shaped channel that allocated `class`: submitted segments reach the 3D engine,
+    /// which reads and writes guest memory through the GPU mappings.
+    fn submit_3d(class: u32) -> (NvDrv, Memory, u64, u64, bool) {
+        use crate::gpu::ampere::methods as m;
+        use crate::gpu::ampere::pushbuf::{immd_header, inc_header};
+        use crate::mmu::Permission;
+
+        let mut mmu = Memory::new();
+        let (rt_cpu, pb_cpu) = (0x6000_0000u64, 0x6100_0000u64);
+        mmu.map_range(rt_cpu, 0x10000, Permission::READ_WRITE);
+        mmu.map_range(pb_cpu, 0x1000, Permission::READ_WRITE);
+        let mut nv = NvDrv::new();
+        let (map_fd, _) = nv.open("/dev/nvmap");
+        let (as_fd, _) = nv.open("/dev/nvhost-as-gpu");
+        let (ch_fd, _) = nv.open("/dev/nvhost-gpu");
+        let rt_va = map_object(&mut nv, map_fd, as_fd, rt_cpu, 0x10000);
+        let pb_va = map_object(&mut nv, map_fd, as_fd, pb_cpu, 0x1000);
+        let mut obj = [0u8; 16];
+        wr32(&mut obj, 0, class);
+        assert_eq!(nv.ioctl(ch_fd, 0xC010_4809, &mut obj), NV_OK);
+
+        // 64x64 A8B8G8R8 target, block linear with 8-GOB blocks (4 GOBs wide x 1 block high =
+        // 16 KiB), cleared to opaque green, then a one-word semaphore release into the same buffer
+        // past the surface.
+        let hi = |va: u64| (va >> 32) as u32;
+        let lo = |va: u64| va as u32;
+        let sem_va = rt_va + 0x8000;
+        let mut pb = vec![inc_header(0, m::SET_OBJECT, 1), class];
+        pb.extend([
+            inc_header(0, m::SET_COLOR_TARGET_A, 9),
+            hi(rt_va),
+            lo(rt_va),
+            64,
+            64,
+            0xd5,
+            3 << 4,
+            1,
+            0,
+            0,
+        ]);
+        pb.push(immd_header(0, m::SET_CT_SELECT, 1));
+        pb.push(inc_header(0, m::SET_COLOR_CLEAR_VALUE, 4));
+        pb.extend([0.0f32, 1.0, 0.0, 1.0].map(f32::to_bits));
+        pb.push(immd_header(0, m::CLEAR_SURFACE, 0x3c));
+        pb.extend([
+            inc_header(0, m::SET_REPORT_SEMAPHORE_A, 4),
+            hi(sem_va),
+            lo(sem_va),
+            0xfeed,
+            1 << 28,
+        ]);
+        let bytes: Vec<u8> = pb.iter().flat_map(|w| w.to_le_bytes()).collect();
+        mmu.write_bytes(pb_cpu, &bytes).unwrap();
+
+        let mut submit = vec![0u8; 0x20];
+        wr32(&mut submit, 8, 1);
+        wr64(&mut submit, 0x18, pb_va | (pb.len() as u64) << 42);
+        assert_eq!(nv.ioctl(ch_fd, 0xC020_4808, &mut submit), NV_OK);
+        let subs = nv.take_channel_submissions();
+        assert_eq!(subs, vec![(ch_fd, pb_cpu, pb.len())]);
+        let ran = nv.run_3d(&mut mmu, ch_fd, pb_cpu, pb.len());
+        (nv, mmu, rt_cpu, ch_fd as u64, ran)
+    }
+
+    #[test]
+    fn submitted_3d_work_renders_into_guest_memory() {
+        use crate::gpu::tiling::{Format, Layout, Surface, detile};
+        for class in [crate::gpu::ampere::AMPERE_B, crate::gpu::ampere::MAXWELL_B] {
+            let (nv, mmu, rt_cpu, ch_fd, ran) = submit_3d(class);
+            assert!(ran);
+            assert!(nv.gpu_diagnostics.is_empty(), "{:?}", nv.gpu_diagnostics);
+            assert_eq!(nv.engines[&(ch_fd as u32)].render_stats().clears, 1);
+            let mut raw = vec![0u8; 64 * 64 * 4];
+            mmu.read_bytes(rt_cpu, &mut raw).unwrap();
+            let surface = Surface::new_2d(
+                64,
+                64,
+                Format::R8G8B8A8Unorm,
+                Layout::BlockLinear {
+                    height_log2: 3,
+                    depth_log2: 0,
+                },
+            );
+            let linear = detile(&surface, &raw).unwrap();
+            assert!(linear.chunks(4).all(|p| p == [0, 255, 0, 255]));
+            assert_eq!(mmu.read_u32(rt_cpu + 0x8000).unwrap(), 0xfeed);
+        }
+    }
+
+    #[test]
+    fn channels_without_a_3d_class_keep_the_old_path() {
+        let (nv, mmu, rt_cpu, _, ran) = submit_3d(0xB1C0); // compute class only
+        assert!(!ran);
+        assert!(nv.engines.is_empty());
+        assert_eq!(mmu.read_u32(rt_cpu).unwrap(), 0);
+    }
+
+    #[test]
+    fn gpu_memory_spans_mappings_and_rejects_holes() {
+        use crate::mmu::Permission;
+        let mut mmu = Memory::new();
+        mmu.map_range(0x7000_0000, 0x2000, Permission::READ_WRITE);
+        let mut maps = BTreeMap::new();
+        maps.insert(
+            0x4_0000_0000,
+            GpuMapping {
+                size: 0x1000,
+                cpu_addr: 0x7000_1000,
+            },
+        );
+        maps.insert(
+            0x4_0000_1000,
+            GpuMapping {
+                size: 0x1000,
+                cpu_addr: 0x7000_0000,
+            },
+        );
+        maps.insert(
+            0x4_0000_2000,
+            GpuMapping {
+                size: 0x1000,
+                cpu_addr: 0,
+            },
+        );
+        let mut mem = GuestGpuMemory {
+            mmu: &mut mmu,
+            mappings: &maps,
+        };
+        mem.write(0x4_0000_0ffe, &[1, 2, 3, 4]);
+        let mut buf = [0u8; 4];
+        assert!(mem.read(0x4_0000_0ffe, &mut buf));
+        assert_eq!(buf, [1, 2, 3, 4]);
+        assert!(mem.read(0, &mut []));
+        assert!(!mem.read(0x4_0000_1ffe, &mut buf), "unbacked reservation");
+        assert!(!mem.read(0x3_ffff_fffe, &mut buf), "below every mapping");
+        // The first two bytes land at the end of the first mapping's backing, the rest at the start
+        // of the second's.
+        let mut two = [0u8; 2];
+        mmu.read_bytes(0x7000_1ffe, &mut two).unwrap();
+        assert_eq!(two, [1, 2]);
+        mmu.read_bytes(0x7000_0000, &mut two).unwrap();
+        assert_eq!(two, [3, 4]);
     }
 
     #[test]

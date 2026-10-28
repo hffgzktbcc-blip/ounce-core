@@ -320,8 +320,21 @@ fn libnx_gpu_fixture_submits_a_command_buffer() {
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, svcs, kernel) = boot_with_kernel_state(&nro, &[]);
     assert!(output.ends_with("ounce-gpu result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
-    // The fixture's one GPFIFO entry reached the GPU model: one header with two arguments.
-    assert_eq!(kernel.nvgpu.state.total_commands_processed, 1);
+    // libnx's channel allocates the 3D class, so the fixture's one GPFIFO entry reaches that
+    // channel's 3D engine (not the older synthetic-method model). Its header writes two words at
+    // dword 0x40 (NO_OPERATION, 0x100) on subchannel 0 with no SET_OBJECT, which the engine skips
+    // and lists.
+    use crate::gpu::ampere::Diagnostic;
+    assert_eq!(kernel.nvgpu.state.total_commands_processed, 0);
+    assert_eq!(kernel.ipc.nvdrv.engines.len(), 1);
+    assert_eq!(
+        kernel.ipc.nvdrv.gpu_diagnostics,
+        [0x100, 0x104].map(|method| Diagnostic::ForeignSubchannel {
+            subchannel: 0,
+            class: None,
+            method
+        })
+    );
     assert!(kernel.ipc.nvdrv.unhandled.is_empty(), "unhandled ioctls: {:x?}", kernel.ipc.nvdrv.unhandled);
 }
 
