@@ -10,8 +10,8 @@
 //! surface clip; depth bounds, stencil (two-sided) and depth tests ([`depth`]); face culling;
 //! blending; per-target color write masks. Shaders are the `gpu::sass` IR
 //! run on the CPU, through the Ampere front end for AMPERE_B and the Maxwell front end for
-//! MAXWELL_B (deko3d). Triangles are clipped in clip space first ([`clip`]). Not modelled: pixel
-//! Z clip/clamp (depth is clamped to [0, 1] on write), multisampling, layered targets.
+//! MAXWELL_B (deko3d). Triangles are clipped in clip space first ([`clip`]). Fragment depth then
+//! goes through the viewport's pixel Z clip/clamp ([`depth::pixel_z_range`]). Not modelled: multisampling, layered targets.
 
 use super::blend::Blend;
 use super::clip::{self, ClipVertex, ZClip};
@@ -914,6 +914,7 @@ impl Ampere3d {
             Err(reason) => return self.skip(reason),
         };
         let bounds_test = depth::depth_bounds(&self.regs);
+        let z_range = depth::pixel_z_range(&self.regs);
         let facing = Facing::from_regs(&self.regs);
         let mut zbuf = match rec.depth_target {
             Some(zt) if depth_test || depth_write || stencil.is_some() || bounds_test.is_some() => {
@@ -1004,7 +1005,9 @@ impl Ampere3d {
                             continue;
                         }
                         let l = e.map(|v| v / area);
-                        let z = l[0] * v0.z + l[1] * v1.z + l[2] * v2.z;
+                        let Some(z) = depth::pixel_z(l[0] * v0.z + l[1] * v1.z + l[2] * v2.z, z_range) else {
+                            continue;
+                        };
                         if let Some((zt, t)) = zbuf.as_mut() {
                             let texel = t.texel(px, py);
                             let stored_z = read_depth(zt.format, texel);
@@ -1024,7 +1027,8 @@ impl Ampere3d {
                                 (Some(s), Some(v)) => Some(s.update(v, stencil_pass, z_pass)).filter(|n| *n != v),
                                 _ => None,
                             };
-                            let new_z = (z_pass && depth_write).then(|| z.clamp(0.0, 1.0));
+                            // Unorm formats clamp to [0, 1] as they encode; float formats keep z.
+                            let new_z = (z_pass && depth_write).then_some(z);
                             if new_z.is_some() || new_s.is_some() {
                                 write_depth(zt.format, texel, new_z, new_s);
                             }

@@ -196,6 +196,37 @@ impl Facing {
     }
 }
 
+/// Pixel depth range of viewport 0 and whether each end clamps (`true`) or clips (`false`):
+/// `(lo, hi, clamp_lo, clamp_hi)` from `SET_VIEWPORT_CLIP_CONTROL`. The `MIN_Z_MAX_Z` range is
+/// `SET_VIEWPORT_CLIP_MIN_Z/MAX_Z(0)`, ordered so a reversed depth range still works.
+pub(crate) fn pixel_z_range(regs: &[u32]) -> (f32, f32, bool, bool) {
+    let r = |method: u32| regs[(method / 4) as usize];
+    let cc = r(m::SET_VIEWPORT_CLIP_CONTROL);
+    let viewport = || {
+        let (a, b) = (f32::from_bits(r(m::SET_VIEWPORT_CLIP_MIN_Z)), f32::from_bits(r(m::SET_VIEWPORT_CLIP_MAX_Z)));
+        (a.min(b), a.max(b))
+    };
+    let (lo, hi) = match (cc >> 16) & 3 {
+        0 if cc & 1 == 1 => (0.0, 1.0),
+        0 | 1 => viewport(),
+        2 => (0.0, 1.0),
+        _ => (f32::NEG_INFINITY, f32::INFINITY),
+    };
+    (lo, hi, (cc >> 3) & 1 == 1, (cc >> 4) & 1 == 1)
+}
+
+/// Applies the pixel depth range to `z`: `None` when a clipping end drops it.
+pub(crate) fn pixel_z(z: f32, range: (f32, f32, bool, bool)) -> Option<f32> {
+    let (lo, hi, clamp_lo, clamp_hi) = range;
+    if z < lo {
+        clamp_lo.then_some(lo)
+    } else if z > hi {
+        clamp_hi.then_some(hi)
+    } else {
+        Some(z)
+    }
+}
+
 /// Depth bounds `[min, max]`, `None` when the test is off.
 pub(crate) fn depth_bounds(regs: &[u32]) -> Option<(f32, f32)> {
     let r = |method: u32| regs[(method / 4) as usize];
@@ -251,6 +282,27 @@ mod tests {
         regs[(m::SET_STENCIL_TEST / 4) as usize] = 1;
         regs[(m::SET_STENCIL_OP_FAIL / 4) as usize] = 0x1234;
         assert_eq!(Stencil::from_regs(&regs), Err("stencil op"));
+    }
+
+    #[test]
+    fn pixel_z_range_follows_viewport_clip_control() {
+        let mut regs = vec![0u32; (m::METHOD_SPACE / 4) as usize];
+        regs[(m::SET_VIEWPORT_CLIP_MIN_Z / 4) as usize] = 0.75f32.to_bits();
+        regs[(m::SET_VIEWPORT_CLIP_MAX_Z / 4) as usize] = 0.25f32.to_bits();
+        // USE_FIELD with MIN_Z_ZERO_MAX_Z_ONE false: the viewport range, reordered; both ends clip.
+        let r = pixel_z_range(&regs);
+        assert_eq!(r, (0.25, 0.75, false, false));
+        assert_eq!(pixel_z(0.1, r), None);
+        assert_eq!(pixel_z(0.5, r), Some(0.5));
+        // MIN_Z_ZERO_MAX_Z_ONE, PIXEL_MAX_Z clamp.
+        regs[(m::SET_VIEWPORT_CLIP_CONTROL / 4) as usize] = 1 | (1 << 4);
+        let r = pixel_z_range(&regs);
+        assert_eq!(r, (0.0, 1.0, false, true));
+        assert_eq!(pixel_z(1.5, r), Some(1.0));
+        assert_eq!(pixel_z(-0.5, r), None);
+        // MINUS_INF_PLUS_INF keeps everything.
+        regs[(m::SET_VIEWPORT_CLIP_CONTROL / 4) as usize] = 3 << 16;
+        assert_eq!(pixel_z(-7.0, pixel_z_range(&regs)), Some(-7.0));
     }
 
     #[test]
