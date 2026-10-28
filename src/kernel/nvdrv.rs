@@ -5,7 +5,7 @@
 //! Ioctl numbers and argument layouts follow the public Linux Tegra `nvmap` UAPI that the Switch
 //! driver keeps (`_IOWR('\x01', nr, struct)`).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use crate::gpu::ampere::{self, Ampere3d, Diagnostic, GpuMemoryWriter};
 use crate::mmu::Memory;
@@ -68,7 +68,8 @@ pub struct NvDrv {
     next_id: u32,
     /// Ioctls answered with `NV_NOT_IMPLEMENTED`, for diagnostics.
     pub unhandled: Vec<(String, u32)>,
-    /// Syncpoint values. Work completes when it is submitted, so values only move forward on submit.
+    /// Syncpoint values. Channels with a 3D engine advance theirs as submitted work completes
+    /// (see [`NvDrv::poll_3d`]); other channels advance on submit.
     pub syncpts: Vec<u32>,
     /// GPU address space mappings: GPU VA -> mapping.
     pub gpu_mappings: std::collections::BTreeMap<u64, GpuMapping>,
@@ -148,6 +149,10 @@ pub struct GpuChannel {
     pub gpfifo_entries: u32,
     pub classes: Vec<u32>,
     pub submits: u64,
+    /// Last fence value handed out by `SUBMIT_GPFIFO` on a 3D channel.
+    pub issued: u32,
+    /// Outstanding 3D submits in order: (segments not yet run, fence value).
+    pub fences: VecDeque<(usize, u32)>,
 }
 
 /// Extra buffers of `Ioctl2` (extra input) and `Ioctl3` (extra output).
@@ -222,6 +227,9 @@ impl NvDrv {
             .chunks_exact(4)
             .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
             .collect();
+        if let Some(entry) = self.channels.get_mut(&fd).and_then(|c| c.fences.iter_mut().find(|f| f.0 > 0)) {
+            entry.0 -= 1;
+        }
         let engine = self.engines.entry(fd).or_default();
         let mut mem = GuestGpuMemory {
             mmu,
@@ -240,7 +248,49 @@ impl NvDrv {
         for d in engine.take_diagnostics() {
             Self::note(&mut self.gpu_diagnostics, d);
         }
+        self.signal_fences(fd);
         true
+    }
+
+    /// Advances channel `fd`'s syncpoint past every submit whose segments have all run, unless its
+    /// engine is blocked on a semaphore acquire (then nothing after the acquire has run).
+    fn signal_fences(&mut self, fd: u32) {
+        if self.engines.get(&fd).is_some_and(|e| e.blocked_on().is_some()) {
+            return;
+        }
+        let Some(ch) = self.channels.get_mut(&fd) else { return };
+        while let Some(&(0, value)) = ch.fences.front() {
+            ch.fences.pop_front();
+            if let Some(s) = self.syncpts.get_mut(ch.syncpt as usize) {
+                *s = value;
+            }
+        }
+    }
+
+    /// Re-checks every 3D engine blocked on a semaphore acquire (the guest CPU or another channel
+    /// may have released it) and signals the fences of work that could then run. Repeats while
+    /// anything unblocks, so a release on one channel can free another.
+    pub fn poll_3d(&mut self, mmu: &mut Memory) {
+        loop {
+            let mut progressed = false;
+            let mut fds: Vec<u32> = self.engines.iter().filter(|(_, e)| e.blocked_on().is_some()).map(|(&fd, _)| fd).collect();
+            fds.sort_unstable();
+            for fd in fds {
+                let engine = self.engines.get_mut(&fd).unwrap();
+                let mut mem = GuestGpuMemory { mmu, mappings: &self.gpu_mappings };
+                if engine.resume(&mut mem) {
+                    progressed = true;
+                }
+                engine.take_events();
+                for d in engine.take_diagnostics() {
+                    Self::note(&mut self.gpu_diagnostics, d);
+                }
+                self.signal_fences(fd);
+            }
+            if !progressed {
+                return;
+            }
+        }
     }
 
     fn note(list: &mut Vec<Diagnostic>, d: Diagnostic) {
@@ -573,12 +623,29 @@ impl NvDrv {
                         segments.push((fd, cpu, words));
                     }
                 }
+                let count = segments.len();
                 self.submissions.extend(segments);
+                let is_3d = self.has_3d_class(fd);
+                let current = self.syncpts[syncpt as usize];
                 let ch = self.channels.get_mut(&fd).unwrap();
                 ch.submits += 1;
-                // The work runs as it is submitted: advance the channel's syncpoint and report it as the fence.
-                let value = self.syncpts[syncpt as usize].wrapping_add(1);
-                self.syncpts[syncpt as usize] = value;
+                let value = if is_3d {
+                    // The fence is reached when the segments have run and no acquire blocks the
+                    // engine: `run_3d` and `poll_3d` advance the syncpoint.
+                    if ch.fences.is_empty() {
+                        ch.issued = current;
+                    }
+                    ch.issued = ch.issued.wrapping_add(1);
+                    ch.fences.push_back((count, ch.issued));
+                    let v = ch.issued;
+                    self.signal_fences(fd);
+                    v
+                } else {
+                    // The older synthetic path runs as it is submitted.
+                    let v = current.wrapping_add(1);
+                    self.syncpts[syncpt as usize] = v;
+                    v
+                };
                 wr32(data, 16, syncpt);
                 wr32(data, 20, value);
                 NV_OK
@@ -749,6 +816,72 @@ mod tests {
         wr32(&mut map, 8, handle);
         assert_eq!(nv.ioctl(as_fd, 0xC028_4106, &mut map), NV_OK);
         u64::from_le_bytes(map[32..40].try_into().unwrap())
+    }
+
+    #[test]
+    fn fence_waits_for_a_blocked_semaphore_acquire() {
+        use crate::gpu::ampere::methods as m;
+        use crate::gpu::ampere::pushbuf::inc_header;
+        use crate::mmu::Permission;
+
+        let mut mmu = Memory::new();
+        let (sem_cpu, pb_cpu) = (0x6000_0000u64, 0x6100_0000u64);
+        mmu.map_range(sem_cpu, 0x1000, Permission::READ_WRITE);
+        mmu.map_range(pb_cpu, 0x1000, Permission::READ_WRITE);
+        let mut nv = NvDrv::new();
+        let (map_fd, _) = nv.open("/dev/nvmap");
+        let (as_fd, _) = nv.open("/dev/nvhost-as-gpu");
+        let (ch_fd, _) = nv.open("/dev/nvhost-gpu");
+        let (ctrl_fd, _) = nv.open("/dev/nvhost-ctrl");
+        let sem_va = map_object(&mut nv, map_fd, as_fd, sem_cpu, 0x1000);
+        let pb_va = map_object(&mut nv, map_fd, as_fd, pb_cpu, 0x1000);
+        let mut obj = [0u8; 16];
+        wr32(&mut obj, 0, crate::gpu::ampere::AMPERE_B);
+        assert_eq!(nv.ioctl(ch_fd, 0xC010_4809, &mut obj), NV_OK);
+        let syncpt = nv.channels[&ch_fd].syncpt;
+
+        // Segment 1 (words 0..5): host acquire, payload 5, equal. Segment 2 (words 5..7): a reference write.
+        let pb = [
+            inc_header(0, m::HOST_SEMAPHOREA, 4),
+            (sem_va >> 32) as u32,
+            sem_va as u32,
+            5,
+            1,
+            inc_header(0, m::HOST_SET_REFERENCE, 1),
+            9,
+        ];
+        let bytes: Vec<u8> = pb.iter().flat_map(|w| w.to_le_bytes()).collect();
+        mmu.write_bytes(pb_cpu, &bytes).unwrap();
+        let submit_and_run = |nv: &mut NvDrv, mmu: &mut Memory, va: u64, words: u64| {
+            let mut submit = vec![0u8; 0x20];
+            wr32(&mut submit, 8, 1);
+            wr64(&mut submit, 0x18, va | words << 42);
+            assert_eq!(nv.ioctl(ch_fd, 0xC020_4808, &mut submit), NV_OK);
+            for (fd, addr, n) in nv.take_channel_submissions() {
+                assert!(nv.run_3d(mmu, fd, addr, n));
+            }
+            (rd32(&submit, 16), rd32(&submit, 20))
+        };
+        let wait = |nv: &mut NvDrv, value: u32| {
+            let mut w = [0u8; 16];
+            wr32(&mut w, 0, syncpt);
+            wr32(&mut w, 4, value);
+            nv.ioctl(ctrl_fd, 0xC010_0019, &mut w)
+        };
+
+        assert_eq!(submit_and_run(&mut nv, &mut mmu, pb_va, 5), (syncpt, 1));
+        assert_eq!(submit_and_run(&mut nv, &mut mmu, pb_va + 20, 2), (syncpt, 2));
+        // The acquire is not met: neither fence is reached, and polling changes nothing.
+        nv.poll_3d(&mut mmu);
+        assert_eq!(nv.syncpts[syncpt as usize], 0);
+        assert_eq!(wait(&mut nv, 1), NV_TIMEOUT);
+        // The guest CPU releases the semaphore: both submits complete in order.
+        mmu.write_u32(sem_cpu, 5).unwrap();
+        nv.poll_3d(&mut mmu);
+        assert_eq!(nv.syncpts[syncpt as usize], 2);
+        assert_eq!(wait(&mut nv, 2), NV_OK);
+        assert_eq!(nv.engines[&ch_fd].reference(), 9);
+        assert!(nv.channels[&ch_fd].fences.is_empty());
     }
 
     /// A libnx-shaped channel that allocated `class`: submitted segments reach the 3D engine,
