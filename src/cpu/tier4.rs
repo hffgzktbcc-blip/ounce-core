@@ -88,6 +88,8 @@ struct Lowerer {
     b: BlockBuilder,
     /// Mark `BR`/`BLR`/`RET` exits linkable.
     indirect_links: bool,
+    /// Set by a `BL`/`BLR` terminator (see [`LoweredBlock::return_site`]).
+    return_site: Option<u64>,
 }
 
 impl Lowerer {
@@ -506,6 +508,7 @@ impl Lowerer {
                 if link {
                     let ret = self.k(pc.wrapping_add(4));
                     self.set_x(30, ret);
+                    self.return_site = Some(pc.wrapping_add(4));
                 }
                 let e = self.exit(EXIT_BRANCH, (pc as i64).wrapping_add(offset) as u64, done);
                 return Ok(Some(Terminator::Exit(e)));
@@ -536,6 +539,7 @@ impl Lowerer {
                 if op == BranchRegOp::Blr {
                     let ret = self.k(pc.wrapping_add(4));
                     self.set_x(30, ret);
+                    self.return_site = Some(pc.wrapping_add(4));
                 }
                 let code = if op == BranchRegOp::Ret { EXIT_RETURN } else { EXIT_BRANCH };
                 // Looked up at run time in the link table (indirect-target cache). A miss returns
@@ -658,11 +662,11 @@ impl Lowerer {
             Instruction::FpCompare {
                 rn,
                 rm,
+                is_zero,
                 is_double,
-                ..
             } => {
                 let a = self.b.get(Reg::VLo(rn));
-                let b = self.b.get(Reg::VLo(rm));
+                let b = if is_zero { self.k(0) } else { self.b.get(Reg::VLo(rm)) };
                 let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
                 let flags = self.b.push(Op::FpCompare(w, a, b));
                 self.b.set(Reg::Nzcv, flags);
@@ -844,6 +848,8 @@ pub struct LoweredBlock {
     pub end: u64,
     /// Guest instructions in the block.
     pub insns: usize,
+    /// `pc + 4` of a `BL`/`BLR` that ends the block: where the callee's `RET` will most likely go.
+    pub return_site: Option<u64>,
 }
 
 /// Decodes from `pc` and lowers up to the first terminator, untranslated instruction or
@@ -854,7 +860,7 @@ pub fn lower_block(pc: u64, mmu: &Memory) -> Option<LoweredBlock> {
 
 /// [`lower_block`], choosing whether indirect branches and returns are linkable.
 fn lower_block_with(pc: u64, mmu: &Memory, indirect_links: bool) -> Option<LoweredBlock> {
-    let mut l = Lowerer { b: BlockBuilder::new(), indirect_links };
+    let mut l = Lowerer { b: BlockBuilder::new(), indirect_links, return_site: None };
     let mut cur = pc;
     let mut count = 0u32;
     let term = loop {
@@ -886,7 +892,7 @@ fn lower_block_with(pc: u64, mmu: &Memory, indirect_links: bool) -> Option<Lower
             }
         }
     };
-    Some(LoweredBlock { ir: l.b.finish(term), start: pc, end: cur, insns: count as usize })
+    Some(LoweredBlock { ir: l.b.finish(term), start: pc, end: cur, insns: count as usize, return_site: l.return_site })
 }
 
 /// Guest PCs are well-distributed 4-byte-aligned keys; a multiply hash beats SipHash on the
@@ -1064,7 +1070,11 @@ impl Tier4JitEngine {
             let mut insns = region[0].1.insns;
             let mut next = 0;
             while next < region.len() && region.len() < MAX_REGION_BLOCKS {
-                for target in region[next].1.ir.direct_targets() {
+                // Direct branches, plus the return site of a call so the callee's RET can come
+                // back inside the region.
+                let mut targets = region[next].1.ir.direct_targets();
+                targets.extend(region[next].1.return_site);
+                for target in targets {
                     if region.len() >= MAX_REGION_BLOCKS || region.iter().any(|(p, _)| *p == target) {
                         continue;
                     }
@@ -1184,6 +1194,17 @@ impl Tier4JitEngine {
     /// treat it as a yield either way.
     pub fn run_slice(&mut self, cpu: &mut Cpu, mmu: &mut Memory, max_instructions: usize) -> (usize, BlockExit) {
         let start = Instant::now();
+        // Native BR/BLR does not yet preserve the architectural BTYPE state. Route
+        // code in guarded pages through Tier-3 so it handles both setting BTYPE on
+        // the branch and checking the landing pad at the destination.
+        if (cpu.regs.pstate.btype != 0 || mmu.has_guarded_pages()) && max_instructions > 0 {
+            let (n, exit) = self.run_fallback(cpu, mmu);
+            let elapsed = start.elapsed().as_secs_f64();
+            if elapsed > 0.0 {
+                self.mips_rate = (n as f64 / elapsed) / 1_000_000.0;
+            }
+            return (n, exit.unwrap_or(BlockExit::BudgetExceeded));
+        }
         let mut executed = 0usize;
         let mut result = BlockExit::BudgetExceeded;
         while executed < max_instructions {
@@ -1290,6 +1311,47 @@ mod tests {
         let mut e = Tier4JitEngine::with_threshold(1);
         let o = run_engine(|c, m, n| e.run_slice(c, m, n), cpu, mmu, limit);
         (o, e)
+    }
+
+    #[test]
+    fn indirect_branch_checks_guarded_landing_pad_before_native_execution() {
+        let target = CODE + 0x1000;
+        let (mut cpu, mut mmu) = setup(&[0xD63F0000]); // blr x0
+        mmu.write_u32(target, 0xD503201F).unwrap(); // nop, not a landing pad
+        mmu.set_guarded(CODE, 0x1000, true);
+        mmu.set_guarded(target, 0x1000, true);
+        cpu.regs.write_x(0, target);
+
+        let (outcome, engine) = run_tier4(cpu, mmu, 8);
+        assert_eq!(outcome.exit, BlockExit::Fault { pc: target });
+        assert!(engine.fallback_insns > 0, "pending BTI check must use Tier-3");
+    }
+
+    #[test]
+    fn indirect_branch_from_unguarded_code_checks_guarded_target() {
+        let target = CODE + 0x1000;
+        let (mut cpu, mut mmu) = setup(&[0xD63F0000]); // blr x0
+        mmu.write_u32(target, 0xD503201F).unwrap(); // nop, not a landing pad
+        mmu.set_guarded(target, 0x1000, true);
+        cpu.regs.write_x(0, target);
+
+        let (outcome, engine) = run_tier4(cpu, mmu, 8);
+        assert_eq!(outcome.exit, BlockExit::Fault { pc: target });
+        assert!(engine.fallback_insns > 0, "guarded targets require Tier-3 branch handling");
+    }
+
+    #[test]
+    fn indirect_branch_accepts_guarded_bti_call_target() {
+        let target = CODE + 0x1000;
+        let (mut cpu, mut mmu) = setup(&[0xD63F0000, 0xD4000001]); // blr x0; svc #0
+        mmu.write_u32(target, 0xD503245F).unwrap(); // bti c
+        mmu.write_u32(target + 4, 0xD65F03C0).unwrap(); // ret
+        mmu.set_guarded(CODE, 0x1000, true);
+        mmu.set_guarded(target, 0x1000, true);
+        cpu.regs.write_x(0, target);
+
+        let (outcome, _) = run_tier4(cpu, mmu, 8);
+        assert_eq!(outcome.exit, BlockExit::Svc { svc_id: 0 });
     }
 
     fn run_tier3(cpu: Cpu, mmu: Memory, limit: usize) -> Outcome {
@@ -1727,7 +1789,11 @@ mod tests {
             let (c, m) = clone(&cpu, &mmu);
             assert_eq!(run_tier3(c, m, 1_000), reference, "Tier-3, case {cases}: {words:08X?}");
             let (t4, e) = run_tier4(cpu, mmu, 1_000);
-            assert_eq!(t4, reference, "case {cases}: {words:08X?}");
+            assert_eq!(t4, reference, "case {cases}: {words:08X?}; decoded: {:?}; x diff: {:?}; v diff: {:?}; pc/nzcv/exit: {:?} vs {:?}",
+                words.iter().map(|&w| decode(w)).collect::<Vec<_>>(),
+                t4.x.iter().zip(reference.x.iter()).enumerate().filter(|(_, (a, b))| a != b).collect::<Vec<_>>(),
+                t4.v.iter().zip(reference.v.iter()).enumerate().filter(|(_, (a, b))| a != b).collect::<Vec<_>>(),
+                (t4.pc, t4.nzcv, &t4.exit), (reference.pc, reference.nzcv, &reference.exit));
             native += e.native_insns;
             faults += matches!(reference.exit, BlockExit::Fault { .. }) as u32;
             for w in &words {
@@ -1866,12 +1932,14 @@ mod tests {
         let (c, m) = clone(&cpu, &mmu);
         let reference = run_interp(c, m, LIMIT);
         assert_eq!(reference.exit, BlockExit::Svc { svc_id: 7 });
-        let mut results = [Vec::new(), Vec::new()];
+        // (indirect links, regions): old main, #68, regions with return sites.
+        let mut results = [Vec::new(), Vec::new(), Vec::new()];
         for _ in 0..5 {
-            for (indirect, warm) in [false, true].into_iter().zip(results.iter_mut()) {
+            for ((indirect, regions), warm) in [(false, false), (true, false), (true, true)].into_iter().zip(results.iter_mut()) {
                 let (c, m) = clone(&cpu, &mmu);
                 let mut e = Tier4JitEngine::with_threshold(1);
                 e.indirect_links = indirect;
+                e.regions = regions;
                 let cold = run_engine(|c, m, n| e.run_slice(c, m, n), c, m, LIMIT);
                 assert_eq!(cold, reference, "cold differs (indirect links {indirect})");
                 // Warm: same engine and translations, fresh guest state (the guest stores nothing).
@@ -1893,11 +1961,12 @@ mod tests {
                 assert_eq!(e.fallback_insns, 0);
             }
         }
-        let [off, on] = results;
+        let [off, on, region] = results;
         eprintln!(
-            "[Call Benchmark] median of 5, warm: Tier-4 indirect links off: {:.2} MIPS | on: {:.2} MIPS",
+            "[Call Benchmark] median of 5, warm: Tier-4 indirect links off: {:.2} MIPS | on: {:.2} MIPS | on + regions: {:.2} MIPS",
             median(off),
-            median(on)
+            median(on),
+            median(region)
         );
     }
 
