@@ -28,6 +28,8 @@ pub mod sph;
 pub mod wgsl;
 
 #[cfg(test)]
+mod ctl_tests;
+#[cfg(test)]
 mod maxwell_tests;
 #[cfg(test)]
 mod tests;
