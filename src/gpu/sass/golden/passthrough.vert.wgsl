@@ -1,4 +1,4 @@
-// ounce-core Ampere SASS -> WGSL, step 1 (vertex).
+// ounce-core SASS -> WGSL, step 1 (vertex).
 // Community-sourced decoding, not a hardware-accurate translation.
 //   ALD.4 R0, a[0x80]
 //   ALD.4 R4, a[0x90]
