@@ -10,10 +10,11 @@
 //! surface clip; depth bounds, stencil (two-sided) and depth tests ([`depth`]); face culling;
 //! blending; per-target color write masks. Shaders are the `gpu::sass` IR
 //! run on the CPU, through the Ampere front end for AMPERE_B and the Maxwell front end for
-//! MAXWELL_B (deko3d). Not modelled: clipping against the near plane (triangles with a vertex at `w <= 0` are dropped
-//! and counted), multisampling, layered targets.
+//! MAXWELL_B (deko3d). Triangles are clipped in clip space first ([`clip`]). Not modelled: pixel
+//! Z clip/clamp (depth is clamped to [0, 1] on write), multisampling, layered targets.
 
 use super::blend::Blend;
+use super::clip::{self, ClipVertex, ZClip};
 use super::depth::{self, Facing, Stencil};
 use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, IndexBuffer, Topology};
 use super::methods as m;
@@ -32,9 +33,9 @@ pub struct RenderStats {
     pub clears: u32,
     pub draws: u32,
     pub triangles: u32,
-    /// Triangles dropped because a vertex had `w <= 0` (no near-plane clipping yet).
+    /// Triangles clipped away entirely (see [`clip`]).
     pub dropped_triangles: u32,
-    /// Triangles removed by face culling.
+    /// Triangles removed by face culling, counted after clipping.
     pub culled_triangles: u32,
     /// Fragments that passed the depth and stencil tests and were written.
     pub fragments: u64,
@@ -430,6 +431,18 @@ impl ShaderInputs for VertexIn<'_> {
     }
 }
 
+/// Perspective divide and viewport 0 transform of a clipped vertex.
+fn project(v: &ClipVertex, vp: &super::engine::Viewport) -> WinVertex {
+    let [x, y, z, w] = v.pos;
+    WinVertex {
+        x: vp.scale[0] * x / w + vp.offset[0],
+        y: vp.scale[1] * y / w + vp.offset[1],
+        z: vp.scale[2] * z / w + vp.offset[2],
+        inv_w: 1.0 / w,
+        varyings: v.varyings,
+    }
+}
+
 /// One shaded vertex in window space.
 #[derive(Debug, Clone, Copy)]
 struct WinVertex {
@@ -443,6 +456,8 @@ struct WinVertex {
 
 struct FragmentIn<'a> {
     v: [&'a WinVertex; 3],
+    /// Varyings of the unclipped triangle's provoking vertex, for flat inputs.
+    flat: &'a [[f32; 4]; 32],
     l: [f32; 3],
     px: u32,
     py: u32,
@@ -475,7 +490,7 @@ impl ShaderInputs for FragmentIn<'_> {
                 if freq == IpaFreq::Constant || mode == PixelImap::Constant {
                     // Provoking vertex: the first vertex of the triangle (SET_PROVOKING_VERTEX not
                     // modelled).
-                    return self.v[0].varyings[loc][comp];
+                    return self.flat[loc][comp];
                 }
                 match mode {
                     PixelImap::ScreenLinear => lerp(&|v| v.varyings[loc][comp]),
@@ -857,17 +872,7 @@ impl Ampere3d {
                     _ => {}
                 }
             }
-            let w = pos[3];
-            verts.push((
-                w,
-                WinVertex {
-                    x: vp.scale[0] * pos[0] / w + vp.offset[0],
-                    y: vp.scale[1] * pos[1] / w + vp.offset[1],
-                    z: vp.scale[2] * pos[2] / w + vp.offset[2],
-                    inv_w: 1.0 / w,
-                    varyings,
-                },
-            ));
+            verts.push(ClipVertex { pos, varyings });
         }
 
         // Targets.
@@ -946,92 +951,97 @@ impl Ampere3d {
                 .collect()
         };
 
+        let z_clip = ZClip::from_regs(&self.regs);
         for tri in tris {
-            let [a, b, c] = tri.map(|i| &verts[i]);
-            if a.0 <= 0.0 || b.0 <= 0.0 || c.0 <= 0.0 {
+            let a = &verts[tri[0]];
+            let poly = clip::clip_triangle(tri.map(|i| &verts[i]), z_clip);
+            if poly.len() < 3 {
                 self.stats.dropped_triangles += 1;
                 continue;
             }
-            let (v0, v1, v2) = (&a.1, &b.1, &c.1);
-            let p = [(v0.x, v0.y), (v1.x, v1.y), (v2.x, v2.y)];
-            let signed = edge(p[0], p[1], p[2]);
-            if signed == 0.0 || !signed.is_finite() {
-                continue;
-            }
-            // Facing from the window-space winding; edge values are flipped to be positive inside.
-            let front = facing.is_front(signed);
-            if facing.culled(front) {
-                self.stats.culled_triangles += 1;
-                continue;
-            }
-            let sign = signed.signum();
-            let area = signed.abs();
-            self.stats.triangles += 1;
-            let min_x = p.iter().map(|q| q.0).fold(f32::INFINITY, f32::min).floor().max(0.0) as u32;
-            let min_y = p.iter().map(|q| q.1).fold(f32::INFINITY, f32::min).floor().max(0.0) as u32;
-            let max_x = p.iter().map(|q| q.0).fold(f32::NEG_INFINITY, f32::max).ceil().max(0.0) as u32;
-            let max_y = p.iter().map(|q| q.1).fold(f32::NEG_INFINITY, f32::max).ceil().max(0.0) as u32;
-            let r = bounds.clip(min_x, min_y, max_x.saturating_add(1), max_y.saturating_add(1));
-            let edges = [(1, 2), (2, 0), (0, 1)];
-            let tl = edges.map(|(i, j)| if sign > 0.0 { top_left(p[i], p[j]) } else { top_left(p[j], p[i]) });
-            for py in r.y0..r.y1 {
-                for px in r.x0..r.x1 {
-                    let c = (px as f32 + 0.5, py as f32 + 0.5);
-                    let e = edges.map(|(i, j)| sign * edge(p[i], p[j], c));
-                    if !(0..3).all(|i| e[i] > 0.0 || (e[i] == 0.0 && tl[i])) {
-                        continue;
-                    }
-                    let l = e.map(|v| v / area);
-                    let z = l[0] * v0.z + l[1] * v1.z + l[2] * v2.z;
-                    if let Some((zt, t)) = zbuf.as_mut() {
-                        let texel = t.texel(px, py);
-                        let stored_z = read_depth(zt.format, texel);
-                        if let Some((min, max)) = bounds_test {
-                            if !(min..=max).contains(&stored_z) {
+            let win: Vec<WinVertex> = poly.iter().map(|v| project(v, &vp)).collect();
+            for k in 1..win.len() - 1 {
+                let (v0, v1, v2) = (&win[0], &win[k], &win[k + 1]);
+                let p = [(v0.x, v0.y), (v1.x, v1.y), (v2.x, v2.y)];
+                let signed = edge(p[0], p[1], p[2]);
+                if signed == 0.0 || !signed.is_finite() {
+                    continue;
+                }
+                // Facing from the window-space winding; edge values are flipped to be positive inside.
+                let front = facing.is_front(signed);
+                if facing.culled(front) {
+                    self.stats.culled_triangles += 1;
+                    continue;
+                }
+                let sign = signed.signum();
+                let area = signed.abs();
+                self.stats.triangles += 1;
+                let min_x = p.iter().map(|q| q.0).fold(f32::INFINITY, f32::min).floor().max(0.0) as u32;
+                let min_y = p.iter().map(|q| q.1).fold(f32::INFINITY, f32::min).floor().max(0.0) as u32;
+                let max_x = p.iter().map(|q| q.0).fold(f32::NEG_INFINITY, f32::max).ceil().max(0.0) as u32;
+                let max_y = p.iter().map(|q| q.1).fold(f32::NEG_INFINITY, f32::max).ceil().max(0.0) as u32;
+                let r = bounds.clip(min_x, min_y, max_x.saturating_add(1), max_y.saturating_add(1));
+                let edges = [(1, 2), (2, 0), (0, 1)];
+                let tl = edges.map(|(i, j)| if sign > 0.0 { top_left(p[i], p[j]) } else { top_left(p[j], p[i]) });
+                for py in r.y0..r.y1 {
+                    for px in r.x0..r.x1 {
+                        let c = (px as f32 + 0.5, py as f32 + 0.5);
+                        let e = edges.map(|(i, j)| sign * edge(p[i], p[j], c));
+                        if !(0..3).all(|i| e[i] > 0.0 || (e[i] == 0.0 && tl[i])) {
+                            continue;
+                        }
+                        let l = e.map(|v| v / area);
+                        let z = l[0] * v0.z + l[1] * v1.z + l[2] * v2.z;
+                        if let Some((zt, t)) = zbuf.as_mut() {
+                            let texel = t.texel(px, py);
+                            let stored_z = read_depth(zt.format, texel);
+                            if let Some((min, max)) = bounds_test {
+                                if !(min..=max).contains(&stored_z) {
+                                    continue;
+                                }
+                            }
+                            let s = stencil.as_ref().map(|s| s.face(front));
+                            let stored_s = read_stencil(zt.format, texel);
+                            let stencil_pass = match (s, stored_s) {
+                                (Some(s), Some(v)) => s.test(v),
+                                _ => true,
+                            };
+                            let z_pass = stencil_pass && (!depth_test || depth::compare(depth_func, z, stored_z));
+                            let new_s = match (s, stored_s) {
+                                (Some(s), Some(v)) => Some(s.update(v, stencil_pass, z_pass)).filter(|n| *n != v),
+                                _ => None,
+                            };
+                            let new_z = (z_pass && depth_write).then(|| z.clamp(0.0, 1.0));
+                            if new_z.is_some() || new_s.is_some() {
+                                write_depth(zt.format, texel, new_z, new_s);
+                            }
+                            if !z_pass {
                                 continue;
                             }
                         }
-                        let s = stencil.as_ref().map(|s| s.face(front));
-                        let stored_s = read_stencil(zt.format, texel);
-                        let stencil_pass = match (s, stored_s) {
-                            (Some(s), Some(v)) => s.test(v),
-                            _ => true,
-                        };
-                        let z_pass = stencil_pass && (!depth_test || depth::compare(depth_func, z, stored_z));
-                        let new_s = match (s, stored_s) {
-                            (Some(s), Some(v)) => Some(s.update(v, stencil_pass, z_pass)).filter(|n| *n != v),
-                            _ => None,
-                        };
-                        let new_z = (z_pass && depth_write).then(|| z.clamp(0.0, 1.0));
-                        if new_z.is_some() || new_s.is_some() {
-                            write_depth(zt.format, texel, new_z, new_s);
-                        }
-                        if !z_pass {
-                            continue;
-                        }
-                    }
-                    let input = FragmentIn { v: [v0, v1, v2], l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
-                    let values = shade::run(&ps.func, &input);
-                    for &(t, mask, first) in &outputs {
-                        let Some(Some((ct, st, blend))) = staged.get_mut(t) else { continue };
-                        let mut color = [0.0f32; 4];
-                        let mut reg = first;
-                        for (ch, slot) in color.iter_mut().enumerate() {
-                            if mask & (1 << ch) != 0 {
-                                *slot = shade::exit_reg(&ps.func, &values, reg);
-                                reg += 1;
+                        let input = FragmentIn { v: [v0, v1, v2], flat: &a.varyings, l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
+                        let values = shade::run(&ps.func, &input);
+                        for &(t, mask, first) in &outputs {
+                            let Some(Some((ct, st, blend))) = staged.get_mut(t) else { continue };
+                            let mut color = [0.0f32; 4];
+                            let mut reg = first;
+                            for (ch, slot) in color.iter_mut().enumerate() {
+                                if mask & (1 << ch) != 0 {
+                                    *slot = shade::exit_reg(&ps.func, &values, reg);
+                                    reg += 1;
+                                }
                             }
-                        }
-                        let wm = write_mask(&self.regs, ct.index);
-                        let texel = st.texel(px, py);
-                        if let Some(b) = blend {
-                            if let Some(dst) = read_color(ct.format, texel) {
-                                color = b.apply(color, dst, ct.format != ColorFormat::Rf32Gf32Bf32Af32);
+                            let wm = write_mask(&self.regs, ct.index);
+                            let texel = st.texel(px, py);
+                            if let Some(b) = blend {
+                                if let Some(dst) = read_color(ct.format, texel) {
+                                    color = b.apply(color, dst, ct.format != ColorFormat::Rf32Gf32Bf32Af32);
+                                }
                             }
+                            write_color(ct.format, texel, color, wm);
                         }
-                        write_color(ct.format, texel, color, wm);
+                        self.stats.fragments += 1;
                     }
-                    self.stats.fragments += 1;
                 }
             }
         }
