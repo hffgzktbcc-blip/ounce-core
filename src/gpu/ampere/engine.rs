@@ -426,6 +426,10 @@ impl Ampere3d {
         &self.diagnostics
     }
 
+    pub fn take_diagnostics(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
+
     /// Decodes and runs one pushbuffer segment. If a semaphore acquire is not met, the rest of the
     /// segment (and later segments) queue until [`Ampere3d::resume`] finds it met.
     pub fn submit(&mut self, words: &[u32], mem: &mut dyn GpuMemoryWriter) -> Result<(), PushbufError> {
