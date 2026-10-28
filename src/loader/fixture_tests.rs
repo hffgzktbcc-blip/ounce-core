@@ -227,8 +227,16 @@ fn boot_with_kernel_input(
     args: &[&str],
     input: crate::kernel::hid::NpadInput,
 ) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
+    boot_with_kernel_hid(nro, args, input, |_| {})
+}
+
+fn boot_with_kernel_hid(
+    nro: &[u8], args: &[&str], input: crate::kernel::hid::NpadInput,
+    configure: impl FnOnce(&mut crate::kernel::hid::HidSharedMemory),
+) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
     kernel.ipc.hid.input = input;
+    configure(&mut kernel.ipc.hid);
     let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).expect("NRO loads");
     assert_eq!(info.format, "NRO0");
     crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "fixture.nro", nro, args).unwrap();
@@ -427,4 +435,23 @@ fn deko3d_fixture_draws_triangle() {
     let nro = std::fs::read(path).unwrap();
     let (output, _, _) = boot_with_kernel_state(&nro, &[]);
     assert!(output.contains("ounce-deko3d result=0x00000EEE"), "{output:?}");
+}
+
+#[test]
+fn libnx_multi_input_fixture_reads_styles_and_touch() {
+    use crate::kernel::hid::{NpadInput, NpadStyle, TouchPoint};
+    let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/input_multi/input_multi.nro")).unwrap();
+    let (output, _, _) = boot_with_kernel_hid(&nro, &[], Default::default(), |hid| {
+        for (id, style, buttons, stick_l) in [
+            (0, NpadStyle::FullKey, 1, (123, -456)),
+            (1, NpadStyle::JoyDual, 2, (234, -567)),
+            (2, NpadStyle::JoyLeft, 1 << 12, (345, -678)),
+            (3, NpadStyle::JoyRight, 4, (456, -789)),
+        ] {
+            hid.feed.connect(id, style).unwrap();
+            hid.feed.set_npad(id, NpadInput { buttons, stick_l, ..Default::default() }).unwrap();
+        }
+        hid.feed.set_touches(&[TouchPoint { finger_id: 7, x: 321, y: 123, diameter_x: 10, diameter_y: 12, rotation_angle: 0 }]);
+    });
+    assert!(output.ends_with("ounce-input result=0x00000EEE\n"), "{output:?}");
 }
