@@ -110,12 +110,50 @@ impl Drop for ExecBuffer {
 
 // --- Translated guest blocks (step 2). ---
 
+/// Entries in the block link table (docs/design/m4-native-linking.md), direct-mapped by
+/// `(guest_pc >> 2) & LINK_MASK`.
+pub const LINK_SIZE: usize = 4096;
+pub const LINK_MASK: u64 = (LINK_SIZE as u64) - 1;
+
+/// One link-table entry: generated code at a linked exit to `guest_pc` tail-calls `host_entry`.
+/// `#[repr(C)]`: generated code reads it by fixed offset. An empty entry has `guest_pc == u64::MAX`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LinkEntry {
+    pub guest_pc: u64,
+    pub host_entry: u64,
+}
+
+impl Default for LinkEntry {
+    fn default() -> Self {
+        Self { guest_pc: u64::MAX, host_entry: 0 }
+    }
+}
+
 /// What generated block code gets as its second argument: the caller's memory bus, plus room for
 /// a panic raised inside it, which is carried across the generated frames and resumed afterwards.
+/// Generated code also reads `links` and `budget` and updates `chained_insns` and `links_taken`
+/// (by `offset_of!`) when it jumps from one block to the next.
 pub(crate) struct CallCtx<'a> {
     pub(crate) bus: &'a mut dyn MemoryBus,
     pub(crate) panic: Option<Box<dyn std::any::Any + Send>>,
     pub(crate) tlb: &'a mut [TlbEntry; TLB_SIZE],
+    /// Start of the `LINK_SIZE`-entry link table, borrowed for the run.
+    pub(crate) links: *const LinkEntry,
+    /// Guest instructions completed by blocks that jumped on to another block in this run.
+    pub(crate) chained_insns: u64,
+    /// A block links onward only while `chained_insns + its insns < budget`.
+    pub(crate) budget: u64,
+    /// Links taken in this run.
+    pub(crate) links_taken: u64,
+}
+
+/// What one run through the trampoline did.
+pub(crate) struct RunResult {
+    /// Packed exit word of the last block (`code | insns << 32`).
+    pub(crate) word: u64,
+    pub(crate) chained_insns: u64,
+    pub(crate) links_taken: u64,
 }
 
 /// Status codes the memory trampolines return to generated code.
@@ -240,26 +278,59 @@ pub(crate) struct BlockCode {
 impl BlockCode {
     /// Wraps code produced by the backend.
     ///
-    /// The code must be an `extern "C" fn(*mut GuestState, *mut CallCtx) -> u64` that only reads
-    /// and writes the `GuestState` fields, calls `mem_read`/`mem_write` with its context pointer,
-    /// and returns. `backend::compile` is the only caller and emits exactly that.
+    /// The code must be a Cranelift `tail`-convention `fn(*mut GuestState, *mut CallCtx) -> u64`
+    /// that only reads and writes the `GuestState` fields and the `CallCtx` link fields, calls
+    /// `mem_read`/`mem_write` with its context pointer, and either returns or tail-calls the
+    /// `host_entry` of a matching link-table entry with the same two arguments.
+    /// `backend::compile` is the only caller and emits exactly that.
     pub(crate) fn new(code: &[u8]) -> Result<Self, ExecError> {
         Ok(BlockCode { buffer: ExecBuffer::seal(code)? })
     }
 
-    /// Runs the block on `state` with `bus` and returns the packed exit word.
-    pub(crate) fn run(&self, state: &mut GuestState, bus: &mut dyn MemoryBus, tlb: &mut [TlbEntry; TLB_SIZE]) -> u64 {
-        let mut ctx = CallCtx { bus, panic: None, tlb };
-        // SAFETY: `BlockCode::new` documents the function this buffer holds. Both pointers come
-        // from live exclusive borrows that outlive the call; the trampolines never unwind.
-        let exit = unsafe {
-            let f: extern "C" fn(*mut GuestState, *mut CallCtx<'_>) -> u64 = std::mem::transmute(self.buffer.ptr);
-            f(state, &mut ctx)
+    /// Host address of the block's entry, for the link table.
+    pub(crate) fn entry(&self) -> u64 {
+        self.buffer.ptr as u64
+    }
+}
+
+/// The only way from Rust into block code: an `extern "C" fn(entry, state, ctx) -> u64` that
+/// calls `entry` with the `tail` convention. Only `backend::compile_trampoline` creates these.
+pub(crate) struct Trampoline {
+    buffer: ExecBuffer,
+}
+
+impl Trampoline {
+    pub(crate) fn new(code: &[u8]) -> Result<Self, ExecError> {
+        Ok(Trampoline { buffer: ExecBuffer::seal(code)? })
+    }
+
+    /// Runs `block` on `state` with `bus`. Linked blocks may run after it, while `budget` allows.
+    ///
+    /// Every non-empty entry of `links` must point at the entry of a live `BlockCode`; the owner
+    /// (`Recompiler`) clears an entry before freeing the code it points to.
+    pub(crate) fn run(
+        &self,
+        block: &BlockCode,
+        state: &mut GuestState,
+        bus: &mut dyn MemoryBus,
+        tlb: &mut [TlbEntry; TLB_SIZE],
+        links: &[LinkEntry; LINK_SIZE],
+        budget: u64,
+    ) -> RunResult {
+        let mut ctx = CallCtx { bus, panic: None, tlb, links: links.as_ptr(), chained_insns: 0, budget, links_taken: 0 };
+        // SAFETY: `Trampoline::new` and `BlockCode::new` document the functions these buffers
+        // hold. `block` is live for the call; every block reachable through `links` is live
+        // (caller contract above) and `links` is borrowed, so no entry changes during the run.
+        // Both pointers come from live exclusive borrows that outlive the call; the memory
+        // trampolines never unwind.
+        let word = unsafe {
+            let f: extern "C" fn(u64, *mut GuestState, *mut CallCtx<'_>) -> u64 = std::mem::transmute(self.buffer.ptr);
+            f(block.entry(), state, &mut ctx)
         };
         if let Some(payload) = ctx.panic {
             std::panic::resume_unwind(payload);
         }
-        exit
+        RunResult { word, chained_insns: ctx.chained_insns, links_taken: ctx.links_taken }
     }
 }
 

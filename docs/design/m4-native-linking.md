@@ -1,6 +1,6 @@
 # M4 step 6b: native block-to-block linking (design, Track A)
 
-Status: proposal, not implemented. Owner: Track A (`crates/ounce-recompiler/*`, `src/cpu/tier4.rs`).
+Status: spike implemented (2026-10-28), see "Spike result". Owner: Track A (`crates/ounce-recompiler/*`, `src/cpu/tier4.rs`).
 
 ## Problem
 
@@ -46,3 +46,14 @@ the entry first.
 - Differential fuzzer (10,000 cases) and all existing Tier-4 tests pass with linking on.
 - `stage20_benchmark_scaling` reports median of 5, asserts `fallback_insns == 0` and interpreter equality.
 - Steady-state MIPS reported before/after on the same host. No target is promised until measured.
+
+## Spike result (2026-10-28)
+
+- Cranelift 0.137 accepts `tail`-convention blocks that call the `extern "C"` memory trampolines and
+  end in `return_call_indirect`, with one extra flag: `preserve_frame_pointers=true` (the x86_64
+  emitter panics without it). No in-block-loop fallback needed.
+- Implemented as described above; the only addition is `ExitTo::link`, so the caller (`tier4.rs`)
+  decides which exits are direct branches. Linked exits also refuse to link when a store in the block
+  hit code.
+- x86_64 container, `stage20_benchmark_scaling` 15M hot loop warm: about 296 MIPS before, about
+  780-840 MIPS after (median of 5). Details and caveats in AGENTS.md.

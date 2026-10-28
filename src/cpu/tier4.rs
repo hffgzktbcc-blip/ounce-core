@@ -177,7 +177,9 @@ impl Lowerer {
 
     fn exit(&mut self, code: u32, pc: u64, insns: u32) -> ExitTo {
         let pc = self.k(pc);
-        ExitTo { code, pc, insns }
+        // Direct branches and fall-throughs may jump straight to the next translated block.
+        let link = matches!(code, EXIT_BRANCH | EXIT_COND_TAKEN | EXIT_FALLTHROUGH);
+        ExitTo { code, pc, insns, link }
     }
 
     fn load(&mut self, size: u8, addr: Value, site: FaultSite) -> Value {
@@ -531,7 +533,7 @@ impl Lowerer {
                     self.set_x(30, ret);
                 }
                 let code = if op == BranchRegOp::Ret { EXIT_RETURN } else { EXIT_BRANCH };
-                return Ok(Some(Terminator::Exit(ExitTo { code, pc: target, insns: done })));
+                return Ok(Some(Terminator::Exit(ExitTo { code, pc: target, insns: done, link: false })));
             }
 
             Instruction::FpMovGen { rd, rn, to_fp, is_64 } => {
@@ -923,6 +925,9 @@ pub struct Tier4JitEngine {
     pub mips_rate: f64,
     /// Why native code is off, if it is (no recompiler for this host).
     pub unavailable: Option<String>,
+    /// Translated blocks jump straight to each other on direct branches
+    /// (docs/design/m4-native-linking.md). On by default; off runs every block from Rust.
+    pub linking: bool,
     fast_cache: Box<[(u64, BlockId); 1024]>,
 }
 
@@ -963,6 +968,7 @@ impl Tier4JitEngine {
             compile_failures: 0,
             mips_rate: 0.0,
             unavailable,
+            linking: true,
             fast_cache: Box::new([(u64::MAX, BlockId::default()); 1024]),
         }
     }
@@ -1027,6 +1033,12 @@ impl Tier4JitEngine {
         match rec.compile(&lowered.ir) {
             Ok(id) => {
                 mmu.mark_code_range(lowered.start, lowered.end);
+                // The TLB may hold a writable entry for this page from before it held code; a
+                // store through it would skip the code-write check.
+                rec.flush_tlb();
+                if self.linking {
+                    rec.link(id, pc);
+                }
                 self.blocks.insert(pc, Translation { id, start: lowered.start, end: lowered.end });
                 self.blocks_compiled += 1;
                 self.translated_insns += lowered.insns as u64;
@@ -1050,8 +1062,17 @@ impl Tier4JitEngine {
         let mut state = GuestState { x: r.x, sp: r.sp, pc: r.pc, nzcv: r.pstate.to_bits() as u64, v: r.v };
         let mut executed = 0usize;
         let outcome = loop {
-            let exit = self.rec.as_mut()?.run(id, &mut state, &mut MmuBus { mmu });
-            self.native_block_runs += 1;
+            let rec = self.rec.as_mut()?;
+            let links_before = rec.links_taken();
+            let exit = if self.linking {
+                let left = u32::try_from(budget - executed).unwrap_or(u32::MAX);
+                rec.run_linked(id, &mut state, &mut MmuBus { mmu }, left)
+            } else {
+                rec.run(id, &mut state, &mut MmuBus { mmu })
+            };
+            let links = rec.links_taken() - links_before;
+            self.chained_jumps += links;
+            self.native_block_runs += 1 + links;
             self.native_insns += exit.insns as u64;
             executed += exit.insns as usize;
             let pc = state.pc;
@@ -1294,8 +1315,17 @@ mod tests {
         ], |_| {});
     }
 
+    /// Steady-state throughput (docs/design/m4-native-linking.md, "Acceptance"): median of 5 runs
+    /// per scale, with block linking off and on, each checked against the interpreter.
     #[test]
     fn stage20_benchmark_scaling() {
+        fn median(mut v: Vec<f64>) -> f64 {
+            v.sort_by(f64::total_cmp);
+            v[v.len() / 2]
+        }
+        fn mips(n: usize, secs: f64) -> f64 {
+            n as f64 / secs / 1_000_000.0
+        }
         for &(outer, inner, label) in &[
             (100u32, 50u32, "15k (Stage 20 baseline)"),
             (2_000u32, 50u32, "308k (scaled baseline)"),
@@ -1315,34 +1345,52 @@ mod tests {
                 0xD2815540, // movz x0, #0xAAA
                 0xD40000E1, // svc  #7
             ];
-            let (mut cpu, mut mmu) = setup(&words);
-            let mut e3 = Tier3JitEngine::new();
-            let start3 = std::time::Instant::now();
-            let (n3, exit3) = e3.run_slice(&mut cpu, &mut mmu, 100_000_000);
-            let dur3 = start3.elapsed().as_secs_f64();
-            let mips3 = (n3 as f64 / dur3) / 1_000_000.0;
-            assert_eq!(exit3, BlockExit::Svc { svc_id: 7 });
+            const LIMIT: usize = 100_000_000;
+            let (cpu, mmu) = setup(&words);
+            let (c, m) = clone(&cpu, &mmu);
+            let reference = run_interp(c, m, LIMIT);
+            assert_eq!(reference.exit, BlockExit::Svc { svc_id: 7 });
 
-            let (mut cpu4, mut mmu4) = setup(&words);
-            let mut e4 = Tier4JitEngine::with_threshold(1);
-            let start4 = std::time::Instant::now();
-            let (n4, exit4) = e4.run_slice(&mut cpu4, &mut mmu4, 100_000_000);
-            let dur4 = start4.elapsed().as_secs_f64();
-            let mips4 = (n4 as f64 / dur4) / 1_000_000.0;
-            assert_eq!(exit4, BlockExit::Svc { svc_id: 7 });
+            let mut t3 = Vec::new();
+            let mut results = [(Vec::new(), Vec::new()), (Vec::new(), Vec::new())]; // (cold, warm)
+            for _ in 0..5 {
+                let (mut c, mut m) = clone(&cpu, &mmu);
+                let t = std::time::Instant::now();
+                let (n, exit) = Tier3JitEngine::new().run_slice(&mut c, &mut m, LIMIT);
+                t3.push(mips(n, t.elapsed().as_secs_f64()));
+                assert_eq!(outcome(&c, &m, exit), reference, "Tier-3 differs");
 
-            // Warm run (already compiled blocks in e4)
-            cpu4.regs.pc = CODE;
-            cpu4.regs.write_x(0, 0);
-            let start4_warm = std::time::Instant::now();
-            let (n4_warm, exit4_warm) = e4.run_slice(&mut cpu4, &mut mmu4, 100_000_000);
-            let dur4_warm = start4_warm.elapsed().as_secs_f64();
-            let mips4_warm = (n4_warm as f64 / dur4_warm) / 1_000_000.0;
-            assert_eq!(exit4_warm, BlockExit::Svc { svc_id: 7 });
+                for (linking, (cold, warm)) in [false, true].into_iter().zip(results.iter_mut()) {
+                    let (mut c, mut m) = clone(&cpu, &mmu);
+                    let mut e = Tier4JitEngine::with_threshold(1);
+                    e.linking = linking;
+                    let t = std::time::Instant::now();
+                    let (n, exit) = e.run_slice(&mut c, &mut m, LIMIT);
+                    cold.push(mips(n, t.elapsed().as_secs_f64()));
+                    assert_eq!(outcome(&c, &m, exit), reference, "Tier-4 cold differs (linking {linking})");
 
+                    // Warm: same engine and memory (the guest stores nothing), fresh registers.
+                    let mut c = Cpu::new();
+                    c.regs = cpu.regs.clone();
+                    let t = std::time::Instant::now();
+                    let (n, exit) = e.run_slice(&mut c, &mut m, LIMIT);
+                    warm.push(mips(n, t.elapsed().as_secs_f64()));
+                    assert_eq!(outcome(&c, &m, exit), reference, "Tier-4 warm differs (linking {linking})");
+                    assert_eq!(e.fallback_insns, 0, "Tier-4 fell back (linking {linking})");
+                    if linking {
+                        assert!(e.chained_jumps > 0 && e.native_block_runs > 0);
+                    }
+                }
+            }
+            let [(cold_off, warm_off), (cold_on, warm_on)] = results;
             eprintln!(
-                "[Benchmark Scale {}] Tier-3: {:.2} MIPS | Tier-4 Cold: {:.2} MIPS | Tier-4 Warm: {:.2} MIPS ({} insns in {:.4}s)",
-                label, mips3, mips4, mips4_warm, n4_warm, dur4_warm
+                "[Benchmark Scale {}] median of 5: Tier-3: {:.2} MIPS | Tier-4 unlinked cold/warm: {:.2}/{:.2} MIPS | Tier-4 linked cold/warm: {:.2}/{:.2} MIPS",
+                label,
+                median(t3),
+                median(cold_off),
+                median(warm_off),
+                median(cold_on),
+                median(warm_on)
             );
         }
     }
@@ -1434,6 +1482,30 @@ mod tests {
         assert_eq!(e.run_slice(&mut cpu, &mut mmu, 100).1, BlockExit::Svc { svc_id: 0 });
         assert_eq!(cpu.regs.read_x(0), 2, "ran stale translation");
         assert!(e.blocks_invalidated >= 1);
+    }
+
+    /// Linked blocks must see a store into code they link to (design m4-native-linking.md, risk 2).
+    #[test]
+    fn store_into_linked_code_is_seen() {
+        #[rustfmt::skip]
+        let words = [
+            0x91000400, // 00: add  x0, x0, #1     ; patched to add x0, x0, #100
+            0x14000001, // 04: b    0x08           ; linked 00 -> 08
+            0xF1000463, // 08: subs x3, x3, #1
+            0x54FFFFA1, // 0C: b.ne 0x00           ; linked 08 -> 00
+            0xB9000041, // 10: str  w1, [x2]
+            0xD2800063, // 14: movz x3, #3
+            0xF1000484, // 18: subs x4, x4, #1
+            0x54FFFF21, // 1C: b.ne 0x00
+            0xD40000E1, // 20: svc  #7
+        ];
+        let e = check_all_tiers(&words, |cpu| {
+            cpu.regs.write_x(1, 0x9101_9000); // add x0, x0, #100
+            cpu.regs.write_x(2, CODE);
+            cpu.regs.write_x(3, 3);
+            cpu.regs.write_x(4, 2);
+        });
+        assert!(e.chained_jumps > 0 && e.blocks_invalidated >= 1);
     }
 
     #[test]
@@ -1599,5 +1671,65 @@ mod tests {
         }
         eprintln!("random: {native} native insns, {faults}/10000 faulted, {} instruction kinds", kinds.len());
         assert!(native > 25_000 && faults < 7_500 && kinds.len() >= 14);
+    }
+
+    /// The differential fuzzer with block linking exercised: two random straight-line bodies
+    /// joined by `b +4` inside a 3-round loop on X28, so later rounds run linked blocks.
+    #[test]
+    fn random_linked_loops_match_interpreter_and_tier3() {
+        let mut rng = Rng(0x00C0_FFEE_0000_0042);
+        let classes: [(u32, u32); 5] = [
+            (0x1000_0000, 0x1C00_0000),
+            (0x0A00_0000, 0x0E00_0000),
+            (0x0800_0000, 0x0A00_0000),
+            (0x1A00_0000, 0x1E00_0000),
+            (0x1E00_0000, 0x1E00_0000),
+        ];
+        // Keep X28 (the loop counter) out of every register field.
+        let uses_x28 = |raw: u32| [0, 5, 10, 16].iter().any(|&sh| (raw >> sh) & 0x1F == 28);
+        let body = |rng: &mut Rng| {
+            let len = 1 + (rng.next() % 8) as usize;
+            let mut words = Vec::with_capacity(len);
+            while words.len() < len {
+                let (val, mask) = classes[(rng.next() as usize) % classes.len()];
+                let raw = ((rng.next() as u32) & !mask) | val;
+                if !uses_x28(raw) && translatable_straight_line(decode(raw)) {
+                    words.push(raw);
+                }
+            }
+            words
+        };
+        let (mut linked, mut faults) = (0u64, 0u32);
+        for case in 0..3_000 {
+            let mut words = body(&mut rng);
+            words.push(0x1400_0001); // b +4
+            words.extend(body(&mut rng));
+            words.push(0xF100_079C); // subs x28, x28, #1
+            let back = -(words.len() as i32) as u32 & 0x7FFFF;
+            words.push(0x5400_0001 | back << 5); // b.ne start
+            words.push(0xD400_0001); // svc #0
+            let (mut cpu, mmu) = setup(&words);
+            for r in 0..31u8 {
+                let v = match rng.next() % 5 {
+                    0 => rng.next(),
+                    1 => rng.next() % 64,
+                    2 => DATA + 0xFF8 + (rng.next() % 16),
+                    _ => DATA + (rng.next() % 0x800) & !7,
+                };
+                cpu.regs.write_x(r, v);
+            }
+            cpu.regs.write_x(28, 3);
+            cpu.regs.pstate.from_bits((rng.next() as u32) & 0xF000_0000);
+            let (c, m) = clone(&cpu, &mmu);
+            let reference = run_interp(c, m, 1_000);
+            let (c, m) = clone(&cpu, &mmu);
+            assert_eq!(run_tier3(c, m, 1_000), reference, "Tier-3, case {case}: {words:08X?}");
+            let (t4, e) = run_tier4(cpu, mmu, 1_000);
+            assert_eq!(t4, reference, "case {case}: {words:08X?}");
+            linked += e.chained_jumps;
+            faults += matches!(reference.exit, BlockExit::Fault { .. }) as u32;
+        }
+        eprintln!("random linked loops: {linked} links taken, {faults}/3000 faulted");
+        assert!(linked > 3_000, "linking was not exercised ({linked} links)");
     }
 }

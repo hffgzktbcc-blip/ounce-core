@@ -13,7 +13,7 @@ mod backend;
 mod exec;
 pub mod ir;
 
-pub use exec::{ExecError, TlbEntry, TLB_MASK, TLB_SIZE};
+pub use exec::{ExecError, LinkEntry, TlbEntry, LINK_MASK, LINK_SIZE, TLB_MASK, TLB_SIZE};
 use exec::run_return_constant;
 
 /// Direct host memory mapping info for a 4096-byte guest page (VA >> 12).
@@ -118,8 +118,15 @@ pub struct Recompiler {
     ctx: cranelift_codegen::Context,
     fctx: cranelift_frontend::FunctionBuilderContext,
     blocks: Vec<Option<exec::BlockCode>>,
+    /// Guest pc each block is linked under, if any (parallel to `blocks`).
+    linked_pc: Vec<Option<u64>>,
     free: Vec<u32>,
     tlb: Box<[exec::TlbEntry; exec::TLB_SIZE]>,
+    trampoline: exec::Trampoline,
+    /// Block link table (docs/design/m4-native-linking.md). Invariant: every non-empty entry
+    /// points at a live block in `blocks`; `remove` clears an entry before freeing its code.
+    links: Box<[LinkEntry; LINK_SIZE]>,
+    links_taken: u64,
 }
 
 impl Recompiler {
@@ -127,13 +134,21 @@ impl Recompiler {
         if host_arch().is_none() {
             return Err(CompileError::UnsupportedHost);
         }
+        let isa = backend::host_isa()?;
+        let mut ctx = cranelift_codegen::Context::new();
+        let mut fctx = cranelift_frontend::FunctionBuilderContext::new();
+        let trampoline = backend::compile_trampoline(&*isa, &mut ctx, &mut fctx)?;
         Ok(Self {
-            isa: backend::host_isa()?,
-            ctx: cranelift_codegen::Context::new(),
-            fctx: cranelift_frontend::FunctionBuilderContext::new(),
+            isa,
+            ctx,
+            fctx,
             blocks: Vec::new(),
+            linked_pc: Vec::new(),
             free: Vec::new(),
             tlb: Box::new([exec::TlbEntry::default(); exec::TLB_SIZE]),
+            trampoline,
+            links: Box::new([LinkEntry::default(); LINK_SIZE]),
+            links_taken: 0,
         })
     }
 
@@ -147,21 +162,64 @@ impl Recompiler {
         Ok(match self.free.pop() {
             Some(i) => {
                 self.blocks[i as usize] = Some(code);
+                self.linked_pc[i as usize] = None;
                 BlockId(i)
             }
             None => {
                 self.blocks.push(Some(code));
+                self.linked_pc.push(None);
                 BlockId((self.blocks.len() - 1) as u32)
             }
         })
     }
 
-    /// Runs a compiled block. Panics if `id` was removed. A panic inside `bus` propagates after
-    /// the block has returned.
+    /// Registers `id` as the block for `guest_pc`: linked exits to `guest_pc` jump straight to it.
+    /// The table is direct-mapped, so this replaces whatever block shared the slot. Panics if
+    /// `id` was removed.
+    pub fn link(&mut self, id: BlockId, guest_pc: u64) {
+        let entry = self.blocks[id.0 as usize].as_ref().expect("block was removed").entry();
+        if let Some(old) = self.linked_pc[id.0 as usize].take() {
+            self.unlink(old, entry);
+        }
+        self.links[((guest_pc >> 2) & LINK_MASK) as usize] = LinkEntry { guest_pc, host_entry: entry };
+        self.linked_pc[id.0 as usize] = Some(guest_pc);
+    }
+
+    /// Clears the table slot for `guest_pc` if it still points at `entry`.
+    fn unlink(&mut self, guest_pc: u64, entry: u64) {
+        let slot = &mut self.links[((guest_pc >> 2) & LINK_MASK) as usize];
+        if slot.guest_pc == guest_pc && slot.host_entry == entry {
+            *slot = LinkEntry::default();
+        }
+    }
+
+    /// Empties the link table. Blocks run one at a time again until re-linked.
+    pub fn flush_links(&mut self) {
+        self.links.fill(LinkEntry::default());
+        self.linked_pc.fill(None);
+    }
+
+    /// Links taken by generated code so far (blocks that ran without returning to Rust first).
+    pub fn links_taken(&self) -> u64 {
+        self.links_taken
+    }
+
+    /// Runs a compiled block, never following links. Panics if `id` was removed. A panic inside
+    /// `bus` propagates after the block has returned.
     pub fn run(&mut self, id: BlockId, state: &mut GuestState, bus: &mut dyn MemoryBus) -> Exit {
+        self.run_linked(id, state, bus, 0)
+    }
+
+    /// Runs a compiled block and then any linked blocks after it, while the guest instructions
+    /// completed stay below `budget` (the block that crosses it still finishes). `Exit::insns`
+    /// counts every block that ran; the exit is the last block's.
+    pub fn run_linked(&mut self, id: BlockId, state: &mut GuestState, bus: &mut dyn MemoryBus, budget: u32) -> Exit {
         let code = self.blocks[id.0 as usize].as_ref().expect("block was removed");
-        let word = code.run(state, bus, &mut self.tlb);
-        let insns = (word >> 32) as u32;
+        let r = self.trampoline.run(code, state, bus, &mut self.tlb, &self.links, budget as u64);
+        self.links_taken += r.links_taken;
+        let word = r.word;
+        // `chained_insns < budget <= u32::MAX`.
+        let insns = ((word >> 32) as u32).saturating_add(r.chained_insns as u32);
         let kind = match word as u32 {
             EXIT_FAULT => ExitKind::Fault,
             EXIT_CODE_WRITTEN => ExitKind::CodeWritten,
@@ -170,13 +228,17 @@ impl Recompiler {
         Exit { kind, insns }
     }
 
-    /// Frees a block's code (after guest code it came from changed).
+    /// Frees a block's code (after guest code it came from changed), clearing its link first.
     pub fn remove(&mut self, id: BlockId) {
-        if let Some(slot) = self.blocks.get_mut(id.0 as usize)
-            && slot.take().is_some()
-        {
-            self.free.push(id.0);
+        let i = id.0 as usize;
+        let Some(entry) = self.blocks.get(i).and_then(|b| b.as_ref()).map(|b| b.entry()) else {
+            return;
+        };
+        if let Some(pc) = self.linked_pc[i].take() {
+            self.unlink(pc, entry);
         }
+        self.blocks[i] = None;
+        self.free.push(id.0);
     }
 
     /// Number of live compiled blocks.
@@ -295,7 +357,7 @@ mod tests {
 
     fn exit_to(b: &mut BlockBuilder, code: u32, pc: u64, insns: u32) -> ExitTo {
         let pc = b.konst(pc);
-        ExitTo { code, pc, insns }
+        ExitTo { code, pc, insns, link: false }
     }
 
     fn run(block: ir::Block, state: &mut GuestState, bus: &mut TestBus) -> Exit {
@@ -405,7 +467,7 @@ mod tests {
     fn invalid_ir_is_rejected() {
         let mut b = BlockBuilder::new();
         let v = b.konst(1);
-        let e = ExitTo { code: ir::RESERVED_CODES, pc: v, insns: 0 };
+        let e = ExitTo { code: ir::RESERVED_CODES, pc: v, insns: 0, link: false };
         let mut rec = Recompiler::new().unwrap();
         assert!(matches!(rec.compile(&b.finish(Terminator::Exit(e))), Err(CompileError::InvalidIr(_))));
     }
@@ -422,6 +484,84 @@ mod tests {
         rec.remove(a);
         assert!(rec.is_empty());
         assert_eq!(rec.compile(&mk()).unwrap(), a);
+    }
+
+    /// `x0 += 1`, then a linked exit to `next` (code 7). One guest instruction.
+    fn counting_block(next: u64) -> ir::Block {
+        let mut b = BlockBuilder::new();
+        let x0 = b.get(Reg::X(0));
+        let x0 = b.bin_imm(BinOp::Add, Width::W64, x0, 1);
+        b.set(Reg::X(0), x0);
+        let pc = b.konst(next);
+        b.finish(Terminator::Exit(ExitTo { code: 7, pc, insns: 1, link: true }))
+    }
+
+    #[test]
+    fn linked_blocks_run_until_budget() {
+        let mut rec = Recompiler::new().unwrap();
+        let a = rec.compile(&counting_block(0x200)).unwrap();
+        let b = rec.compile(&counting_block(0x200)).unwrap(); // loops on itself
+        rec.link(a, 0x100);
+        rec.link(b, 0x200);
+        let mut st = GuestState::default();
+        let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
+        // Links are taken while `chained + 1 < 1000`, so 999 blocks link onward and the 1000th returns.
+        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 1_000 });
+        assert_eq!((st.x[0], st.pc), (1_000, 0x200));
+        assert_eq!(rec.links_taken(), 999);
+
+        // Budget 0 (`run`) never links.
+        let exit = rec.run(a, &mut st, &mut TestBus::default());
+        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 1 });
+        assert_eq!(rec.links_taken(), 999);
+    }
+
+    #[test]
+    fn removed_block_is_unlinked() {
+        let mut rec = Recompiler::new().unwrap();
+        let a = rec.compile(&counting_block(0x200)).unwrap();
+        let b = rec.compile(&counting_block(0x300)).unwrap();
+        rec.link(b, 0x200);
+        rec.remove(b);
+        let mut st = GuestState::default();
+        let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
+        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 1 });
+        assert_eq!((st.x[0], st.pc, rec.links_taken()), (1, 0x200, 0));
+
+        // A new block in the reused slot is not reachable until linked again.
+        let c = rec.compile(&counting_block(0x300)).unwrap();
+        assert_eq!(c, b);
+        assert_eq!(rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000).insns, 1);
+        rec.link(c, 0x200);
+        assert_eq!(rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000).insns, 2);
+        rec.flush_links();
+        assert_eq!(rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000).insns, 1);
+    }
+
+    #[test]
+    fn linked_exit_needs_constant_pc() {
+        let mut b = BlockBuilder::new();
+        let pc = b.get(Reg::X(0));
+        let block = b.finish(Terminator::Exit(ExitTo { code: 0, pc, insns: 0, link: true }));
+        let mut rec = Recompiler::new().unwrap();
+        assert!(matches!(rec.compile(&block), Err(CompileError::InvalidIr(_))));
+    }
+
+    #[test]
+    fn fault_after_link_counts_all_blocks() {
+        let mut rec = Recompiler::new().unwrap();
+        let a = rec.compile(&counting_block(0x200)).unwrap();
+        let mut b = BlockBuilder::new();
+        let bad = b.konst(0x0FFF);
+        let v = b.push(Op::Load(8, bad, FaultSite { pc: 0x200, insns: 0 }));
+        b.set(Reg::X(1), v);
+        let pc = b.konst(0x204);
+        let faulting = rec.compile(&b.finish(Terminator::Exit(ExitTo { code: 0, pc, insns: 1, link: false }))).unwrap();
+        rec.link(faulting, 0x200);
+        let mut st = GuestState::default();
+        let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
+        assert_eq!(exit, Exit { kind: ExitKind::Fault, insns: 1 });
+        assert_eq!((st.x[0], st.pc), (1, 0x200));
     }
 
     #[test]

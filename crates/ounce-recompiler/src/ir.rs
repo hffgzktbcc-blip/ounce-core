@@ -139,6 +139,10 @@ pub struct ExitTo {
     pub code: u32,
     pub pc: Value,
     pub insns: u32,
+    /// The caller would simply run the block at `pc` next (a direct branch). Generated code may
+    /// then jump straight to the block linked for that `pc` instead of returning
+    /// (docs/design/m4-native-linking.md). Requires `pc` to be an `Op::Const`.
+    pub link: bool,
 }
 
 /// Exit codes from this value up are reserved (fault, code written).
@@ -201,7 +205,11 @@ impl Block {
             if e.code >= RESERVED_CODES {
                 return Err(format!("exit code {:#x} is reserved", e.code));
             }
-            defined(e.pc, end)
+            defined(e.pc, end)?;
+            if e.link && !matches!(self.ops[e.pc.0 as usize], Op::Const(_)) {
+                return Err("linked exit needs a constant pc".into());
+            }
+            Ok(())
         };
         match &self.term {
             Terminator::Exit(e) => exit_ok(e),
