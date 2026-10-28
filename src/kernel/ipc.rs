@@ -246,6 +246,7 @@ impl IpcManager {
             return self.handle_control(session_handle, &service, tls_addr, mmu, mmu.read_u32(cmif_base + 8).unwrap_or(0));
         }
 
+        let mut object_handle = session_handle;
         // Domain sessions: a domain header names the target object, and the CMIF payload follows it.
         if self.domains.contains(&session_handle) && self.request.kind != super::hipc::TYPE_CLOSE {
             let dom = super::hipc::read_domain_header(mmu, cmif_base);
@@ -264,6 +265,7 @@ impl IpcManager {
                     return 0;
                 }
             };
+            object_handle = dom.object_id;
             cmif_base += 16;
         }
         let magic = mmu.read_u32(cmif_base).unwrap_or(0);
@@ -675,203 +677,11 @@ impl IpcManager {
                 }
             },
 
-            ServiceType::FileSystem(mount_prefix) => match cmd_id {
-                // Command 0: CreateFile(u32 mode, u64 size, string path)
-                0 => {
-                    let path = self.path_arg(mmu, args_base + 16);
-                    let full_path = if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    vfs.mount_file(&full_path, &[]);
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
-                    0
-                }
-                // Command 1: DeleteFile(string path)
-                1 => {
-                    let path = self.path_arg(mmu, args_base);
-                    let full_path = if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    let res = match vfs.delete_file(&full_path) {
-                        Ok(_) => 0,
-                        Err(_) => 0x0005_0202,
-                    };
-                    self.write_cmif_response(tls_addr, mmu, res, &[0], None);
-                    0
-                }
-                // Command 2: CreateDirectory(string path)
-                2 => {
-                    let path = self.path_arg(mmu, args_base);
-                    let full_path = if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    let res = match vfs.create_directory(&full_path) {
-                        Ok(_) => 0,
-                        Err(_) => 0x0005_0202,
-                    };
-                    self.write_cmif_response(tls_addr, mmu, res, &[0], None);
-                    0
-                }
-                // Command 3 | 4: DeleteDirectory / DeleteDirectoryRecursively(string path)
-                3 | 4 => {
-                    let path = self.path_arg(mmu, args_base);
-                    let full_path = if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    let res = match vfs.delete_directory(&full_path) {
-                        Ok(_) => 0,
-                        Err(_) => 0x0005_0202,
-                    };
-                    self.write_cmif_response(tls_addr, mmu, res, &[0], None);
-                    0
-                }
-                // Command 8: OpenFile(string path, u32 mode) -> returns IFile
-                8 => {
-                    let path = self.path_arg(mmu, args_base);
-                    let full_path = if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    match vfs.open_file(&full_path) {
-                        Ok(fh) => {
-                            let file_h = self.allocate_handle(ServiceType::File(fh));
-                            self.write_cmif_response(tls_addr, mmu, 0, &[file_h], Some(file_h));
-                        }
-                        Err(_) => {
-                            self.write_cmif_response(tls_addr, mmu, 0x0005_0202, &[], None);
-                        }
-                    }
-                    0
-                }
-                // Command 9: OpenDirectory(string path, u32 filter_flags) -> returns IDirectory
-                9 => {
-                    let path = self.path_arg(mmu, args_base);
-                    let full_path = if path.is_empty() || path == "/" {
-                        mount_prefix.clone()
-                    } else if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    let entries = vfs.list_directory(&full_path).unwrap_or_default();
-                    let dir_h = self.allocate_handle(ServiceType::Directory {
-                        path: full_path,
-                        entries,
-                        index: 0,
-                    });
-                    self.write_cmif_response(tls_addr, mmu, 0, &[dir_h], Some(dir_h));
-                    0
-                }
-                // Command 10: Commit
-                10 => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
-                    0
-                }
-                // Command 11: GetFreeSpaceSize -> returns u64
-                11 => {
-                    let free_bytes = vfs.get_free_space_size(&mount_prefix);
-                    let lo = (free_bytes & 0xFFFF_FFFF) as u32;
-                    let hi = ((free_bytes >> 32) & 0xFFFF_FFFF) as u32;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
-                    0
-                }
-                // Command 12: GetTotalSpaceSize -> returns u64
-                12 => {
-                    let total_bytes = vfs.get_total_space_size(&mount_prefix);
-                    let lo = (total_bytes & 0xFFFF_FFFF) as u32;
-                    let hi = ((total_bytes >> 32) & 0xFFFF_FFFF) as u32;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
-                    0
-                }
-                _ => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
-                    0
-                }
-            },
-
-            ServiceType::Directory { path, entries, mut index } => match cmd_id {
-                // Command 0: ReadDirectory(out_buf_addr: u64, max_entries: u64) -> count: u64
-                0 => {
-                    let buf_addr = mmu.read_u64(args_base).unwrap_or(0);
-                    let max_entries = mmu.read_u64(args_base + 8).unwrap_or(0) as usize;
-                    let count = if max_entries > 0 {
-                        (entries.len() - index).min(max_entries)
-                    } else {
-                        entries.len() - index
-                    };
-
-                    if buf_addr >= 0x10000 && mmu.is_mapped(buf_addr) {
-                        for i in 0..count {
-                            let entry_name = &entries[index + i];
-                            let entry_addr = buf_addr + (i * 0x310) as u64;
-                            let mut entry_buf = [0u8; 768];
-                            let name_bytes = entry_name.as_bytes();
-                            let l = name_bytes.len().min(767);
-                            entry_buf[..l].copy_from_slice(&name_bytes[..l]);
-                            let _ = mmu.write_bytes(entry_addr, &entry_buf);
-                            let is_dir = entry_name.contains('/') || !entry_name.contains('.');
-                            let _ = mmu.write_u32(entry_addr + 0x304, if is_dir { 0 } else { 1 });
-                        }
-                    }
-                    index += count;
-                    self.handles.insert(session_handle, ServiceType::Directory { path, entries, index });
-
-                    let lo = (count as u64 & 0xFFFF_FFFF) as u32;
-                    let hi = ((count as u64 >> 32) & 0xFFFF_FFFF) as u32;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
-                    0
-                }
-                // Command 1: GetEntryCount -> count: u64
-                1 => {
-                    let count = entries.len() as u64;
-                    let lo = (count & 0xFFFF_FFFF) as u32;
-                    let hi = ((count >> 32) & 0xFFFF_FFFF) as u32;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
-                    0
-                }
-                _ => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
-                    0
-                }
-            },
-
-            ServiceType::File(handle) => match cmd_id {
-                // Command 0: Read(u32 option, s64 offset, u64 size) -> u64 bytes read, data in the B buffer
-                0 => {
-                    let offset = mmu.read_u64(args_base + 8).unwrap_or(0) as usize;
-                    let size = mmu.read_u64(args_base + 16).unwrap_or(0) as usize;
-                    let buf = self.request.recv_buffers.first().copied().unwrap_or_default();
-                    let len = size.min(buf.size as usize);
-                    let read = match vfs.handle_path(handle).map(str::to_string) {
-                        Some(path) => vfs.read_file_to_guest(&path, offset, buf.addr, len, mmu).unwrap_or(0),
-                        None => 0,
-                    };
-                    let n = read as u64;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[n as u32, (n >> 32) as u32], None);
-                    0
-                }
-                // Command 4: GetSize -> u64
-                4 => {
-                    let sz = vfs.get_file_size(handle).unwrap_or(0) as u64;
-                    let lo = (sz & 0xFFFF_FFFF) as u32;
-                    let hi = ((sz >> 32) & 0xFFFF_FFFF) as u32;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
-                    0
-                }
-                _ => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
-                    0
-                }
-            },
+            ServiceType::FileSystem(mount) => self.handle_filesystem(&mount, cmd_id, args_base, tls_addr, mmu, vfs),
+            ServiceType::Directory { path, entries, index } => {
+                self.handle_directory(object_handle, path, entries, index, cmd_id, args_base, tls_addr, mmu, vfs)
+            }
+            ServiceType::File(handle) => self.handle_file(handle, cmd_id, args_base, tls_addr, mmu, vfs),
 
             ServiceType::Storage => match cmd_id {
                 // Command 4: GetSize -> returns 0x40000 (256 KB)
@@ -1305,7 +1115,12 @@ impl IpcManager {
     /// A path argument: libnx sends `FsPath` in the first send static (X) buffer; older callers put a
     /// string (or a pointer to one) in the CMIF arguments at `fallback`.
     fn path_arg(&self, mmu: &Memory, fallback: u64) -> String {
-        if let Some(&(_, buf)) = self.request.send_statics.first() {
+        self.path_arg_at(mmu, 0, fallback)
+    }
+
+    /// Path argument `index`: X buffer `index`, else the CMIF arguments at `fallback`.
+    pub(super) fn path_arg_at(&self, mmu: &Memory, index: usize, fallback: u64) -> String {
+        if let Some(&(_, buf)) = self.request.send_statics.get(index) {
             let mut bytes = vec![0u8; (buf.size as usize).min(0x301)];
             if mmu.read_bytes(buf.addr, &mut bytes).is_ok() {
                 let len = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
@@ -1349,7 +1164,7 @@ impl IpcManager {
     }
 
     /// Writes a standard CMIF ("SFCO") response frame back into the thread's TLS buffer.
-    fn write_cmif_response(
+    pub(super) fn write_cmif_response(
         &self,
         tls_addr: u64,
         mmu: &mut Memory,
