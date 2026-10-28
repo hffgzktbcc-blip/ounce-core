@@ -15,7 +15,7 @@
 
 `ounce-core` is an experimental, non-commercial AArch64 execution and high-level service implementation research runtime written in Rust. It contains an interpreter, three execution tiers, a paged memory model, a subset of Horizon-style supervisor calls (SVCs) and services, software models of audio and input, and a graphics model whose output is drawn by a CPU rasterizer by default (an optional `gpu-present` build replays a subset of draw commands through `wgpu`). It is a test harness for studying these subsystems. It is a clean-room research runtime, not a tool for running commercial software, and makes no claim of compatibility with any commercial software.
 
-- Safe Rust only: the crate is `#![forbid(unsafe_code)]`, and `grep -rnE "unsafe[ ({]" src` returns no matches.
+- The root crate forbids unsafe code (`#![forbid(unsafe_code)]`). This is not a workspace-wide guarantee: the optional `ounce-recompiler` crate owns native code generation and executable-memory management, including the platform-specific unsafe boundary.
 - Five runtime dependencies: `byteorder`, `cpal` (host audio playback), `gilrs` (gamepad input), `minifb` (host window), `thiserror`. The optional `gpu-present` feature adds `wgpu`, `winit` and `pollster` for GPU presentation.
 - No network code, no telemetry. The only URL in the source is the project's own repository link in the CLI banner.
 
@@ -55,7 +55,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 | Subsystem | Status | Notes |
 | :--- | :--- | :--- |
-| AArch64 CPU | Implemented (subset) | Interpreter plus Tier-1 block cache, Tier-2 chained blocks and Tier-3 super-blocks. Workspace sub-crate `crates/ounce-recompiler` (feature `native-jit`) provides executable memory management (`MAP_JIT` on Apple Silicon, `VirtualProtect` on Windows, `mprotect` on Linux) for Tier-4 JIT recompilation. |
+| AArch64 CPU | Implemented (subset) | Interpreter plus Tier-1 block cache, Tier-2 chained blocks and Tier-3 super-blocks. Workspace sub-crate `crates/ounce-recompiler` (feature `native-jit`) provides Tier-4 native recompilation and executable-memory management (`MAP_JIT` on Apple Silicon, `VirtualProtect` on Windows, `mprotect` on Linux). Tier-4 invalidation after writes to guest code is not complete; see [Known Issues](#known-issues). |
 | Memory | Implemented | 4 KB-page MMU with intra-page boundary alignment and per-page permissions. No DRAM timing model. |
 | Kernel (SVC) | Implemented (subset) | Threads, events, mutexes, memory and process queries needed by the test programs. |
 | IPC | Implemented (subset) | CMIF and TIPC message formats. Services are synthetic. |
@@ -104,11 +104,13 @@ ounce-core/
 ## Verification
 
 ```bash
-cargo test --release --features gpu-present  # 103 unit tests
+cargo test --release --features gpu-present
 cargo run --release --features gpu-present -- test  # 25-stage integration harness (exits 0xEEE)
 ```
 
-The harness runs synthetic AArch64 programs through the CPU, kernel and service models. Each stage passes when its guest program returns the expected exit code. Host timings are printed for information only.
+The 25-stage harness runs synthetic AArch64 programs written for this repository through the CPU, kernel and service models. It is not an independently authored homebrew compatibility suite. Each stage passes when its guest program returns the expected exit code; host timings are informational only. Passing this harness does not establish compatibility with commercial software or general homebrew compatibility.
+
+CI coverage is feature-specific: the default job runs unit tests and the 25-stage harness; `gpu-present` builds and runs unit tests but does not run that harness; `native-jit` tests the recompiler crate, builds the feature, runs the Tier-4 host self-test and feature-enabled unit tests, but does not run the 25-stage harness. These configured checks describe CI coverage, not the result of the latest run. Test totals are omitted because they can change between revisions.
 
 | Stage | Subsystem | What it checks | Exit |
 | :---: | :--- | :--- | :---: |
@@ -171,6 +173,7 @@ cargo run --release -- gfx 60 --present=headless # No window; OUNCE_DUMP_FRAMES=
 ## Known Issues
 
 - **Git history.** The history has **not** been fully purged yet. Commits before `76ce766` (for example `c7f16f2` and `4be9640`) contain firmware-derived and third-party-derived byte sequences and a loader for an external payload file. They are still reachable from `main`, all branches and the `v0.3.x` tags through merge `25205cc`, and from GitHub pull request refs. A purge is in progress. Do not use or redistribute those commits.
+- **Tier-4 code-cache invalidation.** The native recompiler's code cache is not fully invalidated when guest code is modified. Self-modifying guest code may therefore execute stale translated instructions; treat this behavior as unverified.
 - **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
 - **License scope.** The MIT license applies to this tree only. It does not cover material in the earlier commits listed above.
 
