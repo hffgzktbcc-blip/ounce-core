@@ -1612,6 +1612,59 @@ mod tests {
         assert!(e.blocks_invalidated >= 1);
     }
 
+    #[test]
+    fn unmap_and_remap_code_invalidates_cached_blocks_in_all_engines() {
+        let original = [0xD2800020, 0xD4000001]; // movz x0, #1; svc #0
+        let replace_code = |mmu: &mut Memory| {
+            // Replace the page before a block engine next sweeps its cache.
+            mmu.unmap_range(CODE, 0x1000);
+            mmu.map_range(CODE, 0x1000, Permission::READ_WRITE_EXECUTE);
+            mmu.write_u32(CODE, 0xD2800040).unwrap(); // movz x0, #2
+            mmu.write_u32(CODE + 4, 0xD4000001).unwrap(); // svc #0
+        };
+
+        let (interp_cpu, mut interp_mmu) = setup(&original);
+        replace_code(&mut interp_mmu);
+        let interpreted = run_interp(interp_cpu, interp_mmu, 100);
+        assert_eq!(interpreted.exit, BlockExit::Svc { svc_id: 0 });
+        assert_eq!(interpreted.x[0], 2);
+
+        let (mut tier3_cpu, mut tier3_mmu) = setup(&original);
+        let mut tier3 = Tier3JitEngine::new();
+        for _ in 0..=Tier3JitEngine::HOT_THRESHOLD {
+            assert_eq!(tier3.run_slice(&mut tier3_cpu, &mut tier3_mmu, 100).1, BlockExit::Svc { svc_id: 0 });
+            tier3_cpu.regs.pc = CODE;
+        }
+        assert!(tier3.super_blocks.contains_key(&CODE));
+        replace_code(&mut tier3_mmu);
+        tier3_cpu.regs.pc = CODE;
+        assert_eq!(tier3.run_slice(&mut tier3_cpu, &mut tier3_mmu, 100).1, BlockExit::Svc { svc_id: 0 });
+        assert_eq!(tier3_cpu.regs.read_x(0), 2, "Tier-3 ran stale code after unmap/remap");
+        assert!(tier3.super_blocks_invalidated >= 1);
+
+        let (mut tier4_cpu, mut tier4_mmu) = setup(&original);
+        let mut tier4 = Tier4JitEngine::with_threshold(1);
+        assert_eq!(tier4.run_slice(&mut tier4_cpu, &mut tier4_mmu, 100).1, BlockExit::Svc { svc_id: 0 });
+        replace_code(&mut tier4_mmu);
+        tier4_cpu.regs.pc = CODE;
+        assert_eq!(tier4.run_slice(&mut tier4_cpu, &mut tier4_mmu, 100).1, BlockExit::Svc { svc_id: 0 });
+        assert_eq!(tier4_cpu.regs.read_x(0), 2, "Tier-4 ran stale translation after unmap/remap");
+        assert!(tier4.blocks_invalidated >= 1);
+    }
+
+    #[test]
+    fn moving_translated_code_invalidates_the_old_address() {
+        let (mut cpu, mut mmu) = setup(&[0xD2800020, 0xD4000001]); // movz x0, #1; svc #0
+        let mut e = Tier4JitEngine::with_threshold(1);
+        assert_eq!(e.run_slice(&mut cpu, &mut mmu, 100).1, BlockExit::Svc { svc_id: 0 });
+
+        mmu.move_range(CODE, CODE + 0x1000, 0x1000);
+        cpu.regs.pc = CODE;
+
+        assert_eq!(e.run_slice(&mut cpu, &mut mmu, 100).1, BlockExit::Fault { pc: CODE });
+        assert!(e.blocks_invalidated >= 1);
+    }
+
     /// Linked blocks must see a store into code they link to (design m4-native-linking.md, risk 2).
     #[test]
     fn store_into_linked_code_is_seen() {

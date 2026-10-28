@@ -78,9 +78,12 @@ pub struct Memory {
     pages: HashMap<u64, Page>,
     /// Number of mapped pages carrying the FEAT_BTI guarded bit.
     guarded_pages: usize,
-    /// Bumped on every write (or remap) that touches a page holding cached code.
+    /// Bumped on writes and mapping changes that affect pages holding cached code.
     /// Block caches compare it against the value they last saw to detect self-modifying code.
     code_write_gen: u64,
+    /// Last invalidation generation for unmapped pages that held cached code. Retained until a
+    /// replacement mapping is installed so unmap+remap between cache sweeps remains observable.
+    unmapped_code_gen: HashMap<u64, u64>,
 }
 
 impl Memory {
@@ -89,10 +92,11 @@ impl Memory {
             pages: HashMap::new(),
             guarded_pages: 0,
             code_write_gen: 0,
+            unmapped_code_gen: HashMap::new(),
         }
     }
 
-    /// Current code-write generation. Unchanged means no cached code page was written.
+    /// Current code generation. Unchanged means cached code mappings were not written or changed.
     #[inline]
     pub fn code_write_gen(&self) -> u64 {
         self.code_write_gen
@@ -111,7 +115,7 @@ impl Memory {
         }
     }
 
-    /// True if any page in `[start, end)` was written (or remapped) after generation `since`.
+    /// True if any page in `[start, end)` was written, unmapped, or remapped after `since`.
     pub fn code_written_since(&self, start: u64, end: u64, since: u64) -> bool {
         if end <= start {
             return false;
@@ -170,6 +174,10 @@ impl Memory {
                 // Remapping over cached code replaces it.
                 self.code_write_gen += 1;
                 page.code_write_gen = self.code_write_gen;
+            } else if let Some(generation) = self.unmapped_code_gen.remove(&page_idx) {
+                // Preserve an unmap invalidation when the page is remapped before a JIT cache
+                // gets a chance to observe that the address was unmapped.
+                page.code_write_gen = generation;
             }
             self.pages.insert(page_idx, page);
         }
@@ -182,14 +190,36 @@ impl Memory {
     pub fn move_range(&mut self, src: u64, dst: u64, size: usize) {
         let pages = (size as u64).div_ceil(PAGE_SIZE as u64);
         for i in 0..pages {
-            if let Some(page) = self.pages.remove(&((src >> 12) + i)) {
+            let src_page_idx = (src >> 12) + i;
+            let dst_page_idx = (dst >> 12) + i;
+            if let Some(mut page) = self.pages.remove(&src_page_idx) {
                 let moved_guarded = page.guarded;
                 if moved_guarded {
                     self.guarded_pages -= 1;
                 }
-                if self.pages.insert((dst >> 12) + i, page).is_some_and(|old| old.guarded) {
-                    self.guarded_pages -= 1;
+
+                // The translation embeds its original guest PC, so moving a code page invalidates
+                // the old source address even though the bytes themselves did not change.
+                if page.holds_code {
+                    self.code_write_gen += 1;
+                    self.unmapped_code_gen.insert(src_page_idx, self.code_write_gen);
                 }
+
+                let replaced_code = self.pages.remove(&dst_page_idx).is_some_and(|old| {
+                    if old.guarded {
+                        self.guarded_pages -= 1;
+                    }
+                    old.holds_code
+                });
+                let prior_unmapped_generation = self.unmapped_code_gen.remove(&dst_page_idx);
+                if replaced_code {
+                    self.code_write_gen += 1;
+                    page.code_write_gen = self.code_write_gen;
+                } else if let Some(generation) = prior_unmapped_generation {
+                    page.code_write_gen = page.code_write_gen.max(generation);
+                }
+
+                self.pages.insert(dst_page_idx, page);
                 if moved_guarded {
                     self.guarded_pages += 1;
                 }
@@ -204,8 +234,14 @@ impl Memory {
         }
         let last = base_addr.saturating_add(size as u64 - 1) >> 12;
         for page_idx in (base_addr >> 12)..=last {
-            if self.pages.remove(&page_idx).is_some_and(|page| page.guarded) {
-                self.guarded_pages -= 1;
+            if let Some(page) = self.pages.remove(&page_idx) {
+                if page.guarded {
+                    self.guarded_pages -= 1;
+                }
+                if page.holds_code {
+                    self.code_write_gen += 1;
+                    self.unmapped_code_gen.insert(page_idx, self.code_write_gen);
+                }
             }
         }
     }
