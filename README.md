@@ -33,14 +33,14 @@ The checked-in NRO fixtures target the original Nintendo Switch homebrew environ
 
 - No firmware, system archives, or code or data derived from them.
 - No encryption keys. The loader decrypts only containers built with the in-repo synthetic test key; retail keys are rejected (`LoadError::RestrictedCipher`). A `prod.keys`-format parser exists for unit tests of the key-file format only. The `.gitignore` excludes key files.
-- No retail game content, ROMs, or dumps. Tests include generated synthetic programs and checked-in homebrew NRO fixtures. The `hello.nro` fixture links libnx (ISC) and newlib; see [`tests/fixtures/nro/hello/README.md`](tests/fixtures/nro/hello/README.md) for source and build details.
+- No retail game content, ROMs, or dumps. Tests include generated synthetic programs and checked-in homebrew NRO fixtures. The `hello` fixture build links libnx and uses the devkitA64/newlib toolchain; see [`tests/fixtures/nro/hello/README.md`](tests/fixtures/nro/hello/README.md). Fixture source comparisons and binary component inventories are incomplete; see [`docs/PROVENANCE.md`](docs/PROVENANCE.md) and [`THIRD_PARTY.md`](THIRD_PARTY.md).
 - Earlier revisions contained firmware-derived and third-party-derived byte sequences; they were removed from the current tree but remain in git history. See *Known Issues*.
 
 **Trademarks.** "Nintendo", "Nintendo Switch", "Switch 2", "NVIDIA", "Tegra", "Horizon" and related names are trademarks of their respective owners. This project is not affiliated with, endorsed by, or sponsored by any of them. Names appear only to describe the hardware and ABI being modelled.
 
 **No warranty; not legal advice.** The software is provided as is. Anyone using, modifying or distributing it is responsible for complying with the copyright, anti-circumvention and other laws that apply where they are. Consult a lawyer before any use beyond private research.
 
-**License.** MIT. See [`LICENSE`](LICENSE). The license covers the code in this repository only. It does not cover any third-party material that may appear in earlier commits (see *Known Issues*).
+**License information.** The repository includes an MIT license ([`LICENSE`](LICENSE)) and third-party material notes ([`THIRD_PARTY.md`](THIRD_PARTY.md)). These documents do not determine the licensing status of historical commits or every component in the checked-in binaries.
 
 ---
 
@@ -174,9 +174,9 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 
 ## Known Issues
 
-- **Git history.** The history has **not** been fully purged yet. Commits before `76ce766` (for example `c7f16f2` and `4be9640`) contain firmware-derived and third-party-derived byte sequences and a loader for an external payload file. They are still reachable from `main`, all branches and the `v0.3.x` tags through merge `25205cc`, and from GitHub pull request refs. A purge is in progress. Do not use or redistribute those commits.
+- **Git history.** A history cleanup has been discussed; completion is not verified. The project has previously identified commits before `76ce766` (including `c7f16f2` and `4be9640`) as containing firmware-derived or third-party-derived byte sequences and an external-payload loader. On 2026-10-28, this checkout confirmed `c7f16f2` is reachable from `main`, tags `v0.3.0` through `v0.3.2`, and the fetched pull-request refs `72`, `81`, `82`, and `83`. This is a dated, limited ref check, not an inventory of every branch, tag, fork, clone, or GitHub ref. See [`docs/PROVENANCE.md`](docs/PROVENANCE.md).
 - **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
-- **License scope.** The MIT license applies to this tree only. It does not cover material in the earlier commits listed above.
+- **Provenance status.** The provenance register and clean-room protocol are drafts and have not been legally reviewed. Known source comparisons and binary composition checks remain incomplete: [`docs/PROVENANCE.md`](docs/PROVENANCE.md), [`docs/CLEAN_ROOM.md`](docs/CLEAN_ROOM.md).
 
 ---
 

@@ -21,7 +21,7 @@ This document establishes operating rules for AI coding assistants (Antigravity,
 
 ## 3. Active Handoff Log
 * **Completed State**:
-  - History rewrite and release v0.3.0 complete; dirty tags purged.
+  - Release v0.3.0 was published. History cleanup is not verified complete; see the dated, limited ref check in `README.md` and `docs/PROVENANCE.md`.
   - Phase 2 implemented: Physical gamepad input via `gilrs` and 48 kHz stereo host audio sink via `cpal`.
   - Multi-platform CI workflows verified on Linux, macOS, and Windows.
 * **Completed: ELF dynamic linking and TLS** (PR #3 + PR #4 on `main` @ 629cd87, updated 2026-10-26)
@@ -403,3 +403,9 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - CPU (`src/cpu/{decoder,instructions,interpreter,simd}.rs`): `FMOV/FABS/FNEG/FSQRT/FCVT` register forms (`FpData1`), `FCSEL`, `FRINT{N,P,M,Z,A,X,I}`, float<->int `FCVT{N,P,M,Z,A}{S,U}`/`SCVTF`/`UCVTF` (`FpIntConv`), `FCMP/FCMPE` against `#0.0` (the old decoder read `Rm` and rejected `FCMPE`), and AdvSIMD across-lanes `ADDV/S|UADDLV/S|UMAXV/S|UMINV` (`SimdAcross`).
   - Works: the fixture runs to the end (`deko3d_fixture_runs_to_completion`): device, memblocks, queue, 9 GPFIFO segments, fences, no unhandled instruction, IPC command or ioctl.
   - **Verified after #79:** rebuilding and running on Mac exposed an MME delayed-branch EXIT issue; fixed in `mme.rs`. The normal `deko3d_fixture_draws_triangle` test now checks the clear pixel `0xFF400000`, center pixel `0xFF0080FF`, and result `0x00000EEE`.
+
+
+* **Handoff: provenance and clean-room documentation** (2026-10-28)
+  - `docs/PROVENANCE.md`, `docs/CLEAN_ROOM.md`, and `THIRD_PARTY.md` are drafts, not legally reviewed. Fixture source comparisons and binary component inventories remain incomplete; treat authorship and linked-component notes as recorded build information, not a completed provenance audit.
+  - The Cargo licence file records declared metadata only; it does not complete a source-text or binary-redistribution audit.
+  - History reachability notes are limited to the refs and date explicitly listed in the README. Do not claim a repository-wide cleanup is underway or complete without a current ref inventory.
