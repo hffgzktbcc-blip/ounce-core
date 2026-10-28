@@ -24,8 +24,22 @@
 //!   `FADD32I`, `FMUL`, `FMUL32I`, `FFMA`, `MUFU`, `LDC`, `NOP` and `EXIT` against them.
 //!   CUDA never emits `ALD`/`AST`/`IPA`, so those rest on [envytools] alone and are
 //!   UNVERIFIED until checked against a shader compiled by `uam`.
+//! - Textures, bound forms only: [envytools] `TEX` (0xc038), `TLD` (0xdc38), `TEXS`
+//!   (0xd0), `TLDS` (0xd2) masks and fields, each checked against [CuAsm] words in the
+//!   `maxwell_cuasm_tex_*` tests: handle index 36..49 (a word of the constant buffer
+//!   `SET_BINDLESS_TEXTURE` selects). `TEX`/`TLD`: Rd 0..8 written consecutively per the
+//!   mask 31..35, coordinates from Ra 8..16, extra operands Rb 20..28, array 28, dimension
+//!   29..31. `TEX` LOD 55..58, `.DC` 50, `.AOFFI` 54; `TLD` `.LL` 55, `.AOFFI` 35, `.MS` 50,
+//!   `.CL` 54. `TEXS`/`TLDS`: Rd 0..8 and Rd2 28..36 take the components two per register,
+//!   coordinates Ra and Rb, component set 50..53, target 53..57, bit 59 set for 32-bit
+//!   results (all [CuAsm] words; clear means `.F16` on SM60+, rejected). UNVERIFIED
+//!   (Ryujinx-style operand reading, not in [envytools]): 2D `TEXS`/`TLDS` take x from Ra
+//!   and y from Rb, `TEX`/`TLD` from Ra, Ra+1.
 
-use super::decode::{DecodeError, Decoded, FSrc, Instr, IpaFreq, MufuOp, Src, RZ};
+use super::decode::{
+    mask_comps, next_reg, pack_pairs, DecodeError, Decoded, FSrc, Instr, IpaFreq, MufuOp, Src, Tex, TexHandle, TexLod, TexOp,
+    RZ,
+};
 use super::ir::{lower_with, Function};
 use super::{ShaderStage, XlateError};
 
@@ -239,6 +253,83 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
             _ => return Err(unsup("IPA.SC")),
         };
         Instr::Ipa { dst, addr: bits(w, 28, 38) as u16, freq, mul: reg(w, 20) }
+    } else if top(0xf6 << 56, 0xd0 << 56) || top(0xf6 << 56, 0xd2 << 56) {
+        // TEXS / TLDS: the scalar-register forms.
+        let fetch = bit(w, 57);
+        if !bit(w, 59) {
+            return Err(unsup("16-bit texture result"));
+        }
+        let lod = match (fetch, bits(w, 53, 57)) {
+            (false, 1) => TexLod::Auto,
+            (false, 2) | (true, 2) => TexLod::Zero,
+            _ => return Err(unsup("texture target other than 2D (.LZ for TLDS)")),
+        };
+        let rd2 = reg(w, 28);
+        let comps: &[usize] = match (rd2 == RZ, bits(w, 50, 53)) {
+            (true, 0) => &[0],
+            (true, 1) => &[1],
+            (true, 2) => &[2],
+            (true, 3) => &[3],
+            (true, 4) => &[0, 1],
+            (true, 5) => &[0, 3],
+            (true, 6) => &[1, 3],
+            (true, 7) => &[2, 3],
+            (false, 0) => &[0, 1, 2],
+            (false, 1) => &[0, 1, 3],
+            (false, 2) => &[0, 2, 3],
+            (false, 3) => &[1, 2, 3],
+            (false, 4) => &[0, 1, 2, 3],
+            _ => return Err(unsup("texture component set")),
+        };
+        Instr::Tex(Tex {
+            op: if fetch { TexOp::Fetch } else { TexOp::Sample },
+            handle: TexHandle::Bound { index: bits(w, 36, 49) as u16 },
+            lod,
+            x: reg(w, 8),
+            y: reg(w, 20),
+            dst: pack_pairs(comps, dst, rd2),
+        })
+    } else if top(0xfc38 << 48, 0xc038 << 48) || top(0xff38 << 48, 0xdc38 << 48) {
+        let fetch = top(0xff38 << 48, 0xdc38 << 48);
+        if bits(w, 29, 31) != 1 || bit(w, 28) {
+            return Err(unsup("texture dimension other than 2D"));
+        }
+        let lod = if fetch {
+            if bit(w, 35) || bit(w, 50) || bit(w, 54) {
+                return Err(unsup("TLD .AOFFI/.MS/.CL"));
+            }
+            if bit(w, 55) {
+                return Err(unsup("TLD.LL"));
+            }
+            TexLod::Zero
+        } else {
+            if bit(w, 50) || bit(w, 54) {
+                return Err(unsup("TEX .DC/.AOFFI"));
+            }
+            match bits(w, 55, 58) {
+                0 => TexLod::Auto,
+                1 => TexLod::Zero,
+                _ => return Err(unsup("TEX LOD mode")),
+            }
+        };
+        if reg(w, 20) != RZ {
+            return Err(unsup("texture extra operand register"));
+        }
+        let mut d = [RZ; 4];
+        for (i, c) in mask_comps(bits(w, 31, 35)).into_iter().enumerate() {
+            d[c] = if dst == RZ { RZ } else { dst.wrapping_add(i as u8) };
+        }
+        let ra = reg(w, 8);
+        Instr::Tex(Tex {
+            op: if fetch { TexOp::Fetch } else { TexOp::Sample },
+            handle: TexHandle::Bound { index: bits(w, 36, 49) as u16 },
+            lod,
+            x: ra,
+            y: next_reg(ra),
+            dst: d,
+        })
+    } else if top(0xfff8 << 48, 0xdeb8 << 48) || top(0xff38 << 48, 0xdd38 << 48) {
+        return Err(unsup("bindless texture handle"));
     } else {
         return Err(DecodeError::UnknownOpcode { opcode });
     };

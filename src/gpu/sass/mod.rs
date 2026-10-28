@@ -2,9 +2,9 @@
 //!
 //! Step 1 covers a passthrough vertex shader and a solid-colour (or varying-colour)
 //! fragment shader: `ALD`/`AST`, `IPA`, `MOV`, `FADD`/`FMUL`/`FFMA`, `MUFU`, `LDC` and
-//! constant-buffer operands, `NOP`, `EXIT`, and the Shader Program Header. No control
-//! flow, textures or integer ops yet; anything else is rejected with an error rather
-//! than guessed.
+//! constant-buffer operands, `NOP`, `EXIT`, and the Shader Program Header, plus 2D texture
+//! reads with a bound handle (`TEX`/`TLD`, and Maxwell `TEXS`/`TLDS`). No control flow or
+//! integer ops yet; anything else is rejected with an error rather than guessed.
 //!
 //! The Volta+ SASS encoding is not public. Field positions come from community sources
 //! cited in [`decode`] and [`sph`]; entries marked UNVERIFIED were recalled rather than
@@ -30,6 +30,8 @@ pub mod wgsl;
 mod maxwell_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tex_tests;
 
 pub use maxwell::MAXWELL_SPH_SIZE;
 pub use sph::{Sph, SphType, AMPERE_SPH_SIZE};
@@ -86,7 +88,19 @@ pub struct ShaderInterface {
     /// Fragment stage: colour target `@location`s (`vec4<f32>`).
     pub color_targets: Vec<u32>,
     pub constant_buffers: Vec<ConstantBuffer>,
+    pub textures: Vec<TextureBinding>,
     pub writes_position: bool,
+}
+
+/// One texture the shader reads; the host resolves `handle` to a TIC/TSC pair at draw time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextureBinding {
+    pub group: u32,
+    /// `texture_2d<f32>` binding.
+    pub binding: u32,
+    /// `sampler` binding, when the shader samples (not only fetches).
+    pub sampler_binding: Option<u32>,
+    pub handle: decode::TexHandle,
 }
 
 #[derive(Debug, Clone)]
