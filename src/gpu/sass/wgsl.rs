@@ -173,7 +173,7 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
         ShaderStage::Vertex => "vertex",
         ShaderStage::Fragment => "fragment",
     };
-    writeln!(out, "// ounce-core Ampere SASS -> WGSL, step 1 ({stage_name}).").unwrap();
+    writeln!(out, "// ounce-core SASS -> WGSL, step 1 ({stage_name}).").unwrap();
     writeln!(out, "// Community-sourced decoding, not a hardware-accurate translation.").unwrap();
     for line in &f.listing {
         writeln!(out, "//   {line}").unwrap();

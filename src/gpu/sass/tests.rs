@@ -69,7 +69,7 @@ fn program(header: &SphBuilder, code: &[u128]) -> Vec<u8> {
     b
 }
 
-fn validate(src: &str) {
+pub(super) fn validate(src: &str) {
     let module = naga::front::wgsl::parse_str(src).unwrap_or_else(|e| panic!("{}\n{src}", e.emit_to_string(src)));
     naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::empty())
         .validate(&module)
@@ -77,7 +77,7 @@ fn validate(src: &str) {
 }
 
 /// Compares against `src/gpu/sass/golden/<name>`; `OUNCE_BLESS=1` rewrites the file.
-fn golden(name: &str, expected: &str, got: &str) {
+pub(super) fn golden(name: &str, expected: &str, got: &str) {
     if std::env::var_os("OUNCE_BLESS").is_some() {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/gpu/sass/golden").join(name);
         std::fs::write(p, got).unwrap();
@@ -204,7 +204,7 @@ fn synthetic_roundtrip_graphics_ops() {
     assert_eq!(decode(asm::ffma_cb(4, 1, 0, 0x10, 4)).unwrap().to_string(), "FFMA R4, R1, c[0x0][0x10], R4");
 }
 
-fn passthrough_vs() -> Vec<u8> {
+pub(super) fn passthrough_vs() -> Vec<u8> {
     let h = SphBuilder::vertex().imap(0x80).imap(0x84).imap(0x88).imap(0x8c).omap(0x70).omap(0x74).omap(0x78).omap(0x7c);
     program(
         &h,

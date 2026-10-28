@@ -9,7 +9,7 @@ use super::methods as m;
 use super::pushbuf::{immd_header, inc_header, non_inc_header};
 use super::render::RenderStats;
 use crate::gpu::sass::sph::{PixelImap, SphBuilder};
-use crate::gpu::sass::AMPERE_SPH_SIZE;
+use crate::gpu::sass::{AMPERE_SPH_SIZE, MAXWELL_SPH_SIZE};
 use crate::gpu::tiling::{self, Format, Layout, Surface};
 
 const SC: u8 = 0;
@@ -387,11 +387,108 @@ fn color_write_mask_limits_channels() {
     assert_eq!(px(&rt_pixels(&mut mem), 3, 3), [255, 0, 255, 0]);
 }
 
+/// Maxwell (64-bit) encoder for the same programs; field positions as in `gpu::sass::maxwell`.
+mod mx {
+    use crate::gpu::sass::decode::RZ;
+
+    const PT: u64 = 7 << 16;
+
+    fn op(top: u64) -> u64 {
+        (top << 48) | PT
+    }
+    pub fn exit() -> u64 {
+        op(0xe300) | 0xf
+    }
+    pub fn nop() -> u64 {
+        op(0x50b0) | 0xf00
+    }
+    fn amem(op_: u64, r: u8, addr: u16, comps: u8) -> u64 {
+        op(op_) | (((comps - 1) as u64) << 47) | ((RZ as u64) << 39) | ((addr as u64) << 20) | ((RZ as u64) << 8) | r as u64
+    }
+    pub fn ald(d: u8, addr: u16, comps: u8) -> u64 {
+        amem(0xefd8, d, addr, comps)
+    }
+    pub fn ast(s: u8, addr: u16, comps: u8) -> u64 {
+        amem(0xeff0, s, addr, comps)
+    }
+    /// `freq`: 0 PASS, 1 multiply, 2 CONSTANT.
+    pub fn ipa(d: u8, addr: u16, freq: u8, mul: u8) -> u64 {
+        op(0xe000) | ((freq as u64) << 54) | (7 << 47) | ((RZ as u64) << 39) | ((addr as u64) << 28) | ((mul as u64) << 20) | ((RZ as u64) << 8) | d as u64
+    }
+    pub fn mufu_rcp(d: u8, s: u8) -> u64 {
+        op(0x5080) | (4 << 20) | ((s as u64) << 8) | d as u64
+    }
+}
+
+/// 0x50-byte header, then 32-byte bundles (control word + three instructions).
+fn program_mx(header: &SphBuilder, code: &[u64]) -> Vec<u8> {
+    let mut b = header.bytes(MAXWELL_SPH_SIZE);
+    for chunk in code.chunks(3) {
+        b.extend_from_slice(&0x001f_8000_fc00_07e0u64.to_le_bytes());
+        for i in 0..3 {
+            b.extend_from_slice(&chunk.get(i).copied().unwrap_or(mx::nop()).to_le_bytes());
+        }
+    }
+    b
+}
+
 #[test]
-fn maxwell_draws_are_decoded_but_not_rendered() {
+fn maxwell_draw_renders_through_the_maxwell_front_end() {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
     setup(&mut pb, m::MAXWELL_B, false);
+    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+    let verts = [vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, 0.0, BLUE)];
+    let bytes: Vec<u8> = verts.iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
+    mem.put(VB_VA, &bytes);
+    let mut vs_h = SphBuilder::vertex();
+    for a in (0x80..0xa0).step_by(4) {
+        vs_h = vs_h.imap(a);
+    }
+    for a in (0x70..0x90).step_by(4) {
+        vs_h = vs_h.omap(a);
+    }
+    let vs = program_mx(&vs_h, &[mx::ald(0, 0x80, 4), mx::ald(4, 0x90, 4), mx::ast(0, 0x70, 4), mx::ast(4, 0x80, 4), mx::exit()]);
+    let mut ps_h = SphBuilder::pixel().ps_target(0, 0xf);
+    for c in 0..4 {
+        ps_h = ps_h.ps_imap(0, c, PixelImap::Perspective);
+    }
+    let mut code = vec![mx::ipa(8, 0x7c, 0, 0), mx::mufu_rcp(9, 8)];
+    code.extend((0..4).map(|c| mx::ipa(c as u8, 0x80 + 4 * c, 1, 9)));
+    code.push(mx::exit());
+    // deko3d style: one program region, per-pipeline offsets from it.
+    mem.put(VS_VA, &vs);
+    mem.put(PS_VA, &program_mx(&ps_h, &code));
+    pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_A_FORMAT, 4), (1 << 12) | 32, hi(VB_VA), lo(VB_VA), 0]);
+    let limit = VB_VA + bytes.len() as u64 - 1;
+    pb.extend([inc_header(SC, m::B197_SET_VERTEX_STREAM_LIMIT_A_A, 2), hi(limit), lo(limit)]);
+    let attr = |offset: u32| (7 << 27) | (0x01 << 21) | (offset << 7);
+    pb.extend([inc_header(SC, m::SET_VERTEX_ATTRIBUTE_A, 2), attr(0), attr(16)]);
+    pb.extend([inc_header(SC, m::B197_SET_PROGRAM_REGION_A, 2), hi(VS_VA), lo(VS_VA)]);
+    for (pipe, kind, offset) in [(1u32, 1u32, 0u32), (5, 5, (PS_VA - VS_VA) as u32)] {
+        let base = pipe * m::PIPELINE_STRIDE;
+        pb.extend([inc_header(SC, m::SET_PIPELINE_SHADER + base, 1), (kind << 4) | 1]);
+        pb.extend([inc_header(SC, m::B197_SET_PIPELINE_PROGRAM + base, 1), offset]);
+    }
+    draw(&mut pb, 0, 3, 4);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    assert_eq!(gpu.render_stats().draws, 1);
+    let linear = rt_pixels(&mut mem);
+    let near = |p: [u8; 4], want: [u8; 4]| p.iter().zip(want).all(|(&a, b)| (a as i32 - b as i32).abs() <= 2);
+    assert!(near(px(&linear, 0, 0), [255, 0, 0, 255]), "{:?}", px(&linear, 0, 0));
+    assert!(near(px(&linear, 64, 64), [127, 64, 64, 255]), "{:?}", px(&linear, 64, 64));
+    assert_eq!(px(&linear, 250, 250), [0, 0, 0, 255]);
+}
+
+#[test]
+fn unsupported_shader_skips_the_draw() {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    // A vertex shader without EXIT inside the readable range.
+    geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, RED), vtx(-1.0, 1.0, 0.0, RED)], &varying_pixel_shader());
+    mem.put(VS_VA + AMPERE_SPH_SIZE as u64, &[0xff; 16]);
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
     assert_eq!(gpu.render_stats().draws, 0);

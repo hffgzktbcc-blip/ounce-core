@@ -11,6 +11,10 @@
 //! fetched and must be checked against a real compiled shader. This is not a
 //! hardware-accurate decoder.
 //!
+//! [`maxwell`] is a second front end for the 64-bit Maxwell encoding that deko3d's `uam`
+//! emits for the `MAXWELL_B` class; it feeds the same IR. [`translate_for_class`] picks
+//! the front end from the 3D class a draw was issued on.
+//!
 //! Input: the shader bytes starting at its header (program region base + per-stage start
 //! offset), as handed over by the Ampere 3D class decoder in `src/gpu/ampere/`.
 
@@ -18,12 +22,16 @@
 
 pub mod decode;
 pub mod ir;
+pub mod maxwell;
 pub mod sph;
 pub mod wgsl;
 
 #[cfg(test)]
+mod maxwell_tests;
+#[cfg(test)]
 mod tests;
 
+pub use maxwell::MAXWELL_SPH_SIZE;
 pub use sph::{Sph, SphType, AMPERE_SPH_SIZE};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,6 +122,28 @@ pub fn translate(stage: ShaderStage, bytes: &[u8]) -> Result<TranslatedShader, X
 
 /// As [`translate`], with an explicit header size (bytes from header start to code).
 pub fn translate_with_header(stage: ShaderStage, bytes: &[u8], header_size: usize) -> Result<TranslatedShader, XlateError> {
+    let (sph, code) = split_header(stage, bytes, header_size)?;
+    finish(stage, ir::lower(stage, code)?, &sph)
+}
+
+/// Translates one Maxwell (64-bit SASS) shader whose 0x50-byte header starts at `bytes[0]`.
+pub fn translate_maxwell(stage: ShaderStage, bytes: &[u8]) -> Result<TranslatedShader, XlateError> {
+    let (sph, code) = split_header(stage, bytes, MAXWELL_SPH_SIZE)?;
+    finish(stage, maxwell::lower(stage, code)?, &sph)
+}
+
+/// Picks the front end from the 3D class the draw was issued on (`DrawRecord.class`):
+/// Maxwell SASS for `MAXWELL_B`, Ampere SASS otherwise.
+pub fn translate_for_class(class: u32, stage: ShaderStage, bytes: &[u8]) -> Result<TranslatedShader, XlateError> {
+    if class == crate::gpu::ampere::methods::MAXWELL_B { translate_maxwell(stage, bytes) } else { translate(stage, bytes) }
+}
+
+fn finish(stage: ShaderStage, f: ir::Function, sph: &Sph) -> Result<TranslatedShader, XlateError> {
+    let (wgsl, interface) = wgsl::emit(&f, sph)?;
+    Ok(TranslatedShader { stage, wgsl, interface, listing: f.listing })
+}
+
+fn split_header(stage: ShaderStage, bytes: &[u8], header_size: usize) -> Result<(Sph, &[u8]), XlateError> {
     let sph = Sph::parse(bytes)?;
     let ok = match stage {
         ShaderStage::Vertex => sph.sph_type == SphType::Vtg && sph.shader_type == 1,
@@ -125,7 +155,5 @@ pub fn translate_with_header(stage: ShaderStage, bytes: &[u8], header_size: usiz
     if bytes.len() < header_size {
         return Err(XlateError::Truncated { need: header_size, have: bytes.len() });
     }
-    let f = ir::lower(stage, &bytes[header_size..])?;
-    let (wgsl, interface) = wgsl::emit(&f, &sph)?;
-    Ok(TranslatedShader { stage, wgsl, interface, listing: f.listing })
+    Ok((sph, &bytes[header_size..]))
 }

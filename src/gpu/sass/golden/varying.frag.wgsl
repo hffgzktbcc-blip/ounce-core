@@ -1,4 +1,4 @@
-// ounce-core Ampere SASS -> WGSL, step 1 (fragment).
+// ounce-core SASS -> WGSL, step 1 (fragment).
 // Community-sourced decoding, not a hardware-accurate translation.
 //   IPA.PASS R4, a[0x7c]
 //   MUFU.RCP R4, R4

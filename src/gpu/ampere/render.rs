@@ -8,9 +8,10 @@
 //!
 //! Scope (step 3): triangles, strips, fans and quads; viewport 0, scissor 0, viewport clip 0 and the
 //! surface clip; depth test and write; per-target color write masks. Shaders are the `gpu::sass` IR
-//! run on the CPU, so only AMPERE_B draws (Ampere SASS) render. Not modelled: blending (written as
-//! if off, with a diagnostic), stencil test, culling, clipping against the near plane (triangles
-//! with a vertex at `w <= 0` are dropped and counted), multisampling, layered targets.
+//! run on the CPU, through the Ampere front end for AMPERE_B and the Maxwell front end for
+//! MAXWELL_B (deko3d). Not modelled: blending (written as if off, with a diagnostic), stencil
+//! test, culling, clipping against the near plane (triangles with a vertex at `w <= 0` are dropped
+//! and counted), multisampling, layered targets.
 
 use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, Topology};
 use super::methods as m;
@@ -19,7 +20,7 @@ use super::surface::{self, addr40, ColorFormat, ColorTarget, DepthFormat, DepthT
 use crate::gpu::sass::decode::IpaFreq;
 use crate::gpu::sass::ir::{self, attr_slot, AttrSlot, Function, Op};
 use crate::gpu::sass::sph::{PixelImap, Sph, SphType};
-use crate::gpu::sass::{ShaderStage as SassStage, XlateError, AMPERE_SPH_SIZE};
+use crate::gpu::sass::{maxwell, ShaderStage as SassStage, XlateError, AMPERE_SPH_SIZE, MAXWELL_SPH_SIZE};
 use crate::gpu::tiling::{self, BlockLinear, Layout, Surface};
 
 /// Counters for what the software path actually wrote.
@@ -290,10 +291,14 @@ struct LoadedShader {
 const SHADER_READ_START: usize = 0x1000;
 const SHADER_READ_MAX: usize = 0x10000;
 
-fn load_shader(stage: SassStage, va: u64, mem: &mut dyn GpuMemoryWriter) -> Result<LoadedShader, &'static str> {
+/// Loads the shader at `va` with the front end for `class`: 64-bit Maxwell SASS behind a 0x50-byte
+/// header for MAXWELL_B, 128-bit Ampere SASS behind a 0x80-byte header otherwise.
+fn load_shader(class: u32, stage: SassStage, va: u64, mem: &mut dyn GpuMemoryWriter) -> Result<LoadedShader, &'static str> {
+    let maxwell = class == m::MAXWELL_B;
+    let header = if maxwell { MAXWELL_SPH_SIZE } else { AMPERE_SPH_SIZE };
     let mut size = SHADER_READ_START;
     loop {
-        let mut bytes = vec![0u8; AMPERE_SPH_SIZE + size];
+        let mut bytes = vec![0u8; header + size];
         if !mem.read(va, &mut bytes) {
             return Err("shader code is not readable");
         }
@@ -305,7 +310,9 @@ fn load_shader(stage: SassStage, va: u64, mem: &mut dyn GpuMemoryWriter) -> Resu
         if !ok {
             return Err("shader header is for another stage");
         }
-        match ir::lower(stage, &bytes[AMPERE_SPH_SIZE..]) {
+        let code = &bytes[header..];
+        let lowered = if maxwell { maxwell::lower(stage, code) } else { ir::lower(stage, code) };
+        match lowered {
             Ok(func) => return Ok(LoadedShader { sph, func }),
             Err(XlateError::MissingExit) if size < SHADER_READ_MAX => size *= 2,
             Err(_) => return Err("shader uses SASS the translator does not support"),
@@ -594,9 +601,6 @@ impl Ampere3d {
         if !mem.read(0, &mut []) {
             return;
         }
-        if rec.class != m::AMPERE_B {
-            return self.skip("MAXWELL_B shaders are Maxwell SASS, which gpu::sass does not decode");
-        }
         if rec.instance != 0 {
             return self.skip("instanced draw");
         }
@@ -608,11 +612,11 @@ impl Ampere3d {
         let (Some(vs), Some(ps)) = (find(&[T::Vertex, T::VertexCullBeforeFetch]), find(&[T::Pixel])) else {
             return self.skip("draw without both a vertex and a pixel shader");
         };
-        let vs = match load_shader(SassStage::Vertex, vs.program_va, mem) {
+        let vs = match load_shader(rec.class, SassStage::Vertex, vs.program_va, mem) {
             Ok(s) => s,
             Err(reason) => return self.skip(reason),
         };
-        let ps = match load_shader(SassStage::Fragment, ps.program_va, mem) {
+        let ps = match load_shader(rec.class, SassStage::Fragment, ps.program_va, mem) {
             Ok(s) => s,
             Err(reason) => return self.skip(reason),
         };
