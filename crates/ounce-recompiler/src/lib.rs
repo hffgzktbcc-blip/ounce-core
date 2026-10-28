@@ -158,7 +158,15 @@ impl Recompiler {
     }
 
     pub fn compile(&mut self, block: &ir::Block) -> Result<BlockId, CompileError> {
-        let code = backend::compile(&*self.isa, &mut self.ctx, &mut self.fctx, block)?;
+        self.compile_region(std::slice::from_ref(block))
+    }
+
+    /// Compiles several guest blocks into one function entered at `blocks[0]`. Every block needs
+    /// a distinct `entry_pc`; a linked exit to one of them jumps inside the function, so loops
+    /// that span these blocks keep guest registers in host registers. Exits to anything else
+    /// link or return as for a single block.
+    pub fn compile_region(&mut self, blocks: &[ir::Block]) -> Result<BlockId, CompileError> {
+        let code = backend::compile(&*self.isa, &mut self.ctx, &mut self.fctx, blocks)?;
         Ok(match self.free.pop() {
             Some(i) => {
                 self.blocks[i as usize] = Some(code);
@@ -603,6 +611,28 @@ mod tests {
         let exit = rec.run_linked(id, &mut st, &mut TestBus::default(), 1_000);
         assert_eq!(exit, Exit { kind: ExitKind::Fault, insns: 5 });
         assert_eq!((st.x[1], st.pc, st.x[0]), (0x3000, 0x204, 0), "x0 holds the last good load");
+    }
+
+    #[test]
+    fn region_loops_across_blocks_without_the_table() {
+        // 0x100 -> 0x200 -> 0x100 ..., compiled as one region and never put in the link table.
+        let mut a = counting_block(0x200);
+        a.set_entry_pc(0x100);
+        let mut b = counting_block(0x100);
+        b.set_entry_pc(0x200);
+        let mut rec = Recompiler::new().unwrap();
+        let id = rec.compile_region(&[a.clone(), b.clone()]).unwrap();
+        let mut st = GuestState::default();
+        let exit = rec.run_linked(id, &mut st, &mut TestBus::default(), 301);
+        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 301 });
+        assert_eq!((st.x[0], st.pc, rec.links_taken()), (301, 0x200, 300), "ends after an a-block, heading to b");
+
+        // Regions need an entry pc on every block, and distinct ones.
+        let mut plain = counting_block(0x100);
+        assert!(matches!(rec.compile_region(&[a.clone(), plain.clone()]), Err(CompileError::InvalidIr(_))));
+        plain.set_entry_pc(0x100);
+        assert!(matches!(rec.compile_region(&[a, plain]), Err(CompileError::InvalidIr(_))));
+        assert!(matches!(rec.compile_region(&[]), Err(CompileError::InvalidIr(_))));
     }
 
     #[test]
