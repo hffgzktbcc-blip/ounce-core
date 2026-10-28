@@ -7,13 +7,14 @@
 //! records only, nothing rendered.
 //!
 //! Scope (step 3): triangles, strips, fans and quads; viewport 0, scissor 0, viewport clip 0 and the
-//! surface clip; depth test and write; per-target color write masks. Shaders are the `gpu::sass` IR
+//! surface clip; depth bounds, stencil (two-sided) and depth tests ([`depth`]); face culling;
+//! blending; per-target color write masks. Shaders are the `gpu::sass` IR
 //! run on the CPU, through the Ampere front end for AMPERE_B and the Maxwell front end for
-//! MAXWELL_B (deko3d). Not modelled: blending (written as if off, with a diagnostic), stencil
-//! test, culling, clipping against the near plane (triangles with a vertex at `w <= 0` are dropped
+//! MAXWELL_B (deko3d). Not modelled: clipping against the near plane (triangles with a vertex at `w <= 0` are dropped
 //! and counted), multisampling, layered targets.
 
 use super::blend::Blend;
+use super::depth::{self, Facing, Stencil};
 use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, IndexBuffer, Topology};
 use super::methods as m;
 use super::shade::{self, ShaderInputs};
@@ -33,7 +34,9 @@ pub struct RenderStats {
     pub triangles: u32,
     /// Triangles dropped because a vertex had `w <= 0` (no near-plane clipping yet).
     pub dropped_triangles: u32,
-    /// Fragments that passed the depth test and were written.
+    /// Triangles removed by face culling.
+    pub culled_triangles: u32,
+    /// Fragments that passed the depth and stencil tests and were written.
     pub fragments: u64,
 }
 
@@ -224,6 +227,16 @@ fn read_depth(format: DepthFormat, t: &[u8]) -> f32 {
     }
 }
 
+/// Stored stencil, `None` for formats without one.
+fn read_stencil(format: DepthFormat, t: &[u8]) -> Option<u8> {
+    match format {
+        DepthFormat::Z24S8 => Some(t[0]),
+        DepthFormat::S8Z24 => t.get(3).copied(),
+        DepthFormat::Zf32X24S8 => t.get(4).copied(),
+        _ => None,
+    }
+}
+
 fn write_depth(format: DepthFormat, t: &mut [u8], depth: Option<f32>, stencil: Option<u8>) {
     let mut w = u32::from_le_bytes([t[0], t[1], *t.get(2).unwrap_or(&0), *t.get(3).unwrap_or(&0)]);
     let z24 = |d: f32| unorm(d, 24) as u32;
@@ -288,20 +301,6 @@ impl Rect {
 
     fn clip(self, x0: u32, y0: u32, x1: u32, y1: u32) -> Self {
         Rect { x0: self.x0.max(x0), y0: self.y0.max(y0), x1: self.x1.min(x1), y1: self.y1.min(y1) }
-    }
-}
-
-/// `SET_DEPTH_FUNC` (OGL and D3D encodings) applied to `(new, stored)`.
-fn depth_pass(func: u32, new: f32, stored: f32) -> bool {
-    match func {
-        0x200 | 1 => false,
-        0x201 | 2 => new < stored,
-        0x202 | 3 => new == stored,
-        0x203 | 4 => new <= stored,
-        0x204 | 5 => new > stored,
-        0x205 | 6 => new != stored,
-        0x206 | 7 => new >= stored,
-        _ => true, // ALWAYS, and values the class does not define.
     }
 }
 
@@ -592,7 +591,7 @@ fn indexed(rec: &DrawRecord, ib: &IndexBuffer, mem: &mut dyn GpuMemoryWriter) ->
     let mut ids = Vec::with_capacity(raw.len());
     let mut tris = Vec::new();
     let mut run_start = 0usize;
-    let mut flush = |ids: &Vec<u32>, from: usize, tris: &mut Vec<[usize; 3]>| -> Result<(), &'static str> {
+    let flush = |ids: &Vec<u32>, from: usize, tris: &mut Vec<[usize; 3]>| -> Result<(), &'static str> {
         let run = triangles(rec.topology, ids.len() - from).ok_or("topology other than triangles, strips, fans and quads")?;
         tris.extend(run.into_iter().map(|t| t.map(|i| i + from)));
         Ok(())
@@ -892,8 +891,14 @@ impl Ampere3d {
         let depth_test = self.reg_at(m::SET_DEPTH_TEST) & 1 == 1;
         let depth_write = self.reg_at(m::SET_DEPTH_WRITE) & 1 == 1;
         let depth_func = self.reg_at(m::SET_DEPTH_FUNC);
+        let stencil = match Stencil::from_regs(&self.regs) {
+            Ok(s) => s,
+            Err(reason) => return self.skip(reason),
+        };
+        let bounds_test = depth::depth_bounds(&self.regs);
+        let facing = Facing::from_regs(&self.regs);
         let mut zbuf = match rec.depth_target {
-            Some(zt) if depth_test || depth_write => {
+            Some(zt) if depth_test || depth_write || stencil.is_some() || bounds_test.is_some() => {
                 let Some(view) = depth_view(&zt) else { return self.skip("depth target format or layout") };
                 let Some(t) = Staged::load(view, mem) else { return self.skip("depth target is not readable") };
                 Some((zt, t))
@@ -953,7 +958,12 @@ impl Ampere3d {
             if signed == 0.0 || !signed.is_finite() {
                 continue;
             }
-            // Either winding rasterizes (no culling); edge values are flipped to be positive inside.
+            // Facing from the window-space winding; edge values are flipped to be positive inside.
+            let front = facing.is_front(signed);
+            if facing.culled(front) {
+                self.stats.culled_triangles += 1;
+                continue;
+            }
             let sign = signed.signum();
             let area = signed.abs();
             self.stats.triangles += 1;
@@ -975,11 +985,29 @@ impl Ampere3d {
                     let z = l[0] * v0.z + l[1] * v1.z + l[2] * v2.z;
                     if let Some((zt, t)) = zbuf.as_mut() {
                         let texel = t.texel(px, py);
-                        if depth_test && !depth_pass(depth_func, z, read_depth(zt.format, texel)) {
-                            continue;
+                        let stored_z = read_depth(zt.format, texel);
+                        if let Some((min, max)) = bounds_test {
+                            if !(min..=max).contains(&stored_z) {
+                                continue;
+                            }
                         }
-                        if depth_write {
-                            write_depth(zt.format, texel, Some(z.clamp(0.0, 1.0)), None);
+                        let s = stencil.as_ref().map(|s| s.face(front));
+                        let stored_s = read_stencil(zt.format, texel);
+                        let stencil_pass = match (s, stored_s) {
+                            (Some(s), Some(v)) => s.test(v),
+                            _ => true,
+                        };
+                        let z_pass = stencil_pass && (!depth_test || depth::compare(depth_func, z, stored_z));
+                        let new_s = match (s, stored_s) {
+                            (Some(s), Some(v)) => Some(s.update(v, stencil_pass, z_pass)).filter(|n| *n != v),
+                            _ => None,
+                        };
+                        let new_z = (z_pass && depth_write).then(|| z.clamp(0.0, 1.0));
+                        if new_z.is_some() || new_s.is_some() {
+                            write_depth(zt.format, texel, new_z, new_s);
+                        }
+                        if !z_pass {
+                            continue;
                         }
                     }
                     let input = FragmentIn { v: [v0, v1, v2], l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };

@@ -17,6 +17,7 @@
 #![allow(dead_code)]
 
 mod blend;
+mod depth;
 pub mod engine;
 pub mod methods;
 pub mod pushbuf;

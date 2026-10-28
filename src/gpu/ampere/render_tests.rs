@@ -304,7 +304,7 @@ fn triangle_draw_produces_raw_block_linear_surface() {
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     // 255 * 256 / 2: the hypotenuse is a right edge, so pixels centred on it stay out (top-left rule).
-    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, fragments: 32640 });
+    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, culled_triangles: 0, fragments: 32640 });
 
     let linear = rt_pixels(&mut mem);
     assert_eq!(px(&linear, 10, 10), [255, 0, 0, 255]);
@@ -981,4 +981,78 @@ fn write_only_memory_keeps_records_only() {
     assert_eq!(gpu.render_stats(), RenderStats::default());
     assert!(gpu.blocked_on().is_none());
     assert!(gpu.diagnostics().is_empty());
+}
+
+/// Z24S8 depth target over the render target, depth cleared to 1.0 and stencil to 0.
+fn z24s8_target(pb: &mut Vec<u32>) {
+    pb.extend([inc_header(SC, m::SET_ZT_A, 5), hi(ZT_VA), lo(ZT_VA), 0x14, 4 << 4, 0]);
+    pb.extend([inc_header(SC, m::SET_ZT_SIZE_A, 3), W, W, 1]);
+    pb.push(immd_header(SC, m::SET_ZT_SELECT, 1));
+    pb.extend([inc_header(SC, m::SET_Z_CLEAR_VALUE, 1), f(1.0)]);
+    pb.extend([inc_header(SC, m::SET_STENCIL_CLEAR_VALUE, 1), 0]);
+    pb.push(immd_header(SC, m::CLEAR_SURFACE, 0x3));
+}
+
+/// `SET_STENCIL_TEST` .. `SET_STENCIL_MASK`: enable, fail, zfail, zpass, func, ref, func mask, mask.
+fn stencil_state(pb: &mut Vec<u32>, state: [u32; 8]) {
+    pb.push(inc_header(SC, m::SET_STENCIL_TEST, 8));
+    pb.extend(state);
+}
+
+#[test]
+fn stencil_masks_the_second_draw_to_the_first() {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+    z24s8_target(&mut pb);
+    let quad = |x0: f32, x1: f32, c: [f32; 4]| [vtx(x0, -1.0, 0.5, c), vtx(x1, -1.0, 0.5, c), vtx(x1, 1.0, 0.5, c), vtx(x0, 1.0, 0.5, c)];
+    let verts: Vec<[f32; 8]> = [quad(-1.0, 0.0, GREEN), quad(-1.0, 1.0, RED)].concat();
+    geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
+    // Left half: ALWAYS, REPLACE with 1 (OGL encodings).
+    stencil_state(&mut pb, [1, 0x1e00, 0x1e00, 0x1e01, 0x207, 1, 0xff, 0xff]);
+    draw(&mut pb, 0, 4, 7);
+    // Whole target: EQUAL 1, KEEP (D3D encodings).
+    stencil_state(&mut pb, [1, 1, 1, 1, 3, 1, 0xff, 0xff]);
+    draw(&mut pb, 4, 4, 7);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let linear = rt_pixels(&mut mem);
+    assert_eq!(px(&linear, 10, 10), [255, 0, 0, 255]);
+    assert_eq!(px(&linear, 127, 200), [255, 0, 0, 255]);
+    assert_eq!(px(&linear, 128, 10), [0, 0, 0, 255]);
+    assert_eq!(px(&linear, 250, 250), [0, 0, 0, 255]);
+    // Stencil lives in byte 0 of each Z24S8 texel; depth was not written (SET_DEPTH_WRITE off).
+    let zs = tiling::detile(
+        &Surface::new_2d(W, W, Format::Z32Float, Layout::BlockLinear { height_log2: 4, depth_log2: 0 }),
+        &mem.get(ZT_VA, RT_BYTES),
+    )
+    .unwrap();
+    let texel = |x: u32, y: u32| u32::from_le_bytes(zs[((y * W + x) * 4) as usize..][..4].try_into().unwrap());
+    assert_eq!(texel(10, 10), 0xffff_ff01);
+    assert_eq!(texel(200, 10), 0xffff_ff00);
+}
+
+#[test]
+fn back_faces_are_culled_by_winding() {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    // Counter-clockwise with y up, then the same triangle wound the other way.
+    let verts = [
+        vtx(-1.0, -1.0, 0.5, GREEN),
+        vtx(1.0, -1.0, 0.5, GREEN),
+        vtx(-1.0, 1.0, 0.5, GREEN),
+        vtx(-1.0, -1.0, 0.5, RED),
+        vtx(-1.0, 1.0, 0.5, RED),
+        vtx(1.0, -1.0, 0.5, RED),
+    ];
+    geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
+    pb.extend([inc_header(SC, m::OGL_SET_CULL, 3), 1, 0x901, 0x405]); // CCW front, cull BACK
+    draw(&mut pb, 0, 6, 4); // TRIANGLES
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let stats = gpu.render_stats();
+    assert_eq!((stats.triangles, stats.culled_triangles), (1, 1));
+    assert_eq!(px(&rt_pixels(&mut mem), 10, 10), [0, 255, 0, 255]);
 }
