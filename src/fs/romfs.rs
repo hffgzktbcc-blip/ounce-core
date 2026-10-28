@@ -362,17 +362,19 @@ impl VirtualFileSystem {
         if !self.ensure_loaded(&norm)? {
             return Err(VfsError::NotFound(norm));
         }
-        let file = self.files.get_mut(&norm).ok_or_else(|| VfsError::NotFound(norm.clone()))?;
-        if (file.len() as u64) < end {
-            file.resize(end as usize, 0);
+        let host = self.host_path(&norm)?.filter(|p| p.is_file());
+        let mut updated = self.files.get(&norm).cloned().ok_or_else(|| VfsError::NotFound(norm.clone()))?;
+        if (updated.len() as u64) < end {
+            updated.resize(end as usize, 0);
         }
-        file[offset as usize..end as usize].copy_from_slice(data);
-        if let Some(p) = self.host_path(&norm)?.filter(|p| p.is_file()) {
+        updated[offset as usize..end as usize].copy_from_slice(data);
+        if let Some(p) = host {
             use std::io::{Seek, SeekFrom, Write};
             let mut f = std::fs::OpenOptions::new().write(true).open(p)?;
             f.seek(SeekFrom::Start(offset))?;
             f.write_all(data)?;
         }
+        self.files.insert(norm, updated);
         self.total_bytes_written += data.len() as u64;
         Ok(data.len())
     }
@@ -387,12 +389,13 @@ impl VirtualFileSystem {
         if !self.ensure_loaded(&norm)? {
             return Err(VfsError::NotFound(norm));
         }
-        if let Some(file) = self.files.get_mut(&norm) {
-            file.resize(size as usize, 0);
-        }
-        if let Some(p) = self.host_path(&norm)?.filter(|p| p.is_file()) {
+        let host = self.host_path(&norm)?.filter(|p| p.is_file());
+        let mut updated = self.files.get(&norm).cloned().ok_or_else(|| VfsError::NotFound(norm.clone()))?;
+        updated.resize(size as usize, 0);
+        if let Some(p) = host {
             std::fs::OpenOptions::new().write(true).open(p)?.set_len(size)?;
         }
+        self.files.insert(norm, updated);
         Ok(())
     }
 
@@ -647,6 +650,9 @@ impl VirtualFileSystem {
         let clean = norm.trim_end_matches('/').to_string();
         Self::check_writable(&clean)?;
         let host = self.host_path(&clean)?;
+        if let Some(disk_path) = host {
+            std::fs::create_dir_all(&disk_path)?;
+        }
         self.directories.insert(clean.clone());
         self.directories.insert(format!("{}/", clean));
 
@@ -662,10 +668,6 @@ impl VirtualFileSystem {
                 break;
             }
         }
-
-        if let Some(disk_path) = host {
-            std::fs::create_dir_all(&disk_path)?;
-        }
         Ok(())
     }
 
@@ -674,9 +676,7 @@ impl VirtualFileSystem {
         let norm = normalize_vfs_path(path);
         Self::check_writable(&norm)?;
         let host = self.host_path(&norm)?;
-        let removed = self.files.remove(&norm).is_some();
-        self.open_handles.retain(|_, v| v != &norm);
-
+        let cached = self.files.contains_key(&norm);
         let mut disk_removed = false;
         if let Some(disk_path) = host {
             if disk_path.is_file() {
@@ -685,9 +685,11 @@ impl VirtualFileSystem {
             }
         }
 
-        if !removed && !disk_removed {
+        if !cached && !disk_removed {
             return Err(VfsError::NotFound(path.to_string()));
         }
+        self.files.remove(&norm);
+        self.open_handles.retain(|_, v| v != &norm);
         Ok(())
     }
 
@@ -703,22 +705,13 @@ impl VirtualFileSystem {
         let host = self.host_path(&clean)?;
         let prefix = format!("{}/", clean);
 
-        let dir_existed = self.directories.remove(&clean) || self.directories.remove(&prefix);
+        let dir_existed = self.directories.contains(&clean) || self.directories.contains(&prefix);
 
         let to_remove: Vec<String> = self.files.keys()
             .filter(|k| k.starts_with(&prefix))
             .cloned()
             .collect();
-        for k in &to_remove {
-            self.files.remove(k);
-            self.open_handles.retain(|_, v| v != k);
-        }
-
-        let subdirs_removed = {
-            let before = self.directories.len();
-            self.directories.retain(|d| !d.starts_with(&prefix) && d != &clean);
-            self.directories.len() < before
-        };
+        let subdirs_removed = self.directories.iter().any(|d| d.starts_with(&prefix) || d == &clean);
 
         let mut disk_removed = false;
         if let Some(disk_path) = host {
@@ -731,6 +724,9 @@ impl VirtualFileSystem {
         if !dir_existed && !subdirs_removed && to_remove.is_empty() && !disk_removed {
             return Err(VfsError::NotFound(path.to_string()));
         }
+        self.files.retain(|k, _| !k.starts_with(&prefix));
+        self.open_handles.retain(|_, v| !v.starts_with(&prefix));
+        self.directories.retain(|d| !d.starts_with(&prefix) && d != &clean);
         Ok(())
     }
 
@@ -1020,6 +1016,41 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn host_io_path_failure_does_not_mutate_cached_file() {
+        use std::os::unix::fs::symlink;
+
+        let base = std::env::temp_dir().join(format!(
+            "ounce_vfs_io_failure_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let root = base.join("sd");
+        let outside = base.join("outside.bin");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("file.bin"), b"original").unwrap();
+        std::fs::write(&outside, b"outside").unwrap();
+
+        let mut vfs = VirtualFileSystem::new();
+        vfs.set_sdmc_directory(&root);
+        vfs.open_file("sdmc:/file.bin").unwrap(); // Load the host-backed bytes into the VFS cache.
+        assert_eq!(vfs.get_file("sdmc:/file.bin"), Some(&b"original"[..]));
+
+        std::fs::remove_file(root.join("file.bin")).unwrap();
+        symlink(&outside, root.join("file.bin")).unwrap();
+
+        assert!(matches!(vfs.write_file_at("sdmc:/file.bin", 0, b"changed"), Err(VfsError::Escape(_))));
+        assert_eq!(vfs.get_file("sdmc:/file.bin"), Some(&b"original"[..]));
+        assert!(matches!(vfs.set_file_size("sdmc:/file.bin", 2), Err(VfsError::Escape(_))));
+        assert_eq!(vfs.get_file("sdmc:/file.bin"), Some(&b"original"[..]));
+        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
