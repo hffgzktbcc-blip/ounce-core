@@ -281,6 +281,43 @@ pub enum Instruction {
         is_double: bool,
     },
 
+    /// Floating-Point 1-Source: `FMOV`/`FABS`/`FNEG`/`FSQRT Dd/Sd, Dn/Sn` (op 0..3) and
+    /// `FCVT` (op 4: single to double, op 5: double to single)
+    FpData1 {
+        rd: u8,
+        rn: u8,
+        op: u8,
+        is_double: bool,
+    },
+
+    /// Floating-Point round to integral: `FRINT{N,P,M,Z,A,X,I}` (op = bits 17..15 of the encoding)
+    FpRound {
+        rd: u8,
+        rn: u8,
+        op: u8,
+        is_double: bool,
+    },
+
+    /// Float <-> integer register conversion: `FCVT{N,P,M,Z,A}{S,U}` (to integer), `SCVTF`, `UCVTF`.
+    /// `opcode` is bits 18..16 (0 S, 1 U, 2 SCVTF, 3 UCVTF, 4 FCVTAS, 5 FCVTAU), `rmode` bits 20..19.
+    FpIntConv {
+        rd: u8,
+        rn: u8,
+        opcode: u8,
+        rmode: u8,
+        is_64: bool,
+        is_double: bool,
+    },
+
+    /// Floating-Point Conditional Select: `FCSEL Dd/Sd, Dn/Sn, Dm/Sm, cond`
+    FpCondSelect {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        cond: Condition,
+        is_double: bool,
+    },
+
     /// Floating-Point Compare: `FCMP Dn/Sn, Dm/Sm` or `FCMP Dn/Sn, #0.0`
     FpCompare {
         rn: u8,
@@ -464,6 +501,15 @@ pub enum Instruction {
     },
 
     /// AdvSIMD two-register miscellaneous (compare against zero, `CNT`, `NOT`, `ABS`, `NEG`)
+    /// AdvSIMD across lanes: reduces every lane of `Vn` into scalar `Vd`.
+    SimdAcross {
+        rd: u8,
+        rn: u8,
+        op: SimdAcrossOp,
+        esize: u8,
+        q: bool,
+    },
+
     SimdTwoMisc {
         rd: u8,
         rn: u8,
@@ -633,6 +679,18 @@ pub enum SimdOp3 {
     Uminp,
     Smaxp,
     Sminp,
+}
+
+/// AdvSIMD across-lanes reductions (`ADDV`, `S/UADDLV`, `S/UMAXV`, `S/UMINV`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdAcrossOp {
+    Addv,
+    Saddlv,
+    Uaddlv,
+    Smaxv,
+    Umaxv,
+    Sminv,
+    Uminv,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -955,13 +955,112 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::FpData1 { rd, rn, op, is_double } => {
+                match (op, is_double) {
+                    (0, false) => self.regs.write_s(rd, self.regs.read_s(rn)),
+                    (0, true) => self.regs.write_d(rd, self.regs.read_d(rn)),
+                    (1, false) => self.regs.write_s(rd, self.regs.read_s(rn).abs()),
+                    (1, true) => self.regs.write_d(rd, self.regs.read_d(rn).abs()),
+                    (2, false) => self.regs.write_s(rd, -self.regs.read_s(rn)),
+                    (2, true) => self.regs.write_d(rd, -self.regs.read_d(rn)),
+                    (3, false) => self.regs.write_s(rd, self.regs.read_s(rn).sqrt()),
+                    (3, true) => self.regs.write_d(rd, self.regs.read_d(rn).sqrt()),
+                    (4, false) => self.regs.write_d(rd, self.regs.read_s(rn) as f64),
+                    (5, true) => self.regs.write_s(rd, self.regs.read_d(rn) as f32),
+                    _ => return Err(CpuError::UnimplementedInstruction { raw: 0, pc: self.regs.pc }),
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpRound { rd, rn, op, is_double } => {
+                if is_double {
+                    let v = self.regs.read_d(rn);
+                    let r = match op {
+                        1 => v.ceil(),
+                        2 => v.floor(),
+                        3 => v.trunc(),
+                        4 => v.round(),
+                        _ => v.round_ties_even(),
+                    };
+                    self.regs.write_d(rd, r);
+                } else {
+                    let v = self.regs.read_s(rn);
+                    let r = match op {
+                        1 => v.ceil(),
+                        2 => v.floor(),
+                        3 => v.trunc(),
+                        4 => v.round(),
+                        _ => v.round_ties_even(),
+                    };
+                    self.regs.write_s(rd, r);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpIntConv { rd, rn, opcode, rmode, is_64, is_double } => {
+                if opcode == 2 || opcode == 3 {
+                    // SCVTF / UCVTF: integer register to float
+                    let signed = opcode == 2;
+                    let x = if is_64 { self.regs.read_x(rn) } else { self.regs.read_w(rn) as u64 };
+                    let x = if signed && !is_64 { x as u32 as i32 as i64 as u64 } else { x };
+                    if is_double {
+                        let v = if signed { x as i64 as f64 } else { x as f64 };
+                        self.regs.write_d(rd, v);
+                    } else {
+                        let v = if signed { x as i64 as f32 } else { x as f32 };
+                        self.regs.write_s(rd, v);
+                    }
+                } else {
+                    // float to integer with the rounding mode in rmode (opcodes 4/5 are ties-away)
+                    let v = if is_double { self.regs.read_d(rn) } else { self.regs.read_s(rn) as f64 };
+                    let rounded = if opcode >= 4 {
+                        v.round()
+                    } else {
+                        match rmode {
+                            0 => v.round_ties_even(),
+                            1 => v.ceil(),
+                            2 => v.floor(),
+                            _ => v.trunc(),
+                        }
+                    };
+                    let signed = opcode == 0 || opcode == 4;
+                    let out: u64 = match (signed, is_64) {
+                        (true, true) => rounded as i64 as u64,
+                        (true, false) => rounded as i32 as u32 as u64,
+                        (false, true) => rounded as u64,
+                        (false, false) => rounded as u32 as u64,
+                    };
+                    self.regs.write_x(rd, out);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpCondSelect {
+                rd,
+                rn,
+                rm,
+                cond,
+                is_double,
+            } => {
+                let src = if self.check_condition(cond) { rn } else { rm };
+                let mask: u128 = if is_double { u64::MAX as u128 } else { u32::MAX as u128 };
+                self.regs.write_q(rd, self.regs.read_q(src) & mask);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::FpCompare {
                 rn,
                 rm,
-                is_zero: _,
+                is_zero,
                 is_double,
             } => {
-                let (n, m) = if is_double {
+                let (n, m) = if is_zero {
+                    (if is_double { self.regs.read_d(rn) } else { self.regs.read_s(rn) as f64 }, 0.0)
+                } else if is_double {
                     (self.regs.read_d(rn), self.regs.read_d(rm))
                 } else {
                     (self.regs.read_s(rn) as f64, self.regs.read_s(rm) as f64)
@@ -1471,6 +1570,12 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdAcross { rd, rn, op, esize, q } => {
+                self.regs.write_q(rd, simd::across(op, self.regs.read_q(rn), esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdTwoMisc { rd, rn, op, esize, q } => {
                 self.regs.write_q(rd, simd::two_misc(op, self.regs.read_q(rn), esize as u32, q));
                 self.regs.advance_pc();
@@ -1580,6 +1685,7 @@ mod tests {
             (0x4ea28420, "SimdThreeSame"),      // add v0.4s, v1.4s, v2.4s
             (0x6e623420, "SimdThreeSame"),      // cmhi v0.8h, v1.8h, v2.8h
             (0x0e209800, "SimdTwoMisc"),        // cmeq v0.8b, v0.8b, #0
+            (0x0e31b800, "SimdAcross"),         // addv b0, v0.8b
             (0x0e205820, "SimdTwoMisc"),        // cnt v0.8b, v1.8b
             (0x6e205820, "SimdTwoMisc"),        // mvn v0.16b, v1.16b
             (0x0f0c8400, "SimdShiftImm"),       // shrn v0.8b, v0.8h, #4
