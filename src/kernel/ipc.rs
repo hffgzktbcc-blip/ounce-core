@@ -590,6 +590,7 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[res_h], Some(res_h));
                     0
                 }
+                _ if self.is_libnx_request() => self.handle_hid(cmd_id, args_base, tls_addr, mmu),
                 _ => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0

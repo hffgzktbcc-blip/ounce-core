@@ -142,6 +142,8 @@ pub(super) mod test_util {
         pub recv_list: Option<(u64, u64)>,
         /// Domain object ID, for requests on a domain session.
         pub domain_object: Option<u32>,
+        /// `X` (send static, pointer) buffer at index 0.
+        pub send_static: Option<(u64, u64)>,
     }
 
     pub struct Harness {
@@ -212,6 +214,11 @@ pub(super) mod test_util {
                     off += 4;
                 }
             }
+            if let Some((addr, size)) = req.send_static {
+                mmu.write_u32(TLS + off, ((addr >> 36) as u32 & 0x3F) << 6 | ((addr >> 32) as u32 & 0xF) << 12 | (size as u32) << 16).unwrap();
+                mmu.write_u32(TLS + off + 4, addr as u32).unwrap();
+                off += 8;
+            }
             for (addr, size) in req.send.iter().chain(req.recv.iter()) {
                 mmu.write_u32(TLS + off, *size as u32).unwrap();
                 mmu.write_u32(TLS + off + 4, *addr as u32).unwrap();
@@ -232,7 +239,8 @@ pub(super) mod test_util {
             let end = cmif + 16 + req.data.len() as u64;
             let num_words = ((end - off).div_ceil(4) + 4) as u32; // + padding words, as libnx reserves
             let recv_mode = if req.recv_list.is_some() { 2 } else { 0 };
-            mmu.write_u32(TLS, 4 | num_send << 20 | num_recv << 24).unwrap();
+            let num_statics = req.send_static.is_some() as u32;
+            mmu.write_u32(TLS, 4 | num_statics << 16 | num_send << 20 | num_recv << 24).unwrap();
             mmu.write_u32(TLS + 4, num_words | recv_mode << 10 | (special as u32) << 31).unwrap();
             if let Some((addr, size)) = req.recv_list {
                 let roff = off + num_words as u64 * 4;
