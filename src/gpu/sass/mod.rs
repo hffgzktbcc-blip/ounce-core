@@ -2,14 +2,18 @@
 //!
 //! Step 1 covers a passthrough vertex shader and a solid-colour (or varying-colour)
 //! fragment shader: `ALD`/`AST`, `IPA`, `MOV`, `FADD`/`FMUL`/`FFMA`, `MUFU`, `LDC` and
-//! constant-buffer operands, `NOP`, `EXIT`, and the Shader Program Header. No control
-//! flow, textures or integer ops yet; anything else is rejected with an error rather
-//! than guessed.
+//! constant-buffer operands, `NOP`, `EXIT`, and the Shader Program Header, plus 2D texture
+//! reads with a bound handle (`TEX`/`TLD`, and Maxwell `TEXS`/`TLDS`). No control flow or
+//! integer ops yet; anything else is rejected with an error rather than guessed.
 //!
 //! The Volta+ SASS encoding is not public. Field positions come from community sources
 //! cited in [`decode`] and [`sph`]; entries marked UNVERIFIED were recalled rather than
 //! fetched and must be checked against a real compiled shader. This is not a
 //! hardware-accurate decoder.
+//!
+//! [`maxwell`] is a second front end for the 64-bit Maxwell encoding that deko3d's `uam`
+//! emits for the `MAXWELL_B` class; it feeds the same IR. [`translate_for_class`] picks
+//! the front end from the 3D class a draw was issued on.
 //!
 //! Input: the shader bytes starting at its header (program region base + per-stage start
 //! offset), as handed over by the Ampere 3D class decoder in `src/gpu/ampere/`.
@@ -18,12 +22,18 @@
 
 pub mod decode;
 pub mod ir;
+pub mod maxwell;
 pub mod sph;
 pub mod wgsl;
 
 #[cfg(test)]
+mod maxwell_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tex_tests;
 
+pub use maxwell::MAXWELL_SPH_SIZE;
 pub use sph::{Sph, SphType, AMPERE_SPH_SIZE};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,7 +88,19 @@ pub struct ShaderInterface {
     /// Fragment stage: colour target `@location`s (`vec4<f32>`).
     pub color_targets: Vec<u32>,
     pub constant_buffers: Vec<ConstantBuffer>,
+    pub textures: Vec<TextureBinding>,
     pub writes_position: bool,
+}
+
+/// One texture the shader reads; the host resolves `handle` to a TIC/TSC pair at draw time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TextureBinding {
+    pub group: u32,
+    /// `texture_2d<f32>` binding.
+    pub binding: u32,
+    /// `sampler` binding, when the shader samples (not only fetches).
+    pub sampler_binding: Option<u32>,
+    pub handle: decode::TexHandle,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +136,28 @@ pub fn translate(stage: ShaderStage, bytes: &[u8]) -> Result<TranslatedShader, X
 
 /// As [`translate`], with an explicit header size (bytes from header start to code).
 pub fn translate_with_header(stage: ShaderStage, bytes: &[u8], header_size: usize) -> Result<TranslatedShader, XlateError> {
+    let (sph, code) = split_header(stage, bytes, header_size)?;
+    finish(stage, ir::lower(stage, code)?, &sph)
+}
+
+/// Translates one Maxwell (64-bit SASS) shader whose 0x50-byte header starts at `bytes[0]`.
+pub fn translate_maxwell(stage: ShaderStage, bytes: &[u8]) -> Result<TranslatedShader, XlateError> {
+    let (sph, code) = split_header(stage, bytes, MAXWELL_SPH_SIZE)?;
+    finish(stage, maxwell::lower(stage, code)?, &sph)
+}
+
+/// Picks the front end from the 3D class the draw was issued on (`DrawRecord.class`):
+/// Maxwell SASS for `MAXWELL_B`, Ampere SASS otherwise.
+pub fn translate_for_class(class: u32, stage: ShaderStage, bytes: &[u8]) -> Result<TranslatedShader, XlateError> {
+    if class == crate::gpu::ampere::methods::MAXWELL_B { translate_maxwell(stage, bytes) } else { translate(stage, bytes) }
+}
+
+fn finish(stage: ShaderStage, f: ir::Function, sph: &Sph) -> Result<TranslatedShader, XlateError> {
+    let (wgsl, interface) = wgsl::emit(&f, sph)?;
+    Ok(TranslatedShader { stage, wgsl, interface, listing: f.listing })
+}
+
+fn split_header(stage: ShaderStage, bytes: &[u8], header_size: usize) -> Result<(Sph, &[u8]), XlateError> {
     let sph = Sph::parse(bytes)?;
     let ok = match stage {
         ShaderStage::Vertex => sph.sph_type == SphType::Vtg && sph.shader_type == 1,
@@ -125,7 +169,5 @@ pub fn translate_with_header(stage: ShaderStage, bytes: &[u8], header_size: usiz
     if bytes.len() < header_size {
         return Err(XlateError::Truncated { need: header_size, have: bytes.len() });
     }
-    let f = ir::lower(stage, &bytes[header_size..])?;
-    let (wgsl, interface) = wgsl::emit(&f, &sph)?;
-    Ok(TranslatedShader { stage, wgsl, interface, listing: f.listing })
+    Ok((sph, &bytes[header_size..]))
 }

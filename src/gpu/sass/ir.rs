@@ -7,7 +7,7 @@
 //! Attribute addresses follow the public Maxwell+ layout used by Mesa/nouveau
 //! (position at 0x70..0x7c, generic vector `i` at 0x80 + 16 * i).
 
-use super::decode::{decode, word_at, FSrc, Instr, IpaFreq, MufuOp, Src, PT, RZ};
+use super::decode::{decode, word_at, Decoded, FSrc, Instr, IpaFreq, MufuOp, Src, TexHandle, TexLod, TexOp, PT, RZ};
 use super::{ShaderStage, XlateError};
 
 /// Upper bound on decoded instructions, so a missing `EXIT` cannot run away.
@@ -21,6 +21,16 @@ pub enum Ty {
     /// Raw 32-bit register bits.
     U32,
     F32,
+    /// RGBA result of a texture read; only [`Op::Comp`] reads it.
+    Vec4,
+}
+
+/// Level of detail of a texture read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lod {
+    Auto,
+    Zero,
+    Level(Value),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -38,12 +48,18 @@ pub enum Op {
     FMul(Value, Value),
     FFma(Value, Value, Value),
     Mufu(MufuOp, Value),
+    /// 2D texture read at (`x`, `y`): floats for [`TexOp::Sample`], integer texel coordinates
+    /// for [`TexOp::Fetch`].
+    Tex { op: TexOp, handle: TexHandle, lod: Lod, x: Value, y: Value },
+    /// Component `.1` (0..4) of a [`Op::Tex`] result.
+    Comp(Value, u8),
 }
 
 impl Op {
     pub fn ty(&self) -> Ty {
         match self {
             Op::Const(_) | Op::Cbuf { .. } => Ty::U32,
+            Op::Tex { .. } => Ty::Vec4,
             _ => Ty::F32,
         }
     }
@@ -150,13 +166,25 @@ impl Builder {
 /// Decodes and lowers the code that follows the header. `code` starts at the first
 /// instruction; decoding stops at the first unconditional `EXIT`.
 pub fn lower(stage: ShaderStage, code: &[u8]) -> Result<Function, XlateError> {
+    lower_with(stage, |pc| {
+        let at = pc * 16;
+        let w = word_at(code, pc).ok_or(XlateError::MissingExit)?;
+        let d = decode(w).map_err(|e| XlateError::Decode { at, word: w, err: e })?;
+        Ok((at, d))
+    })
+}
+
+/// ISA-independent lowering: `fetch(pc)` returns the byte offset and decoded form of
+/// instruction `pc` (Ampere via [`lower`], Maxwell via [`super::maxwell::lower`]).
+pub fn lower_with(
+    stage: ShaderStage,
+    mut fetch: impl FnMut(usize) -> Result<(usize, Decoded), XlateError>,
+) -> Result<Function, XlateError> {
     let mut b = Builder { values: Vec::new(), regs: vec![None; 255], zero: None };
     let mut stores = Vec::new();
     let mut listing = Vec::new();
     for pc in 0..MAX_INSTRUCTIONS {
-        let at = pc * 16;
-        let w = word_at(code, pc).ok_or(XlateError::MissingExit)?;
-        let d = decode(w).map_err(|e| XlateError::Decode { at, word: w, err: e })?;
+        let (at, d) = fetch(pc)?;
         listing.push(d.to_string());
         let unsup = |what: &'static str| XlateError::Unsupported { at, what };
         if d.pred != PT || d.pred_neg {
@@ -237,6 +265,22 @@ pub fn lower(stage: ShaderStage, code: &[u8]) -> Result<Function, XlateError> {
                 let m = if freq == IpaFreq::PassMulW { Some(b.read(mul)) } else { None };
                 let v = b.push(Op::Interp { addr, freq, mul: m });
                 b.write(dst, v);
+            }
+            Instr::Tex(t) => {
+                let (x, y) = (b.read(t.x), b.read(t.y));
+                let lod = match t.lod {
+                    TexLod::Auto => Lod::Auto,
+                    TexLod::Zero => Lod::Zero,
+                    TexLod::Level(r) => Lod::Level(b.read(r)),
+                };
+                let tex = b.push(Op::Tex { op: t.op, handle: t.handle, lod, x, y });
+                // Read every source before writing: destinations may overlap the coordinates.
+                for (c, &r) in t.dst.iter().enumerate() {
+                    if r != RZ {
+                        let v = b.push(Op::Comp(tex, c as u8));
+                        b.write(r, v);
+                    }
+                }
             }
         }
     }
