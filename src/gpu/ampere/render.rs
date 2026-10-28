@@ -409,6 +409,9 @@ impl Textures {
 
 struct VertexIn<'a> {
     attrs: &'a [[u32; 4]; 32],
+    /// System values: instance id and vertex index.
+    instance: u32,
+    vertex: u32,
     cbufs: &'a Cbufs,
     tex: &'a Textures,
 }
@@ -420,6 +423,11 @@ impl ShaderInputs for VertexIn<'_> {
     fn attr(&self, addr: u16) -> u32 {
         match attr_slot(addr) {
             Some(AttrSlot::Generic { loc, comp }) if (loc as usize) < 32 => self.attrs[loc as usize][comp as usize],
+            // Instance id and vertex id input addresses, as Mesa's nouveau codegen reads them
+            // (`TargetNVC0::getSVAddress`). Instance id excludes the base instance; vertex id is the
+            // fetched index, base vertex included. UNVERIFIED against hardware.
+            None if addr == 0x2f8 => self.instance,
+            None if addr == 0x2fc => self.vertex,
             _ => 0,
         }
     }
@@ -794,9 +802,6 @@ impl Ampere3d {
         if !mem.read(0, &mut []) {
             return;
         }
-        if rec.instance != 0 {
-            return self.skip("instanced draw");
-        }
         // Vertex index per position in the draw, and triangles over those positions.
         let (ids, tris) = match &rec.indices {
             None => {
@@ -850,7 +855,15 @@ impl Ampere3d {
                     stream_cache.push((stream.index, data));
                 }
                 let data = &stream_cache.iter().find(|(s, _)| *s == stream.index).unwrap().1;
-                let at = index as usize * stream.stride as usize + a.offset as usize;
+                // Instanced streams step per instance; frequency 0 keeps every instance on the base
+                // element (UNVERIFIED: read as a divisor, as Vulkan's is).
+                let element = if stream.instanced {
+                    let step = if stream.frequency == 0 { 0 } else { rec.instance / stream.frequency };
+                    rec.base_instance.wrapping_add(step)
+                } else {
+                    index
+                };
+                let at = element as usize * stream.stride as usize + a.offset as usize;
                 let Some(bytes) = data.get(at..) else { return self.skip("vertex fetch past the stream size") };
                 let Some(mut words) = decode_attribute(a.component_bit_widths, a.numerical_type, bytes) else {
                     return self.skip("vertex attribute format");
@@ -860,7 +873,7 @@ impl Ampere3d {
                 }
                 attrs[a.index as usize] = words;
             }
-            let values = shade::run(&vs.func, &VertexIn { attrs: &attrs, cbufs: &vs_cb, tex: &vs_tex });
+            let values = shade::run(&vs.func, &VertexIn { attrs: &attrs, instance: rec.instance, vertex: index, cbufs: &vs_cb, tex: &vs_tex });
             let mut pos = [0.0f32, 0.0, 0.0, 1.0];
             let mut varyings = [[0.0f32; 4]; 32];
             for (addr, bits) in shade::vertex_outputs(&vs.func, &values) {
