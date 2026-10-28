@@ -539,12 +539,32 @@ mod tests {
     }
 
     #[test]
-    fn linked_exit_needs_constant_pc() {
-        let mut b = BlockBuilder::new();
-        let pc = b.get(Reg::X(0));
-        let block = b.finish(Terminator::Exit(ExitTo { code: 0, pc, insns: 0, link: true }));
+    fn indirect_exit_links_through_runtime_pc() {
         let mut rec = Recompiler::new().unwrap();
-        assert!(matches!(rec.compile(&block), Err(CompileError::InvalidIr(_))));
+        // `x0 += 1`, then a linked exit to the pc held in X1 (like `BR X1` / `RET`).
+        let mut b = BlockBuilder::new();
+        let x0 = b.get(Reg::X(0));
+        let x0 = b.bin_imm(BinOp::Add, Width::W64, x0, 1);
+        b.set(Reg::X(0), x0);
+        let pc = b.get(Reg::X(1));
+        let a = rec.compile(&b.finish(Terminator::Exit(ExitTo { code: 3, pc, insns: 1, link: true }))).unwrap();
+        let target = rec.compile(&counting_block(0x5000)).unwrap();
+        rec.link(target, 0x4000);
+        let mut st = GuestState::default();
+
+        st.x[1] = 0x4000;
+        let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
+        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 2 });
+        assert_eq!((st.x[0], st.pc), (2, 0x5000));
+
+        // Same slot, different pc (0x4000 + 4 * LINK_SIZE), and a misaligned pc: both miss.
+        for miss in [0x4000 + 4 * LINK_SIZE as u64, 0x4002] {
+            st.x[1] = miss;
+            let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
+            assert_eq!(exit, Exit { kind: ExitKind::Code(3), insns: 1 });
+            assert_eq!(st.pc, miss);
+        }
+        assert_eq!(rec.links_taken(), 1);
     }
 
     #[test]
