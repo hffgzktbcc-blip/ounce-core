@@ -1056,3 +1056,46 @@ fn back_faces_are_culled_by_winding() {
     assert_eq!((stats.triangles, stats.culled_triangles), (1, 1));
     assert_eq!(px(&rt_pixels(&mut mem), 10, 10), [0, 255, 0, 255]);
 }
+
+#[test]
+fn vertex_behind_the_eye_is_clipped_not_dropped() {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+    // Vertex 2 is behind the eye. The visible part is the wedge left of the line from NDC (0, -1)
+    // to (-1, 1), i.e. Y <= -2X - 1, reaching down to the bottom of the target.
+    let mut behind = vtx(-1.0, 3.0, 0.0, GREEN);
+    behind[3] = -1.0;
+    let verts = [vtx(-1.0, -1.0, 0.0, GREEN), vtx(0.0, -1.0, 0.0, GREEN), behind];
+    geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
+    draw(&mut pb, 0, 3, 4);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    assert_eq!(gpu.render_stats().dropped_triangles, 0);
+    let linear = rt_pixels(&mut mem);
+    assert_eq!(px(&linear, 10, 128), [0, 255, 0, 255]);
+    assert_eq!(px(&linear, 100, 128), [0, 0, 0, 255]);
+    assert_eq!(px(&linear, 10, 200), [0, 255, 0, 255]);
+    assert_eq!(px(&linear, 60, 200), [0, 0, 0, 255]);
+}
+
+#[test]
+fn frustum_z_clip_cuts_at_the_near_plane() {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+    // z/w runs from 0 at the bottom row to -3 at the top; z = -w is a third of the way up.
+    let verts = [vtx(-1.0, -1.0, 0.0, GREEN), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, -3.0, GREEN)];
+    geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
+    pb.extend([inc_header(SC, m::SET_VIEWPORT_CLIP_CONTROL, 1), 3 << 11]); // FRUSTUM_XYZ_CLIP
+    draw(&mut pb, 0, 3, 4);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let linear = rt_pixels(&mut mem);
+    assert_eq!(px(&linear, 5, 10), [0, 255, 0, 255]);
+    assert_eq!(px(&linear, 5, 80), [0, 255, 0, 255]);
+    assert_eq!(px(&linear, 5, 90), [0, 0, 0, 255]);
+    assert_eq!(px(&linear, 5, 120), [0, 0, 0, 255]);
+}
