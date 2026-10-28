@@ -16,3 +16,6 @@ failing result code.
 Run it: `cargo run --release -- run tests/fixtures/nro/services/services.nro`.
 Test: `libnx_services_fixture_opens_sm_and_hid` in `src/loader/fixture_tests.rs`.
 Rebuild: `make -C tests/fixtures/nro/services clean all` (byte-reproducible; see `../hello/README.md`).
+
+Exact devkitA64/libnx versions and this binary's build ID + SHA-256 are recorded in
+`../TOOLCHAIN_VERSIONS.md`.

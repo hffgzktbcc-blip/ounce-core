@@ -16,3 +16,6 @@ It prints `ounce-nvdrv result=0x00000EEE` through `svcOutputDebugString` when ev
 Run: `cargo run --release -- run tests/fixtures/nro/nvdrv/nvdrv.nro`.
 Test: `libnx_nvdrv_fixture_creates_an_nvmap_object` in `src/loader/fixture_tests.rs`.
 Rebuild: `make -C tests/fixtures/nro/nvdrv clean all` (byte-reproducible).
+
+Exact devkitA64/libnx versions and this binary's build ID + SHA-256 are recorded in
+`../TOOLCHAIN_VERSIONS.md`.
