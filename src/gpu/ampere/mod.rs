@@ -16,6 +16,7 @@
 //! for subchannels bound to AMPERE_B or MAXWELL_B. Until then only the tests use it.
 #![allow(dead_code)]
 
+mod blend;
 pub mod engine;
 pub mod methods;
 pub mod pushbuf;
