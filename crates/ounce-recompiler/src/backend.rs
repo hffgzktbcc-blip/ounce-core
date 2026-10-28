@@ -166,6 +166,16 @@ pub(crate) fn compile(
                 var
             });
         }
+        // Link accounting lives in variables while the function runs and goes back to `ctx` at
+        // every exit, so loops inside the function touch no memory for it.
+        let chained = b.declare_var(types::I64);
+        let v = b.ins().load(types::I64, MemFlagsData::trusted(), call_ctx, offset_of!(CallCtx, chained_insns) as i32);
+        b.def_var(chained, v);
+        let links = b.declare_var(types::I64);
+        let v = b.ins().load(types::I64, MemFlagsData::trusted(), call_ctx, offset_of!(CallCtx, links_taken) as i32);
+        b.def_var(links, v);
+        let budget = b.ins().load(types::I64, MemFlagsData::trusted(), call_ctx, offset_of!(CallCtx, budget) as i32);
+
         // One Cranelift block per guest block with a known pc: linked exits to it jump there.
         let mut heads = BTreeMap::new();
         let mut order = Vec::with_capacity(blocks.len());
@@ -189,6 +199,9 @@ pub(crate) fn compile(
             regs,
             written,
             heads,
+            chained,
+            links,
+            budget,
         };
         for (block, head) in blocks.iter().zip(order) {
             if let Some(head) = head {
@@ -252,6 +265,11 @@ struct Lowering<'a> {
     written: BTreeSet<i32>,
     /// Guest pc -> Cranelift block, for every block of the region with a known pc.
     heads: BTreeMap<u64, clif::Block>,
+    /// `CallCtx::chained_insns` and `CallCtx::links_taken`, written back at exits.
+    chained: Variable,
+    links: Variable,
+    /// `CallCtx::budget`, read once on entry.
+    budget: clif::Value,
 }
 
 impl Lowering<'_> {
@@ -307,6 +325,11 @@ impl Lowering<'_> {
 
     /// Writes back every register the block sets (unchanged ones store their entry value).
     fn flush_regs(&mut self) {
+        let ctx = self.call_ctx;
+        let chained = self.b.use_var(self.chained);
+        self.b.ins().store(Self::flags(), chained, ctx, offset_of!(CallCtx, chained_insns) as i32);
+        let links = self.b.use_var(self.links);
+        self.b.ins().store(Self::flags(), links, ctx, offset_of!(CallCtx, links_taken) as i32);
         for off in self.written.clone() {
             let v = self.b.use_var(self.regs[&off]);
             self.b.ins().store(Self::flags(), v, self.state, off);
@@ -339,10 +362,9 @@ impl Lowering<'_> {
         let probe = self.b.create_block();
         let go = self.b.create_block();
 
-        let chained = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, chained_insns) as i32);
+        let chained = self.b.use_var(self.chained);
         let chained = self.b.ins().iadd_imm_u(chained, insns as i64);
-        let budget = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, budget) as i32);
-        let in_budget = self.b.ins().icmp(IntCC::UnsignedLessThan, chained, budget);
+        let in_budget = self.b.ins().icmp(IntCC::UnsignedLessThan, chained, self.budget);
         let stop = self.b.use_var(self.stop);
         let clean = self.b.ins().icmp_imm_u(IntCC::Equal, stop, 0);
         let ok = self.b.ins().band(in_budget, clean);
@@ -361,6 +383,20 @@ impl Lowering<'_> {
         self.b.ins().brif(ok, probe, &[], ret, &[]);
 
         self.b.switch_to_block(probe);
+        if let LinkTarget::Dynamic = target {
+            // A return or indirect branch to a block of this region (typically the return site
+            // of a call made inside it) stays in the function: compare against each head first.
+            for (hpc, head) in self.heads.clone() {
+                let hit = self.b.ins().icmp_imm_u(IntCC::Equal, pc, hpc as i64);
+                let take = self.b.create_block();
+                let next = self.b.create_block();
+                self.b.ins().brif(hit, take, &[], next, &[]);
+                self.b.switch_to_block(take);
+                self.count_link(chained);
+                self.b.ins().jump(head, &[]);
+                self.b.switch_to_block(next);
+            }
+        }
         let table = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, links) as i32);
         let (table, slot) = match target {
             LinkTarget::Const(t) => (table, (((t >> 2) & LINK_MASK) as usize * size_of::<LinkEntry>()) as i32),
@@ -387,13 +423,12 @@ impl Lowering<'_> {
         self.b.switch_to_block(ret);
     }
 
-    /// Records a link: `chained_insns = chained`, `links_taken += 1`.
+    /// Records a link: `chained_insns = chained`, `links_taken += 1` (in variables).
     fn count_link(&mut self, chained: clif::Value) {
-        let ctx = self.call_ctx;
-        self.b.ins().store(Self::flags(), chained, ctx, offset_of!(CallCtx, chained_insns) as i32);
-        let taken = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, links_taken) as i32);
+        self.b.def_var(self.chained, chained);
+        let taken = self.b.use_var(self.links);
         let taken = self.b.ins().iadd_imm_u(taken, 1);
-        self.b.ins().store(Self::flags(), taken, ctx, offset_of!(CallCtx, links_taken) as i32);
+        self.b.def_var(self.links, taken);
     }
 
     /// Branches to a cold block that stores the faulting `pc` and returns `EXIT_FAULT` when
