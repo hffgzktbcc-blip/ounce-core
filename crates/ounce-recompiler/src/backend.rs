@@ -105,9 +105,24 @@ pub(crate) fn compile(
     isa: &dyn TargetIsa,
     ctx: &mut Context,
     fctx: &mut FunctionBuilderContext,
-    block: &Block,
+    blocks: &[Block],
 ) -> Result<BlockCode, CompileError> {
-    block.validate().map_err(CompileError::InvalidIr)?;
+    // A region: the first block is the entry; the others are guest blocks its direct links may
+    // reach, each with its `entry_pc`, compiled into the same function (loops across blocks stay
+    // in host registers).
+    if blocks.is_empty() {
+        return Err(CompileError::InvalidIr("empty region".into()));
+    }
+    for block in blocks {
+        block.validate().map_err(CompileError::InvalidIr)?;
+        if blocks.len() > 1 && block.entry_pc.is_none() {
+            return Err(CompileError::InvalidIr("every block of a region needs an entry pc".into()));
+        }
+    }
+    let pcs: BTreeSet<u64> = blocks.iter().filter_map(|bl| bl.entry_pc).collect();
+    if blocks.len() > 1 && pcs.len() != blocks.len() {
+        return Err(CompileError::InvalidIr("two blocks of a region share an entry pc".into()));
+    }
 
     // The memory trampolines are plain `extern "C"` functions.
     let call_conv = isa.default_call_conv();
@@ -135,10 +150,10 @@ pub(crate) fn compile(
         let zero = b.ins().iconst(types::I64, 0);
         b.def_var(stop, zero);
 
-        // One variable per guest register the block touches, loaded on entry.
+        // One variable per guest register the region touches, loaded on entry.
         let mut regs = BTreeMap::new();
         let mut written = BTreeSet::new();
-        for op in &block.ops {
+        for op in blocks.iter().flat_map(|bl| &bl.ops) {
             let (Op::GetReg(r) | Op::SetReg(r, _)) = *op else { continue };
             let off = reg_offset(r);
             if matches!(op, Op::SetReg(..)) {
@@ -151,13 +166,16 @@ pub(crate) fn compile(
                 var
             });
         }
-        // Loop target for linked exits back to this block.
-        let head = block.entry_pc.map(|pc| {
-            let head = b.create_block();
-            b.ins().jump(head, &[]);
-            b.switch_to_block(head);
-            (pc, head)
-        });
+        // One Cranelift block per guest block with a known pc: linked exits to it jump there.
+        let mut heads = BTreeMap::new();
+        let mut order = Vec::with_capacity(blocks.len());
+        for bl in blocks {
+            let head = bl.entry_pc.map(|pc| *heads.entry(pc).or_insert_with(|| b.create_block()));
+            order.push(head);
+        }
+        if let Some(first) = order[0] {
+            b.ins().jump(first, &[]);
+        }
 
         let mut lw = Lowering {
             b,
@@ -167,32 +185,38 @@ pub(crate) fn compile(
             tail_sig,
             slot,
             stop,
-            vals: Vec::with_capacity(block.ops.len()),
+            vals: Vec::new(),
             regs,
             written,
-            head,
+            heads,
         };
-        // How a linked exit finds its table slot: fixed for a constant pc, computed otherwise.
-        let link_pc = |e: &ExitTo| match block.ops[e.pc.0 as usize] {
-            _ if !e.link => None,
-            Op::Const(pc) => Some(LinkTarget::Const(pc)),
-            _ => Some(LinkTarget::Dynamic),
-        };
-        for op in &block.ops {
-            let v = lw.op(op);
-            lw.vals.push(v);
-        }
-        match block.term {
-            Terminator::Exit(e) => lw.exit(e, link_pc(&e)),
-            Terminator::Branch { cond, taken, not_taken } => {
-                let c = lw.v(cond);
-                let t = lw.b.create_block();
-                let n = lw.b.create_block();
-                lw.b.ins().brif(c, t, &[], n, &[]);
-                lw.b.switch_to_block(t);
-                lw.exit(taken, link_pc(&taken));
-                lw.b.switch_to_block(n);
-                lw.exit(not_taken, link_pc(&not_taken));
+        for (block, head) in blocks.iter().zip(order) {
+            if let Some(head) = head {
+                lw.b.switch_to_block(head);
+            }
+            // How a linked exit finds its table slot: fixed for a constant pc, computed otherwise.
+            let link_pc = |e: &ExitTo| match block.ops[e.pc.0 as usize] {
+                _ if !e.link => None,
+                Op::Const(pc) => Some(LinkTarget::Const(pc)),
+                _ => Some(LinkTarget::Dynamic),
+            };
+            lw.vals.clear();
+            for op in &block.ops {
+                let v = lw.op(op);
+                lw.vals.push(v);
+            }
+            match block.term {
+                Terminator::Exit(e) => lw.exit(e, link_pc(&e)),
+                Terminator::Branch { cond, taken, not_taken } => {
+                    let c = lw.v(cond);
+                    let t = lw.b.create_block();
+                    let n = lw.b.create_block();
+                    lw.b.ins().brif(c, t, &[], n, &[]);
+                    lw.b.switch_to_block(t);
+                    lw.exit(taken, link_pc(&taken));
+                    lw.b.switch_to_block(n);
+                    lw.exit(not_taken, link_pc(&not_taken));
+                }
             }
         }
         lw.b.seal_all_blocks();
@@ -226,8 +250,8 @@ struct Lowering<'a> {
     regs: BTreeMap<i32, Variable>,
     /// Offsets of the registers the block sets; written back at every exit.
     written: BTreeSet<i32>,
-    /// `(entry_pc, loop head)` when the block knows its own pc.
-    head: Option<(u64, clif::Block)>,
+    /// Guest pc -> Cranelift block, for every block of the region with a known pc.
+    heads: BTreeMap<u64, clif::Block>,
 }
 
 impl Lowering<'_> {
@@ -322,10 +346,10 @@ impl Lowering<'_> {
         let stop = self.b.use_var(self.stop);
         let clean = self.b.ins().icmp_imm_u(IntCC::Equal, stop, 0);
         let ok = self.b.ins().band(in_budget, clean);
-        if let (LinkTarget::Const(t), Some((entry_pc, head))) = (target, self.head)
-            && t == entry_pc
+        if let LinkTarget::Const(t) = target
+            && let Some(&head) = self.heads.get(&t)
         {
-            // Back to this block: loop without leaving the function or touching `state`.
+            // A block of this region: jump without leaving the function or touching `state`.
             let go = self.b.create_block();
             self.b.ins().brif(ok, go, &[], ret, &[]);
             self.b.switch_to_block(go);
