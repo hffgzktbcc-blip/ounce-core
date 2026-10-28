@@ -150,5 +150,74 @@ pub const B197_SET_VERTEX_STREAM_LIMIT_A_A: u32 = 0x1f00;
 pub const B197_SET_VERTEX_STREAM_LIMIT_A_B: u32 = 0x1f04;
 pub const B197_VERTEX_STREAM_LIMIT_STRIDE: u32 = 8;
 
+// Step 3: textures, constant buffers, depth/color write state, clears. Same offsets in `clb197.h`.
+/// `NVC797_SET_CLEAR_RECT_HORIZONTAL`: XMIN 15:0, XMAX 31:16. `_VERTICAL`: YMIN 15:0, YMAX 31:16.
+pub const SET_CLEAR_RECT_HORIZONTAL: u32 = 0x0d6c;
+pub const SET_CLEAR_RECT_VERTICAL: u32 = 0x0d70;
+/// `NVC797_SET_CLEAR_SURFACE_CONTROL`: RESPECT_STENCIL_MASK 0:0, USE_CLEAR_RECT 4:4, USE_SCISSOR0 8:8,
+/// USE_VIEWPORT_CLIP0 12:12.
+pub const SET_CLEAR_SURFACE_CONTROL: u32 = 0x10f8;
+/// `NVC797_SET_DEPTH_TEST`: ENABLE 0:0.
+pub const SET_DEPTH_TEST: u32 = 0x12cc;
+/// `NVC797_SET_DEPTH_WRITE`: ENABLE 0:0.
+pub const SET_DEPTH_WRITE: u32 = 0x12e8;
+/// `NVC797_SET_DEPTH_FUNC`: `OGL_NEVER` 0x200 .. `OGL_ALWAYS` 0x207, `D3D_NEVER` 1 .. `D3D_ALWAYS` 8.
+pub const SET_DEPTH_FUNC: u32 = 0x130c;
+/// `NVC797_SET_BLEND(i)`: ENABLE 0:0, 8 targets. Blending is not modelled; an enabled target is
+/// written as if blending were off and a diagnostic is recorded.
+pub const SET_BLEND: u32 = 0x1360;
+/// `NVC797_SET_TEX_SAMPLER_POOL_A` (offset upper 7:0), `_B` (lower 31:0), `_C` (MAXIMUM_INDEX 19:0).
+pub const SET_TEX_SAMPLER_POOL_A: u32 = 0x155c;
+pub const SET_TEX_SAMPLER_POOL_B: u32 = 0x1560;
+pub const SET_TEX_SAMPLER_POOL_C: u32 = 0x1564;
+/// `NVC797_SET_TEX_HEADER_POOL_A` (offset upper 7:0), `_B` (lower 31:0), `_C` (MAXIMUM_INDEX 21:0).
+pub const SET_TEX_HEADER_POOL_A: u32 = 0x1574;
+pub const SET_TEX_HEADER_POOL_B: u32 = 0x1578;
+pub const SET_TEX_HEADER_POOL_C: u32 = 0x157c;
+/// `NVC797_SET_CT_WRITE(i)`: R_ENABLE 0:0, G_ENABLE 4:4, B_ENABLE 8:8, A_ENABLE 12:12.
+pub const SET_CT_WRITE: u32 = 0x1a00;
+/// `NVC797_SET_CONSTANT_BUFFER_SELECTOR_A` (SIZE 16:0), `_B` (address upper 7:0), `_C` (lower).
+pub const SET_CONSTANT_BUFFER_SELECTOR_A: u32 = 0x2380;
+pub const SET_CONSTANT_BUFFER_SELECTOR_B: u32 = 0x2384;
+pub const SET_CONSTANT_BUFFER_SELECTOR_C: u32 = 0x2388;
+/// `NVC797_LOAD_CONSTANT_BUFFER_OFFSET`: V 15:0, byte offset into the selected buffer.
+pub const LOAD_CONSTANT_BUFFER_OFFSET: u32 = 0x238c;
+/// `NVC797_LOAD_CONSTANT_BUFFER(i)`, i = 0..31: each write stores one word at the load offset and
+/// advances it by 4, whichever `i` carries it (so INC and NON_INC streams both work).
+pub const LOAD_CONSTANT_BUFFER: u32 = 0x2390;
+pub const LOAD_CONSTANT_BUFFER_COUNT: u32 = 32;
+/// `NVC797_BIND_GROUP_CONSTANT_BUFFER(j)`: VALID 0:0, SHADER_SLOT 8:4. One group per shader stage
+/// (vertex, tessellation init, tessellation, geometry, pixel), 32 bytes apart.
+pub const BIND_GROUP_CONSTANT_BUFFER: u32 = 0x2410;
+pub const BIND_GROUP_STRIDE: u32 = 32;
+pub const BIND_GROUP_COUNT: usize = 5;
+/// Constant buffer slots per group (SHADER_SLOT is 5 bits wide).
+pub const CONSTANT_BUFFER_SLOTS: usize = 32;
+
+// Host (channel) methods, below `FIRST_CLASS_METHOD`. `NVB06F_*` (MAXWELL_CHANNEL_GPFIFO_A,
+// open-gpu-doc `classes/host/clb06f.h`) and `NVC56F_*` (AMPERE_CHANNEL_GPFIFO_A, `clc56f.h`) share
+// 0x10..0x20, 0x50 and 0x78; the `SEM_*` group at 0x5c..0x6c is `NVC56F_` only.
+/// `SEMAPHOREA` (offset upper 7:0), `SEMAPHOREB` (offset lower 31:2), `SEMAPHOREC` (payload),
+/// `SEMAPHORED` (OPERATION 4:0, ACQUIRE_SWITCH 12:12, RELEASE_WFI 20:20, RELEASE_SIZE 24:24,
+/// REDUCTION 30:27, FORMAT 31:31). Writing `SEMAPHORED` triggers.
+pub const HOST_SEMAPHOREA: u32 = 0x0010;
+pub const HOST_SEMAPHOREB: u32 = 0x0014;
+pub const HOST_SEMAPHOREC: u32 = 0x0018;
+pub const HOST_SEMAPHORED: u32 = 0x001c;
+/// `NON_STALL_INTERRUPT`: HANDLE 31:0.
+pub const HOST_NON_STALL_INTERRUPT: u32 = 0x0020;
+/// `SET_REFERENCE`: COUNT 31:0.
+pub const HOST_SET_REFERENCE: u32 = 0x0050;
+/// `NVC56F_SEM_ADDR_LO` (OFFSET 31:2), `_HI` (7:0), `SEM_PAYLOAD_LO/HI`, `SEM_EXECUTE` (OPERATION
+/// 2:0, ACQUIRE_SWITCH_TSG 12:12, RELEASE_WFI 20:20, PAYLOAD_SIZE 24:24, RELEASE_TIMESTAMP 25:25,
+/// REDUCTION 30:27, REDUCTION_FORMAT 31:31). Writing `SEM_EXECUTE` triggers.
+pub const HOST_SEM_ADDR_LO: u32 = 0x005c;
+pub const HOST_SEM_ADDR_HI: u32 = 0x0060;
+pub const HOST_SEM_PAYLOAD_LO: u32 = 0x0064;
+pub const HOST_SEM_PAYLOAD_HI: u32 = 0x0068;
+pub const HOST_SEM_EXECUTE: u32 = 0x006c;
+/// `WFI`: SCOPE 0:0.
+pub const HOST_WFI: u32 = 0x0078;
+
 /// One past the highest method the 12-bit pushbuffer dword address can reach.
 pub const METHOD_SPACE: u32 = 0x4000;
