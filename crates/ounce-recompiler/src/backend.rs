@@ -5,8 +5,11 @@
 //! `tail` convention; Rust enters through one `extern "C"` trampoline per `Recompiler`
 //! (`compile_trampoline`). A linked exit (`ExitTo::link`) tail-calls the next block when the link
 //! table has it and the budget allows (docs/design/m4-native-linking.md); otherwise it returns.
-//! Guest registers are loaded from and stored to `state` at every `GetReg`/`SetReg`, so the state
-//! in memory is always current when a memory callback runs and faults are precise (section 5).
+//! Guest registers live in Cranelift variables within a block: the ones the block uses are loaded
+//! from `state` on entry, and the ones it sets are written back only on the way out (every return
+//! and every linked tail call), with the values the IR has reached at that exit. The memory
+//! callbacks never read `state`, so faults stay precise (section 5). A linked exit back to the
+//! block's own `entry_pc` loops inside the function and keeps the registers in host registers.
 //! The return value is `code | insns << 32`; the exit `pc` is stored in `state.pc`.
 
 use crate::exec::{self, BlockCode, CallCtx, LinkEntry, Trampoline, LINK_MASK, MEM_CODE_WRITTEN, MEM_FAULT};
@@ -19,6 +22,7 @@ use cranelift_codegen::isa::{CallConv, OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use std::collections::{BTreeMap, BTreeSet};
 use std::mem::offset_of;
 
 pub(crate) fn host_isa() -> Result<OwnedTargetIsa, CompileError> {
@@ -131,6 +135,30 @@ pub(crate) fn compile(
         let zero = b.ins().iconst(types::I64, 0);
         b.def_var(stop, zero);
 
+        // One variable per guest register the block touches, loaded on entry.
+        let mut regs = BTreeMap::new();
+        let mut written = BTreeSet::new();
+        for op in &block.ops {
+            let (Op::GetReg(r) | Op::SetReg(r, _)) = *op else { continue };
+            let off = reg_offset(r);
+            if matches!(op, Op::SetReg(..)) {
+                written.insert(off);
+            }
+            regs.entry(off).or_insert_with(|| {
+                let var = b.declare_var(types::I64);
+                let v = b.ins().load(types::I64, MemFlagsData::trusted(), state, off);
+                b.def_var(var, v);
+                var
+            });
+        }
+        // Loop target for linked exits back to this block.
+        let head = block.entry_pc.map(|pc| {
+            let head = b.create_block();
+            b.ins().jump(head, &[]);
+            b.switch_to_block(head);
+            (pc, head)
+        });
+
         let mut lw = Lowering {
             b,
             state,
@@ -140,6 +168,9 @@ pub(crate) fn compile(
             slot,
             stop,
             vals: Vec::with_capacity(block.ops.len()),
+            regs,
+            written,
+            head,
         };
         // How a linked exit finds its table slot: fixed for a constant pc, computed otherwise.
         let link_pc = |e: &ExitTo| match block.ops[e.pc.0 as usize] {
@@ -191,6 +222,12 @@ struct Lowering<'a> {
     stop: Variable,
     /// Cranelift value per IR op; `None` for ops without a result.
     vals: Vec<Option<clif::Value>>,
+    /// Variable per guest register the block touches, by `state` offset.
+    regs: BTreeMap<i32, Variable>,
+    /// Offsets of the registers the block sets; written back at every exit.
+    written: BTreeSet<i32>,
+    /// `(entry_pc, loop head)` when the block knows its own pc.
+    head: Option<(u64, clif::Block)>,
 }
 
 impl Lowering<'_> {
@@ -244,7 +281,16 @@ impl Lowering<'_> {
         (n, z)
     }
 
+    /// Writes back every register the block sets (unchanged ones store their entry value).
+    fn flush_regs(&mut self) {
+        for off in self.written.clone() {
+            let v = self.b.use_var(self.regs[&off]);
+            self.b.ins().store(Self::flags(), v, self.state, off);
+        }
+    }
+
     fn ret(&mut self, code: u32, insns: u32) {
+        self.flush_regs();
         let word = self.b.ins().iconst(types::I64, (code as u64 | (insns as u64) << 32) as i64);
         self.b.ins().return_(&[word]);
     }
@@ -276,6 +322,18 @@ impl Lowering<'_> {
         let stop = self.b.use_var(self.stop);
         let clean = self.b.ins().icmp_imm_u(IntCC::Equal, stop, 0);
         let ok = self.b.ins().band(in_budget, clean);
+        if let (LinkTarget::Const(t), Some((entry_pc, head))) = (target, self.head)
+            && t == entry_pc
+        {
+            // Back to this block: loop without leaving the function or touching `state`.
+            let go = self.b.create_block();
+            self.b.ins().brif(ok, go, &[], ret, &[]);
+            self.b.switch_to_block(go);
+            self.count_link(chained);
+            self.b.ins().jump(head, &[]);
+            self.b.switch_to_block(ret);
+            return;
+        }
         self.b.ins().brif(ok, probe, &[], ret, &[]);
 
         self.b.switch_to_block(probe);
@@ -296,15 +354,22 @@ impl Lowering<'_> {
         self.b.ins().brif(hit, go, &[], ret, &[]);
 
         self.b.switch_to_block(go);
+        self.count_link(chained);
+        let entry =
+            self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, host_entry) as i32);
+        self.flush_regs();
+        self.b.ins().return_call_indirect(self.tail_sig, entry, &[self.state, ctx]);
+
+        self.b.switch_to_block(ret);
+    }
+
+    /// Records a link: `chained_insns = chained`, `links_taken += 1`.
+    fn count_link(&mut self, chained: clif::Value) {
+        let ctx = self.call_ctx;
         self.b.ins().store(Self::flags(), chained, ctx, offset_of!(CallCtx, chained_insns) as i32);
         let taken = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, links_taken) as i32);
         let taken = self.b.ins().iadd_imm_u(taken, 1);
         self.b.ins().store(Self::flags(), taken, ctx, offset_of!(CallCtx, links_taken) as i32);
-        let entry =
-            self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, host_entry) as i32);
-        self.b.ins().return_call_indirect(self.tail_sig, entry, &[self.state, ctx]);
-
-        self.b.switch_to_block(ret);
     }
 
     /// Branches to a cold block that stores the faulting `pc` and returns `EXIT_FAULT` when
@@ -415,10 +480,10 @@ impl Lowering<'_> {
     fn op(&mut self, op: &Op) -> Option<clif::Value> {
         Some(match *op {
             Op::Const(c) => self.b.ins().iconst(types::I64, c as i64),
-            Op::GetReg(r) => self.b.ins().load(types::I64, Self::flags(), self.state, reg_offset(r)),
+            Op::GetReg(r) => self.b.use_var(self.regs[&reg_offset(r)]),
             Op::SetReg(r, v) => {
                 let v = self.v(v);
-                self.b.ins().store(Self::flags(), v, self.state, reg_offset(r));
+                self.b.def_var(self.regs[&reg_offset(r)], v);
                 return None;
             }
             Op::Bin(op, w, a, bv) => {
