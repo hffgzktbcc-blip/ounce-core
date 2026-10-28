@@ -38,6 +38,11 @@ pub const SET_VERTEX_STREAM_A_LOCATION_B: u32 = 0x1c08;
 /// `NVC797_SET_VERTEX_STREAM_A_FREQUENCY(j)`.
 pub const SET_VERTEX_STREAM_A_FREQUENCY: u32 = 0x1c0c;
 pub const VERTEX_STREAM_A_STRIDE: u32 = 16;
+/// `NVC797_SET_VERTEX_STREAM_INSTANCE_A(j)` (`IS_INSTANCED` 0:0), one word per stream: the stream
+/// advances per instance (by `SET_VERTEX_STREAM_A_FREQUENCY`) instead of per vertex.
+pub const SET_VERTEX_STREAM_INSTANCE_A: u32 = 0x1880;
+/// `NVC797_SET_GLOBAL_BASE_INSTANCE_INDEX`: added to the element index of instanced streams.
+pub const SET_GLOBAL_BASE_INSTANCE_INDEX: u32 = 0x1438;
 
 // Color targets: 8 targets, 64 bytes apart.
 pub const COLOR_TARGET_COUNT: usize = 8;

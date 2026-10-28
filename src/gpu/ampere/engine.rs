@@ -55,6 +55,8 @@ pub struct VertexStream {
     pub stride: u32,
     pub size: u64,
     pub frequency: u32,
+    /// `SET_VERTEX_STREAM_INSTANCE_A(j).IS_INSTANCED`.
+    pub instanced: bool,
 }
 
 /// An active vertex attribute (`SET_VERTEX_ATTRIBUTE_A(i)`), fields kept as the class encodes them.
@@ -131,7 +133,10 @@ pub struct DrawRecord {
     pub topology: Topology,
     pub first_vertex: u32,
     pub vertex_count: u32,
+    /// Instance id (`INSTANCE_ID` FIRST resets it, SUBSEQUENT advances it).
     pub instance: u32,
+    /// `SET_GLOBAL_BASE_INSTANCE_INDEX`.
+    pub base_instance: u32,
     pub color_targets: Vec<ColorTarget>,
     pub depth_target: Option<DepthTarget>,
     pub vertex_streams: Vec<VertexStream>,
@@ -836,6 +841,7 @@ impl Ampere3d {
                     stride: fmt & 0xfff,
                     size,
                     frequency: self.reg(m::SET_VERTEX_STREAM_A_FREQUENCY + j * m::VERTEX_STREAM_A_STRIDE),
+                    instanced: self.reg(m::SET_VERTEX_STREAM_INSTANCE_A + 4 * j) & 1 == 1,
                 })
             })
             .collect();
@@ -886,6 +892,7 @@ impl Ampere3d {
             first_vertex,
             vertex_count,
             instance,
+            base_instance: self.reg(m::SET_GLOBAL_BASE_INSTANCE_INDEX),
             color_targets: self.color_targets(),
             depth_target: self.depth_target(class),
             vertex_streams,
