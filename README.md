@@ -23,6 +23,8 @@
 
 The maintainer uses AI coding agents as part of development and reviews their changes. CI runs the default tests and 25-stage harness, plus separate feature-specific jobs described below. Tests cover only the behaviors they exercise.
 
+The checked-in NRO fixtures target the original Nintendo Switch homebrew environment (`libnx`). Switch 2 game support is a long-term goal, not a current capability; these fixtures and tests do not establish Switch 2 compatibility or commercial-game support.
+
 ---
 
 ## Legal Notice
