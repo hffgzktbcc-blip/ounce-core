@@ -296,6 +296,18 @@ pub const BIND_GROUP_COUNT: usize = 5;
 /// Constant buffer slots per group (SHADER_SLOT is 5 bits wide).
 pub const CONSTANT_BUFFER_SLOTS: usize = 32;
 
+// Macro engine (MME). `NVB197_*` and `NVC797_*` share these offsets; the instruction formats differ
+// (see `mme.rs`). Pointers are word indices; each RAM write stores one word and advances its pointer.
+pub const LOAD_MME_INSTRUCTION_RAM_POINTER: u32 = 0x0114;
+pub const LOAD_MME_INSTRUCTION_RAM: u32 = 0x0118;
+pub const LOAD_MME_START_ADDRESS_RAM_POINTER: u32 = 0x011c;
+pub const LOAD_MME_START_ADDRESS_RAM: u32 = 0x0120;
+/// `CALL_MME_MACRO(j)` starts macro j with its first parameter; `CALL_MME_DATA(j)` (`+4`) queues
+/// the next ones. 128 macros, 8 bytes apart.
+pub const CALL_MME_MACRO: u32 = 0x3800;
+pub const CALL_MME_DATA: u32 = 0x3804;
+pub const CALL_MME_STRIDE: u32 = 8;
+
 // Host (channel) methods, below `FIRST_CLASS_METHOD`. `NVB06F_*` (MAXWELL_CHANNEL_GPFIFO_A,
 // open-gpu-doc `classes/host/clb06f.h`) and `NVC56F_*` (AMPERE_CHANNEL_GPFIFO_A, `clc56f.h`) share
 // 0x10..0x20, 0x50 and 0x78; the `SEM_*` group at 0x5c..0x6c is `NVC56F_` only.
