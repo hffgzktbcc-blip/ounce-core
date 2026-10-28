@@ -11,6 +11,7 @@
 
 pub mod headless;
 pub mod minifb_window;
+pub mod surface;
 #[cfg(feature = "gpu-present")]
 pub mod wgpu_window;
 
