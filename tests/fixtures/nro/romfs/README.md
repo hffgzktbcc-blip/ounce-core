@@ -21,3 +21,6 @@ Test: `libnx_romfs_fixture_reads_its_romfs` in `src/loader/fixture_tests.rs`.
 Rebuild: `make -C tests/fixtures/nro/romfs clean all` (byte-reproducible). The RomFS is appended by
 `add_romfs.py` because `elf2nro --romfsdir` silently ignores the option on macOS (its option parsing
 stops at the first positional argument).
+
+Exact devkitA64/libnx versions and this binary's build ID + SHA-256 are recorded in
+`../TOOLCHAIN_VERSIONS.md`.

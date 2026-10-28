@@ -19,3 +19,6 @@ To listen: `cargo run --release -- run tests/fixtures/nro/audren/audren.nro long
 device's playback clock.
 
 Rebuild: `make -C tests/fixtures/nro/audren clean all` (byte-reproducible).
+
+Exact devkitA64/libnx versions and this binary's build ID + SHA-256 are recorded in
+`../TOOLCHAIN_VERSIONS.md`.

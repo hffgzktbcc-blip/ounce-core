@@ -17,3 +17,6 @@ when every check passes, else `0xBAD0000 | bits`.
 
 Run: `cargo run --release -- run tests/fixtures/nro/threads/threads.nro`.
 Test: `libnx_threads_fixture_synchronizes_two_workers`. Rebuild: `make -C tests/fixtures/nro/threads clean all`.
+
+Exact devkitA64/libnx versions and this binary's build ID + SHA-256 are recorded in
+`../TOOLCHAIN_VERSIONS.md`.

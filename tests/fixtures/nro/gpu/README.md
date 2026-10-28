@@ -18,3 +18,6 @@ It prints `ounce-gpu result=0x00000EEE` through `svcOutputDebugString` when ever
 Run: `cargo run --release -- run tests/fixtures/nro/gpu/gpu.nro`.
 Test: `libnx_gpu_fixture_submits_a_command_buffer` (also checks the GPU model processed the command
 and that no ioctl went unhandled). Rebuild: `make -C tests/fixtures/nro/gpu clean all` (byte-reproducible).
+
+Exact devkitA64/libnx versions and this binary's build ID + SHA-256 are recorded in
+`../TOOLCHAIN_VERSIONS.md`.

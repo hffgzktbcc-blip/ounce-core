@@ -30,5 +30,5 @@ github.com/devkitPro/pacman/releases, then `sudo dkp-pacman -S switch-dev`).
 make -C tests/fixtures/nro/hello clean all
 ```
 
-Built with devkitA64 (GCC 16.1) and libnx from `switch-dev` on 2026-10-27. A different toolchain
-version gives a different binary; the tests check behaviour, not bytes.
+Exact devkitA64/libnx versions and this binary's build ID + SHA-256 are recorded in
+`../TOOLCHAIN_VERSIONS.md`.

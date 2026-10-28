@@ -15,3 +15,6 @@ position and checks the fixture reads them back. Under `ounce-core run` with no 
 input, so it prints `buttons=0x00000000`; with `--gui` the window's keyboard and any gamepad feed it.
 
 Rebuild: `make -C tests/fixtures/nro/input clean all` (byte-reproducible).
+
+Exact devkitA64/libnx versions and this binary's build ID + SHA-256 are recorded in
+`../TOOLCHAIN_VERSIONS.md`.
