@@ -522,17 +522,81 @@ fn unsupported_shader_skips_the_draw() {
     assert!(matches!(gpu.diagnostics(), [Diagnostic::RenderSkipped { .. }]), "{:?}", gpu.diagnostics());
 }
 
-#[test]
-fn blend_enabled_is_reported() {
+// --- Blending --------------------------------------------------------------------------------
+
+/// Clears target 0 to `clear`, then draws a full-target triangle whose pixel shader outputs `src`
+/// (from `c[1]`), after the blend state in `state`.
+fn blended(clear: [f32; 4], src: [f32; 4], state: &[u32]) -> (Ampere3d, Vec<u8>) {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
     setup(&mut pb, m::AMPERE_B, false);
-    pb.push(immd_header(SC, m::SET_BLEND, 1));
-    geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, RED), vtx(-1.0, 1.0, 0.0, RED)], &varying_pixel_shader());
+    clear_color(&mut pb, clear);
+    pb.extend_from_slice(state);
+    let tri = [vtx(-1.0, -1.0, 0.0, RED), vtx(3.0, -1.0, 0.0, RED), vtx(-1.0, 3.0, 0.0, RED)];
+    geometry(&mut pb, &mut mem, &tri, &cbuf_pixel_shader());
+    pb.extend([inc_header(SC, m::SET_CONSTANT_BUFFER_SELECTOR_A, 3), 256, hi(CB_VA), lo(CB_VA)]);
+    pb.extend([inc_header(SC, m::LOAD_CONSTANT_BUFFER_OFFSET, 1), 0]);
+    pb.push(non_inc_header(SC, m::LOAD_CONSTANT_BUFFER, 4));
+    pb.extend(src.map(f));
+    pb.extend([inc_header(SC, m::BIND_GROUP_CONSTANT_BUFFER + 4 * m::BIND_GROUP_STRIDE, 1), (1 << 4) | 1]);
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
-    assert_eq!(gpu.diagnostics(), &[Diagnostic::BlendNotModelled { target: 0 }]);
-    assert_eq!(gpu.render_stats().draws, 1);
+    let linear = rt_pixels(&mut mem);
+    (gpu, linear)
+}
+
+/// Shared blend registers: separate-alpha, color op/src/dst, alpha op/src/dst.
+fn shared_blend(regs: [u32; 7]) -> Vec<u32> {
+    let mut pb = vec![immd_header(SC, m::SET_BLEND, 1), inc_header(SC, m::SET_BLEND_SEPARATE_FOR_ALPHA, 7)];
+    pb.extend(regs);
+    // 0x1354 sits between ALPHA_SOURCE_COEFF and ALPHA_DEST_COEFF; rewrite the last one alone.
+    pb.extend([inc_header(SC, m::SET_BLEND_ALPHA_DEST_COEFF, 1), regs[6]]);
+    pb
+}
+
+#[test]
+fn alpha_blending_mixes_with_the_target() {
+    // GL: ADD, SRC_ALPHA, ONE_MINUS_SRC_ALPHA; separate alpha off, so alpha uses it too.
+    let state = shared_blend([0, 0x8006, 0x4302, 0x4303, 0, 0, 0]);
+    let (gpu, linear) = blended([0.0, 0.0, 1.0, 1.0], [1.0, 0.0, 0.0, 0.25], &state);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    // 0.25 red + 0.75 blue; alpha 0.25 * 0.25 + 0.75 * 1 = 0.8125.
+    assert_eq!(px(&linear, 10, 10), [64, 0, 191, 207]);
+    assert_eq!(px(&linear, 250, 250), [64, 0, 191, 207]);
+}
+
+#[test]
+fn per_target_d3d_blend_with_separate_alpha() {
+    // Per-target block for target 0: D3D REVSUBTRACT ONE ONE for color, MAX for alpha.
+    let mut state = vec![immd_header(SC, m::SET_BLEND, 1), immd_header(SC, m::SET_BLEND_STATE_PER_TARGET, 1)];
+    state.push(inc_header(SC, m::SET_BLEND_PER_TARGET, 7));
+    state.extend([1, 3, 2, 2, 5, 2, 2]);
+    // The shared registers hold something unsupported; per-target mode must ignore them.
+    state.extend([inc_header(SC, m::SET_BLEND_COLOR_SOURCE_COEFF, 1), 0xc900]);
+    let (gpu, linear) = blended([0.5, 0.5, 0.5, 0.5], [0.25, 0.75, 0.0, 1.0], &state);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    // dst - src per color channel (128/255 - src), clamped at 0; alpha max(1, 0.5).
+    assert_eq!(px(&linear, 100, 100), [64, 0, 128, 255]);
+}
+
+#[test]
+fn constant_color_blend_factor() {
+    // ADD, CONSTANT_COLOR, ZERO: src * constant.
+    let mut state = shared_blend([0, 0x8006, 0xc001, 0x4000, 0, 0, 0]);
+    state.push(inc_header(SC, m::SET_BLEND_CONST_RED, 4));
+    state.extend([0.5f32, 1.0, 0.0, 2.0].map(f));
+    let (_, linear) = blended([0.0; 4], [1.0, 0.5, 1.0, 1.0], &state);
+    // The constant clamps to 1 on a unorm target, so alpha stays 1.
+    assert_eq!(px(&linear, 10, 10), [128, 128, 0, 255]);
+}
+
+#[test]
+fn dual_source_blending_skips_the_draw() {
+    let state = shared_blend([0, 0x8006, 0xc900, 0x4000, 0, 0, 0]);
+    let (gpu, linear) = blended([0.0, 1.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], &state);
+    assert_eq!(gpu.diagnostics(), &[Diagnostic::RenderSkipped { reason: "dual-source blending" }]);
+    assert_eq!(gpu.render_stats().draws, 0);
+    assert_eq!(px(&linear, 10, 10), [0, 255, 0, 255]);
 }
 
 // --- Textures --------------------------------------------------------------------------------
