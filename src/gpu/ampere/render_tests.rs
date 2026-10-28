@@ -1099,3 +1099,45 @@ fn frustum_z_clip_cuts_at_the_near_plane() {
     assert_eq!(px(&linear, 5, 90), [0, 0, 0, 255]);
     assert_eq!(px(&linear, 5, 120), [0, 0, 0, 255]);
 }
+
+/// Two quads from stream 0 (left and right half) drawn as instances 0 and 1 of one draw sequence;
+/// attribute 1 (color) comes from instanced stream 1.
+fn instanced_halves(frequency: u32, base_instance: u32) -> Vec<u8> {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    let quad = |x0: f32, x1: f32| [vtx(x0, -1.0, 0.5, RED), vtx(x1, -1.0, 0.5, RED), vtx(x1, 1.0, 0.5, RED), vtx(x0, 1.0, 0.5, RED)];
+    let verts: Vec<[f32; 8]> = [quad(-1.0, 0.0), quad(0.0, 1.0)].concat();
+    geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
+    let colors: Vec<u8> = [GREEN, BLUE, RED].iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
+    const IB_VA: u64 = VB_VA + 0x800;
+    mem.put(IB_VA, &colors);
+    let stream1 = m::SET_VERTEX_STREAM_A_FORMAT + m::VERTEX_STREAM_A_STRIDE;
+    pb.extend([inc_header(SC, stream1, 4), (1 << 12) | 16, hi(IB_VA), lo(IB_VA), frequency]);
+    pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_SIZE_A + m::VERTEX_STREAM_SIZE_STRIDE, 2), 0, colors.len() as u32]);
+    pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_INSTANCE_A + 4, 1), 1]);
+    pb.extend([inc_header(SC, m::SET_GLOBAL_BASE_INSTANCE_INDEX, 1), base_instance]);
+    // Attribute 1 now reads stream 1 at offset 0.
+    pb.extend([inc_header(SC, m::SET_VERTEX_ATTRIBUTE_A + 4, 1), (7 << 27) | (0x01 << 21) | 1]);
+    pb.extend([inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_FIRST, 1), (4 << 16) | (7 << 28)]);
+    pb.extend([inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_SUBSEQUENT, 1), 4 | (4 << 16) | (7 << 28)]);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    assert_eq!(gpu.render_stats().draws, 2);
+    rt_pixels(&mut mem)
+}
+
+#[test]
+fn instanced_stream_steps_per_instance() {
+    let linear = instanced_halves(1, 0);
+    assert_eq!(px(&linear, 10, 10), [0, 255, 0, 255]);
+    assert_eq!(px(&linear, 200, 10), [0, 0, 255, 255]);
+}
+
+#[test]
+fn instanced_stream_honours_divisor_and_base_instance() {
+    // Divisor 2: both instances read element base + 0 = 1 (blue).
+    let linear = instanced_halves(2, 1);
+    assert_eq!(px(&linear, 10, 10), [0, 0, 255, 255]);
+    assert_eq!(px(&linear, 200, 10), [0, 0, 255, 255]);
+}

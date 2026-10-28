@@ -155,7 +155,7 @@ fn clear_then_one_triangle_on(class: u32) {
     assert_eq!((draw.first_vertex, draw.vertex_count, draw.instance), (0, 3, 0));
     assert_eq!(draw.color_targets, vec![pitch_target()]);
     assert_eq!(draw.depth_target, None);
-    assert_eq!(draw.vertex_streams, vec![VertexStream { index: 0, gpu_va: VB_VA, stride: 28, size: 84, frequency: 0 }]);
+    assert_eq!(draw.vertex_streams, vec![VertexStream { index: 0, gpu_va: VB_VA, stride: 28, size: 84, frequency: 0, instanced: false }]);
     assert_eq!(
         draw.vertex_attributes,
         vec![
