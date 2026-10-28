@@ -35,6 +35,7 @@ says so, nothing is faked).
 | 0x1E | GetSystemTick | (armGetSystemTick reads CNTPCT) | done | |
 | 0x1F | ConnectToNamedPort | sm.c | done | |
 | 0x21 | SendSyncRequest | service.h, tipc.h | done | HIPC/CMIF dispatch in ipc.rs (its own tests) |
+| 0x22 | SendSyncRequestWithUserBuffer | svc.h | done | Requires a page-aligned, nonzero, page-multiple RW mapped range; uses it as the HIPC request/response area and leaves TLS separate. Kernel IPC page locking/state transitions are not modeled. `sync_request_with_user_buffer_uses_the_supplied_hipc_area` |
 | 0x24 / 0x25 | GetProcessId / GetThreadId | | done | |
 | 0x26 | Break | diag.c, fatal.c | done | |
 | 0x27 | OutputDebugString | console_debug.c | done | |
@@ -59,11 +60,10 @@ says so, nothing is faked).
 |---|---|
 | 0x41 AcceptSession, 0x43 ReplyAndReceive | partial: scripted for the Stage 10 ro:1 harness only |
 | 0x74 / 0x75 MapProcessMemory / UnmapProcessMemory, 0x76 QueryProcessMemory | partial: legacy RO/FS path (maps fresh pages / fixed answer) |
-| 0x20, 0x22, 0x23 (light/user-buffer IPC), 0x2E, 0x2F, 0x30, 0x31, 0x36, 0x37, 0x39, 0x3A, 0x3C, 0x3D, 0x40, 0x42, 0x44, 0x46-0x4F, 0x53-0x72, 0x79-0x7F, 0x90, 0x91 | missing (Unhandled). Sysmodule, debug, device and process-management calls; libnx never calls them on its own |
+| 0x20, 0x23 (light/asynchronous user-buffer IPC), 0x2E, 0x2F, 0x30, 0x31, 0x36, 0x37, 0x39, 0x3A, 0x3C, 0x3D, 0x40, 0x42, 0x44, 0x46-0x4F, 0x53-0x72, 0x79-0x7F, 0x90, 0x91 | missing (Unhandled). Sysmodule, debug, device and process-management calls; libnx never calls them on its own |
 
 ## Known gaps worth doing next
 
 - Code memory (0x4B/0x4C) needs page aliasing in `mmu`.
 - CloseHandle should return InvalidHandle for unknown handles (needs one handle table across ipc/sync/scheduler).
 - QueryMemory reports every mapped page as Normal/RW (no Code/Static/Stack states or real permissions).
-- 0x22 SendSyncRequestWithUserBuffer (libnx `serviceDispatch` never uses it, but some homebrew does).

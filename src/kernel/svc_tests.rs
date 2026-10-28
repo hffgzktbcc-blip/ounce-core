@@ -13,6 +13,8 @@ const CURRENT_PROCESS: u64 = 0xFFFF_8001;
 fn setup() -> (Cpu, Memory, HorizonKernel) {
     let mut mmu = Memory::new();
     mmu.map_range(SCRATCH, 0x1000, Permission::READ_WRITE);
+    mmu.map_range(SCRATCH + 0x1000, 0x1000, Permission::READ_WRITE);
+    mmu.map_range(SCRATCH + 0x4000, 0x1000, Permission::READ_ONLY);
     (Cpu::new(), mmu, HorizonKernel::new())
 }
 
@@ -190,6 +192,57 @@ fn events_signal_clear_reset_and_bad_handles() {
     }
     call(&mut k, &mut cpu, &mut mmu, 0x16, &[read as u64]);
     assert_eq!(cpu.regs.read_x(0), 0);
+}
+
+#[test]
+fn sync_request_with_user_buffer_uses_the_supplied_hipc_area() {
+    let (mut cpu, mut mmu, mut k) = setup();
+    let user_buffer = SCRATCH + 0x1000;
+    cpu.regs.tpidrro_el0 = SCRATCH;
+
+    // libnx svc.h: argument registers are (usrBuffer, size, session); the kernel accepts
+    // any nonzero page-multiple size, not only one page.
+    mmu.write_bytes(SCRATCH, b"fake:\0").unwrap();
+    call(&mut k, &mut cpu, &mut mmu, 0x1F, &[0, SCRATCH]);
+    assert_eq!(cpu.regs.read_x(0), 0);
+    let session = cpu.regs.read_x(1);
+
+    // A minimal HIPC request with an unknown CMIF command gets a real SFCO response.
+    mmu.write_u32(user_buffer, 4).unwrap(); // HIPC request
+    mmu.write_u32(user_buffer + 4, 4).unwrap(); // four CMIF words
+    mmu.write_u32(user_buffer + 0x10, crate::kernel::ipc::CMIF_IN_MAGIC).unwrap();
+    mmu.write_u32(user_buffer + 0x14, 0).unwrap();
+    mmu.write_u32(user_buffer + 0x18, 0xDEAD).unwrap();
+    mmu.write_u32(SCRATCH, 0xA5A5_A5A5).unwrap(); // TLS must not become the request area.
+
+    let requests = k.ipc.total_ipc_requests;
+    call(&mut k, &mut cpu, &mut mmu, 0x22, &[user_buffer + 1, 0x1000, session]);
+    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_ADDRESS);
+    call(&mut k, &mut cpu, &mut mmu, 0x22, &[user_buffer, 0, session]);
+    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_SIZE);
+    call(&mut k, &mut cpu, &mut mmu, 0x22, &[user_buffer, 0x800, session]);
+    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_SIZE);
+    call(&mut k, &mut cpu, &mut mmu, 0x22, &[u64::MAX & !0xFFF, 0x2000, session]);
+    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_MEMORY_STATE);
+    call(&mut k, &mut cpu, &mut mmu, 0x22, &[0xC000, 0x1000, session]);
+    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_MEMORY_STATE);
+    call(&mut k, &mut cpu, &mut mmu, 0x22, &[SCRATCH + 0x4000, 0x1000, session]);
+    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_MEMORY_STATE, "read-only buffer");
+
+    // The whole requested range must be mapped and writable, including every crossed page.
+    call(&mut k, &mut cpu, &mut mmu, 0x22, &[user_buffer, 0x2000, session]);
+    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_MEMORY_STATE, "second page is unmapped");
+    assert_eq!(k.ipc.total_ipc_requests, requests, "invalid buffers must not dispatch IPC");
+    mmu.map_range(user_buffer + 0x1000, 0x1000, Permission::READ_WRITE);
+
+    call(&mut k, &mut cpu, &mut mmu, 0x22, &[user_buffer, 0x2000, session]);
+    assert_eq!(cpu.regs.read_x(0), 0);
+    assert_eq!(mmu.read_u32(user_buffer + 0x10).unwrap(), crate::kernel::ipc::CMIF_OUT_MAGIC);
+    assert_eq!(mmu.read_u32(user_buffer + 0x18).unwrap(), crate::kernel::ipc::RESULT_UNKNOWN_COMMAND);
+    assert_eq!(mmu.read_u32(SCRATCH).unwrap(), 0xA5A5_A5A5);
+
+    call(&mut k, &mut cpu, &mut mmu, 0x22, &[user_buffer, 0x1000, 0xDEAD]);
+    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_HANDLE, "invalid session handle result");
 }
 
 #[test]
@@ -408,7 +461,7 @@ fn identity_debug_and_process_svcs() {
 fn unimplemented_svcs_are_reported_not_faked() {
     let (mut cpu, mut mmu, mut k) = setup();
     // Code memory (needs aliased pages), resource limits, light IPC, debug and process management.
-    for id in [0x20, 0x22, 0x23, 0x2E, 0x2F, 0x30, 0x31, 0x36, 0x37, 0x40, 0x42, 0x44, 0x4B, 0x4C, 0x6F, 0x72, 0x7F] {
+    for id in [0x20, 0x23, 0x2E, 0x2F, 0x30, 0x31, 0x36, 0x37, 0x40, 0x42, 0x44, 0x4B, 0x4C, 0x6F, 0x72, 0x7F] {
         assert_eq!(call(&mut k, &mut cpu, &mut mmu, id, &[]), SvcResult::Unhandled(id), "svc 0x{id:X}");
     }
 }

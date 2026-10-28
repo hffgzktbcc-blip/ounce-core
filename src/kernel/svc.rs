@@ -11,7 +11,7 @@ use crate::audio::AudioOutServer;
 use crate::cpu::Cpu;
 use crate::fs::VirtualFileSystem;
 use crate::gpu::nvgpu::NvgpuChannel;
-use crate::mmu::{Memory, Permission};
+use crate::mmu::{Memory, Permission, PAGE_SIZE};
 use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -775,6 +775,55 @@ impl HorizonKernel {
                 let res = self.ipc.handle_sync_request(
                     session_handle,
                     tls_addr,
+                    mmu,
+                    &mut self.nvgpu,
+                    &mut self.audio,
+                    &mut self.vfs,
+                );
+                cpu.regs.write_x(0, res);
+                SvcResult::Success
+            }
+
+            // 0x22: svcSendSyncRequestWithUserBuffer(user_buffer, size, session_handle).
+            // Horizon requires a page-aligned, non-empty, page-sized buffer. HIPC uses it in place
+            // of TPIDRRO_EL0's TLS message area, including for the response.
+            0x22 => {
+                let user_buffer = cpu.regs.read_x(0);
+                let size = cpu.regs.read_x(1);
+                let session_handle = cpu.regs.read_w(2);
+                if user_buffer % PAGE_SIZE as u64 != 0 {
+                    cpu.regs.write_x(0, RESULT_INVALID_ADDRESS);
+                    return SvcResult::Success;
+                }
+                if size == 0 || size % PAGE_SIZE as u64 != 0 {
+                    cpu.regs.write_x(0, RESULT_INVALID_SIZE);
+                    return SvcResult::Success;
+                }
+                let Some(end) = user_buffer.checked_add(size) else {
+                    cpu.regs.write_x(0, RESULT_INVALID_MEMORY_STATE);
+                    return SvcResult::Success;
+                };
+                if end <= user_buffer {
+                    cpu.regs.write_x(0, RESULT_INVALID_MEMORY_STATE);
+                    return SvcResult::Success;
+                }
+                for page_addr in (user_buffer..end).step_by(PAGE_SIZE) {
+                    let Some(page) = mmu.get_page(page_addr / PAGE_SIZE as u64) else {
+                        cpu.regs.write_x(0, RESULT_INVALID_MEMORY_STATE);
+                        return SvcResult::Success;
+                    };
+                    if !page.perm.read || !page.perm.write {
+                        cpu.regs.write_x(0, RESULT_INVALID_MEMORY_STATE);
+                        return SvcResult::Success;
+                    }
+                }
+                if !self.ipc.handles.contains_key(&session_handle) {
+                    cpu.regs.write_x(0, RESULT_INVALID_HANDLE);
+                    return SvcResult::Success;
+                }
+                let res = self.ipc.handle_sync_request(
+                    session_handle,
+                    user_buffer,
                     mmu,
                     &mut self.nvgpu,
                     &mut self.audio,
