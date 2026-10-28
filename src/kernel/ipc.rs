@@ -1256,6 +1256,9 @@ impl IpcManager {
                 let out2 = if cmd_id == 12 { output(1) } else { None };
                 let mut outbuf = vec![0u8; out2.map_or(0, |b| b.size as usize)];
                 let extra = IoctlExtra { inbuf: &inbuf, outbuf: out2.map(|_| outbuf.as_mut_slice()) };
+                // Blocked 3D channels may be free now (the guest can release a semaphore with a
+                // plain store), so syncpoint reads and waits below see current fences.
+                self.nvdrv.poll_3d(mmu);
                 let status = self.nvdrv.ioctl_ex(fd, request, &mut data, extra);
                 if ioctl_has_output(request) {
                     if let Some(b) = output(0) {
@@ -1273,6 +1276,7 @@ impl IpcManager {
                         nvgpu.process_pushbuffer(mmu, addr, words);
                     }
                 }
+                self.nvdrv.poll_3d(mmu);
                 self.write_cmif_response(tls_addr, mmu, 0, &[status], None);
             }
             // Close(fd) -> status
