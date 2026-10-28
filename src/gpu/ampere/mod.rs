@@ -21,6 +21,7 @@ mod clip;
 mod depth;
 pub mod engine;
 pub mod methods;
+pub mod mme;
 pub mod pushbuf;
 pub mod render;
 mod shade;
