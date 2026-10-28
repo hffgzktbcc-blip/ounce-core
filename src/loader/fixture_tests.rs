@@ -227,11 +227,25 @@ fn boot_with_kernel_input(
     args: &[&str],
     input: crate::kernel::hid::NpadInput,
 ) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
+    boot_with_kernel_sdmc(nro, args, input, None)
+}
+
+/// `boot_with_kernel_input`, with `sdmc` (if any) as the SD card's host folder, set after the NRO went on
+/// the virtual SD card as `run --sdmc=<dir>` does.
+fn boot_with_kernel_sdmc(
+    nro: &[u8],
+    args: &[&str],
+    input: crate::kernel::hid::NpadInput,
+    sdmc: Option<&std::path::Path>,
+) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
     kernel.ipc.hid.input = input;
     let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).expect("NRO loads");
     assert_eq!(info.format, "NRO0");
     crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "fixture.nro", nro, args).unwrap();
+    if let Some(dir) = sdmc {
+        kernel.vfs.set_sdmc_directory(dir);
+    }
     cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
 
     // One CPU runs every guest thread: the kernel swaps thread registers inside `dispatch_svc`.
@@ -300,6 +314,39 @@ fn libnx_romfs_fixture_reads_its_romfs() {
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, svcs) = boot_with_kernel(&nro, &[]);
     assert!(output.ends_with("ounce-romfs result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+}
+
+/// The same fixture with a host folder behind `sdmc:/` (`run --sdmc=<dir>`): the NRO stays an in-memory
+/// overlay that `romfsInit` still finds, and nothing is written into the host folder.
+#[test]
+fn libnx_romfs_fixture_with_host_sdmc_folder() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/romfs/romfs.nro");
+    let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let dir = std::env::temp_dir().join(format!("ounce_fixture_sdmc_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("other.txt"), b"host file").unwrap();
+    let (output, svcs, kernel) = boot_with_kernel_sdmc(&nro, &[], Default::default(), Some(&dir));
+    assert!(output.ends_with("ounce-romfs result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+    assert_eq!(kernel.vfs.entry_kind("sdmc:/other.txt"), Some(crate::fs::VfsEntryKind::File(9)));
+    let names: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(names, ["other.txt"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Exercise host SD-card operations through a compiled libnx/newlib guest.
+#[test]
+fn libnx_sdmc_fixture_performs_host_file_operations() {
+    let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/sdmc/sdmc.nro")).unwrap();
+    let dir = std::env::temp_dir().join(format!("ounce_sdmc_ops_{}", std::process::id()));
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::write(dir.join("host.txt"), b"from host\n").unwrap();
+    let (output, svcs, _) = boot_with_kernel_sdmc(&nro, &[], Default::default(), Some(&dir));
+    assert!(output.ends_with("ounce-sdmc result=0x00000EEE\n"), "output: {output:?}; SVCs: {svcs:x?}");
+    assert_eq!(std::fs::read(dir.join("host.txt")).unwrap(), b"from host\n");
+    let names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(names, ["host.txt"]);
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 /// `tests/fixtures/nro/nvdrv`: libnx `nvInitialize` (transfer memory, Initialize, cloned session),
