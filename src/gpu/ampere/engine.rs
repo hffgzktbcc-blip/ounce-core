@@ -139,6 +139,23 @@ pub struct DrawRecord {
     pub shaders: Vec<ShaderStage>,
     pub viewport0: Viewport,
     pub scissor0: Scissor,
+    /// Indexed draws: where the indices come from. `first_vertex` / `vertex_count` then count
+    /// indices, not vertices.
+    pub indices: Option<IndexBuffer>,
+}
+
+/// Index buffer state of an indexed draw.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndexBuffer {
+    pub gpu_va: u64,
+    /// Bytes the buffer may be read (from `gpu_va`); `None` when the class gives no bound.
+    pub size: Option<u64>,
+    /// 1, 2 or 4.
+    pub index_bytes: u32,
+    /// `SET_GLOBAL_BASE_VERTEX_INDEX`, added to each index.
+    pub base_vertex: i32,
+    /// `SET_DA_PRIMITIVE_RESTART_INDEX` when restart is enabled.
+    pub restart: Option<u32>,
 }
 
 /// One `CLEAR_SURFACE`.
@@ -288,8 +305,6 @@ pub enum Diagnostic {
     /// A clear or draw was decoded but not rendered (memory readable, state outside the software
     /// path's scope).
     RenderSkipped { reason: &'static str },
-    /// `SET_BLEND(target)` is enabled; the draw was written without blending.
-    BlendNotModelled { target: u8 },
 }
 
 /// Guest memory as the GPU sees it. The routing hook in `nvgpu.rs` maps GPU VAs to guest memory.
@@ -551,10 +566,35 @@ impl Ampere3d {
             m::DRAW_VERTEX_ARRAY => match self.open.clone() {
                 Some(open) => {
                     let first = self.reg(m::SET_VERTEX_ARRAY_START);
-                    self.draw(class, open.topology, first, call.data, open.instance, mem);
+                    self.draw(class, open.topology, first, call.data, open.instance, None, mem);
                 }
                 None => self.diagnostics.push(Diagnostic::DrawOutsideBegin { method }),
             },
+            m::DRAW_INDEX_BUFFER => match self.open.clone() {
+                Some(open) => {
+                    let first = self.reg(m::SET_INDEX_BUFFER_F);
+                    let bytes = match self.reg(m::SET_INDEX_BUFFER_E) & 3 {
+                        0 => 1,
+                        1 => 2,
+                        _ => 4,
+                    };
+                    let ib = self.index_buffer(class, bytes);
+                    self.draw(class, open.topology, first, call.data, open.instance, Some(ib), mem);
+                }
+                None => self.diagnostics.push(Diagnostic::DrawOutsideBegin { method }),
+            },
+            m::DRAW_INDEX_BUFFER32_BEGIN_END_INSTANCE_FIRST..=m::DRAW_INDEX_BUFFER8_BEGIN_END_INSTANCE_SUBSEQUENT => {
+                let n = (method - m::DRAW_INDEX_BUFFER32_BEGIN_END_INSTANCE_FIRST) / 4;
+                if n < 3 {
+                    self.instance = 0;
+                } else {
+                    self.instance += 1;
+                }
+                let bytes = [4, 2, 1][(n % 3) as usize];
+                let ib = self.index_buffer(class, bytes);
+                let topology = Topology::from_raw(call.data >> 28);
+                self.draw(class, topology, call.data & 0xffff, (call.data >> 16) & 0xfff, self.instance, Some(ib), mem);
+            }
             m::END => {
                 if self.open.take().is_none() {
                     self.diagnostics.push(Diagnostic::DrawOutsideBegin { method });
@@ -567,7 +607,7 @@ impl Ampere3d {
                     self.instance += 1;
                 }
                 let topology = Topology::from_raw(call.data >> 28);
-                self.draw(class, topology, call.data & 0xffff, (call.data >> 16) & 0xfff, self.instance, mem);
+                self.draw(class, topology, call.data & 0xffff, (call.data >> 16) & 0xfff, self.instance, None, mem);
             }
             m::SET_REPORT_SEMAPHORE_D => self.semaphore(call.data, mem),
             m::LOAD_CONSTANT_BUFFER..m::BIND_GROUP_CONSTANT_BUFFER => {
@@ -738,6 +778,27 @@ impl Ampere3d {
         self.events.push(Event::Clear(record));
     }
 
+    /// Index buffer state for an indexed draw with `index_bytes`-wide indices.
+    fn index_buffer(&self, class: u32, index_bytes: u32) -> IndexBuffer {
+        let gpu_va = addr40(self.reg(m::SET_INDEX_BUFFER_A), self.reg(m::SET_INDEX_BUFFER_B));
+        let size = if class == m::MAXWELL_B {
+            // LIMIT_ADDRESS read as the last valid byte, as for the vertex stream limits.
+            let limit = addr40(self.reg(m::B197_SET_INDEX_BUFFER_C), self.reg(m::B197_SET_INDEX_BUFFER_D));
+            (limit >= gpu_va).then(|| limit - gpu_va + 1)
+        } else {
+            let size = addr40(self.reg(m::SET_INDEX_BUFFER_SIZE_A), self.reg(m::SET_INDEX_BUFFER_SIZE_B));
+            (size != 0).then_some(size)
+        };
+        IndexBuffer {
+            gpu_va,
+            size,
+            index_bytes,
+            base_vertex: self.reg(m::SET_GLOBAL_BASE_VERTEX_INDEX) as i32,
+            restart: (self.reg(m::SET_DA_PRIMITIVE_RESTART) & 1 == 1).then(|| self.reg(m::SET_DA_PRIMITIVE_RESTART_INDEX)),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn draw(
         &mut self,
         class: u32,
@@ -745,6 +806,7 @@ impl Ampere3d {
         first_vertex: u32,
         vertex_count: u32,
         instance: u32,
+        indices: Option<IndexBuffer>,
         mem: &mut dyn GpuMemoryWriter,
     ) {
         let vertex_streams = (0..m::VERTEX_STREAM_COUNT as u32)
@@ -841,6 +903,7 @@ impl Ampere3d {
                 ymin: sc_v & 0xffff,
                 ymax: sc_v >> 16,
             },
+            indices,
         };
         self.render_draw(&record, mem);
         self.events.push(Event::Draw(record));

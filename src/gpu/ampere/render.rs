@@ -13,7 +13,8 @@
 //! test, culling, clipping against the near plane (triangles with a vertex at `w <= 0` are dropped
 //! and counted), multisampling, layered targets.
 
-use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, Topology};
+use super::blend::Blend;
+use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, IndexBuffer, Topology};
 use super::methods as m;
 use super::shade::{self, ShaderInputs};
 use super::texture::{Sampler, TextureHeader};
@@ -156,6 +157,27 @@ fn unorm(v: f32, bits: u32) -> u128 {
     let max = ((1u64 << bits) - 1) as f32;
     let v = if v.is_nan() { 0.0 } else { v.clamp(0.0, 1.0) };
     (v * max).round() as u128
+}
+
+/// Reads `texel` back as RGBA; channels the format lacks read as 1 (alpha) or 0. X8 formats'
+/// unused byte reads as alpha 1.
+fn read_color(format: ColorFormat, texel: &[u8]) -> Option<[f32; 4]> {
+    let chans = color_channels(format)?;
+    let mut buf = [0u8; 16];
+    buf[..texel.len()].copy_from_slice(texel);
+    let px = u128::from_le_bytes(buf);
+    let mut out = [0.0, 0.0, 0.0, 1.0];
+    for (i, slot) in out.iter_mut().enumerate() {
+        if i == 3 && format == ColorFormat::X8B8G8R8 {
+            continue;
+        }
+        *slot = match chans[i] {
+            Chan::Unorm { shift, bits } => ((px >> shift) & ((1 << bits) - 1)) as f32 / ((1u64 << bits) - 1) as f32,
+            Chan::F32 { shift } => f32::from_bits((px >> shift) as u32),
+            Chan::None => continue,
+        };
+    }
+    Some(out)
 }
 
 /// Writes `color` into `texel` for the channels enabled in `mask`.
@@ -546,6 +568,51 @@ fn triangles(topology: Topology, count: usize) -> Option<Vec<[usize; 3]>> {
     Some(t)
 }
 
+/// Reads the indices of an indexed draw: the vertex index for every position (base vertex added)
+/// and the triangles, with primitive restart splitting the topology into independent runs.
+fn indexed(rec: &DrawRecord, ib: &IndexBuffer, mem: &mut dyn GpuMemoryWriter) -> Result<(Vec<u32>, Vec<[usize; 3]>), &'static str> {
+    let n = ib.index_bytes as u64;
+    let start = rec.first_vertex as u64 * n;
+    let len = rec.vertex_count as u64 * n;
+    if ib.size.is_some_and(|size| start + len > size) {
+        return Err("index fetch past the index buffer size");
+    }
+    let mut bytes = vec![0u8; len as usize];
+    if !mem.read(ib.gpu_va + start, &mut bytes) {
+        return Err("index buffer is not readable");
+    }
+    let raw: Vec<u32> = bytes
+        .chunks_exact(n as usize)
+        .map(|c| match n {
+            1 => c[0] as u32,
+            2 => u16::from_le_bytes([c[0], c[1]]) as u32,
+            _ => u32::from_le_bytes([c[0], c[1], c[2], c[3]]),
+        })
+        .collect();
+    let mut ids = Vec::with_capacity(raw.len());
+    let mut tris = Vec::new();
+    let mut run_start = 0usize;
+    let mut flush = |ids: &Vec<u32>, from: usize, tris: &mut Vec<[usize; 3]>| -> Result<(), &'static str> {
+        let run = triangles(rec.topology, ids.len() - from).ok_or("topology other than triangles, strips, fans and quads")?;
+        tris.extend(run.into_iter().map(|t| t.map(|i| i + from)));
+        Ok(())
+    };
+    for &i in &raw {
+        if ib.restart == Some(i) {
+            flush(&ids, run_start, &mut tris)?;
+            run_start = ids.len();
+            continue;
+        }
+        let v = i as i64 + ib.base_vertex as i64;
+        if !(0..=u32::MAX as i64).contains(&v) {
+            return Err("index plus base vertex out of range");
+        }
+        ids.push(v as u32);
+    }
+    flush(&ids, run_start, &mut tris)?;
+    Ok((ids, tris))
+}
+
 fn edge(a: (f32, f32), b: (f32, f32), p: (f32, f32)) -> f32 {
     (b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0)
 }
@@ -716,8 +783,18 @@ impl Ampere3d {
         if rec.instance != 0 {
             return self.skip("instanced draw");
         }
-        let Some(tris) = triangles(rec.topology, rec.vertex_count as usize) else {
-            return self.skip("topology other than triangles, strips, fans and quads");
+        // Vertex index per position in the draw, and triangles over those positions.
+        let (ids, tris) = match &rec.indices {
+            None => {
+                let Some(tris) = triangles(rec.topology, rec.vertex_count as usize) else {
+                    return self.skip("topology other than triangles, strips, fans and quads");
+                };
+                ((0..rec.vertex_count).map(|i| rec.first_vertex.wrapping_add(i)).collect::<Vec<u32>>(), tris)
+            }
+            Some(ib) => match indexed(rec, ib, mem) {
+                Ok(v) => v,
+                Err(reason) => return self.skip(reason),
+            },
         };
         let find = |kinds: &[super::engine::ShaderType]| rec.shaders.iter().find(|s| kinds.contains(&s.kind)).copied();
         use super::engine::ShaderType as T;
@@ -746,9 +823,8 @@ impl Ampere3d {
         // Vertex fetch + shading.
         let mut stream_cache: Vec<(u8, Vec<u8>)> = Vec::new();
         let vp = rec.viewport0;
-        let mut verts = Vec::with_capacity(rec.vertex_count as usize);
-        for i in 0..rec.vertex_count {
-            let index = rec.first_vertex + i;
+        let mut verts = Vec::with_capacity(ids.len());
+        for &index in &ids {
             let mut attrs = [[0u32, 0, 0, 1.0f32.to_bits()]; 32];
             for a in &rec.vertex_attributes {
                 let Some(stream) = rec.vertex_streams.iter().find(|s| s.index == a.stream) else { continue };
@@ -797,17 +873,18 @@ impl Ampere3d {
 
         // Targets.
         let targets = selected_targets(&self.regs);
-        let mut staged: Vec<Option<(ColorTarget, Staged)>> = Vec::new();
+        let mut staged: Vec<Option<(ColorTarget, Staged, Option<Blend>)>> = Vec::new();
         for ct in &targets {
             match ct {
                 Some(ct) if ct.layer != 0 => return self.skip("layered render target"),
                 Some(ct) => {
                     let Some(view) = color_view(ct) else { return self.skip("color target format or layout") };
                     let Some(t) = Staged::load(view, mem) else { return self.skip("color target is not readable") };
-                    if self.reg_at(m::SET_BLEND + 4 * ct.index as u32) & 1 == 1 {
-                        self.diagnostics.push(Diagnostic::BlendNotModelled { target: ct.index });
-                    }
-                    staged.push(Some((*ct, t)));
+                    let blend = match Blend::for_target(&self.regs, ct.index) {
+                        Ok(b) => b,
+                        Err(reason) => return self.skip(reason),
+                    };
+                    staged.push(Some((*ct, t, blend)));
                 }
                 None => staged.push(None),
             }
@@ -826,7 +903,7 @@ impl Ampere3d {
 
         // Raster bounds: the smallest target, viewport clip 0, scissor 0, surface clip.
         let mut bounds = Rect::new(u32::MAX, u32::MAX);
-        for (_, t) in staged.iter().flatten() {
+        for (_, t, _) in staged.iter().flatten() {
             bounds = bounds.clip(0, 0, t.view.width, t.view.height);
         }
         if let Some((_, t)) = &zbuf {
@@ -908,7 +985,7 @@ impl Ampere3d {
                     let input = FragmentIn { v: [v0, v1, v2], l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
                     let values = shade::run(&ps.func, &input);
                     for &(t, mask, first) in &outputs {
-                        let Some(Some((ct, st))) = staged.get_mut(t) else { continue };
+                        let Some(Some((ct, st, blend))) = staged.get_mut(t) else { continue };
                         let mut color = [0.0f32; 4];
                         let mut reg = first;
                         for (ch, slot) in color.iter_mut().enumerate() {
@@ -918,13 +995,19 @@ impl Ampere3d {
                             }
                         }
                         let wm = write_mask(&self.regs, ct.index);
-                        write_color(ct.format, st.texel(px, py), color, wm);
+                        let texel = st.texel(px, py);
+                        if let Some(b) = blend {
+                            if let Some(dst) = read_color(ct.format, texel) {
+                                color = b.apply(color, dst, ct.format != ColorFormat::Rf32Gf32Bf32Af32);
+                            }
+                        }
+                        write_color(ct.format, texel, color, wm);
                     }
                     self.stats.fragments += 1;
                 }
             }
         }
-        for (_, t) in staged.iter().flatten() {
+        for (_, t, _) in staged.iter().flatten() {
             t.store(mem);
         }
         if let Some((_, t)) = &zbuf {
