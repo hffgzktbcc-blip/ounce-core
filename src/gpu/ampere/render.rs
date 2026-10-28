@@ -13,6 +13,7 @@
 //! test, culling, clipping against the near plane (triangles with a vertex at `w <= 0` are dropped
 //! and counted), multisampling, layered targets.
 
+use super::blend::Blend;
 use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, Topology};
 use super::methods as m;
 use super::shade::{self, ShaderInputs};
@@ -156,6 +157,27 @@ fn unorm(v: f32, bits: u32) -> u128 {
     let max = ((1u64 << bits) - 1) as f32;
     let v = if v.is_nan() { 0.0 } else { v.clamp(0.0, 1.0) };
     (v * max).round() as u128
+}
+
+/// Reads `texel` back as RGBA; channels the format lacks read as 1 (alpha) or 0. X8 formats'
+/// unused byte reads as alpha 1.
+fn read_color(format: ColorFormat, texel: &[u8]) -> Option<[f32; 4]> {
+    let chans = color_channels(format)?;
+    let mut buf = [0u8; 16];
+    buf[..texel.len()].copy_from_slice(texel);
+    let px = u128::from_le_bytes(buf);
+    let mut out = [0.0, 0.0, 0.0, 1.0];
+    for (i, slot) in out.iter_mut().enumerate() {
+        if i == 3 && format == ColorFormat::X8B8G8R8 {
+            continue;
+        }
+        *slot = match chans[i] {
+            Chan::Unorm { shift, bits } => ((px >> shift) & ((1 << bits) - 1)) as f32 / ((1u64 << bits) - 1) as f32,
+            Chan::F32 { shift } => f32::from_bits((px >> shift) as u32),
+            Chan::None => continue,
+        };
+    }
+    Some(out)
 }
 
 /// Writes `color` into `texel` for the channels enabled in `mask`.
@@ -797,17 +819,18 @@ impl Ampere3d {
 
         // Targets.
         let targets = selected_targets(&self.regs);
-        let mut staged: Vec<Option<(ColorTarget, Staged)>> = Vec::new();
+        let mut staged: Vec<Option<(ColorTarget, Staged, Option<Blend>)>> = Vec::new();
         for ct in &targets {
             match ct {
                 Some(ct) if ct.layer != 0 => return self.skip("layered render target"),
                 Some(ct) => {
                     let Some(view) = color_view(ct) else { return self.skip("color target format or layout") };
                     let Some(t) = Staged::load(view, mem) else { return self.skip("color target is not readable") };
-                    if self.reg_at(m::SET_BLEND + 4 * ct.index as u32) & 1 == 1 {
-                        self.diagnostics.push(Diagnostic::BlendNotModelled { target: ct.index });
-                    }
-                    staged.push(Some((*ct, t)));
+                    let blend = match Blend::for_target(&self.regs, ct.index) {
+                        Ok(b) => b,
+                        Err(reason) => return self.skip(reason),
+                    };
+                    staged.push(Some((*ct, t, blend)));
                 }
                 None => staged.push(None),
             }
@@ -826,7 +849,7 @@ impl Ampere3d {
 
         // Raster bounds: the smallest target, viewport clip 0, scissor 0, surface clip.
         let mut bounds = Rect::new(u32::MAX, u32::MAX);
-        for (_, t) in staged.iter().flatten() {
+        for (_, t, _) in staged.iter().flatten() {
             bounds = bounds.clip(0, 0, t.view.width, t.view.height);
         }
         if let Some((_, t)) = &zbuf {
@@ -908,7 +931,7 @@ impl Ampere3d {
                     let input = FragmentIn { v: [v0, v1, v2], l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
                     let values = shade::run(&ps.func, &input);
                     for &(t, mask, first) in &outputs {
-                        let Some(Some((ct, st))) = staged.get_mut(t) else { continue };
+                        let Some(Some((ct, st, blend))) = staged.get_mut(t) else { continue };
                         let mut color = [0.0f32; 4];
                         let mut reg = first;
                         for (ch, slot) in color.iter_mut().enumerate() {
@@ -918,13 +941,19 @@ impl Ampere3d {
                             }
                         }
                         let wm = write_mask(&self.regs, ct.index);
-                        write_color(ct.format, st.texel(px, py), color, wm);
+                        let texel = st.texel(px, py);
+                        if let Some(b) = blend {
+                            if let Some(dst) = read_color(ct.format, texel) {
+                                color = b.apply(color, dst, ct.format != ColorFormat::Rf32Gf32Bf32Af32);
+                            }
+                        }
+                        write_color(ct.format, texel, color, wm);
                     }
                     self.stats.fragments += 1;
                 }
             }
         }
-        for (_, t) in staged.iter().flatten() {
+        for (_, t, _) in staged.iter().flatten() {
             t.store(mem);
         }
         if let Some((_, t)) = &zbuf {

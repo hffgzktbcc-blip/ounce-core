@@ -163,9 +163,29 @@ pub const SET_DEPTH_TEST: u32 = 0x12cc;
 pub const SET_DEPTH_WRITE: u32 = 0x12e8;
 /// `NVC797_SET_DEPTH_FUNC`: `OGL_NEVER` 0x200 .. `OGL_ALWAYS` 0x207, `D3D_NEVER` 1 .. `D3D_ALWAYS` 8.
 pub const SET_DEPTH_FUNC: u32 = 0x130c;
-/// `NVC797_SET_BLEND(i)`: ENABLE 0:0, 8 targets. Blending is not modelled; an enabled target is
-/// written as if blending were off and a diagnostic is recorded.
+/// `NVC797_SET_BLEND(i)`: ENABLE 0:0, 8 targets.
 pub const SET_BLEND: u32 = 0x1360;
+/// `NVC797_SET_BLEND_STATE_PER_TARGET`: ENABLE 0:0 selects the `SET_BLEND_PER_TARGET_*` block.
+pub const SET_BLEND_STATE_PER_TARGET: u32 = 0x12e4;
+/// `NVC797_SET_BLEND_CONST_RED/GREEN/BLUE/ALPHA` (floats).
+pub const SET_BLEND_CONST_RED: u32 = 0x131c;
+pub const SET_BLEND_CONST_GREEN: u32 = 0x1320;
+pub const SET_BLEND_CONST_BLUE: u32 = 0x1324;
+pub const SET_BLEND_CONST_ALPHA: u32 = 0x1328;
+/// `NVC797_SET_BLEND_SEPARATE_FOR_ALPHA`: ENABLE 0:0 (off: alpha uses the color equation).
+pub const SET_BLEND_SEPARATE_FOR_ALPHA: u32 = 0x133c;
+/// `NVC797_SET_BLEND_COLOR_OP`: `OGL_FUNC_ADD` 0x8006 .. or `D3D_ADD` 1 ..
+pub const SET_BLEND_COLOR_OP: u32 = 0x1340;
+pub const SET_BLEND_COLOR_SOURCE_COEFF: u32 = 0x1344;
+pub const SET_BLEND_COLOR_DEST_COEFF: u32 = 0x1348;
+pub const SET_BLEND_ALPHA_OP: u32 = 0x134c;
+pub const SET_BLEND_ALPHA_SOURCE_COEFF: u32 = 0x1350;
+pub const SET_BLEND_ALPHA_DEST_COEFF: u32 = 0x1358;
+/// `NVC797_SET_BLEND_PER_TARGET_SEPARATE_FOR_ALPHA(j)` (0x1e00 + 32 j), then `_COLOR_OP`,
+/// `_COLOR_SOURCE_COEFF`, `_COLOR_DEST_COEFF`, `_ALPHA_OP`, `_ALPHA_SOURCE_COEFF`,
+/// `_ALPHA_DEST_COEFF` at +4 .. +0x18.
+pub const SET_BLEND_PER_TARGET: u32 = 0x1e00;
+pub const BLEND_PER_TARGET_STRIDE: u32 = 32;
 /// `NVC797_SET_TEX_SAMPLER_POOL_A` (offset upper 7:0), `_B` (lower 31:0), `_C` (MAXIMUM_INDEX 19:0).
 pub const SET_TEX_SAMPLER_POOL_A: u32 = 0x155c;
 /// `NVB197_SET_BINDLESS_TEXTURE` (`CONSTANT_BUFFER_SLOT_SELECT` 4:0): the constant buffer

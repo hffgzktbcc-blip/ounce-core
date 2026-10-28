@@ -288,8 +288,6 @@ pub enum Diagnostic {
     /// A clear or draw was decoded but not rendered (memory readable, state outside the software
     /// path's scope).
     RenderSkipped { reason: &'static str },
-    /// `SET_BLEND(target)` is enabled; the draw was written without blending.
-    BlendNotModelled { target: u8 },
 }
 
 /// Guest memory as the GPU sees it. The routing hook in `nvgpu.rs` maps GPU VAs to guest memory.
