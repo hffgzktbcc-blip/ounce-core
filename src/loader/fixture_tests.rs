@@ -419,10 +419,9 @@ fn deko3d_fixture_runs_to_completion() {
     assert!(kernel.ipc.nvdrv.unhandled.is_empty(), "unhandled ioctls: {:?}", kernel.ipc.nvdrv.unhandled);
 }
 
-/// The pixels: needs the Maxwell MME macro engine (deko3d draws and clears through macros), which the
-/// 3D engine model does not have yet.
+/// The real libnx + deko3d fixture clears a pitch-linear target, draws a triangle, and checks both
+/// pixels after the queue completes. This covers the Maxwell MME macro path end to end.
 #[test]
-#[ignore = "needs MME macros in the 3D engine"]
 fn deko3d_fixture_draws_triangle() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/deko3d/deko3d.nro");
     let nro = std::fs::read(path).unwrap();
