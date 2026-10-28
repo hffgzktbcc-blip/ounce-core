@@ -8,7 +8,7 @@ Each fixture directory has a `main.c` written for this project, a `Makefile`, an
 
 | Fixture | Source written by | Built with | Third-party code inside the `.nro` | Ships in repo |
 |---|---|---|---|---|
-| hello, services, romfs, nvdrv, gpu, input, threads, audren | this project (`main.c`) | devkitA64 (GCC for AArch64) + libnx | **libnx (ISC licence), newlib (BSD-style licences), libgcc/libstdc++ runtime pieces (GCC runtime exception)** | yes (binary and source) |
+| hello, services, romfs, nvdrv, gpu, input, threads, audren | this project (`main.c`) | devkitA64 r30 (GCC 16.1.0-1, newlib 4.6.0.20260123-4) + libnx 4.12.0-1 | **libnx (ISC licence), newlib (BSD-style licences), libgcc/libstdc++ runtime pieces (GCC runtime exception)** | yes (binary and source) |
 
 Notes:
 - The `.nro` files statically link libnx and newlib. The README previously said "no code copied from
@@ -16,8 +16,7 @@ Notes:
   shipped or linked alongside them (see `THIRD_PARTY.md`).
 - `romfs.nro` embeds `romfs/greeting.txt`, written for this project.
 - None of the fixtures contain firmware, keys, retail code or game data. Anyone can rebuild them from `main.c`.
-- Not yet verified: the exact devkitA64 and libnx versions used for each prebuilt binary. Record them when
-  fixtures are next rebuilt.
+- Exact per-fixture binary IDs and hashes are recorded in `tests/fixtures/nro/TOOLCHAIN_VERSIONS.md`.
 
 ## Synthetic inputs in source
 
@@ -46,9 +45,9 @@ tag, forks and clones, and GitHub pull request refs. The current tree is clean; 
 Resolution requires a rewrite or a fresh repository plus a request to GitHub to remove cached commits, and
 legal advice on the material already published. Tracked in `AGENTS.md`.
 
-## Not yet audited
+## Audits
 
-- Cargo dependency licences (run `cargo license` or `cargo deny` and record the result here).
+- Cargo dependency licences: completed 2026-10-28. See `docs/DEPENDENCY_LICENSE_AUDIT.md`.
 - Shader tooling (`uam` compiles deko3d test shaders; its licence and output status are unrecorded).
 - Any fixture source derived from libnx or deko3d example code (compare `main.c` files against upstream
   examples and record the outcome).
