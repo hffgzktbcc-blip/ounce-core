@@ -201,7 +201,8 @@ fn setup(pb: &mut Vec<u32>, class: u32, pitch: bool) {
     pb.extend([inc_header(SC, m::SET_COLOR_TARGET_A, 9), hi(RT_VA), lo(RT_VA), width_field, W, 0xd5, memory, 1, 0, 0]);
     pb.push(immd_header(SC, m::SET_CT_SELECT, 1));
     pb.extend([inc_header(SC, m::SET_VIEWPORT_SCALE_X, 6), f(128.0), f(128.0), f(1.0), f(128.0), f(128.0), f(0.0)]);
-    pb.extend([inc_header(SC, m::SET_VIEWPORT_CLIP_HORIZONTAL, 2), W << 16, W << 16]);
+    // Clip rect, then the pixel depth range [0, 1] as GL and Vulkan drivers program it.
+    pb.extend([inc_header(SC, m::SET_VIEWPORT_CLIP_HORIZONTAL, 4), W << 16, W << 16, f(0.0), f(1.0)]);
 }
 
 fn clear_color(pb: &mut Vec<u32>, rgba: [f32; 4]) {
@@ -1090,6 +1091,9 @@ fn frustum_z_clip_cuts_at_the_near_plane() {
     let verts = [vtx(-1.0, -1.0, 0.0, GREEN), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, -3.0, GREEN)];
     geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
     pb.extend([inc_header(SC, m::SET_VIEWPORT_CLIP_CONTROL, 1), 3 << 11]); // FRUSTUM_XYZ_CLIP
+    // GL depth mapping z_w = 0.5 z/w + 0.5, so the near plane lands on the pixel range's 0.
+    pb.extend([inc_header(SC, m::SET_VIEWPORT_SCALE_X + 8, 1), f(0.5)]);
+    pb.extend([inc_header(SC, m::SET_VIEWPORT_SCALE_X + 20, 1), f(0.5)]);
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
@@ -1098,4 +1102,82 @@ fn frustum_z_clip_cuts_at_the_near_plane() {
     assert_eq!(px(&linear, 5, 80), [0, 255, 0, 255]);
     assert_eq!(px(&linear, 5, 90), [0, 0, 0, 255]);
     assert_eq!(px(&linear, 5, 120), [0, 0, 0, 255]);
+}
+
+/// Two quads from stream 0 (left and right half) drawn as instances 0 and 1 of one draw sequence;
+/// attribute 1 (color) comes from instanced stream 1.
+fn instanced_halves(frequency: u32, base_instance: u32) -> Vec<u8> {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    let quad = |x0: f32, x1: f32| [vtx(x0, -1.0, 0.5, RED), vtx(x1, -1.0, 0.5, RED), vtx(x1, 1.0, 0.5, RED), vtx(x0, 1.0, 0.5, RED)];
+    let verts: Vec<[f32; 8]> = [quad(-1.0, 0.0), quad(0.0, 1.0)].concat();
+    geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
+    let colors: Vec<u8> = [GREEN, BLUE, RED].iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
+    const IB_VA: u64 = VB_VA + 0x800;
+    mem.put(IB_VA, &colors);
+    let stream1 = m::SET_VERTEX_STREAM_A_FORMAT + m::VERTEX_STREAM_A_STRIDE;
+    pb.extend([inc_header(SC, stream1, 4), (1 << 12) | 16, hi(IB_VA), lo(IB_VA), frequency]);
+    pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_SIZE_A + m::VERTEX_STREAM_SIZE_STRIDE, 2), 0, colors.len() as u32]);
+    pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_INSTANCE_A + 4, 1), 1]);
+    pb.extend([inc_header(SC, m::SET_GLOBAL_BASE_INSTANCE_INDEX, 1), base_instance]);
+    // Attribute 1 now reads stream 1 at offset 0.
+    pb.extend([inc_header(SC, m::SET_VERTEX_ATTRIBUTE_A + 4, 1), (7 << 27) | (0x01 << 21) | 1]);
+    pb.extend([inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_FIRST, 1), (4 << 16) | (7 << 28)]);
+    pb.extend([inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_SUBSEQUENT, 1), 4 | (4 << 16) | (7 << 28)]);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    assert_eq!(gpu.render_stats().draws, 2);
+    rt_pixels(&mut mem)
+}
+
+#[test]
+fn instanced_stream_steps_per_instance() {
+    let linear = instanced_halves(1, 0);
+    assert_eq!(px(&linear, 10, 10), [0, 255, 0, 255]);
+    assert_eq!(px(&linear, 200, 10), [0, 0, 255, 255]);
+}
+
+#[test]
+fn instanced_stream_honours_divisor_and_base_instance() {
+    // Divisor 2: both instances read element base + 0 = 1 (blue).
+    let linear = instanced_halves(2, 1);
+    assert_eq!(px(&linear, 10, 10), [0, 0, 255, 255]);
+    assert_eq!(px(&linear, 200, 10), [0, 0, 255, 255]);
+}
+
+/// A quad at window z = 2 into a Zf32 target with depth writes on, under `clip_control`.
+fn far_quad(clip_control: u32) -> (Vec<u8>, f32) {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+    pb.extend([inc_header(SC, m::SET_ZT_A, 5), hi(ZT_VA), lo(ZT_VA), 0x0a, 4 << 4, 0]);
+    pb.extend([inc_header(SC, m::SET_ZT_SIZE_A, 3), W, W, 1]);
+    pb.push(immd_header(SC, m::SET_ZT_SELECT, 1));
+    pb.extend([inc_header(SC, m::SET_Z_CLEAR_VALUE, 1), f(0.5)]);
+    pb.push(immd_header(SC, m::CLEAR_SURFACE, 0x1));
+    pb.push(immd_header(SC, m::SET_DEPTH_WRITE, 1));
+    pb.extend([inc_header(SC, m::SET_VIEWPORT_CLIP_CONTROL, 1), clip_control]);
+    let verts = [vtx(-1.0, -1.0, 2.0, GREEN), vtx(1.0, -1.0, 2.0, GREEN), vtx(1.0, 1.0, 2.0, GREEN), vtx(-1.0, 1.0, 2.0, GREEN)];
+    geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
+    draw(&mut pb, 0, 4, 7);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let depth = tiling::detile(
+        &Surface::new_2d(W, W, Format::Z32Float, Layout::BlockLinear { height_log2: 4, depth_log2: 0 }),
+        &mem.get(ZT_VA, RT_BYTES),
+    )
+    .unwrap();
+    (rt_pixels(&mut mem), f32::from_le_bytes(depth[0..4].try_into().unwrap()))
+}
+
+#[test]
+fn pixel_depth_beyond_the_range_is_clipped_or_clamped() {
+    let (color, z) = far_quad(0); // PIXEL_MAX_Z CLIP
+    assert_eq!((px(&color, 10, 10), z), ([0, 0, 0, 255], 0.5));
+    let (color, z) = far_quad(1 << 4); // PIXEL_MAX_Z CLAMP
+    assert_eq!((px(&color, 10, 10), z), ([0, 255, 0, 255], 1.0));
+    let (color, z) = far_quad(3 << 16); // MINUS_INF_PLUS_INF: float depth keeps 2.0
+    assert_eq!((px(&color, 10, 10), z), ([0, 255, 0, 255], 2.0));
 }
