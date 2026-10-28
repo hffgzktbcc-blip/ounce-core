@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Component, Path, PathBuf};
 use crate::mmu::{Memory, MemoryError};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::Cursor;
@@ -18,6 +19,65 @@ pub enum VfsError {
 
     #[error("I/O error in VFS: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Path already exists in VFS: {0}")]
+    AlreadyExists(String),
+
+    #[error("Invalid VFS path: {0}")]
+    InvalidPath(String),
+
+    #[error("Path leaves its mount or host folder: {0}")]
+    Escape(String),
+
+    #[error("Read-only VFS path: {0}")]
+    ReadOnly(String),
+
+    #[error("Directory not empty: {0}")]
+    NotEmpty(String),
+
+    #[error("File larger than the VFS limit: {0}")]
+    TooLarge(String),
+}
+
+/// Largest file the VFS holds. Files live in memory (host-backed ones are loaded on open), so a guest
+/// size or offset past this is refused instead of allocated.
+pub const MAX_FILE_SIZE: u64 = 256 * 1024 * 1024;
+
+/// What a VFS path names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VfsEntryKind {
+    Directory,
+    /// A file and its size in bytes.
+    File(u64),
+}
+
+/// Resolves a path a guest sent to the filesystem mounted at `mount` (e.g. `"sdmc:/"`) into a normalized
+/// VFS path. Empty and `.` components are dropped and `..` pops one level. A `..` above the mount root,
+/// a backslash, a NUL, or another mount's scheme (`save:/x` sent to the SD card) is refused, so a guest
+/// can only name paths inside its own mount.
+pub fn resolve_guest_path(mount: &str, raw: &str) -> Result<String, VfsError> {
+    let scheme = mount.trim_end_matches('/');
+    let rest = match raw.find(':') {
+        Some(i) if raw[..=i] == *scheme => &raw[i + 1..],
+        Some(_) => return Err(VfsError::InvalidPath(raw.to_string())),
+        None => raw,
+    };
+    if rest.contains(['\\', '\0']) {
+        return Err(VfsError::InvalidPath(raw.to_string()));
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    for c in rest.split('/') {
+        match c {
+            "" | "." => {}
+            ".." => {
+                if parts.pop().is_none() {
+                    return Err(VfsError::Escape(raw.to_string()));
+                }
+            }
+            c => parts.push(c),
+        }
+    }
+    Ok(format!("{}/{}", scheme, parts.join("/")))
 }
 
 /// Normalizes a virtual path to standard format (e.g. "romfs:/path" or "/path").
@@ -42,6 +102,8 @@ pub struct VirtualFileSystem {
     files: HashMap<String, Vec<u8>>,
     /// Maps open file handles to virtual paths
     open_handles: HashMap<u32, String>,
+    /// `FsOpenMode` bits of handles opened through `open_file_with_mode`.
+    open_modes: HashMap<u32, u32>,
     next_handle: u32,
     /// Explicitly tracked directories in VFS
     directories: HashSet<String>,
@@ -68,6 +130,7 @@ impl VirtualFileSystem {
         let mut vfs = Self {
             files: HashMap::new(),
             open_handles: HashMap::new(),
+            open_modes: HashMap::new(),
             next_handle: 1,
             directories,
             save_dir: None,
@@ -165,26 +228,239 @@ impl VirtualFileSystem {
     }
 
     fn sync_file_to_disk(&self, path: &str, data: &[u8]) {
-        if let Some(ref s_dir) = self.save_dir {
-            if path.starts_with("save:/") {
-                let rel = &path[6..];
-                let disk_path = s_dir.join(rel);
-                if let Some(parent) = disk_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = std::fs::write(&disk_path, data);
+        if let Ok(Some(disk_path)) = self.host_path(path) {
+            if let Some(parent) = disk_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&disk_path, data);
+        }
+    }
+
+    /// Host path backing a `save:/` or `sdmc:/` path, or `None` when the path is on another mount or its
+    /// mount has no host folder. Every component must be a plain name, and every component that exists
+    /// on the host (symlinks included, dangling ones too) must resolve inside the host folder, so neither
+    /// `..` nor a symlink placed in the folder reaches anything outside it.
+    fn host_path(&self, path: &str) -> Result<Option<PathBuf>, VfsError> {
+        let norm = normalize_vfs_path(path);
+        let (root, rel) = if let Some(rel) = norm.strip_prefix("save:/") {
+            (&self.save_dir, rel)
+        } else if let Some(rel) = norm.strip_prefix("sdmc:/") {
+            (&self.sdmc_dir, rel)
+        } else {
+            return Ok(None);
+        };
+        let Some(root) = root else { return Ok(None) };
+        let rel = Path::new(rel.trim_matches('/'));
+        if !rel.components().all(|c| matches!(c, Component::Normal(_))) {
+            return Err(VfsError::Escape(path.to_string()));
+        }
+        let canon_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+        let mut probe = root.clone();
+        for c in rel.components() {
+            probe.push(c);
+            if std::fs::symlink_metadata(&probe).is_err() {
+                break;
+            }
+            match probe.canonicalize() {
+                Ok(real) if real.starts_with(&canon_root) => {}
+                _ => return Err(VfsError::Escape(path.to_string())),
             }
         }
-        if let Some(ref s_dir) = self.sdmc_dir {
-            if path.starts_with("sdmc:/") {
-                let rel = &path[6..];
-                let disk_path = s_dir.join(rel);
-                if let Some(parent) = disk_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = std::fs::write(&disk_path, data);
+        Ok(Some(root.join(rel)))
+    }
+
+    /// Fails when `path` is on a host-backed mount and would leave its host folder.
+    pub fn check_host_path(&self, path: &str) -> Result<(), VfsError> {
+        self.host_path(path).map(|_| ())
+    }
+
+    /// What `path` names: an in-memory file, a host file or folder, or a directory known to the VFS.
+    pub fn entry_kind(&self, path: &str) -> Option<VfsEntryKind> {
+        let norm = normalize_vfs_path(path);
+        if let Some(data) = self.files.get(&norm) {
+            return Some(VfsEntryKind::File(data.len() as u64));
+        }
+        if let Ok(Some(p)) = self.host_path(&norm) {
+            if let Ok(meta) = std::fs::metadata(&p) {
+                return Some(if meta.is_dir() { VfsEntryKind::Directory } else { VfsEntryKind::File(meta.len()) });
             }
         }
+        let clean = norm.trim_end_matches('/');
+        let prefix = format!("{clean}/");
+        let is_dir = clean.ends_with(':')
+            || self.directories.contains(clean)
+            || self.files.keys().any(|k| k.starts_with(&prefix))
+            || self.directories.iter().any(|d| d.starts_with(&prefix));
+        is_dir.then_some(VfsEntryKind::Directory)
+    }
+
+    /// Loads a host-backed file into memory if it is not there yet. False when there is no such file.
+    fn ensure_loaded(&mut self, norm: &str) -> Result<bool, VfsError> {
+        if self.files.contains_key(norm) {
+            return Ok(true);
+        }
+        let Some(p) = self.host_path(norm)? else { return Ok(false) };
+        match std::fs::metadata(&p) {
+            Ok(meta) if meta.is_file() => {
+                if meta.len() > MAX_FILE_SIZE {
+                    return Err(VfsError::TooLarge(norm.to_string()));
+                }
+                let data = std::fs::read(&p)?;
+                self.files.insert(norm.to_string(), data);
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// Refuses writes to `romfs:/`, which is read-only.
+    fn check_writable(norm: &str) -> Result<(), VfsError> {
+        if norm.starts_with("romfs:/") {
+            return Err(VfsError::ReadOnly(norm.to_string()));
+        }
+        Ok(())
+    }
+
+    /// The parent of `norm` must be a directory.
+    pub fn check_parent(&self, norm: &str) -> Result<(), VfsError> {
+        let clean = norm.trim_end_matches('/');
+        let parent = match clean.rfind('/') {
+            Some(i) if clean[..i].ends_with(':') => &clean[..=i],
+            Some(i) => &clean[..i],
+            None => return Err(VfsError::InvalidPath(norm.to_string())),
+        };
+        match self.entry_kind(parent) {
+            Some(VfsEntryKind::Directory) => Ok(()),
+            _ => Err(VfsError::NotFound(parent.to_string())),
+        }
+    }
+
+    /// Creates a zero-filled file of `size` bytes. Fails if the path exists or its parent does not.
+    pub fn create_file(&mut self, path: &str, size: u64) -> Result<(), VfsError> {
+        let norm = normalize_vfs_path(path);
+        Self::check_writable(&norm)?;
+        self.host_path(&norm)?;
+        if self.entry_kind(&norm).is_some() {
+            return Err(VfsError::AlreadyExists(norm));
+        }
+        self.check_parent(&norm)?;
+        if size > MAX_FILE_SIZE {
+            return Err(VfsError::TooLarge(norm));
+        }
+        let data = vec![0u8; size as usize];
+        self.sync_file_to_disk(&norm, &data);
+        self.files.insert(norm, data);
+        Ok(())
+    }
+
+    /// Writes `data` at `offset` into an existing file, growing it if needed.
+    pub fn write_file_at(&mut self, path: &str, offset: u64, data: &[u8]) -> Result<usize, VfsError> {
+        let norm = normalize_vfs_path(path);
+        Self::check_writable(&norm)?;
+        let end = offset.checked_add(data.len() as u64).filter(|&e| e <= MAX_FILE_SIZE);
+        let Some(end) = end else { return Err(VfsError::TooLarge(norm)) };
+        if !self.ensure_loaded(&norm)? {
+            return Err(VfsError::NotFound(norm));
+        }
+        let host = self.host_path(&norm)?.filter(|p| p.is_file());
+        let mut updated = self.files.get(&norm).cloned().ok_or_else(|| VfsError::NotFound(norm.clone()))?;
+        if (updated.len() as u64) < end {
+            updated.resize(end as usize, 0);
+        }
+        updated[offset as usize..end as usize].copy_from_slice(data);
+        if let Some(p) = host {
+            use std::io::{Seek, SeekFrom, Write};
+            let mut f = std::fs::OpenOptions::new().write(true).open(p)?;
+            f.seek(SeekFrom::Start(offset))?;
+            f.write_all(data)?;
+        }
+        self.files.insert(norm, updated);
+        self.total_bytes_written += data.len() as u64;
+        Ok(data.len())
+    }
+
+    /// Truncates or zero-extends an existing file to `size` bytes.
+    pub fn set_file_size(&mut self, path: &str, size: u64) -> Result<(), VfsError> {
+        let norm = normalize_vfs_path(path);
+        Self::check_writable(&norm)?;
+        if size > MAX_FILE_SIZE {
+            return Err(VfsError::TooLarge(norm));
+        }
+        if !self.ensure_loaded(&norm)? {
+            return Err(VfsError::NotFound(norm));
+        }
+        let host = self.host_path(&norm)?.filter(|p| p.is_file());
+        let mut updated = self.files.get(&norm).cloned().ok_or_else(|| VfsError::NotFound(norm.clone()))?;
+        updated.resize(size as usize, 0);
+        if let Some(p) = host {
+            std::fs::OpenOptions::new().write(true).open(p)?.set_len(size)?;
+        }
+        self.files.insert(norm, updated);
+        Ok(())
+    }
+
+    /// Renames a file or directory (with everything under it). The target must not exist and its parent must.
+    pub fn rename(&mut self, from: &str, to: &str) -> Result<(), VfsError> {
+        let (from, to) = (normalize_vfs_path(from), normalize_vfs_path(to));
+        let (from, to) = (from.trim_end_matches('/').to_string(), to.trim_end_matches('/').to_string());
+        Self::check_writable(&from)?;
+        Self::check_writable(&to)?;
+        let (host_from, host_to) = (self.host_path(&from)?, self.host_path(&to)?);
+        if from.ends_with(':') || to.ends_with(':') || to.starts_with(&format!("{from}/")) {
+            return Err(VfsError::InvalidPath(to));
+        }
+        if self.entry_kind(&from).is_none() {
+            return Err(VfsError::NotFound(from));
+        }
+        if self.entry_kind(&to).is_some() {
+            return Err(VfsError::AlreadyExists(to));
+        }
+        self.check_parent(&to)?;
+        if let (Some(a), Some(b)) = (host_from, host_to) {
+            if std::fs::symlink_metadata(&a).is_ok() {
+                std::fs::rename(a, b)?;
+            }
+        }
+        let moved = |k: &str| -> Option<String> {
+            if k == from {
+                Some(to.clone())
+            } else {
+                k.strip_prefix(&from).filter(|r| r.starts_with('/')).map(|r| format!("{to}{r}"))
+            }
+        };
+        self.files = std::mem::take(&mut self.files).into_iter().map(|(k, v)| (moved(&k).unwrap_or(k), v)).collect();
+        self.directories = std::mem::take(&mut self.directories).into_iter().map(|k| moved(&k).unwrap_or(k)).collect();
+        for v in self.open_handles.values_mut() {
+            if let Some(n) = moved(v) {
+                *v = n;
+            }
+        }
+        Ok(())
+    }
+
+    /// Deletes everything inside a directory and keeps the directory.
+    pub fn clean_directory(&mut self, path: &str) -> Result<(), VfsError> {
+        let norm = normalize_vfs_path(path);
+        Self::check_writable(&norm)?;
+        let base = norm.trim_end_matches('/');
+        for name in self.list_directory(&norm)? {
+            let child = format!("{base}/{name}");
+            match self.entry_kind(&child) {
+                Some(VfsEntryKind::Directory) => self.delete_directory(&child)?,
+                Some(VfsEntryKind::File(_)) => self.delete_file(&child)?,
+                None => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// Host creation, modification and access times (seconds since the Unix epoch) of a host-backed file.
+    pub fn timestamps(&self, path: &str) -> Option<(u64, u64, u64)> {
+        let meta = std::fs::metadata(self.host_path(path).ok()??).ok()?;
+        let secs = |t: std::io::Result<std::time::SystemTime>| {
+            t.ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs())
+        };
+        Some((secs(meta.created()), secs(meta.modified()), secs(meta.accessed())))
     }
 
     /// Mounts all files from a binary Level 3 `RomFsArchive` under `romfs:/...`.
@@ -201,13 +477,25 @@ impl VirtualFileSystem {
 
     /// Opens a file by virtual path and returns a VFS file handle.
     pub fn open_file(&mut self, path: &str) -> Result<u32, VfsError> {
-        if !self.files.contains_key(path) {
+        if !self.ensure_loaded(path)? {
             return Err(VfsError::NotFound(path.to_string()));
         }
         let handle = self.next_handle;
         self.next_handle += 1;
         self.open_handles.insert(handle, path.to_string());
         Ok(handle)
+    }
+
+    /// Opens a file and records its `FsOpenMode` bits (1 read, 2 write, 4 append).
+    pub fn open_file_with_mode(&mut self, path: &str, mode: u32) -> Result<u32, VfsError> {
+        let handle = self.open_file(&normalize_vfs_path(path))?;
+        self.open_modes.insert(handle, mode);
+        Ok(handle)
+    }
+
+    /// `FsOpenMode` bits of an open handle (read only when it was opened without a mode).
+    pub fn handle_mode(&self, handle: u32) -> u32 {
+        self.open_modes.get(&handle).copied().unwrap_or(1)
     }
 
     /// Returns the byte length of an open file handle.
@@ -263,6 +551,10 @@ impl VirtualFileSystem {
         mmu: &Memory,
     ) -> Result<usize, VfsError> {
         let norm = normalize_vfs_path(path);
+        Self::check_writable(&norm)?;
+        if len as u64 > MAX_FILE_SIZE {
+            return Err(VfsError::TooLarge(norm));
+        }
         let mut buf = vec![0u8; len];
         mmu.read_bytes(guest_src_addr, &mut buf)?;
         self.files.insert(norm.clone(), buf.clone());
@@ -333,40 +625,13 @@ impl VirtualFileSystem {
             }
         }
 
-        // 3. Disk inspection for save:/ and sdmc:/
-        if norm.starts_with("save:/") {
-            if let Some(ref s_dir) = self.save_dir {
-                let rel = norm["save:/".len()..].trim_matches('/');
-                let disk_dir = if rel.is_empty() {
-                    s_dir.clone()
-                } else {
-                    s_dir.join(rel)
-                };
-                if disk_dir.is_dir() {
-                    dir_found = true;
-                    if let Ok(rd) = std::fs::read_dir(&disk_dir) {
-                        for e in rd.flatten() {
-                            let name = e.file_name().to_string_lossy().to_string();
-                            entries.insert(name);
-                        }
-                    }
-                }
-            }
-        } else if norm.starts_with("sdmc:/") {
-            if let Some(ref s_dir) = self.sdmc_dir {
-                let rel = norm["sdmc:/".len()..].trim_matches('/');
-                let disk_dir = if rel.is_empty() {
-                    s_dir.clone()
-                } else {
-                    s_dir.join(rel)
-                };
-                if disk_dir.is_dir() {
-                    dir_found = true;
-                    if let Ok(rd) = std::fs::read_dir(&disk_dir) {
-                        for e in rd.flatten() {
-                            let name = e.file_name().to_string_lossy().to_string();
-                            entries.insert(name);
-                        }
+        // 3. Host folder behind save:/ and sdmc:/
+        if let Ok(Some(disk_dir)) = self.host_path(&norm) {
+            if disk_dir.is_dir() {
+                dir_found = true;
+                if let Ok(rd) = std::fs::read_dir(&disk_dir) {
+                    for e in rd.flatten() {
+                        entries.insert(e.file_name().to_string_lossy().to_string());
                     }
                 }
             }
@@ -383,6 +648,11 @@ impl VirtualFileSystem {
     pub fn create_directory(&mut self, path: &str) -> Result<(), VfsError> {
         let norm = normalize_vfs_path(path);
         let clean = norm.trim_end_matches('/').to_string();
+        Self::check_writable(&clean)?;
+        let host = self.host_path(&clean)?;
+        if let Some(disk_path) = host {
+            std::fs::create_dir_all(&disk_path)?;
+        }
         self.directories.insert(clean.clone());
         self.directories.insert(format!("{}/", clean));
 
@@ -398,57 +668,28 @@ impl VirtualFileSystem {
                 break;
             }
         }
-
-        if clean.starts_with("save:/") {
-            if let Some(ref s_dir) = self.save_dir {
-                let rel = clean["save:/".len()..].trim_matches('/');
-                if !rel.is_empty() {
-                    let disk_path = s_dir.join(rel);
-                    std::fs::create_dir_all(&disk_path)?;
-                }
-            }
-        } else if clean.starts_with("sdmc:/") {
-            if let Some(ref s_dir) = self.sdmc_dir {
-                let rel = clean["sdmc:/".len()..].trim_matches('/');
-                if !rel.is_empty() {
-                    let disk_path = s_dir.join(rel);
-                    std::fs::create_dir_all(&disk_path)?;
-                }
-            }
-        }
         Ok(())
     }
 
     /// Deletes a file from the VFS and persistent storage if mounted.
     pub fn delete_file(&mut self, path: &str) -> Result<(), VfsError> {
         let norm = normalize_vfs_path(path);
-        let removed = self.files.remove(&norm).is_some();
-        self.open_handles.retain(|_, v| v != &norm);
-
+        Self::check_writable(&norm)?;
+        let host = self.host_path(&norm)?;
+        let cached = self.files.contains_key(&norm);
         let mut disk_removed = false;
-        if norm.starts_with("save:/") {
-            if let Some(ref s_dir) = self.save_dir {
-                let rel = norm["save:/".len()..].trim_matches('/');
-                let disk_path = s_dir.join(rel);
-                if disk_path.is_file() {
-                    let _ = std::fs::remove_file(&disk_path);
-                    disk_removed = true;
-                }
-            }
-        } else if norm.starts_with("sdmc:/") {
-            if let Some(ref s_dir) = self.sdmc_dir {
-                let rel = norm["sdmc:/".len()..].trim_matches('/');
-                let disk_path = s_dir.join(rel);
-                if disk_path.is_file() {
-                    let _ = std::fs::remove_file(&disk_path);
-                    disk_removed = true;
-                }
+        if let Some(disk_path) = host {
+            if disk_path.is_file() {
+                std::fs::remove_file(&disk_path)?;
+                disk_removed = true;
             }
         }
 
-        if !removed && !disk_removed {
+        if !cached && !disk_removed {
             return Err(VfsError::NotFound(path.to_string()));
         }
+        self.files.remove(&norm);
+        self.open_handles.retain(|_, v| v != &norm);
         Ok(())
     }
 
@@ -456,49 +697,36 @@ impl VirtualFileSystem {
     pub fn delete_directory(&mut self, path: &str) -> Result<(), VfsError> {
         let norm = normalize_vfs_path(path);
         let clean = norm.trim_end_matches('/').to_string();
+        Self::check_writable(&clean)?;
+        // Never the mount root: on a host-backed mount that would remove the whole host folder.
+        if clean.ends_with(':') {
+            return Err(VfsError::InvalidPath(path.to_string()));
+        }
+        let host = self.host_path(&clean)?;
         let prefix = format!("{}/", clean);
 
-        let dir_existed = self.directories.remove(&clean) || self.directories.remove(&prefix);
+        let dir_existed = self.directories.contains(&clean) || self.directories.contains(&prefix);
 
         let to_remove: Vec<String> = self.files.keys()
             .filter(|k| k.starts_with(&prefix))
             .cloned()
             .collect();
-        for k in &to_remove {
-            self.files.remove(k);
-            self.open_handles.retain(|_, v| v != k);
-        }
-
-        let subdirs_removed = {
-            let before = self.directories.len();
-            self.directories.retain(|d| !d.starts_with(&prefix) && d != &clean);
-            self.directories.len() < before
-        };
+        let subdirs_removed = self.directories.iter().any(|d| d.starts_with(&prefix) || d == &clean);
 
         let mut disk_removed = false;
-        if clean.starts_with("save:/") {
-            if let Some(ref s_dir) = self.save_dir {
-                let rel = clean["save:/".len()..].trim_matches('/');
-                let disk_path = s_dir.join(rel);
-                if disk_path.is_dir() {
-                    let _ = std::fs::remove_dir_all(&disk_path);
-                    disk_removed = true;
-                }
-            }
-        } else if clean.starts_with("sdmc:/") {
-            if let Some(ref s_dir) = self.sdmc_dir {
-                let rel = clean["sdmc:/".len()..].trim_matches('/');
-                let disk_path = s_dir.join(rel);
-                if disk_path.is_dir() {
-                    let _ = std::fs::remove_dir_all(&disk_path);
-                    disk_removed = true;
-                }
+        if let Some(disk_path) = host {
+            if disk_path.is_dir() {
+                std::fs::remove_dir_all(&disk_path)?;
+                disk_removed = true;
             }
         }
 
         if !dir_existed && !subdirs_removed && to_remove.is_empty() && !disk_removed {
             return Err(VfsError::NotFound(path.to_string()));
         }
+        self.files.retain(|k, _| !k.starts_with(&prefix));
+        self.open_handles.retain(|_, v| !v.starts_with(&prefix));
+        self.directories.retain(|d| !d.starts_with(&prefix) && d != &clean);
         Ok(())
     }
 
@@ -788,6 +1016,41 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn host_io_path_failure_does_not_mutate_cached_file() {
+        use std::os::unix::fs::symlink;
+
+        let base = std::env::temp_dir().join(format!(
+            "ounce_vfs_io_failure_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let root = base.join("sd");
+        let outside = base.join("outside.bin");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("file.bin"), b"original").unwrap();
+        std::fs::write(&outside, b"outside").unwrap();
+
+        let mut vfs = VirtualFileSystem::new();
+        vfs.set_sdmc_directory(&root);
+        vfs.open_file("sdmc:/file.bin").unwrap(); // Load the host-backed bytes into the VFS cache.
+        assert_eq!(vfs.get_file("sdmc:/file.bin"), Some(&b"original"[..]));
+
+        std::fs::remove_file(root.join("file.bin")).unwrap();
+        symlink(&outside, root.join("file.bin")).unwrap();
+
+        assert!(matches!(vfs.write_file_at("sdmc:/file.bin", 0, b"changed"), Err(VfsError::Escape(_))));
+        assert_eq!(vfs.get_file("sdmc:/file.bin"), Some(&b"original"[..]));
+        assert!(matches!(vfs.set_file_size("sdmc:/file.bin", 2), Err(VfsError::Escape(_))));
+        assert_eq!(vfs.get_file("sdmc:/file.bin"), Some(&b"original"[..]));
+        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
