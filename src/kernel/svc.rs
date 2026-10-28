@@ -785,7 +785,7 @@ impl HorizonKernel {
             }
 
             // 0x22: svcSendSyncRequestWithUserBuffer(user_buffer, size, session_handle).
-            // Horizon requires a page-aligned, non-empty, page-sized buffer. HIPC uses it in place
+            // Horizon requires a page-aligned buffer with a nonzero page-multiple size. HIPC uses it in place
             // of TPIDRRO_EL0's TLS message area, including for the response.
             0x22 => {
                 let user_buffer = cpu.regs.read_x(0);

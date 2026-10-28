@@ -409,3 +409,5 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - `docs/PROVENANCE.md`, `docs/CLEAN_ROOM.md`, and `THIRD_PARTY.md` are drafts, not legally reviewed. Fixture source comparisons and binary component inventories remain incomplete; treat authorship and linked-component notes as recorded build information, not a completed provenance audit.
   - The Cargo licence file records declared metadata only; it does not complete a source-text or binary-redistribution audit.
   - History reachability notes are limited to the refs and date explicitly listed in the README. Do not claim a repository-wide cleanup is underway or complete without a current ref inventory.
+
+* **Codex PR #83 user-buffer IPC (2026-10-28)**: Added SVC 0x22 with aligned/nonzero page-multiple buffer validation, overflow checks, mapped RW permissions and session validation. HIPC response uses the supplied buffer, preserving TLS. Tests cover two-page success and invalid buffers/handle. Kernel page locking is not modeled; see docs/svc-coverage.md. Integrated with main 4b3d4c5.
