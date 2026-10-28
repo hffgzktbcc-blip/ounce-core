@@ -308,9 +308,9 @@ fn rejects_what_step1_cannot_do() {
         XlateError::Decode { at, err: DecodeError::UnknownOpcode { opcode: 0x224 }, .. } => assert_eq!(at, 0x10),
         e => panic!("{e:?}"),
     }
-    // Predicated ALU op: no control flow yet. A predicated NOP is fine.
+    // Predicated ALU ops are if-converted now (see `ctl_tests`). A predicated NOP is fine.
     let p = asm::pred(asm::mov_imm(0, 0), 0, false);
-    assert!(matches!(translate(ShaderStage::Fragment, &program(&ps, &[p, asm::exit()])), Err(XlateError::Unsupported { .. })));
+    assert!(translate(ShaderStage::Fragment, &program(&ps, &[p, asm::exit()])).is_ok());
     let pn = asm::pred(asm::nop(), 2, true);
     assert!(translate(ShaderStage::Fragment, &program(&ps, &[pn, asm::exit()])).is_ok());
     // Stage/header mismatch and stage-specific ops.

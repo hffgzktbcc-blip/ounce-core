@@ -21,6 +21,7 @@
 #![allow(dead_code)]
 
 pub mod decode;
+pub mod eval;
 pub mod ir;
 pub mod maxwell;
 pub mod sph;

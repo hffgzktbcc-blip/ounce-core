@@ -353,10 +353,20 @@ pub fn word_at(code: &[u8], i: usize) -> Option<u64> {
 /// Decodes and lowers Maxwell code that follows the header, up to the first
 /// unconditional `EXIT`.
 pub fn lower(stage: ShaderStage, code: &[u8]) -> Result<Function, XlateError> {
-    lower_with(stage, |pc| {
-        let at = instr_offset(pc);
-        let w = word_at(code, pc).ok_or(XlateError::MissingExit)?;
-        let d = decode(w).map_err(|e| XlateError::Decode { at, word: w as u128, err: e })?;
-        Ok((at, d))
-    })
+    lower_with(
+        stage,
+        |pc| {
+            let at = instr_offset(pc);
+            let w = word_at(code, pc).ok_or(XlateError::MissingExit)?;
+            let d = decode(w).map_err(|e| XlateError::Decode { at, word: w as u128, err: e })?;
+            Ok((at, d))
+        },
+        instr_index,
+    )
+}
+
+/// Inverse of [`instr_offset`]; `None` for a control word or a misaligned offset.
+pub fn instr_index(byte: usize) -> Option<usize> {
+    let slot = byte % 32;
+    (byte % 8 == 0 && slot != 0).then(|| (byte / 32) * 3 + (slot - 8) / 8)
 }
