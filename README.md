@@ -96,7 +96,7 @@ Status snapshot reviewed **2026-10-28**. No calendar estimates are set for miles
 
 | Milestone | Status | Exit criteria |
 | :--- | :--- | :--- |
-| Code-cache invalidation regression gate | Complete | Interpreter, Tier-3 and Tier-4 regressions cover guest code writes, page unmap/remap and moves. All nine configured CI checks passed for this milestone. |
+| Code-cache invalidation regression gate | Complete | Regressions cover guest code writes and page unmap/remap across the interpreter, Tier-3 and Tier-4; the moved-code regression covers Tier-4. All nine configured CI checks passed for this milestone. |
 | Independent original Switch homebrew corpus | Next | Three independently authored, public-source NRO samples covering startup/CPU, an input or filesystem service, and deterministic graphics. Pin source revisions and build steps, confirm fixture-use terms, record expected guest results, run on Linux under the interpreter and Tier-3, and have an outside developer reproduce from a clean checkout. |
 | Switch 2 vertical slice | Blocked | Requires an authorized Switch 2 toolchain and reference hardware. Then build a self-authored sample and match startup, one input-driven change, a fixed completion result and a captured test image on Ounce-Core and the reference system. Record source and build provenance. |
 | Broader Switch 2 compatibility | Later | Expand one verified behavior or sample at a time, using target-specific results and updating the support claims to match the evidence. |
