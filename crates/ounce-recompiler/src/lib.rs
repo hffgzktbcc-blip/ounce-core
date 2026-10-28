@@ -568,6 +568,44 @@ mod tests {
     }
 
     #[test]
+    fn self_loop_runs_in_registers_until_budget() {
+        let mut rec = Recompiler::new().unwrap();
+        let mut block = counting_block(0x200);
+        block.set_entry_pc(0x200);
+        // Not in the link table: the loop back to its own pc needs no table entry.
+        let id = rec.compile(&block).unwrap();
+        let mut st = GuestState::default();
+        let exit = rec.run_linked(id, &mut st, &mut TestBus::default(), 500);
+        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 500 });
+        assert_eq!((st.x[0], st.pc, rec.links_taken()), (500, 0x200, 499));
+        // `run` (budget 0) never loops.
+        assert_eq!(rec.run(id, &mut st, &mut TestBus::default()).insns, 1);
+        assert_eq!(st.x[0], 501);
+    }
+
+    #[test]
+    fn fault_inside_self_loop_is_precise() {
+        // 0x200: x1 += 8; 0x204: x0 = [x1]; b 0x200
+        let mut b = BlockBuilder::new();
+        let x1 = b.get(Reg::X(1));
+        let x1 = b.bin_imm(BinOp::Add, Width::W64, x1, 8);
+        b.set(Reg::X(1), x1);
+        let v = b.push(Op::Load(8, x1, FaultSite { pc: 0x204, insns: 1 }));
+        b.set(Reg::X(0), v);
+        let pc = b.konst(0x200);
+        let mut block = b.finish(Terminator::Exit(ExitTo { code: 0, pc, insns: 2, link: true }));
+        block.set_entry_pc(0x200);
+        let mut rec = Recompiler::new().unwrap();
+        let id = rec.compile(&block).unwrap();
+        let mut st = GuestState::default();
+        st.x[0] = 0x55;
+        st.x[1] = 0x2FE8; // loads at 0x2FF0, 0x2FF8, then 0x3000 faults (bus ends at 0x3000)
+        let exit = rec.run_linked(id, &mut st, &mut TestBus::default(), 1_000);
+        assert_eq!(exit, Exit { kind: ExitKind::Fault, insns: 5 });
+        assert_eq!((st.x[1], st.pc, st.x[0]), (0x3000, 0x204, 0), "x0 holds the last good load");
+    }
+
+    #[test]
     fn fault_after_link_counts_all_blocks() {
         let mut rec = Recompiler::new().unwrap();
         let a = rec.compile(&counting_block(0x200)).unwrap();

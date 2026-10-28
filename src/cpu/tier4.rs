@@ -1044,7 +1044,9 @@ impl Tier4JitEngine {
             self.no_compile.insert(pc);
             return None;
         };
-        match rec.compile(&lowered.ir) {
+        let mut ir = lowered.ir;
+        ir.set_entry_pc(pc);
+        match rec.compile(&ir) {
             Ok(id) => {
                 mmu.mark_code_range(lowered.start, lowered.end);
                 // The TLB may hold a writable entry for this page from before it held code; a
