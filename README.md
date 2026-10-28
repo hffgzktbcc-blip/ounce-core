@@ -80,6 +80,31 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ---
 
+## Goals and Roadmap
+
+**North star:** run Nintendo Switch 2 software through an accurate, inspectable execution runtime. This is a long-term goal; Ounce-Core does not currently run Switch 2 software. Original Switch homebrew results are foundation evidence only.
+
+### Goals
+
+- Improve CPU, memory, service and graphics correctness with deterministic regressions and reference comparisons.
+- Build compatibility evidence from programs that were not written for Ounce-Core.
+- Keep public capability claims tied to reproducible results, with fixture sources and build inputs recorded.
+
+### Milestones
+
+Status snapshot reviewed **2026-10-28**. No calendar estimates are set for milestones that depend on toolchains or hardware access.
+
+| Milestone | Status | Exit criteria |
+| :--- | :--- | :--- |
+| Native-code correctness | In progress | Interpreter, Tier-3 and Tier-4 agree after guest code writes, page unmap/remap and moves. Focused regressions pass, then the configured CI matrix is green. |
+| Independent original Switch homebrew corpus | Next | Three independently authored, public-source NRO samples covering startup/CPU, an input or filesystem service, and deterministic graphics. Pin source revisions and build steps, confirm fixture-use terms, record expected guest results, run on Linux under the interpreter and Tier-3, and have an outside developer reproduce from a clean checkout. |
+| Switch 2 vertical slice | Blocked | Requires an authorized Switch 2 toolchain and reference hardware. Then build a self-authored sample and match startup, one input-driven change, a fixed completion result and a captured test image on Ounce-Core and the reference system. Record source and build provenance. |
+| Broader Switch 2 compatibility | Later | Expand one verified behavior or sample at a time, using target-specific results and updating the support claims to match the evidence. |
+
+Original Switch tests can exercise shared loading, CPU, service and graphics foundations. They do not establish Switch 2 ABI, services, GPU behavior, commercial-software compatibility or performance.
+
+---
+
 ## Repository Structure
 
 ```
