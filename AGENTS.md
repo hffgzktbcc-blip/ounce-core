@@ -21,7 +21,7 @@ This document establishes operating rules for AI coding assistants (Antigravity,
 
 ## 3. Active Handoff Log
 * **Completed State**:
-  - History rewrite and release v0.3.0 complete; dirty tags purged.
+  - Release v0.3.0 was published. History cleanup is not verified complete; see the dated, limited ref check in `README.md` and `docs/PROVENANCE.md`.
   - Phase 2 implemented: Physical gamepad input via `gilrs` and 48 kHz stereo host audio sink via `cpal`.
   - Multi-platform CI workflows verified on Linux, macOS, and Windows.
 * **Completed: ELF dynamic linking and TLS** (PR #3 + PR #4 on `main` @ 629cd87, updated 2026-10-26)
@@ -408,3 +408,8 @@ This document establishes operating rules for AI coding assistants (Antigravity,
   - **Verified after #79:** rebuilding and running on Mac exposed an MME delayed-branch EXIT issue; fixed in `mme.rs`. The normal `deko3d_fixture_draws_triangle` test now checks the clear pixel `0xFF400000`, center pixel `0xFF0080FF`, and result `0x00000EEE`.
 
 * **Codex SD-card fixture validation (2026-10-28, PR #82)**: Built the existing source fixture with devkitA64 r30/libnx 4.12.0. Its guest directory loop exposed that domain directory reads updated the parent session handle instead of the target object; dispatch now passes the target object handle to the directory handler. The compiled guest integration test passes and checks host cleanup and preserved host contents. Verification: 344 release tests passed; harness 27/27 passed across 25 stages. This is a project-authored integration fixture, not independent compatibility evidence.
+
+* **Handoff: provenance and clean-room documentation** (2026-10-28)
+  - `docs/PROVENANCE.md`, `docs/CLEAN_ROOM.md`, and `THIRD_PARTY.md` are drafts, not legally reviewed. Fixture source comparisons and binary component inventories remain incomplete; treat authorship and linked-component notes as recorded build information, not a completed provenance audit.
+  - The Cargo licence file records declared metadata only; it does not complete a source-text or binary-redistribution audit.
+  - History reachability notes are limited to the refs and date explicitly listed in the README. Do not claim a repository-wide cleanup is underway or complete without a current ref inventory.
