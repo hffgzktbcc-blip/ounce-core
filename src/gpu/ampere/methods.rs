@@ -38,6 +38,11 @@ pub const SET_VERTEX_STREAM_A_LOCATION_B: u32 = 0x1c08;
 /// `NVC797_SET_VERTEX_STREAM_A_FREQUENCY(j)`.
 pub const SET_VERTEX_STREAM_A_FREQUENCY: u32 = 0x1c0c;
 pub const VERTEX_STREAM_A_STRIDE: u32 = 16;
+/// `NVC797_SET_VERTEX_STREAM_INSTANCE_A(j)` (`IS_INSTANCED` 0:0), one word per stream: the stream
+/// advances per instance (by `SET_VERTEX_STREAM_A_FREQUENCY`) instead of per vertex.
+pub const SET_VERTEX_STREAM_INSTANCE_A: u32 = 0x1880;
+/// `NVC797_SET_GLOBAL_BASE_INSTANCE_INDEX`: added to the element index of instanced streams.
+pub const SET_GLOBAL_BASE_INSTANCE_INDEX: u32 = 0x1438;
 
 // Color targets: 8 targets, 64 bytes apart.
 pub const COLOR_TARGET_COUNT: usize = 8;
@@ -62,6 +67,9 @@ pub const SET_VIEWPORT_SCALE_X: u32 = 0x0a00;
 pub const VIEWPORT_STRIDE: u32 = 32;
 /// `NVC797_SET_VIEWPORT_CLIP_HORIZONTAL(j)`: X0 15:0, WIDTH 31:16. `_VERTICAL(j)` = `+4`.
 pub const SET_VIEWPORT_CLIP_HORIZONTAL: u32 = 0x0c00;
+/// `NVC797_SET_VIEWPORT_CLIP_MIN_Z(j)` / `_MAX_Z(j)`: floats, same 16-byte stride as the clip rect.
+pub const SET_VIEWPORT_CLIP_MIN_Z: u32 = 0x0c08;
+pub const SET_VIEWPORT_CLIP_MAX_Z: u32 = 0x0c0c;
 pub const SET_VIEWPORT_CLIP_VERTICAL: u32 = 0x0c04;
 pub const VIEWPORT_CLIP_STRIDE: u32 = 16;
 
@@ -245,9 +253,11 @@ pub const SET_WINDOW_ORIGIN: u32 = 0x13ac;
 pub const OGL_SET_CULL: u32 = 0x1918;
 pub const OGL_SET_FRONT_FACE: u32 = 0x191c;
 pub const OGL_SET_CULL_FACE: u32 = 0x1920;
-/// `NVC797_SET_VIEWPORT_CLIP_CONTROL`: GEOMETRY_CLIP 13:11 (`WZERO_CLIP` 0, `PASSTHRU` 1,
+/// `NVC797_SET_VIEWPORT_CLIP_CONTROL`: MIN_Z_ZERO_MAX_Z_ONE 0:0, PIXEL_MIN_Z 3:3 and PIXEL_MAX_Z
+/// 4:4 (0 `CLIP`, 1 `CLAMP`), GEOMETRY_CLIP 13:11 (`WZERO_CLIP` 0, `PASSTHRU` 1,
 /// `FRUSTUM_XY_CLIP` 2, `FRUSTUM_XYZ_CLIP` 3, `WZERO_CLIP_NO_Z_CULL` 4, `FRUSTUM_Z_CLIP` 5,
-/// `WZERO_TRI_FILL_OR_CLIP` 6); pixel Z clip/clamp fields are not modelled.
+/// `WZERO_TRI_FILL_OR_CLIP` 6), Z_CLIP_RANGE 17:16 (`USE_FIELD_MIN_Z_ZERO_MAX_Z_ONE` 0,
+/// `MIN_Z_MAX_Z` 1, `ZERO_ONE` 2, `MINUS_INF_PLUS_INF` 3).
 pub const SET_VIEWPORT_CLIP_CONTROL: u32 = 0x193c;
 /// `NVC797_SET_VIEWPORT_Z_CLIP`: RANGE 0:0 (`NEGATIVE_W_TO_POSITIVE_W` 0, `ZERO_TO_POSITIVE_W` 1).
 pub const SET_VIEWPORT_Z_CLIP: u32 = 0x0d7c;
@@ -285,6 +295,18 @@ pub const BIND_GROUP_STRIDE: u32 = 32;
 pub const BIND_GROUP_COUNT: usize = 5;
 /// Constant buffer slots per group (SHADER_SLOT is 5 bits wide).
 pub const CONSTANT_BUFFER_SLOTS: usize = 32;
+
+// Macro engine (MME). `NVB197_*` and `NVC797_*` share these offsets; the instruction formats differ
+// (see `mme.rs`). Pointers are word indices; each RAM write stores one word and advances its pointer.
+pub const LOAD_MME_INSTRUCTION_RAM_POINTER: u32 = 0x0114;
+pub const LOAD_MME_INSTRUCTION_RAM: u32 = 0x0118;
+pub const LOAD_MME_START_ADDRESS_RAM_POINTER: u32 = 0x011c;
+pub const LOAD_MME_START_ADDRESS_RAM: u32 = 0x0120;
+/// `CALL_MME_MACRO(j)` starts macro j with its first parameter; `CALL_MME_DATA(j)` (`+4`) queues
+/// the next ones. 128 macros, 8 bytes apart.
+pub const CALL_MME_MACRO: u32 = 0x3800;
+pub const CALL_MME_DATA: u32 = 0x3804;
+pub const CALL_MME_STRIDE: u32 = 8;
 
 // Host (channel) methods, below `FIRST_CLASS_METHOD`. `NVB06F_*` (MAXWELL_CHANNEL_GPFIFO_A,
 // open-gpu-doc `classes/host/clb06f.h`) and `NVC56F_*` (AMPERE_CHANNEL_GPFIFO_A, `clc56f.h`) share

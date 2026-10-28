@@ -4,19 +4,20 @@ Status: draft, not legally reviewed. This describes how the project works today 
 reviewing lawyer can check it against the repository.
 
 ## What we are
-An independent implementation of an AArch64 execution environment and Horizon-style services, tested on
-homebrew programs and synthetic test vectors. It is a research runtime. It does not claim to run commercial
-games, and no such compatibility has been established.
+The repository contains an experimental implementation of an AArch64 execution environment and Horizon-style
+services, exercised with homebrew programs and synthetic test vectors. The project does not claim commercial
+game compatibility. This protocol describes the project’s intended process; fixture provenance checks remain
+incomplete as recorded in `docs/PROVENANCE.md`.
 
 ## Permitted inputs
 1. Public specifications and documentation (Arm manuals, SPIR-V, public NVIDIA and Mesa/Nouveau headers).
-2. Open-source homebrew libraries and their public documentation (libnx, deko3d), used under their licences.
+2. Public documentation and source for homebrew libraries such as libnx and deko3d; check the applicable project notices before use.
 3. Programs we write ourselves and build with public toolchains.
 4. Observations of our own runtime's behaviour.
 
 ## Prohibited inputs
 - Firmware, system archives, bootloader or trusted-environment code, or anything derived from them.
-- Encryption keys of any kind, including in tests (tests use the in-repo synthetic key only).
+- Retail or proprietary keys. Tests may use only the in-repository synthetic test key.
 - Game content, ROMs, dumps, or assets, including as test data.
 - Source code or tables copied from other emulator projects or from leaked or proprietary material.
 - Output from tools run against material we are not permitted to hold.

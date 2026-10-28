@@ -1,0 +1,7 @@
+main.o
+deko3d.elf
+*.dksh
+tri_vsh.h
+tri_fsh.h
+# The root .gitignore ignores *.nro; this fixture is checked in.
+!deko3d.nro

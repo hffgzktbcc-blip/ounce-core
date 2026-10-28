@@ -4,18 +4,17 @@ Maintained by the project. Status: **draft, not legally reviewed.** Where a fact
 
 ## Test fixtures (`tests/fixtures/nro/*`)
 
-Each fixture directory has a `main.c` written for this project, a `Makefile`, and a prebuilt `.nro`.
+Each listed fixture directory has a `main.c`, a `Makefile`, and a prebuilt `.nro`. The source-to-upstream comparison has not been completed, so authorship is unverified.
 
-| Fixture | Source written by | Built with | Third-party code inside the `.nro` | Ships in repo |
+| Fixture | Source authorship | Build information recorded | Binary contents verified | Ships in repo |
 |---|---|---|---|---|
-| hello, services, romfs, nvdrv, gpu, input, threads, audren | this project (`main.c`) | devkitA64 r30 (GCC 16.1.0-1, newlib 4.6.0.20260123-4) + libnx 4.12.0-1 | **libnx (ISC licence), newlib (BSD-style licences), libgcc/libstdc++ runtime pieces (GCC runtime exception)** | yes (binary and source) |
+| hello, services, romfs, nvdrv, gpu, input, threads, audren | unverified; upstream example comparison pending | devkitA64 r30 / GCC 16.1.0-1, newlib 4.6.0.20260123-4, libnx 4.12.0-1 (see toolchain register) | no; Makefiles link libnx, and toolchain metadata identifies newlib; binary-level component inventory is pending | yes (binary and source) |
+| deko3d | unverified; upstream example comparison pending | devkitA64 + libnx + deko3d per fixture Makefile; shader compiler/version record pending | no; binary-level component inventory is pending | yes (binary and source) |
 
 Notes:
-- The `.nro` files statically link libnx and newlib. The README previously said "no code copied from
-  third-party projects"; that was inaccurate for these binaries. Licence texts for libnx and newlib must be
-  shipped or linked alongside them (see `THIRD_PARTY.md`).
-- `romfs.nro` embeds `romfs/greeting.txt`, written for this project.
-- None of the fixtures contain firmware, keys, retail code or game data. Anyone can rebuild them from `main.c`.
+- The fixture Makefiles explicitly link libnx; the recorded devkitA64 toolchain includes newlib. This does not establish the complete contents of each prebuilt binary. No libstdc++ linkage has been verified. See `THIRD_PARTY.md` for upstream notice references and open checks.
+- `romfs.nro` embeds `romfs/greeting.txt`; its source authorship has not been separately checked.
+- The project records these fixtures as synthetic homebrew test programs; source-to-upstream comparisons and binary-content checks remain pending.
 - Exact per-fixture binary IDs and hashes are recorded in `tests/fixtures/nro/TOOLCHAIN_VERSIONS.md`.
 
 ## Synthetic inputs in source
@@ -39,15 +38,10 @@ sources. Where a table must match a public layout (for example method numbers), 
 
 ## Known provenance problem: git history
 
-Commits before `76ce766` (for example `c7f16f2`, `4be9640`) contain firmware-derived and third-party-derived
-byte sequences and a loader for an external payload. They are still reachable from `main`, every branch and
-tag, forks and clones, and GitHub pull request refs. The current tree is clean; the history is not.
-Resolution requires a rewrite or a fresh repository plus a request to GitHub to remove cached commits, and
-legal advice on the material already published. Tracked in `AGENTS.md`.
+Commits before `76ce766` (including `c7f16f2` and `4be9640`) were previously identified by the project as containing firmware-derived or third-party-derived byte sequences and an external-payload loader; their contents have not been re-audited in this documentation change. On 2026-10-28, this checkout confirmed `c7f16f2` is reachable from `main`, tags `v0.3.0` through `v0.3.2`, and fetched pull-request refs `72`, `81`, `82`, and `83`. This limited check does not establish reachability from every branch, tag, fork, clone, or server-side ref. A history cleanup has been discussed, but no completion is verified here. Tracked in `AGENTS.md`.
 
 ## Audits
 
-- Cargo dependency licences: completed 2026-10-28. See `docs/DEPENDENCY_LICENSE_AUDIT.md`.
-- Shader tooling (`uam` compiles deko3d test shaders; its licence and output status are unrecorded).
-- Any fixture source derived from libnx or deko3d example code (compare `main.c` files against upstream
-  examples and record the outcome).
+- Cargo licence metadata inventory: recorded 2026-10-28; it covers declared Cargo metadata, not source texts or fixture binaries. See `docs/DEPENDENCY_LICENSE_AUDIT.md`.
+- Shader tooling (`uam` compiles deko3d test shaders; version, licence notices, and generated-output inventory are unrecorded).
+- Fixture source authorship: compare each `main.c` with relevant libnx/deko3d examples and record the result.

@@ -10,6 +10,7 @@
 use std::collections::VecDeque;
 
 use super::methods as m;
+use super::mme::{Mme, MmeHost};
 use super::pushbuf::{self, MethodCall, PushbufError};
 use super::render::{self, RenderStats};
 use super::surface::{self, addr40, ColorTarget, DepthTarget};
@@ -55,6 +56,8 @@ pub struct VertexStream {
     pub stride: u32,
     pub size: u64,
     pub frequency: u32,
+    /// `SET_VERTEX_STREAM_INSTANCE_A(j).IS_INSTANCED`.
+    pub instanced: bool,
 }
 
 /// An active vertex attribute (`SET_VERTEX_ATTRIBUTE_A(i)`), fields kept as the class encodes them.
@@ -131,7 +134,10 @@ pub struct DrawRecord {
     pub topology: Topology,
     pub first_vertex: u32,
     pub vertex_count: u32,
+    /// Instance id (`INSTANCE_ID` FIRST resets it, SUBSEQUENT advances it).
     pub instance: u32,
+    /// `SET_GLOBAL_BASE_INSTANCE_INDEX`.
+    pub base_instance: u32,
     pub color_targets: Vec<ColorTarget>,
     pub depth_target: Option<DepthTarget>,
     pub vertex_streams: Vec<VertexStream>,
@@ -305,6 +311,9 @@ pub enum Diagnostic {
     /// A clear or draw was decoded but not rendered (memory readable, state outside the software
     /// path's scope).
     RenderSkipped { reason: &'static str },
+    /// `CALL_MME_MACRO(index)` did not run to completion (methods it emitted before stopping
+    /// stay applied), or ran on AMPERE_B, whose macro format is not modelled.
+    MacroFailed { index: u32, reason: &'static str },
 }
 
 /// Guest memory as the GPU sees it. The routing hook in `nvgpu.rs` maps GPU VAs to guest memory.
@@ -317,6 +326,38 @@ pub trait GpuMemoryWriter {
     fn read(&mut self, gpu_va: u64, buf: &mut [u8]) -> bool {
         let _ = (gpu_va, buf);
         false
+    }
+}
+
+/// A `CALL_MME_MACRO` collecting its `CALL_MME_DATA` words.
+#[derive(Debug, Clone)]
+struct MacroCall {
+    subchannel: u8,
+    index: u32,
+    params: Vec<u32>,
+}
+
+/// What a running macro sees: the shadow registers, and emits run as ordinary methods.
+struct MacroHost<'a> {
+    engine: &'a mut Ampere3d,
+    mem: &'a mut dyn GpuMemoryWriter,
+    subchannel: u8,
+    rejected: Option<&'static str>,
+}
+
+impl MmeHost for MacroHost<'_> {
+    fn state(&self, index: u32) -> u32 {
+        self.engine.regs[index as usize % self.engine.regs.len()]
+    }
+
+    fn emit(&mut self, index: u32, data: u32) {
+        let method = index * 4;
+        // A macro may not rewrite macro RAM or call macros while it runs.
+        if (m::LOAD_MME_INSTRUCTION_RAM_POINTER..=m::LOAD_MME_START_ADDRESS_RAM).contains(&method) || method >= m::CALL_MME_MACRO {
+            self.rejected.get_or_insert("macro emitted a macro method");
+            return;
+        }
+        self.engine.execute(MethodCall { subchannel: self.subchannel, method, data }, self.mem);
     }
 }
 
@@ -346,6 +387,10 @@ pub struct Ampere3d {
     pub(super) cbufs: [[Option<ConstantBufferBinding>; m::CONSTANT_BUFFER_SLOTS]; m::BIND_GROUP_COUNT],
     pub(super) stats: RenderStats,
     reference: u32,
+    /// MAXWELL_B macro RAM.
+    mme: Mme,
+    /// A macro call waiting for its last parameter; it runs when another method arrives.
+    macro_call: Option<MacroCall>,
 }
 
 impl Default for Ampere3d {
@@ -376,6 +421,8 @@ impl Ampere3d {
             cbufs: [[None; m::CONSTANT_BUFFER_SLOTS]; m::BIND_GROUP_COUNT],
             stats: RenderStats::default(),
             reference: 0,
+            mme: Mme::default(),
+            macro_call: None,
         }
     }
 
@@ -459,9 +506,14 @@ impl Ampere3d {
         self.blocked.is_none()
     }
 
+    /// Runs queued calls. A macro call still collecting parameters runs when the queue empties or
+    /// blocks, so a call split across segments sees only the parameters of the first.
     fn drain(&mut self, mem: &mut dyn GpuMemoryWriter) {
         self.blocked = None;
         while let Some(&call) = self.pending.front() {
+            if !self.continues_macro(call) {
+                self.run_macro(mem);
+            }
             if let Some(wait) = self.acquire_for(call) {
                 if wait.satisfied(mem) == Some(false) {
                     self.blocked = Some(wait);
@@ -470,6 +522,27 @@ impl Ampere3d {
             }
             self.pending.pop_front();
             self.execute(call, mem);
+        }
+        self.run_macro(mem);
+    }
+
+    /// True if `call` is the next `CALL_MME_DATA` word of the macro being collected.
+    fn continues_macro(&self, call: MethodCall) -> bool {
+        self.macro_call.as_ref().is_some_and(|c| {
+            c.subchannel == call.subchannel && call.method == m::CALL_MME_DATA + c.index * m::CALL_MME_STRIDE
+        })
+    }
+
+    /// Runs the collected macro call, if any.
+    fn run_macro(&mut self, mem: &mut dyn GpuMemoryWriter) {
+        let Some(call) = self.macro_call.take() else { return };
+        let mme = std::mem::replace(&mut self.mme, Mme::detached());
+        let mut host = MacroHost { engine: self, mem, subchannel: call.subchannel, rejected: None };
+        let result = mme.run(call.index as usize, &call.params, &mut host);
+        let rejected = host.rejected;
+        self.mme = mme;
+        if let Some(reason) = result.err().or(rejected) {
+            self.diagnostics.push(Diagnostic::MacroFailed { index: call.index, reason });
         }
     }
 
@@ -527,6 +600,13 @@ impl Ampere3d {
     }
 
     pub fn execute(&mut self, call: MethodCall, mem: &mut dyn GpuMemoryWriter) {
+        if self.continues_macro(call) {
+            if let Some(c) = self.macro_call.as_mut() {
+                c.params.push(call.data);
+            }
+            return;
+        }
+        self.run_macro(mem);
         let sc = (call.subchannel & 7) as usize;
         if call.method == m::SET_OBJECT {
             self.bound[sc] = Some(call.data & 0xffff);
@@ -551,6 +631,18 @@ impl Ampere3d {
 
         match method {
             m::CLEAR_SURFACE => self.clear(call.data, class, mem),
+            m::LOAD_MME_INSTRUCTION_RAM_POINTER => self.mme.set_code_pointer(call.data),
+            m::LOAD_MME_INSTRUCTION_RAM => self.mme.load_code(call.data),
+            m::LOAD_MME_START_ADDRESS_RAM_POINTER => self.mme.set_start_pointer(call.data),
+            m::LOAD_MME_START_ADDRESS_RAM => self.mme.load_start(call.data),
+            m::CALL_MME_MACRO.. if (method - m::CALL_MME_MACRO) % m::CALL_MME_STRIDE == 0 => {
+                let index = (method - m::CALL_MME_MACRO) / m::CALL_MME_STRIDE;
+                if class == m::MAXWELL_B {
+                    self.macro_call = Some(MacroCall { subchannel: call.subchannel, index, params: vec![call.data] });
+                } else {
+                    self.diagnostics.push(Diagnostic::MacroFailed { index, reason: "AMPERE_B macro format not modelled" });
+                }
+            }
             m::BEGIN => {
                 if self.open.is_some() {
                     self.diagnostics.push(Diagnostic::NestedBegin);
@@ -836,6 +928,7 @@ impl Ampere3d {
                     stride: fmt & 0xfff,
                     size,
                     frequency: self.reg(m::SET_VERTEX_STREAM_A_FREQUENCY + j * m::VERTEX_STREAM_A_STRIDE),
+                    instanced: self.reg(m::SET_VERTEX_STREAM_INSTANCE_A + 4 * j) & 1 == 1,
                 })
             })
             .collect();
@@ -886,6 +979,7 @@ impl Ampere3d {
             first_vertex,
             vertex_count,
             instance,
+            base_instance: self.reg(m::SET_GLOBAL_BASE_INSTANCE_INDEX),
             color_targets: self.color_targets(),
             depth_target: self.depth_target(class),
             vertex_streams,

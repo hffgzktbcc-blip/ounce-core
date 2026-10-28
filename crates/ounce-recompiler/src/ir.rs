@@ -160,9 +160,33 @@ pub enum Terminator {
 pub struct Block {
     pub(crate) ops: Vec<Op>,
     pub(crate) term: Terminator,
+    /// Guest pc this block starts at, if the caller says. A linked exit back to it becomes a
+    /// loop inside the generated code, with guest registers kept in host registers.
+    pub(crate) entry_pc: Option<u64>,
 }
 
 impl Block {
+    /// Constant pcs of the linked exits (direct branches and fall-throughs).
+    pub fn direct_targets(&self) -> Vec<u64> {
+        let exits = match self.term {
+            Terminator::Exit(e) => vec![e],
+            Terminator::Branch { taken, not_taken, .. } => vec![taken, not_taken],
+        };
+        exits
+            .iter()
+            .filter(|e| e.link)
+            .filter_map(|e| match self.ops[e.pc.0 as usize] {
+                Op::Const(pc) => Some(pc),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Records the guest pc this block was translated from (see `entry_pc`).
+    pub fn set_entry_pc(&mut self, pc: u64) {
+        self.entry_pc = Some(pc);
+    }
+
     pub fn ops(&self) -> &[Op] {
         &self.ops
     }
@@ -267,6 +291,6 @@ impl BlockBuilder {
     }
 
     pub fn finish(self, term: Terminator) -> Block {
-        Block { ops: self.ops, term }
+        Block { ops: self.ops, term, entry_pc: None }
     }
 }

@@ -3,7 +3,7 @@
 
 use super::engine::*;
 use super::methods as m;
-use super::pushbuf::{immd_header, inc_header, non_inc_header};
+use super::pushbuf::{immd_header, inc_header, non_inc_header, one_inc_header};
 use super::surface::*;
 
 const SC: u8 = 0;
@@ -155,7 +155,7 @@ fn clear_then_one_triangle_on(class: u32) {
     assert_eq!((draw.first_vertex, draw.vertex_count, draw.instance), (0, 3, 0));
     assert_eq!(draw.color_targets, vec![pitch_target()]);
     assert_eq!(draw.depth_target, None);
-    assert_eq!(draw.vertex_streams, vec![VertexStream { index: 0, gpu_va: VB_VA, stride: 28, size: 84, frequency: 0 }]);
+    assert_eq!(draw.vertex_streams, vec![VertexStream { index: 0, gpu_va: VB_VA, stride: 28, size: 84, frequency: 0, instanced: false }]);
     assert_eq!(
         draw.vertex_attributes,
         vec![
@@ -303,4 +303,74 @@ fn class_methods_land_in_the_shadow_registers() {
     let (gpu, _) = run(&pb);
     assert_eq!(gpu.reg(m::SET_STENCIL_CLEAR_VALUE), 0x5a);
     assert_eq!(gpu.reg(m::SET_OBJECT), 0); // Host methods are not class state.
+}
+
+/// MAXWELL_B macro 3 at code word 0x20: writes four parameters to `SET_COLOR_CLEAR_VALUE` and the
+/// fifth to `CLEAR_SURFACE`, the way deko3d clears through a macro.
+fn upload_clear_macro(pb: &mut Vec<u32>) {
+    let addi_maddr = |method: u32, inc: u32| (((method / 4) | (inc << 12)) << 14) | (2 << 4) | 1;
+    // ALU ADD r1 + r0, assignment 3: emit r1, then r1 = next parameter.
+    let emit_r1_fetch = (1 << 11) | (1 << 8) | (3 << 4);
+    let code = [
+        addi_maddr(m::SET_COLOR_CLEAR_VALUE, 1),
+        emit_r1_fetch,
+        emit_r1_fetch,
+        emit_r1_fetch,
+        emit_r1_fetch,
+        addi_maddr(m::CLEAR_SURFACE, 0),
+        (1 << 11) | (4 << 4) | 0x80, // emit r1, exit
+        0x11,                        // delay slot: r0 = r0
+    ];
+    pb.extend([inc_header(SC, m::LOAD_MME_INSTRUCTION_RAM_POINTER, 1), 0x20]);
+    pb.push(non_inc_header(SC, m::LOAD_MME_INSTRUCTION_RAM, code.len() as u32));
+    pb.extend(code);
+    pb.extend([inc_header(SC, m::LOAD_MME_START_ADDRESS_RAM_POINTER, 2), 3, 0x20]);
+}
+
+fn call_clear_macro(pb: &mut Vec<u32>, words: &[u32]) {
+    pb.push(one_inc_header(SC, m::CALL_MME_MACRO + 3 * m::CALL_MME_STRIDE, words.len() as u32));
+    pb.extend(words);
+}
+
+#[test]
+fn maxwell_macro_expands_into_a_clear() {
+    let mut pb = Vec::new();
+    bind_class(&mut pb, m::MAXWELL_B);
+    bind_render_target(&mut pb, true);
+    upload_clear_macro(&mut pb);
+    let color = [0.0f32, 0.0, 0.25, 1.0].map(f32::to_bits);
+    call_clear_macro(&mut pb, &[color[0], color[1], color[2], color[3], 0x3c]);
+    // The macro runs before the next method, so the clear lands ahead of the release.
+    release_semaphore(&mut pb, 7, true);
+
+    let (gpu, _) = run(&pb);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let events = gpu.events();
+    assert_eq!(events.len(), 2);
+    let Event::Clear(clear) = &events[0] else { panic!("expected clear, got {:?}", events[0]) };
+    assert_eq!(clear.color_f32(), [0.0, 0.0, 0.25, 1.0]);
+    assert_eq!(clear.color_mask, [true; 4]);
+    assert_eq!(clear.color_target, Some(pitch_target()));
+    assert!(matches!(events[1], Event::Semaphore(_)));
+    assert_eq!(gpu.reg(m::SET_COLOR_CLEAR_VALUE + 8), 0.25f32.to_bits());
+}
+
+#[test]
+fn macro_failures_are_reported() {
+    // Too few parameters: the clear color is written, the LOAD for the clear word is reported.
+    let mut pb = Vec::new();
+    bind_class(&mut pb, m::MAXWELL_B);
+    bind_render_target(&mut pb, true);
+    upload_clear_macro(&mut pb);
+    call_clear_macro(&mut pb, &[1, 2, 3, 4]);
+    let (gpu, _) = run(&pb);
+    assert_eq!(gpu.diagnostics(), [Diagnostic::MacroFailed { index: 3, reason: "macro read past its parameters" }]);
+
+    // AMPERE_B macros use another instruction format.
+    let mut pb = Vec::new();
+    bind_class(&mut pb, m::AMPERE_B);
+    call_clear_macro(&mut pb, &[0]);
+    let (gpu, _) = run(&pb);
+    assert_eq!(gpu.diagnostics(), [Diagnostic::MacroFailed { index: 3, reason: "AMPERE_B macro format not modelled" }]);
+    assert!(gpu.events().is_empty());
 }

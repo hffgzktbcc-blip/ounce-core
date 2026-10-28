@@ -76,6 +76,8 @@ pub struct MemoryBucketStats {
 pub struct Memory {
     /// Maps 4KB-aligned virtual page numbers (VA >> 12) to allocated pages
     pages: HashMap<u64, Page>,
+    /// Number of mapped pages carrying the FEAT_BTI guarded bit.
+    guarded_pages: usize,
     /// Bumped on every write (or remap) that touches a page holding cached code.
     /// Block caches compare it against the value they last saw to detect self-modifying code.
     code_write_gen: u64,
@@ -85,6 +87,7 @@ impl Memory {
     pub fn new() -> Self {
         Self {
             pages: HashMap::new(),
+            guarded_pages: 0,
             code_write_gen: 0,
         }
     }
@@ -159,6 +162,9 @@ impl Memory {
         let last_page = last_addr >> 12;
 
         for page_idx in start_page..=last_page {
+            if self.pages.get(&page_idx).is_some_and(|old| old.guarded) {
+                self.guarded_pages -= 1;
+            }
             let mut page = Page::new(perm);
             if self.pages.get(&page_idx).is_some_and(|old| old.holds_code) {
                 // Remapping over cached code replaces it.
@@ -177,7 +183,16 @@ impl Memory {
         let pages = (size as u64).div_ceil(PAGE_SIZE as u64);
         for i in 0..pages {
             if let Some(page) = self.pages.remove(&((src >> 12) + i)) {
-                self.pages.insert((dst >> 12) + i, page);
+                let moved_guarded = page.guarded;
+                if moved_guarded {
+                    self.guarded_pages -= 1;
+                }
+                if self.pages.insert((dst >> 12) + i, page).is_some_and(|old| old.guarded) {
+                    self.guarded_pages -= 1;
+                }
+                if moved_guarded {
+                    self.guarded_pages += 1;
+                }
             }
         }
     }
@@ -189,7 +204,9 @@ impl Memory {
         }
         let last = base_addr.saturating_add(size as u64 - 1) >> 12;
         for page_idx in (base_addr >> 12)..=last {
-            self.pages.remove(&page_idx);
+            if self.pages.remove(&page_idx).is_some_and(|page| page.guarded) {
+                self.guarded_pages -= 1;
+            }
         }
     }
 
@@ -227,9 +244,22 @@ impl Memory {
         let end = start.saturating_add(size - 1);
         for page_idx in (start >> 12)..=(end >> 12) {
             if let Some(page) = self.pages.get_mut(&page_idx) {
+                if page.guarded != guarded {
+                    if guarded {
+                        self.guarded_pages += 1;
+                    } else {
+                        self.guarded_pages -= 1;
+                    }
+                }
                 page.guarded = guarded;
             }
         }
+    }
+
+    /// True if any mapped page requires FEAT_BTI landing-pad checks.
+    #[inline]
+    pub fn has_guarded_pages(&self) -> bool {
+        self.guarded_pages != 0
     }
 
     /// True if `addr` is in a mapped guarded page.
@@ -371,6 +401,21 @@ impl Memory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guarded_page_count_tracks_mapping_changes() {
+        let mut memory = Memory::new();
+        memory.map_range(0x1000, 0x3000, Permission::READ_WRITE);
+        memory.set_guarded(0x1000, 0x1000, true);
+        memory.set_guarded(0x3000, 0x1000, true);
+        assert!(memory.has_guarded_pages());
+
+        memory.map_range(0x1000, 0x1000, Permission::READ_WRITE);
+        assert!(memory.has_guarded_pages());
+        memory.move_range(0x3000, 0x4000, PAGE_SIZE);
+        memory.unmap_range(0x4000, PAGE_SIZE);
+        assert!(!memory.has_guarded_pages());
+    }
 
     #[test]
     fn test_map_range_covers_exactly_the_intersecting_pages() {

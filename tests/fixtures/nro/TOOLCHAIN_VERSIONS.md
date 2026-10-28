@@ -1,7 +1,8 @@
 # NRO fixture toolchain/version register
 
-All checked-in NRO fixtures were added on 2026-10-27 and built from the same devkitPro `switch-dev`
-cohort on the maintainer's machine.
+This register records eight fixtures added on 2026-10-27 from the same devkitPro `switch-dev` cohort, based
+on maintainer-recorded build information. It is not a complete register of the current fixture tree. The
+`deko3d` fixture was added later; its exact toolchain versions, build ID, and hash remain to be recorded.
 
 Toolchain cohort recorded for that date:
 
