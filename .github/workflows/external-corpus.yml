@@ -79,6 +79,7 @@ jobs:
           import os
           from pathlib import Path
           import subprocess
+          import re
           root = Path(os.environ["CORPUS_ROOT"]) / "build"
           evidence = Path(os.environ["EVIDENCE_ROOT"])
           inventory = json.loads((root / "inventory.json").read_text())
@@ -107,6 +108,18 @@ jobs:
                   result.update(probe_stop="host_process_exit", host_exit_code=completed.returncode)
               except subprocess.TimeoutExpired:
                   result.update(probe_stop="host_timeout", host_exit_code=None)
+          log_text = (evidence / "startup-interpreter.log").read_text(errors="replace")
+          # Diagnostic classification only; do not infer a compatibility verdict.
+          result["guest_stop"] = next((stop for marker, stop in (
+              ("[VM] Hit svcBreak:", "svc_break"),
+              ("[VM] Stopping on unhandled SVC", "unhandled_svc"),
+              ("[VM] CPU Halted:", "cpu_halt"),
+              ("[VM] Execution budget reached", "instruction_budget"),
+              ("[Loader Error]", "load_error"),
+          ) if marker in log_text), "unknown")
+          break_result = re.search(r"\[VM\] Break result: (0x[0-9A-Fa-f]+)", log_text)
+          if break_result:
+              result["break_result"] = break_result.group(1)
           result["log_sha256"] = hashlib.sha256(
               (evidence / "startup-interpreter.log").read_bytes()).hexdigest()
           (evidence / "startup-probe.json").write_text(json.dumps(result, indent=2) + "\n")
