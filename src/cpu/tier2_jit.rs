@@ -531,7 +531,12 @@ mod tests {
             (0x18, 0xD40000E1), // svc #7
         ]);
         mmu.map_range(stack - 4096, 4096, Permission::READ_WRITE);
-        let mut reference_mmu = mmu.clone();
+        let mut reference_mmu = Memory::new();
+        reference_mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+        reference_mmu.map_range(stack - 4096, 4096, Permission::READ_WRITE);
+        for offset in (0..0x1Cu64).step_by(4) {
+            reference_mmu.write_u32(base + offset, mmu.read_u32(base + offset).unwrap()).unwrap();
+        }
         let mut reference = Cpu::new();
         reference.regs.pc = base;
         reference.regs.sp = stack;
