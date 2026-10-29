@@ -1,0 +1,122 @@
+name: External corpus execution probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/external-corpus.yml'
+      - 'scripts/prepare_external_corpus.py'
+      - 'tests/corpus/manifest.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  startup-probe:
+    # Never run a fork's Makefiles with repository credentials or secrets.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install runtime build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Build interpreter CLI
+        run: cargo build --release --locked
+
+      - name: Build unchanged external samples and record toolchain
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          set -euo pipefail
+          mkdir -p "$CORPUS_ROOT" "$EVIDENCE_ROOT"
+          # Resolve the moving toolchain image once and retain its immutable identity.
+          # This is an observed toolchain, not a claim of reproducible package inputs.
+          docker pull devkitpro/devkita64:latest
+          image_id=$(docker image inspect devkitpro/devkita64:latest --format '{{.Id}}')
+          docker image inspect "$image_id" > "$EVIDENCE_ROOT/toolchain-image.json"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$CORPUS_ROOT:/corpus" \
+            -v "$EVIDENCE_ROOT:/evidence" \
+            "$image_id" bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y python3 git make
+              {
+                uname -a
+                command -v dkp-pacman
+                dkp-pacman -Q
+              } > /evidence/toolchain-packages.txt
+              python3 /repo/scripts/prepare_external_corpus.py \
+                --manifest /repo/tests/corpus/manifest.json \
+                --output /corpus/build --build
+            ' 2>&1 | tee "$EVIDENCE_ROOT/build.log"
+          cp "$CORPUS_ROOT/build/inventory.json" "$EVIDENCE_ROOT/inventory.json"
+          cp "$CORPUS_ROOT/build/"*.build.log "$EVIDENCE_ROOT/"
+
+      - name: Probe startup with the existing interpreter
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          root = Path(os.environ["CORPUS_ROOT"]) / "build"
+          evidence = Path(os.environ["EVIDENCE_ROOT"])
+          inventory = json.loads((root / "inventory.json").read_text())
+          startup = next(s for s in inventory["samples"] if s["id"] == "startup")
+          outputs = startup["nro_sha256"]
+          if len(outputs) != 1:
+              raise SystemExit("Expected exactly one startup NRO")
+          relative, expected_hash = next(iter(outputs.items()))
+          nro = root / "source" / relative
+          actual_hash = hashlib.sha256(nro.read_bytes()).hexdigest()
+          if actual_hash != expected_hash:
+              raise SystemExit("Startup NRO hash differs from build inventory")
+          command = ["target/release/ounce-core", "run", str(nro), "--present=headless"]
+          result = {
+              "sample": "startup", "source_revision": inventory["revision"],
+              "nro_sha256": actual_hash, "runtime_commit": os.environ["GITHUB_SHA"],
+              "requested_engine": "interpreter", "actual_engine": "interpreter",
+              "host_timeout_seconds": 60, "command": command,
+              "compatibility": "not-assessed",
+              "note": "Diagnostic CLI probe only: no scripted input, raw-frame oracle or structured guest stop adapter. Host exit zero is not compatibility success.",
+          }
+          with (evidence / "startup-interpreter.log").open("wb") as log:
+              try:
+                  completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
+                                             timeout=60, check=False)
+                  result.update(probe_stop="host_process_exit", host_exit_code=completed.returncode)
+              except subprocess.TimeoutExpired:
+                  result.update(probe_stop="host_timeout", host_exit_code=None)
+          result["log_sha256"] = hashlib.sha256(
+              (evidence / "startup-interpreter.log").read_bytes()).hexdigest()
+          (evidence / "startup-probe.json").write_text(json.dumps(result, indent=2) + "\n")
+          print(json.dumps(result, indent=2))
+          PY
+
+      - name: Retain diagnostic evidence (no upstream source or NRO binaries)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-corpus-probe
+          path: ${{ runner.temp }}/ounce-corpus-evidence/
+          if-no-files-found: warn
+          retention-days: 7
