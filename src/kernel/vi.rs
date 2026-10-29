@@ -201,6 +201,62 @@ mod tests {
     }
 
     #[test]
+    fn relay_dispatch_validates_inputs_without_writing_output_parcels() {
+        use crate::{audio::AudioOutServer, fs::VirtualFileSystem, gpu::nvgpu::NvgpuChannel};
+        use crate::mmu::{Memory, Permission};
+        use super::super::hipc::Buffer;
+        let mut ipc = IpcManager::new();
+        let mut mmu = Memory::new();
+        mmu.map_range(0x1000, 0x4000, Permission::READ_WRITE);
+        let session = ipc.allocate_handle(ServiceType::Generic("vi:binder-relay".into()));
+        let object = ipc.vi_binder.register().unwrap();
+        let (mut gpu, mut audio, mut vfs) =
+            (NvgpuChannel::new(), AudioOutServer::new(), VirtualFileSystem::new());
+        // Real HIPC/CMIF reference-count request: no descriptors, 3 input words.
+        let request = |mmu: &mut Memory, id: u32, delta: i32, kind: u32| {
+            for offset in (0..0x80u64).step_by(4) {
+                mmu.write_u32(0x1000 + offset, 0).unwrap();
+            }
+            mmu.write_u32(0x1000, 4).unwrap();
+            mmu.write_u32(0x1004, 11).unwrap();
+            mmu.write_u32(0x1010, super::super::ipc::CMIF_IN_MAGIC).unwrap();
+            mmu.write_u32(0x1018, 1).unwrap();
+            mmu.write_u32(0x1020, id).unwrap();
+            mmu.write_u32(0x1024, delta as u32).unwrap();
+            mmu.write_u32(0x1028, kind).unwrap();
+        };
+        request(&mut mmu, object, 1, 1);
+        assert_eq!(ipc.handle_sync_request(session, 0x1000, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+        assert_eq!(mmu.read_u32(0x1018).unwrap(), 0);
+        request(&mut mmu, object + 1, 1, 1);
+        ipc.handle_sync_request(session, 0x1000, &mut mmu, &mut gpu, &mut audio, &mut vfs);
+        assert_eq!(mmu.read_u32(0x1018).unwrap(), INVALID_HANDLE);
+
+        let service = ServiceType::Generic("vi:binder-relay".into());
+        let valid = parcel(&[0; 16], &[]);
+        mmu.write_bytes(0x2000, &valid).unwrap();
+        mmu.write_bytes(0x3000, &[0xA5; 64]).unwrap();
+        ipc.request.send_buffers = vec![Buffer { addr: 0x2000, size: valid.len() as u64 }];
+        ipc.request.recv_buffers = vec![Buffer { addr: 0x3000, size: 64 }];
+        ipc.handle_vi_binder(&service, 3, 0x1020, 0x1000, &mut mmu);
+        assert_eq!(mmu.read_u32(0x1018).unwrap(), RESULT_UNKNOWN_COMMAND);
+        let mut output = [0; 64];
+        mmu.read_bytes(0x3000, &mut output).unwrap();
+        assert_eq!(output, [0xA5; 64]);
+        for (addr, size, expected) in [
+            (0x2000, 15, INVALID_SIZE),
+            (u64::MAX - 4, 32, INVALID_SIZE),
+            (0x9000, 32, INVALID_ADDRESS),
+        ] {
+            ipc.request.send_buffers = vec![Buffer { addr, size }];
+            ipc.handle_vi_binder(&service, 0, 0x1020, 0x1000, &mut mmu);
+            assert_eq!(mmu.read_u32(0x1018).unwrap(), expected);
+            mmu.read_bytes(0x3000, &mut output).unwrap();
+            assert_eq!(output, [0xA5; 64]);
+        }
+    }
+
+    #[test]
     fn object_lifetime_and_refcounts_are_checked_and_bounded() {
         let mut objects = BinderObjects::default();
         assert_eq!(objects.adjust(1, 1, 0), Err(INVALID_HANDLE));
