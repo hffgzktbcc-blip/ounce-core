@@ -54,6 +54,7 @@ struct Report {
     instructions: usize,
     pc: u64,
     x0: u64,
+    registers: [u64; 31],
     frames: usize,
     preemptions: usize,
     svcs: Vec<(u64, u16)>,
@@ -65,7 +66,7 @@ struct Report {
 
 fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
     Report { requested_engine: engine, actual_engine: engine, stop,
-        instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), frames: 0,
+        instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
         preemptions: 0, svcs: Vec::new(), debug_output: String::new(),
         input_applied_at: Vec::new(), compatibility: "not-assessed" }
 }
@@ -168,6 +169,7 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
     }
     result.pc = cpu.regs.pc;
     result.x0 = cpu.regs.read_x(0);
+    result.registers = std::array::from_fn(|i| cpu.regs.read_x(i as u8));
     (result, kernel)
 }
 
