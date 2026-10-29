@@ -5,8 +5,13 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/external-corpus.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
       - 'scripts/prepare_external_corpus.py'
-      - 'tests/corpus/manifest.json'
+      - 'scripts/test_*.py'
+      - 'src/**'
+      - 'tests/corpus/**'
   workflow_dispatch:
 
 permissions:
@@ -26,6 +31,9 @@ jobs:
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate external corpus preparation tooling
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Install runtime build dependencies
         run: |
