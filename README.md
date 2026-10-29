@@ -256,7 +256,7 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 | First Switch 2 vertical slice | **Blocked** | Authorised toolchain and reference hardware, self-authored sample, matched input/result/image |
 | Broader target compatibility | **Future research** | Case-by-case behaviour verified against appropriate references |
 
-The project makes **no current claim** to run Switch 2 software, retail titles or arbitrary homebrew. See [independent corpus methodology](docs/independent-corpus.md) and the [verification design](docs/design/ounce-verify.md) once that proposed document lands on `main`.
+The project makes **no current claim** to run Switch 2 software, retail titles or arbitrary homebrew. See [independent corpus methodology](docs/independent-corpus.md) and the [proposed Ounce-Verify design](https://github.com/hffgzktbcc-blip/ounce-core/pull/96).
 
 ---
 
@@ -270,7 +270,7 @@ The project makes **no current claim** to run Switch 2 software, retail titles o
 - **Fixture origins still need review.** Some bundled homebrew fixture authorship and binary composition are not yet independently verified.
 - **Licensing:** project source is [MIT-licensed](LICENSE), with [third-party notices](THIRD_PARTY.md). This does not certify the status of every historical or binary component.
 
-Read [the provenance register](docs/PROVENANCE.md), [clean-room protocol](docs/CLEAN_ROOM.md), [historical remediation plan](docs/HISTORY_REMEDIATION.md) when merged, and [contribution guidelines](CONTRIBUTING.md) before contributing.
+Read [the provenance register](docs/PROVENANCE.md), [clean-room protocol](docs/CLEAN_ROOM.md), [historical remediation plan (draft)](https://github.com/hffgzktbcc-blip/ounce-core/pull/99), and [contribution guidelines](CONTRIBUTING.md) before contributing.
 
 <details>
 <summary><strong>Full legal notice, security advisory and current known issues</strong></summary>
