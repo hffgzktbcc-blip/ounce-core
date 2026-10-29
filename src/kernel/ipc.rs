@@ -277,6 +277,11 @@ impl IpcManager {
 
         let cmd_id = mmu.read_u32(cmif_base + 8).unwrap_or(0);
         let args_base = cmif_base + 0x10;
+        // Explicit diagnostic opt-in; cap output even for a looping guest.
+        if self.total_ipc_requests <= 256 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+            eprintln!("[IPC trace] #{} handle=0x{:X} service={:?} command={}", self.total_ipc_requests, object_handle, service, cmd_id);
+        }
+
 
         // libnx-shaped nvdrv requests carry their data in buffers; the harness's inline form keeps the
         // older handler below.
