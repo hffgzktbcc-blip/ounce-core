@@ -19,6 +19,7 @@ pub mod svc;
 mod svc_tests;
 pub mod sync;
 pub mod time;
+pub mod vi;
 
 pub use ipc::{IpcManager, ServiceType, CMIF_IN_MAGIC, CMIF_OUT_MAGIC, DEFAULT_TLS_ADDR, TLS_SIZE};
 pub use sdk_hle::{SdkHleRuntime, StandardAllocator};
