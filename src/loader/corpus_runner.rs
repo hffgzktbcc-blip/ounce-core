@@ -85,6 +85,7 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
         if result.instructions >= limits.instructions { break; }
         while next_input < inputs.len() && inputs[next_input].at_instructions <= result.instructions {
             kernel.ipc.hid.input = inputs[next_input].input;
+            kernel.ipc.hid.sync(&mut mmu);
             result.input_applied_at.push(result.instructions);
             next_input += 1;
         }
@@ -170,8 +171,8 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
     (result, kernel)
 }
 
-fn run_nro(nro: &[u8], path: &str, args: &[&str], engine: Engine,
-    limits: &Limits, inputs: &[InputCheckpoint]) -> Report {
+fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
+    limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
     let loaded = super::super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu);
     let error = match loaded {
@@ -179,12 +180,17 @@ fn run_nro(nro: &[u8], path: &str, args: &[&str], engine: Engine,
         Ok(_) => Some("external runner accepts NRO0 only".into()),
         Err(error) => Some(error.to_string()),
     };
-    if let Some(error) = error { return report(engine, Stop::LoadError(error), &cpu); }
+    if let Some(error) = error { return (report(engine, Stop::LoadError(error), &cpu), kernel); }
     if let Err(error) = crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, nro, args) {
-        return report(engine, Stop::LoadError(error.to_string()), &cpu);
+        return (report(engine, Stop::LoadError(error.to_string()), &cpu), kernel);
     }
     cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
-    execute(cpu, mmu, kernel, engine, limits, inputs).0
+    execute(cpu, mmu, kernel, engine, limits, inputs)
+}
+
+fn run_nro(nro: &[u8], path: &str, args: &[&str], engine: Engine,
+    limits: &Limits, inputs: &[InputCheckpoint]) -> Report {
+    run_nro_state(nro, path, args, engine, limits, inputs).0
 }
 
 fn run_path(path: &Path, engine: Engine, limits: &Limits) -> Report {
@@ -212,7 +218,7 @@ fn corpus_runner_returns_from_functions_but_exits_only_on_svc() {
         assert_eq!(result.x0, 42);
         assert_eq!(result.actual_engine, engine);
         assert_eq!(result.instructions, 4);
-        assert_eq!(result.svcs.last().map(|s| s.1), Some(7));
+        assert_eq!(result.svcs.last(), Some(&(crate::DEFAULT_BASE_ADDR + 4, 7)));
     }
 }
 
@@ -257,6 +263,47 @@ fn corpus_runner_existing_libnx_fixtures_match_both_engines() {
             assert_eq!(result.stop, Stop::ExitProcess, "{result:?}");
             assert!(result.debug_output.ends_with(expected), "{result:?}");
         }
+    }
+}
+
+
+#[test]
+fn corpus_runner_preempts_spinning_threads_and_preserves_kernel_switches() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro/threads/threads.nro");
+    let nro = std::fs::read(path).unwrap();
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let limits = Limits { host_time: Duration::from_secs(20), trace_entries: 8192, ..Limits::default() };
+        let (result, kernel) = run_nro_state(&nro, "fixture.nro", &[], engine, &limits, &[]);
+        assert_eq!(result.stop, Stop::ExitProcess, "{result:?}");
+        assert!(result.debug_output.contains("ounce-threads total=0x00000384"), "{result:?}");
+        assert!(result.debug_output.ends_with("ounce-threads result=0x00000EEE\n"), "{result:?}");
+        assert!(result.preemptions > 0, "spinner requires time-slice preemption: {result:?}");
+        assert!(kernel.scheduler.switches > 10);
+        assert_eq!(kernel.scheduler.total_threads_completed, 3);
+        assert!(result.svcs.iter().any(|s| s.1 == 0x1A), "workers contend on mutex");
+        assert!(result.svcs.iter().any(|s| s.1 == 0x1C), "condvar wait");
+        assert!(result.svcs.iter().any(|s| s.1 == 0x1D), "condvar signal");
+    }
+}
+
+#[test]
+fn corpus_runner_scripted_input_reaches_libnx_shared_memory() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro/input/input.nro");
+    let nro = std::fs::read(path).unwrap();
+    let checkpoints = [
+        InputCheckpoint { at_instructions: 0, input: NpadInput::default() },
+        InputCheckpoint { at_instructions: 8, input: NpadInput {
+            buttons: 1 | 1 << 14, stick_l: (0x1234, -0x100), stick_r: (0, 0) } },
+    ];
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = run_nro(&nro, "fixture.nro", &[], engine, &Limits::default(), &checkpoints);
+        assert_eq!(result.stop, Stop::ExitProcess, "{result:?}");
+        assert_eq!(result.input_applied_at.len(), 2);
+        assert_eq!(result.input_applied_at[0], 0);
+        assert!(result.input_applied_at[1] >= 8, "Tier-3 may cross a slice target");
+        assert!(result.debug_output.contains("ounce-input buttons=0x00004001\n"), "{result:?}");
+        assert!(result.debug_output.contains("ounce-input stick_l=0x1234FF00\n"), "{result:?}");
+        assert!(result.debug_output.ends_with("ounce-input result=0x00000EEE\n"), "{result:?}");
     }
 }
 
