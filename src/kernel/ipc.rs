@@ -22,6 +22,9 @@ pub enum ServiceType {
     Vi,
     /// Application Display Service ("IApplicationDisplayService")
     ApplicationDisplayService,
+    ViBinderRelay,
+    ViSystemDisplay,
+    ViManagerDisplay,
     /// Human Interface Devices ("hid")
     Hid,
     /// Applet Resource ("IAppletResource")
@@ -568,16 +571,51 @@ impl IpcManager {
                 }
             },
 
+            ServiceType::ViSystemDisplay | ServiceType::ViManagerDisplay => {
+                self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                0
+            }
+            ServiceType::ViBinderRelay => match cmd_id {
+                // Binder relay: adjust strong/weak references.
+                1 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+                    0
+                }
+                // Binder relay: return a copyable event handle. The synthetic producer does not
+                // signal it yet; libnx only needs a valid handle while creating its NWindow.
+                2 => {
+                    let event = self.allocate_handle(ServiceType::ServiceEvent("vi-binder"));
+                    self.reply(tls_addr, mmu, 0, &[], &[event], None);
+                    0
+                }
+                // Binder relay: transact an IGraphicBufferProducer parcel. CONNECT is the first
+                // transaction issued by libnx while creating a native window.
+                3 => self.handle_vi_binder_transact(tls_addr, mmu, args_base),
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
             ServiceType::ApplicationDisplayService => match cmd_id {
+                100 | 101 | 102 | 103 => {
+                    let service = match cmd_id {
+                        100 | 103 => ServiceType::ViBinderRelay,
+                        101 => ServiceType::ViSystemDisplay,
+                        _ => ServiceType::ViManagerDisplay,
+                    };
+                    self.reply_object(tls_addr, mmu, service)
+                }
                 // Command 1010: OpenDisplay("Default") -> returns DisplayId = 0
                 1010 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0, 0], None);
                     0
                 }
+                // Command 2020: OpenLayer. libnx expects an Android native-window parcel in
+                // the B receive buffer, plus its byte length as the CMIF output value.
+                2020 => self.handle_vi_open_layer(tls_addr, mmu, None),
                 // Command 2030: CreateStrayLayer -> returns LayerId = 1, IGraphicBufferProducer = 0x100
                 2030 => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[1, 0, 0x100], None);
-                    0
+                    self.handle_vi_open_layer(tls_addr, mmu, Some(1))
                 }
                 _ => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
@@ -972,6 +1010,78 @@ impl IpcManager {
         }
     }
 
+    /// Supplies the minimal native-window parcel consumed by libnx's `viCreateLayer`.
+    /// The guest still owns binder transactions and GPU presentation; this only returns the
+    /// parcel fields that identify the modeled graphic-buffer producer endpoint.
+    fn handle_vi_open_layer(&self, tls_addr: u64, mmu: &mut Memory, layer_id: Option<u64>) -> u64 {
+        const PARCEL_SIZE: u64 = 0x1c;
+        let Some(buffer) = self.request.recv_buffers.iter().find(|b| b.size > 0).or_else(|| self.request.recv_list.iter().find(|b| b.size > 0)) else {
+            self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+            return 0;
+        };
+        if buffer.size < PARCEL_SIZE {
+            self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+            return 0;
+        }
+
+        let mut parcel = [0u8; PARCEL_SIZE as usize];
+        // ParcelHeader: 12-byte payload at offset 16, no flattened objects.
+        parcel[0..4].copy_from_slice(&12u32.to_le_bytes());
+        parcel[4..8].copy_from_slice(&16u32.to_le_bytes());
+        parcel[8..12].copy_from_slice(&0u32.to_le_bytes());
+        parcel[12..16].copy_from_slice(&0u32.to_le_bytes());
+        // NativeWindow parcel's third payload word is the IGraphicBufferProducer binder ID.
+        parcel[24..28].copy_from_slice(&0x100u32.to_le_bytes());
+        let written = self.write_out_buffer(mmu, &parcel);
+        if written != parcel.len() {
+            self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+            return 0;
+        }
+
+        let mut out = Vec::with_capacity(16);
+        if let Some(id) = layer_id {
+            out.extend_from_slice(&id.to_le_bytes());
+        }
+        out.extend_from_slice(&PARCEL_SIZE.to_le_bytes());
+        let words: Vec<u32> = out.chunks_exact(4).map(|w| u32::from_le_bytes(w.try_into().unwrap())).collect();
+        self.write_cmif_response(tls_addr, mmu, 0, &words, None);
+        0
+    }
+
+    fn handle_vi_binder_transact(&self, tls_addr: u64, mmu: &mut Memory, args_base: u64) -> u64 {
+        let code = mmu.read_u32(args_base + 4).unwrap_or(0);
+        let Some(out) = self.request.recv_buffers.iter().find(|b| b.size > 0).or_else(|| self.request.recv_list.iter().find(|b| b.size > 0)) else {
+            self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+            return 0;
+        };
+
+        // BqBufferOutput { width, height, transformHint, numPendingBuffers } followed by
+        // binder's status code. This is the reply libnx reads after IGraphicBufferProducer CONNECT.
+        let (payload, status): (Vec<u8>, i32) = if code == 10 {
+            let mut payload = Vec::with_capacity(20);
+            for value in [1280u32, 720, 0, 0] {
+                payload.extend_from_slice(&value.to_le_bytes());
+            }
+            payload.extend_from_slice(&0i32.to_le_bytes());
+            (payload, 0)
+        } else {
+            (Vec::new(), -74) // Android UNKNOWN_TRANSACTION
+        };
+        let payload = if status == 0 { payload } else { status.to_le_bytes().to_vec() };
+        let mut parcel = Vec::with_capacity(16 + payload.len());
+        parcel.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        parcel.extend_from_slice(&16u32.to_le_bytes());
+        parcel.extend_from_slice(&0u32.to_le_bytes());
+        parcel.extend_from_slice(&0u32.to_le_bytes());
+        parcel.extend_from_slice(&payload);
+        if out.size < parcel.len() as u64 || self.write_out_buffer(mmu, &parcel) != parcel.len() {
+            self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+        } else {
+            self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+        }
+        0
+    }
+
     /// `IAudioRenderer` commands (libnx `audren`).
     fn handle_audio_renderer(&mut self, cmd_id: u32, tls_addr: u64, mmu: &mut Memory) -> u64 {
         let Some(r) = self.audio_renderer.as_ref() else {
@@ -1208,6 +1318,50 @@ mod tests {
     use crate::fs::VirtualFileSystem;
     use crate::gpu::nvgpu::NvgpuChannel;
     use crate::mmu::Permission;
+
+    #[test]
+    fn vi_open_layer_returns_libnx_native_window_parcel() {
+        use crate::kernel::cmif::test_util::{Harness, Req, BUF};
+
+        let mut h = Harness::new();
+        let display = h.ipc.allocate_handle(ServiceType::ApplicationDisplayService);
+        let reply = h.call_out(display, Req { cmd: 2020, pid: true, recv: Some((BUF, 0x100)), ..Default::default() }, 8);
+        assert_eq!(reply.result, 0);
+        assert_eq!(reply.u64(0), 0x1c);
+
+        let parcel = h.read_buf(BUF, 0x1c);
+        let word = |off: usize| u32::from_le_bytes(parcel[off..off + 4].try_into().unwrap());
+        assert_eq!((word(0), word(4), word(8), word(12)), (12, 16, 0, 0));
+        assert_eq!((word(16), word(20), word(24)), (0, 0, 0x100));
+    }
+
+    #[test]
+    fn vi_returns_real_binder_relay_session() {
+        use crate::kernel::cmif::test_util::{Harness, Req, BUF};
+
+        let mut h = Harness::new();
+        let display = h.ipc.allocate_handle(ServiceType::ApplicationDisplayService);
+        let response = h.call(display, Req { cmd: 100, ..Default::default() });
+        assert_eq!(response.result, 0);
+        let relay = response.move_handles[0];
+        assert_eq!(h.ipc.handles.get(&relay), Some(&ServiceType::ViBinderRelay));
+
+
+        let adjusted = h.call(relay, Req { cmd: 1, data: &[0x100, 1, 0].into_iter().flat_map(u32::to_le_bytes).collect::<Vec<_>>(), ..Default::default() });
+        assert_eq!(adjusted.result, 0);
+        let native_handle = h.call(relay, Req { cmd: 2, data: &[0x100, 0x0f].into_iter().flat_map(u32::to_le_bytes).collect::<Vec<_>>(), ..Default::default() });
+        assert_eq!(native_handle.result, 0);
+        assert_eq!(native_handle.copy_handles.len(), 1);
+        assert_eq!(h.ipc.service_event_signaled(native_handle.copy_handles[0]), Some(true));
+
+        let input = [0x100u32, 10, 0].into_iter().flat_map(u32::to_le_bytes).collect::<Vec<_>>();
+        let _ = h.call(relay, Req { cmd: 3, data: &input, send: Some((BUF, 0x100)), recv: Some((BUF + 0x1000, 0x100)), ..Default::default() });
+        let parcel = h.read_buf(BUF + 0x1000, 36);
+        assert_eq!(u32::from_le_bytes(parcel[0..4].try_into().unwrap()), 20);
+        assert_eq!(u32::from_le_bytes(parcel[16..20].try_into().unwrap()), 1280);
+        assert_eq!(u32::from_le_bytes(parcel[20..24].try_into().unwrap()), 720);
+        assert_eq!(u32::from_le_bytes(parcel[32..36].try_into().unwrap()), 0);
+    }
 
     /// libnx-shaped requests: PID in the special header, CMIF data aligned after it, and handles
     /// returned in the right list (move for sessions, copy for shared memory).
