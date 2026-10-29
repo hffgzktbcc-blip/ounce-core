@@ -108,7 +108,7 @@ impl IpcManager {
     /// The applet message event is signaled while the message queue holds a message.
     pub fn service_event_signaled(&self, handle: u32) -> Option<bool> {
         match self.handles.get(&handle) {
-            Some(ServiceType::ServiceEvent("vi-binder")) => Some(true),
+            Some(ServiceType::ServiceEvent("vi-binder")) => Some(self.vi_buffer_available()),
             Some(ServiceType::ServiceEvent(_)) => Some(self.applet.message_event == Some(handle) && !self.applet.messages.is_empty()),
             _ => None,
         }
