@@ -512,3 +512,6 @@ fn libnx_multi_input_fixture_reads_styles_and_touch() {
     });
     assert!(output.ends_with("ounce-input result=0x00000EEE\n"), "{output:?}");
 }
+
+#[path = "corpus_runner.rs"]
+mod corpus_runner;
