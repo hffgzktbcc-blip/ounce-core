@@ -1150,7 +1150,8 @@ impl IpcManager {
             }
             7 => { // QUEUE_BUFFER
                 let slot = arg_i32(0).unwrap_or(-1);
-                if self.vi_buffer_queue.dequeued != u8::try_from(slot).ok() {
+                let valid_slot = u8::try_from(slot).ok().filter(|slot| *slot < 64);
+                if valid_slot.is_none() || self.vi_buffer_queue.dequeued != valid_slot {
                     status = -22;
                 } else {
                     self.vi_buffer_queue.dequeued = None;
@@ -1159,7 +1160,8 @@ impl IpcManager {
             }
             8 => { // CANCEL_BUFFER
                 let slot = arg_i32(0).unwrap_or(-1);
-                if self.vi_buffer_queue.dequeued != u8::try_from(slot).ok() {
+                let valid_slot = u8::try_from(slot).ok().filter(|slot| *slot < 64);
+                if valid_slot.is_none() || self.vi_buffer_queue.dequeued != valid_slot {
                     status = -22;
                 } else {
                     self.vi_buffer_queue.dequeued = None;
@@ -1190,10 +1192,16 @@ impl IpcManager {
             }
             _ => status = -74,
         }
-        if status == 0 && !matches!(code, 8 | 14) {
-            payload.extend_from_slice(&0i32.to_le_bytes());
-        } else if status != 0 {
-            payload.clear();
+        if !matches!(code, 8 | 14) {
+            if status != 0 {
+                payload.clear();
+                match code {
+                    1 | 9 => payload.extend_from_slice(&0u32.to_le_bytes()),
+                    3 => payload.extend_from_slice(&[0; 8]),
+                    7 | 10 => append_vi_buffer_output(&mut payload, 0),
+                    _ => {}
+                }
+            }
             payload.extend_from_slice(&status.to_le_bytes());
         }
         let mut parcel = Vec::with_capacity(16 + payload.len());
@@ -1529,6 +1537,9 @@ mod tests {
         let queued = transact(&mut h, relay, 7, &[0]);
         assert_eq!(u32::from_le_bytes(queued[16..20].try_into().unwrap()), 1280);
         assert_eq!(i32::from_le_bytes(queued[32..36].try_into().unwrap()), 0);
+        assert_eq!(h.ipc.service_event_signaled(native_handle.copy_handles[0]), Some(true));
+        let invalid = transact(&mut h, relay, 7, &[u32::MAX]);
+        assert_eq!(i32::from_le_bytes(invalid[32..36].try_into().unwrap()), -22);
         assert_eq!(h.ipc.service_event_signaled(native_handle.copy_handles[0]), Some(true));
     }
 
