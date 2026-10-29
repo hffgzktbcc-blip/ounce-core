@@ -92,16 +92,31 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ### Milestones
 
-Status snapshot reviewed **2026-10-28**. No calendar estimates are set for milestones that depend on toolchains or hardware access.
+Status snapshot reviewed **2026-10-29**. This table describes the merged `main` baseline; ongoing, unmerged work is identified separately below. No calendar estimates are set for milestones that depend on toolchains or hardware access.
 
 | Milestone | Status | Exit criteria |
 | :--- | :--- | :--- |
 | Code-cache invalidation regression gate | Complete | Regressions cover guest code writes and page unmap/remap across the interpreter, Tier-3 and Tier-4; the moved-code regression covers Tier-4. All nine configured CI checks passed for this milestone. |
-| Independent original Switch homebrew corpus | Next | Three independently authored, public-source NRO samples covering startup/CPU, an input or filesystem service, and deterministic graphics. Pin source revisions and build steps, confirm fixture-use terms, record expected guest results, run on Linux under the interpreter and Tier-3, and have an outside developer reproduce from a clean checkout. |
+| Independent original Switch homebrew corpus | In progress (unmerged PRs) | Pin independently authored source revisions and build steps, confirm fixture-use terms, record guest stops and oracle results under interpreter and Tier-3, verify graphics against actual submitted frame bytes, and obtain reproduction from an outside clean checkout. External startup/exit evidence exists on development branches, but no independent rendered-frame pass or broad compatibility claim is established. |
 | Switch 2 vertical slice | Blocked | Requires an authorized Switch 2 toolchain and reference hardware. Then build a self-authored sample and match startup, one input-driven change, a fixed completion result and a captured test image on Ounce-Core and the reference system. Record source and build provenance. |
 | Broader Switch 2 compatibility | Later | Expand one verified behavior or sample at a time, using target-specific results and updating the support claims to match the evidence. |
 
 Original Switch tests can exercise shared loading, CPU, service and graphics foundations. They do not establish Switch 2 ABI, services, GPU behavior, commercial-software compatibility or performance.
+
+### Active development evidence (29 October 2026; not yet released)
+
+The following links are **open pull requests**, not features guaranteed to exist on `main`. Their CI runs check the submitted branches, not real-world compatibility.
+
+| Workstream | Latest documented evidence | Remaining gate |
+| :--- | :--- | :--- |
+| [#89 — independent corpus preparation](https://github.com/hffgzktbcc-blip/ounce-core/pull/89) | Four pinned public-source trial builds and an external Linux diagnostic probe; current-head nine-job CI reported green. | Resolve merge conflict, validate provenance and require clean-checkout reproduction. |
+| [#90 — interpreter/Tier-3 external runner](https://github.com/hffgzktbcc-blip/ounce-core/pull/90) | Four samples were exercised under both engines (eight executions). The recorded diagnostic runs reached `svcBreak` / libnx `BadGfxInit` (`0x2559`) with zero frames at that tested revision. | Reconcile stacked corpus changes, and get a meaningful guest-output oracle. |
+| [#91 — bounded Binder parcel validation](https://github.com/hffgzktbcc-blip/ounce-core/pull/91) | Parser and object-lifetime regressions; nine-job CI reported green. | Resolve merge conflicts and coordinate with newer VI/producer implementation. |
+| [#94 — host GPU replay corrections](https://github.com/hffgzktbcc-blip/ounce-core/pull/94) | Offscreen host replay regression for clear ordering, texture lifetime and inherited viewport; nine-job CI reported green. | Integration review; does not establish a guest-rendered frame. |
+| [#95 — libnx graphics startup](https://github.com/hffgzktbcc-blip/ounce-core/pull/95) | On its tested branch, three externally sourced homebrew candidates reportedly reached normal `svcExitProcess` after added native-window, buffer-producer and GPU-submission plumbing; nine-job CI reported green. | Verify actual submitted frames and externally expected pixels; review integration and provenance. |
+| [#96 — Ounce-Verify contract](https://github.com/hffgzktbcc-blip/ounce-core/pull/96) | Draft specification for versioned evidence records and strict oracle-based verdicts. | Implement the validator, its negative tests and CI consumer; design document alone is not a working tool. |
+
+Successful host workflow completion, green CI, guest process exit and correct rendered output are **four different claims**. No PR above demonstrates a verified Switch 2 software run.
 
 ---
 
@@ -133,7 +148,7 @@ cargo test --release
 cargo run --release -- test
 ```
 
-The 25-stage harness runs synthetic AArch64 programs written for this repository through the CPU, kernel and service models. It is not an independently authored homebrew compatibility suite. Each stage passes when its guest program returns the expected exit code; host timings are informational only. Passing this harness does not establish compatibility with commercial software or general homebrew compatibility.
+The harness has 25 stages (with multiple checks within some stages). It runs synthetic AArch64 programs written for this repository through the CPU, kernel and service models. It is not an independently authored homebrew compatibility suite. Each stage passes when its guest program returns the expected exit code; host timings are informational only. Passing this harness does not establish compatibility with commercial software or general homebrew compatibility.
 
 CI coverage is feature-specific: the default job runs unit tests and the 25-stage harness; `gpu-present` builds and runs unit tests but does not run that harness; `native-jit` tests the recompiler crate, builds the feature, runs the Tier-4 host self-test and feature-enabled unit tests, but does not run the 25-stage harness. These configured checks describe CI coverage, not the result of the latest run. Test totals are omitted because they can change between revisions.
 
