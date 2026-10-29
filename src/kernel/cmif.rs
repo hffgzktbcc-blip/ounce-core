@@ -91,10 +91,10 @@ impl IpcManager {
         self.reply_error(tls, mmu, RESULT_UNKNOWN_COMMAND)
     }
 
-    /// Writes `data` to the request's first output buffer (receive list entry, else `B` buffer),
+    /// Writes `data` to the request's first non-empty `B` buffer, or receive-list entry,
     /// truncated to the buffer size. Returns the bytes written.
     pub(super) fn write_out_buffer(&self, mmu: &mut Memory, data: &[u8]) -> usize {
-        let Some(buf) = self.request.recv_list.first().or(self.request.recv_buffers.first()) else {
+        let Some(buf) = self.request.recv_buffers.iter().find(|b| b.size > 0).or_else(|| self.request.recv_list.iter().find(|b| b.size > 0)) else {
             return 0;
         };
         let n = data.len().min(buf.size as usize);
@@ -108,6 +108,7 @@ impl IpcManager {
     /// The applet message event is signaled while the message queue holds a message.
     pub fn service_event_signaled(&self, handle: u32) -> Option<bool> {
         match self.handles.get(&handle) {
+            Some(ServiceType::ServiceEvent("vi-binder")) => Some(true),
             Some(ServiceType::ServiceEvent(_)) => Some(self.applet.message_event == Some(handle) && !self.applet.messages.is_empty()),
             _ => None,
         }
