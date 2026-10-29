@@ -137,7 +137,7 @@ jobs:
 
 
       - name: Prebuild two-engine diagnostic test
-        run: cargo test --release --locked external_corpus_nro_probe_both_engines --no-run
+        run: cargo test --release --locked external_corpus_nro_probe_both_engines --no-run --message-format=json > "$RUNNER_TEMP/ounce-corpus-test-build.jsonl"
 
       - name: Probe all samples under interpreter and Tier-3
         env:
@@ -156,6 +156,18 @@ jobs:
           root = Path(os.environ["CORPUS_ROOT"]) / "build"
           evidence = Path(os.environ["EVIDENCE_ROOT"])
           inventory = json.loads((root / "inventory.json").read_text())
+          # Invoke the compiled test executable directly so timeout kills the guest
+          # process itself, not just a cargo parent with a surviving test child.
+          messages = [json.loads(line) for line in
+              (Path(os.environ["RUNNER_TEMP"]) / "ounce-corpus-test-build.jsonl").read_text().splitlines()]
+          executables = {m["executable"] for m in messages
+              if m.get("reason") == "compiler-artifact"
+              and m.get("profile", {}).get("test")
+              and m.get("target", {}).get("name") == "ounce-core"
+              and m.get("executable")}
+          if len(executables) != 1:
+              raise SystemExit("Expected one compiled ounce-core test executable")
+          executable = next(iter(executables))
           records = []
           for sample in inventory["samples"]:
               if len(sample["nro_sha256"]) != 1:
@@ -176,9 +188,9 @@ jobs:
               }
               path = evidence / (sample["id"] + ".two-engine.log")
               env = dict(os.environ, OUNCE_CORPUS_NRO=str(nro))
-              command = ["cargo", "test", "--release", "--locked",
+              command = [executable,
                          "loader::fixture_tests::corpus_runner::external_corpus_nro_probe_both_engines",
-                         "--", "--exact", "--ignored", "--nocapture", "--test-threads=1"]
+                         "--exact", "--ignored", "--nocapture", "--test-threads=1"]
               with path.open("wb") as log:
                   try:
                       done = subprocess.run(command, env=env, stdout=log,
