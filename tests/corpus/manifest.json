@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/switchbrew/switch-examples.git",
+  "revision": "669786898205b7beb25ff1731e72982e6d0397d3",
+  "status": "candidates-not-executed",
+  "upstream_terms": "README declares Public Domain Mark 1.0; linked binary components require separate inventory.",
+  "samples": [
+    {
+      "id": "startup",
+      "path": "templates/application",
+      "purpose": "Startup baseline and console presentation",
+      "status": "untested"
+    },
+    {
+      "id": "cpu-jit",
+      "path": "jit",
+      "purpose": "Generated AArch64 function returns 7",
+      "status": "untested; loader capability hints absent"
+    },
+    {
+      "id": "romfs",
+      "path": "fs/romfs",
+      "purpose": "Read bundled ASCII and Unicode paths",
+      "status": "untested"
+    },
+    {
+      "id": "simplegfx",
+      "path": "graphics/simplegfx",
+      "purpose": "Deterministic framebuffer fill sequence",
+      "status": "untested"
+    }
+  ]
+}

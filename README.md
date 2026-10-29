@@ -101,6 +101,8 @@ Status snapshot reviewed **2026-10-28**. No calendar estimates are set for miles
 | Switch 2 vertical slice | Blocked | Requires an authorized Switch 2 toolchain and reference hardware. Then build a self-authored sample and match startup, one input-driven change, a fixed completion result and a captured test image on Ounce-Core and the reference system. Record source and build provenance. |
 | Broader Switch 2 compatibility | Later | Expand one verified behavior or sample at a time, using target-specific results and updating the support claims to match the evidence. |
 
+Preparation for the independent homebrew corpus, pinned candidate sources and known runner gaps are recorded in [`docs/independent-corpus.md`](docs/independent-corpus.md). Candidates have not yet been executed.
+
 Original Switch tests can exercise shared loading, CPU, service and graphics foundations. They do not establish Switch 2 ABI, services, GPU behavior, commercial-software compatibility or performance.
 
 ---
