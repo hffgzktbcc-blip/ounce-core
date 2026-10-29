@@ -309,6 +309,57 @@ fn corpus_runner_scripted_input_reaches_libnx_shared_memory() {
     }
 }
 
+
+#[test]
+fn corpus_runner_hello_differential_slices() {
+    let nro = super::fixture();
+    let initialize = || {
+        let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
+        crate::loader::BootLoader::load_any_package(&nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).unwrap();
+        crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "fixture.nro", &nro, &["fixture"]).unwrap();
+        cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
+        (cpu, mmu, kernel)
+    };
+    let (mut cpu, mut mmu, mut kernel) = initialize();
+    let (mut reference, mut reference_mmu, mut reference_kernel) = initialize();
+    let mut engine = Tier3JitEngine::new();
+    for _ in 0..crate::NRO_INSTRUCTION_BUDGET {
+        let entry_pc = cpu.regs.pc;
+        let (count, exit) = engine.run_slice(&mut cpu, &mut mmu, 1);
+        let mut trail = Vec::new();
+        let mut reference_svc = None;
+        for _ in 0..count {
+            let pc = reference.regs.pc;
+            trail.push((pc, reference_mmu.read_u32(pc).ok()));
+            match reference.step(&mut reference_mmu).unwrap() {
+                StepResult::Continue => {}
+                StepResult::Svc(id) => reference_svc = Some(id),
+                other => panic!("reference stopped {other:?} at {pc:X}"),
+            }
+        }
+        for reg in 0..31 {
+            assert_eq!(cpu.regs.read_x(reg), reference.regs.read_x(reg),
+                "X{reg} diverged entering {entry_pc:X}, count={count}, exit={exit:?}, trail={trail:X?}");
+        }
+        assert_eq!(cpu.regs.sp, reference.regs.sp, "SP entry={entry_pc:X}, trail={trail:X?}");
+        assert_eq!(cpu.regs.pc, reference.regs.pc, "PC entry={entry_pc:X}, trail={trail:X?}");
+        assert_eq!(format!("{:?}", cpu.regs.pstate), format!("{:?}", reference.regs.pstate), "flags entry={entry_pc:X}");
+        if let BlockExit::Svc { svc_id } = exit {
+            assert_eq!(reference_svc, Some(svc_id));
+            let ref_out = reference_kernel.dispatch_svc(svc_id, &mut reference, &mut reference_mmu);
+            let out = kernel.dispatch_svc(svc_id, &mut cpu, &mut mmu);
+            assert_eq!(std::mem::discriminant(&out), std::mem::discriminant(&ref_out));
+            // GetInfo entropy and clock results may differ between kernels. Use identical
+            // syscall outputs so this test isolates CPU execution, not host timing.
+            cpu.regs = reference.regs.clone();
+            if out == SvcResult::ExitProcess { return; }
+        } else {
+            assert!(reference_svc.is_none());
+        }
+    }
+    panic!("differential run did not terminate");
+}
+
 /// Explicit opt-in diagnostic. It does not assert compatibility. Run the enclosing test process
 /// under an outer timeout as a cooperative deadline cannot interrupt a blocking kernel SVC.
 #[test]
