@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/tech-garden-banner.svg" width="100%" alt="Ounce-Core: a painted midnight tech garden with glowing circuits and a processor sun" />
+<img src="assets/banner.svg" width="100%" alt="Ounce-Core: a painted midnight tech garden with glowing circuits and a processor sun" />
 
 <br />
 
