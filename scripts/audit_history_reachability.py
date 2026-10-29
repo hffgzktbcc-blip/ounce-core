@@ -24,6 +24,17 @@ def git(*args, check=True):
     return p
 
 
+def resolve_main_snapshot():
+    """Return the locally available main ref and its commit/tree metadata."""
+    for ref in ("refs/remotes/origin/main", "refs/heads/main"):
+        commit = git("rev-parse", "--verify", f"{ref}^{{commit}}", check=False)
+        if commit.returncode == 0:
+            commit_id = commit.stdout.strip()
+            tree_id = git("rev-parse", f"{commit_id}^{{tree}}").stdout.strip()
+            return ref, commit_id, tree_id
+    return None, None, None
+
+
 def main():
     if git("rev-parse", "--is-inside-work-tree").stdout.strip() != "true":
         raise RuntimeError("Run from within a local git checkout")
@@ -31,11 +42,22 @@ def main():
     refs_raw = git("for-each-ref", "--format=%(refname)", "refs/heads",
                    "refs/remotes", "refs/tags", "refs/pull").stdout
     refs = sorted(set(line for line in refs_raw.splitlines() if line))
+    namespace_counts = {
+        namespace: sum(ref.startswith(f"refs/{namespace}/") for ref in refs)
+        for namespace in ("heads", "remotes", "tags", "pull")
+    }
+    main_ref, main_commit, main_tree = resolve_main_snapshot()
     data = {
         "schema": "ounce-history-reachability/v1",
         "shallow_clone": shallow,
         "ref_count": len(refs),
+        "ref_namespace_counts": namespace_counts,
         "ref_scope": ["refs/heads", "refs/remotes", "refs/tags", "refs/pull"],
+        "main_snapshot": {
+            "ref": main_ref,
+            "commit": main_commit,
+            "tree": main_tree,
+        },
         "local_ref_snapshot_only": True,
         "flagged": [],
         "warnings": [
@@ -56,7 +78,9 @@ def main():
                     raise RuntimeError(f"Could not test reachability for {ref}")
         data["flagged"].append({
             "label": label, "commit": commit,
-            "object_available": exists, "reachable_from_local_refs": containing,
+            "object_available": exists,
+            "reachable_ref_count": len(containing),
+            "reachable_from_local_refs": containing,
         })
     print(json.dumps(data, indent=2, sort_keys=True))
     return 0 if not shallow else 2
