@@ -144,6 +144,14 @@ impl Tier2Block {
             executed += 1;
 
             match inst {
+                // ADD/SUB immediate treats register 31 as SP (except the flags destination),
+                // unlike read_x/write_x, which model XZR. Keep those forms on the reference path.
+                Instruction::AddSubImm { rn: 31, .. } | Instruction::AddSubImm { rd: 31, .. } => {
+                    if cpu.step(mmu).is_err() {
+                        return (executed, BlockExit::Fault { pc });
+                    }
+                }
+
                 Instruction::AddSubImm { is_64, is_sub, set_flags, rd, rn, imm } => {
                     if is_64 {
                         let op1 = cpu.regs.read_x(rn);
@@ -506,6 +514,41 @@ mod tests {
         for &(off, w) in words {
             mmu.write_u32(base + off, w).unwrap();
         }
+    }
+
+    #[test]
+    fn add_sub_immediate_stack_operands_match_interpreter() {
+        let base = 0x8000_0000;
+        let stack = 0x2000u64;
+        let mut mmu = Memory::new();
+        load(&mut mmu, base, &[
+            (0x00, 0xD10083FF), // sub sp, sp, #32
+            (0x04, 0x910023E1), // add x1, sp, #8
+            (0x08, 0xD2800542), // mov x2, #42
+            (0x0C, 0xF9000422), // str x2, [x1, #8]
+            (0x10, 0xF9400420), // ldr x0, [x1, #8]
+            (0x14, 0x910083FF), // add sp, sp, #32
+            (0x18, 0xD40000E1), // svc #7
+        ]);
+        mmu.map_range(stack - 4096, 4096, Permission::READ_WRITE);
+        let mut reference_mmu = mmu.clone();
+        let mut reference = Cpu::new();
+        reference.regs.pc = base;
+        reference.regs.sp = stack;
+        loop {
+            if matches!(reference.step(&mut reference_mmu).unwrap(), super::super::interpreter::StepResult::Svc(7)) { break; }
+        }
+        let mut cpu = Cpu::new();
+        cpu.regs.pc = base;
+        cpu.regs.sp = stack;
+        let block = Tier2Block::compile(base, &mmu).unwrap();
+        let (_, exit) = block.execute(&mut cpu, &mut mmu);
+        assert!(matches!(exit, BlockExit::Svc { svc_id: 7 }));
+        assert_eq!(cpu.regs.sp, reference.regs.sp);
+        assert_eq!(cpu.regs.read_x(0), reference.regs.read_x(0));
+        assert_eq!(cpu.regs.read_x(0), 42);
+        assert_eq!(cpu.regs.read_x(1), reference.regs.read_x(1));
+        assert_eq!(mmu.read_u64(stack - 16).unwrap(), 42);
     }
 
     /// Runs Tier-2 slices until the guest exits with `SVC`, stepping over `RET` yields.
