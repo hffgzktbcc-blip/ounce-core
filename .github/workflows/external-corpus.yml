@@ -71,6 +71,7 @@ jobs:
         env:
           CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
           EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+          OUNCE_TRACE_IPC: "1"
         run: |
           python3 - <<'PY'
           import hashlib
