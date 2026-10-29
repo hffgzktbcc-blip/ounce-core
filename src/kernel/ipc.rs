@@ -154,6 +154,7 @@ pub struct IpcManager {
     pub applet: super::applet::AppletState,
     pub apm: super::apm::ApmState,
     pub time: super::time::TimeState,
+    pub(super) vi_binder: super::vi::BinderObjects,
     next_handle: u32,
     pub total_ipc_requests: u64,
     pub start_instant: std::time::Instant,
@@ -179,6 +180,7 @@ impl IpcManager {
             applet: Default::default(),
             apm: Default::default(),
             time: Default::default(),
+            vi_binder: Default::default(),
             next_handle: 0x10001,
             total_ipc_requests: 0,
             start_instant: std::time::Instant::now(),
@@ -289,6 +291,10 @@ impl IpcManager {
         let has_buffers = !(r.send_statics.is_empty() && r.send_buffers.is_empty() && r.recv_buffers.is_empty());
         if service == ServiceType::Nvdrv && (has_buffers || matches!(cmd_id, 2 | 4 | 8 | 11 | 12)) {
             return self.handle_nvdrv(cmd_id, args_base, tls_addr, mmu, nvgpu);
+        }
+
+        if let Some(res) = self.handle_vi_binder(&service, cmd_id, args_base, tls_addr, mmu) {
+            return res;
         }
 
         if let Some(res) = self.handle_system_service(&service, cmd_id, args_base, tls_addr, mmu) {
