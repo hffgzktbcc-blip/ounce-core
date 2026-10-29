@@ -12,6 +12,7 @@ on:
       - 'scripts/test_*.py'
       - 'src/**'
       - 'tests/corpus/**'
+      - 'tests/fixtures/**'
   workflow_dispatch:
 
 permissions:
@@ -80,6 +81,7 @@ jobs:
           CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
           EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
           OUNCE_TRACE_IPC: "1"
+          CORPUS_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           python3 - <<'PY'
           import hashlib
@@ -104,6 +106,7 @@ jobs:
           result = {
               "sample": "startup", "source_revision": inventory["revision"],
               "nro_sha256": actual_hash, "runtime_commit": os.environ["GITHUB_SHA"],
+              "source_head": os.environ["CORPUS_SOURCE_HEAD"],
               "requested_engine": "interpreter", "actual_engine": "interpreter",
               "host_timeout_seconds": 60, "command": command,
               "compatibility": "not-assessed",
