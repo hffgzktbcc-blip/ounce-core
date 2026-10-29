@@ -110,6 +110,8 @@ jobs:
               (evidence / "startup-interpreter.log").read_bytes()).hexdigest()
           (evidence / "startup-probe.json").write_text(json.dumps(result, indent=2) + "\n")
           print(json.dumps(result, indent=2))
+          print("=== Startup interpreter log (last 32 KiB) ===")
+          print((evidence / "startup-interpreter.log").read_bytes()[-32768:].decode("utf-8", errors="replace"))
           PY
 
       - name: Retain diagnostic evidence (no upstream source or NRO binaries)
