@@ -154,6 +154,7 @@ pub struct IpcManager {
     pub applet: super::applet::AppletState,
     pub apm: super::apm::ApmState,
     pub time: super::time::TimeState,
+    pub(super) vi_binder: super::vi::BinderObjects,
     next_handle: u32,
     pub total_ipc_requests: u64,
     pub start_instant: std::time::Instant,
@@ -179,6 +180,7 @@ impl IpcManager {
             applet: Default::default(),
             apm: Default::default(),
             time: Default::default(),
+            vi_binder: Default::default(),
             next_handle: 0x10001,
             total_ipc_requests: 0,
             start_instant: std::time::Instant::now(),
@@ -277,6 +279,11 @@ impl IpcManager {
 
         let cmd_id = mmu.read_u32(cmif_base + 8).unwrap_or(0);
         let args_base = cmif_base + 0x10;
+        // Explicit diagnostic opt-in; cap output even for a looping guest.
+        if self.total_ipc_requests <= 256 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+            eprintln!("[IPC trace] #{} handle=0x{:X} service={:?} command={}", self.total_ipc_requests, object_handle, service, cmd_id);
+        }
+
 
         // libnx-shaped nvdrv requests carry their data in buffers; the harness's inline form keeps the
         // older handler below.
@@ -284,6 +291,10 @@ impl IpcManager {
         let has_buffers = !(r.send_statics.is_empty() && r.send_buffers.is_empty() && r.recv_buffers.is_empty());
         if service == ServiceType::Nvdrv && (has_buffers || matches!(cmd_id, 2 | 4 | 8 | 11 | 12)) {
             return self.handle_nvdrv(cmd_id, args_base, tls_addr, mmu, nvgpu);
+        }
+
+        if let Some(res) = self.handle_vi_binder(&service, cmd_id, args_base, tls_addr, mmu) {
+            return res;
         }
 
         if let Some(res) = self.handle_system_service(&service, cmd_id, args_base, tls_addr, mmu) {
@@ -569,6 +580,29 @@ impl IpcManager {
             },
 
             ServiceType::ApplicationDisplayService => match cmd_id {
+                // Public VI session-discovery commands return objects, not scalar zeroes.
+                100..=103 if self.is_libnx_request() => {
+                    let name = match cmd_id {
+                        100 => "vi:binder-relay",
+                        101 => "vi:system-display",
+                        102 => "vi:manager-display",
+                        _ => "vi:binder-indirect",
+                    };
+                    let handle = self.allocate_handle(ServiceType::Generic(name.into()));
+                    self.write_cmif_response(tls_addr, mmu, 0, &[], Some(handle));
+                    0
+                }
+                // No native-window parcel / producer queue is modeled yet. A success
+                // here sends libnx into parsing an unwritten output buffer.
+                2020 | 2030 if self.is_libnx_request() => {
+                    eprintln!("[VI] command {cmd_id}: native-window producer not implemented");
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+                1020 if self.is_libnx_request() => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+                    0
+                }
                 // Command 1010: OpenDisplay("Default") -> returns DisplayId = 0
                 1010 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0, 0], None);
@@ -577,6 +611,11 @@ impl IpcManager {
                 // Command 2030: CreateStrayLayer -> returns LayerId = 1, IGraphicBufferProducer = 0x100
                 2030 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[1, 0, 0x100], None);
+                    0
+                }
+                _ if self.is_libnx_request() => {
+                    eprintln!("[VI] display command {cmd_id} not implemented");
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
                     0
                 }
                 _ => {
@@ -1267,6 +1306,47 @@ mod tests {
         mmu.write_u32(tls, 5).unwrap();
         ipc.handle_sync_request(hid, tls, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
         assert_eq!(mmu.read_u32(tls + 0x20).unwrap(), POINTER_BUFFER_SIZE);
+    }
+
+    #[test]
+    fn libnx_vi_discovery_returns_sessions_and_open_layer_rejects_missing_producer() {
+        let mut mmu = Memory::new();
+        let tls = 0x8000_0000u64;
+        mmu.map_range(tls, 4096, Permission::READ_WRITE);
+        let mut ipc = IpcManager::new();
+        let (mut gpu, mut audio, mut vfs) =
+            (NvgpuChannel::new(), AudioOutServer::new(), VirtualFileSystem::new());
+        let display = ipc.allocate_handle(ServiceType::ApplicationDisplayService);
+        let request = |mmu: &mut Memory, cmd: u32| {
+            for offset in (0..0x100u64).step_by(4) {
+                mmu.write_u32(tls + offset, 0).unwrap();
+            }
+            mmu.write_u32(tls, 4).unwrap();
+            mmu.write_u32(tls + 4, 10).unwrap();
+            mmu.write_u32(tls + 0x10, CMIF_IN_MAGIC).unwrap();
+            mmu.write_u32(tls + 0x18, cmd).unwrap();
+        };
+        let names = ["vi:binder-relay", "vi:system-display", "vi:manager-display", "vi:binder-indirect"];
+        let mut sessions = Vec::new();
+        for (cmd, name) in (100..=103).zip(names) {
+            request(&mut mmu, cmd);
+            assert_eq!(ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+            assert_eq!(mmu.read_u32(tls + 8).unwrap(), 1 << 5, "one move handle");
+            let session = mmu.read_u32(tls + 12).unwrap();
+            assert_eq!(ipc.handles.get(&session), Some(&ServiceType::Generic(name.into())));
+            assert!(!sessions.contains(&session));
+            sessions.push(session);
+        }
+        for cmd in [2020, 2030, 9999] {
+            request(&mut mmu, cmd);
+            assert_eq!(ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+            assert_eq!(mmu.read_u32(tls + 0x10).unwrap(), CMIF_OUT_MAGIC);
+            assert_eq!(mmu.read_u32(tls + 0x18).unwrap(), RESULT_UNKNOWN_COMMAND);
+        }
+        // Discovery does not imply an implemented Binder transaction service.
+        request(&mut mmu, 0);
+        ipc.handle_sync_request(sessions[0], tls, &mut mmu, &mut gpu, &mut audio, &mut vfs);
+        assert_eq!(mmu.read_u32(tls + 0x18).unwrap(), RESULT_UNKNOWN_COMMAND);
     }
 
     #[test]
