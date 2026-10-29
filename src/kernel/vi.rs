@@ -155,7 +155,8 @@ impl IpcManager {
                             Err(_) => INVALID_ADDRESS,
                         }
                     }
-                    _ => INVALID_SIZE,
+                    None => RESULT_UNKNOWN_COMMAND,
+                    Some(_) => INVALID_SIZE,
                 }
             }
             // GetNativeHandle requires a modeled queue event, not a dummy handle.
