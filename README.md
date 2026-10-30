@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/banner.svg" width="100%" alt="Ounce-Core: a painted midnight tech garden with glowing circuits and a processor sun" />
+<img src="assets/ounce-core-vista.png" width="100%" alt="Ounce-Core hardware research runtime and architecture compatibility layer banner" />
 
 <br />
 
