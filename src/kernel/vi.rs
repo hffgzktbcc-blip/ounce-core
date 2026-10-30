@@ -2,12 +2,12 @@
 //!
 //! Sources: libnx display/parcel.h (16-byte parcel header, 0x400 payload cap)
 //! and display/binder.h / binder.c (relay command IDs and argument layout).
-//! No producer transaction or native-window wire object is implemented here.
-//! In particular, OpenLayer must remain unsupported until its complete format
-//! and backing producer queue are modeled.
+//! The native-window parcel only exposes a registered producer object. Producer
+//! transactions stay explicit and bounded; no queued buffer is presented until
+//! its nvmap backing can be resolved.
 
-use std::collections::BTreeMap;
 use super::ipc::{IpcManager, ServiceType, RESULT_UNKNOWN_COMMAND};
+use std::collections::BTreeMap;
 
 const MAX_PARCEL_SIZE: usize = 0x1000;
 const MAX_PAYLOAD_SIZE: usize = 0x400;
@@ -17,6 +17,56 @@ const INVALID_ADDRESS: u32 = (102 << 9) | 1;
 const INVALID_HANDLE: u32 = (114 << 9) | 1;
 const INVALID_ENUM: u32 = (120 << 9) | 1;
 const INVALID_STATE: u32 = (125 << 9) | 1;
+const PRODUCER_TOKEN_SIZE: usize = 0x50;
+const PRODUCER_TOKEN: &str = "android.gui.IGraphicBufferProducer";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphicBufferSlot {
+    pub nvmap_id: u32,
+    pub width: u32,
+    pub height: u32,
+    pub color_format: u32,
+    pub layout: u32,
+    pub pitch: u32,
+    pub offset: u32,
+    pub kind: u32,
+    pub block_height_log2: u32,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubmittedSurface {
+    pub guest_addr: u64,
+    pub width: u32,
+    pub height: u32,
+    pub color_format: u32,
+    pub layout: u32,
+    pub pitch: u32,
+    pub kind: u32,
+    pub block_height_log2: u32,
+    pub size: u64,
+}
+
+#[derive(Debug, Default)]
+struct ProducerObject {
+    refs: [u32; 2],
+    connected: bool,
+    slots: BTreeMap<i32, GraphicBufferSlot>,
+    next_slot: usize,
+}
+
+/// Minimal native-window parcel consumed by libnx: two opaque words followed by
+/// the signed Binder object id. libnx does not interpret the opaque words.
+pub fn native_window_parcel(object_id: u32) -> Vec<u8> {
+    let payload_size = 12u32;
+    let payload_off = 16u32;
+    let objects_off = payload_off + payload_size;
+    let mut out = Vec::with_capacity(objects_off as usize);
+    for word in [payload_size, payload_off, 0, objects_off, 0, 0, object_id] {
+        out.extend_from_slice(&word.to_le_bytes());
+    }
+    out
+}
 
 /// Validated regions, borrowed from the original bounded parcel.
 #[derive(Debug, PartialEq, Eq)]
@@ -48,8 +98,10 @@ impl<'a> Parcel<'a> {
         };
         let payload = region(payload_off, payload_size)?;
         let objects = region(objects_off, objects_size)?;
-        if !payload.is_empty() && !objects.is_empty()
-            && payload.start < objects.end && objects.start < payload.end
+        if !payload.is_empty()
+            && !objects.is_empty()
+            && payload.start < objects.end
+            && objects.start < payload.end
         {
             return Err(INVALID_SIZE);
         }
@@ -58,14 +110,18 @@ impl<'a> Parcel<'a> {
         let mut previous = None;
         for entry in bytes[objects.clone()].chunks_exact(4) {
             let offset = u32::from_le_bytes(entry.try_into().unwrap()) as usize;
-            if offset % 4 != 0 || offset.checked_add(4).is_none_or(|end| end > payload_size)
+            if offset % 4 != 0
+                || offset.checked_add(4).is_none_or(|end| end > payload_size)
                 || previous.is_some_and(|last| offset <= last)
             {
                 return Err(INVALID_SIZE);
             }
             previous = Some(offset);
         }
-        Ok(Self { payload: &bytes[payload], object_offsets: &bytes[objects] })
+        Ok(Self {
+            payload: &bytes[payload],
+            object_offsets: &bytes[objects],
+        })
     }
 }
 
@@ -73,8 +129,10 @@ impl<'a> Parcel<'a> {
 /// clients' weak/strong refs. No object is registered just by opening a relay.
 #[derive(Debug, Default)]
 pub struct BinderObjects {
-    objects: BTreeMap<u32, [u32; 2]>,
+    objects: BTreeMap<u32, ProducerObject>,
+    layers: BTreeMap<u64, u32>,
     next_id: u32,
+    pub last_submission: Option<GraphicBufferSlot>,
 }
 
 impl BinderObjects {
@@ -85,39 +143,228 @@ impl BinderObjects {
         }
         let id = self.next_id.checked_add(1).ok_or(INVALID_STATE)?;
         self.next_id = id;
-        self.objects.insert(id, [0, 0]);
+        self.objects.insert(id, ProducerObject::default());
         Ok(id)
+    }
+
+    pub fn open_layer(&mut self, layer_id: u64) -> Result<u32, u32> {
+        if let Some(&object_id) = self.layers.get(&layer_id) {
+            return Ok(object_id);
+        }
+        let object_id = self.register()?;
+        self.layers.insert(layer_id, object_id);
+        Ok(object_id)
+    }
+
+    pub fn has_layer(&self, layer_id: u64) -> bool {
+        self.layers.contains_key(&layer_id)
+    }
+
+    pub fn close_layer(&mut self, layer_id: u64) -> Result<(), u32> {
+        let object_id = self.layers.remove(&layer_id).ok_or(INVALID_HANDLE)?;
+        if let Err(result) = self.retire(object_id) {
+            self.layers.insert(layer_id, object_id);
+            return Err(result);
+        }
+        Ok(())
     }
 
     pub fn adjust(&mut self, id: u32, delta: i32, kind: u32) -> Result<(), u32> {
         if kind > 1 {
             return Err(INVALID_ENUM);
         }
-        let counts = self.objects.get_mut(&id).ok_or(INVALID_HANDLE)?;
+        let counts = &mut self.objects.get_mut(&id).ok_or(INVALID_HANDLE)?.refs;
         let current = counts[kind as usize];
         let next = if delta >= 0 {
             current.checked_add(delta as u32)
         } else {
             current.checked_sub(delta.unsigned_abs())
-        }.ok_or(INVALID_STATE)?;
+        }
+        .ok_or(INVALID_STATE)?;
         counts[kind as usize] = next;
         Ok(())
     }
 
     /// A registered object cannot be destroyed while clients hold references.
     pub fn retire(&mut self, id: u32) -> Result<(), u32> {
-        let counts = self.objects.get(&id).ok_or(INVALID_HANDLE)?;
-        if *counts != [0, 0] {
+        let object = self.objects.get(&id).ok_or(INVALID_HANDLE)?;
+        if object.refs != [0, 0] {
             return Err(INVALID_STATE);
         }
         self.objects.remove(&id);
         Ok(())
     }
+
+    fn transact(&mut self, id: u32, code: u32, parcel: &Parcel<'_>) -> Result<Vec<u8>, u32> {
+        let payload = parcel.payload;
+        validate_producer_token(payload)?;
+        let object = self.objects.get_mut(&id).ok_or(INVALID_HANDLE)?;
+        let word = |off: usize| {
+            payload
+                .get(off..off + 4)
+                .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+                .ok_or(INVALID_SIZE)
+        };
+        match code {
+            // REQUEST_BUFFER: preallocated buffers are already shared; libnx expects null.
+            0x1 => {
+                let slot = word(0x50)? as i32;
+                if !object.slots.contains_key(&slot) {
+                    return Err(INVALID_HANDLE);
+                }
+                Ok(reply_parcel(&[0, 0]))
+            }
+            // DEQUEUE_BUFFER: return one registered slot and no fence.
+            0x3 => {
+                if !object.connected || object.slots.is_empty() {
+                    return Err(INVALID_STATE);
+                }
+                let slots: Vec<i32> = object.slots.keys().copied().collect();
+                let slot = slots[object.next_slot % slots.len()];
+                object.next_slot = (object.next_slot + 1) % slots.len();
+                Ok(reply_parcel(&[slot as u32, 0, 0]))
+            }
+            // QUEUE_BUFFER: record the exact registered slot. Presentation/capture is separate.
+            0x7 => {
+                if !object.connected {
+                    return Err(INVALID_STATE);
+                }
+                let slot = word(0x50)? as i32;
+                let submitted = object.slots.get(&slot).cloned().ok_or(INVALID_HANDLE)?;
+                self.last_submission = Some(submitted);
+                Ok(buffer_output_parcel(1280, 720))
+            }
+            // CONNECT(NATIVE_WINDOW_API_CPU).
+            0xA => {
+                if word(0x50)? != 0 || word(0x54)? != 2 {
+                    return Err(INVALID_ENUM);
+                }
+                object.connected = true;
+                Ok(buffer_output_parcel(1280, 720))
+            }
+            // DISCONNECT(NATIVE_WINDOW_API_CPU).
+            0xB => {
+                if word(0x50)? != 2 {
+                    return Err(INVALID_ENUM);
+                }
+                object.connected = false;
+                Ok(reply_parcel(&[0]))
+            }
+            // SET_PREALLOCATED_BUFFER.
+            0xE => {
+                let slot = word(0x50)? as i32;
+                if word(0x54)? != 1
+                    || word(0x58)? != 364
+                    || word(0x5C)? != 0
+                    || word(0x60)? != 0x4742_4652
+                    || word(0x80)? != 0
+                    || word(0x84)? != 81
+                {
+                    return Err(INVALID_SIZE);
+                }
+                let u64_at = |off: usize| {
+                    payload
+                        .get(off..off + 8)
+                        .map(|b| u64::from_le_bytes(b.try_into().unwrap()))
+                        .ok_or(INVALID_SIZE)
+                };
+                let buffer = GraphicBufferSlot {
+                    nvmap_id: word(0x8C)?,
+                    width: word(0xBC)?,
+                    height: word(0xC0)?,
+                    color_format: word(0xC4)?,
+                    layout: word(0xC8)?,
+                    pitch: word(0xCC)?,
+                    offset: word(0xD4)?,
+                    kind: word(0xD8)?,
+                    block_height_log2: word(0xDC)?,
+                    size: u64_at(0xF4)?,
+                };
+                if buffer.nvmap_id == 0
+                    || buffer.width == 0
+                    || buffer.height == 0
+                    || buffer.size == 0
+                {
+                    return Err(INVALID_SIZE);
+                }
+                object.slots.insert(slot, buffer);
+                Ok(reply_parcel(&[]))
+            }
+            _ => Err(RESULT_UNKNOWN_COMMAND),
+        }
+    }
+}
+
+fn validate_producer_token(payload: &[u8]) -> Result<(), u32> {
+    if payload.len() < PRODUCER_TOKEN_SIZE {
+        return Err(INVALID_SIZE);
+    }
+    let word = |off: usize| u32::from_le_bytes(payload[off..off + 4].try_into().unwrap());
+    if word(0) != 0x100 || word(4) != PRODUCER_TOKEN.len() as u32 {
+        return Err(INVALID_SIZE);
+    }
+    for (i, expected) in PRODUCER_TOKEN
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .enumerate()
+    {
+        let off = 8 + i * 2;
+        if u16::from_le_bytes(payload[off..off + 2].try_into().unwrap()) != expected {
+            return Err(INVALID_SIZE);
+        }
+    }
+    Ok(())
+}
+
+fn reply_parcel(words: &[u32]) -> Vec<u8> {
+    let payload_size = (words.len() * 4) as u32;
+    let mut out = Vec::with_capacity(16 + payload_size as usize);
+    for word in [payload_size, 16, 0, 16 + payload_size] {
+        out.extend_from_slice(&word.to_le_bytes());
+    }
+    for word in words {
+        out.extend_from_slice(&word.to_le_bytes());
+    }
+    out
+}
+
+fn buffer_output_parcel(width: u32, height: u32) -> Vec<u8> {
+    reply_parcel(&[width, height, 0, 0, 0])
 }
 
 impl IpcManager {
+    /// Resolves the last queued producer slot through the nvmap registry. This
+    /// describes raw guest memory only; it does not imply a valid rendered frame.
+    pub fn submitted_vi_surface(&self) -> Option<SubmittedSurface> {
+        let slot = self.vi_binder.last_submission.as_ref()?;
+        let object = self
+            .nvdrv
+            .nvmap
+            .values()
+            .find(|object| object.id == slot.nvmap_id && object.addr != 0)?;
+        let end = (slot.offset as u64).checked_add(slot.size)?;
+        if end > object.size as u64 {
+            return None;
+        }
+        Some(SubmittedSurface {
+            guest_addr: object.addr.checked_add(slot.offset as u64)?,
+            width: slot.width,
+            height: slot.height,
+            color_format: slot.color_format,
+            layout: slot.layout,
+            pitch: slot.pitch,
+            kind: slot.kind,
+            block_height_log2: slot.block_height_log2,
+            size: slot.size,
+        })
+    }
+
     pub(super) fn handle_vi_binder(
-        &mut self, service: &ServiceType, cmd: u32, args: u64, tls: u64,
+        &mut self,
+        service: &ServiceType,
+        cmd: u32,
+        args: u64,
+        tls: u64,
         mmu: &mut crate::mmu::Memory,
     ) -> Option<u64> {
         if !matches!(service, ServiceType::Generic(name)
@@ -128,38 +375,77 @@ impl IpcManager {
         let result = match cmd {
             // AdjustRefcount(object_id, signed delta, weak/strong selector).
             1 => {
-                let fields = mmu.read_u32(args).and_then(|id|
-                    mmu.read_u32(args + 4).and_then(|delta|
-                    mmu.read_u32(args + 8).map(|kind| (id, delta as i32, kind))));
+                let fields = mmu.read_u32(args).and_then(|id| {
+                    mmu.read_u32(args + 4).and_then(|delta| {
+                        mmu.read_u32(args + 8).map(|kind| (id, delta as i32, kind))
+                    })
+                });
                 match fields {
-                    Ok((id, delta, kind)) => self.vi_binder.adjust(id, delta, kind).err().unwrap_or(0),
+                    Ok((id, delta, kind)) => {
+                        self.vi_binder.adjust(id, delta, kind).err().unwrap_or(0)
+                    }
                     Err(_) => INVALID_ADDRESS,
                 }
             }
-            // TransactParcel / TransactParcelAuto: validate the borrowed input
-            // before reporting the unsupported producer transaction. Never write
-            // an output parcel, mutate refs or claim a transaction succeeded.
+            // TransactParcel / TransactParcelAuto.
             0 | 3 => {
-                let input = self.request.send_statics.first().map(|(_, b)| *b)
+                let fields = mmu.read_u32(args).and_then(|id| {
+                    mmu.read_u32(args + 4)
+                        .and_then(|code| mmu.read_u32(args + 8).map(|flags| (id, code, flags)))
+                });
+                let input = self
+                    .request
+                    .send_statics
+                    .first()
+                    .map(|(_, b)| *b)
                     .filter(|b| b.size != 0)
                     .or_else(|| self.request.send_buffers.first().copied());
-                match input {
-                    Some(buffer) if (16..=MAX_PARCEL_SIZE as u64).contains(&buffer.size)
-                        && buffer.addr.checked_add(buffer.size).is_some() => {
+                match (fields, input) {
+                    (Ok((_, _, flags)), _) if flags != 0 => INVALID_ENUM,
+                    (Ok((id, code, _)), Some(buffer))
+                        if (16..=MAX_PARCEL_SIZE as u64).contains(&buffer.size)
+                            && buffer.addr.checked_add(buffer.size).is_some() =>
+                    {
                         let mut bytes = vec![0; buffer.size as usize];
                         match mmu.read_bytes(buffer.addr, &mut bytes) {
                             Ok(()) => match Parcel::parse(&bytes) {
-                                Ok(_) => RESULT_UNKNOWN_COMMAND,
+                                Ok(parcel) => match self.vi_binder.transact(id, code, &parcel) {
+                                    Ok(output)
+                                        if self.write_out_buffer(mmu, &output) == output.len() =>
+                                    {
+                                        0
+                                    }
+                                    Ok(_) => INVALID_ADDRESS,
+                                    Err(result) => result,
+                                },
                                 Err(result) => result,
                             },
                             Err(_) => INVALID_ADDRESS,
                         }
                     }
-                    None => RESULT_UNKNOWN_COMMAND,
-                    Some(_) => INVALID_SIZE,
+                    (Err(_), _) => INVALID_ADDRESS,
+                    (_, None) => RESULT_UNKNOWN_COMMAND,
+                    (_, Some(_)) => INVALID_SIZE,
                 }
             }
-            // GetNativeHandle requires a modeled queue event, not a dummy handle.
+            // GetNativeHandle(object_id, inval=0x0f): the event is signaled while
+            // this bounded producer has an immediately available slot.
+            2 => {
+                let fields = mmu
+                    .read_u32(args)
+                    .and_then(|id| mmu.read_u32(args + 4).map(|inval| (id, inval)));
+                match fields {
+                    Ok((id, 0x0f)) if self.vi_binder.objects.contains_key(&id) => {
+                        let event =
+                            self.allocate_handle(ServiceType::ServiceEvent("ViBufferQueue"));
+                        self.reply(tls, mmu, 0, &[], &[event], None);
+                        return Some(0);
+                    }
+                    Ok((id, _)) if !self.vi_binder.objects.contains_key(&id) => INVALID_HANDLE,
+                    Ok(_) => INVALID_ENUM,
+                    Err(_) => INVALID_ADDRESS,
+                }
+            }
             _ => RESULT_UNKNOWN_COMMAND,
         };
         self.reply(tls, mmu, result, &[], &[], None);
@@ -173,7 +459,12 @@ mod tests {
 
     fn parcel(payload: &[u8], offsets: &[u32]) -> Vec<u8> {
         let mut bytes = Vec::new();
-        for word in [payload.len() as u32, 16, (offsets.len() * 4) as u32, 16 + payload.len() as u32] {
+        for word in [
+            payload.len() as u32,
+            16,
+            (offsets.len() * 4) as u32,
+            16 + payload.len() as u32,
+        ] {
             bytes.extend_from_slice(&word.to_le_bytes());
         }
         bytes.extend_from_slice(payload);
@@ -190,7 +481,14 @@ mod tests {
         assert_eq!(parsed.payload.len(), 16);
         assert_eq!(parsed.object_offsets.len(), 8);
         assert!(Parcel::parse(&good[..15]).is_err());
-        for (field, value) in [(0, 0x401), (4, u32::MAX), (8, 3), (12, u32::MAX), (12, 16), (4, 12)] {
+        for (field, value) in [
+            (0, 0x401),
+            (4, u32::MAX),
+            (8, 3),
+            (12, u32::MAX),
+            (12, 16),
+            (4, 12),
+        ] {
             let mut bad = good.clone();
             bad[field..field + 4].copy_from_slice(&value.to_le_bytes());
             assert!(Parcel::parse(&bad).is_err(), "field {field}, value {value}");
@@ -202,17 +500,110 @@ mod tests {
     }
 
     #[test]
+    fn native_window_parcel_exposes_registered_producer_id() {
+        let bytes = native_window_parcel(0x1234);
+        let parsed = Parcel::parse(&bytes).unwrap();
+        assert_eq!(parsed.payload.len(), 12);
+        assert!(parsed.object_offsets.is_empty());
+        assert_eq!(
+            u32::from_le_bytes(parsed.payload[8..12].try_into().unwrap()),
+            0x1234
+        );
+    }
+
+    #[test]
+    fn libnx_open_layer_and_native_handle_use_real_descriptors() {
+        use super::super::cmif::test_util::{Harness, Req, BUF};
+        let mut h = Harness::new();
+        let display = h
+            .ipc
+            .allocate_handle(ServiceType::ApplicationDisplayService);
+        let mut input = [0u8; 0x50];
+        input[0x40..0x48].copy_from_slice(&1u64.to_le_bytes());
+        let reply = h.call_out(
+            display,
+            Req {
+                cmd: 2020,
+                data: &input,
+                pid: true,
+                recv: Some((BUF, 0x100)),
+                ..Default::default()
+            },
+            8,
+        );
+        assert_eq!(reply.result, 0);
+        assert_eq!(reply.u64(0), 28);
+        let parcel_bytes = h.read_buf(BUF, 28);
+        let parcel = Parcel::parse(&parcel_bytes).unwrap();
+        let object = u32::from_le_bytes(parcel.payload[8..12].try_into().unwrap());
+
+        let mut scaling = [0u8; 16];
+        scaling[0..4].copy_from_slice(&2u32.to_le_bytes());
+        scaling[8..16].copy_from_slice(&1u64.to_le_bytes());
+        assert_eq!(
+            h.call(
+                display,
+                Req {
+                    cmd: 2101,
+                    data: &scaling,
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
+
+        let relay = h
+            .ipc
+            .allocate_handle(ServiceType::Generic("vi:binder-relay".into()));
+        let mut args = [0u8; 8];
+        args[0..4].copy_from_slice(&object.to_le_bytes());
+        args[4..8].copy_from_slice(&0x0fu32.to_le_bytes());
+        let reply = h.call(
+            relay,
+            Req {
+                cmd: 2,
+                data: &args,
+                ..Default::default()
+            },
+        );
+        assert_eq!(reply.result, 0);
+        assert_eq!(reply.copy_handles.len(), 1);
+        assert_eq!(
+            h.ipc.service_event_signaled(reply.copy_handles[0]),
+            Some(true)
+        );
+
+        assert_eq!(
+            h.call(
+                display,
+                Req {
+                    cmd: 2021,
+                    data: &1u64.to_le_bytes(),
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
+        assert!(!h.ipc.vi_binder.has_layer(1));
+    }
+
+    #[test]
     fn relay_dispatch_validates_inputs_without_writing_output_parcels() {
-        use crate::{audio::AudioOutServer, fs::VirtualFileSystem, gpu::nvgpu::NvgpuChannel};
-        use crate::mmu::{Memory, Permission};
         use super::super::hipc::Buffer;
+        use crate::mmu::{Memory, Permission};
+        use crate::{audio::AudioOutServer, fs::VirtualFileSystem, gpu::nvgpu::NvgpuChannel};
         let mut ipc = IpcManager::new();
         let mut mmu = Memory::new();
         mmu.map_range(0x1000, 0x4000, Permission::READ_WRITE);
         let session = ipc.allocate_handle(ServiceType::Generic("vi:binder-relay".into()));
         let object = ipc.vi_binder.register().unwrap();
-        let (mut gpu, mut audio, mut vfs) =
-            (NvgpuChannel::new(), AudioOutServer::new(), VirtualFileSystem::new());
+        let (mut gpu, mut audio, mut vfs) = (
+            NvgpuChannel::new(),
+            AudioOutServer::new(),
+            VirtualFileSystem::new(),
+        );
         // Real HIPC/CMIF reference-count request: no descriptors, 3 input words.
         let request = |mmu: &mut Memory, id: u32, delta: i32, kind: u32| {
             for offset in (0..0x80u64).step_by(4) {
@@ -220,14 +611,18 @@ mod tests {
             }
             mmu.write_u32(0x1000, 4).unwrap();
             mmu.write_u32(0x1004, 11).unwrap();
-            mmu.write_u32(0x1010, super::super::ipc::CMIF_IN_MAGIC).unwrap();
+            mmu.write_u32(0x1010, super::super::ipc::CMIF_IN_MAGIC)
+                .unwrap();
             mmu.write_u32(0x1018, 1).unwrap();
             mmu.write_u32(0x1020, id).unwrap();
             mmu.write_u32(0x1024, delta as u32).unwrap();
             mmu.write_u32(0x1028, kind).unwrap();
         };
         request(&mut mmu, object, 1, 1);
-        assert_eq!(ipc.handle_sync_request(session, 0x1000, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+        assert_eq!(
+            ipc.handle_sync_request(session, 0x1000, &mut mmu, &mut gpu, &mut audio, &mut vfs),
+            0
+        );
         assert_eq!(mmu.read_u32(0x1018).unwrap(), 0);
         request(&mut mmu, object + 1, 1, 1);
         ipc.handle_sync_request(session, 0x1000, &mut mmu, &mut gpu, &mut audio, &mut vfs);
@@ -237,10 +632,19 @@ mod tests {
         let valid = parcel(&[0; 16], &[]);
         mmu.write_bytes(0x2000, &valid).unwrap();
         mmu.write_bytes(0x3000, &[0xA5; 64]).unwrap();
-        ipc.request.send_buffers = vec![Buffer { addr: 0x2000, size: valid.len() as u64 }];
-        ipc.request.recv_buffers = vec![Buffer { addr: 0x3000, size: 64 }];
+        ipc.request.send_buffers = vec![Buffer {
+            addr: 0x2000,
+            size: valid.len() as u64,
+        }];
+        ipc.request.recv_buffers = vec![Buffer {
+            addr: 0x3000,
+            size: 64,
+        }];
+        mmu.write_u32(0x1020, object).unwrap();
+        mmu.write_u32(0x1024, 0x99).unwrap();
+        mmu.write_u32(0x1028, 0).unwrap();
         ipc.handle_vi_binder(&service, 3, 0x1020, 0x1000, &mut mmu);
-        assert_eq!(mmu.read_u32(0x1018).unwrap(), RESULT_UNKNOWN_COMMAND);
+        assert_eq!(mmu.read_u32(0x1018).unwrap(), INVALID_SIZE);
         let mut output = [0; 64];
         mmu.read_bytes(0x3000, &mut output).unwrap();
         assert_eq!(output, [0xA5; 64]);
@@ -279,5 +683,98 @@ mod tests {
             objects.register().unwrap();
         }
         assert!(objects.register().is_err());
+    }
+
+    fn producer_payload(size: usize) -> Vec<u8> {
+        let mut payload = vec![0; size.max(PRODUCER_TOKEN_SIZE)];
+        payload[0..4].copy_from_slice(&0x100u32.to_le_bytes());
+        payload[4..8].copy_from_slice(&(PRODUCER_TOKEN.len() as u32).to_le_bytes());
+        for (i, unit) in PRODUCER_TOKEN
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .enumerate()
+        {
+            payload[8 + i * 2..10 + i * 2].copy_from_slice(&unit.to_le_bytes());
+        }
+        payload
+    }
+
+    fn parsed(payload: &[u8]) -> Parcel<'_> {
+        let bytes = parcel(payload, &[]);
+        let leaked = Box::leak(bytes.into_boxed_slice());
+        Parcel::parse(leaked).unwrap()
+    }
+
+    #[test]
+    fn producer_tracks_preallocated_slots_and_queue_submission() {
+        let mut objects = BinderObjects::default();
+        let id = objects.register().unwrap();
+
+        let mut connect = producer_payload(0x5C);
+        connect[0x54..0x58].copy_from_slice(&2u32.to_le_bytes());
+        let reply = objects.transact(id, 0xA, &parsed(&connect)).unwrap();
+        assert_eq!(Parcel::parse(&reply).unwrap().payload.len(), 20);
+
+        let mut set = producer_payload(0x1CC);
+        for (off, word) in [
+            (0x50, 3),
+            (0x54, 1),
+            (0x58, 364),
+            (0x60, 0x4742_4652),
+            (0x84, 81),
+            (0x8C, 0x1001),
+            (0xBC, 1280),
+            (0xC0, 720),
+            (0xC4, 1),
+            (0xC8, 0),
+            (0xCC, 5120),
+            (0xD4, 0x2000),
+            (0xD8, 0xFE),
+            (0xDC, 4),
+        ] as [(usize, u32); 14]
+        {
+            set[off..off + 4].copy_from_slice(&word.to_le_bytes());
+        }
+        set[0xF4..0xFC].copy_from_slice(&0x384000u64.to_le_bytes());
+        objects.transact(id, 0xE, &parsed(&set)).unwrap();
+
+        let dequeue = producer_payload(0x64);
+        let reply = objects.transact(id, 0x3, &parsed(&dequeue)).unwrap();
+        let payload = Parcel::parse(&reply).unwrap().payload;
+        assert_eq!(u32::from_le_bytes(payload[0..4].try_into().unwrap()), 3);
+
+        let mut queue = producer_payload(0xB0);
+        queue[0x50..0x54].copy_from_slice(&3u32.to_le_bytes());
+        objects.transact(id, 0x7, &parsed(&queue)).unwrap();
+        let submitted = objects.last_submission.as_ref().unwrap();
+        assert_eq!(submitted.nvmap_id, 0x1001);
+        assert_eq!(
+            (submitted.width, submitted.height, submitted.pitch),
+            (1280, 720, 5120)
+        );
+        assert_eq!((submitted.offset, submitted.block_height_log2), (0x2000, 4));
+
+        let mut ipc = IpcManager::new();
+        ipc.vi_binder = objects;
+        ipc.nvdrv.nvmap.insert(
+            7,
+            super::super::nvdrv::NvMapObject {
+                id: 0x1001,
+                size: 0x400000,
+                addr: 0x9000_0000,
+                ..Default::default()
+            },
+        );
+        let surface = ipc.submitted_vi_surface().unwrap();
+        assert_eq!(surface.guest_addr, 0x9000_2000);
+        assert_eq!(
+            (surface.width, surface.height, surface.size),
+            (1280, 720, 0x384000)
+        );
+        ipc.nvdrv.nvmap.get_mut(&7).unwrap().size = 0x1000;
+        assert!(
+            ipc.submitted_vi_surface().is_none(),
+            "slot must fit its nvmap allocation"
+        );
     }
 }
