@@ -25,7 +25,7 @@ pub struct GraphicBufferSlot {
     pub nvmap_id: u32,
     pub width: u32,
     pub height: u32,
-    pub color_format: u32,
+    pub color_format: u64,
     pub layout: u32,
     pub pitch: u32,
     pub offset: u32,
@@ -39,12 +39,43 @@ pub struct SubmittedSurface {
     pub guest_addr: u64,
     pub width: u32,
     pub height: u32,
-    pub color_format: u32,
+    pub color_format: u64,
     pub layout: u32,
     pub pitch: u32,
     pub kind: u32,
     pub block_height_log2: u32,
+    /// Bytes available from `guest_addr` to the end of the nvmap allocation.
+    pub allocation_size: u64,
     pub size: u64,
+}
+
+impl SubmittedSurface {
+    /// Maps the public libnx `NvGraphicBuffer` fields into the shared raw-surface model.
+    pub fn tiling_surface(&self) -> Option<crate::gpu::tiling::Surface> {
+        use crate::gpu::tiling::{Format, Layout, Surface};
+        let format = match self.color_format {
+            0x0100532120 => Format::R8G8B8A8Unorm,
+            0x010A881210 => Format::R5G6B5Unorm,
+            _ => return None,
+        };
+        let layout = match self.layout {
+            3 if self.block_height_log2 <= 5 => Layout::BlockLinear {
+                height_log2: self.block_height_log2 as u8,
+                depth_log2: 0,
+            },
+            1 if self.pitch != 0 => Layout::Pitch { stride: self.pitch },
+            _ => return None,
+        };
+        let surface = Surface {
+            width: self.width,
+            height: self.height,
+            depth: 1,
+            format,
+            layout,
+        };
+        let required_size = surface.size_bytes().ok()? as u64;
+        (required_size <= self.allocation_size && required_size <= self.size).then_some(surface)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -272,12 +303,14 @@ impl BinderObjects {
                     nvmap_id: word(0x8C)?,
                     width: word(0xBC)?,
                     height: word(0xC0)?,
-                    color_format: word(0xC4)?,
-                    layout: word(0xC8)?,
-                    pitch: word(0xCC)?,
-                    offset: word(0xD4)?,
-                    kind: word(0xD8)?,
-                    block_height_log2: word(0xDC)?,
+                    // NvSurface has a 64-bit NvColorFormat. The flattened
+                    // native handle drops its 12-byte header, not struct padding.
+                    color_format: u64_at(0xC4)?,
+                    layout: word(0xCC)?,
+                    pitch: word(0xD0)?,
+                    offset: word(0xD8)?,
+                    kind: word(0xDC)?,
+                    block_height_log2: word(0xE0)?,
                     size: u64_at(0xF4)?,
                 };
                 if buffer.nvmap_id == 0
@@ -333,6 +366,10 @@ fn buffer_output_parcel(width: u32, height: u32) -> Vec<u8> {
 }
 
 impl IpcManager {
+    pub fn vi_submission_diagnostic(&self) -> String {
+        format!("slot={:?}; nvmap={:?}", self.vi_binder.last_submission, self.nvdrv.nvmap)
+    }
+
     /// Resolves the last queued producer slot through the nvmap registry. This
     /// describes raw guest memory only; it does not imply a valid rendered frame.
     pub fn submitted_vi_surface(&self) -> Option<SubmittedSurface> {
@@ -355,6 +392,7 @@ impl IpcManager {
             pitch: slot.pitch,
             kind: slot.kind,
             block_height_log2: slot.block_height_log2,
+            allocation_size: object.size as u64 - slot.offset as u64,
             size: slot.size,
         })
     }
@@ -393,6 +431,13 @@ impl IpcManager {
                     mmu.read_u32(args + 4)
                         .and_then(|code| mmu.read_u32(args + 8).map(|flags| (id, code, flags)))
                 });
+                static TRACE_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+                if std::env::var_os("OUNCE_TRACE_IPC").is_some()
+                    && self.vi_binder.last_submission.is_none()
+                    && TRACE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 64
+                {
+                    eprintln!("[VI transaction] fields={fields:?}");
+                }
                 let input = self
                     .request
                     .send_statics
@@ -413,10 +458,18 @@ impl IpcManager {
                                     Ok(output)
                                         if self.write_out_buffer(mmu, &output) == output.len() =>
                                     {
+                                        if code == 7 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+                                            eprintln!("[VI queue] result=0; {}", self.vi_submission_diagnostic());
+                                        }
                                         0
                                     }
                                     Ok(_) => INVALID_ADDRESS,
-                                    Err(result) => result,
+                                    Err(result) => {
+                                        if code == 7 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+                                            eprintln!("[VI queue] result={result:#x}; {}", self.vi_submission_diagnostic());
+                                        }
+                                        result
+                                    },
                                 },
                                 Err(result) => result,
                             },
@@ -706,7 +759,7 @@ mod tests {
     }
 
     #[test]
-    fn producer_tracks_preallocated_slots_and_queue_submission() {
+    fn producer_preserves_u64_color_format_and_following_surface_fields() {
         let mut objects = BinderObjects::default();
         let id = objects.register().unwrap();
 
@@ -725,17 +778,19 @@ mod tests {
             (0x8C, 0x1001),
             (0xBC, 1280),
             (0xC0, 720),
-            (0xC4, 1),
-            (0xC8, 0),
-            (0xCC, 5120),
-            (0xD4, 0x2000),
-            (0xD8, 0xFE),
-            (0xDC, 4),
-        ] as [(usize, u32); 14]
+            (0xC4, 0x00532120),
+            (0xC8, 1),
+            (0xCC, 3),
+            (0xD0, 5120),
+            (0xD8, 0x2000),
+            (0xDC, 0xFE),
+            (0xE0, 4),
+        ] as [(usize, u32); 15]
         {
             set[off..off + 4].copy_from_slice(&word.to_le_bytes());
         }
-        set[0xF4..0xFC].copy_from_slice(&0x384000u64.to_le_bytes());
+        // Includes the padded block-linear rows, not only visible pixels.
+        set[0xF4..0xFC].copy_from_slice(&0x3C0000u64.to_le_bytes());
         objects.transact(id, 0xE, &parsed(&set)).unwrap();
 
         let dequeue = producer_payload(0x64);
@@ -748,6 +803,10 @@ mod tests {
         objects.transact(id, 0x7, &parsed(&queue)).unwrap();
         let submitted = objects.last_submission.as_ref().unwrap();
         assert_eq!(submitted.nvmap_id, 0x1001);
+        // libnx NvSurface: eight-byte color format followed by layout/pitch.
+        // The high word must survive; reading it as layout was the regression.
+        assert_eq!(submitted.color_format, 0x0100532120);
+        assert_eq!((submitted.layout, submitted.kind), (3, 0xFE));
         assert_eq!(
             (submitted.width, submitted.height, submitted.pitch),
             (1280, 720, 5120)
@@ -769,8 +828,44 @@ mod tests {
         assert_eq!(surface.guest_addr, 0x9000_2000);
         assert_eq!(
             (surface.width, surface.height, surface.size),
-            (1280, 720, 0x384000)
+            (1280, 720, 0x3C0000)
         );
+        let tiled = surface.tiling_surface().unwrap();
+        assert_eq!((tiled.width, tiled.height), (1280, 720));
+        assert_eq!(
+            tiled.layout,
+            crate::gpu::tiling::Layout::BlockLinear {
+                height_log2: 4,
+                depth_log2: 0,
+            }
+        );
+        let mut pitch = surface.clone();
+        pitch.layout = 1;
+        pitch.pitch = pitch.width * 4;
+        assert_eq!(
+            pitch.tiling_surface().unwrap().layout,
+            crate::gpu::tiling::Layout::Pitch {
+                stride: pitch.width * 4,
+            }
+        );
+        let mut invalid = surface.clone();
+        invalid.block_height_log2 = 254;
+        assert!(invalid.tiling_surface().is_none());
+        invalid = surface.clone();
+        invalid.color_format = 0;
+        assert!(invalid.tiling_surface().is_none());
+        invalid = surface.clone();
+        invalid.allocation_size = tiled.size_bytes().unwrap() as u64 - 1;
+        assert!(invalid.tiling_surface().is_none());
+        let required_size = tiled.size_bytes().unwrap() as u64;
+        invalid = surface.clone();
+        invalid.allocation_size = required_size * 2;
+        invalid.size = required_size - 1;
+        assert!(invalid.tiling_surface().is_none(),
+            "a large nvmap allocation must not permit reads beyond the submitted plane");
+        invalid.size = required_size;
+        assert!(invalid.tiling_surface().is_some(),
+            "an image fitting both the submitted plane and allocation is accepted");
         ipc.nvdrv.nvmap.get_mut(&7).unwrap().size = 0x1000;
         assert!(
             ipc.submitted_vi_surface().is_none(),
