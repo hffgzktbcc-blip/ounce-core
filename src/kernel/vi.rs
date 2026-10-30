@@ -73,7 +73,8 @@ impl SubmittedSurface {
             format,
             layout,
         };
-        (surface.size_bytes().ok()? as u64 <= self.allocation_size).then_some(surface)
+        let required_size = surface.size_bytes().ok()? as u64;
+        (required_size <= self.allocation_size && required_size <= self.size).then_some(surface)
     }
 }
 
@@ -788,7 +789,8 @@ mod tests {
         {
             set[off..off + 4].copy_from_slice(&word.to_le_bytes());
         }
-        set[0xF4..0xFC].copy_from_slice(&0x384000u64.to_le_bytes());
+        // Includes the padded block-linear rows, not only visible pixels.
+        set[0xF4..0xFC].copy_from_slice(&0x3C0000u64.to_le_bytes());
         objects.transact(id, 0xE, &parsed(&set)).unwrap();
 
         let dequeue = producer_payload(0x64);
@@ -826,7 +828,7 @@ mod tests {
         assert_eq!(surface.guest_addr, 0x9000_2000);
         assert_eq!(
             (surface.width, surface.height, surface.size),
-            (1280, 720, 0x384000)
+            (1280, 720, 0x3C0000)
         );
         let tiled = surface.tiling_surface().unwrap();
         assert_eq!((tiled.width, tiled.height), (1280, 720));
@@ -855,6 +857,15 @@ mod tests {
         invalid = surface.clone();
         invalid.allocation_size = tiled.size_bytes().unwrap() as u64 - 1;
         assert!(invalid.tiling_surface().is_none());
+        let required_size = tiled.size_bytes().unwrap() as u64;
+        invalid = surface.clone();
+        invalid.allocation_size = required_size * 2;
+        invalid.size = required_size - 1;
+        assert!(invalid.tiling_surface().is_none(),
+            "a large nvmap allocation must not permit reads beyond the submitted plane");
+        invalid.size = required_size;
+        assert!(invalid.tiling_surface().is_some(),
+            "an image fitting both the submitted plane and allocation is accepted");
         ipc.nvdrv.nvmap.get_mut(&7).unwrap().size = 0x1000;
         assert!(
             ipc.submitted_vi_surface().is_none(),
