@@ -120,17 +120,17 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 <table>
 <tr><th align="left">Verification</th><th align="left">What it tells us</th><th align="left">What it does not tell us</th></tr>
-<tr><td><strong>25 harness stages</strong></td><td>Project-authored programs met expected functional stage gates</td><td>General homebrew or Switch 2 compatibility</td></tr>
+<tr><td><strong>25 harness stages / 27 checks</strong></td><td>Project-authored programs met expected functional stage gates</td><td>General homebrew or Switch 2 compatibility</td></tr>
 <tr><td><strong>9 CI jobs</strong></td><td>Standard, GPU-feature and native-JIT jobs across Linux, macOS and Windows</td><td>That every engine or graphics path was tested by every job</td></tr>
 <tr><td><strong>Independent homebrew probes</strong></td><td>Reports from unchanged external candidates and recorded guest failures</td><td>A correct output image or complete program support</td></tr>
 <tr><td><strong>Optional feature testing</strong></td><td>Focused regressions for host GPU replay and native code generation</td><td>Hardware-exact behaviour for all guest software</td></tr>
 </table>
 
-### Development snapshot · 29 October 2026
+### Development snapshot · 30 October 2026
 
-**On `main`:** code-cache/CPU correctness work ([#93](https://github.com/hffgzktbcc-blip/ounce-core/pull/93)), bounded Binder message validation ([#91](https://github.com/hffgzktbcc-blip/ounce-core/pull/91)), and external corpus preparation and diagnostics ([#89](https://github.com/hffgzktbcc-blip/ounce-core/pull/89)) have been merged. These do not establish independent rendered-frame correctness.
+**On `main`:** code-cache/CPU correctness work ([#93](https://github.com/hffgzktbcc-blip/ounce-core/pull/93)), bounded Binder message validation ([#91](https://github.com/hffgzktbcc-blip/ounce-core/pull/91)), external corpus preparation and diagnostics ([#89](https://github.com/hffgzktbcc-blip/ounce-core/pull/89)), and host GPU replay ordering/state corrections ([#94](https://github.com/hffgzktbcc-blip/ounce-core/pull/94)) have been merged. These do not establish independent rendered-frame correctness.
 
-**Still under review:** [#90](https://github.com/hffgzktbcc-blip/ounce-core/pull/90) (explicit two-engine NRO runner), [#94](https://github.com/hffgzktbcc-blip/ounce-core/pull/94) (host GPU replay), [#95](https://github.com/hffgzktbcc-blip/ounce-core/pull/95) (graphics startup), [#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96) (Ounce-Verify contract), [#98](https://github.com/hffgzktbcc-blip/ounce-core/pull/98) (security/coverage workflows), and [#99](https://github.com/hffgzktbcc-blip/ounce-core/pull/99) (historical provenance audit). Their branch results are **not** merged-release features.
+**Still under review:** [#90](https://github.com/hffgzktbcc-blip/ounce-core/pull/90) (explicit two-engine NRO runner), [#95](https://github.com/hffgzktbcc-blip/ounce-core/pull/95) (graphics startup), [#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96) (Ounce-Verify contract), [#98](https://github.com/hffgzktbcc-blip/ounce-core/pull/98) (security/coverage workflows), and [#99](https://github.com/hffgzktbcc-blip/ounce-core/pull/99) (historical provenance audit). Their branch results are **not** merged-release features.
 
 **Release distinction:** a successful PR is not a published release. See the [Releases page](https://github.com/hffgzktbcc-blip/ounce-core/releases) for the latest packaged version, and the [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls) for work in progress.
 
@@ -144,7 +144,7 @@ cargo test --release
 cargo run --release -- test
 ```
 
-The 25-stage harness runs synthetic AArch64 programs written for this repository through the CPU, kernel and service models. It is not an independently authored homebrew compatibility suite. Each stage passes when its guest program returns the expected exit code; host timings are informational only. Passing this harness does not establish compatibility with commercial software or general homebrew compatibility.
+The harness currently reports 27 checks across 25 stages. It runs synthetic AArch64 programs written for this repository through the CPU, kernel and service models. It is not an independently authored homebrew compatibility suite. Each stage passes when its guest program returns the expected exit code; host timings are informational only. Passing this harness does not establish compatibility with commercial software or general homebrew compatibility.
 
 CI coverage is feature-specific: the default job runs unit tests and the 25-stage harness; `gpu-present` builds and runs unit tests but does not run that harness; `native-jit` tests the recompiler crate, builds the feature, runs the Tier-4 host self-test and feature-enabled unit tests, but does not run the 25-stage harness. These configured checks describe CI coverage, not the result of the latest run. Test totals are omitted because they can change between revisions.
 
