@@ -810,6 +810,21 @@ mod tests {
                 depth_log2: 0,
             }
         );
+        let mut pitch = surface.clone();
+        pitch.layout = 1;
+        pitch.pitch = pitch.width * 4;
+        assert_eq!(
+            pitch.tiling_surface().unwrap().layout,
+            crate::gpu::tiling::Layout::Pitch {
+                stride: pitch.width * 4,
+            }
+        );
+        let mut invalid = surface.clone();
+        invalid.color_format = 0;
+        assert!(invalid.tiling_surface().is_none());
+        invalid = surface.clone();
+        invalid.allocation_size = tiled.size_bytes().unwrap() as u64 - 1;
+        assert!(invalid.tiling_surface().is_none());
         ipc.nvdrv.nvmap.get_mut(&7).unwrap().size = 0x1000;
         assert!(
             ipc.submitted_vi_surface().is_none(),
