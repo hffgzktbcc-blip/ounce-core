@@ -643,6 +643,13 @@ fn run_vm_internal(
                             "\n[VM] Hit svcBreak: reason=0x{:X}, info1=0x{:X}, info2=0x{:X}",
                             reason, info1, info2
                         );
+                        println!("[VM] Break PC: 0x{:016X}", cpu.regs.pc);
+                        if info2 == 4 {
+                            match mmu.read_u32(info1) {
+                                Ok(result) => println!("[VM] Break result: 0x{:08X} (module={}, description={})", result, result & 0x1FF, (result >> 9) & 0x1FFF),
+                                Err(error) => println!("[VM] Break result unreadable: {}", error),
+                            }
+                        }
                         stop = VmStop::Break;
                         break;
                     }

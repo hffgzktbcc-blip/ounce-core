@@ -426,6 +426,8 @@ pub struct Wgpu3DRenderer {
     current_mvp: [f32; 16],
     depth_test_active: bool,
     has_texture_active: bool,
+    active_texture: Option<u64>,
+    active_viewport: Option<[f32; 4]>,
 
     vertex_buffer: wgpu::Buffer,
     vertex_buffer_capacity: usize,
@@ -676,6 +678,8 @@ impl Wgpu3DRenderer {
             ],
             depth_test_active: false,
             has_texture_active: false,
+            active_texture: None,
+            active_viewport: None,
             vertex_buffer,
             vertex_buffer_capacity: initial_v_cap,
             index_buffer,
@@ -762,16 +766,18 @@ impl Wgpu3DRenderer {
             return;
         }
 
-        let mut clear_color = wgpu::Color { r: 0.05, g: 0.05, b: 0.10, a: 1.0 };
-        let mut clear_depth = 1.0f32;
-        let mut has_clear = false;
+        // Evict only between batches. All bindings used by this batch must survive
+        // its pre-pass, including a texture inherited from the previous submission.
+        if self.tex_cache.len() >= 64 {
+            self.tex_cache.retain(|key, _| Some(*key) == self.active_texture);
+        }
 
         let initial_depth_test = self.depth_test_active;
         let mut active_mvp = self.current_mvp;
         let mut active_has_tex = self.has_texture_active;
         let mut active_depth_test = self.depth_test_active;
 
-        // --- PRE-PASS: Collect clear settings, cache textures, and pack uniform slots ---
+        // --- PRE-PASS: Cache textures and pack uniform slots ---
         let mut op_tex_map: std::collections::HashMap<usize, Option<u64>> = std::collections::HashMap::new();
         let mut draw_op_slots: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
         let mut uniform_bytes: Vec<u8> = Vec::new();
@@ -780,16 +786,6 @@ impl Wgpu3DRenderer {
 
         for (op_idx, op) in ops.iter().enumerate() {
             match op {
-                Gpu3DDrawOp::ClearSurface { color, depth } => {
-                    clear_color = wgpu::Color {
-                        r: color[0] as f64,
-                        g: color[1] as f64,
-                        b: color[2] as f64,
-                        a: color[3] as f64,
-                    };
-                    clear_depth = *depth;
-                    has_clear = true;
-                }
                 Gpu3DDrawOp::SetMvpMatrix { matrix } => {
                     active_mvp = *matrix;
                 }
@@ -801,9 +797,6 @@ impl Wgpu3DRenderer {
                         active_has_tex = true;
                         let h = hash_texture_data(tex_data.width, tex_data.height, &tex_data.rgba_bytes);
                         if !self.tex_cache.contains_key(&h) {
-                            if self.tex_cache.len() >= 64 {
-                                self.tex_cache.clear();
-                            }
                             let texture_wgpu = device.create_texture(&wgpu::TextureDescriptor {
                                 label: Some("ounce-3d-bound-tex"),
                                 size: wgpu::Extent3d {
@@ -988,20 +981,28 @@ impl Wgpu3DRenderer {
             queue.write_buffer(&self.index_buffer, 0, &i_bytes_all);
         }
 
-        let color_load = if has_clear {
-            wgpu::LoadOp::Clear(clear_color)
-        } else {
-            wgpu::LoadOp::Load
-        };
-
-        let depth_load = if has_clear {
-            wgpu::LoadOp::Clear(clear_depth)
-        } else {
-            wgpu::LoadOp::Load
-        };
-
-        // --- RENDER PASS: Sequential command dispatch ---
-        {
+        // Every clear starts a new render pass at its original command position.
+        // Buffers are packed/uploaded once, so offsets continue across passes.
+        let mut current_texture = self.active_texture;
+        let mut current_viewport = self.active_viewport;
+        let mut current_depth_test = initial_depth_test;
+        let mut cur_v_byte_offset = 0u64;
+        let mut cur_i_byte_offset = 0u64;
+        let mut start = 0;
+        while start < ops.len() {
+            let end = (start + 1..ops.len())
+                .find(|&i| matches!(ops[i], Gpu3DDrawOp::ClearSurface { .. }))
+                .unwrap_or(ops.len());
+            let (color_load, depth_load) = match &ops[start] {
+                Gpu3DDrawOp::ClearSurface { color, depth } => (
+                    wgpu::LoadOp::Clear(wgpu::Color {
+                        r: color[0] as f64, g: color[1] as f64,
+                        b: color[2] as f64, a: color[3] as f64,
+                    }),
+                    wgpu::LoadOp::Clear(*depth),
+                ),
+                _ => (wgpu::LoadOp::Load, wgpu::LoadOp::Load),
+            };
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("ounce-3d-offscreen-pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1026,20 +1027,20 @@ impl Wgpu3DRenderer {
                 multiview_mask: None,
             });
 
-            pass.set_viewport(0.0, 0.0, self.width as f32, self.height as f32, 0.0, 1.0);
-
-            let mut current_tex_bg = &self.default_tex_bind_group;
-            pass.set_bind_group(1, current_tex_bg, &[]);
-
-            let mut current_depth_test = initial_depth_test;
-            let mut cur_v_byte_offset = 0u64;
-            let mut cur_i_byte_offset = 0u64;
+            let [x, y, width, height] = current_viewport
+                .unwrap_or([0.0, 0.0, self.width as f32, self.height as f32]);
+            pass.set_viewport(x, y, width, height, 0.0, 1.0);
+            let texture_bg = current_texture.and_then(|h| self.tex_cache.get(&h))
+                .map(|(_, bg)| bg).unwrap_or(&self.default_tex_bind_group);
+            pass.set_bind_group(1, texture_bg, &[]);
             let mut last_bound_slot: Option<usize> = None;
 
-            for (op_idx, op) in ops.iter().enumerate() {
+            for op_idx in start..end {
+                let op = &ops[op_idx];
                 match op {
                     Gpu3DDrawOp::SetViewport { x, y, width, height } => {
                         if *width > 0.0 && *height > 0.0 {
+                            current_viewport = Some([*x, *y, *width, *height]);
                             pass.set_viewport(*x, *y, *width, *height, 0.0, 1.0);
                         }
                     }
@@ -1047,7 +1048,8 @@ impl Wgpu3DRenderer {
                         current_depth_test = *enabled;
                     }
                     Gpu3DDrawOp::BindTexture { .. } => {
-                        current_tex_bg = match op_tex_map.get(&op_idx).copied().flatten() {
+                        current_texture = op_tex_map.get(&op_idx).copied().flatten();
+                        let current_tex_bg = match current_texture {
                             Some(h) => self.tex_cache.get(&h).map(|(_, bg)| bg).unwrap_or(&self.default_tex_bind_group),
                             None => &self.default_tex_bind_group,
                         };
@@ -1112,8 +1114,12 @@ impl Wgpu3DRenderer {
                     _ => {}
                 }
             }
+            drop(pass);
+            start = end;
         }
 
+        self.active_texture = current_texture;
+        self.active_viewport = current_viewport;
         self.current_mvp = active_mvp;
         self.has_texture_active = active_has_tex;
         self.depth_test_active = active_depth_test;
@@ -2107,6 +2113,125 @@ mod tests {
         let r_c = pixels[center_idx];
         let g_c = pixels[center_idx + 1];
         assert!(r_c < 50 && g_c < 50, "Center pixel should be empty clear color, got ({}, {})", r_c, g_c);
+    }
+
+    #[test]
+    fn test_replay_order_and_inherited_bindings() {
+        let _lock = GPU_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let adapter = match pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, None)) {
+            Ok(adapter) => adapter,
+            Err(e) => {
+                eprintln!("skipping dynamic depth test GPU test: no adapter ({e})");
+                return;
+            }
+        };
+        eprintln!("Replay regression adapter: {:?}", adapter.get_info());
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("ounce-3d-depth-overlay-test-device"),
+            required_limits: wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
+            ..Default::default()
+        }))
+        .expect("adapter found but device could not be opened");
+
+        let (w, h) = (64u32, 64u32);
+        let mut renderer = Wgpu3DRenderer::new(&device, &queue, w, h);
+
+        let quad_v = |z: f32, color: [f32; 3]| -> Vec<Gpu3DVertex> {
+            vec![
+                Gpu3DVertex { position: [-1.0, -1.0, z], color, uv: [0.0, 0.0] },
+                Gpu3DVertex { position: [ 1.0, -1.0, z], color, uv: [1.0, 0.0] },
+                Gpu3DVertex { position: [ 1.0,  1.0, z], color, uv: [1.0, 1.0] },
+                Gpu3DVertex { position: [-1.0, -1.0, z], color, uv: [0.0, 0.0] },
+                Gpu3DVertex { position: [ 1.0,  1.0, z], color, uv: [1.0, 1.0] },
+                Gpu3DVertex { position: [-1.0,  1.0, z], color, uv: [0.0, 1.0] },
+            ]
+        };
+
+        let read_pixels = |renderer: &Wgpu3DRenderer, mut encoder: wgpu::CommandEncoder| {
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ounce-3d-depth-overlay-readback"),
+            size: (w * h * 4) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &renderer.offscreen_color_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * w),
+                    rows_per_image: Some(h),
+                },
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+        queue.submit(Some(encoder.finish()));
+
+        let slice = readback.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |res| res.expect("readback map failed"));
+        device.poll(wgpu::PollType::wait_indefinitely()).expect("GPU poll failed");
+        let pixels = slice.get_mapped_range().expect("readback not mapped").to_vec();
+
+            pixels
+        };
+        let draw = || Gpu3DDrawOp::DrawArrays {
+            vertices: quad_v(0.5, [1.0, 1.0, 1.0]),
+            topology: GpuPrimitiveTopology::TriangleList,
+        };
+        let clear = Gpu3DDrawOp::ClearSurface { color: [0.0, 0.0, 1.0, 1.0], depth: 1.0 };
+        let texture = |r| Gpu3DDrawOp::BindTexture { texture: Some(Gpu3DTextureData {
+            width: 1, height: 1, rgba_bytes: vec![r, 0, 0, 255],
+        }) };
+        let encoder = || device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let mut enc = encoder();
+        renderer.render_ops(&device, &queue, &mut enc, &[
+            clear.clone(), texture(255),
+            Gpu3DDrawOp::SetViewport { x: 0.0, y: 0.0, width: 32.0, height: 64.0 },
+            draw(), clear.clone(), draw(),
+        ]);
+        let pixels = read_pixels(&renderer, enc);
+        let pixel = |pixels: &[u8], x: usize| pixels[(32 * 64 + x) * 4..(32 * 64 + x) * 4 + 4].to_vec();
+        assert_eq!(pixel(&pixels, 16), vec![255, 0, 0, 255]);
+        assert_eq!(pixel(&pixels, 48), vec![0, 0, 255, 255]);
+
+        // No state-setting commands: both viewport and texture survive submission.
+        let mut enc = encoder();
+        renderer.render_ops(&device, &queue, &mut enc, &[clear.clone(), draw()]);
+        let pixels = read_pixels(&renderer, enc);
+        assert_eq!(pixel(&pixels, 16), vec![255, 0, 0, 255]);
+        assert_eq!(pixel(&pixels, 48), vec![0, 0, 255, 255]);
+
+        // An end-of-batch clear must erase the preceding geometry.
+        let mut enc = encoder();
+        renderer.render_ops(&device, &queue, &mut enc, &[draw(), clear.clone()]);
+        let pixels = read_pixels(&renderer, enc);
+        assert_eq!(pixel(&pixels, 16), vec![0, 0, 255, 255]);
+
+        // Cross the cache threshold within one batch: its first texture is still
+        // required at dispatch time even though many later bindings are uploaded.
+        let mut ops = vec![clear, texture(255), draw()];
+        for r in 0..65 { ops.push(texture(r)); }
+        let mut enc = encoder();
+        renderer.render_ops(&device, &queue, &mut enc, &ops);
+        let pixels = read_pixels(&renderer, enc);
+        assert_eq!(pixel(&pixels, 16), vec![255, 0, 0, 255]);
+        // The final binding must also survive next-batch cache eviction.
+        let mut enc = encoder();
+        renderer.render_ops(&device, &queue, &mut enc, &[draw()]);
+        let pixels = read_pixels(&renderer, enc);
+        assert_eq!(pixel(&pixels, 16), vec![64, 0, 0, 255]);
     }
 
     #[test]
