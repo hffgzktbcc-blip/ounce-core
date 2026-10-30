@@ -427,6 +427,13 @@ impl IpcManager {
                     mmu.read_u32(args + 4)
                         .and_then(|code| mmu.read_u32(args + 8).map(|flags| (id, code, flags)))
                 });
+                static TRACE_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+                if std::env::var_os("OUNCE_TRACE_IPC").is_some()
+                    && self.vi_binder.last_submission.is_none()
+                    && TRACE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 64
+                {
+                    eprintln!("[VI transaction] fields={fields:?}");
+                }
                 let input = self
                     .request
                     .send_statics
