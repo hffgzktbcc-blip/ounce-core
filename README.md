@@ -123,14 +123,17 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 <tr><td><strong>25 harness stages / 27 checks</strong></td><td>Project-authored programs met expected functional stage gates</td><td>General homebrew or Switch 2 compatibility</td></tr>
 <tr><td><strong>9 CI jobs</strong></td><td>Standard, GPU-feature and native-JIT jobs across Linux, macOS and Windows</td><td>That every engine or graphics path was tested by every job</td></tr>
 <tr><td><strong>Independent homebrew probes</strong></td><td>Reports from unchanged external candidates and recorded guest failures</td><td>A correct output image or complete program support</td></tr>
+<tr><td><strong>Raw-frame extraction (PR #103, unmerged)</strong></td><td>CI captured matching 1280×720 simplegfx raw-frame hashes from interpreter and Tier-3 at <code>d317921</code></td><td>Visual correctness, normal guest completion, repeat-run reproducibility, or a feature already on <code>main</code></td></tr>
 <tr><td><strong>Optional feature testing</strong></td><td>Focused regressions for host GPU replay and native code generation</td><td>Hardware-exact behaviour for all guest software</td></tr>
 </table>
 
 ### Development snapshot · 30 October 2026
 
-**On `main`:** code-cache/CPU correctness work ([#93](https://github.com/hffgzktbcc-blip/ounce-core/pull/93)), bounded Binder message validation ([#91](https://github.com/hffgzktbcc-blip/ounce-core/pull/91)), external corpus preparation and diagnostics ([#89](https://github.com/hffgzktbcc-blip/ounce-core/pull/89)), and host GPU replay ordering/state corrections ([#94](https://github.com/hffgzktbcc-blip/ounce-core/pull/94)) have been merged. These do not establish independent rendered-frame correctness.
+**On `main`:** the NRO execution runner ([#90](https://github.com/hffgzktbcc-blip/ounce-core/pull/90)), Binder groundwork ([#91](https://github.com/hffgzktbcc-blip/ounce-core/pull/91)), CPU/homebrew regressions ([#93](https://github.com/hffgzktbcc-blip/ounce-core/pull/93)), GPU replay state fixes ([#94](https://github.com/hffgzktbcc-blip/ounce-core/pull/94)), nvdrv/graphics-startup work ([#95](https://github.com/hffgzktbcc-blip/ounce-core/pull/95)), the implemented Ounce-Verify validator ([#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96)), security and on-demand coverage workflows ([#98](https://github.com/hffgzktbcc-blip/ounce-core/pull/98)), and bounded native-window producer queueing ([#102](https://github.com/hffgzktbcc-blip/ounce-core/pull/102)) are merged. Their presence does **not** establish Switch 2 compatibility or complete guest rendering.
 
-**Still under review:** [#90](https://github.com/hffgzktbcc-blip/ounce-core/pull/90) (explicit two-engine NRO runner), [#95](https://github.com/hffgzktbcc-blip/ounce-core/pull/95) (graphics startup), [#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96) (Ounce-Verify contract), [#98](https://github.com/hffgzktbcc-blip/ounce-core/pull/98) (security/coverage workflows), and [#99](https://github.com/hffgzktbcc-blip/ounce-core/pull/99) (historical provenance audit). Their branch results are **not** merged-release features.
+**Verified on an open PR, not yet on `main`:** [#103](https://github.com/hffgzktbcc-blip/ounce-core/pull/103) captured identical simplegfx raw-frame evidence under the interpreter and Tier-3 in external CI at `d317921`: 1280×720, FNV-1a hash `0xd95ddf22e46ba325`, 921,600 non-black pixels, stop reason `FrameLimit`. The recorded CI sample SHA-256 is `b59fc85f0079bcd93007d97150e2af8302ac0804d1120cee43cf32fd37b69bf1`. Required CI and security workflows passed for that revision. This proves **extraction agreement for that sample**, not intended visual correctness, guest completion or repeat-run reproducibility. Independent review and merge remain outstanding.
+
+**Other open work:** [#99](https://github.com/hffgzktbcc-blip/ounce-core/pull/99) is a draft historical provenance audit; [#104](https://github.com/hffgzktbcc-blip/ounce-core/pull/104) adds crypto test coverage (draft; a CodeQL alert on public NIST test vectors requires documented triage); [#105](https://github.com/hffgzktbcc-blip/ounce-core/pull/105) is a draft malformed-UTF-8 hex panic fix. These are **not merged**.
 
 **Release distinction:** a successful PR is not a published release. See the [Releases page](https://github.com/hffgzktbcc-blip/ounce-core/releases) for the latest packaged version, and the [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls) for work in progress.
 
@@ -252,11 +255,11 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 | :--- | :--- | :--- |
 | CPU code-cache invalidation | **Complete for its stated regression gate** | Synthetic write/remap tests and gated CI |
 | Independent original-Switch homebrew | **In progress** | Reproducible independent inputs, guest outcomes, external reproduction and real output oracles |
-| Ounce-Verify evidence layer | **Design proposed** | Implemented validator, deterministic evidence and negative tests |
+| Ounce-Verify evidence layer | **Implemented on `main`** | Deterministic evidence validation and negative tests; see [#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96) |
 | First Switch 2 vertical slice | **Blocked** | Authorised toolchain and reference hardware, self-authored sample, matched input/result/image |
 | Broader target compatibility | **Future research** | Case-by-case behaviour verified against appropriate references |
 
-The project makes **no current claim** to run Switch 2 software, retail titles or arbitrary homebrew. See [independent corpus methodology](docs/independent-corpus.md) and the [proposed Ounce-Verify design](https://github.com/hffgzktbcc-blip/ounce-core/pull/96).
+The project makes **no current claim** to run Switch 2 software, retail titles or arbitrary homebrew. See [independent corpus methodology](docs/independent-corpus.md), the [Ounce-Verify implementation](https://github.com/hffgzktbcc-blip/ounce-core/pull/96), and [the unmerged raw-frame evidence work](https://github.com/hffgzktbcc-blip/ounce-core/pull/103).
 
 ---
 
@@ -319,7 +322,7 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and [the clean
 ```
 ounce-core/
 ├── .github/workflows/ # Cross-platform CI
-├── assets/            # Vector artwork
+├── assets/            # README artwork and other assets
 ├── crates/
 │   └── ounce-recompiler/ # Optional Tier-4 native code and executable-memory boundary
 ├── docs/design/       # Architecture and implementation notes
