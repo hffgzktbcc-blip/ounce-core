@@ -454,10 +454,18 @@ impl IpcManager {
                                     Ok(output)
                                         if self.write_out_buffer(mmu, &output) == output.len() =>
                                     {
+                                        if code == 7 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+                                            eprintln!("[VI queue] result=0; {}", self.vi_submission_diagnostic());
+                                        }
                                         0
                                     }
                                     Ok(_) => INVALID_ADDRESS,
-                                    Err(result) => result,
+                                    Err(result) => {
+                                        if code == 7 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+                                            eprintln!("[VI queue] result={result:#x}; {}", self.vi_submission_diagnostic());
+                                        }
+                                        result
+                                    },
                                 },
                                 Err(result) => result,
                             },

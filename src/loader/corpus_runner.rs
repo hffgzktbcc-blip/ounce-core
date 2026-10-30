@@ -62,6 +62,7 @@ struct Report {
     input_applied_at: Vec<usize>,
     raw_frame: Option<RawFrameEvidence>,
     first_present_diagnostic: Option<String>,
+    post_queue_diagnostic: Option<String>,
     // A report is an observation. A normal guest exit alone is not a compatibility verdict.
     compatibility: &'static str,
 }
@@ -80,7 +81,7 @@ fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
     Report { requested_engine: engine, actual_engine: engine, stop,
         instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
         preemptions: 0, svcs: Vec::new(), debug_output: String::new(),
-        input_applied_at: Vec::new(), raw_frame: None, first_present_diagnostic: None, compatibility: "not-assessed" }
+        input_applied_at: Vec::new(), raw_frame: None, first_present_diagnostic: None, post_queue_diagnostic: None, compatibility: "not-assessed" }
 }
 
 /// Run an already configured VM, retaining the real kernel dispatcher and scheduler.
@@ -198,6 +199,19 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                     if result.frames >= limits.frames { result.stop = Stop::FrameLimit; break 'run; }
                 }
             }
+        }
+        if result.post_queue_diagnostic.is_none()
+            && let Some(submitted) = kernel.ipc.submitted_vi_surface()
+        {
+            result.post_queue_diagnostic = Some(match submitted.tiling_surface() {
+                None => format!("unsupported or out-of-bounds descriptor: {submitted:?}"),
+                Some(surface) => match crate::gpu::present::surface::frame_from_surface(
+                    &mmu, submitted.guest_addr, &surface) {
+                    Ok(frame) => format!("post-queue extraction succeeded: {}x{} hash={:#x}; {submitted:?}",
+                        frame.width, frame.height, frame.content_hash()),
+                    Err(error) => format!("post-queue extraction failed: {error:?}; {submitted:?}"),
+                },
+            });
         }
         // Dispatch may switch the guest thread: resume from the post-dispatch registers.
         // A block can cross a quantum without landing exactly on a modulo boundary.
