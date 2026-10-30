@@ -1,6 +1,6 @@
 # Rust quality tools — adoption and Codex handoff (2026-10-29)
 
-Status: proposed workflows on a separate draft pull request. They are **not** merged or proven to run successfully until GitHub Actions validates them. Existing `.github/workflows/ci.yml` and its nine required platform/feature jobs are unchanged.
+Status: proposed workflows on a separate draft pull request. CodeQL Rust and RustSec completed successfully on exact PR head `69d1569c23d7e880ad34b8456778c94284fe7e46`; the manual coverage workflow remains unproven until it can run from the default branch. Existing `.github/workflows/ci.yml` and its nine required platform/feature jobs are unchanged.
 
 ## Implemented in this proposal
 
