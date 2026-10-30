@@ -605,6 +605,80 @@ mod tests {
         }
     }
 
+    #[test]
+    fn add_sub_immediate_stack_operands_match_interpreter() {
+        let base = 0x8000_0000;
+        let stack = 0x2000u64;
+        let mut mmu = Memory::new();
+        load(&mut mmu, base, &[
+            (0x00, 0xD10083FF), // sub sp, sp, #32
+            (0x04, 0x910023E1), // add x1, sp, #8
+            (0x08, 0xD2800542), // mov x2, #42
+            (0x0C, 0xF9000422), // str x2, [x1, #8]
+            (0x10, 0xF9400420), // ldr x0, [x1, #8]
+            (0x14, 0x910083FF), // add sp, sp, #32
+            (0x18, 0xD40000E1), // svc #7
+        ]);
+        mmu.map_range(stack - 4096, 4096, Permission::READ_WRITE);
+        let mut reference_mmu = Memory::new();
+        reference_mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+        reference_mmu.map_range(stack - 4096, 4096, Permission::READ_WRITE);
+        for offset in (0..0x1Cu64).step_by(4) {
+            reference_mmu.write_u32(base + offset, mmu.read_u32(base + offset).unwrap()).unwrap();
+        }
+        let mut reference = Cpu::new();
+        reference.regs.pc = base;
+        reference.regs.sp = stack;
+        loop {
+            if matches!(reference.step(&mut reference_mmu).unwrap(), super::super::interpreter::StepResult::Svc(7)) { break; }
+        }
+        let mut cpu = Cpu::new();
+        cpu.regs.pc = base;
+        cpu.regs.sp = stack;
+        let block = Tier2Block::compile(base, &mmu).unwrap();
+        let (_, exit) = block.execute(&mut cpu, &mut mmu);
+        assert!(matches!(exit, BlockExit::Svc { svc_id: 7 }));
+        assert_eq!(cpu.regs.sp, reference.regs.sp);
+        assert_eq!(cpu.regs.read_x(0), reference.regs.read_x(0));
+        assert_eq!(cpu.regs.read_x(0), 42);
+        assert_eq!(cpu.regs.read_x(1), reference.regs.read_x(1));
+        assert_eq!(mmu.read_u64(stack - 16).unwrap(), 42);
+    }
+
+    #[test]
+    fn test_bit_branches_end_compiled_blocks_and_preserve_taken_targets() {
+        let base = 0x8000_0000;
+        for (word, value, taken) in [
+            (0x36000040, 0, true), (0x36000040, 1, false), // TBZ bit 0
+            (0x37000040, 1, true), (0x37000040, 0, false), // TBNZ bit 0
+            (0xB6F80040, 0, true), (0xB6F80040, 1u64 << 63, false), // TBZ bit 63
+            (0xB7F80040, 1u64 << 63, true), (0xB7F80040, 0, false),
+        ] {
+            let mut mmu = Memory::new();
+            load(&mut mmu, base, &[(0, word), (4, 0xD2800021), (8, 0xD40000E1)]);
+            let block = Tier2Block::compile(base, &mmu).unwrap();
+            assert_eq!(block.insns.len(), 1);
+            let mut cpu = Cpu::new();
+            cpu.regs.pc = base;
+            cpu.regs.write_x(0, value);
+            cpu.regs.write_x(1, 42);
+            let (_, exit) = block.execute(&mut cpu, &mut mmu);
+            if taken {
+                assert!(matches!(exit, BlockExit::BranchCondTaken { target } if target == base + 8));
+                assert_eq!(cpu.regs.read_x(1), 42);
+            } else {
+                assert!(matches!(exit, BlockExit::BranchFallthrough { next_pc } if next_pc == base + 4));
+            }
+            let mut engine = super::super::tier3_jit::Tier3JitEngine::new();
+            engine.hot_pc_counters.insert(base, super::super::tier3_jit::Tier3JitEngine::HOT_THRESHOLD);
+            cpu.regs.pc = base;
+            let (_, exit) = engine.run_slice(&mut cpu, &mut mmu, 100);
+            assert!(matches!(exit, BlockExit::Svc { svc_id: 7 }));
+            assert_eq!(cpu.regs.read_x(1), if taken { 42 } else { 1 });
+            assert!(engine.total_super_block_executions > 0, "must exercise a hot compiled path");
+        }
+    }
+
     /// Runs Tier-2 slices until the guest exits with `SVC`, stepping over `RET` yields.
     fn run_to_svc(jit: &mut Tier2JitEngine, cpu: &mut Cpu, mmu: &mut Memory) -> BlockExit {
         for _ in 0..16 {
