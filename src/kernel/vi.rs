@@ -130,6 +130,7 @@ impl<'a> Parcel<'a> {
 #[derive(Debug, Default)]
 pub struct BinderObjects {
     objects: BTreeMap<u32, ProducerObject>,
+    layers: BTreeMap<u64, u32>,
     next_id: u32,
     pub last_submission: Option<GraphicBufferSlot>,
 }
@@ -144,6 +145,28 @@ impl BinderObjects {
         self.next_id = id;
         self.objects.insert(id, ProducerObject::default());
         Ok(id)
+    }
+
+    pub fn open_layer(&mut self, layer_id: u64) -> Result<u32, u32> {
+        if let Some(&object_id) = self.layers.get(&layer_id) {
+            return Ok(object_id);
+        }
+        let object_id = self.register()?;
+        self.layers.insert(layer_id, object_id);
+        Ok(object_id)
+    }
+
+    pub fn has_layer(&self, layer_id: u64) -> bool {
+        self.layers.contains_key(&layer_id)
+    }
+
+    pub fn close_layer(&mut self, layer_id: u64) -> Result<(), u32> {
+        let object_id = self.layers.remove(&layer_id).ok_or(INVALID_HANDLE)?;
+        if let Err(result) = self.retire(object_id) {
+            self.layers.insert(layer_id, object_id);
+            return Err(result);
+        }
+        Ok(())
     }
 
     pub fn adjust(&mut self, id: u32, delta: i32, kind: u32) -> Result<(), u32> {
@@ -495,7 +518,8 @@ mod tests {
         let display = h
             .ipc
             .allocate_handle(ServiceType::ApplicationDisplayService);
-        let input = [0u8; 0x50];
+        let mut input = [0u8; 0x50];
+        input[0x40..0x48].copy_from_slice(&1u64.to_le_bytes());
         let reply = h.call_out(
             display,
             Req {
@@ -512,6 +536,22 @@ mod tests {
         let parcel_bytes = h.read_buf(BUF, 28);
         let parcel = Parcel::parse(&parcel_bytes).unwrap();
         let object = u32::from_le_bytes(parcel.payload[8..12].try_into().unwrap());
+
+        let mut scaling = [0u8; 16];
+        scaling[0..4].copy_from_slice(&2u32.to_le_bytes());
+        scaling[8..16].copy_from_slice(&1u64.to_le_bytes());
+        assert_eq!(
+            h.call(
+                display,
+                Req {
+                    cmd: 2101,
+                    data: &scaling,
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
 
         let relay = h
             .ipc
@@ -533,6 +573,20 @@ mod tests {
             h.ipc.service_event_signaled(reply.copy_handles[0]),
             Some(true)
         );
+
+        assert_eq!(
+            h.call(
+                display,
+                Req {
+                    cmd: 2021,
+                    data: &1u64.to_le_bytes(),
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
+        assert!(!h.ipc.vi_binder.has_layer(1));
     }
 
     #[test]
