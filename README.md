@@ -22,7 +22,7 @@
 
 Every program is a conversation between instructions, memory, operating-system services and hardware. **Ounce-Core** is an experimental Rust research runtime that makes that conversation observable.
 
-It brings together interpreters, tiered AArch64 execution, a safe-Rust host runtime, Horizon-style service models, software graphics and optional `wgpu` presentation. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
+It brings together interpreters, tiered AArch64 execution, Horizon-style service models, software graphics and optional `wgpu` presentation. The root crate forbids unsafe Rust; the optional Tier-4 recompiler owns a separate unsafe boundary for native code generation and executable memory. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
 
 > **Long-term north star:** research the foundations needed to execute **Nintendo Switch 2** software. **Not a present capability.** Current independent experiments use **original Nintendo Switch homebrew**, and their results do not establish Switch 2 or commercial-game compatibility.
 
