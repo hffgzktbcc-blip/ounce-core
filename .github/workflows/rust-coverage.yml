@@ -1,0 +1,33 @@
+# Run manually to avoid extra cost and disruption while PR integration is active.
+name: Rust coverage (on demand)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: LLVM source coverage (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - name: Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate coverage from workspace tests
+        run: cargo llvm-cov --workspace --locked --lcov --output-path coverage.lcov
+      - name: Store local-only coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ounce-core-llvm-coverage
+          path: coverage.lcov
+          retention-days: 7
+          if-no-files-found: error
