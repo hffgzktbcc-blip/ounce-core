@@ -61,6 +61,7 @@ struct Report {
     debug_output: String,
     input_applied_at: Vec<usize>,
     raw_frame: Option<RawFrameEvidence>,
+    first_present_diagnostic: Option<String>,
     // A report is an observation. A normal guest exit alone is not a compatibility verdict.
     compatibility: &'static str,
 }
@@ -79,7 +80,7 @@ fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
     Report { requested_engine: engine, actual_engine: engine, stop,
         instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
         preemptions: 0, svcs: Vec::new(), debug_output: String::new(),
-        input_applied_at: Vec::new(), raw_frame: None, compatibility: "not-assessed" }
+        input_applied_at: Vec::new(), raw_frame: None, first_present_diagnostic: None, compatibility: "not-assessed" }
 }
 
 /// Run an already configured VM, retaining the real kernel dispatcher and scheduler.
@@ -165,6 +166,20 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                 SvcResult::Unhandled(id) => { result.stop = Stop::UnhandledSvc(id); break; }
                 SvcResult::PresentFrame => {
                     result.frames += 1;
+                    if result.first_present_diagnostic.is_none() {
+                        result.first_present_diagnostic = Some(match kernel.ipc.submitted_vi_surface() {
+                            None => format!("svc={id:#x}: no resolvable VI submission; {}",
+                                kernel.ipc.vi_submission_diagnostic()),
+                            Some(submitted) => match submitted.tiling_surface() {
+                                None => format!("svc={id:#x}: unsupported or out-of-bounds descriptor: {submitted:?}"),
+                                Some(surface) => match crate::gpu::present::surface::frame_from_surface(
+                                    &mmu, submitted.guest_addr, &surface) {
+                                    Ok(_) => format!("svc={id:#x}: extracted {submitted:?}"),
+                                    Err(error) => format!("svc={id:#x}: extraction failed: {error:?}; {submitted:?}"),
+                                },
+                            },
+                        });
+                    }
                     if let Some(submitted) = kernel.ipc.submitted_vi_surface()
                         && let Some(surface) = submitted.tiling_surface()
                         && let Ok(frame) = crate::gpu::present::surface::frame_from_surface(

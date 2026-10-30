@@ -362,6 +362,10 @@ fn buffer_output_parcel(width: u32, height: u32) -> Vec<u8> {
 }
 
 impl IpcManager {
+    pub fn vi_submission_diagnostic(&self) -> String {
+        format!("slot={:?}; nvmap={:?}", self.vi_binder.last_submission, self.nvdrv.nvmap)
+    }
+
     /// Resolves the last queued producer slot through the nvmap registry. This
     /// describes raw guest memory only; it does not imply a valid rendered frame.
     pub fn submitted_vi_surface(&self) -> Option<SubmittedSurface> {
