@@ -207,8 +207,19 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                 None => format!("unsupported or out-of-bounds descriptor: {submitted:?}"),
                 Some(surface) => match crate::gpu::present::surface::frame_from_surface(
                     &mmu, submitted.guest_addr, &surface) {
-                    Ok(frame) => format!("post-queue extraction succeeded: {}x{} hash={:#x}; {submitted:?}",
-                        frame.width, frame.height, frame.content_hash()),
+                    Ok(frame) => {
+                        result.raw_frame = Some(RawFrameEvidence {
+                            guest_addr: submitted.guest_addr,
+                            width: frame.width,
+                            height: frame.height,
+                            rgba_fnv1a64: frame.content_hash(),
+                            non_black_pixels: frame.rgba.chunks_exact(4)
+                                .filter(|pixel| pixel[..3] != [0, 0, 0]).count(),
+                            center_rgba: frame.pixel(frame.width / 2, frame.height / 2),
+                        });
+                        format!("post-queue extraction succeeded: {}x{} hash={:#x}; {submitted:?}",
+                            frame.width, frame.height, frame.content_hash())
+                    },
                     Err(error) => format!("post-queue extraction failed: {error:?}; {submitted:?}"),
                 },
             });

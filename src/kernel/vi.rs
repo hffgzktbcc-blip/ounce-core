@@ -25,7 +25,7 @@ pub struct GraphicBufferSlot {
     pub nvmap_id: u32,
     pub width: u32,
     pub height: u32,
-    pub color_format: u32,
+    pub color_format: u64,
     pub layout: u32,
     pub pitch: u32,
     pub offset: u32,
@@ -39,7 +39,7 @@ pub struct SubmittedSurface {
     pub guest_addr: u64,
     pub width: u32,
     pub height: u32,
-    pub color_format: u32,
+    pub color_format: u64,
     pub layout: u32,
     pub pitch: u32,
     pub kind: u32,
@@ -54,11 +54,12 @@ impl SubmittedSurface {
     pub fn tiling_surface(&self) -> Option<crate::gpu::tiling::Surface> {
         use crate::gpu::tiling::{Format, Layout, Surface};
         let format = match self.color_format {
-            1 => Format::R8G8B8A8Unorm,
+            0x0100532120 => Format::R8G8B8A8Unorm,
+            0x010A881210 => Format::R5G6B5Unorm,
             _ => return None,
         };
         let layout = match self.layout {
-            0 if self.block_height_log2 <= 5 => Layout::BlockLinear {
+            3 if self.block_height_log2 <= 5 => Layout::BlockLinear {
                 height_log2: self.block_height_log2 as u8,
                 depth_log2: 0,
             },
@@ -301,12 +302,14 @@ impl BinderObjects {
                     nvmap_id: word(0x8C)?,
                     width: word(0xBC)?,
                     height: word(0xC0)?,
-                    color_format: word(0xC4)?,
-                    layout: word(0xC8)?,
-                    pitch: word(0xCC)?,
-                    offset: word(0xD4)?,
-                    kind: word(0xD8)?,
-                    block_height_log2: word(0xDC)?,
+                    // NvSurface has a 64-bit NvColorFormat. The flattened
+                    // native handle drops its 12-byte header, not struct padding.
+                    color_format: u64_at(0xC4)?,
+                    layout: word(0xCC)?,
+                    pitch: word(0xD0)?,
+                    offset: word(0xD8)?,
+                    kind: word(0xDC)?,
+                    block_height_log2: word(0xE0)?,
                     size: u64_at(0xF4)?,
                 };
                 if buffer.nvmap_id == 0
@@ -755,7 +758,7 @@ mod tests {
     }
 
     #[test]
-    fn producer_tracks_preallocated_slots_and_queue_submission() {
+    fn producer_preserves_u64_color_format_and_following_surface_fields() {
         let mut objects = BinderObjects::default();
         let id = objects.register().unwrap();
 
@@ -774,13 +777,14 @@ mod tests {
             (0x8C, 0x1001),
             (0xBC, 1280),
             (0xC0, 720),
-            (0xC4, 1),
-            (0xC8, 0),
-            (0xCC, 5120),
-            (0xD4, 0x2000),
-            (0xD8, 0xFE),
-            (0xDC, 4),
-        ] as [(usize, u32); 14]
+            (0xC4, 0x00532120),
+            (0xC8, 1),
+            (0xCC, 3),
+            (0xD0, 5120),
+            (0xD8, 0x2000),
+            (0xDC, 0xFE),
+            (0xE0, 4),
+        ] as [(usize, u32); 15]
         {
             set[off..off + 4].copy_from_slice(&word.to_le_bytes());
         }
@@ -797,6 +801,10 @@ mod tests {
         objects.transact(id, 0x7, &parsed(&queue)).unwrap();
         let submitted = objects.last_submission.as_ref().unwrap();
         assert_eq!(submitted.nvmap_id, 0x1001);
+        // libnx NvSurface: eight-byte color format followed by layout/pitch.
+        // The high word must survive; reading it as layout was the regression.
+        assert_eq!(submitted.color_format, 0x0100532120);
+        assert_eq!((submitted.layout, submitted.kind), (3, 0xFE));
         assert_eq!(
             (submitted.width, submitted.height, submitted.pitch),
             (1280, 720, 5120)
@@ -839,6 +847,9 @@ mod tests {
             }
         );
         let mut invalid = surface.clone();
+        invalid.block_height_log2 = 254;
+        assert!(invalid.tiling_surface().is_none());
+        invalid = surface.clone();
         invalid.color_format = 0;
         assert!(invalid.tiling_surface().is_none());
         invalid = surface.clone();
