@@ -566,6 +566,9 @@ fn libnx_multi_input_fixture_reads_styles_and_touch() {
     assert!(output.ends_with("ounce-input result=0x00000EEE\n"), "{output:?}");
 }
 
+#[path = "corpus_runner.rs"]
+mod corpus_runner;
+
 /// Qualify the shared runner before adding independent upstream samples.
 /// These project-authored fixtures are integration regressions, not corpus evidence.
 #[test]

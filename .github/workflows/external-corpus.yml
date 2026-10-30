@@ -139,6 +139,85 @@ jobs:
           print((evidence / "startup-interpreter.log").read_bytes()[-32768:].decode("utf-8", errors="replace"))
           PY
 
+
+      - name: Prebuild two-engine diagnostic test
+        run: cargo test --release --locked external_corpus_nro_probe_both_engines --no-run --message-format=json > "$RUNNER_TEMP/ounce-corpus-test-build.jsonl"
+
+      - name: Probe all samples under interpreter and Tier-3
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+          CORPUS_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          OUNCE_TRACE_IPC: "1"
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          root = Path(os.environ["CORPUS_ROOT"]) / "build"
+          evidence = Path(os.environ["EVIDENCE_ROOT"])
+          inventory = json.loads((root / "inventory.json").read_text())
+          # Invoke the compiled test executable directly so timeout kills the guest
+          # process itself, not just a cargo parent with a surviving test child.
+          messages = [json.loads(line) for line in
+              (Path(os.environ["RUNNER_TEMP"]) / "ounce-corpus-test-build.jsonl").read_text().splitlines()]
+          executables = {m["executable"] for m in messages
+              if m.get("reason") == "compiler-artifact"
+              and m.get("profile", {}).get("test")
+              and m.get("target", {}).get("name") == "ounce-core"
+              and m.get("executable")}
+          if len(executables) != 1:
+              raise SystemExit("Expected one compiled ounce-core test executable")
+          executable = next(iter(executables))
+          records = []
+          for sample in inventory["samples"]:
+              if len(sample["nro_sha256"]) != 1:
+                  raise SystemExit("Expected one NRO per trial")
+              relative, expected = next(iter(sample["nro_sha256"].items()))
+              nro = root / "source" / relative
+              actual = hashlib.sha256(nro.read_bytes()).hexdigest()
+              if actual != expected:
+                  raise SystemExit("NRO hash differs from inventory")
+              record = {
+                  "sample": sample["id"], "nro_sha256": actual,
+                  "source_revision": inventory["revision"],
+                  "runtime_commit": os.environ["GITHUB_SHA"],
+                  "source_head": os.environ["CORPUS_SOURCE_HEAD"],
+                  "requested_engines": ["interpreter", "tier3"],
+                  "compatibility": "not-assessed",
+                  "outer_host_timeout_seconds": 90,
+              }
+              path = evidence / (sample["id"] + ".two-engine.log")
+              env = dict(os.environ, OUNCE_CORPUS_NRO=str(nro))
+              command = [executable,
+                         "loader::fixture_tests::corpus_runner::external_corpus_nro_probe_both_engines",
+                         "--exact", "--ignored", "--nocapture", "--test-threads=1"]
+              with path.open("wb") as log:
+                  try:
+                      done = subprocess.run(command, env=env, stdout=log,
+                                            stderr=subprocess.STDOUT, timeout=90, check=False)
+                      record.update(probe_stop="host_process_exit", host_exit_code=done.returncode)
+                  except subprocess.TimeoutExpired:
+                      record.update(probe_stop="outer_host_timeout", host_exit_code=None)
+              data = path.read_bytes()
+              record["log_sha256"] = hashlib.sha256(data).hexdigest()
+              text = data.decode("utf-8", errors="replace")
+              record["diagnostic_test_completed"] = (
+                  record["host_exit_code"] == 0 and
+                  re.search(r"test result: ok\. 1 passed;", text) is not None)
+              records.append(record)
+              print(json.dumps(record))
+              print(text[-32768:])
+          (evidence / "two-engine-probes.json").write_text(json.dumps(records, indent=2) + "\n")
+          # Diagnostic guest breaks/budgets are observations, not compatibility passes.
+          # Missing input/test selection/build failures remain workflow errors.
+          if not all(r["diagnostic_test_completed"] for r in records):
+              raise SystemExit("At least one diagnostic test failed or exceeded its outer deadline")
+          PY
+
       - name: Retain diagnostic evidence (no upstream source or NRO binaries)
         if: always()
         uses: actions/upload-artifact@v4
