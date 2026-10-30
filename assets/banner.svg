@@ -1,167 +1,58 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="100%" height="100%">
-  <defs>
-    <!-- Background Gradient -->
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#080c14"/>
-      <stop offset="50%" stop-color="#0e1522"/>
-      <stop offset="100%" stop-color="#05080f"/>
-    </linearGradient>
-
-    <!-- Accent Gradient -->
-    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#00FFA3"/>
-      <stop offset="45%" stop-color="#00D2FF"/>
-      <stop offset="100%" stop-color="#9B51E0"/>
-    </linearGradient>
-
-    <!-- Core Emerald / Cyan Gradient -->
-    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00FFA3"/>
-      <stop offset="50%" stop-color="#00D2FF"/>
-      <stop offset="100%" stop-color="#7928CA"/>
-    </linearGradient>
-
-    <!-- Metal Gradient -->
-    <linearGradient id="metalRing" x1="20%" y1="0%" x2="80%" y2="100%">
-      <stop offset="0%" stop-color="#2a364a"/>
-      <stop offset="50%" stop-color="#182130"/>
-      <stop offset="100%" stop-color="#0f1520"/>
-    </linearGradient>
-
-    <!-- Glow Filter -->
-    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="6" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-
-    <filter id="ambientGlow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="40" result="amb"/>
-    </filter>
-  </defs>
-
-  <!-- Banner Outer Border Canvas -->
-  <rect width="1200" height="340" rx="20" fill="url(#bgGrad)"/>
-  <rect width="1196" height="336" x="2" y="2" rx="18" fill="none" stroke="#1c283a" stroke-width="2"/>
-
-  <!-- Subtle Ambient Glow Behind Left Emblem -->
-  <circle cx="210" cy="170" r="140" fill="#00D2FF" opacity="0.10" filter="url(#ambientGlow)"/>
-
-  <!-- Subtle Circuit Lattice Network -->
-  <g stroke="#00D2FF" stroke-width="1.2" opacity="0.14" fill="none">
-    <path d="M 50 170 L 120 170 L 150 140 M 270 200 L 300 170 L 420 170"/>
-    <path d="M 210 50 L 210 110 M 210 230 L 210 290"/>
-    <path d="M 420 170 L 460 210 L 600 210 M 800 70 L 850 120 L 1150 120"/>
-    <path d="M 900 280 L 960 220 L 1150 220"/>
-    <circle cx="50" cy="170" r="3" fill="#00D2FF"/>
-    <circle cx="420" cy="170" r="3" fill="#00D2FF"/>
-    <circle cx="600" cy="210" r="3" fill="#00FFA3"/>
-    <circle cx="1150" cy="120" r="3" fill="#00D2FF"/>
-    <circle cx="1150" cy="220" r="3" fill="#00FFA3"/>
-  </g>
-
-  <!-- ==================== LEFT LOGO EMBLEM (Scaled) ==================== -->
-  <g transform="translate(100, 60) scale(0.43)">
-    <!-- Outer Octagonal Shield -->
-    <polygon points="256,76 384,128 436,256 384,384 256,436 128,384 76,256 128,128" 
-             fill="url(#metalRing)" 
-             stroke="#2d3d54" 
-             stroke-width="6"/>
-
-    <!-- Glowing Hexagonal Core Outer Loop -->
-    <polygon points="256,116 356,156 396,256 356,356 256,396 156,356 116,256 156,156" 
-             fill="none" 
-             stroke="url(#coreGrad)" 
-             stroke-width="14" 
-             stroke-linejoin="round"
-             filter="url(#neonGlow)"/>
-
-    <!-- Inner Processor Cavity -->
-    <circle cx="256" cy="256" r="76" fill="#090d14" stroke="#1f2c3f" stroke-width="4"/>
-
-    <!-- 8 ARM Cortex-A78C Micro-Nodes -->
-    <g fill="#00FFA3" filter="url(#neonGlow)">
-      <circle cx="256" cy="180" r="7"/>
-      <circle cx="310" cy="202" r="7"/>
-      <circle cx="332" cy="256" r="7"/>
-      <circle cx="310" cy="310" r="7"/>
-      <circle cx="256" cy="332" r="7"/>
-      <circle cx="202" cy="310" r="7"/>
-      <circle cx="180" cy="256" r="7"/>
-      <circle cx="202" cy="202" r="7"/>
-    </g>
-
-    <!-- Central Diamond Core -->
-    <polygon points="256,212 292,256 256,300 220,256" 
-             fill="url(#coreGrad)" 
-             filter="url(#neonGlow)"/>
-    <polygon points="256,226 280,256 256,286 232,256" fill="#0b0f17"/>
-    <circle cx="256" cy="256" r="5" fill="#00FFA3" filter="url(#neonGlow)"/>
-  </g>
-
-  <!-- ==================== TYPOGRAPHY & HEADER ==================== -->
-  <!-- Project Title -->
-  <text x="350" y="125" 
-        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Display', Roboto, Helvetica, Arial, sans-serif" 
-        font-size="62" 
-        font-weight="900" 
-        letter-spacing="5" 
-        fill="#FFFFFF">
-    OUNCE<tspan fill="url(#accentGrad)">·CORE</tspan>
-  </text>
-
-  <!-- Tagline / Subtitle -->
-  <text x="352" y="166" 
-        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" 
-        font-size="18" 
-        font-weight="500" 
-        letter-spacing="1.2" 
-        fill="#8fa0bc">
-    Hardware Research Runtime &amp; Architecture Compatibility Layer
-  </text>
-
-  <!-- Thin Gradient Divider -->
-  <rect x="352" y="190" width="760" height="2" fill="url(#accentGrad)" opacity="0.6"/>
-
-  <!-- Technical Spec Pills / Tags -->
-  <g transform="translate(352, 212)" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="12" font-weight="600">
-    <!-- Tag 1: Target SoC -->
-    <g transform="translate(0, 0)">
-      <rect width="170" height="30" rx="8" fill="#141c2b" stroke="#25354e" stroke-width="1.2"/>
-      <circle cx="14" cy="15" r="4" fill="#76B900"/>
-      <text x="26" y="19" fill="#d0dcf0">TEGRA T239 (DRAKE)</text>
-    </g>
-
-    <!-- Tag 2: CPU Cores -->
-    <g transform="translate(182, 0)">
-      <rect width="180" height="30" rx="8" fill="#141c2b" stroke="#25354e" stroke-width="1.2"/>
-      <circle cx="14" cy="15" r="4" fill="#00D2FF"/>
-      <text x="26" y="19" fill="#d0dcf0">8× CORTEX-A78C (PAC/BTI)</text>
-    </g>
-
-    <!-- Tag 3: GPU Architecture -->
-    <g transform="translate(374, 0)">
-      <rect width="170" height="30" rx="8" fill="#141c2b" stroke="#25354e" stroke-width="1.2"/>
-      <circle cx="14" cy="15" r="4" fill="#00FFA3"/>
-      <text x="26" y="19" fill="#d0dcf0">NVN / 2× SCALER (NOT DLSS)</text>
-    </g>
-
-    <!-- Tag 4: Implementation -->
-    <g transform="translate(556, 0)">
-      <rect width="170" height="30" rx="8" fill="#141c2b" stroke="#25354e" stroke-width="1.2"/>
-      <circle cx="14" cy="15" r="4" fill="#9B51E0"/>
-      <text x="26" y="19" fill="#d0dcf0">PURE SAFE RUST 2024</text>
-    </g>
-  </g>
-
-  <!-- Bottom Metadata Line -->
-  <text x="354" y="278" 
-        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
-        font-size="13" 
-        fill="#5a6d88" 
-        letter-spacing="0.5">
-    Horizon-style ABI · No keys, firmware or game data distributed
-  </text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="t d">
+<title id="t">Ounce Core — The art of systems research</title>
+<desc id="d">An atmospheric midnight botanical garden where luminous circuit branches and small wildflowers surround a processor-shaped sun. Ounce Core wordmark and research runtime subtitle.</desc>
+<defs>
+ <linearGradient id="night" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#101f27"/><stop offset=".45" stop-color="#162e36"/><stop offset="1" stop-color="#121c29"/></linearGradient>
+ <radialGradient id="sun"><stop stop-color="#d8f2dc" stop-opacity=".48"/><stop offset=".6" stop-color="#8ed6bc" stop-opacity=".18"/><stop offset="1" stop-color="#6aa0b8" stop-opacity="0"/></radialGradient>
+ <linearGradient id="hills" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#355c55" stop-opacity=".8"/><stop offset="1" stop-color="#192d36"/></linearGradient>
+ <linearGradient id="letter" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#f6f3e6"/><stop offset="1" stop-color="#e0f5e8"/></linearGradient>
+ <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r=".9" fill="#9acfc3" opacity=".2"/></pattern>
+ <filter id="blur"><feGaussianBlur stdDeviation="16"/></filter>
+</defs>
+<rect width="1200" height="400" rx="20" fill="url(#night)"/>
+<rect width="1200" height="400" rx="20" fill="url(#dots)"/>
+<circle cx="902" cy="192" r="210" fill="url(#sun)"/>
+<circle cx="901" cy="195" r="78" fill="#d5e9d5" opacity=".09"/>
+<circle cx="901" cy="195" r="61" fill="none" stroke="#9bd8bf" stroke-width="1.2" opacity=".55"/>
+<circle cx="901" cy="195" r="48" fill="none" stroke="#a9dcc6" stroke-width=".8" opacity=".38"/>
+<path d="M0 327 Q140 249 292 316 T600 317 Q755 253 900 326 T1200 304 L1200 400 L0 400Z" fill="#2c4d48" opacity=".43"/>
+<path d="M0 355 Q230 295 430 355 T850 349 Q1030 304 1200 353 L1200 400 L0 400Z" fill="url(#hills)"/>
+<path d="M0 375 Q202 348 369 383 T809 379 Q1044 340 1200 371" fill="none" stroke="#8dc1a6" stroke-width="1" opacity=".25"/>
+<!-- botanical electronics: right foreground -->
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+ <path d="M1015 400 V322 L994 302 V266 L972 242 M1015 345 L1052 312 V279 L1080 259 M1015 364 L971 341 V314 L944 288 M1052 312 H1102 L1122 295" stroke="#7fc8b0" stroke-width="2.4" opacity=".8"/>
+ <path d="M1120 400 V361 L1154 324 V279 M1120 375 L1085 353 V329" stroke="#c4a9cb" stroke-width="1.7" opacity=".65"/>
+ <path d="M775 400 V367 L754 345 V324 M775 382 L806 353 V312 L832 291" stroke="#88c0a9" stroke-width="2" opacity=".62"/>
+ <path d="M123 400 V357 L154 325 V290 L181 264 M123 366 L94 340 V312 L76 292" stroke="#85baa8" stroke-width="1.8" opacity=".5"/>
+</g>
+<!-- leaf shapes -->
+<g fill="#80bd99" opacity=".78">
+ <path d="M994 302 Q968 286 973 273 Q997 282 994 302Z"/><path d="M1052 312 Q1071 286 1080 294 Q1075 315 1052 312Z"/>
+ <path d="M971 341 Q949 326 954 314 Q973 318 971 341Z"/><path d="M1154 324 Q1134 309 1140 297 Q1161 300 1154 324Z"/>
+ <path d="M806 353 Q820 331 836 335 Q832 353 806 353Z"/><path d="M154 325 Q171 308 183 314 Q177 330 154 325Z"/>
+</g>
+<!-- tiny flowers, terminal nodes -->
+<g>
+ <g transform="translate(973 242)" fill="#d9a7b7"><ellipse cy="-10" ry="8" rx="4"/><ellipse transform="rotate(72)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(144)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(216)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(288)" cy="-10" ry="8" rx="4"/><circle r="4" fill="#f6d6a2"/></g>
+ <g transform="translate(1080 259) scale(.75)" fill="#a7ccdf"><ellipse cy="-10" ry="8" rx="4"/><ellipse transform="rotate(72)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(144)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(216)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(288)" cy="-10" ry="8" rx="4"/><circle r="4" fill="#f6d6a2"/></g>
+ <g transform="translate(944 288) scale(.5)" fill="#f2cfab"><ellipse cy="-10" ry="8" rx="4"/><ellipse transform="rotate(72)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(144)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(216)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(288)" cy="-10" ry="8" rx="4"/><circle r="4" fill="#fff6d4"/></g>
+ <g transform="translate(1154 279) scale(.7)" fill="#dbc3db"><ellipse cy="-10" ry="8" rx="4"/><ellipse transform="rotate(90)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(180)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(270)" cy="-10" ry="8" rx="4"/><circle r="4" fill="#f6d6a2"/></g>
+ <g transform="translate(832 291) scale(.5)" fill="#d4ddb0"><ellipse cy="-10" ry="8" rx="4"/><ellipse transform="rotate(90)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(180)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(270)" cy="-10" ry="8" rx="4"/><circle r="4" fill="#f9e9b0"/></g>
+</g>
+<!-- processor as the botanical moon -->
+<g transform="translate(901 195)" stroke="#b7e7cf" fill="none" stroke-linejoin="round">
+ <rect x="-24" y="-24" width="48" height="48" rx="8" fill="#203f3e" stroke-width="2"/>
+ <rect x="-14" y="-14" width="28" height="28" rx="3" stroke-width="1" opacity=".8"/>
+ <path d="M-35 -15 H-24 M-35 0 H-24 M-35 15 H-24 M24 -15 H35 M24 0 H35 M24 15 H35 M-15 -35 V-24 M0 -35 V-24 M15 -35 V-24 M-15 24 V35 M0 24 V35 M15 24 V35" opacity=".8"/>
+ <circle r="5" fill="#d6efd0" stroke="none"/>
+</g>
+<g font-family="Georgia, 'Times New Roman', serif">
+ <text x="76" y="110" font-family="Arial,Helvetica,sans-serif" letter-spacing="5" font-size="13" fill="#a5d3bd" font-weight="700">THE ART OF SYSTEMS RESEARCH</text>
+ <text x="70" y="207" font-size="80" font-weight="700" letter-spacing="-3" fill="url(#letter)">OUNCE<tspan fill="#a6d5b9">·</tspan>CORE</text>
+</g>
+<path d="M76 230 H622" stroke="#90bca5" stroke-width="1" opacity=".55"/>
+<text x="76" y="265" font-family="Arial,Helvetica,sans-serif" font-size="19" fill="#e0e9db">Where instructions become understanding.</text>
+<text x="76" y="300" font-family="Arial,Helvetica,sans-serif" font-size="13" letter-spacing=".8" fill="#a9c2be">AArch64  /  EXECUTION ENGINES  /  GRAPHICS  /  VERIFICATION</text>
+<text x="76" y="352" font-family="Arial,Helvetica,sans-serif" font-size="12" letter-spacing="1.7" fill="#a4ccb7">EXPERIMENTAL · RUST 2024 · CLEAN-ROOM RESEARCH</text>
+<rect x="1" y="1" width="1198" height="398" rx="19" stroke="#91c6af" stroke-opacity=".23" fill="none" stroke-width="2"/>
 </svg>
