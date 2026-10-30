@@ -595,7 +595,8 @@ impl IpcManager {
                 // OpenLayer: expose one bounded Binder producer through the native-window
                 // parcel libnx consumes. The producer rejects transactions it does not model.
                 2020 if self.is_libnx_request() => {
-                    let result = match self.vi_binder.register() {
+                    let layer_id = mmu.read_u64(args_base + 0x40).unwrap_or(0);
+                    let result = match self.vi_binder.open_layer(layer_id) {
                         Ok(object_id) => {
                             let parcel = super::vi::native_window_parcel(object_id);
                             if self.write_out_buffer(mmu, &parcel) == parcel.len() {
@@ -606,6 +607,28 @@ impl IpcManager {
                         }
                         Err(result) => result,
                     };
+                    self.write_cmif_response(tls_addr, mmu, result, &[], None);
+                    0
+                }
+                // SetLayerScalingMode(FitToLayer, layer_id). This is mandatory before
+                // libnx creates its native window and begins Binder setup.
+                2101 if self.is_libnx_request() => {
+                    let mode = mmu.read_u32(args_base).unwrap_or(u32::MAX);
+                    let layer_id = mmu.read_u64(args_base + 8).unwrap_or(u64::MAX);
+                    let result = if mode != 2 {
+                        (120 << 9) | 1
+                    } else if !self.vi_binder.has_layer(layer_id) {
+                        (114 << 9) | 1
+                    } else {
+                        0
+                    };
+                    self.write_cmif_response(tls_addr, mmu, result, &[], None);
+                    0
+                }
+                // CloseLayer is lifecycle cleanup. Only a layer opened above can close.
+                2021 if self.is_libnx_request() => {
+                    let layer_id = mmu.read_u64(args_base).unwrap_or(u64::MAX);
+                    let result = self.vi_binder.close_layer(layer_id).err().unwrap_or(0);
                     self.write_cmif_response(tls_addr, mmu, result, &[], None);
                     0
                 }
