@@ -44,7 +44,36 @@ pub struct SubmittedSurface {
     pub pitch: u32,
     pub kind: u32,
     pub block_height_log2: u32,
+    /// Bytes available from `guest_addr` to the end of the nvmap allocation.
+    pub allocation_size: u64,
     pub size: u64,
+}
+
+impl SubmittedSurface {
+    /// Maps the public libnx `NvGraphicBuffer` fields into the shared raw-surface model.
+    pub fn tiling_surface(&self) -> Option<crate::gpu::tiling::Surface> {
+        use crate::gpu::tiling::{Format, Layout, Surface};
+        let format = match self.color_format {
+            1 => Format::R8G8B8A8Unorm,
+            _ => return None,
+        };
+        let layout = match self.layout {
+            0 if self.block_height_log2 <= 5 => Layout::BlockLinear {
+                height_log2: self.block_height_log2 as u8,
+                depth_log2: 0,
+            },
+            1 if self.pitch != 0 => Layout::Pitch { stride: self.pitch },
+            _ => return None,
+        };
+        let surface = Surface {
+            width: self.width,
+            height: self.height,
+            depth: 1,
+            format,
+            layout,
+        };
+        (surface.size_bytes().ok()? as u64 <= self.allocation_size).then_some(surface)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -355,6 +384,7 @@ impl IpcManager {
             pitch: slot.pitch,
             kind: slot.kind,
             block_height_log2: slot.block_height_log2,
+            allocation_size: object.size as u64 - slot.offset as u64,
             size: slot.size,
         })
     }
@@ -770,6 +800,15 @@ mod tests {
         assert_eq!(
             (surface.width, surface.height, surface.size),
             (1280, 720, 0x384000)
+        );
+        let tiled = surface.tiling_surface().unwrap();
+        assert_eq!((tiled.width, tiled.height), (1280, 720));
+        assert_eq!(
+            tiled.layout,
+            crate::gpu::tiling::Layout::BlockLinear {
+                height_log2: 4,
+                depth_log2: 0,
+            }
         );
         ipc.nvdrv.nvmap.get_mut(&7).unwrap().size = 0x1000;
         assert!(

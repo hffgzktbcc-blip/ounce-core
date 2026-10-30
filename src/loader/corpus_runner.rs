@@ -60,15 +60,26 @@ struct Report {
     svcs: Vec<(u64, u16)>,
     debug_output: String,
     input_applied_at: Vec<usize>,
+    raw_frame: Option<RawFrameEvidence>,
     // A report is an observation. A normal guest exit alone is not a compatibility verdict.
     compatibility: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RawFrameEvidence {
+    guest_addr: u64,
+    width: usize,
+    height: usize,
+    rgba_fnv1a64: u64,
+    non_black_pixels: usize,
+    center_rgba: Option<(u8, u8, u8, u8)>,
 }
 
 fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
     Report { requested_engine: engine, actual_engine: engine, stop,
         instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
         preemptions: 0, svcs: Vec::new(), debug_output: String::new(),
-        input_applied_at: Vec::new(), compatibility: "not-assessed" }
+        input_applied_at: Vec::new(), raw_frame: None, compatibility: "not-assessed" }
 }
 
 /// Run an already configured VM, retaining the real kernel dispatcher and scheduler.
@@ -154,7 +165,21 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                 SvcResult::Unhandled(id) => { result.stop = Stop::UnhandledSvc(id); break; }
                 SvcResult::PresentFrame => {
                     result.frames += 1;
-                    // Counts presentation requests only. There is no raw-frame capture/oracle yet.
+                    if let Some(submitted) = kernel.ipc.submitted_vi_surface()
+                        && let Some(surface) = submitted.tiling_surface()
+                        && let Ok(frame) = crate::gpu::present::surface::frame_from_surface(
+                            &mmu, submitted.guest_addr, &surface)
+                    {
+                        result.raw_frame = Some(RawFrameEvidence {
+                            guest_addr: submitted.guest_addr,
+                            width: frame.width,
+                            height: frame.height,
+                            rgba_fnv1a64: frame.content_hash(),
+                            non_black_pixels: frame.rgba.chunks_exact(4)
+                                .filter(|pixel| pixel[..3] != [0, 0, 0]).count(),
+                            center_rgba: frame.pixel(frame.width / 2, frame.height / 2),
+                        });
+                    }
                     if result.frames >= limits.frames { result.stop = Stop::FrameLimit; break 'run; }
                 }
             }
@@ -366,6 +391,7 @@ fn corpus_runner_hello_differential_slices() {
 #[ignore = "requires OUNCE_CORPUS_NRO pointing at an unchanged external sample"]
 fn external_corpus_nro_probe_both_engines() {
     let path = std::env::var_os("OUNCE_CORPUS_NRO").map(std::path::PathBuf::from);
+    let mut reference_frame = None;
     for engine in [Engine::Interpreter, Engine::Tier3] {
         let result = match &path {
             Some(path) => run_path(path, engine, &Limits::default()),
@@ -373,5 +399,12 @@ fn external_corpus_nro_probe_both_engines() {
         };
         println!("{result:#?}");
         assert!(!matches!(result.stop, Stop::MissingInput(_) | Stop::LoadError(_)), "{result:?}");
+        if let Some(frame) = &result.raw_frame {
+            if let Some(reference) = &reference_frame {
+                assert_eq!(frame, reference, "raw VI frame differs between engines");
+            } else {
+                reference_frame = Some(frame.clone());
+            }
+        }
     }
 }
