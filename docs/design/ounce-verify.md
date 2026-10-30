@@ -1,6 +1,7 @@
-# Ounce-Verify: independent execution evidence contract (design proposal)
+# Ounce-Verify: independent execution evidence contract
 
-Status: proposal only, 2026-10-30. No runtime code or test behavior is changed by this document.
+Status: v0 validator implemented, 2026-10-30. The validator consumes evidence only; runtime
+execution behavior is unchanged.
 
 ## Purpose
 Ounce-Verify is a **deterministic evidence and regression layer** for Ounce-Core. It records what was actually executed, what was observed, and whether an explicitly defined oracle passed. It must not turn "host exit 0", successful CI, successful build, or process startup into a compatibility claim. The longer-term goal remains a verified Switch 2 homebrew vertical slice; original-Switch libnx samples are foundation tests, *not* Switch 2 compatibility evidence.
@@ -14,7 +15,7 @@ Ounce-Verify is a **deterministic evidence and regression layer** for Ounce-Core
 - This is a **documentation-only, independent planning lane**. Do not modify those branches, the external-sample build script, kernel, GPU, CPU, or workflow owners without coordination through PR comments / AGENTS.md.
 - Follow docs/CLEAN_ROOM.md and docs/PROVENANCE.md. No firmware, retail keys, copyrighted game assets, upstream implementation code or built upstream binaries in the repository.
 
-## v0 evidence record (proposed JSON object)
+## v0 evidence record
 Records must be stable, bounded, machine-readable and self-describing. Unknown/not-collected is distinct from empty/zero/success.
 
 ```json
@@ -50,7 +51,11 @@ Records must be stable, bounded, machine-readable and self-describing. Unknown/n
 }
 ```
 
-All values in the example are illustrative, not observations or the current emitted artifact schema. Main's external-corpus workflow currently emits an inventory and a startup-probe record with fields such as `runtime_commit`, `source_head`, `requested_engine`, `actual_engine`, `probe_stop`, `host_exit_code`, `guest_stop`, optional `break_result`, `log_sha256`, and `compatibility: "not-assessed"`. The inventory records per-source-file hashes and per-NRO hashes; it does not currently emit this example's `source_tree_sha256` field. The validator design should map these existing records explicitly, preserving their original fields, before defining any normalized record. Null = not observed, never success. Preserve runtime commit and test-merge commit separately where relevant.
+All values in the example are illustrative, not observations or the external workflow's emitted
+artifact schema. `tools/ounce_verify.py` validates records already normalized to this contract; it
+does not silently reinterpret the external workflow's inventory or startup-probe JSON. Such an
+adapter must map existing fields explicitly and preserve the original artifacts. Null = not
+observed, never success. Preserve runtime commit and test-merge commit separately where relevant.
 
 ## Strict verdict vocabulary
 - `pass`: at least one **explicit, appropriate oracle** passed, and every required oracle for that named case passed.
@@ -72,11 +77,13 @@ All values in the example are illustrative, not observations or the current emit
 6. Prefer structured deterministic output; stable order and redaction of local paths/tokens. Never include private host environment variables.
 7. In CI, test the **validator** against fabricated positive/negative records, but only report a real workload verdict from actually executed artifacts.
 
-## v0 minimal implementation (new files only; coordinate before touching workflows)
-- `tools/ounce_verify.py`: validate JSON schema/manifest invariants and compute an oracle-based case verdict; read existing probe artifacts as inputs, do not run the program or modify it.
-- `tests/test_ounce_verify.py`: stdlib-only deterministic tests.
-- `tests/verify/fixtures/`: tiny synthetic JSON fixtures (not upstream NRO files).
-- `docs/verify/README.md`: CLI examples and provenance limits.
+## v0 implementation
+- `tools/ounce_verify.py`: validates schema invariants and computes an oracle-based case verdict;
+  it reads evidence and never runs or modifies a program.
+- `tests/test_ounce_verify.py`: 11 stdlib-only deterministic tests covering the required positive
+  and negative behavior. Test records are constructed in memory and contain no upstream binaries.
+- `docs/verify/README.md`: CLI examples, exit behavior and provenance limits.
+- Workflow integration is intentionally deferred to PR #98's workflow-owner review.
 - No frontend dependency in v0: output can later be shown in the UI without putting verdict rules in the UI.
 
 ## Required validator tests before integration
@@ -96,5 +103,7 @@ All values in the example are illustrative, not observations or the current emit
 - Automated compatibility percentages, game support lists, unexplained "working" labels, marketing claims.
 - Frontend UI implementation; expose a report contract for a future viewer.
 
-## Recommended follow-up, after owner acknowledgement
-Use the merged PR #89 workflow and artifacts as the input-format reference; coordinate the remaining runner boundary with PR #90 while it is open. Then add the stdlib-only validator on a fresh branch, test it with synthetic records, and propose an opt-in workflow that consumes (never overstates) the corpus artifacts. Merge only after all nine required CI jobs are green. Never bypass review or protection.
+## Recommended follow-up
+Add an explicit adapter from the merged external-corpus artifacts to this v0 record without
+discarding original fields. Coordinate workflow execution with PR #98 so the existing nine jobs
+remain intact. Never bypass review or protection.
