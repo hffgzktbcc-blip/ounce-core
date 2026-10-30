@@ -338,7 +338,9 @@ fn boot_with_kernel_tier(
                         exited = true;
                         break;
                     }
-                    crate::kernel::SvcResult::Success => {}
+                    // Headless fixture execution has no host surface; the guest-visible return is
+                    // already successful, so a no-handle VSync can continue without presentation.
+                    crate::kernel::SvcResult::Success | crate::kernel::SvcResult::PresentFrame => {}
                     other => panic!("SVC 0x{svc:X} -> {other:?}; result at X1: {:x?}; SVCs so far {svcs:x?}", mmu.read_u32(cpu.regs.read_x(1))),
                 }
             }

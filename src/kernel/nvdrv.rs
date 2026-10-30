@@ -73,6 +73,9 @@ pub struct NvDrv {
     pub syncpts: Vec<u32>,
     /// GPU address space mappings: GPU VA -> mapping.
     pub gpu_mappings: std::collections::BTreeMap<u64, GpuMapping>,
+    /// Requested memory kind for non-overlapping GPU VA ranges (end-exclusive, kind).
+    /// Backing addresses stay unchanged when a range is retyped; compression is not modeled.
+    pub gpu_mapping_kinds: std::collections::BTreeMap<u64, (u64, u32)>,
     next_gpu_va: u64,
     /// GPFIFO channels by fd.
     pub channels: HashMap<u32, GpuChannel>,
@@ -303,6 +306,18 @@ impl NvDrv {
     pub fn gpu_to_cpu(&self, va: u64) -> Option<u64> {
         let (&base, m) = self.gpu_mappings.range(..=va).next_back()?;
         (va < base + m.size && m.cpu_addr != 0).then(|| m.cpu_addr + (va - base))
+    }
+
+    fn set_mapping_kind(&mut self, start: u64, end: u64, kind: u32) {
+        let overlaps: Vec<_> = self.gpu_mapping_kinds.range(..end)
+            .filter(|(_, (prior_end, _))| *prior_end > start)
+            .map(|(&prior_start, &(prior_end, prior_kind))| (prior_start, prior_end, prior_kind)).collect();
+        for (prior_start, prior_end, prior_kind) in overlaps {
+            self.gpu_mapping_kinds.remove(&prior_start);
+            if prior_start < start { self.gpu_mapping_kinds.insert(prior_start, (start, prior_kind)); }
+            if prior_end > end { self.gpu_mapping_kinds.insert(end, (prior_end, prior_kind)); }
+        }
+        self.gpu_mapping_kinds.insert(start, (end, kind));
     }
 
     fn alloc_gpu_va(&mut self, size: u64, align: u64) -> u64 {
@@ -558,13 +573,33 @@ impl NvDrv {
             }
             // FREE_SPACE { u64 offset; u32 pages; u32 page_size; } / UNMAP_BUFFER { u64 offset; }
             0x03 | 0x05 => {
-                self.gpu_mappings.remove(&rd64(data, 0));
+                let base = rd64(data, 0);
+                if let Some(mapping) = self.gpu_mappings.remove(&base) {
+                    let end = base.saturating_add(mapping.size);
+                    self.gpu_mapping_kinds.retain(|&start, (prior_end, _)| start >= end || *prior_end <= base);
+                }
                 NV_OK
             }
             // MAP_BUFFER_EX { u32 flags; u32 kind; u32 nvmap_handle; u32 page_size; u64 buffer_offset;
             //                 u64 mapping_size; u64 offset (inout); }
             0x06 => {
                 let flags = rd32(data, 0);
+                if flags & 0x100 != 0 {
+                    let base = rd64(data, 32);
+                    let offset = rd64(data, 16);
+                    let size = rd64(data, 24);
+                    let Some(start) = base.checked_add(offset) else { return Some(NV_BAD_PARAMETER) };
+                    let Some(end) = start.checked_add(size) else { return Some(NV_BAD_PARAMETER) };
+                    let Some((&map_base, mapping)) = self.gpu_mappings.range(..=base).next_back() else {
+                        return Some(NV_BAD_PARAMETER);
+                    };
+                    let Some(map_end) = map_base.checked_add(mapping.size) else { return Some(NV_BAD_PARAMETER) };
+                    if size == 0 || mapping.cpu_addr == 0 || base >= map_end || end > map_end {
+                        return Some(NV_BAD_PARAMETER);
+                    }
+                    self.set_mapping_kind(start, end, rd32(data, 4));
+                    return Some(NV_OK);
+                }
                 let Some(obj) = self.nvmap.get(&rd32(data, 8)).cloned() else {
                     return Some(NV_BAD_PARAMETER);
                 };
@@ -573,9 +608,14 @@ impl NvDrv {
                     0 => obj.size as u64 - buffer_offset.min(obj.size as u64),
                     n => n,
                 };
-                let cpu_addr = obj.addr + buffer_offset;
+                if buffer_offset > obj.size as u64 || size == 0 || size > obj.size as u64 - buffer_offset {
+                    return Some(NV_BAD_PARAMETER);
+                }
+                let Some(cpu_addr) = obj.addr.checked_add(buffer_offset) else { return Some(NV_BAD_PARAMETER) };
                 let va = if flags & 1 != 0 { rd64(data, 32) } else { self.alloc_gpu_va(size, rd32(data, 12) as u64) };
+                let Some(end) = va.checked_add(size) else { return Some(NV_BAD_PARAMETER) };
                 self.gpu_mappings.insert(va, GpuMapping { size, cpu_addr });
+                self.set_mapping_kind(va, end, rd32(data, 4));
                 wr64(data, 32, va);
                 NV_OK
             }
@@ -605,11 +645,13 @@ impl NvDrv {
         let syncpt = ch.syncpt;
         Some(match request & 0xFF {
             // SET_NVMAP_FD, SET_TIMEOUT, ZCULL_BIND, SET_ERROR_NOTIFIER, SET_PRIORITY, SET_USER_DATA,
-            // SET_SUBMIT_TIMEOUT: settings with no effect on this model
-            0x01 | 0x03 | 0x0B | 0x0C | 0x0D | 0x14 | 0x1B => NV_OK,
+            // settings with no effect on this model
+            0x01 | 0x03 | 0x0B | 0x0C | 0x0D | 0x14 => NV_OK,
             // SUBMIT_GPFIFO { u64 gpfifo; u32 num_entries; u32 flags; fence (inout) { u32 id; u32 value; };
             //                 entries[] } (entries inline, or in the Ioctl2 input buffer)
-            0x08 => {
+            0x08 | 0x1B => {
+                // KICKOFF_PB (0x1B) carries the same header, with entries in Ioctl2's
+                // additional input buffer rather than appended to the header.
                 let num = rd32(data, 8) as usize;
                 let inline = data.get(0x18..).unwrap_or(&[]);
                 let entries = if extra.inbuf.len() >= num * 8 { extra.inbuf } else { inline };
@@ -800,6 +842,53 @@ mod tests {
         assert_eq!(nv.ioctl(gpu_fd, 0xC0B0_4705, &mut gc), NV_OK);
         assert_eq!(rd32(&gc, 0x10), 0x120);
         assert_eq!(gpu_characteristics().len(), 0xA0);
+    }
+
+    #[test]
+    fn kickoff_pb_submits_ioctl2_entries() {
+        let mut nv = NvDrv::new();
+        let (map_fd, _) = nv.open("/dev/nvmap");
+        let (as_fd, _) = nv.open("/dev/nvhost-as-gpu");
+        let (channel_fd, _) = nv.open("/dev/nvhost-gpu");
+        let va = map_object(&mut nv, map_fd, as_fd, 0x6000_0000, 0x1000);
+        let entries = (va | (2u64 << 42)).to_le_bytes();
+        let mut header = [0u8; 24];
+        wr32(&mut header, 8, 1);
+        assert_eq!(nv.ioctl_ex(channel_fd, 0xC018_481B, &mut header,
+            IoctlExtra { inbuf: &entries, outbuf: None }), NV_OK);
+        assert_eq!(nv.take_channel_submissions(), [(channel_fd, 0x6000_0000, 2)]);
+        assert_eq!(nv.channels[&channel_fd].submits, 1);
+        assert_eq!(rd32(&header, 20), 1);
+    }
+
+    #[test]
+    fn modify_mapping_kind_preserves_backing_and_checks_range() {
+        let mut nv = NvDrv::new();
+        let (map_fd, _) = nv.open("/dev/nvmap");
+        let (as_fd, _) = nv.open("/dev/nvhost-as-gpu");
+        let cpu = 0x6000_0000;
+        let va = map_object(&mut nv, map_fd, as_fd, cpu, 0x4000);
+        let mut modify = [0u8; 40];
+        wr32(&mut modify, 0, 0x100);
+        wr32(&mut modify, 4, 0xDB);
+        wr64(&mut modify, 16, 0x1000);
+        wr64(&mut modify, 24, 0x2000);
+        wr64(&mut modify, 32, va);
+        assert_eq!(nv.ioctl(as_fd, 0xC028_4106, &mut modify), NV_OK);
+        assert_eq!(nv.gpu_to_cpu(va + 0x1000), Some(cpu + 0x1000));
+        assert_eq!(nv.gpu_mapping_kinds[&(va + 0x1000)], (va + 0x3000, 0xDB));
+        assert_eq!(nv.gpu_mapping_kinds[&va], (va + 0x1000, 0));
+        assert_eq!(nv.gpu_mapping_kinds[&(va + 0x3000)], (va + 0x4000, 0));
+        let before = nv.gpu_mapping_kinds.clone();
+        wr64(&mut modify, 24, 0x4000);
+        assert_eq!(nv.ioctl(as_fd, 0xC028_4106, &mut modify), NV_BAD_PARAMETER);
+        assert_eq!(nv.gpu_mapping_kinds, before);
+        wr64(&mut modify, 32, u64::MAX - 0x1000);
+        assert_eq!(nv.ioctl(as_fd, 0xC028_4106, &mut modify), NV_BAD_PARAMETER);
+        let mut unmap = [0u8; 8];
+        wr64(&mut unmap, 0, va);
+        assert_eq!(nv.ioctl(as_fd, 0x4008_4105, &mut unmap), NV_OK);
+        assert!(nv.gpu_mapping_kinds.is_empty());
     }
 
     /// One nvmap object of `size` bytes backed at guest `cpu`, mapped into the GPU address space.
