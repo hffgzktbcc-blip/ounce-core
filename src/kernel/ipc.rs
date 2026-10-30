@@ -592,10 +592,25 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[], Some(handle));
                     0
                 }
-                // No native-window parcel / producer queue is modeled yet. A success
-                // here sends libnx into parsing an unwritten output buffer.
-                2020 | 2030 if self.is_libnx_request() => {
-                    eprintln!("[VI] command {cmd_id}: native-window producer not implemented");
+                // OpenLayer: expose one bounded Binder producer through the native-window
+                // parcel libnx consumes. The producer rejects transactions it does not model.
+                2020 if self.is_libnx_request() => {
+                    let result = match self.vi_binder.register() {
+                        Ok(object_id) => {
+                            let parcel = super::vi::native_window_parcel(object_id);
+                            if self.write_out_buffer(mmu, &parcel) == parcel.len() {
+                                self.write_cmif_response(tls_addr, mmu, 0, &[parcel.len() as u32, 0], None);
+                                return 0;
+                            }
+                            (102 << 9) | 1
+                        }
+                        Err(result) => result,
+                    };
+                    self.write_cmif_response(tls_addr, mmu, result, &[], None);
+                    0
+                }
+                2030 if self.is_libnx_request() => {
+                    eprintln!("[VI] command {cmd_id}: stray-layer producer not implemented");
                     self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
                     0
                 }
@@ -1309,7 +1324,7 @@ mod tests {
     }
 
     #[test]
-    fn libnx_vi_discovery_returns_sessions_and_open_layer_rejects_missing_producer() {
+    fn libnx_vi_discovery_returns_sessions_and_open_layer_requires_output_buffer() {
         let mut mmu = Memory::new();
         let tls = 0x8000_0000u64;
         mmu.map_range(tls, 4096, Permission::READ_WRITE);
@@ -1337,7 +1352,11 @@ mod tests {
             assert!(!sessions.contains(&session));
             sessions.push(session);
         }
-        for cmd in [2020, 2030, 9999] {
+        request(&mut mmu, 2020);
+        assert_eq!(ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+        assert_eq!(mmu.read_u32(tls + 0x10).unwrap(), CMIF_OUT_MAGIC);
+        assert_eq!(mmu.read_u32(tls + 0x18).unwrap(), (102 << 9) | 1);
+        for cmd in [2030, 9999] {
             request(&mut mmu, cmd);
             assert_eq!(ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
             assert_eq!(mmu.read_u32(tls + 0x10).unwrap(), CMIF_OUT_MAGIC);
