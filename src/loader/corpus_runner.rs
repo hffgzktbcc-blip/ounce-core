@@ -1,0 +1,377 @@
+//! Opt-in test adapter for unchanged external NROs. No downloads or host device backends.
+//! The host deadline is cooperative between slices/SVCs; callers must also impose a process
+//! timeout because a blocking kernel call cannot be interrupted here.
+
+use crate::cpu::{Cpu, StepResult};
+use crate::cpu::tier2_jit::BlockExit;
+use crate::cpu::tier3_jit::Tier3JitEngine;
+use crate::kernel::{HorizonKernel, SvcResult};
+use crate::kernel::hid::NpadInput;
+use crate::mmu::{Memory, Permission};
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Engine { Interpreter, Tier3 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Stop {
+    ExitProcess,
+    Break { reason: u64, info1: u64, info2: u64, result: Option<u32> },
+    UnhandledSvc(u16),
+    CpuHalt(String),
+    Fault { pc: u64, instruction: Option<u32>, error: String },
+    InstructionBudget,
+    HostTimeout,
+    FrameLimit,
+    LoadError(String),
+    MissingInput(String),
+}
+
+#[derive(Clone, Copy)]
+struct InputCheckpoint { at_instructions: usize, input: NpadInput }
+
+struct Limits {
+    instructions: usize,
+    host_time: Duration,
+    frames: usize,
+    trace_entries: usize,
+    debug_bytes: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self { instructions: crate::NRO_INSTRUCTION_BUDGET, host_time: Duration::from_secs(10),
+            frames: 16, trace_entries: 256, debug_bytes: 8192 }
+    }
+}
+
+#[derive(Debug)]
+struct Report {
+    requested_engine: Engine,
+    actual_engine: Engine,
+    stop: Stop,
+    instructions: usize,
+    pc: u64,
+    x0: u64,
+    registers: [u64; 31],
+    frames: usize,
+    preemptions: usize,
+    svcs: Vec<(u64, u16)>,
+    debug_output: String,
+    input_applied_at: Vec<usize>,
+    // A report is an observation. A normal guest exit alone is not a compatibility verdict.
+    compatibility: &'static str,
+}
+
+fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
+    Report { requested_engine: engine, actual_engine: engine, stop,
+        instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
+        preemptions: 0, svcs: Vec::new(), debug_output: String::new(),
+        input_applied_at: Vec::new(), compatibility: "not-assessed" }
+}
+
+/// Run an already configured VM, retaining the real kernel dispatcher and scheduler.
+/// Tier-3 can overshoot a slice target by one super-block; report the actual instruction total.
+fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Engine,
+    limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
+    let mut result = report(engine, Stop::InstructionBudget, &cpu);
+    let started = Instant::now();
+    let mut tier3 = match engine { Engine::Tier3 => Some(Tier3JitEngine::new()), _ => None };
+    let quantum = crate::kernel::scheduler::PREEMPT_INTERVAL;
+    let mut next_preemption = quantum;
+    let mut next_input = 0;
+    'run: loop {
+        if started.elapsed() >= limits.host_time { result.stop = Stop::HostTimeout; break; }
+        if result.instructions >= limits.instructions { break; }
+        while next_input < inputs.len() && inputs[next_input].at_instructions <= result.instructions {
+            kernel.ipc.hid.input = inputs[next_input].input;
+            kernel.ipc.hid.sync(&mut mmu);
+            result.input_applied_at.push(result.instructions);
+            next_input += 1;
+        }
+        let remaining = limits.instructions - result.instructions;
+        let until_preemption = next_preemption.saturating_sub(result.instructions).max(1);
+        let until_input = inputs.get(next_input).map(|i| i.at_instructions.saturating_sub(result.instructions).max(1)).unwrap_or(usize::MAX);
+        let target = remaining.min(until_preemption).min(until_input).min(256);
+        let mut svc = None;
+        match tier3.as_mut() {
+            Some(jit) => {
+                let (count, exit) = jit.run_slice(&mut cpu, &mut mmu, target);
+                result.instructions = result.instructions.saturating_add(count);
+                match exit {
+                    BlockExit::Svc { svc_id } => svc = Some(svc_id),
+                    BlockExit::Fault { pc } => {
+                        result.stop = Stop::Fault { pc, instruction: mmu.read_u32(pc).ok(), error: "Tier-3 instruction or memory fault".into() };
+                        break;
+                    }
+                    BlockExit::Return { .. } | BlockExit::Branch { .. } |
+                    BlockExit::BranchCondTaken { .. } | BlockExit::BranchFallthrough { .. } |
+                    BlockExit::BudgetExceeded => {}
+                }
+            }
+            None => {
+                let pc = cpu.regs.pc;
+                match cpu.step(&mut mmu) {
+                    Ok(step) => {
+                        result.instructions += 1;
+                        match step {
+                            StepResult::Continue => {}
+                            StepResult::Svc(id) => svc = Some(id),
+                            StepResult::Halt(message) => { result.stop = Stop::CpuHalt(message); break; }
+                        }
+                    }
+                    Err(error) => {
+                        result.stop = Stop::Fault { pc, instruction: mmu.read_u32(pc).ok(), error: error.to_string() };
+                        break;
+                    }
+                }
+            }
+        }
+        if let Some(id) = svc {
+            if result.svcs.len() < limits.trace_entries {
+                result.svcs.push((cpu.regs.pc.saturating_sub(4), id));
+            }
+            if id == 0x27 {
+                let available = limits.debug_bytes.saturating_sub(result.debug_output.len());
+                let mut bytes = vec![0; (cpu.regs.read_x(1).min(available as u64)) as usize];
+                if mmu.read_bytes(cpu.regs.read_x(0), &mut bytes).is_ok() {
+                    // Keep ASCII/UTF-8 text bounded even when replacement characters expand.
+                    for ch in String::from_utf8_lossy(&bytes).chars() {
+                        if result.debug_output.len() + ch.len_utf8() > limits.debug_bytes { break; }
+                        result.debug_output.push(ch);
+                    }
+                }
+            }
+            match kernel.dispatch_svc(id, &mut cpu, &mut mmu) {
+                SvcResult::Success => {}
+                SvcResult::ExitProcess => { result.stop = Stop::ExitProcess; break; }
+                SvcResult::Break { reason, info1, info2 } => {
+                    result.stop = Stop::Break { reason, info1, info2,
+                        result: if info2 == 4 { mmu.read_u32(info1).ok() } else { None } };
+                    break;
+                }
+                SvcResult::Unhandled(id) => { result.stop = Stop::UnhandledSvc(id); break; }
+                SvcResult::PresentFrame => {
+                    result.frames += 1;
+                    // Counts presentation requests only. There is no raw-frame capture/oracle yet.
+                    if result.frames >= limits.frames { result.stop = Stop::FrameLimit; break 'run; }
+                }
+            }
+        }
+        // Dispatch may switch the guest thread: resume from the post-dispatch registers.
+        // A block can cross a quantum without landing exactly on a modulo boundary.
+        if result.instructions >= next_preemption {
+            kernel.scheduler.preempt(&mut cpu);
+            result.preemptions += 1;
+            next_preemption = result.instructions.saturating_add(quantum);
+        }
+    }
+    result.pc = cpu.regs.pc;
+    result.x0 = cpu.regs.read_x(0);
+    result.registers = std::array::from_fn(|i| cpu.regs.read_x(i as u8));
+    (result, kernel)
+}
+
+fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
+    limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
+    let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
+    let loaded = super::super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu);
+    let error = match loaded {
+        Ok(info) if info.format == "NRO0" => None,
+        Ok(_) => Some("external runner accepts NRO0 only".into()),
+        Err(error) => Some(error.to_string()),
+    };
+    if let Some(error) = error { return (report(engine, Stop::LoadError(error), &cpu), kernel); }
+    if let Err(error) = crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, nro, args) {
+        return (report(engine, Stop::LoadError(error.to_string()), &cpu), kernel);
+    }
+    cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
+    execute(cpu, mmu, kernel, engine, limits, inputs)
+}
+
+fn run_nro(nro: &[u8], path: &str, args: &[&str], engine: Engine,
+    limits: &Limits, inputs: &[InputCheckpoint]) -> Report {
+    run_nro_state(nro, path, args, engine, limits, inputs).0
+}
+
+fn run_path(path: &Path, engine: Engine, limits: &Limits) -> Report {
+    match std::fs::read(path) {
+        Ok(nro) => run_nro(&nro, &path.to_string_lossy(), &[], engine, limits, &[]),
+        Err(error) => report(engine, Stop::MissingInput(format!("{}: {error}", path.display())), &Cpu::new()),
+    }
+}
+
+fn synthetic(words: &[u32], engine: Engine, limits: &Limits) -> Report {
+    let (mut cpu, mut mmu, kernel) = crate::setup_vm();
+    let base = crate::DEFAULT_BASE_ADDR;
+    mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+    for (index, word) in words.iter().enumerate() { mmu.write_u32(base + index as u64 * 4, *word).unwrap(); }
+    cpu.regs.pc = base;
+    execute(cpu, mmu, kernel, engine, limits, &[]).0
+}
+
+#[test]
+fn corpus_runner_returns_from_functions_but_exits_only_on_svc() {
+    // BL callee; ExitProcess; MOV X0, #42; RET.
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = synthetic(&[0x94000002, 0xD40000E1, 0xD2800540, 0xD65F03C0], engine, &Limits::default());
+        assert_eq!(result.stop, Stop::ExitProcess, "{result:?}");
+        assert_eq!(result.x0, 42);
+        assert_eq!(result.actual_engine, engine);
+        assert_eq!(result.instructions, 4);
+        assert_eq!(result.svcs.last(), Some(&(crate::DEFAULT_BASE_ADDR + 4, 7)));
+    }
+}
+
+#[test]
+fn corpus_runner_bounds_faults_and_cooperative_deadline() {
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let budget = Limits { instructions: 1000, ..Limits::default() };
+        let looping = synthetic(&[0x14000000], engine, &budget);
+        assert_eq!(looping.stop, Stop::InstructionBudget);
+        assert!(looping.instructions >= budget.instructions);
+        assert!(looping.instructions < budget.instructions + 1024);
+        let deadline = Limits { host_time: Duration::ZERO, ..Limits::default() };
+        let timed = synthetic(&[0x14000000], engine, &deadline);
+        assert_eq!(timed.stop, Stop::HostTimeout);
+        assert_eq!(timed.instructions, 0);
+        let fault = synthetic(&[0xFFFFFFFF], engine, &Limits::default());
+        assert!(matches!(fault.stop, Stop::Fault { .. } | Stop::CpuHalt(_)), "{fault:?}");
+    }
+}
+
+#[test]
+fn corpus_runner_records_breaks_and_missing_input_without_success() {
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let broken = synthetic(&[0xD40004C1], engine, &Limits::default());
+        assert!(matches!(broken.stop, Stop::Break { .. }));
+        assert_eq!(broken.compatibility, "not-assessed");
+        let missing = run_path(Path::new("/ounce-deliberately-missing-corpus-input.nro"), engine, &Limits::default());
+        assert!(matches!(missing.stop, Stop::MissingInput(_)));
+    }
+}
+
+#[test]
+fn corpus_runner_existing_libnx_fixtures_match_both_engines() {
+    for (relative, args, expected) in [
+        ("hello/hello.nro", vec!["fixture"], "ounce-fixture result=0x00000EEE"),
+        ("services/services.nro", vec![], "ounce-services result=0x00000EEE\n"),
+    ] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro").join(relative);
+        let nro = std::fs::read(&path).unwrap();
+        for engine in [Engine::Interpreter, Engine::Tier3] {
+            let result = run_nro(&nro, "fixture.nro", &args, engine, &Limits::default(), &[]);
+            assert_eq!(result.stop, Stop::ExitProcess, "{result:?}");
+            assert!(result.debug_output.ends_with(expected), "{result:?}");
+        }
+    }
+}
+
+
+#[test]
+fn corpus_runner_preempts_spinning_threads_and_preserves_kernel_switches() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro/threads/threads.nro");
+    let nro = std::fs::read(path).unwrap();
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let limits = Limits { host_time: Duration::from_secs(20), trace_entries: 8192, ..Limits::default() };
+        let (result, kernel) = run_nro_state(&nro, "fixture.nro", &[], engine, &limits, &[]);
+        assert_eq!(result.stop, Stop::ExitProcess, "{result:?}");
+        assert!(result.debug_output.contains("ounce-threads total=0x00000384"), "{result:?}");
+        assert!(result.debug_output.ends_with("ounce-threads result=0x00000EEE\n"), "{result:?}");
+        assert!(result.preemptions > 0, "spinner requires time-slice preemption: {result:?}");
+        assert!(kernel.scheduler.switches > 10);
+        assert_eq!(kernel.scheduler.total_threads_completed, 3);
+        assert!(result.svcs.iter().any(|s| s.1 == 0x1A), "workers contend on mutex");
+        assert!(result.svcs.iter().any(|s| s.1 == 0x1C), "condvar wait");
+        assert!(result.svcs.iter().any(|s| s.1 == 0x1D), "condvar signal");
+    }
+}
+
+#[test]
+fn corpus_runner_scripted_input_reaches_libnx_shared_memory() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro/input/input.nro");
+    let nro = std::fs::read(path).unwrap();
+    let checkpoints = [
+        InputCheckpoint { at_instructions: 0, input: NpadInput::default() },
+        InputCheckpoint { at_instructions: 8, input: NpadInput {
+            buttons: 1 | 1 << 14, stick_l: (0x1234, -0x100), stick_r: (0, 0) } },
+    ];
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = run_nro(&nro, "fixture.nro", &[], engine, &Limits::default(), &checkpoints);
+        assert_eq!(result.stop, Stop::ExitProcess, "{result:?}");
+        assert_eq!(result.input_applied_at.len(), 2);
+        assert_eq!(result.input_applied_at[0], 0);
+        assert!(result.input_applied_at[1] >= 8, "Tier-3 may cross a slice target");
+        assert!(result.debug_output.contains("ounce-input buttons=0x00004001\n"), "{result:?}");
+        assert!(result.debug_output.contains("ounce-input stick_l=0x1234FF00\n"), "{result:?}");
+        assert!(result.debug_output.ends_with("ounce-input result=0x00000EEE\n"), "{result:?}");
+    }
+}
+
+
+#[test]
+fn corpus_runner_hello_differential_slices() {
+    let nro = super::fixture();
+    let initialize = || {
+        let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
+        crate::loader::BootLoader::load_any_package(&nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).unwrap();
+        crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "fixture.nro", &nro, &["fixture"]).unwrap();
+        cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
+        (cpu, mmu, kernel)
+    };
+    let (mut cpu, mut mmu, mut kernel) = initialize();
+    let (mut reference, mut reference_mmu, mut reference_kernel) = initialize();
+    let mut engine = Tier3JitEngine::new();
+    for _ in 0..crate::NRO_INSTRUCTION_BUDGET {
+        let entry_pc = cpu.regs.pc;
+        let (count, exit) = engine.run_slice(&mut cpu, &mut mmu, 1);
+        let mut trail = Vec::new();
+        let mut reference_svc = None;
+        for _ in 0..count {
+            let pc = reference.regs.pc;
+            trail.push((pc, reference_mmu.read_u32(pc).ok()));
+            match reference.step(&mut reference_mmu).unwrap() {
+                StepResult::Continue => {}
+                StepResult::Svc(id) => reference_svc = Some(id),
+                other => panic!("reference stopped {other:?} at {pc:X}"),
+            }
+        }
+        for reg in 0..31 {
+            assert_eq!(cpu.regs.read_x(reg), reference.regs.read_x(reg),
+                "X{reg} diverged entering {entry_pc:X}, count={count}, exit={exit:?}, trail={trail:X?}");
+        }
+        assert_eq!(cpu.regs.sp, reference.regs.sp, "SP entry={entry_pc:X}, trail={trail:X?}");
+        assert_eq!(cpu.regs.pc, reference.regs.pc, "PC entry={entry_pc:X}, trail={trail:X?}");
+        assert_eq!(format!("{:?}", cpu.regs.pstate), format!("{:?}", reference.regs.pstate), "flags entry={entry_pc:X}");
+        if let BlockExit::Svc { svc_id } = exit {
+            assert_eq!(reference_svc, Some(svc_id));
+            let ref_out = reference_kernel.dispatch_svc(svc_id, &mut reference, &mut reference_mmu);
+            let out = kernel.dispatch_svc(svc_id, &mut cpu, &mut mmu);
+            assert_eq!(std::mem::discriminant(&out), std::mem::discriminant(&ref_out));
+            // GetInfo entropy and clock results may differ between kernels. Use identical
+            // syscall outputs so this test isolates CPU execution, not host timing.
+            cpu.regs = reference.regs.clone();
+            if out == SvcResult::ExitProcess { return; }
+        } else {
+            assert!(reference_svc.is_none());
+        }
+    }
+    panic!("differential run did not terminate");
+}
+
+/// Explicit opt-in diagnostic. It does not assert compatibility. Run the enclosing test process
+/// under an outer timeout as a cooperative deadline cannot interrupt a blocking kernel SVC.
+#[test]
+#[ignore = "requires OUNCE_CORPUS_NRO pointing at an unchanged external sample"]
+fn external_corpus_nro_probe_both_engines() {
+    let path = std::env::var_os("OUNCE_CORPUS_NRO").map(std::path::PathBuf::from);
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = match &path {
+            Some(path) => run_path(path, engine, &Limits::default()),
+            None => report(engine, Stop::MissingInput("OUNCE_CORPUS_NRO is unset".into()), &Cpu::new()),
+        };
+        println!("{result:#?}");
+        assert!(!matches!(result.stop, Stop::MissingInput(_) | Stop::LoadError(_)), "{result:?}");
+    }
+}
