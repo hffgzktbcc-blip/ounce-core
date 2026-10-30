@@ -292,4 +292,31 @@ mod tests {
         aes.crypt_ctr(&icb, &mut buf);
         assert_eq!(buf, plaintext);
     }
+
+    #[test]
+    fn parse_prod_keys_silently_skips_values_that_are_not_128_bit() {
+        // The parser only stores 128-bit (32 hex char) keys, and the len == 32
+        // gate enforces that SILENTLY: truncated/overlong values (31/33 chars,
+        // i.e. a dropped or duplicated nibble) and full 256-bit values (64
+        // hex chars, the length of prod.keys entries like header_key) are
+        // skipped with no error and never counted. That silence matters --
+        // a caller reading only the returned count cannot tell "file had no
+        // 128-bit keys" from "file was malformed", and a real prod.keys mixes
+        // both lengths, so the 256-bit lines must be skipped while the 128-bit
+        // line on the same file still loads.
+        let content = format!(
+            "short_key = {}\nlong_key = {}\nheader_key = {}\nkey_area_key_application_00 = {}\n",
+            "0".repeat(31),                 // one nibble short
+            "0".repeat(33),                 // one nibble over
+            "1b".repeat(32),                // 64 hex chars, AES-256-style
+            "0".repeat(32),                 // exactly 128 bit
+        );
+        let mut ks = KeySet::new();
+        assert_eq!(ks.parse_prod_keys(&content), 1); // only the 32-char line counts
+        assert_eq!(ks.keys128.len(), 1);
+        assert!(ks.keys128.contains_key("key_area_key_application_00"));
+        assert!(!ks.keys128.contains_key("short_key"));
+        assert!(!ks.keys128.contains_key("long_key"));
+        assert!(!ks.keys128.contains_key("header_key"));
+    }
 }
