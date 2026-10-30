@@ -91,10 +91,16 @@ impl IpcManager {
         self.reply_error(tls, mmu, RESULT_UNKNOWN_COMMAND)
     }
 
-    /// Writes `data` to the request's first output buffer (receive list entry, else `B` buffer),
+    /// Writes `data` to the request's first non-empty `B` buffer, or receive-list entry,
     /// truncated to the buffer size. Returns the bytes written.
     pub(super) fn write_out_buffer(&self, mmu: &mut Memory, data: &[u8]) -> usize {
-        let Some(buf) = self.request.recv_list.first().or(self.request.recv_buffers.first()) else {
+        let Some(buf) = self
+            .request
+            .recv_buffers
+            .iter()
+            .find(|b| b.size > 0)
+            .or_else(|| self.request.recv_list.iter().find(|b| b.size > 0))
+        else {
             return 0;
         };
         let n = data.len().min(buf.size as usize);
@@ -111,6 +117,28 @@ impl IpcManager {
             Some(ServiceType::ServiceEvent(_)) => Some(self.applet.message_event == Some(handle) && !self.applet.messages.is_empty()),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::kernel::hipc::Buffer;
+    use crate::mmu::Permission;
+
+    #[test]
+    fn write_out_buffer_prefers_first_non_empty_b_buffer() {
+        let mut ipc = IpcManager::new();
+        let mut mmu = Memory::new();
+        let b_addr = 0x8000_0000;
+        let c_addr = 0x8000_1000;
+        mmu.map_range(b_addr, 0x2000, Permission::READ_WRITE);
+        ipc.request.recv_buffers = vec![Buffer { addr: 0, size: 0 }, Buffer { addr: b_addr, size: 4 }];
+        ipc.request.recv_list = vec![Buffer { addr: c_addr, size: 4 }];
+
+        assert_eq!(ipc.write_out_buffer(&mut mmu, &[1, 2, 3, 4, 5]), 4);
+        assert_eq!(mmu.read_u32(b_addr).unwrap(), 0x0403_0201);
+        assert_eq!(mmu.read_u32(c_addr).unwrap(), 0);
     }
 }
 
