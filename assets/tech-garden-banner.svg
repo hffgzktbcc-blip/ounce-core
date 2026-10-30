@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="t d">
+<title id="t">Ounce Core — A garden for systems research</title>
+<desc id="d">An atmospheric midnight botanical garden where luminous circuit branches and small wildflowers surround a processor-shaped sun. Ounce Core wordmark and research runtime subtitle.</desc>
+<defs>
+ <linearGradient id="night" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#101f27"/><stop offset=".45" stop-color="#162e36"/><stop offset="1" stop-color="#121c29"/></linearGradient>
+ <radialGradient id="sun"><stop stop-color="#d8f2dc" stop-opacity=".48"/><stop offset=".6" stop-color="#8ed6bc" stop-opacity=".18"/><stop offset="1" stop-color="#6aa0b8" stop-opacity="0"/></radialGradient>
+ <linearGradient id="hills" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#355c55" stop-opacity=".8"/><stop offset="1" stop-color="#192d36"/></linearGradient>
+ <linearGradient id="letter" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#f6f3e6"/><stop offset="1" stop-color="#e0f5e8"/></linearGradient>
+ <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r=".9" fill="#9acfc3" opacity=".2"/></pattern>
+ <filter id="blur"><feGaussianBlur stdDeviation="16"/></filter>
+</defs>
+<rect width="1200" height="400" rx="20" fill="url(#night)"/>
+<rect width="1200" height="400" rx="20" fill="url(#dots)"/>
+<circle cx="902" cy="192" r="210" fill="url(#sun)"/>
+<circle cx="901" cy="195" r="78" fill="#d5e9d5" opacity=".09"/>
+<circle cx="901" cy="195" r="61" fill="none" stroke="#9bd8bf" stroke-width="1.2" opacity=".55"/>
+<circle cx="901" cy="195" r="48" fill="none" stroke="#a9dcc6" stroke-width=".8" opacity=".38"/>
+<path d="M0 327 Q140 249 292 316 T600 317 Q755 253 900 326 T1200 304 L1200 400 L0 400Z" fill="#2c4d48" opacity=".43"/>
+<path d="M0 355 Q230 295 430 355 T850 349 Q1030 304 1200 353 L1200 400 L0 400Z" fill="url(#hills)"/>
+<path d="M0 375 Q202 348 369 383 T809 379 Q1044 340 1200 371" fill="none" stroke="#8dc1a6" stroke-width="1" opacity=".25"/>
+<!-- botanical electronics: right foreground -->
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+ <path d="M1015 400 V322 L994 302 V266 L972 242 M1015 345 L1052 312 V279 L1080 259 M1015 364 L971 341 V314 L944 288 M1052 312 H1102 L1122 295" stroke="#7fc8b0" stroke-width="2.4" opacity=".8"/>
+ <path d="M1120 400 V361 L1154 324 V279 M1120 375 L1085 353 V329" stroke="#c4a9cb" stroke-width="1.7" opacity=".65"/>
+ <path d="M775 400 V367 L754 345 V324 M775 382 L806 353 V312 L832 291" stroke="#88c0a9" stroke-width="2" opacity=".62"/>
+ <path d="M123 400 V357 L154 325 V290 L181 264 M123 366 L94 340 V312 L76 292" stroke="#85baa8" stroke-width="1.8" opacity=".5"/>
+</g>
+<!-- leaf shapes -->
+<g fill="#80bd99" opacity=".78">
+ <path d="M994 302 Q968 286 973 273 Q997 282 994 302Z"/><path d="M1052 312 Q1071 286 1080 294 Q1075 315 1052 312Z"/>
+ <path d="M971 341 Q949 326 954 314 Q973 318 971 341Z"/><path d="M1154 324 Q1134 309 1140 297 Q1161 300 1154 324Z"/>
+ <path d="M806 353 Q820 331 836 335 Q832 353 806 353Z"/><path d="M154 325 Q171 308 183 314 Q177 330 154 325Z"/>
+</g>
+<!-- tiny flowers, terminal nodes -->
+<g>
+ <g transform="translate(973 242)" fill="#d9a7b7"><ellipse cy="-10" ry="8" rx="4"/><ellipse transform="rotate(72)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(144)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(216)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(288)" cy="-10" ry="8" rx="4"/><circle r="4" fill="#f6d6a2"/></g>
+ <g transform="translate(1080 259) scale(.75)" fill="#a7ccdf"><ellipse cy="-10" ry="8" rx="4"/><ellipse transform="rotate(72)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(144)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(216)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(288)" cy="-10" ry="8" rx="4"/><circle r="4" fill="#f6d6a2"/></g>
+ <g transform="translate(944 288) scale(.5)" fill="#f2cfab"><ellipse cy="-10" ry="8" rx="4"/><ellipse transform="rotate(72)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(144)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(216)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(288)" cy="-10" ry="8" rx="4"/><circle r="4" fill="#fff6d4"/></g>
+ <g transform="translate(1154 279) scale(.7)" fill="#dbc3db"><ellipse cy="-10" ry="8" rx="4"/><ellipse transform="rotate(90)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(180)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(270)" cy="-10" ry="8" rx="4"/><circle r="4" fill="#f6d6a2"/></g>
+ <g transform="translate(832 291) scale(.5)" fill="#d4ddb0"><ellipse cy="-10" ry="8" rx="4"/><ellipse transform="rotate(90)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(180)" cy="-10" ry="8" rx="4"/><ellipse transform="rotate(270)" cy="-10" ry="8" rx="4"/><circle r="4" fill="#f9e9b0"/></g>
+</g>
+<!-- processor as the botanical moon -->
+<g transform="translate(901 195)" stroke="#b7e7cf" fill="none" stroke-linejoin="round">
+ <rect x="-24" y="-24" width="48" height="48" rx="8" fill="#203f3e" stroke-width="2"/>
+ <rect x="-14" y="-14" width="28" height="28" rx="3" stroke-width="1" opacity=".8"/>
+ <path d="M-35 -15 H-24 M-35 0 H-24 M-35 15 H-24 M24 -15 H35 M24 0 H35 M24 15 H35 M-15 -35 V-24 M0 -35 V-24 M15 -35 V-24 M-15 24 V35 M0 24 V35 M15 24 V35" opacity=".8"/>
+ <circle r="5" fill="#d6efd0" stroke="none"/>
+</g>
+<g font-family="Georgia, 'Times New Roman', serif">
+ <text x="76" y="110" font-family="Arial,Helvetica,sans-serif" letter-spacing="5" font-size="13" fill="#a5d3bd" font-weight="700">AN OPEN SYSTEMS RESEARCH PROJECT</text>
+ <text x="70" y="207" font-size="91" font-weight="700" letter-spacing="-3" fill="url(#letter)">ounce<tspan fill="#a6d5b9">·</tspan>core</text>
+</g>
+<path d="M76 230 H622" stroke="#90bca5" stroke-width="1" opacity=".55"/>
+<text x="76" y="265" font-family="Arial,Helvetica,sans-serif" font-size="19" fill="#e0e9db">Where instructions become understanding.</text>
+<text x="76" y="300" font-family="Arial,Helvetica,sans-serif" font-size="13" letter-spacing=".8" fill="#a9c2be">AArch64  /  EXECUTION ENGINES  /  GRAPHICS  /  VERIFICATION</text>
+<text x="76" y="352" font-family="Arial,Helvetica,sans-serif" font-size="12" letter-spacing="1.7" fill="#a4ccb7">EXPERIMENTAL · RUST 2024 · CLEAN-ROOM RESEARCH</text>
+<rect x="1" y="1" width="1198" height="398" rx="19" stroke="#91c6af" stroke-opacity=".23" fill="none" stroke-width="2"/>
+</svg>
