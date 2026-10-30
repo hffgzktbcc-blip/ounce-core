@@ -399,12 +399,11 @@ fn external_corpus_nro_probe_both_engines() {
         };
         println!("{result:#?}");
         assert!(!matches!(result.stop, Stop::MissingInput(_) | Stop::LoadError(_)), "{result:?}");
-        if let Some(frame) = &result.raw_frame {
-            if let Some(reference) = &reference_frame {
-                assert_eq!(frame, reference, "raw VI frame differs between engines");
-            } else {
-                reference_frame = Some(frame.clone());
-            }
+        if engine == Engine::Interpreter {
+            reference_frame = result.raw_frame.clone();
+        } else {
+            assert_eq!(result.raw_frame, reference_frame,
+                "raw VI frame presence or content differs between engines");
         }
     }
 }
