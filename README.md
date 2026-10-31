@@ -269,6 +269,8 @@ Ounce-Core is developed from an interdisciplinary background spanning **psycholo
 
 That background shapes the project's emphasis on careful experimentation, reproducible evidence and making complex systems understandable. It informs the approach—not a claim of formal computer science credentials.
 
+During my PGCE studies, I wrote a research paper exploring a future in which studying, working and professional training could increasingly happen remotely, with education moving beyond predominantly face-to-face teaching and traditional written examinations. A professor called the idea a *“pipe-dream.”* The shifts in learning and work during and after the COVID-19 pandemic made that earlier question feel especially relevant. It remains a reminder to stay curious about possibilities before they become conventional.
+
 ---
 
 ## Responsible research
