@@ -263,6 +263,14 @@ The project makes **no current claim** to run Switch 2 software, retail titles o
 
 ---
 
+## About the maintainer
+
+Ounce-Core is developed from an interdisciplinary background spanning **psychology, education and research**. My academic training includes Clinical, Counselling and Industrial Psychology, honours-level study in Clinical and Research Psychology, master's-programme study in Research Psychology, and a Postgraduate Certificate in Education (PGCE).
+
+That background shapes the project's emphasis on careful experimentation, reproducible evidence and making complex systems understandable. It informs the approach—not a claim of formal computer science credentials.
+
+---
+
 ## Responsible research
 
 > [!IMPORTANT]
