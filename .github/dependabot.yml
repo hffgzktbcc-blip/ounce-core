@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:00"
+      timezone: Africa/Johannesburg
+    open-pull-requests-limit: 3
+    groups:
+      rust-patch-minor:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "deps"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "07:30"
+      timezone: Africa/Johannesburg
+    open-pull-requests-limit: 2
+    groups:
+      actions-patch-minor:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "ci"
