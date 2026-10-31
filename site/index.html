@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Ounce-Core: an experimental Rust AArch64 research runtime built to be verified.">
+  <meta name="theme-color" content="#13261f">
+  <title>Ounce-Core · Research, execution, evidence</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0e1d18;--fg:#f1f6ef;--muted:#b7c8bf;--accent:#9ad5ac;--edge:#355247}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0%,#294b3a 0,transparent 40%),var(--bg);color:var(--fg);font:16px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}
+    main,footer{max-width:1000px;margin:auto;padding:0 24px}header{padding:20px 24px;border-bottom:1px solid var(--edge)}nav{max-width:1000px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}nav a{color:var(--fg);text-decoration:none;margin-right:15px}nav a:hover,a:hover{text-decoration:underline}
+    .hero{padding:40px 0 18px}.hero img{width:100%;height:auto;border-radius:18px;border:1px solid var(--edge)}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.15;letter-spacing:-.04em;margin:30px 0 16px}h2{font-size:1.5rem}p{color:var(--muted)}
+    .tag{font-size:.75rem;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);font-weight:800}.button{display:inline-block;background:var(--accent);color:#10251a;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:10px;margin:10px 10px 10px 0}.button.secondary{background:transparent;color:var(--fg);border:1px solid var(--edge)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:25px 0 48px}.card{background:#172c23;border:1px solid var(--edge);border-radius:14px;padding:21px}.card h3{margin:0 0 8px}.card p{margin:0}.links{padding:0 0 60px}a{color:var(--accent)}footer{border-top:1px solid var(--edge);padding-top:25px;padding-bottom:50px;color:var(--muted);font-size:.9rem}
+  </style>
+</head>
+<body>
+  <header><nav><strong>OUNCE-CORE / RESEARCH</strong><div><a href="https://github.com/hffgzktbcc-blip/ounce-core">Repository</a><a href="https://github.com/hffgzktbcc-blip/ounce-core/releases">Releases</a><a href="https://github.com/hffgzktbcc-blip/ounce-core/pulls">Development</a></div></nav></header>
+  <main>
+    <section class="hero">
+      <img src="assets/ounce-core-vista.png" alt="Ounce-Core Vista research runtime banner">
+      <div class="tag">Open-source systems research · Rust · AArch64</div>
+      <h1>Build boldly.<br>Verify carefully.</h1>
+      <p>Ounce-Core explores interpreters, tiered execution, service models and graphics behaviour with reproducible tests and explicitly stated limits.</p>
+      <a class="button" href="https://github.com/hffgzktbcc-blip/ounce-core#quickstart">Start exploring</a>
+      <a class="button secondary" href="https://github.com/hffgzktbcc-blip/ounce-core#what-is-verified">Review the evidence</a>
+    </section>
+    <section aria-label="Project pillars" class="grid">
+      <div class="card"><h3>Execute</h3><p>AArch64 interpreter and tiered runtime experiments, with bounded native-code generation.</p></div>
+      <div class="card"><h3>Observe</h3><p>Memory, kernel, service and graphics models designed for inspection and diagnosis.</p></div>
+      <div class="card"><h3>Verify</h3><p>CI, deterministic test gates and independent homebrew probes. Passing tests are not broad compatibility claims.</p></div>
+    </section>
+    <section class="links">
+      <h2>Go deeper</h2>
+      <p><a href="https://github.com/hffgzktbcc-blip/ounce-core#the-system">Architecture and subsystem matrix</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/PROVENANCE.md">Provenance register</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/CONTRIBUTING.md">Contributing</a></p>
+      <p><strong>Research boundary:</strong> Switch 2 compatibility is a long-term objective, <em>not</em> a present capability. Ounce-Core is unaffiliated with Nintendo or NVIDIA. Do not submit proprietary firmware, retail keys or game content.</p>
+    </section>
+  </main>
+  <footer>Ounce-Core · Experimental systems research · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE">MIT source license</a> · Historical provenance review remains open.</footer>
+</body>
+</html>
