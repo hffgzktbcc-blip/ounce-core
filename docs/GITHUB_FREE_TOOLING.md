@@ -12,8 +12,8 @@ This document records the intended configuration. Workflow files alone do not en
 ## Repository administrator settings
 
 1. **Pages:** Settings → Pages → Build and deployment → Source: **GitHub Actions**. Then dispatch `Documentation website` if it has not run.
-2. **Discussions:** Settings → General → Features → check **Discussions**. Suggested categories: General, Ideas, Q&A, Research results.
-3. **Projects:** Create a new GitHub Project and link the repository. Suggested fields: Status (Backlog / Ready / In Progress / Review / Done), Area (CPU / GPU / Verify / Frontend), Priority, Owner. Populate from existing issues/PRs; avoid duplicate tracking tickets.
+2. **Discussions:** GitHub repository metadata currently reports Discussions **enabled**. Open the Discussions tab to verify categories and consider General, Ideas, Q&A, Research results.
+3. **Projects:** GitHub repository metadata currently reports Projects **enabled** (this does not prove a project board exists). Create a new GitHub Project and link the repository. Suggested fields: Status (Backlog / Ready / In Progress / Review / Done), Area (CPU / GPU / Verify / Frontend), Priority, Owner. Populate from existing issues/PRs; avoid duplicate tracking tickets.
 4. **Security:** Settings → Advanced Security (or Code security and analysis) → enable Dependency graph, Dependabot alerts and Dependabot security updates as available. Keep CodeQL and RustSec workflows enabled.
 5. **Branch protection:** Preserve required CI and independent review. Do not enable auto-merge or bypass checks.
 
