@@ -14,7 +14,11 @@ An unmodified upstream 3D GPU deko3d sample shows correct rendered frames: `grap
 
 An unmodified upstream filesystem and console sample shows correct rendered text frames: `fs/romfs` (pinned in `tests/corpus/manifest.json`) passes all criteria in `docs/romfs-oracle.md`. Merged in PR #123 with all 13 CI checks passing, verifying RomFS Unicode/ASCII asset reading, libnx default console text display, R5G6B5Unorm surface decoding, and bit-exact agreement between Interpreter and Tier-3 JIT engines.
 
-**Outside samples with a verified frame: 3** (`simplegfx`, `deko_basic`, `romfs`).
+## Finish line 4: MET 2026-11-01
+
+An unmodified upstream startup application sample shows correct rendered text frames: `templates/application` (pinned in `tests/corpus/manifest.json`) passes all criteria in `docs/startup-oracle.md`. Merged in PR #125 with all CI checks passing, verifying default text console display and bit-exact agreement between Interpreter and Tier-3 JIT engines.
+
+**Outside samples with a verified frame: 4** (`simplegfx`, `deko_basic`, `romfs`, `startup`).
 
 ## Token budget rules (all agents)
 - Use only what the current task needs: git, cargo, the GitHub MCP tools, and file read/edit.
