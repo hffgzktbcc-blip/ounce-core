@@ -19,6 +19,11 @@ This document establishes operating rules for AI coding assistants (Antigravity,
 * **Terminology**: Avoid the word "emulator" in repository descriptions, documentation, and metadata.
 * **Git Author**: Retain `hffgzktbcc-blip <hffgzktbcc-blip@users.noreply.github.com>`.
 
+## Finish line (set 2026-11-01)
+**One unmodified, independently built homebrew sample (pinned switch-examples, see `docs/independent-corpus.md`) boots under `run`, gets past VI/Binder startup (no `BadGfxInit`), presents at least one frame whose pixels are checked, and exits cleanly. CI runs it on all nine jobs.**
+Why this one: every current passing fixture is project-authored, so it proves nothing about outside software. This is the first independent evidence and it unblocks the GPU, presentation and Tier-3/4 work already built.
+Order: (1) VI/Binder bootstrap per `docs/CODEX_HANDOFF.md`; (2) frame descriptor into `frame_from_surface`; (3) sample passes in CI. Anything not on this path waits.
+
 ## 3. Active Handoff Log
 * **Completed State**:
   - Release v0.3.0 was published. History cleanup is not verified complete; see the dated, limited ref check in `README.md` and `docs/PROVENANCE.md`.
