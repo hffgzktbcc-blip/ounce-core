@@ -3,12 +3,13 @@
 Every session: read this file and `AGENTS.md`, then work. Don't read `docs/HANDOFF_HISTORY.md` unless you need one specific old entry (grep it).
 
 ## 1. Mission
-- **Measure of progress:** outside samples (unmodified upstream homebrew) with a verified frame. **Current count: 3** (`simplegfx`, `deko_basic`, `romfs`).
+- **Measure of progress:** outside samples (unmodified upstream homebrew) with a verified frame. **Current count: 4** (`simplegfx`, `deko_basic`, `romfs`, `startup`).
 - **Completed:**
   - `simplegfx`: First verified linear frame buffer display.
   - `deko_basic`: First verified 3D GPU-drawn frame (Maxwell/Ampere NVN/deko3d, block-linear detiling, smooth RGB vertex interpolation). PR #121 merged.
   - `romfs`: First verified filesystem and console text display sample (RomFS Unicode/ASCII reading, 16-bit R5G6B5Unorm surface decoding). PR #123 merged.
-- **Next target:** The next quickest outside sample (input or audio).
+  - `startup`: Verified application startup baseline and text console presentation (`templates/application`). PR #125 merged.
+- **Next target:** The next quickest outside sample (input, JIT, or audio).
 - **Philosophy:** correctness first, observability second, performance third. No feature work that no real sample needs.
 
 ## 2. Rules
