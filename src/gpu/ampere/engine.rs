@@ -617,6 +617,10 @@ impl Ampere3d {
         }
         let class = match self.bound[sc] {
             Some(c @ (m::AMPERE_B | m::MAXWELL_B)) => c,
+            Some(m::FERMI_TWOD_A) => {
+                // FERMI_TWOD_A (2D operations: clear/blit setup). Accept without foreign subchannel error.
+                return;
+            }
             _ => {
                 self.diagnostics.push(Diagnostic::ForeignSubchannel {
                     subchannel: call.subchannel,

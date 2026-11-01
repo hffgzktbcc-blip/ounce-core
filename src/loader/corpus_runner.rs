@@ -50,6 +50,7 @@ impl Default for Limits {
 
 #[derive(Debug)]
 struct Report {
+    #[allow(dead_code)]
     requested_engine: Engine,
     actual_engine: Engine,
     stop: Stop,
@@ -611,6 +612,46 @@ fn simplegfx_first_frame_oracle() {
             }
         }
         // Criterion 5: both engines give identical frames.
+        match &reference {
+            None => reference = Some(result.queued),
+            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+        }
+    }
+}
+
+/// The deko_basic first-frame oracle (`docs/deko-basic-oracle.md`), criteria 3-6, on an NRO built
+/// unchanged from the pinned source. Opt-in: `OUNCE_DEKO_BASIC_NRO=<path> cargo test --release
+/// deko_basic_first_frame_oracle -- --ignored --nocapture`. `OUNCE_DEKO_BASIC_FRAMES` (default 5)
+/// sets how many queued frames to run.
+#[test]
+#[ignore = "requires OUNCE_DEKO_BASIC_NRO pointing at deko_basic.nro built from the pinned source"]
+fn deko_basic_first_frame_oracle() {
+    let path = std::env::var_os("OUNCE_DEKO_BASIC_NRO").expect("OUNCE_DEKO_BASIC_NRO is unset");
+    let frames: u64 = std::env::var("OUNCE_DEKO_BASIC_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
+    let expected_hash = |i: u64| match i {
+        1 => 0x7c9a9a3fa3856325u64,
+        _ => 0x3a00ccf6b6f28ea1u64,
+    };
+    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(900), frames: usize::MAX,
+        queued_frames: frames, ..Limits::default() };
+    let mut reference: Option<Vec<QueuedFrame>> = None;
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = run_path(Path::new(&path), engine, &limits);
+        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        // Criterion 7: stopped by the runner's frame limit.
+        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        assert_eq!(result.queued.len() as u64, frames);
+        for f in &result.queued {
+            assert_eq!(f.error, None, "frame {}", f.index);
+            assert_eq!((f.width, f.height), (1280, 720), "frame {}", f.index);
+            assert_eq!(f.rgba_fnv1a64, expected_hash(f.index), "frame {} hash mismatch", f.index);
+            if f.index == 1 {
+                assert_eq!(f.uniform, Some([32, 75, 122, 255]), "frame 1 must be clear color");
+            } else {
+                assert_eq!(f.uniform, None, "rendered frames must contain non-uniform pixels");
+            }
+        }
+        // Criterion 6: both engines give identical frames.
         match &reference {
             None => reference = Some(result.queued),
             Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),

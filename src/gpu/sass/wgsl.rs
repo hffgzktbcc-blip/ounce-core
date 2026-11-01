@@ -146,6 +146,10 @@ impl Ctx<'_> {
         match op {
             Op::Const(bits) => format!("{bits:#010x}u"),
             Op::Cbuf { bank, offset } => format!("cb{bank}[{}u][{}u]", offset / 16, (offset / 4) % 4),
+            Op::CbufIndexed { bank, offset, reg } => {
+                let r = self.expr(self.f.op(reg));
+                format!("cb{bank}[({offset}u + {r}) / 16u][(({offset}u + {r}) / 4u) % 4u]")
+            }
             Op::Attr { addr } => match attr_slot(addr) {
                 Some(AttrSlot::Generic { loc, comp }) => format!("vin.a{loc}.{}", COMP[comp as usize]),
                 _ => unreachable!("lowering only emits generic vertex inputs"),
@@ -296,6 +300,11 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
             Op::Cbuf { bank, offset } => {
                 let e = cbufs.entry(bank).or_insert(0);
                 *e = (*e).max(offset as u32 / 16 + 1);
+            }
+            Op::CbufIndexed { bank, offset, .. } => {
+                let e = cbufs.entry(bank).or_insert(0);
+                // Dynamic indexing: ensure buffer declaration has enough capacity (at least offset/16 + 16 vec4s)
+                *e = (*e).max(offset as u32 / 16 + 16);
             }
             Op::Attr { addr } | Op::Interp { addr, .. } => {
                 if let Some(AttrSlot::Generic { loc, .. }) = attr_slot(addr) {

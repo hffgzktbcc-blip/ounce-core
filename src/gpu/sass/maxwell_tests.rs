@@ -138,7 +138,7 @@ fn maxwell_cuasm_mufu_ldc() {
     // LDC.U8 / LDC.U16: real words, rejected for size; bank/offset fields still line up.
     assert!(matches!(decode(0xef9000001807ff00), Err(DecodeError::Unsupported { what: "LDC size other than 32-bit", .. })));
     let ldc32 = 0xef9200301047ff16 & !(7 << 48) | (4 << 48);
-    assert_eq!(d(ldc32), Instr::Ldc { dst: 0x16, bank: 3, offset: 0x104 });
+    assert_eq!(d(ldc32), Instr::Ldc { dst: 0x16, bank: 3, offset: 0x104, reg: RZ });
 }
 
 #[test]

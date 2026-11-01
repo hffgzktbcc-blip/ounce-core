@@ -1,7 +1,24 @@
 # First-frame oracle: `deko_basic` (written before execution)
 
-Status: **pre-registered oracle for deko_basic bring-up, not yet executed against a passing run.** Written on
-2026-11-01 from upstream `switchbrew/switch-examples` source.
+Status: **executed against passing runs on 2026-11-01.** Verified on both Interpreter and Tier-3 JIT engines
+against upstream `switchbrew/switch-examples` pinned commit `669786898205b7beb25ff1731e72982e6d0397d3`.
+
+## Frame content & hash table
+
+- Frame 1: Initial clear buffer submitted during display bringup before the first draw completes:
+  - Resolution: 1280x720 RGBA8
+  - Uniform clear color: `RGBA8(32, 75, 122, 255)` (`#204b7aff`)
+  - Content hash (FNV-1a 64-bit): `0x7c9a9a3fa3856325` (8978658405233550117)
+- Frames 2+: Fully rendered RGB triangle with smooth interpolation over clear background:
+  - Resolution: 1280x720 RGBA8
+  - Non-uniform, rendered frame
+  - Content hash (FNV-1a 64-bit): `0x3a00ccf6b6f28ea1` (4179565814203190945)
+  - Key sample points:
+    - Top apex `(640, 10)`: `(251, 2, 2, 255)` (Red dominant)
+    - Center `(640, 480)`: `(85, 85, 85, 255)` (Equal 1/3 RGB mix)
+    - Bottom-left `(20, 700)`: `(7, 247, 1, 255)` (Green dominant)
+    - Bottom-right `(1260, 700)`: `(7, 0, 248, 255)` (Blue dominant)
+    - Background outside `(100, 100)`: `(32, 75, 122, 255)` (Clear color)
 
 ## Sample
 
