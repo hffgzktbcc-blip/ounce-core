@@ -164,6 +164,8 @@ pub struct BinderObjects {
     layers: BTreeMap<u64, u32>,
     next_id: u32,
     pub last_submission: Option<GraphicBufferSlot>,
+    /// `QUEUE_BUFFER` transactions accepted so far; the i-th queue is frame i.
+    pub queued: u64,
 }
 
 impl BinderObjects {
@@ -263,6 +265,7 @@ impl BinderObjects {
                 let slot = word(0x50)? as i32;
                 let submitted = object.slots.get(&slot).cloned().ok_or(INVALID_HANDLE)?;
                 self.last_submission = Some(submitted);
+                self.queued += 1;
                 Ok(buffer_output_parcel(1280, 720))
             }
             // CONNECT(NATIVE_WINDOW_API_CPU).
@@ -368,6 +371,11 @@ fn buffer_output_parcel(width: u32, height: u32) -> Vec<u8> {
 impl IpcManager {
     pub fn vi_submission_diagnostic(&self) -> String {
         format!("slot={:?}; nvmap={:?}", self.vi_binder.last_submission, self.nvdrv.nvmap)
+    }
+
+    /// Number of `QUEUE_BUFFER` transactions accepted (frame i is the i-th queue).
+    pub fn vi_frames_queued(&self) -> u64 {
+        self.vi_binder.queued
     }
 
     /// Resolves the last queued producer slot through the nvmap registry. This
