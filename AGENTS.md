@@ -6,7 +6,7 @@ Short on purpose: every agent loads this file at session start. Past handoffs ar
 
 An **unmodified upstream homebrew sample shows correct pixels**: switchbrew/switch-examples `graphics/simplegfx` (pinned in `tests/corpus/manifest.json`) passes all six criteria in `docs/first-frame-oracle.md`: reproducible build, no libnx fatal at `framebufferCreate`, frames 1 and 2 captured from the submitted VI buffer match the oracle hashes for all 921,600 pixels, frame 61 is all zero, interpreter and Tier-3 agree, and the guest stops cleanly.
 
-Today it stops at `BadGfxInit` (`0x2559`) during VI/Binder startup. Anything that does not move this forward waits.
+Status 2026-11-01: **met locally** (all six criteria; see the result section of `docs/first-frame-oracle.md`), in #103. It counts as met once #103 merges with every CI job green, including the new oracle step in `external-corpus.yml`. Until then, anything that does not move this forward waits.
 
 ## Token budget rules (all agents)
 - Use only what the current task needs: git, cargo, the GitHub MCP tools, and file read/edit.
@@ -30,7 +30,8 @@ Today it stops at `BadGfxInit` (`0x2559`) during VI/Binder startup. Anything tha
 
 ## Lead and current claims
 - **Lead (finish line): Claude.** (2026-11-01)
-- **VI/Binder startup blocker: Claude** (2026-11-01). Took over #103 + #112; #112 (overflow fix) is folded into #103's branch `codex/independent-frame-evidence`, which carries the work from here. #113 (CI copy) closed.
+- **VI/Binder + simplegfx oracle: Claude** (2026-11-01). Took over #103; #112 (overflow fix) merged into it, #113 (CI copy) closed. Oracle passes locally; waiting on CI and merge.
+- **Queue:** #114, #105, #99 ready and green, waiting for the owner to merge (agent merges are blocked by the session's permission check). #104 needs a rebase after #105. #108 closed (infra, off-goal).
 - **Paused (feature work, not on the finish line):** #115 texture mips.
 
 ## Merge gate (owner rule)
