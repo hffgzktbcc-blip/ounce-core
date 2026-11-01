@@ -3,9 +3,11 @@
 Every session: read this file and `AGENTS.md`, then work. Don't read `docs/HANDOFF_HISTORY.md` unless you need one specific old entry (grep it).
 
 ## 1. Mission
-- **Measure of progress:** outside samples (unmodified upstream homebrew) with a verified frame. **Current count: 1** (simplegfx).
-- **Current target:** `deko_basic` (switchbrew/switch-examples `graphics/deko3d/deko_basic`, same pinned commit `669786898205b7beb25ff1731e72982e6d0397d3`). This is the first GPU-drawn frame.
-- **After that:** the next quickest sample (input, fs or audio). Then repeat.
+- **Measure of progress:** outside samples (unmodified upstream homebrew) with a verified frame. **Current count: 2** (`simplegfx`, `deko_basic`).
+- **Completed:**
+  - `simplegfx`: First verified linear frame buffer display.
+  - `deko_basic`: First verified 3D GPU-drawn frame (Maxwell/Ampere NVN/deko3d, block-linear detiling, smooth RGB vertex interpolation). PR #121 merged.
+- **Next target:** The next quickest outside sample (input, filesystem, or audio).
 - **Philosophy:** correctness first, observability second, performance third. No feature work that no real sample needs.
 
 ## 2. Rules
