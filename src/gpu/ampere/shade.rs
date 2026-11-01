@@ -5,7 +5,7 @@
 //! `MUFU.SIN/COS` 2*pi pre-scale, so the software and wgpu paths agree.
 
 use crate::gpu::sass::decode::{IpaFreq, TexHandle, TexOp};
-use crate::gpu::sass::ir::{Function, Op};
+use crate::gpu::sass::ir::{Function, Lod, Op};
 
 /// What a shader reads from outside its registers.
 pub(crate) trait ShaderInputs {
@@ -16,9 +16,11 @@ pub(crate) trait ShaderInputs {
     /// Fragment input at attribute address `addr`, before any `PassMulW` multiply.
     fn interp(&self, addr: u16, freq: IpaFreq) -> f32;
     /// 2D texture read: `x`, `y` are float bits for [`TexOp::Sample`] and integer texel
-    /// coordinates for [`TexOp::Fetch`]. Level 0 only; zeros when the texture is not resolved.
-    fn texture(&self, op: TexOp, handle: TexHandle, x: u32, y: u32) -> [f32; 4] {
-        let _ = (op, handle, x, y);
+    /// coordinates for [`TexOp::Fetch`]. `lod` is `None` for an implicit LOD, else float bits
+    /// (sample) or an integer level (fetch); 0 means level zero either way. Zeros when the
+    /// texture is not resolved.
+    fn texture(&self, op: TexOp, handle: TexHandle, lod: Option<u32>, x: u32, y: u32) -> [f32; 4] {
+        let _ = (op, handle, lod, x, y);
         [0.0; 4]
     }
 }
@@ -41,9 +43,13 @@ pub(crate) fn run(f: &Function, inputs: &dyn ShaderInputs) -> Vec<u32> {
                     None => raw.to_bits(),
                 }
             }
-            Op::Tex { op, handle, x: tx, y: ty, .. } => {
-                // The level is ignored: textures are read at level 0.
-                texels.push((v.len() as u32, inputs.texture(op, handle, v[tx.0 as usize], v[ty.0 as usize])));
+            Op::Tex { op, handle, lod, x: tx, y: ty } => {
+                let lod = match lod {
+                    Lod::Auto => None,
+                    Lod::Zero => Some(0),
+                    Lod::Level(l) => Some(v[l.0 as usize]),
+                };
+                texels.push((v.len() as u32, inputs.texture(op, handle, lod, v[tx.0 as usize], v[ty.0 as usize])));
                 0
             }
             Op::Comp(t, c) => texels.iter().find(|(i, _)| *i == t.0).map_or(0, |(_, rgba)| rgba[c as usize].to_bits()),
