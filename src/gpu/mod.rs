@@ -10,6 +10,7 @@ pub mod present;
 pub mod sass;
 pub mod shader;
 pub mod tensor;
+pub mod texfmt;
 pub mod tiling;
 pub mod vulkan;
 

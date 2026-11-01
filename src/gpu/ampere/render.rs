@@ -39,6 +39,8 @@ pub struct RenderStats {
     pub culled_triangles: u32,
     /// Fragments that passed the depth and stencil tests and were written.
     pub fragments: u64,
+    /// Fragments the pixel shader discarded (`KIL`).
+    pub discarded_fragments: u64,
 }
 
 /// Placement of one surface level in memory, independent of its format.
@@ -1008,6 +1010,20 @@ impl Ampere3d {
                         let Some(z) = depth::pixel_z(l[0] * v0.z + l[1] * v1.z + l[2] * v2.z, z_range) else {
                             continue;
                         };
+                        // A shader that can discard (KIL) runs before the depth/stencil
+                        // update, so discarded fragments leave depth and stencil alone.
+                        let early = match ps.func.discard {
+                            Some(d) => {
+                                let input = FragmentIn { v: [v0, v1, v2], flat: &a.varyings, l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
+                                let values = shade::run(&ps.func, &input);
+                                if values[d.0 as usize] != 0 {
+                                    self.stats.discarded_fragments += 1;
+                                    continue;
+                                }
+                                Some(values)
+                            }
+                            None => None,
+                        };
                         if let Some((zt, t)) = zbuf.as_mut() {
                             let texel = t.texel(px, py);
                             let stored_z = read_depth(zt.format, texel);
@@ -1036,8 +1052,13 @@ impl Ampere3d {
                                 continue;
                             }
                         }
-                        let input = FragmentIn { v: [v0, v1, v2], flat: &a.varyings, l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
-                        let values = shade::run(&ps.func, &input);
+                        let values = match early {
+                            Some(v) => v,
+                            None => {
+                                let input = FragmentIn { v: [v0, v1, v2], flat: &a.varyings, l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
+                                shade::run(&ps.func, &input)
+                            }
+                        };
                         for &(t, mask, first) in &outputs {
                             let Some(Some((ct, st, blend))) = staged.get_mut(t) else { continue };
                             let mut color = [0.0f32; 4];
