@@ -1,10 +1,10 @@
 //! Runs `gpu::sass` IR on the CPU: one call per vertex or per fragment.
 //!
-//! The IR is straight-line SSA (no control flow in step 1), so a run is one pass over the values
-//! in program order. Semantics match what `gpu::sass::wgsl` emits for the same IR, including the
+//! The IR is straight-line SSA (branches are if-converted during lowering), so a run is one pass
+//! over the values in program order. Semantics match what `gpu::sass::wgsl` emits for the same IR, including the
 //! `MUFU.SIN/COS` 2*pi pre-scale, so the software and wgpu paths agree.
 
-use crate::gpu::sass::decode::{IpaFreq, MufuOp, TexHandle, TexOp};
+use crate::gpu::sass::decode::{IpaFreq, TexHandle, TexOp};
 use crate::gpu::sass::ir::{Function, Op};
 
 /// What a shader reads from outside its registers.
@@ -47,30 +47,8 @@ pub(crate) fn run(f: &Function, inputs: &dyn ShaderInputs) -> Vec<u32> {
                 0
             }
             Op::Comp(t, c) => texels.iter().find(|(i, _)| *i == t.0).map_or(0, |(_, rgba)| rgba[c as usize].to_bits()),
-            Op::FNeg(a) => (-x(a)).to_bits(),
-            Op::FAbs(a) => x(a).abs().to_bits(),
-            Op::FSat(a) => {
-                let t = x(a);
-                // saturate(NaN) is 0 in WGSL's clamp-based definition.
-                (if t.is_nan() { 0.0 } else { t.clamp(0.0, 1.0) }).to_bits()
-            }
-            Op::FAdd(a, b) => (x(a) + x(b)).to_bits(),
-            Op::FMul(a, b) => (x(a) * x(b)).to_bits(),
-            Op::FFma(a, b, c) => x(a).mul_add(x(b), x(c)).to_bits(),
-            Op::Mufu(op, a) => {
-                let t = x(a);
-                match op {
-                    MufuOp::Rcp => 1.0 / t,
-                    MufuOp::Rsq => 1.0 / t.sqrt(),
-                    MufuOp::Sqrt => t.sqrt(),
-                    MufuOp::Ex2 => t.exp2(),
-                    MufuOp::Lg2 => t.log2(),
-                    MufuOp::Sin => (t * std::f32::consts::TAU).sin(),
-                    MufuOp::Cos => (t * std::f32::consts::TAU).cos(),
-                    MufuOp::Tanh => t.tanh(),
-                }
-                .to_bits()
-            }
+            // Pure ops: one definition shared with the translator's tests.
+            ref op => crate::gpu::sass::eval::op(op, &v).expect("every other IR op is pure"),
         };
         v.push(bits);
     }
