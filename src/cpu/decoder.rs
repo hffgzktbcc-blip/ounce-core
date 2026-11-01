@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use super::instructions::{
+    SimdAcrossOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
     SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
@@ -542,8 +543,55 @@ pub fn decode(raw: u32) -> Instruction {
         }
     }
 
+    // 14a2. Floating-Point round to integral: FRINTx
+    if (raw & 0xFF3C7C00) == 0x1E244000 && ((raw >> 15) & 0x7) != 5 {
+        return Instruction::FpRound {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            op: ((raw >> 15) & 0x7) as u8,
+            is_double: (raw >> 22) & 0x3 == 1,
+        };
+    }
+
+    // 14a3. Float <-> integer conversion (FCVTxS/U, SCVTF, UCVTF, FCVTAS/AU); FMOV (opcodes 6, 7) is elsewhere
+    // Pattern: sf 0 0 11110 ftype 1 rmode opcode 000000 Rn Rd
+    if (raw & 0x7F20FC00) == 0x1E200000 && ((raw >> 16) & 0x7) <= 5 {
+        return Instruction::FpIntConv {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            opcode: ((raw >> 16) & 0x7) as u8,
+            rmode: ((raw >> 19) & 0x3) as u8,
+            is_64: raw & (1 << 31) != 0,
+            is_double: (raw >> 22) & 0x3 == 1,
+        };
+    }
+
+    // 14a. Floating-Point 1-Source: FMOV, FABS, FNEG, FSQRT, FCVT (single <-> double)
+    // Pattern: 0 0 0 11110 ftype 1 0000 opcode(2) 10000 Rn Rd
+    if (raw & 0xFF3E7C00) == 0x1E204000 {
+        return Instruction::FpData1 {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            op: ((raw >> 15) & 0x7) as u8,
+            is_double: (raw >> 22) & 0x3 == 1,
+        };
+    }
+
+    // 14b. Floating-Point Conditional Select: FCSEL
+    // Pattern: 0 0 0 11110 ftype 1 Rm cond 11 Rn Rd
+    if (raw & 0xFF200C00) == 0x1E200C00 {
+        return Instruction::FpCondSelect {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            rm: ((raw >> 16) & 0x1F) as u8,
+            cond: Condition::from_u8(((raw >> 12) & 0xF) as u8),
+            is_double: (raw >> 22) & 0x3 == 1,
+        };
+    }
+
     // 15. Floating-Point Compare: FCMP
-    if (raw & 0x5F203C1F) == 0x1E202000 {
+    // FCMP/FCMPE (bit 4 = signalling) with a register (bit 3 = 0) or #0.0 (bit 3 = 1) operand
+    if (raw & 0x5F203C07) == 0x1E202000 {
         let ftype = (raw >> 22) & 0x3;
         let is_double = ftype == 1;
         let rm = ((raw >> 16) & 0x1F) as u8;
@@ -551,7 +599,7 @@ pub fn decode(raw: u32) -> Instruction {
         return Instruction::FpCompare {
             rn,
             rm,
-            is_zero: false,
+            is_zero: raw & 0x8 != 0,
             is_double,
         };
     }
@@ -1035,6 +1083,25 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize, q });
     }
 
+    // 28b. AdvSIMD across lanes: 0 Q U 01110 size 11000 opcode 10 Rn Rd
+    if (raw & 0x9F3E_0C00) == 0x0E30_0800 {
+        let op = match ((raw >> 12) & 0x1F, u) {
+            (0b11011, false) => SimdAcrossOp::Addv,
+            (0b00011, false) => SimdAcrossOp::Saddlv,
+            (0b00011, true) => SimdAcrossOp::Uaddlv,
+            (0b01010, false) => SimdAcrossOp::Smaxv,
+            (0b01010, true) => SimdAcrossOp::Umaxv,
+            (0b11010, false) => SimdAcrossOp::Sminv,
+            (0b11010, true) => SimdAcrossOp::Uminv,
+            _ => return None,
+        };
+        // 64-bit lanes do not exist for these, and a 2S reduction needs Q.
+        if size == 3 || (size == 2 && !q) {
+            return None;
+        }
+        return Some(Instruction::SimdAcross { rd, rn, op, esize: 8u8 << size, q });
+    }
+
     // 29. AdvSIMD two-register miscellaneous: 0 Q U 01110 size 10000 opcode 10 Rn Rd
     if (raw & 0x9F3E_0C00) == 0x0E20_0800 {
         let op = match ((raw >> 12) & 0x1F, u) {
@@ -1178,6 +1245,24 @@ mod tests {
     #[test]
     fn test_decode_nop() {
         assert_eq!(decode(0xD503201F), Instruction::Nop);
+    }
+
+    #[test]
+    fn test_decode_fcsel() {
+        // fcsel s0, s0, s3, eq (seen in libdeko3d)
+        assert_eq!(
+            decode(0x1E230C00),
+            Instruction::FpCondSelect { rd: 0, rn: 0, rm: 3, cond: Condition::from_u8(0), is_double: false }
+        );
+    }
+
+    #[test]
+    fn test_decode_fp_scalar_forms_from_deko3d() {
+        assert!(matches!(decode(0x1E204050), Instruction::FpData1 { rd: 16, rn: 2, op: 0, is_double: false })); // fmov s16, s2
+        assert!(matches!(decode(0x1E3100A7), Instruction::FpIntConv { rd: 7, rn: 5, opcode: 1, rmode: 2, is_64: false, .. })); // fcvtmu w7, s5
+        assert!(matches!(decode(0x1E24C021), Instruction::FpRound { rd: 1, rn: 1, op: 1, is_double: false })); // frintp s1, s1
+        assert!(matches!(decode(0x1E2020F8), Instruction::FpCompare { rn: 7, is_zero: true, .. })); // fcmpe s7, #0.0
+        assert!(matches!(decode(0x0E31B800), Instruction::SimdAcross { op: SimdAcrossOp::Addv, esize: 8, q: false, .. })); // addv b0, v0.8b
     }
 
     #[test]

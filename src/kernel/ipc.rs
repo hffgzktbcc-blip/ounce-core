@@ -154,6 +154,7 @@ pub struct IpcManager {
     pub applet: super::applet::AppletState,
     pub apm: super::apm::ApmState,
     pub time: super::time::TimeState,
+    pub(super) vi_binder: super::vi::BinderObjects,
     next_handle: u32,
     pub total_ipc_requests: u64,
     pub start_instant: std::time::Instant,
@@ -179,6 +180,7 @@ impl IpcManager {
             applet: Default::default(),
             apm: Default::default(),
             time: Default::default(),
+            vi_binder: Default::default(),
             next_handle: 0x10001,
             total_ipc_requests: 0,
             start_instant: std::time::Instant::now(),
@@ -246,6 +248,7 @@ impl IpcManager {
             return self.handle_control(session_handle, &service, tls_addr, mmu, mmu.read_u32(cmif_base + 8).unwrap_or(0));
         }
 
+        let mut object_handle = session_handle;
         // Domain sessions: a domain header names the target object, and the CMIF payload follows it.
         if self.domains.contains(&session_handle) && self.request.kind != super::hipc::TYPE_CLOSE {
             let dom = super::hipc::read_domain_header(mmu, cmif_base);
@@ -264,6 +267,7 @@ impl IpcManager {
                     return 0;
                 }
             };
+            object_handle = dom.object_id;
             cmif_base += 16;
         }
         let magic = mmu.read_u32(cmif_base).unwrap_or(0);
@@ -275,6 +279,11 @@ impl IpcManager {
 
         let cmd_id = mmu.read_u32(cmif_base + 8).unwrap_or(0);
         let args_base = cmif_base + 0x10;
+        // Explicit diagnostic opt-in; cap output even for a looping guest.
+        if self.total_ipc_requests <= 256 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+            eprintln!("[IPC trace] #{} handle=0x{:X} service={:?} command={}", self.total_ipc_requests, object_handle, service, cmd_id);
+        }
+
 
         // libnx-shaped nvdrv requests carry their data in buffers; the harness's inline form keeps the
         // older handler below.
@@ -282,6 +291,10 @@ impl IpcManager {
         let has_buffers = !(r.send_statics.is_empty() && r.send_buffers.is_empty() && r.recv_buffers.is_empty());
         if service == ServiceType::Nvdrv && (has_buffers || matches!(cmd_id, 2 | 4 | 8 | 11 | 12)) {
             return self.handle_nvdrv(cmd_id, args_base, tls_addr, mmu, nvgpu);
+        }
+
+        if let Some(res) = self.handle_vi_binder(&service, cmd_id, args_base, tls_addr, mmu) {
+            return res;
         }
 
         if let Some(res) = self.handle_system_service(&service, cmd_id, args_base, tls_addr, mmu) {
@@ -567,6 +580,67 @@ impl IpcManager {
             },
 
             ServiceType::ApplicationDisplayService => match cmd_id {
+                // Public VI session-discovery commands return objects, not scalar zeroes.
+                100..=103 if self.is_libnx_request() => {
+                    let name = match cmd_id {
+                        100 => "vi:binder-relay",
+                        101 => "vi:system-display",
+                        102 => "vi:manager-display",
+                        _ => "vi:binder-indirect",
+                    };
+                    let handle = self.allocate_handle(ServiceType::Generic(name.into()));
+                    self.write_cmif_response(tls_addr, mmu, 0, &[], Some(handle));
+                    0
+                }
+                // OpenLayer: expose one bounded Binder producer through the native-window
+                // parcel libnx consumes. The producer rejects transactions it does not model.
+                2020 if self.is_libnx_request() => {
+                    let layer_id = mmu.read_u64(args_base + 0x40).unwrap_or(0);
+                    let result = match self.vi_binder.open_layer(layer_id) {
+                        Ok(object_id) => {
+                            let parcel = super::vi::native_window_parcel(object_id);
+                            if self.write_out_buffer(mmu, &parcel) == parcel.len() {
+                                self.write_cmif_response(tls_addr, mmu, 0, &[parcel.len() as u32, 0], None);
+                                return 0;
+                            }
+                            (102 << 9) | 1
+                        }
+                        Err(result) => result,
+                    };
+                    self.write_cmif_response(tls_addr, mmu, result, &[], None);
+                    0
+                }
+                // SetLayerScalingMode(FitToLayer, layer_id). This is mandatory before
+                // libnx creates its native window and begins Binder setup.
+                2101 if self.is_libnx_request() => {
+                    let mode = mmu.read_u32(args_base).unwrap_or(u32::MAX);
+                    let layer_id = mmu.read_u64(args_base + 8).unwrap_or(u64::MAX);
+                    let result = if mode != 2 {
+                        (120 << 9) | 1
+                    } else if !self.vi_binder.has_layer(layer_id) {
+                        (114 << 9) | 1
+                    } else {
+                        0
+                    };
+                    self.write_cmif_response(tls_addr, mmu, result, &[], None);
+                    0
+                }
+                // CloseLayer is lifecycle cleanup. Only a layer opened above can close.
+                2021 if self.is_libnx_request() => {
+                    let layer_id = mmu.read_u64(args_base).unwrap_or(u64::MAX);
+                    let result = self.vi_binder.close_layer(layer_id).err().unwrap_or(0);
+                    self.write_cmif_response(tls_addr, mmu, result, &[], None);
+                    0
+                }
+                2030 if self.is_libnx_request() => {
+                    eprintln!("[VI] command {cmd_id}: stray-layer producer not implemented");
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+                1020 if self.is_libnx_request() => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+                    0
+                }
                 // Command 1010: OpenDisplay("Default") -> returns DisplayId = 0
                 1010 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0, 0], None);
@@ -575,6 +649,11 @@ impl IpcManager {
                 // Command 2030: CreateStrayLayer -> returns LayerId = 1, IGraphicBufferProducer = 0x100
                 2030 => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[1, 0, 0x100], None);
+                    0
+                }
+                _ if self.is_libnx_request() => {
+                    eprintln!("[VI] display command {cmd_id} not implemented");
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
                     0
                 }
                 _ => {
@@ -590,6 +669,7 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[res_h], Some(res_h));
                     0
                 }
+                _ if self.is_libnx_request() => self.handle_hid(cmd_id, args_base, tls_addr, mmu),
                 _ => {
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0
@@ -674,203 +754,11 @@ impl IpcManager {
                 }
             },
 
-            ServiceType::FileSystem(mount_prefix) => match cmd_id {
-                // Command 0: CreateFile(u32 mode, u64 size, string path)
-                0 => {
-                    let path = self.path_arg(mmu, args_base + 16);
-                    let full_path = if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    vfs.mount_file(&full_path, &[]);
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
-                    0
-                }
-                // Command 1: DeleteFile(string path)
-                1 => {
-                    let path = self.path_arg(mmu, args_base);
-                    let full_path = if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    let res = match vfs.delete_file(&full_path) {
-                        Ok(_) => 0,
-                        Err(_) => 0x0005_0202,
-                    };
-                    self.write_cmif_response(tls_addr, mmu, res, &[0], None);
-                    0
-                }
-                // Command 2: CreateDirectory(string path)
-                2 => {
-                    let path = self.path_arg(mmu, args_base);
-                    let full_path = if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    let res = match vfs.create_directory(&full_path) {
-                        Ok(_) => 0,
-                        Err(_) => 0x0005_0202,
-                    };
-                    self.write_cmif_response(tls_addr, mmu, res, &[0], None);
-                    0
-                }
-                // Command 3 | 4: DeleteDirectory / DeleteDirectoryRecursively(string path)
-                3 | 4 => {
-                    let path = self.path_arg(mmu, args_base);
-                    let full_path = if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    let res = match vfs.delete_directory(&full_path) {
-                        Ok(_) => 0,
-                        Err(_) => 0x0005_0202,
-                    };
-                    self.write_cmif_response(tls_addr, mmu, res, &[0], None);
-                    0
-                }
-                // Command 8: OpenFile(string path, u32 mode) -> returns IFile
-                8 => {
-                    let path = self.path_arg(mmu, args_base);
-                    let full_path = if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    match vfs.open_file(&full_path) {
-                        Ok(fh) => {
-                            let file_h = self.allocate_handle(ServiceType::File(fh));
-                            self.write_cmif_response(tls_addr, mmu, 0, &[file_h], Some(file_h));
-                        }
-                        Err(_) => {
-                            self.write_cmif_response(tls_addr, mmu, 0x0005_0202, &[], None);
-                        }
-                    }
-                    0
-                }
-                // Command 9: OpenDirectory(string path, u32 filter_flags) -> returns IDirectory
-                9 => {
-                    let path = self.path_arg(mmu, args_base);
-                    let full_path = if path.is_empty() || path == "/" {
-                        mount_prefix.clone()
-                    } else if path.contains(":/") {
-                        path
-                    } else {
-                        format!("{}{}", mount_prefix, path.trim_start_matches('/'))
-                    };
-                    let entries = vfs.list_directory(&full_path).unwrap_or_default();
-                    let dir_h = self.allocate_handle(ServiceType::Directory {
-                        path: full_path,
-                        entries,
-                        index: 0,
-                    });
-                    self.write_cmif_response(tls_addr, mmu, 0, &[dir_h], Some(dir_h));
-                    0
-                }
-                // Command 10: Commit
-                10 => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
-                    0
-                }
-                // Command 11: GetFreeSpaceSize -> returns u64
-                11 => {
-                    let free_bytes = vfs.get_free_space_size(&mount_prefix);
-                    let lo = (free_bytes & 0xFFFF_FFFF) as u32;
-                    let hi = ((free_bytes >> 32) & 0xFFFF_FFFF) as u32;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
-                    0
-                }
-                // Command 12: GetTotalSpaceSize -> returns u64
-                12 => {
-                    let total_bytes = vfs.get_total_space_size(&mount_prefix);
-                    let lo = (total_bytes & 0xFFFF_FFFF) as u32;
-                    let hi = ((total_bytes >> 32) & 0xFFFF_FFFF) as u32;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
-                    0
-                }
-                _ => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
-                    0
-                }
-            },
-
-            ServiceType::Directory { path, entries, mut index } => match cmd_id {
-                // Command 0: ReadDirectory(out_buf_addr: u64, max_entries: u64) -> count: u64
-                0 => {
-                    let buf_addr = mmu.read_u64(args_base).unwrap_or(0);
-                    let max_entries = mmu.read_u64(args_base + 8).unwrap_or(0) as usize;
-                    let count = if max_entries > 0 {
-                        (entries.len() - index).min(max_entries)
-                    } else {
-                        entries.len() - index
-                    };
-
-                    if buf_addr >= 0x10000 && mmu.is_mapped(buf_addr) {
-                        for i in 0..count {
-                            let entry_name = &entries[index + i];
-                            let entry_addr = buf_addr + (i * 0x310) as u64;
-                            let mut entry_buf = [0u8; 768];
-                            let name_bytes = entry_name.as_bytes();
-                            let l = name_bytes.len().min(767);
-                            entry_buf[..l].copy_from_slice(&name_bytes[..l]);
-                            let _ = mmu.write_bytes(entry_addr, &entry_buf);
-                            let is_dir = entry_name.contains('/') || !entry_name.contains('.');
-                            let _ = mmu.write_u32(entry_addr + 0x304, if is_dir { 0 } else { 1 });
-                        }
-                    }
-                    index += count;
-                    self.handles.insert(session_handle, ServiceType::Directory { path, entries, index });
-
-                    let lo = (count as u64 & 0xFFFF_FFFF) as u32;
-                    let hi = ((count as u64 >> 32) & 0xFFFF_FFFF) as u32;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
-                    0
-                }
-                // Command 1: GetEntryCount -> count: u64
-                1 => {
-                    let count = entries.len() as u64;
-                    let lo = (count & 0xFFFF_FFFF) as u32;
-                    let hi = ((count >> 32) & 0xFFFF_FFFF) as u32;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
-                    0
-                }
-                _ => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
-                    0
-                }
-            },
-
-            ServiceType::File(handle) => match cmd_id {
-                // Command 0: Read(u32 option, s64 offset, u64 size) -> u64 bytes read, data in the B buffer
-                0 => {
-                    let offset = mmu.read_u64(args_base + 8).unwrap_or(0) as usize;
-                    let size = mmu.read_u64(args_base + 16).unwrap_or(0) as usize;
-                    let buf = self.request.recv_buffers.first().copied().unwrap_or_default();
-                    let len = size.min(buf.size as usize);
-                    let read = match vfs.handle_path(handle).map(str::to_string) {
-                        Some(path) => vfs.read_file_to_guest(&path, offset, buf.addr, len, mmu).unwrap_or(0),
-                        None => 0,
-                    };
-                    let n = read as u64;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[n as u32, (n >> 32) as u32], None);
-                    0
-                }
-                // Command 4: GetSize -> u64
-                4 => {
-                    let sz = vfs.get_file_size(handle).unwrap_or(0) as u64;
-                    let lo = (sz & 0xFFFF_FFFF) as u32;
-                    let hi = ((sz >> 32) & 0xFFFF_FFFF) as u32;
-                    self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
-                    0
-                }
-                _ => {
-                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
-                    0
-                }
-            },
+            ServiceType::FileSystem(mount) => self.handle_filesystem(&mount, cmd_id, args_base, tls_addr, mmu, vfs),
+            ServiceType::Directory { path, entries, index } => {
+                self.handle_directory(object_handle, path, entries, index, cmd_id, args_base, tls_addr, mmu, vfs)
+            }
+            ServiceType::File(handle) => self.handle_file(handle, cmd_id, args_base, tls_addr, mmu, vfs),
 
             ServiceType::Storage => match cmd_id {
                 // Command 4: GetSize -> returns 0x40000 (256 KB)
@@ -1304,7 +1192,12 @@ impl IpcManager {
     /// A path argument: libnx sends `FsPath` in the first send static (X) buffer; older callers put a
     /// string (or a pointer to one) in the CMIF arguments at `fallback`.
     fn path_arg(&self, mmu: &Memory, fallback: u64) -> String {
-        if let Some(&(_, buf)) = self.request.send_statics.first() {
+        self.path_arg_at(mmu, 0, fallback)
+    }
+
+    /// Path argument `index`: X buffer `index`, else the CMIF arguments at `fallback`.
+    pub(super) fn path_arg_at(&self, mmu: &Memory, index: usize, fallback: u64) -> String {
+        if let Some(&(_, buf)) = self.request.send_statics.get(index) {
             let mut bytes = vec![0u8; (buf.size as usize).min(0x301)];
             if mmu.read_bytes(buf.addr, &mut bytes).is_ok() {
                 let len = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
@@ -1348,7 +1241,7 @@ impl IpcManager {
     }
 
     /// Writes a standard CMIF ("SFCO") response frame back into the thread's TLS buffer.
-    fn write_cmif_response(
+    pub(super) fn write_cmif_response(
         &self,
         tls_addr: u64,
         mmu: &mut Memory,
@@ -1451,6 +1344,51 @@ mod tests {
         mmu.write_u32(tls, 5).unwrap();
         ipc.handle_sync_request(hid, tls, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
         assert_eq!(mmu.read_u32(tls + 0x20).unwrap(), POINTER_BUFFER_SIZE);
+    }
+
+    #[test]
+    fn libnx_vi_discovery_returns_sessions_and_open_layer_requires_output_buffer() {
+        let mut mmu = Memory::new();
+        let tls = 0x8000_0000u64;
+        mmu.map_range(tls, 4096, Permission::READ_WRITE);
+        let mut ipc = IpcManager::new();
+        let (mut gpu, mut audio, mut vfs) =
+            (NvgpuChannel::new(), AudioOutServer::new(), VirtualFileSystem::new());
+        let display = ipc.allocate_handle(ServiceType::ApplicationDisplayService);
+        let request = |mmu: &mut Memory, cmd: u32| {
+            for offset in (0..0x100u64).step_by(4) {
+                mmu.write_u32(tls + offset, 0).unwrap();
+            }
+            mmu.write_u32(tls, 4).unwrap();
+            mmu.write_u32(tls + 4, 10).unwrap();
+            mmu.write_u32(tls + 0x10, CMIF_IN_MAGIC).unwrap();
+            mmu.write_u32(tls + 0x18, cmd).unwrap();
+        };
+        let names = ["vi:binder-relay", "vi:system-display", "vi:manager-display", "vi:binder-indirect"];
+        let mut sessions = Vec::new();
+        for (cmd, name) in (100..=103).zip(names) {
+            request(&mut mmu, cmd);
+            assert_eq!(ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+            assert_eq!(mmu.read_u32(tls + 8).unwrap(), 1 << 5, "one move handle");
+            let session = mmu.read_u32(tls + 12).unwrap();
+            assert_eq!(ipc.handles.get(&session), Some(&ServiceType::Generic(name.into())));
+            assert!(!sessions.contains(&session));
+            sessions.push(session);
+        }
+        request(&mut mmu, 2020);
+        assert_eq!(ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+        assert_eq!(mmu.read_u32(tls + 0x10).unwrap(), CMIF_OUT_MAGIC);
+        assert_eq!(mmu.read_u32(tls + 0x18).unwrap(), (102 << 9) | 1);
+        for cmd in [2030, 9999] {
+            request(&mut mmu, cmd);
+            assert_eq!(ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+            assert_eq!(mmu.read_u32(tls + 0x10).unwrap(), CMIF_OUT_MAGIC);
+            assert_eq!(mmu.read_u32(tls + 0x18).unwrap(), RESULT_UNKNOWN_COMMAND);
+        }
+        // Discovery does not imply an implemented Binder transaction service.
+        request(&mut mmu, 0);
+        ipc.handle_sync_request(sessions[0], tls, &mut mmu, &mut gpu, &mut audio, &mut vfs);
+        assert_eq!(mmu.read_u32(tls + 0x18).unwrap(), RESULT_UNKNOWN_COMMAND);
     }
 
     #[test]

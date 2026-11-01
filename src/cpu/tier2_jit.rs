@@ -100,6 +100,7 @@ impl Tier2Block {
                 }
                 Instruction::BranchCond { .. }
                 | Instruction::CompareBranch { .. }
+                | Instruction::TestBranch { .. }
                 | Instruction::BranchReg { .. }
                 | Instruction::BranchRegAuth { .. }
                 | Instruction::Svc { .. }
@@ -145,8 +146,14 @@ impl Tier2Block {
 
             match inst {
                 Instruction::AddSubImm { is_64, is_sub, set_flags, rd, rn, imm } => {
+                    let op1 = if !set_flags && rn == 31 {
+                        cpu.regs.sp
+                    } else if is_64 {
+                        cpu.regs.read_x(rn)
+                    } else {
+                        cpu.regs.read_w(rn) as u64
+                    };
                     if is_64 {
-                        let op1 = cpu.regs.read_x(rn);
                         let (res, c, v) = if is_sub {
                             let (res, borrow) = op1.overflowing_sub(imm);
                             let v = ((op1 ^ imm) & (op1 ^ res) & (1 << 63)) != 0;
@@ -156,14 +163,16 @@ impl Tier2Block {
                             let v = (!((op1 ^ imm)) & (op1 ^ res) & (1 << 63)) != 0;
                             (res, carry, v)
                         };
-                        if rd != 31 || set_flags {
+                        if set_flags {
                             cpu.regs.write_x(rd, res);
+                        } else {
+                            cpu.regs.write_x_or_sp(rd, res);
                         }
                         if set_flags {
                             set_nzcv_64(&mut cpu.regs.pstate, res, c, v);
                         }
                     } else {
-                        let op1_32 = cpu.regs.read_w(rn);
+                        let op1_32 = op1 as u32;
                         let imm_32 = imm as u32;
                         let (res, c, v) = if is_sub {
                             let (res, borrow) = op1_32.overflowing_sub(imm_32);
@@ -174,8 +183,10 @@ impl Tier2Block {
                             let v = (!((op1_32 ^ imm_32)) & (op1_32 ^ res) & (1 << 31)) != 0;
                             (res, carry, v)
                         };
-                        if rd != 31 || set_flags {
+                        if set_flags {
                             cpu.regs.write_w(rd, res);
+                        } else {
+                            cpu.regs.write_x_or_sp(rd, res as u64);
                         }
                         if set_flags {
                             set_nzcv_32(&mut cpu.regs.pstate, res, c, v);
@@ -185,7 +196,9 @@ impl Tier2Block {
 
                 Instruction::AddSubReg { is_extended: true, .. } => {
                     // Fall back to interpreter for extended-register variants
-                    let _ = cpu.step(mmu);
+                    if cpu.step(mmu).is_err() {
+                        return (executed, BlockExit::Fault { pc });
+                    }
                     if mmu.code_write_gen() != code_gen {
                         return (executed, BlockExit::BranchFallthrough { next_pc: cpu.regs.pc });
                     }
@@ -318,6 +331,20 @@ impl Tier2Block {
                     }
                 }
 
+                Instruction::TestBranch { rt, bit, offset, is_tbnz } => {
+                    let bit_set = ((cpu.regs.read_x(rt) >> (bit & 63)) & 1) != 0;
+                    let taken = bit_set == is_tbnz;
+                    if taken {
+                        let target = (pc as i64).wrapping_add(offset) as u64;
+                        cpu.regs.pc = target;
+                        return (executed, BlockExit::BranchCondTaken { target });
+                    } else {
+                        let next_pc = pc.wrapping_add(4);
+                        cpu.regs.pc = next_pc;
+                        return (executed, BlockExit::BranchFallthrough { next_pc });
+                    }
+                }
+
                 Instruction::BranchReg { op, .. } | Instruction::BranchRegAuth { op, .. } => {
                     // The interpreter sets X30 for BLR, authenticates, and sets PSTATE.BTYPE.
                     if cpu.step(mmu).is_err() {
@@ -338,7 +365,9 @@ impl Tier2Block {
 
                 _ => {
                     // Fall back to interpreter for complex/uncommon instructions
-                    let _ = cpu.step(mmu);
+                    if cpu.step(mmu).is_err() {
+                        return (executed, BlockExit::Fault { pc });
+                    }
                     // A store into cached code may have changed the rest of this block: stop here
                     // so the engine invalidates and recompiles before running more of it.
                     if mmu.code_write_gen() != code_gen {
@@ -501,10 +530,152 @@ mod tests {
         assert!(jit.chained_jumps >= 9); // Loop chained 9 times!
     }
 
+    #[test]
+    fn test_tier2_addsub_imm_uses_sp_when_register_31_is_sp() {
+        let mut cpu = Cpu::new();
+        let mut mmu = Memory::new();
+        let base = 0x8000_0000u64;
+        let initial_sp = 0x7fff_ffff_f000u64;
+        cpu.regs.sp = initial_sp;
+        cpu.regs.pc = base;
+        mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+        // add sp, sp, #16; sub sp, sp, #8; add x0, sp, #32; svc #0
+        for (index, word) in [0x9100_43ff, 0xd100_23ff, 0x9100_83e0, 0xd400_0001]
+            .into_iter()
+            .enumerate()
+        {
+            mmu.write_u32(base + (index as u64) * 4, word).unwrap();
+        }
+
+        let mut engine = Tier2JitEngine::new();
+        let (_, exit) = engine.run_slice(&mut cpu, &mut mmu, 16);
+
+        assert_eq!(exit, BlockExit::Svc { svc_id: 0 });
+        assert_eq!(cpu.regs.sp, initial_sp + 8);
+        assert_eq!(cpu.regs.read_x(0), initial_sp + 40);
+    }
+
+    #[test]
+    fn test_tier2_fallback_reports_memory_fault_at_instruction_pc() {
+        let mut cpu = Cpu::new();
+        let mut mmu = Memory::new();
+        let base = 0x8000_0000u64;
+        cpu.regs.pc = base;
+        cpu.regs.write_x(1, 0x20);
+        mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(base, 0xf940_0020).unwrap(); // ldr x0, [x1]
+        mmu.write_u32(base + 4, 0xd400_0001).unwrap(); // svc #0
+
+        let mut engine = Tier2JitEngine::new();
+        let (_, exit) = engine.run_slice(&mut cpu, &mut mmu, 16);
+
+        assert_eq!(exit, BlockExit::Fault { pc: base });
+    }
+
+    #[test]
+    fn test_tier2_test_branch_ends_block_and_preserves_taken_or_fallthrough_path() {
+        for (branch, x0, expected_x1) in [
+            (0x3600_0040, 0, 0), // tbz x0, #0, target: taken
+            (0x3600_0040, 1, 1), // tbz x0, #0, target: fall through
+            (0x3700_0040, 1, 0), // tbnz x0, #0, target: taken
+            (0x3700_0040, 0, 1), // tbnz x0, #0, target: fall through
+        ] {
+            let mut cpu = Cpu::new();
+            let mut mmu = Memory::new();
+            let base = 0x8000_0000u64;
+            cpu.regs.pc = base;
+            cpu.regs.write_x(0, x0);
+            mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+            mmu.write_u32(base, branch).unwrap(); // tbz/tbnz x0, #0, +8
+            mmu.write_u32(base + 4, 0xd280_0021).unwrap(); // movz x1, #1
+            mmu.write_u32(base + 8, 0xd400_0001).unwrap(); // svc #0
+
+            let mut engine = Tier2JitEngine::new();
+            let (_, exit) = engine.run_slice(&mut cpu, &mut mmu, 16);
+
+            assert_eq!(exit, BlockExit::Svc { svc_id: 0 });
+            assert_eq!(cpu.regs.read_x(1), expected_x1);
+        }
+    }
+
     fn load(mmu: &mut Memory, base: u64, words: &[(u64, u32)]) {
         mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
         for &(off, w) in words {
             mmu.write_u32(base + off, w).unwrap();
+        }
+    }
+
+    #[test]
+    fn add_sub_immediate_stack_operands_match_interpreter() {
+        let base = 0x8000_0000;
+        let stack = 0x2000u64;
+        let mut mmu = Memory::new();
+        load(&mut mmu, base, &[
+            (0x00, 0xD10083FF), // sub sp, sp, #32
+            (0x04, 0x910023E1), // add x1, sp, #8
+            (0x08, 0xD2800542), // mov x2, #42
+            (0x0C, 0xF9000422), // str x2, [x1, #8]
+            (0x10, 0xF9400420), // ldr x0, [x1, #8]
+            (0x14, 0x910083FF), // add sp, sp, #32
+            (0x18, 0xD40000E1), // svc #7
+        ]);
+        mmu.map_range(stack - 4096, 4096, Permission::READ_WRITE);
+        let mut reference_mmu = Memory::new();
+        reference_mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+        reference_mmu.map_range(stack - 4096, 4096, Permission::READ_WRITE);
+        for offset in (0..0x1Cu64).step_by(4) {
+            reference_mmu.write_u32(base + offset, mmu.read_u32(base + offset).unwrap()).unwrap();
+        }
+        let mut reference = Cpu::new();
+        reference.regs.pc = base;
+        reference.regs.sp = stack;
+        loop {
+            if matches!(reference.step(&mut reference_mmu).unwrap(), super::super::interpreter::StepResult::Svc(7)) { break; }
+        }
+        let mut cpu = Cpu::new();
+        cpu.regs.pc = base;
+        cpu.regs.sp = stack;
+        let block = Tier2Block::compile(base, &mmu).unwrap();
+        let (_, exit) = block.execute(&mut cpu, &mut mmu);
+        assert!(matches!(exit, BlockExit::Svc { svc_id: 7 }));
+        assert_eq!(cpu.regs.sp, reference.regs.sp);
+        assert_eq!(cpu.regs.read_x(0), reference.regs.read_x(0));
+        assert_eq!(cpu.regs.read_x(0), 42);
+        assert_eq!(cpu.regs.read_x(1), reference.regs.read_x(1));
+        assert_eq!(mmu.read_u64(stack - 16).unwrap(), 42);
+    }
+
+    #[test]
+    fn test_bit_branches_end_compiled_blocks_and_preserve_taken_targets() {
+        let base = 0x8000_0000;
+        for (word, value, taken) in [
+            (0x36000040, 0, true), (0x36000040, 1, false), // TBZ bit 0
+            (0x37000040, 1, true), (0x37000040, 0, false), // TBNZ bit 0
+            (0xB6F80040, 0, true), (0xB6F80040, 1u64 << 63, false), // TBZ bit 63
+            (0xB7F80040, 1u64 << 63, true), (0xB7F80040, 0, false),
+        ] {
+            let mut mmu = Memory::new();
+            load(&mut mmu, base, &[(0, word), (4, 0xD2800021), (8, 0xD40000E1)]);
+            let block = Tier2Block::compile(base, &mmu).unwrap();
+            assert_eq!(block.insns.len(), 1);
+            let mut cpu = Cpu::new();
+            cpu.regs.pc = base;
+            cpu.regs.write_x(0, value);
+            cpu.regs.write_x(1, 42);
+            let (_, exit) = block.execute(&mut cpu, &mut mmu);
+            if taken {
+                assert!(matches!(exit, BlockExit::BranchCondTaken { target } if target == base + 8));
+                assert_eq!(cpu.regs.read_x(1), 42);
+            } else {
+                assert!(matches!(exit, BlockExit::BranchFallthrough { next_pc } if next_pc == base + 4));
+            }
+            let mut engine = super::super::tier3_jit::Tier3JitEngine::new();
+            engine.hot_pc_counters.insert(base, super::super::tier3_jit::Tier3JitEngine::HOT_THRESHOLD);
+            cpu.regs.pc = base;
+            let (_, exit) = engine.run_slice(&mut cpu, &mut mmu, 100);
+            assert!(matches!(exit, BlockExit::Svc { svc_id: 7 }));
+            assert_eq!(cpu.regs.read_x(1), if taken { 42 } else { 1 });
+            assert!(engine.total_super_block_executions > 0, "must exercise a hot compiled path");
         }
     }
 

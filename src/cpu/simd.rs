@@ -4,7 +4,7 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdOp2, SimdOp3, SimdPermuteOp};
+use super::instructions::{SimdAcrossOp, SimdOp2, SimdOp3, SimdPermuteOp};
 
 #[inline]
 fn mask(esize: u32) -> u64 {
@@ -21,6 +21,23 @@ pub fn set_lane(v: &mut u128, esize: u32, i: usize, val: u64) {
     let shift = i as u32 * esize;
     *v &= !((mask(esize) as u128) << shift);
     *v |= ((val & mask(esize)) as u128) << shift;
+}
+
+/// Across-lanes reduction; the scalar result lands in lane 0 and the rest of the register is zero.
+pub fn across(op: SimdAcrossOp, n: u128, esize: u32, q: bool) -> u128 {
+    let lanes = (if q { 128 } else { 64 } / esize) as usize;
+    let vals = (0..lanes).map(|i| lane(n, esize, i));
+    let signed = |v: u64| sext(v, esize);
+    let res = match op {
+        SimdAcrossOp::Addv => vals.fold(0u64, |a, v| a.wrapping_add(v)) & mask(esize),
+        SimdAcrossOp::Uaddlv => vals.fold(0u64, |a, v| a.wrapping_add(v)) & mask(esize * 2),
+        SimdAcrossOp::Saddlv => (vals.fold(0i64, |a, v| a.wrapping_add(signed(v))) as u64) & mask(esize * 2),
+        SimdAcrossOp::Umaxv => vals.max().unwrap_or(0),
+        SimdAcrossOp::Uminv => vals.min().unwrap_or(0),
+        SimdAcrossOp::Smaxv => vals.map(signed).max().unwrap_or(0) as u64 & mask(esize),
+        SimdAcrossOp::Sminv => vals.map(signed).min().unwrap_or(0) as u64 & mask(esize),
+    };
+    res as u128
 }
 
 #[inline]

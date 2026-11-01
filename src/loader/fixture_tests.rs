@@ -227,22 +227,104 @@ fn boot_with_kernel_input(
     args: &[&str],
     input: crate::kernel::hid::NpadInput,
 ) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
+    boot_with_kernel_hid(nro, args, input, |_| {})
+}
+
+fn boot_with_kernel_hid(
+    nro: &[u8], args: &[&str], input: crate::kernel::hid::NpadInput,
+    configure: impl FnOnce(&mut crate::kernel::hid::HidSharedMemory),
+) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
+    boot_with_kernel_hid_sdmc(nro, args, input, None, configure)
+}
+
+/// `boot_with_kernel_input`, with `sdmc` (if any) as the SD card's host folder, set after the NRO went on
+/// the virtual SD card as `run --sdmc=<dir>` does.
+fn boot_with_kernel_sdmc(
+    nro: &[u8],
+    args: &[&str],
+    input: crate::kernel::hid::NpadInput,
+    sdmc: Option<&std::path::Path>,
+) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
+    boot_with_kernel_hid_sdmc(nro, args, input, sdmc, |_| {})
+}
+
+fn boot_with_kernel_hid_sdmc(
+    nro: &[u8],
+    args: &[&str],
+    input: crate::kernel::hid::NpadInput,
+    sdmc: Option<&std::path::Path>,
+    configure: impl FnOnce(&mut crate::kernel::hid::HidSharedMemory),
+) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
+    let run = boot_with_kernel_tier(nro, args, input, sdmc, configure, false);
+    (run.output, run.svcs, run.kernel)
+}
+
+struct FixtureRun {
+    output: String,
+    svcs: Vec<u16>,
+    kernel: crate::kernel::HorizonKernel,
+    instructions: usize,
+    tier3_runs: u64,
+}
+
+fn boot_with_kernel_tier(
+    nro: &[u8], args: &[&str], input: crate::kernel::hid::NpadInput,
+    sdmc: Option<&std::path::Path>,
+    configure: impl FnOnce(&mut crate::kernel::hid::HidSharedMemory),
+    use_tier3: bool,
+) -> FixtureRun {
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
     kernel.ipc.hid.input = input;
+    configure(&mut kernel.ipc.hid);
     let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).expect("NRO loads");
     assert_eq!(info.format, "NRO0");
     crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "fixture.nro", nro, args).unwrap();
+    if let Some(dir) = sdmc {
+        kernel.vfs.set_sdmc_directory(dir);
+    }
     cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
 
     // One CPU runs every guest thread: the kernel swaps thread registers inside `dispatch_svc`.
     let mut output = String::new();
     let mut svcs = Vec::new();
     let mut exited = false;
-    for step in 0..crate::NRO_INSTRUCTION_BUDGET {
-        if step % crate::kernel::scheduler::PREEMPT_INTERVAL == crate::kernel::scheduler::PREEMPT_INTERVAL - 1 {
+    let mut engine = use_tier3.then(crate::cpu::Tier3JitEngine::new);
+    let mut executed = 0;
+    let quantum = crate::kernel::scheduler::PREEMPT_INTERVAL;
+    let mut next_preemption = quantum;
+    while executed < crate::NRO_INSTRUCTION_BUDGET {
+        if executed >= next_preemption {
             kernel.scheduler.preempt(&mut cpu);
+            next_preemption = executed + quantum;
         }
-        match cpu.step(&mut mmu) {
+        let result = if let Some(engine) = engine.as_mut() {
+            let limit = (next_preemption - executed).min(crate::NRO_INSTRUCTION_BUDGET - executed);
+            let (count, exit) = engine.run_slice(&mut cpu, &mut mmu, limit);
+            assert!(count > 0 || !matches!(exit, crate::cpu::BlockExit::BudgetExceeded));
+            executed += count;
+            match exit {
+                crate::cpu::BlockExit::BudgetExceeded => Ok(StepResult::Continue),
+                crate::cpu::BlockExit::Svc { svc_id } => Ok(StepResult::Svc(svc_id)),
+                crate::cpu::BlockExit::Return { target }
+                | crate::cpu::BlockExit::Branch { target }
+                | crate::cpu::BlockExit::BranchCondTaken { target } => {
+                    cpu.regs.pc = target;
+                    Ok(StepResult::Continue)
+                }
+                crate::cpu::BlockExit::BranchFallthrough { next_pc } => {
+                    cpu.regs.pc = next_pc;
+                    Ok(StepResult::Continue)
+                }
+                crate::cpu::BlockExit::Fault { pc } => {
+                    let word = mmu.read_u32(pc);
+                    Err(format!("Tier-3 fault at {pc:x}, word {word:x?}"))
+                }
+            }
+        } else {
+            executed += 1;
+            cpu.step(&mut mmu).map_err(|error| format!("{error:?}"))
+        };
+        match result {
             Ok(StepResult::Continue) => {}
             Ok(StepResult::Svc(svc)) => {
                 svcs.push(svc);
@@ -256,8 +338,10 @@ fn boot_with_kernel_input(
                         exited = true;
                         break;
                     }
-                    crate::kernel::SvcResult::Success => {}
-                    other => panic!("SVC 0x{svc:X} -> {other:?}; SVCs so far {svcs:x?}"),
+                    // Headless fixture execution has no host surface; the guest-visible return is
+                    // already successful, so a no-handle VSync can continue without presentation.
+                    crate::kernel::SvcResult::Success | crate::kernel::SvcResult::PresentFrame => {}
+                    other => panic!("SVC 0x{svc:X} -> {other:?}; result at X1: {:x?}; SVCs so far {svcs:x?}", mmu.read_u32(cpu.regs.read_x(1))),
                 }
             }
             other => panic!("guest stopped: {other:?} at 0x{:X}; SVCs {svcs:x?}", cpu.regs.pc),
@@ -269,7 +353,10 @@ fn boot_with_kernel_input(
         crate::NRO_INSTRUCTION_BUDGET,
         cpu.regs.pc
     );
-    (output, svcs, kernel)
+    FixtureRun {
+        output, svcs, kernel, instructions: executed,
+        tier3_runs: engine.as_ref().map_or(0, |e| e.total_super_block_executions),
+    }
 }
 
 /// The hello fixture under the CLI setup and the real kernel.
@@ -300,6 +387,39 @@ fn libnx_romfs_fixture_reads_its_romfs() {
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, svcs) = boot_with_kernel(&nro, &[]);
     assert!(output.ends_with("ounce-romfs result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+}
+
+/// The same fixture with a host folder behind `sdmc:/` (`run --sdmc=<dir>`): the NRO stays an in-memory
+/// overlay that `romfsInit` still finds, and nothing is written into the host folder.
+#[test]
+fn libnx_romfs_fixture_with_host_sdmc_folder() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/romfs/romfs.nro");
+    let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let dir = std::env::temp_dir().join(format!("ounce_fixture_sdmc_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("other.txt"), b"host file").unwrap();
+    let (output, svcs, kernel) = boot_with_kernel_sdmc(&nro, &[], Default::default(), Some(&dir));
+    assert!(output.ends_with("ounce-romfs result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+    assert_eq!(kernel.vfs.entry_kind("sdmc:/other.txt"), Some(crate::fs::VfsEntryKind::File(9)));
+    let names: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(names, ["other.txt"]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Exercise host SD-card operations through a compiled libnx/newlib guest.
+#[test]
+fn libnx_sdmc_fixture_performs_host_file_operations() {
+    let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/sdmc/sdmc.nro")).unwrap();
+    let dir = std::env::temp_dir().join(format!("ounce_sdmc_ops_{}", std::process::id()));
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::write(dir.join("host.txt"), b"from host\n").unwrap();
+    let (output, svcs, _) = boot_with_kernel_sdmc(&nro, &[], Default::default(), Some(&dir));
+    assert!(output.ends_with("ounce-sdmc result=0x00000EEE\n"), "output: {output:?}; SVCs: {svcs:x?}");
+    assert_eq!(std::fs::read(dir.join("host.txt")).unwrap(), b"from host\n");
+    let names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(names, ["host.txt"]);
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 /// `tests/fixtures/nro/nvdrv`: libnx `nvInitialize` (transfer memory, Initialize, cloned session),
@@ -406,4 +526,78 @@ fn libnx_audren_fixture_loops_for_two_seconds() {
     let pcm = &kernel.audren.output_ring_buffer;
     assert!(pcm.len() >= 400 * 240 * 2, "{} samples", pcm.len());
     assert_eq!(pcm.iter().filter(|&&s| s.abs() == 1600).count() / 2, 400 * 240);
+}
+
+/// libnx + deko3d: device, memory blocks, shaders, queue and a submitted clear + triangle run to the
+/// end on the CPU and nvdrv models without an unhandled instruction, IPC command or ioctl.
+#[test]
+fn deko3d_fixture_runs_to_completion() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/deko3d/deko3d.nro");
+    let nro = std::fs::read(path).unwrap();
+    let (output, _, kernel) = boot_with_kernel_state(&nro, &[]);
+    assert!(output.contains("ounce-deko3d result="), "fixture did not report: {output:?}");
+    assert!(kernel.ipc.nvdrv.unhandled.is_empty(), "unhandled ioctls: {:?}", kernel.ipc.nvdrv.unhandled);
+}
+
+/// The real libnx + deko3d fixture clears a pitch-linear target, draws a triangle, and checks both
+/// pixels after the queue completes. This covers the Maxwell MME macro path end to end.
+#[test]
+fn deko3d_fixture_draws_triangle() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/deko3d/deko3d.nro");
+    let nro = std::fs::read(path).unwrap();
+    let (output, _, _) = boot_with_kernel_state(&nro, &[]);
+    assert!(output.contains("ounce-deko3d result=0x00000EEE"), "{output:?}");
+}
+
+#[test]
+fn libnx_multi_input_fixture_reads_styles_and_touch() {
+    use crate::kernel::hid::{NpadInput, NpadStyle, TouchPoint};
+    let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/input_multi/input_multi.nro")).unwrap();
+    let (output, _, _) = boot_with_kernel_hid(&nro, &[], Default::default(), |hid| {
+        for (id, style, buttons, stick_l) in [
+            (0, NpadStyle::FullKey, 1, (123, -456)),
+            (1, NpadStyle::JoyDual, 2, (234, -567)),
+            (2, NpadStyle::JoyLeft, 1 << 12, (345, -678)),
+            (3, NpadStyle::JoyRight, 4, (456, -789)),
+        ] {
+            hid.feed.connect(id, style).unwrap();
+            hid.feed.set_npad(id, NpadInput { buttons, stick_l, ..Default::default() }).unwrap();
+        }
+        hid.feed.set_touches(&[TouchPoint { finger_id: 7, x: 321, y: 123, diameter_x: 10, diameter_y: 12, rotation_angle: 0 }]);
+    });
+    assert!(output.ends_with("ounce-input result=0x00000EEE\n"), "{output:?}");
+}
+
+#[path = "corpus_runner.rs"]
+mod corpus_runner;
+
+/// Qualify the shared runner before adding independent upstream samples.
+/// These project-authored fixtures are integration regressions, not corpus evidence.
+#[test]
+fn fixture_runner_matches_interpreter_and_tier3() {
+    for name in ["hello", "romfs", "threads"] {
+        let path = format!("{}/tests/fixtures/nro/{name}/{name}.nro", env!("CARGO_MANIFEST_DIR"));
+        let nro = std::fs::read(path).unwrap();
+        let args: &[&str] = if name == "hello" { &["fixture"] } else { &[] };
+        let run = |tier3| boot_with_kernel_tier(&nro, args, Default::default(), None, |_| {}, tier3);
+        let interpreted = run(false);
+        let tier3 = run(true);
+        assert!(interpreted.output.contains("result=0x00000EEE"), "{name}: {:?}", interpreted.output);
+        assert_eq!(tier3.output, interpreted.output, "{name}: guest output differs");
+        assert_eq!(tier3.svcs, interpreted.svcs, "{name}: SVC sequence differs");
+        assert!(tier3.tier3_runs > 0, "{name}: must exercise compiled Tier-3 blocks");
+        eprintln!("fixture={name} interpreter_insns={} tier3_insns={} tier3_compiled_runs={}",
+            interpreted.instructions, tier3.instructions, tier3.tier3_runs);
+    }
+}
+
+#[test]
+#[ignore = "requires a source-built upstream NRO path"]
+fn external_nro_probe() {
+    let path = std::env::var("OUNCE_CORPUS_PROBE_NRO_PATH").expect("set the source-built NRO path");
+    let nro = std::fs::read(path).unwrap();
+    let input = crate::kernel::hid::NpadInput { buttons: 1 << 10, ..Default::default() };
+    let run = boot_with_kernel_tier(&nro, &[], input, None, |_| {}, false);
+    eprintln!("upstream output: {:?}; SVCs: {:x?}; instructions={}", run.output, run.svcs, run.instructions);
+    assert_eq!(run.svcs.last(), Some(&0x07));
 }
