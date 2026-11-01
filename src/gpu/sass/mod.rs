@@ -21,11 +21,14 @@
 #![allow(dead_code)]
 
 pub mod decode;
+pub mod eval;
 pub mod ir;
 pub mod maxwell;
 pub mod sph;
 pub mod wgsl;
 
+#[cfg(test)]
+mod ctl_tests;
 #[cfg(test)]
 mod maxwell_tests;
 #[cfg(test)]

@@ -190,14 +190,24 @@ impl KeySet {
 }
 
 fn decode_hex_16(s: &str) -> Option<[u8; 16]> {
-    if s.len() != 32 {
+    let bytes = s.as_bytes();
+    if bytes.len() != 32 {
         return None;
     }
     let mut out = [0u8; 16];
     for i in 0..16 {
-        out[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+        out[i] = (hex_nibble(bytes[2 * i])? << 4) | hex_nibble(bytes[2 * i + 1])?;
     }
     Some(out)
+}
+
+fn hex_nibble(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -318,5 +328,33 @@ mod tests {
         assert!(!ks.keys128.contains_key("short_key"));
         assert!(!ks.keys128.contains_key("long_key"));
         assert!(!ks.keys128.contains_key("header_key"));
+    }
+
+    #[test]
+    fn decode_hex_16_returns_none_for_multibyte_char_straddling_pair_boundary() {
+        // Exactly 32 BYTES: '0' + 3-byte '€' + 28 '0's. The Euro sign straddles
+        // the byte-pair boundary at index 2; this must not panic, just return None.
+        let value = format!("0\u{20AC}{}", "0".repeat(28));
+        assert_eq!(value.len(), 32);
+        assert!(decode_hex_16(&value).is_none());
+    }
+
+    #[test]
+    fn decode_hex_16_returns_none_for_aligned_multibyte_value() {
+        // 16 x "é" = 32 bytes, char-aligned to each byte pair (never straddles).
+        let value = "é".repeat(16);
+        assert_eq!(value.len(), 32);
+        assert!(decode_hex_16(&value).is_none());
+    }
+
+    #[test]
+    fn parse_prod_keys_rejects_value_with_multibyte_bytes() {
+        let mut ks = KeySet::new();
+        let value = format!("0\u{20AC}{}", "0".repeat(28));
+        assert_eq!(value.len(), 32);
+        let content = format!("titlekek0 = {}\n", value);
+        let parsed = ks.parse_prod_keys(&content);
+        assert_eq!(parsed, 0);
+        assert!(ks.keys128.is_empty());
     }
 }
