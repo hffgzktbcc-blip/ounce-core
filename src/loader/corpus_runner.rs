@@ -627,6 +627,17 @@ fn simplegfx_first_frame_oracle() {
 #[ignore = "requires OUNCE_DEKO_BASIC_NRO pointing at deko_basic.nro built from the pinned source"]
 fn deko_basic_first_frame_oracle() {
     let path = std::env::var_os("OUNCE_DEKO_BASIC_NRO").expect("OUNCE_DEKO_BASIC_NRO is unset");
+    let nro_bytes = std::fs::read(&path).expect("read deko_basic NRO binary");
+    use sha2::Digest;
+    let nro_sha256 = format!("{:x}", sha2::Sha256::digest(&nro_bytes));
+    // Canonical CI toolchain build (GCC 15.2.0, binutils 2.45.1) vs local build variant (GCC 16.1.0).
+    const CANONICAL_SHA256: &str = "4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa";
+    const LOCAL_VARIANT_SHA256: &str = "5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696";
+    assert!(
+        nro_sha256 == CANONICAL_SHA256 || nro_sha256 == LOCAL_VARIANT_SHA256,
+        "unexpected deko_basic NRO SHA-256: {nro_sha256} (expected {CANONICAL_SHA256} or {LOCAL_VARIANT_SHA256})"
+    );
+    println!("deko_basic NRO SHA-256 verified: {nro_sha256}");
     let frames: u64 = std::env::var("OUNCE_DEKO_BASIC_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
     let expected_hash = |i: u64| match i {
         1 => 0x7c9a9a3fa3856325u64,

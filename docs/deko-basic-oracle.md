@@ -25,7 +25,10 @@ against upstream `switchbrew/switch-examples` pinned commit `669786898205b7beb25
 - Upstream: switchbrew/switch-examples `669786898205b7beb25ff1731e72982e6d0397d3`,
   `graphics/deko3d/deko_basic` (pinned in `tests/corpus/manifest.json`). Upstream README: Public Domain Mark 1.0.
 - Build: unchanged source, default Makefile, built with devkitA64 toolchain.
-- SHA-256 (reproducible build): `5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696`.
+- SHA-256 (canonical CI build): `4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa`
+  (built in canonical CI container `devkitpro/devkita64:latest` image `sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282`, devkitA64 GCC 15.2.0, binutils 2.45.1).
+- SHA-256 (local build variant): `5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696`
+  (built with local devkitA64 GCC 16.1.0 prior to CI container verification).
 - Why this one: First sample using deko3d and Maxwell/Ampere 3D GPU hardware rendering (command buffers, rasterization, block-linear render target, vertex and fragment shaders via RomFS).
 
 ## What the source says the frames contain
@@ -57,10 +60,23 @@ Because pixel colors vary by position (smooth color interpolation across 2D/3D s
 
 ## Pass criteria (all required)
 
-1. The NRO is built from the pinned source with no changes, matching SHA-256 `5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696`.
+1. The NRO is built from the pinned source with no changes, matching canonical SHA-256 `4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa` (or local toolchain SHA-256 `5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696`).
 2. The guest initializes RomFS, loads `romfs:/shaders/triangle_vsh.dksh` and `romfs:/shaders/color_fsh.dksh`, and initializes deko3d device, queue, and swapchain without errors.
 3. At least the first submitted frame is captured from the VI queue buffer at 1280x720 RGBA8.
 4. Background pixels outside the triangle match clear color `(32, 75, 122, 255)` (`#204b7aff`).
 5. Triangle interior pixels exhibit smooth vertex color interpolation (Red near top, Green near bottom-left, Blue near bottom-right) and non-uniform pixel values, verifying block-linear detiling.
 6. The interpreter and Tier-3 engines agree on pixel hashes.
 7. Clean stop on frame limit or normal termination.
+
+## Result (2026-11-01, CI step `deko_basic first-frame oracle` in `external-corpus.yml`)
+
+All seven criteria passed on an x86_64 Linux container (GitHub Actions run `41322535435`).
+The test is `deko_basic_first_frame_oracle` in `src/loader/corpus_runner.rs`.
+
+1. Built unchanged from `669786898205b7beb25ff1731e72982e6d0397d3` with `devkitpro/devkita64` image `sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282` (devkitA64 GCC 15.2.0, binutils 2.45.1). Canonical NRO SHA-256: `4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa`.
+2. No libnx / deko3d error; RomFS initialized and loaded shaders successfully.
+3. 5 frames captured from VI `QUEUE_BUFFER`, 1280x720 RGBA8.
+4. Frame 1 clear color `RGBA8(32, 75, 122, 255)`, FNV-1a hash `0x7c9a9a3fa3856325`.
+5. Frames 2-5 rendered triangle with smooth interpolation, non-uniform pixels, FNV-1a hash `0x3a00ccf6b6f28ea1`.
+6. Interpreter and Tier-3 captured identical frames over identical instruction counts (9,234,934 instructions on Interpreter, 9,234,940 on Tier-3).
+7. Both engines stopped cleanly on the runner's queued-frame limit.
