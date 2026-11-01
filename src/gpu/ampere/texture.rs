@@ -7,13 +7,14 @@
 //! and Mesa NVK uses the same `clc097tex.h` definitions for Turing and Ampere (recalled, not
 //! re-checked here: Mesa is not reachable from this container).
 //!
-//! Only mip level 0 of 1D/2D textures is read. The shaders cannot use these yet: `gpu::sass` does
-//! not decode `TEX`/`TLD`, so this is the fetch path that decode will call.
+//! Only mip level 0 of 1D/2D textures is read. Texel formats (plain, packed, depth, BCn, ETC2/EAC,
+//! ASTC) are decoded by [`crate::gpu::texfmt`]; compressed textures are laid out in blocks.
 
 use super::methods as m;
 use super::render::SurfaceView;
 use super::surface::addr40;
 use super::GpuMemoryWriter;
+use crate::gpu::texfmt::{self, NumType};
 
 /// Bytes per texture header and per sampler entry.
 pub const TIC_ENTRY_BYTES: u64 = 32;
@@ -163,19 +164,6 @@ pub struct TextureHeader {
     pub normalized_coords: bool,
 }
 
-/// `COMPONENTS_SIZES_*` values this module can read texels of, with their byte size.
-fn component_bytes(components: u32) -> Option<u32> {
-    Some(match components {
-        0x01 => 16, // R32_G32_B32_A32
-        0x03 => 8,  // R16_G16_B16_A16
-        0x04 => 8,  // R32_G32
-        0x07 | 0x08 | 0x09 | 0x0c | 0x0f => 4, // X8B8G8R8, A8B8G8R8, A2B10G10R10, R16_G16, R32
-        0x15 | 0x18 | 0x1b => 2, // B5G6R5, G8R8, R16
-        0x1d => 1,  // R8
-        _ => return None,
-    })
-}
-
 fn bits(words: &[u32; 8], hi: u32, lo: u32) -> u32 {
     // Fields used here never cross a word boundary.
     debug_assert_eq!(hi / 32, lo / 32);
@@ -234,52 +222,38 @@ impl TextureHeader {
         }
     }
 
-    pub fn bytes_per_texel(&self) -> Option<u32> {
-        component_bytes(self.components)
+    /// Element size of the format (one texel, or one compressed block), if [`texfmt`] decodes it.
+    pub fn element(&self) -> Option<texfmt::Element> {
+        texfmt::element(self.components)
     }
 
-    /// Level 0, slice 0 as a surface view, or `None` for formats or layouts this module cannot read.
+    pub fn bytes_per_texel(&self) -> Option<u32> {
+        self.element().filter(|e| !e.is_block()).map(|e| e.bytes)
+    }
+
+    fn format(&self) -> texfmt::FormatDesc {
+        let ty = |d: DataType| match d {
+            DataType::Snorm => Some(NumType::Snorm),
+            DataType::Unorm => Some(NumType::Unorm),
+            DataType::Sint => Some(NumType::Sint),
+            DataType::Uint => Some(NumType::Uint),
+            DataType::Float => Some(NumType::Float),
+            DataType::Other(_) => None,
+        };
+        texfmt::FormatDesc { components: self.components, types: self.data_types.map(ty), srgb: self.srgb }
+    }
+
+    /// Level 0, slice 0 as a surface view in elements (compressed formats count blocks), or `None`
+    /// for formats or layouts this module cannot read.
     pub(crate) fn view(&self) -> Option<SurfaceView> {
-        let bpp = self.bytes_per_texel()?;
+        let e = self.element()?;
+        let (w, h) = (self.width.div_ceil(e.block_w), self.height.div_ceil(e.block_h));
         match self.layout {
             TextureLayout::BlockLinear { block_height_log2, block_depth_log2 } => {
-                SurfaceView::block_linear(self.gpu_va, self.width, self.height, bpp, block_height_log2, block_depth_log2)
+                SurfaceView::block_linear(self.gpu_va, w, h, e.bytes, block_height_log2, block_depth_log2)
             }
-            TextureLayout::Pitch { pitch_bytes } => SurfaceView::pitch(self.gpu_va, self.width, self.height, bpp, pitch_bytes),
+            TextureLayout::Pitch { pitch_bytes } => SurfaceView::pitch(self.gpu_va, w, h, e.bytes, pitch_bytes),
         }
-    }
-
-    /// Decodes one texel's raw bytes to RGBA (before the header swizzle).
-    fn decode(&self, t: &[u8]) -> Option<[f32; 4]> {
-        let unorm8 = |b: u8| b as f32 / 255.0;
-        let f32_at = |i: usize| f32::from_le_bytes(t[4 * i..4 * i + 4].try_into().unwrap());
-        let u16_at = |i: usize| u16::from_le_bytes(t[2 * i..2 * i + 2].try_into().unwrap());
-        let float = self.data_types[0] == DataType::Float;
-        Some(match self.components {
-            0x01 if float => [f32_at(0), f32_at(1), f32_at(2), f32_at(3)],
-            0x04 if float => [f32_at(0), f32_at(1), 0.0, 1.0],
-            0x0f if float => [f32_at(0), 0.0, 0.0, 1.0],
-            0x03 if self.data_types[0] == DataType::Unorm => {
-                [0, 1, 2, 3].map(|i| u16_at(i) as f32 / 65535.0)
-            }
-            0x08 => [unorm8(t[0]), unorm8(t[1]), unorm8(t[2]), unorm8(t[3])],
-            0x07 => [unorm8(t[0]), unorm8(t[1]), unorm8(t[2]), 1.0],
-            0x09 => {
-                let v = u32::from_le_bytes(t[0..4].try_into().unwrap());
-                let c = |s: u32, n: u32| ((v >> s) & ((1 << n) - 1)) as f32 / ((1 << n) - 1) as f32;
-                [c(0, 10), c(10, 10), c(20, 10), c(30, 2)]
-            }
-            0x0c if self.data_types[0] == DataType::Unorm => [u16_at(0) as f32 / 65535.0, u16_at(1) as f32 / 65535.0, 0.0, 1.0],
-            // Component names list the most significant field first: B5G6R5 has R in bits 4:0.
-            0x15 => {
-                let v = u16_at(0) as u32;
-                [(v & 0x1f) as f32 / 31.0, ((v >> 5) & 0x3f) as f32 / 63.0, (v >> 11) as f32 / 31.0, 1.0]
-            }
-            0x18 => [unorm8(t[0]), unorm8(t[1]), 0.0, 1.0],
-            0x1b if self.data_types[0] == DataType::Unorm => [u16_at(0) as f32 / 65535.0, 0.0, 0.0, 1.0],
-            0x1d => [unorm8(t[0]), 0.0, 0.0, 1.0],
-            _ => return None,
-        })
     }
 
     fn apply_swizzle(&self, c: [f32; 4]) -> [f32; 4] {
@@ -289,21 +263,24 @@ impl TextureHeader {
             Swizzle::G => c[1],
             Swizzle::B => c[2],
             Swizzle::A => c[3],
-            Swizzle::OneInt | Swizzle::OneFloat => 1.0,
+            // Integer one for integer formats, whose channels carry integer bits.
+            Swizzle::OneInt => f32::from_bits(1),
+            Swizzle::OneFloat => 1.0,
         })
     }
 
     /// Texel `(x, y)` of level 0 after the header swizzle; `None` if out of range, the format is
     /// unsupported or the memory cannot be read.
     pub fn fetch(&self, x: u32, y: u32, mem: &mut dyn GpuMemoryWriter) -> Option<[f32; 4]> {
-        let view = self.view()?;
-        if x >= view.width || y >= view.height {
+        if x >= self.width || y >= self.height {
             return None;
         }
+        let e = self.element()?;
+        let view = self.view()?;
         let mut t = [0u8; 16];
         let t = &mut t[..view.bpp as usize];
-        mem.read(view.texel_va(x, y), t).then_some(())?;
-        self.decode(t).map(|c| self.apply_swizzle(c))
+        mem.read(view.texel_va(x / e.block_w, y / e.block_h), t).then_some(())?;
+        texfmt::decode_texel(&self.format(), t, x % e.block_w, y % e.block_h).map(|c| self.apply_swizzle(c))
     }
 
     /// Samples level 0 at `(u, v)` with `sampler`'s filter and wrap modes. Coordinates are
