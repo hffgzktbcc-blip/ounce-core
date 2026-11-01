@@ -411,3 +411,166 @@ fn lop3_tables() {
     assert_eq!(eval::lop3(0xc0, a, b, c), a & b);
     let _ = DecodeError::UnknownOpcode { opcode: 0 };
 }
+
+// --- Ampere (sm_86 words; control bits 105..128 are zero in CuAsm's listing) ----------------
+
+fn da(w: u128) -> Instr {
+    super::decode::decode(w).unwrap_or_else(|e| panic!("{w:#034x}: {e}")).instr
+}
+
+fn da_err(w: u128) -> bool {
+    super::decode::decode(w).is_err()
+}
+
+#[test]
+fn ampere_cuasm_ctl_compare_select() {
+    let setp = |pd, cmp, bop, c| Instr::Setp { pd, pd2: PT, cmp, bop, c };
+    let ic = |cmp, signed, a, b| Compare::I { cmp, signed, a, b };
+    // ISETP.NE.AND P2, PT, R8, RZ, PT
+    assert_eq!(da(0x0000000003f45270000000ff0800720c), setp(2, ic(ICmp::Ne, true, r(8), r(RZ)), BoolOp::And, PSrc::TRUE));
+    // ISETP.GE.U32.AND P0, PT, R0, c[0x0][0x170], PT
+    let cb = Src::Cbuf { bank: 0, offset: 0x170 };
+    assert_eq!(da(0x0000000003f0607000005c0000007a0c), setp(0, ic(ICmp::Ge, false, r(0), cb), BoolOp::And, PSrc::TRUE));
+    // ISETP.GE.AND P0, PT, R8, -0x18, PT
+    let k = Src::Imm(-0x18i32 as u32);
+    assert_eq!(da(0x0000000003f06270ffffffe80800780c), setp(0, ic(ICmp::Ge, true, r(8), k), BoolOp::And, PSrc::TRUE));
+    // ISETP.EQ.OR P1, PT, R20, R7, !P2
+    assert_eq!(da(0x0000000005722670000000071400720c), setp(1, ic(ICmp::Eq, true, r(20), r(7)), BoolOp::Or, np(2)));
+    // ISETP .EX (64-bit compare chain) is rejected.
+    assert!(da_err(0x0000000003f06300000000021500720c));
+    // FSETP.GTU.FTZ.AND P0, PT, |R0|, +INF, PT
+    let a = FSrc { src: r(0), neg: false, abs: true };
+    let c = Compare::F { cmp: FCmp::Gtu, a, b: f(Src::Imm(0x7f80_0000)) };
+    assert_eq!(da(0x0000000003f1c2007f8000000000780b), setp(0, c, BoolOp::And, PSrc::TRUE));
+    // FSETP.GT.AND P6, PT, R12, -R6, PT
+    let c = Compare::F { cmp: FCmp::Gt, a: f(r(12)), b: FSrc { src: r(6), neg: true, abs: false } };
+    assert_eq!(da(0x0000000003fc4000800000060c00720b), setp(6, c, BoolOp::And, PSrc::TRUE));
+    // FSETP.LEU.OR P0, PT, R4, c[0x0][0x178], P0
+    let c = Compare::F { cmp: FCmp::Leu, a: f(r(4)), b: f(Src::Cbuf { bank: 0, offset: 0x178 }) };
+    assert_eq!(da(0x000000000070b40000005e0004007a0b), setp(0, c, BoolOp::Or, p(0)));
+    // PLOP3.LUT P1, PT, P1, P2, PT, 0x2a, 0x0
+    assert_eq!(da(0x0000000000f24572000000000000781c), Instr::PLop3 { pd: 1, lut: 0x2a, a: p(1), b: p(2), c: PSrc::TRUE });
+    // SEL R24, R8, RZ, !P0; SEL R0, RZ, 0x1, !P0; FSEL R7, R4, R3, !P0
+    assert_eq!(da(0x0000000004000000000000ff08187207), Instr::Sel { dst: 24, a: r(8), b: r(RZ), c: np(0) });
+    assert_eq!(da(0x000000000400000000000001ff007807), Instr::Sel { dst: 0, a: r(RZ), b: Src::Imm(1), c: np(0) });
+    assert_eq!(da(0x00000000040000000000000304077208), Instr::Sel { dst: 7, a: r(4), b: r(3), c: np(0) });
+    // FMNMX R3, |R7|, 1, !PT (max); FMNMX R0, R0, c[0x0][0x190], PT (min); .NAN rejected.
+    let a = FSrc { src: r(7), neg: false, abs: true };
+    assert_eq!(da(0x00000000078002003f80000007037809), Instr::FMnmx { dst: 3, a, b: f(Src::Imm(0x3f80_0000)), c: np(PT) });
+    let b = f(Src::Cbuf { bank: 0, offset: 0x190 });
+    assert_eq!(da(0x00000000038000000000640000007a09), Instr::FMnmx { dst: 0, a: f(r(0)), b, c: PSrc::TRUE });
+    assert!(da_err(0x0000000007820000400000000b177809));
+    // IMNMX.U32 R2, R0, 0xf, PT; IMNMX R7, R4, 0x1, !PT
+    assert_eq!(da(0x04000000038000000000000f00027817), Instr::IMnmx { dst: 2, a: r(0), b: Src::Imm(0xf), signed: false, c: PSrc::TRUE });
+    assert_eq!(da(0x00000000078002000000000104077817), Instr::IMnmx { dst: 7, a: r(4), b: Src::Imm(1), signed: true, c: np(PT) });
+}
+
+#[test]
+fn ampere_cuasm_ctl_integer() {
+    let add = |dst, a, b, c, neg| Instr::IAdd { dst, a, b, c, neg };
+    // IADD3 R10, R5, -0x1, RZ; IADD3 R5, R4, 0x7f, -R5; IADD3 R16, -R12, RZ, RZ; IADD3 R15, RZ, -R13, RZ
+    assert_eq!(da(0x0000000007ffe0ffffffffff050a7810), add(10, r(5), Src::Imm(u32::MAX), r(RZ), [false; 3]));
+    assert_eq!(da(0x0400000007ffe8050000007f04057810), add(5, r(4), Src::Imm(0x7f), r(5), [false, false, true]));
+    assert_eq!(da(0x0000000007ffe1ff000000ff0c107210), add(16, r(12), r(RZ), r(RZ), [true, false, false]));
+    assert_eq!(da(0x0000000007ffe0ff8000000dff0f7210), add(15, r(RZ), r(13), r(RZ), [false, true, false]));
+    // IADD3 with a carry-out predicate is rejected.
+    assert!(da_err(0x0400000007f1e0ff0000580004027a10));
+    let mad = |dst, a, b, c| Instr::IMad { dst, a, b, c };
+    // IMAD R3, R16, R5, R12; IMAD R13, R5, R14, -0x1; IMAD R2, R0, R9, c[0x0][0x1a0]
+    assert_eq!(da(0x00000000078e020c0000000510037224), mad(3, r(16), r(5), r(12)));
+    assert_eq!(da(0x00000000078e020effffffff050d7424), mad(13, r(5), r(14), Src::Imm(u32::MAX)));
+    assert_eq!(da(0x00000000078e02090000680000027624), mad(2, r(0), r(9), Src::Cbuf { bank: 0, offset: 0x1a0 }));
+    // IMAD.SHL.U32 R4, R0, 0x4, RZ; IMAD.MOV.U32 R1, RZ, RZ, c[0x0][0x28]
+    assert_eq!(da(0x04000000078e00ff0000000400047824), mad(4, r(0), Src::Imm(4), r(RZ)));
+    assert_eq!(da(0x00000000078e00ff00000a00ff017624), mad(1, r(RZ), r(RZ), Src::Cbuf { bank: 0, offset: 0x28 }));
+    // IMAD.MOV R0, RZ, RZ, -R0 and IMAD.IADD R7, R7, 0x1, -R0 become subtractions.
+    assert_eq!(da(0x00000000078e0a00000000ffff007224), add(0, r(RZ), r(RZ), r(0), [false, false, true]));
+    assert_eq!(da(0x00000000078e0a000000000107077824), add(7, r(7), r(RZ), r(0), [false, false, true]));
+    // LOP3.LUT R5, R5, 0xff, RZ, 0xc0, !PT; LOP3.LUT R3, R0, R3, RZ, 0xfc, !PT
+    assert_eq!(da(0x00000000078ec0ff000000ff05057812), Instr::Lop3 { dst: 5, lut: 0xc0, a: r(5), b: Src::Imm(0xff), c: r(RZ) });
+    assert_eq!(da(0x00000000078efcff0000000300037212), Instr::Lop3 { dst: 3, lut: 0xfc, a: r(0), b: r(3), c: r(RZ) });
+    // SHF.R.U32.HI R5, RZ, 0x17, R3 = R3 >> 23; SHF.R.S32.HI R2, RZ, 0x1f, R16; SHF.L.U32 R7, R4, R7, RZ
+    assert_eq!(da(0x100000000001160300000017ff057819), Instr::Shr { dst: 5, a: r(3), b: Src::Imm(0x17), signed: false, wrap: false });
+    assert_eq!(da(0x00000000000114100000001fff027819), Instr::Shr { dst: 2, a: r(16), b: Src::Imm(0x1f), signed: true, wrap: false });
+    assert_eq!(da(0x00000000000006ff0000000704077219), Instr::Shl { dst: 7, a: r(4), b: r(7), wrap: false });
+    // SHF.L.U64.HI: a real funnel shift, rejected.
+    assert!(da_err(0x00000000000102070000000200057819));
+}
+
+#[test]
+fn ampere_cuasm_ctl_convert_branch() {
+    // I2F.U32 R7, R18; I2FP.F32.S32 R28, R0; I2F.RP and I2F.S16 rejected.
+    assert_eq!(da(0x00000000002010000000001200077306), Instr::I2F { dst: 7, src: r(18), signed: false });
+    assert_eq!(da(0x000000000020140000000000001c7245), Instr::I2F { dst: 28, src: r(0), signed: true });
+    assert!(da_err(0x00000000002094000000000600047306));
+    assert!(da_err(0x000000000010140000000016000e7306));
+    // F2I R0, R0 (S32, nearest); F2I.FTZ.U32.TRUNC.NTZ R19, R18; F2I.U32.FLOOR; F2I.S16 rejected.
+    assert_eq!(da(0x00000000002011000000000000007305), Instr::F2I { dst: 0, src: f(r(0)), signed: true, round: Round::Nearest });
+    assert_eq!(da(0x000000000021f0000000001200137305), Instr::F2I { dst: 19, src: f(r(18)), signed: false, round: Round::Trunc });
+    assert_eq!(da(0x00000000002070000000000200137305), Instr::F2I { dst: 19, src: f(r(2)), signed: false, round: Round::Floor });
+    assert!(da_err(0x00000000002029000000001200007305));
+    // FRND.FLOOR R19, R2; FRND.TRUNC R37, c[0x0][0x248]
+    assert_eq!(da(0x00000000002050000000000200137307), Instr::F2F { dst: 19, src: f(r(2)), round: Some(Round::Floor), sat: false });
+    let cb = f(Src::Cbuf { bank: 0, offset: 0x248 });
+    assert_eq!(da(0x000000000020d0000000920000257b07), Instr::F2F { dst: 37, src: cb, round: Some(Round::Trunc), sat: false });
+    // BRA: offsets relative to the next instruction; CuAsm lists absolute targets.
+    let at = |w: u128, pc: i32| match da(w) {
+        Instr::Bra { rel } => pc + rel,
+        i => panic!("{i:?}"),
+    };
+    assert_eq!(at(0x000000000383fffffffffff000007947, 0x110), 0x110);
+    assert_eq!(at(0x00000000038000000000002000008947, 0x180), 0x1b0);
+    assert_eq!(at(0x00000000038000000000051000000947, 0x2e0), 0x800);
+    assert_eq!(at(0x0000000003800000000003e100009947, 0x5ea0), 0x6290);
+    // A second branch predicate (BRA !P2, target) is rejected.
+    assert!(da_err(0x00000000050000000000049000009947));
+    assert_eq!(da(0x00000000038000000000090000007945), Instr::Hint("BSSY"));
+    assert_eq!(da(0x00000000038000000000000000017941), Instr::Hint("BSYNC"));
+    assert_eq!(da(0x0000000003800000ffffffff00007948), Instr::Hint("WARPSYNC"));
+}
+
+/// Test-only Ampere encoders.
+mod am {
+    pub const EXIT: u128 = 0x794d;
+    pub fn mov_cb(d: u8, bank: u8, off: u16) -> u128 {
+        0x7a02 | ((d as u128) << 16) | ((off as u128) << 38) | ((bank as u128) << 54) | (0xf << 72)
+    }
+    /// `BRA` from instruction `from` to `to`.
+    pub fn bra(from: usize, to: usize) -> u128 {
+        let off = (to as i64 - from as i64 - 1) * 16;
+        0x7947 | ((((off >> 2) as u128) & ((1 << 48) - 1)) << 34) | (7 << 87)
+    }
+    pub fn pred(w: u128, p: u8, neg: bool) -> u128 {
+        (w & !(0xf << 12)) | ((p as u128) << 12) | ((neg as u128) << 15)
+    }
+}
+
+#[test]
+fn ampere_branch_and_integer_program() {
+    // R8 = c[0][0], R0 = c[0][4]; P2 = R8 != 0; @!P2 BRA end; R4 = R0 << 2 (IMAD.SHL);
+    // BSSY/BSYNC hints around it; R5 = R4 >> 1 (SHF.R.U32.HI) after the join.
+    let code = [
+        am::mov_cb(8, 0, 0),
+        am::mov_cb(0, 0, 4),
+        0x0000000003f45270000000ff0800720c, // ISETP.NE.AND P2, PT, R8, RZ, PT
+        0x00000000038000000000090000007945, // BSSY B0
+        am::pred(am::bra(4, 6), 2, true),
+        0x04000000078e00ff0000000400047824, // IMAD.SHL.U32 R4, R0, 0x4, RZ
+        0x00000000038000000000000000007941, // BSYNC B0
+        (0x100000000001160300000017ff057819 & !(0xffff_ffff << 32) & !(0xff << 64)) | (1 << 32) | (4 << 64), // SHF.R.U32.HI R5, RZ, 0x1, R4
+        am::EXIT,
+    ];
+    let mut bytes = Vec::new();
+    for w in code {
+        bytes.extend_from_slice(&w.to_le_bytes());
+    }
+    let f = ir::lower(ShaderStage::Fragment, &bytes).unwrap();
+    for (c0, c4, r4) in [(1u32, 5u32, 20u32), (0, 5, 0), (7, 0x4000_0001, 4)] {
+        let v = run(&f, &|_, off| if off == 0 { c0 } else { c4 });
+        assert_eq!(exit_reg(&f, &v, 4), r4, "c0 = {c0}");
+        assert_eq!(exit_reg(&f, &v, 5), r4 >> 1);
+    }
+    let mut h = SphBuilder::pixel().ps_target(0, 0xf).bytes(AMPERE_SPH_SIZE);
+    h.extend(bytes);
+    validate(&translate(ShaderStage::Fragment, &h).unwrap().wgsl);
+}

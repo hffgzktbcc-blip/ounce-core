@@ -303,9 +303,9 @@ fn rejects_what_step1_cannot_do() {
     let ps = SphBuilder::pixel().ps_target(0, 0xf);
     // No EXIT.
     assert_eq!(translate(ShaderStage::Vertex, &program(&vs, &[asm::nop()])).unwrap_err(), XlateError::MissingExit);
-    // Unknown opcode (IMAD 0x224) reports where.
-    match translate(ShaderStage::Vertex, &program(&vs, &[asm::nop(), 0x7224, asm::exit()])).unwrap_err() {
-        XlateError::Decode { at, err: DecodeError::UnknownOpcode { opcode: 0x224 }, .. } => assert_eq!(at, 0x10),
+    // Unknown opcode (unassigned 0x1ff) reports where.
+    match translate(ShaderStage::Vertex, &program(&vs, &[asm::nop(), 0x71ff, asm::exit()])).unwrap_err() {
+        XlateError::Decode { at, err: DecodeError::UnknownOpcode { opcode: 0x1ff }, .. } => assert_eq!(at, 0x10),
         e => panic!("{e:?}"),
     }
     // Predicated ALU ops are if-converted now (see `ctl_tests`). A predicated NOP is fine.

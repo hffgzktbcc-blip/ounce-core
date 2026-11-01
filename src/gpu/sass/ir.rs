@@ -695,6 +695,18 @@ pub fn lower_with(
                     b.pwrite(pd2, v2, g);
                 }
             }
+            Instr::PLop3 { pd, lut, a, b: bb, c } => {
+                // Through the bitwise table: each predicate as all-ones / zero.
+                let (ones, zero) = (b.konst(u32::MAX), b.zero());
+                let mut ins = [zero; 3];
+                for (k, ps) in [a, bb, c].into_iter().enumerate() {
+                    let pv = b.pred(ps);
+                    ins[k] = b.sel(pv, ones, zero);
+                }
+                let r = b.push(Op::Lop3(lut, ins[0], ins[1], ins[2]));
+                let v = b.push(Op::ICmp(ICmp::Ne, false, r, zero));
+                b.pwrite(pd, v, g);
+            }
             Instr::Set { dst, cmp, bop, c, bf } => {
                 let r = b.compare(cmp);
                 let cv = b.pred(c);
