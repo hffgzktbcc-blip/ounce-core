@@ -26,6 +26,8 @@ pub enum WaitReason {
     Objects { handles: Vec<u32>, timed: bool },
     /// svcSleepThread with a positive time: only the deadline wakes it.
     Sleep,
+    /// svcWaitForAddress: a svcSignalToAddress on `addr`.
+    Address { addr: u64 },
 }
 
 /// Instructions a thread runs before `preempt` lets the next ready thread in.
@@ -46,6 +48,7 @@ pub const RESULT_INVALID_STATE: u64 = 0xFA01;
 pub const RESULT_INVALID_PRIORITY: u64 = 0xE001;
 pub const RESULT_INVALID_CORE_ID: u64 = 0xE201;
 pub const RESULT_INVALID_COMBINATION: u64 = 0xE801;
+pub const RESULT_CANCELLED: u64 = 0xEC01;
 /// Horizon thread priorities: 0 runs first, 63 last.
 pub const LOWEST_THREAD_PRIORITY: i32 = 63;
 /// Cores a thread may name (the 8 Cortex-A78C cores; one host CPU time-shares them).
@@ -102,6 +105,10 @@ pub struct KThread {
     pub wait_seq: u64,
     /// Scheduler time (`now_ns`) at which a timed wait or sleep ends.
     pub deadline: Option<u64>,
+    /// svcSetThreadActivity(Paused): the thread keeps its state but is never picked to run.
+    pub paused: bool,
+    /// svcCancelSynchronization reached the thread outside svcWaitSynchronization: its next one is cancelled.
+    pub wait_cancelled: bool,
 }
 
 /// Horizon OS 8-Core Cortex-A78C Thread Scheduler.
@@ -203,6 +210,8 @@ impl ThreadScheduler {
             wait: None,
             wait_seq: 0,
             deadline: None,
+            paused: false,
+            wait_cancelled: false,
         };
 
         self.threads.insert(handle, kthread);
@@ -302,6 +311,8 @@ impl ThreadScheduler {
             wait: None,
             wait_seq: 0,
             deadline: None,
+            paused: false,
+            wait_cancelled: false,
         });
     }
 
@@ -403,7 +414,7 @@ impl ThreadScheduler {
             .ready
             .iter()
             .enumerate()
-            .filter(|(_, k)| self.threads.get(k).is_some_and(&eligible))
+            .filter(|(_, k)| self.threads.get(k).is_some_and(|t| !t.paused && eligible(t)))
             .min_by_key(|(i, k)| (self.threads[k].priority, *i))
             .map(|(i, _)| i)?;
         self.ready.remove(index)
@@ -611,6 +622,13 @@ impl ThreadScheduler {
             .collect();
         v.sort();
         v.into_iter().map(|(_, h)| h).collect()
+    }
+
+    /// Threads in svcWaitForAddress on `addr`, in the order Horizon wakes them: best priority, then earliest.
+    pub fn address_waiters(&self, addr: u64) -> Vec<u32> {
+        let mut v = self.waiters(|w| matches!(w, WaitReason::Address { addr: a } if *a == addr));
+        v.sort_by_key(|k| self.threads[k].priority);
+        v
     }
 
     /// Hands the mutex word at `addr` to its earliest waiter (waking it), or clears it.

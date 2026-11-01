@@ -3,6 +3,7 @@
 pub mod apm;
 pub mod applet;
 pub mod cmif;
+pub mod fsp;
 pub mod hid;
 pub mod audren;
 pub mod hipc;
@@ -14,8 +15,11 @@ pub mod nvdrv;
 pub mod scheduler;
 pub mod set;
 pub mod svc;
+#[cfg(test)]
+mod svc_tests;
 pub mod sync;
 pub mod time;
+pub mod vi;
 
 pub use ipc::{IpcManager, ServiceType, CMIF_IN_MAGIC, CMIF_OUT_MAGIC, DEFAULT_TLS_ADDR, TLS_SIZE};
 pub use sdk_hle::{SdkHleRuntime, StandardAllocator};

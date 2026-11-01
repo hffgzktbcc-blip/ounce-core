@@ -91,10 +91,16 @@ impl IpcManager {
         self.reply_error(tls, mmu, RESULT_UNKNOWN_COMMAND)
     }
 
-    /// Writes `data` to the request's first output buffer (receive list entry, else `B` buffer),
+    /// Writes `data` to the request's first non-empty `B` buffer, or receive-list entry,
     /// truncated to the buffer size. Returns the bytes written.
     pub(super) fn write_out_buffer(&self, mmu: &mut Memory, data: &[u8]) -> usize {
-        let Some(buf) = self.request.recv_list.first().or(self.request.recv_buffers.first()) else {
+        let Some(buf) = self
+            .request
+            .recv_buffers
+            .iter()
+            .find(|b| b.size > 0)
+            .or_else(|| self.request.recv_list.iter().find(|b| b.size > 0))
+        else {
             return 0;
         };
         let n = data.len().min(buf.size as usize);
@@ -108,9 +114,32 @@ impl IpcManager {
     /// The applet message event is signaled while the message queue holds a message.
     pub fn service_event_signaled(&self, handle: u32) -> Option<bool> {
         match self.handles.get(&handle) {
+            Some(ServiceType::ServiceEvent("ViBufferQueue")) => Some(true),
             Some(ServiceType::ServiceEvent(_)) => Some(self.applet.message_event == Some(handle) && !self.applet.messages.is_empty()),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::kernel::hipc::Buffer;
+    use crate::mmu::Permission;
+
+    #[test]
+    fn write_out_buffer_prefers_first_non_empty_b_buffer() {
+        let mut ipc = IpcManager::new();
+        let mut mmu = Memory::new();
+        let b_addr = 0x8000_0000;
+        let c_addr = 0x8000_1000;
+        mmu.map_range(b_addr, 0x2000, Permission::READ_WRITE);
+        ipc.request.recv_buffers = vec![Buffer { addr: 0, size: 0 }, Buffer { addr: b_addr, size: 4 }];
+        ipc.request.recv_list = vec![Buffer { addr: c_addr, size: 4 }];
+
+        assert_eq!(ipc.write_out_buffer(&mut mmu, &[1, 2, 3, 4, 5]), 4);
+        assert_eq!(mmu.read_u32(b_addr).unwrap(), 0x0403_0201);
+        assert_eq!(mmu.read_u32(c_addr).unwrap(), 0);
     }
 }
 
@@ -142,6 +171,8 @@ pub(super) mod test_util {
         pub recv_list: Option<(u64, u64)>,
         /// Domain object ID, for requests on a domain session.
         pub domain_object: Option<u32>,
+        /// `X` (send static, pointer) buffer at index 0.
+        pub send_static: Option<(u64, u64)>,
     }
 
     pub struct Harness {
@@ -212,6 +243,11 @@ pub(super) mod test_util {
                     off += 4;
                 }
             }
+            if let Some((addr, size)) = req.send_static {
+                mmu.write_u32(TLS + off, ((addr >> 36) as u32 & 0x3F) << 6 | ((addr >> 32) as u32 & 0xF) << 12 | (size as u32) << 16).unwrap();
+                mmu.write_u32(TLS + off + 4, addr as u32).unwrap();
+                off += 8;
+            }
             for (addr, size) in req.send.iter().chain(req.recv.iter()) {
                 mmu.write_u32(TLS + off, *size as u32).unwrap();
                 mmu.write_u32(TLS + off + 4, *addr as u32).unwrap();
@@ -232,7 +268,8 @@ pub(super) mod test_util {
             let end = cmif + 16 + req.data.len() as u64;
             let num_words = ((end - off).div_ceil(4) + 4) as u32; // + padding words, as libnx reserves
             let recv_mode = if req.recv_list.is_some() { 2 } else { 0 };
-            mmu.write_u32(TLS, 4 | num_send << 20 | num_recv << 24).unwrap();
+            let num_statics = req.send_static.is_some() as u32;
+            mmu.write_u32(TLS, 4 | num_statics << 16 | num_send << 20 | num_recv << 24).unwrap();
             mmu.write_u32(TLS + 4, num_words | recv_mode << 10 | (special as u32) << 31).unwrap();
             if let Some((addr, size)) = req.recv_list {
                 let roff = off + num_words as u64 * 4;

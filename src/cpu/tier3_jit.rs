@@ -174,6 +174,25 @@ impl Tier3JitEngine {
         while executed < max_instructions {
             let cur_pc = cpu.regs.pc;
             if let Some(super_block) = self.get_or_compile_super_block(cur_pc, mmu) {
+                // A fused trace may execute more instructions than remain in this slice. Keep
+                // the public instruction budget exact (the scheduler relies on exact quantum
+                // boundaries) by interpreting the tail until it can safely end.
+                if super_block.total_instructions > max_instructions - executed {
+                    match cpu.step(mmu) {
+                        Ok(super::interpreter::StepResult::Continue) => executed += 1,
+                        Ok(super::interpreter::StepResult::Svc(imm)) => {
+                            executed += 1;
+                            let elapsed = start_time.elapsed().as_secs_f64();
+                            if elapsed > 0.0 {
+                                self.mips_rate = (executed as f64 / elapsed) / 1_000_000.0;
+                            }
+                            return (executed, BlockExit::Svc { svc_id: imm });
+                        }
+                        _ => return (executed, BlockExit::Fault { pc: cur_pc }),
+                    }
+                    continue;
+                }
+
                 self.total_super_block_executions += 1;
                 let (insn_count, exit) = super_block.execute(cpu, mmu);
                 executed += insn_count;
@@ -272,6 +291,29 @@ mod tests {
         assert_eq!(cpu.regs.read_x(0), 55); // Fib(10) = 55
         assert_eq!(exit, BlockExit::Svc { svc_id: 7 });
         assert!(engine.total_super_block_executions > 0);
+    }
+
+    #[test]
+    fn test_tier3_respects_slice_budget_at_hot_superblock() {
+        let mut cpu = Cpu::new();
+        let mut mmu = Memory::new();
+        let base = 0x8000_0000u64;
+        mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(base, 0xd280_0020).unwrap(); // movz x0, #1
+        mmu.write_u32(base + 4, 0xd400_0001).unwrap(); // svc #0
+
+        let mut engine = Tier3JitEngine::new();
+        for _ in 0..=Tier3JitEngine::HOT_THRESHOLD {
+            assert_eq!(run_from(&mut engine, &mut cpu, &mut mmu, base), BlockExit::Svc { svc_id: 0 });
+        }
+        assert!(engine.super_blocks.contains_key(&base));
+
+        cpu.regs.pc = base;
+        let (executed, exit) = engine.run_slice(&mut cpu, &mut mmu, 1);
+
+        assert_eq!(executed, 1);
+        assert_eq!(exit, BlockExit::BudgetExceeded);
+        assert_eq!(cpu.regs.pc, base + 4);
     }
 
     /// Runs Tier-3 slices from `entry` until the guest exits with `SVC`.

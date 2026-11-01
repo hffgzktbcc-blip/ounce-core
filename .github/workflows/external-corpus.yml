@@ -1,0 +1,228 @@
+name: External corpus execution probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/external-corpus.yml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/**'
+      - 'scripts/prepare_external_corpus.py'
+      - 'scripts/test_*.py'
+      - 'src/**'
+      - 'tests/corpus/**'
+      - 'tests/fixtures/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  startup-probe:
+    # Never run a fork's Makefiles with repository credentials or secrets.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate external corpus preparation tooling
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Install runtime build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Build interpreter CLI
+        run: cargo build --release --locked
+
+      - name: Build unchanged external samples and record toolchain
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          set -euo pipefail
+          mkdir -p "$CORPUS_ROOT" "$EVIDENCE_ROOT"
+          # Resolve the moving toolchain image once and retain its immutable identity.
+          # This is an observed toolchain, not a claim of reproducible package inputs.
+          docker pull devkitpro/devkita64:latest
+          image_id=$(docker image inspect devkitpro/devkita64:latest --format '{{.Id}}')
+          docker image inspect "$image_id" > "$EVIDENCE_ROOT/toolchain-image.json"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$CORPUS_ROOT:/corpus" \
+            -v "$EVIDENCE_ROOT:/evidence" \
+            "$image_id" bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y python3 git make
+              {
+                uname -a
+                command -v dkp-pacman
+                dkp-pacman -Q
+              } > /evidence/toolchain-packages.txt
+              python3 /repo/scripts/prepare_external_corpus.py \
+                --manifest /repo/tests/corpus/manifest.json \
+                --output /corpus/build --build
+            ' 2>&1 | tee "$EVIDENCE_ROOT/build.log"
+          cp "$CORPUS_ROOT/build/inventory.json" "$EVIDENCE_ROOT/inventory.json"
+          cp "$CORPUS_ROOT/build/"*.build.log "$EVIDENCE_ROOT/"
+
+      - name: Probe startup with the existing interpreter
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+          OUNCE_TRACE_IPC: "1"
+          CORPUS_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import re
+          root = Path(os.environ["CORPUS_ROOT"]) / "build"
+          evidence = Path(os.environ["EVIDENCE_ROOT"])
+          inventory = json.loads((root / "inventory.json").read_text())
+          startup = next(s for s in inventory["samples"] if s["id"] == "startup")
+          outputs = startup["nro_sha256"]
+          if len(outputs) != 1:
+              raise SystemExit("Expected exactly one startup NRO")
+          relative, expected_hash = next(iter(outputs.items()))
+          nro = root / "source" / relative
+          actual_hash = hashlib.sha256(nro.read_bytes()).hexdigest()
+          if actual_hash != expected_hash:
+              raise SystemExit("Startup NRO hash differs from build inventory")
+          command = ["target/release/ounce-core", "run", str(nro), "--present=headless"]
+          result = {
+              "sample": "startup", "source_revision": inventory["revision"],
+              "nro_sha256": actual_hash, "runtime_commit": os.environ["GITHUB_SHA"],
+              "source_head": os.environ["CORPUS_SOURCE_HEAD"],
+              "requested_engine": "interpreter", "actual_engine": "interpreter",
+              "host_timeout_seconds": 60, "command": command,
+              "compatibility": "not-assessed",
+              "note": "Diagnostic CLI probe only: no scripted input, raw-frame oracle or structured guest stop adapter. Host exit zero is not compatibility success.",
+          }
+          with (evidence / "startup-interpreter.log").open("wb") as log:
+              try:
+                  completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
+                                             timeout=60, check=False)
+                  result.update(probe_stop="host_process_exit", host_exit_code=completed.returncode)
+              except subprocess.TimeoutExpired:
+                  result.update(probe_stop="host_timeout", host_exit_code=None)
+          log_text = (evidence / "startup-interpreter.log").read_text(errors="replace")
+          # Diagnostic classification only; do not infer a compatibility verdict.
+          result["guest_stop"] = next((stop for marker, stop in (
+              ("[VM] Hit svcBreak:", "svc_break"),
+              ("[VM] Stopping on unhandled SVC", "unhandled_svc"),
+              ("[VM] CPU Halted:", "cpu_halt"),
+              ("[VM] Execution budget reached", "instruction_budget"),
+              ("[Loader Error]", "load_error"),
+          ) if marker in log_text), "unknown")
+          break_result = re.search(r"\[VM\] Break result: (0x[0-9A-Fa-f]+)", log_text)
+          if break_result:
+              result["break_result"] = break_result.group(1)
+          result["log_sha256"] = hashlib.sha256(
+              (evidence / "startup-interpreter.log").read_bytes()).hexdigest()
+          (evidence / "startup-probe.json").write_text(json.dumps(result, indent=2) + "\n")
+          print(json.dumps(result, indent=2))
+          print("=== Startup interpreter log (last 32 KiB) ===")
+          print((evidence / "startup-interpreter.log").read_bytes()[-32768:].decode("utf-8", errors="replace"))
+          PY
+
+
+      - name: Prebuild two-engine diagnostic test
+        run: cargo test --release --locked external_corpus_nro_probe_both_engines --no-run --message-format=json > "$RUNNER_TEMP/ounce-corpus-test-build.jsonl"
+
+      - name: Probe all samples under interpreter and Tier-3
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+          CORPUS_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          OUNCE_TRACE_IPC: "1"
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          root = Path(os.environ["CORPUS_ROOT"]) / "build"
+          evidence = Path(os.environ["EVIDENCE_ROOT"])
+          inventory = json.loads((root / "inventory.json").read_text())
+          # Invoke the compiled test executable directly so timeout kills the guest
+          # process itself, not just a cargo parent with a surviving test child.
+          messages = [json.loads(line) for line in
+              (Path(os.environ["RUNNER_TEMP"]) / "ounce-corpus-test-build.jsonl").read_text().splitlines()]
+          executables = {m["executable"] for m in messages
+              if m.get("reason") == "compiler-artifact"
+              and m.get("profile", {}).get("test")
+              and m.get("target", {}).get("name") == "ounce-core"
+              and m.get("executable")}
+          if len(executables) != 1:
+              raise SystemExit("Expected one compiled ounce-core test executable")
+          executable = next(iter(executables))
+          records = []
+          for sample in inventory["samples"]:
+              if len(sample["nro_sha256"]) != 1:
+                  raise SystemExit("Expected one NRO per trial")
+              relative, expected = next(iter(sample["nro_sha256"].items()))
+              nro = root / "source" / relative
+              actual = hashlib.sha256(nro.read_bytes()).hexdigest()
+              if actual != expected:
+                  raise SystemExit("NRO hash differs from inventory")
+              record = {
+                  "sample": sample["id"], "nro_sha256": actual,
+                  "source_revision": inventory["revision"],
+                  "runtime_commit": os.environ["GITHUB_SHA"],
+                  "source_head": os.environ["CORPUS_SOURCE_HEAD"],
+                  "requested_engines": ["interpreter", "tier3"],
+                  "compatibility": "not-assessed",
+                  "outer_host_timeout_seconds": 90,
+              }
+              path = evidence / (sample["id"] + ".two-engine.log")
+              env = dict(os.environ, OUNCE_CORPUS_NRO=str(nro))
+              command = [executable,
+                         "loader::fixture_tests::corpus_runner::external_corpus_nro_probe_both_engines",
+                         "--exact", "--ignored", "--nocapture", "--test-threads=1"]
+              with path.open("wb") as log:
+                  try:
+                      done = subprocess.run(command, env=env, stdout=log,
+                                            stderr=subprocess.STDOUT, timeout=90, check=False)
+                      record.update(probe_stop="host_process_exit", host_exit_code=done.returncode)
+                  except subprocess.TimeoutExpired:
+                      record.update(probe_stop="outer_host_timeout", host_exit_code=None)
+              data = path.read_bytes()
+              record["log_sha256"] = hashlib.sha256(data).hexdigest()
+              text = data.decode("utf-8", errors="replace")
+              record["diagnostic_test_completed"] = (
+                  record["host_exit_code"] == 0 and
+                  re.search(r"test result: ok\. 1 passed;", text) is not None)
+              records.append(record)
+              print(json.dumps(record))
+              print(text[-32768:])
+          (evidence / "two-engine-probes.json").write_text(json.dumps(records, indent=2) + "\n")
+          # Diagnostic guest breaks/budgets are observations, not compatibility passes.
+          # Missing input/test selection/build failures remain workflow errors.
+          if not all(r["diagnostic_test_completed"] for r in records):
+              raise SystemExit("At least one diagnostic test failed or exceeded its outer deadline")
+          PY
+
+      - name: Retain diagnostic evidence (no upstream source or NRO binaries)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-corpus-probe
+          path: ${{ runner.temp }}/ounce-corpus-evidence/
+          if-no-files-found: warn
+          retention-days: 7

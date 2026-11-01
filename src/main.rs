@@ -36,11 +36,18 @@ const DEFAULT_BASE_ADDR: u64 = 0x80000000;
 const STACK_TOP: u64 = 0x7FFFFFE000;
 const STACK_SIZE: usize = 0x100000; // 1 MB stack
 
+/// `--sdmc=<dir>`: host folder behind the guest's `sdmc:/` (unset: in-memory SD card only).
+static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
 fn main() {
     // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     for arg in env::args() {
+        if let Some(value) = arg.strip_prefix("--sdmc=") {
+            let _ = SDMC_HOST_DIR.set(std::path::PathBuf::from(value));
+            continue;
+        }
         if let Some(value) = arg.strip_prefix("--cpu=") {
             match cpu::CpuTier::parse(value) {
                 Some(tier) => cpu::CpuTier::set_cli_override(tier),
@@ -289,6 +296,7 @@ fn print_usage() {
     println!("    {}3d{} [frames]             Run software 3D pushbuffer rasterizer benchmark", s.green, s.reset);
     println!("    {}gfx{} [frames]            Launch 2D high-bandwidth VRAM Framebuffer Display Demo (1280x720)", s.green, s.reset);
     println!("    {}--present={}<mode>        Presentation backend: auto, gpu (needs --features gpu-present), minifb, headless", s.green, s.reset);
+    println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
     println!("    {}--cpu={}<tier>            CPU block engine for Stage 20: tier3 (default) or tier4 (needs --features native-jit)", s.green, s.reset);
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
@@ -635,6 +643,13 @@ fn run_vm_internal(
                             "\n[VM] Hit svcBreak: reason=0x{:X}, info1=0x{:X}, info2=0x{:X}",
                             reason, info1, info2
                         );
+                        println!("[VM] Break PC: 0x{:016X}", cpu.regs.pc);
+                        if info2 == 4 {
+                            match mmu.read_u32(info1) {
+                                Ok(result) => println!("[VM] Break result: 0x{:08X} (module={}, description={})", result, result & 0x1FF, (result >> 9) & 0x1FFF),
+                                Err(error) => println!("[VM] Break result unreadable: {}", error),
+                            }
+                        }
                         stop = VmStop::Break;
                         break;
                     }
@@ -3424,6 +3439,11 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
                     eprintln!("[Loader Error] homebrew environment: {}", e);
                     return;
                 }
+            }
+            // After the NRO went on the virtual SD card, so it stays in memory and is not copied into the folder.
+            if let Some(dir) = SDMC_HOST_DIR.get() {
+                kernel.vfs.set_sdmc_directory(dir);
+                println!("  sdmc:/      : {} (sandboxed host folder)", dir.display());
             }
 
             let fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
