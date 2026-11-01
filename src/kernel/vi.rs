@@ -247,7 +247,7 @@ impl BinderObjects {
                 }
                 Ok(reply_parcel(&[0, 0]))
             }
-            // DEQUEUE_BUFFER: return one registered slot and no fence.
+            // DEQUEUE_BUFFER: return one registered slot and an empty fence (num_fences = 0).
             0x3 => {
                 if !object.connected || object.slots.is_empty() {
                     return Err(INVALID_STATE);
@@ -255,7 +255,12 @@ impl BinderObjects {
                 let slots: Vec<i32> = object.slots.keys().copied().collect();
                 let slot = slots[object.next_slot % slots.len()];
                 object.next_slot = (object.next_slot + 1) % slots.len();
-                Ok(reply_parcel(&[slot as u32, 0, 0]))
+                // Format: slot, has_fence (1), flattened object length (36), fd_count (0),
+                // 36 bytes of flattened NvMultiFence (num_fences=0, 32 bytes reserved), status (0).
+                let mut words = vec![slot as u32, 1, 36, 0];
+                words.extend_from_slice(&[0u32; 9]); // 36 bytes of NvMultiFence with num_fences = 0
+                words.push(0); // status / error code (0 = success)
+                Ok(reply_parcel(&words))
             }
             // QUEUE_BUFFER: record the exact registered slot. Presentation/capture is separate.
             0x7 => {

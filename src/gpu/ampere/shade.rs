@@ -33,6 +33,10 @@ pub(crate) fn run(f: &Function, inputs: &dyn ShaderInputs) -> Vec<u32> {
         let bits = match *op {
             Op::Const(b) => b,
             Op::Cbuf { bank, offset } => inputs.cbuf(bank, offset),
+            Op::CbufIndexed { bank, offset, reg } => {
+                let off = offset.wrapping_add(v[reg.0 as usize] as u16);
+                inputs.cbuf(bank, off)
+            }
             Op::Attr { addr } => inputs.attr(addr),
             Op::Interp { addr, freq, mul } => {
                 let raw = inputs.interp(addr, freq);

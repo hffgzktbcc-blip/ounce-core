@@ -229,6 +229,17 @@ jobs:
           OUNCE_SIMPLEGFX_NRO="$nro" timeout 1500 cargo test --release --locked \
             simplegfx_first_frame_oracle -- --ignored --nocapture 2>&1 | tee -a "$EVIDENCE_ROOT/simplegfx-oracle.txt"
 
+      - name: deko_basic first-frame oracle (finish line, docs/deko-basic-oracle.md)
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          set -euo pipefail
+          nro="$CORPUS_ROOT/build/source/graphics/deko3d/deko_basic/deko_basic.nro"
+          sha256sum "$nro" | tee "$EVIDENCE_ROOT/deko-basic-oracle.txt"
+          OUNCE_DEKO_BASIC_NRO="$nro" timeout 1500 cargo test --release --locked \
+            deko_basic_first_frame_oracle -- --ignored --nocapture 2>&1 | tee -a "$EVIDENCE_ROOT/deko-basic-oracle.txt"
+
       - name: Retain diagnostic evidence (no upstream source or NRO binaries)
         if: always()
         uses: actions/upload-artifact@v4

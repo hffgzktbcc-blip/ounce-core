@@ -125,17 +125,14 @@ impl Mme {
             let (src_bit, size, dst_bit) = (field(17, 5), field(22, 5), field(27, 5));
             let mask = if size >= 32 { u32::MAX } else { (1u32 << size) - 1 };
             let is_exit = insn & 0x80 != 0;
-            // Fermi MME branch instructions with a delay slot ignore their own EXIT bit. Mesa's
-            // mme_fermi_sim models this explicitly; honoring it here truncates deko3d macros at
-            // the first delayed branch (often after only the first emitted method).
-            let branch_has_delay_slot = op == 7 && assign & 2 == 0;
 
+            let mut taken = false;
             if op == 7 {
                 // BRANCH: assignment bit 0 = branch if not zero, bit 1 = no delay slot.
                 if in_delay_slot {
                     return Err("macro branch in a delay slot");
                 }
-                let taken = (a != 0) == (assign & 1 == 1);
+                taken = (a != 0) == (assign & 1 == 1);
                 if taken {
                     let target = (pc as i64 + imm as i64).rem_euclid(CODE_WORDS as i64) as usize;
                     if assign & 2 == 2 {
@@ -215,10 +212,16 @@ impl Mme {
                 }
             }
 
+            // A taken branch jumps to target and ignores an EXIT bit on the branch.
+            // When a conditional branch with EXIT is NOT taken, execution exits after the delay slot
+            // (e.g. `*bnz r2 .loop` in deko3d BindColorWriteMasks or `*bnz r7 .cancelExit`).
+            let branch_exit = op == 7 && !taken && is_exit;
+            let normal_exit = op != 7 && is_exit;
+
             if exiting {
                 return if next_param > params.len() { Err("macro read past its parameters") } else { Ok(()) };
             }
-            exiting = is_exit && !branch_has_delay_slot;
+            exiting = normal_exit || branch_exit;
             pc = next;
         }
         Err("macro step limit")

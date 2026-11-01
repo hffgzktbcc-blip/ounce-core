@@ -17,6 +17,8 @@ pub const AMPERE_B: u32 = 0xC797;
 /// MAXWELL_B (GM20x 3D class, `clb197.h`). Accepted so Maxwell-targeting homebrew such as deko3d
 /// decodes through the shared table.
 pub const MAXWELL_B: u32 = 0xB197;
+/// FERMI_TWOD_A (2D engine class, `cl902d.h`). Used for 2D blits/clears by deko3d.
+pub const FERMI_TWOD_A: u32 = 0x902D;
 
 /// `NVC797_SET_OBJECT`, bits 15:0 = class id.
 pub const SET_OBJECT: u32 = 0x0000;
