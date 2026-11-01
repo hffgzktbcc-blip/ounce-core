@@ -872,4 +872,66 @@ mod tests {
             "slot must fit its nvmap allocation"
         );
     }
+
+    /// Mirrors the corpus runner: descriptor -> tiling surface -> frame -> centre pixel.
+    fn extract_center(submitted: &SubmittedSurface) -> Option<(u8, u8, u8, u8)> {
+        let mut mmu = crate::mmu::Memory::new();
+        mmu.map_range(submitted.guest_addr, 0x1000, crate::mmu::Permission::READ_WRITE);
+        let surface = submitted.tiling_surface()?;
+        let frame = crate::gpu::present::surface::frame_from_surface(&mmu, submitted.guest_addr, &surface).ok()?;
+        frame.pixel(frame.width / 2, frame.height / 2)
+    }
+
+    fn adversarial(width: u32, height: u32, layout: u32, pitch: u32) -> SubmittedSurface {
+        SubmittedSurface {
+            guest_addr: 0x9000_0000,
+            width,
+            height,
+            color_format: 0x0100532120,
+            layout,
+            pitch,
+            kind: 0xFE,
+            block_height_log2: 4,
+            allocation_size: 0x1000,
+            size: 0x1000,
+        }
+    }
+
+    /// adv_p5: pitch descriptor whose RGBA8 row size (width * 4) wraps u32 to 0.
+    #[test]
+    fn adv_p5_pitch_row_bytes_wrapping_to_zero_is_rejected() {
+        let submitted = adversarial(0x4000_0000, 2, 1, 4);
+        assert!(submitted.tiling_surface().is_none());
+        assert_eq!(extract_center(&submitted), None);
+    }
+
+    /// adv_p5b: pitch descriptor whose row size wraps to a small non-zero value (4).
+    #[test]
+    fn adv_p5b_pitch_row_bytes_wrapping_to_small_value_is_rejected() {
+        let submitted = adversarial(0x4000_0001, 16, 1, 4);
+        assert!(submitted.tiling_surface().is_none());
+        assert_eq!(extract_center(&submitted), None);
+    }
+
+    /// adv_p6: block-linear descriptor whose row size wraps to 0, giving a zero-byte plane.
+    #[test]
+    fn adv_p6_block_linear_row_bytes_wrapping_is_rejected() {
+        let submitted = adversarial(0x4000_0000, 8, 3, 0);
+        assert!(submitted.tiling_surface().is_none());
+        assert_eq!(extract_center(&submitted), None);
+    }
+
+    /// Largest widths that do not wrap still have to fit the submitted plane.
+    #[test]
+    fn huge_but_non_wrapping_descriptors_fail_the_plane_bound() {
+        for (layout, pitch) in [(1, 0xFFFF_FFFC), (3, 0)] {
+            let submitted = adversarial(0x3FFF_FFFF, 1, layout, pitch);
+            assert!(submitted.tiling_surface().is_none(), "layout {layout}");
+        }
+        // A small valid descriptor still extracts.
+        let mut ok = adversarial(16, 16, 1, 64);
+        ok.size = 16 * 64;
+        assert!(ok.tiling_surface().is_some());
+        assert_eq!(extract_center(&ok), Some((0, 0, 0, 0xFF)));
+    }
 }
