@@ -32,9 +32,9 @@ Also required: the oracle step passes in CI (`external-corpus.yml`), and someone
 
 ## Lead and current claims
 - **Lead (finish line): Claude.** (2026-11-01)
-- **VI/Binder + simplegfx oracle: Claude** (2026-11-01). #103 (#112 merged into it). Oracle passes locally; 9 CI jobs green, oracle CI step running.
+- **VI/Binder + simplegfx oracle: Claude** (2026-11-01). #103 (#112 merged into it). Oracle passes locally and in CI (`startup-probe`, same NRO SHA-256 on GitHub's runner).
 - **Open for a second session: independent rerun** of `docs/REPRODUCE_SIMPLEGFX.md` on a clean machine; post the result on #103.
-- **Queue:** #114, #105, #99 ready and green, waiting for the owner to merge (agent merges are blocked by the session's permission check). #104 needs a rebase after #105. #108 closed (infra, off-goal). #116 and #118 closed as duplicates of this file (#118's stricter points are folded in above).
+- **Queue:** #114, #105, #99, #117 merged 2026-11-01. #104 updated onto #105. #108 closed (infra, off-goal). #116 and #118 closed as duplicates of this file (#118's stricter points are folded in above).
 - **Paused (feature work, not on the finish line):** #115 texture mips.
 
 ## Merge gate (owner rule)
