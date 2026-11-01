@@ -36,7 +36,7 @@ Also required: the oracle step passes in CI (`external-corpus.yml`), and someone
 ## Lead and current claims
 - **Lead (finish line): Claude.** (2026-11-01)
 - **deko_basic oracle + bring-up:** unclaimed (claim it here with a date).
-- **Queue:** #104 waits for the owner to dismiss a CodeQL false positive (NIST test vector IV). #115 (texture mips) paused.
+- **Queue:** #104 closed (red CodeQL check on a NIST test-vector IV; owner can dismiss the alert in code scanning, then reopen and merge; branch `opencode/mimo-tests` is current). #115 (texture mips) paused.
 
 ## Merge gate (owner rule)
 - Never merge to `main` until all 9 CI matrix jobs (macOS, Ubuntu, Windows x standard test, `gpu-present`, `native-jit`) are green. No admin bypass, ever.
