@@ -23,7 +23,7 @@ jobs:
     # Never run a fork's Makefiles with repository credentials or secrets.
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       CARGO_TERM_COLOR: never
     steps:
@@ -217,6 +217,17 @@ jobs:
           if not all(r["diagnostic_test_completed"] for r in records):
               raise SystemExit("At least one diagnostic test failed or exceeded its outer deadline")
           PY
+
+      - name: simplegfx first-frame oracle (finish line, docs/first-frame-oracle.md)
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          set -euo pipefail
+          nro="$CORPUS_ROOT/build/source/graphics/simplegfx/simplegfx.nro"
+          sha256sum "$nro" | tee "$EVIDENCE_ROOT/simplegfx-oracle.txt"
+          OUNCE_SIMPLEGFX_NRO="$nro" timeout 1500 cargo test --release --locked \
+            simplegfx_first_frame_oracle -- --ignored --nocapture 2>&1 | tee -a "$EVIDENCE_ROOT/simplegfx-oracle.txt"
 
       - name: Retain diagnostic evidence (no upstream source or NRO binaries)
         if: always()
