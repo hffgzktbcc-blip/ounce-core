@@ -1,6 +1,6 @@
 # Agent rules for `ounce-core`
 
-Short on purpose: every agent loads this file at session start. Past handoffs are in `docs/HANDOFF_HISTORY.md`; grep it for the entry you need, don't read it whole.
+Short on purpose: every agent loads this file at session start. Read `HANDOFF.md` next (mission, next work, toolbox). Past handoffs are in `docs/HANDOFF_HISTORY.md`; grep it for the entry you need, don't read it whole.
 
 ## Finish line 1: MET 2026-11-01
 
