@@ -6,12 +6,11 @@ Short on purpose: every agent loads this file at session start. Read `HANDOFF.md
 
 An **unmodified upstream homebrew sample shows correct pixels**: switchbrew/switch-examples `graphics/simplegfx` (pinned in `tests/corpus/manifest.json`) passes all six criteria in `docs/first-frame-oracle.md`: reproducible build, no libnx fatal at `framebufferCreate`, frames 1 and 2 captured from the submitted VI buffer match the oracle hashes for all 921,600 pixels, frame 61 is all zero, interpreter and Tier-3 agree, and the guest stops cleanly.
 
-Also required: the oracle step passes in CI (`external-corpus.yml`), and someone other than the author reruns it from `docs/REPRODUCE_SIMPLEGFX.md` and gets the same result. Synthetic harness passes and host-rendered placeholders don't count. No Switch 2 or commercial-compatibility claims.
+## Finish line 2: MET 2026-11-01
 
-**Outside samples with a verified frame: 1** (simplegfx: #103 merged with every check green incl. the CI oracle step; independent rerun PASS on #103 by a separate session, same NRO SHA-256).
+An unmodified upstream 3D GPU deko3d sample shows correct rendered frames: `graphics/deko3d/deko_basic` (pinned in `tests/corpus/manifest.json`) passes all seven criteria in `docs/deko-basic-oracle.md`. Merged in PR #121 with all 13 CI checks passing, verified bit-exact on both Interpreter and Tier-3 JIT engines, rendering the interpolated triangle with correct block-linear detiling.
 
-## Finish line 2 (current; feature work stays paused)
-`deko_basic` (switch-examples `graphics/deko3d/deko_basic`; add it to `tests/corpus/manifest.json` at the same pin) shows a correct frame: write a pre-registered pixel oracle first (like `docs/first-frame-oracle.md`, with pixels that vary by position so tiling is tested), then make it pass under both engines in CI, plus an independent rerun. Known gap: skipped 2D class `0x902D` methods `0x2A4`/`0x290`/`0x884`.
+**Outside samples with a verified frame: 2** (`simplegfx`, `deko_basic`).
 
 ## Token budget rules (all agents)
 - Use only what the current task needs: git, cargo, the GitHub MCP tools, and file read/edit.

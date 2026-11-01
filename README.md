@@ -123,7 +123,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 <tr><td><strong>25 harness stages / 27 checks</strong></td><td>Project-authored programs met expected functional stage gates</td><td>General homebrew or Switch 2 compatibility</td></tr>
 <tr><td><strong>9 CI jobs</strong></td><td>Standard, GPU-feature and native-JIT jobs across Linux, macOS and Windows</td><td>That every engine or graphics path was tested by every job</td></tr>
 <tr><td><strong>Independent homebrew probes</strong></td><td>Reports from unchanged external candidates and recorded guest failures</td><td>A correct output image or complete program support</td></tr>
-<tr><td><strong>Raw-frame extraction (PR #103, unmerged)</strong></td><td>CI captured matching 1280×720 simplegfx raw-frame hashes from interpreter and Tier-3 at <code>d317921</code></td><td>Visual correctness, normal guest completion, repeat-run reproducibility, or a feature already on <code>main</code></td></tr>
+<tr><td><strong>Verified outside samples (2/2)</strong></td><td><code>simplegfx</code> (linear VI buffer) and <code>deko_basic</code> (3D GPU hardware rendering via deko3d, Maxwell/Ampere command buffers, RomFS shaders, block-linear detiling) verified bit-exact on Interpreter and Tier-3 across CI matrix</td><td>General homebrew or commercial software compatibility</td></tr>
 <tr><td><strong>Optional feature testing</strong></td><td>Focused regressions for host GPU replay and native code generation</td><td>Hardware-exact behaviour for all guest software</td></tr>
 </table>
 
