@@ -14,6 +14,8 @@ pub enum SurfaceError {
     Tiling(TilingError),
     /// The surface bytes are not fully mapped in guest memory.
     Unmapped { addr: u64, len: usize },
+    /// Detiled bytes do not cover `width * height` RGBA8 pixels.
+    FrameSizeMismatch { expected: Option<usize>, got: usize },
 }
 
 impl From<TilingError> for SurfaceError {
@@ -40,7 +42,12 @@ pub fn frame_from_surface(mmu: &Memory, addr: u64, surface: &Surface) -> Result<
         }
         px[3] = 0xFF;
     }
-    Ok(Frame { width: surface.width as usize, height: surface.height as usize, rgba: packed })
+    let (width, height) = (surface.width as usize, surface.height as usize);
+    let expected = width.checked_mul(height).and_then(|pixels| pixels.checked_mul(4));
+    if expected != Some(packed.len()) {
+        return Err(SurfaceError::FrameSizeMismatch { expected, got: packed.len() });
+    }
+    Ok(Frame { width, height, rgba: packed })
 }
 
 #[cfg(test)]
