@@ -11,7 +11,7 @@ Also required: the oracle step passes in CI (`external-corpus.yml`), and someone
 **Outside samples with a verified frame: 1** (simplegfx: #103 merged with every check green incl. the CI oracle step; independent rerun PASS on #103 by a separate session, same NRO SHA-256).
 
 ## Finish line 2 (current; feature work stays paused)
-`deko_basic` (switch-examples, same pin) shows a correct frame: write a pre-registered pixel oracle first (like `docs/first-frame-oracle.md`, with pixels that vary by position so tiling is tested), then make it pass under both engines in CI, plus an independent rerun. Known gap: skipped 2D class `0x902D` methods `0x2A4`/`0x290`/`0x884`.
+`deko_basic` (switch-examples `graphics/deko3d/deko_basic`; add it to `tests/corpus/manifest.json` at the same pin) shows a correct frame: write a pre-registered pixel oracle first (like `docs/first-frame-oracle.md`, with pixels that vary by position so tiling is tested), then make it pass under both engines in CI, plus an independent rerun. Known gap: skipped 2D class `0x902D` methods `0x2A4`/`0x290`/`0x884`.
 
 ## Token budget rules (all agents)
 - Use only what the current task needs: git, cargo, the GitHub MCP tools, and file read/edit.
@@ -35,7 +35,7 @@ Also required: the oracle step passes in CI (`external-corpus.yml`), and someone
 
 ## Lead and current claims
 - **Lead (finish line): Claude.** (2026-11-01)
-- **deko_basic oracle + bring-up: Claude** (2026-11-01).
+- **deko_basic oracle + bring-up:** unclaimed (claim it here with a date).
 - **Queue:** #104 waits for the owner to dismiss a CodeQL false positive (NIST test vector IV). #115 (texture mips) paused.
 
 ## Merge gate (owner rule)
