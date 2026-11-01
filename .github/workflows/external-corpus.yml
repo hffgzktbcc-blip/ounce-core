@@ -240,6 +240,17 @@ jobs:
           OUNCE_DEKO_BASIC_NRO="$nro" timeout 1500 cargo test --release --locked \
             deko_basic_first_frame_oracle -- --ignored --nocapture 2>&1 | tee -a "$EVIDENCE_ROOT/deko-basic-oracle.txt"
 
+      - name: romfs first-frame oracle (finish line 3, docs/romfs-oracle.md)
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          set -euo pipefail
+          nro="$CORPUS_ROOT/build/source/fs/romfs/romfs.nro"
+          sha256sum "$nro" | tee "$EVIDENCE_ROOT/romfs-oracle.txt"
+          OUNCE_ROMFS_NRO="$nro" timeout 1500 cargo test --release --locked \
+            romfs_first_frame_oracle -- --ignored --nocapture 2>&1 | tee -a "$EVIDENCE_ROOT/romfs-oracle.txt"
+
       - name: Retain diagnostic evidence (no upstream source or NRO binaries)
         if: always()
         uses: actions/upload-artifact@v4

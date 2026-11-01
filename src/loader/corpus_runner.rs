@@ -672,3 +672,35 @@ fn deko_basic_first_frame_oracle() {
         }
     }
 }
+
+/// The romfs first-frame oracle (`docs/romfs-oracle.md`) on an NRO built unchanged from the pinned source.
+/// Opt-in: `OUNCE_ROMFS_NRO=<path> cargo test --release romfs_first_frame_oracle -- --ignored --nocapture`.
+#[test]
+#[ignore = "requires OUNCE_ROMFS_NRO pointing at romfs.nro built from the pinned source"]
+fn romfs_first_frame_oracle() {
+    let path = std::env::var_os("OUNCE_ROMFS_NRO").expect("OUNCE_ROMFS_NRO is unset");
+    let frames: u64 = std::env::var("OUNCE_ROMFS_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
+    let limits = Limits {
+        instructions: 4_000_000_000,
+        host_time: Duration::from_secs(900),
+        frames: usize::MAX,
+        queued_frames: frames,
+        ..Limits::default()
+    };
+    let mut reference: Option<Vec<QueuedFrame>> = None;
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = run_path(Path::new(&path), engine, &limits);
+        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        assert_eq!(result.queued.len() as u64, frames);
+        for f in &result.queued {
+            assert_eq!(f.error, None, "frame {}", f.index);
+            assert_eq!((f.width, f.height), (1280, 720), "frame {}", f.index);
+            assert_ne!(f.rgba_fnv1a64, 0, "frame {} must have non-zero hash", f.index);
+        }
+        match &reference {
+            None => reference = Some(result.queued),
+            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+        }
+    }
+}
