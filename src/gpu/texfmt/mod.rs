@@ -35,17 +35,6 @@ pub enum NumType {
 }
 
 impl NumType {
-    pub fn from_raw(v: u32) -> Option<Self> {
-        Some(match v {
-            1 | 5 => Self::Snorm,
-            2 | 6 => Self::Unorm,
-            3 => Self::Sint,
-            4 => Self::Uint,
-            7 => Self::Float,
-            _ => return None,
-        })
-    }
-
     fn is_int(self) -> bool {
         matches!(self, Self::Sint | Self::Uint)
     }
