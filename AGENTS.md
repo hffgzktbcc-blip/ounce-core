@@ -6,7 +6,9 @@ Short on purpose: every agent loads this file at session start. Past handoffs ar
 
 An **unmodified upstream homebrew sample shows correct pixels**: switchbrew/switch-examples `graphics/simplegfx` (pinned in `tests/corpus/manifest.json`) passes all six criteria in `docs/first-frame-oracle.md`: reproducible build, no libnx fatal at `framebufferCreate`, frames 1 and 2 captured from the submitted VI buffer match the oracle hashes for all 921,600 pixels, frame 61 is all zero, interpreter and Tier-3 agree, and the guest stops cleanly.
 
-Status 2026-11-01: **met locally** (all six criteria; see the result section of `docs/first-frame-oracle.md`), in #103. It counts as met once #103 merges with every CI job green, including the new oracle step in `external-corpus.yml`. Until then, anything that does not move this forward waits.
+Also required: the oracle step passes in CI (`external-corpus.yml`), and someone other than the author reruns it from `docs/REPRODUCE_SIMPLEGFX.md` and gets the same result. Synthetic harness passes and host-rendered placeholders don't count. No Switch 2 or commercial-compatibility claims.
+
+**Outside samples with a verified frame: 0** (simplegfx passes locally in #103; it counts after CI, merge and an independent rerun). Next: `deko_basic` (needs the skipped 2D class `0x902D` methods).
 
 ## Token budget rules (all agents)
 - Use only what the current task needs: git, cargo, the GitHub MCP tools, and file read/edit.
@@ -30,8 +32,9 @@ Status 2026-11-01: **met locally** (all six criteria; see the result section of 
 
 ## Lead and current claims
 - **Lead (finish line): Claude.** (2026-11-01)
-- **VI/Binder + simplegfx oracle: Claude** (2026-11-01). Took over #103; #112 (overflow fix) merged into it, #113 (CI copy) closed. Oracle passes locally; waiting on CI and merge.
-- **Queue:** #114, #105, #99 ready and green, waiting for the owner to merge (agent merges are blocked by the session's permission check). #104 needs a rebase after #105. #108 closed (infra, off-goal).
+- **VI/Binder + simplegfx oracle: Claude** (2026-11-01). #103 (#112 merged into it). Oracle passes locally; 9 CI jobs green, oracle CI step running.
+- **Open for a second session: independent rerun** of `docs/REPRODUCE_SIMPLEGFX.md` on a clean machine; post the result on #103.
+- **Queue:** #114, #105, #99 ready and green, waiting for the owner to merge (agent merges are blocked by the session's permission check). #104 needs a rebase after #105. #108 closed (infra, off-goal). #116 and #118 closed as duplicates of this file (#118's stricter points are folded in above).
 - **Paused (feature work, not on the finish line):** #115 texture mips.
 
 ## Merge gate (owner rule)
