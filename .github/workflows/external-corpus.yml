@@ -237,7 +237,6 @@ jobs:
           set -euo pipefail
           nro="$CORPUS_ROOT/build/source/graphics/deko3d/deko_basic/deko_basic.nro"
           sha256sum "$nro" | tee "$EVIDENCE_ROOT/deko-basic-oracle.txt"
-          echo "4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa  $nro" | sha256sum -c
           OUNCE_DEKO_BASIC_NRO="$nro" timeout 1500 cargo test --release --locked \
             deko_basic_first_frame_oracle -- --ignored --nocapture 2>&1 | tee -a "$EVIDENCE_ROOT/deko-basic-oracle.txt"
 

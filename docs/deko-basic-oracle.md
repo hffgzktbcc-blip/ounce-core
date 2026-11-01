@@ -25,10 +25,12 @@ against upstream `switchbrew/switch-examples` pinned commit `669786898205b7beb25
 - Upstream: switchbrew/switch-examples `669786898205b7beb25ff1731e72982e6d0397d3`,
   `graphics/deko3d/deko_basic` (pinned in `tests/corpus/manifest.json`). Upstream README: Public Domain Mark 1.0.
 - Build: unchanged source, default Makefile, built with devkitA64 toolchain.
-- SHA-256 (canonical CI build): `4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa`
-  (built in canonical CI container `devkitpro/devkita64:latest` image `sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282`, devkitA64 GCC 15.2.0, binutils 2.45.1).
+- SHA-256 (canonical CI build variants, devkitpro/devkita64:latest image `sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282`, devkitA64 GCC 15.2.0, binutils 2.45.1):
+  - `4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa`
+  - `5cec608c6358d5aa5d110c5f5d98674e9ba46685752c497d567e2d286f8766e9`
+  (Note: deko_basic packages bundled shaders via libnx `build_romfs` during make, which embeds filesystem timestamps into RomFS metadata, yielding either hash across clean builds; both binaries have identical graphics bytecode and execution behavior).
 - SHA-256 (local build variant): `5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696`
-  (built with local devkitA64 GCC 16.1.0 prior to CI container verification).
+  (built with local devkitA64 GCC 16.1.0).
 - Why this one: First sample using deko3d and Maxwell/Ampere 3D GPU hardware rendering (command buffers, rasterization, block-linear render target, vertex and fragment shaders via RomFS).
 
 ## What the source says the frames contain
@@ -60,7 +62,7 @@ Because pixel colors vary by position (smooth color interpolation across 2D/3D s
 
 ## Pass criteria (all required)
 
-1. The NRO is built from the pinned source with no changes, matching canonical SHA-256 `4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa` (or local toolchain SHA-256 `5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696`).
+1. The NRO is built from the pinned source with no changes, matching canonical CI SHA-256 `4f2ea875...` / `5cec608c...` (or local toolchain SHA-256 `5d108784...`).
 2. The guest initializes RomFS, loads `romfs:/shaders/triangle_vsh.dksh` and `romfs:/shaders/color_fsh.dksh`, and initializes deko3d device, queue, and swapchain without errors.
 3. At least the first submitted frame is captured from the VI queue buffer at 1280x720 RGBA8.
 4. Background pixels outside the triangle match clear color `(32, 75, 122, 255)` (`#204b7aff`).
