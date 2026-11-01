@@ -2,13 +2,16 @@
 
 Short on purpose: every agent loads this file at session start. Past handoffs are in `docs/HANDOFF_HISTORY.md`; grep it for the entry you need, don't read it whole.
 
-## Finish line (feature work stops until this is met)
+## Finish line 1: MET 2026-11-01
 
 An **unmodified upstream homebrew sample shows correct pixels**: switchbrew/switch-examples `graphics/simplegfx` (pinned in `tests/corpus/manifest.json`) passes all six criteria in `docs/first-frame-oracle.md`: reproducible build, no libnx fatal at `framebufferCreate`, frames 1 and 2 captured from the submitted VI buffer match the oracle hashes for all 921,600 pixels, frame 61 is all zero, interpreter and Tier-3 agree, and the guest stops cleanly.
 
 Also required: the oracle step passes in CI (`external-corpus.yml`), and someone other than the author reruns it from `docs/REPRODUCE_SIMPLEGFX.md` and gets the same result. Synthetic harness passes and host-rendered placeholders don't count. No Switch 2 or commercial-compatibility claims.
 
-**Outside samples with a verified frame: 0** (simplegfx passes locally in #103; it counts after CI, merge and an independent rerun). Next: `deko_basic` (needs the skipped 2D class `0x902D` methods).
+**Outside samples with a verified frame: 1** (simplegfx: #103 merged with every check green incl. the CI oracle step; independent rerun PASS on #103 by a separate session, same NRO SHA-256).
+
+## Finish line 2 (current; feature work stays paused)
+`deko_basic` (switch-examples `graphics/deko3d/deko_basic`; add it to `tests/corpus/manifest.json` at the same pin) shows a correct frame: write a pre-registered pixel oracle first (like `docs/first-frame-oracle.md`, with pixels that vary by position so tiling is tested), then make it pass under both engines in CI, plus an independent rerun. Known gap: skipped 2D class `0x902D` methods `0x2A4`/`0x290`/`0x884`.
 
 ## Token budget rules (all agents)
 - Use only what the current task needs: git, cargo, the GitHub MCP tools, and file read/edit.
@@ -32,10 +35,8 @@ Also required: the oracle step passes in CI (`external-corpus.yml`), and someone
 
 ## Lead and current claims
 - **Lead (finish line): Claude.** (2026-11-01)
-- **VI/Binder + simplegfx oracle: Claude** (2026-11-01). #103 (#112 merged into it). Oracle passes locally and in CI (`startup-probe`, same NRO SHA-256 on GitHub's runner).
-- **Open for a second session: independent rerun** of `docs/REPRODUCE_SIMPLEGFX.md` on a clean machine; post the result on #103.
-- **Queue:** #114, #105, #99, #117 merged 2026-11-01. #104 updated onto #105. #108 closed (infra, off-goal). #116 and #118 closed as duplicates of this file (#118's stricter points are folded in above).
-- **Paused (feature work, not on the finish line):** #115 texture mips.
+- **deko_basic oracle + bring-up:** unclaimed (claim it here with a date).
+- **Queue:** #104 waits for the owner to dismiss a CodeQL false positive (NIST test vector IV). #115 (texture mips) paused.
 
 ## Merge gate (owner rule)
 - Never merge to `main` until all 9 CI matrix jobs (macOS, Ubuntu, Windows x standard test, `gpu-present`, `native-jit`) are green. No admin bypass, ever.
