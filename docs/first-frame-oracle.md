@@ -1,8 +1,16 @@
 # First-frame oracle: `simplegfx` (written before execution)
 
-Status: **oracle only, not executed.** Written on 2026-11-01, before any run of
-this sample in ounce-core, so that the pass criteria cannot be fitted to the
-output.
+Status: **oracle for the next run, not yet executed against it.** Written on
+2026-11-01 from the upstream source.
+
+Provenance: this is **not** a prediction made before any ounce-core run of the
+sample. PR #103 already recorded a simplegfx frame hash of `0xd95ddf22e46ba325`
+on 2026-10-30, which is the frame-1 value below. Frame 1 is therefore a
+**previously observed result**, now explained by a calculation from the source.
+Frames 2, 60 and 61, the wrap check and the raw-alpha values are **prospective**:
+no evidence reviewed so far confirms them. The hashes were recomputed
+independently from the formula on 2026-11-01 (8/8 match). That checks the
+arithmetic, not the source semantics or any run.
 
 ## Sample
 
@@ -36,7 +44,7 @@ the *i*-th `framebufferEnd` (i = 1, 2, ...):
 
 | frame i | byte | hash, alpha forced to FF (`frame_from_surface`) | hash, raw bytes |
 |---|---|---|---|
-| 1 | 0x04 | `0xd95ddf22e46ba325` | `0xa81539f09f682325` |
+| 1 (previously observed in #103) | 0x04 | `0xd95ddf22e46ba325` | `0xa81539f09f682325` |
 | 2 | 0x08 | `0x1dd22fb233d7a325` | `0x39fccc50d4972325` |
 | 60 | 0xF0 | `0xa50b597b02e4a325` | `0x13b359fc16672325` |
 | 61 | 0x00 | `0x52bda05e66a4a325` | `0xd395e456e4e72325` |
