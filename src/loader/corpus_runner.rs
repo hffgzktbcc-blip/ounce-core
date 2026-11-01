@@ -50,6 +50,7 @@ impl Default for Limits {
 
 #[derive(Debug)]
 struct Report {
+    #[allow(dead_code)]
     requested_engine: Engine,
     actual_engine: Engine,
     stop: Stop,
@@ -60,6 +61,8 @@ struct Report {
     frames: usize,
     preemptions: usize,
     svcs: Vec<(u64, u16)>,
+    /// The last 32 SVCs (pc, id), oldest first.
+    last_svcs: std::collections::VecDeque<(u64, u16)>,
     debug_output: String,
     input_applied_at: Vec<usize>,
     raw_frame: Option<RawFrameEvidence>,
@@ -97,7 +100,7 @@ struct RawFrameEvidence {
 fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
     Report { requested_engine: engine, actual_engine: engine, stop,
         instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
-        preemptions: 0, svcs: Vec::new(), debug_output: String::new(),
+        preemptions: 0, svcs: Vec::new(), last_svcs: Default::default(), debug_output: String::new(),
         input_applied_at: Vec::new(), raw_frame: None, queued: Vec::new(), first_present_diagnostic: None, post_queue_diagnostic: None, compatibility: "not-assessed" }
 }
 
@@ -186,6 +189,10 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
             if result.svcs.len() < limits.trace_entries {
                 result.svcs.push((cpu.regs.pc.saturating_sub(4), id));
             }
+            if result.last_svcs.len() == 32 {
+                result.last_svcs.pop_front();
+            }
+            result.last_svcs.push_back((cpu.regs.pc.saturating_sub(4), id));
             if id == 0x27 {
                 let available = limits.debug_bytes.saturating_sub(result.debug_output.len());
                 let mut bytes = vec![0; (cpu.regs.read_x(1).min(available as u64)) as usize];
@@ -314,6 +321,67 @@ fn run_path(path: &Path, engine: Engine, limits: &Limits) -> Report {
         Ok(nro) => run_nro(&nro, &path.to_string_lossy(), &[], engine, limits, &[]),
         Err(error) => report(engine, Stop::MissingInput(format!("{}: {error}", path.display())), &Cpu::new()),
     }
+}
+
+/// Flight recorder: one small JSON summary of a run, so a failure can be diagnosed without logs.
+/// `first_failure` is the first of: CPU fault, unhandled SVC, IPC command answered "not
+/// implemented", unhandled nvdrv ioctl, GPU diagnostic, guest break, no VI frame queued.
+fn flight_record(report: &Report, kernel: &HorizonKernel) -> serde_json::Value {
+    use serde_json::json;
+    let ipc = &kernel.ipc;
+    let hex = |v: u64| format!("{v:#x}");
+    let stop = format!("{:?}", report.stop);
+    let first_failure = match &report.stop {
+        Stop::Fault { pc, instruction, error } => json!({"kind": "cpu_fault", "pc": hex(*pc),
+            "opcode": instruction.map(|i| format!("{i:#010x}")), "error": error}),
+        Stop::UnhandledSvc(id) => json!({"kind": "unhandled_svc", "svc": hex(*id as u64), "pc": hex(report.pc)}),
+        _ => match (ipc.unimplemented.first(), ipc.nvdrv.unhandled.first(), ipc.nvdrv.gpu_diagnostics.first()) {
+            (Some((service, cmd)), _, _) => json!({"kind": "ipc_unimplemented", "service": service, "command": cmd}),
+            (_, Some((device, ioctl)), _) => json!({"kind": "nvdrv_ioctl", "device": device, "ioctl": format!("{ioctl:#010x}")}),
+            (_, _, Some(d)) => json!({"kind": "gpu", "diagnostic": format!("{d:?}")}),
+            _ => match &report.stop {
+                Stop::Break { reason, info1, info2, result } => json!({"kind": "guest_break", "reason": hex(*reason),
+                    "info1": hex(*info1), "info2": hex(*info2), "result": result.map(|r| format!("{r:#x}")), "pc": hex(report.pc)}),
+                _ if report.queued.is_empty() && report.raw_frame.is_none() => json!({"kind": "no_vi_frame",
+                    "vi": ipc.vi_submission_diagnostic(), "first_present": report.first_present_diagnostic}),
+                _ => serde_json::Value::Null,
+            },
+        },
+    };
+    json!({
+        "engine": format!("{:?}", report.actual_engine),
+        "stop": stop,
+        "instructions": report.instructions,
+        "pc": hex(report.pc),
+        "first_failure": first_failure,
+        "last_svcs": report.last_svcs.iter().map(|(pc, id)| format!("{pc:#x}:{id:#x}")).collect::<Vec<_>>().join(" "),
+        "frames_presented": report.frames,
+        "frames_queued": ipc.vi_frames_queued(),
+        "ipc_unimplemented": ipc.unimplemented,
+        "nvdrv_unhandled": ipc.nvdrv.unhandled.iter().map(|(d, i)| format!("{d} {i:#010x}")).collect::<Vec<_>>(),
+        "gpu_diagnostics": ipc.nvdrv.gpu_diagnostics.iter().take(16).map(|d| format!("{d:?}")).collect::<Vec<_>>(),
+        "debug_output": report.debug_output.chars().take(2000).collect::<String>(),
+        "raw_frame": report.raw_frame.as_ref().map(|f| json!({"width": f.width, "height": f.height,
+            "hash": hex(f.rgba_fnv1a64), "center_rgba": f.center_rgba})),
+    })
+}
+
+/// Writes `{commit, nro, nro_sha256, runs: [...]}` to `out`.
+fn write_flight_record(out: &Path, nro_path: &Path, runs: &[serde_json::Value]) {
+    use sha2::Digest;
+    let nro = std::fs::read(nro_path).unwrap_or_default();
+    let commit = std::env::var("GITHUB_SHA").ok().or_else(|| {
+        std::process::Command::new("git").args(["rev-parse", "HEAD"]).output().ok()
+            .filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    });
+    let doc = serde_json::json!({
+        "commit": commit,
+        "nro": nro_path.display().to_string(),
+        "nro_sha256": format!("{:x}", sha2::Sha256::digest(&nro)),
+        "runs": runs,
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc).unwrap() + "\n").expect("write flight record");
+    println!("[flight recorder] wrote {}", out.display());
 }
 
 fn synthetic(words: &[u32], engine: Engine, limits: &Limits) -> Report {
@@ -481,11 +549,21 @@ fn corpus_runner_hello_differential_slices() {
 fn external_corpus_nro_probe_both_engines() {
     let path = std::env::var_os("OUNCE_CORPUS_NRO").map(std::path::PathBuf::from);
     let mut reference_frame = None;
+    let record = std::env::var_os("OUNCE_REPORT_JSON").map(std::path::PathBuf::from);
+    let mut runs = Vec::new();
     for engine in [Engine::Interpreter, Engine::Tier3] {
-        let result = match &path {
-            Some(path) => run_path(path, engine, &Limits::default()),
+        let result = match path.as_ref().map(|p| (p, std::fs::read(p))) {
+            Some((p, Ok(nro))) => {
+                let (result, kernel) = run_nro_state(&nro, &p.to_string_lossy(), &[], engine, &Limits::default(), &[]);
+                runs.push(flight_record(&result, &kernel));
+                result
+            }
+            Some((p, Err(error))) => report(engine, Stop::MissingInput(format!("{}: {error}", p.display())), &Cpu::new()),
             None => report(engine, Stop::MissingInput("OUNCE_CORPUS_NRO is unset".into()), &Cpu::new()),
         };
+        if let (Some(out), Some(p)) = (&record, &path) {
+            write_flight_record(out, p, &runs);
+        }
         println!("{result:#?}");
         assert!(!matches!(result.stop, Stop::MissingInput(_) | Stop::LoadError(_)), "{result:?}");
         if engine == Engine::Interpreter {
@@ -534,6 +612,60 @@ fn simplegfx_first_frame_oracle() {
             }
         }
         // Criterion 5: both engines give identical frames.
+        match &reference {
+            None => reference = Some(result.queued),
+            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+        }
+    }
+}
+
+/// The deko_basic first-frame oracle (`docs/deko-basic-oracle.md`), criteria 3-6, on an NRO built
+/// unchanged from the pinned source. Opt-in: `OUNCE_DEKO_BASIC_NRO=<path> cargo test --release
+/// deko_basic_first_frame_oracle -- --ignored --nocapture`. `OUNCE_DEKO_BASIC_FRAMES` (default 5)
+/// sets how many queued frames to run.
+#[test]
+#[ignore = "requires OUNCE_DEKO_BASIC_NRO pointing at deko_basic.nro built from the pinned source"]
+fn deko_basic_first_frame_oracle() {
+    let path = std::env::var_os("OUNCE_DEKO_BASIC_NRO").expect("OUNCE_DEKO_BASIC_NRO is unset");
+    let nro_bytes = std::fs::read(&path).expect("read deko_basic NRO binary");
+    use sha2::Digest;
+    let nro_sha256 = format!("{:x}", sha2::Sha256::digest(&nro_bytes));
+    // Canonical CI toolchain build (GCC 15.2.0, binutils 2.45.1) vs local build variant (GCC 16.1.0).
+    const KNOWN_VALID_SHA256: &[&str] = &[
+        "4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa", // devkitpro/devkita64:latest build A
+        "5cec608c6358d5aa5d110c5f5d98674e9ba46685752c497d567e2d286f8766e9", // devkitpro/devkita64:latest build B (romfs inode timestamp variation)
+        "5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696", // local devkitA64 GCC 16.1.0 build
+    ];
+    assert!(
+        KNOWN_VALID_SHA256.contains(&nro_sha256.as_str()),
+        "unexpected deko_basic NRO SHA-256: {nro_sha256} (expected one of {KNOWN_VALID_SHA256:?})"
+    );
+    println!("deko_basic NRO SHA-256 verified: {nro_sha256}");
+    let frames: u64 = std::env::var("OUNCE_DEKO_BASIC_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
+    let expected_hash = |i: u64| match i {
+        1 => 0x7c9a9a3fa3856325u64,
+        _ => 0x3a00ccf6b6f28ea1u64,
+    };
+    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(900), frames: usize::MAX,
+        queued_frames: frames, ..Limits::default() };
+    let mut reference: Option<Vec<QueuedFrame>> = None;
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = run_path(Path::new(&path), engine, &limits);
+        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        // Criterion 7: stopped by the runner's frame limit.
+        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        assert_eq!(result.queued.len() as u64, frames);
+        for f in &result.queued {
+            assert_eq!(f.error, None, "frame {}", f.index);
+            assert_eq!((f.width, f.height), (1280, 720), "frame {}", f.index);
+            assert_eq!(f.rgba_fnv1a64, expected_hash(f.index), "frame {} hash mismatch", f.index);
+            if f.index == 1 {
+                assert_eq!(f.uniform, Some([32, 75, 122, 255]), "frame 1 must be clear color");
+            } else {
+                assert_eq!(f.uniform, None, "rendered frames must contain non-uniform pixels");
+            }
+        }
+        // Criterion 6: both engines give identical frames.
         match &reference {
             None => reference = Some(result.queued),
             Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),

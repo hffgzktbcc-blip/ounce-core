@@ -55,6 +55,8 @@ pub enum Lod {
 pub enum Op {
     Const(u32),
     Cbuf { bank: u8, offset: u16 },
+    /// Constant buffer read with register offset: `c[bank][offset + reg]`
+    CbufIndexed { bank: u8, offset: u16, reg: Value },
     /// Vertex input word.
     Attr { addr: u16 },
     /// Fragment input word; `mul` is the `PassMulW` multiplier.
@@ -114,7 +116,7 @@ pub enum Op {
 impl Op {
     pub fn ty(&self) -> Ty {
         match self {
-            Op::Const(_) | Op::Cbuf { .. } => Ty::U32,
+            Op::Const(_) | Op::Cbuf { .. } | Op::CbufIndexed { .. } => Ty::U32,
             Op::Tex { .. } => Ty::Vec4,
             Op::Bool(_)
             | Op::FCmp(..)
@@ -620,8 +622,13 @@ pub fn lower_with(
                 let v = b.push(Op::Mufu(op, x));
                 b.write(dst, v, g);
             }
-            Instr::Ldc { dst, bank, offset } => {
-                let v = b.push(Op::Cbuf { bank, offset });
+            Instr::Ldc { dst, bank, offset, reg } => {
+                let v = if reg == RZ {
+                    b.push(Op::Cbuf { bank, offset })
+                } else {
+                    let r = b.read(reg);
+                    b.push(Op::CbufIndexed { bank, offset, reg: r })
+                };
                 b.write(dst, v, g);
             }
             Instr::Ald { dst, addr, comps } => {
@@ -631,7 +638,7 @@ pub fn lower_with(
                 let mut vals = Vec::new();
                 for i in 0..comps as u16 {
                     let a = addr + 4 * i;
-                    if !matches!(attr_slot(a), Some(AttrSlot::Generic { .. })) {
+                    if !matches!(attr_slot(a), Some(AttrSlot::Generic { .. })) && a != 0x2f8 && a != 0x2fc {
                         return Err(unsup("ALD from a non-generic attribute"));
                     }
                     vals.push(b.push(Op::Attr { addr: a }));

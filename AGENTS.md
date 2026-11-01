@@ -1,6 +1,6 @@
 # Agent rules for `ounce-core`
 
-Short on purpose: every agent loads this file at session start. Past handoffs are in `docs/HANDOFF_HISTORY.md`; grep it for the entry you need, don't read it whole.
+Short on purpose: every agent loads this file at session start. Read `HANDOFF.md` next (mission, next work, toolbox). Past handoffs are in `docs/HANDOFF_HISTORY.md`; grep it for the entry you need, don't read it whole.
 
 ## Finish line 1: MET 2026-11-01
 
@@ -42,6 +42,16 @@ Also required: the oracle step passes in CI (`external-corpus.yml`), and someone
 - Never merge to `main` until all 9 CI matrix jobs (macOS, Ubuntu, Windows x standard test, `gpu-present`, `native-jit`) are green. No admin bypass, ever.
 - Before pushing: `cargo test --release` passes; `cargo run --release -- test` exits 0 with `[Harness] All N checks passed across 25 stages.`; no `unsafe` code in `src` (`#![forbid(unsafe_code)]`; the only `grep -rn unsafe src` hits are comments and that attribute).
 - Build on verified work; don't revert another agent's work without a reason in the PR.
+
+### Batch work, merge once per milestone (owner rule)
+
+- Work on one branch per milestone. Push frequently, but merge into main only once the milestone is complete.
+- Do not wait for CI between development steps. Final CI must pass before merging.
+- Use one PR per milestone. Include small documentation and coordination changes in that PR.
+- Before every push, run `cargo test --release`, verify harness 27/27, and check for new unsafe code.
+- Fix failing CI immediately before continuing development.
+- Separate PR exceptions: broken main, security fixes or changes blocking another session.
+- Do not implement CI path filters or weaken workflow checks without explicit owner approval.
 
 ## Legal and scope boundary
 - Target: NVIDIA Tegra T239 (Ampere GA10B GPU), Horizon OS 23.0.1 ABI. Clean-room research runtime for synthetic test vectors and homebrew only.

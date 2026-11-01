@@ -732,7 +732,7 @@ impl Ampere3d {
         let mut out = Cbufs::default();
         for op in &f.values {
             let bank = match *op {
-                Op::Cbuf { bank, .. } | Op::Tex { handle: TexHandle::Cbuf { bank, .. }, .. } => Some(bank),
+                Op::Cbuf { bank, .. } | Op::CbufIndexed { bank, .. } | Op::Tex { handle: TexHandle::Cbuf { bank, .. }, .. } => Some(bank),
                 Op::Tex { handle: TexHandle::Bound { .. }, .. } => Some(self.bindless_bank()),
                 _ => None,
             };

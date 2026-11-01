@@ -18,6 +18,10 @@ pub(super) fn run(f: &Function, cbuf: &dyn Fn(u8, u16) -> u32) -> Vec<u32> {
     for op in &f.values {
         let bits = match *op {
             Op::Cbuf { bank, offset } => cbuf(bank, offset),
+            Op::CbufIndexed { bank, offset, reg } => {
+                let off = offset.wrapping_add(v[reg.0 as usize] as u16);
+                cbuf(bank, off)
+            }
             ref op => eval::op(op, &v).unwrap_or(0),
         };
         v.push(bits);

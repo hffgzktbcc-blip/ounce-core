@@ -28,6 +28,12 @@
       "path": "graphics/simplegfx",
       "purpose": "Deterministic framebuffer fill sequence",
       "status": "untested"
+    },
+    {
+      "id": "deko-basic",
+      "path": "graphics/deko3d/deko_basic",
+      "purpose": "First GPU-drawn frame using deko3d",
+      "status": "untested"
     }
   ]
 }
