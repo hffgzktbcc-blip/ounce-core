@@ -150,6 +150,121 @@ pub(crate) fn next_reg(ra: u8) -> u8 {
     if ra == RZ { RZ } else { ra.wrapping_add(1) }
 }
 
+/// Float comparison; the discriminant is the 4-bit code both ISAs use ([envytools]
+/// `tab5bb0_0`, matched by [CuAsm] `FSETP` words). `U` forms are also true when either side
+/// is NaN; the plain forms are false then. `Num`/`Nan`: both ordered / either unordered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FCmp {
+    F,
+    Lt,
+    Eq,
+    Le,
+    Gt,
+    Ne,
+    Ge,
+    Num,
+    Nan,
+    Ltu,
+    Equ,
+    Leu,
+    Gtu,
+    Neu,
+    Geu,
+    T,
+}
+
+impl FCmp {
+    pub fn from_code(c: u32) -> Self {
+        use FCmp::*;
+        [F, Lt, Eq, Le, Gt, Ne, Ge, Num, Nan, Ltu, Equ, Leu, Gtu, Neu, Geu, T][(c & 0xf) as usize]
+    }
+}
+
+/// Integer comparison, 3-bit code ([envytools] `tab5b60_0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ICmp {
+    F,
+    Lt,
+    Eq,
+    Le,
+    Gt,
+    Ne,
+    Ge,
+    T,
+}
+
+impl ICmp {
+    pub fn from_code(c: u32) -> Self {
+        use ICmp::*;
+        [F, Lt, Eq, Le, Gt, Ne, Ge, T][(c & 7) as usize]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoolOp {
+    And,
+    Or,
+    Xor,
+}
+
+impl BoolOp {
+    pub fn from_code(c: u32) -> Option<Self> {
+        match c {
+            0 => Some(BoolOp::And),
+            1 => Some(BoolOp::Or),
+            2 => Some(BoolOp::Xor),
+            _ => None,
+        }
+    }
+}
+
+/// Float-to-integral rounding (`F2I`, `F2F`, `FRND`). `Nearest` is ties-to-even.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Round {
+    Nearest,
+    Floor,
+    Ceil,
+    Trunc,
+}
+
+/// Predicate operand: `p` (`PT` = 7 is always true), optionally negated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PSrc {
+    pub p: u8,
+    pub neg: bool,
+}
+
+impl PSrc {
+    pub const TRUE: PSrc = PSrc { p: PT, neg: false };
+}
+
+/// The comparison inside a `*SETP`/`*SET` instruction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Compare {
+    F { cmp: FCmp, a: FSrc, b: FSrc },
+    I { cmp: ICmp, signed: bool, a: Src, b: Src },
+    /// `PSETP`: `a op b` on predicates.
+    P { op: BoolOp, a: PSrc, b: PSrc },
+}
+
+/// `XMAD` addend mode ([envytools] `tab5b00_1`). `Csfu` is rejected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum XmadMode {
+    /// `c` as is.
+    None,
+    /// `c & 0xffff`.
+    Clo,
+    /// `c >> 16`.
+    Chi,
+    /// `c + (b << 16)` (b as encoded, all 32 bits).
+    Cbcc,
+}
+
+/// `LOP3` truth-table inputs: the table for `a` alone is 0xf0, `b` 0xcc, `c` 0xaa.
+pub const LUT_A: u8 = 0xf0;
+pub const LUT_B: u8 = 0xcc;
+pub const LUT_C: u8 = 0xaa;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Instr {
     Nop,
@@ -167,6 +282,55 @@ pub enum Instr {
     Ast { src: u8, addr: u16, comps: u8 },
     Ipa { dst: u8, addr: u16, freq: IpaFreq, mul: u8 },
     Tex(Tex),
+    /// `pd = cmp bop c`, `pd2 = !cmp bop c` (`PT` destinations are discarded).
+    Setp { pd: u8, pd2: u8, cmp: Compare, bop: BoolOp, c: PSrc },
+    /// As [`Instr::Setp`] into a register: 1.0 (`bf`) or 0xffffffff when true, 0 when false.
+    Set { dst: u8, cmp: Compare, bop: BoolOp, c: PSrc, bf: bool },
+    /// `dst = c ? a : b`.
+    Sel { dst: u8, a: Src, b: Src, c: PSrc },
+    /// `FMNMX`: `c ? min(a, b) : max(a, b)`.
+    FMnmx { dst: u8, a: FSrc, b: FSrc, c: PSrc },
+    /// `IMNMX`: `c ? min(a, b) : max(a, b)`.
+    IMnmx { dst: u8, a: Src, b: Src, signed: bool, c: PSrc },
+    /// `FCMP`: `dst = (c cmp 0.0) ? a : b`.
+    FCmpSel { dst: u8, cmp: FCmp, a: Src, b: Src, c: Src },
+    /// `dst = (+/-a) + (+/-b) + (+/-c)`, 32-bit wrapping (`IADD`, `IADD32I`, `IADD3`).
+    IAdd { dst: u8, a: Src, b: Src, c: Src, neg: [bool; 3] },
+    /// `ISCADD`: `dst = ((+/-a) << shift) + (+/-b)`.
+    IScAdd { dst: u8, a: Src, b: Src, shift: u8, neg: [bool; 2] },
+    /// `IMAD` (low 32 bits): `dst = a * b + c`.
+    IMad { dst: u8, a: Src, b: Src, c: Src },
+    /// Maxwell 16x16-bit multiply-add, see [`XmadMode`].
+    Xmad { dst: u8, a: Src, b: Src, c: Src, a_signed: bool, b_signed: bool, a_hi: bool, b_hi: bool, psl: bool, mrg: bool, mode: XmadMode },
+    /// `dst = LUT(a, b, c)` bitwise (`LOP`/`LOP32I` are mapped onto a table).
+    Lop3 { dst: u8, lut: u8, a: Src, b: Src, c: Src },
+    /// `dst = a << b`; `wrap`: shift by `b & 31`, else amounts >= 32 give 0.
+    Shl { dst: u8, a: Src, b: Src, wrap: bool },
+    /// `dst = a >> b` (arithmetic when `signed`); `wrap` as for [`Instr::Shl`], else
+    /// amounts >= 32 act as 32.
+    Shr { dst: u8, a: Src, b: Src, signed: bool, wrap: bool },
+    /// 32-bit integer to f32 (round to nearest).
+    I2F { dst: u8, src: Src, signed: bool },
+    /// f32 to 32-bit integer after `round`, saturating; NaN gives 0.
+    F2I { dst: u8, src: FSrc, signed: bool, round: Round },
+    /// f32 to f32: optional rounding to an integral value (`F2F.FLOOR`, `FRND`), then `.SAT`.
+    F2F { dst: u8, src: FSrc, round: Option<Round>, sat: bool },
+    /// Branch to the instruction `rel` bytes from this one's start.
+    Bra { rel: i32 },
+    /// Maxwell `SSY`: push a reconvergence point `rel` bytes from this instruction.
+    Ssy { rel: i32 },
+    /// Maxwell `SYNC`: jump to the innermost `SSY` point.
+    Sync,
+    /// Maxwell `PBK`: push a break point.
+    Pbk { rel: i32 },
+    /// Maxwell `BRK`: jump to the innermost `PBK` point.
+    Brk,
+    /// Fragment discard (`KIL`, `KILL`).
+    Kill,
+    /// `PLOP3`: `pd = LUT(a, b, c)` on predicates.
+    PLop3 { pd: u8, lut: u8, a: PSrc, b: PSrc, c: PSrc },
+    /// Warp-level hint with no effect on one thread's result (`BSSY`, `BSYNC`, `WARPSYNC`).
+    Hint(&'static str),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -363,10 +527,203 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
                 };
                 Instr::Mufu { dst, op, src }
             }
-            _ => return Err(DecodeError::UnknownOpcode { opcode: full }),
+            _ => match decode_ext(w, full)? {
+                Some(i) => i,
+                None => return Err(DecodeError::UnknownOpcode { opcode: full }),
+            },
         },
     };
     Ok(Decoded { pred, pred_neg, instr })
+}
+
+fn psrc(w: u128, lo: u32) -> PSrc {
+    PSrc { p: bits(w, lo, lo + 3) as u8, neg: bit(w, lo + 3) }
+}
+
+/// Integer operand in the bit-32 slot: form 1 register, 4 immediate, 5 constant buffer.
+/// Register and constant-buffer forms carry a negate bit at 63.
+fn islot32(w: u128, form: u32, opcode: u16) -> Result<(Src, bool), DecodeError> {
+    match form {
+        1 => Ok((Src::Reg(bits(w, 32, 40) as u8), bit(w, 63))),
+        4 => Ok((Src::Imm(bits(w, 32, 64)), false)),
+        5 => Ok((cbuf(w), bit(w, 63))),
+        _ => Err(DecodeError::Unsupported { opcode, what: "operand form (uniform registers?)" }),
+    }
+}
+
+/// Predicates, compares, integer ops, conversions and branches. Field positions read off
+/// [CuAsm] sm_86 words (see the `cuasm_ctl_*` tests); `Ok(None)` = not one of these.
+fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
+    let base = full & 0x1ff;
+    let form = bits(w, 9, 12);
+    let dst = bits(w, 16, 24) as u8;
+    let ra = Src::Reg(bits(w, 24, 32) as u8);
+    let rc = Src::Reg(bits(w, 64, 72) as u8);
+    let unsup = |what| DecodeError::Unsupported { opcode: full, what };
+    let bop = || BoolOp::from_code(bits(w, 74, 76)).ok_or(unsup("predicate combine op"));
+    let pc87 = psrc(w, 87);
+    // Predicate destinations at 81..84 / 84..87.
+    let (pd, pd2) = (bits(w, 81, 84) as u8, bits(w, 84, 87) as u8);
+    let no_pout = || if pd != PT || pd2 != PT { Err(unsup("carry / predicate output")) } else { Ok(()) };
+    let fslot = |opcode| -> Result<FSrc, DecodeError> {
+        match form {
+            1 => Ok(reg_slot(w, 32, 63, 62)),
+            4 => Ok(plain(Src::Imm(bits(w, 32, 64)))),
+            5 => Ok(FSrc { src: cbuf(w), neg: bit(w, 63), abs: bit(w, 62) }),
+            _ => Err(DecodeError::Unsupported { opcode, what: "operand form (uniform registers?)" }),
+        }
+    };
+    let rnd = [Round::Nearest, Round::Floor, Round::Ceil, Round::Trunc];
+    let i = match base {
+        0x00c => {
+            if bit(w, 72) {
+                return Err(unsup("ISETP.EX"));
+            }
+            let (b, neg) = islot32(w, form, full)?;
+            if neg {
+                return Err(unsup("ISETP negated operand"));
+            }
+            let cmp = Compare::I { cmp: ICmp::from_code(bits(w, 76, 79)), signed: bit(w, 73), a: ra, b };
+            Instr::Setp { pd, pd2, cmp, bop: bop()?, c: pc87 }
+        }
+        0x00b => {
+            let a = reg_slot(w, 24, 72, 73);
+            let cmp = Compare::F { cmp: FCmp::from_code(bits(w, 76, 80)), a, b: fslot(full)? };
+            Instr::Setp { pd, pd2, cmp, bop: bop()?, c: pc87 }
+        }
+        0x01c if form == 4 => {
+            if bit(w, 71) || bit(w, 80) || bit(w, 90) || pd2 != PT {
+                return Err(unsup("PLOP3 negated input / second output"));
+            }
+            let lut = ((bits(w, 72, 77) << 3) | bits(w, 64, 67)) as u8;
+            Instr::PLop3 { pd, lut, a: psrc(w, 87), b: psrc(w, 77), c: psrc(w, 68) }
+        }
+        0x007 | 0x008 => {
+            let (b, neg) = islot32(w, form, full)?;
+            if neg || bit(w, 72) {
+                return Err(unsup("SEL/FSEL operand modifiers"));
+            }
+            Instr::Sel { dst, a: ra, b, c: pc87 }
+        }
+        0x009 => {
+            if bit(w, 81) {
+                return Err(unsup("FMNMX.NAN"));
+            }
+            Instr::FMnmx { dst, a: reg_slot(w, 24, 72, 73), b: fslot(full)?, c: pc87 }
+        }
+        0x017 => {
+            let (b, neg) = islot32(w, form, full)?;
+            if neg {
+                return Err(unsup("IMNMX negated operand"));
+            }
+            Instr::IMnmx { dst, a: ra, b, signed: bit(w, 73), c: pc87 }
+        }
+        0x010 => {
+            if bit(w, 74) {
+                return Err(unsup("IADD3.X"));
+            }
+            no_pout()?;
+            let (b, nb) = islot32(w, form, full)?;
+            Instr::IAdd { dst, a: ra, b, c: rc, neg: [bit(w, 72), nb, bit(w, 75)] }
+        }
+        0x024 => {
+            if bit(w, 74) || bit(w, 72) {
+                return Err(unsup("IMAD.X / negated product"));
+            }
+            let (b, c, nb, nc) = match form {
+                1 => (Src::Reg(bits(w, 32, 40) as u8), rc, bit(w, 63), bit(w, 75)),
+                2 => (rc, Src::Imm(bits(w, 32, 64)), false, false),
+                3 => (rc, cbuf(w), false, bit(w, 63)),
+                4 => (Src::Imm(bits(w, 32, 64)), rc, false, bit(w, 75)),
+                5 => (cbuf(w), rc, bit(w, 63), bit(w, 75)),
+                _ => return Err(unsup("operand form (uniform registers?)")),
+            };
+            if nb {
+                return Err(unsup("IMAD negated operand"));
+            }
+            if nc {
+                // a * b - c: no IR op subtracts, so route through IADD3 when the product is trivial.
+                match (ra, b) {
+                    (Src::Reg(RZ), _) | (_, Src::Reg(RZ)) | (_, Src::Imm(0)) => {
+                        Instr::IAdd { dst, a: Src::Reg(RZ), b: Src::Reg(RZ), c, neg: [false, false, true] }
+                    }
+                    (a, Src::Imm(1)) => Instr::IAdd { dst, a, b: Src::Reg(RZ), c, neg: [false, false, true] },
+                    _ => return Err(unsup("IMAD with a negated addend and a real product")),
+                }
+            } else {
+                Instr::IMad { dst, a: ra, b, c }
+            }
+        }
+        0x012 => {
+            if bits(w, 87, 91) != 0xf || bit(w, 80) {
+                return Err(unsup("LOP3 predicate input / .PAND"));
+            }
+            if pd != PT {
+                return Err(unsup("LOP3 predicate output"));
+            }
+            let (b, neg) = islot32(w, form, full)?;
+            if neg {
+                return Err(unsup("LOP3 negated operand"));
+            }
+            Instr::Lop3 { dst, lut: bits(w, 72, 80) as u8, a: ra, b, c: rc }
+        }
+        0x019 => {
+            let (b, neg) = islot32(w, form, full)?;
+            if neg {
+                return Err(unsup("SHF negated operand"));
+            }
+            let ty = bits(w, 73, 75);
+            if ty < 2 {
+                return Err(unsup("64-bit SHF"));
+            }
+            let (right, hi, wrap) = (bit(w, 76), bit(w, 80), bit(w, 75));
+            match (right, hi, ra, rc) {
+                (false, false, a, Src::Reg(RZ)) => Instr::Shl { dst, a, b, wrap },
+                (true, true, Src::Reg(RZ), c) => Instr::Shr { dst, a: c, b, signed: ty == 2, wrap },
+                _ => return Err(unsup("SHF funnel shift across two registers")),
+            }
+        }
+        0x106 | 0x045 => {
+            if bits(w, 75, 77) != 2 || bits(w, 84, 87) != 2 {
+                return Err(unsup("I2F format other than F32 <- 32-bit"));
+            }
+            if bits(w, 78, 80) != 0 {
+                return Err(unsup("I2F rounding mode"));
+            }
+            let (src, neg) = islot32(w, form, full)?;
+            if neg || bit(w, 72) {
+                return Err(unsup("I2F modifiers / byte select"));
+            }
+            Instr::I2F { dst, src, signed: bit(w, 74) }
+        }
+        0x105 => {
+            if bits(w, 75, 77) != 2 || bits(w, 84, 87) != 2 {
+                return Err(unsup("F2I format other than 32-bit <- F32"));
+            }
+            Instr::F2I { dst, src: fslot(full)?, signed: bit(w, 72), round: rnd[bits(w, 78, 80) as usize] }
+        }
+        0x107 => {
+            if bits(w, 75, 77) != 2 || bits(w, 84, 87) != 2 {
+                return Err(unsup("FRND format other than F32"));
+            }
+            Instr::F2F { dst, src: fslot(full)?, round: Some(rnd[bits(w, 78, 80) as usize]), sat: false }
+        }
+        _ => match full {
+            0x947 => {
+                if bits(w, 32, 34) >= 2 || bits(w, 87, 91) != PT as u32 {
+                    return Err(unsup("BRA.DIV/.CONV or a second predicate"));
+                }
+                // Byte offset bits 34..82 (word aligned), relative to the next instruction.
+                let off = ((bits(w, 34, 64) as u64 | ((bits(w, 64, 82) as u64) << 30)) << 16) as i64 >> 14;
+                Instr::Bra { rel: i32::try_from(off + 16).map_err(|_| unsup("branch offset"))? }
+            }
+            0x945 => Instr::Hint("BSSY"),
+            0x941 => Instr::Hint("BSYNC"),
+            0x948 | 0x348 => Instr::Hint("WARPSYNC"),
+            _ => return Ok(None),
+        },
+    };
+    Ok(Some(i))
 }
 
 /// Reads instruction `i` (128-bit, little endian) from `code`.
@@ -395,6 +752,44 @@ impl fmt::Display for FSrc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let n = if self.neg { "-" } else { "" };
         if self.abs { write!(f, "{n}|{}|", self.src) } else { write!(f, "{n}{}", self.src) }
+    }
+}
+
+fn pr(p: u8) -> String {
+    if p >= PT { "PT".into() } else { format!("P{p}") }
+}
+
+fn sgn(signed: bool) -> &'static str {
+    if signed { ".S32" } else { ".U32" }
+}
+
+impl fmt::Display for PSrc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", if self.neg { "!" } else { "" }, pr(self.p))
+    }
+}
+
+fn cmp_kind(c: &Compare) -> &'static str {
+    match c {
+        Compare::F { .. } => "F",
+        Compare::I { .. } => "I",
+        Compare::P { .. } => "P",
+    }
+}
+
+fn cmp_name(c: &Compare) -> String {
+    match c {
+        Compare::F { cmp, .. } => format!(".{}", format!("{cmp:?}").to_uppercase()),
+        Compare::I { cmp, signed, .. } => format!(".{}{}", format!("{cmp:?}").to_uppercase(), sgn(*signed)),
+        Compare::P { op, .. } => format!(".{}", format!("{op:?}").to_uppercase()),
+    }
+}
+
+fn cmp_args(c: &Compare) -> String {
+    match c {
+        Compare::F { a, b, .. } => format!("{a}, {b}"),
+        Compare::I { a, b, .. } => format!("{a}, {b}"),
+        Compare::P { a, b, .. } => format!("{a}, {b}"),
     }
 }
 
@@ -435,6 +830,63 @@ impl fmt::Display for Decoded {
                 let d: Vec<String> = t.dst.iter().map(|&r| reg(r)).collect();
                 write!(f, "{name}.2D{lod} {{{}}}, {}, {}, {h}", d.join(", "), reg(t.x), reg(t.y))
             }
+            Instr::Setp { pd, pd2, cmp, bop, c } => {
+                write!(f, "{}SETP{}.{bop:?} {}, {}, {}, {c}", cmp_kind(&cmp), cmp_name(&cmp), pr(pd), pr(pd2), cmp_args(&cmp))
+            }
+            Instr::Set { dst, cmp, bop, c, bf } => {
+                let bf = if bf { ".BF" } else { "" };
+                write!(f, "{}SET{bf}{}.{bop:?} {}, {}, {c}", cmp_kind(&cmp), cmp_name(&cmp), reg(dst), cmp_args(&cmp))
+            }
+            Instr::Sel { dst, a, b, c } => write!(f, "SEL {}, {a}, {b}, {c}", reg(dst)),
+            Instr::FMnmx { dst, a, b, c } => write!(f, "FMNMX {}, {a}, {b}, {c}", reg(dst)),
+            Instr::IMnmx { dst, a, b, signed, c } => write!(f, "IMNMX{} {}, {a}, {b}, {c}", sgn(signed), reg(dst)),
+            Instr::FCmpSel { dst, cmp, a, b, c } => write!(f, "FCMP.{cmp:?} {}, {a}, {b}, {c}", reg(dst)),
+            Instr::IAdd { dst, a, b, c, neg } => {
+                let n = |i: usize| if neg[i] { "-" } else { "" };
+                write!(f, "IADD3 {}, {}{a}, {}{b}, {}{c}", reg(dst), n(0), n(1), n(2))
+            }
+            Instr::IScAdd { dst, a, b, shift, neg } => {
+                let n = |i: usize| if neg[i] { "-" } else { "" };
+                write!(f, "ISCADD {}, {}{a}, {}{b}, {shift:#x}", reg(dst), n(0), n(1))
+            }
+            Instr::IMad { dst, a, b, c } => write!(f, "IMAD {}, {a}, {b}, {c}", reg(dst)),
+            Instr::Xmad { dst, a, b, c, a_signed, b_signed, a_hi, b_hi, psl, mrg, mode } => {
+                let mode = if mode == XmadMode::None { String::new() } else { format!(".{}", format!("{mode:?}").to_uppercase()) };
+                let s = |signed: bool| if signed { "S16" } else { "U16" };
+                let h = |hi: bool| if hi { ".H1" } else { "" };
+                write!(
+                    f,
+                    "XMAD.{}.{}{}{}{mode} {}, {a}{}, {b}{}, {c}",
+                    s(a_signed),
+                    s(b_signed),
+                    if psl { ".PSL" } else { "" },
+                    if mrg { ".MRG" } else { "" },
+                    reg(dst),
+                    h(a_hi),
+                    h(b_hi)
+                )
+            }
+            Instr::Lop3 { dst, lut, a, b, c } => write!(f, "LOP3.LUT {}, {a}, {b}, {c}, {lut:#04x}", reg(dst)),
+            Instr::Shl { dst, a, b, wrap } => write!(f, "SHL{} {}, {a}, {b}", if wrap { ".W" } else { "" }, reg(dst)),
+            Instr::Shr { dst, a, b, signed, wrap } => {
+                write!(f, "SHR{}{} {}, {a}, {b}", sgn(signed), if wrap { ".W" } else { "" }, reg(dst))
+            }
+            Instr::I2F { dst, src, signed } => write!(f, "I2F.F32{} {}, {src}", sgn(signed), reg(dst)),
+            Instr::F2I { dst, src, signed, round } => {
+                write!(f, "F2I{}.F32.{} {}, {src}", sgn(signed), format!("{round:?}").to_uppercase(), reg(dst))
+            }
+            Instr::F2F { dst, src, round, sat } => {
+                let r = round.map_or(String::new(), |r| format!(".{}", format!("{r:?}").to_uppercase()));
+                write!(f, "F2F.F32.F32{r}{} {}, {src}", if sat { ".SAT" } else { "" }, reg(dst))
+            }
+            Instr::Bra { rel } => write!(f, "BRA {rel:+#x}"),
+            Instr::Ssy { rel } => write!(f, "SSY {rel:+#x}"),
+            Instr::Sync => write!(f, "SYNC"),
+            Instr::Pbk { rel } => write!(f, "PBK {rel:+#x}"),
+            Instr::Brk => write!(f, "BRK"),
+            Instr::Kill => write!(f, "KIL"),
+            Instr::PLop3 { pd, lut, a, b, c } => write!(f, "PLOP3.LUT {}, {a}, {b}, {c}, {lut:#04x}", pr(pd)),
+            Instr::Hint(name) => write!(f, "{name}"),
         }
     }
 }

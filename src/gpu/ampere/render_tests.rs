@@ -305,7 +305,7 @@ fn triangle_draw_produces_raw_block_linear_surface() {
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     // 255 * 256 / 2: the hypotenuse is a right edge, so pixels centred on it stay out (top-left rule).
-    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, culled_triangles: 0, fragments: 32640 });
+    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, culled_triangles: 0, fragments: 32640, discarded_fragments: 0 });
 
     let linear = rt_pixels(&mut mem);
     assert_eq!(px(&linear, 10, 10), [255, 0, 0, 255]);
@@ -507,6 +507,33 @@ fn maxwell_draw_renders_through_the_maxwell_front_end() {
     assert!(near(px(&linear, 0, 0), [255, 0, 0, 255]), "{:?}", px(&linear, 0, 0));
     assert!(near(px(&linear, 64, 64), [127, 64, 64, 255]), "{:?}", px(&linear, 64, 64));
     assert_eq!(px(&linear, 250, 250), [0, 0, 0, 255]);
+}
+
+#[test]
+fn maxwell_kil_discards_before_depth_and_colour() {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::MAXWELL_B, false);
+    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+    let verts = [vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, 0.0, BLUE)];
+    let mut code = vec![mx::ipa(8, 0x7c, 0, 0), mx::mufu_rcp(9, 8)];
+    code.extend((0..4).map(|c| mx::ipa(c as u8, 0x80 + 4 * c, 1, 9)));
+    // FSETP.LT.AND P0, PT, R0, 0.5, PT; @P0 KIL: alpha-test style discard on red < 0.5.
+    let half = 0.5f32.to_bits() as u64;
+    code.push((0x36b1 << 48) | (7 << 39) | (((half >> 12) & 0x7ffff) << 20) | (7 << 16) | 7);
+    code.push(0xe33000000000000f);
+    code.push(mx::exit());
+    maxwell_geometry(&mut pb, &mut mem, &verts, &code);
+    draw(&mut pb, 0, 3, 4);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let stats = gpu.render_stats();
+    assert!(stats.discarded_fragments > 0 && stats.fragments > 0, "{stats:?}");
+    let linear = rt_pixels(&mut mem);
+    let near = |p: [u8; 4], want: [u8; 4]| p.iter().zip(want).all(|(&a, b)| (a as i32 - b as i32).abs() <= 2);
+    assert!(near(px(&linear, 0, 0), [255, 0, 0, 255]), "{:?}", px(&linear, 0, 0));
+    // Red is just under 0.5 here, so the fragment is discarded and the clear colour stays.
+    assert_eq!(px(&linear, 64, 64), [0, 0, 0, 255]);
 }
 
 #[test]
