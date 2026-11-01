@@ -14,6 +14,16 @@ Every session: read this file and `AGENTS.md`, then work. Don't read `docs/HANDO
 - Before starting, check open PRs touching the same files. Build on them or comment; don't wait.
 - Ask the owner only for human-only things: credentials, hardware, permissions, legal calls.
 - **Merge gate:** all 9 CI matrix jobs green on the final head, plus applicable security checks. No admin bypass. Agents may merge.
+
+### Batch work, merge once per milestone (owner rule)
+
+- Work on one branch per milestone. Push frequently, but merge into main only once the milestone is complete.
+- Do not wait for CI between development steps. Final CI must pass before merging.
+- Use one PR per milestone. Include small documentation and coordination changes in that PR.
+- Before every push, run `cargo test --release`, verify harness 27/27, and check for new unsafe code.
+- Fix failing CI immediately before continuing development.
+- Separate PR exceptions: broken main, security fixes or changes blocking another session.
+- Do not implement CI path filters or weaken workflow checks without explicit owner approval.
 - **Gates before every push:** `cargo test --release` passes; `cargo run --release -- test` prints `[Harness] All 27 checks passed across 25 stages.`; no new `unsafe` in `src` (`#![forbid(unsafe_code)]`).
 - Never game a check: no skipping or weakening tests, no excluding code from scanners, no empty commits.
 
