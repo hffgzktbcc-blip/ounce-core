@@ -763,6 +763,9 @@ pub enum SimdOp3 {
     Uminp,
     Smaxp,
     Sminp,
+    Sshl,
+    Ushl,
+    Mul,
 }
 
 /// AdvSIMD across-lanes reductions (`ADDV`, `S/UADDLV`, `S/UMAXV`, `S/UMINV`).

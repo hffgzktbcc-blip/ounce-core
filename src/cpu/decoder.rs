@@ -1240,11 +1240,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b10101, false) => SimdOp3::Sminp,
             (0b10101, true) => SimdOp3::Uminp,
             (0b10111, false) => SimdOp3::Addp,
+            (0b01000, false) => SimdOp3::Sshl,
+            (0b01000, true) => SimdOp3::Ushl,
+            (0b10011, false) => SimdOp3::Mul,
             _ => return None,
         };
         let bitwise = opcode == 0b00011;
-        // 64-bit lanes need Q, and min/max have no 64-bit form.
-        if !bitwise && size == 3 && (!q || matches!(opcode, 0b01100 | 0b01101 | 0b10100 | 0b10101)) {
+        // 64-bit lanes need Q, and min/max/mul have no 64-bit form.
+        if !bitwise && size == 3 && (!q || matches!(opcode, 0b01100 | 0b01101 | 0b10100 | 0b10101 | 0b10011)) {
             return None;
         }
         let esize = if bitwise { 8 } else { 8u8 << size };

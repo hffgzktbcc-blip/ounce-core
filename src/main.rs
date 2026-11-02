@@ -449,6 +449,19 @@ struct VmOutcome {
     stop: VmStop,
     x0: u64,
     d0: f64,
+    /// How far the guest got: instructions run and graphics milestones reached.
+    progress: BootProgress,
+}
+
+/// Milestones a booting title passes, read from the kernel when the run stops.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct BootProgress {
+    instructions: u64,
+    ipc_requests: u64,
+    /// GPU memory partitions created through the graphics session.
+    gpu_partitions: u32,
+    /// GPU memory objects created (first one appears once the GPU device is initialised).
+    gpu_memory_objects: u32,
 }
 
 fn run_vm(
@@ -883,10 +896,17 @@ fn run_vm_internal(
         cpu.regs.read_d(0)
     );
 
+    let (gpu_partitions, gpu_memory_objects) = kernel.ipc.graphics_progress();
     VmOutcome {
         stop,
         x0: cpu.regs.read_x(0),
         d0: cpu.regs.read_d(0),
+        progress: BootProgress {
+            instructions: instructions_executed as u64,
+            ipc_requests: kernel.ipc.total_ipc_requests,
+            gpu_partitions,
+            gpu_memory_objects,
+        },
     }
 }
 
@@ -3451,19 +3471,14 @@ fn inspect_directory_package(dir_path: &str) {
     }
 }
 
-fn run_directory_package(dir_path: &str, gui_mode: bool) {
+/// Loads a loose package directory and prepares the main thread, ready to run at the entry point.
+fn prepare_directory_package(dir_path: &str) -> Result<(Cpu, Memory, HorizonKernel, loader::package::LooseBootInfo), String> {
     println!("[Loader] Bootstrapping loose directory package (OunceCake format): {}", dir_path);
-    let pkg = match loader::LoosePackageLoader::discover(dir_path) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[Loader Error] Failed to discover loose package: {}", e);
-            return;
-        }
-    };
-
+    let pkg = loader::LoosePackageLoader::discover(dir_path).map_err(|e| format!("Failed to discover loose package: {e}"))?;
     let (mut cpu, mut mmu, mut kernel) = setup_vm();
-    match loader::LoosePackageLoader::load_into_kernel(&pkg, DEFAULT_BASE_ADDR, &mut mmu, &mut kernel) {
-        Ok(info) => {
+    let info = loader::LoosePackageLoader::load_into_kernel(&pkg, DEFAULT_BASE_ADDR, &mut mmu, &mut kernel)
+        .map_err(|e| format!("Failed to load loose package into VM: {e}"))?;
+
             println!("[LoosePackageLoader] Successfully bootstrapped unencrypted package:");
             println!("  Process Name : {}", info.process_name);
             println!("  Product Code : {}", info.product_code);
@@ -3504,6 +3519,13 @@ fn run_directory_package(dir_path: &str, gui_mode: bool) {
             cpu.regs.write_x(0, 0);
             cpu.regs.write_x(1, NRO_MAIN_THREAD_HANDLE as u64);
 
+            cpu.regs.pc = info.entry_point;
+    Ok((cpu, mmu, kernel, info))
+}
+
+fn run_directory_package(dir_path: &str, gui_mode: bool) {
+    match prepare_directory_package(dir_path) {
+        Ok((mut cpu, mmu, kernel, info)) => {
             if gui_mode {
                 println!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");
                 let mut display = DisplayServer::new(
@@ -3838,7 +3860,7 @@ mod harness_gate_tests {
     use super::*;
 
     fn outcome(stop: VmStop, x0: u64) -> VmOutcome {
-        VmOutcome { stop, x0, d0: 0.0 }
+        VmOutcome { stop, x0, d0: 0.0, progress: BootProgress::default() }
     }
 
     #[test]
@@ -3875,5 +3897,32 @@ fn run_jit_selftest() {
     {
         eprintln!("[Tier-4] Not available: rebuild with `--features native-jit`.");
         std::process::exit(1);
+    }
+}
+
+/// Boots a real title from the local dump named by `OUNCE_SWITCH2_EXEFS` (an `exefs` folder with a sibling `romfs`). The
+/// dump is never part of the repository: run with `cargo test --release -- --ignored real_title`.
+#[cfg(test)]
+mod real_title_tests {
+    use super::*;
+
+    fn boot(budget: usize) -> Option<VmOutcome> {
+        let dir = std::env::var("OUNCE_SWITCH2_EXEFS").ok()?;
+        let (cpu, mmu, mut kernel, _info) = prepare_directory_package(&dir).expect("package loads");
+        kernel.scheduler.virtual_time = true;
+        Some(run_vm(cpu, mmu, kernel, budget))
+    }
+
+    #[test]
+    #[ignore = "needs a local Switch 2 title dump (OUNCE_SWITCH2_EXEFS)"]
+    fn real_title_initialises_the_gpu_and_reaches_its_frame_loop() {
+        let Some(outcome) = boot(150_000_000) else { return };
+        let p = outcome.progress;
+        eprintln!("real title: stop {:?}, {:?}", outcome.stop, p);
+        // No fault, bad instruction, abort or missing SVC: the budget is what stops it.
+        assert_eq!(outcome.stop, VmStop::Budget, "guest stopped early: {p:?}");
+        // The graphics session created a GPU partition and GPU memory, which happens after the GPU device is initialised.
+        assert!(p.gpu_partitions >= 1 && p.gpu_memory_objects >= 1, "GPU device was not initialised: {p:?}");
+        assert!(p.ipc_requests > 150, "guest stalled before its frame loop: {p:?}");
     }
 }

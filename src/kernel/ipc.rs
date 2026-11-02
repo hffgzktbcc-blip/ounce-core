@@ -181,6 +181,8 @@ pub struct IpcManager {
     pub(super) gpu_partitions: u32,
     /// GPU memory objects created through the GPU memory session.
     pub(super) gpu_memory_objects: u32,
+    /// Display images and the presentation queue of the display session.
+    pub(super) display: super::tipc::DisplayState,
     pub time: super::time::TimeState,
     pub(super) vi_binder: super::vi::BinderObjects,
     next_handle: u32,
@@ -220,6 +222,7 @@ impl IpcManager {
             reported_tipc: Default::default(),
             gpu_partitions: 0,
             gpu_memory_objects: 0,
+            display: Default::default(),
             time: Default::default(),
             vi_binder: Default::default(),
             next_handle: 0x10001,
@@ -1384,6 +1387,11 @@ impl IpcManager {
             }
         }
         read_cmif_string(mmu, fallback, 256)
+    }
+
+    /// (GPU memory partitions, GPU memory objects) the graphics session has created so far.
+    pub fn graphics_progress(&self) -> (u32, u32) {
+        (self.gpu_partitions, self.gpu_memory_objects)
     }
 
     /// The guest mapped shared memory object `handle` at `addr` (svcMapSharedMemory).
