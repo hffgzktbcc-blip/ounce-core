@@ -72,10 +72,10 @@ impl MemoryBus for MmuBus<'_> {
     }
 
     fn query_page(&mut self, page_num: u64) -> Option<PageMapping> {
-        let page = self.mmu.get_page(page_num)?;
+        let page = self.mmu.get_page_backed(page_num)?;
         Some(PageMapping {
             page_num,
-            host_base: page.data.as_ptr() as u64,
+            host_base: Memory::host_ptr(page)? as u64,
             read: page.perm.read,
             write: page.perm.write,
             holds_code: page.holds_code,
@@ -651,6 +651,8 @@ impl Lowerer {
                     FpOp2::Fdiv => FpBinOp::Fdiv,
                     FpOp2::Fmax => FpBinOp::Fmax,
                     FpOp2::Fmin => FpBinOp::Fmin,
+                    // Not lowered: the interpreter runs these.
+                    FpOp2::Fmaxnm | FpOp2::Fminnm | FpOp2::Fnmul => return Err(()),
                 };
                 let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
                 let res = self.b.push(Op::FpBin(fop, w, a, b));

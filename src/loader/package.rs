@@ -214,6 +214,7 @@ pub struct LooseBootInfo {
     pub title_id: u64,
     pub process_name: String,
     pub product_code: String,
+    pub entry_point: u64,
     pub main_code_size: usize,
     pub modules_loaded: Vec<(String, u64, usize)>,
     pub romfs_files_mounted: usize,
@@ -388,20 +389,30 @@ impl LoosePackageLoader {
             tls.tlsdesc_resolver = Some(TLSDESC_RESOLVER_ADDR);
         }
 
-        // 4. Relocate every module against the combined export table and TLS layout.
+        // 4. Relocate modules against the combined export table and TLS layout.
+        // When rtld is present, rtld is the dynamic linker for all modules (main, sdk, etc.)
+        // and will relocate them dynamically during its startup sequence.
+        // The host loader only relocates modules if rtld is NOT present.
+        let rtld_base = modules_loaded
+            .iter()
+            .find(|(name, _, _)| name == "rtld")
+            .map(|(_, addr, _)| *addr);
+
         let mut total_relocations = 0usize;
         let mut unresolved_imports: Vec<String> = Vec::new();
-        for &module_base in &module_bases {
-            let report = NroLoader::apply_relocations_with_tls(module_base, mmu, &exports, &tls);
-            total_relocations += report.applied;
-            // Companion modules have no crt0 of their own to apply `DT_RELR`, so the loader does. `main`
-            // (at `base_addr`) relocates itself when it has a libnx-style crt0, so it is left alone.
-            if module_base != base_addr {
-                total_relocations += NroLoader::apply_relr(module_base, mmu);
-            }
-            for name in report.unresolved {
-                if !unresolved_imports.contains(&name) {
-                    unresolved_imports.push(name);
+        if rtld_base.is_none() {
+            for &module_base in &module_bases {
+                let report = NroLoader::apply_relocations_with_tls(module_base, mmu, &exports, &tls);
+                total_relocations += report.applied;
+                // Companion modules have no crt0 of their own to apply `DT_RELR`, so the loader does. `main`
+                // (at `base_addr`) relocates itself when it has a libnx-style crt0, so it is left alone.
+                if module_base != base_addr {
+                    total_relocations += NroLoader::apply_relr(module_base, mmu);
+                }
+                for name in report.unresolved {
+                    if !unresolved_imports.contains(&name) {
+                        unresolved_imports.push(name);
+                    }
                 }
             }
         }
@@ -418,10 +429,24 @@ impl LoosePackageLoader {
             None
         };
 
+        // The package is a Switch 2 title: its graphics driver expects the Tegra T239 (Ampere) GPU.
+        kernel.ipc.nvdrv.persona = crate::kernel::nvdrv::GpuPersona::Ampere;
+
         // 6. Mount RomFS Directory Assets (if present)
         let mut romfs_files_mounted = 0usize;
         if let Some(ref romfs_path) = package.romfs_dir {
-            if let Ok(count) = kernel.vfs.mount_host_directory(romfs_path, "romfs") {
+            // The title reads its RomFS as an image through IStorage; the image is built from the folder and
+            // read lazily. Only a small RomFS is also copied into the VFS as `romfs:/` files, since mounting
+            // copies every file into memory.
+            const VFS_MOUNT_LIMIT: u64 = 64 << 20;
+            if let Ok(image) = crate::fs::RomfsImage::build(romfs_path) {
+                romfs_files_mounted = image.file_count();
+                let small = image.size() <= VFS_MOUNT_LIMIT;
+                kernel.ipc.romfs_image = Some(image);
+                if small {
+                    let _ = kernel.vfs.mount_host_directory(romfs_path, "romfs");
+                }
+            } else if let Ok(count) = kernel.vfs.mount_host_directory(romfs_path, "romfs") {
                 romfs_files_mounted = count;
             }
         }
@@ -443,10 +468,18 @@ impl LoosePackageLoader {
             )
         };
 
+        // If rtld is present, it is the initial dynamic linker entrypoint; otherwise execute main.
+        let entry_point = modules_loaded
+            .iter()
+            .find(|(name, _, _)| name == "rtld")
+            .map(|(_, addr, _)| *addr)
+            .unwrap_or(base_addr);
+
         Ok(LooseBootInfo {
             title_id,
             process_name,
             product_code,
+            entry_point,
             main_code_size: main_bytes.len(),
             modules_loaded,
             romfs_files_mounted,

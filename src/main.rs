@@ -34,7 +34,7 @@ use std::time::Instant;
 
 const DEFAULT_BASE_ADDR: u64 = 0x80000000;
 const STACK_TOP: u64 = 0x7FFFFFE000;
-const STACK_SIZE: usize = 0x100000; // 1 MB stack
+const STACK_SIZE: usize = 0x4000000; // 64 MB stack (commercial games require up to 64 MB main stack / thread space)
 
 /// `--sdmc=<dir>`: host folder behind the guest's `sdmc:/` (unset: in-memory SD card only).
 static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
@@ -542,13 +542,84 @@ fn run_vm_internal(
     let host_audio = HostAudioSink::new();
     let mut stop = VmStop::Budget;
     let mut last_input_poll = Instant::now();
+    // OUNCE_TRACE_PC=<n>: keep the last n executed (pc, raw instruction) pairs and print them on a fault.
+    let pc_trace_len: usize = std::env::var("OUNCE_TRACE_PC").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+    let mut pc_trace: std::collections::VecDeque<(u64, u32)> = std::collections::VecDeque::with_capacity(pc_trace_len);
+    // OUNCE_TRACE_REGS_AT=<hex pc>: print the registers every time execution reaches that address.
+    // OUNCE_TRACE_MEM_AT=<hex pc>:<reg>:<hex offset>:<words>: print memory at reg+offset each time that address is reached.
+    let mem_at: Option<(u64, u8, u64, u64)> = std::env::var("OUNCE_TRACE_MEM_AT").ok().and_then(|v| {
+        let p: Vec<&str> = v.split(':').collect();
+        Some((u64::from_str_radix(p.get(0)?.trim_start_matches("0x"), 16).ok()?, p.get(1)?.parse().ok()?, u64::from_str_radix(p.get(2)?.trim_start_matches("0x"), 16).ok()?, p.get(3)?.parse().ok()?))
+    });
+    // OUNCE_WATCH_U64=<hex addr>: print the pc of the instruction after which the 64-bit value at addr changes.
+    let watch: Option<u64> = std::env::var("OUNCE_WATCH_U64").ok().and_then(|v| u64::from_str_radix(v.trim_start_matches("0x"), 16).ok());
+    let mut watch_prev = watch.map(|a| mmu.read_u64(a).unwrap_or(0));
+    let mut last_pc = 0u64;
+    // OUNCE_STOP_AT_PC=<hex pc>: end the run (printing the PC trace) the first time execution reaches that address.
+    let stop_at: Option<u64> = std::env::var("OUNCE_STOP_AT_PC").ok().and_then(|v| u64::from_str_radix(v.trim_start_matches("0x"), 16).ok());
+    // OUNCE_STOP_AT_IPC=<n>: end the run (printing the PC trace) once the guest has made n IPC requests.
+    let stop_at_ipc: Option<u64> = std::env::var("OUNCE_STOP_AT_IPC").ok().and_then(|v| v.parse().ok());
+    let regs_at: Option<u64> = std::env::var("OUNCE_TRACE_REGS_AT").ok().and_then(|v| u64::from_str_radix(v.trim_start_matches("0x"), 16).ok());
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
             println!("\n[VM] Execution budget reached ({} instructions).", max_instructions);
+            for (pc, raw) in &pc_trace {
+                println!("  [trace] 0x{:016X}: {:08x}", pc, raw);
+            }
             break;
         }
 
+        if let (Some(addr), Some(prev)) = (watch, watch_prev) {
+            let now = mmu.read_u64(addr).unwrap_or(0);
+            if now != prev {
+                println!("[watch {:#x}] {:#x} -> {:#x} by instruction at {:#x} (next pc {:#x}, lr {:#x})", addr, prev, now, last_pc, cpu.regs.pc, cpu.regs.read_x(30));
+                watch_prev = Some(now);
+            }
+            last_pc = cpu.regs.pc;
+        }
+        if stop_at_ipc.is_some_and(|n| kernel.ipc.total_ipc_requests as u64 >= n) {
+            println!("\n[VM] Stopped after {} IPC requests", kernel.ipc.total_ipc_requests);
+            for (pc, raw) in &pc_trace {
+                println!("  [trace] 0x{:016X}: {:08x}", pc, raw);
+            }
+            break;
+        }
+        if stop_at == Some(cpu.regs.pc) {
+            println!("\n[VM] Stopped at requested pc {:#x}", cpu.regs.pc);
+            for (pc, raw) in &pc_trace {
+                println!("  [trace] 0x{:016X}: {:08x}", pc, raw);
+            }
+            break;
+        }
+        if let Some((pc, reg, off, words)) = mem_at {
+            if pc == cpu.regs.pc {
+                let base = cpu.regs.read_x(reg).wrapping_add(off);
+                let vals: Vec<String> = (0..words).map(|i| format!("{:#x}", mmu.read_u32(base + i * 4).unwrap_or(0xDEAD_DEAD))).collect();
+                println!("[mem @ {:#x}] x{}+{:#x} = {:#x}: {}", pc, reg, off, base, vals.join(" "));
+            }
+        }
+        if regs_at == Some(cpu.regs.pc) {
+            let regs: Vec<String> = (0..31).map(|r| format!("x{}={:#x}", r, cpu.regs.read_x(r))).collect();
+            println!("[regs @ {:#x}] insn#{} sp={:#x} {}", cpu.regs.pc, instructions_executed, cpu.regs.sp, regs.join(" "));
+            // Registers that point at printable text: show it (assertion and log messages).
+            for r in 0..29u8 {
+                let addr = cpu.regs.read_x(r);
+                let mut text = [0u8; 200];
+                if addr > 0x1000 && mmu.read_bytes(addr, &mut text).is_ok() {
+                    let len = text.iter().position(|&b| b == 0).unwrap_or(text.len());
+                    if len >= 4 && text[..len].iter().all(|b| (0x20..0x7F).contains(b) || *b == b'\n') {
+                        println!("  x{} -> \"{}\"", r, String::from_utf8_lossy(&text[..len]));
+                    }
+                }
+            }
+        }
+        if pc_trace_len > 0 {
+            if pc_trace.len() == pc_trace_len {
+                pc_trace.pop_front();
+            }
+            pc_trace.push_back((cpu.regs.pc, mmu.read_u32(cpu.regs.pc).unwrap_or(0)));
+        }
         match cpu.step(&mut mmu) {
             Ok(StepResult::Continue) => {
                 instructions_executed += 1;
@@ -559,6 +630,13 @@ fn run_vm_internal(
             }
             Ok(StepResult::Svc(svc_id)) => {
                 instructions_executed += 1;
+                if std::env::var_os("OUNCE_TRACE_SVC").is_some() {
+                    println!("[SVC] #0x{:02X} at PC: 0x{:016X} (X0: 0x{:X}, X1: 0x{:X}, X2: 0x{:X})", svc_id, cpu.regs.pc, cpu.regs.read_x(0), cpu.regs.read_x(1), cpu.regs.read_x(2));
+                    if svc_id == 0x18 {
+                        let handles: Vec<String> = (0..cpu.regs.read_x(2).min(8)).map(|i| format!("0x{:X}", mmu.read_u32(cpu.regs.read_x(1) + i * 4).unwrap_or(0))).collect();
+                        println!("  [wait] handles {} timeout {:#x} thread {}", handles.join(","), cpu.regs.read_x(3), kernel.scheduler.current_thread_id());
+                    }
+                }
                 match kernel.dispatch_svc(svc_id, &mut cpu, &mut mmu) {
                     SvcResult::Success => {
                         // libnx homebrew reads HID shared memory between SVCs rather than per presented
@@ -650,6 +728,9 @@ fn run_vm_internal(
                                 Err(error) => println!("[VM] Break result unreadable: {}", error),
                             }
                         }
+                        for (pc, raw) in &pc_trace {
+                            println!("  [trace] 0x{:016X}: {:08x}", pc, raw);
+                        }
                         stop = VmStop::Break;
                         break;
                     }
@@ -667,14 +748,44 @@ fn run_vm_internal(
             }
             Err(e) => {
                 eprintln!("\n[VM Error] {}", e);
-                eprintln!("  Final PC: 0x{:016X}", cpu.regs.pc);
+                eprintln!("  Final PC: 0x{:016X} (thread {})", cpu.regs.pc, kernel.scheduler.current_thread_id());
+                eprintln!("  SP: 0x{:016X}, LR (X30): 0x{:016X}", cpu.regs.sp, cpu.regs.read_x(30));
+                for r in 0..31 {
+                    eprint!("X{}: 0x{:X} ", r, cpu.regs.read_x(r));
+                    if (r + 1) % 4 == 0 { eprintln!(); }
+                }
+                eprintln!();
+                for (pc, raw) in &pc_trace {
+                    eprintln!("  [trace] 0x{:016X}: {:08x}", pc, raw);
+                }
+                eprintln!("Stack dump at SP:");
+                for off in (0..0x80).step_by(8) {
+                    let val = mmu.read_u64(cpu.regs.sp + off).unwrap_or(0);
+                    eprintln!("  SP+0x{:02X}: 0x{:016X}", off, val);
+                }
                 stop = VmStop::Fault;
                 break;
             }
         }
     }
 
+    // OUNCE_DUMP_MEM=<hex addr>:<hex len>:<path>: write guest memory to a host file when the run ends (static analysis).
+    if let Ok(spec) = std::env::var("OUNCE_DUMP_MEM") {
+        let p: Vec<&str> = spec.splitn(3, ':').collect();
+        if let (Some(a), Some(l), Some(path)) = (p.first().and_then(|v| u64::from_str_radix(v.trim_start_matches("0x"), 16).ok()), p.get(1).and_then(|v| u64::from_str_radix(v.trim_start_matches("0x"), 16).ok()), p.get(2)) {
+            let mut buf = vec![0u8; l as usize];
+            let mut off = 0usize;
+            while off < buf.len() {
+                let n = (buf.len() - off).min(4096);
+                let _ = mmu.read_bytes(a + off as u64, &mut buf[off..off + n]);
+                off += n;
+            }
+            let _ = std::fs::write(path, &buf);
+        }
+    }
+
     let elapsed = start.elapsed();
+    println!("  Final PC: 0x{:016X}", cpu.regs.pc);
     let ips = if elapsed.as_secs_f64() > 0.0 {
         instructions_executed as f64 / elapsed.as_secs_f64()
     } else {
@@ -3380,6 +3491,19 @@ fn run_directory_package(dir_path: &str, gui_mode: bool) {
             mmu.map_range(DEFAULT_FRAMEBUFFER_ADDR, fb_size, Permission::READ_WRITE);
             mmu.map_range(HID_SHARED_MEM_ADDR, 0x1000, Permission::READ_WRITE);
 
+            // Pre-initialize Horizon main thread context:
+            // 1. In Horizon OS ABI, the main thread receives X0 = 0 (not an exception handler thread)
+            //    and X1 = main_thread_handle.
+            // 2. Both libnx and Nintendo SDK store the current Thread* pointer at TPIDRRO_EL0 + 0x1F8.
+            // 3. Nintendo SDK's ThreadType has `thread_handle` at offset +0x1B0.
+            const MAIN_THREAD_OBJ_ADDR: u64 = 0x7FFF_FFFF_D000;
+            mmu.map_range(MAIN_THREAD_OBJ_ADDR, 0x1000, Permission::READ_WRITE);
+            let _ = mmu.write_u32(MAIN_THREAD_OBJ_ADDR + 0x1B0, NRO_MAIN_THREAD_HANDLE);
+            let _ = mmu.write_u64(cpu.regs.tpidrro_el0 + 0x1F8, MAIN_THREAD_OBJ_ADDR);
+            kernel.scheduler.main_handle = Some(NRO_MAIN_THREAD_HANDLE);
+            cpu.regs.write_x(0, 0);
+            cpu.regs.write_x(1, NRO_MAIN_THREAD_HANDLE as u64);
+
             if gui_mode {
                 println!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");
                 let mut display = DisplayServer::new(
@@ -3390,11 +3514,11 @@ fn run_directory_package(dir_path: &str, gui_mode: bool) {
                     },
                 );
                 let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
-                cpu.regs.pc = DEFAULT_BASE_ADDR;
+                cpu.regs.pc = info.entry_point;
                 run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0);
             } else {
-                cpu.regs.pc = DEFAULT_BASE_ADDR;
-                run_vm(cpu, mmu, kernel, 100_000);
+                cpu.regs.pc = info.entry_point;
+                run_vm(cpu, mmu, kernel, std::env::var("OUNCE_MAX_INSNS").ok().and_then(|v| v.parse().ok()).unwrap_or(100_000_000));
             }
         }
         Err(e) => {
@@ -3449,6 +3573,19 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
             let fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
             mmu.map_range(DEFAULT_FRAMEBUFFER_ADDR, fb_size, Permission::READ_WRITE);
             mmu.map_range(HID_SHARED_MEM_ADDR, 0x1000, Permission::READ_WRITE);
+
+            // Pre-initialize Horizon main thread context:
+            // 1. In Horizon OS ABI, the main thread receives X0 = 0 (not an exception handler thread)
+            //    and X1 = main_thread_handle.
+            // 2. Both libnx and Nintendo SDK store the current Thread* pointer at TPIDRRO_EL0 + 0x1F8.
+            // 3. Nintendo SDK's ThreadType has `thread_handle` at offset +0x1B0.
+            const MAIN_THREAD_OBJ_ADDR: u64 = 0x7FFF_FFFF_D000;
+            mmu.map_range(MAIN_THREAD_OBJ_ADDR, 0x1000, Permission::READ_WRITE);
+            let _ = mmu.write_u32(MAIN_THREAD_OBJ_ADDR + 0x1B0, NRO_MAIN_THREAD_HANDLE);
+            let _ = mmu.write_u64(cpu.regs.tpidrro_el0 + 0x1F8, MAIN_THREAD_OBJ_ADDR);
+            kernel.scheduler.main_handle = Some(NRO_MAIN_THREAD_HANDLE);
+            cpu.regs.write_x(0, 0);
+            cpu.regs.write_x(1, NRO_MAIN_THREAD_HANDLE as u64);
 
             if gui_mode {
                 println!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");

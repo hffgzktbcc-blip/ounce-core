@@ -29,7 +29,7 @@ fn services() -> Vec<ServiceType> {
         Applet(AppletInterface::SelfController), Applet(AppletInterface::WindowController), Applet(AppletInterface::AudioController),
         Applet(AppletInterface::DisplayController), Applet(AppletInterface::ApplicationFunctions),
         Applet(AppletInterface::LibraryAppletSelfAccessor), Applet(AppletInterface::Other("fuzz")),
-        Set, TimeZoneService, Psm, PsmSession, Apm, ApmSession, ServiceEvent("fuzz"),
+        Set, TimeZoneService, Psm, PsmSession, Apm, ApmSession, Pctl, PctlService, Account, AddOnContent, AppletStorage(vec![1, 2, 3]), AppletStorageAccessor(vec![1, 2, 3]), Tipc("fuzz"), ServiceEvent("fuzz"),
     ]
 }
 

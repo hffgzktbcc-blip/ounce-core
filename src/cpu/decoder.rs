@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    SimdAcrossOp,
+    AtomicOp, SimdAcrossOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
     SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
@@ -444,6 +444,61 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 13b. Load / Store Single Register (Unscaled Immediate LDUR/STUR, Post-Index, Pre-Index, & Register Offset, V == 0)
     if (raw & 0x3F000000) == 0x38000000 {
+        // Check for ARMv8.1-A Atomic Memory Operations:
+        // Pattern: size 111 0 00 A R 1 Rs o3 opc 00 Rn Rt
+        // raw & 0x3F200C00 == 0x38200000
+        if (raw & 0x3F200C00) == 0x38200000 {
+            // Check for ARMv8.2-A LDAPR / LDAPRB / LDAPRH (Load-Acquire RCpc)
+            // Pattern: size 111 0 00 1 0 1 11111 1100 00 Rn Rt
+            // raw & 0x3FE0FC00 == 0x38A0C000
+            if (raw & 0x3FE0FC00) == 0x38A0C000 {
+                let size = ((raw >> 30) & 0x3) as u8;
+                let rn = ((raw >> 5) & 0x1F) as u8;
+                let rt = (raw & 0x1F) as u8;
+                return Instruction::LoadStoreExclusive {
+                    rt,
+                    rn,
+                    rs: 31,
+                    size_bytes: 1u8 << size,
+                    is_load: true,
+                    is_exclusive: false,
+                };
+            }
+
+            let size = ((raw >> 30) & 0x3) as u8;
+            let rs = ((raw >> 16) & 0x1F) as u8;
+            let o3 = (raw >> 15) & 1;
+            let opc = ((raw >> 12) & 0x7) as u8;
+            let rn = ((raw >> 5) & 0x1F) as u8;
+            let rt = (raw & 0x1F) as u8;
+            let op = if o3 == 1 {
+                if opc == 0b000 {
+                    AtomicOp::Swp
+                } else {
+                    return Instruction::Unimplemented { raw };
+                }
+            } else {
+                match opc {
+                    0b000 => AtomicOp::Add,
+                    0b001 => AtomicOp::Clr,
+                    0b010 => AtomicOp::Eor,
+                    0b011 => AtomicOp::Set,
+                    0b100 => AtomicOp::Smax,
+                    0b101 => AtomicOp::Smin,
+                    0b110 => AtomicOp::Umax,
+                    0b111 => AtomicOp::Umin,
+                    _ => unreachable!(),
+                }
+            };
+            return Instruction::Atomic {
+                op,
+                rs,
+                rt,
+                rn,
+                size_bytes: 1u8 << size,
+            };
+        }
+
         let size = ((raw >> 30) & 0x3) as u8;
         let opc = ((raw >> 22) & 0x3) as u8;
         let is_load = opc != 0;
@@ -493,7 +548,37 @@ pub fn decode(raw: u32) -> Instruction {
         }
     }
 
-    // 13c. Load/Store Exclusive & Load-Acquire/Store-Release (LDXR, LDAXR, LDAR, STXR, STLXR, STLR)
+    // 13c. Compare and Swap Single Register (ARMv8.1-A LSE: CAS, CASA, CASL, CASAL)
+    // Pattern: size 001000 1 L 1 Rs o0 11111 Rn Rt
+    if (raw & 0x3FA07C00) == 0x08A07C00 {
+        let size = ((raw >> 30) & 0x3) as u8;
+        let rs = ((raw >> 16) & 0x1F) as u8;
+        let rn = ((raw >> 5) & 0x1F) as u8;
+        let rt = (raw & 0x1F) as u8;
+        return Instruction::CompareAndSwap {
+            rs,
+            rt,
+            rn,
+            size_bytes: 1u8 << size,
+        };
+    }
+
+    // 13d. Compare and Swap Pair (ARMv8.1-A LSE: CASP, CASPA, CASPL, CASPAL)
+    // Pattern: 0 size 001000 0 1 L 1 Rs o0 11111 Rn Rt
+    if (raw & 0xBFA07C00) == 0x08207C00 {
+        let is_64 = (raw & (1 << 30)) != 0;
+        let rs = ((raw >> 16) & 0x1E) as u8; // Even numbered
+        let rn = ((raw >> 5) & 0x1F) as u8;
+        let rt = (raw & 0x1E) as u8; // Even numbered
+        return Instruction::CompareAndSwapPair {
+            rs,
+            rt,
+            rn,
+            size_bytes: if is_64 { 8 } else { 4 },
+        };
+    }
+
+    // 13e. Load/Store Exclusive & Load-Acquire/Store-Release (LDXR, LDAXR, LDAR, STXR, STLXR, STLR)
     // Pattern: size 001000 o2 L o1 Rs o0 Rt2 Rn Rt
     if (raw & 0x3F000000) == 0x08000000 {
         let size = ((raw >> 30) & 0x3) as u8;
@@ -530,6 +615,9 @@ pub fn decode(raw: u32) -> Instruction {
                 0b0011 => FpOp2::Fsub,
                 0b0100 => FpOp2::Fmax,
                 0b0101 => FpOp2::Fmin,
+                0b0110 => FpOp2::Fmaxnm,
+                0b0111 => FpOp2::Fminnm,
+                0b1000 => FpOp2::Fnmul,
                 _ => return Instruction::Unimplemented { raw },
             };
 
@@ -567,12 +655,25 @@ pub fn decode(raw: u32) -> Instruction {
     }
 
     // 14a. Floating-Point 1-Source: FMOV, FABS, FNEG, FSQRT, FCVT (single <-> double)
-    // Pattern: 0 0 0 11110 ftype 1 0000 opcode(2) 10000 Rn Rd
-    if (raw & 0xFF3E7C00) == 0x1E204000 {
+    // Pattern: 0 0 0 11110 ftype 1 00 opcode(3) 10000 Rn Rd; opcode 4 is FCVT Sd, Dn (ftype 01) and 5 is FCVT Dd, Sn (ftype 00)
+    if (raw & 0xFF3C7C00) == 0x1E204000 {
         return Instruction::FpData1 {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
             op: ((raw >> 15) & 0x7) as u8,
+            is_double: (raw >> 22) & 0x3 == 1,
+        };
+    }
+
+    // 14a2. Floating-Point 3-Source: FMADD, FMSUB, FNMADD, FNMSUB (single and double)
+    // Pattern: 0 0 0 11111 ftype o1 Rm o0 Ra Rn Rd
+    if (raw & 0xFF000000) == 0x1F000000 && matches!((raw >> 22) & 0x3, 0 | 1) {
+        return Instruction::FpData3 {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            rm: ((raw >> 16) & 0x1F) as u8,
+            ra: ((raw >> 10) & 0x1F) as u8,
+            op: ((((raw >> 21) & 1) << 1) | ((raw >> 15) & 1)) as u8,
             is_double: (raw >> 22) & 0x3 == 1,
         };
     }
@@ -584,6 +685,66 @@ pub fn decode(raw: u32) -> Instruction {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
             rm: ((raw >> 16) & 0x1F) as u8,
+            cond: Condition::from_u8(((raw >> 12) & 0xF) as u8),
+            is_double: (raw >> 22) & 0x3 == 1,
+        };
+    }
+
+    // 14b2. Scalar SCVTF / UCVTF (SIMD register source): 0 1 U 11110 0 sz 10000 11101 10 Rn Rd
+    if (raw & 0xDFBF_FC00) == 0x5E21_D800 {
+        return Instruction::ScalarIntToFloat {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            unsigned: (raw >> 29) & 1 != 0,
+            is_double: (raw >> 22) & 1 != 0,
+        };
+    }
+
+    // 14b4. Fixed-point conversions: sf 0 0 11110 ftype 0 rmode opcode scale Rn Rd
+    // rmode:opcode 11:000 FCVTZS, 11:001 FCVTZU, 00:010 SCVTF, 00:011 UCVTF; fbits = 64 - scale
+    if (raw & 0x7F20_0000) == 0x1E00_0000 && matches!((raw >> 22) & 3, 0 | 1) {
+        let (rmode, opcode) = ((raw >> 19) & 3, (raw >> 16) & 7);
+        let scale = (raw >> 10) & 0x3F;
+        let is_64 = raw >> 31 != 0;
+        let conv = match (rmode, opcode) {
+            (3, 0) => Some((true, false)),
+            (3, 1) => Some((true, true)),
+            (0, 2) => Some((false, false)),
+            (0, 3) => Some((false, true)),
+            _ => None,
+        };
+        if let Some((to_int, unsigned)) = conv {
+            if is_64 || scale >= 32 {
+                return Instruction::FpFixedConv {
+                    rd: (raw & 0x1F) as u8,
+                    rn: ((raw >> 5) & 0x1F) as u8,
+                    fbits: (64 - scale) as u8,
+                    to_int,
+                    unsigned,
+                    is_double: (raw >> 22) & 1 != 0,
+                    is_64,
+                };
+            }
+        }
+    }
+
+    // 14b3. Scalar FCVTZS / FCVTZU (SIMD register destination): 0 1 U 11110 1 sz 10000 11011 10 Rn Rd
+    if (raw & 0xDFBF_FC00) == 0x5EA1_B800 {
+        return Instruction::ScalarFloatToInt {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            unsigned: (raw >> 29) & 1 != 0,
+            is_double: (raw >> 22) & 1 != 0,
+        };
+    }
+
+    // 14c. Floating-Point Conditional Compare: FCCMP, FCCMPE
+    // Pattern: 0 0 0 11110 ftype 1 Rm cond 01 Rn op nzcv
+    if (raw & 0xFF200C00) == 0x1E200400 && matches!((raw >> 22) & 0x3, 0 | 1) {
+        return Instruction::FpCondCompare {
+            rn: ((raw >> 5) & 0x1F) as u8,
+            rm: ((raw >> 16) & 0x1F) as u8,
+            nzcv: (raw & 0xF) as u8,
             cond: Condition::from_u8(((raw >> 12) & 0xF) as u8),
             is_double: (raw >> 22) & 0x3 == 1,
         };
@@ -655,6 +816,13 @@ pub fn decode(raw: u32) -> Instruction {
                     is_signed: opcode == 0b000011,
                     is_64,
                 };
+            }
+            0b010000..=0b010111 => {
+                let size = (opcode & 3) as u8;
+                // CRC32X / CRC32CX need the 64-bit form, the narrower ones the 32-bit form
+                if is_64 == (size == 3) {
+                    return Instruction::Crc32 { rd, rn, rm, size, castagnoli: opcode & 4 != 0 };
+                }
             }
             0b001000..=0b001011 => {
                 let shift_type = match opcode & 0x3 {
@@ -1259,6 +1427,17 @@ mod tests {
     #[test]
     fn test_decode_fp_scalar_forms_from_deko3d() {
         assert!(matches!(decode(0x1E204050), Instruction::FpData1 { rd: 16, rn: 2, op: 0, is_double: false })); // fmov s16, s2
+        assert!(matches!(decode(0x1F41A401), Instruction::FpData3 { rd: 1, rn: 0, rm: 1, ra: 9, op: 1, is_double: true })); // fmsub d1, d0, d1, d9
+        assert!(matches!(decode(0x1E650440), Instruction::FpCondCompare { rn: 2, rm: 5, nzcv: 0, is_double: true, .. })); // fccmp d2, d5, #0, eq
+        assert!(matches!(decode(0x1E258A11), Instruction::FpData2 { rd: 17, rn: 16, rm: 5, op: FpOp2::Fnmul, is_double: false })); // fnmul s17, s16, s5
+        assert!(matches!(decode(0x9ACC4D08), Instruction::Crc32 { rd: 8, rn: 8, rm: 12, size: 3, castagnoli: false })); // crc32x w8, w8, x12
+        assert!(matches!(decode(0x1AC15042), Instruction::Crc32 { rd: 2, rn: 2, rm: 1, size: 0, castagnoli: true })); // crc32cb w2, w2, w1
+        assert!(matches!(decode(0x7E21D800), Instruction::ScalarIntToFloat { rd: 0, rn: 0, unsigned: true, is_double: false })); // ucvtf s0, s0
+        assert!(matches!(decode(0x5E61D841), Instruction::ScalarIntToFloat { rd: 1, rn: 2, unsigned: false, is_double: true })); // scvtf d1, d2
+        assert!(matches!(decode(0x5EA1B801), Instruction::ScalarFloatToInt { rd: 1, rn: 0, unsigned: false, is_double: false })); // fcvtzs s1, s0
+        assert!(matches!(decode(0x1E58E00B), Instruction::FpFixedConv { rd: 11, rn: 0, fbits: 8, to_int: true, unsigned: false, is_double: true, is_64: false })); // fcvtzs w11, d0, #8
+        assert!(matches!(decode(0x1E22C009), Instruction::FpData1 { rd: 9, rn: 0, op: 5, is_double: false })); // fcvt d9, s0
+        assert!(matches!(decode(0x1E624020), Instruction::FpData1 { rd: 0, rn: 1, op: 4, is_double: true })); // fcvt s0, d1
         assert!(matches!(decode(0x1E3100A7), Instruction::FpIntConv { rd: 7, rn: 5, opcode: 1, rmode: 2, is_64: false, .. })); // fcvtmu w7, s5
         assert!(matches!(decode(0x1E24C021), Instruction::FpRound { rd: 1, rn: 1, op: 1, is_double: false })); // frintp s1, s1
         assert!(matches!(decode(0x1E2020F8), Instruction::FpCompare { rn: 7, is_zero: true, .. })); // fcmpe s7, #0.0

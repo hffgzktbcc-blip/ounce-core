@@ -168,6 +168,9 @@ pub enum LoadError {
     #[error("Memory mapping error: {0}")]
     Memory(#[from] MemoryError),
 
+    #[error("Malformed compressed segment or decompression error")]
+    MalformedSegment,
+
     #[error("Cryptographic policy restriction: {0}")]
     RestrictedCipher(String),
 }
@@ -294,7 +297,73 @@ impl NroLoader {
         Ok(header)
     }
 
-    /// Maps an NSO0 image's segments into memory without applying any relocations.
+    /// Decompresses an LZ4 block in pure safe Rust.
+    pub fn lz4_decompress(src: &[u8], uncompressed_size: usize) -> Result<Vec<u8>, LoadError> {
+        let mut dst = Vec::with_capacity(uncompressed_size);
+        let mut src_pos = 0;
+        let src_len = src.len();
+
+        while src_pos < src_len {
+            let token = src[src_pos];
+            src_pos += 1;
+
+            let mut lit_len = (token >> 4) as usize;
+            if lit_len == 15 {
+                while src_pos < src_len {
+                    let s = src[src_pos] as usize;
+                    src_pos += 1;
+                    lit_len += s;
+                    if s != 255 {
+                        break;
+                    }
+                }
+            }
+
+            if src_pos + lit_len > src_len {
+                return Err(LoadError::MalformedSegment);
+            }
+            dst.extend_from_slice(&src[src_pos..src_pos + lit_len]);
+            src_pos += lit_len;
+
+            if src_pos >= src_len || dst.len() >= uncompressed_size {
+                break;
+            }
+
+            if src_pos + 2 > src_len {
+                return Err(LoadError::MalformedSegment);
+            }
+            let offset = src[src_pos] as usize | ((src[src_pos + 1] as usize) << 8);
+            src_pos += 2;
+
+            if offset == 0 || offset > dst.len() {
+                return Err(LoadError::MalformedSegment);
+            }
+
+            let mut match_len = ((token & 0x0f) as usize) + 4;
+            if match_len == 19 {
+                while src_pos < src_len {
+                    let s = src[src_pos] as usize;
+                    src_pos += 1;
+                    match_len += s;
+                    if s != 255 {
+                        break;
+                    }
+                }
+            }
+
+            for _ in 0..match_len {
+                let val = dst[dst.len() - offset];
+                dst.push(val);
+            }
+        }
+
+        if dst.len() > uncompressed_size {
+            dst.truncate(uncompressed_size);
+        }
+        Ok(dst)
+    }
+
+    /// Maps an NSO0 image's segments into memory, decompressing LZ4-compressed segments if flagged.
     pub fn load_nso_segments(
         bytes: &[u8],
         base_addr: u64,
@@ -310,6 +379,11 @@ impl NroLoader {
             return Err(LoadError::InvalidMagic(arr));
         }
 
+        let flags = LittleEndian::read_u32(&bytes[0x0C..0x10]);
+        let text_compressed = (flags & 0x01) != 0;
+        let ro_compressed = (flags & 0x02) != 0;
+        let data_compressed = (flags & 0x04) != 0;
+
         let text_file_off = LittleEndian::read_u32(&bytes[0x10..0x14]) as usize;
         let text_mem_off = LittleEndian::read_u32(&bytes[0x14..0x18]) as u64;
         let text_size = LittleEndian::read_u32(&bytes[0x18..0x1C]) as usize;
@@ -323,39 +397,67 @@ impl NroLoader {
         let data_size = LittleEndian::read_u32(&bytes[0x38..0x3C]) as usize;
         let bss_size = LittleEndian::read_u32(&bytes[0x3C..0x40]) as usize;
 
-        if text_file_off.checked_add(text_size).is_some_and(|e| e <= bytes.len()) && text_size > 0 {
-            mmu.map_range(
-                base_addr + text_mem_off,
-                text_size,
-                Permission::READ_WRITE_EXECUTE,
-            );
-            mmu.write_bytes(
-                base_addr + text_mem_off,
-                &bytes[text_file_off..text_file_off + text_size],
-            )?;
+        let text_file_size = LittleEndian::read_u32(&bytes[0x60..0x64]) as usize;
+        let ro_file_size = LittleEndian::read_u32(&bytes[0x64..0x68]) as usize;
+        let data_file_size = LittleEndian::read_u32(&bytes[0x68..0x6C]) as usize;
+
+        // 1. Text segment
+        if text_size > 0 {
+            let actual_file_size = if text_compressed && text_file_size > 0 { text_file_size } else { text_size };
+            if text_file_off + actual_file_size <= bytes.len() {
+                let slice = &bytes[text_file_off..text_file_off + actual_file_size];
+                let text_bytes = if text_compressed {
+                    Self::lz4_decompress(slice, text_size)?
+                } else {
+                    slice.to_vec()
+                };
+                mmu.map_range(base_addr + text_mem_off, text_bytes.len(), Permission::READ_WRITE_EXECUTE);
+                mmu.write_bytes(base_addr + text_mem_off, &text_bytes)?;
+            }
         }
 
-        if ro_file_off.checked_add(ro_size).is_some_and(|e| e <= bytes.len()) && ro_size > 0 {
-            mmu.map_range(base_addr + ro_mem_off, ro_size, Permission::READ_WRITE);
-            mmu.write_bytes(
-                base_addr + ro_mem_off,
-                &bytes[ro_file_off..ro_file_off + ro_size],
-            )?;
+        // 2. RoData segment
+        if ro_size > 0 {
+            let actual_file_size = if ro_compressed && ro_file_size > 0 { ro_file_size } else { ro_size };
+            if ro_file_off + actual_file_size <= bytes.len() {
+                let slice = &bytes[ro_file_off..ro_file_off + actual_file_size];
+                let ro_bytes = if ro_compressed {
+                    Self::lz4_decompress(slice, ro_size)?
+                } else {
+                    slice.to_vec()
+                };
+                mmu.map_range(base_addr + ro_mem_off, ro_bytes.len(), Permission::READ_WRITE);
+                mmu.write_bytes(base_addr + ro_mem_off, &ro_bytes)?;
+            }
         }
 
+        // 3. Data segment
         Self::check_segment(base_addr, text_mem_off, text_size as u64)?;
         Self::check_segment(base_addr, ro_mem_off, ro_size as u64)?;
         Self::check_segment(base_addr, data_mem_off, data_size as u64 + bss_size as u64)?;
+
         let total_data = data_size + bss_size;
-        if data_file_off.checked_add(data_size).is_some_and(|e| e <= bytes.len()) && total_data > 0 {
+        if total_data > 0 {
             mmu.map_range(base_addr + data_mem_off, total_data, Permission::READ_WRITE);
             if data_size > 0 {
-                mmu.write_bytes(
-                    base_addr + data_mem_off,
-                    &bytes[data_file_off..data_file_off + data_size],
-                )?;
+                let actual_file_size = if data_compressed && data_file_size > 0 { data_file_size } else { data_size };
+                if data_file_off + actual_file_size <= bytes.len() {
+                    let slice = &bytes[data_file_off..data_file_off + actual_file_size];
+                    let data_bytes = if data_compressed {
+                        Self::lz4_decompress(slice, data_size)?
+                    } else {
+                        slice.to_vec()
+                    };
+                    mmu.write_bytes(base_addr + data_mem_off, &data_bytes)?;
+                }
             }
         }
+
+        // Horizon memory states `svcQueryMemory` reports for a process image: code and read-only data are
+        // CodeStatic, data and bss are CodeMutable. The runtime checks these when it walks its own modules.
+        mmu.set_memory_state(base_addr + text_mem_off, text_size as u64, 3);
+        mmu.set_memory_state(base_addr + ro_mem_off, ro_size as u64, 3);
+        mmu.set_memory_state(base_addr + data_mem_off, (data_size + bss_size) as u64, 4);
 
         Ok(NroHeader {
             version: LittleEndian::read_u32(&bytes[0x04..0x08]),
@@ -790,6 +892,18 @@ impl NroLoader {
         imports: &HashMap<String, u64>,
         tls: &TlsLayout,
     ) -> RelocationReport {
+        Self::apply_relocations_with_tls_and_options(base_addr, mmu, imports, tls, false)
+    }
+
+    /// Extends `apply_relocations_with_tls` with an option to skip `DT_JMPREL` (used when `rtld` is present,
+    /// as `rtld` performs lazy PLT JUMP_SLOT initialization itself and asserts that GOT targets are untouched).
+    pub fn apply_relocations_with_tls_and_options(
+        base_addr: u64,
+        mmu: &mut Memory,
+        imports: &HashMap<String, u64>,
+        tls: &TlsLayout,
+        skip_jmprel: bool,
+    ) -> RelocationReport {
         let mut report = RelocationReport::default();
         let info = match Self::parse_dynamic(base_addr, mmu) {
             Some(i) => i,
@@ -806,11 +920,13 @@ impl NroLoader {
         if let Some(rel) = info.rel {
             tables.push((rel, info.rel_size, rel_entry, false));
         }
-        if let Some(jmprel) = info.jmprel {
-            if info.pltrel == Some(DT_REL as u64) {
-                tables.push((jmprel, info.pltrel_size, rel_entry, false));
-            } else {
-                tables.push((jmprel, info.pltrel_size, rela_entry, true));
+        if !skip_jmprel {
+            if let Some(jmprel) = info.jmprel {
+                if info.pltrel == Some(DT_REL as u64) {
+                    tables.push((jmprel, info.pltrel_size, rel_entry, false));
+                } else {
+                    tables.push((jmprel, info.pltrel_size, rela_entry, true));
+                }
             }
         }
 

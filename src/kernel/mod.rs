@@ -1,7 +1,10 @@
 #![allow(unused_imports)]
 
+pub mod account;
+pub mod aoc;
 pub mod apm;
 pub mod applet;
+pub mod applet_storage;
 pub mod cmif;
 pub mod fsp;
 pub mod hid;
@@ -12,6 +15,8 @@ pub mod ipc;
 mod ipc_fuzz_tests;
 pub mod sdk_hle;
 pub mod nvdrv;
+pub mod pctl;
+pub mod tipc;
 pub mod scheduler;
 pub mod set;
 pub mod svc;
