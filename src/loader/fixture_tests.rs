@@ -274,6 +274,8 @@ fn boot_with_kernel_tier(
     use_tier3: bool,
 ) -> FixtureRun {
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
+    // Timed waits skip ahead instead of sleeping, so the interpreter and Tier-3 runs see the same thread interleaving.
+    kernel.scheduler.virtual_time = true;
     kernel.ipc.hid.input = input;
     configure(&mut kernel.ipc.hid);
     let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).expect("NRO loads");

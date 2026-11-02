@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacModifier, PauthOp, ShiftType,
+    AtomicOp, BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacModifier, PauthOp, ShiftType,
     SimdImmOp, SimdShiftOp,
 };
 use super::pauth::{self, PointerAuth};
@@ -934,8 +934,11 @@ impl Cpu {
                         FpOp2::Fsub => n - m,
                         FpOp2::Fmul => n * m,
                         FpOp2::Fdiv => n / m,
-                        FpOp2::Fmax => n.max(m),
-                        FpOp2::Fmin => n.min(m),
+                        FpOp2::Fmax => fp_max(n, m),
+                        FpOp2::Fmin => fp_min(n, m),
+                        FpOp2::Fmaxnm => n.max(m),
+                        FpOp2::Fminnm => n.min(m),
+                        FpOp2::Fnmul => -(n * m),
                     };
                     self.regs.write_d(rd, res);
                 } else {
@@ -946,8 +949,11 @@ impl Cpu {
                         FpOp2::Fsub => n - m,
                         FpOp2::Fmul => n * m,
                         FpOp2::Fdiv => n / m,
-                        FpOp2::Fmax => n.max(m),
-                        FpOp2::Fmin => n.min(m),
+                        FpOp2::Fmax => fp_max(n, m),
+                        FpOp2::Fmin => fp_min(n, m),
+                        FpOp2::Fmaxnm => n.max(m),
+                        FpOp2::Fminnm => n.min(m),
+                        FpOp2::Fnmul => -(n * m),
                     };
                     self.regs.write_s(rd, res);
                 }
@@ -965,8 +971,9 @@ impl Cpu {
                     (2, true) => self.regs.write_d(rd, -self.regs.read_d(rn)),
                     (3, false) => self.regs.write_s(rd, self.regs.read_s(rn).sqrt()),
                     (3, true) => self.regs.write_d(rd, self.regs.read_d(rn).sqrt()),
-                    (4, false) => self.regs.write_d(rd, self.regs.read_s(rn) as f64),
-                    (5, true) => self.regs.write_s(rd, self.regs.read_d(rn) as f32),
+                    // FCVT Dd, Sn (ftype 00, opcode 5) and FCVT Sd, Dn (ftype 01, opcode 4)
+                    (5, false) => self.regs.write_d(rd, self.regs.read_s(rn) as f64),
+                    (4, true) => self.regs.write_s(rd, self.regs.read_d(rn) as f32),
                     _ => return Err(CpuError::UnimplementedInstruction { raw: 0, pc: self.regs.pc }),
                 }
                 self.regs.advance_pc();
@@ -1038,6 +1045,31 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::FpData3 { rd, rn, rm, ra, op, is_double } => {
+                // op 0 FMADD: a + n*m, 1 FMSUB: a - n*m, 2 FNMADD: -a - n*m, 3 FNMSUB: n*m - a (single rounding)
+                if is_double {
+                    let (n, m, a) = (self.regs.read_d(rn), self.regs.read_d(rm), self.regs.read_d(ra));
+                    let r = match op {
+                        0 => n.mul_add(m, a),
+                        1 => (-n).mul_add(m, a),
+                        2 => (-n).mul_add(m, -a),
+                        _ => n.mul_add(m, -a),
+                    };
+                    self.regs.write_d(rd, r);
+                } else {
+                    let (n, m, a) = (self.regs.read_s(rn), self.regs.read_s(rm), self.regs.read_s(ra));
+                    let r = match op {
+                        0 => n.mul_add(m, a),
+                        1 => (-n).mul_add(m, a),
+                        2 => (-n).mul_add(m, -a),
+                        _ => n.mul_add(m, -a),
+                    };
+                    self.regs.write_s(rd, r);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::FpCondSelect {
                 rd,
                 rn,
@@ -1048,6 +1080,89 @@ impl Cpu {
                 let src = if self.check_condition(cond) { rn } else { rm };
                 let mask: u128 = if is_double { u64::MAX as u128 } else { u32::MAX as u128 };
                 self.regs.write_q(rd, self.regs.read_q(src) & mask);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::ScalarIntToFloat { rd, rn, unsigned, is_double } => {
+                if is_double {
+                    let bits = self.regs.read_d(rn).to_bits();
+                    self.regs.write_d(rd, if unsigned { bits as f64 } else { bits as i64 as f64 });
+                } else {
+                    let bits = self.regs.read_s(rn).to_bits();
+                    self.regs.write_s(rd, if unsigned { bits as f32 } else { bits as i32 as f32 });
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpFixedConv { rd, rn, fbits, to_int, unsigned, is_double, is_64 } => {
+                let scale = 2f64.powi(fbits as i32);
+                if to_int {
+                    // Truncate toward zero after scaling; Rust's saturating casts match FCVTZ* (NaN gives 0).
+                    let v = if is_double { self.regs.read_d(rn) } else { self.regs.read_s(rn) as f64 } * scale;
+                    let bits = match (is_64, unsigned) {
+                        (true, false) => v as i64 as u64,
+                        (true, true) => v as u64,
+                        (false, false) => v as i32 as u32 as u64,
+                        (false, true) => v as u32 as u64,
+                    };
+                    self.regs.write_x(rd, bits);
+                } else {
+                    let raw = self.regs.read_x(rn);
+                    let v = match (is_64, unsigned) {
+                        (true, false) => raw as i64 as f64,
+                        (true, true) => raw as f64,
+                        (false, false) => raw as u32 as i32 as f64,
+                        (false, true) => raw as u32 as f64,
+                    } / scale;
+                    if is_double { self.regs.write_d(rd, v) } else { self.regs.write_s(rd, v as f32) }
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::ScalarFloatToInt { rd, rn, unsigned, is_double } => {
+                // Rust's float-to-int casts truncate toward zero and saturate, with NaN giving 0, as FCVTZ* does.
+                if is_double {
+                    let v = self.regs.read_d(rn);
+                    let bits = if unsigned { v as u64 } else { v as i64 as u64 };
+                    self.regs.write_d(rd, f64::from_bits(bits));
+                } else {
+                    let v = self.regs.read_s(rn);
+                    let bits = if unsigned { v as u32 } else { v as i32 as u32 };
+                    self.regs.write_s(rd, f32::from_bits(bits));
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpCondCompare { rn, rm, nzcv, cond, is_double } => {
+                if self.check_condition(cond) {
+                    let (n, m) = if is_double {
+                        (self.regs.read_d(rn), self.regs.read_d(rm))
+                    } else {
+                        (self.regs.read_s(rn) as f64, self.regs.read_s(rm) as f64)
+                    };
+                    let (nf, zf, cf, vf) = if n.is_nan() || m.is_nan() {
+                        (false, false, true, true)
+                    } else if n == m {
+                        (false, true, true, false)
+                    } else if n < m {
+                        (true, false, false, false)
+                    } else {
+                        (false, false, true, false)
+                    };
+                    self.regs.pstate.n = nf;
+                    self.regs.pstate.z = zf;
+                    self.regs.pstate.c = cf;
+                    self.regs.pstate.v = vf;
+                } else {
+                    self.regs.pstate.n = nzcv & 8 != 0;
+                    self.regs.pstate.z = nzcv & 4 != 0;
+                    self.regs.pstate.c = nzcv & 2 != 0;
+                    self.regs.pstate.v = nzcv & 1 != 0;
+                }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1175,6 +1290,21 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::Crc32 { rd, rn, rm, size, castagnoli } => {
+                let poly: u32 = if castagnoli { 0x82F6_3B78 } else { 0xEDB8_8320 };
+                let mut crc = self.regs.read_x(rn) as u32;
+                let data = self.regs.read_x(rm);
+                for byte in 0..(1u32 << size) {
+                    crc ^= ((data >> (byte * 8)) & 0xFF) as u32;
+                    for _ in 0..8 {
+                        crc = (crc >> 1) ^ (poly & (crc & 1).wrapping_neg());
+                    }
+                }
+                self.regs.write_x(rd, crc as u64);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::Divide {
                 rd,
                 rn,
@@ -1272,8 +1402,11 @@ impl Cpu {
                         FpOp2::Fsub => a[i] - b[i],
                         FpOp2::Fmul => a[i] * b[i],
                         FpOp2::Fdiv => a[i] / b[i],
-                        FpOp2::Fmax => a[i].max(b[i]),
-                        FpOp2::Fmin => a[i].min(b[i]),
+                        FpOp2::Fmax => fp_max(a[i], b[i]),
+                        FpOp2::Fmin => fp_min(a[i], b[i]),
+                        FpOp2::Fmaxnm => a[i].max(b[i]),
+                        FpOp2::Fminnm => a[i].min(b[i]),
+                        FpOp2::Fnmul => -(a[i] * b[i]),
                     };
                 }
                 self.regs.write_v4s(rd, out);
@@ -1324,6 +1457,147 @@ impl Cpu {
                         // Store-exclusive succeeded -> status register Ws = 0
                         self.regs.write_w(rs, 0);
                     }
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::CompareAndSwap { rs, rt, rn, size_bytes } => {
+                let addr = self.regs.read_x_or_sp(rn);
+                let (old_val, matches) = match size_bytes {
+                    1 => {
+                        let cur = mmu.read_u8(addr)?;
+                        let expected = self.regs.read_w(rs) as u8;
+                        (cur as u64, cur == expected)
+                    }
+                    2 => {
+                        let cur = mmu.read_u16(addr)?;
+                        let expected = self.regs.read_w(rs) as u16;
+                        (cur as u64, cur == expected)
+                    }
+                    4 => {
+                        let cur = mmu.read_u32(addr)?;
+                        let expected = self.regs.read_w(rs);
+                        (cur as u64, cur == expected)
+                    }
+                    8 => {
+                        let cur = mmu.read_u64(addr)?;
+                        let expected = self.regs.read_x(rs);
+                        (cur, cur == expected)
+                    }
+                    _ => unreachable!(),
+                };
+
+                if matches {
+                    match size_bytes {
+                        1 => mmu.write_u8(addr, self.regs.read_w(rt) as u8)?,
+                        2 => mmu.write_u16(addr, self.regs.read_w(rt) as u16)?,
+                        4 => mmu.write_u32(addr, self.regs.read_w(rt))?,
+                        8 => mmu.write_u64(addr, self.regs.read_x(rt))?,
+                        _ => unreachable!(),
+                    }
+                }
+
+                if size_bytes == 8 {
+                    self.regs.write_x(rs, old_val);
+                } else {
+                    self.regs.write_w(rs, old_val as u32);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Atomic { op, rs, rt, rn, size_bytes } => {
+                let addr = self.regs.read_x_or_sp(rn);
+                let val = if size_bytes == 8 {
+                    self.regs.read_x(rs)
+                } else {
+                    self.regs.read_w(rs) as u64
+                };
+                let old_val = match size_bytes {
+                    1 => mmu.read_u8(addr)? as u64,
+                    2 => mmu.read_u16(addr)? as u64,
+                    4 => mmu.read_u32(addr)? as u64,
+                    8 => mmu.read_u64(addr)?,
+                    _ => unreachable!(),
+                };
+                let new_val = match op {
+                    AtomicOp::Add => old_val.wrapping_add(val),
+                    AtomicOp::Clr => old_val & !val,
+                    AtomicOp::Eor => old_val ^ val,
+                    AtomicOp::Set => old_val | val,
+                    AtomicOp::Swp => val,
+                    AtomicOp::Smax => match size_bytes {
+                        1 => ((old_val as i8).max(val as i8)) as u8 as u64,
+                        2 => ((old_val as i16).max(val as i16)) as u16 as u64,
+                        4 => ((old_val as i32).max(val as i32)) as u32 as u64,
+                        8 => ((old_val as i64).max(val as i64)) as u64,
+                        _ => unreachable!(),
+                    },
+                    AtomicOp::Smin => match size_bytes {
+                        1 => ((old_val as i8).min(val as i8)) as u8 as u64,
+                        2 => ((old_val as i16).min(val as i16)) as u16 as u64,
+                        4 => ((old_val as i32).min(val as i32)) as u32 as u64,
+                        8 => ((old_val as i64).min(val as i64)) as u64,
+                        _ => unreachable!(),
+                    },
+                    AtomicOp::Umax => match size_bytes {
+                        1 => ((old_val as u8).max(val as u8)) as u64,
+                        2 => ((old_val as u16).max(val as u16)) as u64,
+                        4 => ((old_val as u32).max(val as u32)) as u64,
+                        8 => old_val.max(val),
+                        _ => unreachable!(),
+                    },
+                    AtomicOp::Umin => match size_bytes {
+                        1 => ((old_val as u8).min(val as u8)) as u64,
+                        2 => ((old_val as u16).min(val as u16)) as u64,
+                        4 => ((old_val as u32).min(val as u32)) as u64,
+                        8 => old_val.min(val),
+                        _ => unreachable!(),
+                    },
+                };
+                match size_bytes {
+                    1 => mmu.write_u8(addr, new_val as u8)?,
+                    2 => mmu.write_u16(addr, new_val as u16)?,
+                    4 => mmu.write_u32(addr, new_val as u32)?,
+                    8 => mmu.write_u64(addr, new_val)?,
+                    _ => unreachable!(),
+                }
+                if rt != 31 {
+                    if size_bytes == 8 {
+                        self.regs.write_x(rt, old_val);
+                    } else {
+                        self.regs.write_w(rt, old_val as u32);
+                    }
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::CompareAndSwapPair { rs, rt, rn, size_bytes } => {
+                let addr = self.regs.read_x_or_sp(rn);
+                if size_bytes == 4 {
+                    let cur_lo = mmu.read_u32(addr)?;
+                    let cur_hi = mmu.read_u32(addr.wrapping_add(4))?;
+                    let exp_lo = self.regs.read_w(rs);
+                    let exp_hi = self.regs.read_w(rs + 1);
+                    if cur_lo == exp_lo && cur_hi == exp_hi {
+                        mmu.write_u32(addr, self.regs.read_w(rt))?;
+                        mmu.write_u32(addr.wrapping_add(4), self.regs.read_w(rt + 1))?;
+                    }
+                    self.regs.write_w(rs, cur_lo);
+                    self.regs.write_w(rs + 1, cur_hi);
+                } else {
+                    let cur_lo = mmu.read_u64(addr)?;
+                    let cur_hi = mmu.read_u64(addr.wrapping_add(8))?;
+                    let exp_lo = self.regs.read_x(rs);
+                    let exp_hi = self.regs.read_x(rs + 1);
+                    if cur_lo == exp_lo && cur_hi == exp_hi {
+                        mmu.write_u64(addr, self.regs.read_x(rt))?;
+                        mmu.write_u64(addr.wrapping_add(8), self.regs.read_x(rt + 1))?;
+                    }
+                    self.regs.write_x(rs, cur_lo);
+                    self.regs.write_x(rs + 1, cur_hi);
                 }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -1651,6 +1925,107 @@ mod tests {
     }
 
     #[test]
+    fn crc32_matches_the_standard_check_values() {
+        // CRC-32 and CRC-32C of "123456789" (init and final xor 0xFFFFFFFF applied by hand).
+        let (mut crc32, mut crc32c) = (0xFFFF_FFFFu32, 0xFFFF_FFFFu32);
+        for b in *b"123456789" {
+            // crc32b w0, w0, w1 / crc32cb w2, w2, w1
+            let (cpu, _) = run(&[0x1AC1_4000, 0x1AC1_5042], |c, _| {
+                c.regs.write_x(0, crc32 as u64);
+                c.regs.write_x(2, crc32c as u64);
+                c.regs.write_x(1, b as u64);
+            });
+            crc32 = cpu.regs.read_x(0) as u32;
+            crc32c = cpu.regs.read_x(2) as u32;
+        }
+        assert_eq!(crc32 ^ 0xFFFF_FFFF, 0xCBF4_3926);
+        assert_eq!(crc32c ^ 0xFFFF_FFFF, 0xE306_9283);
+    }
+
+    #[test]
+    fn scalar_ucvtf_scvtf_read_integers_from_vector_registers() {
+        // ucvtf s1, s0 / scvtf d3, d2
+        let (cpu, _) = run(&[0x7E21_D801, 0x5E61_D843], |c, _| {
+            c.regs.write_s(0, f32::from_bits(0xFFFF_FFFF));
+            c.regs.write_d(2, f64::from_bits(-5i64 as u64));
+        });
+        assert_eq!(cpu.regs.read_s(1), 4294967296.0f32);
+        assert_eq!(cpu.regs.read_d(3), -5.0);
+    }
+
+    #[test]
+    fn scalar_fcvtzs_fcvtzu_truncate_and_saturate_into_vector_registers() {
+        // fcvtzs s1, s0 / fcvtzu d3, d2
+        let (cpu, _) = run(&[0x5EA1_B801, 0x7EE1_B843], |c, _| {
+            c.regs.write_s(0, -2.9);
+            c.regs.write_d(2, -1.0);
+        });
+        assert_eq!(cpu.regs.read_s(1).to_bits(), (-2i32) as u32);
+        assert_eq!(cpu.regs.read_d(3).to_bits(), 0);
+    }
+
+    #[test]
+    fn fixed_point_conversions() {
+        // fcvtzs w11, d0, #8 ; scvtf d1, w11, #8
+        let (cpu, _) = run(&[0x1E58_E00B, 0x1E42_E161], |c, _| c.regs.write_d(0, 1.5));
+        assert_eq!(cpu.regs.read_x(11), 384);
+        assert_eq!(cpu.regs.read_d(1), 1.5);
+    }
+
+    #[test]
+    fn fcvt_between_single_and_double() {
+        // fcvt d1, s0 / fcvt s2, d1
+        let (cpu, _) = run(&[0x1E22_C001, 0x1E62_4022], |c, _| c.regs.write_s(0, 1.5));
+        assert_eq!(cpu.regs.read_d(1), 1.5);
+        assert_eq!(cpu.regs.read_s(2), 1.5);
+    }
+
+    #[test]
+    fn fused_multiply_add_family() {
+        let setup = |c: &mut Cpu, _: &mut Memory| {
+            c.regs.write_d(0, 2.0);
+            c.regs.write_d(1, 3.0);
+            c.regs.write_d(2, 10.0);
+        };
+        // fmadd d3, d0, d1, d2 = 10 + 6; fmsub d4, d0, d1, d2 = 10 - 6; fnmadd d5 = -10 - 6; fnmsub d6 = 6 - 10
+        let (cpu, _) = run(&[0x1F41_0803, 0x1F41_8804, 0x1F61_0805, 0x1F61_8806], setup);
+        assert_eq!(cpu.regs.read_d(3), 16.0);
+        assert_eq!(cpu.regs.read_d(4), 4.0);
+        assert_eq!(cpu.regs.read_d(5), -16.0);
+        assert_eq!(cpu.regs.read_d(6), -4.0);
+    }
+
+    #[test]
+    fn fnmul_and_fmax_nan_propagation() {
+        // fnmul d3, d0, d1 / fmax d4, d0, d2
+        let (cpu, _) = run(&[0x1E61_8803, 0x1E62_4804], |c, _| {
+            c.regs.write_d(0, 2.0);
+            c.regs.write_d(1, 3.0);
+            c.regs.write_d(2, f64::NAN);
+        });
+        assert_eq!(cpu.regs.read_d(3), -6.0);
+        assert!(cpu.regs.read_d(4).is_nan());
+    }
+
+    #[test]
+    fn fccmp_sets_flags_from_the_compare_or_the_immediate() {
+        // fccmp d0, d1, #5, eq
+        let word = 0x1E61_0400 | 5;
+        let (cpu, _) = run(&[word], |c, _| {
+            c.regs.pstate.z = true;
+            c.regs.write_d(0, 1.0);
+            c.regs.write_d(1, 2.0);
+        });
+        assert!(cpu.regs.pstate.n && !cpu.regs.pstate.z && !cpu.regs.pstate.c && !cpu.regs.pstate.v);
+        let (cpu, _) = run(&[word], |c, _| {
+            c.regs.pstate.z = false;
+            c.regs.write_d(0, 1.0);
+            c.regs.write_d(1, 2.0);
+        });
+        assert!(!cpu.regs.pstate.n && cpu.regs.pstate.z && !cpu.regs.pstate.c && cpu.regs.pstate.v);
+    }
+
+    #[test]
     fn libnx_ops_decode() {
         let table: &[(u32, &str)] = &[
             (0xdac00043, "DataProc1"),          // rbit x3, x2
@@ -1925,4 +2300,14 @@ mod tests {
         });
         assert_eq!(cpu.regs.read_q(0), super::simd::dup(1, 32, true));
     }
+}
+
+/// `FMAX`: a NaN operand is returned as is (`f32::max` would return the other operand).
+fn fp_max<T: PartialOrd + Copy>(n: T, m: T) -> T {
+    if n != n { n } else if m != m { m } else if n > m { n } else { m }
+}
+
+/// `FMIN`: a NaN operand is returned as is.
+fn fp_min<T: PartialOrd + Copy>(n: T, m: T) -> T {
+    if n != n { n } else if m != m { m } else if n < m { n } else { m }
 }

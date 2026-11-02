@@ -56,7 +56,7 @@ pub const RESULT_INVALID_MEMORY_STATE: u64 = 0xD401;
 pub const RESULT_BUSY: u64 = 0xF401;
 
 /// `svcGetInfo(HeapRegionSize)`; svcSetHeapSize cannot grow the heap past it.
-pub const HEAP_REGION_SIZE: u64 = 0x0000_0001_0000_0000;
+pub const HEAP_REGION_SIZE: u64 = 0x0000_0004_0000_0000;
 /// svcSetHeapSize works in 2 MiB steps.
 pub const HEAP_SIZE_ALIGN: u64 = 0x20_0000;
 /// Size of `ThreadContext` as svcGetThreadContext3 writes it.
@@ -118,10 +118,10 @@ impl HorizonKernel {
         Some(match info_type {
             0 => 0xFF,                     // CoreMask: 8x ARM Cortex-A78C cores (bits 0..7)
             1 => 0xFFF,                    // PriorityMask
-            2 => 0x0000_0002_0000_0000,    // AliasRegionAddress
+            2 => 0x0000_0010_0000_0000,    // AliasRegionAddress (above the 16 GB heap region)
             3 => 0x0000_0010_0000_0000,    // AliasRegionSize (64 GB)
             4 => self.heap_base,           // HeapRegionAddress (0x1_0000_0000)
-            5 => HEAP_REGION_SIZE,         // HeapRegionSize (4 GB)
+            5 => HEAP_REGION_SIZE,         // HeapRegionSize (16 GB)
             6 => 12 * 1024 * 1024 * 1024,  // TotalMemorySize: 12 GB LPDDR5
             7 => (self.heap_size as u64) + 0x10_0000, // UsedMemorySize
             8 => 0,                        // DebuggerAttached
@@ -136,6 +136,11 @@ impl HorizonKernel {
             22 => (self.heap_size as u64) + 0x10_0000, // UsedNonSystemMemorySize (= UsedMemorySize)
             23 => 1,                       // IsApplication
             28 => 0,                       // AliasRegionExtraSize [18.0.0+]: none
+            29 => 0x0000_0020_0000_0000,   // RemoteRegionAddress [S2 Switch 2]
+            30 => 0x0000_0010_0000_0000,   // RemoteRegionSize [S2 Switch 2] (64 GB)
+            31 => 0,                       // RemoteMemoryUsage [S2 Switch 2]
+            32 => 0,                       // RemoteMemoryUsagePeak [S2 Switch 2]
+            33 => 0x1000,                  // ProcessPageSize [S2 Switch 2] (4 KB)
             _ => return None,
         })
     }
@@ -170,6 +175,26 @@ impl HorizonKernel {
     /// Every thread waits and none can be woken: stop the guest with a break that says so.
     fn deadlock(&mut self, cpu: &mut Cpu, svc: &str) -> SvcResult {
         eprintln!("[Scheduler] deadlock in {svc}: every thread is waiting and none can wake the others");
+        eprintln!("  current thread={}, X0=0x{:X}, X1=0x{:X}, X2=0x{:X}, X3=0x{:X}", self.scheduler.current, cpu.regs.read_x(0), cpu.regs.read_x(1), cpu.regs.read_x(2), cpu.regs.read_x(3));
+        if svc == "svcWaitSynchronization" {
+            let count = cpu.regs.read_x(2);
+            let ptr = cpu.regs.read_x(1);
+            eprintln!("  WaitSynchronization count={}, ptr=0x{:X}", count, ptr);
+            eprintln!("  threads count: {}", self.scheduler.threads.len());
+            for (&tid, t) in &self.scheduler.threads {
+                eprintln!("    thread {}: state={:?}, wait={:?}, deadline={:?}", tid, t.state, t.wait, t.deadline);
+                if let Some(WaitReason::Objects { ref handles, .. }) = t.wait {
+                    for h in handles {
+                        eprintln!("      handle 0x{:X}: service={:?}, event={:?}, signaled={:?}", h, self.ipc.handles.get(h), self.sync.events.get(h), self.ipc.service_event_signaled(*h));
+                    }
+                }
+            }
+            if let Some(handles) = self.scheduler.threads.get(&self.scheduler.current).and_then(|t| t.wait.as_ref()).map(|w| match w { WaitReason::Objects { handles, .. } => handles.clone(), _ => vec![] }) {
+                for h in handles {
+                    eprintln!("    current thread waiting on handle 0x{:X}: service={:?}, event={:?}, signaled={:?}", h, self.ipc.handles.get(&h), self.sync.events.get(&h), self.ipc.service_event_signaled(h));
+                }
+            }
+        }
         cpu.regs.write_x(0, RESULT_INVALID_HANDLE);
         SvcResult::Break { reason: 0xDEAD_10C4, info1: self.scheduler.current as u64, info2: 0 }
     }
@@ -240,10 +265,25 @@ impl HorizonKernel {
                 let query_addr = cpu.regs.read_x(2);
                 let aligned_base = query_addr & !0xFFF;
 
-                // MemoryInfo for the whole run of mapped (Normal/RW) or unmapped (Free, no access) pages
-                // around the address. libnx virtmem needs the full extent of a free run to place mappings.
-                let (start, end, mapped) = mmu.region_at(aligned_base);
-                let (state, perm) = if mapped { (0x03, 0x03) } else { (0x00, 0x00) };
+                // MemoryInfo for the contiguous run of mapped pages with identical permissions
+                // or unmapped (Free, no access) pages around the address.
+                let (start, end, mapped, perm_obj, page_state) = mmu.query_region(aligned_base);
+                let perm = if mapped {
+                    let mut p = 0u32;
+                    if perm_obj.read {
+                        p |= 1;
+                    }
+                    if perm_obj.write {
+                        p |= 2;
+                    }
+                    if perm_obj.execute {
+                        p |= 4;
+                    }
+                    p
+                } else {
+                    0
+                };
+                let state = page_state;
                 let _ = mmu.write_u64(mem_info_ptr, start);
                 let _ = mmu.write_u64(mem_info_ptr + 8, end - start);
                 let _ = mmu.write_u32(mem_info_ptr + 16, state);
@@ -279,6 +319,10 @@ impl HorizonKernel {
                     .create_thread(entry_pc, arg, stack_top, prio, core_id);
                 self.scheduler.setup_thread_tls(handle, mmu);
                 self.scheduler.prepare_thread(handle, mmu);
+                let out_ptr = cpu.regs.read_x(0);
+                if out_ptr != 0 {
+                    let _ = mmu.write_u32(out_ptr, handle);
+                }
                 cpu.regs.write_x(0, 0); // ResultSuccess
                 cpu.regs.write_x(1, handle as u64);
                 SvcResult::Success
@@ -288,6 +332,7 @@ impl HorizonKernel {
             // waits or exits.
             0x09 => {
                 let handle = cpu.regs.read_w(0);
+                eprintln!("[Thread] svcStartThread called with handle=0x{:X}", handle);
                 if let Err(code) = self.scheduler.start_thread(cpu, handle, 0) {
                     cpu.regs.write_x(0, code);
                 }
@@ -508,10 +553,14 @@ impl HorizonKernel {
                     cpu.regs.write_x(0, RESULT_TIMED_OUT);
                 } else if self.take_wait_cancelled() {
                     cpu.regs.write_x(0, RESULT_CANCELLED);
-                } else if !self.scheduler.block_for(cpu, mmu, WaitReason::Objects { handles, timed: timeout > 0 }, (timeout > 0).then_some(timeout as u64)) {
+                } else if !self.scheduler.block_for(cpu, mmu, WaitReason::Objects { handles: handles.clone(), timed: timeout > 0 }, (timeout > 0).then_some(timeout as u64)) {
                     if timeout > 0 {
                         cpu.regs.write_x(0, RESULT_TIMED_OUT);
                     } else {
+                        eprintln!("  Attempted waiting handles: {:?}", handles);
+                        for h in &handles {
+                            eprintln!("    handle 0x{:X}: service={:?}, event={:?}, signaled={:?}", h, self.ipc.handles.get(h), self.sync.events.get(h), self.ipc.service_event_signaled(*h));
+                        }
                         return self.deadlock(cpu, "svcWaitSynchronization");
                     }
                 }
@@ -1190,6 +1239,15 @@ impl HorizonKernel {
                 let _ = mmu.write_u32(mem_info_ptr + 24, 0x04); // permission = Execute-Only (4) on Switch 2 FS
                 cpu.regs.write_x(0, 0);
                 cpu.regs.write_x(1, 0);
+                SvcResult::Success
+            }
+
+            // 0x80: svcSetGpuMemoryAttribute(addr, size, attribute) [Switch 2]: GPU caching attributes of process memory.
+            // CPU and GPU see the same memory in this model, so only the range is checked.
+            0x80 => {
+                let (addr, size) = (cpu.regs.read_x(0), cpu.regs.read_x(1));
+                let mapped = size > 0 && addr % 0x1000 == 0 && size % 0x1000 == 0 && (addr..addr + size).step_by(0x1000).all(|a| mmu.is_mapped(a));
+                cpu.regs.write_x(0, if mapped { 0 } else { RESULT_INVALID_MEMORY_STATE });
                 SvcResult::Success
             }
 

@@ -66,6 +66,10 @@ pub enum ServiceType {
     SystemClock,
     /// System Steady Clock ("ISteadyClock")
     SteadyClock,
+    /// Log Manager Service ("lm")
+    Lm,
+    /// Log Manager Logger Session ("ILogger")
+    Logger,
     /// Play Report Service ("prepo:u" / "prepo:a")
     Prepo,
     /// Background Content Access ("bcat:u" / "bcat:a")
@@ -84,6 +88,18 @@ pub enum ServiceType {
     /// Performance management ("apm") and its `ISession`
     Apm,
     ApmSession,
+    /// Parental controls factory ("pctl") and its `IParentalControlService`
+    Pctl,
+    PctlService,
+    /// Account service for applications ("acc:u0" / "acc:u1")
+    Account,
+    /// Add-on content manager ("aoc:u")
+    AddOnContent,
+    /// Applet `IStorage` holding launch parameter bytes, and its `IStorageAccessor`
+    AppletStorage(Vec<u8>),
+    AppletStorageAccessor(Vec<u8>),
+    /// A Tipc (tiny IPC) session of a Switch 2 interface; the name says which one.
+    Tipc(&'static str),
     /// Readable event handed out by a system service (applet message queue, psm, ...).
     ServiceEvent(&'static str),
     /// Generic stubbed service
@@ -104,6 +120,8 @@ pub enum ServiceType {
 pub const HID_SHARED_MEMORY_SIZE: u64 = 0x40000;
 /// `sf::cmif::ResultUnknownCommandId` (module 10, description 221): the reply for commands of services
 /// this model does not implement.
+/// fs ResultOutOfRange (2-3005).
+pub const RESULT_FS_OUT_OF_RANGE: u32 = 3005 << 9 | 2;
 pub const RESULT_UNKNOWN_COMMAND: u32 = 221 << 9 | 10;
 /// CMIF pointer buffer size reported to `QueryPointerBufferSize`.
 pub const POINTER_BUFFER_SIZE: u32 = 0x8000;
@@ -143,7 +161,7 @@ pub struct IpcManager {
     /// Sessions converted to CMIF domains. Domain object IDs are entries in `handles`.
     pub domains: std::collections::HashSet<u32>,
     /// The current request arrived on a domain: replies use the domain layout.
-    domain_reply: bool,
+    pub(super) domain_reply: bool,
     /// `nvdrv` devices and nvmap objects for libnx-shaped requests.
     pub nvdrv: super::nvdrv::NvDrv,
     /// IPC commands answered with "not implemented", in first-seen order (deduped, capped at 64).
@@ -155,6 +173,14 @@ pub struct IpcManager {
     /// Applet message queue, focus and operation mode shared by every `am` session.
     pub applet: super::applet::AppletState,
     pub apm: super::apm::ApmState,
+    /// The title's RomFS, served through `IStorage` by `fsp-srv` OpenDataStorageByCurrentProcess.
+    pub romfs_image: Option<crate::fs::RomfsImage>,
+    /// (session, command) pairs already reported as not modelled, so a polling guest does not flood the log.
+    pub(super) reported_tipc: std::collections::HashSet<(String, u32)>,
+    /// GPU memory partitions created through the graphics session.
+    pub(super) gpu_partitions: u32,
+    /// GPU memory objects created through the GPU memory session.
+    pub(super) gpu_memory_objects: u32,
     pub time: super::time::TimeState,
     pub(super) vi_binder: super::vi::BinderObjects,
     next_handle: u32,
@@ -190,6 +216,10 @@ impl IpcManager {
             audio_renderer: None,
             applet: Default::default(),
             apm: Default::default(),
+            romfs_image: None,
+            reported_tipc: Default::default(),
+            gpu_partitions: 0,
+            gpu_memory_objects: 0,
             time: Default::default(),
             vi_binder: Default::default(),
             next_handle: 0x10001,
@@ -229,10 +259,59 @@ impl IpcManager {
 
         // Check for Switch 2 Tipc (Tiny IPC) commands on `sm:` (used by native Switch 2 RO/FS modules on FW 23.0.1)
         let tipc_hdr = mmu.read_u32(tls_addr).unwrap_or(0);
-        if service == ServiceType::Sm && (tipc_hdr == 0x10 || tipc_hdr == 0x12) {
+        let mut debug_buf = [0u8; 96];
+        let _ = mmu.read_bytes(tls_addr, &mut debug_buf);
+        if std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+            eprintln!("[IPC] Request #{}: handle=0x{:X}, service={:?}, bytes={:02X?}", self.total_ipc_requests, session_handle, service, debug_buf);
+        }
+        if service == ServiceType::Sm && (tipc_hdr == 0x10 || tipc_hdr == 0x11 || tipc_hdr == 0x12) {
             if tipc_hdr == 0x10 {
                 // Tipc 0x10: RegisterClient -> p[2] = 0 (ResultSuccess)
+                let _ = mmu.write_u32(tls_addr, 0x10);
+                let _ = mmu.write_u32(tls_addr + 4, 0);
                 let _ = mmu.write_u32(tls_addr + 8, 0);
+                return 0;
+            } else if tipc_hdr == 0x11 {
+                // Tipc 0x11: GetService(name) -> returns service handle
+                let mut name_bytes = [0u8; 8];
+                let _ = mmu.read_bytes(tls_addr + 8, &mut name_bytes);
+                let len = name_bytes.iter().position(|&b| b == 0).unwrap_or(8);
+                let srv_name = String::from_utf8_lossy(&name_bytes[..len]).to_string();
+
+                if std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+                    eprintln!("[IPC] sm GetService (tipc) {srv_name:?}");
+                }
+                let target_service = match srv_name.as_str() {
+                    "nvdrv" | "nvdrv:a" | "nvdrv:s" | "nvdrv:t" => ServiceType::Nvdrv,
+                    "vi:u" | "vi:m" | "vi:s" => ServiceType::Vi,
+                    "hid" => ServiceType::Hid,
+                    "fsp-srv" => ServiceType::FspSrv,
+                    "audout:u" => ServiceType::AudOut,
+                    "audren:u" => ServiceType::AudRen,
+                    "appletOE" => ServiceType::AppletOE,
+                    "appletAE" => ServiceType::AppletAE,
+                    "set" => ServiceType::Set,
+                    "set:sys" => ServiceType::SetSys,
+                    "psm" => ServiceType::Psm,
+                    "apm" | "apm:p" | "apm:am" => ServiceType::Apm,
+                    "pctl" | "pctl:a" | "pctl:r" | "pctl:s" => ServiceType::Pctl,
+                    "acc:u0" | "acc:u1" => ServiceType::Account,
+                    "aoc:u" => ServiceType::AddOnContent,
+                    "ro:1" | "ro:dmnt" | "ldr:ro" => ServiceType::Ro,
+                    "pl:u" | "pl:s" => ServiceType::Pl,
+                    "time:u" | "time:s" | "time:a" | "time:r" | "time:su" => ServiceType::Time,
+                    "lm" => ServiceType::Lm,
+                    "prepo:u" | "prepo:a" | "prepo:m" => ServiceType::Prepo,
+                    "bcat:u" | "bcat:a" | "bcat:m" => ServiceType::Bcat,
+                    other => ServiceType::Generic(other.to_string()),
+                };
+
+                let port_handle = self.allocate_handle(target_service);
+                let _ = mmu.write_u32(tls_addr, 0x11);
+                let _ = mmu.write_u32(tls_addr + 4, 0x8000_0001); // 1 move handle
+                let _ = mmu.write_u32(tls_addr + 8, 0x20);
+                let _ = mmu.write_u32(tls_addr + 12, port_handle);
+                let _ = mmu.write_u32(tls_addr + 16, 0); // ResultSuccess
                 return 0;
             } else {
                 // Tipc 0x12: RegisterService(space, name, max_sessions)
@@ -249,6 +328,12 @@ impl IpcManager {
                 let _ = mmu.write_u32(tls_addr + 16, 0); // ResultSuccess
                 return 0;
             }
+        }
+
+        // Tipc (tiny IPC) request on any other session: the message type is 16 + the command id and the raw
+        // data has no CMIF header.
+        if tipc_hdr & 0xFFFF >= 16 && service != ServiceType::Sm {
+            return self.handle_tipc(&service, (tipc_hdr & 0xFFFF) - 16, tls_addr, mmu);
         }
 
         // CMIF payload: the HIPC raw data aligned to 16 bytes (TLS + 0x10 when there is no special header).
@@ -284,6 +369,9 @@ impl IpcManager {
         let magic = mmu.read_u32(cmif_base).unwrap_or(0);
         if magic != CMIF_IN_MAGIC {
             // Write generic success even if raw HIPC control
+            if self.request.kind != super::hipc::TYPE_CLOSE {
+                eprintln!("[HIPC] request #{} on {:?} has no CMIF magic (type {}, payload at +0x{:X}); replied with bare success", self.total_ipc_requests, service, self.request.kind, self.request.cmif_offset);
+            }
             self.write_cmif_response(tls_addr, mmu, 0, &[], None);
             return 0;
         }
@@ -327,6 +415,9 @@ impl IpcManager {
                     let len = name_bytes.iter().position(|&b| b == 0).unwrap_or(8);
                     let srv_name = String::from_utf8_lossy(&name_bytes[..len]).to_string();
 
+                    if std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+                        eprintln!("[IPC] sm GetService (cmif) {srv_name:?}");
+                    }
                     let target_service = match srv_name.as_str() {
                         "nvdrv" | "nvdrv:a" | "nvdrv:s" | "nvdrv:t" => ServiceType::Nvdrv,
                         "vi:u" | "vi:m" | "vi:s" => ServiceType::Vi,
@@ -340,9 +431,13 @@ impl IpcManager {
                         "set:sys" => ServiceType::SetSys,
                         "psm" => ServiceType::Psm,
                         "apm" | "apm:p" | "apm:am" => ServiceType::Apm,
+                        "pctl" | "pctl:a" | "pctl:r" | "pctl:s" => ServiceType::Pctl,
+                    "acc:u0" | "acc:u1" => ServiceType::Account,
+                    "aoc:u" => ServiceType::AddOnContent,
                         "ro:1" | "ro:dmnt" | "ldr:ro" => ServiceType::Ro,
                         "pl:u" | "pl:s" => ServiceType::Pl,
                         "time:u" | "time:s" | "time:a" | "time:r" | "time:su" => ServiceType::Time,
+                        "lm" => ServiceType::Lm,
                         "prepo:u" | "prepo:a" | "prepo:m" => ServiceType::Prepo,
                         "bcat:u" | "bcat:a" | "bcat:m" => ServiceType::Bcat,
                         other => ServiceType::Generic(other.to_string()),
@@ -361,10 +456,8 @@ impl IpcManager {
             ServiceType::Nvdrv => match cmd_id {
                 // Command 0: Open -> returns (fd, error = 0)
                 0 => {
-                    let mut path_bytes = [0u8; 64];
-                    let _ = mmu.read_bytes(args_base, &mut path_bytes);
-                    let len = path_bytes.iter().position(|&b| b == 0).unwrap_or(64);
-                    let dev_name = String::from_utf8_lossy(&path_bytes[..len]);
+                    // The device path is in a static (X) buffer when the client sends one, otherwise in the data.
+                    let dev_name = self.path_arg_at(mmu, 0, args_base);
                     let fd = if dev_name.contains("as-gpu") {
                         2
                     } else if dev_name.contains("ctrl-gpu") {
@@ -474,8 +567,9 @@ impl IpcManager {
             },
 
             ServiceType::AppletOE => match cmd_id {
-                // Command 0: OpenApplicationProxy -> returns new ApplicationProxy sub-session handle
-                0 => {
+                // Command 0: OpenApplicationProxy
+                // Command 10: OpenApplicationProxy2 [Switch 2]
+                0 | 10 => {
                     let proxy_h = self.allocate_handle(ServiceType::ApplicationProxy);
                     self.write_cmif_response(tls_addr, mmu, 0, &[proxy_h], Some(proxy_h));
                     0
@@ -751,6 +845,11 @@ impl IpcManager {
                     self.write_cmif_response(tls_addr, mmu, 0, &[lo, hi], None);
                     0
                 }
+                // Command 1005: GetGlobalAccessLogMode -> u32 (access logging off)
+                1005 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
                 // Command 12: GetFreeSpaceSize -> returns u64 free bytes
                 12 => {
                     let path = read_cmif_string(mmu, args_base, 256);
@@ -762,6 +861,7 @@ impl IpcManager {
                     0
                 }
                 _ => {
+                    eprintln!("[HIPC] fsp-srv command {cmd_id} not implemented (replied with success and one zero word)");
                     self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                     0
                 }
@@ -772,6 +872,39 @@ impl IpcManager {
                 self.handle_directory(object_handle, path, entries, index, cmd_id, args_base, tls_addr, mmu, vfs)
             }
             ServiceType::File(handle) => self.handle_file(handle, cmd_id, args_base, tls_addr, mmu, vfs),
+
+            // IStorage over the title's RomFS image.
+            ServiceType::Storage if self.romfs_image.is_some() => {
+                let size = self.romfs_image.as_ref().map_or(0, |i| i.size());
+                match cmd_id {
+                    // Read(s64 offset, s64 size), data into the B buffer
+                    0 => {
+                        let offset = mmu.read_u64(args_base).unwrap_or(0);
+                        let want = mmu.read_u64(args_base + 8).unwrap_or(0);
+                        let cap = self.request.recv_buffers.first().map_or(0, |b| b.size);
+                        if offset.saturating_add(want) > size {
+                            self.write_cmif_response(tls_addr, mmu, RESULT_FS_OUT_OF_RANGE, &[], None);
+                        } else {
+                            let mut data = vec![0u8; want.min(cap) as usize];
+                            if let Some(image) = self.romfs_image.as_ref() {
+                                image.read(offset, &mut data);
+                            }
+                            self.write_out_buffer(mmu, &data);
+                            self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+                        }
+                    }
+                    // GetSize -> s64
+                    4 => self.write_cmif_response(tls_addr, mmu, 0, &[size as u32, (size >> 32) as u32], None),
+                    // Flush
+                    2 => self.write_cmif_response(tls_addr, mmu, 0, &[], None),
+                    // Write / SetSize: the RomFS is read-only (fs ResultUnsupportedWriteForReadOnlyFileSystem 2-6000)
+                    1 | 3 => self.write_cmif_response(tls_addr, mmu, 6000 << 9 | 2, &[], None),
+                    _ => {
+                        let _ = self.reply_unimplemented("IStorage", cmd_id, tls_addr, mmu);
+                    }
+                }
+                0
+            }
 
             ServiceType::Storage => match cmd_id {
                 // Command 4: GetSize -> returns 0x40000 (256 KB)
@@ -1022,6 +1155,27 @@ impl IpcManager {
                 }
             },
 
+            ServiceType::Lm => match cmd_id {
+                // Command 0: OpenLogger(u64 pid) -> ILogger session / domain object
+                0 => {
+                    let logger_h = self.allocate_handle(ServiceType::Logger);
+                    self.write_cmif_response(tls_addr, mmu, 0, &[logger_h], Some(logger_h));
+                    0
+                }
+                _ => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
+                    0
+                }
+            },
+
+            ServiceType::Logger => {
+                // Command 0: Log(buffer)
+                // Command 1: SetDestination(mask)
+                // Retail consoles return Success (0) and perform no-op logging.
+                self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+                0
+            }
+
             ServiceType::Prepo => {
                 // Command 0 / 1 / 2: SaveReport / PlayReport (Telemetry stubs)
                 self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
@@ -1060,6 +1214,13 @@ impl IpcManager {
             | ServiceType::PsmSession
             | ServiceType::Apm
             | ServiceType::ApmSession
+            | ServiceType::Pctl
+            | ServiceType::PctlService
+            | ServiceType::Account
+            | ServiceType::AddOnContent
+            | ServiceType::AppletStorage(_)
+            | ServiceType::AppletStorageAccessor(_)
+            | ServiceType::Tipc(_)
             | ServiceType::ServiceEvent(_) => 0xE401,
         }
     }
@@ -1163,6 +1324,9 @@ impl IpcManager {
                 // plain store), so syncpoint reads and waits below see current fences.
                 self.nvdrv.poll_3d(mmu);
                 let status = self.nvdrv.ioctl_ex(fd, request, &mut data, extra);
+                if std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+                    eprintln!("[nvdrv] ioctl cmd {cmd_id} fd {fd} request {request:#010x} status {status}; x={:?} a={:?} b={:?} c={:?}", req.send_statics, req.send_buffers, req.recv_buffers, req.recv_list);
+                }
                 if ioctl_has_output(request) {
                     if let Some(b) = output(0) {
                         let n = data.len().min(b.size as usize);
@@ -1241,6 +1405,11 @@ impl IpcManager {
             // CloneCurrentObject / CloneCurrentObjectEx -> a new session to the same service
             2 | 4 => {
                 let h = self.allocate_handle(service.clone());
+                // A clone of a domain session is another entry point to the same domain: its requests
+                // carry domain headers naming objects of that domain.
+                if self.domains.contains(&session_handle) {
+                    self.domains.insert(h);
+                }
                 self.write_cmif_response(tls_addr, mmu, 0, &[], Some(h));
             }
             // QueryPointerBufferSize -> u16 size
@@ -1289,6 +1458,11 @@ impl IpcManager {
                 tls_addr,
                 &super::hipc::Response { result, data, copy_handles, move_handles: &objects, ..Default::default() },
             );
+        }
+        if std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+            let mut resp_buf = [0u8; 64];
+            let _ = mmu.read_bytes(tls_addr, &mut resp_buf);
+            eprintln!("[IPC] Reply to #{}: result=0x{:X}, resp={:02X?}", self.total_ipc_requests, result, resp_buf);
         }
     }
 }

@@ -540,8 +540,9 @@ fn decode_block(b: &[u8], bw: u32, bh: u32, i: usize) -> Option<[f32; 4]> {
     let gt = (dt * y * (gh - 1) + 32) >> 6;
     let (js, fs, jt, ft) = (gs >> 4, gs & 0xf, gt >> 4, gt & 0xf);
     let w11 = (fs * ft + 8) >> 4;
-    let (w10, w01) = (ft - w11, fs - w11);
-    let w00 = 16 - fs - ft + w11;
+    let (w10, w01) = (ft as i32 - w11 as i32, fs as i32 - w11 as i32);
+    let w00 = (16 as i32 - fs as i32 - ft as i32 + w11 as i32).max(0) as u32;
+    let (w10, w01) = (w10.max(0) as u32, w01.max(0) as u32);
     let v0 = js + jt * gw;
     let weight = |plane: u32| -> u32 {
         let at = |v: u32| weights.get((v * planes + plane) as usize).copied().unwrap_or(0);

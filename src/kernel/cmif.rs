@@ -50,6 +50,18 @@ impl IpcManager {
             S::PsmSession => self.handle_psm_session(cmd, tls, mmu),
             S::Apm => self.handle_apm(cmd, tls, mmu),
             S::ApmSession => self.handle_apm_session(cmd, args, tls, mmu),
+            S::Pctl => self.handle_pctl(cmd, tls, mmu),
+            S::PctlService => self.handle_pctl_service(cmd, tls, mmu),
+            S::Account => self.handle_account(cmd, tls, mmu),
+            S::AddOnContent => self.handle_aoc(cmd, tls, mmu),
+            S::AppletStorage(data) => {
+                let data = data.clone();
+                self.handle_applet_storage(&data, cmd, tls, mmu)
+            }
+            S::AppletStorageAccessor(data) => {
+                let data = data.clone();
+                self.handle_applet_storage_accessor(&data, cmd, args, tls, mmu)
+            }
             S::ServiceEvent(_) => 0xE401,
             _ => return None,
         })
@@ -114,7 +126,7 @@ impl IpcManager {
     /// The applet message event is signaled while the message queue holds a message.
     pub fn service_event_signaled(&self, handle: u32) -> Option<bool> {
         match self.handles.get(&handle) {
-            Some(ServiceType::ServiceEvent("ViBufferQueue")) => Some(true),
+            Some(ServiceType::ServiceEvent("ViBufferQueue" | "tipc slot")) => Some(true),
             Some(ServiceType::ServiceEvent(_)) => Some(self.applet.message_event == Some(handle) && !self.applet.messages.is_empty()),
             _ => None,
         }

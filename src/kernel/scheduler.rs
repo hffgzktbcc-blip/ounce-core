@@ -186,9 +186,13 @@ impl ThreadScheduler {
         self.next_handle += 1;
         let thread_id = self.next_thread_id;
         self.next_thread_id += 1;
+        eprintln!("[Thread] Created thread handle=0x{:X}, id={}, entry_pc=0x{:X}, arg=0x{:X}, prio={}, core={}", handle, thread_id, entry_pc, arg_x0, priority, core_id);
 
         // -2 (`IdealCoreUseProcessValue`, libnx's default) is the process's ideal core.
-        let core_id = if core_id as i32 == -2 { PROCESS_IDEAL_CORE } else { core_id % CORE_COUNT };
+        // A thread created with the process ideal core may run on any of the process's cores (its affinity is the
+        // whole core mask), so a lower-priority worker still runs beside the main thread on hardware.
+        let any_core = core_id as i32 == -2;
+        let core_id = if any_core { PROCESS_IDEAL_CORE } else { core_id % CORE_COUNT };
         let mut cpu_context = Cpu::new();
         cpu_context.regs.pc = entry_pc;
         cpu_context.regs.sp = stack_top;
@@ -203,7 +207,7 @@ impl ThreadScheduler {
             stack_top,
             priority,
             core_id,
-            affinity_mask: 1 << core_id,
+            affinity_mask: if any_core { (1 << CORE_COUNT) - 1 } else { 1 << core_id },
             state: ThreadState::Created,
             cpu_context,
             tls_area: None,
@@ -332,6 +336,10 @@ impl ThreadScheduler {
         let thread = self.threads.get_mut(&handle)?;
         thread.cpu_context.regs.tpidrro_el0 = page;
         thread.cpu_context.regs.write_x(30, THREAD_EXIT_STUB);
+        // Write the thread's TLS address into TLR + 0x1F0 so `mrs x8, tpidrro_el0; ldr x8, [x8, #0x1f0]; msr tpidr_el0, x8` works.
+        if let Some(tls) = thread.tls_area {
+            let _ = mmu.write_u64(page + 0x1F0, tls);
+        }
         Some(page)
     }
 
@@ -545,7 +553,7 @@ impl ThreadScheduler {
         let (prio, core) = self.threads.get(&cur).map_or((44, PROCESS_IDEAL_CORE), |t| (t.priority, t.core_id));
         let next = self.take_ready(|t| match to {
             YieldTo::Any => true,
-            YieldTo::SameCore => t.priority <= prio || t.core_id != core,
+            YieldTo::SameCore => t.priority <= prio || t.core_id != core || t.affinity_mask & !(1 << core) != 0,
             YieldTo::Better => t.priority < prio && t.core_id == core,
         });
         if let Some(next) = next {

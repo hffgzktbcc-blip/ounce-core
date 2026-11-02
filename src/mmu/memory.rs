@@ -23,7 +23,9 @@ impl Permission {
 
 #[derive(Debug, Clone)]
 pub struct Page {
-    pub data: Box<[u8; PAGE_SIZE]>,
+    /// Backing bytes, allocated on first write: a mapped page that was never written reads as zeros,
+    /// so a multi-gigabyte heap costs only the pages the guest touches.
+    data: Option<Box<[u8; PAGE_SIZE]>>,
     pub perm: Permission,
     /// Set when a block cache has compiled instructions from this page.
     pub holds_code: bool,
@@ -31,16 +33,28 @@ pub struct Page {
     pub code_write_gen: u64,
     /// Guarded page (the stage-1 `GP` bit, FEAT_BTI): indirect branches into it need a landing pad.
     pub guarded: bool,
+    /// Horizon memory state (`svcQueryMemory` type): 3 CodeStatic, 4 CodeMutable, 5 Heap, ... Pages mapped
+    /// without a more specific state report `STATE_DEFAULT`.
+    pub state: u32,
 }
 
+/// State reported for pages nothing tagged more precisely.
+pub const STATE_DEFAULT: u32 = 3;
+
 impl Page {
+    /// The page's bytes, allocating the backing store if it was never written.
+    pub fn bytes_mut(&mut self) -> &mut [u8; PAGE_SIZE] {
+        self.data.get_or_insert_with(|| Box::new([0u8; PAGE_SIZE]))
+    }
+
     pub fn new(perm: Permission) -> Self {
         Self {
-            data: Box::new([0u8; PAGE_SIZE]),
+            data: None,
             perm,
             holds_code: false,
             code_write_gen: 0,
             guarded: false,
+            state: STATE_DEFAULT,
         }
     }
 }
@@ -183,6 +197,23 @@ impl Memory {
         }
     }
 
+    /// Sets the permissions on an existing range of mapped pages.
+    pub fn protect_range(&mut self, base_addr: u64, size: usize, perm: Permission) {
+        if size == 0 {
+            return;
+        }
+        let last_addr = base_addr
+            .checked_add((size - 1) as u64)
+            .expect("memory range exceeds 64-bit address space");
+        let start_page = base_addr >> 12;
+        let last_page = last_addr >> 12;
+        for page_idx in start_page..=last_page {
+            if let Some(page) = self.pages.get_mut(&page_idx) {
+                page.perm = perm;
+            }
+        }
+    }
+
     /// Checks if a virtual address is mapped.
     /// Moves the pages of `src..src + size` to `dst` (both page aligned): the data appears at `dst` and
     /// `src` becomes unmapped. Models svcMapMemory, after which Horizon makes the source inaccessible.
@@ -246,25 +277,78 @@ impl Memory {
         }
     }
 
-    /// The run of pages around `addr` that are all mapped or all unmapped, as `(start, end, mapped)`.
+    /// The run of pages around `addr` that share the same mapped state and permissions,
+    /// as `(start, end, mapped, permission)`.
     /// An unmapped run is bounded by the nearest mapped pages, or by the 48-bit address space.
-    pub fn region_at(&self, addr: u64) -> (u64, u64, bool) {
+    pub fn region_info_at(&self, addr: u64) -> (u64, u64, bool, Permission) {
         let page = addr >> 12;
-        if self.pages.contains_key(&page) {
+        if let Some(target_page) = self.pages.get(&page) {
+            let perm = target_page.perm;
             let mut lo = page;
-            while lo > 0 && self.pages.contains_key(&(lo - 1)) {
-                lo -= 1;
+            while lo > 0 {
+                if let Some(prev) = self.pages.get(&(lo - 1)) {
+                    if prev.perm == perm {
+                        lo -= 1;
+                        continue;
+                    }
+                }
+                break;
             }
             let mut hi = page + 1;
-            while self.pages.contains_key(&hi) {
-                hi += 1;
+            while let Some(next) = self.pages.get(&hi) {
+                if next.perm == perm {
+                    hi += 1;
+                } else {
+                    break;
+                }
             }
-            (lo << 12, hi << 12, true)
+            (lo << 12, hi << 12, true, perm)
         } else {
             let below = self.pages.keys().filter(|&&p| p < page).max().map_or(0, |p| p + 1);
             let above = self.pages.keys().filter(|&&p| p > page).min().map_or(1u64 << 36, |&p| p);
-            (below << 12, above << 12, false)
+            (below << 12, above << 12, false, Permission::NONE)
         }
+    }
+
+    /// Tags every mapped page in `[start, start + size)` with a Horizon memory state.
+    pub fn set_memory_state(&mut self, start: u64, size: u64, state: u32) {
+        if size == 0 {
+            return;
+        }
+        let end = start.saturating_add(size - 1);
+        for page_idx in (start >> 12)..=(end >> 12) {
+            if let Some(page) = self.pages.get_mut(&page_idx) {
+                page.state = state;
+            }
+        }
+    }
+
+    /// Like [`Memory::region_info_at`], but runs also break where the memory state changes; returns the state too.
+    /// An unmapped run reports state 0 (Free).
+    pub fn query_region(&self, addr: u64) -> (u64, u64, bool, Permission, u32) {
+        let page = addr >> 12;
+        let Some(target) = self.pages.get(&page) else {
+            let (start, end, mapped, perm) = self.region_info_at(addr);
+            return (start, end, mapped, perm, 0);
+        };
+        let key = (target.perm, target.state);
+        let same = |p: &Page| (p.perm, p.state) == key;
+        let mut lo = page;
+        while lo > 0 && self.pages.get(&(lo - 1)).is_some_and(same) {
+            lo -= 1;
+        }
+        let mut hi = page + 1;
+        while self.pages.get(&hi).is_some_and(same) {
+            hi += 1;
+        }
+        (lo << 12, hi << 12, true, target.perm, target.state)
+    }
+
+    /// The run of pages around `addr` that are all mapped or all unmapped, as `(start, end, mapped)`.
+    /// An unmapped run is bounded by the nearest mapped pages, or by the 48-bit address space.
+    pub fn region_at(&self, addr: u64) -> (u64, u64, bool) {
+        let (start, end, mapped, _) = self.region_info_at(addr);
+        (start, end, mapped)
     }
 
     pub fn is_mapped(&self, addr: u64) -> bool {
@@ -304,6 +388,18 @@ impl Memory {
         self.pages.get(&(addr >> 12)).is_some_and(|p| p.guarded)
     }
 
+    /// The mapped page for `page_num`, with its backing bytes allocated (native code needs a host address).
+    pub fn get_page_backed(&mut self, page_num: u64) -> Option<&Page> {
+        let page = self.pages.get_mut(&page_num)?;
+        page.bytes_mut();
+        Some(&*page)
+    }
+
+    /// Host address of a page's bytes. `None` until the page has been written or backed.
+    pub fn host_ptr(page: &Page) -> Option<*const u8> {
+        page.data.as_ref().map(|d| d.as_ptr())
+    }
+
     /// Access the Page for a page number (VA >> 12), if mapped.
     pub fn get_page(&self, page_num: u64) -> Option<&Page> {
         self.pages.get(&page_num)
@@ -331,8 +427,11 @@ impl Memory {
                 });
             }
 
-            buf[offset..offset + bytes_in_page]
-                .copy_from_slice(&page.data[page_offset..page_offset + bytes_in_page]);
+            match &page.data {
+                Some(data) => buf[offset..offset + bytes_in_page]
+                    .copy_from_slice(&data[page_offset..page_offset + bytes_in_page]),
+                None => buf[offset..offset + bytes_in_page].fill(0),
+            }
 
             curr_addr += bytes_in_page as u64;
             offset += bytes_in_page;
@@ -363,7 +462,7 @@ impl Memory {
                 });
             }
 
-            page.data[page_offset..page_offset + bytes_in_page]
+            page.bytes_mut()[page_offset..page_offset + bytes_in_page]
                 .copy_from_slice(&data[offset..offset + bytes_in_page]);
             if page.holds_code {
                 self.code_write_gen += 1;

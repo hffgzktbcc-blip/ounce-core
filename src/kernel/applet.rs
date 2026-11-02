@@ -17,6 +17,8 @@ use crate::mmu::Memory;
 pub const RESULT_NO_MESSAGES: u32 = 3 << 9 | 128;
 /// `am` ResultNoDataInChannel (module 128, description 2): no launch parameter to pop.
 pub const RESULT_NO_DATA_IN_CHANNEL: u32 = 2 << 9 | 128;
+/// applet ResultOutOfBounds.
+pub const RESULT_OUT_OF_BOUNDS: u32 = 503 << 9 | 128;
 
 /// `AppletMessage` values (libnx `applet.h`).
 pub const MESSAGE_EXIT_REQUEST: u32 = 4;
@@ -150,7 +152,8 @@ impl IpcManager {
         match iface {
             I::OeRoot => match cmd {
                 // OpenApplicationProxy(pid, process handle)
-                0 => self.reply_object(tls, mmu, open(ProxyKind::Application)),
+                // OpenApplicationProxy2 [Switch 2]
+                0 | 10 => self.reply_object(tls, mmu, open(ProxyKind::Application)),
                 _ => self.reply_unimplemented("appletOE", cmd, tls, mmu),
             },
             I::AeRoot => match cmd {
@@ -181,7 +184,7 @@ impl IpcManager {
                 _ => self.reply_unimplemented("IAudioController", cmd, tls, mmu),
             },
             I::DisplayController => self.reply_unimplemented("IDisplayController", cmd, tls, mmu),
-            I::ApplicationFunctions => self.handle_application_functions(cmd, tls, mmu),
+            I::ApplicationFunctions => self.handle_application_functions(cmd, args, tls, mmu),
             I::LibraryAppletSelfAccessor => match cmd {
                 // GetLibraryAppletInfo -> (applet ID, library applet mode). Synthetic: no caller applet.
                 11 => self.reply_data(tls, mmu, &[0u8; 8]),
@@ -205,6 +208,8 @@ impl IpcManager {
             (11, _) => I::Other("ILibraryAppletCreator"),
             (1000, _) => I::Other("IDebugFunctions"),
             (20, K::Application | K::SystemApplication) => I::ApplicationFunctions,
+            (40, _) => I::Other("IPerformanceFunctions"),
+            (60, _) => I::Other("IGraphicsScalingParametersFunctions"),
             (20, K::SystemApplet) => I::Other("IHomeMenuFunctions"),
             (20, K::LibraryApplet) => I::LibraryAppletSelfAccessor,
             (20, K::OverlayApplet) => I::Other("IOverlayFunctions"),
@@ -229,6 +234,10 @@ impl IpcManager {
                     None => {
                         let ev = self.applet_event("AppletMessage");
                         self.applet.message_event = Some(ev);
+                        // Post initial FocusStateChanged message so worker message thread gets initial state
+                        if self.applet.messages.is_empty() {
+                            self.applet.push_message(MESSAGE_FOCUS_STATE_CHANGED);
+                        }
                         ev
                     }
                 };
@@ -287,6 +296,8 @@ impl IpcManager {
             }
             // GetOperationModeSystemInfo -> u32
             200 => self.reply_data(tls, mmu, &0u32.to_le_bytes()),
+            // Command 900 [Switch 2 / ICommonStateGetter] -> u32
+            900 => self.reply_data(tls, mmu, &0u32.to_le_bytes()),
             _ => {
                 let _ = arg_u32(mmu, args);
                 self.reply_unimplemented("ICommonStateGetter", cmd, tls, mmu)
@@ -352,13 +363,21 @@ impl IpcManager {
             }
             // SetAlbumImageTakenNotificationEnabled(bool)
             100 => self.reply_ok(tls, mmu),
+            // Switch 2 command: returns a Tipc session to a new interface as a copy handle
+            2000 => {
+                let h = self.allocate_handle(ServiceType::Tipc("ISelfController 2000"));
+                self.reply_event(tls, mmu, h)
+            }
             _ => self.reply_unimplemented("ISelfController", cmd, tls, mmu),
         }
     }
 
-    fn handle_application_functions(&mut self, cmd: u32, tls: u64, mmu: &mut Memory) -> u64 {
+    fn handle_application_functions(&mut self, cmd: u32, args: u64, tls: u64, mmu: &mut Memory) -> u64 {
         match cmd {
-            // PopLaunchParameter: nothing was pushed.
+            // PopLaunchParameter(kind) -> IStorage: only the preselected user was pushed.
+            1 if mmu.read_u32(args).unwrap_or(0) == super::applet_storage::LAUNCH_PARAMETER_PRESELECTED_USER => {
+                self.reply_object(tls, mmu, ServiceType::AppletStorage(super::applet_storage::preselected_user_parameter()))
+            }
             1 => self.reply_error(tls, mmu, RESULT_NO_DATA_IN_CHANNEL),
             // EnsureSaveData(uid) -> u64 (0 = nothing more needed)
             20 => self.reply_data(tls, mmu, &0u64.to_le_bytes()),
@@ -475,6 +494,10 @@ mod tests {
         // GetEventHandle: a copy handle, the same one every time.
         let ev = call(&mut h, 0, 0).copy_handles[0];
         assert_eq!(call(&mut h, 0, 0).copy_handles[0], ev);
+        // The initial FocusStateChanged message is queued when the event is created.
+        assert_eq!(h.ipc.service_event_signaled(ev), Some(true));
+        let r = call(&mut h, 1, 4);
+        assert_eq!((r.result, r.u32(0)), (0, MESSAGE_FOCUS_STATE_CHANGED));
         assert_eq!(h.ipc.service_event_signaled(ev), Some(false));
 
         // Empty queue: ResultNoMessages, which appletMainLoop treats as "keep running".

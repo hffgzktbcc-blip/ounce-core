@@ -282,7 +282,7 @@ pub enum Instruction {
     },
 
     /// Floating-Point 1-Source: `FMOV`/`FABS`/`FNEG`/`FSQRT Dd/Sd, Dn/Sn` (op 0..3) and
-    /// `FCVT` (op 4: single to double, op 5: double to single)
+    /// `FCVT` (op 5 with single input: to double; op 4 with double input: to single)
     FpData1 {
         rd: u8,
         rn: u8,
@@ -310,6 +310,16 @@ pub enum Instruction {
     },
 
     /// Floating-Point Conditional Select: `FCSEL Dd/Sd, Dn/Sn, Dm/Sm, cond`
+    /// Floating-Point 3-Source: `FMADD`/`FMSUB`/`FNMADD`/`FNMSUB Fd, Fn, Fm, Fa` (op = o1:o0, fused)
+    FpData3 {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        ra: u8,
+        op: u8,
+        is_double: bool,
+    },
+
     FpCondSelect {
         rd: u8,
         rn: u8,
@@ -323,6 +333,42 @@ pub enum Instruction {
         rn: u8,
         rm: u8,
         is_zero: bool,
+        is_double: bool,
+    },
+
+    /// Scalar `SCVTF` / `UCVTF Sd/Dd, Sn/Dn`: the source is an integer held in a SIMD register
+    ScalarIntToFloat {
+        rd: u8,
+        rn: u8,
+        unsigned: bool,
+        is_double: bool,
+    },
+
+    /// Scalar `FCVTZS` / `FCVTZU Sd/Dd, Sn/Dn`: float to integer (toward zero, saturating) kept in a SIMD register
+    ScalarFloatToInt {
+        rd: u8,
+        rn: u8,
+        unsigned: bool,
+        is_double: bool,
+    },
+
+    /// Fixed-point conversions: `FCVTZS`/`FCVTZU Rd, Fn, #fbits` (to_int) and `SCVTF`/`UCVTF Fd, Rn, #fbits`
+    FpFixedConv {
+        rd: u8,
+        rn: u8,
+        fbits: u8,
+        to_int: bool,
+        unsigned: bool,
+        is_double: bool,
+        is_64: bool,
+    },
+
+    /// Floating-Point Conditional Compare: `FCCMP{E} Dn/Sn, Dm/Sm, #nzcv, cond`
+    FpCondCompare {
+        rn: u8,
+        rm: u8,
+        nzcv: u8,
+        cond: Condition,
         is_double: bool,
     },
 
@@ -362,6 +408,15 @@ pub enum Instruction {
         is_64: bool,
     },
 
+    /// `CRC32{B,H,W,X}` / `CRC32C{B,H,W,X}`: `size` is log2 of the data bytes (0..=3)
+    Crc32 {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        size: u8,
+        castagnoli: bool,
+    },
+
     /// Variable Shift (`LSLV`, `LSRV`, `ASRV`, `RORV`)
     ShiftReg {
         rd: u8,
@@ -395,6 +450,31 @@ pub enum Instruction {
         size_bytes: u8,
         is_load: bool,
         is_exclusive: bool,
+    },
+
+    /// ARMv8.1-A Compare and Swap Single Register (`CAS`, `CASA`, `CASL`, `CASAL`)
+    CompareAndSwap {
+        rs: u8, // Expected value in register Rs; updated with old memory value
+        rt: u8, // New value to store if memory matches Rs
+        rn: u8, // Base address register
+        size_bytes: u8, // 1, 2, 4, or 8
+    },
+
+    /// ARMv8.1-A Atomic Memory Operations (`LDADD`, `LDCLR`, `LDEOR`, `LDSET`, `LDSMAX`, `LDSMIN`, `LDUMAX`, `LDUMIN`, `SWP`, and `ST*` variants)
+    Atomic {
+        op: AtomicOp,
+        rs: u8, // Value operand from register Rs
+        rt: u8, // Destination register receiving previous memory value (31 = discarded / ST* variant)
+        rn: u8, // Base address register
+        size_bytes: u8, // 1, 2, 4, or 8
+    },
+
+    /// ARMv8.1-A Compare and Swap Pair (`CASP`, `CASPA`, `CASPL`, `CASPAL`)
+    CompareAndSwapPair {
+        rs: u8, // Expected pair in Rs, Rs+1; updated with old memory values
+        rt: u8, // New pair to store if memory matches
+        rn: u8, // Base address register
+        size_bytes: u8, // 4 (for 32-bit registers, 8 bytes total) or 8 (for 64-bit registers, 16 bytes total)
     },
 
     /// SIMD&FP Load / Store Pair: `LDP/STP St/Dt/Qt, St2/Dt2/Qt2, [Xn, #offset]` (also `LDNP/STNP`)
@@ -639,6 +719,10 @@ pub enum FpOp2 {
     Fsub,
     Fmax,
     Fmin,
+    Fmaxnm,
+    Fminnm,
+    /// `FNMUL`: -(n * m)
+    Fnmul,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -729,4 +813,18 @@ pub enum SimdPermuteOp {
     Trn2,
     Zip1,
     Zip2,
+}
+
+/// ARMv8.1-A Large System Extension (LSE) Atomic Memory Operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtomicOp {
+    Add,  // LDADD / STADD
+    Clr,  // LDCLR / STCLR
+    Eor,  // LDEOR / STEOR
+    Set,  // LDSET / STSET
+    Smax, // LDSMAX / STSMAX
+    Smin, // LDSMIN / STSMIN
+    Umax, // LDUMAX / STUMAX
+    Umin, // LDUMIN / STUMIN
+    Swp,  // SWP
 }

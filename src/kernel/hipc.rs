@@ -156,7 +156,19 @@ pub fn read_domain_header(mmu: &Memory, addr: u64) -> DomainHeader {
 }
 
 /// Writes a CMIF response at `base`. Returns the offset of the `SFCO` header.
+/// `OUNCE_POISON_TLS=1`: before a reply is written, fill the message area with `0xDEAD0000 | offset` so a guest read of a
+/// field the reply never wrote shows up as a poison value (and which offset it was) instead of stale request bytes.
+pub fn poison_reply_area(mmu: &mut Memory, base: u64) {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ON.get_or_init(|| std::env::var_os("OUNCE_POISON_TLS").is_some()) {
+        for off in (8..0x100u64).step_by(4) {
+            let _ = mmu.write_u32(base + off, 0xDEAD_0000 | off as u32);
+        }
+    }
+}
+
 pub fn write_response(mmu: &mut Memory, base: u64, resp: &Response) -> u64 {
+    poison_reply_area(mmu, base);
     let special = !resp.copy_handles.is_empty() || !resp.move_handles.is_empty();
     let mut off = 8u64;
     if special {

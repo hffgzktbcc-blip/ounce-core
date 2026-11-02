@@ -57,8 +57,20 @@ pub struct NvMapObject {
     pub addr: u64,
 }
 
+/// Which GPU the driver reports to the guest.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum GpuPersona {
+    /// Tegra X1 (GM20B), what original Switch software expects.
+    #[default]
+    Maxwell,
+    /// Tegra T239 (GA10F, Ampere), what Switch 2 software expects.
+    Ampere,
+}
+
 #[derive(Debug, Default)]
 pub struct NvDrv {
+    /// The GPU reported by `GET_CHARACTERISTICS`.
+    pub persona: GpuPersona,
     /// Open device files: fd -> device path.
     pub fds: HashMap<u32, String>,
     next_fd: u32,
@@ -357,14 +369,14 @@ impl NvDrv {
             "/dev/nvmap" => self.nvmap_ioctl(request, data),
             "/dev/nvhost-ctrl" => self.ctrl_ioctl(request, data),
             "/dev/nvhost-ctrl-gpu" => self.ctrl_gpu_ioctl(request, data, extra),
-            "/dev/nvhost-as-gpu" => self.as_gpu_ioctl(request, data),
+            "/dev/nvhost-as-gpu" => self.as_gpu_ioctl(request, data, extra),
             "/dev/nvhost-gpu" => self.channel_ioctl(fd, request, data, extra),
             _ => None,
         };
         if let Some(status) = status {
             return status;
         }
-        eprintln!("[nvdrv] ioctl 0x{request:08X} on {path} not implemented");
+        eprintln!("[nvdrv] ioctl 0x{request:08X} (nr {:#x}, size {:#x}) on {path} not implemented; input {:02X?}", request & 0xFF, ioctl_size(request), &data[..data.len().min(32)]);
         self.unhandled.push((path, request));
         NV_NOT_IMPLEMENTED
     }
@@ -515,7 +527,10 @@ impl NvDrv {
             0x03 | 0x04 => NV_OK,
             // GET_CHARACTERISTICS { u64 buf_size (inout); u64 buf_addr; characteristics }
             0x05 => {
-                let gc = gpu_characteristics();
+                let gc = match self.persona {
+                    GpuPersona::Maxwell => gpu_characteristics(),
+                    GpuPersona::Ampere => gpu_characteristics_ga10f(),
+                };
                 wr64(data, 0, gc.len() as u64);
                 if let Some(dst) = data.get_mut(0x10..0x10 + gc.len()) {
                     dst.copy_from_slice(&gc);
@@ -538,6 +553,16 @@ impl NvDrv {
                 }
                 NV_OK
             }
+            // NUM_VSMS { u32 num_vsms; u32 reserved; }: streaming multiprocessors on the GPU (6 TPCs x 2 SMs on T239)
+            0x13 => {
+                wr32(data, 0, 12);
+                NV_OK
+            }
+            // GET_ENGINE_INFO { u32 buf_size (inout); u32 reserved; u64 buf_addr }: engines are not modelled yet, so none are listed
+            0x1F => {
+                wr32(data, 0, 0);
+                NV_OK
+            }
             // ZBC_GET_ACTIVE_SLOT_MASK { u32 slot; u32 mask; }
             0x14 => {
                 wr32(data, 0, 7);
@@ -555,7 +580,7 @@ impl NvDrv {
     }
 
     /// `/dev/nvhost-as-gpu` (type 'A'): the GPU virtual address space.
-    fn as_gpu_ioctl(&mut self, request: u32, data: &mut [u8]) -> Option<u32> {
+    fn as_gpu_ioctl(&mut self, request: u32, data: &mut [u8], extra: IoctlExtra) -> Option<u32> {
         if (request >> 8) & 0xFF != 0x41 {
             return None;
         }
@@ -622,12 +647,19 @@ impl NvDrv {
             // GET_VA_REGIONS { u64 unused; u32 buf_size (inout); u32 pad; va_region regions[2]; }
             0x08 => {
                 wr32(data, 8, 0x30);
-                // Small pages (4 KiB) and big pages (128 KiB), each { u64 offset; u32 page_size; u32 pad; u64 pages; }
-                for (i, (offset, page, pages)) in [(GPU_VA_BASE, 0x1000u32, 0x3FFF_Fu64), (0x10_0000_0000, 0x2_0000, 0x7_FFFF)].iter().enumerate() {
+                // A unified address space (no separate big-page region): small pages over [128 MiB, 768 GiB), where the
+                // client's own VA allocator reserves its ranges; the big-page region is empty,
+                // each { u64 offset; u32 page_size; u32 pad; u64 pages; }
+                for (i, (offset, page, pages)) in [(0x0800_0000, 0x1000u32, (0xC0_0000_0000 - 0x0800_0000) / 0x1000), (0xC0_0000_0000, 0x1_0000, 0)].iter().enumerate() {
                     let at = 16 + i * 24;
                     wr64(data, at, *offset);
                     wr32(data, at + 8, *page);
                     wr64(data, at + 16, *pages);
+                }
+                // `Ioctl3` clients pass the region array in their own output buffer: fill it too.
+                if let Some(out) = extra.outbuf {
+                    let n = out.len().min(0x30);
+                    out[..n].copy_from_slice(&data[16..16 + n]);
                 }
                 NV_OK
             }
@@ -741,9 +773,69 @@ pub fn gpu_characteristics() -> Vec<u8> {
     b
 }
 
+/// `nvioctl_gpu_characteristics` (208 bytes) for the Tegra T239 Ampere GPU (`ga10f`): `arch` 0x170, `impl` 0xE,
+/// 6 TPCs (12 SMs) of SM 8.6, 4 MiB L2, and the public Ampere class IDs (`AMPERE_B` 0xC797, `AMPERE_COMPUTE_B` 0xC7C0,
+/// `AMPERE_CHANNEL_GPFIFO_B` 0xC76F, `AMPERE_DMA_COPY_B` 0xC7B5).
+/// Page sizes the Ampere persona reports (64 KiB, 128 KiB). The client intersects this with the driver's own mask
+/// (4 KiB, 64 KiB, 2 MiB) and treats three or more common sizes as an error.
+const SUPPORTED_PAGE_SIZES: u32 = 0x3_0000;
+/// Highest ioctl number reported for each GPU device node by the Ampere persona.
+const API_LEVEL: u32 = 0x40;
+
+pub fn gpu_characteristics_ga10f() -> Vec<u8> {
+    let mut b = Vec::with_capacity(0xA0);
+    let w32 = |b: &mut Vec<u8>, v: u32| b.extend_from_slice(&v.to_le_bytes());
+    let w64 = |b: &mut Vec<u8>, v: u64| b.extend_from_slice(&v.to_le_bytes());
+    for v in [0x170, 0xE, 0xA1, 0x1] {
+        w32(&mut b, v); // arch, impl, rev, num_gpc
+    }
+    w64(&mut b, 0x40_0000); // L2 cache size
+    w64(&mut b, 0); // unified memory: no on-board video memory
+    for v in [0x6, 0x20, 0, 0x10000, 0x1B, SUPPORTED_PAGE_SIZES, 0x1, 0x808, 0x806, 0x30, 0x2C, 0] {
+        w32(&mut b, v); // num_tpc_per_gpc, bus, big page size (0: unified address space, no big pages), compression page size, PDE bits, supported page sizes, .., SM versions, warps
+    }
+    w64(&mut b, 0x5D_FFDF); // flags
+    for v in [0x902D, 0xC797, 0xC7C0, 0xC76F, 0xA140, 0xC7B5] {
+        w32(&mut b, v); // 2D, 3D, compute, GPFIFO, I2M, DMA copy classes
+    }
+    // Interface levels (highest ioctl number each device node supports, s16 pairs): the client requires minimum
+    // levels per feature and treats a lower level as an unsupported GPU. Then the VA bit count and masks.
+    for v in [API_LEVEL | API_LEVEL << 16, API_LEVEL | API_LEVEL << 16, API_LEVEL | 40 << 16, 0x4, 0x0, 0x1, 0x21D70, 0x0] {
+        w32(&mut b, v);
+    }
+    w64(&mut b, 0x0000_0066_3031_6167); // chipname "ga10f"
+    w64(&mut b, 0); // gr_compbit_store_base_hw
+    // Fields of the 208-byte layout: gobs per comptagline, LTC count, LTS per LTC, CBC line size, comptags per line,
+    // map-buffer batch limit (the client requires it nonzero and at most 0x40), then the maximum clock in Hz.
+    for v in [0, 4, 2, 0, 0, 0x20] {
+        w32(&mut b, v);
+    }
+    w64(&mut b, 1_300_000_000);
+    b.resize(0xD0, 0);
+    b
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ampere_persona_reports_the_t239_gpu() {
+        let mut nv = NvDrv::new();
+        nv.persona = GpuPersona::Ampere;
+        let (fd, _) = nv.open("/dev/nvhost-ctrl-gpu");
+        let mut data = vec![0u8; 0xE0];
+        assert_eq!(nv.ioctl(fd, 0xC0E0_4705, &mut data), NV_OK);
+        assert_eq!(rd32(&data, 0x10), 0x170);
+        assert_eq!(rd32(&data, 0x14), 0xE);
+        assert_eq!(i16::from_le_bytes([data[0x10 + 0x78], data[0x10 + 0x79]]), 0x40, "as_ioctl level");
+        assert_eq!(rd32(&data, 0x10 + 0xB4), 0x20, "map-buffer batch limit");
+        let mut maxwell = NvDrv::new();
+        let (fd, _) = maxwell.open("/dev/nvhost-ctrl-gpu");
+        let mut data = vec![0u8; 0xE0];
+        assert_eq!(maxwell.ioctl(fd, 0xC0E0_4705, &mut data), NV_OK);
+        assert_eq!(rd32(&data, 0x10), 0x120);
+    }
 
     #[test]
     fn nvmap_lifecycle() {
