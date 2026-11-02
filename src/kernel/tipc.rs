@@ -25,6 +25,27 @@ pub const SELF_CONTROLLER_497: &str = "ISelfController 2000 / 497";
 /// Name of the session command 305 of that interface returns.
 pub const SELF_CONTROLLER_305: &str = "ISelfController 2000 / 305";
 
+/// Display slots the presentation queue offers; the client dequeues the lowest free one.
+pub const DISPLAY_SLOTS: u32 = 3;
+
+/// Images created through the graphics session and the display session's presentation queue.
+#[derive(Debug, Default)]
+pub struct DisplayState {
+    /// Images created by command 111 of the graphics session (ids start at 1).
+    pub images: u32,
+    /// Display slots currently queued for presentation (bit per slot).
+    pub queued: u64,
+    /// Present requests (command 229) accepted so far.
+    pub presents: u64,
+}
+
+impl DisplayState {
+    /// Slots the client may dequeue: every slot not queued for presentation.
+    pub fn free_slots(&self) -> u64 {
+        ((1u64 << DISPLAY_SLOTS) - 1) & !self.queued
+    }
+}
+
 /// Memory for a block-linear image whose packed size word holds width - 1 (low 16 bits) and height - 1 (high 16 bits),
 /// at 4 bytes per pixel.
 pub fn native_image_size(packed: u32) -> u64 {
@@ -161,13 +182,27 @@ impl IpcManager {
                 let _ = mmu.write_u32(tls + 12, MAX_SESSIONS - 1);
                 0
             }
-            // Command 212 takes a name-sized argument block and returns a u64 the client stores.
+            // Command 212 takes the layer id and returns a u64 bitmask of free presentation slots. The client takes the
+            // lowest bit it has not already dequeued and waits (1 s timeout per try) while none is free.
             (ServiceType::Tipc(SELF_CONTROLLER_305), 212) => {
-                let _ = mmu.write_u32(tls, 0);
-                let _ = mmu.write_u32(tls + 4, 3);
-                let _ = mmu.write_u32(tls + 8, 0);
-                let _ = mmu.write_u64(tls + 12, 0);
-                0
+                let free = self.display.free_slots();
+                self.tipc_reply_words(tls, mmu, &[free as u32, (free >> 32) as u32])
+            }
+            // Command 229 presents: layer id (u64), a flag byte, a u32, a 64-byte block and 16 bytes. The reply carries a
+            // u64 and 16 bytes.
+            (ServiceType::Tipc(SELF_CONTROLLER_305), 229) => {
+                self.display.presents += 1;
+                if std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+                    eprintln!("[IPC] present #{}: {words:08X?}", self.display.presents);
+                }
+                self.tipc_reply_words(tls, mmu, &[0; 6])
+            }
+            // Command 111 creates an image memory object (kind, u64 size) and returns its id, which commands 423 and 315
+            // take as their first argument.
+            (ServiceType::Tipc(SELF_CONTROLLER_SESSION), 111) => {
+                self.display.images += 1;
+                let id = self.display.images;
+                self.tipc_reply_words(tls, mmu, &[id])
             }
             // Command 22 returns the GPU memory session (move handle): the client sends it memory commands
             // (101 create GPU-accessible memory, 211 map, ...).

@@ -108,6 +108,22 @@ pub fn three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -
             SimdOp3::Umin | SimdOp3::Uminp => a.min(b),
             SimdOp3::Smax | SimdOp3::Smaxp => sa.max(sb) as u64,
             SimdOp3::Smin | SimdOp3::Sminp => sa.min(sb) as u64,
+            SimdOp3::Mul => a.wrapping_mul(b) & all,
+            // The shift is the signed low byte of each `m` lane: positive shifts left, negative shifts right
+            // (arithmetic for SSHL, logical for USHL).
+            SimdOp3::Sshl | SimdOp3::Ushl => {
+                let shift = b as u8 as i8 as i32;
+                let width = esize as i32;
+                if shift >= 0 {
+                    if shift >= width { 0 } else { (a << shift) & all }
+                } else if op == SimdOp3::Sshl {
+                    (sa >> (-shift).min(width - 1)) as u64 & all
+                } else if -shift >= width {
+                    0
+                } else {
+                    a >> -shift
+                }
+            }
             _ => unreachable!("bitwise ops return above"),
         };
         set_lane(&mut out, esize, i, r);
@@ -211,6 +227,19 @@ mod tests {
         set_lane(&mut v, 16, 7, 0xBEEF);
         assert_eq!(lane(v, 16, 7), 0xBEEF);
         assert_eq!(v >> 112, 0xBEEF);
+    }
+
+    #[test]
+    fn register_shifts_and_mul() {
+        // Lanes (2S): n = [0x8000_0001, 0x10], shifts m = [1, -4].
+        let n = 0x10u128 << 32 | 0x8000_0001;
+        let m = (0xFCu128) << 32 | 1;
+        assert_eq!(three_same(SimdOp3::Ushl, 0, n, m, 32, false), 0x1u128 << 32 | 2);
+        let sm = (0xFFu128) << 32 | 0xFF; // both lanes shift right by 1
+        assert_eq!(three_same(SimdOp3::Sshl, 0, n, sm, 32, false), 0x8u128 << 32 | 0xC000_0000);
+        assert_eq!(three_same(SimdOp3::Ushl, 0, n, sm, 32, false), 0x8u128 << 32 | 0x4000_0000);
+        assert_eq!(three_same(SimdOp3::Ushl, 0, n, 32, 32, false) & 0xFFFF_FFFF, 0);
+        assert_eq!(three_same(SimdOp3::Mul, 0, 0x0003_0002, 0x0005_8001, 16, false), 0x000F_0002);
     }
 
     #[test]
