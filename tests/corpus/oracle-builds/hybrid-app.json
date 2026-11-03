@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/fincs/hybrid_app.git",
+  "revision": "8c43d74b41740703b732783fa35f9d3fa63d1b2e",
+  "status": "step-2-oracle-corpus",
+  "upstream_terms": "zlib License (COPYING).",
+  "samples": [
+    {
+      "id": "hybrid-app",
+      "path": "."
+    }
+  ]
+}
