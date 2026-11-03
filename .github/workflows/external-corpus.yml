@@ -364,6 +364,8 @@ jobs:
         with:
           name: first-frame-oracles
           path: ${{ runner.temp }}/ounce-oracle-evidence/
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload Ounce-Verify canonical report
         if: always()
@@ -373,5 +375,3 @@ jobs:
           path: ${{ runner.temp }}/ounce-oracle-evidence/canonical-report.json
           if-no-files-found: error
           retention-days: 90
-          if-no-files-found: warn
-          retention-days: 30
