@@ -1,0 +1,21 @@
+{
+  "note": "Observed verdicts of tests/corpus/oracles.json, copied from CI (see docs/corpus-oracles.md). not-run = no CI run yet. A recorded pass is a ratchet: CI fails if it stops passing.",
+  "results": {
+    "printing-hello-world": "not-run",
+    "vt52-demo": "not-run",
+    "read-controls": "not-run",
+    "touch-screen": "not-run",
+    "sixaxis": "not-run",
+    "audren-simple": "not-run",
+    "get-system-language": "not-run",
+    "barrier": "not-run",
+    "user-events": "not-run",
+    "user-timers": "not-run",
+    "deko-console": "not-run",
+    "deko-examples-menu": "not-run",
+    "sdl2-simple": "not-run",
+    "raufang-hello-cpp": "not-run",
+    "nx-hbmenu": "not-run",
+    "hybrid-app": "not-run"
+  }
+}

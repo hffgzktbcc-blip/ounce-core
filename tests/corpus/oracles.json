@@ -529,7 +529,7 @@
     {
       "id": "raufang-hello-cpp",
       "build": "raufang-switch-hello-world",
-      "nro": "switch-hello-world.nro",
+      "nro": "source.nro",
       "source": "source/main.cpp",
       "queued_frames": 5,
       "checks": [
@@ -560,7 +560,7 @@
     {
       "id": "nx-hbmenu",
       "build": "nx-hbmenu",
-      "nro": "nx-hbmenu.nro",
+      "nro": "source.nro",
       "source": "common/menu.c, common/theme.c, nx_main/main.c",
       "queued_frames": 1,
       "checks": [
