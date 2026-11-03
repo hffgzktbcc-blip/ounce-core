@@ -14,25 +14,9 @@
 
 # Agent rules for `ounce-core`
 
-Short on purpose: every agent loads this file at session start. Read `HANDOFF.md` next (mission, next work, toolbox). Past handoffs are in `docs/HANDOFF_HISTORY.md`; grep it for the entry you need, don't read it whole.
+Short on purpose: every agent loads this file at session start. The plan is [`PLAN.md`](PLAN.md); finished milestones and past handoffs are history in `docs/HANDOFF_HISTORY.md` (grep it only when a step needs it).
 
-## Finish line 1: MET 2026-11-01
-
-An **unmodified upstream homebrew sample shows correct pixels**: switchbrew/switch-examples `graphics/simplegfx` (pinned in `tests/corpus/manifest.json`) passes all six criteria in `docs/first-frame-oracle.md`: reproducible build, no libnx fatal at `framebufferCreate`, frames 1 and 2 captured from the submitted VI buffer match the oracle hashes for all 921,600 pixels, frame 61 is all zero, interpreter and Tier-3 agree, and the guest stops cleanly.
-
-## Finish line 2: MET 2026-11-01
-
-An unmodified upstream 3D GPU deko3d sample shows correct rendered frames: `graphics/deko3d/deko_basic` (pinned in `tests/corpus/manifest.json`) passes all seven criteria in `docs/deko-basic-oracle.md`. Merged in PR #121 with all 13 CI checks passing, verified bit-exact on both Interpreter and Tier-3 JIT engines, rendering the interpolated triangle with correct block-linear detiling.
-
-## Finish line 3: MET 2026-11-01
-
-An unmodified upstream filesystem and console sample shows correct rendered text frames: `fs/romfs` (pinned in `tests/corpus/manifest.json`) passes all criteria in `docs/romfs-oracle.md`. Merged in PR #123 with all 13 CI checks passing, verifying RomFS Unicode/ASCII asset reading, libnx default console text display, R5G6B5Unorm surface decoding, and bit-exact agreement between Interpreter and Tier-3 JIT engines.
-
-## Finish line 4: MET 2026-11-01
-
-An unmodified upstream startup application sample shows correct rendered text frames: `templates/application` (pinned in `tests/corpus/manifest.json`) passes all criteria in `docs/startup-oracle.md`. Merged in PR #125 with all CI checks passing, verifying default text console display and bit-exact agreement between Interpreter and Tier-3 JIT engines.
-
-**Outside samples with a verified frame: 4** (`simplegfx`, `deko_basic`, `romfs`, `startup`).
+**Outside samples with a verified frame: 4** (`simplegfx`, `deko_basic`, `romfs`, `startup`; oracles in `docs/*-oracle.md`).
 
 ## How we work
 - The owner's goal is our goal: a working, high-performance runtime for open-source Switch homebrew, where every claim rests on a real program's frame.
