@@ -281,8 +281,6 @@ jobs:
     timeout-minutes: 150
     env:
       CARGO_TERM_COLOR: never
-      ORACLE_BUILDS: ${{ runner.temp }}/ounce-oracle-builds
-      EVIDENCE_ROOT: ${{ runner.temp }}/ounce-oracle-evidence
     steps:
       - uses: actions/checkout@v4
         with:
@@ -305,6 +303,7 @@ jobs:
       - name: Build unchanged corpus programs with devkitA64
         run: |
           set -euo pipefail
+          ORACLE_BUILDS="$RUNNER_TEMP/ounce-oracle-builds" EVIDENCE_ROOT="$RUNNER_TEMP/ounce-oracle-evidence"
           df -h "$RUNNER_TEMP"
           mkdir -p "$ORACLE_BUILDS" "$EVIDENCE_ROOT"
           docker pull devkitpro/devkita64:latest
@@ -342,7 +341,7 @@ jobs:
           assert len(paths) == 1, paths
           print(paths.pop())' "$RUNNER_TEMP/ounce-oracle-test-build.jsonl")
           python3 scripts/run_corpus_oracles.py --executable "$executable" \
-            --builds "$ORACLE_BUILDS" --evidence "$EVIDENCE_ROOT" --seconds 180
+            --builds "$RUNNER_TEMP/ounce-oracle-builds" --evidence "$RUNNER_TEMP/ounce-oracle-evidence" --seconds 180
 
       - name: Retain oracle evidence (no upstream source or NRO binaries)
         if: always()
