@@ -102,6 +102,13 @@ change. A PR that breaks one is rejected.
       *Done when:* the first outside Switch 2 homebrew program passes its oracle in CI.
       Commercial Switch 2 games never enter this repo.
 
+- [ ] **9. Make the unique parts visible.** Only after step 1 has made the README honest:
+      - a README section (or blog post) on the pre-registered pixel-oracle method: expected frames fixed before
+        the run, CI fails on a single pixel, interpreter and JIT must agree bit for bit;
+      - a short note on the safe-Rust design, and where `unsafe` is now allowed (porting, native execution);
+      - badges or a small table: oracle pass count, CI status on all three OSes, the safe-Rust status.
+      *Done when:* each claim links to its CI run or oracle file, and nothing claims more than the evidence shows.
+
 ## How we work (what got us unstuck)
 - **Single source of truth:** this file. Agents' own notes and handoffs are history, not plans.
 - **Real frames only:** pixel oracles in CI decide progress.
