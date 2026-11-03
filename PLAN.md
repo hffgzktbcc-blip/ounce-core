@@ -96,7 +96,7 @@ change. A PR that breaks one is rejected.
 - [ ] **5. SASS accuracy from NAK.** Audit `src/gpu/sass` decoding against NAK's documented Turing/Ampere
       encodings (port NAK code where it fits, notice kept). Translate to WGSL via naga where that removes hand-written code.
       *Done when:* corpus programs with shaders pass, and no oracle regresses.
-- [ ] **6. Merge #115** (texture mips/LOD/bias/clamp) once a corpus program needs it and its oracle passes.
+- [x] **6. Merge #115** (texture mips/LOD/bias/clamp). DONE 2026-11-03 by owner decision, ahead of a corpus program needing it: merged for release v0.4.0 (cb24c76, CI green).
 - [ ] **7. Corpus 20 → 50**, then repeat step 3. The metric keeps climbing in public.
 - [ ] **8. Switch 2 homebrew.** As soon as public, open-source tools can build Switch 2 ("Ounce") homebrew, add
       those programs to the corpus with pre-registered oracles, exactly like step 2. Prepare in the meantime by
