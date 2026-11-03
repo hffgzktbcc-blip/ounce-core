@@ -442,3 +442,22 @@ Moved out of `AGENTS.md` on 2026-11-01 to keep the session-start file small. Rea
   - UNVERIFIED: XMAD CHI signedness, Ampere PLOP3 negate bits (negated inputs are rejected). WGSL float compares on NaN are approximate.
   - For the GPU thread: `render.rs` now runs the fragment shader before depth/stencil when `ps.func.discard` is set, and counts `RenderStats.discarded_fragments`. Please keep that path when editing the pixel loop.
   - Still rejected: loops (backward BRA, PCNT/CONT), SHFL, memory ops, Ampere KILL (no public word to check), Maxwell IADD3, 64-bit SHF, carry chains.
+
+## Finish lines 1-4 (moved from AGENTS.md, 2026-11-03)
+
+### Finish line 1: MET 2026-11-01
+
+An **unmodified upstream homebrew sample shows correct pixels**: switchbrew/switch-examples `graphics/simplegfx` (pinned in `tests/corpus/manifest.json`) passes all six criteria in `docs/first-frame-oracle.md`: reproducible build, no libnx fatal at `framebufferCreate`, frames 1 and 2 captured from the submitted VI buffer match the oracle hashes for all 921,600 pixels, frame 61 is all zero, interpreter and Tier-3 agree, and the guest stops cleanly.
+
+### Finish line 2: MET 2026-11-01
+
+An unmodified upstream 3D GPU deko3d sample shows correct rendered frames: `graphics/deko3d/deko_basic` (pinned in `tests/corpus/manifest.json`) passes all seven criteria in `docs/deko-basic-oracle.md`. Merged in PR #121 with all 13 CI checks passing, verified bit-exact on both Interpreter and Tier-3 JIT engines, rendering the interpolated triangle with correct block-linear detiling.
+
+### Finish line 3: MET 2026-11-01
+
+An unmodified upstream filesystem and console sample shows correct rendered text frames: `fs/romfs` (pinned in `tests/corpus/manifest.json`) passes all criteria in `docs/romfs-oracle.md`. Merged in PR #123 with all 13 CI checks passing, verifying RomFS Unicode/ASCII asset reading, libnx default console text display, R5G6B5Unorm surface decoding, and bit-exact agreement between Interpreter and Tier-3 JIT engines.
+
+### Finish line 4: MET 2026-11-01
+
+An unmodified upstream startup application sample shows correct rendered text frames: `templates/application` (pinned in `tests/corpus/manifest.json`) passes all criteria in `docs/startup-oracle.md`. Merged in PR #125 with all CI checks passing, verifying default text console display and bit-exact agreement between Interpreter and Tier-3 JIT engines.
+
