@@ -199,7 +199,7 @@ fn synthetic_roundtrip_graphics_ops() {
         decode(asm::ipa(1, 0x84, 1, 4)).unwrap().instr,
         Instr::Ipa { dst: 1, addr: 0x84, freq: IpaFreq::PassMulW, mul: 4 }
     );
-    assert_eq!(decode(asm::ldc(3, 1, 0x20)).unwrap().instr, Instr::Ldc { dst: 3, bank: 1, offset: 0x20 });
+    assert_eq!(decode(asm::ldc(3, 1, 0x20)).unwrap().instr, Instr::Ldc { dst: 3, bank: 1, offset: 0x20, reg: RZ });
     assert_eq!(decode(asm::nop()).unwrap().to_string(), "NOP");
     assert_eq!(decode(asm::ffma_cb(4, 1, 0, 0x10, 4)).unwrap().to_string(), "FFMA R4, R1, c[0x0][0x10], R4");
 }

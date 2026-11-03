@@ -106,9 +106,15 @@ impl Surface {
         (self.width.div_ceil(bw), self.height.div_ceil(bh), self.depth)
     }
 
-    /// Bytes in one row of elements, without padding.
+    /// Bytes in one row of elements, without padding. Only meaningful for a surface that
+    /// passed [`Surface::validate`]; use [`Surface::checked_row_bytes`] on untrusted input.
     pub fn row_bytes(&self) -> u32 {
-        self.extent_elements().0 * self.format.bytes_per_element()
+        self.checked_row_bytes().unwrap_or(0)
+    }
+
+    /// Bytes in one row of elements, or `None` if the row does not fit in a `u32`.
+    pub fn checked_row_bytes(&self) -> Option<u32> {
+        self.extent_elements().0.checked_mul(self.format.bytes_per_element())
     }
 
     /// Block-linear geometry, or `None` for pitch surfaces.
@@ -126,9 +132,9 @@ impl Surface {
         if self.width == 0 || self.height == 0 || self.depth == 0 {
             return Err(TilingError::ZeroExtent);
         }
+        let row_bytes = self.checked_row_bytes().ok_or(TilingError::Overflow)?;
         match self.layout {
             Layout::Pitch { stride } => {
-                let row_bytes = self.row_bytes();
                 if stride < row_bytes {
                     return Err(TilingError::StrideTooSmall { stride, row_bytes });
                 }
@@ -137,6 +143,8 @@ impl Surface {
                 if height_log2 > MAX_BLOCK_LOG2 || depth_log2 > MAX_BLOCK_LOG2 {
                     return Err(TilingError::BlockLog2TooLarge { height_log2, depth_log2 });
                 }
+                // The padded row (whole GOBs) must also fit, so `BlockLinear::stride` holds.
+                row_bytes.div_ceil(GOB_WIDTH_BYTES).checked_mul(GOB_WIDTH_BYTES).ok_or(TilingError::Overflow)?;
             }
         }
         Ok(())
@@ -150,7 +158,10 @@ impl Surface {
             Layout::Pitch { stride } => {
                 let (_, rows, depth) = self.extent_elements();
                 let full_rows = (rows as u64) * (depth as u64) - 1;
-                let size = full_rows * stride as u64 + self.row_bytes() as u64;
+                let size = full_rows
+                    .checked_mul(stride as u64)
+                    .and_then(|bytes| bytes.checked_add(self.row_bytes() as u64))
+                    .ok_or(TilingError::Overflow)?;
                 usize::try_from(size).map_err(|_| TilingError::Overflow)
             }
             Layout::BlockLinear { .. } => {

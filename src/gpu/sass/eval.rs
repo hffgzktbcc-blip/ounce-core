@@ -75,7 +75,7 @@ pub fn op(op: &Op, v: &[u32]) -> Option<u32> {
     let fx = |val: super::ir::Value| f(v[val.0 as usize]);
     let b = |t: bool| t as u32;
     Some(match *op {
-        Op::Cbuf { .. } | Op::Attr { .. } | Op::Interp { .. } | Op::Tex { .. } | Op::Comp(..) => return None,
+        Op::Cbuf { .. } | Op::CbufIndexed { .. } | Op::Attr { .. } | Op::Interp { .. } | Op::Tex { .. } | Op::Comp(..) => return None,
         Op::Const(k) => k,
         Op::FNeg(a) => (-fx(a)).to_bits(),
         Op::FAbs(a) => fx(a).abs().to_bits(),

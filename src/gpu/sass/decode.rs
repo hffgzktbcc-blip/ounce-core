@@ -274,8 +274,8 @@ pub enum Instr {
     FMul { dst: u8, a: FSrc, b: FSrc, sat: bool, ftz: bool },
     FFma { dst: u8, a: FSrc, b: FSrc, c: FSrc, sat: bool, ftz: bool },
     Mufu { dst: u8, op: MufuOp, src: FSrc },
-    /// `LDC.32 Rd, c[bank][offset]` (register offset must be `RZ`).
-    Ldc { dst: u8, bank: u8, offset: u16 },
+    /// `LDC.32 Rd, c[bank][offset + reg]` (`reg == RZ` for unindexed).
+    Ldc { dst: u8, bank: u8, offset: u16, reg: u8 },
     /// `ALD Rd, a[addr]`, `comps` consecutive words into `Rd..`.
     Ald { dst: u8, addr: u16, comps: u8 },
     /// `AST a[addr], Rs`, `comps` consecutive words from `Rs..`.
@@ -396,9 +396,7 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
         0x94d => Instr::Exit,
         0x918 => Instr::Nop,
         0xb82 => {
-            if bits(w, 24, 32) as u8 != RZ {
-                return Err(unsup("LDC register offset"));
-            }
+            let r_off = bits(w, 24, 32) as u8;
             if bits(w, 73, 76) != 4 {
                 return Err(unsup("LDC size other than 32-bit"));
             }
@@ -406,7 +404,7 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
                 return Err(unsup("LDC addressing mode"));
             }
             match cbuf(w) {
-                Src::Cbuf { bank, offset } if offset % 4 == 0 => Instr::Ldc { dst, bank, offset },
+                Src::Cbuf { bank, offset } if offset % 4 == 0 => Instr::Ldc { dst, bank, offset, reg: r_off },
                 _ => return Err(unsup("unaligned LDC")),
             }
         }
@@ -808,7 +806,13 @@ impl fmt::Display for Decoded {
             Instr::FMul { dst, a, b, sat, ftz } => write!(f, "FMUL{} {}, {a}, {b}", m(sat, ftz), reg(dst)),
             Instr::FFma { dst, a, b, c, sat, ftz } => write!(f, "FFMA{} {}, {a}, {b}, {c}", m(sat, ftz), reg(dst)),
             Instr::Mufu { dst, op, src } => write!(f, "MUFU.{} {}, {src}", format!("{op:?}").to_uppercase(), reg(dst)),
-            Instr::Ldc { dst, bank, offset } => write!(f, "LDC {}, c[{bank:#x}][{offset:#x}]", reg(dst)),
+            Instr::Ldc { dst, bank, offset, reg: r_off } => {
+                if r_off == RZ {
+                    write!(f, "LDC {}, c[{bank:#x}][{offset:#x}]", reg(dst))
+                } else {
+                    write!(f, "LDC {}, c[{bank:#x}][{} + {offset:#x}]", reg(dst), reg(r_off))
+                }
+            }
             Instr::Ald { dst, addr, comps } => write!(f, "ALD.{comps} {}, a[{addr:#x}]", reg(dst)),
             Instr::Ast { src, addr, comps } => write!(f, "AST.{comps} a[{addr:#x}], {}", reg(src)),
             Instr::Ipa { dst, addr, freq, mul } => match freq {

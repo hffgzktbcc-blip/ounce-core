@@ -37,17 +37,20 @@ struct Limits {
     frames: usize,
     trace_entries: usize,
     debug_bytes: usize,
+    /// Stop after this many VI `QUEUE_BUFFER`s (0 = no limit). Every queued frame is captured.
+    queued_frames: u64,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Self { instructions: crate::NRO_INSTRUCTION_BUDGET, host_time: Duration::from_secs(10),
-            frames: 16, trace_entries: 256, debug_bytes: 8192 }
+            frames: 16, trace_entries: 256, debug_bytes: 8192, queued_frames: 0 }
     }
 }
 
 #[derive(Debug)]
 struct Report {
+    #[allow(dead_code)]
     requested_engine: Engine,
     actual_engine: Engine,
     stop: Stop,
@@ -58,17 +61,71 @@ struct Report {
     frames: usize,
     preemptions: usize,
     svcs: Vec<(u64, u16)>,
+    /// The last 32 SVCs (pc, id), oldest first.
+    last_svcs: std::collections::VecDeque<(u64, u16)>,
     debug_output: String,
     input_applied_at: Vec<usize>,
+    raw_frame: Option<RawFrameEvidence>,
+    /// One entry per VI `QUEUE_BUFFER`, captured right after the queue.
+    queued: Vec<QueuedFrame>,
+    first_present_diagnostic: Option<String>,
+    post_queue_diagnostic: Option<String>,
     // A report is an observation. A normal guest exit alone is not a compatibility verdict.
     compatibility: &'static str,
+}
+
+/// The submitted VI buffer right after the `index`-th queue (1-based).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct QueuedFrame {
+    index: u64,
+    width: usize,
+    height: usize,
+    /// `Frame::content_hash` (alpha forced to 0xFF by `frame_from_surface`).
+    rgba_fnv1a64: u64,
+    /// The pixel every pixel equals, if the frame is uniform.
+    uniform: Option<[u8; 4]>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RawFrameEvidence {
+    guest_addr: u64,
+    width: usize,
+    height: usize,
+    rgba_fnv1a64: u64,
+    non_black_pixels: usize,
+    center_rgba: Option<(u8, u8, u8, u8)>,
 }
 
 fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
     Report { requested_engine: engine, actual_engine: engine, stop,
         instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
-        preemptions: 0, svcs: Vec::new(), debug_output: String::new(),
-        input_applied_at: Vec::new(), compatibility: "not-assessed" }
+        preemptions: 0, svcs: Vec::new(), last_svcs: Default::default(), debug_output: String::new(),
+        input_applied_at: Vec::new(), raw_frame: None, queued: Vec::new(), first_present_diagnostic: None, post_queue_diagnostic: None, compatibility: "not-assessed" }
+}
+
+fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64) -> QueuedFrame {
+    let mut out = QueuedFrame { index, width: 0, height: 0, rgba_fnv1a64: 0, uniform: None, error: None };
+    let Some(submitted) = kernel.ipc.submitted_vi_surface() else {
+        out.error = Some("no resolvable VI submission".into());
+        return out;
+    };
+    let Some(surface) = submitted.tiling_surface() else {
+        out.error = Some(format!("unsupported descriptor: {submitted:?}"));
+        return out;
+    };
+    match crate::gpu::present::surface::frame_from_surface(mmu, submitted.guest_addr, &surface) {
+        Ok(frame) => {
+            let mut px = frame.rgba.chunks_exact(4);
+            let first: Option<[u8; 4]> = px.next().map(|p| p.try_into().unwrap());
+            out.uniform = first.filter(|f| px.all(|p| p == f));
+            out.width = frame.width;
+            out.height = frame.height;
+            out.rgba_fnv1a64 = frame.content_hash();
+        }
+        Err(error) => out.error = Some(format!("{error:?}")),
+    }
+    out
 }
 
 /// Run an already configured VM, retaining the real kernel dispatcher and scheduler.
@@ -132,6 +189,10 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
             if result.svcs.len() < limits.trace_entries {
                 result.svcs.push((cpu.regs.pc.saturating_sub(4), id));
             }
+            if result.last_svcs.len() == 32 {
+                result.last_svcs.pop_front();
+            }
+            result.last_svcs.push_back((cpu.regs.pc.saturating_sub(4), id));
             if id == 0x27 {
                 let available = limits.debug_bytes.saturating_sub(result.debug_output.len());
                 let mut bytes = vec![0; (cpu.regs.read_x(1).min(available as u64)) as usize];
@@ -154,10 +215,70 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                 SvcResult::Unhandled(id) => { result.stop = Stop::UnhandledSvc(id); break; }
                 SvcResult::PresentFrame => {
                     result.frames += 1;
-                    // Counts presentation requests only. There is no raw-frame capture/oracle yet.
+                    if result.first_present_diagnostic.is_none() {
+                        result.first_present_diagnostic = Some(match kernel.ipc.submitted_vi_surface() {
+                            None => format!("svc={id:#x}: no resolvable VI submission; {}",
+                                kernel.ipc.vi_submission_diagnostic()),
+                            Some(submitted) => match submitted.tiling_surface() {
+                                None => format!("svc={id:#x}: unsupported or out-of-bounds descriptor: {submitted:?}"),
+                                Some(surface) => match crate::gpu::present::surface::frame_from_surface(
+                                    &mmu, submitted.guest_addr, &surface) {
+                                    Ok(_) => format!("svc={id:#x}: extracted {submitted:?}"),
+                                    Err(error) => format!("svc={id:#x}: extraction failed: {error:?}; {submitted:?}"),
+                                },
+                            },
+                        });
+                    }
+                    if let Some(submitted) = kernel.ipc.submitted_vi_surface()
+                        && let Some(surface) = submitted.tiling_surface()
+                        && let Ok(frame) = crate::gpu::present::surface::frame_from_surface(
+                            &mmu, submitted.guest_addr, &surface)
+                    {
+                        result.raw_frame = Some(RawFrameEvidence {
+                            guest_addr: submitted.guest_addr,
+                            width: frame.width,
+                            height: frame.height,
+                            rgba_fnv1a64: frame.content_hash(),
+                            non_black_pixels: frame.rgba.chunks_exact(4)
+                                .filter(|pixel| pixel[..3] != [0, 0, 0]).count(),
+                            center_rgba: frame.pixel(frame.width / 2, frame.height / 2),
+                        });
+                    }
                     if result.frames >= limits.frames { result.stop = Stop::FrameLimit; break 'run; }
                 }
             }
+        }
+        let queued = kernel.ipc.vi_frames_queued();
+        if queued > result.queued.len() as u64 {
+            result.queued.push(capture_queued(&kernel, &mmu, queued));
+            if limits.queued_frames != 0 && queued >= limits.queued_frames {
+                result.stop = Stop::FrameLimit;
+                break;
+            }
+        }
+        if result.post_queue_diagnostic.is_none()
+            && let Some(submitted) = kernel.ipc.submitted_vi_surface()
+        {
+            result.post_queue_diagnostic = Some(match submitted.tiling_surface() {
+                None => format!("unsupported or out-of-bounds descriptor: {submitted:?}"),
+                Some(surface) => match crate::gpu::present::surface::frame_from_surface(
+                    &mmu, submitted.guest_addr, &surface) {
+                    Ok(frame) => {
+                        result.raw_frame = Some(RawFrameEvidence {
+                            guest_addr: submitted.guest_addr,
+                            width: frame.width,
+                            height: frame.height,
+                            rgba_fnv1a64: frame.content_hash(),
+                            non_black_pixels: frame.rgba.chunks_exact(4)
+                                .filter(|pixel| pixel[..3] != [0, 0, 0]).count(),
+                            center_rgba: frame.pixel(frame.width / 2, frame.height / 2),
+                        });
+                        format!("post-queue extraction succeeded: {}x{} hash={:#x}; {submitted:?}",
+                            frame.width, frame.height, frame.content_hash())
+                    },
+                    Err(error) => format!("post-queue extraction failed: {error:?}; {submitted:?}"),
+                },
+            });
         }
         // Dispatch may switch the guest thread: resume from the post-dispatch registers.
         // A block can cross a quantum without landing exactly on a modulo boundary.
@@ -200,6 +321,67 @@ fn run_path(path: &Path, engine: Engine, limits: &Limits) -> Report {
         Ok(nro) => run_nro(&nro, &path.to_string_lossy(), &[], engine, limits, &[]),
         Err(error) => report(engine, Stop::MissingInput(format!("{}: {error}", path.display())), &Cpu::new()),
     }
+}
+
+/// Flight recorder: one small JSON summary of a run, so a failure can be diagnosed without logs.
+/// `first_failure` is the first of: CPU fault, unhandled SVC, IPC command answered "not
+/// implemented", unhandled nvdrv ioctl, GPU diagnostic, guest break, no VI frame queued.
+fn flight_record(report: &Report, kernel: &HorizonKernel) -> serde_json::Value {
+    use serde_json::json;
+    let ipc = &kernel.ipc;
+    let hex = |v: u64| format!("{v:#x}");
+    let stop = format!("{:?}", report.stop);
+    let first_failure = match &report.stop {
+        Stop::Fault { pc, instruction, error } => json!({"kind": "cpu_fault", "pc": hex(*pc),
+            "opcode": instruction.map(|i| format!("{i:#010x}")), "error": error}),
+        Stop::UnhandledSvc(id) => json!({"kind": "unhandled_svc", "svc": hex(*id as u64), "pc": hex(report.pc)}),
+        _ => match (ipc.unimplemented.first(), ipc.nvdrv.unhandled.first(), ipc.nvdrv.gpu_diagnostics.first()) {
+            (Some((service, cmd)), _, _) => json!({"kind": "ipc_unimplemented", "service": service, "command": cmd}),
+            (_, Some((device, ioctl)), _) => json!({"kind": "nvdrv_ioctl", "device": device, "ioctl": format!("{ioctl:#010x}")}),
+            (_, _, Some(d)) => json!({"kind": "gpu", "diagnostic": format!("{d:?}")}),
+            _ => match &report.stop {
+                Stop::Break { reason, info1, info2, result } => json!({"kind": "guest_break", "reason": hex(*reason),
+                    "info1": hex(*info1), "info2": hex(*info2), "result": result.map(|r| format!("{r:#x}")), "pc": hex(report.pc)}),
+                _ if report.queued.is_empty() && report.raw_frame.is_none() => json!({"kind": "no_vi_frame",
+                    "vi": ipc.vi_submission_diagnostic(), "first_present": report.first_present_diagnostic}),
+                _ => serde_json::Value::Null,
+            },
+        },
+    };
+    json!({
+        "engine": format!("{:?}", report.actual_engine),
+        "stop": stop,
+        "instructions": report.instructions,
+        "pc": hex(report.pc),
+        "first_failure": first_failure,
+        "last_svcs": report.last_svcs.iter().map(|(pc, id)| format!("{pc:#x}:{id:#x}")).collect::<Vec<_>>().join(" "),
+        "frames_presented": report.frames,
+        "frames_queued": ipc.vi_frames_queued(),
+        "ipc_unimplemented": ipc.unimplemented,
+        "nvdrv_unhandled": ipc.nvdrv.unhandled.iter().map(|(d, i)| format!("{d} {i:#010x}")).collect::<Vec<_>>(),
+        "gpu_diagnostics": ipc.nvdrv.gpu_diagnostics.iter().take(16).map(|d| format!("{d:?}")).collect::<Vec<_>>(),
+        "debug_output": report.debug_output.chars().take(2000).collect::<String>(),
+        "raw_frame": report.raw_frame.as_ref().map(|f| json!({"width": f.width, "height": f.height,
+            "hash": hex(f.rgba_fnv1a64), "center_rgba": f.center_rgba})),
+    })
+}
+
+/// Writes `{commit, nro, nro_sha256, runs: [...]}` to `out`.
+fn write_flight_record(out: &Path, nro_path: &Path, runs: &[serde_json::Value]) {
+    use sha2::Digest;
+    let nro = std::fs::read(nro_path).unwrap_or_default();
+    let commit = std::env::var("GITHUB_SHA").ok().or_else(|| {
+        std::process::Command::new("git").args(["rev-parse", "HEAD"]).output().ok()
+            .filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    });
+    let doc = serde_json::json!({
+        "commit": commit,
+        "nro": nro_path.display().to_string(),
+        "nro_sha256": format!("{:x}", sha2::Sha256::digest(&nro)),
+        "runs": runs,
+    });
+    std::fs::write(out, serde_json::to_string_pretty(&doc).unwrap() + "\n").expect("write flight record");
+    println!("[flight recorder] wrote {}", out.display());
 }
 
 fn synthetic(words: &[u32], engine: Engine, limits: &Limits) -> Report {
@@ -366,12 +548,191 @@ fn corpus_runner_hello_differential_slices() {
 #[ignore = "requires OUNCE_CORPUS_NRO pointing at an unchanged external sample"]
 fn external_corpus_nro_probe_both_engines() {
     let path = std::env::var_os("OUNCE_CORPUS_NRO").map(std::path::PathBuf::from);
+    let mut reference_frame = None;
+    let record = std::env::var_os("OUNCE_REPORT_JSON").map(std::path::PathBuf::from);
+    let mut runs = Vec::new();
     for engine in [Engine::Interpreter, Engine::Tier3] {
-        let result = match &path {
-            Some(path) => run_path(path, engine, &Limits::default()),
+        let result = match path.as_ref().map(|p| (p, std::fs::read(p))) {
+            Some((p, Ok(nro))) => {
+                let (result, kernel) = run_nro_state(&nro, &p.to_string_lossy(), &[], engine, &Limits::default(), &[]);
+                runs.push(flight_record(&result, &kernel));
+                result
+            }
+            Some((p, Err(error))) => report(engine, Stop::MissingInput(format!("{}: {error}", p.display())), &Cpu::new()),
             None => report(engine, Stop::MissingInput("OUNCE_CORPUS_NRO is unset".into()), &Cpu::new()),
         };
+        if let (Some(out), Some(p)) = (&record, &path) {
+            write_flight_record(out, p, &runs);
+        }
         println!("{result:#?}");
         assert!(!matches!(result.stop, Stop::MissingInput(_) | Stop::LoadError(_)), "{result:?}");
+        if engine == Engine::Interpreter {
+            reference_frame = result.raw_frame.clone();
+        } else {
+            assert_eq!(result.raw_frame, reference_frame,
+                "raw VI frame presence or content differs between engines");
+        }
+    }
+}
+
+/// The simplegfx first-frame oracle (`docs/first-frame-oracle.md`), criteria 3-6, on an NRO built
+/// unchanged from the pinned source. Opt-in: `OUNCE_SIMPLEGFX_NRO=<path> cargo test --release
+/// simplegfx_first_frame_oracle -- --ignored --nocapture`. `OUNCE_SIMPLEGFX_FRAMES` (default 61)
+/// sets how many queued frames to run.
+#[test]
+#[ignore = "requires OUNCE_SIMPLEGFX_NRO pointing at simplegfx.nro built from the pinned source"]
+fn simplegfx_first_frame_oracle() {
+    let path = std::env::var_os("OUNCE_SIMPLEGFX_NRO").expect("OUNCE_SIMPLEGFX_NRO is unset");
+    let frames: u64 = std::env::var("OUNCE_SIMPLEGFX_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(61);
+    // Hash with alpha forced to 0xFF, from the oracle table.
+    let expected_hash = |i: u64| match i {
+        1 => Some(0xd95ddf22e46ba325u64),
+        2 => Some(0x1dd22fb233d7a325),
+        60 => Some(0xa50b597b02e4a325),
+        61 => Some(0x52bda05e66a4a325),
+        _ => None,
+    };
+    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(900), frames: usize::MAX,
+        queued_frames: frames, ..Limits::default() };
+    let mut reference: Option<Vec<QueuedFrame>> = None;
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = run_path(Path::new(&path), engine, &limits);
+        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        // Criterion 6: stopped by the runner's frame limit, nothing else.
+        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        assert_eq!(result.queued.len() as u64, frames);
+        for f in &result.queued {
+            // Criteria 3-4: 1280x720, every pixel 4 * (i mod 61) in R, G, B (alpha forced to FF).
+            let v = (4 * (f.index % 61)) as u8;
+            assert_eq!(f.error, None, "frame {}", f.index);
+            assert_eq!((f.width, f.height), (1280, 720), "frame {}", f.index);
+            assert_eq!(f.uniform, Some([v, v, v, 0xff]), "frame {}", f.index);
+            if let Some(h) = expected_hash(f.index) {
+                assert_eq!(f.rgba_fnv1a64, h, "frame {} hash", f.index);
+            }
+        }
+        // Criterion 5: both engines give identical frames.
+        match &reference {
+            None => reference = Some(result.queued),
+            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+        }
+    }
+}
+
+/// The deko_basic first-frame oracle (`docs/deko-basic-oracle.md`), criteria 3-6, on an NRO built
+/// unchanged from the pinned source. Opt-in: `OUNCE_DEKO_BASIC_NRO=<path> cargo test --release
+/// deko_basic_first_frame_oracle -- --ignored --nocapture`. `OUNCE_DEKO_BASIC_FRAMES` (default 5)
+/// sets how many queued frames to run.
+#[test]
+#[ignore = "requires OUNCE_DEKO_BASIC_NRO pointing at deko_basic.nro built from the pinned source"]
+fn deko_basic_first_frame_oracle() {
+    let path = std::env::var_os("OUNCE_DEKO_BASIC_NRO").expect("OUNCE_DEKO_BASIC_NRO is unset");
+    let nro_bytes = std::fs::read(&path).expect("read deko_basic NRO binary");
+    use sha2::Digest;
+    let nro_sha256 = format!("{:x}", sha2::Sha256::digest(&nro_bytes));
+    // Canonical CI toolchain build (GCC 15.2.0, binutils 2.45.1) vs local build variant (GCC 16.1.0).
+    const KNOWN_VALID_SHA256: &[&str] = &[
+        "4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa", // devkitpro/devkita64:latest build A
+        "5cec608c6358d5aa5d110c5f5d98674e9ba46685752c497d567e2d286f8766e9", // devkitpro/devkita64:latest build B (romfs inode timestamp variation)
+        "5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696", // local devkitA64 GCC 16.1.0 build
+    ];
+    assert!(
+        KNOWN_VALID_SHA256.contains(&nro_sha256.as_str()),
+        "unexpected deko_basic NRO SHA-256: {nro_sha256} (expected one of {KNOWN_VALID_SHA256:?})"
+    );
+    println!("deko_basic NRO SHA-256 verified: {nro_sha256}");
+    let frames: u64 = std::env::var("OUNCE_DEKO_BASIC_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
+    let expected_hash = |i: u64| match i {
+        1 => 0x7c9a9a3fa3856325u64,
+        _ => 0x3a00ccf6b6f28ea1u64,
+    };
+    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(900), frames: usize::MAX,
+        queued_frames: frames, ..Limits::default() };
+    let mut reference: Option<Vec<QueuedFrame>> = None;
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = run_path(Path::new(&path), engine, &limits);
+        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        // Criterion 7: stopped by the runner's frame limit.
+        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        assert_eq!(result.queued.len() as u64, frames);
+        for f in &result.queued {
+            assert_eq!(f.error, None, "frame {}", f.index);
+            assert_eq!((f.width, f.height), (1280, 720), "frame {}", f.index);
+            assert_eq!(f.rgba_fnv1a64, expected_hash(f.index), "frame {} hash mismatch", f.index);
+            if f.index == 1 {
+                assert_eq!(f.uniform, Some([32, 75, 122, 255]), "frame 1 must be clear color");
+            } else {
+                assert_eq!(f.uniform, None, "rendered frames must contain non-uniform pixels");
+            }
+        }
+        // Criterion 6: both engines give identical frames.
+        match &reference {
+            None => reference = Some(result.queued),
+            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+        }
+    }
+}
+
+/// The romfs first-frame oracle (`docs/romfs-oracle.md`) on an NRO built unchanged from the pinned source.
+/// Opt-in: `OUNCE_ROMFS_NRO=<path> cargo test --release romfs_first_frame_oracle -- --ignored --nocapture`.
+#[test]
+#[ignore = "requires OUNCE_ROMFS_NRO pointing at romfs.nro built from the pinned source"]
+fn romfs_first_frame_oracle() {
+    let path = std::env::var_os("OUNCE_ROMFS_NRO").expect("OUNCE_ROMFS_NRO is unset");
+    let frames: u64 = std::env::var("OUNCE_ROMFS_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
+    let limits = Limits {
+        instructions: 4_000_000_000,
+        host_time: Duration::from_secs(900),
+        frames: usize::MAX,
+        queued_frames: frames,
+        ..Limits::default()
+    };
+    let mut reference: Option<Vec<QueuedFrame>> = None;
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = run_path(Path::new(&path), engine, &limits);
+        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        assert_eq!(result.queued.len() as u64, frames);
+        for f in &result.queued {
+            assert_eq!(f.error, None, "frame {}", f.index);
+            assert_eq!((f.width, f.height), (1280, 720), "frame {}", f.index);
+            assert_ne!(f.rgba_fnv1a64, 0, "frame {} must have non-zero hash", f.index);
+        }
+        match &reference {
+            None => reference = Some(result.queued),
+            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+        }
+    }
+}
+
+/// The startup (templates/application) first-frame oracle (`docs/startup-oracle.md`) on an NRO built unchanged from the pinned source.
+/// Opt-in: `OUNCE_STARTUP_NRO=<path> cargo test --release startup_first_frame_oracle -- --ignored --nocapture`.
+#[test]
+#[ignore = "requires OUNCE_STARTUP_NRO pointing at application.nro built from the pinned source"]
+fn startup_first_frame_oracle() {
+    let path = std::env::var_os("OUNCE_STARTUP_NRO").expect("OUNCE_STARTUP_NRO is unset");
+    let frames: u64 = std::env::var("OUNCE_STARTUP_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
+    let limits = Limits {
+        instructions: 4_000_000_000,
+        host_time: Duration::from_secs(900),
+        frames: usize::MAX,
+        queued_frames: frames,
+        ..Limits::default()
+    };
+    let mut reference: Option<Vec<QueuedFrame>> = None;
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = run_path(Path::new(&path), engine, &limits);
+        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        assert_eq!(result.queued.len() as u64, frames);
+        for f in &result.queued {
+            assert_eq!(f.error, None, "frame {}", f.index);
+            assert_eq!((f.width, f.height), (1280, 720), "frame {}", f.index);
+            assert_ne!(f.rgba_fnv1a64, 0, "frame {} must have non-zero hash", f.index);
+        }
+        match &reference {
+            None => reference = Some(result.queued),
+            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+        }
     }
 }
