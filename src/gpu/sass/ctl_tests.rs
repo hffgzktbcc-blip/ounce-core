@@ -152,8 +152,11 @@ fn maxwell_cuasm_ctl_integer() {
         Instr::Xmad { a_signed: false, b_signed: true, b_hi: true, .. } => {}
         i => panic!("{i:?}"),
     }
-    // XMAD.S16.S16.CSFU is rejected.
-    assert!(decode(0x4e3f7f800577060b).is_err());
+    // XMAD.S16.S16.CSFU, both operands .H1 (Ryujinx semantics, see `XmadMode`).
+    match d(0x4e3f7f800577060b) {
+        Instr::Xmad { a_signed: true, b_signed: true, b_hi: true, mode: XmadMode::Csfu, .. } => {}
+        i => panic!("{i:?}"),
+    }
     // XMAD R7, R9, R6, RZ; XMAD.MRG R16, R9, R6.H1, RZ; XMAD.PSL.CBCC R0, R0.H1, R5.H1, R3
     assert_eq!(d(0x5b007f8000670907), xmad(7, r(9), r(6), r(RZ), false, false, false, false, XmadMode::None));
     assert_eq!(d(0x5b007fa800670910), xmad(16, r(9), r(6), r(RZ), false, true, false, true, XmadMode::None));
@@ -577,4 +580,55 @@ fn ampere_branch_and_integer_program() {
     let mut h = SphBuilder::pixel().ps_target(0, 0xf).bytes(AMPERE_SPH_SIZE);
     h.extend(bytes);
     validate(&translate(ShaderStage::Fragment, &h).unwrap().wgsl);
+}
+
+#[test]
+fn maxwell_rro_feeds_mufu() {
+    // NAK `OpRro` (sm50.rs): b slot at 20, neg 45 / abs 49, bit 39 set for .EX2.
+    let rro = |dst: u64, rb: u64, ex2: bool| (0x5c90u64 << 48) | (7 << 16) | (rb << 20) | ((ex2 as u64) << 39) | dst;
+    let mufu = |dst: u64, ra: u64, func: u64| (0x5080u64 << 48) | (7 << 16) | (func << 20) | (ra << 8) | dst;
+    let src = FSrc { src: r(0), neg: false, abs: false };
+    assert_eq!(d(rro(1, 0, false)), Instr::Rro { dst: 1, ex2: false, src });
+    assert_eq!(d(rro(1, 0, true) | (1 << 45)), Instr::Rro { dst: 1, ex2: true, src: FSrc { neg: true, ..src } });
+    // RRO.SINCOS + MUFU.SIN/COS give sin/cos of radians; RRO.EX2 + MUFU.EX2 gives 2^x.
+    for (func, ex2, x, want) in [(1, false, std::f32::consts::FRAC_PI_2, 1.0f32), (0, false, std::f32::consts::PI, -1.0), (2, true, 3.0, 8.0)] {
+        let code = [mx::mov32i(0, f32::to_bits(x)), rro(1, 0, ex2), mufu(2, 1, func), mx::EXIT];
+        let f = lower_ps(&code).unwrap();
+        let v = run(&f, &one(0.0));
+        let got = f32::from_bits(exit_reg(&f, &v, 2));
+        assert!((got - want).abs() < 1e-5, "func {func}: {got} != {want}");
+    }
+    wgsl_ps(&[mx::mov_cb(0, 0, 0), rro(1, 0, false), mufu(2, 1, 1), mx::EXIT]);
+}
+
+#[test]
+fn xmad_csfu_runs() {
+    // XMAD.S16.S16.CSFU R2, R0.H1, R1.H1, R3 (envytools 0x5b00 fields, mode 3 at 50..53).
+    let w = (0x5b00u64 << 48) | (3 << 48) | (3 << 50) | (1 << 53) | (1 << 35) | (7 << 16) | (3 << 39) | (1 << 20) | 2;
+    assert!(matches!(d(w), Instr::Xmad { mode: XmadMode::Csfu, a_signed: true, b_signed: true, a_hi: true, b_hi: true, .. }));
+    // Ryujinx `EmitXmad`: c - ((a16 >> 31) << 16) - ((b16 >> 31) << 16), a16/b16 sign-extended.
+    for (a, b, c) in [(0xfffe_0000u32, 0x0003_0000u32, 0x10_0000u32), (0x8000_0000, 0x8000_0000, 0), (0x0002_0000, 0x0005_0000, 7)] {
+        let (a16, b16) = (((a as i32) >> 16) as u32, ((b as i32) >> 16) as u32);
+        let want = a16.wrapping_mul(b16).wrapping_add(c.wrapping_sub(((a16 >> 31) << 16) + ((b16 >> 31) << 16)));
+        let code = [mx::mov32i(0, a), mx::mov32i(1, b), mx::mov32i(3, c), w, mx::EXIT];
+        let f = lower_ps(&code).unwrap();
+        let v = run(&f, &one(0.0));
+        assert_eq!(exit_reg(&f, &v, 2), want, "{a:#x} {b:#x} {c:#x}");
+    }
+}
+
+#[test]
+fn ampere_nak_plop3_negation_and_mufu_forms() {
+    // PLOP3.LUT P1, PT, !P1, !P2, !PT, 0x2a, 0x0: NAK's nvdisasm-checked negate bits 90/80/71.
+    let w = 0x0000000000f24572000000000000781cu128 | (1 << 90) | (1 << 80) | (1 << 71);
+    assert_eq!(da(w), Instr::PLop3 { pd: 1, lut: 0x2a, a: np(1), b: np(2), c: np(PT) });
+    // A second output (84..87 not PT) is still rejected.
+    assert!(da_err(w & !(7 << 84)));
+    // MUFU.RCP R0, 2.0 (form 4) and MUFU.RSQ R0, c[0x1][0x8] (form 5), [NAK] `encode_alu_base`.
+    let imm = 0x908u128 | (7 << 12) | (0x4000_0000 << 32) | (4 << 74);
+    assert_eq!(da(imm), Instr::Mufu { dst: 0, op: super::decode::MufuOp::Rcp, src: f(Src::Imm(0x4000_0000)) });
+    let cb = 0xb08u128 | (7 << 12) | (8 << 38) | (1 << 54) | (5 << 74);
+    assert_eq!(da(cb), Instr::Mufu { dst: 0, op: super::decode::MufuOp::Rsq, src: f(Src::Cbuf { bank: 1, offset: 8 }) });
+    // .F16 (bit 73) is rejected.
+    assert!(da_err(imm | (1 << 73)));
 }

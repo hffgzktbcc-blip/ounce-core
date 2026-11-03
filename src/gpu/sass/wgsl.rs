@@ -14,8 +14,9 @@
 //! - `.FTZ` is dropped; WGSL leaves denormal handling to the implementation.
 //! - `FFMA` -> `fma()`, which WGSL does not promise to fuse on every backend.
 //! - `.SAT` -> `saturate()`; hardware maps NaN to 0, WGSL leaves NaN unspecified.
-//! - `MUFU.SIN`/`COS`: UNVERIFIED (recalled from Mesa NAK, which pre-scales by 1/2pi
-//!   before the op on SM70+), so we emit `sin(x * 2pi)`.
+//! - `MUFU.SIN`/`COS` take turns, not radians: Mesa NAK feeds them
+//!   `nir_op_fsin_normalized_2_pi` on SM70+ (`from_nir.rs`), so we emit `sin(x * 2pi)`.
+//!   Maxwell's `RRO.SINCOS` is lowered as the matching x / 2pi.
 //! - Fragment `@builtin(position).w` is 1/w_clip (WebGPU/Vulkan semantics), which is what
 //!   `IPA.PASS a[0x7c]` yields. A perspective varying read with `IPA.PASS` is
 //!   screen-linear `attr/w`, so we emit `in.l.c * position.w`; a following
