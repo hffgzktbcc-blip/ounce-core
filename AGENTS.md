@@ -35,17 +35,17 @@ An unmodified upstream startup application sample shows correct rendered text fr
 **Outside samples with a verified frame: 4** (`simplegfx`, `deko_basic`, `romfs`, `startup`).
 
 ## How we work
-- The owner's goal is our goal: build a working, high-performance, clean-room research runtime.
+- The owner's goal is our goal: a working, high-performance runtime for open-source Switch homebrew, where every claim rests on a real program's frame.
 - Focus strictly on real engineering: CPU execution, GPU method dispatch, kernel services, memory management, and getting software running.
 - No artificial roadblocks: work directly on whatever code needs fixing to make software run.
-- Keep the roots clean: `#![forbid(unsafe_code)]` in the core runtime, zero retail keys in the repo, clean-room implementation only.
+- Keep the roots clean: `#![forbid(unsafe_code)]` in the core runtime, zero retail keys in the repo. Sources and porting rules are in PLAN.md ("Sources"): MIT code (nxnative, Ryujinx, Mesa NAK) may be ported with credit; no GPL emulator code, no retail material.
 
 ## Merge gate
 - Before pushing to PR: `cargo test --release` passes; `cargo run --release -- test` passes; zero `unsafe` in `src`.
 - CI must pass on the milestone PR before merging to `main`.
 - Push directly and frequently on your branch; batch merge once milestone is complete.
 
-## Legal and clean-room boundary
-- Clean-room implementation only. Target: NVIDIA Tegra T239 (Ampere GA10B GPU), Horizon OS ABI.
+## Legal boundary
+- PLAN.md's "Legal guardrails" apply to every commit, and CI enforces them (`scripts/check_legal_guardrails.sh`). ounce-core is not a clean-room project (see README, "Sources").
 - No proprietary keys (`prod.keys`) or retail copyrighted game assets committed to the git repository.
-- Use open documentation: ARM manuals, Mesa NVK/nouveau, NVIDIA open-gpu-doc, public SwitchBrew specifications.
+- Use open documentation and permissive code: ARM manuals, Mesa NVK/nouveau, NVIDIA open-gpu-doc, public SwitchBrew specifications, and MIT code as PLAN.md allows.
