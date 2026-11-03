@@ -40,15 +40,16 @@ def main():
         command = [str(args.executable), TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"]
         with log.open("wb") as out:
             try:
-                subprocess.run(command, env=env, stdout=out, stderr=subprocess.STDOUT,
-                               timeout=2 * args.seconds + 120, check=False)
-                stop = None
+                done = subprocess.run(command, env=env, stdout=out, stderr=subprocess.STDOUT,
+                                      timeout=2 * args.seconds + 120, check=False)
+                stop, host_status = None, "exited-zero" if done.returncode == 0 else f"exited-{done.returncode}"
             except subprocess.TimeoutExpired:
-                stop = "outer host timeout"
+                stop, host_status = "outer host timeout", "outer-timeout"
         if result.is_file():
             verdict = json.loads(result.read_text())
         else:
             verdict = {"id": oid, "pass": False, "failures": [stop or "runner exited without a verdict (see log)"]}
+        verdict.update(host_status=host_status, host_timeout_seconds=args.seconds)
         verdicts.append(verdict)
         print(f"{'PASS' if verdict['pass'] else 'FAIL'} {oid}: {'; '.join(verdict['failures'][:3])}", flush=True)
     passed = [v["id"] for v in verdicts if v["pass"]]

@@ -317,8 +317,9 @@ jobs:
               set -uo pipefail
               apt-get update && apt-get install -y python3 git make zip
               dkp-pacman -Q > /evidence/toolchain-packages.txt
-              for manifest in /repo/tests/corpus/oracle-builds/*.json; do
-                id=$(basename "$manifest" .json)
+              # The original 4 programs build from tests/corpus/manifest.json as "original".
+              for manifest in /repo/tests/corpus/manifest.json /repo/tests/corpus/oracle-builds/*.json; do
+                id=$(basename "$manifest" .json); [ "$id" = manifest ] && id=original
                 python3 /repo/scripts/prepare_external_corpus.py --manifest "$manifest" \
                   --output "/corpus/$id/build" --build > "/evidence/$id.prepare.log" 2>&1 \
                   || echo "build of $id failed (see $id.prepare.log)"
@@ -343,11 +344,34 @@ jobs:
           python3 scripts/run_corpus_oracles.py --executable "$executable" \
             --builds "$RUNNER_TEMP/ounce-oracle-builds" --evidence "$RUNNER_TEMP/ounce-oracle-evidence" --seconds 180
 
+      - name: Ounce-Verify evidence, canonical report and README headline
+        if: always()
+        env:
+          CORE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/ounce-oracle-evidence"
+          python3 -m unittest tests/test_ounce_verify.py
+          python3 scripts/corpus_verify.py evidence --verdicts "$evidence/oracle-verdicts.json" \
+            --builds "$RUNNER_TEMP/ounce-oracle-builds" --toolchain-image "$evidence/toolchain-image.json" \
+            --core-commit "$CORE_COMMIT" --output "$evidence/ounce-verify-evidence.json"
+          python3 tools/ounce_verify.py "$evidence/ounce-verify-evidence.json" --output "$evidence/canonical-report.json"
+          python3 scripts/corpus_verify.py headline "$evidence/canonical-report.json" --check-readme | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Retain oracle evidence (no upstream source or NRO binaries)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: first-frame-oracles
           path: ${{ runner.temp }}/ounce-oracle-evidence/
+
+      - name: Upload Ounce-Verify canonical report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ounce-verify-canonical-report
+          path: ${{ runner.temp }}/ounce-oracle-evidence/canonical-report.json
+          if-no-files-found: error
+          retention-days: 90
           if-no-files-found: warn
           retention-days: 30

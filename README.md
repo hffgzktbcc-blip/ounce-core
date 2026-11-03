@@ -24,7 +24,7 @@ Every program is a conversation between instructions, memory, operating-system s
 
 It brings together interpreters, tiered AArch64 execution, Horizon-style service models, software graphics and optional `wgpu` presentation. The root crate forbids unsafe Rust; the optional Tier-4 recompiler owns a separate unsafe boundary for native code generation and executable memory. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
 
-> **Headline metric: [4 outside homebrew programs render their first frame pixel-exact](#what-is-proven).** Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
+> **Headline metric: [<!-- corpus-headline -->?/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
 
 <table>
 <tr>
@@ -116,7 +116,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ## What is proven
 
-**4 outside homebrew programs render their first frame pixel-exact.** These are programs we did not write, from upstream [`switchbrew/switch-examples`](https://github.com/switchbrew/switch-examples) at a pinned commit. Each has an expected frame written down *before* the run, and the Interpreter and Tier-3 engines must both match it exactly.
+**See the headline count above: outside homebrew programs that pass their pre-registered first-frame oracle on both engines.** These are programs we did not write, from upstream [`switchbrew/switch-examples`](https://github.com/switchbrew/switch-examples) at a pinned commit. Each has an expected frame written down *before* the run, and the Interpreter and Tier-3 engines must both match it exactly.
 
 | Program | Oracle (written before execution) | Merged in | CI run |
 | :--- | :--- | :--- | :--- |
