@@ -119,3 +119,46 @@ jobs:
 
       - name: Run Tier-4 unit tests & differential fuzzer
         run: cargo test --release --features native-jit -- --nocapture
+
+  nce:
+    name: Native execution (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-latest is Apple Silicon and ubuntu-24.04-arm is AArch64 Linux: guest code runs on the
+        # host CPU there. ubuntu-latest (x86_64) builds the stubs and skips the native tests.
+        os: [macos-latest, ubuntu-24.04-arm, ubuntu-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: nce
+
+      - name: Run ounce-nce tests (arena, rewriter, guest code on the host CPU)
+        run: cargo test --release -p ounce-nce
+
+      - name: Run unit tests with nce (libnx fixtures run natively)
+        run: cargo test --release --features nce -- --nocapture
+
+      - name: Run a fixture NRO with --cpu=native
+        if: runner.arch == 'ARM64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(cargo run --release --features nce -- run tests/fixtures/nro/hello/hello.nro fixture --cpu=native --present=headless)
+          echo "$out"
+          grep -q "ounce-fixture result=0x00000EEE" <<< "$out"
+          grep -q "Guest exited (svcExitProcess)" <<< "$out"

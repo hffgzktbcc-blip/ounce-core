@@ -18,6 +18,9 @@ This register records build inputs found in the fixture Makefiles and workspace 
 - **envytools** (`envydis/gm107.c`): Copyright © the envytools contributors. MIT.
   <https://github.com/envytools/envytools>
 - **Ryujinx** (`Ryujinx.Graphics.Shader`): Copyright © Ryujinx Team and Contributors. MIT.
+- **nxnative** (`dm/tools/patch_nso.py`, `dm/tools/nso_asm.py`, `dm/host/loader.c`): Copyright (c) 2026 seedds. MIT.
+  <https://github.com/seedds/nxnative>. The native-execution rewriter in `crates/ounce-nce/src/patch.rs` is
+  ported from it.
 
 MIT licence text (as in each project):
 
