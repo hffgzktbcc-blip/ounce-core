@@ -66,6 +66,12 @@ class PreparationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             corpus.validate({**self.manifest, "samples": self.manifest["samples"] * 2})
 
+    def test_accepts_repository_root_and_plain_make_args_only(self):
+        corpus.validate({**self.manifest, "samples": [{"id": "cpu", "path": ".", "make_args": ["nx", "NO_ICON=1"]}]})
+        for args in (["-f", "evil"], ["$(shell id)"], "nx", [1]):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                corpus.validate({**self.manifest, "samples": [{"id": "cpu", "path": "sample", "make_args": args}]})
+
     def test_detects_modified_tracked_files(self):
         (self.upstream / "sample/main.c").write_text("changed")
         with self.assertRaisesRegex(ValueError, "modified"):

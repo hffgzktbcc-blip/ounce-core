@@ -9,7 +9,9 @@ on:
       - 'Cargo.lock'
       - 'crates/**'
       - 'scripts/prepare_external_corpus.py'
+      - 'scripts/run_corpus_oracles.py'
       - 'scripts/test_*.py'
+      - 'tools/corpus_oracle.py'
       - 'src/**'
       - 'tests/corpus/**'
       - 'tests/fixtures/**'
@@ -270,3 +272,83 @@ jobs:
           path: ${{ runner.temp }}/ounce-corpus-evidence/
           if-no-files-found: warn
           retention-days: 7
+
+  first-frame-oracles:
+    # PLAN step 2: the pre-registered oracles of tests/corpus/oracles.json (docs/corpus-oracles.md).
+    # Every verdict is recorded; the job fails only if a recorded pass regresses or a program is missing.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      CARGO_TERM_COLOR: never
+      ORACLE_BUILDS: ${{ runner.temp }}/ounce-oracle-builds
+      EVIDENCE_ROOT: ${{ runner.temp }}/ounce-oracle-evidence
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check oracle tooling and specs
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          # Recompute every expected value from its spec with libnx 4.12.0's console font.
+          git clone --quiet --depth 1 --branch v4.12.0 https://github.com/switchbrew/libnx.git "$RUNNER_TEMP/libnx"
+          python3 tools/corpus_oracle.py --font "$RUNNER_TEMP/libnx/nx/data/default_font.bin" --check
+
+      - name: Install runtime build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Build unchanged corpus programs with devkitA64
+        run: |
+          set -euo pipefail
+          df -h "$RUNNER_TEMP"
+          mkdir -p "$ORACLE_BUILDS" "$EVIDENCE_ROOT"
+          docker pull devkitpro/devkita64:latest
+          image_id=$(docker image inspect devkitpro/devkita64:latest --format '{{.Id}}')
+          docker image inspect "$image_id" > "$EVIDENCE_ROOT/toolchain-image.json"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$ORACLE_BUILDS:/corpus" \
+            -v "$EVIDENCE_ROOT:/evidence" \
+            "$image_id" bash -lc '
+              set -uo pipefail
+              apt-get update && apt-get install -y python3 git make zip
+              dkp-pacman -Q > /evidence/toolchain-packages.txt
+              for manifest in /repo/tests/corpus/oracle-builds/*.json; do
+                id=$(basename "$manifest" .json)
+                python3 /repo/scripts/prepare_external_corpus.py --manifest "$manifest" \
+                  --output "/corpus/$id/build" --build > "/evidence/$id.prepare.log" 2>&1 \
+                  || echo "build of $id failed (see $id.prepare.log)"
+                cp "/corpus/$id/build/inventory.json" "/evidence/$id.inventory.json" 2>/dev/null || true
+                for log in /corpus/$id/build/*.build.log; do [ -f "$log" ] && cp "$log" /evidence/; done
+              done
+            ' 2>&1 | tee "$EVIDENCE_ROOT/build.log"
+
+      - name: Prebuild oracle test
+        run: cargo test --release --locked corpus_first_frame_oracle --no-run --message-format=json > "$RUNNER_TEMP/ounce-oracle-test-build.jsonl"
+
+      - name: Run first-frame oracles under interpreter and Tier-3
+        run: |
+          set -euo pipefail
+          executable=$(python3 -c '
+          import json, sys
+          paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
+                   if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
+                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
+          assert len(paths) == 1, paths
+          print(paths.pop())' "$RUNNER_TEMP/ounce-oracle-test-build.jsonl")
+          python3 scripts/run_corpus_oracles.py --executable "$executable" \
+            --builds "$ORACLE_BUILDS" --evidence "$EVIDENCE_ROOT" --seconds 180
+
+      - name: Retain oracle evidence (no upstream source or NRO binaries)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-frame-oracles
+          path: ${{ runner.temp }}/ounce-oracle-evidence/
+          if-no-files-found: warn
+          retention-days: 30
