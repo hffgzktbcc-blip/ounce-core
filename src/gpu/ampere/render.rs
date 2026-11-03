@@ -359,7 +359,7 @@ impl Cbufs {
     }
 }
 
-/// Largest texture level copied out of guest memory for one draw.
+/// Largest texture (mip chain up to the last accessible level) copied out of guest memory for one draw.
 const TEXTURE_READ_MAX: usize = 64 << 20;
 
 /// A texture one stage reads, copied out of guest memory once per draw.
@@ -371,7 +371,7 @@ struct BoundTexture {
     bytes: Vec<u8>,
 }
 
-/// Serves reads from a copy of one texture's level 0.
+/// Serves reads from a copy of one texture's mip chain.
 struct Snapshot<'a> {
     base: u64,
     bytes: &'a [u8],
@@ -396,14 +396,17 @@ impl GpuMemoryWriter for Snapshot<'_> {
 struct Textures(Vec<BoundTexture>);
 
 impl Textures {
-    fn read(&self, op: TexOp, handle: TexHandle, x: u32, y: u32) -> [f32; 4] {
+    fn read(&self, op: TexOp, handle: TexHandle, lod: Option<u32>, x: u32, y: u32) -> [f32; 4] {
         let Some(t) = self.0.iter().find(|t| t.handle == handle) else { return [0.0; 4] };
         let mut mem = Snapshot { base: t.header.gpu_va, bytes: &t.bytes };
-        let texel = match (op, &t.sampler) {
-            (TexOp::Sample, Some(s)) => t.header.sample(s, f32::from_bits(x), f32::from_bits(y), &mut mem),
+        let (u, v) = (f32::from_bits(x), f32::from_bits(y));
+        let texel = match (op, &t.sampler, lod) {
+            // Implicit LOD: no derivatives on the per-pixel CPU path, so the base level.
+            (TexOp::Sample, Some(s), None) => t.header.sample(s, u, v, &mut mem),
+            (TexOp::Sample, Some(s), Some(l)) => t.header.sample_lod(s, f32::from_bits(l), u, v, &mut mem),
             // Out-of-range fetches read zero (robust buffer access behaviour).
-            (TexOp::Fetch, _) => t.header.fetch(x, y, &mut mem),
-            (TexOp::Sample, None) => None,
+            (TexOp::Fetch, _, l) => t.header.fetch_lod(l.unwrap_or(0), x, y, &mut mem),
+            (TexOp::Sample, None, _) => None,
         };
         texel.unwrap_or([0.0; 4])
     }
@@ -436,8 +439,8 @@ impl ShaderInputs for VertexIn<'_> {
     fn interp(&self, _: u16, _: IpaFreq) -> f32 {
         0.0
     }
-    fn texture(&self, op: TexOp, handle: TexHandle, x: u32, y: u32) -> [f32; 4] {
-        self.tex.read(op, handle, x, y)
+    fn texture(&self, op: TexOp, handle: TexHandle, lod: Option<u32>, x: u32, y: u32) -> [f32; 4] {
+        self.tex.read(op, handle, lod, x, y)
     }
 }
 
@@ -484,8 +487,8 @@ impl ShaderInputs for FragmentIn<'_> {
     fn attr(&self, _: u16) -> u32 {
         0
     }
-    fn texture(&self, op: TexOp, handle: TexHandle, x: u32, y: u32) -> [f32; 4] {
-        self.tex.read(op, handle, x, y)
+    fn texture(&self, op: TexOp, handle: TexHandle, lod: Option<u32>, x: u32, y: u32) -> [f32; 4] {
+        self.tex.read(op, handle, lod, x, y)
     }
     fn interp(&self, addr: u16, freq: IpaFreq) -> f32 {
         let lerp = |f: &dyn Fn(&WinVertex) -> f32| self.l[0] * f(self.v[0]) + self.l[1] * f(self.v[1]) + self.l[2] * f(self.v[2]);
@@ -754,8 +757,8 @@ impl Ampere3d {
         (self.reg(m::SET_BINDLESS_TEXTURE) & 0x1f) as u8
     }
 
-    /// Resolves every texture handle `f` reads (handle word -> TIC/TSC) and copies each level 0
-    /// out of guest memory.
+    /// Resolves every texture handle `f` reads (handle word -> TIC/TSC) and copies each mip chain,
+    /// up to the last accessible level, out of guest memory.
     fn stage_textures(&self, f: &Function, cbufs: &Cbufs, mem: &mut dyn GpuMemoryWriter) -> Result<Textures, &'static str> {
         let mut out = Textures::default();
         for op in &f.values {
@@ -768,11 +771,13 @@ impl Ampere3d {
             }
             let word = self.handle_word(cbufs, handle);
             let header = self.texture_header(word & 0xf_ffff, mem).ok_or("texture header is not readable")?;
-            let view = header.view().ok_or("texture format or layout")?;
-            if view.size() > TEXTURE_READ_MAX {
+            header.view().ok_or("texture format or layout")?;
+            let last = header.level_range().map_or(0, |(_, last)| last);
+            let size = header.chain_bytes(last).ok_or("texture format or layout")?;
+            if size > TEXTURE_READ_MAX {
                 return Err("texture larger than the per-draw copy limit");
             }
-            let mut bytes = vec![0u8; view.size()];
+            let mut bytes = vec![0u8; size];
             if !mem.read(header.gpu_va, &mut bytes) {
                 return Err("texture data is not readable");
             }
