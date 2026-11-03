@@ -1,3 +1,17 @@
+# READ THIS FIRST (overrides everything below; owner decision 2026-11-03)
+
+1. **The only plan is [`PLAN.md`](PLAN.md).** Read it before any work, do only its next unchecked step, tick it with
+   one line of proof, then end the session. `HANDOFF.md` and older notes are history, not plans.
+2. **Proof = a real outside homebrew program passing its pixel oracle in CI.** Unit tests guard code but are never
+   a milestone or a "verified" claim.
+3. **Follow PLAN.md's Legal guardrails on every commit:** never decrypt, no piracy pointers, no game names or game
+   screenshots, no retail test inputs, nothing from the owner's non-public projects.
+4. **Save the owner's usage:** one step per session, no re-exploring what PLAN.md already says, logs read as text,
+   long jobs in the background, work only in `~/Projects` (`~/Documents` is iCloud-synced and stalls).
+5. **Agents test themselves.** The owner is never the test harness.
+
+---
+
 # Agent rules for `ounce-core`
 
 Short on purpose: every agent loads this file at session start. Read `HANDOFF.md` next (mission, next work, toolbox). Past handoffs are in `docs/HANDOFF_HISTORY.md`; grep it for the entry you need, don't read it whole.
