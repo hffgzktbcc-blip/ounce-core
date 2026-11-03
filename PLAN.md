@@ -7,8 +7,8 @@ proof, and ends. Changing the plan needs the owner's OK first, recorded here. Ol
 ## Goal
 Run open-source Switch homebrew on macOS Apple Silicon (and Linux/Windows), with every claim backed by
 a real program's real frame.
-**Headline metric:** "N outside homebrew programs render their first frame pixel-exact." That's 4 today
-(simplegfx, deko_basic, romfs, startup).
+**Headline metric:** "N outside homebrew programs render their first frame pixel-exact." That's 15/20 today
+(after step 2), derived from the Ounce-Verify canonical report in CI; see the README.
 
 ## Rule 0: no bullshit (overrides everything, for every agent)
 1. **No synthetic tests as progress.** Unit tests may guard code, but they never count as a milestone or a
@@ -80,11 +80,12 @@ change. A PR that breaks one is rejected.
       piracy pointers, and remove them.
       *Done when:* the CI check is green on main and the audit finds nothing.
       *Proof:* [PR #131](https://github.com/hffgzktbcc-blip/ounce-core/pull/131) adds `scripts/check_legal_guardrails.sh` ("Legal guardrails" job, green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41693005314); audit found no game names, piracy links or issue templates.
-- [ ] **2. Homebrew corpus, 4 → 20.** Add outside programs: devkitPro `switch-examples` (graphics, input, audio,
+- [x] **2. Homebrew corpus, 4 → 20.** Add outside programs: devkitPro `switch-examples` (graphics, input, audio,
       fs), more deko3d samples, and a few popular open-source homebrew apps. Build them reproducibly (devkitA64
       docker), record source, commit and licence in `PROVENANCE.md`, and pre-register a first-frame oracle for
       each.
       *Done when:* 20 oracles exist in CI, each pass or fail recorded honestly. Failures are the to-do list.
+      *Proof:* [PR #134](https://github.com/hffgzktbcc-blip/ounce-core/pull/134): 20 oracles in `tests/corpus/oracles.json` (16 new ones pre-registered in `2fe006e` before any run), `first-frame-oracles` job green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41701448760 (canonical report: `ounce-verify-canonical-report` artifact, 40 `ounce-verify/v0` records, 15/20 pass on both engines). Owner-approved addition: Ounce-Verify evidence and README count from the report. Failures for step 3: sixaxis, deko-console, nx-hbmenu (unimplemented instructions), sdl2-simple, hybrid-app (exit before the first frame).
 - [ ] **3. Fix by corpus.** Take the failing programs one by one, cheapest first. Each fix lands with that
       program's oracle turning green. No speculative features.
       *Done when:* metric ≥ 15/20.
