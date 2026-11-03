@@ -775,7 +775,8 @@ fn corpus_first_frame_oracle() {
     for engine in [Engine::Interpreter, Engine::Tier3] {
         let result = run_nro(&nro, &path.to_string_lossy(), &[], engine, &limits, &[]);
         println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
-        let mut fail = |message: String| failures.push(format!("{engine:?}: {message}"));
+        let mut engine_failures = Vec::new();
+        let mut fail = |message: String| engine_failures.push(message);
         if !matches!(result.stop, Stop::FrameLimit) || result.queued.len() as u64 != frames {
             fail(format!("stopped with {:?} after {} of {frames} queued frames", result.stop, result.queued.len()));
         }
@@ -809,9 +810,11 @@ fn corpus_first_frame_oracle() {
             }
             probe_index += check_probes.len();
         }
+        failures.extend(engine_failures.iter().map(|m| format!("{engine:?}: {m}")));
         runs.push(json!({
             "engine": format!("{engine:?}"), "stop": format!("{:?}", result.stop), "instructions": result.instructions,
-            "pc": format!("{:#x}", result.pc), "queued": result.queued.iter().map(|f| json!({
+            "pc": format!("{:#018x}", result.pc), "x0": format!("{:#018x}", result.x0), "failures": engine_failures,
+            "host_timeout_seconds": seconds, "max_guest_instructions": limits.instructions, "queued": result.queued.iter().map(|f| json!({
                 "index": f.index, "width": f.width, "height": f.height,
                 "rgba_fnv1a64": format!("{:#018x}", f.rgba_fnv1a64), "error": f.error})).collect::<Vec<_>>(),
         }));

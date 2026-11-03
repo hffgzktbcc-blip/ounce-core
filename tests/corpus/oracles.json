@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "note": "Pre-registered first-frame oracles (PLAN step 2). Specs were written from each program's source; `expect` values are computed from the specs by tools/corpus_oracle.py, never from an ounce-core run. Results live in oracle-results.json.",
+  "note": "Pre-registered first-frame oracles (PLAN step 2). Specs were written from each program's source (except deko-basic's observed hashes, see its assumptions); `expect` values are computed from the specs by tools/corpus_oracle.py, never from an ounce-core run. Results live in oracle-results.json.",
   "oracles": [
     {
       "id": "printing-hello-world",
@@ -652,6 +652,200 @@
       ],
       "assumptions": [
         "glClearColor(0x68/255, 0xB0/255, 0xD8/255) covers the four corners of frame 1; no geometry reaches them."
+      ]
+    },
+    {
+      "id": "simplegfx",
+      "build": "original",
+      "nro": "graphics/simplegfx/simplegfx.nro",
+      "source": "graphics/simplegfx/source/main.c",
+      "queued_frames": 61,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              4,
+              4,
+              4
+            ],
+            "rects": []
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xd95ddf22e46ba325"
+          }
+        },
+        {
+          "frames": [
+            2
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              8,
+              8,
+              8
+            ],
+            "rects": []
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x1dd22fb233d7a325"
+          }
+        },
+        {
+          "frames": [
+            60
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              240,
+              240,
+              240
+            ],
+            "rects": []
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xa50b597b02e4a325"
+          }
+        },
+        {
+          "frames": [
+            61
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              0,
+              0,
+              0
+            ],
+            "rects": []
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x52bda05e66a4a325"
+          }
+        }
+      ],
+      "assumptions": [
+        "Same expectation as docs/first-frame-oracle.md (frame 1 was observed in #103 before that oracle was written). The dedicated simplegfx_first_frame_oracle test still checks all 61 frames."
+      ]
+    },
+    {
+      "id": "deko-basic",
+      "build": "original",
+      "nro": "graphics/deko3d/deko_basic/deko_basic.nro",
+      "source": "graphics/deko3d/deko_basic/source/main.cpp",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x7c9a9a3fa3856325"
+          }
+        },
+        {
+          "frames": [
+            2,
+            3,
+            4,
+            5
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x3a00ccf6b6f28ea1"
+          }
+        }
+      ],
+      "assumptions": [
+        "Hashes copied from the existing deko_basic_first_frame_oracle (docs/deko-basic-oracle.md); they were recorded from an earlier run, not computed from source, so this oracle is a regression check of an observed frame."
+      ]
+    },
+    {
+      "id": "startup",
+      "build": "original",
+      "nro": "templates/application/application.nro",
+      "source": "templates/application/source/main.c",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Hello World!\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xc0447c0673a27745",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "Written in step 2 from source. Earlier CI logs printed this sample's frame hash; they were not consulted. The old oracle (docs/startup-oracle.md) only required a non-zero hash."
+      ]
+    },
+    {
+      "id": "romfs",
+      "build": "original",
+      "nro": "fs/romfs/romfs.nro",
+      "source": "fs/romfs/source/main.c and romfs/",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "romfs Init Successful!\nHello, this is the libnx romfs example.\nThis text is being read off a file in romfs.\n\n  >>Switch Homebrew is Cool<<\n\nSigned off, fincs & WinterMute\n>>EOF<<\nThe path to this file contains Unicode\ncharacters that fall outside ASCII.\n>>EOF<<\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x3bd649bbc4f50b85",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "Written in step 2 from source and the bundled romfs files. Earlier CI logs printed this sample's frame hash; they were not consulted. The old oracle (docs/romfs-oracle.md) only required a non-zero hash.",
+        "The UTF-8 bytes of the Unicode path are never printed; both files' lines are ASCII."
       ]
     }
   ]

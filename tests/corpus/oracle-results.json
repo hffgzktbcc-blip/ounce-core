@@ -16,6 +16,10 @@
     "sdl2-simple": "not-run",
     "raufang-hello-cpp": "not-run",
     "nx-hbmenu": "not-run",
-    "hybrid-app": "not-run"
+    "hybrid-app": "not-run",
+    "simplegfx": "not-run",
+    "deko-basic": "not-run",
+    "startup": "not-run",
+    "romfs": "not-run"
   }
 }
