@@ -14,9 +14,10 @@ use super::XlateError;
 /// Words described by the public spec.
 pub const SPH_WORDS: usize = 20;
 /// Bytes between the header start and the first instruction on Ampere.
-/// UNVERIFIED: recalled from Mesa NVK/NAK (a 32-word header for Turing and later), not
-/// fetched; the public spec documents only the first 0x50 bytes. Callers can override it
-/// via [`super::translate_with_header`].
+/// Mesa NAK `sph.rs` (MIT): `SPHV4_SHADER_HEADER_SIZE` = 32 words, used for SM 7.3 and
+/// later (SPH version 4); its IMAP/OMAP/target bit ranges match the ones read here. The
+/// public spec documents only the first 0x50 bytes. Callers can override it via
+/// [`super::translate_with_header`].
 pub const AMPERE_SPH_SIZE: usize = 0x80;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

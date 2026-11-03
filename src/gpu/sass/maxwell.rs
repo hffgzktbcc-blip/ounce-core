@@ -22,8 +22,19 @@
 //!   (github.com/cloudcores/CuAssembler): real `nvdisasm` words for sm_61 (Pascal keeps
 //!   the Maxwell encoding). The `maxwell_cuasm_*` tests check `MOV`, `MOV32I`, `FADD`,
 //!   `FADD32I`, `FMUL`, `FMUL32I`, `FFMA`, `MUFU`, `LDC`, `NOP` and `EXIT` against them.
-//!   CUDA never emits `ALD`/`AST`/`IPA`, so those rest on [envytools] alone and are
-//!   UNVERIFIED until checked against a shader compiled by `uam`.
+//!   CUDA never emits `ALD`/`AST`/`IPA`; their fields agree between [envytools] and [NAK],
+//!   and deko_basic's `uam` shaders decode with them (its pixel oracle passes).
+//! - [NAK] Mesa's NAK SM50 encoder (`src/nouveau/compiler/nak/sm50.rs`, MIT, read at mesa
+//!   `f4a706c5a218`, see `THIRD_PARTY.md`): independently gives the same fields for `ALD`,
+//!   `AST`, `IPA`, `MUFU`, `LDC`, `MOV`, `FADD`, `FMUL`, `FFMA`, `FSETP`, `ISETP`, `FMNMX`,
+//!   `IMNMX`, `SEL`, `IADD`, `LOP`, `SHL`, `SHR`, `F2F`, `F2I`, `I2F`, `TLD` and the branch
+//!   ops, and is the source of `RRO` (0x5c90/0x4c90/0x3890: operand in the b slot with neg 45
+//!   / abs 49, bit 39 set for `.EX2`, clear for `.SINCOS`). Two disagreements, where we keep
+//!   the [CuAsm]/[envytools] reading: NAK's bound `TEX` opcode (0x0380, not covered by its
+//!   nvdisasm tests below SM70) against the [CuAsm]-checked 0xc038, and the `FSET`
+//!   constant-buffer form's b negate bit (NAK 6, [envytools] 53).
+//! - [Ryujinx] `Ryujinx.Graphics.Shader` (MIT): `XMAD` semantics, including `.CSFU` (see
+//!   [`XmadMode`]), and `RRO` as a pass-through whose result only `MUFU` reads.
 //! - Textures, bound forms only: [envytools] `TEX` (0xc038), `TLD` (0xdc38), `TEXS`
 //!   (0xd0), `TLDS` (0xd2) masks and fields, each checked against [CuAsm] words in the
 //!   `maxwell_cuasm_tex_*` tests: handle index 36..49 (a word of the constant buffer
@@ -462,8 +473,9 @@ fn decode_ext(w: u64) -> Result<Option<Instr>, DecodeError> {
             0 => Ok(XmadMode::None),
             1 => Ok(XmadMode::Clo),
             2 => Ok(XmadMode::Chi),
-            3 => Err(unsup("XMAD.CSFU")),
-            _ => Ok(XmadMode::Cbcc),
+            3 => Ok(XmadMode::Csfu),
+            4 => Ok(XmadMode::Cbcc),
+            _ => Err(unsup("XMAD addend mode")),
         };
         let (b, c, b_hi, psl, mrg, mode, x) = match opcode >> 12 {
             0x5 if is(0xffc0, 0x5b00) => {
@@ -552,6 +564,9 @@ fn decode_ext(w: u64) -> Result<Option<Instr>, DecodeError> {
         };
         let src = FSrc { src: slot_b(w, true), neg: bit(w, 45), abs: bit(w, 49) };
         Instr::F2F { dst, src, round, sat: bit(w, 50) }
+    } else if alu3(0x5c90) {
+        let src = FSrc { src: slot_b(w, true), neg: bit(w, 45), abs: bit(w, 49) };
+        Instr::Rro { dst, ex2: bit(w, 39), src }
     } else if is(0xfff0, 0xe240) {
         if bit(w, 5) || bit(w, 6) {
             return Err(unsup("BRA through a constant buffer / .LMT"));

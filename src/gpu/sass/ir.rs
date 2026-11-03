@@ -622,6 +622,18 @@ pub fn lower_with(
                 let v = b.push(Op::Mufu(op, x));
                 b.write(dst, v, g);
             }
+            Instr::Rro { dst, ex2, src } => {
+                // Only `MUFU` reads RRO's result. `MufuOp::Sin`/`Cos` take turns (the SM70+
+                // input), so `.SINCOS` scales radians by 1/2pi; `.EX2` passes through.
+                let x = b.fsrc(src);
+                let v = if ex2 {
+                    x
+                } else {
+                    let k = b.konst((1.0 / std::f32::consts::TAU).to_bits());
+                    b.push(Op::FMul(x, k))
+                };
+                b.write(dst, v, g);
+            }
             Instr::Ldc { dst, bank, offset, reg } => {
                 let v = if reg == RZ {
                     b.push(Op::Cbuf { bank, offset })
@@ -815,6 +827,15 @@ pub fn lower_with(
                     XmadMode::Cbcc => {
                         let s = b.shl_k(y, 16);
                         b.iadd(z, s)
+                    }
+                    XmadMode::Csfu => {
+                        let sa = b.shr_k(x16, 31, false);
+                        let sa = b.shl_k(sa, 16);
+                        let sb = b.shr_k(y16, 31, false);
+                        let sb = b.shl_k(sb, 16);
+                        let adj = b.iadd(sa, sb);
+                        let neg = b.push(Op::INeg(adj));
+                        b.iadd(z, neg)
                     }
                 };
                 let mut v = b.iadd(prod, addend);
