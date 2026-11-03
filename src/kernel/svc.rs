@@ -64,6 +64,9 @@ pub const THREAD_CONTEXT_SIZE: usize = 0x320;
 
 /// Horizon OS Microkernel Compatibility Layer.
 pub struct HorizonKernel {
+    /// Offset of the whole guest address space layout below (0 normally). Native execution moves
+    /// the layout into its host window, see [`HorizonKernel::set_addr_base`].
+    pub addr_base: u64,
     pub heap_base: u64,
     pub heap_size: usize,
     pub start_time: Instant,
@@ -88,6 +91,7 @@ impl Default for HorizonKernel {
 impl HorizonKernel {
     pub fn new() -> Self {
         Self {
+            addr_base: 0,
             heap_base: 0x100000000, // 4GB mark
             heap_size: 0,
             start_time: Instant::now(),
@@ -104,6 +108,15 @@ impl HorizonKernel {
         }
     }
 
+    /// Moves the guest address space layout (heap, alias, stack and ASLR regions, thread pools) up by
+    /// `base`. Native execution runs guest code at guest address == host address, and the host owns
+    /// the low addresses, so the guest sees the usual layout shifted into the native window.
+    pub fn set_addr_base(&mut self, base: u64) {
+        self.heap_base = self.heap_base - self.addr_base + base;
+        self.addr_base = base;
+        self.scheduler.set_addr_base(base);
+    }
+
     /// System tick at 19.2 MHz on the scheduler's clock (at least one millisecond's worth), so time skipped
     /// while every thread slept shows up here too.
     pub fn system_tick(&self) -> u64 {
@@ -118,7 +131,7 @@ impl HorizonKernel {
         Some(match info_type {
             0 => 0xFF,                     // CoreMask: 8x ARM Cortex-A78C cores (bits 0..7)
             1 => 0xFFF,                    // PriorityMask
-            2 => 0x0000_0002_0000_0000,    // AliasRegionAddress
+            2 => self.addr_base + 0x0000_0002_0000_0000, // AliasRegionAddress
             3 => 0x0000_0010_0000_0000,    // AliasRegionSize (64 GB)
             4 => self.heap_base,           // HeapRegionAddress (0x1_0000_0000)
             5 => HEAP_REGION_SIZE,         // HeapRegionSize (4 GB)
@@ -126,9 +139,9 @@ impl HorizonKernel {
             7 => (self.heap_size as u64) + 0x10_0000, // UsedMemorySize
             8 => 0,                        // DebuggerAttached
             11 if sub_type < 4 => 0x9E37_79B9_7F4A_7C15u64.rotate_left(sub_type as u32 * 16) ^ self.system_tick(), // RandomEntropy
-            12 => 0x0000_0000_0800_0000,   // AslrRegionAddress
+            12 => self.addr_base + 0x0000_0000_0800_0000, // AslrRegionAddress
             13 => 0x0000_007F_F800_0000,   // AslrRegionSize
-            14 => 0x0000_007F_0000_0000,   // StackRegionAddress
+            14 => self.addr_base + 0x0000_007F_0000_0000, // StackRegionAddress
             15 => 0x0000_0000_FFFF_F000,   // StackRegionSize (ends at the top of the main stack)
             16 | 17 => 0,                  // SystemResourceSizeTotal / Used: no system resource
             18 => 0x0400_0000_0000_0000,   // ProgramId (synthetic value)

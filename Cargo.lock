@@ -1748,6 +1748,7 @@ dependencies = [
  "gilrs",
  "minifb",
  "naga",
+ "ounce-nce",
  "ounce-recompiler",
  "pollster",
  "serde_json",
@@ -1755,6 +1756,13 @@ dependencies = [
  "thiserror 2.0.21",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "ounce-nce"
+version = "0.1.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

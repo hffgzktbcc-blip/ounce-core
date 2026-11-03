@@ -11,6 +11,8 @@ pub mod tier2_jit;
 pub mod tier3_jit;
 #[cfg(feature = "native-jit")]
 pub mod tier4;
+#[cfg(feature = "nce")]
+pub mod nce;
 
 pub use instructions::{Condition, Instruction};
 pub use interpreter::{Cpu, CpuError, StepResult};
