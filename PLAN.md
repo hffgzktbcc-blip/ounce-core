@@ -68,16 +68,18 @@ change. A PR that breaks one is rejected.
    artifacts. `.gitignore` covers `*.keys`, `dumps/` and `*.nsp`/`*.xci`/`*.nca`.
 
 ## Steps (one step = one session)
-- [ ] **1. Honest README.** Replace every "Verified" that rests on unit tests with "tested". Add the headline
+- [x] **1. Honest README.** Replace every "Verified" that rests on unit tests with "tested". Add the headline
       metric with links to the 4 oracle runs. Remove Switch 2 retail claims from this repo.
       Retire `docs/CLEAN_ROOM.md`'s from-scratch rules in favour of "Sources" above (MIT ports allowed, no GPL,
       no retail).
       *Done when:* the README states only what a real program proved, the docs match practice, and CI is green.
-- [ ] **1b. Legal guardrails into the repo.** Add the guardrails above to `docs/CLEAN_ROOM.md` and
+      *Proof:* [PR #131](https://github.com/hffgzktbcc-blip/ounce-core/pull/131), CI green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41693005314
+- [x] **1b. Legal guardrails into the repo.** Add the guardrails above to `docs/CLEAN_ROOM.md` and
       `CONTRIBUTING.md`. Add the `.gitignore` entries. Add a CI check that fails if the repo gains key files or
       retail container files, or links to known ROM/key sites. Audit README, docs and issues for game names and
       piracy pointers, and remove them.
       *Done when:* the CI check is green on main and the audit finds nothing.
+      *Proof:* [PR #131](https://github.com/hffgzktbcc-blip/ounce-core/pull/131) adds `scripts/check_legal_guardrails.sh` ("Legal guardrails" job, green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41693005314); audit found no game names, piracy links or issue templates.
 - [ ] **2. Homebrew corpus, 4 → 20.** Add outside programs: devkitPro `switch-examples` (graphics, input, audio,
       fs), more deko3d samples, and a few popular open-source homebrew apps. Build them reproducibly (devkitA64
       docker), record source, commit and licence in `PROVENANCE.md`, and pre-register a first-frame oracle for
