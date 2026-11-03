@@ -10,6 +10,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  legal-guardrails:
+    name: Legal guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Fail on key files, retail containers or ROM/key-site links
+        run: scripts/check_legal_guardrails.sh
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
