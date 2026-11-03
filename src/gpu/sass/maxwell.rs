@@ -203,9 +203,7 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
         }
         Instr::Mufu { dst, op, src: r(w, 8, Some(48), Some(46)) }
     } else if top(0xfff8 << 48, 0xef90 << 48) {
-        if reg(w, 8) != RZ {
-            return Err(unsup("LDC register offset"));
-        }
+        let r_off = reg(w, 8);
         if bits(w, 44, 46) != 0 {
             return Err(unsup("LDC addressing mode"));
         }
@@ -216,7 +214,7 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
         if offset % 4 != 0 || offset & 0x8000 != 0 {
             return Err(unsup("unaligned or negative LDC offset"));
         }
-        Instr::Ldc { dst, bank: bits(w, 36, 41) as u8, offset }
+        Instr::Ldc { dst, bank: bits(w, 36, 41) as u8, offset, reg: r_off }
     } else if top(0xfff8 << 48, 0xefd8 << 48) {
         if reg(w, 8) != RZ || reg(w, 39) != RZ {
             return Err(unsup("ALD vertex/offset register"));

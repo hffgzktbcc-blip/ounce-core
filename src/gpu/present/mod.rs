@@ -120,8 +120,12 @@ impl Frame {
         if x >= self.width || y >= self.height {
             return None;
         }
-        let i = (y * self.width + x) * 4;
-        Some((self.rgba[i], self.rgba[i + 1], self.rgba[i + 2], self.rgba[i + 3]))
+        // Defence in depth: a frame whose buffer is shorter than its dimensions returns None.
+        let i = y.checked_mul(self.width)?.checked_add(x)?.checked_mul(4)?;
+        match self.rgba.get(i..i.checked_add(4)?)? {
+            &[r, g, b, a] => Some((r, g, b, a)),
+            _ => None,
+        }
     }
 
     /// Resizes in place, dropping previous contents, when the presentation mode changes.
@@ -292,6 +296,16 @@ fn open_gpu_backend(kind: BackendKind, _config: &BackendConfig) -> Option<Box<dy
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pixel_rejects_buffer_shorter_than_dimensions() {
+        let frame = Frame { width: 0x4000_0000, height: 2, rgba: vec![0; 8] };
+        assert_eq!(frame.pixel(0x2000_0000, 1), None);
+        assert_eq!(frame.pixel(1, 0), Some((0, 0, 0, 0)));
+        assert_eq!(frame.pixel(2, 0), None);
+        let wide = Frame { width: usize::MAX, height: 2, rgba: vec![] };
+        assert_eq!(wide.pixel(usize::MAX - 1, 1), None);
+    }
 
     #[test]
     fn test_frame_pixels_resize_and_hash() {

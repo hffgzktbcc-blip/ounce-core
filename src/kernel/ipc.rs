@@ -146,6 +146,8 @@ pub struct IpcManager {
     domain_reply: bool,
     /// `nvdrv` devices and nvmap objects for libnx-shaped requests.
     pub nvdrv: super::nvdrv::NvDrv,
+    /// IPC commands answered with "not implemented", in first-seen order (deduped, capped at 64).
+    pub unimplemented: Vec<(String, u32)>,
     /// HID shared memory in libnx's layout; the host's controller input goes here.
     pub hid: super::hid::HidSharedMemory,
     /// The `IAudioRenderer` opened through `audren:u`, if any.
@@ -167,6 +169,14 @@ impl Default for IpcManager {
 }
 
 impl IpcManager {
+    /// Records a command answered with "not implemented" (for the corpus flight recorder).
+    pub fn note_unimplemented(&mut self, service: &str, cmd_id: u32) {
+        let entry = (service.to_string(), cmd_id);
+        if self.unimplemented.len() < 64 && !self.unimplemented.contains(&entry) {
+            self.unimplemented.push(entry);
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             handles: HashMap::new(),
@@ -175,6 +185,7 @@ impl IpcManager {
             domains: Default::default(),
             domain_reply: false,
             nvdrv: super::nvdrv::NvDrv::new(),
+            unimplemented: Vec::new(),
             hid: Default::default(),
             audio_renderer: None,
             applet: Default::default(),
@@ -634,6 +645,7 @@ impl IpcManager {
                 }
                 2030 if self.is_libnx_request() => {
                     eprintln!("[VI] command {cmd_id}: stray-layer producer not implemented");
+                    self.note_unimplemented("vi", cmd_id);
                     self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
                     0
                 }
@@ -653,6 +665,7 @@ impl IpcManager {
                 }
                 _ if self.is_libnx_request() => {
                     eprintln!("[VI] display command {cmd_id} not implemented");
+                    self.note_unimplemented("vi", cmd_id);
                     self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
                     0
                 }
@@ -1024,6 +1037,8 @@ impl IpcManager {
             ServiceType::Generic(name) => {
                 // A service this model does not implement: report it rather than pretend the call worked.
                 eprintln!("[HIPC] '{name}' command {cmd_id} not implemented");
+                let name = name.clone();
+                self.note_unimplemented(&name, cmd_id);
                 self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
                 0
             }

@@ -7,12 +7,12 @@
 [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml)
 [![Rust 2024](https://img.shields.io/badge/Rust-2024-cc754f?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![MIT](https://img.shields.io/badge/License-MIT-84b89e?style=flat-square)](LICENSE)
-[![Research](https://img.shields.io/badge/Status-Experimental-a9bcc4?style=flat-square)](#what-is-verified)
+[![Research](https://img.shields.io/badge/Status-Experimental-a9bcc4?style=flat-square)](#what-is-proven)
 [![No retail assets](https://img.shields.io/badge/Assets-No%20firmware%20or%20retail%20keys-7cae9f?style=flat-square)](#responsible-research)
 
-**An inspectable AArch64 execution environment, shaped by research, built to be verified.**
+**An inspectable AArch64 runtime for open-source Switch homebrew, measured by real frames.**
 
-[Explore the architecture](#the-system) · [Get started](#quickstart) · [See verified progress](#what-is-verified) · [Roadmap](#the-road-ahead) · [Research & provenance](#responsible-research)
+[Explore the architecture](#the-system) · [Get started](#quickstart) · [See proven progress](#what-is-proven) · [Roadmap](#the-road-ahead) · [Research & provenance](#responsible-research)
 
 </div>
 
@@ -24,7 +24,7 @@ Every program is a conversation between instructions, memory, operating-system s
 
 It brings together interpreters, tiered AArch64 execution, Horizon-style service models, software graphics and optional `wgpu` presentation. The root crate forbids unsafe Rust; the optional Tier-4 recompiler owns a separate unsafe boundary for native code generation and executable memory. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
 
-> **Long-term north star:** research the foundations needed to execute **Nintendo Switch 2** software. **Not a present capability.** Current independent experiments use **original Nintendo Switch homebrew**, and their results do not establish Switch 2 or commercial-game compatibility.
+> **Headline metric: [4 outside homebrew programs render their first frame pixel-exact](#what-is-proven).** Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
 
 <table>
 <tr>
@@ -44,9 +44,9 @@ Paged memory, scheduling, IPC, filesystem, controller, sound and graphics models
 </td>
 <td width="33%" valign="top">
 
-### 03 · Verify
+### 03 · Prove
 
-Synthetic stage gates, differential tests, cross-platform CI and external-program diagnostics.
+Pre-registered first-frame pixel oracles for outside homebrew, in CI. Unit and synthetic tests guard the code but are not proof.
 
 </td>
 </tr>
@@ -103,46 +103,38 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs` (analog stick threshold synthesis to D-pad bitmasks). |
 | Containers | Implemented (parsing) | PFS0/NSP, HFS0/XCI, NCA3, NSO0, NRO0, NPDM, RomFS, unencrypted loose directories. |
 | Dynamic linking | Implemented (subset) | MOD0 `.dynamic` parsing; `R_AARCH64_RELATIVE`, `ABS64`, `GLOB_DAT`, `JUMP_SLOT`; imports resolved across modules in loose packages; `DT_REL`/`DT_RELA` tables; unresolved imports reported; `DT_GNU_HASH` symbol counts; TLS relocations (`TPREL64`, `DTPMOD64`, `DTPREL64`, `TLSDESC`) against a static TLS layout; `DT_INIT`/`INIT_ARRAY`/`FINI_ARRAY`/`DT_FINI` runner (opt-in, `OUNCE_RUN_INIT=1`). `PT_TLS` templates (`.tdata` copied, `.tbss` zeroed, `p_align` honoured) when supplied from an ELF; each `svcCreateThread` thread gets its own TLS area and `TPIDR_EL0`. Limits: NSO/NRO carry no `PT_TLS`, so for them TLS block sizes come from `STT_TLS` symbols, alignment is assumed 16, and blocks start zeroed. Guest SVCs inside initialisers are not serviced. |
-| Crypto | Implemented | AES-128 checked against FIPS-197 vectors. AES-128-CTR is used for NCA sections when the user supplies keys. |
+| Crypto | Implemented, tested | AES-128 tested against FIPS-197 vectors. Decryption works only with the in-repo synthetic test key; retail keys are rejected (`RestrictedCipher`). ounce-core accepts only already-decrypted inputs. |
 
 **Known limitations**
 
 - Timing and MIPS figures are host measurements of small synthetic programs. They are not comparable to hardware and are not pass/fail criteria.
-- Behaviour that is not in the test suite should be assumed unverified.
+- Behaviour not exercised by an outside program's pixel oracle is tested at best, not proven.
 
 </details>
 
 ---
 
-## What is verified
+## What is proven
 
-**Evidence has levels.** The checks below are meaningful, but each answers a different question.
+**4 outside homebrew programs render their first frame pixel-exact.** These are programs we did not write, from upstream [`switchbrew/switch-examples`](https://github.com/switchbrew/switch-examples) at a pinned commit. Each has an expected frame written down *before* the run, and the Interpreter and Tier-3 engines must both match it exactly.
 
-<table>
-<tr><th align="left">Verification</th><th align="left">What it tells us</th><th align="left">What it does not tell us</th></tr>
-<tr><td><strong>25 harness stages / 27 checks</strong></td><td>Project-authored programs met expected functional stage gates</td><td>General homebrew or Switch 2 compatibility</td></tr>
-<tr><td><strong>9 CI jobs</strong></td><td>Standard, GPU-feature and native-JIT jobs across Linux, macOS and Windows</td><td>That every engine or graphics path was tested by every job</td></tr>
-<tr><td><strong>Independent homebrew probes</strong></td><td>Reports from unchanged external candidates and recorded guest failures</td><td>A correct output image or complete program support</td></tr>
-<tr><td><strong>Raw-frame extraction (PR #103, unmerged)</strong></td><td>CI captured matching 1280×720 simplegfx raw-frame hashes from interpreter and Tier-3 at <code>d317921</code></td><td>Visual correctness, normal guest completion, repeat-run reproducibility, or a feature already on <code>main</code></td></tr>
-<tr><td><strong>Optional feature testing</strong></td><td>Focused regressions for host GPU replay and native code generation</td><td>Hardware-exact behaviour for all guest software</td></tr>
-</table>
+| Program | Oracle (written before execution) | Merged in | CI run |
+| :--- | :--- | :--- | :--- |
+| `graphics/simplegfx` | [first-frame-oracle.md](docs/first-frame-oracle.md) | [#103](https://github.com/hffgzktbcc-blip/ounce-core/pull/103), [#114](https://github.com/hffgzktbcc-blip/ounce-core/pull/114) | [external corpus run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41333484821) |
+| `graphics/deko3d/deko_basic` | [deko-basic-oracle.md](docs/deko-basic-oracle.md) | [#121](https://github.com/hffgzktbcc-blip/ounce-core/pull/121) | [external corpus run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41333484821) |
+| `fs/romfs` | [romfs-oracle.md](docs/romfs-oracle.md) | [#123](https://github.com/hffgzktbcc-blip/ounce-core/pull/123) | [external corpus run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41333484821) |
+| `templates/application` | [startup-oracle.md](docs/startup-oracle.md) | [#125](https://github.com/hffgzktbcc-blip/ounce-core/pull/125) | [external corpus run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41333484821) |
 
-### Development snapshot · 31 October 2026
+Every oracle run is in the [External corpus workflow](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml). Reproduction guides: [simplegfx](docs/REPRODUCE_SIMPLEGFX.md), [deko_basic](docs/REPRODUCE_DEKO_BASIC.md), [romfs](docs/REPRODUCE_ROMFS.md).
 
-**On `main`:** the NRO execution runner ([#90](https://github.com/hffgzktbcc-blip/ounce-core/pull/90)), Binder groundwork ([#91](https://github.com/hffgzktbcc-blip/ounce-core/pull/91)), CPU/homebrew regressions ([#93](https://github.com/hffgzktbcc-blip/ounce-core/pull/93)), GPU replay state fixes ([#94](https://github.com/hffgzktbcc-blip/ounce-core/pull/94)), nvdrv/graphics-startup work ([#95](https://github.com/hffgzktbcc-blip/ounce-core/pull/95)), the implemented Ounce-Verify validator ([#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96)), security and on-demand coverage workflows ([#98](https://github.com/hffgzktbcc-blip/ounce-core/pull/98)), and bounded native-window producer queueing ([#102](https://github.com/hffgzktbcc-blip/ounce-core/pull/102)) are merged. Their presence does **not** establish Switch 2 compatibility or complete guest rendering.
+**Tested, not proven:** the 25-stage harness, the unit tests and the 9 cross-platform [CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml) jobs run programs and inputs written for this repository. They guard the code against regressions. They do not show that any outside program works.
 
-**Verified on an open PR, not yet on `main`:** [#103](https://github.com/hffgzktbcc-blip/ounce-core/pull/103) captured identical simplegfx raw-frame evidence under the interpreter and Tier-3 in external CI at `d317921`: 1280×720, FNV-1a hash `0xd95ddf22e46ba325`, 921,600 non-black pixels, stop reason `FrameLimit`. The recorded CI sample SHA-256 is `b59fc85f0079bcd93007d97150e2af8302ac0804d1120cee43cf32fd37b69bf1`. Required CI and security workflows passed for that revision. This proves **extraction agreement for that sample**, not intended visual correctness, guest completion or repeat-run reproducibility. **Independent adversarial review also reported a reproducible `u32` row-size overflow leading to a pixel-access panic at this exact PR head. [#103 review notes](https://github.com/hffgzktbcc-blip/ounce-core/pull/103#issuecomment-6548284374) document the blocker. Do not merge until corrected, regression-tested and independently re-reviewed.**
-
-**Recently merged documentation:** [#106](https://github.com/hffgzktbcc-blip/ounce-core/pull/106) refreshed the homepage evidence and status; [#107](https://github.com/hffgzktbcc-blip/ounce-core/pull/107) added the maintainer background. **Infrastructure in review:** [#108](https://github.com/hffgzktbcc-blip/ounce-core/pull/108) proposes Pages, Dependabot, dependency review and release provenance; its nine CI matrix jobs pass, but its new Dependency Review workflow fails and needs triage before merge. These tools are not yet assumed activated.
-
-**Other open work:** [#99](https://github.com/hffgzktbcc-blip/ounce-core/pull/99) is a draft historical provenance audit; [#104](https://github.com/hffgzktbcc-blip/ounce-core/pull/104) adds crypto test coverage (draft; a CodeQL alert on public NIST test vectors requires documented triage); [#105](https://github.com/hffgzktbcc-blip/ounce-core/pull/105) is a draft malformed-UTF-8 hex panic fix. At their current reported heads, #104 and #105 have successful CI and Rust-security workflow runs; #104 still requires review of its separately reported CodeQL alert, while #105 requires human review. These are **not merged**.
-
-**Release distinction:** a successful PR is not a published release. See the [Releases page](https://github.com/hffgzktbcc-blip/ounce-core/releases) for the latest packaged version, and the [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls) for work in progress.
+None of this establishes general homebrew, Switch 2 or commercial-software support.
 
 <details>
-<summary><strong>Full verification commands, 25-stage table and CI caveats</strong></summary>
+<summary><strong>Test commands, 25-stage table and CI caveats</strong></summary>
 
-### Detailed verification reference
+### Tested, not proven: commands and the 25-stage harness
 
 ```bash
 cargo test --release
@@ -258,10 +250,16 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 | CPU code-cache invalidation | **Complete for its stated regression gate** | Synthetic write/remap tests and gated CI |
 | Independent original-Switch homebrew | **In progress** | Reproducible independent inputs, guest outcomes, external reproduction and real output oracles |
 | Ounce-Verify evidence layer | **Implemented on `main`** | Deterministic evidence validation and negative tests; see [#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96) |
-| First Switch 2 vertical slice | **Blocked** | Authorised toolchain and reference hardware, self-authored sample, matched input/result/image |
-| Broader target compatibility | **Future research** | Case-by-case behaviour verified against appropriate references |
+| Switch 2 homebrew | **Waiting on public toolchains** | An outside Switch 2 homebrew program passing a pre-registered oracle in CI |
+| Corpus 4 → 20 outside programs | **Next** | A pre-registered oracle per program in CI, pass or fail recorded honestly |
 
-The project makes **no current claim** to run Switch 2 software, retail titles or arbitrary homebrew. See [independent corpus methodology](docs/independent-corpus.md), the [Ounce-Verify implementation](https://github.com/hffgzktbcc-blip/ounce-core/pull/96), and [the unmerged raw-frame evidence work](https://github.com/hffgzktbcc-blip/ounce-core/pull/103).
+The project makes **no claim** to run Switch 2 software, commercial software or arbitrary homebrew. The plan is [PLAN.md](PLAN.md). See [independent corpus methodology](docs/independent-corpus.md), the [Ounce-Verify implementation](https://github.com/hffgzktbcc-blip/ounce-core/pull/96), and [the unmerged raw-frame evidence work](https://github.com/hffgzktbcc-blip/ounce-core/pull/103).
+
+---
+
+## Sources and porting policy
+
+ounce-core is **not a clean-room project**. Besides public specifications (Arm ARM, Mesa NAK, Nouveau/envytools), homebrew library source (libnx, deko3d) and observation of outside homebrew, it may read and port MIT-licensed emulator code from **nxnative** and **Ryujinx** to Rust, keeping their notices in [`THIRD_PARTY.md`](THIRD_PARTY.md) and recording each port in [`docs/PROVENANCE.md`](docs/PROVENANCE.md). GPL emulator code, Nintendo SDK code, firmware, keys, leaked material and retail games are never used. Details and legal guardrails: [`docs/CLEAN_ROOM.md`](docs/CLEAN_ROOM.md).
 
 ---
 
@@ -276,14 +274,14 @@ That background shapes the project's emphasis on careful experimentation, reprod
 ## Responsible research
 
 > [!IMPORTANT]
-> Ounce-Core is **unaffiliated** with Nintendo, NVIDIA or their affiliates. Nintendo Switch, Switch 2, NVIDIA, Tegra, Horizon and related names are used descriptively and remain the respective owners' trademarks. This project is an experimental research implementation—not a commercial game compatibility product.
+> Ounce-Core is **unaffiliated** with Nintendo, NVIDIA or their affiliates. Nintendo Switch, Switch 2, NVIDIA, Tegra, Horizon and related names are used descriptively and remain the respective owners' trademarks. This project runs open-source homebrew; it is not a commercial-game product.
 
 - **No distributed retail keys, firmware, game dumps or commercial assets.** Retail decryption is disabled by project policy.
 - **Current tree is not the whole history.** Previously identified third-party/firmware-derived historical material remains subject to the documented provenance audit; a public Git-history purge is **not** complete.
 - **Fixture origins still need review.** Some bundled homebrew fixture authorship and binary composition are not yet independently verified.
 - **Licensing:** project source is [MIT-licensed](LICENSE), with [third-party notices](THIRD_PARTY.md). This does not certify the status of every historical or binary component.
 
-Read [the provenance register](docs/PROVENANCE.md), [clean-room protocol](docs/CLEAN_ROOM.md), [historical remediation plan (draft)](https://github.com/hffgzktbcc-blip/ounce-core/pull/99), and [contribution guidelines](CONTRIBUTING.md) before contributing.
+Read [the provenance register](docs/PROVENANCE.md), [sources and legal guardrails](docs/CLEAN_ROOM.md), [historical remediation plan (draft)](https://github.com/hffgzktbcc-blip/ounce-core/pull/99), and [contribution guidelines](CONTRIBUTING.md) before contributing.
 
 <details>
 <summary><strong>Full legal notice, security advisory and current known issues</strong></summary>
@@ -312,7 +310,7 @@ Read [the provenance register](docs/PROVENANCE.md), [clean-room protocol](docs/C
 
 - **Git history.** A history cleanup has been discussed; completion is not verified. The project has previously identified commits before `76ce766` (including `c7f16f2` and `4be9640`) as containing firmware-derived or third-party-derived byte sequences and an external-payload loader. On 2026-10-28, this checkout confirmed `c7f16f2` is reachable from `main`, tags `v0.3.0` through `v0.3.2`, and the fetched pull-request refs `72`, `81`, `82`, and `83`. This is a dated, limited ref check, not an inventory of every branch, tag, fork, clone, or GitHub ref. See [`docs/PROVENANCE.md`](docs/PROVENANCE.md).
 - **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
-- **Provenance status.** The provenance register and clean-room protocol are drafts and have not been legally reviewed. Known source comparisons and binary composition checks remain incomplete: [`docs/PROVENANCE.md`](docs/PROVENANCE.md), [`docs/CLEAN_ROOM.md`](docs/CLEAN_ROOM.md).
+- **Provenance status.** The provenance register and the sources/guardrails document are drafts and have not been legally reviewed. Known source comparisons and binary composition checks remain incomplete: [`docs/PROVENANCE.md`](docs/PROVENANCE.md), [`docs/CLEAN_ROOM.md`](docs/CLEAN_ROOM.md).
 
 </details>
 
@@ -322,7 +320,7 @@ Read [the provenance register](docs/PROVENANCE.md), [clean-room protocol](docs/C
 
 Thoughtful additions are welcome: synthetic instruction regressions, source-provenanced homebrew tests, documented behaviours, measured performance and reproducible verification.
 
-Follow [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and [the clean-room rules](docs/CLEAN_ROOM.md). Contributors must not add prohibited material, silently replace unknowns with invented success, or bypass required CI. The `src` runtime forbids unsafe Rust; optional native-code support has a separately identified boundary.
+Follow [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and [the sources and legal guardrails](docs/CLEAN_ROOM.md). Contributors must not add prohibited material, silently replace unknowns with invented success, or bypass required CI. The `src` runtime forbids unsafe Rust; optional native-code support has a separately identified boundary.
 
 <details>
 <summary><strong>Repository layout</strong></summary>
