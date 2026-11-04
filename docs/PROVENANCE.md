@@ -84,6 +84,14 @@ Unresolved disagreements (we keep the reading with real-word evidence): NAK's SM
 `0x0380` against the CuAssembler-checked `0xc038`; the Maxwell `FSET` constant-buffer form's b negate bit
 (NAK bit 6, envytools bit 53).
 
+## Ported code
+
+MIT code ported into this repository under the "Sources" rules of `PLAN.md`. Notices are in `THIRD_PARTY.md`.
+
+| Ported into | Upstream | Licence | What was taken |
+|---|---|---|---|
+| `crates/ounce-nce/src/patch.rs` | [seedds/nxnative](https://github.com/seedds/nxnative) `dm/tools/patch_nso.py` and `dm/tools/nso_asm.py`, read at commit `abd5ac2cce8e164f455188e4984281d14161d4cb` | MIT | The native-execution rewrite rules (svc and timer reads to host gates, `TPIDR_EL0`/`TPIDRRO_EL0` to a thread context, `x18` users to a scratch register backed by the context: `site_gate`, `site_sysreg_read`, `site_tpidr_write`, `site_plain`, `site_sp`, `site_cond`, `site_pcrel`, `site_blr`), the instruction encoders, and the 16 KiB host page sealing approach (`dm/host/loader.c`). Re-written in Rust; game-specific parts (registered cuts, spin gates, engine fixes) not taken. |
+
 ## Known provenance problem: git history
 
 Commits before `76ce766` (including `c7f16f2` and `4be9640`) were previously identified by the project as containing firmware-derived or third-party-derived byte sequences and an external-payload loader; their contents have not been re-audited in this documentation change. On 2026-10-28, this checkout confirmed `c7f16f2` is reachable from `main`, tags `v0.3.0` through `v0.3.2`, and fetched pull-request refs `72`, `81`, `82`, and `83`. This limited check does not establish reachability from every branch, tag, fork, clone, or server-side ref. A history cleanup has been discussed, but no completion is verified here. Tracked in `AGENTS.md`.

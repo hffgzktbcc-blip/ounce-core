@@ -84,6 +84,13 @@ pub struct Memory {
     /// Last invalidation generation for unmapped pages that held cached code. Retained until a
     /// replacement mapping is installed so unmap+remap between cache sweeps remains observable.
     unmapped_code_gen: HashMap<u64, u64>,
+    /// Bumped whenever executable pages are mapped (native execution rewrites new code then).
+    exec_map_gen: u64,
+    /// Native execution (`--cpu=native`): page bytes live in this host window at guest address ==
+    /// host address, where guest code running on the host CPU sees them too. `pages` then holds the
+    /// mapping and permissions only.
+    #[cfg(feature = "nce")]
+    arena: Option<ounce_nce::Arena>,
 }
 
 impl Memory {
@@ -93,7 +100,67 @@ impl Memory {
             guarded_pages: 0,
             code_write_gen: 0,
             unmapped_code_gen: HashMap::new(),
+            exec_map_gen: 0,
+            #[cfg(feature = "nce")]
+            arena: None,
         }
+    }
+
+    /// Memory whose page bytes live in `arena` (see the `arena` field).
+    #[cfg(feature = "nce")]
+    pub fn with_arena(arena: ounce_nce::Arena) -> Self {
+        Self { arena: Some(arena), ..Self::new() }
+    }
+
+    #[cfg(feature = "nce")]
+    pub fn arena(&self) -> Option<&ounce_nce::Arena> {
+        self.arena.as_ref()
+    }
+
+    #[cfg(feature = "nce")]
+    pub fn arena_mut(&mut self) -> Option<&mut ounce_nce::Arena> {
+        self.arena.as_mut()
+    }
+
+    /// Changes whenever executable pages are mapped.
+    pub fn exec_map_gen(&self) -> u64 {
+        self.exec_map_gen
+    }
+
+    /// Mapped pages `(start, end, perm)` merged into runs of equal permission, in address order.
+    pub fn regions(&self) -> Vec<(u64, u64, Permission)> {
+        let mut keys: Vec<u64> = self.pages.keys().copied().collect();
+        keys.sort_unstable();
+        let mut out: Vec<(u64, u64, Permission)> = Vec::new();
+        for k in keys {
+            let perm = self.pages[&k].perm;
+            match out.last_mut() {
+                Some(last) if last.1 == k << 12 && last.2 == perm => last.1 = (k + 1) << 12,
+                _ => out.push((k << 12, (k + 1) << 12, perm)),
+            }
+        }
+        out
+    }
+
+    /// Page bytes from the arena when there is one; `None` without an arena (use `Page::data`).
+    #[inline]
+    fn arena_read(&self, addr: u64, buf: &mut [u8]) -> Option<Result<(), MemoryError>> {
+        #[cfg(feature = "nce")]
+        if let Some(arena) = &self.arena {
+            return Some(arena.read(addr, buf).map_err(|_| MemoryError::Unmapped { addr }));
+        }
+        let _ = (addr, buf);
+        None
+    }
+
+    #[inline]
+    fn arena_write(&mut self, addr: u64, data: &[u8]) -> Option<Result<(), MemoryError>> {
+        #[cfg(feature = "nce")]
+        if let Some(arena) = &mut self.arena {
+            return Some(arena.write(addr, data).map_err(|_| MemoryError::Unmapped { addr }));
+        }
+        let _ = (addr, data);
+        None
     }
 
     /// Current code generation. Unchanged means cached code mappings were not written or changed.
@@ -164,6 +231,9 @@ impl Memory {
             .expect("memory range exceeds the 64-bit address space");
         let start_page = base_addr >> 12;
         let last_page = last_addr >> 12;
+        if perm.execute {
+            self.exec_map_gen += 1;
+        }
 
         for page_idx in start_page..=last_page {
             if self.pages.get(&page_idx).is_some_and(|old| old.guarded) {
@@ -181,6 +251,13 @@ impl Memory {
             }
             self.pages.insert(page_idx, page);
         }
+        #[cfg(feature = "nce")]
+        if let Some(arena) = &mut self.arena {
+            let (start, end) = (start_page << 12, (last_page + 1) << 12);
+            if let Err(error) = arena.commit(start, end - start) {
+                eprintln!("[NCE] guest mapping {start:#x}..{end:#x} has no host memory: {error}");
+            }
+        }
     }
 
     /// Checks if a virtual address is mapped.
@@ -192,6 +269,19 @@ impl Memory {
         for i in 0..pages {
             let src_page_idx = (src >> 12) + i;
             let dst_page_idx = (dst >> 12) + i;
+            #[cfg(feature = "nce")]
+            if let Some(arena) = &mut self.arena
+                && self.pages.contains_key(&src_page_idx)
+            {
+                let mut bytes = vec![0u8; PAGE_SIZE];
+                let (from, to) = (src_page_idx << 12, dst_page_idx << 12);
+                let moved = arena.read(from, &mut bytes)
+                    .and_then(|_| arena.commit(to, PAGE_SIZE as u64))
+                    .and_then(|_| arena.write(to, &bytes));
+                if let Err(error) = moved {
+                    eprintln!("[NCE] moving guest page {from:#x} -> {to:#x} failed: {error}");
+                }
+            }
             if let Some(mut page) = self.pages.remove(&src_page_idx) {
                 let moved_guarded = page.guarded;
                 if moved_guarded {
@@ -225,6 +315,10 @@ impl Memory {
                 }
             }
         }
+        #[cfg(feature = "nce")]
+        if let Some(arena) = &mut self.arena {
+            let _ = arena.decommit(src, pages * PAGE_SIZE as u64);
+        }
     }
 
     /// Unmaps every page that overlaps `base_addr..base_addr + size`. Unmapped pages are skipped.
@@ -243,6 +337,11 @@ impl Memory {
                     self.unmapped_code_gen.insert(page_idx, self.code_write_gen);
                 }
             }
+        }
+        #[cfg(feature = "nce")]
+        if let Some(arena) = &mut self.arena {
+            let start = base_addr & PAGE_MASK;
+            let _ = arena.decommit(start, ((last + 1) << 12) - start);
         }
     }
 
@@ -331,8 +430,11 @@ impl Memory {
                 });
             }
 
-            buf[offset..offset + bytes_in_page]
-                .copy_from_slice(&page.data[page_offset..page_offset + bytes_in_page]);
+            match self.arena_read(curr_addr, &mut buf[offset..offset + bytes_in_page]) {
+                Some(result) => result?,
+                None => buf[offset..offset + bytes_in_page]
+                    .copy_from_slice(&page.data[page_offset..page_offset + bytes_in_page]),
+            }
 
             curr_addr += bytes_in_page as u64;
             offset += bytes_in_page;
@@ -351,7 +453,7 @@ impl Memory {
             let page_offset = (curr_addr as usize) & (PAGE_SIZE - 1);
             let bytes_in_page = (PAGE_SIZE - page_offset).min(data.len() - offset);
 
-            let page = self.pages.get_mut(&page_idx).ok_or(MemoryError::Unmapped {
+            let page = self.pages.get(&page_idx).ok_or(MemoryError::Unmapped {
                 addr: curr_addr,
             })?;
 
@@ -363,8 +465,18 @@ impl Memory {
                 });
             }
 
-            page.data[page_offset..page_offset + bytes_in_page]
-                .copy_from_slice(&data[offset..offset + bytes_in_page]);
+            if let Some(result) = self.arena_write(curr_addr, &data[offset..offset + bytes_in_page]) {
+                result?;
+            }
+            let page = self.pages.get_mut(&page_idx).expect("checked above");
+            #[cfg(feature = "nce")]
+            let in_arena = self.arena.is_some();
+            #[cfg(not(feature = "nce"))]
+            let in_arena = false;
+            if !in_arena {
+                page.data[page_offset..page_offset + bytes_in_page]
+                    .copy_from_slice(&data[offset..offset + bytes_in_page]);
+            }
             if page.holds_code {
                 self.code_write_gen += 1;
                 page.code_write_gen = self.code_write_gen;

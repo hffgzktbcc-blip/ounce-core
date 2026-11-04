@@ -12,7 +12,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Engine { Interpreter, Tier3 }
+enum Engine { Interpreter, Tier3, Native }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Stop {
@@ -62,6 +62,8 @@ struct Report {
     registers: [u64; 31],
     frames: usize,
     preemptions: usize,
+    /// SVCs taken (native execution counts these instead of instructions).
+    svc_count: usize,
     svcs: Vec<(u64, u16)>,
     /// The last 32 SVCs (pc, id), oldest first.
     last_svcs: std::collections::VecDeque<(u64, u16)>,
@@ -104,7 +106,7 @@ struct RawFrameEvidence {
 fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
     Report { requested_engine: engine, actual_engine: engine, stop,
         instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
-        preemptions: 0, svcs: Vec::new(), last_svcs: Default::default(), debug_output: String::new(),
+        preemptions: 0, svc_count: 0, svcs: Vec::new(), last_svcs: Default::default(), debug_output: String::new(),
         input_applied_at: Vec::new(), raw_frame: None, queued: Vec::new(), first_present_diagnostic: None, post_queue_diagnostic: None, compatibility: "not-assessed" }
 }
 
@@ -133,6 +135,57 @@ fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64, probes: &[(u
     out
 }
 
+#[cfg(feature = "nce")]
+type NativeEngine = crate::cpu::nce::NceEngine;
+#[cfg(not(feature = "nce"))]
+enum NativeEngine {}
+
+/// The native engine for a VM set up by `run_nro_state` (layout at `kernel.addr_base`).
+#[cfg(feature = "nce")]
+fn native_engine(mmu: &mut Memory, kernel: &HorizonKernel) -> Result<NativeEngine, String> {
+    let code = kernel.addr_base + crate::DEFAULT_BASE_ADDR;
+    // The NRO header (after the entry branch) is data.
+    NativeEngine::new(mmu, kernel.addr_base, vec![(code + 4, code + 0x80)])
+}
+
+#[cfg(not(feature = "nce"))]
+fn native_engine(_mmu: &mut Memory, _kernel: &HorizonKernel) -> Result<NativeEngine, String> {
+    Err("native execution needs a build with `--features nce`".into())
+}
+
+/// Runs the guest natively up to its next SVC.
+#[cfg(feature = "nce")]
+fn native_run(nce: &mut NativeEngine, cpu: &mut Cpu, mmu: &mut Memory, kernel: &HorizonKernel) -> Result<Option<u16>, Stop> {
+    use crate::cpu::nce::NceExit;
+    match nce.run(cpu, mmu, &|| kernel.system_tick()) {
+        NceExit::Svc(id) => Ok(Some(id)),
+        NceExit::Preempted => Ok(None),
+        NceExit::Fault { pc, signal, addr } => Err(Stop::Fault { pc, instruction: mmu.read_u32(pc).ok(),
+            error: format!("native signal {signal} (fault address {addr:#x})") }),
+        NceExit::Error(error) => Err(Stop::Fault { pc: cpu.regs.pc, instruction: None, error: format!("native engine: {error}") }),
+    }
+}
+
+#[cfg(not(feature = "nce"))]
+fn native_run(nce: &mut NativeEngine, _cpu: &mut Cpu, _mmu: &mut Memory, _kernel: &HorizonKernel) -> Result<Option<u16>, Stop> {
+    match *nce {}
+}
+
+/// Guest memory, layout base and alias region size for `engine`: native execution needs its window.
+fn guest_memory(engine: Engine) -> Result<(Memory, u64, u64), String> {
+    match engine {
+        #[cfg(feature = "nce")]
+        Engine::Native => {
+            let arena = crate::cpu::nce::reserve_window()?;
+            let base = arena.base();
+            Ok((Memory::with_arena(arena), base, crate::cpu::nce::ALIAS_SIZE))
+        }
+        #[cfg(not(feature = "nce"))]
+        Engine::Native => Err("native execution needs a build with `--features nce`".into()),
+        _ => Ok((Memory::new(), 0, 0x10_0000_0000)),
+    }
+}
+
 /// Run an already configured VM, retaining the real kernel dispatcher and scheduler.
 /// Tier-3 can overshoot a slice target by one super-block; report the actual instruction total.
 fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Engine,
@@ -140,6 +193,13 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
     let mut result = report(engine, Stop::InstructionBudget, &cpu);
     let started = Instant::now();
     let mut tier3 = match engine { Engine::Tier3 => Some(Tier3JitEngine::new()), _ => None };
+    let mut native = match engine {
+        Engine::Native => match native_engine(&mut mmu, &kernel) {
+            Ok(e) => Some(e),
+            Err(error) => { result.stop = Stop::LoadError(error); return (result, kernel); }
+        },
+        _ => None,
+    };
     let quantum = crate::kernel::scheduler::PREEMPT_INTERVAL;
     let mut next_preemption = quantum;
     let mut next_input = 0;
@@ -157,6 +217,14 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
         let until_input = inputs.get(next_input).map(|i| i.at_instructions.saturating_sub(result.instructions).max(1)).unwrap_or(usize::MAX);
         let target = remaining.min(until_preemption).min(until_input).min(256);
         let mut svc = None;
+        if let Some(nce) = native.as_mut() {
+            match native_run(nce, &mut cpu, &mut mmu, &kernel) {
+                Ok(Some(id)) => { svc = Some(id); result.svc_count += 1; }
+                // Time slice over: same as the instruction quantum of the other engines.
+                Ok(None) => { kernel.scheduler.preempt(&mut cpu); result.preemptions += 1; }
+                Err(stop) => { result.stop = stop; break; }
+            }
+        } else {
         match tier3.as_mut() {
             Some(jit) => {
                 let (count, exit) = jit.run_slice(&mut cpu, &mut mmu, target);
@@ -189,6 +257,7 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                     }
                 }
             }
+        }
         }
         if let Some(id) = svc {
             if result.svcs.len() < limits.trace_entries {
@@ -301,8 +370,12 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
 
 fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
     limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
-    let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
-    let loaded = super::super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu);
+    let (memory, base, alias_size) = match guest_memory(engine) {
+        Ok(m) => m,
+        Err(error) => { let (cpu, _, kernel) = crate::setup_vm(); return (report(engine, Stop::LoadError(error), &cpu), kernel); }
+    };
+    let (mut cpu, mut mmu, mut kernel) = crate::setup_vm_in(memory, base, alias_size);
+    let loaded = super::super::BootLoader::load_any_package(nro, base + crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu);
     let error = match loaded {
         Ok(info) if info.format == "NRO0" => None,
         Ok(_) => Some("external runner accepts NRO0 only".into()),
@@ -312,7 +385,7 @@ fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
     if let Err(error) = crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, nro, args) {
         return (report(engine, Stop::LoadError(error.to_string()), &cpu), kernel);
     }
-    cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
+    cpu.regs.pc = base + crate::DEFAULT_BASE_ADDR;
     execute(cpu, mmu, kernel, engine, limits, inputs)
 }
 
@@ -455,6 +528,25 @@ fn corpus_runner_existing_libnx_fixtures_match_both_engines() {
     }
 }
 
+/// The same fixtures run natively on an AArch64 host (`--features nce`): rewritten SVCs, TLS
+/// reads and x18 uses reach the same kernel and print the same result.
+#[cfg(all(feature = "nce", target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))]
+#[test]
+fn corpus_runner_native_runs_libnx_fixtures() {
+    for (relative, args, expected) in [
+        ("hello/hello.nro", vec!["fixture"], "ounce-fixture result=0x00000EEE"),
+        ("services/services.nro", vec![], "ounce-services result=0x00000EEE\n"),
+        ("threads/threads.nro", vec![], ""),
+    ] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro").join(relative);
+        let nro = std::fs::read(&path).unwrap();
+        let result = run_nro(&nro, "fixture.nro", &args, Engine::Native, &Limits::default(), &[]);
+        println!("{relative}: stop={:?} svcs={} out={:?}", result.stop, result.svc_count, result.debug_output);
+        assert_eq!(result.stop, Stop::ExitProcess, "{relative}: {result:?}");
+        assert!(result.debug_output.ends_with(expected), "{relative}: {result:?}");
+    }
+}
+
 
 #[test]
 fn corpus_runner_preempts_spinning_threads_and_preserves_kernel_switches() {
@@ -547,6 +639,28 @@ fn corpus_runner_hello_differential_slices() {
     panic!("differential run did not terminate");
 }
 
+/// Engines an oracle runs: the interpreter and Tier-3, or with `OUNCE_CPU=native` (`--cpu=native`)
+/// Tier-3, the reference and speed baseline, then native execution.
+fn oracle_engines() -> Vec<Engine> {
+    if crate::cpu::CpuTier::from_env() == crate::cpu::CpuTier::Native {
+        vec![Engine::Tier3, Engine::Native]
+    } else {
+        vec![Engine::Interpreter, Engine::Tier3]
+    }
+}
+
+/// Prints each engine's wall time for the whole run (load, guest code, kernel, frame capture) and
+/// native execution's speedup over Tier-3 when both ran.
+fn report_speed(times: &[(Engine, Duration)]) {
+    for (engine, time) in times {
+        println!("[speed] {engine:?}: {:.3} s", time.as_secs_f64());
+    }
+    let of = |e: Engine| times.iter().find(|(x, _)| *x == e).map(|(_, t)| t.as_secs_f64());
+    if let (Some(tier3), Some(native)) = (of(Engine::Tier3), of(Engine::Native)) {
+        println!("[speed] native speedup over Tier-3: {:.1}x ({tier3:.3} s -> {native:.3} s)", tier3 / native);
+    }
+}
+
 /// Explicit opt-in diagnostic. It does not assert compatibility. Run the enclosing test process
 /// under an outer timeout as a cooperative deadline cannot interrupt a blocking kernel SVC.
 #[test]
@@ -600,9 +714,12 @@ fn simplegfx_first_frame_oracle() {
     let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(900), frames: usize::MAX,
         queued_frames: frames, ..Limits::default() };
     let mut reference: Option<Vec<QueuedFrame>> = None;
-    for engine in [Engine::Interpreter, Engine::Tier3] {
+    let mut times = Vec::new();
+    for engine in oracle_engines() {
+        let started = Instant::now();
         let result = run_path(Path::new(&path), engine, &limits);
-        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        times.push((engine, started.elapsed()));
+        println!("{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.preemptions, result.queued.len(), result.pc);
         // Criterion 6: stopped by the runner's frame limit, nothing else.
         assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
         assert_eq!(result.queued.len() as u64, frames);
@@ -619,9 +736,10 @@ fn simplegfx_first_frame_oracle() {
         // Criterion 5: both engines give identical frames.
         match &reference {
             None => reference = Some(result.queued),
-            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+            Some(r) => assert_eq!(&result.queued, r, "{engine:?} frames differ from {:?}", times[0].0),
         }
     }
+    report_speed(&times);
 }
 
 /// The deko_basic first-frame oracle (`docs/deko-basic-oracle.md`), criteria 3-6, on an NRO built
@@ -654,9 +772,12 @@ fn deko_basic_first_frame_oracle() {
     let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(900), frames: usize::MAX,
         queued_frames: frames, ..Limits::default() };
     let mut reference: Option<Vec<QueuedFrame>> = None;
-    for engine in [Engine::Interpreter, Engine::Tier3] {
+    let mut times = Vec::new();
+    for engine in oracle_engines() {
+        let started = Instant::now();
         let result = run_path(Path::new(&path), engine, &limits);
-        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        times.push((engine, started.elapsed()));
+        println!("{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.preemptions, result.queued.len(), result.pc);
         // Criterion 7: stopped by the runner's frame limit.
         assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
         assert_eq!(result.queued.len() as u64, frames);
@@ -673,9 +794,10 @@ fn deko_basic_first_frame_oracle() {
         // Criterion 6: both engines give identical frames.
         match &reference {
             None => reference = Some(result.queued),
-            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+            Some(r) => assert_eq!(&result.queued, r, "{engine:?} frames differ from {:?}", times[0].0),
         }
     }
+    report_speed(&times);
 }
 
 /// The romfs first-frame oracle (`docs/romfs-oracle.md`) on an NRO built unchanged from the pinned source.
@@ -693,9 +815,12 @@ fn romfs_first_frame_oracle() {
         ..Limits::default()
     };
     let mut reference: Option<Vec<QueuedFrame>> = None;
-    for engine in [Engine::Interpreter, Engine::Tier3] {
+    let mut times = Vec::new();
+    for engine in oracle_engines() {
+        let started = Instant::now();
         let result = run_path(Path::new(&path), engine, &limits);
-        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        times.push((engine, started.elapsed()));
+        println!("{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.preemptions, result.queued.len(), result.pc);
         assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
         assert_eq!(result.queued.len() as u64, frames);
         for f in &result.queued {
@@ -705,9 +830,10 @@ fn romfs_first_frame_oracle() {
         }
         match &reference {
             None => reference = Some(result.queued),
-            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+            Some(r) => assert_eq!(&result.queued, r, "{engine:?} frames differ from {:?}", times[0].0),
         }
     }
+    report_speed(&times);
 }
 
 /// The startup (templates/application) first-frame oracle (`docs/startup-oracle.md`) on an NRO built unchanged from the pinned source.
@@ -725,9 +851,12 @@ fn startup_first_frame_oracle() {
         ..Limits::default()
     };
     let mut reference: Option<Vec<QueuedFrame>> = None;
-    for engine in [Engine::Interpreter, Engine::Tier3] {
+    let mut times = Vec::new();
+    for engine in oracle_engines() {
+        let started = Instant::now();
         let result = run_path(Path::new(&path), engine, &limits);
-        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        times.push((engine, started.elapsed()));
+        println!("{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.preemptions, result.queued.len(), result.pc);
         assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
         assert_eq!(result.queued.len() as u64, frames);
         for f in &result.queued {
@@ -737,9 +866,10 @@ fn startup_first_frame_oracle() {
         }
         match &reference {
             None => reference = Some(result.queued),
-            Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
+            Some(r) => assert_eq!(&result.queued, r, "{engine:?} frames differ from {:?}", times[0].0),
         }
     }
+    report_speed(&times);
 }
 
 /// One pre-registered first-frame oracle from `tests/corpus/oracles.json` (PLAN step 2,
