@@ -170,6 +170,10 @@ pub struct IpcManager {
     pub applet: super::applet::AppletState,
     pub apm: super::apm::ApmState,
     pub time: super::time::TimeState,
+    /// Shared memory handed out by `pl:u` for the shared font, once requested.
+    pub pl_shm_handle: Option<u32>,
+    /// Steady-clock reading (ns) the kernel publishes under the deterministic clock; `None` follows the host.
+    pub steady_override_ns: Option<u64>,
     pub(super) vi_binder: super::vi::BinderObjects,
     next_handle: u32,
     pub total_ipc_requests: u64,
@@ -205,6 +209,8 @@ impl IpcManager {
             applet: Default::default(),
             apm: Default::default(),
             time: Default::default(),
+            pl_shm_handle: None,
+            steady_override_ns: None,
             vi_binder: Default::default(),
             next_handle: 0x10001,
             total_ipc_requests: 0,
@@ -1320,6 +1326,7 @@ impl IpcManager {
             self.hid.mapped(addr, mmu);
         }
         self.time_shared_memory_mapped(handle, addr, mmu);
+        self.pl_shared_memory_mapped(handle, addr, mmu);
     }
 
     /// The guest unmapped shared memory at `addr` (svcUnmapSharedMemory).

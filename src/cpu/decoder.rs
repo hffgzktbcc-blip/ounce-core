@@ -1089,6 +1089,29 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
+    // 21b'. Add/subtract with carry: sf op S 11010000 Rm 000000 Rn Rd
+    if (raw & 0x1FE0_FC00) == 0x1A00_0000 {
+        return Some(Instruction::AddSubCarry {
+            rd,
+            rn,
+            rm,
+            is_sub: raw & (1 << 30) != 0,
+            set_flags: raw & (1 << 29) != 0,
+            is_64: raw & (1 << 31) != 0,
+        });
+    }
+
+    // 21c. FCCMP/FCCMPE: 0 0 0 11110 ftype 1 Rm cond 01 Rn op nzcv (ftype 0 = single, 1 = double)
+    if (raw & 0xFF20_0C00) == 0x1E20_0400 && (size == 0 || size == 1) {
+        return Some(Instruction::FpCondCompare {
+            rn,
+            rm,
+            nzcv: (raw & 0xF) as u8,
+            cond: Condition::from_u8(((raw >> 12) & 0xF) as u8),
+            is_double: size == 1,
+        });
+    }
+
     // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q 0 01111 1 sz L M Rm opcode H 0 Rn Rd
     //       (FMLA 0001, FMLS 0101, FMUL 1001)
     if (raw & 0xBF80_0400) == 0x0F80_0000 && !u {
