@@ -19,6 +19,40 @@ pub const AMPERE_B: u32 = 0xC797;
 pub const MAXWELL_B: u32 = 0xB197;
 /// FERMI_TWOD_A (2D engine class, `cl902d.h`). Used for 2D blits/clears by deko3d.
 pub const FERMI_TWOD_A: u32 = 0x902D;
+/// MAXWELL_DMA_COPY_A (copy engine class, `clb0b5.h`); deko3d uploads buffers into images with it.
+pub const MAXWELL_DMA_COPY_A: u32 = 0xB0B5;
+
+/// Inline-to-memory (`clb197.h`): `LINE_LENGTH_IN` bytes per line, `LINE_COUNT` lines written to
+/// `OFFSET_OUT_UPPER`/`OFFSET_OUT` (pitch `PITCH_OUT`, or block linear per `SET_DST_*`) from the
+/// `LOAD_INLINE_DATA` words that follow `LAUNCH_DMA`.
+pub const LINE_LENGTH_IN: u32 = 0x0180;
+pub const LINE_COUNT: u32 = 0x0184;
+pub const OFFSET_OUT_UPPER: u32 = 0x0188;
+pub const OFFSET_OUT: u32 = 0x018c;
+pub const PITCH_OUT: u32 = 0x0190;
+pub const SET_DST_BLOCK_SIZE: u32 = 0x0194;
+pub const SET_DST_WIDTH: u32 = 0x0198;
+pub const SET_DST_HEIGHT: u32 = 0x019c;
+pub const SET_DST_DEPTH: u32 = 0x01a0;
+pub const SET_DST_LAYER: u32 = 0x01a4;
+pub const SET_DST_ORIGIN_BYTES_X: u32 = 0x01a8;
+pub const SET_DST_ORIGIN_SAMPLES_Y: u32 = 0x01ac;
+/// `LAUNCH_DMA`: DST_MEMORY_LAYOUT 0:0 (1 = pitch).
+pub const LAUNCH_DMA: u32 = 0x01b0;
+pub const LOAD_INLINE_DATA: u32 = 0x01b4;
+
+/// NV_fill_rectangle: value 2 rasterizes each triangle as its screen-space bounding box (Mesa nvc0
+/// `NVC0_3D_FILL_RECTANGLE`, `_ENABLE` = 2; deko3d's `fillRectangleEnable` writes 2 here).
+pub const FILL_RECTANGLE: u32 = 0x113c;
+pub const FILL_RECTANGLE_ENABLE: u32 = 2;
+
+/// `MME_SHADOW_RAM_CONTROL` (`clb197.h`; mode names from deko3d `engine_3d.def`): class methods
+/// update a shadow copy (track, track with filter), skip it (passthrough), or write the shadowed
+/// value instead of their data (replay). deko3d brackets its per-present surface decompress with
+/// passthrough and replay so the decompress state does not leak into later draws.
+pub const MME_SHADOW_RAM_CONTROL: u32 = 0x0124;
+pub const SHADOW_RAM_PASSTHROUGH: u32 = 2;
+pub const SHADOW_RAM_REPLAY: u32 = 3;
 
 /// `NVC797_SET_OBJECT`, bits 15:0 = class id.
 pub const SET_OBJECT: u32 = 0x0000;

@@ -19,6 +19,7 @@
 mod blend;
 mod clip;
 mod depth;
+pub mod dma;
 pub mod engine;
 pub mod methods;
 pub mod mme;

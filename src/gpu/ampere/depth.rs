@@ -7,9 +7,11 @@
 //! stencil update), then stencil, then depth; the stencil op picked is FAIL, ZFAIL or ZPASS, and
 //! the result is written through the stencil write mask.
 //!
-//! Facing: the signed area of the window-space triangle, positive when counter-clockwise with y
-//! up, is matched against `OGL_SET_FRONT_FACE`; `SET_WINDOW_ORIGIN.FLIP_Y` inverts it. UNVERIFIED
-//! against hardware: GL convention plus the flip, as the header names suggest.
+//! Facing: the rasterizer winds triangles in framebuffer coordinates, +y down (deko3d `dk_device.h`:
+//! "Rasterizer uses framebuffer coordinates (with +Y = down) to calculate winding direction"), so a
+//! counter-clockwise triangle has a negative signed area in window space. That is matched against
+//! `OGL_SET_FRONT_FACE`; `SET_WINDOW_ORIGIN.FLIP_Y` inverts it (deko3d sets FLIP_Y for its
+//! lower-left origin mode, where images are stored upside down).
 
 use super::methods as m;
 
@@ -181,10 +183,10 @@ impl Facing {
         }
     }
 
-    /// Whether a triangle with window-space signed area `area` (positive counter-clockwise with
-    /// y up) is front facing.
+    /// Whether a triangle with window-space signed area `area` (`edge` in pixel coordinates,
+    /// negative when counter-clockwise on the +y-down framebuffer) is front facing.
     pub(crate) fn is_front(&self, area: f32) -> bool {
-        (area > 0.0) == self.front_ccw
+        (area < 0.0) == self.front_ccw
     }
 
     pub(crate) fn culled(&self, front: bool) -> bool {
@@ -308,12 +310,13 @@ mod tests {
     #[test]
     fn facing_follows_front_face_and_flip_y() {
         let mut regs = vec![0u32; (m::METHOD_SPACE / 4) as usize];
+        // Counter-clockwise on the +y-down framebuffer: negative signed area.
         regs[(m::OGL_SET_FRONT_FACE / 4) as usize] = 0x901;
-        assert!(Facing::from_regs(&regs).is_front(1.0));
+        assert!(Facing::from_regs(&regs).is_front(-1.0));
         regs[(m::OGL_SET_FRONT_FACE / 4) as usize] = 0x900;
-        assert!(!Facing::from_regs(&regs).is_front(1.0));
+        assert!(!Facing::from_regs(&regs).is_front(-1.0));
         regs[(m::SET_WINDOW_ORIGIN / 4) as usize] = 1 << 4;
-        assert!(Facing::from_regs(&regs).is_front(1.0));
+        assert!(Facing::from_regs(&regs).is_front(-1.0));
         regs[(m::OGL_SET_CULL / 4) as usize] = 1;
         regs[(m::OGL_SET_CULL_FACE / 4) as usize] = 0x405;
         let f = Facing::from_regs(&regs);
