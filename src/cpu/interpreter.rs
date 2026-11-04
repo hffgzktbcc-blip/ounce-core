@@ -1475,6 +1475,14 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let res = simd::fp_by_element(op, d, n, m, index as usize, double, q);
+                self.regs.write_q(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdExt { rd, rn, rm, index, q } => {
                 let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::extract(n, m, index as u32, q));
@@ -1792,6 +1800,7 @@ mod tests {
             (0xac0008a1, "SimdLoadStorePair"),  // stnp q1, q2, [x5]
             (0xd50b7423, "DcZva"),              // dc zva, x3
             (0x4f00e41f, "SimdModImm"),         // movi v31.16b, #0
+            (0x4f9f939f, "SimdFpByElement"),    // fmul v31.4s, v28.4s, v31.s[0]
             (0x6e1f43ff, "SimdExt"),            // ext v31.16b, v31.16b, v31.16b, #8
             (0x4e1d3bde, "SimdPermute"),        // zip1 v30.16b, v30.16b, v29.16b
             (0x0e095907, "SimdPermute"),        // uzp2 v7.8b, v8.8b, v9.8b

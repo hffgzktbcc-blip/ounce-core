@@ -122,6 +122,10 @@ fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64, probes: &[(u
     };
     match crate::gpu::present::surface::frame_from_surface(mmu, submitted.guest_addr, &surface) {
         Ok(frame) => {
+            let frame = match kernel.ipc.submitted_vi_crop() {
+                Some((l, t, r, b)) => frame.cropped((l as usize, t as usize, r as usize, b as usize)),
+                None => frame,
+            };
             let mut px = frame.rgba.chunks_exact(4);
             let first: Option<[u8; 4]> = px.next().map(|p| p.try_into().unwrap());
             out.uniform = first.filter(|f| px.all(|p| p == f));

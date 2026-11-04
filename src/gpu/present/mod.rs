@@ -100,6 +100,20 @@ impl Frame {
         }
     }
 
+    /// The part inside `(left, top, right, bottom)`. An empty or out-of-range rectangle means the
+    /// whole frame (a guest that never sets a crop queues all zeros).
+    pub fn cropped(self, (left, top, right, bottom): (usize, usize, usize, usize)) -> Self {
+        if left >= right || top >= bottom || right > self.width || bottom > self.height {
+            return self;
+        }
+        let mut out = Frame::new(right - left, bottom - top);
+        for (y, row) in out.rgba.chunks_exact_mut((right - left) * 4).enumerate() {
+            let start = ((top + y) * self.width + left) * 4;
+            row.copy_from_slice(&self.rgba[start..start + row.len()]);
+        }
+        out
+    }
+
     pub fn pixel_count(&self) -> usize {
         self.width * self.height
     }
