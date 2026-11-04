@@ -331,10 +331,12 @@ mod tests {
 
     #[test]
     fn commit_read_write_decommit_and_seal() {
+        // reserve_at: a spot known to be free (just released), and one that is taken.
+        let free = Arena::reserve(1 << 20).unwrap().base();
+        let fixed = Arena::reserve_at(free, 1 << 20).unwrap();
+        assert_eq!(fixed.base(), free);
+        assert!(Arena::reserve_at(free, 1 << 20).is_err(), "taken by `fixed`");
         let mut a = Arena::reserve(1 << 30).unwrap();
-        let fixed = Arena::reserve_at(a.base() + (1 << 32), 1 << 20).unwrap();
-        assert_eq!(fixed.base(), a.base() + (1 << 32));
-        assert!(Arena::reserve_at(a.base(), 1 << 20).is_err(), "taken by `a`");
         let b = a.base();
         assert_eq!(b % (1 << 32), 0);
         assert!(a.read(b, &mut [0; 4]).is_err(), "uncommitted");
@@ -347,13 +349,15 @@ mod tests {
         a.commit(b + 0x1000, 0x1000).unwrap();
         a.read(b + 0x1000, &mut got).unwrap();
         assert_eq!(got, [0; 4]);
-        a.seal_exec(b, 0x1000).unwrap();
-        assert!(a.is_sealed(b));
+        // Seal a committed page holding guest data; a later host write still lands.
+        a.seal_exec(b + 0x1000, 0x1000).unwrap();
+        assert!(a.is_sealed(b + 0x1000));
         a.write(b + 0x1000, &[9]).unwrap();
         a.read(b + 0x1000, &mut got[..1]).unwrap();
         assert_eq!(got[0], 9);
         assert!(a.write(b - 1, &[0]).is_err() && a.write(b + a.size(), &[0]).is_err());
-        a.decommit(b, a.host_page_size()).unwrap();
-        assert!(a.read(b, &mut got).is_err());
+        let page = (b + 0x1000) & !(a.host_page_size() - 1);
+        a.decommit(page, a.host_page_size()).unwrap();
+        assert!(a.read(b + 0x1000, &mut got).is_err());
     }
 }
