@@ -350,6 +350,28 @@ jobs:
       - name: Prebuild oracle test
         run: cargo test --release --locked corpus_first_frame_oracle --no-run --message-format=json > "$RUNNER_TEMP/ounce-oracle-test-build.jsonl"
 
+      # Hand the corpus NROs to the native-execution job (Apple Silicon has no devkitA64 docker).
+      # Permissive builds (public domain, MIT, ISC, zlib), kept one day for that job only.
+      - name: Pass corpus NROs to the native job
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/ounce-oracle-builds" "$RUNNER_TEMP/corpus-nros" <<'PY'
+          import json, shutil, sys
+          from pathlib import Path
+          builds, out = Path(sys.argv[1]), Path(sys.argv[2])
+          for o in json.load(open("tests/corpus/oracles.json"))["oracles"]:
+              rel = Path(o["build"]) / "build/source" / o["nro"]
+              if (builds / rel).is_file():
+                  (out / rel).parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(builds / rel, out / rel)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corpus-nros
+          path: ${{ runner.temp }}/corpus-nros/
+          retention-days: 1
+
       - name: Run first-frame oracles under interpreter and Tier-3
         run: |
           set -euo pipefail
@@ -446,5 +468,58 @@ jobs:
         with:
           name: native-oracle-evidence
           path: ${{ runner.temp }}/native-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  native-corpus-oracles:
+    # PLAN.md step 4: every pre-registered corpus oracle again with guest code running on Apple
+    # Silicon (OUNCE_CPU=native). Each runs Tier-3 first (frame reference, speed baseline), then
+    # native execution; a recorded pass that does not pass natively fails the job.
+    needs: first-frame-oracles
+    if: always() && needs.first-frame-oracles.result != 'skipped'
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: never
+      OUNCE_CPU: native
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: corpus-nros
+          path: ${{ runner.temp }}/ounce-oracle-builds
+
+      - name: Build oracle tests with nce
+        run: cargo test --release --locked --features nce corpus_first_frame_oracle --no-run --message-format=json > "$RUNNER_TEMP/build.jsonl"
+
+      - name: Corpus oracles under --cpu=native
+        run: |
+          set -euo pipefail
+          executable=$(python3 -c '
+          import json, sys
+          paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
+                   if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
+                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
+          assert len(paths) == 1, paths
+          print(paths.pop())' "$RUNNER_TEMP/build.jsonl")
+          sysctl -n machdep.cpu.brand_string
+          python3 scripts/run_corpus_oracles.py --executable "$executable" \
+            --builds "$RUNNER_TEMP/ounce-oracle-builds" --evidence "$RUNNER_TEMP/native-corpus-evidence" --seconds 180
+          echo "=== speed (wall time per oracle run, Tier-3 vs native) ==="
+          for f in "$RUNNER_TEMP"/native-corpus-evidence/*.oracle.log; do
+            echo "$(basename "$f" .oracle.log): $(grep -h "native speedup" "$f" || echo 'no native run')"
+          done | tee "$RUNNER_TEMP/native-corpus-evidence/speed.txt"
+
+      - name: Retain native corpus evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-corpus-oracle-evidence
+          path: ${{ runner.temp }}/native-corpus-evidence/
           if-no-files-found: warn
           retention-days: 30
