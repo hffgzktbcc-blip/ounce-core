@@ -23,3 +23,7 @@ pub use tier3_jit::{SuperBlock, Tier3JitEngine};
 pub use engine::{CpuEngine, CpuTier};
 #[cfg(feature = "native-jit")]
 pub use tier4::Tier4JitEngine;
+
+pub fn scratch_peek(p: *const u8) -> u8 {
+    unsafe { *p }
+}
