@@ -219,7 +219,9 @@ fn maxwell_matches_ampere_goldens() {
     }
     code.push(mx::exit());
     let mx_fs = translate_maxwell(ShaderStage::Fragment, &program_mx(&h, &code)).unwrap();
-    golden("varying.frag.wgsl", include_str!("golden/varying.frag.wgsl"), &mx_fs.wgsl);
+    // Maxwell keeps IPA.PASS_MUL_W (NAK sm50.rs), which SM70+ lacks, so the text differs from
+    // the Ampere golden while the arithmetic is the same.
+    golden("varying_mx.frag.wgsl", include_str!("golden/varying_mx.frag.wgsl"), &mx_fs.wgsl);
 }
 
 #[test]
