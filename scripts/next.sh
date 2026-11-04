@@ -119,7 +119,9 @@ next_main() {
   echo "== ounce-core: next =="
   step_block "$n" | head -1 | sed -E 's/^- \[(.)\] \*\*([^*]*)\*\*.*/Step \2  [\1]/'
   step_block "$n" | grep -m1 '\*Done when:\*' | sed 's/^ */  /'
-  if checkpoint_of "$n" >/dev/null; then checkpoint_of "$n" | sed 's/^ */  /'; else echo "  Checkpoint: none yet"; fi
+  if checkpoint_of "$n" >/dev/null; then checkpoint_of "$n" | sed 's/^ */  /'
+  elif is_ticked "$n"; then step_block "$n" | grep '\*Proof:\*' | sed 's/^ */  /'
+  else echo "  Checkpoint: none yet"; fi
   echo "Branch: ${branch:-detached}  last: $(git log -1 --format='%h %s (%cr)')"
   [ "$branch" = main ] && echo "  On main: make a branch first (git switch -c step$n-<topic>)."
   echo "  dirty: $(git status --porcelain | wc -l | tr -d ' ') files $(git status --porcelain | head -6 | awk '{print $2}' | tr '\n' ' ')"
@@ -127,7 +129,7 @@ next_main() {
   if [ -n "$cp_age" ] && [ $(( $(date +%s) - cp_age )) -lt 1800 ]; then
     echo "  WARNING: last checkpoint $(( ($(date +%s) - cp_age) / 60 )) min ago: another agent may be active on this branch."
   fi
-  [ -n "$pr" ] && echo "PR: $(gh pr view "$pr" --json number,state,autoMergeRequest,url -q '"#\(.number) \(.state) auto-merge \(if .autoMergeRequest then "on" else "off" end) \(.url)"')"
+  [ -n "$pr" ] && echo "PR: $(gh pr view "$pr" --json number,state,autoMergeRequest,url -q '"#\(.number) \(.state) auto-merge \(if .autoMergeRequest then "on (GitHub merges when CI is green; do not wait for it)" else "off" end) \(.url)"')"
   local rep; rep=$(latest_report "${branch:-main}")
   if [ -n "$rep" ]; then set -- $rep; echo "Oracles (${3:-?}, $2): $(report_summary "$1")"; else echo "Oracles: no canonical report reachable (gh auth?)"; fi
   echo "Open PRs: $(gh pr list --json number,headRefName -q '.[]|"#\(.number) \(.headRefName)"' 2>/dev/null | tr '\n' ' ')"

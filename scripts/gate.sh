@@ -119,5 +119,5 @@ case $mode in
       out=$(git push -q 2>&1) || fail "git push (tick): $out"
     fi
     out=$(gh pr merge "$pr" --auto --squash 2>&1) || fail "gh pr merge --auto: $out"
-    echo "gate: shipped: $url — GitHub merges it when the required CI is green. Run scripts/next.sh to see its state." ;;
+    echo "gate: shipped: $url — auto-merge is set, GitHub merges it when the required CI is green. Do not wait for CI; you are done." ;;
 esac
