@@ -194,6 +194,19 @@ pub fn shll(n: u128, esize: u32, shift: u32, q: bool, signed: bool) -> u128 {
     out
 }
 
+/// `EXT`: the `16 (8 when !q)` bytes starting at byte `index` of `m:n`.
+pub fn extract(n: u128, m: u128, index: u32, q: bool) -> u128 {
+    let (n, m) = if q { (n, m) } else { (n & u64::MAX as u128, m & u64::MAX as u128) };
+    let shift = index * 8;
+    if shift == 0 {
+        n
+    } else if q {
+        (n >> shift) | (m << (128 - shift))
+    } else {
+        ((n | m << 64) >> shift) & u64::MAX as u128
+    }
+}
+
 /// `UZP1/UZP2/TRN1/TRN2/ZIP1/ZIP2` on `esize` lanes.
 pub fn permute(op: SimdPermuteOp, n: u128, m: u128, esize: u32, q: bool) -> u128 {
     let count = lanes(esize, q);

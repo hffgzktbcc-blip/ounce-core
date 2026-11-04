@@ -1172,6 +1172,12 @@ impl IpcManager {
                 if let Some(b) = out2 {
                     let _ = mmu.write_bytes(b.addr, &outbuf);
                 }
+                // GET_TPC_MASKS returns its masks through the guest pointer in the argument block.
+                if request == super::nvdrv::NVGPU_GPU_IOCTL_GET_TPC_MASKS && status == super::nvdrv::NV_OK && data.len() >= 0x18 {
+                    let addr = u64::from_le_bytes(data[0x10..0x18].try_into().unwrap());
+                    let size = (u32::from_le_bytes(data[..4].try_into().unwrap()) as usize).min(4);
+                    let _ = mmu.write_bytes(addr, &super::nvdrv::TPC_MASKS.to_le_bytes()[..size]);
+                }
                 // Submitted pushbuffer segments run now: on the channel's 3D engine when it allocated
                 // MAXWELL_B or AMPERE_B, else on the older synthetic-method model.
                 for (fd, addr, words) in self.nvdrv.take_channel_submissions() {

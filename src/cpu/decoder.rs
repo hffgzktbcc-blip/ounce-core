@@ -777,12 +777,15 @@ pub fn decode(raw: u32) -> Instruction {
     //     FADD Vd.4S, Vn.4S, Vm.4S (0x4E20D400)
     //     FSUB Vd.4S, Vn.4S, Vm.4S (0x4EA0D400)
     //     FMUL Vd.4S, Vn.4S, Vm.4S (0x6E20DC00)
-    if (raw & 0xFF20FC00) == 0x4E20D400 || (raw & 0xFFE0FC00) == 0x6E20DC00 {
+    //     FDIV Vd.4S, Vn.4S, Vm.4S (0x6E20FC00)
+    if (raw & 0xFF20FC00) == 0x4E20D400 || (raw & 0xFFE0FC00) == 0x6E20DC00 || (raw & 0xFFE0FC00) == 0x6E20FC00 {
         let rm = ((raw >> 16) & 0x1F) as u8;
         let rn = ((raw >> 5) & 0x1F) as u8;
         let rd = (raw & 0x1F) as u8;
         let op = if (raw & 0xFFE0FC00) == 0x6E20DC00 {
             FpOp2::Fmul
+        } else if (raw & 0xFFE0FC00) == 0x6E20FC00 {
+            FpOp2::Fdiv
         } else if (raw & (1 << 23)) != 0 {
             FpOp2::Fsub
         } else {
@@ -1084,6 +1087,15 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
+    // 26b'. AdvSIMD extract: 0 Q 101110 00 0 Rm 0 imm4 0 Rn Rd (EXT)
+    if (raw & 0xBFE0_8400) == 0x2E00_0000 {
+        let index = ((raw >> 11) & 0xF) as u8;
+        if !q && index >= 8 {
+            return None;
+        }
+        return Some(Instruction::SimdExt { rd, rn, rm, index, q });
+    }
+
     // 26c. AdvSIMD permute: 0 Q 001110 size 0 Rm 0 opc 10 Rn Rd (UZP1/TRN1/ZIP1/UZP2/TRN2/ZIP2)
     if (raw & 0xBF20_8C00) == 0x0E00_0800 {
         let op = match (raw >> 12) & 0x7 {
@@ -1232,6 +1244,19 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         };
         let imm = if op == SimdImmOp::Mov && u && cmode < 14 { !imm } else { imm };
         return Some(Instruction::SimdModImm { rd, imm, op, q });
+    }
+
+    // 30a. AdvSIMD scalar shift by immediate (D registers only): 01 U 111110 1xxx immb opcode 1 Rn Rd
+    //      (SSHR/USHR/SHL Dd, Dn, #shift). One 64-bit lane, the rest of Vd zeroed.
+    if (raw & 0xDF80_0400) == 0x5F00_0400 && (raw >> 19) & 0xF >= 8 {
+        let imm = (raw >> 16) & 0x7F;
+        let (op, shift) = match ((raw >> 11) & 0x1F, u) {
+            (0b00000, false) => (SimdShiftOp::Sshr, 128 - imm),
+            (0b00000, true) => (SimdShiftOp::Ushr, 128 - imm),
+            (0b01010, false) => (SimdShiftOp::Shl, imm - 64),
+            _ => return None,
+        };
+        return Some(Instruction::SimdShiftImm { rd, rn, op, esize: 64, shift: shift as u8, q: false });
     }
 
     // 30. AdvSIMD shift by immediate: 0 Q U 011110 immh immb opcode 1 Rn Rd (immh != 0)

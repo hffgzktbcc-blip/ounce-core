@@ -658,6 +658,8 @@ impl Ampere3d {
             Some(m::MAXWELL_DMA_COPY_A) => {
                 return self.dma.execute(call.method, call.data, mem, &mut self.diagnostics);
             }
+            // Only the inline-to-memory window (`LINE_LENGTH_IN`..`LOAD_INLINE_DATA`) is shared with 3D.
+            Some(c @ (m::MAXWELL_COMPUTE_B | m::KEPLER_INLINE_TO_MEMORY_B)) if (m::LINE_LENGTH_IN..=m::LOAD_INLINE_DATA).contains(&call.method) => c,
             Some(m::FERMI_TWOD_A) => {
                 // FERMI_TWOD_A (2D operations: clear/blit setup). Accept without foreign subchannel error.
                 return;

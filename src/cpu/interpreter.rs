@@ -1475,6 +1475,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdExt { rd, rn, rm, index, q } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::extract(n, m, index as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::DataProc1 { rd, rn, op, is_64 } => {
                 if is_64 {
                     let x = self.regs.read_x(rn);
@@ -1778,12 +1785,14 @@ mod tests {
             (0x0f0c8400, "SimdShiftImm"),       // shrn v0.8b, v0.8h, #4
             (0x4f088420, "SimdShiftImm"),       // shrn2 v0.16b, v1.8h, #8
             (0x6f3d0420, "SimdShiftImm"),       // ushr v0.4s, v1.4s, #3
+            (0x7f6007fe, "SimdShiftImm"),       // ushr d30, d31, #32
             (0x4f4c5420, "SimdShiftImm"),       // shl v0.2d, v1.2d, #12
             (0xad3e0080, "SimdLoadStorePair"),  // stp q0, q0, [x4, #-64]
             (0x6cc107e0, "SimdLoadStorePair"),  // ldp d0, d1, [sp], #16
             (0xac0008a1, "SimdLoadStorePair"),  // stnp q1, q2, [x5]
             (0xd50b7423, "DcZva"),              // dc zva, x3
             (0x4f00e41f, "SimdModImm"),         // movi v31.16b, #0
+            (0x6e1f43ff, "SimdExt"),            // ext v31.16b, v31.16b, v31.16b, #8
             (0x4e1d3bde, "SimdPermute"),        // zip1 v30.16b, v30.16b, v29.16b
             (0x0e095907, "SimdPermute"),        // uzp2 v7.8b, v8.8b, v9.8b
             (0x4e1f0549, "SimdDupElement"),     // dup v9.16b, v10.b[15]
