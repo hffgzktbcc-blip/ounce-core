@@ -193,7 +193,7 @@ impl Ctx<'_> {
                     MufuOp::Tanh => format!("tanh({x})"),
                 }
             }
-            Op::Tex { op, handle, lod, x, y } => {
+            Op::Tex { op, handle, lod, x, y, .. } => {
                 let k = self.textures[&handle];
                 match op {
                     TexOp::Sample => {
@@ -297,6 +297,9 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
     let mut textures: BTreeMap<TexHandle, bool> = BTreeMap::new();
     for op in &f.values {
         match *op {
+            Op::Tex { layer: Some(_), .. } => {
+                return Err(XlateError::Unsupported { at: 0, what: "2D array texture in WGSL" });
+            }
             Op::Tex { op, handle, .. } => *textures.entry(handle).or_insert(false) |= op == TexOp::Sample,
             Op::Cbuf { bank, offset } => {
                 let e = cbufs.entry(bank).or_insert(0);

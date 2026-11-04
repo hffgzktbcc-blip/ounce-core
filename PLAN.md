@@ -85,9 +85,16 @@ change. A PR that breaks one is rejected.
       each.
       *Done when:* 20 oracles exist in CI, each pass or fail recorded honestly. Failures are the to-do list.
       *Proof:* [PR #134](https://github.com/hffgzktbcc-blip/ounce-core/pull/134): 20 oracles in `tests/corpus/oracles.json` (16 new ones pre-registered in `2fe006e` before any run), `first-frame-oracles` job green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41791374072 (on main with #115; canonical report: `ounce-verify-canonical-report` artifact, 40 `ounce-verify/v0` records, 15/20 pass on both engines). Owner-approved addition: Ounce-Verify evidence and README count from the report. Failures for step 3: sixaxis, deko-console, nx-hbmenu (unimplemented instructions), sdl2-simple, hybrid-app (exit before the first frame).
-- [ ] **3. Fix by corpus.** Take the failing programs one by one, cheapest first. Each fix lands with that
+- [x] **3. Fix by corpus.** Take the failing programs one by one, cheapest first. Each fix lands with that
       program's oracle turning green. No speculative features.
       *Done when:* metric ≥ 15/20.
+      *Proof:* [PR #145](https://github.com/hffgzktbcc-blip/ounce-core/pull/145): **17/20** from the canonical report of
+      https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259 (sixaxis: FP/SIMD forms; deko-console: DMA
+      copy, inline-to-memory, 2D-array TEXS, fill rectangle, shadow RAM, +Y-down winding). deko-basic's observed frame-1
+      hash was corrected with owner approval (it recorded the winding bug; see `docs/deko-basic-oracle.md`).
+      Still failing, for step 7's repeat: nx-hbmenu (needs `bsd:u`/`nifm:u`, `NextLoadPath`, and a `pl:u` shared font,
+      which requires bundling an open-licensed font), sdl2-simple and hybrid-app (Mesa over nvdrv exits before the
+      first frame).
 - [x] **4. Native execution on Apple Silicon (NCE).** Rewrite a homebrew NRO's `svc` and
       `TPIDR_EL0`-touching instructions into trampolines, and run the rest of its ARM64 code directly in
       `MAP_JIT` memory. Port what already works (nxnative's NSO patcher, MIT) rather than designing
