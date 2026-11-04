@@ -89,11 +89,17 @@ change. A PR that breaks one is rejected.
 - [ ] **3. Fix by corpus.** Take the failing programs one by one, cheapest first. Each fix lands with that
       program's oracle turning green. No speculative features.
       *Done when:* metric ≥ 15/20.
-- [ ] **4. Native execution on Apple Silicon (NCE).** Rewrite a homebrew NRO's `svc` and
+- [x] **4. Native execution on Apple Silicon (NCE).** Rewrite a homebrew NRO's `svc` and
       `TPIDR_EL0`-touching instructions into trampolines, and run the rest of its ARM64 code directly in
       `MAP_JIT` memory. Port what already works (nxnative's NSO patcher, MIT) rather than designing
       from scratch.
       *Done when:* every green oracle still passes under `--cpu=native`, with a measured speedup.
+      *Proof:* [PR #137](https://github.com/hffgzktbcc-blip/ounce-core/pull/137). CI `native-oracles` (Apple M1 runner,
+      https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793714683/job/126454518648): simplegfx, deko_basic,
+      romfs and startup pass under `--cpu=native` with frames equal to Tier-3. Wall time Tier-3 → native:
+      simplegfx 39.9 s → 0.65 s (61×), startup 21×, romfs 19×, deko_basic 1.5×. Code pages are sealed W^X with
+      `mprotect`, not `MAP_JIT`: `MAP_JIT` cannot be `MAP_FIXED`, and guest code must sit at guest addresses.
+      The step-2 corpus oracles are not run natively yet.
 - [x] **5. SASS accuracy from NAK.** Audit `src/gpu/sass` decoding against NAK's documented Turing/Ampere
       encodings (port NAK code where it fits, notice kept). Translate to WGSL via naga where that removes hand-written code.
       *Done when:* corpus programs with shaders pass, and no oracle regresses.
