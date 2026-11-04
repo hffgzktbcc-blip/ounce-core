@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "platform": "switch2",
+  "origin": "synthetic",
+  "note": "SYNTHETIC harness programs we wrote ourselves (tests/fixtures/switch2-synthetic). They exercise the Switch 2 oracle path (set header, intake check, runner, verdicts) and are built with the original-Switch devkitA64 + libnx toolchain, because no public Switch 2 homebrew toolchain exists yet. They are not outside homebrew, not Switch 2 programs and never count toward any metric. `expect` values are computed by tools/corpus_oracle.py from each spec.",
+  "oracles": [
+    {
+      "id": "s2-synthetic-rects",
+      "platform": "switch2",
+      "format": "nro",
+      "build": "synthetic",
+      "nro": "rects/rects.nro",
+      "source": "rects/main.c",
+      "queued_frames": 3,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              32,
+              48,
+              64
+            ],
+            "rects": [
+              [
+                100,
+                100,
+                200,
+                120,
+                255,
+                128,
+                0
+              ],
+              [
+                400,
+                300,
+                64,
+                64,
+                0,
+                192,
+                255
+              ]
+            ]
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x2845b1aa90278da5"
+          }
+        },
+        {
+          "frames": [
+            2
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              32,
+              48,
+              64
+            ],
+            "rects": [
+              [
+                100,
+                100,
+                200,
+                120,
+                255,
+                128,
+                0
+              ],
+              [
+                416,
+                300,
+                64,
+                64,
+                0,
+                192,
+                255
+              ]
+            ]
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x5d14020e90078da5"
+          }
+        },
+        {
+          "frames": [
+            3
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              32,
+              48,
+              64
+            ],
+            "rects": [
+              [
+                100,
+                100,
+                200,
+                120,
+                255,
+                128,
+                0
+              ],
+              [
+                432,
+                300,
+                64,
+                64,
+                0,
+                192,
+                255
+              ]
+            ]
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x187fc8f87fe78da5"
+          }
+        }
+      ],
+      "assumptions": [
+        "Self-made program; framebuffer is linear RGBA8888 at 1280x720."
+      ]
+    },
+    {
+      "id": "s2-synthetic-console",
+      "platform": "switch2",
+      "format": "nro",
+      "build": "synthetic",
+      "nro": "console/console.nro",
+      "source": "console/main.c",
+      "queued_frames": 3,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[2;2Hounce-core switch2 harness: synthetic\u001b[4;2Hframe 1"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x644842ec53013be5",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        },
+        {
+          "frames": [
+            2
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[2;2Hounce-core switch2 harness: synthetic\u001b[4;2Hframe 1\u001b[5;2Hframe 2"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xf01aea7da16121e5",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        },
+        {
+          "frames": [
+            3
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[2;2Hounce-core switch2 harness: synthetic\u001b[4;2Hframe 1\u001b[5;2Hframe 2\u001b[6;2Hframe 3"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x1abeeb9c8bea5a45",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "Self-made program; libnx 4.12.0 CPU console (consoleInit(NULL)), stdout unbuffered."
+      ]
+    }
+  ]
+}

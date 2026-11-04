@@ -17,6 +17,14 @@ Notes:
 - The project records these fixtures as synthetic homebrew test programs; source-to-upstream comparisons and binary-content checks remain pending.
 - Exact per-fixture binary IDs and hashes are recorded in `tests/fixtures/nro/TOOLCHAIN_VERSIONS.md`.
 
+## Synthetic Switch 2 harness programs (`tests/fixtures/switch2-synthetic/*`)
+
+`rects` and `console` were written for ounce-core on 2026-11-04 (source authorship: this project) to guard the
+Switch 2 oracle path (`docs/switch2-corpus.md`). Built with devkitA64 r30-1 and libnx 4.12.0-1 (ISC), the
+original-Switch toolchain, because no public Switch 2 homebrew toolchain exists; build IDs and hashes are in
+that directory's README. They are synthetic, not outside homebrew and not Switch 2 programs, and never count.
+No outside Switch 2 homebrew program has been added yet (`tests/corpus/switch2/oracles.json` is empty).
+
 ## External corpus programs (PLAN step 2; built in CI, never committed)
 
 The 20 outside programs whose first frames are oracles. Sources are fetched at the pinned commit and

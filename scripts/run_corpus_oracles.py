@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Run every pre-registered first-frame oracle (tests/corpus/oracles.json) and record each verdict.
+"""Run every pre-registered first-frame oracle of one set and record each verdict.
+
+Sets: `step2` (tests/corpus/oracles.json, docs/corpus-oracles.md) and `switch2` (outside Switch 2
+homebrew, tests/corpus/switch2/oracles.json, docs/switch2-corpus.md). An empty set records 0/0.
 
 Each oracle runs in its own process under an outer timeout, because a blocking guest SVC cannot be
 interrupted from inside the runner. A failing oracle is recorded, not hidden: the job fails only when
@@ -14,6 +17,10 @@ import subprocess
 
 REPO = Path(__file__).resolve().parents[1]
 TEST = "loader::fixture_tests::corpus_runner::corpus_first_frame_oracle"
+SETS = {
+    "step2": ("tests/corpus/oracles.json", "tests/corpus/oracle-results.json"),
+    "switch2": ("tests/corpus/switch2/oracles.json", "tests/corpus/switch2/oracle-results.json"),
+}
 
 
 def main():
@@ -22,9 +29,11 @@ def main():
     parser.add_argument("--builds", type=Path, required=True, help="directory holding <build>/build/source")
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--seconds", type=int, default=300, help="host time per engine")
+    parser.add_argument("--set", choices=sorted(SETS), default="step2", help="oracle set (default step2)")
     args = parser.parse_args()
-    oracles = json.loads((REPO / "tests/corpus/oracles.json").read_text())["oracles"]
-    recorded = json.loads((REPO / "tests/corpus/oracle-results.json").read_text())["results"]
+    oracles_file, results_file = SETS[args.set]
+    oracles = json.loads((REPO / oracles_file).read_text())["oracles"]
+    recorded = json.loads((REPO / results_file).read_text())["results"]
     args.evidence.mkdir(parents=True, exist_ok=True)
     verdicts, errors = [], []
     for oracle in oracles:
@@ -35,7 +44,7 @@ def main():
             continue
         result = args.evidence / f"{oid}.oracle.json"
         log = args.evidence / f"{oid}.oracle.log"
-        env = dict(os.environ, OUNCE_CORPUS_ROOT=str(args.builds), OUNCE_ORACLE_ID=oid,
+        env = dict(os.environ, OUNCE_CORPUS_ROOT=str(args.builds), OUNCE_ORACLE_ID=oid, OUNCE_ORACLE_SET=args.set,
                    OUNCE_ORACLE_RESULT=str(result), OUNCE_ORACLE_SECONDS=str(args.seconds))
         command = [str(args.executable), TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"]
         with log.open("wb") as out:
@@ -54,8 +63,8 @@ def main():
         print(f"{'PASS' if verdict['pass'] else 'FAIL'} {oid}: {'; '.join(verdict['failures'][:3])}", flush=True)
     passed = [v["id"] for v in verdicts if v["pass"]]
     (args.evidence / "oracle-verdicts.json").write_text(json.dumps(
-        {"passed": len(passed), "total": len(oracles), "verdicts": verdicts}, indent=2) + "\n")
-    lines = [f"### First-frame oracles: {len(passed)}/{len(oracles)} pass", "", "| oracle | verdict | first failure |", "|---|---|---|"]
+        {"set": args.set, "passed": len(passed), "total": len(oracles), "verdicts": verdicts}, indent=2) + "\n")
+    lines = [f"### First-frame oracles ({args.set}): {len(passed)}/{len(oracles)} pass", "", "| oracle | verdict | first failure |", "|---|---|---|"]
     for v in verdicts:
         lines.append(f"| {v['id']} | {'pass' if v['pass'] else 'fail'} | {(v['failures'] or [''])[0][:160]} |")
     if os.environ.get("GITHUB_STEP_SUMMARY"):

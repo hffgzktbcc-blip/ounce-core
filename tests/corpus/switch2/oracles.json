@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "platform": "switch2",
+  "origin": "outside",
+  "note": "Pre-registered first-frame oracles for OUTSIDE Switch 2 homebrew (PLAN step 8), registered exactly like step 2 (docs/switch2-corpus.md). Empty until public, open-source Switch 2 homebrew tools exist. Specs are written from each program's source and committed before any ounce-core run; `expect` values are computed by tools/corpus_oracle.py, never from a run. Results live in oracle-results.json.",
+  "oracles": []
+}

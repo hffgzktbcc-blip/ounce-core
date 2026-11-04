@@ -10,6 +10,8 @@ import subprocess
 import sys
 
 REPO = Path(__file__).resolve().parents[1]
+# Original-Switch compiler; a Switch 2 build manifest names its own (docs/switch2-corpus.md).
+DEFAULT_COMPILER = "devkitA64/bin/aarch64-none-elf-gcc"
 
 
 def run(*args, cwd=None):
@@ -49,6 +51,11 @@ def validate(manifest):
             isinstance(a, str) and re.fullmatch(r"[A-Za-z0-9_.=-]+", a) and not a.startswith("-") for a in make_args
         ):
             raise ValueError("make_args must be plain make targets or VAR=value assignments")
+    compiler = manifest.get("compiler", DEFAULT_COMPILER)
+    if not isinstance(compiler, str) or not re.fullmatch(r"[A-Za-z0-9_.+-]+(/[A-Za-z0-9_.+-]+)*", compiler) or any(
+        p in (".", "..") for p in compiler.split("/")
+    ):
+        raise ValueError("compiler must be a plain path relative to DEVKITPRO")
     return manifest
 
 
@@ -95,7 +102,7 @@ def prepare(manifest_path, output, build=False):
     }
     if build:
         inventory["tools"]["make"] = run("make", "--version").splitlines()[0]
-        compiler = Path(devkit) / "devkitA64/bin/aarch64-none-elf-gcc"
+        compiler = Path(devkit) / manifest.get("compiler", DEFAULT_COMPILER)
         inventory["tools"]["compiler"] = run(str(compiler), "--version").splitlines()[0]
         inventory["tools"]["compiler_sha256"] = digest(compiler)
         inventory["toolchain_inputs_sha256"] = {}

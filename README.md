@@ -266,7 +266,7 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 | CPU code-cache invalidation | **Complete for its stated regression gate** | Synthetic write/remap tests and gated CI |
 | Independent original-Switch homebrew | **In progress** | Reproducible independent inputs, guest outcomes, external reproduction and real output oracles |
 | Ounce-Verify evidence layer | **Implemented on `main`** | Deterministic evidence validation and negative tests; see [#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96) |
-| Switch 2 homebrew | **Waiting on public toolchains** | An outside Switch 2 homebrew program passing a pre-registered oracle in CI |
+| Switch 2 homebrew | **Waiting on public toolchains** (intake harness ready, 0 outside programs: [how a program enters](docs/switch2-corpus.md)) | An outside Switch 2 homebrew program passing a pre-registered oracle in CI |
 | Corpus 4 → 20 outside programs | **Next** | A pre-registered oracle per program in CI, pass or fail recorded honestly |
 
 The project makes **no claim** to run Switch 2 software, commercial software or arbitrary homebrew. The plan is [PLAN.md](PLAN.md). See [independent corpus methodology](docs/independent-corpus.md), the [Ounce-Verify implementation](https://github.com/hffgzktbcc-blip/ounce-core/pull/96), and [the unmerged raw-frame evidence work](https://github.com/hffgzktbcc-blip/ounce-core/pull/103).

@@ -78,7 +78,7 @@ OUNCE_CORPUS_ROOT=<builds> OUNCE_ORACLE_ID=read-controls \
   cargo test --release corpus_first_frame_oracle -- --ignored --nocapture
 ```
 
-`<builds>/<build>/build/source/<nro>` must hold the program built as above. CI runs all of them with
+`<builds>/<build>/build/source/<nro>` must hold the program built as above. `OUNCE_ORACLE_SET=switch2` selects the Switch 2 set ([switch2-corpus.md](switch2-corpus.md)). CI runs all of them with
 `scripts/run_corpus_oracles.py` in the `first-frame-oracles` job of `.github/workflows/external-corpus.yml`.
 
 ## Ounce-Verify evidence

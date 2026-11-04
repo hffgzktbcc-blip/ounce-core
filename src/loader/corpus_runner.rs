@@ -872,38 +872,46 @@ fn startup_first_frame_oracle() {
     report_speed(&times);
 }
 
-/// One pre-registered first-frame oracle from `tests/corpus/oracles.json` (PLAN step 2,
-/// `docs/corpus-oracles.md`). Its expected values were computed from the program's source by
-/// `tools/corpus_oracle.py` before any run. Opt-in: `OUNCE_CORPUS_ROOT=<builds> OUNCE_ORACLE_ID=<id>
-/// cargo test --release corpus_first_frame_oracle -- --ignored --nocapture`. The NRO is read from
-/// `<builds>/<build>/build/source/<nro>`. `OUNCE_ORACLE_RESULT=<file>` receives the verdict as JSON,
-/// and `OUNCE_ORACLE_SECONDS` (default 300) bounds each engine's host time.
-#[test]
-#[ignore = "requires OUNCE_CORPUS_ROOT with built corpus programs and OUNCE_ORACLE_ID"]
-fn corpus_first_frame_oracle() {
-    use serde_json::{json, Value};
-    let oracles: Value = serde_json::from_str(include_str!("../../tests/corpus/oracles.json")).unwrap();
-    let id = std::env::var("OUNCE_ORACLE_ID").expect("OUNCE_ORACLE_ID is unset");
-    let root = std::env::var_os("OUNCE_CORPUS_ROOT").expect("OUNCE_CORPUS_ROOT is unset");
-    let oracle = oracles["oracles"].as_array().unwrap().iter().find(|o| o["id"] == id.as_str())
-        .unwrap_or_else(|| panic!("no oracle {id}"));
-    let path = Path::new(&root).join(oracle["build"].as_str().unwrap()).join("build/source")
-        .join(oracle["nro"].as_str().unwrap());
-    let nro = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+/// The oracle set named by `OUNCE_ORACLE_SET`: `step2` (default, `tests/corpus/oracles.json`),
+/// `switch2` (`tests/corpus/switch2/oracles.json`) or `switch2-synthetic` (our own harness programs).
+fn oracle_set(name: &str) -> crate::loader::switch2::OracleSet {
+    let json = match name {
+        "step2" => include_str!("../../tests/corpus/oracles.json"),
+        "switch2" => include_str!("../../tests/corpus/switch2/oracles.json"),
+        "switch2-synthetic" => include_str!("../../tests/corpus/switch2/synthetic-oracles.json"),
+        other => panic!("unknown oracle set {other:?}"),
+    };
+    crate::loader::switch2::OracleSet::parse(json).unwrap_or_else(|e| panic!("oracle set {name}: {e}"))
+}
+
+/// Runs one oracle under the interpreter and Tier-3 and returns its verdict (the JSON
+/// `scripts/run_corpus_oracles.py` records). The program must pass the set's intake check first.
+fn evaluate_oracle(set: &crate::loader::switch2::OracleSet, oracle: &serde_json::Value, nro: &[u8],
+    path: &Path, seconds: u64) -> serde_json::Value {
+    use serde_json::json;
     use sha2::Digest;
-    let nro_sha256 = format!("{:x}", sha2::Sha256::digest(&nro));
+    let id = oracle["id"].as_str().unwrap();
+    let nro_sha256 = format!("{:x}", sha2::Sha256::digest(nro));
+    let header = json!({"id": id, "platform": set.platform.name(), "origin": format!("{:?}", set.origin).to_lowercase(),
+        "nro_sha256": nro_sha256});
+    if let Err(error) = set.check_program(oracle, nro) {
+        let mut verdict = header;
+        verdict["pass"] = json!(false);
+        verdict["failures"] = json!([format!("intake: {error}")]);
+        verdict["runs"] = json!([]);
+        return verdict;
+    }
     let frames = oracle["queued_frames"].as_u64().unwrap();
     let checks = oracle["checks"].as_array().unwrap();
     let probes: Vec<(usize, usize)> = checks.iter().flat_map(|c| c["probes"].as_array().cloned().unwrap_or_default())
         .map(|p| (p["x"].as_u64().unwrap() as usize, p["y"].as_u64().unwrap() as usize)).collect();
-    let seconds = std::env::var("OUNCE_ORACLE_SECONDS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
     let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(seconds), frames: usize::MAX,
         queued_frames: frames, probes, ..Limits::default() };
     let mut failures = Vec::new();
     let mut runs = Vec::new();
     let mut reference: Option<Vec<QueuedFrame>> = None;
     for engine in [Engine::Interpreter, Engine::Tier3] {
-        let result = run_nro(&nro, &path.to_string_lossy(), &[], engine, &limits, &[]);
+        let result = run_nro(nro, &path.to_string_lossy(), &[], engine, &limits, &[]);
         println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
         let mut engine_failures = Vec::new();
         let mut fail = |message: String| engine_failures.push(message);
@@ -954,11 +962,67 @@ fn corpus_first_frame_oracle() {
             Some(_) => {}
         }
     }
-    let verdict = json!({"id": id, "pass": failures.is_empty(), "nro_sha256": nro_sha256,
-        "failures": failures, "runs": runs});
+    let mut verdict = header;
+    verdict["pass"] = json!(failures.is_empty());
+    verdict["failures"] = json!(failures);
+    verdict["runs"] = json!(runs);
+    verdict
+}
+
+/// One pre-registered first-frame oracle (PLAN step 2, `docs/corpus-oracles.md`; PLAN step 8,
+/// `docs/switch2-corpus.md`). Its expected values were computed from the program's source by
+/// `tools/corpus_oracle.py` before any run. Opt-in: `OUNCE_CORPUS_ROOT=<builds> OUNCE_ORACLE_ID=<id>
+/// cargo test --release corpus_first_frame_oracle -- --ignored --nocapture`. `OUNCE_ORACLE_SET`
+/// picks the set (default `step2`). The NRO is read from `<builds>/<build>/build/source/<nro>`.
+/// `OUNCE_ORACLE_RESULT=<file>` receives the verdict as JSON, and `OUNCE_ORACLE_SECONDS`
+/// (default 300) bounds each engine's host time.
+#[test]
+#[ignore = "requires OUNCE_CORPUS_ROOT with built corpus programs and OUNCE_ORACLE_ID"]
+fn corpus_first_frame_oracle() {
+    let set = oracle_set(&std::env::var("OUNCE_ORACLE_SET").unwrap_or_else(|_| "step2".into()));
+    let id = std::env::var("OUNCE_ORACLE_ID").expect("OUNCE_ORACLE_ID is unset");
+    let root = std::env::var_os("OUNCE_CORPUS_ROOT").expect("OUNCE_CORPUS_ROOT is unset");
+    let oracle = set.find(&id).unwrap_or_else(|| panic!("no oracle {id}"));
+    let path = Path::new(&root).join(oracle["build"].as_str().unwrap()).join("build/source")
+        .join(oracle["nro"].as_str().unwrap());
+    let nro = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let seconds = std::env::var("OUNCE_ORACLE_SECONDS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
+    let verdict = evaluate_oracle(&set, oracle, &nro, &path, seconds);
     println!("{}", serde_json::to_string_pretty(&verdict).unwrap());
     if let Some(out) = std::env::var_os("OUNCE_ORACLE_RESULT") {
         std::fs::write(out, serde_json::to_string_pretty(&verdict).unwrap()).expect("write oracle result");
     }
-    assert!(failures.is_empty(), "oracle {id} failed: {failures:#?}");
+    assert!(verdict["pass"] == true, "oracle {id} failed: {:#?}", verdict["failures"]);
+}
+
+/// The Switch 2 oracle path end to end on our own synthetic programs (`tests/fixtures/switch2-synthetic`):
+/// set header, intake check, both engines, frame hashes. Synthetic, so it guards code and is never progress.
+#[test]
+fn switch2_synthetic_oracles_pass_on_both_engines() {
+    let set = oracle_set("switch2-synthetic");
+    assert_eq!(set.origin, crate::loader::switch2::Origin::Synthetic);
+    for oracle in &set.oracles {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/switch2-synthetic")
+            .join(oracle["nro"].as_str().unwrap());
+        let nro = std::fs::read(&path).unwrap();
+        let verdict = evaluate_oracle(&set, oracle, &nro, &path, 120);
+        assert!(verdict["pass"] == true, "{}", serde_json::to_string_pretty(&verdict).unwrap());
+        assert_eq!(verdict["platform"], "switch2");
+        assert_eq!(verdict["origin"], "synthetic");
+    }
+}
+
+/// A program whose container or platform differs from its entry is refused before it runs.
+#[test]
+fn switch2_intake_refuses_mislabelled_programs() {
+    let set = oracle_set("switch2-synthetic");
+    let mut oracle = set.oracles[0].clone();
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/switch2-synthetic")
+        .join(oracle["nro"].as_str().unwrap());
+    let nro = std::fs::read(&path).unwrap();
+    oracle["platform"] = "switch".into();
+    let verdict = evaluate_oracle(&set, &oracle, &nro, &path, 1);
+    assert_eq!(verdict["pass"], false);
+    assert!(verdict["failures"][0].as_str().unwrap().starts_with("intake:"), "{verdict}");
+    assert!(verdict["runs"].as_array().unwrap().is_empty());
 }

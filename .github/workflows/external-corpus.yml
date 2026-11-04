@@ -9,6 +9,8 @@ on:
       - 'Cargo.lock'
       - 'crates/**'
       - 'scripts/prepare_external_corpus.py'
+      - 'scripts/check_switch2_corpus.py'
+      - 'scripts/corpus_verify.py'
       - 'scripts/run_corpus_oracles.py'
       - 'scripts/test_*.py'
       - 'tools/corpus_oracle.py'
@@ -448,3 +450,103 @@ jobs:
           path: ${{ runner.temp }}/native-evidence/
           if-no-files-found: warn
           retention-days: 30
+
+  switch2-oracles:
+    # PLAN step 8: outside Switch 2 homebrew, registered like step 2 (docs/switch2-corpus.md). Until a
+    # public toolchain exists the set is empty and this job only checks the corpus files; our own
+    # synthetic harness programs run in the CI test job (switch2_synthetic_oracles_pass_on_both_engines).
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check Switch 2 corpus files and specs
+        id: corpus
+        run: |
+          set -euo pipefail
+          python3 scripts/check_switch2_corpus.py
+          git clone --quiet --depth 1 --branch v4.12.0 https://github.com/switchbrew/libnx.git "$RUNNER_TEMP/libnx"
+          python3 tools/corpus_oracle.py --font "$RUNNER_TEMP/libnx/nx/data/default_font.bin" --check \
+            --oracles tests/corpus/switch2/oracles.json --oracles tests/corpus/switch2/synthetic-oracles.json
+          count=$(python3 -c 'import json; print(len(json.load(open("tests/corpus/switch2/oracles.json"))["oracles"]))')
+          echo "outside=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            echo "### Switch 2 oracles: 0 outside programs registered (no public Switch 2 homebrew toolchain yet)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.corpus.outputs.outside != '0'
+
+      - name: Install runtime build dependencies
+        if: steps.corpus.outputs.outside != '0'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Build unchanged Switch 2 programs with each manifest's toolchain image
+        if: steps.corpus.outputs.outside != '0'
+        run: |
+          set -euo pipefail
+          ORACLE_BUILDS="$RUNNER_TEMP/ounce-switch2-builds" EVIDENCE_ROOT="$RUNNER_TEMP/ounce-switch2-evidence"
+          mkdir -p "$ORACLE_BUILDS" "$EVIDENCE_ROOT"
+          for manifest in tests/corpus/switch2/oracle-builds/*.json; do
+            id=$(basename "$manifest" .json)
+            image=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["toolchain_image"])' "$manifest")
+            docker pull "$image"
+            docker image inspect "$image" > "$EVIDENCE_ROOT/$id.toolchain-image.json"
+            # corpus_verify.py reads one toolchain identity; with several images the last one is recorded per run.
+            cp "$EVIDENCE_ROOT/$id.toolchain-image.json" "$EVIDENCE_ROOT/toolchain-image.json"
+            docker run --rm -v "$GITHUB_WORKSPACE:/repo:ro" -v "$ORACLE_BUILDS:/corpus" -v "$EVIDENCE_ROOT:/evidence" \
+              -e BUILD_ID="$id" "$image" bash -lc '
+                set -uo pipefail
+                command -v python3 git make >/dev/null || (apt-get update && apt-get install -y python3 git make)
+                python3 /repo/scripts/prepare_external_corpus.py --manifest "/repo/tests/corpus/switch2/oracle-builds/$BUILD_ID.json" \
+                  --output "/corpus/$BUILD_ID/build" --build > "/evidence/$BUILD_ID.prepare.log" 2>&1 \
+                  || echo "build of $BUILD_ID failed (see $BUILD_ID.prepare.log)"
+                cp "/corpus/$BUILD_ID/build/inventory.json" "/evidence/$BUILD_ID.inventory.json" 2>/dev/null || true
+              ' 2>&1 | tee -a "$EVIDENCE_ROOT/build.log"
+          done
+
+      - name: Prebuild oracle test
+        if: steps.corpus.outputs.outside != '0'
+        run: cargo test --release --locked corpus_first_frame_oracle --no-run --message-format=json > "$RUNNER_TEMP/ounce-oracle-test-build.jsonl"
+
+      - name: Run Switch 2 first-frame oracles under interpreter and Tier-3
+        if: steps.corpus.outputs.outside != '0'
+        run: |
+          set -euo pipefail
+          executable=$(python3 -c '
+          import json, sys
+          paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
+                   if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
+                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
+          assert len(paths) == 1, paths
+          print(paths.pop())' "$RUNNER_TEMP/ounce-oracle-test-build.jsonl")
+          python3 scripts/run_corpus_oracles.py --set switch2 --executable "$executable" \
+            --builds "$RUNNER_TEMP/ounce-switch2-builds" --evidence "$RUNNER_TEMP/ounce-switch2-evidence" --seconds 180
+
+      - name: Ounce-Verify evidence (target switch2-homebrew)
+        if: always() && steps.corpus.outputs.outside != '0'
+        env:
+          CORE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/ounce-switch2-evidence"
+          python3 scripts/corpus_verify.py evidence --set switch2 --verdicts "$evidence/oracle-verdicts.json" \
+            --builds "$RUNNER_TEMP/ounce-switch2-builds" --toolchain-image "$evidence/toolchain-image.json" \
+            --core-commit "$CORE_COMMIT" --output "$evidence/ounce-verify-evidence.json"
+          python3 tools/ounce_verify.py "$evidence/ounce-verify-evidence.json" --output "$evidence/canonical-report.json"
+
+      - name: Retain Switch 2 oracle evidence (no upstream source or binaries)
+        if: always() && steps.corpus.outputs.outside != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: switch2-first-frame-oracles
+          path: ${{ runner.temp }}/ounce-switch2-evidence/
+          if-no-files-found: warn
+          retention-days: 90
