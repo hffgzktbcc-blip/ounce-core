@@ -40,7 +40,7 @@ const STACK_SIZE: usize = 0x100000; // 1 MB stack
 static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 
 fn main() {
-    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4>` may appear anywhere; strip them so the
+    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     for arg in env::args() {
@@ -51,7 +51,7 @@ fn main() {
         if let Some(value) = arg.strip_prefix("--cpu=") {
             match cpu::CpuTier::parse(value) {
                 Some(tier) => cpu::CpuTier::set_cli_override(tier),
-                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected tier3 or tier4); ignoring."),
+                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected tier3, tier4 or native); ignoring."),
             }
             continue;
         }
@@ -298,6 +298,7 @@ fn print_usage() {
     println!("    {}--present={}<mode>        Presentation backend: auto, gpu (needs --features gpu-present), minifb, headless", s.green, s.reset);
     println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
     println!("    {}--cpu={}<tier>            CPU block engine for Stage 20: tier3 (default) or tier4 (needs --features native-jit)", s.green, s.reset);
+    println!("    {}--cpu=native{}            run an NRO on the host CPU (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
     println!("    {}test{}                    Execute 25-stage full-stack verification & hardware benchmark suite", s.green, s.reset);
@@ -402,9 +403,15 @@ fn print_specs() {
 }
 
 fn setup_vm() -> (Cpu, Memory, HorizonKernel) {
+    setup_vm_in(Memory::new(), 0, 0x10_0000_0000)
+}
+
+/// [`setup_vm`] into `mmu`, with the low layout moved up by `base` and the alias region `alias_size`
+/// long (native execution, see `HorizonKernel::set_addr_base`).
+fn setup_vm_in(mut mmu: Memory, base: u64, alias_size: u64) -> (Cpu, Memory, HorizonKernel) {
     let mut cpu = Cpu::new();
-    let mut mmu = Memory::new();
-    let kernel = HorizonKernel::new();
+    let mut kernel = HorizonKernel::new();
+    kernel.set_addr_base(base, alias_size);
 
     // Map stack space: 0x7FFFF00000 .. 0x7FFFFFF000
     let stack_base = STACK_TOP - STACK_SIZE as u64;
@@ -417,7 +424,7 @@ fn setup_vm() -> (Cpu, Memory, HorizonKernel) {
     cpu.regs.sp = STACK_TOP;
     cpu.regs.tpidr_el0 = DEFAULT_TLS_ADDR;
     cpu.regs.tpidrro_el0 = DEFAULT_TLS_ADDR;
-    cpu.regs.pc = DEFAULT_BASE_ADDR;
+    cpu.regs.pc = base + DEFAULT_BASE_ADDR;
 
     (cpu, mmu, kernel)
 }
@@ -3417,6 +3424,19 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
         }
     };
 
+    if cpu::CpuTier::from_env() == cpu::CpuTier::Native && bytes.get(0x10..0x14) == Some(b"NRO0".as_slice()) {
+        #[cfg(feature = "nce")]
+        {
+            if gui_mode {
+                println!("[NCE] Native execution runs headless for now.");
+            }
+            run_native_nro(path, &bytes, guest_args);
+            return;
+        }
+        #[cfg(not(feature = "nce"))]
+        eprintln!("[CPU] --cpu=native needs a build with `--features nce`; running the interpreter.");
+    }
+
     let (mut cpu, mut mmu, mut kernel) = setup_vm();
     let default_key: [u8; 16] = [
         0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
@@ -3475,6 +3495,62 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
     }
 }
 
+/// `run <nro> --cpu=native`: the NRO on the host CPU, headless, until it exits, breaks or faults.
+#[cfg(feature = "nce")]
+fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) {
+    use cpu::nce::{NceEngine, NceExit};
+    let arena = match cpu::nce::reserve_window() {
+        Ok(arena) => arena,
+        Err(e) => return eprintln!("[NCE] Native execution unavailable: {e}"),
+    };
+    let base = arena.base();
+    let (mut cpu, mut mmu, mut kernel) = setup_vm_in(Memory::with_arena(arena), base, cpu::nce::ALIAS_SIZE);
+    let code = base + DEFAULT_BASE_ADDR;
+    if let Err(e) = BootLoader::load_any_package(bytes, code, &[0; 16], &mut mmu) {
+        return eprintln!("[Loader Error] {e}");
+    }
+    if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, bytes, guest_args) {
+        return eprintln!("[Loader Error] homebrew environment: {e}");
+    }
+    if let Some(dir) = SDMC_HOST_DIR.get() {
+        kernel.vfs.set_sdmc_directory(dir);
+    }
+    cpu.regs.pc = code;
+    // The NRO header (after the entry branch) is data.
+    let mut engine = match NceEngine::new(&mut mmu, base, vec![(code + 4, code + 0x80)]) {
+        Ok(engine) => engine,
+        Err(e) => return eprintln!("[NCE] {e}"),
+    };
+    println!("[NCE] Running natively at 0x{code:016X} (guest window 0x{base:X})");
+    let start = Instant::now();
+    let (mut svcs, mut frames) = (0u64, 0u64);
+    loop {
+        match engine.run(&mut cpu, &mut mmu, &|| kernel.system_tick()) {
+            NceExit::Svc(id) => {
+                svcs += 1;
+                match kernel.dispatch_svc(id, &mut cpu, &mut mmu) {
+                    SvcResult::Success => {}
+                    SvcResult::PresentFrame => {
+                        frames += 1;
+                        println!("[VM] VSync / Frame {frames} presented.");
+                    }
+                    SvcResult::ExitProcess => { println!("[VM] Guest exited (svcExitProcess)."); break; }
+                    SvcResult::Break { reason, .. } => { println!("[VM] Hit svcBreak: reason 0x{reason:X}"); break; }
+                    SvcResult::Unhandled(id) => { println!("[VM] Stopping on unhandled SVC 0x{id:X}"); break; }
+                }
+            }
+            NceExit::Preempted => kernel.scheduler.preempt(&mut cpu),
+            NceExit::Fault { pc, signal, addr } => {
+                println!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
+                break;
+            }
+            NceExit::Error(e) => { eprintln!("[NCE] {e}"); break; }
+        }
+    }
+    println!("[NCE] {svcs} SVCs, {frames} frames in {:.3} s; rewrote {:?}; {} instructions interpreted",
+        start.elapsed().as_secs_f64(), engine.stats, engine.interpreted_steps);
+}
+
 /// Heap handed to homebrew through the `OverrideHeap` ConfigEntry.
 const NRO_HEAP_SIZE: usize = 0x200_0000; // 32 MB
 const NRO_CONFIG_ADDR: u64 = 0x7FFF_0000;
@@ -3531,8 +3607,8 @@ fn setup_homebrew_nro(
         argv: Some(argv),
         ..Default::default()
     }
-    .setup(cpu, mmu, NRO_CONFIG_ADDR)?;
-    let stub = loader::HomebrewConfig::install_exit_stub(mmu, NRO_EXIT_STUB_ADDR)?;
+    .setup(cpu, mmu, kernel.addr_base + NRO_CONFIG_ADDR)?;
+    let stub = loader::HomebrewConfig::install_exit_stub(mmu, kernel.addr_base + NRO_EXIT_STUB_ADDR)?;
     cpu.regs.write_x(30, stub);
     Ok(())
 }
