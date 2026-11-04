@@ -125,8 +125,9 @@ pub enum TexLod {
     Level(u8),
 }
 
-/// A 2D texture read, normalized across encodings: coordinates `x`, `y` and the destination
-/// register of each RGBA component (`RZ` = not written).
+/// A 2D (or 2D array) texture read, normalized across encodings: coordinates `x`, `y`, the register
+/// holding the integer array layer for arrays, and the destination register of each RGBA component
+/// (`RZ` = not written).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tex {
     pub op: TexOp,
@@ -134,6 +135,7 @@ pub struct Tex {
     pub lod: TexLod,
     pub x: u8,
     pub y: u8,
+    pub layer: Option<u8>,
     pub dst: [u8; 4],
 }
 
@@ -325,7 +327,8 @@ pub enum Instr {
     /// 32-bit integer to f32 (round to nearest).
     I2F { dst: u8, src: Src, signed: bool },
     /// f32 to 32-bit integer after `round`, saturating; NaN gives 0.
-    F2I { dst: u8, src: FSrc, signed: bool, round: Round },
+    /// `u16`: an unsigned 16-bit destination (the result saturates to `0..=0xffff`).
+    F2I { dst: u8, src: FSrc, signed: bool, round: Round, u16: bool },
     /// f32 to f32: optional rounding to an integral value (`F2F.FLOOR`, `FRND`), then `.SAT`.
     F2F { dst: u8, src: FSrc, round: Option<Round>, sat: bool },
     /// Branch to the instruction `rel` bytes from this one's start.
@@ -482,6 +485,7 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
                 lod,
                 x: ra,
                 y: next_reg(ra),
+                layer: None,
                 dst: pack_pairs(&mask_comps(bits(w, 72, 76)), dst, bits(w, 64, 72) as u8),
             })
         }
@@ -718,7 +722,7 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
             if bits(w, 75, 77) != 2 || bits(w, 84, 87) != 2 {
                 return Err(unsup("F2I format other than 32-bit <- F32"));
             }
-            Instr::F2I { dst, src: fslot(full)?, signed: bit(w, 72), round: rnd[bits(w, 78, 80) as usize] }
+            Instr::F2I { dst, src: fslot(full)?, signed: bit(w, 72), round: rnd[bits(w, 78, 80) as usize], u16: false }
         }
         0x107 => {
             if bits(w, 75, 77) != 2 || bits(w, 84, 87) != 2 {
@@ -853,7 +857,10 @@ impl fmt::Display for Decoded {
                     TexHandle::Bound { index } => format!("{index:#x}"),
                 };
                 let d: Vec<String> = t.dst.iter().map(|&r| reg(r)).collect();
-                write!(f, "{name}.2D{lod} {{{}}}, {}, {}, {h}", d.join(", "), reg(t.x), reg(t.y))
+                match t.layer {
+                    Some(l) => write!(f, "{name}.ARRAY_2D{lod} {{{}}}, {}, {}, {}, {h}", d.join(", "), reg(l), reg(t.x), reg(t.y)),
+                    None => write!(f, "{name}.2D{lod} {{{}}}, {}, {}, {h}", d.join(", "), reg(t.x), reg(t.y)),
+                }
             }
             Instr::Setp { pd, pd2, cmp, bop, c } => {
                 write!(f, "{}SETP{}.{bop:?} {}, {}, {}, {c}", cmp_kind(&cmp), cmp_name(&cmp), pr(pd), pr(pd2), cmp_args(&cmp))
@@ -897,8 +904,9 @@ impl fmt::Display for Decoded {
                 write!(f, "SHR{}{} {}, {a}, {b}", sgn(signed), if wrap { ".W" } else { "" }, reg(dst))
             }
             Instr::I2F { dst, src, signed } => write!(f, "I2F.F32{} {}, {src}", sgn(signed), reg(dst)),
-            Instr::F2I { dst, src, signed, round } => {
-                write!(f, "F2I{}.F32.{} {}, {src}", sgn(signed), format!("{round:?}").to_uppercase(), reg(dst))
+            Instr::F2I { dst, src, signed, round, u16 } => {
+                let width = if u16 { "16" } else { "" };
+                write!(f, "F2I{}{width}.F32.{} {}, {src}", sgn(signed), format!("{round:?}").to_uppercase(), reg(dst))
             }
             Instr::F2F { dst, src, round, sat } => {
                 let r = round.map_or(String::new(), |r| format!(".{}", format!("{r:?}").to_uppercase()));

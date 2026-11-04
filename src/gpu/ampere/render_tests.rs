@@ -1245,7 +1245,7 @@ fn back_faces_are_culled_by_winding() {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
     setup(&mut pb, m::AMPERE_B, false);
-    // Counter-clockwise with y up, then the same triangle wound the other way.
+    // Clockwise on the +y-down framebuffer (the viewport keeps clip y), then wound the other way.
     let verts = [
         vtx(-1.0, -1.0, 0.5, GREEN),
         vtx(1.0, -1.0, 0.5, GREEN),
@@ -1255,7 +1255,7 @@ fn back_faces_are_culled_by_winding() {
         vtx(1.0, -1.0, 0.5, RED),
     ];
     geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
-    pb.extend([inc_header(SC, m::OGL_SET_CULL, 3), 1, 0x901, 0x405]); // CCW front, cull BACK
+    pb.extend([inc_header(SC, m::OGL_SET_CULL, 3), 1, 0x900, 0x405]); // CW front, cull BACK
     draw(&mut pb, 0, 6, 4); // TRIANGLES
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());

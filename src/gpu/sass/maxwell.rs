@@ -268,11 +268,16 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
         if !bit(w, 59) {
             return Err(unsup("16-bit texture result"));
         }
-        let lod = match (fetch, bits(w, 53, 57)) {
-            (false, 1) => TexLod::Auto,
-            (false, 2) | (true, 2) => TexLod::Zero,
-            _ => return Err(unsup("texture target other than 2D (.LZ for TLDS)")),
+        // TEXS targets 7/8 are 2D arrays: the layer is in Ra, the coordinates in Ra + 1 and Rb
+        // (Ryujinx `InstEmitTexture.EmitTexs`, MIT).
+        let (lod, array) = match (fetch, bits(w, 53, 57)) {
+            (false, 1) => (TexLod::Auto, false),
+            (false, 2) | (true, 2) => (TexLod::Zero, false),
+            (false, 7) => (TexLod::Auto, true),
+            (false, 8) => (TexLod::Zero, true),
+            _ => return Err(unsup("texture target other than 2D / 2D array (.LZ for TLDS)")),
         };
+        let (x, layer) = if array { (next_reg(reg(w, 8)), Some(reg(w, 8))) } else { (reg(w, 8), None) };
         let rd2 = reg(w, 28);
         let comps: &[usize] = match (rd2 == RZ, bits(w, 50, 53)) {
             (true, 0) => &[0],
@@ -294,8 +299,9 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
             op: if fetch { TexOp::Fetch } else { TexOp::Sample },
             handle: TexHandle::Bound { index: bits(w, 36, 49) as u16 },
             lod,
-            x: reg(w, 8),
+            x,
             y: reg(w, 20),
+            layer,
             dst: pack_pairs(comps, dst, rd2),
         })
     } else if top(0xfc38 << 48, 0xc038 << 48) || top(0xff38 << 48, 0xdc38 << 48) {
@@ -335,6 +341,7 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
             lod,
             x: ra,
             y: next_reg(ra),
+            layer: None,
             dst: d,
         })
     } else if top(0xfff8 << 48, 0xdeb8 << 48) || top(0xff38 << 48, 0xdd38 << 48) {
@@ -546,12 +553,14 @@ fn decode_ext(w: u64) -> Result<Option<Instr>, DecodeError> {
         Instr::I2F { dst, src: slot_b(w, false), signed: bit(w, 13) }
     } else if alu3(0x5cb0) {
         no_cc(47)?;
-        if bits(w, 8, 10) != 2 || bits(w, 10, 12) != 2 {
-            return Err(unsup("F2I format other than 32-bit <- F32"));
+        // Destination format 1 is 16-bit; only the unsigned form is modelled.
+        let u16 = bits(w, 8, 10) == 1 && !bit(w, 12);
+        if !(bits(w, 8, 10) == 2 || u16) || bits(w, 10, 12) != 2 {
+            return Err(unsup("F2I format other than 32-bit or U16 <- F32"));
         }
         let round = [Round::Nearest, Round::Floor, Round::Ceil, Round::Trunc][bits(w, 39, 41) as usize];
         let src = FSrc { src: slot_b(w, true), neg: bit(w, 45), abs: bit(w, 49) };
-        Instr::F2I { dst, src, signed: bit(w, 12), round }
+        Instr::F2I { dst, src, signed: bit(w, 12), round, u16 }
     } else if alu3(0x5ca8) {
         no_cc(47)?;
         if bits(w, 8, 10) != 2 || bits(w, 10, 12) != 2 {

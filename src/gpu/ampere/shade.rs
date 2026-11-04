@@ -17,10 +17,10 @@ pub(crate) trait ShaderInputs {
     fn interp(&self, addr: u16, freq: IpaFreq) -> f32;
     /// 2D texture read: `x`, `y` are float bits for [`TexOp::Sample`] and integer texel
     /// coordinates for [`TexOp::Fetch`]. `lod` is `None` for an implicit LOD, else float bits
-    /// (sample) or an integer level (fetch); 0 means level zero either way. Zeros when the
-    /// texture is not resolved.
-    fn texture(&self, op: TexOp, handle: TexHandle, lod: Option<u32>, x: u32, y: u32) -> [f32; 4] {
-        let _ = (op, handle, lod, x, y);
+    /// (sample) or an integer level (fetch); 0 means level zero either way. `layer` is the integer
+    /// layer of a 2D array read. Zeros when the texture is not resolved.
+    fn texture(&self, op: TexOp, handle: TexHandle, lod: Option<u32>, layer: Option<u32>, x: u32, y: u32) -> [f32; 4] {
+        let _ = (op, handle, lod, layer, x, y);
         [0.0; 4]
     }
 }
@@ -47,13 +47,13 @@ pub(crate) fn run(f: &Function, inputs: &dyn ShaderInputs) -> Vec<u32> {
                     None => raw.to_bits(),
                 }
             }
-            Op::Tex { op, handle, lod, x: tx, y: ty } => {
+            Op::Tex { op, handle, lod, x: tx, y: ty, layer } => {
                 let lod = match lod {
                     Lod::Auto => None,
                     Lod::Zero => Some(0),
                     Lod::Level(l) => Some(v[l.0 as usize]),
                 };
-                texels.push((v.len() as u32, inputs.texture(op, handle, lod, v[tx.0 as usize], v[ty.0 as usize])));
+                texels.push((v.len() as u32, inputs.texture(op, handle, lod, layer.map(|l| v[l.0 as usize]), v[tx.0 as usize], v[ty.0 as usize])));
                 0
             }
             Op::Comp(t, c) => texels.iter().find(|(i, _)| *i == t.0).map_or(0, |(_, rgba)| rgba[c as usize].to_bits()),
