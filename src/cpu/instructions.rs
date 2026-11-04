@@ -634,6 +634,15 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// `EXT Vd.<T>, Vn.<T>, Vm.<T>, #index`: bytes `index..` of `Vm:Vn`
+    SimdExt {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        index: u8,
+        q: bool,
+    },
+
     /// Unimplemented or Unknown instruction (preserves raw 32-bit opcode for debugging)
     Unimplemented {
         raw: u32,
