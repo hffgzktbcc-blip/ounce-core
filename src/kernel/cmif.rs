@@ -39,6 +39,7 @@ impl IpcManager {
             S::ApplicationFunctions if libnx => self.handle_applet(A::ApplicationFunctions, cmd, args, tls, mmu),
             S::SetSys if libnx => self.handle_setsys(cmd, args, tls, mmu),
             S::Time if libnx => self.handle_time(cmd, tls, mmu),
+            S::Pl if libnx => self.handle_pl(cmd, args, tls, mmu),
             S::SystemClock if libnx => self.handle_system_clock(cmd, tls, mmu),
             S::SteadyClock if libnx => self.handle_steady_clock(cmd, tls, mmu),
             // Services only libnx-shaped code reaches.

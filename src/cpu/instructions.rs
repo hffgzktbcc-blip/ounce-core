@@ -645,6 +645,25 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// `FCCMP/FCCMPE Sn/Dn, Sm/Dm, #nzcv, cond`: compare when `cond` holds, else set the flags to `nzcv`
+    FpCondCompare {
+        rn: u8,
+        rm: u8,
+        nzcv: u8,
+        cond: Condition,
+        is_double: bool,
+    },
+
+    /// `ADC/ADCS/SBC/SBCS Rd, Rn, Rm`
+    AddSubCarry {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        is_sub: bool,
+        set_flags: bool,
+        is_64: bool,
+    },
+
     /// `EXT Vd.<T>, Vn.<T>, Vm.<T>, #index`: bytes `index..` of `Vm:Vn`
     SimdExt {
         rd: u8,

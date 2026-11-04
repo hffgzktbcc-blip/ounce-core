@@ -282,7 +282,7 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                     }
                 }
             }
-            match kernel.dispatch_svc(id, &mut cpu, &mut mmu) {
+                match kernel.dispatch_svc(id, &mut cpu, &mut mmu) {
                 SvcResult::Success => {}
                 SvcResult::ExitProcess => { result.stop = Stop::ExitProcess; break; }
                 SvcResult::Break { reason, info1, info2 } => {
@@ -361,7 +361,7 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
         // Dispatch may switch the guest thread: resume from the post-dispatch registers.
         // A block can cross a quantum without landing exactly on a modulo boundary.
         if result.instructions >= next_preemption {
-            kernel.scheduler.preempt(&mut cpu);
+                kernel.scheduler.preempt(&mut cpu);
             result.preemptions += 1;
             next_preemption = result.instructions.saturating_add(quantum);
         }
@@ -372,6 +372,9 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
     (result, kernel)
 }
 
+/// Wall-clock date the corpus runner gives guests (2024-01-01 00:00:00 UTC).
+const DETERMINISTIC_UNIX_SECS: u64 = 1_704_067_200;
+
 fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
     limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
     let (memory, base, alias_size) = match guest_memory(engine) {
@@ -379,6 +382,7 @@ fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
         Err(error) => { let (cpu, _, kernel) = crate::setup_vm(); return (report(engine, Stop::LoadError(error), &cpu), kernel); }
     };
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm_in(memory, base, alias_size);
+    kernel.set_deterministic_clock(DETERMINISTIC_UNIX_SECS);
     let loaded = super::super::BootLoader::load_any_package(nro, base + crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu);
     let error = match loaded {
         Ok(info) if info.format == "NRO0" => None,

@@ -123,6 +123,13 @@ impl HorizonKernel {
 
     /// System tick at 19.2 MHz on the scheduler's clock (at least one millisecond's worth), so time skipped
     /// while every thread slept shows up here too.
+    /// Runs this kernel on the deterministic clock with a fixed wall-clock date, so repeated runs and
+    /// both CPU engines see the same time (the corpus runner's frame comparison needs that).
+    pub fn set_deterministic_clock(&mut self, unix_secs: u64) {
+        self.scheduler.set_deterministic();
+        self.ipc.time.fixed_unix_secs = Some(unix_secs);
+    }
+
     pub fn system_tick(&self) -> u64 {
         let elapsed = self.scheduler.now_ns() as u128;
         (((elapsed * 19_200_000) / 1_000_000_000) as u64).max(19_200)
@@ -201,6 +208,11 @@ impl HorizonKernel {
     pub fn dispatch_svc(&mut self, svc_id: u16, cpu: &mut Cpu, mmu: &mut Memory) -> SvcResult {
         // Guests poll HID shared memory between SVCs, so publish the latest input before each one.
         self.ipc.hid.sync(mmu);
+        self.scheduler.tick_deterministic();
+        cpu.counter_ticks = cpu.counter_ticks.max(self.system_tick());
+        if self.scheduler.is_deterministic() {
+            self.ipc.steady_override_ns = Some(self.scheduler.now_ns());
+        }
         self.scheduler.expire_timers();
         self.scheduler.finish_timeouts(mmu);
         match svc_id {

@@ -50,7 +50,14 @@ pub struct Cpu {
     pub exclusive: Option<u64>,
     /// Pointer authentication keys and EL0 controls (shared by the process's threads).
     pub pauth: PointerAuth,
+    /// `CNTPCT_EL0`: the kernel moves it up to the system tick at every SVC, and each read advances it by
+    /// [`COUNTER_READ_TICKS`] so a loop polling the counter always sees time pass. It depends on
+    /// nothing the CPU engines differ in.
+    pub counter_ticks: u64,
 }
+
+/// Counter ticks (19.2 MHz) one `CNTPCT_EL0` read takes: about 52 microseconds.
+pub const COUNTER_READ_TICKS: u64 = 1000;
 
 impl Default for Cpu {
     fn default() -> Self {
@@ -63,6 +70,7 @@ impl Cpu {
         Self {
             regs: CpuRegisters::new(),
             jit: JitBlockCache::new(),
+            counter_ticks: 0x0123_4560,
             exclusive: None,
             pauth: PointerAuth::default(),
         }
@@ -902,7 +910,11 @@ impl Cpu {
                         0x4031 => 1 << 8 | 1 << 28,
                         // ID_AA64PFR1_EL1: BT = 1 (FEAT_BTI)
                         0x4021 => 1,
-                        0x5F01 => self.jit.cache_hits.wrapping_add(self.jit.cache_misses).wrapping_mul(16).wrapping_add(0x0123_4560),
+                        0x5F01 => {
+                            let now = self.counter_ticks;
+                            self.counter_ticks = now.wrapping_add(COUNTER_READ_TICKS);
+                            now
+                        }
                         _ => 0,
                     };
                     self.regs.write_x(rt, val);
@@ -1134,6 +1146,54 @@ impl Cpu {
                     self.regs.pstate.v = false;
                 }
 
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::AddSubCarry { rd, rn, rm, is_sub, set_flags, is_64 } => {
+                let bits = if is_64 { 64 } else { 32 };
+                let mask = if is_64 { u64::MAX } else { u32::MAX as u64 };
+                let a = self.regs.read_x(rn) & mask;
+                let b = self.regs.read_x(rm) & mask;
+                let b = if is_sub { !b & mask } else { b };
+                let carry_in = self.regs.pstate.c as u128;
+                let wide = a as u128 + b as u128 + carry_in;
+                let res = (wide as u64) & mask;
+                if set_flags {
+                    let sign = 1u64 << (bits - 1);
+                    self.regs.pstate.n = res & sign != 0;
+                    self.regs.pstate.z = res == 0;
+                    self.regs.pstate.c = wide >> bits != 0;
+                    self.regs.pstate.v = (!(a ^ b) & (a ^ res) & sign) != 0;
+                }
+                self.regs.write_x(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpCondCompare { rn, rm, nzcv, cond, is_double } => {
+                let (n, z, c, v) = if self.check_condition(cond) {
+                    let (a, b) = if is_double {
+                        (self.regs.read_d(rn), self.regs.read_d(rm))
+                    } else {
+                        (self.regs.read_s(rn) as f64, self.regs.read_s(rm) as f64)
+                    };
+                    if a.is_nan() || b.is_nan() {
+                        (false, false, true, true)
+                    } else if a == b {
+                        (false, true, true, false)
+                    } else if a < b {
+                        (true, false, false, false)
+                    } else {
+                        (false, false, true, false)
+                    }
+                } else {
+                    (nzcv & 8 != 0, nzcv & 4 != 0, nzcv & 2 != 0, nzcv & 1 != 0)
+                };
+                self.regs.pstate.n = n;
+                self.regs.pstate.z = z;
+                self.regs.pstate.c = c;
+                self.regs.pstate.v = v;
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1800,6 +1860,8 @@ mod tests {
             (0xac0008a1, "SimdLoadStorePair"),  // stnp q1, q2, [x5]
             (0xd50b7423, "DcZva"),              // dc zva, x3
             (0x4f00e41f, "SimdModImm"),         // movi v31.16b, #0
+            (0x1a010001, "AddSubCarry"),        // adc w1, w0, w1
+            (0x1e6105e1, "FpCondCompare"),      // fccmp d15, d1, #1, eq
             (0x1e756bff, "FpData2"),            // fmaxnm d31, d31, d21
             (0x4f9f939f, "SimdFpByElement"),    // fmul v31.4s, v28.4s, v31.s[0]
             (0x6e1f43ff, "SimdExt"),            // ext v31.16b, v31.16b, v31.16b, #8
