@@ -7,7 +7,7 @@ on:
     branches: [main]
     # Docs-only changes skip the build matrix; ci-docs.yml reports the same required
     # check names so they are not left waiting.
-    paths-ignore: &docs
+    paths-ignore:
       - '**/*.md'
       - 'docs/**'
       - 'LICENSE'
