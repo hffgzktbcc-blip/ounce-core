@@ -85,7 +85,7 @@ change. A PR that breaks one is rejected.
       docker), record source, commit and licence in `PROVENANCE.md`, and pre-register a first-frame oracle for
       each.
       *Done when:* 20 oracles exist in CI, each pass or fail recorded honestly. Failures are the to-do list.
-      *Proof:* [PR #134](https://github.com/hffgzktbcc-blip/ounce-core/pull/134): 20 oracles in `tests/corpus/oracles.json` (16 new ones pre-registered in `2fe006e` before any run), `first-frame-oracles` job green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41701448760 (canonical report: `ounce-verify-canonical-report` artifact, 40 `ounce-verify/v0` records, 15/20 pass on both engines). Owner-approved addition: Ounce-Verify evidence and README count from the report. Failures for step 3: sixaxis, deko-console, nx-hbmenu (unimplemented instructions), sdl2-simple, hybrid-app (exit before the first frame).
+      *Proof:* [PR #134](https://github.com/hffgzktbcc-blip/ounce-core/pull/134): 20 oracles in `tests/corpus/oracles.json` (16 new ones pre-registered in `2fe006e` before any run), `first-frame-oracles` job green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41791374072 (on main with #115; canonical report: `ounce-verify-canonical-report` artifact, 40 `ounce-verify/v0` records, 15/20 pass on both engines). Owner-approved addition: Ounce-Verify evidence and README count from the report. Failures for step 3: sixaxis, deko-console, nx-hbmenu (unimplemented instructions), sdl2-simple, hybrid-app (exit before the first frame).
 - [ ] **3. Fix by corpus.** Take the failing programs one by one, cheapest first. Each fix lands with that
       program's oracle turning green. No speculative features.
       *Done when:* metric ≥ 15/20.
