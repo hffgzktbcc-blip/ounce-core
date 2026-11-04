@@ -324,6 +324,27 @@ impl TextureHeader {
         None
     }
 
+    /// Bytes between the layers of an array: one mip chain, padded to whole level-0 blocks for block
+    /// linear (UNVERIFIED for chains of more than one level).
+    pub(crate) fn layer_stride(&self) -> Option<usize> {
+        let chain = self.chain_bytes(self.chain_levels() - 1)?;
+        Some(match self.layout {
+            TextureLayout::BlockLinear { block_height_log2, block_depth_log2 } => {
+                chain.next_multiple_of((tiling::GOB_BYTES as usize) << (block_height_log2 + block_depth_log2))
+            }
+            TextureLayout::Pitch { .. } => chain,
+        })
+    }
+
+    /// Layer `layer` of a 2D array as a single 2D texture.
+    pub(crate) fn layer(&self, layer: u32) -> Option<TextureHeader> {
+        let mut h = self.clone();
+        h.gpu_va = self.gpu_va.checked_add(self.layer_stride()? as u64 * layer as u64)?;
+        h.texture_type = TextureType::TwoD;
+        h.depth = 1;
+        Some(h)
+    }
+
     /// Level 0, slice 0 as a surface view.
     pub(crate) fn view(&self) -> Option<SurfaceView> {
         self.level_view(0)

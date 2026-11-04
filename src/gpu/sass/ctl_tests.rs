@@ -193,8 +193,10 @@ fn maxwell_cuasm_ctl_convert_branch() {
     assert!(decode(0x4cb8010005c70a02).is_err());
     assert!(decode(0x4cba010005872a09).is_err());
     // F2I.S32.F32 R4, R0 (round to nearest); F2I.FTZ.U32.F32.TRUNC R18, R18; 64-bit rejected.
-    assert_eq!(d(0x5cb0000000071a04), Instr::F2I { dst: 4, src: f(r(0)), signed: true, round: Round::Nearest });
-    assert_eq!(d(0x5cb0118001270a12), Instr::F2I { dst: 18, src: f(r(18)), signed: false, round: Round::Trunc });
+    assert_eq!(d(0x5cb0000000071a04), Instr::F2I { dst: 4, src: f(r(0)), signed: true, round: Round::Nearest, u16: false });
+    // F2I.FTZ.U16.F32 (array layer in deko_console's fragment shader)
+    assert_eq!(d(0x5cb0100000070900), Instr::F2I { dst: 0, src: f(r(0)), signed: false, round: Round::Nearest, u16: true });
+    assert_eq!(d(0x5cb0118001270a12), Instr::F2I { dst: 18, src: f(r(18)), signed: false, round: Round::Trunc, u16: false });
     assert!(decode(0x5cb0018001070b10).is_err());
     // F2F.F32.F16 / F2F.F16.F32: half formats rejected.
     assert!(decode(0x5ca8018000270613).is_err());
@@ -512,9 +514,9 @@ fn ampere_cuasm_ctl_convert_branch() {
     assert!(da_err(0x00000000002094000000000600047306));
     assert!(da_err(0x000000000010140000000016000e7306));
     // F2I R0, R0 (S32, nearest); F2I.FTZ.U32.TRUNC.NTZ R19, R18; F2I.U32.FLOOR; F2I.S16 rejected.
-    assert_eq!(da(0x00000000002011000000000000007305), Instr::F2I { dst: 0, src: f(r(0)), signed: true, round: Round::Nearest });
-    assert_eq!(da(0x000000000021f0000000001200137305), Instr::F2I { dst: 19, src: f(r(18)), signed: false, round: Round::Trunc });
-    assert_eq!(da(0x00000000002070000000000200137305), Instr::F2I { dst: 19, src: f(r(2)), signed: false, round: Round::Floor });
+    assert_eq!(da(0x00000000002011000000000000007305), Instr::F2I { dst: 0, src: f(r(0)), signed: true, round: Round::Nearest, u16: false });
+    assert_eq!(da(0x000000000021f0000000001200137305), Instr::F2I { dst: 19, src: f(r(18)), signed: false, round: Round::Trunc, u16: false });
+    assert_eq!(da(0x00000000002070000000000200137305), Instr::F2I { dst: 19, src: f(r(2)), signed: false, round: Round::Floor, u16: false });
     assert!(da_err(0x00000000002029000000001200007305));
     // FRND.FLOOR R19, R2; FRND.TRUNC R37, c[0x0][0x248]
     assert_eq!(da(0x00000000002050000000000200137307), Instr::F2F { dst: 19, src: f(r(2)), round: Some(Round::Floor), sat: false });

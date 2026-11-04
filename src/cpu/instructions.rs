@@ -282,11 +282,23 @@ pub enum Instruction {
     },
 
     /// Floating-Point 1-Source: `FMOV`/`FABS`/`FNEG`/`FSQRT Dd/Sd, Dn/Sn` (op 0..3) and
-    /// `FCVT` (op 4: single to double, op 5: double to single)
+    /// `FCVT` (op = bits 17..15: 4 to single from double, 5 to double from single)
     FpData1 {
         rd: u8,
         rn: u8,
         op: u8,
+        is_double: bool,
+    },
+
+    /// Floating-Point 3-Source: `FMADD` (o1 0, o0 0), `FMSUB` (0, 1), `FNMADD` (1, 0), `FNMSUB` (1, 1),
+    /// fused (one rounding): `Dd = (o1 ? -Da : Da) + (o0 ? -Dn : Dn) * Dm`
+    FpData3 {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        ra: u8,
+        o1: bool,
+        o0: bool,
         is_double: bool,
     },
 
@@ -305,6 +317,17 @@ pub enum Instruction {
         rn: u8,
         opcode: u8,
         rmode: u8,
+        is_64: bool,
+        is_double: bool,
+    },
+
+    /// Float <-> fixed-point general register conversion: `FCVTZS`/`FCVTZU` (opcode 0/1, to integer) and
+    /// `SCVTF`/`UCVTF` (opcode 2/3, to float), scaled by 2^`fbits`.
+    FpFixedConv {
+        rd: u8,
+        rn: u8,
+        opcode: u8,
+        fbits: u8,
         is_64: bool,
         is_double: bool,
     },
@@ -472,6 +495,29 @@ pub enum Instruction {
         q: bool,
         is_load: bool,
         post_index: bool,
+    },
+
+    /// `LD2`-`LD4`/`ST2`-`ST4` (multiple structures): `selem` registers, `esize`-bit elements interleaved
+    /// in memory, optionally post-indexed
+    SimdLoadStoreStruct {
+        rt: u8,
+        rn: u8,
+        /// Post-index register; 31 means "advance by the bytes transferred".
+        rm: u8,
+        selem: u8,
+        esize: u8,
+        q: bool,
+        is_load: bool,
+        post_index: bool,
+    },
+
+    /// AdvSIMD scalar two-register miscellaneous (`SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU Sd/Dd, Sn/Dn`): lane 0 only,
+    /// the rest of `Vd` is zeroed
+    SimdScalarTwoMisc {
+        rd: u8,
+        rn: u8,
+        op: SimdOp2,
+        esize: u8,
     },
 
     /// `DUP Vd.<T>, Wn/Xn`
@@ -679,6 +725,7 @@ pub enum SimdOp3 {
     Uminp,
     Smaxp,
     Sminp,
+    Mul,
 }
 
 /// AdvSIMD across-lanes reductions (`ADDV`, `S/UADDLV`, `S/UMAXV`, `S/UMINV`).
@@ -704,6 +751,12 @@ pub enum SimdOp2 {
     Not,
     Abs,
     Neg,
+    /// `SCVTF`/`UCVTF` (vector, integer): lanes are 32- or 64-bit floats
+    Scvtf,
+    Ucvtf,
+    /// `FCVTZS`/`FCVTZU` (vector or scalar, integer): float lanes to integer, rounding toward zero
+    Fcvtzs,
+    Fcvtzu,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -712,6 +765,9 @@ pub enum SimdShiftOp {
     Ushr,
     Shl,
     Shrn,
+    /// `SSHLL`/`USHLL` (`SXTL`/`UXTL` with a zero shift): `esize` is the source lane size
+    Sshll,
+    Ushll,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

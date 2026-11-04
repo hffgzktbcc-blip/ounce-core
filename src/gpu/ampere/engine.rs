@@ -314,6 +314,8 @@ pub enum Diagnostic {
     /// `CALL_MME_MACRO(index)` did not run to completion (methods it emitted before stopping
     /// stay applied), or ran on AMPERE_B, whose macro format is not modelled.
     MacroFailed { index: u32, reason: &'static str },
+    /// A MAXWELL_DMA_COPY_A launch outside the modelled subset copied nothing ([`super::dma`]).
+    DmaSkipped { reason: &'static str },
 }
 
 /// Guest memory as the GPU sees it. The routing hook in `nvgpu.rs` maps GPU VAs to guest memory.
@@ -391,6 +393,12 @@ pub struct Ampere3d {
     mme: Mme,
     /// A macro call waiting for its last parameter; it runs when another method arrives.
     macro_call: Option<MacroCall>,
+    /// The copy engine bound on another subchannel of the same channel.
+    dma: super::dma::DmaCopy,
+    /// Inline-to-memory bytes collected since `LAUNCH_DMA`.
+    inline: Option<Vec<u8>>,
+    /// Shadow RAM: the method values tracked under `MME_SHADOW_RAM_CONTROL` (dword index = method / 4).
+    shadow: Vec<u32>,
 }
 
 impl Default for Ampere3d {
@@ -418,6 +426,9 @@ impl Ampere3d {
             host_regs: [0; m::FIRST_CLASS_METHOD as usize / 4],
             pending: VecDeque::new(),
             blocked: None,
+            dma: Default::default(),
+            inline: None,
+            shadow: vec![0; (m::METHOD_SPACE / 4) as usize],
             cbufs: [[None; m::CONSTANT_BUFFER_SLOTS]; m::BIND_GROUP_COUNT],
             stats: RenderStats::default(),
             reference: 0,
@@ -599,6 +610,33 @@ impl Ampere3d {
         }
     }
 
+    /// One `LOAD_INLINE_DATA` word; the last one of the transfer writes it out, line by line.
+    fn load_inline_data(&mut self, word: u32, mem: &mut dyn GpuMemoryWriter) {
+        let (len, lines) = (self.reg(m::LINE_LENGTH_IN) as usize, self.reg(m::LINE_COUNT) as usize);
+        let Some(buf) = self.inline.as_mut() else { return };
+        buf.extend_from_slice(&word.to_le_bytes());
+        if buf.len() < len * lines {
+            return;
+        }
+        let data = self.inline.take().unwrap();
+        let base = ((self.reg(m::OFFSET_OUT_UPPER) as u64 & 0xff) << 32) | self.reg(m::OFFSET_OUT) as u64;
+        let pitch = self.reg(m::LAUNCH_DMA) & 1 == 1;
+        let size = self.reg(m::SET_DST_BLOCK_SIZE);
+        let geo = crate::gpu::tiling::BlockLinear::new(self.reg(m::SET_DST_WIDTH), self.reg(m::SET_DST_HEIGHT),
+            self.reg(m::SET_DST_DEPTH).max(1), ((size >> 4) & 0xf) as u8, ((size >> 8) & 0xf) as u8);
+        let (ox, oy) = (self.reg(m::SET_DST_ORIGIN_BYTES_X), self.reg(m::SET_DST_ORIGIN_SAMPLES_Y));
+        for (y, line) in data.chunks(len.max(1)).take(lines).enumerate() {
+            if pitch {
+                mem.write(base + y as u64 * self.reg(m::PITCH_OUT) as u64, line);
+            } else {
+                for (x, b) in line.iter().enumerate() {
+                    let at = geo.offset(ox + x as u32, oy + y as u32, self.reg(m::SET_DST_LAYER));
+                    mem.write(base + at as u64, std::slice::from_ref(b));
+                }
+            }
+        }
+    }
+
     pub fn execute(&mut self, call: MethodCall, mem: &mut dyn GpuMemoryWriter) {
         if self.continues_macro(call) {
             if let Some(c) = self.macro_call.as_mut() {
@@ -617,6 +655,9 @@ impl Ampere3d {
         }
         let class = match self.bound[sc] {
             Some(c @ (m::AMPERE_B | m::MAXWELL_B)) => c,
+            Some(m::MAXWELL_DMA_COPY_A) => {
+                return self.dma.execute(call.method, call.data, mem, &mut self.diagnostics);
+            }
             Some(m::FERMI_TWOD_A) => {
                 // FERMI_TWOD_A (2D operations: clear/blit setup). Accept without foreign subchannel error.
                 return;
@@ -631,10 +672,25 @@ impl Ampere3d {
             }
         };
         let method = call.method % m::METHOD_SPACE;
+        // Shadow RAM: Passthrough writes leave the shadow alone, Replay writes the shadowed value.
+        let call = match self.regs[(m::MME_SHADOW_RAM_CONTROL / 4) as usize] {
+            _ if method == m::MME_SHADOW_RAM_CONTROL => call,
+            m::SHADOW_RAM_PASSTHROUGH => call,
+            m::SHADOW_RAM_REPLAY => MethodCall { data: self.shadow[(method / 4) as usize], ..call },
+            _ => {
+                self.shadow[(method / 4) as usize] = call.data;
+                call
+            }
+        };
         self.regs[(method / 4) as usize] = call.data;
 
         match method {
             m::CLEAR_SURFACE => self.clear(call.data, class, mem),
+            m::LAUNCH_DMA => {
+                let len = self.reg(m::LINE_LENGTH_IN) as usize * self.reg(m::LINE_COUNT) as usize;
+                self.inline = Some(Vec::with_capacity(len.min(1 << 20)));
+            }
+            m::LOAD_INLINE_DATA => self.load_inline_data(call.data, mem),
             m::LOAD_MME_INSTRUCTION_RAM_POINTER => self.mme.set_code_pointer(call.data),
             m::LOAD_MME_INSTRUCTION_RAM => self.mme.load_code(call.data),
             m::LOAD_MME_START_ADDRESS_RAM_POINTER => self.mme.set_start_pointer(call.data),

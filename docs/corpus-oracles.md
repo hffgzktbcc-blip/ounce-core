@@ -97,5 +97,5 @@ program counts only when both of its records pass, and CI fails if the README co
 
 ## Results
 
-First full run: [41700028345](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41700028345), 15/20 pass on both engines. Observed verdicts are copied from CI into `tests/corpus/oracle-results.json`. A recorded pass is a
+First full run: [41700028345](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41700028345), 15/20 pass on both engines. Step 3: sixaxis and deko-console pass from [41872194259](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259) (17/20); deko-basic's frame 1 was corrected with owner approval (see docs/deko-basic-oracle.md). Observed verdicts are copied from CI into `tests/corpus/oracle-results.json`. A recorded pass is a
 ratchet: CI fails if it stops passing. Failures are PLAN step 3's to-do list.

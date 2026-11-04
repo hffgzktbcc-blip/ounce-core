@@ -70,7 +70,8 @@ pub enum Op {
     Mufu(MufuOp, Value),
     /// 2D texture read at (`x`, `y`): floats for [`TexOp::Sample`], integer texel coordinates
     /// for [`TexOp::Fetch`].
-    Tex { op: TexOp, handle: TexHandle, lod: Lod, x: Value, y: Value },
+    /// `layer`: the integer array layer of a 2D array read.
+    Tex { op: TexOp, handle: TexHandle, lod: Lod, x: Value, y: Value, layer: Option<Value> },
     /// Component `.1` (0..4) of a [`Op::Tex`] result.
     Comp(Value, u8),
     Bool(bool),
@@ -690,7 +691,8 @@ pub fn lower_with(
                     TexLod::Zero => Lod::Zero,
                     TexLod::Level(r) => Lod::Level(b.read(r)),
                 };
-                let tex = b.push(Op::Tex { op: t.op, handle: t.handle, lod, x, y });
+                let layer = t.layer.map(|r| b.read(r));
+                let tex = b.push(Op::Tex { op: t.op, handle: t.handle, lod, x, y, layer });
                 // Read every source before writing: destinations may overlap the coordinates.
                 for (c, &r) in t.dst.iter().enumerate() {
                     if r != RZ {
@@ -898,12 +900,16 @@ pub fn lower_with(
                 let v = b.push(Op::I2F(signed, x));
                 b.write(dst, v, g);
             }
-            Instr::F2I { dst, src, signed, round } => {
+            Instr::F2I { dst, src, signed, round, u16 } => {
                 let mut x = b.fsrc(src);
                 if round != Round::Trunc {
                     x = b.push(Op::FRound(round, x));
                 }
-                let v = b.push(Op::F2I(signed, x));
+                let mut v = b.push(Op::F2I(signed, x));
+                if u16 {
+                    let max = b.push(Op::Const(0xffff));
+                    v = b.push(Op::IMin(false, v, max));
+                }
                 b.write(dst, v, g);
             }
             Instr::F2F { dst, src, round, sat } => {
