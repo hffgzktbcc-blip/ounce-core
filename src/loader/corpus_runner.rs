@@ -765,10 +765,8 @@ fn deko_basic_first_frame_oracle() {
     );
     println!("deko_basic NRO SHA-256 verified: {nro_sha256}");
     let frames: u64 = std::env::var("OUNCE_DEKO_BASIC_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
-    let expected_hash = |i: u64| match i {
-        1 => 0x7c9a9a3fa3856325u64,
-        _ => 0x3a00ccf6b6f28ea1u64,
-    };
+    // Every frame draws the triangle (frame 1 corrected in PLAN step 3, see docs/deko-basic-oracle.md).
+    let expected_hash = |_: u64| 0x3a00ccf6b6f28ea1u64;
     let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(900), frames: usize::MAX,
         queued_frames: frames, ..Limits::default() };
     let mut reference: Option<Vec<QueuedFrame>> = None;
@@ -785,11 +783,7 @@ fn deko_basic_first_frame_oracle() {
             assert_eq!(f.error, None, "frame {}", f.index);
             assert_eq!((f.width, f.height), (1280, 720), "frame {}", f.index);
             assert_eq!(f.rgba_fnv1a64, expected_hash(f.index), "frame {} hash mismatch", f.index);
-            if f.index == 1 {
-                assert_eq!(f.uniform, Some([32, 75, 122, 255]), "frame 1 must be clear color");
-            } else {
-                assert_eq!(f.uniform, None, "rendered frames must contain non-uniform pixels");
-            }
+            assert_eq!(f.uniform, None, "rendered frames must contain non-uniform pixels");
         }
         // Criterion 6: both engines give identical frames.
         match &reference {
