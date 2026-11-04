@@ -73,3 +73,18 @@ fn svc_tls_x18_resume_and_fault() {
     let ctx = vm.arena.context_mut(vm.patcher.context()).unwrap();
     assert_eq!((ctx.x[0], ctx.x[3], ctx.pc), (7, 7 + 7 + 100, code + 44));
 }
+
+#[test]
+fn fault_keeps_simd_registers() {
+    let mut vm = vm(vec![
+        0x1E60100E, // fmov d14, #2.0
+        0xF940001F, // ldr xzr, [x0]  (x0 = 0: faults)
+    ]);
+    vm.arena.context_mut(vm.patcher.context()).unwrap().sp = vm.stack_top;
+    let code = vm.code;
+    let exit = launch(&mut vm, code);
+    let Exit::Fault { pc, .. } = exit else { panic!("{exit:?}") };
+    assert_eq!(pc, code + 4);
+    let ctx = vm.arena.context_mut(vm.patcher.context()).unwrap();
+    assert_eq!(ctx.v[14] as u64, 2.0f64.to_bits());
+}
