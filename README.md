@@ -24,7 +24,7 @@ Every program is a conversation between instructions, memory, operating-system s
 
 It brings together interpreters, tiered AArch64 execution, Horizon-style service models, software graphics and optional `wgpu` presentation. The root crate forbids unsafe Rust; the optional Tier-4 recompiler owns a separate unsafe boundary for native code generation and executable memory. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
 
-> **Headline metric: [<!-- corpus-headline -->15/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
+> **Headline metric: [<!-- corpus-headline -->16/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
 
 <table>
 <tr>
@@ -116,7 +116,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ## What is proven
 
-**<!-- corpus-headline -->15/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Each has an expected frame written down from its source *before* the run ([method](docs/corpus-oracles.md)), and the Interpreter and Tier-3 engines must both match it. The count is derived from the [Ounce-Verify](docs/verify/README.md) canonical report of the [CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41700028345) (`ounce-verify-canonical-report` artifact); CI fails if this text disagrees with the report. Failures are the to-do list.
+**<!-- corpus-headline -->16/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Each has an expected frame written down from its source *before* the run ([method](docs/corpus-oracles.md)), and the Interpreter and Tier-3 engines must both match it. The count is derived from the [Ounce-Verify](docs/verify/README.md) canonical report of the [CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41797373254) (`ounce-verify-canonical-report` artifact); CI fails if this text disagrees with the report. Failures are the to-do list.
 
 | Program | Source | Oracle | Result (both engines) |
 | :--- | :--- | :--- | :--- |
@@ -124,7 +124,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | `vt52-demo` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `read-controls` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `touch-screen` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
-| `sixaxis` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | fail: unimplemented instruction `0x1E22C042` |
+| `sixaxis` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `audren-simple` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `get-system-language` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `barrier` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
