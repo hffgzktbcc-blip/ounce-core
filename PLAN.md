@@ -116,6 +116,9 @@ change. A PR that breaks one is rejected.
       build manifests, results), intake check in `src/loader/switch2.rs`, `scripts/check_switch2_corpus.py`,
       `switch2-oracles` CI job (`--set switch2`, Ounce-Verify target `switch2-homebrew`). Guarded by 2 self-made
       **synthetic** programs (`tests/fixtures/switch2-synthetic`, original-Switch toolchain, never counted). Proof: [PR #142](https://github.com/hffgzktbcc-blip/ounce-core/pull/142) (CI run linked in the PR).
+      Checkpoint (2026-11-04 17:29Z, claude, 47de032): GREEN — tests: PR #142 CI 20/20 checks green — this is the one branch for step 8
+      Next: continue the nxnative port here (NVN on Metal, native execution, no game-specific parts) under the legal gate: each push of ported code is approved by the owner in chat
+      Decisions: one branch for step 8 (#142); the separate claude/nxnative-port-6f940c branch is empty and unused — owner plan 2026-11-04
 
 - [ ] **9. Make the unique parts visible.** Only after step 1 has made the README honest:
       - a README section (or blog post) on the pre-registered pixel-oracle method: expected frames fixed before
