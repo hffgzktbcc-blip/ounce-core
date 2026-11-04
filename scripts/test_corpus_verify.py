@@ -48,5 +48,23 @@ class AdapterTests(unittest.TestCase):
             corpus_verify.records_for(ORACLE, {"nro_sha256": "cd" * 32, "runs": []}, INVENTORY, "gcc", "2" * 40)
 
 
+class ReadmeTests(unittest.TestCase):
+    README = ("[![o](https://img.shields.io/badge/first--frame_oracles-3%2F4_pass-green)](x)\n"
+              "<!-- corpus-headline -->3/4<!-- /corpus-headline --> and <!-- corpus-headline -->3/4<!-- /corpus-headline -->\n")
+
+    def test_matching_readme_is_unchanged(self):
+        self.assertEqual(corpus_verify.render_readme(self.README, 3, 4), self.README)
+
+    def test_headline_and_badge_follow_the_report(self):
+        text = corpus_verify.render_readme(self.README, 4, 4)
+        self.assertEqual(text.count("4/4<!--"), 2)
+        self.assertIn("first--frame_oracles-4%2F4_pass", text)
+        self.assertNotIn("3", text.replace("first--frame", ""))
+
+    def test_missing_badge_fails(self):
+        with self.assertRaises(SystemExit):
+            corpus_verify.render_readme("<!-- corpus-headline -->1/1<!-- /corpus-headline -->", 1, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
