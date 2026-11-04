@@ -4,6 +4,9 @@ pub mod init;
 pub mod nca;
 pub mod nro;
 pub mod package;
+// Oracle sets and the corpus intake check; used by the test-only corpus runner.
+#[cfg(test)]
+pub mod switch2;
 
 pub use nca::{
     BootLoader, BootPackageInfo, Hfs0Archive, NcaImage, Pfs0Archive, Pfs0FileEntry, XciCartridge,

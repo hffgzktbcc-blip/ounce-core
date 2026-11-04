@@ -43,6 +43,14 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual([r["verdict"] for r in out], ["blocked", "blocked"])
         self.assertTrue(out[0]["execution"]["observation_missing"])
 
+    def test_switch2_records_carry_their_own_target(self):
+        verdict = {"nro_sha256": SHA, "host_status": "exited-zero", "failures": [],
+                   "runs": [run("Interpreter"), run("Tier3")]}
+        out = ounce_verify.validate_records(corpus_verify.records_for(
+            ORACLE, verdict, INVENTORY, "gcc", "2" * 40, "switch2-homebrew", "switch2"))
+        self.assertEqual({r["target"] for r in out}, {"switch2-homebrew"})
+        self.assertEqual([r["case_id"] for r in out], ["switch2/demo/interpreter", "switch2/demo/tier3"])
+
     def test_binary_must_match_inventory(self):
         with self.assertRaises(SystemExit):
             corpus_verify.records_for(ORACLE, {"nro_sha256": "cd" * 32, "runs": []}, INVENTORY, "gcc", "2" * 40)

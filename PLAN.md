@@ -111,6 +111,11 @@ change. A PR that breaks one is rejected.
       porting nxnative engine code (NVN on Metal, native execution) without game-specific parts.
       *Done when:* the first outside Switch 2 homebrew program passes its oracle in CI.
       Commercial Switch 2 games never enter this repo.
+      *Prep done 2026-11-04 (not a tick; no outside Switch 2 program exists yet):* intake harness so adding a program
+      is the step 2 flow ([docs/switch2-corpus.md](docs/switch2-corpus.md)): `tests/corpus/switch2/` (empty outside set,
+      build manifests, results), intake check in `src/loader/switch2.rs`, `scripts/check_switch2_corpus.py`,
+      `switch2-oracles` CI job (`--set switch2`, Ounce-Verify target `switch2-homebrew`). Guarded by 2 self-made
+      **synthetic** programs (`tests/fixtures/switch2-synthetic`, original-Switch toolchain, never counted). Proof: PR_LINK.
 
 - [ ] **9. Make the unique parts visible.** Only after step 1 has made the README honest:
       - a README section (or blog post) on the pre-registered pixel-oracle method: expected frames fixed before

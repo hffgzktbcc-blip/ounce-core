@@ -347,12 +347,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--font", type=Path, required=True, help="libnx 4.12.0 nx/data/default_font.bin")
     parser.add_argument("--check", action="store_true", help="fail if any committed value differs")
+    parser.add_argument("--oracles", type=Path, action="append",
+                        help=f"oracle set to compute or check (repeatable; default {ORACLES.relative_to(REPO)})")
     args = parser.parse_args()
     font = args.font.read_bytes()
     if len(font) != 256 * 32:
         raise SystemExit("font must be 256 16x16 1bpp glyphs (8192 bytes)")
-    oracles = json.loads(ORACLES.read_text())
     font_sha = hashlib.sha256(font).hexdigest()
+    for path in args.oracles or [ORACLES]:
+        update(path, font, font_sha, args.check)
+
+
+def update(path, font, font_sha, check_only):
+    oracles = json.loads(path.read_text())
     changed = []
     for oracle in oracles["oracles"]:
         for check in oracle["checks"]:
@@ -364,13 +371,13 @@ def main():
             if check.get("expect") != value:
                 changed.append(oracle["id"])
                 check["expect"] = value
-    if args.check:
+    if check_only:
         if changed:
-            raise SystemExit(f"oracle values differ from the specs: {sorted(set(changed))}")
-        print("all oracle values match their specs")
+            raise SystemExit(f"{path.name}: oracle values differ from the specs: {sorted(set(changed))}")
+        print(f"{path.name}: all oracle values match their specs")
         return
-    ORACLES.write_text(json.dumps(oracles, indent=2, ensure_ascii=False) + "\n")
-    print(f"updated: {sorted(set(changed)) or 'nothing'}")
+    path.write_text(json.dumps(oracles, indent=2, ensure_ascii=False) + "\n")
+    print(f"{path.name}: updated: {sorted(set(changed)) or 'nothing'}")
 
 
 if __name__ == "__main__":

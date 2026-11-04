@@ -18,6 +18,9 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 README_MARK = re.compile(r"<!-- corpus-headline -->.*?<!-- /corpus-headline -->", re.S)
 ENGINES = {"Interpreter": "interpreter", "Tier3": "tier3"}
+# Oracle sets: file and case-id prefix. Each set's header names its platform (default original Switch).
+SETS = {"step2": ("tests/corpus/oracles.json", "corpus"), "switch2": ("tests/corpus/switch2/oracles.json", "switch2")}
+TARGETS = {"switch": "original-switch-libnx", "switch2": "switch2-homebrew"}
 STOPS = (("FrameLimit", "frame-limit"), ("ExitProcess", "exit-process"), ("Break", "svc-break"),
          ("UnhandledSvc", "unhandled-svc"), ("CpuHalt", "cpu-halt"), ("Fault", "cpu-fault"),
          ("InstructionBudget", "instruction-budget"), ("HostTimeout", "host-timeout"),
@@ -34,7 +37,7 @@ def guest_stop(stop):
     return next((name for prefix, name in STOPS if stop.startswith(prefix)), "unknown")
 
 
-def records_for(oracle, verdict, inventory, toolchain, core_commit):
+def records_for(oracle, verdict, inventory, toolchain, core_commit, target="original-switch-libnx", prefix="corpus"):
     nro_hashes = {path: sha for sample in inventory["samples"] for path, sha in sample["nro_sha256"].items()}
     binary = verdict.get("nro_sha256")
     if binary is not None and nro_hashes.get(oracle["nro"]) != binary:
@@ -64,8 +67,8 @@ def records_for(oracle, verdict, inventory, toolchain, core_commit):
         statuses = {o["status"] for o in oracles if o["required"]}
         record = {
             "schema_version": "ounce-verify/v0",
-            "case_id": f"corpus/{oracle['id']}/{slug}",
-            "target": "original-switch-libnx",
+            "case_id": f"{prefix}/{oracle['id']}/{slug}",
+            "target": target,
             "source": {
                 "origin": "external-public-homebrew",
                 "repository": inventory["repository"],
@@ -98,18 +101,26 @@ def records_for(oracle, verdict, inventory, toolchain, core_commit):
 
 
 def evidence(args):
-    oracles = json.loads((REPO / "tests/corpus/oracles.json").read_text())["oracles"]
+    oracles_file, prefix = SETS[args.set]
+    oracle_set = json.loads((REPO / oracles_file).read_text())
+    if oracle_set.get("origin", "outside") != "outside":
+        raise SystemExit(f"{oracles_file}: only outside programs produce Ounce-Verify evidence")
+    target = TARGETS[oracle_set.get("platform", "switch")]
+    oracles = oracle_set["oracles"]
     verdicts = {v["id"]: v for v in json.loads(args.verdicts.read_text())["verdicts"]}
     image = json.loads(args.toolchain_image.read_text())[0]["Id"]
     records = []
     for oracle in oracles:
         inventory = json.loads((args.builds / oracle["build"] / "build/inventory.json").read_text())
         tools = inventory["tools"]
-        libnx = inventory.get("toolchain_inputs_sha256", {}).get("libnx/lib/libnx.a", "unrecorded")
-        toolchain = f"{tools['compiler']}; devkitpro/devkita64 image {image}; libnx.a sha256 {libnx}"
+        if target == "original-switch-libnx":
+            libnx = inventory.get("toolchain_inputs_sha256", {}).get("libnx/lib/libnx.a", "unrecorded")
+            toolchain = f"{tools['compiler']}; devkitpro/devkita64 image {image}; libnx.a sha256 {libnx}"
+        else:
+            toolchain = f"{tools['compiler']}; toolchain image {image}"
         verdict = verdicts.get(oracle["id"]) or {"id": oracle["id"], "failures": ["not run"],
                                                  "host_status": "not-run", "host_timeout_seconds": 1}
-        records += records_for(oracle, verdict, inventory, toolchain, args.core_commit)
+        records += records_for(oracle, verdict, inventory, toolchain, args.core_commit, target, prefix)
     args.output.write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n")
     print(f"{len(records)} records for {len(oracles)} programs -> {args.output}")
 
@@ -149,6 +160,7 @@ def main():
     e.add_argument("--toolchain-image", type=Path, required=True, help="docker image inspect output")
     e.add_argument("--core-commit", required=True)
     e.add_argument("--output", type=Path, required=True)
+    e.add_argument("--set", choices=sorted(SETS), default="step2", help="oracle set (default step2)")
     h = sub.add_parser("headline")
     h.add_argument("report", type=Path, help="canonical report from tools/ounce_verify.py")
     mode = h.add_mutually_exclusive_group()
