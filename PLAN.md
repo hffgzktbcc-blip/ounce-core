@@ -88,6 +88,9 @@ change. A PR that breaks one is rejected.
 - [ ] **3. Fix by corpus.** Take the failing programs one by one, cheapest first. Each fix lands with that
       program's oracle turning green. No speculative features.
       *Done when:* metric ≥ 15/20.
+      Checkpoint (2026-11-04 17:31Z, claude, 75f298b): RED — tests: cargo test: 431 passed, 1 failed (exit 101); suite: pass — verify RED checkpoint
+      Next: remove the deliberate failing test
+      Tried/ruled out: planted prod.keys — refused by gate
 - [x] **4. Native execution on Apple Silicon (NCE).** Rewrite a homebrew NRO's `svc` and
       `TPIDR_EL0`-touching instructions into trampolines, and run the rest of its ARM64 code directly in
       `MAP_JIT` memory. Port what already works (nxnative's NSO patcher, MIT) rather than designing
