@@ -121,9 +121,12 @@ mod asm {
             | ((RZ as u128) << 64)
             | (((comps - 1) as u128) << 74)
     }
-    /// `freq`: 0 PASS, 1 PassMulW, 2 CONSTANT.
-    pub fn ipa(d: u8, addr: u16, freq: u8, mul: u8) -> u128 {
-        op(0x326) | rd(d) | ((RZ as u128) << 24) | ((mul as u128) << 32) | (((addr >> 2) as u128) << 64) | ((freq as u128) << 78)
+    /// `IPA.PASS` as Mesa NAK's SM70 encoder emits it (offset RZ, predicate output PT).
+    pub fn ipa(d: u8, addr: u16) -> u128 {
+        op(0x326) | rd(d) | ((RZ as u128) << 32) | (((addr >> 2) as u128) << 64) | (7 << 81)
+    }
+    pub fn fmul_rr(d: u8, a: u8, b: u8) -> u128 {
+        op(0x220) | rd(d) | ((a as u128) << 24) | ((b as u128) << 32) | (4 << 84)
     }
     pub fn mov_imm(d: u8, imm: u32) -> u128 {
         op(0x802) | rd(d) | ((imm as u128) << 32) | (0xf << 72)
@@ -169,14 +172,15 @@ fn vertex_shader() -> Vec<u8> {
     program(&h, &[asm::ald(0, 0x80, 4), asm::ald(4, 0x90, 4), asm::ast(0, 0x70, 4), asm::ast(4, 0x80, 4), asm::exit()])
 }
 
-/// Perspective-correct varying 0 to target 0: `IPA w; MUFU.RCP; IPA.MUL` x4.
+/// Perspective-correct varying 0 to target 0: `IPA w; MUFU.RCP; (IPA; FMUL)` x4 (SM70+ has no
+/// `IPA.PASS_MUL_W`; NAK multiplies by 1/w itself).
 fn varying_pixel_shader() -> Vec<u8> {
     let mut h = SphBuilder::pixel().ps_target(0, 0xf);
     for c in 0..4 {
         h = h.ps_imap(0, c, PixelImap::Perspective);
     }
-    let mut code = vec![asm::ipa(8, 0x7c, 0, 0), asm::mufu_rcp(9, 8)];
-    code.extend((0..4).map(|c| asm::ipa(c as u8, 0x80 + 4 * c, 1, 9)));
+    let mut code = vec![asm::ipa(8, 0x7c), asm::mufu_rcp(9, 8)];
+    code.extend((0..4u8).flat_map(|c| [asm::ipa(c, 0x80 + 4 * c as u16), asm::fmul_rr(c, c, 9)]));
     code.push(asm::exit());
     program(&h, &code)
 }
@@ -850,10 +854,12 @@ fn ampere_pixel_shader_samples_a_texture() {
         h = h.ps_imap(0, c, PixelImap::Perspective);
     }
     let code = [
-        asm::ipa(8, 0x7c, 0, 0),
+        asm::ipa(8, 0x7c),
         asm::mufu_rcp(9, 8),
-        asm::ipa(4, 0x80, 1, 9),
-        asm::ipa(5, 0x84, 1, 9),
+        asm::ipa(4, 0x80),
+        asm::fmul_rr(4, 4, 9),
+        asm::ipa(5, 0x84),
+        asm::fmul_rr(5, 5, 9),
         asm::tex(false, 0, 2, 4, 1, 0, 0),
         asm::exit(),
     ];

@@ -18,12 +18,18 @@
 //!   `LDC` 0xb82, `EXIT` 0x94d, `NOP` 0x918.
 //! - [turingas] github.com/daadaada/turingas `turingas/grammar.py`: same opcodes for
 //!   sm_75 (`FFMA` 0x223, `FADD` 0x221, `FMUL` 0x220, `MUFU` 0x308, `LDC` 0xb82).
-//! - [NAK, UNVERIFIED] graphics-only ops never appear in CUDA output, so `ALD` (0x321),
-//!   `AST` (0x322) and `IPA` (0x326) and their field positions are recalled from Mesa's
-//!   NAK SM70 encoder (`src/nouveau/compiler/nak/sm70_encode.rs`), which could not be
-//!   fetched from this environment. Treat them as unverified until checked against an
-//!   Ampere graphics shader compiled by NAK (`uam`/deko3d emits Maxwell SASS, so it
-//!   cannot confirm these).
+//! - [NAK] Mesa's NAK SM70+ encoder (`src/nouveau/compiler/nak/sm70_encode.rs`, MIT, read
+//!   at mesa `f4a706c5a218`, see `THIRD_PARTY.md`). CUDA never emits the graphics ops, so
+//!   these field positions come from NAK's encoder: `ALD` (0x321: vertex 32..40, offset
+//!   24..32, address 40..50, components-1 74..76, `.P` 76, `.PHYS` 77, `.O` 79), `AST` (0x322:
+//!   data 32..40, vertex 64..72, offset 24..32, same address/components/`.P`/`.PHYS`) and
+//!   `IPA` (0x326: address/4 64..72, location 76..78, frequency 78..80 = PASS 0, CONSTANT 1,
+//!   STATE 2, offset register 32..40, predicate output 81..84; there is no `PASS_MUL_W` on
+//!   SM70+, the shader multiplies by 1/w itself). `PLOP3` (0x81c): negate bits 71/80/90 for
+//!   the inputs at 68/77/87 and the second table at 16..24, both checked by NAK's
+//!   `nvdisasm_tests.rs::test_plop3` against real `nvdisasm`. `MUFU`: function 74..80, `.F16`
+//!   73, operand in the bit-32 slot with forms 1/4/5 (register/immediate/constant buffer).
+//!   They are still not checked against an Ampere graphics shader of an outside program.
 //! - [inferred] `LDC` 32-bit size value 4 (CuAsm shows U8=0, S8=1, U16=2 only).
 //! - Textures, bound-handle `TEX` (0xb60) and `TLD` (0xb66), from [CuAsm] `TEX.SCR.LL` /
 //!   `TLD.SCR.LZ` words (see the `cuasm_tex_*` tests): Rd 16..24 and a second destination
@@ -31,9 +37,11 @@
 //!   40..54 in constant buffer bank 54..59, `.SCR` 60 (meaning unknown, ignored), dimension
 //!   61..63 (1D 0, 2D 1, CUBE 3), array 63, write mask 72..76, `.AOFFI` 76, `.NDV` 77, `.DC`
 //!   78, LOD mode 87..90 (auto 0, `.LZ` 1, `.LL` 3). The bindless forms (0x361, 0x367) are
-//!   rejected. UNVERIFIED (from NAK's `OpTex` operand order, not checked against a graphics
-//!   shader): the written components are packed densely, the first two into Rd, Rd+1 and the
-//!   rest into Rd2, Rd2+1; 2D coordinates are Ra, Ra+1; `.LL` takes the level from Rb.
+//!   rejected. [NAK] `OpTex`/`OpTld`: bit 60 is `.SCR` (scalar), dimension 61..64 (bit 63 =
+//!   array), fault predicate 81..84, `.NODEP` 90, `TLD.MS` 78. From NAK's operand order (not
+//!   checked against a graphics shader): the written components are packed densely, the
+//!   first two into Rd, Rd+1 and the rest into Rd2, Rd2+1; 2D coordinates are Ra, Ra+1;
+//!   `.LL` takes the level from Rb.
 
 use std::fmt;
 
@@ -77,7 +85,7 @@ pub enum MufuOp {
     Tanh,
 }
 
-/// `IPA` sampling frequency / mode [NAK, UNVERIFIED].
+/// `IPA` sampling frequency / mode ([NAK]; `PassMulW` exists on Maxwell only).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IpaFreq {
     /// Value as interpolated.
@@ -247,7 +255,9 @@ pub enum Compare {
     P { op: BoolOp, a: PSrc, b: PSrc },
 }
 
-/// `XMAD` addend mode ([envytools] `tab5b00_1`). `Csfu` is rejected.
+/// `XMAD` addend mode ([envytools] `tab5b00_1`). Semantics as in Ryujinx's `EmitXmad`
+/// (MIT, `THIRD_PARTY.md`): the `c` halves are always zero-extended, whatever the operand
+/// signedness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum XmadMode {
     /// `c` as is.
@@ -258,6 +268,9 @@ pub enum XmadMode {
     Chi,
     /// `c + (b << 16)` (b as encoded, all 32 bits).
     Cbcc,
+    /// Sign fix-up: `c - ((a16 >> 31) << 16) - ((b16 >> 31) << 16)`, with `a16`/`b16` the
+    /// extended 16-bit operands.
+    Csfu,
 }
 
 /// `LOP3` truth-table inputs: the table for `a` alone is 0xf0, `b` 0xcc, `c` 0xaa.
@@ -327,6 +340,8 @@ pub enum Instr {
     Brk,
     /// Fragment discard (`KIL`, `KILL`).
     Kill,
+    /// Maxwell `RRO` range reduction before `MUFU`: `.SINCOS` (`ex2` false) or `.EX2`.
+    Rro { dst: u8, ex2: bool, src: FSrc },
     /// `PLOP3`: `pd = LUT(a, b, c)` on predicates.
     PLop3 { pd: u8, lut: u8, a: PSrc, b: PSrc, c: PSrc },
     /// Warp-level hint with no effect on one thread's result (`BSSY`, `BSYNC`, `WARPSYNC`).
@@ -427,19 +442,20 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
             Instr::Ast { src: bits(w, 32, 40) as u8, addr: bits(w, 40, 50) as u16, comps: bits(w, 74, 76) as u8 + 1 }
         }
         0x326 => {
+            // [NAK] leaves bits 24..32 clear and puts the `.OFFSET` register at 32..40, used
+            // only with location 2 (rejected here), so neither is read.
             if bits(w, 76, 78) != 0 {
                 return Err(unsup("IPA centroid/offset/sample location"));
             }
-            if bits(w, 24, 32) as u8 != RZ {
-                return Err(unsup("IPA offset register"));
+            if bits(w, 81, 84) as u8 != PT {
+                return Err(unsup("IPA predicate output"));
             }
             let freq = match bits(w, 78, 80) {
                 0 => IpaFreq::Pass,
-                1 => IpaFreq::PassMulW,
-                2 => IpaFreq::Constant,
+                1 => IpaFreq::Constant,
                 _ => return Err(unsup("IPA.STATE")),
             };
-            Instr::Ipa { dst, addr: (bits(w, 64, 72) << 2) as u16, freq, mul: bits(w, 32, 40) as u8 }
+            Instr::Ipa { dst, addr: (bits(w, 64, 72) << 2) as u16, freq, mul: RZ }
         }
         0xb60 | 0xb66 => {
             let op = if full == 0xb60 { TexOp::Sample } else { TexOp::Fetch };
@@ -510,9 +526,12 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
                 Instr::FFma { dst, a: ra, b, c, sat, ftz }
             }
             0x108 => {
-                // Only the register form appears in [CuAsm]; immediate/cbuf forms unverified.
-                let src = slot32(w, form, u32::MAX, u32::MAX, full)?;
-                let op = match bits(w, 74, 78) {
+                // Forms 1/4/5 from [NAK]'s `encode_alu_base`; [CuAsm] shows only form 1.
+                let src = slot32(w, form, 4, 5, full)?;
+                if bit(w, 73) {
+                    return Err(unsup("MUFU.F16"));
+                }
+                let op = match bits(w, 74, 80) {
                     0 => MufuOp::Cos,
                     1 => MufuOp::Sin,
                     2 => MufuOp::Ex2,
@@ -590,8 +609,9 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
             Instr::Setp { pd, pd2, cmp, bop: bop()?, c: pc87 }
         }
         0x01c if form == 4 => {
-            if bit(w, 71) || bit(w, 80) || bit(w, 90) || pd2 != PT {
-                return Err(unsup("PLOP3 negated input / second output"));
+            // [NAK]: the second output (84..87) takes its own table at 16..24.
+            if pd2 != PT {
+                return Err(unsup("PLOP3 second output"));
             }
             let lut = ((bits(w, 72, 77) << 3) | bits(w, 64, 67)) as u8;
             Instr::PLop3 { pd, lut, a: psrc(w, 87), b: psrc(w, 77), c: psrc(w, 68) }
@@ -806,6 +826,7 @@ impl fmt::Display for Decoded {
             Instr::FMul { dst, a, b, sat, ftz } => write!(f, "FMUL{} {}, {a}, {b}", m(sat, ftz), reg(dst)),
             Instr::FFma { dst, a, b, c, sat, ftz } => write!(f, "FFMA{} {}, {a}, {b}, {c}", m(sat, ftz), reg(dst)),
             Instr::Mufu { dst, op, src } => write!(f, "MUFU.{} {}, {src}", format!("{op:?}").to_uppercase(), reg(dst)),
+            Instr::Rro { dst, ex2, src } => write!(f, "RRO.{} {}, {src}", if ex2 { "EX2" } else { "SINCOS" }, reg(dst)),
             Instr::Ldc { dst, bank, offset, reg: r_off } => {
                 if r_off == RZ {
                     write!(f, "LDC {}, c[{bank:#x}][{offset:#x}]", reg(dst))
