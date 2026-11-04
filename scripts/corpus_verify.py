@@ -5,8 +5,9 @@
   headline  derive the README headline count from a canonical report written by tools/ounce_verify.py
 
 A program counts toward the headline only when its record for every engine has verdict `pass`.
-The README count is never edited by hand: `headline --write-readme` rewrites it from a report and
-`headline --check-readme` fails when the README disagrees with the report.
+The README count (the headline markers and the oracle badge) is never edited by hand:
+`headline --write-readme` rewrites it from a report and `headline --check-readme` fails when the
+README disagrees with the report.
 """
 import argparse
 import hashlib
@@ -17,6 +18,7 @@ import sys
 
 REPO = Path(__file__).resolve().parents[1]
 README_MARK = re.compile(r"<!-- corpus-headline -->.*?<!-- /corpus-headline -->", re.S)
+BADGE_MARK = re.compile(r"first--frame_oracles-\d+%2F\d+_pass")
 ENGINES = {"Interpreter": "interpreter", "Tier3": "tier3"}
 STOPS = (("FrameLimit", "frame-limit"), ("ExitProcess", "exit-process"), ("Break", "svc-break"),
          ("UnhandledSvc", "unhandled-svc"), ("CpuHalt", "cpu-halt"), ("Fault", "cpu-fault"),
@@ -126,18 +128,26 @@ def count(report):
     return passed, len(programs)
 
 
+def render_readme(current, passed, total):
+    """README text with every headline marker and the oracle badge set to `passed/total`."""
+    if not README_MARK.search(current):
+        raise SystemExit("README.md has no corpus-headline marker")
+    if not BADGE_MARK.search(current):
+        raise SystemExit("README.md has no first-frame oracle badge")
+    text = README_MARK.sub(f"<!-- corpus-headline -->{passed}/{total}<!-- /corpus-headline -->", current)
+    return BADGE_MARK.sub(f"first--frame_oracles-{passed}%2F{total}_pass", text)
+
+
 def headline(args):
     passed, total = count(args.report)
-    text = f"<!-- corpus-headline -->{len(passed)}/{total}<!-- /corpus-headline -->"
     print(f"{len(passed)}/{total} programs pass on every engine: {', '.join(passed) or 'none'}")
     readme = REPO / "README.md"
     current = readme.read_text()
-    if not README_MARK.search(current):
-        raise SystemExit("README.md has no corpus-headline marker")
+    expected = render_readme(current, len(passed), total)
     if args.write_readme:
-        readme.write_text(README_MARK.sub(text, current))
-    elif args.check_readme and README_MARK.search(current).group(0) != text:
-        raise SystemExit(f"README headline {README_MARK.search(current).group(0)} differs from the report ({text})")
+        readme.write_text(expected)
+    elif args.check_readme and current != expected:
+        raise SystemExit(f"README headline or oracle badge differs from the report ({len(passed)}/{total})")
 
 
 def main():
