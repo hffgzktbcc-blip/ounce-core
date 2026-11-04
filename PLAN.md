@@ -135,8 +135,7 @@ change. A PR that breaks one is rejected.
 - **Environment first:** disk space, `~/Projects`, background jobs.
 - **Agents test themselves.** The owner is never the test dummy. Use scripted input and automated frame capture.
 - **Brief = "Do PLAN.md step N."** The rules live here, not in briefs or relay messages.
-- **Local gate, then push once:** `cargo test --release` and `cargo run --release -- test` must pass before the first push.
-- **Done = one PR:** the fix, the README count and the ticked box with proof links, merged by the agent itself when CI is green. No separate tick PRs, and no going idle before the merge.
+- **One branch per milestone (step), tested locally, one merge when the milestone is complete.** Test locally with `cargo test --release` and `cargo run --release -- test`, not by pushing to CI. Push and open the PR only once the milestone is done, then merge it yourself when CI is green. That PR carries the fix, the README count and the ticked box with proof links. No separate tick PRs, and no going idle before the merge.
 - **Agents decide; the owner decides only real judgment calls** (for example correcting an oracle). Ask once, directly, with a recommendation, and keep working on anything not blocked.
 - **At most 2 sessions at once**, never on the same files. The overseer checks once at done and doesn't relay status.
 - **Usage limit hit:** resume from the branch after the reset, and don't restart the step.
