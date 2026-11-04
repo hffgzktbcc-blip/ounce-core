@@ -117,6 +117,29 @@ mod imp {
             Ok(Self { base, size, page, committed: HashSet::new(), sealed: HashSet::new() })
         }
 
+        /// Reserves exactly `[base, base + size)` (host-page aligned), or fails if any of it is taken.
+        pub fn reserve_at(base: u64, size: u64) -> Result<Self, NceError> {
+            // SAFETY: sysconf has no preconditions.
+            let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
+            if base % page != 0 || size % page != 0 {
+                return Err(NceError::Range { va: base, len: size });
+            }
+            // SAFETY: a fresh anonymous PROT_NONE mapping at a hint; no MAP_FIXED, so nothing is replaced.
+            let raw = unsafe {
+                libc::mmap(base as *mut libc::c_void, size as libc::size_t, libc::PROT_NONE,
+                    libc::MAP_PRIVATE | libc::MAP_ANON | libc::MAP_NORESERVE, -1, 0)
+            };
+            if raw == libc::MAP_FAILED {
+                return Err(os_error("mmap(reserve)"));
+            }
+            if raw as u64 != base {
+                // SAFETY: unmaps the mapping just made, elsewhere than asked.
+                unsafe { libc::munmap(raw, size as libc::size_t) };
+                return Err(NceError::Range { va: base, len: size });
+            }
+            Ok(Self { base, size, page, committed: HashSet::new(), sealed: HashSet::new() })
+        }
+
         pub fn base(&self) -> u64 { self.base }
         pub fn size(&self) -> u64 { self.size }
         pub fn host_page_size(&self) -> u64 { self.page }
@@ -286,6 +309,7 @@ mod imp {
 
     impl Arena {
         pub fn reserve(_size: u64) -> Result<Self, NceError> { Err(NceError::Unsupported) }
+        pub fn reserve_at(_base: u64, _size: u64) -> Result<Self, NceError> { Err(NceError::Unsupported) }
         pub fn base(&self) -> u64 { 0 }
         pub fn size(&self) -> u64 { 0 }
         pub fn host_page_size(&self) -> u64 { 0x1000 }
@@ -308,6 +332,9 @@ mod tests {
     #[test]
     fn commit_read_write_decommit_and_seal() {
         let mut a = Arena::reserve(1 << 30).unwrap();
+        let fixed = Arena::reserve_at(a.base() + (1 << 32), 1 << 20).unwrap();
+        assert_eq!(fixed.base(), a.base() + (1 << 32));
+        assert!(Arena::reserve_at(a.base(), 1 << 20).is_err(), "taken by `a`");
         let b = a.base();
         assert_eq!(b % (1 << 32), 0);
         assert!(a.read(b, &mut [0; 4]).is_err(), "uncommitted");

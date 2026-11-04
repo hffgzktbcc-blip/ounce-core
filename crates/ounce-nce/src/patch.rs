@@ -10,6 +10,7 @@
 //! | `mrs xN, cntpct_el0` / `cntvct_el0` / `cntfrq_el0` | Horizon's 19.2 MHz timer | exit to the host |
 //! | `mrs xN, tpidrro_el0` / `tpidr_el0` | the host owns these registers | load from the [`Context`](crate::Context) (`site_sysreg_read`) |
 //! | `msr tpidr_el0, xN` | as above | store to the context (`site_tpidr_write`) |
+//! | `mrs xN, ctr_el0` | macOS traps it at EL0 | load the Cortex-A57 value (libgcc's cache flush reads it) |
 //! | anything reading or writing `x18` | macOS changes `x18` at will | run on a scratch register loaded from and stored back to `Context::x[18]` (`site_plain`, `site_cond`, `site_pcrel`, `site_blr`) |
 //!
 //! Where nxnative finds its thread slots through `TPIDRRO_EL0` (one key page per module), the
@@ -50,8 +51,12 @@ pub struct Stats {
     pub timer: usize,
     pub tpidr: usize,
     pub x18: usize,
+    pub constant: usize,
 }
 
+pub const SYSREG_CTR_EL0: u16 = 0x5801;
+/// `CTR_EL0` of the Switch's Cortex-A57: 64-byte I and D cache lines, PIPT instruction cache.
+pub const CTR_EL0_A57: u64 = 0x8444_C004;
 pub const SYSREG_TPIDR_EL0: u16 = 0x5E82;
 pub const SYSREG_TPIDRRO_EL0: u16 = 0x5E83;
 pub const SYSREG_CNTFRQ_EL0: u16 = 0x5F00;
@@ -417,6 +422,19 @@ impl Patcher {
         Ok(start)
     }
 
+    /// `mrs xN, <register>` -> xN = `value`.
+    fn site_const(&mut self, at: u64, rt: u32, value: u64) -> Result<u64, NceError> {
+        let start = self.here();
+        if rt != 31 {
+            self.emit(movz_x(rt, value as u32 & 0xFFFF));
+            for hw in 1..4 {
+                self.emit(movk_x(rt, (value >> (16 * hw)) as u32 & 0xFFFF, hw));
+            }
+        }
+        self.back(at)?;
+        Ok(start)
+    }
+
     /// `site_tpidr_write`: `msr tpidr_el0, xN` -> context field = xN.
     fn site_tpidr_write(&mut self, at: u64, rt: u32) -> Result<u64, NceError> {
         let start = self.here();
@@ -540,6 +558,7 @@ impl Patcher {
                 match sysreg {
                     SYSREG_TPIDR_EL0 => { stats.tpidr += 1; Some(self.site_sysreg_read(at, rt, off::TPIDR)?) }
                     SYSREG_TPIDRRO_EL0 => { stats.tpidr += 1; Some(self.site_sysreg_read(at, rt, off::TPIDRRO)?) }
+                    SYSREG_CTR_EL0 => { stats.constant += 1; Some(self.site_const(at, rt, CTR_EL0_A57)?) }
                     SYSREG_CNTFRQ_EL0 | SYSREG_CNTPCT_EL0 | SYSREG_CNTVCT_EL0 => {
                         stats.timer += 1;
                         Some(self.site_gate(at, SiteKind::ReadTimer { rt: rt as u8, sysreg })?)

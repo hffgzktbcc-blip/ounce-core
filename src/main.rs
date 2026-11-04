@@ -403,27 +403,27 @@ fn print_specs() {
 }
 
 fn setup_vm() -> (Cpu, Memory, HorizonKernel) {
-    setup_vm_in(Memory::new(), 0)
+    setup_vm_in(Memory::new(), 0, 0x10_0000_0000)
 }
 
-/// [`setup_vm`] with the guest address space layout moved up by `base` (native execution, see
-/// `HorizonKernel::set_addr_base`) into `mmu`.
-fn setup_vm_in(mut mmu: Memory, base: u64) -> (Cpu, Memory, HorizonKernel) {
+/// [`setup_vm`] into `mmu`, with the low layout moved up by `base` and the alias region `alias_size`
+/// long (native execution, see `HorizonKernel::set_addr_base`).
+fn setup_vm_in(mut mmu: Memory, base: u64, alias_size: u64) -> (Cpu, Memory, HorizonKernel) {
     let mut cpu = Cpu::new();
     let mut kernel = HorizonKernel::new();
-    kernel.set_addr_base(base);
+    kernel.set_addr_base(base, alias_size);
 
     // Map stack space: 0x7FFFF00000 .. 0x7FFFFFF000
-    let stack_base = base + STACK_TOP - STACK_SIZE as u64;
+    let stack_base = STACK_TOP - STACK_SIZE as u64;
     mmu.map_range(stack_base, STACK_SIZE, Permission::READ_WRITE);
 
     // Map Thread-Local Storage (TLS) page for Horizon HIPC/CMIF buffers
-    mmu.map_range(base + DEFAULT_TLS_ADDR, TLS_SIZE, Permission::READ_WRITE);
+    mmu.map_range(DEFAULT_TLS_ADDR, TLS_SIZE, Permission::READ_WRITE);
 
     // Initialize stack pointer, TLS pointers, and PC
-    cpu.regs.sp = base + STACK_TOP;
-    cpu.regs.tpidr_el0 = base + DEFAULT_TLS_ADDR;
-    cpu.regs.tpidrro_el0 = base + DEFAULT_TLS_ADDR;
+    cpu.regs.sp = STACK_TOP;
+    cpu.regs.tpidr_el0 = DEFAULT_TLS_ADDR;
+    cpu.regs.tpidrro_el0 = DEFAULT_TLS_ADDR;
     cpu.regs.pc = base + DEFAULT_BASE_ADDR;
 
     (cpu, mmu, kernel)
@@ -3499,12 +3499,12 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
 #[cfg(feature = "nce")]
 fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) {
     use cpu::nce::{NceEngine, NceExit};
-    let arena = match ounce_nce::Arena::reserve(cpu::nce::WINDOW) {
+    let arena = match cpu::nce::reserve_window() {
         Ok(arena) => arena,
         Err(e) => return eprintln!("[NCE] Native execution unavailable: {e}"),
     };
     let base = arena.base();
-    let (mut cpu, mut mmu, mut kernel) = setup_vm_in(Memory::with_arena(arena), base);
+    let (mut cpu, mut mmu, mut kernel) = setup_vm_in(Memory::with_arena(arena), base, cpu::nce::ALIAS_SIZE);
     let code = base + DEFAULT_BASE_ADDR;
     if let Err(e) = BootLoader::load_any_package(bytes, code, &[0; 16], &mut mmu) {
         return eprintln!("[Loader Error] {e}");

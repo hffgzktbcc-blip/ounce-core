@@ -275,9 +275,11 @@ mod imp {
         }
         #[cfg(target_os = "linux")]
         {
-            // The first record in __reserved is the FPSIMD context (magic 0x46508001).
-            // SAFETY: the kernel passes a valid ucontext_t; __reserved is 16-byte aligned.
-            let reserved = unsafe { (*(uc as *mut libc::ucontext_t)).uc_mcontext.__reserved.as_ptr() } as *const u8;
+            // The first record in __reserved (16-byte aligned, right after pstate) is the FPSIMD
+            // context (magic 0x46508001). libc keeps the field private, so find it by offset.
+            let at = (std::mem::offset_of!(libc::mcontext_t, pstate) + 8).next_multiple_of(16);
+            // SAFETY: the kernel passes a valid ucontext_t; `at` lies inside its mcontext.
+            let reserved = unsafe { (&raw const (*(uc as *mut libc::ucontext_t)).uc_mcontext as *const u8).add(at) };
             // SAFETY: reading the record header and body the kernel wrote.
             unsafe {
                 if *(reserved as *const u32) == 0x4650_8001 {

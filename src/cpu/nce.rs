@@ -2,8 +2,9 @@
 //! an AArch64 host CPU. `ounce-nce` holds the `unsafe` parts (the host window, entering guest code,
 //! fault signals) and the rewriter ported from nxnative; this side keeps it in step with the guest:
 //!
-//! - Guest memory is a [`Memory`] backed by an `ounce_nce::Arena`, and the kernel's address layout
-//!   is moved into that window (`HorizonKernel::set_addr_base`), so guest pointers are host pointers.
+//! - Guest memory is a [`Memory`] backed by an `ounce_nce::Arena` at [`WINDOW_BASE`], and the
+//!   kernel's code, heap and alias regions move into that window (`HorizonKernel::set_addr_base`), so
+//!   guest pointers are host pointers.
 //! - Before each entry, executable pages mapped since the last one are rewritten (`svc`, thread
 //!   registers, timers, `x18`) and sealed read+execute. The stubs live in a patch area just below the
 //!   usual code base, plus satellite areas next to code beyond branch range of it.
@@ -24,8 +25,19 @@ use std::collections::HashSet;
 fn libc_sigsegv() -> i32 { 11 }
 fn libc_sigbus() -> i32 { if cfg!(target_os = "macos") { 10 } else { 7 } }
 
-/// Size of the host window guest memory lives in: Horizon's 39-bit address space.
-pub const WINDOW: u64 = 1 << 39;
+/// The host window guest memory lives in: the top 64 GiB of Horizon's 39-bit address space. Guest
+/// addresses must stay below 2^39 (HIPC buffer descriptors carry 39 bits), and macOS on Apple Silicon
+/// keeps everything else below it for itself (its executable and dyld cache under 16 GiB, a reserved
+/// range from 64 to 448 GiB).
+pub const WINDOW_BASE: u64 = 0x70_0000_0000;
+pub const WINDOW_SIZE: u64 = 0x10_0000_0000;
+/// AliasRegionSize inside the window (the usual 64 GiB does not fit next to the stack region).
+pub const ALIAS_SIZE: u64 = 0x8_0000_0000;
+
+/// Reserves the native window.
+pub fn reserve_window() -> Result<ounce_nce::Arena, String> {
+    ounce_nce::Arena::reserve_at(WINDOW_BASE, WINDOW_SIZE).map_err(err)
+}
 /// Patch area offset in the layout: 64 MiB below the usual code base (`0x8000_0000`), so code up to
 /// 64 MiB long is within `B` range of its stubs.
 const PATCH_AREA: u64 = 0x7C00_0000;
@@ -184,6 +196,7 @@ impl NceEngine {
                 self.stats.timer += s.timer;
                 self.stats.tpidr += s.tpidr;
                 self.stats.x18 += s.x18;
+                self.stats.constant += s.constant;
             }
             at = next;
         }

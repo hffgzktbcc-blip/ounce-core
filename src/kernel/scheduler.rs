@@ -142,8 +142,6 @@ pub struct ThreadScheduler {
     pub virtual_time: bool,
     /// Handle the loader gave the guest for its main thread (libnx `envGetMainThreadHandle`).
     pub main_handle: Option<u32>,
-    /// Offset added to the thread pools and the exit stub (`HorizonKernel::set_addr_base`).
-    pub addr_base: u64,
 }
 
 impl Default for ThreadScheduler {
@@ -162,7 +160,6 @@ impl ThreadScheduler {
             total_threads_completed: 0,
             tls_image: None,
             next_tls_area: THREAD_TLS_POOL_BASE,
-            addr_base: 0,
             current: MAIN_THREAD_KEY,
             ready: VecDeque::new(),
             next_tlr_page: 0,
@@ -231,7 +228,7 @@ impl ThreadScheduler {
         let align = image.align.max(0x1000);
         let area = (self.next_tls_area + align - 1) & !(align - 1);
         let size = image.mapped_size();
-        if area + size > self.addr_base + THREAD_TLS_POOL_BASE + THREAD_TLS_POOL_SIZE {
+        if area + size > THREAD_TLS_POOL_BASE + THREAD_TLS_POOL_SIZE {
             return None;
         }
         mmu.map_range(area, size as usize, Permission::READ_WRITE);
@@ -322,27 +319,20 @@ impl ThreadScheduler {
     /// Gives a created thread its own zeroed thread-local region and points its `TPIDRRO_EL0` at it, and
     /// makes it return into the exit stub. Returns the region.
     pub fn prepare_thread(&mut self, handle: u32, mmu: &mut Memory) -> Option<u64> {
-        let exit_stub = self.addr_base + THREAD_EXIT_STUB;
-        if !mmu.is_mapped(exit_stub) {
-            mmu.map_range(exit_stub, 0x1000, Permission::READ_WRITE_EXECUTE);
-            mmu.write_u32(exit_stub, 0xD400_0141).ok()?; // svc #0x0A
+        if !mmu.is_mapped(THREAD_EXIT_STUB) {
+            mmu.map_range(THREAD_EXIT_STUB, 0x1000, Permission::READ_WRITE_EXECUTE);
+            mmu.write_u32(THREAD_EXIT_STUB, 0xD400_0141).ok()?; // svc #0x0A
         }
         if self.next_tlr_page >= THREAD_TLR_POOL_PAGES {
             return None;
         }
-        let page = self.addr_base + THREAD_TLR_POOL_BASE + self.next_tlr_page * 0x1000;
+        let page = THREAD_TLR_POOL_BASE + self.next_tlr_page * 0x1000;
         self.next_tlr_page += 1;
         mmu.map_range(page, 0x1000, Permission::READ_WRITE);
         let thread = self.threads.get_mut(&handle)?;
         thread.cpu_context.regs.tpidrro_el0 = page;
-        thread.cpu_context.regs.write_x(30, exit_stub);
+        thread.cpu_context.regs.write_x(30, THREAD_EXIT_STUB);
         Some(page)
-    }
-
-    /// See `HorizonKernel::set_addr_base`. Call before any thread is created.
-    pub fn set_addr_base(&mut self, base: u64) {
-        self.next_tls_area = self.next_tls_area - self.addr_base + base;
-        self.addr_base = base;
     }
 
     /// Thread ID of the running thread.
