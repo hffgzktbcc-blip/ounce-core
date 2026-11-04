@@ -5,13 +5,13 @@
     "vt52-demo": "pass",
     "read-controls": "pass",
     "touch-screen": "pass",
-    "sixaxis": "fail",
+    "sixaxis": "pass",
     "audren-simple": "pass",
     "get-system-language": "pass",
     "barrier": "pass",
     "user-events": "pass",
     "user-timers": "pass",
-    "deko-console": "fail",
+    "deko-console": "pass",
     "deko-examples-menu": "pass",
     "sdl2-simple": "fail",
     "raufang-hello-cpp": "pass",
@@ -22,5 +22,5 @@
     "startup": "pass",
     "romfs": "pass"
   },
-  "recorded_from": "https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41700028345"
+  "recorded_from": "https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259"
 }

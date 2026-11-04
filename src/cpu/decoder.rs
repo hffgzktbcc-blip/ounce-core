@@ -543,6 +543,19 @@ pub fn decode(raw: u32) -> Instruction {
         }
     }
 
+    // 14a1. Floating-Point 3-Source: 0 0 0 11111 ftype o1 Rm o0 Ra Rn Rd
+    if (raw & 0xFF00_0000) == 0x1F00_0000 && (raw >> 22) & 0x3 <= 1 {
+        return Instruction::FpData3 {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            rm: ((raw >> 16) & 0x1F) as u8,
+            ra: ((raw >> 10) & 0x1F) as u8,
+            o1: raw & (1 << 21) != 0,
+            o0: raw & (1 << 15) != 0,
+            is_double: (raw >> 22) & 0x3 == 1,
+        };
+    }
+
     // 14a2. Floating-Point round to integral: FRINTx
     if (raw & 0xFF3C7C00) == 0x1E244000 && ((raw >> 15) & 0x7) != 5 {
         return Instruction::FpRound {
@@ -551,6 +564,26 @@ pub fn decode(raw: u32) -> Instruction {
             op: ((raw >> 15) & 0x7) as u8,
             is_double: (raw >> 22) & 0x3 == 1,
         };
+    }
+
+    // 14a4. Float <-> fixed-point conversion: FCVTZS/FCVTZU (rmode 11, opcode 0/1), SCVTF/UCVTF (rmode 00,
+    // opcode 2/3). Pattern: sf 0 0 11110 ftype 0 rmode opcode scale Rn Rd, fbits = 64 - scale
+    if (raw & 0x7F200000) == 0x1E000000 && (raw >> 22) & 0x3 <= 1 {
+        let rmode = ((raw >> 19) & 0x3) as u8;
+        let opcode = ((raw >> 16) & 0x7) as u8;
+        let scale = (raw >> 10) & 0x3F;
+        let is_64 = raw & (1 << 31) != 0;
+        let valid = matches!((rmode, opcode), (3, 0) | (3, 1) | (0, 2) | (0, 3)) && (is_64 || scale >= 32);
+        if valid {
+            return Instruction::FpFixedConv {
+                rd: (raw & 0x1F) as u8,
+                rn: ((raw >> 5) & 0x1F) as u8,
+                opcode,
+                fbits: (64 - scale) as u8,
+                is_64,
+                is_double: (raw >> 22) & 0x3 == 1,
+            };
+        }
     }
 
     // 14a3. Float <-> integer conversion (FCVTxS/U, SCVTF, UCVTF, FCVTAS/AU); FMOV (opcodes 6, 7) is elsewhere
@@ -566,9 +599,11 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
-    // 14a. Floating-Point 1-Source: FMOV, FABS, FNEG, FSQRT, FCVT (single <-> double)
-    // Pattern: 0 0 0 11110 ftype 1 0000 opcode(2) 10000 Rn Rd
-    if (raw & 0xFF3E7C00) == 0x1E204000 {
+    // 14a. Floating-Point 1-Source: FMOV, FABS, FNEG, FSQRT (opcode 0000xx), FCVT single <-> double
+    // (opcode 0001 opc, opc = destination type: 100 to single, 101 to double)
+    // Pattern: 0 0 0 11110 ftype 1 opcode(6) 10000 Rn Rd
+    let fp1_op = (raw >> 15) & 0x3F;
+    if (raw & 0xFF207C00) == 0x1E204000 && (fp1_op <= 3 || fp1_op == 4 || fp1_op == 5) {
         return Instruction::FpData1 {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
@@ -948,12 +983,29 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     let no_offset = (raw & 0xBFBF_0000) == 0x0C00_0000;
     let post = (raw & 0xBFA0_0000) == 0x0C80_0000;
     if no_offset || post {
+        let size_field = (raw >> 10) & 0x3;
         let regs = match (raw >> 12) & 0xF {
             0b0111 => 1,
             0b1010 => 2,
             0b0110 => 3,
             0b0010 => 4,
-            _ => return None, // LD2/LD3/LD4 (interleaved) are not implemented
+            0b1000 | 0b0100 | 0b0000 => {
+                // LD2/LD3/LD4, ST2/ST3/ST4: interleaved elements; 64-bit elements need Q
+                if size_field == 3 && !q {
+                    return None;
+                }
+                return Some(Instruction::SimdLoadStoreStruct {
+                    rt: rd,
+                    rn,
+                    rm: if post { rm } else { 31 },
+                    selem: [4, 3, 2][((raw >> 14) & 0x3) as usize],
+                    esize: 8 << size_field,
+                    q,
+                    is_load: (raw & (1 << 22)) != 0,
+                    post_index: post,
+                });
+            }
+            _ => return None,
         };
         return Some(Instruction::SimdLoadStoreMulti {
             rt: rd,
@@ -1072,11 +1124,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b10101, false) => SimdOp3::Sminp,
             (0b10101, true) => SimdOp3::Uminp,
             (0b10111, false) => SimdOp3::Addp,
+            (0b10011, false) => SimdOp3::Mul,
             _ => return None,
         };
         let bitwise = opcode == 0b00011;
-        // 64-bit lanes need Q, and min/max have no 64-bit form.
-        if !bitwise && size == 3 && (!q || matches!(opcode, 0b01100 | 0b01101 | 0b10100 | 0b10101)) {
+        // 64-bit lanes need Q, and min/max/mul have no 64-bit form.
+        if !bitwise && size == 3 && (!q || matches!(opcode, 0b01100 | 0b01101 | 0b10100 | 0b10101 | 0b10011)) {
             return None;
         }
         let esize = if bitwise { 8 } else { 8u8 << size };
@@ -1102,8 +1155,24 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdAcross { rd, rn, op, esize: 8u8 << size, q });
     }
 
+    // 29a. AdvSIMD scalar two-register miscellaneous: 01 U 11110 size 10000 opcode 10 Rn Rd (conversions only)
+    if (raw & 0xDF3E_0C00) == 0x5E20_0800 {
+        let op = match ((raw >> 12) & 0x1F, u, size >> 1) {
+            (0b11101, false, 0) => SimdOp2::Scvtf,
+            (0b11101, true, 0) => SimdOp2::Ucvtf,
+            (0b11011, false, 1) => SimdOp2::Fcvtzs,
+            (0b11011, true, 1) => SimdOp2::Fcvtzu,
+            _ => return None,
+        };
+        return Some(Instruction::SimdScalarTwoMisc { rd, rn, op, esize: 32u8 << (size & 1) });
+    }
+
     // 29. AdvSIMD two-register miscellaneous: 0 Q U 01110 size 10000 opcode 10 Rn Rd
     if (raw & 0x9F3E_0C00) == 0x0E20_0800 {
+        // XTN/XTN2 is SHRN/SHRN2 with a zero shift
+        if (raw >> 12) & 0x1F == 0b10010 && !u && size < 3 {
+            return Some(Instruction::SimdShiftImm { rd, rn, op: SimdShiftOp::Shrn, esize: 8 << size, shift: 0, q });
+        }
         let op = match ((raw >> 12) & 0x1F, u) {
             (0b01000, false) => SimdOp2::Cmgt0,
             (0b01000, true) => SimdOp2::Cmge0,
@@ -1114,12 +1183,16 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b00101, true) if size == 0 => SimdOp2::Not,
             (0b01011, false) => SimdOp2::Abs,
             (0b01011, true) => SimdOp2::Neg,
+            (0b11101, false) if size < 2 => SimdOp2::Scvtf,
+            (0b11101, true) if size < 2 => SimdOp2::Ucvtf,
             _ => return None,
         };
-        if size == 3 && !q {
+        // The float forms use bit 22 (sz) alone: 32-bit lanes, or 64-bit lanes with Q.
+        let esize = if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf) { 32u8 << size } else { 8u8 << size };
+        if esize == 64 && !q {
             return None;
         }
-        return Some(Instruction::SimdTwoMisc { rd, rn, op, esize: 8u8 << size, q });
+        return Some(Instruction::SimdTwoMisc { rd, rn, op, esize, q });
     }
 
     // 31. AdvSIMD modified immediate: 0 Q op 0111100000 abc cmode o2 1 defgh Rd
@@ -1174,6 +1247,8 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b00000, true) => (SimdShiftOp::Ushr, esize, 2 * esize - imm),
             (0b01010, false) => (SimdShiftOp::Shl, esize, imm - esize),
             (0b10000, false) if esize < 64 => (SimdShiftOp::Shrn, esize, 2 * esize - imm),
+            (0b10100, false) if esize < 64 => (SimdShiftOp::Sshll, esize, imm - esize),
+            (0b10100, true) if esize < 64 => (SimdShiftOp::Ushll, esize, imm - esize),
             _ => return None,
         };
         if esize == 64 && !q && op != SimdShiftOp::Shrn {
