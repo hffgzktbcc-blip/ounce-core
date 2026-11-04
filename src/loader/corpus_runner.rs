@@ -39,12 +39,14 @@ struct Limits {
     debug_bytes: usize,
     /// Stop after this many VI `QUEUE_BUFFER`s (0 = no limit). Every queued frame is captured.
     queued_frames: u64,
+    /// Pixels (x, y) sampled from every queued frame.
+    probes: Vec<(usize, usize)>,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Self { instructions: crate::NRO_INSTRUCTION_BUDGET, host_time: Duration::from_secs(10),
-            frames: 16, trace_entries: 256, debug_bytes: 8192, queued_frames: 0 }
+            frames: 16, trace_entries: 256, debug_bytes: 8192, queued_frames: 0, probes: Vec::new() }
     }
 }
 
@@ -84,6 +86,8 @@ struct QueuedFrame {
     rgba_fnv1a64: u64,
     /// The pixel every pixel equals, if the frame is uniform.
     uniform: Option<[u8; 4]>,
+    /// RGBA at each `Limits::probes` coordinate (alpha forced to 0xFF), `None` if out of range.
+    probes: Vec<Option<[u8; 4]>>,
     error: Option<String>,
 }
 
@@ -104,8 +108,8 @@ fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
         input_applied_at: Vec::new(), raw_frame: None, queued: Vec::new(), first_present_diagnostic: None, post_queue_diagnostic: None, compatibility: "not-assessed" }
 }
 
-fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64) -> QueuedFrame {
-    let mut out = QueuedFrame { index, width: 0, height: 0, rgba_fnv1a64: 0, uniform: None, error: None };
+fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64, probes: &[(usize, usize)]) -> QueuedFrame {
+    let mut out = QueuedFrame { index, width: 0, height: 0, rgba_fnv1a64: 0, uniform: None, probes: Vec::new(), error: None };
     let Some(submitted) = kernel.ipc.submitted_vi_surface() else {
         out.error = Some("no resolvable VI submission".into());
         return out;
@@ -122,6 +126,7 @@ fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64) -> QueuedFra
             out.width = frame.width;
             out.height = frame.height;
             out.rgba_fnv1a64 = frame.content_hash();
+            out.probes = probes.iter().map(|&(x, y)| frame.pixel(x, y).map(|(r, g, b, a)| [r, g, b, a])).collect();
         }
         Err(error) => out.error = Some(format!("{error:?}")),
     }
@@ -250,7 +255,7 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
         }
         let queued = kernel.ipc.vi_frames_queued();
         if queued > result.queued.len() as u64 {
-            result.queued.push(capture_queued(&kernel, &mmu, queued));
+            result.queued.push(capture_queued(&kernel, &mmu, queued, &limits.probes));
             if limits.queued_frames != 0 && queued >= limits.queued_frames {
                 result.stop = Stop::FrameLimit;
                 break;
@@ -735,4 +740,95 @@ fn startup_first_frame_oracle() {
             Some(r) => assert_eq!(&result.queued, r, "interpreter and Tier-3 frames differ"),
         }
     }
+}
+
+/// One pre-registered first-frame oracle from `tests/corpus/oracles.json` (PLAN step 2,
+/// `docs/corpus-oracles.md`). Its expected values were computed from the program's source by
+/// `tools/corpus_oracle.py` before any run. Opt-in: `OUNCE_CORPUS_ROOT=<builds> OUNCE_ORACLE_ID=<id>
+/// cargo test --release corpus_first_frame_oracle -- --ignored --nocapture`. The NRO is read from
+/// `<builds>/<build>/build/source/<nro>`. `OUNCE_ORACLE_RESULT=<file>` receives the verdict as JSON,
+/// and `OUNCE_ORACLE_SECONDS` (default 300) bounds each engine's host time.
+#[test]
+#[ignore = "requires OUNCE_CORPUS_ROOT with built corpus programs and OUNCE_ORACLE_ID"]
+fn corpus_first_frame_oracle() {
+    use serde_json::{json, Value};
+    let oracles: Value = serde_json::from_str(include_str!("../../tests/corpus/oracles.json")).unwrap();
+    let id = std::env::var("OUNCE_ORACLE_ID").expect("OUNCE_ORACLE_ID is unset");
+    let root = std::env::var_os("OUNCE_CORPUS_ROOT").expect("OUNCE_CORPUS_ROOT is unset");
+    let oracle = oracles["oracles"].as_array().unwrap().iter().find(|o| o["id"] == id.as_str())
+        .unwrap_or_else(|| panic!("no oracle {id}"));
+    let path = Path::new(&root).join(oracle["build"].as_str().unwrap()).join("build/source")
+        .join(oracle["nro"].as_str().unwrap());
+    let nro = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    use sha2::Digest;
+    let nro_sha256 = format!("{:x}", sha2::Sha256::digest(&nro));
+    let frames = oracle["queued_frames"].as_u64().unwrap();
+    let checks = oracle["checks"].as_array().unwrap();
+    let probes: Vec<(usize, usize)> = checks.iter().flat_map(|c| c["probes"].as_array().cloned().unwrap_or_default())
+        .map(|p| (p["x"].as_u64().unwrap() as usize, p["y"].as_u64().unwrap() as usize)).collect();
+    let seconds = std::env::var("OUNCE_ORACLE_SECONDS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
+    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(seconds), frames: usize::MAX,
+        queued_frames: frames, probes, ..Limits::default() };
+    let mut failures = Vec::new();
+    let mut runs = Vec::new();
+    let mut reference: Option<Vec<QueuedFrame>> = None;
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let result = run_nro(&nro, &path.to_string_lossy(), &[], engine, &limits, &[]);
+        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        let mut engine_failures = Vec::new();
+        let mut fail = |message: String| engine_failures.push(message);
+        if !matches!(result.stop, Stop::FrameLimit) || result.queued.len() as u64 != frames {
+            fail(format!("stopped with {:?} after {} of {frames} queued frames", result.stop, result.queued.len()));
+        }
+        let mut probe_index = 0;
+        for check in checks {
+            let expect = &check["expect"];
+            let check_probes = check["probes"].as_array().cloned().unwrap_or_default();
+            let size = (expect["width"].as_u64().or(check["width"].as_u64()).unwrap() as usize,
+                expect["height"].as_u64().or(check["height"].as_u64()).unwrap() as usize);
+            for index in check["frames"].as_array().unwrap().iter().map(|f| f.as_u64().unwrap()) {
+                let Some(f) = result.queued.get(index as usize - 1) else { continue };
+                if let Some(error) = &f.error {
+                    fail(format!("frame {index}: {error}"));
+                    continue;
+                }
+                if (f.width, f.height) != size {
+                    fail(format!("frame {index}: {}x{}, expected {}x{}", f.width, f.height, size.0, size.1));
+                    continue;
+                }
+                if let Some(hash) = expect["rgba_fnv1a64"].as_str() {
+                    let actual = format!("{:#018x}", f.rgba_fnv1a64);
+                    if actual != hash { fail(format!("frame {index}: hash {actual}, expected {hash}")); }
+                }
+                for (i, probe) in check_probes.iter().enumerate() {
+                    let want: Vec<u8> = probe["rgb"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap() as u8).collect();
+                    let got = f.probes.get(probe_index + i).copied().flatten();
+                    if got.map(|p| p[..3].to_vec()) != Some(want.clone()) {
+                        fail(format!("frame {index}: pixel ({}, {}) = {got:?}, expected {want:?}", probe["x"], probe["y"]));
+                    }
+                }
+            }
+            probe_index += check_probes.len();
+        }
+        failures.extend(engine_failures.iter().map(|m| format!("{engine:?}: {m}")));
+        runs.push(json!({
+            "engine": format!("{engine:?}"), "stop": format!("{:?}", result.stop), "instructions": result.instructions,
+            "pc": format!("{:#018x}", result.pc), "x0": format!("{:#018x}", result.x0), "failures": engine_failures,
+            "host_timeout_seconds": seconds, "max_guest_instructions": limits.instructions, "queued": result.queued.iter().map(|f| json!({
+                "index": f.index, "width": f.width, "height": f.height,
+                "rgba_fnv1a64": format!("{:#018x}", f.rgba_fnv1a64), "error": f.error})).collect::<Vec<_>>(),
+        }));
+        match &reference {
+            None => reference = Some(result.queued),
+            Some(r) if *r != result.queued => failures.push("interpreter and Tier-3 frames differ".into()),
+            Some(_) => {}
+        }
+    }
+    let verdict = json!({"id": id, "pass": failures.is_empty(), "nro_sha256": nro_sha256,
+        "failures": failures, "runs": runs});
+    println!("{}", serde_json::to_string_pretty(&verdict).unwrap());
+    if let Some(out) = std::env::var_os("OUNCE_ORACLE_RESULT") {
+        std::fs::write(out, serde_json::to_string_pretty(&verdict).unwrap()).expect("write oracle result");
+    }
+    assert!(failures.is_empty(), "oracle {id} failed: {failures:#?}");
 }

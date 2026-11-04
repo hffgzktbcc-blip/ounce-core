@@ -24,7 +24,7 @@ Every program is a conversation between instructions, memory, operating-system s
 
 It brings together interpreters, tiered AArch64 execution, Horizon-style service models, software graphics and optional `wgpu` presentation. The root crate forbids unsafe Rust; the optional Tier-4 recompiler owns a separate unsafe boundary for native code generation and executable memory. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
 
-> **Headline metric: [4 outside homebrew programs render their first frame pixel-exact](#what-is-proven).** Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
+> **Headline metric: [<!-- corpus-headline -->15/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
 
 <table>
 <tr>
@@ -116,14 +116,30 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ## What is proven
 
-**4 outside homebrew programs render their first frame pixel-exact.** These are programs we did not write, from upstream [`switchbrew/switch-examples`](https://github.com/switchbrew/switch-examples) at a pinned commit. Each has an expected frame written down *before* the run, and the Interpreter and Tier-3 engines must both match it exactly.
+**<!-- corpus-headline -->15/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Each has an expected frame written down from its source *before* the run ([method](docs/corpus-oracles.md)), and the Interpreter and Tier-3 engines must both match it. The count is derived from the [Ounce-Verify](docs/verify/README.md) canonical report of the [CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41700028345) (`ounce-verify-canonical-report` artifact); CI fails if this text disagrees with the report. Failures are the to-do list.
 
-| Program | Oracle (written before execution) | Merged in | CI run |
+| Program | Source | Oracle | Result (both engines) |
 | :--- | :--- | :--- | :--- |
-| `graphics/simplegfx` | [first-frame-oracle.md](docs/first-frame-oracle.md) | [#103](https://github.com/hffgzktbcc-blip/ounce-core/pull/103), [#114](https://github.com/hffgzktbcc-blip/ounce-core/pull/114) | [external corpus run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41333484821) |
-| `graphics/deko3d/deko_basic` | [deko-basic-oracle.md](docs/deko-basic-oracle.md) | [#121](https://github.com/hffgzktbcc-blip/ounce-core/pull/121) | [external corpus run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41333484821) |
-| `fs/romfs` | [romfs-oracle.md](docs/romfs-oracle.md) | [#123](https://github.com/hffgzktbcc-blip/ounce-core/pull/123) | [external corpus run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41333484821) |
-| `templates/application` | [startup-oracle.md](docs/startup-oracle.md) | [#125](https://github.com/hffgzktbcc-blip/ounce-core/pull/125) | [external corpus run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41333484821) |
+| `printing-hello-world` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `vt52-demo` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `read-controls` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `touch-screen` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `sixaxis` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | fail: unimplemented instruction `0x1E22C042` |
+| `audren-simple` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `get-system-language` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `barrier` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `user-events` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `user-timers` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `deko-console` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | fail: unimplemented instruction `0x1E19E027` |
+| `deko-examples-menu` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `sdl2-simple` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | fail: guest ExitProcess before the first frame |
+| `raufang-hello-cpp` | [Raufang/switch-hello-world](https://github.com/Raufang/switch-hello-world) | pixel-exact | pass |
+| `nx-hbmenu` | [switchbrew/nx-hbmenu](https://github.com/switchbrew/nx-hbmenu) | pixel probes | fail: unimplemented instruction `0x4EBC9F5A` |
+| `hybrid-app` | [fincs/hybrid_app](https://github.com/fincs/hybrid_app) | pixel probes | fail: guest ExitProcess before the first frame |
+| `simplegfx` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `deko-basic` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | regression (observed hash) | pass |
+| `startup` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
+| `romfs` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 
 Every oracle run is in the [External corpus workflow](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml). Reproduction guides: [simplegfx](docs/REPRODUCE_SIMPLEGFX.md), [deko_basic](docs/REPRODUCE_DEKO_BASIC.md), [romfs](docs/REPRODUCE_ROMFS.md).
 
