@@ -10,12 +10,26 @@ pub const CMIF_IN_MAGIC: u32 = 0x49434653;  // "SFCI"
 pub const CMIF_OUT_MAGIC: u32 = 0x4F434653; // "SFCO"
 pub const DEFAULT_TLS_ADDR: u64 = 0x7FFFE00000;
 pub const TLS_SIZE: usize = 0x1000;
+/// BSD `errno` for a socket call with no network.
+const BSD_ENETDOWN: u32 = 50;
+/// Temperature `ts` reports, in degrees Celsius.
+const TS_TEMPERATURE_C: f32 = 35.0;
 
 /// Horizon OS System Service Types
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceType {
     /// Service Manager ("sm:")
     Sm,
+    /// BSD sockets ("bsd:u" / "bsd:s" / "bsd:a"): initialises, but there is no network
+    Bsd,
+    /// Network interface manager ("nifm:u" / "nifm:s" / "nifm:a"): reports no connection
+    Nifm,
+    /// Temperature measurement ("ts")
+    Ts,
+    /// `nn::ts::IMeasurementServer` session
+    TsSession,
+    /// `nn::nifm::detail::IGeneralService`
+    NifmGeneral,
     /// Nvidia GPU Driver ("nvdrv" / "nvdrv:a")
     Nvdrv,
     /// Video Interface ("vi:u" / "vi:m" / "vi:s")
@@ -291,7 +305,7 @@ impl IpcManager {
         let cmd_id = mmu.read_u32(cmif_base + 8).unwrap_or(0);
         let args_base = cmif_base + 0x10;
         // Explicit diagnostic opt-in; cap output even for a looping guest.
-        if self.total_ipc_requests <= 256 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+        if self.total_ipc_requests <= 100000 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
             eprintln!("[IPC trace] #{} handle=0x{:X} service={:?} command={}", self.total_ipc_requests, object_handle, service, cmd_id);
         }
 
@@ -345,6 +359,9 @@ impl IpcManager {
                         "time:u" | "time:s" | "time:a" | "time:r" | "time:su" => ServiceType::Time,
                         "prepo:u" | "prepo:a" | "prepo:m" => ServiceType::Prepo,
                         "bcat:u" | "bcat:a" | "bcat:m" => ServiceType::Bcat,
+                        "bsd:u" | "bsd:s" | "bsd:a" => ServiceType::Bsd,
+                        "nifm:u" | "nifm:s" | "nifm:a" => ServiceType::Nifm,
+                        "ts" => ServiceType::Ts,
                         other => ServiceType::Generic(other.to_string()),
                     };
 
@@ -1027,6 +1044,75 @@ impl IpcManager {
                 self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
                 0
             }
+
+            ServiceType::Bsd => match cmd_id {
+                // Initialize(config, pid, transfer memory size) / StartMonitoring(pid)
+                0 | 1 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+                    0
+                }
+                // Socket(domain, type, protocol) -> (ret, errno): no network, so ENETDOWN
+                2 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[u32::MAX, BSD_ENETDOWN], None);
+                    0
+                }
+                _ => {
+                    eprintln!("[HIPC] 'bsd' command {cmd_id} not implemented");
+                    self.note_unimplemented("bsd", cmd_id);
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
+
+            ServiceType::Ts => match cmd_id {
+                // OpenSession(device code) -> ISession
+                4 => self.reply_object(tls_addr, mmu, ServiceType::TsSession),
+                _ => {
+                    eprintln!("[HIPC] 'ts' command {cmd_id} not implemented");
+                    self.note_unimplemented("ts", cmd_id);
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
+
+            ServiceType::TsSession => match cmd_id {
+                // GetTemperature -> f32 degrees C (a cool handheld)
+                4 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[TS_TEMPERATURE_C.to_bits()], None);
+                    0
+                }
+                _ => {
+                    eprintln!("[HIPC] 'ts session' command {cmd_id} not implemented");
+                    self.note_unimplemented("ts session", cmd_id);
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
+
+            ServiceType::Nifm => match cmd_id {
+                // CreateGeneralServiceOld (4) / CreateGeneralService (5, with pid) -> IGeneralService
+                4 | 5 => self.reply_object(tls_addr, mmu, ServiceType::NifmGeneral),
+                _ => {
+                    eprintln!("[HIPC] 'nifm:u' command {cmd_id} not implemented");
+                    self.note_unimplemented("nifm:u", cmd_id);
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
+
+            ServiceType::NifmGeneral => match cmd_id {
+                // GetInternetConnectionStatus -> (connection type, wifi strength, status): none, none, disconnected
+                18 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0, 0, 0], None);
+                    0
+                }
+                _ => {
+                    eprintln!("[HIPC] 'nifm IGeneralService' command {cmd_id} not implemented");
+                    self.note_unimplemented("nifm IGeneralService", cmd_id);
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
 
             ServiceType::Bcat => {
                 // Command 0 / 1: RequestDeliveryCache (BCAT content delivery stubs)

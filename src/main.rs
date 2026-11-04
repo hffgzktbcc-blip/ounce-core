@@ -3605,6 +3605,7 @@ fn setup_homebrew_nro(
         main_thread_handle: Some(NRO_MAIN_THREAD_HANDLE),
         heap: Some((kernel.heap_base, NRO_HEAP_SIZE as u64)),
         argv: Some(argv),
+        next_load: true,
         ..Default::default()
     }
     .setup(cpu, mmu, kernel.addr_base + NRO_CONFIG_ADDR)?;

@@ -649,8 +649,8 @@ impl Lowerer {
                     FpOp2::Fsub => FpBinOp::Fsub,
                     FpOp2::Fmul => FpBinOp::Fmul,
                     FpOp2::Fdiv => FpBinOp::Fdiv,
-                    FpOp2::Fmax => FpBinOp::Fmax,
-                    FpOp2::Fmin => FpBinOp::Fmin,
+                    FpOp2::Fmax | FpOp2::Fmaxnm => FpBinOp::Fmax,
+                    FpOp2::Fmin | FpOp2::Fminnm => FpBinOp::Fmin,
                 };
                 let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
                 let res = self.b.push(Op::FpBin(fop, w, a, b));

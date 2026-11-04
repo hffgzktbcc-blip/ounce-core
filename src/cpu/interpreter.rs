@@ -934,8 +934,8 @@ impl Cpu {
                         FpOp2::Fsub => n - m,
                         FpOp2::Fmul => n * m,
                         FpOp2::Fdiv => n / m,
-                        FpOp2::Fmax => n.max(m),
-                        FpOp2::Fmin => n.min(m),
+                        FpOp2::Fmax | FpOp2::Fmaxnm => n.max(m),
+                        FpOp2::Fmin | FpOp2::Fminnm => n.min(m),
                     };
                     self.regs.write_d(rd, res);
                 } else {
@@ -946,8 +946,8 @@ impl Cpu {
                         FpOp2::Fsub => n - m,
                         FpOp2::Fmul => n * m,
                         FpOp2::Fdiv => n / m,
-                        FpOp2::Fmax => n.max(m),
-                        FpOp2::Fmin => n.min(m),
+                        FpOp2::Fmax | FpOp2::Fmaxnm => n.max(m),
+                        FpOp2::Fmin | FpOp2::Fminnm => n.min(m),
                     };
                     self.regs.write_s(rd, res);
                 }
@@ -1317,8 +1317,8 @@ impl Cpu {
                         FpOp2::Fsub => a[i] - b[i],
                         FpOp2::Fmul => a[i] * b[i],
                         FpOp2::Fdiv => a[i] / b[i],
-                        FpOp2::Fmax => a[i].max(b[i]),
-                        FpOp2::Fmin => a[i].min(b[i]),
+                        FpOp2::Fmax | FpOp2::Fmaxnm => a[i].max(b[i]),
+                        FpOp2::Fmin | FpOp2::Fminnm => a[i].min(b[i]),
                     };
                 }
                 self.regs.write_v4s(rd, out);
@@ -1800,6 +1800,7 @@ mod tests {
             (0xac0008a1, "SimdLoadStorePair"),  // stnp q1, q2, [x5]
             (0xd50b7423, "DcZva"),              // dc zva, x3
             (0x4f00e41f, "SimdModImm"),         // movi v31.16b, #0
+            (0x1e756bff, "FpData2"),            // fmaxnm d31, d31, d21
             (0x4f9f939f, "SimdFpByElement"),    // fmul v31.4s, v28.4s, v31.s[0]
             (0x6e1f43ff, "SimdExt"),            // ext v31.16b, v31.16b, v31.16b, #8
             (0x4e1d3bde, "SimdPermute"),        // zip1 v30.16b, v30.16b, v29.16b
