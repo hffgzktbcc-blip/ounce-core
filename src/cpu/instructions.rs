@@ -634,6 +634,17 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// `FMUL/FMLA/FMLS Vd.<T>, Vn.<T>, Vm.<Ts>[index]`: `double` selects 64-bit lanes, else 32-bit
+    SimdFpByElement {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        index: u8,
+        op: SimdFpElementOp,
+        double: bool,
+        q: bool,
+    },
+
     /// `EXT Vd.<T>, Vn.<T>, Vm.<T>, #index`: bytes `index..` of `Vm:Vn`
     SimdExt {
         rd: u8,
@@ -735,6 +746,13 @@ pub enum SimdOp3 {
     Smaxp,
     Sminp,
     Mul,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdFpElementOp {
+    Fmul,
+    Fmla,
+    Fmls,
 }
 
 /// AdvSIMD across-lanes reductions (`ADDV`, `S/UADDLV`, `S/UMAXV`, `S/UMINV`).

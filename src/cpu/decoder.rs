@@ -3,7 +3,7 @@
 use super::instructions::{
     SimdAcrossOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
-    SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
+    SimdFpElementOp, SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
@@ -1085,6 +1085,25 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             is_load,
             post_index: single_post,
         });
+    }
+
+    // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q 0 01111 1 sz L M Rm opcode H 0 Rn Rd
+    //       (FMLA 0001, FMLS 0101, FMUL 1001)
+    if (raw & 0xBF80_0400) == 0x0F80_0000 && !u {
+        let op = match (raw >> 12) & 0xF {
+            0b0001 => SimdFpElementOp::Fmla,
+            0b0101 => SimdFpElementOp::Fmls,
+            0b1001 => SimdFpElementOp::Fmul,
+            _ => return None,
+        };
+        let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
+        let rm = ((m << 4) | ((raw >> 16) & 0xF)) as u8;
+        let double = size == 3;
+        if double && (l == 1 || !q) {
+            return None;
+        }
+        let index = if double { h } else { (h << 1) | l } as u8;
+        return Some(Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q });
     }
 
     // 26b'. AdvSIMD extract: 0 Q 101110 00 0 Rm 0 imm4 0 Rn Rd (EXT)
