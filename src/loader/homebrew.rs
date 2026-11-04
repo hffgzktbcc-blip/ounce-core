@@ -42,7 +42,13 @@ pub struct HomebrewConfig {
     pub argv: Option<String>,
     pub applet_type: Option<u64>,
     pub random_seed: Option<[u64; 2]>,
+    /// Give the program the `NextLoadPath` buffers hbloader always passes, so a menu knows it can chain-load.
+    pub next_load: bool,
 }
+
+/// Sizes of the `NextLoadPath` buffers hbloader hands out (path, then argument string).
+const NEXT_LOAD_PATH_SIZE: u64 = 512;
+const NEXT_LOAD_ARGV_SIZE: u64 = 2048;
 
 impl HomebrewConfig {
     /// The entries in list order, ending with `EndOfList`. `argv_addr` is where the argument string is written.
@@ -63,6 +69,9 @@ impl HomebrewConfig {
         if let Some(seed) = self.random_seed {
             out.push(ConfigEntry { key: ENTRY_RANDOM_SEED, flags: 0, value: seed });
         }
+        if self.next_load {
+            out.push(ConfigEntry { key: ENTRY_NEXT_LOAD_PATH, flags: 0, value: [0, 0] });
+        }
         out.push(ConfigEntry { key: ENTRY_END_OF_LIST, flags: 0, value: [0, 0] });
         out
     }
@@ -78,7 +87,13 @@ impl HomebrewConfig {
         }
         // Map as many pages as the list and the string need (a long command line spills past one page).
         let argv_len = self.argv.as_ref().map_or(0, |a| a.len() as u64 + 1);
-        let total = (argv_addr - addr) + argv_len;
+        let next_path_addr = (argv_addr + argv_len).next_multiple_of(16);
+        let next_argv_addr = next_path_addr + NEXT_LOAD_PATH_SIZE;
+        for e in entries.iter_mut().filter(|e| e.key == ENTRY_NEXT_LOAD_PATH) {
+            e.value = [next_path_addr, next_argv_addr];
+        }
+        let end = if self.next_load { next_argv_addr + NEXT_LOAD_ARGV_SIZE } else { argv_addr + argv_len };
+        let total = end - addr;
         mmu.map_range(addr, total.max(1).div_ceil(0x1000) as usize * 0x1000, Permission::READ_WRITE);
         for (i, e) in entries.iter().enumerate() {
             let at = addr + i as u64 * ENTRY_SIZE;

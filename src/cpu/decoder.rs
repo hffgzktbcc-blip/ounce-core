@@ -530,6 +530,8 @@ pub fn decode(raw: u32) -> Instruction {
                 0b0011 => FpOp2::Fsub,
                 0b0100 => FpOp2::Fmax,
                 0b0101 => FpOp2::Fmin,
+                0b0110 => FpOp2::Fmaxnm,
+                0b0111 => FpOp2::Fminnm,
                 _ => return Instruction::Unimplemented { raw },
             };
 

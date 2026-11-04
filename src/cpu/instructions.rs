@@ -705,6 +705,9 @@ pub enum FpOp2 {
     Fsub,
     Fmax,
     Fmin,
+    /// `FMAXNM`/`FMINNM`: a quiet NaN operand yields the other operand
+    Fmaxnm,
+    Fminnm,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
