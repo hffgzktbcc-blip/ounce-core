@@ -902,9 +902,13 @@ fn corpus_first_frame_oracle() {
     let mut failures = Vec::new();
     let mut runs = Vec::new();
     let mut reference: Option<Vec<QueuedFrame>> = None;
-    for engine in [Engine::Interpreter, Engine::Tier3] {
+    let mut times = Vec::new();
+    for engine in oracle_engines() {
+        let started = Instant::now();
         let result = run_nro(&nro, &path.to_string_lossy(), &[], engine, &limits, &[]);
-        println!("{engine:?}: stop={:?} instructions={} queued={} pc={:#x}", result.stop, result.instructions, result.queued.len(), result.pc);
+        let seconds_taken = started.elapsed();
+        times.push((engine, seconds_taken));
+        println!("{engine:?}: stop={:?} instructions={} svcs={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.queued.len(), result.pc);
         let mut engine_failures = Vec::new();
         let mut fail = |message: String| engine_failures.push(message);
         if !matches!(result.stop, Stop::FrameLimit) || result.queued.len() as u64 != frames {
@@ -944,16 +948,18 @@ fn corpus_first_frame_oracle() {
         runs.push(json!({
             "engine": format!("{engine:?}"), "stop": format!("{:?}", result.stop), "instructions": result.instructions,
             "pc": format!("{:#018x}", result.pc), "x0": format!("{:#018x}", result.x0), "failures": engine_failures,
-            "host_timeout_seconds": seconds, "max_guest_instructions": limits.instructions, "queued": result.queued.iter().map(|f| json!({
+            "host_timeout_seconds": seconds, "wall_seconds": seconds_taken.as_secs_f64(),
+            "max_guest_instructions": limits.instructions, "queued": result.queued.iter().map(|f| json!({
                 "index": f.index, "width": f.width, "height": f.height,
                 "rgba_fnv1a64": format!("{:#018x}", f.rgba_fnv1a64), "error": f.error})).collect::<Vec<_>>(),
         }));
         match &reference {
             None => reference = Some(result.queued),
-            Some(r) if *r != result.queued => failures.push("interpreter and Tier-3 frames differ".into()),
+            Some(r) if *r != result.queued => failures.push(format!("{engine:?} frames differ from {:?}", times[0].0)),
             Some(_) => {}
         }
     }
+    report_speed(&times);
     let verdict = json!({"id": id, "pass": failures.is_empty(), "nro_sha256": nro_sha256,
         "failures": failures, "runs": runs});
     println!("{}", serde_json::to_string_pretty(&verdict).unwrap());
