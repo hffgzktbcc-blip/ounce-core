@@ -312,6 +312,11 @@ mod imp {
         // SAFETY: while ACTIVE is set the context is committed, writable arena memory, and the host
         // is suspended inside `nce_enter`, so nothing else references it.
         let ctx = unsafe { &mut *(ctx_va as *mut Context) };
+        if sig != PREEMPT_SIGNAL {
+            // A fault leaves guest code mid-run (a branch into an interpreted page, for one): the
+            // SIMD/FP registers it holds carry on from here, so they must reach the context too.
+            save_fp(ctx, uc);
+        }
         // SAFETY: `info` is valid for the handler's duration.
         ctx.fault_addr = unsafe { (*info).si_addr() } as u64;
         ctx.fault_signal = sig as u64;
