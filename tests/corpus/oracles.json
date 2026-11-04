@@ -764,7 +764,7 @@
           "expect": {
             "width": 1280,
             "height": 720,
-            "rgba_fnv1a64": "0x7c9a9a3fa3856325"
+            "rgba_fnv1a64": "0x3a00ccf6b6f28ea1"
           }
         },
         {
@@ -782,7 +782,8 @@
         }
       ],
       "assumptions": [
-        "Hashes copied from the existing deko_basic_first_frame_oracle (docs/deko-basic-oracle.md); they were recorded from an earlier run, not computed from source, so this oracle is a regression check of an observed frame."
+        "Hashes copied from the existing deko_basic_first_frame_oracle (docs/deko-basic-oracle.md); they were recorded from an earlier run, not computed from source, so this oracle is a regression check of an observed frame.",
+    "PLAN step 3 (owner-approved, 2026-11-04): frame 1 corrected from the observed clear-only 0x7c9a9a3fa3856325 to the frames 2-5 hash. main.c draws the triangle on every frame; the old value recorded a culling bug (see docs/deko-basic-oracle.md)."
       ]
     },
     {

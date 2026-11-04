@@ -5,11 +5,8 @@ against upstream `switchbrew/switch-examples` pinned commit `669786898205b7beb25
 
 ## Frame content & hash table
 
-- Frame 1: Initial clear buffer submitted during display bringup before the first draw completes:
-  - Resolution: 1280x720 RGBA8
-  - Uniform clear color: `RGBA8(32, 75, 122, 255)` (`#204b7aff`)
-  - Content hash (FNV-1a 64-bit): `0x7c9a9a3fa3856325` (8978658405233550117)
-- Frames 2+: Fully rendered RGB triangle with smooth interpolation over clear background:
+- Frames 1-5: Fully rendered RGB triangle with smooth interpolation over clear background
+  (frame 1 corrected in PLAN step 3, see "Correction" below):
   - Resolution: 1280x720 RGBA8
   - Non-uniform, rendered frame
   - Content hash (FNV-1a 64-bit): `0x3a00ccf6b6f28ea1` (4179565814203190945)
@@ -78,7 +75,25 @@ The test is `deko_basic_first_frame_oracle` in `src/loader/corpus_runner.rs`.
 1. Built unchanged from `669786898205b7beb25ff1731e72982e6d0397d3` with `devkitpro/devkita64` image `sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282` (devkitA64 GCC 15.2.0, binutils 2.45.1). Canonical NRO SHA-256: `4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa`.
 2. No libnx / deko3d error; RomFS initialized and loaded shaders successfully.
 3. 5 frames captured from VI `QUEUE_BUFFER`, 1280x720 RGBA8.
-4. Frame 1 clear color `RGBA8(32, 75, 122, 255)`, FNV-1a hash `0x7c9a9a3fa3856325`.
+4. (Superseded, see "Correction") Frame 1 clear color `RGBA8(32, 75, 122, 255)`, FNV-1a hash `0x7c9a9a3fa3856325`.
 5. Frames 2-5 rendered triangle with smooth interpolation, non-uniform pixels, FNV-1a hash `0x3a00ccf6b6f28ea1`.
 6. Interpreter and Tier-3 captured identical frames over identical instruction counts (9,234,934 instructions on Interpreter, 9,234,940 on Tier-3).
 7. Both engines stopped cleanly on the runner's queued-frame limit.
+
+## Correction (PLAN step 3, 2026-11-04, owner-approved)
+
+Frame 1's expected hash is now `0x3a00ccf6b6f28ea1`, the same as frames 2-5. The old value
+`0x7c9a9a3fa3856325` (clear colour only) was observed from a run, never derived from source, and it
+recorded a bug:
+
+- `source/main.c` runs `graphicsUpdate()` every frame: bind the framebuffer, run `g_cmdsRender`
+  (clear, then `dkCmdBufDraw` of the triangle), present. Nothing in the source makes frame 1 differ.
+- The triangle was culled in frame 1 because the software rasterizer decided facing with y up,
+  while the rasterizer winds in framebuffer coordinates with +Y down (deko3d `dk_device.h`:
+  "Rasterizer uses framebuffer coordinates (with +Y = down) to calculate winding direction").
+  From frame 2 on it was drawn only because deko3d's per-present surface decompress writes
+  `SET_WINDOW_ORIGIN.FLIP_Y` under shadow-RAM passthrough/replay, which the engine did not model, so
+  the flip leaked into later frames and cancelled the winding error.
+
+Both are fixed together (`src/gpu/ampere/depth.rs`, `MME_SHADOW_RAM_CONTROL` in
+`src/gpu/ampere/engine.rs`); with them all five frames render the triangle on both engines.
