@@ -112,12 +112,13 @@ change. A PR that breaks one is rejected.
       *Done when:* the first outside Switch 2 homebrew program passes its oracle in CI.
       Commercial Switch 2 games never enter this repo.
 
-- [ ] **9. Make the unique parts visible.** Only after step 1 has made the README honest:
+- [x] **9. Make the unique parts visible.** Only after step 1 has made the README honest:
       - a README section (or blog post) on the pre-registered pixel-oracle method: expected frames fixed before
         the run, CI fails on a single pixel, interpreter and JIT must agree bit for bit;
       - a short note on the safe-Rust design, and where `unsafe` is now allowed (porting, native execution);
       - badges or a small table: oracle pass count, CI status on all three OSes, the safe-Rust status.
       *Done when:* each claim links to its CI run or oracle file, and nothing claims more than the evidence shows.
+      *Proof:* [PR #139](https://github.com/hffgzktbcc-blip/ounce-core/pull/139) (merged `9903f22`): README "How the proof works" and "Safe Rust by construction", evidence table and badges, each linked; the oracle badge is now checked against the canonical report like the headline. CI green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150292; oracles 15/20 with README check: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150245.
 
 ## How we work (what got us unstuck)
 - **Single source of truth:** this file. Agents' own notes and handoffs are history, not plans.
