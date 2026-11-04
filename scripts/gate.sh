@@ -74,7 +74,7 @@ case $mode in
     write_checkpoint "$n" "$status — tests: $summary — $what" "$nxt" "$tried" "$decision"
     stage
     git commit -q -m "wip(step$n): $status — $what" -m "$summary" || die "commit failed"
-    git push -q -u origin HEAD 2>&1 || die "push failed; the commit is local only: $(git log -1 --format=%h)"
+    out=$(git push -q -u origin HEAD 2>&1) || die "push failed, the commit is local only ($(git log -1 --format=%h)): $out"
     echo "gate: checkpoint $(git log -1 --format=%h) pushed to $branch (step $n, $status)" ;;
 
   ship)

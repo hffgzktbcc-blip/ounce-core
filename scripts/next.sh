@@ -118,7 +118,7 @@ next_main() {
 
   echo "== ounce-core: next =="
   step_block "$n" | head -1 | sed -E 's/^- \[(.)\] \*\*([^*]*)\*\*.*/Step \2  [\1]/'
-  step_block "$n" | tr '\n' ' ' | grep -o '\*Done when:\*[^*]*' | sed 's/^/  /'
+  step_block "$n" | grep -m1 '\*Done when:\*' | sed 's/^ */  /'
   if checkpoint_of "$n" >/dev/null; then checkpoint_of "$n" | sed 's/^ */  /'; else echo "  Checkpoint: none yet"; fi
   echo "Branch: ${branch:-detached}  last: $(git log -1 --format='%h %s (%cr)')"
   [ "$branch" = main ] && echo "  On main: make a branch first (git switch -c step$n-<topic>)."
