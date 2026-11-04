@@ -171,18 +171,18 @@ fn native_run(nce: &mut NativeEngine, _cpu: &mut Cpu, _mmu: &mut Memory, _kernel
     match *nce {}
 }
 
-/// Guest memory and layout base for `engine`: native execution needs its host window.
-fn guest_memory(engine: Engine) -> Result<(Memory, u64), String> {
+/// Guest memory, layout base and alias region size for `engine`: native execution needs its window.
+fn guest_memory(engine: Engine) -> Result<(Memory, u64, u64), String> {
     match engine {
         #[cfg(feature = "nce")]
         Engine::Native => {
-            let arena = ounce_nce::Arena::reserve(crate::cpu::nce::WINDOW).map_err(|e| e.to_string())?;
+            let arena = crate::cpu::nce::reserve_window()?;
             let base = arena.base();
-            Ok((Memory::with_arena(arena), base))
+            Ok((Memory::with_arena(arena), base, crate::cpu::nce::ALIAS_SIZE))
         }
         #[cfg(not(feature = "nce"))]
         Engine::Native => Err("native execution needs a build with `--features nce`".into()),
-        _ => Ok((Memory::new(), 0)),
+        _ => Ok((Memory::new(), 0, 0x10_0000_0000)),
     }
 }
 
@@ -370,11 +370,11 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
 
 fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
     limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
-    let (memory, base) = match guest_memory(engine) {
+    let (memory, base, alias_size) = match guest_memory(engine) {
         Ok(m) => m,
         Err(error) => { let (cpu, _, kernel) = crate::setup_vm(); return (report(engine, Stop::LoadError(error), &cpu), kernel); }
     };
-    let (mut cpu, mut mmu, mut kernel) = crate::setup_vm_in(memory, base);
+    let (mut cpu, mut mmu, mut kernel) = crate::setup_vm_in(memory, base, alias_size);
     let loaded = super::super::BootLoader::load_any_package(nro, base + crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu);
     let error = match loaded {
         Ok(info) if info.format == "NRO0" => None,
