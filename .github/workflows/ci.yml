@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # Docs-only changes skip the build matrix; ci-docs.yml reports the same required
+    # check names so they are not left waiting.
+    paths-ignore: &docs
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
 
 env:
   CARGO_TERM_COLOR: always
