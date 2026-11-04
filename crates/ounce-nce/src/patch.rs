@@ -672,7 +672,7 @@ mod tests {
             0xD53BE023,    // mrs x3, cntpct_el0
         ];
         let stats = p.rewrite(code, &mut words).unwrap();
-        assert_eq!(stats, Stats { svc: 1, timer: 1, tpidr: 2, x18: 1 });
+        assert_eq!(stats, Stats { svc: 1, timer: 1, tpidr: 2, x18: 1, constant: 0 });
         assert_eq!(words[4], 0xD503201F);
         assert!(words.iter().enumerate().filter(|&(i, _)| i != 4).all(|(_, w)| w & 0xFC00_0000 == 0x1400_0000));
         assert_eq!(p.sites()[0].kind, SiteKind::Svc(0x70));
