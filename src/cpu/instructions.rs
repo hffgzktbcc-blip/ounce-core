@@ -241,6 +241,7 @@ pub enum Instruction {
         size_bytes: u8, // 1 (byte), 2 (half), 4 (word), 8 (double)
         is_load: bool,
         is_signed: bool,
+        is_64_target: bool,
         writeback: bool,
         post_index: bool,
     },
@@ -402,7 +403,10 @@ pub enum Instruction {
         is_load: bool,
     },
 
-    /// 128-bit NEON Vector 4xFloat32 SIMD (`FADD/FSUB/FMUL Vd.4S, Vn.4S, Vm.4S`)
+    /// Two double-precision lanes; never interpreted as four single-precision values.
+    SimdVec2D { rd: u8, rn: u8, rm: u8, op: FpOp2 },
+
+    /// 128-bit NEON vector arithmetic on four single-precision lanes.
     SimdVec4S {
         rd: u8,
         rn: u8,
@@ -634,6 +638,45 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// `FMUL/FMLA/FMLS Vd.<T>, Vn.<T>, Vm.<Ts>[index]`: `double` selects 64-bit lanes, else 32-bit
+    SimdFpByElement {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        index: u8,
+        op: SimdFpElementOp,
+        double: bool,
+        q: bool,
+    },
+
+    /// `FCCMP/FCCMPE Sn/Dn, Sm/Dm, #nzcv, cond`: compare when `cond` holds, else set the flags to `nzcv`
+    FpCondCompare {
+        rn: u8,
+        rm: u8,
+        nzcv: u8,
+        cond: Condition,
+        is_double: bool,
+    },
+
+    /// `ADC/ADCS/SBC/SBCS Rd, Rn, Rm`
+    AddSubCarry {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        is_sub: bool,
+        set_flags: bool,
+        is_64: bool,
+    },
+
+    /// `EXT Vd.<T>, Vn.<T>, Vm.<T>, #index`: bytes `index..` of `Vm:Vn`
+    SimdExt {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        index: u8,
+        q: bool,
+    },
+
     /// Unimplemented or Unknown instruction (preserves raw 32-bit opcode for debugging)
     Unimplemented {
         raw: u32,
@@ -679,12 +722,16 @@ pub enum BranchRegOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FpOp2 {
+    Fnmul,
     Fmul,
     Fdiv,
     Fadd,
     Fsub,
     Fmax,
     Fmin,
+    /// `FMAXNM`/`FMINNM`: a quiet NaN operand yields the other operand
+    Fmaxnm,
+    Fminnm,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -726,6 +773,13 @@ pub enum SimdOp3 {
     Smaxp,
     Sminp,
     Mul,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdFpElementOp {
+    Fmul,
+    Fmla,
+    Fmls,
 }
 
 /// AdvSIMD across-lanes reductions (`ADDV`, `S/UADDLV`, `S/UMAXV`, `S/UMINV`).

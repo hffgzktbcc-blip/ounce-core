@@ -50,7 +50,14 @@ pub struct Cpu {
     pub exclusive: Option<u64>,
     /// Pointer authentication keys and EL0 controls (shared by the process's threads).
     pub pauth: PointerAuth,
+    /// `CNTPCT_EL0`: the kernel moves it up to the system tick at every SVC, and each read advances it by
+    /// [`COUNTER_READ_TICKS`] so a loop polling the counter always sees time pass. It depends on
+    /// nothing the CPU engines differ in.
+    pub counter_ticks: u64,
 }
+
+/// Counter ticks (19.2 MHz) one `CNTPCT_EL0` read takes: about 52 microseconds.
+pub const COUNTER_READ_TICKS: u64 = 1000;
 
 impl Default for Cpu {
     fn default() -> Self {
@@ -63,6 +70,7 @@ impl Cpu {
         Self {
             regs: CpuRegisters::new(),
             jit: JitBlockCache::new(),
+            counter_ticks: 0x0123_4560,
             exclusive: None,
             pauth: PointerAuth::default(),
         }
@@ -179,8 +187,8 @@ impl Cpu {
                 set_flags,
                 is_64,
             } => {
-                // If setting flags or rd != 31, read Rn (with SP support if not setting flags)
-                let op1 = if !set_flags && rn == 31 {
+                // Immediate arithmetic always interprets Rn == 31 as SP, including CMP/CMN.
+                let op1 = if rn == 31 {
                     self.regs.sp
                 } else {
                     self.regs.read_x(rn)
@@ -790,6 +798,7 @@ impl Cpu {
                 size_bytes,
                 is_load,
                 is_signed,
+                is_64_target,
                 writeback,
                 post_index,
             } => {
@@ -810,6 +819,9 @@ impl Cpu {
                         (4, true) => self.regs.write_x(rt, (mmu.read_u32(eff_addr)? as i32 as i64) as u64),
                         (8, _) => self.regs.write_x(rt, mmu.read_u64(eff_addr)?),
                         _ => unreachable!(),
+                    }
+                    if !is_64_target {
+                        self.regs.write_w(rt, self.regs.read_w(rt));
                     }
                 } else {
                     match size_bytes {
@@ -902,7 +914,11 @@ impl Cpu {
                         0x4031 => 1 << 8 | 1 << 28,
                         // ID_AA64PFR1_EL1: BT = 1 (FEAT_BTI)
                         0x4021 => 1,
-                        0x5F01 => self.jit.cache_hits.wrapping_add(self.jit.cache_misses).wrapping_mul(16).wrapping_add(0x0123_4560),
+                        0x5F01 => {
+                            let now = self.counter_ticks;
+                            self.counter_ticks = now.wrapping_add(COUNTER_READ_TICKS);
+                            now
+                        }
                         _ => 0,
                     };
                     self.regs.write_x(rt, val);
@@ -933,9 +949,12 @@ impl Cpu {
                         FpOp2::Fadd => n + m,
                         FpOp2::Fsub => n - m,
                         FpOp2::Fmul => n * m,
+                        FpOp2::Fnmul => -(n * m),
                         FpOp2::Fdiv => n / m,
-                        FpOp2::Fmax => n.max(m),
-                        FpOp2::Fmin => n.min(m),
+                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
                     self.regs.write_d(rd, res);
                 } else {
@@ -945,9 +964,12 @@ impl Cpu {
                         FpOp2::Fadd => n + m,
                         FpOp2::Fsub => n - m,
                         FpOp2::Fmul => n * m,
+                        FpOp2::Fnmul => -(n * m),
                         FpOp2::Fdiv => n / m,
-                        FpOp2::Fmax => n.max(m),
-                        FpOp2::Fmin => n.min(m),
+                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
                     self.regs.write_s(rd, res);
                 }
@@ -1138,6 +1160,54 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::AddSubCarry { rd, rn, rm, is_sub, set_flags, is_64 } => {
+                let bits = if is_64 { 64 } else { 32 };
+                let mask = if is_64 { u64::MAX } else { u32::MAX as u64 };
+                let a = self.regs.read_x(rn) & mask;
+                let b = self.regs.read_x(rm) & mask;
+                let b = if is_sub { !b & mask } else { b };
+                let carry_in = self.regs.pstate.c as u128;
+                let wide = a as u128 + b as u128 + carry_in;
+                let res = (wide as u64) & mask;
+                if set_flags {
+                    let sign = 1u64 << (bits - 1);
+                    self.regs.pstate.n = res & sign != 0;
+                    self.regs.pstate.z = res == 0;
+                    self.regs.pstate.c = wide >> bits != 0;
+                    self.regs.pstate.v = (!(a ^ b) & (a ^ res) & sign) != 0;
+                }
+                self.regs.write_x(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpCondCompare { rn, rm, nzcv, cond, is_double } => {
+                let (n, z, c, v) = if self.check_condition(cond) {
+                    let (a, b) = if is_double {
+                        (self.regs.read_d(rn), self.regs.read_d(rm))
+                    } else {
+                        (self.regs.read_s(rn) as f64, self.regs.read_s(rm) as f64)
+                    };
+                    if a.is_nan() || b.is_nan() {
+                        (false, false, true, true)
+                    } else if a == b {
+                        (false, true, true, false)
+                    } else if a < b {
+                        (true, false, false, false)
+                    } else {
+                        (false, false, true, false)
+                    }
+                } else {
+                    (nzcv & 8 != 0, nzcv & 4 != 0, nzcv & 2 != 0, nzcv & 1 != 0)
+                };
+                self.regs.pstate.n = n;
+                self.regs.pstate.z = z;
+                self.regs.pstate.c = c;
+                self.regs.pstate.v = v;
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::FpMovGen {
                 rd,
                 rn,
@@ -1307,6 +1377,31 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdVec2D { rd, rn, rm, op } => {
+                let a = self.regs.read_q(rn);
+                let b = self.regs.read_q(rm);
+                let mut out = 0u128;
+                for lane in 0..2 {
+                    let n = f64::from_bits((a >> (lane * 64)) as u64);
+                    let m = f64::from_bits((b >> (lane * 64)) as u64);
+                    let value = match op {
+                        FpOp2::Fadd => n + m,
+                        FpOp2::Fsub => n - m,
+                        FpOp2::Fmul => n * m,
+                        FpOp2::Fnmul => -(n * m),
+                        FpOp2::Fdiv => n / m,
+                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else { n.max(m) },
+                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else { n.min(m) },
+                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                    };
+                    out |= (value.to_bits() as u128) << (lane * 64);
+                }
+                self.regs.write_q(rd, out);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdVec4S { rd, rn, rm, op } => {
                 let a = self.regs.read_v4s(rn);
                 let b = self.regs.read_v4s(rm);
@@ -1316,9 +1411,10 @@ impl Cpu {
                         FpOp2::Fadd => a[i] + b[i],
                         FpOp2::Fsub => a[i] - b[i],
                         FpOp2::Fmul => a[i] * b[i],
+                        FpOp2::Fnmul => -(a[i] * b[i]),
                         FpOp2::Fdiv => a[i] / b[i],
-                        FpOp2::Fmax => a[i].max(b[i]),
-                        FpOp2::Fmin => a[i].min(b[i]),
+                        FpOp2::Fmax | FpOp2::Fmaxnm => a[i].max(b[i]),
+                        FpOp2::Fmin | FpOp2::Fminnm => a[i].min(b[i]),
                     };
                 }
                 self.regs.write_v4s(rd, out);
@@ -1471,6 +1567,21 @@ impl Cpu {
             Instruction::SimdPermute { rd, rn, rm, op, esize, q } => {
                 let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::permute(op, n, m, esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let res = simd::fp_by_element(op, d, n, m, index as usize, double, q);
+                self.regs.write_q(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdExt { rd, rn, rm, index, q } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::extract(n, m, index as u32, q));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1778,12 +1889,18 @@ mod tests {
             (0x0f0c8400, "SimdShiftImm"),       // shrn v0.8b, v0.8h, #4
             (0x4f088420, "SimdShiftImm"),       // shrn2 v0.16b, v1.8h, #8
             (0x6f3d0420, "SimdShiftImm"),       // ushr v0.4s, v1.4s, #3
+            (0x7f6007fe, "SimdShiftImm"),       // ushr d30, d31, #32
             (0x4f4c5420, "SimdShiftImm"),       // shl v0.2d, v1.2d, #12
             (0xad3e0080, "SimdLoadStorePair"),  // stp q0, q0, [x4, #-64]
             (0x6cc107e0, "SimdLoadStorePair"),  // ldp d0, d1, [sp], #16
             (0xac0008a1, "SimdLoadStorePair"),  // stnp q1, q2, [x5]
             (0xd50b7423, "DcZva"),              // dc zva, x3
             (0x4f00e41f, "SimdModImm"),         // movi v31.16b, #0
+            (0x1a010001, "AddSubCarry"),        // adc w1, w0, w1
+            (0x1e6105e1, "FpCondCompare"),      // fccmp d15, d1, #1, eq
+            (0x1e756bff, "FpData2"),            // fmaxnm d31, d31, d21
+            (0x4f9f939f, "SimdFpByElement"),    // fmul v31.4s, v28.4s, v31.s[0]
+            (0x6e1f43ff, "SimdExt"),            // ext v31.16b, v31.16b, v31.16b, #8
             (0x4e1d3bde, "SimdPermute"),        // zip1 v30.16b, v30.16b, v29.16b
             (0x0e095907, "SimdPermute"),        // uzp2 v7.8b, v8.8b, v9.8b
             (0x4e1f0549, "SimdDupElement"),     // dup v9.16b, v10.b[15]
