@@ -16,7 +16,7 @@
     "sdl2-simple": "pass",
     "raufang-hello-cpp": "pass",
     "nx-hbmenu": "pass",
-    "hybrid-app": "fail",
+    "hybrid-app": "pass",
     "simplegfx": "pass",
     "deko-basic": "pass",
     "startup": "pass",

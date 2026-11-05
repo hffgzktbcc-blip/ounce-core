@@ -104,3 +104,8 @@ ratchet: CI fails if it stops passing. Failures are PLAN step 3's to-do list.
 The hybrid-app scene is checked on queued frame 2; frame 1 is the swap performed during GLFW window
 creation. This is the existing owner-approved adjustment from `c089902` on PR #149, preserved during
 integration with the correctness audit. Pixel expectations are unchanged.
+
+
+Integration with the correctness audit in PR #154: [42033845756](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756)
+records 20/20 passing programs on both Interpreter and Tier-3 (40 canonical records). SDL2, hbmenu and
+hybrid-app are now recorded passes. Expected pixel values were not changed during integration.

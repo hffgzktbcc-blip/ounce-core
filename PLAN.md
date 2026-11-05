@@ -7,8 +7,8 @@ proof, and ends. Changing the plan needs the owner's OK first, recorded here. Ol
 ## Goal
 Run open-source Switch homebrew on macOS Apple Silicon (and Linux/Windows), with every claim backed by
 a real program's real frame.
-**Headline metric:** "N outside homebrew programs render their first frame pixel-exact." That's 17/20 today
-(after step 3), derived from the Ounce-Verify canonical report in CI; see the README.
+**Headline metric:** "N outside homebrew programs render their first frame pixel-exact." That's 20/20 today
+(after integration of #149 and the audit in #154), derived from the Ounce-Verify canonical report in CI; see the README.
 
 ## Rule 0: no bullshit (overrides everything, for every agent)
 1. **No synthetic tests as progress.** Unit tests may guard code, but they never count as a milestone or a
@@ -141,3 +141,9 @@ change. A PR that breaks one is rejected.
 - **One step per session:** short sessions save usage and stop drift.
 - **Environment first:** disk space, `~/Projects`, background jobs.
 - **Agents test themselves.** The owner is never the test dummy. Use scripted input and automated frame capture.
+
+
+Integration proof (2026-11-05): PR #154 combines #149 with the correctness audit. The canonical report
+from https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756 records 40 passing records
+(20/20 on Interpreter and Tier-3) for the combined code at `2d88c99` (tested through the PR merge ref).
+The README metric was derived using scripts/corpus_verify.py. Step 7 (expand to 50) remains next.
