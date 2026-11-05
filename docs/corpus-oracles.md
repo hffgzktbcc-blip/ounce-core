@@ -65,7 +65,7 @@ which kind each oracle is.
 | `sdl2-simple` | switch-examples | `graphics/sdl2/sdl2-simple/source/main.cpp` | rects | 1–2 of 2 |
 | `raufang-hello-cpp` | raufang-switch-hello-world | `source/main.cpp` | console_sw | 1–5 of 5 |
 | `nx-hbmenu` | nx-hbmenu | `common/menu.c, common/theme.c, nx_main/main.c` | probes | 1 of 1 |
-| `hybrid-app` | hybrid-app | `source/main.cpp` | probes | 1 of 1 |
+| `hybrid-app` | hybrid-app | `source/main.cpp` | probes | 2 of 2 |
 | `simplegfx` | original | `graphics/simplegfx/source/main.c` | rects | 1, 2, 60, 61 of 61 |
 | `deko-basic` | original | `graphics/deko3d/deko_basic/source/main.cpp` | observed hash | 1–5 of 5 |
 | `startup` | original | `templates/application/source/main.c` | console_sw | 1–5 of 5 |
@@ -99,3 +99,8 @@ program counts only when both of its records pass, and CI fails if the README co
 
 First full run: [41700028345](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41700028345), 15/20 pass on both engines. Step 3: sixaxis and deko-console pass from [41872194259](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259) (17/20); deko-basic's frame 1 was corrected with owner approval (see docs/deko-basic-oracle.md). Observed verdicts are copied from CI into `tests/corpus/oracle-results.json`. A recorded pass is a
 ratchet: CI fails if it stops passing. Failures are PLAN step 3's to-do list.
+
+
+The hybrid-app scene is checked on queued frame 2; frame 1 is the swap performed during GLFW window
+creation. This is the existing owner-approved adjustment from `c089902` on PR #149, preserved during
+integration with the correctness audit. Pixel expectations are unchanged.

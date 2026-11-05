@@ -5,6 +5,9 @@ use crate::mmu::{Memory, Permission};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
+/// Guest time one SVC takes under the deterministic clock.
+const DETERMINISTIC_NS_PER_SVC: u64 = 20_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
     Created,
@@ -139,6 +142,9 @@ pub struct ThreadScheduler {
     clock_start: Instant,
     /// Time skipped while every thread slept (virtual time only).
     skew_ns: u64,
+    /// Deterministic clock: guest time (ns) advances by [`DETERMINISTIC_NS_PER_SVC`] per SVC and never
+    /// follows the host clock, so repeated runs and different CPU engines see identical time.
+    deterministic_ns: Option<u64>,
     /// When every thread sleeps: `false` sleeps the host until the next deadline, `true` skips to it.
     /// Set by `OUNCE_VIRTUAL_TIME`; tests set it directly.
     pub virtual_time: bool,
@@ -170,6 +176,7 @@ impl ThreadScheduler {
             switches: 0,
             clock_start: Instant::now(),
             skew_ns: 0,
+            deterministic_ns: None,
             virtual_time: std::env::var_os("OUNCE_VIRTUAL_TIME").is_some(),
             main_handle: None,
         }
@@ -389,7 +396,27 @@ impl ThreadScheduler {
 
     /// Scheduler time in nanoseconds: host time since creation, plus any time skipped while all threads slept.
     pub fn now_ns(&self) -> u64 {
-        self.clock_start.elapsed().as_nanos() as u64 + self.skew_ns
+        match self.deterministic_ns {
+            Some(ns) => ns + self.skew_ns,
+            None => self.clock_start.elapsed().as_nanos() as u64 + self.skew_ns,
+        }
+    }
+
+    pub fn is_deterministic(&self) -> bool {
+        self.deterministic_ns.is_some()
+    }
+
+    /// Switches to the deterministic clock (also skipping idle time instead of sleeping the host).
+    pub fn set_deterministic(&mut self) {
+        self.deterministic_ns = Some(0);
+        self.virtual_time = true;
+    }
+
+    /// One SVC's worth of deterministic time; nothing happens on the host clock.
+    pub fn tick_deterministic(&mut self) {
+        if let Some(ns) = self.deterministic_ns.as_mut() {
+            *ns += DETERMINISTIC_NS_PER_SVC;
+        }
     }
 
     /// Lets time pass until `deadline` while nothing can run: sleeps the host, or skips ahead.

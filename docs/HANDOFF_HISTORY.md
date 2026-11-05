@@ -587,3 +587,22 @@ virtual-memory query. Process entropy was derived from separate host-clock readi
 now supplies identical process entropy through a cfg(test)-only kernel input. Exact SVC comparison
 remains enabled, with 30 repeated engine pairs as a regression. Production builds and the independent
 corpus runner do not use the override. All 534 workspace/all-feature tests pass locally.
+
+
+### Audit / homebrew integration (Codex, 2026-11-05)
+
+Owner's "go" continues the coordinated integration of PR #154 and #149. An isolated worktree combines
+`203f208` (audit) with `74ded6a` (step3-sdl2) without rewriting either source branch. Both histories and
+all audit guards are retained. Text conflicts were limited to scalar FP decoding and min/max handling:
+FNMUL and NaN-propagating FMAX/FMIN remain, alongside FMAXNM/FMINNM. Numeric min/max use Tier-4's
+reference fallback because its native min/max lowering propagates NaNs. Added single/double tests
+cover quiet NaNs and signed zero while retaining the original native-lowering assertions elsewhere.
+
+The combined tree locally passes 535 workspace/all-feature tests, 466 default-build tests, the 36-check
+harness with Tier-4 selected, and all 20 pixel oracles under Interpreter, Tier-3 and Native (devkitA64
+16.1/libnx 4.12). Clippy completes with warnings. These are local integration checks; fresh CI and its
+canonical report decide the README metric and merge eligibility.
+
+Preserved #149's open-licensed bundled font and its owner-approved hybrid-app frame-2 oracle correction
+(`c089902`, GLFW's window-creation swap is frame 1). The oracle table now matches the registered frame.
+No new pixel expectations or sample-specific patches were introduced during integration.

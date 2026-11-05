@@ -88,7 +88,10 @@ pub fn posix_time(cal: &[u8]) -> u64 {
 
 impl IpcManager {
     fn steady_secs(&self) -> i64 {
-        self.start_instant.elapsed().as_secs() as i64
+        match self.steady_override_ns {
+            Some(ns) => (ns / 1_000_000_000) as i64,
+            None => self.start_instant.elapsed().as_secs() as i64,
+        }
     }
 
     /// Writes the clock block libnx reads once the guest maps the shared memory at `addr`.

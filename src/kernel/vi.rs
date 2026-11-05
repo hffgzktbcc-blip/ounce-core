@@ -164,6 +164,8 @@ pub struct BinderObjects {
     layers: BTreeMap<u64, u32>,
     next_id: u32,
     pub last_submission: Option<GraphicBufferSlot>,
+    /// Crop rectangle `(left, top, right, bottom)` of the last `QUEUE_BUFFER`; the visible part of the buffer.
+    pub last_crop: Option<(u32, u32, u32, u32)>,
     /// `QUEUE_BUFFER` transactions accepted so far; the i-th queue is frame i.
     pub queued: u64,
 }
@@ -269,6 +271,8 @@ impl BinderObjects {
                 }
                 let slot = word(0x50)? as i32;
                 let submitted = object.slots.get(&slot).cloned().ok_or(INVALID_HANDLE)?;
+                // QueueBufferInput: timestamp (8), is_auto_timestamp, then the crop rect.
+                self.last_crop = Some((word(0x68)?, word(0x6C)?, word(0x70)?, word(0x74)?));
                 self.last_submission = Some(submitted);
                 self.queued += 1;
                 Ok(buffer_output_parcel(1280, 720))
@@ -385,6 +389,11 @@ impl IpcManager {
 
     /// Resolves the last queued producer slot through the nvmap registry. This
     /// describes raw guest memory only; it does not imply a valid rendered frame.
+    /// The crop rectangle `(left, top, right, bottom)` the guest queued the last buffer with.
+    pub fn submitted_vi_crop(&self) -> Option<(u32, u32, u32, u32)> {
+        self.vi_binder.last_crop
+    }
+
     pub fn submitted_vi_surface(&self) -> Option<SubmittedSurface> {
         let slot = self.vi_binder.last_submission.as_ref()?;
         let object = self

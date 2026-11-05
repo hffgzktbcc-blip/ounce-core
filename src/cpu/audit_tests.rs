@@ -47,11 +47,71 @@ fn check(raw: u32, initialize: impl Fn(&mut Cpu), verify: impl Fn(&Cpu)) {
         }
     }
     #[cfg(feature = "native-jit")]
+    if matches!(
+        decoder::decode(raw),
+        Instruction::FpData2 {
+            op: instructions::FpOp2::Fmaxnm | instructions::FpOp2::Fminnm,
+            ..
+        }
+    ) {
+        if let CpuEngine::Tier4(engine) = tier4 {
+            assert!(
+                engine.fallback_insns > 0,
+                "numeric NaN min/max must use the reference path"
+            );
+        }
+        return;
+    }
+    #[cfg(feature = "native-jit")]
     if !matches!(decoder::decode(raw), Instruction::SimdVec2D { .. }) {
         if let CpuEngine::Tier4(engine) = tier4 {
             assert!(
                 engine.native_block_runs > 0,
                 "regression must exercise native lowering"
+            );
+        }
+    }
+}
+
+#[test]
+fn numeric_fp_minmax_keeps_numbers_and_signed_zero_when_combining_branches() {
+    for (opcode, minimum) in [(0x1E62_6820, false), (0x1E62_7820, true)] {
+        for double in [false, true] {
+            let raw = if double { opcode } else { opcode & !(1 << 22) };
+            let write = |c: &mut Cpu, register, value: f64| {
+                if double {
+                    c.regs.write_d(register, value);
+                } else {
+                    c.regs.write_s(register, value as f32);
+                }
+            };
+            let read = |c: &Cpu| {
+                if double {
+                    c.regs.read_d(0)
+                } else {
+                    c.regs.read_s(0) as f64
+                }
+            };
+            check(
+                raw,
+                |c| {
+                    write(c, 1, f64::NAN);
+                    write(c, 2, 3.0);
+                },
+                |c| assert_eq!(read(c), 3.0),
+            );
+            check(
+                raw,
+                |c| {
+                    write(c, 1, -0.0);
+                    write(c, 2, 0.0);
+                },
+                |c| {
+                    assert_eq!(
+                        read(c).to_bits(),
+                        if minimum { (-0.0f64).to_bits() } else { 0 }
+                    )
+                },
             );
         }
     }
