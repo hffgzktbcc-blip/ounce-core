@@ -18,6 +18,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Fail on key files, retail containers or ROM/key-site links
         run: scripts/check_legal_guardrails.sh
+      - name: Fail on unsafe outside the README's Safe Rust boundary
+        run: scripts/check_unsafe_boundary.sh
 
   test:
     name: Test (${{ matrix.os }})
