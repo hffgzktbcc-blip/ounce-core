@@ -565,6 +565,12 @@ other bugs, nor change PLAN.md's compatibility metric.
   A one-texel mutation and an injected failed guest service both fail their gates. Stage 24 claims
   opcode translation structure, not packed-half arithmetic execution.
 
-Validation: 531 workspace/all-feature tests passed (7 ignored), and the strengthened release harness
+Validation: 532 workspace/all-feature tests passed (7 ignored), and the strengthened release harness
 passes 36 checks across 25 stages. Local corpus/CI qualification and caveats are recorded in PR #154.
 No existing user checkout, peer branch or private project was modified.
+
+
+CI follow-up: the first full batch exposed an x86 test-portability error: an arena-based native
+lifecycle test was not gated to supported AArch64 hosts. It is now gated like the arena implementation,
+with separate portable metadata/generation coverage for all four rejection cases. This changes test
+selection, not the runtime feature gates. The native arena test still runs on macOS and Linux AArch64.
