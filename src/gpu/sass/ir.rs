@@ -153,6 +153,9 @@ pub enum AttrSlot {
     Generic { loc: u32, comp: u8 },
 }
 
+/// Output attribute address of the point size.
+const POINT_SIZE_ATTR: u16 = 0x6c;
+
 pub fn attr_slot(addr: u16) -> Option<AttrSlot> {
     if addr % 4 != 0 {
         return None;
@@ -666,6 +669,11 @@ pub fn lower_with(
                 }
                 for i in 0..comps as u16 {
                     let a = addr + 4 * i;
+                    // Point size: only triangles are rasterized, so nothing consumes it (Mesa's
+                    // nouveau back end writes it from every vertex shader).
+                    if a == POINT_SIZE_ATTR {
+                        continue;
+                    }
                     if attr_slot(a).is_none() {
                         return Err(unsup("AST to an attribute other than position/generic"));
                     }
