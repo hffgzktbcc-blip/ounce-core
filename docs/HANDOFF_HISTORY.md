@@ -493,7 +493,7 @@ devkitA64 16.1/libnx 4.12. SDL2, hbmenu and hybrid retain the main baseline fail
 Review: https://github.com/hffgzktbcc-blip/ounce-core/pull/154 (draft; CI not yet qualified).
 
 Still open from the review (static findings; not silently treated as fixes):
-- R04: NCE system-register rewrites involving guest X18 need isolated emitted-code coverage.
+- R04: addressed by the native X18 follow-up below (2026-11-05).
 - R05: NCE executable address reuse needs re-patching or explicit rejection.
 - R19: companion-module extents need overlap checks before fixed-slot placement.
 - R21: several old harness stages need assertions on advertised subsystem results.
@@ -505,3 +505,17 @@ Still open from the review (static findings; not silently treated as fixes):
 
 All cross-platform CI gates must pass before merging. The owner's other checkouts and uncommitted
 changes were left untouched. No broad formatting or architecture replacement was performed.
+
+
+### Native X18 audit follow-up (2026-11-05)
+
+R04 reproduced before the fix: `special_x18_rewrites_never_use_the_physical_register` failed on an
+emitted ADRP targeting physical X18. Special TPIDR_EL0/TPIDRRO_EL0 reads and CTR_EL0 constants now
+write the guest context slot through saved X16/X17; TPIDR_EL0 writes source that slot. Ordinary
+register forms remain unchanged. The emitted-code regression checks every instruction in these
+special stubs for physical X18 use, without executing the formerly unsafe form.
+
+After the fix, a native round-trip test on Apple M3 covers both TLS reads, the TLS write, the CTR
+constant, guest X18, SP and scratch-register preservation. All five patcher unit tests and three
+native integration tests pass. Full workspace and outside-corpus results are recorded in PR #154.
+This closes one audit finding; it adds no homebrew compatibility milestone. Nine findings remain.
