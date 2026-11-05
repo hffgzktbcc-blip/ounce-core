@@ -75,6 +75,41 @@ fn svc_tls_x18_resume_and_fault() {
 }
 
 #[test]
+fn special_system_registers_round_trip_virtual_x18() {
+    let mut vm = vm(vec![
+        0xD53BD052, // mrs x18, tpidr_el0
+        0xAA1203E0, // mov x0, x18
+        0xD51BD052, // msr tpidr_el0, x18
+        0xD53BD072, // mrs x18, tpidrro_el0
+        0xAA1203E1, // mov x1, x18
+        0xD51BD052, // msr tpidr_el0, x18
+        0xD53BD042, // mrs x2, tpidr_el0
+        0xD53B0032, // mrs x18, ctr_el0
+        0xAA1203E3, // mov x3, x18
+        0xD40000E1, // svc #7
+    ]);
+    {
+        let ctx = vm.arena.context_mut(vm.patcher.context()).unwrap();
+        ctx.sp = vm.stack_top;
+        ctx.tpidr = 0x1234_5678_ABCD_EF00;
+        ctx.tpidrro = 0xCAFE_1234_5678_0000;
+        ctx.x[16] = 0x1616;
+        ctx.x[17] = 0x1717;
+        ctx.x[18] = 0x1818;
+    }
+    let code = vm.code;
+    assert!(matches!(launch(&mut vm, code), Exit::Trampoline(_)));
+    let ctx = vm.arena.context_mut(vm.patcher.context()).unwrap();
+    assert_eq!(ctx.x[0], 0x1234_5678_ABCD_EF00);
+    assert_eq!(ctx.x[1], 0xCAFE_1234_5678_0000);
+    assert_eq!(ctx.x[2], ctx.x[1]);
+    assert_eq!(ctx.tpidr, ctx.x[1]);
+    assert_eq!(ctx.x[3], ounce_nce::patch::CTR_EL0_A57);
+    assert_eq!(ctx.x[18], ctx.x[3]);
+    assert_eq!((ctx.x[16], ctx.x[17], ctx.sp), (0x1616, 0x1717, vm.stack_top));
+}
+
+#[test]
 fn fault_keeps_simd_registers() {
     let mut vm = vm(vec![
         0x1E60100E, // fmov d14, #2.0
