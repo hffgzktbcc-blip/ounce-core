@@ -602,11 +602,11 @@
       "build": "hybrid-app",
       "nro": "hybrid_app.nro",
       "source": "source/main.cpp",
-      "queued_frames": 1,
+      "queued_frames": 2,
       "checks": [
         {
           "frames": [
-            1
+            2
           ],
           "width": 1280,
           "height": 720,

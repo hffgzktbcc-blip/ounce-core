@@ -403,6 +403,14 @@ impl Memory {
         self.pages.get(&(addr >> 12)).is_some_and(|p| p.guarded)
     }
 
+    /// Borrows actual page storage for one translated access. Arena-backed memory must use
+    /// the ordinary accessors: its Page::data is metadata storage, not the guest bytes.
+    pub(crate) fn direct_page(&mut self, page_num: u64) -> Option<&mut Page> {
+        #[cfg(feature = "nce")]
+        if self.arena.is_some() { return None; }
+        self.pages.get_mut(&page_num)
+    }
+
     /// Access the Page for a page number (VA >> 12), if mapped.
     pub fn get_page(&self, page_num: u64) -> Option<&Page> {
         self.pages.get(&page_num)
@@ -410,6 +418,9 @@ impl Memory {
 
     /// Read raw byte slice from virtual memory.
     pub fn read_bytes(&self, addr: u64, buf: &mut [u8]) -> Result<(), MemoryError> {
+        if !buf.is_empty() && addr.checked_add((buf.len() - 1) as u64).is_none() {
+            return Err(MemoryError::Unmapped { addr });
+        }
         let mut curr_addr = addr;
         let mut offset = 0;
 
@@ -436,8 +447,8 @@ impl Memory {
                     .copy_from_slice(&page.data[page_offset..page_offset + bytes_in_page]),
             }
 
-            curr_addr += bytes_in_page as u64;
             offset += bytes_in_page;
+            if offset < buf.len() { curr_addr += bytes_in_page as u64; }
         }
 
         Ok(())
@@ -445,6 +456,9 @@ impl Memory {
 
     /// Write raw byte slice into virtual memory.
     pub fn write_bytes(&mut self, addr: u64, data: &[u8]) -> Result<(), MemoryError> {
+        if !data.is_empty() && addr.checked_add((data.len() - 1) as u64).is_none() {
+            return Err(MemoryError::Unmapped { addr });
+        }
         let mut curr_addr = addr;
         let mut offset = 0;
 
@@ -482,8 +496,8 @@ impl Memory {
                 page.code_write_gen = self.code_write_gen;
             }
 
-            curr_addr += bytes_in_page as u64;
             offset += bytes_in_page;
+            if offset < data.len() { curr_addr += bytes_in_page as u64; }
         }
 
         Ok(())
@@ -549,6 +563,17 @@ impl Memory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accesses_at_address_space_end_do_not_wrap_or_overflow() {
+        let mut memory = Memory::new();
+        memory.map_range(u64::MAX, 1, Permission::READ_WRITE);
+        memory.write_u8(u64::MAX, 7).unwrap();
+        assert_eq!(memory.read_u8(u64::MAX).unwrap(), 7);
+        assert!(memory.read_bytes(u64::MAX, &mut [0; 2]).is_err());
+        assert!(memory.write_bytes(u64::MAX, &[8, 9]).is_err());
+        assert_eq!(memory.read_u8(u64::MAX).unwrap(), 7);
+    }
 
     #[test]
     fn guarded_page_count_tracks_mapping_changes() {

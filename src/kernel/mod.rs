@@ -12,6 +12,7 @@ pub mod ipc;
 mod ipc_fuzz_tests;
 pub mod sdk_hle;
 pub mod nvdrv;
+pub mod pl;
 pub mod scheduler;
 pub mod set;
 pub mod svc;
