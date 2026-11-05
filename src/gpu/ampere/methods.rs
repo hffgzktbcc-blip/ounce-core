@@ -22,6 +22,16 @@ pub const FERMI_TWOD_A: u32 = 0x902D;
 /// MAXWELL_DMA_COPY_A (copy engine class, `clb0b5.h`); deko3d uploads buffers into images with it.
 pub const MAXWELL_DMA_COPY_A: u32 = 0xB0B5;
 
+/// KEPLER_INLINE_TO_MEMORY_B (`cla140.h`), the P2MF class: the same inline-to-memory window as
+/// below, on a subchannel of its own (Mesa's nvc0 `nve4_p2mf_push_linear` uploads shader code
+/// through it).
+pub const KEPLER_INLINE_TO_MEMORY_B: u32 = 0xA140;
+
+/// MAXWELL_COMPUTE_B (`clb1c0.h`). Mesa's nvc0 driver binds it for the inline-to-memory window it
+/// shares with the 3D class (shader code and constants are uploaded through it); compute dispatch
+/// itself is not modelled.
+pub const MAXWELL_COMPUTE_B: u32 = 0xB1C0;
+
 /// Inline-to-memory (`clb197.h`): `LINE_LENGTH_IN` bytes per line, `LINE_COUNT` lines written to
 /// `OFFSET_OUT_UPPER`/`OFFSET_OUT` (pitch `PITCH_OUT`, or block linear per `SET_DST_*`) from the
 /// `LOAD_INLINE_DATA` words that follow `LAUNCH_DMA`.

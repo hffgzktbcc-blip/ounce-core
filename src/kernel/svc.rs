@@ -4,7 +4,7 @@ use super::ipc::{IpcManager, ServiceType};
 use super::scheduler::{
     ThreadScheduler, ThreadState, WaitReason, YieldTo, CORE_COUNT, LOWEST_THREAD_PRIORITY, MUTEX_HAS_LISTENERS,
     PROCESS_IDEAL_CORE, RESULT_CANCELLED, RESULT_INVALID_COMBINATION, RESULT_INVALID_CORE_ID, RESULT_INVALID_HANDLE,
-    RESULT_INVALID_PRIORITY, RESULT_INVALID_STATE, RESULT_TIMED_OUT,
+    RESULT_INVALID_PRIORITY, RESULT_INVALID_STATE, RESULT_TIMED_OUT, RESULT_OUT_OF_RESOURCE,
 };
 use super::sync::SyncManager;
 use crate::audio::AudioOutServer;
@@ -82,6 +82,9 @@ pub struct HorizonKernel {
     pub nvn: crate::gpu::nvn::NvnDriver,
     pub sdk_hle: super::sdk_hle::SdkHleRuntime,
     pub reply_receive_step: u32,
+    /// Controlled process entropy for differential fixtures; absent from production builds.
+    #[cfg(test)]
+    pub(crate) test_entropy: Option<[u64; 4]>,
 }
 
 impl Default for HorizonKernel {
@@ -108,6 +111,8 @@ impl HorizonKernel {
             nvn: crate::gpu::nvn::NvnDriver::new(),
             sdk_hle: super::sdk_hle::SdkHleRuntime::new(),
             reply_receive_step: 0,
+            #[cfg(test)]
+            test_entropy: None,
         }
     }
 
@@ -123,6 +128,13 @@ impl HorizonKernel {
 
     /// System tick at 19.2 MHz on the scheduler's clock (at least one millisecond's worth), so time skipped
     /// while every thread slept shows up here too.
+    /// Runs this kernel on the deterministic clock with a fixed wall-clock date, so repeated runs and
+    /// both CPU engines see the same time (the corpus runner's frame comparison needs that).
+    pub fn set_deterministic_clock(&mut self, unix_secs: u64) {
+        self.scheduler.set_deterministic();
+        self.ipc.time.fixed_unix_secs = Some(unix_secs);
+    }
+
     pub fn system_tick(&self) -> u64 {
         let elapsed = self.scheduler.now_ns() as u128;
         (((elapsed * 19_200_000) / 1_000_000_000) as u64).max(19_200)
@@ -142,7 +154,11 @@ impl HorizonKernel {
             6 => 12 * 1024 * 1024 * 1024,  // TotalMemorySize: 12 GB LPDDR5
             7 => (self.heap_size as u64) + 0x10_0000, // UsedMemorySize
             8 => 0,                        // DebuggerAttached
-            11 if sub_type < 4 => 0x9E37_79B9_7F4A_7C15u64.rotate_left(sub_type as u32 * 16) ^ self.system_tick(), // RandomEntropy
+            11 if sub_type < 4 => {
+                #[cfg(test)]
+                if let Some(entropy) = self.test_entropy { return Some(entropy[sub_type as usize]); }
+                0x9E37_79B9_7F4A_7C15u64.rotate_left(sub_type as u32 * 16) ^ self.system_tick()
+            }
             12 => self.addr_base + 0x0000_0000_0800_0000, // AslrRegionAddress
             13 => 0x0000_007F_F800_0000 - self.addr_base, // AslrRegionSize (to the top of the 39-bit space)
             14 => 0x0000_007F_0000_0000,   // StackRegionAddress
@@ -201,6 +217,11 @@ impl HorizonKernel {
     pub fn dispatch_svc(&mut self, svc_id: u16, cpu: &mut Cpu, mmu: &mut Memory) -> SvcResult {
         // Guests poll HID shared memory between SVCs, so publish the latest input before each one.
         self.ipc.hid.sync(mmu);
+        self.scheduler.tick_deterministic();
+        cpu.counter_ticks = cpu.counter_ticks.max(self.system_tick());
+        if self.scheduler.is_deterministic() {
+            self.ipc.steady_override_ns = Some(self.scheduler.now_ns());
+        }
         self.scheduler.expire_timers();
         self.scheduler.finish_timeouts(mmu);
         match svc_id {
@@ -291,11 +312,26 @@ impl HorizonKernel {
                     return SvcResult::Success;
                 }
 
+                if !self.scheduler.can_allocate_thread() {
+                    cpu.regs.write_x(0, RESULT_OUT_OF_RESOURCE);
+                    cpu.regs.write_x(1, 0);
+                    return SvcResult::Success;
+                }
                 let handle = self
                     .scheduler
                     .create_thread(entry_pc, arg, stack_top, prio, core_id);
-                self.scheduler.setup_thread_tls(handle, mmu);
-                self.scheduler.prepare_thread(handle, mmu);
+                let tls = self.scheduler.setup_thread_tls(handle, mmu);
+                if (self.scheduler.tls_image.is_some() && tls.is_none())
+                    || self.scheduler.prepare_thread(handle, mmu).is_none() {
+                    self.scheduler.threads.remove(&handle);
+                    self.scheduler.total_threads_spawned -= 1;
+                    if let Some(area) = tls {
+                        mmu.unmap_range(area, self.scheduler.tls_image.as_ref().unwrap().mapped_size() as usize);
+                    }
+                    cpu.regs.write_x(0, RESULT_OUT_OF_RESOURCE);
+                    cpu.regs.write_x(1, 0);
+                    return SvcResult::Success;
+                }
                 cpu.regs.write_x(0, 0); // ResultSuccess
                 cpu.regs.write_x(1, handle as u64);
                 SvcResult::Success
@@ -861,13 +897,17 @@ impl HorizonKernel {
             // 0x25: svcGetThreadId(&out_thread_id, handle)
             0x25 => {
                 let handle = cpu.regs.read_w(1);
-                let id = match self.scheduler.threads.get(&handle) {
-                    Some(t) if handle != super::scheduler::MAIN_THREAD_KEY => t.thread_id,
-                    // The CurrentThread pseudo-handle (and the main thread's own handle) name the caller.
-                    _ => self.scheduler.current_thread_id(),
-                };
-                cpu.regs.write_x(0, 0);
-                cpu.regs.write_x(1, id);
+                match self.scheduler.resolve(handle) {
+                    Some(key) => {
+                        let id = self.scheduler.threads[&key].thread_id;
+                        cpu.regs.write_x(0, 0);
+                        cpu.regs.write_x(1, id);
+                    }
+                    None => {
+                        cpu.regs.write_x(0, RESULT_INVALID_HANDLE);
+                        cpu.regs.write_x(1, 0);
+                    }
+                }
                 SvcResult::Success
             }
 
@@ -888,10 +928,23 @@ impl HorizonKernel {
                 let str_addr = cpu.regs.read_x(0);
                 let str_len = cpu.regs.read_x(1) as usize;
 
+                // Debug messages are bounded host work, even for malformed guest arguments.
+                if str_len > 64 * 1024 {
+                    cpu.regs.write_x(0, RESULT_INVALID_SIZE);
+                    return SvcResult::Success;
+                }
+                if str_addr.checked_add(str_len as u64).is_none() {
+                    cpu.regs.write_x(0, RESULT_INVALID_ADDRESS);
+                    return SvcResult::Success;
+                }
+
                 let mut buf = vec![0u8; str_len];
                 if mmu.read_bytes(str_addr, &mut buf).is_ok() {
                     let text = String::from_utf8_lossy(&buf);
                     print!("{text}");
+                } else {
+                    cpu.regs.write_x(0, RESULT_INVALID_MEMORY_STATE);
+                    return SvcResult::Success;
                 }
 
                 cpu.regs.write_x(0, 0);

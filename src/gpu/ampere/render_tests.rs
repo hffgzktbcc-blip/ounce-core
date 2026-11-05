@@ -285,6 +285,26 @@ fn clear_fills_block_linear_target_in_guest_memory() {
 }
 
 #[test]
+fn oversized_draws_are_rejected_before_index_or_vertex_allocation() {
+    let mut memory = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    draw(&mut pb, 0, 3, 4);
+    let mut gpu = run(&pb, &mut memory);
+    let mut record = gpu.events().iter().find_map(|e| match e {
+        Event::Draw(record) => Some(record.clone()), _ => None,
+    }).unwrap();
+    record.vertex_count = u32::MAX;
+    for indexed in [false, true] {
+        record.indices = indexed.then_some(IndexBuffer {
+            gpu_va: 0, size: None, index_bytes: 4, base_vertex: 0, restart: None });
+        gpu.render_draw(&record, &mut memory);
+        assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped {
+            reason: "draw exceeds host vertex work limit" })));
+    }
+}
+
+#[test]
 fn clear_respects_scissor_when_asked() {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
@@ -1198,6 +1218,40 @@ fn z24s8_target(pb: &mut Vec<u32>) {
     pb.extend([inc_header(SC, m::SET_Z_CLEAR_VALUE, 1), f(1.0)]);
     pb.extend([inc_header(SC, m::SET_STENCIL_CLEAR_VALUE, 1), 0]);
     pb.push(immd_header(SC, m::CLEAR_SURFACE, 0x3));
+}
+
+#[test]
+fn stencil_clear_respects_partial_write_mask() {
+    let mut memory = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    z24s8_target(&mut pb);
+    pb.extend([inc_header(SC, m::SET_STENCIL_CLEAR_VALUE, 1), 0xa5]);
+    pb.push(immd_header(SC, m::CLEAR_SURFACE, 2));
+    pb.extend([inc_header(SC, m::SET_STENCIL_MASK, 1), 0x0f]);
+    pb.extend([inc_header(SC, m::SET_CLEAR_SURFACE_CONTROL, 1), 1]);
+    pb.extend([inc_header(SC, m::SET_STENCIL_CLEAR_VALUE, 1), 0x3c]);
+    pb.push(immd_header(SC, m::CLEAR_SURFACE, 2));
+    let gpu = run(&pb, &mut memory);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let linear = tiling::detile(&rt_surface(), &memory.get(ZT_VA, RT_BYTES)).unwrap();
+    assert_eq!(linear[0], 0xac);
+    assert_eq!(linear[4 * (128 * W as usize + 128)], 0xac);
+}
+
+#[test]
+fn unsupported_depth_layer_clear_preserves_base_layer() {
+    let mut memory = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    z24s8_target(&mut pb);
+    let mut gpu = run(&pb, &mut memory);
+    let before = memory.get(ZT_VA, RT_BYTES);
+    let pb = [inc_header(SC, m::SET_ZT_LAYER, 1), 1,
+        inc_header(SC, m::SET_Z_CLEAR_VALUE, 1), f(0.0), immd_header(SC, m::CLEAR_SURFACE, 1)];
+    gpu.submit(&pb, &mut memory).unwrap();
+    assert_eq!(memory.get(ZT_VA, RT_BYTES), before);
+    assert!(gpu.diagnostics().iter().any(|d| matches!(d, Diagnostic::RenderSkipped { reason: "layered clear" })));
 }
 
 /// `SET_STENCIL_TEST` .. `SET_STENCIL_MASK`: enable, fail, zfail, zpass, func, ref, func mask, mask.

@@ -1155,13 +1155,8 @@ fn emit_uniform_slot(
         *current_slot_idx += 1;
     }
 
-    let col_major = if mvp[12] != 0.0 && mvp[3] == 0.0 {
-        // Already column-major (e.g. from callers providing column-major matrices)
-        *mvp
-    } else {
-        // Row-major (standard Tegra Maxwell pushbuffer format)
-        crate::gpu::nvgpu::transpose_row_to_col_major(mvp)
-    };
+    // SetMvpMatrix uses the CPU renderer's row-major contract, including projective matrices.
+    let col_major = crate::gpu::nvgpu::transpose_row_to_col_major(mvp);
 
     let mut slot = [0u8; 256];
     for (i, val) in col_major.iter().enumerate() {
@@ -1519,6 +1514,27 @@ impl PresentBackend for WgpuBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn projective_row_major_uniform_preserves_the_cpu_transform() {
+        let matrix = [
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.5, 0.0, 0.0, 1.0,
+        ];
+        let mut bytes = Vec::new();
+        emit_uniform_slot(&mut bytes, &mut None, &mut 0, &matrix, false, false);
+        let position = [0.25, -0.5, 0.75, 1.0];
+        let mut clip = [0.0; 4];
+        for (row, output) in clip.iter_mut().enumerate() {
+            for (column, component) in position.iter().enumerate() {
+                let offset = (column * 4 + row) * 4;
+                *output += f32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) * component;
+            }
+        }
+        assert_eq!(clip, [0.25, -0.5, 0.75, 1.125]);
+    }
 
     #[test]
     fn test_winit_key_mapping_covers_the_hid_bindings() {
@@ -2002,23 +2018,23 @@ mod tests {
         let (w, h) = (64u32, 64u32);
         let mut renderer = Wgpu3DRenderer::new(&device, &queue, w, h);
 
-        // Matrix Left: translates by X = -0.5 (column-major)
+        // Matrix Left: translates by X = -0.5 (SetMvpMatrix is row-major).
         let mut matrix_left = [
             1.0, 0.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 0.0,
             0.0, 0.0, 1.0, 0.0,
             0.0, 0.0, 0.0, 1.0,
         ];
-        matrix_left[12] = -0.5;
+        matrix_left[3] = -0.5;
 
-        // Matrix Right: translates by X = +0.5 (column-major)
+        // Matrix Right: translates by X = +0.5 (row-major).
         let mut matrix_right = [
             1.0, 0.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 0.0,
             0.0, 0.0, 1.0, 0.0,
             0.0, 0.0, 0.0, 1.0,
         ];
-        matrix_right[12] = 0.5;
+        matrix_right[3] = 0.5;
 
         // Quad centered at (0, 0)
         let red_v0 = Gpu3DVertex { position: [-0.2, -0.2, 0.5], color: [1.0, 0.0, 0.0], uv: [0.0, 0.0] };
