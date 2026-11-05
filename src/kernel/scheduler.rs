@@ -49,6 +49,8 @@ pub const RESULT_INVALID_PRIORITY: u64 = 0xE001;
 pub const RESULT_INVALID_CORE_ID: u64 = 0xE201;
 pub const RESULT_INVALID_COMBINATION: u64 = 0xE801;
 pub const RESULT_CANCELLED: u64 = 0xEC01;
+/// libnx KernelError_OutOfResource (132), module Kernel (1).
+pub const RESULT_OUT_OF_RESOURCE: u64 = 0x10801;
 /// Horizon thread priorities: 0 runs first, 63 last.
 pub const LOWEST_THREAD_PRIORITY: i32 = 63;
 /// Cores a thread may name (the 8 Cortex-A78C cores; one host CPU time-shares them).
@@ -219,18 +221,28 @@ impl ThreadScheduler {
         handle
     }
 
+    fn next_static_tls(&self) -> Option<(u64, u64)> {
+        let image = self.tls_image.as_ref()?;
+        let align = image.align.max(0x1000);
+        if !align.is_power_of_two() { return None; }
+        let area = self.next_tls_area.checked_add(align - 1)? & !(align - 1);
+        let size = image.mapped_size();
+        (area.checked_add(size)? <= THREAD_TLS_POOL_BASE + THREAD_TLS_POOL_SIZE).then_some((area, size))
+    }
+
+    /// Check both lifetime allocation pools before publishing a thread handle.
+    pub fn can_allocate_thread(&self) -> bool {
+        self.next_tlr_page < THREAD_TLR_POOL_PAGES
+            && (self.tls_image.is_none() || self.next_static_tls().is_some())
+    }
+
     /// Gives a created thread its own static TLS area: maps it from the TLS pool, copies `tls_image`
     /// into it, and points the thread's `TPIDR_EL0` at it. Returns the area, or `None` when the process
     /// has no static TLS, the handle is unknown, or the pool is exhausted.
     pub fn setup_thread_tls(&mut self, handle: u32, mmu: &mut Memory) -> Option<u64> {
+        let (area, size) = self.next_static_tls()?;
         let image = self.tls_image.as_ref()?;
         let thread = self.threads.get_mut(&handle)?;
-        let align = image.align.max(0x1000);
-        let area = (self.next_tls_area + align - 1) & !(align - 1);
-        let size = image.mapped_size();
-        if area + size > THREAD_TLS_POOL_BASE + THREAD_TLS_POOL_SIZE {
-            return None;
-        }
         mmu.map_range(area, size as usize, Permission::READ_WRITE);
         mmu.write_bytes(area, &vec![0u8; size as usize]).ok()?;
         mmu.write_bytes(area, &image.bytes).ok()?;
@@ -697,6 +709,30 @@ impl ThreadScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn create_thread_rejects_exhausted_tls_pools_without_publishing_handle() {
+        for static_tls in [false, true] {
+            let mut kernel = crate::kernel::HorizonKernel::new();
+            let mut memory = Memory::new();
+            let mut cpu = Cpu::new();
+            if static_tls {
+                kernel.scheduler.tls_image = Some(ThreadTlsImage { bytes: vec![1], align: 16 });
+                kernel.scheduler.next_tls_area = THREAD_TLS_POOL_BASE + THREAD_TLS_POOL_SIZE;
+            } else {
+                kernel.scheduler.next_tlr_page = THREAD_TLR_POOL_PAGES;
+            }
+            cpu.regs.write_x(1, 0x5000);
+            cpu.regs.write_x(3, 0x7000);
+            cpu.regs.write_x(4, 44);
+            cpu.regs.write_x(5, 0);
+            let before = kernel.scheduler.threads.len();
+            kernel.dispatch_svc(0x08, &mut cpu, &mut memory);
+            assert_eq!(cpu.regs.read_x(0), RESULT_OUT_OF_RESOURCE);
+            assert_eq!(cpu.regs.read_x(1), 0);
+            assert_eq!(kernel.scheduler.threads.len(), before);
+            assert_eq!(kernel.scheduler.total_threads_spawned, 0);
+        }
+    }
 
     #[test]
     fn test_multicore_worker_thread_execution() {

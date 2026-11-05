@@ -582,7 +582,7 @@ impl Lowerer {
                 } else {
                     base
                 };
-                let fault = FaultSite { pc, insns: done };
+                let fault = site;
                 let zero = self.k(0);
                 if is_load {
                     if is_double {
@@ -601,7 +601,7 @@ impl Lowerer {
                     } else {
                         self.b.push(Op::Store(4, addr, val, fault));
                     }
-                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done + 1 });
+                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done });
                 }
             }
 
@@ -617,7 +617,7 @@ impl Lowerer {
                 } else {
                     base
                 };
-                let fault = FaultSite { pc, insns: done };
+                let fault = site;
                 if is_load {
                     let lo = self.b.push(Op::Load(8, addr, fault));
                     let addr_hi = self.b.bin_imm(BinOp::Add, Width::W64, addr, 8);
@@ -630,7 +630,7 @@ impl Lowerer {
                     self.b.push(Op::Store(8, addr, lo, fault));
                     let addr_hi = self.b.bin_imm(BinOp::Add, Width::W64, addr, 8);
                     self.b.push(Op::Store(8, addr_hi, hi, fault));
-                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done + 1 });
+                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done });
                 }
             }
 
@@ -1571,6 +1571,26 @@ mod tests {
             0x10000020, // adr  x0, #4
             0xD4000001, // svc  #0
         ], |_| {});
+    }
+
+    #[test]
+    fn fp_memory_exits_count_only_completed_instructions() {
+        for word in [0xFD40_0000, 0x3DC0_0000] { // ldr d0/q0, [x0]
+            let (mut cpu, mut memory) = setup(&[word, 0xD400_0001]);
+            cpu.regs.write_x(0, 0xdead_0000);
+            let mut engine = Tier4JitEngine::with_threshold(1);
+            let (count, exit) = engine.run_slice(&mut cpu, &mut memory, 10);
+            assert_eq!(exit, BlockExit::Fault { pc: CODE });
+            assert_eq!(count, 0);
+        }
+        for word in [0xFD00_0000, 0x3D80_0000] { // str d0/q0, [x0]
+            let (mut cpu, mut memory) = setup(&[word, 0xD400_0001]);
+            cpu.regs.write_x(0, CODE + 0x100);
+            let mut engine = Tier4JitEngine::with_threshold(1);
+            let (count, _) = engine.run_slice(&mut cpu, &mut memory, 1);
+            assert_eq!(count, 1);
+            assert_eq!(cpu.regs.pc, CODE + 4);
+        }
     }
 
     #[test]
