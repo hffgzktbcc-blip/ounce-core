@@ -73,6 +73,24 @@ fn program(header: &SphBuilder, code: &[u128]) -> Vec<u8> {
     b
 }
 
+#[test]
+fn vertex_builtin_attributes_emit_valid_wgsl() {
+    let bytes = program(&SphBuilder::vertex(), &[asm::ald(0, 0x2f8, 2), asm::ast(0, 0x70, 2), asm::exit()]);
+    for shader in [translate(ShaderStage::Vertex, &bytes), translate_with_header(ShaderStage::Vertex, &bytes, AMPERE_SPH_SIZE)] {
+        let shader = shader.unwrap();
+        assert!(shader.wgsl.contains("@builtin(instance_index)"));
+        assert!(shader.wgsl.contains("@builtin(vertex_index)"));
+        validate(&shader.wgsl);
+    }
+}
+
+#[test]
+fn wgsl_rejects_dynamic_cbuf_without_a_binding_size_contract() {
+    let indexed = asm::ldc(0, 1, 0xfffc) & !(0xffu128 << 24); // R0 index, not RZ
+    let bytes = program(&SphBuilder::vertex(), &[indexed, asm::ast(0, 0x70, 1), asm::exit()]);
+    assert!(matches!(translate(ShaderStage::Vertex, &bytes), Err(XlateError::Unsupported { what: "dynamic constant buffer requires an explicit binding-size contract", .. })));
+}
+
 pub(super) fn validate(src: &str) {
     let module = naga::front::wgsl::parse_str(src).unwrap_or_else(|e| panic!("{}\n{src}", e.emit_to_string(src)));
     naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::empty())

@@ -392,7 +392,7 @@ jobs:
       - name: Ounce-Verify evidence, canonical report and README headline
         if: always()
         env:
-          CORE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          CORE_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/ounce-oracle-evidence"

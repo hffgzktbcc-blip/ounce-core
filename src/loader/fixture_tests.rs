@@ -274,6 +274,9 @@ fn boot_with_kernel_tier(
     use_tier3: bool,
 ) -> FixtureRun {
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
+    // The engines must receive identical guest inputs. libnx uses process entropy for randomized
+    // virtual-memory probes; host-clock-derived entropy otherwise changes the SVC sequence.
+    kernel.test_entropy = Some([0x1234_5678_9ABC_DEF0, 0xCAFE_BABE_1122_3344, 0xDEAD_BEEF_5566_7788, 0x8877_6655_4433_2211]);
     kernel.ipc.hid.input = input;
     configure(&mut kernel.ipc.hid);
     let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).expect("NRO loads");
@@ -573,6 +576,23 @@ mod corpus_runner;
 
 /// Qualify the shared runner before adding independent upstream samples.
 /// These project-authored fixtures are integration regressions, not corpus evidence.
+#[test]
+fn thread_fixture_repeats_with_identical_engine_inputs() {
+    let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/threads/threads.nro")).unwrap();
+    let mut baseline: Option<(Vec<u16>, usize)> = None;
+    for repetition in 0..30 {
+        for tier in [false, true] {
+            let run = boot_with_kernel_tier(&nro, &[], Default::default(), None, |_| {}, tier);
+            if let Some((svcs, instructions)) = baseline.as_ref() {
+                if &run.svcs != svcs {
+                    let first = run.svcs.iter().zip(svcs).position(|(a, b)| a != b);
+                    panic!("repeat={repetition} tier3={tier} first={first:?} svc lengths {} vs {} insns {} vs {}", run.svcs.len(), svcs.len(), run.instructions, instructions);
+                }
+            } else { baseline = Some((run.svcs, run.instructions)); }
+        }
+    }
+}
+
 #[test]
 fn fixture_runner_matches_interpreter_and_tier3() {
     for name in ["hello", "romfs", "threads"] {

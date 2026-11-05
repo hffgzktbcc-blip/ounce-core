@@ -5,6 +5,9 @@ use crate::mmu::{Memory, Permission};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
+/// Guest time one SVC takes under the deterministic clock.
+const DETERMINISTIC_NS_PER_SVC: u64 = 20_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
     Created,
@@ -49,6 +52,8 @@ pub const RESULT_INVALID_PRIORITY: u64 = 0xE001;
 pub const RESULT_INVALID_CORE_ID: u64 = 0xE201;
 pub const RESULT_INVALID_COMBINATION: u64 = 0xE801;
 pub const RESULT_CANCELLED: u64 = 0xEC01;
+/// libnx KernelError_OutOfResource (132), module Kernel (1).
+pub const RESULT_OUT_OF_RESOURCE: u64 = 0x10801;
 /// Horizon thread priorities: 0 runs first, 63 last.
 pub const LOWEST_THREAD_PRIORITY: i32 = 63;
 /// Cores a thread may name (the 8 Cortex-A78C cores; one host CPU time-shares them).
@@ -137,6 +142,9 @@ pub struct ThreadScheduler {
     clock_start: Instant,
     /// Time skipped while every thread slept (virtual time only).
     skew_ns: u64,
+    /// Deterministic clock: guest time (ns) advances by [`DETERMINISTIC_NS_PER_SVC`] per SVC and never
+    /// follows the host clock, so repeated runs and different CPU engines see identical time.
+    deterministic_ns: Option<u64>,
     /// When every thread sleeps: `false` sleeps the host until the next deadline, `true` skips to it.
     /// Set by `OUNCE_VIRTUAL_TIME`; tests set it directly.
     pub virtual_time: bool,
@@ -168,6 +176,7 @@ impl ThreadScheduler {
             switches: 0,
             clock_start: Instant::now(),
             skew_ns: 0,
+            deterministic_ns: None,
             virtual_time: std::env::var_os("OUNCE_VIRTUAL_TIME").is_some(),
             main_handle: None,
         }
@@ -219,18 +228,28 @@ impl ThreadScheduler {
         handle
     }
 
+    fn next_static_tls(&self) -> Option<(u64, u64)> {
+        let image = self.tls_image.as_ref()?;
+        let align = image.align.max(0x1000);
+        if !align.is_power_of_two() { return None; }
+        let area = self.next_tls_area.checked_add(align - 1)? & !(align - 1);
+        let size = image.mapped_size();
+        (area.checked_add(size)? <= THREAD_TLS_POOL_BASE + THREAD_TLS_POOL_SIZE).then_some((area, size))
+    }
+
+    /// Check both lifetime allocation pools before publishing a thread handle.
+    pub fn can_allocate_thread(&self) -> bool {
+        self.next_tlr_page < THREAD_TLR_POOL_PAGES
+            && (self.tls_image.is_none() || self.next_static_tls().is_some())
+    }
+
     /// Gives a created thread its own static TLS area: maps it from the TLS pool, copies `tls_image`
     /// into it, and points the thread's `TPIDR_EL0` at it. Returns the area, or `None` when the process
     /// has no static TLS, the handle is unknown, or the pool is exhausted.
     pub fn setup_thread_tls(&mut self, handle: u32, mmu: &mut Memory) -> Option<u64> {
+        let (area, size) = self.next_static_tls()?;
         let image = self.tls_image.as_ref()?;
         let thread = self.threads.get_mut(&handle)?;
-        let align = image.align.max(0x1000);
-        let area = (self.next_tls_area + align - 1) & !(align - 1);
-        let size = image.mapped_size();
-        if area + size > THREAD_TLS_POOL_BASE + THREAD_TLS_POOL_SIZE {
-            return None;
-        }
         mmu.map_range(area, size as usize, Permission::READ_WRITE);
         mmu.write_bytes(area, &vec![0u8; size as usize]).ok()?;
         mmu.write_bytes(area, &image.bytes).ok()?;
@@ -377,7 +396,27 @@ impl ThreadScheduler {
 
     /// Scheduler time in nanoseconds: host time since creation, plus any time skipped while all threads slept.
     pub fn now_ns(&self) -> u64 {
-        self.clock_start.elapsed().as_nanos() as u64 + self.skew_ns
+        match self.deterministic_ns {
+            Some(ns) => ns + self.skew_ns,
+            None => self.clock_start.elapsed().as_nanos() as u64 + self.skew_ns,
+        }
+    }
+
+    pub fn is_deterministic(&self) -> bool {
+        self.deterministic_ns.is_some()
+    }
+
+    /// Switches to the deterministic clock (also skipping idle time instead of sleeping the host).
+    pub fn set_deterministic(&mut self) {
+        self.deterministic_ns = Some(0);
+        self.virtual_time = true;
+    }
+
+    /// One SVC's worth of deterministic time; nothing happens on the host clock.
+    pub fn tick_deterministic(&mut self) {
+        if let Some(ns) = self.deterministic_ns.as_mut() {
+            *ns += DETERMINISTIC_NS_PER_SVC;
+        }
     }
 
     /// Lets time pass until `deadline` while nothing can run: sleeps the host, or skips ahead.
@@ -697,6 +736,30 @@ impl ThreadScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn create_thread_rejects_exhausted_tls_pools_without_publishing_handle() {
+        for static_tls in [false, true] {
+            let mut kernel = crate::kernel::HorizonKernel::new();
+            let mut memory = Memory::new();
+            let mut cpu = Cpu::new();
+            if static_tls {
+                kernel.scheduler.tls_image = Some(ThreadTlsImage { bytes: vec![1], align: 16 });
+                kernel.scheduler.next_tls_area = THREAD_TLS_POOL_BASE + THREAD_TLS_POOL_SIZE;
+            } else {
+                kernel.scheduler.next_tlr_page = THREAD_TLR_POOL_PAGES;
+            }
+            cpu.regs.write_x(1, 0x5000);
+            cpu.regs.write_x(3, 0x7000);
+            cpu.regs.write_x(4, 44);
+            cpu.regs.write_x(5, 0);
+            let before = kernel.scheduler.threads.len();
+            kernel.dispatch_svc(0x08, &mut cpu, &mut memory);
+            assert_eq!(cpu.regs.read_x(0), RESULT_OUT_OF_RESOURCE);
+            assert_eq!(cpu.regs.read_x(1), 0);
+            assert_eq!(kernel.scheduler.threads.len(), before);
+            assert_eq!(kernel.scheduler.total_threads_spawned, 0);
+        }
+    }
 
     #[test]
     fn test_multicore_worker_thread_execution() {

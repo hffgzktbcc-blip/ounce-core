@@ -3,7 +3,7 @@
 use super::instructions::{
     SimdAcrossOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
-    SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
+    SimdFpElementOp, SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
@@ -52,7 +52,7 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 4. Move Wide (Immediate): MOVZ, MOVN, MOVK
     // Pattern: sf 10 100101 hw imm16 Rd
-    if (raw & 0x1F800000) == 0x12800000 || (raw & 0x1F800000) == 0x52800000 || (raw & 0x1F800000) == 0x72800000 {
+    if (raw & 0x1F800000) == 0x12800000 {
         let is_64 = (raw & (1 << 31)) != 0;
         let opc = (raw >> 29) & 0x3;
         let hw = ((raw >> 21) & 0x3) as u8;
@@ -437,6 +437,7 @@ pub fn decode(raw: u32) -> Instruction {
             size_bytes: scale as u8,
             is_load,
             is_signed,
+            is_64_target: size == 3 || opc == 2,
             writeback: false,
             post_index: false,
         };
@@ -487,6 +488,7 @@ pub fn decode(raw: u32) -> Instruction {
                 size_bytes: scale,
                 is_load,
                 is_signed,
+                is_64_target: size == 3 || opc == 2,
                 writeback,
                 post_index,
             };
@@ -530,6 +532,9 @@ pub fn decode(raw: u32) -> Instruction {
                 0b0011 => FpOp2::Fsub,
                 0b0100 => FpOp2::Fmax,
                 0b0101 => FpOp2::Fmin,
+                0b0110 => FpOp2::Fmaxnm,
+                0b0111 => FpOp2::Fminnm,
+                0b1000 => FpOp2::Fnmul,
                 _ => return Instruction::Unimplemented { raw },
             };
 
@@ -777,18 +782,25 @@ pub fn decode(raw: u32) -> Instruction {
     //     FADD Vd.4S, Vn.4S, Vm.4S (0x4E20D400)
     //     FSUB Vd.4S, Vn.4S, Vm.4S (0x4EA0D400)
     //     FMUL Vd.4S, Vn.4S, Vm.4S (0x6E20DC00)
-    if (raw & 0xFF20FC00) == 0x4E20D400 || (raw & 0xFFE0FC00) == 0x6E20DC00 {
+    //     FDIV Vd.4S, Vn.4S, Vm.4S (0x6E20FC00)
+    if (raw & 0xFF20FC00) == 0x4E20D400 || (raw & 0xFFE0FC00) == 0x6E20DC00 || (raw & 0xFFE0FC00) == 0x6E20FC00 {
         let rm = ((raw >> 16) & 0x1F) as u8;
         let rn = ((raw >> 5) & 0x1F) as u8;
         let rd = (raw & 0x1F) as u8;
         let op = if (raw & 0xFFE0FC00) == 0x6E20DC00 {
             FpOp2::Fmul
+        } else if (raw & 0xFFE0FC00) == 0x6E20FC00 {
+            FpOp2::Fdiv
         } else if (raw & (1 << 23)) != 0 {
             FpOp2::Fsub
         } else {
             FpOp2::Fadd
         };
-        return Instruction::SimdVec4S { rd, rn, rm, op };
+        return if raw & (1 << 22) != 0 {
+            Instruction::SimdVec2D { rd, rn, rm, op }
+        } else {
+            Instruction::SimdVec4S { rd, rn, rm, op }
+        };
     }
 
     decode_extra(raw).unwrap_or(Instruction::Unimplemented { raw })
@@ -1084,6 +1096,57 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
+    // 21b'. Add/subtract with carry: sf op S 11010000 Rm 000000 Rn Rd
+    if (raw & 0x1FE0_FC00) == 0x1A00_0000 {
+        return Some(Instruction::AddSubCarry {
+            rd,
+            rn,
+            rm,
+            is_sub: raw & (1 << 30) != 0,
+            set_flags: raw & (1 << 29) != 0,
+            is_64: raw & (1 << 31) != 0,
+        });
+    }
+
+    // 21c. FCCMP/FCCMPE: 0 0 0 11110 ftype 1 Rm cond 01 Rn op nzcv (ftype 0 = single, 1 = double)
+    if (raw & 0xFF20_0C00) == 0x1E20_0400 && (size == 0 || size == 1) {
+        return Some(Instruction::FpCondCompare {
+            rn,
+            rm,
+            nzcv: (raw & 0xF) as u8,
+            cond: Condition::from_u8(((raw >> 12) & 0xF) as u8),
+            is_double: size == 1,
+        });
+    }
+
+    // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q 0 01111 1 sz L M Rm opcode H 0 Rn Rd
+    //       (FMLA 0001, FMLS 0101, FMUL 1001)
+    if (raw & 0xBF80_0400) == 0x0F80_0000 && !u {
+        let op = match (raw >> 12) & 0xF {
+            0b0001 => SimdFpElementOp::Fmla,
+            0b0101 => SimdFpElementOp::Fmls,
+            0b1001 => SimdFpElementOp::Fmul,
+            _ => return None,
+        };
+        let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
+        let rm = ((m << 4) | ((raw >> 16) & 0xF)) as u8;
+        let double = size == 3;
+        if double && (l == 1 || !q) {
+            return None;
+        }
+        let index = if double { h } else { (h << 1) | l } as u8;
+        return Some(Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q });
+    }
+
+    // 26b'. AdvSIMD extract: 0 Q 101110 00 0 Rm 0 imm4 0 Rn Rd (EXT)
+    if (raw & 0xBFE0_8400) == 0x2E00_0000 {
+        let index = ((raw >> 11) & 0xF) as u8;
+        if !q && index >= 8 {
+            return None;
+        }
+        return Some(Instruction::SimdExt { rd, rn, rm, index, q });
+    }
+
     // 26c. AdvSIMD permute: 0 Q 001110 size 0 Rm 0 opc 10 Rn Rd (UZP1/TRN1/ZIP1/UZP2/TRN2/ZIP2)
     if (raw & 0xBF20_8C00) == 0x0E00_0800 {
         let op = match (raw >> 12) & 0x7 {
@@ -1232,6 +1295,19 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         };
         let imm = if op == SimdImmOp::Mov && u && cmode < 14 { !imm } else { imm };
         return Some(Instruction::SimdModImm { rd, imm, op, q });
+    }
+
+    // 30a. AdvSIMD scalar shift by immediate (D registers only): 01 U 111110 1xxx immb opcode 1 Rn Rd
+    //      (SSHR/USHR/SHL Dd, Dn, #shift). One 64-bit lane, the rest of Vd zeroed.
+    if (raw & 0xDF80_0400) == 0x5F00_0400 && (raw >> 19) & 0xF >= 8 {
+        let imm = (raw >> 16) & 0x7F;
+        let (op, shift) = match ((raw >> 11) & 0x1F, u) {
+            (0b00000, false) => (SimdShiftOp::Sshr, 128 - imm),
+            (0b00000, true) => (SimdShiftOp::Ushr, 128 - imm),
+            (0b01010, false) => (SimdShiftOp::Shl, imm - 64),
+            _ => return None,
+        };
+        return Some(Instruction::SimdShiftImm { rd, rn, op, esize: 64, shift: shift as u8, q: false });
     }
 
     // 30. AdvSIMD shift by immediate: 0 Q U 011110 immh immb opcode 1 Rn Rd (immh != 0)

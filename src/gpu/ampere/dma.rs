@@ -95,6 +95,10 @@ impl DmaCopy {
         let dst_pitch = launch & (1 << 8) != 0;
         let lines = if launch & (1 << 9) != 0 { self.reg(LINE_COUNT) } else { 1 };
         let len = self.reg(LINE_LENGTH_IN) as usize;
+        // Bound both allocation and total copy work before touching guest buffers.
+        if len as u64 * lines as u64 > 64 * 1024 * 1024 || lines > 1024 * 1024 {
+            return Err("DMA transfer exceeds host work limit");
+        }
         let (src, dst) = (self.addr(OFFSET_IN_UPPER), self.addr(OFFSET_OUT_UPPER));
         let src_bl = self.block_surface(SET_SRC_BLOCK_SIZE);
         let dst_bl = self.block_surface(SET_DST_BLOCK_SIZE);
@@ -136,6 +140,17 @@ impl DmaCopy {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn oversized_dma_is_rejected_before_allocating_or_writing() {
+        let mut memory = Mem::default();
+        let mut dma = DmaCopy::default();
+        let mut diagnostics = Vec::new();
+        dma.execute(LINE_LENGTH_IN, u32::MAX, &mut memory, &mut diagnostics);
+        dma.execute(LAUNCH_DMA, (1 << 7) | (1 << 8), &mut memory, &mut diagnostics);
+        assert!(memory.0.is_empty());
+        assert!(matches!(diagnostics.as_slice(), [Diagnostic::DmaSkipped { reason: "DMA transfer exceeds host work limit" }]));
+    }
 
     #[derive(Default)]
     struct Mem(HashMap<u64, u8>);

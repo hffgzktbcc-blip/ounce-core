@@ -35,6 +35,8 @@ def main():
             continue
         result = args.evidence / f"{oid}.oracle.json"
         log = args.evidence / f"{oid}.oracle.log"
+        # A failed rerun must never inherit a verdict from an earlier execution.
+        result.unlink(missing_ok=True)
         env = dict(os.environ, OUNCE_CORPUS_ROOT=str(args.builds), OUNCE_ORACLE_ID=oid,
                    OUNCE_ORACLE_RESULT=str(result), OUNCE_ORACLE_SECONDS=str(args.seconds))
         command = [str(args.executable), TEST, "--exact", "--ignored", "--nocapture", "--test-threads=1"]
@@ -49,6 +51,9 @@ def main():
             verdict = json.loads(result.read_text())
         else:
             verdict = {"id": oid, "pass": False, "failures": [stop or "runner exited without a verdict (see log)"]}
+        if host_status != "exited-zero" and verdict["pass"]:
+            verdict["pass"] = False
+            verdict["failures"].append(f"runner did not complete successfully: {host_status}")
         verdict.update(host_status=host_status, host_timeout_seconds=args.seconds)
         verdicts.append(verdict)
         print(f"{'PASS' if verdict['pass'] else 'FAIL'} {oid}: {'; '.join(verdict['failures'][:3])}", flush=True)
