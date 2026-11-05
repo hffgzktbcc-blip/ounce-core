@@ -684,6 +684,9 @@ impl Ampere3d {
 
     /// Writes a `CLEAR_SURFACE` into the targets it names.
     pub(super) fn render_clear(&mut self, rec: &ClearRecord, mem: &mut dyn GpuMemoryWriter) {
+        if rec.layer != 0 || rec.depth_target.is_some_and(|target| target.layer != 0) {
+            return self.skip("layered clear");
+        }
         let ctrl = self.reg_at(m::SET_CLEAR_SURFACE_CONTROL);
         let region = |w: u32, h: u32| {
             let mut r = Rect::new(w, h);
@@ -728,7 +731,14 @@ impl Ampere3d {
             let stencil = rec.clear_stencil.then_some(rec.stencil);
             for y in r.y0..r.y1 {
                 for x in r.x0..r.x1 {
-                    write_depth(zt.format, t.texel(x, y), depth, stencil);
+                    let texel = t.texel(x, y);
+                    let stencil = stencil.map(|value| {
+                        if ctrl & 1 != 0 {
+                            let mask = self.reg_at(m::SET_STENCIL_MASK) as u8;
+                            (read_stencil(zt.format, texel).unwrap_or(0) & !mask) | (value & mask)
+                        } else { value }
+                    });
+                    write_depth(zt.format, texel, depth, stencil);
                 }
             }
             t.store(mem);
@@ -816,6 +826,12 @@ impl Ampere3d {
 
     /// Runs one draw: vertex fetch, vertex shader, raster, pixel shader, depth, color write.
     pub(super) fn render_draw(&mut self, rec: &DrawRecord, mem: &mut dyn GpuMemoryWriter) {
+        if rec.vertex_count > 1_048_576 {
+            return self.skip("draw exceeds host vertex work limit");
+        }
+        if rec.depth_target.is_some_and(|target| target.layer != 0) {
+            return self.skip("layered depth target");
+        }
         // Probe: write-only memory keeps step-1 behaviour silently.
         if !mem.read(0, &mut []) {
             return;

@@ -177,7 +177,7 @@ impl VirtualFileSystem {
                 self.directories.insert(format!("{}/", parent));
             }
         }
-        self.sync_file_to_disk(&norm, data);
+        let _ = self.sync_file_to_disk(&norm, data);
     }
 
     /// Recursively mounts all files from a host filesystem directory under the given VFS prefix (e.g. "romfs").
@@ -227,13 +227,14 @@ impl VirtualFileSystem {
         self.files.get(path).map(|v| v.as_slice())
     }
 
-    fn sync_file_to_disk(&self, path: &str, data: &[u8]) {
-        if let Ok(Some(disk_path)) = self.host_path(path) {
+    fn sync_file_to_disk(&self, path: &str, data: &[u8]) -> Result<(), VfsError> {
+        if let Some(disk_path) = self.host_path(path)? {
             if let Some(parent) = disk_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+                std::fs::create_dir_all(parent)?;
             }
-            let _ = std::fs::write(&disk_path, data);
+            std::fs::write(&disk_path, data)?;
         }
+        Ok(())
     }
 
     /// Host path backing a `save:/` or `sdmc:/` path, or `None` when the path is on another mount or its
@@ -348,7 +349,7 @@ impl VirtualFileSystem {
             return Err(VfsError::TooLarge(norm));
         }
         let data = vec![0u8; size as usize];
-        self.sync_file_to_disk(&norm, &data);
+        self.sync_file_to_disk(&norm, &data)?;
         self.files.insert(norm, data);
         Ok(())
     }
@@ -557,7 +558,8 @@ impl VirtualFileSystem {
         }
         let mut buf = vec![0u8; len];
         mmu.read_bytes(guest_src_addr, &mut buf)?;
-        self.files.insert(norm.clone(), buf.clone());
+        self.sync_file_to_disk(&norm, &buf)?;
+        self.files.insert(norm.clone(), buf);
         if let Some(idx) = norm.rfind('/') {
             let parent = &norm[..idx];
             if !parent.is_empty() {
@@ -565,7 +567,6 @@ impl VirtualFileSystem {
                 self.directories.insert(format!("{}/", parent));
             }
         }
-        self.sync_file_to_disk(&norm, &buf);
         self.total_bytes_written += len as u64;
         Ok(len)
     }
@@ -1051,6 +1052,37 @@ mod tests {
         assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_persistent_create_and_save_leave_no_successful_cache_update() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("ounce_readonly_{}_{}", std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir(&root).unwrap();
+        let mut vfs = VirtualFileSystem::new();
+        vfs.mount_file("save:/state", b"original");
+        vfs.set_sdmc_directory(&root);
+        vfs.set_save_directory(&root);
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o555)).unwrap();
+        // Elevated test processes can bypass Unix mode bits.
+        if std::fs::write(root.join("permission_probe"), b"").is_ok() {
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::remove_dir_all(&root).unwrap();
+            return;
+        }
+        let mut memory = Memory::new();
+        memory.map_range(0x1000, 4096, crate::mmu::Permission::READ_WRITE);
+        memory.write_bytes(0x1000, b"changed").unwrap();
+        let create = vfs.create_file("sdmc:/lost", 3);
+        let save = vfs.write_file_from_guest("save:/state", 0x1000, 7, &memory);
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert!(matches!(create, Err(VfsError::Io(_))));
+        assert!(vfs.get_file("sdmc:/lost").is_none());
+        assert!(matches!(save, Err(VfsError::Io(_))));
+        assert_eq!(vfs.get_file("save:/state"), Some(&b"original"[..]));
     }
 
     #[test]

@@ -461,3 +461,45 @@ An unmodified upstream filesystem and console sample shows correct rendered text
 
 An unmodified upstream startup application sample shows correct rendered text frames: `templates/application` (pinned in `tests/corpus/manifest.json`) passes all criteria in `docs/startup-oracle.md`. Merged in PR #125 with all CI checks passing, verifying default text console display and bit-exact agreement between Interpreter and Tier-3 JIT engines.
 
+
+
+## Correctness audit follow-up (Codex, 2026-11-05)
+
+Owner requested a complete local/source review and autonomous follow-up. This batch is based on
+`9073139c992c7c12a122671993420129e2bfba8c` (main after #152). It does not import the open #149
+branch or anything from the owner's non-public projects, and does not change PLAN.md's milestone claims.
+
+Changes address audit findings R01-R03, R06-R18, R20, R22-R25, R28, R30 and R33:
+- Tier-4 memory callbacks borrow live page storage for each access. The safe MemoryBus API no longer
+  accepts integer host pointers, and cached TLB metadata cannot outlive a page or bus. Arena-backed
+  memory uses ordinary MMU accessors. Code writes still pass through invalidation. This changes the
+  public PageMapping API and removes the previous raw-pointer fast path; throughput needs remeasurement.
+- Correct CMP/SP, signed W-register immediate loads, two-lane double FADD/FSUB and scalar FMAX/FMIN
+  NaN/signed-zero behavior. Add scalar FNMUL decoding/lowering (the word reported by CI). Regression
+  tests exercise the interpreter and compiled tiers; 2D vectors currently fall back from Tier-4.
+- Bound interpreted/native NCE scheduling slices; bound debug output, extra ioctl buffers, DMA work,
+  draw vertex counts and ADPCM output allocation. Saturate ADPCM with wide intermediate arithmetic.
+- Reject truncated NRO sections before mapping; propagate persistent file failures and file read errors;
+  keep directory cursors on failed output; resolve actual thread handles; reject MMU address wrap.
+- Allocate distinct live GPU syncpoints, respect stencil clear masks, and reject unsupported depth layers
+  before writes. CLI load/execution failures now return nonzero status. Corpus reruns delete old verdicts,
+  reject successful verdicts from failed processes, and report the actual checked-out CI commit.
+
+Local validation: 518 workspace/all-feature tests passed, 7 ignored; default release tests passed;
+27 harness checks across 25 stages passed; 16 Python corpus/tooling tests and 11 validator tests passed.
+Release workspace/all-feature/all-target Clippy completes with existing warnings. These are regression
+checks, not new homebrew compatibility milestones. Outside-corpus results are recorded in the PR.
+
+Still open from the review (static findings; not silently treated as fixes):
+- R04: NCE system-register rewrites involving guest X18 need isolated emitted-code coverage.
+- R05: NCE executable address reuse needs re-patching or explicit rejection.
+- R19: companion-module extents need overlap checks before fixed-slot placement.
+- R21: several old harness stages need assertions on advertised subsystem results.
+- R26/R27: WGSL builtin emission and dynamic constant-buffer bounds need explicit contracts.
+- R29: thread-local allocation exhaustion must be reported instead of creating invalid thread state.
+- R31: Tier-4 FP/SIMD fault and code-write instruction accounting needs exact slice tests.
+- R32: native entry must validate/restablish host FPCR state across guest execution.
+- R34: legacy host replay needs an explicit matrix-layout contract instead of a value heuristic.
+
+All cross-platform CI gates must pass before merging. The owner's other checkouts and uncommitted
+changes were left untouched. No broad formatting or architecture replacement was performed.

@@ -71,11 +71,10 @@ impl MemoryBus for MmuBus<'_> {
         Ok(if self.mmu.code_write_gen() != gen_before { WriteEffect::CodeWritten } else { WriteEffect::Done })
     }
 
-    fn query_page(&mut self, page_num: u64) -> Option<PageMapping> {
-        let page = self.mmu.get_page(page_num)?;
+    fn query_page(&mut self, page_num: u64) -> Option<PageMapping<'_>> {
+        let page = self.mmu.direct_page(page_num)?;
         Some(PageMapping {
-            page_num,
-            host_base: page.data.as_ptr() as u64,
+            data: page.data.as_mut(),
             read: page.perm.read,
             write: page.perm.write,
             holds_code: page.holds_code,
@@ -236,7 +235,7 @@ impl Lowerer {
             }
 
             Instruction::AddSubImm { rd, rn, imm, is_sub, set_flags, is_64 } => {
-                let a = if !set_flags && rn == 31 { self.b.get(Reg::Sp) } else { self.x(rn) };
+                let a = if rn == 31 { self.b.get(Reg::Sp) } else { self.x(rn) };
                 let b = self.k(imm);
                 let res = self.add_sub(a, b, is_sub, set_flags, is_64);
                 if set_flags { self.set_x(rd, res) } else { self.set_x_or_sp(rd, res) }
@@ -456,7 +455,7 @@ impl Lowerer {
                 }
             }
 
-            Instruction::LoadStoreImm { rt, rn, offset, size_bytes, is_load, is_signed, writeback, post_index } => {
+            Instruction::LoadStoreImm { rt, rn, offset, size_bytes, is_load, is_signed, is_64_target, writeback, post_index } => {
                 if !matches!(size_bytes, 1 | 2 | 4 | 8) {
                     return Err(());
                 }
@@ -466,7 +465,7 @@ impl Lowerer {
                 if is_load {
                     let v = self.load(size_bytes, addr, site);
                     let v = if is_signed && size_bytes < 8 { self.b.push(Op::Sext(size_bytes * 8, v)) } else { v };
-                    self.set_x(rt, v);
+                    if is_64_target { self.set_x(rt, v) } else { self.set_w(rt, v) }
                 } else {
                     let v = self.x(rt);
                     self.store(size_bytes, addr, v, site);
@@ -647,13 +646,16 @@ impl Lowerer {
                 let fop = match op {
                     FpOp2::Fadd => FpBinOp::Fadd,
                     FpOp2::Fsub => FpBinOp::Fsub,
-                    FpOp2::Fmul => FpBinOp::Fmul,
+                    FpOp2::Fmul | FpOp2::Fnmul => FpBinOp::Fmul,
                     FpOp2::Fdiv => FpBinOp::Fdiv,
                     FpOp2::Fmax => FpBinOp::Fmax,
                     FpOp2::Fmin => FpBinOp::Fmin,
                 };
                 let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
                 let res = self.b.push(Op::FpBin(fop, w, a, b));
+                let res = if op == FpOp2::Fnmul {
+                    self.b.bin_imm(BinOp::Xor, Width::W64, res, if is_double { 1 << 63 } else { 1 << 31 })
+                } else { res };
                 let zero = self.k(0);
                 self.b.set(Reg::VLo(rd), res);
                 self.b.set(Reg::VHi(rd), zero);

@@ -50,6 +50,27 @@ const SLICE: std::time::Duration = std::time::Duration::from_millis(1);
 /// Horizon's timer frequency (`CNTFRQ_EL0`).
 const TIMER_HZ: u64 = 19_200_000;
 
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+    #[test]
+    fn interpreted_backward_branch_returns_to_scheduler() {
+        let mut memory = Memory::new();
+        memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE);
+        memory.write_u32(0x8000, 0x1400_0000).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.regs.pc = 0x8000;
+        let mut engine = NceEngine {
+            patcher: Patcher::new(0x1000, STUB_CAPACITY).unwrap(), areas: vec![], written: vec![],
+            patched: HashSet::new(), interpreted: HashSet::from([8]), interpreted_steps: 0,
+            exec_gen: 0, skip: vec![], stats: Stats::default(), entries: 0,
+        };
+        assert_eq!(engine.interpret(&mut cpu, &mut memory, std::time::Instant::now() + SLICE),
+            Some(NceExit::Preempted));
+        assert_eq!(cpu.regs.pc, 0x8000);
+    }
+}
+
 /// Why [`NceEngine::run`] returned.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NceExit {
@@ -219,14 +240,16 @@ impl NceEngine {
 
     fn run_inner(&mut self, cpu: &mut Cpu, mmu: &mut Memory, tick: &dyn Fn() -> u64) -> Result<NceExit, String> {
         self.sync_code(mmu)?;
+        let deadline = std::time::Instant::now() + SLICE;
         loop {
+            if std::time::Instant::now() >= deadline { return Ok(NceExit::Preempted); }
             if self.interpreted.contains(&(cpu.regs.pc >> 12)) {
-                if let Some(exit) = self.interpret(cpu, mmu) {
+                if let Some(exit) = self.interpret(cpu, mmu, deadline) {
                     return Ok(exit);
                 }
                 continue;
             }
-            match self.native(cpu, mmu, tick)? {
+            match self.native(cpu, mmu, tick, deadline)? {
                 // Native code branched into an interpreted page: carry on there.
                 NceExit::Fault { pc, signal, addr } if addr == pc && self.interpreted.contains(&(pc >> 12))
                     && (signal == libc_sigsegv() || signal == libc_sigbus()) => continue,
@@ -236,9 +259,10 @@ impl NceEngine {
     }
 
     /// Steps the interpreter while the pc stays in interpreted pages. `None` = left them.
-    fn interpret(&mut self, cpu: &mut Cpu, mmu: &mut Memory) -> Option<NceExit> {
+    fn interpret(&mut self, cpu: &mut Cpu, mmu: &mut Memory, deadline: std::time::Instant) -> Option<NceExit> {
         use super::interpreter::StepResult;
         while self.interpreted.contains(&(cpu.regs.pc >> 12)) {
+            if std::time::Instant::now() >= deadline { return Some(NceExit::Preempted); }
             let pc = cpu.regs.pc;
             self.interpreted_steps += 1;
             match cpu.step(mmu) {
@@ -253,7 +277,7 @@ impl NceEngine {
         None
     }
 
-    fn native(&mut self, cpu: &mut Cpu, mmu: &mut Memory, tick: &dyn Fn() -> u64) -> Result<NceExit, String> {
+    fn native(&mut self, cpu: &mut Cpu, mmu: &mut Memory, tick: &dyn Fn() -> u64, deadline: std::time::Instant) -> Result<NceExit, String> {
         let ctx_va = self.patcher.context();
         let mut no_preempt = vec![(ctx_va, ctx_va + ounce_nce::patch::CONTEXT_AREA)];
         no_preempt.extend(self.areas.iter().copied());
@@ -295,8 +319,13 @@ impl NceEngine {
                             if rt != 31 {
                                 ctx.x[rt as usize] = if sysreg == SYSREG_CNTFRQ_EL0 { TIMER_HZ } else { tick() };
                             }
-                            target = site.resume;
-                            continue;
+                            if std::time::Instant::now() >= deadline {
+                                ctx.pc = site.at + 4;
+                                NceExit::Preempted
+                            } else {
+                                target = site.resume;
+                                continue;
+                            }
                         }
                         SiteKind::Svc(id) => {
                             ctx.pc = site.at + 4;
