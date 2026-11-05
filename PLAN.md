@@ -1,8 +1,7 @@
 # ounce-core: THE plan (single source of truth)
 
 Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
-Every agent (Claude, Antigravity, Codex) reads it first, does **only the next unchecked step**, ticks it with
-proof, and ends. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
+Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works on the step it shows. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
 
 ## Owner-directed usability task (2026-11-05)
 The owner requested the next practical step after the audit: a native Mac launcher.
@@ -13,8 +12,8 @@ and verify actual guest frames through the ordinary GUI path. This does not chan
 ## Goal
 Run open-source Switch homebrew on macOS Apple Silicon (and Linux/Windows), with every claim backed by
 a real program's real frame.
-**Headline metric:** "N outside homebrew programs render their first frame pixel-exact." That's 20/20 today
-(after integration of #149 and the audit in #154), derived from the Ounce-Verify canonical report in CI; see the README.
+**Headline metric:** "N/20 outside homebrew programs render their first frame pixel-exact": the README's oracle
+badge, derived from the Ounce-Verify canonical report in CI. It is the only metric.
 
 ## Rule 0: no bullshit (overrides everything, for every agent)
 1. **No synthetic tests as progress.** Unit tests may guard code, but they never count as a milestone or a
@@ -22,9 +21,9 @@ a real program's real frame.
    pre-registered pixel oracle, in CI.
 2. **Proof or it didn't happen.** Never write "running", "works" or "verified" without a pixel-oracle pass or a
    screenshot of real frames. Instruction counts, "N tests pass" and "the window opened" are not proof.
-3. **One plan, one step per session.** Read this file, do the next unchecked step, tick it with one line of proof
-   (commit, CI run, oracle), then end. No side quests, no new plan files, no mid-step hand-offs between agents or
-   models.
+3. **One plan, one step at a time.** Work only on the step `scripts/next.sh` shows; it closes with one line of proof
+   (commit, CI run, oracle) written by `scripts/gate.sh --ship`. No side quests, no new plan files. Stopping mid-step
+   is fine after `gate.sh --checkpoint`; the next agent continues from it.
 4. **Ask the owner only for what needs their hands** (accounts, passwords, approvals). Pick sensible defaults
    for everything else. One question at a time.
 5. **Never undo or delete other agents' or the owner's work** without asking. Build on what exists.
@@ -141,13 +140,12 @@ change. A PR that breaks one is rejected.
       *Done when:* each claim links to its CI run or oracle file, and nothing claims more than the evidence shows.
       *Proof:* [PR #139](https://github.com/hffgzktbcc-blip/ounce-core/pull/139) (merged `9903f22`): README "How the proof works" and "Safe Rust by construction", evidence table and badges, each linked; the oracle badge is now checked against the canonical report like the headline. CI green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150292; oracles 15/20 with README check: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150245.
 
-## How we work (what got us unstuck)
-- **Single source of truth:** this file. Agents' own notes and handoffs are history, not plans.
-- **Real frames only:** pixel oracles in CI decide progress.
-- **One step per session:** short sessions save usage and stop drift.
-- **Environment first:** disk space, `~/Projects`, background jobs.
-- **Agents test themselves.** The owner is never the test dummy. Use scripted input and automated frame capture.
-
+## How we work (owner decision 2026-11-04)
+- **This file is the truth.** Notes, handoffs and memory are history, not plans.
+- **Real frames decide progress:** a step closes on its pixel-oracle evidence in CI, never on unit tests.
+- **Any agent continues any step:** `scripts/next.sh` shows where it stands; `scripts/gate.sh --checkpoint` saves (red or green) on the step's branch; `scripts/gate.sh --ship` ticks it with proof and GitHub auto-merges when CI is green.
+- **A step ticked with proof is closed**, unless one of its oracles fails again.
+- **Ask the owner only** about oracle corrections, legal doubt or anything destructive.
 
 Integration proof (2026-11-05): PR #154 combines #149 with the correctness audit. The canonical report
 from https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756 records 40 passing records
