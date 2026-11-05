@@ -519,3 +519,52 @@ After the fix, a native round-trip test on Apple M3 covers both TLS reads, the T
 constant, guest X18, SP and scratch-register preservation. All five patcher unit tests and three
 native integration tests pass. Full workspace and outside-corpus results are recorded in PR #154.
 This closes one audit finding; it adds no homebrew compatibility milestone. Nine findings remain.
+
+
+### Remaining correctness audit findings addressed (Codex, 2026-11-05)
+
+This follow-up supersedes the remaining-open list above. It completes the review's 34 identified
+items through targeted fixes or explicit unsupported paths; it does not claim the runtime has no
+other bugs, nor change PLAN.md's compatibility metric.
+
+- **R05 (native address reuse):** reproduced silent acceptance of a remapped rewritten page. Native
+  rewritten pages now participate in MMU code generations. Writes, remap, unmap/remap and moves
+  are rejected before re-entry; reload the guest image in a fresh engine. Re-patching generated
+  branches without original bytes is intentionally unsupported.
+- **R32 (host FP state):** reproduced host FPCR/FPSR leaking from a guest after a trampoline exit.
+  The host frame saves/restores both registers on normal and signal/fault returns. An isolated native
+  regression uses different guest state, checks guest capture and restores test-thread state even
+  on assertion failure. Trampoline and fault cases pass on Apple M3.
+- **R19 (module overlap):** preflight page-aligned extents of all loose-package NSOs before mapping
+  anything; reject cross-module overlap and address overflow. Companion read/load failures now
+  propagate instead of silently skipping the module. A high-offset main data segment colliding with
+  subsdk0 is rejected with no mappings installed.
+- **R29 (TLS exhaustion):** check both thread-local lifetime pools before publishing a thread handle;
+  return KernelError_OutOfResource (132, libnx public header) and clear the output handle. Unexpected
+  setup failures remove the unpublished thread. Pools remain lifetime allocations, not a new reuse
+  allocator. Static-TLS alignment/extent arithmetic is checked.
+- **R31 (Tier-4 accounting):** reproduced first FP load fault reporting one completed instruction.
+  Scalar/vector FP faults now use the count before the instruction; code-write exits count exactly
+  the completed store. Native tests cover D/Q loads and stores.
+- **R26 (WGSL builtins):** reproduced accepted ALD instance/vertex attributes panicking in emission.
+  Emit instance_index/vertex_index with raw-bit preservation. Ampere and Maxwell translations both
+  pass naga parsing/validation with those inputs.
+- **R27 (dynamic cbuf contract):** WGSL emission now returns a typed Unsupported result for indexed
+  constant buffers, before emitting a guessed 256-byte declaration or recursively reconstructing an
+  SSA expression. CPU evaluation retains its existing wrapping-offset behavior. Dynamic WGSL needs
+  an explicit binding-size/alignment contract before it can be enabled honestly.
+- **R34 (matrix layout):** reproduced a projective row-major transform being misread as column-major.
+  SetMvpMatrix explicitly uses row-major layout in both CPU and host replay; upload always transposes.
+  The older two-object GPU fixture now supplies matrices in that documented layout. A projective
+  transform regression checks the resulting clip vector.
+- **R21 (harness assertions):** gate firmware/applet/display/HID/storage outputs, module-load and texture
+  command results, font-placeholder bytes, host-clock range, all ASTC texels, synthetic opcode structure,
+  NVN command/buffer-cycle counts, and Stage 20's actual SVC stop/checksum. Guest service programs
+  branch to 0xBAD on failed SVC/CMIF results; Stage 19 checks bytes read and manifest contents. These
+  gates exposed and fixed Stage 19's wrong path address and Stage 20's accumulator-resetting branch.
+  A one-texel mutation and an injected failed guest service both fail their gates. Stage 24 claims
+  opcode translation structure, not packed-half arithmetic execution.
+
+Validation: 531 workspace/all-feature tests passed (7 ignored), and the strengthened release harness
+passes 36 checks across 25 stages. Local corpus/CI qualification and caveats are recorded in PR #154.
+No existing user checkout, peer branch or private project was modified.
