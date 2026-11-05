@@ -4,6 +4,12 @@ Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file i
 Every agent (Claude, Antigravity, Codex) reads it first, does **only the next unchecked step**, ticks it with
 proof, and ends. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
 
+## Owner-directed usability task (2026-11-05)
+The owner requested the next practical step after the audit: a native Mac launcher.
+Package the existing runtime, expose homebrew opening, session stop, SD folder and logs,
+and verify actual guest frames through the ordinary GUI path. This does not change the
+20/20 compatibility metric or complete the corpus expansion step.
+
 ## Goal
 Run open-source Switch homebrew on macOS Apple Silicon (and Linux/Windows), with every claim backed by
 a real program's real frame.

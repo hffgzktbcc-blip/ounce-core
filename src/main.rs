@@ -551,6 +551,17 @@ impl StageGate {
     }
 }
 
+fn queued_vi_frame(kernel: &HorizonKernel, memory: &Memory) -> Result<gpu::present::Frame, String> {
+    let submitted = kernel.ipc.submitted_vi_surface().ok_or("queued VI buffer cannot be resolved")?;
+    let surface = submitted.tiling_surface().ok_or("unsupported queued VI surface descriptor")?;
+    let frame = gpu::present::surface::frame_from_surface(memory, submitted.guest_addr, &surface)
+        .map_err(|error| format!("cannot decode queued VI surface: {error:?}"))?;
+    Ok(match kernel.ipc.submitted_vi_crop() {
+        Some((left, top, right, bottom)) => frame.cropped((left as usize, top as usize, right as usize, bottom as usize)),
+        None => frame,
+    })
+}
+
 fn run_vm_internal(
     mut cpu: Cpu,
     mut mmu: Memory,
@@ -576,6 +587,7 @@ fn run_vm_internal(
     let host_audio = HostAudioSink::new();
     let mut stop = VmStop::Budget;
     let mut last_input_poll = Instant::now();
+    let mut last_queued_frame = 0;
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -593,7 +605,34 @@ fn run_vm_internal(
             }
             Ok(StepResult::Svc(svc_id)) => {
                 instructions_executed += 1;
-                match kernel.dispatch_svc(svc_id, &mut cpu, &mut mmu) {
+                let result = kernel.dispatch_svc(svc_id, &mut cpu, &mut mmu);
+                if let Some(ref mut disp) = display {
+                    let queued = kernel.ipc.vi_frames_queued();
+                    if queued != last_queued_frame {
+                        let frame = match queued_vi_frame(&kernel, &mmu) {
+                            Ok(frame) => frame,
+                            Err(error) => {
+                                eprintln!("[Display Error] {error}");
+                                stop = VmStop::Fault;
+                                break;
+                            }
+                        };
+                        if last_queued_frame == 0 {
+                            println!("[Display] Guest VI frame: {}x{}", frame.width, frame.height);
+                        }
+                        last_queued_frame = queued;
+                        if !disp.present_guest_frame(frame) {
+                            stop = VmStop::WindowClosed;
+                            break;
+                        }
+                        frames_presented += 1;
+                        if max_frames > 0 && frames_presented >= max_frames {
+                            stop = VmStop::FrameLimit;
+                            break;
+                        }
+                    }
+                }
+                match result {
                     SvcResult::Success => {
                         // libnx homebrew reads HID shared memory between SVCs rather than per presented
                         // frame: hand it the host controller every few milliseconds.
@@ -619,7 +658,7 @@ fn run_vm_internal(
                         }
                     }
                     SvcResult::PresentFrame => {
-                        frames_presented += 1;
+                        if last_queued_frame == 0 { frames_presented += 1; }
 
                         // 1. Poll host keyboard and physical gamepad input
                         if let Some(ref mut h) = hid {
@@ -644,7 +683,7 @@ fn run_vm_internal(
                         // 3. Present video frame to host window
                         let draw_ops = kernel.nvgpu.drain_draw_ops();
                         if let Some(ref mut disp) = display {
-                            if !disp.present_frame_3d(&mmu, &draw_ops) {
+                            if last_queued_frame == 0 && !disp.present_frame_3d(&mmu, &draw_ops) {
                                 println!("\n[Display] Window closed by user. Shutting down.");
                                 stop = VmStop::WindowClosed;
                                 break;

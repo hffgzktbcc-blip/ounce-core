@@ -78,6 +78,13 @@ jobs:
       - name: Build with gpu-present
         run: cargo build --release --features gpu-present
 
+      - name: Build and smoke-test native Mac app
+        if: runner.os == 'macOS'
+        run: |
+          scripts/build_macos_app.sh
+          codesign --verify --deep --strict "dist/Ounce Core.app"
+          "dist/Ounce Core.app/Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core" test
+
       - name: Run unit tests with gpu-present
         run: cargo test --release --features gpu-present -- --nocapture --test-threads=1
 
