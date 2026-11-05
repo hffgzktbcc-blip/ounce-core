@@ -1149,6 +1149,16 @@ impl IpcManager {
                 let fd = mmu.read_u32(args_base).unwrap_or(0);
                 let request = mmu.read_u32(args_base + 4).unwrap_or(0);
                 let size = ioctl_size(request);
+                // GPFIFO/driver transfer buffers are bounded host work, not allocations
+                // proportional to an arbitrary 36-bit HIPC descriptor length.
+                const MAX_IOCTL_EXTRA: u64 = 16 * 1024 * 1024;
+                let extra_in = if cmd_id == 11 { input(1) } else { None };
+                let extra_out = if cmd_id == 12 { output(1) } else { None };
+                if extra_in.is_some_and(|b| b.size > MAX_IOCTL_EXTRA)
+                    || extra_out.is_some_and(|b| b.size > MAX_IOCTL_EXTRA) {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[super::nvdrv::NV_BAD_PARAMETER], None);
+                    return 0;
+                }
                 let mut data = if ioctl_has_input(request) { read_buf(mmu, input(0), size) } else { vec![0u8; size] };
                 let inbuf = if cmd_id == 11 {
                     let b = input(1).unwrap_or_default();
@@ -1565,6 +1575,23 @@ mod tests {
         let time_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
         let timestamp = ((time_hi as u64) << 32) | (time_lo as u64);
         assert!(timestamp > 1700000000); // Valid UNIX timestamp (2024+)
+    }
+
+    #[test]
+    fn oversized_ioctl_extra_descriptors_are_rejected_before_allocation() {
+        use crate::kernel::hipc::Buffer;
+        for cmd in [11, 12] {
+            let mut memory = Memory::new();
+            memory.map_range(0x8000, 4096, Permission::READ_WRITE);
+            memory.write_u32(0x8080, 0).unwrap();
+            memory.write_u32(0x8084, 0).unwrap();
+            let mut ipc = IpcManager::new();
+            let buffers = vec![Buffer::default(), Buffer { addr: 0, size: (1u64 << 36) - 1 }];
+            if cmd == 11 { ipc.request.send_buffers = buffers; }
+            else { ipc.request.recv_buffers = buffers; }
+            ipc.handle_nvdrv(cmd, 0x8080, 0x8000, &mut memory, &mut NvgpuChannel::new());
+            assert_eq!(memory.read_u32(0x8020).unwrap(), super::super::nvdrv::NV_BAD_PARAMETER);
+        }
     }
 
     #[test]

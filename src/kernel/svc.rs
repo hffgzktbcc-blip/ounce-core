@@ -861,13 +861,17 @@ impl HorizonKernel {
             // 0x25: svcGetThreadId(&out_thread_id, handle)
             0x25 => {
                 let handle = cpu.regs.read_w(1);
-                let id = match self.scheduler.threads.get(&handle) {
-                    Some(t) if handle != super::scheduler::MAIN_THREAD_KEY => t.thread_id,
-                    // The CurrentThread pseudo-handle (and the main thread's own handle) name the caller.
-                    _ => self.scheduler.current_thread_id(),
-                };
-                cpu.regs.write_x(0, 0);
-                cpu.regs.write_x(1, id);
+                match self.scheduler.resolve(handle) {
+                    Some(key) => {
+                        let id = self.scheduler.threads[&key].thread_id;
+                        cpu.regs.write_x(0, 0);
+                        cpu.regs.write_x(1, id);
+                    }
+                    None => {
+                        cpu.regs.write_x(0, RESULT_INVALID_HANDLE);
+                        cpu.regs.write_x(1, 0);
+                    }
+                }
                 SvcResult::Success
             }
 
@@ -888,10 +892,23 @@ impl HorizonKernel {
                 let str_addr = cpu.regs.read_x(0);
                 let str_len = cpu.regs.read_x(1) as usize;
 
+                // Debug messages are bounded host work, even for malformed guest arguments.
+                if str_len > 64 * 1024 {
+                    cpu.regs.write_x(0, RESULT_INVALID_SIZE);
+                    return SvcResult::Success;
+                }
+                if str_addr.checked_add(str_len as u64).is_none() {
+                    cpu.regs.write_x(0, RESULT_INVALID_ADDRESS);
+                    return SvcResult::Success;
+                }
+
                 let mut buf = vec![0u8; str_len];
                 if mmu.read_bytes(str_addr, &mut buf).is_ok() {
                     let text = String::from_utf8_lossy(&buf);
                     print!("{text}");
+                } else {
+                    cpu.regs.write_x(0, RESULT_INVALID_MEMORY_STATE);
+                    return SvcResult::Success;
                 }
 
                 cpu.regs.write_x(0, 0);

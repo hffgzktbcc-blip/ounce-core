@@ -3347,13 +3347,20 @@ fn inspect_directory_package(dir_path: &str) {
     }
 }
 
+/// Shell callers must distinguish a completed run from a load/execution failure.
+fn require_cli_success(outcome: VmOutcome) {
+    if !matches!(outcome.stop, VmStop::ExitProcess | VmStop::WindowClosed | VmStop::FrameLimit) {
+        std::process::exit(1);
+    }
+}
+
 fn run_directory_package(dir_path: &str, gui_mode: bool) {
     println!("[Loader] Bootstrapping loose directory package (OunceCake format): {}", dir_path);
     let pkg = match loader::LoosePackageLoader::discover(dir_path) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("[Loader Error] Failed to discover loose package: {}", e);
-            return;
+            std::process::exit(1);
         }
     };
 
@@ -3398,14 +3405,15 @@ fn run_directory_package(dir_path: &str, gui_mode: bool) {
                 );
                 let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
-                run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0);
+                require_cli_success(run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0));
             } else {
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
-                run_vm(cpu, mmu, kernel, 100_000);
+                require_cli_success(run_vm(cpu, mmu, kernel, 100_000));
             }
         }
         Err(e) => {
             eprintln!("[Loader Error] Failed to load loose package into VM: {}", e);
+            std::process::exit(1);
         }
     }
 }
@@ -3420,7 +3428,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("Failed to read file: {}", e);
-            return;
+            std::process::exit(1);
         }
     };
 
@@ -3430,7 +3438,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
             if gui_mode {
                 println!("[NCE] Native execution runs headless for now.");
             }
-            run_native_nro(path, &bytes, guest_args);
+            if !run_native_nro(path, &bytes, guest_args) { std::process::exit(1); }
             return;
         }
         #[cfg(not(feature = "nce"))]
@@ -3457,7 +3465,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
             if is_nro {
                 if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, &bytes, guest_args) {
                     eprintln!("[Loader Error] homebrew environment: {}", e);
-                    return;
+                    std::process::exit(1);
                 }
             }
             // After the NRO went on the virtual SD card, so it stays in memory and is not copied into the folder.
@@ -3481,36 +3489,37 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
                 );
                 let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
-                run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0);
+                require_cli_success(run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0));
             } else {
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
                 // libnx startup alone runs tens of thousands of instructions.
                 let budget = if is_nro { NRO_INSTRUCTION_BUDGET } else { 100_000 };
-                run_vm(cpu, mmu, kernel, budget);
+                require_cli_success(run_vm(cpu, mmu, kernel, budget));
             }
         }
         Err(e) => {
             eprintln!("[Loader Error] {}", e);
+            std::process::exit(1);
         }
     }
 }
 
 /// `run <nro> --cpu=native`: the NRO on the host CPU, headless, until it exits, breaks or faults.
 #[cfg(feature = "nce")]
-fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) {
+fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> bool {
     use cpu::nce::{NceEngine, NceExit};
     let arena = match cpu::nce::reserve_window() {
         Ok(arena) => arena,
-        Err(e) => return eprintln!("[NCE] Native execution unavailable: {e}"),
+        Err(e) => return { eprintln!("[NCE] Native execution unavailable: {e}"); false },
     };
     let base = arena.base();
     let (mut cpu, mut mmu, mut kernel) = setup_vm_in(Memory::with_arena(arena), base, cpu::nce::ALIAS_SIZE);
     let code = base + DEFAULT_BASE_ADDR;
     if let Err(e) = BootLoader::load_any_package(bytes, code, &[0; 16], &mut mmu) {
-        return eprintln!("[Loader Error] {e}");
+        return { eprintln!("[Loader Error] {e}"); false };
     }
     if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, bytes, guest_args) {
-        return eprintln!("[Loader Error] homebrew environment: {e}");
+        return { eprintln!("[Loader Error] homebrew environment: {e}"); false };
     }
     if let Some(dir) = SDMC_HOST_DIR.get() {
         kernel.vfs.set_sdmc_directory(dir);
@@ -3519,11 +3528,12 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) {
     // The NRO header (after the entry branch) is data.
     let mut engine = match NceEngine::new(&mut mmu, base, vec![(code + 4, code + 0x80)]) {
         Ok(engine) => engine,
-        Err(e) => return eprintln!("[NCE] {e}"),
+        Err(e) => return { eprintln!("[NCE] {e}"); false },
     };
     println!("[NCE] Running natively at 0x{code:016X} (guest window 0x{base:X})");
     let start = Instant::now();
     let (mut svcs, mut frames) = (0u64, 0u64);
+    let mut completed = false;
     loop {
         match engine.run(&mut cpu, &mut mmu, &|| kernel.system_tick()) {
             NceExit::Svc(id) => {
@@ -3534,7 +3544,7 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) {
                         frames += 1;
                         println!("[VM] VSync / Frame {frames} presented.");
                     }
-                    SvcResult::ExitProcess => { println!("[VM] Guest exited (svcExitProcess)."); break; }
+                    SvcResult::ExitProcess => { completed = true; println!("[VM] Guest exited (svcExitProcess)."); break; }
                     SvcResult::Break { reason, .. } => { println!("[VM] Hit svcBreak: reason 0x{reason:X}"); break; }
                     SvcResult::Unhandled(id) => { println!("[VM] Stopping on unhandled SVC 0x{id:X}"); break; }
                 }
@@ -3549,6 +3559,7 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) {
     }
     println!("[NCE] {svcs} SVCs, {frames} frames in {:.3} s; rewrote {:?}; {} instructions interpreted",
         start.elapsed().as_secs_f64(), engine.stats, engine.interpreted_steps);
+    completed
 }
 
 /// Heap handed to homebrew through the `OverrideHeap` ConfigEntry.
