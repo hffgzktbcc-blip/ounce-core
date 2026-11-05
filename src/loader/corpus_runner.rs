@@ -710,6 +710,23 @@ fn external_corpus_nro_probe_both_engines() {
 #[ignore = "requires OUNCE_SIMPLEGFX_NRO pointing at simplegfx.nro built from the pinned source"]
 fn simplegfx_first_frame_oracle() {
     let path = std::env::var_os("OUNCE_SIMPLEGFX_NRO").expect("OUNCE_SIMPLEGFX_NRO is unset");
+    // The ordinary GUI runner must present the same guest pixels, not its legacy demo VRAM.
+    // Headless is the presentation backend here so this route is exercised in CI too.
+    {
+        let nro = std::fs::read(&path).unwrap();
+        let (mut cpu, mut memory, mut kernel) = crate::setup_vm();
+        super::super::BootLoader::load_any_package(&nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut memory).unwrap();
+        crate::setup_homebrew_nro(&mut cpu, &mut memory, &mut kernel, "simplegfx.nro", &nro, &[]).unwrap();
+        cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
+        let mut display = crate::gpu::DisplayServer::new(crate::gpu::display::DEFAULT_FRAMEBUFFER_ADDR,
+            crate::gpu::DisplayConfig { backend: crate::gpu::BackendKind::Headless, ..Default::default() });
+        let mut hid = crate::hid::HidServer::new(crate::HID_SHARED_MEM_ADDR);
+        let result = crate::run_vm_internal(cpu, memory, kernel, Some(&mut display), Some(&mut hid), 100_000_000, 2);
+        assert_eq!(result.stop, crate::VmStop::FrameLimit, "ordinary GUI runner did not present the queued frames");
+        assert_eq!(display.swapchain.vsync_count, 2);
+        assert_eq!(display.swapchain.front_buffer.content_hash(), 0x1dd22fb233d7a325,
+            "GUI runner must show the oracle's second guest frame without a telemetry overlay");
+    }
     let frames: u64 = std::env::var("OUNCE_SIMPLEGFX_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(61);
     // Hash with alpha forced to 0xFF, from the oracle table.
     let expected_hash = |i: u64| match i {

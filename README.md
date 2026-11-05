@@ -404,3 +404,19 @@ ounce-core/
 <sub>Ounce-Core · experimental systems research · maintained in the open</sub>
 
 </div>
+
+### Native Mac launcher (local preview)
+
+With Rust and Xcode command-line tools installed, build and install locally:
+
+```sh
+scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.app"
+```
+
+Open **Ounce Core.app**, choose **Open Homebrew…**, and select a homebrew `.nro`.
+**Graphics Demo** opens the bundled diagnostic; **Stop** ends the current session.
+**SD Card Folder…** selects the host folder mounted as `sdmc:`. Logs and the default
+SD folder live under `~/Library/Application Support/Ounce Core/`. **Show Logs** opens
+the log folder. Closing the launcher stops its session. The app is locally ad-hoc
+signed, not a notarized distribution release. Supported programs remain those backed
+by the compatibility oracles; this launcher does not expand that claim.
