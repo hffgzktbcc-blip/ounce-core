@@ -82,6 +82,9 @@ pub struct HorizonKernel {
     pub nvn: crate::gpu::nvn::NvnDriver,
     pub sdk_hle: super::sdk_hle::SdkHleRuntime,
     pub reply_receive_step: u32,
+    /// Controlled process entropy for differential fixtures; absent from production builds.
+    #[cfg(test)]
+    pub(crate) test_entropy: Option<[u64; 4]>,
 }
 
 impl Default for HorizonKernel {
@@ -108,6 +111,8 @@ impl HorizonKernel {
             nvn: crate::gpu::nvn::NvnDriver::new(),
             sdk_hle: super::sdk_hle::SdkHleRuntime::new(),
             reply_receive_step: 0,
+            #[cfg(test)]
+            test_entropy: None,
         }
     }
 
@@ -142,7 +147,11 @@ impl HorizonKernel {
             6 => 12 * 1024 * 1024 * 1024,  // TotalMemorySize: 12 GB LPDDR5
             7 => (self.heap_size as u64) + 0x10_0000, // UsedMemorySize
             8 => 0,                        // DebuggerAttached
-            11 if sub_type < 4 => 0x9E37_79B9_7F4A_7C15u64.rotate_left(sub_type as u32 * 16) ^ self.system_tick(), // RandomEntropy
+            11 if sub_type < 4 => {
+                #[cfg(test)]
+                if let Some(entropy) = self.test_entropy { return Some(entropy[sub_type as usize]); }
+                0x9E37_79B9_7F4A_7C15u64.rotate_left(sub_type as u32 * 16) ^ self.system_tick()
+            }
             12 => self.addr_base + 0x0000_0000_0800_0000, // AslrRegionAddress
             13 => 0x0000_007F_F800_0000 - self.addr_base, // AslrRegionSize (to the top of the 39-bit space)
             14 => 0x0000_007F_0000_0000,   // StackRegionAddress

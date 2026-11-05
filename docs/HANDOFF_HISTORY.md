@@ -565,7 +565,7 @@ other bugs, nor change PLAN.md's compatibility metric.
   A one-texel mutation and an injected failed guest service both fail their gates. Stage 24 claims
   opcode translation structure, not packed-half arithmetic execution.
 
-Validation: 533 workspace/all-feature tests passed (7 ignored), and the strengthened release harness
+Validation: 534 workspace/all-feature tests passed (7 ignored), and the strengthened release harness
 passes 36 checks across 25 stages. Local corpus/CI qualification and caveats are recorded in PR #154.
 No existing user checkout, peer branch or private project was modified.
 
@@ -579,3 +579,11 @@ selection, not the runtime feature gates. The native arena test still runs on ma
 Final review hardening: overlap checks distinguish module identities even when discovered names are
 duplicated (`subsdk0` and `subsdk0.nso`). A regression covers that collision. Harness subsystem success
 messages now require all of that stage's checks, and only the final gate summary claims overall success.
+
+
+A later Ubuntu default-build job exposed nondeterministic project-fixture inputs: the thread fixture
+returned identical correct output, but exact Interpreter/Tier-3 SVC traces diverged at an early
+virtual-memory query. Process entropy was derived from separate host-clock readings. The test runner
+now supplies identical process entropy through a cfg(test)-only kernel input. Exact SVC comparison
+remains enabled, with 30 repeated engine pairs as a regression. Production builds and the independent
+corpus runner do not use the override. All 534 workspace/all-feature tests pass locally.
