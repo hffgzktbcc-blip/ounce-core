@@ -147,12 +147,11 @@ impl Ctx<'_> {
         match op {
             Op::Const(bits) => format!("{bits:#010x}u"),
             Op::Cbuf { bank, offset } => format!("cb{bank}[{}u][{}u]", offset / 16, (offset / 4) % 4),
-            Op::CbufIndexed { bank, offset, reg } => {
-                let r = self.expr(self.f.op(reg));
-                format!("cb{bank}[({offset}u + {r}) / 16u][(({offset}u + {r}) / 4u) % 4u]")
-            }
+            Op::CbufIndexed { .. } => unreachable!("dynamic constant buffers are rejected before emission"),
             Op::Attr { addr } => match attr_slot(addr) {
                 Some(AttrSlot::Generic { loc, comp }) => format!("vin.a{loc}.{}", COMP[comp as usize]),
+                None if addr == 0x2f8 => "bitcast<f32>(vin.instance_index)".into(),
+                None if addr == 0x2fc => "bitcast<f32>(vin.vertex_index)".into(),
                 _ => unreachable!("lowering only emits generic vertex inputs"),
             },
             Op::Interp { addr, freq, mul } => {
@@ -293,6 +292,8 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
     // Constant buffers: size = highest vec4 touched + 1.
     let mut cbufs: BTreeMap<u8, u32> = BTreeMap::new();
     let mut inputs: BTreeMap<u32, ()> = BTreeMap::new();
+    let instance_index = f.values.iter().any(|op| matches!(op, Op::Attr { addr: 0x2f8 }));
+    let vertex_index = f.values.iter().any(|op| matches!(op, Op::Attr { addr: 0x2fc }));
     // Texture handle -> sampled (needs a sampler binding).
     let mut textures: BTreeMap<TexHandle, bool> = BTreeMap::new();
     for op in &f.values {
@@ -305,11 +306,9 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
                 let e = cbufs.entry(bank).or_insert(0);
                 *e = (*e).max(offset as u32 / 16 + 1);
             }
-            Op::CbufIndexed { bank, offset, .. } => {
-                let e = cbufs.entry(bank).or_insert(0);
-                // Dynamic indexing: ensure buffer declaration has enough capacity (at least offset/16 + 16 vec4s)
-                *e = (*e).max(offset as u32 / 16 + 16);
-            }
+            Op::CbufIndexed { .. } => return Err(XlateError::Unsupported {
+                at: 0, what: "dynamic constant buffer requires an explicit binding-size contract",
+            }),
             Op::Attr { addr } | Op::Interp { addr, .. } => {
                 if let Some(AttrSlot::Generic { loc, .. }) = attr_slot(addr) {
                     inputs.insert(loc, ());
@@ -386,8 +385,11 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
                     None => {}
                 }
             }
-            if !inputs.is_empty() {
+            let has_inputs = !inputs.is_empty() || instance_index || vertex_index;
+            if has_inputs {
                 writeln!(out, "struct VsIn {{").unwrap();
+                if instance_index { writeln!(out, "    @builtin(instance_index) instance_index: u32,").unwrap(); }
+                if vertex_index { writeln!(out, "    @builtin(vertex_index) vertex_index: u32,").unwrap(); }
                 for &loc in inputs.keys() {
                     writeln!(out, "    @location({loc}) a{loc}: vec4<f32>,").unwrap();
                     iface.vertex_inputs.push(loc);
@@ -401,7 +403,7 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
                 iface.varyings.push(Varying { location: loc, interpolation: Interpolation::Perspective });
             }
             writeln!(out, "}};\n").unwrap();
-            let param = if inputs.is_empty() { "" } else { "vin: VsIn" };
+            let param = if has_inputs { "vin: VsIn" } else { "" };
             writeln!(out, "@vertex\nfn main({param}) -> VsOut {{").unwrap();
             writeln!(out, "    var out: VsOut;").unwrap();
             body(&mut out);
