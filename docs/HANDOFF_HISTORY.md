@@ -669,3 +669,14 @@ on Interpreter and Tier-3) for combined code `2d88c99`. The job's only failure w
 README count. Derived the headline/badge with scripts/corpus_verify.py and promoted hybrid-app in the
 recorded-pass ratchet from that report. Updated current PLAN.md status without changing its next step.
 A final CI run must qualify the evidence/documentation update before merge.
+
+## Mac launcher preview (2026-11-05)
+Native AppKit launcher and local packaging script added on `codex/macos-launcher`.
+The ordinary GUI now presents decoded VI surfaces, including crop, without the
+synthetic framebuffer overlay. The existing simplegfx oracle also checks this GUI
+route against the frame-2 hash (regression failed before the fix).
+Local checks: 467 default tests, 536 all-feature workspace tests, 36 harness checks.
+Installed app opened the outside simplegfx NRO through its file picker on Apple M3
+Metal; guest 1280x720 frames observed, Stop restored the ready controls. The bundled
+graphics diagnostic remains a basic strip/gradient display, not a compatibility demo.
+Compatibility remains 20/20; corpus expansion is still the next PLAN milestone.
