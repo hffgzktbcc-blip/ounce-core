@@ -526,15 +526,14 @@ impl NvDrv {
                 }
                 NV_OK
             }
-            // GET_TPC_MASKS { u32 mask_buf_size; u32 pad[3]; u64 mask_buf_addr; }: GPC 0 has TPCs 0 and 1
+            // GET_TPC_MASKS { u32 mask_buf_size; u32 pad[3]; u64 mask_buf_addr; }: GPC 0 has TPCs 0 and 1.
+            // The mask goes to the guest buffer `mask_buf_addr` names, which the IPC layer writes
+            // (see `TPC_MASKS`); an Ioctl3 output buffer gets it too.
             0x06 => {
                 if let Some(out) = extra.outbuf {
                     if out.len() >= 4 {
-                        out[..4].copy_from_slice(&3u32.to_le_bytes());
+                        out[..4].copy_from_slice(&TPC_MASKS.to_le_bytes());
                     }
-                }
-                if data.len() >= 0x1C {
-                    wr32(data, 0x18, 3);
                 }
                 NV_OK
             }
@@ -721,6 +720,12 @@ impl NvDrv {
         })
     }
 }
+
+/// `/dev/nvhost-ctrl-gpu` GET_TPC_MASKS request code.
+pub const NVGPU_GPU_IOCTL_GET_TPC_MASKS: u32 = 0xC018_4706;
+
+/// `GET_TPC_MASKS` result for GPC 0.
+pub const TPC_MASKS: u32 = 3;
 
 /// `ZCULL_GET_CTX_SIZE` result.
 pub const ZCULL_CTX_SIZE: u32 = 0x8000;

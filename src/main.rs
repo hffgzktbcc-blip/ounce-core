@@ -3635,7 +3635,7 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> bool {
 }
 
 /// Heap handed to homebrew through the `OverrideHeap` ConfigEntry.
-const NRO_HEAP_SIZE: usize = 0x200_0000; // 32 MB
+const NRO_HEAP_SIZE: usize = 0x1000_0000; // 256 MB: Mesa-based homebrew allocates tens of MB of GPU buffers
 const NRO_CONFIG_ADDR: u64 = 0x7FFF_0000;
 const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
 /// Main thread handle passed to homebrew. Not the `CurrentThread` pseudo-handle (0xFFFF8000): libnx mutexes
@@ -3688,6 +3688,7 @@ fn setup_homebrew_nro(
         main_thread_handle: Some(NRO_MAIN_THREAD_HANDLE),
         heap: Some((kernel.heap_base, NRO_HEAP_SIZE as u64)),
         argv: Some(argv),
+        next_load: true,
         ..Default::default()
     }
     .setup(cpu, mmu, kernel.addr_base + NRO_CONFIG_ADDR)?;
