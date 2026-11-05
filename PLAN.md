@@ -140,3 +140,8 @@ change. A PR that breaks one is rejected.
 - **Any agent continues any step:** `scripts/next.sh` shows where it stands; `scripts/gate.sh --checkpoint` saves (red or green) on the step's branch; `scripts/gate.sh --ship` ticks it with proof and GitHub auto-merges when CI is green.
 - **A step ticked with proof is closed**, unless one of its oracles fails again.
 - **Ask the owner only** about oracle corrections, legal doubt or anything destructive.
+
+Integration proof (2026-11-05): PR #154 combines #149 with the correctness audit. The canonical report
+from https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756 records 40 passing records
+(20/20 on Interpreter and Tier-3) for the combined code at `2d88c99` (tested through the PR merge ref).
+The README metric was derived using scripts/corpus_verify.py. Step 7 (expand to 50) remains next.

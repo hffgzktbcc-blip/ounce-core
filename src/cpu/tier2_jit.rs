@@ -146,7 +146,7 @@ impl Tier2Block {
 
             match inst {
                 Instruction::AddSubImm { is_64, is_sub, set_flags, rd, rn, imm } => {
-                    let op1 = if !set_flags && rn == 31 {
+                    let op1 = if rn == 31 {
                         cpu.regs.sp
                     } else if is_64 {
                         cpu.regs.read_x(rn)

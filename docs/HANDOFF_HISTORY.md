@@ -518,3 +518,154 @@ Short on purpose: every agent loads this file at session start. The plan is [`PL
 - PLAN.md's "Legal guardrails" apply to every commit, and CI enforces them (`scripts/check_legal_guardrails.sh`). ounce-core is not a clean-room project (see README, "Sources").
 - No proprietary keys (`prod.keys`) or retail copyrighted game assets committed to the git repository.
 - Use open documentation and permissive code: ARM manuals, Mesa NVK/nouveau, NVIDIA open-gpu-doc, public SwitchBrew specifications, and MIT code as PLAN.md allows.
+
+## Correctness audit follow-up (Codex, 2026-11-05)
+
+Owner requested a complete local/source review and autonomous follow-up. This batch is based on
+`9073139c992c7c12a122671993420129e2bfba8c` (main after #152). It does not import the open #149
+branch or anything from the owner's non-public projects, and does not change PLAN.md's milestone claims.
+
+Changes address audit findings R01-R03, R06-R18, R20, R22-R25, R28, R30 and R33:
+- Tier-4 memory callbacks borrow live page storage for each access. The safe MemoryBus API no longer
+  accepts integer host pointers, and cached TLB metadata cannot outlive a page or bus. Arena-backed
+  memory uses ordinary MMU accessors. Code writes still pass through invalidation. This changes the
+  public PageMapping API and removes the previous raw-pointer fast path; throughput needs remeasurement.
+- Correct CMP/SP, signed W-register immediate loads, two-lane double FADD/FSUB and scalar FMAX/FMIN
+  NaN/signed-zero behavior. Add scalar FNMUL decoding/lowering (the word reported by CI). Regression
+  tests exercise the interpreter and compiled tiers; 2D vectors currently fall back from Tier-4.
+- Bound interpreted/native NCE scheduling slices; bound debug output, extra ioctl buffers, DMA work,
+  draw vertex counts and ADPCM output allocation. Saturate ADPCM with wide intermediate arithmetic.
+- Reject truncated NRO sections before mapping; propagate persistent file failures and file read errors;
+  keep directory cursors on failed output; resolve actual thread handles; reject MMU address wrap.
+- Allocate distinct live GPU syncpoints, respect stencil clear masks, and reject unsupported depth layers
+  before writes. CLI load/execution failures now return nonzero status. Corpus reruns delete old verdicts,
+  reject successful verdicts from failed processes, and report the actual checked-out CI commit.
+
+Local validation: 518 workspace/all-feature tests passed, 7 ignored; default release tests passed;
+27 harness checks across 25 stages passed; 16 Python corpus/tooling tests and 11 validator tests passed.
+Release workspace/all-feature/all-target Clippy completes with existing warnings. These are regression
+checks, not new homebrew compatibility milestones. Local outside-corpus pixel oracles preserve 17/20 passes on Interpreter, Tier-3 and Native, using
+devkitA64 16.1/libnx 4.12. SDL2, hbmenu and hybrid retain the main baseline failures.
+Review: https://github.com/hffgzktbcc-blip/ounce-core/pull/154 (draft; CI not yet qualified).
+
+Still open from the review (static findings; not silently treated as fixes):
+- R04: addressed by the native X18 follow-up below (2026-11-05).
+- R05: NCE executable address reuse needs re-patching or explicit rejection.
+- R19: companion-module extents need overlap checks before fixed-slot placement.
+- R21: several old harness stages need assertions on advertised subsystem results.
+- R26/R27: WGSL builtin emission and dynamic constant-buffer bounds need explicit contracts.
+- R29: thread-local allocation exhaustion must be reported instead of creating invalid thread state.
+- R31: Tier-4 FP/SIMD fault and code-write instruction accounting needs exact slice tests.
+- R32: native entry must validate/restablish host FPCR state across guest execution.
+- R34: legacy host replay needs an explicit matrix-layout contract instead of a value heuristic.
+
+All cross-platform CI gates must pass before merging. The owner's other checkouts and uncommitted
+changes were left untouched. No broad formatting or architecture replacement was performed.
+
+
+### Native X18 audit follow-up (2026-11-05)
+
+R04 reproduced before the fix: `special_x18_rewrites_never_use_the_physical_register` failed on an
+emitted ADRP targeting physical X18. Special TPIDR_EL0/TPIDRRO_EL0 reads and CTR_EL0 constants now
+write the guest context slot through saved X16/X17; TPIDR_EL0 writes source that slot. Ordinary
+register forms remain unchanged. The emitted-code regression checks every instruction in these
+special stubs for physical X18 use, without executing the formerly unsafe form.
+
+After the fix, a native round-trip test on Apple M3 covers both TLS reads, the TLS write, the CTR
+constant, guest X18, SP and scratch-register preservation. All five patcher unit tests and three
+native integration tests pass. Full workspace and outside-corpus results are recorded in PR #154.
+This closes one audit finding; it adds no homebrew compatibility milestone. Nine findings remain.
+
+
+### Remaining correctness audit findings addressed (Codex, 2026-11-05)
+
+This follow-up supersedes the remaining-open list above. It completes the review's 34 identified
+items through targeted fixes or explicit unsupported paths; it does not claim the runtime has no
+other bugs, nor change PLAN.md's compatibility metric.
+
+- **R05 (native address reuse):** reproduced silent acceptance of a remapped rewritten page. Native
+  rewritten pages now participate in MMU code generations. Writes, remap, unmap/remap and moves
+  are rejected before re-entry; reload the guest image in a fresh engine. Re-patching generated
+  branches without original bytes is intentionally unsupported.
+- **R32 (host FP state):** reproduced host FPCR/FPSR leaking from a guest after a trampoline exit.
+  The host frame saves/restores both registers on normal and signal/fault returns. An isolated native
+  regression uses different guest state, checks guest capture and restores test-thread state even
+  on assertion failure. Trampoline and fault cases pass on Apple M3.
+- **R19 (module overlap):** preflight page-aligned extents of all loose-package NSOs before mapping
+  anything; reject cross-module overlap and address overflow. Companion read/load failures now
+  propagate instead of silently skipping the module. A high-offset main data segment colliding with
+  subsdk0 is rejected with no mappings installed.
+- **R29 (TLS exhaustion):** check both thread-local lifetime pools before publishing a thread handle;
+  return KernelError_OutOfResource (132, libnx public header) and clear the output handle. Unexpected
+  setup failures remove the unpublished thread. Pools remain lifetime allocations, not a new reuse
+  allocator. Static-TLS alignment/extent arithmetic is checked.
+- **R31 (Tier-4 accounting):** reproduced first FP load fault reporting one completed instruction.
+  Scalar/vector FP faults now use the count before the instruction; code-write exits count exactly
+  the completed store. Native tests cover D/Q loads and stores.
+- **R26 (WGSL builtins):** reproduced accepted ALD instance/vertex attributes panicking in emission.
+  Emit instance_index/vertex_index with raw-bit preservation. Ampere and Maxwell translations both
+  pass naga parsing/validation with those inputs.
+- **R27 (dynamic cbuf contract):** WGSL emission now returns a typed Unsupported result for indexed
+  constant buffers, before emitting a guessed 256-byte declaration or recursively reconstructing an
+  SSA expression. CPU evaluation retains its existing wrapping-offset behavior. Dynamic WGSL needs
+  an explicit binding-size/alignment contract before it can be enabled honestly.
+- **R34 (matrix layout):** reproduced a projective row-major transform being misread as column-major.
+  SetMvpMatrix explicitly uses row-major layout in both CPU and host replay; upload always transposes.
+  The older two-object GPU fixture now supplies matrices in that documented layout. A projective
+  transform regression checks the resulting clip vector.
+- **R21 (harness assertions):** gate firmware/applet/display/HID/storage outputs, module-load and texture
+  command results, font-placeholder bytes, host-clock range, all ASTC texels, synthetic opcode structure,
+  NVN command/buffer-cycle counts, and Stage 20's actual SVC stop/checksum. Guest service programs
+  branch to 0xBAD on failed SVC/CMIF results; Stage 19 checks bytes read and manifest contents. These
+  gates exposed and fixed Stage 19's wrong path address and Stage 20's accumulator-resetting branch.
+  A one-texel mutation and an injected failed guest service both fail their gates. Stage 24 claims
+  opcode translation structure, not packed-half arithmetic execution.
+
+Validation: 534 workspace/all-feature tests passed (7 ignored), and the strengthened release harness
+passes 36 checks across 25 stages. Local corpus/CI qualification and caveats are recorded in PR #154.
+No existing user checkout, peer branch or private project was modified.
+
+
+CI follow-up: the first full batch exposed an x86 test-portability error: an arena-based native
+lifecycle test was not gated to supported AArch64 hosts. It is now gated like the arena implementation,
+with separate portable metadata/generation coverage for all four rejection cases. This changes test
+selection, not the runtime feature gates. The native arena test still runs on macOS and Linux AArch64.
+
+
+Final review hardening: overlap checks distinguish module identities even when discovered names are
+duplicated (`subsdk0` and `subsdk0.nso`). A regression covers that collision. Harness subsystem success
+messages now require all of that stage's checks, and only the final gate summary claims overall success.
+
+
+A later Ubuntu default-build job exposed nondeterministic project-fixture inputs: the thread fixture
+returned identical correct output, but exact Interpreter/Tier-3 SVC traces diverged at an early
+virtual-memory query. Process entropy was derived from separate host-clock readings. The test runner
+now supplies identical process entropy through a cfg(test)-only kernel input. Exact SVC comparison
+remains enabled, with 30 repeated engine pairs as a regression. Production builds and the independent
+corpus runner do not use the override. All 534 workspace/all-feature tests pass locally.
+
+
+### Audit / homebrew integration (Codex, 2026-11-05)
+
+Owner's "go" continues the coordinated integration of PR #154 and #149. An isolated worktree combines
+`203f208` (audit) with `74ded6a` (step3-sdl2) without rewriting either source branch. Both histories and
+all audit guards are retained. Text conflicts were limited to scalar FP decoding and min/max handling:
+FNMUL and NaN-propagating FMAX/FMIN remain, alongside FMAXNM/FMINNM. Numeric min/max use Tier-4's
+reference fallback because its native min/max lowering propagates NaNs. Added single/double tests
+cover quiet NaNs and signed zero while retaining the original native-lowering assertions elsewhere.
+
+The combined tree locally passes 535 workspace/all-feature tests, 466 default-build tests, the 36-check
+harness with Tier-4 selected, and all 20 pixel oracles under Interpreter, Tier-3 and Native (devkitA64
+16.1/libnx 4.12). Clippy completes with warnings. These are local integration checks; fresh CI and its
+canonical report decide the README metric and merge eligibility.
+
+Preserved #149's open-licensed bundled font and its owner-approved hybrid-app frame-2 oracle correction
+(`c089902`, GLFW's window-creation swap is frame 1). The oracle table now matches the registered frame.
+No new pixel expectations or sample-specific patches were introduced during integration.
+
+
+Fresh integrated CI corpus proof: run 42033845756 produced 40 passing canonical records (20/20 programs
+on Interpreter and Tier-3) for combined code `2d88c99`. The job's only failure was the previous 19/20
+README count. Derived the headline/badge with scripts/corpus_verify.py and promoted hybrid-app in the
+recorded-pass ratchet from that report. Updated current PLAN.md status without changing its next step.
+A final CI run must qualify the evidence/documentation update before merge.

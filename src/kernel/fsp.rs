@@ -232,11 +232,14 @@ impl IpcManager {
         let outcome: Result<Vec<u32>, VfsError> = (|| match cmd_id {
             // Read(u32 option, s64 offset, u64 size) -> u64 bytes read, data into the B buffer
             0 => {
+                if vfs.handle_mode(handle) & 1 == 0 {
+                    return Err(VfsError::ReadOnly(path.clone()));
+                }
                 let offset = mmu.read_u64(args_base + 8).unwrap_or(0) as usize;
                 let size = mmu.read_u64(args_base + 16).unwrap_or(0) as usize;
                 let buf = self.request.recv_buffers.first().copied().unwrap_or_default();
                 let len = size.min(buf.size as usize);
-                let read = vfs.read_file_to_guest(&path, offset, buf.addr, len, mmu).unwrap_or(0);
+                let read = vfs.read_file_to_guest(&path, offset, buf.addr, len, mmu)?;
                 Ok(u64_words(read as u64).to_vec())
             }
             // Write(u32 option, s64 offset, u64 size), data from the A buffer
@@ -316,8 +319,14 @@ impl IpcManager {
                         };
                         entry[0x304] = ty;
                         entry[0x308..0x310].copy_from_slice(&size.to_le_bytes());
-                        let _ = mmu.write_bytes(buf_addr + i as u64 * DIRECTORY_ENTRY_SIZE, &entry);
+                        if let Err(error) = mmu.write_bytes(buf_addr + i as u64 * DIRECTORY_ENTRY_SIZE, &entry) {
+                            self.write_cmif_response(tls_addr, mmu, vfs_result(&VfsError::Memory(error)), &[], None);
+                            return 0;
+                        }
                     }
+                } else if count > 0 && !self.request.recv_buffers.is_empty() {
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNSUPPORTED_OPERATION, &[], None);
+                    return 0;
                 }
                 index += count;
                 self.handles.insert(session_handle, ServiceType::Directory { path, entries, index });
@@ -457,6 +466,44 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn file_read_rejects_write_only_handles_and_invalid_destinations() {
+        let mut f = Fsp::new(None);
+        f.vfs.mount_file("sdmc:/data", b"x");
+        f.mmu.write_u64(PATH0 + 8, 0).unwrap();
+        f.mmu.write_u64(PATH0 + 16, 1).unwrap();
+        f.ipc.request.recv_buffers = vec![crate::kernel::hipc::Buffer { addr: BUF, size: 1 }];
+        let write_only = f.vfs.open_file_with_mode("sdmc:/data", 2).unwrap();
+        f.ipc.handle_file(write_only, 0, PATH0, TLS, &mut f.mmu, &mut f.vfs);
+        assert_ne!(f.mmu.read_u32(TLS + 0x18).unwrap(), 0);
+        let readable = f.vfs.open_file_with_mode("sdmc:/data", 1).unwrap();
+        f.mmu.unmap_range(BUF, BUF_SIZE as usize);
+        f.ipc.handle_file(readable, 0, PATH0, TLS, &mut f.mmu, &mut f.vfs);
+        assert_ne!(f.mmu.read_u32(TLS + 0x18).unwrap(), 0);
+    }
+
+    #[test]
+    fn failed_directory_output_keeps_cursor_for_retry() {
+        let mut f = Fsp::new(None);
+        f.vfs.mount_file("sdmc:/a", b"a");
+        f.vfs.mount_file("sdmc:/b", b"b");
+        let entries = vec!["a".to_string(), "b".to_string()];
+        let handle = f.ipc.allocate_handle(ServiceType::Directory {
+            path: "sdmc:/".into(), entries: entries.clone(), index: 0 });
+        f.mmu.unmap_range(BUF + 4096, (BUF_SIZE - 4096) as usize);
+        f.ipc.request.recv_buffers = vec![crate::kernel::hipc::Buffer {
+            addr: BUF + 4096 - 100, size: 2 * DIRECTORY_ENTRY_SIZE }];
+        f.ipc.handle_directory(handle, "sdmc:/".into(), entries.clone(), 0, 0, PATH0, TLS,
+            &mut f.mmu, &mut f.vfs);
+        assert_ne!(f.mmu.read_u32(TLS + 0x18).unwrap(), 0);
+        assert!(matches!(f.ipc.handles.get(&handle), Some(ServiceType::Directory { index: 0, .. })));
+        f.ipc.request.recv_buffers[0].addr = BUF;
+        f.ipc.handle_directory(handle, "sdmc:/".into(), entries, 0, 0, PATH0, TLS,
+            &mut f.mmu, &mut f.vfs);
+        assert_eq!(f.mmu.read_u32(TLS + 0x18).unwrap(), 0);
+        assert_eq!(f.mmu.read_u64(TLS + 0x20).unwrap(), 2);
     }
 
     #[test]
