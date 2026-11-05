@@ -475,7 +475,34 @@ struct StageGate {
     failures: Vec<String>,
 }
 
+/// Guard synthetic service programs before they can overwrite a failed result with a success code.
+/// A zero-offset B.NE in the input is a comparison guard targeting the same failure exit.
+fn checked_service_program(words: &[u32], svc_id: u16, cmif: bool) -> Vec<u32> {
+    let mut code = Vec::new();
+    let mut guards = Vec::new();
+    for &word in words {
+        if word == 0x5400_0001 { guards.push(code.len()); }
+        code.push(word);
+        if word == kernel::svc::ext::svc(svc_id) {
+            guards.push(code.len());
+            code.push(0xB500_0000); // cbnz x0, failure
+            if cmif {
+                code.extend([0xD53B_D076, 0xB940_1AD7]); // mrs x22,tpidrro_el0; ldr w23,[x22,#0x18]
+                guards.push(code.len());
+                code.push(0x3500_0017); // cbnz w23, failure
+            }
+        }
+    }
+    let failure = code.len();
+    code.extend([0xD281_75A0, 0xD400_00E1]); // movz x0,#0xBAD; svcExitProcess
+    for index in guards { code[index] |= ((failure - index) as u32) << 5; }
+    code
+}
+
 impl StageGate {
+    fn expect_surface(&mut self, stage: u32, pixels: &[u32], count: usize, color: u32) -> bool {
+        self.expect(stage, "decoded constant-color surface", pixels.len() == count && pixels.iter().all(|&pixel| pixel == color))
+    }
     /// Checks a guest run and prints the verdict. Returns `true` on pass.
     fn expect_exit(&mut self, stage: u32, outcome: &VmOutcome, expected_x0: u64) -> bool {
         if outcome.stop == VmStop::ExitProcess && outcome.x0 == expected_x0 {
@@ -2016,6 +2043,10 @@ fn run_built_in_demo() {
             &mut kernel17.vfs,
         );
         let storage_size = mmu17.read_u64(tls_addr + 0x20).unwrap();
+        gate.expect(17, "firmware, applet, display, HID and storage responses",
+            res_set == 0 && (fw_maj, fw_min, fw_micro) == (23, 0, 1) && focus_state == 1
+            && disp_id == 0 && layer_id == 1 && producer_h != 0 && shm_h != 0
+            && btns == 0x403 && (lx, ly) == (24575, -16383) && storage_size == 0x40000);
         println!(
             "  [fsp-srv] Storage #{} -> RomFS Level 3 Data Size: 0x{:X} ({} KB)",
             storage_h, storage_size, storage_size / 1024
@@ -2048,6 +2079,7 @@ fn run_built_in_demo() {
             0xD280EEE0, // movz x0, #0x777
             0xD40000E1, // svc #0x07 (svcExitProcess)
         ];
+        let bootstrap_program = checked_service_program(&bootstrap_program, 0x21, true);
         for (i, &w) in bootstrap_program.iter().enumerate() {
             mmu17.write_u32(code_va + (i * 4) as u64, w).unwrap();
         }
@@ -2154,6 +2186,10 @@ fn run_built_in_demo() {
             stream_va,
             stream_words.len(),
         );
+        gate.expect(18, "loaded module address and texture command execution",
+            res_load == 0 && loaded_base == nro_dyn_va && cmds_exec == 2
+            && nvn.texture_pool.get_descriptor(tex_id).is_some_and(|d|
+                d.width == 1024 && d.height == 1024 && d.levels == 11 && d.gpu_address == tex_vram_va));
         println!(
             "  [NVN Driver] Executed {} commands binding Texture Descriptor #{}",
             cmds_exec, tex_id
@@ -2185,6 +2221,7 @@ fn run_built_in_demo() {
             0xD2811100, // movz x0, #0x888
             0xD40000E1, // svc #0x07 (svcExitProcess)
         ];
+        let dyn_program = checked_service_program(&dyn_program, 0x21, true);
         for (i, &w) in dyn_program.iter().enumerate() {
             mmu18.write_u32(code_va + (i * 4) as u64, w).unwrap();
         }
@@ -2260,7 +2297,7 @@ fn run_built_in_demo() {
             // 3. OpenFile "rom:/manifest.json"
             0xD2880020, // movz x0, #0x4001 (func_id: OpenFile)
             0xD2820001, // movz x1, #0x1000 (offset)
-            0xF2A00041, // movk x1, #0x8002, lsl #16 (x1 = path_va 0x80021000)
+            0xF2B00041, // movk x1, #0x8002, lsl #16 (x1 = path_va 0x80021000)
             0xD2800242, // movz x2, #18     (path_len)
             0xD2800023, // movz x3, #1      (mode: Read)
             0xD40020C1, // svc  #0x106      -> x0=0, x1=handle
@@ -2274,11 +2311,22 @@ fn run_built_in_demo() {
             0xD2800604, // movz x4, #48     (size = 48)
             0xD40020C1, // svc  #0x106      -> x0=0, x1=bytes_read
 
+            // Check bytes read and the manifest prefix before reporting success.
+            0xF100C03F, // cmp x1,#48
+            0x54000001, // b.ne failure (patched by checked_service_program)
+            0xF9400262, // ldr x2,[x19]
+            0xD2844F63, // movz x3,#0x227b
+            0xF2AC2E03, // movk x3,#0x6170,lsl #16
+            0xF2CD6C63, // movk x3,#0x6b63,lsl #32
+            0xF2ECEC23, // movk x3,#0x6761,lsl #48
+            0xEB03005F, // cmp x2,x3
+            0x54000001, // b.ne failure
             // 5. Exit with verification code 0x999
             0xD2813320, // movz x0, #0x999
             0xD40000E1, // svc  #0x07 (svcExitProcess)
         ];
 
+        let sdk_hle_program = checked_service_program(&sdk_hle_program, 0x106, false);
         for (i, &w) in sdk_hle_program.iter().enumerate() {
             mmu19.write_u32(code_va + (i * 4) as u64, w).unwrap();
         }
@@ -2316,7 +2364,7 @@ fn run_built_in_demo() {
             0xF1000463, // subs x3, x3, #1
             0x54FFFFC1, // b.ne inner_loop (-2 insns)
             0xF1000421, // subs x1, x1, #1
-            0x54FFFF41, // b.ne outer_loop (-6 insns)
+            0x54FFFF61, // b.ne outer_loop (-5 insns; preserve the accumulator)
             // done:
             0xD2815540, // movz x0, #0xAAA  (Tier-3 verification success code)
             0xD40000E1, // svc  #0x07       (svcExitProcess)
@@ -2337,7 +2385,9 @@ fn run_built_in_demo() {
             insns_exec, engine20.stats(), exit
         );
         println!("  [{tier} Throughput] Measured execution performance: {:.2} MIPS", engine20.mips_rate());
-        if gate.expect(20, "Tier-3 guest X0 = 0xAAA", cpu20.regs.read_x(0) == 0xAAA) {
+        if gate.expect(20, "guest SVC exit and loop checksum",
+            matches!(exit, cpu::tier2_jit::BlockExit::Svc { svc_id: 7 })
+                && cpu20.regs.read_x(0) == 0xAAA && cpu20.regs.read_x(2) == 127_500) {
             println!("  [Tier-3 Verification] Super-Block compilation verified in guest AArch64 (Exit code: 0xAAA)");
         }
     }
@@ -2477,14 +2527,14 @@ fn run_built_in_demo() {
     }
 
     // ---------------------------------------------------------
-    // Stage 22: Commercial Bootstrap HAL: pl:u Shared Fonts, time:u System Clock & ASTC/BC7 Decompression
+    // Stage 22: Synthetic font placeholder, system clock & ASTC decompression
     //            1. Querying Horizon Shared Font Service (pl:u) and verifying shared font memory mapping
     //            2. Querying Horizon Standard Clock (time:u -> ISystemClock) for 64-bit timestamps
     //            3. Querying /dev/nvhost-as-gpu GPU address space & 4MB L2 cache size
     //            4. Decoding ASTC 4x4 void-extent and BC7 texture blocks into VRAM
     //            5. Full-stack verified exit code 0xCCC
     // ---------------------------------------------------------
-    println!("\n[Stage 22/25] Commercial Bootstrap HAL: pl:u Shared Fonts, time:u System Clock & ASTC/BC7 Decompression");
+    println!("\n[Stage 22/25] Synthetic font placeholder, system clock & ASTC decompression");
     {
         let (mut cpu22, mut mmu22, mut kernel22) = setup_vm();
         let base_va = 0x8005_0000u64;
@@ -2519,6 +2569,9 @@ fn run_built_in_demo() {
         let font_addr_lo = mmu22.read_u32(tls_addr + 0x20).unwrap();
         let font_addr_hi = mmu22.read_u32(tls_addr + 0x24).unwrap();
         let font_addr = ((font_addr_hi as u64) << 32) | (font_addr_lo as u64);
+        let mut font_header = [0; 12];
+        gate.expect(22, "shared-font placeholder header mapped",
+            mmu22.read_bytes(font_addr, &mut font_header).is_ok() && &font_header == b"OUNCEFNT\x00\x01\x00\x00");
         println!(
             "  [pl:u Shared Font] Mapped shared font placeholder at guest VMA 0x{:08X} (1 MB)",
             font_addr
@@ -2563,6 +2616,9 @@ fn run_built_in_demo() {
         let time_lo = mmu22.read_u32(tls_addr + 0x20).unwrap();
         let time_hi = mmu22.read_u32(tls_addr + 0x24).unwrap();
         let now_epoch = ((time_hi as u64) << 32) | (time_lo as u64);
+        let host_epoch = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        gate.expect(22, "system clock is near host UTC",
+            now_epoch.abs_diff(host_epoch) <= 60);
         println!(
             "  [time:u System Clock] Current Horizon OS epoch timestamp: {}",
             now_epoch
@@ -2581,6 +2637,7 @@ fn run_built_in_demo() {
             4,
             4,
         );
+        gate.expect_surface(22, &decoded, 16, 0xFF00_88FF);
         println!(
             "  [Texture HAL] Decompressed ASTC 4x4 void-extent block (16 texels decoded, sample: 0x{:08X})",
             decoded[0]
@@ -2600,19 +2657,19 @@ fn run_built_in_demo() {
         cpu22.regs.pc = base_va;
         let outcome = run_vm(cpu22, mmu22, kernel22, 10_000);
         if gate.expect_exit(22, &outcome, 0xCCC) {
-            println!("  [Commercial HAL Verification] pl:u fonts, time:u clock, and ASTC 4x4 verified (Exit code: 0xCCC)");
+            println!("  [Synthetic HAL] Font placeholder, clock and ASTC checks passed (Exit code: 0xCCC)");
         }
     }
 
     // ---------------------------------------------------------
-    // Stage 23: Commercial Applet HAL: ApplicationFunctions, GPU AS/Characteristics & ASTC 8x8 Decompressor
+    // Stage 23: Synthetic applet services, GPU characteristics & ASTC 8x8
     //            1. Querying am:appletOE -> ApplicationProxy -> IApplicationFunctions (GetDesiredLanguage, EnsureSaveData)
     //            2. Querying am:appletOE -> ISelfController (CreateManagedDisplaySeparableLayer, SetPerformanceConfiguration)
     //            3. Querying nvdrv (/dev/nvhost-ctrl-gpu) -> NVGPU_GPU_IOCTL_GET_CHARACTERISTICS (Ampere GA10B, SM 8.7)
     //            4. Decoding ASTC 8x8 block (64 texels) and verifying surface reconstruction
     //            5. Full-stack verified exit code 0xDDD
     // ---------------------------------------------------------
-    println!("\n[Stage 23/25] Commercial Applet HAL: ApplicationFunctions, GPU AS/Characteristics & ASTC 8x8 Decompressor");
+    println!("\n[Stage 23/25] Synthetic applet services, GPU characteristics & ASTC 8x8");
     {
         let (mut cpu23, mut mmu23, mut kernel23) = setup_vm();
         let base_va = 0x8006_0000u64;
@@ -2725,6 +2782,8 @@ fn run_built_in_demo() {
         let arch = mmu23.read_u32(scratch_va).unwrap();
         let num_sm = mmu23.read_u32(scratch_va + 12).unwrap();
         let sm_ver = mmu23.read_u32(scratch_va + 16).unwrap();
+        gate.expect(23, "applet and GPU characteristic values",
+            desired_lang == 0 && layer_id != 0 && (arch, num_sm, sm_ver) == (0x170, 12, 0x807));
         println!(
             "  [NVIDIA Tegra T239] nvdrv characteristics: Arch 0x{:04X} (Ampere GA10B) | SMs: {} | Feature: SM {:X}.{:X}",
             arch, num_sm, sm_ver >> 8, sm_ver & 0xFF
@@ -2743,6 +2802,7 @@ fn run_built_in_demo() {
             8,
             8,
         );
+        gate.expect_surface(23, &decoded8, 64, 0xFFFF_44CC);
         println!(
             "  [Texture HAL] Decompressed ASTC 8x8 void-extent block (64 texels decoded, sample: 0x{:08X})",
             decoded8[0]
@@ -2762,19 +2822,19 @@ fn run_built_in_demo() {
         cpu23.regs.pc = base_va;
         let outcome = run_vm(cpu23, mmu23, kernel23, 10_000);
         if gate.expect_exit(23, &outcome, 0xDDD) {
-            println!("  [Full-Stack Verification] Commercial Applet HAL & ASTC 8x8 Verified (Exit code: 0xDDD)");
+            println!("  [Synthetic HAL] Applet, GPU characteristics and ASTC checks passed (Exit code: 0xDDD)");
         }
     }
 
     // ---------------------------------------------------------
-    // Stage 24: Commercial Shader & Dynamic Buffer Pipeline: Ampere FP16 SASS & Dynamic NVN Ring Execution
+    // Stage 24: Synthetic opcode translation & NVN buffer cycling
     //            1. Transpiles commercial Ampere SM87 FP16 SASS shader bytecode (HAdd2, HMul2, HFma2) -> SPIR-V 1.5
     //            2. Encodes and executes dynamic NVN command buffer stream with multi-buffering (NVN_CMD_BUFFER_CYCLE)
     //            3. Processes pushbuffer into GPU channel verifying dynamic buffer index cycling
     //            4. Guest AArch64 program setting exit code 0xEEE and calling svcExitProcess
     //            5. Full-stack verified exit code 0xEEE
     // ---------------------------------------------------------
-    println!("\n[Stage 24/25] Commercial Shader & Dynamic Buffer Pipeline: Ampere FP16 SASS & Dynamic NVN Ring Execution");
+    println!("\n[Stage 24/25] Synthetic opcode translation & NVN buffer cycling");
     {
         let (mut cpu24, mut mmu24, mut kernel24) = setup_vm();
         let base_va = 0x8007_0000u64;
@@ -2792,6 +2852,16 @@ fn run_built_in_demo() {
             gpu::shader::SassOp::Exit.encode(),
         ];
         let decompiled = gpu::shader::SassShaderDecompiler::decompile(&sass_program);
+        gate.expect(24, "synthetic FP16 opcode decoding and translation structure",
+            decompiled.ops.len() == 7
+                && matches!(decompiled.ops[3], gpu::shader::SassOp::HAdd2 { rd: 3, rn: 0, rm: 1 })
+                && matches!(decompiled.ops[4], gpu::shader::SassOp::HMul2 { rd: 4, rn: 0, rm: 1 })
+                && matches!(decompiled.ops[5], gpu::shader::SassOp::HFma2 { rd: 5, rn: 0, rm: 1, ra: 2 })
+                && decompiled.glsl_source.contains("R[3] = R[0] + R[1];")
+                && decompiled.glsl_source.contains("R[4] = R[0] * R[1];")
+                && decompiled.glsl_source.contains("R[5] = fma(R[0], R[1], R[2]);")
+                && decompiled.spirv_words.first() == Some(&0x0723_0203)
+                && decompiled.spirv_words.get(1) == Some(&0x0001_0500));
         println!(
             "  [Ampere SASS Transpiler] Decompiled 7 instructions: {} GLSL lines | {} SPIR-V words (Magic: 0x{:08X})",
             decompiled.glsl_source.lines().count(),
@@ -2813,6 +2883,8 @@ fn run_built_in_demo() {
 
         let mut nvn = gpu::nvn::NvnDriver::new();
         let executed = nvn.submit_guest_command_stream(&mut mmu24, &mut kernel24.nvgpu, stream_addr, stream.len());
+        gate.expect(24, "NVN command count, buffer index and cycle count",
+            executed == 5 && nvn.current_buffer_index == 2 && nvn.total_buffer_cycles == 3);
         println!(
             "  [NVN Driver] Executed {} stream commands | Active Backbuffer: #{} | Total Cycles: {}",
             executed, nvn.current_buffer_index, nvn.total_buffer_cycles
@@ -2832,7 +2904,7 @@ fn run_built_in_demo() {
         cpu24.regs.pc = base_va;
         let outcome = run_vm(cpu24, mmu24, kernel24, 10_000);
         if gate.expect_exit(24, &outcome, 0xEEE) {
-            println!("  [Full-Stack Verification] FP16 SASS & Dynamic NVN Ring Pipeline Verified (Exit code: 0xEEE)");
+            println!("  [Synthetic translation] Opcode structure and NVN buffer checks passed (Exit code: 0xEEE)");
         }
     }
 
@@ -3786,6 +3858,38 @@ fn build_and_boot_showcase_nsp(out_path: &str) {
 #[cfg(test)]
 mod harness_gate_tests {
     use super::*;
+
+    #[test]
+    fn wrong_surface_output_fails_the_harness_gate() {
+        let mut pixels = [0xFF00_88FF; 16];
+        let mut gate = StageGate::default();
+        assert!(gate.expect_surface(22, &pixels, 16, 0xFF00_88FF));
+        pixels[15] ^= 1;
+        assert!(!gate.expect_surface(22, &pixels, 16, 0xFF00_88FF));
+        assert_eq!(gate.failures.len(), 1);
+    }
+
+    #[test]
+    fn failed_guest_service_cannot_be_hidden_by_a_success_constant() {
+        for result in [0, 1] {
+            let code = checked_service_program(&[0xD400_20C1, 0xD281_3320, 0xD400_00E1], 0x106, false);
+            let mut memory = Memory::new();
+            memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE);
+            for (i, word) in code.iter().enumerate() { memory.write_u32(0x8000 + 4 * i as u64, *word).unwrap(); }
+            let mut cpu = Cpu::new();
+            cpu.regs.pc = 0x8000;
+            let mut exited = false;
+            for _ in 0..12 {
+                match cpu.step(&mut memory).unwrap() {
+                    cpu::StepResult::Svc(0x106) => cpu.regs.write_x(0, result),
+                    cpu::StepResult::Svc(7) => { exited = true; break; }
+                    _ => {}
+                }
+            }
+            assert!(exited);
+            assert_eq!(cpu.regs.read_x(0), if result == 0 { 0x999 } else { 0xBAD });
+        }
+    }
 
     fn outcome(stop: VmStop, x0: u64) -> VmOutcome {
         VmOutcome { stop, x0, d0: 0.0 }
