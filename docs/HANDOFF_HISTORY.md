@@ -1,6 +1,6 @@
 # Handoff history
 
-Moved out of `AGENTS.md` on 2026-11-01 to keep the session-start file small. Read only the entry you need (grep for it). Lane and file-ownership rules in here are superseded by "How we work" in `AGENTS.md`.
+Moved out of `AGENTS.md` on 2026-11-01 to keep the session-start file small. Read only the entry you need (grep for it). Lane and file-ownership rules in here are superseded by "How we work" in `PLAN.md`.
 
 ## 3. Active Handoff Log
 * **Completed State**:
@@ -462,6 +462,62 @@ An unmodified upstream filesystem and console sample shows correct rendered text
 An unmodified upstream startup application sample shows correct rendered text frames: `templates/application` (pinned in `tests/corpus/manifest.json`) passes all criteria in `docs/startup-oracle.md`. Merged in PR #125 with all CI checks passing, verifying default text console display and bit-exact agreement between Interpreter and Tier-3 JIT engines.
 
 
+## Root HANDOFF.md and the old AGENTS.md rules (folded in 2026-11-04)
+
+Replaced by `scripts/next.sh`, `scripts/gate.sh` and PLAN.md "How we work".
+
+### HANDOFF.md
+
+
+#### 1. Mission
+Build a clean, inspectable, and high-performance AArch64 research runtime that executes real software.
+
+#### 2. Philosophy & Engineering Standard
+- Execution-driven engineering: let real software execution uncover what to build and fix next.
+- Zero fake compatibility, zero stubbing away real crashes.
+- Clean-room only: clean Rust, `#![forbid(unsafe_code)]` in core, no proprietary retail keys committed to the repository.
+
+#### 3. Workflow
+- Test locally before push: `cargo test --release` and `cargo run --release -- test`.
+- Push directly on milestone feature branches; merge to `main` once passing CI.
+
+### AGENTS.md (before 2026-11-04)
+
+#### READ THIS FIRST (overrides everything below; owner decision 2026-11-03)
+
+1. **The only plan is [`PLAN.md`](PLAN.md).** Read it before any work, do only its next unchecked step, tick it with
+   one line of proof, then end the session. `HANDOFF.md` and older notes are history, not plans.
+2. **Proof = a real outside homebrew program passing its pixel oracle in CI.** Unit tests guard code but are never
+   a milestone or a "verified" claim.
+3. **Follow PLAN.md's Legal guardrails on every commit:** never decrypt, no piracy pointers, no game names or game
+   screenshots, no retail test inputs, nothing from the owner's non-public projects.
+4. **Save the owner's usage:** one step per session, no re-exploring what PLAN.md already says, logs read as text,
+   long jobs in the background, work only in `~/Projects` (`~/Documents` is iCloud-synced and stalls).
+5. **Agents test themselves.** The owner is never the test harness.
+
+---
+
+#### Agent rules for `ounce-core`
+
+Short on purpose: every agent loads this file at session start. The plan is [`PLAN.md`](PLAN.md); finished milestones and past handoffs are history in `docs/HANDOFF_HISTORY.md` (grep it only when a step needs it).
+
+**Outside samples with a verified frame: 4** (`simplegfx`, `deko_basic`, `romfs`, `startup`; oracles in `docs/*-oracle.md`).
+
+## How we work
+- The owner's goal is our goal: a working, high-performance runtime for open-source Switch homebrew, where every claim rests on a real program's frame.
+- Focus strictly on real engineering: CPU execution, GPU method dispatch, kernel services, memory management, and getting software running.
+- No artificial roadblocks: work directly on whatever code needs fixing to make software run.
+- Keep the roots clean: `#![forbid(unsafe_code)]` in the core runtime, zero retail keys in the repo. Sources and porting rules are in PLAN.md ("Sources"): MIT code (nxnative, Ryujinx, Mesa NAK) may be ported with credit; no GPL emulator code, no retail material.
+
+## Merge gate
+- Before pushing to PR: `cargo test --release` passes; `cargo run --release -- test` passes; zero `unsafe` in `src`.
+- CI must pass on the milestone PR before merging to `main`.
+- Push directly and frequently on your branch; batch merge once milestone is complete.
+
+## Legal boundary
+- PLAN.md's "Legal guardrails" apply to every commit, and CI enforces them (`scripts/check_legal_guardrails.sh`). ounce-core is not a clean-room project (see README, "Sources").
+- No proprietary keys (`prod.keys`) or retail copyrighted game assets committed to the git repository.
+- Use open documentation and permissive code: ARM manuals, Mesa NVK/nouveau, NVIDIA open-gpu-doc, public SwitchBrew specifications, and MIT code as PLAN.md allows.
 
 ## Correctness audit follow-up (Codex, 2026-11-05)
 
