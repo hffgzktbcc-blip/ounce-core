@@ -4,7 +4,7 @@ use super::ipc::{IpcManager, ServiceType};
 use super::scheduler::{
     ThreadScheduler, ThreadState, WaitReason, YieldTo, CORE_COUNT, LOWEST_THREAD_PRIORITY, MUTEX_HAS_LISTENERS,
     PROCESS_IDEAL_CORE, RESULT_CANCELLED, RESULT_INVALID_COMBINATION, RESULT_INVALID_CORE_ID, RESULT_INVALID_HANDLE,
-    RESULT_INVALID_PRIORITY, RESULT_INVALID_STATE, RESULT_TIMED_OUT,
+    RESULT_INVALID_PRIORITY, RESULT_INVALID_STATE, RESULT_TIMED_OUT, RESULT_OUT_OF_RESOURCE,
 };
 use super::sync::SyncManager;
 use crate::audio::AudioOutServer;
@@ -291,11 +291,26 @@ impl HorizonKernel {
                     return SvcResult::Success;
                 }
 
+                if !self.scheduler.can_allocate_thread() {
+                    cpu.regs.write_x(0, RESULT_OUT_OF_RESOURCE);
+                    cpu.regs.write_x(1, 0);
+                    return SvcResult::Success;
+                }
                 let handle = self
                     .scheduler
                     .create_thread(entry_pc, arg, stack_top, prio, core_id);
-                self.scheduler.setup_thread_tls(handle, mmu);
-                self.scheduler.prepare_thread(handle, mmu);
+                let tls = self.scheduler.setup_thread_tls(handle, mmu);
+                if (self.scheduler.tls_image.is_some() && tls.is_none())
+                    || self.scheduler.prepare_thread(handle, mmu).is_none() {
+                    self.scheduler.threads.remove(&handle);
+                    self.scheduler.total_threads_spawned -= 1;
+                    if let Some(area) = tls {
+                        mmu.unmap_range(area, self.scheduler.tls_image.as_ref().unwrap().mapped_size() as usize);
+                    }
+                    cpu.regs.write_x(0, RESULT_OUT_OF_RESOURCE);
+                    cpu.regs.write_x(1, 0);
+                    return SvcResult::Success;
+                }
                 cpu.regs.write_x(0, 0); // ResultSuccess
                 cpu.regs.write_x(1, handle as u64);
                 SvcResult::Success
