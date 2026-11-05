@@ -53,6 +53,7 @@ const TIMER_HZ: u64 = 19_200_000;
 #[cfg(test)]
 mod budget_tests {
     use super::*;
+    #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))]
     #[test]
     fn rewritten_code_replacement_is_rejected_before_reentry() {
         for change in 0..4 {
@@ -75,6 +76,31 @@ mod budget_tests {
             }
             let result = engine.sync_code(&mut memory);
             assert!(result.unwrap_err().contains("native rewritten code changed"), "code lifecycle change {change}");
+        }
+    }
+
+    #[test]
+    fn rewritten_page_metadata_changes_are_rejected_on_every_host() {
+        for change in 0..4 {
+            let mut memory = Memory::new();
+            memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE);
+            memory.mark_code_range(0x8000, 0x9000);
+            let mut engine = NceEngine {
+                patcher: Patcher::new(0x1000, STUB_CAPACITY).unwrap(), areas: vec![], written: vec![],
+                patched: HashSet::from([8]), interpreted: HashSet::new(), interpreted_steps: 0,
+                exec_gen: memory.exec_map_gen(), code_gen: memory.code_write_gen(),
+                skip: vec![], stats: Stats::default(), entries: 0,
+            };
+            match change {
+                0 => memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE),
+                1 => {
+                    memory.unmap_range(0x8000, 4096);
+                    memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE);
+                }
+                2 => memory.move_range(0x8000, 0xa000, 4096),
+                _ => memory.write_u32(0x8000, 0xD400_0141).unwrap(),
+            }
+            assert!(engine.sync_code(&mut memory).unwrap_err().contains("native rewritten code changed"));
         }
     }
 
