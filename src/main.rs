@@ -2043,7 +2043,7 @@ fn run_built_in_demo() {
             &mut kernel17.vfs,
         );
         let storage_size = mmu17.read_u64(tls_addr + 0x20).unwrap();
-        gate.expect(17, "firmware, applet, display, HID and storage responses",
+        let subsystem_ok = gate.expect(17, "firmware, applet, display, HID and storage responses",
             res_set == 0 && (fw_maj, fw_min, fw_micro) == (23, 0, 1) && focus_state == 1
             && disp_id == 0 && layer_id == 1 && producer_h != 0 && shm_h != 0
             && btns == 0x403 && (lx, ly) == (24575, -16383) && storage_size == 0x40000);
@@ -2086,7 +2086,7 @@ fn run_built_in_demo() {
 
         cpu17.regs.pc = code_va;
         let outcome = run_vm(cpu17, mmu17, kernel17, 10_000);
-        if gate.expect_exit(17, &outcome, 0x777) {
+        if gate.expect_exit(17, &outcome, 0x777) && subsystem_ok {
             println!("  [Synthetic Bootstrap] Handshake completed successfully across all Big 5 services (Exit code: 0x777)");
         }
     }
@@ -2186,7 +2186,7 @@ fn run_built_in_demo() {
             stream_va,
             stream_words.len(),
         );
-        gate.expect(18, "loaded module address and texture command execution",
+        let subsystem_ok = gate.expect(18, "loaded module address and texture command execution",
             res_load == 0 && loaded_base == nro_dyn_va && cmds_exec == 2
             && nvn.texture_pool.get_descriptor(tex_id).is_some_and(|d|
                 d.width == 1024 && d.height == 1024 && d.levels == 11 && d.gpu_address == tex_vram_va));
@@ -2228,7 +2228,7 @@ fn run_built_in_demo() {
 
         cpu18.regs.pc = code_va;
         let outcome = run_vm(cpu18, mmu18, kernel18, 10_000);
-        if gate.expect_exit(18, &outcome, 0x888) {
+        if gate.expect_exit(18, &outcome, 0x888) && subsystem_ok {
             println!("  [Dynamic Linker Verification] ro:1 LoadNro confirmed in guest AArch64 (Exit code: 0x888)");
         }
     }
@@ -2388,7 +2388,7 @@ fn run_built_in_demo() {
         if gate.expect(20, "guest SVC exit and loop checksum",
             matches!(exit, cpu::tier2_jit::BlockExit::Svc { svc_id: 7 })
                 && cpu20.regs.read_x(0) == 0xAAA && cpu20.regs.read_x(2) == 127_500) {
-            println!("  [Tier-3 Verification] Super-Block compilation verified in guest AArch64 (Exit code: 0xAAA)");
+            println!("  [{tier}] Guest loop checksum and SVC exit checks passed (Exit code: 0xAAA)");
         }
     }
 
@@ -2570,7 +2570,7 @@ fn run_built_in_demo() {
         let font_addr_hi = mmu22.read_u32(tls_addr + 0x24).unwrap();
         let font_addr = ((font_addr_hi as u64) << 32) | (font_addr_lo as u64);
         let mut font_header = [0; 12];
-        gate.expect(22, "shared-font placeholder header mapped",
+        let font_ok = gate.expect(22, "shared-font placeholder header mapped",
             mmu22.read_bytes(font_addr, &mut font_header).is_ok() && &font_header == b"OUNCEFNT\x00\x01\x00\x00");
         println!(
             "  [pl:u Shared Font] Mapped shared font placeholder at guest VMA 0x{:08X} (1 MB)",
@@ -2617,7 +2617,7 @@ fn run_built_in_demo() {
         let time_hi = mmu22.read_u32(tls_addr + 0x24).unwrap();
         let now_epoch = ((time_hi as u64) << 32) | (time_lo as u64);
         let host_epoch = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-        gate.expect(22, "system clock is near host UTC",
+        let clock_ok = gate.expect(22, "system clock is near host UTC",
             now_epoch.abs_diff(host_epoch) <= 60);
         println!(
             "  [time:u System Clock] Current Horizon OS epoch timestamp: {}",
@@ -2637,7 +2637,7 @@ fn run_built_in_demo() {
             4,
             4,
         );
-        gate.expect_surface(22, &decoded, 16, 0xFF00_88FF);
+        let texture_ok = gate.expect_surface(22, &decoded, 16, 0xFF00_88FF);
         println!(
             "  [Texture HAL] Decompressed ASTC 4x4 void-extent block (16 texels decoded, sample: 0x{:08X})",
             decoded[0]
@@ -2656,7 +2656,7 @@ fn run_built_in_demo() {
 
         cpu22.regs.pc = base_va;
         let outcome = run_vm(cpu22, mmu22, kernel22, 10_000);
-        if gate.expect_exit(22, &outcome, 0xCCC) {
+        if gate.expect_exit(22, &outcome, 0xCCC) && font_ok && clock_ok && texture_ok {
             println!("  [Synthetic HAL] Font placeholder, clock and ASTC checks passed (Exit code: 0xCCC)");
         }
     }
@@ -2782,7 +2782,7 @@ fn run_built_in_demo() {
         let arch = mmu23.read_u32(scratch_va).unwrap();
         let num_sm = mmu23.read_u32(scratch_va + 12).unwrap();
         let sm_ver = mmu23.read_u32(scratch_va + 16).unwrap();
-        gate.expect(23, "applet and GPU characteristic values",
+        let service_ok = gate.expect(23, "applet and GPU characteristic values",
             desired_lang == 0 && layer_id != 0 && (arch, num_sm, sm_ver) == (0x170, 12, 0x807));
         println!(
             "  [NVIDIA Tegra T239] nvdrv characteristics: Arch 0x{:04X} (Ampere GA10B) | SMs: {} | Feature: SM {:X}.{:X}",
@@ -2802,7 +2802,7 @@ fn run_built_in_demo() {
             8,
             8,
         );
-        gate.expect_surface(23, &decoded8, 64, 0xFFFF_44CC);
+        let texture_ok = gate.expect_surface(23, &decoded8, 64, 0xFFFF_44CC);
         println!(
             "  [Texture HAL] Decompressed ASTC 8x8 void-extent block (64 texels decoded, sample: 0x{:08X})",
             decoded8[0]
@@ -2821,7 +2821,7 @@ fn run_built_in_demo() {
 
         cpu23.regs.pc = base_va;
         let outcome = run_vm(cpu23, mmu23, kernel23, 10_000);
-        if gate.expect_exit(23, &outcome, 0xDDD) {
+        if gate.expect_exit(23, &outcome, 0xDDD) && service_ok && texture_ok {
             println!("  [Synthetic HAL] Applet, GPU characteristics and ASTC checks passed (Exit code: 0xDDD)");
         }
     }
@@ -2852,7 +2852,7 @@ fn run_built_in_demo() {
             gpu::shader::SassOp::Exit.encode(),
         ];
         let decompiled = gpu::shader::SassShaderDecompiler::decompile(&sass_program);
-        gate.expect(24, "synthetic FP16 opcode decoding and translation structure",
+        let shader_ok = gate.expect(24, "synthetic FP16 opcode decoding and translation structure",
             decompiled.ops.len() == 7
                 && matches!(decompiled.ops[3], gpu::shader::SassOp::HAdd2 { rd: 3, rn: 0, rm: 1 })
                 && matches!(decompiled.ops[4], gpu::shader::SassOp::HMul2 { rd: 4, rn: 0, rm: 1 })
@@ -2883,7 +2883,7 @@ fn run_built_in_demo() {
 
         let mut nvn = gpu::nvn::NvnDriver::new();
         let executed = nvn.submit_guest_command_stream(&mut mmu24, &mut kernel24.nvgpu, stream_addr, stream.len());
-        gate.expect(24, "NVN command count, buffer index and cycle count",
+        let buffers_ok = gate.expect(24, "NVN command count, buffer index and cycle count",
             executed == 5 && nvn.current_buffer_index == 2 && nvn.total_buffer_cycles == 3);
         println!(
             "  [NVN Driver] Executed {} stream commands | Active Backbuffer: #{} | Total Cycles: {}",
@@ -2903,7 +2903,7 @@ fn run_built_in_demo() {
 
         cpu24.regs.pc = base_va;
         let outcome = run_vm(cpu24, mmu24, kernel24, 10_000);
-        if gate.expect_exit(24, &outcome, 0xEEE) {
+        if gate.expect_exit(24, &outcome, 0xEEE) && shader_ok && buffers_ok {
             println!("  [Synthetic translation] Opcode structure and NVN buffer checks passed (Exit code: 0xEEE)");
         }
     }
@@ -3039,7 +3039,7 @@ fn run_built_in_demo() {
         cpu25.regs.pc = base_va;
         let outcome = run_vm(cpu25, mmu25, kernel25, 10_000);
         if gate.expect_exit(25, &outcome, 0xEEE) {
-            println!("  [Full-Stack Verification] Complete 25-Stage Architecture Pipeline Verified (Exit code: 0xEEE)");
+            println!("  [Tensor core check] Synthetic HMMA fragment result checks passed (Exit code: 0xEEE)");
         }
     }
     println!();

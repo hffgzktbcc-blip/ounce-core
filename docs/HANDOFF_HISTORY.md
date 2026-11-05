@@ -565,7 +565,7 @@ other bugs, nor change PLAN.md's compatibility metric.
   A one-texel mutation and an injected failed guest service both fail their gates. Stage 24 claims
   opcode translation structure, not packed-half arithmetic execution.
 
-Validation: 532 workspace/all-feature tests passed (7 ignored), and the strengthened release harness
+Validation: 533 workspace/all-feature tests passed (7 ignored), and the strengthened release harness
 passes 36 checks across 25 stages. Local corpus/CI qualification and caveats are recorded in PR #154.
 No existing user checkout, peer branch or private project was modified.
 
@@ -574,3 +574,8 @@ CI follow-up: the first full batch exposed an x86 test-portability error: an are
 lifecycle test was not gated to supported AArch64 hosts. It is now gated like the arena implementation,
 with separate portable metadata/generation coverage for all four rejection cases. This changes test
 selection, not the runtime feature gates. The native arena test still runs on macOS and Linux AArch64.
+
+
+Final review hardening: overlap checks distinguish module identities even when discovered names are
+duplicated (`subsdk0` and `subsdk0.nso`). A regression covers that collision. Harness subsystem success
+messages now require all of that stage's checks, and only the final gate summary claims overall success.
