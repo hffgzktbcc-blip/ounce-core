@@ -122,6 +122,10 @@ fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64, probes: &[(u
     };
     match crate::gpu::present::surface::frame_from_surface(mmu, submitted.guest_addr, &surface) {
         Ok(frame) => {
+            let frame = match kernel.ipc.submitted_vi_crop() {
+                Some((l, t, r, b)) => frame.cropped((l as usize, t as usize, r as usize, b as usize)),
+                None => frame,
+            };
             let mut px = frame.rgba.chunks_exact(4);
             let first: Option<[u8; 4]> = px.next().map(|p| p.try_into().unwrap());
             out.uniform = first.filter(|f| px.all(|p| p == f));
@@ -278,7 +282,7 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                     }
                 }
             }
-            match kernel.dispatch_svc(id, &mut cpu, &mut mmu) {
+                match kernel.dispatch_svc(id, &mut cpu, &mut mmu) {
                 SvcResult::Success => {}
                 SvcResult::ExitProcess => { result.stop = Stop::ExitProcess; break; }
                 SvcResult::Break { reason, info1, info2 } => {
@@ -357,7 +361,7 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
         // Dispatch may switch the guest thread: resume from the post-dispatch registers.
         // A block can cross a quantum without landing exactly on a modulo boundary.
         if result.instructions >= next_preemption {
-            kernel.scheduler.preempt(&mut cpu);
+                kernel.scheduler.preempt(&mut cpu);
             result.preemptions += 1;
             next_preemption = result.instructions.saturating_add(quantum);
         }
@@ -368,6 +372,9 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
     (result, kernel)
 }
 
+/// Wall-clock date the corpus runner gives guests (2024-01-01 00:00:00 UTC).
+const DETERMINISTIC_UNIX_SECS: u64 = 1_704_067_200;
+
 fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
     limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
     let (memory, base, alias_size) = match guest_memory(engine) {
@@ -375,6 +382,7 @@ fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
         Err(error) => { let (cpu, _, kernel) = crate::setup_vm(); return (report(engine, Stop::LoadError(error), &cpu), kernel); }
     };
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm_in(memory, base, alias_size);
+    kernel.set_deterministic_clock(DETERMINISTIC_UNIX_SECS);
     let loaded = super::super::BootLoader::load_any_package(nro, base + crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu);
     let error = match loaded {
         Ok(info) if info.format == "NRO0" => None,

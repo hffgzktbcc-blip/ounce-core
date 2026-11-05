@@ -526,15 +526,14 @@ impl NvDrv {
                 }
                 NV_OK
             }
-            // GET_TPC_MASKS { u32 mask_buf_size; u32 pad[3]; u64 mask_buf_addr; }: GPC 0 has TPCs 0 and 1
+            // GET_TPC_MASKS { u32 mask_buf_size; u32 pad[3]; u64 mask_buf_addr; }: GPC 0 has TPCs 0 and 1.
+            // The mask goes to the guest buffer `mask_buf_addr` names, which the IPC layer writes
+            // (see `TPC_MASKS`); an Ioctl3 output buffer gets it too.
             0x06 => {
                 if let Some(out) = extra.outbuf {
                     if out.len() >= 4 {
-                        out[..4].copy_from_slice(&3u32.to_le_bytes());
+                        out[..4].copy_from_slice(&TPC_MASKS.to_le_bytes());
                     }
-                }
-                if data.len() >= 0x1C {
-                    wr32(data, 0x18, 3);
                 }
                 NV_OK
             }
@@ -640,8 +639,14 @@ impl NvDrv {
         if (request >> 8) & 0xFF != 0x48 {
             return None;
         }
-        let next_syncpt = FIRST_CHANNEL_SYNCPT + self.channels.len() as u32;
-        let ch = self.channels.entry(fd).or_insert_with(|| GpuChannel { syncpt: next_syncpt, ..Default::default() });
+        if !self.channels.contains_key(&fd) {
+            let Some(syncpt) = (FIRST_CHANNEL_SYNCPT..NUM_SYNCPTS as u32)
+                .find(|id| self.channels.values().all(|channel| channel.syncpt != *id)) else {
+                return Some(NV_BAD_PARAMETER);
+            };
+            self.channels.insert(fd, GpuChannel { syncpt, ..Default::default() });
+        }
+        let ch = self.channels.get_mut(&fd).unwrap();
         let syncpt = ch.syncpt;
         Some(match request & 0xFF {
             // SET_NVMAP_FD, SET_TIMEOUT, ZCULL_BIND, SET_ERROR_NOTIFIER, SET_PRIORITY, SET_USER_DATA,
@@ -716,6 +721,12 @@ impl NvDrv {
     }
 }
 
+/// `/dev/nvhost-ctrl-gpu` GET_TPC_MASKS request code.
+pub const NVGPU_GPU_IOCTL_GET_TPC_MASKS: u32 = 0xC018_4706;
+
+/// `GET_TPC_MASKS` result for GPC 0.
+pub const TPC_MASKS: u32 = 3;
+
 /// `ZCULL_GET_CTX_SIZE` result.
 pub const ZCULL_CTX_SIZE: u32 = 0x8000;
 
@@ -744,6 +755,26 @@ pub fn gpu_characteristics() -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn channel_syncpoints_are_unique_bounded_and_reused_only_after_close() {
+        let mut nv = NvDrv::new();
+        let mut fds = Vec::new();
+        for _ in FIRST_CHANNEL_SYNCPT..NUM_SYNCPTS as u32 {
+            let (fd, status) = nv.open("/dev/nvhost-gpu");
+            assert_eq!(status, NV_OK);
+            assert_eq!(nv.ioctl(fd, 0x4004_4801, &mut [0; 4]), NV_OK);
+            fds.push(fd);
+        }
+        let (extra, _) = nv.open("/dev/nvhost-gpu");
+        assert_eq!(nv.ioctl(extra, 0x4004_4801, &mut [0; 4]), NV_BAD_PARAMETER);
+        let freed = nv.channels[&fds[0]].syncpt;
+        nv.close(fds[0]);
+        assert_eq!(nv.ioctl(extra, 0x4004_4801, &mut [0; 4]), NV_OK);
+        assert_eq!(nv.channels[&extra].syncpt, freed);
+        let ids: std::collections::HashSet<_> = nv.channels.values().map(|c| c.syncpt).collect();
+        assert_eq!(ids.len(), nv.channels.len());
+    }
 
     #[test]
     fn nvmap_lifecycle() {
