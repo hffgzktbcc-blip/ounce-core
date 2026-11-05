@@ -606,3 +606,10 @@ canonical report decide the README metric and merge eligibility.
 Preserved #149's open-licensed bundled font and its owner-approved hybrid-app frame-2 oracle correction
 (`c089902`, GLFW's window-creation swap is frame 1). The oracle table now matches the registered frame.
 No new pixel expectations or sample-specific patches were introduced during integration.
+
+
+Fresh integrated CI corpus proof: run 42033845756 produced 40 passing canonical records (20/20 programs
+on Interpreter and Tier-3) for combined code `2d88c99`. The job's only failure was the previous 19/20
+README count. Derived the headline/badge with scripts/corpus_verify.py and promoted hybrid-app in the
+recorded-pass ratchet from that report. Updated current PLAN.md status without changing its next step.
+A final CI run must qualify the evidence/documentation update before merge.
