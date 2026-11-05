@@ -488,7 +488,9 @@ Changes address audit findings R01-R03, R06-R18, R20, R22-R25, R28, R30 and R33:
 Local validation: 518 workspace/all-feature tests passed, 7 ignored; default release tests passed;
 27 harness checks across 25 stages passed; 16 Python corpus/tooling tests and 11 validator tests passed.
 Release workspace/all-feature/all-target Clippy completes with existing warnings. These are regression
-checks, not new homebrew compatibility milestones. Outside-corpus results are recorded in the PR.
+checks, not new homebrew compatibility milestones. Local outside-corpus pixel oracles preserve 17/20 passes on Interpreter, Tier-3 and Native, using
+devkitA64 16.1/libnx 4.12. SDL2, hbmenu and hybrid retain the main baseline failures.
+Review: https://github.com/hffgzktbcc-blip/ounce-core/pull/154 (draft; CI not yet qualified).
 
 Still open from the review (static findings; not silently treated as fixes):
 - R04: NCE system-register rewrites involving guest X18 need isolated emitted-code coverage.
