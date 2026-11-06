@@ -1,8 +1,8 @@
-# First-frame oracles for the step 2 corpus
+# First-frame corpus oracles
 
 PLAN step 2 grows the corpus from 4 to 20 outside programs. The 4 original programs keep their own
 oracles (`docs/first-frame-oracle.md`, `docs/deko-basic-oracle.md`, `docs/romfs-oracle.md`,
-`docs/startup-oracle.md`). This file covers all 20 in `tests/corpus/oracles.json`: the 16 added in step 2, plus the
+`docs/startup-oracle.md`). The original 20 are registered in `tests/corpus/oracles.json`: the 16 added in step 2, plus the
 original 4 restated so one runner and one evidence format cover the whole corpus. Their dedicated
 tests stay in CI unchanged. `startup` and `romfs` get new exact oracles written in step 2 from source
 (their old oracles only required a non-zero hash); earlier CI logs printed their frame hashes and
@@ -41,12 +41,16 @@ wrong until a person shows from the source why, and the fix is recorded here wit
    pixel matches). Probe oracles check the stated pixels only.
 4. The interpreter and Tier-3 produce identical frames.
 
-Kinds: `console_sw` and `console_deko` and `rects` are **pixel-exact** (whole-frame hash).
-`probes` (2 programs whose frames depend on font rasterising or 3D geometry that cannot be
-predicted exactly from source) check named pixels only, so a pass is weaker; the results table says
-which kind each oracle is.
+Exact `console_sw`, `console_deko`, and `rects` checks compare the whole-frame hash.
+Probe checks compare named pixels. Step 7 expands the corpus to 50 using 30 more pinned
+Switch examples across applets, input, audio, filesystem, networking, services and guest JIT.
+For programs with variable output, the oracle generator uses the libnx font to sample
+foreground and background pixels from source-derived console text. Those entries have
+`probe_cells` in the spec. Every new check targets the first queued frame under no input.
+A passing startup screen establishes that the guest rendered the checked frame. It gives
+no evidence about interactions after that frame.
 
-## The 20 oracles
+## The original 20 oracles
 
 | oracle | build | source read | kind | frames checked |
 |---|---|---|---|---|
@@ -109,3 +113,13 @@ integration with the correctness audit. Pixel expectations are unchanged.
 Integration with the correctness audit in PR #154: [42033845756](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756)
 records 20/20 passing programs on both Interpreter and Tier-3 (40 canonical records). SDL2, hbmenu and
 hybrid-app are now recorded passes. Expected pixel values were not changed during integration.
+
+### Step 7 expansion
+
+The 30 new checks were registered in `53b8a1d` before execution.
+The [first 50-program canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173)
+records 45/50 passing on interpreter and Tier-3, including 26 whole-frame checks and 19 probe checks.
+The Native corpus job records the same 45 passes. All original 20 remain green.
+The new failures are `account`, `audio-echo`, `playtone`, `save-data`, and
+`controller-colors`. Their raw observations and logs are in the `first-frame-oracles`
+artifact. All 100 engine records were checked against the built NRO bytes.
