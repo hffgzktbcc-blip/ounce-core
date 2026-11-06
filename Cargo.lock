@@ -1743,6 +1743,7 @@ dependencies = [
 name = "ounce-core"
 version = "0.3.2"
 dependencies = [
+ "ab_glyph",
  "byteorder",
  "cpal",
  "gilrs",

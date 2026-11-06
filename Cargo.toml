@@ -19,6 +19,7 @@ gpu-present = ["dep:wgpu", "dep:winit", "dep:pollster"]
 nce = ["dep:ounce-nce"]
 
 [dependencies]
+ab_glyph = "0.2"
 byteorder = "1.5.0"
 cpal = "0.18.2"
 gilrs = "0.11.2"
