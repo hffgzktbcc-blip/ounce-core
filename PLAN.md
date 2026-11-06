@@ -241,3 +241,14 @@ from https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756 reco
 (20/20 on Interpreter and Tier-3) for the combined code at `2d88c99` (tested through the PR merge ref).
 The README metric was derived using scripts/corpus_verify.py. Step 7 (expand to 50) remains next.
 
+
+## Owner-directed v0.5.0 release (2026-11-06)
+The owner requested improvements to the oracle, Ounce-Verify and Switch 2 research,
+followed by a release. Integrate #172–#176, preserve hardware/rendering boundaries,
+and qualify the combined commit before tagging.
+- [ ] **12. Qualify and release v0.5.0.** Ship validated frame registrations, bounded
+      malformed-evidence recovery, honest HID color availability and a structured
+      HBLauncher SDK-path first-frame report. Publish all three tested platform
+      archives together with checksums after full CI and canonical corpus evidence.
+      Checkpoint (2026-11-06 13:53Z, codex, b79fad8): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Prepare v0.5.0 combined oracle, verifier and Switch 2 SDK-path candidate
+      Next: Full CI and canonical corpus report before tagging
