@@ -291,3 +291,14 @@ passed decoder, bundle, signature and runtime smoke checks and retained macos-ap
 The [SDK byte-validation run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42238034210/attempts/2)
 passed after one retry of a timed-out package-mirror download. No checks or source were
 changed for that retry. Interactive Mac usability/accessibility acceptance is not claimed.
+
+## Owner-directed guest GPU execution (2026-11-06)
+- [x] **14. Execute supported guest draws through a real host graphics API.** Wire the
+      Maxwell/Ampere SASS-to-WGSL translator into offscreen host draw submission and
+      read back into the original guest render target. Keep adapter identity, software
+      adapters, unsupported state and completed readbacks visible; never count replay
+      or a bookkeeping facade as hardware execution. Keep the CPU path available.
+      *Done when:* the unchanged outside deko3d workload passes its existing oracle
+      with recorded host submissions/readbacks on both CPU engines and a physical
+      GPU. Preserve expected frames and report any remaining failures honestly.
+      *Proof:* [PR #182](https://github.com/hffgzktbcc-blip/ounce-core/pull/182): 46/50 pass; failing: account, audio-echo, playtone, save-data ([canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42274752750)). Guest SASS executes through Metal on the reported IntegratedGpu Apple Paravirtual device and software Vulkan: both engines match every unchanged deko3d frame, with five completed draws and 18,432,000 readback bytes each. Metal proof: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42274752750/job/128091109327 . Linux proof: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42274752750/job/128091109496 . All 23 implementation checks passed; 100 canonical binary records independently byte-verified. Broader Ampere app and native Tegra coverage remain unestablished.

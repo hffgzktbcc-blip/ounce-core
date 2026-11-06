@@ -40,6 +40,12 @@ const STACK_SIZE: usize = 0x100000; // 1 MB stack
 static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 
 fn main() {
+    if let Ok(backend) = std::env::var("OUNCE_GPU_BACKEND") {
+        if !matches!(backend.as_str(), "cpu" | "host") || (backend == "host" && !cfg!(feature = "gpu-present")) {
+            eprintln!("[guest-gpu] OUNCE_GPU_BACKEND expects cpu or host; host requires --features gpu-present");
+            std::process::exit(2);
+        }
+    }
     // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
@@ -354,11 +360,11 @@ fn print_specs() {
     print_box_top(&s, "GPU Subsystem: NVIDIA Ampere Custom GA10B/GA10F");
     print_row(&s, "Architecture        : ", "NVIDIA Ampere GA10B/GA10F Derivative (Tegra T239 Custom)");
     print_row(&s, "Compute Cores       : ", "12 Streaming Multiprocessors (~1,536 CUDA Cores, SM 8.7)");
-    print_row(&s, "Driver Model        : ", "NVN service model (CommandBuffer, Memory & Texture Pools)");
+    print_row(&s, "Guest Driver Path   : ", "nvdrv GPU mappings and Maxwell/Ampere channel decoding");
     print_row(&s, "Pushbuffer ISA      : ", "GPFIFO Channel Methods (0x100..0x10A, Texture Descriptor 0x0B)");
-    print_row(&s, "Shader Pipeline     : ", "Ampere SASS Bytecode Transpiler -> Vulkan SPIR-V 1.5 Binaries");
+    print_row(&s, "Shader Execution    : ", "Guest SASS -> IR -> CPU, or WGSL host draws with readback");
     print_row(&s, "Upscaler Model      : ", "2x upscaler model (bilinear + sharpen, not DLSS)");
-    print_row(&s, "Rasterizer Engine   : ", "Double-Buffered 32-bit RGBA8888 VRAM, Depth Z-Buffer, UV Interp");
+    print_row(&s, "Host Execution      : ", "Experimental: gpu-present + OUNCE_GPU_BACKEND=host; see docs/guest-host-gpu.md");
     print_box_bottom(&s);
     println!();
 
@@ -1778,11 +1784,11 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 16: Switch 2 audren DSP Audio, NVN Memory Pools & Vulkan Hardware Pipeline
+    // Test 16: audren DSP Audio, memory pools and legacy pipeline bookkeeping
     //          Verifies:
     //            1. Tier-2 Direct-Chained JIT executing chained guest loops
     //            2. NVN Memory Pool sub-allocating VRAM for UBOs and VBOs
-    //            3. Native Vulkan HAL loading SPIR-V 1.5 and dispatching draw calls
+    //            3. Legacy pipeline records (no GPU execution; separately qualified guest host path)
     //            4. audren:u DSP mixer processing stereo voices into 48kHz audio sinks
     //            5. Persistent SaveData syncing to disk
     // ---------------------------------------------------------
@@ -1834,7 +1840,7 @@ fn run_built_in_demo() {
             pool_id, ubo.gpu_address, vbo.gpu_address
         );
 
-        // 3. Hardware Vulkan 1.3 / SPIR-V 1.5 Pipeline:
+        // 3. Legacy pipeline bookkeeping fixture (no device execution):
         let sass_ops = vec![
             SassOp::FMovImm { rd: 0, imm: 1.0 }.encode(),
             SassOp::FMovImm { rd: 1, imm: 0.5 }.encode(),
@@ -1847,7 +1853,7 @@ fn run_built_in_demo() {
         vulkan.draw_arrays(&mmu16, vbo.gpu_address, 3).unwrap();
         vulkan.present_frame();
         println!(
-            "  [Vulkan HAL] Loaded SPIR-V 1.5 ({} words) -> Pipeline PSOs: {} | Draws: {} | Presented: {}",
+            "  [Pipeline fixture; no GPU] Recorded SPIR-V header ({} words) -> Pipeline PSOs: {} | Draws: {} | Presented: {}",
             decompiled.spirv_words.len(),
             vulkan.pipelines_created,
             vulkan.draw_calls_submitted,
