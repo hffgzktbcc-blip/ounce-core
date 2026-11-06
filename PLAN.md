@@ -261,13 +261,14 @@ correctness or autonomous repair. No model-provider dependencies are introduced.
       workload target/provenance relabeling during repair qualification; protect cache,
       comparison and regression policy inputs; require a clean committed checkout for
       bounded execution; declare headline target and required engines in the manifest.
+      Independently hash Switch 2 SDK package bytes when validating its reports.
       Add a native, accessible saved-results viewer that never computes verifier verdicts
       or grants repair success. Clearly distinguish recorded results from fresh checks.
       *Done when:* adversarial policy tests pass, the 50-case corpus keeps its coverage,
       and the Mac bundle compiles with report decoding tests. Interactive Mac GUI
       acceptance remains separately recorded; compilation is not a guest-frame claim.
-      Checkpoint (2026-11-06 14:42Z, codex, d5d1b59): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Independently hash Switch 2 SDK package bytes as well as NRO artifacts
-      Next: Mac UI/reader build and full corpus qualification
+      Checkpoint (2026-11-06 14:43Z, codex, e97f02a): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Present app names and plain-language recorded outcomes without UI verdict computation
+      Next: Mac bundle and full corpus CI before ship
 
 Phase acceptance stays tied to the existing V1–V6 evidence: artifact/coverage checks;
 bounded execution; replayable diagnoses; independent same-NRO repair qualification;

@@ -299,8 +299,11 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         label("Pass: recorded checks passed. Failed: an observed mismatch. Blocked: checks could not finish. Not assessed: more evidence is needed.")
         label("\(report.records.count) recorded results • \(url.lastPathComponent)")
         for record in report.records {
-            label(record.caseID, bold: true)
+            let parts = record.caseID.split(separator: "/")
+            let name = parts.count > 1 ? String(parts[1]) : record.caseID
+            label(name.replacingOccurrences(of: "-", with: " ").capitalized, bold: true)
             label(EvidenceReport.explanation(record.verdict))
+            label("Case: \(record.caseID)")
             label("Target: \(record.target) • Engine: \(record.execution.engine) • Revision: \(record.execution.commit.prefix(12))")
             for oracle in record.oracles.prefix(32) {
                 label("\(oracle.name): \(oracle.status)")
