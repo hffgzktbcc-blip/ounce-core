@@ -65,3 +65,33 @@ per-program observations, build inventories and canonical report when produced. 
 a stage using its recorded argument vector and working directory with its input paths
 available. Use `--image` to select the recorded toolchain image if available locally
 or from the registry. Start a full rerun in a fresh output directory.
+
+## Corpus diagnosis
+
+Compare two retained canonical reports with the same command used for either a regression
+or a historical failure:
+
+```sh
+python3 scripts/diagnose_corpus_run.py good/canonical-report.json failing/canonical-report.json \
+    --output diagnosis.json
+```
+
+The bundle records input report hashes, groups non-passing cases by likely subsystem and
+reports the first differing retained frame by index. When the frames match, it compares
+terminal observations. Missing coverage and different NRO hashes or oracle expectations
+are reported separately. Likely subsystem and follow-up checks are hypotheses. The first
+retained difference does not locate the first differing guest instruction.
+
+To replay a side of a case, check out the recorded core revision, locate the NRO at the path
+registered for that program in the checkout's `tests/corpus/oracles.json`, and check its
+SHA-256 against the bundle. Set `OUNCE_CORPUS_ROOT` to the build root and
+`OUNCE_ORACLE_RESULT` to a fresh output file. In that checkout, run the recorded `argv`
+with the recorded `env` entries. The normal corpus test runs both engines and checks
+the same registered expectations. Keep the original canonical reports and per-program logs
+alongside the diagnosis for audit or follow-up.
+
+The SDL2 sample from the [historical corpus run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259)
+exited before frame 1 on both engines. Replaying the historical core revision reproduced
+the early exit at guest PC `0x000000007ffe0004` with the same NRO SHA-256 as the
+[passing reference run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42175855697).
+The bundle identified startup IPC and display initialization as the next paths to trace.

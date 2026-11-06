@@ -19,9 +19,10 @@ of any solver. A repair never changes an oracle, drops a failing case, or weaken
       explicit limits, versioned manifests, retained raw observations and replayable commands.
       *Done when:* the outside corpus runs through one entry point with traceable evidence.
       *Proof:* [PR #157](https://github.com/hffgzktbcc-blip/ounce-core/pull/157), [canonical corpus CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42175855697): one bounded command produced a run manifest, 20 raw oracle observations and 40 byte-verified passing records (20/20 programs).
-- [ ] **V3. Diagnosis.** Compare runs, group failures, isolate first divergence and emit replay
+- [x] **V3. Diagnosis.** Compare runs, group failures, isolate first divergence and emit replay
       bundles with likely subsystem ownership; keep hypotheses separate from observations.
       *Done when:* a real outside-program failure has a reproducible, actionable diagnosis.
+      *Proof:* [PR #158](https://github.com/hffgzktbcc-blip/ounce-core/pull/158) compares [passing corpus CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42175855697) with the [historical SDL2 failure](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259); the bundle identifies missing frame 1, and a same-NRO replay reproduced both engines exiting at the same guest PC before the first frame.
 - [ ] **V4. Solve.** Propose repairs in isolated branches, run focused checks and the regression
       corpus, and retain before/after evidence. No self-approved oracle corrections.
       *Done when:* a failing outside program passes its unchanged oracle without regressions.

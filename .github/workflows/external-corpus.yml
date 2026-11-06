@@ -12,6 +12,7 @@ on:
       - 'scripts/prepare_external_corpus.py'
       - 'scripts/run_corpus_oracles.py'
       - 'scripts/corpus_verify.py'
+      - 'scripts/diagnose_corpus_run.py'
       - 'scripts/verify_corpus_run.py'
       - 'scripts/test_*.py'
       - 'tools/corpus_oracle.py'
