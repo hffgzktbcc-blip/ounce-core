@@ -202,7 +202,7 @@ change. A PR that breaks one is rejected.
 ## Owner-directed oracle hardening (2026-11-06)
 The owner requested improving the oracle. Keep existing golden expectations and
 compatibility counts unchanged while strengthening registration and observations.
-- [ ] **10. Reject vacuous and unreachable frame checks.** Require non-empty checks,
+- [x] **10. Reject vacuous and unreachable frame checks.** Require non-empty checks,
       reachable positive frame indices, positive dimensions, a valid whole-frame hash
       or bounded RGB probes, and explicit failures for missing captured frames. Retain
       observed probe coordinates and RGBA values in each raw workload report.
@@ -211,11 +211,11 @@ compatibility counts unchanged while strengthening registration and observations
       suite passes. Local pinned-startup build blocked by Docker VFS disk exhaustion;
       the downloaded image was removed to recover space. No new frame pass claimed.
       Checkpoint (2026-11-06 13:41Z, codex, ea95b42): GREEN — tests: cargo test: 470 passed, 0 failed; suite: pass — Reject vacuous or unreachable oracle checks; retain observed probe pixels
-      Next: Run canonical outside-corpus CI; local Docker build exceeded disk capacity
+      *Proof:* combined canonical corpus CI https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42229774290: 46/50 programs; all previous passes retained.
 
 ## Owner-directed runtime capability follow-up (2026-11-06)
 The owner requested actual runtime improvements instead of additional models.
-- [ ] **11. Stop fabricating controller color metadata.** Keyboard-backed and generic
+- [x] **11. Stop fabricating controller color metadata.** Keyboard-backed and generic
       controllers must report color-read unavailability unless their host input feed
       supplies device metadata. Publish updated metadata without a style change and
       clear stale colors on disconnect, style change or metadata removal.
@@ -226,7 +226,7 @@ The owner requested actual runtime improvements instead of additional models.
       failing before and passing unchanged frame 1 on Interpreter and Tier-3 after.
       Repository gate: 469 tests passed, zero failed; runtime suite passed.
       Checkpoint (2026-11-06 13:48Z, codex, ea95b42): GREEN — tests: cargo test: 469 passed, 0 failed; suite: pass — Replace fabricated controller colors with host-metadata availability; real colors NRO now matches unchanged oracle on both engines
-      Next: Canonical corpus CI before ship or headline changes
+      *Proof:* combined canonical corpus CI https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42229774290 records controller-colors passing unchanged on both engines (46/50 total).
 
 
 ## How we work (owner decision 2026-11-04)
@@ -250,5 +250,5 @@ and qualify the combined commit before tagging.
       malformed-evidence recovery, honest HID color availability and a structured
       HBLauncher SDK-path first-frame report. Publish all three tested platform
       archives together with checksums after full CI and canonical corpus evidence.
-      Checkpoint (2026-11-06 13:57Z, codex, 67975c2): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Finalize v0.5.0 SDK-path budget bound, release notes and independent evidence validation
-      Next: Require full CI and canonical corpus before publishing
+      Checkpoint (2026-11-06 14:07Z, codex, 740f851): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Derive release headline and regression ratchet from combined canonical corpus: 46/50, all 45 prior passes retained
+      Next: Wait for documentation-head CI then publish v0.5.0 platform archives
