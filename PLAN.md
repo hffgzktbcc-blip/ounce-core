@@ -250,5 +250,5 @@ and qualify the combined commit before tagging.
       malformed-evidence recovery, honest HID color availability and a structured
       HBLauncher SDK-path first-frame report. Publish all three tested platform
       archives together with checksums after full CI and canonical corpus evidence.
-      Checkpoint (2026-11-06 13:55Z, codex, e8b2202): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Validate Switch 2 SDK-path observations against registered oracle and retain local real execution proof
-      Next: Await combined CI and canonical corpus headline
+      Checkpoint (2026-11-06 13:57Z, codex, 67975c2): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Finalize v0.5.0 SDK-path budget bound, release notes and independent evidence validation
+      Next: Require full CI and canonical corpus before publishing

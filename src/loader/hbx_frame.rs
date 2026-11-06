@@ -69,7 +69,7 @@ pub(super) fn first_frame(
             if count == 0 || matches!(exit, BlockExit::Fault { .. }) {
                 return Err(format!("HBX Tier-3 fault at {pc:#x}: {exit:?}").into());
             }
-            remaining -= count;
+            remaining = remaining.saturating_sub(count);
             match exit {
                 BlockExit::Svc { svc_id } => Some(svc_id),
                 _ => None,

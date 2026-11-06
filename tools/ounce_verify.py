@@ -279,6 +279,7 @@ def main(argv=None):
         if args.hbx_oracle:
             import hashlib
             oracle_bytes = args.hbx_oracle.read_bytes()
+            data = _object(data, "HBX record")
             if data.get("oracle_sha256") != hashlib.sha256(oracle_bytes).hexdigest():
                 raise EvidenceError("HBX oracle artifact digest mismatch")
             output = canonical_hbx_report(data, json.loads(oracle_bytes))
