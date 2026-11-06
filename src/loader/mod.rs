@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+pub mod hbx;
 pub mod homebrew;
 pub mod init;
 pub mod nca;
