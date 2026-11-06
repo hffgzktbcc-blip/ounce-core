@@ -90,12 +90,34 @@ jobs:
       - name: Build and smoke-test native Mac app
         if: runner.os == 'macOS'
         run: |
+          swiftc tools/macos-launcher/EvidenceReport.swift tests/macos/evidence-report/main.swift -o "$RUNNER_TEMP/evidence-report-tests"
+          "$RUNNER_TEMP/evidence-report-tests"
           scripts/build_macos_app.sh
           codesign --verify --deep --strict "dist/Ounce Core.app"
           "dist/Ounce Core.app/Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core" test
 
       - name: Run unit tests with gpu-present
         run: cargo test --release --features gpu-present -- --nocapture --test-threads=1
+
+      - name: Check actual guest shader writeback
+        if: runner.os != 'Windows'
+        env:
+          OUNCE_GPU_REQUIRE_HARDWARE: ${{ runner.os == 'macOS' && '1' || '0' }}
+        run: cargo test --release --features gpu-present host_sass_draw_writes_original_guest_surface -- --ignored --nocapture
+
+      - name: Package native Mac app preview
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/Ounce Core.app" "$RUNNER_TEMP/Ounce-Core-workbench-preview.zip"
+
+      - name: Retain native Mac app preview
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app-preview
+          path: ${{ runner.temp }}/Ounce-Core-workbench-preview.zip
+          if-no-files-found: error
+          retention-days: 14
+
 
 
   native-jit:

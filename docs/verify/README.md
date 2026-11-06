@@ -173,3 +173,42 @@ verdict changes, and the diagnosis for replay. Missing current records and new o
 without older observations are reported as baseline gaps. Instruction counts are compared for the same binaries and
 matching oracle observations. Wall-time changes are advisory and require matching host
 and shard settings. The first successful scheduled run establishes the baseline.
+
+## Switch 2 SDK-path observations
+
+`python3 tools/ounce_verify.py observations.json --hbx-oracle tests/corpus/switch2/hello-cpu-first-frame.json`
+validates the separate `ounce-verify/hbx-first-frame-v1` report. It verifies the
+registered oracle file digest and source identity, requires both engines and all
+registered samples, recomputes pixel and engine verdicts, and rejects inconsistent
+claims. Without `--artifact-root`, hashes identify recorded inputs only. With
+`--artifact-root PACKAGE`, the verifier independently hashes code.bin, data.bin and
+report.json and rejects changed or missing bytes and paths escaping the package root. HBLauncher host UI callback rendering is explicitly distinguished
+from Switch 2 GPU-path validation and does not enter the original-Switch headline.
+
+## Trusted repair qualification
+
+Run `qualify_corpus_repair.py` from a trusted checkout or detached worktree sharing
+the reference/candidate Git objects. Do not run a solver-modified copy of the verifier
+to approve that solver's patch. The qualifier rejects changed targets, provenance,
+expectations, execution limits and missing engine/case coverage, and protects the
+build cache, comparison tooling and recorded regression policy from candidate edits.
+Changing an oracle requires an explicit owner decision outside repair qualification.
+
+Bounded corpus execution now refuses a dirty checkout before creating outputs, so a
+recorded commit cannot silently identify different source or verification code.
+The original-Switch headline declares `target` and `required_engines` in the oracle
+manifest; separately labeled Switch 2 results cannot inflate that metric.
+
+## Native results viewer
+
+In the Mac app, choose **View Check Results…** and open a saved corpus, diagnosis, repair or run JSON
+report. The viewer shows hypotheses as suggestions, repair decisions as recorded
+results rather than approvals, and retry history as process states. It explains pass, failure, blocked and not-assessed outcomes and shows
+case IDs, target, engine, revision and oracle results. It is read-only: imported
+results are labeled as recorded, not independently verified in the current session.
+Opening a report runs no app, changes no oracle and approves no repair.
+
+The Mac CI job builds and signs an app preview, runs the report-decoding and runtime
+smoke checks, and retains `macos-app-preview` for review. This is a development preview,
+not a notarized distribution. The normal runtime and verifier remain separate from
+this read-only presentation layer.

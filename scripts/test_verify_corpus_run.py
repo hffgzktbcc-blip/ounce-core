@@ -9,7 +9,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 import uuid
 
-from verify_corpus_run import pull_image
+from verify_corpus_run import pull_image, verified_revision
 
 
 class PullRecoveryTests(unittest.TestCase):
@@ -104,3 +104,23 @@ class PullRecoveryTests(unittest.TestCase):
 
             pull_image(stage, image, 30, evidence)
             self.assertEqual(calls, [1, 0])
+
+
+class RevisionIdentityTests(unittest.TestCase):
+    def test_real_git_checkout_rejects_modified_and_untracked_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            def git(*args):
+                return subprocess.check_output(["git", *args], cwd=root, text=True, stderr=subprocess.DEVNULL).strip()
+            git("init")
+            (root / "input").write_text("registered")
+            git("add", "input")
+            git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "fixture")
+            self.assertEqual(verified_revision(root), git("rev-parse", "HEAD"))
+            (root / "input").write_text("changed")
+            with self.assertRaisesRegex(ValueError, "clean checkout"):
+                verified_revision(root)
+            git("checkout", "--", "input")
+            (root / "untracked.py").write_text("changed verifier")
+            with self.assertRaisesRegex(ValueError, "clean checkout"):
+                verified_revision(root)

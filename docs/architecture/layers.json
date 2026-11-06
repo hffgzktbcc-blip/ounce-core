@@ -39,9 +39,10 @@
     {
       "id": "graphics",
       "name": "Graphics and presentation",
-      "capability": "Guest-frame capture, software rasterization, selected GPU-method and shader models, headless/minifb output, optional wgpu host replay",
-      "boundary": "Host GPU replay and displaying a window are not interchangeable with a registered guest-frame oracle.",
+      "capability": "Guest-frame capture, software rasterization, and experimental guest SASS execution through wgpu with render-target readback",
+      "boundary": "Physical GPU execution and unchanged outside-frame oracles have separate qualification gates.",
       "sources": [
+        "src/gpu/ampere/host.rs",
         "src/gpu/ampere/render.rs",
         "src/gpu/sass/wgsl.rs",
         "src/gpu/present/mod.rs",

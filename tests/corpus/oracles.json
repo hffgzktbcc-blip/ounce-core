@@ -3859,5 +3859,10 @@
       ],
       "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
     }
+  ],
+  "target": "original-switch-libnx",
+  "required_engines": [
+    "interpreter",
+    "tier3"
   ]
 }

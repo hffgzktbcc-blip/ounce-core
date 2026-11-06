@@ -45,7 +45,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Package artifacts (Unix)
         if: matrix.os != 'windows-latest'
@@ -58,9 +58,38 @@ jobs:
         run: |
           Compress-Archive -Path target/${{ matrix.target }}/release/${{ matrix.binary_name }} -DestinationPath ${{ matrix.archive_name }}
 
-      - name: Publish GitHub Release
+      - name: Check tag matches package version
+        shell: bash
+        run: |
+          version=$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ounce-core"))')
+          test "$GITHUB_REF_NAME" = "v$version"
+
+      - name: Test release build
+        run: cargo test --release --locked --target ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ matrix.archive_name }}
+          if-no-files-found: error
+
+  publish:
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Generate archive checksums
+        run: |
+          cd dist
+          sha256sum ounce-core-linux-x86_64.tar.gz ounce-core-macos-arm64.tar.gz ounce-core-windows-x86_64.zip > SHA256SUMS
+      - name: Publish complete release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.archive_name }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          body_path: docs/releases/${{ github.ref_name }}.md
+          files: dist/*
+          fail_on_unmatched_files: true

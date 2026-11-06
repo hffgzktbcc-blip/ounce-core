@@ -207,3 +207,47 @@ class ArtifactTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class HBXEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.evidence = json.loads((ROOT / "docs/verify/hbx-first-frame-local.json").read_text())
+        self.oracle = json.loads((ROOT / "tests/corpus/switch2/hello-cpu-first-frame.json").read_text())
+
+    def test_real_sdk_path_observations_validate(self):
+        result = json.loads(VERIFY.canonical_hbx_report(self.evidence, self.oracle))
+        self.assertTrue(result["pass"])
+        self.assertIn("not a Switch 2 GPU-path validation", result["rendering"])
+
+    def test_forged_pixels_engine_coverage_source_and_agreement_are_rejected(self):
+        for change in (
+            lambda r: r["runs"][0]["pixels"][0].update(observed=[0, 0, 0, 255]),
+            lambda r: r["runs"][0]["pixels"][0].update(expected=[0, 0, 0, 255]),
+            lambda r: r["runs"].pop(),
+            lambda r: r["runs"][1].update(engine="interpreter"),
+            lambda r: r["source"].update(commit="changed"),
+            lambda r: r.update(engine_agreement=False),
+        ):
+            value = copy.deepcopy(self.evidence)
+            change(value)
+            with self.assertRaises(VERIFY.EvidenceError):
+                VERIFY.canonical_hbx_report(value, self.oracle)
+
+
+    def test_hbx_cli_checks_actual_package_bytes_and_drops_unverified_claims(self):
+        self.evidence["artifact_integrity"] = "verified"
+        self.assertNotIn("artifact_integrity", json.loads(VERIFY.canonical_hbx_report(self.evidence, self.oracle)))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, field in (("code.bin", "code_sha256"), ("data.bin", "data_sha256"), ("report.json", "report_sha256")):
+                (root / name).write_bytes(name.encode())
+                self.evidence[field] = hashlib.sha256(name.encode()).hexdigest()
+            evidence, oracle, output = (root / p for p in ("evidence.json", "oracle.json", "output.json"))
+            oracle.write_text(json.dumps(self.oracle))
+            self.evidence["oracle_sha256"] = hashlib.sha256(oracle.read_bytes()).hexdigest()
+            evidence.write_text(json.dumps(self.evidence))
+            argv = [str(evidence), "--hbx-oracle", str(oracle), "--artifact-root", str(root), "--output", str(output)]
+            self.assertEqual(VERIFY.main(argv), 0)
+            self.assertEqual(json.loads(output.read_text())["artifact_integrity"], "verified")
+            (root / "code.bin").write_bytes(b"changed")
+            self.assertEqual(VERIFY.main(argv), 2)

@@ -92,6 +92,14 @@ Unresolved disagreements (we keep the reading with real-word evidence): NAK's SM
 `0x0380` against the CuAssembler-checked `0xc038`; the Maxwell `FSET` constant-buffer form's b negate bit
 (NAK bit 6, envytools bit 53).
 
+## Switch 2 homebrew SDK
+
+The split-image loader follows the public MIT-licensed
+[HBLauncher app builder](https://github.com/ravensclawx/HBLauncher/blob/18b4748ba98eeac7df17beb5d3418985eb74897c/sdk/tools/hbx-build.py)
+at commit `18b4748ba98eeac7df17beb5d3418985eb74897c`. The build report supplies
+segment addresses, sizes, entry point, and SHA-256 hashes. The first-frame
+oracle uses the pinned outside Hello CPU sample's drawing calls.
+
 ## Ported code
 
 MIT code ported into this repository under the "Sources" rules of `PLAN.md`. Notices are in `THIRD_PARTY.md`.
@@ -109,3 +117,17 @@ Commits before `76ce766` (including `c7f16f2` and `4be9640`) were previously ide
 - Cargo licence metadata inventory: recorded 2026-10-28; it covers declared Cargo metadata, not source texts or fixture binaries. See `docs/DEPENDENCY_LICENSE_AUDIT.md`.
 - Shader tooling (`uam` compiles deko3d test shaders; version, licence notices, and generated-output inventory are unrecorded).
 - Fixture source authorship: compare each `main.c` with relevant libnx/deko3d examples and record the result.
+
+## Controller color availability (2026-11-06)
+
+The HID color attributes and shared-memory layout follow libnx 4.12.0
+`include/switch/services/hid.h` (`HidColorAttribute`, `HidNpadFullKeyColorState`,
+`HidNpadJoyColorState`). Connected devices without host-provided color metadata
+report ReadError, disconnected devices report NoController, and supplied metadata
+reports Ok. No runtime implementation code was copied.
+
+The runtime regression workload is unchanged switchbrew/switch-examples
+`hid/colors` at `669786898205b7beb25ff1731e72982e6d0397d3`, built locally with
+devkitA64 GCC 16.1.0, newlib 4.6.0.20260123 and libnx 4.12.0. The existing registered
+frame expectation is unchanged. Package digests were checked against the official
+devkitPro repository databases; toolchain and binaries remain outside the repository.

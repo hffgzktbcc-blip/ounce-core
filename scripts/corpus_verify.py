@@ -137,7 +137,16 @@ def count(report, manifest=None):
     if data.get("schema_version") != ounce_verify.SCHEMA:
         raise SystemExit("not an ounce-verify/v0 canonical report")
     manifest = manifest or REPO / "tests/corpus/oracles.json"
-    ids = [o["id"] for o in json.loads(manifest.read_text())["oracles"]]
+    policy = json.loads(manifest.read_text())
+    ids = [o["id"] for o in policy["oracles"]]
+    required_engines = policy.get("required_engines", list(ENGINES.values()))
+    if (not isinstance(required_engines, list) or any(not isinstance(e, str) for e in required_engines)
+            or len(required_engines) != len(ENGINES)
+            or set(required_engines) != set(ENGINES.values())):
+        raise SystemExit("manifest must require each corpus engine exactly once")
+    target = policy.get("target", "original-switch-libnx")
+    if target != "original-switch-libnx":
+        raise SystemExit("this headline is restricted to original-Switch homebrew")
     if not ids or len(set(ids)) != len(ids):
         raise SystemExit("oracle manifest must contain unique, non-empty coverage")
     programs = {oid: {} for oid in ids}
@@ -152,10 +161,12 @@ def count(report, manifest=None):
         _, program, engine = parts
         if program not in programs or engine not in ENGINES.values():
             raise SystemExit("report contains an unregistered program or engine")
+        if record["target"] != target:
+            raise SystemExit("report target differs from the registered corpus")
         if record["execution"]["engine"] != engine:
             raise SystemExit("case ID and execution engine disagree")
         programs[program][engine] = record["verdict"]
-    required = set(ENGINES.values())
+    required = set(required_engines)
     passed = sorted(p for p, runs in programs.items()
                     if set(runs) == required and set(runs.values()) == {"pass"})
     return passed, len(programs)
