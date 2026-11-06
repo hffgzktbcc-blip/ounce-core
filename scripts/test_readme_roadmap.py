@@ -32,6 +32,21 @@ class ReadmeRoadmapTest(unittest.TestCase):
         self.assertIn("scripts/corpus_verify.py", roadmap)
         self.assertIn("A green badge or merged PR is not proof", roadmap)
 
+    def test_architecture_is_generated_from_source_registry(self):
+        registry = json.loads((ROOT / "docs/architecture/layers.json").read_text(encoding="utf-8"))
+        text = README.read_text(encoding="utf-8")
+        architecture = text.split("### The architecture at a glance", 1)[1].split(
+            "<details>", 1
+        )[0]
+        self.assertIn("BEGIN GENERATED ARCHITECTURE", architecture)
+        self.assertIn("END GENERATED ARCHITECTURE", architecture)
+        for layer in registry["layers"]:
+            with self.subTest(layer=layer["id"]):
+                self.assertIn(layer["name"], architecture)
+                self.assertTrue(layer["sources"])
+                for source in layer["sources"]:
+                    self.assertTrue((ROOT / source).is_file(), source)
+
     def test_old_claims_have_not_returned(self):
         text = README.read_text(encoding="utf-8")
         for obsolete in ("Waiting on public toolchains", "Corpus 4 → 20",
