@@ -157,3 +157,12 @@ oracle stage. It verifies the saved build inventory and toolchain record before 
 the existing builds, recompiles the oracle runner if needed, and retains stage logs
 for each attempt. A run interrupted before its build snapshot is ready needs a new output
 directory.
+
+To locate a transition along a first-parent history, use
+`python3 scripts/bisect_corpus_oracle.py --start GOOD --end BAD --program ID --builds BUILDS --output REPORT`.
+Use the same built corpus inputs throughout. The command checks both endpoints and
+runs the selected oracle on Interpreter and Tier-3 in an isolated Git worktree.
+It retains per-commit logs, raw observations, and the remaining interval in
+`bisection.json`. If an oracle changes or a trial cannot produce a comparable result,
+the command reports the unresolved interval. Use `--before fail` to locate a repair.
+Bisection assumes one transition within the chosen range.
