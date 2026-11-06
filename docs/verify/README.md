@@ -121,3 +121,8 @@ decision. A rejected candidate exits with status 1 and still records its evidenc
 Use reports from the independent corpus workflow. Qualification compares the evidence
 and the committed oracle manifests. The current corpus workflow supplies byte verification
 and executes the pixel checks.
+
+The corpus runner retries a Docker image pull up to twice after a timeout or a recognized
+registry connection failure. It waits two seconds before the first retry and four before
+the second. Each attempt keeps its own command, deadline, exit status, and logs in the
+run evidence. Permanent pull errors, build errors, and oracle failures stop without retry.
