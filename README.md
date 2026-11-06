@@ -14,9 +14,99 @@
 
 **An inspectable AArch64 runtime for open-source Switch homebrew, measured by real frames.**
 
-[Explore the architecture](#the-system) · [Get started](#quickstart) · [See proven progress](#what-is-proven) · [Roadmap](#the-road-ahead) · [Research & provenance](#responsible-research)
+[The Ounce Vision](#the-ounce-vision) · [Architecture](#the-system) · [Get started](#quickstart) · [Verified progress](#what-is-proven) · [Roadmap](#the-road-ahead) · [Research & provenance](#responsible-research)
 
 </div>
+
+---
+
+<a id="the-ounce-vision"></a>
+
+<div align="center">
+
+## ✦ THE OUNCE VISION ✦
+
+### Execute. Observe. Understand. Verify.
+
+**A research platform for making software behaviour observable, correctness testable, and results reproducible.**
+
+*One experimental runtime. One evidence foundation. Many ways to investigate and learn.*
+
+</div>
+
+```mermaid
+flowchart TB
+    subgraph EXPERIENCE["THE RESEARCH EXPERIENCE · evolving product directions"]
+        direction LR
+        DBG["Ounce-Debug<br/>Investigate failures"]
+        TRC["Ounce-Trace<br/>Inspect execution"]
+        LRN["Ounce-Learn<br/>Explain the system"]
+        BEN["Ounce-Bench<br/>Compare performance"]
+    end
+    V["OUNCE-VERIFY<br/>Registered oracles · evidence · reproducibility"]
+    R["OUNCE-CORE RUNTIME<br/>AArch64 engines · memory · services · graphics"]
+    P["Pinned, permitted programs and reproducible test inputs"]
+
+    P --> R --> V
+    V --> DBG
+    V --> TRC
+    V --> LRN
+    V --> BEN
+
+    classDef foundation fill:#172b32,stroke:#73b9ae,color:#ffffff,stroke-width:2px;
+    classDef verify fill:#d9efe9,stroke:#4f9c87,color:#16382e,stroke-width:2px;
+    classDef experience fill:#edf3f8,stroke:#8aafc7,color:#1e3d52;
+    class R foundation;
+    class V verify;
+    class DBG,TRC,LRN,BEN experience;
+```
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**01 — Execute & model**
+
+The [Ounce-Core runtime](#the-system) explores AArch64 execution, memory, operating-system services and graphics through inspectable software models.
+
+</td>
+<td width="50%" valign="top">
+
+**02 — Measure & preserve**
+
+[Ounce-Verify](docs/verify/README.md) checks registered output expectations, distinguishes evidence from inference, and supports reproducible failure investigation.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**03 — Investigate & explain**
+
+**Ounce-Trace**, **Ounce-Debug** and **Ounce-Learn** are proposed experiences for understanding execution, faults and computing concepts, building on the same evidence rather than inventing separate sources of truth.
+
+</td>
+<td width="50%" valign="top">
+
+**04 — Compare & share**
+
+**Ounce-Bench** is a proposed performance-research experience. Public reports, documented experiments and independent reruns can help developers, students and researchers evaluate results.
+
+</td>
+</tr>
+</table>
+
+<div align="center">
+
+**From an instruction to a rendered frame. From a failure to an explanation. From a claim to reproducible evidence.**
+
+*The vision is larger than any one platform; the proof must always stay narrower than the claim.*
+
+[Explore verified results](#what-is-proven) · [How verification works](#how-the-proof-works) · [See the research roadmap](#the-road-ahead)
+
+</div>
+
+> **Vision versus current capability:** Ounce-Core and Ounce-Verify have working implementations. The named Trace, Debug, Learn and Bench experiences above are future directions, not claims that four finished products exist. Original-Switch corpus results and limited Switch 2 SDK-path observations remain separate; neither establishes commercial-software or broad Switch 2 compatibility.
 
 ---
 
