@@ -99,9 +99,8 @@ pub(super) fn first_frame(
             }
             Some(slot @ (1 | 2)) if drawing => {
                 let (x, y, w, h, radius) = (scalar(0), scalar(1), scalar(2), scalar(3), scalar(4));
-                if ![x, y, w, h, radius, scalar(5)]
-                    .iter()
-                    .all(|v| v.is_finite())
+                if ![x, y, w, h, radius].iter().all(|v| v.is_finite())
+                    || (slot == 2 && !scalar(5).is_finite())
                 {
                     return Err("HBX rectangle has non-finite coordinates".into());
                 }
