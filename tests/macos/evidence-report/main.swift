@@ -24,3 +24,7 @@ let run = Data("""
 let history = try EvidenceReport(data: run)
 precondition(history.sections[0].title == "pull-retry-1")
 precondition(history.overview.contains("not an application compatibility result"))
+
+let sdk = try EvidenceReport.read(URL(fileURLWithPath: "docs/verify/hbx-first-frame-local.json"))
+precondition(sdk.sections.count == 2)
+precondition(sdk.overview.contains("not Switch 2 GPU-path validation"))

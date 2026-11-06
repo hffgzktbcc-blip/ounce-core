@@ -59,6 +59,15 @@ struct EvidenceReport {
         let stages: [Stage]
         enum CodingKeys: String, CodingKey { case commit = "core_commit", shards = "oracle_shards", stages }
     }
+    private struct SDKReport: Decodable {
+        struct Item: Decodable {
+            let engine: String
+            let pass: Bool
+            let error: String?
+        }
+        let target: String
+        let runs: [Item]
+    }
     enum ReadError: LocalizedError {
         case invalid
         var errorDescription: String? {
@@ -117,9 +126,19 @@ struct EvidenceReport {
                 ]) }
                 heading = "Saved run and recovery history"
                 overview = "Revision: \(report.commit) • Parallel groups: \(report.shards). Process completion is not an application compatibility result. Retries appear as separate recorded steps."
+            case "ounce-verify/hbx-first-frame-v1":
+                let report = try decoder.decode(SDKReport.self, from: data)
+                guard report.runs.count <= 1000 else { throw ReadError.invalid }
+                records = []
+                sections = report.runs.map { run in Section(title: run.engine, lines: [
+                    run.pass ? "The saved report records passed pixel checks." : "The saved report records failed pixel checks.",
+                    run.error ?? "No execution error was recorded."
+                ]) }
+                heading = "Saved Switch 2 SDK-path results"
+                overview = "Recorded target: \(report.target). This path uses HBLauncher host UI callbacks; it is not Switch 2 GPU-path validation."
             default: throw ReadError.invalid
             }
-            guard sections.allSatisfy({ $0.title.count <= 512 && $0.lines.allSatisfy({ $0.count <= 4096 }) }) else { throw ReadError.invalid }
+            guard overview.count <= 4096, sections.allSatisfy({ $0.title.count <= 512 && $0.lines.allSatisfy({ $0.count <= 4096 }) }) else { throw ReadError.invalid }
         } catch { throw ReadError.invalid }
     }
     static func read(_ url: URL) throws -> EvidenceReport {
