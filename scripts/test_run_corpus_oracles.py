@@ -8,6 +8,7 @@ from threading import Barrier
 import unittest
 from unittest.mock import patch
 import subprocess
+import sys
 
 import run_corpus_oracles as runner
 
@@ -93,3 +94,43 @@ class FreshVerdictTests(unittest.TestCase):
             self.assertIsNone(runner.resume_case(checkpoint, identity, result, log))
             checkpoint.write_text(json.dumps(runner.checkpoint_for(identity, result, log, "exited-101")))
             self.assertIsNone(runner.resume_case(checkpoint, identity, result, log))
+
+
+class ProcessEvidenceTests(unittest.TestCase):
+    def test_invalid_result_preserves_raw_file_and_does_not_abort_other_cases(self):
+        # Real host processes inject corrupt output; these are runner fault tests,
+        # not guest execution or compatibility evidence.
+        for malformed in ("{", "[]", '{"id":"wrong","pass":true,"failures":[]}',
+                          '{"id":"bad","pass":"yes","failures":[]}',
+                          '{"id":"bad","pass":true,"failures":"wrong"}'):
+            with self.subTest(malformed=malformed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                corpus = root / "tests/corpus"
+                corpus.mkdir(parents=True)
+                ids = ["bad", "other-shard", "following"]
+                (corpus / "oracles.json").write_text(json.dumps({"oracles": [
+                    {"id": name, "build": "b", "nro": name + ".nro"} for name in ids]}))
+                (corpus / "oracle-results.json").write_text(json.dumps({"results": {}}))
+                source = root / "builds/b/build/source"
+                source.mkdir(parents=True)
+                for name in ids:
+                    (source / (name + ".nro")).write_bytes(b"host-fault-test-input")
+                executable = root / "fault-process"
+                executable.write_text(
+                    "#!" + sys.executable + "\nimport os, pathlib, json\n"
+                    "name = os.environ['OUNCE_ORACLE_ID']\n"
+                    "payload = " + repr(malformed) + " if name == 'bad' else json.dumps("
+                    "{'id': name, 'pass': False, 'failures': ['intentional host test failure']})\n"
+                    "pathlib.Path(os.environ['OUNCE_ORACLE_RESULT']).write_text(payload)\n")
+                executable.chmod(0o755)
+                evidence = root / "evidence"
+                arguments = ["runner", "--executable", str(executable), "--builds", str(root / "builds"),
+                             "--evidence", str(evidence), "--resume", "--shards", "2"]
+                with patch.object(runner, "REPO", root), patch("sys.argv", arguments), \
+                        contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(SystemExit, "invalid oracle evidence"):
+                    runner.main()
+                aggregate = json.loads((evidence / "oracle-verdicts.json").read_text())
+                self.assertEqual([v["id"] for v in aggregate["verdicts"]], ids)
+                self.assertEqual(aggregate["passed"], 0)
+                self.assertEqual((evidence / "bad.oracle.json").read_text(), malformed)
+                self.assertFalse((evidence / "bad.checkpoint.json").exists())
