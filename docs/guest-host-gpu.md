@@ -20,12 +20,13 @@ Host mode rejects unsupported draws and records a diagnostic; it does not silent
 substitute CPU shading. Clears currently use the CPU path. This is a hybrid
 implementation of a bounded command/shader subset, not NVN or a native Tegra driver.
 
-The initial scope is one RGBA8 color attachment, supported vertex/fragment SASS,
+The initial scope is one RGBA8 color attachment, supported vertex/fragment SASS with all four position components written,
 bounded uniform bindings (including indexed reads), indexed or nonindexed triangles (including supported
 strip/fan/quad normalization), viewport/scissor, face culling and color write masks.
 Texture sampling, depth/stencil, blending, instancing, layered targets, geometry,
 tessellation, multisampling and other unimplemented GPU state are not qualified.
-New outside-workload failures should drive extensions to this scope.
+Unaligned static constant-buffer loads also reject before submission. New
+outside-workload failures should drive extensions to this scope.
 
 Target dimensions/storage, vertex staging and index work are bounded. Submission
 waits time out after 30 seconds. Validation, mapping or guest writeback failures do

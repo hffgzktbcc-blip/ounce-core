@@ -121,6 +121,23 @@ impl Ampere3d {
         {
             return Err("host shaders require position and color 0, without textures".into());
         }
+        if !(0..4).all(|component| {
+            vs.func
+                .stores
+                .iter()
+                .any(|(addr, _)| attr_slot(*addr) == Some(AttrSlot::Position(component)))
+        }) {
+            return Err("host vertex shader must write all four position components".into());
+        }
+        if vs
+            .func
+            .values
+            .iter()
+            .chain(&ps.func.values)
+            .any(|op| matches!(op, Op::Cbuf { offset, .. } if offset % 4 != 0))
+        {
+            return Err("unaligned static constant-buffer reads are unsupported on host".into());
+        }
         for varying in &fi.varyings {
             if !vi.varyings.iter().any(|v| v.location == varying.location) {
                 return Err("fragment input has no vertex output".into());

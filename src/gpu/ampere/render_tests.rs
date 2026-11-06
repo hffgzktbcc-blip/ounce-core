@@ -1473,5 +1473,19 @@ fn host_sass_draw_writes_original_guest_surface() {
         assert_eq!(gpu.render_stats().host_draws, 1);
         assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped { .. })));
         assert_eq!(mem.get(RT_VA, RT_BYTES), before);
+
+        // Partial position writes have different undefined/default behavior across APIs.
+        // Reject them before submission rather than inventing a host position component.
+        let mut partial = vertex_shader();
+        let at = AMPERE_SPH_SIZE + 2 * 16;
+        partial[at..at + 16].copy_from_slice(&asm::ast(0, 0x70, 3).to_le_bytes());
+        mem.put(VS_VA, &partial);
+        gpu.take_diagnostics();
+        let mut unsupported = vec![inc_header(SC, m::SET_DEPTH_TEST, 1), 0];
+        draw(&mut unsupported, 0, 3, 4);
+        gpu.submit(&unsupported, &mut mem).unwrap();
+        assert_eq!(gpu.render_stats().host_draws, 1);
+        assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped { .. })));
+        assert_eq!(mem.get(RT_VA, RT_BYTES), before);
     }
 }
