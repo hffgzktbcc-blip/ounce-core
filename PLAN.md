@@ -48,6 +48,10 @@ Launcher onboarding follow-up: tested the redesigned welcome screen on Apple M3.
 rejected a mislabeled file, the same launcher opened the pinned Hello World sample and displayed its
 guest frame, and Stop Session returned to the welcome actions. The built-in demo also opened.
 
+Launcher boundary follow-up: the bundled runtime now validates NROs through a dedicated entry
+point before executing guest bytes. On Apple M3 it rejected a mislabeled file before execution
+and rendered the pinned Hello World sample through the Mac picker.
+
 ## Goal
 Run open-source Switch homebrew on macOS Apple Silicon (and Linux/Windows), with every claim backed by
 a real program's real frame.

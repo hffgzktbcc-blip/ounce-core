@@ -30,3 +30,18 @@ fn malformed_image_is_a_nonzero_cli_failure() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("[Loader Error]"));
 }
+
+#[test]
+fn nro_only_command_rejects_raw_input_before_execution() {
+    let path = std::env::temp_dir().join(format!("ounce_raw_{}.nro", std::process::id()));
+    std::fs::write(&path, [0u8; 128]).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run-nro", path.to_str().unwrap(), "--present=headless"])
+        .output()
+        .unwrap();
+    std::fs::remove_file(path).unwrap();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("[Loader Error]"));
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("Starting execution"));
+}

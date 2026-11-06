@@ -509,6 +509,30 @@ pub struct BootPackageInfo {
 pub struct BootLoader;
 
 impl BootLoader {
+    pub fn load_homebrew_nro(
+        bytes: &[u8],
+        base_addr: u64,
+        mmu: &mut Memory,
+    ) -> Result<BootPackageInfo, LoadError> {
+        Self::load_nro_executable(bytes, base_addr, 0, "NRO0", mmu)
+    }
+
+    fn load_nro_executable(
+        bytes: &[u8],
+        base_addr: u64,
+        title_id: u64,
+        format: &'static str,
+        mmu: &mut Memory,
+    ) -> Result<BootPackageInfo, LoadError> {
+        let hdr = NroLoader::load_into_memory(bytes, base_addr, mmu)?;
+        Ok(BootPackageInfo {
+            format,
+            title_id,
+            code_size: hdr.text_size as usize,
+            relocations_applied: hdr.relocations_applied,
+        })
+    }
+
     pub fn load_any_package(
         raw: &[u8],
         base_addr: u64,
@@ -652,13 +676,7 @@ impl BootLoader {
 
         // Check if the executable is an NRO0 binary (magic "NRO0" at offset 0x10)
         if exec_bytes.len() >= 0x80 && (&exec_bytes[0x10..0x14] == b"NRO0") {
-            let hdr = NroLoader::load_into_memory(exec_bytes, base_addr, mmu)?;
-            return Ok(BootPackageInfo {
-                format,
-                title_id,
-                code_size: hdr.text_size as usize,
-                relocations_applied: hdr.relocations_applied,
-            });
+            return Self::load_nro_executable(exec_bytes, base_addr, title_id, format, mmu);
         }
 
         // Otherwise map raw AArch64 machine code directly at base_addr

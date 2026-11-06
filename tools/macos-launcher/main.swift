@@ -268,7 +268,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             status.stringValue = "Couldn’t read this file. Check that it’s on your Mac and try again."
             return
         }
-        start(["run", url.path, "--gui", "--present=gpu", "--sdmc=\(sdCard.path)"], name: url.deletingPathExtension().lastPathComponent, waitsForGuestFrame: true)
+        start(["run-nro", url.path, "--gui", "--present=gpu", "--sdmc=\(sdCard.path)"], name: url.deletingPathExtension().lastPathComponent, waitsForGuestFrame: true)
     }
 
     @objc private func tryDemo() { start(["gfx", "--present=gpu"], name: "graphics demo") }

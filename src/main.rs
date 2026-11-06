@@ -110,9 +110,14 @@ fn main() {
             };
             run_gpu3d_demo(max_frames);
         }
-        "run" => {
+        "run" | "run-nro" => {
             print_banner();
+            let nro_only = args[1] == "run-nro";
             if args.len() < 3 {
+                if nro_only {
+                    eprintln!("Error: Please provide a homebrew NRO path");
+                    std::process::exit(1);
+                }
                 eprintln!("Error: Please provide path to .nsp, .nca, .nro or loose directory");
                 return;
             }
@@ -120,7 +125,7 @@ fn main() {
             let gui_mode = args.iter().any(|a| a == "--gui" || a == "--window" || a == "-g");
             // Anything after the path that is not a flag is passed to homebrew as argv[1..].
             let guest_args: Vec<&str> = args[3..].iter().filter(|a| !a.starts_with('-')).map(|a| a.as_str()).collect();
-            run_file(file_path, &guest_args, gui_mode);
+            run_file(file_path, &guest_args, gui_mode, nro_only);
         }
         "demo-dir" | "dir-demo" | "loose-demo" => {
             print_banner();
@@ -287,6 +292,7 @@ fn print_usage() {
     println!("    cargo run --release -- {}<COMMAND>{} [OPTIONS]\n", s.green, s.reset);
     println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
     println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
+    println!("    {}run-nro{} <file> [args] [--gui]  Load and execute only a homebrew NRO", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
     println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);
     println!("    {}inspect{} <file|dir>      Audit .xci/.nsp/.nca/.nro headers, loose NPDM metadata & RomFS assets", s.green, s.reset);
@@ -3529,8 +3535,8 @@ fn run_directory_package(dir_path: &str, gui_mode: bool) {
     }
 }
 
-fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
-    if std::path::Path::new(path).is_dir() {
+fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
+    if !nro_only && std::path::Path::new(path).is_dir() {
         run_directory_package(path, gui_mode);
         return;
     }
@@ -3562,7 +3568,12 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
         0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
     ];
 
-    match BootLoader::load_any_package(&bytes, DEFAULT_BASE_ADDR, &default_key, &mut mmu) {
+    let package = if nro_only {
+        BootLoader::load_homebrew_nro(&bytes, DEFAULT_BASE_ADDR, &mut mmu)
+    } else {
+        BootLoader::load_any_package(&bytes, DEFAULT_BASE_ADDR, &default_key, &mut mmu)
+    };
+    match package {
         Ok(info) => {
             let is_nro = info.format == "NRO0";
             println!("[BootLoader] Successfully loaded package:");
@@ -3632,7 +3643,7 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> bool {
     let base = arena.base();
     let (mut cpu, mut mmu, mut kernel) = setup_vm_in(Memory::with_arena(arena), base, cpu::nce::ALIAS_SIZE);
     let code = base + DEFAULT_BASE_ADDR;
-    if let Err(e) = BootLoader::load_any_package(bytes, code, &[0; 16], &mut mmu) {
+    if let Err(e) = BootLoader::load_homebrew_nro(bytes, code, &mut mmu) {
         return { eprintln!("[Loader Error] {e}"); false };
     }
     if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, bytes, guest_args) {
@@ -3898,7 +3909,7 @@ fn build_and_boot_showcase_nsp(out_path: &str) {
         out_path
     );
 
-    run_file(out_path, &[], false);
+    run_file(out_path, &[], false, false);
 }
 
 #[cfg(test)]
