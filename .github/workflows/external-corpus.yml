@@ -326,6 +326,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev
 
+      - name: Verify recovery from a refused registry connection
+        env:
+          OUNCE_VERIFY_DOCKER_RECOVERY_TEST: '1'
+        run: PYTHONPATH=scripts python3 -m unittest test_verify_corpus_run.PullRecoveryTests.test_real_registry_connection_recovers
+
       - name: Build, run and verify the registered corpus
         id: corpus
         run: |

@@ -10,6 +10,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import time
 import uuid
 
 from run_corpus_oracles import REPO
@@ -33,6 +34,34 @@ for manifest in /repo/tests/corpus/manifest.json /repo/tests/corpus/oracle-build
     done
 done
 """
+
+
+# Docker reports both transient registry failures and permanent errors as exit 1.
+TRANSIENT_PULL_ERRORS = (
+    b"connection refused", b"connection reset by peer", b"i/o timeout",
+    b"temporary failure in name resolution", b"tls handshake timeout",
+    b"502 bad gateway", b"503 service unavailable", b"504 gateway timeout",
+)
+
+
+def pull_image(stage, image, seconds, evidence, *, delay=time.sleep):
+    command = ["docker", "pull", image]
+    for attempt in range(1, 4):
+        name = "pull" if attempt == 1 else f"pull-retry-{attempt - 1}"
+        try:
+            if stage(name, command, seconds) == 0:
+                return
+        except subprocess.TimeoutExpired:
+            pass  # stage has already killed and reaped the pull process.
+        else:
+            with (evidence / f"{name}.stderr.log").open("rb") as log:
+                log.seek(max(0, os.fstat(log.fileno()).st_size - 65536))
+                diagnostic = log.read().lower()
+            if not any(message in diagnostic for message in TRANSIENT_PULL_ERRORS):
+                break
+        if attempt < 3:
+            delay(2 ** attempt)
+    raise ValueError(f"pull failed; see {evidence}")
 
 
 def positive_seconds(value):
@@ -112,7 +141,7 @@ def run(args):
         if stage(name, command, seconds, output):
             raise ValueError(f"{name} failed; see {evidence}")
 
-    require("pull", ["docker", "pull", args.image], args.build_seconds)
+    pull_image(stage, args.image, args.build_seconds, evidence)
     toolchain = evidence / "toolchain-image.json"
     require("inspect", ["docker", "image", "inspect", args.image], 30, toolchain)
     image_id = json.loads(toolchain.read_text())[0]["Id"]
