@@ -8,13 +8,48 @@ program is missing from the build (a workflow error, not a runtime result).
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import subprocess
+
+from corpus_build_cache import digest
 
 REPO = Path(__file__).resolve().parents[1]
 TEST = "loader::fixture_tests::corpus_runner::corpus_first_frame_oracle"
+
+
+def checkpoint_for(identity, result, log, host_status):
+    return {"identity": identity, "result_sha256": digest(result),
+            "log_sha256": digest(log), "host_status": host_status}
+
+
+def completed_case(verdict, identity, status):
+    engines = [run["engine"] for run in verdict.get("runs", [])]
+    return (status in ("exited-zero", "exited-101")
+            and verdict["pass"] is (status == "exited-zero")
+            and verdict["id"] == identity["oracle"]["id"]
+            and verdict.get("nro_sha256") == identity["nro_sha256"]
+            and engines in (["Interpreter", "Tier3"], ["Tier3", "Native"]))
+
+
+def resume_case(checkpoint, identity, result, log):
+    try:
+        saved = json.loads(checkpoint.read_text())
+        status = saved["host_status"]
+        if status not in ("exited-zero", "exited-101"):
+            return None
+        if saved != checkpoint_for(identity, result, log, status):
+            return None
+        verdict = json.loads(result.read_text())
+        if not completed_case(verdict, identity, status):
+            return None
+        verdict.update(host_status=status, host_timeout_seconds=identity["seconds"])
+        return verdict
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
 
 
 def main():
@@ -24,14 +59,46 @@ def main():
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--seconds", type=int, default=300, help="host time per engine")
     parser.add_argument("--shards", type=int, default=1, help="number of concurrent corpus shards")
+    parser.add_argument("--resume", action="store_true", help="reuse matching completed cases in the same evidence directory")
     args = parser.parse_args()
     if args.shards < 1:
         parser.error("--shards must be at least 1")
-    oracles = json.loads((REPO / "tests/corpus/oracles.json").read_text())["oracles"]
+    args.evidence.mkdir(parents=True, exist_ok=True)
+    if args.resume:
+        # The OS releases this lock after an interruption. A file alone is not a lock.
+        import fcntl
+        with (args.evidence / ".resume.lock").open("a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                parser.error("a resumable run is already using this evidence directory")
+            run(args, parser)
+    else:
+        run(args, parser)
+
+
+def run(args, parser):
+    oracle_manifest = REPO / "tests/corpus/oracles.json"
+    oracles = json.loads(oracle_manifest.read_text())["oracles"]
     if len({oracle["id"] for oracle in oracles}) != len(oracles):
         parser.error("the oracle manifest contains duplicate IDs")
     recorded = json.loads((REPO / "tests/corpus/oracle-results.json").read_text())["results"]
-    args.evidence.mkdir(parents=True, exist_ok=True)
+    aggregate = args.evidence / "oracle-verdicts.json"
+    aggregate.unlink(missing_ok=True)
+    resumed = {}
+    if args.resume:
+        resumed = {
+            "executable_sha256": digest(args.executable),
+            "runner_sha256": digest(Path(__file__)),
+            "host_sha256": hashlib.sha256(f"{platform.node()} {platform.platform()}".encode()).hexdigest(),
+            "manifest_sha256": digest(oracle_manifest),
+            "build_root": str(args.builds.resolve()),
+            "seconds": args.seconds,
+            "shards": args.shards,
+            "environment": {k: v for k, v in os.environ.items() if k.startswith("OUNCE_")},
+        }
+        resumed["environment"] = hashlib.sha256(
+            json.dumps(resumed["environment"], sort_keys=True).encode()).hexdigest()
 
     def run_case(oracle):
         oid = oracle["id"]
@@ -40,6 +107,14 @@ def main():
             return None, f"{oid}: corpus program missing from the build: {nro}"
         result = args.evidence / f"{oid}.oracle.json"
         log = args.evidence / f"{oid}.oracle.log"
+        checkpoint = args.evidence / f"{oid}.checkpoint.json"
+        if args.resume:
+            identity = dict(resumed, oracle=oracle, nro_sha256=digest(nro))
+            saved = resume_case(checkpoint, identity, result, log)
+            if saved is not None:
+                print(f"REUSED {oid}", flush=True)
+                return saved, None
+        checkpoint.unlink(missing_ok=True)
         # A failed rerun must never inherit a verdict from an earlier execution.
         result.unlink(missing_ok=True)
         env = dict(os.environ, OUNCE_CORPUS_ROOT=str(args.builds), OUNCE_ORACLE_ID=oid,
@@ -60,6 +135,10 @@ def main():
             verdict["pass"] = False
             verdict["failures"].append(f"runner did not complete successfully: {host_status}")
         verdict.update(host_status=host_status, host_timeout_seconds=args.seconds)
+        if args.resume and result.is_file() and completed_case(verdict, identity, host_status):
+            pending = checkpoint.with_suffix(".tmp")
+            pending.write_text(json.dumps(checkpoint_for(identity, result, log, host_status)) + "\n")
+            pending.replace(checkpoint)
         print(f"{'PASS' if verdict['pass'] else 'FAIL'} {oid}: {'; '.join(verdict['failures'][:3])}", flush=True)
         return verdict, None
 
@@ -79,8 +158,10 @@ def main():
     verdicts = [verdict for verdict, _ in results if verdict is not None]
     errors = [error for _, error in results if error is not None]
     passed = [v["id"] for v in verdicts if v["pass"]]
-    (args.evidence / "oracle-verdicts.json").write_text(json.dumps(
+    pending_aggregate = aggregate.with_suffix(".tmp")
+    pending_aggregate.write_text(json.dumps(
         {"passed": len(passed), "total": len(oracles), "verdicts": verdicts}, indent=2) + "\n")
+    pending_aggregate.replace(aggregate)
     lines = [f"### First-frame oracles: {len(passed)}/{len(oracles)} pass", "", "| oracle | verdict | first failure |", "|---|---|---|"]
     for v in verdicts:
         lines.append(f"| {v['id']} | {'pass' if v['pass'] else 'fail'} | {(v['failures'] or [''])[0][:160]} |")

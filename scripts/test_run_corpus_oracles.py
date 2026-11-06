@@ -76,3 +76,20 @@ class FreshVerdictTests(unittest.TestCase):
             result = json.loads((evidence / "oracle-verdicts.json").read_text())
             self.assertEqual([verdict["id"] for verdict in result["verdicts"]], ids)
             self.assertEqual(result["passed"], 2)
+
+    def test_checkpoint_requires_matching_evidence_and_a_completed_guest_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkpoint, result, log = (root / name for name in ("checkpoint", "result", "log"))
+            identity = {"oracle": {"id": "sample"}, "nro_sha256": "digest", "seconds": 180}
+            verdict = {"id": "sample", "nro_sha256": "digest", "pass": True,
+                       "runs": [{"engine": "Interpreter"}, {"engine": "Tier3"}]}
+            result.write_text(json.dumps(verdict))
+            log.write_text("guest output")
+            checkpoint.write_text(json.dumps(runner.checkpoint_for(identity, result, log, "exited-zero")))
+            self.assertTrue(runner.resume_case(checkpoint, identity, result, log)["pass"])
+            self.assertIsNone(runner.resume_case(checkpoint, dict(identity, seconds=181), result, log))
+            log.write_text("changed")
+            self.assertIsNone(runner.resume_case(checkpoint, identity, result, log))
+            checkpoint.write_text(json.dumps(runner.checkpoint_for(identity, result, log, "exited-101")))
+            self.assertIsNone(runner.resume_case(checkpoint, identity, result, log))
