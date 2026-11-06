@@ -99,6 +99,20 @@ jobs:
       - name: Run unit tests with gpu-present
         run: cargo test --release --features gpu-present -- --nocapture --test-threads=1
 
+      - name: Package native Mac app preview
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/Ounce Core.app" "$RUNNER_TEMP/Ounce-Core-workbench-preview.zip"
+
+      - name: Retain native Mac app preview
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app-preview
+          path: ${{ runner.temp }}/Ounce-Core-workbench-preview.zip
+          if-no-files-found: error
+          retention-days: 14
+
+
 
   native-jit:
     name: Tier-4 native code (${{ matrix.os }})

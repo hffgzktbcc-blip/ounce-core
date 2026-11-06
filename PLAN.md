@@ -274,8 +274,8 @@ correctness or autonomous repair. No model-provider dependencies are introduced.
       *Done when:* adversarial policy tests pass, the 50-case corpus keeps its coverage,
       and the Mac bundle compiles with report decoding tests. Interactive Mac GUI
       acceptance remains separately recorded; compilation is not a guest-frame claim.
-      Checkpoint (2026-11-06 14:50Z, codex, b2160ac): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Read real saved SDK-path evidence with explicit rendering boundaries in the app
-      Next: Final Mac decoder/app build and corpus qualification
+      Checkpoint (2026-11-06 14:53Z, codex, c3d285e): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Package the tested native results workbench as a downloadable Mac preview
+      Next: Final Mac preview build and 50-program corpus evidence
 
 Phase acceptance stays tied to the existing V1–V6 evidence: artifact/coverage checks;
 bounded execution; replayable diagnoses; independent same-NRO repair qualification;

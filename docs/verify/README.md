@@ -207,3 +207,8 @@ results rather than approvals, and retry history as process states. It explains 
 case IDs, target, engine, revision and oracle results. It is read-only: imported
 results are labeled as recorded, not independently verified in the current session.
 Opening a report runs no app, changes no oracle and approves no repair.
+
+The Mac CI job builds and signs an app preview, runs the report-decoding and runtime
+smoke checks, and retains `macos-app-preview` for review. This is a development preview,
+not a notarized distribution. The normal runtime and verifier remain separate from
+this read-only presentation layer.
