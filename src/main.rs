@@ -3591,10 +3591,16 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
 
             if gui_mode {
                 println!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");
+                let title = if is_nro {
+                    let name = std::path::Path::new(path).file_stem().and_then(|stem| stem.to_str()).unwrap_or("Homebrew");
+                    format!("{name} — Ounce Core")
+                } else {
+                    format!("Ounce-Core | 0x{:016X} [T239]", info.title_id)
+                };
                 let mut display = DisplayServer::new(
                     DEFAULT_FRAMEBUFFER_ADDR,
                     DisplayConfig {
-                        title: format!("Ounce-Core | 0x{:016X} [T239]", info.title_id),
+                        title,
                         ..Default::default()
                     },
                 );

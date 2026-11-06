@@ -40,6 +40,10 @@ Package the existing runtime, expose homebrew opening, session stop, SD folder a
 and verify actual guest frames through the ordinary GUI path. This does not change the
 20/20 compatibility metric or complete the corpus expansion step.
 
+2026-11-06 follow-up: distinguish launcher startup from first guest frame receipt and name the
+NRO window after its file. Local GUI proof on Apple M3: the pinned application sample displayed
+its Hello World frame through Metal, the launcher reported frame receipt, and Escape closed the session.
+
 ## Goal
 Run open-source Switch homebrew on macOS Apple Silicon (and Linux/Windows), with every claim backed by
 a real program's real frame.
