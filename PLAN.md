@@ -197,6 +197,7 @@ change. A PR that breaks one is rejected.
       *Done when:* each claim links to its CI run or oracle file, and nothing claims more than the evidence shows.
       *Proof:* [PR #139](https://github.com/hffgzktbcc-blip/ounce-core/pull/139) (merged `9903f22`): README "How the proof works" and "Safe Rust by construction", evidence table and badges, each linked; the oracle badge is now checked against the canonical report like the headline. CI green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150292; oracles 15/20 with README check: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150245.
 
+
 ## Owner-directed oracle hardening (2026-11-06)
 The owner requested improving the oracle. Keep existing golden expectations and
 compatibility counts unchanged while strengthening registration and observations.
@@ -210,6 +211,22 @@ compatibility counts unchanged while strengthening registration and observations
       the downloaded image was removed to recover space. No new frame pass claimed.
       Checkpoint (2026-11-06 13:41Z, codex, ea95b42): GREEN — tests: cargo test: 470 passed, 0 failed; suite: pass — Reject vacuous or unreachable oracle checks; retain observed probe pixels
       Next: Run canonical outside-corpus CI; local Docker build exceeded disk capacity
+
+## Owner-directed runtime capability follow-up (2026-11-06)
+The owner requested actual runtime improvements instead of additional models.
+- [ ] **11. Stop fabricating controller color metadata.** Keyboard-backed and generic
+      controllers must report color-read unavailability unless their host input feed
+      supplies device metadata. Publish updated metadata without a style change and
+      clear stale colors on disconnect, style change or metadata removal.
+      *Done when:* the unchanged outside controller-colors NRO passes its existing
+      first-frame oracle on interpreter and Tier-3, the repository gate passes,
+      and the canonical corpus shows no regressions in CI.
+      Local proof: docs/verify/controller-colors-before-after.json retains the same NRO
+      failing before and passing unchanged frame 1 on Interpreter and Tier-3 after.
+      Repository gate: 469 tests passed, zero failed; runtime suite passed.
+      Checkpoint (2026-11-06 13:48Z, codex, ea95b42): GREEN — tests: cargo test: 469 passed, 0 failed; suite: pass — Replace fabricated controller colors with host-metadata availability; real colors NRO now matches unchanged oracle on both engines
+      Next: Canonical corpus CI before ship or headline changes
+
 
 ## How we work (owner decision 2026-11-04)
 - **This file is the truth.** Notes, handoffs and memory are history, not plans.
