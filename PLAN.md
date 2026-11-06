@@ -36,6 +36,17 @@ of any solver. A repair never changes an oracle, drops a failing case, or weaken
       *Done when:* CI demonstrates retained coverage and actionable regression evidence at scale.
       *Proof:* [Warm-cache CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42193209243/attempts/2) reused verified builds; [resume](https://github.com/hffgzktbcc-blip/ounce-core/pull/168) retained completed oracle work; [bisection](https://github.com/hffgzktbcc-blip/ounce-core/pull/169) isolated a real SDL2 first-frame transition; [comparison CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42196871177) passed with all 100 engine records across 50 homebrews, zero regressions, and a passing native corpus job. [Nightly workflow](https://github.com/hffgzktbcc-blip/ounce-core/pull/170) merged.
 
+## Owner-directed deterministic execution follow-up (2026-11-06)
+The owner requested continued evolution using real implementation and execution,
+without model dependencies. This follow-up hardens the existing corpus runner:
+malformed per-case JSON must preserve raw evidence, fail the invocation, and allow
+remaining cases in every shard to finish and enter the aggregate report.
+Checkpoint: implemented and checked with real host subprocess fault injection;
+original code fails the new checks, updated code passes. These are runner recovery
+checks, not guest compatibility evidence. No expected frame or headline changes.
+Next: full repository gate and outside-corpus CI before shipping. This environment
+has a partial connector snapshot and no Cargo; gate checkpoint/ship is unavailable.
+
 ## Owner-directed usability task (2026-11-05)
 The owner requested the next practical step after the audit: a native Mac launcher.
 Package the existing runtime, expose homebrew opening, session stop, SD folder and logs,
@@ -187,6 +198,37 @@ change. A PR that breaks one is rejected.
       *Done when:* each claim links to its CI run or oracle file, and nothing claims more than the evidence shows.
       *Proof:* [PR #139](https://github.com/hffgzktbcc-blip/ounce-core/pull/139) (merged `9903f22`): README "How the proof works" and "Safe Rust by construction", evidence table and badges, each linked; the oracle badge is now checked against the canonical report like the headline. CI green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150292; oracles 15/20 with README check: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150245.
 
+
+## Owner-directed oracle hardening (2026-11-06)
+The owner requested improving the oracle. Keep existing golden expectations and
+compatibility counts unchanged while strengthening registration and observations.
+- [x] **10. Reject vacuous and unreachable frame checks.** Require non-empty checks,
+      reachable positive frame indices, positive dimensions, a valid whole-frame hash
+      or bounded RGB probes, and explicit failures for missing captured frames. Retain
+      observed probe coordinates and RGBA values in each raw workload report.
+      *Done when:* all existing registrations validate, malformed definitions fail,
+      the repository gate passes, and real outside frames still match unchanged oracles.
+      suite passes. Local pinned-startup build blocked by Docker VFS disk exhaustion;
+      the downloaded image was removed to recover space. No new frame pass claimed.
+      Checkpoint (2026-11-06 13:41Z, codex, ea95b42): GREEN — tests: cargo test: 470 passed, 0 failed; suite: pass — Reject vacuous or unreachable oracle checks; retain observed probe pixels
+      *Proof:* combined canonical corpus CI https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42231436126: 46/50 programs; all previous passes retained.
+
+## Owner-directed runtime capability follow-up (2026-11-06)
+The owner requested actual runtime improvements instead of additional models.
+- [x] **11. Stop fabricating controller color metadata.** Keyboard-backed and generic
+      controllers must report color-read unavailability unless their host input feed
+      supplies device metadata. Publish updated metadata without a style change and
+      clear stale colors on disconnect, style change or metadata removal.
+      *Done when:* the unchanged outside controller-colors NRO passes its existing
+      first-frame oracle on interpreter and Tier-3, the repository gate passes,
+      and the canonical corpus shows no regressions in CI.
+      Local proof: docs/verify/controller-colors-before-after.json retains the same NRO
+      failing before and passing unchanged frame 1 on Interpreter and Tier-3 after.
+      Repository gate: 469 tests passed, zero failed; runtime suite passed.
+      Checkpoint (2026-11-06 13:48Z, codex, ea95b42): GREEN — tests: cargo test: 469 passed, 0 failed; suite: pass — Replace fabricated controller colors with host-metadata availability; real colors NRO now matches unchanged oracle on both engines
+      *Proof:* combined canonical corpus CI https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42231436126 records controller-colors passing unchanged on both engines (46/50 total).
+
+
 ## How we work (owner decision 2026-11-04)
 - **This file is the truth.** Notes, handoffs and memory are history, not plans.
 - **Real frames decide progress:** a step closes on its pixel-oracle evidence in CI, never on unit tests.
@@ -199,3 +241,21 @@ from https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756 reco
 (20/20 on Interpreter and Tier-3) for the combined code at `2d88c99` (tested through the PR merge ref).
 The README metric was derived using scripts/corpus_verify.py. Step 7 (expand to 50) remains next.
 
+
+## Owner-directed v0.5.0 release (2026-11-06)
+The owner requested improvements to the oracle, Ounce-Verify and Switch 2 research,
+followed by a release. Integrate #172–#176, preserve hardware/rendering boundaries,
+and qualify the combined commit before tagging.
+- [x] **12. Qualify and release v0.5.0.** Ship validated frame registrations, bounded
+      malformed-evidence recovery, honest HID color availability and a structured
+      HBLauncher SDK-path first-frame report. Publish all three tested platform
+      archives together with checksums after full CI and canonical corpus evidence.
+      Checkpoint (2026-11-06 14:29Z, codex, eb95697): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Record published v0.5.0 assets, checksums and final qualification links
+      Next: Release complete; next work requires a new owner-directed scope
+
+Release proof (2026-11-06): [v0.5.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.5.0)
+published from `eb95697845e44f35675cb0a4bfb0467ed50b264a` after all 21 candidate checks passed.
+[Release workflow](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42233497706)
+built and tested Linux x86-64, macOS arm64 and Windows x86-64 archives and published
+all three with SHA256SUMS. Canonical corpus: 46/50 on both engines, all prior passes
+retained; native corpus and the separately scoped HBLauncher SDK-path oracle passed.

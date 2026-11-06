@@ -69,7 +69,7 @@ pub(super) fn first_frame(
             if count == 0 || matches!(exit, BlockExit::Fault { .. }) {
                 return Err(format!("HBX Tier-3 fault at {pc:#x}: {exit:?}").into());
             }
-            remaining -= count;
+            remaining = remaining.saturating_sub(count);
             match exit {
                 BlockExit::Svc { svc_id } => Some(svc_id),
                 _ => None,
@@ -201,17 +201,51 @@ fn outside_hello_cpu_first_frame() -> Result<(), Box<dyn std::error::Error>> {
     let oracle: serde_json::Value = serde_json::from_str(include_str!(
         "../../tests/corpus/switch2/hello-cpu-first-frame.json"
     ))?;
-    let interpreter = first_frame(&image, false)?;
-    let tier3 = first_frame(&image, true)?;
-    assert!(interpreter == tier3, "HBX engines differ on frame 1");
-    assert_eq!(Some(tier3.width as u64), oracle["width"].as_u64());
-    assert_eq!(Some(tier3.height as u64), oracle["height"].as_u64());
-    for sample in oracle["pixels"].as_array().expect("registered pixels") {
-        let x = sample["x"].as_u64().expect("x") as usize;
-        let y = sample["y"].as_u64().expect("y") as usize;
-        let pixel = tier3.pixel(x, y).expect("pixel in frame");
-        assert_eq!(serde_json::json!(pixel), sample["rgba"], "pixel ({x}, {y})");
-        println!("pixel ({x}, {y}): {pixel:?}");
+    let mut frames = Vec::new();
+    let mut runs = Vec::new();
+    for (engine, tier3) in [("interpreter", false), ("tier3", true)] {
+        match first_frame(&image, tier3) {
+            Ok(frame) => {
+                let pixels: Vec<_> = oracle["pixels"].as_array().expect("registered pixels").iter().map(|sample| {
+                    let x = sample["x"].as_u64().expect("x") as usize;
+                    let y = sample["y"].as_u64().expect("y") as usize;
+                    let observed = frame.pixel(x, y).map(|(r,g,b,a)| [r,g,b,a]);
+                    serde_json::json!({"x": x, "y": y, "expected": sample["rgba"],
+                        "observed": observed, "pass": serde_json::json!(observed) == sample["rgba"]})
+                }).collect();
+                let pass = Some(frame.width as u64) == oracle["width"].as_u64()
+                    && Some(frame.height as u64) == oracle["height"].as_u64()
+                    && !pixels.is_empty()
+                    && pixels.iter().all(|p| p["pass"] == true);
+                runs.push(serde_json::json!({"engine": engine, "pass": pass,
+                    "width": frame.width, "height": frame.height,
+                    "rgba_fnv1a64": format!("{:#018x}", frame.content_hash()), "pixels": pixels}));
+                frames.push(frame);
+            }
+            Err(error) => runs.push(
+                serde_json::json!({"engine": engine, "pass": false, "error": error.to_string()}),
+            ),
+        }
     }
+    let agreement = frames.len() == 2 && frames[0] == frames[1];
+    let pass = agreement && runs.iter().all(|r| r["pass"] == true);
+    use sha2::{Digest, Sha256};
+    let evidence = serde_json::json!({
+        "schema_version": "ounce-verify/hbx-first-frame-v1", "target": "switch2-homebrew",
+        "source": oracle["source"], "oracle_sha256": format!("{:x}", Sha256::digest(include_bytes!("../../tests/corpus/switch2/hello-cpu-first-frame.json"))),
+        "code_sha256": format!("{:x}", Sha256::digest(&code)),
+        "data_sha256": format!("{:x}", Sha256::digest(&data)),
+        "report_sha256": format!("{:x}", Sha256::digest(&report)),
+        "rendering": "HBLauncher host UI callbacks; not a Switch 2 GPU-path validation",
+        "runs": runs, "engine_agreement": agreement, "pass": pass
+    });
+    println!("{}", serde_json::to_string_pretty(&evidence)?);
+    if let Some(path) = std::env::var_os("OUNCE_HBX_RESULT") {
+        fs::write(path, serde_json::to_string_pretty(&evidence)? + "\n")?;
+    }
+    assert!(
+        pass,
+        "HBLauncher first-frame oracle failed; see structured observations"
+    );
     Ok(())
 }

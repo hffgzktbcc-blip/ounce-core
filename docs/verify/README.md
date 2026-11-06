@@ -173,3 +173,13 @@ verdict changes, and the diagnosis for replay. Missing current records and new o
 without older observations are reported as baseline gaps. Instruction counts are compared for the same binaries and
 matching oracle observations. Wall-time changes are advisory and require matching host
 and shard settings. The first successful scheduled run establishes the baseline.
+
+## Switch 2 SDK-path observations
+
+`python3 tools/ounce_verify.py observations.json --hbx-oracle tests/corpus/switch2/hello-cpu-first-frame.json`
+validates the separate `ounce-verify/hbx-first-frame-v1` report. It verifies the
+registered oracle file digest and source identity, requires both engines and all
+registered samples, recomputes pixel and engine verdicts, and rejects inconsistent
+claims. Hash syntax identifies inputs; this mode does not independently rehash
+package binaries. HBLauncher host UI callback rendering is explicitly distinguished
+from Switch 2 GPU-path validation and does not enter the original-Switch headline.

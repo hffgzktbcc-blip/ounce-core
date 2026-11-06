@@ -127,20 +127,33 @@ def run(args, parser):
                 stop, host_status = None, "exited-zero" if done.returncode == 0 else f"exited-{done.returncode}"
             except subprocess.TimeoutExpired:
                 stop, host_status = "outer host timeout", "outer-timeout"
+        evidence_error = None
         if result.is_file():
-            verdict = json.loads(result.read_text())
+            try:
+                verdict = json.loads(result.read_text())
+                if (not isinstance(verdict, dict) or verdict.get("id") != oid
+                        or not isinstance(verdict.get("pass"), bool)
+                        or not isinstance(verdict.get("failures"), list)
+                        or not all(isinstance(item, str) for item in verdict["failures"])
+                        or not isinstance(verdict.get("runs", []), list)
+                        or not all(isinstance(item, dict) for item in verdict.get("runs", []))):
+                    raise ValueError("invalid verdict identity or fields")
+            except (OSError, ValueError) as error:
+                evidence_error = f"{oid}: invalid oracle evidence: {error}"
+                # Preserve the raw file for diagnosis. Never checkpoint or reuse it.
+                verdict = {"id": oid, "pass": False, "failures": [evidence_error]}
         else:
             verdict = {"id": oid, "pass": False, "failures": [stop or "runner exited without a verdict (see log)"]}
         if host_status != "exited-zero" and verdict["pass"]:
             verdict["pass"] = False
             verdict["failures"].append(f"runner did not complete successfully: {host_status}")
         verdict.update(host_status=host_status, host_timeout_seconds=args.seconds)
-        if args.resume and result.is_file() and completed_case(verdict, identity, host_status):
+        if args.resume and evidence_error is None and result.is_file() and completed_case(verdict, identity, host_status):
             pending = checkpoint.with_suffix(".tmp")
             pending.write_text(json.dumps(checkpoint_for(identity, result, log, host_status)) + "\n")
             pending.replace(checkpoint)
         print(f"{'PASS' if verdict['pass'] else 'FAIL'} {oid}: {'; '.join(verdict['failures'][:3])}", flush=True)
-        return verdict, None
+        return verdict, evidence_error
 
     def run_shard(shard):
         return [run_case(oracle) for oracle in shard]
