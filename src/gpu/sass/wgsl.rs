@@ -14,8 +14,9 @@
 //! - `.FTZ` is dropped; WGSL leaves denormal handling to the implementation.
 //! - `FFMA` -> `fma()`, which WGSL does not promise to fuse on every backend.
 //! - `.SAT` -> `saturate()`; hardware maps NaN to 0, WGSL leaves NaN unspecified.
-//! - `MUFU.SIN`/`COS`: UNVERIFIED (recalled from Mesa NAK, which pre-scales by 1/2pi
-//!   before the op on SM70+), so we emit `sin(x * 2pi)`.
+//! - `MUFU.SIN`/`COS` take turns, not radians: Mesa NAK feeds them
+//!   `nir_op_fsin_normalized_2_pi` on SM70+ (`from_nir.rs`), so we emit `sin(x * 2pi)`.
+//!   Maxwell's `RRO.SINCOS` is lowered as the matching x / 2pi.
 //! - Fragment `@builtin(position).w` is 1/w_clip (WebGPU/Vulkan semantics), which is what
 //!   `IPA.PASS a[0x7c]` yields. A perspective varying read with `IPA.PASS` is
 //!   screen-linear `attr/w`, so we emit `in.l.c * position.w`; a following
@@ -25,11 +26,15 @@
 //!   Disabled components are written as 0.0. Depth/sample-mask output is unsupported.
 //! - Textures are declared `texture_2d<f32>`: integer formats are not modelled. An implicit
 //!   LOD in a vertex shader becomes level 0 (WGSL has no derivatives there).
+//! - Integer and predicate ops follow [`super::eval`]. Lowering if-converts branches, so the
+//!   output has no control flow apart from a final `discard` for `KIL`. WGSL lets
+//!   implementations assume no NaNs, so the NaN results of float compares, `min`/`max` and
+//!   float-to-int conversions are only reliable on the CPU path.
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use super::decode::{IpaFreq, MufuOp, TexHandle, TexOp};
+use super::decode::{FCmp, ICmp, IpaFreq, MufuOp, Round, TexHandle, TexOp};
 use super::ir::{attr_slot, AttrSlot, Function, Lod, Op, Ty, Value};
 use super::sph::{PixelImap, Sph};
 use super::{ConstantBuffer, Interpolation, ShaderInterface, ShaderStage, TextureBinding, Varying, XlateError};
@@ -73,12 +78,80 @@ impl Ctx<'_> {
         }
     }
 
+    fn as_u32(&self, v: Value) -> String {
+        match self.f.op(v) {
+            Op::Const(bits) => format!("{bits:#010x}u"),
+            op if op.ty() == Ty::F32 => format!("bitcast<u32>(v{})", v.0),
+            _ => format!("v{}", v.0),
+        }
+    }
+
+    fn as_bool(&self, v: Value) -> String {
+        match self.f.op(v) {
+            Op::Bool(b) => b.to_string(),
+            _ => format!("v{}", v.0),
+        }
+    }
+
+    fn fcmp(&self, cmp: FCmp, a: Value, b: Value) -> String {
+        let (x, y) = (self.as_f32(a), self.as_f32(b));
+        match cmp {
+            FCmp::F => "false".into(),
+            FCmp::T => "true".into(),
+            FCmp::Lt => format!("{x} < {y}"),
+            FCmp::Eq => format!("{x} == {y}"),
+            FCmp::Le => format!("{x} <= {y}"),
+            FCmp::Gt => format!("{x} > {y}"),
+            FCmp::Ge => format!("{x} >= {y}"),
+            FCmp::Ne => format!("({x} < {y} || {x} > {y})"),
+            FCmp::Num => format!("({x} == {x} && {y} == {y})"),
+            FCmp::Nan => format!("({x} != {x} || {y} != {y})"),
+            FCmp::Ltu => format!("!({x} >= {y})"),
+            FCmp::Equ => format!("!({x} < {y} || {x} > {y})"),
+            FCmp::Leu => format!("!({x} > {y})"),
+            FCmp::Gtu => format!("!({x} <= {y})"),
+            FCmp::Neu => format!("{x} != {y}"),
+            FCmp::Geu => format!("!({x} < {y})"),
+        }
+    }
+
+    fn icmp(&self, cmp: ICmp, signed: bool, a: Value, b: Value) -> String {
+        let (x, y) = if signed { (self.as_i32(a), self.as_i32(b)) } else { (self.as_u32(a), self.as_u32(b)) };
+        let o = match cmp {
+            ICmp::F => return "false".into(),
+            ICmp::T => return "true".into(),
+            ICmp::Lt => "<",
+            ICmp::Eq => "==",
+            ICmp::Le => "<=",
+            ICmp::Gt => ">",
+            ICmp::Ne => "!=",
+            ICmp::Ge => ">=",
+        };
+        format!("{x} {o} {y}")
+    }
+
+    fn lop3(&self, lut: u8, a: Value, b: Value, c: Value) -> String {
+        let ins = [self.as_u32(a), self.as_u32(b), self.as_u32(c)];
+        let mut terms = Vec::new();
+        for i in 0..8u8 {
+            if lut & (1 << i) != 0 {
+                let t: Vec<String> =
+                    (0..3).map(|k| if i & (4 >> k) != 0 { ins[k].clone() } else { format!("~{}", ins[k]) }).collect();
+                terms.push(format!("({})", t.join(" & ")));
+            }
+        }
+        if terms.is_empty() { "0u".into() } else { terms.join(" | ") }
+    }
+
     fn expr(&self, op: Op) -> String {
         match op {
             Op::Const(bits) => format!("{bits:#010x}u"),
             Op::Cbuf { bank, offset } => format!("cb{bank}[{}u][{}u]", offset / 16, (offset / 4) % 4),
+            Op::CbufIndexed { .. } => unreachable!("dynamic constant buffers are rejected before emission"),
             Op::Attr { addr } => match attr_slot(addr) {
                 Some(AttrSlot::Generic { loc, comp }) => format!("vin.a{loc}.{}", COMP[comp as usize]),
+                None if addr == 0x2f8 => "bitcast<f32>(vin.instance_index)".into(),
+                None if addr == 0x2fc => "bitcast<f32>(vin.vertex_index)".into(),
                 _ => unreachable!("lowering only emits generic vertex inputs"),
             },
             Op::Interp { addr, freq, mul } => {
@@ -119,7 +192,7 @@ impl Ctx<'_> {
                     MufuOp::Tanh => format!("tanh({x})"),
                 }
             }
-            Op::Tex { op, handle, lod, x, y } => {
+            Op::Tex { op, handle, lod, x, y, .. } => {
                 let k = self.textures[&handle];
                 match op {
                     TexOp::Sample => {
@@ -140,6 +213,45 @@ impl Ctx<'_> {
                 }
             }
             Op::Comp(t, c) => format!("v{}.{}", t.0, COMP[c as usize]),
+            Op::Bool(b) => b.to_string(),
+            Op::FCmp(c, a, b) => self.fcmp(c, a, b),
+            Op::ICmp(c, s, a, b) => self.icmp(c, s, a, b),
+            Op::BAnd(a, b) => format!("{} && {}", self.as_bool(a), self.as_bool(b)),
+            Op::BOr(a, b) => format!("{} || {}", self.as_bool(a), self.as_bool(b)),
+            Op::BXor(a, b) => format!("{} != {}", self.as_bool(a), self.as_bool(b)),
+            Op::BNot(a) => format!("!{}", self.as_bool(a)),
+            Op::BSel(c, a, b) => format!("select({}, {}, {})", self.as_bool(b), self.as_bool(a), self.as_bool(c)),
+            Op::Sel(c, a, b) => format!("select({}, {}, {})", self.as_u32(b), self.as_u32(a), self.as_bool(c)),
+            Op::IAdd(a, b) => format!("{} + {}", self.as_u32(a), self.as_u32(b)),
+            Op::INeg(a) => format!("0u - {}", self.as_u32(a)),
+            Op::IMul(a, b) => format!("{} * {}", self.as_u32(a), self.as_u32(b)),
+            Op::Shl(a, b) => format!("{} << ({} & 31u)", self.as_u32(a), self.as_u32(b)),
+            Op::ShrU(a, b) => format!("{} >> ({} & 31u)", self.as_u32(a), self.as_u32(b)),
+            Op::ShrS(a, b) => format!("bitcast<u32>({} >> ({} & 31u))", self.as_i32(a), self.as_u32(b)),
+            Op::And(a, b) => format!("{} & {}", self.as_u32(a), self.as_u32(b)),
+            Op::Or(a, b) => format!("{} | {}", self.as_u32(a), self.as_u32(b)),
+            Op::Xor(a, b) => format!("{} ^ {}", self.as_u32(a), self.as_u32(b)),
+            Op::Not(a) => format!("~{}", self.as_u32(a)),
+            Op::Lop3(l, a, b, c) => self.lop3(l, a, b, c),
+            Op::FMin(a, b) => format!("min({}, {})", self.as_f32(a), self.as_f32(b)),
+            Op::FMax(a, b) => format!("max({}, {})", self.as_f32(a), self.as_f32(b)),
+            Op::IMin(true, a, b) => format!("bitcast<u32>(min({}, {}))", self.as_i32(a), self.as_i32(b)),
+            Op::IMin(false, a, b) => format!("min({}, {})", self.as_u32(a), self.as_u32(b)),
+            Op::IMax(true, a, b) => format!("bitcast<u32>(max({}, {}))", self.as_i32(a), self.as_i32(b)),
+            Op::IMax(false, a, b) => format!("max({}, {})", self.as_u32(a), self.as_u32(b)),
+            Op::I2F(true, a) => format!("f32({})", self.as_i32(a)),
+            Op::I2F(false, a) => format!("f32({})", self.as_u32(a)),
+            Op::F2I(true, a) => format!("bitcast<u32>(i32({}))", self.as_f32(a)),
+            Op::F2I(false, a) => format!("u32({})", self.as_f32(a)),
+            Op::FRound(r, a) => {
+                let f = match r {
+                    Round::Nearest => "round",
+                    Round::Floor => "floor",
+                    Round::Ceil => "ceil",
+                    Round::Trunc => "trunc",
+                };
+                format!("{f}({})", self.as_f32(a))
+            }
         }
     }
 }
@@ -180,15 +292,23 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
     // Constant buffers: size = highest vec4 touched + 1.
     let mut cbufs: BTreeMap<u8, u32> = BTreeMap::new();
     let mut inputs: BTreeMap<u32, ()> = BTreeMap::new();
+    let instance_index = f.values.iter().any(|op| matches!(op, Op::Attr { addr: 0x2f8 }));
+    let vertex_index = f.values.iter().any(|op| matches!(op, Op::Attr { addr: 0x2fc }));
     // Texture handle -> sampled (needs a sampler binding).
     let mut textures: BTreeMap<TexHandle, bool> = BTreeMap::new();
     for op in &f.values {
         match *op {
+            Op::Tex { layer: Some(_), .. } => {
+                return Err(XlateError::Unsupported { at: 0, what: "2D array texture in WGSL" });
+            }
             Op::Tex { op, handle, .. } => *textures.entry(handle).or_insert(false) |= op == TexOp::Sample,
             Op::Cbuf { bank, offset } => {
                 let e = cbufs.entry(bank).or_insert(0);
                 *e = (*e).max(offset as u32 / 16 + 1);
             }
+            Op::CbufIndexed { .. } => return Err(XlateError::Unsupported {
+                at: 0, what: "dynamic constant buffer requires an explicit binding-size contract",
+            }),
             Op::Attr { addr } | Op::Interp { addr, .. } => {
                 if let Some(AttrSlot::Generic { loc, .. }) = attr_slot(addr) {
                     inputs.insert(loc, ());
@@ -238,12 +358,13 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
     let body = |out: &mut String| {
         for (i, op) in f.values.iter().enumerate() {
             match op {
-                Op::Const(_) => {}
+                Op::Const(_) | Op::Bool(_) => {}
                 op => {
                     let ty = match op.ty() {
                         Ty::U32 => "u32",
                         Ty::F32 => "f32",
                         Ty::Vec4 => "vec4<f32>",
+                        Ty::Bool => "bool",
                     };
                     writeln!(out, "    let v{i}: {ty} = {};", ctx.expr(*op)).unwrap();
                 }
@@ -264,8 +385,11 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
                     None => {}
                 }
             }
-            if !inputs.is_empty() {
+            let has_inputs = !inputs.is_empty() || instance_index || vertex_index;
+            if has_inputs {
                 writeln!(out, "struct VsIn {{").unwrap();
+                if instance_index { writeln!(out, "    @builtin(instance_index) instance_index: u32,").unwrap(); }
+                if vertex_index { writeln!(out, "    @builtin(vertex_index) vertex_index: u32,").unwrap(); }
                 for &loc in inputs.keys() {
                     writeln!(out, "    @location({loc}) a{loc}: vec4<f32>,").unwrap();
                     iface.vertex_inputs.push(loc);
@@ -279,7 +403,7 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
                 iface.varyings.push(Varying { location: loc, interpolation: Interpolation::Perspective });
             }
             writeln!(out, "}};\n").unwrap();
-            let param = if inputs.is_empty() { "" } else { "vin: VsIn" };
+            let param = if has_inputs { "vin: VsIn" } else { "" };
             writeln!(out, "@vertex\nfn main({param}) -> VsOut {{").unwrap();
             writeln!(out, "    var out: VsOut;").unwrap();
             body(&mut out);
@@ -333,6 +457,9 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
                     }
                 }
                 writeln!(out, "    out.c{t} = vec4<f32>({});", comps.join(", ")).unwrap();
+            }
+            if let Some(d) = f.discard {
+                writeln!(out, "    if {} {{\n        discard;\n    }}", ctx.as_bool(d)).unwrap();
             }
             if !targets.is_empty() {
                 writeln!(out, "    return out;").unwrap();

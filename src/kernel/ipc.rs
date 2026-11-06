@@ -10,12 +10,26 @@ pub const CMIF_IN_MAGIC: u32 = 0x49434653;  // "SFCI"
 pub const CMIF_OUT_MAGIC: u32 = 0x4F434653; // "SFCO"
 pub const DEFAULT_TLS_ADDR: u64 = 0x7FFFE00000;
 pub const TLS_SIZE: usize = 0x1000;
+/// BSD `errno` for a socket call with no network.
+const BSD_ENETDOWN: u32 = 50;
+/// Temperature `ts` reports, in degrees Celsius.
+const TS_TEMPERATURE_C: f32 = 35.0;
 
 /// Horizon OS System Service Types
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceType {
     /// Service Manager ("sm:")
     Sm,
+    /// BSD sockets ("bsd:u" / "bsd:s" / "bsd:a"): initialises, but there is no network
+    Bsd,
+    /// Network interface manager ("nifm:u" / "nifm:s" / "nifm:a"): reports no connection
+    Nifm,
+    /// Temperature measurement ("ts")
+    Ts,
+    /// `nn::ts::IMeasurementServer` session
+    TsSession,
+    /// `nn::nifm::detail::IGeneralService`
+    NifmGeneral,
     /// Nvidia GPU Driver ("nvdrv" / "nvdrv:a")
     Nvdrv,
     /// Video Interface ("vi:u" / "vi:m" / "vi:s")
@@ -146,6 +160,8 @@ pub struct IpcManager {
     domain_reply: bool,
     /// `nvdrv` devices and nvmap objects for libnx-shaped requests.
     pub nvdrv: super::nvdrv::NvDrv,
+    /// IPC commands answered with "not implemented", in first-seen order (deduped, capped at 64).
+    pub unimplemented: Vec<(String, u32)>,
     /// HID shared memory in libnx's layout; the host's controller input goes here.
     pub hid: super::hid::HidSharedMemory,
     /// The `IAudioRenderer` opened through `audren:u`, if any.
@@ -154,6 +170,10 @@ pub struct IpcManager {
     pub applet: super::applet::AppletState,
     pub apm: super::apm::ApmState,
     pub time: super::time::TimeState,
+    /// Shared memory handed out by `pl:u` for the shared font, once requested.
+    pub pl_shm_handle: Option<u32>,
+    /// Steady-clock reading (ns) the kernel publishes under the deterministic clock; `None` follows the host.
+    pub steady_override_ns: Option<u64>,
     pub(super) vi_binder: super::vi::BinderObjects,
     next_handle: u32,
     pub total_ipc_requests: u64,
@@ -167,6 +187,14 @@ impl Default for IpcManager {
 }
 
 impl IpcManager {
+    /// Records a command answered with "not implemented" (for the corpus flight recorder).
+    pub fn note_unimplemented(&mut self, service: &str, cmd_id: u32) {
+        let entry = (service.to_string(), cmd_id);
+        if self.unimplemented.len() < 64 && !self.unimplemented.contains(&entry) {
+            self.unimplemented.push(entry);
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             handles: HashMap::new(),
@@ -175,11 +203,14 @@ impl IpcManager {
             domains: Default::default(),
             domain_reply: false,
             nvdrv: super::nvdrv::NvDrv::new(),
+            unimplemented: Vec::new(),
             hid: Default::default(),
             audio_renderer: None,
             applet: Default::default(),
             apm: Default::default(),
             time: Default::default(),
+            pl_shm_handle: None,
+            steady_override_ns: None,
             vi_binder: Default::default(),
             next_handle: 0x10001,
             total_ipc_requests: 0,
@@ -280,7 +311,7 @@ impl IpcManager {
         let cmd_id = mmu.read_u32(cmif_base + 8).unwrap_or(0);
         let args_base = cmif_base + 0x10;
         // Explicit diagnostic opt-in; cap output even for a looping guest.
-        if self.total_ipc_requests <= 256 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+        if self.total_ipc_requests <= 100000 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
             eprintln!("[IPC trace] #{} handle=0x{:X} service={:?} command={}", self.total_ipc_requests, object_handle, service, cmd_id);
         }
 
@@ -334,6 +365,9 @@ impl IpcManager {
                         "time:u" | "time:s" | "time:a" | "time:r" | "time:su" => ServiceType::Time,
                         "prepo:u" | "prepo:a" | "prepo:m" => ServiceType::Prepo,
                         "bcat:u" | "bcat:a" | "bcat:m" => ServiceType::Bcat,
+                        "bsd:u" | "bsd:s" | "bsd:a" => ServiceType::Bsd,
+                        "nifm:u" | "nifm:s" | "nifm:a" => ServiceType::Nifm,
+                        "ts" => ServiceType::Ts,
                         other => ServiceType::Generic(other.to_string()),
                     };
 
@@ -634,6 +668,7 @@ impl IpcManager {
                 }
                 2030 if self.is_libnx_request() => {
                     eprintln!("[VI] command {cmd_id}: stray-layer producer not implemented");
+                    self.note_unimplemented("vi", cmd_id);
                     self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
                     0
                 }
@@ -653,6 +688,7 @@ impl IpcManager {
                 }
                 _ if self.is_libnx_request() => {
                     eprintln!("[VI] display command {cmd_id} not implemented");
+                    self.note_unimplemented("vi", cmd_id);
                     self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
                     0
                 }
@@ -1015,6 +1051,75 @@ impl IpcManager {
                 0
             }
 
+            ServiceType::Bsd => match cmd_id {
+                // Initialize(config, pid, transfer memory size) / StartMonitoring(pid)
+                0 | 1 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[], None);
+                    0
+                }
+                // Socket(domain, type, protocol) -> (ret, errno): no network, so ENETDOWN
+                2 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[u32::MAX, BSD_ENETDOWN], None);
+                    0
+                }
+                _ => {
+                    eprintln!("[HIPC] 'bsd' command {cmd_id} not implemented");
+                    self.note_unimplemented("bsd", cmd_id);
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
+
+            ServiceType::Ts => match cmd_id {
+                // OpenSession(device code) -> ISession
+                4 => self.reply_object(tls_addr, mmu, ServiceType::TsSession),
+                _ => {
+                    eprintln!("[HIPC] 'ts' command {cmd_id} not implemented");
+                    self.note_unimplemented("ts", cmd_id);
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
+
+            ServiceType::TsSession => match cmd_id {
+                // GetTemperature -> f32 degrees C (a cool handheld)
+                4 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[TS_TEMPERATURE_C.to_bits()], None);
+                    0
+                }
+                _ => {
+                    eprintln!("[HIPC] 'ts session' command {cmd_id} not implemented");
+                    self.note_unimplemented("ts session", cmd_id);
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
+
+            ServiceType::Nifm => match cmd_id {
+                // CreateGeneralServiceOld (4) / CreateGeneralService (5, with pid) -> IGeneralService
+                4 | 5 => self.reply_object(tls_addr, mmu, ServiceType::NifmGeneral),
+                _ => {
+                    eprintln!("[HIPC] 'nifm:u' command {cmd_id} not implemented");
+                    self.note_unimplemented("nifm:u", cmd_id);
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
+
+            ServiceType::NifmGeneral => match cmd_id {
+                // GetInternetConnectionStatus -> (connection type, wifi strength, status): none, none, disconnected
+                18 => {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[0, 0, 0], None);
+                    0
+                }
+                _ => {
+                    eprintln!("[HIPC] 'nifm IGeneralService' command {cmd_id} not implemented");
+                    self.note_unimplemented("nifm IGeneralService", cmd_id);
+                    self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
+                    0
+                }
+            },
+
             ServiceType::Bcat => {
                 // Command 0 / 1: RequestDeliveryCache (BCAT content delivery stubs)
                 self.write_cmif_response(tls_addr, mmu, 0, &[0], None);
@@ -1024,6 +1129,8 @@ impl IpcManager {
             ServiceType::Generic(name) => {
                 // A service this model does not implement: report it rather than pretend the call worked.
                 eprintln!("[HIPC] '{name}' command {cmd_id} not implemented");
+                let name = name.clone();
+                self.note_unimplemented(&name, cmd_id);
                 self.write_cmif_response(tls_addr, mmu, RESULT_UNKNOWN_COMMAND, &[], None);
                 0
             }
@@ -1134,6 +1241,16 @@ impl IpcManager {
                 let fd = mmu.read_u32(args_base).unwrap_or(0);
                 let request = mmu.read_u32(args_base + 4).unwrap_or(0);
                 let size = ioctl_size(request);
+                // GPFIFO/driver transfer buffers are bounded host work, not allocations
+                // proportional to an arbitrary 36-bit HIPC descriptor length.
+                const MAX_IOCTL_EXTRA: u64 = 16 * 1024 * 1024;
+                let extra_in = if cmd_id == 11 { input(1) } else { None };
+                let extra_out = if cmd_id == 12 { output(1) } else { None };
+                if extra_in.is_some_and(|b| b.size > MAX_IOCTL_EXTRA)
+                    || extra_out.is_some_and(|b| b.size > MAX_IOCTL_EXTRA) {
+                    self.write_cmif_response(tls_addr, mmu, 0, &[super::nvdrv::NV_BAD_PARAMETER], None);
+                    return 0;
+                }
                 let mut data = if ioctl_has_input(request) { read_buf(mmu, input(0), size) } else { vec![0u8; size] };
                 let inbuf = if cmd_id == 11 {
                     let b = input(1).unwrap_or_default();
@@ -1156,6 +1273,12 @@ impl IpcManager {
                 }
                 if let Some(b) = out2 {
                     let _ = mmu.write_bytes(b.addr, &outbuf);
+                }
+                // GET_TPC_MASKS returns its masks through the guest pointer in the argument block.
+                if request == super::nvdrv::NVGPU_GPU_IOCTL_GET_TPC_MASKS && status == super::nvdrv::NV_OK && data.len() >= 0x18 {
+                    let addr = u64::from_le_bytes(data[0x10..0x18].try_into().unwrap());
+                    let size = (u32::from_le_bytes(data[..4].try_into().unwrap()) as usize).min(4);
+                    let _ = mmu.write_bytes(addr, &super::nvdrv::TPC_MASKS.to_le_bytes()[..size]);
                 }
                 // Submitted pushbuffer segments run now: on the channel's 3D engine when it allocated
                 // MAXWELL_B or AMPERE_B, else on the older synthetic-method model.
@@ -1213,6 +1336,7 @@ impl IpcManager {
             self.hid.mapped(addr, mmu);
         }
         self.time_shared_memory_mapped(handle, addr, mmu);
+        self.pl_shared_memory_mapped(handle, addr, mmu);
     }
 
     /// The guest unmapped shared memory at `addr` (svcUnmapSharedMemory).
@@ -1550,6 +1674,23 @@ mod tests {
         let time_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
         let timestamp = ((time_hi as u64) << 32) | (time_lo as u64);
         assert!(timestamp > 1700000000); // Valid UNIX timestamp (2024+)
+    }
+
+    #[test]
+    fn oversized_ioctl_extra_descriptors_are_rejected_before_allocation() {
+        use crate::kernel::hipc::Buffer;
+        for cmd in [11, 12] {
+            let mut memory = Memory::new();
+            memory.map_range(0x8000, 4096, Permission::READ_WRITE);
+            memory.write_u32(0x8080, 0).unwrap();
+            memory.write_u32(0x8084, 0).unwrap();
+            let mut ipc = IpcManager::new();
+            let buffers = vec![Buffer::default(), Buffer { addr: 0, size: (1u64 << 36) - 1 }];
+            if cmd == 11 { ipc.request.send_buffers = buffers; }
+            else { ipc.request.recv_buffers = buffers; }
+            ipc.handle_nvdrv(cmd, 0x8080, 0x8000, &mut memory, &mut NvgpuChannel::new());
+            assert_eq!(memory.read_u32(0x8020).unwrap(), super::super::nvdrv::NV_BAD_PARAMETER);
+        }
     }
 
     #[test]

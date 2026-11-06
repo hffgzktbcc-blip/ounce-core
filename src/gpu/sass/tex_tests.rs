@@ -32,6 +32,7 @@ fn cuasm_tex_bound_two_destinations() {
             lod: TexLod::Level(10),
             x: 8,
             y: 9,
+            layer: None,
             dst: [8, 9, 6, 7],
         })
     );
@@ -67,6 +68,7 @@ fn cuasm_tld_fields_in_two_d_form() {
             lod: TexLod::Zero,
             x: 4,
             y: 5,
+            layer: None,
             dst: [10, 11, 12, 13],
         })
     );
@@ -89,6 +91,7 @@ fn maxwell_cuasm_texs_component_sets() {
             lod: TexLod::Auto,
             x: 34,
             y: 38,
+            layer: None,
             dst: [2, 3, 28, 29],
         })
     );
@@ -111,9 +114,19 @@ fn maxwell_cuasm_tlds_two_d_level_zero() {
             lod: TexLod::Zero,
             x: 6,
             y: 6,
+            layer: None,
             dst: [20, 21, 22, 23],
         })
     );
+}
+
+#[test]
+fn maxwell_texs_array_2d() {
+    // deko_console's fragment shader: TEXS R3, RZ, R0, R2, 0x0, ARRAY_2D, R (layer in R0, coordinates
+    // in R1 and R2; Ryujinx `EmitTexs`).
+    let Ok(decode::Decoded { instr: Instr::Tex(t), .. }) = mx(0xd8e0_1a4f_f027_0003) else { panic!() };
+    assert_eq!((t.layer, t.x, t.y, t.lod), (Some(0), 1, 2, TexLod::Auto));
+    assert_eq!(t.dst, [3, RZ, RZ, RZ]);
 }
 
 #[test]
@@ -123,9 +136,9 @@ fn maxwell_cuasm_rejects_what_is_not_modelled() {
     // TLD.LZ.AOFFI.T R20, R46, R50, 0x50, 1D, 0xf
     assert_eq!(unsupported(mx(0xdc38_050f_8327_2e14)), "texture dimension other than 2D");
     // TEXS.P RZ, R14, R14, R25, 0x54, CUBE, R
-    assert_eq!(unsupported(mx(0xd980_054f_f197_0e0e)), "texture target other than 2D (.LZ for TLDS)");
+    assert_eq!(unsupported(mx(0xd980_054f_f197_0e0e)), "texture target other than 2D / 2D array (.LZ for TLDS)");
     // TLDS.LZ.P RZ, R8, R15, 0x5e, 1D, RG
-    assert_eq!(unsupported(mx(0xda10_05ef_fff7_0f08)), "texture target other than 2D (.LZ for TLDS)");
+    assert_eq!(unsupported(mx(0xda10_05ef_fff7_0f08)), "texture target other than 2D / 2D array (.LZ for TLDS)");
     // TEX.B.LL.P R4, R6, R4, 0x0, 2D, 0xf
     assert_eq!(unsupported(mx(0xdeb8_0067_a047_0604)), "bindless texture handle");
     // TLD.B.LZ.T R4, R10, R4, 0x0, 1D, 0xf
@@ -146,6 +159,7 @@ fn maxwell_tex_full_form_writes_consecutive_registers() {
             lod: TexLod::Auto,
             x: 4,
             y: 5,
+            layer: None,
             dst: [RZ, 12, RZ, 13],
         })
     );
@@ -160,9 +174,13 @@ mod asm {
     pub fn exit() -> u128 {
         op(0x94d)
     }
-    /// `freq`: 0 PASS, 1 PassMulW.
-    pub fn ipa(d: u8, addr: u16, freq: u8, mul: u8) -> u128 {
-        op(0x326) | ((d as u128) << 16) | (0xff << 24) | ((mul as u128) << 32) | (((addr >> 2) as u128) << 64) | ((freq as u128) << 78)
+    /// `IPA.PASS` as NAK's SM70 encoder emits it (bits 24..32 clear, offset RZ, no
+    /// predicate output).
+    pub fn ipa(d: u8, addr: u16) -> u128 {
+        op(0x326) | ((d as u128) << 16) | (0xff << 32) | (((addr >> 2) as u128) << 64) | (7 << 81)
+    }
+    pub fn fmul_rr(d: u8, a: u8, b: u8) -> u128 {
+        op(0x220) | ((d as u128) << 16) | ((a as u128) << 24) | ((b as u128) << 32) | (4 << 84)
     }
     pub fn mufu_rcp(d: u8, s: u8) -> u128 {
         op(0x308) | ((d as u128) << 16) | ((s as u128) << 32) | (4 << 74)
@@ -202,10 +220,12 @@ fn textured_fragment() -> Vec<u8> {
         h = h.ps_imap(0, c, PixelImap::Perspective);
     }
     let code = [
-        asm::ipa(8, 0x7c, 0, RZ),
+        asm::ipa(8, 0x7c),
         asm::mufu_rcp(8, 8),
-        asm::ipa(4, 0x80, 1, 8),
-        asm::ipa(5, 0x84, 1, 8),
+        asm::ipa(4, 0x80),
+        asm::fmul_rr(4, 4, 8),
+        asm::ipa(5, 0x84),
+        asm::fmul_rr(5, 5, 8),
         asm::tex(false, 0, 2, 4, RZ, 1, 0, 0xf, 0),
         asm::exit(),
     ];
@@ -228,7 +248,7 @@ fn texture_results_survive_overlapping_destinations() {
     // TEX R4, R4 (coords in R4, R5; results R4..R7) then copy out: the coordinate reads happen
     // before the writes.
     let h = SphBuilder::pixel().ps_target(0, 0xf).ps_imap(0, 0, PixelImap::Perspective).ps_imap(0, 1, PixelImap::Perspective);
-    let code = [asm::ipa(4, 0x80, 0, RZ), asm::ipa(5, 0x84, 0, RZ), asm::tex(false, 4, 6, 4, RZ, 0, 3, 0xf, 1), asm::exit()];
+    let code = [asm::ipa(4, 0x80), asm::ipa(5, 0x84), asm::tex(false, 4, 6, 4, RZ, 0, 3, 0xf, 1), asm::exit()];
     let f = ir::lower(ShaderStage::Fragment, &program(&h, &code)[AMPERE_SPH_SIZE..]).unwrap();
     let tex = f.values.iter().position(|op| matches!(op, Op::Tex { .. })).unwrap();
     let Op::Tex { x, y, lod, .. } = f.values[tex] else { unreachable!() };

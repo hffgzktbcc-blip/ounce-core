@@ -100,6 +100,20 @@ impl Frame {
         }
     }
 
+    /// The part inside `(left, top, right, bottom)`. An empty or out-of-range rectangle means the
+    /// whole frame (a guest that never sets a crop queues all zeros).
+    pub fn cropped(self, (left, top, right, bottom): (usize, usize, usize, usize)) -> Self {
+        if left >= right || top >= bottom || right > self.width || bottom > self.height {
+            return self;
+        }
+        let mut out = Frame::new(right - left, bottom - top);
+        for (y, row) in out.rgba.chunks_exact_mut((right - left) * 4).enumerate() {
+            let start = ((top + y) * self.width + left) * 4;
+            row.copy_from_slice(&self.rgba[start..start + row.len()]);
+        }
+        out
+    }
+
     pub fn pixel_count(&self) -> usize {
         self.width * self.height
     }
@@ -120,8 +134,12 @@ impl Frame {
         if x >= self.width || y >= self.height {
             return None;
         }
-        let i = (y * self.width + x) * 4;
-        Some((self.rgba[i], self.rgba[i + 1], self.rgba[i + 2], self.rgba[i + 3]))
+        // Defence in depth: a frame whose buffer is shorter than its dimensions returns None.
+        let i = y.checked_mul(self.width)?.checked_add(x)?.checked_mul(4)?;
+        match self.rgba.get(i..i.checked_add(4)?)? {
+            &[r, g, b, a] => Some((r, g, b, a)),
+            _ => None,
+        }
     }
 
     /// Resizes in place, dropping previous contents, when the presentation mode changes.
@@ -292,6 +310,16 @@ fn open_gpu_backend(kind: BackendKind, _config: &BackendConfig) -> Option<Box<dy
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pixel_rejects_buffer_shorter_than_dimensions() {
+        let frame = Frame { width: 0x4000_0000, height: 2, rgba: vec![0; 8] };
+        assert_eq!(frame.pixel(0x2000_0000, 1), None);
+        assert_eq!(frame.pixel(1, 0), Some((0, 0, 0, 0)));
+        assert_eq!(frame.pixel(2, 0), None);
+        let wide = Frame { width: usize::MAX, height: 2, rgba: vec![] };
+        assert_eq!(wide.pixel(usize::MAX - 1, 1), None);
+    }
 
     #[test]
     fn test_frame_pixels_resize_and_hash() {

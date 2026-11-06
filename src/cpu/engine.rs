@@ -1,5 +1,7 @@
-//! CPU tier selection: `--cpu=tier3|tier4` or `OUNCE_CPU` (default `tier3`). Tier-4 needs the
+//! CPU tier selection: `--cpu=tier3|tier4|native` or `OUNCE_CPU` (default `tier3`). Tier-4 needs the
 //! `native-jit` feature; without it, or on a host the recompiler does not support, Tier-3 runs.
+//! `native` (native execution, `--features nce`, AArch64 hosts) runs whole homebrew programs on the
+//! host CPU (`run` and the corpus oracles); block-engine callers get Tier-3 for it.
 
 use super::interpreter::Cpu;
 use super::tier2_jit::BlockExit;
@@ -13,6 +15,7 @@ use std::sync::OnceLock;
 pub enum CpuTier {
     Tier3,
     Tier4,
+    Native,
 }
 
 static CLI_TIER: OnceLock<CpuTier> = OnceLock::new();
@@ -21,7 +24,8 @@ impl CpuTier {
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "tier3" | "3" => Some(Self::Tier3),
-            "tier4" | "4" | "native" => Some(Self::Tier4),
+            "tier4" | "4" => Some(Self::Tier4),
+            "native" | "nce" => Some(Self::Native),
             _ => None,
         }
     }
@@ -61,6 +65,10 @@ impl CpuEngine {
                         CpuEngine::Tier3(Tier3JitEngine::new())
                     }
                 }
+            }
+            CpuTier::Native => {
+                eprintln!("[CPU] Native execution runs whole programs (`run`), not single blocks; running Tier-3.");
+                CpuEngine::Tier3(Tier3JitEngine::new())
             }
             #[cfg(not(feature = "native-jit"))]
             CpuTier::Tier4 => {
@@ -120,6 +128,7 @@ mod tests {
     fn parses_tier_names() {
         assert_eq!(CpuTier::parse("tier3"), Some(CpuTier::Tier3));
         assert_eq!(CpuTier::parse(" Tier4 "), Some(CpuTier::Tier4));
+        assert_eq!(CpuTier::parse("native"), Some(CpuTier::Native));
         assert_eq!(CpuTier::parse("tier5"), None);
     }
 }

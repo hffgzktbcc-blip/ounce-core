@@ -40,10 +40,15 @@ def validate(manifest):
         if not isinstance(sid, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", sid) or sid in ids:
             raise ValueError("sample ids must be unique safe names")
         ids.add(sid)
-        if not isinstance(path, str) or not path or "\\" in path or any(
+        if not isinstance(path, str) or not path or "\\" in path or (path != "." and any(
             p in ("", ".", "..") for p in path.split("/")
-        ) or PurePosixPath(path).is_absolute():
-            raise ValueError("sample paths must be plain relative directories")
+        )) or PurePosixPath(path).is_absolute():
+            raise ValueError("sample paths must be plain relative directories or '.'")
+        make_args = sample.get("make_args", [])
+        if not isinstance(make_args, list) or not all(
+            isinstance(a, str) and re.fullmatch(r"[A-Za-z0-9_.=-]+", a) and not a.startswith("-") for a in make_args
+        ):
+            raise ValueError("make_args must be plain make targets or VAR=value assignments")
     return manifest
 
 
@@ -107,7 +112,7 @@ def prepare(manifest_path, output, build=False):
             checked_source(source, manifest["revision"])
             if list(path.rglob("*.nro")):
                 raise ValueError("preexisting NRO cannot be recorded as a fresh build")
-            log = run("make", "-C", str(path))
+            log = run("make", "-C", str(path), *sample.get("make_args", []))
             (output / (sample["id"] + ".build.log")).write_text(log + "\n", encoding="utf-8")
             checked_source(source, manifest["revision"])
             for nro in sorted(path.rglob("*.nro")):

@@ -50,7 +50,14 @@ pub struct Cpu {
     pub exclusive: Option<u64>,
     /// Pointer authentication keys and EL0 controls (shared by the process's threads).
     pub pauth: PointerAuth,
+    /// `CNTPCT_EL0`: the kernel moves it up to the system tick at every SVC, and each read advances it by
+    /// [`COUNTER_READ_TICKS`] so a loop polling the counter always sees time pass. It depends on
+    /// nothing the CPU engines differ in.
+    pub counter_ticks: u64,
 }
+
+/// Counter ticks (19.2 MHz) one `CNTPCT_EL0` read takes: about 52 microseconds.
+pub const COUNTER_READ_TICKS: u64 = 1000;
 
 impl Default for Cpu {
     fn default() -> Self {
@@ -63,6 +70,7 @@ impl Cpu {
         Self {
             regs: CpuRegisters::new(),
             jit: JitBlockCache::new(),
+            counter_ticks: 0x0123_4560,
             exclusive: None,
             pauth: PointerAuth::default(),
         }
@@ -179,8 +187,8 @@ impl Cpu {
                 set_flags,
                 is_64,
             } => {
-                // If setting flags or rd != 31, read Rn (with SP support if not setting flags)
-                let op1 = if !set_flags && rn == 31 {
+                // Immediate arithmetic always interprets Rn == 31 as SP, including CMP/CMN.
+                let op1 = if rn == 31 {
                     self.regs.sp
                 } else {
                     self.regs.read_x(rn)
@@ -790,6 +798,7 @@ impl Cpu {
                 size_bytes,
                 is_load,
                 is_signed,
+                is_64_target,
                 writeback,
                 post_index,
             } => {
@@ -810,6 +819,9 @@ impl Cpu {
                         (4, true) => self.regs.write_x(rt, (mmu.read_u32(eff_addr)? as i32 as i64) as u64),
                         (8, _) => self.regs.write_x(rt, mmu.read_u64(eff_addr)?),
                         _ => unreachable!(),
+                    }
+                    if !is_64_target {
+                        self.regs.write_w(rt, self.regs.read_w(rt));
                     }
                 } else {
                     match size_bytes {
@@ -902,7 +914,11 @@ impl Cpu {
                         0x4031 => 1 << 8 | 1 << 28,
                         // ID_AA64PFR1_EL1: BT = 1 (FEAT_BTI)
                         0x4021 => 1,
-                        0x5F01 => self.jit.cache_hits.wrapping_add(self.jit.cache_misses).wrapping_mul(16).wrapping_add(0x0123_4560),
+                        0x5F01 => {
+                            let now = self.counter_ticks;
+                            self.counter_ticks = now.wrapping_add(COUNTER_READ_TICKS);
+                            now
+                        }
                         _ => 0,
                     };
                     self.regs.write_x(rt, val);
@@ -933,9 +949,12 @@ impl Cpu {
                         FpOp2::Fadd => n + m,
                         FpOp2::Fsub => n - m,
                         FpOp2::Fmul => n * m,
+                        FpOp2::Fnmul => -(n * m),
                         FpOp2::Fdiv => n / m,
-                        FpOp2::Fmax => n.max(m),
-                        FpOp2::Fmin => n.min(m),
+                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
                     self.regs.write_d(rd, res);
                 } else {
@@ -945,9 +964,12 @@ impl Cpu {
                         FpOp2::Fadd => n + m,
                         FpOp2::Fsub => n - m,
                         FpOp2::Fmul => n * m,
+                        FpOp2::Fnmul => -(n * m),
                         FpOp2::Fdiv => n / m,
-                        FpOp2::Fmax => n.max(m),
-                        FpOp2::Fmin => n.min(m),
+                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
                     self.regs.write_s(rd, res);
                 }
@@ -965,9 +987,23 @@ impl Cpu {
                     (2, true) => self.regs.write_d(rd, -self.regs.read_d(rn)),
                     (3, false) => self.regs.write_s(rd, self.regs.read_s(rn).sqrt()),
                     (3, true) => self.regs.write_d(rd, self.regs.read_d(rn).sqrt()),
-                    (4, false) => self.regs.write_d(rd, self.regs.read_s(rn) as f64),
-                    (5, true) => self.regs.write_s(rd, self.regs.read_d(rn) as f32),
+                    (5, false) => self.regs.write_d(rd, self.regs.read_s(rn) as f64),
+                    (4, true) => self.regs.write_s(rd, self.regs.read_d(rn) as f32),
                     _ => return Err(CpuError::UnimplementedInstruction { raw: 0, pc: self.regs.pc }),
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpData3 { rd, rn, rm, ra, o1, o0, is_double } => {
+                if is_double {
+                    let (n, m, a) = (self.regs.read_d(rn), self.regs.read_d(rm), self.regs.read_d(ra));
+                    let r = (if o0 { -n } else { n }).mul_add(m, if o1 { -a } else { a });
+                    self.regs.write_d(rd, r);
+                } else {
+                    let (n, m, a) = (self.regs.read_s(rn), self.regs.read_s(rm), self.regs.read_s(ra));
+                    let r = (if o0 { -n } else { n }).mul_add(m, if o1 { -a } else { a });
+                    self.regs.write_s(rd, r);
                 }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -1038,6 +1074,37 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::FpFixedConv { rd, rn, opcode, fbits, is_64, is_double } => {
+                let scale = 2f64.powi(fbits as i32);
+                if opcode >= 2 {
+                    // SCVTF / UCVTF: fixed-point integer register to float
+                    let x = if is_64 { self.regs.read_x(rn) } else { self.regs.read_w(rn) as u64 };
+                    let v = match (opcode == 2, is_64) {
+                        (true, true) => x as i64 as f64,
+                        (true, false) => x as u32 as i32 as f64,
+                        (false, _) => x as f64,
+                    } / scale;
+                    if is_double {
+                        self.regs.write_d(rd, v);
+                    } else {
+                        self.regs.write_s(rd, v as f32);
+                    }
+                } else {
+                    // FCVTZS / FCVTZU: scale, then truncate toward zero with saturation
+                    let v = if is_double { self.regs.read_d(rn) } else { self.regs.read_s(rn) as f64 };
+                    let t = (v * scale).trunc();
+                    let out: u64 = match (opcode == 0, is_64) {
+                        (true, true) => t as i64 as u64,
+                        (true, false) => t as i32 as u32 as u64,
+                        (false, true) => t as u64,
+                        (false, false) => t as u32 as u64,
+                    };
+                    self.regs.write_x(rd, out);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::FpCondSelect {
                 rd,
                 rn,
@@ -1089,6 +1156,54 @@ impl Cpu {
                     self.regs.pstate.v = false;
                 }
 
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::AddSubCarry { rd, rn, rm, is_sub, set_flags, is_64 } => {
+                let bits = if is_64 { 64 } else { 32 };
+                let mask = if is_64 { u64::MAX } else { u32::MAX as u64 };
+                let a = self.regs.read_x(rn) & mask;
+                let b = self.regs.read_x(rm) & mask;
+                let b = if is_sub { !b & mask } else { b };
+                let carry_in = self.regs.pstate.c as u128;
+                let wide = a as u128 + b as u128 + carry_in;
+                let res = (wide as u64) & mask;
+                if set_flags {
+                    let sign = 1u64 << (bits - 1);
+                    self.regs.pstate.n = res & sign != 0;
+                    self.regs.pstate.z = res == 0;
+                    self.regs.pstate.c = wide >> bits != 0;
+                    self.regs.pstate.v = (!(a ^ b) & (a ^ res) & sign) != 0;
+                }
+                self.regs.write_x(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpCondCompare { rn, rm, nzcv, cond, is_double } => {
+                let (n, z, c, v) = if self.check_condition(cond) {
+                    let (a, b) = if is_double {
+                        (self.regs.read_d(rn), self.regs.read_d(rm))
+                    } else {
+                        (self.regs.read_s(rn) as f64, self.regs.read_s(rm) as f64)
+                    };
+                    if a.is_nan() || b.is_nan() {
+                        (false, false, true, true)
+                    } else if a == b {
+                        (false, true, true, false)
+                    } else if a < b {
+                        (true, false, false, false)
+                    } else {
+                        (false, false, true, false)
+                    }
+                } else {
+                    (nzcv & 8 != 0, nzcv & 4 != 0, nzcv & 2 != 0, nzcv & 1 != 0)
+                };
+                self.regs.pstate.n = n;
+                self.regs.pstate.z = z;
+                self.regs.pstate.c = c;
+                self.regs.pstate.v = v;
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1262,6 +1377,31 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdVec2D { rd, rn, rm, op } => {
+                let a = self.regs.read_q(rn);
+                let b = self.regs.read_q(rm);
+                let mut out = 0u128;
+                for lane in 0..2 {
+                    let n = f64::from_bits((a >> (lane * 64)) as u64);
+                    let m = f64::from_bits((b >> (lane * 64)) as u64);
+                    let value = match op {
+                        FpOp2::Fadd => n + m,
+                        FpOp2::Fsub => n - m,
+                        FpOp2::Fmul => n * m,
+                        FpOp2::Fnmul => -(n * m),
+                        FpOp2::Fdiv => n / m,
+                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else { n.max(m) },
+                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else { n.min(m) },
+                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                    };
+                    out |= (value.to_bits() as u128) << (lane * 64);
+                }
+                self.regs.write_q(rd, out);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdVec4S { rd, rn, rm, op } => {
                 let a = self.regs.read_v4s(rn);
                 let b = self.regs.read_v4s(rm);
@@ -1271,9 +1411,10 @@ impl Cpu {
                         FpOp2::Fadd => a[i] + b[i],
                         FpOp2::Fsub => a[i] - b[i],
                         FpOp2::Fmul => a[i] * b[i],
+                        FpOp2::Fnmul => -(a[i] * b[i]),
                         FpOp2::Fdiv => a[i] / b[i],
-                        FpOp2::Fmax => a[i].max(b[i]),
-                        FpOp2::Fmin => a[i].min(b[i]),
+                        FpOp2::Fmax | FpOp2::Fmaxnm => a[i].max(b[i]),
+                        FpOp2::Fmin | FpOp2::Fminnm => a[i].min(b[i]),
                     };
                 }
                 self.regs.write_v4s(rd, out);
@@ -1430,6 +1571,21 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let res = simd::fp_by_element(op, d, n, m, index as usize, double, q);
+                self.regs.write_q(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdExt { rd, rn, rm, index, q } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::extract(n, m, index as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::DataProc1 { rd, rn, op, is_64 } => {
                 if is_64 {
                     let x = self.regs.read_x(rn);
@@ -1546,6 +1702,38 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdLoadStoreStruct { rt, rn, rm, selem, esize, q, is_load, post_index } => {
+                let base = self.regs.read_x_or_sp(rn);
+                let ebytes = esize as usize / 8;
+                let elements = if q { 16 } else { 8 } / ebytes;
+                let regs: Vec<u8> = (0..selem).map(|s| (rt + s) % 32).collect();
+                let mut vals: Vec<u128> = if is_load { vec![0; regs.len()] } else { regs.iter().map(|&r| self.regs.read_q(r)).collect() };
+                for e in 0..elements {
+                    for s in 0..selem as usize {
+                        let addr = base.wrapping_add(((e * selem as usize + s) * ebytes) as u64);
+                        if is_load {
+                            let mut buf = [0u8; 8];
+                            mmu.read_bytes(addr, &mut buf[..ebytes])?;
+                            simd::set_lane(&mut vals[s], esize as u32, e, u64::from_le_bytes(buf));
+                        } else {
+                            let v = simd::lane(vals[s], esize as u32, e);
+                            mmu.write_bytes(addr, &v.to_le_bytes()[..ebytes])?;
+                        }
+                    }
+                }
+                if is_load {
+                    for (&r, &v) in regs.iter().zip(&vals) {
+                        self.regs.write_q(r, v);
+                    }
+                }
+                if post_index {
+                    let step = if rm == 31 { (selem as usize * elements * ebytes) as u64 } else { self.regs.read_x(rm) };
+                    self.regs.write_x_or_sp(rn, base.wrapping_add(step));
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdDupGeneral { rd, rn, esize, q } => {
                 self.regs.write_q(rd, simd::dup(self.regs.read_x(rn), esize as u32, q));
                 self.regs.advance_pc();
@@ -1576,6 +1764,14 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdScalarTwoMisc { rd, rn, op, esize } => {
+                let e = esize as u32;
+                let lane0 = simd::lane(simd::two_misc(op, self.regs.read_q(rn), e, true), e, 0);
+                self.regs.write_q(rd, lane0 as u128);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdTwoMisc { rd, rn, op, esize, q } => {
                 self.regs.write_q(rd, simd::two_misc(op, self.regs.read_q(rn), esize as u32, q));
                 self.regs.advance_pc();
@@ -1589,6 +1785,8 @@ impl Cpu {
                     SimdShiftOp::Ushr => simd::shift_imm(n, e, sh, q, false, false),
                     SimdShiftOp::Shl => simd::shift_imm(n, e, sh, q, false, true),
                     SimdShiftOp::Shrn => simd::shrn(self.regs.read_q(rd), n, e, sh, q),
+                    SimdShiftOp::Sshll => simd::shll(n, e, sh, q, true),
+                    SimdShiftOp::Ushll => simd::shll(n, e, sh, q, false),
                 };
                 self.regs.write_q(rd, res);
                 self.regs.advance_pc();
@@ -1691,12 +1889,18 @@ mod tests {
             (0x0f0c8400, "SimdShiftImm"),       // shrn v0.8b, v0.8h, #4
             (0x4f088420, "SimdShiftImm"),       // shrn2 v0.16b, v1.8h, #8
             (0x6f3d0420, "SimdShiftImm"),       // ushr v0.4s, v1.4s, #3
+            (0x7f6007fe, "SimdShiftImm"),       // ushr d30, d31, #32
             (0x4f4c5420, "SimdShiftImm"),       // shl v0.2d, v1.2d, #12
             (0xad3e0080, "SimdLoadStorePair"),  // stp q0, q0, [x4, #-64]
             (0x6cc107e0, "SimdLoadStorePair"),  // ldp d0, d1, [sp], #16
             (0xac0008a1, "SimdLoadStorePair"),  // stnp q1, q2, [x5]
             (0xd50b7423, "DcZva"),              // dc zva, x3
             (0x4f00e41f, "SimdModImm"),         // movi v31.16b, #0
+            (0x1a010001, "AddSubCarry"),        // adc w1, w0, w1
+            (0x1e6105e1, "FpCondCompare"),      // fccmp d15, d1, #1, eq
+            (0x1e756bff, "FpData2"),            // fmaxnm d31, d31, d21
+            (0x4f9f939f, "SimdFpByElement"),    // fmul v31.4s, v28.4s, v31.s[0]
+            (0x6e1f43ff, "SimdExt"),            // ext v31.16b, v31.16b, v31.16b, #8
             (0x4e1d3bde, "SimdPermute"),        // zip1 v30.16b, v30.16b, v29.16b
             (0x0e095907, "SimdPermute"),        // uzp2 v7.8b, v8.8b, v9.8b
             (0x4e1f0549, "SimdDupElement"),     // dup v9.16b, v10.b[15]
@@ -1705,11 +1909,69 @@ mod tests {
             (0x4d0048a4, "SimdLoadStoreSingle"), // st1 {v4.h}[5], [x5]
             (0x3d4a001d, "SimdLoadStore"),      // ldr b29, [x0, #640]
             (0x1e2e101f, "SimdModImm"),         // fmov s31, #1.0
+            (0x1e22c042, "FpData1"),            // fcvt d2, s2
+            (0x1e19e027, "FpFixedConv"),        // fcvtzu w7, s1, #8
+            (0x1f5effbf, "FpData3"),            // fmsub d31, d29, d30, d31
+            (0x4ebc9f5a, "SimdThreeSame"),      // mul v26.4s, v26.4s, v28.4s
+            (0x0e21db9c, "SimdTwoMisc"),        // scvtf v28.2s, v28.2s
+            (0x7e21dbee, "SimdScalarTwoMisc"),  // ucvtf s14, s31
+            (0x7ea1b800, "SimdScalarTwoMisc"),  // fcvtzu s0, s0
+            (0x0e612800, "SimdShiftImm"),       // xtn v0.4h, v0.4s
+            (0x2f10a400, "SimdShiftImm"),       // uxtl v0.4s, v0.4h
+            (0x4c400844, "SimdLoadStoreStruct"), // ld4 {v4.4s-v7.4s}, [x2]
+            (0x4c9f4836, "SimdLoadStoreStruct"), // st3 {v22.4s-v24.4s}, [x1], #48
         ];
         for &(raw, name) in table {
             let got = format!("{:?}", super::super::decoder::decode(raw));
             assert!(got.starts_with(name), "0x{raw:08X}: expected {name}, got {got}");
         }
+    }
+
+    #[test]
+    fn corpus_fp_and_simd_forms() {
+        // Forms first met in the step 3 corpus programs (sixaxis, deko-console, nx-hbmenu).
+        let (cpu, _) = run(&[0x1e22c042, 0x1e19e027, 0x1f5effbf], |c, _| {
+            c.regs.write_s(2, 1.5); // fcvt d2, s2
+            c.regs.write_s(1, -1.5); // fcvtzu w7, s1, #8 saturates negatives to 0
+            c.regs.write_d(29, 2.0);
+            c.regs.write_d(30, 3.0);
+            c.regs.write_d(31, 10.0);
+        });
+        assert_eq!(cpu.regs.read_d(2), 1.5);
+        assert_eq!(cpu.regs.read_x(7), 0);
+        assert_eq!(cpu.regs.read_d(31), 4.0); // fmsub: 10 - 2 * 3
+        let (cpu, _) = run(&[0x1e19e027, 0x1f020020], |c, _| {
+            c.regs.write_s(1, 1.5);
+            c.regs.write_s(2, 3.0);
+            c.regs.write_s(0, 0.5);
+        });
+        assert_eq!(cpu.regs.read_x(7), 384);
+        assert_eq!(cpu.regs.read_s(0), 5.0); // fmadd s0, s1, s2, s0
+
+        let lanes = |v: [u32; 4]| v.iter().rev().fold(0u128, |a, &x| a << 32 | x as u128);
+        let (cpu, _) = run(&[0x4ebc9f5a, 0x0e612800, 0x2f10a40a, 0x7e21dbee], |c, _| {
+            c.regs.write_q(26, lanes([2, 3, 0xFFFF_FFFF, 7]));
+            c.regs.write_q(28, lanes([5, 6, 2, 0]));
+            c.regs.write_q(0, lanes([0x1_0002, 0x3_0004, 0x5_0006, 0x7_0008]));
+            c.regs.write_q(31, 9);
+        });
+        assert_eq!(cpu.regs.read_q(26), lanes([10, 18, 0xFFFF_FFFE, 0]));
+        assert_eq!(cpu.regs.read_q(0), 0x0008_0006_0004_0002); // xtn v0.4h, v0.4s
+        assert_eq!(cpu.regs.read_q(10), lanes([2, 4, 6, 8])); // uxtl v10.4s, v0.4h
+        assert_eq!(cpu.regs.read_q(14), 9.0f32.to_bits() as u128); // ucvtf s14, s31
+
+        // st3 {v22.4s-v24.4s}, [x1], #48 then ld4 {v4.4s-v7.4s}, [x2] reads the same words back 4 apart
+        let (cpu, mmu) = run(&[0x4c9f4836, 0x4c400844], |c, _| {
+            c.regs.write_x(1, DATA);
+            c.regs.write_x(2, DATA);
+            c.regs.write_q(22, lanes([0, 3, 6, 9]));
+            c.regs.write_q(23, lanes([1, 4, 7, 10]));
+            c.regs.write_q(24, lanes([2, 5, 8, 11]));
+        });
+        assert_eq!(cpu.regs.read_x(1), DATA + 48);
+        assert_eq!(mmu.read_u32(DATA + 4 * 5).unwrap(), 5);
+        assert_eq!(cpu.regs.read_q(4), lanes([0, 4, 8, 0]));
+        assert_eq!(cpu.regs.read_q(7), lanes([3, 7, 11, 0]));
     }
 
     #[test]

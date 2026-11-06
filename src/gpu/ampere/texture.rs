@@ -7,13 +7,28 @@
 //! and Mesa NVK uses the same `clc097tex.h` definitions for Turing and Ampere (recalled, not
 //! re-checked here: Mesa is not reachable from this container).
 //!
-//! Only mip level 0 of 1D/2D textures is read. The shaders cannot use these yet: `gpu::sass` does
-//! not decode `TEX`/`TLD`, so this is the fetch path that decode will call.
+//! 1D/2D textures with a mip chain (block linear) or a single level (pitch). Texel formats (plain,
+//! packed, depth, BCn, ETC2/EAC, ASTC) are decoded by [`crate::gpu::texfmt`]; compressed textures
+//! are laid out in blocks.
+//!
+//! Mip chain layout (UNVERIFIED, recalled from Mesa NVK `nil`, not reachable here): levels are
+//! packed back to back from the header address, level `l` is `max(1, size >> l)` texels, and each
+//! level's block height is the header's, shrunk with [`tiling::clamp_block_log2`] until it fits
+//! the level. Every level is a whole number of its own blocks and block sizes only shrink, so no
+//! padding falls between levels.
+//!
+//! Level selection: `RES_VIEW_MIN_MIP_LEVEL..=RES_VIEW_MAX_MIP_LEVEL` (capped at `MAX_MIP_LEVEL`)
+//! is the accessible range; explicit LODs are relative to the minimum. Sampling adds the header and
+//! sampler `MIP_LOD_BIAS`, clamps to the sampler's `MIN/MAX_LOD_CLAMP` and picks levels by
+//! `MIP_FILTER` (none, point, linear). Implicit LOD (`TEX` without `.LZ`/`.LL`) needs screen-space
+//! derivatives, which the per-pixel CPU path does not have: it reads the base level.
 
 use super::methods as m;
 use super::render::SurfaceView;
 use super::surface::addr40;
 use super::GpuMemoryWriter;
+use crate::gpu::texfmt::{self, NumType};
+use crate::gpu::tiling;
 
 /// Bytes per texture header and per sampler entry.
 pub const TIC_ENTRY_BYTES: u64 = 32;
@@ -159,21 +174,19 @@ pub struct TextureHeader {
     pub height: u32,
     pub depth: u32,
     pub max_mip_level: u32,
+    /// `RES_VIEW_MIN_MIP_LEVEL` / `RES_VIEW_MAX_MIP_LEVEL` (MW(227:224) / MW(231:228)).
+    pub view_min_level: u32,
+    pub view_max_level: u32,
+    /// `MIP_LOD_BIAS` (MW(210:198)) in 1/256 units (signed 5.8 fixed point, UNVERIFIED format).
+    pub lod_bias_256: i32,
     pub srgb: bool,
     pub normalized_coords: bool,
 }
 
-/// `COMPONENTS_SIZES_*` values this module can read texels of, with their byte size.
-fn component_bytes(components: u32) -> Option<u32> {
-    Some(match components {
-        0x01 => 16, // R32_G32_B32_A32
-        0x03 => 8,  // R16_G16_B16_A16
-        0x04 => 8,  // R32_G32
-        0x07 | 0x08 | 0x09 | 0x0c | 0x0f => 4, // X8B8G8R8, A8B8G8R8, A2B10G10R10, R16_G16, R32
-        0x15 | 0x18 | 0x1b => 2, // B5G6R5, G8R8, R16
-        0x1d => 1,  // R8
-        _ => return None,
-    })
+/// Sign-extends a `bits`-wide two's complement field.
+fn sext(v: u32, bits: u32) -> i32 {
+    let shift = 32 - bits;
+    ((v << shift) as i32) >> shift
 }
 
 fn bits(words: &[u32; 8], hi: u32, lo: u32) -> u32 {
@@ -229,57 +242,118 @@ impl TextureHeader {
             height: (bits(&w, 175, 160) | (bits(&w, 146, 146) << 16)) + 1,
             depth: (bits(&w, 189, 176) | depth_bit14) + 1,
             max_mip_level: bits(&w, 127, 124),
+            view_min_level: bits(&w, 227, 224),
+            view_max_level: bits(&w, 231, 228),
+            lod_bias_256: sext(bits(&w, 210, 198), 13),
             srgb: bits(&w, 150, 150) == 1,
             normalized_coords: bits(&w, 191, 191) == 1,
         }
     }
 
-    pub fn bytes_per_texel(&self) -> Option<u32> {
-        component_bytes(self.components)
+    /// Element size of the format (one texel, or one compressed block), if [`texfmt`] decodes it.
+    pub fn element(&self) -> Option<texfmt::Element> {
+        texfmt::element(self.components)
     }
 
-    /// Level 0, slice 0 as a surface view, or `None` for formats or layouts this module cannot read.
-    pub(crate) fn view(&self) -> Option<SurfaceView> {
-        let bpp = self.bytes_per_texel()?;
-        match self.layout {
-            TextureLayout::BlockLinear { block_height_log2, block_depth_log2 } => {
-                SurfaceView::block_linear(self.gpu_va, self.width, self.height, bpp, block_height_log2, block_depth_log2)
-            }
-            TextureLayout::Pitch { pitch_bytes } => SurfaceView::pitch(self.gpu_va, self.width, self.height, bpp, pitch_bytes),
+    pub fn bytes_per_texel(&self) -> Option<u32> {
+        self.element().filter(|e| !e.is_block()).map(|e| e.bytes)
+    }
+
+    fn format(&self) -> texfmt::FormatDesc {
+        let ty = |d: DataType| match d {
+            DataType::Snorm => Some(NumType::Snorm),
+            DataType::Unorm => Some(NumType::Unorm),
+            DataType::Sint => Some(NumType::Sint),
+            DataType::Uint => Some(NumType::Uint),
+            DataType::Float => Some(NumType::Float),
+            DataType::Other(_) => None,
+        };
+        texfmt::FormatDesc { components: self.components, types: self.data_types.map(ty), srgb: self.srgb }
+    }
+
+    /// Levels laid out in memory: `MAX_MIP_LEVEL + 1` for block linear, one for pitch and the
+    /// no-mipmap type.
+    pub fn chain_levels(&self) -> u32 {
+        match (self.layout, self.texture_type) {
+            (TextureLayout::Pitch { .. }, _) | (_, TextureType::TwoDNoMipmap) => 1,
+            _ => self.max_mip_level + 1,
         }
     }
 
-    /// Decodes one texel's raw bytes to RGBA (before the header swizzle).
-    fn decode(&self, t: &[u8]) -> Option<[f32; 4]> {
-        let unorm8 = |b: u8| b as f32 / 255.0;
-        let f32_at = |i: usize| f32::from_le_bytes(t[4 * i..4 * i + 4].try_into().unwrap());
-        let u16_at = |i: usize| u16::from_le_bytes(t[2 * i..2 * i + 2].try_into().unwrap());
-        let float = self.data_types[0] == DataType::Float;
-        Some(match self.components {
-            0x01 if float => [f32_at(0), f32_at(1), f32_at(2), f32_at(3)],
-            0x04 if float => [f32_at(0), f32_at(1), 0.0, 1.0],
-            0x0f if float => [f32_at(0), 0.0, 0.0, 1.0],
-            0x03 if self.data_types[0] == DataType::Unorm => {
-                [0, 1, 2, 3].map(|i| u16_at(i) as f32 / 65535.0)
+    /// Accessible levels `(base, last)`, absolute; `None` when the view range is empty.
+    pub fn level_range(&self) -> Option<(u32, u32)> {
+        let last_in_chain = self.chain_levels() - 1;
+        let base = self.view_min_level;
+        let last = self.view_max_level.min(last_in_chain);
+        (base <= last).then_some((base, last))
+    }
+
+    /// Size of level `level` in texels.
+    pub fn level_size(&self, level: u32) -> (u32, u32) {
+        ((self.width >> level).max(1), (self.height >> level).max(1))
+    }
+
+    /// Level `level`, slice 0 as a surface view in elements (compressed formats count blocks), or
+    /// `None` for formats or layouts this module cannot read and levels past the chain.
+    pub(crate) fn level_view(&self, level: u32) -> Option<SurfaceView> {
+        if level >= self.chain_levels() {
+            return None;
+        }
+        let e = self.element()?;
+        let mut va = self.gpu_va;
+        for l in 0..=level {
+            let (lw, lh) = self.level_size(l);
+            let (w, h) = (lw.div_ceil(e.block_w), lh.div_ceil(e.block_h));
+            let view = match self.layout {
+                TextureLayout::BlockLinear { block_height_log2, block_depth_log2 } => {
+                    // Level 0 keeps the header's block size; smaller levels shrink it to fit.
+                    let (bh, bd) = if l == 0 {
+                        (block_height_log2, block_depth_log2)
+                    } else {
+                        tiling::clamp_block_log2(h, 1, block_height_log2, block_depth_log2)
+                    };
+                    SurfaceView::block_linear(va, w, h, e.bytes, bh, bd)?
+                }
+                TextureLayout::Pitch { pitch_bytes } => SurfaceView::pitch(va, w, h, e.bytes, pitch_bytes)?,
+            };
+            if l == level {
+                return Some(view);
             }
-            0x08 => [unorm8(t[0]), unorm8(t[1]), unorm8(t[2]), unorm8(t[3])],
-            0x07 => [unorm8(t[0]), unorm8(t[1]), unorm8(t[2]), 1.0],
-            0x09 => {
-                let v = u32::from_le_bytes(t[0..4].try_into().unwrap());
-                let c = |s: u32, n: u32| ((v >> s) & ((1 << n) - 1)) as f32 / ((1 << n) - 1) as f32;
-                [c(0, 10), c(10, 10), c(20, 10), c(30, 2)]
+            va = va.checked_add(view.size() as u64)?;
+        }
+        None
+    }
+
+    /// Bytes between the layers of an array: one mip chain, padded to whole level-0 blocks for block
+    /// linear (UNVERIFIED for chains of more than one level).
+    pub(crate) fn layer_stride(&self) -> Option<usize> {
+        let chain = self.chain_bytes(self.chain_levels() - 1)?;
+        Some(match self.layout {
+            TextureLayout::BlockLinear { block_height_log2, block_depth_log2 } => {
+                chain.next_multiple_of((tiling::GOB_BYTES as usize) << (block_height_log2 + block_depth_log2))
             }
-            0x0c if self.data_types[0] == DataType::Unorm => [u16_at(0) as f32 / 65535.0, u16_at(1) as f32 / 65535.0, 0.0, 1.0],
-            // Component names list the most significant field first: B5G6R5 has R in bits 4:0.
-            0x15 => {
-                let v = u16_at(0) as u32;
-                [(v & 0x1f) as f32 / 31.0, ((v >> 5) & 0x3f) as f32 / 63.0, (v >> 11) as f32 / 31.0, 1.0]
-            }
-            0x18 => [unorm8(t[0]), unorm8(t[1]), 0.0, 1.0],
-            0x1b if self.data_types[0] == DataType::Unorm => [u16_at(0) as f32 / 65535.0, 0.0, 0.0, 1.0],
-            0x1d => [unorm8(t[0]), 0.0, 0.0, 1.0],
-            _ => return None,
+            TextureLayout::Pitch { .. } => chain,
         })
+    }
+
+    /// Layer `layer` of a 2D array as a single 2D texture.
+    pub(crate) fn layer(&self, layer: u32) -> Option<TextureHeader> {
+        let mut h = self.clone();
+        h.gpu_va = self.gpu_va.checked_add(self.layer_stride()? as u64 * layer as u64)?;
+        h.texture_type = TextureType::TwoD;
+        h.depth = 1;
+        Some(h)
+    }
+
+    /// Level 0, slice 0 as a surface view.
+    pub(crate) fn view(&self) -> Option<SurfaceView> {
+        self.level_view(0)
+    }
+
+    /// Bytes from the header address to the end of level `last`.
+    pub(crate) fn chain_bytes(&self, last: u32) -> Option<usize> {
+        let v = self.level_view(last)?;
+        Some((v.gpu_va - self.gpu_va) as usize + v.size())
     }
 
     fn apply_swizzle(&self, c: [f32; 4]) -> [f32; 4] {
@@ -289,35 +363,93 @@ impl TextureHeader {
             Swizzle::G => c[1],
             Swizzle::B => c[2],
             Swizzle::A => c[3],
-            Swizzle::OneInt | Swizzle::OneFloat => 1.0,
+            // Integer one for integer formats, whose channels carry integer bits.
+            Swizzle::OneInt => f32::from_bits(1),
+            Swizzle::OneFloat => 1.0,
         })
     }
 
     /// Texel `(x, y)` of level 0 after the header swizzle; `None` if out of range, the format is
     /// unsupported or the memory cannot be read.
     pub fn fetch(&self, x: u32, y: u32, mem: &mut dyn GpuMemoryWriter) -> Option<[f32; 4]> {
-        let view = self.view()?;
-        if x >= view.width || y >= view.height {
-            return None;
-        }
-        let mut t = [0u8; 16];
-        let t = &mut t[..view.bpp as usize];
-        mem.read(view.texel_va(x, y), t).then_some(())?;
-        self.decode(t).map(|c| self.apply_swizzle(c))
+        self.fetch_level(0, x, y, mem)
     }
 
-    /// Samples level 0 at `(u, v)` with `sampler`'s filter and wrap modes. Coordinates are
+    /// Texel `(x, y)` of absolute level `level` (not checked against the view range).
+    pub fn fetch_level(&self, level: u32, x: u32, y: u32, mem: &mut dyn GpuMemoryWriter) -> Option<[f32; 4]> {
+        let (w, h) = self.level_size(level);
+        if x >= w || y >= h {
+            return None;
+        }
+        let e = self.element()?;
+        let view = self.level_view(level)?;
+        let mut t = [0u8; 16];
+        let t = &mut t[..view.bpp as usize];
+        mem.read(view.texel_va(x / e.block_w, y / e.block_h), t).then_some(())?;
+        texfmt::decode_texel(&self.format(), t, x % e.block_w, y % e.block_h).map(|c| self.apply_swizzle(c))
+    }
+
+    /// `TLD`: texel `(x, y)` of level `base + lod`; `None` outside the view range or the level.
+    pub fn fetch_lod(&self, lod: u32, x: u32, y: u32, mem: &mut dyn GpuMemoryWriter) -> Option<[f32; 4]> {
+        let (base, last) = self.level_range()?;
+        let level = base.checked_add(lod).filter(|&l| l <= last)?;
+        self.fetch_level(level, x, y, mem)
+    }
+
+    /// Samples the base level at `(u, v)` with `sampler`'s filter and wrap modes. Coordinates are
     /// normalized when the header says so, texel units otherwise.
     pub fn sample(&self, sampler: &Sampler, u: f32, v: f32, mem: &mut dyn GpuMemoryWriter) -> Option<[f32; 4]> {
-        let (w, h) = (self.width as f32, self.height as f32);
-        let (x, y) = if self.normalized_coords { (u * w, v * h) } else { (u, v) };
+        let base = self.level_range().map_or(0, |(b, _)| b);
+        self.sample_level(sampler, base, sampler.mag_filter, u, v, mem)
+    }
+
+    /// Samples with an explicit LOD (`TEX.LL`, `TEX.LZ` = 0): the header and sampler biases are
+    /// added, the result is clamped to the sampler's LOD range, then `MIP_FILTER` picks one level
+    /// (none: base, point: nearest) or blends two (linear). LOD <= 0 magnifies.
+    pub fn sample_lod(&self, sampler: &Sampler, lod: f32, u: f32, v: f32, mem: &mut dyn GpuMemoryWriter) -> Option<[f32; 4]> {
+        let (base, last) = self.level_range()?;
+        // Unnormalized coordinates address level 0 texels only (as in Vulkan).
+        if !self.normalized_coords {
+            return self.sample_level(sampler, base, sampler.mag_filter, u, v, mem);
+        }
+        let mut lambda = lod + self.lod_bias_256 as f32 / 256.0 + sampler.lod_bias;
+        lambda = lambda.min(sampler.max_lod).max(sampler.min_lod);
+        if lambda.is_nan() {
+            lambda = 0.0;
+        }
+        let filter = if lambda <= 0.0 { sampler.mag_filter } else { sampler.min_filter };
+        let span = (last - base) as f32;
+        match sampler.mip_filter {
+            MIP_FILTER_POINT => {
+                let l = (lambda + 0.5).floor().clamp(0.0, span) as u32;
+                self.sample_level(sampler, base + l, filter, u, v, mem)
+            }
+            MIP_FILTER_LINEAR => {
+                let lambda = lambda.clamp(0.0, span);
+                let l0 = lambda.floor() as u32;
+                let a = lambda - l0 as f32;
+                let c0 = self.sample_level(sampler, base + l0, filter, u, v, mem)?;
+                if a == 0.0 {
+                    return Some(c0);
+                }
+                let c1 = self.sample_level(sampler, base + l0 + 1, filter, u, v, mem)?;
+                Some([0, 1, 2, 3].map(|i| c0[i] + (c1[i] - c0[i]) * a))
+            }
+            // MIP_NONE (and the reserved 0): the base level only.
+            _ => self.sample_level(sampler, base, filter, u, v, mem),
+        }
+    }
+
+    fn sample_level(&self, sampler: &Sampler, level: u32, filter: Filter, u: f32, v: f32, mem: &mut dyn GpuMemoryWriter) -> Option<[f32; 4]> {
+        let (lw, lh) = self.level_size(level);
+        let (x, y) = if self.normalized_coords { (u * lw as f32, v * lh as f32) } else { (u, v) };
         let mut texel = |tx: i64, ty: i64| -> Option<[f32; 4]> {
-            match (wrap(sampler.address[0], tx, self.width), wrap(sampler.address[1], ty, self.height)) {
-                (Some(cx), Some(cy)) => self.fetch(cx, cy, mem),
+            match (wrap(sampler.address[0], tx, lw), wrap(sampler.address[1], ty, lh)) {
+                (Some(cx), Some(cy)) => self.fetch_level(level, cx, cy, mem),
                 _ => Some(sampler.border),
             }
         };
-        if sampler.mag_filter == Filter::Linear {
+        if filter == Filter::Linear {
             let (fx, fy) = (x - 0.5, y - 0.5);
             let (x0, y0) = (fx.floor(), fy.floor());
             let (ax, ay) = (fx - x0, fy - y0);
@@ -333,6 +465,10 @@ impl TextureHeader {
         }
     }
 }
+
+/// `TEXSAMP1_MIP_FILTER` values (`MIP_NONE` is 1).
+pub const MIP_FILTER_POINT: u32 = 2;
+pub const MIP_FILTER_LINEAR: u32 = 3;
 
 /// `ADDRESS_U/V/P` wrap modes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -363,8 +499,14 @@ pub struct Sampler {
     pub address: [AddressMode; 3],
     pub mag_filter: Filter,
     pub min_filter: Filter,
-    /// `MIP_FILTER` 7:6 of word 1.
+    /// `MIP_FILTER` 7:6 of word 1 (none 1, point 2, linear 3).
     pub mip_filter: u32,
+    /// `MIP_LOD_BIAS` (TEXSAMP1 24:12), read as signed 5.8 fixed point (UNVERIFIED format).
+    pub lod_bias: f32,
+    /// `MIN_LOD_CLAMP` / `MAX_LOD_CLAMP` (TEXSAMP2 11:0 / 23:12), read as unsigned 4.8 fixed
+    /// point (UNVERIFIED format; the header gives widths only).
+    pub min_lod: f32,
+    pub max_lod: f32,
     /// `BORDER_COLOR_R/G/B/A` (words 4..7, floats).
     pub border: [f32; 4],
 }
@@ -393,6 +535,9 @@ impl Sampler {
             mag_filter: filter(w[1] & 7),
             min_filter: filter((w[1] >> 4) & 3),
             mip_filter: (w[1] >> 6) & 3,
+            lod_bias: sext((w[1] >> 12) & 0x1fff, 13) as f32 / 256.0,
+            min_lod: (w[2] & 0xfff) as f32 / 256.0,
+            max_lod: ((w[2] >> 12) & 0xfff) as f32 / 256.0,
             border: [f32::from_bits(w[4]), f32::from_bits(w[5]), f32::from_bits(w[6]), f32::from_bits(w[7])],
         }
     }

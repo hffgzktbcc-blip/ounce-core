@@ -121,9 +121,12 @@ mod asm {
             | ((RZ as u128) << 64)
             | (((comps - 1) as u128) << 74)
     }
-    /// `freq`: 0 PASS, 1 PassMulW, 2 CONSTANT.
-    pub fn ipa(d: u8, addr: u16, freq: u8, mul: u8) -> u128 {
-        op(0x326) | rd(d) | ((RZ as u128) << 24) | ((mul as u128) << 32) | (((addr >> 2) as u128) << 64) | ((freq as u128) << 78)
+    /// `IPA.PASS` as Mesa NAK's SM70 encoder emits it (offset RZ, predicate output PT).
+    pub fn ipa(d: u8, addr: u16) -> u128 {
+        op(0x326) | rd(d) | ((RZ as u128) << 32) | (((addr >> 2) as u128) << 64) | (7 << 81)
+    }
+    pub fn fmul_rr(d: u8, a: u8, b: u8) -> u128 {
+        op(0x220) | rd(d) | ((a as u128) << 24) | ((b as u128) << 32) | (4 << 84)
     }
     pub fn mov_imm(d: u8, imm: u32) -> u128 {
         op(0x802) | rd(d) | ((imm as u128) << 32) | (0xf << 72)
@@ -131,10 +134,15 @@ mod asm {
     /// 2D `TEX` (`TLD` when `fetch`), RGBA into `d`, `d + 1`, `d2`, `d2 + 1`, coordinates `ra`,
     /// `ra + 1`, handle at `c[bank][4 * idx]`; `lod`: 0 auto, 1 LZ.
     pub fn tex(fetch: bool, d: u8, d2: u8, ra: u8, bank: u8, idx: u16, lod: u8) -> u128 {
+        tex_rb(fetch, d, d2, ra, RZ, bank, idx, lod)
+    }
+    /// [`tex`] with the LOD register `rb` (`lod` 3 = `.LL`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn tex_rb(fetch: bool, d: u8, d2: u8, ra: u8, rb: u8, bank: u8, idx: u16, lod: u8) -> u128 {
         op(if fetch { 0xb66 } else { 0xb60 })
             | rd(d)
             | ((ra as u128) << 24)
-            | ((RZ as u128) << 32)
+            | ((rb as u128) << 32)
             | ((idx as u128) << 40)
             | ((bank as u128) << 54)
             | (3 << 60)
@@ -164,14 +172,15 @@ fn vertex_shader() -> Vec<u8> {
     program(&h, &[asm::ald(0, 0x80, 4), asm::ald(4, 0x90, 4), asm::ast(0, 0x70, 4), asm::ast(4, 0x80, 4), asm::exit()])
 }
 
-/// Perspective-correct varying 0 to target 0: `IPA w; MUFU.RCP; IPA.MUL` x4.
+/// Perspective-correct varying 0 to target 0: `IPA w; MUFU.RCP; (IPA; FMUL)` x4 (SM70+ has no
+/// `IPA.PASS_MUL_W`; NAK multiplies by 1/w itself).
 fn varying_pixel_shader() -> Vec<u8> {
     let mut h = SphBuilder::pixel().ps_target(0, 0xf);
     for c in 0..4 {
         h = h.ps_imap(0, c, PixelImap::Perspective);
     }
-    let mut code = vec![asm::ipa(8, 0x7c, 0, 0), asm::mufu_rcp(9, 8)];
-    code.extend((0..4).map(|c| asm::ipa(c as u8, 0x80 + 4 * c, 1, 9)));
+    let mut code = vec![asm::ipa(8, 0x7c), asm::mufu_rcp(9, 8)];
+    code.extend((0..4u8).flat_map(|c| [asm::ipa(c, 0x80 + 4 * c as u16), asm::fmul_rr(c, c, 9)]));
     code.push(asm::exit());
     program(&h, &code)
 }
@@ -276,6 +285,26 @@ fn clear_fills_block_linear_target_in_guest_memory() {
 }
 
 #[test]
+fn oversized_draws_are_rejected_before_index_or_vertex_allocation() {
+    let mut memory = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    draw(&mut pb, 0, 3, 4);
+    let mut gpu = run(&pb, &mut memory);
+    let mut record = gpu.events().iter().find_map(|e| match e {
+        Event::Draw(record) => Some(record.clone()), _ => None,
+    }).unwrap();
+    record.vertex_count = u32::MAX;
+    for indexed in [false, true] {
+        record.indices = indexed.then_some(IndexBuffer {
+            gpu_va: 0, size: None, index_bytes: 4, base_vertex: 0, restart: None });
+        gpu.render_draw(&record, &mut memory);
+        assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped {
+            reason: "draw exceeds host vertex work limit" })));
+    }
+}
+
+#[test]
 fn clear_respects_scissor_when_asked() {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
@@ -305,7 +334,7 @@ fn triangle_draw_produces_raw_block_linear_surface() {
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     // 255 * 256 / 2: the hypotenuse is a right edge, so pixels centred on it stay out (top-left rule).
-    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, culled_triangles: 0, fragments: 32640 });
+    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, culled_triangles: 0, fragments: 32640, discarded_fragments: 0 });
 
     let linear = rt_pixels(&mut mem);
     assert_eq!(px(&linear, 10, 10), [255, 0, 0, 255]);
@@ -507,6 +536,33 @@ fn maxwell_draw_renders_through_the_maxwell_front_end() {
     assert!(near(px(&linear, 0, 0), [255, 0, 0, 255]), "{:?}", px(&linear, 0, 0));
     assert!(near(px(&linear, 64, 64), [127, 64, 64, 255]), "{:?}", px(&linear, 64, 64));
     assert_eq!(px(&linear, 250, 250), [0, 0, 0, 255]);
+}
+
+#[test]
+fn maxwell_kil_discards_before_depth_and_colour() {
+    let mut mem = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::MAXWELL_B, false);
+    clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+    let verts = [vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, 0.0, BLUE)];
+    let mut code = vec![mx::ipa(8, 0x7c, 0, 0), mx::mufu_rcp(9, 8)];
+    code.extend((0..4).map(|c| mx::ipa(c as u8, 0x80 + 4 * c, 1, 9)));
+    // FSETP.LT.AND P0, PT, R0, 0.5, PT; @P0 KIL: alpha-test style discard on red < 0.5.
+    let half = 0.5f32.to_bits() as u64;
+    code.push((0x36b1 << 48) | (7 << 39) | (((half >> 12) & 0x7ffff) << 20) | (7 << 16) | 7);
+    code.push(0xe33000000000000f);
+    code.push(mx::exit());
+    maxwell_geometry(&mut pb, &mut mem, &verts, &code);
+    draw(&mut pb, 0, 3, 4);
+    let gpu = run(&pb, &mut mem);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let stats = gpu.render_stats();
+    assert!(stats.discarded_fragments > 0 && stats.fragments > 0, "{stats:?}");
+    let linear = rt_pixels(&mut mem);
+    let near = |p: [u8; 4], want: [u8; 4]| p.iter().zip(want).all(|(&a, b)| (a as i32 - b as i32).abs() <= 2);
+    assert!(near(px(&linear, 0, 0), [255, 0, 0, 255]), "{:?}", px(&linear, 0, 0));
+    // Red is just under 0.5 here, so the fragment is discarded and the clear colour stays.
+    assert_eq!(px(&linear, 64, 64), [0, 0, 0, 255]);
 }
 
 #[test]
@@ -818,10 +874,12 @@ fn ampere_pixel_shader_samples_a_texture() {
         h = h.ps_imap(0, c, PixelImap::Perspective);
     }
     let code = [
-        asm::ipa(8, 0x7c, 0, 0),
+        asm::ipa(8, 0x7c),
         asm::mufu_rcp(9, 8),
-        asm::ipa(4, 0x80, 1, 9),
-        asm::ipa(5, 0x84, 1, 9),
+        asm::ipa(4, 0x80),
+        asm::fmul_rr(4, 4, 9),
+        asm::ipa(5, 0x84),
+        asm::fmul_rr(5, 5, 9),
         asm::tex(false, 0, 2, 4, 1, 0, 0),
         asm::exit(),
     ];
@@ -879,6 +937,174 @@ fn maxwell_texs_reads_the_handle_through_set_bindless_texture() {
     let gpu = run(&pb, &mut mem);
     assert_eq!(gpu.render_stats().draws, 1);
     assert_eq!(gpu.diagnostics(), &[Diagnostic::RenderSkipped { reason: "sampler is not readable" }]);
+}
+
+// --- Mip levels ------------------------------------------------------------------------------
+
+/// Texel of [`mip_memory`]'s chain: red = 16 x, green = 16 y, blue = 40 x level.
+fn mip_texel(x: u32, y: u32, level: u32) -> [u8; 4] {
+    [(x * 16) as u8, (y * 16) as u8, (level * 40) as u8, 255]
+}
+
+/// Byte offsets of levels 0..=4 of a 16x16 RGBA8 chain with 2-GOB blocks: level 0 is one
+/// 64 B x 16-row block (1 KiB); levels 1-4 have at most 8 rows, so their blocks shrink to one GOB
+/// (512 B each).
+const MIP_OFFSETS: [u64; 5] = [0, 1024, 1536, 2048, 2560];
+
+/// TIC 4: 16x16 A8B8G8R8 block linear with 5 levels, view range `min..=max`. TSC 0: point
+/// filter, point mip filter; TSC 1: linear filter, linear mip filter; both LOD clamp [0, 4].
+fn mip_memory(view_min: u32, view_max: u32) -> (Mem, Ampere3d) {
+    let mut mem = Mem::standard();
+    for (l, off) in MIP_OFFSETS.iter().enumerate() {
+        let n = 16u32 >> l;
+        let lh = if l == 0 { 1 } else { 0 };
+        let linear: Vec<u8> = (0..n).flat_map(|y| (0..n).flat_map(move |x| mip_texel(x, y, l as u32))).collect();
+        let surf = Surface::new_2d(n, n, Format::R8G8B8A8Unorm, Layout::BlockLinear { height_log2: lh, depth_log2: 0 });
+        mem.put(TEX_VA + off, &tiling::tile(&surf, &linear).unwrap());
+    }
+    let mut tic = tic_block_linear(TEX_VA);
+    tic[3] |= 4 << 28; // MAX_MIP_LEVEL
+    tic[7] = view_min | (view_max << 4); // RES_VIEW_MIN/MAX_MIP_LEVEL
+    mem.put(TIC_VA + 4 * 32, &words_to_bytes(&tic));
+    let mut tsc = [0u32; 8];
+    tsc[0] = 2 | (2 << 3) | (2 << 6);
+    tsc[1] = 1 | (1 << 4) | (2 << 6);
+    tsc[2] = 4 << 20; // MAX_LOD_CLAMP 4.0
+    mem.put(TSC_VA, &words_to_bytes(&tsc));
+    tsc[1] = 2 | (2 << 4) | (3 << 6);
+    mem.put(TSC_VA + 32, &words_to_bytes(&tsc));
+    let mut pb = vec![inc_header(SC, m::SET_OBJECT, 1), m::AMPERE_B];
+    pb.extend([inc_header(SC, m::SET_TEX_HEADER_POOL_A, 3), hi(TIC_VA), lo(TIC_VA), 7]);
+    pb.extend([inc_header(SC, m::SET_TEX_SAMPLER_POOL_A, 3), hi(TSC_VA), lo(TSC_VA), 1]);
+    let gpu = run(&pb, &mut mem);
+    (mem, gpu)
+}
+
+fn unorm(c: [u8; 4]) -> [f32; 4] {
+    c.map(|v| v as f32 / 255.0)
+}
+
+#[test]
+fn mip_chain_levels_are_packed_with_clamped_blocks() {
+    let (mut mem, gpu) = mip_memory(0, 4);
+    let h = gpu.texture_header(4, &mut mem).unwrap();
+    assert_eq!((h.max_mip_level, h.view_min_level, h.view_max_level), (4, 0, 4));
+    assert_eq!(h.chain_levels(), 5);
+    for (l, off) in MIP_OFFSETS.iter().enumerate() {
+        assert_eq!(h.level_view(l as u32).unwrap().gpu_va, TEX_VA + off, "level {l}");
+    }
+    assert!(h.level_view(5).is_none());
+    assert_eq!(h.chain_bytes(4), Some(3072));
+    for l in 0..5 {
+        let n = 16 >> l;
+        for (x, y) in [(0, 0), (n - 1, 0), (n / 2, n - 1)] {
+            assert_eq!(h.fetch_level(l, x, y, &mut mem), Some(unorm(mip_texel(x, y, l))), "level {l} ({x}, {y})");
+        }
+        assert_eq!(h.fetch_level(l, n, 0, &mut mem), None);
+    }
+    // Pitch textures and TWO_D_NO_MIPMAP have one level whatever MAX_MIP_LEVEL says.
+    let mut raw = h.raw;
+    raw[4] = (raw[4] & !(0xf << 23)) | (7 << 23);
+    let no_mip = super::texture::TextureHeader::parse(&words_to_bytes(&raw).try_into().unwrap());
+    assert_eq!((no_mip.chain_levels(), no_mip.level_range()), (1, Some((0, 0))));
+}
+
+#[test]
+fn tld_ll_counts_levels_from_the_view_minimum() {
+    let (mut mem, gpu) = mip_memory(1, 3);
+    let h = gpu.texture_header(4, &mut mem).unwrap();
+    assert_eq!(h.level_range(), Some((1, 3)));
+    assert_eq!(h.fetch_lod(0, 2, 3, &mut mem), Some(unorm(mip_texel(2, 3, 1))));
+    assert_eq!(h.fetch_lod(2, 1, 1, &mut mem), Some(unorm(mip_texel(1, 1, 3))));
+    // Past the view maximum, and outside the level, read nothing.
+    assert_eq!(h.fetch_lod(3, 0, 0, &mut mem), None);
+    assert_eq!(h.fetch_lod(0, 8, 0, &mut mem), None);
+    // Sampling with an implicit LOD reads the view's base level.
+    let point = gpu.sampler(0, &mut mem).unwrap();
+    assert_eq!(h.sample(&point, 0.5, 0.5, &mut mem), Some(unorm(mip_texel(4, 4, 1))));
+}
+
+#[test]
+fn tex_ll_picks_levels_by_mip_filter_bias_and_clamp() {
+    use super::texture::{Filter, Sampler};
+    let (mut mem, gpu) = mip_memory(0, 4);
+    let h = gpu.texture_header(4, &mut mem).unwrap();
+    let point = gpu.sampler(0, &mut mem).unwrap();
+    let linear = gpu.sampler(1, &mut mem).unwrap();
+    assert_eq!((point.min_lod, point.max_lod, point.lod_bias), (0.0, 4.0, 0.0));
+    // Texel (1, 1) of level 2 (4x4) covers u, v in [0.25, 0.5).
+    let (u, v) = (0.3, 0.3);
+    let at = |l: u32| {
+        let n = 16 >> l;
+        unorm(mip_texel((u * n as f32) as u32, (v * n as f32) as u32, l))
+    };
+    for (lod, level) in [(0.0, 0), (1.0, 1), (1.4, 1), (1.6, 2), (2.0, 2), (3.9, 4), (9.0, 4), (-2.0, 0)] {
+        assert_eq!(h.sample_lod(&point, lod, u, v, &mut mem), Some(at(level)), "lod {lod}");
+    }
+    // Linear mip filter blends the two nearest levels (bilinear inside each).
+    let blend = h.sample_lod(&linear, 1.5, 0.5, 0.5, &mut mem).unwrap();
+    let l1 = h.sample_lod(&linear, 1.0, 0.5, 0.5, &mut mem).unwrap();
+    let l2 = h.sample_lod(&linear, 2.0, 0.5, 0.5, &mut mem).unwrap();
+    for i in 0..4 {
+        assert!((blend[i] - (l1[i] + l2[i]) / 2.0).abs() < 1e-6, "{blend:?} {l1:?} {l2:?}");
+    }
+    assert!((l1[2] - 40.0 / 255.0).abs() < 1e-6 && (l2[2] - 80.0 / 255.0).abs() < 1e-6);
+
+    let tweak = |f: &dyn Fn(&mut [u32; 8])| {
+        let mut raw = point.raw;
+        f(&mut raw);
+        Sampler::parse(&words_to_bytes(&raw).try_into().unwrap())
+    };
+    // MIP_LOD_BIAS +1.0 (0x100 in 5.8).
+    let biased = tweak(&|w| w[1] |= 0x100 << 12);
+    assert_eq!(biased.lod_bias, 1.0);
+    assert_eq!(h.sample_lod(&biased, 0.0, u, v, &mut mem), Some(at(1)));
+    // A negative bias of -1.0 (two's complement 0x1f00).
+    let neg = tweak(&|w| w[1] |= 0x1f00 << 12);
+    assert_eq!(neg.lod_bias, -1.0);
+    assert_eq!(h.sample_lod(&neg, 2.0, u, v, &mut mem), Some(at(1)));
+    // MIN_LOD_CLAMP 2.0, MAX_LOD_CLAMP 3.0.
+    let clamped = tweak(&|w| w[2] = 0x200 | (0x300 << 12));
+    assert_eq!(h.sample_lod(&clamped, 0.0, u, v, &mut mem), Some(at(2)));
+    assert_eq!(h.sample_lod(&clamped, 4.0, u, v, &mut mem), Some(at(3)));
+    // MIP_NONE: the base level at any LOD; the minification filter still applies above 0.
+    let none = tweak(&|w| w[1] = (w[1] & !(0xf << 4)) | (1 << 6) | (2 << 4));
+    assert_eq!(none.min_filter, Filter::Linear);
+    assert_eq!(h.sample_lod(&none, 0.0, u, v, &mut mem), Some(at(0)));
+    // Halfway between level 0 texels 3 and 4 in x: red 48 and 64 average to 56.
+    let minified = h.sample_lod(&none, 3.0, 4.0 / 16.0, 0.5 / 16.0, &mut mem).unwrap();
+    assert!((minified[0] - 56.0 / 255.0).abs() < 1e-6, "{minified:?}");
+}
+
+#[test]
+fn pixel_shader_tex_ll_and_tld_ll_read_mip_levels() {
+    let draw_with = |code: &[u128], tic_tsc: u32| {
+        let (mut mem, _) = mip_memory(0, 4);
+        let mut pb = Vec::new();
+        setup(&mut pb, m::AMPERE_B, false);
+        texture_state(&mut pb, &[tic_tsc]);
+        let h = SphBuilder::pixel().ps_target(0, 0xf);
+        geometry(&mut pb, &mut mem, &uv_triangle(), &program(&h, code));
+        draw(&mut pb, 0, 3, 4);
+        let gpu = run(&pb, &mut mem);
+        assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+        rt_pixels(&mut mem)
+    };
+    // TEX.LL at (0.3, 0.3), LOD 2.0, TIC 4 / TSC 0 (point): texel (1, 1) of level 2.
+    let sample = [
+        asm::mov_imm(4, 0.3f32.to_bits()),
+        asm::mov_imm(5, 0.3f32.to_bits()),
+        asm::mov_imm(6, 2.0f32.to_bits()),
+        asm::tex_rb(false, 0, 2, 4, 6, 1, 0, 3),
+        asm::exit(),
+    ];
+    let px_ll = draw_with(&sample, 4);
+    assert_eq!(px(&px_ll, 10, 10), mip_texel(1, 1, 2));
+    assert_eq!(px(&px_ll, 200, 20), mip_texel(1, 1, 2));
+    // TLD.LL texel (3, 2) of level 1.
+    let fetch = [asm::mov_imm(4, 3), asm::mov_imm(5, 2), asm::mov_imm(6, 1), asm::tex_rb(true, 0, 2, 4, 6, 1, 0, 3), asm::exit()];
+    let px_tld = draw_with(&fetch, 4);
+    assert_eq!(px(&px_tld, 10, 10), mip_texel(3, 2, 1));
 }
 
 // --- Semaphores ------------------------------------------------------------------------------
@@ -994,6 +1220,40 @@ fn z24s8_target(pb: &mut Vec<u32>) {
     pb.push(immd_header(SC, m::CLEAR_SURFACE, 0x3));
 }
 
+#[test]
+fn stencil_clear_respects_partial_write_mask() {
+    let mut memory = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    z24s8_target(&mut pb);
+    pb.extend([inc_header(SC, m::SET_STENCIL_CLEAR_VALUE, 1), 0xa5]);
+    pb.push(immd_header(SC, m::CLEAR_SURFACE, 2));
+    pb.extend([inc_header(SC, m::SET_STENCIL_MASK, 1), 0x0f]);
+    pb.extend([inc_header(SC, m::SET_CLEAR_SURFACE_CONTROL, 1), 1]);
+    pb.extend([inc_header(SC, m::SET_STENCIL_CLEAR_VALUE, 1), 0x3c]);
+    pb.push(immd_header(SC, m::CLEAR_SURFACE, 2));
+    let gpu = run(&pb, &mut memory);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let linear = tiling::detile(&rt_surface(), &memory.get(ZT_VA, RT_BYTES)).unwrap();
+    assert_eq!(linear[0], 0xac);
+    assert_eq!(linear[4 * (128 * W as usize + 128)], 0xac);
+}
+
+#[test]
+fn unsupported_depth_layer_clear_preserves_base_layer() {
+    let mut memory = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    z24s8_target(&mut pb);
+    let mut gpu = run(&pb, &mut memory);
+    let before = memory.get(ZT_VA, RT_BYTES);
+    let pb = [inc_header(SC, m::SET_ZT_LAYER, 1), 1,
+        inc_header(SC, m::SET_Z_CLEAR_VALUE, 1), f(0.0), immd_header(SC, m::CLEAR_SURFACE, 1)];
+    gpu.submit(&pb, &mut memory).unwrap();
+    assert_eq!(memory.get(ZT_VA, RT_BYTES), before);
+    assert!(gpu.diagnostics().iter().any(|d| matches!(d, Diagnostic::RenderSkipped { reason: "layered clear" })));
+}
+
 /// `SET_STENCIL_TEST` .. `SET_STENCIL_MASK`: enable, fail, zfail, zpass, func, ref, func mask, mask.
 fn stencil_state(pb: &mut Vec<u32>, state: [u32; 8]) {
     pb.push(inc_header(SC, m::SET_STENCIL_TEST, 8));
@@ -1039,7 +1299,7 @@ fn back_faces_are_culled_by_winding() {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
     setup(&mut pb, m::AMPERE_B, false);
-    // Counter-clockwise with y up, then the same triangle wound the other way.
+    // Clockwise on the +y-down framebuffer (the viewport keeps clip y), then wound the other way.
     let verts = [
         vtx(-1.0, -1.0, 0.5, GREEN),
         vtx(1.0, -1.0, 0.5, GREEN),
@@ -1049,7 +1309,7 @@ fn back_faces_are_culled_by_winding() {
         vtx(1.0, -1.0, 0.5, RED),
     ];
     geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
-    pb.extend([inc_header(SC, m::OGL_SET_CULL, 3), 1, 0x901, 0x405]); // CCW front, cull BACK
+    pb.extend([inc_header(SC, m::OGL_SET_CULL, 3), 1, 0x900, 0x405]); // CW front, cull BACK
     draw(&mut pb, 0, 6, 4); // TRIANGLES
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());

@@ -5,11 +5,29 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # PLAN.md records milestone evidence and must receive the required checks.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - '!LICENSE'
+      - 'PLAN.md'
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  legal-guardrails:
+    name: Legal guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Fail on key files, retail containers or ROM/key-site links
+        run: scripts/check_legal_guardrails.sh
+      - name: Fail on unsafe outside the README's Safe Rust boundary
+        run: scripts/check_unsafe_boundary.sh
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -69,8 +87,31 @@ jobs:
       - name: Build with gpu-present
         run: cargo build --release --features gpu-present
 
+      - name: Build and smoke-test native Mac app
+        if: runner.os == 'macOS'
+        run: |
+          swiftc tools/macos-launcher/EvidenceReport.swift tests/macos/evidence-report/main.swift -o "$RUNNER_TEMP/evidence-report-tests"
+          "$RUNNER_TEMP/evidence-report-tests"
+          scripts/build_macos_app.sh
+          codesign --verify --deep --strict "dist/Ounce Core.app"
+          "dist/Ounce Core.app/Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core" test
+
       - name: Run unit tests with gpu-present
         run: cargo test --release --features gpu-present -- --nocapture --test-threads=1
+
+      - name: Package native Mac app preview
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/Ounce Core.app" "$RUNNER_TEMP/Ounce-Core-workbench-preview.zip"
+
+      - name: Retain native Mac app preview
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app-preview
+          path: ${{ runner.temp }}/Ounce-Core-workbench-preview.zip
+          if-no-files-found: error
+          retention-days: 14
+
 
 
   native-jit:
@@ -110,3 +151,46 @@ jobs:
 
       - name: Run Tier-4 unit tests & differential fuzzer
         run: cargo test --release --features native-jit -- --nocapture
+
+  nce:
+    name: Native execution (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-latest is Apple Silicon and ubuntu-24.04-arm is AArch64 Linux: guest code runs on the
+        # host CPU there. ubuntu-latest (x86_64) builds the stubs and skips the native tests.
+        os: [macos-latest, ubuntu-24.04-arm, ubuntu-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: nce
+
+      - name: Run ounce-nce tests (arena, rewriter, guest code on the host CPU)
+        run: cargo test --release -p ounce-nce
+
+      - name: Run unit tests with nce (libnx fixtures run natively)
+        run: cargo test --release --features nce -- --nocapture
+
+      - name: Run a fixture NRO with --cpu=native
+        if: runner.arch == 'ARM64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(cargo run --release --features nce -- run tests/fixtures/nro/hello/hello.nro fixture --cpu=native --present=headless)
+          echo "$out"
+          grep -q "ounce-fixture result=0x00000EEE" <<< "$out"
+          grep -q "Guest exited (svcExitProcess)" <<< "$out"

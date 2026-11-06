@@ -52,9 +52,13 @@ mod asm {
     pub fn ast(s: u8, addr: u16, comps: u8) -> u128 {
         op(0x322) | ra(RZ) | ((s as u128) << 32) | ((addr as u128) << 40) | ((RZ as u128) << 64) | (((comps - 1) as u128) << 74)
     }
-    /// `freq`: 0 PASS, 1 PassMulW, 2 CONSTANT.
-    pub fn ipa(d: u8, addr: u16, freq: u8, mul: u8) -> u128 {
-        op(0x326) | rd(d) | ra(RZ) | ((mul as u128) << 32) | (((addr >> 2) as u128) << 64) | ((freq as u128) << 78)
+    /// `freq`: 0 PASS, 1 CONSTANT. As NAK's SM70 encoder: bits 24..32 clear, offset RZ,
+    /// predicate output PT.
+    pub fn ipa(d: u8, addr: u16, freq: u8) -> u128 {
+        op(0x326) | rd(d) | ((RZ as u128) << 32) | (((addr >> 2) as u128) << 64) | ((freq as u128) << 78) | (7 << 81)
+    }
+    pub fn fmul_rr(d: u8, a: u8, b: u8) -> u128 {
+        op(0x220) | rd(d) | ra(a) | ((b as u128) << 32) | (4 << 84)
     }
     pub fn pred(w: u128, p: u8, neg: bool) -> u128 {
         (w & !(0xf << 12)) | ((p as u128) << 12) | ((neg as u128) << 15)
@@ -67,6 +71,24 @@ fn program(header: &SphBuilder, code: &[u128]) -> Vec<u8> {
         b.extend_from_slice(&w.to_le_bytes());
     }
     b
+}
+
+#[test]
+fn vertex_builtin_attributes_emit_valid_wgsl() {
+    let bytes = program(&SphBuilder::vertex(), &[asm::ald(0, 0x2f8, 2), asm::ast(0, 0x70, 2), asm::exit()]);
+    for shader in [translate(ShaderStage::Vertex, &bytes), translate_with_header(ShaderStage::Vertex, &bytes, AMPERE_SPH_SIZE)] {
+        let shader = shader.unwrap();
+        assert!(shader.wgsl.contains("@builtin(instance_index)"));
+        assert!(shader.wgsl.contains("@builtin(vertex_index)"));
+        validate(&shader.wgsl);
+    }
+}
+
+#[test]
+fn wgsl_rejects_dynamic_cbuf_without_a_binding_size_contract() {
+    let indexed = asm::ldc(0, 1, 0xfffc) & !(0xffu128 << 24); // R0 index, not RZ
+    let bytes = program(&SphBuilder::vertex(), &[indexed, asm::ast(0, 0x70, 1), asm::exit()]);
+    assert!(matches!(translate(ShaderStage::Vertex, &bytes), Err(XlateError::Unsupported { what: "dynamic constant buffer requires an explicit binding-size contract", .. })));
 }
 
 pub(super) fn validate(src: &str) {
@@ -195,11 +217,12 @@ fn cuasm_mufu_ldc() {
 fn synthetic_roundtrip_graphics_ops() {
     assert_eq!(decode(asm::ald(0, 0x80, 4)).unwrap().instr, Instr::Ald { dst: 0, addr: 0x80, comps: 4 });
     assert_eq!(decode(asm::ast(4, 0x70, 4)).unwrap().instr, Instr::Ast { src: 4, addr: 0x70, comps: 4 });
-    assert_eq!(
-        decode(asm::ipa(1, 0x84, 1, 4)).unwrap().instr,
-        Instr::Ipa { dst: 1, addr: 0x84, freq: IpaFreq::PassMulW, mul: 4 }
-    );
-    assert_eq!(decode(asm::ldc(3, 1, 0x20)).unwrap().instr, Instr::Ldc { dst: 3, bank: 1, offset: 0x20 });
+    assert_eq!(decode(asm::ipa(1, 0x84, 1)).unwrap().instr, Instr::Ipa { dst: 1, addr: 0x84, freq: IpaFreq::Constant, mul: RZ });
+    assert_eq!(decode(asm::ipa(1, 0x84, 0)).unwrap().instr, Instr::Ipa { dst: 1, addr: 0x84, freq: IpaFreq::Pass, mul: RZ });
+    // NAK: frequency 2 is STATE, and a predicate output other than PT is not modelled.
+    assert!(decode(asm::ipa(1, 0x84, 2)).is_err());
+    assert!(decode(asm::ipa(1, 0x84, 0) & !(7 << 81)).is_err());
+    assert_eq!(decode(asm::ldc(3, 1, 0x20)).unwrap().instr, Instr::Ldc { dst: 3, bank: 1, offset: 0x20, reg: RZ });
     assert_eq!(decode(asm::nop()).unwrap().to_string(), "NOP");
     assert_eq!(decode(asm::ffma_cb(4, 1, 0, 0x10, 4)).unwrap().to_string(), "FFMA R4, R1, c[0x0][0x10], R4");
 }
@@ -239,10 +262,12 @@ fn golden_varying_colour_fragment() {
     for c in 0..4 {
         h = h.ps_imap(0, c, PixelImap::Perspective);
     }
-    // The usual perspective-correct pattern: 1/w, its reciprocal, then IPA with mul.
-    let mut code = vec![asm::ipa(4, 0x7c, 0, RZ), asm::mufu_rcp(4, 4)];
+    // The SM70+ perspective-correct pattern (NAK `nak_nir_lower_fs_inputs.c`): 1/w, its
+    // reciprocal, then IPA.PASS times that (there is no IPA.PASS_MUL_W on SM70+).
+    let mut code = vec![asm::ipa(4, 0x7c, 0), asm::mufu_rcp(4, 4)];
     for c in 0..4u8 {
-        code.push(asm::ipa(c, 0x80 + 4 * c as u16, 1, 4));
+        code.push(asm::ipa(c, 0x80 + 4 * c as u16, 0));
+        code.push(asm::fmul_rr(c, c, 4));
     }
     code.push(asm::exit());
     let t = translate(ShaderStage::Fragment, &program(&h, &code)).unwrap();
@@ -303,14 +328,14 @@ fn rejects_what_step1_cannot_do() {
     let ps = SphBuilder::pixel().ps_target(0, 0xf);
     // No EXIT.
     assert_eq!(translate(ShaderStage::Vertex, &program(&vs, &[asm::nop()])).unwrap_err(), XlateError::MissingExit);
-    // Unknown opcode (IMAD 0x224) reports where.
-    match translate(ShaderStage::Vertex, &program(&vs, &[asm::nop(), 0x7224, asm::exit()])).unwrap_err() {
-        XlateError::Decode { at, err: DecodeError::UnknownOpcode { opcode: 0x224 }, .. } => assert_eq!(at, 0x10),
+    // Unknown opcode (unassigned 0x1ff) reports where.
+    match translate(ShaderStage::Vertex, &program(&vs, &[asm::nop(), 0x71ff, asm::exit()])).unwrap_err() {
+        XlateError::Decode { at, err: DecodeError::UnknownOpcode { opcode: 0x1ff }, .. } => assert_eq!(at, 0x10),
         e => panic!("{e:?}"),
     }
-    // Predicated ALU op: no control flow yet. A predicated NOP is fine.
+    // Predicated ALU ops are if-converted now (see `ctl_tests`). A predicated NOP is fine.
     let p = asm::pred(asm::mov_imm(0, 0), 0, false);
-    assert!(matches!(translate(ShaderStage::Fragment, &program(&ps, &[p, asm::exit()])), Err(XlateError::Unsupported { .. })));
+    assert!(translate(ShaderStage::Fragment, &program(&ps, &[p, asm::exit()])).is_ok());
     let pn = asm::pred(asm::nop(), 2, true);
     assert!(translate(ShaderStage::Fragment, &program(&ps, &[pn, asm::exit()])).is_ok());
     // Stage/header mismatch and stage-specific ops.
@@ -318,7 +343,7 @@ fn rejects_what_step1_cannot_do() {
         translate(ShaderStage::Fragment, &program(&vs, &[asm::exit()])).unwrap_err(),
         XlateError::StageMismatch(ShaderStage::Fragment)
     );
-    assert!(matches!(translate(ShaderStage::Vertex, &program(&vs, &[asm::ipa(0, 0x80, 0, RZ), asm::exit()])), Err(XlateError::Unsupported { .. })));
+    assert!(matches!(translate(ShaderStage::Vertex, &program(&vs, &[asm::ipa(0, 0x80, 0), asm::exit()])), Err(XlateError::Unsupported { .. })));
     assert!(matches!(translate(ShaderStage::Fragment, &program(&ps, &[asm::ald(0, 0x80, 1), asm::exit()])), Err(XlateError::Unsupported { .. })));
     // Truncated header.
     assert!(matches!(translate(ShaderStage::Vertex, &[0u8; 8]), Err(XlateError::Truncated { .. })));

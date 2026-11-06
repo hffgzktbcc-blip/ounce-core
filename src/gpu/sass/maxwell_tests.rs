@@ -62,6 +62,15 @@ fn program_mx(header: &SphBuilder, code: &[u64]) -> Vec<u8> {
     b
 }
 
+#[test]
+fn maxwell_vertex_builtin_attributes_emit_valid_wgsl() {
+    let bytes = program_mx(&SphBuilder::vertex(), &[mx::ald(0, 0x2f8, 2), mx::ast(0, 0x70, 2), mx::exit()]);
+    let shader = translate_maxwell(ShaderStage::Vertex, &bytes).unwrap();
+    assert!(shader.wgsl.contains("@builtin(instance_index)"));
+    assert!(shader.wgsl.contains("@builtin(vertex_index)"));
+    validate(&shader.wgsl);
+}
+
 fn reg(r: u8) -> FSrc {
     FSrc { src: Src::Reg(r), neg: false, abs: false }
 }
@@ -138,7 +147,7 @@ fn maxwell_cuasm_mufu_ldc() {
     // LDC.U8 / LDC.U16: real words, rejected for size; bank/offset fields still line up.
     assert!(matches!(decode(0xef9000001807ff00), Err(DecodeError::Unsupported { what: "LDC size other than 32-bit", .. })));
     let ldc32 = 0xef9200301047ff16 & !(7 << 48) | (4 << 48);
-    assert_eq!(d(ldc32), Instr::Ldc { dst: 0x16, bank: 3, offset: 0x104 });
+    assert_eq!(d(ldc32), Instr::Ldc { dst: 0x16, bank: 3, offset: 0x104, reg: RZ });
 }
 
 #[test]
@@ -219,7 +228,9 @@ fn maxwell_matches_ampere_goldens() {
     }
     code.push(mx::exit());
     let mx_fs = translate_maxwell(ShaderStage::Fragment, &program_mx(&h, &code)).unwrap();
-    golden("varying.frag.wgsl", include_str!("golden/varying.frag.wgsl"), &mx_fs.wgsl);
+    // Maxwell keeps IPA.PASS_MUL_W (NAK sm50.rs), which SM70+ lacks, so the text differs from
+    // the Ampere golden while the arithmetic is the same.
+    golden("varying_mx.frag.wgsl", include_str!("golden/varying_mx.frag.wgsl"), &mx_fs.wgsl);
 }
 
 #[test]

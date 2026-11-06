@@ -4,7 +4,7 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdAcrossOp, SimdOp2, SimdOp3, SimdPermuteOp};
+use super::instructions::{SimdFpElementOp, SimdAcrossOp, SimdOp2, SimdOp3, SimdPermuteOp};
 
 #[inline]
 fn mask(esize: u32) -> u64 {
@@ -98,6 +98,7 @@ pub fn three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -
         let r = match op {
             SimdOp3::Add | SimdOp3::Addp => a.wrapping_add(b),
             SimdOp3::Sub => a.wrapping_sub(b),
+            SimdOp3::Mul => a.wrapping_mul(b),
             SimdOp3::Cmeq => if a == b { all } else { 0 },
             SimdOp3::Cmtst => if a & b != 0 { all } else { 0 },
             SimdOp3::Cmhi => if a > b { all } else { 0 },
@@ -134,6 +135,15 @@ pub fn two_misc(op: SimdOp2, n: u128, esize: u32, q: bool) -> u128 {
             SimdOp2::Cnt => a.count_ones() as u64,
             SimdOp2::Abs => s.unsigned_abs(),
             SimdOp2::Neg => (s.wrapping_neg()) as u64,
+            SimdOp2::Scvtf if esize == 32 => (s as f32).to_bits() as u64,
+            SimdOp2::Scvtf => (s as f64).to_bits(),
+            SimdOp2::Ucvtf if esize == 32 => (a as f32).to_bits() as u64,
+            SimdOp2::Ucvtf => (a as f64).to_bits(),
+            // Rust's float-to-int `as` saturates and maps NaN to 0, as FCVTZS/FCVTZU do
+            SimdOp2::Fcvtzs if esize == 32 => f32::from_bits(a as u32) as i32 as u64,
+            SimdOp2::Fcvtzs => f64::from_bits(a) as i64 as u64,
+            SimdOp2::Fcvtzu if esize == 32 => f32::from_bits(a as u32) as u32 as u64,
+            SimdOp2::Fcvtzu => f64::from_bits(a) as u64,
             SimdOp2::Not => unreachable!(),
         };
         set_lane(&mut out, esize, i, r);
@@ -169,6 +179,59 @@ pub fn shrn(d: u128, n: u128, esize: u32, shift: u32, q: bool) -> u128 {
         set_lane(&mut half, esize, i, lane(n, esize * 2, i) >> shift);
     }
     if q { (d & u64::MAX as u128) | (half << 64) } else { half }
+}
+
+/// `SSHLL`/`USHLL` (`q`: the `2` forms): widens the low (or, with `q`, high) `esize` lanes of `n` to
+/// `2 * esize` lanes and shifts them left.
+pub fn shll(n: u128, esize: u32, shift: u32, q: bool, signed: bool) -> u128 {
+    let src = if q { n >> 64 } else { n };
+    let mut out = 0u128;
+    for i in 0..64 / esize as usize {
+        let a = lane(src, esize, i);
+        let wide = if signed { sext(a, esize) as u64 } else { a };
+        set_lane(&mut out, esize * 2, i, wide << shift);
+    }
+    out
+}
+
+/// `FMUL/FMLA/FMLS` by element: every lane of `n` times lane `index` of `m` (fused for FMLA/FMLS).
+pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool) -> u128 {
+    let esize = if double { 64 } else { 32 };
+    let mut out = 0u128;
+    for i in 0..lanes(esize, q) {
+        let bits = if double {
+            let (a, b, acc) = (f64::from_bits(lane(n, 64, i)), f64::from_bits(lane(m, 64, index)), f64::from_bits(lane(d, 64, i)));
+            match op {
+                SimdFpElementOp::Fmul => a * b,
+                SimdFpElementOp::Fmla => a.mul_add(b, acc),
+                SimdFpElementOp::Fmls => (-a).mul_add(b, acc),
+            }
+            .to_bits()
+        } else {
+            let (a, b, acc) = (f32::from_bits(lane(n, 32, i) as u32), f32::from_bits(lane(m, 32, index) as u32), f32::from_bits(lane(d, 32, i) as u32));
+            match op {
+                SimdFpElementOp::Fmul => a * b,
+                SimdFpElementOp::Fmla => a.mul_add(b, acc),
+                SimdFpElementOp::Fmls => (-a).mul_add(b, acc),
+            }
+            .to_bits() as u64
+        };
+        set_lane(&mut out, esize, i, bits);
+    }
+    out
+}
+
+/// `EXT`: the `16 (8 when !q)` bytes starting at byte `index` of `m:n`.
+pub fn extract(n: u128, m: u128, index: u32, q: bool) -> u128 {
+    let (n, m) = if q { (n, m) } else { (n & u64::MAX as u128, m & u64::MAX as u128) };
+    let shift = index * 8;
+    if shift == 0 {
+        n
+    } else if q {
+        (n >> shift) | (m << (128 - shift))
+    } else {
+        ((n | m << 64) >> shift) & u64::MAX as u128
+    }
 }
 
 /// `UZP1/UZP2/TRN1/TRN2/ZIP1/ZIP2` on `esize` lanes.

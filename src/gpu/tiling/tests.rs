@@ -320,3 +320,47 @@ fn format_table() {
     assert_eq!(Format::Z32FloatS8X24Uint.bytes_per_element(), 8);
     assert_eq!(Format::R16G16B16A16Float.bytes_per_element(), 8);
 }
+
+#[test]
+fn row_bytes_overflow_is_rejected_not_wrapped() {
+    let rgba = Format::R8G8B8A8Unorm;
+    // Largest width whose RGBA8 row fits u32, then the first that wraps (to 0 and to 4).
+    let fits = Surface::new_2d(0x3FFF_FFFF, 1, rgba, Layout::Pitch { stride: 0xFFFF_FFFC });
+    assert_eq!(fits.checked_row_bytes(), Some(0xFFFF_FFFC));
+    assert_eq!(fits.size_bytes(), Ok(0xFFFF_FFFC));
+    for width in [0x4000_0000, 0x4000_0001, u32::MAX] {
+        let pitch = Surface::new_2d(width, 2, rgba, Layout::Pitch { stride: 4 });
+        assert_eq!(pitch.checked_row_bytes(), None, "width {width:#x}");
+        assert_eq!(pitch.size_bytes(), Err(TilingError::Overflow));
+        let bl = Surface::new_2d(width, 8, rgba, Layout::BlockLinear { height_log2: 4, depth_log2: 0 });
+        assert_eq!(bl.size_bytes(), Err(TilingError::Overflow));
+        assert!(detile(&pitch, &[0; 64]).is_err());
+        assert!(detile(&bl, &[]).is_err());
+    }
+    // BC elements: 4x4 texels, 16 bytes each. width / 4 * 16 wraps at 2^30 texels too.
+    let bc = Surface::new_2d(u32::MAX, 4, Format::Bc7Unorm, Layout::Pitch { stride: 16 });
+    assert_eq!(bc.size_bytes(), Err(TilingError::Overflow));
+}
+
+#[test]
+fn block_linear_padded_row_must_fit_u32() {
+    // 0xFFFF_FFF0 row bytes fit u32, but rounding up to whole 64-byte GOBs does not.
+    let s = Surface::new_2d(0x3FFF_FFFC, 1, Format::R8G8B8A8Unorm, Layout::BlockLinear { height_log2: 0, depth_log2: 0 });
+    assert_eq!(s.checked_row_bytes(), Some(0xFFFF_FFF0));
+    assert_eq!(s.size_bytes(), Err(TilingError::Overflow));
+    let ok = Surface::new_2d(0x3FFF_FFF0, 1, Format::R8G8B8A8Unorm, Layout::BlockLinear { height_log2: 0, depth_log2: 0 });
+    assert!(ok.size_bytes().is_ok());
+}
+
+#[test]
+fn pitch_size_product_overflow_is_rejected() {
+    // (rows * depth - 1) * stride exceeds u64.
+    let s = Surface {
+        width: 1,
+        height: u32::MAX,
+        depth: u32::MAX,
+        format: Format::R8G8B8A8Unorm,
+        layout: Layout::Pitch { stride: u32::MAX },
+    };
+    assert_eq!(s.size_bytes(), Err(TilingError::Overflow));
+}

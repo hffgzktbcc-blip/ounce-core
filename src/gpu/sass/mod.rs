@@ -7,9 +7,9 @@
 //! integer ops yet; anything else is rejected with an error rather than guessed.
 //!
 //! The Volta+ SASS encoding is not public. Field positions come from community sources
-//! cited in [`decode`] and [`sph`]; entries marked UNVERIFIED were recalled rather than
-//! fetched and must be checked against a real compiled shader. This is not a
-//! hardware-accurate decoder.
+//! cited in [`decode`], [`maxwell`] and [`sph`], chiefly Mesa NAK's encoders (MIT, see
+//! `THIRD_PARTY.md`); entries still marked UNVERIFIED rest on one reading only and must be
+//! checked against a real compiled shader. This is not a hardware-accurate decoder.
 //!
 //! [`maxwell`] is a second front end for the 64-bit Maxwell encoding that deko3d's `uam`
 //! emits for the `MAXWELL_B` class; it feeds the same IR. [`translate_for_class`] picks
@@ -21,11 +21,14 @@
 #![allow(dead_code)]
 
 pub mod decode;
+pub mod eval;
 pub mod ir;
 pub mod maxwell;
 pub mod sph;
 pub mod wgsl;
 
+#[cfg(test)]
+mod ctl_tests;
 #[cfg(test)]
 mod maxwell_tests;
 #[cfg(test)]

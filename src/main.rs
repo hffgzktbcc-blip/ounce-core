@@ -40,7 +40,7 @@ const STACK_SIZE: usize = 0x100000; // 1 MB stack
 static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 
 fn main() {
-    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4>` may appear anywhere; strip them so the
+    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     for arg in env::args() {
@@ -51,7 +51,7 @@ fn main() {
         if let Some(value) = arg.strip_prefix("--cpu=") {
             match cpu::CpuTier::parse(value) {
                 Some(tier) => cpu::CpuTier::set_cli_override(tier),
-                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected tier3 or tier4); ignoring."),
+                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected tier3, tier4 or native); ignoring."),
             }
             continue;
         }
@@ -110,9 +110,14 @@ fn main() {
             };
             run_gpu3d_demo(max_frames);
         }
-        "run" => {
+        "run" | "run-nro" => {
             print_banner();
+            let nro_only = args[1] == "run-nro";
             if args.len() < 3 {
+                if nro_only {
+                    eprintln!("Error: Please provide a homebrew NRO path");
+                    std::process::exit(1);
+                }
                 eprintln!("Error: Please provide path to .nsp, .nca, .nro or loose directory");
                 return;
             }
@@ -120,7 +125,7 @@ fn main() {
             let gui_mode = args.iter().any(|a| a == "--gui" || a == "--window" || a == "-g");
             // Anything after the path that is not a flag is passed to homebrew as argv[1..].
             let guest_args: Vec<&str> = args[3..].iter().filter(|a| !a.starts_with('-')).map(|a| a.as_str()).collect();
-            run_file(file_path, &guest_args, gui_mode);
+            run_file(file_path, &guest_args, gui_mode, nro_only);
         }
         "demo-dir" | "dir-demo" | "loose-demo" => {
             print_banner();
@@ -287,6 +292,7 @@ fn print_usage() {
     println!("    cargo run --release -- {}<COMMAND>{} [OPTIONS]\n", s.green, s.reset);
     println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
     println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
+    println!("    {}run-nro{} <file> [args] [--gui]  Load and execute only a homebrew NRO", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
     println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);
     println!("    {}inspect{} <file|dir>      Audit .xci/.nsp/.nca/.nro headers, loose NPDM metadata & RomFS assets", s.green, s.reset);
@@ -298,6 +304,7 @@ fn print_usage() {
     println!("    {}--present={}<mode>        Presentation backend: auto, gpu (needs --features gpu-present), minifb, headless", s.green, s.reset);
     println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
     println!("    {}--cpu={}<tier>            CPU block engine for Stage 20: tier3 (default) or tier4 (needs --features native-jit)", s.green, s.reset);
+    println!("    {}--cpu=native{}            run an NRO on the host CPU (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
     println!("    {}test{}                    Execute 25-stage full-stack verification & hardware benchmark suite", s.green, s.reset);
@@ -402,9 +409,15 @@ fn print_specs() {
 }
 
 fn setup_vm() -> (Cpu, Memory, HorizonKernel) {
+    setup_vm_in(Memory::new(), 0, 0x10_0000_0000)
+}
+
+/// [`setup_vm`] into `mmu`, with the low layout moved up by `base` and the alias region `alias_size`
+/// long (native execution, see `HorizonKernel::set_addr_base`).
+fn setup_vm_in(mut mmu: Memory, base: u64, alias_size: u64) -> (Cpu, Memory, HorizonKernel) {
     let mut cpu = Cpu::new();
-    let mut mmu = Memory::new();
-    let kernel = HorizonKernel::new();
+    let mut kernel = HorizonKernel::new();
+    kernel.set_addr_base(base, alias_size);
 
     // Map stack space: 0x7FFFF00000 .. 0x7FFFFFF000
     let stack_base = STACK_TOP - STACK_SIZE as u64;
@@ -417,7 +430,7 @@ fn setup_vm() -> (Cpu, Memory, HorizonKernel) {
     cpu.regs.sp = STACK_TOP;
     cpu.regs.tpidr_el0 = DEFAULT_TLS_ADDR;
     cpu.regs.tpidrro_el0 = DEFAULT_TLS_ADDR;
-    cpu.regs.pc = DEFAULT_BASE_ADDR;
+    cpu.regs.pc = base + DEFAULT_BASE_ADDR;
 
     (cpu, mmu, kernel)
 }
@@ -468,7 +481,34 @@ struct StageGate {
     failures: Vec<String>,
 }
 
+/// Guard synthetic service programs before they can overwrite a failed result with a success code.
+/// A zero-offset B.NE in the input is a comparison guard targeting the same failure exit.
+fn checked_service_program(words: &[u32], svc_id: u16, cmif: bool) -> Vec<u32> {
+    let mut code = Vec::new();
+    let mut guards = Vec::new();
+    for &word in words {
+        if word == 0x5400_0001 { guards.push(code.len()); }
+        code.push(word);
+        if word == kernel::svc::ext::svc(svc_id) {
+            guards.push(code.len());
+            code.push(0xB500_0000); // cbnz x0, failure
+            if cmif {
+                code.extend([0xD53B_D076, 0xB940_1AD7]); // mrs x22,tpidrro_el0; ldr w23,[x22,#0x18]
+                guards.push(code.len());
+                code.push(0x3500_0017); // cbnz w23, failure
+            }
+        }
+    }
+    let failure = code.len();
+    code.extend([0xD281_75A0, 0xD400_00E1]); // movz x0,#0xBAD; svcExitProcess
+    for index in guards { code[index] |= ((failure - index) as u32) << 5; }
+    code
+}
+
 impl StageGate {
+    fn expect_surface(&mut self, stage: u32, pixels: &[u32], count: usize, color: u32) -> bool {
+        self.expect(stage, "decoded constant-color surface", pixels.len() == count && pixels.iter().all(|&pixel| pixel == color))
+    }
     /// Checks a guest run and prints the verdict. Returns `true` on pass.
     fn expect_exit(&mut self, stage: u32, outcome: &VmOutcome, expected_x0: u64) -> bool {
         if outcome.stop == VmStop::ExitProcess && outcome.x0 == expected_x0 {
@@ -517,6 +557,17 @@ impl StageGate {
     }
 }
 
+fn queued_vi_frame(kernel: &HorizonKernel, memory: &Memory) -> Result<gpu::present::Frame, String> {
+    let submitted = kernel.ipc.submitted_vi_surface().ok_or("queued VI buffer cannot be resolved")?;
+    let surface = submitted.tiling_surface().ok_or("unsupported queued VI surface descriptor")?;
+    let frame = gpu::present::surface::frame_from_surface(memory, submitted.guest_addr, &surface)
+        .map_err(|error| format!("cannot decode queued VI surface: {error:?}"))?;
+    Ok(match kernel.ipc.submitted_vi_crop() {
+        Some((left, top, right, bottom)) => frame.cropped((left as usize, top as usize, right as usize, bottom as usize)),
+        None => frame,
+    })
+}
+
 fn run_vm_internal(
     mut cpu: Cpu,
     mut mmu: Memory,
@@ -542,6 +593,7 @@ fn run_vm_internal(
     let host_audio = HostAudioSink::new();
     let mut stop = VmStop::Budget;
     let mut last_input_poll = Instant::now();
+    let mut last_queued_frame = 0;
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -559,7 +611,34 @@ fn run_vm_internal(
             }
             Ok(StepResult::Svc(svc_id)) => {
                 instructions_executed += 1;
-                match kernel.dispatch_svc(svc_id, &mut cpu, &mut mmu) {
+                let result = kernel.dispatch_svc(svc_id, &mut cpu, &mut mmu);
+                if let Some(ref mut disp) = display {
+                    let queued = kernel.ipc.vi_frames_queued();
+                    if queued != last_queued_frame {
+                        let frame = match queued_vi_frame(&kernel, &mmu) {
+                            Ok(frame) => frame,
+                            Err(error) => {
+                                eprintln!("[Display Error] {error}");
+                                stop = VmStop::Fault;
+                                break;
+                            }
+                        };
+                        if last_queued_frame == 0 {
+                            println!("[Display] Guest VI frame: {}x{}", frame.width, frame.height);
+                        }
+                        last_queued_frame = queued;
+                        if !disp.present_guest_frame(frame) {
+                            stop = VmStop::WindowClosed;
+                            break;
+                        }
+                        frames_presented += 1;
+                        if max_frames > 0 && frames_presented >= max_frames {
+                            stop = VmStop::FrameLimit;
+                            break;
+                        }
+                    }
+                }
+                match result {
                     SvcResult::Success => {
                         // libnx homebrew reads HID shared memory between SVCs rather than per presented
                         // frame: hand it the host controller every few milliseconds.
@@ -585,7 +664,7 @@ fn run_vm_internal(
                         }
                     }
                     SvcResult::PresentFrame => {
-                        frames_presented += 1;
+                        if last_queued_frame == 0 { frames_presented += 1; }
 
                         // 1. Poll host keyboard and physical gamepad input
                         if let Some(ref mut h) = hid {
@@ -610,7 +689,7 @@ fn run_vm_internal(
                         // 3. Present video frame to host window
                         let draw_ops = kernel.nvgpu.drain_draw_ops();
                         if let Some(ref mut disp) = display {
-                            if !disp.present_frame_3d(&mmu, &draw_ops) {
+                            if last_queued_frame == 0 && !disp.present_frame_3d(&mmu, &draw_ops) {
                                 println!("\n[Display] Window closed by user. Shutting down.");
                                 stop = VmStop::WindowClosed;
                                 break;
@@ -2009,6 +2088,10 @@ fn run_built_in_demo() {
             &mut kernel17.vfs,
         );
         let storage_size = mmu17.read_u64(tls_addr + 0x20).unwrap();
+        let subsystem_ok = gate.expect(17, "firmware, applet, display, HID and storage responses",
+            res_set == 0 && (fw_maj, fw_min, fw_micro) == (23, 0, 1) && focus_state == 1
+            && disp_id == 0 && layer_id == 1 && producer_h != 0 && shm_h != 0
+            && btns == 0x403 && (lx, ly) == (24575, -16383) && storage_size == 0x40000);
         println!(
             "  [fsp-srv] Storage #{} -> RomFS Level 3 Data Size: 0x{:X} ({} KB)",
             storage_h, storage_size, storage_size / 1024
@@ -2041,13 +2124,14 @@ fn run_built_in_demo() {
             0xD280EEE0, // movz x0, #0x777
             0xD40000E1, // svc #0x07 (svcExitProcess)
         ];
+        let bootstrap_program = checked_service_program(&bootstrap_program, 0x21, true);
         for (i, &w) in bootstrap_program.iter().enumerate() {
             mmu17.write_u32(code_va + (i * 4) as u64, w).unwrap();
         }
 
         cpu17.regs.pc = code_va;
         let outcome = run_vm(cpu17, mmu17, kernel17, 10_000);
-        if gate.expect_exit(17, &outcome, 0x777) {
+        if gate.expect_exit(17, &outcome, 0x777) && subsystem_ok {
             println!("  [Synthetic Bootstrap] Handshake completed successfully across all Big 5 services (Exit code: 0x777)");
         }
     }
@@ -2147,6 +2231,10 @@ fn run_built_in_demo() {
             stream_va,
             stream_words.len(),
         );
+        let subsystem_ok = gate.expect(18, "loaded module address and texture command execution",
+            res_load == 0 && loaded_base == nro_dyn_va && cmds_exec == 2
+            && nvn.texture_pool.get_descriptor(tex_id).is_some_and(|d|
+                d.width == 1024 && d.height == 1024 && d.levels == 11 && d.gpu_address == tex_vram_va));
         println!(
             "  [NVN Driver] Executed {} commands binding Texture Descriptor #{}",
             cmds_exec, tex_id
@@ -2178,13 +2266,14 @@ fn run_built_in_demo() {
             0xD2811100, // movz x0, #0x888
             0xD40000E1, // svc #0x07 (svcExitProcess)
         ];
+        let dyn_program = checked_service_program(&dyn_program, 0x21, true);
         for (i, &w) in dyn_program.iter().enumerate() {
             mmu18.write_u32(code_va + (i * 4) as u64, w).unwrap();
         }
 
         cpu18.regs.pc = code_va;
         let outcome = run_vm(cpu18, mmu18, kernel18, 10_000);
-        if gate.expect_exit(18, &outcome, 0x888) {
+        if gate.expect_exit(18, &outcome, 0x888) && subsystem_ok {
             println!("  [Dynamic Linker Verification] ro:1 LoadNro confirmed in guest AArch64 (Exit code: 0x888)");
         }
     }
@@ -2253,7 +2342,7 @@ fn run_built_in_demo() {
             // 3. OpenFile "rom:/manifest.json"
             0xD2880020, // movz x0, #0x4001 (func_id: OpenFile)
             0xD2820001, // movz x1, #0x1000 (offset)
-            0xF2A00041, // movk x1, #0x8002, lsl #16 (x1 = path_va 0x80021000)
+            0xF2B00041, // movk x1, #0x8002, lsl #16 (x1 = path_va 0x80021000)
             0xD2800242, // movz x2, #18     (path_len)
             0xD2800023, // movz x3, #1      (mode: Read)
             0xD40020C1, // svc  #0x106      -> x0=0, x1=handle
@@ -2267,11 +2356,22 @@ fn run_built_in_demo() {
             0xD2800604, // movz x4, #48     (size = 48)
             0xD40020C1, // svc  #0x106      -> x0=0, x1=bytes_read
 
+            // Check bytes read and the manifest prefix before reporting success.
+            0xF100C03F, // cmp x1,#48
+            0x54000001, // b.ne failure (patched by checked_service_program)
+            0xF9400262, // ldr x2,[x19]
+            0xD2844F63, // movz x3,#0x227b
+            0xF2AC2E03, // movk x3,#0x6170,lsl #16
+            0xF2CD6C63, // movk x3,#0x6b63,lsl #32
+            0xF2ECEC23, // movk x3,#0x6761,lsl #48
+            0xEB03005F, // cmp x2,x3
+            0x54000001, // b.ne failure
             // 5. Exit with verification code 0x999
             0xD2813320, // movz x0, #0x999
             0xD40000E1, // svc  #0x07 (svcExitProcess)
         ];
 
+        let sdk_hle_program = checked_service_program(&sdk_hle_program, 0x106, false);
         for (i, &w) in sdk_hle_program.iter().enumerate() {
             mmu19.write_u32(code_va + (i * 4) as u64, w).unwrap();
         }
@@ -2309,7 +2409,7 @@ fn run_built_in_demo() {
             0xF1000463, // subs x3, x3, #1
             0x54FFFFC1, // b.ne inner_loop (-2 insns)
             0xF1000421, // subs x1, x1, #1
-            0x54FFFF41, // b.ne outer_loop (-6 insns)
+            0x54FFFF61, // b.ne outer_loop (-5 insns; preserve the accumulator)
             // done:
             0xD2815540, // movz x0, #0xAAA  (Tier-3 verification success code)
             0xD40000E1, // svc  #0x07       (svcExitProcess)
@@ -2330,8 +2430,10 @@ fn run_built_in_demo() {
             insns_exec, engine20.stats(), exit
         );
         println!("  [{tier} Throughput] Measured execution performance: {:.2} MIPS", engine20.mips_rate());
-        if gate.expect(20, "Tier-3 guest X0 = 0xAAA", cpu20.regs.read_x(0) == 0xAAA) {
-            println!("  [Tier-3 Verification] Super-Block compilation verified in guest AArch64 (Exit code: 0xAAA)");
+        if gate.expect(20, "guest SVC exit and loop checksum",
+            matches!(exit, cpu::tier2_jit::BlockExit::Svc { svc_id: 7 })
+                && cpu20.regs.read_x(0) == 0xAAA && cpu20.regs.read_x(2) == 127_500) {
+            println!("  [{tier}] Guest loop checksum and SVC exit checks passed (Exit code: 0xAAA)");
         }
     }
 
@@ -2470,14 +2572,14 @@ fn run_built_in_demo() {
     }
 
     // ---------------------------------------------------------
-    // Stage 22: Commercial Bootstrap HAL: pl:u Shared Fonts, time:u System Clock & ASTC/BC7 Decompression
+    // Stage 22: Synthetic font placeholder, system clock & ASTC decompression
     //            1. Querying Horizon Shared Font Service (pl:u) and verifying shared font memory mapping
     //            2. Querying Horizon Standard Clock (time:u -> ISystemClock) for 64-bit timestamps
     //            3. Querying /dev/nvhost-as-gpu GPU address space & 4MB L2 cache size
     //            4. Decoding ASTC 4x4 void-extent and BC7 texture blocks into VRAM
     //            5. Full-stack verified exit code 0xCCC
     // ---------------------------------------------------------
-    println!("\n[Stage 22/25] Commercial Bootstrap HAL: pl:u Shared Fonts, time:u System Clock & ASTC/BC7 Decompression");
+    println!("\n[Stage 22/25] Synthetic font placeholder, system clock & ASTC decompression");
     {
         let (mut cpu22, mut mmu22, mut kernel22) = setup_vm();
         let base_va = 0x8005_0000u64;
@@ -2512,6 +2614,9 @@ fn run_built_in_demo() {
         let font_addr_lo = mmu22.read_u32(tls_addr + 0x20).unwrap();
         let font_addr_hi = mmu22.read_u32(tls_addr + 0x24).unwrap();
         let font_addr = ((font_addr_hi as u64) << 32) | (font_addr_lo as u64);
+        let mut font_header = [0; 12];
+        let font_ok = gate.expect(22, "shared-font placeholder header mapped",
+            mmu22.read_bytes(font_addr, &mut font_header).is_ok() && &font_header == b"OUNCEFNT\x00\x01\x00\x00");
         println!(
             "  [pl:u Shared Font] Mapped shared font placeholder at guest VMA 0x{:08X} (1 MB)",
             font_addr
@@ -2556,6 +2661,9 @@ fn run_built_in_demo() {
         let time_lo = mmu22.read_u32(tls_addr + 0x20).unwrap();
         let time_hi = mmu22.read_u32(tls_addr + 0x24).unwrap();
         let now_epoch = ((time_hi as u64) << 32) | (time_lo as u64);
+        let host_epoch = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let clock_ok = gate.expect(22, "system clock is near host UTC",
+            now_epoch.abs_diff(host_epoch) <= 60);
         println!(
             "  [time:u System Clock] Current Horizon OS epoch timestamp: {}",
             now_epoch
@@ -2574,6 +2682,7 @@ fn run_built_in_demo() {
             4,
             4,
         );
+        let texture_ok = gate.expect_surface(22, &decoded, 16, 0xFF00_88FF);
         println!(
             "  [Texture HAL] Decompressed ASTC 4x4 void-extent block (16 texels decoded, sample: 0x{:08X})",
             decoded[0]
@@ -2592,20 +2701,20 @@ fn run_built_in_demo() {
 
         cpu22.regs.pc = base_va;
         let outcome = run_vm(cpu22, mmu22, kernel22, 10_000);
-        if gate.expect_exit(22, &outcome, 0xCCC) {
-            println!("  [Commercial HAL Verification] pl:u fonts, time:u clock, and ASTC 4x4 verified (Exit code: 0xCCC)");
+        if gate.expect_exit(22, &outcome, 0xCCC) && font_ok && clock_ok && texture_ok {
+            println!("  [Synthetic HAL] Font placeholder, clock and ASTC checks passed (Exit code: 0xCCC)");
         }
     }
 
     // ---------------------------------------------------------
-    // Stage 23: Commercial Applet HAL: ApplicationFunctions, GPU AS/Characteristics & ASTC 8x8 Decompressor
+    // Stage 23: Synthetic applet services, GPU characteristics & ASTC 8x8
     //            1. Querying am:appletOE -> ApplicationProxy -> IApplicationFunctions (GetDesiredLanguage, EnsureSaveData)
     //            2. Querying am:appletOE -> ISelfController (CreateManagedDisplaySeparableLayer, SetPerformanceConfiguration)
     //            3. Querying nvdrv (/dev/nvhost-ctrl-gpu) -> NVGPU_GPU_IOCTL_GET_CHARACTERISTICS (Ampere GA10B, SM 8.7)
     //            4. Decoding ASTC 8x8 block (64 texels) and verifying surface reconstruction
     //            5. Full-stack verified exit code 0xDDD
     // ---------------------------------------------------------
-    println!("\n[Stage 23/25] Commercial Applet HAL: ApplicationFunctions, GPU AS/Characteristics & ASTC 8x8 Decompressor");
+    println!("\n[Stage 23/25] Synthetic applet services, GPU characteristics & ASTC 8x8");
     {
         let (mut cpu23, mut mmu23, mut kernel23) = setup_vm();
         let base_va = 0x8006_0000u64;
@@ -2718,6 +2827,8 @@ fn run_built_in_demo() {
         let arch = mmu23.read_u32(scratch_va).unwrap();
         let num_sm = mmu23.read_u32(scratch_va + 12).unwrap();
         let sm_ver = mmu23.read_u32(scratch_va + 16).unwrap();
+        let service_ok = gate.expect(23, "applet and GPU characteristic values",
+            desired_lang == 0 && layer_id != 0 && (arch, num_sm, sm_ver) == (0x170, 12, 0x807));
         println!(
             "  [NVIDIA Tegra T239] nvdrv characteristics: Arch 0x{:04X} (Ampere GA10B) | SMs: {} | Feature: SM {:X}.{:X}",
             arch, num_sm, sm_ver >> 8, sm_ver & 0xFF
@@ -2736,6 +2847,7 @@ fn run_built_in_demo() {
             8,
             8,
         );
+        let texture_ok = gate.expect_surface(23, &decoded8, 64, 0xFFFF_44CC);
         println!(
             "  [Texture HAL] Decompressed ASTC 8x8 void-extent block (64 texels decoded, sample: 0x{:08X})",
             decoded8[0]
@@ -2754,20 +2866,20 @@ fn run_built_in_demo() {
 
         cpu23.regs.pc = base_va;
         let outcome = run_vm(cpu23, mmu23, kernel23, 10_000);
-        if gate.expect_exit(23, &outcome, 0xDDD) {
-            println!("  [Full-Stack Verification] Commercial Applet HAL & ASTC 8x8 Verified (Exit code: 0xDDD)");
+        if gate.expect_exit(23, &outcome, 0xDDD) && service_ok && texture_ok {
+            println!("  [Synthetic HAL] Applet, GPU characteristics and ASTC checks passed (Exit code: 0xDDD)");
         }
     }
 
     // ---------------------------------------------------------
-    // Stage 24: Commercial Shader & Dynamic Buffer Pipeline: Ampere FP16 SASS & Dynamic NVN Ring Execution
+    // Stage 24: Synthetic opcode translation & NVN buffer cycling
     //            1. Transpiles commercial Ampere SM87 FP16 SASS shader bytecode (HAdd2, HMul2, HFma2) -> SPIR-V 1.5
     //            2. Encodes and executes dynamic NVN command buffer stream with multi-buffering (NVN_CMD_BUFFER_CYCLE)
     //            3. Processes pushbuffer into GPU channel verifying dynamic buffer index cycling
     //            4. Guest AArch64 program setting exit code 0xEEE and calling svcExitProcess
     //            5. Full-stack verified exit code 0xEEE
     // ---------------------------------------------------------
-    println!("\n[Stage 24/25] Commercial Shader & Dynamic Buffer Pipeline: Ampere FP16 SASS & Dynamic NVN Ring Execution");
+    println!("\n[Stage 24/25] Synthetic opcode translation & NVN buffer cycling");
     {
         let (mut cpu24, mut mmu24, mut kernel24) = setup_vm();
         let base_va = 0x8007_0000u64;
@@ -2785,6 +2897,16 @@ fn run_built_in_demo() {
             gpu::shader::SassOp::Exit.encode(),
         ];
         let decompiled = gpu::shader::SassShaderDecompiler::decompile(&sass_program);
+        let shader_ok = gate.expect(24, "synthetic FP16 opcode decoding and translation structure",
+            decompiled.ops.len() == 7
+                && matches!(decompiled.ops[3], gpu::shader::SassOp::HAdd2 { rd: 3, rn: 0, rm: 1 })
+                && matches!(decompiled.ops[4], gpu::shader::SassOp::HMul2 { rd: 4, rn: 0, rm: 1 })
+                && matches!(decompiled.ops[5], gpu::shader::SassOp::HFma2 { rd: 5, rn: 0, rm: 1, ra: 2 })
+                && decompiled.glsl_source.contains("R[3] = R[0] + R[1];")
+                && decompiled.glsl_source.contains("R[4] = R[0] * R[1];")
+                && decompiled.glsl_source.contains("R[5] = fma(R[0], R[1], R[2]);")
+                && decompiled.spirv_words.first() == Some(&0x0723_0203)
+                && decompiled.spirv_words.get(1) == Some(&0x0001_0500));
         println!(
             "  [Ampere SASS Transpiler] Decompiled 7 instructions: {} GLSL lines | {} SPIR-V words (Magic: 0x{:08X})",
             decompiled.glsl_source.lines().count(),
@@ -2806,6 +2928,8 @@ fn run_built_in_demo() {
 
         let mut nvn = gpu::nvn::NvnDriver::new();
         let executed = nvn.submit_guest_command_stream(&mut mmu24, &mut kernel24.nvgpu, stream_addr, stream.len());
+        let buffers_ok = gate.expect(24, "NVN command count, buffer index and cycle count",
+            executed == 5 && nvn.current_buffer_index == 2 && nvn.total_buffer_cycles == 3);
         println!(
             "  [NVN Driver] Executed {} stream commands | Active Backbuffer: #{} | Total Cycles: {}",
             executed, nvn.current_buffer_index, nvn.total_buffer_cycles
@@ -2824,8 +2948,8 @@ fn run_built_in_demo() {
 
         cpu24.regs.pc = base_va;
         let outcome = run_vm(cpu24, mmu24, kernel24, 10_000);
-        if gate.expect_exit(24, &outcome, 0xEEE) {
-            println!("  [Full-Stack Verification] FP16 SASS & Dynamic NVN Ring Pipeline Verified (Exit code: 0xEEE)");
+        if gate.expect_exit(24, &outcome, 0xEEE) && shader_ok && buffers_ok {
+            println!("  [Synthetic translation] Opcode structure and NVN buffer checks passed (Exit code: 0xEEE)");
         }
     }
 
@@ -2960,7 +3084,7 @@ fn run_built_in_demo() {
         cpu25.regs.pc = base_va;
         let outcome = run_vm(cpu25, mmu25, kernel25, 10_000);
         if gate.expect_exit(25, &outcome, 0xEEE) {
-            println!("  [Full-Stack Verification] Complete 25-Stage Architecture Pipeline Verified (Exit code: 0xEEE)");
+            println!("  [Tensor core check] Synthetic HMMA fragment result checks passed (Exit code: 0xEEE)");
         }
     }
     println!();
@@ -3340,13 +3464,20 @@ fn inspect_directory_package(dir_path: &str) {
     }
 }
 
+/// Shell callers must distinguish a completed run from a load/execution failure.
+fn require_cli_success(outcome: VmOutcome) {
+    if !matches!(outcome.stop, VmStop::ExitProcess | VmStop::WindowClosed | VmStop::FrameLimit) {
+        std::process::exit(1);
+    }
+}
+
 fn run_directory_package(dir_path: &str, gui_mode: bool) {
     println!("[Loader] Bootstrapping loose directory package (OunceCake format): {}", dir_path);
     let pkg = match loader::LoosePackageLoader::discover(dir_path) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("[Loader Error] Failed to discover loose package: {}", e);
-            return;
+            std::process::exit(1);
         }
     };
 
@@ -3391,20 +3522,21 @@ fn run_directory_package(dir_path: &str, gui_mode: bool) {
                 );
                 let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
-                run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0);
+                require_cli_success(run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0));
             } else {
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
-                run_vm(cpu, mmu, kernel, 100_000);
+                require_cli_success(run_vm(cpu, mmu, kernel, 100_000));
             }
         }
         Err(e) => {
             eprintln!("[Loader Error] Failed to load loose package into VM: {}", e);
+            std::process::exit(1);
         }
     }
 }
 
-fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
-    if std::path::Path::new(path).is_dir() {
+fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
+    if !nro_only && std::path::Path::new(path).is_dir() {
         run_directory_package(path, gui_mode);
         return;
     }
@@ -3413,9 +3545,22 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
         Ok(b) => b,
         Err(e) => {
             eprintln!("Failed to read file: {}", e);
-            return;
+            std::process::exit(1);
         }
     };
+
+    if cpu::CpuTier::from_env() == cpu::CpuTier::Native && bytes.get(0x10..0x14) == Some(b"NRO0".as_slice()) {
+        #[cfg(feature = "nce")]
+        {
+            if gui_mode {
+                println!("[NCE] Native execution runs headless for now.");
+            }
+            if !run_native_nro(path, &bytes, guest_args) { std::process::exit(1); }
+            return;
+        }
+        #[cfg(not(feature = "nce"))]
+        eprintln!("[CPU] --cpu=native needs a build with `--features nce`; running the interpreter.");
+    }
 
     let (mut cpu, mut mmu, mut kernel) = setup_vm();
     let default_key: [u8; 16] = [
@@ -3423,7 +3568,12 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
         0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
     ];
 
-    match BootLoader::load_any_package(&bytes, DEFAULT_BASE_ADDR, &default_key, &mut mmu) {
+    let package = if nro_only {
+        BootLoader::load_homebrew_nro(&bytes, DEFAULT_BASE_ADDR, &mut mmu)
+    } else {
+        BootLoader::load_any_package(&bytes, DEFAULT_BASE_ADDR, &default_key, &mut mmu)
+    };
+    match package {
         Ok(info) => {
             let is_nro = info.format == "NRO0";
             println!("[BootLoader] Successfully loaded package:");
@@ -3437,7 +3587,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
             if is_nro {
                 if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, &bytes, guest_args) {
                     eprintln!("[Loader Error] homebrew environment: {}", e);
-                    return;
+                    std::process::exit(1);
                 }
             }
             // After the NRO went on the virtual SD card, so it stays in memory and is not copied into the folder.
@@ -3452,31 +3602,96 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool) {
 
             if gui_mode {
                 println!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");
+                let title = if is_nro {
+                    let name = std::path::Path::new(path).file_stem().and_then(|stem| stem.to_str()).unwrap_or("Homebrew");
+                    format!("{name} — Ounce Core")
+                } else {
+                    format!("Ounce-Core | 0x{:016X} [T239]", info.title_id)
+                };
                 let mut display = DisplayServer::new(
                     DEFAULT_FRAMEBUFFER_ADDR,
                     DisplayConfig {
-                        title: format!("Ounce-Core | 0x{:016X} [T239]", info.title_id),
+                        title,
                         ..Default::default()
                     },
                 );
                 let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
-                run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0);
+                require_cli_success(run_vm_internal(cpu, mmu, kernel, Some(&mut display), Some(&mut hid), 0, 0));
             } else {
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
                 // libnx startup alone runs tens of thousands of instructions.
                 let budget = if is_nro { NRO_INSTRUCTION_BUDGET } else { 100_000 };
-                run_vm(cpu, mmu, kernel, budget);
+                require_cli_success(run_vm(cpu, mmu, kernel, budget));
             }
         }
         Err(e) => {
             eprintln!("[Loader Error] {}", e);
+            std::process::exit(1);
         }
     }
 }
 
+/// `run <nro> --cpu=native`: the NRO on the host CPU, headless, until it exits, breaks or faults.
+#[cfg(feature = "nce")]
+fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> bool {
+    use cpu::nce::{NceEngine, NceExit};
+    let arena = match cpu::nce::reserve_window() {
+        Ok(arena) => arena,
+        Err(e) => return { eprintln!("[NCE] Native execution unavailable: {e}"); false },
+    };
+    let base = arena.base();
+    let (mut cpu, mut mmu, mut kernel) = setup_vm_in(Memory::with_arena(arena), base, cpu::nce::ALIAS_SIZE);
+    let code = base + DEFAULT_BASE_ADDR;
+    if let Err(e) = BootLoader::load_homebrew_nro(bytes, code, &mut mmu) {
+        return { eprintln!("[Loader Error] {e}"); false };
+    }
+    if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, bytes, guest_args) {
+        return { eprintln!("[Loader Error] homebrew environment: {e}"); false };
+    }
+    if let Some(dir) = SDMC_HOST_DIR.get() {
+        kernel.vfs.set_sdmc_directory(dir);
+    }
+    cpu.regs.pc = code;
+    // The NRO header (after the entry branch) is data.
+    let mut engine = match NceEngine::new(&mut mmu, base, vec![(code + 4, code + 0x80)]) {
+        Ok(engine) => engine,
+        Err(e) => return { eprintln!("[NCE] {e}"); false },
+    };
+    println!("[NCE] Running natively at 0x{code:016X} (guest window 0x{base:X})");
+    let start = Instant::now();
+    let (mut svcs, mut frames) = (0u64, 0u64);
+    let mut completed = false;
+    loop {
+        match engine.run(&mut cpu, &mut mmu, &|| kernel.system_tick()) {
+            NceExit::Svc(id) => {
+                svcs += 1;
+                match kernel.dispatch_svc(id, &mut cpu, &mut mmu) {
+                    SvcResult::Success => {}
+                    SvcResult::PresentFrame => {
+                        frames += 1;
+                        println!("[VM] VSync / Frame {frames} presented.");
+                    }
+                    SvcResult::ExitProcess => { completed = true; println!("[VM] Guest exited (svcExitProcess)."); break; }
+                    SvcResult::Break { reason, .. } => { println!("[VM] Hit svcBreak: reason 0x{reason:X}"); break; }
+                    SvcResult::Unhandled(id) => { println!("[VM] Stopping on unhandled SVC 0x{id:X}"); break; }
+                }
+            }
+            NceExit::Preempted => kernel.scheduler.preempt(&mut cpu),
+            NceExit::Fault { pc, signal, addr } => {
+                println!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
+                break;
+            }
+            NceExit::Error(e) => { eprintln!("[NCE] {e}"); break; }
+        }
+    }
+    println!("[NCE] {svcs} SVCs, {frames} frames in {:.3} s; rewrote {:?}; {} instructions interpreted",
+        start.elapsed().as_secs_f64(), engine.stats, engine.interpreted_steps);
+    completed
+}
+
 /// Heap handed to homebrew through the `OverrideHeap` ConfigEntry.
-const NRO_HEAP_SIZE: usize = 0x200_0000; // 32 MB
+const NRO_HEAP_SIZE: usize = 0x1000_0000; // 256 MB: Mesa-based homebrew allocates tens of MB of GPU buffers
 const NRO_CONFIG_ADDR: u64 = 0x7FFF_0000;
 const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
 /// Main thread handle passed to homebrew. Not the `CurrentThread` pseudo-handle (0xFFFF8000): libnx mutexes
@@ -3529,10 +3744,11 @@ fn setup_homebrew_nro(
         main_thread_handle: Some(NRO_MAIN_THREAD_HANDLE),
         heap: Some((kernel.heap_base, NRO_HEAP_SIZE as u64)),
         argv: Some(argv),
+        next_load: true,
         ..Default::default()
     }
-    .setup(cpu, mmu, NRO_CONFIG_ADDR)?;
-    let stub = loader::HomebrewConfig::install_exit_stub(mmu, NRO_EXIT_STUB_ADDR)?;
+    .setup(cpu, mmu, kernel.addr_base + NRO_CONFIG_ADDR)?;
+    let stub = loader::HomebrewConfig::install_exit_stub(mmu, kernel.addr_base + NRO_EXIT_STUB_ADDR)?;
     cpu.regs.write_x(30, stub);
     Ok(())
 }
@@ -3693,12 +3909,44 @@ fn build_and_boot_showcase_nsp(out_path: &str) {
         out_path
     );
 
-    run_file(out_path, &[], false);
+    run_file(out_path, &[], false, false);
 }
 
 #[cfg(test)]
 mod harness_gate_tests {
     use super::*;
+
+    #[test]
+    fn wrong_surface_output_fails_the_harness_gate() {
+        let mut pixels = [0xFF00_88FF; 16];
+        let mut gate = StageGate::default();
+        assert!(gate.expect_surface(22, &pixels, 16, 0xFF00_88FF));
+        pixels[15] ^= 1;
+        assert!(!gate.expect_surface(22, &pixels, 16, 0xFF00_88FF));
+        assert_eq!(gate.failures.len(), 1);
+    }
+
+    #[test]
+    fn failed_guest_service_cannot_be_hidden_by_a_success_constant() {
+        for result in [0, 1] {
+            let code = checked_service_program(&[0xD400_20C1, 0xD281_3320, 0xD400_00E1], 0x106, false);
+            let mut memory = Memory::new();
+            memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE);
+            for (i, word) in code.iter().enumerate() { memory.write_u32(0x8000 + 4 * i as u64, *word).unwrap(); }
+            let mut cpu = Cpu::new();
+            cpu.regs.pc = 0x8000;
+            let mut exited = false;
+            for _ in 0..12 {
+                match cpu.step(&mut memory).unwrap() {
+                    cpu::StepResult::Svc(0x106) => cpu.regs.write_x(0, result),
+                    cpu::StepResult::Svc(7) => { exited = true; break; }
+                    _ => {}
+                }
+            }
+            assert!(exited);
+            assert_eq!(cpu.regs.read_x(0), if result == 0 { 0x999 } else { 0xBAD });
+        }
+    }
 
     fn outcome(stop: VmStop, x0: u64) -> VmOutcome {
         VmOutcome { stop, x0, d0: 0.0 }

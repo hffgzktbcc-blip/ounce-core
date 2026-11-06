@@ -19,7 +19,7 @@ use super::depth::{self, Facing, Stencil};
 use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, IndexBuffer, Topology};
 use super::methods as m;
 use super::shade::{self, ShaderInputs};
-use super::texture::{Sampler, TextureHeader};
+use super::texture::{Sampler, TextureHeader, TextureType};
 use super::surface::{self, addr40, ColorFormat, ColorTarget, DepthFormat, DepthTarget, SurfaceLayout};
 use crate::gpu::sass::decode::{IpaFreq, TexHandle, TexOp};
 use crate::gpu::sass::ir::{self, attr_slot, AttrSlot, Function, Op};
@@ -39,6 +39,8 @@ pub struct RenderStats {
     pub culled_triangles: u32,
     /// Fragments that passed the depth and stencil tests and were written.
     pub fragments: u64,
+    /// Fragments the pixel shader discarded (`KIL`).
+    pub discarded_fragments: u64,
 }
 
 /// Placement of one surface level in memory, independent of its format.
@@ -357,7 +359,7 @@ impl Cbufs {
     }
 }
 
-/// Largest texture level copied out of guest memory for one draw.
+/// Largest texture (mip chain up to the last accessible level) copied out of guest memory for one draw.
 const TEXTURE_READ_MAX: usize = 64 << 20;
 
 /// A texture one stage reads, copied out of guest memory once per draw.
@@ -369,7 +371,7 @@ struct BoundTexture {
     bytes: Vec<u8>,
 }
 
-/// Serves reads from a copy of one texture's level 0.
+/// Serves reads from a copy of one texture's mip chain.
 struct Snapshot<'a> {
     base: u64,
     bytes: &'a [u8],
@@ -394,14 +396,25 @@ impl GpuMemoryWriter for Snapshot<'_> {
 struct Textures(Vec<BoundTexture>);
 
 impl Textures {
-    fn read(&self, op: TexOp, handle: TexHandle, x: u32, y: u32) -> [f32; 4] {
+    fn read(&self, op: TexOp, handle: TexHandle, lod: Option<u32>, layer: Option<u32>, x: u32, y: u32) -> [f32; 4] {
         let Some(t) = self.0.iter().find(|t| t.handle == handle) else { return [0.0; 4] };
         let mut mem = Snapshot { base: t.header.gpu_va, bytes: &t.bytes };
-        let texel = match (op, &t.sampler) {
-            (TexOp::Sample, Some(s)) => t.header.sample(s, f32::from_bits(x), f32::from_bits(y), &mut mem),
+        // An array read addresses its layer as a texture of its own, the layer clamped to the array.
+        let header = match layer {
+            Some(l) => match t.header.layer(l.min(t.header.depth - 1)) {
+                Some(h) => h,
+                None => return [0.0; 4],
+            },
+            None => t.header.clone(),
+        };
+        let (u, v) = (f32::from_bits(x), f32::from_bits(y));
+        let texel = match (op, &t.sampler, lod) {
+            // Implicit LOD: no derivatives on the per-pixel CPU path, so the base level.
+            (TexOp::Sample, Some(s), None) => header.sample(s, u, v, &mut mem),
+            (TexOp::Sample, Some(s), Some(l)) => header.sample_lod(s, f32::from_bits(l), u, v, &mut mem),
             // Out-of-range fetches read zero (robust buffer access behaviour).
-            (TexOp::Fetch, _) => t.header.fetch(x, y, &mut mem),
-            (TexOp::Sample, None) => None,
+            (TexOp::Fetch, _, l) => header.fetch_lod(l.unwrap_or(0), x, y, &mut mem),
+            (TexOp::Sample, None, _) => None,
         };
         texel.unwrap_or([0.0; 4])
     }
@@ -434,8 +447,8 @@ impl ShaderInputs for VertexIn<'_> {
     fn interp(&self, _: u16, _: IpaFreq) -> f32 {
         0.0
     }
-    fn texture(&self, op: TexOp, handle: TexHandle, x: u32, y: u32) -> [f32; 4] {
-        self.tex.read(op, handle, x, y)
+    fn texture(&self, op: TexOp, handle: TexHandle, lod: Option<u32>, layer: Option<u32>, x: u32, y: u32) -> [f32; 4] {
+        self.tex.read(op, handle, lod, layer, x, y)
     }
 }
 
@@ -482,8 +495,8 @@ impl ShaderInputs for FragmentIn<'_> {
     fn attr(&self, _: u16) -> u32 {
         0
     }
-    fn texture(&self, op: TexOp, handle: TexHandle, x: u32, y: u32) -> [f32; 4] {
-        self.tex.read(op, handle, x, y)
+    fn texture(&self, op: TexOp, handle: TexHandle, lod: Option<u32>, layer: Option<u32>, x: u32, y: u32) -> [f32; 4] {
+        self.tex.read(op, handle, lod, layer, x, y)
     }
     fn interp(&self, addr: u16, freq: IpaFreq) -> f32 {
         let lerp = |f: &dyn Fn(&WinVertex) -> f32| self.l[0] * f(self.v[0]) + self.l[1] * f(self.v[1]) + self.l[2] * f(self.v[2]);
@@ -671,6 +684,9 @@ impl Ampere3d {
 
     /// Writes a `CLEAR_SURFACE` into the targets it names.
     pub(super) fn render_clear(&mut self, rec: &ClearRecord, mem: &mut dyn GpuMemoryWriter) {
+        if rec.layer != 0 || rec.depth_target.is_some_and(|target| target.layer != 0) {
+            return self.skip("layered clear");
+        }
         let ctrl = self.reg_at(m::SET_CLEAR_SURFACE_CONTROL);
         let region = |w: u32, h: u32| {
             let mut r = Rect::new(w, h);
@@ -715,7 +731,14 @@ impl Ampere3d {
             let stencil = rec.clear_stencil.then_some(rec.stencil);
             for y in r.y0..r.y1 {
                 for x in r.x0..r.x1 {
-                    write_depth(zt.format, t.texel(x, y), depth, stencil);
+                    let texel = t.texel(x, y);
+                    let stencil = stencil.map(|value| {
+                        if ctrl & 1 != 0 {
+                            let mask = self.reg_at(m::SET_STENCIL_MASK) as u8;
+                            (read_stencil(zt.format, texel).unwrap_or(0) & !mask) | (value & mask)
+                        } else { value }
+                    });
+                    write_depth(zt.format, texel, depth, stencil);
                 }
             }
             t.store(mem);
@@ -730,7 +753,7 @@ impl Ampere3d {
         let mut out = Cbufs::default();
         for op in &f.values {
             let bank = match *op {
-                Op::Cbuf { bank, .. } | Op::Tex { handle: TexHandle::Cbuf { bank, .. }, .. } => Some(bank),
+                Op::Cbuf { bank, .. } | Op::CbufIndexed { bank, .. } | Op::Tex { handle: TexHandle::Cbuf { bank, .. }, .. } => Some(bank),
                 Op::Tex { handle: TexHandle::Bound { .. }, .. } => Some(self.bindless_bank()),
                 _ => None,
             };
@@ -752,8 +775,8 @@ impl Ampere3d {
         (self.reg(m::SET_BINDLESS_TEXTURE) & 0x1f) as u8
     }
 
-    /// Resolves every texture handle `f` reads (handle word -> TIC/TSC) and copies each level 0
-    /// out of guest memory.
+    /// Resolves every texture handle `f` reads (handle word -> TIC/TSC) and copies each mip chain,
+    /// up to the last accessible level, out of guest memory.
     fn stage_textures(&self, f: &Function, cbufs: &Cbufs, mem: &mut dyn GpuMemoryWriter) -> Result<Textures, &'static str> {
         let mut out = Textures::default();
         for op in &f.values {
@@ -766,11 +789,16 @@ impl Ampere3d {
             }
             let word = self.handle_word(cbufs, handle);
             let header = self.texture_header(word & 0xf_ffff, mem).ok_or("texture header is not readable")?;
-            let view = header.view().ok_or("texture format or layout")?;
-            if view.size() > TEXTURE_READ_MAX {
+            header.view().ok_or("texture format or layout")?;
+            let last = header.level_range().map_or(0, |(_, last)| last);
+            let size = match header.texture_type {
+                TextureType::TwoDArray => header.layer_stride().ok_or("texture format or layout")? * header.depth as usize,
+                _ => header.chain_bytes(last).ok_or("texture format or layout")?,
+            };
+            if size > TEXTURE_READ_MAX {
                 return Err("texture larger than the per-draw copy limit");
             }
-            let mut bytes = vec![0u8; view.size()];
+            let mut bytes = vec![0u8; size];
             if !mem.read(header.gpu_va, &mut bytes) {
                 return Err("texture data is not readable");
             }
@@ -798,6 +826,12 @@ impl Ampere3d {
 
     /// Runs one draw: vertex fetch, vertex shader, raster, pixel shader, depth, color write.
     pub(super) fn render_draw(&mut self, rec: &DrawRecord, mem: &mut dyn GpuMemoryWriter) {
+        if rec.vertex_count > 1_048_576 {
+            return self.skip("draw exceeds host vertex work limit");
+        }
+        if rec.depth_target.is_some_and(|target| target.layer != 0) {
+            return self.skip("layered depth target");
+        }
         // Probe: write-only memory keeps step-1 behaviour silently.
         if !mem.read(0, &mut []) {
             return;
@@ -916,6 +950,7 @@ impl Ampere3d {
         let bounds_test = depth::depth_bounds(&self.regs);
         let z_range = depth::pixel_z_range(&self.regs);
         let facing = Facing::from_regs(&self.regs);
+        let fill_rect = self.reg_at(m::FILL_RECTANGLE) == m::FILL_RECTANGLE_ENABLE;
         let mut zbuf = match rec.depth_target {
             Some(zt) if depth_test || depth_write || stencil.is_some() || bounds_test.is_some() => {
                 let Some(view) = depth_view(&zt) else { return self.skip("depth target format or layout") };
@@ -997,16 +1032,42 @@ impl Ampere3d {
                 let r = bounds.clip(min_x, min_y, max_x.saturating_add(1), max_y.saturating_add(1));
                 let edges = [(1, 2), (2, 0), (0, 1)];
                 let tl = edges.map(|(i, j)| if sign > 0.0 { top_left(p[i], p[j]) } else { top_left(p[j], p[i]) });
+                // NV_fill_rectangle covers the bounding box (half-open); attributes extrapolate.
+                let bbox = fill_rect.then(|| {
+                    let (xs, ys) = (p.map(|q| q.0), p.map(|q| q.1));
+                    let lo = |v: [f32; 3]| v.into_iter().fold(f32::INFINITY, f32::min);
+                    let hi = |v: [f32; 3]| v.into_iter().fold(f32::NEG_INFINITY, f32::max);
+                    (lo(xs), lo(ys), hi(xs), hi(ys))
+                });
                 for py in r.y0..r.y1 {
                     for px in r.x0..r.x1 {
                         let c = (px as f32 + 0.5, py as f32 + 0.5);
                         let e = edges.map(|(i, j)| sign * edge(p[i], p[j], c));
-                        if !(0..3).all(|i| e[i] > 0.0 || (e[i] == 0.0 && tl[i])) {
+                        let covered = match bbox {
+                            Some((x0, y0, x1, y1)) => c.0 >= x0 && c.0 < x1 && c.1 >= y0 && c.1 < y1,
+                            None => (0..3).all(|i| e[i] > 0.0 || (e[i] == 0.0 && tl[i])),
+                        };
+                        if !covered {
                             continue;
                         }
+
                         let l = e.map(|v| v / area);
                         let Some(z) = depth::pixel_z(l[0] * v0.z + l[1] * v1.z + l[2] * v2.z, z_range) else {
                             continue;
+                        };
+                        // A shader that can discard (KIL) runs before the depth/stencil
+                        // update, so discarded fragments leave depth and stencil alone.
+                        let early = match ps.func.discard {
+                            Some(d) => {
+                                let input = FragmentIn { v: [v0, v1, v2], flat: &a.varyings, l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
+                                let values = shade::run(&ps.func, &input);
+                                if values[d.0 as usize] != 0 {
+                                    self.stats.discarded_fragments += 1;
+                                    continue;
+                                }
+                                Some(values)
+                            }
+                            None => None,
                         };
                         if let Some((zt, t)) = zbuf.as_mut() {
                             let texel = t.texel(px, py);
@@ -1036,8 +1097,13 @@ impl Ampere3d {
                                 continue;
                             }
                         }
-                        let input = FragmentIn { v: [v0, v1, v2], flat: &a.varyings, l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
-                        let values = shade::run(&ps.func, &input);
+                        let values = match early {
+                            Some(v) => v,
+                            None => {
+                                let input = FragmentIn { v: [v0, v1, v2], flat: &a.varyings, l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
+                                shade::run(&ps.func, &input)
+                            }
+                        };
                         for &(t, mask, first) in &outputs {
                             let Some(Some((ct, st, blend))) = staged.get_mut(t) else { continue };
                             let mut color = [0.0f32; 4];

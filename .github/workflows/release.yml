@@ -86,11 +86,39 @@ jobs:
         with:
           subject-path: "${{ matrix.archive_name }}"
 
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Check tag matches package version
+        shell: bash
+        run: |
+          version=$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ounce-core"))')
+          test "$GITHUB_REF_NAME" = "v$version"
+
+      - uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: release-${{ matrix.target }}
+          path: |
             ${{ matrix.archive_name }}
             ${{ matrix.archive_name }}.sha256
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if-no-files-found: error
+
+  publish:
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Generate archive checksums
+        run: |
+          cd dist
+          sha256sum ounce-core-linux-x86_64.tar.gz ounce-core-macos-arm64.tar.gz ounce-core-windows-x86_64.zip > SHA256SUMS
+      - name: Publish complete release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: docs/releases/${{ github.ref_name }}.md
+          files: dist/*
+          fail_on_unmatched_files: true
