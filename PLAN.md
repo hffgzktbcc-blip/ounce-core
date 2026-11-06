@@ -264,7 +264,7 @@ retained; native corpus and the separately scoped HBLauncher SDK-path oracle pas
 The owner reaffirmed all six phases and requested a front end ordinary users can
 understand. Existing V1–V6 proofs remain the baseline, not a claim of universal
 correctness or autonomous repair. No model-provider dependencies are introduced.
-- [ ] **13. Preserve the trust boundary and expose saved results in the app.** Reject
+- [x] **13. Preserve the trust boundary and expose saved results in the app.** Reject
       workload target/provenance relabeling during repair qualification; protect cache,
       comparison and regression policy inputs; require a clean committed checkout for
       bounded execution; declare headline target and required engines in the manifest.
@@ -274,8 +274,8 @@ correctness or autonomous repair. No model-provider dependencies are introduced.
       *Done when:* adversarial policy tests pass, the 50-case corpus keeps its coverage,
       and the Mac bundle compiles with report decoding tests. Interactive Mac GUI
       acceptance remains separately recorded; compilation is not a guest-frame claim.
-      Checkpoint (2026-11-06 14:53Z, codex, c3d285e): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Package the tested native results workbench as a downloadable Mac preview
-      Next: Final Mac preview build and 50-program corpus evidence
+      Checkpoint (2026-11-06 15:15Z, codex, 39570fc): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Record workbench trust-boundary, Mac preview and unchanged corpus qualification
+      Next: Interactive Mac usability review; future runtime fixes remain corpus-driven
 
 Phase acceptance stays tied to the existing V1–V6 evidence: artifact/coverage checks;
 bounded execution; replayable diagnoses; independent same-NRO repair qualification;
@@ -283,3 +283,11 @@ bounded transient recovery; cached/sharded/resumable runs and bisection. New fai
 in the 50-program corpus drive subsequent fixes. Oracle corrections require an explicit
 owner decision and are never a solver option or a control in the results viewer.
 
+
+Workbench proof (2026-11-06): [PR #179](https://github.com/hffgzktbcc-blip/ounce-core/pull/179)
+merged after all 18 hosted checks passed. The [canonical and native corpus](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42238034141)
+retains 46/50 passes with all workload expectations unchanged. The [Mac job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42238034085)
+passed decoder, bundle, signature and runtime smoke checks and retained macos-app-preview.
+The [SDK byte-validation run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42238034210/attempts/2)
+passed after one retry of a timed-out package-mirror download. No checks or source were
+changed for that retry. Interactive Mac usability/accessibility acceptance is not claimed.
