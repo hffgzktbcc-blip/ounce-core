@@ -891,6 +891,91 @@ fn startup_first_frame_oracle() {
     report_speed(&times);
 }
 
+/// Reject vacuous and unreachable pixel assertions before executing a workload.
+fn validate_frame_oracle(oracle: &serde_json::Value) -> Result<(), String> {
+    let frames = oracle["queued_frames"].as_u64().filter(|n| *n > 0)
+        .ok_or("queued_frames must be positive")?;
+    let checks = oracle["checks"].as_array().filter(|v| !v.is_empty())
+        .ok_or("checks must be non-empty")?;
+    for (number, check) in checks.iter().enumerate() {
+        let validate = || -> Result<(), String> {
+            let indices = check["frames"].as_array().filter(|v| !v.is_empty())
+                .ok_or("frames must be non-empty")?;
+            let mut seen = std::collections::HashSet::new();
+            for index in indices {
+                let index = index.as_u64().filter(|n| *n > 0 && *n <= frames)
+                    .ok_or("checked frame must be within 1..=queued_frames")?;
+                if !seen.insert(index) { return Err("duplicate checked frame".into()); }
+            }
+            let expect = &check["expect"];
+            let width = expect["width"].as_u64().or(check["width"].as_u64())
+                .filter(|n| *n > 0).ok_or("width must be positive")?;
+            let height = expect["height"].as_u64().or(check["height"].as_u64())
+                .filter(|n| *n > 0).ok_or("height must be positive")?;
+            let hash = expect.get("rgba_fnv1a64");
+            if let Some(hash) = hash {
+                let hash = hash.as_str().ok_or("frame hash must be a string")?;
+                if hash.len() != 18 || !hash.starts_with("0x")
+                    || !hash[2..].bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+                    return Err("frame hash must be 0x plus 16 lowercase hex digits".into());
+                }
+            }
+            let probes = match check.get("probes") {
+                Some(value) => value.as_array().ok_or("probes must be an array")?.as_slice(),
+                None => &[],
+            };
+            if hash.is_none() && probes.is_empty() {
+                return Err("check needs a frame hash or pixel probes".into());
+            }
+            for probe in probes {
+                if probe["x"].as_u64().filter(|x| *x < width).is_none()
+                    || probe["y"].as_u64().filter(|y| *y < height).is_none() {
+                    return Err("probe must lie inside the expected frame".into());
+                }
+                let rgb = probe["rgb"].as_array().ok_or("probe rgb must be an array")?;
+                if rgb.len() != 3 || rgb.iter().any(|v| v.as_u64().filter(|n| *n <= 255).is_none()) {
+                    return Err("probe rgb needs three integer channels in 0..=255".into());
+                }
+            }
+            Ok(())
+        };
+        validate().map_err(|error| format!("check {number}: {error}"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn registered_frame_oracles_have_reachable_pixel_assertions() {
+    let manifest: serde_json::Value = serde_json::from_str(include_str!("../../tests/corpus/oracles.json")).unwrap();
+    for oracle in manifest["oracles"].as_array().unwrap() {
+        validate_frame_oracle(oracle).unwrap_or_else(|error| panic!("oracle {}: {error}", oracle["id"]));
+    }
+}
+
+#[test]
+fn frame_oracles_reject_vacuous_and_unreachable_checks() {
+    use serde_json::json;
+    let valid = json!({"queued_frames": 1, "checks": [{"frames": [1],
+        "expect": {"width": 2, "height": 1}, "probes": [{"x": 1, "y": 0, "rgb": [0, 128, 255]}]}]});
+    assert!(validate_frame_oracle(&valid).is_ok());
+    let mutations = [
+        ("/queued_frames", json!(0)), ("/checks", json!([])),
+        ("/checks/0/frames", json!([])), ("/checks/0/frames", json!([0])),
+        ("/checks/0/frames", json!([2])), ("/checks/0/frames", json!([1, 1])),
+        ("/checks/0/probes", json!([])), ("/checks/0/probes/0/x", json!(2)),
+        ("/checks/0/probes/0/rgb", json!([0, 0, 256])),
+        ("/checks/0/expect/width", json!(0)),
+    ];
+    for (path, value) in mutations {
+        let mut invalid = valid.clone();
+        *invalid.pointer_mut(path).unwrap() = value;
+        assert!(validate_frame_oracle(&invalid).is_err(), "accepted {invalid}");
+    }
+    let mut invalid = valid;
+    invalid["checks"][0]["expect"]["rgba_fnv1a64"] = json!("bad-hash");
+    assert!(validate_frame_oracle(&invalid).is_err());
+}
+
 /// One pre-registered first-frame oracle from `tests/corpus/oracles.json` (PLAN step 2,
 /// `docs/corpus-oracles.md`). Its expected values were computed from the program's source by
 /// `tools/corpus_oracle.py` before any run. Opt-in: `OUNCE_CORPUS_ROOT=<builds> OUNCE_ORACLE_ID=<id>
@@ -906,6 +991,7 @@ fn corpus_first_frame_oracle() {
     let root = std::env::var_os("OUNCE_CORPUS_ROOT").expect("OUNCE_CORPUS_ROOT is unset");
     let oracle = oracles["oracles"].as_array().unwrap().iter().find(|o| o["id"] == id.as_str())
         .unwrap_or_else(|| panic!("no oracle {id}"));
+    validate_frame_oracle(oracle).unwrap_or_else(|error| panic!("invalid oracle {id}: {error}"));
     let path = Path::new(&root).join(oracle["build"].as_str().unwrap()).join("build/source")
         .join(oracle["nro"].as_str().unwrap());
     let nro = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
@@ -940,7 +1026,10 @@ fn corpus_first_frame_oracle() {
             let size = (expect["width"].as_u64().or(check["width"].as_u64()).unwrap() as usize,
                 expect["height"].as_u64().or(check["height"].as_u64()).unwrap() as usize);
             for index in check["frames"].as_array().unwrap().iter().map(|f| f.as_u64().unwrap()) {
-                let Some(f) = result.queued.get(index as usize - 1) else { continue };
+                let Some(f) = result.queued.get(index as usize - 1) else {
+                    fail(format!("frame {index}: required frame was not captured"));
+                    continue;
+                };
                 if let Some(error) = &f.error {
                     fail(format!("frame {index}: {error}"));
                     continue;
@@ -970,7 +1059,9 @@ fn corpus_first_frame_oracle() {
             "host_timeout_seconds": seconds, "wall_seconds": seconds_taken.as_secs_f64(),
             "max_guest_instructions": limits.instructions, "queued": result.queued.iter().map(|f| json!({
                 "index": f.index, "width": f.width, "height": f.height,
-                "rgba_fnv1a64": format!("{:#018x}", f.rgba_fnv1a64), "error": f.error})).collect::<Vec<_>>(),
+                "rgba_fnv1a64": format!("{:#018x}", f.rgba_fnv1a64), "error": f.error,
+                "probes": limits.probes.iter().zip(&f.probes).map(|(&(x, y), rgba)|
+                    json!({"x": x, "y": y, "rgba": rgba})).collect::<Vec<_>>()})).collect::<Vec<_>>(),
         }));
         match &reference {
             None => reference = Some(result.queued),

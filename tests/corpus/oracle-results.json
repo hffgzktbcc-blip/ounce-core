@@ -38,7 +38,7 @@
     "save-data": "fail",
     "sdmc": "pass",
     "abstracted-pad": "pass",
-    "controller-colors": "fail",
+    "controller-colors": "pass",
     "hdls": "pass",
     "notification-led": "pass",
     "ring-con": "pass",
@@ -52,5 +52,5 @@
     "usbhs": "pass",
     "cpu-jit": "pass"
   },
-  "recorded_from": "https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173"
+  "recorded_from": "https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42229774290"
 }
