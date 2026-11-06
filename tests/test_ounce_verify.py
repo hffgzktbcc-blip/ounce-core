@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import importlib.util
 import json
 import tempfile
@@ -137,5 +138,72 @@ class OunceVerifyTests(unittest.TestCase):
             self.assertEqual(VERIFY.main([str(source)]), 2)
 
 
+class ArtifactTests(unittest.TestCase):
+    def test_bytes_are_verified_and_corruption_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / "demo.nro"
+            binary.write_bytes(b"actual guest input")
+            value = record()
+            sha = hashlib.sha256(binary.read_bytes()).hexdigest()
+            value["source"]["binary_sha256"] = sha
+            value["artifacts"] = [{"role": "binary", "path": "demo.nro", "sha256": sha}]
+            report = json.loads(VERIFY.canonical_report([value], root))
+            self.assertEqual(report["records"][0]["artifact_integrity"], "verified")
+            binary.write_bytes(b"corrupted")
+            with self.assertRaisesRegex(VERIFY.EvidenceError, "hash mismatch"):
+                VERIFY.canonical_report([value], root)
+
+    def test_pass_requires_binary_and_matching_source_hash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(VERIFY.EvidenceError, "verified binary"):
+                VERIFY.canonical_report([record()], root)
+            (root / "binary").write_bytes(b"input")
+            value = record()
+            value["artifacts"] = [{"role": "binary", "path": "binary",
+                                   "sha256": hashlib.sha256(b"input").hexdigest()}]
+            with self.assertRaisesRegex(VERIFY.EvidenceError, "differs from source"):
+                VERIFY.canonical_report([value], root)
+
+    def test_paths_cannot_escape_root_including_symlinks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root = parent / "root"
+            root.mkdir()
+            (parent / "outside").write_bytes(b"outside")
+            (root / "link").symlink_to(parent / "outside")
+            for path in ("../outside", str(parent / "outside"), "link"):
+                value = record()
+                value["artifacts"] = [{"role": "binary", "path": path, "sha256": "1" * 64}]
+                with self.subTest(path=path), self.assertRaises(VERIFY.EvidenceError):
+                    VERIFY.canonical_report([value], root)
+
+    def test_unverified_input_cannot_claim_integrity(self):
+        value = record()
+        value["artifact_integrity"] = "verified"
+        self.assertNotIn("artifact_integrity", json.loads(VERIFY.canonical_report([value]))["records"][0])
+
+    def test_cli_rejects_missing_artifact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            value = record()
+            value["artifacts"] = [{"role": "binary", "path": "missing.nro", "sha256": "2" * 64}]
+            source = root / "evidence.json"
+            output = root / "report.json"
+            source.write_text(json.dumps(value))
+            self.assertEqual(VERIFY.main([str(source), "--artifact-root", str(root),
+                                          "--output", str(output)]), 2)
+            self.assertFalse(output.exists())
+
+    def test_missing_observations_and_boolean_instruction_count_cannot_pass(self):
+        for changes in ({"observation_missing": True}, {"guest_instructions": True}):
+            value = record()
+            value["execution"].update(changes)
+            with self.assertRaises(VERIFY.EvidenceError):
+                VERIFY.validate_record(value)
+
+
 if __name__ == "__main__":
     unittest.main()
+

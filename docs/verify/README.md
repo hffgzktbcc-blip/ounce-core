@@ -20,3 +20,25 @@ both source-tree and binary SHA-256 fields were supplied and syntactically valid
 reproducible-build claim. Original-Switch evidence remains classified separately from Switch 2
 homebrew evidence. Rendering requires an explicit raw guest-frame oracle; a present count, normal
 guest exit, synthetic host frame, or agreement between Ounce-Core engines is insufficient.
+
+
+## Evidence integrity gate
+
+CI now invokes the validator with `--artifact-root "$RUNNER_TEMP/ounce-oracle-builds"`.
+The corpus adapter emits additive `artifacts` entries with `role`, relative `path`, and
+`sha256`. With this option the validator streams each referenced file through SHA-256,
+rejects paths escaping the root (including symlinks), and requires a matching binary
+artifact for every passing record. Output records get `artifact_integrity: verified`
+only after the bytes match `source.binary_sha256`; blocked records without binaries
+remain `incomplete`. Missing or corrupt files fail validation (exit 2).
+
+Without `--artifact-root`, v0 evidence remains readable and no artifact-integrity claim
+is emitted. Hash verification establishes correspondence with the declared digest,
+not independent provenance, reproducible builds, or frame correctness. The solver must
+never rewrite expected frames to make a repair pass.
+
+The headline uses `tests/corpus/oracles.json` as its denominator. Every registered
+program needs exactly the interpreter and Tier-3 records to count as passing. Missing
+programs remain in the denominator; duplicate IDs, unregistered programs/engines and
+engine identity mismatches are rejected. Native execution remains separately assessed
+until explicitly included in the required corpus engine policy.
