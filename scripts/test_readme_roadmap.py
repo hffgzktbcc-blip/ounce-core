@@ -32,6 +32,12 @@ class ReadmeRoadmapTest(unittest.TestCase):
         self.assertIn("scripts/corpus_verify.py", roadmap)
         self.assertIn("A green badge or merged PR is not proof", roadmap)
 
+    def test_vision_navigation_points_to_the_section(self):
+        text = README.read_text(encoding="utf-8")
+        self.assertIn("[The Ounce Vision](#the-ounce-vision)", text)
+        self.assertEqual(text.count('<a id="the-ounce-vision"></a>'), 1)
+        self.assertIn("## ✦ THE OUNCE VISION ✦", text)
+
     def test_old_claims_have_not_returned(self):
         text = README.read_text(encoding="utf-8")
         for obsolete in ("Waiting on public toolchains", "Corpus 4 → 20",
