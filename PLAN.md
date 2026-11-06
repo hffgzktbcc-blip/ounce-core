@@ -23,9 +23,10 @@ of any solver. A repair never changes an oracle, drops a failing case, or weaken
       bundles with likely subsystem ownership; keep hypotheses separate from observations.
       *Done when:* a real outside-program failure has a reproducible, actionable diagnosis.
       *Proof:* [PR #158](https://github.com/hffgzktbcc-blip/ounce-core/pull/158) compares [passing corpus CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42175855697) with the [historical SDL2 failure](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259); the bundle identifies missing frame 1, and a same-NRO replay reproduced both engines exiting at the same guest PC before the first frame.
-- [ ] **V4. Solve.** Propose repairs in isolated branches, run focused checks and the regression
+- [x] **V4. Solve.** Propose repairs in isolated branches, run focused checks and the regression
       corpus, and retain before/after evidence. No self-approved oracle corrections.
       *Done when:* a failing outside program passes its unchanged oracle without regressions.
+      *Proof:* [PR #159](https://github.com/hffgzktbcc-blip/ounce-core/pull/159) qualifies the isolated SDL2 repair from [17/20 reference CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259) to [18/20 candidate CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42179288488): the identical NRO passed unchanged pixel oracles on interpreter and Tier-3, preserving all 17 prior passes.
 - [ ] **V5. Self-heal.** Recover known infrastructure failures with bounded retries and an audit
       trail; use rollback and explicit stop conditions for narrowly defined repairs.
       *Done when:* a real recovery succeeds unattended and unsuccessful attempts stop cleanly.
