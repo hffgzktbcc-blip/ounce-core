@@ -68,6 +68,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var stopRequested = false
     private var awaitingGuestFrame: String?
     private var pendingFile: URL?
+    private var reportWindow: NSWindow?
 
     private var support: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -102,10 +103,10 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(editItem)
         NSApp.mainMenu = menu
 
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 375),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 425),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Ounce Core"
-        window.contentMinSize = NSSize(width: 600, height: 375)
+        window.contentMinSize = NSSize(width: 600, height: 425)
         window.delegate = self
         window.isReleasedWhenClosed = false
 
@@ -152,6 +153,9 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let actions = NSStackView(views: [openButton, demoButton, stopButton])
         actions.spacing = 12
         stack.addArrangedSubview(actions)
+        let results = button("View Check Results…", #selector(chooseReport))
+        results.setAccessibilityHelp("Open a saved Ounce-Verify report to read its recorded results.")
+        stack.addArrangedSubview(results)
 
         let card = NSBox()
         card.boxType = .custom
@@ -245,6 +249,74 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.beginSheetModal(for: window) { response in
             if response == .OK, let url = panel.url { self.openHomebrew(url) }
         }
+    }
+
+    @objc private func chooseReport() {
+        guard window.attachedSheet == nil else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "Choose a saved Ounce-Verify results, diagnosis, repair or run report. Opening it does not run an app or apply a repair."
+        panel.prompt = "View Results"
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            do { self.showReport(try EvidenceReport.read(url), from: url) }
+            catch { self.showError(error.localizedDescription) }
+        }
+    }
+
+    private func showReport(_ report: EvidenceReport, from url: URL) {
+        let viewer = reportWindow ?? NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        reportWindow = viewer
+        viewer.isReleasedWhenClosed = false
+        viewer.title = "Check results — \(url.lastPathComponent)"
+        viewer.contentMinSize = NSSize(width: 600, height: 400)
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        let text = NSTextView(frame: NSRect(origin: .zero, size: viewer.contentLayoutRect.size))
+        text.isEditable = false
+        text.isSelectable = true
+        text.isVerticallyResizable = true
+        text.isHorizontallyResizable = false
+        text.autoresizingMask = [.width]
+        text.textContainer?.widthTracksTextView = true
+        text.textContainerInset = NSSize(width: 24, height: 24)
+        text.setAccessibilityLabel("Recorded verification results")
+        scroll.documentView = text
+        viewer.contentView = scroll
+        let body = NSMutableAttributedString(string: "")
+        func label(_ value: String, bold: Bool = false) {
+            body.append(NSAttributedString(string: value + "\n\n", attributes: [
+                .font: NSFont.systemFont(ofSize: bold ? 16 : 13, weight: bold ? .semibold : .regular),
+                .foregroundColor: NSColor.labelColor
+            ]))
+        }
+        label(report.heading, bold: true)
+        label("These results describe an earlier run. Opening this file does not verify it again or approve a repair.")
+        label(report.overview)
+        label(url.lastPathComponent)
+        if !report.records.isEmpty { label("\(report.records.count) recorded results") }
+        for section in report.sections {
+            label(section.title.replacingOccurrences(of: "-", with: " ").capitalized, bold: true)
+            for line in section.lines { label(line) }
+        }
+        for record in report.records {
+            let parts = record.caseID.split(separator: "/")
+            let name = parts.count > 1 ? String(parts[1]) : record.caseID
+            label(name.replacingOccurrences(of: "-", with: " ").capitalized, bold: true)
+            label(EvidenceReport.explanation(record.verdict))
+            label("Case: \(record.caseID)")
+            label("Target: \(record.target) • Engine: \(record.execution.engine) • Revision: \(record.execution.commit.prefix(12))")
+            for oracle in record.oracles.prefix(32) {
+                label("\(oracle.name): \(oracle.status)")
+            }
+        }
+        text.textStorage?.setAttributedString(body)
+        viewer.center()
+        viewer.makeKeyAndOrderFront(nil)
     }
 
     private func openHomebrew(_ url: URL) {
@@ -362,7 +434,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func setDetailsVisible(_ visible: Bool) {
         details.isHidden = !visible
         detailsButton.title = visible ? "Hide Session Details" : "Show Session Details"
-        let minimumHeight: CGFloat = visible ? 555 : 375
+        let minimumHeight: CGFloat = visible ? 605 : 425
         window.contentMinSize = NSSize(width: 600, height: minimumHeight)
         if let size = window.contentView?.bounds.size, size.height < minimumHeight {
             window.setContentSize(NSSize(width: size.width, height: minimumHeight))

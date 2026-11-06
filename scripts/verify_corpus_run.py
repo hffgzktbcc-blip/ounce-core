@@ -88,13 +88,24 @@ def timing_host():
             "logical_cpus": os.cpu_count()}
 
 
+def verified_revision(repo):
+    """A commit ID must not stand in for modified execution or verification inputs."""
+    status = subprocess.check_output(
+        ["git", "status", "--porcelain", "--untracked-files=normal"],
+        cwd=repo, text=True, timeout=10,
+    )
+    if status.strip():
+        raise ValueError("verification requires a clean checkout; commit changes or use a separate worktree")
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=repo, text=True, timeout=10
+    ).strip()
+
+
 def run(args):
+    commit = verified_revision(REPO)
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=args.resume)
     builds, evidence = root / "builds", root / "evidence"
-    commit = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=REPO, text=True, timeout=10
-    ).strip()
     corpus = REPO / "tests/corpus"
     inputs = [corpus / name for name in ("oracles.json", "oracle-results.json", "manifest.json")]
     inputs.extend(sorted((corpus / "oracle-builds").glob("*.json")))

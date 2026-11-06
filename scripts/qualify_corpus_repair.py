@@ -14,6 +14,8 @@ ORACLE_PATH = "tests/corpus/oracles.json"
 EVIDENCE_TOOLS = (
     ".github/workflows/external-corpus.yml",
     "scripts/corpus_verify.py",
+    "scripts/corpus_build_cache.py",
+    "scripts/compare_corpus_runs.py",
     "scripts/diagnose_corpus_run.py",
     "scripts/prepare_external_corpus.py",
     "scripts/qualify_corpus_repair.py",
@@ -21,6 +23,7 @@ EVIDENCE_TOOLS = (
     "scripts/verify_corpus_run.py",
     "src/loader/corpus_runner.rs",
     "tests/corpus/manifest.json",
+    "tests/corpus/oracle-results.json",
     "tests/corpus/oracle-builds",
     "tools/corpus_oracle.py",
     "tools/ounce_verify.py",
@@ -69,6 +72,10 @@ def evaluate(reference, candidate, program, expected):
     for key in sorted(reference.keys() & candidate.keys()):
         before, after = reference[key], candidate[key]
         case = after["case_id"]
+        if before.get("target") != after.get("target"):
+            issues.append(f"{case}: workload target changed")
+        if before["source"].get("origin") != after["source"].get("origin"):
+            issues.append(f"{case}: source provenance category changed")
         before_checks = {key: oracle["expected"] for key, oracle in required_oracles(before).items()}
         after_checks = {key: oracle["expected"] for key, oracle in required_oracles(after).items()}
         if before_checks != after_checks:

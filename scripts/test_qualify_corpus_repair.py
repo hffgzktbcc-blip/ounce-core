@@ -12,6 +12,7 @@ class RepairQualificationTests(unittest.TestCase):
             fail = program == "target"
             self.reference[program, engine] = {
                 "case_id": f"corpus/{program}/{engine}",
+                "target": "original-switch-libnx",
                 "source": {
                     "binary_sha256": "a" * 64, "repository": "example",
                     "commit": "b" * 40, "source_tree_sha256": "c" * 64,
@@ -58,6 +59,14 @@ class RepairQualificationTests(unittest.TestCase):
         issues = self.issues()
         self.assertTrue(any("oracle expectations changed" in issue for issue in issues))
         self.assertTrue(any("same NRO bytes" in issue for issue in issues))
+
+    def test_rejects_relabeling_targets_or_provenance_even_for_failing_cases(self):
+        for key, value in (("target", "switch2-homebrew"), ("origin", "project-authored")):
+            candidate = deepcopy(self.candidate)
+            if key == "target": candidate["target", "tier3"][key] = value
+            else: candidate["target", "tier3"]["source"][key] = value
+            issues = evaluate(self.reference, candidate, "target", self.expected)
+            self.assertTrue(any("target changed" in i or "provenance" in i for i in issues))
 
 
 if __name__ == "__main__":

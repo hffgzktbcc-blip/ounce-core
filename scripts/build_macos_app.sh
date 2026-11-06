@@ -23,7 +23,7 @@ cp "$target/release/ounce-core" "$runtime/Contents/MacOS/ounce-core"
 cp "$root/tools/macos-launcher/Runtime-Info.plist" "$runtime/Contents/Info.plist"
 xcrun swiftc -O -swift-version 5 -target "$(uname -m)-apple-macos13.0" \
   -framework AppKit -framework UniformTypeIdentifiers \
-  "$root/tools/macos-launcher/main.swift" -o "$bundle/Contents/MacOS/OunceCore"
+  "$root/tools/macos-launcher/EvidenceReport.swift" "$root/tools/macos-launcher/main.swift" -o "$bundle/Contents/MacOS/OunceCore"
 cp "$root/tools/macos-launcher/Info.plist" "$bundle/Contents/Info.plist"
 cp "$root/LICENSE" "$root/THIRD_PARTY.md" "$root/assets/fonts/DejaVu-LICENSE.txt" "$bundle/Contents/Resources/Licenses/"
 codesign --force --sign - "$runtime/Contents/MacOS/ounce-core"

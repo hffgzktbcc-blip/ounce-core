@@ -55,6 +55,14 @@ def _oracle_verdict(oracles):
     return "not-assessed"
 
 
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def verify_artifacts(record, root):
     """Verify local bytes without allowing paths outside the supplied artifact root."""
     artifacts = record.get("artifacts", [])
@@ -74,11 +82,7 @@ def verify_artifacts(record, root):
         resolved = (root / relative).resolve(strict=True)
         if not resolved.is_relative_to(root) or not resolved.is_file():
             raise EvidenceError("artifact must be a file within the artifact root")
-        digest = hashlib.sha256()
-        with resolved.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-        if digest.hexdigest() != artifact["sha256"]:
+        if file_sha256(resolved) != artifact["sha256"]:
             raise EvidenceError(f"artifact hash mismatch: {path}")
         if artifact.get("role") == "binary":
             if artifact["sha256"] != record["source"]["binary_sha256"]:
@@ -262,6 +266,7 @@ def canonical_hbx_report(record, oracle):
     if record.get("engine_agreement") is not agreement or record.get("pass") is not verdict:
         raise EvidenceError("HBX overall verdict disagrees with observations")
     normalized = json.loads(json.dumps(record))
+    normalized.pop("artifact_integrity", None)
     normalized["rendering"] = "HBLauncher host UI callbacks; not a Switch 2 GPU-path validation"
     return json.dumps(normalized, sort_keys=True, separators=(",", ":")) + "\n"
 
@@ -283,6 +288,15 @@ def main(argv=None):
             if data.get("oracle_sha256") != hashlib.sha256(oracle_bytes).hexdigest():
                 raise EvidenceError("HBX oracle artifact digest mismatch")
             output = canonical_hbx_report(data, json.loads(oracle_bytes))
+            if args.artifact_root:
+                root = args.artifact_root.resolve(strict=True)
+                for name, field in (("code.bin", "code_sha256"), ("data.bin", "data_sha256"), ("report.json", "report_sha256")):
+                    path = (root / name).resolve(strict=True)
+                    if not path.is_relative_to(root) or not path.is_file() or file_sha256(path) != data[field]:
+                        raise EvidenceError(f"HBX input artifact mismatch: {name}")
+                checked = json.loads(output)
+                checked["artifact_integrity"] = "verified"
+                output = json.dumps(checked, sort_keys=True, separators=(",", ":")) + "\n"
         else:
             output = canonical_report(records, args.artifact_root)
         if args.output:

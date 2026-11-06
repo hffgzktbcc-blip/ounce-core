@@ -232,3 +232,22 @@ class HBXEvidenceTests(unittest.TestCase):
             change(value)
             with self.assertRaises(VERIFY.EvidenceError):
                 VERIFY.canonical_hbx_report(value, self.oracle)
+
+
+    def test_hbx_cli_checks_actual_package_bytes_and_drops_unverified_claims(self):
+        self.evidence["artifact_integrity"] = "verified"
+        self.assertNotIn("artifact_integrity", json.loads(VERIFY.canonical_hbx_report(self.evidence, self.oracle)))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, field in (("code.bin", "code_sha256"), ("data.bin", "data_sha256"), ("report.json", "report_sha256")):
+                (root / name).write_bytes(name.encode())
+                self.evidence[field] = hashlib.sha256(name.encode()).hexdigest()
+            evidence, oracle, output = (root / p for p in ("evidence.json", "oracle.json", "output.json"))
+            oracle.write_text(json.dumps(self.oracle))
+            self.evidence["oracle_sha256"] = hashlib.sha256(oracle.read_bytes()).hexdigest()
+            evidence.write_text(json.dumps(self.evidence))
+            argv = [str(evidence), "--hbx-oracle", str(oracle), "--artifact-root", str(root), "--output", str(output)]
+            self.assertEqual(VERIFY.main(argv), 0)
+            self.assertEqual(json.loads(output.read_text())["artifact_integrity"], "verified")
+            (root / "code.bin").write_bytes(b"changed")
+            self.assertEqual(VERIFY.main(argv), 2)
