@@ -207,3 +207,28 @@ class ArtifactTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class HBXEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.evidence = json.loads((ROOT / "docs/verify/hbx-first-frame-local.json").read_text())
+        self.oracle = json.loads((ROOT / "tests/corpus/switch2/hello-cpu-first-frame.json").read_text())
+
+    def test_real_sdk_path_observations_validate(self):
+        result = json.loads(VERIFY.canonical_hbx_report(self.evidence, self.oracle))
+        self.assertTrue(result["pass"])
+        self.assertIn("not a Switch 2 GPU-path validation", result["rendering"])
+
+    def test_forged_pixels_engine_coverage_source_and_agreement_are_rejected(self):
+        for change in (
+            lambda r: r["runs"][0]["pixels"][0].update(observed=[0, 0, 0, 255]),
+            lambda r: r["runs"][0]["pixels"][0].update(expected=[0, 0, 0, 255]),
+            lambda r: r["runs"].pop(),
+            lambda r: r["runs"][1].update(engine="interpreter"),
+            lambda r: r["source"].update(commit="changed"),
+            lambda r: r.update(engine_agreement=False),
+        ):
+            value = copy.deepcopy(self.evidence)
+            change(value)
+            with self.assertRaises(VERIFY.EvidenceError):
+                VERIFY.canonical_hbx_report(value, self.oracle)

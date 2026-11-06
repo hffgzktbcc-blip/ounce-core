@@ -1,0 +1,75 @@
+name: Switch 2 homebrew oracle
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/switch2-homebrew.yml'
+      - 'Cargo.*'
+      - 'assets/fonts/**'
+      - 'src/**'
+      - 'tests/corpus/switch2/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hello-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu libasound2-dev libudev-dev
+      - name: Build pinned public sample
+        run: |
+          python3 - "$RUNNER_TEMP/hbx" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          from urllib.request import urlopen
+
+          source = json.loads(Path("tests/corpus/switch2/hello-cpu-first-frame.json").read_text())["source"]
+          root = Path(sys.argv[1])
+          base = "https://raw.githubusercontent.com/ravensclawx/HBLauncher/" + source["commit"]
+          for file in (
+              "LICENSE", "apps/hello-cpu/manifest.json", "apps/hello-cpu/src/app.c",
+              "sdk/include/hbx_app.h", "sdk/include/hbx_font.h", "sdk/include/hbx_math.h",
+              "sdk/include/hbx_sdk.h", "sdk/include/hbx_ui.h", "sdk/include/hbx_ui_shaders.h",
+              "sdk/include/hbx_vk.h", "sdk/sdk-symbols.json", "sdk/src/crt0.S",
+              "sdk/src/hbx_app.c", "sdk/src/hbx_math.c", "sdk/src/hbx_ui_shaders.c",
+              "sdk/tools/hbx-build.py",
+          ):
+              destination = root / file
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              with urlopen(f"{base}/{file}", timeout=30) as response:
+                  destination.write_bytes(response.read())
+          PY
+          hbx="$RUNNER_TEMP/hbx"
+          python3 "$hbx/sdk/tools/hbx-build.py" "$hbx/apps/hello-cpu" --out "$hbx/package"
+          cat "$hbx/package/report.json"
+      - name: Verify first frame on Interpreter and Tier-3
+        run: |
+          export OUNCE_HBX_PACKAGE="$RUNNER_TEMP/hbx/package"
+          export OUNCE_HBX_RESULT="$RUNNER_TEMP/switch2-first-frame.json"
+          cargo test --release --locked outside_hello_cpu_first_frame -- --ignored --nocapture
+      - name: Independently validate SDK-path observations
+        run: |
+          python3 tools/ounce_verify.py "$RUNNER_TEMP/switch2-first-frame.json" \
+            --hbx-oracle tests/corpus/switch2/hello-cpu-first-frame.json \
+            --output "$RUNNER_TEMP/switch2-canonical-report.json"
+      - name: Retain Switch 2 SDK-path evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: switch2-sdk-first-frame-evidence
+          path: |
+            ${{ runner.temp }}/switch2-first-frame.json
+            ${{ runner.temp }}/switch2-canonical-report.json
+          if-no-files-found: warn

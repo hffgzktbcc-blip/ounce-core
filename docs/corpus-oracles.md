@@ -50,6 +50,20 @@ foreground and background pixels from source-derived console text. Those entries
 A passing startup screen establishes that the guest rendered the checked frame. It gives
 no evidence about interactions after that frame.
 
+## Registration and diagnostic checks
+
+Before guest execution, the runner rejects empty checks, empty or duplicate frame
+indices, indices outside `1..=queued_frames`, non-positive dimensions, malformed
+whole-frame hashes, and probes outside the expected frame or with invalid RGB
+channels. Every check must assert a whole-frame hash or at least one pixel; size
+alone cannot establish a pixel-oracle pass. A required frame that was not captured
+is an explicit failure.
+
+Raw queued-frame observations also retain every sampled coordinate and its RGBA
+value (or null when unavailable), alongside the frame dimensions and hash. This
+makes pixel-probe failures inspectable without reconstructing values from log text.
+These checks do not strengthen a probe oracle into a whole-frame assertion.
+
 ## The original 20 oracles
 
 | oracle | build | source read | kind | frames checked |
