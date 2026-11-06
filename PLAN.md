@@ -301,5 +301,5 @@ changed for that retry. Interactive Mac usability/accessibility acceptance is no
       *Done when:* the unchanged outside deko3d workload passes its existing oracle
       with recorded host submissions/readbacks on both CPU engines and a physical
       GPU. Preserve expected frames and report any remaining failures honestly.
-      Checkpoint (2026-11-06 18:48Z, codex, 369d173): GREEN — tests: cargo test: 472 passed, 0 failed; suite: pass — Execute guest SASS through host API with verified render-target readbacks
+      Checkpoint (2026-11-06 18:49Z, codex, bde90ef): GREEN — tests: cargo test: 472 passed, 0 failed; suite: pass — Record unchanged deko3d host execution evidence and accurate CLI status
       Next: Qualify physical Metal GPU and full unchanged corpus in hosted CI

@@ -1097,8 +1097,10 @@ fn guest_gpu_deko_existing_oracle() {
     let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(300),
         frames: usize::MAX, queued_frames: frames, ..Limits::default() };
     let mut failures = Vec::new();
-    for engine in oracle_engines() {
+    // Qualification always covers the exact required engine set, regardless of OUNCE_CPU.
+    for engine in [Engine::Interpreter, Engine::Tier3] {
         let (result,kernel) = run_nro_state(&bytes,&Path::new(&path).to_string_lossy(),&[],engine,&limits,&[]);
+        if result.actual_engine != engine { failures.push(format!("{engine:?}: actual engine {:?}",result.actual_engine)); }
         let stats: Vec<_> = kernel.ipc.nvdrv.engines.values().map(|g| g.render_stats()).collect();
         let host_draws: u64 = stats.iter().map(|s| s.host_draws as u64).sum();
         let hardware_draws: u64 = stats.iter().map(|s| s.hardware_draws as u64).sum();

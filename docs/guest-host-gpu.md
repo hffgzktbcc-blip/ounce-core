@@ -62,3 +62,13 @@ Hosted qualification runs Linux with software Vulkan and macOS with physical GPU
 required. Logs retain adapter identity, NRO hash, per-engine draw/readback counts,
 and exact frame comparisons. A completed draw alone is not an oracle pass. PLAN.md
 step 14 stays open until its physical-GPU and unchanged-oracle gates pass.
+
+Local execution evidence (2026-11-06): unchanged switchbrew/switch-examples commit
+`669786898205b7beb25ff1731e72982e6d0397d3`, default deko_basic Makefile, public
+devkitA64 GCC 16.1.0, libnx 4.12.0, deko3d 0.5.0 and uam 1.1.0. Observed NRO
+SHA-256: `6808f4fe94f2349835c59ec7f70dd297f4566b33ff5cc107860dc2400c92d9fc`
+(build identity, not a reproducible-build claim). Vulkan adapter: llvmpipe,
+LLVM 19.1.7, type CPU. Both Interpreter and Tier-3 stopped on five queued frames,
+completed five host draws and 18,432,000 readback bytes, and matched the existing
+`0x3a00ccf6b6f28ea1` frame hash on every frame. Hardware draw count was zero.
+The separate physical-adapter-required test correctly rejected this software device.
