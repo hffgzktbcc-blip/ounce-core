@@ -63,6 +63,7 @@ jobs:
         run: |
           python3 tools/ounce_verify.py "$RUNNER_TEMP/switch2-first-frame.json" \
             --hbx-oracle tests/corpus/switch2/hello-cpu-first-frame.json \
+            --artifact-root "$RUNNER_TEMP/hbx/package" \
             --output "$RUNNER_TEMP/switch2-canonical-report.json"
       - name: Retain Switch 2 SDK-path evidence
         if: always()
