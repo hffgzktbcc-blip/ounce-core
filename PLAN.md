@@ -9,16 +9,12 @@ Implement sequentially alongside corpus expansion; preserve the pre-registered f
 oracles and the existing headline metric. The verifier decides results independently
 of any solver. A repair never changes an oracle, drops a failing case, or weakens a gate.
 
-- [ ] **V1. Evidence integrity and complete coverage.** Verify actual NRO bytes against
+- [x] **V1. Evidence integrity and complete coverage.** Verify actual NRO bytes against
       evidence hashes, reject missing execution observations as passes, and derive coverage
       from the registered corpus and exact required engines. Preserve v0 read compatibility.
       *Done when:* corruption and incomplete engine coverage cannot pass the integrity gate;
       existing corpus evidence still validates in CI with byte verification enabled.
-      Checkpoint (2026-11-06, Codex): implementation prepared; 29 focused Python tests pass.
-      Next: run full gate and outside corpus in CI before marking V1 complete.
-      Decisions: retain v0 compatibility; integrity is an explicit byte-verification mode.
-      Environment: shell proxy unavailable, partial connector snapshot, no Rust toolchain;
-      gate checkpoint/ship cannot complete here. Publish as draft without auto-merge.
+      *Proof:* [PR #156](https://github.com/hffgzktbcc-blip/ounce-core/pull/156), [canonical corpus CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42161576657): all 40 interpreter and Tier-3 records passed pixel oracles with verified artifact bytes (20/20 programs).
 - [ ] **V2. Unified bounded execution.** Orchestrate existing build/run/verify tools with
       explicit limits, versioned manifests, retained raw observations and replayable commands.
       *Done when:* the outside corpus runs through one entry point with traceable evidence.
