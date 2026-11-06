@@ -101,6 +101,12 @@ class CoverageTests(unittest.TestCase):
             with self.subTest(case_id=case_id), self.assertRaises(SystemExit):
                 self.count([value])
 
+    def test_relabeling_cannot_enter_the_original_switch_headline(self):
+        values = self.passing()
+        values[0]["target"] = "switch2-homebrew"
+        with self.assertRaisesRegex(SystemExit, "target"):
+            self.count(values)
+
     def test_adapter_rejects_missing_executed_hash_and_duplicate_runs(self):
         for verdict in ({"runs": [run("Interpreter")]},
                         {"nro_sha256": SHA, "runs": [run("Interpreter"), run("Interpreter")]},

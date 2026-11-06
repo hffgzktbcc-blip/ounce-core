@@ -68,6 +68,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var stopRequested = false
     private var awaitingGuestFrame: String?
     private var pendingFile: URL?
+    private var reportWindow: NSWindow?
 
     private var support: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -102,10 +103,10 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(editItem)
         NSApp.mainMenu = menu
 
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 375),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 425),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Ounce Core"
-        window.contentMinSize = NSSize(width: 600, height: 375)
+        window.contentMinSize = NSSize(width: 600, height: 425)
         window.delegate = self
         window.isReleasedWhenClosed = false
 
@@ -152,6 +153,9 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let actions = NSStackView(views: [openButton, demoButton, stopButton])
         actions.spacing = 12
         stack.addArrangedSubview(actions)
+        let results = button("View Check Results…", #selector(chooseReport))
+        results.setAccessibilityHelp("Open a saved Ounce-Verify report to read its recorded results.")
+        stack.addArrangedSubview(results)
 
         let card = NSBox()
         card.boxType = .custom
@@ -245,6 +249,62 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.beginSheetModal(for: window) { response in
             if response == .OK, let url = panel.url { self.openHomebrew(url) }
         }
+    }
+
+    @objc private func chooseReport() {
+        guard window.attachedSheet == nil else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "Choose a saved Ounce-Verify corpus report. Opening it does not run an app or apply a repair."
+        panel.prompt = "View Results"
+        panel.beginSheetModal(for: window) { response in
+            guard response == .OK, let url = panel.url else { return }
+            do { self.showReport(try EvidenceReport.read(url), from: url) }
+            catch { self.showError(error.localizedDescription) }
+        }
+    }
+
+    private func showReport(_ report: EvidenceReport, from url: URL) {
+        let viewer = reportWindow ?? NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        reportWindow = viewer
+        viewer.isReleasedWhenClosed = false
+        viewer.title = "Check results — \(url.lastPathComponent)"
+        viewer.contentMinSize = NSSize(width: 600, height: 400)
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        let rows = NSStackView()
+        rows.orientation = .vertical
+        rows.alignment = .leading
+        rows.spacing = 12
+        rows.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
+        rows.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = rows
+        viewer.contentView = scroll
+        rows.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
+        func label(_ text: String, bold: Bool = false) {
+            let field = NSTextField(wrappingLabelWithString: text)
+            field.font = .systemFont(ofSize: bold ? 16 : 13, weight: bold ? .semibold : .regular)
+            rows.addArrangedSubview(field)
+            field.widthAnchor.constraint(lessThanOrEqualTo: rows.widthAnchor, constant: -48).isActive = true
+        }
+        label("Saved check results", bold: true)
+        label("These results describe an earlier run. Opening this file does not verify it again or approve a repair.")
+        label("Pass: recorded checks passed. Failed: an observed mismatch. Blocked: checks could not finish. Not assessed: more evidence is needed.")
+        label("\(report.records.count) recorded results • \(url.lastPathComponent)")
+        for record in report.records {
+            label(record.caseID, bold: true)
+            label(EvidenceReport.explanation(record.verdict))
+            label("Target: \(record.target) • Engine: \(record.execution.engine) • Revision: \(record.execution.commit.prefix(12))")
+            for oracle in record.oracles.prefix(32) {
+                label("\(oracle.name): \(oracle.status)")
+            }
+        }
+        viewer.center()
+        viewer.makeKeyAndOrderFront(nil)
     }
 
     private func openHomebrew(_ url: URL) {
@@ -362,7 +422,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func setDetailsVisible(_ visible: Bool) {
         details.isHidden = !visible
         detailsButton.title = visible ? "Hide Session Details" : "Show Session Details"
-        let minimumHeight: CGFloat = visible ? 555 : 375
+        let minimumHeight: CGFloat = visible ? 605 : 425
         window.contentMinSize = NSSize(width: 600, height: minimumHeight)
         if let size = window.contentView?.bounds.size, size.height < minimumHeight {
             window.setContentSize(NSSize(width: size.width, height: minimumHeight))

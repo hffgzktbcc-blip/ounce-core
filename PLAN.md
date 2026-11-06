@@ -252,3 +252,25 @@ and qualify the combined commit before tagging.
       archives together with checksums after full CI and canonical corpus evidence.
       Checkpoint (2026-11-06 14:09Z, codex, 8cb7fe7): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Ensure publisher checks out curated notes and synchronize Mac bundle version
       Next: Final CI, merge qualified candidate, tag v0.5.0
+
+## Owner-directed verifier independence and app usability (2026-11-06)
+The owner reaffirmed all six phases and requested a front end ordinary users can
+understand. Existing V1–V6 proofs remain the baseline, not a claim of universal
+correctness or autonomous repair. No model-provider dependencies are introduced.
+- [ ] **13. Preserve the trust boundary and expose saved results in the app.** Reject
+      workload target/provenance relabeling during repair qualification; protect cache,
+      comparison and regression policy inputs; require a clean committed checkout for
+      bounded execution; declare headline target and required engines in the manifest.
+      Add a native, accessible saved-results viewer that never computes verifier verdicts
+      or grants repair success. Clearly distinguish recorded results from fresh checks.
+      *Done when:* adversarial policy tests pass, the 50-case corpus keeps its coverage,
+      and the Mac bundle compiles with report decoding tests. Interactive Mac GUI
+      acceptance remains separately recorded; compilation is not a guest-frame claim.
+      Checkpoint (2026-11-06 14:39Z, codex, eb95697): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Enforce independent repair identity and clean execution inputs; add native saved-results viewer
+      Next: Mac build and report-reader checks, canonical 50-program regression CI
+
+Phase acceptance stays tied to the existing V1–V6 evidence: artifact/coverage checks;
+bounded execution; replayable diagnoses; independent same-NRO repair qualification;
+bounded transient recovery; cached/sharded/resumable runs and bisection. New failures
+in the 50-program corpus drive subsequent fixes. Oracle corrections require an explicit
+owner decision and are never a solver option or a control in the results viewer.

@@ -183,3 +183,25 @@ registered samples, recomputes pixel and engine verdicts, and rejects inconsiste
 claims. Hash syntax identifies inputs; this mode does not independently rehash
 package binaries. HBLauncher host UI callback rendering is explicitly distinguished
 from Switch 2 GPU-path validation and does not enter the original-Switch headline.
+
+## Trusted repair qualification
+
+Run `qualify_corpus_repair.py` from a trusted checkout or detached worktree sharing
+the reference/candidate Git objects. Do not run a solver-modified copy of the verifier
+to approve that solver's patch. The qualifier rejects changed targets, provenance,
+expectations, execution limits and missing engine/case coverage, and protects the
+build cache, comparison tooling and recorded regression policy from candidate edits.
+Changing an oracle requires an explicit owner decision outside repair qualification.
+
+Bounded corpus execution now refuses a dirty checkout before creating outputs, so a
+recorded commit cannot silently identify different source or verification code.
+The original-Switch headline declares `target` and `required_engines` in the oracle
+manifest; separately labeled Switch 2 results cannot inflate that metric.
+
+## Native results viewer
+
+In the Mac app, choose **View Check Results…** and open a saved canonical corpus JSON
+report. The viewer explains pass, failure, blocked and not-assessed outcomes and shows
+case IDs, target, engine, revision and oracle results. It is read-only: imported
+results are labeled as recorded, not independently verified in the current session.
+Opening a report runs no app, changes no oracle and approves no repair.
