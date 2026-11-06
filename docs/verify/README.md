@@ -169,7 +169,7 @@ Bisection assumes one transition within the chosen range.
 
 The nightly corpus run compares its evidence with the last successful scheduled run.
 A manual workflow run can name a baseline run ID. The comparison retains coverage,
-verdict changes, and the diagnosis for replay. Missing records and new oracle failures
-fail the comparison step. Instruction counts are compared for the same binaries and
+verdict changes, and the diagnosis for replay. Missing current records and new oracle failures fail the comparison step. New cases
+without older observations are reported as baseline gaps. Instruction counts are compared for the same binaries and
 matching oracle observations. Wall-time changes are advisory and require matching host
 and shard settings. The first successful scheduled run establishes the baseline.

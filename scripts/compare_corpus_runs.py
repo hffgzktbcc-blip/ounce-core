@@ -31,6 +31,20 @@ def read_run(directory):
     return records, manifest, timing
 
 
+def state(record):
+    if record is None:
+        return "missing"
+    if record["verdict"] == "pass" and has_failure(record):
+        return "engine-disagreement"
+    return record["verdict"]
+
+
+def comparison_failed(report):
+    coverage = report["coverage"]
+    return bool(report["regressions"] or any(coverage[key] for key in (
+        "reference_extra", "candidate_missing", "candidate_extra")))
+
+
 def compare(reference, candidate, expected):
     before, before_run, before_time = reference
     after, after_run, after_time = candidate
@@ -41,13 +55,13 @@ def compare(reference, candidate, expected):
     regressions, changes, performance = [], [], []
     for key in sorted(before.keys() | after.keys()):
         left, right = before.get(key), after.get(key)
-        if has_failure(left) != has_failure(right):
-            change = {"case": "/".join(key), "before": left["verdict"] if left else "missing",
-                      "after": right["verdict"] if right else "missing"}
+        left_state, right_state = state(left), state(right)
+        if left_state != right_state:
+            change = {"case": "/".join(key), "before": left_state, "after": right_state}
             changes.append(change)
-            if has_failure(right):
+            if left_state == "pass" and right_state != "pass":
                 regressions.append(change)
-        if has_failure(left) or has_failure(right):
+        if left_state != "pass" or right_state != "pass":
             continue
         if (left["source"]["binary_sha256"] != right["source"]["binary_sha256"]
                 or left["oracles"] != right["oracles"]
@@ -98,9 +112,7 @@ def main():
           f"{len(report['regressions'])} regressions, {len(report['performance_changes'])} performance changes")
     for item in report["regressions"]:
         print(f"- {item['case']}: {item['before']} → {item['after']}")
-    coverage = report["coverage"]
-    return int(bool(report["regressions"] or any(coverage[key] for key in (
-        "reference_missing", "reference_extra", "candidate_missing", "candidate_extra"))))
+    return int(comparison_failed(report))
 
 
 if __name__ == "__main__":

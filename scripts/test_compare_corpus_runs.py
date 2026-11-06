@@ -2,7 +2,7 @@ from copy import deepcopy
 import unittest
 from unittest.mock import patch
 
-from compare_corpus_runs import compare
+from compare_corpus_runs import compare, comparison_failed, state
 
 
 class RunComparisonTests(unittest.TestCase):
@@ -27,3 +27,15 @@ class RunComparisonTests(unittest.TestCase):
         with patch("compare_corpus_runs.diagnose", return_value={}):
             report = compare(reference, candidate, {key})
         self.assertEqual(report["regressions"], [{"case": "example/tier3", "before": "pass", "after": "fail"}])
+
+    def test_corpus_growth_can_establish_a_new_baseline(self):
+        coverage = {"reference_missing": ["new/tier3"], "reference_extra": [],
+                    "candidate_missing": [], "candidate_extra": []}
+        report = {"coverage": coverage, "regressions": []}
+        self.assertFalse(comparison_failed(report))
+        coverage["candidate_missing"] = ["new/tier3"]
+        self.assertTrue(comparison_failed(report))
+
+    def test_engine_disagreement_has_a_distinct_state(self):
+        record = {"verdict": "pass", "oracles": [{"scope": "comparison", "status": "fail"}]}
+        self.assertEqual(state(record), "engine-disagreement")
