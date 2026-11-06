@@ -3,6 +3,7 @@
 
 import argparse
 from contextlib import suppress
+from math import ceil
 import hashlib
 import json
 import os
@@ -92,6 +93,7 @@ def run(args):
             str(path.relative_to(REPO)): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs
         },
         "seconds_per_engine": args.engine_seconds,
+        "oracle_shards": args.shards,
         "stages": [],
     }
     manifest_path = evidence / "run-manifest.json"
@@ -170,10 +172,10 @@ def run(args):
     python = sys.executable
     verdicts = evidence / "oracle-verdicts.json"
     # Leave time for every per-case outer timeout plus runner bookkeeping.
-    run_seconds = len(oracles) * (2 * args.engine_seconds + 120) + 60
+    run_seconds = ceil(len(oracles) / args.shards) * (2 * args.engine_seconds + 120) + 60
     runner_status = stage("oracles", [python, "scripts/run_corpus_oracles.py", "--executable", paths.pop(),
                                      "--builds", builds, "--evidence", evidence,
-                                     "--seconds", args.engine_seconds], run_seconds)
+                                     "--seconds", args.engine_seconds, "--shards", args.shards], run_seconds)
     if not verdicts.is_file():
         raise ValueError(f"oracle runner produced no observations; see {evidence}")
 
@@ -202,6 +204,7 @@ def main():
     parser.add_argument("--build-seconds", type=positive_seconds, default=1800, help="limit per Docker stage")
     parser.add_argument("--compile-seconds", type=positive_seconds, default=1200)
     parser.add_argument("--engine-seconds", type=positive_seconds, default=180)
+    parser.add_argument("--shards", type=positive_seconds, default=1, help="concurrent oracle shards")
     parser.add_argument("--check-readme", action="store_true")
     args = parser.parse_args()
     try:

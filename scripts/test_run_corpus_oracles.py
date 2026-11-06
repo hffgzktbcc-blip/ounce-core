@@ -4,6 +4,7 @@ import io
 import json
 from pathlib import Path
 import tempfile
+from threading import Barrier
 import unittest
 from unittest.mock import patch
 import subprocess
@@ -36,3 +37,42 @@ class FreshVerdictTests(unittest.TestCase):
             result = json.loads((evidence / "oracle-verdicts.json").read_text())
             self.assertEqual(result["passed"], 0)
             self.assertFalse(result["verdicts"][0]["pass"])
+
+    def test_parallel_shards_preserve_order_and_report_regressions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            corpus = root / "tests/corpus"
+            corpus.mkdir(parents=True)
+            builds = root / "builds"
+            source = builds / "b/build/source"
+            source.mkdir(parents=True)
+            ids = ["one", "two", "three"]
+            (corpus / "oracles.json").write_text(json.dumps({"oracles": [
+                {"id": name, "build": "b", "nro": f"{name}.nro"} for name in ids]}))
+            (corpus / "oracle-results.json").write_text(json.dumps(
+                {"results": {name: "pass" for name in ids}}))
+            for name in ids:
+                (source / f"{name}.nro").write_bytes(b"test")
+
+            # The first case of each shard must reach the barrier concurrently.
+            barrier = Barrier(2, timeout=5)
+
+            def run(command, *, env, **kwargs):
+                name = env["OUNCE_ORACLE_ID"]
+                if name in ("one", "two"):
+                    barrier.wait()
+                passed = name != "two"
+                Path(env["OUNCE_ORACLE_RESULT"]).write_text(json.dumps(
+                    {"id": name, "pass": passed, "failures": [] if passed else ["frame mismatch"]}))
+                return subprocess.CompletedProcess(command, 0 if passed else 1)
+
+            evidence = root / "evidence"
+            arguments = ["runner", "--executable", "not-executed", "--builds", str(builds),
+                         "--evidence", str(evidence), "--shards", "2"]
+            with patch.object(runner, "REPO", root), patch("sys.argv", arguments), \
+                    patch.object(runner.subprocess, "run", side_effect=run), \
+                    contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(SystemExit, "two"):
+                runner.main()
+            result = json.loads((evidence / "oracle-verdicts.json").read_text())
+            self.assertEqual([verdict["id"] for verdict in result["verdicts"]], ids)
+            self.assertEqual(result["passed"], 2)

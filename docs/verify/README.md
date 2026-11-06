@@ -126,3 +126,8 @@ The corpus runner retries a Docker image pull up to twice after a timeout or a r
 registry connection failure. It waits two seconds before the first retry and four before
 the second. Each attempt keeps its own command, deadline, exit status, and logs in the
 run evidence. Permanent pull errors, build errors, and oracle failures stop without retry.
+
+Use `--shards 2` to run two disjoint groups of oracles concurrently on one host. The report
+keeps the registered corpus order and the same coverage and regression checks. Each guest
+still has its own log, observation file, and timeout. Canonical CI uses two shards. Compare
+wall times only between runs with equivalent hosts and shard settings.
