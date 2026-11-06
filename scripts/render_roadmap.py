@@ -88,6 +88,57 @@ def render(data, corpus):
     return "\n".join(out) + "\n"
 
 
+
+ARCH_REGISTRY = ROOT / "docs/architecture/layers.json"
+ARCH_START = "### The architecture at a glance\n"
+ARCH_END = "<details>\n"
+
+
+def render_architecture():
+    data = json.loads(ARCH_REGISTRY.read_text(encoding="utf-8"))
+    if data.get("schema_version") != 1 or not isinstance(data.get("layers"), list):
+        raise ValueError("invalid architecture registry")
+    lines = [
+        "### The architecture at a glance", "",
+        "<!-- BEGIN GENERATED ARCHITECTURE: scripts/render_roadmap.py -->",
+        "Implemented code paths are not universal compatibility proof. Source links identify implementation, not certification.",
+        "", "| Layer | Current implementation | Important boundary | Source |",
+        "| :--- | :--- | :--- | :--- |",
+    ]
+    seen = set()
+    for row in data["layers"]:
+        for key in ("id", "name", "capability", "boundary"):
+            if not isinstance(row.get(key), str) or not row[key] or any(
+                sep in row[key] for sep in ("|", "\n", "\r")
+            ):
+                raise ValueError("invalid architecture field " + key)
+        if row["id"] in seen:
+            raise ValueError("duplicate architecture layer")
+        seen.add(row["id"])
+        sources = row.get("sources")
+        if not isinstance(sources, list) or not sources:
+            raise ValueError("architecture layer must have sources")
+        for path in sources:
+            if (not isinstance(path, str) or not path.startswith(("src/", "crates/", "scripts/", "tools/"))
+                    or ".." in path or not (ROOT / path).is_file()):
+                raise ValueError("missing or unsafe architecture source: " + str(path))
+        links = ", ".join("[" + path.rsplit("/", 1)[-1] + "](" + path + ")" for path in sources[:2])
+        lines.append("| **" + row["name"] + "** | " + row["capability"] +
+                     " | " + row["boundary"] + " | " + links + " |")
+    lines.extend(["", "<!-- END GENERATED ARCHITECTURE -->", ""])
+    return "\n".join(lines) + "\n"
+
+
+def refresh_architecture(readme):
+    if readme.count(ARCH_START) != 1:
+        raise ValueError("architecture heading not unique")
+    before, rest = readme.split(ARCH_START, 1)
+    if ARCH_END not in rest:
+        raise ValueError("architecture section end missing")
+    _, after = rest.split(ARCH_END, 1)
+    return before + render_architecture() + ARCH_END + after
+
+
 def sync_prs(data):
     changed = False
     for row in data["tracks"]:
@@ -128,7 +179,7 @@ def main():
         raise ValueError("CI-managed corpus headline missing")
     left, tail = original.split(START, 1)
     _, right = tail.split(END, 1)
-    expected = left + render(data, match.group(1)) + END + right
+    expected = refresh_architecture(left + render(data, match.group(1)) + END + right)
     if args.check:
         if original != expected:
             raise SystemExit("README roadmap stale: run python3 scripts/render_roadmap.py")

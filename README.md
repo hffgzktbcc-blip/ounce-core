@@ -164,13 +164,19 @@ The core is designed to remain useful as a **systems-research platform** even wh
 
 ### The architecture at a glance
 
-| Layer | Current capability | Important boundary |
-| :--- | :--- | :--- |
-| **CPU** | AArch64 interpreter, Tier-1/2/3 engines, optional Tier-4 host code generation | A subset of the architecture; external correctness is not universal |
-| **Memory & kernel** | 4 KiB paging, protections, threads, events and selected SVCs | Not a cycle-accurate hardware or full OS implementation |
-| **Services & file loading** | CMIF/TIPC and selected Horizon-style services; parsers for supported homebrew and synthetic formats | Incomplete service coverage; retail decryption disabled |
-| **Graphics** | CPU rasterisation; experimental guest SASS execution through `wgpu` with render-target readback | Physical GPU execution and unchanged outside-frame oracles are separate qualification gates |
-| **Sound & input** | Software audio mixing, host audio output, keyboard/gamepad mapping | Broader independent-app coverage not established |
+<!-- BEGIN GENERATED ARCHITECTURE: scripts/render_roadmap.py -->
+Implemented code paths are not universal compatibility proof. Source links identify implementation, not certification.
+
+| Layer | Current implementation | Important boundary | Source |
+| :--- | :--- | :--- | :--- |
+| **CPU execution** | AArch64 interpreter, cached/decoded/fused block paths (Tier 1–3), optional Tier-4 native JIT and AArch64-host native execution | Instruction coverage is partial; Tier-4 and native execution are separate from the Interpreter/Tier-3 headline oracle count. | [interpreter.rs](src/cpu/interpreter.rs), [tier3_jit.rs](src/cpu/tier3_jit.rs) |
+| **Memory and kernel** | 4 KiB paged guest memory, access permissions, thread scheduling, synchronization and selected SVCs | Horizon-style subsets, not complete OS semantics, hardware timing or a security sandbox. | [memory.rs](src/mmu/memory.rs), [scheduler.rs](src/kernel/scheduler.rs) |
+| **Services and loading** | Selected CMIF/TIPC service models; NRO/NSO and package parsing; homebrew and synthetic execution paths | Incomplete service coverage; retail decryption remains restricted; parsing a container does not demonstrate execution. | [cmif.rs](src/kernel/cmif.rs), [hipc.rs](src/kernel/hipc.rs) |
+| **Graphics and presentation** | Guest-frame capture, software rasterization, and experimental guest SASS execution through wgpu with render-target readback | Physical GPU execution and unchanged outside-frame oracles have separate qualification gates. | [host.rs](src/gpu/ampere/host.rs), [render.rs](src/gpu/ampere/render.rs) |
+| **Audio and input** | Software audio mixing with CPAL host output; keyboard/gamepad mapping and selected HID service paths | Host device support varies by platform; external-program correctness needs case-specific tests. | [host.rs](src/audio/host.rs), [audren.rs](src/audio/audren.rs) |
+| **Execution evidence** | Ounce-Verify records, first-frame oracles, artifact-integrity checks, corpus comparison, diagnosis, retries, bisection and resumable runs | Passing local unit tests or CI does not certify general compatibility, provenance or an independent rerun. | [ounce_verify.py](tools/ounce_verify.py), [corpus_verify.py](scripts/corpus_verify.py) |
+
+<!-- END GENERATED ARCHITECTURE -->
 
 <details>
 <summary><strong>Explore the full subsystem implementation matrix</strong></summary>
