@@ -300,7 +300,7 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 | :--- | :--- | :--- |
 | Cross-platform CI | [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) | Configured build and test gates, not outside-program compatibility |
 | External corpus | [![External corpus](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml?query=branch%3Amain) | Evidence pipeline health; inspect artifacts for individual verdicts |
-| Switch 2 research | [![Switch 2 oracle](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/switch2-homebrew-oracle.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/switch2-homebrew-oracle.yml) | Workflow status only; not a compatibility certification |
+| Switch 2 research | [PR #172 and its checks](https://github.com/hffgzktbcc-blip/ounce-core/pull/172) | Experimental first-frame evidence; PR status and checks are live, not compatibility certification |
 
 | Research track | Evidence on record | Next required proof |
 | :--- | :--- | :--- |
@@ -312,7 +312,7 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 
 **Always-current navigation:** [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls?q=is%3Apr+is%3Aopen) · [open issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen) · [Actions](https://github.com/hffgzktbcc-blip/ounce-core/actions) · [evidence methodology](docs/verify/README.md) · [PLAN.md](PLAN.md).
 
-No general homebrew, retail-game or Switch 2 compatibility claim is implied. Workflow badges and activity links update from GitHub automatically; narrative milestones still require evidence-based review. The count remains guarded by the [CI README headline check](scripts/corpus_verify.py).
+No general homebrew, retail-game or Switch 2 compatibility claim is implied. Workflow badges, pull-request checks and activity links update from GitHub automatically; narrative milestones still require evidence-based review. The count remains guarded by the [CI README headline check](scripts/corpus_verify.py).
 
 ---
 
