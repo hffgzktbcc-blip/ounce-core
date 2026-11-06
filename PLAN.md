@@ -31,9 +31,10 @@ of any solver. A repair never changes an oracle, drops a failing case, or weaken
       trail; use rollback and explicit stop conditions for narrowly defined repairs.
       *Done when:* a real recovery succeeds unattended and unsuccessful attempts stop cleanly.
       *Proof:* [PR #165](https://github.com/hffgzktbcc-blip/ounce-core/pull/165) and [registry recovery CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42186494970/job/127787986260) show an actual refused Docker connection recovering on retry; focused tests confirm permanent errors and exhausted timeouts stop.
-- [ ] **V6. Scale.** Add sharding, content-addressed build caches, resumable jobs, bisection and
+- [x] **V6. Scale.** Add sharding, content-addressed build caches, resumable jobs, bisection and
       scheduled regression/performance comparisons, using the growing 50-program corpus.
       *Done when:* CI demonstrates retained coverage and actionable regression evidence at scale.
+      *Proof:* [Warm-cache CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42193209243/attempts/2) reused verified builds; [resume](https://github.com/hffgzktbcc-blip/ounce-core/pull/168) retained completed oracle work; [bisection](https://github.com/hffgzktbcc-blip/ounce-core/pull/169) isolated a real SDL2 first-frame transition; [comparison CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42196871177) passed with all 100 engine records across 50 homebrews, zero regressions, and a passing native corpus job. [Nightly workflow](https://github.com/hffgzktbcc-blip/ounce-core/pull/170) merged.
 
 ## Owner-directed usability task (2026-11-05)
 The owner requested the next practical step after the audit: a native Mac launcher.
