@@ -180,8 +180,9 @@ and shard settings. The first successful scheduled run establishes the baseline.
 validates the separate `ounce-verify/hbx-first-frame-v1` report. It verifies the
 registered oracle file digest and source identity, requires both engines and all
 registered samples, recomputes pixel and engine verdicts, and rejects inconsistent
-claims. Hash syntax identifies inputs; this mode does not independently rehash
-package binaries. HBLauncher host UI callback rendering is explicitly distinguished
+claims. Without `--artifact-root`, hashes identify recorded inputs only. With
+`--artifact-root PACKAGE`, the verifier independently hashes code.bin, data.bin and
+report.json and rejects changed or missing bytes and paths escaping the package root. HBLauncher host UI callback rendering is explicitly distinguished
 from Switch 2 GPU-path validation and does not enter the original-Switch headline.
 
 ## Trusted repair qualification
