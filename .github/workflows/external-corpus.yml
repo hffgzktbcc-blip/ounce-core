@@ -13,6 +13,7 @@ on:
       - 'scripts/run_corpus_oracles.py'
       - 'scripts/corpus_verify.py'
       - 'scripts/diagnose_corpus_run.py'
+      - 'scripts/qualify_corpus_repair.py'
       - 'scripts/verify_corpus_run.py'
       - 'scripts/test_*.py'
       - 'tools/corpus_oracle.py'
