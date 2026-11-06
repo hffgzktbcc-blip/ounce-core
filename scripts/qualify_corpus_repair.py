@@ -20,6 +20,8 @@ EVIDENCE_TOOLS = (
     "scripts/run_corpus_oracles.py",
     "scripts/verify_corpus_run.py",
     "src/loader/corpus_runner.rs",
+    "tests/corpus/manifest.json",
+    "tests/corpus/oracle-builds",
     "tools/corpus_oracle.py",
     "tools/ounce_verify.py",
 )
@@ -75,8 +77,12 @@ def evaluate(reference, candidate, program, expected):
         was_passing = clean_pass(before)
         if key in focused or was_passing:
             digest = before["source"]["binary_sha256"]
-            if not digest or digest != after["source"]["binary_sha256"]:
+            if key in focused and (not digest or digest != after["source"]["binary_sha256"]):
                 issues.append(f"{case}: candidate did not execute the same NRO bytes")
+            for field in ("repository", "commit", "source_tree_sha256"):
+                before_value = before["source"].get(field)
+                if not before_value or before_value != after["source"].get(field):
+                    issues.append(f"{case}: pinned source {field} changed or is missing")
             for field in ("limits", "input_script_sha256"):
                 if before["execution"].get(field) != after["execution"].get(field):
                     issues.append(f"{case}: execution {field} changed")
@@ -107,7 +113,7 @@ def qualify(reference_path, candidate_path, program, output):
         cwd=REPO, text=True, timeout=30,
     ).splitlines()
     for path in changed_tools:
-        issues.append(f"candidate changed evidence tooling: {path}")
+        issues.append(f"candidate changed evidence tooling or build inputs: {path}")
 
     output.mkdir(parents=True)
     result = {

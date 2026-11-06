@@ -110,10 +110,11 @@ python3 scripts/qualify_corpus_repair.py failing/canonical-report.json candidate
 ```
 
 The gate requires an observed target failure in the reference, a clean pass on both engines
-in the candidate, exact corpus coverage, and byte-identical registered oracle manifests. Evidence tooling must be unchanged.
-It compares the required expectations in the reports and checks that the target and all
-previously passing cases execute the same NRO bytes under the same limits and inputs, and
-pass in the candidate. The output
+in the candidate, exact corpus coverage, and byte-identical registered oracle manifests.
+Evidence tooling and build manifests must be unchanged. The gate compares the required
+expectations, pinned source identity, execution limits and input scripts. The target must
+execute identical NRO bytes. Previously passing cases must pass after rebuilding from the
+same source, which allows timestamp differences in packaged RomFS artifacts. The output
 retains both reports, both manifests, the diagnosis and replay instructions, and the gate
 decision. A rejected candidate exits with status 1 and still records its evidence.
 

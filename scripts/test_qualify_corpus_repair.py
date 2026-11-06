@@ -12,7 +12,10 @@ class RepairQualificationTests(unittest.TestCase):
             fail = program == "target"
             self.reference[program, engine] = {
                 "case_id": f"corpus/{program}/{engine}",
-                "source": {"binary_sha256": "a" * 64},
+                "source": {
+                    "binary_sha256": "a" * 64, "repository": "example",
+                    "commit": "b" * 40, "source_tree_sha256": "c" * 64,
+                },
                 "execution": {"host_status": "exited-101" if fail else "exited-zero"},
                 "oracles": [{"scope": "graphics", "name": "first-frame",
                              "required": True, "expected": "registered"}],
@@ -40,6 +43,13 @@ class RepairQualificationTests(unittest.TestCase):
         issues = self.issues()
         self.assertTrue(any("coverage differs" in issue for issue in issues))
         self.assertTrue(any("regressed" in issue for issue in issues))
+
+    def test_regression_inputs_require_the_same_source_but_can_be_rebuilt(self):
+        source = self.candidate["guard", "tier3"]["source"]
+        source["binary_sha256"] = "d" * 64
+        self.assertEqual(self.issues(), [])
+        source["source_tree_sha256"] = "e" * 64
+        self.assertTrue(any("pinned source source_tree_sha256" in issue for issue in self.issues()))
 
     def test_rejects_changed_oracles_and_nro_bytes(self):
         record = self.candidate["target", "tier3"]
