@@ -294,25 +294,26 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 
 *Garden principle: grow capability, measure the result, and keep the roots visible.*
 
-**Live workflow health** appears below; **corpus compatibility** is instead calculated from pre-registered oracle evidence. A green workflow badge does not, by itself, certify another passing program, an independent rerun, or general compatibility.
+<!-- BEGIN GENERATED ROADMAP: scripts/render_roadmap.py -->
+This section is rendered from [the milestone registry](docs/roadmap/milestones.json). Research stages require reviewed evidence; PR status is observational only. A green badge or merged PR is not proof of compatibility.
 
-| Live signal | Status | Meaning |
+| Live check | Current GitHub status | Evidence boundary |
 | :--- | :--- | :--- |
-| Cross-platform CI | [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) | Configured build and test gates, not outside-program compatibility |
-| External corpus | [![External corpus](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml?query=branch%3Amain) | Evidence pipeline health; inspect artifacts for individual verdicts |
-| Switch 2 research | [PR #172 and its checks](https://github.com/hffgzktbcc-blip/ounce-core/pull/172) | Experimental first-frame evidence; PR status and checks are live, not compatibility certification |
+| CI | [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) | Configured test jobs only |
+| External corpus | [![Corpus](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml?query=branch%3Amain) | Oracle pipeline health, not a new pass by itself |
 
-| Research track | Evidence on record | Next required proof |
-| :--- | :--- | :--- |
-| CPU and code-cache correctness | [Implemented CPU paths and regression gates](#the-architecture-at-a-glance) | Expand outside instruction coverage; preserve interpreter/Tier-3 parity |
-| Original Switch homebrew | **<!-- corpus-headline -->45/50<!-- /corpus-headline --> registered first-frame passes** from the [canonical corpus report](docs/verify/README.md) | Diagnose remaining failures; independent reproduction, immutable inputs and retained oracle artifacts |
-| Ounce-Verify | [V6 evidence milestone merged (#171)](https://github.com/hffgzktbcc-blip/ounce-core/pull/171), building on [#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96) | Preserve evidence integrity, regression comparison, resumable runs and third-party reproducibility |
-| Switch 2 outside homebrew | [Experimental Hello CPU oracle PR #172](https://github.com/hffgzktbcc-blip/ounce-core/pull/172) | Unchanged licensed source, pre-registered pixels, matching interpreter/Tier-3 full frames, green external CI and independent rerun |
-| Mac launcher | [Local Mac launcher](#native-mac-launcher-local-preview) | Improve usability and recovery without confusing launching with compatibility |
+| Research track | Reviewed stage | Supporting evidence | Next proof gate |
+| :--- | :--- | :--- | :--- |
+| CPU and code-cache correctness | implemented-subset | [Implemented CPU paths and regression gates](#the-architecture-at-a-glance) | Expand outside instruction coverage; preserve interpreter/Tier-3 parity |
+| Original Switch homebrew | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->45/50<!-- /corpus-headline --> passes** (CI-certified) | Diagnose remaining failures; independently reproduce against unchanged inputs and retained oracle artifacts |
+| Ounce-Verify | v6-merged | [V6 evidence milestone #171](https://github.com/hffgzktbcc-blip/ounce-core/pull/171) | Preserve integrity, regression comparison, resumability and independent reruns |
+| Switch 2 outside homebrew | experimental | [Hello CPU first-frame research #172](https://github.com/hffgzktbcc-blip/ounce-core/pull/172) (PR #172: open, observational) | Unchanged external program, pre-registered oracle, matching Interpreter/Tier-3 frame, green external CI and independent rerun |
+| Mac launcher | local-preview | [Native Mac launcher instructions](#native-mac-launcher-local-preview) | Improve usability and crash recovery; do not equate GUI operation with guest compatibility |
 
-**Always-current navigation:** [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls?q=is%3Apr+is%3Aopen) · [open issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen) · [Actions](https://github.com/hffgzktbcc-blip/ounce-core/actions) · [evidence methodology](docs/verify/README.md) · [PLAN.md](PLAN.md).
+**Live navigation:** [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls?q=is%3Apr+is%3Aopen) · [open issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen) · [Actions](https://github.com/hffgzktbcc-blip/ounce-core/actions) · [verification method](docs/verify/README.md) · [PLAN.md](PLAN.md).
 
-No general homebrew, retail-game or Switch 2 compatibility claim is implied. Workflow badges, pull-request checks and activity links update from GitHub automatically; narrative milestones still require evidence-based review. The count remains guarded by the [CI README headline check](scripts/corpus_verify.py).
+No general homebrew, commercial-game or Switch 2 compatibility claim is implied. The corpus count is independently guarded by [the canonical headline checker](scripts/corpus_verify.py).
+<!-- END GENERATED ROADMAP -->
 
 ---
 
