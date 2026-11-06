@@ -36,6 +36,17 @@ of any solver. A repair never changes an oracle, drops a failing case, or weaken
       *Done when:* CI demonstrates retained coverage and actionable regression evidence at scale.
       *Proof:* [Warm-cache CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42193209243/attempts/2) reused verified builds; [resume](https://github.com/hffgzktbcc-blip/ounce-core/pull/168) retained completed oracle work; [bisection](https://github.com/hffgzktbcc-blip/ounce-core/pull/169) isolated a real SDL2 first-frame transition; [comparison CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42196871177) passed with all 100 engine records across 50 homebrews, zero regressions, and a passing native corpus job. [Nightly workflow](https://github.com/hffgzktbcc-blip/ounce-core/pull/170) merged.
 
+## Owner-directed deterministic execution follow-up (2026-11-06)
+The owner requested continued evolution using real implementation and execution,
+without model dependencies. This follow-up hardens the existing corpus runner:
+malformed per-case JSON must preserve raw evidence, fail the invocation, and allow
+remaining cases in every shard to finish and enter the aggregate report.
+Checkpoint: implemented and checked with real host subprocess fault injection;
+original code fails the new checks, updated code passes. These are runner recovery
+checks, not guest compatibility evidence. No expected frame or headline changes.
+Next: full repository gate and outside-corpus CI before shipping. This environment
+has a partial connector snapshot and no Cargo; gate checkpoint/ship is unavailable.
+
 ## Owner-directed usability task (2026-11-05)
 The owner requested the next practical step after the audit: a native Mac launcher.
 Package the existing runtime, expose homebrew opening, session stop, SD folder and logs,
