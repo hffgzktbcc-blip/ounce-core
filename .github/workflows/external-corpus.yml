@@ -532,3 +532,54 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+
+  guest-host-gpu:
+    name: Guest SASS host execution (${{ matrix.os }})
+    needs: startup-probe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      CARGO_TERM_COLOR: never
+      OUNCE_GPU_BACKEND: host
+      # Linux validates the API through lavapipe; Mac qualification requires a physical GPU.
+      OUNCE_GPU_REQUIRE_HARDWARE: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: guest-host-gpu
+      - name: Install Linux graphics dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1
+      - uses: actions/download-artifact@v4
+        with:
+          name: oracle-nros
+          path: ${{ runner.temp }}/guest-gpu-nros
+      - name: Check guest-surface writeback and unchanged outside oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          export OUNCE_DEKO_BASIC_NRO="$RUNNER_TEMP/guest-gpu-nros/deko_basic.nro"
+          cargo test --release --locked --features gpu-present \
+            host_sass_draw_writes_original_guest_surface -- --ignored --nocapture 2>&1 \
+            | tee "$RUNNER_TEMP/guest-gpu-unit.log"
+          cargo test --release --locked --features gpu-present \
+            guest_gpu_deko_existing_oracle -- --ignored --nocapture 2>&1 \
+            | tee "$RUNNER_TEMP/guest-gpu-oracle.log"
+      - name: Retain host-execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guest-host-gpu-${{ matrix.os }}
+          path: ${{ runner.temp }}/guest-gpu-*.log
+          if-no-files-found: warn
+          retention-days: 14

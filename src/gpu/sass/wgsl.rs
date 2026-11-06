@@ -147,7 +147,7 @@ impl Ctx<'_> {
         match op {
             Op::Const(bits) => format!("{bits:#010x}u"),
             Op::Cbuf { bank, offset } => format!("cb{bank}[{}u][{}u]", offset / 16, (offset / 4) % 4),
-            Op::CbufIndexed { .. } => unreachable!("dynamic constant buffers are rejected before emission"),
+            Op::CbufIndexed { bank, offset, reg } => format!("cb{bank}_load(({} + {offset}u) & 65535u)", self.as_u32(reg)),
             Op::Attr { addr } => match attr_slot(addr) {
                 Some(AttrSlot::Generic { loc, comp }) => format!("vin.a{loc}.{}", COMP[comp as usize]),
                 None if addr == 0x2f8 => "bitcast<f32>(vin.instance_index)".into(),
@@ -276,13 +276,22 @@ fn pixel_interp(sph: &Sph, loc: u32) -> Result<Interpolation, XlateError> {
 
 fn interp_attr(i: Interpolation) -> &'static str {
     match i {
-        Interpolation::Perspective => "@interpolate(perspective)",
-        Interpolation::Linear => "@interpolate(linear)",
+        Interpolation::Perspective => "@interpolate(perspective, center)",
+        Interpolation::Linear => "@interpolate(linear, center)",
         Interpolation::Flat => "@interpolate(flat)",
     }
 }
 
 pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateError> {
+    emit_with_cbuf_sizes(f, sph, &[])
+}
+
+/// Explicit guest binding sizes allow bounded indexed constant-buffer access.
+/// The size is in bytes, a multiple of 16, at most the 64 KiB addressable bank.
+/// Callers must bind that many actual guest bytes; the contract supplies no data.
+pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
+    -> Result<(String, ShaderInterface), XlateError> {
+    let mut indexed_banks = std::collections::BTreeSet::new();
     let group = match f.stage {
         ShaderStage::Vertex => 0,
         ShaderStage::Fragment => 1,
@@ -306,9 +315,16 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
                 let e = cbufs.entry(bank).or_insert(0);
                 *e = (*e).max(offset as u32 / 16 + 1);
             }
-            Op::CbufIndexed { .. } => return Err(XlateError::Unsupported {
-                at: 0, what: "dynamic constant buffer requires an explicit binding-size contract",
-            }),
+            Op::CbufIndexed { bank, .. } => {
+                let size = sizes.iter().find(|(b, _)| *b == bank).map(|(_, n)| *n)
+                    .ok_or(XlateError::Unsupported { at: 0,
+                        what: "dynamic constant buffer requires an explicit binding-size contract" })?;
+                if size == 0 || size > 65536 || size % 16 != 0 {
+                    return Err(XlateError::Unsupported { at: 0, what: "invalid constant buffer binding-size contract" });
+                }
+                cbufs.entry(bank).and_modify(|n| *n = (*n).max(size / 16)).or_insert(size / 16);
+                indexed_banks.insert(bank);
+            },
             Op::Attr { addr } | Op::Interp { addr, .. } => {
                 if let Some(AttrSlot::Generic { loc, .. }) = attr_slot(addr) {
                     inputs.insert(loc, ());
@@ -342,6 +358,17 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
     for (&bank, &len) in &cbufs {
         writeln!(out, "@group({group}) @binding({bank}) var<uniform> cb{bank}: array<vec4<u32>, {len}>;").unwrap();
         iface.constant_buffers.push(ConstantBuffer { group, binding: bank as u32, size_bytes: len * 16 });
+    }
+    for bank in indexed_banks {
+        let size = cbufs[&bank] * 16;
+        writeln!(out, "fn cb{bank}_load(off: u32) -> u32 {{").unwrap();
+        writeln!(out, "    if (off > {}u) {{ return 0u; }}", size - 4).unwrap();
+        writeln!(out, "    let i = off / 4u;").unwrap();
+        writeln!(out, "    let shift = (off % 4u) * 8u;").unwrap();
+        writeln!(out, "    let lo = cb{bank}[i / 4u][i % 4u] >> shift;").unwrap();
+        writeln!(out, "    if (shift == 0u) {{ return lo; }}").unwrap();
+        writeln!(out, "    let j = i + 1u;").unwrap();
+        writeln!(out, "    return lo | (cb{bank}[j / 4u][j % 4u] << (32u - shift));\n}}\n").unwrap();
     }
     for (k, (&handle, &sampled)) in textures.iter().enumerate() {
         let binding = 32 + 2 * k as u32;

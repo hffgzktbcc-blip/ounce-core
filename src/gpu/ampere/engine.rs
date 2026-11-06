@@ -388,6 +388,9 @@ pub struct Ampere3d {
     /// `[group][slot]`, set by `BIND_GROUP_CONSTANT_BUFFER`.
     pub(super) cbufs: [[Option<ConstantBufferBinding>; m::CONSTANT_BUFFER_SLOTS]; m::BIND_GROUP_COUNT],
     pub(super) stats: RenderStats,
+    /// Opt-in guest shader execution; unsupported draws never fall back silently.
+    #[cfg(feature = "gpu-present")]
+    pub(super) host_gpu: bool,
     reference: u32,
     /// MAXWELL_B macro RAM.
     mme: Mme,
@@ -431,6 +434,8 @@ impl Ampere3d {
             shadow: vec![0; (m::METHOD_SPACE / 4) as usize],
             cbufs: [[None; m::CONSTANT_BUFFER_SLOTS]; m::BIND_GROUP_COUNT],
             stats: RenderStats::default(),
+            #[cfg(feature = "gpu-present")]
+            host_gpu: std::env::var("OUNCE_GPU_BACKEND").is_ok_and(|v| v == "host"),
             reference: 0,
             mme: Mme::default(),
             macro_call: None,
@@ -441,6 +446,9 @@ impl Ampere3d {
     pub fn render_stats(&self) -> RenderStats {
         self.stats
     }
+
+    #[cfg(feature = "gpu-present")]
+    pub fn set_host_gpu(&mut self, enabled: bool) { self.host_gpu = enabled; }
 
     /// The semaphore the channel waits on, if a host or 3D acquire is not met yet.
     pub fn blocked_on(&self) -> Option<SemaphoreWait> {

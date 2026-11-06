@@ -1078,3 +1078,60 @@ fn corpus_first_frame_oracle() {
     }
     assert!(failures.is_empty(), "oracle {id} failed: {failures:#?}");
 }
+
+/// Host-execution qualification reuses the owner's unchanged deko-basic expectations.
+/// Set OUNCE_GPU_REQUIRE_HARDWARE=1 to require physical hardware as well as readbacks.
+#[cfg(feature = "gpu-present")]
+#[test]
+#[ignore = "requires pinned outside deko_basic NRO and OUNCE_GPU_BACKEND=host"]
+fn guest_gpu_deko_existing_oracle() {
+    assert_eq!(std::env::var("OUNCE_GPU_BACKEND").as_deref(), Ok("host"));
+    let path = std::env::var_os("OUNCE_DEKO_BASIC_NRO").expect("OUNCE_DEKO_BASIC_NRO is unset");
+    let bytes = std::fs::read(&path).unwrap();
+    use sha2::Digest;
+    println!("guest GPU NRO SHA-256: {:x}", sha2::Sha256::digest(&bytes));
+    let oracles: serde_json::Value = serde_json::from_str(include_str!("../../tests/corpus/oracles.json")).unwrap();
+    let oracle = oracles["oracles"].as_array().unwrap().iter().find(|o| o["id"] == "deko-basic").unwrap();
+    validate_frame_oracle(oracle).unwrap();
+    let frames = oracle["queued_frames"].as_u64().unwrap();
+    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(300),
+        frames: usize::MAX, queued_frames: frames, ..Limits::default() };
+    let mut failures = Vec::new();
+    // Qualification always covers the exact required engine set, regardless of OUNCE_CPU.
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let (result,kernel) = run_nro_state(&bytes,&Path::new(&path).to_string_lossy(),&[],engine,&limits,&[]);
+        if result.actual_engine != engine { failures.push(format!("{engine:?}: actual engine {:?}",result.actual_engine)); }
+        let stats: Vec<_> = kernel.ipc.nvdrv.engines.values().map(|g| g.render_stats()).collect();
+        let host_draws: u64 = stats.iter().map(|s| s.host_draws as u64).sum();
+        let hardware_draws: u64 = stats.iter().map(|s| s.hardware_draws as u64).sum();
+        let readback_bytes: u64 = stats.iter().map(|s| s.host_readback_bytes).sum();
+        println!("{engine:?}: stop={:?} queued={} host_draws={host_draws} hardware_draws={hardware_draws} readback_bytes={readback_bytes}",result.stop,result.queued.len());
+        if !matches!(result.stop, Stop::FrameLimit) || result.queued.len() as u64 != frames {
+            failures.push(format!("{engine:?}: incomplete guest execution: {:?}",result.stop));
+        }
+        if host_draws < frames || readback_bytes < frames*1280*720*4 {
+            failures.push(format!("{engine:?}: missing completed host draws/readbacks"));
+        }
+        if std::env::var("OUNCE_GPU_REQUIRE_HARDWARE").as_deref() == Ok("1") && hardware_draws < frames {
+            failures.push(format!("{engine:?}: physical GPU coverage incomplete"));
+        }
+        if !kernel.ipc.nvdrv.gpu_diagnostics.is_empty() {
+            failures.push(format!("{engine:?}: GPU diagnostics: {:?}",kernel.ipc.nvdrv.gpu_diagnostics));
+        }
+        for check in oracle["checks"].as_array().unwrap() {
+            for index in check["frames"].as_array().unwrap() {
+                let index=index.as_u64().unwrap();
+                let Some(frame)=result.queued.iter().find(|f| f.index == index) else { continue };
+                let expected=&check["expect"];
+                let hash=format!("{:#018x}",frame.rgba_fnv1a64);
+                println!("{engine:?}: frame {index} hash={hash}");
+                if frame.error.is_some() || frame.width as u64 != expected["width"].as_u64().unwrap()
+                    || frame.height as u64 != expected["height"].as_u64().unwrap()
+                    || hash != expected["rgba_fnv1a64"].as_str().unwrap() {
+                    failures.push(format!("{engine:?}: frame {index}: hash {hash}, expected {}",expected["rgba_fnv1a64"]));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "host GPU qualification failed (oracle unchanged): {failures:#?}");
+}
