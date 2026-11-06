@@ -99,9 +99,8 @@ pub(super) fn first_frame(
             }
             Some(slot @ (1 | 2)) if drawing => {
                 let (x, y, w, h, radius) = (scalar(0), scalar(1), scalar(2), scalar(3), scalar(4));
-                if ![x, y, w, h, radius, scalar(5)]
-                    .iter()
-                    .all(|v| v.is_finite())
+                if ![x, y, w, h, radius].iter().all(|v| v.is_finite())
+                    || (slot == 2 && !scalar(5).is_finite())
                 {
                     return Err("HBX rectangle has non-finite coordinates".into());
                 }
@@ -215,13 +214,16 @@ fn outside_hello_cpu_first_frame() -> Result<(), Box<dyn std::error::Error>> {
                 }).collect();
                 let pass = Some(frame.width as u64) == oracle["width"].as_u64()
                     && Some(frame.height as u64) == oracle["height"].as_u64()
-                    && !pixels.is_empty() && pixels.iter().all(|p| p["pass"] == true);
+                    && !pixels.is_empty()
+                    && pixels.iter().all(|p| p["pass"] == true);
                 runs.push(serde_json::json!({"engine": engine, "pass": pass,
                     "width": frame.width, "height": frame.height,
                     "rgba_fnv1a64": format!("{:#018x}", frame.content_hash()), "pixels": pixels}));
                 frames.push(frame);
             }
-            Err(error) => runs.push(serde_json::json!({"engine": engine, "pass": false, "error": error.to_string()})),
+            Err(error) => runs.push(
+                serde_json::json!({"engine": engine, "pass": false, "error": error.to_string()}),
+            ),
         }
     }
     let agreement = frames.len() == 2 && frames[0] == frames[1];
@@ -240,6 +242,9 @@ fn outside_hello_cpu_first_frame() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(path) = std::env::var_os("OUNCE_HBX_RESULT") {
         fs::write(path, serde_json::to_string_pretty(&evidence)? + "\n")?;
     }
-    assert!(pass, "HBLauncher first-frame oracle failed; see structured observations");
+    assert!(
+        pass,
+        "HBLauncher first-frame oracle failed; see structured observations"
+    );
     Ok(())
 }
