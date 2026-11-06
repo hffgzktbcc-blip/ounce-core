@@ -28,7 +28,7 @@ ounce-nce = { path = "crates/ounce-nce", optional = true }
 ounce-recompiler = { path = "crates/ounce-recompiler", optional = true }
 pollster = { version = "0.4", optional = true }
 serde_json = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 thiserror = "2.0.21"
 wgpu = { version = "30.0.1", optional = true }
 winit = { version = "0.30", optional = true }
