@@ -138,3 +138,7 @@ A hit checks all NRO hashes against their build inventories before restoring the
 The runner still executes every oracle and verifies the artifacts in the report.
 A bad entry is recorded as rejected and the runner builds from source. Cache entries
 contain the registered NROs, build inventories, and toolchain package list.
+
+Canonical CI persists this cache across runs and pins the devkitA64 image to a registry
+digest. Updating that digest or the build inputs changes the CI cache key. The run
+manifest reports whether the runner accepted, rejected, or missed the restored snapshot.

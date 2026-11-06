@@ -332,11 +332,21 @@ jobs:
           OUNCE_VERIFY_DOCKER_RECOVERY_TEST: '1'
         run: PYTHONPATH=scripts python3 -m unittest test_verify_corpus_run.PullRecoveryTests.test_real_registry_connection_recovers
 
+      - name: Cache registered homebrew builds
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ounce-verify-build-cache
+          key: ounce-nros-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/external-corpus.yml', 'scripts/verify_corpus_run.py', 'scripts/corpus_build_cache.py', 'scripts/prepare_external_corpus.py', 'tests/corpus/manifest.json', 'tests/corpus/oracles.json', 'tests/corpus/oracle-builds/*.json') }}
+
       - name: Build, run and verify the registered corpus
         id: corpus
+        env:
+          DEVKITA64_IMAGE: devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282
         run: |
           python3 -m unittest tests/test_ounce_verify.py
-          python3 scripts/verify_corpus_run.py --output "$RUNNER_TEMP/ounce-verify" --shards 2 --check-readme
+          python3 scripts/verify_corpus_run.py --output "$RUNNER_TEMP/ounce-verify" \
+            --image "$DEVKITA64_IMAGE" --build-cache "$RUNNER_TEMP/ounce-verify-build-cache" \
+            --shards 2 --check-readme
 
       # Hand the corpus NROs to the native-execution job (Apple Silicon has no devkitA64 docker).
       # Permissive builds (public domain, MIT, ISC, zlib), kept one day for that job only.
