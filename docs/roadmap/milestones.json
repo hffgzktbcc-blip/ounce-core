@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "principle": "Garden principle: grow capability, measure the result, and keep the roots visible.",
+  "tracks": [
+    {
+      "id": "cpu",
+      "name": "CPU and code-cache correctness",
+      "stage": "implemented-subset",
+      "evidence": "Implemented CPU paths and regression gates",
+      "evidence_url": "#the-architecture-at-a-glance",
+      "next": "Expand outside instruction coverage; preserve interpreter/Tier-3 parity"
+    },
+    {
+      "id": "original-switch",
+      "name": "Original Switch homebrew",
+      "stage": "measured",
+      "evidence": "Canonical first-frame oracle corpus",
+      "evidence_url": "docs/verify/README.md",
+      "next": "Diagnose remaining failures; independently reproduce against unchanged inputs and retained oracle artifacts",
+      "corpus_headline": true
+    },
+    {
+      "id": "ounce-verify",
+      "name": "Ounce-Verify",
+      "stage": "v6-merged",
+      "evidence": "V6 evidence milestone #171",
+      "evidence_url": "https://github.com/hffgzktbcc-blip/ounce-core/pull/171",
+      "next": "Preserve integrity, regression comparison, resumability and independent reruns"
+    },
+    {
+      "id": "switch2",
+      "name": "Switch 2 outside homebrew",
+      "stage": "experimental",
+      "evidence": "Hello CPU first-frame research #172",
+      "evidence_url": "https://github.com/hffgzktbcc-blip/ounce-core/pull/172",
+      "next": "Unchanged external program, pre-registered oracle, matching Interpreter/Tier-3 frame, green external CI and independent rerun",
+      "pr": 172,
+      "pr_status": "open"
+    },
+    {
+      "id": "mac",
+      "name": "Mac launcher",
+      "stage": "local-preview",
+      "evidence": "Native Mac launcher instructions",
+      "evidence_url": "#native-mac-launcher-local-preview",
+      "next": "Improve usability and crash recovery; do not equate GUI operation with guest compatibility"
+    }
+  ]
+}

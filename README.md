@@ -26,7 +26,7 @@ Every program is a conversation between instructions, memory, operating-system s
 
 It brings together interpreters, tiered AArch64 execution, Horizon-style service models, software graphics and optional `wgpu` presentation. The root crate forbids unsafe Rust; the optional Tier-4 recompiler owns a separate unsafe boundary for native code generation and executable memory. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
 
-> **Headline metric: [<!-- corpus-headline -->45/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
+> **Headline metric: [<!-- corpus-headline -->45/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The certified headline covers original Switch homebrew only. A separate, experimental Switch 2 outside-program first-frame check is being developed in [PR #172](https://github.com/hffgzktbcc-blip/ounce-core/pull/172); it does not yet establish Switch 2 compatibility or commercial software support.
 
 <table>
 <tr>
@@ -118,9 +118,9 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ## What is proven
 
-**<!-- corpus-headline -->45/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Interpreter and Tier-3 both pass the registered pixel checks. The oracle manifest distinguishes whole-frame hashes from named pixel probes ([method](docs/corpus-oracles.md)). The count is derived from the [Ounce-Verify](docs/verify/README.md) canonical report of the [CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173) (`ounce-verify-canonical-report` artifact); CI fails if this text disagrees with the report. Failures are the to-do list.
+**<!-- corpus-headline -->45/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Interpreter and Tier-3 both pass the registered pixel checks. The oracle manifest distinguishes whole-frame hashes from named pixel probes ([method](docs/corpus-oracles.md)). The count comes from the [Ounce-Verify](docs/verify/README.md) canonical report, with [current external-corpus runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml) containing the underlying artifacts; CI fails if this README disagrees with the report. Failures are the to-do list.
 
-| Program | Source | Oracle | Result (both engines) |
+| Selected program | Source | Oracle | Result (both engines) |
 | :--- | :--- | :--- | :--- |
 | `printing-hello-world` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `vt52-demo` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
@@ -143,7 +143,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | `startup` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `romfs` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 
-Every oracle run is in the [External corpus workflow](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml). Reproduction guides: [simplegfx](docs/REPRODUCE_SIMPLEGFX.md), [deko_basic](docs/REPRODUCE_DEKO_BASIC.md), [romfs](docs/REPRODUCE_ROMFS.md).
+The table shows selected examples, not the entire registered corpus. Every oracle run is in the [External corpus workflow](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml). Reproduction guides: [simplegfx](docs/REPRODUCE_SIMPLEGFX.md), [deko_basic](docs/REPRODUCE_DEKO_BASIC.md), [romfs](docs/REPRODUCE_ROMFS.md).
 
 **Tested, not proven:** the 25-stage harness, the unit tests and the 9 cross-platform [CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml) jobs run programs and inputs written for this repository. They guard the code against regressions. They do not show that any outside program works.
 
@@ -201,14 +201,14 @@ Three rules make the [headline number](#what-is-proven) hard to fake. Each links
 
 **2. Check the registered pixels.** Full-frame oracles compare an RGBA8 FNV-1a 64 hash. Probe oracles compare named pixels when only parts of a frame are predictable from source. A fault, unhandled SVC, timeout or early exit fails the oracle even if a frame was queued.
 
-**3. Two engines must agree bit for bit.** Every oracle runs twice: on the reference interpreter and on the Tier-3 JIT (`Tier3JitEngine`, which fuses hot decoded blocks into traces in safe Rust; it does not emit native code). A program counts only if both engines match the oracle *and* their queued frames are identical; otherwise the runner records "interpreter and Tier-3 frames differ". The 20-program count uses these two engines only. Native execution (`--cpu=native`, PLAN step 4) runs the four original oracles in its own `native-oracles` job on Apple Silicon, and the optional Tier-4 recompiler is not in the oracle run; neither is part of the count.
+**3. Two engines must agree bit for bit.** Every oracle runs twice: on the reference interpreter and on the Tier-3 JIT (`Tier3JitEngine`, which fuses hot decoded blocks into traces in safe Rust; it does not emit native code). A program counts only if both engines match the oracle *and* their queued frames are identical; otherwise the runner records "interpreter and Tier-3 frames differ". The canonical corpus headline counts qualifying outside programs using these two engines only. Native execution and the optional Tier-4 recompiler are evaluated separately; neither contributes to this interpreter/Tier-3 headline count.
 
-**Where the number comes from.** CI writes one [`ounce-verify/v0`](docs/verify/README.md) record per program and engine, builds a canonical report from them, and derives the count from it ([`scripts/corpus_verify.py`](scripts/corpus_verify.py)). The README headline and the oracle badge are never edited by hand: CI fails if either disagrees with the report. Latest corpus run: [first-frame-oracles job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173) (`ounce-verify-canonical-report` artifact, 100 records, <!-- corpus-headline -->45/50<!-- /corpus-headline -->).
+**Where the number comes from.** CI writes one [`ounce-verify/v0`](docs/verify/README.md) record per program and engine, builds a canonical report from them, and derives the count from it ([`scripts/corpus_verify.py`](scripts/corpus_verify.py)). The README headline and the oracle badge are never edited by hand: CI fails if either disagrees with the report. Canonical corpus evidence: [Ounce-Verify reporting](docs/verify/README.md) and [current external-corpus runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml). The CI-controlled headline is <!-- corpus-headline -->45/50<!-- /corpus-headline -->; inspect the matching run artifact for underlying records.
 
 | Evidence | Status | Source |
 | :--- | :--- | :--- |
-| First-frame oracles (interpreter and Tier-3) | **<!-- corpus-headline -->45/50<!-- /corpus-headline --> pass** | [canonical report run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173) · [oracles.json](tests/corpus/oracles.json) · [method](docs/corpus-oracles.md) |
-| CI on Linux, macOS and Windows | [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) | Each OS runs the unit tests, the 25-stage harness, `gpu-present` and Tier-4 jobs (native execution runs on AArch64 macOS and Linux); last checked green on main: [run 41793834662](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662) ([ubuntu](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662/job/126453153960), [macOS](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662/job/126453153666), [Windows](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662/job/126453154038)) |
+| First-frame oracles (interpreter and Tier-3) | **<!-- corpus-headline -->45/50<!-- /corpus-headline --> pass** | [current external-corpus runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml) · [oracles.json](tests/corpus/oracles.json) · [method](docs/corpus-oracles.md) |
+| CI on Linux, macOS and Windows | [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) | Each OS runs the unit tests, the 25-stage harness, `gpu-present` and Tier-4 jobs (native execution runs on AArch64 macOS and Linux); see [current main-branch CI runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) for up-to-date results across the matrix |
 | Safe Rust in `src` | `#![forbid(unsafe_code)]` | [`src/main.rs`](src/main.rs), enforced by the compiler on every CI build |
 
 The oracles run on Linux only (the corpus is built in the devkitA64 Docker image). The three-OS CI jobs run tests written for this repository; they guard the code but are not proof that outside programs work.
@@ -294,15 +294,26 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 
 *Garden principle: grow capability, measure the result, and keep the roots visible.*
 
-| Milestone | State | Proof required |
-| :--- | :--- | :--- |
-| CPU code-cache invalidation | **Complete for its stated regression gate** | Synthetic write/remap tests and gated CI |
-| Independent original-Switch homebrew | **In progress** | Reproducible independent inputs, guest outcomes, external reproduction and real output oracles |
-| Ounce-Verify evidence layer | **Implemented on `main`** | Deterministic evidence validation and negative tests; see [#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96) |
-| Switch 2 homebrew | **Waiting on public toolchains** | An outside Switch 2 homebrew program passing a pre-registered oracle in CI |
-| Corpus 4 → 20 outside programs | **Next** | A pre-registered oracle per program in CI, pass or fail recorded honestly |
+<!-- BEGIN GENERATED ROADMAP: scripts/render_roadmap.py -->
+This section is rendered from [the milestone registry](docs/roadmap/milestones.json). Research stages require reviewed evidence; PR status is observational only. A green badge or merged PR is not proof of compatibility.
 
-The project makes **no claim** to run Switch 2 software, commercial software or arbitrary homebrew. The plan is [PLAN.md](PLAN.md). See [independent corpus methodology](docs/independent-corpus.md), the [Ounce-Verify implementation](https://github.com/hffgzktbcc-blip/ounce-core/pull/96), and [the unmerged raw-frame evidence work](https://github.com/hffgzktbcc-blip/ounce-core/pull/103).
+| Live check | Current GitHub status | Evidence boundary |
+| :--- | :--- | :--- |
+| CI | [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) | Configured test jobs only |
+| External corpus | [![Corpus](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml?query=branch%3Amain) | Oracle pipeline health, not a new pass by itself |
+
+| Research track | Reviewed stage | Supporting evidence | Next proof gate |
+| :--- | :--- | :--- | :--- |
+| CPU and code-cache correctness | implemented-subset | [Implemented CPU paths and regression gates](#the-architecture-at-a-glance) | Expand outside instruction coverage; preserve interpreter/Tier-3 parity |
+| Original Switch homebrew | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->45/50<!-- /corpus-headline --> passes** (CI-certified) | Diagnose remaining failures; independently reproduce against unchanged inputs and retained oracle artifacts |
+| Ounce-Verify | v6-merged | [V6 evidence milestone #171](https://github.com/hffgzktbcc-blip/ounce-core/pull/171) | Preserve integrity, regression comparison, resumability and independent reruns |
+| Switch 2 outside homebrew | experimental | [Hello CPU first-frame research #172](https://github.com/hffgzktbcc-blip/ounce-core/pull/172) (PR #172: open, observational) | Unchanged external program, pre-registered oracle, matching Interpreter/Tier-3 frame, green external CI and independent rerun |
+| Mac launcher | local-preview | [Native Mac launcher instructions](#native-mac-launcher-local-preview) | Improve usability and crash recovery; do not equate GUI operation with guest compatibility |
+
+**Live navigation:** [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls?q=is%3Apr+is%3Aopen) · [open issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen) · [Actions](https://github.com/hffgzktbcc-blip/ounce-core/actions) · [verification method](docs/verify/README.md) · [PLAN.md](PLAN.md).
+
+No general homebrew, commercial-game or Switch 2 compatibility claim is implied. The corpus count is independently guarded by [the canonical headline checker](scripts/corpus_verify.py).
+<!-- END GENERATED ROADMAP -->
 
 ---
 
