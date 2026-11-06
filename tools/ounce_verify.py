@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -54,6 +55,40 @@ def _oracle_verdict(oracles):
     return "not-assessed"
 
 
+def verify_artifacts(record, root):
+    """Verify local bytes without allowing paths outside the supplied artifact root."""
+    artifacts = record.get("artifacts", [])
+    if not isinstance(artifacts, list):
+        raise EvidenceError("artifacts must be an array")
+    binary_verified = False
+    seen = set()
+    root = root.resolve(strict=True)
+    for artifact in artifacts:
+        artifact = _object(artifact, "artifact")
+        path = _text(artifact.get("path"), "artifact.path")
+        relative = Path(path)
+        if relative.is_absolute() or ".." in relative.parts or path in seen:
+            raise EvidenceError("artifact paths must be unique relative paths without traversal")
+        seen.add(path)
+        _sha(artifact.get("sha256"), "artifact.sha256")
+        resolved = (root / relative).resolve(strict=True)
+        if not resolved.is_relative_to(root) or not resolved.is_file():
+            raise EvidenceError("artifact must be a file within the artifact root")
+        digest = hashlib.sha256()
+        with resolved.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        if digest.hexdigest() != artifact["sha256"]:
+            raise EvidenceError(f"artifact hash mismatch: {path}")
+        if artifact.get("role") == "binary":
+            if artifact["sha256"] != record["source"]["binary_sha256"]:
+                raise EvidenceError("binary artifact hash differs from source.binary_sha256")
+            binary_verified = True
+    if record["verdict"] == "pass" and not binary_verified:
+        raise EvidenceError("passing evidence requires a verified binary artifact")
+    return binary_verified
+
+
 def validate_record(record):
     """Return a normalized record or raise EvidenceError."""
     record = _object(record, "record")
@@ -87,7 +122,8 @@ def validate_record(record):
     for field in ("guest_pc", "guest_x0"):
         if not isinstance(execution.get(field), str) or not HEX64.fullmatch(execution[field]):
             raise EvidenceError(f"execution.{field} must be a 16-digit hexadecimal value")
-    if not isinstance(execution.get("guest_instructions"), int) or execution["guest_instructions"] < 0:
+    if (not isinstance(execution.get("guest_instructions"), int)
+            or isinstance(execution["guest_instructions"], bool) or execution["guest_instructions"] < 0):
         raise EvidenceError("execution.guest_instructions must be a non-negative integer")
     if not isinstance(execution.get("diagnostics_truncated"), bool):
         raise EvidenceError("execution.diagnostics_truncated must be boolean")
@@ -118,6 +154,8 @@ def validate_record(record):
         oracles.append(dict(oracle))
 
     computed = _oracle_verdict(oracles)
+    if execution.get("observation_missing") and computed == "pass":
+        raise EvidenceError("missing observations cannot pass")
     declared = record.get("verdict")
     if declared not in VERDICTS:
         raise EvidenceError("verdict is unknown")
@@ -130,6 +168,7 @@ def validate_record(record):
         raise EvidenceError("svc-break cannot become an application pass from host status or stop alone")
 
     normalized = json.loads(json.dumps(record))
+    normalized.pop("artifact_integrity", None)  # Never trust a caller-supplied integrity claim.
     normalized["verdict"] = computed
     normalized["reproducibility"] = (
         "content-addressed"
@@ -154,9 +193,15 @@ def validate_records(records):
     return sorted(normalized, key=lambda item: item["case_id"])
 
 
-def canonical_report(records):
+def canonical_report(records, artifact_root=None):
+    normalized = validate_records(records)
+    if artifact_root is not None:
+        for record in normalized:
+            record["artifact_integrity"] = (
+                "verified" if verify_artifacts(record, artifact_root) else "incomplete"
+            )
     return json.dumps(
-        {"schema_version": SCHEMA, "records": validate_records(records)},
+        {"schema_version": SCHEMA, "records": normalized},
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
@@ -167,11 +212,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence", type=Path, help="JSON evidence object or array")
     parser.add_argument("--output", type=Path, help="write canonical validation report")
+    parser.add_argument("--artifact-root", type=Path, help="verify referenced artifact bytes under this directory")
     args = parser.parse_args(argv)
     try:
         data = json.loads(args.evidence.read_text(encoding="utf-8"))
         records = data if isinstance(data, list) else [data]
-        output = canonical_report(records)
+        output = canonical_report(records, args.artifact_root)
         if args.output:
             args.output.write_text(output, encoding="utf-8")
         else:
@@ -184,3 +230,4 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
