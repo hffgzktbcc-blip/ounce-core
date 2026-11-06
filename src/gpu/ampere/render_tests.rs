@@ -334,7 +334,7 @@ fn triangle_draw_produces_raw_block_linear_surface() {
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     // 255 * 256 / 2: the hypotenuse is a right edge, so pixels centred on it stay out (top-left rule).
-    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, culled_triangles: 0, fragments: 32640, discarded_fragments: 0 });
+    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, culled_triangles: 0, fragments: 32640, discarded_fragments: 0, ..RenderStats::default() });
 
     let linear = rt_pixels(&mut mem);
     assert_eq!(px(&linear, 10, 10), [255, 0, 0, 255]);
@@ -1440,4 +1440,38 @@ fn pixel_depth_beyond_the_range_is_clipped_or_clamped() {
     assert_eq!((px(&color, 10, 10), z), ([0, 255, 0, 255], 1.0));
     let (color, z) = far_quad(3 << 16); // MINUS_INF_PLUS_INF: float depth keeps 2.0
     assert_eq!((px(&color, 10, 10), z), ([0, 255, 0, 255], 2.0));
+}
+
+/// Explicit adapter-required test: it never silently passes when no device is available.
+/// Unit evidence only; the outside deko3d oracle remains the compatibility gate.
+#[cfg(feature = "gpu-present")]
+#[test]
+#[ignore = "requires a working host graphics adapter"]
+fn host_sass_draw_writes_original_guest_surface() {
+    for pitch in [true, false] {
+        let mut mem = Mem::standard();
+        let mut pb = Vec::new();
+        setup(&mut pb, m::AMPERE_B, pitch);
+        clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+        geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.5, RED), vtx(1.0, -1.0, 0.5, RED), vtx(-1.0, 1.0, 0.5, RED)], &varying_pixel_shader());
+        draw(&mut pb, 0, 3, 4);
+        let mut gpu = Ampere3d::new();
+        gpu.set_host_gpu(true);
+        gpu.submit(&pb, &mut mem).unwrap();
+        assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+        assert_eq!(gpu.render_stats().host_draws, 1);
+        assert_eq!(gpu.render_stats().host_readback_bytes, RT_BYTES as u64);
+        let pixels = if pitch { mem.get(RT_VA, RT_BYTES) } else { rt_pixels(&mut mem) };
+        assert_eq!(px(&pixels, 10, 10), [255, 0, 0, 255]);
+        assert_eq!(px(&pixels, 250, 250), [0, 0, 0, 255]);
+
+        // Unsupported state must leave guest bytes intact and grant no completed draw.
+        let before = mem.get(RT_VA, RT_BYTES);
+        let mut unsupported = vec![inc_header(SC, m::SET_DEPTH_TEST, 1), 1];
+        draw(&mut unsupported, 0, 3, 4);
+        gpu.submit(&unsupported, &mut mem).unwrap();
+        assert_eq!(gpu.render_stats().host_draws, 1);
+        assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped { .. })));
+        assert_eq!(mem.get(RT_VA, RT_BYTES), before);
+    }
 }

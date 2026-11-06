@@ -291,3 +291,15 @@ passed decoder, bundle, signature and runtime smoke checks and retained macos-ap
 The [SDK byte-validation run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42238034210/attempts/2)
 passed after one retry of a timed-out package-mirror download. No checks or source were
 changed for that retry. Interactive Mac usability/accessibility acceptance is not claimed.
+
+## Owner-directed guest GPU execution (2026-11-06)
+- [ ] **14. Execute supported guest draws through a real host graphics API.** Wire the
+      Maxwell/Ampere SASS-to-WGSL translator into offscreen host draw submission and
+      read back into the original guest render target. Keep adapter identity, software
+      adapters, unsupported state and completed readbacks visible; never count replay
+      or a bookkeeping facade as hardware execution. Keep the CPU path available.
+      *Done when:* the unchanged outside deko3d workload passes its existing oracle
+      with recorded host submissions/readbacks on both CPU engines and a physical
+      GPU. Preserve expected frames and report any remaining failures honestly.
+      Checkpoint (2026-11-06 18:48Z, codex, 369d173): GREEN — tests: cargo test: 472 passed, 0 failed; suite: pass — Execute guest SASS through host API with verified render-target readbacks
+      Next: Qualify physical Metal GPU and full unchanged corpus in hosted CI

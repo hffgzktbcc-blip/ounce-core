@@ -12,8 +12,9 @@
 //! running the `gpu::sass` IR), texture headers and samplers decode from their pools ([`texture`]),
 //! and host semaphores can block the channel ([`engine`]).
 //!
-//! Not wired into a channel yet: the `nvgpu.rs` routing hook (Track B) calls [`Ampere3d::submit`]
-//! for subchannels bound to AMPERE_B or MAXWELL_B. Until then only the tests use it.
+//! `kernel::nvdrv` routes guest channel submissions into [`Ampere3d::submit`] for these classes.
+//! With `gpu-present` and `OUNCE_GPU_BACKEND=host`, supported guest shaders execute through
+//! wgpu and read back into guest render targets. Unsupported draws are diagnosed, not replayed.
 #![allow(dead_code)]
 
 mod blend;

@@ -40,6 +40,12 @@ const STACK_SIZE: usize = 0x100000; // 1 MB stack
 static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 
 fn main() {
+    if let Ok(backend) = std::env::var("OUNCE_GPU_BACKEND") {
+        if !matches!(backend.as_str(), "cpu" | "host") || (backend == "host" && !cfg!(feature = "gpu-present")) {
+            eprintln!("[guest-gpu] OUNCE_GPU_BACKEND expects cpu or host; host requires --features gpu-present");
+            std::process::exit(2);
+        }
+    }
     // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
@@ -1834,7 +1840,7 @@ fn run_built_in_demo() {
             pool_id, ubo.gpu_address, vbo.gpu_address
         );
 
-        // 3. Hardware Vulkan 1.3 / SPIR-V 1.5 Pipeline:
+        // 3. Legacy pipeline bookkeeping fixture (no device execution):
         let sass_ops = vec![
             SassOp::FMovImm { rd: 0, imm: 1.0 }.encode(),
             SassOp::FMovImm { rd: 1, imm: 0.5 }.encode(),
@@ -1847,7 +1853,7 @@ fn run_built_in_demo() {
         vulkan.draw_arrays(&mmu16, vbo.gpu_address, 3).unwrap();
         vulkan.present_frame();
         println!(
-            "  [Vulkan HAL] Loaded SPIR-V 1.5 ({} words) -> Pipeline PSOs: {} | Draws: {} | Presented: {}",
+            "  [Pipeline fixture; no GPU] Recorded SPIR-V header ({} words) -> Pipeline PSOs: {} | Draws: {} | Presented: {}",
             decompiled.spirv_words.len(),
             vulkan.pipelines_created,
             vulkan.draw_calls_submitted,
