@@ -15,9 +15,10 @@ of any solver. A repair never changes an oracle, drops a failing case, or weaken
       *Done when:* corruption and incomplete engine coverage cannot pass the integrity gate;
       existing corpus evidence still validates in CI with byte verification enabled.
       *Proof:* [PR #156](https://github.com/hffgzktbcc-blip/ounce-core/pull/156), [canonical corpus CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42161576657): all 40 interpreter and Tier-3 records passed pixel oracles with verified artifact bytes (20/20 programs).
-- [ ] **V2. Unified bounded execution.** Orchestrate existing build/run/verify tools with
+- [x] **V2. Unified bounded execution.** Orchestrate existing build/run/verify tools with
       explicit limits, versioned manifests, retained raw observations and replayable commands.
       *Done when:* the outside corpus runs through one entry point with traceable evidence.
+      *Proof:* [PR #157](https://github.com/hffgzktbcc-blip/ounce-core/pull/157), [canonical corpus CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42175855697): one bounded command produced a run manifest, 20 raw oracle observations and 40 byte-verified passing records (20/20 programs).
 - [ ] **V3. Diagnosis.** Compare runs, group failures, isolate first divergence and emit replay
       bundles with likely subsystem ownership; keep hypotheses separate from observations.
       *Done when:* a real outside-program failure has a reproducible, actionable diagnosis.

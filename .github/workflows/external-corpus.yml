@@ -12,6 +12,7 @@ on:
       - 'scripts/prepare_external_corpus.py'
       - 'scripts/run_corpus_oracles.py'
       - 'scripts/corpus_verify.py'
+      - 'scripts/verify_corpus_run.py'
       - 'scripts/test_*.py'
       - 'tools/corpus_oracle.py'
       - 'tools/ounce_verify.py'
@@ -323,43 +324,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev
 
-      - name: Build unchanged corpus programs with devkitA64
+      - name: Build, run and verify the registered corpus
         run: |
-          set -euo pipefail
-          ORACLE_BUILDS="$RUNNER_TEMP/ounce-oracle-builds" EVIDENCE_ROOT="$RUNNER_TEMP/ounce-oracle-evidence"
-          df -h "$RUNNER_TEMP"
-          mkdir -p "$ORACLE_BUILDS" "$EVIDENCE_ROOT"
-          docker pull devkitpro/devkita64:latest
-          image_id=$(docker image inspect devkitpro/devkita64:latest --format '{{.Id}}')
-          docker image inspect "$image_id" > "$EVIDENCE_ROOT/toolchain-image.json"
-          docker run --rm \
-            -v "$GITHUB_WORKSPACE:/repo:ro" \
-            -v "$ORACLE_BUILDS:/corpus" \
-            -v "$EVIDENCE_ROOT:/evidence" \
-            "$image_id" bash -lc '
-              set -uo pipefail
-              apt-get update && apt-get install -y python3 git make zip
-              dkp-pacman -Q > /evidence/toolchain-packages.txt
-              # The original 4 programs build from tests/corpus/manifest.json as "original".
-              for manifest in /repo/tests/corpus/manifest.json /repo/tests/corpus/oracle-builds/*.json; do
-                id=$(basename "$manifest" .json); [ "$id" = manifest ] && id=original
-                python3 /repo/scripts/prepare_external_corpus.py --manifest "$manifest" \
-                  --output "/corpus/$id/build" --build > "/evidence/$id.prepare.log" 2>&1 \
-                  || echo "build of $id failed (see $id.prepare.log)"
-                cp "/corpus/$id/build/inventory.json" "/evidence/$id.inventory.json" 2>/dev/null || true
-                for log in /corpus/$id/build/*.build.log; do [ -f "$log" ] && cp "$log" /evidence/; done
-              done
-            ' 2>&1 | tee "$EVIDENCE_ROOT/build.log"
-
-      - name: Prebuild oracle test
-        run: cargo test --release --locked corpus_first_frame_oracle --no-run --message-format=json > "$RUNNER_TEMP/ounce-oracle-test-build.jsonl"
+          python3 -m unittest tests/test_ounce_verify.py
+          python3 scripts/verify_corpus_run.py --output "$RUNNER_TEMP/ounce-verify" --check-readme
 
       # Hand the corpus NROs to the native-execution job (Apple Silicon has no devkitA64 docker).
       # Permissive builds (public domain, MIT, ISC, zlib), kept one day for that job only.
       - name: Pass corpus NROs to the native job
         run: |
           set -euo pipefail
-          python3 - "$RUNNER_TEMP/ounce-oracle-builds" "$RUNNER_TEMP/corpus-nros" <<'PY'
+          python3 - "$RUNNER_TEMP/ounce-verify/builds" "$RUNNER_TEMP/corpus-nros" <<'PY'
           import json, shutil, sys
           from pathlib import Path
           builds, out = Path(sys.argv[1]), Path(sys.argv[2])
@@ -376,40 +351,12 @@ jobs:
           path: ${{ runner.temp }}/corpus-nros/
           retention-days: 1
 
-      - name: Run first-frame oracles under interpreter and Tier-3
-        run: |
-          set -euo pipefail
-          executable=$(python3 -c '
-          import json, sys
-          paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
-                   if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
-                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
-          assert len(paths) == 1, paths
-          print(paths.pop())' "$RUNNER_TEMP/ounce-oracle-test-build.jsonl")
-          python3 scripts/run_corpus_oracles.py --executable "$executable" \
-            --builds "$RUNNER_TEMP/ounce-oracle-builds" --evidence "$RUNNER_TEMP/ounce-oracle-evidence" --seconds 180
-
-      - name: Ounce-Verify evidence, canonical report and README headline
-        if: always()
-        env:
-          CORE_COMMIT: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          evidence="$RUNNER_TEMP/ounce-oracle-evidence"
-          python3 -m unittest tests/test_ounce_verify.py
-          python3 scripts/test_corpus_verify.py
-          python3 scripts/corpus_verify.py evidence --verdicts "$evidence/oracle-verdicts.json" \
-            --builds "$RUNNER_TEMP/ounce-oracle-builds" --toolchain-image "$evidence/toolchain-image.json" \
-            --core-commit "$CORE_COMMIT" --output "$evidence/ounce-verify-evidence.json"
-          python3 tools/ounce_verify.py "$evidence/ounce-verify-evidence.json" --artifact-root "$RUNNER_TEMP/ounce-oracle-builds" --output "$evidence/canonical-report.json"
-          python3 scripts/corpus_verify.py headline "$evidence/canonical-report.json" --check-readme | tee -a "$GITHUB_STEP_SUMMARY"
-
       - name: Retain oracle evidence (no upstream source or NRO binaries)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: first-frame-oracles
-          path: ${{ runner.temp }}/ounce-oracle-evidence/
+          path: ${{ runner.temp }}/ounce-verify/evidence/
           if-no-files-found: warn
           retention-days: 30
 
@@ -418,7 +365,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ounce-verify-canonical-report
-          path: ${{ runner.temp }}/ounce-oracle-evidence/canonical-report.json
+          path: ${{ runner.temp }}/ounce-verify/evidence/canonical-report.json
           if-no-files-found: error
           retention-days: 90
 
