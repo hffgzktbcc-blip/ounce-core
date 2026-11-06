@@ -7,6 +7,7 @@ an oracle that `tests/corpus/oracle-results.json` records as passing stops passi
 program is missing from the build (a workflow error, not a runtime result).
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -22,17 +23,21 @@ def main():
     parser.add_argument("--builds", type=Path, required=True, help="directory holding <build>/build/source")
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--seconds", type=int, default=300, help="host time per engine")
+    parser.add_argument("--shards", type=int, default=1, help="number of concurrent corpus shards")
     args = parser.parse_args()
+    if args.shards < 1:
+        parser.error("--shards must be at least 1")
     oracles = json.loads((REPO / "tests/corpus/oracles.json").read_text())["oracles"]
+    if len({oracle["id"] for oracle in oracles}) != len(oracles):
+        parser.error("the oracle manifest contains duplicate IDs")
     recorded = json.loads((REPO / "tests/corpus/oracle-results.json").read_text())["results"]
     args.evidence.mkdir(parents=True, exist_ok=True)
-    verdicts, errors = [], []
-    for oracle in oracles:
+
+    def run_case(oracle):
         oid = oracle["id"]
         nro = args.builds / oracle["build"] / "build/source" / oracle["nro"]
         if not nro.is_file():
-            errors.append(f"{oid}: corpus program missing from the build: {nro}")
-            continue
+            return None, f"{oid}: corpus program missing from the build: {nro}"
         result = args.evidence / f"{oid}.oracle.json"
         log = args.evidence / f"{oid}.oracle.log"
         # A failed rerun must never inherit a verdict from an earlier execution.
@@ -55,8 +60,24 @@ def main():
             verdict["pass"] = False
             verdict["failures"].append(f"runner did not complete successfully: {host_status}")
         verdict.update(host_status=host_status, host_timeout_seconds=args.seconds)
-        verdicts.append(verdict)
         print(f"{'PASS' if verdict['pass'] else 'FAIL'} {oid}: {'; '.join(verdict['failures'][:3])}", flush=True)
+        return verdict, None
+
+    def run_shard(shard):
+        return [run_case(oracle) for oracle in shard]
+
+    shard_count = min(args.shards, len(oracles)) if oracles else 1
+    shards = [oracles[index::shard_count] for index in range(shard_count)]
+    if shard_count == 1:
+        results = run_shard(shards[0])
+    else:
+        with ThreadPoolExecutor(max_workers=shard_count) as executor:
+            completed = list(executor.map(run_shard, shards))
+        # Restore registration order, independent of which shard completed first.
+        results = [completed[index % shard_count][index // shard_count]
+                   for index in range(len(oracles))]
+    verdicts = [verdict for verdict, _ in results if verdict is not None]
+    errors = [error for _, error in results if error is not None]
     passed = [v["id"] for v in verdicts if v["pass"]]
     (args.evidence / "oracle-verdicts.json").write_text(json.dumps(
         {"passed": len(passed), "total": len(oracles), "verdicts": verdicts}, indent=2) + "\n")
