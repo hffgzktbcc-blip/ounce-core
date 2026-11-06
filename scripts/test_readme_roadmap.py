@@ -1,54 +1,44 @@
-"""Guard the README roadmap against outdated milestone prose.
-
-The canonical program count is still checked separately against actual corpus evidence
-by scripts/corpus_verify.py; this file deliberately does not certify a count.
-"""
+"""Tests for the evidence-gated, generated README roadmap."""
+import json
 from pathlib import Path
-import re
+import subprocess
+import sys
 import unittest
 
-README = Path(__file__).resolve().parents[1] / "README.md"
+ROOT = Path(__file__).resolve().parents[1]
+README = ROOT / "README.md"
+REGISTRY = ROOT / "docs/roadmap/milestones.json"
 
 
 class ReadmeRoadmapTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.text = README.read_text(encoding="utf-8")
-        cls.roadmap = cls.text.split("## The road ahead", 1)[1].split(
+    def test_registry_schema_and_generator_are_valid(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/render_roadmap.py"), "--check"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_readme_uses_registry_not_a_frozen_roadmap(self):
+        text = README.read_text(encoding="utf-8")
+        registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
+        roadmap = text.split("## The road ahead", 1)[1].split(
             "## Sources and porting policy", 1
         )[0]
+        self.assertIn("BEGIN GENERATED ROADMAP", roadmap)
+        self.assertIn("END GENERATED ROADMAP", roadmap)
+        for row in registry["tracks"]:
+            with self.subTest(milestone=row["id"]):
+                self.assertIn(row["name"], roadmap)
+        self.assertIn("scripts/corpus_verify.py", roadmap)
+        self.assertIn("A green badge or merged PR is not proof", roadmap)
 
-    def test_no_obsolete_roadmap_states(self):
-        for phrase in (
-            "Waiting on public toolchains",
-            "Corpus 4 → 20",
-            "the unmerged raw-frame evidence work",
-            "The 20-program count",
-            "four original oracles",
-            "last checked green on main:",
-        ):
-            with self.subTest(phrase=phrase):
-                self.assertNotIn(phrase, self.text)
-
-    def test_live_links_and_proof_boundary(self):
-        for link in (
-            "actions/workflows/ci.yml",
-            "actions/workflows/external-corpus.yml",
-            "/pulls?q=is%3Apr+is%3Aopen",
-            "/actions",
-            "docs/verify/README.md",
-        ):
-            with self.subTest(link=link):
-                self.assertIn(link, self.roadmap)
-        self.assertIn("A green workflow badge does not", self.roadmap)
-
-    def test_roadmap_corpus_count_stays_ci_managed(self):
-        matches = re.findall(
-            r"<!-- corpus-headline -->[^<]+<!-- /corpus-headline -->",
-            self.roadmap,
-        )
-        self.assertEqual(len(matches), 1)
-        self.assertIn("scripts/corpus_verify.py", self.roadmap)
+    def test_old_claims_have_not_returned(self):
+        text = README.read_text(encoding="utf-8")
+        for obsolete in ("Waiting on public toolchains", "Corpus 4 → 20",
+                         "The 20-program count", "four original oracles",
+                         "last checked green on main:"):
+            with self.subTest(obsolete=obsolete):
+                self.assertNotIn(obsolete, text)
 
 
 if __name__ == "__main__":
