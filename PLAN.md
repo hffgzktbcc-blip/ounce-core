@@ -250,5 +250,5 @@ and qualify the combined commit before tagging.
       malformed-evidence recovery, honest HID color availability and a structured
       HBLauncher SDK-path first-frame report. Publish all three tested platform
       archives together with checksums after full CI and canonical corpus evidence.
-      Checkpoint (2026-11-06 14:07Z, codex, 740f851): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Derive release headline and regression ratchet from combined canonical corpus: 46/50, all 45 prior passes retained
-      Next: Wait for documentation-head CI then publish v0.5.0 platform archives
+      Checkpoint (2026-11-06 14:08Z, codex, e938e2a): GREEN — tests: cargo test: 471 passed, 0 failed; suite: pass — Publish curated v0.5.0 notes with explicit Switch 2 SDK-path scope
+      Next: Require final-head checks, merge and tag release
