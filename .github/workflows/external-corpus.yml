@@ -326,6 +326,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Build, run and verify the registered corpus
+        id: corpus
         run: |
           python3 -m unittest tests/test_ounce_verify.py
           python3 scripts/verify_corpus_run.py --output "$RUNNER_TEMP/ounce-verify" --check-readme
@@ -333,6 +334,8 @@ jobs:
       # Hand the corpus NROs to the native-execution job (Apple Silicon has no devkitA64 docker).
       # Permissive builds (public domain, MIT, ISC, zlib), kept one day for that job only.
       - name: Pass corpus NROs to the native job
+        id: corpus-nros
+        if: ${{ !cancelled() && (steps.corpus.outcome == 'success' || steps.corpus.outcome == 'failure') }}
         run: |
           set -euo pipefail
           python3 - "$RUNNER_TEMP/ounce-verify/builds" "$RUNNER_TEMP/corpus-nros" <<'PY'
@@ -347,6 +350,7 @@ jobs:
           PY
 
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.corpus-nros.outcome == 'success' }}
         with:
           name: corpus-nros
           path: ${{ runner.temp }}/corpus-nros/
