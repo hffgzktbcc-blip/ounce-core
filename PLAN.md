@@ -3,6 +3,38 @@
 Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
 Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works on the step it shows. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
 
+## Owner-directed Ounce-Verify evolution (2026-11-06)
+The owner approved the proposed roadmap and requested execution in this session.
+Implement sequentially alongside corpus expansion; preserve the pre-registered frame
+oracles and the existing headline metric. The verifier decides results independently
+of any solver. A repair never changes an oracle, drops a failing case, or weakens a gate.
+
+- [ ] **V1. Evidence integrity and complete coverage.** Verify actual NRO bytes against
+      evidence hashes, reject missing execution observations as passes, and derive coverage
+      from the registered corpus and exact required engines. Preserve v0 read compatibility.
+      *Done when:* corruption and incomplete engine coverage cannot pass the integrity gate;
+      existing corpus evidence still validates in CI with byte verification enabled.
+      Checkpoint (2026-11-06, Codex): implementation prepared; 29 focused Python tests pass.
+      Next: run full gate and outside corpus in CI before marking V1 complete.
+      Decisions: retain v0 compatibility; integrity is an explicit byte-verification mode.
+      Environment: shell proxy unavailable, partial connector snapshot, no Rust toolchain;
+      gate checkpoint/ship cannot complete here. Publish as draft without auto-merge.
+- [ ] **V2. Unified bounded execution.** Orchestrate existing build/run/verify tools with
+      explicit limits, versioned manifests, retained raw observations and replayable commands.
+      *Done when:* the outside corpus runs through one entry point with traceable evidence.
+- [ ] **V3. Diagnosis.** Compare runs, group failures, isolate first divergence and emit replay
+      bundles with likely subsystem ownership; keep hypotheses separate from observations.
+      *Done when:* a real outside-program failure has a reproducible, actionable diagnosis.
+- [ ] **V4. Solve.** Propose repairs in isolated branches, run focused checks and the regression
+      corpus, and retain before/after evidence. No self-approved oracle corrections.
+      *Done when:* a failing outside program passes its unchanged oracle without regressions.
+- [ ] **V5. Self-heal.** Recover known infrastructure failures with bounded retries and an audit
+      trail; use rollback and explicit stop conditions for narrowly defined repairs.
+      *Done when:* a real recovery succeeds unattended and unsuccessful attempts stop cleanly.
+- [ ] **V6. Scale.** Add sharding, content-addressed build caches, resumable jobs, bisection and
+      scheduled regression/performance comparisons, using the growing 50-program corpus.
+      *Done when:* CI demonstrates retained coverage and actionable regression evidence at scale.
+
 ## Owner-directed usability task (2026-11-05)
 The owner requested the next practical step after the audit: a native Mac launcher.
 Package the existing runtime, expose homebrew opening, session stop, SD folder and logs,
@@ -151,3 +183,4 @@ Integration proof (2026-11-05): PR #154 combines #149 with the correctness audit
 from https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756 records 40 passing records
 (20/20 on Interpreter and Tier-3) for the combined code at `2d88c99` (tested through the PR merge ref).
 The README metric was derived using scripts/corpus_verify.py. Step 7 (expand to 50) remains next.
+
