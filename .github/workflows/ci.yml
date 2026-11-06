@@ -102,6 +102,12 @@ jobs:
       - name: Run unit tests with gpu-present
         run: cargo test --release --features gpu-present -- --nocapture --test-threads=1
 
+      - name: Check actual guest shader writeback
+        if: runner.os != 'Windows'
+        env:
+          OUNCE_GPU_REQUIRE_HARDWARE: ${{ runner.os == 'macOS' && '1' || '0' }}
+        run: cargo test --release --features gpu-present host_sass_draw_writes_original_guest_surface -- --ignored --nocapture
+
       - name: Package native Mac app preview
         if: runner.os == 'macOS'
         run: ditto -c -k --sequesterRsrc --keepParent "dist/Ounce Core.app" "$RUNNER_TEMP/Ounce-Core-workbench-preview.zip"
