@@ -257,7 +257,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.message = "Choose a saved Ounce-Verify corpus report. Opening it does not run an app or apply a repair."
+        panel.message = "Choose a saved Ounce-Verify results, diagnosis, repair or run report. Opening it does not run an app or apply a repair."
         panel.prompt = "View Results"
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
@@ -294,10 +294,15 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 .foregroundColor: NSColor.labelColor
             ]))
         }
-        label("Saved check results", bold: true)
+        label(report.heading, bold: true)
         label("These results describe an earlier run. Opening this file does not verify it again or approve a repair.")
-        label("Pass: recorded checks passed. Failed: an observed mismatch. Blocked: checks could not finish. Not assessed: more evidence is needed.")
-        label("\(report.records.count) recorded results • \(url.lastPathComponent)")
+        label(report.overview)
+        label(url.lastPathComponent)
+        if !report.records.isEmpty { label("\(report.records.count) recorded results") }
+        for section in report.sections {
+            label(section.title.replacingOccurrences(of: "-", with: " ").capitalized, bold: true)
+            for line in section.lines { label(line) }
+        }
         for record in report.records {
             let parts = record.caseID.split(separator: "/")
             let name = parts.count > 1 ? String(parts[1]) : record.caseID
