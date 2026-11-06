@@ -186,6 +186,20 @@ change. A PR that breaks one is rejected.
       *Done when:* each claim links to its CI run or oracle file, and nothing claims more than the evidence shows.
       *Proof:* [PR #139](https://github.com/hffgzktbcc-blip/ounce-core/pull/139) (merged `9903f22`): README "How the proof works" and "Safe Rust by construction", evidence table and badges, each linked; the oracle badge is now checked against the canonical report like the headline. CI green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150292; oracles 15/20 with README check: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150245.
 
+## Owner-directed oracle hardening (2026-11-06)
+The owner requested improving the oracle. Keep existing golden expectations and
+compatibility counts unchanged while strengthening registration and observations.
+- [ ] **10. Reject vacuous and unreachable frame checks.** Require non-empty checks,
+      reachable positive frame indices, positive dimensions, a valid whole-frame hash
+      or bounded RGB probes, and explicit failures for missing captured frames. Retain
+      observed probe coordinates and RGBA values in each raw workload report.
+      *Done when:* all existing registrations validate, malformed definitions fail,
+      the repository gate passes, and real outside frames still match unchanged oracles.
+      suite passes. Local pinned-startup build blocked by Docker VFS disk exhaustion;
+      the downloaded image was removed to recover space. No new frame pass claimed.
+      Checkpoint (2026-11-06 13:41Z, codex, ea95b42): GREEN — tests: cargo test: 470 passed, 0 failed; suite: pass — Reject vacuous or unreachable oracle checks; retain observed probe pixels
+      Next: Run canonical outside-corpus CI; local Docker build exceeded disk capacity
+
 ## How we work (owner decision 2026-11-04)
 - **This file is the truth.** Notes, handoffs and memory are history, not plans.
 - **Real frames decide progress:** a step closes on its pixel-oracle evidence in CI, never on unit tests.
