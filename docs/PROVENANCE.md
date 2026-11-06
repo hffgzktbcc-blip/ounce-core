@@ -101,3 +101,12 @@ Commits before `76ce766` (including `c7f16f2` and `4be9640`) were previously ide
 - Cargo licence metadata inventory: recorded 2026-10-28; it covers declared Cargo metadata, not source texts or fixture binaries. See `docs/DEPENDENCY_LICENSE_AUDIT.md`.
 - Shader tooling (`uam` compiles deko3d test shaders; version, licence notices, and generated-output inventory are unrecorded).
 - Fixture source authorship: compare each `main.c` with relevant libnx/deko3d examples and record the result.
+
+### Step 7 Switch examples intake
+
+The 30 added cases use the same public `switchbrew/switch-examples` revision
+`669786898205b7beb25ff1731e72982e6d0397d3` and its Public Domain Mark 1.0 README notice.
+The paths are registered in `tests/corpus/oracle-builds/switch-examples.json`.
+The CPU JIT sample uses the already pinned `jit` build in `tests/corpus/manifest.json`.
+The new programs link libnx (ISC) and the devkitA64 standard runtime. CI retains each build's
+source and binary hashes, compiler details, and the container package inventory.
