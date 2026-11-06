@@ -92,6 +92,14 @@ Unresolved disagreements (we keep the reading with real-word evidence): NAK's SM
 `0x0380` against the CuAssembler-checked `0xc038`; the Maxwell `FSET` constant-buffer form's b negate bit
 (NAK bit 6, envytools bit 53).
 
+## Switch 2 homebrew SDK
+
+The split-image loader follows the public MIT-licensed
+[HBLauncher app builder](https://github.com/ravensclawx/HBLauncher/blob/18b4748ba98eeac7df17beb5d3418985eb74897c/sdk/tools/hbx-build.py)
+at commit `18b4748ba98eeac7df17beb5d3418985eb74897c`. The build report supplies
+segment addresses, sizes, entry point, and SHA-256 hashes. The first-frame
+oracle uses the pinned outside Hello CPU sample's drawing calls.
+
 ## Ported code
 
 MIT code ported into this repository under the "Sources" rules of `PLAN.md`. Notices are in `THIRD_PARTY.md`.

@@ -183,11 +183,12 @@ change. A PR that breaks one is rejected.
 - [x] **6. Merge #115** (texture mips/LOD/bias/clamp). DONE 2026-11-03 by owner decision, ahead of a corpus program needing it: merged for release v0.4.0 (cb24c76, CI green).
 - [x] **7. Corpus 20 → 50**, then repeat step 3. The metric keeps climbing in public.
       *Proof:* [PR #160](https://github.com/hffgzktbcc-blip/ounce-core/pull/160): 45/50 pass; failing: account, audio-echo, controller-colors, playtone, save-data ([canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173)). Thirty new checks were pre-registered in 53b8a1d. All 100 engine records were byte-verified, all original 20 passed, and the Native job recorded the same 45/50. The five misses are recorded in tests/corpus/oracle-results.json.
-- [ ] **8. Switch 2 homebrew.** As soon as public, open-source tools can build Switch 2 ("Ounce") homebrew, add
+- [x] **8. Switch 2 homebrew.** As soon as public, open-source tools can build Switch 2 ("Ounce") homebrew, add
       those programs to the corpus with pre-registered oracles, exactly like step 2. Prepare in the meantime by
       porting nxnative engine code (NVN on Metal, native execution) without game-specific parts.
       *Done when:* the first outside Switch 2 homebrew program passes its oracle in CI.
       Commercial Switch 2 games never enter this repo.
+      *Proof:* [Switch 2 oracle CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42201830705) built the pinned outside Hello CPU package and matched all four pre-registered first-frame pixels on Interpreter and Tier-3, with byte-identical software-rendered frames.
 
 - [x] **9. Make the unique parts visible.** Only after step 1 has made the README honest:
       - a README section (or blog post) on the pre-registered pixel-oracle method: expected frames fixed before
