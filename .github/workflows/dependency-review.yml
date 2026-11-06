@@ -7,7 +7,7 @@ on:
       - '**/Cargo.toml'
       - 'Cargo.lock'
       - '.github/dependabot.yml'
-      - '.github/workflows/dependency-review.yml'
+      - '.github/workflows/**'
 
 permissions:
   contents: read
