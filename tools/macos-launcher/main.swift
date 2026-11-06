@@ -63,6 +63,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var lastLog: URL?
     private var currentLog: SessionLog?
     private var stopRequested = false
+    private var awaitingGuestFrame: String?
     private var pendingFile: URL?
 
     private var support: URL {
@@ -194,12 +195,12 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             showError("Choose a homebrew .nro file.")
             return
         }
-        start(["run", url.path, "--gui", "--present=gpu", "--sdmc=\(sdCard.path)"], name: url.lastPathComponent)
+        start(["run", url.path, "--gui", "--present=gpu", "--sdmc=\(sdCard.path)"], name: url.deletingPathExtension().lastPathComponent, waitsForGuestFrame: true)
     }
 
     @objc private func tryDemo() { start(["gfx", "--present=gpu"], name: "graphics demo") }
 
-    private func start(_ arguments: [String], name: String) {
+    private func start(_ arguments: [String], name: String, waitsForGuestFrame: Bool = false) {
         guard process == nil else { showError("Stop the current session before opening another app."); return }
         let runtime = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core")
         guard FileManager.default.isExecutableFile(atPath: runtime.path) else {
@@ -236,24 +237,39 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             child.terminationHandler = { [weak self] finished in
                 DispatchQueue.main.async {
                     guard let self, self.sessionID == id else { return }
+                    self.refreshConsole()
+                    self.awaitingGuestFrame = nil
                     self.process = nil
                     self.setBusy(false)
-                    self.refreshConsole()
-                    self.status.stringValue = self.stopRequested ? "Session stopped." : (finished.terminationStatus == 0 ? "Session finished." : "Session stopped (status \(finished.terminationStatus)). See the log below.")
+                    if self.stopRequested {
+                        self.status.stringValue = "Session stopped."
+                    } else if finished.terminationStatus != 0 {
+                        self.status.stringValue = "Session failed (status \(finished.terminationStatus)). See the log below."
+                    } else {
+                        self.status.stringValue = "Session finished."
+                    }
                 }
             }
             try child.run()
             process = child
             setBusy(true)
-            status.stringValue = "Session active: \(name)"
+            awaitingGuestFrame = waitsForGuestFrame ? name : nil
+            status.stringValue = waitsForGuestFrame
+                ? "Starting \(name)… Waiting for the first guest frame."
+                : "Session active: \(name)"
         } catch { showError(error.localizedDescription) }
     }
 
     private func refreshConsole() {
         guard let bytes = currentLog?.snapshot(), bytes != consoleBytes else { return }
         consoleBytes = bytes
-        console.string = String(decoding: consoleBytes, as: UTF8.self)
+        let output = String(decoding: consoleBytes, as: UTF8.self)
+        console.string = output
         console.scrollToEndOfDocument(nil)
+        if let name = awaitingGuestFrame, output.contains("\n[Display] Guest VI frame: ") {
+            awaitingGuestFrame = nil
+            if !stopRequested { status.stringValue = "\(name) · First guest frame received" }
+        }
     }
 
     private func setBusy(_ busy: Bool) {
