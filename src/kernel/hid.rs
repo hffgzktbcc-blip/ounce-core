@@ -86,10 +86,8 @@ pub const JOY_ASSIGNMENT_DUAL: u32 = 0;
 pub const JOY_ASSIGNMENT_SINGLE: u32 = 1;
 /// `HidColorAttribute`.
 pub const COLOR_OK: u32 = 0;
+pub const COLOR_READ_ERROR: u32 = 1;
 pub const COLOR_NO_CONTROLLER: u32 = 2;
-/// Synthetic controller colors (body, buttons).
-pub const COLOR_BODY: u32 = 0xFF32_3232;
-pub const COLOR_BUTTONS: u32 = 0xFFE6_E6E6;
 /// `HidTouchAttribute_Start`: set on the first sample of a finger.
 pub const TOUCH_START: u32 = 1 << 0;
 /// `HidMouseAttribute_IsConnected`.
@@ -211,11 +209,20 @@ pub fn npad_id(index: usize) -> u32 {
     }
 }
 
+/// Color metadata supplied by a host device backend. None means unavailable, not black.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ControllerColors {
+    pub full_key: Option<(u32, u32)>,
+    pub left: Option<(u32, u32)>,
+    pub right: Option<(u32, u32)>,
+}
+
 /// A connected host controller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NpadController {
     pub style: NpadStyle,
     pub input: NpadInput,
+    pub colors: ControllerColors,
 }
 
 /// One finger on the touch screen, in screen pixels (1280x720).
@@ -283,8 +290,8 @@ impl Default for HostInput {
     /// `padInitializeDefault` see a controller either way.
     fn default() -> Self {
         let mut npads = [None; NPAD_COUNT];
-        npads[NPAD_NO1 as usize] = Some(NpadController { style: NpadStyle::FullKey, input: NpadInput::default() });
-        npads[NPAD_HANDHELD as usize] = Some(NpadController { style: NpadStyle::Handheld, input: NpadInput::default() });
+        npads[NPAD_NO1 as usize] = Some(NpadController { style: NpadStyle::FullKey, input: NpadInput::default(), colors: ControllerColors::default() });
+        npads[NPAD_HANDHELD as usize] = Some(NpadController { style: NpadStyle::Handheld, input: NpadInput::default(), colors: ControllerColors::default() });
         Self { npads, touches: Vec::new(), mouse: MouseInput::default(), keyboard: KeyboardInput::default() }
     }
 }
@@ -321,12 +328,22 @@ impl InputFeed {
         Ok(index)
     }
 
+    /// Publishes metadata read by the host backend; callers clear it when unavailable.
+    pub fn set_colors(&self, id: u32, colors: ControllerColors) -> Result<(), InputError> {
+        let index = Self::slot(id, None)?;
+        let mut host = self.lock();
+        let controller = host.npads[index].as_mut().ok_or(InputError::NotConnected(id))?;
+        controller.colors = colors;
+        Ok(())
+    }
+
     /// Plugs a controller into npad `id` (or changes its style), keeping any input already set.
     pub fn connect(&self, id: u32, style: NpadStyle) -> Result<(), InputError> {
         let index = Self::slot(id, Some(style))?;
         let mut host = self.lock();
         let input = host.npads[index].map(|c| c.input).unwrap_or_default();
-        host.npads[index] = Some(NpadController { style, input });
+        let colors = host.npads[index].filter(|c| c.style == style).map(|c| c.colors).unwrap_or_default();
+        host.npads[index] = Some(NpadController { style, input, colors });
         Ok(())
     }
 
@@ -388,7 +405,7 @@ pub struct HidSharedMemory {
     pub joy_hold_type: u64,
     last_input: NpadInput,
     /// Style tag last written to each npad's `style_set` (0 = no controller).
-    written_style: [u32; NPAD_COUNT],
+    written_header: [Option<(NpadStyle, ControllerColors)>; NPAD_COUNT],
     npad_sampling: [[u64; 5]; NPAD_COUNT],
     touch_sampling: u64,
     mouse_sampling: u64,
@@ -435,7 +452,7 @@ impl HidSharedMemory {
                 lifo_reset(mmu, npad + style.lifo_offset());
             }
             Self::write_npad_header(mmu, npad, None);
-            self.written_style[index] = 0;
+            self.written_header[index] = None;
         }
         self.sync(mmu);
     }
@@ -457,22 +474,23 @@ impl HidSharedMemory {
     }
 
     /// Style set, Joy-Con assignment, colors and device type of one npad.
-    fn write_npad_header(mmu: &mut Memory, npad: u64, style: Option<NpadStyle>) {
+    fn write_npad_header(mmu: &mut Memory, npad: u64, controller: Option<NpadController>) {
+        let style = controller.map(|c| c.style);
         let _ = mmu.write_u32(npad + STYLE_SET_OFFSET, style.map_or(0, NpadStyle::tag));
         let _ = mmu.write_u32(npad + JOY_ASSIGNMENT_OFFSET, style.map_or(JOY_ASSIGNMENT_DUAL, NpadStyle::joy_assignment));
-        let (attribute, body, buttons) = match style {
-            Some(_) => (COLOR_OK, COLOR_BODY, COLOR_BUTTONS),
-            None => (COLOR_NO_CONTROLLER, 0, 0),
-        };
-        // HidNpadFullKeyColorState { attribute, full_key { main, sub } }
-        let _ = mmu.write_u32(npad + FULL_KEY_COLOR_OFFSET, attribute);
+        let colors = controller.map(|c| c.colors).unwrap_or_default();
+        let unavailable = if controller.is_some() { COLOR_READ_ERROR } else { COLOR_NO_CONTROLLER };
+        // Do not claim a successful device read for keyboard/generic gamepad colors.
+        let _ = mmu.write_u32(npad + FULL_KEY_COLOR_OFFSET, if colors.full_key.is_some() { COLOR_OK } else { unavailable });
+        let (body, buttons) = colors.full_key.unwrap_or_default();
         let _ = mmu.write_u32(npad + FULL_KEY_COLOR_OFFSET + 4, body);
         let _ = mmu.write_u32(npad + FULL_KEY_COLOR_OFFSET + 8, buttons);
-        // HidNpadJoyColorState { attribute, left { main, sub }, right { main, sub } }
-        let _ = mmu.write_u32(npad + JOY_COLOR_OFFSET, attribute);
-        for i in 0..2 {
-            let _ = mmu.write_u32(npad + JOY_COLOR_OFFSET + 4 + i * 8, body);
-            let _ = mmu.write_u32(npad + JOY_COLOR_OFFSET + 8 + i * 8, buttons);
+        let _ = mmu.write_u32(npad + JOY_COLOR_OFFSET,
+            if colors.left.is_some() || colors.right.is_some() { COLOR_OK } else { unavailable });
+        for (i, color) in [colors.left, colors.right].into_iter().enumerate() {
+            let (body, buttons) = color.unwrap_or_default();
+            let _ = mmu.write_u32(npad + JOY_COLOR_OFFSET + 4 + i as u64 * 8, body);
+            let _ = mmu.write_u32(npad + JOY_COLOR_OFFSET + 8 + i as u64 * 8, buttons);
         }
         let _ = mmu.write_u32(npad + DEVICE_TYPE_OFFSET, style.map_or(0, NpadStyle::device_type));
     }
@@ -495,10 +513,10 @@ impl HidSharedMemory {
         for index in 0..NPAD_COUNT {
             let shown = host.npads[index].filter(|c| self.visible(index, c.style));
             let npad = Self::npad_base(addr, index);
-            let tag = shown.map_or(0, |c| c.style.tag());
-            if tag != self.written_style[index] {
-                Self::write_npad_header(mmu, npad, shown.map(|c| c.style));
-                self.written_style[index] = tag;
+            let header = shown.map(|c| (c.style, c.colors));
+            if header != self.written_header[index] {
+                Self::write_npad_header(mmu, npad, shown);
+                self.written_header[index] = header;
             }
             let Some(c) = shown else { continue };
             let sampling = &mut self.npad_sampling[index][c.style.index()];
@@ -704,6 +722,32 @@ mod tests {
     }
 
     #[test]
+    fn controller_colors_require_host_metadata_and_refresh_without_style_change() {
+        let (mut mmu, mut hid) = mapped(NpadInput::default());
+        let npad = HidSharedMemory::npad_base(BASE, 0);
+        assert_eq!(mmu.read_u32(npad + FULL_KEY_COLOR_OFFSET).unwrap(), COLOR_READ_ERROR);
+        assert_eq!(mmu.read_u32(npad + FULL_KEY_COLOR_OFFSET + 4).unwrap(), 0);
+        let colors = ControllerColors { full_key: Some((0x123456, 0xabcdef)),
+            left: Some((0x102030, 0x405060)), right: None };
+        hid.feed.set_colors(0, colors).unwrap();
+        hid.sync(&mut mmu);
+        assert_eq!(mmu.read_u32(npad + FULL_KEY_COLOR_OFFSET).unwrap(), COLOR_OK);
+        assert_eq!(mmu.read_u32(npad + FULL_KEY_COLOR_OFFSET + 4).unwrap(), 0x123456);
+        assert_eq!(mmu.read_u32(npad + FULL_KEY_COLOR_OFFSET + 8).unwrap(), 0xabcdef);
+        assert_eq!(mmu.read_u32(npad + JOY_COLOR_OFFSET).unwrap(), COLOR_OK);
+        assert_eq!(mmu.read_u32(npad + JOY_COLOR_OFFSET + 4).unwrap(), 0x102030);
+        assert_eq!(mmu.read_u32(npad + JOY_COLOR_OFFSET + 12).unwrap(), 0);
+        hid.feed.set_colors(0, ControllerColors::default()).unwrap();
+        hid.sync(&mut mmu);
+        assert_eq!(mmu.read_u32(npad + FULL_KEY_COLOR_OFFSET).unwrap(), COLOR_READ_ERROR);
+        assert_eq!(mmu.read_u32(npad + FULL_KEY_COLOR_OFFSET + 4).unwrap(), 0);
+        hid.feed.disconnect(0).unwrap();
+        hid.sync(&mut mmu);
+        assert_eq!(mmu.read_u32(npad + FULL_KEY_COLOR_OFFSET).unwrap(), COLOR_NO_CONTROLLER);
+        assert_eq!(hid.feed.set_colors(0, colors), Err(InputError::NotConnected(0)));
+    }
+
+    #[test]
     fn feed_drives_players_styles_and_disconnects() {
         let (mut mmu, mut hid) = mapped(NpadInput::default());
         let feed = hid.feed.clone();
@@ -720,7 +764,7 @@ mod tests {
         assert_eq!(read_npad(&mmu, 7).0, STYLE_JOY_RIGHT);
         let p8 = HidSharedMemory::npad_base(BASE, 7);
         assert_eq!(mmu.read_u32(p8 + DEVICE_TYPE_OFFSET).unwrap(), DEVICE_JOY_RIGHT);
-        assert_eq!(mmu.read_u32(p8 + JOY_COLOR_OFFSET).unwrap(), COLOR_OK);
+        assert_eq!(mmu.read_u32(p8 + JOY_COLOR_OFFSET).unwrap(), COLOR_READ_ERROR);
         assert_eq!(read_npad(&mmu, 2).0, 0);
         assert_eq!(mmu.read_u32(HidSharedMemory::npad_base(BASE, 2) + FULL_KEY_COLOR_OFFSET).unwrap(), COLOR_NO_CONTROLLER);
 
