@@ -397,6 +397,7 @@ jobs:
           set -euo pipefail
           evidence="$RUNNER_TEMP/ounce-oracle-evidence"
           python3 -m unittest tests/test_ounce_verify.py
+          python3 scripts/test_corpus_verify.py
           python3 scripts/corpus_verify.py evidence --verdicts "$evidence/oracle-verdicts.json" \
             --builds "$RUNNER_TEMP/ounce-oracle-builds" --toolchain-image "$evidence/toolchain-image.json" \
             --core-commit "$CORE_COMMIT" --output "$evidence/ounce-verify-evidence.json"
