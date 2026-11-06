@@ -131,3 +131,14 @@ Use `--shards 2` to run two disjoint groups of oracles concurrently on one host.
 keeps the registered corpus order and the same coverage and regression checks. Each guest
 still has its own log, observation file, and timeout. Canonical CI uses two shards. Compare
 wall times only between runs with equivalent hosts and shard settings.
+
+Pass `--build-cache PATH` to reuse builds on the same machine. The key includes the
+resolved Docker image ID, build recipe, pinned manifests, and registered NRO paths.
+A hit checks all NRO hashes against their build inventories before restoring them.
+The runner still executes every oracle and verifies the artifacts in the report.
+A bad entry is recorded as rejected and the runner builds from source. Cache entries
+contain the registered NROs, build inventories, and toolchain package list.
+
+Canonical CI persists this cache across runs and pins the devkitA64 image to a registry
+digest. Updating that digest or the build inputs changes the CI cache key. The run
+manifest reports whether the runner accepted, rejected, or missed the restored snapshot.
