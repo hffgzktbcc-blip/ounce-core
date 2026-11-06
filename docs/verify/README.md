@@ -95,3 +95,28 @@ exited before frame 1 on both engines. Replaying the historical core revision re
 the early exit at guest PC `0x000000007ffe0004` with the same NRO SHA-256 as the
 [passing reference run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42175855697).
 The bundle identified startup IPC and display initialization as the next paths to trace.
+
+## Qualifying a corpus repair
+
+Start a candidate branch from the failing revision. Use the diagnosis bundle to replay the
+failing program before and after the patch, then run the full corpus on the candidate using
+the bounded command above. Keep both canonical reports. Fetch the two revisions named in
+those reports so the qualification command can read their registered oracles from Git. Run
+the qualifier from a trusted checkout separate from the candidate.
+
+```sh
+python3 scripts/qualify_corpus_repair.py failing/canonical-report.json candidate/canonical-report.json \
+    --program sdl2-simple --output repair-evidence
+```
+
+The gate requires an observed target failure in the reference, a clean pass on both engines
+in the candidate, exact corpus coverage, and byte-identical registered oracle manifests. Evidence tooling must be unchanged.
+It compares the required expectations in the reports and checks that the target and all
+previously passing cases execute the same NRO bytes under the same limits and inputs, and
+pass in the candidate. The output
+retains both reports, both manifests, the diagnosis and replay instructions, and the gate
+decision. A rejected candidate exits with status 1 and still records its evidence.
+
+Use reports from the independent corpus workflow. Qualification compares the evidence
+and the committed oracle manifests. The current corpus workflow supplies byte verification
+and executes the pixel checks.
