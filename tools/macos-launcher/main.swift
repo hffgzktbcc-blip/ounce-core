@@ -54,7 +54,10 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var demoButton: NSButton!
     private var stopButton: NSButton!
     private var folderButton: NSButton!
-    private var status = NSTextField(labelWithString: "Ready. Open a homebrew app, or try the demo.")
+    private var status = NSTextField(wrappingLabelWithString: "Ready to open an app")
+    private var details = NSStackView()
+    private var detailsButton: NSButton!
+    private var openMenuItem: NSMenuItem!
     private var folderLabel = NSTextField(labelWithString: "")
     private var console = NSTextView()
     private var consoleBytes = Data()
@@ -84,6 +87,9 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let applicationMenu = NSMenu()
         applicationMenu.addItem(withTitle: "About Ounce Core", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         applicationMenu.addItem(.separator())
+        openMenuItem = applicationMenu.addItem(withTitle: "Open App…", action: #selector(chooseHomebrew), keyEquivalent: "o")
+        openMenuItem.target = self
+        applicationMenu.addItem(.separator())
         applicationMenu.addItem(withTitle: "Quit Ounce Core", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let item = NSMenuItem()
         item.submenu = applicationMenu
@@ -96,75 +102,123 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(editItem)
         NSApp.mainMenu = menu
 
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 540),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 375),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Ounce Core"
-        window.minSize = NSSize(width: 620, height: 500)
+        window.contentMinSize = NSSize(width: 600, height: 375)
         window.delegate = self
         window.isReleasedWhenClosed = false
+
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 14
+        stack.spacing = 16
         stack.translatesAutoresizingMaskIntoConstraints = false
-        window.contentView!.addSubview(stack)
+        let content = window.contentView!
+        content.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: window.contentView!.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: window.contentView!.trailingAnchor, constant: -24),
-            stack.topAnchor.constraint(equalTo: window.contentView!.topAnchor, constant: 24),
-            stack.bottomAnchor.constraint(equalTo: window.contentView!.bottomAnchor, constant: -24)
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 32),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -32),
+            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 28),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -24)
         ])
-        let title = NSTextField(labelWithString: "Open homebrew on your Mac")
-        title.font = .systemFont(ofSize: 25, weight: .semibold)
-        stack.addArrangedSubview(title)
-        let subtitle = NSTextField(wrappingLabelWithString: "Choose an open-source .nro app, or start with the built-in interactive demo.")
-        subtitle.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(subtitle)
-        openButton = button("Open Homebrew…", #selector(chooseHomebrew))
+
+        let heading = NSStackView()
+        heading.orientation = .vertical
+        heading.alignment = .leading
+        heading.spacing = 5
+        let symbol = NSImageView()
+        symbol.image = NSImage(systemSymbolName: "gamecontroller.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 26, weight: .semibold))
+        symbol.contentTintColor = .controlAccentColor
+        symbol.setAccessibilityElement(false)
+        heading.addArrangedSubview(symbol)
+        let title = NSTextField(labelWithString: "Play homebrew")
+        title.font = .systemFont(ofSize: 32, weight: .bold)
+        heading.addArrangedSubview(title)
+        stack.addArrangedSubview(heading)
+
+        let intro = NSTextField(wrappingLabelWithString: "Open a homebrew app file (.nro) from your Mac. If you don’t have one yet, try the built-in demo.")
+        intro.font = .systemFont(ofSize: 15)
+        intro.textColor = .secondaryLabelColor
+        stack.addArrangedSubview(intro)
+
+        openButton = button("Open App…", #selector(chooseHomebrew))
         openButton.keyEquivalent = "\r"
-        demoButton = button("Graphics Demo", #selector(tryDemo))
-        stopButton = button("Stop", #selector(stop))
-        stopButton.isEnabled = false
+        openButton.setAccessibilityHelp("Choose a homebrew .nro file on your Mac.")
+        demoButton = button("Try the Demo", #selector(tryDemo))
+        stopButton = button("Stop Session", #selector(stop))
+        stopButton.isHidden = true
         let actions = NSStackView(views: [openButton, demoButton, stopButton])
-        actions.spacing = 10
+        actions.spacing = 12
         stack.addArrangedSubview(actions)
-        status.font = .systemFont(ofSize: 13, weight: .medium)
-        status.lineBreakMode = .byTruncatingMiddle
-        stack.addArrangedSubview(status)
-        let controls = NSTextField(wrappingLabelWithString: "Open a homebrew .nro, or try the graphics demo. Press Esc to close the session.")
-        controls.font = .systemFont(ofSize: 12)
-        controls.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(controls)
+
+        let card = NSBox()
+        card.boxType = .custom
+        card.borderWidth = 1
+        card.borderColor = .separatorColor
+        card.cornerRadius = 12
+        card.fillColor = .controlBackgroundColor
+        card.contentViewMargins = NSSize(width: 0, height: 0)
+        stack.addArrangedSubview(card)
+        let session = NSStackView()
+        session.orientation = .vertical
+        session.alignment = .leading
+        session.spacing = 5
+        session.translatesAutoresizingMaskIntoConstraints = false
+        card.contentView!.addSubview(session)
+        NSLayoutConstraint.activate([
+            session.leadingAnchor.constraint(equalTo: card.contentView!.leadingAnchor, constant: 16),
+            session.trailingAnchor.constraint(equalTo: card.contentView!.trailingAnchor, constant: -16),
+            session.topAnchor.constraint(equalTo: card.contentView!.topAnchor, constant: 12),
+            session.bottomAnchor.constraint(equalTo: card.contentView!.bottomAnchor, constant: -12)
+        ])
+        status.font = .systemFont(ofSize: 16, weight: .semibold)
+        session.addArrangedSubview(status)
+        let help = NSTextField(wrappingLabelWithString: "To close a running app, press Esc in its window or choose Stop Session here.")
+        help.font = .systemFont(ofSize: 13)
+        help.textColor = .secondaryLabelColor
+        session.addArrangedSubview(help)
+        status.widthAnchor.constraint(equalTo: session.widthAnchor).isActive = true
+        help.widthAnchor.constraint(equalTo: session.widthAnchor).isActive = true
+
+        detailsButton = button("Show Session Details", #selector(toggleDetails))
+        stack.addArrangedSubview(detailsButton)
+        details.orientation = .vertical
+        details.alignment = .leading
+        details.spacing = 8
+        details.isHidden = true
+        stack.addArrangedSubview(details)
+
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
         console.isEditable = false
         console.isSelectable = true
-        console.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        console.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        console.setAccessibilityLabel("Session log")
         console.isVerticallyResizable = true
         console.autoresizingMask = [.width]
         console.textContainer?.widthTracksTextView = true
         scroll.documentView = console
-        stack.addArrangedSubview(scroll)
-        scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
-        folderButton = button("SD Card Folder…", #selector(chooseFolder))
-        let logs = button("Show Logs", #selector(showLogs))
+        details.addArrangedSubview(scroll)
+        scroll.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
+        scroll.heightAnchor.constraint(equalToConstant: 120).isActive = true
+        folderButton = button("Choose SD Card Folder…", #selector(chooseFolder))
+        let logs = button("Open Log in Finder", #selector(showLogs))
         let files = NSStackView(views: [folderButton, logs])
         files.spacing = 10
-        stack.addArrangedSubview(files)
-        folderLabel.font = .systemFont(ofSize: 11)
+        details.addArrangedSubview(files)
+        folderLabel.font = .systemFont(ofSize: 12)
         folderLabel.textColor = .secondaryLabelColor
         folderLabel.lineBreakMode = .byTruncatingMiddle
         updateFolderLabel()
-        stack.addArrangedSubview(folderLabel)
-        let preview = NSTextField(labelWithString: "Development preview · Compatibility varies by app · Closing this launcher stops the session")
-        preview.font = .systemFont(ofSize: 10)
-        preview.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(preview)
-        for view in [subtitle, status, controls, folderLabel, preview] {
+        details.addArrangedSubview(folderLabel)
+        folderLabel.widthAnchor.constraint(equalTo: details.widthAnchor).isActive = true
+        for view in [intro, card, details] {
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
+        window.initialFirstResponder = openButton
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -176,15 +230,18 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func button(_ title: String, _ action: Selector) -> NSButton {
         let button = NSButton(title: title, target: self, action: action)
         button.bezelStyle = .rounded
+        button.controlSize = .large
         return button
     }
 
     @objc private func chooseHomebrew() {
+        guard process == nil, window.attachedSheet == nil else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "nro") ?? .data]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.prompt = "Open Homebrew"
+        panel.message = "Choose a homebrew app file ending in .nro."
+        panel.prompt = "Open App"
         panel.beginSheetModal(for: window) { response in
             if response == .OK, let url = panel.url { self.openHomebrew(url) }
         }
@@ -193,6 +250,22 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func openHomebrew(_ url: URL) {
         guard url.pathExtension.lowercased() == "nro" else {
             showError("Choose a homebrew .nro file.")
+            return
+        }
+        guard process == nil else {
+            showError("Stop the current session before opening another app.")
+            return
+        }
+        do {
+            let file = try FileHandle(forReadingFrom: url)
+            defer { try? file.close() }
+            let header = try file.read(upToCount: 20) ?? Data()
+            guard header.count == 20, header.suffix(4) == Data("NRO0".utf8) else {
+                status.stringValue = "This file isn’t a homebrew app. Choose another .nro file."
+                return
+            }
+        } catch {
+            status.stringValue = "Couldn’t read this file. Check that it’s on your Mac and try again."
             return
         }
         start(["run", url.path, "--gui", "--present=gpu", "--sdmc=\(sdCard.path)"], name: url.deletingPathExtension().lastPathComponent, waitsForGuestFrame: true)
@@ -244,7 +317,10 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     if self.stopRequested {
                         self.status.stringValue = "Session stopped."
                     } else if finished.terminationStatus != 0 {
-                        self.status.stringValue = "Session failed (status \(finished.terminationStatus)). See the log below."
+                        self.status.stringValue = waitsForGuestFrame
+                            ? "Couldn’t finish running \(name). Check the session details or try another app."
+                            : "The demo stopped unexpectedly. Check the session details."
+                        self.setDetailsVisible(true)
                     } else {
                         self.status.stringValue = "Session finished."
                     }
@@ -268,7 +344,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         console.scrollToEndOfDocument(nil)
         if let name = awaitingGuestFrame, output.contains("\n[Display] Guest VI frame: ") {
             awaitingGuestFrame = nil
-            if !stopRequested { status.stringValue = "\(name) · First guest frame received" }
+            if !stopRequested { status.stringValue = "Showing \(name) in a separate window" }
         }
     }
 
@@ -276,12 +352,27 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         openButton.isEnabled = !busy
         demoButton.isEnabled = !busy
         folderButton.isEnabled = !busy
+        openMenuItem.isEnabled = !busy
+        stopButton.isHidden = !busy
         stopButton.isEnabled = busy
     }
 
+    @objc private func toggleDetails() { setDetailsVisible(details.isHidden) }
+
+    private func setDetailsVisible(_ visible: Bool) {
+        details.isHidden = !visible
+        detailsButton.title = visible ? "Hide Session Details" : "Show Session Details"
+        let minimumHeight: CGFloat = visible ? 555 : 375
+        window.contentMinSize = NSSize(width: 600, height: minimumHeight)
+        if let size = window.contentView?.bounds.size, size.height < minimumHeight {
+            window.setContentSize(NSSize(width: size.width, height: minimumHeight))
+        }
+    }
+
     @objc private func stop() {
+        guard let process, process.isRunning else { return }
         stopRequested = true
-        process?.terminate()
+        process.terminate()
         stopButton.isEnabled = false
         status.stringValue = "Stopping…"
     }

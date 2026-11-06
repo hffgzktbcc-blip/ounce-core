@@ -44,6 +44,10 @@ and verify actual guest frames through the ordinary GUI path. This does not chan
 NRO window after its file. Local GUI proof on Apple M3: the pinned application sample displayed
 its Hello World frame through Metal, the launcher reported frame receipt, and Escape closed the session.
 
+Launcher onboarding follow-up: tested the redesigned welcome screen on Apple M3. The file picker
+rejected a mislabeled file, the same launcher opened the pinned Hello World sample and displayed its
+guest frame, and Stop Session returned to the welcome actions. The built-in demo also opened.
+
 ## Goal
 Run open-source Switch homebrew on macOS Apple Silicon (and Linux/Windows), with every claim backed by
 a real program's real frame.
