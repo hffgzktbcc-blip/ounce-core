@@ -24,7 +24,7 @@ guest exit, synthetic host frame, or agreement between Ounce-Core engines is ins
 
 ## Evidence integrity gate
 
-CI now invokes the validator with `--artifact-root "$RUNNER_TEMP/ounce-oracle-builds"`.
+CI invokes the validator with `--artifact-root` set to the run’s builds directory.
 The corpus adapter emits additive `artifacts` entries with `role`, relative `path`, and
 `sha256`. With this option the validator streams each referenced file through SHA-256,
 rejects paths escaping the root (including symlinks), and requires a matching binary
@@ -42,3 +42,26 @@ program needs exactly the interpreter and Tier-3 records to count as passing. Mi
 programs remain in the denominator; duplicate IDs, unregistered programs/engines and
 engine identity mismatches are rejected. Native execution remains separately assessed
 until explicitly included in the required corpus engine policy.
+
+## Bounded corpus execution
+
+From the repository root on a Linux Docker host with Rust, Python 3 and the runtime build
+dependencies installed, use the same entry point as the canonical CI job:
+
+```sh
+python3 scripts/verify_corpus_run.py --output /path/to/new-run --check-readme
+```
+
+The command builds the pinned outside programs, compiles the oracle runner, runs the
+registered first-frame checks and validates the report against the built NRO bytes.
+Use `--build-seconds`, `--compile-seconds` and `--engine-seconds` to adjust the limits.
+CI also applies a job-wide deadline.
+
+The output's `evidence/run-manifest.json` records the checkout revision, hashes of the
+registered input manifests, and each stage's working directory (shared across stages),
+argument vector, time limit, result and log paths. It is written incrementally so earlier
+stages remain inspectable after a failure. The evidence directory also retains the raw
+per-program observations, build inventories and canonical report when produced. Replay
+a stage using its recorded argument vector and working directory with its input paths
+available. Use `--image` to select the recorded toolchain image if available locally
+or from the registry. Start a full rerun in a fresh output directory.
