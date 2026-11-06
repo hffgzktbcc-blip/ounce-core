@@ -400,7 +400,7 @@ jobs:
           python3 scripts/corpus_verify.py evidence --verdicts "$evidence/oracle-verdicts.json" \
             --builds "$RUNNER_TEMP/ounce-oracle-builds" --toolchain-image "$evidence/toolchain-image.json" \
             --core-commit "$CORE_COMMIT" --output "$evidence/ounce-verify-evidence.json"
-          python3 tools/ounce_verify.py "$evidence/ounce-verify-evidence.json" --output "$evidence/canonical-report.json"
+          python3 tools/ounce_verify.py "$evidence/ounce-verify-evidence.json" --artifact-root "$RUNNER_TEMP/ounce-oracle-builds" --output "$evidence/canonical-report.json"
           python3 scripts/corpus_verify.py headline "$evidence/canonical-report.json" --check-readme | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Retain oracle evidence (no upstream source or NRO binaries)
@@ -527,3 +527,4 @@ jobs:
           path: ${{ runner.temp }}/native-corpus-evidence/
           if-no-files-found: warn
           retention-days: 30
+
