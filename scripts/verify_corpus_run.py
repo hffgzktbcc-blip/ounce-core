@@ -7,6 +7,7 @@ from math import ceil
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import signal
 import subprocess
@@ -74,6 +75,19 @@ def positive_seconds(value):
     return seconds
 
 
+def timing_host():
+    cpuinfo = Path("/proc/cpuinfo")
+    image = os.environ.get("ImageOS")
+    if not image or not cpuinfo.is_file():
+        return None
+    model = next((line.partition(":")[2].strip() for line in cpuinfo.read_text().splitlines()
+                  if line.startswith("model name")), None)
+    if model is None:
+        return None
+    return {"image": image, "architecture": platform.machine(), "cpu_model": model,
+            "logical_cpus": os.cpu_count()}
+
+
 def run(args):
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=args.resume)
@@ -94,6 +108,7 @@ def run(args):
         },
         "seconds_per_engine": args.engine_seconds,
         "oracle_shards": args.shards,
+        "timing_host": timing_host(),
         "image_reference": args.image,
         "runner_sha256": corpus_build_cache.digest(Path(__file__)),
         "resumable": args.resume,

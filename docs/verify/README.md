@@ -166,3 +166,10 @@ It retains per-commit logs, raw observations, and the remaining interval in
 `bisection.json`. If an oracle changes or a trial cannot produce a comparable result,
 the command reports the unresolved interval. Use `--before fail` to locate a repair.
 Bisection assumes one transition within the chosen range.
+
+The nightly corpus run compares its evidence with the last successful scheduled run.
+A manual workflow run can name a baseline run ID. The comparison retains coverage,
+verdict changes, and the diagnosis for replay. Missing current records and new oracle failures fail the comparison step. New cases
+without older observations are reported as baseline gaps. Instruction counts are compared for the same binaries and
+matching oracle observations. Wall-time changes are advisory and require matching host
+and shard settings. The first successful scheduled run establishes the baseline.

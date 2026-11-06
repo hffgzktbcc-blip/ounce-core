@@ -13,6 +13,8 @@ on:
       - 'scripts/run_corpus_oracles.py'
       - 'scripts/corpus_verify.py'
       - 'scripts/corpus_build_cache.py'
+      - 'scripts/compare_corpus_runs.py'
+      - 'scripts/bisect_corpus_oracle.py'
       - 'scripts/diagnose_corpus_run.py'
       - 'scripts/qualify_corpus_repair.py'
       - 'scripts/verify_corpus_run.py'
@@ -24,9 +26,17 @@ on:
       - 'tests/corpus/**'
       - 'tests/fixtures/**'
   workflow_dispatch:
+    inputs:
+      comparison_baseline:
+        description: Successful baseline run ID for a manual comparison
+        required: false
+        type: string
+  schedule:
+    - cron: '17 3 * * *'
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   startup-probe:
@@ -303,7 +313,7 @@ jobs:
   first-frame-oracles:
     # PLAN step 2: the pre-registered oracles of tests/corpus/oracles.json (docs/corpus-oracles.md).
     # Every verdict is recorded; the job fails only if a recorded pass regresses or a program is missing.
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 150
     env:
@@ -347,6 +357,30 @@ jobs:
           python3 scripts/verify_corpus_run.py --output "$RUNNER_TEMP/ounce-verify" \
             --image "$DEVKITA64_IMAGE" --build-cache "$RUNNER_TEMP/ounce-verify-build-cache" \
             --shards 2 --check-readme
+
+      - name: Compare against the previous successful corpus run
+        if: ${{ !cancelled() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.comparison_baseline != '')) && (steps.corpus.outcome == 'success' || steps.corpus.outcome == 'failure') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_RUN: ${{ inputs.comparison_baseline }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$BASELINE_RUN" ]]; then
+            BASELINE_RUN=$(gh run list --workflow external-corpus.yml --branch main --event schedule \
+              --status success --limit 10 --json databaseId \
+              --jq "map(select(.databaseId != $GITHUB_RUN_ID)) | .[0].databaseId // empty")
+          fi
+          if [[ -z "$BASELINE_RUN" ]]; then
+            echo "No previous successful scheduled run. This run will establish the baseline." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          [[ "$BASELINE_RUN" =~ ^[0-9]+$ ]] && [[ "$BASELINE_RUN" != "$GITHUB_RUN_ID" ]]
+          [[ "$(gh run view "$BASELINE_RUN" --json conclusion --jq .conclusion)" == success ]]
+          gh run download "$BASELINE_RUN" --name first-frame-oracles --dir "$RUNNER_TEMP/ounce-baseline"
+          evidence="$RUNNER_TEMP/ounce-verify/evidence"
+          echo "Baseline run: $BASELINE_RUN" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/compare_corpus_runs.py "$RUNNER_TEMP/ounce-baseline" "$evidence" \
+            --output "$evidence/comparison.json" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # Hand the corpus NROs to the native-execution job (Apple Silicon has no devkitA64 docker).
       # Permissive builds (public domain, MIT, ISC, zlib), kept one day for that job only.
