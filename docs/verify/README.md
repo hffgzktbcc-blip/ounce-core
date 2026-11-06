@@ -142,3 +142,11 @@ contain the registered NROs, build inventories, and toolchain package list.
 Canonical CI persists this cache across runs and pins the devkitA64 image to a registry
 digest. Updating that digest or the build inputs changes the CI cache key. The run
 manifest reports whether the runner accepted, rejected, or missed the restored snapshot.
+
+For a resumable local oracle run, pass `--resume` to `scripts/run_corpus_oracles.py` from
+the start. After an interruption, repeat the same command with the same evidence
+directory. A completed case is reusable when its executable, NRO, oracle manifest,
+host and run settings match and its raw result and log still match their saved hashes.
+Cases without a complete checkpoint run again. The final report still covers the full
+corpus and applies the current regression baseline. Use a dedicated evidence directory
+for each resumable run. This mode runs on Linux and macOS.
