@@ -27,9 +27,10 @@ of any solver. A repair never changes an oracle, drops a failing case, or weaken
       corpus, and retain before/after evidence. No self-approved oracle corrections.
       *Done when:* a failing outside program passes its unchanged oracle without regressions.
       *Proof:* [PR #159](https://github.com/hffgzktbcc-blip/ounce-core/pull/159) qualifies the isolated SDL2 repair from [17/20 reference CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259) to [18/20 candidate CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42179288488): the identical NRO passed unchanged pixel oracles on interpreter and Tier-3, preserving all 17 prior passes.
-- [ ] **V5. Self-heal.** Recover known infrastructure failures with bounded retries and an audit
+- [x] **V5. Self-heal.** Recover known infrastructure failures with bounded retries and an audit
       trail; use rollback and explicit stop conditions for narrowly defined repairs.
       *Done when:* a real recovery succeeds unattended and unsuccessful attempts stop cleanly.
+      *Proof:* [PR #165](https://github.com/hffgzktbcc-blip/ounce-core/pull/165) and [registry recovery CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42186494970/job/127787986260) show an actual refused Docker connection recovering on retry; focused tests confirm permanent errors and exhausted timeouts stop.
 - [ ] **V6. Scale.** Add sharding, content-addressed build caches, resumable jobs, bisection and
       scheduled regression/performance comparisons, using the growing 50-program corpus.
       *Done when:* CI demonstrates retained coverage and actionable regression evidence at scale.
