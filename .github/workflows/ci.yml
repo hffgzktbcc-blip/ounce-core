@@ -13,6 +13,9 @@ on:
       - '!LICENSE'
       - 'PLAN.md'
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
