@@ -11,6 +11,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -75,10 +76,8 @@ def positive_seconds(value):
 
 def run(args):
     root = args.output.resolve()
-    root.mkdir(parents=True)
+    root.mkdir(parents=True, exist_ok=args.resume)
     builds, evidence = root / "builds", root / "evidence"
-    builds.mkdir()
-    evidence.mkdir()
     commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=REPO, text=True, timeout=10
     ).strip()
@@ -95,9 +94,29 @@ def run(args):
         },
         "seconds_per_engine": args.engine_seconds,
         "oracle_shards": args.shards,
+        "image_reference": args.image,
+        "runner_sha256": corpus_build_cache.digest(Path(__file__)),
+        "resumable": args.resume,
         "stages": [],
     }
     manifest_path = evidence / "run-manifest.json"
+
+    continuing = args.resume and manifest_path.is_file()
+    attempt = 1
+    if continuing:
+        previous = json.loads(manifest_path.read_text())
+        for key, value in manifest.items():
+            if key != "stages" and previous.get(key) != value:
+                raise ValueError(f"cannot resume after changing {key}")
+        toolchain_hash = previous.get("prepared_toolchain_sha256")
+        if not toolchain_hash or corpus_build_cache.digest(evidence / "toolchain-image.json") != toolchain_hash:
+            raise ValueError("no complete build snapshot to resume")
+        manifest = previous
+        attempt = manifest.get("attempt", 1) + 1
+    else:
+        builds.mkdir()
+        evidence.mkdir()
+    manifest["attempt"] = attempt
 
     def save_manifest():
         temp = manifest_path.with_suffix(".tmp")
@@ -105,6 +124,8 @@ def run(args):
         temp.replace(manifest_path)
 
     def stage(name, command, seconds, output=None):
+        if attempt > 1:
+            name = f"{name}-attempt-{attempt}"
         output = output or evidence / f"{name}.log"
         command = list(map(str, command))
         entry = {
@@ -144,47 +165,59 @@ def run(args):
         if stage(name, command, seconds, output):
             raise ValueError(f"{name} failed; see {evidence}")
 
-    pull_image(stage, args.image, args.build_seconds, evidence)
     toolchain = evidence / "toolchain-image.json"
-    require("inspect", ["docker", "image", "inspect", args.image], 30, toolchain)
-    image_id = json.loads(toolchain.read_text())[0]["Id"]
     build_manifests = {"original": corpus / "manifest.json"}
     build_manifests.update({path.stem: path for path in (corpus / "oracle-builds").glob("*.json")})
-    entry = None
-    if args.build_cache is not None:
-        recipe = [BUILD, corpus_build_cache.digest(REPO / "scripts/prepare_external_corpus.py"),
-                  corpus_build_cache.digest(Path(corpus_build_cache.__file__).resolve())]
-        key = corpus_build_cache.cache_key(image_id, recipe, build_manifests, oracles)
-        entry = args.build_cache.resolve() / key
-        result = corpus_build_cache.restore(entry, builds, build_manifests, oracles)
-        manifest["build_cache"] = {"key": key, "result": result}
+    if continuing:
+        with tempfile.TemporaryDirectory(dir=root) as directory:
+            corpus_build_cache.copy_verified_builds(builds, Path(directory), build_manifests, oracles)
+        for name in ("oracle-verdicts.json", "ounce-verify-evidence.json", "canonical-report.json"):
+            (evidence / name).unlink(missing_ok=True)
         save_manifest()
-        print(f"Ounce-Verify: build cache {result} ({key})", flush=True)
-    if manifest.get("build_cache", {}).get("result") == "hit":
-        (evidence / "toolchain-packages.txt").write_bytes((builds / "toolchain-packages.txt").read_bytes())
-        for build in {oracle["build"] for oracle in oracles}:
-            (evidence / f"{build}.inventory.json").write_bytes(
-                (builds / build / "build/inventory.json").read_bytes())
+        print(f"Ounce-Verify: resuming oracle execution (attempt {attempt})", flush=True)
     else:
-        container = f"ounce-verify-{uuid.uuid4().hex}"
-        try:
-            require("build", ["docker", "run", "--rm", "--name", container,
-                              "-v", f"{REPO}:/repo:ro", "-v", f"{builds}:/corpus",
-                              "-v", f"{evidence}:/evidence", image_id, "bash", "-c", BUILD],
-                    args.build_seconds)
-        except (subprocess.TimeoutExpired, KeyboardInterrupt):
-            stage("cleanup", ["docker", "rm", "-f", container], 30)
-            raise
-        if entry is not None:
+        pull_image(stage, args.image, args.build_seconds, evidence)
+        require("inspect", ["docker", "image", "inspect", args.image], 30, toolchain)
+        image_id = json.loads(toolchain.read_text())[0]["Id"]
+        entry = None
+        if args.build_cache is not None:
+            recipe = [BUILD, corpus_build_cache.digest(REPO / "scripts/prepare_external_corpus.py"),
+                      corpus_build_cache.digest(Path(corpus_build_cache.__file__).resolve())]
+            key = corpus_build_cache.cache_key(image_id, recipe, build_manifests, oracles)
+            entry = args.build_cache.resolve() / key
+            result = corpus_build_cache.restore(entry, builds, build_manifests, oracles)
+            manifest["build_cache"] = {"key": key, "result": result}
+            save_manifest()
+            print(f"Ounce-Verify: build cache {result} ({key})", flush=True)
+        if manifest.get("build_cache", {}).get("result") == "hit":
+            (evidence / "toolchain-packages.txt").write_bytes((builds / "toolchain-packages.txt").read_bytes())
+            for build in {oracle["build"] for oracle in oracles}:
+                (evidence / f"{build}.inventory.json").write_bytes(
+                    (builds / build / "build/inventory.json").read_bytes())
+        else:
+            container = f"ounce-verify-{uuid.uuid4().hex}"
             try:
-                (builds / "toolchain-packages.txt").write_bytes((evidence / "toolchain-packages.txt").read_bytes())
-                corpus_build_cache.store(entry, builds, build_manifests, oracles)
-            except (OSError, ValueError, KeyError, TypeError) as error:
-                manifest["build_cache"]["store_error"] = str(error)
-                save_manifest()
-                print(f"Ounce-Verify: could not store build cache: {error}", flush=True)
+                require("build", ["docker", "run", "--rm", "--name", container,
+                                  "-v", f"{REPO}:/repo:ro", "-v", f"{builds}:/corpus",
+                                  "-v", f"{evidence}:/evidence", image_id, "bash", "-c", BUILD],
+                        args.build_seconds)
+            except (subprocess.TimeoutExpired, KeyboardInterrupt):
+                stage("cleanup", ["docker", "rm", "-f", container], 30)
+                raise
+            if entry is not None:
+                try:
+                    (builds / "toolchain-packages.txt").write_bytes((evidence / "toolchain-packages.txt").read_bytes())
+                    corpus_build_cache.store(entry, builds, build_manifests, oracles)
+                except (OSError, ValueError, KeyError, TypeError) as error:
+                    manifest["build_cache"]["store_error"] = str(error)
+                    save_manifest()
+                    print(f"Ounce-Verify: could not store build cache: {error}", flush=True)
+        if args.resume:
+            (builds / "toolchain-packages.txt").write_bytes((evidence / "toolchain-packages.txt").read_bytes())
+            manifest["prepared_toolchain_sha256"] = corpus_build_cache.digest(toolchain)
+            save_manifest()
 
-    messages = evidence / "cargo-artifacts.jsonl"
+    messages = evidence / ("cargo-artifacts.jsonl" if attempt == 1 else f"cargo-artifacts-{attempt}.jsonl")
     require("compile", ["cargo", "test", "--release", "--locked", "corpus_first_frame_oracle",
                         "--no-run", "--message-format=json"], args.compile_seconds, messages)
     paths = set()
@@ -200,9 +233,12 @@ def run(args):
     verdicts = evidence / "oracle-verdicts.json"
     # Leave time for every per-case outer timeout plus runner bookkeeping.
     run_seconds = ceil(len(oracles) / args.shards) * (2 * args.engine_seconds + 120) + 60
-    runner_status = stage("oracles", [python, "scripts/run_corpus_oracles.py", "--executable", paths.pop(),
-                                     "--builds", builds, "--evidence", evidence,
-                                     "--seconds", args.engine_seconds, "--shards", args.shards], run_seconds)
+    oracle_command = [python, "scripts/run_corpus_oracles.py", "--executable", paths.pop(),
+                      "--builds", builds, "--evidence", evidence,
+                      "--seconds", args.engine_seconds, "--shards", args.shards]
+    if args.resume:
+        oracle_command.append("--resume")
+    runner_status = stage("oracles", oracle_command, run_seconds)
     if not verdicts.is_file():
         raise ValueError(f"oracle runner produced no observations; see {evidence}")
 
@@ -216,7 +252,8 @@ def run(args):
     if args.check_readme:
         headline.append("--check-readme")
     headline_status = stage("headline", headline, 60)
-    summary = (evidence / "headline.log").read_text()
+    headline_log = "headline.log" if attempt == 1 else f"headline-attempt-{attempt}.log"
+    summary = (evidence / headline_log).read_text()
     print(summary, end="")
     if summary and os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
@@ -226,7 +263,8 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True, help="new directory for builds and evidence")
+    parser.add_argument("--output", type=Path, required=True, help="directory for builds and evidence")
+    parser.add_argument("--resume", action="store_true", help="resume oracle execution after builds have completed")
     parser.add_argument("--build-cache", type=Path, help="optional directory for verified NRO build snapshots")
     parser.add_argument("--image", default=IMAGE, help="devkitA64 tag or previously recorded image ID")
     parser.add_argument("--build-seconds", type=positive_seconds, default=1800, help="limit per Docker stage")
@@ -236,6 +274,15 @@ def main():
     parser.add_argument("--check-readme", action="store_true")
     args = parser.parse_args()
     try:
+        if args.resume:
+            import fcntl
+            args.output.mkdir(parents=True, exist_ok=True)
+            with (args.output / ".run.lock").open("a") as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    parser.error("another resumable invocation is using this output directory")
+                return run(args)
         return run(args)
     except subprocess.TimeoutExpired as error:
         parser.exit(1, f"ounce-verify: stage timed out after {error.timeout}s; see {args.output / 'evidence'}\n")
