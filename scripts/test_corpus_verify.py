@@ -70,11 +70,15 @@ class ReadmeTests(unittest.TestCase):
 
 
 class CoverageTests(unittest.TestCase):
-    def count(self, values):
+    def count(self, values, engines=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = root / "oracles.json"
             manifest.write_text(json.dumps({"oracles": [{"id": "demo"}, {"id": "missing"}]}))
+            if engines is not None:
+                policy = json.loads(manifest.read_text())
+                policy["required_engines"] = engines
+                manifest.write_text(json.dumps(policy))
             report = root / "report.json"
             report.write_text(json.dumps({"schema_version": ounce_verify.SCHEMA, "records": values}))
             return corpus_verify.count(report, manifest)
@@ -100,6 +104,11 @@ class CoverageTests(unittest.TestCase):
             value["execution"]["engine"] = engine
             with self.subTest(case_id=case_id), self.assertRaises(SystemExit):
                 self.count([value])
+
+    def test_manifest_engine_policy_cannot_be_weakened(self):
+        for engines in (["interpreter"], ["interpreter", "interpreter"], ["interpreter", "native"], [[]]):
+            with self.subTest(engines=engines), self.assertRaisesRegex(SystemExit, "engine"):
+                self.count(self.passing(), engines)
 
     def test_relabeling_cannot_enter_the_original_switch_headline(self):
         values = self.passing()

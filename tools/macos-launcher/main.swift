@@ -276,20 +276,23 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
-        let rows = NSStackView()
-        rows.orientation = .vertical
-        rows.alignment = .leading
-        rows.spacing = 12
-        rows.edgeInsets = NSEdgeInsets(top: 24, left: 24, bottom: 24, right: 24)
-        rows.translatesAutoresizingMaskIntoConstraints = false
-        scroll.documentView = rows
+        let text = NSTextView(frame: NSRect(origin: .zero, size: viewer.contentLayoutRect.size))
+        text.isEditable = false
+        text.isSelectable = true
+        text.isVerticallyResizable = true
+        text.isHorizontallyResizable = false
+        text.autoresizingMask = [.width]
+        text.textContainer?.widthTracksTextView = true
+        text.textContainerInset = NSSize(width: 24, height: 24)
+        text.setAccessibilityLabel("Recorded verification results")
+        scroll.documentView = text
         viewer.contentView = scroll
-        rows.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
-        func label(_ text: String, bold: Bool = false) {
-            let field = NSTextField(wrappingLabelWithString: text)
-            field.font = .systemFont(ofSize: bold ? 16 : 13, weight: bold ? .semibold : .regular)
-            rows.addArrangedSubview(field)
-            field.widthAnchor.constraint(lessThanOrEqualTo: rows.widthAnchor, constant: -48).isActive = true
+        let body = NSMutableAttributedString(string: "")
+        func label(_ value: String, bold: Bool = false) {
+            body.append(NSAttributedString(string: value + "\n\n", attributes: [
+                .font: NSFont.systemFont(ofSize: bold ? 16 : 13, weight: bold ? .semibold : .regular),
+                .foregroundColor: NSColor.labelColor
+            ]))
         }
         label("Saved check results", bold: true)
         label("These results describe an earlier run. Opening this file does not verify it again or approve a repair.")
@@ -303,6 +306,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 label("\(oracle.name): \(oracle.status)")
             }
         }
+        text.textStorage?.setAttributedString(body)
         viewer.center()
         viewer.makeKeyAndOrderFront(nil)
     }

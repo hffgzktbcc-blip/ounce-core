@@ -36,7 +36,9 @@ struct EvidenceReport {
               let report = try? JSONDecoder().decode(Document.self, from: data),
               report.schema == "ounce-verify/v0", !report.records.isEmpty, report.records.count <= 1000,
               Set(report.records.map(\.caseID)).count == report.records.count,
-              report.records.allSatisfy({ !$0.caseID.isEmpty &&
+              report.records.allSatisfy({ !$0.caseID.isEmpty && $0.caseID.count <= 512 &&
+                  $0.target.count <= 64 && $0.execution.engine.count <= 64 && $0.execution.commit.count <= 64 &&
+                  $0.oracles.count <= 64 && $0.oracles.allSatisfy({ $0.name.count <= 256 && $0.status.count <= 64 }) &&
                   ["pass", "fail", "blocked", "not-assessed"].contains($0.verdict) }) else {
             throw ReadError.invalid
         }

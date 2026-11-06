@@ -140,7 +140,8 @@ def count(report, manifest=None):
     policy = json.loads(manifest.read_text())
     ids = [o["id"] for o in policy["oracles"]]
     required_engines = policy.get("required_engines", list(ENGINES.values()))
-    if (not isinstance(required_engines, list) or len(required_engines) != len(ENGINES)
+    if (not isinstance(required_engines, list) or any(not isinstance(e, str) for e in required_engines)
+            or len(required_engines) != len(ENGINES)
             or set(required_engines) != set(ENGINES.values())):
         raise SystemExit("manifest must require each corpus engine exactly once")
     target = policy.get("target", "original-switch-libnx")
