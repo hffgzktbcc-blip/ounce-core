@@ -59,10 +59,17 @@ jobs:
           export OUNCE_HBX_PACKAGE="$RUNNER_TEMP/hbx/package"
           export OUNCE_HBX_RESULT="$RUNNER_TEMP/switch2-first-frame.json"
           cargo test --release --locked outside_hello_cpu_first_frame -- --ignored --nocapture
+      - name: Independently validate SDK-path observations
+        run: |
+          python3 tools/ounce_verify.py "$RUNNER_TEMP/switch2-first-frame.json" \
+            --hbx-oracle tests/corpus/switch2/hello-cpu-first-frame.json \
+            --output "$RUNNER_TEMP/switch2-canonical-report.json"
       - name: Retain Switch 2 SDK-path evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: switch2-sdk-first-frame-evidence
-          path: ${{ runner.temp }}/switch2-first-frame.json
+          path: |
+            ${{ runner.temp }}/switch2-first-frame.json
+            ${{ runner.temp }}/switch2-canonical-report.json
           if-no-files-found: warn

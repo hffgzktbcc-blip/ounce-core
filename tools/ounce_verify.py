@@ -208,16 +208,82 @@ def canonical_report(records, artifact_root=None):
     ) + "\n"
 
 
+def canonical_hbx_report(record, oracle):
+    """Recompute SDK-path pixel verdicts against an independently registered oracle."""
+    record = _object(record, "record")
+    oracle = _object(oracle, "oracle")
+    if (record.get("schema_version") != "ounce-verify/hbx-first-frame-v1"
+            or record.get("target") != "switch2-homebrew" or oracle.get("platform") != "switch2"):
+        raise EvidenceError("unknown HBX schema or target")
+    if record.get("source") != oracle.get("source"):
+        raise EvidenceError("HBX source differs from registered oracle")
+    for key in ("code_sha256", "data_sha256", "report_sha256", "oracle_sha256"):
+        _sha(record.get(key), key)
+    pixels = oracle.get("pixels")
+    if not isinstance(pixels, list) or not pixels:
+        raise EvidenceError("HBX oracle needs registered pixels")
+    runs = record.get("runs")
+    if not isinstance(runs, list) or len(runs) != 2:
+        raise EvidenceError("HBX evidence requires both engines")
+    engines, hashes, statuses = set(), [], []
+    for run in runs:
+        run = _object(run, "run")
+        engine = run.get("engine")
+        if engine not in {"interpreter", "tier3"} or engine in engines:
+            raise EvidenceError("duplicate or unknown HBX engine")
+        engines.add(engine)
+        success = not run.get("error")
+        if success:
+            success = run.get("width") == oracle.get("width") and run.get("height") == oracle.get("height")
+            samples = run.get("pixels")
+            if not isinstance(samples, list) or len(samples) != len(pixels):
+                raise EvidenceError("HBX pixel coverage differs from registered oracle")
+            for sample, expected in zip(samples, pixels):
+                sample = _object(sample, "pixel")
+                if any(sample.get(key) != expected.get(key) for key in ("x", "y")) or sample.get("expected") != expected.get("rgba"):
+                    raise EvidenceError("HBX pixel expectation differs from registered oracle")
+                observed = sample.get("observed")
+                if observed is not None and (not isinstance(observed, list) or len(observed) != 4
+                        or any(type(v) is not int or not 0 <= v <= 255 for v in observed)):
+                    raise EvidenceError("HBX observed pixel must be RGBA bytes or null")
+                matched = observed == expected["rgba"]
+                if sample.get("pass") is not matched:
+                    raise EvidenceError("HBX pixel verdict disagrees with observation")
+                success = success and matched
+            digest = run.get("rgba_fnv1a64")
+            if not isinstance(digest, str) or not HEX64.fullmatch(digest):
+                raise EvidenceError("invalid HBX frame hash")
+            hashes.append(digest)
+        if run.get("pass") is not success:
+            raise EvidenceError("HBX engine verdict disagrees with observations")
+        statuses.append(success)
+    agreement = len(hashes) == 2 and hashes[0] == hashes[1]
+    verdict = all(statuses) and agreement
+    if record.get("engine_agreement") is not agreement or record.get("pass") is not verdict:
+        raise EvidenceError("HBX overall verdict disagrees with observations")
+    normalized = json.loads(json.dumps(record))
+    normalized["rendering"] = "HBLauncher host UI callbacks; not a Switch 2 GPU-path validation"
+    return json.dumps(normalized, sort_keys=True, separators=(",", ":")) + "\n"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence", type=Path, help="JSON evidence object or array")
     parser.add_argument("--output", type=Path, help="write canonical validation report")
     parser.add_argument("--artifact-root", type=Path, help="verify referenced artifact bytes under this directory")
+    parser.add_argument("--hbx-oracle", type=Path, help="validate HBLauncher SDK-path evidence against this registered oracle")
     args = parser.parse_args(argv)
     try:
         data = json.loads(args.evidence.read_text(encoding="utf-8"))
         records = data if isinstance(data, list) else [data]
-        output = canonical_report(records, args.artifact_root)
+        if args.hbx_oracle:
+            import hashlib
+            oracle_bytes = args.hbx_oracle.read_bytes()
+            if data.get("oracle_sha256") != hashlib.sha256(oracle_bytes).hexdigest():
+                raise EvidenceError("HBX oracle artifact digest mismatch")
+            output = canonical_hbx_report(data, json.loads(oracle_bytes))
+        else:
+            output = canonical_report(records, args.artifact_root)
         if args.output:
             args.output.write_text(output, encoding="utf-8")
         else:
