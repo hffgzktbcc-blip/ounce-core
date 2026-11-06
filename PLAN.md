@@ -156,9 +156,8 @@ change. A PR that breaks one is rejected.
       Partly met: step 2's shader programs (#134) had not landed, so only deko_basic's shaders are proven;
       re-check them when they land. Open: NAK vs CuAsm on Maxwell bound `TEX` opcode, `FSET` cbuf negate bit.
 - [x] **6. Merge #115** (texture mips/LOD/bias/clamp). DONE 2026-11-03 by owner decision, ahead of a corpus program needing it: merged for release v0.4.0 (cb24c76, CI green).
-- [ ] **7. Corpus 20 → 50**, then repeat step 3. The metric keeps climbing in public.
-      Checkpoint (2026-11-06 07:25Z, nathanaelgovender, 53b8a1d): GREEN — tests: cargo test: 467 passed, 0 failed; suite: pass — Pre-registered the 30 additions without executing them
-      Next: Run canonical CI, record all 50 outcomes and update the headline from its report
+- [x] **7. Corpus 20 → 50**, then repeat step 3. The metric keeps climbing in public.
+      *Proof:* [PR #160](https://github.com/hffgzktbcc-blip/ounce-core/pull/160): 45/50 pass; failing: account, audio-echo, controller-colors, playtone, save-data ([canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173)). Thirty new checks were pre-registered in 53b8a1d. All 100 engine records were byte-verified, all original 20 passed, and the Native job recorded the same 45/50. The five misses are recorded in tests/corpus/oracle-results.json.
 - [ ] **8. Switch 2 homebrew.** As soon as public, open-source tools can build Switch 2 ("Ounce") homebrew, add
       those programs to the corpus with pre-registered oracles, exactly like step 2. Prepare in the meantime by
       porting nxnative engine code (NVN on Metal, native execution) without game-specific parts.
