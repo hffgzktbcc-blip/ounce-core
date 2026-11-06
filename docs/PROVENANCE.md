@@ -17,12 +17,11 @@ Notes:
 - The project records these fixtures as synthetic homebrew test programs; source-to-upstream comparisons and binary-content checks remain pending.
 - Exact per-fixture binary IDs and hashes are recorded in `tests/fixtures/nro/TOOLCHAIN_VERSIONS.md`.
 
-## External corpus programs (PLAN step 2; built in CI, never committed)
+## External corpus programs (built in CI)
 
-The 20 outside programs whose first frames are oracles. Sources are fetched at the pinned commit and
-built unchanged with the `devkitpro/devkita64` Docker image; neither source nor NRO binaries enter
-this repository or its CI artifacts. Manifests: `tests/corpus/manifest.json` (original 4) and
-`tests/corpus/oracle-builds/*.json` (16 added in step 2). Licences are as declared upstream at the
+Sources are fetched at pinned commits and built unchanged with the `devkitpro/devkita64`
+Docker image. Source and NROs stay out of the repository. CI transfers permitted NROs to the
+native job in a one-day artifact. Build manifests are under `tests/corpus/`. Licences are as declared upstream at the
 pinned commit; not legally reviewed. The oracles' glyph model reads libnx 4.12.0's
 `nx/data/default_font.bin` (ISC) at generation time; the font is not committed.
 
@@ -48,6 +47,15 @@ pinned commit; not legally reviewed. The oracles' glyph model reads libnx 4.12.0
 | `hybrid-app` | fincs/hybrid_app | `8c43d74b41740703b732783fa35f9d3fa63d1b2e` | `.` | zlib (`COPYING`, Copyright (c) 2019 fincs) |
 | `nx-hbmenu` | switchbrew/nx-hbmenu | `089fdf85ff82ad7077527092f8615f2e57ffc985` | `.` | ISC (`LICENSE.md`, nx-hbmenu Authors) |
 | `raufang-hello-cpp` | Raufang/switch-hello-world | `fbe545bad4eb9b188990f66b0315b697ad74371a` | `.` | MIT (`LICENSE`, Copyright (c) 2025 Raufang) |
+
+### Step 7 Switch examples intake
+
+The 30 added cases use the same public `switchbrew/switch-examples` revision
+`669786898205b7beb25ff1731e72982e6d0397d3` and its Public Domain Mark 1.0 README notice.
+The paths are registered in `tests/corpus/oracle-builds/switch-examples.json`.
+The CPU JIT sample uses the already pinned `jit` build in `tests/corpus/manifest.json`.
+The new programs link libnx (ISC) and the devkitA64 standard runtime. CI retains each build's
+source and binary hashes, compiler details, and the container package inventory.
 
 ## Synthetic inputs in source
 

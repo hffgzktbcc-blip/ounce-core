@@ -5,7 +5,7 @@
 <br />
 
 [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml)
-[![First-frame oracles](https://img.shields.io/badge/first--frame_oracles-20%2F20_pass-84b89e?style=flat-square)](#what-is-proven)
+[![First-frame oracles](https://img.shields.io/badge/first--frame_oracles-45%2F50_pass-84b89e?style=flat-square)](#what-is-proven)
 [![Safe Rust core](https://img.shields.io/badge/src-forbid(unsafe__code)-cc754f?style=flat-square&logo=rust&logoColor=white)](#safe-rust-by-construction)
 [![Rust 2024](https://img.shields.io/badge/Rust-2024-cc754f?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![MIT](https://img.shields.io/badge/License-MIT-84b89e?style=flat-square)](LICENSE)
@@ -26,7 +26,7 @@ Every program is a conversation between instructions, memory, operating-system s
 
 It brings together interpreters, tiered AArch64 execution, Horizon-style service models, software graphics and optional `wgpu` presentation. The root crate forbids unsafe Rust; the optional Tier-4 recompiler owns a separate unsafe boundary for native code generation and executable memory. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
 
-> **Headline metric: [<!-- corpus-headline -->20/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
+> **Headline metric: [<!-- corpus-headline -->45/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
 
 <table>
 <tr>
@@ -118,7 +118,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ## What is proven
 
-**<!-- corpus-headline -->20/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Each has an expected frame written down from its source *before* the run ([method](docs/corpus-oracles.md)), and the Interpreter and Tier-3 engines must both match it. The count is derived from the [Ounce-Verify](docs/verify/README.md) canonical report of the [CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756) (`ounce-verify-canonical-report` artifact); CI fails if this text disagrees with the report. Failures are the to-do list.
+**<!-- corpus-headline -->45/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Interpreter and Tier-3 both pass the registered pixel checks. The oracle manifest distinguishes whole-frame hashes from named pixel probes ([method](docs/corpus-oracles.md)). The count is derived from the [Ounce-Verify](docs/verify/README.md) canonical report of the [CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173) (`ounce-verify-canonical-report` artifact); CI fails if this text disagrees with the report. Failures are the to-do list.
 
 | Program | Source | Oracle | Result (both engines) |
 | :--- | :--- | :--- | :--- |
@@ -197,17 +197,17 @@ CI coverage is feature-specific: the default job runs unit tests and the 25-stag
 
 Three rules make the [headline number](#what-is-proven) hard to fake. Each links to the code or CI run that enforces it.
 
-**1. Expected frames are fixed before the run.** For each outside program, a person reads its source at a pinned commit and writes down what the first frames must show. [`tools/corpus_oracle.py`](tools/corpus_oracle.py) turns that written spec into the exact expected frame and stores its hash in [`tests/corpus/oracles.json`](tests/corpus/oracles.json). The 16 step-2 oracles were committed in `2fe006e` before ounce-core ever ran those programs, and no ounce-core output was consulted to write any spec or hash ([method](docs/corpus-oracles.md)). CI recomputes every hash from its spec on each run, so a spec and its hash cannot drift apart. One exception is stated openly: `deko-basic`'s hashes were recorded from an earlier run, so its pass is a regression check of an observed frame, not a pre-registered one.
+**1. Register the checks before execution.** Read the program at its pinned upstream revision and specify what its first queued frame should show. [The oracle generator](tools/corpus_oracle.py) computes the expected hashes or pixel probes from [those specs](tests/corpus/oracles.json), and CI recomputes them. The [method notes](docs/corpus-oracles.md) record the provenance of deko-basic's previously observed frame hashes.
 
-**2. A single wrong pixel fails.** For 18 of the 20 oracles, the runner hashes the whole RGBA8 frame (FNV-1a 64, `Frame::content_hash`) and requires it to equal the expected hash ([`corpus_first_frame_oracle`](src/loader/corpus_runner.rs)). Any changed pixel changes the hash. The other 2 oracles (`nx-hbmenu`, `hybrid-app`) check named pixels only, because font rasterising or 3D geometry cannot be predicted exactly from source; both currently fail, so none of the 15 passes rests on them. A fault, unhandled SVC, timeout or early exit is a failure even after a frame.
+**2. Check the registered pixels.** Full-frame oracles compare an RGBA8 FNV-1a 64 hash. Probe oracles compare named pixels when only parts of a frame are predictable from source. A fault, unhandled SVC, timeout or early exit fails the oracle even if a frame was queued.
 
 **3. Two engines must agree bit for bit.** Every oracle runs twice: on the reference interpreter and on the Tier-3 JIT (`Tier3JitEngine`, which fuses hot decoded blocks into traces in safe Rust; it does not emit native code). A program counts only if both engines match the oracle *and* their queued frames are identical; otherwise the runner records "interpreter and Tier-3 frames differ". The 20-program count uses these two engines only. Native execution (`--cpu=native`, PLAN step 4) runs the four original oracles in its own `native-oracles` job on Apple Silicon, and the optional Tier-4 recompiler is not in the oracle run; neither is part of the count.
 
-**Where the number comes from.** CI writes one [`ounce-verify/v0`](docs/verify/README.md) record per program and engine, builds a canonical report from them, and derives the count from it ([`scripts/corpus_verify.py`](scripts/corpus_verify.py)). The README headline and the oracle badge are never edited by hand: CI fails if either disagrees with the report. Latest corpus run: [first-frame-oracles job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756) (`ounce-verify-canonical-report` artifact, 40 records, <!-- corpus-headline -->20/20<!-- /corpus-headline -->).
+**Where the number comes from.** CI writes one [`ounce-verify/v0`](docs/verify/README.md) record per program and engine, builds a canonical report from them, and derives the count from it ([`scripts/corpus_verify.py`](scripts/corpus_verify.py)). The README headline and the oracle badge are never edited by hand: CI fails if either disagrees with the report. Latest corpus run: [first-frame-oracles job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173) (`ounce-verify-canonical-report` artifact, 100 records, <!-- corpus-headline -->45/50<!-- /corpus-headline -->).
 
 | Evidence | Status | Source |
 | :--- | :--- | :--- |
-| First-frame oracles (interpreter and Tier-3) | **<!-- corpus-headline -->20/20<!-- /corpus-headline --> pass** | [canonical report run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756) · [oracles.json](tests/corpus/oracles.json) · [method](docs/corpus-oracles.md) |
+| First-frame oracles (interpreter and Tier-3) | **<!-- corpus-headline -->45/50<!-- /corpus-headline --> pass** | [canonical report run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173) · [oracles.json](tests/corpus/oracles.json) · [method](docs/corpus-oracles.md) |
 | CI on Linux, macOS and Windows | [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) | Each OS runs the unit tests, the 25-stage harness, `gpu-present` and Tier-4 jobs (native execution runs on AArch64 macOS and Linux); last checked green on main: [run 41793834662](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662) ([ubuntu](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662/job/126453153960), [macOS](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662/job/126453153666), [Windows](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662/job/126453154038)) |
 | Safe Rust in `src` | `#![forbid(unsafe_code)]` | [`src/main.rs`](src/main.rs), enforced by the compiler on every CI build |
 
