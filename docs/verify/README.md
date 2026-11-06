@@ -150,3 +150,10 @@ host and run settings match and its raw result and log still match their saved h
 Cases without a complete checkpoint run again. The final report still covers the full
 corpus and applies the current regression baseline. Use a dedicated evidence directory
 for each resumable run. This mode runs on Linux and macOS.
+
+The main `verify_corpus_run.py` command also accepts `--resume`. Enable it on the first
+invocation and repeat the command with the same output path after interrupting the
+oracle stage. It verifies the saved build inventory and toolchain record before using
+the existing builds, recompiles the oracle runner if needed, and retains stage logs
+for each attempt. A run interrupted before its build snapshot is ready needs a new output
+directory.
