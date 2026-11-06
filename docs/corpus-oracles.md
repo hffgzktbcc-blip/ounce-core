@@ -113,3 +113,13 @@ integration with the correctness audit. Pixel expectations are unchanged.
 Integration with the correctness audit in PR #154: [42033845756](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42033845756)
 records 20/20 passing programs on both Interpreter and Tier-3 (40 canonical records). SDL2, hbmenu and
 hybrid-app are now recorded passes. Expected pixel values were not changed during integration.
+
+### Step 7 expansion
+
+The 30 new checks were registered in `53b8a1d` before execution.
+The [first 50-program canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173)
+records 45/50 passing on interpreter and Tier-3, including 26 whole-frame checks and 19 probe checks.
+The Native corpus job records the same 45 passes. All original 20 remain green.
+The new failures are `account`, `audio-echo`, `playtone`, `save-data`, and
+`controller-colors`. Their raw observations and logs are in the `first-frame-oracles`
+artifact. All 100 engine records were checked against the built NRO bytes.

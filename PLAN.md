@@ -43,7 +43,7 @@ and verify actual guest frames through the ordinary GUI path. This does not chan
 ## Goal
 Run open-source Switch homebrew on macOS Apple Silicon (and Linux/Windows), with every claim backed by
 a real program's real frame.
-**Headline metric:** "N/20 outside homebrew programs render their first frame pixel-exact": the README's oracle
+**Headline metric:** "N/50 outside homebrew programs pass their registered first-frame pixel oracle": the README's oracle
 badge, derived from the Ounce-Verify canonical report in CI. It is the only metric.
 
 ## Rule 0: no bullshit (overrides everything, for every agent)
