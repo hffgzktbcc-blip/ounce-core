@@ -1,0 +1,55 @@
+{
+  "schema_version": "ounce-diagnose/acceptance-v1",
+  "date": "2026-11-07",
+  "version": "0.1.0",
+  "installation": {
+    "host": "macOS 26.6.2 arm64",
+    "python": "3.9.6",
+    "distribution_bytes": 42187,
+    "copy_install_seconds": 0.0011,
+    "offline_diagnosis_seconds": 0.179,
+    "exit_code": 0,
+    "cases": 2,
+    "network_or_rust_required": false
+  },
+  "archive_sha256": "3fc326faffb6186ce8cbbd6aa4275890a7e67da442868ffd40cd7a2d0555cae9",
+  "validation": {
+    "script_tests": {
+      "run": 79,
+      "failed": 0,
+      "skipped": 1
+    },
+    "evidence_tests": {
+      "run": 20,
+      "failed": 0
+    },
+    "packaged_cli_exit_codes": {
+      "failure_replay_match": 0,
+      "reference_replay_match": 0,
+      "timeout": 124,
+      "sigterm": 130
+    },
+    "process_lifecycle_tests": "Real subprocess descendants stopped on timeout, SIGINT and SIGTERM; no delayed child marker appeared."
+  },
+  "scope": "Internal macOS arm64 acceptance only. No independent user result, current corpus certification or general debugger support. No executable or linked-library bytes distributed. Runtime log hashes identify local build logs; those logs are not shipped because they may include host paths. Observations and result JSON are unmodified CLI outputs.",
+  "source_sha256": {
+    "scripts/test_diagnosis_cli.py": "e1bf73920f669f8505fb5955d856f21681ecb2579d2fc437b5789ebc608470d3",
+    "scripts/build_diagnosis_cli.py": "131d53acde6dac4322caf917cb197de8764561a51785f710f8fe40477cf3e034",
+    "scripts/diagnosis_cli.py": "d8ba80637d2014dfe07cc338acc5c5524ce2956ee8de3756a5d9db730f9d4d35",
+    "scripts/reproduce_failure.py": "84ade42f01f83161d3c1124d918b8024677abf081285cf82548fffa6c273074e",
+    "scripts/compare_corpus_runs.py": "99ad2bf81326d20456061d22d1a1b224ecfa3b0024846b43d13723c3f4fb0f1a",
+    "scripts/diagnose_corpus_run.py": "c5d9f46eff5276f1a2c47951a03f0b807a35b5757d914bf49cda456cf75bbdf2",
+    "scripts/corpus_verify.py": "050108f41c308b4d3a11271f0c0510cab6adda6bd6027cd2b50004bd66ce2f36",
+    "scripts/run_corpus_oracles.py": "168514785f82e746abdce8d416e36002d1a1df49e02b846cbec195e6eeef6a3a",
+    "scripts/corpus_build_cache.py": "3d60f94b00553f696b75c65877b020630c2135ac366c181f74106898d57cc491",
+    "tools/ounce_verify.py": "a5a144b9fd4c34f533c45be4d8f77977472b9b7703b5d58ced2949d41f550551"
+  },
+  "files_sha256": {
+    "failure-result.json": "a3aa8adba19b6228af08243580b194ce45210ba86558588be70e725ad447ef4f",
+    "failure.json": "e447ebabe44ab003f5e5a448e5e5f59fc3b64b846200890fa7c15fbbffc289c1",
+    "interrupted-result.json": "b08d81f71663a04be229b1567339f062e93d95f26d3deb2a8654175864b560ed",
+    "reference-result.json": "649ef19491493dd984eb7d137ac5af11cfd4ce7ade0edf68f3a0de61cd949e56",
+    "reference.json": "cdc5c7b7f32fd07da1c1050fc99d3fdf0fa3d57beb45c59a2ef3c05054471d76",
+    "timeout-asserted-result.json": "88c2398eef76fc0d94fcf8279eae99caa991ae40ed965c7cefd8e602264735cc"
+  }
+}
