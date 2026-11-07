@@ -102,29 +102,35 @@ Good starting areas:
 ## 5. Daily Contributor Workflow (PLAN-first)
 
 This repository uses a PLAN-driven workflow to keep work linear and reproducible.
+The short agent contract in [`AGENTS.md`](AGENTS.md) applies to human and agent
+contributors alike.
 
 1. **Pick the next active step from PLAN.md**
    ```bash
-   ./scripts/next.sh
+   ./scripts/next.sh          # fast, local; add --full for PR/oracle status
    ```
    If you're on `main`, create a step branch before editing.
 
-2. **Checkpoint your current progress (green or red)**
+2. **Checkpoint your progress at meaningful batches**
    ```bash
    ./scripts/gate.sh --checkpoint "what changed and why" --next "what to do next"
    ```
-   This runs guardrails and the local validation gates, records a checkpoint in `PLAN.md`,
-   and pushes your branch.
+   This runs the guardrails, records a checkpoint in `PLAN.md`, and pushes your
+   branch. It does not run the test suite — add `--validate` when a code batch
+   needs RED/GREEN evidence recorded.
 
-3. **Ship when the step is ready**
-   ```bash
-   ./scripts/gate.sh --ship
-   ```
-   This re-runs validation, updates PLAN proof, opens/updates the PR, and enables auto-merge.
-
-4. **Run local validation without committing**
+3. **Run full local validation without committing**
    ```bash
    ./scripts/gate.sh
    ```
+   Run this once before shipping, and again whenever relevant code changes.
+
+4. **Ship when the step is ready**
+   ```bash
+   ./scripts/gate.sh --ship
+   ```
+   This re-runs full validation, updates PLAN proof, and opens the PR.
+   **Merging is the owner's action** — agents and contributors never merge or
+   arm auto-merge.
 
 These scripts are the expected path for step-based work in this repository.

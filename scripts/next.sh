@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Entry point for every agent: prints where the work stands (step, checkpoint, branch, oracles).
-# Usage: scripts/next.sh [step]. Sourced by scripts/gate.sh for the PLAN.md helpers below.
+# Entry point for every agent: prints where the work stands (step, checkpoint, branch).
+# Usage: scripts/next.sh [--full] [step]. Default is fast and local (no network).
+# --full (or OUNCE_NEXT_FULL=1) also queries GitHub for PR and canonical-oracle status.
+# Sourced by scripts/gate.sh for the PLAN.md helpers below.
 # Plain bash 3.2 (macOS), git, gh, python3.
 
 PLAN=PLAN.md
+NEXT_FULL=${OUNCE_NEXT_FULL:-}
+[ "${1:-}" = "--full" ] && { NEXT_FULL=1; shift; }
 
 # Lines of step N's block in PLAN.md (or the file given as $2).
 step_block() {
@@ -13,6 +17,8 @@ step_block() {
     on { print }' "${2:-$PLAN}"
 }
 first_unchecked() { sed -n 's/^- \[ \] \*\*\([0-9][0-9a-z]*\)\..*/\1/p' "${1:-$PLAN}" | head -1; }
+# How many step blocks carry exactly this ID (must be 1; duplicates corrupt checkpoints).
+step_id_count() { grep -cE "^- \[[ x]\] \*\*$1\." "${2:-$PLAN}"; }
 is_ticked() { step_block "$1" "${2:-$PLAN}" | head -1 | grep -q '^- \[x\]'; }
 checkpoint_of() { step_block "$1" "${2:-$PLAN}" | grep -E '^ +(Checkpoint \(|Next:|Tried/ruled out:|Decisions:)'; }
 main_plan() { git show origin/main:PLAN.md > "${TMPDIR:-/tmp}/ounce-main-plan.md" 2>/dev/null && echo "${TMPDIR:-/tmp}/ounce-main-plan.md"; }
@@ -109,12 +115,23 @@ untick_after_red_ci() {
 
 next_main() {
   cd "$(git rev-parse --show-toplevel)" || exit 1
-  git fetch -q origin main 2>/dev/null
   local n branch pr mp cp_age
   n=$(current_step); branch=$(git branch --show-current)
+  if [ "$(step_id_count "$n")" != 1 ]; then
+    echo "== ounce-core: next ==" >&2
+    echo "FATAL: step ID '$n' matches $(step_id_count "$n") blocks in $PLAN; duplicate IDs corrupt checkpoints." >&2
+    echo "Fix the numbering in PLAN.md (owner approval) before checkpointing. See issue #202." >&2
+    exit 2
+  fi
+  if [ -n "$NEXT_FULL" ]; then
+    git fetch -q origin main 2>/dev/null
+  fi
   mp=$(main_plan || echo "$PLAN")
-  pr=$(gh pr view --json number -q .number 2>/dev/null)
-  if [ -n "$pr" ] && is_ticked "$n" && ! is_ticked "$n" "$mp"; then untick_after_red_ci "$n" "$pr"; fi
+  pr=
+  if [ -n "$NEXT_FULL" ]; then
+    pr=$(gh pr view --json number -q .number 2>/dev/null)
+    if [ -n "$pr" ] && is_ticked "$n" && ! is_ticked "$n" "$mp"; then untick_after_red_ci "$n" "$pr"; fi
+  fi
 
   echo "== ounce-core: next =="
   step_block "$n" | head -1 | sed -E 's/^- \[(.)\] \*\*([^*]*)\*\*.*/Step \2  [\1]/'
@@ -129,12 +146,16 @@ next_main() {
   if [ -n "$cp_age" ] && [ $(( $(date +%s) - cp_age )) -lt 1800 ]; then
     echo "  WARNING: last checkpoint $(( ($(date +%s) - cp_age) / 60 )) min ago: another agent may be active on this branch."
   fi
-  [ -n "$pr" ] && echo "PR: $(gh pr view "$pr" --json number,state,autoMergeRequest,url -q '"#\(.number) \(.state) auto-merge \(if .autoMergeRequest then "on (GitHub merges when CI is green; do not wait for it)" else "off" end) \(.url)"')"
-  local rep; rep=$(latest_report "${branch:-main}")
-  if [ -n "$rep" ]; then set -- $rep; echo "Oracles (${3:-?}, $2): $(report_summary "$1")"; else echo "Oracles: no canonical report reachable (gh auth?)"; fi
-  echo "Open PRs: $(gh pr list --json number,headRefName -q '.[]|"#\(.number) \(.headRefName)"' 2>/dev/null | tr '\n' ' ')"
+  if [ -n "$NEXT_FULL" ]; then
+    [ -n "$pr" ] && echo "PR: $(gh pr view "$pr" --json number,state,url -q '"#\(.number) \(.state) \(.url)"')"
+    local rep; rep=$(latest_report "${branch:-main}")
+    if [ -n "$rep" ]; then set -- $rep; echo "Oracles (${3:-?}, $2): $(report_summary "$1")"; else echo "Oracles: no canonical report reachable (gh auth?)"; fi
+    echo "Open PRs: $(gh pr list --json number,headRefName -q '.[]|"#\(.number) \(.headRefName)"' 2>/dev/null | tr '\n' ' ')"
+  else
+    echo "  (local view; scripts/next.sh --full adds PR and canonical-oracle status)"
+  fi
   echo "Deeper: docs/HANDOFF_HISTORY.md, docs/*-oracle.md, docs/corpus-oracles.md, git log origin/main..HEAD"
-  echo "Save: scripts/gate.sh --checkpoint \"<what/why>\" --next \"<action>\"   Finish: scripts/gate.sh --ship"
+  echo "Save: scripts/gate.sh --checkpoint \"<what/why>\" [--validate]   Finish: scripts/gate.sh --ship (owner merges)"
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then STEP=${1:-${STEP:-}} next_main; fi

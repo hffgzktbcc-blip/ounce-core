@@ -16,7 +16,7 @@
       "stage": "measured",
       "evidence": "Canonical first-frame oracle corpus",
       "evidence_url": "docs/verify/README.md",
-      "next": "Diagnose remaining failures; independently reproduce against unchanged inputs and retained oracle artifacts",
+      "next": "All 50 registered cases pass; next is independent reproduction against unchanged inputs and retained oracle artifacts",
       "corpus_headline": true
     },
     {
@@ -35,7 +35,7 @@
       "evidence_url": "https://github.com/hffgzktbcc-blip/ounce-core/pull/172",
       "next": "Unchanged external program, pre-registered oracle, matching Interpreter/Tier-3 frame, green external CI and independent rerun",
       "pr": 172,
-      "pr_status": "open"
+      "pr_status": "merged"
     },
     {
       "id": "mac",

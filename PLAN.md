@@ -8,7 +8,7 @@ Owner decision (2026-11-07): after being shown the (320,600) arithmetic error,
 the owner directed “Solve and fix”, approving the interaction-only probe correction
 from (42,139,74) to (42,170,43), derived from the already registered geometry formula.
 Retain the initial failed evidence; do not change any of the 50 headline oracles.
-- [x] **15. Drive real homebrew beyond its menu.** Add queued-frame input checkpoints
+- [x] **15i. Drive real homebrew beyond its menu.** Add queued-frame input checkpoints
       to the existing bounded test runner: neutral startup, Down, release, A,
       release. Register Triangle pixels from pinned upstream geometry and shaders
       before execution. Retain applied input transitions, NRO hash, frame hashes,
@@ -305,10 +305,11 @@ The owner requested actual runtime improvements instead of additional models.
       *Proof:* combined canonical corpus CI https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42231436126 records controller-colors passing unchanged on both engines (46/50 total).
 
 
-## How we work (owner decision 2026-11-04)
+## How we work (owner decision 2026-11-04; control-system repair 2026-11-07)
 - **This file is the truth.** Notes, handoffs and memory are history, not plans.
 - **Real frames decide progress:** a step closes on its pixel-oracle evidence in CI, never on unit tests.
-- **Any agent continues any step:** `scripts/next.sh` shows where it stands; `scripts/gate.sh --checkpoint` saves (red or green) on the step's branch; `scripts/gate.sh --ship` ticks it with proof and GitHub auto-merges when CI is green.
+- **Step IDs are unique.** Historical duplicate IDs were suffixed (`15i`, `15f`); `scripts/gate.sh` refuses to checkpoint an ID that matches more than one block. Never reuse a step number.
+- **Any agent continues any step:** `scripts/next.sh` shows where it stands (fast and local by default; `--full` adds network/oracle status); `scripts/gate.sh --checkpoint` saves the step's branch state (lightweight; add `--validate` to run the full local gates); `scripts/gate.sh --ship` runs full validation, ticks with proof and opens the PR. **Agents never merge and never arm auto-merge — the owner merges after reviewing evidence and CI.**
 - **A step ticked with proof is closed**, unless one of its oracles fails again.
 - **Ask the owner only** about oracle corrections, legal doubt or anything destructive.
 
@@ -381,10 +382,10 @@ changed for that retry. Interactive Mac usability/accessibility acceptance is no
 
 ## Owner-directed completion follow-up (2026-11-07)
 The owner requested completing the remaining plan work after resolving the PR list.
-- [ ] **15. Resolve the remaining registered corpus failures.** Diagnose account,
+- [x] **15f. Resolve the remaining registered corpus failures.** Diagnose account,
       save-data, audio-echo and playtone using their pinned outside binaries. Repair
       runtime service behavior and preserve every pre-registered frame expectation.
       *Done when:* all four pass their existing Interpreter/Tier-3 oracles in CI,
       all previous corpus passes remain, and repository guardrails and tests pass.
       Checkpoint (2026-11-07 05:48Z, nathanaelgovender, 1c2a1aa): GREEN — tests: cargo test: 474 passed, 0 failed; suite: pass — All 50 unchanged outside oracles pass locally with verified artifact bytes; retain four same-binary repairs
-      Next: Obtain full hosted corpus, native and matrix qualification before shipping
+      *Proof:* [PR #188](https://github.com/hffgzktbcc-blip/ounce-core/pull/188) merged the four same-binary repairs with no oracle/manifest change; post-merge canonical main run [42380281215](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42380281215) passes all 100 required records with verified artifact bytes (50/50, unchanged denominator), native-corpus-oracles and Guest SASS host execution jobs green. Also recorded as new-phase step 17 proof.
