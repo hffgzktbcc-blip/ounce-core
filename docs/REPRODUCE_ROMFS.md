@@ -190,7 +190,13 @@ evidence, not necessarily passing frames; the final assertions check pass verdic
   container execution. The rebuilt NRO matched the reference SHA-256 exactly;
   both engines passed all five frames and canonical binary integrity validation.
   See the [qualification manifest](reproduce/romfs.json) and retained text evidence.
-  This does not qualify native clean Linux amd64 onboarding or an unaffiliated rerun.
+  A [fresh native Ubuntu 24.04 amd64 CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42376017690)
+  subsequently completed every published block with the same NRO hash and two
+  byte-verified passing canonical records. Both runs are internal qualification;
+  unaffiliated reproduction and specialist legal review remain pending.
+- A [linked-input review packet](reproduce/ROMFS_COMPONENT_REVIEW.md) identifies
+  the selected archives and startup objects. It does not grant binary distribution
+  clearance or resolve per-file and embedded-asset notices.
 
 Retain build `inventory.json`, package/image metadata, build logs, host/toolchain
 versions, raw engine observations and canonical records. Redact usernames, private
