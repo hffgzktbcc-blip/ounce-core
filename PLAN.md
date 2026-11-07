@@ -17,6 +17,8 @@ first-frame corpus, expected pixels and headline unchanged.
       captured frames, complete host draws/readbacks (physical GPU separately
       identified), and CI retains every existing corpus pass. Unit checks alone
       never close this step; unsuccessful execution remains recorded evidence.
+      Checkpoint (2026-11-07 12:17Z, codex, 9ae62a8): GREEN — tests: cargo test: 475 passed, 0 failed; suite: pass — Runner milestone: real menu-to-Triangle traces retained; registered probe arithmetic still requires owner approval
+      Next: Approve or reject the (320,600) arithmetic correction; rerun the unchanged NRO and qualify interaction CI before merging
 
 Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
 Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works on the step it shows. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
