@@ -31,6 +31,58 @@ enum Stop {
 #[derive(Clone, Copy)]
 struct InputCheckpoint { at_instructions: usize, input: NpadInput }
 
+#[derive(Debug, Clone, Copy)]
+struct FrameInput { after_queued_frame: u64, buttons: u64 }
+
+fn parse_frame_inputs(value: &serde_json::Value, frames: u64) -> Result<Vec<FrameInput>, String> {
+    let entries = value.as_array().filter(|a| !a.is_empty()).ok_or("inputs must be non-empty")?;
+    let mut inputs = Vec::new();
+    let mut previous = None;
+    for entry in entries {
+        let object = entry.as_object().ok_or("input must be an object")?;
+        if object.len() != 2 { return Err("input requires exactly after_queued_frame and buttons".into()); }
+        let frame = entry["after_queued_frame"].as_u64().filter(|n| *n < frames)
+            .ok_or("input must precede the final queued frame")?;
+        let buttons = entry["buttons"].as_u64().ok_or("buttons must be an unsigned integer")?;
+        if previous.is_some_and(|p| frame <= p) { return Err("inputs must strictly increase".into()); }
+        if previous.is_none() && (frame != 0 || buttons != 0) { return Err("input must start neutral at frame zero".into()); }
+        inputs.push(FrameInput { after_queued_frame: frame, buttons });
+        previous = Some(frame);
+    }
+    if inputs.last().unwrap().buttons != 0 { return Err("input must end with release".into()); }
+    Ok(inputs)
+}
+
+#[test]
+fn frame_input_script_rejects_ambiguous_or_unreachable_transitions() {
+    use serde_json::json;
+    let script = json!([
+        {"after_queued_frame": 0, "buttons": 0},
+        {"after_queued_frame": 2, "buttons": 32768},
+        {"after_queued_frame": 3, "buttons": 0},
+        {"after_queued_frame": 4, "buttons": 1},
+        {"after_queued_frame": 5, "buttons": 0}
+    ]);
+    assert!(parse_frame_inputs(&script, 8).is_ok());
+    for invalid in [json!([]), json!([{"after_queued_frame": 1, "buttons": 0}]),
+        json!([{"after_queued_frame": 0, "buttons": 0}, {"after_queued_frame": 0, "buttons": 1}]),
+        json!([{"after_queued_frame": 0, "buttons": 0}, {"after_queued_frame": 8, "buttons": 0}]),
+        json!([{"after_queued_frame": 0, "buttons": 0}, {"after_queued_frame": 2, "buttons": 1}]),
+        json!([{"after_queued_frame": 0, "buttons": -1}]),
+        json!([{"after_queued_frame": 0, "buttons": 0, "butons": 1}])] {
+        assert!(parse_frame_inputs(&invalid, 8).is_err(), "accepted {invalid}");
+    }
+}
+
+#[test]
+fn registered_interactions_have_reachable_inputs_and_pixel_checks() {
+    let manifest: serde_json::Value = serde_json::from_str(include_str!("../../tests/corpus/interactions.json")).unwrap();
+    for oracle in manifest["oracles"].as_array().unwrap() {
+        validate_frame_oracle(oracle).unwrap();
+        parse_frame_inputs(&oracle["inputs"], oracle["queued_frames"].as_u64().unwrap()).unwrap();
+    }
+}
+
 struct Limits {
     instructions: usize,
     host_time: Duration,
@@ -41,12 +93,13 @@ struct Limits {
     queued_frames: u64,
     /// Pixels (x, y) sampled from every queued frame.
     probes: Vec<(usize, usize)>,
+    frame_inputs: Vec<FrameInput>,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Self { instructions: crate::NRO_INSTRUCTION_BUDGET, host_time: Duration::from_secs(10),
-            frames: 16, trace_entries: 256, debug_bytes: 8192, queued_frames: 0, probes: Vec::new() }
+            frames: 16, trace_entries: 256, debug_bytes: 8192, queued_frames: 0, probes: Vec::new(), frame_inputs: Vec::new() }
     }
 }
 
@@ -69,6 +122,8 @@ struct Report {
     last_svcs: std::collections::VecDeque<(u64, u16)>,
     debug_output: String,
     input_applied_at: Vec<usize>,
+    /// Actual (queued-frame count, buttons, instruction count) for each transition.
+    frame_inputs_applied: Vec<(u64, u64, usize)>,
     raw_frame: Option<RawFrameEvidence>,
     /// One entry per VI `QUEUE_BUFFER`, captured right after the queue.
     queued: Vec<QueuedFrame>,
@@ -107,7 +162,7 @@ fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
     Report { requested_engine: engine, actual_engine: engine, stop,
         instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
         preemptions: 0, svc_count: 0, svcs: Vec::new(), last_svcs: Default::default(), debug_output: String::new(),
-        input_applied_at: Vec::new(), raw_frame: None, queued: Vec::new(), first_present_diagnostic: None, post_queue_diagnostic: None, compatibility: "not-assessed" }
+        input_applied_at: Vec::new(), frame_inputs_applied: Vec::new(), raw_frame: None, queued: Vec::new(), first_present_diagnostic: None, post_queue_diagnostic: None, compatibility: "not-assessed" }
 }
 
 fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64, probes: &[(usize, usize)]) -> QueuedFrame {
@@ -207,9 +262,18 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
     let quantum = crate::kernel::scheduler::PREEMPT_INTERVAL;
     let mut next_preemption = quantum;
     let mut next_input = 0;
+    let mut next_frame_input = 0;
     'run: loop {
         if started.elapsed() >= limits.host_time { result.stop = Stop::HostTimeout; break; }
         if result.instructions >= limits.instructions { break; }
+        if let Some(input) = limits.frame_inputs.get(next_frame_input)
+            && input.after_queued_frame <= kernel.ipc.vi_frames_queued()
+        {
+            kernel.ipc.hid.input = NpadInput { buttons: input.buttons, ..Default::default() };
+            kernel.ipc.hid.sync(&mut mmu);
+            result.frame_inputs_applied.push((kernel.ipc.vi_frames_queued(), input.buttons, result.instructions));
+            next_frame_input += 1;
+        }
         while next_input < inputs.len() && inputs[next_input].at_instructions <= result.instructions {
             kernel.ipc.hid.input = inputs[next_input].input;
             kernel.ipc.hid.sync(&mut mmu);
@@ -593,6 +657,27 @@ fn corpus_runner_scripted_input_reaches_libnx_shared_memory() {
         assert!(result.debug_output.contains("ounce-input buttons=0x00004001\n"), "{result:?}");
         assert!(result.debug_output.contains("ounce-input stick_l=0x1234FF00\n"), "{result:?}");
         assert!(result.debug_output.ends_with("ounce-input result=0x00000EEE\n"), "{result:?}");
+    }
+}
+
+#[test]
+fn frame_input_runner_applies_startup_once_and_does_not_apply_future_frames() {
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let (mut cpu, mut mmu, kernel) = crate::setup_vm();
+        let base = crate::DEFAULT_BASE_ADDR;
+        mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
+        // Several slices before ExitProcess; none queues a VI frame.
+        for i in 0..1024 { mmu.write_u32(base + i * 4, 0xD503201F).unwrap(); }
+        mmu.write_u32(base + 4092, 0xD40000E1).unwrap();
+        cpu.regs.pc = base;
+        let limits = Limits { frame_inputs: vec![
+            FrameInput { after_queued_frame: 0, buttons: 1 },
+            FrameInput { after_queued_frame: 1, buttons: 0 },
+        ], ..Limits::default() };
+        let (result, kernel) = execute(cpu, mmu, kernel, engine, &limits, &[]);
+        assert_eq!(result.stop, Stop::ExitProcess);
+        assert_eq!(result.frame_inputs_applied, vec![(0, 1, 0)]);
+        assert_eq!(kernel.ipc.hid.input.buttons, 1);
     }
 }
 
@@ -985,8 +1070,18 @@ fn frame_oracles_reject_vacuous_and_unreachable_checks() {
 #[test]
 #[ignore = "requires OUNCE_CORPUS_ROOT with built corpus programs and OUNCE_ORACLE_ID"]
 fn corpus_first_frame_oracle() {
+    registered_frame_oracle(include_str!("../../tests/corpus/oracles.json"), false);
+}
+
+#[test]
+#[ignore = "requires built external corpus and OUNCE_ORACLE_ID"]
+fn corpus_interaction_oracle() {
+    registered_frame_oracle(include_str!("../../tests/corpus/interactions.json"), true);
+}
+
+fn registered_frame_oracle(manifest: &str, interaction: bool) {
     use serde_json::{json, Value};
-    let oracles: Value = serde_json::from_str(include_str!("../../tests/corpus/oracles.json")).unwrap();
+    let oracles: Value = serde_json::from_str(manifest).unwrap();
     let id = std::env::var("OUNCE_ORACLE_ID").expect("OUNCE_ORACLE_ID is unset");
     let root = std::env::var_os("OUNCE_CORPUS_ROOT").expect("OUNCE_CORPUS_ROOT is unset");
     let oracle = oracles["oracles"].as_array().unwrap().iter().find(|o| o["id"] == id.as_str())
@@ -1003,14 +1098,18 @@ fn corpus_first_frame_oracle() {
         .map(|p| (p["x"].as_u64().unwrap() as usize, p["y"].as_u64().unwrap() as usize)).collect();
     let seconds = std::env::var("OUNCE_ORACLE_SECONDS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
     let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(seconds), frames: usize::MAX,
-        queued_frames: frames, probes, ..Limits::default() };
+        queued_frames: frames, probes,
+        frame_inputs: if interaction { parse_frame_inputs(&oracle["inputs"], frames).expect("invalid interaction input") } else { Vec::new() },
+        ..Limits::default() };
     let mut failures = Vec::new();
     let mut runs = Vec::new();
     let mut reference: Option<Vec<QueuedFrame>> = None;
     let mut times = Vec::new();
-    for engine in oracle_engines() {
+    // Interaction qualification always uses the exact engine set, even if OUNCE_CPU is set.
+    let engines = if interaction { vec![Engine::Interpreter, Engine::Tier3] } else { oracle_engines() };
+    for engine in engines {
         let started = Instant::now();
-        let result = run_nro(&nro, &path.to_string_lossy(), &[], engine, &limits, &[]);
+        let (result, kernel) = run_nro_state(&nro, &path.to_string_lossy(), &[], engine, &limits, &[]);
         let seconds_taken = started.elapsed();
         times.push((engine, seconds_taken));
         println!("{engine:?}: stop={:?} instructions={} svcs={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.queued.len(), result.pc);
@@ -1018,6 +1117,31 @@ fn corpus_first_frame_oracle() {
         let mut fail = |message: String| engine_failures.push(message);
         if !matches!(result.stop, Stop::FrameLimit) || result.queued.len() as u64 != frames {
             fail(format!("stopped with {:?} after {} of {frames} queued frames", result.stop, result.queued.len()));
+        }
+        if interaction {
+            if result.actual_engine != engine { fail("requested CPU engine was not used".into()); }
+            if result.frame_inputs_applied.len() != limits.frame_inputs.len()
+                || result.frame_inputs_applied.iter().zip(&limits.frame_inputs)
+                    .any(|(&(frame, buttons, _), expected)| frame != expected.after_queued_frame || buttons != expected.buttons)
+            {
+                fail("input script did not complete at its registered frame boundaries".into());
+            }
+        }
+        let stats: Vec<_> = kernel.ipc.nvdrv.engines.values().map(|g| g.render_stats()).collect();
+        let host_draws: u64 = stats.iter().map(|s| s.host_draws as u64).sum();
+        let hardware_draws: u64 = stats.iter().map(|s| s.hardware_draws as u64).sum();
+        let readback_bytes: u64 = stats.iter().map(|s| s.host_readback_bytes).sum();
+        let host_required = interaction && std::env::var("OUNCE_GPU_BACKEND").as_deref() == Ok("host");
+        if host_required {
+            if host_draws < 3 || readback_bytes < 3 * 1280 * 720 * 4 {
+                fail("missing completed host draws/readbacks for Triangle".into());
+            }
+            if std::env::var("OUNCE_GPU_REQUIRE_HARDWARE").as_deref() == Ok("1") && hardware_draws < 3 {
+                fail("missing physical GPU Triangle draws".into());
+            }
+            if !kernel.ipc.nvdrv.gpu_diagnostics.is_empty() {
+                fail(format!("GPU diagnostics: {:?}", kernel.ipc.nvdrv.gpu_diagnostics));
+            }
         }
         let mut probe_index = 0;
         for check in checks {
@@ -1057,6 +1181,10 @@ fn corpus_first_frame_oracle() {
             "engine": format!("{engine:?}"), "stop": format!("{:?}", result.stop), "instructions": result.instructions,
             "pc": format!("{:#018x}", result.pc), "x0": format!("{:#018x}", result.x0), "failures": engine_failures,
             "host_timeout_seconds": seconds, "wall_seconds": seconds_taken.as_secs_f64(),
+            "frame_inputs_applied": result.frame_inputs_applied.iter().map(|&(frame, buttons, instructions)|
+                json!({"after_queued_frame": frame, "buttons": buttons, "instructions": instructions})).collect::<Vec<_>>(),
+            "gpu": {"host_required": host_required, "host_draws": host_draws, "hardware_draws": hardware_draws,
+                "readback_bytes": readback_bytes, "diagnostics": kernel.ipc.nvdrv.gpu_diagnostics.iter().map(|d| format!("{d:?}")).collect::<Vec<_>>()},
             "max_guest_instructions": limits.instructions, "queued": result.queued.iter().map(|f| json!({
                 "index": f.index, "width": f.width, "height": f.height,
                 "rgba_fnv1a64": format!("{:#018x}", f.rgba_fnv1a64), "error": f.error,
@@ -1071,6 +1199,8 @@ fn corpus_first_frame_oracle() {
     }
     report_speed(&times);
     let verdict = json!({"id": id, "pass": failures.is_empty(), "nro_sha256": nro_sha256,
+        "scope": if interaction { "interaction" } else { "first-frame" },
+        "manifest_sha256": format!("{:x}", sha2::Sha256::digest(manifest.as_bytes())),
         "failures": failures, "runs": runs});
     println!("{}", serde_json::to_string_pretty(&verdict).unwrap());
     if let Some(out) = std::env::var_os("OUNCE_ORACLE_RESULT") {
