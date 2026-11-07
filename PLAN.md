@@ -8,7 +8,7 @@ Owner decision (2026-11-07): after being shown the (320,600) arithmetic error,
 the owner directed “Solve and fix”, approving the interaction-only probe correction
 from (42,139,74) to (42,170,43), derived from the already registered geometry formula.
 Retain the initial failed evidence; do not change any of the 50 headline oracles.
-- [ ] **15. Drive real homebrew beyond its menu.** Add queued-frame input checkpoints
+- [x] **15. Drive real homebrew beyond its menu.** Add queued-frame input checkpoints
       to the existing bounded test runner: neutral startup, Down, release, A,
       release. Register Triangle pixels from pinned upstream geometry and shaders
       before execution. Retain applied input transitions, NRO hash, frame hashes,
@@ -21,8 +21,7 @@ Retain the initial failed evidence; do not change any of the 50 headline oracles
       captured frames, complete host draws/readbacks (physical GPU separately
       identified), and CI retains every existing corpus pass. Unit checks alone
       never close this step; unsuccessful execution remains recorded evidence.
-      Checkpoint (2026-11-07 12:24Z, codex, 6a4bbc1): GREEN — tests: cargo test: 475 passed, 0 failed; suite: pass — Corrected Triangle oracle passes on both CPU engines and host API; fix GitHub runner context scope
-      Next: Require green hosted canonical corpus and Linux/Mac interaction checks, then ship and merge PR194
+      *Proof:* [PR #194](https://github.com/hffgzktbcc-blip/ounce-core/pull/194): 46/50 pass; failing: account, audio-echo, playtone, save-data ([canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42372372068)). Both unchanged-NRO menu-to-Triangle interaction jobs passed: Metal on the reported Apple Paravirtual IntegratedGpu adapter and Linux host API, exact Interpreter/Tier-3 pixel and frame parity, four completed draws and 14,745,600 readback bytes per engine. Original failed reports retained; owner-approved arithmetic correction independently guarded. All hosted native and canonical corpus checks passed.
 
 Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
 Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works on the step it shows. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
