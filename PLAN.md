@@ -60,13 +60,13 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Acceptance: capture failure before a targeted fix, run the same input after it, show the actionable diagnosis/replay result, and preserve prior relevant passes. Record developer feedback separately; outside endorsement is not required to merge a useful fix.
       Evidence: [public issue shortlist](docs/verify/ISSUE_SHORTLIST.md), inspected 2026-11-07. Real reports exist, but none currently supplies a supported, permission-cleared matched execution pair; no outside developer outcome or demand is claimed.
       Next: investigate a minimal accessible input for the threading report or an incoming developer failure with retained runs. Require a recorded failure before choosing a fix; do not build a generic adapter from this shortlist alone.
-- [ ] **R3. Make the proven workflow installable and predictable.**
-      Status: ready
+- [x] **R3. Make the proven workflow installable and predictable.**
       Depends: R1
       Result: a new developer runs the demonstrated diagnosis without assembling internal scripts manually.
       Scope: one CLI front door, explicit versions/exit codes, examples and a small distribution using current Python/Rust tooling. Separate offline report inspection from execution dependencies. Support only the tested report/input formats.
       Acceptance: fresh-install smoke test, successful diagnosis, missing/corrupt input, timeout and interrupted execution scenarios; a shareable bundle opens without private paths or credentials. Record measured setup time and tested hosts rather than a speed promise.
-      Next: extract the entry point proven by R1; package it with only the dependencies it uses.
+      Evidence: [CLI install and exit-code guide](docs/DIAGNOSIS_CLI.md), [dated acceptance](docs/verify/diagnosis-cli-0.1.0/acceptance.json). The copied standard-library archive diagnosed the reviewed example outside the checkout on macOS arm64/Python 3.9.6; explicit replay matched both exact historical revisions. Packaged timeout and SIGTERM returned 124/130 with retained logs. Tests cover missing/corrupt inputs, output preservation, wrong hashes and real descendant cleanup on timeout/SIGINT/SIGTERM; 99 Python tests ran, zero failures, one opt-in infrastructure skip. No Windows or independent-user acceptance claimed.
+      Next: keep the CLI scope fixed until R2 identifies a reproduced external developer failure; release remains R5.
 - [ ] **R4. Turn one lagging component into an observed user result.**
       Status: ready
       Depends: R2

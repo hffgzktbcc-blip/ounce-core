@@ -1,6 +1,8 @@
 # Diagnose a retained failure with Python only
 
-From a fresh checkout, with Python 3.10 or newer:
+For a standalone archive, installation and explicit replay, see [the diagnosis CLI](DIAGNOSIS_CLI.md).
+
+From a fresh checkout, with Python 3.9 or newer:
 
 ```sh
 python3 -B scripts/reproduce_failure.py --output /tmp/sdl2-reproduction
