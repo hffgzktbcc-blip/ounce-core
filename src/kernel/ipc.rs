@@ -56,6 +56,13 @@ pub enum ServiceType {
     File(u32),
     /// Audio Out ("audout:u")
     AudOut,
+    AudIn,
+    AudioDevice(u32),
+    AudioDeviceEvent(u32),
+    Account,
+    AccountProfile,
+    AccountLaunchStorage,
+    AccountLaunchAccessor,
     /// Audio Renderer ("audren:u")
     AudRen,
     /// Applet OE Root ("appletOE")
@@ -175,6 +182,8 @@ pub struct IpcManager {
     /// Steady-clock reading (ns) the kernel publishes under the deterministic clock; `None` follows the host.
     pub steady_override_ns: Option<u64>,
     pub(super) vi_binder: super::vi::BinderObjects,
+    pub(super) audio_devices: super::audio_device::AudioDevices,
+    pub(super) account_launch_consumed: bool,
     next_handle: u32,
     pub total_ipc_requests: u64,
     pub start_instant: std::time::Instant,
@@ -212,6 +221,8 @@ impl IpcManager {
             pl_shm_handle: None,
             steady_override_ns: None,
             vi_binder: Default::default(),
+            audio_devices: Default::default(),
+            account_launch_consumed: false,
             next_handle: 0x10001,
             total_ipc_requests: 0,
             start_instant: std::time::Instant::now(),
@@ -226,7 +237,14 @@ impl IpcManager {
     }
 
     pub fn close_handle(&mut self, handle: u32) -> bool {
-        self.handles.remove(&handle).is_some()
+        let removed = self.handles.remove(&handle);
+        if let Some(ServiceType::AudioDevice(id) | ServiceType::AudioDeviceEvent(id)) = &removed {
+            if !self.handles.values().any(|service| matches!(service,
+                ServiceType::AudioDevice(other) | ServiceType::AudioDeviceEvent(other) if other == id)) {
+                self.audio_devices.0.remove(id);
+            }
+        }
+        removed.is_some()
     }
 
     /// Processes a synchronous HIPC/CMIF request located at `tls_addr` for `session_handle`.
@@ -328,6 +346,14 @@ impl IpcManager {
             return res;
         }
 
+        if let Some(res) = self.handle_audio_device(&service, cmd_id, args_base, tls_addr, mmu, audio) {
+            return res;
+        }
+
+        if let Some(res) = self.handle_account(&service, cmd_id, args_base, tls_addr, mmu) {
+            return res;
+        }
+
         if let Some(res) = self.handle_system_service(&service, cmd_id, args_base, tls_addr, mmu) {
             return res;
         }
@@ -352,6 +378,8 @@ impl IpcManager {
                         "vi:u" | "vi:m" | "vi:s" => ServiceType::Vi,
                         "hid" => ServiceType::Hid,
                         "fsp-srv" => ServiceType::FspSrv,
+                        "acc:u0" | "acc:u1" | "acc:su" => ServiceType::Account,
+                        "audin:u" => ServiceType::AudIn,
                         "audout:u" => ServiceType::AudOut,
                         "audren:u" => ServiceType::AudRen,
                         "appletOE" => ServiceType::AppletOE,
@@ -439,6 +467,12 @@ impl IpcManager {
                     0
                 }
             },
+
+            ServiceType::AudIn | ServiceType::AudioDevice(_) | ServiceType::AudioDeviceEvent(_) => {
+                self.reply_error(tls_addr, mmu, RESULT_UNKNOWN_COMMAND)
+            }
+
+            ServiceType::Account | ServiceType::AccountProfile | ServiceType::AccountLaunchStorage | ServiceType::AccountLaunchAccessor => unreachable!("account services dispatched above"),
 
             ServiceType::AudOut => match cmd_id {
                 // Command 0/1: OpenAudioOut / StartAudioOut -> returns (sample_rate=48000, channels=2)
