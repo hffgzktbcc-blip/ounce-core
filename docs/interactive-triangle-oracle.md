@@ -21,7 +21,7 @@ Viewport is 1280×720, RGBA8 UNORM, with black clear. At pixel centers (x+.5,y+.
 using the deko3d positive-Y-up viewport convention:
 `r=1-(y+.5)/720`, `b=((y+.5)/720+(x+.5-640)/640)/2`, `g=1-r-b`.
 Round each channel times 255 to nearest. Thus (640,480) is (85,85,85),
-and (320,600) is (42,139,74). (100,100) and (1180,100) lie outside the
+and (320,600) is (42,170,43). (100,100) and (1180,100) lie outside the
 triangle and must remain black. These values come from upstream geometry,
 not captured emulator output. Never adjust them to fit a run.
 
@@ -52,8 +52,12 @@ an arithmetic error. Exact substitution into the formula above yields
 The original registered value is (42,139,74). Both reports retain that failure:
 [CPU evidence](verify/menu-triangle-before.json) and
 [host API evidence](verify/menu-triangle-host-before.json).
-The registered value remains unchanged pending explicit owner approval;
-matching this newly calculated value is not recorded as an oracle pass.
+The owner directed “Solve and fix” after the correction was presented on
+2026-11-07, authorizing the arithmetic correction to (42,170,43). The original
+failed reports remain unchanged. `scripts/test_interaction_oracle.py` independently
+recomputes every registered probe using exact rational barycentric coordinates;
+it failed against the original value before the correction. Fresh guest execution
+against the corrected registration is required before claiming an oracle pass.
 
 The local repository gate passed: 475 tests, zero failures, and the runtime
 suite passed. The unchanged first-frame corpus rerun retained **46/50** passes;

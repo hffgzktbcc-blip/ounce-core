@@ -4,6 +4,10 @@
 The owner approved moving beyond startup checks, beginning with the unchanged
 pinned deko3d examples menu and its Triangle selection. Keep the existing 50-case
 first-frame corpus, expected pixels and headline unchanged.
+Owner decision (2026-11-07): after being shown the (320,600) arithmetic error,
+the owner directed “Solve and fix”, approving the interaction-only probe correction
+from (42,139,74) to (42,170,43), derived from the already registered geometry formula.
+Retain the initial failed evidence; do not change any of the 50 headline oracles.
 - [ ] **15. Drive real homebrew beyond its menu.** Add queued-frame input checkpoints
       to the existing bounded test runner: neutral startup, Down, release, A,
       release. Register Triangle pixels from pinned upstream geometry and shaders
@@ -17,8 +21,8 @@ first-frame corpus, expected pixels and headline unchanged.
       captured frames, complete host draws/readbacks (physical GPU separately
       identified), and CI retains every existing corpus pass. Unit checks alone
       never close this step; unsuccessful execution remains recorded evidence.
-      Checkpoint (2026-11-07 12:17Z, codex, 9ae62a8): GREEN — tests: cargo test: 475 passed, 0 failed; suite: pass — Runner milestone: real menu-to-Triangle traces retained; registered probe arithmetic still requires owner approval
-      Next: Approve or reject the (320,600) arithmetic correction; rerun the unchanged NRO and qualify interaction CI before merging
+      Checkpoint (2026-11-07 12:22Z, codex, 1b373be): GREEN — tests: cargo test: 475 passed, 0 failed; suite: pass — Owner-approved source-derived Triangle probe arithmetic correction; retain original failing evidence
+      Next: Run corrected CPU and host-GPU interaction, then qualify hosted CI and merge
 
 Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
 Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works on the step it shows. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
