@@ -9,6 +9,13 @@ const PAGE: usize = 4096;
 const MAX_SEGMENT: usize = 64 * 1024 * 1024;
 const ADDRESS_LIMIT: u64 = 1 << 48;
 
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum HbxLoadError {
     #[error("invalid HBLauncher report: {0}")]
@@ -72,7 +79,7 @@ impl<'a> HbxImage<'a> {
             if number(size)? != bytes.len() as u64 {
                 return Err(Invalid(size));
             }
-            if report[digest].as_str() != Some(format!("{:x}", Sha256::digest(bytes)).as_str()) {
+            if report[digest].as_str() != Some(sha256_hex(bytes).as_str()) {
                 return Err(Invalid(digest));
             }
         }
