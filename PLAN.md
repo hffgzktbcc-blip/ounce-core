@@ -1,5 +1,23 @@
 # ounce-core: THE plan (single source of truth)
 
+## Owner-directed interactive execution (2026-11-07)
+The owner approved moving beyond startup checks, beginning with the unchanged
+pinned deko3d examples menu and its Triangle selection. Keep the existing 50-case
+first-frame corpus, expected pixels and headline unchanged.
+- [ ] **15. Drive real homebrew beyond its menu.** Add queued-frame input checkpoints
+      to the existing bounded test runner: neutral startup, Down, release, A,
+      release. Register Triangle pixels from pinned upstream geometry and shaders
+      before execution. Retain applied input transitions, NRO hash, frame hashes,
+      adapter/draw/readback evidence and independent Interpreter/Tier-3 results.
+      Implementation sequence: guard checkpoint parsing and application with focused
+      tests; extend the runner and separate interaction registry; run unchanged
+      upstream NRO; repair only reproduced failures; add bounded CI execution and
+      retained report; run repository gate and canonical regression corpus.
+      *Done when:* both CPU engines reach the registered Triangle pixels, agree on
+      captured frames, complete host draws/readbacks (physical GPU separately
+      identified), and CI retains every existing corpus pass. Unit checks alone
+      never close this step; unsuccessful execution remains recorded evidence.
+
 Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
 Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works on the step it shows. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
 

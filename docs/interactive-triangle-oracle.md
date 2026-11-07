@@ -1,0 +1,32 @@
+# Menu-to-Triangle interaction oracle
+
+Registered before guest execution on 2026-11-07. This is separate from the
+50-program first-frame headline and never changes its existing expectations.
+
+Source: switchbrew/switch-examples at
+`669786898205b7beb25ff1731e72982e6d0397d3`, already pinned and credited by
+the external corpus. Read `graphics/deko3d/deko_examples/source/main.cpp`,
+`Example02_Triangle.cpp`, `basic_vsh.glsl` and `color_fsh.glsl` at that revision.
+No upstream source or guest bytes are patched.
+
+After two neutral menu queues, press libnx Down (bit 15), release after the
+next queue, then press A (bit 0) after queue 4. A leaves the menu without
+queuing another console frame. Release after queue 5, the first Triangle
+queue. Check queues 6–8, exercising both framebuffer slots. Bound host time
+and guest instructions; failure to reach any transition or checked frame fails.
+
+Triangle's vertices are (0,+1), (-1,-1), (+1,-1), with red, green and blue
+attributes respectively. Its shaders pass position and color unchanged.
+Viewport is 1280×720, RGBA8 UNORM, with black clear. At pixel centers (x+.5,y+.5),
+using the deko3d positive-Y-up viewport convention:
+`r=1-(y+.5)/720`, `b=((y+.5)/720+(x+.5-640)/640)/2`, `g=1-r-b`.
+Round each channel times 255 to nearest. Thus (640,480) is (85,85,85),
+and (320,600) is (42,139,74). (100,100) and (1180,100) lie outside the
+triangle and must remain black. These values come from upstream geometry,
+not captured emulator output. Never adjust them to fit a run.
+
+Both Interpreter and Tier-3 must match the probes and agree on every queued
+frame hash. Host-GPU qualification additionally requires completed draws and
+readbacks, retains adapter diagnostics, and distinguishes software adapters
+from physical hardware. A successful CPU path alone cannot prove host GPU
+execution. Retain failures as well as passes.
