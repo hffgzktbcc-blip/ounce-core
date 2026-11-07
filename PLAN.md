@@ -22,8 +22,6 @@ Retain the initial failed evidence; do not change any of the 50 headline oracles
       identified), and CI retains every existing corpus pass. Unit checks alone
       never close this step; unsuccessful execution remains recorded evidence.
       *Proof:* [PR #194](https://github.com/hffgzktbcc-blip/ounce-core/pull/194): 46/50 pass; failing: account, audio-echo, playtone, save-data ([canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42372372068)). Both unchanged-NRO menu-to-Triangle interaction jobs passed: Metal on the reported Apple Paravirtual IntegratedGpu adapter and Linux host API, exact Interpreter/Tier-3 pixel and frame parity, four completed draws and 14,745,600 readback bytes per engine. Original failed reports retained; owner-approved arithmetic correction independently guarded. All hosted native and canonical corpus checks passed.
-      Checkpoint (2026-11-07 14:01Z, agent, a7fb477): GREEN — tests: cargo test: 477 passed, 0 failed; suite: pass — pin exact upstream sources for RomFS linked inputs (newlib/libnx/switch-examples verified; gcc recipe gap recorded) so the specialist legal review has concrete coordinates
-      Next: specialist review of newlib/libsysbase, GCC runtime/startup and embedded assets using romfs-source-pins.txt; unaffiliated tester evidence via #190
 
 Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
 Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works on the step it shows. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
@@ -389,5 +387,5 @@ The owner requested completing the remaining plan work after resolving the PR li
       runtime service behavior and preserve every pre-registered frame expectation.
       *Done when:* all four pass their existing Interpreter/Tier-3 oracles in CI,
       all previous corpus passes remain, and repository guardrails and tests pass.
-      Checkpoint (2026-11-07 14:01Z, agent, a7fb477): GREEN — tests: cargo test: 477 passed, 0 failed; suite: pass — pin exact upstream sources for RomFS linked inputs (newlib/libnx/switch-examples verified; gcc recipe gap recorded) so the specialist legal review has concrete coordinates
-      Next: specialist review of newlib/libsysbase, GCC runtime/startup and embedded assets using romfs-source-pins.txt; unaffiliated tester evidence via #190
+      Checkpoint (2026-11-07 05:48Z, nathanaelgovender, 1c2a1aa): GREEN — tests: cargo test: 474 passed, 0 failed; suite: pass — All 50 unchanged outside oracles pass locally with verified artifact bytes; retain four same-binary repairs
+      Next: Obtain full hosted corpus, native and matrix qualification before shipping
