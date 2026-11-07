@@ -12,19 +12,20 @@ This is an invitation to **test, report, and challenge the evidence**, not a cla
 
 ## Safe start: registered RomFS example
 
-Prerequisites: Linux (x86_64 or arm64), Rust stable, Git, Docker, and Linux build dependencies described in [REPRODUCE_ROMFS.md](REPRODUCE_ROMFS.md). Other hosts are welcome, but must report deviations.
+Prerequisites for the pinned recipe: Linux amd64, Rust stable, Git, Python 3, Docker, and the build dependencies in [REPRODUCE_ROMFS.md](REPRODUCE_ROMFS.md). Other hosts must report deviations.
 
-```bash
-git clone https://github.com/hffgzktbcc-blip/ounce-core.git
-cd ounce-core
-git rev-parse HEAD
-# Follow the pinned source build instructions in docs/REPRODUCE_ROMFS.md.
-# Once the NRO is built outside the repository and its hash recorded:
-OUNCE_ROMFS_NRO=/absolute/path/to/romfs.nro \
-  cargo test --release romfs_first_frame_oracle -- --ignored --nocapture
-```
+Follow all sections of [the pinned RomFS recipe](REPRODUCE_ROMFS.md), in order,
+in one Bash shell. It builds only the selected outside sample, invokes the exact
+registered corpus oracle, captures both engine observations, and validates the
+two canonical records against actual binary bytes. The machine-readable
+[reference manifest](reproduce/romfs.json) records the pinned core, image digest,
+source revision and existing CI input hash.
 
-The existing reproduction guide contains the full build commands and expected interpreter/Tier-3 report shape. The example command above alone is **not** a complete run. Do not treat a zero process exit, synthetic harness success, or a host-rendered image as a verified guest frame.
+The recipe currently targets Linux amd64; other hosts must disclose deviations.
+It is an internally prepared recipe, not a claim that an unaffiliated person has
+completed it. Legal review of linked binary components remains pending; share
+sanitized text evidence rather than redistributing binaries. Do not treat a zero
+host process exit or engine agreement alone as a verified guest frame.
 
 ## Submit evidence
 
