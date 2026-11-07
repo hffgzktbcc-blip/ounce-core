@@ -96,3 +96,35 @@ Good starting areas:
 - Additional AArch64 instruction decoders in `src/cpu/decoder.rs` from the ARM ARM.
 - Synthetic test modules and edge-case unit tests for the dynamic loader and memory manager.
 - Platform portability fixes and documentation enhancements.
+
+---
+
+## 5. Daily Contributor Workflow (PLAN-first)
+
+This repository uses a PLAN-driven workflow to keep work linear and reproducible.
+
+1. **Pick the next active step from PLAN.md**
+   ```bash
+   ./scripts/next.sh
+   ```
+   If you're on `main`, create a step branch before editing.
+
+2. **Checkpoint your current progress (green or red)**
+   ```bash
+   ./scripts/gate.sh --checkpoint "what changed and why" --next "what to do next"
+   ```
+   This runs guardrails and the local validation gates, records a checkpoint in `PLAN.md`,
+   and pushes your branch.
+
+3. **Ship when the step is ready**
+   ```bash
+   ./scripts/gate.sh --ship
+   ```
+   This re-runs validation, updates PLAN proof, opens/updates the PR, and enables auto-merge.
+
+4. **Run local validation without committing**
+   ```bash
+   ./scripts/gate.sh
+   ```
+
+These scripts are the expected path for step-based work in this repository.

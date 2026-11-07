@@ -1,0 +1,74 @@
+12a59cdfdceab83e39ee129b0275dd803e393e83f19de3922a3b6cc95c767edd  /opt/devkitpro/libnx/lib/libnx.a
+/opt/devkitpro/libnx/lib/libnx.a is owned by libnx 4.12.0-1
+9bf41282aadf7957fe18b8c1fc71394bf255fca6175c8b449fd3f23ff387a362  /opt/devkitpro/devkitA64/aarch64-none-elf/lib/pic/libg.a
+/opt/devkitpro/devkitA64/aarch64-none-elf/lib/pic/libg.a is owned by devkita64-newlib 4.6.0.20260123-4
+6e616a27169f07402bfd1a2df0693778b248c84597d1220a912b3a21f91f8026  /opt/devkitpro/devkitA64/aarch64-none-elf/lib/pic/libsysbase.a
+/opt/devkitpro/devkitA64/aarch64-none-elf/lib/pic/libsysbase.a is owned by devkita64-newlib 4.6.0.20260123-4
+0e3e6fcb85dc96548fc6421f0b756c7b55776c360300e83795e6280b3475f2db  /opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/15.2.0/pic/libgcc.a
+/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/15.2.0/pic/libgcc.a is owned by devkita64-gcc 15.2.0-7
+Name            : libnx
+Version         : 4.12.0-1
+Description     : Nintendo Switch AArch64-only userland library.
+Architecture    : any
+URL             : http://github.com/switchbrew
+Licenses        : custom
+Groups          : switch-dev
+Provides        : None
+Depends On      : None
+Optional Deps   : None
+Required By     : deko3d  switch-curl  switch-sdl2
+Optional For    : None
+Conflicts With  : None
+Replaces        : None
+Installed Size  : 70.94 MiB
+Packager        : Dave Murphy <davem@devkitpro.org>
+Build Date      : Wed 04 Feb 2026 01:39:20 PM UTC
+Install Date    : Thu 19 Feb 2026 05:57:25 PM UTC
+Install Reason  : Explicitly installed
+Install Script  : No
+Validated By    : Signature
+
+Name            : devkita64-newlib
+Version         : 4.6.0.20260123-4
+Description     : devkitA64 newlib
+Architecture    : any
+URL             : None
+Licenses        : None
+Groups          : None
+Provides        : None
+Depends On      : None
+Optional Deps   : None
+Required By     : devkitA64  devkita64-gcc
+Optional For    : None
+Conflicts With  : None
+Replaces        : None
+Installed Size  : 8.86 MiB
+Packager        : Dave Murphy <davem@devkitpro.org>
+Build Date      : Thu 19 Feb 2026 05:37:18 PM UTC
+Install Date    : Thu 19 Feb 2026 05:57:26 PM UTC
+Install Reason  : Installed as a dependency for another package
+Install Script  : No
+Validated By    : Signature
+
+Name            : devkita64-gcc
+Version         : 15.2.0-7
+Description     : devkitA64 gcc
+Architecture    : x86_64
+URL             : https://www.gnu.org/software/gcc/gcc.html
+Licenses        : spdx:GPL-3.0-or-later
+Groups          : None
+Provides        : None
+Depends On      : devkita64-binutils  devkita64-newlib  devkita64-rules
+Optional Deps   : None
+Required By     : devkitA64
+Optional For    : None
+Conflicts With  : None
+Replaces        : None
+Installed Size  : 306.02 MiB
+Packager        : Dave Murphy <davem@devkitpro.org>
+Build Date      : Sun 01 Feb 2026 11:59:34 PM UTC
+Install Date    : Thu 19 Feb 2026 05:57:28 PM UTC
+Install Reason  : Installed as a dependency for another package
+Install Script  : No
+Validated By    : Signature
+
