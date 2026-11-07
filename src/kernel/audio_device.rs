@@ -8,6 +8,16 @@ use std::collections::VecDeque;
 const INVALID_ARGUMENT: u32 = 0xF601;
 const MAX_BUFFER_BYTES: u64 = 16 * 1024 * 1024;
 
+/// First 64 manager open attempts, retained for bounded failure diagnosis.
+#[derive(Debug, Clone)]
+pub(crate) struct AudioOpenTrace {
+    pub input: bool,
+    pub rate: u32,
+    pub raw_channels: u32,
+    pub result: u32,
+    pub channels: Option<u32>,
+}
+
 pub(super) struct AudioDevice {
     input: bool,
     playing: bool,
@@ -32,8 +42,17 @@ impl IpcManager {
                 }
                 let rate = mmu.read_u32(args).unwrap_or(0);
                 let channels = mmu.read_u32(args + 4).unwrap_or(0);
+                // Record both sides of the negotiation before replying, not an inferred success.
+                let accepted = matches!(rate, 0 | 48000) && matches!(channels, 0 | 2 | 0x20000);
+                if self.audio_open_trace.len() < 64 {
+                    self.audio_open_trace.push(AudioOpenTrace {
+                        input, rate, raw_channels: channels,
+                        result: if accepted { 0 } else { INVALID_ARGUMENT },
+                        channels: accepted.then_some(2),
+                    });
+                }
                 // libnx's default channel parameter packs 2 in the upper halfword.
-                if !matches!(rate, 0 | 48000) || !matches!(channels, 0 | 2 | 0x20000) {
+                if !accepted {
                     return Some(self.reply_error(tls, mmu, INVALID_ARGUMENT));
                 }
                 let id = self.allocate_handle(ServiceType::AudioDevice(0));
