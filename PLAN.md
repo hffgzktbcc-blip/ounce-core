@@ -1,5 +1,28 @@
 # ounce-core: THE plan (single source of truth)
 
+## Owner-directed interactive execution (2026-11-07)
+The owner approved moving beyond startup checks, beginning with the unchanged
+pinned deko3d examples menu and its Triangle selection. Keep the existing 50-case
+first-frame corpus, expected pixels and headline unchanged.
+Owner decision (2026-11-07): after being shown the (320,600) arithmetic error,
+the owner directed “Solve and fix”, approving the interaction-only probe correction
+from (42,139,74) to (42,170,43), derived from the already registered geometry formula.
+Retain the initial failed evidence; do not change any of the 50 headline oracles.
+- [x] **15. Drive real homebrew beyond its menu.** Add queued-frame input checkpoints
+      to the existing bounded test runner: neutral startup, Down, release, A,
+      release. Register Triangle pixels from pinned upstream geometry and shaders
+      before execution. Retain applied input transitions, NRO hash, frame hashes,
+      adapter/draw/readback evidence and independent Interpreter/Tier-3 results.
+      Implementation sequence: guard checkpoint parsing and application with focused
+      tests; extend the runner and separate interaction registry; run unchanged
+      upstream NRO; repair only reproduced failures; add bounded CI execution and
+      retained report; run repository gate and canonical regression corpus.
+      *Done when:* both CPU engines reach the registered Triangle pixels, agree on
+      captured frames, complete host draws/readbacks (physical GPU separately
+      identified), and CI retains every existing corpus pass. Unit checks alone
+      never close this step; unsuccessful execution remains recorded evidence.
+      *Proof:* [PR #194](https://github.com/hffgzktbcc-blip/ounce-core/pull/194): 46/50 pass; failing: account, audio-echo, playtone, save-data ([canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42372372068)). Both unchanged-NRO menu-to-Triangle interaction jobs passed: Metal on the reported Apple Paravirtual IntegratedGpu adapter and Linux host API, exact Interpreter/Tier-3 pixel and frame parity, four completed draws and 14,745,600 readback bytes per engine. Original failed reports retained; owner-approved arithmetic correction independently guarded. All hosted native and canonical corpus checks passed.
+
 Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
 Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works on the step it shows. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
 

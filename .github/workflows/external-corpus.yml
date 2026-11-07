@@ -533,6 +533,82 @@ jobs:
           retention-days: 30
 
 
+  interaction-host-gpu:
+    name: Menu-to-Triangle interaction (${{ matrix.os }})
+    needs: first-frame-oracles
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      CARGO_TERM_COLOR: never
+      OUNCE_GPU_BACKEND: host
+      OUNCE_GPU_REQUIRE_HARDWARE: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
+      OUNCE_ORACLE_ID: deko-menu-triangle
+      OUNCE_ORACLE_SECONDS: '180'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: interaction-host-gpu
+      - name: Install Linux build and graphics dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1
+      - uses: actions/download-artifact@v4
+        with:
+          name: corpus-nros
+          path: ${{ runner.temp }}/interaction-nros
+      - name: Compile the interaction adapter
+        run: cargo test --release --locked --features gpu-present --no-run --message-format=json > "$RUNNER_TEMP/interaction-build.jsonl"
+      - name: Drive the unchanged menu into Triangle with bounded execution
+        shell: bash
+        env:
+          OUNCE_CORPUS_ROOT: ${{ runner.temp }}/interaction-nros
+          OUNCE_ORACLE_RESULT: ${{ runner.temp }}/interaction-evidence/triangle.json
+        run: |
+          mkdir -p "$RUNNER_TEMP/interaction-evidence"
+          cp tests/corpus/interactions.json "$RUNNER_TEMP/interaction-evidence/registered-interactions.json"
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          messages = [json.loads(line) for line in
+              (pathlib.Path(os.environ["RUNNER_TEMP"]) / "interaction-build.jsonl").read_text().splitlines()]
+          executables = {m["executable"] for m in messages
+              if m.get("reason") == "compiler-artifact"
+              and m.get("profile", {}).get("test")
+              and m.get("target", {}).get("name") == "ounce-core"
+              and m.get("executable")}
+          if len(executables) != 1:
+              raise SystemExit("Expected one compiled ounce-core test executable")
+          log = pathlib.Path(os.environ["RUNNER_TEMP"]) / "interaction-evidence/triangle.log"
+          with log.open("wb") as output:
+              try:
+                  # Timeout kills the VM process itself, without a surviving cargo child.
+                  result = subprocess.run([
+                      next(iter(executables)),
+                      "loader::fixture_tests::corpus_runner::corpus_interaction_oracle",
+                      "--exact", "--ignored", "--nocapture", "--test-threads=1"
+                  ], stdout=output, stderr=subprocess.STDOUT, timeout=480)
+              except subprocess.TimeoutExpired:
+                  raise SystemExit("interaction exceeded outer host deadline; see retained log")
+          print(log.read_text())
+          raise SystemExit(result.returncode)
+          PY
+      - name: Retain separate interaction evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interaction-triangle-${{ matrix.os }}
+          path: ${{ runner.temp }}/interaction-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
   guest-host-gpu:
     name: Guest SASS host execution (${{ matrix.os }})
     needs: startup-probe
