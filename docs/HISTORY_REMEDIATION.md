@@ -1,6 +1,7 @@
 # Historical provenance remediation — evidence and controlled plan
 
 **Audit date:** 2026-10-29. **Status: investigation and narrow dry run complete / remote history not remediated.** Read-only Git metadata review, release/fixture inventory and a disposable-mirror dry run. Not a legal opinion.
+Dated follow-up snapshot: [PROVENANCE_INVENTORY_2026-11-07.md](PROVENANCE_INVENTORY_2026-11-07.md) (refreshed reachability, gates and release-integrity checks; no remediation action).
 
 ## Confirmed facts
 
