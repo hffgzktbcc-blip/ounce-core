@@ -405,8 +405,20 @@ fn run_nro(nro: &[u8], path: &str, args: &[&str], engine: Engine,
 fn run_path(path: &Path, engine: Engine, limits: &Limits) -> Report {
     match std::fs::read(path) {
         Ok(nro) => run_nro(&nro, &path.to_string_lossy(), &[], engine, limits, &[]),
-        Err(error) => report(engine, Stop::MissingInput(format!("{}: {error}", path.display())), &Cpu::new()),
+        Err(error) => report(
+            engine,
+            Stop::MissingInput(format!("{}: {error}", path.display())),
+            &Cpu::new(),
+        ),
     }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 /// Flight recorder: one small JSON summary of a run, so a failure can be diagnosed without logs.
@@ -454,7 +466,6 @@ fn flight_record(report: &Report, kernel: &HorizonKernel) -> serde_json::Value {
 
 /// Writes `{commit, nro, nro_sha256, runs: [...]}` to `out`.
 fn write_flight_record(out: &Path, nro_path: &Path, runs: &[serde_json::Value]) {
-    use sha2::Digest;
     let nro = std::fs::read(nro_path).unwrap_or_default();
     let commit = std::env::var("GITHUB_SHA").ok().or_else(|| {
         std::process::Command::new("git").args(["rev-parse", "HEAD"]).output().ok()
@@ -463,7 +474,7 @@ fn write_flight_record(out: &Path, nro_path: &Path, runs: &[serde_json::Value]) 
     let doc = serde_json::json!({
         "commit": commit,
         "nro": nro_path.display().to_string(),
-        "nro_sha256": format!("{:x}", sha2::Sha256::digest(&nro)),
+        "nro_sha256": sha256_hex(&nro),
         "runs": runs,
     });
     std::fs::write(out, serde_json::to_string_pretty(&doc).unwrap() + "\n").expect("write flight record");
@@ -776,8 +787,7 @@ fn simplegfx_first_frame_oracle() {
 fn deko_basic_first_frame_oracle() {
     let path = std::env::var_os("OUNCE_DEKO_BASIC_NRO").expect("OUNCE_DEKO_BASIC_NRO is unset");
     let nro_bytes = std::fs::read(&path).expect("read deko_basic NRO binary");
-    use sha2::Digest;
-    let nro_sha256 = format!("{:x}", sha2::Sha256::digest(&nro_bytes));
+    let nro_sha256 = sha256_hex(&nro_bytes);
     // Canonical CI toolchain build (GCC 15.2.0, binutils 2.45.1) vs local build variant (GCC 16.1.0).
     const KNOWN_VALID_SHA256: &[&str] = &[
         "4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa", // devkitpro/devkita64:latest build A
@@ -995,8 +1005,7 @@ fn corpus_first_frame_oracle() {
     let path = Path::new(&root).join(oracle["build"].as_str().unwrap()).join("build/source")
         .join(oracle["nro"].as_str().unwrap());
     let nro = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    use sha2::Digest;
-    let nro_sha256 = format!("{:x}", sha2::Sha256::digest(&nro));
+    let nro_sha256 = sha256_hex(&nro);
     let frames = oracle["queued_frames"].as_u64().unwrap();
     let checks = oracle["checks"].as_array().unwrap();
     let probes: Vec<(usize, usize)> = checks.iter().flat_map(|c| c["probes"].as_array().cloned().unwrap_or_default())
@@ -1088,8 +1097,7 @@ fn guest_gpu_deko_existing_oracle() {
     assert_eq!(std::env::var("OUNCE_GPU_BACKEND").as_deref(), Ok("host"));
     let path = std::env::var_os("OUNCE_DEKO_BASIC_NRO").expect("OUNCE_DEKO_BASIC_NRO is unset");
     let bytes = std::fs::read(&path).unwrap();
-    use sha2::Digest;
-    println!("guest GPU NRO SHA-256: {:x}", sha2::Sha256::digest(&bytes));
+    println!("guest GPU NRO SHA-256: {}", sha256_hex(&bytes));
     let oracles: serde_json::Value = serde_json::from_str(include_str!("../../tests/corpus/oracles.json")).unwrap();
     let oracle = oracles["oracles"].as_array().unwrap().iter().find(|o| o["id"] == "deko-basic").unwrap();
     validate_frame_oracle(oracle).unwrap();

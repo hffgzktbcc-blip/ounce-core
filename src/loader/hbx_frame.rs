@@ -19,6 +19,14 @@ const STACK_SIZE: usize = 1024 * 1024;
 const HEAP_SIZE: usize = 4 * 1024 * 1024;
 const SVC_BASE: u16 = 0x100;
 
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 pub(super) fn first_frame(
     image: &HbxImage<'_>,
     tier3: bool,
@@ -228,13 +236,12 @@ fn outside_hello_cpu_first_frame() -> Result<(), Box<dyn std::error::Error>> {
     }
     let agreement = frames.len() == 2 && frames[0] == frames[1];
     let pass = agreement && runs.iter().all(|r| r["pass"] == true);
-    use sha2::{Digest, Sha256};
     let evidence = serde_json::json!({
         "schema_version": "ounce-verify/hbx-first-frame-v1", "target": "switch2-homebrew",
-        "source": oracle["source"], "oracle_sha256": format!("{:x}", Sha256::digest(include_bytes!("../../tests/corpus/switch2/hello-cpu-first-frame.json"))),
-        "code_sha256": format!("{:x}", Sha256::digest(&code)),
-        "data_sha256": format!("{:x}", Sha256::digest(&data)),
-        "report_sha256": format!("{:x}", Sha256::digest(&report)),
+        "source": oracle["source"], "oracle_sha256": sha256_hex(include_bytes!("../../tests/corpus/switch2/hello-cpu-first-frame.json")),
+        "code_sha256": sha256_hex(&code),
+        "data_sha256": sha256_hex(&data),
+        "report_sha256": sha256_hex(&report),
         "rendering": "HBLauncher host UI callbacks; not a Switch 2 GPU-path validation",
         "runs": runs, "engine_agreement": agreement, "pass": pass
     });
