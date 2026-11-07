@@ -1,11 +1,13 @@
 #![allow(unused_imports)]
 
+pub mod account;
 pub mod apm;
 pub mod applet;
 pub mod cmif;
 pub mod fsp;
 pub mod hid;
 pub mod audren;
+pub mod audio_device;
 pub mod hipc;
 pub mod ipc;
 #[cfg(test)]

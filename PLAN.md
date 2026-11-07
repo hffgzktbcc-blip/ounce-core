@@ -376,3 +376,13 @@ changed for that retry. Interactive Mac usability/accessibility acceptance is no
       with recorded host submissions/readbacks on both CPU engines and a physical
       GPU. Preserve expected frames and report any remaining failures honestly.
       *Proof:* [PR #182](https://github.com/hffgzktbcc-blip/ounce-core/pull/182): 46/50 pass; failing: account, audio-echo, playtone, save-data ([canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42274752750)). Guest SASS executes through Metal on the reported IntegratedGpu Apple Paravirtual device and software Vulkan: both engines match every unchanged deko3d frame, with five completed draws and 18,432,000 readback bytes each. Metal proof: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42274752750/job/128091109327 . Linux proof: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42274752750/job/128091109496 . All 23 implementation checks passed; 100 canonical binary records independently byte-verified. Broader Ampere app and native Tegra coverage remain unestablished.
+
+## Owner-directed completion follow-up (2026-11-07)
+The owner requested completing the remaining plan work after resolving the PR list.
+- [ ] **15. Resolve the remaining registered corpus failures.** Diagnose account,
+      save-data, audio-echo and playtone using their pinned outside binaries. Repair
+      runtime service behavior and preserve every pre-registered frame expectation.
+      *Done when:* all four pass their existing Interpreter/Tier-3 oracles in CI,
+      all previous corpus passes remain, and repository guardrails and tests pass.
+      Checkpoint (2026-11-07 05:48Z, nathanaelgovender, 1c2a1aa): GREEN — tests: cargo test: 474 passed, 0 failed; suite: pass — All 50 unchanged outside oracles pass locally with verified artifact bytes; retain four same-binary repairs
+      Next: Obtain full hosted corpus, native and matrix qualification before shipping

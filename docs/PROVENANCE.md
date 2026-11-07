@@ -131,3 +131,18 @@ The runtime regression workload is unchanged switchbrew/switch-examples
 devkitA64 GCC 16.1.0, newlib 4.6.0.20260123 and libnx 4.12.0. The existing registered
 frame expectation is unchanged. Package digests were checked against the official
 devkitPro repository databases; toolchain and binaries remain outside the repository.
+
+### Local account and libnx audio device sessions (2026-11-07)
+
+`src/kernel/account.rs` and `src/kernel/audio_device.rs` implement the message
+layouts described by public switchbrew/libnx sources at commit
+`b156b4774fb2df7b93402169509266da7547fc4c` in `nx/source/services/acc.c`,
+`applet.c`, `audin.c`, `audout.c` and their public headers. These are protocol
+references. The implementation uses ounce-core's existing CMIF and memory APIs.
+
+The account is an offline runtime-local identity with the nickname Ounce User.
+The headless audio input supplies silence. Device buffers complete synchronously,
+output PCM enters the existing audio queue, and completion events track released
+buffer tags. First-frame passes establish only the registered output behavior.
+They do not establish microphone capture, real-time audio pacing or complete
+account and savedata service coverage.
