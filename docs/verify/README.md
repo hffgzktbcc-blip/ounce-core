@@ -1,5 +1,11 @@
 # Ounce-Verify v0
 
+Current direction: turn these existing interfaces into one failure-to-reproduction
+workflow for developers. The current adapters still describe specific runtime and
+corpus inputs; a general-purpose debugging product is not yet delivered. See
+[the outcome plan](../../PLAN.md). Use evidence appropriate to each claim; pixel
+oracles certify their registered graphics scenarios, not every tooling change.
+
 `tools/ounce_verify.py` validates already-collected JSON evidence. It never executes a guest,
 downloads inputs, or turns a successful host process into a compatibility result.
 
