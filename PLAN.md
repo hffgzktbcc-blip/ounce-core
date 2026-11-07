@@ -1,5 +1,28 @@
 # ounce-core: THE plan (single source of truth)
 
+## Owner-directed interactive execution (2026-11-07)
+The owner approved moving beyond startup checks, beginning with the unchanged
+pinned deko3d examples menu and its Triangle selection. Keep the existing 50-case
+first-frame corpus, expected pixels and headline unchanged.
+Owner decision (2026-11-07): after being shown the (320,600) arithmetic error,
+the owner directed “Solve and fix”, approving the interaction-only probe correction
+from (42,139,74) to (42,170,43), derived from the already registered geometry formula.
+Retain the initial failed evidence; do not change any of the 50 headline oracles.
+- [x] **15. Drive real homebrew beyond its menu.** Add queued-frame input checkpoints
+      to the existing bounded test runner: neutral startup, Down, release, A,
+      release. Register Triangle pixels from pinned upstream geometry and shaders
+      before execution. Retain applied input transitions, NRO hash, frame hashes,
+      adapter/draw/readback evidence and independent Interpreter/Tier-3 results.
+      Implementation sequence: guard checkpoint parsing and application with focused
+      tests; extend the runner and separate interaction registry; run unchanged
+      upstream NRO; repair only reproduced failures; add bounded CI execution and
+      retained report; run repository gate and canonical regression corpus.
+      *Done when:* both CPU engines reach the registered Triangle pixels, agree on
+      captured frames, complete host draws/readbacks (physical GPU separately
+      identified), and CI retains every existing corpus pass. Unit checks alone
+      never close this step; unsuccessful execution remains recorded evidence.
+      *Proof:* [PR #194](https://github.com/hffgzktbcc-blip/ounce-core/pull/194): 46/50 pass; failing: account, audio-echo, playtone, save-data ([canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42372372068)). Both unchanged-NRO menu-to-Triangle interaction jobs passed: Metal on the reported Apple Paravirtual IntegratedGpu adapter and Linux host API, exact Interpreter/Tier-3 pixel and frame parity, four completed draws and 14,745,600 readback bytes per engine. Original failed reports retained; owner-approved arithmetic correction independently guarded. All hosted native and canonical corpus checks passed.
+
 Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
 Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works on the step it shows. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
 
@@ -28,6 +51,9 @@ Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works
 - [ ] **15. Publish one independently reproducible, legally reviewed research experiment (P0; first milestone).** Select one simple outside original-Switch homebrew sample with unambiguous licence/provenance (RomFS is a candidate), using the existing pinned source and `docs/REPRODUCE_ROMFS.md` as a starting point. Produce a versioned minimal `REPRODUCE.md` or an equivalent tightly linked guide, a machine-readable manifest, exact core commit/release, registered oracle identity/class, source SHA, actual NRO SHA-256, toolchain versions and **container image digest** (avoid `latest` in the final recipe), host prerequisites, reproducible command, canonical Ounce-Verify report, raw evidence, sanitized logs, expected failure modes and verification commands. A small 10–15 minute smoke workflow is the first usability target, not a guaranteed runtime. Publish a *read-only* artifact; prohibit hidden owner-only resources and private/retail inputs. Include an explicit known limitations and provenance disclaimer; omit any unreviewed bundled fixture from the distributed artifact.
       *Acceptance gate:* a clean, unaffiliated third-party machine independently follows the published instructions, records source/input/build identifiers, runs the unchanged Interpreter and Tier-3 checks and validates the canonical evidence; the outside tester links a report from [issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190) and discloses independence. If the resulting binary differs, retain that as a reproducibility finding; do **not** call it a byte-identical rebuild. At least one independent successful rerun is required to tick this milestone. CI-only success may be checkpointed, not ticked.
       *Implementation guard:* First inspect whether PR #189 / existing reproduction guides already provide parts of this. No wholesale CI refactor, GPU expansion or new AI dependencies. If legal review blocks a given program, choose a permitted alternate with owner-visible rationale. **Next action:** inventory currently available source pins, Docker image digests and first-run instructions, then prepare the smallest one-program artifact.
+      Internal checkpoint (2026-11-07): pinned one-program recipe and reference manifest in docs/REPRODUCE_ROMFS.md and docs/reproduce/romfs.json. Both engines matched all five unchanged RomFS frames using retained CI NRO bytes; canonical records and raw observations retained under docs/reproduce/. Local gate: 475 tests passed; runtime suite passed. Docker rebuild, clean Linux onboarding, legal review and unaffiliated rerun remain unverified; milestone stays unchecked. No corpus expectation or denominator change.
+      Internal container checkpoint (2026-11-07): all published recipe blocks completed from a fresh pinned clone using Docker 29.9.3, Lima ARM64 and Rosetta amd64 execution. Rebuilt NRO matched the reference SHA-256; both engines passed five unchanged frames and canonical byte checks (docs/reproduce/romfs-container-report.json). Native clean Linux amd64 onboarding, linked-component legal review and unaffiliated rerun remain unverified; milestone stays unchecked. Corpus unchanged.
+      Session checkpoint (2026-11-07): [native Linux amd64 recipe CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42376017690) completed every published Bash block on a fresh Ubuntu runner; rebuilt NRO matched the reference SHA-256 and both engines passed all five registered frames plus canonical byte validation. Retained docs/reproduce/romfs-linux-amd64-* evidence and ROMFS_COMPONENT_REVIEW.md with actual linked-input hashes/member selections; legal clearance is not claimed. Corpus and expectations unchanged. Next: specialist review of newlib/libsysbase, GCC runtime/startup and embedded assets; an unaffiliated tester must submit accepted evidence through #190. Internal work cannot satisfy that acceptance gate; leave this milestone unchecked.
       Checkpoint (2026-11-07 14:02Z, runner, e84c982): GREEN — tests: cargo test: 472 passed, 0 failed; suite: pass — bump sha2 to 0.11.1 and migrate sha256 hex formatting
       Next: finalize
 - [ ] **16. Close provenance and release-trust gaps without destroying evidence (P0).** Inventory historical flagged commits, active refs, fixtures and released binaries with existing read-only `scripts/audit_history_reachability.py`; record what is verified, disputed and unknown. Get specialist advice/owner decisions before any history rewrite, takedown or republication. Audit GitHub required status checks, oracle manifest change controls, dependency/security gates and who can approve weakened expectations. Add release asset checksums, build-attestation verification and toolchain/environment metadata where absent; identify whether each artifact is (i) integrity-checked, (ii) rebuildable from a documented recipe or (iii) *independently byte-identically reproduced*. Redact local usernames, tokens, absolute host paths and private environment from public logs.
@@ -353,3 +379,13 @@ changed for that retry. Interactive Mac usability/accessibility acceptance is no
       with recorded host submissions/readbacks on both CPU engines and a physical
       GPU. Preserve expected frames and report any remaining failures honestly.
       *Proof:* [PR #182](https://github.com/hffgzktbcc-blip/ounce-core/pull/182): 46/50 pass; failing: account, audio-echo, playtone, save-data ([canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42274752750)). Guest SASS executes through Metal on the reported IntegratedGpu Apple Paravirtual device and software Vulkan: both engines match every unchanged deko3d frame, with five completed draws and 18,432,000 readback bytes each. Metal proof: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42274752750/job/128091109327 . Linux proof: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42274752750/job/128091109496 . All 23 implementation checks passed; 100 canonical binary records independently byte-verified. Broader Ampere app and native Tegra coverage remain unestablished.
+
+## Owner-directed completion follow-up (2026-11-07)
+The owner requested completing the remaining plan work after resolving the PR list.
+- [ ] **15. Resolve the remaining registered corpus failures.** Diagnose account,
+      save-data, audio-echo and playtone using their pinned outside binaries. Repair
+      runtime service behavior and preserve every pre-registered frame expectation.
+      *Done when:* all four pass their existing Interpreter/Tier-3 oracles in CI,
+      all previous corpus passes remain, and repository guardrails and tests pass.
+      Checkpoint (2026-11-07 05:48Z, nathanaelgovender, 1c2a1aa): GREEN — tests: cargo test: 474 passed, 0 failed; suite: pass — All 50 unchanged outside oracles pass locally with verified artifact bytes; retain four same-binary repairs
+      Next: Obtain full hosted corpus, native and matrix qualification before shipping
