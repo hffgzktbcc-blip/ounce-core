@@ -42,23 +42,24 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
 
 ## Ready work, in order
 
-- [ ] **W1. Remove workflow loops and preserve useful checks.**
-      Status: active
+- [x] **W1. Remove workflow loops and preserve useful checks.**
       Result: read-only local status; unique task IDs; blocked-task selection; cheap staged-only local checkpoints; separate PR submission; scope-aware CI with required statuses always emitted.
       Acceptance: disposable-Git regression tests show no fetch/revert/push at startup, no Cargo/GitHub requirement to save, no sweeping peer work, no automatic completion/merge, and correct blocked/duplicate handling. Hosted CI checks relevant code without requiring Rust for docs-only edits.
-      Next: validate this branch, submit the workflow PR, and link the passing hosted checks. Do not close on proposal alone.
+      Evidence: [PR #205](https://github.com/hffgzktbcc-blip/ounce-core/pull/205) and [hosted run 42408267822](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42408267822), verified 2026-11-07: all 25 jobs completed successfully, including tooling, platform/runtime, canonical corpus and interaction checks. Disposable-Git tests cover read-only startup, blocked/duplicate handling and staged-only local save without Cargo/GitHub. Integration remains separate; no PR was merged to record this acceptance.
 - [ ] **R1. Ship one failure-to-reproduction walkthrough.**
-      Status: ready
+      Status: active
       Result: a developer follows one entry point to load two retained runs, see the first recorded divergence, identify comparable inputs, and obtain the exact replay command and prerequisites.
       Scope: reuse tools/ounce_verify.py, scripts/diagnose_corpus_run.py, scripts/compare_corpus_runs.py and the historical SDL2 failure; retain real before/after evidence with redistribution reviewed for those artifacts only. Start with local JSON and a CLI; no new service or GUI framework.
       Acceptance: on a fresh Python-only checkout, one documented command produces a diagnosis and a shareable reproduction bundle from permitted retained evidence. Corrupt/missing inputs give actionable errors and nonzero exits. Replay is actually executed in a supported Rust/runtime environment and checked against the recorded failure; offline diagnosis is not called a fresh execution.
-      Next: inventory which retained report/log/input bytes are available, run the current diagnosis tools end to end, and fix the first missing link. If historical assets cannot be shared, use an existing permitted real failure rather than invent a success.
+      Evidence: [Python-only retained SDL2 walkthrough](docs/FAILURE_TO_REPRODUCTION.md) produces a portable diagnosis/replay dossier from original before/after report and log bytes; exact artifact identities and observation-only distribution scope are retained. Both engines first diverge at frame 1; no historical prior passes are lost. This is offline inspection, not fresh runtime execution.
+      Next: obtain the authorized exact-hash NRO absent from observation archives, execute the generated replay recipe on a supported Rust/runtime host, retain raw replay evidence and compare stop/PC/instructions/frame absence against the recorded failure. R1 remains open until that execution acceptance is recorded.
 - [ ] **R2. Solve one externally grounded developer issue.**
       Status: ready
       Result: an open-source developer has a reproducible answer to a real regression, execution divergence, or unusable failure report.
       Scope: inspect public issue reports or contributor feedback; record the issue URL, affected user, current workaround and smallest supported input. Do not assume market demand or contact maintainers without authorization.
       Acceptance: capture failure before a targeted fix, run the same input after it, show the actionable diagnosis/replay result, and preserve prior relevant passes. Record developer feedback separately; outside endorsement is not required to merge a useful fix.
-      Next: shortlist concrete problems the existing code can already investigate. Pick one with accessible permitted evidence. If none fit, write the evidence gap and revise the hypothesis instead of building a generic adapter speculatively.
+      Evidence: [public issue shortlist](docs/verify/ISSUE_SHORTLIST.md), inspected 2026-11-07. Real reports exist, but none currently supplies a supported, permission-cleared matched execution pair; no outside developer outcome or demand is claimed.
+      Next: investigate a minimal accessible input for the threading report or an incoming developer failure with retained runs. Require a recorded failure before choosing a fix; do not build a generic adapter from this shortlist alone.
 - [ ] **R3. Make the proven workflow installable and predictable.**
       Status: ready
       Depends: R1
