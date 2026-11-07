@@ -8,9 +8,9 @@ publish = false
 
 [dependencies]
 # Pinned exactly: Cranelift's API changes between minor releases (design section 4).
-cranelift-codegen = "=0.137.0"
-cranelift-frontend = "=0.137.0"
-cranelift-native = "=0.137.0"
+cranelift-codegen = "=0.137.1"
+cranelift-frontend = "=0.137.1"
+cranelift-native = "=0.137.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.191"
