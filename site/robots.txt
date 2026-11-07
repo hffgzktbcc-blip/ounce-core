@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+# Add a sitemap after the published GitHub Pages URL and any custom domain are confirmed.
