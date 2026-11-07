@@ -11,6 +11,9 @@ The [machine-readable inventory](romfs-linked-inputs.json) records archive hashe
 member names, startup-object hashes, package owners and ELF/map identities.
 [Selected raw linker-map lines](romfs-link-map-selection.txt) and
 [package ownership/metadata](romfs-linked-packages.txt) support those observations.
+[Exact source coordinates](romfs-source-pins.txt) pin each binary package to its
+nearest public recipe commit, upstream source tarball and verified hash, and
+record one recipe gap (devkita64-gcc).
 
 ## Observed link inputs
 
@@ -38,15 +41,23 @@ applies only to this RomFS rebuild, not to other corpus samples or old fixtures.
    notices. The [v4.12.0 libnx notice](https://github.com/switchbrew/libnx/blob/v4.12.0/LICENSE.md)
    grants ISC-style permissions subject to notice retention; a project-level
    notice alone does not establish every asset's provenance.
-3. Identify the exact devkitPro newlib/libsysbase source revision and patches for
-   the installed package. Map the selected objects to their per-file notices.
-   Newlib's [notice register](https://sourceware.org/newlib/COPYING.NEWLIB)
+3. Review the now-pinned devkitPro newlib/libsysbase sources: upstream tarball
+   `newlib-4.6.0.20260123.tar.gz` plus the 539 KB devkitPro patch at
+   buildscripts tag `devkitA64_r29.2` (both coordinates and hashes in
+   [romfs-source-pins.txt](romfs-source-pins.txt)). Map the selected objects to
+   their per-file notices. Newlib's
+   [notice register](https://sourceware.org/newlib/COPYING.NEWLIB)
    contains multiple terms. Package metadata reports no licence value here;
    that is missing metadata, not permission to omit review.
-4. Review the two selected libgcc objects and four GCC startup objects, including
-   whether the [GCC Runtime Library Exception](https://www.gnu.org/licenses/gcc-exception-3.1.html)
+4. Review the two selected libgcc objects (`trunctfdf2.o`, `sfp-exceptions.o`)
+   and four GCC startup objects, including whether the
+   [GCC Runtime Library Exception](https://www.gnu.org/licenses/gcc-exception-3.1.html)
    applies to each installed input and this compilation process. The GCC
-   package's GPL metadata does not settle the terms for each runtime object.
+   package's GPL metadata does not settle the terms for each runtime object,
+   and no public recipe for the signed `devkita64-gcc 15.2.0-7` package was
+   located (see the recipe gap in romfs-source-pins.txt) — a reviewer may need
+   to request the build recipe from devkitPro or review the installed objects
+   directly.
 5. Decide which notices, attributions and other conditions a distributed binary
    would require. Record reviewer identity, scope, source evidence and decision
    before describing the experiment as legally reviewed or distributing binaries.
