@@ -63,3 +63,14 @@ The local repository gate passed: 475 tests, zero failures, and the runtime
 suite passed. The unchanged first-frame corpus rerun retained **46/50** passes;
 only the existing account, audio-echo, playtone and save-data cases failed.
 This local regression observation does not replace hosted CI qualification.
+
+## Corrected-registration replay (2026-11-07)
+
+After the recorded owner decision, fresh runs of the **same NRO bytes** passed
+the corrected probes on Interpreter and Tier-3 with identical complete frame
+hash sequences. Both the CPU path and llvmpipe host path passed. The host path
+again completed four draws and 14,745,600 readback bytes per CPU engine, with
+zero GPU diagnostics. Reports: [CPU replay](verify/menu-triangle-after.json),
+[host replay](verify/menu-triangle-host-after.json). The original failed reports
+remain available above; the headline corpus remains unchanged. Physical GPU
+qualification is separately exercised by the Mac interaction CI job.

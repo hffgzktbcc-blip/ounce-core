@@ -548,8 +548,6 @@ jobs:
       OUNCE_GPU_REQUIRE_HARDWARE: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
       OUNCE_ORACLE_ID: deko-menu-triangle
       OUNCE_ORACLE_SECONDS: '180'
-      OUNCE_CORPUS_ROOT: ${{ runner.temp }}/interaction-nros
-      OUNCE_ORACLE_RESULT: ${{ runner.temp }}/interaction-evidence/triangle.json
     steps:
       - uses: actions/checkout@v4
         with:
@@ -566,11 +564,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: corpus-nros
-          path: ${{ env.OUNCE_CORPUS_ROOT }}
+          path: ${{ runner.temp }}/interaction-nros
       - name: Compile the interaction adapter
         run: cargo test --release --locked --features gpu-present --no-run --message-format=json > "$RUNNER_TEMP/interaction-build.jsonl"
       - name: Drive the unchanged menu into Triangle with bounded execution
         shell: bash
+        env:
+          OUNCE_CORPUS_ROOT: ${{ runner.temp }}/interaction-nros
+          OUNCE_ORACLE_RESULT: ${{ runner.temp }}/interaction-evidence/triangle.json
         run: |
           mkdir -p "$RUNNER_TEMP/interaction-evidence"
           cp tests/corpus/interactions.json "$RUNNER_TEMP/interaction-evidence/registered-interactions.json"
