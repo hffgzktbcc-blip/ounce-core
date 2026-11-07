@@ -39,9 +39,9 @@
     "rgba_fnv1a64": "0x3bd649bbc4f50b85"
   },
   "qualification": {
-    "clean_linux_rebuild": "native Linux amd64 onboarding not run; internal emulated container rebuild completed",
+    "clean_linux_rebuild": "passed internally on fresh GitHub-hosted Ubuntu 24.04 amd64 runner; not independent",
     "independent_rerun": "not-claimed",
-    "byte_identical_rebuild": "internal Docker linux/amd64 container under Rosetta on ARM64 Lima; matches reference; not independent",
+    "byte_identical_rebuild": "reference SHA-256 matched by internal native Linux amd64 CI and ARM64/Rosetta Docker rebuilds; not independent",
     "legal_review": "pending",
     "internal_execution": {
       "core_commit": "4dba991f323d93c7702d09a4a79eae4918aa0fed",
@@ -68,7 +68,20 @@
       "build_log": "romfs-container-build.log",
       "packages": "romfs-container-packages.txt",
       "scope": "internal emulation qualification; not native clean Linux amd64 onboarding or independent reproduction"
-    }
+    },
+    "native_linux_execution": {
+      "run_url": "https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42376017690",
+      "workflow_commit": "b5e91e1a20f4df59da414794f336d31f61b32495",
+      "scope": "internal fresh Ubuntu 24.04 amd64 runner; all published recipe blocks; not independent",
+      "core_commit": "4dba991f323d93c7702d09a4a79eae4918aa0fed",
+      "nro_sha256": "d22f38b633df556c00ffecf1f435d96e63ccd69352d1f2f4e10cf316de590fb9",
+      "reference_bytes_matched": true,
+      "canonical_report": "romfs-linux-amd64-report.json",
+      "canonical_report_sha256": "414cf8dbc033693e34f7869e255063babc66a2eb2f47cc9760663aa74cbf43bd",
+      "raw_observations": "romfs-linux-amd64-observations.json",
+      "host_versions": "romfs-linux-amd64-host.txt"
+    },
+    "legal_review_packet": "ROMFS_COMPONENT_REVIEW.md; technical inventory only; specialist review pending"
   },
   "distribution": "recipe and metadata only; no bundled executable or source fixture"
 }
