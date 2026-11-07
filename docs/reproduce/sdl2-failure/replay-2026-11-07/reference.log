@@ -1,0 +1,77 @@
+running 1 test
+test loader::fixture_tests::corpus_runner::corpus_first_frame_oracle ... Interpreter: stop=FrameLimit instructions=172663220 svcs=0 queued=2 pc=0x80494204
+Tier3: stop=FrameLimit instructions=172663220 svcs=0 queued=2 pc=0x80494204
+[speed] Interpreter: 13.249 s
+[speed] Tier3: 4.729 s
+{
+  "failures": [],
+  "id": "sdl2-simple",
+  "nro_sha256": "d92512342d6d571023da3c98d907f04c0c85043de7b2ffd50a745cbcc928bc7f",
+  "pass": true,
+  "runs": [
+    {
+      "engine": "Interpreter",
+      "failures": [],
+      "host_timeout_seconds": 180,
+      "instructions": 172663220,
+      "max_guest_instructions": 4000000000,
+      "pc": "0x0000000080494204",
+      "queued": [
+        {
+          "error": null,
+          "height": 1080,
+          "index": 1,
+          "rgba_fnv1a64": "0xcf96f2a4adbe7325",
+          "width": 1920
+        },
+        {
+          "error": null,
+          "height": 1080,
+          "index": 2,
+          "rgba_fnv1a64": "0x0a06d1306e517325",
+          "width": 1920
+        }
+      ],
+      "stop": "FrameLimit",
+      "wall_seconds": 13.249263416,
+      "x0": "0x0000000000000000"
+    },
+    {
+      "engine": "Tier3",
+      "failures": [],
+      "host_timeout_seconds": 180,
+      "instructions": 172663220,
+      "max_guest_instructions": 4000000000,
+      "pc": "0x0000000080494204",
+      "queued": [
+        {
+          "error": null,
+          "height": 1080,
+          "index": 1,
+          "rgba_fnv1a64": "0xcf96f2a4adbe7325",
+          "width": 1920
+        },
+        {
+          "error": null,
+          "height": 1080,
+          "index": 2,
+          "rgba_fnv1a64": "0x0a06d1306e517325",
+          "width": 1920
+        }
+      ],
+      "stop": "FrameLimit",
+      "wall_seconds": 4.728708458,
+      "x0": "0x0000000000000000"
+    }
+  ]
+}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 471 filtered out; finished in 18.00s
+
+     Running tests/cli_failures.rs (target/release/deps/cli_failures-b76c32ec4f8bc896)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
