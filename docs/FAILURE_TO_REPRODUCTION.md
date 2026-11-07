@@ -35,15 +35,35 @@ and `NOTICE.md`: they link original CI artifacts and distinguish their recorded
 integrity claims from local report validation. The original report bytes are
 preserved, including the passing run's recorded-core/workflow-head distinction.
 
-## Execution acceptance still open
+## Executed replay acceptance (2026-11-07)
 
-This checkout retains genuine before/after CI observations, not a newly executed
-replay. PR #158 reported an earlier successful reproduction, but its separate raw
-replay files were not available here. The observation artifacts contain no NRO.
-To finish R1, obtain an authorized exact-hash binary, execute the generated recipe
-on a supported Rust/runtime host, retain the new raw JSON/log and compare both
-engines' digest, frame absence, stop, PC and instruction count to the original
-failure. A build failure or different binary does not satisfy acceptance.
+The generated recipe was executed on macOS 26.6.2 arm64 with Rust 1.98.0,
+using the exact-hash NRO recovered from a local build archive. Both recorded
+revisions were checked out cleanly and built into separate target directories.
+The NRO remains local and is not distributed in this walkthrough.
+
+| Recorded revision | Cargo exit | Interpreter / Tier-3 result |
+| --- | --- | --- |
+| Failure `0e5c340` | 101 (expected oracle failure) | ExitProcess, PC `0x000000007ffe0004`, 9,104,054 instructions, no queued frames |
+| Reference `bc46c76` | 0 | FrameLimit, PC `0x0000000080494204`, 172,663,220 instructions, both registered frames pass |
+
+[Replay observations and manifest](reproduce/sdl2-failure/replay-2026-11-07/manifest.json)
+retain raw JSON and the runtime portions of stdout/stderr. For each engine,
+stop, PC, instruction count, X0, queued frame dimensions/hashes, failures and
+execution limits match the corresponding historical observation exactly.
+Wall times are retained but are not equality checks or performance claims.
+This is an internal matched replay of one input, not an independent rerun or
+a new full-corpus certification. No expectations or runtime source were changed.
+
+The first exploratory runs shared an existing Cargo target directory and produced
+inconsistent results, including a failing reference. Those runs were rejected as
+acceptance evidence. Fresh builds in separate target directories produced the
+matched observations above. Keep each revision's target directory separate when
+replaying (`CARGO_TARGET_DIR`); do not reuse an unqualified historical test binary.
+
+The bundle generator still performs offline inspection only. Its replay warning
+means that generating a dossier does not execute the guest; the dated observations
+linked above establish the separately performed execution acceptance.
 
 The observation-only distribution review is recorded in
 [NOTICE.md](reproduce/sdl2-failure/NOTICE.md). Broader historical provenance issues
