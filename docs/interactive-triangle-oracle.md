@@ -54,3 +54,8 @@ The original registered value is (42,139,74). Both reports retain that failure:
 [host API evidence](verify/menu-triangle-host-before.json).
 The registered value remains unchanged pending explicit owner approval;
 matching this newly calculated value is not recorded as an oracle pass.
+
+The local repository gate passed: 475 tests, zero failures, and the runtime
+suite passed. The unchanged first-frame corpus rerun retained **46/50** passes;
+only the existing account, audio-echo, playtone and save-data cases failed.
+This local regression observation does not replace hosted CI qualification.
