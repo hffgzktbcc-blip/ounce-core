@@ -1,49 +1,47 @@
 {
   "schema_version": 1,
-  "principle": "Garden principle: grow capability, measure the result, and keep the roots visible.",
+  "principle": "Deliver one reproducible developer result at a time; implementation and historical benchmarks are supporting evidence.",
   "tracks": [
     {
-      "id": "cpu",
-      "name": "CPU and code-cache correctness",
-      "stage": "implemented-subset",
-      "evidence": "Implemented CPU paths and regression gates",
-      "evidence_url": "#the-architecture-at-a-glance",
-      "next": "Expand outside instruction coverage; preserve interpreter/Tier-3 parity"
+      "id": "workflow",
+      "name": "Agent workflow",
+      "stage": "experimental",
+      "evidence": "Workflow changes under validation",
+      "evidence_url": "PLAN.md",
+      "next": "Read-only status, local checkpoints, ready tasks and scope-aware hosted checks (W1)"
+    },
+    {
+      "id": "diagnosis",
+      "name": "Failure to reproduction",
+      "stage": "experimental",
+      "evidence": "Existing verifier, diagnosis and replay interfaces",
+      "evidence_url": "docs/verify/README.md",
+      "next": "Ship one fresh-checkout walkthrough and solve a real developer issue (R1\u2013R2)"
+    },
+    {
+      "id": "distribution",
+      "name": "Usable community tool",
+      "stage": "experimental",
+      "evidence": "Outcome acceptance plan; distribution not yet delivered",
+      "evidence_url": "PLAN.md",
+      "next": "Package the demonstrated workflow; connect one lagging component and release the result (R3\u2013R5)"
     },
     {
       "id": "original-switch",
-      "name": "Original Switch homebrew",
+      "name": "Historical runtime regression baseline",
       "stage": "measured",
       "evidence": "Canonical first-frame oracle corpus",
       "evidence_url": "docs/verify/README.md",
-      "next": "Diagnose remaining failures; independently reproduce against unchanged inputs and retained oracle artifacts",
+      "next": "Preserve existing cases; expand only to reproduce a concrete user problem",
       "corpus_headline": true
     },
     {
-      "id": "ounce-verify",
-      "name": "Ounce-Verify",
-      "stage": "v6-merged",
-      "evidence": "V6 evidence milestone #171",
-      "evidence_url": "https://github.com/hffgzktbcc-blip/ounce-core/pull/171",
-      "next": "Preserve integrity, regression comparison, resumability and independent reruns"
-    },
-    {
       "id": "switch2",
-      "name": "Switch 2 outside homebrew",
+      "name": "Switch 2 research (parked)",
       "stage": "experimental",
-      "evidence": "Hello CPU first-frame research #172",
-      "evidence_url": "https://github.com/hffgzktbcc-blip/ounce-core/pull/172",
-      "next": "Unchanged external program, pre-registered oracle, matching Interpreter/Tier-3 frame, green external CI and independent rerun",
-      "pr": 172,
-      "pr_status": "open"
-    },
-    {
-      "id": "mac",
-      "name": "Mac launcher",
-      "stage": "local-preview",
-      "evidence": "Native Mac launcher instructions",
-      "evidence_url": "#native-mac-launcher-local-preview",
-      "next": "Improve usability and crash recovery; do not equate GUI operation with guest compatibility"
+      "evidence": "Limited SDK-path observation",
+      "evidence_url": "docs/verify/README.md",
+      "next": "Retain existing checks; no coverage expansion without a demonstrated user need"
     }
   ]
 }

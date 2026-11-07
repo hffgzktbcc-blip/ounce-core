@@ -1,3 +1,5 @@
+> Historical record. Operational instructions and ownership assignments below are superseded by root AGENTS.md and PLAN.md. Preserve evidence; do not resume old tasks without checking the current backlog.
+
 # Codex handoff — independent compatibility trials
 
 Prepared 2026-10-29. Start from PR [#89](https://github.com/hffgzktbcc-blip/ounce-core/pull/89), branch `codex/independent-corpus-preparation`, and fetch its current head before editing. The baseline runtime inspected was `fb80e573fc9888da456c1b102e5dc4b829c1ece4`. Read root `AGENTS.md` and inspect current main/active branches; preserve peer work and file ownership.
