@@ -74,6 +74,11 @@ or from the registry. Start a full rerun in a fresh output directory.
 
 ## Corpus diagnosis
 
+For a Python-only worked example with retained CI inputs already in the checkout,
+run `python3 -B scripts/reproduce_failure.py --output /tmp/sdl2-reproduction`.
+The [failure-to-reproduction walkthrough](../FAILURE_TO_REPRODUCTION.md) explains
+the portable output and the separate runtime replay prerequisites and acceptance.
+
 Compare two retained canonical reports with the same command used for either a regression
 or a historical failure:
 

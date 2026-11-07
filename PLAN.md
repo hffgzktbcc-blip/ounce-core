@@ -48,11 +48,12 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Acceptance: disposable-Git regression tests show no fetch/revert/push at startup, no Cargo/GitHub requirement to save, no sweeping peer work, no automatic completion/merge, and correct blocked/duplicate handling. Hosted CI checks relevant code without requiring Rust for docs-only edits.
       Next: validate this branch, submit the workflow PR, and link the passing hosted checks. Do not close on proposal alone.
 - [ ] **R1. Ship one failure-to-reproduction walkthrough.**
-      Status: ready
+      Status: active
       Result: a developer follows one entry point to load two retained runs, see the first recorded divergence, identify comparable inputs, and obtain the exact replay command and prerequisites.
       Scope: reuse tools/ounce_verify.py, scripts/diagnose_corpus_run.py, scripts/compare_corpus_runs.py and the historical SDL2 failure; retain real before/after evidence with redistribution reviewed for those artifacts only. Start with local JSON and a CLI; no new service or GUI framework.
       Acceptance: on a fresh Python-only checkout, one documented command produces a diagnosis and a shareable reproduction bundle from permitted retained evidence. Corrupt/missing inputs give actionable errors and nonzero exits. Replay is actually executed in a supported Rust/runtime environment and checked against the recorded failure; offline diagnosis is not called a fresh execution.
-      Next: inventory which retained report/log/input bytes are available, run the current diagnosis tools end to end, and fix the first missing link. If historical assets cannot be shared, use an existing permitted real failure rather than invent a success.
+      Evidence: [Python-only retained SDL2 walkthrough](docs/FAILURE_TO_REPRODUCTION.md) produces a portable diagnosis/replay dossier from original before/after report and log bytes; exact artifact identities and observation-only distribution scope are retained. Both engines first diverge at frame 1; no historical prior passes are lost. This is offline inspection, not fresh runtime execution.
+      Next: obtain the authorized exact-hash NRO absent from observation archives, execute the generated replay recipe on a supported Rust/runtime host, retain raw replay evidence and compare stop/PC/instructions/frame absence against the recorded failure. R1 remains open until that execution acceptance is recorded.
 - [ ] **R2. Solve one externally grounded developer issue.**
       Status: ready
       Result: an open-source developer has a reproducible answer to a real regression, execution divergence, or unusable failure report.
