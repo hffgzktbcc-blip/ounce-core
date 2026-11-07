@@ -53,9 +53,10 @@ impl IpcManager {
                 }
                 _ => self.reply_unimplemented("IProfile", cmd, tls, mmu),
             },
-            ServiceType::AccountLaunchStorage if cmd == 0 => {
-                self.reply_object(tls, mmu, ServiceType::AccountLaunchAccessor)
-            }
+            ServiceType::AccountLaunchStorage => match cmd {
+                0 => self.reply_object(tls, mmu, ServiceType::AccountLaunchAccessor),
+                _ => self.reply_unimplemented("IStorage", cmd, tls, mmu),
+            },
             ServiceType::AccountLaunchAccessor => match cmd {
                 0 => self.reply_data(tls, mmu, &0x88u64.to_le_bytes()),
                 11 => {
@@ -73,12 +74,10 @@ impl IpcManager {
                         .is_none_or(|end| end > data.len() as u64)
                     {
                         self.reply_error(tls, mmu, INVALID_ARGUMENT)
+                    } else if self.write_out_buffer(mmu, &data[offset as usize..]) as u64 != size {
+                        self.reply_error(tls, mmu, INVALID_ARGUMENT)
                     } else {
-                        if self.write_out_buffer(mmu, &data[offset as usize..]) as u64 != size {
-                            self.reply_error(tls, mmu, INVALID_ARGUMENT)
-                        } else {
-                            self.reply_ok(tls, mmu)
-                        }
+                        self.reply_ok(tls, mmu)
                     }
                 }
                 _ => self.reply_unimplemented("IStorageAccessor", cmd, tls, mmu),

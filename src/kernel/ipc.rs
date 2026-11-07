@@ -182,7 +182,7 @@ pub struct IpcManager {
     /// Steady-clock reading (ns) the kernel publishes under the deterministic clock; `None` follows the host.
     pub steady_override_ns: Option<u64>,
     pub(super) vi_binder: super::vi::BinderObjects,
-    pub(super) audio_devices: super::audio_device::AudioDevices,
+    pub(super) audio_devices: HashMap<u32, super::audio_device::AudioDevice>,
     pub(super) account_launch_consumed: bool,
     next_handle: u32,
     pub total_ipc_requests: u64,
@@ -241,7 +241,7 @@ impl IpcManager {
         if let Some(ServiceType::AudioDevice(id) | ServiceType::AudioDeviceEvent(id)) = &removed {
             if !self.handles.values().any(|service| matches!(service,
                 ServiceType::AudioDevice(other) | ServiceType::AudioDeviceEvent(other) if other == id)) {
-                self.audio_devices.0.remove(id);
+                self.audio_devices.remove(id);
             }
         }
         removed.is_some()
@@ -304,7 +304,7 @@ impl IpcManager {
             self.domain_reply = true;
             if dom.kind == super::hipc::DOMAIN_CLOSE {
                 if dom.object_id != session_handle {
-                    self.handles.remove(&dom.object_id);
+                    self.close_handle(dom.object_id);
                 }
                 self.write_cmif_response(tls_addr, mmu, 0, &[], None);
                 return 0;

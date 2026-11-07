@@ -1,0 +1,794 @@
+{
+  "scope": "Local replay of unchanged CI-built binaries; hosted qualification is recorded separately in PLAN.md",
+  "baseline_run": "https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42278791120",
+  "candidate_revision": "1c2a1aab09fea13763f139135232092efa700a9e",
+  "programs": [
+    {
+      "program": "account",
+      "binary_sha256": "8972c1113a6b6edf76dbf18f1f786ab4283d532d6255ca669ddb964e1ba4ade9",
+      "before": [
+        {
+          "engine": "interpreter",
+          "verdict": "fail"
+        },
+        {
+          "engine": "tier3",
+          "verdict": "fail"
+        }
+      ],
+      "after": [
+        {
+          "engine": "interpreter",
+          "verdict": "pass",
+          "frames": [
+            {
+              "error": null,
+              "height": 720,
+              "index": 1,
+              "probes": [
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 4,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 8,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 54,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 58,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 102,
+                  "y": 6
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 108,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 172,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 160,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 212,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 208,
+                  "y": 9
+                }
+              ],
+              "rgba_fnv1a64": "0x2b258bf2ba4bbf25",
+              "width": 1280
+            }
+          ]
+        },
+        {
+          "engine": "tier3",
+          "verdict": "pass",
+          "frames": [
+            {
+              "error": null,
+              "height": 720,
+              "index": 1,
+              "probes": [
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 4,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 8,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 54,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 58,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 102,
+                  "y": 6
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 108,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 172,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 160,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 212,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 208,
+                  "y": 9
+                }
+              ],
+              "rgba_fnv1a64": "0x2b258bf2ba4bbf25",
+              "width": 1280
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "program": "save-data",
+      "binary_sha256": "bd1da808c59674d13bd70453f6330c095d39d3be1fceabf096b296f4c8f52c68",
+      "before": [
+        {
+          "engine": "interpreter",
+          "verdict": "fail"
+        },
+        {
+          "engine": "tier3",
+          "verdict": "fail"
+        }
+      ],
+      "after": [
+        {
+          "engine": "interpreter",
+          "verdict": "pass",
+          "frames": [
+            {
+              "error": null,
+              "height": 720,
+              "index": 1,
+              "probes": [
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 4,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 0,
+                  "y": 9
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 76,
+                  "y": 9
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 72,
+                  "y": 6
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 152,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 148,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 214,
+                  "y": 6
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 220,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 308,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 304,
+                  "y": 8
+                }
+              ],
+              "rgba_fnv1a64": "0x8be0d71c02a4b9a5",
+              "width": 1280
+            }
+          ]
+        },
+        {
+          "engine": "tier3",
+          "verdict": "pass",
+          "frames": [
+            {
+              "error": null,
+              "height": 720,
+              "index": 1,
+              "probes": [
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 4,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 0,
+                  "y": 9
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 76,
+                  "y": 9
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 72,
+                  "y": 6
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 152,
+                  "y": 7
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 148,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 214,
+                  "y": 6
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 220,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 308,
+                  "y": 8
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 304,
+                  "y": 8
+                }
+              ],
+              "rgba_fnv1a64": "0x8be0d71c02a4b9a5",
+              "width": 1280
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "program": "audio-echo",
+      "binary_sha256": "c77cba1f6f182961a3038024711f6c1b945e2853195dc224212752baa79791f6",
+      "before": [
+        {
+          "engine": "interpreter",
+          "verdict": "fail"
+        },
+        {
+          "engine": "tier3",
+          "verdict": "fail"
+        }
+      ],
+      "after": [
+        {
+          "engine": "interpreter",
+          "verdict": "pass",
+          "frames": [
+            {
+              "error": null,
+              "height": 720,
+              "index": 1,
+              "probes": [],
+              "rgba_fnv1a64": "0x9f4f79468ad74f25",
+              "width": 1280
+            }
+          ]
+        },
+        {
+          "engine": "tier3",
+          "verdict": "pass",
+          "frames": [
+            {
+              "error": null,
+              "height": 720,
+              "index": 1,
+              "probes": [],
+              "rgba_fnv1a64": "0x9f4f79468ad74f25",
+              "width": 1280
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "program": "playtone",
+      "binary_sha256": "20238011e684b5a1819430f387c3c25af77733608c1f08ffa7de37462319b273",
+      "before": [
+        {
+          "engine": "interpreter",
+          "verdict": "fail"
+        },
+        {
+          "engine": "tier3",
+          "verdict": "fail"
+        }
+      ],
+      "after": [
+        {
+          "engine": "interpreter",
+          "verdict": "pass",
+          "frames": [
+            {
+              "error": null,
+              "height": 720,
+              "index": 1,
+              "probes": [
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 6,
+                  "y": 23
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 8,
+                  "y": 24
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 36,
+                  "y": 24
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 32,
+                  "y": 23
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 72,
+                  "y": 23
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 68,
+                  "y": 24
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 118,
+                  "y": 23
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 122,
+                  "y": 24
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 172,
+                  "y": 24
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 160,
+                  "y": 23
+                }
+              ],
+              "rgba_fnv1a64": "0xa64ad29f681e0445",
+              "width": 1280
+            }
+          ]
+        },
+        {
+          "engine": "tier3",
+          "verdict": "pass",
+          "frames": [
+            {
+              "error": null,
+              "height": 720,
+              "index": 1,
+              "probes": [
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 6,
+                  "y": 23
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 8,
+                  "y": 24
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 36,
+                  "y": 24
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 32,
+                  "y": 23
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 72,
+                  "y": 23
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 68,
+                  "y": 24
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 118,
+                  "y": 23
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 122,
+                  "y": 24
+                },
+                {
+                  "rgba": [
+                    198,
+                    195,
+                    198,
+                    255
+                  ],
+                  "x": 172,
+                  "y": 24
+                },
+                {
+                  "rgba": [
+                    0,
+                    0,
+                    0,
+                    255
+                  ],
+                  "x": 160,
+                  "y": 23
+                }
+              ],
+              "rgba_fnv1a64": "0xa64ad29f681e0445",
+              "width": 1280
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "programs": 50,
+    "engine_records": 100,
+    "passing_programs": 50
+  }
+}

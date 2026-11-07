@@ -3,15 +3,12 @@
 use super::ipc::{IpcManager, ServiceType};
 use crate::audio::AudioOutServer;
 use crate::mmu::Memory;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 const INVALID_ARGUMENT: u32 = 0xF601;
 const MAX_BUFFER_BYTES: u64 = 16 * 1024 * 1024;
 
-#[derive(Default)]
-pub struct AudioDevices(pub HashMap<u32, AudioDevice>);
-
-pub struct AudioDevice {
+pub(super) struct AudioDevice {
     input: bool,
     playing: bool,
     released: VecDeque<u64>,
@@ -41,7 +38,7 @@ impl IpcManager {
                 }
                 let id = self.allocate_handle(ServiceType::AudioDevice(0));
                 self.handles.insert(id, ServiceType::AudioDevice(id));
-                self.audio_devices.0.insert(
+                self.audio_devices.insert(
                     id,
                     AudioDevice {
                         input,
@@ -80,14 +77,14 @@ impl IpcManager {
         mmu: &mut Memory,
         audio: &mut AudioOutServer,
     ) -> u64 {
-        let Some(device) = self.audio_devices.0.get(&id) else {
+        let Some(device) = self.audio_devices.get(&id) else {
             return self.reply_error(tls, mmu, INVALID_ARGUMENT);
         };
         let input = device.input;
         match cmd {
             0 => self.reply_data(tls, mmu, &u32::from(!device.playing).to_le_bytes()),
             1 | 2 => {
-                self.audio_devices.0.get_mut(&id).unwrap().playing = cmd == 1;
+                self.audio_devices.get_mut(&id).unwrap().playing = cmd == 1;
                 self.reply_ok(tls, mmu)
             }
             4 => {
@@ -134,13 +131,13 @@ impl IpcManager {
                 .checked_add(offset)
                 .and_then(|start| start.checked_add(size))
                 .is_none()
-            || self.audio_devices.0[&id].released.len() >= 64
+            || self.audio_devices[&id].released.len() >= 64
         {
             return self.reply_error(tls, mmu, INVALID_ARGUMENT);
         }
         let start = address + offset;
         let mut samples = vec![0; size as usize];
-        let valid = if self.audio_devices.0[&id].input {
+        let valid = if self.audio_devices[&id].input {
             mmu.write_bytes(start, &samples).is_ok()
         } else {
             mmu.read_bytes(start, &mut samples).is_ok()
@@ -148,11 +145,10 @@ impl IpcManager {
         if !valid {
             return self.reply_error(tls, mmu, INVALID_ARGUMENT);
         }
-        if !self.audio_devices.0[&id].input {
+        if !self.audio_devices[&id].input {
             audio.append_pcm_buffer(mmu, start, (size / 2) as usize);
         }
         self.audio_devices
-            .0
             .get_mut(&id)
             .unwrap()
             .released
@@ -171,7 +167,7 @@ impl IpcManager {
         let Some(buffer) = buffer else {
             return self.reply_error(tls, mmu, INVALID_ARGUMENT);
         };
-        let device = self.audio_devices.0.get_mut(&id).unwrap();
+        let device = self.audio_devices.get_mut(&id).unwrap();
         let count = device.released.len().min((buffer.size / 8) as usize);
         let data: Vec<u8> = device
             .released
@@ -188,7 +184,6 @@ impl IpcManager {
 
     pub(super) fn audio_device_event_signaled(&self, id: u32) -> bool {
         self.audio_devices
-            .0
             .get(&id)
             .is_some_and(|device| !device.released.is_empty())
     }
@@ -285,9 +280,9 @@ mod tests {
             let clone = h.ipc.allocate_handle(ServiceType::AudioDevice(device_id));
             h.ipc.close_handle(device);
             h.ipc.close_handle(event);
-            assert!(h.ipc.audio_devices.0.contains_key(&device_id));
+            assert!(h.ipc.audio_devices.contains_key(&device_id));
             h.ipc.close_handle(clone);
-            assert!(!h.ipc.audio_devices.0.contains_key(&device_id));
+            assert!(!h.ipc.audio_devices.contains_key(&device_id));
         }
     }
 }
