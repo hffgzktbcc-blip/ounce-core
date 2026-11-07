@@ -30,3 +30,27 @@ frame hash. Host-GPU qualification additionally requires completed draws and
 readbacks, retains adapter diagnostics, and distinguishes software adapters
 from physical hardware. A successful CPU path alone cannot prove host GPU
 execution. Retain failures as well as passes.
+
+## Initial execution (2026-11-07, not a passing oracle)
+
+The pre-registration commit is `8f62d2f`. The existing CI-built unchanged
+NRO came from `corpus-nros` artifact `13533340959` in run `42274752750`.
+Downloaded ZIP SHA-256 matches GitHub's artifact digest:
+`26f56fda050e637fa3eced3551da9d878e3e632607d374bdc97affcaf53c162c`.
+The reports retain the individual NRO SHA-256.
+
+Both engines applied all five inputs at exactly the registered queue boundaries
+and captured identical hashes for queues 1–8. The CPU path and host API path
+also matched. The host path used llvmpipe (LLVM 19.1.7), OpenGL, CPU adapter,
+`physical=false`: four completed draws and 14,745,600 readback bytes per engine,
+with no GPU diagnostics. This is software-adapter API execution, not physical
+GPU proof.
+
+The oracle nevertheless **failed**: the (320,600) probe was registered with
+an arithmetic error. Exact substitution into the formula above yields
+`r=239/1440`, `g=15359/23040`, `b=3857/23040`, which rounds to **(42,170,43)**.
+The original registered value is (42,139,74). Both reports retain that failure:
+[CPU evidence](verify/menu-triangle-before.json) and
+[host API evidence](verify/menu-triangle-host-before.json).
+The registered value remains unchanged pending explicit owner approval;
+matching this newly calculated value is not recorded as an oracle pass.
