@@ -185,8 +185,12 @@ evidence, not necessarily passing frames; the final assertions check pass verdic
   inconclusive, and never edit the registered expectations to obtain a pass.
 - This tests bounded software-rendered startup text, not physical GPU execution,
   later interaction, audio, storage persistence or broad compatibility.
-- This recipe has not been rebuilt end to end on a clean Linux host. Local recipe
-  qualification and an unaffiliated tester's rerun must be reported separately.
+- Internal qualification completed all published blocks from a fresh pinned clone
+  on macOS arm64 with Docker 29.9.3 in a Lima ARM64 VM and Rosetta amd64
+  container execution. The rebuilt NRO matched the reference SHA-256 exactly;
+  both engines passed all five frames and canonical binary integrity validation.
+  See the [qualification manifest](reproduce/romfs.json) and retained text evidence.
+  This does not qualify native clean Linux amd64 onboarding or an unaffiliated rerun.
 
 Retain build `inventory.json`, package/image metadata, build logs, host/toolchain
 versions, raw engine observations and canonical records. Redact usernames, private

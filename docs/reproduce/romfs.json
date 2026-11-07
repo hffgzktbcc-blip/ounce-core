@@ -39,9 +39,9 @@
     "rgba_fnv1a64": "0x3bd649bbc4f50b85"
   },
   "qualification": {
-    "clean_linux_rebuild": "not-run; Docker unavailable on author host",
+    "clean_linux_rebuild": "native Linux amd64 onboarding not run; internal emulated container rebuild completed",
     "independent_rerun": "not-claimed",
-    "byte_identical_rebuild": "not-claimed",
+    "byte_identical_rebuild": "internal Docker linux/amd64 container under Rosetta on ARM64 Lima; matches reference; not independent",
     "legal_review": "pending",
     "internal_execution": {
       "core_commit": "4dba991f323d93c7702d09a4a79eae4918aa0fed",
@@ -55,6 +55,19 @@
       ],
       "repository_gate": "475 tests passed; runtime suite passed",
       "scope": "execution and canonicalization blocks only; build block not executed"
+    },
+    "container_rebuild": {
+      "date": "2026-11-07",
+      "host": "macOS arm64; Lima aarch64 VM; Rosetta amd64 container execution; Docker client/engine 29.9.3",
+      "core_commit": "4dba991f323d93c7702d09a4a79eae4918aa0fed",
+      "nro_sha256": "d22f38b633df556c00ffecf1f435d96e63ccd69352d1f2f4e10cf316de590fb9",
+      "reference_bytes_matched": true,
+      "recipe": "all published Bash blocks completed from fresh pinned clone",
+      "canonical_report": "romfs-container-report.json",
+      "raw_observations": "romfs-container-observations.json",
+      "build_log": "romfs-container-build.log",
+      "packages": "romfs-container-packages.txt",
+      "scope": "internal emulation qualification; not native clean Linux amd64 onboarding or independent reproduction"
     }
   },
   "distribution": "recipe and metadata only; no bundled executable or source fixture"
