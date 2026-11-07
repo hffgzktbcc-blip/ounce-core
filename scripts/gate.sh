@@ -2,15 +2,20 @@
 # One gate, three modes (see PLAN.md "How we work"):
 #   scripts/gate.sh                     local tests, failures only, no commit
 #   scripts/gate.sh --checkpoint "<what/why>" [--next "<action>"] [--tried "<approach — why not>"] [--decision "<d — evidence>"]
-#                                       commit + push work in progress, red or green, and update the step's checkpoint
+#                                     [--validate]
+#                                       guardrails + commit + push work in progress and update the step's
+#                                       checkpoint. Lightweight by default; --validate runs the full local
+#                                       gates first and records RED/GREEN.
 #   scripts/gate.sh --ship [--step N] [--proof "<text>"] [--no-oracle "<why>"]
-#                                       green tests + oracle evidence, tick with proof, PR, GitHub auto-merge
+#                                       green tests + oracle evidence, tick with proof, open the PR.
+#                                       Agents never merge or arm auto-merge: the owner merges after
+#                                       reviewing evidence and CI.
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel)" || exit 1
 . scripts/next.sh
 
 die() { echo "gate: $*" >&2; exit 1; }
-mode=test what= nxt= tried= decision= proof= no_oracle=
+mode=test what= nxt= tried= decision= proof= no_oracle= validate=
 while [ $# -gt 0 ]; do
   case $1 in
     --checkpoint) mode=checkpoint; what=${2:-}; shift ;;
@@ -21,11 +26,18 @@ while [ $# -gt 0 ]; do
     --step) STEP=$2; shift ;;
     --proof) proof=$2; shift ;;
     --no-oracle) no_oracle=$2; shift ;;
+    --validate) validate=1 ;;
     *) die "unknown argument $1 (see the header of scripts/gate.sh)" ;;
   esac
   shift
 done
 [ "$mode" != checkpoint ] || [ -n "$what" ] || die '--checkpoint needs "<what/why>"'
+
+# A step ID must identify exactly one block; duplicates would corrupt unrelated checkpoints.
+unique_step() { # $1: step id
+  local c; c=$(step_id_count "$1")
+  [ "$c" = 1 ] || die "step ID '$1' matches $c blocks in PLAN.md; fix the duplicate numbering first (owner approval, see issue #202)"
+}
 
 branch=$(git branch --show-current)
 [ -n "$branch" ] && [ "$branch" != main ] || die "refusing to work on ${branch:-a detached HEAD}; make a step branch first"
@@ -69,8 +81,9 @@ case $mode in
   test) guard_files; checks || exit 1; run_tests; [ "$status" = GREEN ] ;;
 
   checkpoint)
-    guard_files; checks || exit 1; run_tests
-    n=$(current_step)
+    guard_files; checks || exit 1
+    if [ -n "$validate" ]; then run_tests; else status=UNVALIDATED; summary="local gates not run (checkpoint only; use --validate or run scripts/gate.sh)"; fi
+    n=$(current_step); unique_step "$n"
     write_checkpoint "$n" "$status — tests: $summary — $what" "$nxt" "$tried" "$decision"
     stage
     git commit -q -m "wip(step$n): $status — $what" -m "$summary" || die "commit failed"
@@ -81,6 +94,7 @@ case $mode in
     guard_files; checks || exit 1; run_tests
     [ "$status" = GREEN ] || die "ship needs green local tests"
     n=${STEP:-$(branch_step)}
+    [ -z "$n" ] || unique_step "$n"
     fail() {  # $1: what failed. Puts the error into the checkpoint (restoring it if the tick was committed).
       echo "gate: $1" >&2
       if [ -n "$n" ]; then
@@ -107,7 +121,8 @@ case $mode in
     pr=$(gh pr view --json number -q .number 2>/dev/null)
     if [ -z "$pr" ]; then
       title=$( [ -n "$n" ] && step_block "$n" | head -1 | sed -E 's/^- \[.\] \*\*([^*]*)\*\*.*/PLAN step \1/' || git log -1 --format=%s)
-      out=$(gh pr create --base main --title "$title" --body "$(printf 'Shipped with scripts/gate.sh --ship.\n\n%s' "$summary")" 2>&1) ||
+      # --head is explicit so creation does not depend on local remote-tracking state.
+      out=$(gh pr create --base main --head "$branch" --title "$title" --body "$(printf 'Shipped with scripts/gate.sh --ship.\n\n%s' "$summary")" 2>&1) ||
         fail "gh pr create: $out"
       pr=$(gh pr view --json number -q .number)
     fi
@@ -118,6 +133,5 @@ case $mode in
       ticked=1
       out=$(git push -q 2>&1) || fail "git push (tick): $out"
     fi
-    out=$(gh pr merge "$pr" --auto --squash 2>&1) || fail "gh pr merge --auto: $out"
-    echo "gate: shipped: $url — auto-merge is set, GitHub merges it when the required CI is green. Do not wait for CI; you are done." ;;
+    echo "gate: shipped: $url — ready for OWNER review. Agents never merge or arm auto-merge; the owner merges after evidence and required CI are green. Do not wait for CI; report and stop." ;;
 esac

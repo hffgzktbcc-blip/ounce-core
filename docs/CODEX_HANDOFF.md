@@ -1,5 +1,9 @@
 # Codex handoff — independent compatibility trials
 
+> **HISTORICAL RECORD — not current instructions.** Prepared 2026-10-29 for the
+> PR #89 era, which is long since merged. Do not start work from this document;
+> the active workflow is `AGENTS.md` + `scripts/next.sh` against `PLAN.md`.
+
 Prepared 2026-10-29. Start from PR [#89](https://github.com/hffgzktbcc-blip/ounce-core/pull/89), branch `codex/independent-corpus-preparation`, and fetch its current head before editing. The baseline runtime inspected was `fb80e573fc9888da456c1b102e5dc4b829c1ece4`. Read root `AGENTS.md` and inspect current main/active branches; preserve peer work and file ownership.
 
 ## What is done

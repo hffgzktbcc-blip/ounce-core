@@ -130,6 +130,10 @@ hybrid-app are now recorded passes. Expected pixel values were not changed durin
 
 ### Step 7 expansion
 
+> Historical snapshot (2026-11-05 era). The current headline is 50/50; see the
+> README corpus-headline marker and the latest canonical external-corpus run.
+> The 45/50 below records the first 50-program report before later repairs.
+
 The 30 new checks were registered in `53b8a1d` before execution.
 The [first 50-program canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173)
 records 45/50 passing on interpreter and Tier-3, including 26 whole-frame checks and 19 probe checks.
