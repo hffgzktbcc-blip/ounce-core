@@ -22,9 +22,6 @@ Retain the initial failed evidence; do not change any of the 50 headline oracles
       identified), and CI retains every existing corpus pass. Unit checks alone
       never close this step; unsuccessful execution remains recorded evidence.
       *Proof:* [PR #194](https://github.com/hffgzktbcc-blip/ounce-core/pull/194): 46/50 pass; failing: account, audio-echo, playtone, save-data ([canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42372372068)). Both unchanged-NRO menu-to-Triangle interaction jobs passed: Metal on the reported Apple Paravirtual IntegratedGpu adapter and Linux host API, exact Interpreter/Tier-3 pixel and frame parity, four completed draws and 14,745,600 readback bytes per engine. Original failed reports retained; owner-approved arithmetic correction independently guarded. All hosted native and canonical corpus checks passed.
-      Checkpoint (2026-11-07 13:42Z, agent, 899ed60): RED — ship failed: gh pr create: aborted: you must first push the current branch to a remote, or use the --head flag
-      Next: ship once checkpoint is recorded
-
 Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
 Every agent (Claude, Antigravity, Codex) starts with `scripts/next.sh` and works on the step it shows. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
 
