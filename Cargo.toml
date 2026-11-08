@@ -2,7 +2,7 @@
 name = "ounce-core"
 version = "0.5.0"
 edition = "2024"
-description = "Clean-room systems research runtime and architecture compatibility layer for NVIDIA Tegra T239 (Horizon OS FW 23.0.1 ABI)"
+description = "Homebrew systems research runtime and architecture compatibility layer for NVIDIA Tegra T239"
 
 [workspace]
 members = [".", "crates/ounce-recompiler", "crates/ounce-nce"]

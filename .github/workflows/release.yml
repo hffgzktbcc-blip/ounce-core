@@ -61,13 +61,13 @@ jobs:
       - name: Package artifacts (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          tar -czvf ${{ matrix.archive_name }} -C target/${{ matrix.target }}/release ${{ matrix.binary_name }}
+          python3 scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed
 
       - name: Package artifacts (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          Compress-Archive -Path target/${{ matrix.target }}/release/${{ matrix.binary_name }} -DestinationPath ${{ matrix.archive_name }}
+          python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed
 
       - name: Write SHA-256 checksum (Unix)
         if: matrix.os != 'windows-latest'
