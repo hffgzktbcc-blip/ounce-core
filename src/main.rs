@@ -3627,7 +3627,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
             } else {
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
                 // libnx startup alone runs tens of thousands of instructions.
-                let budget = if is_nro { NRO_INSTRUCTION_BUDGET } else { 100_000 };
+                let budget = if is_nro { nro_instruction_budget() } else { 100_000 };
                 require_cli_success(run_vm(cpu, mmu, kernel, budget));
             }
         }
@@ -3705,6 +3705,10 @@ const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
 /// as "locked by this thread". Below the scheduler's (0x2000+) and IPC's (0x10001+) handle ranges.
 const NRO_MAIN_THREAD_HANDLE: u32 = 0x1000;
 const NRO_INSTRUCTION_BUDGET: usize = 50_000_000;
+/// Instruction cap for an NRO run: `OUNCE_NRO_BUDGET=<n>` raises it for long programs (default 50 million).
+fn nro_instruction_budget() -> usize {
+    std::env::var("OUNCE_NRO_BUDGET").ok().and_then(|v| v.parse().ok()).filter(|n| *n > 0).unwrap_or(NRO_INSTRUCTION_BUDGET)
+}
 /// Mixed audio (interleaved stereo samples) allowed to queue on the host before the guest waits for
 /// playback to catch up: 100 ms at 48 kHz.
 const AUDIO_LEAD_SAMPLES: usize = 48_000 * 2 / 10;
