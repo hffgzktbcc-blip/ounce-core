@@ -177,6 +177,7 @@ pub fn run(args: &[String]) -> i32 {
     let mut unimpl_classes: BTreeMap<u32, (u64, u32)> = BTreeMap::new();
     let mut accepts: BTreeMap<u32, (u64, u32)> = BTreeMap::new();
     let mut shown = 0;
+    let mut ran_classes = std::collections::BTreeSet::new();
     for (n, line) in reader.lines().enumerate() {
         let Ok(line) = line else { break };
         let parsed = match parse_line(&line) {
@@ -208,6 +209,7 @@ pub fn run(args: &[String]) -> i32 {
                 }
                 Outcome::Ran(diffs, fpsr) => {
                     t.executed += 1;
+                    ran_classes.insert(class(c.word));
                     let exc_differs = fpsr & EXC != c.fpsr_out & EXC;
                     if diffs.is_empty() {
                         t.matched += 1;
@@ -238,6 +240,7 @@ pub fn run(args: &[String]) -> i32 {
     println!("emulator unimplemented:         {} ({} classes)", t.unimplemented, unimpl_classes.len());
     println!("emulator other errors:          {}", t.other_errors);
     println!("emulator executed:              {}", t.executed);
+    println!("  distinct classes executed:    {}", ran_classes.len());
     println!("  exact match (X,V,NZCV,QC):    {}", t.matched);
     println!("  MISMATCH:                     {} ({} with QC wrong)", t.value_mismatch, t.qc_mismatch);
     println!("  FPSR exception flags differ on matching results (not modelled): {}", t.fpsr_exc_only);
