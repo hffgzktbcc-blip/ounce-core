@@ -1,0 +1,1 @@
+Follow AGENTS.md (working rules) and PLAN.md (backlog). Before starting, run `scripts/handoff.sh journal` and `scripts/handoff.sh status`; claim your task with `scripts/handoff.sh claim <task>`; log findings with `scripts/handoff.sh log "..."`. If you cannot run commands, say what you changed and ask the user to relay it. See docs/AGENT_HUB.md.
