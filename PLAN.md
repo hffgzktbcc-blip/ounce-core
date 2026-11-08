@@ -53,13 +53,12 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Evidence: [Python-only retained SDL2 walkthrough](docs/FAILURE_TO_REPRODUCTION.md) produces a portable diagnosis/replay dossier from original before/after report and log bytes; exact artifact identities and observation-only distribution scope are retained. Both engines first diverge at frame 1; no historical prior passes are lost. This is offline inspection, not fresh runtime execution.
       Execution acceptance (2026-11-07): exact-hash local NRO replayed from clean recorded revisions on macOS arm64 with isolated build directories. Both engines exactly match historical stop, PC, instruction count and frame observations: expected failure exits 101; reference passes with exit 0. Raw JSON, runtime logs and digests: [dated replay manifest](docs/reproduce/sdl2-failure/replay-2026-11-07/manifest.json). Offline error handling: all six walkthrough tests pass. No binary redistribution, independent-rerun or current-corpus claim.
       Next: R2 investigates a real developer input; R3 can package the demonstrated workflow.
-- [ ] **R2. Solve one externally grounded developer issue.**
-      Status: ready
+- [x] **R2. Solve one externally grounded developer issue.**
       Result: an open-source developer has a reproducible answer to a real regression, execution divergence, or unusable failure report.
       Scope: inspect public issue reports or contributor feedback; record the issue URL, affected user, current workaround and smallest supported input. Do not assume market demand or contact maintainers without authorization.
       Acceptance: capture failure before a targeted fix, run the same input after it, show the actionable diagnosis/replay result, and preserve prior relevant passes. Record developer feedback separately; outside endorsement is not required to merge a useful fix.
-      Evidence: [public issue shortlist](docs/verify/ISSUE_SHORTLIST.md), inspected 2026-11-07. Real reports exist, but none currently supplies a supported, permission-cleared matched execution pair; no outside developer outcome or demand is claimed.
-      Next: investigate a minimal accessible input for the threading report or an incoming developer failure with retained runs. Require a recorded failure before choosing a fix; do not build a generic adapter from this shortlist alone.
+      Evidence: [external audio-channel case](docs/verify/AUDIO_CHANNEL_CASE.md), from ITotalJustice/libnx #685: unchanged local NRO and pre-registered A-button interaction reject all seven padded/default-stereo opens before and accept all seven after on both CPU engines. [Dossier](docs/verify/audout-padding/manifest.json) retains observations, source identities, exact replay criteria and 100 byte-verified passing regression records. All 50 existing programs retained; 478 Rust/CLI tests and 25-stage harness pass. No source/binary redistribution, maintainer endorsement, upstream libnx fix or six-channel claim.
+      Next: R4 connects the observed negotiation failure and explanation to the installed diagnosis CLI; outside feedback remains unrequested/unreceived.
 - [x] **R3. Make the proven workflow installable and predictable.**
       Depends: R1
       Result: a new developer runs the demonstrated diagnosis without assembling internal scripts manually.
@@ -73,7 +72,8 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Result: one existing CPU, JIT, GPU, service, trace or app component materially improves the selected developer's workflow.
       Scope: trace the selected issue through the real command path; repair the first unconnected or incorrect boundary. No blanket refactor or new subsystem because it appears on an architecture diagram.
       Acceptance: the user scenario crosses the relevant component boundary, produces the expected observable result, handles its failure path and retains a regression case. Compare latency only on matched inputs/hosts; compare correctness against a fixed expectation.
-      Next: use R2's reproduced failure to select the component and bounded integration change.
+      Evidence so far: R2 repaired the actual audio-manager boundary and added bounded request/reply traces. The standalone CLI still supports only its SDL2 dossier.
+      Next: expose the specific retained audio-negotiation before/after case through that CLI, preserving raw input identities and the distinction between recorded diagnosis and new execution. Avoid a generic evidence framework.
 - [ ] **R5. Publish the smallest useful community release and reassess.**
       Status: ready
       Depends: R3 R4
