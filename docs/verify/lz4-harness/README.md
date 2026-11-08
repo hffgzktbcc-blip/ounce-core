@@ -9,7 +9,7 @@ of Ounce-Core.
 - Harness (MIT, this repo): `lz4_cases.c` (shared cases), `main_nx.c` (NRO entry), `host/host_main.c` (host reference).
 - Cases: six round-trips (empty, 1 byte, text, zeros, low-entropy, mixed up to 65000 bytes) with compressed-size and FNV-1a hash of the compressed bytes; compress into an 8-byte buffer (expect 0); decompress into a 100-byte buffer (expect negative); four truncations and four bit-flips of a compressed stream (expect no crash, bounded return codes).
 
-## Result (2026-11-08, macOS arm64, Ounce-Core `efeaaf7`)
+## Result (2026-11-08, macOS arm64, Ounce-Core `a4ea10b`, clean `origin/main` build with `--features "nce native-jit"`)
 | Engine | Command flag | Output vs host reference |
 |---|---|---|
 | Tier-3 | `--cpu=tier3` | byte-identical |
@@ -27,7 +27,6 @@ cp lz4/lib/lz4.c lz4/lib/lz4.h .   # next to the harness files
 cc -O1 -o host_ref host/host_main.c lz4_cases.c lz4.c && ./host_ref > expected.txt
 # NRO: devkitA64 + libnx template Makefile with SOURCES := . ; then:
 cargo build --release --features "nce native-jit"
-target/release/ounce-core run lz4_harness.nro --present=headless --sdmc=DIR --cpu=tier3   # also tier4, native
+target/release/ounce-core run-nro lz4_harness.nro --present=headless --sdmc=DIR --cpu=tier3   # also tier4, native
 diff DIR/lz4-results.txt expected.txt
 ```
-Note: `run-nro` with `--cpu=tier4|native` printed help in this build; use `run`.
