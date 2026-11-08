@@ -29,3 +29,29 @@ Version source:
 - devkitPro package metadata repository `devkitPro/pacman-packages`
   - `devkita64/devkitA64/PKGBUILD` at `f103fe88e37180ecd0b7a9173b52b7580a54f71a`
   - `libnx/PKGBUILD` at `b79ff0a9942ebdc84a02d46839a283ab92d3c5c8`
+
+## Verified local rebuild evidence
+
+All eleven committed NROs were rebuilt byte-for-byte on 2026-11-07 UTC
+from their tracked inputs at `9e813b984930f6280b1a23ac2d3a8ed9d9f5d2e7`.
+The source trees on the existing PR #203 branch have identical fixture inputs.
+Exact commands, tool hashes, source hashes, selected archives and map hashes
+are in `../rebuild-evidence.json`. The native installed toolchain reports
+GCC 16.1.0-1, newlib 4.6.0.20260123-4, libnx 4.12.0-1, deko3d 0.5.0-1
+and switch-tools 1.13.1-1. Package signature verification is unclaimed.
+This establishes reproducibility for these inputs and tools. Authorship and
+component redistribution review remain open.
+
+| Fixture | Verified rebuilt SHA-256 |
+|---|---|
+| `audren` | `3fd52f32643de7e3869d954a7f5e6b66f8b243e7e2ec465f729483ed9ef0916f` |
+| `deko3d` | `9e555711561ce16f846170a97545245422961b3991bb6526d16ef62833798af6` |
+| `gpu` | `6583a56cf3afb5d88b167379330e6d8dcce27d4e6c55d67c9ac008cbc7079c74` |
+| `hello` | `b1d6a5723be27dd1e2f3dd304458f2e5574f6c7c8982c31f493aee4dc82a2b03` |
+| `input` | `a67aeb592aa4d03db8d52b0b6780073b73a3f797ddd9e4aaa3f8af1549453204` |
+| `input_multi` | `7810f89006c9f54db3cdb4fbbde1f2476527f4c1a395ee33a82ab08edb6fdda8` |
+| `nvdrv` | `356f59517e2f610a42d153564fba85ca52f07b6cfa956ff0f6d2895fcbf63dc8` |
+| `romfs` | `0ddd814f2d1c81899a3171b2eacd0d2684644bb0688a4f1cc1edc7dc8ac929b9` |
+| `sdmc` | `42d46955e74b1aa01cd6181f442b54a19c7138721de15b19999e93e938004f48` |
+| `services` | `6ff6970a5eb75360892400b71312a279417a255bdeeec2241e9c77f89e3c172e` |
+| `threads` | `496c6db53ec97bacfde9f25e7dba6e8e7deeae9c974d072e8c9adb0abebad78c` |

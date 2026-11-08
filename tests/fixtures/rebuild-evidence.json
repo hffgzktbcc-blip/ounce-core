@@ -1,0 +1,4746 @@
+{
+  "source_commit": "9e813b984930f6280b1a23ac2d3a8ed9d9f5d2e7",
+  "source_ref": "origin/main",
+  "toolchain_packages": [
+    "devkita64-gcc 16.1.0-1",
+    "devkita64-newlib 4.6.0.20260123-4",
+    "libnx 4.12.0-1",
+    "deko3d 0.5.0-1",
+    "switch-tools 1.13.1-1"
+  ],
+  "method": "Unmodified tracked fixture source copied to private directories. Existing Makefile LDFLAGS preserved with linker map option appended. No repository binary replaced.",
+  "fixtures": [
+    {
+      "fixture": "audren",
+      "source_sha256": "35c206c5d3d485c54a4c5d28e1c55d852e5f16bd1d505d798c47241e30188789",
+      "makefile_sha256": "58906803a4d31d74c805c07850f85a00db1393d336a0d4cd6687f2493b1db390",
+      "original_binary_sha256": "3fd52f32643de7e3869d954a7f5e6b66f8b243e7e2ec465f729483ed9ef0916f",
+      "rebuilt_binary_sha256": "3fd52f32643de7e3869d954a7f5e6b66f8b243e7e2ec465f729483ed9ef0916f",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,audren.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/audren/rebuild.log",
+      "map": "fixture-rebuilds/audren/audren.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "audren.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "driver.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mempool.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "voice.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "cache.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malign.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/audren/.gitignore",
+          "blob": "c2712ed6f1516adb25227cc790f606e18471728b",
+          "sha256": "25f483813216bb7f917acaa9a3e663ec9663e1e07972084cfce132adb1cfce21"
+        },
+        {
+          "path": "tests/fixtures/nro/audren/Makefile",
+          "blob": "af0d321585fccd5401be00d7a38577b79fd8397a",
+          "sha256": "58906803a4d31d74c805c07850f85a00db1393d336a0d4cd6687f2493b1db390"
+        },
+        {
+          "path": "tests/fixtures/nro/audren/README.md",
+          "blob": "5d3a6d868031f0fbdc97bf262c56726570ca444c",
+          "sha256": "90b2510ad6c9568b54a60514df9635c5dd2e14e9dd13b635d51ac4a72b4a33e2"
+        },
+        {
+          "path": "tests/fixtures/nro/audren/main.c",
+          "blob": "9666756a220d90ab7205b2c198d65749cd947d4e",
+          "sha256": "35c206c5d3d485c54a4c5d28e1c55d852e5f16bd1d505d798c47241e30188789"
+        }
+      ],
+      "original_binary_blob": "da23924a2d3e7f6daf139eccb14285536cd97cc0",
+      "map_sha256": "f39173c511f676ce678d76f9e6577bddf94307b26156e32171a26a4e2a76fc3e",
+      "log_sha256": "0a40e221300589fd50385ed4006e123ff08d64313cade618f848897607789b5f"
+    },
+    {
+      "fixture": "deko3d",
+      "source_sha256": "d643f92f1628619f8173645ee3f6f8401e7fec4bec4582ba77990ccab39b38f0",
+      "makefile_sha256": "3564e568795d6c75691add0e5184a2b7e453e37fbb02abc04073b5282ee0a697",
+      "original_binary_sha256": "9e555711561ce16f846170a97545245422961b3991bb6526d16ef62833798af6",
+      "rebuilt_binary_sha256": "9e555711561ce16f846170a97545245422961b3991bb6526d16ef62833798af6",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,deko3d.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/deko3d/rebuild.log",
+      "map": "fixture-rebuilds/deko3d/deko3d.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "dk_memblock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "dk_queue.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "dk_image.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "cmd_bind_common.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "dk_fence.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "codesegmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "dk_shader.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "queue_workbuf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "dk_cmdbuf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "gpu_error.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "dk_device.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "image_formats.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "gpu_3d_base.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "gpu_3d_vbo.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "gpu_base.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "gpu_transfer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "gpu_3d_state.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+          "member": "gpu_3d_zcull.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "address_space.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fence.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "gpu.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "gpu_channel.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "map.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvchannel.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvhost-as-gpu.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvhost-ctrl.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvhost-ctrl-gpu.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvmap.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "cache.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "channel.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/deko3d/.gitignore",
+          "blob": "a1f0f69ee45b124c22a440b8a3e96fd64096122b",
+          "sha256": "522c0f18e49aa362a97c792e88e6b6016e02466683b7eef9ebe30e48db78f988"
+        },
+        {
+          "path": "tests/fixtures/nro/deko3d/Makefile",
+          "blob": "6e8f1acce788285ac0291aef918bc7cd38387a99",
+          "sha256": "3564e568795d6c75691add0e5184a2b7e453e37fbb02abc04073b5282ee0a697"
+        },
+        {
+          "path": "tests/fixtures/nro/deko3d/main.c",
+          "blob": "959085a255b2b001364d6763030f46fcc55a20f0",
+          "sha256": "d643f92f1628619f8173645ee3f6f8401e7fec4bec4582ba77990ccab39b38f0"
+        },
+        {
+          "path": "tests/fixtures/nro/deko3d/tri_fsh.glsl",
+          "blob": "4c0dba7f7bd3f5cb525096426872938f4e71646c",
+          "sha256": "34f4d93c07ab79ea7ddf659bf2b3d9948c071c64dbcad5ad87830a4dc7f494bb"
+        },
+        {
+          "path": "tests/fixtures/nro/deko3d/tri_vsh.glsl",
+          "blob": "5abea51acb63dd265f822180fe44078bdcf18be2",
+          "sha256": "e3f8e913530e7abeef9809ae048743b967a4771818c75a3f93cff61253b49584"
+        }
+      ],
+      "original_binary_blob": "023d1ead81ff478a4e949365c988382fbb97729c",
+      "map_sha256": "79830153406216ed8c349e81ed0b28fe89e6b5c5b1e2db093d7a3f7d91851c1c",
+      "log_sha256": "a40c3138b54c672cb037e404c562a91271c2f75ba64a8eb7987219fd50a203da"
+    },
+    {
+      "fixture": "gpu",
+      "source_sha256": "ff2b40841726061d1cd286770637b49c07517b80c710290c58c6a88b2e5d86e8",
+      "makefile_sha256": "0c9b008f7e83ae7d0c1179d832bdb464fd063558273d32373f40ef705627fe56",
+      "original_binary_sha256": "6583a56cf3afb5d88b167379330e6d8dcce27d4e6c55d67c9ac008cbc7079c74",
+      "rebuilt_binary_sha256": "6583a56cf3afb5d88b167379330e6d8dcce27d4e6c55d67c9ac008cbc7079c74",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,gpu.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/gpu/rebuild.log",
+      "map": "fixture-rebuilds/gpu/gpu.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "address_space.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fence.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "gpu.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "gpu_channel.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "map.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvchannel.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvhost-as-gpu.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvhost-ctrl.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvhost-ctrl-gpu.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvmap.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "cache.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "channel.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malign.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/gpu/.gitignore",
+          "blob": "589ca9b457e213414c6b9b3e94840ca33f1d1362",
+          "sha256": "b718bedaad403904d0cfb75b793da93401917ee7f406181a4c0a2513c7338d50"
+        },
+        {
+          "path": "tests/fixtures/nro/gpu/Makefile",
+          "blob": "29ea23fc44e2c252952add0fe0e4cf3ab10084c7",
+          "sha256": "0c9b008f7e83ae7d0c1179d832bdb464fd063558273d32373f40ef705627fe56"
+        },
+        {
+          "path": "tests/fixtures/nro/gpu/README.md",
+          "blob": "78a2ff66492d7a7d0687ade9b4a7187e01a6d36a",
+          "sha256": "7b934cbebc239327d4742fa1d4f0f8680123982b1df6856bc003457e44eb1f31"
+        },
+        {
+          "path": "tests/fixtures/nro/gpu/main.c",
+          "blob": "4be039c71b6ad5952f73ce1382da4cd8f3c8281d",
+          "sha256": "ff2b40841726061d1cd286770637b49c07517b80c710290c58c6a88b2e5d86e8"
+        }
+      ],
+      "original_binary_blob": "bcdcd88a31cc4de61a5475db68fc863abf1a7a9f",
+      "map_sha256": "a60e8e9970905748ae2930724e0674199c6a8ba54413fb91e22523f2700baa75",
+      "log_sha256": "7a558aeba6a62df15ab1982f86cda8a688f9e784da3c184b1606ccaf5b0c1d97"
+    },
+    {
+      "fixture": "hello",
+      "source_sha256": "cc256c9e0eb75783f88456d5aeaa3dddbecd51609b22c0d23a7a93174a1bab8e",
+      "makefile_sha256": "07ad30b179ab7474b1cd701038dfd08828043ad854c919aed272567aa950cfd7",
+      "original_binary_sha256": "b1d6a5723be27dd1e2f3dd304458f2e5574f6c7c8982c31f493aee4dc82a2b03",
+      "rebuilt_binary_sha256": "b1d6a5723be27dd1e2f3dd304458f2e5574f6c7c8982c31f493aee4dc82a2b03",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,hello.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/hello/rebuild.log",
+      "map": "fixture-rebuilds/hello/hello.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-calloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-callocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/hello/.gitignore",
+          "blob": "77d8c0511ecfb726bd63e1d550b847725c4ba719",
+          "sha256": "244364a87301f88a0d688b1ef0388e886fda8caf56f36a4f633e380619bc745c"
+        },
+        {
+          "path": "tests/fixtures/nro/hello/Makefile",
+          "blob": "b83e75bf4eee5f51426dd01b47564f3381bc2508",
+          "sha256": "07ad30b179ab7474b1cd701038dfd08828043ad854c919aed272567aa950cfd7"
+        },
+        {
+          "path": "tests/fixtures/nro/hello/README.md",
+          "blob": "5aa4b9c4cb2f6f00d84d51bb950144adf4d8f53e",
+          "sha256": "0b51159f9b3723f6afcfcaa2a38579f89d1a7dc6663b9a7f0d447a962ff9f494"
+        },
+        {
+          "path": "tests/fixtures/nro/hello/main.c",
+          "blob": "683778f3b017b64edb8e1abfad557d66c1bbee09",
+          "sha256": "cc256c9e0eb75783f88456d5aeaa3dddbecd51609b22c0d23a7a93174a1bab8e"
+        }
+      ],
+      "original_binary_blob": "9570f036845af583e609d83e9e24af9b766f6e0d",
+      "map_sha256": "972a7bf3fd25c53537df22a101ececc2e2cbd918f78b4de2708e707d1acf60b1",
+      "log_sha256": "0ba3bb35d26091e9c3f95bd18fb7d7769f23dbaff7eae58e13ca6858049128c5"
+    },
+    {
+      "fixture": "input",
+      "source_sha256": "112b74e9c5c8e0f4910376dc6c2d770270e33e56dd40b1257b1d1d81a318d572",
+      "makefile_sha256": "9c90c9ac2863aafed75a1672d5f5419debf23987be5223ec4dae5cdbf3d725d5",
+      "original_binary_sha256": "a67aeb592aa4d03db8d52b0b6780073b73a3f797ddd9e4aaa3f8af1549453204",
+      "rebuilt_binary_sha256": "a67aeb592aa4d03db8d52b0b6780073b73a3f797ddd9e4aaa3f8af1549453204",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,input.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/input/rebuild.log",
+      "map": "fixture-rebuilds/input/input.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "pad.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/input/.gitignore",
+          "blob": "2f8a2ceaf08c142d6ab8cb3301d72ee6e82c8b6a",
+          "sha256": "170ebc5ba12cd038f73f9de65d54c7e63e0c367b275793321863bbc0382cce93"
+        },
+        {
+          "path": "tests/fixtures/nro/input/Makefile",
+          "blob": "3a594e7e011646a8c28c2dcf5261b393d8ddbb42",
+          "sha256": "9c90c9ac2863aafed75a1672d5f5419debf23987be5223ec4dae5cdbf3d725d5"
+        },
+        {
+          "path": "tests/fixtures/nro/input/README.md",
+          "blob": "29cb3d9a0d4a07a570d17dad0234f18ac61362d7",
+          "sha256": "7e3fc2af325c787ed565821b44150ef522998d799bfc7ef009e213f836643b47"
+        },
+        {
+          "path": "tests/fixtures/nro/input/main.c",
+          "blob": "ee1daf90afc3f71a58409cdca95813fd2b6c646f",
+          "sha256": "112b74e9c5c8e0f4910376dc6c2d770270e33e56dd40b1257b1d1d81a318d572"
+        }
+      ],
+      "original_binary_blob": "b3db7d893a257aab002b620123ccfb8326203c2a",
+      "map_sha256": "2abcc541cf1fa8ac273b5bbfc92f4c154fbaed5efe12b37d0823d3bd9fceb56a",
+      "log_sha256": "5f266296855c84dd6fa7ea2631924b541b60dbf9b559df4257f9ce29d2351a1b"
+    },
+    {
+      "fixture": "input_multi",
+      "source_sha256": "4a4b4e364a6577e5547570b262016f5e08fa4cb7fcac57bcb65886b04f04090d",
+      "makefile_sha256": "7f0d2b4027125bab5d12d4920ca48dda03cbc982f20bc1542b325063307c6b84",
+      "original_binary_sha256": "7810f89006c9f54db3cdb4fbbde1f2476527f4c1a395ee33a82ab08edb6fdda8",
+      "rebuilt_binary_sha256": "7810f89006c9f54db3cdb4fbbde1f2476527f4c1a395ee33a82ab08edb6fdda8",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,input_multi.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/input_multi/rebuild.log",
+      "map": "fixture-rebuilds/input_multi/input_multi.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "pad.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/input_multi/.gitignore",
+          "blob": "276a0954cce8427535a4d250071bd0e9dec5d2a6",
+          "sha256": "b74361f3d734b5822f8899b5eeaac33beacde75aaaa38ded2424237405a65f49"
+        },
+        {
+          "path": "tests/fixtures/nro/input_multi/Makefile",
+          "blob": "684cc863871ab1f74d3bbb5df79a7d243973bc5f",
+          "sha256": "7f0d2b4027125bab5d12d4920ca48dda03cbc982f20bc1542b325063307c6b84"
+        },
+        {
+          "path": "tests/fixtures/nro/input_multi/README.md",
+          "blob": "d0ce176348eaf638b13db55aa64fb10a8ef4749b",
+          "sha256": "51e0c280763b0896b903b941a03e8adec30cfaac1a7e78a28dcdff8071518155"
+        },
+        {
+          "path": "tests/fixtures/nro/input_multi/main.c",
+          "blob": "b31710882f915ae9136058ea4cde4c892b243e7d",
+          "sha256": "4a4b4e364a6577e5547570b262016f5e08fa4cb7fcac57bcb65886b04f04090d"
+        }
+      ],
+      "original_binary_blob": "278ebff2f9514dbf8cf613c8081f1273139b38cd",
+      "map_sha256": "bb103bab58c2c214bfc948db8f259517f0f274dc7318a8d148c7ae98b3c4cb5a",
+      "log_sha256": "34fb42b66b3603fdeb115800d6f46c49bc349d98c2d336ae2ba6a997fb35fbae"
+    },
+    {
+      "fixture": "nvdrv",
+      "source_sha256": "d35ccc0b53463cada5f9d4cdd32337c6dc8a66c8dcbca95346fb55716afada00",
+      "makefile_sha256": "7998eefa8b7bda0558a07b2ed6cdf7cd9ea04b681d77bad70a7be31c8fba8105",
+      "original_binary_sha256": "356f59517e2f610a42d153564fba85ca52f07b6cfa956ff0f6d2895fcbf63dc8",
+      "rebuilt_binary_sha256": "356f59517e2f610a42d153564fba85ca52f07b6cfa956ff0f6d2895fcbf63dc8",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,nvdrv.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/nvdrv/rebuild.log",
+      "map": "fixture-rebuilds/nvdrv/nvdrv.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "map.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nvmap.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "cache.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malign.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/nvdrv/.gitignore",
+          "blob": "2aa2efb2fb79ac5877550a2d8b75bf98e69ce9d7",
+          "sha256": "a5118ce8acd5f1eb6be1a4682b605c301d6bbb1e21d910863adcde97ec581fc3"
+        },
+        {
+          "path": "tests/fixtures/nro/nvdrv/Makefile",
+          "blob": "b982f644557e65b59876228c7a53e1446a7a6d55",
+          "sha256": "7998eefa8b7bda0558a07b2ed6cdf7cd9ea04b681d77bad70a7be31c8fba8105"
+        },
+        {
+          "path": "tests/fixtures/nro/nvdrv/README.md",
+          "blob": "f2bf825d6ef4bb971df363b91fcdc7cec3b55a7a",
+          "sha256": "6f716268252e28473c740bc94c71604fbf5f91fcdda3c8e10a04246ff80c5b2d"
+        },
+        {
+          "path": "tests/fixtures/nro/nvdrv/main.c",
+          "blob": "3dfc28e3333b1aca3c30c1a1af81fc18f3ba791b",
+          "sha256": "d35ccc0b53463cada5f9d4cdd32337c6dc8a66c8dcbca95346fb55716afada00"
+        }
+      ],
+      "original_binary_blob": "fa567dce8cf21a84bdf205c540275e8eca5a5c64",
+      "map_sha256": "9f7d66e1fa192b750a045f2166048cf60922ec666bac19ef8d299198570f08b0",
+      "log_sha256": "75a69f896c20980dbebe7ce01eb1b3f238f3492c75894735c8365bae68c30a7b"
+    },
+    {
+      "fixture": "romfs",
+      "source_sha256": "aea105bfdd96da2d8f974823e2a25bfc329da0486c5258b7d8764454327c0703",
+      "makefile_sha256": "1c65447d0f7b1efd9463bca0263c523c43feefad2fa1d7f6f6e61e8990fb9a14",
+      "original_binary_sha256": "0ddd814f2d1c81899a3171b2eacd0d2684644bb0688a4f1cc1edc7dc8ac929b9",
+      "rebuilt_binary_sha256": "0ddd814f2d1c81899a3171b2eacd0d2684644bb0688a4f1cc1edc7dc8ac929b9",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,romfs.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/romfs/rebuild.log",
+      "map": "fixture-rebuilds/romfs/romfs.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "romfs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-sysopen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-sysclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-sysread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-gettod.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-open.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/romfs/.gitignore",
+          "blob": "75d21f11dcf7cdd8a545fe7a3fb3df4857219e06",
+          "sha256": "30f00fea35730d561b69e6842b707297618c5eae093c92671b716a40fff01ba4"
+        },
+        {
+          "path": "tests/fixtures/nro/romfs/Makefile",
+          "blob": "3b2e8a51bbf79db291fffc669ff4429742a0a65f",
+          "sha256": "1c65447d0f7b1efd9463bca0263c523c43feefad2fa1d7f6f6e61e8990fb9a14"
+        },
+        {
+          "path": "tests/fixtures/nro/romfs/README.md",
+          "blob": "c3f2d08fa7044afb07f7a04114aee7cdfdb75186",
+          "sha256": "4757718909c854c1a57cbe240f8f1dcddafb71ff3612d418a1049b86ba299bf9"
+        },
+        {
+          "path": "tests/fixtures/nro/romfs/add_romfs.py",
+          "blob": "6e4da2192a72606dcc03459bc6aaa7d87905aaf5",
+          "sha256": "8ed62ed52b2a416b8c0d286377415c6d92ac75b92bc8a487ee7d25a3d5048e14"
+        },
+        {
+          "path": "tests/fixtures/nro/romfs/main.c",
+          "blob": "dad96c07facebe0e680226bd9d299955447f0425",
+          "sha256": "aea105bfdd96da2d8f974823e2a25bfc329da0486c5258b7d8764454327c0703"
+        },
+        {
+          "path": "tests/fixtures/nro/romfs/romfs/greeting.txt",
+          "blob": "8851c1c40cc201b734f58e9aff17a34f93486fe2",
+          "sha256": "d44f68017b98804930d7209b876374a7ef647ca0cd80a548c0e7baabd28cc3bb"
+        }
+      ],
+      "original_binary_blob": "dd01125cde893bfa08e90b731869392de133b91b",
+      "map_sha256": "0142be972a585bfa06c813595b0dc8c0aee87c5fe83bd3685c92ee542e9ea2d7",
+      "log_sha256": "015ce3bbef1e8bc8ab8c0d10deb92c645da5ab8c42a04880b546cddd72c02bf4"
+    },
+    {
+      "fixture": "sdmc",
+      "source_sha256": "12767f868c721730b77e0a5bd6fca2a84329cc90f20cdc15a3e787dbdcff7b62",
+      "makefile_sha256": "b98523e7ed0b0a2b8b10ee7ae256918d29c84f768c6e6465c7840f557d87892c",
+      "original_binary_sha256": "42d46955e74b1aa01cd6181f442b54a19c7138721de15b19999e93e938004f48",
+      "rebuilt_binary_sha256": "42d46955e74b1aa01cd6181f442b54a19c7138721de15b19999e93e938004f48",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,sdmc.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/sdmc/rebuild.log",
+      "map": "fixture-rebuilds/sdmc/sdmc.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fopen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-remove.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-makebuf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwrite.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-rename.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fseeko.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-flags.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-sysstat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-refill.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fvwrite.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-wsetup.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-dirent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-fstat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-isatty.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-mkdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-open.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-rename.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-rmdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-stat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-unlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/sdmc/.gitignore",
+          "blob": "c2b8c07405edf71d1903d08530d15d1456c32149",
+          "sha256": "2722547ef7b769b7b406e5384568027f7410976ae3f0f2022702988280d276e3"
+        },
+        {
+          "path": "tests/fixtures/nro/sdmc/Makefile",
+          "blob": "9271098c62bb095e2d7befd477a9e49c5f291811",
+          "sha256": "b98523e7ed0b0a2b8b10ee7ae256918d29c84f768c6e6465c7840f557d87892c"
+        },
+        {
+          "path": "tests/fixtures/nro/sdmc/README.md",
+          "blob": "d4c37533a213db49a7dfb1e6b39cbdd922595a01",
+          "sha256": "e5958d2597d940c0be548aeb24817139399158d13650ab8143661b307e9c51fc"
+        },
+        {
+          "path": "tests/fixtures/nro/sdmc/main.c",
+          "blob": "dad290923fdd71ae7719bcab20b82d70e6b07b3d",
+          "sha256": "12767f868c721730b77e0a5bd6fca2a84329cc90f20cdc15a3e787dbdcff7b62"
+        }
+      ],
+      "original_binary_blob": "b01217b2bb109ac37914a08a53b297b1b181e19b",
+      "map_sha256": "08b6912e0fc8bace65b80a03dde314358dccfdb15e376216b4f5735b32c52a4c",
+      "log_sha256": "58dbaaf4a890e4540de2c6edccb1a242eaba53d4525359d980a5768b34780aab"
+    },
+    {
+      "fixture": "services",
+      "source_sha256": "895784971d903f1e4f13d143ebf7d22bab01c502a49d858710ffb32185425f95",
+      "makefile_sha256": "326cf8d5708900b2970080fad43df8111da27d215ad2aba5ff0c9e2b2fe7b4f0",
+      "original_binary_sha256": "6ff6970a5eb75360892400b71312a279417a255bdeeec2241e9c77f89e3c172e",
+      "rebuilt_binary_sha256": "6ff6970a5eb75360892400b71312a279417a255bdeeec2241e9c77f89e3c172e",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,services.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/services/rebuild.log",
+      "map": "fixture-rebuilds/services/services.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/services/.gitignore",
+          "blob": "637c2e6670317d05bf0ebd9c814c6a42d14b7e4b",
+          "sha256": "2d2c94f11cc28031236d259b7fa9679f29e794cc49135483fba470db2426d3fb"
+        },
+        {
+          "path": "tests/fixtures/nro/services/Makefile",
+          "blob": "1aa127c0afbebd0d855e0fae1e2f450f758bb736",
+          "sha256": "326cf8d5708900b2970080fad43df8111da27d215ad2aba5ff0c9e2b2fe7b4f0"
+        },
+        {
+          "path": "tests/fixtures/nro/services/README.md",
+          "blob": "91a34c788fc14808f88a86c8cfba19ce8cf3779e",
+          "sha256": "69f6604ba17d2a9d465c48426af4d13f277a269bc189b573b66ac228f8c1ebfa"
+        },
+        {
+          "path": "tests/fixtures/nro/services/main.c",
+          "blob": "38de718257621472262563742cc01e8ae8fc3cb3",
+          "sha256": "895784971d903f1e4f13d143ebf7d22bab01c502a49d858710ffb32185425f95"
+        }
+      ],
+      "original_binary_blob": "5b5c38d83439db1568a138da5f154a28cf66a6a4",
+      "map_sha256": "0b6bb7a8e1c452a4d10c6c3e2e739dd041258f8e02406243bd599a737a943821",
+      "log_sha256": "5236073570c6f62900887e642f0c77cb34f01f793ad26afe0aac9e017798bc31"
+    },
+    {
+      "fixture": "threads",
+      "source_sha256": "d2b44d13b959470b5ab722858e646435423cd1068693ebf3479f717d47bbcfcb",
+      "makefile_sha256": "de2f54734ffcdc57ad4261447d1af082973ae3707cc1e4d63ee2dd07e60b0352",
+      "original_binary_sha256": "496c6db53ec97bacfde9f25e7dba6e8e7deeae9c974d072e8c9adb0abebad78c",
+      "rebuilt_binary_sha256": "496c6db53ec97bacfde9f25e7dba6e8e7deeae9c974d072e8c9adb0abebad78c",
+      "byte_identical": true,
+      "commands": [
+        {
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "exit_code": 0
+        },
+        {
+          "argv": [
+            "make",
+            "all",
+            "LDFLAGS=-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -L$(DEVKITPRO)/libnx/lib -Wl,-Map,threads.map"
+          ],
+          "exit_code": 0
+        }
+      ],
+      "successful": true,
+      "log": "fixture-rebuilds/threads/rebuild.log",
+      "map": "fixture-rebuilds/threads/threads.map",
+      "selected_archive_members": [
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "condvar.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "mutex.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "thread.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "virtmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "wait.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "diag.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "env.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hosversion.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "svc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "readtp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "switch_crt0.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "random.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "argv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "dynamic.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "newlib.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "nxlink.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs_dev.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "path_buf.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "decode_utf8.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "exception.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "applet.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "fs.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "hid.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "set.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "time.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "event.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "shmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "tmem.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "sessionmgr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/libnx/lib/libnx.a",
+          "member": "apm.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncat.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strnlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-impure.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-bsearch.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-memset.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strtoul.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-aligned_alloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malignr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-errno.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strlen.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-freer.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-findfp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-init.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strncpy.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-malloc.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-stdio.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-mlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fclose.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strcmp.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fini.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-gmtime_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-ctype_.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-setenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fwalk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-environ.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-fflush.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-getenv_r.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-reallocr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strchr.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-envlock.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-_exit.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-chdir.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-concatenate.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-getreent.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-handle_manager.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-iosupport.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-lseek.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-malloc_vars.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-read.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-sbrk.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-syscall_support.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-write.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+          "member": "libsysbase_libsysbase_a-clocks.o"
+        },
+        {
+          "archive": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+          "member": "libc_a-strrchr.o"
+        }
+      ],
+      "source_unchanged_after": true,
+      "tracked_build_inputs": [
+        {
+          "path": "tests/fixtures/nro/threads/.gitignore",
+          "blob": "0e020531b2c23c570a91cc0e46df9004f05ca2ff",
+          "sha256": "431b74e69269dd56098ae1748b6a60ef5e0c806c15154034ba7bed5d7240fe05"
+        },
+        {
+          "path": "tests/fixtures/nro/threads/Makefile",
+          "blob": "f407969bcd08ac6f748e44d16614cfccffe7a190",
+          "sha256": "de2f54734ffcdc57ad4261447d1af082973ae3707cc1e4d63ee2dd07e60b0352"
+        },
+        {
+          "path": "tests/fixtures/nro/threads/README.md",
+          "blob": "5f8d9dcff402c4368b369eb2e874eef54e1f895e",
+          "sha256": "209445e221df338f303b8c4037c45fe59c811ae19c24c423e14df9460841f531"
+        },
+        {
+          "path": "tests/fixtures/nro/threads/main.c",
+          "blob": "f2d6c42dcffaff1a32f7bcf853c69f7fc8454f0d",
+          "sha256": "d2b44d13b959470b5ab722858e646435423cd1068693ebf3479f717d47bbcfcb"
+        }
+      ],
+      "original_binary_blob": "4c8b04a6fc5ca5a786092f5f3377229c53c6186f",
+      "map_sha256": "d9b5c72bf283a60cbaf7ff15b57d942e6372d3c876d3a5041e36eef964da699e",
+      "log_sha256": "e121aaf5a707150e32be1454db731c17d7a47bf8538db56f0bc0e5c5559ecdc8"
+    }
+  ],
+  "selected_archive_identities": [
+    {
+      "path": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libc.a",
+      "sha256": "9bf41282aadf7957fe18b8c1fc71394bf255fca6175c8b449fd3f23ff387a362"
+    },
+    {
+      "path": "/opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/16.1.0/../../../../aarch64-none-elf/lib/pic/libsysbase.a",
+      "sha256": "6e616a27169f07402bfd1a2df0693778b248c84597d1220a912b3a21f91f8026"
+    },
+    {
+      "path": "/opt/devkitpro/libnx/lib/libdeko3d.a",
+      "sha256": "bd99b3771ba5cad2900cf82137479a641f92d5c643a1537fd73c46499811cbe5"
+    },
+    {
+      "path": "/opt/devkitpro/libnx/lib/libnx.a",
+      "sha256": "12a59cdfdceab83e39ee129b0275dd803e393e83f19de3922a3b6cc95c767edd"
+    }
+  ],
+  "tool_identities": [
+    {
+      "path": "/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc",
+      "sha256": "03bf26d77cd9f36559fa245de7913d3d827aed5a18300ab84ad81b1438676ba1"
+    },
+    {
+      "path": "/opt/devkitpro/tools/bin/elf2nro",
+      "sha256": "5cc1054a307882d02200bae70347c53a67950a263448cf125de1c96d7a847a84"
+    },
+    {
+      "path": "/opt/devkitpro/tools/bin/uam",
+      "sha256": "1e34f48256503a221b09a3cb7300744f581ef673ac988688e66fbe87790d0f3e"
+    },
+    {
+      "path": "/opt/devkitpro/tools/bin/build_romfs",
+      "sha256": "5492fc3d332911b666fe25a52fd776c38fc14dd6105b69178fb05f517bf95cd6"
+    }
+  ],
+  "scope": "Binary reproducibility VERIFIED. Source authorship and redistribution review remain UNVERIFIED."
+}

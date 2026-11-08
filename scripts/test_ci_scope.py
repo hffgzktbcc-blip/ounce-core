@@ -44,8 +44,8 @@ class ScopeTest(unittest.TestCase):
         workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/ci.yml').read_text()
         script = textwrap.dedent(workflow.split("python3 - <<'PYTHON'\n", 1)[1].split('          PYTHON', 1)[0])
         results = {name: {'result': 'skipped'} for name in
-                   ('changes', 'legal-guardrails', 'tooling', 'test', 'gpu-present', 'native-jit', 'nce', 'corpus')}
-        for name in ('changes', 'legal-guardrails', 'tooling'):
+                   ('changes', 'legal-guardrails', 'tooling', 'release-notice-packaging', 'test', 'gpu-present', 'native-jit', 'nce', 'corpus')}
+        for name in ('changes', 'legal-guardrails', 'tooling', 'release-notice-packaging'):
             results[name]['result'] = 'success'
         results['changes']['outputs'] = {'runtime': 'false', 'corpus': 'false'}
 
@@ -54,6 +54,9 @@ class ScopeTest(unittest.TestCase):
                                   env=dict(os.environ, RESULTS=json.dumps(results))).returncode
 
         self.assertEqual(run(), 0)  # docs: heavy jobs intentionally skipped
+        results['release-notice-packaging']['result'] = 'failure'
+        self.assertNotEqual(run(), 0)
+        results['release-notice-packaging']['result'] = 'success'
         results['tooling']['result'] = 'failure'
         self.assertNotEqual(run(), 0)
         results['tooling']['result'] = 'success'
