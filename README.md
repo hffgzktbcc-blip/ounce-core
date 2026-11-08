@@ -12,7 +12,7 @@
 [![Research](https://img.shields.io/badge/Status-Experimental-a9bcc4?style=flat-square)](#what-is-proven)
 [![No retail assets](https://img.shields.io/badge/Assets-No%20firmware%20or%20retail%20keys-7cae9f?style=flat-square)](#responsible-research)
 
-**An inspectable AArch64 runtime for open-source Switch homebrew, measured by real frames.**
+**Reproducible failure investigation, built on an inspectable AArch64 runtime.**
 
 [The Ounce Vision](#the-ounce-vision) · [Architecture](#the-system) · [Get started](#quickstart) · [Verified progress](#what-is-proven) · [Roadmap](#the-road-ahead) · [Research & provenance](#responsible-research)
 
@@ -28,9 +28,9 @@
 
 ### Execute. Observe. Understand. Verify.
 
-**A research platform for making software behaviour observable, correctness testable, and results reproducible.**
+**Help developers see what changed, investigate a failure, and share a repeatable reproduction.**
 
-*One experimental runtime. One evidence foundation. Many ways to investigate and learn.*
+*Current foundation: runtime, evidence validation, run comparison and replay tooling. Next: one complete developer workflow.*
 
 </div>
 
@@ -106,6 +106,8 @@ The [Ounce-Core runtime](#the-system) explores AArch64 execution, memory, operat
 
 </div>
 
+> **Current priority:** connect existing verification, diagnosis and replay tools into one usable failure-to-reproduction workflow, then solve a real developer issue. See [the outcome plan](PLAN.md). Platform coverage is a regression baseline, not the product roadmap. An experimental [Python-only diagnosis CLI](docs/DIAGNOSIS_CLI.md) packages the retained SDL2 and audio-padding workflows; outside developer validation remains open.
+
 > **Vision versus current capability:** Ounce-Core and Ounce-Verify have working implementations. The named Trace, Debug, Learn and Bench experiences above are future directions, not claims that four finished products exist. Original-Switch corpus results and limited Switch 2 SDK-path observations remain separate; neither establishes commercial-software or broad Switch 2 compatibility.
 
 ---
@@ -116,7 +118,7 @@ Every program is a conversation between instructions, memory, operating-system s
 
 It brings together interpreters, tiered AArch64 execution, Horizon-style service models, software graphics and optional `wgpu` presentation. The root crate forbids unsafe Rust; the optional Tier-4 recompiler owns a separate unsafe boundary for native code generation and executable memory. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
 
-> **Headline metric: [<!-- corpus-headline -->50/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The certified headline covers original Switch homebrew only. A separate, experimental Switch 2 outside-program first-frame check is being developed in [PR #172](https://github.com/hffgzktbcc-blip/ounce-core/pull/172); it does not yet establish Switch 2 compatibility or commercial software support.
+> **Headline metric: [<!-- corpus-headline -->50/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). This historical benchmark measures registered graphics behavior; tooling, debugging and usability changes are assessed by their own end-to-end scenarios. The certified headline covers original Switch homebrew only. A separate experimental [SDK-path observation](https://github.com/hffgzktbcc-blip/ounce-core/pull/172) is retained as research evidence; expanding Switch 2 coverage is not the current focus.
 
 <table>
 <tr>
@@ -318,7 +320,7 @@ The runtime in `src/` is one crate with `#![forbid(unsafe_code)]` at its root ([
 - **Native code generation.** [`crates/ounce-recompiler`](crates/ounce-recompiler/src/lib.rs), the optional Tier-4 recompiler behind `native-jit`, denies `unsafe` crate-wide and allows it only in its `exec` module (W^X executable memory and calls into generated code).
 - **Native execution, ported from MIT code.** [`crates/ounce-nce`](crates/ounce-nce/src/lib.rs), behind the `nce` feature, runs homebrew ARM64 code directly on an AArch64 host after rewriting its `svc`, `TPIDR_EL0` and timer instructions into trampolines (rules ported from nxnative, MIT; see [`THIRD_PARTY.md`](THIRD_PARTY.md)). The rewriter is safe Rust; `unsafe` is denied crate-wide and allowed only in `arena` (guest memory at guest address == host address) and `exec` (entering guest code, trampoline exits, fault signals).
 
-Any other code, ported or new, that genuinely needs `unsafe` goes into an isolated crate the same way, agreed in an issue first ([CONTRIBUTING](CONTRIBUTING.md)). Ported code that can be written safely goes into `src` as safe Rust.
+Any other code, ported or new, that genuinely needs `unsafe` goes into an isolated crate with focused tests and review of that boundary ([CONTRIBUTING](CONTRIBUTING.md)). Ported code that can be written safely goes into `src` as safe Rust.
 
 ---
 
@@ -388,7 +390,7 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 
 ## The road ahead
 
-*Garden principle: grow capability, measure the result, and keep the roots visible.*
+*Deliver one reproducible developer result at a time; implementation and historical benchmarks are supporting evidence.*
 
 <!-- BEGIN GENERATED ROADMAP: scripts/render_roadmap.py -->
 This section is rendered from [the milestone registry](docs/roadmap/milestones.json). Research stages require reviewed evidence; PR status is observational only. A green badge or merged PR is not proof of compatibility.
@@ -400,11 +402,11 @@ This section is rendered from [the milestone registry](docs/roadmap/milestones.j
 
 | Research track | Reviewed stage | Supporting evidence | Next proof gate |
 | :--- | :--- | :--- | :--- |
-| CPU and code-cache correctness | implemented-subset | [Implemented CPU paths and regression gates](#the-architecture-at-a-glance) | Expand outside instruction coverage; preserve interpreter/Tier-3 parity |
-| Original Switch homebrew | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->50/50<!-- /corpus-headline --> passes** (CI-certified) | Diagnose remaining failures; independently reproduce against unchanged inputs and retained oracle artifacts |
-| Ounce-Verify | v6-merged | [V6 evidence milestone #171](https://github.com/hffgzktbcc-blip/ounce-core/pull/171) | Preserve integrity, regression comparison, resumability and independent reruns |
-| Switch 2 outside homebrew | experimental | [Hello CPU first-frame research #172](https://github.com/hffgzktbcc-blip/ounce-core/pull/172) (PR #172: open, observational) | Unchanged external program, pre-registered oracle, matching Interpreter/Tier-3 frame, green external CI and independent rerun |
-| Mac launcher | local-preview | [Native Mac launcher instructions](#native-mac-launcher-local-preview) | Improve usability and crash recovery; do not equate GUI operation with guest compatibility |
+| Agent workflow | experimental | [Workflow changes under validation](PLAN.md) | Read-only status, local checkpoints, ready tasks and scope-aware hosted checks (W1) |
+| Failure to reproduction | experimental | [Existing verifier, diagnosis and replay interfaces](docs/verify/README.md) | Ship one fresh-checkout walkthrough and solve a real developer issue (R1–R2) |
+| Usable community tool | experimental | [Outcome acceptance plan; distribution not yet delivered](PLAN.md) | Package the demonstrated workflow; connect one lagging component and release the result (R3–R5) |
+| Historical runtime regression baseline | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->50/50<!-- /corpus-headline --> passes** (CI-certified) | Preserve existing cases; expand only to reproduce a concrete user problem |
+| Switch 2 research (parked) | experimental | [Limited SDK-path observation](docs/verify/README.md) | Retain existing checks; no coverage expansion without a demonstrated user need |
 
 **Live navigation:** [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls?q=is%3Apr+is%3Aopen) · [open issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen) · [Actions](https://github.com/hffgzktbcc-blip/ounce-core/actions) · [verification method](docs/verify/README.md) · [PLAN.md](PLAN.md).
 

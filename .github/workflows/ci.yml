@@ -5,13 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    # PLAN.md records milestone evidence and must receive the required checks.
-    paths:
-      - '**'
-      - '!**/*.md'
-      - '!docs/**'
-      - '!LICENSE'
-      - 'PLAN.md'
+  workflow_dispatch:
 
 concurrency:
   # Keep only the newest CI run per branch/PR to avoid stale feedback and
@@ -21,11 +15,57 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      runtime: ${{ steps.scope.outputs.runtime }}
+      corpus: ${{ steps.scope.outputs.corpus }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Classify candidate inputs
+        id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            BASE=$(git rev-list --max-parents=0 HEAD | head -1)
+          fi
+          python3 scripts/ci_scope.py --base "$BASE" --github-output "$GITHUB_OUTPUT"
+
+  tooling:
+    name: Workflow and evidence tooling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check local workflow and evidence tools
+        run: |
+          bash -n scripts/next.sh scripts/gate.sh scripts/check_legal_guardrails.sh scripts/check_unsafe_boundary.sh
+          python3 scripts/agent_workflow.py next
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          python3 -m unittest discover -s tests -p 'test_*.py'
+
+  corpus:
+    name: Canonical regression evidence
+    needs: changes
+    if: needs.changes.outputs.corpus == 'true'
+    uses: ./.github/workflows/external-corpus.yml
   release-notice-packaging:
     name: Release notice packaging (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -68,7 +108,9 @@ jobs:
         run: scripts/check_unsafe_boundary.sh
 
   test:
-    name: Test (${{ matrix.os }})
+    name: Runtime (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -97,6 +139,8 @@ jobs:
         run: cargo run --release -- test
 
   gpu-present:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     name: GPU presentation feature (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -160,6 +204,8 @@ jobs:
 
 
   native-jit:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     name: Tier-4 native code (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -198,6 +244,8 @@ jobs:
         run: cargo test --release --features native-jit -- --nocapture
 
   nce:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     name: Native execution (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -239,3 +287,34 @@ jobs:
           echo "$out"
           grep -q "ounce-fixture result=0x00000EEE" <<< "$out"
           grep -q "Guest exited (svcExitProcess)" <<< "$out"
+
+  required:
+    # Preserve the two live ruleset contexts, but make them summarize every
+    # applicable job. Docs-only PRs get these statuses without Rust builds.
+    name: Test (${{ matrix.context }})
+    if: always()
+    needs: [changes, legal-guardrails, tooling, release-notice-packaging, test, gpu-present, native-jit, nce, corpus]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        context: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check applicable results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          needs = json.loads(os.environ['RESULTS'])
+          required = ['changes', 'legal-guardrails', 'tooling', 'release-notice-packaging']
+          scope = needs['changes'].get('outputs', {})
+          if scope.get('runtime') == 'true':
+              required += ['test', 'gpu-present', 'native-jit', 'nce']
+          if scope.get('corpus') == 'true':
+              required += ['corpus']
+          bad = {job: needs[job]['result'] for job in required if needs[job]['result'] != 'success'}
+          print('Applicable checks:', ', '.join(required))
+          if bad:
+              raise SystemExit('Required checks did not pass: ' + str(bad))
+          print('All applicable checks passed; see their logs for tested behavior.')
+          PYTHON

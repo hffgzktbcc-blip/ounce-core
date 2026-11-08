@@ -21,29 +21,18 @@ Cite each one in `docs/PROVENANCE.md` when used.
 - Retail games, game profiles or game-specific patches, keys, firmware, system archives, dumps, leaked material,
   Nintendo SDK code, or anything derived from them.
 
-## Legal guardrails (every contributor, every commit)
-Practical rules drawn from what got other emulators sued. Not legal advice. A PR that breaks one is rejected.
-1. **Never decrypt.** No retail key handling, no NCA/NSP/XCI decryption. `RestrictedCipher` stays. ounce-core
-   accepts only already-decrypted inputs: homebrew (NRO), and loose `exefs/` + `romfs/` folders the user
-   dumped and decrypted on their own console.
-2. **No piracy pointers:** no links to or mentions of ROM, key or dump sites in code, docs, issues, PRs,
-   releases or the website.
-3. **No game names or game screenshots.** Describe capability neutrally ("runs Switch software from
-   user-provided decrypted dumps"), without hiding what the code can do.
-4. **No retail games as test inputs**, ever. Game-specific work never happens here.
-5. **No money tied to games:** no paid builds, tiers or early access that unlock game support.
-6. **Nothing from non-public projects** (code, logs, traces or specs observed from retail software).
-7. **Keys, games, firmware and shader caches compiled from games are never committed**, not even in tests or
-   CI artifacts. `.gitignore` covers `*.keys`, `dumps/`, `*.nsp`, `*.xci` and `*.nca`, and the
-   `scripts/check_legal_guardrails.sh` CI job fails if such files or known ROM/key-site links appear.
+## Repository boundaries
 
-## Working rules
-- Every new fixture or corpus program has a row in `docs/PROVENANCE.md` before merge: source, commit, licence,
-  how it was built.
-- Progress is claimed only when an outside program passes a pre-registered pixel oracle in CI (see `PLAN.md`).
-- Retail decryption stays disabled (`LoadError::RestrictedCipher`).
+Do not commit keys, retail content, firmware, dumps, leaked/private material, or
+incompatible licensed code. Do not distribute artifacts with unresolved rights.
+Retail decryption remains disabled (`LoadError::RestrictedCipher`). The existing
+legal and unsafe-boundary checks remain in CI; they do not require repeating a
+full runtime build to save ordinary work.
 
-## Honest limits
-- These rules do not make an activity lawful. Interoperability and anti-circumvention law differ by country.
-  Get advice from a qualified IP lawyer before wider promotion.
-- The git history problem in `docs/PROVENANCE.md` is not resolved by this document.
+Record source, commit/hash, licence and build recipe for new redistributed
+fixtures. Preserve port notices in THIRD_PARTY.md. Focused synthetic tests and
+permitted outside workloads are both valid; use evidence appropriate to the claim.
+
+The historical provenance issues in docs/PROVENANCE.md remain unresolved until
+specifically dispositioned. Apply those restrictions to the affected materials,
+not unrelated tooling or ready tasks. See root AGENTS.md for the active workflow.

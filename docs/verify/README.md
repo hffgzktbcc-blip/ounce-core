@@ -1,5 +1,11 @@
 # Ounce-Verify v0
 
+Current direction: turn these existing interfaces into one failure-to-reproduction
+workflow for developers. The current adapters still describe specific runtime and
+corpus inputs; a general-purpose debugging product is not yet delivered. See
+[the outcome plan](../../PLAN.md). Use evidence appropriate to each claim; pixel
+oracles certify their registered graphics scenarios, not every tooling change.
+
 `tools/ounce_verify.py` validates already-collected JSON evidence. It never executes a guest,
 downloads inputs, or turns a successful host process into a compatibility result.
 
@@ -67,6 +73,11 @@ available. Use `--image` to select the recorded toolchain image if available loc
 or from the registry. Start a full rerun in a fresh output directory.
 
 ## Corpus diagnosis
+
+For a Python-only worked example with retained CI inputs already in the checkout,
+run `python3 -B scripts/reproduce_failure.py --output /tmp/sdl2-reproduction`.
+The [failure-to-reproduction walkthrough](../FAILURE_TO_REPRODUCTION.md) explains
+the portable output and the separate runtime replay prerequisites and acceptance.
 
 Compare two retained canonical reports with the same command used for either a regression
 or a historical failure:
