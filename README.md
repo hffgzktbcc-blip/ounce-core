@@ -40,7 +40,7 @@ It began as a Nintendo Switch homebrew runtime. That is no longer the goal; see 
 
 **Who it is for:** library maintainers who want to know whether their code behaves the same on ARM64 as on x86 without owning ARM hardware; emulator and JIT authors; educators; researchers.
 
-Verification is the product. It is not a fast emulator and does not promise to run everything: running arbitrary ARM64 or Linux applications and automatic root-cause finding are **not established**. Coverage is partial and the cumulative saturation flag was not modelled (being added). The [roadmap](docs/VISION.md#roadmap-each-step-is-one-small-checkable-result) starts with an outside developer solving a real problem, then running ordinary static Linux ARM64 programs so no console SDK is needed.
+Verification is the product. It is not a fast emulator and does not promise to run everything: running arbitrary ARM64 or Linux applications and automatic root-cause finding are **not established**. Coverage is partial; QC is modelled for implemented saturating instructions, while FPCR behavior and cumulative FP exception flags remain unmodelled. The [roadmap](docs/VISION.md#roadmap-each-step-is-one-small-checkable-result) starts with an outside developer solving a real problem, then running ordinary static Linux ARM64 programs so no console SDK is needed.
 
 ```mermaid
 flowchart LR
@@ -116,7 +116,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ## What is proven
 
-**Differential tests against real ARM64 hardware** (each folder in [docs/verify](docs/verify/README.md) holds the sources of its test, the pinned program version, the host reference output and the per-engine result): LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and a 5,964-line floating-point instruction test. On Tier-3, Tier-4 and native, output is byte-identical to the host reference. Native execution runs on the host CPU, so Tier-3 and Tier-4 are the real evidence. More programs (zlib, cJSON, TinyExpr, Monocypher) are in review. Each shows agreement on the inputs tested, not that the program or the emulator is correct everywhere. To rerun them on your own ARM64 machine see [docs/REPRODUCE.md](docs/REPRODUCE.md); for what they do not show, see [docs/LIMITS.md](docs/LIMITS.md).
+**Differential tests against real ARM64 hardware** (each folder in [docs/verify](docs/verify/README.md) holds the sources of its test, the pinned program version, the host reference output and the per-engine result): LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and a 5,964-line floating-point instruction test. On Tier-3, Tier-4 and native, output is byte-identical to the host reference. Native execution runs on the host CPU, so Tier-3 and Tier-4 are the real evidence. Additional harnesses (zlib, cJSON, TinyExpr, Monocypher and wasm3) are included in the [differential manifest](docs/verify/differential.json); see their per-harness results and limits. Each shows agreement on the inputs tested, not that the program or the emulator is correct everywhere. To rerun them on your own ARM64 machine see [docs/REPRODUCE.md](docs/REPRODUCE.md); for what they do not show, see [docs/LIMITS.md](docs/LIMITS.md).
 
 ### Legacy Switch regression corpus
 
@@ -320,11 +320,11 @@ This section is rendered from [the milestone registry](docs/roadmap/milestones.j
 
 | Research track | Reviewed stage | Supporting evidence | Next proof gate |
 | :--- | :--- | :--- | :--- |
-| Static Linux ARM64 programs | experimental | [Not started: programs currently load as NRO through a libnx stub](docs/VISION.md) | ELF loader and a deterministic subset of Linux system calls (docs/VISION.md step 1) |
-| Differential verification against real ARM64 | measured | [Eight real programs and an FP instruction test diffed against an Apple Silicon host; a dozen CPU bugs found and fixed](docs/verify/README.md) | Instruction-level differential fuzzer on an ARM64 CI runner (docs/VISION.md step 2) |
+| Static Linux ARM64 programs | experimental | [Five freestanding static ELF fixtures run through run-elf; no libc programs verified](docs/verify/linux-elf/README.md) | Run one real library as a Linux ELF; add deterministic time and qualify supported hosts |
+| Differential verification against real ARM64 | measured | [Seeded single-instruction hardware fuzzing and three-engine comparisons; bounded results retained](docs/verify/insn-fuzzer/README.md) | Qualify ARM64 fuzzer CI; then expand per-family and sequence coverage (vision step 2) |
 | Agent workflow | measured | [Handoff snapshots, expiring claims and shared journal; used by four agents in parallel](docs/AGENT_HUB.md) | Keep the tool simple; fix friction as agents report it |
-| Failure to reproduction | experimental | [Existing verifier, diagnosis and replay interfaces](docs/verify/README.md) | Ship one fresh-checkout walkthrough and solve a real developer issue (R1–R2) |
-| Usable community tool | experimental | [Outcome acceptance plan; distribution not yet delivered](PLAN.md) | Package the demonstrated workflow; connect one lagging component and release the result (R3–R5) |
+| Failure to reproduction | measured | [Retained SDL2 replay and externally grounded audio-channel diagnosis delivered](docs/DIAGNOSIS_CLI.md) | Instruction-level first divergence remains unimplemented (vision step 3) |
+| Usable community tool | measured | [Standalone diagnosis toolkit 0.2.0 published with checksums and acceptance evidence](docs/releases/diagnosis-0.2.0-readiness.md) | Collect outside feedback; runtime distribution has separate provenance dependencies |
 | Switch regression corpus (legacy) | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->50/50<!-- /corpus-headline --> passes** (CI-certified) | Keep passing in CI; no expansion unless a program reproduces a concrete CPU bug |
 | Switch 2 research (archived) | experimental | [Limited SDK-path observation](docs/verify/README.md) | No further work; kept as a record. Not part of the product direction (see docs/VISION.md) |
 

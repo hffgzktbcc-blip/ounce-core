@@ -109,3 +109,15 @@ Results (release build):
 - Harness check: a deliberate bug in the Tier-3 add/sub-immediate overflow flag was caught, then reverted.
 
 Same limits as above: only the instruction classes the interpreter implements, FPCR 0, FPSR flags not compared.
+
+## CI qualification
+
+`.github/workflows/differential.yml` runs `run_tiers.sh 20000` in an independent
+Apple Silicon job on runtime/verification changes and the weekly schedule. Seeds
+1–3 compare Tier-3/Tier-4 with the interpreter; seed 1 also compares Tier-3/Tier-4
+with the hardware trace. The job requires arm64, preserves pipeline failures,
+and uploads the run log and per-engine replay summaries even on failure.
+
+This wires existing checks into CI; it is not evidence of a passing hosted run.
+It covers single instructions with the exclusions above, not generated sequences
+or exhaustive coverage of every family. Reproduce with the same script locally.

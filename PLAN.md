@@ -1,7 +1,8 @@
 # ounce-core: useful results, not component counts
 
-Updated 2026-11-07 from the owner's direction to remove agent friction and deliver
-community value beyond Switch/Switch 2 coverage. This file replaces the previous
+Updated 2026-11-08 to reconcile vision progress with current main and continue
+the owner's direction: remove agent friction and deliver community value beyond
+Switch/Switch 2 coverage. This file replaces the previous
 milestone order. [Previous plan and evidence](docs/history/PLAN-2026-11-07.md) remain
 historical records; unfinished historical items are not implicit blockers.
 [AGENTS.md](AGENTS.md) contains the active working rules.
@@ -78,7 +79,21 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Result: a versioned, documented tool that addresses the demonstrated issue with an example, limitations, checksums and a repeatable recipe.
       Acceptance: clean-environment installation and the selected end-to-end scenario pass; required CI passes; included materials have documented redistribution rights. Summarize actual feedback or lack of it. Do not claim adoption from stars or internal reruns.
       Evidence: [published diagnosis toolkit 0.2.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/diagnosis-v0.2.0), [release acceptance](docs/releases/diagnosis-0.2.0-readiness.md), [asset/source proof](docs/releases/diagnosis-0.2.0-proof.json). Four standalone host/Python jobs and all 25 final-candidate CI jobs passed. Downloaded code/source assets match checksums; both diagnosis commands pass. The 30-file parentless source tag and automatic archives contain only the reviewed Python tool/observation inputs. Runtime assets and Latest remain unchanged. No external feedback received; no adoption, independent rerun or broad provenance claim.
-      Next: all ready outcome tasks are complete. Continue from concrete reported failures; external E1/E2 acceptance still requires its named outside evidence or owner/specialist decisions. No speculative adapter/platform work.
+      Next: the original release tasks are complete. The owner has requested continued vision work; V1 below starts from the existing fuzzer. External E1/E2 acceptance still requires its named outside evidence or owner/specialist decisions. No speculative adapter/platform work.
+
+## Vision continuation (owner requested 2026-11-08)
+
+- [ ] **V1. Qualify the existing instruction fuzzer in ARM64 CI.**
+      Status: active
+      Result: the existing seeded interpreter/Tier-3/Tier-4 comparisons and Apple Silicon hardware replay run on decoder changes, preserving failures and summaries.
+      Acceptance: a hosted run executes `docs/verify/insn-fuzzer/run_tiers.sh 20000` on arm64, reports no unexpected differences and retains its logs. Single instructions only; sequence fuzzing and exhaustive per-family coverage are not claimed.
+      Progress: independent job added to the differential workflow; hosted qualification pending. No new runtime implementation or external tester needed.
+      Next: inspect the first hosted job; fix observed failures before broadening coverage.
+- [ ] **V2. Run one existing library harness as a static Linux ELF.**
+      Status: ready
+      Result: one pinned library harness runs without a console SDK and matches a fresh host reference.
+      Acceptance: same shared C cases, retained toolchain/source hashes, Tier-3/Tier-4 comparison, actionable unsupported-syscall errors and unchanged existing ELF fixtures. Keep deterministic time and wider OS qualification explicit until tested.
+      Next: inspect the smallest existing library harness and its Linux startup/syscall needs; extend only the boundary it actually requires.
 
 ## External acceptance and publication dependencies
 
