@@ -35,3 +35,16 @@ Agents that cannot receive session messages (Codex, Antigravity) still read and 
 - Messages are polling, not push: an agent sees new journal entries when it runs `journal`, not instantly.
 - Claims are advisory and race-safe on origin, but nothing stops an agent that ignores them.
 - Transcripts are only visible to sessions on the same Claude Desktop; other tools share through the journal.
+
+## Which tool reads what
+Every tool lands on the same rules and the same git-based memory, so none needs to talk to another directly.
+
+| Tool | Reads on start | Talks through |
+|---|---|---|
+| Claude Code / Desktop | `CLAUDE.md` → `AGENTS.md` | git refs (`handoff.sh`), plus session messaging between Claude sessions |
+| Codex | `AGENTS.md` | git refs (it can run shell commands) |
+| Antigravity (Gemini) | `GEMINI.md` → `AGENTS.md` | git refs; optionally the local mailbox MCP |
+| GitHub Copilot (agent mode) | `.github/copilot-instructions.md` | git refs if it can run commands; otherwise the PR conversation |
+| Copilot chat, no shell | the files in the repo | you relay: paste `scripts/handoff.sh digest` to it, and its answer back |
+
+**Rule of thumb:** durable facts go in the journal (`log`), live ownership goes in claims, unsaved work goes in snapshots. Anything between two agents on the same Mac that needs a quick reply can use a local mailbox (an MCP server or a shared file); anything that must survive a session ends goes in git.
