@@ -17,3 +17,21 @@ need input capture/build context first. A small supported failure with exact
 source/binary identity and an unchanged observable expectation should select the
 next runtime component change. Do not infer a generalized debugger, new platform
 adapter, or community adoption from this shortlist. R2 remains open.
+
+Follow-up on 2026-11-07: inspected the threading reproducer at exact commit
+`67e1684ecce7f46082c3b91bbef02647a43a59e5`. Its five tracked files contain no
+license file; the README attributes the pool implementation to a video. The
+updated case uses billion-iteration worker loops and repeats pool creation up to
+3,602 times; its recorded environment was devkitA64 r13-4 and firmware 8.1.0.
+No source or executable was copied into this repository. Reading this case does
+not reproduce the freeze on the current runtime or justify a speculative fix.
+R2 remains open; R3 proceeded from R1's demonstrated workflow in the meantime.
+
+Selected case (2026-11-08): [libnx #685](https://github.com/switchbrew/libnx/issues/685),
+ITotalJustice's default-channel-padding report, supplies a small source reproducer
+that builds unchanged with the pinned toolchain. [The registered case and executed
+dossier](AUDIO_CHANNEL_CASE.md) now provide the matched local runtime failure and
+repair for R2. No upstream source or binary is redistributed and no maintainer
+was contacted. The earlier threading case failed to build unchanged against the
+current API; the current pinned image already has the SDL2 dependencies named in
+#83. Neither of those observations was counted as a resolved runtime issue.

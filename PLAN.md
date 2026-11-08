@@ -53,33 +53,32 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Evidence: [Python-only retained SDL2 walkthrough](docs/FAILURE_TO_REPRODUCTION.md) produces a portable diagnosis/replay dossier from original before/after report and log bytes; exact artifact identities and observation-only distribution scope are retained. Both engines first diverge at frame 1; no historical prior passes are lost. This is offline inspection, not fresh runtime execution.
       Execution acceptance (2026-11-07): exact-hash local NRO replayed from clean recorded revisions on macOS arm64 with isolated build directories. Both engines exactly match historical stop, PC, instruction count and frame observations: expected failure exits 101; reference passes with exit 0. Raw JSON, runtime logs and digests: [dated replay manifest](docs/reproduce/sdl2-failure/replay-2026-11-07/manifest.json). Offline error handling: all six walkthrough tests pass. No binary redistribution, independent-rerun or current-corpus claim.
       Next: R2 investigates a real developer input; R3 can package the demonstrated workflow.
-- [ ] **R2. Solve one externally grounded developer issue.**
-      Status: ready
+- [x] **R2. Solve one externally grounded developer issue.**
       Result: an open-source developer has a reproducible answer to a real regression, execution divergence, or unusable failure report.
       Scope: inspect public issue reports or contributor feedback; record the issue URL, affected user, current workaround and smallest supported input. Do not assume market demand or contact maintainers without authorization.
       Acceptance: capture failure before a targeted fix, run the same input after it, show the actionable diagnosis/replay result, and preserve prior relevant passes. Record developer feedback separately; outside endorsement is not required to merge a useful fix.
-      Evidence: [public issue shortlist](docs/verify/ISSUE_SHORTLIST.md), inspected 2026-11-07. Real reports exist, but none currently supplies a supported, permission-cleared matched execution pair; no outside developer outcome or demand is claimed.
-      Next: investigate a minimal accessible input for the threading report or an incoming developer failure with retained runs. Require a recorded failure before choosing a fix; do not build a generic adapter from this shortlist alone.
-- [ ] **R3. Make the proven workflow installable and predictable.**
-      Status: ready
+      Evidence: [external audio-channel case](docs/verify/AUDIO_CHANNEL_CASE.md), from ITotalJustice/libnx #685: unchanged local NRO and pre-registered A-button interaction reject all seven padded/default-stereo opens before and accept all seven after on both CPU engines. [Dossier](docs/verify/audout-padding/manifest.json) retains observations, source identities, exact replay criteria and 100 byte-verified passing regression records. All 50 existing programs retained; 478 Rust/CLI tests and 25-stage harness pass. No source/binary redistribution, maintainer endorsement, upstream libnx fix or six-channel claim.
+      Next: R4 connects the observed negotiation failure and explanation to the installed diagnosis CLI; outside feedback remains unrequested/unreceived.
+- [x] **R3. Make the proven workflow installable and predictable.**
       Depends: R1
       Result: a new developer runs the demonstrated diagnosis without assembling internal scripts manually.
       Scope: one CLI front door, explicit versions/exit codes, examples and a small distribution using current Python/Rust tooling. Separate offline report inspection from execution dependencies. Support only the tested report/input formats.
       Acceptance: fresh-install smoke test, successful diagnosis, missing/corrupt input, timeout and interrupted execution scenarios; a shareable bundle opens without private paths or credentials. Record measured setup time and tested hosts rather than a speed promise.
-      Next: extract the entry point proven by R1; package it with only the dependencies it uses.
-- [ ] **R4. Turn one lagging component into an observed user result.**
-      Status: ready
+      Evidence: [CLI install and exit-code guide](docs/DIAGNOSIS_CLI.md), [dated acceptance](docs/verify/diagnosis-cli-0.1.0/acceptance.json). The copied standard-library archive diagnosed the reviewed example outside the checkout on macOS arm64/Python 3.9.6; explicit replay matched both exact historical revisions. Packaged timeout and SIGTERM returned 124/130 with retained logs. Tests cover missing/corrupt inputs, output preservation, wrong hashes and real descendant cleanup on timeout/SIGINT/SIGTERM; 99 Python tests ran, zero failures, one opt-in infrastructure skip. No Windows or independent-user acceptance claimed.
+      Next: keep the CLI scope fixed until R2 identifies a reproduced external developer failure; release remains R5.
+- [x] **R4. Turn one lagging component into an observed user result.**
       Depends: R2
       Result: one existing CPU, JIT, GPU, service, trace or app component materially improves the selected developer's workflow.
       Scope: trace the selected issue through the real command path; repair the first unconnected or incorrect boundary. No blanket refactor or new subsystem because it appears on an architecture diagram.
       Acceptance: the user scenario crosses the relevant component boundary, produces the expected observable result, handles its failure path and retains a regression case. Compare latency only on matched inputs/hosts; compare correctness against a fixed expectation.
-      Next: use R2's reproduced failure to select the component and bounded integration change.
-- [ ] **R5. Publish the smallest useful community release and reassess.**
-      Status: ready
+      Evidence: [CLI audio-case command](docs/DIAGNOSIS_CLI.md), [0.2.0 installed-archive acceptance](docs/verify/diagnosis-cli-0.2.0/acceptance.json). The copied archive reads the same R2 traces outside the checkout with Python alone, derives both engines' seven rejected-before/stereo-after replies, preserves raw observations and exact replay identities, and rejects corrupt/contradictory reports. Consistent unrepaired reports exit 1 rather than claim a fix. All 103 Python tests ran without failures (one opt-in skip); focused independent review found no actionable issue. No fresh-execution or binary-validation claim.
+      Next: R5 packages and qualifies this demonstrated workflow for a small community release; outside feedback remains unrequested/unreceived.
+- [x] **R5. Publish the smallest useful community release and reassess.**
       Depends: R3 R4
       Result: a versioned, documented tool that addresses the demonstrated issue with an example, limitations, checksums and a repeatable recipe.
       Acceptance: clean-environment installation and the selected end-to-end scenario pass; required CI passes; included materials have documented redistribution rights. Summarize actual feedback or lack of it. Do not claim adoption from stars or internal reruns.
-      Next: release only the demonstrated workflow. Continue from concrete reported failures; add a generic evidence adapter, viewer, platform or service only when a real user needs it.
+      Evidence: [published diagnosis toolkit 0.2.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/diagnosis-v0.2.0), [release acceptance](docs/releases/diagnosis-0.2.0-readiness.md), [asset/source proof](docs/releases/diagnosis-0.2.0-proof.json). Four standalone host/Python jobs and all 25 final-candidate CI jobs passed. Downloaded code/source assets match checksums; both diagnosis commands pass. The 30-file parentless source tag and automatic archives contain only the reviewed Python tool/observation inputs. Runtime assets and Latest remain unchanged. No external feedback received; no adoption, independent rerun or broad provenance claim.
+      Next: all ready outcome tasks are complete. Continue from concrete reported failures; external E1/E2 acceptance still requires its named outside evidence or owner/specialist decisions. No speculative adapter/platform work.
 
 ## External acceptance and publication dependencies
 
@@ -89,8 +88,8 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Next: retain the recipe and accept outside evidence when available; no repeated internal reruns as a substitute.
 - [ ] **E2. Disposition historical provenance for affected distribution artifacts.**
       Status: blocked
-      Blocked by: specific owner/specialist decisions recorded in the provenance inventory and open PR #203. No destructive rewrite or blanket clearance is implied.
-      Next: review existing inventory/PR instead of recreating it. Restrict disputed artifact distribution; continue work on clearly permitted tooling and inputs.
+      Blocked by: documented component notice decisions (objc2/SDK terms, Rust runtime notices and final-binary coverage), the historical 72-byte program permission question, and separately approved historical/ref or corrected-release actions. PR #203 is merged; its technical controls do not establish legal clearance.
+      Next: use docs/PROVENANCE_REMEDIATION_REPORT.md and the pending docs/RELEASE_NOTICE_REVIEW.json for the named decisions. Runtime publication remains gated; the reviewed standalone Python toolkit is separately distributable. Continue ordinary development without waiting for blanket historical clearance.
 
 ## Delivery cadence and stop conditions
 

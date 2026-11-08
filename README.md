@@ -106,7 +106,7 @@ The [Ounce-Core runtime](#the-system) explores AArch64 execution, memory, operat
 
 </div>
 
-> **Current priority:** connect existing verification, diagnosis and replay tools into one usable failure-to-reproduction workflow, then solve a real developer issue. See [the outcome plan](PLAN.md). Platform coverage is a regression baseline, not the product roadmap. The standalone toolkit is proposed, not yet shipped.
+> **Current priority:** connect existing verification, diagnosis and replay tools into one usable failure-to-reproduction workflow, then solve a real developer issue. See [the outcome plan](PLAN.md). Platform coverage is a regression baseline, not the product roadmap. An experimental [Python-only diagnosis CLI](docs/DIAGNOSIS_CLI.md) packages the retained SDL2 and audio-padding workflows; outside developer validation remains open.
 
 > **Vision versus current capability:** Ounce-Core and Ounce-Verify have working implementations. The named Trace, Debug, Learn and Bench experiences above are future directions, not claims that four finished products exist. Original-Switch corpus results and limited Switch 2 SDK-path observations remain separate; neither establishes commercial-software or broad Switch 2 compatibility.
 
