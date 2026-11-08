@@ -155,7 +155,7 @@ def live(state):
     return parse_stamp(state['expires']) > now()
 
 
-def claim(args):
+def claim(args, attempt=0):
     task = safe(args.task_id)
     ref = f'{NAMESPACE}/claims/{task}'
     if not args.offline:
@@ -176,7 +176,11 @@ def claim(args):
         remote = out('ls-remote', 'origin', ref, check=False).split()
         pushed = run('push', f'--force-with-lease={ref}:{remote[0] if remote else ""}', 'origin', f'{ref}:{ref}', check=False)
         if pushed.returncode:
-            raise ValueError(f'could not claim {task}: another agent changed it at the same moment, or origin is unreachable '
+            detail = pushed.stderr.decode(errors='replace').strip().splitlines()[-1:] or ['no detail from git']
+            if attempt < 3:        # a transient rejection or a race on origin: refetch, recheck ownership, try again
+                time.sleep(0.5 * (attempt + 1))
+                return claim(args, attempt + 1)
+            raise ValueError(f'could not claim {task} after {attempt + 1} tries: {detail[0]} '
                              f'(retry, or use --offline for a local-only claim)')
     print(f'claimed {task} for {args.hours:g}h as {me} (expires {state["expires"]})')
 
