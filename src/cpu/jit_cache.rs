@@ -88,6 +88,7 @@ impl JitBlockCache {
                 | Instruction::BranchRegAuth { .. }
                 | Instruction::Svc { .. }
                 | Instruction::Unimplemented { .. }
+                | Instruction::Brk { .. }
         )
     }
 
