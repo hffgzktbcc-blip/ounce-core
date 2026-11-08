@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "date": "2026-11-08",
+  "host": "macOS 26.6.2 arm64",
+  "python": "3.9.6",
+  "archive_bytes": 63310,
+  "archive_sha256": "1112e1059377d6a90714af1c969b7c095f41cb4aac47953c35599a15e588c405",
+  "copy_install_seconds": 0.0004,
+  "audio_diagnosis_seconds": 0.1462,
+  "exit_code": 0,
+  "engines": [
+    "Interpreter",
+    "Tier3"
+  ],
+  "recorded_repair_matches": true,
+  "execution": "Offline only; PATH has no external tools, isolated interpreter, working directory outside checkout.",
+  "schema_version": "ounce-diagnose/acceptance-v1",
+  "tests": {
+    "scripts": {
+      "run": 83,
+      "failed": 0,
+      "skipped": 1
+    },
+    "evidence": {
+      "run": 20,
+      "failed": 0
+    }
+  },
+  "scope": "Internal macOS Python-only inspection of the unchanged recorded audio interaction, not fresh execution or independent binary validation.",
+  "source_sha256": {
+    "scripts/audio_open_diagnosis.py": "c0b31e7c1b892e7014c3026d11b8fe7d66ffedc4c69a6195ade4580bb0b0f1fd",
+    "scripts/diagnosis_cli.py": "ff77a47731025859af3c9f010f274cb837c7ddfb692ca04315bf4bce1fa08510",
+    "scripts/build_diagnosis_cli.py": "1d1affd321b5c33a26a4d3e78aeddb1b3c0ea6ce8850f47db92b9673d132a306",
+    "scripts/test_diagnosis_cli.py": "b8a80ee362813d386bb580f09a8c2fc4fe93ee1374f3b22dcca63172fdee6fac"
+  },
+  "case_manifest_sha256": "faae8fa7560716ba3f42784d0dafb44e680a001e18d31d7302153808e4b69817",
+  "diagnosis_sha256": "cff0724c1a12ef3d09d524472f5d5c8c3adf13b71bcf835e62693dd9575386bc"
+}

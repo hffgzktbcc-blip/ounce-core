@@ -1,0 +1,41 @@
+{
+  "schema_version": "ounce-diagnose/audio-padding-v1",
+  "mode": "offline-recorded-observations",
+  "binary_sha256": "69106c5c4b0485abdbce1ca9f17395822c7c7643d15f57b11b9bfc994d7f252c",
+  "engines": [
+    "Interpreter",
+    "Tier3"
+  ],
+  "cases": [
+    {
+      "engine": "Interpreter",
+      "first_rejected_open": 1,
+      "raw_channels": 65536,
+      "low_channel_halfword": 0,
+      "padding_halfword": 1,
+      "rejected_before": 7,
+      "stereo_after": 7
+    },
+    {
+      "engine": "Tier3",
+      "first_rejected_open": 1,
+      "raw_channels": 65536,
+      "low_channel_halfword": 0,
+      "padding_halfword": 1,
+      "rejected_before": 7,
+      "stereo_after": 7
+    }
+  ],
+  "recorded_repair_matches": true,
+  "explanation": "The low channel halfword is zero (default stereo); the upper halfword is padding. The recorded manager rejected all seven padded words before the scoped repair.",
+  "likely_owner": "IAudioOutManager channel validation",
+  "limits": "Recorded protocol replies only; no fresh guest execution, binary verification, six-channel claim, independent rerun or authenticated manifest.",
+  "files_sha256": {
+    "manifest.json": "faae8fa7560716ba3f42784d0dafb44e680a001e18d31d7302153808e4b69817",
+    "before.json": "92ec4a735f4c46e8367ed524d875f33c0725a3dcf13a3c11af9b81958154c9c8",
+    "after.json": "d6f90947e0611e156a7b70f83b423b9c50ba0d10066737a2aad69b8acc274ee7",
+    "before.log": "e328ddd6fbd7f79d641fefc25a435b35a78393507ef4755b015319a2294ba5f0",
+    "after.log": "f83e149a3c006578b8d80b3e5331dea4277fc2b848fa62f7604dd144a1b66835",
+    "canonical-corpus.json": "a66b518b8a0875a0dc0613097fac74e94a55ec64d9925fca0cf12547ef7620b8"
+  }
+}

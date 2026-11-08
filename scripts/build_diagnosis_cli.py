@@ -9,7 +9,7 @@ import tempfile
 import zipapp
 
 REPO = Path(__file__).resolve().parents[1]
-MODULES = ('diagnosis_cli', 'reproduce_failure', 'compare_corpus_runs', 'diagnose_corpus_run',
+MODULES = ('audio_open_diagnosis', 'diagnosis_cli', 'reproduce_failure', 'compare_corpus_runs', 'diagnose_corpus_run',
            'corpus_verify', 'run_corpus_oracles', 'corpus_build_cache')
 BOOTSTRAP = '''import sys
 if sys.version_info < (3, 9):
@@ -51,6 +51,15 @@ def build(output):
             destination = target / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source / relative, destination)
+        source = REPO / 'docs/verify/audout-padding'
+        target = root / 'docs/verify/audout-padding'
+        manifest = json.loads((source / 'manifest.json').read_bytes())
+        allowed = {'before.json', 'after.json', 'before.log', 'after.log', 'canonical-corpus.json'}
+        if set(manifest['files_sha256']) != allowed:
+            raise ValueError('unexpected audio case evidence paths')
+        target.mkdir(parents=True)
+        for name in [*sorted(allowed), 'manifest.json']:
+            shutil.copyfile(source / name, target / name)
         (root / '__main__.py').write_text(BOOTSTRAP)
         with output.open('xb') as stream:
             zipapp.create_archive(root, stream, interpreter='/usr/bin/env python3', compressed=True)

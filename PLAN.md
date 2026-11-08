@@ -66,14 +66,13 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Acceptance: fresh-install smoke test, successful diagnosis, missing/corrupt input, timeout and interrupted execution scenarios; a shareable bundle opens without private paths or credentials. Record measured setup time and tested hosts rather than a speed promise.
       Evidence: [CLI install and exit-code guide](docs/DIAGNOSIS_CLI.md), [dated acceptance](docs/verify/diagnosis-cli-0.1.0/acceptance.json). The copied standard-library archive diagnosed the reviewed example outside the checkout on macOS arm64/Python 3.9.6; explicit replay matched both exact historical revisions. Packaged timeout and SIGTERM returned 124/130 with retained logs. Tests cover missing/corrupt inputs, output preservation, wrong hashes and real descendant cleanup on timeout/SIGINT/SIGTERM; 99 Python tests ran, zero failures, one opt-in infrastructure skip. No Windows or independent-user acceptance claimed.
       Next: keep the CLI scope fixed until R2 identifies a reproduced external developer failure; release remains R5.
-- [ ] **R4. Turn one lagging component into an observed user result.**
-      Status: ready
+- [x] **R4. Turn one lagging component into an observed user result.**
       Depends: R2
       Result: one existing CPU, JIT, GPU, service, trace or app component materially improves the selected developer's workflow.
       Scope: trace the selected issue through the real command path; repair the first unconnected or incorrect boundary. No blanket refactor or new subsystem because it appears on an architecture diagram.
       Acceptance: the user scenario crosses the relevant component boundary, produces the expected observable result, handles its failure path and retains a regression case. Compare latency only on matched inputs/hosts; compare correctness against a fixed expectation.
-      Evidence so far: R2 repaired the actual audio-manager boundary and added bounded request/reply traces. The standalone CLI still supports only its SDL2 dossier.
-      Next: expose the specific retained audio-negotiation before/after case through that CLI, preserving raw input identities and the distinction between recorded diagnosis and new execution. Avoid a generic evidence framework.
+      Evidence: [CLI audio-case command](docs/DIAGNOSIS_CLI.md), [0.2.0 installed-archive acceptance](docs/verify/diagnosis-cli-0.2.0/acceptance.json). The copied archive reads the same R2 traces outside the checkout with Python alone, derives both engines' seven rejected-before/stereo-after replies, preserves raw observations and exact replay identities, and rejects corrupt/contradictory reports. Consistent unrepaired reports exit 1 rather than claim a fix. All 103 Python tests ran without failures (one opt-in skip); focused independent review found no actionable issue. No fresh-execution or binary-validation claim.
+      Next: R5 packages and qualifies this demonstrated workflow for a small community release; outside feedback remains unrequested/unreceived.
 - [ ] **R5. Publish the smallest useful community release and reassess.**
       Status: ready
       Depends: R3 R4

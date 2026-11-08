@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline retained SDL2 diagnosis, with an explicit, bounded exact-input replay."""
+"""Offline retained SDL2/audio diagnosis, with explicit bounded SDL2 replay."""
 import argparse
 from contextlib import suppress
 import hashlib
@@ -12,8 +12,9 @@ import subprocess
 import sys
 
 from reproduce_failure import EXAMPLE, read_evidence, write_bundle
+from audio_open_diagnosis import EXAMPLE as AUDIO_EXAMPLE, write_audio_bundle
 
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 NRO = Path('switch-examples/build/source/graphics/sdl2/sdl2-simple/sdl2-simple.nro')
 TEST = 'loader::fixture_tests::corpus_runner::corpus_first_frame_oracle'
 FIELDS = ('engine', 'stop', 'pc', 'instructions', 'x0', 'queued', 'failures',
@@ -121,6 +122,9 @@ def main(argv=None):
     bundle = commands.add_parser('bundle', help='inspect a retained SDL2 evidence directory of the same format')
     bundle.add_argument('--evidence', type=Path, required=True)
     bundle.add_argument('--output', type=Path, required=True)
+    audio = commands.add_parser('audio-case', help='inspect the recorded audio-padding before/after case; no execution')
+    audio.add_argument('--evidence', type=Path, default=AUDIO_EXAMPLE)
+    audio.add_argument('--output', type=Path, required=True)
     execute = commands.add_parser('replay', help='execute only the pinned SDL2 recipe (requires Rust and exact NRO)')
     execute.add_argument('--side', choices=('failure', 'reference'), required=True)
     execute.add_argument('--checkout', type=Path, required=True)
@@ -129,6 +133,13 @@ def main(argv=None):
     execute.add_argument('--timeout', type=seconds, default=600, help='outer seconds, including build (default 600)')
     args = parser.parse_args(argv)
     try:
+        if args.command == 'audio-case':
+            report = write_audio_bundle(args.evidence, args.output)
+            matched = report['recorded_repair_matches']
+            print('Offline audio diagnosis: seven padded default-stereo opens rejected before; '
+                  + ('seven stereo replies after on both engines.' if matched else 'recorded repair not matched.'))
+            print(f'No guest executed. Bundle: {args.output} (read REPLAY.md).')
+            return 0 if matched else 1
         if args.command == 'replay':
             return replay(args)
         evidence = EXAMPLE if args.command == 'example' else args.evidence
