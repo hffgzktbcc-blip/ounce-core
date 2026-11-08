@@ -998,11 +998,11 @@ impl Cpu {
             Instruction::FpData3 { rd, rn, rm, ra, o1, o0, is_double } => {
                 if is_double {
                     let (n, m, a) = (self.regs.read_d(rn), self.regs.read_d(rm), self.regs.read_d(ra));
-                    let r = (if o0 { -n } else { n }).mul_add(m, if o1 { -a } else { a });
+                    let r = (if o0 != o1 { -n } else { n }).mul_add(m, if o1 { -a } else { a });
                     self.regs.write_d(rd, r);
                 } else {
                     let (n, m, a) = (self.regs.read_s(rn), self.regs.read_s(rm), self.regs.read_s(ra));
-                    let r = (if o0 { -n } else { n }).mul_add(m, if o1 { -a } else { a });
+                    let r = (if o0 != o1 { -n } else { n }).mul_add(m, if o1 { -a } else { a });
                     self.regs.write_s(rd, r);
                 }
                 self.regs.advance_pc();
@@ -1940,6 +1940,15 @@ mod tests {
         assert_eq!(cpu.regs.read_d(2), 1.5);
         assert_eq!(cpu.regs.read_x(7), 0);
         assert_eq!(cpu.regs.read_d(31), 4.0); // fmsub: 10 - 2 * 3
+        // all four fused 3-source forms, d29 = 2, d30 = 3, d31 = 10 (regression: FNMADD/FNMSUB had the product sign wrong)
+        for (word, want) in [(0x1F5E7FBFu32, 16.0), (0x1F5EFFBF, 4.0), (0x1F7E7FBF, -16.0), (0x1F7EFFBF, -4.0)] {
+            let (cpu, _) = run(&[word], |c, _| {
+                c.regs.write_d(29, 2.0);
+                c.regs.write_d(30, 3.0);
+                c.regs.write_d(31, 10.0);
+            });
+            assert_eq!(cpu.regs.read_d(31), want, "{word:#x}"); // fmadd, fmsub, fnmadd, fnmsub
+        }
         let (cpu, _) = run(&[0x1e19e027, 0x1f020020], |c, _| {
             c.regs.write_s(1, 1.5);
             c.regs.write_s(2, 3.0);
