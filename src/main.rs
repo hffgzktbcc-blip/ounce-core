@@ -16,6 +16,7 @@ mod lab;
 mod linux;
 mod loader;
 mod mmu;
+mod trace;
 mod ui;
 
 use cpu::{Cpu, StepResult};
@@ -632,6 +633,9 @@ fn run_vm_internal(
     if let Some(e) = &engine {
         println!("[CPU] Block engine: {}", e.name());
     }
+    // `OUNCE_TRACE=<file>` records register-only instructions for `ounce-core diverge`; it follows the
+    // one-instruction interpreter, so it is ignored when a block engine is selected.
+    let mut tracer = if engine.is_none() { trace::Tracer::from_env() } else { None };
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -659,7 +663,20 @@ fn run_vm_internal(
                     _ => (Ok(StepResult::Continue), count),
                 }
             }
-            None => (cpu.step(&mut mmu).map_err(|e| e.to_string()), 1),
+            None => {
+                let traced = match tracer.as_mut() {
+                    Some(t) => {
+                        let pc = cpu.regs.pc;
+                        mmu.read_u32(pc).ok().and_then(|raw| t.pre(&cpu, raw).map(|pre| (raw, pc, pre)))
+                    }
+                    None => None,
+                };
+                let step_result = cpu.step(&mut mmu);
+                if let (Some(t), Some((raw, pc, pre)), Ok(StepResult::Continue)) = (tracer.as_mut(), traced, &step_result) {
+                    t.post(&cpu, raw, pc, pre);
+                }
+                (step_result.map_err(|e| e.to_string()), 1)
+            }
         };
         match stepped {
             Ok(StepResult::Continue) => {
@@ -811,6 +828,9 @@ fn run_vm_internal(
                 break;
             }
         }
+    }
+    if let Some(t) = tracer.as_mut() {
+        t.finish();
     }
 
     let elapsed = start.elapsed();
