@@ -12,7 +12,7 @@ publication authorization is not evidence that those decisions were completed.
 ## Durable state and review
 
 Repository: `/workspace/ounce-core`. This handoff lives on
-`docs/maturity-handoff-2026-11-08`, based on `891ace1`.
+`docs/maturity-handoff-2026-11-08`, based on `891ace1`; it also retains the completed three-host qualification.
 All implementation commits are pushed. No PR was merged and no release/tag was
 published in this session. PRs are cumulative; integrate in order or use the
 latest cumulative candidate after its applicable checks/review pass. Preserve
@@ -23,7 +23,7 @@ history and do not blindly squash/rebase all branches.
 | [262](https://github.com/hffgzktbcc-blip/ounce-core/pull/262) | docs/refresh-vision-milestones / cbb55a6 | Stale information corrected; Apple Silicon fuzzer CI. All applicable hosted checks passed; runtime jobs correctly skipped for docs scope. |
 | [263](https://github.com/hffgzktbcc-blip/ounce-core/pull/263) | feat/linux-library-harness / a374c45 | Existing pinned LZ4 cases execute as static Linux ARM64 ELF on actual Tier-3/Tier-4; repeatable command and retained evidence. Linux hosted job passed. |
 | [264](https://github.com/hffgzktbcc-blip/ounce-core/pull/264) | feat/linux-deterministic-clock / 87bf9ab | Opt-in virtual clock and real fix for host parser consuming guest arguments after `--`. |
-| [265](https://github.com/hffgzktbcc-blip/ounce-core/pull/265) | feat/linux-elf-cross-platform / 10db735 | Three-host ELF qualification, Windows binary stdout and correct `.exe` paths. Linux/macOS library and CLI jobs passed; Windows CLI passed, library step pending at handoff preparation. |
+| [265](https://github.com/hffgzktbcc-blip/ounce-core/pull/265) | feat/linux-elf-cross-platform / 10db735 | Three-host ELF qualification, Windows binary stdout and correct `.exe` paths. Library and all five CLI scenarios passed on Linux, macOS and Windows. |
 | [266](https://github.com/hffgzktbcc-blip/ounce-core/pull/266) | fix/fuzzer-empty-input / 891ace1 | Reject empty/read-error/zero-count traces and fail on accepted host-UNDEFINED words. Full local suite passed; new hosted checks pending. |
 
 Focused reviewer found one Windows runtime path blocker; fixed in `10db735`.
@@ -67,8 +67,9 @@ binary; later builds naturally have different hashes.
 - First Linux ELF qualification: run **42523091575**, job **128860671137**, passed.
 - Three-host candidate: run **42523628103** (head `10db735`). Linux job
   **128862296904** passed; macOS job **128862296842** passed; Windows job
-  **128862296903** passed its CLI tests and was still in the LZ4 build/run step
-  at preparation. Inspect that job before closing V4. This is not an independent
+  **128862296903** passed both CLI and library checks. All jobs in this
+  differential workflow completed successfully. V4 is closed with
+  `docs/verify/linux-elf/three-host-2026-11-08.json`. This is not an independent
   outside-user reproduction.
 - PR #266 is the latest cumulative candidate. Inspect its final CI/differential
   results before integration. Do not treat a green narrower job as all-checks
@@ -125,8 +126,8 @@ ordinary development or the separately reviewed Python toolkit.
 
 ## Next actions, without repeating completed work
 
-1. Inspect Windows job 128862296903 and latest #266 checks; fix actual failures.
-   Retain results and close V4 only after all three-host acceptance passes.
+1. Inspect latest #266 checks; fix actual failures. V4 already passed on all
+   three hosts at 10db735; do not repeat that work as if still untested.
 2. Integrate reviewed, qualified changes through normal repository workflow.
    All current PRs target main; earlier stacked base prevented workflow triggers,
    so #263 was retargeted and manually qualified. Avoid firing redundant full
@@ -146,5 +147,5 @@ ordinary development or the separately reviewed Python toolkit.
    outside-project result. External acceptance cannot be manufactured internally.
 6. Keep working on the app release prerequisites in parallel where independent.
 
-PLAN.md now has V1–V3 completed with bounded evidence and V4–V8 explicit remaining
+PLAN.md now has V1–V4 completed with bounded evidence and V5–V8 explicit remaining
 acceptance. Do not relabel all vision milestones complete based on these results.
