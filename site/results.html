@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Verification results | Ounce-Core</title>
+  <meta name="description" content="Programs run on three ARM64 engines and compared with a real-hardware reference, the bugs they found, and what is not covered.">
+  <link rel="canonical" href="https://hffgzktbcc-blip.github.io/ounce-core/results.html">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Verification results | Ounce-Core">
+  <meta property="og:description" content="Programs run on three ARM64 engines and compared with a real-hardware reference, the bugs they found, and what is not covered.">
+  <meta property="og:url" content="https://hffgzktbcc-blip.github.io/ounce-core/results.html">
+  <meta property="og:image" content="https://hffgzktbcc-blip.github.io/ounce-core/assets/ounce-core-vista.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#13261f">
+  <style>
+    :root{color-scheme:dark;--bg:#0e1d18;--fg:#f1f6ef;--muted:#b7c8bf;--accent:#9ad5ac;--edge:#355247}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0%,#294b3a 0,transparent 40%),var(--bg);color:var(--fg);font:16px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}
+    main,footer{max-width:1000px;margin:auto;padding:0 24px}header{padding:20px 24px;border-bottom:1px solid var(--edge)}nav{max-width:1000px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}nav a{color:var(--fg);text-decoration:none;margin-right:15px}nav a:hover,a:hover{text-decoration:underline}
+    .hero{padding:40px 0 18px}.hero img{width:100%;height:auto;border-radius:18px;border:1px solid var(--edge)}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.15;letter-spacing:-.04em;margin:30px 0 16px}h2{font-size:1.5rem}p{color:var(--muted)}
+    .tag{font-size:.75rem;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);font-weight:800}.button{display:inline-block;background:var(--accent);color:#10251a;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:10px;margin:10px 10px 10px 0}.button.secondary{background:transparent;color:var(--fg);border:1px solid var(--edge)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:25px 0 48px}.card{background:#172c23;border:1px solid var(--edge);border-radius:14px;padding:21px}.card h3{margin:0 0 8px}.card p{margin:0}.links{padding:0 0 60px}a{color:var(--accent)}footer{border-top:1px solid var(--edge);padding-top:25px;padding-bottom:50px;color:var(--muted);font-size:.9rem}
+  </style>
+  <style>table{width:100%;border-collapse:collapse;margin:16px 0}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--edge);vertical-align:top;font-size:.95rem}th{color:var(--accent)}td{color:var(--muted)}code{background:#10251a;padding:1px 6px;border-radius:5px}.tbl{overflow-x:auto}</style>
+</head>
+<body>
+  <header><nav><strong>OUNCE-CORE</strong><div><a href="./">Home</a><a href="results.html">Results</a><a href="maintainers.html">For maintainers</a><a href="status.html">Status</a><a href="press.html">Press</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">Repository</a></div></nav></header>
+  <main>
+
+    <section class="hero">
+      <div class="tag">Evidence</div>
+      <h1>Results: what has been checked, and what it found</h1>
+      <p>Each program was built twice from a pinned version: once for a normal computer (the reference, on Apple Silicon, which is real ARM64) and once as an ARM64 program run in Ounce-Core on three engines. The text output was compared byte for byte. Every folder under <a href="https://github.com/hffgzktbcc-blip/ounce-core/tree/main/docs/verify">docs/verify</a> holds the test source, the reference output and the per-engine result.</p>
+    </section>
+    <div class="tbl"><table>
+      <tr><th>Program</th><th>Version</th><th>What it exercises</th><th>What it found</th><th>PR</th><th>Status</th></tr>
+      <tr><td><strong>LZ4</strong></td><td>d04dab3</td><td>Compression: round trips, corrupt input, tiny output buffers</td><td>No emulator bug found</td><td><a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/220">#220</a></td><td>merged</td></tr><tr><td><strong>xxHash</strong></td><td>2ec67ca</td><td>Hashing, XXH3 uses ARM64 vector instructions</td><td>Prefetch decoded as a load (corrupted registers); missing widening multiply-add</td><td><a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/221">#221</a></td><td>merged</td></tr><tr><td><strong>SQLite</strong></td><td>3.50.4</td><td>Real database: SQL, JSON, window functions, 64-bit overflow</td><td>Missing byte-reverse, widening add, scalar add and duplicate; fixed 50M instruction cap</td><td><a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/221">#221</a></td><td>merged</td></tr><tr><td><strong>Lua</strong></td><td>5.4.7</td><td>An interpreter: recursion, coroutines, floating point, string formatting</td><td>Fused multiply-subtract with the wrong sign (wrong <code>sin</code>, <code>cos</code>, <code>pow</code>)</td><td><a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/222">#222</a></td><td>merged</td></tr><tr><td><strong>Floating-point test</strong></td><td>in repo</td><td>5,964 results of scalar floating-point instructions on 27 awkward values</td><td>Same sign bug, isolated here</td><td><a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/222">#222</a></td><td>merged</td></tr><tr><td><strong>zlib</strong></td><td>1.3.1</td><td>Compression, CRC32, table lookups</td><td>Missing CRC32 instructions and table lookup</td><td><a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/235">#235</a></td><td>in review</td></tr><tr><td><strong>cJSON</strong></td><td>1.7.19</td><td>JSON parsing, 36 malformed inputs, deep nesting</td><td>Missing scalar absolute difference</td><td><a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/234">#234</a></td><td>in review</td></tr><tr><td><strong>TinyExpr</strong></td><td>ba2e32b</td><td>Maths expressions, about 240 cases</td><td>None in the emulator (newlib and macOS libm differ in the last digit; recorded)</td><td><a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/234">#234</a></td><td>in review</td></tr><tr><td><strong>Monocypher</strong></td><td>4.0.3</td><td>BLAKE2b, Argon2, X25519, Ed25519, ChaCha20-Poly1305 against RFC vectors</td><td>Missing vector register shifts</td><td><a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/233">#233</a></td><td>in review</td></tr>
+    </table></div>
+    <section class="card" style="margin:20px 0 30px">
+      <h2>How to read this</h2>
+      <p><strong>Maturity: bounded-verified.</strong> Output matched the reference on the inputs tested, with the evidence kept. It does not show a program or the emulator is correct everywhere, and no one outside the project has repeated it yet. The native engine runs on the host CPU, so on an ARM64 machine the Tier-3 interpreter and the Tier-4 JIT are the real evidence.</p>
+      <p><strong>Not covered:</strong> many vector, floating-point and system instructions are still undecoded or untested; the cumulative saturation flag was not modelled (being added); the emulator is not fast (roughly 20 million instructions per second); running arbitrary ARM64 or Linux applications is not established.</p>
+      <p><strong>Robustness:</strong> 300 corrupted programs through the loader produced no panics, signals or hangs on the interpreter engine; native was not fuzzed.</p>
+    </section>
+    <section class="links"><p><a href="maintainers.html">Run it on your own library</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/VISION.md">Vision and roadmap</a> · <a href="status.html">Status</a></p></section>
+  </main>
+  <footer>Ounce-Core · Experimental ARM64 execution lab · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE">MIT source license</a></footer>
+</body>
+</html>

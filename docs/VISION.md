@@ -1,45 +1,78 @@
 # Vision
 
-**Run ARM64 programs anywhere, and prove the answer matches real hardware.**
+**Understand why programs fail. Prove when they work.**
 
-Ounce-Core is a safe-Rust AArch64 execution lab. It started as a Switch homebrew runtime. Switch and Switch 2 are no longer the goal. What the project turned out to be good at is something more general: running real programs on an ARM64 CPU model and checking, byte for byte, that the result matches a real ARM64 machine.
+Ounce-Core is an open-source ARM64 execution, debugging and verification platform, written in safe Rust. It runs selected software on several CPU engines, shows what happened, reproduces failures, and checks results against real ARM64 hardware, keeping enough evidence that anyone can reproduce the answer.
+
+Verification is the product. Ounce-Core is not another emulator promising to run everything. It started as a Switch homebrew runtime; Switch and Switch 2 are no longer the goal, and that work stays as a regression corpus.
+
+## Three pillars
+
+1. **Ounce-Verify: prove correctness.** Run a program on the interpreter, the JIT and native execution, compare against a reference build on real hardware, detect discrepancies, and preserve hashes and reports. *Most mature pillar.*
+2. **Ounce-Debug: understand failures.** Reproduce an execution problem, compare historical results, and find where behaviour first diverges. *Demonstrated for one bounded workflow; broader tooling planned.*
+3. **Ounce-Learn: make computing understandable.** A practical place to study ARM64 execution, memory, CPU architecture and software verification, eventually one instruction at a time in the browser. *Planned.*
+
+## Who it is for
+
+- **Library maintainers.** "Does my C library behave identically on ARM64 and x86?" Build it, run it, diff it, with no ARM hardware needed to reproduce a report. This is the sharpest first use.
+- **Emulator, JIT and binary-translator authors.** Use the differential method and, later, a published conformance suite to find where a model and real hardware disagree.
+- **Educators and students.** Study how ARM64 executes with real programs.
+- **Researchers.** Reproducible execution evidence with clear limits.
 
 ## What the evidence says (8 November 2026)
 
-In one working week, running unmodified open-source programs and diffing them against an Apple Silicon host found, and fixed, silent and loud bugs that a year of Switch-specific testing had not:
-
+In one working week, running unmodified open-source programs and diffing them against an Apple Silicon host found, and fixed:
 - a prefetch instruction decoded as a load, silently overwriting registers;
-- two floating-point instructions with the wrong sign, so `sin`, `cos` and `pow` returned wrong numbers;
-- missing vector instructions (widening multiply and add, byte reverse, register shifts, table lookup, polynomial multiply, narrowing and saturating ops), plus CRC32, scalar add and duplicate forms, and a fixed 50-million-instruction cap.
+- two fused floating-point instructions with the wrong sign, so `sin`, `cos` and `pow` returned wrong numbers;
+- a long list of missing vector instructions (widening multiply and add, byte reverse, register shifts, table lookup, polynomial multiply, narrowing and saturating ops), plus CRC32, scalar add and duplicate forms, and a fixed 50-million-instruction cap.
 
-Programs checked so far on three engines (an interpreter, a JIT and native host execution): LZ4, xxHash, SQLite, Lua, and, in review, zlib, cJSON, TinyExpr and Monocypher. Method and results: [docs/verify/](verify/README.md). A 300-input loader fuzz run produced no panics. This is the asset: a repeatable way to find ARM64 emulation bugs quickly.
+Programs merged and checked on three engines (interpreter, JIT, native host execution): LZ4, xxHash, SQLite, Lua, and a 5,964-line floating-point instruction test. In review: zlib, cJSON, TinyExpr, Monocypher. A 300-input loader fuzz run produced no panics. Method and results: [docs/verify/](verify/README.md).
 
-## What it can become
+## Maturity labels
 
-1. **Verify.** A conformance and differential-testing toolkit for ARM64 execution. Point it at any program, or at generated instruction sequences, and it reports the first place a model and real hardware disagree. Useful for anyone building or trusting an emulator, a JIT, a binary translator or a hypervisor.
-2. **Run.** User-mode ARM64 on any host (x86 Linux, Windows, macOS, a browser) in memory-safe Rust: deterministic, sandboxed, embeddable. The step that makes this real is loading ordinary static Linux ARM64 programs with a small system-call layer, so no console SDK is needed to run or test anything.
-3. **Debug.** Record and replay a run, trace it, and compare two engines to find the first diverging instruction. Failures become small shareable reproductions.
-4. **Learn.** A way to see an ARM64 program execute: registers, flags, vector lanes, one instruction at a time, explained. Eventually in the browser.
+Every claim carries one of four labels:
 
-## Honest limits
+| Label | Meaning |
+|---|---|
+| **research-only** | explored, not dependable |
+| **bounded-verified** | matches a reference on the listed inputs, with retained evidence |
+| **independently reproduced** | someone outside the project reran it and got the same result |
+| **publicly supported** | documented, versioned, and maintained for users |
 
-- It is not a fast emulator and does not aim to compete with QEMU or Apple's Rosetta on speed or coverage. Its claim is verified correctness on what it supports, and clarity.
-- Coverage today is partial: many vector, floating-point and system instructions are undecoded or untested. The cumulative saturation flag (QC) is not modelled. Native execution runs on the host CPU, so on an ARM64 host it tests the harness, not the emulator.
-- No claim of Switch or Switch 2 compatibility is made. The earlier work stays in the repository as a regression corpus of pinned, permitted programs; it is a test set, not the product.
+| Capability | Maturity today |
+|---|---|
+| Execute selected ARM64 programs on three engines | bounded-verified (LZ4, xxHash, SQLite, Lua; more in review) |
+| Compare engines and compare against a host reference | bounded-verified |
+| Record results, hashes and evidence | bounded-verified |
+| Diagnose differences between retained reports | bounded-verified (one workflow) |
+| Bounded replay of a historical failure | bounded-verified (one case) |
+| Instruction-level checking against hardware | research-only (a floating-point test; a fuzzer is planned) |
+| Run static Linux ARM64 programs | not started |
+| Run arbitrary ARM64 or Linux applications | not established |
+| Automatically find any bug's root cause | not established |
+| Independent reproduction by an outside developer | none yet ([issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190)) |
+
+## Known limits and what we do about them
+
+- **Coverage is partial.** Many vector, floating-point and system instructions are undecoded or untested. *Plan:* a decoder census over real programs ranks what to implement next, and an instruction-level differential fuzzer then keeps decoder changes honest.
+- **The cumulative saturation flag (QC) was not modelled.** *Plan:* model FPSR so saturating instructions set QC and `mrs` reads it back, checked against hardware. In progress.
+- **It is not fast.** The interpreter runs at roughly 20 million instructions per second, which is fine for tests. *Plan:* measure first. The bar is that the whole verified-program suite runs in CI in a few minutes. Speed is not what we compete on; beyond that bar it does not drive the roadmap.
+- **Native execution runs on the host CPU.** On an ARM64 host it checks the harness and the toolchain, not the emulator, so Tier-3 and Tier-4 are the real evidence.
 
 ## Roadmap (each step is one small, checkable result)
 
 | # | Result | How we will know |
 |---|---|---|
-| 1 | Run static Linux ARM64 programs (ELF loader plus about 40 Linux system calls, deterministic mode) | the verified programs run as plain `aarch64-linux` binaries on Linux, macOS and Windows, with no console SDK |
-| 2 | Instruction-level differential fuzzer in CI on a real ARM64 runner | thousands of generated sequences per instruction family match hardware; every new decoder change is fuzzed |
+| 0 | Prove one outside developer can use it | a library maintainer outside the project runs a harness and reports a result ([issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190)) |
+| 1 | Run static Linux ARM64 programs (ELF loader plus about 40 Linux system calls, deterministic mode) | the verified programs run as plain `aarch64-linux` binaries on Linux, macOS and Windows with no console SDK |
+| 2 | Instruction-level differential fuzzer in CI on a real ARM64 runner | thousands of generated sequences per instruction family match hardware; every decoder change is fuzzed |
 | 3 | First-divergence report between engines and against a reference | a failing run points at one instruction with registers before and after |
 | 4 | Record and replay | a recorded failure replays identically on another machine |
 | 5 | Browser playground (WebAssembly build) | a visitor steps through a program with no install |
 | 6 | Publish the conformance suite for other emulators | at least one outside project runs it and reports results |
 
-Steps 1 and 2 come first because they remove the dependency on a console toolchain and turn the one-off bug hunt into a standing guarantee.
+Step 0 comes first: the real test of this vision is an ordinary developer solving a problem they care about, not another internal count. Steps 1 and 2 follow because they remove the console-toolchain dependency and turn the one-off bug hunt into a standing guarantee.
 
 ## Where Switch fits
 
-The first-frame oracle corpus (50 pinned programs) and the Switch-specific services, GPU and audio code remain, are tested in CI, and are not removed. They are a regression set and a source of real programs, maintained as long as they cost little. New work is not driven by them.
+The first-frame oracle corpus (50 pinned programs) and the Switch-specific services, GPU and audio code remain, are tested in CI, and are maintained as long as they cost little. They are a regression set and a source of real programs, not the product. No Switch or Switch 2 compatibility is claimed.

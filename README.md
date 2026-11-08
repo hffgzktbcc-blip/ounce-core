@@ -13,7 +13,9 @@
 
 # Ounce-Core
 
-**Run ARM64 programs anywhere, and prove the answer matches real hardware.**
+**Understand why programs fail. Prove when they work.**
+
+An open-source ARM64 execution, debugging and verification platform in safe Rust.
 
 [Vision](docs/VISION.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
 
@@ -29,14 +31,15 @@ Ounce-Core is an AArch64 (ARM64) execution lab written in safe Rust. It runs pro
 
 It began as a Nintendo Switch homebrew runtime. That is no longer the goal; see [the vision](docs/VISION.md). What it proved good at is finding emulation bugs quickly. In one week, running unmodified open-source programs and diffing them against an Apple Silicon host found a prefetch instruction silently corrupting registers, two floating-point instructions with the wrong sign (so `sin`, `cos` and `pow` returned wrong values), and a long list of missing vector instructions.
 
-**What you can do with it**
+**Three pillars** (each with an honest maturity label; see [the vision](docs/VISION.md#maturity-labels))
 
-- **Verify** an ARM64 program, emulator or JIT: run it, diff the output against real hardware, and get the first difference.
-- **Run** ARM64 code on any host in a memory-safe, deterministic sandbox.
-- **Debug** by comparing engines and sharing small reproductions.
-- **Learn** how ARM64 executes, one instruction at a time.
+- **Ounce-Verify: prove correctness.** Compare engines and a real-hardware reference, detect discrepancies, keep hashes and reports. *Most mature.*
+- **Ounce-Debug: understand failures.** Reproduce a problem, compare results, find where behaviour first diverges. *Demonstrated for one bounded workflow.*
+- **Ounce-Learn: make computing understandable.** Study ARM64 execution one instruction at a time. *Planned.*
 
-Today the first two work for the programs listed under [What is proven](#what-is-proven); Debug has comparison and replay tooling for one workflow; Learn is planned. The [roadmap](docs/VISION.md#roadmap-each-step-is-one-small-checkable-result) starts with running ordinary static Linux ARM64 programs, so no console SDK is needed.
+**Who it is for:** library maintainers who want to know whether their code behaves the same on ARM64 as on x86 without owning ARM hardware; emulator and JIT authors; educators; researchers.
+
+Verification is the product. It is not a fast emulator and does not promise to run everything: running arbitrary ARM64 or Linux applications and automatic root-cause finding are **not established**. Coverage is partial and the cumulative saturation flag was not modelled (being added). The [roadmap](docs/VISION.md#roadmap-each-step-is-one-small-checkable-result) starts with an outside developer solving a real problem, then running ordinary static Linux ARM64 programs so no console SDK is needed.
 
 ```mermaid
 flowchart LR
