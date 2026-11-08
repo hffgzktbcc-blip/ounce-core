@@ -6,9 +6,9 @@
       "id": "linux-elf",
       "name": "Static Linux ARM64 programs",
       "stage": "experimental",
-      "evidence": "Five freestanding static ELF fixtures run through run-elf; no libc programs verified",
+      "evidence": "Five freestanding ELF fixtures and unchanged LZ4/musl cases pass on Tier-3 and actual Tier-4",
       "evidence_url": "docs/verify/linux-elf/README.md",
-      "next": "Run one real library as a Linux ELF; add deterministic time and qualify supported hosts"
+      "next": "Qualify Linux library CI; add deterministic time and wider host acceptance"
     },
     {
       "id": "differential",
