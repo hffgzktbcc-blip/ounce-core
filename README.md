@@ -1,20 +1,21 @@
 <div align="center">
 
-<img src="assets/ounce-core-vista.png" width="100%" alt="Ounce-Core hardware research runtime and architecture compatibility layer banner" />
+<img src="assets/ounce-core-vista.png" width="100%" alt="Ounce-Core banner" />
 
 <br />
 
 [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml)
-[![First-frame oracles](https://img.shields.io/badge/first--frame_oracles-50%2F50_pass-84b89e?style=flat-square)](#what-is-proven)
 [![Safe Rust core](https://img.shields.io/badge/src-forbid(unsafe__code)-cc754f?style=flat-square&logo=rust&logoColor=white)](#safe-rust-by-construction)
 [![Rust 2024](https://img.shields.io/badge/Rust-2024-cc754f?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![MIT](https://img.shields.io/badge/License-MIT-84b89e?style=flat-square)](LICENSE)
 [![Research](https://img.shields.io/badge/Status-Experimental-a9bcc4?style=flat-square)](#what-is-proven)
 [![No retail assets](https://img.shields.io/badge/Assets-No%20firmware%20or%20retail%20keys-7cae9f?style=flat-square)](#responsible-research)
 
-**Reproducible failure investigation, built on an inspectable AArch64 runtime.**
+# Ounce-Core
 
-[The Ounce Vision](#the-ounce-vision) · [Architecture](#the-system) · [Get started](#quickstart) · [Verified progress](#what-is-proven) · [Roadmap](#the-road-ahead) · [Research & provenance](#responsible-research) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
+**Run ARM64 programs anywhere, and prove the answer matches real hardware.**
+
+[Vision](docs/VISION.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
 
 </div>
 
@@ -22,147 +23,42 @@
 
 <a id="the-ounce-vision"></a>
 
-<div align="center">
+## What it is
 
-## ✦ THE OUNCE VISION ✦
+Ounce-Core is an AArch64 (ARM64) execution lab written in safe Rust. It runs programs on three CPU engines (an interpreter, a JIT, and native execution on ARM64 hosts) and compares what they compute against a reference build on real ARM64 hardware. When they disagree it tells you where.
 
-### Execute. Observe. Understand. Verify.
+It began as a Nintendo Switch homebrew runtime. That is no longer the goal; see [the vision](docs/VISION.md). What it proved good at is finding emulation bugs quickly. In one week, running unmodified open-source programs and diffing them against an Apple Silicon host found a prefetch instruction silently corrupting registers, two floating-point instructions with the wrong sign (so `sin`, `cos` and `pow` returned wrong values), and a long list of missing vector instructions.
 
-**Help developers see what changed, investigate a failure, and share a repeatable reproduction.**
+**What you can do with it**
 
-*Current foundation: runtime, evidence validation, run comparison and replay tooling. Next: one complete developer workflow.*
+- **Verify** an ARM64 program, emulator or JIT: run it, diff the output against real hardware, and get the first difference.
+- **Run** ARM64 code on any host in a memory-safe, deterministic sandbox.
+- **Debug** by comparing engines and sharing small reproductions.
+- **Learn** how ARM64 executes, one instruction at a time.
 
-</div>
-
-```mermaid
-flowchart TB
-    subgraph EXPERIENCE["THE RESEARCH EXPERIENCE · evolving product directions"]
-        direction LR
-        DBG["Ounce-Debug<br/>Investigate failures"]
-        TRC["Ounce-Trace<br/>Inspect execution"]
-        LRN["Ounce-Learn<br/>Explain the system"]
-        BEN["Ounce-Bench<br/>Compare performance"]
-    end
-    V["OUNCE-VERIFY<br/>Registered oracles · evidence · reproducibility"]
-    R["OUNCE-CORE RUNTIME<br/>AArch64 engines · memory · services · graphics"]
-    P["Pinned, permitted programs and reproducible test inputs"]
-
-    P --> R --> V
-    V --> DBG
-    V --> TRC
-    V --> LRN
-    V --> BEN
-
-    classDef foundation fill:#172b32,stroke:#73b9ae,color:#ffffff,stroke-width:2px;
-    classDef verify fill:#d9efe9,stroke:#4f9c87,color:#16382e,stroke-width:2px;
-    classDef experience fill:#edf3f8,stroke:#8aafc7,color:#1e3d52;
-    class R foundation;
-    class V verify;
-    class DBG,TRC,LRN,BEN experience;
-```
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-**01 — Execute & model**
-
-The [Ounce-Core runtime](#the-system) explores AArch64 execution, memory, operating-system services and graphics through inspectable software models.
-
-</td>
-<td width="50%" valign="top">
-
-**02 — Measure & preserve**
-
-[Ounce-Verify](docs/verify/README.md) checks registered output expectations, distinguishes evidence from inference, and supports reproducible failure investigation.
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-**03 — Investigate & explain**
-
-**Ounce-Trace**, **Ounce-Debug** and **Ounce-Learn** are proposed experiences for understanding execution, faults and computing concepts, building on the same evidence rather than inventing separate sources of truth.
-
-</td>
-<td width="50%" valign="top">
-
-**04 — Compare & share**
-
-**Ounce-Bench** is a proposed performance-research experience. Public reports, documented experiments and independent reruns can help developers, students and researchers evaluate results.
-
-</td>
-</tr>
-</table>
-
-<div align="center">
-
-**From an instruction to a rendered frame. From a failure to an explanation. From a claim to reproducible evidence.**
-
-*The vision is larger than any one platform; the proof must always stay narrower than the claim.*
-
-[Explore verified results](#what-is-proven) · [How verification works](#how-the-proof-works) · [See the research roadmap](#the-road-ahead)
-
-</div>
-
-> **Current priority:** connect existing verification, diagnosis and replay tools into one usable failure-to-reproduction workflow, then solve a real developer issue. See [the outcome plan](PLAN.md). Platform coverage is a regression baseline, not the product roadmap. An experimental [Python-only diagnosis CLI](docs/DIAGNOSIS_CLI.md) packages the retained SDL2 and audio-padding workflows; outside developer validation remains open.
-
-> **Vision versus current capability:** Ounce-Core and Ounce-Verify have working implementations. The named Trace, Debug, Learn and Bench experiences above are future directions, not claims that four finished products exist. Original-Switch corpus results and limited Switch 2 SDK-path observations remain separate; neither establishes commercial-software or broad Switch 2 compatibility.
-
----
-
-## A different kind of computing garden
-
-Every program is a conversation between instructions, memory, operating-system services and hardware. **Ounce-Core** is an experimental Rust research runtime that makes that conversation observable.
-
-It brings together interpreters, tiered AArch64 execution, Horizon-style service models, software graphics and optional `wgpu` presentation. The root crate forbids unsafe Rust; the optional Tier-4 recompiler owns a separate unsafe boundary for native code generation and executable memory. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
-
-> **Headline metric: [<!-- corpus-headline -->50/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). This historical benchmark measures registered graphics behavior; tooling, debugging and usability changes are assessed by their own end-to-end scenarios. The certified headline covers original Switch homebrew only. A separate experimental [SDK-path observation](https://github.com/hffgzktbcc-blip/ounce-core/pull/172) is retained as research evidence; expanding Switch 2 coverage is not the current focus.
-
-<table>
-<tr>
-<td width="33%" valign="top">
-
-### 01 · Execute
-
-Interpreter, Tier-1/2/3 optimisations and an optional Tier-4 native recompiler.
-
-</td>
-<td width="33%" valign="top">
-
-### 02 · Model
-
-Paged memory, scheduling, IPC, filesystem, controller, sound and graphics models.
-
-</td>
-<td width="33%" valign="top">
-
-### 03 · Prove
-
-Pre-registered first-frame pixel oracles for outside homebrew, in CI. Unit and synthetic tests guard the code but are not proof.
-
-</td>
-</tr>
-</table>
-
-## The system
+Today the first two work for the programs listed under [What is proven](#what-is-proven); Debug has comparison and replay tooling for one workflow; Learn is planned. The [roadmap](docs/VISION.md#roadmap-each-step-is-one-small-checkable-result) starts with running ordinary static Linux ARM64 programs, so no console SDK is needed.
 
 ```mermaid
 flowchart LR
-    A["Self-authored tests / licensed homebrew"] --> B["Loader & memory model"]
-    B --> C["AArch64 execution"]
-    C --> D["Kernel & service models"]
-    D --> E["Software graphics / audio / input"]
-    E --> F["Headless, window or wgpu presentation"]
-    C --> G["Regressions & execution evidence"]
-    D --> G
-    E --> G
-    classDef soft fill:#eaf3ed,stroke:#77a38e,color:#19352c;
-    class B,C,D,E,G soft;
+    P["Open-source program<br/>(pinned version)"] --> H["Host build<br/>= reference output"]
+    P --> A["ARM64 build"]
+    A --> I["Interpreter"]
+    A --> J["JIT"]
+    A --> N["Native (ARM64 hosts)"]
+    H --> D{"Byte-for-byte<br/>diff"}
+    I --> D
+    J --> D
+    N --> D
+    D --> R["Match: recorded as evidence<br/>Mismatch: first divergence, then a fix and a test"]
+    classDef core fill:#172b32,stroke:#73b9ae,color:#ffffff,stroke-width:2px;
+    class I,J,N core;
 ```
 
-The core is designed to remain useful as a **systems-research platform** even when a particular external program fails. A failure with a captured guest stop reason is useful diagnostic evidence—not a compatibility pass.
+---
+
+## The system
+
+The runtime loads an ARM64 program, models memory, system calls and services, and executes it on one of three engines. Everything on the evidence path is checked against a reference rather than asserted. The Switch-era loader, kernel, GPU and audio models are still in the tree and tested; they are how the first programs got loaded and are now a regression corpus, not the product direction.
 
 ### The architecture at a glance
 
@@ -215,6 +111,10 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 ---
 
 ## What is proven
+
+**Differential tests against real ARM64 hardware** (each folder in [docs/verify](docs/verify/README.md) holds the sources of its test, the pinned program version, the host reference output and the per-engine result): LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and a 5,964-line floating-point instruction test. On Tier-3, Tier-4 and native, output is byte-identical to the host reference. Native execution runs on the host CPU, so Tier-3 and Tier-4 are the real evidence. More programs (zlib, cJSON, TinyExpr, Monocypher) are in review. Each shows agreement on the inputs tested, not that the program or the emulator is correct everywhere.
+
+### Legacy Switch regression corpus
 
 **<!-- corpus-headline -->50/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Interpreter and Tier-3 both pass the registered pixel checks. The oracle manifest distinguishes whole-frame hashes from named pixel probes ([method](docs/corpus-oracles.md)). The count comes from the [Ounce-Verify](docs/verify/README.md) canonical report, with [current external-corpus runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml) containing the underlying artifacts; CI fails if this README disagrees with the report. Failures are the to-do list.
 
@@ -341,6 +241,18 @@ cargo run --release -- info
 cargo run --release -- demo-dir ./demo --gui
 ```
 
+**Check a program against the three engines (about five minutes once built):**
+
+```bash
+cargo build --release --features "nce native-jit"   # native needs an ARM64 host; drop the features otherwise
+for cpu in tier3 tier4 native; do
+  OUNCE_NRO_BUDGET=100000000 \
+    target/release/ounce-core run-nro tests/fixtures/nro/hello/hello.nro --present=headless --cpu=$cpu
+done
+```
+
+`OUNCE_NRO_BUDGET` raises the instruction cap (default 50 million). To add a real program and compare it with the host build, follow [docs/ADD_A_PROGRAM.md](docs/ADD_A_PROGRAM.md).
+
 **Explore optional execution and rendering paths:**
 
 ```bash
@@ -402,11 +314,13 @@ This section is rendered from [the milestone registry](docs/roadmap/milestones.j
 
 | Research track | Reviewed stage | Supporting evidence | Next proof gate |
 | :--- | :--- | :--- | :--- |
-| Agent workflow | experimental | [Workflow changes under validation](PLAN.md) | Read-only status, local checkpoints, ready tasks and scope-aware hosted checks (W1) |
+| Static Linux ARM64 programs | experimental | [Not started: programs currently load as NRO through a libnx stub](docs/VISION.md) | ELF loader and a deterministic subset of Linux system calls (docs/VISION.md step 1) |
+| Differential verification against real ARM64 | measured | [Eight real programs and an FP instruction test diffed against an Apple Silicon host; a dozen CPU bugs found and fixed](docs/verify/README.md) | Instruction-level differential fuzzer on an ARM64 CI runner (docs/VISION.md step 2) |
+| Agent workflow | measured | [Handoff snapshots, expiring claims and shared journal; used by four agents in parallel](docs/AGENT_HUB.md) | Keep the tool simple; fix friction as agents report it |
 | Failure to reproduction | experimental | [Existing verifier, diagnosis and replay interfaces](docs/verify/README.md) | Ship one fresh-checkout walkthrough and solve a real developer issue (R1–R2) |
 | Usable community tool | experimental | [Outcome acceptance plan; distribution not yet delivered](PLAN.md) | Package the demonstrated workflow; connect one lagging component and release the result (R3–R5) |
-| Historical runtime regression baseline | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->50/50<!-- /corpus-headline --> passes** (CI-certified) | Preserve existing cases; expand only to reproduce a concrete user problem |
-| Switch 2 research (parked) | experimental | [Limited SDK-path observation](docs/verify/README.md) | Retain existing checks; no coverage expansion without a demonstrated user need |
+| Switch regression corpus (legacy) | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->50/50<!-- /corpus-headline --> passes** (CI-certified) | Keep passing in CI; no expansion unless a program reproduces a concrete CPU bug |
+| Switch 2 research (archived) | experimental | [Limited SDK-path observation](docs/verify/README.md) | No further work; kept as a record. Not part of the product direction (see docs/VISION.md) |
 
 **Live navigation:** [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls?q=is%3Apr+is%3Aopen) · [open issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen) · [Actions](https://github.com/hffgzktbcc-blip/ounce-core/actions) · [verification method](docs/verify/README.md) · [PLAN.md](PLAN.md).
 

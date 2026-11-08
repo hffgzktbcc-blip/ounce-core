@@ -3,12 +3,28 @@
   "principle": "Deliver one reproducible developer result at a time; implementation and historical benchmarks are supporting evidence.",
   "tracks": [
     {
+      "id": "linux-elf",
+      "name": "Static Linux ARM64 programs",
+      "stage": "experimental",
+      "evidence": "Not started: programs currently load as NRO through a libnx stub",
+      "evidence_url": "docs/VISION.md",
+      "next": "ELF loader and a deterministic subset of Linux system calls (docs/VISION.md step 1)"
+    },
+    {
+      "id": "differential",
+      "name": "Differential verification against real ARM64",
+      "stage": "measured",
+      "evidence": "Eight real programs and an FP instruction test diffed against an Apple Silicon host; a dozen CPU bugs found and fixed",
+      "evidence_url": "docs/verify/README.md",
+      "next": "Instruction-level differential fuzzer on an ARM64 CI runner (docs/VISION.md step 2)"
+    },
+    {
       "id": "workflow",
       "name": "Agent workflow",
-      "stage": "experimental",
-      "evidence": "Workflow changes under validation",
-      "evidence_url": "PLAN.md",
-      "next": "Read-only status, local checkpoints, ready tasks and scope-aware hosted checks (W1)"
+      "stage": "measured",
+      "evidence": "Handoff snapshots, expiring claims and shared journal; used by four agents in parallel",
+      "evidence_url": "docs/AGENT_HUB.md",
+      "next": "Keep the tool simple; fix friction as agents report it"
     },
     {
       "id": "diagnosis",
@@ -16,7 +32,7 @@
       "stage": "experimental",
       "evidence": "Existing verifier, diagnosis and replay interfaces",
       "evidence_url": "docs/verify/README.md",
-      "next": "Ship one fresh-checkout walkthrough and solve a real developer issue (R1\u2013R2)"
+      "next": "Ship one fresh-checkout walkthrough and solve a real developer issue (R1–R2)"
     },
     {
       "id": "distribution",
@@ -24,24 +40,24 @@
       "stage": "experimental",
       "evidence": "Outcome acceptance plan; distribution not yet delivered",
       "evidence_url": "PLAN.md",
-      "next": "Package the demonstrated workflow; connect one lagging component and release the result (R3\u2013R5)"
+      "next": "Package the demonstrated workflow; connect one lagging component and release the result (R3–R5)"
     },
     {
       "id": "original-switch",
-      "name": "Historical runtime regression baseline",
+      "name": "Switch regression corpus (legacy)",
       "stage": "measured",
       "evidence": "Canonical first-frame oracle corpus",
       "evidence_url": "docs/verify/README.md",
-      "next": "Preserve existing cases; expand only to reproduce a concrete user problem",
+      "next": "Keep passing in CI; no expansion unless a program reproduces a concrete CPU bug",
       "corpus_headline": true
     },
     {
       "id": "switch2",
-      "name": "Switch 2 research (parked)",
+      "name": "Switch 2 research (archived)",
       "stage": "experimental",
       "evidence": "Limited SDK-path observation",
       "evidence_url": "docs/verify/README.md",
-      "next": "Retain existing checks; no coverage expansion without a demonstrated user need"
+      "next": "No further work; kept as a record. Not part of the product direction (see docs/VISION.md)"
     }
   ]
 }
