@@ -253,30 +253,39 @@ pub fn narrow_high(op: SimdNarrowOp, d: u128, n: u128, m: u128, esize: u32, q: b
 }
 
 fn saturate_signed(v: i128, bits: u32) -> u64 {
+    saturate_signed_flag(v, bits).0
+}
+
+/// Signed saturation to `bits`, also reporting whether the value did not fit (sets FPSR.QC).
+fn saturate_signed_flag(v: i128, bits: u32) -> (u64, bool) {
     let (lo, hi) = (-(1i128 << (bits - 1)), (1i128 << (bits - 1)) - 1);
-    (v.clamp(lo, hi) as u64) & mask(bits)
+    ((v.clamp(lo, hi) as u64) & mask(bits), v < lo || v > hi)
 }
 
 /// `SQDMULL`/`SQDMLAL`/`SQDMLSL` (`q`: the `2` forms): `2 * a * b` saturated to `2 * esize` signed bits,
-/// accumulated (also saturating) into `d` for `SQDMLAL`/`SQDMLSL`. The cumulative saturation flag (QC) is
-/// not modelled.
-pub fn sat_doubling_mul_long(op: SimdSatLongOp, d: u128, n: u128, m: u128, esize: u32, q: bool) -> u128 {
+/// accumulated (also saturating) into `d` for `SQDMLAL`/`SQDMLSL`. Returns the result and whether any lane
+/// saturated (in the doubling multiply or the accumulate), which the caller ORs into FPSR.QC.
+pub fn sat_doubling_mul_long(op: SimdSatLongOp, d: u128, n: u128, m: u128, esize: u32, q: bool) -> (u128, bool) {
     let half = |v: u128| if q { v >> 64 } else { v };
     let (hn, hm) = (half(n), half(m));
     let wide = esize * 2;
     let mut out = 0u128;
+    let mut sat = false;
     for i in 0..64 / esize as usize {
         let prod = 2 * (sext(lane(hn, esize, i), esize) as i128) * (sext(lane(hm, esize, i), esize) as i128);
-        let prod = sext(saturate_signed(prod, wide), wide) as i128; // doubling overflows only for min * min
+        let (prod, s1) = saturate_signed_flag(prod, wide); // doubling overflows only for min * min
+        let prod = sext(prod, wide) as i128;
         let acc = sext(lane(d, wide, i), wide) as i128;
         let r = match op {
             SimdSatLongOp::Sqdmull => prod,
             SimdSatLongOp::Sqdmlal => acc + prod,
             SimdSatLongOp::Sqdmlsl => acc - prod,
         };
-        set_lane(&mut out, wide, i, saturate_signed(r, wide));
+        let (v, s2) = saturate_signed_flag(r, wide);
+        sat |= s1 | s2;
+        set_lane(&mut out, wide, i, v);
     }
-    out
+    (out, sat)
 }
 
 /// `PMULL` / `PMULL2`: carry-less multiply. `wide`: one 64x64 -> 128-bit product; otherwise eight
@@ -518,17 +527,18 @@ mod narrow_and_saturating_tests {
         let q15 = |a: i16, b: i16| (a as u16 as u128 | (b as u16 as u128) << 16, 0u128);
         let (n, _) = q15(0x4000, i16::MIN);
         let (m, _) = q15(0x4000, i16::MIN);
-        let r = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, n, m, 16, false);
+        let (r, qc) = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, n, m, 16, false);
+        assert!(qc);
         assert_eq!(lane(r, 32, 0), 0x2000_0000); // 2 * 0x4000 * 0x4000
         assert_eq!(lane(r, 32, 1), 0x7FFF_FFFF); // min * min saturates (2^31 does not fit)
         let acc = 0x7FFF_FFF0u128;
-        let mla = sat_doubling_mul_long(SimdSatLongOp::Sqdmlal, acc, 3, 5, 16, false); // 0x7FFFFFF0 + 30
+        let mla = sat_doubling_mul_long(SimdSatLongOp::Sqdmlal, acc, 3, 5, 16, false).0; // 0x7FFFFFF0 + 30
         assert_eq!(lane(mla, 32, 0), 0x7FFF_FFFF);
-        let mls = sat_doubling_mul_long(SimdSatLongOp::Sqdmlsl, 0x8000_0010, 3, 5, 16, false); // -2147483632 - 30 saturates low
+        let mls = sat_doubling_mul_long(SimdSatLongOp::Sqdmlsl, 0x8000_0010, 3, 5, 16, false).0; // -2147483632 - 30 saturates low
         assert_eq!(lane(mls, 32, 0), 0x8000_0000);
-        let neg = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 0xFFFF, 3, 16, false); // -1 * 3 * 2
+        let neg = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 0xFFFF, 3, 16, false).0; // -1 * 3 * 2
         assert_eq!(lane(neg, 32, 0) as u32 as i32, -6);
-        let hi = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 7u128 << 64, 2u128 << 64, 32, true); // SQDMULL2 (32-bit)
+        let hi = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 7u128 << 64, 2u128 << 64, 32, true).0; // SQDMULL2 (32-bit)
         assert_eq!(lane(hi, 64, 0), 28);
     }
 }
