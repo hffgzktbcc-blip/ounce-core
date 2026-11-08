@@ -1242,6 +1242,8 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b00110, true) => SimdOp3::Cmhi,
             (0b00111, false) => SimdOp3::Cmge,
             (0b00111, true) => SimdOp3::Cmhs,
+            (0b01000, false) => SimdOp3::Sshl,
+            (0b01000, true) => SimdOp3::Ushl,
             _ => return None,
         };
         return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 64, q: false });
@@ -1271,6 +1273,8 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b10101, true) => SimdOp3::Uminp,
             (0b10111, false) => SimdOp3::Addp,
             (0b10011, false) => SimdOp3::Mul,
+            (0b01000, false) => SimdOp3::Sshl,
+            (0b01000, true) => SimdOp3::Ushl,
             _ => return None,
         };
         let bitwise = opcode == 0b00011;
@@ -1488,6 +1492,8 @@ mod tests {
         assert_eq!(decode(0xF8800160), Instruction::Nop); // prfum pldl1keep, [x11]
         assert_eq!(decode(0xD8000000), Instruction::Nop); // prfm pldl1keep, <literal>
         assert!(matches!(decode(0x4E201BFF), Instruction::SimdTwoMisc { op: SimdOp2::Rev16, esize: 8, q: true, .. })); // rev16 v31.16b, v31.16b
+        assert!(matches!(decode(0x6EB3479C), Instruction::SimdThreeSame { op: SimdOp3::Ushl, esize: 32, q: true, .. })); // ushl v28.4s, v28.4s, v19.4s
+        assert!(matches!(decode(0x4EB34780), Instruction::SimdThreeSame { op: SimdOp3::Sshl, esize: 32, q: true, .. })); // sshl v0.4s, v28.4s, v19.4s
         assert!(matches!(decode(0x5EFE87FF), Instruction::SimdThreeSame { op: SimdOp3::Add, esize: 64, q: false, .. })); // add d31, d31, d30
         assert!(matches!(decode(0x7EE18420), Instruction::SimdThreeSame { op: SimdOp3::Sub, esize: 64, q: false, .. })); // sub d0, d1, d1
         assert!(matches!(decode(0x5E1C07EE), Instruction::SimdDupScalar { esize: 32, index: 3, .. })); // mov s14, v31.s[3]
