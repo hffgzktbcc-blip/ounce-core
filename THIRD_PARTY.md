@@ -11,15 +11,22 @@ locked default release dependency graph and exact upstream revisions.
 `docs/RELEASE_NOTICE_REVIEW.json` identifies the input hashes and remaining
 questions. Release packaging includes these records and checks their
 identity. Public release packaging requires a completed review record.
-The current record is pending specialist review of objc2 attribution and
-SDK-related terms, Rust runtime notices and final binary coverage.
+The Objective-C MIT grant/attribution supplement is retained in
+`licenses/objc2-MIT.txt` and `licenses/objc2-upstream-MIT.txt`. The unchanged
+169-record aggregate is supplemented by these separate archive entries. Runtime release packaging also
+requires notices from the actual Rust toolchain, bound to the binary hash.
+The remaining SDK qualification and distribution boundaries are recorded in
+[`docs/LICENSE_DISPOSITION.md`](docs/LICENSE_DISPOSITION.md); notice collection
+does not supply an absent third-party redistribution grant.
 
-This register records build inputs found in the fixture Makefiles and workspace metadata. It is incomplete: the checked-in NRO binaries have not been exhaustively inspected to identify every linked component.
+The eleven fixture rebuilds and linker-selected inputs are recorded in
+`tests/fixtures/rebuild-evidence.json`. Fixture rights review is separate from
+runtime archive packaging, whose explicit file set excludes NROs and SDK files.
 
 - **libnx**: fixture Makefiles explicitly link `-lnx`. Upstream project and notices: [switchbrew/libnx](https://github.com/switchbrew/libnx).
-- **newlib**: identified in the recorded devkitA64 toolchain metadata. Its notices are per-file; see [newlib](https://sourceware.org/newlib/). Binary-level inclusion has not been independently verified.
+- **newlib**: identified in the recorded devkitA64 toolchain metadata. Its notices are per-file; see [newlib](https://sourceware.org/newlib/). Selected archive members are recorded in the fixture rebuild evidence; redistribution review is separate.
 - **deko3d and `uam`**: the deko3d fixture Makefile links `-ldeko3d` and invokes `uam` to compile shaders. Exact versions, notices, and generated-output status are not recorded.
-- **GCC runtime**: GCC is used by the fixture Makefiles. The exact runtime components in each NRO, including whether libgcc is linked, have not been verified. No libstdc++ linkage is established by the current C fixture Makefiles.
+- **GCC runtime**: GCC is used by the fixture Makefiles. Selected runtime members are recorded in the fixture rebuild evidence; applicable per-file notices and runtime exceptions must follow the selected inputs. No libstdc++ linkage is established by the current C fixture Makefiles.
 - **Rust crates**: see `Cargo.lock` and `docs/DEPENDENCY_LICENSE_AUDIT.md`. That inventory records declared Cargo licence metadata; it is not a redistribution review.
 
 ## Ported or cross-checked source code (MIT)

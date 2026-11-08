@@ -1,21 +1,21 @@
 # Fixture and source provenance register
 
-Maintained by the project. Status: **draft, not legally reviewed.** Where a fact is unknown it says so.
+Maintained by the project. Current notice and distribution decisions: [LICENSE_DISPOSITION.md](LICENSE_DISPOSITION.md). This is an evidence register, not a third-party legal opinion. Dated older findings are distinguished below.
 
 ## Test fixtures (`tests/fixtures/nro/*`)
 
-Each listed fixture directory has a `main.c`, a `Makefile`, and a prebuilt `.nro`. The source-to-upstream comparison has not been completed, so authorship is unverified.
+All eleven committed NROs have registered binary/build-input identities and
+byte-identical rebuild evidence. See [the register](../tests/fixtures/provenance.json),
+[rebuilds and selected linker inputs](../tests/fixtures/rebuild-evidence.json), and
+[toolchain record](../tests/fixtures/nro/TOOLCHAIN_VERSIONS.md).
 
-| Fixture | Source authorship | Build information recorded | Binary contents verified | Ships in repo |
-|---|---|---|---|---|
-| hello, services, romfs, nvdrv, gpu, input, threads, audren | unverified; upstream example comparison pending | devkitA64 r30 / GCC 16.1.0-1, newlib 4.6.0.20260123-4, libnx 4.12.0-1 (see toolchain register) | no; Makefiles link libnx, and toolchain metadata identifies newlib; binary-level component inventory is pending | yes (binary and source) |
-| deko3d | unverified; upstream example comparison pending | devkitA64 + libnx + deko3d per fixture Makefile; shader compiler/version record pending | no; binary-level component inventory is pending | yes (binary and source) |
+| Fixtures | Identity/build evidence | Rights scope | Distribution |
+| --- | --- | --- | --- |
+| hello, services, romfs, nvdrv, gpu, input, input_multi, threads, audren, sdmc, deko3d | All eleven rebuilds match committed NRO bytes; selected archive members retained | Source authorship and component redistribution review remain unverified; rebuild equality does not supply permission | Present in the full repository/source archives; excluded from runtime binary archives and the standalone Python toolkit |
 
-Notes:
-- The fixture Makefiles explicitly link libnx; the recorded devkitA64 toolchain includes newlib. This does not establish the complete contents of each prebuilt binary. No libstdc++ linkage has been verified. See `THIRD_PARTY.md` for upstream notice references and open checks.
-- `romfs.nro` embeds `romfs/greeting.txt`; its source authorship has not been separately checked.
-- The project records these fixtures as synthetic homebrew test programs; source-to-upstream comparisons and binary-content checks remain pending.
-- Exact per-fixture binary IDs and hashes are recorded in `tests/fixtures/nro/TOOLCHAIN_VERSIONS.md`.
+The RomFS asset identity and all tracked fixture inputs are in the register. The
+separate outside RomFS program and container have their own pinned-source review
+packet under `docs/reproduce/`; they are not the repository's synthetic fixture.
 
 ## External corpus programs (built in CI)
 
@@ -108,14 +108,22 @@ MIT code ported into this repository under the "Sources" rules of `PLAN.md`. Not
 |---|---|---|---|
 | `crates/ounce-nce/src/patch.rs` | [seedds/nxnative](https://github.com/seedds/nxnative) `dm/tools/patch_nso.py` and `dm/tools/nso_asm.py`, read at commit `abd5ac2cce8e164f455188e4984281d14161d4cb` | MIT | The native-execution rewrite rules (svc and timer reads to host gates, `TPIDR_EL0`/`TPIDRRO_EL0` to a thread context, `x18` users to a scratch register backed by the context: `site_gate`, `site_sysreg_read`, `site_tpidr_write`, `site_plain`, `site_sp`, `site_cond`, `site_pcrel`, `site_blr`), the instruction encoders, and the 16 KiB host page sealing approach (`dm/host/loader.c`). Re-written in Rust; game-specific parts (registered cuts, spin gates, engine fixes) not taken. |
 
-## Known provenance problem: git history
+## Historical object disposition
 
-Commits before `76ce766` (including `c7f16f2` and `4be9640`) were previously identified by the project as containing firmware-derived or third-party-derived byte sequences and an external-payload loader; their contents have not been re-audited in this documentation change. On 2026-10-28, this checkout confirmed `c7f16f2` is reachable from `main`, tags `v0.3.0` through `v0.3.2`, and fetched pull-request refs `72`, `81`, `82`, and `83`. This limited check does not establish reachability from every branch, tag, fork, clone, or server-side ref. A history cleanup has been discussed, but no completion is verified here. Tracked in `AGENTS.md`.
+The October commit-reachability statements are retained in the dated
+[historical audit](HISTORY_REMEDIATION.md). They are superseded for actionable
+scope by the later [object-level report](PROVENANCE_REMEDIATION_REPORT.md): twelve
+firmware-labelled arrays and two standalone objects were isolated to retained
+PR #1 in that snapshot, with no exact matches in current source or the inspected
+release archives. A separate historical 72-byte outside program has no recorded
+redistribution grant. Host-managed PR treatment and that permission question
+remain specific cases; no global purge or blanket historical clearance is claimed.
+Main/tag rewrites must not be inferred from an old commit merely being reachable.
 
 ## Audits
 
 - Cargo licence metadata inventory: recorded 2026-10-28; it covers declared Cargo metadata, not source texts or fixture binaries. See `docs/DEPENDENCY_LICENSE_AUDIT.md`.
-- Shader tooling (`uam` compiles deko3d test shaders; version, licence notices, and generated-output inventory are unrecorded).
+- Shader tooling and selected linker identities are in the fixture rebuild evidence; retain the per-component rights distinction.
 - Fixture source authorship: compare each `main.c` with relevant libnx/deko3d examples and record the result.
 
 ## Controller color availability (2026-11-06)
