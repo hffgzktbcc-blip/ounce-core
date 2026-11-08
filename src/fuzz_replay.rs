@@ -384,6 +384,11 @@ fn class(word: u32) -> u32 {
 
 pub fn run(args: &[String]) -> i32 {
     let mut show = 20usize;
+    let mut top = 60usize;
+    let mut list_unimpl = false;
+    // `--filter MASK:VALUE` (hex): also count executed/matching words with `word & MASK == VALUE`, for per-class evidence
+    let mut filter: Vec<(u32, u32)> = Vec::new();
+    let (mut f_exec, mut f_match) = (0u64, 0u64);
     let mut input = None;
     let mut engine = Engine::Interp;
     let mut ee = false;
@@ -393,6 +398,20 @@ pub fn run(args: &[String]) -> i32 {
     while let Some(a) = it.next() {
         match a.as_str() {
             "--show" => show = it.next().and_then(|v| v.parse().ok()).unwrap_or(20),
+            "--filter" => {
+                let spec = it.next().cloned().unwrap_or_default();
+                let p = |x: Option<&str>| x.and_then(|v| u32::from_str_radix(v.trim_start_matches("0x"), 16).ok());
+                let mut parts = spec.split(':');
+                match (p(parts.next()), p(parts.next())) {
+                    (Some(m), Some(v)) => filter.push((m, v)),
+                    _ => {
+                        eprintln!("--filter MASK:VALUE (hex)");
+                        return 2;
+                    }
+                }
+            }
+            "--list-unimplemented" => list_unimpl = true,
+            "--top" => top = it.next().and_then(|v| v.parse().ok()).unwrap_or(60),
             "--engine" => match it.next().and_then(|v| Engine::parse(v)) {
                 Some(e) => engine = e,
                 None => {
@@ -410,7 +429,7 @@ pub fn run(args: &[String]) -> i32 {
         return run_engines(seed, count, show);
     }
     let Some(input) = input else {
-        eprintln!("usage: fuzz-replay [--show N] [--engine interp|tier3|tier4] <trace-file|->");
+        eprintln!("usage: fuzz-replay [--show N] [--top N] [--filter MASK:VALUE]... [--list-unimplemented] [--engine interp|tier3|tier4] <trace-file|->");
         eprintln!("       fuzz-replay --engine-vs-engine [--seed N] [--count N] [--show N]");
         return 2;
     };
@@ -460,6 +479,9 @@ pub fn run(args: &[String]) -> i32 {
             } {
                 Outcome::Unimplemented => {
                     t.unimplemented += 1;
+                    if list_unimpl {
+                        println!("UNIMPL {:08x}", c.word);
+                    }
                     unimpl_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
                 }
                 Outcome::OtherError(e) => {
@@ -471,6 +493,10 @@ pub fn run(args: &[String]) -> i32 {
                 }
                 Outcome::Ran(diffs, fpsr) => {
                     t.executed += 1;
+                    if filter.iter().any(|&(m, v)| c.word & m == v) {
+                        f_exec += 1;
+                        f_match += diffs.is_empty() as u64;
+                    }
                     ran_classes.insert(class(c.word));
                     let exc_differs = fpsr & EXC != c.fpsr_out & EXC;
                     if diffs.is_empty() {
@@ -511,6 +537,9 @@ pub fn run(args: &[String]) -> i32 {
     println!("  MISMATCH:                     {} ({} with QC wrong)", t.value_mismatch, t.qc_mismatch);
     println!("  FPSR exception flags differ on matching results (not modelled): {}", t.fpsr_exc_only);
     println!("emulator runs a word the host calls UNDEFINED: {}", t.emu_runs_undefined);
+    if !filter.is_empty() {
+        println!("filter (any of {} masks): executed {f_exec}, exact match {f_match}, mismatch {}", filter.len(), f_exec - f_match);
+    }
     let dump = |title: &str, m: &BTreeMap<u32, (u64, u32)>| {
         if m.is_empty() {
             return;
@@ -518,7 +547,7 @@ pub fn run(args: &[String]) -> i32 {
         println!("{title} (class = word & 0xFFE0FC00: count, example):");
         let mut v: Vec<_> = m.iter().collect();
         v.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
-        for (k, (cnt, ex)) in v.iter().take(60) {
+        for (k, (cnt, ex)) in v.iter().take(top) {
             println!("  {k:#010x} {cnt:>6} {ex:#010x}");
         }
     };
