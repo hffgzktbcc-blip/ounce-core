@@ -99,7 +99,8 @@ def build_host(h, d):
                                       if p.name != Path(h["nx_main"]).name)
     libs = h.get("libs", "") + (" " + h.get("libs_linux", "") if platform.system() == "Linux" else "")
     defs = ["-D" + x for x in h.get("defines", [])]
-    r = run(["cc", "-O1", "-I.", *defs, "-o", "host_ref", *cfiles, *libs.split()], cwd=d)
+    cflags = h.get("cflags", "").split()
+    r = run(["cc", "-O1", "-I.", *cflags, *defs, "-o", "host_ref", *cfiles, *libs.split()], cwd=d)
     if r.returncode:
         return None, "host build failed: " + r.stderr.strip()[-400:]
     r = run(["./host_ref"], cwd=d)
@@ -117,6 +118,8 @@ def build_nro(h, d, env):
     mk = mk.replace("SOURCES\t\t:=\tsource", "SOURCES := .")
     if h.get("libs"):
         mk = mk.replace("LIBS\t:= -lnx", "LIBS := -lnx " + h["libs"])
+    if h.get("cflags"):
+        mk = mk.replace("-D__SWITCH__", "-D__SWITCH__ " + h["cflags"], 1)
     (d / "Makefile").write_text(mk)
     if h.get("defines"):
         old = "CFLAGS\t+=\t$(INCLUDE) -D__SWITCH__"

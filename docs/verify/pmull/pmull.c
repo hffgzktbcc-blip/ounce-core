@@ -46,7 +46,9 @@ int pmull_run(FILE *o) {
     return 0;
 }
 
-#ifdef __SWITCH__
+#ifdef PMULL_LIB
+/* built by scripts/verify_differential.py with its own entry points */
+#elif defined(__SWITCH__)
 int main(void) {
     consoleInit(NULL);
     FILE *f = fopen("sdmc:/results.txt", "w");

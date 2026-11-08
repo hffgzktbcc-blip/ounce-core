@@ -172,105 +172,168 @@
     }
    }
   },
-  {
-   "name": "lua",
-   "dir": "lua-harness",
-   "files": [
-    "lua_cases.c"
-   ],
-   "host_main": "host/host_main.c",
-   "nx_main": "main_nx.c",
-   "libs": "-lm",
-   "upstream": {
-    "repo": "https://github.com/lua/lua",
-    "commit": "1ab3208a1fceb12fca8f24ba57d6e13c5bff15e3",
-    "copy": {
-     "lapi.c": "lapi.c",
-     "lauxlib.c": "lauxlib.c",
-     "lbaselib.c": "lbaselib.c",
-     "lcode.c": "lcode.c",
-     "lcorolib.c": "lcorolib.c",
-     "lctype.c": "lctype.c",
-     "ldebug.c": "ldebug.c",
-     "ldo.c": "ldo.c",
-     "ldump.c": "ldump.c",
-     "lfunc.c": "lfunc.c",
-     "lgc.c": "lgc.c",
-     "llex.c": "llex.c",
-     "lmathlib.c": "lmathlib.c",
-     "lmem.c": "lmem.c",
-     "lobject.c": "lobject.c",
-     "lopcodes.c": "lopcodes.c",
-     "lparser.c": "lparser.c",
-     "lstate.c": "lstate.c",
-     "lstring.c": "lstring.c",
-     "lstrlib.c": "lstrlib.c",
-     "ltable.c": "ltable.c",
-     "ltablib.c": "ltablib.c",
-     "ltm.c": "ltm.c",
-     "lundump.c": "lundump.c",
-     "lutf8lib.c": "lutf8lib.c",
-     "lvm.c": "lvm.c",
-     "lzio.c": "lzio.c",
-     "lapi.h": "lapi.h",
-     "lauxlib.h": "lauxlib.h",
-     "lcode.h": "lcode.h",
-     "lctype.h": "lctype.h",
-     "ldebug.h": "ldebug.h",
-     "ldo.h": "ldo.h",
-     "lfunc.h": "lfunc.h",
-     "lgc.h": "lgc.h",
-     "ljumptab.h": "ljumptab.h",
-     "llex.h": "llex.h",
-     "llimits.h": "llimits.h",
-     "lmem.h": "lmem.h",
-     "lobject.h": "lobject.h",
-     "lopcodes.h": "lopcodes.h",
-     "lopnames.h": "lopnames.h",
-     "lparser.h": "lparser.h",
-     "lprefix.h": "lprefix.h",
-     "lstate.h": "lstate.h",
-     "lstring.h": "lstring.h",
-     "ltable.h": "ltable.h",
-     "ltm.h": "ltm.h",
-     "lua.h": "lua.h",
-     "luaconf.h": "luaconf.h",
-     "lualib.h": "lualib.h",
-     "lundump.h": "lundump.h",
-     "lvm.h": "lvm.h",
-     "lzio.h": "lzio.h"
+   {
+    "name": "lua",
+    "dir": "lua-harness",
+    "files": [
+     "lua_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "libs": "-lm",
+    "upstream": {
+     "repo": "https://github.com/lua/lua",
+     "commit": "1ab3208a1fceb12fca8f24ba57d6e13c5bff15e3",
+     "copy": {
+      "lapi.c": "lapi.c",
+      "lauxlib.c": "lauxlib.c",
+      "lbaselib.c": "lbaselib.c",
+      "lcode.c": "lcode.c",
+      "lcorolib.c": "lcorolib.c",
+      "lctype.c": "lctype.c",
+      "ldebug.c": "ldebug.c",
+      "ldo.c": "ldo.c",
+      "ldump.c": "ldump.c",
+      "lfunc.c": "lfunc.c",
+      "lgc.c": "lgc.c",
+      "llex.c": "llex.c",
+      "lmathlib.c": "lmathlib.c",
+      "lmem.c": "lmem.c",
+      "lobject.c": "lobject.c",
+      "lopcodes.c": "lopcodes.c",
+      "lparser.c": "lparser.c",
+      "lstate.c": "lstate.c",
+      "lstring.c": "lstring.c",
+      "lstrlib.c": "lstrlib.c",
+      "ltable.c": "ltable.c",
+      "ltablib.c": "ltablib.c",
+      "ltm.c": "ltm.c",
+      "lundump.c": "lundump.c",
+      "lutf8lib.c": "lutf8lib.c",
+      "lvm.c": "lvm.c",
+      "lzio.c": "lzio.c",
+      "lapi.h": "lapi.h",
+      "lauxlib.h": "lauxlib.h",
+      "lcode.h": "lcode.h",
+      "lctype.h": "lctype.h",
+      "ldebug.h": "ldebug.h",
+      "ldo.h": "ldo.h",
+      "lfunc.h": "lfunc.h",
+      "lgc.h": "lgc.h",
+      "ljumptab.h": "ljumptab.h",
+      "llex.h": "llex.h",
+      "llimits.h": "llimits.h",
+      "lmem.h": "lmem.h",
+      "lobject.h": "lobject.h",
+      "lopcodes.h": "lopcodes.h",
+      "lopnames.h": "lopnames.h",
+      "lparser.h": "lparser.h",
+      "lprefix.h": "lprefix.h",
+      "lstate.h": "lstate.h",
+      "lstring.h": "lstring.h",
+      "ltable.h": "ltable.h",
+      "ltm.h": "ltm.h",
+      "lua.h": "lua.h",
+      "luaconf.h": "luaconf.h",
+      "lualib.h": "lualib.h",
+      "lundump.h": "lundump.h",
+      "lvm.h": "lvm.h",
+      "lzio.h": "lzio.h"
+     }
+    },
+    "result_file": "lua-results.txt"
+   },
+   {
+    "name": "sqlite",
+    "dir": "sqlite-harness",
+    "files": [
+     "sql_cases.c",
+     "stubs.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "libs": "-lm",
+    "libs_linux": "-ldl -lpthread",
+    "defines": [
+     "SQLITE_THREADSAFE=0",
+     "SQLITE_OMIT_LOAD_EXTENSION",
+     "SQLITE_TEMP_STORE=3",
+     "SQLITE_OMIT_WAL",
+     "SQLITE_DQS=0"
+    ],
+    "upstream": {
+     "zip": "https://www.sqlite.org/2025/sqlite-amalgamation-3500400.zip",
+     "sha256": "1d3049dd0f830a025a53105fc79fd2ab9431aea99e137809d064d8ee8356b032",
+     "strip": 1,
+     "copy": {
+      "sqlite3.c": "sqlite3.c",
+      "sqlite3.h": "sqlite3.h"
+     }
+    },
+    "result_file": "sql-results.txt"
+   },
+   {
+    "name": "wasm3",
+    "dir": "wasm3-harness",
+    "files": [
+     "wasm3_cases.c",
+     "wasm_modules.h"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "libs": "-lm",
+    "upstream": {
+     "repo": "https://github.com/wasm3/wasm3",
+     "commit": "28ecb9af6d2040e474a70f7cb7f43666740141fb",
+     "copy": {
+      "source/m3_bind.c": "m3_bind.c",
+      "source/m3_code.c": "m3_code.c",
+      "source/m3_compile.c": "m3_compile.c",
+      "source/m3_core.c": "m3_core.c",
+      "source/m3_env.c": "m3_env.c",
+      "source/m3_exec.c": "m3_exec.c",
+      "source/m3_function.c": "m3_function.c",
+      "source/m3_info.c": "m3_info.c",
+      "source/m3_module.c": "m3_module.c",
+      "source/m3_parse.c": "m3_parse.c",
+      "source/m3_snapshot.c": "m3_snapshot.c",
+      "source/m3_validate.c": "m3_validate.c",
+      "source/m3_xxh64.c": "m3_xxh64.c",
+      "source/m3_atomic.h": "m3_atomic.h",
+      "source/m3_bind.h": "m3_bind.h",
+      "source/m3_code.h": "m3_code.h",
+      "source/m3_compile.h": "m3_compile.h",
+      "source/m3_config.h": "m3_config.h",
+      "source/m3_config_platforms.h": "m3_config_platforms.h",
+      "source/m3_core.h": "m3_core.h",
+      "source/m3_env.h": "m3_env.h",
+      "source/m3_exception.h": "m3_exception.h",
+      "source/m3_exec.h": "m3_exec.h",
+      "source/m3_exec_atomic.h": "m3_exec_atomic.h",
+      "source/m3_exec_defs.h": "m3_exec_defs.h",
+      "source/m3_function.h": "m3_function.h",
+      "source/m3_host.h": "m3_host.h",
+      "source/m3_info.h": "m3_info.h",
+      "source/m3_math_utils.h": "m3_math_utils.h",
+      "source/m3_validate.h": "m3_validate.h",
+      "source/wasm3.h": "wasm3.h",
+      "source/wasm3_defs.h": "wasm3_defs.h",
+      "source/m3_host_posix.h": "m3_host_posix.h",
+      "source/m3_host_none.h": "m3_host_none.h",
+      "source/m3_deterministic.h": "m3_deterministic.h"
+     }
     }
    },
-   "result_file": "lua-results.txt"
-  },
-  {
-   "name": "sqlite",
-   "dir": "sqlite-harness",
-   "files": [
-    "sql_cases.c",
-    "stubs.c"
-   ],
-   "host_main": "host/host_main.c",
-   "nx_main": "main_nx.c",
-   "libs": "-lm",
-   "libs_linux": "-ldl -lpthread",
-   "defines": [
-    "SQLITE_THREADSAFE=0",
-    "SQLITE_OMIT_LOAD_EXTENSION",
-    "SQLITE_TEMP_STORE=3",
-    "SQLITE_OMIT_WAL",
-    "SQLITE_DQS=0"
-   ],
-   "upstream": {
-    "zip": "https://www.sqlite.org/2025/sqlite-amalgamation-3500400.zip",
-    "sha256": "1d3049dd0f830a025a53105fc79fd2ab9431aea99e137809d064d8ee8356b032",
-    "strip": 1,
-    "copy": {
-     "sqlite3.c": "sqlite3.c",
-     "sqlite3.h": "sqlite3.h"
-    }
-   },
-   "result_file": "sql-results.txt"
-  }
+   {
+    "name": "pmull",
+    "dir": "pmull",
+    "files": [
+     "pmull.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "cflags": "-march=armv8-a+crypto -DPMULL_LIB",
+    "arm64_reference": true
+   }
  ]
 }
