@@ -4,7 +4,7 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdFpElementOp, SimdAcrossOp, SimdLongOp, SimdOp2, SimdOp3, SimdPermuteOp};
+use super::instructions::{SimdFpElementOp, SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatLongOp};
 
 #[inline]
 fn mask(esize: u32) -> u64 {
@@ -232,6 +232,53 @@ pub fn mul_long(op: SimdLongOp, d: u128, n: u128, m: u128, esize: u32, q: bool, 
     out
 }
 
+/// `ADDHN`/`SUBHN`/`RADDHN`/`RSUBHN` (`q`: the `2` forms): each `2 * esize` lane of `n` and `m` is added or
+/// subtracted (with a rounding constant for the `R` forms) and the high `esize` bits kept. Without `q` the
+/// result fills the low half and the upper half is zero; with `q` it fills the high half and the low half of
+/// `d` is preserved.
+pub fn narrow_high(op: SimdNarrowOp, d: u128, n: u128, m: u128, esize: u32, q: bool) -> u128 {
+    let wide = esize * 2;
+    let round = matches!(op, SimdNarrowOp::Raddhn | SimdNarrowOp::Rsubhn);
+    let sub = matches!(op, SimdNarrowOp::Subhn | SimdNarrowOp::Rsubhn);
+    let mut half = 0u128;
+    for i in 0..64 / esize as usize {
+        let (a, b) = (lane(n, wide, i) as u128, lane(m, wide, i) as u128);
+        let mut r = if sub { a.wrapping_sub(b) } else { a.wrapping_add(b) };
+        if round {
+            r = r.wrapping_add(1u128 << (esize - 1));
+        }
+        set_lane(&mut half, esize, i, ((r >> esize) as u64) & mask(esize));
+    }
+    if q { (d & ((1u128 << 64) - 1)) | (half << 64) } else { half }
+}
+
+fn saturate_signed(v: i128, bits: u32) -> u64 {
+    let (lo, hi) = (-(1i128 << (bits - 1)), (1i128 << (bits - 1)) - 1);
+    (v.clamp(lo, hi) as u64) & mask(bits)
+}
+
+/// `SQDMULL`/`SQDMLAL`/`SQDMLSL` (`q`: the `2` forms): `2 * a * b` saturated to `2 * esize` signed bits,
+/// accumulated (also saturating) into `d` for `SQDMLAL`/`SQDMLSL`. The cumulative saturation flag (QC) is
+/// not modelled.
+pub fn sat_doubling_mul_long(op: SimdSatLongOp, d: u128, n: u128, m: u128, esize: u32, q: bool) -> u128 {
+    let half = |v: u128| if q { v >> 64 } else { v };
+    let (hn, hm) = (half(n), half(m));
+    let wide = esize * 2;
+    let mut out = 0u128;
+    for i in 0..64 / esize as usize {
+        let prod = 2 * (sext(lane(hn, esize, i), esize) as i128) * (sext(lane(hm, esize, i), esize) as i128);
+        let prod = sext(saturate_signed(prod, wide), wide) as i128; // doubling overflows only for min * min
+        let acc = sext(lane(d, wide, i), wide) as i128;
+        let r = match op {
+            SimdSatLongOp::Sqdmull => prod,
+            SimdSatLongOp::Sqdmlal => acc + prod,
+            SimdSatLongOp::Sqdmlsl => acc - prod,
+        };
+        set_lane(&mut out, wide, i, saturate_signed(r, wide));
+    }
+    out
+}
+
 /// `FMUL/FMLA/FMLS` by element: every lane of `n` times lane `index` of `m` (fused for FMLA/FMLS).
 pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool) -> u128 {
     let esize = if double { 64 } else { 32 };
@@ -414,5 +461,49 @@ mod mul_long_tests {
         assert_eq!((lane(subl, 64, 0) as i64, lane(subl, 64, 1) as i64), (-6, -6));
         let abdl = mul_long(SimdLongOp::Abdl, 0, n, m, 32, false, false);
         assert_eq!((lane(abdl, 64, 0), lane(abdl, 64, 1)), (0xFFFF_FFFA, 6));
+    }
+}
+
+#[cfg(test)]
+mod narrow_and_saturating_tests {
+    use super::*;
+
+    #[test]
+    fn narrowing_high_half_rounding_and_second_half_forms() {
+        let n = 0x1234u128 | (0x127Fu128 << 16);
+        let m = 0x0111u128 | (0x0001u128 << 16);
+        let add = narrow_high(SimdNarrowOp::Addhn, 0, n, m, 8, false);
+        assert_eq!((lane(add, 8, 0), lane(add, 8, 1)), (0x13, 0x12)); // 0x1345, 0x1280
+        let radd = narrow_high(SimdNarrowOp::Raddhn, 0, n, m, 8, false);
+        assert_eq!((lane(radd, 8, 0), lane(radd, 8, 1)), (0x13, 0x13)); // 0x1280 + 0x80 rounds up
+        let sub = narrow_high(SimdNarrowOp::Subhn, 0, n, m, 8, false);
+        assert_eq!(lane(sub, 8, 0), 0x11); // 0x1234 - 0x0111 = 0x1123
+        let rsub = narrow_high(SimdNarrowOp::Rsubhn, 0, 0x1100, 0x0080, 8, false);
+        assert_eq!(lane(rsub, 8, 0), 0x11); // 0x1080 + 0x80 = 0x1100
+        let old = 0xAABB_CCDD_1122_3344u128;
+        let add2 = narrow_high(SimdNarrowOp::Addhn, old, n, m, 8, true); // ADDHN2: low half kept, high half written
+        assert_eq!(add2 & ((1u128 << 64) - 1), 0xAABB_CCDD_1122_3344);
+        assert_eq!(lane(add2 >> 64, 8, 0), 0x13);
+        let wrap = narrow_high(SimdNarrowOp::Addhn, 0, 0xFFFF, 0x0001, 8, false); // sum wraps in 16 bits
+        assert_eq!(lane(wrap, 8, 0), 0x00);
+    }
+
+    #[test]
+    fn saturating_doubling_multiply_long() {
+        let q15 = |a: i16, b: i16| (a as u16 as u128 | (b as u16 as u128) << 16, 0u128);
+        let (n, _) = q15(0x4000, i16::MIN);
+        let (m, _) = q15(0x4000, i16::MIN);
+        let r = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, n, m, 16, false);
+        assert_eq!(lane(r, 32, 0), 0x2000_0000); // 2 * 0x4000 * 0x4000
+        assert_eq!(lane(r, 32, 1), 0x7FFF_FFFF); // min * min saturates (2^31 does not fit)
+        let acc = 0x7FFF_FFF0u128;
+        let mla = sat_doubling_mul_long(SimdSatLongOp::Sqdmlal, acc, 3, 5, 16, false); // 0x7FFFFFF0 + 30
+        assert_eq!(lane(mla, 32, 0), 0x7FFF_FFFF);
+        let mls = sat_doubling_mul_long(SimdSatLongOp::Sqdmlsl, 0x8000_0010, 3, 5, 16, false); // -2147483632 - 30 saturates low
+        assert_eq!(lane(mls, 32, 0), 0x8000_0000);
+        let neg = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 0xFFFF, 3, 16, false); // -1 * 3 * 2
+        assert_eq!(lane(neg, 32, 0) as u32 as i32, -6);
+        let hi = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 7u128 << 64, 2u128 << 64, 32, true); // SQDMULL2 (32-bit)
+        assert_eq!(lane(hi, 64, 0), 28);
     }
 }

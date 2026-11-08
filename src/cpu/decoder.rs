@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    SimdAcrossOp, SimdLongOp,
+    SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatLongOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
     SimdFpElementOp, SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
@@ -1187,6 +1187,24 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
 
     // 27b. AdvSIMD three different (widening multiply): 0 Q U 01110 size 1 Rm opcode 00 Rn Rd
     if (raw & 0x9F20_0C00) == 0x0E20_0000 {
+        let opcode = (raw >> 12) & 0xF;
+        if matches!(opcode, 0b0100 | 0b0110) && size < 3 {
+            let op = match (opcode, u) {
+                (0b0100, false) => SimdNarrowOp::Addhn,
+                (0b0100, true) => SimdNarrowOp::Raddhn,
+                (0b0110, false) => SimdNarrowOp::Subhn,
+                _ => SimdNarrowOp::Rsubhn,
+            };
+            return Some(Instruction::SimdNarrow { rd, rn, rm, op, esize: 8u8 << size, q });
+        }
+        if matches!(opcode, 0b1001 | 0b1011 | 0b1101) && !u && (size == 1 || size == 2) {
+            let op = match opcode {
+                0b1001 => SimdSatLongOp::Sqdmlal,
+                0b1011 => SimdSatLongOp::Sqdmlsl,
+                _ => SimdSatLongOp::Sqdmull,
+            };
+            return Some(Instruction::SimdSatLong { rd, rn, rm, op, esize: 8u8 << size, q });
+        }
         let op = match (raw >> 12) & 0xF {
             0b0000 => SimdLongOp::Addl,
             0b0001 => SimdLongOp::Addw,
@@ -1466,6 +1484,11 @@ mod tests {
         assert!(matches!(decode(0x5EFE87FF), Instruction::SimdThreeSame { op: SimdOp3::Add, esize: 64, q: false, .. })); // add d31, d31, d30
         assert!(matches!(decode(0x7EE18420), Instruction::SimdThreeSame { op: SimdOp3::Sub, esize: 64, q: false, .. })); // sub d0, d1, d1
         assert!(matches!(decode(0x5E1C07EE), Instruction::SimdDupScalar { esize: 32, index: 3, .. })); // mov s14, v31.s[3]
+        assert!(matches!(decode(0x0E224020), Instruction::SimdNarrow { op: SimdNarrowOp::Addhn, esize: 8, q: false, .. })); // addhn v0.8b, v1.8h, v2.8h
+        assert!(matches!(decode(0x4E226020), Instruction::SimdNarrow { op: SimdNarrowOp::Subhn, esize: 8, q: true, .. })); // subhn2 v0.16b, v1.8h, v2.8h
+        assert!(matches!(decode(0x2E624020), Instruction::SimdNarrow { op: SimdNarrowOp::Raddhn, esize: 16, q: false, .. })); // raddhn v0.4h, v1.4s, v2.4s
+        assert!(matches!(decode(0x0E62D020), Instruction::SimdSatLong { op: SimdSatLongOp::Sqdmull, esize: 16, q: false, .. })); // sqdmull v0.4s, v1.4h, v2.4h
+        assert!(matches!(decode(0x4EA29020), Instruction::SimdSatLong { op: SimdSatLongOp::Sqdmlal, esize: 32, q: true, .. })); // sqdmlal2 v0.2d, v1.4s, v2.4s
         // UMLAL/UMULL/SMLAL family (three different)
         assert!(matches!(decode(0x2EBF837D), Instruction::SimdLong { op: SimdLongOp::Mlal, signed: false, esize: 32, q: false, .. })); // umlal v29.2d, v27.2s, v31.2s
         assert!(matches!(decode(0x6EBF837E), Instruction::SimdLong { op: SimdLongOp::Mlal, signed: false, esize: 32, q: true, .. })); // umlal2 v30.2d, v27.4s, v31.4s
