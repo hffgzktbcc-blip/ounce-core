@@ -1897,7 +1897,12 @@ impl Cpu {
 
             Instruction::SimdShiftExt { rd, rn, op, esize, shift, q, scalar } => {
                 let (n, e) = (self.regs.read_q(rn), esize as u32);
-                let res = simd::shift_ext(op, self.regs.read_q(rd), n, e, shift as u32, q && !scalar);
+                // a scalar form only reads lane 0 (twice the width for narrowing), so mask the rest out of QC
+                let src = if scalar { n & simd::scalar_source_mask(op, e) } else { n };
+                let (res, sat) = simd::shift_ext_flag(op, self.regs.read_q(rd), src, e, shift as u32, q && !scalar);
+                if sat {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
                 self.regs.write_q(rd, if scalar { simd::lane(res, e, 0) as u128 } else { res });
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -1912,7 +1917,12 @@ impl Cpu {
 
             Instruction::SimdQNarrow { rd, rn, op, esize, q, scalar } => {
                 let e = esize as u32;
-                let res = simd::shift_ext(op, self.regs.read_q(rd), self.regs.read_q(rn), e, 0, q && !scalar);
+                let n = self.regs.read_q(rn);
+                let src = if scalar { n & simd::scalar_source_mask(op, e) } else { n }; // scalar: only the source lane counts
+                let (res, sat) = simd::shift_ext_flag(op, self.regs.read_q(rd), src, e, 0, q && !scalar);
+                if sat {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
                 self.regs.write_q(rd, if scalar { simd::lane(res, e, 0) as u128 } else { res });
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -2326,6 +2336,24 @@ mod tests {
 
         let (cpu, _) = run(&[0xd53b00e0], |_, _| {});
         assert_eq!(1u64 << (cpu.regs.read_x(0) + 2), DC_ZVA_BLOCK); // mrs x0, dczid_el0
+    }
+
+    #[test]
+    fn saturating_narrows_and_shifts_set_qc() {
+        use super::super::decoder::decode;
+        // sqxtun v0.8b, v1.8h: a negative lane saturates to 0 and sets QC; in-range lanes do not
+        assert!(matches!(decode(0x2E212820), Instruction::SimdQNarrow { scalar: false, .. }), "decode");
+        let (cpu, _) = run(&[0x2E212820], |c, _| c.regs.write_q(1, 0xFFFF));
+        assert_ne!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
+        let (cpu, _) = run(&[0x2E212820], |c, _| c.regs.write_q(1, 5));
+        assert_eq!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
+        // scalar sqxtun b0, h1 reads only lane 0: a saturating value in lane 1 must not set QC
+        assert!(matches!(decode(0x7E212820), Instruction::SimdQNarrow { scalar: true, .. }), "decode scalar");
+        let (cpu, _) = run(&[0x7E212820], |c, _| c.regs.write_q(1, 0xFFFF_0005));
+        assert_eq!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
+        assert_eq!(cpu.regs.read_q(0), 5);
+        let (cpu, _) = run(&[0x7E212820], |c, _| c.regs.write_q(1, 0x0005_FFFF));
+        assert_ne!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
     }
 
     #[test]

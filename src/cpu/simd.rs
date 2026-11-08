@@ -911,7 +911,22 @@ pub fn saturate(v: i128, bits: u32, signed: bool) -> (u64, bool) {
 /// the `2` form, which keeps the low half of `d`. Otherwise lanes are `esize` wide. Rounding adds
 /// `1 << (shift - 1)` before the shift.
 pub fn shift_ext(op: SimdShiftExtOp, d: u128, n: u128, esize: u32, shift: u32, q: bool) -> u128 {
+    shift_ext_flag(op, d, n, esize, shift, q).0
+}
+
+/// Bits of the source register a scalar `shift_ext` form reads: lane 0, which is twice the result width for
+/// the narrowing forms. Used so lanes a scalar instruction never reads cannot set `FPSR.QC`.
+pub fn scalar_source_mask(op: SimdShiftExtOp, esize: u32) -> u128 {
     use SimdShiftExtOp::*;
+    let narrowing = matches!(op, Rshrn | Sqshrn | Uqshrn | Sqshrun | Sqrshrn | Uqrshrn | Sqrshrun);
+    let width = if narrowing { esize * 2 } else { esize };
+    if width >= 128 { u128::MAX } else { (1u128 << width) - 1 }
+}
+
+/// [`shift_ext`] plus whether any lane saturated: the value `FPSR.QC` must accumulate.
+pub fn shift_ext_flag(op: SimdShiftExtOp, d: u128, n: u128, esize: u32, shift: u32, q: bool) -> (u128, bool) {
+    use SimdShiftExtOp::*;
+    let mut sat = false;
     let round = matches!(op, Srshr | Urshr | Srsra | Ursra | Rshrn | Sqrshrn | Uqrshrn | Sqrshrun);
     let rnd = |v: i128| if round && shift > 0 { v + (1i128 << (shift - 1)) } else { v };
     if matches!(op, Rshrn | Sqshrn | Uqshrn | Sqshrun | Sqrshrn | Uqrshrn | Sqrshrun) {
@@ -923,12 +938,12 @@ pub fn shift_ext(op: SimdShiftExtOp, d: u128, n: u128, esize: u32, shift: u32, q
             let v = rnd(a) >> shift;
             let r = match op {
                 Rshrn => v as u64,
-                Sqshrn | Sqrshrn => saturate(v, esize, true).0,
-                _ => saturate(v, esize, false).0,
+                Sqshrn | Sqrshrn => { let (x, f) = saturate(v, esize, true); sat |= f; x }
+                _ => { let (x, f) = saturate(v, esize, false); sat |= f; x }
             };
             set_lane(&mut half, esize, i, r);
         }
-        return if q { (d & u64::MAX as u128) | (half << 64) } else { half };
+        return (if q { (d & u64::MAX as u128) | (half << 64) } else { half }, sat);
     }
     let ones = mask(esize) as u128;
     let mut out = 0u128;
@@ -950,14 +965,14 @@ pub fn shift_ext(op: SimdShiftExtOp, d: u128, n: u128, esize: u32, shift: u32, q
                 let m = (ones << shift) & ones;
                 ((dv as u128 & !m) | ((uv as u128) << shift & m)) as u64
             }
-            Sqshl => saturate(sv << shift, esize, true).0,
-            Uqshl => saturate(uv << shift, esize, false).0,
-            Sqshlu => saturate(sv << shift, esize, false).0,
+            Sqshl => { let (x, f) = saturate(sv << shift, esize, true); sat |= f; x }
+            Uqshl => { let (x, f) = saturate(uv << shift, esize, false); sat |= f; x }
+            Sqshlu => { let (x, f) = saturate(sv << shift, esize, false); sat |= f; x }
             _ => unreachable!(),
         };
         set_lane(&mut out, esize, i, r);
     }
-    out
+    (out, sat)
 }
 
 /// `SADDLP`/`UADDLP` (and with `acc`, `SADALP`/`UADALP`): each pair of adjacent `esize` lanes of `n` is
