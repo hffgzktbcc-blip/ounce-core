@@ -1,4 +1,4 @@
-# Diagnosis toolkit 0.2.0 release readiness
+# Diagnosis toolkit 0.2.0 release acceptance
 
 Scope: the demonstrated SDL2 retained-report walkthrough and external audio-padding
 case, distributed as Python tooling plus repository-generated observation data.
@@ -13,21 +13,16 @@ files never enter the snapshot. GitHub's automatic release source archive will
 point at a separate standalone source commit with no runtime tree or parent
 history; main and all existing tags remain untouched.
 
-Qualification before publication:
+Qualification completed on 2026-11-08:
 
-- Existing runtime/audio repair candidate remains covered by its hosted run.
-- The final CLI candidate's applicable hosted checks must pass.
+- [Audio repair CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42447339218) passed all 25 jobs.
+- [Final CLI candidate CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42447902066) passed all 25 jobs.
 - A clean standalone source export builds the CLI and runs both retained cases.
-- The standalone source branch runs the focused package tests and both examples
-  on Ubuntu/Python 3.9 and 3.13, macOS/Python 3.13 and Windows/Python 3.13.
+- [Standalone qualification](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42448502882) passed four jobs: Ubuntu/Python 3.9.25 and 3.13.17, macOS/Python 3.13.17 and Windows/Python 3.13.17. Each built/tested the isolated source and ran both examples.
 - Release archive contents match SOURCE.json and the selected source revision.
-- A draft release's downloaded code/source assets match SHA256SUMS and pass a
-  fresh copied-archive diagnosis before the release is made public.
+- Draft assets were downloaded and matched SHA256SUMS; both copied-archive diagnoses passed before publication. Published assets match the same bytes, and GitHub's automatic source archive matches the exact 30-file standalone tree.
 
-Use a `diagnosis-v0.2.0` tag, outside the runtime's `v*` publishing trigger, and
-leave the runtime release marked Latest. The source snapshot has its own isolated
-release branch. Qualification evidence links and published asset identities are
-recorded after the checks complete; this document does not claim they passed yet.
+[Toolkit 0.2.0 is published](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/diagnosis-v0.2.0) under `diagnosis-v0.2.0`, outside the runtime's `v*` publishing trigger. The tag points at parentless standalone commit `03873727e785c6c5fcd85ec6919124a0868df8f1`, built from `dfc951fe701a6f54b3714ab48ae2aa304bc5a3ad`. The runtime `v0.5.0` remains Latest and main remains `9e813b984930f6280b1a23ac2d3a8ed9d9f5d2e7`. [Publication proof](diagnosis-0.2.0-proof.json) retains asset identities and checks.
 
 If an asset hash or either diagnosis fails, keep the release in draft and repair
 before publication. If a published toolkit issue is found, document it and issue
