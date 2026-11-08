@@ -1,0 +1,40 @@
+{
+  "schema_version": "ounce-diagnose/source-snapshot-v1",
+  "version": "0.2.0",
+  "original_repository": "https://github.com/hffgzktbcc-blip/ounce-core",
+  "original_commit": "dfc951fe701a6f54b3714ab48ae2aa304bc5a3ad",
+  "files_sha256": {
+    "scripts/audio_open_diagnosis.py": "c0b31e7c1b892e7014c3026d11b8fe7d66ffedc4c69a6195ade4580bb0b0f1fd",
+    "scripts/diagnosis_cli.py": "ff77a47731025859af3c9f010f274cb837c7ddfb692ca04315bf4bce1fa08510",
+    "scripts/reproduce_failure.py": "84ade42f01f83161d3c1124d918b8024677abf081285cf82548fffa6c273074e",
+    "scripts/compare_corpus_runs.py": "99ad2bf81326d20456061d22d1a1b224ecfa3b0024846b43d13723c3f4fb0f1a",
+    "scripts/diagnose_corpus_run.py": "c5d9f46eff5276f1a2c47951a03f0b807a35b5757d914bf49cda456cf75bbdf2",
+    "scripts/corpus_verify.py": "050108f41c308b4d3a11271f0c0510cab6adda6bd6027cd2b50004bd66ce2f36",
+    "scripts/run_corpus_oracles.py": "168514785f82e746abdce8d416e36002d1a1df49e02b846cbec195e6eeef6a3a",
+    "scripts/corpus_build_cache.py": "3d60f94b00553f696b75c65877b020630c2135ac366c181f74106898d57cc491",
+    "scripts/build_diagnosis_cli.py": "1d1affd321b5c33a26a4d3e78aeddb1b3c0ea6ce8850f47db92b9673d132a306",
+    "scripts/test_diagnosis_cli.py": "b8a80ee362813d386bb580f09a8c2fc4fe93ee1374f3b22dcca63172fdee6fac",
+    "tools/ounce_verify.py": "a5a144b9fd4c34f533c45be4d8f77977472b9b7703b5d58ced2949d41f550551",
+    "LICENSE": "7d383dab9b32d16e42072f49a568b35da67cb735a17f77f1009f5eadae5e36d7",
+    ".github/workflows/diagnosis-release.yml": "4bdb01b25a26a7e58485e116e58ea6cb42dfb97a24a8cf5f1ab5f17517e481c0",
+    "docs/reproduce/sdl2-failure/failure/canonical-report.json": "ef7d2773a59396c8da0a0c679abf545e67bf24487862239663ed61b20ff84978",
+    "docs/reproduce/sdl2-failure/failure/sdl2-simple.oracle.json": "023fe1244616776218fa3d7713a645c8ce3bbe98b3b71e42388640ff36c0fb83",
+    "docs/reproduce/sdl2-failure/failure/sdl2-simple.oracle.log": "5ddd342f3b8cee9ac255c0b48ab0e60cc2bb91aa9fc83989e5308707080045d7",
+    "docs/reproduce/sdl2-failure/reference/canonical-report.json": "46ed0f129e5a731914302b4ac53198182bcb6268b17ebe4a07841247fa834f3e",
+    "docs/reproduce/sdl2-failure/reference/sdl2-simple.oracle.json": "ea6956cd2c3da682b4c1eb2d826f2bdf663819be34929df47bc56c211939a83b",
+    "docs/reproduce/sdl2-failure/reference/sdl2-simple.oracle.log": "ea81101f98e0b8bf414e26f6adc514231475c3d398fe1b722406dc7f743e689b",
+    "docs/reproduce/sdl2-failure/manifest.json": "12b97ab1b8782abc87d889c1485f12c9b3282ce0df0d362ab4ed5767c1498a45",
+    "docs/reproduce/sdl2-failure/NOTICE.md": "d92f8b8eb531b75c53582d74f1a85a919e82fdce640d14114116190428842bbc",
+    "docs/verify/audout-padding/after.json": "d6f90947e0611e156a7b70f83b423b9c50ba0d10066737a2aad69b8acc274ee7",
+    "docs/verify/audout-padding/after.log": "f83e149a3c006578b8d80b3e5331dea4277fc2b848fa62f7604dd144a1b66835",
+    "docs/verify/audout-padding/before.json": "92ec4a735f4c46e8367ed524d875f33c0725a3dcf13a3c11af9b81958154c9c8",
+    "docs/verify/audout-padding/before.log": "e328ddd6fbd7f79d641fefc25a435b35a78393507ef4755b015319a2294ba5f0",
+    "docs/verify/audout-padding/canonical-corpus.json": "a66b518b8a0875a0dc0613097fac74e94a55ec64d9925fca0cf12547ef7620b8",
+    "docs/verify/audout-padding/manifest.json": "faae8fa7560716ba3f42784d0dafb44e680a001e18d31d7302153808e4b69817"
+  },
+  "generated_files_sha256": {
+    "README.md": "36cb652bdb5997c05de07c821c3634533bf4d06ee90c59a9e1a0243dc935f0bc",
+    ".gitattributes": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c"
+  },
+  "distribution_scope": "Project-authored Python tooling and observation data only."
+}
