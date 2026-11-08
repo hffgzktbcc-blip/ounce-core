@@ -105,12 +105,12 @@ def main():
                 raise RuntimeError(f'{label} --version failed')
         cfiles = sorted(str(p.relative_to(work)) for p in sources.glob('*.c'))
         for name, compiler, extra in [('host', compilers[0], []), ('elf', compilers[1], ['-static', '-no-pie'])]:
-            output = 'host-ref' if name == 'host' else 'lz4.elf'
+            output = 'host-ref.exe' if name == 'host' else 'lz4.elf'
             r = step(name + '-build', compiler + ['-O1', '-Isources', *extra, *cfiles, '-o', output])
             if r.returncode:
                 raise RuntimeError(f'{name} build failed; inspect {name}-build.stderr')
             report[name + '_sha256'] = digest(work / output)
-        reference = step('host-run', [str(work / 'host-ref')])
+        reference = step('host-run', [str(work / 'host-ref.exe')])
         if reference.returncode:
             raise RuntimeError('host reference returned failure; inspect host-run.stderr')
         for engine in ('tier3', 'tier4'):

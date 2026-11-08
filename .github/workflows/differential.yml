@@ -39,9 +39,16 @@ env:
 
 jobs:
   linux-library:
-    name: Static Linux ELF (LZ4)
-    runs-on: ubuntu-latest
+    name: Static Linux ELF (${{ matrix.os }}, LZ4)
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,19 +58,23 @@ jobs:
           python-version: '3.12'
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install build dependencies
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev
-          python3 -m pip install ziglang==0.17.1
+      - name: Install portable C compiler
+        run: python3 -m pip install ziglang==0.17.1
       - name: Build runtime with actual Tier-4 support
         run: cargo build --release --locked --features native-jit
+      - name: Qualify clock and guest-argument behavior
+        run: cargo test --release --locked --features native-jit --test cli_failures
       - name: Compare unchanged LZ4 cases on host and both ELF engines
-        run: python3 scripts/verify_linux_elf.py --work target/linux-lz4 --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+        run: python3 scripts/verify_linux_elf.py --work target/linux-lz4 --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: linux-elf-lz4-evidence
+          name: linux-elf-lz4-evidence-${{ matrix.os }}
           path: |
             target/linux-lz4/report.json
             target/linux-lz4/*.stdout
