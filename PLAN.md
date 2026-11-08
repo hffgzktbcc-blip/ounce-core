@@ -88,11 +88,11 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Acceptance: a hosted run executes `docs/verify/insn-fuzzer/run_tiers.sh 20000` on arm64, reports no unexpected differences and retains its logs. Single instructions only; sequence fuzzing and exhaustive per-family coverage are not claimed.
       Evidence: [Apple Silicon job 128857024677](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42521905867/job/128857024677) passed on the PR #262 candidate. Seeds 1–3 compared 60,000 words across engines with zero differences; seed 1 hardware replay through Tier-3/Tier-4 had zero mismatches and zero emulator errors. [Retained execution excerpt](docs/verify/insn-fuzzer/ci-2026-11-08.log). Artifact upload completed (ID 13633916913); local ZIP download was denied by storage, so no local artifact-byte verification is claimed.
       Next: preserve this job on runtime changes; expand sequence/per-family coverage separately.
-- [ ] **V2. Run one existing library harness as a static Linux ELF.**
-      Status: ready
+- [x] **V2. Run one existing library harness as a static Linux ELF.**
       Result: one pinned library harness runs without a console SDK and matches a fresh host reference.
       Acceptance: same shared C cases, retained toolchain/source hashes, Tier-3/Tier-4 comparison, actionable unsupported-syscall errors and unchanged existing ELF fixtures. Keep deterministic time and wider OS qualification explicit until tested.
-      Next: inspect the smallest existing library harness and its Linux startup/syscall needs; extend only the boundary it actually requires.
+      Evidence: [LZ4 Linux ELF report](docs/verify/linux-elf/lz4-2026-11-08/report.json) and [recipe](docs/verify/linux-elf/README.md#lz4-without-a-console-sdk): unchanged pinned cases linked with musl match a fresh host on actual Tier-3/Tier-4, exit 0, 406 bytes, 3,862,822 instructions. No runtime patch needed. Five execution-verdict tests and all 108 Python tooling tests passed (one pre-existing opt-in skip); Linux ELF regression checks pending below until recorded.
+      Next: qualify the new Linux CI job; deterministic time and wider OS acceptance remain incomplete vision-step-1 work.
 
 ## External acceptance and publication dependencies
 

@@ -7,6 +7,9 @@ on:
       - 'src/**'
       - 'docs/verify/**'
       - 'scripts/verify_differential.py'
+      - 'scripts/verify_linux_elf.py'
+      - 'scripts/test_verify_linux_elf.py'
+      - 'tests/linux-elf/**'
       - 'Cargo.*'
       - '.github/workflows/differential.yml'
   push:
@@ -15,6 +18,9 @@ on:
       - 'src/**'
       - 'docs/verify/**'
       - 'scripts/verify_differential.py'
+      - 'scripts/verify_linux_elf.py'
+      - 'scripts/test_verify_linux_elf.py'
+      - 'tests/linux-elf/**'
       - 'Cargo.*'
       - '.github/workflows/differential.yml'
   workflow_dispatch:
@@ -32,6 +38,38 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  linux-library:
+    name: Static Linux ELF (LZ4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+          python3 -m pip install ziglang==0.17.1
+      - name: Build runtime with actual Tier-4 support
+        run: cargo build --release --locked --features native-jit
+      - name: Compare unchanged LZ4 cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --work target/linux-lz4 --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-elf-lz4-evidence
+          path: |
+            target/linux-lz4/report.json
+            target/linux-lz4/*.stdout
+            target/linux-lz4/*.stderr
+          if-no-files-found: warn
+
   instruction-fuzzer:
     name: Instruction fuzzer (Apple Silicon)
     runs-on: macos-latest
