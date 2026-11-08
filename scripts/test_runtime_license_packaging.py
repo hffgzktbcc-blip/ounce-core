@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import subprocess
 from unittest.mock import patch
 import zipfile
 
@@ -150,6 +151,25 @@ class RuntimeLicensePackagingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Supplemental notice hash mismatch'):
             package_release.package(self.binary, self.output, True, self.notices)
         self.assertFalse(self.output.exists())
+
+    def test_windows_style_checkout_preserves_supplement_hashes(self):
+        repo = Path(__file__).resolve().parents[1]
+        source = self.root / 'checkout-source'
+        source.mkdir()
+        (source / 'licenses').mkdir()
+        (source / '.gitattributes').write_bytes((repo / '.gitattributes').read_bytes())
+        for path in (repo / 'licenses').glob('*.txt'):
+            (source / 'licenses' / path.name).write_bytes(path.read_bytes())
+        def git(*args, cwd=source):
+            subprocess.run(['git', *args], cwd=cwd, check=True, capture_output=True)
+        git('init', '-q')
+        git('add', '.')
+        git('-c', 'user.name=License test', '-c', 'user.email=license-test@example.invalid',
+            'commit', '-qm', 'test checkout bytes')
+        clone = self.root / 'windows-checkout'
+        git('-c', 'core.autocrlf=true', 'clone', '-q', str(source), str(clone))
+        for original in (source / 'licenses').glob('*.txt'):
+            self.assertEqual((clone / 'licenses' / original.name).read_bytes(), original.read_bytes())
 
     def test_traversal_and_missing_notice_coverage_are_rejected(self):
         data = self.make_notices()
