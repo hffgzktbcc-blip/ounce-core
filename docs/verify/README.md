@@ -28,6 +28,8 @@ homebrew evidence. Rendering requires an explicit raw guest-frame oracle; a pres
 guest exit, synthetic host frame, or agreement between Ounce-Core engines is insufficient.
 
 
+Outside readers: [REPRODUCE.md](../REPRODUCE.md) is a 10-minute path to rerun the differential results on an ARM64 machine, and [LIMITS.md](../LIMITS.md) lists what each claim does not prove.
+
 ## Evidence integrity gate
 
 CI invokes the validator with `--artifact-root` set to the run’s builds directory.
