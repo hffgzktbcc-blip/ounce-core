@@ -12,7 +12,7 @@ output; harnesses marked arm64_reference only produce a meaningful reference on 
 
 Exit status is non-zero if any compared output differs or a step fails.
 """
-import argparse, hashlib, json, os, platform, shutil, subprocess, sys, tarfile, urllib.request
+import argparse, hashlib, json, os, platform, shutil, subprocess, sys, tarfile, urllib.request, zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -25,7 +25,7 @@ def run(cmd, **kw):
 
 
 def fetch_upstream(up, cache):
-    key = up.get("commit") or up["sha256"]
+    key = up.get("commit") or up["sha256"]  # cache dir name
     dest = cache / key[:16]
     if dest.exists():
         return dest
@@ -42,6 +42,22 @@ def fetch_upstream(up, cache):
         got = run(["git", "-C", str(tmp), "rev-parse", "HEAD"]).stdout.strip()
         if got != up["commit"]:
             raise SystemExit(f"commit mismatch: wanted {up['commit']}, got {got}")
+    elif "zip" in up:
+        data = urllib.request.urlopen(up["zip"], timeout=300).read()
+        digest = hashlib.sha256(data).hexdigest()
+        if digest != up["sha256"]:
+            raise SystemExit(f"zip sha256 mismatch for {up['zip']}: {digest}")
+        archive = tmp / "src.zip"
+        archive.write_bytes(data)
+        with zipfile.ZipFile(archive) as z:
+            for name in z.namelist():
+                parts = Path(name).parts[up.get("strip", 0):]
+                if name.endswith("/") or not parts or name.startswith("/") or ".." in parts:
+                    continue
+                target = tmp / Path(*parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(z.read(name))
+        archive.unlink()
     else:
         data = urllib.request.urlopen(up["tarball"], timeout=120).read()
         digest = hashlib.sha256(data).hexdigest()
@@ -81,7 +97,9 @@ def stage(h, work, cache):
 def build_host(h, d):
     cfiles = ["host/host_main.c"] + sorted(p.name for p in d.glob("*.c")
                                       if p.name != Path(h["nx_main"]).name)
-    r = run(["cc", "-O1", "-I.", "-o", "host_ref", *cfiles, *h.get("libs", "").split()], cwd=d)
+    libs = h.get("libs", "") + (" " + h.get("libs_linux", "") if platform.system() == "Linux" else "")
+    defs = ["-D" + x for x in h.get("defines", [])]
+    r = run(["cc", "-O1", "-I.", *defs, "-o", "host_ref", *cfiles, *libs.split()], cwd=d)
     if r.returncode:
         return None, "host build failed: " + r.stderr.strip()[-400:]
     r = run(["./host_ref"], cwd=d)
@@ -100,6 +118,11 @@ def build_nro(h, d, env):
     if h.get("libs"):
         mk = mk.replace("LIBS\t:= -lnx", "LIBS := -lnx " + h["libs"])
     (d / "Makefile").write_text(mk)
+    if h.get("defines"):
+        old = "CFLAGS\t+=\t$(INCLUDE) -D__SWITCH__"
+        assert old in mk, "template CFLAGS line changed"
+        mk = mk.replace(old, old + " " + " ".join("-D" + x for x in h["defines"]))
+        (d / "Makefile").write_text(mk)
     r = run(["make", "-j4"], cwd=d, env=env)
     nro = d / f"{h['name']}.nro"
     if r.returncode or not nro.exists():
