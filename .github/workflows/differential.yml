@@ -1,0 +1,100 @@
+name: Differential verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docs/verify/**'
+      - 'scripts/verify_differential.py'
+      - 'Cargo.*'
+      - '.github/workflows/differential.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docs/verify/**'
+      - 'scripts/verify_differential.py'
+      - 'Cargo.*'
+      - '.github/workflows/differential.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
+
+concurrency:
+  group: differential-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-nros:
+    name: Build differential NROs (devkitA64)
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64
+    steps:
+      - name: Ensure git and python3
+        run: |
+          command -v git >/dev/null && command -v python3 >/dev/null || \
+            (apt-get update && apt-get install -y --no-install-recommends git python3 ca-certificates)
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build every NRO
+        run: python3 scripts/verify_differential.py --nro --build-only --nro-out nros
+      - uses: actions/upload-artifact@v4
+        with:
+          name: differential-nros
+          path: nros/*.nro
+          if-no-files-found: error
+
+  differential:
+    name: Differential (${{ matrix.os }})
+    needs: build-nros
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+      - name: Build ounce-core
+        run: cargo build --release --features "nce native-jit"
+      - uses: actions/download-artifact@v4
+        with:
+          name: differential-nros
+          path: nros
+      - name: Run differential checks
+        run: python3 scripts/verify_differential.py --nro-dir nros --json report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: differential-report-${{ matrix.os }}
+          path: report.json
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: differential-outputs-${{ matrix.os }}
+          path: |
+            target/differential/*/host-output.txt
+            target/differential/*/engine-*-results.txt
+          if-no-files-found: warn
