@@ -75,7 +75,7 @@ has an instruction budget. Failure, byte differences and unconfirmed/fallback
 engines produce nonzero exits with retained evidence. An existing work directory
 is refused rather than overwritten.
 
-The [first Linux hosted job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42523091575) passed. The differential workflow now has a Linux/macOS/Windows matrix; macOS and Windows qualification remains pending until its actual runs are inspected. Host stdout uses binary mode on Windows so byte comparisons retain LF rather than CRT CRLF translation.
+The [three-host qualification](three-host-2026-11-08.json) passed on Linux, macOS and Windows: both actual engines match the fresh host build and all five CLI scenarios pass on each host. This covers separately built versions of the same pinned cases, not one transported ELF or arbitrary libc programs. Host stdout uses binary mode on Windows so byte comparisons retain LF rather than CRT CRLF translation.
 No LZ4, libc or runtime binary is redistributed with the checked-in evidence.
 
 ## Deterministic clock mode

@@ -6,9 +6,9 @@
       "id": "linux-elf",
       "name": "Static Linux ARM64 programs",
       "stage": "experimental",
-      "evidence": "Five freestanding ELF fixtures and unchanged LZ4/musl cases pass on Tier-3 and actual Tier-4",
+      "evidence": "Six freestanding fixtures and bounded LZ4/musl verification; library and CLI scenarios qualified on Linux, macOS and Windows",
       "evidence_url": "docs/verify/linux-elf/README.md",
-      "next": "Qualify Linux library CI; add deterministic time and wider host acceptance"
+      "next": "Expand Linux library coverage from observed needs; qualify portable execution recording"
     },
     {
       "id": "differential",
