@@ -1817,7 +1817,22 @@ impl Cpu {
 
             Instruction::SimdThreeSame { rd, rn, rm, op, esize, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
-                self.regs.write_q(rd, simd::three_same(op, d, n, m, esize as u32, q));
+                let (r, qc) = simd::three_same_qc(op, d, n, m, esize as u32, q);
+                if qc {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, r);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdScalarThreeSame { rd, rn, rm, op, esize } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let (r, qc) = simd::scalar_three_same(op, d, n, m, esize as u32);
+                if qc {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, r);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }

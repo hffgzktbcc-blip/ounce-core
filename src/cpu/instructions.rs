@@ -611,6 +611,15 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// AdvSIMD scalar three same (`SQADD`, `SQDMULH`, `SRSHL`, ...): lane 0 only, the rest of `Vd` zeroed.
+    SimdScalarThreeSame {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdOp3,
+        esize: u8,
+    },
+
     /// AdvSIMD two-register miscellaneous (compare against zero, `CNT`, `NOT`, `ABS`, `NEG`)
     /// AdvSIMD across lanes: reduces every lane of `Vn` into scalar `Vd`.
     SimdAcross {
@@ -914,6 +923,37 @@ pub enum SimdOp3 {
     /// `SSHL`/`USHL` (register shift: the low signed byte of each `m` lane is the shift, negative shifts right)
     Sshl,
     Ushl,
+    /// Halving add/sub (`SHADD`, `UHADD`, `SRHADD`, `URHADD`, `SHSUB`, `UHSUB`)
+    Shadd,
+    Uhadd,
+    Srhadd,
+    Urhadd,
+    Shsub,
+    Uhsub,
+    /// Saturating add/sub (set `FPSR.QC`)
+    Sqadd,
+    Uqadd,
+    Sqsub,
+    Uqsub,
+    /// Rounding and/or saturating register shifts
+    Srshl,
+    Urshl,
+    Sqshl,
+    Uqshl,
+    Sqrshl,
+    Uqrshl,
+    /// Absolute difference, with and without accumulate
+    Sabd,
+    Uabd,
+    Saba,
+    Uaba,
+    /// Multiply-accumulate / subtract, polynomial multiply
+    Mla,
+    Mls,
+    Pmul,
+    /// Saturating (rounding) doubling multiply returning the high half
+    Sqdmulh,
+    Sqrdmulh,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
