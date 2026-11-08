@@ -23,5 +23,7 @@ pub use tier3_jit::{SuperBlock, Tier3JitEngine};
 pub use engine::{CpuEngine, CpuTier};
 #[cfg(test)]
 mod audit_tests;
+#[cfg(test)]
+mod fuzz_insn_tests;
 #[cfg(feature = "native-jit")]
 pub use tier4::Tier4JitEngine;
