@@ -109,6 +109,19 @@ pub fn three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -
             SimdOp3::Umin | SimdOp3::Uminp => a.min(b),
             SimdOp3::Smax | SimdOp3::Smaxp => sa.max(sb) as u64,
             SimdOp3::Smin | SimdOp3::Sminp => sa.min(sb) as u64,
+            SimdOp3::Sshl | SimdOp3::Ushl => {
+                let sh = lane(m, esize, i) as u8 as i8 as i32;
+                let signed = op == SimdOp3::Sshl;
+                if sh >= 0 {
+                    if sh as u32 >= esize { 0 } else { a << sh }
+                } else if (-sh) as u32 >= esize {
+                    if signed && sa < 0 { all } else { 0 }
+                } else if signed {
+                    (sa >> (-sh)) as u64
+                } else {
+                    a >> (-sh)
+                }
+            }
             _ => unreachable!("bitwise ops return above"),
         };
         set_lane(&mut out, esize, i, r);
@@ -375,6 +388,23 @@ pub fn permute(op: SimdPermuteOp, n: u128, m: u128, esize: u32, q: bool) -> u128
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn register_shifts() {
+        // USHL .4S: shifts 1, -1, 32, -32 on 0x80000001 lanes; SSHL arithmetic right keeps sign.
+        let n = 0x8000_0001u128 | (0x8000_0001u128 << 32) | (0x8000_0001u128 << 64) | (0x8000_0001u128 << 96);
+        let m = 1u128 | (0xFFu128 << 32) | (32u128 << 64) | (0xE0u128 << 96);
+        let u = three_same(SimdOp3::Ushl, 0, n, m, 32, true);
+        assert_eq!(lane(u, 32, 0), 0x0000_0002);
+        assert_eq!(lane(u, 32, 1), 0x4000_0000);
+        assert_eq!(lane(u, 32, 2), 0);
+        assert_eq!(lane(u, 32, 3), 0);
+        let s = three_same(SimdOp3::Sshl, 0, n, m, 32, true);
+        assert_eq!(lane(s, 32, 1), 0xC000_0000);
+        assert_eq!(lane(s, 32, 3), 0xFFFF_FFFF);
+        // 64-bit scalar form: shift by -63 of the minimum is all ones for SSHL.
+        assert_eq!(lane(three_same(SimdOp3::Sshl, 0, 1u128 << 63, 0xC1, 64, false), 64, 0), u64::MAX);
+    }
 
     #[test]
     fn dup_and_lanes() {
