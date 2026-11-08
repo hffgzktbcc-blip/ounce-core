@@ -87,6 +87,10 @@ fn main() {
         "info" | "--info" | "-v" | "--version" | "specs" => {
             print_specs();
         }
+        "ui" | "lab" => {
+            print_banner();
+            launch_lab();
+        }
         "test" | "demo" => {
             print_banner();
             run_built_in_demo();
@@ -324,17 +328,30 @@ fn print_usage() {
     println!("    {}--cpu=native{}            run an NRO on the host CPU (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
+    println!("    {}ui{} | {}lab{}               Open the interactive verification lab and workbench in browser", s.green, s.reset, s.green, s.reset);
     println!("    {}test{}                    Execute 25-stage full-stack verification & hardware benchmark suite", s.green, s.reset);
     println!("    {}jit-selftest{}            Check that this host can run Tier-4 native code (needs --features native-jit)", s.green, s.reset);
     println!("    {}info{}                    Display comprehensive hardware architecture and engine status", s.green, s.reset);
     println!("    {}help{}                    Display this command-line manual and option reference", s.green, s.reset);
     println!();
     println!("  {}EXAMPLES:{}", s.bold, s.reset);
+    println!("    {}cargo run --release -- ui{}", s.dim, s.reset);
     println!("    {}cargo run --release -- info{}", s.dim, s.reset);
     println!("    {}cargo run --release -- test{}", s.dim, s.reset);
     println!("    {}cargo run --release -- play 1200{}", s.dim, s.reset);
     println!("    {}cargo run --release -- inspect ./dumps/game_title{}", s.dim, s.reset);
     println!("    {}cargo run --release -- run ./dumps/game_title\n{}", s.dim, s.reset);
+}
+
+fn launch_lab() {
+    let s = Styler::new();
+    println!("  {}🔬 OUNCE-CORE INTERACTIVE VERIFICATION LAB & WORKBENCH{}", s.cyan, s.reset);
+    println!("  {}Understand why programs fail. Prove when they work.{}\n", s.dim, s.reset);
+    println!("  Local workbench file: {}site/lab.html{}", s.green, s.reset);
+    println!("  To open or serve locally:");
+    println!("    {}./scripts/open_lab.sh{}\n", s.bold, s.reset);
+    println!("  Online version available on GitHub Pages:");
+    println!("    {}https://hffgzktbcc-blip.github.io/ounce-core/lab.html{}\n", s.cyan, s.reset);
 }
 
 fn print_specs() {
