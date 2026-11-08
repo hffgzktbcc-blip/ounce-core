@@ -16,7 +16,7 @@ release was published by this document.
 | 1 | PR #1 head holds 12 firmware-labelled arrays + 2 objects | (a) ask GitHub Support to purge/hide `refs/pull/1/head`; (b) leave and document | Runtime publication stays gated; history stays as-is |
 | 2 | 72-byte third-party homebrew program: permission UNVERIFIED | ask upstream author for a grant; or approve a targeted content replacement; or accept risk in writing | Same gate |
 | 3 | Any force-push / tag or release change | explicit approval of a specific old-to-new ref map | None done |
-| 4 | objc2/Apple SDK terms, Rust runtime notices, final-binary coverage | specialist review, then fill `RELEASE_NOTICE_REVIEW.json` reviewer/evidence | Release packaging refuses to publish |
+| 4 | (Interim: README says macOS = build from source; upstream question asked in an objc2 issue, link pending) objc2/Apple SDK terms, Rust runtime notices, final-binary coverage | specialist review, then fill `RELEASE_NOTICE_REVIEW.json` reviewer/evidence | Release packaging refuses to publish |
 | 5 | Branch protection requiring CODEOWNERS review | approve settings change | Review stays advisory |
 | 6 | Corrected-release publication | approve after 1-4 | Published v0.5.0 assets lack the font notice |
 
