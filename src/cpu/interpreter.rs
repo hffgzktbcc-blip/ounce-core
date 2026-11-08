@@ -1513,6 +1513,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdDupScalar { rd, rn, esize, index } => {
+                let v = simd::lane(self.regs.read_q(rn), esize as u32, index as usize);
+                self.regs.write_q(rd, v as u128);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdDupElement { rd, rn, esize, index, q } => {
                 let v = simd::lane(self.regs.read_q(rn), esize as u32, index as usize);
                 self.regs.write_q(rd, simd::dup(v, esize as u32, q));
@@ -1754,6 +1761,20 @@ impl Cpu {
             Instruction::SimdThreeSame { rd, rn, rm, op, esize, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::three_same(op, d, n, m, esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdLong { rd, rn, rm, op, signed, esize, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::mul_long(op, d, n, m, esize as u32, q, signed));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Pmull { rd, rn, rm, wide, q } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::pmull(n, m, wide, q));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
