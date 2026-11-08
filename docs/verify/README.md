@@ -225,3 +225,22 @@ The Mac CI job builds and signs an app preview, runs the report-decoding and run
 smoke checks, and retains `macos-app-preview` for review. This is a development preview,
 not a notarized distribution. The normal runtime and verifier remain separate from
 this read-only presentation layer.
+
+## Hardware differences
+
+The differential runner compares each harness on the host it runs on. Where two real ARM64 hosts disagree,
+the harness records the disagreement instead of hiding it: `docs/verify/differential.json` may carry a
+`host_notes` entry per host id (`apple-silicon`, `linux-arm64`) listing the checks that are expected to
+differ, with a reason and the CI evidence. On that host the runner reports those checks as
+`expected-different (documented)` and still prints the differing lines; any undocumented difference
+fails, and a documented difference that stops occurring prints a warning so the note gets removed.
+
+Known today (run 42501194128, Linux ARM64 runner vs the committed Apple Silicon references):
+
+- `qc-flag`: FPSR bits 31:28 (N, Z, C, V) read back set on the runner (`f800009f`) and clear on Apple
+  Silicon (`0800009f`). tier3/tier4 follow Apple Silicon.
+- `vector-fp`: `fadd2d`/`fmul2d` with two quiet-NaN operands pick a different operand (NaN sign case 107,
+  payload case 177). The cause is not established: the host compiler's operand order for commutative
+  intrinsics is the leading suspect.
+
+Which behaviour the Arm Architecture Reference Manual requires is tracked in the issue linked from the PR.
