@@ -121,6 +121,16 @@ class HandoffTest(unittest.TestCase):
         self.assertIn('xxhash passes on all engines', digest)
         self.assertLess(len(digest.splitlines()), 20)
 
+    def test_claim_retries_a_transient_push_rejection(self):
+        hook = self.origin / 'hooks' / 'pre-receive'
+        counter = Path(self.tmp.name) / 'rejections'
+        hook.write_text('#!/bin/sh\nif [ ! -f "%s" ]; then touch "%s"; echo transient >&2; exit 1; fi\nexit 0\n' % (counter, counter))
+        hook.chmod(0o755)
+        result = handoff(self.a, 'claim', 'R7')            # first push is rejected by the hook, the retry succeeds
+        self.assertIn('claimed R7', result.stdout)
+        self.assertTrue(counter.exists())
+        self.assertIn('alice', handoff(self.b, 'status', agent='bob').stdout)
+
 
 if __name__ == '__main__':
     unittest.main()
