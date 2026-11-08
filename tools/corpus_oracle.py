@@ -343,6 +343,27 @@ def expected(spec, font):
     return {"width": w, "height": h, "rgba_fnv1a64": f"{fnv1a64(image):#018x}"}
 
 
+def console_probes(spec, font):
+    """Sample foreground and background pixels in selected stable console cells."""
+    console = Console()
+    console.write(spec["stream"].encode("latin-1"))
+    width, _, image = render_console(console.cells, font, "sw")
+    probes = []
+    for col, row in spec["probe_cells"]:
+        char, *_ = console.cells[col, row]
+        rows = glyph_rows(font, char)
+        for foreground in (True, False):
+            points = [(x, y) for y, bits in enumerate(rows) for x in range(16)
+                      if bool(bits & (0x8000 >> x)) == foreground]
+            if not points:
+                raise ValueError(f"probe cell {(col, row)} has no requested glyph pixels")
+            x, y = points[len(points) // 2]
+            x, y = 16 * col + x, 16 * row + y
+            offset = (y * width + x) * 4
+            probes.append({"x": x, "y": y, "rgb": list(image[offset:offset + 3])})
+    return probes
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--font", type=Path, required=True, help="libnx 4.12.0 nx/data/default_font.bin")
@@ -358,7 +379,17 @@ def main():
         for check in oracle["checks"]:
             if "spec" not in check:
                 continue
-            value = expected(check["spec"], font)
+            spec = check["spec"]
+            if "probe_cells" in spec:
+                if spec["kind"] != "console_sw":
+                    raise ValueError("probe cells require a software console spec")
+                probes = console_probes(spec, font)
+                if check.get("probes") != probes:
+                    changed.append(oracle["id"])
+                    check["probes"] = probes
+                value = {"width": WIDTH * 16, "height": HEIGHT * 16}
+            else:
+                value = expected(spec, font)
             if check["spec"]["kind"].startswith("console"):
                 value["font_sha256"] = font_sha
             if check.get("expect") != value:

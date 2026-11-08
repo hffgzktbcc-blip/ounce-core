@@ -52,7 +52,7 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 4. Move Wide (Immediate): MOVZ, MOVN, MOVK
     // Pattern: sf 10 100101 hw imm16 Rd
-    if (raw & 0x1F800000) == 0x12800000 || (raw & 0x1F800000) == 0x52800000 || (raw & 0x1F800000) == 0x72800000 {
+    if (raw & 0x1F800000) == 0x12800000 {
         let is_64 = (raw & (1 << 31)) != 0;
         let opc = (raw >> 29) & 0x3;
         let hw = ((raw >> 21) & 0x3) as u8;
@@ -437,6 +437,7 @@ pub fn decode(raw: u32) -> Instruction {
             size_bytes: scale as u8,
             is_load,
             is_signed,
+            is_64_target: size == 3 || opc == 2,
             writeback: false,
             post_index: false,
         };
@@ -487,6 +488,7 @@ pub fn decode(raw: u32) -> Instruction {
                 size_bytes: scale,
                 is_load,
                 is_signed,
+                is_64_target: size == 3 || opc == 2,
                 writeback,
                 post_index,
             };
@@ -532,6 +534,7 @@ pub fn decode(raw: u32) -> Instruction {
                 0b0101 => FpOp2::Fmin,
                 0b0110 => FpOp2::Fmaxnm,
                 0b0111 => FpOp2::Fminnm,
+                0b1000 => FpOp2::Fnmul,
                 _ => return Instruction::Unimplemented { raw },
             };
 
@@ -793,7 +796,11 @@ pub fn decode(raw: u32) -> Instruction {
         } else {
             FpOp2::Fadd
         };
-        return Instruction::SimdVec4S { rd, rn, rm, op };
+        return if raw & (1 << 22) != 0 {
+            Instruction::SimdVec2D { rd, rn, rm, op }
+        } else {
+            Instruction::SimdVec4S { rd, rn, rm, op }
+        };
     }
 
     decode_extra(raw).unwrap_or(Instruction::Unimplemented { raw })

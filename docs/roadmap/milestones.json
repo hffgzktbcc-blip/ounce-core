@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "principle": "Deliver one reproducible developer result at a time; implementation and historical benchmarks are supporting evidence.",
+  "tracks": [
+    {
+      "id": "workflow",
+      "name": "Agent workflow",
+      "stage": "experimental",
+      "evidence": "Workflow changes under validation",
+      "evidence_url": "PLAN.md",
+      "next": "Read-only status, local checkpoints, ready tasks and scope-aware hosted checks (W1)"
+    },
+    {
+      "id": "diagnosis",
+      "name": "Failure to reproduction",
+      "stage": "experimental",
+      "evidence": "Existing verifier, diagnosis and replay interfaces",
+      "evidence_url": "docs/verify/README.md",
+      "next": "Ship one fresh-checkout walkthrough and solve a real developer issue (R1\u2013R2)"
+    },
+    {
+      "id": "distribution",
+      "name": "Usable community tool",
+      "stage": "experimental",
+      "evidence": "Outcome acceptance plan; distribution not yet delivered",
+      "evidence_url": "PLAN.md",
+      "next": "Package the demonstrated workflow; connect one lagging component and release the result (R3\u2013R5)"
+    },
+    {
+      "id": "original-switch",
+      "name": "Historical runtime regression baseline",
+      "stage": "measured",
+      "evidence": "Canonical first-frame oracle corpus",
+      "evidence_url": "docs/verify/README.md",
+      "next": "Preserve existing cases; expand only to reproduce a concrete user problem",
+      "corpus_headline": true
+    },
+    {
+      "id": "switch2",
+      "name": "Switch 2 research (parked)",
+      "stage": "experimental",
+      "evidence": "Limited SDK-path observation",
+      "evidence_url": "docs/verify/README.md",
+      "next": "Retain existing checks; no coverage expansion without a demonstrated user need"
+    }
+  ]
+}

@@ -285,6 +285,26 @@ fn clear_fills_block_linear_target_in_guest_memory() {
 }
 
 #[test]
+fn oversized_draws_are_rejected_before_index_or_vertex_allocation() {
+    let mut memory = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    draw(&mut pb, 0, 3, 4);
+    let mut gpu = run(&pb, &mut memory);
+    let mut record = gpu.events().iter().find_map(|e| match e {
+        Event::Draw(record) => Some(record.clone()), _ => None,
+    }).unwrap();
+    record.vertex_count = u32::MAX;
+    for indexed in [false, true] {
+        record.indices = indexed.then_some(IndexBuffer {
+            gpu_va: 0, size: None, index_bytes: 4, base_vertex: 0, restart: None });
+        gpu.render_draw(&record, &mut memory);
+        assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped {
+            reason: "draw exceeds host vertex work limit" })));
+    }
+}
+
+#[test]
 fn clear_respects_scissor_when_asked() {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
@@ -314,7 +334,7 @@ fn triangle_draw_produces_raw_block_linear_surface() {
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     // 255 * 256 / 2: the hypotenuse is a right edge, so pixels centred on it stay out (top-left rule).
-    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, culled_triangles: 0, fragments: 32640, discarded_fragments: 0 });
+    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, culled_triangles: 0, fragments: 32640, discarded_fragments: 0, ..RenderStats::default() });
 
     let linear = rt_pixels(&mut mem);
     assert_eq!(px(&linear, 10, 10), [255, 0, 0, 255]);
@@ -1200,6 +1220,40 @@ fn z24s8_target(pb: &mut Vec<u32>) {
     pb.push(immd_header(SC, m::CLEAR_SURFACE, 0x3));
 }
 
+#[test]
+fn stencil_clear_respects_partial_write_mask() {
+    let mut memory = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    z24s8_target(&mut pb);
+    pb.extend([inc_header(SC, m::SET_STENCIL_CLEAR_VALUE, 1), 0xa5]);
+    pb.push(immd_header(SC, m::CLEAR_SURFACE, 2));
+    pb.extend([inc_header(SC, m::SET_STENCIL_MASK, 1), 0x0f]);
+    pb.extend([inc_header(SC, m::SET_CLEAR_SURFACE_CONTROL, 1), 1]);
+    pb.extend([inc_header(SC, m::SET_STENCIL_CLEAR_VALUE, 1), 0x3c]);
+    pb.push(immd_header(SC, m::CLEAR_SURFACE, 2));
+    let gpu = run(&pb, &mut memory);
+    assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+    let linear = tiling::detile(&rt_surface(), &memory.get(ZT_VA, RT_BYTES)).unwrap();
+    assert_eq!(linear[0], 0xac);
+    assert_eq!(linear[4 * (128 * W as usize + 128)], 0xac);
+}
+
+#[test]
+fn unsupported_depth_layer_clear_preserves_base_layer() {
+    let mut memory = Mem::standard();
+    let mut pb = Vec::new();
+    setup(&mut pb, m::AMPERE_B, false);
+    z24s8_target(&mut pb);
+    let mut gpu = run(&pb, &mut memory);
+    let before = memory.get(ZT_VA, RT_BYTES);
+    let pb = [inc_header(SC, m::SET_ZT_LAYER, 1), 1,
+        inc_header(SC, m::SET_Z_CLEAR_VALUE, 1), f(0.0), immd_header(SC, m::CLEAR_SURFACE, 1)];
+    gpu.submit(&pb, &mut memory).unwrap();
+    assert_eq!(memory.get(ZT_VA, RT_BYTES), before);
+    assert!(gpu.diagnostics().iter().any(|d| matches!(d, Diagnostic::RenderSkipped { reason: "layered clear" })));
+}
+
 /// `SET_STENCIL_TEST` .. `SET_STENCIL_MASK`: enable, fail, zfail, zpass, func, ref, func mask, mask.
 fn stencil_state(pb: &mut Vec<u32>, state: [u32; 8]) {
     pb.push(inc_header(SC, m::SET_STENCIL_TEST, 8));
@@ -1386,4 +1440,52 @@ fn pixel_depth_beyond_the_range_is_clipped_or_clamped() {
     assert_eq!((px(&color, 10, 10), z), ([0, 255, 0, 255], 1.0));
     let (color, z) = far_quad(3 << 16); // MINUS_INF_PLUS_INF: float depth keeps 2.0
     assert_eq!((px(&color, 10, 10), z), ([0, 255, 0, 255], 2.0));
+}
+
+/// Explicit adapter-required test: it never silently passes when no device is available.
+/// Unit evidence only; the outside deko3d oracle remains the compatibility gate.
+#[cfg(feature = "gpu-present")]
+#[test]
+#[ignore = "requires a working host graphics adapter"]
+fn host_sass_draw_writes_original_guest_surface() {
+    for pitch in [true, false] {
+        let mut mem = Mem::standard();
+        let mut pb = Vec::new();
+        setup(&mut pb, m::AMPERE_B, pitch);
+        clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
+        geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.5, RED), vtx(1.0, -1.0, 0.5, RED), vtx(-1.0, 1.0, 0.5, RED)], &varying_pixel_shader());
+        draw(&mut pb, 0, 3, 4);
+        let mut gpu = Ampere3d::new();
+        gpu.set_host_gpu(true);
+        gpu.submit(&pb, &mut mem).unwrap();
+        assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
+        assert_eq!(gpu.render_stats().host_draws, 1);
+        assert_eq!(gpu.render_stats().host_readback_bytes, RT_BYTES as u64);
+        let pixels = if pitch { mem.get(RT_VA, RT_BYTES) } else { rt_pixels(&mut mem) };
+        assert_eq!(px(&pixels, 10, 10), [255, 0, 0, 255]);
+        assert_eq!(px(&pixels, 250, 250), [0, 0, 0, 255]);
+
+        // Unsupported state must leave guest bytes intact and grant no completed draw.
+        let before = mem.get(RT_VA, RT_BYTES);
+        let mut unsupported = vec![inc_header(SC, m::SET_DEPTH_TEST, 1), 1];
+        draw(&mut unsupported, 0, 3, 4);
+        gpu.submit(&unsupported, &mut mem).unwrap();
+        assert_eq!(gpu.render_stats().host_draws, 1);
+        assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped { .. })));
+        assert_eq!(mem.get(RT_VA, RT_BYTES), before);
+
+        // Partial position writes have different undefined/default behavior across APIs.
+        // Reject them before submission rather than inventing a host position component.
+        let mut partial = vertex_shader();
+        let at = AMPERE_SPH_SIZE + 2 * 16;
+        partial[at..at + 16].copy_from_slice(&asm::ast(0, 0x70, 3).to_le_bytes());
+        mem.put(VS_VA, &partial);
+        gpu.take_diagnostics();
+        let mut unsupported = vec![inc_header(SC, m::SET_DEPTH_TEST, 1), 0];
+        draw(&mut unsupported, 0, 3, 4);
+        gpu.submit(&unsupported, &mut mem).unwrap();
+        assert_eq!(gpu.render_stats().host_draws, 1);
+        assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped { .. })));
+        assert_eq!(mem.get(RT_VA, RT_BYTES), before);
+    }
 }

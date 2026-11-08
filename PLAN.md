@@ -1,143 +1,105 @@
-# ounce-core: THE plan (single source of truth)
+# ounce-core: useful results, not component counts
 
-Public project: `github.com/hffgzktbcc-blip/ounce-core` (MIT, Rust). This file is the only plan.
-Every agent (Claude, Antigravity, Codex) reads it first, does **only the next unchecked step**, ticks it with
-proof, and ends. Changing the plan needs the owner's OK first, recorded here. Old handoff notes are history only.
+Updated 2026-11-07 from the owner's direction to remove agent friction and deliver
+community value beyond Switch/Switch 2 coverage. This file replaces the previous
+milestone order. [Previous plan and evidence](docs/history/PLAN-2026-11-07.md) remain
+historical records; unfinished historical items are not implicit blockers.
+[AGENTS.md](AGENTS.md) contains the active working rules.
 
-## Goal
-Run open-source Switch homebrew on macOS Apple Silicon (and Linux/Windows), with every claim backed by
-a real program's real frame.
-**Headline metric:** "N outside homebrew programs render their first frame pixel-exact." That's 17/20 today
-(after step 3), derived from the Ounce-Verify canonical report in CI; see the README.
+## Direction
 
-## Rule 0: no bullshit (overrides everything, for every agent)
-1. **No synthetic tests as progress.** Unit tests may guard code, but they never count as a milestone or a
-   "Verified" claim. Progress = a real outside program (one we didn't write) reaching a frame that matches a
-   pre-registered pixel oracle, in CI.
-2. **Proof or it didn't happen.** Never write "running", "works" or "verified" without a pixel-oracle pass or a
-   screenshot of real frames. Instruction counts, "N tests pass" and "the window opened" are not proof.
-3. **One plan, one step per session.** Read this file, do the next unchecked step, tick it with one line of proof
-   (commit, CI run, oracle), then end. No side quests, no new plan files, no mid-step hand-offs between agents or
-   models.
-4. **Ask the owner only for what needs their hands** (accounts, passwords, approvals). Pick sensible defaults
-   for everything else. One question at a time.
-5. **Never undo or delete other agents' or the owner's work** without asking. Build on what exists.
-6. **Check the environment before heavy work:** `df -h ~`. Work only in `~/Projects` (`~/Documents` is
-   iCloud-synced and stalls builds and git). Run long jobs in the background.
-7. **Keep retail out.** No retail games, game profiles or game-specific patches, keys, firmware or dumps ever
-   enter this repo. MIT engine code (nxnative, Ryujinx) may be ported in, with credit (see the rules below).
+Help developers answer: **what changed, why did this run fail, and how can someone
+else reproduce it?** Start with a small debugging/regression toolkit assembled
+from the existing verifier, diagnosis, comparison, bounded execution and replay
+code. Runtime/CPU/GPU/service components earn new work by unblocking that user flow.
 
-## Sources: what we may use (this is where the speed comes from)
-Allowed, and cited in `docs/PROVENANCE.md` whenever used:
-- **Arm Architecture Reference Manual** (ARMv8/9 A-profile): CPU semantics and encodings.
-- **Mesa NAK** (MIT; Mesa's Rust shader compiler for NVIDIA Turing/Ampere) and **Nouveau/envytools**: SASS
-  encodings and GPU classes. MIT code may be ported directly, keeping its notice in `THIRD_PARTY.md`.
-- **libnx, deko3d, devkitPro examples** (public homebrew source): what programs ask of the system and GPU.
-- **Permissive emulator and engine code:** nxnative and Ryujinx (MIT) may be read and ported.
-- **Libraries:** wgpu/naga, SPIRV-Cross, standard crates.
-- **Our own observation** of outside homebrew running in our runtime.
+This is a product hypothesis, not demonstrated community demand. Validate it with
+one real maintainer problem before building a generalized platform. Current corpus
+adapters remain platform-specific; no generic AArch64 executable support is claimed.
+Existing homebrew samples stay as regression fixtures. Switch 2 coverage expansion,
+more platform badges, speculative product families and standalone dashboards are
+parked unless a concrete user problem needs them.
 
-**Reference runs are allowed:** run outside homebrew (never retail games) in any emulator and compare its frames
-and logs with ours; record emulator and version in `PROVENANCE.md`.
+Considered directions: more platform coverage would extend the existing benchmark
+but would not address the requested community value; building Debug/Trace/Learn/Bench
+as four products would multiply unfinished surfaces. The chosen starting point is
+one complete failure-to-reproduction workflow using the components already present.
 
-**Port MIT code that works (owner decision 2026-11-03):** ounce-core may read and port **nxnative** (MIT, seedds)
-and **Ryujinx** (MIT) to Rust instead of re-deriving everything. Keep their notices in `THIRD_PARTY.md` and note
-each port in `PROVENANCE.md`. Because of this, ounce-core is **no longer labelled clean-room**. Step 1 makes the
-README and `docs/CLEAN_ROOM.md` say so honestly.
+## What counts as progress
 
-Still not allowed: code from the owner's non-public projects; GPL emulator code (yuzu, Eden, Eglantine); retail games, game profiles or game-specific patches,
-keys, firmware, dumps, leaked material, Nintendo SDK code.
+A deliverable is usable when a documented entry point takes a real input through
+execution or retained evidence to an actionable result, with failure handling and a
+repeatable check. Name what is supported and what is missing. Do not relabel an
+implemented component as an end-to-end product. Historical benchmark counts remain
+valid only within their original boundaries; they are regression metrics, not the
+product's sole success criterion.
 
-## Legal guardrails (public repo, every agent, every commit)
-Practical rules drawn from what got other emulators sued (yuzu, 2024). Not legal advice, but they apply to every
-change. A PR that breaks one is rejected.
-1. **Never decrypt.** No retail key handling, no NCA/NSP/XCI decryption. `RestrictedCipher` stays. ounce-core
-   accepts only **already-decrypted** inputs: homebrew (NRO), and loose `exefs/` + `romfs/` folders the user
-   dumped and decrypted on their own console.
-2. **No piracy pointers:** no links to or mentions of ROM, key or dump sites, in code, docs, issues, PRs,
-   releases or the website.
-3. **No game names or game screenshots.** Describe capability neutrally: "runs Switch software from
-   user-provided decrypted dumps". Don't hide what the code can do either. Neutral and honest, not secret.
-4. **No retail games as test inputs**, ever. Compatibility with commercial software may grow as
-   a side effect of public specs, homebrew and observation. It's never debugged against retail games here.
-   Game-specific work never happens here.
-5. **No money tied to games:** no paid builds, tiers or early access that unlock game support.
-6. **Nothing from the owner's non-public projects** (code, logs, traces, specs observed from retail software)
-   enters this repo. That code was debugged against retail software, so it stays out even though it's the owner's.
-7. **Keys, games, firmware and shader caches compiled from games are never committed**, not even in tests or CI
-   artifacts. `.gitignore` covers `*.keys`, `dumps/` and `*.nsp`/`*.xci`/`*.nca`.
+For each task keep only: result, next action, evidence, or blocker. Use unique IDs.
+`Status: ready|active|blocked|parked` and `Depends: ID ...` guide the optional selector.
+Blocked outside review or tester recruitment never stops unrelated ready work.
+Close tasks manually with an evidence link after acceptance; PR submission never
+closes them. Checkpoints live in commit messages, not automatic edits to this file.
 
-## Steps (one step = one session)
-- [x] **1. Honest README.** Replace every "Verified" that rests on unit tests with "tested". Add the headline
-      metric with links to the 4 oracle runs. Remove Switch 2 retail claims from this repo.
-      Retire `docs/CLEAN_ROOM.md`'s from-scratch rules in favour of "Sources" above (MIT ports allowed, no GPL,
-      no retail).
-      *Done when:* the README states only what a real program proved, the docs match practice, and CI is green.
-      *Proof:* [PR #131](https://github.com/hffgzktbcc-blip/ounce-core/pull/131), CI green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41693005314
-- [x] **1b. Legal guardrails into the repo.** Add the guardrails above to `docs/CLEAN_ROOM.md` and
-      `CONTRIBUTING.md`. Add the `.gitignore` entries. Add a CI check that fails if the repo gains key files or
-      retail container files, or links to known ROM/key sites. Audit README, docs and issues for game names and
-      piracy pointers, and remove them.
-      *Done when:* the CI check is green on main and the audit finds nothing.
-      *Proof:* [PR #131](https://github.com/hffgzktbcc-blip/ounce-core/pull/131) adds `scripts/check_legal_guardrails.sh` ("Legal guardrails" job, green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41693005314); audit found no game names, piracy links or issue templates.
-- [x] **2. Homebrew corpus, 4 → 20.** Add outside programs: devkitPro `switch-examples` (graphics, input, audio,
-      fs), more deko3d samples, and a few popular open-source homebrew apps. Build them reproducibly (devkitA64
-      docker), record source, commit and licence in `PROVENANCE.md`, and pre-register a first-frame oracle for
-      each.
-      *Done when:* 20 oracles exist in CI, each pass or fail recorded honestly. Failures are the to-do list.
-      *Proof:* [PR #134](https://github.com/hffgzktbcc-blip/ounce-core/pull/134): 20 oracles in `tests/corpus/oracles.json` (16 new ones pre-registered in `2fe006e` before any run), `first-frame-oracles` job green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41791374072 (on main with #115; canonical report: `ounce-verify-canonical-report` artifact, 40 `ounce-verify/v0` records, 15/20 pass on both engines). Owner-approved addition: Ounce-Verify evidence and README count from the report. Failures for step 3: sixaxis, deko-console, nx-hbmenu (unimplemented instructions), sdl2-simple, hybrid-app (exit before the first frame).
-- [x] **3. Fix by corpus.** Take the failing programs one by one, cheapest first. Each fix lands with that
-      program's oracle turning green. No speculative features.
-      *Done when:* metric ≥ 15/20.
-      *Proof:* [PR #145](https://github.com/hffgzktbcc-blip/ounce-core/pull/145): **17/20** from the canonical report of
-      https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259 (sixaxis: FP/SIMD forms; deko-console: DMA
-      copy, inline-to-memory, 2D-array TEXS, fill rectangle, shadow RAM, +Y-down winding). deko-basic's observed frame-1
-      hash was corrected with owner approval (it recorded the winding bug; see `docs/deko-basic-oracle.md`).
-      Still failing, for step 7's repeat: nx-hbmenu (needs `bsd:u`/`nifm:u`, `NextLoadPath`, and a `pl:u` shared font,
-      which requires bundling an open-licensed font), sdl2-simple and hybrid-app (Mesa over nvdrv exits before the
-      first frame).
-- [x] **4. Native execution on Apple Silicon (NCE).** Rewrite a homebrew NRO's `svc` and
-      `TPIDR_EL0`-touching instructions into trampolines, and run the rest of its ARM64 code directly in
-      `MAP_JIT` memory. Port what already works (nxnative's NSO patcher, MIT) rather than designing
-      from scratch.
-      *Done when:* every green oracle still passes under `--cpu=native`, with a measured speedup.
-      *Proof:* [PR #137](https://github.com/hffgzktbcc-blip/ounce-core/pull/137) (native execution) and
-      [PR #141](https://github.com/hffgzktbcc-blip/ounce-core/pull/141) (corpus oracles natively). CI on Apple M1:
-      all 15 recorded passes pass under `--cpu=native` with frames equal to Tier-3
-      (https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795276178/job/126459320723), as do the four
-      first-frame oracles (https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795276178/job/126459469189).
-      Wall time Tier-3 → native: simplegfx 41.6 s → 0.52 s (81×), the console/input/service programs 14–34×,
-      deko_basic 1.4×. Code pages are sealed W^X with `mprotect`, not `MAP_JIT` (`MAP_JIT` cannot be `MAP_FIXED`,
-      and guest code must sit at its guest address).
-- [x] **5. SASS accuracy from NAK.** Audit `src/gpu/sass` decoding against NAK's documented Turing/Ampere
-      encodings (port NAK code where it fits, notice kept). Translate to WGSL via naga where that removes hand-written code.
-      *Done when:* corpus programs with shaders pass, and no oracle regresses.
-      *Proof:* [PR #135](https://github.com/hffgzktbcc-blip/ounce-core/pull/135) (merged `3e660c6`), audited against
-      Mesa NAK sm50/sm70 (mesa `f4a706c5a218`), envytools and Ryujinx, credited in `THIRD_PARTY.md`/`PROVENANCE.md`.
-      Fixed Ampere `IPA` frequency codes, added Maxwell `RRO`, `XMAD.CSFU`, `PLOP3` negation, `MUFU` forms.
-      All 4 oracles pass (deko_basic is the only shader program) in https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41703660643;
-      CI green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41703660653.
-      Partly met: step 2's shader programs (#134) had not landed, so only deko_basic's shaders are proven;
-      re-check them when they land. Open: NAK vs CuAsm on Maxwell bound `TEX` opcode, `FSET` cbuf negate bit.
-- [x] **6. Merge #115** (texture mips/LOD/bias/clamp). DONE 2026-11-03 by owner decision, ahead of a corpus program needing it: merged for release v0.4.0 (cb24c76, CI green).
-- [ ] **7. Corpus 20 → 50**, then repeat step 3. The metric keeps climbing in public.
-- [ ] **8. Switch 2 homebrew.** As soon as public, open-source tools can build Switch 2 ("Ounce") homebrew, add
-      those programs to the corpus with pre-registered oracles, exactly like step 2. Prepare in the meantime by
-      porting nxnative engine code (NVN on Metal, native execution) without game-specific parts.
-      *Done when:* the first outside Switch 2 homebrew program passes its oracle in CI.
-      Commercial Switch 2 games never enter this repo.
+## Ready work, in order
 
-- [x] **9. Make the unique parts visible.** Only after step 1 has made the README honest:
-      - a README section (or blog post) on the pre-registered pixel-oracle method: expected frames fixed before
-        the run, CI fails on a single pixel, interpreter and JIT must agree bit for bit;
-      - a short note on the safe-Rust design, and where `unsafe` is now allowed (porting, native execution);
-      - badges or a small table: oracle pass count, CI status on all three OSes, the safe-Rust status.
-      *Done when:* each claim links to its CI run or oracle file, and nothing claims more than the evidence shows.
-      *Proof:* [PR #139](https://github.com/hffgzktbcc-blip/ounce-core/pull/139) (merged `9903f22`): README "How the proof works" and "Safe Rust by construction", evidence table and badges, each linked; the oracle badge is now checked against the canonical report like the headline. CI green: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150292; oracles 15/20 with README check: https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41795150245.
+- [x] **W1. Remove workflow loops and preserve useful checks.**
+      Result: read-only local status; unique task IDs; blocked-task selection; cheap staged-only local checkpoints; separate PR submission; scope-aware CI with required statuses always emitted.
+      Acceptance: disposable-Git regression tests show no fetch/revert/push at startup, no Cargo/GitHub requirement to save, no sweeping peer work, no automatic completion/merge, and correct blocked/duplicate handling. Hosted CI checks relevant code without requiring Rust for docs-only edits.
+      Evidence: [PR #205](https://github.com/hffgzktbcc-blip/ounce-core/pull/205) and [hosted run 42408267822](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42408267822), verified 2026-11-07: all 25 jobs completed successfully, including tooling, platform/runtime, canonical corpus and interaction checks. Disposable-Git tests cover read-only startup, blocked/duplicate handling and staged-only local save without Cargo/GitHub. Integration remains separate; no PR was merged to record this acceptance.
+- [x] **R1. Ship one failure-to-reproduction walkthrough.**
+      Result: a developer follows one entry point to load two retained runs, see the first recorded divergence, identify comparable inputs, and obtain the exact replay command and prerequisites.
+      Scope: reuse tools/ounce_verify.py, scripts/diagnose_corpus_run.py, scripts/compare_corpus_runs.py and the historical SDL2 failure; retain real before/after evidence with redistribution reviewed for those artifacts only. Start with local JSON and a CLI; no new service or GUI framework.
+      Acceptance: on a fresh Python-only checkout, one documented command produces a diagnosis and a shareable reproduction bundle from permitted retained evidence. Corrupt/missing inputs give actionable errors and nonzero exits. Replay is actually executed in a supported Rust/runtime environment and checked against the recorded failure; offline diagnosis is not called a fresh execution.
+      Evidence: [Python-only retained SDL2 walkthrough](docs/FAILURE_TO_REPRODUCTION.md) produces a portable diagnosis/replay dossier from original before/after report and log bytes; exact artifact identities and observation-only distribution scope are retained. Both engines first diverge at frame 1; no historical prior passes are lost. This is offline inspection, not fresh runtime execution.
+      Execution acceptance (2026-11-07): exact-hash local NRO replayed from clean recorded revisions on macOS arm64 with isolated build directories. Both engines exactly match historical stop, PC, instruction count and frame observations: expected failure exits 101; reference passes with exit 0. Raw JSON, runtime logs and digests: [dated replay manifest](docs/reproduce/sdl2-failure/replay-2026-11-07/manifest.json). Offline error handling: all six walkthrough tests pass. No binary redistribution, independent-rerun or current-corpus claim.
+      Next: R2 investigates a real developer input; R3 can package the demonstrated workflow.
+- [x] **R2. Solve one externally grounded developer issue.**
+      Result: an open-source developer has a reproducible answer to a real regression, execution divergence, or unusable failure report.
+      Scope: inspect public issue reports or contributor feedback; record the issue URL, affected user, current workaround and smallest supported input. Do not assume market demand or contact maintainers without authorization.
+      Acceptance: capture failure before a targeted fix, run the same input after it, show the actionable diagnosis/replay result, and preserve prior relevant passes. Record developer feedback separately; outside endorsement is not required to merge a useful fix.
+      Evidence: [external audio-channel case](docs/verify/AUDIO_CHANNEL_CASE.md), from ITotalJustice/libnx #685: unchanged local NRO and pre-registered A-button interaction reject all seven padded/default-stereo opens before and accept all seven after on both CPU engines. [Dossier](docs/verify/audout-padding/manifest.json) retains observations, source identities, exact replay criteria and 100 byte-verified passing regression records. All 50 existing programs retained; 478 Rust/CLI tests and 25-stage harness pass. No source/binary redistribution, maintainer endorsement, upstream libnx fix or six-channel claim.
+      Next: R4 connects the observed negotiation failure and explanation to the installed diagnosis CLI; outside feedback remains unrequested/unreceived.
+- [x] **R3. Make the proven workflow installable and predictable.**
+      Depends: R1
+      Result: a new developer runs the demonstrated diagnosis without assembling internal scripts manually.
+      Scope: one CLI front door, explicit versions/exit codes, examples and a small distribution using current Python/Rust tooling. Separate offline report inspection from execution dependencies. Support only the tested report/input formats.
+      Acceptance: fresh-install smoke test, successful diagnosis, missing/corrupt input, timeout and interrupted execution scenarios; a shareable bundle opens without private paths or credentials. Record measured setup time and tested hosts rather than a speed promise.
+      Evidence: [CLI install and exit-code guide](docs/DIAGNOSIS_CLI.md), [dated acceptance](docs/verify/diagnosis-cli-0.1.0/acceptance.json). The copied standard-library archive diagnosed the reviewed example outside the checkout on macOS arm64/Python 3.9.6; explicit replay matched both exact historical revisions. Packaged timeout and SIGTERM returned 124/130 with retained logs. Tests cover missing/corrupt inputs, output preservation, wrong hashes and real descendant cleanup on timeout/SIGINT/SIGTERM; 99 Python tests ran, zero failures, one opt-in infrastructure skip. No Windows or independent-user acceptance claimed.
+      Next: keep the CLI scope fixed until R2 identifies a reproduced external developer failure; release remains R5.
+- [x] **R4. Turn one lagging component into an observed user result.**
+      Depends: R2
+      Result: one existing CPU, JIT, GPU, service, trace or app component materially improves the selected developer's workflow.
+      Scope: trace the selected issue through the real command path; repair the first unconnected or incorrect boundary. No blanket refactor or new subsystem because it appears on an architecture diagram.
+      Acceptance: the user scenario crosses the relevant component boundary, produces the expected observable result, handles its failure path and retains a regression case. Compare latency only on matched inputs/hosts; compare correctness against a fixed expectation.
+      Evidence: [CLI audio-case command](docs/DIAGNOSIS_CLI.md), [0.2.0 installed-archive acceptance](docs/verify/diagnosis-cli-0.2.0/acceptance.json). The copied archive reads the same R2 traces outside the checkout with Python alone, derives both engines' seven rejected-before/stereo-after replies, preserves raw observations and exact replay identities, and rejects corrupt/contradictory reports. Consistent unrepaired reports exit 1 rather than claim a fix. All 103 Python tests ran without failures (one opt-in skip); focused independent review found no actionable issue. No fresh-execution or binary-validation claim.
+      Next: R5 packages and qualifies this demonstrated workflow for a small community release; outside feedback remains unrequested/unreceived.
+- [x] **R5. Publish the smallest useful community release and reassess.**
+      Depends: R3 R4
+      Result: a versioned, documented tool that addresses the demonstrated issue with an example, limitations, checksums and a repeatable recipe.
+      Acceptance: clean-environment installation and the selected end-to-end scenario pass; required CI passes; included materials have documented redistribution rights. Summarize actual feedback or lack of it. Do not claim adoption from stars or internal reruns.
+      Evidence: [published diagnosis toolkit 0.2.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/diagnosis-v0.2.0), [release acceptance](docs/releases/diagnosis-0.2.0-readiness.md), [asset/source proof](docs/releases/diagnosis-0.2.0-proof.json). Four standalone host/Python jobs and all 25 final-candidate CI jobs passed. Downloaded code/source assets match checksums; both diagnosis commands pass. The 30-file parentless source tag and automatic archives contain only the reviewed Python tool/observation inputs. Runtime assets and Latest remain unchanged. No external feedback received; no adoption, independent rerun or broad provenance claim.
+      Next: all ready outcome tasks are complete. Continue from concrete reported failures; external E1/E2 acceptance still requires its named outside evidence or owner/specialist decisions. No speculative adapter/platform work.
 
-## How we work (what got us unstuck)
-- **Single source of truth:** this file. Agents' own notes and handoffs are history, not plans.
-- **Real frames only:** pixel oracles in CI decide progress.
-- **One step per session:** short sessions save usage and stop drift.
-- **Environment first:** disk space, `~/Projects`, background jobs.
-- **Agents test themselves.** The owner is never the test dummy. Use scripted input and automated frame capture.
+## External acceptance and publication dependencies
+
+- [ ] **E1. Obtain an independent rerun of the existing reproduction experiment.**
+      Status: blocked
+      Blocked by: unaffiliated tester evidence through issue #190. Existing internal/CI RomFS results remain useful, but do not establish independence.
+      Next: retain the recipe and accept outside evidence when available; no repeated internal reruns as a substitute.
+- [ ] **E2. Disposition historical provenance for affected distribution artifacts.**
+      Status: blocked
+      Blocked by: documented component notice decisions (objc2/SDK terms, Rust runtime notices and final-binary coverage), the historical 72-byte program permission question, and separately approved historical/ref or corrected-release actions. PR #203 is merged; its technical controls do not establish legal clearance.
+      Next: use docs/PROVENANCE_REMEDIATION_REPORT.md and the pending docs/RELEASE_NOTICE_REVIEW.json for the named decisions. Runtime publication remains gated; the reviewed standalone Python toolkit is separately distributable. Continue ordinary development without waiting for blanket historical clearance.
+
+## Delivery cadence and stop conditions
+
+Use one small vertical result per PR. Submit partial useful work without waiting for
+an entire research milestone. Prefer focused local checks, then one relevant hosted
+qualification for the candidate. Preserve exact failures; retry transient infrastructure
+only within existing bounded limits. If the same failure recurs with unchanged inputs,
+record it and change the hypothesis or move to ready work, rather than rerunning it.
+
+Track time to first successful diagnosis, replay success on supported environments,
+real issues resolved, and setup/CI time. No new telemetry service is required: record
+measurements in the result/PR. After the first community release, choose the next
+work from these observations. No invented dates, token savings, user demand or adoption.

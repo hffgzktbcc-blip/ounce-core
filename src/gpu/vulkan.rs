@@ -3,7 +3,7 @@
 use super::shader::{SPIRV_MAGIC, SPIRV_VERSION_1_5};
 use crate::mmu::Memory;
 
-/// Khronos Vulkan 1.3 / SPIR-V 1.5 Graphics HAL for Switch 2 Tegra T239.
+/// Legacy bookkeeping fixture. Does not open a device or execute Vulkan commands.
 #[derive(Debug, Clone)]
 pub struct VulkanDeviceInfo {
     pub device_name: String,
@@ -17,17 +17,17 @@ pub struct VulkanDeviceInfo {
 impl Default for VulkanDeviceInfo {
     fn default() -> Self {
         Self {
-            device_name: "NVIDIA Tegra T239 (Ampere SM86) Hardware HAL".to_string(),
-            api_version: (1, 3, 275),
-            driver_version: 550_00,
-            device_type: "Integrated / Discrete GPU",
-            supports_mesh_shaders: true,
-            supports_upscale_model: true,
+            device_name: "No device (legacy pipeline fixture)".to_string(),
+            api_version: (0, 0, 0),
+            driver_version: 0,
+            device_type: "None",
+            supports_mesh_shaders: false,
+            supports_upscale_model: false,
         }
     }
 }
 
-/// Vulkan Shader Module holding validated binary SPIR-V bytecode.
+/// Fixture storing SPIR-V words after header checks only.
 #[derive(Debug, Clone)]
 pub struct VulkanShaderModule {
     pub spirv_words: Vec<u32>,
@@ -43,7 +43,7 @@ pub enum ShaderStage {
 }
 
 impl VulkanShaderModule {
-    /// Creates and validates a Vulkan shader module from binary SPIR-V bytecode.
+    /// Checks the SPIR-V header; does not validate instructions or create a driver module.
     pub fn create_from_spirv(words: &[u32], stage: ShaderStage, entry_point: &str) -> Result<Self, &'static str> {
         if words.len() < 5 {
             return Err("SPIR-V bytecode too short (< 5 header words)");
@@ -63,7 +63,7 @@ impl VulkanShaderModule {
     }
 }
 
-/// Vulkan Pipeline State Object (PSO) bridging guest NVN state to host GPU pipelines.
+/// Legacy pipeline record; does not bridge NVN or create a host pipeline.
 #[derive(Debug, Clone)]
 pub struct VulkanGraphicsPipeline {
     pub vertex_shader: VulkanShaderModule,
@@ -73,7 +73,7 @@ pub struct VulkanGraphicsPipeline {
     pub viewport_height: u32,
 }
 
-/// Native Hardware Vulkan / Metal GPU Backend HAL.
+/// Legacy pipeline bookkeeping; real guest execution lives in ampere/render/host.
 #[derive(Debug)]
 pub struct VulkanGpuBackend {
     pub device_info: VulkanDeviceInfo,
@@ -127,7 +127,7 @@ impl VulkanGpuBackend {
         Ok(())
     }
 
-    /// Dispatches a hardware draw call through the active Vulkan pipeline.
+    /// Records a fixture draw; submits no hardware commands.
     pub fn draw_arrays(&mut self, _mmu: &Memory, _vertex_buffer_gpu_addr: u64, _vertex_count: u32) -> Result<(), &'static str> {
         if self.active_pipeline.is_none() {
             return Err("No active Vulkan pipeline bound for draw_arrays");
@@ -137,9 +137,9 @@ impl VulkanGpuBackend {
         Ok(())
     }
 
-    /// Presents rendered frame to display swapchain.
+    /// Fixture has no swapchain; cannot present a hardware frame.
     pub fn present_frame(&mut self) {
-        self.hardware_frames_presented += 1;
+        // Kept for source compatibility. Only an actual backend may claim presentation.
     }
 }
 
@@ -174,5 +174,8 @@ mod tests {
         let mut mmu = Memory::new();
         assert!(backend.draw_arrays(&mut mmu, 0x8000_0000, 3).is_ok());
         assert_eq!(backend.draw_calls_submitted, 1);
+        backend.present_frame();
+        assert_eq!(backend.hardware_frames_presented, 0);
+        assert_eq!(backend.device_info.device_type, "None");
     }
 }

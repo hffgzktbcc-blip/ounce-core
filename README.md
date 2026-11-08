@@ -5,18 +5,110 @@
 <br />
 
 [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml)
-[![First-frame oracles](https://img.shields.io/badge/first--frame_oracles-17%2F20_pass-84b89e?style=flat-square)](#what-is-proven)
+[![First-frame oracles](https://img.shields.io/badge/first--frame_oracles-50%2F50_pass-84b89e?style=flat-square)](#what-is-proven)
 [![Safe Rust core](https://img.shields.io/badge/src-forbid(unsafe__code)-cc754f?style=flat-square&logo=rust&logoColor=white)](#safe-rust-by-construction)
 [![Rust 2024](https://img.shields.io/badge/Rust-2024-cc754f?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![MIT](https://img.shields.io/badge/License-MIT-84b89e?style=flat-square)](LICENSE)
 [![Research](https://img.shields.io/badge/Status-Experimental-a9bcc4?style=flat-square)](#what-is-proven)
 [![No retail assets](https://img.shields.io/badge/Assets-No%20firmware%20or%20retail%20keys-7cae9f?style=flat-square)](#responsible-research)
 
-**An inspectable AArch64 runtime for open-source Switch homebrew, measured by real frames.**
+**Reproducible failure investigation, built on an inspectable AArch64 runtime.**
 
-[Explore the architecture](#the-system) · [Get started](#quickstart) · [See proven progress](#what-is-proven) · [Roadmap](#the-road-ahead) · [Research & provenance](#responsible-research)
+[The Ounce Vision](#the-ounce-vision) · [Architecture](#the-system) · [Get started](#quickstart) · [Verified progress](#what-is-proven) · [Roadmap](#the-road-ahead) · [Research & provenance](#responsible-research)
 
 </div>
+
+---
+
+<a id="the-ounce-vision"></a>
+
+<div align="center">
+
+## ✦ THE OUNCE VISION ✦
+
+### Execute. Observe. Understand. Verify.
+
+**Help developers see what changed, investigate a failure, and share a repeatable reproduction.**
+
+*Current foundation: runtime, evidence validation, run comparison and replay tooling. Next: one complete developer workflow.*
+
+</div>
+
+```mermaid
+flowchart TB
+    subgraph EXPERIENCE["THE RESEARCH EXPERIENCE · evolving product directions"]
+        direction LR
+        DBG["Ounce-Debug<br/>Investigate failures"]
+        TRC["Ounce-Trace<br/>Inspect execution"]
+        LRN["Ounce-Learn<br/>Explain the system"]
+        BEN["Ounce-Bench<br/>Compare performance"]
+    end
+    V["OUNCE-VERIFY<br/>Registered oracles · evidence · reproducibility"]
+    R["OUNCE-CORE RUNTIME<br/>AArch64 engines · memory · services · graphics"]
+    P["Pinned, permitted programs and reproducible test inputs"]
+
+    P --> R --> V
+    V --> DBG
+    V --> TRC
+    V --> LRN
+    V --> BEN
+
+    classDef foundation fill:#172b32,stroke:#73b9ae,color:#ffffff,stroke-width:2px;
+    classDef verify fill:#d9efe9,stroke:#4f9c87,color:#16382e,stroke-width:2px;
+    classDef experience fill:#edf3f8,stroke:#8aafc7,color:#1e3d52;
+    class R foundation;
+    class V verify;
+    class DBG,TRC,LRN,BEN experience;
+```
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**01 — Execute & model**
+
+The [Ounce-Core runtime](#the-system) explores AArch64 execution, memory, operating-system services and graphics through inspectable software models.
+
+</td>
+<td width="50%" valign="top">
+
+**02 — Measure & preserve**
+
+[Ounce-Verify](docs/verify/README.md) checks registered output expectations, distinguishes evidence from inference, and supports reproducible failure investigation.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**03 — Investigate & explain**
+
+**Ounce-Trace**, **Ounce-Debug** and **Ounce-Learn** are proposed experiences for understanding execution, faults and computing concepts, building on the same evidence rather than inventing separate sources of truth.
+
+</td>
+<td width="50%" valign="top">
+
+**04 — Compare & share**
+
+**Ounce-Bench** is a proposed performance-research experience. Public reports, documented experiments and independent reruns can help developers, students and researchers evaluate results.
+
+</td>
+</tr>
+</table>
+
+<div align="center">
+
+**From an instruction to a rendered frame. From a failure to an explanation. From a claim to reproducible evidence.**
+
+*The vision is larger than any one platform; the proof must always stay narrower than the claim.*
+
+[Explore verified results](#what-is-proven) · [How verification works](#how-the-proof-works) · [See the research roadmap](#the-road-ahead)
+
+</div>
+
+> **Current priority:** connect existing verification, diagnosis and replay tools into one usable failure-to-reproduction workflow, then solve a real developer issue. See [the outcome plan](PLAN.md). Platform coverage is a regression baseline, not the product roadmap. An experimental [Python-only diagnosis CLI](docs/DIAGNOSIS_CLI.md) packages the retained SDL2 and audio-padding workflows; outside developer validation remains open.
+
+> **Vision versus current capability:** Ounce-Core and Ounce-Verify have working implementations. The named Trace, Debug, Learn and Bench experiences above are future directions, not claims that four finished products exist. Original-Switch corpus results and limited Switch 2 SDK-path observations remain separate; neither establishes commercial-software or broad Switch 2 compatibility.
 
 ---
 
@@ -26,7 +118,7 @@ Every program is a conversation between instructions, memory, operating-system s
 
 It brings together interpreters, tiered AArch64 execution, Horizon-style service models, software graphics and optional `wgpu` presentation. The root crate forbids unsafe Rust; the optional Tier-4 recompiler owns a separate unsafe boundary for native code generation and executable memory. The goal is to test execution behaviour systematically—not to confuse a successful build with demonstrated compatibility.
 
-> **Headline metric: [<!-- corpus-headline -->17/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). Everything ounce-core claims rests on outside open-source homebrew passing a pre-registered pixel oracle in CI. The project targets original Switch homebrew and makes no claims about Switch 2 or commercial software.
+> **Headline metric: [<!-- corpus-headline -->50/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle](#what-is-proven)** (count derived from the [Ounce-Verify](docs/verify/README.md) canonical report in CI). This historical benchmark measures registered graphics behavior; tooling, debugging and usability changes are assessed by their own end-to-end scenarios. The certified headline covers original Switch homebrew only. A separate experimental [SDK-path observation](https://github.com/hffgzktbcc-blip/ounce-core/pull/172) is retained as research evidence; expanding Switch 2 coverage is not the current focus.
 
 <table>
 <tr>
@@ -74,13 +166,19 @@ The core is designed to remain useful as a **systems-research platform** even wh
 
 ### The architecture at a glance
 
-| Layer | Current capability | Important boundary |
-| :--- | :--- | :--- |
-| **CPU** | AArch64 interpreter, Tier-1/2/3 engines, optional Tier-4 host code generation | A subset of the architecture; external correctness is not universal |
-| **Memory & kernel** | 4 KiB paging, protections, threads, events and selected SVCs | Not a cycle-accurate hardware or full OS implementation |
-| **Services & file loading** | CMIF/TIPC and selected Horizon-style services; parsers for supported homebrew and synthetic formats | Incomplete service coverage; retail decryption disabled |
-| **Graphics** | CPU rasterisation, selected GPU-method models, optional `wgpu` host replay | A host-rendered image is **not** a verified guest-rendered frame |
-| **Sound & input** | Software audio mixing, host audio output, keyboard/gamepad mapping | Broader independent-app coverage not established |
+<!-- BEGIN GENERATED ARCHITECTURE: scripts/render_roadmap.py -->
+Implemented code paths are not universal compatibility proof. Source links identify implementation, not certification.
+
+| Layer | Current implementation | Important boundary | Source |
+| :--- | :--- | :--- | :--- |
+| **CPU execution** | AArch64 interpreter, cached/decoded/fused block paths (Tier 1–3), optional Tier-4 native JIT and AArch64-host native execution | Instruction coverage is partial; Tier-4 and native execution are separate from the Interpreter/Tier-3 headline oracle count. | [interpreter.rs](src/cpu/interpreter.rs), [tier3_jit.rs](src/cpu/tier3_jit.rs) |
+| **Memory and kernel** | 4 KiB paged guest memory, access permissions, thread scheduling, synchronization and selected SVCs | Horizon-style subsets, not complete OS semantics, hardware timing or a security sandbox. | [memory.rs](src/mmu/memory.rs), [scheduler.rs](src/kernel/scheduler.rs) |
+| **Services and loading** | Selected CMIF/TIPC service models; NRO/NSO and package parsing; homebrew and synthetic execution paths | Incomplete service coverage; retail decryption remains restricted; parsing a container does not demonstrate execution. | [cmif.rs](src/kernel/cmif.rs), [hipc.rs](src/kernel/hipc.rs) |
+| **Graphics and presentation** | Guest-frame capture, software rasterization, and experimental guest SASS execution through wgpu with render-target readback | Physical GPU execution and unchanged outside-frame oracles have separate qualification gates. | [host.rs](src/gpu/ampere/host.rs), [render.rs](src/gpu/ampere/render.rs) |
+| **Audio and input** | Software audio mixing with CPAL host output; keyboard/gamepad mapping and selected HID service paths | Host device support varies by platform; external-program correctness needs case-specific tests. | [host.rs](src/audio/host.rs), [audren.rs](src/audio/audren.rs) |
+| **Execution evidence** | Ounce-Verify records, first-frame oracles, artifact-integrity checks, corpus comparison, diagnosis, retries, bisection and resumable runs | Passing local unit tests or CI does not certify general compatibility, provenance or an independent rerun. | [ounce_verify.py](tools/ounce_verify.py), [corpus_verify.py](scripts/corpus_verify.py) |
+
+<!-- END GENERATED ARCHITECTURE -->
 
 <details>
 <summary><strong>Explore the full subsystem implementation matrix</strong></summary>
@@ -96,10 +194,10 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | Kernel (SVC) | Implemented (subset) | Threads, events, mutexes, memory and process queries needed by the test programs. |
 | IPC | Implemented (subset) | CMIF and TIPC message formats. Services are synthetic. |
 | Services | Modelled | `sm:`, `set:sys` (Drake T239 model, language, nickname), `am`, `vi`, `hid`, `fsp-srv` (directory enumeration, persistent save/sdmc partitions), `pl:u` (placeholder font data), `time:u` / `time:s` (nanosecond steady clock, UTC epoch timestamp), `nvdrv`, `ro:1`. |
-| GPU | Modelled; optional host-GPU replay | Selected `MAXWELL_B` and `AMPERE_B` 3D methods are decoded and rendered by a CPU rasterizer. `gpu-present` can replay supported draw output through `wgpu`. This is not a hardware driver or NVN implementation; many behaviors remain unsupported or unverified. |
-| Shader translation | Partial | The older SASS path emits SPIR-V 1.5; the newer Ampere path translates a limited SASS subset through SSA IR to WGSL. The newer decoder documents unverified encodings; neither path is validated against a hardware driver. |
-| Vulkan HAL (`gpu/vulkan.rs`) | Model only | Structures and SPIR-V module checks. It does not call a Vulkan loader or driver. |
-| Host presentation (`gpu/present/`) | Implemented | Guest framebuffer and 3D pushbuffer geometry presented through a host GPU hardware swapchain (`wgpu`: Metal on macOS, Vulkan on Linux/Windows; feature `gpu-present`), software window (`minifb`) or headless mode. |
+| GPU | CPU execution; experimental host execution | Selected `MAXWELL_B` and `AMPERE_B` methods execute in the guest channel path. With `gpu-present` and `OUNCE_GPU_BACKEND=host`, supported guest SASS is translated to WGSL, submitted through a real host graphics API, and read back into the original guest surface. Adapter identity and completed readbacks are recorded; software adapters never count as hardware. [Scope and qualification](docs/guest-host-gpu.md). |
+| Shader translation | Partial | Maxwell/Ampere SASS lowers through SSA IR to WGSL; the experimental host path validates and submits supported shaders through wgpu. Indexed uniforms require actual guest binding sizes. Tegra encoding and shader-behavior coverage remain incomplete; the older SPIR-V emitter is a fixture. |
+| Legacy pipeline fixture (`gpu/vulkan.rs`) | Bookkeeping only | Header checks and records; no device, driver calls or hardware presentation. Actual guest host execution lives in `gpu/ampere/host.rs`. |
+| Host presentation (`gpu/present/`) | Implemented | Guest framebuffer and supported draw output presented through a host swapchain (`wgpu`: Metal on macOS, Vulkan on Linux/Windows; feature `gpu-present`), software window (`minifb`) or headless mode. A wgpu adapter may itself be software. |
 | Upscaler (`gpu/upscaler.rs`) | Modelled | 2× bilinear interpolation with sharpening. **Not DLSS**; there is no neural network. |
 | Audio | Implemented | Software 64-voice mixer; continuous non-blocking ring-buffer streaming from `audout:u` and `audren:u` to 48 kHz stereo host audio sink via `cpal` with polyphonic resampling, underrun tracking and latency metrics. |
 | Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs` (analog stick threshold synthesis to D-pad bitmasks). |
@@ -118,9 +216,9 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ## What is proven
 
-**<!-- corpus-headline -->17/20<!-- /corpus-headline --> outside homebrew programs pass their pre-registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Each has an expected frame written down from its source *before* the run ([method](docs/corpus-oracles.md)), and the Interpreter and Tier-3 engines must both match it. The count is derived from the [Ounce-Verify](docs/verify/README.md) canonical report of the [CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259) (`ounce-verify-canonical-report` artifact); CI fails if this text disagrees with the report. Failures are the to-do list.
+**<!-- corpus-headline -->50/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Interpreter and Tier-3 both pass the registered pixel checks. The oracle manifest distinguishes whole-frame hashes from named pixel probes ([method](docs/corpus-oracles.md)). The count comes from the [Ounce-Verify](docs/verify/README.md) canonical report, with [current external-corpus runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml) containing the underlying artifacts; CI fails if this README disagrees with the report. Failures are the to-do list.
 
-| Program | Source | Oracle | Result (both engines) |
+| Selected program | Source | Oracle | Result (both engines) |
 | :--- | :--- | :--- | :--- |
 | `printing-hello-world` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `vt52-demo` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
@@ -134,16 +232,16 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | `user-timers` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `deko-console` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `deko-examples-menu` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
-| `sdl2-simple` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | fail: guest ExitProcess before the first frame |
+| `sdl2-simple` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `raufang-hello-cpp` | [Raufang/switch-hello-world](https://github.com/Raufang/switch-hello-world) | pixel-exact | pass |
-| `nx-hbmenu` | [switchbrew/nx-hbmenu](https://github.com/switchbrew/nx-hbmenu) | pixel probes | fail: unimplemented instruction `0x4EBC9F5A` |
-| `hybrid-app` | [fincs/hybrid_app](https://github.com/fincs/hybrid_app) | pixel probes | fail: guest ExitProcess before the first frame |
+| `nx-hbmenu` | [switchbrew/nx-hbmenu](https://github.com/switchbrew/nx-hbmenu) | pixel probes | pass |
+| `hybrid-app` | [fincs/hybrid_app](https://github.com/fincs/hybrid_app) | pixel probes | pass |
 | `simplegfx` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `deko-basic` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | regression (observed hash) | pass |
 | `startup` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 | `romfs` | [switchbrew/switch-examples](https://github.com/switchbrew/switch-examples) | pixel-exact | pass |
 
-Every oracle run is in the [External corpus workflow](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml). Reproduction guides: [simplegfx](docs/REPRODUCE_SIMPLEGFX.md), [deko_basic](docs/REPRODUCE_DEKO_BASIC.md), [romfs](docs/REPRODUCE_ROMFS.md).
+The table shows selected examples, not the entire registered corpus. Every oracle run is in the [External corpus workflow](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml). Reproduction guides: [simplegfx](docs/REPRODUCE_SIMPLEGFX.md), [deko_basic](docs/REPRODUCE_DEKO_BASIC.md), [romfs](docs/REPRODUCE_ROMFS.md).
 
 **Tested, not proven:** the 25-stage harness, the unit tests and the 9 cross-platform [CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml) jobs run programs and inputs written for this repository. They guard the code against regressions. They do not show that any outside program works.
 
@@ -159,7 +257,7 @@ cargo test --release
 cargo run --release -- test
 ```
 
-The harness currently reports 27 checks across 25 stages. It runs synthetic AArch64 programs written for this repository through the CPU, kernel and service models. It is not an independently authored homebrew compatibility suite. Each stage passes when its guest program returns the expected exit code; host timings are informational only. Passing this harness does not establish compatibility with commercial software or general homebrew compatibility.
+The harness currently reports 36 checks across 25 stages. It runs synthetic AArch64 programs written for this repository through the CPU, kernel and service models. It is not an independently authored homebrew compatibility suite. Guest exit codes and explicit subsystem output checks gate success; service errors, a wrong loop checksum or a wrong decoded texel fail the run. Host timings are informational only. Passing this harness does not establish compatibility with commercial software or general homebrew compatibility.
 
 CI coverage is feature-specific: the default job runs unit tests and the 25-stage harness; `gpu-present` builds and runs unit tests but does not run that harness; `native-jit` tests the recompiler crate, builds the feature, runs the Tier-4 host self-test and feature-enabled unit tests, but does not run the 25-stage harness. These configured checks describe CI coverage, not the result of the latest run. Test totals are omitted because they can change between revisions.
 
@@ -188,7 +286,7 @@ CI coverage is feature-specific: the default job runs unit tests and the 25-stag
 | 21 | Loose packages | NPDM parse, multi-module link, loose RomFS | `0xBBB` |
 | 22 | Shared font & clock | `pl:u` placeholder mapping, `time:u`, ASTC 4×4 | `0xCCC` |
 | 23 | Applet & GPU model | `IApplicationFunctions`, `ISelfController`, ASTC 8×8 | `0xDDD` |
-| 24 | FP16 SASS & NVN ring | FP16 SASS vector math (`HADD2`, `HMUL2`, `HFMA2`), dynamic NVN buffer cycling | `0xEEE` |
+| 24 | Synthetic opcode translation & NVN ring | `HADD2`/`HMUL2`/`HFMA2` decoding and translation structure (not packed-half arithmetic execution), command count and buffer cycling | `0xEEE` |
 | 25 | Tensor core MMA | Warp-level FP16 matrix multiply-accumulate (`HMMA.1688`, `HMMA.16816`) with FP32 accumulate, checked against IEEE binary16 vectors | `0xEEE` |
 
 </details>
@@ -197,18 +295,18 @@ CI coverage is feature-specific: the default job runs unit tests and the 25-stag
 
 Three rules make the [headline number](#what-is-proven) hard to fake. Each links to the code or CI run that enforces it.
 
-**1. Expected frames are fixed before the run.** For each outside program, a person reads its source at a pinned commit and writes down what the first frames must show. [`tools/corpus_oracle.py`](tools/corpus_oracle.py) turns that written spec into the exact expected frame and stores its hash in [`tests/corpus/oracles.json`](tests/corpus/oracles.json). The 16 step-2 oracles were committed in `2fe006e` before ounce-core ever ran those programs, and no ounce-core output was consulted to write any spec or hash ([method](docs/corpus-oracles.md)). CI recomputes every hash from its spec on each run, so a spec and its hash cannot drift apart. One exception is stated openly: `deko-basic`'s hashes were recorded from an earlier run, so its pass is a regression check of an observed frame, not a pre-registered one.
+**1. Register the checks before execution.** Read the program at its pinned upstream revision and specify what its first queued frame should show. [The oracle generator](tools/corpus_oracle.py) computes the expected hashes or pixel probes from [those specs](tests/corpus/oracles.json), and CI recomputes them. The [method notes](docs/corpus-oracles.md) record the provenance of deko-basic's previously observed frame hashes.
 
-**2. A single wrong pixel fails.** For 18 of the 20 oracles, the runner hashes the whole RGBA8 frame (FNV-1a 64, `Frame::content_hash`) and requires it to equal the expected hash ([`corpus_first_frame_oracle`](src/loader/corpus_runner.rs)). Any changed pixel changes the hash. The other 2 oracles (`nx-hbmenu`, `hybrid-app`) check named pixels only, because font rasterising or 3D geometry cannot be predicted exactly from source; both currently fail, so none of the 15 passes rests on them. A fault, unhandled SVC, timeout or early exit is a failure even after a frame.
+**2. Check the registered pixels.** Full-frame oracles compare an RGBA8 FNV-1a 64 hash. Probe oracles compare named pixels when only parts of a frame are predictable from source. A fault, unhandled SVC, timeout or early exit fails the oracle even if a frame was queued.
 
-**3. Two engines must agree bit for bit.** Every oracle runs twice: on the reference interpreter and on the Tier-3 JIT (`Tier3JitEngine`, which fuses hot decoded blocks into traces in safe Rust; it does not emit native code). A program counts only if both engines match the oracle *and* their queued frames are identical; otherwise the runner records "interpreter and Tier-3 frames differ". The 20-program count uses these two engines only. Native execution (`--cpu=native`, PLAN step 4) runs the four original oracles in its own `native-oracles` job on Apple Silicon, and the optional Tier-4 recompiler is not in the oracle run; neither is part of the count.
+**3. Two engines must agree bit for bit.** Every oracle runs twice: on the reference interpreter and on the Tier-3 JIT (`Tier3JitEngine`, which fuses hot decoded blocks into traces in safe Rust; it does not emit native code). A program counts only if both engines match the oracle *and* their queued frames are identical; otherwise the runner records "interpreter and Tier-3 frames differ". The canonical corpus headline counts qualifying outside programs using these two engines only. Native execution and the optional Tier-4 recompiler are evaluated separately; neither contributes to this interpreter/Tier-3 headline count.
 
-**Where the number comes from.** CI writes one [`ounce-verify/v0`](docs/verify/README.md) record per program and engine, builds a canonical report from them, and derives the count from it ([`scripts/corpus_verify.py`](scripts/corpus_verify.py)). The README headline and the oracle badge are never edited by hand: CI fails if either disagrees with the report. Latest corpus run: [first-frame-oracles job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259) (`ounce-verify-canonical-report` artifact, 40 records, <!-- corpus-headline -->17/20<!-- /corpus-headline -->).
+**Where the number comes from.** CI writes one [`ounce-verify/v0`](docs/verify/README.md) record per program and engine, builds a canonical report from them, and derives the count from it ([`scripts/corpus_verify.py`](scripts/corpus_verify.py)). The README headline and the oracle badge are never edited by hand: CI fails if either disagrees with the report. Canonical corpus evidence: [Ounce-Verify reporting](docs/verify/README.md) and [current external-corpus runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml). The CI-controlled headline is <!-- corpus-headline -->50/50<!-- /corpus-headline -->; inspect the matching run artifact for underlying records.
 
 | Evidence | Status | Source |
 | :--- | :--- | :--- |
-| First-frame oracles (interpreter and Tier-3) | **<!-- corpus-headline -->17/20<!-- /corpus-headline --> pass** | [canonical report run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259) · [oracles.json](tests/corpus/oracles.json) · [method](docs/corpus-oracles.md) |
-| CI on Linux, macOS and Windows | [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) | Each OS runs the unit tests, the 25-stage harness, `gpu-present` and Tier-4 jobs (native execution runs on AArch64 macOS and Linux); last checked green on main: [run 41793834662](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662) ([ubuntu](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662/job/126453153960), [macOS](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662/job/126453153666), [Windows](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41793834662/job/126453154038)) |
+| First-frame oracles (interpreter and Tier-3) | **<!-- corpus-headline -->50/50<!-- /corpus-headline --> pass** | [current external-corpus runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml) · [oracles.json](tests/corpus/oracles.json) · [method](docs/corpus-oracles.md) |
+| CI on Linux, macOS and Windows | [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) | Each OS runs the unit tests, the 25-stage harness, `gpu-present` and Tier-4 jobs (native execution runs on AArch64 macOS and Linux); see [current main-branch CI runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) for up-to-date results across the matrix |
 | Safe Rust in `src` | `#![forbid(unsafe_code)]` | [`src/main.rs`](src/main.rs), enforced by the compiler on every CI build |
 
 The oracles run on Linux only (the corpus is built in the devkitA64 Docker image). The three-OS CI jobs run tests written for this repository; they guard the code but are not proof that outside programs work.
@@ -222,7 +320,7 @@ The runtime in `src/` is one crate with `#![forbid(unsafe_code)]` at its root ([
 - **Native code generation.** [`crates/ounce-recompiler`](crates/ounce-recompiler/src/lib.rs), the optional Tier-4 recompiler behind `native-jit`, denies `unsafe` crate-wide and allows it only in its `exec` module (W^X executable memory and calls into generated code).
 - **Native execution, ported from MIT code.** [`crates/ounce-nce`](crates/ounce-nce/src/lib.rs), behind the `nce` feature, runs homebrew ARM64 code directly on an AArch64 host after rewriting its `svc`, `TPIDR_EL0` and timer instructions into trampolines (rules ported from nxnative, MIT; see [`THIRD_PARTY.md`](THIRD_PARTY.md)). The rewriter is safe Rust; `unsafe` is denied crate-wide and allowed only in `arena` (guest memory at guest address == host address) and `exec` (entering guest code, trampoline exits, fault signals).
 
-Any other code, ported or new, that genuinely needs `unsafe` goes into an isolated crate the same way, agreed in an issue first ([CONTRIBUTING](CONTRIBUTING.md)). Ported code that can be written safely goes into `src` as safe Rust.
+Any other code, ported or new, that genuinely needs `unsafe` goes into an isolated crate with focused tests and review of that boundary ([CONTRIBUTING](CONTRIBUTING.md)). Ported code that can be written safely goes into `src` as safe Rust.
 
 ---
 
@@ -292,17 +390,28 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 
 ## The road ahead
 
-*Garden principle: grow capability, measure the result, and keep the roots visible.*
+*Deliver one reproducible developer result at a time; implementation and historical benchmarks are supporting evidence.*
 
-| Milestone | State | Proof required |
+<!-- BEGIN GENERATED ROADMAP: scripts/render_roadmap.py -->
+This section is rendered from [the milestone registry](docs/roadmap/milestones.json). Research stages require reviewed evidence; PR status is observational only. A green badge or merged PR is not proof of compatibility.
+
+| Live check | Current GitHub status | Evidence boundary |
 | :--- | :--- | :--- |
-| CPU code-cache invalidation | **Complete for its stated regression gate** | Synthetic write/remap tests and gated CI |
-| Independent original-Switch homebrew | **In progress** | Reproducible independent inputs, guest outcomes, external reproduction and real output oracles |
-| Ounce-Verify evidence layer | **Implemented on `main`** | Deterministic evidence validation and negative tests; see [#96](https://github.com/hffgzktbcc-blip/ounce-core/pull/96) |
-| Switch 2 homebrew | **Waiting on public toolchains** | An outside Switch 2 homebrew program passing a pre-registered oracle in CI |
-| Corpus 4 → 20 outside programs | **Next** | A pre-registered oracle per program in CI, pass or fail recorded honestly |
+| CI | [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml?query=branch%3Amain) | Configured test jobs only |
+| External corpus | [![Corpus](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml/badge.svg?branch=main)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml?query=branch%3Amain) | Oracle pipeline health, not a new pass by itself |
 
-The project makes **no claim** to run Switch 2 software, commercial software or arbitrary homebrew. The plan is [PLAN.md](PLAN.md). See [independent corpus methodology](docs/independent-corpus.md), the [Ounce-Verify implementation](https://github.com/hffgzktbcc-blip/ounce-core/pull/96), and [the unmerged raw-frame evidence work](https://github.com/hffgzktbcc-blip/ounce-core/pull/103).
+| Research track | Reviewed stage | Supporting evidence | Next proof gate |
+| :--- | :--- | :--- | :--- |
+| Agent workflow | experimental | [Workflow changes under validation](PLAN.md) | Read-only status, local checkpoints, ready tasks and scope-aware hosted checks (W1) |
+| Failure to reproduction | experimental | [Existing verifier, diagnosis and replay interfaces](docs/verify/README.md) | Ship one fresh-checkout walkthrough and solve a real developer issue (R1–R2) |
+| Usable community tool | experimental | [Outcome acceptance plan; distribution not yet delivered](PLAN.md) | Package the demonstrated workflow; connect one lagging component and release the result (R3–R5) |
+| Historical runtime regression baseline | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->50/50<!-- /corpus-headline --> passes** (CI-certified) | Preserve existing cases; expand only to reproduce a concrete user problem |
+| Switch 2 research (parked) | experimental | [Limited SDK-path observation](docs/verify/README.md) | Retain existing checks; no coverage expansion without a demonstrated user need |
+
+**Live navigation:** [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls?q=is%3Apr+is%3Aopen) · [open issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen) · [Actions](https://github.com/hffgzktbcc-blip/ounce-core/actions) · [verification method](docs/verify/README.md) · [PLAN.md](PLAN.md).
+
+No general homebrew, commercial-game or Switch 2 compatibility claim is implied. The corpus count is independently guarded by [the canonical headline checker](scripts/corpus_verify.py).
+<!-- END GENERATED ROADMAP -->
 
 ---
 
@@ -404,3 +513,19 @@ ounce-core/
 <sub>Ounce-Core · experimental systems research · maintained in the open</sub>
 
 </div>
+
+### Native Mac launcher (local preview)
+
+With Rust and Xcode command-line tools installed, build and install locally:
+
+```sh
+scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.app"
+```
+
+Open **Ounce Core.app**, choose **Open Homebrew…**, and select a homebrew `.nro`.
+**Graphics Demo** opens the bundled diagnostic; **Stop** ends the current session.
+**SD Card Folder…** selects the host folder mounted as `sdmc:`. Logs and the default
+SD folder live under `~/Library/Application Support/Ounce Core/`. **Show Logs** opens
+the log folder. Closing the launcher stops its session. The app is locally ad-hoc
+signed, not a notarized distribution release. Supported programs remain those backed
+by the compatibility oracles; this launcher does not expand that claim.

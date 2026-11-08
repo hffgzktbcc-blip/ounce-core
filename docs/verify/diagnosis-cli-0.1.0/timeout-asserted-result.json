@@ -1,0 +1,13 @@
+{
+  "schema_version": "ounce-diagnose/replay-v1",
+  "side": "failure",
+  "core_commit": "0e5c340885989c1f70bdb11ba9570a06ef1384b8",
+  "binary_sha256": "d92512342d6d571023da3c98d907f04c0c85043de7b2ffd50a745cbcc928bc7f",
+  "timeout_seconds": 0.01,
+  "matched": false,
+  "status": "timeout",
+  "exit_code": 124,
+  "files_sha256": {
+    "runtime.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

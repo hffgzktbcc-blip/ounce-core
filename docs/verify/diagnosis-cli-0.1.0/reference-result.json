@@ -1,0 +1,14 @@
+{
+  "schema_version": "ounce-diagnose/replay-v1",
+  "side": "reference",
+  "core_commit": "bc46c7616acd5b2a2875194b591931789e83c8b0",
+  "binary_sha256": "d92512342d6d571023da3c98d907f04c0c85043de7b2ffd50a745cbcc928bc7f",
+  "timeout_seconds": 180.0,
+  "matched": true,
+  "status": "exited",
+  "exit_code": 0,
+  "files_sha256": {
+    "runtime.log": "3bf176b3d7d98b3bffef7802ab34062f92728761b457ae13099e23dd09fa0192",
+    "observation.json": "cdc5c7b7f32fd07da1c1050fc99d3fdf0fa3d57beb45c59a2ef3c05054471d76"
+  }
+}

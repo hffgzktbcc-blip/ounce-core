@@ -1,98 +1,75 @@
 # Contributing to ounce-core
 
-Thank you for your interest in contributing to `ounce-core`. 
+Ounce-core is evolving into a reproducible execution-debugging and regression toolkit.
+The current runtime and corpus adapters remain experimental and platform-specific.
+Start with [AGENTS.md](AGENTS.md) and the ready outcomes in [PLAN.md](PLAN.md).
 
-`ounce-core` is an experimental runtime for open-source Switch homebrew. It is not a clean-room project: MIT-licensed nxnative and Ryujinx code may be ported with credit (see [`docs/CLEAN_ROOM.md`](docs/CLEAN_ROOM.md)). The provenance bar stays high and the scope is intentionally focused.
+## Make a useful change
 
-Please review these guidelines before submitting an issue or pull request.
+An issue is welcome for a new substantial direction, but is not required for an
+already-authorized fix, documentation improvement or small contribution. Inspect
+existing PRs to avoid duplicating work. Use your available checkout on a topic branch;
+there is no required workstation path or assigned agent/file owner.
 
----
+Reproduce the problem, make the smallest useful change, run focused checks, and
+submit the result with a command or artifact another developer can use. Code and
+unit tests are valid implementation progress; user-facing claims need a check of
+the actual behavior. Pixel oracles apply to graphics claims, not every kind of work.
+An external rerun is required to call a result independent, not to submit a fix.
 
-## 1. Provenance: The Hard Requirement
+## Optional helpers
 
-Every line of code, test case, and documentation must follow these rules and the allowed sources in [`docs/CLEAN_ROOM.md`](docs/CLEAN_ROOM.md):
+```sh
+scripts/next.sh                            # local read-only task/status summary
+# Edit files, then stage only the paths you own:
+git add <paths>
+scripts/gate.sh --checkpoint "what/why"    # local signed-off commit; no tests/push
+scripts/gate.sh --checkpoint "what/why" --push  # save and push explicitly
+scripts/gate.sh                            # relevant local checks by changed paths
+scripts/gate.sh --check quick               # shell/Python/policy checks; no Rust
+scripts/gate.sh --check runtime             # quick + default release tests/harness
+scripts/gate.sh --check full                # runtime + optional feature tests
+scripts/gate.sh --submit                    # push and open/update a PR; no merge
+```
 
-* **Public Documentation Only**: Contributions must be derived strictly from publicly available technical documentation:
-  - The [ARM Architecture Reference Manual](https://developer.arm.com/documentation/ddi0487/latest/) (ARMv8-A / ARMv8.5-A).
-  - The [Vulkan](https://registry.khronos.org/vulkan/) and [SPIR-V](https://registry.khronos.org/SPIR-V/) specifications.
-  - Published NVIDIA GPU hardware documentation and architecture whitepapers.
-  - Open specifications and appropriately licensed (MIT / Apache-2.0 / BSD) open-source code, including nxnative and Ryujinx (MIT), ported with their notices kept in `THIRD_PARTY.md` and recorded in `docs/PROVENANCE.md`. No GPL emulator code.
-* **Zero Proprietary Material**: Absolutely nothing derived from leaked, dumped, decompiled, or reverse-engineered proprietary binaries, firmware, system archives, or SDKs.
-* **No Keys or Game Content**: No encryption keys (`prod.keys`, `title.keys`), firmware dumps, or game data may be committed, even in unit tests. All test inputs must be synthetic or hand-written directly in source.
-* **Developer Certificate of Origin (DCO)**: Sign off all commits using `git commit -s` to certify you have the right to submit the code under the project's MIT license.
-* **Specification References**: Include a one-line reference in your PR description indicating where the implemented behavior or instruction encoding is documented in the public specification.
-* **Prior Exposure Disclosure**: If you have previously worked with proprietary material for this platform (an SDK, dumped firmware, leaked documentation, or a decompilation project), say so in an issue before contributing. It does not rule out documentation or tooling work, but it does rule you out of the areas that material touched.
+Ordinary Git and GitHub commands are equally supported. `--ship` is a compatibility
+alias for `--submit`; it does not tick PLAN, certify evidence or enable auto-merge.
+A checkpoint commits only staged files and records validation as not run. `--next`,
+`--tried`, `--decision`, `--step` and `--proof` are optional commit notes. Network
+failure leaves the local checkpoint intact. Sign off commits (`git commit -s`).
 
-## 1b. Legal guardrails (every contributor, every commit)
-Practical rules drawn from what got other emulators sued. Not legal advice. A PR that breaks one is rejected.
-1. **Never decrypt.** No retail key handling, no NCA/NSP/XCI decryption. `RestrictedCipher` stays. ounce-core
-   accepts only already-decrypted inputs: homebrew (NRO), and loose `exefs/` + `romfs/` folders the user
-   dumped and decrypted on their own console.
-2. **No piracy pointers:** no links to or mentions of ROM, key or dump sites in code, docs, issues, PRs,
-   releases or the website.
-3. **No game names or game screenshots.** Describe capability neutrally ("runs Switch software from
-   user-provided decrypted dumps"), without hiding what the code can do.
-4. **No retail games as test inputs**, ever. Game-specific work never happens here.
-5. **No money tied to games:** no paid builds, tiers or early access that unlock game support.
-6. **Nothing from non-public projects** (code, logs, traces or specs observed from retail software).
-7. **Keys, games, firmware and shader caches compiled from games are never committed**, not even in tests or
-   CI artifacts. `.gitignore` covers `*.keys`, `dumps/`, `*.nsp`, `*.xci` and `*.nca`, and the
-   `scripts/check_legal_guardrails.sh` CI job fails if such files or known ROM/key-site links appear.
+## Validation and integration
 
----
+CI always emits the existing required `Test (ubuntu-latest)` and
+`Test (windows-latest)` statuses. They summarize the applicable legal, tooling,
+runtime and feature checks; failed or cancelled applicable checks fail the summary.
+Docs/metadata/Python-only changes avoid Rust rebuilds. Runtime/build/oracle changes
+run the supported platform/feature matrices and canonical corpus. Full release
+qualification remains separate. See the workflow files for exact triggers.
+README prose edits stay cheap; changing certified headline/badge values requires
+fresh canonical corpus validation. Embedded fonts count as runtime inputs.
 
-## 2. Project Scope
+Run focused tests while editing. Avoid repeating successful expensive checks on the
+same inputs. In a PR state what changed for the user, how to reproduce/check it,
+what passed and what remains untested. A missing tool is an environment limitation,
+not a passing check; it does not prevent saving or submitting useful work.
 
-* **In Scope**:
-  - AArch64 CPU instruction decoding and interpreter execution driven by ARM specifications.
-  - Modular dynamic loaders (MOD0, ELF `.dynamic`, relocation tables, Thread-Local Storage).
-  - High-level Horizon OS service models (`ipc`, `time:u`, `pl:u`, `hid`, `fsp-srv`).
-  - GPU pipeline models (NVN command buffer, SASS transpilation to SPIR-V, texture decompression).
-  - Software audio renderer models (`audren:u`, `audout:u`) and host sink integration.
-  - Homebrew and synthetic research workloads.
-  - Test coverage, synthetic test generators, documentation, CI, and host portability fixes.
-* **Out of Scope (By Policy)**:
-  - Bootstrapping or compatibility work for commercial retail games.
-  - Re-enabling or bypassing retail container decryption (commercial key decryption is disabled by policy in `loader/nca.rs`).
-  - Circumventing digital rights management or copyright protection mechanisms.
+Mark a PLAN task complete manually with its acceptance evidence. A green build,
+PR creation or agent assertion does not by itself complete the user's scenario.
+Outside dependencies block their dependent action, not all other work.
 
-**Terminology**: Describe `ounce-core` only as a research runtime or compatibility layer, in code, comments, documentation, commit messages, and PR text. Do not describe it as a console or game-playing product.
+## Sources and integrity
 
----
+Permissively licensed code may be ported with notices in THIRD_PARTY.md and source
+references in docs/PROVENANCE.md; this project is not clean-room. Use public specs,
+permitted open-source workloads, and synthetic focused tests as appropriate. Record
+source, licence, version/hash and build recipe for new redistributed fixtures.
 
-## 3. Verification Gates
+Do not commit keys, retail software, firmware, dumps, leaked/private material or
+incompatible licensed code. Retail decryption remains disabled. See
+[the source policy](docs/CLEAN_ROOM.md) and [provenance](docs/PROVENANCE.md) for the
+specific outstanding distribution questions. They do not prohibit unrelated tooling.
 
-Before submitting a pull request, ensure your branch passes all required gates:
-
-1. **Clean Release Build**:
-   ```bash
-   cargo build --release
-   ```
-   Must compile with zero errors and zero warnings.
-2. **Passing Unit Tests**:
-   ```bash
-   cargo test --release
-   ```
-   All unit tests must pass.
-3. **24-Stage Integration Harness**:
-   ```bash
-   cargo run --release -- test
-   ```
-   Must complete all 25 stages and exit with status code `0xEEE`.
-4. **Zero Unsafe Guarantee**:
-   ```bash
-   grep -rn "unsafe" src
-   ```
-   Must return zero matches. All code within `src/` must remain pure safe Rust.
-   If work genuinely needs `unsafe`, it belongs in a separate, isolated crate under `crates/`, and that must be agreed in an issue first.
-
----
-
-## 4. Best First Step
-
-Before opening a pull request, **open an issue describing what you want to work on**. This ensures the work is in-scope, avoids duplicate effort across contributors and automated agents, and aligns on implementation design before code is written.
-
-Good starting areas:
-- Additional AArch64 instruction decoders in `src/cpu/decoder.rs` from the ARM ARM.
-- Synthetic test modules and edge-case unit tests for the dynamic loader and memory manager.
-- Platform portability fixes and documentation enhancements.
+Preserve fixed expectations, input identities and failures when repairing behavior.
+Keep `src/` safe Rust; unsafe operations remain confined to existing isolated crate
+boundaries. Describe actual evidence, supported inputs and known limits plainly.
