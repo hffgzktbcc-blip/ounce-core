@@ -540,6 +540,26 @@ pub enum Instruction {
         index: u8,
     },
 
+    /// `ADDHN{2}`/`SUBHN{2}`/`RADDHN{2}`/`RSUBHN{2}`: `esize` is the narrow (result) lane size; `q` writes the high half
+    SimdNarrow {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdNarrowOp,
+        esize: u8,
+        q: bool,
+    },
+
+    /// `SQDMULL{2}`/`SQDMLAL{2}`/`SQDMLSL{2}` (vector): `esize` is the source lane size (16 or 32)
+    SimdSatLong {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdSatLongOp,
+        esize: u8,
+        q: bool,
+    },
+
     /// AdvSIMD three registers of different type: widening multiply (`S/UMULL`, `S/UMLAL`, `S/UMLSL`
     /// and their `2` forms). `esize` is the source lane size; `q` selects the high source half.
     SimdLong {
@@ -815,6 +835,23 @@ pub enum SimdLongOp {
     Subw,
     Abdl,
     Abal,
+}
+
+/// `ADDHN`, `SUBHN`, `RADDHN`, `RSUBHN`: wide operands, narrow result (the high half of each sum or difference).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdNarrowOp {
+    Addhn,
+    Subhn,
+    Raddhn,
+    Rsubhn,
+}
+
+/// `SQDMULL`, `SQDMLAL`, `SQDMLSL`: saturating doubling multiply long.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdSatLongOp {
+    Sqdmull,
+    Sqdmlal,
+    Sqdmlsl,
 }
 
 /// AdvSIMD across-lanes reductions (`ADDV`, `S/UADDLV`, `S/UMAXV`, `S/UMINV`).

@@ -1765,6 +1765,20 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdNarrow { rd, rn, rm, op, esize, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::narrow_high(op, d, n, m, esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdSatLong { rd, rn, rm, op, esize, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::sat_doubling_mul_long(op, d, n, m, esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdLong { rd, rn, rm, op, signed, esize, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::mul_long(op, d, n, m, esize as u32, q, signed));
