@@ -94,6 +94,35 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Evidence: [LZ4 Linux ELF report](docs/verify/linux-elf/lz4-2026-11-08/report.json) and [recipe](docs/verify/linux-elf/README.md#lz4-without-a-console-sdk): unchanged pinned cases linked with musl match a fresh host on actual Tier-3/Tier-4, exit 0, 406 bytes, 3,862,822 instructions. No runtime patch needed. Five execution-verdict tests and all 108 Python tooling tests passed (one pre-existing opt-in skip); All 11 existing Rust Linux ELF tests passed with native-jit enabled, including unknown-syscall diagnosis and malformed-input handling.
       Next: qualify the new Linux CI job; deterministic time and wider OS acceptance remain incomplete vision-step-1 work.
 
+- [x] **V3. Make the bounded Linux ELF workflow repeatable.**
+      Result: `run-elf --deterministic` uses fixed virtual clock values, and guest arguments after `--` reach the program unchanged.
+      Evidence: [clock/CLI acceptance](docs/verify/linux-elf/deterministic-2026-11-08.json): identical clock output on two runs of each actual engine; invalid-clock/pointer and rollover tests pass. Full native-jit unit suite: 562 passed, 10 existing opt-in tests ignored; five CLI tests passed. The new guest-option regression failed before the parser fix. No general deterministic Linux or cross-host replay claim.
+      Next: qualify the new mode on hosted supported hosts alongside V4.
+- [ ] **V4. Qualify the same Linux ELF workflow on Linux, macOS and Windows.**
+      Status: ready
+      Depends: V2 V3
+      Result: the same pinned library cases and clock fixture execute with explicit engine identity on all three hosts.
+      Acceptance: retain per-host toolchains, source/input hashes, output, errors and hosted run links; require byte comparisons and nonzero failure exits. Do not treat cross-host compiler differences as emulator failures without checking the actual inputs.
+      Next: expand the LZ4 CI matrix, preserve binary stdout on Windows, and record the first three-host qualification.
+- [ ] **V5. Locate one instruction-level first divergence.**
+      Status: ready
+      Result: a bounded real failing execution points at its first differing instruction with register state before/after.
+      Acceptance: preserve an observed failure, verify the reported location against a controlled reproduction, and distinguish optimized-block behavior from interpreter fallback. Retained frame differences do not satisfy this task.
+      Next: inspect existing fuzzer state snapshots and runner boundaries; pick the smallest demonstrated divergence and connect its report to replay.
+- [ ] **V6. Replay one recorded execution on another host.**
+      Status: ready
+      Depends: V3
+      Result: a content-checked portable bundle reproduces one fixed failure with the same input and stop observations on another supported machine.
+      Next: use the bounded ELF workflow, record nondeterministic inputs, validate tampering/missing-input failure paths, and retain the second-host evidence. Existing SDL2 replay remains historical evidence only.
+- [ ] **V7. Replace the scripted browser teaching path with real runtime execution.**
+      Status: parked
+      Result: a visitor steps through an actual small ARM64 program with no installation.
+      Next: isolate an appropriate safe execution API and qualify a real WebAssembly build before connecting it to `site/lab.html`; do not present scripted states as execution.
+- [ ] **V8. Publish a reusable conformance suite and obtain an outside result.**
+      Status: parked
+      Result: another emulator project runs a versioned suite and reports a result with exact inputs and reference scope.
+      Next: package already verified instruction cases with provenance and an adapter contract; outside adoption remains external acceptance and is not inferred from internal runs.
+
 ## External acceptance and publication dependencies
 
 - [ ] **E1. Obtain an independent rerun of the existing reproduction experiment.**

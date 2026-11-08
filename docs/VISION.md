@@ -47,7 +47,7 @@ Every claim carries one of four labels:
 | Diagnose differences between retained reports | bounded-verified (one workflow) |
 | Bounded replay of a historical failure | bounded-verified (one case) |
 | Instruction-level checking against hardware | bounded-verified on recorded single-instruction inputs; [fuzzer scope and results](verify/insn-fuzzer/README.md) |
-| Run static Linux ARM64 programs | research-only runner; five freestanding fixtures and one bounded LZ4/musl case, [run-elf evidence](verify/linux-elf/README.md) |
+| Run static Linux ARM64 programs | research-only runner; six freestanding fixtures and one bounded LZ4/musl case, [run-elf evidence](verify/linux-elf/README.md) |
 | Run arbitrary ARM64 or Linux applications | not established |
 | Automatically find any bug's root cause | not established |
 | Independent reproduction by an outside developer | none yet ([issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190)) |
@@ -73,7 +73,7 @@ Every claim carries one of four labels:
 
 Current progress and remaining acceptance:
 
-- **Step 1 started:** `run-elf` executes five tiny freestanding fixtures and the unchanged [LZ4 harness linked with musl](verify/linux-elf/README.md#lz4-without-a-console-sdk). Deterministic time, more library coverage and three-OS acceptance remain.
+- **Step 1 started:** `run-elf` executes six tiny freestanding fixtures and the unchanged [LZ4 harness linked with musl](verify/linux-elf/README.md#lz4-without-a-console-sdk). A bounded virtual clock is available with `--deterministic`; more library coverage and three-OS acceptance remain.
 - **Step 2 started:** single-instruction host fuzzing and interpreter/Tier-3/Tier-4 comparisons exist. The [Apple Silicon CI job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42521905867/job/128857024677) passed: 60,000 engine-comparison words and a 20,000-word host trace replayed through each tier, with zero unexpected differences. Generated multi-instruction sequences and per-family acceptance remain future work.
 - **Steps 3–4 partial:** the released [diagnosis CLI](DIAGNOSIS_CLI.md) inspects retained reports and one historical replay. It does not locate an arbitrary first differing instruction or demonstrate portable execution recording.
 - **Step 5 prototype:** `site/lab.html` is a scripted teaching/workbench prototype, not a WebAssembly build of the Rust runtime.

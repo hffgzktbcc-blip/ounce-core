@@ -63,11 +63,18 @@ pub struct Process {
     mmap_next: u64,
     mmap_total: u64,
     started: Instant,
+    deterministic_ticks: Option<u64>,
 }
 
 impl Process {
     pub fn new(brk_start: u64) -> Self {
-        Self { brk_start, brk_cur: brk_start, brk_mapped_end: brk_start, mmap_next: MMAP_BASE, mmap_total: 0, started: Instant::now() }
+        Self { brk_start, brk_cur: brk_start, brk_mapped_end: brk_start, mmap_next: MMAP_BASE, mmap_total: 0, started: Instant::now(), deterministic_ticks: None }
+    }
+
+    /// Fixed virtual time for reproducible single-process experiments. Each successful
+    /// clock read advances the shared clock by 1 ms; rejected reads do not advance it.
+    pub fn new_deterministic(brk_start: u64) -> Self {
+        Self { deterministic_ticks: Some(0), ..Self::new(brk_start) }
     }
 
     pub fn dispatch(&mut self, nr: u64, a: [u64; 6], mmu: &mut Memory, out: &mut dyn Output) -> Outcome {
@@ -232,16 +239,24 @@ impl Process {
     }
 
     fn sys_clock_gettime(&mut self, clk: u64, ts: u64, mmu: &mut Memory) -> i64 {
-        let (sec, nsec) = match clk {
-            0 => {
-                let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
-                (d.as_secs(), d.subsec_nanos() as u64)
+        if !matches!(clk, 0 | 1 | 4 | 7) {
+            return -EINVAL;
+        }
+        let (sec, nsec) = if let Some(ticks) = self.deterministic_ticks {
+            let epoch = if clk == 0 { 1_700_000_000 } else { 0 };
+            (epoch + ticks / 1000, (ticks % 1000) * 1_000_000)
+        } else {
+            match clk {
+                0 => {
+                    let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+                    (d.as_secs(), d.subsec_nanos() as u64)
+                }
+                1 | 4 | 7 => {
+                    let d = self.started.elapsed() + std::time::Duration::from_secs(1000);
+                    (d.as_secs(), d.subsec_nanos() as u64)
+                }
+                _ => unreachable!(),
             }
-            1 | 4 | 7 => {
-                let d = self.started.elapsed() + std::time::Duration::from_secs(1000);
-                (d.as_secs(), d.subsec_nanos() as u64)
-            }
-            _ => return -EINVAL,
         };
         let mut buf = [0u8; 16];
         buf[..8].copy_from_slice(&sec.to_le_bytes());
@@ -249,6 +264,9 @@ impl Process {
         if mmu.write_bytes(ts, &buf).is_err() {
             -EFAULT
         } else {
+            if let Some(ticks) = &mut self.deterministic_ticks {
+                *ticks = ticks.saturating_add(1);
+            }
             0
         }
     }

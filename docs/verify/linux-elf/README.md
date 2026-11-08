@@ -4,14 +4,14 @@ Vision step 1: run **static AArch64 Linux ELF executables** on the Tier-3 or Tie
 program cannot run, say exactly why.
 
 ```
-ounce-core run-elf <elf> [--cpu=tier3|tier4] [--max-insns=N] [--trace-syscalls] [-- guest args...]
+ounce-core run-elf <elf> [--cpu=tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [-- guest args...]
 ```
 
 Exit status is the guest's `exit_group` code (low 8 bits). Failures use: 70 unimplemented syscall or
 non-Linux SVC, 71 instruction/memory fault, 72 ELF rejected, 73 instruction budget exhausted. A
 `run-elf: DIAGNOSIS: ...` line on stderr names the syscall number (with args) or the instruction word.
 
-Maturity: **research-only** as a general Linux runner. Five tiny freestanding programs and the unchanged pinned LZ4 harness linked with musl have been executed. The LZ4 result is bounded to its listed cases; it does not establish general libc compatibility.
+Maturity: **research-only** as a general Linux runner. Six tiny freestanding programs (including a deterministic clock fixture) and the unchanged pinned LZ4 harness linked with musl have been executed. The LZ4 result is bounded to its listed cases; it does not establish general libc compatibility.
 
 ## What runs
 
@@ -36,10 +36,14 @@ Maturity: **research-only** as a general Linux runner. Five tiny freestanding pr
 - Segment pages are RW or RWX only: read-only data is not write-protected, and no W^X.
 - Memory is allocated eagerly: `brk` growth is capped at 512 MiB, one `mmap` at 512 MiB, total
   anonymous mappings at 1 GiB. Environment is empty; `AT_RANDOM` is fixed bytes (deterministic).
-- Time: `clock_gettime` reads the host clock, so output depending on it is not reproducible.
+- Time: `clock_gettime` reads the host clock by default. `--deterministic` supplies a fixed virtual clock (below), not physical time.
 - `--cpu=native` is rejected. Missing-instruction failures belong to the decoder/interpreter; this
   runner only reports them (instruction word plus the interpreter's error).
 - Instruction budget default is 2 billion; the interpreter-class speed is about 20 MIPS.
+
+Arguments after `--` are passed unchanged to the guest, including values that look
+like host options (`--cpu=`, `--present=`, `--sdmc=`). Host options belong before
+the separator.
 
 Rebuild test ELFs: `tests/linux-elf/src/build.sh`. Run: `cargo test --release --bin ounce-core linux::`.
 
@@ -72,5 +76,33 @@ engines produce nonzero exits with retained evidence. An existing work directory
 is refused rather than overwritten.
 
 The differential workflow now qualifies this command on Linux. Windows/macOS
-execution of this ELF and deterministic-time mode remain separate acceptance work.
+execution of this ELF remains separate acceptance work.
 No LZ4, libc or runtime binary is redistributed with the checked-in evidence.
+
+## Deterministic clock mode
+
+`run-elf ... --deterministic` makes `clock_gettime` reproducible. `CLOCK_REALTIME`
+starts at Unix second 1700000000; MONOTONIC, MONOTONIC_RAW and BOOTTIME start at
+zero. The clocks share a tick counter and advance by one millisecond after each
+successful clock read. Invalid clocks and bad output pointers return EINVAL/EFAULT
+without consuming a tick. Each process run starts over; instruction counts and
+host scheduling do not affect virtual time. This is a test clock, not a model of
+hardware time, signal delivery or scheduler timing. Default mode keeps host time.
+
+```sh
+ounce-core run-elf tests/linux-elf/bin/clock.elf --deterministic --cpu=tier3
+ounce-core run-elf tests/linux-elf/bin/clock.elf --deterministic --cpu=tier4
+```
+
+Both commands should print:
+
+```text
+realtime=1700000000:0
+monotonic=0:1000000
+raw=0:2000000
+boottime=0:3000000
+```
+
+The fixture is project-owned freestanding C; rebuild with the fixture build script.
+The implementation does not provide full record/replay or guarantee deterministic
+behavior for arbitrary Linux applications.

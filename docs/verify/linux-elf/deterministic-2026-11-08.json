@@ -1,0 +1,82 @@
+{
+  "date": "2026-11-08",
+  "scope": "internal Linux x86-64 clock and guest-argument acceptance; no cross-host record/replay claim",
+  "runtime_sha256": "2cd2c4a387f2a31b90e2ca5f09bb092b3712e4043a963e42e0edc2e4f985b8e1",
+  "fixture_sha256": "68209f24d0a3bab3ec467e5bdc7d09803fe37d8973e2478c4f4bcc7501c5ec24",
+  "sources_sha256": {
+    "src/main.rs": "7ea978d0380323f200037b1b567f61f6b7e5a0f391932a447de8acdb4b5c2228",
+    "src/linux/runner.rs": "374d6c937ce70eff78691db49145d83dce8c9e070d24973b2dba2dd865b08ed7",
+    "src/linux/syscalls.rs": "21cbe98c60b68cd2053d1681690821f13e6e33567e110a364d5ff25c663b952a",
+    "src/linux/tests.rs": "4f800bfa38cd99ee03014d2faab7f95e83daa0b7182694a7dfc3f86fef9ffc1c",
+    "tests/cli_failures.rs": "1169fd3b20c5c7eb5b7462febd0bfe7dc2db5f3b14e9004dd6db8fb4dbc277f8",
+    "tests/linux-elf/src/clock.c": "23b93c749513155110368d7e2ca572288e1fcdc49dfe8da198e047935e2d14d2"
+  },
+  "unit_tests": {
+    "passed": 562,
+    "failed": 0,
+    "ignored": 10
+  },
+  "cli_tests": {
+    "passed": 5,
+    "failed": 0
+  },
+  "test_log_sha256": "1149d96c59877fb1df66c566535bae4c5319edfa85109bf8efa62f90c58b1b8a",
+  "observations": [
+    {
+      "engine": "tier3",
+      "repeat": 1,
+      "argv": [
+        "target/release/ounce-core",
+        "run-elf",
+        "tests/linux-elf/bin/clock.elf",
+        "--deterministic",
+        "--cpu=tier3"
+      ],
+      "returncode": 0,
+      "stdout": "realtime=1700000000:0\nmonotonic=0:1000000\nraw=0:2000000\nboottime=0:3000000\n",
+      "stderr": "[run-elf] engine=Tier-3 instructions=866 syscalls=25\n"
+    },
+    {
+      "engine": "tier3",
+      "repeat": 2,
+      "argv": [
+        "target/release/ounce-core",
+        "run-elf",
+        "tests/linux-elf/bin/clock.elf",
+        "--deterministic",
+        "--cpu=tier3"
+      ],
+      "returncode": 0,
+      "stdout": "realtime=1700000000:0\nmonotonic=0:1000000\nraw=0:2000000\nboottime=0:3000000\n",
+      "stderr": "[run-elf] engine=Tier-3 instructions=866 syscalls=25\n"
+    },
+    {
+      "engine": "tier4",
+      "repeat": 1,
+      "argv": [
+        "target/release/ounce-core",
+        "run-elf",
+        "tests/linux-elf/bin/clock.elf",
+        "--deterministic",
+        "--cpu=tier4"
+      ],
+      "returncode": 0,
+      "stdout": "realtime=1700000000:0\nmonotonic=0:1000000\nraw=0:2000000\nboottime=0:3000000\n",
+      "stderr": "[run-elf] engine=Tier-4 instructions=866 syscalls=25\n"
+    },
+    {
+      "engine": "tier4",
+      "repeat": 2,
+      "argv": [
+        "target/release/ounce-core",
+        "run-elf",
+        "tests/linux-elf/bin/clock.elf",
+        "--deterministic",
+        "--cpu=tier4"
+      ],
+      "returncode": 0,
+      "stdout": "realtime=1700000000:0\nmonotonic=0:1000000\nraw=0:2000000\nboottime=0:3000000\n",
+      "stderr": "[run-elf] engine=Tier-4 instructions=866 syscalls=25\n"
+    }
+  ]
+}
