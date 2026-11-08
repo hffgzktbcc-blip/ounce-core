@@ -11,7 +11,7 @@ Exit status is the guest's `exit_group` code (low 8 bits). Failures use: 70 unim
 non-Linux SVC, 71 instruction/memory fault, 72 ELF rejected, 73 instruction budget exhausted. A
 `run-elf: DIAGNOSIS: ...` line on stderr names the syscall number (with args) or the instruction word.
 
-Maturity: **research-only**. Tested on five tiny freestanding programs, not on real libc binaries.
+Maturity: **research-only** as a general Linux runner. Five tiny freestanding programs and the unchanged pinned LZ4 harness linked with musl have been executed. The LZ4 result is bounded to its listed cases; it does not establish general libc compatibility.
 
 ## What runs
 
@@ -27,7 +27,7 @@ Maturity: **research-only**. Tested on five tiny freestanding programs, not on r
 
 ## Honest limits
 
-- **No libc programs verified.** Real static glibc/musl binaries will almost certainly stop early:
+- **Only one libc-linked library harness verified so far.** The LZ4/musl case below runs; other static glibc/musl binaries may stop early:
   they call `mprotect`, `getrandom`, `prlimit64`, `rseq`, `futex`, `set_robust_list`, `readlinkat`
   paths, etc. Each stops with a diagnosis naming the syscall; none is implemented yet.
 - Dynamic executables, `ET_DYN`/static-PIE, 32-bit and big-endian ELF are rejected. `PT_TLS` is not
@@ -42,3 +42,35 @@ Maturity: **research-only**. Tested on five tiny freestanding programs, not on r
 - Instruction budget default is 2 billion; the interpreter-class speed is about 20 MIPS.
 
 Rebuild test ELFs: `tests/linux-elf/src/build.sh`. Run: `cargo test --release --bin ounce-core linux::`.
+
+## LZ4 without a console SDK
+
+The existing `lz4_cases.c` and host `main` run unchanged as a static AArch64 Linux
+ELF. A fresh x86-64 Linux host build and both Tier-3 and actual Tier-4 produced
+identical 406-byte output (`fails=0`), each exiting 0 after 3,862,822 instructions
+and five syscalls. [Recorded report and logs](lz4-2026-11-08/report.json) identify
+source files, pinned LZ4 commit, compilers, ELF and runtime hashes. The working
+tree was dirty only for the new verification scripts; no runtime source repair
+was required. This is an internal rerun, not outside reproduction.
+
+Reproduce with Rust, Python, a host C compiler and Zig (tested: Zig 0.17.1, whose
+Python distribution is `ziglang==0.17.1`):
+
+```sh
+cargo build --release --locked --features native-jit
+python3 scripts/verify_linux_elf.py --work target/linux-lz4 \
+  --elf-cc 'zig cc -target aarch64-linux-musl'
+```
+
+Alternatively use `--elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'`.
+The work directory must be new; it retains sources, binaries, compiler identities,
+commands, execution output and `report.json`. Source fetch uses the existing
+manifest commit. `--upstream-dir` accepts a clean local checkout of that exact
+commit. Each subprocess has a deadline (`--seconds`, default 300); the guest also
+has an instruction budget. Failure, byte differences and unconfirmed/fallback
+engines produce nonzero exits with retained evidence. An existing work directory
+is refused rather than overwritten.
+
+The differential workflow now qualifies this command on Linux. Windows/macOS
+execution of this ELF and deterministic-time mode remain separate acceptance work.
+No LZ4, libc or runtime binary is redistributed with the checked-in evidence.

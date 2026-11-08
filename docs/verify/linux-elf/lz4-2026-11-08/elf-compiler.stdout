@@ -1,0 +1,4 @@
+clang version 22.1.8
+Target: aarch64-unknown-linux5.10.0-musl
+Thread model: posix
+InstalledDir: /workspace/toolchains/zig/ziglang
