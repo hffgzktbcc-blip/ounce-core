@@ -449,6 +449,16 @@ pub enum Instruction {
         is_64: bool,
     },
 
+    /// Data-Processing (2-source) CRC: `CRC32B/H/W/X` and `CRC32CB/CH/CW/CX Wd, Wn, Wm|Xm`.
+    /// `size` is log2 of the data bytes (0..=3); no input or output inversion is applied.
+    Crc32 {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        size: u8,
+        castagnoli: bool,
+    },
+
     /// Multiply High: `UMULH` / `SMULH Xd, Xn, Xm` (upper 64 bits of the 128-bit product)
     MultiplyHigh {
         rd: u8,
@@ -694,6 +704,17 @@ pub enum Instruction {
         rn: u8,
         rm: u8,
         index: u8,
+        q: bool,
+    },
+
+    /// `TBL`/`TBX Vd.<T>, {Vn.16B ..}, Vm.<T>`: byte table lookup over `regs` (1..=4) consecutive registers.
+    /// Out-of-range indices give 0 (`TBL`) or leave the destination byte unchanged (`TBX`).
+    SimdTbl {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        regs: u8,
+        is_tbx: bool,
         q: bool,
     },
 

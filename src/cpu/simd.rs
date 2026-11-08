@@ -259,6 +259,24 @@ pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usiz
     out
 }
 
+/// `TBL`/`TBX`: `table` holds the 1..=4 source registers, `idx` the index vector, `dst` the old destination.
+pub fn table_lookup(table: &[u128], idx: u128, dst: u128, is_tbx: bool, q: bool) -> u128 {
+    let count = if q { 16 } else { 8 };
+    let mut out: u128 = 0;
+    for i in 0..count {
+        let k = ((idx >> (8 * i)) & 0xFF) as usize;
+        let byte = if k < 16 * table.len() {
+            (table[k / 16] >> (8 * (k % 16))) & 0xFF
+        } else if is_tbx {
+            (dst >> (8 * i)) & 0xFF
+        } else {
+            0
+        };
+        out |= byte << (8 * i);
+    }
+    out
+}
+
 /// `EXT`: the `16 (8 when !q)` bytes starting at byte `index` of `m:n`.
 pub fn extract(n: u128, m: u128, index: u32, q: bool) -> u128 {
     let (n, m) = if q { (n, m) } else { (n & u64::MAX as u128, m & u64::MAX as u128) };
@@ -303,6 +321,26 @@ pub fn permute(op: SimdPermuteOp, n: u128, m: u128, esize: u32, q: bool) -> u128
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn table_lookup_tbl_tbx() {
+        let t0 = (0..16u128).fold(0, |a, i| a | (i << (8 * i)));
+        let t1 = (0..16u128).fold(0, |a, i| a | ((0x10 + i) << (8 * i)));
+        // lanes 0..6: indices 15, 0, 16, 31, 32 (out of range), 255
+        let idx: u128 = 0xFF_20_1F_10_00_0F;
+        let dst = u128::MAX;
+        // lanes 6.. have index 0 (in range, table byte 0 is 0)
+        let tbl = table_lookup(&[t0, t1], idx, dst, false, true);
+        assert_eq!(tbl, 0x00_00_1F_10_00_0F);
+        let tbx = table_lookup(&[t0, t1], idx, dst, true, true);
+        assert_eq!(tbx, 0xFF_FF_1F_10_00_0F);
+        // 16-byte table only: indices 16 and 31 are now out of range
+        assert_eq!(table_lookup(&[t0], idx, dst, true, true), 0xFF_FF_FF_FF_00_0F);
+        // 64-bit form zeroes the upper half
+        let one = table_lookup(&[t0, t1], u128::MAX, dst, true, false);
+        assert_eq!(one, 0xFFFF_FFFF_FFFF_FFFF);
+        assert_eq!(table_lookup(&[t0], idx, dst, false, false), 0x0F);
+    }
 
     #[test]
     fn dup_and_lanes() {
