@@ -901,11 +901,15 @@ impl Cpu {
                 // 0x5F00 = CNTFRQ_EL0  (19,200,000 Hz Switch 2 hardware timer frequency)
                 // 0x5F01 = CNTPCT_EL0  (Switch 2 physical timer counter)
                 // 0x5807 = DCZID_EL0   (S3_3_C0_C0_7)
+                // 0x5A20 = FPCR        (S3_3_C4_C4_0), stored only
+                // 0x5A21 = FPSR        (S3_3_C4_C4_1), QC modelled
                 if is_read {
                     let val = match sysreg {
                         0x5E82 => self.regs.tpidr_el0,
                         0x5E83 => self.regs.tpidrro_el0,
                         0x5A10 => self.regs.pstate.to_bits() as u64,
+                        0x5A20 => self.regs.fpcr as u64,
+                        0x5A21 => self.regs.fpsr as u64,
                         0x5F00 => 19_200_000,
                         // DCZID_EL0: DC ZVA permitted, block = 2^4 words = DC_ZVA_BLOCK bytes
                         0x5807 => DC_ZVA_BLOCK.trailing_zeros() as u64 - 2,
@@ -928,6 +932,8 @@ impl Cpu {
                         0x5E82 => self.regs.tpidr_el0 = val,
                         0x5E83 => self.regs.tpidrro_el0 = val,
                         0x5A10 => self.regs.pstate.from_bits(val as u32),
+                        0x5A20 => self.regs.fpcr = val as u32,
+                        0x5A21 => self.regs.fpsr = val as u32 & super::registers::FPSR_MASK,
                         _ => {}
                     }
                 }
@@ -1800,7 +1806,11 @@ impl Cpu {
 
             Instruction::SimdSatLong { rd, rn, rm, op, esize, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
-                self.regs.write_q(rd, simd::sat_doubling_mul_long(op, d, n, m, esize as u32, q));
+                let (r, sat) = simd::sat_doubling_mul_long(op, d, n, m, esize as u32, q);
+                if sat {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, r);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -2263,6 +2273,53 @@ mod tests {
 
         let (cpu, _) = run(&[0xd53b00e0], |_, _| {});
         assert_eq!(1u64 << (cpu.regs.read_x(0) + 2), DC_ZVA_BLOCK); // mrs x0, dczid_el0
+    }
+
+    #[test]
+    fn fpsr_qc_sticky_and_fpcr_round_trip() {
+        const QC: u64 = 1 << 27;
+        // v0 = v1 = {0x8000, 0x0002, ..}: SQDMULL lane 0 is min * min (saturates), lane 1 is 2*2*2 = 8.
+        let sat_ops = |c: &mut Cpu, _: &mut Memory| {
+            c.regs.write_q(0, 0x0002_8000);
+            c.regs.write_q(1, 0x0002_8000);
+        };
+        // msr fpsr, xzr; sqdmull v2.4s, v0.4h, v1.4h; mrs x0, fpsr
+        let (cpu, _) = run(&[0xd51b443f, 0x0e61d002, 0xd53b4420], sat_ops);
+        assert_eq!(cpu.regs.read_x(0), QC);
+        assert_eq!(cpu.regs.read_q(2) & 0xFFFF_FFFF, 0x7FFF_FFFF);
+        // No lane saturates: QC stays clear. 0x4000 * 0x4000 * 2 = 0x2000_0000.
+        let (cpu, _) = run(&[0xd51b443f, 0x0e61d002, 0xd53b4420], |c, _| {
+            c.regs.write_q(0, 0x4000);
+            c.regs.write_q(1, 0x4000);
+        });
+        assert_eq!(cpu.regs.read_x(0), 0);
+        // SQDMLAL accumulate saturation alone sets QC: acc 0x7FFFFFF0 + 2*3*5.
+        let (cpu, _) = run(&[0xd51b443f, 0x0e619002, 0xd53b4420], |c, _| {
+            c.regs.write_q(2, 0x7FFF_FFF0);
+            c.regs.write_q(0, 3);
+            c.regs.write_q(1, 5);
+        });
+        assert_eq!(cpu.regs.read_x(0), QC);
+        // Sticky: a later non-saturating op leaves QC set; msr fpsr, xzr clears it.
+        // sqdmull (sat); sqdmull v3.4s, v4.4h, v5.4h (zeros, no sat); mrs x0; msr fpsr, xzr; mrs x1
+        let (cpu, _) = run(&[0x0e61d002, 0x0e65d083, 0xd53b4420, 0xd51b443f, 0xd53b4421], sat_ops);
+        assert_eq!(cpu.regs.read_x(0), QC);
+        assert_eq!(cpu.regs.read_x(1), 0);
+        // mrs/msr round trip. FPSR keeps only defined bits; FPCR is stored verbatim.
+        let (cpu, _) = run(&[0xd51b4421, 0xd53b4420, 0xd51b4422, 0xd53b4423], |c, _| {
+            c.regs.write_x(1, 0xFFFF_FFFF);
+            c.regs.write_x(2, 0x0140_0000); // no defined bits
+        });
+        assert_eq!(cpu.regs.read_x(0), 0x0800_009F);
+        assert_eq!(cpu.regs.read_x(3), 0);
+        // msr fpcr, x1; mrs x0, fpcr; msr fpsr, x2; mrs x3, fpsr
+        let (cpu, _) = run(&[0xd51b4401, 0xd53b4400, 0xd51b4422, 0xd53b4423], |c, _| {
+            c.regs.write_x(1, 0x0300_0000);
+            c.regs.write_x(2, 0);
+        });
+        assert_eq!(cpu.regs.read_x(0), 0x0300_0000);
+        assert_eq!(cpu.regs.fpcr, 0x0300_0000);
+        assert_eq!(cpu.regs.read_x(3), 0); // fpsr untouched by fpcr writes
     }
 
     #[test]
