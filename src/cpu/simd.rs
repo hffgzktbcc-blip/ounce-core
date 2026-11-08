@@ -4,7 +4,7 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdFpElementOp, SimdAcrossOp, SimdOp2, SimdOp3, SimdPermuteOp};
+use super::instructions::{SimdFpElementOp, SimdAcrossOp, SimdLongOp, SimdOp2, SimdOp3, SimdPermuteOp};
 
 #[inline]
 fn mask(esize: u32) -> u64 {
@@ -194,6 +194,26 @@ pub fn shll(n: u128, esize: u32, shift: u32, q: bool, signed: bool) -> u128 {
     out
 }
 
+/// `S/UMULL`, `S/UMLAL`, `S/UMLSL` (`q`: the `2` forms): multiplies the low (or high) `esize` lanes of
+/// `n` and `m` into `2 * esize` lanes, optionally accumulating into or subtracting from `d`.
+pub fn mul_long(op: SimdLongOp, d: u128, n: u128, m: u128, esize: u32, q: bool, signed: bool) -> u128 {
+    let (sn, sm) = if q { (n >> 64, m >> 64) } else { (n, m) };
+    let wide = esize * 2;
+    let mut out = 0u128;
+    for i in 0..64 / esize as usize {
+        let (a, b) = (lane(sn, esize, i), lane(sm, esize, i));
+        let prod = if signed { (sext(a, esize).wrapping_mul(sext(b, esize))) as u64 } else { a.wrapping_mul(b) };
+        let acc = lane(d, wide, i);
+        let r = match op {
+            SimdLongOp::Mull => prod,
+            SimdLongOp::Mlal => acc.wrapping_add(prod),
+            SimdLongOp::Mlsl => acc.wrapping_sub(prod),
+        };
+        set_lane(&mut out, wide, i, r);
+    }
+    out
+}
+
 /// `FMUL/FMLA/FMLS` by element: every lane of `n` times lane `index` of `m` (fused for FMLA/FMLS).
 pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool) -> u128 {
     let esize = if double { 64 } else { 32 };
@@ -330,5 +350,30 @@ mod tests {
         assert_eq!(shift_imm(dup(0x80, 8, false), 8, 7, false, false, false), dup(1, 8, false));
         assert_eq!(shift_imm(dup(0x80, 8, false), 8, 7, false, true, false), dup(0xFF, 8, false));
         assert_eq!(shift_imm(dup(1, 32, true), 32, 31, true, false, true), dup(0x8000_0000, 32, true));
+    }
+}
+
+#[cfg(test)]
+mod mul_long_tests {
+    use super::*;
+
+    #[test]
+    fn umull_umlal_smull_low_and_high_halves() {
+        // n = [0xFFFF_FFFF, 3 | 5, 7], m = [0xFFFF_FFFF, 2 | 11, 13] (32-bit lanes, low lane first)
+        let n = (0xFFFF_FFFFu128) | (3u128 << 32) | (5u128 << 64) | (7u128 << 96);
+        let m = (0xFFFF_FFFFu128) | (2u128 << 32) | (11u128 << 64) | (13u128 << 96);
+        let lo = mul_long(SimdLongOp::Mull, 0, n, m, 32, false, false);
+        assert_eq!(lane(lo, 64, 0), 0xFFFF_FFFFu64 * 0xFFFF_FFFFu64); // full 64-bit product, no truncation
+        assert_eq!(lane(lo, 64, 1), 6);
+        let hi = mul_long(SimdLongOp::Mull, 0, n, m, 32, true, false); // UMULL2 uses the high half
+        assert_eq!((lane(hi, 64, 0), lane(hi, 64, 1)), (55, 91));
+        let acc = mul_long(SimdLongOp::Mlal, lo, n, m, 32, false, false); // UMLAL doubles the products (wrapping)
+        assert_eq!(lane(acc, 64, 1), 12);
+        let sub = mul_long(SimdLongOp::Mlsl, acc, n, m, 32, false, false);
+        assert_eq!(lane(sub, 64, 1), 6);
+        // signed: -1 * -1 = 1, -1 * 2 = -2
+        let s = mul_long(SimdLongOp::Mull, 0, n, m, 32, false, true);
+        assert_eq!(lane(s, 64, 0), 1);
+        assert_eq!(lane(s, 64, 1), 6);
     }
 }
