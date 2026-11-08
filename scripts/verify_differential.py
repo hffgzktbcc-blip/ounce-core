@@ -17,7 +17,7 @@ check that unexpectedly matches is reported with a warning. Nothing is hidden: t
 
 Exit status is non-zero if any compared output differs or a step fails.
 """
-import argparse, hashlib, json, os, platform, shutil, subprocess, sys, tarfile, urllib.request
+import argparse, hashlib, json, os, platform, shutil, subprocess, sys, tarfile, urllib.request, zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -90,6 +90,25 @@ def fetch_upstream(up, cache):
         got = run(["git", "-C", str(tmp), "rev-parse", "HEAD"]).stdout.strip()
         if got != up["commit"]:
             raise SystemExit(f"commit mismatch: wanted {up['commit']}, got {got}")
+    elif "zip" in up:
+        data = urllib.request.urlopen(up["zip"], timeout=300).read()
+        digest = hashlib.sha256(data).hexdigest()
+        if digest != up["sha256"]:
+            raise SystemExit(f"zip sha256 mismatch for {up['zip']}: {digest}")
+        archive = tmp / "src.zip"
+        archive.write_bytes(data)
+        with zipfile.ZipFile(archive) as z:
+            for name in z.namelist():
+                parts = Path(name).parts[up.get("strip", 0):]
+                if name.endswith("/") or not parts or name.startswith("/") or ".." in parts:
+                    continue
+                target = tmp / Path(*parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(z.read(name))
+        archive.unlink()
+        missing = [src for src in up.get("copy", {}) if not (tmp / src).is_file()]
+        if missing:
+            raise SystemExit(f"zip {up['zip']} lacks {missing}")
     else:
         data = urllib.request.urlopen(up["tarball"], timeout=120).read()
         digest = hashlib.sha256(data).hexdigest()
