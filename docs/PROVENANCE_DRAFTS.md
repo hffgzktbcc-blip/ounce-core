@@ -42,5 +42,10 @@ attach the suspect bytes.
 > derived from your <project/path>. We found no explicit licence in the pinned source. May we
 > keep it (with attribution) under <licence>, or would you prefer we remove it?
 
-Owner must identify the upstream author/contact; origin evidence is in
-`PROVENANCE_REMEDIATION_REPORT.md`.
+Upstream identified from the owner's private review (public metadata only): GitLab project
+`pepsipu/ns2jb` (project 87928237), file `engine/switch2/process/test-function.S`
+(source blob `84b04e9d9a7b7008c44ae4257d4998e576f9a3fa`), at revision
+`95f5525089273c5fce0b95047f3600f8442e96ae`; the repository shows no licence. Send via an
+issue on that GitLab project (needs the owner's GitLab login; this session has none).
+Ask specifically: permission to reproduce and redistribute that source and its 72-byte
+compiled output, and which attribution or conditions apply. The owner must send it.
