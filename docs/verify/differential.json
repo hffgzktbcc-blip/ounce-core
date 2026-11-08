@@ -1,0 +1,176 @@
+{
+ "_comment": "Each entry: in-repo files (relative to dir), optional pinned upstream files, host build, NRO libs. Run: python3 scripts/verify_differential.py",
+ "harnesses": [
+  {
+   "name": "fp-instructions",
+   "dir": "fp-instructions",
+   "files": [
+    "fp_cases.c"
+   ],
+   "host_main": "host/host_main.c",
+   "nx_main": "main_nx.c",
+   "arm64_reference": true,
+   "result_file": "fp-results.txt"
+  },
+  {
+   "name": "integer-vector",
+   "dir": "integer-vector",
+   "files": [
+    "intvec_cases.c"
+   ],
+   "host_main": "host/host_main.c",
+   "nx_main": "main_nx.c",
+   "arm64_reference": true
+  },
+  {
+   "name": "narrow-saturating",
+   "dir": "narrow-saturating",
+   "files": [
+    "narrow_cases.c"
+   ],
+   "host_main": "host/host_main.c",
+   "nx_main": "main_nx.c",
+   "arm64_reference": true
+  },
+  {
+   "name": "qc-flag",
+   "dir": "qc-flag",
+   "files": [
+    "qc_cases.c"
+   ],
+   "host_main": "host/host_main.c",
+   "nx_main": "main_nx.c",
+   "arm64_reference": true
+  },
+  {
+   "name": "qc-saturating-shifts",
+   "dir": "qc-flag/saturating-shifts",
+   "files": [
+    "qc2_cases.c"
+   ],
+   "host_main": "host/host_main.c",
+   "nx_main": "main_nx.c",
+   "arm64_reference": true
+  },
+  {
+   "name": "vector-fp",
+   "dir": "vector-fp",
+   "files": [
+    "fp_cases.c"
+   ],
+   "host_main": "host_main.c",
+   "nx_main": "main_nx.c",
+   "arm64_reference": true
+  },
+  {
+   "name": "lz4",
+   "dir": "lz4-harness",
+   "files": [
+    "lz4_cases.c"
+   ],
+   "host_main": "host/host_main.c",
+   "nx_main": "main_nx.c",
+   "upstream": {
+    "repo": "https://github.com/lz4/lz4",
+    "commit": "d04dab3152ffdb8f8e8708e4d135f7293c0f6136",
+    "copy": {
+     "lib/lz4.c": "lz4.c",
+     "lib/lz4.h": "lz4.h"
+    }
+   },
+   "result_file": "lz4-results.txt"
+  },
+  {
+   "name": "xxhash",
+   "dir": "xxhash-harness",
+   "files": [
+    "xxh_cases.c"
+   ],
+   "host_main": "host/host_main.c",
+   "nx_main": "main_nx.c",
+   "upstream": {
+    "repo": "https://github.com/Cyan4973/xxHash",
+    "commit": "2ec67caeb18ec15ae60c0853174331089acddfc0",
+    "copy": {
+     "xxhash.c": "xxhash.c",
+     "xxhash.h": "xxhash.h"
+    }
+   },
+   "result_file": "xxh-results.txt"
+  },
+  {
+   "name": "zlib",
+   "dir": "zlib-harness",
+   "files": [
+    "cases.c"
+   ],
+   "host_main": "host/host_main.c",
+   "nx_main": "main_nx.c",
+   "upstream": {
+    "repo": "https://github.com/madler/zlib",
+    "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
+    "copy": {
+     "zlib.h": "zlib.h",
+     "zconf.h": "zconf.h",
+     "zutil.h": "zutil.h",
+     "gzguts.h": "gzguts.h",
+     "crc32.h": "crc32.h",
+     "deflate.h": "deflate.h",
+     "inffast.h": "inffast.h",
+     "inffixed.h": "inffixed.h",
+     "inflate.h": "inflate.h",
+     "inftrees.h": "inftrees.h",
+     "trees.h": "trees.h",
+     "adler32.c": "adler32.c",
+     "compress.c": "compress.c",
+     "crc32.c": "crc32.c",
+     "deflate.c": "deflate.c",
+     "inffast.c": "inffast.c",
+     "inflate.c": "inflate.c",
+     "inftrees.c": "inftrees.c",
+     "trees.c": "trees.c",
+     "uncompr.c": "uncompr.c",
+     "zutil.c": "zutil.c"
+    }
+   }
+  },
+  {
+   "name": "monocypher",
+   "dir": "monocypher-harness",
+   "files": [
+    "mc_cases.c"
+   ],
+   "host_main": "host/host_main.c",
+   "nx_main": "main_nx.c",
+   "upstream": {
+    "tarball": "https://monocypher.org/download/monocypher-4.0.3.tar.gz",
+    "sha256": "8cc9bc341a66249016db9bd70e9142d8d0aef9945973744b1ac05dbc55d8ee66",
+    "strip": 1,
+    "copy": {
+     "src/monocypher.c": "monocypher.c",
+     "src/monocypher.h": "monocypher.h",
+     "src/optional/monocypher-ed25519.c": "monocypher-ed25519.c",
+     "src/optional/monocypher-ed25519.h": "monocypher-ed25519.h"
+    }
+   }
+  },
+  {
+   "name": "cjson",
+   "dir": "cjson-harness",
+   "files": [
+    "cjson_cases.c"
+   ],
+   "host_main": "host/host_main.c",
+   "nx_main": "main_nx.c",
+   "libs": "-lm",
+   "upstream": {
+    "repo": "https://github.com/DaveGamble/cJSON",
+    "commit": "c859b25da02955fef659d658b8f324b5cde87be3",
+    "copy": {
+     "cJSON.c": "cJSON.c",
+     "cJSON.h": "cJSON.h"
+    }
+   }
+  }
+ ]
+}
