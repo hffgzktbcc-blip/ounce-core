@@ -4,7 +4,6 @@
 #![forbid(unsafe_code)]
 
 mod audio;
-mod census;
 mod cpu;
 mod crypto;
 mod fs;
@@ -152,9 +151,6 @@ fn main() {
                 "switch2_showcase.nsp"
             };
             build_and_boot_showcase_nsp(out_path);
-        }
-        "census" => {
-            std::process::exit(census::run(&args[2..]));
         }
         "inspect" => {
             print_banner();
