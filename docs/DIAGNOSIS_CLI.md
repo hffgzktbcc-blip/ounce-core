@@ -1,7 +1,7 @@
 # Install the retained-failure CLI
 
-`ounce-diagnose 0.1.0` packages the demonstrated SDL2 failure-to-reproduction
-workflow. It is an experimental tool for this retained evidence format, not a
+`ounce-diagnose 0.2.0` packages the demonstrated SDL2 failure-to-reproduction
+workflow and the recorded audio-padding case from libnx #685. It is an experimental tool for this retained evidence format, not a
 general executable debugger. Offline inspection needs only Python 3.9 or newer;
 replay additionally needs macOS/Linux, Git, Cargo, the runtime's native build
 dependencies and an authorized exact-hash NRO.
@@ -36,6 +36,43 @@ This command is deliberately limited to the demonstrated SDL2 layout and semanti
 checks. It is not a general report-pair importer. The built-in example's included
 files have an observation-only distribution review; review your own evidence
 before sharing a custom dossier. There is no automatic credential scrubber.
+
+## Inspect the external audio-channel case
+
+```sh
+python3 /path/to/ounce-diagnose.pyz audio-case --output ./audio-dossier
+```
+
+This offline command explains the observed manager boundary from R2: both engines
+rejected seven `0x00010000` channel words with `0xF601` before the repair, and
+returned stereo for all seven after it. The low channel halfword is zero
+(default stereo); the high halfword is padding. `diagnosis.json` reports the
+first rejected manager open (index 1, after the startup open), raw and split
+parameter values, per-engine counts, and whether the recorded after-replies
+match the scoped expectation.
+
+The output preserves the raw before/after reports, their manifest, runtime text
+and historical corpus evidence. `REPLAY.md` names the exact binary/source hashes,
+revisions, build image, input checkpoint and Cargo command. It contains no NRO,
+upstream source, linked library or frame pixels. The reviewed default bundle has
+no private checkout paths. The command checks digests and derives status from the
+replies; changing only a pass flag cannot turn failed replies into success.
+
+For a local copy of this specific dossier format, use `audio-case --evidence DIR
+--output NEW_DIR`. The supported source/binary, input, engine set and expected
+protocol are fixed. Missing/corrupt files, changed expectations, duplicate engines
+and contradictory reply claims fail with exit 2. A consistent after-report that
+still fails produces a dossier and exits 1. File hashes are relative to the
+supplied manifest, not an authenticated attestation. Preserve the repository
+revision and review custom evidence before sharing; there is no credential
+scrubber. This command neither executes a guest nor independently re-verifies
+absent NRO bytes, validates new runtime code, or grants repair qualification.
+Six-channel playback and upstream libnx session replacement remain unestablished.
+
+The `replay` command below executes only the SDL2 recipe. For audio, explicitly
+follow the separate generated Cargo recipe with your authorized local binary and
+an outer process deadline. [The audio case record](verify/AUDIO_CHANNEL_CASE.md)
+contains the original guest execution acceptance.
 
 ## Explicit runtime replay
 
@@ -74,14 +111,21 @@ review them before distribution.
 | CLI exit | Meaning |
 | --- | --- |
 | 0 | Offline dossier created, or explicit replay matched its selected historical observation |
-| 1 | Replay finished but did not match (including build/test failure without the expected observations) |
+| 1 | Replay did not match, or a consistent audio after-report still fails the selected scenario |
 | 2 | Invalid arguments, missing/corrupt inputs, wrong revision/hash, occupied output or launch prerequisite error |
 | 124 | Replay exceeded the outer timeout; inspect local logs |
 | 130 | Interrupted; available replay logs retained |
 
 ## Tested scope
 
-On 2026-11-07, the copied 42,187-byte archive was run with isolated Python 3.9.6
+The [0.2.0 acceptance record](verify/diagnosis-cli-0.2.0/acceptance.json) retains a
+2026-11-08 macOS arm64/Python 3.9.6 smoke run: the 63,310-byte copied archive
+ran audio diagnosis outside the checkout, with no external tools on PATH, in
+0.1462 seconds after a 0.0004-second local file copy. These are single local
+measurements, excluding download and Python installation. The new input/error
+tests and prior offline/replay lifecycle tests pass. Windows is still unqualified.
+
+The earlier 0.1.0 SDL2 baseline remains historical evidence. On 2026-11-07, the copied 42,187-byte archive was run with isolated Python 3.9.6
 on macOS 26.6.2 arm64 outside the source checkout. Local file-copy installation
 measured 0.0011 seconds; the first offline diagnosis measured 0.179 seconds.
 These are one local observation, excluding source download, Python installation
