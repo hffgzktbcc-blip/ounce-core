@@ -104,9 +104,12 @@ def package(repo, output):
         if git(repo, 'rev-parse', 'HEAD') != commit or git(repo, 'status', '--porcelain', '--untracked-files=normal'):
             raise ValueError('source changed during packaging; a clean checkout is required')
         (source / 'README.md').write_text(README.format(version=VERSION))
+        (source / '.gitattributes').write_text('* text=auto eol=lf\n')
         provenance = {'schema_version': 'ounce-diagnose/source-snapshot-v1', 'version': VERSION,
                       'original_repository': 'https://github.com/hffgzktbcc-blip/ounce-core',
                       'original_commit': commit, 'files_sha256': hashes,
+                      'generated_files_sha256': {name: hashlib.sha256((source / name).read_bytes()).hexdigest()
+                                                 for name in ['README.md', '.gitattributes']},
                       'distribution_scope': 'Project-authored Python tooling and observation data only.'}
         (source / 'SOURCE.json').write_text(json.dumps(provenance, indent=2) + '\n')
         binary = staging / f'ounce-diagnose-{VERSION}.pyz'
