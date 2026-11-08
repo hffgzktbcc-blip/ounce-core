@@ -2,7 +2,7 @@
 
 use super::instructions::{
     SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatAddSubOp, SimdSatLongOp,
-    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
+    SimdElemOp, BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
     SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftExtOp, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
 
@@ -1156,23 +1156,85 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
-    // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q 0 01111 1 sz L M Rm opcode H 0 Rn Rd
-    //       (FMLA 0001, FMLS 0101, FMUL 1001)
-    if (raw & 0xBF80_0400) == 0x0F80_0000 && !u {
-        let op = match (raw >> 12) & 0xF {
-            0b0001 => SimdFpElementOp::Fmla,
-            0b0101 => SimdFpElementOp::Fmls,
-            0b1001 => SimdFpElementOp::Fmul,
+    // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q U 01111 1 sz L M Rm opcode H 0 Rn Rd
+    //       (FMLA 0001, FMLS 0101, FMUL 1001, FMULX U=1 1001); other opcodes (SDOT, ...) fall through
+    if (raw & 0x9F80_0400) == 0x0F80_0000 {
+        let op = match ((raw >> 12) & 0xF, u) {
+            (0b0001, false) => Some(SimdFpElementOp::Fmla),
+            (0b0101, false) => Some(SimdFpElementOp::Fmls),
+            (0b1001, false) => Some(SimdFpElementOp::Fmul),
+            (0b1001, true) => Some(SimdFpElementOp::Fmulx),
+            _ => None,
+        };
+        if let Some(op) = op {
+            let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
+            let rm = ((m << 4) | ((raw >> 16) & 0xF)) as u8;
+            let double = size == 3;
+            if double && (l == 1 || !q) {
+                return None;
+            }
+            let index = if double { h } else { (h << 1) | l } as u8;
+            return Some(Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q });
+        }
+    }
+
+    // 26a''. AdvSIMD indexed element, integer: 0 Q U 01111 size L M Rm opcode H 0 Rn Rd
+    //        MUL/MLA/MLS/SQDMULH/SQRDMULH, S/UMULL/MLAL/MLSL, SQDMULL/SQDMLAL/SQDMLSL (size 1 or 2), SDOT/UDOT (size 2)
+    if (raw & 0x9F00_0400) == 0x0F00_0000 && (size == 1 || size == 2) {
+        let opcode = (raw >> 12) & 0xF;
+        let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
+        // halfword elements: Rm is 4 bits and M extends the index; word elements: M extends Rm
+        let (rm, index) = if size == 1 {
+            (((raw >> 16) & 0xF) as u8, ((h << 2) | (l << 1) | m) as u8)
+        } else {
+            ((((m << 4) | ((raw >> 16) & 0xF)) as u8), ((h << 1) | l) as u8)
+        };
+        let esize = 8u8 << size;
+        let op = match (opcode, u) {
+            (0b1000, false) => SimdElemOp::Op3(SimdOp3::Mul),
+            (0b0000, true) => SimdElemOp::Op3(SimdOp3::Mla),
+            (0b0100, true) => SimdElemOp::Op3(SimdOp3::Mls),
+            (0b1100, false) => SimdElemOp::Op3(SimdOp3::Sqdmulh),
+            (0b1101, false) => SimdElemOp::Op3(SimdOp3::Sqrdmulh),
+            (0b1010, _) => SimdElemOp::Long(SimdLongOp::Mull, !u),
+            (0b0010, _) => SimdElemOp::Long(SimdLongOp::Mlal, !u),
+            (0b0110, _) => SimdElemOp::Long(SimdLongOp::Mlsl, !u),
+            (0b1011, false) => SimdElemOp::SatLong(SimdSatLongOp::Sqdmull),
+            (0b0011, false) => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlal),
+            (0b0111, false) => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlsl),
+            (0b1110, _) if size == 2 => {
+                return Some(Instruction::SimdByElement {
+                    rd, rn, rm, index: ((h << 1) | l) as u8, op: SimdElemOp::Dot(!u), esize: 32, q, scalar: false,
+                });
+            }
             _ => return None,
         };
+        return Some(Instruction::SimdByElement { rd, rn, rm, index, op, esize, q, scalar: false });
+    }
+
+    // 26a'''. AdvSIMD scalar x indexed element, integer: 01 U 11111 size L M Rm opcode H 0 Rn Rd
+    //         SQDMULH, SQRDMULH, SQDMULL, SQDMLAL, SQDMLSL (size 1 or 2)
+    if (raw & 0xDF00_0400) == 0x5F00_0000 && !u && (size == 1 || size == 2) {
         let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
-        let rm = ((m << 4) | ((raw >> 16) & 0xF)) as u8;
-        let double = size == 3;
-        if double && (l == 1 || !q) {
-            return None;
-        }
-        let index = if double { h } else { (h << 1) | l } as u8;
-        return Some(Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q });
+        let (rm, index) = if size == 1 {
+            (((raw >> 16) & 0xF) as u8, ((h << 2) | (l << 1) | m) as u8)
+        } else {
+            ((((m << 4) | ((raw >> 16) & 0xF)) as u8), ((h << 1) | l) as u8)
+        };
+        let op = match (raw >> 12) & 0xF {
+            0b1100 => SimdElemOp::Op3(SimdOp3::Sqdmulh),
+            0b1101 => SimdElemOp::Op3(SimdOp3::Sqrdmulh),
+            0b1011 => SimdElemOp::SatLong(SimdSatLongOp::Sqdmull),
+            0b0011 => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlal),
+            0b0111 => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlsl),
+            _ => return None,
+        };
+        return Some(Instruction::SimdByElement { rd, rn, rm, index, op, esize: 8u8 << size, q: false, scalar: true });
+    }
+
+    // 26a4. AdvSIMD vector SDOT/UDOT: 0 Q U 01110 10 0 Rm 10010 1 Rn Rd
+    if (raw & 0x9FE0_FC00) == 0x0E80_9400 {
+        return Some(Instruction::SimdByElement { rd, rn, rm, index: 0xFF, op: SimdElemOp::Dot(!u), esize: 32, q, scalar: false });
     }
 
     // 26b'. AdvSIMD extract: 0 Q 101110 00 0 Rm 0 imm4 0 Rn Rd (EXT)
@@ -1305,6 +1367,7 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11010, true, false) => SimdFpOp3::Faddp,
             (0b11010, true, true) => SimdFpOp3::Fabd,
             (0b11011, true, false) => SimdFpOp3::Fmul,
+            (0b11011, false, false) => SimdFpOp3::Fmulx,
             (0b11100, false, false) => SimdFpOp3::Fcmeq,
             (0b11100, true, false) => SimdFpOp3::Fcmge,
             (0b11100, true, true) => SimdFpOp3::Fcmgt,
@@ -1378,6 +1441,20 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdAcross { rd, rn, op, esize: 8u8 << size, q });
     }
 
+    // 29a2. AdvSIMD scalar two-register miscellaneous, saturating forms: SUQADD/USQADD/SQABS/SQNEG (all sizes)
+    if (raw & 0xDF3E_0C00) == 0x5E20_0800 {
+        let op = match ((raw >> 12) & 0x1F, u) {
+            (0b00011, false) => Some(SimdOp2::Suqadd),
+            (0b00011, true) => Some(SimdOp2::Usqadd),
+            (0b00111, false) => Some(SimdOp2::Sqabs),
+            (0b00111, true) => Some(SimdOp2::Sqneg),
+            _ => None,
+        };
+        if let Some(op) = op {
+            return Some(Instruction::SimdScalarTwoMisc { rd, rn, op, esize: 8u8 << size });
+        }
+    }
+
     // 29a. AdvSIMD scalar two-register miscellaneous: 01 U 11110 size 10000 opcode 10 Rn Rd (conversions only)
     if (raw & 0xDF3E_0C00) == 0x5E20_0800 {
         let op = match ((raw >> 12) & 0x1F, u, size >> 1) {
@@ -1432,6 +1509,10 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         if (raw >> 12) & 0x1F == 0b10010 && !u && size < 3 {
             return Some(Instruction::SimdShiftImm { rd, rn, op: SimdShiftOp::Shrn, esize: 8 << size, shift: 0, q });
         }
+        // SHLL/SHLL2: USHLL by the source lane size
+        if (raw >> 12) & 0x1F == 0b10011 && u && size < 3 {
+            return Some(Instruction::SimdShiftImm { rd, rn, op: SimdShiftOp::Ushll, esize: 8 << size, shift: 8 << size, q });
+        }
         let op = match ((raw >> 12) & 0x1F, u) {
             (0b01000, false) => SimdOp2::Cmgt0,
             (0b01000, true) => SimdOp2::Cmge0,
@@ -1445,12 +1526,25 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b00101, true) if size == 0 => SimdOp2::Not,
             (0b01011, false) => SimdOp2::Abs,
             (0b01011, true) => SimdOp2::Neg,
+            (0b00011, false) => SimdOp2::Suqadd,
+            (0b00011, true) => SimdOp2::Usqadd,
+            (0b00100, false) if size < 3 => SimdOp2::Cls,
+            (0b00100, true) if size < 3 => SimdOp2::Clz,
+            (0b00101, true) if size == 1 => SimdOp2::Rbit,
+            (0b00111, false) => SimdOp2::Sqabs,
+            (0b00111, true) => SimdOp2::Sqneg,
             (0b11101, false) if size < 2 => SimdOp2::Scvtf,
             (0b11101, true) if size < 2 => SimdOp2::Ucvtf,
             _ => return None,
         };
-        // The float forms use bit 22 (sz) alone: 32-bit lanes, or 64-bit lanes with Q.
-        let esize = if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf) { 32u8 << size } else { 8u8 << size };
+        // The float forms use bit 22 (sz) alone: 32-bit lanes, or 64-bit lanes with Q. RBIT works on bytes.
+        let esize = if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf) {
+            32u8 << size
+        } else if op == SimdOp2::Rbit {
+            8
+        } else {
+            8u8 << size
+        };
         if esize == 64 && !q {
             return None;
         }
