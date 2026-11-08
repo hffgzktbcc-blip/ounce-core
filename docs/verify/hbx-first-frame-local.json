@@ -1,0 +1,173 @@
+{
+  "code_sha256": "0ddf3cf2ce0867d8a42a6e04bddfff809e0e438502e7f5c40a2ceee02d43d84c",
+  "data_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "engine_agreement": true,
+  "oracle_sha256": "d72d7ab51171eb274dc4db250b466ec1ba27c548821ddb1efaacc4e47ab80aff",
+  "pass": true,
+  "rendering": "HBLauncher host UI callbacks; not a Switch 2 GPU-path validation",
+  "report_sha256": "9a222665a3581a66680c5feb3bbe1212c8cd8e2449edeaede0b160737a4ca67d",
+  "runs": [
+    {
+      "engine": "interpreter",
+      "height": 1080,
+      "pass": true,
+      "pixels": [
+        {
+          "expected": [
+            250,
+            252,
+            254,
+            255
+          ],
+          "observed": [
+            250,
+            252,
+            254,
+            255
+          ],
+          "pass": true,
+          "x": 10,
+          "y": 10
+        },
+        {
+          "expected": [
+            255,
+            255,
+            255,
+            255
+          ],
+          "observed": [
+            255,
+            255,
+            255,
+            255
+          ],
+          "pass": true,
+          "x": 1100,
+          "y": 700
+        },
+        {
+          "expected": [
+            5,
+            145,
+            224,
+            255
+          ],
+          "observed": [
+            5,
+            145,
+            224,
+            255
+          ],
+          "pass": true,
+          "x": 260,
+          "y": 429
+        },
+        {
+          "expected": [
+            232,
+            243,
+            249,
+            255
+          ],
+          "observed": [
+            232,
+            243,
+            249,
+            255
+          ],
+          "pass": true,
+          "x": 820,
+          "y": 429
+        }
+      ],
+      "rgba_fnv1a64": "0x751a03a670341fbe",
+      "width": 1920
+    },
+    {
+      "engine": "tier3",
+      "height": 1080,
+      "pass": true,
+      "pixels": [
+        {
+          "expected": [
+            250,
+            252,
+            254,
+            255
+          ],
+          "observed": [
+            250,
+            252,
+            254,
+            255
+          ],
+          "pass": true,
+          "x": 10,
+          "y": 10
+        },
+        {
+          "expected": [
+            255,
+            255,
+            255,
+            255
+          ],
+          "observed": [
+            255,
+            255,
+            255,
+            255
+          ],
+          "pass": true,
+          "x": 1100,
+          "y": 700
+        },
+        {
+          "expected": [
+            5,
+            145,
+            224,
+            255
+          ],
+          "observed": [
+            5,
+            145,
+            224,
+            255
+          ],
+          "pass": true,
+          "x": 260,
+          "y": 429
+        },
+        {
+          "expected": [
+            232,
+            243,
+            249,
+            255
+          ],
+          "observed": [
+            232,
+            243,
+            249,
+            255
+          ],
+          "pass": true,
+          "x": 820,
+          "y": 429
+        }
+      ],
+      "rgba_fnv1a64": "0x751a03a670341fbe",
+      "width": 1920
+    }
+  ],
+  "schema_version": "ounce-verify/hbx-first-frame-v1",
+  "source": {
+    "commit": "18b4748ba98eeac7df17beb5d3418985eb74897c",
+    "file": "apps/hello-cpu/src/app.c",
+    "license": "MIT",
+    "repository": "https://github.com/ravensclawx/HBLauncher"
+  },
+  "target": "switch2-homebrew"
+}

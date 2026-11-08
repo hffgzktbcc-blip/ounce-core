@@ -114,7 +114,7 @@ mod imp {
     const SIGNALS: [libc::c_int; 6] = [libc::SIGSEGV, libc::SIGBUS, libc::SIGILL, libc::SIGTRAP, libc::SIGFPE, libc::SIGUSR2];
     static PREVIOUS: OnceLock<Vec<(libc::c_int, libc::sigaction)>> = OnceLock::new();
 
-    /// Host frame: x19-x30 and d8-d15, 160 bytes, kept 16-byte aligned (176).
+    /// Host frame: x19-x30, d8-d15 and FPCR/FPSR, 176 bytes, kept 16-byte aligned.
     macro_rules! host_epilogue {
         () => {
             concat!(
@@ -130,6 +130,9 @@ mod imp {
                 "ldp d10, d11, [sp, #112]\n",
                 "ldp d12, d13, [sp, #128]\n",
                 "ldp d14, d15, [sp, #144]\n",
+                "ldp x0, x1, [sp, #160]\n",
+                "msr fpcr, x0\n",
+                "msr fpsr, x1\n",
                 "add sp, sp, #176\n",
             )
         };
@@ -151,6 +154,9 @@ mod imp {
             "stp d10, d11, [sp, #112]",
             "stp d12, d13, [sp, #128]",
             "stp d14, d15, [sp, #144]",
+            "mrs x2, fpcr",
+            "mrs x3, fpsr",
+            "stp x2, x3, [sp, #160]",
             "mov x2, sp",
             "str x2, [x0, #{host_sp}]",
             "adr x2, 2f",
@@ -312,6 +318,11 @@ mod imp {
         // SAFETY: while ACTIVE is set the context is committed, writable arena memory, and the host
         // is suspended inside `nce_enter`, so nothing else references it.
         let ctx = unsafe { &mut *(ctx_va as *mut Context) };
+        if sig != PREEMPT_SIGNAL {
+            // A fault leaves guest code mid-run (a branch into an interpreted page, for one): the
+            // SIMD/FP registers it holds carry on from here, so they must reach the context too.
+            save_fp(ctx, uc);
+        }
         // SAFETY: `info` is valid for the handler's duration.
         ctx.fault_addr = unsafe { (*info).si_addr() } as u64;
         ctx.fault_signal = sig as u64;
@@ -443,6 +454,62 @@ mod imp {
             Exit::Trampoline(ctx.exit_id)
         })
     }
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::patch::Patcher;
+
+        fn fp_state() -> (u64, u64) {
+            let (fpcr, fpsr);
+            // SAFETY: reading the current thread's user-accessible FP registers.
+            unsafe { core::arch::asm!("mrs {0}, fpcr", "mrs {1}, fpsr", out(reg) fpcr, out(reg) fpsr, options(nostack)); }
+            (fpcr, fpsr)
+        }
+
+        struct RestoreFp(u64, u64);
+        impl Drop for RestoreFp {
+            fn drop(&mut self) {
+                // SAFETY: restoring values read from this thread, including on test failure.
+                unsafe { core::arch::asm!("msr fpcr, {0}", "msr fpsr, {1}", in(reg) self.0, in(reg) self.1, options(nostack)); }
+            }
+        }
+
+        #[test]
+        fn host_fp_state_survives_trampoline_and_fault() {
+            for word in [0xD400_00E1u32, 0xF940_001F] {
+                let mut arena = Arena::reserve(1 << 32).unwrap();
+                let base = arena.base();
+                let (ctx, code, stack) = (base + 0x10_0000, base + 0x100_0000, base + 0x200_0000);
+                let mut patcher = Patcher::new(ctx, 0x1_0000).unwrap();
+                let mut words = [word];
+                patcher.rewrite(code, &mut words).unwrap();
+                arena.commit(ctx, 0x3_0000).unwrap();
+                arena.commit(code, 0x1_0000).unwrap();
+                arena.commit(stack, 0x1_0000).unwrap();
+                let bytes = |w: &[u32]| w.iter().flat_map(|w| w.to_le_bytes()).collect::<Vec<_>>();
+                arena.write(code, &bytes(&words)).unwrap();
+                let slot = patcher.launch_slot(code).unwrap();
+                arena.write(patcher.code_base(), &bytes(&patcher.areas()[0].code)).unwrap();
+                arena.write(slot, &bytes(&Patcher::launch_words(slot, code).unwrap())).unwrap();
+                arena.seal_exec(code, 0x1_0000).unwrap();
+                arena.seal_exec(patcher.code_base(), 0x1_0000).unwrap();
+                let host = fp_state();
+                let restore = RestoreFp(host.0, host.1);
+                let guest = (host.0 ^ (1 << 22), host.1 ^ 1);
+                let context = arena.context_mut(ctx).unwrap();
+                context.sp = stack + 0x1_0000;
+                context.fpcr = guest.0;
+                context.fpsr = guest.1;
+                let exit = enter(&mut arena, ctx, slot).unwrap();
+                let after = fp_state();
+                drop(restore);
+                assert_eq!(after, host, "host FP state leaked after {exit:?}");
+                let context = arena.context_mut(ctx).unwrap();
+                assert_eq!((context.fpcr, context.fpsr), guest);
+            }
+        }
+    }
+
 }
 
 #[cfg(not(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux"))))]

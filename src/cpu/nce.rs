@@ -50,6 +50,78 @@ const SLICE: std::time::Duration = std::time::Duration::from_millis(1);
 /// Horizon's timer frequency (`CNTFRQ_EL0`).
 const TIMER_HZ: u64 = 19_200_000;
 
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+    #[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))]
+    #[test]
+    fn rewritten_code_replacement_is_rejected_before_reentry() {
+        for change in 0..4 {
+            let arena = ounce_nce::Arena::reserve(1 << 32).unwrap();
+            let base = arena.base();
+            let code = base + 0x8000_0000;
+            let mut memory = Memory::with_arena(arena);
+            memory.map_range(code, 0x1_0000, Permission::READ_WRITE_EXECUTE);
+            memory.write_u32(code, 0xD400_00E1).unwrap();
+            let mut engine = NceEngine::new(&mut memory, base, vec![]).unwrap();
+            engine.sync_code(&mut memory).unwrap();
+            match change {
+                0 => memory.map_range(code, 0x1000, Permission::READ_WRITE_EXECUTE),
+                1 => {
+                    memory.unmap_range(code, 0x1000);
+                    memory.map_range(code, 0x1000, Permission::READ_WRITE_EXECUTE);
+                }
+                2 => memory.move_range(code, code + 0x20_0000, 0x1000),
+                _ => memory.write_u32(code, 0xD400_0141).unwrap(),
+            }
+            let result = engine.sync_code(&mut memory);
+            assert!(result.unwrap_err().contains("native rewritten code changed"), "code lifecycle change {change}");
+        }
+    }
+
+    #[test]
+    fn rewritten_page_metadata_changes_are_rejected_on_every_host() {
+        for change in 0..4 {
+            let mut memory = Memory::new();
+            memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE);
+            memory.mark_code_range(0x8000, 0x9000);
+            let mut engine = NceEngine {
+                patcher: Patcher::new(0x1000, STUB_CAPACITY).unwrap(), areas: vec![], written: vec![],
+                patched: HashSet::from([8]), interpreted: HashSet::new(), interpreted_steps: 0,
+                exec_gen: memory.exec_map_gen(), code_gen: memory.code_write_gen(),
+                skip: vec![], stats: Stats::default(), entries: 0,
+            };
+            match change {
+                0 => memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE),
+                1 => {
+                    memory.unmap_range(0x8000, 4096);
+                    memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE);
+                }
+                2 => memory.move_range(0x8000, 0xa000, 4096),
+                _ => memory.write_u32(0x8000, 0xD400_0141).unwrap(),
+            }
+            assert!(engine.sync_code(&mut memory).unwrap_err().contains("native rewritten code changed"));
+        }
+    }
+
+    #[test]
+    fn interpreted_backward_branch_returns_to_scheduler() {
+        let mut memory = Memory::new();
+        memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE);
+        memory.write_u32(0x8000, 0x1400_0000).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.regs.pc = 0x8000;
+        let mut engine = NceEngine {
+            patcher: Patcher::new(0x1000, STUB_CAPACITY).unwrap(), areas: vec![], written: vec![],
+            patched: HashSet::new(), interpreted: HashSet::from([8]), interpreted_steps: 0,
+            exec_gen: 0, code_gen: 0, skip: vec![], stats: Stats::default(), entries: 0,
+        };
+        assert_eq!(engine.interpret(&mut cpu, &mut memory, std::time::Instant::now() + SLICE),
+            Some(NceExit::Preempted));
+        assert_eq!(cpu.regs.pc, 0x8000);
+    }
+}
+
 /// Why [`NceEngine::run`] returned.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NceExit {
@@ -75,6 +147,7 @@ pub struct NceEngine {
     interpreted: HashSet<u64>,
     pub interpreted_steps: u64,
     exec_gen: u64,
+    code_gen: u64,
     /// Ranges never rewritten (the NRO header, which is data).
     skip: Vec<(u64, u64)>,
     pub stats: Stats,
@@ -98,7 +171,7 @@ impl NceEngine {
         let code = patcher.code_base();
         mmu.map_range(code, STUB_CAPACITY as usize, Permission::READ_EXECUTE);
         Ok(Self { patcher, areas: vec![(code, code + STUB_CAPACITY)], written: vec![0], patched: HashSet::new(),
-            interpreted: HashSet::new(), interpreted_steps: 0, exec_gen: u64::MAX, skip, stats: Stats::default(), entries: 0 })
+            interpreted: HashSet::new(), interpreted_steps: 0, exec_gen: u64::MAX, code_gen: mmu.code_write_gen(), skip, stats: Stats::default(), entries: 0 })
     }
 
     /// A free, unmapped spot for a satellite area near `at`, or `None`.
@@ -114,6 +187,15 @@ impl NceEngine {
 
     /// Rewrites and seals executable pages mapped since the last call, and writes new stubs.
     fn sync_code(&mut self, mmu: &mut Memory) -> Result<(), String> {
+        if mmu.code_write_gen() != self.code_gen {
+            for &page in self.patched.difference(&self.interpreted) {
+                let start = page << 12;
+                if mmu.code_written_since(start, start + 0x1000, self.code_gen) {
+                    return Err(format!("native rewritten code changed at {start:#x}; reload the guest image in a fresh native engine"));
+                }
+            }
+            self.code_gen = mmu.code_write_gen();
+        }
         if mmu.exec_map_gen() == self.exec_gen {
             return Ok(());
         }
@@ -202,6 +284,9 @@ impl NceEngine {
         }
         let out: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
         mmu.arena_mut().ok_or("no arena")?.write(start, &out).map_err(err)?;
+        // Rewriting destroys the original words. Reusing or moving these bytes needs a fresh
+        // engine/image, not a second patch pass over already generated branches.
+        mmu.mark_code_range(start, end);
         for p in (start >> 12)..(end >> 12) {
             self.patched.insert(p);
         }
@@ -219,14 +304,16 @@ impl NceEngine {
 
     fn run_inner(&mut self, cpu: &mut Cpu, mmu: &mut Memory, tick: &dyn Fn() -> u64) -> Result<NceExit, String> {
         self.sync_code(mmu)?;
+        let deadline = std::time::Instant::now() + SLICE;
         loop {
+            if std::time::Instant::now() >= deadline { return Ok(NceExit::Preempted); }
             if self.interpreted.contains(&(cpu.regs.pc >> 12)) {
-                if let Some(exit) = self.interpret(cpu, mmu) {
+                if let Some(exit) = self.interpret(cpu, mmu, deadline) {
                     return Ok(exit);
                 }
                 continue;
             }
-            match self.native(cpu, mmu, tick)? {
+            match self.native(cpu, mmu, tick, deadline)? {
                 // Native code branched into an interpreted page: carry on there.
                 NceExit::Fault { pc, signal, addr } if addr == pc && self.interpreted.contains(&(pc >> 12))
                     && (signal == libc_sigsegv() || signal == libc_sigbus()) => continue,
@@ -236,9 +323,10 @@ impl NceEngine {
     }
 
     /// Steps the interpreter while the pc stays in interpreted pages. `None` = left them.
-    fn interpret(&mut self, cpu: &mut Cpu, mmu: &mut Memory) -> Option<NceExit> {
+    fn interpret(&mut self, cpu: &mut Cpu, mmu: &mut Memory, deadline: std::time::Instant) -> Option<NceExit> {
         use super::interpreter::StepResult;
         while self.interpreted.contains(&(cpu.regs.pc >> 12)) {
+            if std::time::Instant::now() >= deadline { return Some(NceExit::Preempted); }
             let pc = cpu.regs.pc;
             self.interpreted_steps += 1;
             match cpu.step(mmu) {
@@ -253,7 +341,7 @@ impl NceEngine {
         None
     }
 
-    fn native(&mut self, cpu: &mut Cpu, mmu: &mut Memory, tick: &dyn Fn() -> u64) -> Result<NceExit, String> {
+    fn native(&mut self, cpu: &mut Cpu, mmu: &mut Memory, tick: &dyn Fn() -> u64, deadline: std::time::Instant) -> Result<NceExit, String> {
         let ctx_va = self.patcher.context();
         let mut no_preempt = vec![(ctx_va, ctx_va + ounce_nce::patch::CONTEXT_AREA)];
         no_preempt.extend(self.areas.iter().copied());
@@ -295,8 +383,13 @@ impl NceEngine {
                             if rt != 31 {
                                 ctx.x[rt as usize] = if sysreg == SYSREG_CNTFRQ_EL0 { TIMER_HZ } else { tick() };
                             }
-                            target = site.resume;
-                            continue;
+                            if std::time::Instant::now() >= deadline {
+                                ctx.pc = site.at + 4;
+                                NceExit::Preempted
+                            } else {
+                                target = site.resume;
+                                continue;
+                            }
                         }
                         SiteKind::Svc(id) => {
                             ctx.pc = site.at + 4;

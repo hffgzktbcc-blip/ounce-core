@@ -783,7 +783,7 @@
       ],
       "assumptions": [
         "Hashes copied from the existing deko_basic_first_frame_oracle (docs/deko-basic-oracle.md); they were recorded from an earlier run, not computed from source, so this oracle is a regression check of an observed frame.",
-    "PLAN step 3 (owner-approved, 2026-11-04): frame 1 corrected from the observed clear-only 0x7c9a9a3fa3856325 to the frames 2-5 hash. main.c draws the triangle on every frame; the old value recorded a culling bug (see docs/deko-basic-oracle.md)."
+        "PLAN step 3 (owner-approved, 2026-11-04): frame 1 corrected from the observed clear-only 0x7c9a9a3fa3856325 to the frames 2-5 hash. main.c draws the triangle on every frame; the old value recorded a culling bug (see docs/deko-basic-oracle.md)."
       ]
     },
     {
@@ -848,6 +848,3021 @@
         "Written in step 2 from source and the bundled romfs files. Earlier CI logs printed this sample's frame hash; they were not consulted. The old oracle (docs/romfs-oracle.md) only required a non-zero hash.",
         "The UTF-8 bytes of the Unicode path are never printed; both files' lines are ASCII."
       ]
+    },
+    {
+      "id": "account",
+      "build": "switch-examples",
+      "nro": "account/account.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Current userID: 0x",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                3,
+                0
+              ],
+              [
+                6,
+                0
+              ],
+              [
+                10,
+                0
+              ],
+              [
+                13,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 4,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 8,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 54,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 58,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 102,
+              "y": 6,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 108,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 172,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 160,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 212,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 208,
+              "y": 9,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "alarm-notifications",
+      "build": "switch-examples",
+      "nro": "alarm-notifications/alarm-notifications.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "alarm-notifications example\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                7,
+                0
+              ],
+              [
+                13,
+                0
+              ],
+              [
+                20,
+                0
+              ],
+              [
+                26,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 12,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 8,
+              "y": 6,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 116,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 112,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 220,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 216,
+              "y": 6,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 332,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 320,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 428,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 416,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "app-playstats",
+      "build": "switch-examples",
+      "nro": "applet/app-playstats/app-playstats.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "application play-stats example\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                6,
+                0
+              ],
+              [
+                14,
+                0
+              ],
+              [
+                21,
+                0
+              ],
+              [
+                29,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 12,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 8,
+              "y": 6,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 108,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 104,
+              "y": 6,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 236,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 232,
+              "y": 6,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 344,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 338,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 476,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 464,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "applet-error",
+      "build": "switch-examples",
+      "nro": "applet/libapplets/error/error.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "error example\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x6760c95dbd4cd185",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input."
+    },
+    {
+      "id": "applet-pctlauth",
+      "build": "switch-examples",
+      "nro": "applet/libapplets/pctlauth/pctlauth.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "pctlauth example\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x4c075da910fd9125",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input."
+    },
+    {
+      "id": "applet-software-keyboard",
+      "build": "switch-examples",
+      "nro": "applet/libapplets/software-keyboard/software-keyboard.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "swkbd example\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x129ab503632fae05",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input."
+    },
+    {
+      "id": "applet-web",
+      "build": "switch-examples",
+      "nro": "applet/libapplets/web/web.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "web example\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xc95a8b0c7d6de7e5",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input."
+    },
+    {
+      "id": "light-sensor",
+      "build": "switch-examples",
+      "nro": "applet/light-sensor/light-sensor.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "light-sensor example\nPress A to check light-sensor.\nPress + to exit.\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xd4df40ef7ebb79e5",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input."
+    },
+    {
+      "id": "lockexit",
+      "build": "switch-examples",
+      "nro": "applet/lockexit/lockexit.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "applet exit-locking example.\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x27d2c61da9f587a5",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input."
+    },
+    {
+      "id": "screenshot-overlay",
+      "build": "switch-examples",
+      "nro": "applet/screenshot-overlay/screenshot-overlay.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "screenshot-overlay example\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                5,
+                0
+              ],
+              [
+                12,
+                0
+              ],
+              [
+                19,
+                0
+              ],
+              [
+                25,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 8,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 2,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 94,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 82,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 204,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 200,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 316,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 304,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 412,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 400,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "vrmode",
+      "build": "switch-examples",
+      "nro": "applet/vrmode/vrmode.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "VrMode example\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                3,
+                0
+              ],
+              [
+                7,
+                0
+              ],
+              [
+                10,
+                0
+              ],
+              [
+                13,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 12,
+              "y": 6,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 4,
+              "y": 9,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 52,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 48,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 124,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 112,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 164,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 160,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 220,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 208,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "audio-echo",
+      "build": "switch-examples",
+      "nro": "audio/echo/echo.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "audinInitialize() returned 0x0\naudoutInitialize() returned 0x0\naudinStartAudioIn() returned 0x0\naudoutStartAudioOut() returned 0x0\naudinAppendAudioInBuffer() returned 0x0\naudoutAppendAudioOutBuffer() returned 0x0\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x9f4f79468ad74f25",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input."
+    },
+    {
+      "id": "playtone",
+      "build": "switch-examples",
+      "nro": "audio/playtone/playtone.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "audoutInitialize() returned 0x0\nSample rate: ",
+            "probe_cells": [
+              [
+                0,
+                1
+              ],
+              [
+                2,
+                1
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                7,
+                1
+              ],
+              [
+                10,
+                1
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 6,
+              "y": 23,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 8,
+              "y": 24,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 36,
+              "y": 24,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 32,
+              "y": 23,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 72,
+              "y": 23,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 68,
+              "y": 24,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 118,
+              "y": 23,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 122,
+              "y": 24,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 172,
+              "y": 24,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 160,
+              "y": 23,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "exception-handler",
+      "build": "switch-examples",
+      "nro": "exception-handler/exception-handler.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Triggering crash...\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x1bface0747633fa5",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input."
+    },
+    {
+      "id": "save-data",
+      "build": "switch-examples",
+      "nro": "fs/save/save.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Using application_id=0x",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                4,
+                0
+              ],
+              [
+                9,
+                0
+              ],
+              [
+                13,
+                0
+              ],
+              [
+                19,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 4,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 0,
+              "y": 9,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 76,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 72,
+              "y": 6,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 152,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 148,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 214,
+              "y": 6,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 220,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 308,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 304,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "sdmc",
+      "build": "switch-examples",
+      "nro": "fs/sdmc/sdmc.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Dir-listing for '':\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                4,
+                0
+              ],
+              [
+                7,
+                0
+              ],
+              [
+                10,
+                0
+              ],
+              [
+                14,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 4,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 0,
+              "y": 9,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 72,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 68,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 118,
+              "y": 6,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 124,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 172,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 168,
+              "y": 6,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 230,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 234,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "abstracted-pad",
+      "build": "switch-examples",
+      "nro": "hid/abstracted-pad/abstracted-pad.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "abstracted-pad example\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                4,
+                0
+              ],
+              [
+                9,
+                0
+              ],
+              [
+                16,
+                0
+              ],
+              [
+                21,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 12,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 8,
+              "y": 6,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 70,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 74,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 148,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 144,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 262,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 258,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 348,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 336,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "controller-colors",
+      "build": "switch-examples",
+      "nro": "hid/colors/colors.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[1;1HPress PLUS to exit."
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x28078a4130706ca5",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input."
+    },
+    {
+      "id": "hdls",
+      "build": "switch-examples",
+      "nro": "hid/hdls/hdls.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "hdls example\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                2,
+                0
+              ],
+              [
+                6,
+                0
+              ],
+              [
+                8,
+                0
+              ],
+              [
+                11,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 14,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 2,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 40,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 36,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 102,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 98,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 132,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 128,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 188,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 176,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "notification-led",
+      "build": "switch-examples",
+      "nro": "hid/notification-led/notification-led.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "notification-led example\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                5,
+                0
+              ],
+              [
+                10,
+                0
+              ],
+              [
+                17,
+                0
+              ],
+              [
+                23,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 14,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 2,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 88,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 80,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 164,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 160,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 284,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 272,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 380,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 368,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "ring-con",
+      "build": "switch-examples",
+      "nro": "hid/ring-con/ring-con.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Press PLUS to exit.\nringconCreate(): ",
+            "probe_cells": [
+              [
+                0,
+                1
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                6,
+                1
+              ],
+              [
+                9,
+                1
+              ],
+              [
+                12,
+                1
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 6,
+              "y": 23,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 10,
+              "y": 24,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 60,
+              "y": 25,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 56,
+              "y": 22,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 110,
+              "y": 24,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 98,
+              "y": 23,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 156,
+              "y": 24,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 144,
+              "y": 23,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 204,
+              "y": 24,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 192,
+              "y": 23,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "sevensixaxis",
+      "build": "switch-examples",
+      "nro": "hid/sevensixaxis/sevensixaxis.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Press A to get state.\nPress + to exit.\nhidInitializeSevenSixAxisSensor(): ",
+            "probe_cells": [
+              [
+                0,
+                2
+              ],
+              [
+                7,
+                2
+              ],
+              [
+                15,
+                2
+              ],
+              [
+                22,
+                2
+              ],
+              [
+                30,
+                2
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 14,
+              "y": 39,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 2,
+              "y": 40,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 120,
+              "y": 40,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 112,
+              "y": 40,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 252,
+              "y": 40,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 248,
+              "y": 39,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 358,
+              "y": 41,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 354,
+              "y": 39,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 486,
+              "y": 39,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 490,
+              "y": 40,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "vibration",
+      "build": "switch-examples",
+      "nro": "hid/vibration/vibration.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Press PLUS to exit.\nHold R to vibrate.\nPress D-Pad (frequency) and face buttons (amplitude) to adjust values.\nHigh frequency 10, amplitude 0.2\nLow frequency 10, amplitude 0.2\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x5490abdb32bc3ea5",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input."
+    },
+    {
+      "id": "ldn",
+      "build": "switch-examples",
+      "nro": "network/ldn/ldn.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "ldn example\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                2,
+                0
+              ],
+              [
+                5,
+                0
+              ],
+              [
+                7,
+                0
+              ],
+              [
+                10,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 8,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 4,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 46,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 34,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 86,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 82,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 116,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 112,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 172,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 160,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "lp2p",
+      "build": "switch-examples",
+      "nro": "network/lp2p/lp2p.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "lp2p example\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                3,
+                0
+              ],
+              [
+                6,
+                0
+              ],
+              [
+                8,
+                0
+              ],
+              [
+                11,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 8,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 4,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 52,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 48,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 102,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 98,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 132,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 128,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 188,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 176,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "nxlink-stdio",
+      "build": "switch-examples",
+      "nro": "network/nxlink_stdio/nxlink_stdio.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Hello World!\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                2,
+                0
+              ],
+              [
+                4,
+                0
+              ],
+              [
+                7,
+                0
+              ],
+              [
+                10,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 4,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 8,
+              "y": 9,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 40,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 36,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 68,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 64,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 116,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 112,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 164,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 160,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "power",
+      "build": "switch-examples",
+      "nro": "power/power.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[16;16HPress PLUS to exit.",
+            "probe_cells": [
+              [
+                15,
+                15
+              ],
+              [
+                18,
+                15
+              ],
+              [
+                23,
+                15
+              ],
+              [
+                27,
+                15
+              ],
+              [
+                32,
+                15
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 252,
+              "y": 245,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 240,
+              "y": 250,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 296,
+              "y": 249,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 290,
+              "y": 247,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 372,
+              "y": 247,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 368,
+              "y": 249,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 436,
+              "y": 249,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 432,
+              "y": 247,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 518,
+              "y": 246,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 524,
+              "y": 248,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "time",
+      "build": "switch-examples",
+      "nro": "time/time.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[16;16HPress PLUS to exit.",
+            "probe_cells": [
+              [
+                15,
+                15
+              ],
+              [
+                18,
+                15
+              ],
+              [
+                23,
+                15
+              ],
+              [
+                27,
+                15
+              ],
+              [
+                32,
+                15
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 252,
+              "y": 245,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 240,
+              "y": 250,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 296,
+              "y": 249,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 290,
+              "y": 247,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 372,
+              "y": 247,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 368,
+              "y": 249,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 436,
+              "y": 249,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 432,
+              "y": 247,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 518,
+              "y": 246,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 524,
+              "y": 248,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "usbhs",
+      "build": "switch-examples",
+      "nro": "usb/usbhs/usbhs.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "usbhs example\n",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                2,
+                0
+              ],
+              [
+                6,
+                0
+              ],
+              [
+                9,
+                0
+              ],
+              [
+                12,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 6,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 10,
+              "y": 6,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 36,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 32,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 108,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 96,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 148,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 144,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 204,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 192,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
+    },
+    {
+      "id": "cpu-jit",
+      "build": "original",
+      "nro": "jit/jit.nro",
+      "source": "source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "jitCreate() returned: ",
+            "probe_cells": [
+              [
+                0,
+                0
+              ],
+              [
+                4,
+                0
+              ],
+              [
+                8,
+                0
+              ],
+              [
+                15,
+                0
+              ],
+              [
+                19,
+                0
+              ]
+            ]
+          },
+          "probes": [
+            {
+              "x": 10,
+              "y": 10,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 4,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 70,
+              "y": 7,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 74,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 140,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 128,
+              "y": 7,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 246,
+              "y": 9,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 250,
+              "y": 6,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            },
+            {
+              "x": 308,
+              "y": 8,
+              "rgb": [
+                198,
+                195,
+                198
+              ]
+            },
+            {
+              "x": 304,
+              "y": 8,
+              "rgb": [
+                0,
+                0,
+                0
+              ]
+            }
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": "First queued software-console frame with no input. Check stable literal text and its background, allowing other pixels to vary with environment or service results."
     }
+  ],
+  "target": "original-switch-libnx",
+  "required_engines": [
+    "interpreter",
+    "tier3"
   ]
 }

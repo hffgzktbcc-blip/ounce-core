@@ -187,8 +187,8 @@ impl Cpu {
                 set_flags,
                 is_64,
             } => {
-                // If setting flags or rd != 31, read Rn (with SP support if not setting flags)
-                let op1 = if !set_flags && rn == 31 {
+                // Immediate arithmetic always interprets Rn == 31 as SP, including CMP/CMN.
+                let op1 = if rn == 31 {
                     self.regs.sp
                 } else {
                     self.regs.read_x(rn)
@@ -798,6 +798,7 @@ impl Cpu {
                 size_bytes,
                 is_load,
                 is_signed,
+                is_64_target,
                 writeback,
                 post_index,
             } => {
@@ -818,6 +819,9 @@ impl Cpu {
                         (4, true) => self.regs.write_x(rt, (mmu.read_u32(eff_addr)? as i32 as i64) as u64),
                         (8, _) => self.regs.write_x(rt, mmu.read_u64(eff_addr)?),
                         _ => unreachable!(),
+                    }
+                    if !is_64_target {
+                        self.regs.write_w(rt, self.regs.read_w(rt));
                     }
                 } else {
                     match size_bytes {
@@ -945,9 +949,12 @@ impl Cpu {
                         FpOp2::Fadd => n + m,
                         FpOp2::Fsub => n - m,
                         FpOp2::Fmul => n * m,
+                        FpOp2::Fnmul => -(n * m),
                         FpOp2::Fdiv => n / m,
-                        FpOp2::Fmax | FpOp2::Fmaxnm => n.max(m),
-                        FpOp2::Fmin | FpOp2::Fminnm => n.min(m),
+                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
                     self.regs.write_d(rd, res);
                 } else {
@@ -957,9 +964,12 @@ impl Cpu {
                         FpOp2::Fadd => n + m,
                         FpOp2::Fsub => n - m,
                         FpOp2::Fmul => n * m,
+                        FpOp2::Fnmul => -(n * m),
                         FpOp2::Fdiv => n / m,
-                        FpOp2::Fmax | FpOp2::Fmaxnm => n.max(m),
-                        FpOp2::Fmin | FpOp2::Fminnm => n.min(m),
+                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
                     self.regs.write_s(rd, res);
                 }
@@ -988,11 +998,11 @@ impl Cpu {
             Instruction::FpData3 { rd, rn, rm, ra, o1, o0, is_double } => {
                 if is_double {
                     let (n, m, a) = (self.regs.read_d(rn), self.regs.read_d(rm), self.regs.read_d(ra));
-                    let r = (if o0 { -n } else { n }).mul_add(m, if o1 { -a } else { a });
+                    let r = (if o0 != o1 { -n } else { n }).mul_add(m, if o1 { -a } else { a });
                     self.regs.write_d(rd, r);
                 } else {
                     let (n, m, a) = (self.regs.read_s(rn), self.regs.read_s(rm), self.regs.read_s(ra));
-                    let r = (if o0 { -n } else { n }).mul_add(m, if o1 { -a } else { a });
+                    let r = (if o0 != o1 { -n } else { n }).mul_add(m, if o1 { -a } else { a });
                     self.regs.write_s(rd, r);
                 }
                 self.regs.advance_pc();
@@ -1367,6 +1377,31 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdVec2D { rd, rn, rm, op } => {
+                let a = self.regs.read_q(rn);
+                let b = self.regs.read_q(rm);
+                let mut out = 0u128;
+                for lane in 0..2 {
+                    let n = f64::from_bits((a >> (lane * 64)) as u64);
+                    let m = f64::from_bits((b >> (lane * 64)) as u64);
+                    let value = match op {
+                        FpOp2::Fadd => n + m,
+                        FpOp2::Fsub => n - m,
+                        FpOp2::Fmul => n * m,
+                        FpOp2::Fnmul => -(n * m),
+                        FpOp2::Fdiv => n / m,
+                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else { n.max(m) },
+                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else { n.min(m) },
+                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                    };
+                    out |= (value.to_bits() as u128) << (lane * 64);
+                }
+                self.regs.write_q(rd, out);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdVec4S { rd, rn, rm, op } => {
                 let a = self.regs.read_v4s(rn);
                 let b = self.regs.read_v4s(rm);
@@ -1376,6 +1411,7 @@ impl Cpu {
                         FpOp2::Fadd => a[i] + b[i],
                         FpOp2::Fsub => a[i] - b[i],
                         FpOp2::Fmul => a[i] * b[i],
+                        FpOp2::Fnmul => -(a[i] * b[i]),
                         FpOp2::Fdiv => a[i] / b[i],
                         FpOp2::Fmax | FpOp2::Fmaxnm => a[i].max(b[i]),
                         FpOp2::Fmin | FpOp2::Fminnm => a[i].min(b[i]),
@@ -1473,6 +1509,13 @@ impl Cpu {
                     SimdImmOp::Bic => (d & !pattern) & width,
                 };
                 self.regs.write_q(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdDupScalar { rd, rn, esize, index } => {
+                let v = simd::lane(self.regs.read_q(rn), esize as u32, index as usize);
+                self.regs.write_q(rd, v as u128);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1722,6 +1765,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdLong { rd, rn, rm, op, signed, esize, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::mul_long(op, d, n, m, esize as u32, q, signed));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdAcross { rd, rn, op, esize, q } => {
                 self.regs.write_q(rd, simd::across(op, self.regs.read_q(rn), esize as u32, q));
                 self.regs.advance_pc();
@@ -1904,6 +1954,15 @@ mod tests {
         assert_eq!(cpu.regs.read_d(2), 1.5);
         assert_eq!(cpu.regs.read_x(7), 0);
         assert_eq!(cpu.regs.read_d(31), 4.0); // fmsub: 10 - 2 * 3
+        // all four fused 3-source forms, d29 = 2, d30 = 3, d31 = 10 (regression: FNMADD/FNMSUB had the product sign wrong)
+        for (word, want) in [(0x1F5E7FBFu32, 16.0), (0x1F5EFFBF, 4.0), (0x1F7E7FBF, -16.0), (0x1F7EFFBF, -4.0)] {
+            let (cpu, _) = run(&[word], |c, _| {
+                c.regs.write_d(29, 2.0);
+                c.regs.write_d(30, 3.0);
+                c.regs.write_d(31, 10.0);
+            });
+            assert_eq!(cpu.regs.read_d(31), want, "{word:#x}"); // fmadd, fmsub, fnmadd, fnmsub
+        }
         let (cpu, _) = run(&[0x1e19e027, 0x1f020020], |c, _| {
             c.regs.write_s(1, 1.5);
             c.regs.write_s(2, 3.0);
