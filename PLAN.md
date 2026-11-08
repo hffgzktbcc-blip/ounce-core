@@ -73,12 +73,12 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Acceptance: the user scenario crosses the relevant component boundary, produces the expected observable result, handles its failure path and retains a regression case. Compare latency only on matched inputs/hosts; compare correctness against a fixed expectation.
       Evidence: [CLI audio-case command](docs/DIAGNOSIS_CLI.md), [0.2.0 installed-archive acceptance](docs/verify/diagnosis-cli-0.2.0/acceptance.json). The copied archive reads the same R2 traces outside the checkout with Python alone, derives both engines' seven rejected-before/stereo-after replies, preserves raw observations and exact replay identities, and rejects corrupt/contradictory reports. Consistent unrepaired reports exit 1 rather than claim a fix. All 103 Python tests ran without failures (one opt-in skip); focused independent review found no actionable issue. No fresh-execution or binary-validation claim.
       Next: R5 packages and qualifies this demonstrated workflow for a small community release; outside feedback remains unrequested/unreceived.
-- [ ] **R5. Publish the smallest useful community release and reassess.**
-      Status: ready
+- [x] **R5. Publish the smallest useful community release and reassess.**
       Depends: R3 R4
       Result: a versioned, documented tool that addresses the demonstrated issue with an example, limitations, checksums and a repeatable recipe.
       Acceptance: clean-environment installation and the selected end-to-end scenario pass; required CI passes; included materials have documented redistribution rights. Summarize actual feedback or lack of it. Do not claim adoption from stars or internal reruns.
-      Next: release only the demonstrated workflow. Continue from concrete reported failures; add a generic evidence adapter, viewer, platform or service only when a real user needs it.
+      Evidence: [published diagnosis toolkit 0.2.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/diagnosis-v0.2.0), [release acceptance](docs/releases/diagnosis-0.2.0-readiness.md), [asset/source proof](docs/releases/diagnosis-0.2.0-proof.json). Four standalone host/Python jobs and all 25 final-candidate CI jobs passed. Downloaded code/source assets match checksums; both diagnosis commands pass. The 30-file parentless source tag and automatic archives contain only the reviewed Python tool/observation inputs. Runtime assets and Latest remain unchanged. No external feedback received; no adoption, independent rerun or broad provenance claim.
+      Next: all ready outcome tasks are complete. Continue from concrete reported failures; external E1/E2 acceptance still requires its named outside evidence or owner/specialist decisions. No speculative adapter/platform work.
 
 ## External acceptance and publication dependencies
 
