@@ -99,11 +99,12 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Evidence: [clock/CLI acceptance](docs/verify/linux-elf/deterministic-2026-11-08.json): identical clock output on two runs of each actual engine; invalid-clock/pointer and rollover tests pass. Full native-jit unit suite: 562 passed, 10 existing opt-in tests ignored; five CLI tests passed. The new guest-option regression failed before the parser fix. No general deterministic Linux or cross-host replay claim.
       Next: qualify the new mode on hosted supported hosts alongside V4.
 - [ ] **V4. Qualify the same Linux ELF workflow on Linux, macOS and Windows.**
-      Status: ready
+      Status: active
       Depends: V2 V3
       Result: the same pinned library cases and clock fixture execute with explicit engine identity on all three hosts.
       Acceptance: retain per-host toolchains, source/input hashes, output, errors and hosted run links; require byte comparisons and nonzero failure exits. Do not treat cross-host compiler differences as emulator failures without checking the actual inputs.
-      Next: expand the LZ4 CI matrix, preserve binary stdout on Windows, and record the first three-host qualification.
+      Progress: [Linux hosted qualification](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42523091575) passed. Three-host matrix added with a portable C compiler, Windows binary stdout and explicit host executable suffix; the Linux candidate passes locally. macOS/Windows hosted results are pending.
+      Next: inspect the first three-host run and repair observed failures before claiming acceptance.
 - [ ] **V5. Locate one instruction-level first divergence.**
       Status: ready
       Result: a bounded real failing execution points at its first differing instruction with register state before/after.
