@@ -8,6 +8,7 @@ mod census;
 mod cpu;
 mod crypto;
 mod fs;
+mod fuzz_replay;
 mod gpu;
 mod hid;
 mod kernel;
@@ -152,6 +153,9 @@ fn main() {
                 "switch2_showcase.nsp"
             };
             build_and_boot_showcase_nsp(out_path);
+        }
+        "fuzz-replay" => {
+            std::process::exit(fuzz_replay::run(&args[2..]));
         }
         "census" => {
             std::process::exit(census::run(&args[2..]));
