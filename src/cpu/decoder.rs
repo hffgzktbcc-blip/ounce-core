@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatAddSubOp, SimdSatLongOp,
-    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
+    SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatLongOp,
+    SimdElemOp, BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
     SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftExtOp, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
 
@@ -1156,23 +1156,85 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
-    // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q 0 01111 1 sz L M Rm opcode H 0 Rn Rd
-    //       (FMLA 0001, FMLS 0101, FMUL 1001)
-    if (raw & 0xBF80_0400) == 0x0F80_0000 && !u {
-        let op = match (raw >> 12) & 0xF {
-            0b0001 => SimdFpElementOp::Fmla,
-            0b0101 => SimdFpElementOp::Fmls,
-            0b1001 => SimdFpElementOp::Fmul,
+    // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q U 01111 1 sz L M Rm opcode H 0 Rn Rd
+    //       (FMLA 0001, FMLS 0101, FMUL 1001, FMULX U=1 1001); other opcodes (SDOT, ...) fall through
+    if (raw & 0x9F80_0400) == 0x0F80_0000 {
+        let op = match ((raw >> 12) & 0xF, u) {
+            (0b0001, false) => Some(SimdFpElementOp::Fmla),
+            (0b0101, false) => Some(SimdFpElementOp::Fmls),
+            (0b1001, false) => Some(SimdFpElementOp::Fmul),
+            (0b1001, true) => Some(SimdFpElementOp::Fmulx),
+            _ => None,
+        };
+        if let Some(op) = op {
+            let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
+            let rm = ((m << 4) | ((raw >> 16) & 0xF)) as u8;
+            let double = size == 3;
+            if double && (l == 1 || !q) {
+                return None;
+            }
+            let index = if double { h } else { (h << 1) | l } as u8;
+            return Some(Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q });
+        }
+    }
+
+    // 26a''. AdvSIMD indexed element, integer: 0 Q U 01111 size L M Rm opcode H 0 Rn Rd
+    //        MUL/MLA/MLS/SQDMULH/SQRDMULH, S/UMULL/MLAL/MLSL, SQDMULL/SQDMLAL/SQDMLSL (size 1 or 2), SDOT/UDOT (size 2)
+    if (raw & 0x9F00_0400) == 0x0F00_0000 && (size == 1 || size == 2) {
+        let opcode = (raw >> 12) & 0xF;
+        let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
+        // halfword elements: Rm is 4 bits and M extends the index; word elements: M extends Rm
+        let (rm, index) = if size == 1 {
+            (((raw >> 16) & 0xF) as u8, ((h << 2) | (l << 1) | m) as u8)
+        } else {
+            ((((m << 4) | ((raw >> 16) & 0xF)) as u8), ((h << 1) | l) as u8)
+        };
+        let esize = 8u8 << size;
+        let op = match (opcode, u) {
+            (0b1000, false) => SimdElemOp::Op3(SimdOp3::Mul),
+            (0b0000, true) => SimdElemOp::Op3(SimdOp3::Mla),
+            (0b0100, true) => SimdElemOp::Op3(SimdOp3::Mls),
+            (0b1100, false) => SimdElemOp::Op3(SimdOp3::Sqdmulh),
+            (0b1101, false) => SimdElemOp::Op3(SimdOp3::Sqrdmulh),
+            (0b1010, _) => SimdElemOp::Long(SimdLongOp::Mull, !u),
+            (0b0010, _) => SimdElemOp::Long(SimdLongOp::Mlal, !u),
+            (0b0110, _) => SimdElemOp::Long(SimdLongOp::Mlsl, !u),
+            (0b1011, false) => SimdElemOp::SatLong(SimdSatLongOp::Sqdmull),
+            (0b0011, false) => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlal),
+            (0b0111, false) => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlsl),
+            (0b1110, _) if size == 2 => {
+                return Some(Instruction::SimdByElement {
+                    rd, rn, rm, index: ((h << 1) | l) as u8, op: SimdElemOp::Dot(!u), esize: 32, q, scalar: false,
+                });
+            }
             _ => return None,
         };
+        return Some(Instruction::SimdByElement { rd, rn, rm, index, op, esize, q, scalar: false });
+    }
+
+    // 26a'''. AdvSIMD scalar x indexed element, integer: 01 U 11111 size L M Rm opcode H 0 Rn Rd
+    //         SQDMULH, SQRDMULH, SQDMULL, SQDMLAL, SQDMLSL (size 1 or 2)
+    if (raw & 0xDF00_0400) == 0x5F00_0000 && !u && (size == 1 || size == 2) {
         let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
-        let rm = ((m << 4) | ((raw >> 16) & 0xF)) as u8;
-        let double = size == 3;
-        if double && (l == 1 || !q) {
-            return None;
-        }
-        let index = if double { h } else { (h << 1) | l } as u8;
-        return Some(Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q });
+        let (rm, index) = if size == 1 {
+            (((raw >> 16) & 0xF) as u8, ((h << 2) | (l << 1) | m) as u8)
+        } else {
+            ((((m << 4) | ((raw >> 16) & 0xF)) as u8), ((h << 1) | l) as u8)
+        };
+        let op = match (raw >> 12) & 0xF {
+            0b1100 => SimdElemOp::Op3(SimdOp3::Sqdmulh),
+            0b1101 => SimdElemOp::Op3(SimdOp3::Sqrdmulh),
+            0b1011 => SimdElemOp::SatLong(SimdSatLongOp::Sqdmull),
+            0b0011 => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlal),
+            0b0111 => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlsl),
+            _ => return None,
+        };
+        return Some(Instruction::SimdByElement { rd, rn, rm, index, op, esize: 8u8 << size, q: false, scalar: true });
+    }
+
+    // 26a4. AdvSIMD vector SDOT/UDOT: 0 Q U 01110 10 0 Rm 10010 1 Rn Rd
+    if (raw & 0x9FE0_FC00) == 0x0E80_9400 {
+        return Some(Instruction::SimdByElement { rd, rn, rm, index: 0xFF, op: SimdElemOp::Dot(!u), esize: 32, q, scalar: false });
     }
 
     // 26b'. AdvSIMD extract: 0 Q 101110 00 0 Rm 0 imm4 0 Rn Rd (EXT)
@@ -1257,38 +1319,45 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::FpAbd { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
     }
 
-    // 27b2. SQADD/UQADD/SQSUB/UQSUB: scalar (01 U 11110 size 1 Rm opcode 1 Rn Rd) and vector (0 Q U 01110 ...)
-    {
-        let opcode = (raw >> 11) & 0x1F;
-        let scalar = (raw & 0xDF20_0400) == 0x5E20_0400;
-        let vector = (raw & 0x9F20_0400) == 0x0E20_0400;
-        if (scalar || vector) && (opcode == 0b00001 || opcode == 0b00101) && !(vector && size == 3 && !q) {
-            let op = match (opcode, u) {
-                (0b00001, false) => SimdSatAddSubOp::Sqadd,
-                (0b00001, true) => SimdSatAddSubOp::Uqadd,
-                (_, false) => SimdSatAddSubOp::Sqsub,
-                (_, true) => SimdSatAddSubOp::Uqsub,
-            };
-            return Some(Instruction::SimdSatAddSub { rd, rn, rm, op, esize: 8u8 << size, q, scalar });
-        }
-    }
-    // 27c. AdvSIMD scalar three same (D registers): 01 U 11110 size 1 Rm opcode 1 Rn Rd, size == 3.
-    // A one-lane 64-bit vector op writes lane 0 and zeroes the rest, exactly the scalar semantics.
-    if (raw & 0xDF20_0400) == 0x5E20_0400 && size == 3 {
+    // 27c. AdvSIMD scalar three same: 01 U 11110 size 1 Rm opcode 1 Rn Rd.
+    //      A one-lane op writes lane 0 and zeroes the rest, exactly the scalar semantics.
+    if (raw & 0xDF20_0400) == 0x5E20_0400 && (raw >> 11) & 0x1F < 0b11000 {
         let op = match ((raw >> 11) & 0x1F, u) {
-            (0b10000, false) => SimdOp3::Add,
-            (0b10000, true) => SimdOp3::Sub,
-            (0b10001, false) => SimdOp3::Cmtst,
-            (0b10001, true) => SimdOp3::Cmeq,
+            (0b00001, false) => SimdOp3::Sqadd,
+            (0b00001, true) => SimdOp3::Uqadd,
+            (0b00101, false) => SimdOp3::Sqsub,
+            (0b00101, true) => SimdOp3::Uqsub,
             (0b00110, false) => SimdOp3::Cmgt,
             (0b00110, true) => SimdOp3::Cmhi,
             (0b00111, false) => SimdOp3::Cmge,
             (0b00111, true) => SimdOp3::Cmhs,
             (0b01000, false) => SimdOp3::Sshl,
             (0b01000, true) => SimdOp3::Ushl,
+            (0b01001, false) => SimdOp3::Sqshl,
+            (0b01001, true) => SimdOp3::Uqshl,
+            (0b01010, false) => SimdOp3::Srshl,
+            (0b01010, true) => SimdOp3::Urshl,
+            (0b01011, false) => SimdOp3::Sqrshl,
+            (0b01011, true) => SimdOp3::Uqrshl,
+            (0b10000, false) => SimdOp3::Add,
+            (0b10000, true) => SimdOp3::Sub,
+            (0b10001, false) => SimdOp3::Cmtst,
+            (0b10001, true) => SimdOp3::Cmeq,
+            (0b10110, false) => SimdOp3::Sqdmulh,
+            (0b10110, true) => SimdOp3::Sqrdmulh,
             _ => return None,
         };
-        return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 64, q: false });
+        // Only the saturating add/sub/shift forms have byte, half and word scalar sizes; SQDMULH has half and word.
+        let sized = matches!(
+            op,
+            SimdOp3::Sqadd | SimdOp3::Uqadd | SimdOp3::Sqsub | SimdOp3::Uqsub | SimdOp3::Sqshl | SimdOp3::Uqshl
+                | SimdOp3::Sqrshl | SimdOp3::Uqrshl
+        );
+        let ok = if sized { true } else if matches!(op, SimdOp3::Sqdmulh | SimdOp3::Sqrdmulh) { size == 1 || size == 2 } else { size == 3 };
+        if !ok {
+            return None;
+        }
+        return Some(Instruction::SimdScalarThreeSame { rd, rn, rm, op, esize: 8u8 << size });
     }
 
     // 27d. AdvSIMD three same, floating point (opcode >= 11000): 0 Q U 01110 a sz 1 Rm opcode 1 Rn Rd.
@@ -1305,6 +1374,7 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11010, true, false) => SimdFpOp3::Faddp,
             (0b11010, true, true) => SimdFpOp3::Fabd,
             (0b11011, true, false) => SimdFpOp3::Fmul,
+            (0b11011, false, false) => SimdFpOp3::Fmulx,
             (0b11100, false, false) => SimdFpOp3::Fcmeq,
             (0b11100, true, false) => SimdFpOp3::Fcmge,
             (0b11100, true, true) => SimdFpOp3::Fcmgt,
@@ -1346,13 +1416,45 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b10101, true) => SimdOp3::Uminp,
             (0b10111, false) => SimdOp3::Addp,
             (0b10011, false) => SimdOp3::Mul,
+            (0b10011, true) if size == 0 => SimdOp3::Pmul,
             (0b01000, false) => SimdOp3::Sshl,
             (0b01000, true) => SimdOp3::Ushl,
+            (0b00000, false) => SimdOp3::Shadd,
+            (0b00000, true) => SimdOp3::Uhadd,
+            (0b00001, false) => SimdOp3::Sqadd,
+            (0b00001, true) => SimdOp3::Uqadd,
+            (0b00010, false) => SimdOp3::Srhadd,
+            (0b00010, true) => SimdOp3::Urhadd,
+            (0b00100, false) => SimdOp3::Shsub,
+            (0b00100, true) => SimdOp3::Uhsub,
+            (0b00101, false) => SimdOp3::Sqsub,
+            (0b00101, true) => SimdOp3::Uqsub,
+            (0b01001, false) => SimdOp3::Sqshl,
+            (0b01001, true) => SimdOp3::Uqshl,
+            (0b01010, false) => SimdOp3::Srshl,
+            (0b01010, true) => SimdOp3::Urshl,
+            (0b01011, false) => SimdOp3::Sqrshl,
+            (0b01011, true) => SimdOp3::Uqrshl,
+            (0b01110, false) => SimdOp3::Sabd,
+            (0b01110, true) => SimdOp3::Uabd,
+            (0b01111, false) => SimdOp3::Saba,
+            (0b01111, true) => SimdOp3::Uaba,
+            (0b10010, false) => SimdOp3::Mla,
+            (0b10010, true) => SimdOp3::Mls,
+            (0b10110, false) if size == 1 || size == 2 => SimdOp3::Sqdmulh,
+            (0b10110, true) if size == 1 || size == 2 => SimdOp3::Sqrdmulh,
             _ => return None,
         };
         let bitwise = opcode == 0b00011;
-        // 64-bit lanes need Q, and min/max/mul have no 64-bit form.
-        if !bitwise && size == 3 && (!q || matches!(opcode, 0b01100 | 0b01101 | 0b10100 | 0b10101 | 0b10011)) {
+        // 64-bit lanes need Q. Only the saturating add/sub and the shifts have a 64-bit lane form.
+        let has64 = matches!(
+            op,
+            SimdOp3::Add | SimdOp3::Addp | SimdOp3::Sub | SimdOp3::Cmeq | SimdOp3::Cmtst | SimdOp3::Cmhi | SimdOp3::Cmhs | SimdOp3::Cmgt
+                | SimdOp3::Cmge | SimdOp3::Sshl | SimdOp3::Ushl | SimdOp3::Sqadd | SimdOp3::Uqadd | SimdOp3::Sqsub
+                | SimdOp3::Uqsub | SimdOp3::Sqshl | SimdOp3::Uqshl | SimdOp3::Srshl | SimdOp3::Urshl | SimdOp3::Sqrshl
+                | SimdOp3::Uqrshl
+        );
+        if !bitwise && size == 3 && (!q || !has64) {
             return None;
         }
         let esize = if bitwise { 8 } else { 8u8 << size };
@@ -1376,6 +1478,20 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             return None;
         }
         return Some(Instruction::SimdAcross { rd, rn, op, esize: 8u8 << size, q });
+    }
+
+    // 29a2. AdvSIMD scalar two-register miscellaneous, saturating forms: SUQADD/USQADD/SQABS/SQNEG (all sizes)
+    if (raw & 0xDF3E_0C00) == 0x5E20_0800 {
+        let op = match ((raw >> 12) & 0x1F, u) {
+            (0b00011, false) => Some(SimdOp2::Suqadd),
+            (0b00011, true) => Some(SimdOp2::Usqadd),
+            (0b00111, false) => Some(SimdOp2::Sqabs),
+            (0b00111, true) => Some(SimdOp2::Sqneg),
+            _ => None,
+        };
+        if let Some(op) = op {
+            return Some(Instruction::SimdScalarTwoMisc { rd, rn, op, esize: 8u8 << size });
+        }
     }
 
     // 29a. AdvSIMD scalar two-register miscellaneous: 01 U 11110 size 10000 opcode 10 Rn Rd (conversions only)
@@ -1432,6 +1548,10 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         if (raw >> 12) & 0x1F == 0b10010 && !u && size < 3 {
             return Some(Instruction::SimdShiftImm { rd, rn, op: SimdShiftOp::Shrn, esize: 8 << size, shift: 0, q });
         }
+        // SHLL/SHLL2: USHLL by the source lane size
+        if (raw >> 12) & 0x1F == 0b10011 && u && size < 3 {
+            return Some(Instruction::SimdShiftImm { rd, rn, op: SimdShiftOp::Ushll, esize: 8 << size, shift: 8 << size, q });
+        }
         let op = match ((raw >> 12) & 0x1F, u) {
             (0b01000, false) => SimdOp2::Cmgt0,
             (0b01000, true) => SimdOp2::Cmge0,
@@ -1445,12 +1565,25 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b00101, true) if size == 0 => SimdOp2::Not,
             (0b01011, false) => SimdOp2::Abs,
             (0b01011, true) => SimdOp2::Neg,
+            (0b00011, false) => SimdOp2::Suqadd,
+            (0b00011, true) => SimdOp2::Usqadd,
+            (0b00100, false) if size < 3 => SimdOp2::Cls,
+            (0b00100, true) if size < 3 => SimdOp2::Clz,
+            (0b00101, true) if size == 1 => SimdOp2::Rbit,
+            (0b00111, false) => SimdOp2::Sqabs,
+            (0b00111, true) => SimdOp2::Sqneg,
             (0b11101, false) if size < 2 => SimdOp2::Scvtf,
             (0b11101, true) if size < 2 => SimdOp2::Ucvtf,
             _ => return None,
         };
-        // The float forms use bit 22 (sz) alone: 32-bit lanes, or 64-bit lanes with Q.
-        let esize = if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf) { 32u8 << size } else { 8u8 << size };
+        // The float forms use bit 22 (sz) alone: 32-bit lanes, or 64-bit lanes with Q. RBIT works on bytes.
+        let esize = if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf) {
+            32u8 << size
+        } else if op == SimdOp2::Rbit {
+            8
+        } else {
+            8u8 << size
+        };
         if esize == 64 && !q {
             return None;
         }
@@ -1603,14 +1736,14 @@ mod tests {
         assert!(matches!(decode(0x4E201BFF), Instruction::SimdTwoMisc { op: SimdOp2::Rev16, esize: 8, q: true, .. })); // rev16 v31.16b, v31.16b
         assert!(matches!(decode(0x6EB3479C), Instruction::SimdThreeSame { op: SimdOp3::Ushl, esize: 32, q: true, .. })); // ushl v28.4s, v28.4s, v19.4s
         assert!(matches!(decode(0x4EB34780), Instruction::SimdThreeSame { op: SimdOp3::Sshl, esize: 32, q: true, .. })); // sshl v0.4s, v28.4s, v19.4s
-        assert!(matches!(decode(0x5EFE87FF), Instruction::SimdThreeSame { op: SimdOp3::Add, esize: 64, q: false, .. })); // add d31, d31, d30
-        assert!(matches!(decode(0x7EE18420), Instruction::SimdThreeSame { op: SimdOp3::Sub, esize: 64, q: false, .. })); // sub d0, d1, d1
+        assert!(matches!(decode(0x5EFE87FF), Instruction::SimdScalarThreeSame { op: SimdOp3::Add, esize: 64, .. })); // add d31, d31, d30
+        assert!(matches!(decode(0x7EE18420), Instruction::SimdScalarThreeSame { op: SimdOp3::Sub, esize: 64, .. })); // sub d0, d1, d1
         assert!(matches!(decode(0x5E1C07EE), Instruction::SimdDupScalar { esize: 32, index: 3, .. })); // mov s14, v31.s[3]
         assert!(matches!(decode(0x0E224020), Instruction::SimdNarrow { op: SimdNarrowOp::Addhn, esize: 8, q: false, .. })); // addhn v0.8b, v1.8h, v2.8h
         assert!(matches!(decode(0x4E226020), Instruction::SimdNarrow { op: SimdNarrowOp::Subhn, esize: 8, q: true, .. })); // subhn2 v0.16b, v1.8h, v2.8h
         assert!(matches!(decode(0x2E624020), Instruction::SimdNarrow { op: SimdNarrowOp::Raddhn, esize: 16, q: false, .. })); // raddhn v0.4h, v1.4s, v2.4s
-        assert!(matches!(decode(0x7E7F2FDF), Instruction::SimdSatAddSub { op: SimdSatAddSubOp::Uqsub, esize: 16, scalar: true, .. })); // uqsub h31, h30, h31
-        assert!(matches!(decode(0x4E220C20), Instruction::SimdSatAddSub { op: SimdSatAddSubOp::Sqadd, esize: 8, q: true, scalar: false, .. })); // sqadd v0.16b, v1.16b, v2.16b
+        assert!(matches!(decode(0x7E7F2FDF), Instruction::SimdScalarThreeSame { op: SimdOp3::Uqsub, esize: 16, .. })); // uqsub h31, h30, h31
+        assert!(matches!(decode(0x4E220C20), Instruction::SimdThreeSame { op: SimdOp3::Sqadd, esize: 8, q: true, .. })); // sqadd v0.16b, v1.16b, v2.16b
         assert!(matches!(decode(0x4E012FE3), Instruction::SimdSmov { esize: 8, index: 0, x: true, .. })); // smov x3, v31.b[0]
         assert!(matches!(decode(0x0E62D020), Instruction::SimdSatLong { op: SimdSatLongOp::Sqdmull, esize: 16, q: false, .. })); // sqdmull v0.4s, v1.4h, v2.4h
         assert!(matches!(decode(0x4EA29020), Instruction::SimdSatLong { op: SimdSatLongOp::Sqdmlal, esize: 32, q: true, .. })); // sqdmlal2 v0.2d, v1.4s, v2.4s
