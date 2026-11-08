@@ -1593,6 +1593,17 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdTbl { rd, rn, rm, regs, is_tbx, q } => {
+                let mut table = [0u128; 4];
+                for (i, t) in table.iter_mut().take(regs as usize).enumerate() {
+                    *t = self.regs.read_q(rn.wrapping_add(i as u8) & 0x1F);
+                }
+                let res = simd::table_lookup(&table[..regs as usize], self.regs.read_q(rm), self.regs.read_q(rd), is_tbx, q);
+                self.regs.write_q(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::DataProc1 { rd, rn, op, is_64 } => {
                 if is_64 {
                     let x = self.regs.read_x(rn);
@@ -1618,6 +1629,21 @@ impl Cpu {
                     };
                     self.regs.write_w(rd, res);
                 }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Crc32 { rd, rn, rm, size, castagnoli } => {
+                let poly: u32 = if castagnoli { 0x82F6_3B78 } else { 0xEDB8_8320 };
+                let mut crc = self.regs.read_w(rn);
+                let data = self.regs.read_x(rm);
+                for i in 0..(1u32 << size) {
+                    crc ^= ((data >> (8 * i)) & 0xFF) as u32;
+                    for _ in 0..8 {
+                        crc = if crc & 1 != 0 { (crc >> 1) ^ poly } else { crc >> 1 };
+                    }
+                }
+                self.regs.write_w(rd, crc);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1998,6 +2024,72 @@ mod tests {
             c.regs.write_d(28, f64::INFINITY);
         });
         assert!(cpu.regs.read_d(30).is_nan()); // inf - inf
+    }
+
+    #[test]
+    fn tbl_tbx_instructions() {
+        // tbl v0.16b, {v0.16b}, v3.16b ; tbl v4.16b, {v30.16b, v31.16b}, v3.16b ; tbx v5.8b, {v1.16b}, v3.8b
+        let words = [0x4E03_0000u32, 0x4E03_23C4, 0x0E03_1025];
+        let names = ["SimdTbl"; 3];
+        for (w, n) in words.iter().zip(names) {
+            assert!(format!("{:?}", super::super::decoder::decode(*w)).starts_with(n), "0x{w:08X}");
+        }
+        let (cpu, _) = run(&words, |c, _| {
+            // v0 = bytes 0x00..0x0F reversed index source, v3 = indices 15..0
+            c.regs.write_q(0, (0..16u128).fold(0, |a, i| a | ((0x40 + i) << (8 * i))));
+            c.regs.write_q(3, (0..16u128).fold(0, |a, i| a | ((15 - i) << (8 * i))));
+            c.regs.write_q(30, (0..16u128).fold(0, |a, i| a | ((0x50 + i) << (8 * i))));
+            c.regs.write_q(31, (0..16u128).fold(0, |a, i| a | ((0x60 + i) << (8 * i))));
+            c.regs.write_q(1, (0..16u128).fold(0, |a, i| a | ((0x70 + i) << (8 * i))));
+            c.regs.write_q(5, u128::MAX);
+        });
+        // tbl reverses the byte order of v0
+        assert_eq!(cpu.regs.read_q(0), (0..16u128).fold(0, |a, i| a | ((0x40 + 15 - i) << (8 * i))));
+        // two-register table: indices 0..15 only touch v30
+        assert_eq!(cpu.regs.read_q(4), (0..16u128).fold(0, |a, i| a | ((0x50 + 15 - i) << (8 * i))));
+        // tbx 64-bit: low 8 bytes looked up from v1 with indices 15..8, upper half zeroed
+        assert_eq!(cpu.regs.read_q(5), (0..8u128).fold(0, |a, i| a | ((0x70 + 15 - i) << (8 * i))));
+    }
+
+    #[test]
+    fn crc32_instructions() {
+        // crc32b w1,w1,w0 ; crc32cb w3,w3,w0 ; crc32x w5,w5,x0 ; crc32w w6,w6,w0 ; crc32h w7,w7,w0 ; crc32cx w8,w8,x0
+        let words = [0x1AC0_4021u32, 0x1AC0_5063, 0x9AC0_4CA5, 0x1AC0_48C6, 0x1AC0_44E7, 0x9AC0_5D08];
+        for w in words {
+            assert!(format!("{:?}", super::super::decoder::decode(w)).starts_with("Crc32"), "0x{w:08X}");
+        }
+        // sf=1 with a byte size is not a valid encoding
+        assert!(format!("{:?}", super::super::decoder::decode(0x9AC0_4021)).starts_with("Unimplemented"));
+        let (cpu, _) = run(&words, |c, _| {
+            c.regs.write_x(0, 0x3132_3334_3536_3738);
+            for r in [1, 3, 5, 6, 7, 8] {
+                c.regs.write_x(r, 0xFFFF_FFFF);
+            }
+        });
+        // reference values from a bitwise software CRC (no pre/post inversion, reflected)
+        let crc = |init: u32, data: u64, bytes: u32, poly: u32| {
+            let mut c = init;
+            for i in 0..bytes {
+                c ^= ((data >> (8 * i)) & 0xFF) as u32;
+                for _ in 0..8 {
+                    c = if c & 1 != 0 { (c >> 1) ^ poly } else { c >> 1 };
+                }
+            }
+            c
+        };
+        let d = 0x3132_3334_3536_3738u64;
+        assert_eq!(cpu.regs.read_w(1), crc(0xFFFF_FFFF, d, 1, 0xEDB8_8320));
+        assert_eq!(cpu.regs.read_w(3), crc(0xFFFF_FFFF, d, 1, 0x82F6_3B78));
+        assert_eq!(cpu.regs.read_w(5), crc(0xFFFF_FFFF, d, 8, 0xEDB8_8320));
+        assert_eq!(cpu.regs.read_w(6), crc(0xFFFF_FFFF, d, 4, 0xEDB8_8320));
+        assert_eq!(cpu.regs.read_w(7), crc(0xFFFF_FFFF, d, 2, 0xEDB8_8320));
+        assert_eq!(cpu.regs.read_w(8), crc(0xFFFF_FFFF, d, 8, 0x82F6_3B78));
+        // known answer: CRC-32 of "123456789" is 0xCBF43926 with init/xorout 0xFFFFFFFF
+        let mut c = 0xFFFF_FFFFu32;
+        for b in b"123456789" {
+            c = crc(c, *b as u64, 1, 0xEDB8_8320);
+        }
+        assert_eq!(!c, 0xCBF4_3926);
     }
 
     #[test]
