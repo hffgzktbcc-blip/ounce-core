@@ -104,7 +104,6 @@ impl Tier2Block {
                 | Instruction::BranchReg { .. }
                 | Instruction::BranchRegAuth { .. }
                 | Instruction::Svc { .. }
-                | Instruction::Brk { .. }
                 | Instruction::Unimplemented { .. } => {
                     cur_pc = cur_pc.wrapping_add(4);
                     break;

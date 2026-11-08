@@ -603,6 +603,25 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// FP vector three-same (`FADD`, `FMLA`, `FCMEQ`, ...): `double` selects 64-bit lanes, else 32-bit.
+    SimdFpThreeSame {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdFpOp3,
+        double: bool,
+        q: bool,
+    },
+
+    /// FP vector two-register misc (`FABS`, `FCMGT #0.0`, `FCVTN`, ...): `double` as above.
+    SimdFpTwoMisc {
+        rd: u8,
+        rn: u8,
+        op: SimdFpOp2,
+        double: bool,
+        q: bool,
+    },
+
     SimdTwoMisc {
         rd: u8,
         rn: u8,
@@ -620,45 +639,6 @@ pub enum Instruction {
         esize: u8,
         shift: u8,
         q: bool,
-    },
-
-    /// `BRK #imm16`: software breakpoint; stops the guest with a clear message.
-    Brk {
-        imm: u16,
-    },
-
-    /// AdvSIMD shift by immediate beyond `SshrUshrShlShrn`: accumulate, rounding, saturating and insert forms
-    /// plus the saturating/rounding narrowing shifts. `esize` is the result lane size; `scalar` writes lane 0
-    /// of a scalar register (the rest of Vd is zeroed).
-    SimdShiftExt {
-        rd: u8,
-        rn: u8,
-        op: SimdShiftExtOp,
-        esize: u8,
-        shift: u8,
-        q: bool,
-        scalar: bool,
-    },
-
-    /// `SADDLP`/`UADDLP`/`SADALP`/`UADALP`: add adjacent lane pairs into double-width lanes
-    /// (`acc`: accumulate into `Vd`). `esize` is the source lane size.
-    SimdPairwiseLong {
-        rd: u8,
-        rn: u8,
-        signed: bool,
-        acc: bool,
-        esize: u8,
-        q: bool,
-    },
-
-    /// `SQXTN`/`UQXTN`/`SQXTUN` (+2, and scalar): saturating narrow, `esize` is the result lane size.
-    SimdQNarrow {
-        rd: u8,
-        rn: u8,
-        op: SimdShiftExtOp,
-        esize: u8,
-        q: bool,
-        scalar: bool,
     },
 
     /// AdvSIMD modified immediate: `MOVI`/`MVNI`/`FMOV` (vector) and `ORR`/`BIC` (vector, immediate).
@@ -872,6 +852,44 @@ pub enum SimdFpElementOp {
     Fmls,
 }
 
+/// AdvSIMD floating-point three-same operations (single or double lanes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdFpOp3 {
+    Fadd,
+    Fsub,
+    Fmul,
+    Fdiv,
+    Fabd,
+    Faddp,
+    Fmla,
+    Fmls,
+    Fmax,
+    Fmin,
+    Fmaxnm,
+    Fminnm,
+    Fcmeq,
+    Fcmge,
+    Fcmgt,
+    Facge,
+    Facgt,
+}
+
+/// AdvSIMD floating-point two-register operations: zero compares, `FABS`/`FNEG`/`FSQRT`, and the
+/// double/single conversions `FCVTN`/`FCVTL` (the `.2D`/`.2S` forms).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdFpOp2 {
+    Fcmeq0,
+    Fcmge0,
+    Fcmgt0,
+    Fcmle0,
+    Fcmlt0,
+    Fabs,
+    Fneg,
+    Fsqrt,
+    Fcvtn,
+    Fcvtl,
+}
+
 /// Widening multiply flavours of AdvSIMD three-different.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimdLongOp {
@@ -965,28 +983,4 @@ pub enum SimdPermuteOp {
     Trn2,
     Zip1,
     Zip2,
-}
-
-/// Integer vector shift forms and saturating narrows (see `SimdShiftExt`/`SimdQNarrow`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SimdShiftExtOp {
-    Ssra,
-    Usra,
-    Srshr,
-    Urshr,
-    Srsra,
-    Ursra,
-    Sri,
-    Sli,
-    Sqshl,
-    Uqshl,
-    Sqshlu,
-    /// Narrowing right shifts (result lane is half the source lane); a zero shift is the plain `QXTN`.
-    Rshrn,
-    Sqshrn,
-    Uqshrn,
-    Sqshrun,
-    Sqrshrn,
-    Uqrshrn,
-    Sqrshrun,
 }

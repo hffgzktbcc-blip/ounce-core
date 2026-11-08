@@ -3,7 +3,7 @@
 use super::instructions::{
     SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatLongOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
-    SimdFpElementOp, SimdImmOp, SimdOp2, SimdShiftExtOp, SimdOp3, SimdPermuteOp, SimdShiftOp,
+    SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
@@ -814,7 +814,7 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
-    decode_extra(raw).or_else(|| decode_intvec(raw)).unwrap_or(Instruction::Unimplemented { raw })
+    decode_extra(raw).unwrap_or(Instruction::Unimplemented { raw })
 }
 
 /// FEAT_PAuth: the HINT-space forms, the data-processing (1-source) forms, `PACGA`, the
@@ -1247,6 +1247,37 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 64, q: false });
     }
 
+    // 27d. AdvSIMD three same, floating point (opcode >= 11000): 0 Q U 01110 a sz 1 Rm opcode 1 Rn Rd.
+    //      Half precision (the separate three-same-FP16 encoding) is not decoded.
+    if (raw & 0x9F20_0400) == 0x0E20_0400 && (raw >> 11) & 0x1F >= 0b11000 {
+        let a = (raw >> 23) & 1 == 1;
+        let op = match ((raw >> 11) & 0x1F, u, a) {
+            (0b11000, false, false) => SimdFpOp3::Fmaxnm,
+            (0b11000, false, true) => SimdFpOp3::Fminnm,
+            (0b11001, false, false) => SimdFpOp3::Fmla,
+            (0b11001, false, true) => SimdFpOp3::Fmls,
+            (0b11010, false, false) => SimdFpOp3::Fadd,
+            (0b11010, false, true) => SimdFpOp3::Fsub,
+            (0b11010, true, false) => SimdFpOp3::Faddp,
+            (0b11010, true, true) => SimdFpOp3::Fabd,
+            (0b11011, true, false) => SimdFpOp3::Fmul,
+            (0b11100, false, false) => SimdFpOp3::Fcmeq,
+            (0b11100, true, false) => SimdFpOp3::Fcmge,
+            (0b11100, true, true) => SimdFpOp3::Fcmgt,
+            (0b11101, true, false) => SimdFpOp3::Facge,
+            (0b11101, true, true) => SimdFpOp3::Facgt,
+            (0b11110, false, false) => SimdFpOp3::Fmax,
+            (0b11110, false, true) => SimdFpOp3::Fmin,
+            (0b11111, true, false) => SimdFpOp3::Fdiv,
+            _ => return None,
+        };
+        let double = (raw >> 22) & 1 == 1;
+        if double && !q {
+            return None;
+        }
+        return Some(Instruction::SimdFpThreeSame { rd, rn, rm, op, double, q });
+    }
+
     // 28. AdvSIMD three same: 0 Q U 01110 size 1 Rm opcode 1 Rn Rd
     if (raw & 0x9F20_0400) == 0x0E20_0400 {
         let opcode = (raw >> 11) & 0x1F;
@@ -1311,6 +1342,42 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             _ => return None,
         };
         return Some(Instruction::SimdScalarTwoMisc { rd, rn, op, esize: 32u8 << (size & 1) });
+    }
+
+    // 29b. AdvSIMD two-register miscellaneous, floating point: 0 Q U 01110 a sz 10000 opcode 10 Rn Rd
+    //      (half precision not decoded; FCVTN/FCVTL only in the double/single form)
+    if (raw & 0x9F3E_0C00) == 0x0E20_0800 {
+        let a = (raw >> 23) & 1 == 1;
+        let double = (raw >> 22) & 1 == 1;
+        let fp = match ((raw >> 12) & 0x1F, u, a) {
+            (0b01100, false, true) => Some(SimdFpOp2::Fcmgt0),
+            (0b01100, true, true) => Some(SimdFpOp2::Fcmge0),
+            (0b01101, false, true) => Some(SimdFpOp2::Fcmeq0),
+            (0b01101, true, true) => Some(SimdFpOp2::Fcmle0),
+            (0b01110, false, true) => Some(SimdFpOp2::Fcmlt0),
+            (0b01111, false, true) => Some(SimdFpOp2::Fabs),
+            (0b01111, true, true) => Some(SimdFpOp2::Fneg),
+            (0b11111, true, true) => Some(SimdFpOp2::Fsqrt),
+            (0b10110, false, false) if double => Some(SimdFpOp2::Fcvtn),
+            (0b10111, false, false) if double => Some(SimdFpOp2::Fcvtl),
+            _ => None,
+        };
+        if let Some(op) = fp {
+            // FCVTN/FCVTL use Q to pick the half of the wide/narrow register, not the lane count
+            let wide_q = matches!(op, SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl);
+            if double && !q && !wide_q {
+                return None;
+            }
+            return Some(Instruction::SimdFpTwoMisc { rd, rn, op, double, q });
+        }
+        // FCVTZS/FCVTZU vector, integer result: a == 1, opcode 11011
+        if (raw >> 12) & 0x1F == 0b11011 && a {
+            if double && !q {
+                return None;
+            }
+            let op = if u { SimdOp2::Fcvtzu } else { SimdOp2::Fcvtzs };
+            return Some(Instruction::SimdTwoMisc { rd, rn, op, esize: if double { 64 } else { 32 }, q });
+        }
     }
 
     // 29. AdvSIMD two-register miscellaneous: 0 Q U 01110 size 10000 opcode 10 Rn Rd
@@ -1572,104 +1639,4 @@ mod tests {
         assert!(!matches!(decode(0x0E62E020), Instruction::Pmull { .. })); // size 1 reserved
         assert!(!matches!(decode(0x2E22E020), Instruction::Pmull { .. })); // U=1 is not PMULL
     }
-}
-
-/// Integer vector forms and BRK that the main decoder tables do not cover: `SQXTN`/`UQXTN`/`SQXTUN`,
-/// `RSHRN`, `SSRA`/`USRA`, `SRSHR`/`URSHR`, `SRSRA`/`URSRA`, `SRI`/`SLI`, `SQSHL`/`UQSHL`/`SQSHLU` (immediate),
-/// `SQSHRN` family. Called only after the main tables returned nothing, so it cannot shadow them.
-fn decode_intvec(raw: u32) -> Option<Instruction> {
-    let rd = (raw & 0x1F) as u8;
-    let rn = ((raw >> 5) & 0x1F) as u8;
-    let q = (raw & (1 << 30)) != 0;
-    let u = (raw & (1 << 29)) != 0;
-
-    // BRK #imm16: 1101 0100 001 imm16 00000
-    if (raw & 0xFFE0_001F) == 0xD420_0000 {
-        return Some(Instruction::Brk { imm: ((raw >> 5) & 0xFFFF) as u16 });
-    }
-
-    // ADDP Dd, Vn.2D (scalar pairwise add, what vaddvq_u64 compiles to): 01 0 11110 11 11000 11011 10 Rn Rd
-    if (raw & 0xFFFF_FC00) == 0x5EF1_B800 {
-        return Some(Instruction::SimdAcross { rd, rn, op: SimdAcrossOp::Addv, esize: 64, q: true });
-    }
-
-    let size = (raw >> 22) & 3;
-    // SADDLP/UADDLP/SADALP/UADALP: 0 Q U 01110 size 10000 00010/00110 10 Rn Rd (size < 3)
-    if (raw & 0x9F3F_BC00) == 0x0E20_2800 && size < 3 {
-        let acc = (raw >> 14) & 1 != 0;
-        return Some(Instruction::SimdPairwiseLong { rd, rn, signed: !u, acc, esize: 8u8 << size, q });
-    }
-
-    // Two-register misc narrowing: [0 Q | 01] U 01110 size 10000 opcode 10 Rn Rd (vector / scalar)
-    for (mask, want, scalar) in [(0x9F3E_0C00u32, 0x0E20_0800u32, false), (0xDF3E_0C00, 0x5E20_0800, true)] {
-        if (raw & mask) == want {
-            let size = (raw >> 22) & 3;
-            let op = match ((raw >> 12) & 0x1F, u) {
-                (0b10010, true) => SimdShiftExtOp::Sqshrun,
-                (0b10100, false) => SimdShiftExtOp::Sqshrn,
-                (0b10100, true) => SimdShiftExtOp::Uqshrn,
-                _ => return None,
-            };
-            if size == 3 {
-                return None;
-            }
-            return Some(Instruction::SimdQNarrow { rd, rn, op, esize: 8u8 << size, q: q && !scalar, scalar });
-        }
-    }
-
-    // Shift by immediate: [0 Q | 01] U 011110 / 111110 immh immb opcode 1 Rn Rd
-    for (mask, want, scalar) in [(0x9F80_0400u32, 0x0F00_0400u32, false), (0xDF80_0400, 0x5F00_0400, true)] {
-        if (raw & mask) != want {
-            continue;
-        }
-        let immh = (raw >> 19) & 0xF;
-        if immh == 0 {
-            return None;
-        }
-        let imm = (raw >> 16) & 0x7F;
-        let src = 8u32 << (31 - immh.leading_zeros());
-        let right = 2 * src - imm;
-        let left = imm - src;
-        let opc = (raw >> 11) & 0x1F;
-        // narrowing shifts: immh gives the RESULT lane size, source lanes are twice as wide
-        let narrow = |op| (op, src, right);
-        let (op, esize, shift) = match (opc, u) {
-            (0b00010, false) => (SimdShiftExtOp::Ssra, src, right),
-            (0b00010, true) => (SimdShiftExtOp::Usra, src, right),
-            (0b00100, false) => (SimdShiftExtOp::Srshr, src, right),
-            (0b00100, true) => (SimdShiftExtOp::Urshr, src, right),
-            (0b00110, false) => (SimdShiftExtOp::Srsra, src, right),
-            (0b00110, true) => (SimdShiftExtOp::Ursra, src, right),
-            (0b01000, true) => (SimdShiftExtOp::Sri, src, right),
-            (0b01010, true) => (SimdShiftExtOp::Sli, src, left),
-            (0b01100, true) => (SimdShiftExtOp::Sqshlu, src, left),
-            (0b01110, false) => (SimdShiftExtOp::Sqshl, src, left),
-            (0b01110, true) => (SimdShiftExtOp::Uqshl, src, left),
-            (0b10000, true) | (0b10001, _) | (0b10010, _) | (0b10011, _) if src == 64 => return None,
-            (0b10000, true) => narrow(SimdShiftExtOp::Sqshrun),
-            (0b10001, false) => narrow(SimdShiftExtOp::Rshrn),
-            (0b10001, true) => narrow(SimdShiftExtOp::Sqrshrun),
-            (0b10010, false) => narrow(SimdShiftExtOp::Sqshrn),
-            (0b10010, true) => narrow(SimdShiftExtOp::Uqshrn),
-            (0b10011, false) => narrow(SimdShiftExtOp::Sqrshrn),
-            (0b10011, true) => narrow(SimdShiftExtOp::Uqrshrn),
-            _ => return None,
-        };
-        let is_narrow = matches!(
-            op,
-            SimdShiftExtOp::Rshrn | SimdShiftExtOp::Sqshrn | SimdShiftExtOp::Uqshrn | SimdShiftExtOp::Sqshrun
-                | SimdShiftExtOp::Sqrshrn | SimdShiftExtOp::Uqrshrn | SimdShiftExtOp::Sqrshrun
-        );
-        // Scalar forms: only SQSHL/UQSHL/SQSHLU and the narrowing shifts take B/H/S lanes; the rest are D only.
-        // RSHRN has no scalar form. Vector 1D (esize 64 without Q) does not exist.
-        let any_size = is_narrow || matches!(op, SimdShiftExtOp::Sqshl | SimdShiftExtOp::Uqshl | SimdShiftExtOp::Sqshlu);
-        if scalar && ((!any_size && esize != 64) || op == SimdShiftExtOp::Rshrn) {
-            return None;
-        }
-        if !scalar && esize == 64 && !q && !is_narrow {
-            return None;
-        }
-        return Some(Instruction::SimdShiftExt { rd, rn, op, esize: esize as u8, shift: shift as u8, q: q && !scalar, scalar });
-    }
-    None
 }
