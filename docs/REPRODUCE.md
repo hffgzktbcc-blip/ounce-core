@@ -76,7 +76,7 @@ not a pass.
 
 ## Report your result
 
-Post on the tracking issue ([Independent reproduction wanted](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+%22Independent+reproduction+wanted%22)) using this template.
+Post on the tracking issue ([Independent reproduction wanted](https://github.com/hffgzktbcc-blip/ounce-core/issues/248)) using this template.
 
 ```
 Host: (CPU, OS and version, `uname -m`)
