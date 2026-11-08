@@ -1205,6 +1205,13 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             };
             return Some(Instruction::SimdSatLong { rd, rn, rm, op, esize: 8u8 << size, q });
         }
+        // PMULL / PMULL2: opcode 1110, U == 0, size 0 (8H from 8B) or size 3 (1Q from 1D).
+        if (raw >> 12) & 0xF == 0b1110 {
+            if u || (size != 0 && size != 3) {
+                return None;
+            }
+            return Some(Instruction::Pmull { rd, rn, rm, wide: size == 3, q });
+        }
         let op = match (raw >> 12) & 0xF {
             0b0000 => SimdLongOp::Addl,
             0b0001 => SimdLongOp::Addw,
@@ -1554,5 +1561,15 @@ mod tests {
                 is_double: true,
             }
         );
+    }
+
+    #[test]
+    fn test_decode_pmull() {
+        assert_eq!(decode(0x0E22E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: false, q: false }); // pmull v0.8h, v1.8b, v2.8b
+        assert_eq!(decode(0x4E22E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: false, q: true }); // pmull2 v0.8h, v1.16b, v2.16b
+        assert_eq!(decode(0x0EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: false }); // pmull v0.1q, v1.1d, v2.1d
+        assert_eq!(decode(0x4EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: true }); // pmull2 v0.1q, v1.2d, v2.2d
+        assert!(!matches!(decode(0x0E62E020), Instruction::Pmull { .. })); // size 1 reserved
+        assert!(!matches!(decode(0x2E22E020), Instruction::Pmull { .. })); // U=1 is not PMULL
     }
 }

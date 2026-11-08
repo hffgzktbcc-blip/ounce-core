@@ -279,6 +279,31 @@ pub fn sat_doubling_mul_long(op: SimdSatLongOp, d: u128, n: u128, m: u128, esize
     out
 }
 
+/// `PMULL` / `PMULL2`: carry-less multiply. `wide`: one 64x64 -> 128-bit product; otherwise eight
+/// 8x8 -> 16-bit products. `q` reads the high 64 bits of each source.
+pub fn pmull(n: u128, m: u128, wide: bool, q: bool) -> u128 {
+    let half = |v: u128| (if q { v >> 64 } else { v }) as u64;
+    let (hn, hm) = (half(n), half(m));
+    let clmul = |a: u64, b: u64| -> u128 {
+        let mut r = 0u128;
+        for i in 0..64 {
+            if (b >> i) & 1 != 0 {
+                r ^= (a as u128) << i;
+            }
+        }
+        r
+    };
+    if wide {
+        return clmul(hn, hm);
+    }
+    let mut out = 0u128;
+    for i in 0..8 {
+        let p = clmul((hn >> (8 * i)) & 0xFF, (hm >> (8 * i)) & 0xFF) as u64;
+        out |= (p as u128) << (16 * i);
+    }
+    out
+}
+
 /// `FMUL/FMLA/FMLS` by element: every lane of `n` times lane `index` of `m` (fused for FMLA/FMLS).
 pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool) -> u128 {
     let esize = if double { 64 } else { 32 };
@@ -505,5 +530,37 @@ mod narrow_and_saturating_tests {
         assert_eq!(lane(neg, 32, 0) as u32 as i32, -6);
         let hi = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 7u128 << 64, 2u128 << 64, 32, true); // SQDMULL2 (32-bit)
         assert_eq!(lane(hi, 64, 0), 28);
+    }
+}
+
+#[cfg(test)]
+mod pmull_tests {
+    use super::pmull;
+
+    #[test]
+    fn pmull_8bit_lanes() {
+        assert_eq!(pmull(0x03, 0x03, false, false), 0x05); // (x+1)^2 = x^2+1
+        assert_eq!(pmull(0x80, 0x80, false, false), 0x4000);
+        assert_eq!(pmull(0xFF, 0xFF, false, false), 0x5555); // (x^8-1)^2 over GF(2)
+        // lane 1 independent: 0x02 x 0x07 = 0x0E; lane 0 zero
+        assert_eq!(pmull(0x0200, 0x0700, false, false), 0x0E << 16);
+    }
+
+    #[test]
+    fn pmull2_uses_high_half() {
+        let n = (0x03u128 << 64) | 0xFF;
+        let m = (0x03u128 << 64) | 0xFF;
+        assert_eq!(pmull(n, m, false, true), 0x05);
+        assert_eq!(pmull(n, m, false, false), 0x5555);
+        assert_eq!(pmull(n, m, true, true), 0x05);
+    }
+
+    #[test]
+    fn pmull_64bit() {
+        // (x^63 + 1)(x + 1) = x^64 + x^63 + x + 1
+        assert_eq!(pmull(0x8000_0000_0000_0001, 3, true, false), (1u128 << 64) | 0x8000_0000_0000_0003);
+        assert_eq!(pmull(1u128 << 63, 1u128 << 63, true, false), 1u128 << 126);
+        let hi = (0x8000_0000_0000_0001u128 << 64) | 7;
+        assert_eq!(pmull(hi, 3u128 << 64, true, true), (1u128 << 64) | 0x8000_0000_0000_0003);
     }
 }
