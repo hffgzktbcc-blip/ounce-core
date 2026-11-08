@@ -1041,6 +1041,16 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
+    // 27a. AdvSIMD scalar copy: 01 op=0 11110000 imm5 0 0000 1 Rn Rd (DUP scalar from element)
+    if (raw & 0xFFE0_FC00) == 0x5E00_0400 {
+        let imm5 = (raw >> 16) & 0x1F;
+        if imm5 & 0xF == 0 {
+            return None;
+        }
+        let low = imm5.trailing_zeros();
+        return Some(Instruction::SimdDupScalar { rd, rn, esize: 8u8 << low, index: (imm5 >> (low + 1)) as u8 });
+    }
+
     // 27. AdvSIMD copy: 0 Q op 01110000 imm5 0 imm4 1 Rn Rd
     //     DUP (element) imm4 0000, DUP (general) 0001, INS (general) 0011, UMOV 0111; op = 1: INS (element)
     if (raw & 0x9FE0_8400) == 0x0E00_0400 {
@@ -1178,6 +1188,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     // 27b. AdvSIMD three different (widening multiply): 0 Q U 01110 size 1 Rm opcode 00 Rn Rd
     if (raw & 0x9F20_0C00) == 0x0E20_0000 {
         let op = match (raw >> 12) & 0xF {
+            0b0000 => SimdLongOp::Addl,
+            0b0001 => SimdLongOp::Addw,
+            0b0010 => SimdLongOp::Subl,
+            0b0011 => SimdLongOp::Subw,
+            0b0101 => SimdLongOp::Abal,
+            0b0111 => SimdLongOp::Abdl,
             0b1000 => SimdLongOp::Mlal,
             0b1010 => SimdLongOp::Mlsl,
             0b1100 => SimdLongOp::Mull,
@@ -1187,6 +1203,23 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             return None; // PMULL / reserved
         }
         return Some(Instruction::SimdLong { rd, rn, rm, op, signed: !u, esize: 8u8 << size, q });
+    }
+
+    // 27c. AdvSIMD scalar three same (D registers): 01 U 11110 size 1 Rm opcode 1 Rn Rd, size == 3.
+    // A one-lane 64-bit vector op writes lane 0 and zeroes the rest, exactly the scalar semantics.
+    if (raw & 0xDF20_0400) == 0x5E20_0400 && size == 3 {
+        let op = match ((raw >> 11) & 0x1F, u) {
+            (0b10000, false) => SimdOp3::Add,
+            (0b10000, true) => SimdOp3::Sub,
+            (0b10001, false) => SimdOp3::Cmtst,
+            (0b10001, true) => SimdOp3::Cmeq,
+            (0b00110, false) => SimdOp3::Cmgt,
+            (0b00110, true) => SimdOp3::Cmhi,
+            (0b00111, false) => SimdOp3::Cmge,
+            (0b00111, true) => SimdOp3::Cmhs,
+            _ => return None,
+        };
+        return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 64, q: false });
     }
 
     // 28. AdvSIMD three same: 0 Q U 01110 size 1 Rm opcode 1 Rn Rd
@@ -1267,6 +1300,9 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b01001, false) => SimdOp2::Cmeq0,
             (0b01001, true) => SimdOp2::Cmle0,
             (0b01010, false) => SimdOp2::Cmlt0,
+            (0b00000, false) if size < 3 => SimdOp2::Rev64,
+            (0b00000, true) if size < 2 => SimdOp2::Rev32,
+            (0b00001, false) if size == 0 => SimdOp2::Rev16,
             (0b00101, false) if size == 0 => SimdOp2::Cnt,
             (0b00101, true) if size == 0 => SimdOp2::Not,
             (0b01011, false) => SimdOp2::Abs,
@@ -1426,6 +1462,10 @@ mod tests {
         assert_eq!(decode(0xF8A06960), Instruction::Nop); // prfm pldl1keep, [x11, x0]
         assert_eq!(decode(0xF8800160), Instruction::Nop); // prfum pldl1keep, [x11]
         assert_eq!(decode(0xD8000000), Instruction::Nop); // prfm pldl1keep, <literal>
+        assert!(matches!(decode(0x4E201BFF), Instruction::SimdTwoMisc { op: SimdOp2::Rev16, esize: 8, q: true, .. })); // rev16 v31.16b, v31.16b
+        assert!(matches!(decode(0x5EFE87FF), Instruction::SimdThreeSame { op: SimdOp3::Add, esize: 64, q: false, .. })); // add d31, d31, d30
+        assert!(matches!(decode(0x7EE18420), Instruction::SimdThreeSame { op: SimdOp3::Sub, esize: 64, q: false, .. })); // sub d0, d1, d1
+        assert!(matches!(decode(0x5E1C07EE), Instruction::SimdDupScalar { esize: 32, index: 3, .. })); // mov s14, v31.s[3]
         // UMLAL/UMULL/SMLAL family (three different)
         assert!(matches!(decode(0x2EBF837D), Instruction::SimdLong { op: SimdLongOp::Mlal, signed: false, esize: 32, q: false, .. })); // umlal v29.2d, v27.2s, v31.2s
         assert!(matches!(decode(0x6EBF837E), Instruction::SimdLong { op: SimdLongOp::Mlal, signed: false, esize: 32, q: true, .. })); // umlal2 v30.2d, v27.4s, v31.4s

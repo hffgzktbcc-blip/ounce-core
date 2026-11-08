@@ -600,6 +600,14 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// `DUP Bd/Hd/Sd/Dd, Vn.<Ts>[index]` (scalar; `MOV Sd, Vn.S[i]` alias): lane `index` into lane 0, rest zero
+    SimdDupScalar {
+        rd: u8,
+        rn: u8,
+        esize: u8,
+        index: u8,
+    },
+
     /// `DUP Vd.<T>, Vn.<Ts>[index]`
     SimdDupElement {
         rd: u8,
@@ -800,6 +808,13 @@ pub enum SimdLongOp {
     Mull,
     Mlal,
     Mlsl,
+    /// `S/UADDL`, `S/UADDW`, `S/USUBL`, `S/USUBW`, `S/UABDL`, `S/UABAL`
+    Addl,
+    Addw,
+    Subl,
+    Subw,
+    Abdl,
+    Abal,
 }
 
 /// AdvSIMD across-lanes reductions (`ADDV`, `S/UADDLV`, `S/UMAXV`, `S/UMINV`).
@@ -825,6 +840,10 @@ pub enum SimdOp2 {
     Not,
     Abs,
     Neg,
+    /// `REV64`/`REV32`/`REV16` (vector): reverse the `esize` elements within each 64/32/16-bit container
+    Rev64,
+    Rev32,
+    Rev16,
     /// `SCVTF`/`UCVTF` (vector, integer): lanes are 32- or 64-bit floats
     Scvtf,
     Ucvtf,

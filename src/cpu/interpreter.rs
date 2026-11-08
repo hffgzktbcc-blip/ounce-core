@@ -1513,6 +1513,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdDupScalar { rd, rn, esize, index } => {
+                let v = simd::lane(self.regs.read_q(rn), esize as u32, index as usize);
+                self.regs.write_q(rd, v as u128);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdDupElement { rd, rn, esize, index, q } => {
                 let v = simd::lane(self.regs.read_q(rn), esize as u32, index as usize);
                 self.regs.write_q(rd, simd::dup(v, esize as u32, q));
