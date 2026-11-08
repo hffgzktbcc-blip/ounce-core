@@ -320,7 +320,7 @@ This section is rendered from [the milestone registry](docs/roadmap/milestones.j
 
 | Research track | Reviewed stage | Supporting evidence | Next proof gate |
 | :--- | :--- | :--- | :--- |
-| Static Linux ARM64 programs | experimental | [Five freestanding static ELF fixtures run through run-elf; no libc programs verified](docs/verify/linux-elf/README.md) | Run one real library as a Linux ELF; add deterministic time and qualify supported hosts |
+| Static Linux ARM64 programs | experimental | [Five freestanding ELF fixtures and unchanged LZ4/musl cases pass on Tier-3 and actual Tier-4](docs/verify/linux-elf/README.md) | Qualify Linux library CI; add deterministic time and wider host acceptance |
 | Differential verification against real ARM64 | measured | [Seeded single-instruction hardware fuzzing and three-engine comparisons; bounded results retained](docs/verify/insn-fuzzer/README.md) | Qualify ARM64 fuzzer CI; then expand per-family and sequence coverage (vision step 2) |
 | Agent workflow | measured | [Handoff snapshots, expiring claims and shared journal; used by four agents in parallel](docs/AGENT_HUB.md) | Keep the tool simple; fix friction as agents report it |
 | Failure to reproduction | measured | [Retained SDL2 replay and externally grounded audio-channel diagnosis delivered](docs/DIAGNOSIS_CLI.md) | Instruction-level first divergence remains unimplemented (vision step 3) |

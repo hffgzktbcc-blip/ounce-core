@@ -91,7 +91,7 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
 - [x] **V2. Run one existing library harness as a static Linux ELF.**
       Result: one pinned library harness runs without a console SDK and matches a fresh host reference.
       Acceptance: same shared C cases, retained toolchain/source hashes, Tier-3/Tier-4 comparison, actionable unsupported-syscall errors and unchanged existing ELF fixtures. Keep deterministic time and wider OS qualification explicit until tested.
-      Evidence: [LZ4 Linux ELF report](docs/verify/linux-elf/lz4-2026-11-08/report.json) and [recipe](docs/verify/linux-elf/README.md#lz4-without-a-console-sdk): unchanged pinned cases linked with musl match a fresh host on actual Tier-3/Tier-4, exit 0, 406 bytes, 3,862,822 instructions. No runtime patch needed. Five execution-verdict tests and all 108 Python tooling tests passed (one pre-existing opt-in skip); Linux ELF regression checks pending below until recorded.
+      Evidence: [LZ4 Linux ELF report](docs/verify/linux-elf/lz4-2026-11-08/report.json) and [recipe](docs/verify/linux-elf/README.md#lz4-without-a-console-sdk): unchanged pinned cases linked with musl match a fresh host on actual Tier-3/Tier-4, exit 0, 406 bytes, 3,862,822 instructions. No runtime patch needed. Five execution-verdict tests and all 108 Python tooling tests passed (one pre-existing opt-in skip); All 11 existing Rust Linux ELF tests passed with native-jit enabled, including unknown-syscall diagnosis and malformed-input handling.
       Next: qualify the new Linux CI job; deterministic time and wider OS acceptance remain incomplete vision-step-1 work.
 
 ## External acceptance and publication dependencies
