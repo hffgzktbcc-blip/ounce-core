@@ -146,3 +146,14 @@ output PCM enters the existing audio queue, and completion events track released
 buffer tags. First-frame passes establish only the registered output behavior.
 They do not establish microphone capture, real-time audio pacing or complete
 account and savedata service coverage.
+
+## Provenance remediation evidence update
+
+The local corrective work and scoped history proposal are consolidated in
+`PROVENANCE_REMEDIATION_REPORT.md`. All eleven committed NROs rebuilt
+byte-for-byte from their tracked inputs. `tests/fixtures/provenance.json` now
+registers every binary and build input, including input_multi, sdmc and deko3d.
+`tests/fixtures/rebuild-evidence.json` retains exact build and linker evidence.
+Reproducibility is verified. Source authorship and full redistribution
+obligations remain unresolved. The fixture identity gate preserves this
+explicit legacy baseline and requires review evidence for changes.
