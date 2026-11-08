@@ -62,6 +62,8 @@ class ReleasePackageTests(unittest.TestCase):
         with zipfile.ZipFile(output / 'ounce-diagnose-0.2.0-source.zip') as archive:
             names = archive.namelist()
             self.assertIn('scripts/build_diagnosis_cli.py', names)
+            self.assertIn('.gitattributes', names)
+            self.assertIn('eol=lf', archive.read('.gitattributes').decode())
             self.assertNotIn('unreviewed.bin', names)
             self.assertFalse(any(name.endswith(('.nro', '.elf', '.nca', '.keys')) for name in names))
         run = subprocess.run([sys.executable, '-I', str(output / 'ounce-diagnose-0.2.0.pyz'),
