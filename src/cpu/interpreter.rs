@@ -962,8 +962,8 @@ impl Cpu {
                         FpOp2::Fdiv => n / m,
                         FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
                         FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
-                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
-                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fmaxnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
                     self.regs.write_d(rd, res);
                 } else {
@@ -977,8 +977,8 @@ impl Cpu {
                         FpOp2::Fdiv => n / m,
                         FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
                         FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
-                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
-                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fmaxnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
                     self.regs.write_s(rd, res);
                 }
@@ -1401,8 +1401,8 @@ impl Cpu {
                         FpOp2::Fdiv => n / m,
                         FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else { n.max(m) },
                         FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else { n.min(m) },
-                        FpOp2::Fmaxnm => if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
-                        FpOp2::Fminnm => if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fmaxnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
+                        FpOp2::Fminnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
                     out |= (value.to_bits() as u128) << (lane * 64);
                 }
@@ -2643,4 +2643,27 @@ mod intvec_tests {
         assert_eq!(err.to_string(), "BRK #0x3e8 breakpoint hit at PC: 0x0000000000001000");
         assert_eq!(cpu.regs.pc, CODE);
     }
+}
+
+/// NaN handling shared by scalar `FMAXNM`/`FMINNM`: a quiet NaN against a number returns the number;
+/// any other NaN combination (a signalling NaN involved, or two NaNs) propagates like `FADD`
+/// (signalling first, quieted), which is what Arm hardware returns.
+trait FpNum: Copy + std::ops::Add<Output = Self> {
+    fn is_qnan(self) -> bool;
+    fn is_any_nan(self) -> bool;
+    fn nm_nan(n: Self, m: Self) -> Option<Self> {
+        if n.is_any_nan() || m.is_any_nan() {
+            Some(if n.is_qnan() && !m.is_any_nan() { m } else if m.is_qnan() && !n.is_any_nan() { n } else { n + m })
+        } else {
+            None
+        }
+    }
+}
+impl FpNum for f32 {
+    fn is_qnan(self) -> bool { self.is_nan() && self.to_bits() & (1 << 22) != 0 }
+    fn is_any_nan(self) -> bool { self.is_nan() }
+}
+impl FpNum for f64 {
+    fn is_qnan(self) -> bool { self.is_nan() && self.to_bits() & (1 << 51) != 0 }
+    fn is_any_nan(self) -> bool { self.is_nan() }
 }
