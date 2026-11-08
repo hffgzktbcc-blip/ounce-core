@@ -640,6 +640,45 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// `BRK #imm16`: software breakpoint; stops the guest with a clear message.
+    Brk {
+        imm: u16,
+    },
+
+    /// AdvSIMD shift by immediate beyond `SshrUshrShlShrn`: accumulate, rounding, saturating and insert forms
+    /// plus the saturating/rounding narrowing shifts. `esize` is the result lane size; `scalar` writes lane 0
+    /// of a scalar register (the rest of Vd is zeroed).
+    SimdShiftExt {
+        rd: u8,
+        rn: u8,
+        op: SimdShiftExtOp,
+        esize: u8,
+        shift: u8,
+        q: bool,
+        scalar: bool,
+    },
+
+    /// `SADDLP`/`UADDLP`/`SADALP`/`UADALP`: add adjacent lane pairs into double-width lanes
+    /// (`acc`: accumulate into `Vd`). `esize` is the source lane size.
+    SimdPairwiseLong {
+        rd: u8,
+        rn: u8,
+        signed: bool,
+        acc: bool,
+        esize: u8,
+        q: bool,
+    },
+
+    /// `SQXTN`/`UQXTN`/`SQXTUN` (+2, and scalar): saturating narrow, `esize` is the result lane size.
+    SimdQNarrow {
+        rd: u8,
+        rn: u8,
+        op: SimdShiftExtOp,
+        esize: u8,
+        q: bool,
+        scalar: bool,
+    },
+
     /// AdvSIMD modified immediate: `MOVI`/`MVNI`/`FMOV` (vector) and `ORR`/`BIC` (vector, immediate).
     /// `imm` is the expanded 64-bit pattern (already inverted for `MVNI`), repeated in both halves when `q`.
     SimdModImm {
@@ -958,4 +997,28 @@ pub enum SimdPermuteOp {
     Trn2,
     Zip1,
     Zip2,
+}
+
+/// Integer vector shift forms and saturating narrows (see `SimdShiftExt`/`SimdQNarrow`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdShiftExtOp {
+    Ssra,
+    Usra,
+    Srshr,
+    Urshr,
+    Srsra,
+    Ursra,
+    Sri,
+    Sli,
+    Sqshl,
+    Uqshl,
+    Sqshlu,
+    /// Narrowing right shifts (result lane is half the source lane); a zero shift is the plain `QXTN`.
+    Rshrn,
+    Sqshrn,
+    Uqshrn,
+    Sqshrun,
+    Sqrshrn,
+    Uqrshrn,
+    Sqrshrun,
 }

@@ -21,6 +21,9 @@ pub enum CpuError {
     #[error("Unimplemented instruction 0x{raw:08X} at PC: 0x{pc:016X}")]
     UnimplementedInstruction { raw: u32, pc: u64 },
 
+    #[error("BRK #{imm:#x} breakpoint hit at PC: 0x{pc:016X}")]
+    Breakpoint { imm: u16, pc: u64 },
+
     #[error("CPU halted: {0}")]
     Halted(String),
 
@@ -1876,6 +1879,31 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::Brk { imm } => Err(CpuError::Breakpoint { imm, pc }),
+
+            Instruction::SimdShiftExt { rd, rn, op, esize, shift, q, scalar } => {
+                let (n, e) = (self.regs.read_q(rn), esize as u32);
+                let res = simd::shift_ext(op, self.regs.read_q(rd), n, e, shift as u32, q && !scalar);
+                self.regs.write_q(rd, if scalar { simd::lane(res, e, 0) as u128 } else { res });
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdPairwiseLong { rd, rn, signed, acc, esize, q } => {
+                let res = simd::pairwise_long(self.regs.read_q(rd), self.regs.read_q(rn), esize as u32, q, signed, acc);
+                self.regs.write_q(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdQNarrow { rd, rn, op, esize, q, scalar } => {
+                let e = esize as u32;
+                let res = simd::shift_ext(op, self.regs.read_q(rd), self.regs.read_q(rn), e, 0, q && !scalar);
+                self.regs.write_q(rd, if scalar { simd::lane(res, e, 0) as u128 } else { res });
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::Unimplemented { raw } => {
                 Err(CpuError::UnimplementedInstruction { raw, pc })
             }
@@ -2417,5 +2445,149 @@ mod tests {
             c.regs.write_q(2, super::simd::dup(2, 32, true));
         });
         assert_eq!(cpu.regs.read_q(0), super::simd::dup(1, 32, true));
+    }
+}
+
+#[cfg(test)]
+mod intvec_tests {
+    //! Integer vector narrowing/shift forms and BRK. Encodings from the devkitA64 assembler; expected values
+    //! computed by hand from the architecture pseudocode.
+    use super::*;
+    use crate::mmu::Permission;
+
+    const CODE: u64 = 0x1000;
+
+    fn lanes(esize: u32, vals: &[u64]) -> u128 {
+        let mut v = 0u128;
+        for (i, x) in vals.iter().enumerate() {
+            simd::set_lane(&mut v, esize, i, *x);
+        }
+        v
+    }
+
+    /// Runs one word with v0 = `d` and v1 = `n`; returns v0.
+    fn one(word: u32, d: u128, n: u128) -> u128 {
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        mmu.map_range(CODE, 0x1000, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(CODE, word).unwrap();
+        cpu.regs.pc = CODE;
+        cpu.regs.write_q(0, d);
+        cpu.regs.write_q(1, n);
+        assert!(matches!(cpu.step(&mut mmu), Ok(StepResult::Continue)), "{word:#x}");
+        cpu.regs.read_q(0)
+    }
+
+    #[test]
+    fn saturating_narrow() {
+        let n16 = lanes(16, &[0x0100, 0xFFFF, 5, 0x8000, 0x7FFF, 0xFF, 0, 1]);
+        // sqxtun v0.8b, v1.8h: negatives to 0, above 255 to 255
+        assert_eq!(one(0x2e212820, u128::MAX, n16), 0x0100_ffff_0005_00ff);
+        // sqxtun2 v0.16b, v1.8h keeps the low half of v0
+        assert_eq!(one(0x6e212820, 0x1111_2222_3333_4444, n16), 0x0100_ffff_0005_00ffu128 << 64 | 0x1111_2222_3333_4444);
+        // sqxtn v0.4h, v1.4s
+        let n32 = lanes(32, &[0x8000_0000, 0x7FFF_FFFF, 0xFFFF_FFFE, 0x0001_0000]);
+        assert_eq!(one(0x0e614820, u128::MAX, n32), 0x7FFF_FFFE_7FFF_8000);
+        // uqxtn v0.8b, v1.8h: unsigned source, so 0xFFFF saturates to 0xFF
+        let n16 = lanes(16, &[0x100, 0xFFFF, 5, 0, 0xFE, 0xFF, 1, 2]);
+        assert_eq!(one(0x2e214820, u128::MAX, n16), 0x0201_fffe_0005_ffff);
+        // sqxtn b0, h1: scalar, upper bits zero
+        assert_eq!(one(0x5e214820, u128::MAX, 0x0100), 0x7F);
+    }
+
+    #[test]
+    fn narrowing_shifts() {
+        // rshrn v0.8b, v1.8h, #4: (0xAB8 + 8) >> 4 = 0xAC; (0xFFFF + 8) >> 4 = 0x1000 -> low byte 0
+        let n = lanes(16, &[0xFFFF, 0xAB8, 0xAB8, 0xAB8, 0xAB8, 0xAB8, 0xAB8, 0xAB8]);
+        assert_eq!(one(0x0f0c8c20, 0, n), 0xACAC_ACAC_ACAC_AC00);
+        // rshrn2 v0.8h, v1.4s, #3 keeps the low half: (0x1_0004 + 4) >> 3 = 0x2001
+        let n = lanes(32, &[0x1_0004, 0, 0xF, 0xC]);
+        assert_eq!(one(0x4f1d8c20, 0xAA, n), lanes(16, &[0x2001, 0, 2, 2]) << 64 | 0xAA);
+        // sqshrn v0.4h, v1.4s, #5
+        let n = lanes(32, &[0x7FFF_FFFF, 0xFFFF_FFFF, 0x8000_0000, 0x640]);
+        assert_eq!(one(0x0f1b9420, 0, n), 0x0032_8000_FFFF_7FFF);
+        // uqrshrn v0.8b, v1.8h, #3: (0xFFFF + 4) >> 3 saturates; (0x14 + 4) >> 3 = 3
+        let n = lanes(16, &[0xFFFF, 0x14, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(one(0x2f0d9c20, 0, n), 0x0000_0000_0000_03ff);
+        // sqshrun v0.2s, v1.2d, #7: -5000 >> 7 < 0 -> 0; huge -> 0xFFFFFFFF
+        let n = lanes(64, &[(-5000i64) as u64, i64::MAX as u64]);
+        assert_eq!(one(0x2f398420, 0, n), 0xFFFF_FFFF_0000_0000);
+    }
+
+    #[test]
+    fn accumulate_round_insert() {
+        let dup = |e, v| simd::dup(v, e, true);
+        // usra v0.4s, v1.4s, #3: 10 + (0x80000000 >> 3)
+        assert_eq!(one(0x6f3d1420, dup(32, 10), dup(32, 0x8000_0000)), dup(32, 0x1000_000A));
+        // ssra v0.8h, v1.8h, #2: 1 + (-32768 >> 2) = 0xE001
+        assert_eq!(one(0x4f1e1420, dup(16, 1), dup(16, 0x8000)), dup(16, 0xE001));
+        // srshr v0.4s, v1.4s, #4: -24 -> (-24 + 8) >> 4 = -1; 24 -> 2; 7 -> 0; -8 -> 0
+        let n = lanes(32, &[(-24i32) as u32 as u64, 24, 7, (-8i32) as u32 as u64]);
+        assert_eq!(one(0x4f3c2420, 0, n), lanes(32, &[0xFFFF_FFFF, 2, 0, 0]));
+        // urshr v0.4s, v1.4s, #1: 0xFFFFFFFF -> 0x80000000 (no 32-bit overflow); 1 -> 1; 3 -> 2
+        let n = lanes(32, &[0xFFFF_FFFF, 1, 0, 3]);
+        assert_eq!(one(0x6f3f2420, 0, n), lanes(32, &[0x8000_0000, 1, 0, 2]));
+        // srsra v0.8h, v1.8h, #3: 5 + ((-9 + 4) >> 3) = 5 + -1 = 4
+        assert_eq!(one(0x4f1d3420, dup(16, 5), dup(16, (-9i16) as u16 as u64)), dup(16, 4));
+        // ursra v0.2d, v1.2d, #5: 1 + ((0xFFFF_FFFF_FFFF_FFFF + 16) >> 5) = 1 + 0x0800_0000_0000_0000
+        assert_eq!(one(0x6f7b3420, dup(64, 1), dup(64, u64::MAX)), dup(64, 0x0800_0000_0000_0001));
+        // usra d0, d1, #7: scalar, 5 + (1 << 63 >> 7), upper half zeroed
+        assert_eq!(one(0x7f791420, 5, 1u128 << 63 | 1u128 << 100), 0x0100_0000_0000_0005);
+        // sri v0.4s, v1.4s, #8: top byte of d kept, n >> 8 below
+        assert_eq!(one(0x6f384420, dup(32, 0xAABB_CCDD), dup(32, 0x1122_3344)), dup(32, 0xAA11_2233));
+        // sli v0.4s, v1.4s, #8: low byte of d kept, n << 8 above
+        assert_eq!(one(0x6f285420, dup(32, 0xAABB_CCDD), dup(32, 0x1122_3344)), dup(32, 0x2233_44DD));
+    }
+
+    #[test]
+    fn saturating_shift_left() {
+        let n = lanes(32, &[0x1000_0000, 0xF000_0000, 0xE000_0000, 5]);
+        // sqshl v0.4s, v1.4s, #3: 2^31 overflows, -2^31 fits exactly, below saturates to INT_MIN
+        assert_eq!(one(0x4f237420, 0, n), lanes(32, &[0x7FFF_FFFF, 0x8000_0000, 0x8000_0000, 40]));
+        // uqshl v0.16b, v1.16b, #2: bytes 40 3f 01 80 -> ff fc 04 ff
+        assert_eq!(one(0x6f0a7420, 0, simd::dup(0x8001_3F40, 32, true)), simd::dup(0xFF04_FCFF, 32, true));
+        // sqshlu v0.8h, v1.8h, #4: signed source, unsigned result
+        let n = lanes(16, &[0xFFFF, 0x07FF, 0x0800, 0x1000, 0, 0, 0, 0]);
+        assert_eq!(one(0x6f146420, 0, n), lanes(16, &[0, 0x7FF0, 0x8000, 0xFFFF, 0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn pairwise_long() {
+        // uaddlp v0.1d, v1.2s (0x2ea02820): 0xFFFFFFFF + 0xFFFFFFFF = 0x1_FFFF_FFFE
+        assert_eq!(one(0x2ea02820, u128::MAX, lanes(32, &[0xFFFF_FFFF, 0xFFFF_FFFF])), 0x1_FFFF_FFFE);
+        // saddlp v0.8h, v1.16b (0x4e202820): -1 + -1 = -2 ; 127 + 127 = 254
+        let n = lanes(8, &[0xFF, 0xFF, 127, 127, 0x80, 0x80, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(one(0x4e202820, 0, n), lanes(16, &[0xFFFE, 254, 0xFF00, 3, 0, 0, 0, 0]));
+        // uadalp v0.4s, v1.8h (0x6e606820): 10 + (0xFFFF + 1)
+        let n = lanes(16, &[0xFFFF, 1, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(one(0x6e606820, lanes(32, &[10, 20, 30, 40]), n), lanes(32, &[10 + 0x10000, 20, 30, 40]));
+    }
+
+    #[test]
+    fn addp_scalar_d() {
+        // addp d0, v1.2d (0x5ef1b820): 1 + 2^64-1 wraps to 0; upper half zeroed
+        assert_eq!(one(0x5ef1b820, u128::MAX, 1u128 | (u64::MAX as u128) << 64), 0);
+        assert_eq!(one(0x5ef1b820, u128::MAX, 7u128 | 9u128 << 64), 16);
+    }
+
+    #[test]
+    fn saturate_helper_reports_saturation() {
+        assert_eq!(simd::saturate(300, 8, false), (255, true));
+        assert_eq!(simd::saturate(-1, 8, false), (0, true));
+        assert_eq!(simd::saturate(-129, 8, true), (0x80, true));
+        assert_eq!(simd::saturate(127, 8, true), (127, false));
+    }
+
+    #[test]
+    fn brk_stops_the_guest() {
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        mmu.map_range(CODE, 0x1000, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(CODE, 0xd4207d00).unwrap(); // brk #0x3e8
+        cpu.regs.pc = CODE;
+        let err = cpu.step(&mut mmu).unwrap_err();
+        assert!(matches!(err, CpuError::Breakpoint { imm: 0x3e8, pc: CODE }), "{err:?}");
+        assert_eq!(err.to_string(), "BRK #0x3e8 breakpoint hit at PC: 0x0000000000001000");
+        assert_eq!(cpu.regs.pc, CODE);
     }
 }

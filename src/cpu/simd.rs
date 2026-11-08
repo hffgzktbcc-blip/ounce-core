@@ -4,7 +4,7 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdFpElementOp, SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatLongOp};
+use super::instructions::{SimdFpElementOp, SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatLongOp, SimdShiftExtOp};
 
 #[inline]
 fn mask(esize: u32) -> u64 {
@@ -641,4 +641,88 @@ mod pmull_tests {
         let hi = (0x8000_0000_0000_0001u128 << 64) | 7;
         assert_eq!(pmull(hi, 3u128 << 64, true, true), (1u128 << 64) | 0x8000_0000_0000_0003);
     }
+}
+
+/// Saturates `v` to a `bits`-wide signed or unsigned integer. Returns the stored lane value (low `bits`
+/// bits) and whether saturation happened. The bool is exactly what the cumulative saturation flag
+/// (`FPSR.QC`) must record; every saturating narrow/shift below goes through this one function, so wiring
+/// QC means collecting this bool in `shift_ext` and its caller.
+pub fn saturate(v: i128, bits: u32, signed: bool) -> (u64, bool) {
+    let (lo, hi) = if signed {
+        (-(1i128 << (bits - 1)), (1i128 << (bits - 1)) - 1)
+    } else {
+        (0, (1i128 << bits) - 1)
+    };
+    let c = v.clamp(lo, hi);
+    (c as u64 & mask(bits), c != v)
+}
+
+/// Integer shift-by-immediate forms with accumulate, rounding, saturation or insertion, and the
+/// saturating/rounding narrowing shifts (`SQXTN`/`UQXTN`/`SQXTUN` are the zero-shift narrows).
+/// For the narrowing ops `esize` is the result lane size (source lanes are `2 * esize`) and `q` selects
+/// the `2` form, which keeps the low half of `d`. Otherwise lanes are `esize` wide. Rounding adds
+/// `1 << (shift - 1)` before the shift.
+pub fn shift_ext(op: SimdShiftExtOp, d: u128, n: u128, esize: u32, shift: u32, q: bool) -> u128 {
+    use SimdShiftExtOp::*;
+    let round = matches!(op, Srshr | Urshr | Srsra | Ursra | Rshrn | Sqrshrn | Uqrshrn | Sqrshrun);
+    let rnd = |v: i128| if round && shift > 0 { v + (1i128 << (shift - 1)) } else { v };
+    if matches!(op, Rshrn | Sqshrn | Uqshrn | Sqshrun | Sqrshrn | Uqrshrn | Sqrshrun) {
+        let signed_in = matches!(op, Sqshrn | Sqshrun | Sqrshrn | Sqrshrun);
+        let mut half = 0u128;
+        for i in 0..64 / esize as usize {
+            let a = lane(n, esize * 2, i);
+            let a = if signed_in { sext(a, esize * 2) as i128 } else { a as i128 };
+            let v = rnd(a) >> shift;
+            let r = match op {
+                Rshrn => v as u64,
+                Sqshrn | Sqrshrn => saturate(v, esize, true).0,
+                _ => saturate(v, esize, false).0,
+            };
+            set_lane(&mut half, esize, i, r);
+        }
+        return if q { (d & u64::MAX as u128) | (half << 64) } else { half };
+    }
+    let ones = mask(esize) as u128;
+    let mut out = 0u128;
+    for i in 0..lanes(esize, q) {
+        let raw = lane(n, esize, i);
+        let sv = sext(raw, esize) as i128;
+        let uv = raw as i128;
+        let dv = lane(d, esize, i);
+        let r = match op {
+            Ssra | Srsra => dv.wrapping_add((rnd(sv) >> shift) as u64),
+            Usra | Ursra => dv.wrapping_add((rnd(uv) >> shift) as u64),
+            Srshr => (rnd(sv) >> shift) as u64,
+            Urshr => (rnd(uv) >> shift) as u64,
+            Sri => {
+                let m = if shift >= esize { 0 } else { ones >> shift };
+                ((dv as u128 & !m) | ((uv as u128 >> shift.min(127)) & m)) as u64
+            }
+            Sli => {
+                let m = (ones << shift) & ones;
+                ((dv as u128 & !m) | ((uv as u128) << shift & m)) as u64
+            }
+            Sqshl => saturate(sv << shift, esize, true).0,
+            Uqshl => saturate(uv << shift, esize, false).0,
+            Sqshlu => saturate(sv << shift, esize, false).0,
+            _ => unreachable!(),
+        };
+        set_lane(&mut out, esize, i, r);
+    }
+    out
+}
+
+/// `SADDLP`/`UADDLP` (and with `acc`, `SADALP`/`UADALP`): each pair of adjacent `esize` lanes of `n` is
+/// widened and added into one `2 * esize` lane; `acc` adds the existing lane of `d`.
+pub fn pairwise_long(d: u128, n: u128, esize: u32, q: bool, signed: bool, acc: bool) -> u128 {
+    let mut out = 0u128;
+    for i in 0..lanes(esize, q) / 2 {
+        let ext = |v: u64| if signed { sext(v, esize) as i128 } else { v as i128 };
+        let mut sum = ext(lane(n, esize, 2 * i)) + ext(lane(n, esize, 2 * i + 1));
+        if acc {
+            sum += lane(d, esize * 2, i) as i128;
+        }
+        set_lane(&mut out, esize * 2, i, sum as u64);
+    }
+    out
 }
