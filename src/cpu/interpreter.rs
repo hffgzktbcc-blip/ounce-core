@@ -1587,6 +1587,20 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdFpThreeSame { rd, rn, rm, op, double, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::fp_three_same(op, d, n, m, double, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdFpTwoMisc { rd, rn, op, double, q } => {
+                let (d, n) = (self.regs.read_q(rd), self.regs.read_q(rn));
+                self.regs.write_q(rd, simd::fp_two_misc(op, d, n, double, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 let res = simd::fp_by_element(op, d, n, m, index as usize, double, q);
@@ -2027,6 +2041,17 @@ mod tests {
             (0x0e21db9c, "SimdTwoMisc"),        // scvtf v28.2s, v28.2s
             (0x7efcd7de, "FpAbd"),              // fabd d30, d30, d28
             (0x7e21dbee, "SimdScalarTwoMisc"),  // ucvtf s14, s31
+            (0x6e22e420, "SimdFpThreeSame"),    // fcmge v0.4s, v1.4s, v2.4s
+            (0x4e62e420, "SimdFpThreeSame"),    // fcmeq v0.2d, v1.2d, v2.2d
+            (0x6ea2e420, "SimdFpThreeSame"),    // fcmgt v0.4s, v1.4s, v2.4s
+            (0x6e22dc20, "SimdVec4S"),          // fmul v0.4s, v1.4s, v2.4s (older dedicated arm)
+            (0x6e62dc20, "SimdFpThreeSame"),    // fmul v0.2d, v1.2d, v2.2d
+            (0x4e22cc20, "SimdFpThreeSame"),    // fmla v0.4s, v1.4s, v2.4s
+            (0x6e62fc20, "SimdFpThreeSame"),    // fdiv v0.2d, v1.2d, v2.2d
+            (0x4ea0f820, "SimdFpTwoMisc"),      // fabs v0.4s, v1.4s
+            (0x4ea0c820, "SimdFpTwoMisc"),      // fcmgt v0.4s, v1.4s, #0.0
+            (0x0e616820, "SimdFpTwoMisc"),      // fcvtn v0.2s, v1.2d
+            (0x4ea1b820, "SimdTwoMisc"),        // fcvtzs v0.4s, v1.4s
             (0x7ea1b800, "SimdScalarTwoMisc"),  // fcvtzu s0, s0
             (0x0e612800, "SimdShiftImm"),       // xtn v0.4h, v0.4s
             (0x2f10a400, "SimdShiftImm"),       // uxtl v0.4s, v0.4h

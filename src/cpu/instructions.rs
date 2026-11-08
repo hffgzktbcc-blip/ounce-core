@@ -621,6 +621,25 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// FP vector three-same (`FADD`, `FMLA`, `FCMEQ`, ...): `double` selects 64-bit lanes, else 32-bit.
+    SimdFpThreeSame {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdFpOp3,
+        double: bool,
+        q: bool,
+    },
+
+    /// FP vector two-register misc (`FABS`, `FCMGT #0.0`, `FCVTN`, ...): `double` as above.
+    SimdFpTwoMisc {
+        rd: u8,
+        rn: u8,
+        op: SimdFpOp2,
+        double: bool,
+        q: bool,
+    },
+
     SimdTwoMisc {
         rd: u8,
         rn: u8,
@@ -902,6 +921,44 @@ pub enum SimdFpElementOp {
     Fmul,
     Fmla,
     Fmls,
+}
+
+/// AdvSIMD floating-point three-same operations (single or double lanes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdFpOp3 {
+    Fadd,
+    Fsub,
+    Fmul,
+    Fdiv,
+    Fabd,
+    Faddp,
+    Fmla,
+    Fmls,
+    Fmax,
+    Fmin,
+    Fmaxnm,
+    Fminnm,
+    Fcmeq,
+    Fcmge,
+    Fcmgt,
+    Facge,
+    Facgt,
+}
+
+/// AdvSIMD floating-point two-register operations: zero compares, `FABS`/`FNEG`/`FSQRT`, and the
+/// double/single conversions `FCVTN`/`FCVTL` (the `.2D`/`.2S` forms).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdFpOp2 {
+    Fcmeq0,
+    Fcmge0,
+    Fcmgt0,
+    Fcmle0,
+    Fcmlt0,
+    Fabs,
+    Fneg,
+    Fsqrt,
+    Fcvtn,
+    Fcvtl,
 }
 
 /// Widening multiply flavours of AdvSIMD three-different.

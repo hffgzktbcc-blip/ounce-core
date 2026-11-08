@@ -3,7 +3,7 @@
 use super::instructions::{
     SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatLongOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
-    SimdFpElementOp, SimdImmOp, SimdOp2, SimdShiftExtOp, SimdOp3, SimdPermuteOp, SimdShiftOp,
+    SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftExtOp, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
@@ -1267,6 +1267,37 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 64, q: false });
     }
 
+    // 27d. AdvSIMD three same, floating point (opcode >= 11000): 0 Q U 01110 a sz 1 Rm opcode 1 Rn Rd.
+    //      Half precision (the separate three-same-FP16 encoding) is not decoded.
+    if (raw & 0x9F20_0400) == 0x0E20_0400 && (raw >> 11) & 0x1F >= 0b11000 {
+        let a = (raw >> 23) & 1 == 1;
+        let op = match ((raw >> 11) & 0x1F, u, a) {
+            (0b11000, false, false) => SimdFpOp3::Fmaxnm,
+            (0b11000, false, true) => SimdFpOp3::Fminnm,
+            (0b11001, false, false) => SimdFpOp3::Fmla,
+            (0b11001, false, true) => SimdFpOp3::Fmls,
+            (0b11010, false, false) => SimdFpOp3::Fadd,
+            (0b11010, false, true) => SimdFpOp3::Fsub,
+            (0b11010, true, false) => SimdFpOp3::Faddp,
+            (0b11010, true, true) => SimdFpOp3::Fabd,
+            (0b11011, true, false) => SimdFpOp3::Fmul,
+            (0b11100, false, false) => SimdFpOp3::Fcmeq,
+            (0b11100, true, false) => SimdFpOp3::Fcmge,
+            (0b11100, true, true) => SimdFpOp3::Fcmgt,
+            (0b11101, true, false) => SimdFpOp3::Facge,
+            (0b11101, true, true) => SimdFpOp3::Facgt,
+            (0b11110, false, false) => SimdFpOp3::Fmax,
+            (0b11110, false, true) => SimdFpOp3::Fmin,
+            (0b11111, true, false) => SimdFpOp3::Fdiv,
+            _ => return None,
+        };
+        let double = (raw >> 22) & 1 == 1;
+        if double && !q {
+            return None;
+        }
+        return Some(Instruction::SimdFpThreeSame { rd, rn, rm, op, double, q });
+    }
+
     // 28. AdvSIMD three same: 0 Q U 01110 size 1 Rm opcode 1 Rn Rd
     if (raw & 0x9F20_0400) == 0x0E20_0400 {
         let opcode = (raw >> 11) & 0x1F;
@@ -1333,6 +1364,42 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             _ => return None,
         };
         return Some(Instruction::SimdScalarTwoMisc { rd, rn, op, esize: 32u8 << (size & 1) });
+    }
+
+    // 29b. AdvSIMD two-register miscellaneous, floating point: 0 Q U 01110 a sz 10000 opcode 10 Rn Rd
+    //      (half precision not decoded; FCVTN/FCVTL only in the double/single form)
+    if (raw & 0x9F3E_0C00) == 0x0E20_0800 {
+        let a = (raw >> 23) & 1 == 1;
+        let double = (raw >> 22) & 1 == 1;
+        let fp = match ((raw >> 12) & 0x1F, u, a) {
+            (0b01100, false, true) => Some(SimdFpOp2::Fcmgt0),
+            (0b01100, true, true) => Some(SimdFpOp2::Fcmge0),
+            (0b01101, false, true) => Some(SimdFpOp2::Fcmeq0),
+            (0b01101, true, true) => Some(SimdFpOp2::Fcmle0),
+            (0b01110, false, true) => Some(SimdFpOp2::Fcmlt0),
+            (0b01111, false, true) => Some(SimdFpOp2::Fabs),
+            (0b01111, true, true) => Some(SimdFpOp2::Fneg),
+            (0b11111, true, true) => Some(SimdFpOp2::Fsqrt),
+            (0b10110, false, false) if double => Some(SimdFpOp2::Fcvtn),
+            (0b10111, false, false) if double => Some(SimdFpOp2::Fcvtl),
+            _ => None,
+        };
+        if let Some(op) = fp {
+            // FCVTN/FCVTL use Q to pick the half of the wide/narrow register, not the lane count
+            let wide_q = matches!(op, SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl);
+            if double && !q && !wide_q {
+                return None;
+            }
+            return Some(Instruction::SimdFpTwoMisc { rd, rn, op, double, q });
+        }
+        // FCVTZS/FCVTZU vector, integer result: a == 1, opcode 11011
+        if (raw >> 12) & 0x1F == 0b11011 && a {
+            if double && !q {
+                return None;
+            }
+            let op = if u { SimdOp2::Fcvtzu } else { SimdOp2::Fcvtzs };
+            return Some(Instruction::SimdTwoMisc { rd, rn, op, esize: if double { 64 } else { 32 }, q });
+        }
     }
 
     // 29. AdvSIMD two-register miscellaneous: 0 Q U 01110 size 10000 opcode 10 Rn Rd
