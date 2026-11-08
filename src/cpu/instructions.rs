@@ -552,6 +552,17 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// `PMULL` / `PMULL2`: polynomial (carry-less) multiply long. `wide` selects the 64-bit form
+    /// (`Vd.1Q` from `Vn.1D`, `Vm.1D`), otherwise 8-bit lanes widen to 16 bits (`Vd.8H` from `Vn.8B`).
+    /// `q` selects the high source half.
+    Pmull {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        wide: bool,
+        q: bool,
+    },
+
     /// AdvSIMD three registers of the same type (integer and bitwise)
     SimdThreeSame {
         rd: u8,

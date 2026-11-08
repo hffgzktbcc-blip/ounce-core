@@ -1772,6 +1772,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::Pmull { rd, rn, rm, wide, q } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::pmull(n, m, wide, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdAcross { rd, rn, op, esize, q } => {
                 self.regs.write_q(rd, simd::across(op, self.regs.read_q(rn), esize as u32, q));
                 self.regs.advance_pc();
