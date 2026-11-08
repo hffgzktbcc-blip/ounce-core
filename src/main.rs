@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 mod audio;
+mod census;
 mod cpu;
 mod crypto;
 mod fs;
@@ -151,6 +152,9 @@ fn main() {
                 "switch2_showcase.nsp"
             };
             build_and_boot_showcase_nsp(out_path);
+        }
+        "census" => {
+            std::process::exit(census::run(&args[2..]));
         }
         "inspect" => {
             print_banner();
@@ -3668,7 +3672,12 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> bool {
     let start = Instant::now();
     let (mut svcs, mut frames) = (0u64, 0u64);
     let mut completed = false;
+    let time_limit = nro_time_limit();
     loop {
+        if time_limit.is_some_and(|limit| start.elapsed() >= limit) {
+            println!("[NCE] Time limit reached ({:.1} s, OUNCE_NRO_TIMEOUT_SECS); stopping the guest.", start.elapsed().as_secs_f64());
+            break;
+        }
         match engine.run(&mut cpu, &mut mmu, &|| kernel.system_tick()) {
             NceExit::Svc(id) => {
                 svcs += 1;
@@ -3705,6 +3714,17 @@ const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
 /// as "locked by this thread". Below the scheduler's (0x2000+) and IPC's (0x10001+) handle ranges.
 const NRO_MAIN_THREAD_HANDLE: u32 = 0x1000;
 const NRO_INSTRUCTION_BUDGET: usize = 50_000_000;
+/// Parses a wall-clock limit in seconds (`OUNCE_NRO_TIMEOUT_SECS`); anything non-positive or unparsable means no limit.
+fn parse_time_limit(value: &str) -> Option<std::time::Duration> {
+    value.trim().parse::<f64>().ok().filter(|secs| secs.is_finite() && *secs > 0.0).map(std::time::Duration::from_secs_f64)
+}
+
+/// `OUNCE_NRO_TIMEOUT_SECS=<n>` stops a native (`--cpu=native`) run after `n` seconds of wall-clock time. Native has
+/// no instruction budget, so an interactive program that waits for input would otherwise run until killed.
+fn nro_time_limit() -> Option<std::time::Duration> {
+    std::env::var("OUNCE_NRO_TIMEOUT_SECS").ok().and_then(|v| parse_time_limit(&v))
+}
+
 /// Instruction cap for an NRO run: `OUNCE_NRO_BUDGET=<n>` raises it for long programs (default 50 million).
 fn nro_instruction_budget() -> usize {
     std::env::var("OUNCE_NRO_BUDGET").ok().and_then(|v| v.parse().ok()).filter(|n| *n > 0).unwrap_or(NRO_INSTRUCTION_BUDGET)
@@ -3996,5 +4016,20 @@ fn run_jit_selftest() {
     {
         eprintln!("[Tier-4] Not available: rebuild with `--features native-jit`.");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod time_limit_tests {
+    use super::parse_time_limit;
+    use std::time::Duration;
+
+    #[test]
+    fn parses_positive_seconds_and_rejects_the_rest() {
+        assert_eq!(parse_time_limit("2"), Some(Duration::from_secs(2)));
+        assert_eq!(parse_time_limit(" 0.5 "), Some(Duration::from_millis(500)));
+        for bad in ["", "0", "-3", "abc", "NaN", "inf"] {
+            assert_eq!(parse_time_limit(bad), None, "{bad:?}");
+        }
     }
 }

@@ -21,6 +21,9 @@ pub enum CpuError {
     #[error("Unimplemented instruction 0x{raw:08X} at PC: 0x{pc:016X}")]
     UnimplementedInstruction { raw: u32, pc: u64 },
 
+    #[error("BRK #{imm:#x} breakpoint hit at PC: 0x{pc:016X}")]
+    Breakpoint { imm: u16, pc: u64 },
+
     #[error("CPU halted: {0}")]
     Halted(String),
 
@@ -901,11 +904,15 @@ impl Cpu {
                 // 0x5F00 = CNTFRQ_EL0  (19,200,000 Hz Switch 2 hardware timer frequency)
                 // 0x5F01 = CNTPCT_EL0  (Switch 2 physical timer counter)
                 // 0x5807 = DCZID_EL0   (S3_3_C0_C0_7)
+                // 0x5A20 = FPCR        (S3_3_C4_C4_0), stored only
+                // 0x5A21 = FPSR        (S3_3_C4_C4_1), QC modelled
                 if is_read {
                     let val = match sysreg {
                         0x5E82 => self.regs.tpidr_el0,
                         0x5E83 => self.regs.tpidrro_el0,
                         0x5A10 => self.regs.pstate.to_bits() as u64,
+                        0x5A20 => self.regs.fpcr as u64,
+                        0x5A21 => self.regs.fpsr as u64,
                         0x5F00 => 19_200_000,
                         // DCZID_EL0: DC ZVA permitted, block = 2^4 words = DC_ZVA_BLOCK bytes
                         0x5807 => DC_ZVA_BLOCK.trailing_zeros() as u64 - 2,
@@ -928,6 +935,8 @@ impl Cpu {
                         0x5E82 => self.regs.tpidr_el0 = val,
                         0x5E83 => self.regs.tpidrro_el0 = val,
                         0x5A10 => self.regs.pstate.from_bits(val as u32),
+                        0x5A20 => self.regs.fpcr = val as u32,
+                        0x5A21 => self.regs.fpsr = val as u32 & super::registers::FPSR_MASK,
                         _ => {}
                     }
                 }
@@ -1578,6 +1587,20 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdFpThreeSame { rd, rn, rm, op, double, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::fp_three_same(op, d, n, m, double, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdFpTwoMisc { rd, rn, op, double, q } => {
+                let (d, n) = (self.regs.read_q(rd), self.regs.read_q(rn));
+                self.regs.write_q(rd, simd::fp_two_misc(op, d, n, double, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 let res = simd::fp_by_element(op, d, n, m, index as usize, double, q);
@@ -1589,6 +1612,17 @@ impl Cpu {
             Instruction::SimdExt { rd, rn, rm, index, q } => {
                 let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::extract(n, m, index as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdTbl { rd, rn, rm, regs, is_tbx, q } => {
+                let mut table = [0u128; 4];
+                for (i, t) in table.iter_mut().take(regs as usize).enumerate() {
+                    *t = self.regs.read_q(rn.wrapping_add(i as u8) & 0x1F);
+                }
+                let res = simd::table_lookup(&table[..regs as usize], self.regs.read_q(rm), self.regs.read_q(rd), is_tbx, q);
+                self.regs.write_q(rd, res);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1618,6 +1652,21 @@ impl Cpu {
                     };
                     self.regs.write_w(rd, res);
                 }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Crc32 { rd, rn, rm, size, castagnoli } => {
+                let poly: u32 = if castagnoli { 0x82F6_3B78 } else { 0xEDB8_8320 };
+                let mut crc = self.regs.read_w(rn);
+                let data = self.regs.read_x(rm);
+                for i in 0..(1u32 << size) {
+                    crc ^= ((data >> (8 * i)) & 0xFF) as u32;
+                    for _ in 0..8 {
+                        crc = if crc & 1 != 0 { (crc >> 1) ^ poly } else { crc >> 1 };
+                    }
+                }
+                self.regs.write_w(rd, crc);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1774,7 +1823,11 @@ impl Cpu {
 
             Instruction::SimdSatLong { rd, rn, rm, op, esize, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
-                self.regs.write_q(rd, simd::sat_doubling_mul_long(op, d, n, m, esize as u32, q));
+                let (r, sat) = simd::sat_doubling_mul_long(op, d, n, m, esize as u32, q);
+                if sat {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, r);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1795,6 +1848,18 @@ impl Cpu {
 
             Instruction::SimdAcross { rd, rn, op, esize, q } => {
                 self.regs.write_q(rd, simd::across(op, self.regs.read_q(rn), esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpAbd { rd, rn, rm, is_double } => {
+                if is_double {
+                    let r = (self.regs.read_d(rn) - self.regs.read_d(rm)).abs();
+                    self.regs.write_q(rd, r.to_bits() as u128);
+                } else {
+                    let r = (self.regs.read_s(rn) - self.regs.read_s(rm)).abs();
+                    self.regs.write_q(rd, r.to_bits() as u128);
+                }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1824,6 +1889,41 @@ impl Cpu {
                     SimdShiftOp::Ushll => simd::shll(n, e, sh, q, false),
                 };
                 self.regs.write_q(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Brk { imm } => Err(CpuError::Breakpoint { imm, pc }),
+
+            Instruction::SimdShiftExt { rd, rn, op, esize, shift, q, scalar } => {
+                let (n, e) = (self.regs.read_q(rn), esize as u32);
+                // a scalar form only reads lane 0 (twice the width for narrowing), so mask the rest out of QC
+                let src = if scalar { n & simd::scalar_source_mask(op, e) } else { n };
+                let (res, sat) = simd::shift_ext_flag(op, self.regs.read_q(rd), src, e, shift as u32, q && !scalar);
+                if sat {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, if scalar { simd::lane(res, e, 0) as u128 } else { res });
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdPairwiseLong { rd, rn, signed, acc, esize, q } => {
+                let res = simd::pairwise_long(self.regs.read_q(rd), self.regs.read_q(rn), esize as u32, q, signed, acc);
+                self.regs.write_q(rd, res);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdQNarrow { rd, rn, op, esize, q, scalar } => {
+                let e = esize as u32;
+                let n = self.regs.read_q(rn);
+                let src = if scalar { n & simd::scalar_source_mask(op, e) } else { n }; // scalar: only the source lane counts
+                let (res, sat) = simd::shift_ext_flag(op, self.regs.read_q(rd), src, e, 0, q && !scalar);
+                if sat {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, if scalar { simd::lane(res, e, 0) as u128 } else { res });
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1949,7 +2049,19 @@ mod tests {
             (0x1f5effbf, "FpData3"),            // fmsub d31, d29, d30, d31
             (0x4ebc9f5a, "SimdThreeSame"),      // mul v26.4s, v26.4s, v28.4s
             (0x0e21db9c, "SimdTwoMisc"),        // scvtf v28.2s, v28.2s
+            (0x7efcd7de, "FpAbd"),              // fabd d30, d30, d28
             (0x7e21dbee, "SimdScalarTwoMisc"),  // ucvtf s14, s31
+            (0x6e22e420, "SimdFpThreeSame"),    // fcmge v0.4s, v1.4s, v2.4s
+            (0x4e62e420, "SimdFpThreeSame"),    // fcmeq v0.2d, v1.2d, v2.2d
+            (0x6ea2e420, "SimdFpThreeSame"),    // fcmgt v0.4s, v1.4s, v2.4s
+            (0x6e22dc20, "SimdVec4S"),          // fmul v0.4s, v1.4s, v2.4s (older dedicated arm)
+            (0x6e62dc20, "SimdFpThreeSame"),    // fmul v0.2d, v1.2d, v2.2d
+            (0x4e22cc20, "SimdFpThreeSame"),    // fmla v0.4s, v1.4s, v2.4s
+            (0x6e62fc20, "SimdFpThreeSame"),    // fdiv v0.2d, v1.2d, v2.2d
+            (0x4ea0f820, "SimdFpTwoMisc"),      // fabs v0.4s, v1.4s
+            (0x4ea0c820, "SimdFpTwoMisc"),      // fcmgt v0.4s, v1.4s, #0.0
+            (0x0e616820, "SimdFpTwoMisc"),      // fcvtn v0.2s, v1.2d
+            (0x4ea1b820, "SimdTwoMisc"),        // fcvtzs v0.4s, v1.4s
             (0x7ea1b800, "SimdScalarTwoMisc"),  // fcvtzu s0, s0
             (0x0e612800, "SimdShiftImm"),       // xtn v0.4h, v0.4s
             (0x2f10a400, "SimdShiftImm"),       // uxtl v0.4s, v0.4h
@@ -1960,6 +2072,97 @@ mod tests {
             let got = format!("{:?}", super::super::decoder::decode(raw));
             assert!(got.starts_with(name), "0x{raw:08X}: expected {name}, got {got}");
         }
+    }
+
+    #[test]
+    fn fabd_scalar_absolute_difference() {
+        // fabd d30, d30, d28 ; fabd s0, s1, s2 (found by the cJSON differential test)
+        let (cpu, _) = run(&[0x7efcd7de, 0x7ea2d420], |c, _| {
+            c.regs.write_q(30, u128::MAX);
+            c.regs.write_d(30, 1.0);
+            c.regs.write_d(28, 3.5);
+            c.regs.write_q(0, u128::MAX);
+            c.regs.write_s(1, -2.0);
+            c.regs.write_s(2, 5.0);
+        });
+        assert_eq!(cpu.regs.read_q(30), 2.5f64.to_bits() as u128); // |1.0 - 3.5|, upper bits zeroed
+        assert_eq!(cpu.regs.read_q(0), 7.0f32.to_bits() as u128); // |-2 - 5|
+        let (cpu, _) = run(&[0x7efcd7de], |c, _| {
+            c.regs.write_d(30, f64::NAN);
+            c.regs.write_d(28, 1.0);
+        });
+        assert!(cpu.regs.read_d(30).is_nan());
+        let (cpu, _) = run(&[0x7efcd7de], |c, _| {
+            c.regs.write_d(30, f64::INFINITY);
+            c.regs.write_d(28, f64::INFINITY);
+        });
+        assert!(cpu.regs.read_d(30).is_nan()); // inf - inf
+    }
+
+    #[test]
+    fn tbl_tbx_instructions() {
+        // tbl v0.16b, {v0.16b}, v3.16b ; tbl v4.16b, {v30.16b, v31.16b}, v3.16b ; tbx v5.8b, {v1.16b}, v3.8b
+        let words = [0x4E03_0000u32, 0x4E03_23C4, 0x0E03_1025];
+        let names = ["SimdTbl"; 3];
+        for (w, n) in words.iter().zip(names) {
+            assert!(format!("{:?}", super::super::decoder::decode(*w)).starts_with(n), "0x{w:08X}");
+        }
+        let (cpu, _) = run(&words, |c, _| {
+            // v0 = bytes 0x00..0x0F reversed index source, v3 = indices 15..0
+            c.regs.write_q(0, (0..16u128).fold(0, |a, i| a | ((0x40 + i) << (8 * i))));
+            c.regs.write_q(3, (0..16u128).fold(0, |a, i| a | ((15 - i) << (8 * i))));
+            c.regs.write_q(30, (0..16u128).fold(0, |a, i| a | ((0x50 + i) << (8 * i))));
+            c.regs.write_q(31, (0..16u128).fold(0, |a, i| a | ((0x60 + i) << (8 * i))));
+            c.regs.write_q(1, (0..16u128).fold(0, |a, i| a | ((0x70 + i) << (8 * i))));
+            c.regs.write_q(5, u128::MAX);
+        });
+        // tbl reverses the byte order of v0
+        assert_eq!(cpu.regs.read_q(0), (0..16u128).fold(0, |a, i| a | ((0x40 + 15 - i) << (8 * i))));
+        // two-register table: indices 0..15 only touch v30
+        assert_eq!(cpu.regs.read_q(4), (0..16u128).fold(0, |a, i| a | ((0x50 + 15 - i) << (8 * i))));
+        // tbx 64-bit: low 8 bytes looked up from v1 with indices 15..8, upper half zeroed
+        assert_eq!(cpu.regs.read_q(5), (0..8u128).fold(0, |a, i| a | ((0x70 + 15 - i) << (8 * i))));
+    }
+
+    #[test]
+    fn crc32_instructions() {
+        // crc32b w1,w1,w0 ; crc32cb w3,w3,w0 ; crc32x w5,w5,x0 ; crc32w w6,w6,w0 ; crc32h w7,w7,w0 ; crc32cx w8,w8,x0
+        let words = [0x1AC0_4021u32, 0x1AC0_5063, 0x9AC0_4CA5, 0x1AC0_48C6, 0x1AC0_44E7, 0x9AC0_5D08];
+        for w in words {
+            assert!(format!("{:?}", super::super::decoder::decode(w)).starts_with("Crc32"), "0x{w:08X}");
+        }
+        // sf=1 with a byte size is not a valid encoding
+        assert!(format!("{:?}", super::super::decoder::decode(0x9AC0_4021)).starts_with("Unimplemented"));
+        let (cpu, _) = run(&words, |c, _| {
+            c.regs.write_x(0, 0x3132_3334_3536_3738);
+            for r in [1, 3, 5, 6, 7, 8] {
+                c.regs.write_x(r, 0xFFFF_FFFF);
+            }
+        });
+        // reference values from a bitwise software CRC (no pre/post inversion, reflected)
+        let crc = |init: u32, data: u64, bytes: u32, poly: u32| {
+            let mut c = init;
+            for i in 0..bytes {
+                c ^= ((data >> (8 * i)) & 0xFF) as u32;
+                for _ in 0..8 {
+                    c = if c & 1 != 0 { (c >> 1) ^ poly } else { c >> 1 };
+                }
+            }
+            c
+        };
+        let d = 0x3132_3334_3536_3738u64;
+        assert_eq!(cpu.regs.read_w(1), crc(0xFFFF_FFFF, d, 1, 0xEDB8_8320));
+        assert_eq!(cpu.regs.read_w(3), crc(0xFFFF_FFFF, d, 1, 0x82F6_3B78));
+        assert_eq!(cpu.regs.read_w(5), crc(0xFFFF_FFFF, d, 8, 0xEDB8_8320));
+        assert_eq!(cpu.regs.read_w(6), crc(0xFFFF_FFFF, d, 4, 0xEDB8_8320));
+        assert_eq!(cpu.regs.read_w(7), crc(0xFFFF_FFFF, d, 2, 0xEDB8_8320));
+        assert_eq!(cpu.regs.read_w(8), crc(0xFFFF_FFFF, d, 8, 0x82F6_3B78));
+        // known answer: CRC-32 of "123456789" is 0xCBF43926 with init/xorout 0xFFFFFFFF
+        let mut c = 0xFFFF_FFFFu32;
+        for b in b"123456789" {
+            c = crc(c, *b as u64, 1, 0xEDB8_8320);
+        }
+        assert_eq!(!c, 0xCBF4_3926);
     }
 
     #[test]
@@ -2136,6 +2339,71 @@ mod tests {
     }
 
     #[test]
+    fn saturating_narrows_and_shifts_set_qc() {
+        use super::super::decoder::decode;
+        // sqxtun v0.8b, v1.8h: a negative lane saturates to 0 and sets QC; in-range lanes do not
+        assert!(matches!(decode(0x2E212820), Instruction::SimdQNarrow { scalar: false, .. }), "decode");
+        let (cpu, _) = run(&[0x2E212820], |c, _| c.regs.write_q(1, 0xFFFF));
+        assert_ne!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
+        let (cpu, _) = run(&[0x2E212820], |c, _| c.regs.write_q(1, 5));
+        assert_eq!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
+        // scalar sqxtun b0, h1 reads only lane 0: a saturating value in lane 1 must not set QC
+        assert!(matches!(decode(0x7E212820), Instruction::SimdQNarrow { scalar: true, .. }), "decode scalar");
+        let (cpu, _) = run(&[0x7E212820], |c, _| c.regs.write_q(1, 0xFFFF_0005));
+        assert_eq!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
+        assert_eq!(cpu.regs.read_q(0), 5);
+        let (cpu, _) = run(&[0x7E212820], |c, _| c.regs.write_q(1, 0x0005_FFFF));
+        assert_ne!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
+    }
+
+    #[test]
+    fn fpsr_qc_sticky_and_fpcr_round_trip() {
+        const QC: u64 = 1 << 27;
+        // v0 = v1 = {0x8000, 0x0002, ..}: SQDMULL lane 0 is min * min (saturates), lane 1 is 2*2*2 = 8.
+        let sat_ops = |c: &mut Cpu, _: &mut Memory| {
+            c.regs.write_q(0, 0x0002_8000);
+            c.regs.write_q(1, 0x0002_8000);
+        };
+        // msr fpsr, xzr; sqdmull v2.4s, v0.4h, v1.4h; mrs x0, fpsr
+        let (cpu, _) = run(&[0xd51b443f, 0x0e61d002, 0xd53b4420], sat_ops);
+        assert_eq!(cpu.regs.read_x(0), QC);
+        assert_eq!(cpu.regs.read_q(2) & 0xFFFF_FFFF, 0x7FFF_FFFF);
+        // No lane saturates: QC stays clear. 0x4000 * 0x4000 * 2 = 0x2000_0000.
+        let (cpu, _) = run(&[0xd51b443f, 0x0e61d002, 0xd53b4420], |c, _| {
+            c.regs.write_q(0, 0x4000);
+            c.regs.write_q(1, 0x4000);
+        });
+        assert_eq!(cpu.regs.read_x(0), 0);
+        // SQDMLAL accumulate saturation alone sets QC: acc 0x7FFFFFF0 + 2*3*5.
+        let (cpu, _) = run(&[0xd51b443f, 0x0e619002, 0xd53b4420], |c, _| {
+            c.regs.write_q(2, 0x7FFF_FFF0);
+            c.regs.write_q(0, 3);
+            c.regs.write_q(1, 5);
+        });
+        assert_eq!(cpu.regs.read_x(0), QC);
+        // Sticky: a later non-saturating op leaves QC set; msr fpsr, xzr clears it.
+        // sqdmull (sat); sqdmull v3.4s, v4.4h, v5.4h (zeros, no sat); mrs x0; msr fpsr, xzr; mrs x1
+        let (cpu, _) = run(&[0x0e61d002, 0x0e65d083, 0xd53b4420, 0xd51b443f, 0xd53b4421], sat_ops);
+        assert_eq!(cpu.regs.read_x(0), QC);
+        assert_eq!(cpu.regs.read_x(1), 0);
+        // mrs/msr round trip. FPSR keeps only defined bits; FPCR is stored verbatim.
+        let (cpu, _) = run(&[0xd51b4421, 0xd53b4420, 0xd51b4422, 0xd53b4423], |c, _| {
+            c.regs.write_x(1, 0xFFFF_FFFF);
+            c.regs.write_x(2, 0x0140_0000); // no defined bits
+        });
+        assert_eq!(cpu.regs.read_x(0), 0x0800_009F);
+        assert_eq!(cpu.regs.read_x(3), 0);
+        // msr fpcr, x1; mrs x0, fpcr; msr fpsr, x2; mrs x3, fpsr
+        let (cpu, _) = run(&[0xd51b4401, 0xd53b4400, 0xd51b4422, 0xd53b4423], |c, _| {
+            c.regs.write_x(1, 0x0300_0000);
+            c.regs.write_x(2, 0);
+        });
+        assert_eq!(cpu.regs.read_x(0), 0x0300_0000);
+        assert_eq!(cpu.regs.fpcr, 0x0300_0000);
+        assert_eq!(cpu.regs.read_x(3), 0); // fpsr untouched by fpcr writes
+    }
+
+    #[test]
     fn simd_lane_moves_and_single_structure() {
         let (cpu, mmu) = run(
             &[
@@ -2230,5 +2498,149 @@ mod tests {
             c.regs.write_q(2, super::simd::dup(2, 32, true));
         });
         assert_eq!(cpu.regs.read_q(0), super::simd::dup(1, 32, true));
+    }
+}
+
+#[cfg(test)]
+mod intvec_tests {
+    //! Integer vector narrowing/shift forms and BRK. Encodings from the devkitA64 assembler; expected values
+    //! computed by hand from the architecture pseudocode.
+    use super::*;
+    use crate::mmu::Permission;
+
+    const CODE: u64 = 0x1000;
+
+    fn lanes(esize: u32, vals: &[u64]) -> u128 {
+        let mut v = 0u128;
+        for (i, x) in vals.iter().enumerate() {
+            simd::set_lane(&mut v, esize, i, *x);
+        }
+        v
+    }
+
+    /// Runs one word with v0 = `d` and v1 = `n`; returns v0.
+    fn one(word: u32, d: u128, n: u128) -> u128 {
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        mmu.map_range(CODE, 0x1000, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(CODE, word).unwrap();
+        cpu.regs.pc = CODE;
+        cpu.regs.write_q(0, d);
+        cpu.regs.write_q(1, n);
+        assert!(matches!(cpu.step(&mut mmu), Ok(StepResult::Continue)), "{word:#x}");
+        cpu.regs.read_q(0)
+    }
+
+    #[test]
+    fn saturating_narrow() {
+        let n16 = lanes(16, &[0x0100, 0xFFFF, 5, 0x8000, 0x7FFF, 0xFF, 0, 1]);
+        // sqxtun v0.8b, v1.8h: negatives to 0, above 255 to 255
+        assert_eq!(one(0x2e212820, u128::MAX, n16), 0x0100_ffff_0005_00ff);
+        // sqxtun2 v0.16b, v1.8h keeps the low half of v0
+        assert_eq!(one(0x6e212820, 0x1111_2222_3333_4444, n16), 0x0100_ffff_0005_00ffu128 << 64 | 0x1111_2222_3333_4444);
+        // sqxtn v0.4h, v1.4s
+        let n32 = lanes(32, &[0x8000_0000, 0x7FFF_FFFF, 0xFFFF_FFFE, 0x0001_0000]);
+        assert_eq!(one(0x0e614820, u128::MAX, n32), 0x7FFF_FFFE_7FFF_8000);
+        // uqxtn v0.8b, v1.8h: unsigned source, so 0xFFFF saturates to 0xFF
+        let n16 = lanes(16, &[0x100, 0xFFFF, 5, 0, 0xFE, 0xFF, 1, 2]);
+        assert_eq!(one(0x2e214820, u128::MAX, n16), 0x0201_fffe_0005_ffff);
+        // sqxtn b0, h1: scalar, upper bits zero
+        assert_eq!(one(0x5e214820, u128::MAX, 0x0100), 0x7F);
+    }
+
+    #[test]
+    fn narrowing_shifts() {
+        // rshrn v0.8b, v1.8h, #4: (0xAB8 + 8) >> 4 = 0xAC; (0xFFFF + 8) >> 4 = 0x1000 -> low byte 0
+        let n = lanes(16, &[0xFFFF, 0xAB8, 0xAB8, 0xAB8, 0xAB8, 0xAB8, 0xAB8, 0xAB8]);
+        assert_eq!(one(0x0f0c8c20, 0, n), 0xACAC_ACAC_ACAC_AC00);
+        // rshrn2 v0.8h, v1.4s, #3 keeps the low half: (0x1_0004 + 4) >> 3 = 0x2001
+        let n = lanes(32, &[0x1_0004, 0, 0xF, 0xC]);
+        assert_eq!(one(0x4f1d8c20, 0xAA, n), lanes(16, &[0x2001, 0, 2, 2]) << 64 | 0xAA);
+        // sqshrn v0.4h, v1.4s, #5
+        let n = lanes(32, &[0x7FFF_FFFF, 0xFFFF_FFFF, 0x8000_0000, 0x640]);
+        assert_eq!(one(0x0f1b9420, 0, n), 0x0032_8000_FFFF_7FFF);
+        // uqrshrn v0.8b, v1.8h, #3: (0xFFFF + 4) >> 3 saturates; (0x14 + 4) >> 3 = 3
+        let n = lanes(16, &[0xFFFF, 0x14, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(one(0x2f0d9c20, 0, n), 0x0000_0000_0000_03ff);
+        // sqshrun v0.2s, v1.2d, #7: -5000 >> 7 < 0 -> 0; huge -> 0xFFFFFFFF
+        let n = lanes(64, &[(-5000i64) as u64, i64::MAX as u64]);
+        assert_eq!(one(0x2f398420, 0, n), 0xFFFF_FFFF_0000_0000);
+    }
+
+    #[test]
+    fn accumulate_round_insert() {
+        let dup = |e, v| simd::dup(v, e, true);
+        // usra v0.4s, v1.4s, #3: 10 + (0x80000000 >> 3)
+        assert_eq!(one(0x6f3d1420, dup(32, 10), dup(32, 0x8000_0000)), dup(32, 0x1000_000A));
+        // ssra v0.8h, v1.8h, #2: 1 + (-32768 >> 2) = 0xE001
+        assert_eq!(one(0x4f1e1420, dup(16, 1), dup(16, 0x8000)), dup(16, 0xE001));
+        // srshr v0.4s, v1.4s, #4: -24 -> (-24 + 8) >> 4 = -1; 24 -> 2; 7 -> 0; -8 -> 0
+        let n = lanes(32, &[(-24i32) as u32 as u64, 24, 7, (-8i32) as u32 as u64]);
+        assert_eq!(one(0x4f3c2420, 0, n), lanes(32, &[0xFFFF_FFFF, 2, 0, 0]));
+        // urshr v0.4s, v1.4s, #1: 0xFFFFFFFF -> 0x80000000 (no 32-bit overflow); 1 -> 1; 3 -> 2
+        let n = lanes(32, &[0xFFFF_FFFF, 1, 0, 3]);
+        assert_eq!(one(0x6f3f2420, 0, n), lanes(32, &[0x8000_0000, 1, 0, 2]));
+        // srsra v0.8h, v1.8h, #3: 5 + ((-9 + 4) >> 3) = 5 + -1 = 4
+        assert_eq!(one(0x4f1d3420, dup(16, 5), dup(16, (-9i16) as u16 as u64)), dup(16, 4));
+        // ursra v0.2d, v1.2d, #5: 1 + ((0xFFFF_FFFF_FFFF_FFFF + 16) >> 5) = 1 + 0x0800_0000_0000_0000
+        assert_eq!(one(0x6f7b3420, dup(64, 1), dup(64, u64::MAX)), dup(64, 0x0800_0000_0000_0001));
+        // usra d0, d1, #7: scalar, 5 + (1 << 63 >> 7), upper half zeroed
+        assert_eq!(one(0x7f791420, 5, 1u128 << 63 | 1u128 << 100), 0x0100_0000_0000_0005);
+        // sri v0.4s, v1.4s, #8: top byte of d kept, n >> 8 below
+        assert_eq!(one(0x6f384420, dup(32, 0xAABB_CCDD), dup(32, 0x1122_3344)), dup(32, 0xAA11_2233));
+        // sli v0.4s, v1.4s, #8: low byte of d kept, n << 8 above
+        assert_eq!(one(0x6f285420, dup(32, 0xAABB_CCDD), dup(32, 0x1122_3344)), dup(32, 0x2233_44DD));
+    }
+
+    #[test]
+    fn saturating_shift_left() {
+        let n = lanes(32, &[0x1000_0000, 0xF000_0000, 0xE000_0000, 5]);
+        // sqshl v0.4s, v1.4s, #3: 2^31 overflows, -2^31 fits exactly, below saturates to INT_MIN
+        assert_eq!(one(0x4f237420, 0, n), lanes(32, &[0x7FFF_FFFF, 0x8000_0000, 0x8000_0000, 40]));
+        // uqshl v0.16b, v1.16b, #2: bytes 40 3f 01 80 -> ff fc 04 ff
+        assert_eq!(one(0x6f0a7420, 0, simd::dup(0x8001_3F40, 32, true)), simd::dup(0xFF04_FCFF, 32, true));
+        // sqshlu v0.8h, v1.8h, #4: signed source, unsigned result
+        let n = lanes(16, &[0xFFFF, 0x07FF, 0x0800, 0x1000, 0, 0, 0, 0]);
+        assert_eq!(one(0x6f146420, 0, n), lanes(16, &[0, 0x7FF0, 0x8000, 0xFFFF, 0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn pairwise_long() {
+        // uaddlp v0.1d, v1.2s (0x2ea02820): 0xFFFFFFFF + 0xFFFFFFFF = 0x1_FFFF_FFFE
+        assert_eq!(one(0x2ea02820, u128::MAX, lanes(32, &[0xFFFF_FFFF, 0xFFFF_FFFF])), 0x1_FFFF_FFFE);
+        // saddlp v0.8h, v1.16b (0x4e202820): -1 + -1 = -2 ; 127 + 127 = 254
+        let n = lanes(8, &[0xFF, 0xFF, 127, 127, 0x80, 0x80, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(one(0x4e202820, 0, n), lanes(16, &[0xFFFE, 254, 0xFF00, 3, 0, 0, 0, 0]));
+        // uadalp v0.4s, v1.8h (0x6e606820): 10 + (0xFFFF + 1)
+        let n = lanes(16, &[0xFFFF, 1, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(one(0x6e606820, lanes(32, &[10, 20, 30, 40]), n), lanes(32, &[10 + 0x10000, 20, 30, 40]));
+    }
+
+    #[test]
+    fn addp_scalar_d() {
+        // addp d0, v1.2d (0x5ef1b820): 1 + 2^64-1 wraps to 0; upper half zeroed
+        assert_eq!(one(0x5ef1b820, u128::MAX, 1u128 | (u64::MAX as u128) << 64), 0);
+        assert_eq!(one(0x5ef1b820, u128::MAX, 7u128 | 9u128 << 64), 16);
+    }
+
+    #[test]
+    fn saturate_helper_reports_saturation() {
+        assert_eq!(simd::saturate(300, 8, false), (255, true));
+        assert_eq!(simd::saturate(-1, 8, false), (0, true));
+        assert_eq!(simd::saturate(-129, 8, true), (0x80, true));
+        assert_eq!(simd::saturate(127, 8, true), (127, false));
+    }
+
+    #[test]
+    fn brk_stops_the_guest() {
+        let mut mmu = Memory::new();
+        let mut cpu = Cpu::new();
+        mmu.map_range(CODE, 0x1000, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(CODE, 0xd4207d00).unwrap(); // brk #0x3e8
+        cpu.regs.pc = CODE;
+        let err = cpu.step(&mut mmu).unwrap_err();
+        assert!(matches!(err, CpuError::Breakpoint { imm: 0x3e8, pc: CODE }), "{err:?}");
+        assert_eq!(err.to_string(), "BRK #0x3e8 breakpoint hit at PC: 0x0000000000001000");
+        assert_eq!(cpu.regs.pc, CODE);
     }
 }

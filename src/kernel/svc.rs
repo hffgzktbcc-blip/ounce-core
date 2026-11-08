@@ -1272,7 +1272,7 @@ impl HorizonKernel {
 }
 
 /// `ThreadContext` (libnx `svc.h`) for svcGetThreadContext3: X0..X28, FP, LR, SP, PC, PSR, V0..V31,
-/// FPCR, FPSR, TPIDR_EL0. FPCR/FPSR are not modelled and read as 0.
+/// FPCR, FPSR, TPIDR_EL0. FPCR and FPSR are the stored values (only FPSR.QC is ever set by an instruction).
 pub fn thread_context3(regs: &crate::cpu::CpuRegisters) -> [u8; THREAD_CONTEXT_SIZE] {
     let mut out = [0u8; THREAD_CONTEXT_SIZE];
     for (i, &x) in regs.x.iter().enumerate() {
@@ -1284,6 +1284,8 @@ pub fn thread_context3(regs: &crate::cpu::CpuRegisters) -> [u8; THREAD_CONTEXT_S
     for (i, &v) in regs.v.iter().enumerate() {
         out[0x110 + i * 16..0x120 + i * 16].copy_from_slice(&v.to_le_bytes());
     }
+    out[0x310..0x314].copy_from_slice(&regs.fpcr.to_le_bytes());
+    out[0x314..0x318].copy_from_slice(&regs.fpsr.to_le_bytes());
     out[0x318..0x320].copy_from_slice(&regs.tpidr_el0.to_le_bytes());
     out
 }

@@ -15,4 +15,4 @@ All of these stopped with `[VM Error] Unimplemented instruction` (undecoded).
 NRO sha256: `13c8cbf860627f8104a2400b63e41c19440901f93ba93752544e1270ab2557da`.
 
 ## Not covered
-The cumulative saturation flag (`QC` in FPSR) is not modelled by the CPU at all, so a program that reads it sees 0. Saturated values themselves match. Scalar forms (`SQDMULL Sd, Hn, Hm`), by-element forms and `SQDMULH`/`SQRDMULH` are separate instructions and still undecoded.
+The cumulative saturation flag (QC) was not modelled when this check was made; it is now (see `docs/verify/qc-flag`). Saturated values themselves match. Scalar forms (`SQDMULL Sd, Hn, Hm`), by-element forms and `SQDMULH`/`SQRDMULH` are separate instructions and still undecoded.

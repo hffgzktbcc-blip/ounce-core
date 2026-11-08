@@ -65,7 +65,17 @@ pub struct CpuRegisters {
     pub tpidrro_el0: u64,
     /// 32 128-bit SIMD / Floating-Point registers (V0 to V31)
     pub v: [u128; 32],
+    /// FPSR. Only the cumulative `QC` bit (27) is ever set by an instruction (see [`FPSR_QC`]); the
+    /// other defined bits are stored when written by `MSR` but nothing sets them.
+    pub fpsr: u32,
+    /// FPCR. Stored and read back; rounding mode, flush-to-zero and default-NaN are NOT honoured.
+    pub fpcr: u32,
 }
+
+/// `FPSR.QC`: cumulative saturation, sticky until software clears it.
+pub const FPSR_QC: u32 = 1 << 27;
+/// FPSR bits that exist (QC, IDC, IXC UFC OFC DZC IOC); the rest read as zero.
+pub const FPSR_MASK: u32 = 0x0800_009F;
 
 impl Default for CpuRegisters {
     fn default() -> Self {
@@ -83,6 +93,8 @@ impl CpuRegisters {
             tpidr_el0: 0,
             tpidrro_el0: 0,
             v: [0; 32],
+            fpsr: 0,
+            fpcr: 0,
         }
     }
 
