@@ -573,7 +573,7 @@ pub fn decode(raw: u32) -> Instruction {
     }
 
     // 14a2. Floating-Point round to integral: FRINTx
-    if (raw & 0xFF3C7C00) == 0x1E244000 && ((raw >> 15) & 0x7) != 5 {
+    if (raw & 0xFF3C7C00) == 0x1E244000 && ((raw >> 15) & 0x7) != 5 && (raw >> 22) & 0x3 <= 1 {
         return Instruction::FpRound {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
@@ -604,7 +604,7 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 14a3. Float <-> integer conversion (FCVTxS/U, SCVTF, UCVTF, FCVTAS/AU); FMOV (opcodes 6, 7) is elsewhere
     // Pattern: sf 0 0 11110 ftype 1 rmode opcode 000000 Rn Rd
-    if (raw & 0x7F20FC00) == 0x1E200000 && ((raw >> 16) & 0x7) <= 5 {
+    if (raw & 0x7F20FC00) == 0x1E200000 && ((raw >> 16) & 0x7) <= 5 && (raw >> 22) & 0x3 <= 1 {
         return Instruction::FpIntConv {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
@@ -619,7 +619,7 @@ pub fn decode(raw: u32) -> Instruction {
     // (opcode 0001 opc, opc = destination type: 100 to single, 101 to double)
     // Pattern: 0 0 0 11110 ftype 1 opcode(6) 10000 Rn Rd
     let fp1_op = (raw >> 15) & 0x3F;
-    if (raw & 0xFF207C00) == 0x1E204000 && (fp1_op <= 3 || fp1_op == 4 || fp1_op == 5) {
+    if (raw & 0xFF207C00) == 0x1E204000 && (fp1_op <= 5) && (raw >> 22) & 0x3 <= 1 {
         return Instruction::FpData1 {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
@@ -630,7 +630,7 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 14b. Floating-Point Conditional Select: FCSEL
     // Pattern: 0 0 0 11110 ftype 1 Rm cond 11 Rn Rd
-    if (raw & 0xFF200C00) == 0x1E200C00 {
+    if (raw & 0xFF200C00) == 0x1E200C00 && (raw >> 22) & 0x3 <= 1 {
         return Instruction::FpCondSelect {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
@@ -642,7 +642,7 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 15. Floating-Point Compare: FCMP
     // FCMP/FCMPE (bit 4 = signalling) with a register (bit 3 = 0) or #0.0 (bit 3 = 1) operand
-    if (raw & 0x5F203C07) == 0x1E202000 {
+    if (raw & 0x5F203C07) == 0x1E202000 && (raw >> 22) & 0x3 <= 1 {
         let ftype = (raw >> 22) & 0x3;
         let is_double = ftype == 1;
         let rm = ((raw >> 16) & 0x1F) as u8;
@@ -1775,4 +1775,31 @@ fn decode_intvec(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdShiftExt { rd, rn, op, esize: esize as u8, shift: shift as u8, q: q && !scalar, scalar });
     }
     None
+}
+
+#[cfg(test)]
+mod fuzz_half_precision {
+    use super::*;
+
+    /// Found by the instruction fuzzer: scalar FP words with ftype 3 (half precision) were decoded as
+    /// single precision and gave wrong results. Half precision is not implemented, so they must be
+    /// Unimplemented (every word below ran fine on Apple Silicon).
+    #[test]
+    fn half_precision_scalar_words_are_not_decoded_as_single() {
+        for w in [
+            0x1ef1_4f22u32, // fcsel h2, h25, h17, vs
+            0x1ee2_03a6,    // fcvt s6, h29 (ftype 3 one-source)
+            0x9ee0_00b4,    // fcvtns x20, h5
+            0x1efd_21e8,    // fcmp h15, h29
+            0x1ee4_c16a,    // fneg/fabs class, half
+            0x1ef0_ef62,    // fcsel h2, h27, h16, al
+        ] {
+            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#010x} {:?}", decode(w));
+        }
+        // single and double still decode
+        assert!(matches!(decode(0x1e22_0c20), Instruction::FpCondSelect { is_double: false, .. })); // fcsel s0, s1, s2, eq
+        assert!(matches!(decode(0x1e62_0c20), Instruction::FpCondSelect { is_double: true, .. })); // fcsel d0, d1, d2, eq
+        assert!(matches!(decode(0x1e22_2020), Instruction::FpCompare { is_double: false, .. })); // fcmp s1, s2
+        assert!(matches!(decode(0x1e21_c020), Instruction::FpData1 { is_double: false, .. })); // fabs s0, s1
+    }
 }
