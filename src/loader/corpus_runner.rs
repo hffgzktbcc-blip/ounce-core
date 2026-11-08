@@ -787,6 +787,45 @@ fn external_corpus_nro_probe_both_engines() {
     }
 }
 
+/// The unchanged reporter-provided upper-halfword scenario from libnx issue #685.
+/// The NRO is local-only: no source or executable redistribution is implied.
+#[test]
+#[ignore = "requires the exact local audout-channel-test NRO (see docs/verify/AUDIO_CHANNEL_CASE.md)"]
+fn external_audout_padding_case() {
+    use serde_json::json;
+    use sha2::Digest;
+    let path = std::env::var_os("OUNCE_AUDIO_CHANNEL_NRO").expect("OUNCE_AUDIO_CHANNEL_NRO is unset");
+    let nro = std::fs::read(&path).expect("read external audio channel test");
+    let digest = format!("{:x}", sha2::Sha256::digest(&nro));
+    assert_eq!(digest, "69106c5c4b0485abdbce1ca9f17395822c7c7643d15f57b11b9bfc994d7f252c");
+    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(180),
+        frames: usize::MAX, queued_frames: 5,
+        frame_inputs: vec![FrameInput { after_queued_frame: 3, buttons: 1 }],
+        ..Limits::default() };
+    let mut runs = Vec::new();
+    let mut failures = Vec::new();
+    for engine in [Engine::Interpreter, Engine::Tier3] {
+        let (result, kernel) = run_nro_state(&nro, "audout-channel-test.nro", &[], engine, &limits, &[]);
+        let attempts = &kernel.ipc.audio_open_trace;
+        let upper: Vec<_> = attempts.iter().filter(|a| !a.input && a.raw_channels == 0x10000).collect();
+        let passed = result.stop == Stop::FrameLimit && result.queued.len() == 5 && upper.len() == 7
+            && upper.iter().all(|a| a.rate == 48000 && a.result == 0 && a.channels == Some(2));
+        if !passed { failures.push(format!("{engine:?}: upper-halfword negotiation failed: {attempts:?}")); }
+        runs.push(json!({"engine": format!("{engine:?}"), "pass": passed,
+            "flight_record": flight_record(&result, &kernel),
+            "audio_open": attempts.iter().map(|a| json!({"input": a.input, "rate": a.rate,
+                "raw_channels": a.raw_channels, "result": a.result, "channels": a.channels})).collect::<Vec<_>>() }));
+    }
+    let record = json!({"schema_version": "ounce-verify/audout-padding-v1", "nro_sha256": digest,
+        "input": {"after_queued_frame": 3, "buttons": 1}, "queued_frames": 5,
+        "expected": {"requests": 7, "raw_channels": 65536, "result": 0, "channels": 2},
+        "pass": failures.is_empty(), "runs": runs});
+    let text = serde_json::to_string_pretty(&record).unwrap();
+    if let Some(out) = std::env::var_os("OUNCE_REPORT_JSON") { std::fs::write(out, &text).unwrap(); }
+    println!("{text}");
+    assert!(failures.is_empty(), "external audio padding case: {failures:#?}");
+}
+
 /// The simplegfx first-frame oracle (`docs/first-frame-oracle.md`), criteria 3-6, on an NRO built
 /// unchanged from the pinned source. Opt-in: `OUNCE_SIMPLEGFX_NRO=<path> cargo test --release
 /// simplegfx_first_frame_oracle -- --ignored --nocapture`. `OUNCE_SIMPLEGFX_FRAMES` (default 61)
