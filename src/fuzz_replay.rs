@@ -426,6 +426,10 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
     if ee {
+        if count == 0 {
+            eprintln!("--count must be positive; no cases would be compared");
+            return 2;
+        }
         return run_engines(seed, count, show);
     }
     let Some(input) = input else {
@@ -456,7 +460,13 @@ pub fn run(args: &[String]) -> i32 {
     let mut shown = 0;
     let mut ran_classes = std::collections::BTreeSet::new();
     for (n, line) in reader.lines().enumerate() {
-        let Ok(line) = line else { break };
+        let line = match line {
+            Ok(line) => line,
+            Err(e) => {
+                eprintln!("line {}: trace read error: {e}", n + 1);
+                return 2;
+            }
+        };
         let parsed = match parse_line(&line) {
             Ok(p) => p,
             Err(e) => {
@@ -522,6 +532,10 @@ pub fn run(args: &[String]) -> i32 {
             },
         }
     }
+    if t.host_undefined + t.executed + t.unimplemented + t.other_errors == 0 {
+        eprintln!("trace contains no cases; nothing was compared");
+        return 2;
+    }
     println!("--- fuzz-replay summary ---");
     println!("engine:                         {engine:?}");
     if engine == Engine::Tier4 {
@@ -554,7 +568,7 @@ pub fn run(args: &[String]) -> i32 {
     dump("mismatching classes", &mism_classes);
     dump("unimplemented classes", &unimpl_classes);
     dump("classes the emulator runs but the host rejects", &accepts);
-    if t.value_mismatch + t.other_errors > 0 {
+    if t.value_mismatch + t.other_errors + t.emu_runs_undefined > 0 {
         1
     } else {
         0

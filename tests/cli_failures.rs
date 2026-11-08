@@ -69,3 +69,40 @@ fn linux_guest_arguments_after_separator_are_not_host_options() {
     assert_eq!(output.stdout, expected.as_bytes());
     assert!(String::from_utf8_lossy(&output.stderr).contains("engine=Tier-3"));
 }
+
+#[test]
+fn fuzzer_rejects_empty_trace_instead_of_reporting_zero_mismatches_as_success() {
+    let path = std::env::temp_dir().join(format!("ounce_empty_trace_{}.txt", std::process::id()));
+    std::fs::write(&path, b"").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["fuzz-replay", path.to_str().unwrap()]).output().unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("no cases"));
+}
+
+#[test]
+fn fuzzer_does_not_ignore_trace_read_errors() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["fuzz-replay", std::env::temp_dir().to_str().unwrap()]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn fuzzer_rejects_zero_generated_cases() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["fuzz-replay", "--engine-vs-engine", "--count", "0"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn fuzzer_fails_when_the_engine_accepts_a_host_undefined_word() {
+    let path = std::env::temp_dir().join(format!("ounce_undefined_trace_{}.txt", std::process::id()));
+    // A deliberately contradictory reference: MOV X0,#1 is implemented, not UNDEFINED.
+    std::fs::write(&path, b"U d2800020\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["fuzz-replay", path.to_str().unwrap()]).output().unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("emulator runs a word the host calls UNDEFINED: 1"));
+}
