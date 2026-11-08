@@ -67,6 +67,43 @@ pub fn dup(val: u64, esize: u32, q: bool) -> u128 {
 
 /// Three-register same-type operations. `d` is the destination's old value (used by `BSL`/`BIT`/`BIF`).
 pub fn three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -> u128 {
+    three_same_qc(op, d, n, m, esize, q).0
+}
+
+/// Register-shift count of lane `i` of `m`: the low byte as a signed number (negative shifts right).
+fn reg_shift(m: u128, esize: u32, i: usize) -> i32 {
+    lane(m, esize, i) as u8 as i8 as i32
+}
+
+/// `S/URSHL`, `S/UQSHL`, `S/UQRSHL` on one lane. `a` is the raw lane. Returns the lane and whether it saturated.
+fn shift_lane(a: u64, sh: i32, esize: u32, signed: bool, round: bool, sat: bool) -> (u64, bool) {
+    let v: i128 = if signed { sext(a, esize) as i128 } else { a as i128 };
+    if sh >= 0 {
+        if sat {
+            if v == 0 {
+                return (0, false);
+            }
+            if sh as u32 >= esize {
+                return saturate(if v < 0 { i128::MIN / 2 } else { i128::MAX / 2 }, esize, signed);
+            }
+            return saturate(v << sh, esize, signed);
+        }
+        let r = if sh as u32 >= esize { 0 } else { (v << sh) as u64 & mask(esize) };
+        return (r, false);
+    }
+    let rs = ((-sh) as u32).min(100);
+    let adj = if round { v + (1i128 << (rs - 1)) } else { v };
+    ((adj >> rs) as u64 & mask(esize), false)
+}
+
+/// [`three_same`] plus whether a saturating form saturated (the value `FPSR.QC` must accumulate).
+pub fn three_same_qc(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -> (u128, bool) {
+    let mut qc = false;
+    let r = three_same_inner(op, d, n, m, esize, q, &mut qc);
+    (r, qc)
+}
+
+fn three_same_inner(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool, qc: &mut bool) -> u128 {
     let bitwise = match op {
         SimdOp3::And => Some(n & m),
         SimdOp3::Bic => Some(n & !m),
@@ -95,7 +132,49 @@ pub fn three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -
             (lane(n, esize, i), lane(m, esize, i))
         };
         let (sa, sb) = (sext(a, esize), sext(b, esize));
+        let (ia, ib) = (sa as i128, sb as i128);
+        let (ua, ub) = (a as i128, b as i128);
+        let mut sat1 = |v: i128, signed: bool| {
+            let (x, f) = saturate(v, esize, signed);
+            *qc |= f;
+            x
+        };
         let r = match op {
+            SimdOp3::Shadd => ((ia + ib) >> 1) as u64,
+            SimdOp3::Uhadd => ((ua + ub) >> 1) as u64,
+            SimdOp3::Srhadd => ((ia + ib + 1) >> 1) as u64,
+            SimdOp3::Urhadd => ((ua + ub + 1) >> 1) as u64,
+            SimdOp3::Shsub => ((ia - ib) >> 1) as u64,
+            SimdOp3::Uhsub => ((ua - ub) >> 1) as u64,
+            SimdOp3::Sqadd => sat1(ia + ib, true),
+            SimdOp3::Uqadd => sat1(ua + ub, false),
+            SimdOp3::Sqsub => sat1(ia - ib, true),
+            SimdOp3::Uqsub => sat1(ua - ub, false),
+            SimdOp3::Srshl | SimdOp3::Urshl | SimdOp3::Sqshl | SimdOp3::Uqshl | SimdOp3::Sqrshl | SimdOp3::Uqrshl => {
+                let signed = matches!(op, SimdOp3::Srshl | SimdOp3::Sqshl | SimdOp3::Sqrshl);
+                let round = matches!(op, SimdOp3::Srshl | SimdOp3::Urshl | SimdOp3::Sqrshl | SimdOp3::Uqrshl);
+                let sat = matches!(op, SimdOp3::Sqshl | SimdOp3::Uqshl | SimdOp3::Sqrshl | SimdOp3::Uqrshl);
+                let (x, f) = shift_lane(a, reg_shift(m, esize, i), esize, signed, round, sat);
+                *qc |= f;
+                x
+            }
+            SimdOp3::Sabd => (ia - ib).unsigned_abs() as u64,
+            SimdOp3::Uabd => (ua - ub).unsigned_abs() as u64,
+            SimdOp3::Saba => lane(d, esize, i).wrapping_add((ia - ib).unsigned_abs() as u64),
+            SimdOp3::Uaba => lane(d, esize, i).wrapping_add((ua - ub).unsigned_abs() as u64),
+            SimdOp3::Mla => lane(d, esize, i).wrapping_add(a.wrapping_mul(b)),
+            SimdOp3::Mls => lane(d, esize, i).wrapping_sub(a.wrapping_mul(b)),
+            SimdOp3::Pmul => {
+                let mut r = 0u64;
+                for k in 0..8 {
+                    if (b >> k) & 1 == 1 {
+                        r ^= a << k;
+                    }
+                }
+                r & 0xFF
+            }
+            SimdOp3::Sqdmulh => sat1((2 * ia * ib) >> esize, true),
+            SimdOp3::Sqrdmulh => sat1((2 * ia * ib + (1i128 << (esize - 1))) >> esize, true),
             SimdOp3::Add | SimdOp3::Addp => a.wrapping_add(b),
             SimdOp3::Sub => a.wrapping_sub(b),
             SimdOp3::Mul => a.wrapping_mul(b),
@@ -127,6 +206,13 @@ pub fn three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -
         set_lane(&mut out, esize, i, r);
     }
     out
+}
+
+/// Scalar three-same form: lane 0 of `n`/`m` only, result in lane 0 of the destination, the rest zeroed.
+pub fn scalar_three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32) -> (u128, bool) {
+    let keep = mask(esize) as u128;
+    let (r, qc) = three_same_qc(op, d & keep, n & keep, m & keep, esize, true);
+    (r & keep, qc)
 }
 
 /// Two-register miscellaneous operations.

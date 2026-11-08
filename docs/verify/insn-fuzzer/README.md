@@ -37,9 +37,9 @@ Final state, seeds 1, 2, 3, 11, 12, 20261108, 21, 22, 1,000,000 words each:
 | generated | 8,000,000 |
 | host SIGILL (UNDEFINED) | 4,777,660 |
 | host executed | 3,222,340 |
-| interpreter `Unimplemented` | 1,288,396 (about 1,370 encoding classes per seed) |
-| interpreter executed and compared | 1,933,944 (about 1,400 distinct classes per seed) |
-| exact match (X, V, NZCV, QC) | 1,933,944 |
+| interpreter `Unimplemented` | 824,572 (about 1,180 encoding classes per seed; was 1,288,396 before the class work below) |
+| interpreter executed and compared | 2,397,768 (about 1,590 distinct classes per seed) |
+| exact match (X, V, NZCV, QC) | 2,397,768 |
 | mismatches | 0 |
 | executed words whose FPSR exception flags differ from the host | 251,531 (not modelled, not counted as mismatches) |
 | words the interpreter runs but the host calls UNDEFINED | 0 |
@@ -60,11 +60,21 @@ words accepted by the decoder that the host rejects. Triage (all were emulator b
    Scalar FADD/FSUB/FMUL/FNMUL/FDIV/FMAX/FMIN/FMADD family now use explicit NaN order, FMADD addend first with the 0*inf default
    NaN case. Test `fuzz_scalar_nan` (expected values are what the host returned).
 
+## Classes implemented from fuzzer coverage gaps
+Ranked by `Unimplemented` word count over seeds 1 to 3 (481,591 words): integer three-same 41%, two-register misc 20%, by-element
+16%, scalar FP16 about 7%, copy/other, shift. `fuzz-replay --filter MASK:VALUE` (repeatable) counts executed and exactly matching
+words in a class.
+
+1. **Integer three-same** (SHADD/UHADD, SRHADD/URHADD, SHSUB/UHSUB, SQADD/UQADD, SQSUB/UQSUB, S/URSHL, S/UQSHL, S/UQRSHL,
+   S/UABD, S/UABA, MLA/MLS, PMUL, SQDMULH, SQRDMULH) plus the scalar three-same forms (all sizes of the saturating add/sub/shift,
+   SQDMULH/SQRDMULH, D-sized compare/add/shift). QC is modelled. Seeds 1 to 8, 1M words each: 222,144 executed words of the new
+   vector opcodes and 24,105 scalar three-same words, 0 mismatches. Test `fuzz_insn_tests::integer_three_same_classes`.
+
 ## Not covered (explicit)
 - Loads/stores, branches, system, integer scalar data-processing, SVE/SME, crypto, atomics.
 - Features the interpreter lacks: half-precision scalar and vector FP (FEAT_FP16), dot product, BF16/I8MM, FCMA, RDM, and
-  every encoding class it reports as unimplemented (top classes by count: 0x4f00fc00, 0x0f00fc00, 0x6ea03800, 0x2e203800,
-  0x4e207800; see the summary the tool prints). That is about 40% of the words the host executes in this space.
+  every encoding class it reports as unimplemented (top classes by count: 0x4f00fc00, 0x0f00fc00, 0x6ea03800; see the summary the tool prints).
+  That is about 26% of the words the host executes in this space (was 40%).
 - FPCR is always 0 (default rounding, no flush-to-zero, no default-NaN, no trapping). Other FPCR modes are untested.
 - FPSR exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are not modelled by the interpreter and are not compared.
 - Only the interpreter is exercised. Tier-3 block code and Tier-4 are compared against it elsewhere (qc-flag), not here.

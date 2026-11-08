@@ -1254,23 +1254,45 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::FpAbd { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
     }
 
-    // 27c. AdvSIMD scalar three same (D registers): 01 U 11110 size 1 Rm opcode 1 Rn Rd, size == 3.
-    // A one-lane 64-bit vector op writes lane 0 and zeroes the rest, exactly the scalar semantics.
-    if (raw & 0xDF20_0400) == 0x5E20_0400 && size == 3 {
+    // 27c. AdvSIMD scalar three same: 01 U 11110 size 1 Rm opcode 1 Rn Rd.
+    //      A one-lane op writes lane 0 and zeroes the rest, exactly the scalar semantics.
+    if (raw & 0xDF20_0400) == 0x5E20_0400 && (raw >> 11) & 0x1F < 0b11000 {
         let op = match ((raw >> 11) & 0x1F, u) {
-            (0b10000, false) => SimdOp3::Add,
-            (0b10000, true) => SimdOp3::Sub,
-            (0b10001, false) => SimdOp3::Cmtst,
-            (0b10001, true) => SimdOp3::Cmeq,
+            (0b00001, false) => SimdOp3::Sqadd,
+            (0b00001, true) => SimdOp3::Uqadd,
+            (0b00101, false) => SimdOp3::Sqsub,
+            (0b00101, true) => SimdOp3::Uqsub,
             (0b00110, false) => SimdOp3::Cmgt,
             (0b00110, true) => SimdOp3::Cmhi,
             (0b00111, false) => SimdOp3::Cmge,
             (0b00111, true) => SimdOp3::Cmhs,
             (0b01000, false) => SimdOp3::Sshl,
             (0b01000, true) => SimdOp3::Ushl,
+            (0b01001, false) => SimdOp3::Sqshl,
+            (0b01001, true) => SimdOp3::Uqshl,
+            (0b01010, false) => SimdOp3::Srshl,
+            (0b01010, true) => SimdOp3::Urshl,
+            (0b01011, false) => SimdOp3::Sqrshl,
+            (0b01011, true) => SimdOp3::Uqrshl,
+            (0b10000, false) => SimdOp3::Add,
+            (0b10000, true) => SimdOp3::Sub,
+            (0b10001, false) => SimdOp3::Cmtst,
+            (0b10001, true) => SimdOp3::Cmeq,
+            (0b10110, false) => SimdOp3::Sqdmulh,
+            (0b10110, true) => SimdOp3::Sqrdmulh,
             _ => return None,
         };
-        return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 64, q: false });
+        // Only the saturating add/sub/shift forms have byte, half and word scalar sizes; SQDMULH has half and word.
+        let sized = matches!(
+            op,
+            SimdOp3::Sqadd | SimdOp3::Uqadd | SimdOp3::Sqsub | SimdOp3::Uqsub | SimdOp3::Sqshl | SimdOp3::Uqshl
+                | SimdOp3::Sqrshl | SimdOp3::Uqrshl
+        );
+        let ok = if sized { true } else if matches!(op, SimdOp3::Sqdmulh | SimdOp3::Sqrdmulh) { size == 1 || size == 2 } else { size == 3 };
+        if !ok {
+            return None;
+        }
+        return Some(Instruction::SimdScalarThreeSame { rd, rn, rm, op, esize: 8u8 << size });
     }
 
     // 27d. AdvSIMD three same, floating point (opcode >= 11000): 0 Q U 01110 a sz 1 Rm opcode 1 Rn Rd.
@@ -1328,13 +1350,45 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b10101, true) => SimdOp3::Uminp,
             (0b10111, false) => SimdOp3::Addp,
             (0b10011, false) => SimdOp3::Mul,
+            (0b10011, true) if size == 0 => SimdOp3::Pmul,
             (0b01000, false) => SimdOp3::Sshl,
             (0b01000, true) => SimdOp3::Ushl,
+            (0b00000, false) => SimdOp3::Shadd,
+            (0b00000, true) => SimdOp3::Uhadd,
+            (0b00001, false) => SimdOp3::Sqadd,
+            (0b00001, true) => SimdOp3::Uqadd,
+            (0b00010, false) => SimdOp3::Srhadd,
+            (0b00010, true) => SimdOp3::Urhadd,
+            (0b00100, false) => SimdOp3::Shsub,
+            (0b00100, true) => SimdOp3::Uhsub,
+            (0b00101, false) => SimdOp3::Sqsub,
+            (0b00101, true) => SimdOp3::Uqsub,
+            (0b01001, false) => SimdOp3::Sqshl,
+            (0b01001, true) => SimdOp3::Uqshl,
+            (0b01010, false) => SimdOp3::Srshl,
+            (0b01010, true) => SimdOp3::Urshl,
+            (0b01011, false) => SimdOp3::Sqrshl,
+            (0b01011, true) => SimdOp3::Uqrshl,
+            (0b01110, false) => SimdOp3::Sabd,
+            (0b01110, true) => SimdOp3::Uabd,
+            (0b01111, false) => SimdOp3::Saba,
+            (0b01111, true) => SimdOp3::Uaba,
+            (0b10010, false) => SimdOp3::Mla,
+            (0b10010, true) => SimdOp3::Mls,
+            (0b10110, false) if size == 1 || size == 2 => SimdOp3::Sqdmulh,
+            (0b10110, true) if size == 1 || size == 2 => SimdOp3::Sqrdmulh,
             _ => return None,
         };
         let bitwise = opcode == 0b00011;
-        // 64-bit lanes need Q, and min/max/mul have no 64-bit form.
-        if !bitwise && size == 3 && (!q || matches!(opcode, 0b01100 | 0b01101 | 0b10100 | 0b10101 | 0b10011)) {
+        // 64-bit lanes need Q. Only the saturating add/sub and the shifts have a 64-bit lane form.
+        let has64 = matches!(
+            op,
+            SimdOp3::Add | SimdOp3::Addp | SimdOp3::Sub | SimdOp3::Cmeq | SimdOp3::Cmtst | SimdOp3::Cmhi | SimdOp3::Cmhs | SimdOp3::Cmgt
+                | SimdOp3::Cmge | SimdOp3::Sshl | SimdOp3::Ushl | SimdOp3::Sqadd | SimdOp3::Uqadd | SimdOp3::Sqsub
+                | SimdOp3::Uqsub | SimdOp3::Sqshl | SimdOp3::Uqshl | SimdOp3::Srshl | SimdOp3::Urshl | SimdOp3::Sqrshl
+                | SimdOp3::Uqrshl
+        );
+        if !bitwise && size == 3 && (!q || !has64) {
             return None;
         }
         let esize = if bitwise { 8 } else { 8u8 << size };
@@ -1585,8 +1639,8 @@ mod tests {
         assert!(matches!(decode(0x4E201BFF), Instruction::SimdTwoMisc { op: SimdOp2::Rev16, esize: 8, q: true, .. })); // rev16 v31.16b, v31.16b
         assert!(matches!(decode(0x6EB3479C), Instruction::SimdThreeSame { op: SimdOp3::Ushl, esize: 32, q: true, .. })); // ushl v28.4s, v28.4s, v19.4s
         assert!(matches!(decode(0x4EB34780), Instruction::SimdThreeSame { op: SimdOp3::Sshl, esize: 32, q: true, .. })); // sshl v0.4s, v28.4s, v19.4s
-        assert!(matches!(decode(0x5EFE87FF), Instruction::SimdThreeSame { op: SimdOp3::Add, esize: 64, q: false, .. })); // add d31, d31, d30
-        assert!(matches!(decode(0x7EE18420), Instruction::SimdThreeSame { op: SimdOp3::Sub, esize: 64, q: false, .. })); // sub d0, d1, d1
+        assert!(matches!(decode(0x5EFE87FF), Instruction::SimdScalarThreeSame { op: SimdOp3::Add, esize: 64, .. })); // add d31, d31, d30
+        assert!(matches!(decode(0x7EE18420), Instruction::SimdScalarThreeSame { op: SimdOp3::Sub, esize: 64, .. })); // sub d0, d1, d1
         assert!(matches!(decode(0x5E1C07EE), Instruction::SimdDupScalar { esize: 32, index: 3, .. })); // mov s14, v31.s[3]
         assert!(matches!(decode(0x0E224020), Instruction::SimdNarrow { op: SimdNarrowOp::Addhn, esize: 8, q: false, .. })); // addhn v0.8b, v1.8h, v2.8h
         assert!(matches!(decode(0x4E226020), Instruction::SimdNarrow { op: SimdNarrowOp::Subhn, esize: 8, q: true, .. })); // subhn2 v0.16b, v1.8h, v2.8h
