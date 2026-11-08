@@ -232,6 +232,8 @@ Any other code, ported or new, that genuinely needs `unsafe` goes into an isolat
 
 Build from source using **Rust 1.85+ (edition 2024)** on a supported Linux, macOS or Windows host. OS-specific development libraries may be required on Linux; see the expanded setup notes below.
 
+**macOS binaries:** no prebuilt macOS download is offered for now. Build from source on a Mac instead (see above). The macOS build links Apple-SDK-derived `objc2` crates, and whether redistributing a compiled binary that includes them is allowed is an open question; see [docs/PROVENANCE_OWNER_DECISIONS.md](docs/PROVENANCE_OWNER_DECISIONS.md). Linux and Windows builds are not affected.
+
 ```bash
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core
