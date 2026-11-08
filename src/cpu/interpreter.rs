@@ -1617,6 +1617,17 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdByElement { rd, rn, rm, index, op, esize, q, scalar } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let (r, qc) = simd::by_element(op, d, n, m, index, esize as u32, q, scalar);
+                if qc {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, r);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdExt { rd, rn, rm, index, q } => {
                 let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::extract(n, m, index as u32, q));
@@ -1829,7 +1840,22 @@ impl Cpu {
 
             Instruction::SimdThreeSame { rd, rn, rm, op, esize, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
-                self.regs.write_q(rd, simd::three_same(op, d, n, m, esize as u32, q));
+                let (r, qc) = simd::three_same_qc(op, d, n, m, esize as u32, q);
+                if qc {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, r);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdScalarThreeSame { rd, rn, rm, op, esize } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let (r, qc) = simd::scalar_three_same(op, d, n, m, esize as u32);
+                if qc {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, r);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1896,14 +1922,24 @@ impl Cpu {
 
             Instruction::SimdScalarTwoMisc { rd, rn, op, esize } => {
                 let e = esize as u32;
-                let lane0 = simd::lane(simd::two_misc(op, self.regs.read_q(rn), e, true), e, 0);
+                // only lane 0 of the sources is read, so upper lanes cannot set QC
+                let keep = simd::lane_mask(e);
+                let (r, qc) = simd::two_misc_sat(op, self.regs.read_q(rd) & keep, self.regs.read_q(rn) & keep, e, true);
+                if qc {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                let lane0 = simd::lane(r, e, 0);
                 self.regs.write_q(rd, lane0 as u128);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
             Instruction::SimdTwoMisc { rd, rn, op, esize, q } => {
-                self.regs.write_q(rd, simd::two_misc(op, self.regs.read_q(rn), esize as u32, q));
+                let (r, qc) = simd::two_misc_sat(op, self.regs.read_q(rd), self.regs.read_q(rn), esize as u32, q);
+                if qc {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, r);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
