@@ -83,3 +83,12 @@ This dossier distributes only repository-generated protocol observations, hashes
 and text logs, under the repository MIT license. Build logs with local paths and
 the compiled NRO remain local. The selected developer can obtain the same
 request-level answer without inferred success from a window or a synthetic test.
+
+## Inspect the retained result without Rust
+
+The [standalone diagnosis CLI](../DIAGNOSIS_CLI.md) now includes this recorded
+case. Run `python3 ounce-diagnose.pyz audio-case --output NEW_DIRECTORY` to get
+the raw request/reply records, derived diagnosis, notices and replay recipe.
+This is a reader for the recorded interaction, not a new guest execution or
+independent binary verification. The exact-input Cargo command above remains
+the runtime regression test.
