@@ -67,9 +67,24 @@ words accepted by the decoder that the host rejects. Triage (all were emulator b
   0x4e207800; see the summary the tool prints). That is about 40% of the words the host executes in this space.
 - FPCR is always 0 (default rounding, no flush-to-zero, no default-NaN, no trapping). Other FPCR modes are untested.
 - FPSR exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are not modelled by the interpreter and are not compared.
-- Only the interpreter is exercised. Tier-3 block code and Tier-4 are compared against it elsewhere (qc-flag), not here.
+- Tier-3 and Tier-4 are covered by the section "Tier-3 and Tier-4" below.
 - Other vector FP paths in `interpreter.rs` (`SimdVec4S`, the 2D paths) still use plain Rust `+`/`*` on NaN inputs; they
   matched in these runs but depend on the compiler keeping operand order. The default-NaN result of `0 * inf` relies on
   the host being AArch64 (x86 hosts produce a different default NaN).
 - Random inputs reach rare cases (exact ties, overflow boundaries, saturation edges) only by chance; the biased values help but
   are not exhaustive. 0 mismatches over 1.9M executed words is evidence, not proof.
+
+## Tier-3 and Tier-4
+
+`fuzz-replay --engine interp|tier3|tier4` runs each word through the chosen engine and compares it with the host trace.
+`fuzz-replay --engine-vs-engine --seed N --count M` needs no host: it compares Tier-3 and Tier-4 with the interpreter on random
+words, so it runs on any OS. `run_tiers.sh [words]` does both (host replay only on Apple Silicon macOS) and exits non-zero on
+any difference.
+
+Results (release build):
+- Engine vs interpreter: 2M words (8 seeds x 250k) and 3 x 200k in the script run, 0 mismatches for Tier-3 and Tier-4.
+  Tier-4 ran about 75% of the words natively; the rest fell back.
+- Host replay, 200k words per seed, seeds 1 to 4 through interp, tier3 and tier4: 0 mismatches, 0 emulator errors.
+- Harness check: a deliberate bug in the Tier-3 add/sub-immediate overflow flag was caught, then reverted.
+
+Same limits as above: only the instruction classes the interpreter implements, FPCR 0, FPSR flags not compared.
