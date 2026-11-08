@@ -89,7 +89,7 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
 - [ ] **E2. Disposition historical provenance for affected distribution artifacts.**
       Status: blocked
       Blocked by: documented component notice decisions (objc2/SDK terms, Rust runtime notices and final-binary coverage), the historical 72-byte program permission question, and separately approved historical/ref or corrected-release actions. PR #203 is merged; its technical controls do not establish legal clearance.
-      Next: use docs/PROVENANCE_REMEDIATION_REPORT.md and the pending docs/RELEASE_NOTICE_REVIEW.json for the named decisions. Runtime publication remains gated; the reviewed standalone Python toolkit is separately distributable. Continue ordinary development without waiting for blanket historical clearance.
+      Next: use docs/LICENSE_DISPOSITION.md as the current disposition; earlier broad audit/checklist warnings are superseded. Objective-C full-text notices and binary-bound Rust toolchain notice collection are implemented; preserve the actual upstream SDK/contributor qualifications and specific historical permission case. Runtime publication remains gated; the reviewed standalone Python toolkit is separately distributable. Do not repeat completed inventories or treat E2 as a blocker to ordinary development.
 
 ## Delivery cadence and stop conditions
 

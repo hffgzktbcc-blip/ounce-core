@@ -42,6 +42,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+          components: rust-docs
 
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -58,16 +59,20 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
+      - name: Retain the actual build toolchain notices
+        shell: bash
+        run: python scripts/collect_toolchain_notices.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --target ${{ matrix.target }} --output work/toolchain-notices
+
       - name: Package artifacts (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          python3 scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed
+          python3 scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed --toolchain-notices work/toolchain-notices
 
       - name: Package artifacts (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed
+          python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed --toolchain-notices work/toolchain-notices
 
       - name: Write SHA-256 checksum (Unix)
         if: matrix.os != 'windows-latest'
