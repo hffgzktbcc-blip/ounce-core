@@ -38,7 +38,7 @@ def main():
     ap.add_argument('--work', required=True, type=Path, help='new evidence directory; never overwrites a run')
     ap.add_argument('--elf-cc', required=True, help='compiler command, split as arguments; never run through a shell')
     ap.add_argument('--host-cc', default='cc')
-    ap.add_argument('--ounce', type=Path, default=REPO / 'target/release/ounce-core')
+    ap.add_argument('--ounce', type=Path, default=REPO / 'target/release' / ('ounce-core.exe' if sys.platform == 'win32' else 'ounce-core'))
     ap.add_argument('--upstream-dir', type=Path, help='optional clean checkout at the manifest LZ4 commit')
     ap.add_argument('--seconds', type=int, default=300, help='deadline per build/execution step')
     ap.add_argument('--budget', type=int, default=100_000_000)
