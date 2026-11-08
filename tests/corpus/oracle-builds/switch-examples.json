@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/switchbrew/switch-examples.git",
+  "revision": "669786898205b7beb25ff1731e72982e6d0397d3",
+  "status": "step-2-oracle-corpus",
+  "upstream_terms": "README declares Public Domain Mark 1.0; linked binary components require separate inventory.",
+  "samples": [
+    {
+      "id": "printing-hello-world",
+      "path": "graphics/printing/hello-world"
+    },
+    {
+      "id": "vt52-demo",
+      "path": "graphics/printing/vt52-demo"
+    },
+    {
+      "id": "read-controls",
+      "path": "hid/read-controls"
+    },
+    {
+      "id": "touch-screen",
+      "path": "hid/touch-screen"
+    },
+    {
+      "id": "sixaxis",
+      "path": "hid/sixaxis"
+    },
+    {
+      "id": "audren-simple",
+      "path": "audio/audren-simple"
+    },
+    {
+      "id": "get-system-language",
+      "path": "settings/get_system_language"
+    },
+    {
+      "id": "barrier",
+      "path": "misc/barrier"
+    },
+    {
+      "id": "user-events",
+      "path": "misc/user_events"
+    },
+    {
+      "id": "user-timers",
+      "path": "misc/user_timers"
+    },
+    {
+      "id": "deko-console",
+      "path": "graphics/deko3d/deko_console"
+    },
+    {
+      "id": "deko-examples-menu",
+      "path": "graphics/deko3d/deko_examples"
+    },
+    {
+      "id": "sdl2-simple",
+      "path": "graphics/sdl2/sdl2-simple"
+    }
+  ]
+}

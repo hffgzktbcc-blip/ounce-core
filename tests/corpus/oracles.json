@@ -1,0 +1,853 @@
+{
+  "schema_version": 1,
+  "note": "Pre-registered first-frame oracles (PLAN step 2). Specs were written from each program's source (except deko-basic's observed hashes, see its assumptions); `expect` values are computed from the specs by tools/corpus_oracle.py, never from an ounce-core run. Results live in oracle-results.json.",
+  "oracles": [
+    {
+      "id": "printing-hello-world",
+      "build": "switch-examples",
+      "nro": "graphics/printing/hello-world/hello-world.nro",
+      "source": "graphics/printing/hello-world/source/main.c",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[16;20HHello World!"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x202381065dda0545",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": []
+    },
+    {
+      "id": "vt52-demo",
+      "build": "switch-examples",
+      "nro": "graphics/printing/vt52-demo/vt52-demo.nro",
+      "source": "graphics/printing/vt52-demo/source/main.c",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[2J\u001b[10;10HVT52 codes demo\u001b[10ALine 0\u001b[28DColumn 0\u001b[19BLine 19\u001b[5CColumn 20\n\u001b[30;1mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[30;1m\u001b[2mLight \u001b[7mReversed \u001b[0m\u001b[30;1m\u001b[4mUnderline \u001b[0m\u001b[30;1m\u001b[9mStrikethrough \n\u001b[0m\u001b[31;1mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[31;1m\u001b[2mLight \u001b[7mReversed \u001b[0m\u001b[31;1m\u001b[4mUnderline \u001b[0m\u001b[31;1m\u001b[9mStrikethrough \n\u001b[0m\u001b[32;1mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[32;1m\u001b[2mLight \u001b[7mReversed \u001b[0m\u001b[32;1m\u001b[4mUnderline \u001b[0m\u001b[32;1m\u001b[9mStrikethrough \n\u001b[0m\u001b[33;1mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[33;1m\u001b[2mLight \u001b[7mReversed \u001b[0m\u001b[33;1m\u001b[4mUnderline \u001b[0m\u001b[33;1m\u001b[9mStrikethrough \n\u001b[0m\u001b[34;1mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[34;1m\u001b[2mLight \u001b[7mReversed \u001b[0m\u001b[34;1m\u001b[4mUnderline \u001b[0m\u001b[34;1m\u001b[9mStrikethrough \n\u001b[0m\u001b[35;1mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[35;1m\u001b[2mLight \u001b[7mReversed \u001b[0m\u001b[35;1m\u001b[4mUnderline \u001b[0m\u001b[35;1m\u001b[9mStrikethrough \n\u001b[0m\u001b[36;1mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[36;1m\u001b[2mLight \u001b[7mReversed \u001b[0m\u001b[36;1m\u001b[4mUnderline \u001b[0m\u001b[36;1m\u001b[9mStrikethrough \n\u001b[0m\u001b[37;1mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[37;1m\u001b[2mLight \u001b[7mReversed \u001b[0m\u001b[37;1m\u001b[4mUnderline \u001b[0m\u001b[37;1m\u001b[9mStrikethrough \n\u001b[0m"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x1c472248e4cffdf5",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "newlib printf supports the positional argument `%1$d`."
+      ]
+    },
+    {
+      "id": "read-controls",
+      "build": "switch-examples",
+      "nro": "hid/read-controls/read-controls.nro",
+      "source": "hid/read-controls/source/main.c",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[1;1HPress PLUS to exit.\u001b[2;1HLeft joystick position:\u001b[4;1HRight joystick position:\u001b[3;1H0000; 0000\u001b[5;1H0000; 0000"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xd97ade9771d6c585",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "No input is injected: buttons stay 0 and both sticks read (0, 0), so the button list is never redrawn."
+      ]
+    },
+    {
+      "id": "touch-screen",
+      "build": "switch-examples",
+      "nro": "hid/touch-screen/touch-screen.nro",
+      "source": "hid/touch-screen/source/main.c",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[1;1HPress PLUS to exit.\u001b[2;1HTouch Screen position:\u001b[3;1H"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x9889443d0f3cf525",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "No touches: state.count stays 0, so no touch lines are printed."
+      ]
+    },
+    {
+      "id": "sixaxis",
+      "build": "switch-examples",
+      "nro": "hid/sixaxis/sixaxis.nro",
+      "source": "hid/sixaxis/source/main.c",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[1;1HPress PLUS to exit.\u001b[2;1HSixAxis Sensor readings:\u001b[3;1HAcceleration:     x= 0.0000, y= 0.0000, z= 0.0000\nAngular velocity: x= 0.0000, y= 0.0000, z= 0.0000\nAngle:            x= 0.0000, y= 0.0000, z= 0.0000\nDirection matrix:\n                  [  0.0000,    0.0000,    0.0000 ]\n                  [  0.0000,    0.0000,    0.0000 ]\n                  [  0.0000,    0.0000,    0.0000 ]\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x4c664bc880c22085",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "No motion samples have been produced, so `hidGetSixAxisSensorStates` returns no state and the zero-initialised `sixaxis` is printed every frame."
+      ]
+    },
+    {
+      "id": "audren-simple",
+      "build": "switch-examples",
+      "nro": "audio/audren-simple/audren-simple.nro",
+      "source": "audio/audren-simple/source/main.c",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Simple audren demonstration program\naudren initted!\naudrvUpdate: 0\naudrenStartAudioRenderer: 0\ndone. Press A to play a sound.\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x430fa500d76a8785",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "audrenInitialize, audrvCreate, audrvUpdate and audrenStartAudioRenderer all succeed (result 0); no wave buffer is queued, so no sample-count lines."
+      ]
+    },
+    {
+      "id": "get-system-language",
+      "build": "switch-examples",
+      "nro": "settings/get_system_language/get_system_language.nro",
+      "source": "settings/get_system_language/source/main.c",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "setGetSystemLanguage() LanguageCode: en-US\nLanguage: 1\nNew LanguageCode: ja\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x5a317d06a5ffed45",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "The system language is American English: set GetSystemLanguage returns the language code \"en-US\" (SetLanguage_ENUS = 1)."
+      ]
+    },
+    {
+      "id": "barrier",
+      "build": "switch-examples",
+      "nro": "misc/barrier/barrier.nro",
+      "source": "misc/barrier/source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Creating threads\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x7c6f99db70b98885",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "Only frame 1 is checked: later frames depend on thread scheduling order. Frame 1 is queued by the first locked_printf, before any thread exists."
+      ]
+    },
+    {
+      "id": "user-events",
+      "build": "switch-examples",
+      "nro": "misc/user_events/user_events.nro",
+      "source": "misc/user_events/source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Creating thread\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x9b6f95cbde093525",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "Only frame 1 is checked: it is queued by the first locked_printf, before the worker thread exists."
+      ]
+    },
+    {
+      "id": "user-timers",
+      "build": "switch-examples",
+      "nro": "misc/user_timers/user_timers.nro",
+      "source": "misc/user_timers/source/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Creating thread\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x9b6f95cbde093525",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "Only frame 1 is checked: it is queued by the first locked_printf, before the worker thread exists."
+      ]
+    },
+    {
+      "id": "deko-console",
+      "build": "switch-examples",
+      "nro": "graphics/deko3d/deko_console/deko_console.nro",
+      "source": "graphics/deko3d/deko_console/source/main.c",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_deko",
+            "stream": "\u001b[2J\u001b[42;37m\u001b[7;4H     _      _        ____      _ \u001b[8;4H    | |    | |      |___ \\    | |\u001b[9;4H  __| | ___| | _____  __) | __| |\u001b[10;4H / _` |/ _ \\ |/ / _ \\|__ < / _` |\u001b[11;4H| (_| |  __/   < (_) |__) | (_| |\u001b[12;4H \\__,_|\\___|_|\\_\\___/____/ \\__,_|\u001b[0m\u001b[10ALine 0\u001b[28DColumn 0\u001b[19BLine 19\u001b[5CColumn 20\n\u001b[30mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[30m\u001b[2mLight \u001b[7mReversed \n\u001b[0m\u001b[31mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[31m\u001b[2mLight \u001b[7mReversed \n\u001b[0m\u001b[32mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[32m\u001b[2mLight \u001b[7mReversed \n\u001b[0m\u001b[33mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[33m\u001b[2mLight \u001b[7mReversed \n\u001b[0m\u001b[34mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[34m\u001b[2mLight \u001b[7mReversed \n\u001b[0m\u001b[35mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[35m\u001b[2mLight \u001b[7mReversed \n\u001b[0m\u001b[36mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[36m\u001b[2mLight \u001b[7mReversed \n\u001b[0m\u001b[37mDefault \u001b[1mBold \u001b[7mReversed \u001b[0m\u001b[37m\u001b[2mLight \u001b[7mReversed \n\u001b[0m"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x59553e49efd0e335",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "GPU unorm conversion of palette value 0.5 gives 128 (round to nearest).",
+        "Each tile is drawn as a fill-rectangle with nearest sampling, so every pixel is exactly the glyph's front or back palette colour; alpha-0 palette entries fail the alpha test and keep the black clear colour."
+      ]
+    },
+    {
+      "id": "deko-examples-menu",
+      "build": "switch-examples",
+      "nro": "graphics/deko3d/deko_examples/deko_examples.nro",
+      "source": "graphics/deko3d/deko_examples/source/main.cpp",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[2J\n  deko3d Examples\n  Press PLUS(+) to exit; A to select an example to run\n\n--------------------------------------------------------------------------------\n  * 01: Simple Setup\n    02: Triangle\n    03: Cube\n    04: Textured Cube\n    05: Simple Tessellation\n    06: Simple Multisampling\n    07: Mesh Loading and Lighting (sRGB)\n    08: Deferred Shading (Multipass Rendering with Tiled Cache)\n    09: Simple Compute Shader (Geometry Generation)\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xa756875def379265",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "The menu is the libnx CPU console; selection stays on entry 01 with no input."
+      ]
+    },
+    {
+      "id": "sdl2-simple",
+      "build": "switch-examples",
+      "nro": "graphics/sdl2/sdl2-simple/sdl2-simple.nro",
+      "source": "graphics/sdl2/sdl2-simple/source/main.cpp",
+      "queued_frames": 2,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1920,
+            "height": 1080,
+            "fill": [
+              111,
+              111,
+              111
+            ],
+            "rects": [
+              [
+                0,
+                0,
+                64,
+                64,
+                255,
+                0,
+                0
+              ],
+              [
+                64,
+                0,
+                64,
+                64,
+                0,
+                255,
+                0
+              ],
+              [
+                128,
+                0,
+                64,
+                64,
+                0,
+                0,
+                255
+              ],
+              [
+                0,
+                1016,
+                64,
+                64,
+                255,
+                0,
+                0
+              ],
+              [
+                64,
+                1016,
+                64,
+                64,
+                0,
+                255,
+                0
+              ],
+              [
+                128,
+                1016,
+                64,
+                64,
+                0,
+                0,
+                255
+              ]
+            ]
+          },
+          "expect": {
+            "width": 1920,
+            "height": 1080,
+            "rgba_fnv1a64": "0xcf96f2a4adbe7325"
+          }
+        },
+        {
+          "frames": [
+            2
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1920,
+            "height": 1080,
+            "fill": [
+              111,
+              111,
+              111
+            ],
+            "rects": [
+              [
+                1,
+                0,
+                64,
+                64,
+                255,
+                0,
+                0
+              ],
+              [
+                65,
+                0,
+                64,
+                64,
+                0,
+                255,
+                0
+              ],
+              [
+                129,
+                0,
+                64,
+                64,
+                0,
+                0,
+                255
+              ],
+              [
+                1,
+                1016,
+                64,
+                64,
+                255,
+                0,
+                0
+              ],
+              [
+                65,
+                1016,
+                64,
+                64,
+                0,
+                255,
+                0
+              ],
+              [
+                129,
+                1016,
+                64,
+                64,
+                0,
+                0,
+                255
+              ]
+            ]
+          },
+          "expect": {
+            "width": 1920,
+            "height": 1080,
+            "rgba_fnv1a64": "0x0a06d1306e517325"
+          }
+        }
+      ],
+      "assumptions": [
+        "The 1920x1080 window gives a 1920x1080 RGBA8 presented buffer.",
+        "Axis-aligned integer rectangles are filled exactly (no filtering or blending)."
+      ]
+    },
+    {
+      "id": "raufang-hello-cpp",
+      "build": "raufang-switch-hello-world",
+      "nro": "source.nro",
+      "source": "source/main.cpp",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "\u001b[16;20HHello World from C++!\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x0f03b22fcc4b2dc5",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "std::endl writes \"\\n\" and flushes to the libnx console."
+      ]
+    },
+    {
+      "id": "nx-hbmenu",
+      "build": "nx-hbmenu",
+      "nro": "source.nro",
+      "source": "common/menu.c, common/theme.c, nx_main/main.c",
+      "queued_frames": 1,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "width": 1280,
+          "height": 720,
+          "probes": [
+            {
+              "x": 2,
+              "y": 2,
+              "rgb": [
+                45,
+                45,
+                50
+              ]
+            },
+            {
+              "x": 2,
+              "y": 400,
+              "rgb": [
+                45,
+                45,
+                50
+              ]
+            }
+          ]
+        }
+      ],
+      "assumptions": [
+        "set:sys GetColorSetId reports 1 (dark), so the built-in dark theme is used; background (45, 45, 50) per theme.c.",
+        "The probed pixels are left of all menu content and above the waves."
+      ]
+    },
+    {
+      "id": "hybrid-app",
+      "build": "hybrid-app",
+      "nro": "hybrid_app.nro",
+      "source": "source/main.cpp",
+      "queued_frames": 2,
+      "checks": [
+        {
+          "frames": [
+            2
+          ],
+          "width": 1280,
+          "height": 720,
+          "probes": [
+            {
+              "x": 0,
+              "y": 0,
+              "rgb": [
+                104,
+                176,
+                216
+              ]
+            },
+            {
+              "x": 1279,
+              "y": 0,
+              "rgb": [
+                104,
+                176,
+                216
+              ]
+            },
+            {
+              "x": 0,
+              "y": 719,
+              "rgb": [
+                104,
+                176,
+                216
+              ]
+            },
+            {
+              "x": 1279,
+              "y": 719,
+              "rgb": [
+                104,
+                176,
+                216
+              ]
+            }
+          ]
+        }
+      ],
+      "assumptions": [
+        "glClearColor(0x68/255, 0xB0/255, 0xD8/255) covers the four corners of frame 1; no geometry reaches them."
+      ]
+    },
+    {
+      "id": "simplegfx",
+      "build": "original",
+      "nro": "graphics/simplegfx/simplegfx.nro",
+      "source": "graphics/simplegfx/source/main.c",
+      "queued_frames": 61,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              4,
+              4,
+              4
+            ],
+            "rects": []
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xd95ddf22e46ba325"
+          }
+        },
+        {
+          "frames": [
+            2
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              8,
+              8,
+              8
+            ],
+            "rects": []
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x1dd22fb233d7a325"
+          }
+        },
+        {
+          "frames": [
+            60
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              240,
+              240,
+              240
+            ],
+            "rects": []
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xa50b597b02e4a325"
+          }
+        },
+        {
+          "frames": [
+            61
+          ],
+          "spec": {
+            "kind": "rects",
+            "width": 1280,
+            "height": 720,
+            "fill": [
+              0,
+              0,
+              0
+            ],
+            "rects": []
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x52bda05e66a4a325"
+          }
+        }
+      ],
+      "assumptions": [
+        "Same expectation as docs/first-frame-oracle.md (frame 1 was observed in #103 before that oracle was written). The dedicated simplegfx_first_frame_oracle test still checks all 61 frames."
+      ]
+    },
+    {
+      "id": "deko-basic",
+      "build": "original",
+      "nro": "graphics/deko3d/deko_basic/deko_basic.nro",
+      "source": "graphics/deko3d/deko_basic/source/main.cpp",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x3a00ccf6b6f28ea1"
+          }
+        },
+        {
+          "frames": [
+            2,
+            3,
+            4,
+            5
+          ],
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x3a00ccf6b6f28ea1"
+          }
+        }
+      ],
+      "assumptions": [
+        "Hashes copied from the existing deko_basic_first_frame_oracle (docs/deko-basic-oracle.md); they were recorded from an earlier run, not computed from source, so this oracle is a regression check of an observed frame.",
+    "PLAN step 3 (owner-approved, 2026-11-04): frame 1 corrected from the observed clear-only 0x7c9a9a3fa3856325 to the frames 2-5 hash. main.c draws the triangle on every frame; the old value recorded a culling bug (see docs/deko-basic-oracle.md)."
+      ]
+    },
+    {
+      "id": "startup",
+      "build": "original",
+      "nro": "templates/application/application.nro",
+      "source": "templates/application/source/main.c",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "Hello World!\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0xc0447c0673a27745",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "Written in step 2 from source. Earlier CI logs printed this sample's frame hash; they were not consulted. The old oracle (docs/startup-oracle.md) only required a non-zero hash."
+      ]
+    },
+    {
+      "id": "romfs",
+      "build": "original",
+      "nro": "fs/romfs/romfs.nro",
+      "source": "fs/romfs/source/main.c and romfs/",
+      "queued_frames": 5,
+      "checks": [
+        {
+          "frames": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "spec": {
+            "kind": "console_sw",
+            "stream": "romfs Init Successful!\nHello, this is the libnx romfs example.\nThis text is being read off a file in romfs.\n\n  >>Switch Homebrew is Cool<<\n\nSigned off, fincs & WinterMute\n>>EOF<<\nThe path to this file contains Unicode\ncharacters that fall outside ASCII.\n>>EOF<<\n"
+          },
+          "expect": {
+            "width": 1280,
+            "height": 720,
+            "rgba_fnv1a64": "0x3bd649bbc4f50b85",
+            "font_sha256": "918a3fbbcd9949e63f50f1ea610fb8833cc6ecd7e3b95406c3cd96a226f51f1f"
+          }
+        }
+      ],
+      "assumptions": [
+        "Written in step 2 from source and the bundled romfs files. Earlier CI logs printed this sample's frame hash; they were not consulted. The old oracle (docs/romfs-oracle.md) only required a non-zero hash.",
+        "The UTF-8 bytes of the Unicode path are never printed; both files' lines are ASCII."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="65%" fx="30%" fy="30%">
+      <stop offset="0%" stop-color="#141c28"/>
+      <stop offset="60%" stop-color="#0b0f17"/>
+      <stop offset="100%" stop-color="#05070a"/>
+    </radialGradient>
+
+    <!-- Core Emerald / Cyan Gradient (Ampere & Silicon) -->
+    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00FFA3"/>
+      <stop offset="50%" stop-color="#00D2FF"/>
+      <stop offset="100%" stop-color="#7928CA"/>
+    </linearGradient>
+
+    <!-- Outer Ring Metal Gradient -->
+    <linearGradient id="metalRing" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#2a364a"/>
+      <stop offset="40%" stop-color="#1a2230"/>
+      <stop offset="100%" stop-color="#0f1520"/>
+    </linearGradient>
+
+    <!-- Glow Filter -->
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="24" result="blur2"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded canvas -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  <rect width="508" height="508" x="2" y="2" rx="110" fill="none" stroke="#1f2c3f" stroke-width="2" opacity="0.6"/>
+
+  <!-- Subtle Circuit Lattice Lines in Background -->
+  <g stroke="#00D2FF" stroke-width="1.2" opacity="0.12" fill="none">
+    <path d="M 64 256 L 160 256 L 200 216 M 448 256 L 352 256 L 312 296"/>
+    <path d="M 256 64 L 256 160 L 296 200 M 256 448 L 256 352 L 216 312"/>
+    <circle cx="64" cy="256" r="3" fill="#00D2FF"/>
+    <circle cx="448" cy="256" r="3" fill="#00D2FF"/>
+    <circle cx="256" cy="64" r="3" fill="#00D2FF"/>
+    <circle cx="256" cy="448" r="3" fill="#00D2FF"/>
+  </g>
+
+  <!-- Background Ambient Glow Behind Symbol -->
+  <circle cx="256" cy="256" r="140" fill="#00D2FF" opacity="0.08" filter="url(#softGlow)"/>
+
+  <!-- Outer Octagonal Silicon Shield (The "O") -->
+  <polygon points="256,76 384,128 436,256 384,384 256,436 128,384 76,256 128,128" 
+           fill="url(#metalRing)" 
+           stroke="#2d3d54" 
+           stroke-width="5"/>
+
+  <!-- Precision Silicon Trace Notch Marks -->
+  <g stroke="#00FFA3" stroke-width="3" stroke-linecap="round" opacity="0.75">
+    <line x1="256" y1="84" x2="256" y2="104"/>
+    <line x1="428" y1="256" x2="408" y2="256"/>
+    <line x1="256" y1="428" x2="256" y2="408"/>
+    <line x1="84" y1="256" x2="104" y2="256"/>
+  </g>
+
+  <!-- Glowing Geometric Core Outer Loop -->
+  <polygon points="256,116 356,156 396,256 356,356 256,396 156,356 116,256 156,156" 
+           fill="none" 
+           stroke="url(#coreGrad)" 
+           stroke-width="12" 
+           stroke-linejoin="round"
+           filter="url(#neonGlow)"/>
+
+  <!-- Inner Dynamic Octa-Core Processor Ring -->
+  <circle cx="256" cy="256" r="76" fill="#090d14" stroke="#1f2c3f" stroke-width="4"/>
+
+  <!-- 8 ARM Cortex-A78C Micro-Core Nodes -->
+  <g fill="#00FFA3" filter="url(#neonGlow)">
+    <circle cx="256" cy="180" r="6"/>
+    <circle cx="310" cy="202" r="6"/>
+    <circle cx="332" cy="256" r="6"/>
+    <circle cx="310" cy="310" r="6"/>
+    <circle cx="256" cy="332" r="6"/>
+    <circle cx="202" cy="310" r="6"/>
+    <circle cx="180" cy="256" r="6"/>
+    <circle cx="202" cy="202" r="6"/>
+  </g>
+
+  <!-- Central "Drake" Diamond / Vector Execution Monolith -->
+  <polygon points="256,212 292,256 256,300 220,256" 
+           fill="url(#coreGrad)" 
+           filter="url(#neonGlow)"/>
+  <polygon points="256,226 280,256 256,286 232,256" fill="#0b0f17"/>
+
+  <!-- Center Quantum Core Point -->
+  <circle cx="256" cy="256" r="4.5" fill="#00FFA3" filter="url(#neonGlow)"/>
+</svg>
