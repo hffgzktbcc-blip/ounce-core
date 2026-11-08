@@ -38,6 +38,8 @@ Usage can run out at any moment, so make your state recoverable before you need 
   every minute to `refs/handoff/*` without touching your branch or index. `scripts/gate.sh`
   checkpoints and submits snapshot automatically.
 - Before a long step, `scripts/handoff.sh save --note "doing X" --next "then Y" --push`.
+- Record anything the next agent must not rediscover: `scripts/handoff.sh log "one sentence"`;
+  read the shared memory with `scripts/handoff.sh journal`. Phone/hub workflow: docs/AGENT_HUB.md.
 - Finished or switching task: `scripts/handoff.sh release <task>`.
 
 Proceed autonomously on routine, reversible work. Escalate new scope with material

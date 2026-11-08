@@ -10,6 +10,9 @@ touches the working tree, the index or any branch:
   watch    save every N seconds when something changed (run once in the background)
   claim    reserve a task; claims expire on their own, so a dead agent never blocks work
   release  give a claim up
+  log      add a note to the shared journal: decisions and findings every agent should know
+  journal  read the shared journal (what other agents learned, newest first)
+  digest   short markdown of claims, last-seen agents and the journal, for a phone
   status   list live claims and recent snapshots (local and origin)
   resume   show where each agent stopped; --apply NAME restores a snapshot on a new branch
 """
@@ -186,6 +189,65 @@ def release(args):
     print(f'released {safe(args.task_id)}')
 
 
+JOURNAL = f'{NAMESPACE}/journal'
+
+
+def log(args):
+    """Append a note to the shared journal: what you decided or learned, for every other agent and session."""
+    entry = {'agent': agent_name(args), 'time': stamp(now()), 'branch': branch_name(), 'text': args.text,
+             'task': args.task or ''}
+    for attempt in range(5):
+        if not args.offline:
+            fetch_remote()
+        tip = run('rev-parse', '--verify', '-q', JOURNAL, check=False).stdout.decode().strip()
+        parent = ['-p', tip] if tip else []
+        commit = out('commit-tree', head_tree(), *parent, '-m', encode(entry, f'journal: {entry["agent"]}'))
+        run('update-ref', JOURNAL, commit)
+        if args.offline:
+            break
+        remote = out('ls-remote', 'origin', JOURNAL, check=False).split()
+        pushed = run('push', f'--force-with-lease={JOURNAL}:{remote[0] if remote else ""}', 'origin', f'{JOURNAL}:{JOURNAL}',
+                     check=False)
+        if pushed.returncode == 0:
+            break
+        run('update-ref', JOURNAL, tip) if tip else run('update-ref', '-d', JOURNAL)   # lost a race: redo on the new tip
+    else:
+        raise ValueError('could not publish the journal entry after 5 tries; it is saved locally, retry later')
+    print(f'logged: {args.text[:80]}')
+
+
+def journal_entries(limit):
+    lines = run('log', '-n', str(limit), '--format=%B%x00', JOURNAL, check=False).stdout.decode().split('\0')
+    return [e for e in (decode(l) for l in lines if l.strip()) if e]
+
+
+def journal(args):
+    if not args.offline:
+        fetch_remote()
+    entries_ = journal_entries(args.limit)
+    if not entries_:
+        print('Journal is empty. Add to it with: scripts/handoff.sh log "what you decided or learned"')
+    for e in entries_:
+        task = f' [{e["task"]}]' if e.get('task') else ''
+        print(f'{e["time"]} {e["agent"]}{task}: {e["text"]}')
+
+
+def digest(args):
+    """Short markdown for a phone: live claims, who is working on what, recent journal."""
+    if not args.offline:
+        fetch_remote()
+    lines = ['# Agents right now', '']
+    claims = [(st) for _, _, st in entries('claims') if 'expires' in st and live(st)]
+    lines.append('**Working on:** ' + ('; '.join(f'{c["task"]} ({c["agent"]}, until {c["expires"][11:16]}Z)' for c in claims) or 'nobody has a live claim'))
+    snaps = sorted([st for _, _, st in entries('') if 'expires' not in st], key=lambda st: st['time'], reverse=True)[:5]
+    lines += ['', '**Last seen:**']
+    lines += [f'- {st["agent"]} on `{st["branch"]}` {age(st["time"])}' + (f' — next: {st["next"]}' if st.get('next') else '') +
+              (' (unsaved work saved)' if st.get('dirty') else '') for st in snaps] or ['- nobody yet']
+    lines += ['', '**Journal:**']
+    lines += [f'- {e["time"][5:16].replace("T", " ")} {e["agent"]}: {e["text"]}' for e in journal_entries(args.limit)] or ['- empty']
+    print('\n'.join(lines))
+
+
 def age(text):
     seconds = int((now() - parse_stamp(text)).total_seconds())
     return f'{seconds // 3600}h{seconds % 3600 // 60:02d}m ago' if seconds >= 3600 else f'{seconds // 60}m ago'
@@ -257,6 +319,10 @@ def main(argv=None):
     p = sub.add_parser('claim', help='reserve a task; expires on its own')
     p.add_argument('task_id'); p.add_argument('--hours', type=float, default=4); p.add_argument('--note')
     p = sub.add_parser('release', help='give a claim up'); p.add_argument('task_id')
+    p = sub.add_parser('log', help='add a note to the shared journal (decisions, findings, warnings)')
+    p.add_argument('text'); p.add_argument('--task')
+    p = sub.add_parser('journal', help='read the shared journal'); p.add_argument('--limit', type=int, default=20)
+    p = sub.add_parser('digest', help='short markdown summary for a phone'); p.add_argument('--limit', type=int, default=8)
     for name in ('status', 'resume'):
         p = sub.add_parser(name, help='list claims and snapshots' if name == 'status' else 'see where agents stopped; --apply restores')
         p.add_argument('--limit', type=int, default=10)
@@ -266,7 +332,7 @@ def main(argv=None):
     try:
         os.chdir(out('rev-parse', '--show-toplevel'))
         {'save': save, 'watch': watch, 'claim': claim, 'release': release,
-         'status': listing, 'resume': resume}[args.command](args)
+         'status': listing, 'resume': resume, 'log': log, 'journal': journal, 'digest': digest}[args.command](args)
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
         print(f'handoff: {error}', file=sys.stderr)
         return 1
