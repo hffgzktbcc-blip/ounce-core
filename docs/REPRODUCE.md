@@ -4,14 +4,10 @@ This is the path for someone outside the project, on an ARM64 Mac or an ARM64 Li
 rerun the differential checks and see whether they match. Read [LIMITS.md](LIMITS.md) first so you know what a
 match does and does not mean.
 
-> **Dependency.** This page documents `scripts/verify_differential.py` and
-> `docs/verify/differential.json`. They are being landed separately; if they are not on `main` yet,
-> the steps below will not run until they are. Everything else here already exists.
-
 ## What you are reproducing
 
 For each harness listed in `docs/verify/differential.json` (floating-point and integer-vector
-instruction tests, the QC-flag tests, and LZ4, xxHash, SQLite, Lua, plus the ones marked in review such as zlib, cJSON, TinyExpr, Monocypher), the script:
+instruction tests, the QC-flag tests, and LZ4, xxHash, SQLite, Lua, plus zlib, cJSON, TinyExpr, Monocypher and wasm3), the script:
 
 1. fetches the pinned upstream source (a git commit, or a tarball whose SHA-256 is checked);
 2. compiles the shared C cases for your host with `cc -O1`. This is the **reference**;

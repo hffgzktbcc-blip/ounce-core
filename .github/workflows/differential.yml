@@ -32,6 +32,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  instruction-fuzzer:
+    name: Instruction fuzzer (Apple Silicon)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check seeded instructions against hardware and across engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          mkdir -p fuzz-results
+          export TMPDIR="$PWD/fuzz-results"
+          bash docs/verify/insn-fuzzer/run_tiers.sh 20000 2>&1 | tee fuzz-results/run.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: instruction-fuzzer-apple-silicon
+          path: fuzz-results/
+          if-no-files-found: warn
+
   build-nros:
     name: Build differential NROs (devkitA64)
     runs-on: ubuntu-latest
