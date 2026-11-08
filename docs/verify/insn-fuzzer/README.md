@@ -118,6 +118,6 @@ Apple Silicon job on runtime/verification changes and the weekly schedule. Seeds
 with the hardware trace. The job requires arm64, preserves pipeline failures,
 and uploads the run log and per-engine replay summaries even on failure.
 
-This wires existing checks into CI; it is not evidence of a passing hosted run.
+The first [hosted job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42521905867/job/128857024677) passed on 2026-11-08; the [execution excerpt](ci-2026-11-08.log) retains the seed counts and zero-mismatch summaries.
 It covers single instructions with the exclusions above, not generated sequences
 or exhaustive coverage of every family. Reproduce with the same script locally.

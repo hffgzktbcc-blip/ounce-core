@@ -74,7 +74,7 @@ Every claim carries one of four labels:
 Current progress and remaining acceptance:
 
 - **Step 1 started:** `run-elf` executes five tiny freestanding fixtures. Real libc harnesses, deterministic time and the three-OS acceptance are still missing.
-- **Step 2 started:** single-instruction host fuzzing and interpreter/Tier-3/Tier-4 comparisons exist. CI wiring runs the existing seeded checker on Apple Silicon; a passing hosted run is still required. Generated multi-instruction sequences and per-family acceptance remain future work.
+- **Step 2 started:** single-instruction host fuzzing and interpreter/Tier-3/Tier-4 comparisons exist. The [Apple Silicon CI job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42521905867/job/128857024677) passed: 60,000 engine-comparison words and a 20,000-word host trace replayed through each tier, with zero unexpected differences. Generated multi-instruction sequences and per-family acceptance remain future work.
 - **Steps 3–4 partial:** the released [diagnosis CLI](DIAGNOSIS_CLI.md) inspects retained reports and one historical replay. It does not locate an arbitrary first differing instruction or demonstrate portable execution recording.
 - **Step 5 prototype:** `site/lab.html` is a scripted teaching/workbench prototype, not a WebAssembly build of the Rust runtime.
 - **Step 6 pending:** no outside-project conformance-suite result is recorded.

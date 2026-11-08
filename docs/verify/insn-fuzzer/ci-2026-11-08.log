@@ -1,0 +1,32 @@
+2026-11-08T20:49:58.8836680Z --- fuzz-replay engine-vs-engine summary (seed 1) ---
+2026-11-08T20:49:58.8838360Z words generated:                20000
+2026-11-08T20:49:58.8838950Z interpreter unimplemented/other (skipped): 0
+2026-11-08T20:49:58.8839800Z compared:                       20000 (16174 distinct classes)
+2026-11-08T20:49:58.8840170Z   interpreter exits:            {"fault": 7616, "svc": 12384}
+2026-11-08T20:49:58.8840970Z   tier3 vs interp MISMATCH:     0
+2026-11-08T20:49:58.8841310Z   tier4 vs interp MISMATCH:     0
+2026-11-08T20:49:58.8841910Z   words Tier-4 ran natively:    15062 of 20000 (the rest fell back to Tier-3/interpreter)
+2026-11-08T20:50:04.3534950Z --- fuzz-replay engine-vs-engine summary (seed 2) ---
+2026-11-08T20:50:04.3535980Z words generated:                20000
+2026-11-08T20:50:04.3536400Z interpreter unimplemented/other (skipped): 0
+2026-11-08T20:50:04.3536880Z compared:                       20000 (16320 distinct classes)
+2026-11-08T20:50:04.3537350Z   interpreter exits:            {"fault": 7630, "svc": 12370}
+2026-11-08T20:50:04.3537760Z   tier3 vs interp MISMATCH:     0
+2026-11-08T20:50:04.3538050Z   tier4 vs interp MISMATCH:     0
+2026-11-08T20:50:04.3538610Z   words Tier-4 ran natively:    15044 of 20000 (the rest fell back to Tier-3/interpreter)
+2026-11-08T20:50:11.1481590Z --- fuzz-replay engine-vs-engine summary (seed 3) ---
+2026-11-08T20:50:11.1482370Z words generated:                20000
+2026-11-08T20:50:11.1482720Z interpreter unimplemented/other (skipped): 0
+2026-11-08T20:50:11.1483070Z compared:                       20000 (16243 distinct classes)
+2026-11-08T20:50:11.1483510Z   interpreter exits:            {"fault": 7608, "svc": 12392}
+2026-11-08T20:50:11.1483860Z   tier3 vs interp MISMATCH:     0
+2026-11-08T20:50:11.1484160Z   tier4 vs interp MISMATCH:     0
+2026-11-08T20:50:11.1484680Z   words Tier-4 ran natively:    15105 of 20000 (the rest fell back to Tier-3/interpreter)
+2026-11-08T20:50:12.5723920Z fuzz_host seed=1 words=20000 executed=8076 undefined(SIGILL)=11924
+2026-11-08T20:50:12.5815330Z engine:                         Tier3
+2026-11-08T20:50:12.5820800Z emulator other errors:          0
+2026-11-08T20:50:12.5821770Z   MISMATCH:                     0 (0 with QC wrong)
+2026-11-08T20:50:14.5237800Z fuzz_host seed=1 words=20000 executed=8076 undefined(SIGILL)=11924
+2026-11-08T20:50:14.5350270Z engine:                         Tier4
+2026-11-08T20:50:14.5351160Z emulator other errors:          0
+2026-11-08T20:50:14.5352230Z   MISMATCH:                     0 (0 with QC wrong)
