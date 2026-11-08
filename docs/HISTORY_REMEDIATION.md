@@ -8,6 +8,13 @@ PR #1 head for twelve firmware-labelled arrays and two standalone objects.
 The separate historical 72-byte third-party homebrew program still requires a
 permission decision. The original audit below is retained as dated evidence.
 
+**Supersession notice (2026-11-08):** the October findings and checklist below
+describe their dated snapshot, not current missing work. PR #203's controls are
+merged and qualified; [LICENSE_DISPOSITION.md](LICENSE_DISPOSITION.md) records
+the current notice/distribution decisions. The later object-level inventory
+supersedes broad commit-reachability assumptions. Do not start a main/tag rewrite
+or repeat completed inventories from this archived checklist.
+
 **Audit date:** 2026-10-29. **Status: investigation and narrow dry run complete / remote history not remediated.** Read-only Git metadata review, release/fixture inventory and a disposable-mirror dry run. Not a legal opinion.
 Dated follow-up snapshot: [PROVENANCE_INVENTORY_2026-11-07.md](PROVENANCE_INVENTORY_2026-11-07.md) (refreshed reachability, gates and release-integrity checks; no remediation action).
 

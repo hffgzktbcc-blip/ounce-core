@@ -1,0 +1,41 @@
+========================================================================
+Objective-C family supplemental grant and attribution
+
+Applies to the objc2-repository packages identified above (objc2, block2,
+dispatch2, objc2-encode and framework crates). MIT is the selected licence
+option, as declared in each pinned upstream Cargo manifest and LICENSE.md.
+The upstream workspace names Mads Marquart <mads@marquart.dk> as author;
+retain attribution to Mads Marquart and the respective project contributors.
+objc2 retains code from Steven Sheldon's rust-objc. Its original MIT notice
+is reproduced below without replacing or relicensing the upstream overview.
+
+Attribution source:
+https://github.com/madsmtm/objc2/blob/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/Cargo.toml
+Inherited MIT notice source:
+https://github.com/SSheldon/rust-objc/blob/9961247c1a82027d6edbe6c516011b1363b9354c/LICENSE.txt
+Git blob: e9ab3babc0d8602b83dccde8a462f8f3dc1e52ad
+
+The retained upstream Apple-SDK qualification remains applicable. This
+supplement does not grant rights to Apple SDK files, frameworks or assets.
+
+MIT License
+
+Copyright (c) Steven Sheldon
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
