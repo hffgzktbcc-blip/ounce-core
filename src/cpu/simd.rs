@@ -4,9 +4,14 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatAddSubOp, SimdSatLongOp, SimdShiftExtOp};
+use super::instructions::{SimdElemOp, SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatAddSubOp, SimdSatLongOp, SimdShiftExtOp};
 
 #[inline]
+/// Mask of one `esize`-bit lane, as a 128-bit value.
+pub fn lane_mask(esize: u32) -> u128 {
+    mask(esize) as u128
+}
+
 fn mask(esize: u32) -> u64 {
     if esize == 64 { u64::MAX } else { (1u64 << esize) - 1 }
 }
@@ -67,6 +72,43 @@ pub fn dup(val: u64, esize: u32, q: bool) -> u128 {
 
 /// Three-register same-type operations. `d` is the destination's old value (used by `BSL`/`BIT`/`BIF`).
 pub fn three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -> u128 {
+    three_same_qc(op, d, n, m, esize, q).0
+}
+
+/// Register-shift count of lane `i` of `m`: the low byte as a signed number (negative shifts right).
+fn reg_shift(m: u128, esize: u32, i: usize) -> i32 {
+    lane(m, esize, i) as u8 as i8 as i32
+}
+
+/// `S/URSHL`, `S/UQSHL`, `S/UQRSHL` on one lane. `a` is the raw lane. Returns the lane and whether it saturated.
+fn shift_lane(a: u64, sh: i32, esize: u32, signed: bool, round: bool, sat: bool) -> (u64, bool) {
+    let v: i128 = if signed { sext(a, esize) as i128 } else { a as i128 };
+    if sh >= 0 {
+        if sat {
+            if v == 0 {
+                return (0, false);
+            }
+            if sh as u32 >= esize {
+                return saturate(if v < 0 { i128::MIN / 2 } else { i128::MAX / 2 }, esize, signed);
+            }
+            return saturate(v << sh, esize, signed);
+        }
+        let r = if sh as u32 >= esize { 0 } else { (v << sh) as u64 & mask(esize) };
+        return (r, false);
+    }
+    let rs = ((-sh) as u32).min(100);
+    let adj = if round { v + (1i128 << (rs - 1)) } else { v };
+    ((adj >> rs) as u64 & mask(esize), false)
+}
+
+/// [`three_same`] plus whether a saturating form saturated (the value `FPSR.QC` must accumulate).
+pub fn three_same_qc(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -> (u128, bool) {
+    let mut qc = false;
+    let r = three_same_inner(op, d, n, m, esize, q, &mut qc);
+    (r, qc)
+}
+
+fn three_same_inner(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool, qc: &mut bool) -> u128 {
     let bitwise = match op {
         SimdOp3::And => Some(n & m),
         SimdOp3::Bic => Some(n & !m),
@@ -95,7 +137,49 @@ pub fn three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -
             (lane(n, esize, i), lane(m, esize, i))
         };
         let (sa, sb) = (sext(a, esize), sext(b, esize));
+        let (ia, ib) = (sa as i128, sb as i128);
+        let (ua, ub) = (a as i128, b as i128);
+        let mut sat1 = |v: i128, signed: bool| {
+            let (x, f) = saturate(v, esize, signed);
+            *qc |= f;
+            x
+        };
         let r = match op {
+            SimdOp3::Shadd => ((ia + ib) >> 1) as u64,
+            SimdOp3::Uhadd => ((ua + ub) >> 1) as u64,
+            SimdOp3::Srhadd => ((ia + ib + 1) >> 1) as u64,
+            SimdOp3::Urhadd => ((ua + ub + 1) >> 1) as u64,
+            SimdOp3::Shsub => ((ia - ib) >> 1) as u64,
+            SimdOp3::Uhsub => ((ua - ub) >> 1) as u64,
+            SimdOp3::Sqadd => sat1(ia + ib, true),
+            SimdOp3::Uqadd => sat1(ua + ub, false),
+            SimdOp3::Sqsub => sat1(ia - ib, true),
+            SimdOp3::Uqsub => sat1(ua - ub, false),
+            SimdOp3::Srshl | SimdOp3::Urshl | SimdOp3::Sqshl | SimdOp3::Uqshl | SimdOp3::Sqrshl | SimdOp3::Uqrshl => {
+                let signed = matches!(op, SimdOp3::Srshl | SimdOp3::Sqshl | SimdOp3::Sqrshl);
+                let round = matches!(op, SimdOp3::Srshl | SimdOp3::Urshl | SimdOp3::Sqrshl | SimdOp3::Uqrshl);
+                let sat = matches!(op, SimdOp3::Sqshl | SimdOp3::Uqshl | SimdOp3::Sqrshl | SimdOp3::Uqrshl);
+                let (x, f) = shift_lane(a, reg_shift(m, esize, i), esize, signed, round, sat);
+                *qc |= f;
+                x
+            }
+            SimdOp3::Sabd => (ia - ib).unsigned_abs() as u64,
+            SimdOp3::Uabd => (ua - ub).unsigned_abs() as u64,
+            SimdOp3::Saba => lane(d, esize, i).wrapping_add((ia - ib).unsigned_abs() as u64),
+            SimdOp3::Uaba => lane(d, esize, i).wrapping_add((ua - ub).unsigned_abs() as u64),
+            SimdOp3::Mla => lane(d, esize, i).wrapping_add(a.wrapping_mul(b)),
+            SimdOp3::Mls => lane(d, esize, i).wrapping_sub(a.wrapping_mul(b)),
+            SimdOp3::Pmul => {
+                let mut r = 0u64;
+                for k in 0..8 {
+                    if (b >> k) & 1 == 1 {
+                        r ^= a << k;
+                    }
+                }
+                r & 0xFF
+            }
+            SimdOp3::Sqdmulh => sat1((2 * ia * ib) >> esize, true),
+            SimdOp3::Sqrdmulh => sat1((2 * ia * ib + (1i128 << (esize - 1))) >> esize, true),
             SimdOp3::Add | SimdOp3::Addp => a.wrapping_add(b),
             SimdOp3::Sub => a.wrapping_sub(b),
             SimdOp3::Mul => a.wrapping_mul(b),
@@ -127,6 +211,13 @@ pub fn three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -
         set_lane(&mut out, esize, i, r);
     }
     out
+}
+
+/// Scalar three-same form: lane 0 of `n`/`m` only, result in lane 0 of the destination, the rest zeroed.
+pub fn scalar_three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32) -> (u128, bool) {
+    let keep = mask(esize) as u128;
+    let (r, qc) = three_same_qc(op, d & keep, n & keep, m & keep, esize, true);
+    (r & keep, qc)
 }
 
 /// Two-register miscellaneous operations.
@@ -167,11 +258,43 @@ pub fn two_misc(op: SimdOp2, n: u128, esize: u32, q: bool) -> u128 {
             SimdOp2::Fcvtzs => f64::from_bits(a) as i64 as u64,
             SimdOp2::Fcvtzu if esize == 32 => f32::from_bits(a as u32) as u32 as u64,
             SimdOp2::Fcvtzu => f64::from_bits(a) as u64,
+            SimdOp2::Clz => (a.leading_zeros() - (64 - esize)) as u64,
+            SimdOp2::Cls => {
+                let x = if s < 0 { !a & all } else { a };
+                (x.leading_zeros() - (64 - esize)) as u64 - 1
+            }
+            SimdOp2::Rbit => (a as u8).reverse_bits() as u64,
+            SimdOp2::Sqabs | SimdOp2::Sqneg | SimdOp2::Suqadd | SimdOp2::Usqadd => {
+                unreachable!("saturating forms go through two_misc_sat")
+            }
             SimdOp2::Not | SimdOp2::Rev64 | SimdOp2::Rev32 | SimdOp2::Rev16 => unreachable!(),
         };
         set_lane(&mut out, esize, i, r);
     }
     out
+}
+
+/// Two-register miscellaneous operations with the saturation flag: also the forms that read `d` (`SUQADD`/`USQADD`).
+/// Other ops pass through to [`two_misc`] with no saturation. `scalar` keeps only lane 0 of the result and of the source.
+pub fn two_misc_sat(op: SimdOp2, d: u128, n: u128, esize: u32, q: bool) -> (u128, bool) {
+    if !matches!(op, SimdOp2::Sqabs | SimdOp2::Sqneg | SimdOp2::Suqadd | SimdOp2::Usqadd) {
+        return (two_misc(op, n, esize, q), false);
+    }
+    let mut out = 0u128;
+    let mut qc = false;
+    for i in 0..lanes(esize, q) {
+        let (a, dv) = (lane(n, esize, i), lane(d, esize, i));
+        let (sa, sd) = (sext(a, esize) as i128, sext(dv, esize) as i128);
+        let (r, f) = match op {
+            SimdOp2::Sqabs => saturate(sa.abs(), esize, true),
+            SimdOp2::Sqneg => saturate(-sa, esize, true),
+            SimdOp2::Suqadd => saturate(sd + a as i128, esize, true),
+            _ => saturate(dv as i128 + sa, esize, false),
+        };
+        qc |= f;
+        set_lane(&mut out, esize, i, r);
+    }
+    (out, qc)
 }
 
 /// `SSHR`/`USHR`/`SHL` by `shift` on `esize` lanes.
@@ -387,7 +510,7 @@ macro_rules! fp_lane_ops {
                 let (a, b, d) = (<$f>::from_bits(n), <$f>::from_bits(m), <$f>::from_bits(acc));
                 let flag = |c: bool| if c { ALL } else { 0 };
                 let nan = match op {
-                    SimdFpOp3::Fadd | SimdFpOp3::Faddp | SimdFpOp3::Fsub | SimdFpOp3::Fmul | SimdFpOp3::Fdiv => nan_in(&[a, b]),
+                    SimdFpOp3::Fadd | SimdFpOp3::Faddp | SimdFpOp3::Fsub | SimdFpOp3::Fmul | SimdFpOp3::Fmulx | SimdFpOp3::Fdiv => nan_in(&[a, b]),
                     SimdFpOp3::Fabd => nan_in(&[a, b]).map(|r| r & !SIGN),
                     // FPMulAdd: a quiet-NaN addend with 0 * inf is the default NaN; otherwise addend, then operands
                     SimdFpOp3::Fmla | SimdFpOp3::Fmls => {
@@ -407,6 +530,13 @@ macro_rules! fp_lane_ops {
                     SimdFpOp3::Fadd | SimdFpOp3::Faddp => (a + b).to_bits(),
                     SimdFpOp3::Fsub => (a - b).to_bits(),
                     SimdFpOp3::Fmul => (a * b).to_bits(),
+                    SimdFpOp3::Fmulx => {
+                        if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) {
+                            (if a.is_sign_negative() != b.is_sign_negative() { -2.0 } else { 2.0 } as $f).to_bits()
+                        } else {
+                            (a * b).to_bits()
+                        }
+                    }
                     SimdFpOp3::Fdiv => (a / b).to_bits(),
                     SimdFpOp3::Fabd => (a - b).abs().to_bits(),
                     SimdFpOp3::Fmla => a.mul_add(b, d).to_bits(),
@@ -499,6 +629,7 @@ pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usiz
     let esize = if double { 64 } else { 32 };
     let op3 = match op {
         SimdFpElementOp::Fmul => SimdFpOp3::Fmul,
+        SimdFpElementOp::Fmulx => SimdFpOp3::Fmulx,
         SimdFpElementOp::Fmla => SimdFpOp3::Fmla,
         SimdFpElementOp::Fmls => SimdFpOp3::Fmls,
     };
@@ -509,6 +640,40 @@ pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usiz
         set_lane(&mut out, esize, i, r);
     }
     out
+}
+
+/// Integer by-element and dot-product forms. `m` is the whole `Vm`; `index` picks the element (`0xFF`: vector `SDOT`/`UDOT`,
+/// whose second operand is the full vector). Returns the result and whether it saturated (`FPSR.QC`).
+pub fn by_element(op: SimdElemOp, d: u128, n: u128, m: u128, index: u8, esize: u32, q: bool, scalar: bool) -> (u128, bool) {
+    if let SimdElemOp::Dot(signed) = op {
+        let mut out = 0u128;
+        for i in 0..lanes(32, q) {
+            let group = if index == 0xFF { lane(m, 32, i) } else { lane(m, 32, index as usize) };
+            let mut acc = lane(d, 32, i) as u32;
+            for k in 0..4 {
+                let (a, b) = (lane(n, 8, 4 * i + k), (group >> (8 * k)) & 0xFF);
+                let prod = if signed { (a as u8 as i8 as i32).wrapping_mul(b as u8 as i8 as i32) } else { (a as u32).wrapping_mul(b as u32) as i32 };
+                acc = acc.wrapping_add(prod as u32);
+            }
+            set_lane(&mut out, 32, i, acc as u64);
+        }
+        return (out, false);
+    }
+    let elem = lane(m, esize, index as usize);
+    let keep = mask(esize) as u128;
+    let mvec = if scalar { elem as u128 } else { dup(elem, esize, true) };
+    match op {
+        SimdElemOp::Op3(o3) if scalar => scalar_three_same(o3, d, n, mvec, esize),
+        SimdElemOp::Op3(o3) => three_same_qc(o3, d, n, mvec, esize, q),
+        SimdElemOp::Long(lo, signed) => (mul_long(lo, d, n, mvec, esize, q, signed), false),
+        SimdElemOp::SatLong(so) if scalar => {
+            let wide = mask(esize * 2) as u128;
+            let (r, f) = sat_doubling_mul_long(so, d & wide, n & keep, mvec, esize, false);
+            (r & wide, f)
+        }
+        SimdElemOp::SatLong(so) => sat_doubling_mul_long(so, d, n, mvec, esize, q),
+        SimdElemOp::Dot(_) => unreachable!(),
+    }
 }
 
 /// `TBL`/`TBX`: `table` holds the 1..=4 source registers, `idx` the index vector, `dst` the old destination.
