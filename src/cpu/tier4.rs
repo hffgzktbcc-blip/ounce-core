@@ -1264,6 +1264,8 @@ mod tests {
         sp: u64,
         pc: u64,
         nzcv: u32,
+        fpsr: u32,
+        fpcr: u32,
         v: [u128; 32],
         exit: BlockExit,
         data: Vec<u8>,
@@ -1277,6 +1279,8 @@ mod tests {
             sp: cpu.regs.sp,
             pc: cpu.regs.pc,
             nzcv: cpu.regs.pstate.to_bits(),
+            fpsr: cpu.regs.fpsr,
+            fpcr: cpu.regs.fpcr,
             v: cpu.regs.v,
             exit,
             data,
@@ -1376,6 +1380,36 @@ mod tests {
         mmu.read_bytes(DATA, &mut buf).unwrap();
         m.write_bytes(DATA, &buf).unwrap();
         (c, m)
+    }
+
+    /// FPSR.QC is set by a saturating op that Tier-3/4 hand to the interpreter, stays set, and clears on `msr`.
+    #[test]
+    fn qc_flag_matches_interpreter_on_all_tiers() {
+        let words = [
+            0xd51b443f, // msr fpsr, xzr
+            0x91000421, // add x1, x1, #1 (native)
+            0xd53b4425, // mrs x5, fpsr            -> 0
+            0x0e61d002, // sqdmull v2.4s, v0.4h, v1.4h (v0/v1 = 0x8000: saturates lane 0)
+            0xd53b4426, // mrs x6, fpsr            -> QC
+            0x0e65d083, // sqdmull v3.4s, v4.4h, v5.4h (zeros, no saturation; QC stays set)
+            0xd51b443f, // msr fpsr, xzr
+            0xd53b4427, // mrs x7, fpsr            -> 0
+            0xd51b4408, // msr fpcr, x8
+            0xd53b4409, // mrs x9, fpcr            -> x8
+            0xd4000001, // svc #0
+        ];
+        let init = |c: &mut Cpu| {
+            c.regs.write_q(0, 0x8000);
+            c.regs.write_q(1, 0x8000);
+            c.regs.write_x(8, 0x0300_0000);
+            c.regs.fpsr = 0xFFFF_FFFF & crate::cpu::registers::FPSR_MASK;
+        };
+        let (mut cpu, mmu) = setup(&words);
+        init(&mut cpu);
+        let (c, m) = clone(&cpu, &mmu);
+        let r = run_interp(c, m, 1000);
+        assert_eq!((r.x[5], r.x[6], r.x[7], r.x[9]), (0, 1 << 27, 0, 0x0300_0000));
+        check_all_tiers(&words, init);
     }
 
     /// Interpreter, Tier-3 and Tier-4 must agree.
