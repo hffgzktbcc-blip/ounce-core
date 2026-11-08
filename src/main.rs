@@ -11,6 +11,7 @@ mod fs;
 mod gpu;
 mod hid;
 mod kernel;
+mod linux;
 mod loader;
 mod mmu;
 mod ui;
@@ -117,6 +118,7 @@ fn main() {
             };
             run_gpu3d_demo(max_frames);
         }
+        "run-elf" => std::process::exit(linux::runner::cli(&args[2..])),
         "run" | "run-nro" => {
             print_banner();
             let nro_only = args[1] == "run-nro";
@@ -302,6 +304,7 @@ fn print_usage() {
     println!("    cargo run --release -- {}<COMMAND>{} [OPTIONS]\n", s.green, s.reset);
     println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
     println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
+    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls)", s.green, s.reset);
     println!("    {}run-nro{} <file> [args] [--gui]  Load and execute only a homebrew NRO", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
     println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);
