@@ -558,6 +558,15 @@ pub enum Instruction {
         index: u8,
     },
 
+    /// `SMOV Wd/Xd, Vn.<T>[index]`: sign-extended lane to a 32-bit (`x` false) or 64-bit register
+    SimdSmov {
+        rd: u8,
+        rn: u8,
+        esize: u8,
+        index: u8,
+        x: bool,
+    },
+
     /// `ADDHN{2}`/`SUBHN{2}`/`RADDHN{2}`/`RSUBHN{2}`: `esize` is the narrow (result) lane size; `q` writes the high half
     SimdNarrow {
         rd: u8,
@@ -576,6 +585,17 @@ pub enum Instruction {
         op: SimdSatLongOp,
         esize: u8,
         q: bool,
+    },
+
+    /// `SQADD`/`UQADD`/`SQSUB`/`UQSUB` (vector, or scalar when `scalar`): saturating lane add/subtract; sets `FPSR.QC`
+    SimdSatAddSub {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdSatAddSubOp,
+        esize: u8,
+        q: bool,
+        scalar: bool,
     },
 
     /// AdvSIMD three registers of different type: widening multiply (`S/UMULL`, `S/UMLAL`, `S/UMLSL`
@@ -1078,4 +1098,13 @@ pub enum SimdShiftExtOp {
     Sqrshrn,
     Uqrshrn,
     Sqrshrun,
+}
+
+/// Saturating add/subtract operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdSatAddSubOp {
+    Sqadd,
+    Uqadd,
+    Sqsub,
+    Uqsub,
 }
