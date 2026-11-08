@@ -30,6 +30,16 @@ prioritized backlog, not a permission system. Historical notes do not add rules.
   incompatible licensed code. Keep port notices/provenance. Keep `src/` safe Rust
   and unsafe operations in the existing isolated crate boundaries.
 
+Usage can run out at any moment, so make your state recoverable before you need to:
+- At session start: `scripts/handoff.sh resume` (see where earlier agents stopped; `--apply NAME`
+  restores their unsaved work on a new branch) and `scripts/handoff.sh claim <task>` (claims
+  expire after 4h on their own, so a dead agent never blocks the task).
+- Run `scripts/handoff.sh watch --push &` once. It snapshots staged, unstaged and untracked work
+  every minute to `refs/handoff/*` without touching your branch or index. `scripts/gate.sh`
+  checkpoints and submits snapshot automatically.
+- Before a long step, `scripts/handoff.sh save --note "doing X" --next "then Y" --push`.
+- Finished or switching task: `scripts/handoff.sh release <task>`.
+
 Proceed autonomously on routine, reversible work. Escalate new scope with material
 tradeoffs, disputed redistribution, destructive history/data changes, credentials,
 or spending. A blocker applies to the affected action, not the whole project.
