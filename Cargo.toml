@@ -2,7 +2,7 @@
 name = "ounce-core"
 version = "0.5.0"
 edition = "2024"
-description = "Inspectable AArch64 execution runtime and reproducible regression research toolkit"
+description = "Homebrew systems research runtime and architecture compatibility layer for NVIDIA Tegra T239"
 
 [workspace]
 members = [".", "crates/ounce-recompiler", "crates/ounce-nce"]
