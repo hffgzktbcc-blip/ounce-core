@@ -525,6 +525,20 @@ pub enum Instruction {
         post_index: bool,
     },
 
+    /// AdvSIMD vector x indexed element, integer: `MUL`/`MLA`/`MLS`/`SQDMULH`/`SQRDMULH`, the long multiplies
+    /// (`S/UMULL`, `SQDMULL`, ...) and `SDOT`/`UDOT`. `esize` is the element size (for `Dot`, 32). `index` selects the
+    /// element of `Vm`; for the vector (non-indexed) `SDOT`/`UDOT` it is `0xFF`. `scalar` is the scalar form (lane 0 only).
+    SimdByElement {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        index: u8,
+        op: SimdElemOp,
+        esize: u8,
+        q: bool,
+        scalar: bool,
+    },
+
     /// AdvSIMD scalar two-register miscellaneous (`SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU Sd/Dd, Sn/Dn`): lane 0 only,
     /// the rest of `Vd` is zeroed
     SimdScalarTwoMisc {
@@ -956,8 +970,22 @@ pub enum SimdOp3 {
     Sqrdmulh,
 }
 
+/// Operation of an integer by-element (or vector dot-product) instruction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdElemOp {
+    /// Same-size ops reusing the three-same arithmetic: `Mul`, `Mla`, `Mls`, `Sqdmulh`, `Sqrdmulh`
+    Op3(SimdOp3),
+    /// Widening multiply (`signed`): `Mull`, `Mlal`, `Mlsl`
+    Long(SimdLongOp, bool),
+    /// Saturating doubling widening multiply
+    SatLong(SimdSatLongOp),
+    /// `SDOT` (`true`) / `UDOT` (`false`): four byte products accumulated into each 32-bit lane
+    Dot(bool),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimdFpElementOp {
+    Fmulx,
     Fmul,
     Fmla,
     Fmls,
@@ -983,6 +1011,8 @@ pub enum SimdFpOp3 {
     Fcmgt,
     Facge,
     Facgt,
+    /// `FMULX`: like `FMUL`, but `0 * inf` is `+-2.0`
+    Fmulx,
 }
 
 /// AdvSIMD floating-point two-register operations: zero compares, `FABS`/`FNEG`/`FSQRT`, and the
@@ -1066,6 +1096,15 @@ pub enum SimdOp2 {
     /// `FCVTZS`/`FCVTZU` (vector or scalar, integer): float lanes to integer, rounding toward zero
     Fcvtzs,
     Fcvtzu,
+    /// Count leading sign bits / zero bits, reverse bits within bytes
+    Cls,
+    Clz,
+    Rbit,
+    /// Saturating abs/neg and accumulate-with-opposite-signedness (set `FPSR.QC`; the accumulate forms read `Vd`)
+    Sqabs,
+    Sqneg,
+    Suqadd,
+    Usqadd,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

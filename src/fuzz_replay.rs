@@ -150,6 +150,7 @@ fn class(word: u32) -> u32 {
 pub fn run(args: &[String]) -> i32 {
     let mut show = 20usize;
     let mut top = 60usize;
+    let mut list_unimpl = false;
     // `--filter MASK:VALUE` (hex): also count executed/matching words with `word & MASK == VALUE`, for per-class evidence
     let mut filter: Vec<(u32, u32)> = Vec::new();
     let (mut f_exec, mut f_match) = (0u64, 0u64);
@@ -170,12 +171,13 @@ pub fn run(args: &[String]) -> i32 {
                     }
                 }
             }
+            "--list-unimplemented" => list_unimpl = true,
             "--top" => top = it.next().and_then(|v| v.parse().ok()).unwrap_or(60),
             _ => input = Some(a.clone()),
         }
     }
     let Some(input) = input else {
-        eprintln!("usage: fuzz-replay [--show N] [--top N] [--filter MASK:VALUE]... <trace-file|->");
+        eprintln!("usage: fuzz-replay [--show N] [--top N] [--filter MASK:VALUE]... [--list-unimplemented] <trace-file|->");
         return 2;
     };
     let reader: Box<dyn BufRead> = if input == "-" {
@@ -215,6 +217,9 @@ pub fn run(args: &[String]) -> i32 {
             Line::Test(c) => match replay(&c) {
                 Outcome::Unimplemented => {
                     t.unimplemented += 1;
+                    if list_unimpl {
+                        println!("UNIMPL {:08x}", c.word);
+                    }
                     unimpl_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
                 }
                 Outcome::OtherError(e) => {
