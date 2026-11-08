@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    SimdAcrossOp,
+    SimdAcrossOp, SimdLongOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
     SimdFpElementOp, SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
@@ -418,8 +418,16 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
+    // 12z. PRFM (literal): prefetch hint, no architectural effect (must not be decoded as a load of Rt)
+    if (raw & 0xFF00_0000) == 0xD800_0000 {
+        return Instruction::Nop;
+    }
+
     // 13. Load / Store Single Register (Immediate unsigned offset, V == 0)
     if (raw & 0x3F000000) == 0x39000000 {
+        if (raw >> 30) == 3 && ((raw >> 22) & 0x3) == 2 {
+            return Instruction::Nop; // PRFM (immediate)
+        }
         let size = ((raw >> 30) & 0x3) as u8;
         let opc = ((raw >> 22) & 0x3) as u8;
         let is_load = opc != 0;
@@ -447,6 +455,9 @@ pub fn decode(raw: u32) -> Instruction {
     if (raw & 0x3F000000) == 0x38000000 {
         let size = ((raw >> 30) & 0x3) as u8;
         let opc = ((raw >> 22) & 0x3) as u8;
+        if size == 3 && opc == 2 {
+            return Instruction::Nop; // PRFUM / PRFM (register): prefetch hints
+        }
         let is_load = opc != 0;
         let is_signed = opc == 2 || opc == 3;
         let scale = 1u8 << size;
@@ -1164,6 +1175,20 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdPermute { rd, rn, rm, op, esize: 8u8 << size, q });
     }
 
+    // 27b. AdvSIMD three different (widening multiply): 0 Q U 01110 size 1 Rm opcode 00 Rn Rd
+    if (raw & 0x9F20_0C00) == 0x0E20_0000 {
+        let op = match (raw >> 12) & 0xF {
+            0b1000 => SimdLongOp::Mlal,
+            0b1010 => SimdLongOp::Mlsl,
+            0b1100 => SimdLongOp::Mull,
+            _ => return None,
+        };
+        if size == 3 {
+            return None; // PMULL / reserved
+        }
+        return Some(Instruction::SimdLong { rd, rn, rm, op, signed: !u, esize: 8u8 << size, q });
+    }
+
     // 28. AdvSIMD three same: 0 Q U 01110 size 1 Rm opcode 1 Rn Rd
     if (raw & 0x9F20_0400) == 0x0E20_0400 {
         let opcode = (raw >> 11) & 0x1F;
@@ -1396,6 +1421,14 @@ mod tests {
     #[test]
     fn test_decode_nop() {
         assert_eq!(decode(0xD503201F), Instruction::Nop);
+        // PRFM / PRFUM / PRFM (register) are prefetch hints, not loads into Rt (Rt is the prefetch operation, often 0)
+        assert_eq!(decode(0xF980C160), Instruction::Nop); // prfm pldl1keep, [x11, #384]
+        assert_eq!(decode(0xF8A06960), Instruction::Nop); // prfm pldl1keep, [x11, x0]
+        assert_eq!(decode(0xF8800160), Instruction::Nop); // prfum pldl1keep, [x11]
+        assert_eq!(decode(0xD8000000), Instruction::Nop); // prfm pldl1keep, <literal>
+        // UMLAL/UMULL/SMLAL family (three different)
+        assert!(matches!(decode(0x2EBF837D), Instruction::SimdLong { op: SimdLongOp::Mlal, signed: false, esize: 32, q: false, .. })); // umlal v29.2d, v27.2s, v31.2s
+        assert!(matches!(decode(0x6EBF837E), Instruction::SimdLong { op: SimdLongOp::Mlal, signed: false, esize: 32, q: true, .. })); // umlal2 v30.2d, v27.4s, v31.4s
     }
 
     #[test]

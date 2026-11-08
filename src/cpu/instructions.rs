@@ -540,6 +540,18 @@ pub enum Instruction {
         index: u8,
     },
 
+    /// AdvSIMD three registers of different type: widening multiply (`S/UMULL`, `S/UMLAL`, `S/UMLSL`
+    /// and their `2` forms). `esize` is the source lane size; `q` selects the high source half.
+    SimdLong {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdLongOp,
+        signed: bool,
+        esize: u8,
+        q: bool,
+    },
+
     /// AdvSIMD three registers of the same type (integer and bitwise)
     SimdThreeSame {
         rd: u8,
@@ -780,6 +792,14 @@ pub enum SimdFpElementOp {
     Fmul,
     Fmla,
     Fmls,
+}
+
+/// Widening multiply flavours of AdvSIMD three-different.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdLongOp {
+    Mull,
+    Mlal,
+    Mlsl,
 }
 
 /// AdvSIMD across-lanes reductions (`ADDV`, `S/UADDLV`, `S/UMAXV`, `S/UMINV`).
