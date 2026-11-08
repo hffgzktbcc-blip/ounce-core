@@ -2,7 +2,7 @@
   "schema_version": 1,
   "release_scope": "Default Linux x86-64, macOS arm64 and Windows x86-64 binaries. Optional features excluded.",
   "cargo_lock_sha256": "4053298bf3df3b469551c794ad169451319843c646231cf4798fe3e6129b7330",
-  "notices_sha256": "83858e7c151098ddaa87fc80e42546b346ea27e13188b07296cc4acfd229084b",
+  "notices_sha256": "b899daab8781da05181486b514bedcff973ef1a940c28341a53ef1077e196a9c",
   "status": "PENDING_SPECIALIST_REVIEW",
   "reviewer": null,
   "decision_evidence": null,
@@ -1364,5 +1364,6 @@
       "source_url": null,
       "source_revision": "7b7cc48b58028e8af7be87e94c0c1c8936f1a57c"
     }
-  ]
+  ],
+  "serialization": "Aggregate normalizes line endings and trailing whitespace. Per-source hashes identify original notice bytes."
 }
