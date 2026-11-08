@@ -12,3 +12,6 @@
 /scripts/check_legal_guardrails.sh @hffgzktbcc-blip
 /.github/CODEOWNERS @hffgzktbcc-blip
 /.github/workflows/ @hffgzktbcc-blip
+/.gitattributes @hffgzktbcc-blip
+/Cargo.toml @hffgzktbcc-blip
+/Cargo.lock @hffgzktbcc-blip

@@ -1365,5 +1365,6 @@
       "source_revision": "7b7cc48b58028e8af7be87e94c0c1c8936f1a57c"
     }
   ],
-  "serialization": "Aggregate normalizes line endings and trailing whitespace. Per-source hashes identify original notice bytes."
+  "serialization": "Aggregate normalizes line endings and trailing whitespace. Per-source hashes identify original notice bytes.",
+  "cargo_manifest_sha256": "01332eb2a00371f29867b240a9b5e240c116dcb1303740ec48a88073429996b1"
 }

@@ -13,6 +13,7 @@ def package(binary, output, require_reviewed):
     root = Path(__file__).resolve().parents[1]
     review = json.loads((root / 'docs/RELEASE_NOTICE_REVIEW.json').read_text())
     for filename, field in [('Cargo.lock', 'cargo_lock_sha256'),
+                            ('Cargo.toml', 'cargo_manifest_sha256'),
                             ('THIRD_PARTY_NOTICES.txt', 'notices_sha256')]:
         if hashlib.sha256((root / filename).read_bytes()).hexdigest() != review[field]:
             raise ValueError(f'Notice review identity is stale for {filename}')
