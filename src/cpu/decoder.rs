@@ -1205,6 +1205,11 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdLong { rd, rn, rm, op, signed: !u, esize: 8u8 << size, q });
     }
 
+    // 27b2. FABD (scalar): 01 1 11110 1 sz 1 Rm 11010 1 Rn Rd (bit 23 set, sz = bit 22)
+    if (raw & 0xFFA0_FC00) == 0x7EA0_D400 {
+        return Some(Instruction::FpAbd { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
+    }
+
     // 27c. AdvSIMD scalar three same (D registers): 01 U 11110 size 1 Rm opcode 1 Rn Rd, size == 3.
     // A one-lane 64-bit vector op writes lane 0 and zeroes the rest, exactly the scalar semantics.
     if (raw & 0xDF20_0400) == 0x5E20_0400 && size == 3 {
@@ -1487,6 +1492,18 @@ mod tests {
         assert!(matches!(decode(0x1E24C021), Instruction::FpRound { rd: 1, rn: 1, op: 1, is_double: false })); // frintp s1, s1
         assert!(matches!(decode(0x1E2020F8), Instruction::FpCompare { rn: 7, is_zero: true, .. })); // fcmpe s7, #0.0
         assert!(matches!(decode(0x0E31B800), Instruction::SimdAcross { op: SimdAcrossOp::Addv, esize: 8, q: false, .. })); // addv b0, v0.8b
+    }
+
+    #[test]
+    fn test_decode_fabd_scalar() {
+        assert_eq!(
+            decode(0x7EFCD7DE),
+            Instruction::FpAbd { rd: 30, rn: 30, rm: 28, is_double: true }
+        ); // fabd d30, d30, d28 (from cJSON_Compare)
+        assert_eq!(
+            decode(0x7EA2D420),
+            Instruction::FpAbd { rd: 0, rn: 1, rm: 2, is_double: false }
+        ); // fabd s0, s1, s2
     }
 
     #[test]
