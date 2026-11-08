@@ -1,0 +1,29 @@
+Lua 5.4.7
+fib	46368
+int	-9223372036854775808	-9223372036854775808	3	-4	-2	3.0	4611686018427387904	-9223372036854775808	0	-1	1	7	6
+float	inf	-inf	0.3	3.0	9.007199254741e+15	inf	inf	0.10000000000000001
+conv	true	integer	float	1e+15	1e+100	9223372036854775807	16	12	100.0	35
+math	0.841470984808 0.540302305868 2.718281828459 2.302585092994 1.414213562373	-4	-3	-1	3	-9223372036854775808
+rand	742,50,332,342,950
+sort	9	509	1005	200
+sortdesc	1005	9
+str	HELLO WORLD	abc-abc-abc	ell	120	Hi	4
+fmt	   42|42   |003.1|ff|FF|10|1.234568e+04|0.0001|"a\"b"|true
+pat	value=key; v2=k2	2024	trim	4	5
+gmatch	THE QUICK BROWN FOX
+pack	1	0	0	0	0	2	104	105	0
+unpack	513	513	1.5	13
+utf8	Hä€😀	4	4
+co	2	20	end!
+pcall	false	false	[string "local function fib(n) if n<2 then return n en..."]:19: attempt to index a nil value (local 'x')
+err	[string "local function fib(n) if n<2 then return n en..."]:20: attempt to perform arithmetic on a table value		false
+meta	10	zzz?	OBJ	42	99
+closure	2	3	3	4
+goto	5
+loop	449997
+concat	2893	200
+tbl	2,3,4	nil	2	true
+gc	true
+load	2	nil	[string "syntax error here"]:1: syntax error near 'error'
+done
+fails=0

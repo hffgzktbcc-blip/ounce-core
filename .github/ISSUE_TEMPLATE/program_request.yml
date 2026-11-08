@@ -1,0 +1,21 @@
+name: Suggest a program to test
+description: Propose an open-source program to run as a differential test.
+labels: ["program", "good first issue"]
+body:
+  - type: input
+    id: program
+    attributes:
+      label: Program and licence
+      description: Name, repository, licence (it must permit this use), and a pinned version.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What would it exercise?
+      description: For example SIMD, floating point, threads, large memory, a particular library.
+  - type: textarea
+    id: oracle
+    attributes:
+      label: How will we know the right answer?
+      description: A deterministic output we can compare against a host build.

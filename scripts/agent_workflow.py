@@ -74,7 +74,12 @@ def next_task(args):
     waiting = [t for t in plan.values() if not t['done'] and not ready(t, plan)]
     if waiting:
         print('Waiting: ' + ', '.join(f'{t["id"]} ({t["status"]}; dependencies: {" ".join(t["depends"]) or "none"})' for t in waiting))
-    print('\nSave: git add <owned paths>; scripts/gate.sh --checkpoint "what/why"')
+    handoff = subprocess.run([sys.executable, '-B', str(Path(__file__).with_name('handoff.py')), '--offline', 'status', '--limit', '3'],
+                             capture_output=True, text=True)
+    if handoff.returncode == 0 and ('expires' in handoff.stdout or 'ago' in handoff.stdout):
+        print('\n' + handoff.stdout.rstrip())
+    print('\nUsage can end at any time: scripts/handoff.sh claim <task>; scripts/handoff.sh watch --push &  (see AGENTS.md)')
+    print('Save: git add <owned paths>; scripts/gate.sh --checkpoint "what/why"')
     print('Check: scripts/gate.sh [--check quick|runtime|full]; submit: scripts/gate.sh --submit')
 
 
@@ -107,6 +112,19 @@ def branch_for_write():
         raise ValueError('create a working branch first: git switch -c <topic>')
 
 
+def autosave(note, next_step=None, push=False):
+    """Best-effort handoff snapshot (see scripts/handoff.py); never fails the calling command."""
+    command = [sys.executable, '-B', str(Path(__file__).with_name('handoff.py')), '--offline', 'save', '--note', note]
+    if next_step:
+        command += ['--next', next_step]
+    try:
+        subprocess.run(command, capture_output=True, timeout=60)
+        if push:
+            subprocess.run([sys.executable, '-B', command[2], 'save', '--note', note, '--push'], capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def checkpoint(args):
     branch_for_write()
     if not git('diff', '--cached', '--name-only'):
@@ -119,6 +137,7 @@ def checkpoint(args):
             notes.append(f'{label}: {value}')
     subprocess.run(['git', 'commit', '-s', '-m', f'wip: {args.checkpoint}', '-m', '\n'.join(notes)], check=True)
     print(f'Checkpoint saved locally: {git("rev-parse", "--short", "HEAD")}. Validation not run.')
+    autosave(args.checkpoint, args.next, push=args.push)
     if args.push:
         try:
             subprocess.run(['git', 'push', '-u', 'origin', 'HEAD'], check=True)
@@ -138,6 +157,7 @@ def submit(args):
         body = ('## Result\n' + (args.proof or 'Describe the user-visible result and link its reproduction evidence.')
                 + '\n\n## Validation\nSubmission does not run or certify checks. Record local validation and inspect hosted checks.\n')
         subprocess.run(['gh', 'pr', 'create', '--base', 'main', '--title', git('log', '-1', '--format=%s'), '--body', body], check=True)
+    autosave('submitted: ' + git('log', '-1', '--format=%s'), push=True)
     print('PR submitted. No milestone was ticked and no merge was requested.')
 
 
