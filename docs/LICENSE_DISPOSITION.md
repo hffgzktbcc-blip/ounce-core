@@ -57,7 +57,10 @@ explains the per-release `COPYRIGHT.html` and standard-library-only
 sysroot used by `rustc`, retains their original bytes, records `rustc -Vv`, target,
 hashes and the binary hash, and omits local sysroot paths. A whole-toolchain
 copyright file is retained conservatively when a library-only file is unavailable.
-Missing notices fail closed. The release workflow installs the matching Rust docs
+Both the older top-level notice layout and current REUSE-managed
+`share/doc/rust/licenses/*.txt` layout are supported. Every supplied REUSE
+licence is retained with its relative path, with exact MIT/Apache aliases for
+consistent archive validation. Missing notices fail closed. The release workflow installs the matching Rust docs
 component; both Unix and Windows packaging pass the collected directory explicitly.
 
 ```sh
