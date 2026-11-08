@@ -99,6 +99,28 @@ class HandoffTest(unittest.TestCase):
         self.assertIn('not clean', refused.stderr)
         self.assertEqual((self.b / 'local.txt').read_text(), 'mine\n')
 
+    def test_journal_is_shared_ordered_and_survives_concurrent_writers(self):
+        handoff(self.a, 'log', 'decided to keep the 4h claim expiry', '--task', 'R9')
+        handoff(self.b, 'log', 'PRFM must stay a no-op', agent='bob')       # b fetches a's entry, then appends
+        handoff(self.a, 'log', 'ran the gate, 36 checks pass')               # a fetches b's entry, then appends
+        text = handoff(self.b, 'journal', agent='bob').stdout.splitlines()
+        self.assertEqual(len(text), 3)
+        self.assertIn('ran the gate', text[0])                               # newest first
+        self.assertIn('bob: PRFM must stay', text[1])
+        self.assertIn('alice [R9]: decided', text[2])
+
+    def test_digest_is_short_markdown_with_claims_snapshots_and_journal(self):
+        handoff(self.a, 'claim', 'R9', '--note', 'hash tests')
+        (self.a / 'f.txt').write_text('changed\n')
+        handoff(self.a, 'save', '--next', 'run the gate', '--push')
+        handoff(self.a, 'log', 'xxhash passes on all engines')
+        digest = handoff(self.b, 'digest', agent='bob').stdout
+        self.assertIn('R9 (alice', digest)
+        self.assertIn('next: run the gate', digest)
+        self.assertIn('unsaved work saved', digest)
+        self.assertIn('xxhash passes on all engines', digest)
+        self.assertLess(len(digest.splitlines()), 20)
+
 
 if __name__ == '__main__':
     unittest.main()
