@@ -4,7 +4,7 @@ Updated 8 November 2026. This public summary records safe corrections proposed i
 
 ## Object-level findings
 
-The complete available snapshot at main `9e813b984930f6280b1a23ac2d3a8ed9d9f5d2e7` contains 773 commits and 352 fetched refs, including available PR refs. Twelve distinct nonzero firmware-labelled arrays and two standalone objects are retained only by `refs/pull/1/head`. A separate 72-byte third-party homebrew test program remains in wider history, with permission review open. Commit reachability alone does not establish the origin or rights status of particular bytes.
+The complete available snapshot at main `9e813b984930f6280b1a23ac2d3a8ed9d9f5d2e7` contains 773 commits and 352 fetched refs, including available PR refs. Twelve distinct nonzero firmware-labelled arrays and two standalone objects are retained only by `refs/pull/1/head`. (Object count, reconciled 2026-11-08 against the private inventory: 23 objects are reachable only from that ref, namely 21 historical source-file versions that contain the 12 arrays, plus the 2 standalone objects. The 72-byte program is a separate item and appears in history beyond that ref.) A separate 72-byte third-party homebrew test program remains in wider history, with permission review open. Commit reachability alone does not establish the origin or rights status of particular bytes.
 
 A hash-validated local test rewrite changed nineteen commits and only the retained PR #1 head. It preserved main, all five tags, every unrelated file entry and all non-target source bytes. A separate agent verified the result. This is local preparation. GitHub controls its PR references and may not support the proposed treatment. No public history has been rewritten.
 
