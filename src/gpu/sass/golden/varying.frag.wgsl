@@ -14,7 +14,7 @@
 
 struct FsIn {
     @builtin(position) frag_pos: vec4<f32>,
-    @location(0) @interpolate(perspective, center) l0: vec4<f32>,
+    @location(0) @interpolate(perspective) l0: vec4<f32>,
 };
 
 struct FsOut {

@@ -181,7 +181,7 @@ impl IpcManager {
                 _ => self.reply_unimplemented("IAudioController", cmd, tls, mmu),
             },
             I::DisplayController => self.reply_unimplemented("IDisplayController", cmd, tls, mmu),
-            I::ApplicationFunctions => self.handle_application_functions(cmd, args, tls, mmu),
+            I::ApplicationFunctions => self.handle_application_functions(cmd, tls, mmu),
             I::LibraryAppletSelfAccessor => match cmd {
                 // GetLibraryAppletInfo -> (applet ID, library applet mode). Synthetic: no caller applet.
                 11 => self.reply_data(tls, mmu, &[0u8; 8]),
@@ -356,10 +356,10 @@ impl IpcManager {
         }
     }
 
-    fn handle_application_functions(&mut self, cmd: u32, args: u64, tls: u64, mmu: &mut Memory) -> u64 {
+    fn handle_application_functions(&mut self, cmd: u32, tls: u64, mmu: &mut Memory) -> u64 {
         match cmd {
-            // PopLaunchParameter: the offline runtime selects its local user.
-            1 => self.pop_account_launch_parameter(mmu.read_u32(args).unwrap_or(0), tls, mmu),
+            // PopLaunchParameter: nothing was pushed.
+            1 => self.reply_error(tls, mmu, RESULT_NO_DATA_IN_CHANNEL),
             // EnsureSaveData(uid) -> u64 (0 = nothing more needed)
             20 => self.reply_data(tls, mmu, &0u64.to_le_bytes()),
             // GetDesiredLanguage -> u64 language code

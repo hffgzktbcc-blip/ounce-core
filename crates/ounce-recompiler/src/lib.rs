@@ -16,11 +16,12 @@ pub mod ir;
 pub use exec::{ExecError, LinkEntry, TlbEntry, LINK_MASK, LINK_SIZE, TLB_MASK, TLB_SIZE};
 use exec::run_return_constant;
 
-/// A live, exclusively borrowed 4096-byte guest page. The borrow ends after each access;
-/// generated code never retains a host address across bus calls or mapping changes.
-#[derive(Debug)]
-pub struct PageMapping<'a> {
-    pub data: &'a mut [u8; 4096],
+/// Direct host memory mapping info for a 4096-byte guest page (VA >> 12).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageMapping {
+    pub page_num: u64,
+    /// Host base pointer to the page bytes.
+    pub host_base: u64,
     pub read: bool,
     pub write: bool,
     pub holds_code: bool,
@@ -57,8 +58,8 @@ pub enum WriteEffect {
 pub trait MemoryBus {
     fn read(&mut self, va: u64, size: u8) -> Result<u64, MemFault>;
     fn write(&mut self, va: u64, size: u8, value: u64) -> Result<WriteEffect, MemFault>;
-    /// Optional borrowed fast path for a guest page (VA >> 12). Never cache this borrow.
-    fn query_page(&mut self, _page_num: u64) -> Option<PageMapping<'_>> {
+    /// Optional: provides direct host memory mapping for a guest page (VA >> 12) for software TLB acceleration.
+    fn query_page(&mut self, _page_num: u64) -> Option<PageMapping> {
         None
     }
 }
@@ -300,64 +301,6 @@ pub fn host_selftest() -> Result<u64, SelfTestError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    struct BorrowedBus {
-        page: Option<Box<[u8; 4096]>>,
-        writable: bool,
-        holds_code: bool,
-    }
-
-    impl MemoryBus for BorrowedBus {
-        fn read(&mut self, _: u64, _: u8) -> Result<u64, MemFault> { Err(MemFault) }
-        fn write(&mut self, _: u64, _: u8, _: u64) -> Result<WriteEffect, MemFault> {
-            if self.holds_code { Ok(WriteEffect::CodeWritten) } else { Err(MemFault) }
-        }
-        fn query_page(&mut self, page: u64) -> Option<PageMapping<'_>> {
-            if page != 1 { return None; }
-            Some(PageMapping { data: self.page.as_deref_mut()?, read: true,
-                write: self.writable, holds_code: self.holds_code })
-        }
-    }
-
-    #[test]
-    fn borrowed_pages_follow_replacement_unmap_permissions_and_bus_identity() {
-        let mut b = ir::BlockBuilder::new();
-        let addr = b.konst(0x1000);
-        let value = b.push(ir::Op::Load(1, addr, ir::FaultSite { pc: 0x80, insns: 0 }));
-        b.set(ir::Reg::X(0), value);
-        let pc = b.konst(0x84);
-        let block = b.finish(ir::Terminator::Exit(ir::ExitTo { code: 0, pc, insns: 1, link: false }));
-        let mut rec = Recompiler::new().unwrap();
-        let id = rec.compile(&block).unwrap();
-        let mut state = GuestState::default();
-        let mut bus = BorrowedBus { page: Some(Box::new([1; 4096])), writable: true, holds_code: false };
-        assert_eq!(rec.run(id, &mut state, &mut bus).kind, ExitKind::Code(0));
-        assert_eq!(state.x[0], 1);
-        bus.page = Some(Box::new([2; 4096]));
-        rec.run(id, &mut state, &mut bus);
-        assert_eq!(state.x[0], 2);
-        bus.page = None;
-        assert_eq!(rec.run(id, &mut state, &mut bus).kind, ExitKind::Fault);
-        let mut another = BorrowedBus { page: Some(Box::new([3; 4096])), writable: false, holds_code: false };
-        rec.run(id, &mut state, &mut another);
-        assert_eq!(state.x[0], 3);
-
-        let mut b = ir::BlockBuilder::new();
-        let addr = b.konst(0x1000);
-        let value = b.konst(4);
-        b.push(ir::Op::Store(1, addr, value, ir::FaultSite { pc: 0x80, insns: 0 }));
-        b.push(ir::Op::EndInsn { next_pc: 0x84, insns: 1 });
-        let pc = b.konst(0x84);
-        let block = b.finish(ir::Terminator::Exit(ir::ExitTo { code: 0, pc, insns: 1, link: false }));
-        let write = rec.compile(&block).unwrap();
-        assert_eq!(rec.run(write, &mut state, &mut another).kind, ExitKind::Fault);
-        assert_eq!(another.page.as_ref().unwrap()[0], 3);
-        another.writable = true;
-        assert_eq!(rec.run(write, &mut state, &mut another).kind, ExitKind::Code(0));
-        assert_eq!(another.page.as_ref().unwrap()[0], 4);
-        another.holds_code = true;
-        assert_eq!(rec.run(write, &mut state, &mut another).kind, ExitKind::CodeWritten);
-    }
     use exec::ExecBuffer;
 
     #[test]

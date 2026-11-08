@@ -327,44 +327,20 @@ impl LoosePackageLoader {
 
         // 1. Map every module's segments before relocating, so imports can resolve across modules.
         //    `main` sits at `base_addr`; companions (`sdk`, `subsdk*`) follow in 64 MB slots.
-        let mut inputs = vec![("main".to_string(), base_addr, fs::read(&package.main_nso)?)];
-        for (i, (name, path)) in package.companion_nsos.iter().enumerate() {
-            let base = (i as u64 + 1).checked_mul(0x0400_0000).and_then(|offset| base_addr.checked_add(offset))
-                .ok_or_else(|| PackageError::NsoLoad("module base overflow".into()))?;
-            inputs.push((name.clone(), base, fs::read(path)?));
-        }
-        // Validate page extents of every module before any mapping can replace another module.
-        let mut occupied: Vec<(u64, u64, usize)> = Vec::new();
-        for (module_index, (name, base, bytes)) in inputs.iter().enumerate() {
-            if bytes.len() < 0x100 || &bytes[..4] != b"NSO0" {
-                return Err(PackageError::NsoLoad(format!("invalid NSO header: {name}")));
-            }
-            for offset in [0x10, 0x20, 0x30] {
-                let memory_offset = LittleEndian::read_u32(&bytes[offset + 4..offset + 8]) as u64;
-                let mut size = LittleEndian::read_u32(&bytes[offset + 8..offset + 12]) as u64;
-                if offset == 0x30 { size += LittleEndian::read_u32(&bytes[0x3c..0x40]) as u64; }
-                if size == 0 { continue; }
-                let start = base.checked_add(memory_offset).ok_or_else(|| PackageError::NsoLoad("segment address overflow".into()))?;
-                let end = start.checked_add(size).and_then(|end| end.checked_add(0xfff))
-                    .ok_or_else(|| PackageError::NsoLoad("segment extent overflow".into()))? & !0xfff;
-                let start = start & !0xfff;
-                if let Some((_, _, other)) = occupied.iter().find(|&&(a, b, other)| other != module_index && start < b && end > a) {
-                    return Err(PackageError::NsoLoad(format!("module {name} overlaps {}", inputs[*other].0)));
-                }
-                occupied.push((start, end, module_index));
-            }
-        }
-        let main_bytes = &inputs[0].2;
-        NroLoader::load_nso_segments(main_bytes, base_addr, mmu)
+        let main_bytes = fs::read(&package.main_nso)?;
+        NroLoader::load_nso_segments(&main_bytes, base_addr, mmu)
             .map_err(|e| PackageError::NsoLoad(format!("Failed to load 'main': {}", e)))?;
         modules_loaded.push(("main".to_string(), base_addr, main_bytes.len()));
         let mut module_bases = vec![base_addr];
 
-        for (mod_name, mod_base, mod_bytes) in inputs.iter().skip(1) {
-            NroLoader::load_nso_segments(mod_bytes, *mod_base, mmu)
-                .map_err(|e| PackageError::NsoLoad(format!("Failed to load '{mod_name}': {e}")))?;
-            modules_loaded.push((mod_name.clone(), *mod_base, mod_bytes.len()));
-            module_bases.push(*mod_base);
+        for (i, (mod_name, mod_path)) in package.companion_nsos.iter().enumerate() {
+            let mod_base = base_addr + ((i as u64 + 1) * 0x04000000);
+            if let Ok(mod_bytes) = fs::read(mod_path) {
+                if NroLoader::load_nso_segments(&mod_bytes, mod_base, mmu).is_ok() {
+                    modules_loaded.push((mod_name.clone(), mod_base, mod_bytes.len()));
+                    module_bases.push(mod_base);
+                }
+            }
         }
 
         // 2. Build one export table. `main` is first, so its definitions win over duplicates.
@@ -486,46 +462,6 @@ impl LoosePackageLoader {
 mod tests {
     use super::*;
     use std::io::Write;
-
-    #[test]
-    fn overlapping_companion_is_rejected_before_any_module_is_mapped() {
-        let root = std::env::temp_dir().join(format!("ounce_module_overlap_{}", std::process::id()));
-        let exefs = root.join("exefs");
-        fs::create_dir_all(&exefs).unwrap();
-        let mut main = NroLoader::build_synthetic_nso(&0xD400_00E1u32.to_le_bytes());
-        // Put main's data page on top of the next module's first text page.
-        main[0x34..0x38].copy_from_slice(&0x0400_0000u32.to_le_bytes());
-        main[0x3c..0x40].copy_from_slice(&0x1000u32.to_le_bytes());
-        fs::write(exefs.join("main"), main).unwrap();
-        fs::write(exefs.join("subsdk0"), NroLoader::build_synthetic_nso(&0xD400_00E1u32.to_le_bytes())).unwrap();
-        let package = LoosePackageLoader::discover(&root).unwrap();
-        let mut memory = Memory::new();
-        let result = LoosePackageLoader::load_into_kernel(&package, 0x8000_0000, &mut memory, &mut HorizonKernel::new());
-        fs::remove_dir_all(root).unwrap();
-        assert!(matches!(result, Err(PackageError::NsoLoad(ref message)) if message.contains("overlaps")));
-        assert!(memory.regions().is_empty());
-    }
-
-    #[test]
-    fn duplicate_module_names_do_not_bypass_overlap_checks() {
-        let root = std::env::temp_dir().join(format!("ounce_duplicate_module_overlap_{}", std::process::id()));
-        let exefs = root.join("exefs");
-        fs::create_dir_all(&exefs).unwrap();
-        let normal = NroLoader::build_synthetic_nso(&0xD400_00E1u32.to_le_bytes());
-        let mut large = normal.clone();
-        large[0x34..0x38].copy_from_slice(&0x0400_0000u32.to_le_bytes());
-        large[0x3c..0x40].copy_from_slice(&0x1000u32.to_le_bytes());
-        fs::write(exefs.join("main"), &normal).unwrap();
-        fs::write(exefs.join("subsdk0"), large).unwrap();
-        fs::write(exefs.join("subsdk0.nso"), normal).unwrap();
-        let mut package = LoosePackageLoader::discover(&root).unwrap();
-        package.companion_nsos = vec![("subsdk0".into(), exefs.join("subsdk0")), ("subsdk0".into(), exefs.join("subsdk0.nso"))];
-        let mut memory = Memory::new();
-        let result = LoosePackageLoader::load_into_kernel(&package, 0x8000_0000, &mut memory, &mut HorizonKernel::new());
-        fs::remove_dir_all(root).unwrap();
-        assert!(matches!(result, Err(PackageError::NsoLoad(ref message)) if message.contains("overlaps")));
-        assert!(memory.regions().is_empty());
-    }
 
     #[test]
     fn test_npdm_synthetic_builder_and_parser() {

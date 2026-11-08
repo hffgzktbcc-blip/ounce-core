@@ -241,7 +241,6 @@ pub enum Instruction {
         size_bytes: u8, // 1 (byte), 2 (half), 4 (word), 8 (double)
         is_load: bool,
         is_signed: bool,
-        is_64_target: bool,
         writeback: bool,
         post_index: bool,
     },
@@ -403,10 +402,7 @@ pub enum Instruction {
         is_load: bool,
     },
 
-    /// Two double-precision lanes; never interpreted as four single-precision values.
-    SimdVec2D { rd: u8, rn: u8, rm: u8, op: FpOp2 },
-
-    /// 128-bit NEON vector arithmetic on four single-precision lanes.
+    /// 128-bit NEON Vector 4xFloat32 SIMD (`FADD/FSUB/FMUL Vd.4S, Vn.4S, Vm.4S`)
     SimdVec4S {
         rd: u8,
         rn: u8,
@@ -540,29 +536,6 @@ pub enum Instruction {
         index: u8,
     },
 
-    /// AdvSIMD three registers of different type: widening multiply (`S/UMULL`, `S/UMLAL`, `S/UMLSL`
-    /// and their `2` forms). `esize` is the source lane size; `q` selects the high source half.
-    SimdLong {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-        op: SimdLongOp,
-        signed: bool,
-        esize: u8,
-        q: bool,
-    },
-
-    /// `PMULL` / `PMULL2`: polynomial (carry-less) multiply long. `wide` selects the 64-bit form
-    /// (`Vd.1Q` from `Vn.1D`, `Vm.1D`), otherwise 8-bit lanes widen to 16 bits (`Vd.8H` from `Vn.8B`).
-    /// `q` selects the high source half.
-    Pmull {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-        wide: bool,
-        q: bool,
-    },
-
     /// AdvSIMD three registers of the same type (integer and bitwise)
     SimdThreeSame {
         rd: u8,
@@ -609,14 +582,6 @@ pub enum Instruction {
         imm: u64,
         op: SimdImmOp,
         q: bool,
-    },
-
-    /// `DUP Bd/Hd/Sd/Dd, Vn.<Ts>[index]` (scalar; `MOV Sd, Vn.S[i]` alias): lane `index` into lane 0, rest zero
-    SimdDupScalar {
-        rd: u8,
-        rn: u8,
-        esize: u8,
-        index: u8,
     },
 
     /// `DUP Vd.<T>, Vn.<Ts>[index]`
@@ -753,7 +718,6 @@ pub enum BranchRegOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FpOp2 {
-    Fnmul,
     Fmul,
     Fdiv,
     Fadd,
@@ -813,21 +777,6 @@ pub enum SimdFpElementOp {
     Fmls,
 }
 
-/// Widening multiply flavours of AdvSIMD three-different.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SimdLongOp {
-    Mull,
-    Mlal,
-    Mlsl,
-    /// `S/UADDL`, `S/UADDW`, `S/USUBL`, `S/USUBW`, `S/UABDL`, `S/UABAL`
-    Addl,
-    Addw,
-    Subl,
-    Subw,
-    Abdl,
-    Abal,
-}
-
 /// AdvSIMD across-lanes reductions (`ADDV`, `S/UADDLV`, `S/UMAXV`, `S/UMINV`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimdAcrossOp {
@@ -851,10 +800,6 @@ pub enum SimdOp2 {
     Not,
     Abs,
     Neg,
-    /// `REV64`/`REV32`/`REV16` (vector): reverse the `esize` elements within each 64/32/16-bit container
-    Rev64,
-    Rev32,
-    Rev16,
     /// `SCVTF`/`UCVTF` (vector, integer): lanes are 32- or 64-bit floats
     Scvtf,
     Ucvtf,

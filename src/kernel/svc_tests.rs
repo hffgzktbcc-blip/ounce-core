@@ -10,17 +10,6 @@ use crate::mmu::{Memory, Permission};
 const SCRATCH: u64 = 0x9000;
 const CURRENT_PROCESS: u64 = 0xFFFF_8001;
 
-#[test]
-fn debug_string_rejects_oversized_and_unmapped_arguments() {
-    let (mut cpu, mut memory, mut kernel) = setup();
-    call(&mut kernel, &mut cpu, &mut memory, 0x27, &[0, u64::MAX]);
-    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_SIZE);
-    call(&mut kernel, &mut cpu, &mut memory, 0x27, &[u64::MAX, 2]);
-    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_ADDRESS);
-    call(&mut kernel, &mut cpu, &mut memory, 0x27, &[0, 1]);
-    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_MEMORY_STATE);
-}
-
 fn setup() -> (Cpu, Memory, HorizonKernel) {
     let mut mmu = Memory::new();
     mmu.map_range(SCRATCH, 0x1000, Permission::READ_WRITE);
@@ -46,18 +35,6 @@ fn spawn(k: &mut HorizonKernel, cpu: &mut Cpu, mmu: &mut Memory) -> u32 {
     call(k, cpu, mmu, 0x09, &[handle as u64]);
     assert_eq!(k.scheduler.current, handle);
     handle
-}
-
-#[test]
-fn worker_can_query_main_thread_id_and_invalid_handles_fail() {
-    let (mut cpu, mut memory, mut kernel) = setup();
-    kernel.scheduler.main_handle = Some(0x1000);
-    spawn(&mut kernel, &mut cpu, &mut memory);
-    call(&mut kernel, &mut cpu, &mut memory, 0x25, &[0, 0x1000]);
-    assert_eq!(cpu.regs.read_x(0), 0);
-    assert_eq!(cpu.regs.read_x(1), 1);
-    call(&mut kernel, &mut cpu, &mut memory, 0x25, &[0, 0xdead]);
-    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_HANDLE);
 }
 
 /// svcWaitSynchronization on one handle, forever.

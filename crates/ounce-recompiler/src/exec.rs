@@ -25,7 +25,7 @@ pub const TLB_MASK: u64 = (TLB_SIZE as u64) - 1;
 pub struct TlbEntry {
     /// Guest page number (VA >> 12). If invalid or unmapped, `u64::MAX`.
     pub page_tag: u64,
-    /// Reserved for compatibility; live page addresses are never cached here.
+    /// Host pointer to start of page data (4096 bytes).
     pub host_base: u64,
     /// Bit 0: read permitted. Bit 1: write permitted (cleared if holds_code).
     pub flags: u32,
@@ -169,32 +169,46 @@ extern "C" fn mem_read(ctx: *mut CallCtx<'_>, va: u64, size: u32, out: *mut u64)
     if ctx.panic.is_some() {
         return MEM_FAULT;
     }
-    if !matches!(size, 1 | 2 | 4 | 8) { return MEM_FAULT; }
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let offset = (va & 0xfff) as usize;
-        if offset + size as usize <= 4096 {
-            if let Some(mapping) = ctx.bus.query_page(va >> 12) {
-                // Cache metadata only. The page borrow, not an address in this table,
-                // establishes validity for this access.
-                ctx.tlb[((va >> 12) & TLB_MASK) as usize] = TlbEntry {
-                    page_tag: va >> 12,
-                    host_base: 0,
-                    flags: u32::from(mapping.read) | (u32::from(mapping.write && !mapping.holds_code) << 1),
+    let page_num = va >> 12;
+    let idx = (page_num & TLB_MASK) as usize;
+    let offset = (va & 0xFFF) as usize;
+
+    let entry = ctx.tlb[idx];
+    if entry.page_tag == page_num && (entry.flags & 1) != 0 && offset + size as usize <= 4096 {
+        unsafe {
+            let host_ptr = (entry.host_base + offset as u64) as *const u8;
+            let val = match size {
+                1 => *host_ptr as u64,
+                2 => std::ptr::read_unaligned(host_ptr as *const u16) as u64,
+                4 => std::ptr::read_unaligned(host_ptr as *const u32) as u64,
+                8 => std::ptr::read_unaligned(host_ptr as *const u64),
+                _ => return MEM_FAULT,
+            };
+            *out = val;
+        }
+        return MEM_OK;
+    }
+
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ctx.bus.read(va, size as u8))) {
+        Ok(Ok(value)) => {
+            *out = value;
+            if let Some(mapping) = ctx.bus.query_page(page_num) {
+                let flags = (if mapping.read { 1 } else { 0 })
+                    | (if mapping.write && !mapping.holds_code { 2 } else { 0 });
+                ctx.tlb[idx] = TlbEntry {
+                    page_tag: page_num,
+                    host_base: mapping.host_base,
+                    flags,
                     _pad: 0,
                 };
-                if mapping.read {
-                    let mut bytes = [0u8; 8];
-                    bytes[..size as usize].copy_from_slice(&mapping.data[offset..offset + size as usize]);
-                    return Ok(u64::from_le_bytes(bytes));
-                }
             }
+            MEM_OK
         }
-        ctx.bus.read(va, size as u8)
-    }));
-    match result {
-        Ok(Ok(value)) => { *out = value; MEM_OK }
         Ok(Err(MemFault)) => MEM_FAULT,
-        Err(payload) => { ctx.panic = Some(payload); MEM_FAULT }
+        Err(payload) => {
+            ctx.panic = Some(payload);
+            MEM_FAULT
+        }
     }
 }
 
@@ -205,33 +219,45 @@ extern "C" fn mem_write(ctx: *mut CallCtx<'_>, va: u64, size: u32, value: u64) -
     if ctx.panic.is_some() {
         return MEM_FAULT;
     }
-    if !matches!(size, 1 | 2 | 4 | 8) { return MEM_FAULT; }
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let offset = (va & 0xfff) as usize;
-        if offset + size as usize <= 4096 {
-            if let Some(mapping) = ctx.bus.query_page(va >> 12) {
-                // Cache metadata only. The page borrow, not an address in this table,
-                // establishes validity for this access.
-                ctx.tlb[((va >> 12) & TLB_MASK) as usize] = TlbEntry {
-                    page_tag: va >> 12,
-                    host_base: 0,
-                    flags: u32::from(mapping.read) | (u32::from(mapping.write && !mapping.holds_code) << 1),
-                    _pad: 0,
-                };
-                if mapping.write && !mapping.holds_code {
-                    mapping.data[offset..offset + size as usize]
-                        .copy_from_slice(&value.to_le_bytes()[..size as usize]);
-                    return Ok(WriteEffect::Done);
-                }
+    let page_num = va >> 12;
+    let idx = (page_num & TLB_MASK) as usize;
+    let offset = (va & 0xFFF) as usize;
+
+    let entry = ctx.tlb[idx];
+    if entry.page_tag == page_num && (entry.flags & 2) != 0 && offset + size as usize <= 4096 {
+        unsafe {
+            let host_ptr = (entry.host_base + offset as u64) as *mut u8;
+            match size {
+                1 => *host_ptr = value as u8,
+                2 => std::ptr::write_unaligned(host_ptr as *mut u16, value as u16),
+                4 => std::ptr::write_unaligned(host_ptr as *mut u32, value as u32),
+                8 => std::ptr::write_unaligned(host_ptr as *mut u64, value),
+                _ => return MEM_FAULT,
             }
         }
-        ctx.bus.write(va, size as u8, value)
-    }));
-    match result {
-        Ok(Ok(WriteEffect::Done)) => MEM_OK,
+        return MEM_OK;
+    }
+
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ctx.bus.write(va, size as u8, value))) {
+        Ok(Ok(WriteEffect::Done)) => {
+            if let Some(mapping) = ctx.bus.query_page(page_num) {
+                let flags = (if mapping.read { 1 } else { 0 })
+                    | (if mapping.write && !mapping.holds_code { 2 } else { 0 });
+                ctx.tlb[idx] = TlbEntry {
+                    page_tag: page_num,
+                    host_base: mapping.host_base,
+                    flags,
+                    _pad: 0,
+                };
+            }
+            MEM_OK
+        }
         Ok(Ok(WriteEffect::CodeWritten)) => MEM_CODE_WRITTEN,
         Ok(Err(MemFault)) => MEM_FAULT,
-        Err(payload) => { ctx.panic = Some(payload); MEM_FAULT }
+        Err(payload) => {
+            ctx.panic = Some(payload);
+            MEM_FAULT
+        }
     }
 }
 

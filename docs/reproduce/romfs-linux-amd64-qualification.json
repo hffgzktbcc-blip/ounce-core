@@ -1,7 +1,0 @@
-{
-  "scope": "internal GitHub-hosted Linux amd64 recipe qualification; not independent",
-  "machine": "x86_64",
-  "system": "Linux",
-  "workflow_commit": "b5e91e1a20f4df59da414794f336d31f61b32495",
-  "run_url": "https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42376017690"
-}

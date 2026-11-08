@@ -1,5 +1,3 @@
-> Historical record. Operational instructions and ownership assignments below are superseded by root AGENTS.md and PLAN.md. Preserve evidence; do not resume old tasks without checking the current backlog.
-
 # Rust quality tools — adoption and Codex handoff (2026-10-29)
 
 Status: proposed workflows on a separate draft pull request. CodeQL Rust and RustSec completed successfully on exact PR head `69d1569c23d7e880ad34b8456778c94284fe7e46`; the manual coverage workflow remains unproven until it can run from the default branch. Existing `.github/workflows/ci.yml` and its nine required platform/feature jobs are unchanged.

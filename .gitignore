@@ -1,5 +1,4 @@
 /target
-/dist
 **/*.rs.bk
 .DS_Store
 
@@ -13,6 +12,3 @@
 *.npdm
 ns2jb*
 dumps/
-
-# Interpreter caches are not execution inputs.
-__pycache__/

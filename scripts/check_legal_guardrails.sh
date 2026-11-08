@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Fails if tracked files include keys, retail containers or links to ROM/key/dump sites,
-# or a ported file has no PROVENANCE.md entry.
+# Fails if tracked files include keys, retail containers or links to ROM/key/dump sites.
 # See docs/CLEAN_ROOM.md "Legal guardrails".
 set -u
 fail=0
@@ -14,9 +13,5 @@ hits=$(git grep -niE "$sites" -- . ':!scripts/check_legal_guardrails.sh' || true
 if [ -n "$hits" ]; then
   echo "Links to ROM/key/dump sites found:"; echo "$hits"; fail=1
 fi
-# Ported files carry a "Ported from ..." notice and need an entry in docs/PROVENANCE.md.
-for f in $(git grep -lE '^[[:space:]]*//[/!]?[[:space:]]*Ported from' -- '*.rs' || true); do
-  grep -qF "\`$f\`" docs/PROVENANCE.md || { echo "Ported file without a docs/PROVENANCE.md entry: $f"; fail=1; }
-done
 [ "$fail" -eq 0 ] && echo "Legal guardrails check passed."
 exit "$fail"

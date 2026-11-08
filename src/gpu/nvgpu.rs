@@ -132,7 +132,6 @@ pub enum Gpu3DDrawOp {
         height: f32,
     },
     SetMvpMatrix {
-        /// Row-major 4x4 transform, shared by CPU rendering and host replay.
         matrix: [f32; 16],
     },
     SetDepthTest {

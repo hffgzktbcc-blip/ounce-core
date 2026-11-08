@@ -1,19 +1,5 @@
 # Third-party material
 
-The bundled `assets/fonts/DejaVuSans.ttf` is DejaVu Sans 2.37, a Bitstream
-Vera derivative. Its complete retained notice is
-`assets/fonts/DejaVu-LICENSE.txt`. Distribution archives must include that
-notice alongside this register and the project licence. See
-`assets/fonts/README.md` for the recorded origin and SHA-256.
-
-`THIRD_PARTY_NOTICES.txt` collects 169 available notice records from the
-locked default release dependency graph and exact upstream revisions.
-`docs/RELEASE_NOTICE_REVIEW.json` identifies the input hashes and remaining
-questions. Release packaging includes these records and checks their
-identity. Public release packaging requires a completed review record.
-The current record is pending specialist review of objc2 attribution and
-SDK-related terms, Rust runtime notices and final binary coverage.
-
 This register records build inputs found in the fixture Makefiles and workspace metadata. It is incomplete: the checked-in NRO binaries have not been exhaustively inspected to identify every linked component.
 
 - **libnx**: fixture Makefiles explicitly link `-lnx`. Upstream project and notices: [switchbrew/libnx](https://github.com/switchbrew/libnx).

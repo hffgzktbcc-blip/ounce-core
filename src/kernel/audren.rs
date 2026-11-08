@@ -83,22 +83,18 @@ fn wr64(b: &mut [u8], off: usize, v: u64) {
 /// at `start`, from the wave buffer's `AudioRendererAdpcmContext` (`history0`, `history1`).
 /// sample = clamp((((nibble * scale) << 11) + 1024 + c0 * h0 + c1 * h1) >> 11).
 pub fn decode_dsp_adpcm(data: &[u8], coefs: &[i16; 16], start: usize, end: usize, history: (i16, i16)) -> Vec<i16> {
-    let (mut h0, mut h1) = (history.0 as i64, history.1 as i64);
-    // Reserve only samples backed by complete encoded frames, not an arbitrary guest end.
-    let available = (data.len() / ADPCM_FRAME_BYTES).saturating_mul(ADPCM_FRAME_SAMPLES)
-        .saturating_add((data.len() % ADPCM_FRAME_BYTES).saturating_sub(1).saturating_mul(2));
-    let end = end.min(available);
+    let (mut h0, mut h1) = (history.0 as i32, history.1 as i32);
     let mut out = Vec::with_capacity(end.saturating_sub(start));
     for n in start..end {
         let frame = n / ADPCM_FRAME_SAMPLES * ADPCM_FRAME_BYTES;
         let pos = n % ADPCM_FRAME_SAMPLES;
         let (Some(&header), Some(&byte)) = (data.get(frame), data.get(frame + 1 + pos / 2)) else { break };
         let nibble = if pos % 2 == 0 { byte >> 4 } else { byte & 0xF };
-        let nibble = ((nibble as i8) << 4 >> 4) as i64;
-        let scale = 1i64 << (header & 0xF);
+        let nibble = ((nibble as i8) << 4 >> 4) as i32;
+        let scale = 1i32 << (header & 0xF);
         let pair = ((header >> 4) & 7) as usize * 2;
-        let (c0, c1) = (coefs[pair] as i64, coefs[pair + 1] as i64);
-        let sample = ((((nibble * scale) << 11) + 1024 + c0 * h0 + c1 * h1) >> 11).clamp(i16::MIN as i64, i16::MAX as i64);
+        let (c0, c1) = (coefs[pair] as i32, coefs[pair + 1] as i32);
+        let sample = ((((nibble * scale) << 11) + 1024 + c0 * h0 + c1 * h1) >> 11).clamp(i16::MIN as i32, i16::MAX as i32);
         out.push(sample as i16);
         h1 = h0;
         h0 = sample;
@@ -542,13 +538,6 @@ impl AudioRendererModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn adpcm_predictor_saturates_without_overflow_and_bounds_sample_range() {
-        let data = [0x0f, 0x70, 0, 0, 0, 0, 0, 0];
-        assert_eq!(decode_dsp_adpcm(&data, &[32767; 16], 0, 1, (32767, 32767)), vec![32767]);
-        assert_eq!(decode_dsp_adpcm(&data, &[0; 16], 0, usize::MAX, (0, 0)).len(), 14);
-    }
     use crate::mmu::Permission;
 
     /// Update data with one mempool, two channels, one voice, one final mix and one device sink.

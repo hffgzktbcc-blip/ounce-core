@@ -1,8 +1,5 @@
 """Offline tests for the corpus Ounce-Verify adapter (records are fabricated in memory)."""
 import sys
-import copy
-import json
-import tempfile
 from pathlib import Path
 import unittest
 
@@ -69,61 +66,5 @@ class ReadmeTests(unittest.TestCase):
             corpus_verify.render_readme("<!-- corpus-headline -->1/1<!-- /corpus-headline -->", 1, 1)
 
 
-class CoverageTests(unittest.TestCase):
-    def count(self, values, engines=None):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            manifest = root / "oracles.json"
-            manifest.write_text(json.dumps({"oracles": [{"id": "demo"}, {"id": "missing"}]}))
-            if engines is not None:
-                policy = json.loads(manifest.read_text())
-                policy["required_engines"] = engines
-                manifest.write_text(json.dumps(policy))
-            report = root / "report.json"
-            report.write_text(json.dumps({"schema_version": ounce_verify.SCHEMA, "records": values}))
-            return corpus_verify.count(report, manifest)
-
-    def passing(self):
-        return records({"nro_sha256": SHA, "runs": [run("Interpreter"), run("Tier3")]})
-
-    def test_missing_program_stays_in_denominator(self):
-        self.assertEqual(self.count(self.passing()), (["demo"], 2))
-
-    def test_missing_engine_cannot_pass(self):
-        self.assertEqual(self.count(self.passing()[:1]), ([], 2))
-
-    def test_duplicates_unknown_engines_and_engine_mismatch_rejected(self):
-        values = self.passing()
-        with self.assertRaises(SystemExit):
-            self.count([values[0], values[0]])
-        for case_id, engine in (("corpus/demo/native", "native"),
-                                ("corpus/demo/tier3", "interpreter"),
-                                ("corpus/unknown/interpreter", "interpreter")):
-            value = copy.deepcopy(values[0])
-            value["case_id"] = case_id
-            value["execution"]["engine"] = engine
-            with self.subTest(case_id=case_id), self.assertRaises(SystemExit):
-                self.count([value])
-
-    def test_manifest_engine_policy_cannot_be_weakened(self):
-        for engines in (["interpreter"], ["interpreter", "interpreter"], ["interpreter", "native"], [[]]):
-            with self.subTest(engines=engines), self.assertRaisesRegex(SystemExit, "engine"):
-                self.count(self.passing(), engines)
-
-    def test_relabeling_cannot_enter_the_original_switch_headline(self):
-        values = self.passing()
-        values[0]["target"] = "switch2-homebrew"
-        with self.assertRaisesRegex(SystemExit, "target"):
-            self.count(values)
-
-    def test_adapter_rejects_missing_executed_hash_and_duplicate_runs(self):
-        for verdict in ({"runs": [run("Interpreter")]},
-                        {"nro_sha256": SHA, "runs": [run("Interpreter"), run("Interpreter")]},
-                        {"nro_sha256": SHA, "runs": [run("Native")]}):
-            with self.assertRaises(SystemExit):
-                records(verdict)
-
-
 if __name__ == "__main__":
     unittest.main()
-

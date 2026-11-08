@@ -1,6 +1,4 @@
 #![allow(unused_imports)]
-pub mod hbx;
-mod hbx_frame;
 pub mod homebrew;
 pub mod init;
 pub mod nca;

@@ -1,35 +1,35 @@
-# Working on ounce-core
+# READ THIS FIRST (overrides everything below; owner decision 2026-11-03)
 
-Build useful end-to-end results. The current request sets scope; `PLAN.md` is the
-prioritized backlog, not a permission system. Historical notes do not add rules.
+1. **The only plan is [`PLAN.md`](PLAN.md).** Read it before any work, do only its next unchecked step, tick it with
+   one line of proof, then end the session. `HANDOFF.md` and older notes are history, not plans.
+2. **Proof = a real outside homebrew program passing its pixel oracle in CI.** Unit tests guard code but are never
+   a milestone or a "verified" claim.
+3. **Follow PLAN.md's Legal guardrails on every commit:** never decrypt, no piracy pointers, no game names or game
+   screenshots, no retail test inputs, nothing from the owner's non-public projects.
+4. **Save the owner's usage:** one step per session, no re-exploring what PLAN.md already says, logs read as text,
+   long jobs in the background, work only in `~/Projects` (`~/Documents` is iCloud-synced and stalls).
+5. **Agents test themselves.** The owner is never the test harness.
 
-- Inspect relevant code and existing work, then act. Use the provided checkout on a
-  topic branch; preserve unrelated changes and stage only your own paths.
-- Keep process proportional. Do not impose mandatory brainstorming, a second design
-  approval, extra plan documents, or agent swarms on routine/already-authorized work.
-  Use skills and delegation when they materially help the result, not as ceremony.
-- Use `scripts/next.sh` for an optional local summary. Pick a ready task, or the
-  user's requested task. If blocked, record why and continue other authorized work.
-- Save progress with ordinary Git or `scripts/gate.sh --checkpoint "what/why"`
-  after staging files. Checkpoints are local and do not run tests; `--push` is optional.
-- During edits, run focused checks. Before integration, run checks relevant to the
-  change and describe results and omissions. `scripts/gate.sh` selects local checks
-  by scope; `--check quick|runtime|full` is available. Do not repeat a passing expensive
-  run without changed inputs or an unresolved failure.
-- `scripts/gate.sh --submit` (legacy alias `--ship`) pushes committed work and
-  opens/updates a PR. It never merges, reverts, or marks tasks complete. Ordinary
-  Git/GitHub workflows are equally valid. No issue or design approval is required
-  for already-authorized work. Respect explicit user instructions about merging.
-- Close tasks with a reproducible user-visible result appropriate to the task: a
-  command, bug reproduction, artifact, UI scenario, or documented behavior.
-  Compilation and unit tests guard implementation; they do not prove untested claims.
-- Keep expectations fixed during repairs, preserve failures, identify tested inputs,
-  and state limitations. Outside validation is needed for an *independent* claim,
-  not every implementation task. Never fabricate compatibility or performance.
-- Do not commit keys, retail content, firmware, leaked/private material, or
-  incompatible licensed code. Keep port notices/provenance. Keep `src/` safe Rust
-  and unsafe operations in the existing isolated crate boundaries.
+---
 
-Proceed autonomously on routine, reversible work. Escalate new scope with material
-tradeoffs, disputed redistribution, destructive history/data changes, credentials,
-or spending. A blocker applies to the affected action, not the whole project.
+# Agent rules for `ounce-core`
+
+Short on purpose: every agent loads this file at session start. The plan is [`PLAN.md`](PLAN.md); finished milestones and past handoffs are history in `docs/HANDOFF_HISTORY.md` (grep it only when a step needs it).
+
+**Outside samples with a verified frame: 4** (`simplegfx`, `deko_basic`, `romfs`, `startup`; oracles in `docs/*-oracle.md`).
+
+## How we work
+- The owner's goal is our goal: a working, high-performance runtime for open-source Switch homebrew, where every claim rests on a real program's frame.
+- Focus strictly on real engineering: CPU execution, GPU method dispatch, kernel services, memory management, and getting software running.
+- No artificial roadblocks: work directly on whatever code needs fixing to make software run.
+- Keep the roots clean: `#![forbid(unsafe_code)]` in the core runtime, zero retail keys in the repo. Sources and porting rules are in PLAN.md ("Sources"): MIT code (nxnative, Ryujinx, Mesa NAK) may be ported with credit; no GPL emulator code, no retail material.
+
+## Merge gate
+- Before pushing to PR: `cargo test --release` passes; `cargo run --release -- test` passes; zero `unsafe` in `src`.
+- CI must pass on the milestone PR before merging to `main`.
+- Push directly and frequently on your branch; batch merge once milestone is complete.
+
+## Legal boundary
+- PLAN.md's "Legal guardrails" apply to every commit, and CI enforces them (`scripts/check_legal_guardrails.sh`). ounce-core is not a clean-room project (see README, "Sources").
+- No proprietary keys (`prod.keys`) or retail copyrighted game assets committed to the git repository.
+- Use open documentation and permissive code: ARM manuals, Mesa NVK/nouveau, NVIDIA open-gpu-doc, public SwitchBrew specifications, and MIT code as PLAN.md allows.

@@ -62,15 +62,6 @@ fn program_mx(header: &SphBuilder, code: &[u64]) -> Vec<u8> {
     b
 }
 
-#[test]
-fn maxwell_vertex_builtin_attributes_emit_valid_wgsl() {
-    let bytes = program_mx(&SphBuilder::vertex(), &[mx::ald(0, 0x2f8, 2), mx::ast(0, 0x70, 2), mx::exit()]);
-    let shader = translate_maxwell(ShaderStage::Vertex, &bytes).unwrap();
-    assert!(shader.wgsl.contains("@builtin(instance_index)"));
-    assert!(shader.wgsl.contains("@builtin(vertex_index)"));
-    validate(&shader.wgsl);
-}
-
 fn reg(r: u8) -> FSrc {
     FSrc { src: Src::Reg(r), neg: false, abs: false }
 }

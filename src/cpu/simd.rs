@@ -4,7 +4,7 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdFpElementOp, SimdAcrossOp, SimdLongOp, SimdOp2, SimdOp3, SimdPermuteOp};
+use super::instructions::{SimdFpElementOp, SimdAcrossOp, SimdOp2, SimdOp3, SimdPermuteOp};
 
 #[inline]
 fn mask(esize: u32) -> u64 {
@@ -121,16 +121,6 @@ pub fn two_misc(op: SimdOp2, n: u128, esize: u32, q: bool) -> u128 {
     if op == SimdOp2::Not {
         return !n & width_mask(q);
     }
-    if let SimdOp2::Rev64 | SimdOp2::Rev32 | SimdOp2::Rev16 = op {
-        let container = match op { SimdOp2::Rev64 => 64, SimdOp2::Rev32 => 32, _ => 16 };
-        let per = (container / esize) as usize;
-        let mut out = 0u128;
-        for i in 0..lanes(esize, q) {
-            let (c, j) = (i / per, i % per);
-            set_lane(&mut out, esize, c * per + (per - 1 - j), lane(n, esize, i));
-        }
-        return out;
-    }
     let all = mask(esize);
     let mut out = 0u128;
     for i in 0..lanes(esize, q) {
@@ -154,7 +144,7 @@ pub fn two_misc(op: SimdOp2, n: u128, esize: u32, q: bool) -> u128 {
             SimdOp2::Fcvtzs => f64::from_bits(a) as i64 as u64,
             SimdOp2::Fcvtzu if esize == 32 => f32::from_bits(a as u32) as u32 as u64,
             SimdOp2::Fcvtzu => f64::from_bits(a) as u64,
-            SimdOp2::Not | SimdOp2::Rev64 | SimdOp2::Rev32 | SimdOp2::Rev16 => unreachable!(),
+            SimdOp2::Not => unreachable!(),
         };
         set_lane(&mut out, esize, i, r);
     }
@@ -200,59 +190,6 @@ pub fn shll(n: u128, esize: u32, shift: u32, q: bool, signed: bool) -> u128 {
         let a = lane(src, esize, i);
         let wide = if signed { sext(a, esize) as u64 } else { a };
         set_lane(&mut out, esize * 2, i, wide << shift);
-    }
-    out
-}
-
-/// AdvSIMD three-different (widening) integer ops (`q`: the `2` forms read the high source half).
-/// `S/UMULL`, `S/UMLAL`, `S/UMLSL` multiply; `S/UADDL`, `S/USUBL`, `S/UABDL`, `S/UABAL` widen both
-/// operands; `S/UADDW`, `S/USUBW` take a full-width `n` and a widened `m`.
-pub fn mul_long(op: SimdLongOp, d: u128, n: u128, m: u128, esize: u32, q: bool, signed: bool) -> u128 {
-    let half = |v: u128| if q { v >> 64 } else { v };
-    let (hn, hm) = (half(n), half(m));
-    let wide = esize * 2;
-    let ext = |a: u64| -> u64 { if signed { sext(a, esize) as u64 } else { a } };
-    let mut out = 0u128;
-    for i in 0..64 / esize as usize {
-        let b = ext(lane(hm, esize, i));
-        let a = if matches!(op, SimdLongOp::Addw | SimdLongOp::Subw) { lane(n, wide, i) } else { ext(lane(hn, esize, i)) };
-        let acc = lane(d, wide, i);
-        let abd = if signed { (a as i64).wrapping_sub(b as i64).unsigned_abs() } else if a >= b { a - b } else { b - a };
-        let r = match op {
-            SimdLongOp::Mull => a.wrapping_mul(b),
-            SimdLongOp::Mlal => acc.wrapping_add(a.wrapping_mul(b)),
-            SimdLongOp::Mlsl => acc.wrapping_sub(a.wrapping_mul(b)),
-            SimdLongOp::Addl | SimdLongOp::Addw => a.wrapping_add(b),
-            SimdLongOp::Subl | SimdLongOp::Subw => a.wrapping_sub(b),
-            SimdLongOp::Abdl => abd,
-            SimdLongOp::Abal => acc.wrapping_add(abd),
-        };
-        set_lane(&mut out, wide, i, r);
-    }
-    out
-}
-
-/// `PMULL` / `PMULL2`: carry-less multiply. `wide`: one 64x64 -> 128-bit product; otherwise eight
-/// 8x8 -> 16-bit products. `q` reads the high 64 bits of each source.
-pub fn pmull(n: u128, m: u128, wide: bool, q: bool) -> u128 {
-    let half = |v: u128| (if q { v >> 64 } else { v }) as u64;
-    let (hn, hm) = (half(n), half(m));
-    let clmul = |a: u64, b: u64| -> u128 {
-        let mut r = 0u128;
-        for i in 0..64 {
-            if (b >> i) & 1 != 0 {
-                r ^= (a as u128) << i;
-            }
-        }
-        r
-    };
-    if wide {
-        return clmul(hn, hm);
-    }
-    let mut out = 0u128;
-    for i in 0..8 {
-        let p = clmul((hn >> (8 * i)) & 0xFF, (hm >> (8 * i)) & 0xFF) as u64;
-        out |= (p as u128) << (16 * i);
     }
     out
 }
@@ -366,12 +303,6 @@ mod tests {
         assert_eq!(three_same(SimdOp3::Orr, 0, 1 << 100, 1, 8, false), 1);
         assert_eq!(three_same(SimdOp3::Bsl, 0xFF00, 0x1234, 0xABCD, 8, true), 0x12CD);
         assert_eq!(two_misc(SimdOp2::Cnt, 0xFF07, 8, false), 0x0803);
-        // REV16/REV32/REV64 (vector)
-        let v: u128 = 0x0F0E_0D0C_0B0A_0908_0706_0504_0302_0100;
-        assert_eq!(two_misc(SimdOp2::Rev16, v, 8, true), 0x0E0F_0C0D_0A0B_0809_0607_0405_0203_0001);
-        assert_eq!(two_misc(SimdOp2::Rev32, v, 8, true), 0x0C0D_0E0F_0809_0A0B_0405_0607_0001_0203);
-        assert_eq!(two_misc(SimdOp2::Rev64, v, 8, true), 0x0809_0A0B_0C0D_0E0F_0001_0203_0405_0607);
-        assert_eq!(two_misc(SimdOp2::Rev64, v, 32, false), 0x0302_0100_0706_0504);
         assert_eq!(three_same(SimdOp3::Smax, 0, 0x80, 0x7F, 8, false), 0x7F);
         assert_eq!(three_same(SimdOp3::Umax, 0, 0x80, 0x7F, 8, false), 0x80);
     }
@@ -399,77 +330,5 @@ mod tests {
         assert_eq!(shift_imm(dup(0x80, 8, false), 8, 7, false, false, false), dup(1, 8, false));
         assert_eq!(shift_imm(dup(0x80, 8, false), 8, 7, false, true, false), dup(0xFF, 8, false));
         assert_eq!(shift_imm(dup(1, 32, true), 32, 31, true, false, true), dup(0x8000_0000, 32, true));
-    }
-}
-
-#[cfg(test)]
-mod mul_long_tests {
-    use super::*;
-
-    #[test]
-    fn umull_umlal_smull_low_and_high_halves() {
-        // n = [0xFFFF_FFFF, 3 | 5, 7], m = [0xFFFF_FFFF, 2 | 11, 13] (32-bit lanes, low lane first)
-        let n = (0xFFFF_FFFFu128) | (3u128 << 32) | (5u128 << 64) | (7u128 << 96);
-        let m = (0xFFFF_FFFFu128) | (2u128 << 32) | (11u128 << 64) | (13u128 << 96);
-        let lo = mul_long(SimdLongOp::Mull, 0, n, m, 32, false, false);
-        assert_eq!(lane(lo, 64, 0), 0xFFFF_FFFFu64 * 0xFFFF_FFFFu64); // full 64-bit product, no truncation
-        assert_eq!(lane(lo, 64, 1), 6);
-        let hi = mul_long(SimdLongOp::Mull, 0, n, m, 32, true, false); // UMULL2 uses the high half
-        assert_eq!((lane(hi, 64, 0), lane(hi, 64, 1)), (55, 91));
-        let acc = mul_long(SimdLongOp::Mlal, lo, n, m, 32, false, false); // UMLAL doubles the products (wrapping)
-        assert_eq!(lane(acc, 64, 1), 12);
-        let sub = mul_long(SimdLongOp::Mlsl, acc, n, m, 32, false, false);
-        assert_eq!(lane(sub, 64, 1), 6);
-        // signed: -1 * -1 = 1, -1 * 2 = -2
-        let s = mul_long(SimdLongOp::Mull, 0, n, m, 32, false, true);
-        assert_eq!(lane(s, 64, 0), 1);
-        assert_eq!(lane(s, 64, 1), 6);
-    }
-
-    #[test]
-    fn widening_add_sub_abd() {
-        let n = (0xFFFF_FFFFu128) | (3u128 << 32);
-        let m = 5u128 | (9u128 << 32);
-        let addl = mul_long(SimdLongOp::Addl, 0, n, m, 32, false, false);
-        assert_eq!((lane(addl, 64, 0), lane(addl, 64, 1)), (0x1_0000_0004, 12)); // no 32-bit wrap
-        let wide_n = 0x1_0000_0000u128 | (7u128 << 64); // two 64-bit lanes
-        let addw = mul_long(SimdLongOp::Addw, 0, wide_n, m, 32, false, false); // UADDW: wide + widened narrow
-        assert_eq!((lane(addw, 64, 0), lane(addw, 64, 1)), (0x1_0000_0005, 16));
-        let subl = mul_long(SimdLongOp::Subl, 0, n, m, 32, false, true); // signed: -1 - 5, 3 - 9
-        assert_eq!((lane(subl, 64, 0) as i64, lane(subl, 64, 1) as i64), (-6, -6));
-        let abdl = mul_long(SimdLongOp::Abdl, 0, n, m, 32, false, false);
-        assert_eq!((lane(abdl, 64, 0), lane(abdl, 64, 1)), (0xFFFF_FFFA, 6));
-    }
-}
-
-#[cfg(test)]
-mod pmull_tests {
-    use super::pmull;
-
-    #[test]
-    fn pmull_8bit_lanes() {
-        assert_eq!(pmull(0x03, 0x03, false, false), 0x05); // (x+1)^2 = x^2+1
-        assert_eq!(pmull(0x80, 0x80, false, false), 0x4000);
-        assert_eq!(pmull(0xFF, 0xFF, false, false), 0x5555); // (x^8-1)^2 over GF(2)
-        // lane 1 independent: 0x02 x 0x07 = 0x0E; lane 0 zero
-        assert_eq!(pmull(0x0200, 0x0700, false, false), 0x0E << 16);
-    }
-
-    #[test]
-    fn pmull2_uses_high_half() {
-        let n = (0x03u128 << 64) | 0xFF;
-        let m = (0x03u128 << 64) | 0xFF;
-        assert_eq!(pmull(n, m, false, true), 0x05);
-        assert_eq!(pmull(n, m, false, false), 0x5555);
-        assert_eq!(pmull(n, m, true, true), 0x05);
-    }
-
-    #[test]
-    fn pmull_64bit() {
-        // (x^63 + 1)(x + 1) = x^64 + x^63 + x + 1
-        assert_eq!(pmull(0x8000_0000_0000_0001, 3, true, false), (1u128 << 64) | 0x8000_0000_0000_0003);
-        assert_eq!(pmull(1u128 << 63, 1u128 << 63, true, false), 1u128 << 126);
-        let hi = (0x8000_0000_0000_0001u128 << 64) | 7;
-        assert_eq!(pmull(hi, 3u128 << 64, true, true), (1u128 << 64) | 0x8000_0000_0000_0003);
     }
 }

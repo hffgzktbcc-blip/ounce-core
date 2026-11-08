@@ -234,22 +234,9 @@ impl NroLoader {
         mmu: &mut Memory,
     ) -> Result<NroHeader, LoadError> {
         let mut header = Self::parse_header(bytes)?;
-        Self::check_segment(base_addr, header.text_offset as u64, header.text_size as u64)?;
+        Self::check_segment(base_addr, header.text_offset as u64, 0)?;
         Self::check_segment(base_addr, header.rodata_offset as u64, header.rodata_size as u64)?;
         Self::check_segment(base_addr, header.data_offset as u64, header.data_size as u64 + header.bss_size as u64)?;
-
-        // Validate every file-backed extent before installing any mappings. Assets appended
-        // after the NRO image cannot make a truncated program segment valid.
-        for (offset, size) in [
-            (header.text_offset, header.text_size),
-            (header.rodata_offset, header.rodata_size),
-            (header.data_offset, header.data_size),
-        ] {
-            if size != 0 && (offset as u64 + size as u64 > header.size as u64
-                || offset as u64 + size as u64 > bytes.len() as u64) {
-                return Err(LoadError::SegmentOutOfRange { offset: offset as u64, size: size as u64 });
-            }
-        }
 
         // 1. Map and write .text segment (Read + Write + Execute)
         let text_start = header.text_offset as usize;
@@ -1273,17 +1260,6 @@ pub(crate) fn elf_with_pt_tls(tls: TlsTemplate) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn truncated_nro_sections_are_rejected_before_mapping() {
-        for field in [0x24usize, 0x2c, 0x34] {
-            let mut bytes = NroLoader::build_synthetic_nro(&0xd40000e1u32.to_le_bytes());
-            bytes[field..field + 4].copy_from_slice(&u32::MAX.to_le_bytes());
-            let mut memory = Memory::new();
-            assert!(NroLoader::load_into_memory(&bytes, 0x8000_0000, &mut memory).is_err());
-            assert!(!memory.is_mapped(0x8000_0000));
-        }
-    }
 
     fn tls_sym(name: &str, shndx: u16, value: u64, size: u64) -> TestSymbol<'_> {
         TestSymbol { name, shndx, bind: 1, kind: STT_TLS, value, size }

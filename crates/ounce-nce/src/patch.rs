@@ -414,13 +414,7 @@ impl Patcher {
     /// `site_sysreg_read`: `mrs xN, tpidr(ro)_el0` -> xN = context field.
     fn site_sysreg_read(&mut self, at: u64, rt: u32, field: u32) -> Result<u64, NceError> {
         let start = self.here();
-        if rt == 18 {
-            self.emit(stp_x(16, 17, 31, -16));
-            self.ctx_addr(17)?;
-            self.emit(ldr_x(16, 17, field));
-            self.emit(str_x(16, 17, off::X + 18 * 8));
-            self.emit(ldp_x(16, 17, 31, -16));
-        } else if rt != 31 {
+        if rt != 31 {
             self.ctx_addr(rt)?;
             self.emit(ldr_x(rt, rt, field));
         }
@@ -432,16 +426,9 @@ impl Patcher {
     fn site_const(&mut self, at: u64, rt: u32, value: u64) -> Result<u64, NceError> {
         let start = self.here();
         if rt != 31 {
-            let dst = if rt == 18 { 16 } else { rt };
-            if rt == 18 { self.emit(stp_x(16, 17, 31, -16)); }
-            self.emit(movz_x(dst, value as u32 & 0xFFFF));
+            self.emit(movz_x(rt, value as u32 & 0xFFFF));
             for hw in 1..4 {
-                self.emit(movk_x(dst, (value >> (16 * hw)) as u32 & 0xFFFF, hw));
-            }
-            if rt == 18 {
-                self.ctx_addr(17)?;
-                self.emit(str_x(16, 17, off::X + 18 * 8));
-                self.emit(ldp_x(16, 17, 31, -16));
+                self.emit(movk_x(rt, (value >> (16 * hw)) as u32 & 0xFFFF, hw));
             }
         }
         self.back(at)?;
@@ -451,14 +438,6 @@ impl Patcher {
     /// `site_tpidr_write`: `msr tpidr_el0, xN` -> context field = xN.
     fn site_tpidr_write(&mut self, at: u64, rt: u32) -> Result<u64, NceError> {
         let start = self.here();
-        if rt == 18 {
-            self.emit(stp_x(16, 17, 31, -16));
-            self.load18(16, 17)?;
-            self.emit(str_x(16, 17, off::TPIDR));
-            self.emit(ldp_x(16, 17, 31, -16));
-            self.back(at)?;
-            return Ok(start);
-        }
         let t = if rt == 16 { 17 } else { 16 };
         self.emit(stur_x(t, 31, -16));
         self.ctx_addr(t)?;
@@ -675,23 +654,6 @@ mod tests {
             0xA9417BFD,    // ldp x29, x30, [sp, #16]
         ] {
             assert!(uses_x18(w).is_none(), "{w:#010x}");
-        }
-    }
-
-    #[test]
-    fn special_x18_rewrites_never_use_the_physical_register() {
-        let mut p = Patcher::new(0x10_7C00_0000, 0x10_0000).unwrap();
-        let code = 0x10_8000_0000;
-        let mut words = [
-            0xD53BD052, // mrs x18, tpidr_el0
-            0xD53BD072, // mrs x18, tpidrro_el0
-            0xD53B0032, // mrs x18, ctr_el0
-            0xD51BD052, // msr tpidr_el0, x18
-        ];
-        let before = p.areas()[0].code.len();
-        p.rewrite(code, &mut words).unwrap();
-        for &word in &p.areas()[0].code[before..] {
-            assert!(uses_x18(word).is_none(), "physical X18 in trampoline: {word:#010x}");
         }
     }
 

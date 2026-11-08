@@ -27,18 +27,9 @@ use crate::gpu::sass::sph::{PixelImap, Sph, SphType};
 use crate::gpu::sass::{maxwell, ShaderStage as SassStage, XlateError, AMPERE_SPH_SIZE, MAXWELL_SPH_SIZE};
 use crate::gpu::tiling::{self, BlockLinear, Layout, Surface};
 
-#[cfg(feature = "gpu-present")]
-#[path = "host.rs"]
-mod host;
-
-/// Counters for completed writes into guest render targets.
+/// Counters for what the software path actually wrote.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RenderStats {
-    /// Host API draws with a completed readback (includes software adapters).
-    pub host_draws: u32,
-    /// Subset of host_draws executed on a physical adapter.
-    pub hardware_draws: u32,
-    pub host_readback_bytes: u64,
     pub clears: u32,
     pub draws: u32,
     pub triangles: u32,
@@ -682,40 +673,6 @@ fn write_mask(regs: &[u32], slot: u8) -> [bool; 4] {
     [0, 4, 8, 12].map(|b| (w >> b) & 1 == 1)
 }
 
-fn fetch_attributes(rec: &DrawRecord, index: u32, mem: &mut dyn GpuMemoryWriter,
-    stream_cache: &mut Vec<(u8, Vec<u8>)>) -> Result<[[u32; 4]; 32], &'static str> {
-    let mut attrs = [[0u32, 0, 0, 1.0f32.to_bits()]; 32];
-    for a in &rec.vertex_attributes {
-        let Some(stream) = rec.vertex_streams.iter().find(|s| s.index == a.stream) else { continue };
-        if !stream_cache.iter().any(|(s, _)| *s == stream.index) {
-            let mut data = vec![0u8; stream.size.min(1 << 24) as usize];
-            if !mem.read(stream.gpu_va, &mut data) {
-                return Err("vertex stream is not readable");
-            }
-            stream_cache.push((stream.index, data));
-        }
-        let data = &stream_cache.iter().find(|(s, _)| *s == stream.index).unwrap().1;
-        // Instanced streams step per instance; frequency 0 keeps every instance on the base
-        // element (UNVERIFIED: read as a divisor, as Vulkan's is).
-        let element = if stream.instanced {
-            let step = if stream.frequency == 0 { 0 } else { rec.instance / stream.frequency };
-            rec.base_instance.wrapping_add(step)
-        } else {
-            index
-        };
-        let at = element as usize * stream.stride as usize + a.offset as usize;
-        let Some(bytes) = data.get(at..) else { return Err("vertex fetch past the stream size") };
-        let Some(mut words) = decode_attribute(a.component_bit_widths, a.numerical_type, bytes) else {
-            return Err("vertex attribute format");
-        };
-        if a.swap_r_and_b {
-            words.swap(0, 2);
-        }
-        *attrs.get_mut(a.index as usize).ok_or("vertex attribute index out of range")? = words;
-    }
-    Ok(attrs)
-}
-
 impl Ampere3d {
     fn reg_at(&self, method: u32) -> u32 {
         self.regs[method as usize / 4]
@@ -727,9 +684,6 @@ impl Ampere3d {
 
     /// Writes a `CLEAR_SURFACE` into the targets it names.
     pub(super) fn render_clear(&mut self, rec: &ClearRecord, mem: &mut dyn GpuMemoryWriter) {
-        if rec.layer != 0 || rec.depth_target.is_some_and(|target| target.layer != 0) {
-            return self.skip("layered clear");
-        }
         let ctrl = self.reg_at(m::SET_CLEAR_SURFACE_CONTROL);
         let region = |w: u32, h: u32| {
             let mut r = Rect::new(w, h);
@@ -774,14 +728,7 @@ impl Ampere3d {
             let stencil = rec.clear_stencil.then_some(rec.stencil);
             for y in r.y0..r.y1 {
                 for x in r.x0..r.x1 {
-                    let texel = t.texel(x, y);
-                    let stencil = stencil.map(|value| {
-                        if ctrl & 1 != 0 {
-                            let mask = self.reg_at(m::SET_STENCIL_MASK) as u8;
-                            (read_stencil(zt.format, texel).unwrap_or(0) & !mask) | (value & mask)
-                        } else { value }
-                    });
-                    write_depth(zt.format, texel, depth, stencil);
+                    write_depth(zt.format, t.texel(x, y), depth, stencil);
                 }
             }
             t.store(mem);
@@ -869,12 +816,6 @@ impl Ampere3d {
 
     /// Runs one draw: vertex fetch, vertex shader, raster, pixel shader, depth, color write.
     pub(super) fn render_draw(&mut self, rec: &DrawRecord, mem: &mut dyn GpuMemoryWriter) {
-        if rec.vertex_count > 1_048_576 {
-            return self.skip("draw exceeds host vertex work limit");
-        }
-        if rec.depth_target.is_some_and(|target| target.layer != 0) {
-            return self.skip("layered depth target");
-        }
         // Probe: write-only memory keeps step-1 behaviour silently.
         if !mem.read(0, &mut []) {
             return;
@@ -916,27 +857,40 @@ impl Ampere3d {
             (Err(reason), _) | (_, Err(reason)) => return self.skip(reason),
         };
 
-        #[cfg(feature = "gpu-present")]
-        if self.host_gpu {
-            match self.render_host(rec, &ids, &tris, &vs, &ps, &vs_cb, &ps_cb, mem) {
-                Ok(()) => {},
-                Err(reason) => {
-                    eprintln!("[guest-gpu] rejected draw: {reason}");
-                    self.skip("host GPU draw rejected; see guest-gpu diagnostic");
-                }
-            }
-            return;
-        }
-
         // Vertex fetch + shading.
         let mut stream_cache: Vec<(u8, Vec<u8>)> = Vec::new();
         let vp = rec.viewport0;
         let mut verts = Vec::with_capacity(ids.len());
         for &index in &ids {
-            let attrs = match fetch_attributes(rec, index, mem, &mut stream_cache) {
-                Ok(attrs) => attrs,
-                Err(reason) => return self.skip(reason),
-            };
+            let mut attrs = [[0u32, 0, 0, 1.0f32.to_bits()]; 32];
+            for a in &rec.vertex_attributes {
+                let Some(stream) = rec.vertex_streams.iter().find(|s| s.index == a.stream) else { continue };
+                if !stream_cache.iter().any(|(s, _)| *s == stream.index) {
+                    let mut data = vec![0u8; stream.size.min(1 << 24) as usize];
+                    if !mem.read(stream.gpu_va, &mut data) {
+                        return self.skip("vertex stream is not readable");
+                    }
+                    stream_cache.push((stream.index, data));
+                }
+                let data = &stream_cache.iter().find(|(s, _)| *s == stream.index).unwrap().1;
+                // Instanced streams step per instance; frequency 0 keeps every instance on the base
+                // element (UNVERIFIED: read as a divisor, as Vulkan's is).
+                let element = if stream.instanced {
+                    let step = if stream.frequency == 0 { 0 } else { rec.instance / stream.frequency };
+                    rec.base_instance.wrapping_add(step)
+                } else {
+                    index
+                };
+                let at = element as usize * stream.stride as usize + a.offset as usize;
+                let Some(bytes) = data.get(at..) else { return self.skip("vertex fetch past the stream size") };
+                let Some(mut words) = decode_attribute(a.component_bit_widths, a.numerical_type, bytes) else {
+                    return self.skip("vertex attribute format");
+                };
+                if a.swap_r_and_b {
+                    words.swap(0, 2);
+                }
+                attrs[a.index as usize] = words;
+            }
             let values = shade::run(&vs.func, &VertexIn { attrs: &attrs, instance: rec.instance, vertex: index, cbufs: &vs_cb, tex: &vs_tex });
             let mut pos = [0.0f32, 0.0, 0.0, 1.0];
             let mut varyings = [[0.0f32; 4]; 32];

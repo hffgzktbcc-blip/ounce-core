@@ -1,10 +1,10 @@
 # External homebrew candidates
 
-`oracles.json` pre-registers one expected-frame oracle per outside program (20 today); `oracle-results.json` is the latest canonical pass/fail per program, and the root `README.md` headline is checked against it in CI. The oracles run on Linux in CI (the corpus is built in the devkitA64 Docker image). Current counts, failing programs and their causes are tracked in `PLAN.md`, not here.
+`sources.json` records the pinned upstream revisions, observed notices, local build inputs and artifact hashes for three original-Switch samples. The source files were built unchanged. Generated NROs remain in external sibling work directories; this repository change adds metadata only.
 
-`sources.json` is the older record of three original-Switch samples (input, C++ hello, deko3d): pinned upstream revisions, observed notices, local build inputs and artifact hashes. The source files were built unchanged. Generated NROs remain in external sibling work directories; this repository holds metadata only. The notice data is recorded as observed; this is not a legal assessment or a conclusion about binary redistribution.
+The candidates have not passed the corpus gate. The input sample currently stops during guest startup with result `0x2559`; the C++ hello sample loads but stops at `svcBreak` before its expected console text is observed. The deko3d sample has fixed draw commands but no built-in pixel checksum or guest completion result, and this manifest records no Ounce-Core pass for it. The declared notice data is recorded as observed; this is not a legal assessment or a conclusion about binary redistribution.
 
-Still outstanding: reproduction of the corpus by an outside developer from a clean checkout, and Switch 2 validation, which waits for authorized tooling and reference-hardware access. These original-Switch programs do not establish Switch 2 compatibility.
+A complete milestone still requires clean runs under Interpreter and Tier-3 on Linux, reproducible outputs, and reproduction by an outside developer from a clean checkout. Direct Switch 2 validation remains a later step pending authorized tooling and reference-hardware access. These original-Switch candidates do not establish Switch 2 compatibility.
 
 ## Rebuild from pinned source
 
@@ -22,4 +22,5 @@ upstream files, checks that tracked sources stayed unchanged, and writes build l
 Compiler paths are normalized with `-ffile-prefix-map`: without it, checkout paths changed
 the GNU build IDs even when execution bytes were identical. With normalization, all three
 NRO hashes matched across two separate fresh build directories on macOS arm64. This is
-build reproducibility evidence only; independent reproduction by an outside developer remains outstanding. Generated binaries are kept outside the repository.
+build reproducibility evidence only. Linux execution, runtime outputs, and independent
+reproduction remain outstanding. Generated binaries are kept outside the repository.

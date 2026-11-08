@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    SimdAcrossOp, SimdLongOp,
+    SimdAcrossOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
     SimdFpElementOp, SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
@@ -52,7 +52,7 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 4. Move Wide (Immediate): MOVZ, MOVN, MOVK
     // Pattern: sf 10 100101 hw imm16 Rd
-    if (raw & 0x1F800000) == 0x12800000 {
+    if (raw & 0x1F800000) == 0x12800000 || (raw & 0x1F800000) == 0x52800000 || (raw & 0x1F800000) == 0x72800000 {
         let is_64 = (raw & (1 << 31)) != 0;
         let opc = (raw >> 29) & 0x3;
         let hw = ((raw >> 21) & 0x3) as u8;
@@ -418,16 +418,8 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
-    // 12z. PRFM (literal): prefetch hint, no architectural effect (must not be decoded as a load of Rt)
-    if (raw & 0xFF00_0000) == 0xD800_0000 {
-        return Instruction::Nop;
-    }
-
     // 13. Load / Store Single Register (Immediate unsigned offset, V == 0)
     if (raw & 0x3F000000) == 0x39000000 {
-        if (raw >> 30) == 3 && ((raw >> 22) & 0x3) == 2 {
-            return Instruction::Nop; // PRFM (immediate)
-        }
         let size = ((raw >> 30) & 0x3) as u8;
         let opc = ((raw >> 22) & 0x3) as u8;
         let is_load = opc != 0;
@@ -445,7 +437,6 @@ pub fn decode(raw: u32) -> Instruction {
             size_bytes: scale as u8,
             is_load,
             is_signed,
-            is_64_target: size == 3 || opc == 2,
             writeback: false,
             post_index: false,
         };
@@ -455,9 +446,6 @@ pub fn decode(raw: u32) -> Instruction {
     if (raw & 0x3F000000) == 0x38000000 {
         let size = ((raw >> 30) & 0x3) as u8;
         let opc = ((raw >> 22) & 0x3) as u8;
-        if size == 3 && opc == 2 {
-            return Instruction::Nop; // PRFUM / PRFM (register): prefetch hints
-        }
         let is_load = opc != 0;
         let is_signed = opc == 2 || opc == 3;
         let scale = 1u8 << size;
@@ -499,7 +487,6 @@ pub fn decode(raw: u32) -> Instruction {
                 size_bytes: scale,
                 is_load,
                 is_signed,
-                is_64_target: size == 3 || opc == 2,
                 writeback,
                 post_index,
             };
@@ -545,7 +532,6 @@ pub fn decode(raw: u32) -> Instruction {
                 0b0101 => FpOp2::Fmin,
                 0b0110 => FpOp2::Fmaxnm,
                 0b0111 => FpOp2::Fminnm,
-                0b1000 => FpOp2::Fnmul,
                 _ => return Instruction::Unimplemented { raw },
             };
 
@@ -807,11 +793,7 @@ pub fn decode(raw: u32) -> Instruction {
         } else {
             FpOp2::Fadd
         };
-        return if raw & (1 << 22) != 0 {
-            Instruction::SimdVec2D { rd, rn, rm, op }
-        } else {
-            Instruction::SimdVec4S { rd, rn, rm, op }
-        };
+        return Instruction::SimdVec4S { rd, rn, rm, op };
     }
 
     decode_extra(raw).unwrap_or(Instruction::Unimplemented { raw })
@@ -1041,16 +1023,6 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
-    // 27a. AdvSIMD scalar copy: 01 op=0 11110000 imm5 0 0000 1 Rn Rd (DUP scalar from element)
-    if (raw & 0xFFE0_FC00) == 0x5E00_0400 {
-        let imm5 = (raw >> 16) & 0x1F;
-        if imm5 & 0xF == 0 {
-            return None;
-        }
-        let low = imm5.trailing_zeros();
-        return Some(Instruction::SimdDupScalar { rd, rn, esize: 8u8 << low, index: (imm5 >> (low + 1)) as u8 });
-    }
-
     // 27. AdvSIMD copy: 0 Q op 01110000 imm5 0 imm4 1 Rn Rd
     //     DUP (element) imm4 0000, DUP (general) 0001, INS (general) 0011, UMOV 0111; op = 1: INS (element)
     if (raw & 0x9FE0_8400) == 0x0E00_0400 {
@@ -1185,50 +1157,6 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdPermute { rd, rn, rm, op, esize: 8u8 << size, q });
     }
 
-    // 27b. AdvSIMD three different (widening multiply): 0 Q U 01110 size 1 Rm opcode 00 Rn Rd
-    if (raw & 0x9F20_0C00) == 0x0E20_0000 {
-        // PMULL / PMULL2: opcode 1110, U == 0, size 0 (8H from 8B) or size 3 (1Q from 1D).
-        if (raw >> 12) & 0xF == 0b1110 {
-            if u || (size != 0 && size != 3) {
-                return None;
-            }
-            return Some(Instruction::Pmull { rd, rn, rm, wide: size == 3, q });
-        }
-        let op = match (raw >> 12) & 0xF {
-            0b0000 => SimdLongOp::Addl,
-            0b0001 => SimdLongOp::Addw,
-            0b0010 => SimdLongOp::Subl,
-            0b0011 => SimdLongOp::Subw,
-            0b0101 => SimdLongOp::Abal,
-            0b0111 => SimdLongOp::Abdl,
-            0b1000 => SimdLongOp::Mlal,
-            0b1010 => SimdLongOp::Mlsl,
-            0b1100 => SimdLongOp::Mull,
-            _ => return None,
-        };
-        if size == 3 {
-            return None; // PMULL / reserved
-        }
-        return Some(Instruction::SimdLong { rd, rn, rm, op, signed: !u, esize: 8u8 << size, q });
-    }
-
-    // 27c. AdvSIMD scalar three same (D registers): 01 U 11110 size 1 Rm opcode 1 Rn Rd, size == 3.
-    // A one-lane 64-bit vector op writes lane 0 and zeroes the rest, exactly the scalar semantics.
-    if (raw & 0xDF20_0400) == 0x5E20_0400 && size == 3 {
-        let op = match ((raw >> 11) & 0x1F, u) {
-            (0b10000, false) => SimdOp3::Add,
-            (0b10000, true) => SimdOp3::Sub,
-            (0b10001, false) => SimdOp3::Cmtst,
-            (0b10001, true) => SimdOp3::Cmeq,
-            (0b00110, false) => SimdOp3::Cmgt,
-            (0b00110, true) => SimdOp3::Cmhi,
-            (0b00111, false) => SimdOp3::Cmge,
-            (0b00111, true) => SimdOp3::Cmhs,
-            _ => return None,
-        };
-        return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 64, q: false });
-    }
-
     // 28. AdvSIMD three same: 0 Q U 01110 size 1 Rm opcode 1 Rn Rd
     if (raw & 0x9F20_0400) == 0x0E20_0400 {
         let opcode = (raw >> 11) & 0x1F;
@@ -1307,9 +1235,6 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b01001, false) => SimdOp2::Cmeq0,
             (0b01001, true) => SimdOp2::Cmle0,
             (0b01010, false) => SimdOp2::Cmlt0,
-            (0b00000, false) if size < 3 => SimdOp2::Rev64,
-            (0b00000, true) if size < 2 => SimdOp2::Rev32,
-            (0b00001, false) if size == 0 => SimdOp2::Rev16,
             (0b00101, false) if size == 0 => SimdOp2::Cnt,
             (0b00101, true) if size == 0 => SimdOp2::Not,
             (0b01011, false) => SimdOp2::Abs,
@@ -1464,18 +1389,6 @@ mod tests {
     #[test]
     fn test_decode_nop() {
         assert_eq!(decode(0xD503201F), Instruction::Nop);
-        // PRFM / PRFUM / PRFM (register) are prefetch hints, not loads into Rt (Rt is the prefetch operation, often 0)
-        assert_eq!(decode(0xF980C160), Instruction::Nop); // prfm pldl1keep, [x11, #384]
-        assert_eq!(decode(0xF8A06960), Instruction::Nop); // prfm pldl1keep, [x11, x0]
-        assert_eq!(decode(0xF8800160), Instruction::Nop); // prfum pldl1keep, [x11]
-        assert_eq!(decode(0xD8000000), Instruction::Nop); // prfm pldl1keep, <literal>
-        assert!(matches!(decode(0x4E201BFF), Instruction::SimdTwoMisc { op: SimdOp2::Rev16, esize: 8, q: true, .. })); // rev16 v31.16b, v31.16b
-        assert!(matches!(decode(0x5EFE87FF), Instruction::SimdThreeSame { op: SimdOp3::Add, esize: 64, q: false, .. })); // add d31, d31, d30
-        assert!(matches!(decode(0x7EE18420), Instruction::SimdThreeSame { op: SimdOp3::Sub, esize: 64, q: false, .. })); // sub d0, d1, d1
-        assert!(matches!(decode(0x5E1C07EE), Instruction::SimdDupScalar { esize: 32, index: 3, .. })); // mov s14, v31.s[3]
-        // UMLAL/UMULL/SMLAL family (three different)
-        assert!(matches!(decode(0x2EBF837D), Instruction::SimdLong { op: SimdLongOp::Mlal, signed: false, esize: 32, q: false, .. })); // umlal v29.2d, v27.2s, v31.2s
-        assert!(matches!(decode(0x6EBF837E), Instruction::SimdLong { op: SimdLongOp::Mlal, signed: false, esize: 32, q: true, .. })); // umlal2 v30.2d, v27.4s, v31.4s
     }
 
     #[test]
@@ -1538,15 +1451,5 @@ mod tests {
                 is_double: true,
             }
         );
-    }
-
-    #[test]
-    fn test_decode_pmull() {
-        assert_eq!(decode(0x0E22E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: false, q: false }); // pmull v0.8h, v1.8b, v2.8b
-        assert_eq!(decode(0x4E22E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: false, q: true }); // pmull2 v0.8h, v1.16b, v2.16b
-        assert_eq!(decode(0x0EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: false }); // pmull v0.1q, v1.1d, v2.1d
-        assert_eq!(decode(0x4EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: true }); // pmull2 v0.1q, v1.2d, v2.2d
-        assert!(!matches!(decode(0x0E62E020), Instruction::Pmull { .. })); // size 1 reserved
-        assert!(!matches!(decode(0x2E22E020), Instruction::Pmull { .. })); // U=1 is not PMULL
     }
 }

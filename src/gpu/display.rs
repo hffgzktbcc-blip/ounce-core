@@ -247,14 +247,6 @@ impl DisplayServer {
         self.present_frame_3d(mmu, &[])
     }
 
-    /// Present decoded VI pixels without the synthetic framebuffer or telemetry overlay.
-    pub fn present_guest_frame(&mut self, frame: Frame) -> bool {
-        if self.backend.is_none() && self.init_window().is_err() { return false; }
-        self.swapchain.back_buffer = frame;
-        self.swapchain.flip(0);
-        self.backend.as_mut().expect("backend opened above").present(&self.swapchain.front_buffer) != PresentStatus::Closed
-    }
-
     pub fn is_window_active(&self) -> bool {
         self.backend.as_ref().map_or(false, |b| b.is_open())
     }
@@ -357,18 +349,6 @@ mod tests {
         assert_eq!(frame.pixel(0, 0), Some((0x20, 0x20, 0x20, 0xFF)));
         // The first bucket segment is emerald.
         assert_eq!(frame.pixel(16, 7), Some((0x00, 0xFF, 0xA3, 0xFF)));
-    }
-
-    #[test]
-    fn guest_frames_reach_the_backend_without_overlay_or_dimension_changes() {
-        let mut display = headless_server(320, 200);
-        let mut frame = Frame::new(2, 2);
-        frame.rgba = vec![10, 20, 30, 40].repeat(4);
-        let expected = frame.content_hash();
-        assert!(display.present_guest_frame(frame));
-        assert_eq!(display.swapchain.front_buffer.content_hash(), expected);
-        assert_eq!((display.swapchain.front_buffer.width, display.swapchain.front_buffer.height), (2, 2));
-        assert_eq!(display.backend.as_ref().unwrap().frames_presented(), 1);
     }
 
     #[test]
