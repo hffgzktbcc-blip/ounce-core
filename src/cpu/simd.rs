@@ -374,9 +374,35 @@ macro_rules! fp_lane_ops {
                 max_min(a, b, max)
             }
 
+            /// ARM `FPProcessNaNs`: the first signalling NaN (quieted), else the first quiet NaN, else `None`.
+            /// Done explicitly because Rust may commute `a * b` and `a + b`, which would pick the other NaN.
+            fn nan_in(ops: &[$f]) -> Option<$b> {
+                if let Some(x) = ops.iter().find(|x| is_snan(**x)) {
+                    return Some(x.to_bits() | QUIET);
+                }
+                ops.iter().find(|x| x.is_nan()).map(|x| x.to_bits())
+            }
+
             pub fn op3(op: SimdFpOp3, acc: $b, n: $b, m: $b) -> $b {
                 let (a, b, d) = (<$f>::from_bits(n), <$f>::from_bits(m), <$f>::from_bits(acc));
                 let flag = |c: bool| if c { ALL } else { 0 };
+                let nan = match op {
+                    SimdFpOp3::Fadd | SimdFpOp3::Faddp | SimdFpOp3::Fsub | SimdFpOp3::Fmul | SimdFpOp3::Fdiv => nan_in(&[a, b]),
+                    SimdFpOp3::Fabd => nan_in(&[a, b]).map(|r| r & !SIGN),
+                    // FPMulAdd: a quiet-NaN addend with 0 * inf is the default NaN; otherwise addend, then operands
+                    SimdFpOp3::Fmla | SimdFpOp3::Fmls => {
+                        let a = if op == SimdFpOp3::Fmls { -a } else { a };
+                        if d.is_nan() && !is_snan(d) && ((a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite())) {
+                            Some(<$f>::NAN.to_bits())
+                        } else {
+                            nan_in(&[d, a, b])
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(r) = nan {
+                    return r;
+                }
                 match op {
                     SimdFpOp3::Fadd | SimdFpOp3::Faddp => (a + b).to_bits(),
                     SimdFpOp3::Fsub => (a - b).to_bits(),
@@ -471,26 +497,16 @@ pub fn fp_two_misc(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool) -> u1
 /// `FMUL/FMLA/FMLS` by element: every lane of `n` times lane `index` of `m` (fused for FMLA/FMLS).
 pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool) -> u128 {
     let esize = if double { 64 } else { 32 };
+    let op3 = match op {
+        SimdFpElementOp::Fmul => SimdFpOp3::Fmul,
+        SimdFpElementOp::Fmla => SimdFpOp3::Fmla,
+        SimdFpElementOp::Fmls => SimdFpOp3::Fmls,
+    };
     let mut out = 0u128;
     for i in 0..lanes(esize, q) {
-        let bits = if double {
-            let (a, b, acc) = (f64::from_bits(lane(n, 64, i)), f64::from_bits(lane(m, 64, index)), f64::from_bits(lane(d, 64, i)));
-            match op {
-                SimdFpElementOp::Fmul => a * b,
-                SimdFpElementOp::Fmla => a.mul_add(b, acc),
-                SimdFpElementOp::Fmls => (-a).mul_add(b, acc),
-            }
-            .to_bits()
-        } else {
-            let (a, b, acc) = (f32::from_bits(lane(n, 32, i) as u32), f32::from_bits(lane(m, 32, index) as u32), f32::from_bits(lane(d, 32, i) as u32));
-            match op {
-                SimdFpElementOp::Fmul => a * b,
-                SimdFpElementOp::Fmla => a.mul_add(b, acc),
-                SimdFpElementOp::Fmls => (-a).mul_add(b, acc),
-            }
-            .to_bits() as u64
-        };
-        set_lane(&mut out, esize, i, bits);
+        let (a, b, acc) = (lane(n, esize, i), lane(m, esize, index), lane(d, esize, i));
+        let r = if double { fp64::op3(op3, acc, a, b) } else { fp32::op3(op3, acc as u32, a as u32, b as u32) as u64 };
+        set_lane(&mut out, esize, i, r);
     }
     out
 }
@@ -1025,5 +1041,40 @@ mod sat_add_sub_tests {
         assert_eq!(sat_add_sub(SimdSatAddSubOp::Sqsub, 0x8000, 1, 16, false, true), (0x8000, true));
         // 64-bit unsigned add clamps at u64::MAX
         assert_eq!(sat_add_sub(SimdSatAddSubOp::Uqadd, u64::MAX as u128, 1, 64, true, false).0, u64::MAX as u128);
+    }
+}
+
+#[cfg(test)]
+mod fuzz_nan_order {
+    use super::*;
+
+    fn v4(l: [u32; 4]) -> u128 {
+        l.iter().enumerate().fold(0, |a, (i, x)| a | (*x as u128) << (32 * i))
+    }
+
+    /// Found by the instruction fuzzer (`fmul v6.4s, v11.4s, v29.s[3]`, checked against Apple Silicon):
+    /// FMUL by element let the compiler pick which NaN operand propagates. ARM propagates the first
+    /// operand's NaN, a signalling NaN beating a quiet one.
+    #[test]
+    fn fmul_by_element_propagates_first_operand_nan() {
+        let n = v4([0xffff_ffff, 0x7fc0_0001, 0x3f80_0000, 0x7fc0_0001]);
+        let m = v4([0x7fff_ffff, 0x7f80_0001, 0x7fff_ffff, 0x7fff_ffff]);
+        let r = fp_by_element(SimdFpElementOp::Fmul, 0, n, m, 0, false, true);
+        let lanes: Vec<u32> = (0..4).map(|i| (r >> (32 * i)) as u32).collect();
+        // element 0 of m is a quiet NaN: both quiet -> n's; only m a NaN (lane 2) -> m's
+        assert_eq!(lanes, [0xffff_ffff, 0x7fc0_0001, 0x7fff_ffff, 0x7fc0_0001]);
+        // a signalling NaN in the element beats a quiet NaN in n
+        let m = v4([0x7f80_0001, 0, 0, 0]);
+        let r = fp_by_element(SimdFpElementOp::Fmul, 0, n, m, 0, false, true);
+        assert_eq!(r as u32, 0x7fc0_0001);
+    }
+
+    #[test]
+    fn fmla_by_element_propagates_addend_nan_first() {
+        let d = v4([0x7fc0_0002, 0, 0, 0]);
+        let n = v4([0x7fc0_0001, 0x3f80_0000, 0, 0]);
+        let m = v4([0x7fc0_0003, 0, 0, 0]);
+        let r = fp_by_element(SimdFpElementOp::Fmla, d, n, m, 0, false, true);
+        assert_eq!(r as u32, 0x7fc0_0002);
     }
 }
