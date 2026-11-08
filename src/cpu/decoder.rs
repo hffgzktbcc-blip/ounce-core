@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatLongOp,
+    SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatAddSubOp, SimdSatLongOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
     SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftExtOp, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
@@ -1089,6 +1089,9 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 let index = (imm5 >> (low + 1)) as u8;
                 return Some(Instruction::SimdMovToGeneral { rd, rn, esize, index });
             }
+            0b0101 if esize <= 32 && (q || esize <= 16) => {
+                return Some(Instruction::SimdSmov { rd, rn, esize, index, x: q });
+            }
             _ => return None,
         }
     }
@@ -1248,6 +1251,21 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::FpAbd { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
     }
 
+    // 27b2. SQADD/UQADD/SQSUB/UQSUB: scalar (01 U 11110 size 1 Rm opcode 1 Rn Rd) and vector (0 Q U 01110 ...)
+    {
+        let opcode = (raw >> 11) & 0x1F;
+        let scalar = (raw & 0xDF20_0400) == 0x5E20_0400;
+        let vector = (raw & 0x9F20_0400) == 0x0E20_0400;
+        if (scalar || vector) && (opcode == 0b00001 || opcode == 0b00101) && !(vector && size == 3 && !q) {
+            let op = match (opcode, u) {
+                (0b00001, false) => SimdSatAddSubOp::Sqadd,
+                (0b00001, true) => SimdSatAddSubOp::Uqadd,
+                (_, false) => SimdSatAddSubOp::Sqsub,
+                (_, true) => SimdSatAddSubOp::Uqsub,
+            };
+            return Some(Instruction::SimdSatAddSub { rd, rn, rm, op, esize: 8u8 << size, q, scalar });
+        }
+    }
     // 27c. AdvSIMD scalar three same (D registers): 01 U 11110 size 1 Rm opcode 1 Rn Rd, size == 3.
     // A one-lane 64-bit vector op writes lane 0 and zeroes the rest, exactly the scalar semantics.
     if (raw & 0xDF20_0400) == 0x5E20_0400 && size == 3 {
@@ -1585,6 +1603,9 @@ mod tests {
         assert!(matches!(decode(0x0E224020), Instruction::SimdNarrow { op: SimdNarrowOp::Addhn, esize: 8, q: false, .. })); // addhn v0.8b, v1.8h, v2.8h
         assert!(matches!(decode(0x4E226020), Instruction::SimdNarrow { op: SimdNarrowOp::Subhn, esize: 8, q: true, .. })); // subhn2 v0.16b, v1.8h, v2.8h
         assert!(matches!(decode(0x2E624020), Instruction::SimdNarrow { op: SimdNarrowOp::Raddhn, esize: 16, q: false, .. })); // raddhn v0.4h, v1.4s, v2.4s
+        assert!(matches!(decode(0x7E7F2FDF), Instruction::SimdSatAddSub { op: SimdSatAddSubOp::Uqsub, esize: 16, scalar: true, .. })); // uqsub h31, h30, h31
+        assert!(matches!(decode(0x4E220C20), Instruction::SimdSatAddSub { op: SimdSatAddSubOp::Sqadd, esize: 8, q: true, scalar: false, .. })); // sqadd v0.16b, v1.16b, v2.16b
+        assert!(matches!(decode(0x4E012FE3), Instruction::SimdSmov { esize: 8, index: 0, x: true, .. })); // smov x3, v31.b[0]
         assert!(matches!(decode(0x0E62D020), Instruction::SimdSatLong { op: SimdSatLongOp::Sqdmull, esize: 16, q: false, .. })); // sqdmull v0.4s, v1.4h, v2.4h
         assert!(matches!(decode(0x4EA29020), Instruction::SimdSatLong { op: SimdSatLongOp::Sqdmlal, esize: 32, q: true, .. })); // sqdmlal2 v0.2d, v1.4s, v2.4s
         // UMLAL/UMULL/SMLAL family (three different)

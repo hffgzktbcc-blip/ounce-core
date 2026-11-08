@@ -1807,6 +1807,18 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdSmov { rd, rn, esize, index, x } => {
+                let val = simd::lane(self.regs.read_q(rn), esize as u32, index as usize);
+                let ext = (((val << (64 - esize as u32)) as i64) >> (64 - esize as u32)) as u64;
+                if x {
+                    self.regs.write_x(rd, ext);
+                } else {
+                    self.regs.write_w(rd, ext as u32);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdThreeSame { rd, rn, rm, op, esize, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::three_same(op, d, n, m, esize as u32, q));
@@ -1821,6 +1833,16 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdSatAddSub { rd, rn, rm, op, esize, q, scalar } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                let (r, sat) = simd::sat_add_sub(op, n, m, esize as u32, q, scalar);
+                if sat {
+                    self.regs.fpsr |= super::registers::FPSR_QC;
+                }
+                self.regs.write_q(rd, r);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
             Instruction::SimdSatLong { rd, rn, rm, op, esize, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 let (r, sat) = simd::sat_doubling_mul_long(op, d, n, m, esize as u32, q);

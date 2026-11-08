@@ -12,7 +12,7 @@
 ## What is not modelled
 - FPCR is stored and read back verbatim (RES0 bits included, unlike hardware). Rounding mode, flush-to-zero, default-NaN, trap enables are NOT honoured by any FP instruction.
 - No cumulative exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are ever set by FP instructions; they are only writable and readable.
-- No other saturating instruction exists in the CPU yet (`SQADD`, `UQADD`, `SQRSHRN`, `SQDMULH`, scalar `SQDMULL`... are undecoded), so none sets QC. Add the flag when they are added (`simd::saturate_signed_flag`).
+- Other saturating instructions set QC too: the narrows and shifts (see `saturating-shifts/`) and `SQADD`/`UQADD`/`SQSUB`/`UQSUB` (see `saturating-add-sub/`). Still undecoded, so no QC: `SQDMULH`/`SQRDMULH`, scalar `SQDMULL`, `SQABS`/`SQNEG`, register-shift `SQSHL`/`UQSHL`.
 - Native (`--cpu=native`) runs on real hardware; FPSR is not saved/restored across SVC entry/exit in the context struct (guest and host share the hardware register in between).
 
 ## Result (2026-11-08, macOS arm64)

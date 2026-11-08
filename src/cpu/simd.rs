@@ -4,7 +4,7 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatLongOp, SimdShiftExtOp};
+use super::instructions::{SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatAddSubOp, SimdSatLongOp, SimdShiftExtOp};
 
 #[inline]
 fn mask(esize: u32) -> u64 {
@@ -988,4 +988,42 @@ pub fn pairwise_long(d: u128, n: u128, esize: u32, q: bool, signed: bool, acc: b
         set_lane(&mut out, esize * 2, i, sum as u64);
     }
     out
+}
+
+/// `SQADD`/`UQADD`/`SQSUB`/`UQSUB`: per-lane saturating add or subtract. Returns the result (upper half zeroed
+/// for 64-bit and scalar forms) and whether any lane saturated, which the caller ORs into FPSR.QC.
+pub fn sat_add_sub(op: SimdSatAddSubOp, n: u128, m: u128, esize: u32, q: bool, scalar: bool) -> (u128, bool) {
+    let total = if scalar { esize } else if q { 128 } else { 64 };
+    let signed = matches!(op, SimdSatAddSubOp::Sqadd | SimdSatAddSubOp::Sqsub);
+    let sub = matches!(op, SimdSatAddSubOp::Sqsub | SimdSatAddSubOp::Uqsub);
+    let (mut out, mut sat) = (0u128, false);
+    for lane in 0..total / esize {
+        let sh = lane * esize;
+        let (a, b) = (((n >> sh) as u64) & mask(esize), ((m >> sh) as u64) & mask(esize));
+        let ext = |v: u64| -> i128 {
+            if signed { (((v << (64 - esize)) as i64) >> (64 - esize)) as i128 } else { v as i128 }
+        };
+        let r = if sub { ext(a) - ext(b) } else { ext(a) + ext(b) };
+        let (v, s) = saturate(r, esize, signed);
+        out |= (v as u128) << sh;
+        sat |= s;
+    }
+    (out, sat)
+}
+
+#[cfg(test)]
+mod sat_add_sub_tests {
+    use super::*;
+
+    #[test]
+    fn saturating_add_sub_lanes_and_flag() {
+        // uqsub b: 1 - 2 clamps to 0 and sets QC; 5 - 2 does not
+        assert_eq!(sat_add_sub(SimdSatAddSubOp::Uqsub, 1, 2, 8, false, true), (0, true));
+        assert_eq!(sat_add_sub(SimdSatAddSubOp::Uqsub, 5, 2, 8, false, true), (3, false));
+        // sqadd h: 0x7FFF + 1 clamps to 0x7FFF; 0x8000 - 1 (sqsub) clamps to 0x8000
+        assert_eq!(sat_add_sub(SimdSatAddSubOp::Sqadd, 0x7FFF, 1, 16, false, true), (0x7FFF, true));
+        assert_eq!(sat_add_sub(SimdSatAddSubOp::Sqsub, 0x8000, 1, 16, false, true), (0x8000, true));
+        // 64-bit unsigned add clamps at u64::MAX
+        assert_eq!(sat_add_sub(SimdSatAddSubOp::Uqadd, u64::MAX as u128, 1, 64, true, false).0, u64::MAX as u128);
+    }
 }
