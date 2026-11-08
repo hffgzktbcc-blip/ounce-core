@@ -1,0 +1,44 @@
+name: Emulation bug (a program gives a different result)
+description: A program behaves differently in Ounce-Core than on real ARM64 hardware or a reference build.
+labels: ["bug", "differential"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The best reports compare Ounce-Core against a reference (your own ARM64 machine, or the same C code built for the host). Please do not attach firmware, keys, game files or any retail content.
+  - type: input
+    id: program
+    attributes:
+      label: Program and version
+      description: An open-source program, the commit or release, and how you built it.
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options: ["Tier-3 (default)", "Tier-4 JIT (--cpu=tier4)", "Native (--cpu=native)", "More than one", "Not sure"]
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result and where it comes from
+      description: The reference output, and how you produced it (for example, host build of the same source).
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: What Ounce-Core did
+      description: Output, the first differing line, and any `[VM Error]` line (it names the failing instruction).
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Exact command
+      description: The `ounce-core run-nro ...` line, host OS, and `git rev-parse HEAD` of your checkout.
+      render: shell
+    validations:
+      required: true
