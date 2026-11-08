@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatLongOp,
+    SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatAddSubOp, SimdSatLongOp,
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
-    SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdShiftOp,
+    SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftExtOp, SimdOp3, SimdPermuteOp, SimdShiftOp,
 };
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
@@ -527,7 +527,7 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 14. Floating-Point 2-Source Arithmetic: FADD, FSUB, FMUL, FDIV, FMAX, FMIN
     // Pattern: 0 0 0 11110 ftype 1 Rm opcode 00 Rn Rd
-    if (raw & 0x5F200C00) == 0x1E200800 {
+    if (raw & 0xFF200C00) == 0x1E200800 {
         let ftype = (raw >> 22) & 0x3;
         if ftype == 0 || ftype == 1 {
             let is_double = ftype == 1;
@@ -573,7 +573,7 @@ pub fn decode(raw: u32) -> Instruction {
     }
 
     // 14a2. Floating-Point round to integral: FRINTx
-    if (raw & 0xFF3C7C00) == 0x1E244000 && ((raw >> 15) & 0x7) != 5 {
+    if (raw & 0xFF3C7C00) == 0x1E244000 && ((raw >> 15) & 0x7) != 5 && (raw >> 22) & 0x3 <= 1 {
         return Instruction::FpRound {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
@@ -604,7 +604,12 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 14a3. Float <-> integer conversion (FCVTxS/U, SCVTF, UCVTF, FCVTAS/AU); FMOV (opcodes 6, 7) is elsewhere
     // Pattern: sf 0 0 11110 ftype 1 rmode opcode 000000 Rn Rd
-    if (raw & 0x7F20FC00) == 0x1E200000 && ((raw >> 16) & 0x7) <= 5 {
+    // SCVTF/UCVTF/FCVTAS/FCVTAU (opcodes 2 to 5) exist only with rmode 00; sf = 1 is allowed for both types
+    if (raw & 0x7F20FC00) == 0x1E200000
+        && ((raw >> 16) & 0x7) <= 5
+        && ((raw >> 16) & 0x7 <= 1 || (raw >> 19) & 0x3 == 0)
+        && (raw >> 22) & 0x3 <= 1
+    {
         return Instruction::FpIntConv {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
@@ -619,7 +624,7 @@ pub fn decode(raw: u32) -> Instruction {
     // (opcode 0001 opc, opc = destination type: 100 to single, 101 to double)
     // Pattern: 0 0 0 11110 ftype 1 opcode(6) 10000 Rn Rd
     let fp1_op = (raw >> 15) & 0x3F;
-    if (raw & 0xFF207C00) == 0x1E204000 && (fp1_op <= 3 || fp1_op == 4 || fp1_op == 5) {
+    if (raw & 0xFF207C00) == 0x1E204000 && (fp1_op <= 5) && (raw >> 22) & 0x3 <= 1 {
         return Instruction::FpData1 {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
@@ -630,7 +635,7 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 14b. Floating-Point Conditional Select: FCSEL
     // Pattern: 0 0 0 11110 ftype 1 Rm cond 11 Rn Rd
-    if (raw & 0xFF200C00) == 0x1E200C00 {
+    if (raw & 0xFF200C00) == 0x1E200C00 && (raw >> 22) & 0x3 <= 1 {
         return Instruction::FpCondSelect {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
@@ -642,7 +647,7 @@ pub fn decode(raw: u32) -> Instruction {
 
     // 15. Floating-Point Compare: FCMP
     // FCMP/FCMPE (bit 4 = signalling) with a register (bit 3 = 0) or #0.0 (bit 3 = 1) operand
-    if (raw & 0x5F203C07) == 0x1E202000 {
+    if (raw & 0xFF20FC07) == 0x1E202000 && (raw >> 22) & 0x3 <= 1 {
         let ftype = (raw >> 22) & 0x3;
         let is_double = ftype == 1;
         let rm = ((raw >> 16) & 0x1F) as u8;
@@ -722,12 +727,20 @@ pub fn decode(raw: u32) -> Instruction {
                     is_64,
                 };
             }
+            // CRC32{B,H,W,X} / CRC32C{B,H,W,X}: opcode 010 C sz, sf must equal (sz == 3)
+            0b010000..=0b010111 => {
+                let size = (opcode & 0x3) as u8;
+                if is_64 == (size == 3) {
+                    return Instruction::Crc32 { rd, rn, rm, size, castagnoli: (opcode & 0x4) != 0 };
+                }
+            }
             _ => {}
         }
     }
 
     // 19. Floating-Point / General Register Transfer: FMOV Dd, Xn / FMOV Xd, Dn / FMOV Sd, Wn / FMOV Wd, Sn
-    if (raw & 0x7FBEFC00) == 0x1E260000 {
+    // 32-bit forms are type 00 (S), 64-bit forms type 01 (D)
+    if (raw & 0x7FBEFC00) == 0x1E260000 && (raw >> 22) & 1 == raw >> 31 {
         let is_64 = (raw & (1 << 31)) != 0;
         let to_fp = ((raw >> 16) & 1) != 0;
         let rn = ((raw >> 5) & 0x1F) as u8;
@@ -814,7 +827,7 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
-    decode_extra(raw).unwrap_or(Instruction::Unimplemented { raw })
+    decode_extra(raw).or_else(|| decode_intvec(raw)).unwrap_or(Instruction::Unimplemented { raw })
 }
 
 /// FEAT_PAuth: the HINT-space forms, the data-processing (1-source) forms, `PACGA`, the
@@ -1082,6 +1095,9 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 let index = (imm5 >> (low + 1)) as u8;
                 return Some(Instruction::SimdMovToGeneral { rd, rn, esize, index });
             }
+            0b0101 if esize <= 32 && (q || esize <= 16) => {
+                return Some(Instruction::SimdSmov { rd, rn, esize, index, x: q });
+            }
             _ => return None,
         }
     }
@@ -1168,6 +1184,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdExt { rd, rn, rm, index, q });
     }
 
+    // 26b2. AdvSIMD table lookup: 0 Q 001110 00 0 Rm 0 len op 00 Rn Rd (TBL/TBX)
+    if (raw & 0xBFE0_8C00) == 0x0E00_0000 {
+        let regs = (((raw >> 13) & 0x3) + 1) as u8;
+        return Some(Instruction::SimdTbl { rd, rn, rm, regs, is_tbx: (raw & (1 << 12)) != 0, q });
+    }
+
     // 26c. AdvSIMD permute: 0 Q 001110 size 0 Rm 0 opc 10 Rn Rd (UZP1/TRN1/ZIP1/UZP2/TRN2/ZIP2)
     if (raw & 0xBF20_8C00) == 0x0E00_0800 {
         let op = match (raw >> 12) & 0x7 {
@@ -1230,6 +1252,26 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdLong { rd, rn, rm, op, signed: !u, esize: 8u8 << size, q });
     }
 
+    // 27b2. FABD (scalar): 01 1 11110 1 sz 1 Rm 11010 1 Rn Rd (bit 23 set, sz = bit 22)
+    if (raw & 0xFFA0_FC00) == 0x7EA0_D400 {
+        return Some(Instruction::FpAbd { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
+    }
+
+    // 27b2. SQADD/UQADD/SQSUB/UQSUB: scalar (01 U 11110 size 1 Rm opcode 1 Rn Rd) and vector (0 Q U 01110 ...)
+    {
+        let opcode = (raw >> 11) & 0x1F;
+        let scalar = (raw & 0xDF20_0400) == 0x5E20_0400;
+        let vector = (raw & 0x9F20_0400) == 0x0E20_0400;
+        if (scalar || vector) && (opcode == 0b00001 || opcode == 0b00101) && !(vector && size == 3 && !q) {
+            let op = match (opcode, u) {
+                (0b00001, false) => SimdSatAddSubOp::Sqadd,
+                (0b00001, true) => SimdSatAddSubOp::Uqadd,
+                (_, false) => SimdSatAddSubOp::Sqsub,
+                (_, true) => SimdSatAddSubOp::Uqsub,
+            };
+            return Some(Instruction::SimdSatAddSub { rd, rn, rm, op, esize: 8u8 << size, q, scalar });
+        }
+    }
     // 27c. AdvSIMD scalar three same (D registers): 01 U 11110 size 1 Rm opcode 1 Rn Rd, size == 3.
     // A one-lane 64-bit vector op writes lane 0 and zeroes the rest, exactly the scalar semantics.
     if (raw & 0xDF20_0400) == 0x5E20_0400 && size == 3 {
@@ -1242,6 +1284,8 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b00110, true) => SimdOp3::Cmhi,
             (0b00111, false) => SimdOp3::Cmge,
             (0b00111, true) => SimdOp3::Cmhs,
+            (0b01000, false) => SimdOp3::Sshl,
+            (0b01000, true) => SimdOp3::Ushl,
             _ => return None,
         };
         return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 64, q: false });
@@ -1302,6 +1346,8 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b10101, true) => SimdOp3::Uminp,
             (0b10111, false) => SimdOp3::Addp,
             (0b10011, false) => SimdOp3::Mul,
+            (0b01000, false) => SimdOp3::Sshl,
+            (0b01000, true) => SimdOp3::Ushl,
             _ => return None,
         };
         let bitwise = opcode == 0b00011;
@@ -1555,12 +1601,17 @@ mod tests {
         assert_eq!(decode(0xF8800160), Instruction::Nop); // prfum pldl1keep, [x11]
         assert_eq!(decode(0xD8000000), Instruction::Nop); // prfm pldl1keep, <literal>
         assert!(matches!(decode(0x4E201BFF), Instruction::SimdTwoMisc { op: SimdOp2::Rev16, esize: 8, q: true, .. })); // rev16 v31.16b, v31.16b
+        assert!(matches!(decode(0x6EB3479C), Instruction::SimdThreeSame { op: SimdOp3::Ushl, esize: 32, q: true, .. })); // ushl v28.4s, v28.4s, v19.4s
+        assert!(matches!(decode(0x4EB34780), Instruction::SimdThreeSame { op: SimdOp3::Sshl, esize: 32, q: true, .. })); // sshl v0.4s, v28.4s, v19.4s
         assert!(matches!(decode(0x5EFE87FF), Instruction::SimdThreeSame { op: SimdOp3::Add, esize: 64, q: false, .. })); // add d31, d31, d30
         assert!(matches!(decode(0x7EE18420), Instruction::SimdThreeSame { op: SimdOp3::Sub, esize: 64, q: false, .. })); // sub d0, d1, d1
         assert!(matches!(decode(0x5E1C07EE), Instruction::SimdDupScalar { esize: 32, index: 3, .. })); // mov s14, v31.s[3]
         assert!(matches!(decode(0x0E224020), Instruction::SimdNarrow { op: SimdNarrowOp::Addhn, esize: 8, q: false, .. })); // addhn v0.8b, v1.8h, v2.8h
         assert!(matches!(decode(0x4E226020), Instruction::SimdNarrow { op: SimdNarrowOp::Subhn, esize: 8, q: true, .. })); // subhn2 v0.16b, v1.8h, v2.8h
         assert!(matches!(decode(0x2E624020), Instruction::SimdNarrow { op: SimdNarrowOp::Raddhn, esize: 16, q: false, .. })); // raddhn v0.4h, v1.4s, v2.4s
+        assert!(matches!(decode(0x7E7F2FDF), Instruction::SimdSatAddSub { op: SimdSatAddSubOp::Uqsub, esize: 16, scalar: true, .. })); // uqsub h31, h30, h31
+        assert!(matches!(decode(0x4E220C20), Instruction::SimdSatAddSub { op: SimdSatAddSubOp::Sqadd, esize: 8, q: true, scalar: false, .. })); // sqadd v0.16b, v1.16b, v2.16b
+        assert!(matches!(decode(0x4E012FE3), Instruction::SimdSmov { esize: 8, index: 0, x: true, .. })); // smov x3, v31.b[0]
         assert!(matches!(decode(0x0E62D020), Instruction::SimdSatLong { op: SimdSatLongOp::Sqdmull, esize: 16, q: false, .. })); // sqdmull v0.4s, v1.4h, v2.4h
         assert!(matches!(decode(0x4EA29020), Instruction::SimdSatLong { op: SimdSatLongOp::Sqdmlal, esize: 32, q: true, .. })); // sqdmlal2 v0.2d, v1.4s, v2.4s
         // UMLAL/UMULL/SMLAL family (three different)
@@ -1584,6 +1635,18 @@ mod tests {
         assert!(matches!(decode(0x1E24C021), Instruction::FpRound { rd: 1, rn: 1, op: 1, is_double: false })); // frintp s1, s1
         assert!(matches!(decode(0x1E2020F8), Instruction::FpCompare { rn: 7, is_zero: true, .. })); // fcmpe s7, #0.0
         assert!(matches!(decode(0x0E31B800), Instruction::SimdAcross { op: SimdAcrossOp::Addv, esize: 8, q: false, .. })); // addv b0, v0.8b
+    }
+
+    #[test]
+    fn test_decode_fabd_scalar() {
+        assert_eq!(
+            decode(0x7EFCD7DE),
+            Instruction::FpAbd { rd: 30, rn: 30, rm: 28, is_double: true }
+        ); // fabd d30, d30, d28 (from cJSON_Compare)
+        assert_eq!(
+            decode(0x7EA2D420),
+            Instruction::FpAbd { rd: 0, rn: 1, rm: 2, is_double: false }
+        ); // fabd s0, s1, s2
     }
 
     #[test]
@@ -1638,5 +1701,165 @@ mod tests {
         assert_eq!(decode(0x4EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: true }); // pmull2 v0.1q, v1.2d, v2.2d
         assert!(!matches!(decode(0x0E62E020), Instruction::Pmull { .. })); // size 1 reserved
         assert!(!matches!(decode(0x2E22E020), Instruction::Pmull { .. })); // U=1 is not PMULL
+    }
+}
+
+/// Integer vector forms and BRK that the main decoder tables do not cover: `SQXTN`/`UQXTN`/`SQXTUN`,
+/// `RSHRN`, `SSRA`/`USRA`, `SRSHR`/`URSHR`, `SRSRA`/`URSRA`, `SRI`/`SLI`, `SQSHL`/`UQSHL`/`SQSHLU` (immediate),
+/// `SQSHRN` family. Called only after the main tables returned nothing, so it cannot shadow them.
+fn decode_intvec(raw: u32) -> Option<Instruction> {
+    let rd = (raw & 0x1F) as u8;
+    let rn = ((raw >> 5) & 0x1F) as u8;
+    let q = (raw & (1 << 30)) != 0;
+    let u = (raw & (1 << 29)) != 0;
+
+    // BRK #imm16: 1101 0100 001 imm16 00000
+    if (raw & 0xFFE0_001F) == 0xD420_0000 {
+        return Some(Instruction::Brk { imm: ((raw >> 5) & 0xFFFF) as u16 });
+    }
+
+    // ADDP Dd, Vn.2D (scalar pairwise add, what vaddvq_u64 compiles to): 01 0 11110 11 11000 11011 10 Rn Rd
+    if (raw & 0xFFFF_FC00) == 0x5EF1_B800 {
+        return Some(Instruction::SimdAcross { rd, rn, op: SimdAcrossOp::Addv, esize: 64, q: true });
+    }
+
+    let size = (raw >> 22) & 3;
+    // SADDLP/UADDLP/SADALP/UADALP: 0 Q U 01110 size 10000 00010/00110 10 Rn Rd (size < 3)
+    if (raw & 0x9F3F_BC00) == 0x0E20_2800 && size < 3 {
+        let acc = (raw >> 14) & 1 != 0;
+        return Some(Instruction::SimdPairwiseLong { rd, rn, signed: !u, acc, esize: 8u8 << size, q });
+    }
+
+    // Two-register misc narrowing: [0 Q | 01] U 01110 size 10000 opcode 10 Rn Rd (vector / scalar)
+    for (mask, want, scalar) in [(0x9F3E_0C00u32, 0x0E20_0800u32, false), (0xDF3E_0C00, 0x5E20_0800, true)] {
+        if (raw & mask) == want {
+            let size = (raw >> 22) & 3;
+            let op = match ((raw >> 12) & 0x1F, u) {
+                (0b10010, true) => SimdShiftExtOp::Sqshrun,
+                (0b10100, false) => SimdShiftExtOp::Sqshrn,
+                (0b10100, true) => SimdShiftExtOp::Uqshrn,
+                _ => return None,
+            };
+            if size == 3 {
+                return None;
+            }
+            return Some(Instruction::SimdQNarrow { rd, rn, op, esize: 8u8 << size, q: q && !scalar, scalar });
+        }
+    }
+
+    // Shift by immediate: [0 Q | 01] U 011110 / 111110 immh immb opcode 1 Rn Rd
+    for (mask, want, scalar) in [(0x9F80_0400u32, 0x0F00_0400u32, false), (0xDF80_0400, 0x5F00_0400, true)] {
+        if (raw & mask) != want {
+            continue;
+        }
+        let immh = (raw >> 19) & 0xF;
+        if immh == 0 {
+            return None;
+        }
+        let imm = (raw >> 16) & 0x7F;
+        let src = 8u32 << (31 - immh.leading_zeros());
+        let right = 2 * src - imm;
+        let left = imm - src;
+        let opc = (raw >> 11) & 0x1F;
+        // narrowing shifts: immh gives the RESULT lane size, source lanes are twice as wide
+        let narrow = |op| (op, src, right);
+        let (op, esize, shift) = match (opc, u) {
+            (0b00010, false) => (SimdShiftExtOp::Ssra, src, right),
+            (0b00010, true) => (SimdShiftExtOp::Usra, src, right),
+            (0b00100, false) => (SimdShiftExtOp::Srshr, src, right),
+            (0b00100, true) => (SimdShiftExtOp::Urshr, src, right),
+            (0b00110, false) => (SimdShiftExtOp::Srsra, src, right),
+            (0b00110, true) => (SimdShiftExtOp::Ursra, src, right),
+            (0b01000, true) => (SimdShiftExtOp::Sri, src, right),
+            (0b01010, true) => (SimdShiftExtOp::Sli, src, left),
+            (0b01100, true) => (SimdShiftExtOp::Sqshlu, src, left),
+            (0b01110, false) => (SimdShiftExtOp::Sqshl, src, left),
+            (0b01110, true) => (SimdShiftExtOp::Uqshl, src, left),
+            (0b10000, true) | (0b10001, _) | (0b10010, _) | (0b10011, _) if src == 64 => return None,
+            (0b10000, true) => narrow(SimdShiftExtOp::Sqshrun),
+            (0b10001, false) => narrow(SimdShiftExtOp::Rshrn),
+            (0b10001, true) => narrow(SimdShiftExtOp::Sqrshrun),
+            (0b10010, false) => narrow(SimdShiftExtOp::Sqshrn),
+            (0b10010, true) => narrow(SimdShiftExtOp::Uqshrn),
+            (0b10011, false) => narrow(SimdShiftExtOp::Sqrshrn),
+            (0b10011, true) => narrow(SimdShiftExtOp::Uqrshrn),
+            _ => return None,
+        };
+        let is_narrow = matches!(
+            op,
+            SimdShiftExtOp::Rshrn | SimdShiftExtOp::Sqshrn | SimdShiftExtOp::Uqshrn | SimdShiftExtOp::Sqshrun
+                | SimdShiftExtOp::Sqrshrn | SimdShiftExtOp::Uqrshrn | SimdShiftExtOp::Sqrshrun
+        );
+        // Scalar forms: only SQSHL/UQSHL/SQSHLU and the narrowing shifts take B/H/S lanes; the rest are D only.
+        // RSHRN has no scalar form. Vector 1D (esize 64 without Q) does not exist.
+        let any_size = is_narrow || matches!(op, SimdShiftExtOp::Sqshl | SimdShiftExtOp::Uqshl | SimdShiftExtOp::Sqshlu);
+        if scalar && ((!any_size && esize != 64) || op == SimdShiftExtOp::Rshrn) {
+            return None;
+        }
+        if !scalar && esize == 64 && !q && !is_narrow {
+            return None;
+        }
+        return Some(Instruction::SimdShiftExt { rd, rn, op, esize: esize as u8, shift: shift as u8, q: q && !scalar, scalar });
+    }
+    None
+}
+
+#[cfg(test)]
+mod fuzz_half_precision {
+    use super::*;
+
+    /// Found by the instruction fuzzer: scalar FP words with ftype 3 (half precision) were decoded as
+    /// single precision and gave wrong results. Half precision is not implemented, so they must be
+    /// Unimplemented (every word below ran fine on Apple Silicon).
+    #[test]
+    fn half_precision_scalar_words_are_not_decoded_as_single() {
+        for w in [
+            0x1ef1_4f22u32, // fcsel h2, h25, h17, vs
+            0x1ee2_03a6,    // fcvt s6, h29 (ftype 3 one-source)
+            0x9ee0_00b4,    // fcvtns x20, h5
+            0x1efd_21e8,    // fcmp h15, h29
+            0x1ee4_c16a,    // fneg/fabs class, half
+            0x1ef0_ef62,    // fcsel h2, h27, h16, al
+        ] {
+            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#010x} {:?}", decode(w));
+        }
+        // single and double still decode
+        assert!(matches!(decode(0x1e22_0c20), Instruction::FpCondSelect { is_double: false, .. })); // fcsel s0, s1, s2, eq
+        assert!(matches!(decode(0x1e62_0c20), Instruction::FpCondSelect { is_double: true, .. })); // fcsel d0, d1, d2, eq
+        assert!(matches!(decode(0x1e22_2020), Instruction::FpCompare { is_double: false, .. })); // fcmp s1, s2
+        assert!(matches!(decode(0x1e21_c020), Instruction::FpData1 { is_double: false, .. })); // fsqrt s0, s1
+    }
+}
+
+#[cfg(test)]
+mod fuzz_fixed_bits {
+    use super::*;
+
+    /// Found by the instruction fuzzer: the host raises SIGILL for each of these words but the decoder
+    /// accepted them because it ignored M/S (bits 31, 29), FCMP's op field (15:14), the rmode of
+    /// SCVTF/UCVTF/FCVTA*, and the sf/type pairing of FMOV between general and FP registers.
+    #[test]
+    fn undefined_scalar_fp_encodings_are_rejected() {
+        for w in [
+            0x9e2c_4b32u32, // fmax with sf = 1
+            0x9e7a_1870,    // fdiv d with sf = 1
+            0x1e38_a300,    // fcmp-like with op bits 10
+            0x9e62_a240,    // fcmp-like, sf = 1
+            0x1e6b_0368,    // ucvtf-like with rmode 1
+            0x1e3a_0164,    // scvtf-like with rmode 3
+            0x9e26_0004,    // fmov x4, s0 (sf = 1 needs type 01)
+            0x1e66_0004,    // fmov w4, d0 (type 01 needs sf = 1)
+        ] {
+            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#010x} {:?}", decode(w));
+        }
+        assert!(matches!(decode(0x1e22_2820), Instruction::FpData2 { op: FpOp2::Fadd, .. })); // fadd s0, s1, s2
+        assert!(matches!(decode(0x1e22_2020), Instruction::FpCompare { .. })); // fcmp s1, s2
+        assert!(matches!(decode(0x1e22_2028), Instruction::FpCompare { is_zero: true, .. })); // fcmp s1, #0.0
+        assert!(matches!(decode(0x9e62_0020), Instruction::FpIntConv { opcode: 2, .. })); // scvtf d0, x1
+        assert!(matches!(decode(0x9e64_0020), Instruction::FpIntConv { opcode: 4, .. })); // fcvtas x0, d1
+        assert!(matches!(decode(0x1e79_0020), Instruction::FpIntConv { rmode: 3, .. })); // fcvtzs w0, d1
+        assert!(matches!(decode(0x9e66_0020), Instruction::FpMovGen { is_64: true, to_fp: false, .. })); // fmov x0, d1
+        assert!(matches!(decode(0x1e26_0020), Instruction::FpMovGen { is_64: false, to_fp: false, .. })); // fmov w0, s1
+        assert!(matches!(decode(0x9e67_0020), Instruction::FpMovGen { is_64: true, to_fp: true, .. })); // fmov d0, x1
     }
 }

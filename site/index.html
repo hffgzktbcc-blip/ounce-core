@@ -3,17 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Ounce-Core is an open-source Rust AArch64 homebrew research runtime with Ounce-Verify, reproducible first-frame tests, GPU experiments and independently checkable evidence.">
+  <meta name="description" content="Ounce-Core is an open-source Rust AArch64 (ARM64) execution lab. It runs programs on three CPU engines and checks the results byte for byte against real ARM64 hardware, so emulation bugs show up fast.">
   <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://hffgzktbcc-blip.github.io/ounce-core/">
+  <meta property="og:url" content="https://hffgzktbcc-blip.github.io/ounce-core/">
+  <meta property="og:image" content="https://hffgzktbcc-blip.github.io/ounce-core/assets/ounce-core-vista.png">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Ounce-Core | Open-Source AArch64 Runtime & Ounce-Verify">
-  <meta property="og:description" content="Rust AArch64 homebrew runtime and evidence-first verification research. Explore its registered tests, reproducible experiments and limitations.">
+  <meta property="og:title" content="Ounce-Core | Run ARM64 anywhere, prove it matches real hardware">
+  <meta property="og:description" content="Open-source Rust ARM64 execution lab: differential testing against real hardware, three CPU engines, reproducible evidence and clear limits.">
   <meta name="theme-color" content="#13261f">
-  <title>Ounce-Core | Rust AArch64 Homebrew Runtime & Verification</title>
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Ounce-Core — Rust AArch64 Homebrew Research">
-  <meta name="twitter:description" content="Inspect execution and verify external homebrew frames with Ounce-Core and Ounce-Verify.">
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"Ounce-Core","alternateName":"Ounce Core","codeRepository":"https://github.com/hffgzktbcc-blip/ounce-core","url":"https://github.com/hffgzktbcc-blip/ounce-core","programmingLanguage":"Rust","license":"https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE","isAccessibleForFree":true,"description":"Open-source Rust AArch64 homebrew execution and verification research runtime with registered first-frame oracles and reproducible evidence.","keywords":["Ounce-Core","Ounce-Verify","AArch64","Rust","homebrew","verification","emulation research"]}</script>
+  <title>Ounce-Core | ARM64 Execution Lab in Rust</title>
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Ounce-Core: run ARM64 anywhere, prove it matches real hardware">
+  <meta name="twitter:description" content="Differential testing for ARM64 execution, in safe Rust.">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"Ounce-Core","alternateName":"Ounce Core","codeRepository":"https://github.com/hffgzktbcc-blip/ounce-core","url":"https://github.com/hffgzktbcc-blip/ounce-core","programmingLanguage":"Rust","license":"https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE","isAccessibleForFree":true,"description":"Open-source Rust ARM64 execution lab: runs programs on three CPU engines and checks results against real ARM64 hardware.","keywords":["Ounce-Core","AArch64","ARM64","Rust","differential testing","emulator verification","execution lab"]}</script>
   <style>
     :root{color-scheme:dark;--bg:#0e1d18;--fg:#f1f6ef;--muted:#b7c8bf;--accent:#9ad5ac;--edge:#355247}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0%,#294b3a 0,transparent 40%),var(--bg);color:var(--fg);font:16px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}
@@ -24,34 +27,35 @@
   </style>
 </head>
 <body>
-  <header><nav><strong>OUNCE-CORE / RESEARCH</strong><div><a href="status.html">Latest status</a><a href="press.html">Press</a><a href="beyond-first-frame.html">Research note</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">Repository</a><a href="https://github.com/hffgzktbcc-blip/ounce-core/releases">Releases</a><a href="https://github.com/hffgzktbcc-blip/ounce-core/pulls">Development</a></div></nav></header>
+  <header><nav><strong>OUNCE-CORE</strong><div><a href="./">Home</a><a href="lab.html">Interactive Lab</a><a href="results.html">Results</a><a href="maintainers.html">For maintainers</a><a href="status.html">Status</a><a href="press.html">Press</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">Repository</a></div></nav></header>
   <main>
     <section class="hero">
-      <img src="assets/ounce-core-vista.png" alt="Ounce-Core Vista research runtime banner">
-      <div class="tag">Open-source systems research · Rust · AArch64</div>
-      <h1>Ounce-Core: open-source AArch64 homebrew runtime and verification research</h1>
-      <p><strong>Execute. Observe. Understand. Verify.</strong> Ounce-Core is an experimental Rust project for inspecting ARM64 execution, graphics and operating-system services using permitted open-source homebrew. Its Ounce-Verify toolkit records binary identity, registered first-frame expectations, per-engine results and reproducible evidence.</p>
-      <p>We measure specific externally sourced original-Switch homebrew experiments rather than claiming broad Switch or Switch 2 game compatibility. Read the current evidence and limitations before interpreting a result.</p>
-      <a class="button" href="https://github.com/hffgzktbcc-blip/ounce-core#quickstart">Start exploring</a>
-      <a class="button secondary" href="status.html">Review the evidence</a>
+      <img src="assets/ounce-core-vista.png" alt="Ounce-Core banner">
+      <div class="tag">Open source · Rust · ARM64</div>
+      <h1>Run ARM64 programs anywhere, and prove the answer matches real hardware</h1>
+      <p><strong>Ounce-Core</strong> is an open-source ARM64 execution lab written in safe Rust. It runs a program on three CPU engines (an interpreter, a JIT and native execution) and compares the result with a reference build on real hardware. When they disagree it points to where.</p>
+      <p>In one week, running unmodified open-source programs (LZ4, xxHash, SQLite, Lua) and comparing against an Apple Silicon machine found a prefetch instruction silently corrupting registers, two floating-point instructions with the wrong sign, and a long list of missing vector instructions. All were fixed with tests. The project began as a Switch homebrew runtime; that is no longer its goal.</p>
+      <a class="button" href="lab.html">Launch Interactive Lab</a>
+      <a class="button secondary" href="maintainers.html">Check your library</a>
+      <a class="button secondary" href="results.html">See the results</a>
     </section>
     <section aria-label="What is Ounce-Core?" class="card" style="margin:12px 0 28px">
       <h2>What is Ounce-Core?</h2>
-      <p><strong>Ounce-Core</strong> is a free, open-source <strong>AArch64 (ARM64) systems research runtime written in Rust</strong>. It runs selected legally sourced homebrew programs under experimental execution engines and models memory, services and graphics. <strong>Ounce-Verify</strong> checks registered output expectations and retained evidence; it does not automatically prove all behavior or commercial-game compatibility.</p>
-      <p>Interested in the technical details? See the <a href="https://github.com/hffgzktbcc-blip/ounce-core#quickstart">installation and quickstart</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/verify/README.md">Ounce-Verify methodology</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/REPRODUCE_ROMFS.md">reproduction guide</a> and <a href="https://github.com/hffgzktbcc-blip/ounce-core/releases">release downloads</a>.</p>
+      <p>Ounce-Core is free, open-source <strong>AArch64 (ARM64) software written in Rust</strong>. Its core idea is differential testing: build the same program for your computer and for ARM64, run both, and diff the output. It is not a fast emulator and does not compete with QEMU on speed. Its claim is verified correctness on what it supports, plus small, shareable reproductions of any failure. Read the <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/VISION.md">vision and roadmap</a> and the limits before relying on a result.</p>
+      <p>Technical details: <a href="https://github.com/hffgzktbcc-blip/ounce-core#quickstart">quickstart</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/verify/README.md">verification method and results</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/ADD_A_PROGRAM.md">add a program as a test</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/CONTRIBUTING.md">contributing</a>.</p>
     </section>
     <section aria-label="Project pillars" class="grid">
-      <div class="card"><h3>Execute</h3><p>AArch64 interpreter and tiered runtime experiments, with bounded native-code generation.</p></div>
-      <div class="card"><h3>Observe</h3><p>Memory, kernel, service and graphics models designed for inspection and diagnosis.</p></div>
-      <div class="card"><h3>Verify</h3><p>CI, deterministic test gates and independent homebrew probes. Passing tests are not broad compatibility claims.</p></div>
+      <div class="card"><h3>Verify</h3><p>Diff any program, or generated instruction sequences, against real ARM64 hardware and get the first difference.</p></div>
+      <div class="card"><h3>Run</h3><p>User-mode ARM64 on any host, in memory-safe Rust. Next: ordinary static Linux ARM64 programs.</p></div>
+      <div class="card"><h3>Debug and learn</h3><p>Compare engines, share small reproductions, and (planned) step through a program in the browser.</p></div>
     </section>
-    <section class="card" aria-label="Latest status" style="margin:0 0 35px"><h2>Ounce-Core verification results and development status</h2><p>Early articles describe the project at launch. For current, evidence-linked original-Switch homebrew tests, verifier results, releases, and research boundaries, read the maintained official status page. Corpus size and independently verified passes are different measurements.</p><a class="button" href="status.html">Latest status and evidence</a><a class="button secondary" href="https://github.com/hffgzktbcc-blip/ounce-core/issues/190">Independent tester challenge</a></section>
+    <section class="card" aria-label="Latest status" style="margin:0 0 35px"><h2>Current status</h2><p>The <a href="status.html">status page</a> lists what is proven and what is not, with links to the evidence. Rerun it with <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/REPRODUCE.md">the reproduction guide</a> and read <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/LIMITS.md">the limits</a>. Coverage is partial: many vector, floating-point and system instructions are still undecoded or untested.</p></section>
     <section class="links">
-      <h2>Go deeper</h2><p><a href="press.html">Press & research kit</a> · <a href="beyond-first-frame.html">Beyond the First Frame</a> · <a href="status.html">Latest evidence status</a></p>
+      <h2>Go deeper</h2><p><a href="press.html">Press & research kit</a> · <a href="beyond-first-frame.html">Beyond the First Frame</a> · <a href="status.html">Latest evidence status</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/REPRODUCE.md">Reproduce it yourself</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/LIMITS.md">What this does not prove</a></p>
       <p><a href="https://github.com/hffgzktbcc-blip/ounce-core#the-system">Architecture and subsystem matrix</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/PROVENANCE.md">Provenance register</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/CONTRIBUTING.md">Contributing</a></p>
-      <p><strong>Research boundary:</strong> Switch 2 compatibility is a long-term objective, <em>not</em> a present capability. Ounce-Core is unaffiliated with Nintendo or NVIDIA. Do not submit proprietary firmware, retail keys or game content.</p>
+      <p><strong>Boundary:</strong> no Switch or Switch 2 compatibility is claimed. The earlier Switch work stays as a regression test set. Ounce-Core is unaffiliated with Nintendo or NVIDIA. Do not submit proprietary firmware, retail keys or game content.</p>
     </section>
   </main>
-  <footer>Ounce-Core · Experimental systems research · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE">MIT source license</a> · Historical provenance review remains open.</footer>
+  <footer>Ounce-Core · Experimental ARM64 execution lab · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE">MIT source license</a> · Historical provenance review remains open.</footer>
 </body>
 </html>

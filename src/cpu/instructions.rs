@@ -449,6 +449,16 @@ pub enum Instruction {
         is_64: bool,
     },
 
+    /// Data-Processing (2-source) CRC: `CRC32B/H/W/X` and `CRC32CB/CH/CW/CX Wd, Wn, Wm|Xm`.
+    /// `size` is log2 of the data bytes (0..=3); no input or output inversion is applied.
+    Crc32 {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        size: u8,
+        castagnoli: bool,
+    },
+
     /// Multiply High: `UMULH` / `SMULH Xd, Xn, Xm` (upper 64 bits of the 128-bit product)
     MultiplyHigh {
         rd: u8,
@@ -524,6 +534,14 @@ pub enum Instruction {
         esize: u8,
     },
 
+    /// AdvSIMD scalar three same `FABD Sd/Dd, Sn/Dn, Sm/Dm`: `|n - m|` (NaN propagates), upper bits zeroed
+    FpAbd {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        is_double: bool,
+    },
+
     /// `DUP Vd.<T>, Wn/Xn`
     SimdDupGeneral {
         rd: u8,
@@ -538,6 +556,15 @@ pub enum Instruction {
         rn: u8,
         esize: u8,
         index: u8,
+    },
+
+    /// `SMOV Wd/Xd, Vn.<T>[index]`: sign-extended lane to a 32-bit (`x` false) or 64-bit register
+    SimdSmov {
+        rd: u8,
+        rn: u8,
+        esize: u8,
+        index: u8,
+        x: bool,
     },
 
     /// `ADDHN{2}`/`SUBHN{2}`/`RADDHN{2}`/`RSUBHN{2}`: `esize` is the narrow (result) lane size; `q` writes the high half
@@ -558,6 +585,17 @@ pub enum Instruction {
         op: SimdSatLongOp,
         esize: u8,
         q: bool,
+    },
+
+    /// `SQADD`/`UQADD`/`SQSUB`/`UQSUB` (vector, or scalar when `scalar`): saturating lane add/subtract; sets `FPSR.QC`
+    SimdSatAddSub {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdSatAddSubOp,
+        esize: u8,
+        q: bool,
+        scalar: bool,
     },
 
     /// AdvSIMD three registers of different type: widening multiply (`S/UMULL`, `S/UMLAL`, `S/UMLSL`
@@ -639,6 +677,45 @@ pub enum Instruction {
         esize: u8,
         shift: u8,
         q: bool,
+    },
+
+    /// `BRK #imm16`: software breakpoint; stops the guest with a clear message.
+    Brk {
+        imm: u16,
+    },
+
+    /// AdvSIMD shift by immediate beyond `SshrUshrShlShrn`: accumulate, rounding, saturating and insert forms
+    /// plus the saturating/rounding narrowing shifts. `esize` is the result lane size; `scalar` writes lane 0
+    /// of a scalar register (the rest of Vd is zeroed).
+    SimdShiftExt {
+        rd: u8,
+        rn: u8,
+        op: SimdShiftExtOp,
+        esize: u8,
+        shift: u8,
+        q: bool,
+        scalar: bool,
+    },
+
+    /// `SADDLP`/`UADDLP`/`SADALP`/`UADALP`: add adjacent lane pairs into double-width lanes
+    /// (`acc`: accumulate into `Vd`). `esize` is the source lane size.
+    SimdPairwiseLong {
+        rd: u8,
+        rn: u8,
+        signed: bool,
+        acc: bool,
+        esize: u8,
+        q: bool,
+    },
+
+    /// `SQXTN`/`UQXTN`/`SQXTUN` (+2, and scalar): saturating narrow, `esize` is the result lane size.
+    SimdQNarrow {
+        rd: u8,
+        rn: u8,
+        op: SimdShiftExtOp,
+        esize: u8,
+        q: bool,
+        scalar: bool,
     },
 
     /// AdvSIMD modified immediate: `MOVI`/`MVNI`/`FMOV` (vector) and `ORR`/`BIC` (vector, immediate).
@@ -747,6 +824,17 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// `TBL`/`TBX Vd.<T>, {Vn.16B ..}, Vm.<T>`: byte table lookup over `regs` (1..=4) consecutive registers.
+    /// Out-of-range indices give 0 (`TBL`) or leave the destination byte unchanged (`TBX`).
+    SimdTbl {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        regs: u8,
+        is_tbx: bool,
+        q: bool,
+    },
+
     /// Unimplemented or Unknown instruction (preserves raw 32-bit opcode for debugging)
     Unimplemented {
         raw: u32,
@@ -843,6 +931,9 @@ pub enum SimdOp3 {
     Smaxp,
     Sminp,
     Mul,
+    /// `SSHL`/`USHL` (register shift: the low signed byte of each `m` lane is the shift, negative shifts right)
+    Sshl,
+    Ushl,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -983,4 +1074,37 @@ pub enum SimdPermuteOp {
     Trn2,
     Zip1,
     Zip2,
+}
+
+/// Integer vector shift forms and saturating narrows (see `SimdShiftExt`/`SimdQNarrow`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdShiftExtOp {
+    Ssra,
+    Usra,
+    Srshr,
+    Urshr,
+    Srsra,
+    Ursra,
+    Sri,
+    Sli,
+    Sqshl,
+    Uqshl,
+    Sqshlu,
+    /// Narrowing right shifts (result lane is half the source lane); a zero shift is the plain `QXTN`.
+    Rshrn,
+    Sqshrn,
+    Uqshrn,
+    Sqshrun,
+    Sqrshrn,
+    Uqrshrn,
+    Sqrshrun,
+}
+
+/// Saturating add/subtract operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdSatAddSubOp {
+    Sqadd,
+    Uqadd,
+    Sqsub,
+    Uqsub,
 }

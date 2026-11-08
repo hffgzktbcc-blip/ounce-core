@@ -16,3 +16,7 @@
 `observed-ounce-core.txt` is the Tier-3 output. NRO sha256 `2de3bbf7e7e50dba1c39e5e2065e1df16ca090821e4d9c116934d403bd89abe3`.
 
 Not covered: PMULL with the reserved sizes 1 and 2 (decoded as undefined, not executed by this test), and the other "three different" ops. Native runs the instruction on hardware, so it validates the test and the reference rather than the emulator's PMULL.
+
+
+## One-command check
+`pmull` is also in `docs/verify/differential.json` (`python3 scripts/verify_differential.py --nro --only pmull`): `pmull.c` is built with `-DPMULL_LIB` and `-march=armv8-a+crypto` (new optional `cflags` manifest key), using `host/host_main.c` and `main_nx.c` as entry points. Tier-3, Tier-4 and native were byte-identical to `expected-host.txt` on 2026-11-08.

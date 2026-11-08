@@ -4,12 +4,15 @@
 #![forbid(unsafe_code)]
 
 mod audio;
+mod census;
 mod cpu;
 mod crypto;
 mod fs;
+mod fuzz_replay;
 mod gpu;
 mod hid;
 mod kernel;
+mod linux;
 mod loader;
 mod mmu;
 mod ui;
@@ -84,6 +87,10 @@ fn main() {
         "info" | "--info" | "-v" | "--version" | "specs" => {
             print_specs();
         }
+        "ui" | "lab" => {
+            print_banner();
+            launch_lab();
+        }
         "test" | "demo" => {
             print_banner();
             run_built_in_demo();
@@ -116,6 +123,7 @@ fn main() {
             };
             run_gpu3d_demo(max_frames);
         }
+        "run-elf" => std::process::exit(linux::runner::cli(&args[2..])),
         "run" | "run-nro" => {
             print_banner();
             let nro_only = args[1] == "run-nro";
@@ -151,6 +159,12 @@ fn main() {
                 "switch2_showcase.nsp"
             };
             build_and_boot_showcase_nsp(out_path);
+        }
+        "fuzz-replay" => {
+            std::process::exit(fuzz_replay::run(&args[2..]));
+        }
+        "census" => {
+            std::process::exit(census::run(&args[2..]));
         }
         "inspect" => {
             print_banner();
@@ -298,6 +312,7 @@ fn print_usage() {
     println!("    cargo run --release -- {}<COMMAND>{} [OPTIONS]\n", s.green, s.reset);
     println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
     println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
+    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls)", s.green, s.reset);
     println!("    {}run-nro{} <file> [args] [--gui]  Load and execute only a homebrew NRO", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
     println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);
@@ -313,17 +328,30 @@ fn print_usage() {
     println!("    {}--cpu=native{}            run an NRO on the host CPU (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
+    println!("    {}ui{} | {}lab{}               Open the interactive verification lab and workbench in browser", s.green, s.reset, s.green, s.reset);
     println!("    {}test{}                    Execute 25-stage full-stack verification & hardware benchmark suite", s.green, s.reset);
     println!("    {}jit-selftest{}            Check that this host can run Tier-4 native code (needs --features native-jit)", s.green, s.reset);
     println!("    {}info{}                    Display comprehensive hardware architecture and engine status", s.green, s.reset);
     println!("    {}help{}                    Display this command-line manual and option reference", s.green, s.reset);
     println!();
     println!("  {}EXAMPLES:{}", s.bold, s.reset);
+    println!("    {}cargo run --release -- ui{}", s.dim, s.reset);
     println!("    {}cargo run --release -- info{}", s.dim, s.reset);
     println!("    {}cargo run --release -- test{}", s.dim, s.reset);
     println!("    {}cargo run --release -- play 1200{}", s.dim, s.reset);
     println!("    {}cargo run --release -- inspect ./dumps/game_title{}", s.dim, s.reset);
     println!("    {}cargo run --release -- run ./dumps/game_title\n{}", s.dim, s.reset);
+}
+
+fn launch_lab() {
+    let s = Styler::new();
+    println!("  {}🔬 OUNCE-CORE INTERACTIVE VERIFICATION LAB & WORKBENCH{}", s.cyan, s.reset);
+    println!("  {}Understand why programs fail. Prove when they work.{}\n", s.dim, s.reset);
+    println!("  Local workbench file: {}site/lab.html{}", s.green, s.reset);
+    println!("  To open or serve locally:");
+    println!("    {}./scripts/open_lab.sh{}\n", s.bold, s.reset);
+    println!("  Online version available on GitHub Pages:");
+    println!("    {}https://hffgzktbcc-blip.github.io/ounce-core/lab.html{}\n", s.cyan, s.reset);
 }
 
 fn print_specs() {
@@ -3668,7 +3696,12 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> bool {
     let start = Instant::now();
     let (mut svcs, mut frames) = (0u64, 0u64);
     let mut completed = false;
+    let time_limit = nro_time_limit();
     loop {
+        if time_limit.is_some_and(|limit| start.elapsed() >= limit) {
+            println!("[NCE] Time limit reached ({:.1} s, OUNCE_NRO_TIMEOUT_SECS); stopping the guest.", start.elapsed().as_secs_f64());
+            break;
+        }
         match engine.run(&mut cpu, &mut mmu, &|| kernel.system_tick()) {
             NceExit::Svc(id) => {
                 svcs += 1;
@@ -3705,6 +3738,17 @@ const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
 /// as "locked by this thread". Below the scheduler's (0x2000+) and IPC's (0x10001+) handle ranges.
 const NRO_MAIN_THREAD_HANDLE: u32 = 0x1000;
 const NRO_INSTRUCTION_BUDGET: usize = 50_000_000;
+/// Parses a wall-clock limit in seconds (`OUNCE_NRO_TIMEOUT_SECS`); anything non-positive or unparsable means no limit.
+fn parse_time_limit(value: &str) -> Option<std::time::Duration> {
+    value.trim().parse::<f64>().ok().filter(|secs| secs.is_finite() && *secs > 0.0).map(std::time::Duration::from_secs_f64)
+}
+
+/// `OUNCE_NRO_TIMEOUT_SECS=<n>` stops a native (`--cpu=native`) run after `n` seconds of wall-clock time. Native has
+/// no instruction budget, so an interactive program that waits for input would otherwise run until killed.
+fn nro_time_limit() -> Option<std::time::Duration> {
+    std::env::var("OUNCE_NRO_TIMEOUT_SECS").ok().and_then(|v| parse_time_limit(&v))
+}
+
 /// Instruction cap for an NRO run: `OUNCE_NRO_BUDGET=<n>` raises it for long programs (default 50 million).
 fn nro_instruction_budget() -> usize {
     std::env::var("OUNCE_NRO_BUDGET").ok().and_then(|v| v.parse().ok()).filter(|n| *n > 0).unwrap_or(NRO_INSTRUCTION_BUDGET)
@@ -3996,5 +4040,20 @@ fn run_jit_selftest() {
     {
         eprintln!("[Tier-4] Not available: rebuild with `--features native-jit`.");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod time_limit_tests {
+    use super::parse_time_limit;
+    use std::time::Duration;
+
+    #[test]
+    fn parses_positive_seconds_and_rejects_the_rest() {
+        assert_eq!(parse_time_limit("2"), Some(Duration::from_secs(2)));
+        assert_eq!(parse_time_limit(" 0.5 "), Some(Duration::from_millis(500)));
+        for bad in ["", "0", "-3", "abc", "NaN", "inf"] {
+            assert_eq!(parse_time_limit(bad), None, "{bad:?}");
+        }
     }
 }

@@ -4,7 +4,7 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatLongOp};
+use super::instructions::{SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatAddSubOp, SimdSatLongOp, SimdShiftExtOp};
 
 #[inline]
 fn mask(esize: u32) -> u64 {
@@ -109,6 +109,19 @@ pub fn three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool) -
             SimdOp3::Umin | SimdOp3::Uminp => a.min(b),
             SimdOp3::Smax | SimdOp3::Smaxp => sa.max(sb) as u64,
             SimdOp3::Smin | SimdOp3::Sminp => sa.min(sb) as u64,
+            SimdOp3::Sshl | SimdOp3::Ushl => {
+                let sh = lane(m, esize, i) as u8 as i8 as i32;
+                let signed = op == SimdOp3::Sshl;
+                if sh >= 0 {
+                    if sh as u32 >= esize { 0 } else { a << sh }
+                } else if (-sh) as u32 >= esize {
+                    if signed && sa < 0 { all } else { 0 }
+                } else if signed {
+                    (sa >> (-sh)) as u64
+                } else {
+                    a >> (-sh)
+                }
+            }
             _ => unreachable!("bitwise ops return above"),
         };
         set_lane(&mut out, esize, i, r);
@@ -253,30 +266,39 @@ pub fn narrow_high(op: SimdNarrowOp, d: u128, n: u128, m: u128, esize: u32, q: b
 }
 
 fn saturate_signed(v: i128, bits: u32) -> u64 {
+    saturate_signed_flag(v, bits).0
+}
+
+/// Signed saturation to `bits`, also reporting whether the value did not fit (sets FPSR.QC).
+fn saturate_signed_flag(v: i128, bits: u32) -> (u64, bool) {
     let (lo, hi) = (-(1i128 << (bits - 1)), (1i128 << (bits - 1)) - 1);
-    (v.clamp(lo, hi) as u64) & mask(bits)
+    ((v.clamp(lo, hi) as u64) & mask(bits), v < lo || v > hi)
 }
 
 /// `SQDMULL`/`SQDMLAL`/`SQDMLSL` (`q`: the `2` forms): `2 * a * b` saturated to `2 * esize` signed bits,
-/// accumulated (also saturating) into `d` for `SQDMLAL`/`SQDMLSL`. The cumulative saturation flag (QC) is
-/// not modelled.
-pub fn sat_doubling_mul_long(op: SimdSatLongOp, d: u128, n: u128, m: u128, esize: u32, q: bool) -> u128 {
+/// accumulated (also saturating) into `d` for `SQDMLAL`/`SQDMLSL`. Returns the result and whether any lane
+/// saturated (in the doubling multiply or the accumulate), which the caller ORs into FPSR.QC.
+pub fn sat_doubling_mul_long(op: SimdSatLongOp, d: u128, n: u128, m: u128, esize: u32, q: bool) -> (u128, bool) {
     let half = |v: u128| if q { v >> 64 } else { v };
     let (hn, hm) = (half(n), half(m));
     let wide = esize * 2;
     let mut out = 0u128;
+    let mut sat = false;
     for i in 0..64 / esize as usize {
         let prod = 2 * (sext(lane(hn, esize, i), esize) as i128) * (sext(lane(hm, esize, i), esize) as i128);
-        let prod = sext(saturate_signed(prod, wide), wide) as i128; // doubling overflows only for min * min
+        let (prod, s1) = saturate_signed_flag(prod, wide); // doubling overflows only for min * min
+        let prod = sext(prod, wide) as i128;
         let acc = sext(lane(d, wide, i), wide) as i128;
         let r = match op {
             SimdSatLongOp::Sqdmull => prod,
             SimdSatLongOp::Sqdmlal => acc + prod,
             SimdSatLongOp::Sqdmlsl => acc - prod,
         };
-        set_lane(&mut out, wide, i, saturate_signed(r, wide));
+        let (v, s2) = saturate_signed_flag(r, wide);
+        sat |= s1 | s2;
+        set_lane(&mut out, wide, i, v);
     }
-    out
+    (out, sat)
 }
 
 /// `PMULL` / `PMULL2`: carry-less multiply. `wide`: one 64x64 -> 128-bit product; otherwise eight
@@ -352,9 +374,35 @@ macro_rules! fp_lane_ops {
                 max_min(a, b, max)
             }
 
+            /// ARM `FPProcessNaNs`: the first signalling NaN (quieted), else the first quiet NaN, else `None`.
+            /// Done explicitly because Rust may commute `a * b` and `a + b`, which would pick the other NaN.
+            fn nan_in(ops: &[$f]) -> Option<$b> {
+                if let Some(x) = ops.iter().find(|x| is_snan(**x)) {
+                    return Some(x.to_bits() | QUIET);
+                }
+                ops.iter().find(|x| x.is_nan()).map(|x| x.to_bits())
+            }
+
             pub fn op3(op: SimdFpOp3, acc: $b, n: $b, m: $b) -> $b {
                 let (a, b, d) = (<$f>::from_bits(n), <$f>::from_bits(m), <$f>::from_bits(acc));
                 let flag = |c: bool| if c { ALL } else { 0 };
+                let nan = match op {
+                    SimdFpOp3::Fadd | SimdFpOp3::Faddp | SimdFpOp3::Fsub | SimdFpOp3::Fmul | SimdFpOp3::Fdiv => nan_in(&[a, b]),
+                    SimdFpOp3::Fabd => nan_in(&[a, b]).map(|r| r & !SIGN),
+                    // FPMulAdd: a quiet-NaN addend with 0 * inf is the default NaN; otherwise addend, then operands
+                    SimdFpOp3::Fmla | SimdFpOp3::Fmls => {
+                        let a = if op == SimdFpOp3::Fmls { -a } else { a };
+                        if d.is_nan() && !is_snan(d) && ((a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite())) {
+                            Some(<$f>::NAN.to_bits())
+                        } else {
+                            nan_in(&[d, a, b])
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(r) = nan {
+                    return r;
+                }
                 match op {
                     SimdFpOp3::Fadd | SimdFpOp3::Faddp => (a + b).to_bits(),
                     SimdFpOp3::Fsub => (a - b).to_bits(),
@@ -449,26 +497,34 @@ pub fn fp_two_misc(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool) -> u1
 /// `FMUL/FMLA/FMLS` by element: every lane of `n` times lane `index` of `m` (fused for FMLA/FMLS).
 pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool) -> u128 {
     let esize = if double { 64 } else { 32 };
+    let op3 = match op {
+        SimdFpElementOp::Fmul => SimdFpOp3::Fmul,
+        SimdFpElementOp::Fmla => SimdFpOp3::Fmla,
+        SimdFpElementOp::Fmls => SimdFpOp3::Fmls,
+    };
     let mut out = 0u128;
     for i in 0..lanes(esize, q) {
-        let bits = if double {
-            let (a, b, acc) = (f64::from_bits(lane(n, 64, i)), f64::from_bits(lane(m, 64, index)), f64::from_bits(lane(d, 64, i)));
-            match op {
-                SimdFpElementOp::Fmul => a * b,
-                SimdFpElementOp::Fmla => a.mul_add(b, acc),
-                SimdFpElementOp::Fmls => (-a).mul_add(b, acc),
-            }
-            .to_bits()
+        let (a, b, acc) = (lane(n, esize, i), lane(m, esize, index), lane(d, esize, i));
+        let r = if double { fp64::op3(op3, acc, a, b) } else { fp32::op3(op3, acc as u32, a as u32, b as u32) as u64 };
+        set_lane(&mut out, esize, i, r);
+    }
+    out
+}
+
+/// `TBL`/`TBX`: `table` holds the 1..=4 source registers, `idx` the index vector, `dst` the old destination.
+pub fn table_lookup(table: &[u128], idx: u128, dst: u128, is_tbx: bool, q: bool) -> u128 {
+    let count = if q { 16 } else { 8 };
+    let mut out: u128 = 0;
+    for i in 0..count {
+        let k = ((idx >> (8 * i)) & 0xFF) as usize;
+        let byte = if k < 16 * table.len() {
+            (table[k / 16] >> (8 * (k % 16))) & 0xFF
+        } else if is_tbx {
+            (dst >> (8 * i)) & 0xFF
         } else {
-            let (a, b, acc) = (f32::from_bits(lane(n, 32, i) as u32), f32::from_bits(lane(m, 32, index) as u32), f32::from_bits(lane(d, 32, i) as u32));
-            match op {
-                SimdFpElementOp::Fmul => a * b,
-                SimdFpElementOp::Fmla => a.mul_add(b, acc),
-                SimdFpElementOp::Fmls => (-a).mul_add(b, acc),
-            }
-            .to_bits() as u64
+            0
         };
-        set_lane(&mut out, esize, i, bits);
+        out |= byte << (8 * i);
     }
     out
 }
@@ -517,6 +573,43 @@ pub fn permute(op: SimdPermuteOp, n: u128, m: u128, esize: u32, q: bool) -> u128
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn register_shifts() {
+        // USHL .4S: shifts 1, -1, 32, -32 on 0x80000001 lanes; SSHL arithmetic right keeps sign.
+        let n = 0x8000_0001u128 | (0x8000_0001u128 << 32) | (0x8000_0001u128 << 64) | (0x8000_0001u128 << 96);
+        let m = 1u128 | (0xFFu128 << 32) | (32u128 << 64) | (0xE0u128 << 96);
+        let u = three_same(SimdOp3::Ushl, 0, n, m, 32, true);
+        assert_eq!(lane(u, 32, 0), 0x0000_0002);
+        assert_eq!(lane(u, 32, 1), 0x4000_0000);
+        assert_eq!(lane(u, 32, 2), 0);
+        assert_eq!(lane(u, 32, 3), 0);
+        let s = three_same(SimdOp3::Sshl, 0, n, m, 32, true);
+        assert_eq!(lane(s, 32, 1), 0xC000_0000);
+        assert_eq!(lane(s, 32, 3), 0xFFFF_FFFF);
+        // 64-bit scalar form: shift by -63 of the minimum is all ones for SSHL.
+        assert_eq!(lane(three_same(SimdOp3::Sshl, 0, 1u128 << 63, 0xC1, 64, false), 64, 0), u64::MAX);
+    }
+
+    #[test]
+    fn table_lookup_tbl_tbx() {
+        let t0 = (0..16u128).fold(0, |a, i| a | (i << (8 * i)));
+        let t1 = (0..16u128).fold(0, |a, i| a | ((0x10 + i) << (8 * i)));
+        // lanes 0..6: indices 15, 0, 16, 31, 32 (out of range), 255
+        let idx: u128 = 0xFF_20_1F_10_00_0F;
+        let dst = u128::MAX;
+        // lanes 6.. have index 0 (in range, table byte 0 is 0)
+        let tbl = table_lookup(&[t0, t1], idx, dst, false, true);
+        assert_eq!(tbl, 0x00_00_1F_10_00_0F);
+        let tbx = table_lookup(&[t0, t1], idx, dst, true, true);
+        assert_eq!(tbx, 0xFF_FF_1F_10_00_0F);
+        // 16-byte table only: indices 16 and 31 are now out of range
+        assert_eq!(table_lookup(&[t0], idx, dst, true, true), 0xFF_FF_FF_FF_00_0F);
+        // 64-bit form zeroes the upper half
+        let one = table_lookup(&[t0, t1], u128::MAX, dst, true, false);
+        assert_eq!(one, 0xFFFF_FFFF_FFFF_FFFF);
+        assert_eq!(table_lookup(&[t0], idx, dst, false, false), 0x0F);
+    }
 
     #[test]
     fn dup_and_lanes() {
@@ -660,17 +753,18 @@ mod narrow_and_saturating_tests {
         let q15 = |a: i16, b: i16| (a as u16 as u128 | (b as u16 as u128) << 16, 0u128);
         let (n, _) = q15(0x4000, i16::MIN);
         let (m, _) = q15(0x4000, i16::MIN);
-        let r = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, n, m, 16, false);
+        let (r, qc) = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, n, m, 16, false);
+        assert!(qc);
         assert_eq!(lane(r, 32, 0), 0x2000_0000); // 2 * 0x4000 * 0x4000
         assert_eq!(lane(r, 32, 1), 0x7FFF_FFFF); // min * min saturates (2^31 does not fit)
         let acc = 0x7FFF_FFF0u128;
-        let mla = sat_doubling_mul_long(SimdSatLongOp::Sqdmlal, acc, 3, 5, 16, false); // 0x7FFFFFF0 + 30
+        let mla = sat_doubling_mul_long(SimdSatLongOp::Sqdmlal, acc, 3, 5, 16, false).0; // 0x7FFFFFF0 + 30
         assert_eq!(lane(mla, 32, 0), 0x7FFF_FFFF);
-        let mls = sat_doubling_mul_long(SimdSatLongOp::Sqdmlsl, 0x8000_0010, 3, 5, 16, false); // -2147483632 - 30 saturates low
+        let mls = sat_doubling_mul_long(SimdSatLongOp::Sqdmlsl, 0x8000_0010, 3, 5, 16, false).0; // -2147483632 - 30 saturates low
         assert_eq!(lane(mls, 32, 0), 0x8000_0000);
-        let neg = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 0xFFFF, 3, 16, false); // -1 * 3 * 2
+        let neg = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 0xFFFF, 3, 16, false).0; // -1 * 3 * 2
         assert_eq!(lane(neg, 32, 0) as u32 as i32, -6);
-        let hi = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 7u128 << 64, 2u128 << 64, 32, true); // SQDMULL2 (32-bit)
+        let hi = sat_doubling_mul_long(SimdSatLongOp::Sqdmull, 0, 7u128 << 64, 2u128 << 64, 32, true).0; // SQDMULL2 (32-bit)
         assert_eq!(lane(hi, 64, 0), 28);
     }
 }
@@ -810,5 +904,177 @@ mod fp_vector_tests {
         assert_eq!(fp_two_misc(SimdFpOp2::Fcvtn, keep, f2d([1.5, -2.25]), true, true), f4([7.0, 8.0, 1.5, -2.25]));
         assert_eq!(fp_two_misc(SimdFpOp2::Fcvtl, 0, f4([1.5, -2.25, 3.0, 4.0]), true, false), f2d([1.5, -2.25]));
         assert_eq!(fp_two_misc(SimdFpOp2::Fcvtl, 0, f4([1.5, -2.25, 3.0, 4.0]), true, true), f2d([3.0, 4.0]));
+    }
+}
+
+/// Saturates `v` to a `bits`-wide signed or unsigned integer. Returns the stored lane value (low `bits`
+/// bits) and whether saturation happened. The bool is exactly what the cumulative saturation flag
+/// (`FPSR.QC`) must record; every saturating narrow/shift below goes through this one function, so wiring
+/// QC means collecting this bool in `shift_ext` and its caller.
+pub fn saturate(v: i128, bits: u32, signed: bool) -> (u64, bool) {
+    let (lo, hi) = if signed {
+        (-(1i128 << (bits - 1)), (1i128 << (bits - 1)) - 1)
+    } else {
+        (0, (1i128 << bits) - 1)
+    };
+    let c = v.clamp(lo, hi);
+    (c as u64 & mask(bits), c != v)
+}
+
+/// Integer shift-by-immediate forms with accumulate, rounding, saturation or insertion, and the
+/// saturating/rounding narrowing shifts (`SQXTN`/`UQXTN`/`SQXTUN` are the zero-shift narrows).
+/// For the narrowing ops `esize` is the result lane size (source lanes are `2 * esize`) and `q` selects
+/// the `2` form, which keeps the low half of `d`. Otherwise lanes are `esize` wide. Rounding adds
+/// `1 << (shift - 1)` before the shift.
+pub fn shift_ext(op: SimdShiftExtOp, d: u128, n: u128, esize: u32, shift: u32, q: bool) -> u128 {
+    shift_ext_flag(op, d, n, esize, shift, q).0
+}
+
+/// Bits of the source register a scalar `shift_ext` form reads: lane 0, which is twice the result width for
+/// the narrowing forms. Used so lanes a scalar instruction never reads cannot set `FPSR.QC`.
+pub fn scalar_source_mask(op: SimdShiftExtOp, esize: u32) -> u128 {
+    use SimdShiftExtOp::*;
+    let narrowing = matches!(op, Rshrn | Sqshrn | Uqshrn | Sqshrun | Sqrshrn | Uqrshrn | Sqrshrun);
+    let width = if narrowing { esize * 2 } else { esize };
+    if width >= 128 { u128::MAX } else { (1u128 << width) - 1 }
+}
+
+/// [`shift_ext`] plus whether any lane saturated: the value `FPSR.QC` must accumulate.
+pub fn shift_ext_flag(op: SimdShiftExtOp, d: u128, n: u128, esize: u32, shift: u32, q: bool) -> (u128, bool) {
+    use SimdShiftExtOp::*;
+    let mut sat = false;
+    let round = matches!(op, Srshr | Urshr | Srsra | Ursra | Rshrn | Sqrshrn | Uqrshrn | Sqrshrun);
+    let rnd = |v: i128| if round && shift > 0 { v + (1i128 << (shift - 1)) } else { v };
+    if matches!(op, Rshrn | Sqshrn | Uqshrn | Sqshrun | Sqrshrn | Uqrshrn | Sqrshrun) {
+        let signed_in = matches!(op, Sqshrn | Sqshrun | Sqrshrn | Sqrshrun);
+        let mut half = 0u128;
+        for i in 0..64 / esize as usize {
+            let a = lane(n, esize * 2, i);
+            let a = if signed_in { sext(a, esize * 2) as i128 } else { a as i128 };
+            let v = rnd(a) >> shift;
+            let r = match op {
+                Rshrn => v as u64,
+                Sqshrn | Sqrshrn => { let (x, f) = saturate(v, esize, true); sat |= f; x }
+                _ => { let (x, f) = saturate(v, esize, false); sat |= f; x }
+            };
+            set_lane(&mut half, esize, i, r);
+        }
+        return (if q { (d & u64::MAX as u128) | (half << 64) } else { half }, sat);
+    }
+    let ones = mask(esize) as u128;
+    let mut out = 0u128;
+    for i in 0..lanes(esize, q) {
+        let raw = lane(n, esize, i);
+        let sv = sext(raw, esize) as i128;
+        let uv = raw as i128;
+        let dv = lane(d, esize, i);
+        let r = match op {
+            Ssra | Srsra => dv.wrapping_add((rnd(sv) >> shift) as u64),
+            Usra | Ursra => dv.wrapping_add((rnd(uv) >> shift) as u64),
+            Srshr => (rnd(sv) >> shift) as u64,
+            Urshr => (rnd(uv) >> shift) as u64,
+            Sri => {
+                let m = if shift >= esize { 0 } else { ones >> shift };
+                ((dv as u128 & !m) | ((uv as u128 >> shift.min(127)) & m)) as u64
+            }
+            Sli => {
+                let m = (ones << shift) & ones;
+                ((dv as u128 & !m) | ((uv as u128) << shift & m)) as u64
+            }
+            Sqshl => { let (x, f) = saturate(sv << shift, esize, true); sat |= f; x }
+            Uqshl => { let (x, f) = saturate(uv << shift, esize, false); sat |= f; x }
+            Sqshlu => { let (x, f) = saturate(sv << shift, esize, false); sat |= f; x }
+            _ => unreachable!(),
+        };
+        set_lane(&mut out, esize, i, r);
+    }
+    (out, sat)
+}
+
+/// `SADDLP`/`UADDLP` (and with `acc`, `SADALP`/`UADALP`): each pair of adjacent `esize` lanes of `n` is
+/// widened and added into one `2 * esize` lane; `acc` adds the existing lane of `d`.
+pub fn pairwise_long(d: u128, n: u128, esize: u32, q: bool, signed: bool, acc: bool) -> u128 {
+    let mut out = 0u128;
+    for i in 0..lanes(esize, q) / 2 {
+        let ext = |v: u64| if signed { sext(v, esize) as i128 } else { v as i128 };
+        let mut sum = ext(lane(n, esize, 2 * i)) + ext(lane(n, esize, 2 * i + 1));
+        if acc {
+            sum += lane(d, esize * 2, i) as i128;
+        }
+        set_lane(&mut out, esize * 2, i, sum as u64);
+    }
+    out
+}
+
+/// `SQADD`/`UQADD`/`SQSUB`/`UQSUB`: per-lane saturating add or subtract. Returns the result (upper half zeroed
+/// for 64-bit and scalar forms) and whether any lane saturated, which the caller ORs into FPSR.QC.
+pub fn sat_add_sub(op: SimdSatAddSubOp, n: u128, m: u128, esize: u32, q: bool, scalar: bool) -> (u128, bool) {
+    let total = if scalar { esize } else if q { 128 } else { 64 };
+    let signed = matches!(op, SimdSatAddSubOp::Sqadd | SimdSatAddSubOp::Sqsub);
+    let sub = matches!(op, SimdSatAddSubOp::Sqsub | SimdSatAddSubOp::Uqsub);
+    let (mut out, mut sat) = (0u128, false);
+    for lane in 0..total / esize {
+        let sh = lane * esize;
+        let (a, b) = (((n >> sh) as u64) & mask(esize), ((m >> sh) as u64) & mask(esize));
+        let ext = |v: u64| -> i128 {
+            if signed { (((v << (64 - esize)) as i64) >> (64 - esize)) as i128 } else { v as i128 }
+        };
+        let r = if sub { ext(a) - ext(b) } else { ext(a) + ext(b) };
+        let (v, s) = saturate(r, esize, signed);
+        out |= (v as u128) << sh;
+        sat |= s;
+    }
+    (out, sat)
+}
+
+#[cfg(test)]
+mod sat_add_sub_tests {
+    use super::*;
+
+    #[test]
+    fn saturating_add_sub_lanes_and_flag() {
+        // uqsub b: 1 - 2 clamps to 0 and sets QC; 5 - 2 does not
+        assert_eq!(sat_add_sub(SimdSatAddSubOp::Uqsub, 1, 2, 8, false, true), (0, true));
+        assert_eq!(sat_add_sub(SimdSatAddSubOp::Uqsub, 5, 2, 8, false, true), (3, false));
+        // sqadd h: 0x7FFF + 1 clamps to 0x7FFF; 0x8000 - 1 (sqsub) clamps to 0x8000
+        assert_eq!(sat_add_sub(SimdSatAddSubOp::Sqadd, 0x7FFF, 1, 16, false, true), (0x7FFF, true));
+        assert_eq!(sat_add_sub(SimdSatAddSubOp::Sqsub, 0x8000, 1, 16, false, true), (0x8000, true));
+        // 64-bit unsigned add clamps at u64::MAX
+        assert_eq!(sat_add_sub(SimdSatAddSubOp::Uqadd, u64::MAX as u128, 1, 64, true, false).0, u64::MAX as u128);
+    }
+}
+
+#[cfg(test)]
+mod fuzz_nan_order {
+    use super::*;
+
+    fn v4(l: [u32; 4]) -> u128 {
+        l.iter().enumerate().fold(0, |a, (i, x)| a | (*x as u128) << (32 * i))
+    }
+
+    /// Found by the instruction fuzzer (`fmul v6.4s, v11.4s, v29.s[3]`, checked against Apple Silicon):
+    /// FMUL by element let the compiler pick which NaN operand propagates. ARM propagates the first
+    /// operand's NaN, a signalling NaN beating a quiet one.
+    #[test]
+    fn fmul_by_element_propagates_first_operand_nan() {
+        let n = v4([0xffff_ffff, 0x7fc0_0001, 0x3f80_0000, 0x7fc0_0001]);
+        let m = v4([0x7fff_ffff, 0x7f80_0001, 0x7fff_ffff, 0x7fff_ffff]);
+        let r = fp_by_element(SimdFpElementOp::Fmul, 0, n, m, 0, false, true);
+        let lanes: Vec<u32> = (0..4).map(|i| (r >> (32 * i)) as u32).collect();
+        // element 0 of m is a quiet NaN: both quiet -> n's; only m a NaN (lane 2) -> m's
+        assert_eq!(lanes, [0xffff_ffff, 0x7fc0_0001, 0x7fff_ffff, 0x7fc0_0001]);
+        // a signalling NaN in the element beats a quiet NaN in n
+        let m = v4([0x7f80_0001, 0, 0, 0]);
+        let r = fp_by_element(SimdFpElementOp::Fmul, 0, n, m, 0, false, true);
+        assert_eq!(r as u32, 0x7fc0_0001);
+    }
+
+    #[test]
+    fn fmla_by_element_propagates_addend_nan_first() {
+        let d = v4([0x7fc0_0002, 0, 0, 0]);
+        let n = v4([0x7fc0_0001, 0x3f80_0000, 0, 0]);
+        let m = v4([0x7fc0_0003, 0, 0, 0]);
+        let r = fp_by_element(SimdFpElementOp::Fmla, d, n, m, 0, false, true);
+        assert_eq!(r as u32, 0x7fc0_0002);
     }
 }
