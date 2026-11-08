@@ -4,7 +4,7 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import tarfile
 import zipfile
 
@@ -25,8 +25,14 @@ def toolchain_entries(directory, binary):
     files = data['files_sha256']
     required = {'LICENSE-MIT', 'LICENSE-APACHE'}
     copyrights = {'COPYRIGHT.html', 'COPYRIGHT-library.html'}
+    extra = set(files) - required - copyrights
+    def reuse_name(name):
+        path = PurePosixPath(name)
+        return ('\\' not in name and ':' not in name and len(path.parts) == 2
+                and path.parts[0] == 'licenses' and path.suffix == '.txt'
+                and path.name not in {'.', '..'})
     if (not required.issubset(files) or not copyrights.intersection(files)
-            or set(files) - required - copyrights):
+            or not all(reuse_name(name) for name in extra)):
         raise ValueError('Incomplete or invalid toolchain notice coverage')
     entries = {'licenses/rust/manifest.json': manifest.read_bytes()}
     for name, digest in files.items():

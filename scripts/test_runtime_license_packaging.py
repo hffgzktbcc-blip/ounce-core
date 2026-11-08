@@ -106,6 +106,23 @@ class RuntimeLicensePackagingTests(unittest.TestCase):
                 collect(self.binary, 'x86_64-unknown-linux-gnu', self.notices)
         self.assertFalse(self.notices.exists())
 
+    def test_reuse_toolchain_layout_retains_every_supplied_licence(self):
+        sysroot = self.root / 'reuse-sysroot'
+        source = sysroot / 'share/doc/rust'
+        (source / 'licenses').mkdir(parents=True)
+        (source / 'COPYRIGHT-library.html').write_text('installed library copyright inventory')
+        for name in ['MIT.txt', 'Apache-2.0.txt', 'BSD-3-Clause.txt']:
+            (source / 'licenses' / name).write_text('installed REUSE notice ' + name)
+        with patch('collect_toolchain_notices.subprocess.check_output',
+                   side_effect=['rustc REUSE test fixture', str(sysroot)]):
+            collect(self.binary, 'x86_64-unknown-linux-gnu', self.notices)
+        package_release.package(self.binary, self.output, True, self.notices)
+        with zipfile.ZipFile(self.output) as archive:
+            self.assertEqual(archive.read('licenses/rust/LICENSE-MIT'),
+                             (source / 'licenses/MIT.txt').read_bytes())
+            self.assertEqual(archive.read('licenses/rust/licenses/BSD-3-Clause.txt'),
+                             (source / 'licenses/BSD-3-Clause.txt').read_bytes())
+
     def test_repository_supplement_hashes_match_the_packaged_aggregate(self):
         root = Path(__file__).resolve().parents[1]
         review = json.loads((root / 'docs/RELEASE_NOTICE_REVIEW.json').read_text())

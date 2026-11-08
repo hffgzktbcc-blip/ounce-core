@@ -15,11 +15,21 @@ def collect(binary, target, output):
     sysroot = Path(subprocess.check_output(['rustc', '--print', 'sysroot'], text=True).strip())
     sources = {}
     for name in ['LICENSE-MIT', 'LICENSE-APACHE', 'COPYRIGHT-library.html', 'COPYRIGHT.html']:
-        for folder in ['share/doc/rust', 'share/doc/rust/html']:
-            path = sysroot / folder / name
+        candidates = [sysroot / folder / name
+                      for folder in ['share/doc/rust', 'share/doc/rust/html']]
+        reuse = {'LICENSE-MIT': 'MIT.txt', 'LICENSE-APACHE': 'Apache-2.0.txt'}
+        if name in reuse:
+            candidates.append(sysroot / 'share/doc/rust/licenses' / reuse[name])
+        for path in candidates:
             if path.is_file() and path.stat().st_size:
                 sources[name] = path.read_bytes()
                 break
+    # Recent Rust distributions install REUSE-managed licence texts here instead
+    # of the older top-level LICENSE-MIT/APACHE files (dist.rs, rustc 1.99).
+    # Preserve all supplied texts and their relative paths, not only two labels.
+    for path in sorted((sysroot / 'share/doc/rust/licenses').glob('*.txt')):
+        if path.is_file() and path.stat().st_size:
+            sources['licenses/' + path.name] = path.read_bytes()
     if not {'LICENSE-MIT', 'LICENSE-APACHE'}.issubset(sources) or not any(
             name.startswith('COPYRIGHT') for name in sources):
         raise ValueError('Rust toolchain notices missing; install the matching rust-docs component')
@@ -35,6 +45,7 @@ def collect(binary, target, output):
         staging = Path(temp) / 'notices'
         staging.mkdir()
         for name, raw in sources.items():
+            (staging / name).parent.mkdir(parents=True, exist_ok=True)
             (staging / name).write_bytes(raw)
         (staging / 'manifest.json').write_text(json.dumps(data, indent=2) + '\n')
         staging.rename(output)
