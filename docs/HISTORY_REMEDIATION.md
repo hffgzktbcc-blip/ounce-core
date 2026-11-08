@@ -1,5 +1,13 @@
 # Historical provenance remediation — evidence and controlled plan
 
+The latest actionable disposition is consolidated in
+[PROVENANCE_REMEDIATION_REPORT.md](PROVENANCE_REMEDIATION_REPORT.md).
+Its object-level review supersedes the broad rewrite assumptions below within
+the stated snapshot scope. The verified local proposal affects only the retained
+PR #1 head for twelve firmware-labelled arrays and two standalone objects.
+The separate historical 72-byte third-party homebrew program still requires a
+permission decision. The original audit below is retained as dated evidence.
+
 **Audit date:** 2026-10-29. **Status: investigation and narrow dry run complete / remote history not remediated.** Read-only Git metadata review, release/fixture inventory and a disposable-mirror dry run. Not a legal opinion.
 Dated follow-up snapshot: [PROVENANCE_INVENTORY_2026-11-07.md](PROVENANCE_INVENTORY_2026-11-07.md) (refreshed reachability, gates and release-integrity checks; no remediation action).
 
