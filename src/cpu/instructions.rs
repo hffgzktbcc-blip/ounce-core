@@ -793,6 +793,9 @@ pub enum SimdOp3 {
     Smaxp,
     Sminp,
     Mul,
+    /// `SSHL`/`USHL` (register shift: the low signed byte of each `m` lane is the shift, negative shifts right)
+    Sshl,
+    Ushl,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
