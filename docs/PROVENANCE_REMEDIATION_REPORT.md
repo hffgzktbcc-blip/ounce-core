@@ -10,6 +10,8 @@ A hash-validated local test rewrite changed nineteen commits and only the retain
 
 The current source and fifteen release archives were scanned for exact candidate byte sequences, with no matches. All sixteen downloaded release assets matched their GitHub-recorded SHA-256 digests. These are exact-match and integrity results. They do not establish exhaustive source provenance, transformed-code absence or legal clearance.
 
+The 72-byte program's origin is corroborated by the original upstream pinned checksum register. The pinned source header, root licence paths and complete repository trees contained no redistribution grant in the reviewed scope. Permission remains UNVERIFIED, without a denial or infringement finding. This does not authorise a broad history rewrite.
+
 ## Fixture evidence and controls
 
 All eleven committed NROs rebuilt byte-for-byte from their tracked inputs with the recorded native toolchain. `tests/fixtures/rebuild-evidence.json` retains commands, successful exit codes, source/tool/archive hashes and linker-selected members. Package-signature verification is unclaimed. Source authorship and component redistribution review remain open.
@@ -18,7 +20,7 @@ All eleven committed NROs rebuilt byte-for-byte from their tracked inputs with t
 
 ## Distribution corrections
 
-All three published v0.5.0 executables contain the bundled DejaVu font, while their archives omit its notice. The proposed packaging change includes the project licence, third-party register and complete retained font licence. Third-party dependency notice review is being completed before corrected release assets can be published. Source package metadata now agrees with the project's recorded MIT-porting practice.
+All three published v0.5.0 executables contain the bundled DejaVu font, while their archives omit its notice. The proposed packaging change includes the project licence, third-party register and complete retained font licence. A further 169 dependency notice records are now collected with pinned source identities. Release packaging verifies their input hashes and refuses publication while the notice review is pending. The remaining questions concern objc2 attribution/SDK terms, Rust runtime notices and final-binary coverage. Source package metadata now agrees with the project's recorded MIT-porting practice.
 
 Published artifacts, checksums and attestations must remain distinguishable from any separately prepared repackaging. Existing release evidence is retained. Publication of corrected assets is a separate approval and qualification step.
 

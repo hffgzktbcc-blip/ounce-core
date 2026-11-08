@@ -61,19 +61,13 @@ jobs:
       - name: Package artifacts (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          mkdir -p release-package/licenses
-          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} release-package/
-          cp LICENSE THIRD_PARTY.md assets/fonts/DejaVu-LICENSE.txt release-package/licenses/
-          tar -czvf ${{ matrix.archive_name }} -C release-package .
+          python3 scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed
 
       - name: Package artifacts (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force release-package/licenses | Out-Null
-          Copy-Item target/${{ matrix.target }}/release/${{ matrix.binary_name }} release-package/
-          Copy-Item LICENSE,THIRD_PARTY.md,assets/fonts/DejaVu-LICENSE.txt release-package/licenses/
-          Compress-Archive -Path release-package/* -DestinationPath ${{ matrix.archive_name }}
+          python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed
 
       - name: Write SHA-256 checksum (Unix)
         if: matrix.os != 'windows-latest'

@@ -26,6 +26,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  release-notice-packaging:
+    name: Release notice packaging (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Exercise archive creation and byte verification
+        shell: bash
+        run: |
+          mkdir -p work/notice-check
+          printf 'packaging test input\n' > work/notice-check/ounce-core
+          python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/test.tar.gz
+          python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/test.zip
+          if python -c 'import json,sys; review=json.load(open("docs/RELEASE_NOTICE_REVIEW.json")); sys.exit(review["status"] != "REVIEWED")'; then
+            python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/publish.zip --require-reviewed
+          else
+            if python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/publish.zip --require-reviewed; then
+              echo 'Pending notice review unexpectedly permitted publication'
+              exit 1
+            fi
+          fi
+
   legal-guardrails:
     name: Legal guardrails
     runs-on: ubuntu-latest
