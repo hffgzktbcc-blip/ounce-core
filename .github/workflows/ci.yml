@@ -78,17 +78,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-docs
       - name: Exercise archive creation and byte verification
         shell: bash
         run: |
           mkdir -p work/notice-check
           printf 'packaging test input\n' > work/notice-check/ounce-core
-          python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/test.tar.gz
-          python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/test.zip
+          target=$(rustc -vV | sed -n 's/^host: //p')
+          python scripts/collect_toolchain_notices.py --binary work/notice-check/ounce-core --target "$target" --output work/notice-check/rust
+          python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/test.tar.gz --toolchain-notices work/notice-check/rust
+          python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/test.zip --toolchain-notices work/notice-check/rust
           if python -c 'import json,sys; review=json.load(open("docs/RELEASE_NOTICE_REVIEW.json")); sys.exit(review["status"] != "REVIEWED")'; then
-            python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/publish.zip --require-reviewed
+            python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/publish.zip --require-reviewed --toolchain-notices work/notice-check/rust
           else
-            if python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/publish.zip --require-reviewed; then
+            if python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/publish.zip --require-reviewed --toolchain-notices work/notice-check/rust; then
               echo 'Pending notice review unexpectedly permitted publication'
               exit 1
             fi
