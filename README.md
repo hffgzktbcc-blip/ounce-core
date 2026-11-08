@@ -14,7 +14,7 @@
 
 **Reproducible failure investigation, built on an inspectable AArch64 runtime.**
 
-[The Ounce Vision](#the-ounce-vision) · [Architecture](#the-system) · [Get started](#quickstart) · [Verified progress](#what-is-proven) · [Roadmap](#the-road-ahead) · [Research & provenance](#responsible-research)
+[The Ounce Vision](#the-ounce-vision) · [Architecture](#the-system) · [Get started](#quickstart) · [Verified progress](#what-is-proven) · [Roadmap](#the-road-ahead) · [Research & provenance](#responsible-research) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
 
 </div>
 

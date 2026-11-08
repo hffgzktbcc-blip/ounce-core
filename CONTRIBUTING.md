@@ -4,6 +4,16 @@ Ounce-core is evolving into a reproducible execution-debugging and regression to
 The current runtime and corpus adapters remain experimental and platform-specific.
 Start with [AGENTS.md](AGENTS.md) and the ready outcomes in [PLAN.md](PLAN.md).
 
+## Your first contribution (about an hour)
+
+New here? Do one of these. Each ends in a small pull request.
+
+1. **Run a program and compare** ([guide](docs/ADD_A_PROGRAM.md)). Pick an open-source program, build it as a Switch program, and compare its output with a host build. A difference is a bug report, and often a fix. This is the most valuable contribution.
+2. **Fix a missing instruction.** If a run prints `[VM Error] Unimplemented instruction 0x...`, decode and implement it in `src/cpu/`, with a unit test. Examples: `PMULL`, the saturating-doubling ops, the narrowing three-different ops.
+3. **Improve the docs.** If something here confused you, fix it.
+
+Setup: install Rust, clone the repository, run `cargo build --release` and `scripts/gate.sh`. If the gate passes you are ready. Ask questions in [Discussions](https://github.com/hffgzktbcc-blip/ounce-core/discussions); no issue is needed before a small fix. Please read the [code of conduct](CODE_OF_CONDUCT.md); report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+
 ## Make a useful change
 
 An issue is welcome for a new substantial direction, but is not required for an
