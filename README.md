@@ -18,7 +18,7 @@
 
 An open-source ARM64 execution, debugging and verification platform in safe Rust.
 
-[Vision](docs/VISION.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
+[Vision](docs/VISION.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Reproduce it](docs/REPRODUCE.md) · [Limits](docs/LIMITS.md) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
 
 </div>
 
@@ -116,7 +116,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ## What is proven
 
-**Differential tests against real ARM64 hardware** (each folder in [docs/verify](docs/verify/README.md) holds the sources of its test, the pinned program version, the host reference output and the per-engine result): LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and a 5,964-line floating-point instruction test. On Tier-3, Tier-4 and native, output is byte-identical to the host reference. Native execution runs on the host CPU, so Tier-3 and Tier-4 are the real evidence. More programs (zlib, cJSON, TinyExpr, Monocypher) are in review. Each shows agreement on the inputs tested, not that the program or the emulator is correct everywhere.
+**Differential tests against real ARM64 hardware** (each folder in [docs/verify](docs/verify/README.md) holds the sources of its test, the pinned program version, the host reference output and the per-engine result): LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and a 5,964-line floating-point instruction test. On Tier-3, Tier-4 and native, output is byte-identical to the host reference. Native execution runs on the host CPU, so Tier-3 and Tier-4 are the real evidence. More programs (zlib, cJSON, TinyExpr, Monocypher) are in review. Each shows agreement on the inputs tested, not that the program or the emulator is correct everywhere. To rerun them on your own ARM64 machine see [docs/REPRODUCE.md](docs/REPRODUCE.md); for what they do not show, see [docs/LIMITS.md](docs/LIMITS.md).
 
 ### Legacy Switch regression corpus
 
