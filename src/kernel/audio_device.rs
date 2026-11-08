@@ -43,15 +43,25 @@ impl IpcManager {
                 let rate = mmu.read_u32(args).unwrap_or(0);
                 let channels = mmu.read_u32(args + 4).unwrap_or(0);
                 // Record both sides of the negotiation before replying, not an inferred success.
-                let accepted = matches!(rate, 0 | 48000) && matches!(channels, 0 | 2 | 0x20000);
-                if self.audio_open_trace.len() < 64 {
-                    self.audio_open_trace.push(AudioOpenTrace {
-                        input, rate, raw_channels: channels,
-                        result: if accepted { 0 } else { INVALID_ARGUMENT },
-                        channels: accepted.then_some(2),
-                    });
+                // IAudioOut's channel count is a u16 followed by padding; the upper
+                // halfword is not a second channel-count encoding (libnx issue #685).
+                // Input negotiation retains its existing, separately modelled contract.
+                let valid_channels = if input {
+                    matches!(channels, 0 | 2 | 0x20000)
+                } else {
+                    matches!(channels & 0xFFFF, 0 | 2)
+                };
+                let accepted = matches!(rate, 0 | 48000) && valid_channels;
+                let trace = AudioOpenTrace {
+                    input, rate, raw_channels: channels,
+                    result: if accepted { 0 } else { INVALID_ARGUMENT },
+                    channels: accepted.then_some(2),
+                };
+                if std::env::var_os("OUNCE_TRACE_IPC").is_some() {
+                    eprintln!("[audio open] input={} rate={} raw_channels={:#010x} result={:#010x} channels={:?}",
+                        trace.input, trace.rate, trace.raw_channels, trace.result, trace.channels);
                 }
-                // libnx's default channel parameter packs 2 in the upper halfword.
+                if self.audio_open_trace.len() < 64 { self.audio_open_trace.push(trace); }
                 if !accepted {
                     return Some(self.reply_error(tls, mmu, INVALID_ARGUMENT));
                 }
@@ -212,6 +222,31 @@ impl IpcManager {
 mod tests {
     use super::*;
     use crate::kernel::cmif::test_util::{BUF, Harness, Req};
+
+    #[test]
+    fn audout_reads_the_low_channel_halfword_and_rejects_invalid_low_values() {
+        for raw in [0u32, 2, 0x10000, 0x20000, 0xFFFF0000, 0xFFFF0002] {
+            let mut h = Harness::new();
+            let root = h.ipc.allocate_handle(ServiceType::AudOut);
+            let args: Vec<u8> = [48000u32, raw, 0, 0].into_iter().flat_map(u32::to_le_bytes).collect();
+            let opened = h.call_out(root, Req { cmd: 3, data: &args, recv: Some((BUF, 256)),
+                ..Default::default() }, 16);
+            assert_eq!(opened.result, 0, "raw channels {raw:#010x}");
+            assert_eq!(opened.u32(4), 2);
+            assert_eq!(opened.move_handles.len(), 1);
+            let trace = h.ipc.audio_open_trace.last().unwrap();
+            assert_eq!((trace.raw_channels, trace.result, trace.channels), (raw, 0, Some(2)));
+        }
+        for raw in [1u32, 3, 0x20001, 0xFFFF0003] {
+            let mut h = Harness::new();
+            let root = h.ipc.allocate_handle(ServiceType::AudOut);
+            let args: Vec<u8> = [48000u32, raw, 0, 0].into_iter().flat_map(u32::to_le_bytes).collect();
+            let opened = h.call_out(root, Req { cmd: 3, data: &args, ..Default::default() }, 16);
+            assert_eq!(opened.result, INVALID_ARGUMENT, "raw channels {raw:#010x}");
+            assert!(opened.move_handles.is_empty());
+            assert_eq!(h.ipc.audio_open_trace.last().unwrap().channels, None);
+        }
+    }
 
     #[test]
     fn audio_device_sessions_release_buffers_and_reject_invalid_ranges() {
