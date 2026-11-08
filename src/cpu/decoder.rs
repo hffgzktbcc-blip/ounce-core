@@ -722,6 +722,13 @@ pub fn decode(raw: u32) -> Instruction {
                     is_64,
                 };
             }
+            // CRC32{B,H,W,X} / CRC32C{B,H,W,X}: opcode 010 C sz, sf must equal (sz == 3)
+            0b010000..=0b010111 => {
+                let size = (opcode & 0x3) as u8;
+                if is_64 == (size == 3) {
+                    return Instruction::Crc32 { rd, rn, rm, size, castagnoli: (opcode & 0x4) != 0 };
+                }
+            }
             _ => {}
         }
     }
@@ -1166,6 +1173,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             return None;
         }
         return Some(Instruction::SimdExt { rd, rn, rm, index, q });
+    }
+
+    // 26b2. AdvSIMD table lookup: 0 Q 001110 00 0 Rm 0 len op 00 Rn Rd (TBL/TBX)
+    if (raw & 0xBFE0_8C00) == 0x0E00_0000 {
+        let regs = (((raw >> 13) & 0x3) + 1) as u8;
+        return Some(Instruction::SimdTbl { rd, rn, rm, regs, is_tbx: (raw & (1 << 12)) != 0, q });
     }
 
     // 26c. AdvSIMD permute: 0 Q 001110 size 0 Rm 0 opc 10 Rn Rd (UZP1/TRN1/ZIP1/UZP2/TRN2/ZIP2)
