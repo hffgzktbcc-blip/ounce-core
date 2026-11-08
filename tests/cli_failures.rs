@@ -45,3 +45,27 @@ fn nro_only_command_rejects_raw_input_before_execution() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("[Loader Error]"));
     assert!(!String::from_utf8_lossy(&output.stdout).contains("Starting execution"));
 }
+
+#[test]
+fn linux_deterministic_clock_cli_repeats_the_same_output() {
+    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/linux-elf/bin/clock.elf");
+    for _ in 0..2 {
+        let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+            .args(["run-elf", fixture, "--deterministic", "--cpu=tier3"])
+            .output().unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(output.stdout, b"realtime=1700000000:0\nmonotonic=0:1000000\nraw=0:2000000\nboottime=0:3000000\n");
+    }
+}
+
+#[test]
+fn linux_guest_arguments_after_separator_are_not_host_options() {
+    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/linux-elf/bin/args.elf");
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run-elf", fixture, "--cpu=tier3", "--", "--cpu=tier4", "--present=headless", "--sdmc=/guest"])
+        .output().unwrap();
+    assert_eq!(output.status.code(), Some(4)); // fixture exits with argc
+    let expected = format!("argc=4\nargv: {fixture}\nargv: --cpu=tier4\nargv: --present=headless\nargv: --sdmc=/guest\npagesz=4096\n");
+    assert_eq!(output.stdout, expected.as_bytes());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("engine=Tier-3"));
+}
