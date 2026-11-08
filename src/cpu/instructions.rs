@@ -524,6 +524,14 @@ pub enum Instruction {
         esize: u8,
     },
 
+    /// AdvSIMD scalar three same `FABD Sd/Dd, Sn/Dn, Sm/Dm`: `|n - m|` (NaN propagates), upper bits zeroed
+    FpAbd {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        is_double: bool,
+    },
+
     /// `DUP Vd.<T>, Wn/Xn`
     SimdDupGeneral {
         rd: u8,
