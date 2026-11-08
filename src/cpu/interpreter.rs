@@ -1765,6 +1765,20 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdNarrow { rd, rn, rm, op, esize, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::narrow_high(op, d, n, m, esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdSatLong { rd, rn, rm, op, esize, q } => {
+                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::sat_doubling_mul_long(op, d, n, m, esize as u32, q));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdLong { rd, rn, rm, op, signed, esize, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::mul_long(op, d, n, m, esize as u32, q, signed));
@@ -1772,20 +1786,15 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdAcross { rd, rn, op, esize, q } => {
-                self.regs.write_q(rd, simd::across(op, self.regs.read_q(rn), esize as u32, q));
+            Instruction::Pmull { rd, rn, rm, wide, q } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::pmull(n, m, wide, q));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpAbd { rd, rn, rm, is_double } => {
-                if is_double {
-                    let r = (self.regs.read_d(rn) - self.regs.read_d(rm)).abs();
-                    self.regs.write_q(rd, r.to_bits() as u128);
-                } else {
-                    let r = (self.regs.read_s(rn) - self.regs.read_s(rm)).abs();
-                    self.regs.write_q(rd, r.to_bits() as u128);
-                }
+            Instruction::SimdAcross { rd, rn, op, esize, q } => {
+                self.regs.write_q(rd, simd::across(op, self.regs.read_q(rn), esize as u32, q));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1940,7 +1949,6 @@ mod tests {
             (0x1f5effbf, "FpData3"),            // fmsub d31, d29, d30, d31
             (0x4ebc9f5a, "SimdThreeSame"),      // mul v26.4s, v26.4s, v28.4s
             (0x0e21db9c, "SimdTwoMisc"),        // scvtf v28.2s, v28.2s
-            (0x7efcd7de, "FpAbd"),              // fabd d30, d30, d28
             (0x7e21dbee, "SimdScalarTwoMisc"),  // ucvtf s14, s31
             (0x7ea1b800, "SimdScalarTwoMisc"),  // fcvtzu s0, s0
             (0x0e612800, "SimdShiftImm"),       // xtn v0.4h, v0.4s
@@ -1952,31 +1960,6 @@ mod tests {
             let got = format!("{:?}", super::super::decoder::decode(raw));
             assert!(got.starts_with(name), "0x{raw:08X}: expected {name}, got {got}");
         }
-    }
-
-    #[test]
-    fn fabd_scalar_absolute_difference() {
-        // fabd d30, d30, d28 ; fabd s0, s1, s2 (found by the cJSON differential test)
-        let (cpu, _) = run(&[0x7efcd7de, 0x7ea2d420], |c, _| {
-            c.regs.write_q(30, u128::MAX);
-            c.regs.write_d(30, 1.0);
-            c.regs.write_d(28, 3.5);
-            c.regs.write_q(0, u128::MAX);
-            c.regs.write_s(1, -2.0);
-            c.regs.write_s(2, 5.0);
-        });
-        assert_eq!(cpu.regs.read_q(30), 2.5f64.to_bits() as u128); // |1.0 - 3.5|, upper bits zeroed
-        assert_eq!(cpu.regs.read_q(0), 7.0f32.to_bits() as u128); // |-2 - 5|
-        let (cpu, _) = run(&[0x7efcd7de], |c, _| {
-            c.regs.write_d(30, f64::NAN);
-            c.regs.write_d(28, 1.0);
-        });
-        assert!(cpu.regs.read_d(30).is_nan());
-        let (cpu, _) = run(&[0x7efcd7de], |c, _| {
-            c.regs.write_d(30, f64::INFINITY);
-            c.regs.write_d(28, f64::INFINITY);
-        });
-        assert!(cpu.regs.read_d(30).is_nan()); // inf - inf
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Provenance remediation progress
 
-Updated 8 November 2026. This public summary records safe corrections proposed in PR #203. Detailed historical object manifests and suspect contents remain private. Remote historical cleanup and release publication require separate owner decisions.
+Updated 8 November 2026. This public summary records the controls merged in PR #203 and integrated with the developer toolkit in PR #205. Current notice decisions are in [LICENSE_DISPOSITION.md](LICENSE_DISPOSITION.md). Detailed historical object manifests and suspect contents remain private. Remote historical cleanup and release publication require separate owner decisions.
 
 ## Object-level findings
 
@@ -20,7 +20,7 @@ All eleven committed NROs rebuilt byte-for-byte from their tracked inputs with t
 
 ## Distribution corrections
 
-All three published v0.5.0 executables contain the bundled DejaVu font, while their archives omit its notice. The proposed packaging change includes the project licence, third-party register and complete retained font licence. A further 169 dependency notice records are now collected with pinned source identities. Release packaging verifies their input hashes and refuses publication while the notice review is pending. The remaining questions concern objc2 attribution/SDK terms, Rust runtime notices and final-binary coverage. Source package metadata now agrees with the project's recorded MIT-porting practice.
+All three published v0.5.0 executables contain the bundled DejaVu font, while their archives omit its notice. The merged packaging change includes the project licence, third-party register and complete retained font licence. A further 169 dependency notice records are now collected with pinned source identities. Release packaging verifies their input hashes and refuses publication while the notice review is pending. The follow-up adds the inherited Objective-C MIT grant/attribution and requires binary-bound notices from the actual Rust toolchain. The upstream SDK qualification remains distinct from those notice fixes. Source package metadata now agrees with the project's recorded MIT-porting practice.
 
 Published artifacts, checksums and attestations must remain distinguishable from any separately prepared repackaging. Existing release evidence is retained. Publication of corrected assets is a separate approval and qualification step.
 
@@ -28,6 +28,6 @@ Published artifacts, checksums and attestations must remain distinguishable from
 
 The prior local release check passed 474 unit tests and three CLI tests, with nine ignored. The runtime harness passed 36 checks across 25 stages. Fixture identity, legal guardrails and unsafe-boundary checks passed. Four isolated negative validator checks rejected missing registration, unreviewed metadata mutation, altered binary bytes and altered source inputs.
 
-The unchanged runtime and corpus inputs match the captured main source. The retained [canonical run 42380281215](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42380281215) is existing evidence for that runtime. Hosted checks for this proposed correction are tracked on [PR #203](https://github.com/hffgzktbcc-blip/ounce-core/pull/203). Corrections remain pending hosted qualification until the applicable checks on its final head pass.
+The unchanged runtime and corpus inputs match the captured main source. The retained [canonical run 42380281215](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42380281215) is existing evidence for that runtime. Final #203 head `411120d` passed its 29 hosted checks, including canonical corpus artifact revalidation. Integration candidate `6520fc0` for [PR #205](https://github.com/hffgzktbcc-blip/ounce-core/pull/205) passed all 33 hosted checks and merged as `9b3961f`. These completed qualifications must not be described as still pending; they do not grant third-party rights.
 
-Proposed CODEOWNERS coverage requests human review for fixtures, oracles, provenance and workflows. Requiring that review needs a separately approved protection update. Existing required checks must be preserved. The Support request concerning PR #1, any release publication and any protection mutation remain subject to owner review. Historical homebrew permission and component-specific redistribution questions remain open. No compatibility metric or registered oracle was weakened.
+Merged CODEOWNERS coverage requests human review for fixtures, oracles, provenance and workflows. Requiring that review needs a separately approved protection update. Existing required checks must be preserved. The Support request concerning PR #1, any release publication and any protection mutation remain subject to owner review. Historical homebrew permission and component-specific redistribution questions remain open. No compatibility metric or registered oracle was weakened.

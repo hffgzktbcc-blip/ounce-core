@@ -524,14 +524,6 @@ pub enum Instruction {
         esize: u8,
     },
 
-    /// AdvSIMD scalar three same `FABD Sd/Dd, Sn/Dn, Sm/Dm`: `|n - m|` (NaN propagates), upper bits zeroed
-    FpAbd {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-        is_double: bool,
-    },
-
     /// `DUP Vd.<T>, Wn/Xn`
     SimdDupGeneral {
         rd: u8,
@@ -548,6 +540,26 @@ pub enum Instruction {
         index: u8,
     },
 
+    /// `ADDHN{2}`/`SUBHN{2}`/`RADDHN{2}`/`RSUBHN{2}`: `esize` is the narrow (result) lane size; `q` writes the high half
+    SimdNarrow {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdNarrowOp,
+        esize: u8,
+        q: bool,
+    },
+
+    /// `SQDMULL{2}`/`SQDMLAL{2}`/`SQDMLSL{2}` (vector): `esize` is the source lane size (16 or 32)
+    SimdSatLong {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdSatLongOp,
+        esize: u8,
+        q: bool,
+    },
+
     /// AdvSIMD three registers of different type: widening multiply (`S/UMULL`, `S/UMLAL`, `S/UMLSL`
     /// and their `2` forms). `esize` is the source lane size; `q` selects the high source half.
     SimdLong {
@@ -557,6 +569,17 @@ pub enum Instruction {
         op: SimdLongOp,
         signed: bool,
         esize: u8,
+        q: bool,
+    },
+
+    /// `PMULL` / `PMULL2`: polynomial (carry-less) multiply long. `wide` selects the 64-bit form
+    /// (`Vd.1Q` from `Vn.1D`, `Vm.1D`), otherwise 8-bit lanes widen to 16 bits (`Vd.8H` from `Vn.8B`).
+    /// `q` selects the high source half.
+    Pmull {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        wide: bool,
         q: bool,
     },
 
@@ -823,6 +846,23 @@ pub enum SimdLongOp {
     Subw,
     Abdl,
     Abal,
+}
+
+/// `ADDHN`, `SUBHN`, `RADDHN`, `RSUBHN`: wide operands, narrow result (the high half of each sum or difference).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdNarrowOp {
+    Addhn,
+    Subhn,
+    Raddhn,
+    Rsubhn,
+}
+
+/// `SQDMULL`, `SQDMLAL`, `SQDMLSL`: saturating doubling multiply long.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdSatLongOp {
+    Sqdmull,
+    Sqdmlal,
+    Sqdmlsl,
 }
 
 /// AdvSIMD across-lanes reductions (`ADDV`, `S/UADDLV`, `S/UMAXV`, `S/UMINV`).
