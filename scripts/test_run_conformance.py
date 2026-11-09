@@ -17,7 +17,7 @@ class ConformanceTests(unittest.TestCase):
     def test_missing_duplicate_and_failed_adapter_are_nonpasses(self):
         valid = self.summary()
         self.assertTrue(verdict(valid, 0)[0])
-        for stdout, code in [('', 0), (valid + '\nMISMATCH: 0', 0), (valid.replace('MISMATCH: 0', 'MISMATCH: 0\nMISMATCH: 0'), 0), (valid, 1)]:
+        for stdout, code in [('', 0), (valid + '\nMISMATCH: 0', 0), (valid.replace('MISMATCH: 0', 'MISMATCH: 0\nMISMATCH: 0'), 0), (valid + '\nMISMATCH: -1', 0), (valid, 1)]:
             self.assertFalse(verdict(stdout, code)[0])
 
     def test_tampering_rejected_before_adapter_runs(self):
