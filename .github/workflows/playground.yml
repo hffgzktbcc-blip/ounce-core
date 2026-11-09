@@ -1,0 +1,79 @@
+name: Browser interpreter
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/ounce-learn/**'
+      - 'tools/playground/**'
+      - 'scripts/build_playground.sh'
+      - 'scripts/package_playground_notices.py'
+      - 'scripts/collect_toolchain_notices.py'
+      - 'src/cpu/**'
+      - 'src/mmu/**'
+      - '.github/workflows/playground.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/ounce-learn/**'
+      - 'tools/playground/**'
+      - 'scripts/build_playground.sh'
+      - 'scripts/package_playground_notices.py'
+      - 'scripts/collect_toolchain_notices.py'
+      - 'src/cpu/**'
+      - 'src/mmu/**'
+      - '.github/workflows/playground.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playground-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  wasm-browser:
+    name: Actual WebAssembly execution (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rust-docs
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/ounce-learn -> ../../target/learn
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install exact browser binding tool
+        run: |
+          curl -fsSL https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.129/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl.tar.gz -o bindgen.tar.gz
+          echo '82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e  bindgen.tar.gz' | sha256sum --check
+          tar -xzf bindgen.tar.gz
+          echo "$PWD/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl" >> "$GITHUB_PATH"
+      - name: Test the bounded API and reused CPU/memory modules
+        run: CARGO_TARGET_DIR="$PWD/target/learn" cargo test --release --locked --manifest-path crates/ounce-learn/Cargo.toml
+      - name: Build the real interpreter and retain notices
+        run: scripts/build_playground.sh
+      - name: Check artifact and notice correspondence
+        run: python3 tools/playground/check_artifact.py target/playground
+      - name: Install browser test dependencies
+        run: |
+          python3 -m pip install playwright==1.62.0
+          python3 -m playwright install --with-deps chromium
+      - name: Step actual instructions in a clean browser
+        run: python3 tools/playground/check_browser.py --output target/playground-check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-interpreter-playground-preview
+          path: |
+            target/playground/
+            target/playground-check/
+          if-no-files-found: warn

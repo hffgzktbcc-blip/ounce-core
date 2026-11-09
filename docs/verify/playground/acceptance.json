@@ -1,0 +1,29 @@
+{
+  "browser": "156.0.8078.79",
+  "wasm_sha256": "6560155802702e4ab73b5d535a372f8f6e23ab9d0db80a808272d744b273315c",
+  "execution_after_network_disabled": true,
+  "checks": [
+    "MOV/ADD actual register and PC changes",
+    "SVC stop",
+    "transactional invalid input",
+    "hardware vector case",
+    "reset preserves vector input",
+    "bounded loop",
+    "mobile step"
+  ],
+  "page_errors": [],
+  "resources": [
+    {
+      "url": "http://127.0.0.1:37491/",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:37491/pkg/ounce_learn.js",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:37491/pkg/ounce_learn_bg.wasm",
+      "status": 200
+    }
+  ]
+}
