@@ -19,7 +19,8 @@
 //! Guest code shares the host's address space and privileges: native execution is for homebrew the
 //! user would run natively anyway, not a sandbox.
 
-use crate::{Arena, NceError};
+#[cfg_attr(not(target_arch = "aarch64"), allow(unused_imports))] // `Context` is used by the aarch64 signal handlers
+use crate::{Arena, Context, NceError};
 
 /// Why [`enter`] returned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
