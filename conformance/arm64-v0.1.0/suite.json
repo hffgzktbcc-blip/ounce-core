@@ -1,0 +1,31 @@
+{
+  "schema": "ounce-core/conformance-v1",
+  "version": "0.1.0",
+  "license": "MIT",
+  "scope": "One recorded independent ARM64 instruction input; not an ISA certification or sequence suite.",
+  "comparison": {
+    "x_excluded": [
+      18
+    ],
+    "v": "all 32 registers, raw 128-bit values",
+    "nzcv": "all four bits",
+    "fpsr_mask": "08000000",
+    "fpcr_input": "00000000",
+    "fpsr_input": "00000000",
+    "pc_sp_memory": "not compared"
+  },
+  "cases": [
+    {
+      "id": "default-nan-mul2d",
+      "path": "cases/default-nan-mul2d.trace",
+      "sha256": "b98c8bc44fc7c35cbcbf36e8e8ea3efa2f9b2ccaecb637abea819311b6e3151b",
+      "word": "6e62dc20",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "commit": "8b65ba1a613952b154d49875f4ece14fd3ab93f0",
+        "job_url": "https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42558815987/job/128970464303",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --case default-nan-mul2d"
+      }
+    }
+  ]
+}

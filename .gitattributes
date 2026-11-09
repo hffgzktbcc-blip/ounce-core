@@ -6,3 +6,5 @@ licenses/*.txt text eol=lf
 
 # Instruction dossiers are content checked and must retain identical checkout bytes.
 docs/verify/insn-fuzzer/default-nan-mul2d/** text eol=lf
+
+conformance/** text eol=lf

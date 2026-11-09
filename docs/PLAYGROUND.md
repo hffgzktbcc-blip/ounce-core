@@ -6,6 +6,8 @@ actual instructions; JavaScript displays returned register snapshots. It does
 not substitute scripted register values. The older `site/lab.html` workbench is
 labeled as a design preview and links to this execution path.
 
+[Open the live playground](https://hffgzktbcc-blip.github.io/ounce-core/playground/).
+
 ## Run locally
 
 From the repository root, install the Rust target and exact binding-tool version:
@@ -60,7 +62,9 @@ SVC stop, transactional input errors, the hardware vector case, input-preserving
 reset, bounded loops and a mobile viewport. Execution after loading also passed
 with network access disabled. [Browser observations](verify/playground/acceptance.json)
 identify the actual Wasm hash; screenshots are retained alongside them. Hosted
-browser qualification and live deployment are recorded separately when available.
+browser qualification passed in [run 42564695731](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42564695731) at `37cfc26`. Its retained preview artifact is ID 13650454864
+(digest `sha256:099cf1b5cb0a7da7294dce0751dfc172874ac3424153147c9cebba7f0e71ae56`).
+The initial clean-runner attempt exposed an unfetched metadata dependency; the builder now fetches the complete locked graph before offline notice collection. Live deployment is separate from this hosted build/browser acceptance.
 
 The build retains actual license texts from its locked Cargo graph and installed
 Rust toolchain. A notice inventory is tied to the Wasm bytes. The artifact checker
@@ -68,3 +72,7 @@ checks declared asset/notice hashes and refuses paths escaping the artifact root
 These are correspondence checks, not a legal opinion, a source-provenance guarantee
 or clearance of the native Mac app's separate distribution questions. The CI
 preview includes notices and checksums; it does not include the binding-tool binary.
+
+## Public deployment acceptance
+
+PR #269 passed all 40 checks and merged at `888d515`. [Pages run 42565903672](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42565903672) deployed successfully. A fresh Chromium context loaded the public HTTPS page and actual Wasm, then passed MOV/ADD and hardware FMUL checks after network access was disabled. [Live observations](verify/playground/live-acceptance.json) retain the deployed binary hash, which differs from the local build hash. Its artifact manifest agrees with those Wasm bytes; public notice-inventory and project-notice hashes were checked. Individual remote third-party notice files were not all fetched again; the build/CI artifact checks cover their packaged hashes.
