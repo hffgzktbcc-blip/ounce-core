@@ -5,6 +5,11 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 ## Unreleased
 
 ### Fixed
+- `run`/`run-nro --cpu=tier3|tier4` (or `OUNCE_CPU`) now runs the guest on the selected block engine. Before, the
+  flag was ignored for homebrew programs: every run used the one-instruction interpreter, so the "Tier-3" and
+  "Tier-4" columns of the NRO differentials had not exercised those engines. With no flag the default path is
+  unchanged. Measured on a 200-iteration mixed integer/float/heap workload: interpreter 52 s, Tier-3 36 s,
+  Tier-4 16 s, output byte-identical to the host. All 15 differential harnesses still match on every engine.
 - CLI help and profile banners print the crate version instead of a hardcoded `v0.3.0`.
 
 ## 0.6.1
