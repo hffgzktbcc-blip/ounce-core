@@ -57,6 +57,47 @@ class RuntimeLicensePackagingTests(unittest.TestCase):
             package_release.package(self.binary, self.output, True)
         self.assertFalse(self.output.exists())
 
+    def test_linux_publication_requires_binary_bound_native_notices(self):
+        self.binary.write_bytes(b'\x7fELFfixture only')
+        self.make_notices()
+        with self.assertRaisesRegex(ValueError, 'native'):
+            package_release.package(self.binary, self.output, True, self.notices)
+        self.assertFalse(self.output.exists())
+
+    def test_native_notices_are_retained_and_tampering_rejected(self):
+        self.binary.write_bytes(b'\x7fELFfixture only')
+        self.make_notices()
+        native = self.root / 'native'
+        (native / 'packages/example').mkdir(parents=True)
+        notice = native / 'packages/example/copyright.txt'
+        notice.write_text('actual installed package copyright fixture')
+        (native / 'common').mkdir()
+        lgpl = native / 'common/LGPL-2.1.txt'
+        lgpl.write_text('installed LGPL text fixture')
+        data = {'schema_version': 'ounce-core/native-notices-v1',
+                'binary_sha256': self.digest(self.binary),
+                'libraries': [{'soname': 'libexample.so', 'package': 'example', 'version': '1'}],
+                'files_sha256': {'packages/example/copyright.txt': self.digest(notice),
+                                 'common/LGPL-2.1.txt': self.digest(lgpl)}}
+        (native / 'manifest.json').write_text(json.dumps(data))
+        package_release.package(self.binary, self.output, True, self.notices, native)
+        with zipfile.ZipFile(self.output) as archive:
+            self.assertEqual(archive.read('licenses/native/packages/example/copyright.txt'), notice.read_bytes())
+        for field, value in [('binary_sha256', '0' * 64),
+                             ('files_sha256', {'../outside': '0' * 64}),
+                             ('files_sha256', {'packages/example/copyright.txt': self.digest(notice)})]:
+            bad = dict(data)
+            bad[field] = value
+            (native / 'manifest.json').write_text(json.dumps(bad))
+            with self.assertRaises(ValueError):
+                package_release.package(self.binary, self.root / 'rejected.zip', True, self.notices, native)
+            self.assertFalse((self.root / 'rejected.zip').exists())
+        (native / 'manifest.json').write_text(json.dumps(data))
+        notice.write_text('tampered copyright')
+        with self.assertRaisesRegex(ValueError, 'hash mismatch'):
+            package_release.package(self.binary, self.root / 'rejected.zip', True, self.notices, native)
+        self.assertFalse((self.root / 'rejected.zip').exists())
+
     def test_archive_retains_the_bound_notices_and_manifest(self):
         self.make_notices()
         package_release.package(self.binary, self.output, True, self.notices)
