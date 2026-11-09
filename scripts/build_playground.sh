@@ -5,6 +5,9 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 output="$root/target/playground"
 bindgen="${WASM_BINDGEN:-wasm-bindgen}"
 [[ "$("$bindgen" --version)" == "wasm-bindgen 0.2.129" ]] || { echo 'Use wasm-bindgen-cli 0.2.129 (matching the locked browser crate).' >&2; exit 1; }
+# Metadata inventories the entire locked graph, including dependencies not compiled
+# for this target. Fetch those before the notice collector intentionally goes offline.
+cargo fetch --locked --manifest-path "$root/crates/ounce-learn/Cargo.toml"
 CARGO_TARGET_DIR="$root/target/learn" cargo build --release --locked --target wasm32-unknown-unknown --manifest-path "$root/crates/ounce-learn/Cargo.toml"
 mkdir -p "$output/pkg"
 "$bindgen" --target web --out-dir "$output/pkg" "$root/target/learn/wasm32-unknown-unknown/release/ounce_learn.wasm"
