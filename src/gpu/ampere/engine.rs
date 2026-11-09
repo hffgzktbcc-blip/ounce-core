@@ -705,7 +705,7 @@ impl Ampere3d {
             m::LOAD_MME_INSTRUCTION_RAM => self.mme.load_code(call.data),
             m::LOAD_MME_START_ADDRESS_RAM_POINTER => self.mme.set_start_pointer(call.data),
             m::LOAD_MME_START_ADDRESS_RAM => self.mme.load_start(call.data),
-            m::CALL_MME_MACRO.. if (method - m::CALL_MME_MACRO) % m::CALL_MME_STRIDE == 0 => {
+            m::CALL_MME_MACRO.. if (method - m::CALL_MME_MACRO).is_multiple_of(m::CALL_MME_STRIDE) => {
                 let index = (method - m::CALL_MME_MACRO) / m::CALL_MME_STRIDE;
                 if class == m::MAXWELL_B {
                     self.macro_call = Some(MacroCall { subchannel: call.subchannel, index, params: vec![call.data] });
@@ -779,7 +779,7 @@ impl Ampere3d {
             }
             _ if (m::BIND_GROUP_CONSTANT_BUFFER..m::BIND_GROUP_CONSTANT_BUFFER + m::BIND_GROUP_COUNT as u32 * m::BIND_GROUP_STRIDE)
                 .contains(&method)
-                && (method - m::BIND_GROUP_CONSTANT_BUFFER) % m::BIND_GROUP_STRIDE == 0 =>
+                && (method - m::BIND_GROUP_CONSTANT_BUFFER).is_multiple_of(m::BIND_GROUP_STRIDE) =>
             {
                 let group = ((method - m::BIND_GROUP_CONSTANT_BUFFER) / m::BIND_GROUP_STRIDE) as usize;
                 let slot = ((call.data >> 4) & 0x1f) as usize;
@@ -1006,7 +1006,7 @@ impl Ampere3d {
             .filter_map(|i| {
                 let a = self.reg(m::SET_VERTEX_ATTRIBUTE_A + 4 * i);
                 // SOURCE 6:6 = INACTIVE, and an all-zero word is a never-programmed slot.
-                (a != 0 && (a >> 6) & 1 == 0).then(|| VertexAttribute {
+                (a != 0 && (a >> 6) & 1 == 0).then_some(VertexAttribute {
                     index: i as u8,
                     stream: (a & 0x1f) as u8,
                     offset: (a >> 7) & 0x3fff,

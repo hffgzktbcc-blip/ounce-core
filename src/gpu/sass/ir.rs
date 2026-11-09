@@ -157,7 +157,7 @@ pub enum AttrSlot {
 const POINT_SIZE_ATTR: u16 = 0x6c;
 
 pub fn attr_slot(addr: u16) -> Option<AttrSlot> {
-    if addr % 4 != 0 {
+    if !addr.is_multiple_of(4) {
         return None;
     }
     match addr {

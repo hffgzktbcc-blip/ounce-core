@@ -56,16 +56,13 @@ impl HostAudioSink {
         let sample_rate = DEFAULT_SAMPLE_RATE;
         let channels = DEFAULT_CHANNELS;
 
-        let stream = match Self::init_stream(
+        let stream = Self::init_stream(
             queue_clone,
             underruns_clone,
             played_clone,
             sample_rate,
             channels,
-        ) {
-            Ok(s) => Some(s),
-            Err(_) => None,
-        };
+        ).ok();
 
         let is_enabled = stream.is_some();
         Self {
