@@ -7,6 +7,7 @@ const EXITCODE: &[u8] = include_bytes!("../../tests/linux-elf/bin/exitcode.elf")
 const ARGS: &[u8] = include_bytes!("../../tests/linux-elf/bin/args.elf");
 const MEMORY: &[u8] = include_bytes!("../../tests/linux-elf/bin/memory.elf");
 const BADSYS: &[u8] = include_bytes!("../../tests/linux-elf/bin/badsyscall.elf");
+const BASIC_MATH: &[u8] = include_bytes!("../../tests/linux-elf/bin/basic_math.elf");
 
 #[derive(Default)]
 struct Capture {
@@ -44,6 +45,15 @@ fn exit_code_propagates() {
         let (r, _) = go(EXITCODE, &["exitcode"], t);
         assert_eq!(r.stop, Stop::Exited(42));
         assert_eq!(r.exit_status(), 42);
+    }
+}
+
+#[test]
+fn basic_math_execution() {
+    for t in TIERS {
+        let (r, out) = go(BASIC_MATH, &["basic_math"], t);
+        assert_eq!(r.stop, Stop::Exited(42), "{r:?}");
+        assert_eq!(out, "calculating 15 + 27 = 42\n");
     }
 }
 
