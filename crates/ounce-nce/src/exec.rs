@@ -1,7 +1,7 @@
 //! Entering guest code and getting back out.
 //!
 //! [`enter`] saves the host's callee-saved registers on the host stack, loads the guest register
-//! file from a [`Context`] and branches to a trampoline in the patch area (a resume stub or the
+//! file from a [`crate::Context`] and branches to a trampoline in the patch area (a resume stub or the
 //! launch slot, see [`crate::patch`]). Guest code then runs on the host CPU until it reaches a
 //! rewritten instruction. That trampoline stores the guest registers into the same `Context` and
 //! jumps to the host return path, which restores the host stack and returns from [`enter`].
@@ -19,6 +19,7 @@
 //! Guest code shares the host's address space and privileges: native execution is for homebrew the
 //! user would run natively anyway, not a sandbox.
 
+#[cfg_attr(not(target_arch = "aarch64"), allow(unused_imports))] // `Context` is used by the aarch64 signal handlers
 use crate::{Arena, Context, NceError};
 
 /// Why [`enter`] returned.
@@ -527,7 +528,7 @@ pub fn set_preemption(slice: Option<std::time::Duration>, no_preempt: &[(u64, u6
     imp::set_preemption(slice, no_preempt)
 }
 
-/// Runs guest code from `target` (a sealed trampoline) with the registers in the [`Context`] at
+/// Runs guest code from `target` (a sealed trampoline) with the registers in the [`crate::Context`] at
 /// `ctx_va` until a trampoline or a fault returns control. See the module documentation.
 pub fn enter(arena: &mut Arena, ctx_va: u64, target: u64) -> Result<Exit, NceError> {
     imp::enter(arena, ctx_va, target)
