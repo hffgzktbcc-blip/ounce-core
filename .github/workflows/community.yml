@@ -92,7 +92,7 @@ jobs:
                 ...repo,
                 title: 'Community maintenance: replenish approachable first issues',
                 body: `${marker}
-            This single, automated maintainer reminder appears only when fewer than ${minimum} open issues carry the `good first issue` label.
+            This single, automated maintainer reminder appears only when fewer than ${minimum} open issues carry the 'good first issue' label.
 
             **Action for maintainers:** add or relabel genuinely scoped, unclaimed beginner tasks. Include the exact file, expected change, acceptance checks and whether browser-only work is possible. Do not generate filler tasks or mislabel advanced work.
 
