@@ -93,18 +93,18 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Result: one pinned library harness runs without a console SDK and matches a fresh host reference.
       Acceptance: same shared C cases, retained toolchain/source hashes, Tier-3/Tier-4 comparison, actionable unsupported-syscall errors and unchanged existing ELF fixtures. Keep deterministic time and wider OS qualification explicit until tested.
       Evidence: [LZ4 Linux ELF report](docs/verify/linux-elf/lz4-2026-11-08/report.json) and [recipe](docs/verify/linux-elf/README.md#lz4-without-a-console-sdk): unchanged pinned cases linked with musl match a fresh host on actual Tier-3/Tier-4, exit 0, 406 bytes, 3,862,822 instructions. No runtime patch needed. Five execution-verdict tests and all 108 Python tooling tests passed (one pre-existing opt-in skip); All 11 existing Rust Linux ELF tests passed with native-jit enabled, including unknown-syscall diagnosis and malformed-input handling.
-      Next: qualify the new Linux CI job; deterministic time and wider OS acceptance remain incomplete vision-step-1 work.
+      Follow-up: V3/V4 qualified bounded deterministic time and all three host OSes. Wider verified-library ELF/syscall coverage remains incomplete vision-step-1 work.
 
 - [x] **V3. Make the bounded Linux ELF workflow repeatable.**
       Result: `run-elf --deterministic` uses fixed virtual clock values, and guest arguments after `--` reach the program unchanged.
       Evidence: [clock/CLI acceptance](docs/verify/linux-elf/deterministic-2026-11-08.json): identical clock output on two runs of each actual engine; invalid-clock/pointer and rollover tests pass. Full native-jit unit suite: 562 passed, 10 existing opt-in tests ignored; five CLI tests passed. The new guest-option regression failed before the parser fix. No general deterministic Linux or cross-host replay claim.
-      Next: qualify the new mode on hosted supported hosts alongside V4.
+      Follow-up: V4 qualified this mode on all three supported host OSes.
 - [x] **V4. Qualify the same Linux ELF workflow on Linux, macOS and Windows.**
       Depends: V2 V3
       Result: the same pinned library cases and clock fixture execute with explicit engine identity on all three hosts.
       Acceptance: retain per-host toolchains, source/input hashes, output, errors and hosted run links; require byte comparisons and nonzero failure exits. Do not treat cross-host compiler differences as emulator failures without checking the actual inputs.
       Evidence: [three-host qualification](docs/verify/linux-elf/three-host-2026-11-08.json), run 42523628103 at 10db735: Linux, macOS and Windows library jobs passed, both engines identical, all five CLI scenarios passed on each host. Each host builds its own ELF from the same pinned cases; this does not prove transporting identical ELF bytes or general libc compatibility. GitHub artifact digests and execution log excerpts retained; no local ZIP-byte verification claimed.
-      Next: V5 instruction-level first divergence and V6 portable recording; expand library coverage from observed needs.
+      Follow-up: V5/V6 now qualify instruction-level diagnosis and portable replay. Expand library coverage from observed needs.
 - [x] **V5. Locate one instruction-level first divergence.**
       Result: a bounded real failing execution points at its first differing instruction with register state before/after.
       Acceptance: preserve an observed failure, verify the reported location against a controlled reproduction, and distinguish optimized-block behavior from interpreter fallback. Retained frame differences do not satisfy this task.
@@ -126,10 +126,11 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Progress: same CPU/memory source now builds to real WebAssembly; bounded API, 117 tests and actual Chromium instruction stepping pass. Browser artifact includes binary-bound graph/toolchain notices. Existing site links and Pages build are wired; scripted workbench is labeled as a design preview. See [playground evidence](docs/PLAYGROUND.md).
       Acceptance: PR #269 passed all 40 hosted checks and merged at `888d515`. Pages run 42565903672 deployed successfully; a fresh Chromium context loaded the public Wasm and checked MOV/ADD, hardware FMUL and offline execution. [Live acceptance](docs/verify/playground/live-acceptance.json) retains actual hosted Wasm identity and notice-inventory correspondence.
 - [ ] **V8. Publish a reusable conformance suite and obtain an outside result.**
-      Status: active
+      Status: blocked
+      Blocked by: an actual outside-project execution and result.
       Result: another emulator project runs a versioned suite and reports a result with exact inputs and reference scope.
-      Progress: [version 0.1.0 seed](conformance/arm64-v0.1.0/README.md) packages the unchanged hardware FMUL trace, hashes, provenance, comparison scope and adapter contract. A runner rejects unsupported, missing/duplicate counts and tampered input. All three local runtime engines pass; these are internal observations.
-      Next: qualify and publish the seed, expand from measured cases, then obtain an actual outside-project result. Outside adoption remains external acceptance and is not inferred from internal runs.
+      Progress: [version 0.1.0 seed](conformance/arm64-v0.1.0/README.md) packages the unchanged hardware FMUL trace, hashes, provenance, comparison scope and adapter contract. A runner rejects unsupported, missing/duplicate counts and tampered input. All three local runtime engines pass. PR #270 passed all 21 hosted checks, including each engine on Linux, macOS and Windows, and merged at `2e55a5e`; these remain internal observations.
+      Next: preserve the published seed, expand from measured cases in a new version, and obtain an actual outside-project result. Outside adoption remains external acceptance and is not inferred from internal runs.
 
 ## External acceptance and publication dependencies
 
