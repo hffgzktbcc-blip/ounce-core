@@ -99,6 +99,15 @@ jobs:
           mkdir -p fuzz-results
           export TMPDIR="$PWD/fuzz-results"
           bash docs/verify/insn-fuzzer/run_tiers.sh 20000 2>&1 | tee fuzz-results/run.log
+      - name: Retain a hardware reference for invalid vector multiplication
+        shell: bash
+        run: |
+          set -euo pipefail
+          fuzz-results/fuzz_host --case default-nan-mul2d > fuzz-results/default-nan-mul2d.trace
+          cat fuzz-results/default-nan-mul2d.trace
+          for engine in interp tier3 tier4; do
+            target/release/ounce-core fuzz-replay --engine "$engine" fuzz-results/default-nan-mul2d.trace
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:

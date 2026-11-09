@@ -106,3 +106,39 @@ fn fuzzer_fails_when_the_engine_accepts_a_host_undefined_word() {
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stdout).contains("emulator runs a word the host calls UNDEFINED: 1"));
 }
+
+fn mov_trace(expected_x0: u64) -> String {
+    let input = vec!["0".to_string(); 63].join(" ");
+    let mut output = vec!["0".to_string(); 63];
+    output[0] = format!("{expected_x0:x}");
+    format!("T d2800020 0 {input} => 0 0 {}\n", output.join(" "))
+}
+
+#[test]
+fn first_instruction_difference_retains_the_actual_execution_and_replay_input() {
+    let root = std::env::temp_dir().join(format!("ounce_dossier_{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    let trace = root.join("input.trace");
+    let bundle = root.join("first-difference");
+    // First case agrees; the second and third deliberately contradict MOV X0,#1.
+    std::fs::write(&trace, mov_trace(1) + &mov_trace(2) + &mov_trace(3)).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["fuzz-replay", "--engine", "tier3", "--first-difference", bundle.to_str().unwrap(), trace.to_str().unwrap()])
+        .output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(bundle.join("diagnosis.json").exists(), "{}", String::from_utf8_lossy(&output.stderr));
+    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(bundle.join("diagnosis.json")).unwrap()).unwrap();
+    assert_eq!(report["line_number"], 2);
+    assert_eq!(report["word"], "0xd2800020");
+    assert_eq!(report["input"]["x"][0], "0x0000000000000000");
+    assert_eq!(report["reference"]["x"][0], "0x0000000000000002");
+    assert_eq!(report["actual"]["x"][0], "0x0000000000000001");
+    assert_eq!(std::fs::read_to_string(bundle.join("case.trace")).unwrap(), mov_trace(2));
+    // The bundle is immutable; rerunning never overwrites the original diagnosis.
+    let before = std::fs::read(bundle.join("diagnosis.json")).unwrap();
+    let again = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["fuzz-replay", "--first-difference", bundle.to_str().unwrap(), trace.to_str().unwrap()]).output().unwrap();
+    assert_eq!(again.status.code(), Some(2));
+    assert_eq!(std::fs::read(bundle.join("diagnosis.json")).unwrap(), before);
+    std::fs::remove_dir_all(root).unwrap();
+}

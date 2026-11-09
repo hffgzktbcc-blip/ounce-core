@@ -319,24 +319,30 @@ pub fn replay(c: &Case) -> Outcome {
 /// Replays one case on `engine`; the second value is the number of instructions Tier-4 ran natively.
 /// Words the interpreter does not implement are classified from an interpreter run first so the
 /// counts are comparable across engines.
+#[cfg(test)]
 fn replay_on(c: &Case, engine: Engine) -> (Outcome, u64) {
+    let (outcome, native, _) = replay_details(c, engine);
+    (outcome, native)
+}
+
+fn replay_details(c: &Case, engine: Engine) -> (Outcome, u64, Option<Box<State>>) {
     let init = Init { nzcv: c.nzcv_in, x: c.x_in, sp: DATA, v: c.v_in, fpcr: 0, data: Vec::new() };
     if engine != Engine::Interp {
         match exec(Engine::Interp, c.word, &init).0 {
-            Exec::Unimplemented => return (Outcome::Unimplemented, 0),
-            Exec::Other(e) => return (Outcome::OtherError(e), 0),
+            Exec::Unimplemented => return (Outcome::Unimplemented, 0, None),
+            Exec::Other(e) => return (Outcome::OtherError(e), 0, None),
             _ => {}
         }
     }
     let (r, native) = exec(engine, c.word, &init);
     let st = match r {
         Exec::Done(st) => st,
-        Exec::Unimplemented => return (Outcome::Unimplemented, 0),
-        Exec::Unavailable => return (Outcome::OtherError("engine unavailable".into()), 0),
-        Exec::Other(e) => return (Outcome::OtherError(e), 0),
+        Exec::Unimplemented => return (Outcome::Unimplemented, 0, None),
+        Exec::Unavailable => return (Outcome::OtherError("engine unavailable".into()), 0, None),
+        Exec::Other(e) => return (Outcome::OtherError(e), 0, None),
     };
     if st.exit != "svc 0" {
-        return (Outcome::OtherError(format!("exit {} pc {:#x}", st.exit, st.pc)), native);
+        return (Outcome::OtherError(format!("exit {} pc {:#x}", st.exit, st.pc)), native, Some(st));
     }
     let mut diffs = Vec::new();
     for i in 0..31 {
@@ -356,7 +362,44 @@ fn replay_on(c: &Case, engine: Engine) -> (Outcome, u64) {
     if st.fpsr & QC != c.fpsr_out & QC {
         diffs.push(format!("fpsr.QC: host {} emu {}", (c.fpsr_out & QC) >> 27, (st.fpsr & QC) >> 27));
     }
-    (Outcome::Ran(diffs, st.fpsr), native)
+    (Outcome::Ran(diffs, st.fpsr), native, Some(st))
+}
+
+/// Retain a single compared instruction, not a trace of an arbitrary program.
+fn save_difference(dir: &std::path::Path, line: &str, line_number: usize, c: &Case, st: &State,
+                   engine: Engine, native: u64, differences: &[String]) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let x_hex = |x: &[u64]| x.iter().map(|v| format!("{v:#018x}")).collect::<Vec<_>>();
+    let v_hex = |v: &[u128]| v.iter().map(|v| format!("{v:#034x}")).collect::<Vec<_>>();
+    let trace = format!("{line}\n");
+    let engine_name = match engine { Engine::Interp => "interp", Engine::Tier3 => "tier3", Engine::Tier4 => "tier4" };
+    let runtime = std::env::current_exe().and_then(std::fs::read).map_err(|e| e.to_string())?;
+    let doc = serde_json::json!({
+        "schema": "ounce-core/instruction-difference-v1",
+        "scope": "first differing compared case in an independent-instruction trace; not an arbitrary program's first divergence",
+        "reference_provenance": "supplied trace; hardware origin must be established separately",
+        "line_number": line_number,
+        "word": format!("{:#010x}", c.word),
+        "harness_pc": format!("{WORD_PC:#x}"),
+        "engine": engine_name,
+        "tier4_native_instructions_including_wrapper": native,
+        "host": {"os": std::env::consts::OS, "arch": std::env::consts::ARCH},
+        "runtime_sha256": format!("{:x}", Sha256::digest(&runtime)),
+        "case_sha256": format!("{:x}", Sha256::digest(trace.as_bytes())),
+        "input": {"x": x_hex(&c.x_in), "v": v_hex(&c.v_in), "nzcv": c.nzcv_in, "fpsr": 0, "fpcr": 0},
+        "reference": {"x": x_hex(&c.x_out), "v": v_hex(&c.v_out), "nzcv": c.nzcv_out, "fpsr": c.fpsr_out},
+        "actual": {"x": x_hex(&st.x), "v": v_hex(&st.v), "nzcv": st.nzcv, "fpsr": st.fpsr},
+        "comparison": {"excluded_x": [18], "fpsr_mask": format!("{QC:#x}"), "fpcr": 0,
+                       "wrapper": "test word followed by SVC #0; PC/SP are not hardware-reference comparisons"},
+        "differences": differences,
+        "replay_argv": ["ounce-core", "fuzz-replay", "--engine", engine_name, "case.trace"],
+        "replay_cwd": "this bundle directory"
+    });
+    let bytes = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
+    std::fs::create_dir(dir).map_err(|e| format!("cannot create new dossier {}: {e}", dir.display()))?;
+    std::fs::write(dir.join("case.trace"), trace).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("diagnosis.json"), bytes).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Does the interpreter run a word the host calls UNDEFINED?
@@ -384,6 +427,8 @@ fn class(word: u32) -> u32 {
 
 pub fn run(args: &[String]) -> i32 {
     let mut show = 20usize;
+    let mut dossier: Option<std::path::PathBuf> = None;
+    let mut dossier_saved = false;
     let mut top = 60usize;
     let mut list_unimpl = false;
     // `--filter MASK:VALUE` (hex): also count executed/matching words with `word & MASK == VALUE`, for per-class evidence
@@ -410,6 +455,10 @@ pub fn run(args: &[String]) -> i32 {
                     }
                 }
             }
+            "--first-difference" => match it.next() {
+                Some(path) => dossier = Some(path.into()),
+                None => { eprintln!("--first-difference requires a new directory"); return 2; }
+            },
             "--list-unimplemented" => list_unimpl = true,
             "--top" => top = it.next().and_then(|v| v.parse().ok()).unwrap_or(60),
             "--engine" => match it.next().and_then(|v| Engine::parse(v)) {
@@ -425,7 +474,15 @@ pub fn run(args: &[String]) -> i32 {
             _ => input = Some(a.clone()),
         }
     }
+    if dossier.as_ref().is_some_and(|p| p.exists()) {
+        eprintln!("--first-difference requires a new directory; existing evidence is never overwritten");
+        return 2;
+    }
     if ee {
+        if dossier.is_some() {
+            eprintln!("--first-difference currently requires a reference trace, not --engine-vs-engine");
+            return 2;
+        }
         if count == 0 {
             eprintln!("--count must be positive; no cases would be compared");
             return 2;
@@ -433,7 +490,7 @@ pub fn run(args: &[String]) -> i32 {
         return run_engines(seed, count, show);
     }
     let Some(input) = input else {
-        eprintln!("usage: fuzz-replay [--show N] [--top N] [--filter MASK:VALUE]... [--list-unimplemented] [--engine interp|tier3|tier4] <trace-file|->");
+        eprintln!("usage: fuzz-replay [--show N] [--top N] [--filter MASK:VALUE]... [--list-unimplemented] [--engine interp|tier3|tier4] [--first-difference NEW-DIR] <trace-file|->");
         eprintln!("       fuzz-replay --engine-vs-engine [--seed N] [--count N] [--show N]");
         return 2;
     };
@@ -482,11 +539,10 @@ pub fn run(args: &[String]) -> i32 {
                     accepts.entry(class(w)).or_insert((0, w)).0 += 1;
                 }
             }
-            Line::Test(c) => match {
-                let (o, n) = replay_on(&c, engine);
-                native_cases += u64::from(n > 0);
-                o
-            } {
+            Line::Test(c) => {
+                let (outcome, native, state) = replay_details(&c, engine);
+                native_cases += u64::from(native > 0);
+                match outcome {
                 Outcome::Unimplemented => {
                     t.unimplemented += 1;
                     if list_unimpl {
@@ -516,6 +572,15 @@ pub fn run(args: &[String]) -> i32 {
                         }
                     } else {
                         t.value_mismatch += 1;
+                        if let Some(dir) = dossier.as_ref().filter(|_| !dossier_saved) {
+                            let Some(st) = state.as_deref() else {
+                                eprintln!("dossier: missing execution state"); return 2;
+                            };
+                            if let Err(e) = save_difference(dir, &line, n + 1, &c, st, engine, native, &diffs) {
+                                eprintln!("dossier: {e}"); return 2;
+                            }
+                            dossier_saved = true;
+                        }
                         if diffs.iter().any(|d| d.starts_with("fpsr.QC")) {
                             t.qc_mismatch += 1;
                         }
@@ -528,6 +593,7 @@ pub fn run(args: &[String]) -> i32 {
                             }
                         }
                     }
+                }
                 }
             },
         }
