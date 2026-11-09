@@ -1,0 +1,236 @@
+{
+  "schema": "ounce-core/linux-library-v1",
+  "harness": "zlib",
+  "failed": false,
+  "steps": [
+    {
+      "name": "host-compiler",
+      "argv": [
+        "cc",
+        "--version"
+      ],
+      "timeout_seconds": 600,
+      "returncode": 0,
+      "stdout": {
+        "path": "host-compiler.stdout",
+        "sha256": "3e8cc208c40f60832f67377aa1b03c3e7e858f20cd5d365464944700c0bd7ad1"
+      },
+      "stderr": {
+        "path": "host-compiler.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "elf-compiler",
+      "argv": [
+        "python3",
+        "-m",
+        "ziglang",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "--version"
+      ],
+      "timeout_seconds": 600,
+      "returncode": 0,
+      "stdout": {
+        "path": "elf-compiler.stdout",
+        "sha256": "095ff8ce390eb3e358088d840097f39488ed7faec21753fb33bf578d24b28a3c"
+      },
+      "stderr": {
+        "path": "elf-compiler.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "host-build",
+      "argv": [
+        "cc",
+        "-O1",
+        "-Isources",
+        "sources/adler32.c",
+        "sources/cases.c",
+        "sources/compress.c",
+        "sources/crc32.c",
+        "sources/deflate.c",
+        "sources/host_main.c",
+        "sources/inffast.c",
+        "sources/inflate.c",
+        "sources/inftrees.c",
+        "sources/trees.c",
+        "sources/uncompr.c",
+        "sources/zutil.c",
+        "-o",
+        "host-ref.exe"
+      ],
+      "timeout_seconds": 600,
+      "returncode": 0,
+      "stdout": {
+        "path": "host-build.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "host-build.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "elf-build",
+      "argv": [
+        "python3",
+        "-m",
+        "ziglang",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "-O1",
+        "-Isources",
+        "-static",
+        "-no-pie",
+        "sources/adler32.c",
+        "sources/cases.c",
+        "sources/compress.c",
+        "sources/crc32.c",
+        "sources/deflate.c",
+        "sources/host_main.c",
+        "sources/inffast.c",
+        "sources/inflate.c",
+        "sources/inftrees.c",
+        "sources/trees.c",
+        "sources/uncompr.c",
+        "sources/zutil.c",
+        "-o",
+        "zlib.elf"
+      ],
+      "timeout_seconds": 600,
+      "returncode": 0,
+      "stdout": {
+        "path": "elf-build.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "elf-build.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "host-run",
+      "argv": [
+        "target/linux-zlib/host-ref.exe"
+      ],
+      "timeout_seconds": 600,
+      "returncode": 0,
+      "stdout": {
+        "path": "host-run.stdout",
+        "sha256": "c0099818ea2bcc6b61d60601b7b1432b6be1128694e2c5f222209cc1898be41e"
+      },
+      "stderr": {
+        "path": "host-run.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "tier3",
+      "argv": [
+        "/home/user/ounce-core/target/release/ounce-core",
+        "run-elf",
+        "target/linux-zlib/zlib.elf",
+        "--cpu=tier3",
+        "--max-insns=2000000000",
+        "--trace-syscalls"
+      ],
+      "timeout_seconds": 600,
+      "returncode": 0,
+      "stdout": {
+        "path": "tier3.stdout",
+        "sha256": "c0099818ea2bcc6b61d60601b7b1432b6be1128694e2c5f222209cc1898be41e"
+      },
+      "stderr": {
+        "path": "tier3.stderr",
+        "sha256": "e83e62c5825112c94e11bea706c5b1cea911f381b1d7380f1d7f26996a480bbf"
+      }
+    },
+    {
+      "name": "tier4",
+      "argv": [
+        "/home/user/ounce-core/target/release/ounce-core",
+        "run-elf",
+        "target/linux-zlib/zlib.elf",
+        "--cpu=tier4",
+        "--max-insns=2000000000",
+        "--trace-syscalls"
+      ],
+      "timeout_seconds": 600,
+      "returncode": 0,
+      "stdout": {
+        "path": "tier4.stdout",
+        "sha256": "c0099818ea2bcc6b61d60601b7b1432b6be1128694e2c5f222209cc1898be41e"
+      },
+      "stderr": {
+        "path": "tier4.stderr",
+        "sha256": "56ff6280ee447f59c546fed9a50c0920de68e595a311f8d1bce583d3a0340f20"
+      }
+    }
+  ],
+  "checks": {
+    "tier3": "identical",
+    "tier4": "identical"
+  },
+  "upstream": {
+    "repo": "https://github.com/madler/zlib",
+    "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
+    "copy": {
+      "zlib.h": "zlib.h",
+      "zconf.h": "zconf.h",
+      "zutil.h": "zutil.h",
+      "gzguts.h": "gzguts.h",
+      "crc32.h": "crc32.h",
+      "deflate.h": "deflate.h",
+      "inffast.h": "inffast.h",
+      "inffixed.h": "inffixed.h",
+      "inflate.h": "inflate.h",
+      "inftrees.h": "inftrees.h",
+      "trees.h": "trees.h",
+      "adler32.c": "adler32.c",
+      "compress.c": "compress.c",
+      "crc32.c": "crc32.c",
+      "deflate.c": "deflate.c",
+      "inffast.c": "inffast.c",
+      "inflate.c": "inflate.c",
+      "inftrees.c": "inftrees.c",
+      "trees.c": "trees.c",
+      "uncompr.c": "uncompr.c",
+      "zutil.c": "zutil.c"
+    }
+  },
+  "sources_sha256": {
+    "adler32.c": "9cd1443a24ff2a3053961695bd432035c58347386a420d3388232376ebabe211",
+    "cases.c": "cbded11f17ee9ebd5dbac6da3cb49eb1c80fa5a7f755a72d505ff0c582d53d96",
+    "compress.c": "86f802c16a965e7a28737e3730b4e576c5ba40981753967e3e30916f4dc1b4b1",
+    "crc32.c": "8fd16f0a7714d51c89c2eb37eb98ec15e8a4dc57ba343e7b7398b19144039fda",
+    "crc32.h": "9a2223575183ac2ee8a247f20bf3ac066e8bd0140369556bdbdffc777435749e",
+    "deflate.c": "3b956337350f94c34987750f785587ef33d9c89ceaebb7c2afb189c956360cbe",
+    "deflate.h": "48baf016326d8d5e3e32ac8153cc7e22f854b8e6834830b167b998a7fb1e7989",
+    "gzguts.h": "716fa648aca1bb06c219d7b97ad4846d8479206143bc39557bfd8283f5783e04",
+    "host_main.c": "b5f3d5fe6b71ff6ad73594b8b407f4b1aa7bbb83c36238a7533e4c1c59a86719",
+    "inffast.c": "e6ef64ce5dc0a4cd5c7ad08ceeb2b2a698b8447f6bd156057caeb2edab68c0cb",
+    "inffast.h": "05cc5dc9ff1da7b8b52a4bd8bda0d8a5c236a2f39efe84b941516ea13857e6c5",
+    "inffixed.h": "237ba710f090e432b62ebf963bee8b302867e9691406b2d3f8ee89ee7bfef9b0",
+    "inflate.c": "34c998ce0037c0537c04b03b276f680b945f9b2c9d1e01b287605bd6879f7fd2",
+    "inflate.h": "e8d4a51b07694bf48cb91979c19974cf6a5ab0b8a09d26ec0d14df349230673e",
+    "inftrees.c": "5d4f335221d2dc76f17abd2577d92c2d7baf68fa6d7f23373b360830493d1563",
+    "inftrees.h": "0a0fcaf2ae2fae57426bdc06637270e9bba974f35202cadbdba479d946e6409d",
+    "trees.c": "f63c68c16c05fcd196050529d1a0e7657960e4136b9987d90a6ac3e58a964b0f",
+    "trees.h": "bb0a9d3ca88ee00c81adb7c636e73b97085f6ef1b52d6d58edbe2b6dc3adeb4d",
+    "uncompr.c": "04dca5e31b3b8a17d1806426f66f0c539f4184d657e149d40be07070c6227b52",
+    "zconf.h": "f5134250a67d57459234b63858f0d9d3ef8dcc48e9e1028d3f4fdcf6eae677ae",
+    "zlib.h": "8a5579af72ea4f427ff00a4150f0ccb3fc5c1e4379f726e101133b1ab9fc600c",
+    "zutil.c": "8ced40d8c88588811edd2bdb35b7439983d5e1f8e9e32b8a3b244731f3c317b7",
+    "zutil.h": "dddb2dc7a1dc339ecf2c8e089b366f08bb731c0839c7110240d17ce731bb4fea"
+  },
+  "runtime_sha256": "b4bce43e59fa4d78e1083a402f8de8e74f0a96a2fb4dfaab3fb55b449f09922e",
+  "revision": "28f0980c01acf88020decd28917ee8a61b770d56",
+  "working_tree_dirty": true,
+  "host_sha256": "def51d12b13747e0ee581a1a9d5795cf2f497de9e78ec4f400bb0c41e3fabfba",
+  "elf_sha256": "2978cc989d3d3a51c483d9abe0a08cc21e4082a637a6a64b0df3fea9c95701d5"
+}

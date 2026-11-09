@@ -53,7 +53,7 @@ impl NpdmDescriptor {
             return Err(PackageError::InvalidNpdm("File too small (< 128 bytes)".into()));
         }
 
-        if &bytes[0x00..0x04] != &NPDM_MAGIC {
+        if bytes[0x00..0x04] != NPDM_MAGIC {
             return Err(PackageError::InvalidNpdm(format!(
                 "Invalid magic: expected 'META', got {:?}",
                 &bytes[0x00..0x04]
@@ -89,7 +89,7 @@ impl NpdmDescriptor {
         let allowed_syscalls_mask = 0xFFFFFFFFFFFFFFFFu64;
 
         if let Some(aci0_bytes) = aci0_offset.checked_add(aci0_size).and_then(|end| bytes.get(aci0_offset..end)).filter(|_| aci0_size >= 0x20) {
-            if aci0_bytes.len() >= 0x20 && &aci0_bytes[0x00..0x04] == &ACI0_MAGIC {
+            if aci0_bytes.len() >= 0x20 && aci0_bytes[0x00..0x04] == ACI0_MAGIC {
                 title_id = LittleEndian::read_u64(&aci0_bytes[0x10..0x18]);
 
                 let sac_offset = LittleEndian::read_u32(&aci0_bytes[0x18..0x1C]) as usize;

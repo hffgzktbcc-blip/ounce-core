@@ -118,7 +118,7 @@ impl<'a> Parcel<'a> {
             return Err(INVALID_SIZE);
         }
         let region = |off: usize, size: usize| -> Result<std::ops::Range<usize>, u32> {
-            if off < 16 || off % 4 != 0 {
+            if off < 16 || !off.is_multiple_of(4) {
                 return Err(INVALID_SIZE);
             }
             let end = off.checked_add(size).ok_or(INVALID_SIZE)?;
@@ -141,7 +141,7 @@ impl<'a> Parcel<'a> {
         let mut previous = None;
         for entry in bytes[objects.clone()].chunks_exact(4) {
             let offset = u32::from_le_bytes(entry.try_into().unwrap()) as usize;
-            if offset % 4 != 0
+            if !offset.is_multiple_of(4)
                 || offset.checked_add(4).is_none_or(|end| end > payload_size)
                 || previous.is_some_and(|last| offset <= last)
             {

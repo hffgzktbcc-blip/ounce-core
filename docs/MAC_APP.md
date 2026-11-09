@@ -11,6 +11,19 @@ Build and install: `scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.ap
 No prebuilt macOS binary is offered while the Apple-SDK-derived `objc2` redistribution question in
 [PROVENANCE_OWNER_DECISIONS.md](PROVENANCE_OWNER_DECISIONS.md) is open.
 
+### Local preview archive
+
+`python3 scripts/package_macos_app.py --app "dist/Ounce Core.app" --out dist/macos-preview` (after the build above)
+writes a `.tar.gz` and a `.zip` of the bundle, `MANIFEST.json` (version, git revision, whether the tree was dirty,
+cargo features, rustc and swiftc versions, per-file SHA-256) and `SHA256SUMS`. It refuses an incomplete bundle (a
+missing license notice, helper or reference file) and an existing output folder. CI runs it on macOS and keeps the
+result as the 14-day `macos-app-preview` artifact.
+
+This is a developer preview, not a release. It uploads nothing, and the manifest says so: the bundle is ad-hoc
+signed and not notarized (Gatekeeper warns on first open), and it is not cleared for GitHub release assets while
+item 4 of [PROVENANCE_OWNER_DECISIONS.md](PROVENANCE_OWNER_DECISIONS.md) is open. Share it only with people you
+choose to, and tell them it is unsigned by an Apple developer identity.
+
 ## What it does
 
 | Area | Behaviour |
@@ -37,12 +50,21 @@ swiftc tools/macos-launcher/RunLogic.swift tools/macos-launcher/HostVerify.swift
 
 CI compiles and runs it on macOS beside the saved-report tests.
 
-## Not verified on a GUI
+## GUI verification status
 
-The windows, drop target, pop-up and text field, sheets and the diagnosis card were compiled and the logic tested, but
-nobody has driven them in a live session. Also unverified: `tier4` in the windowed (`--gui`) path, and whether the
-card layout fits at every window size. Verification used the real runtime headless against the fixture NROs in
-`tests/fixtures/nro/` (exit codes and logs).
+Checked live on 9 November 2026 on an Apple Silicon Mac (macOS 26.6.2) with the app built from `main` by
+`scripts/build_macos_app.sh`:
+
+- The app launches, shows its first-run window (headline, drop-target card, Open Program / Verify against Host /
+  Try the Demo buttons, engine pop-up, budget field, diagnosis panel, Show Session Details) and quits cleanly. The
+  layout fits at the default window size.
+- The bundled runtime (`Ounce Runtime.app`) runs `tests/fixtures/nro/hello/hello.nro` headless under both `tier3` and
+  `tier4` and exits through `svcExitProcess` with the same instruction count (9,067).
+- The pure logic tests (`tests/macos/run-logic/main.swift`) pass there.
+
+Still not verified: a run started from the window (dropping or choosing an NRO), the diagnosis card for a failing
+run, Verify against Host, `tier4` in the windowed (`--gui`) path, and layout at other window sizes. The window was
+observed in one screenshot and not clicked through; these were not exercised.
 
 ## Known limits
 

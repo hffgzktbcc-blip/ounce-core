@@ -10,7 +10,7 @@ Verification is the product. Ounce-Core is not another emulator promising to run
 
 1. **Ounce-Verify: prove correctness.** Run a program on the interpreter, the JIT and native execution, compare against a reference build on real hardware, detect discrepancies, and preserve hashes and reports. *Most mature pillar.*
 2. **Ounce-Debug: understand failures.** Reproduce an execution problem, compare historical results, and find where behaviour first diverges. *Demonstrated for one bounded workflow; broader tooling planned.*
-3. **Ounce-Learn: make computing understandable.** A practical place to study ARM64 execution, memory, CPU architecture and software verification, eventually one instruction at a time in the browser. *Browser teaching prototype exists; real WebAssembly execution is planned.*
+3. **Ounce-Learn: make computing understandable.** A practical place to study ARM64 execution, memory, CPU architecture and software verification, one instruction at a time in the browser. *A real WebAssembly interpreter playground now passes local and hosted Chromium checks; see [acceptance and limits](PLAYGROUND.md).*
 
 ## Who it is for
 
@@ -45,7 +45,8 @@ Every claim carries one of four labels:
 | Compare engines and compare against a host reference | bounded-verified |
 | Record results, hashes and evidence | bounded-verified |
 | Diagnose differences between retained reports | bounded-verified (one workflow) |
-| Bounded replay of a historical failure | bounded-verified (one case) |
+| Bounded replay of a historical failure | bounded-verified (SDL2 case); [instruction dossier replay](INSTRUCTION_DIAGNOSIS.md) now also exists |
+| First differing compared instruction case with register snapshots | bounded-verified on one real vector-FP discrepancy; not arbitrary-program tracing |
 | Instruction-level checking against hardware | bounded-verified on recorded single-instruction inputs; [fuzzer scope and results](verify/insn-fuzzer/README.md) |
 | Run static Linux ARM64 programs | research-only runner; six freestanding fixtures and one bounded LZ4/musl case, [run-elf evidence](verify/linux-elf/README.md) |
 | Run arbitrary ARM64 or Linux applications | not established |
@@ -73,10 +74,10 @@ Every claim carries one of four labels:
 
 Current progress and remaining acceptance:
 
-- **Step 1 started:** `run-elf` executes six tiny freestanding fixtures and the unchanged [LZ4 harness linked with musl](verify/linux-elf/README.md#lz4-without-a-console-sdk). A bounded virtual clock is available with `--deterministic`; more library coverage and three-OS acceptance remain.
+- **Step 1 started:** `run-elf` executes six tiny freestanding fixtures and the unchanged [LZ4 harness linked with musl](verify/linux-elf/README.md#lz4-without-a-console-sdk). A bounded virtual clock is available with `--deterministic`; the LZ4 case and CLI scenarios [passed on all three host OSes](verify/linux-elf/three-host-2026-11-08.json). The broader verified-program suite as Linux ELF and wider syscall coverage remain incomplete.
 - **Step 2 started:** single-instruction host fuzzing and interpreter/Tier-3/Tier-4 comparisons exist. The [Apple Silicon CI job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42521905867/job/128857024677) passed: 60,000 engine-comparison words and a 20,000-word host trace replayed through each tier, with zero unexpected differences. Generated multi-instruction sequences and per-family acceptance remain future work.
-- **Steps 3–4 partial:** the released [diagnosis CLI](DIAGNOSIS_CLI.md) inspects retained reports and one historical replay. It does not locate an arbitrary first differing instruction or demonstrate portable execution recording.
-- **Step 5 prototype:** `site/lab.html` is a scripted teaching/workbench prototype, not a WebAssembly build of the Rust runtime.
+- **Steps 3–4 partial:** the released [diagnosis CLI](DIAGNOSIS_CLI.md) inspects retained reports and one historical replay. [Instruction diagnosis](INSTRUCTION_DIAGNOSIS.md) now retains one hardware-observed discrepancy with register snapshots and checked replay. The same retained instruction failure has also reproduced on Windows with content checks. Arbitrary-program first divergence and general execution recording remain incomplete.
+- **Step 5 implementation:** the [real playground](PLAYGROUND.md) compiles the shared CPU/memory source to WebAssembly and passes actual Chromium instruction stepping. The original `site/lab.html` workbench is labeled as a scripted design preview. The [public route](https://hffgzktbcc-blip.github.io/ounce-core/playground/) passed actual Chromium MOV/ADD, vector FMUL and offline execution checks after deployment.
 - **Step 6 pending:** no outside-project conformance-suite result is recorded.
 
 Step 0 remains an external acceptance goal, not a block on steps 1–2. The real test of this vision is an ordinary developer solving a problem they care about, not another internal count. Steps 1 and 2 follow because they remove the console-toolchain dependency and turn the one-off bug hunt into a standing guarantee.
@@ -84,3 +85,5 @@ Step 0 remains an external acceptance goal, not a block on steps 1–2. The real
 ## Where Switch fits
 
 The first-frame oracle corpus (50 pinned programs) and the Switch-specific services, GPU and audio code remain, are tested in CI, and are maintained as long as they cost little. They are a regression set and a source of real programs, not the product. No Switch or Switch 2 compatibility is claimed.
+
+The real [WebAssembly playground](PLAYGROUND.md) and versioned [conformance seed](../conformance/arm64-v0.1.0/README.md) now have local and hosted execution evidence. The seed passed each engine on Linux, macOS and Windows in PR #270. Hosted Chromium and live public-route acceptance passed on PR #269; the conformance seed does not yet have an outside-project result.

@@ -18,7 +18,7 @@
 
 An open-source ARM64 execution, debugging and verification platform in safe Rust.
 
-[Vision](docs/VISION.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Reproduce it](docs/REPRODUCE.md) · [Limits](docs/LIMITS.md) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
+[Vision](docs/VISION.md) · [Browser playground](docs/PLAYGROUND.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Reproduce it](docs/REPRODUCE.md) · [Limits](docs/LIMITS.md) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
 
 </div>
 
@@ -36,7 +36,7 @@ It began as a Nintendo Switch homebrew runtime. That is no longer the goal; see 
 
 - **Ounce-Verify: prove correctness.** Compare engines and a real-hardware reference, detect discrepancies, keep hashes and reports. *Most mature.*
 - **Ounce-Debug: understand failures.** Reproduce a problem, compare results, find where behaviour first diverges. *Demonstrated for one bounded workflow.*
-- **Ounce-Learn: make computing understandable.** Study ARM64 execution one instruction at a time. *Planned.*
+- **Ounce-Learn: make computing understandable.** Study ARM64 execution one instruction at a time in the [real WebAssembly playground](docs/PLAYGROUND.md). *Bounded Chromium execution verified.*
 
 **Who it is for:** library maintainers who want to know whether their code behaves the same on ARM64 as on x86 without owning ARM hardware; emulator and JIT authors; educators; researchers.
 
@@ -320,10 +320,10 @@ This section is rendered from [the milestone registry](docs/roadmap/milestones.j
 
 | Research track | Reviewed stage | Supporting evidence | Next proof gate |
 | :--- | :--- | :--- | :--- |
-| Static Linux ARM64 programs | experimental | [Five freestanding ELF fixtures and unchanged LZ4/musl cases pass on Tier-3 and actual Tier-4](docs/verify/linux-elf/README.md) | Qualify Linux library CI; add deterministic time and wider host acceptance |
+| Static Linux ARM64 programs | experimental | [Six freestanding fixtures and bounded LZ4/musl verification; library and CLI scenarios qualified on Linux, macOS and Windows](docs/verify/linux-elf/README.md) | Expand Linux library coverage from observed needs; qualify portable execution recording |
 | Differential verification against real ARM64 | measured | [Seeded single-instruction hardware fuzzing and three-engine comparisons; bounded results retained](docs/verify/insn-fuzzer/README.md) | Qualify ARM64 fuzzer CI; then expand per-family and sequence coverage (vision step 2) |
 | Agent workflow | measured | [Handoff snapshots, expiring claims and shared journal; used by four agents in parallel](docs/AGENT_HUB.md) | Keep the tool simple; fix friction as agents report it |
-| Failure to reproduction | measured | [Retained SDL2 replay and externally grounded audio-channel diagnosis delivered](docs/DIAGNOSIS_CLI.md) | Instruction-level first divergence remains unimplemented (vision step 3) |
+| Failure to reproduction | measured | [Retained SDL2/audio diagnosis and one hardware-observed instruction mismatch with exact register snapshots](docs/INSTRUCTION_DIAGNOSIS.md) | Repair the measured arithmetic discrepancy; arbitrary-program first divergence remains unestablished |
 | Usable community tool | measured | [Standalone diagnosis toolkit 0.2.0 published with checksums and acceptance evidence](docs/releases/diagnosis-0.2.0-readiness.md) | Collect outside feedback; runtime distribution has separate provenance dependencies |
 | Switch regression corpus (legacy) | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->50/50<!-- /corpus-headline --> passes** (CI-certified) | Keep passing in CI; no expansion unless a program reproduces a concrete CPU bug |
 | Switch 2 research (archived) | experimental | [Limited SDK-path observation](docs/verify/README.md) | No further work; kept as a record. Not part of the product direction (see docs/VISION.md) |

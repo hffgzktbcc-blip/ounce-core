@@ -254,6 +254,11 @@ impl BlockBuilder {
         Self::default()
     }
 
+    /// Drops every operation after the first `len`, undoing a partially lowered instruction.
+    pub fn truncate(&mut self, len: usize) {
+        self.ops.truncate(len);
+    }
+
     /// Number of operations so far.
     pub fn len(&self) -> usize {
         self.ops.len()

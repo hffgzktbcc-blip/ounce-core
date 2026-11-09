@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the existing pinned LZ4 cases as a static Linux ARM64 ELF, without a console SDK.
+"""Run an existing pinned library harness (default LZ4) as a static Linux ARM64 ELF, without a console SDK.
 
 Requires a host C compiler, a static AArch64 Linux C toolchain (for example
 --elf-cc 'zig cc -target aarch64-linux-musl'), and ounce-core built with native-jit.
@@ -39,7 +39,8 @@ def main():
     ap.add_argument('--elf-cc', required=True, help='compiler command, split as arguments; never run through a shell')
     ap.add_argument('--host-cc', default='cc')
     ap.add_argument('--ounce', type=Path, default=REPO / 'target/release' / ('ounce-core.exe' if sys.platform == 'win32' else 'ounce-core'))
-    ap.add_argument('--upstream-dir', type=Path, help='optional clean checkout at the manifest LZ4 commit')
+    ap.add_argument('--harness', default='lz4', help='harness name in docs/verify/differential.json')
+    ap.add_argument('--upstream-dir', type=Path, help='optional clean checkout at the manifest commit')
     ap.add_argument('--seconds', type=int, default=300, help='deadline per build/execution step')
     ap.add_argument('--budget', type=int, default=100_000_000)
     a = ap.parse_args()
@@ -53,7 +54,7 @@ def main():
         work.mkdir(parents=True, exist_ok=False)
     except FileExistsError:
         ap.error('--work already exists; choose a new directory to preserve prior evidence')
-    report = {'schema': 'ounce-core/linux-library-v1', 'harness': 'lz4', 'failed': True, 'steps': [], 'checks': {}}
+    report = {'schema': 'ounce-core/linux-library-v1', 'harness': a.harness, 'failed': True, 'steps': [], 'checks': {}}
 
     def step(name, argv):
         entry = {'name': name, 'argv': [str(x) for x in argv], 'timeout_seconds': a.seconds}
@@ -75,7 +76,10 @@ def main():
         return r
 
     try:
-        h = next(h for h in json.loads((VERIFY / 'differential.json').read_text())['harnesses'] if h['name'] == 'lz4')
+        h = next((h for h in json.loads((VERIFY / 'differential.json').read_text())['harnesses']
+                  if h['name'] == a.harness), None)
+        if h is None:
+            raise RuntimeError(f'unknown harness {a.harness!r} in differential.json')
         report['upstream'] = h['upstream']
         if a.upstream_dir:
             root = a.upstream_dir.resolve()
@@ -103,10 +107,12 @@ def main():
             r = step(label, compiler + ['--version'])
             if r.returncode:
                 raise RuntimeError(f'{label} --version failed')
+        elf = f'{a.harness}.elf'
+        libs = shlex.split(h.get('libs', ''))
         cfiles = sorted(str(p.relative_to(work)) for p in sources.glob('*.c'))
         for name, compiler, extra in [('host', compilers[0], []), ('elf', compilers[1], ['-static', '-no-pie'])]:
-            output = 'host-ref.exe' if name == 'host' else 'lz4.elf'
-            r = step(name + '-build', compiler + ['-O1', '-Isources', *extra, *cfiles, '-o', output])
+            output = 'host-ref.exe' if name == 'host' else elf
+            r = step(name + '-build', compiler + ['-O1', '-Isources', *extra, *cfiles, '-o', output, *libs])
             if r.returncode:
                 raise RuntimeError(f'{name} build failed; inspect {name}-build.stderr')
             report[name + '_sha256'] = digest(work / output)
@@ -114,7 +120,7 @@ def main():
         if reference.returncode:
             raise RuntimeError('host reference returned failure; inspect host-run.stderr')
         for engine in ('tier3', 'tier4'):
-            r = step(engine, [str(ounce), 'run-elf', str(work / 'lz4.elf'), f'--cpu={engine}', f'--max-insns={a.budget}', '--trace-syscalls'])
+            r = step(engine, [str(ounce), 'run-elf', str(work / elf), f'--cpu={engine}', f'--max-insns={a.budget}', '--trace-syscalls'])
             report['checks'][engine] = execution_verdict(reference.stdout, r.stdout, r.returncode,
                                                          r.stderr.decode('utf-8', 'replace'), engine)
         report['failed'] = any(v != 'identical' for v in report['checks'].values())

@@ -192,7 +192,7 @@ pub fn siphash24(k0: u64, k1: u64, msg: &[u8]) -> u64 {
         v[1] = v[1].rotate_left(17) ^ v[2];
         v[2] = v[2].rotate_left(32);
     }
-    let mut compress = |v: &mut [u64; 4], m: u64| {
+    let compress = |v: &mut [u64; 4], m: u64| {
         v[3] ^= m;
         round(v);
         round(v);

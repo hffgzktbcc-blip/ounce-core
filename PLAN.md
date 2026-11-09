@@ -93,37 +93,44 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Result: one pinned library harness runs without a console SDK and matches a fresh host reference.
       Acceptance: same shared C cases, retained toolchain/source hashes, Tier-3/Tier-4 comparison, actionable unsupported-syscall errors and unchanged existing ELF fixtures. Keep deterministic time and wider OS qualification explicit until tested.
       Evidence: [LZ4 Linux ELF report](docs/verify/linux-elf/lz4-2026-11-08/report.json) and [recipe](docs/verify/linux-elf/README.md#lz4-without-a-console-sdk): unchanged pinned cases linked with musl match a fresh host on actual Tier-3/Tier-4, exit 0, 406 bytes, 3,862,822 instructions. No runtime patch needed. Five execution-verdict tests and all 108 Python tooling tests passed (one pre-existing opt-in skip); All 11 existing Rust Linux ELF tests passed with native-jit enabled, including unknown-syscall diagnosis and malformed-input handling.
-      Next: qualify the new Linux CI job; deterministic time and wider OS acceptance remain incomplete vision-step-1 work.
+      Follow-up: V3/V4 qualified bounded deterministic time and all three host OSes. Wider verified-library ELF/syscall coverage remains incomplete vision-step-1 work.
 
 - [x] **V3. Make the bounded Linux ELF workflow repeatable.**
       Result: `run-elf --deterministic` uses fixed virtual clock values, and guest arguments after `--` reach the program unchanged.
       Evidence: [clock/CLI acceptance](docs/verify/linux-elf/deterministic-2026-11-08.json): identical clock output on two runs of each actual engine; invalid-clock/pointer and rollover tests pass. Full native-jit unit suite: 562 passed, 10 existing opt-in tests ignored; five CLI tests passed. The new guest-option regression failed before the parser fix. No general deterministic Linux or cross-host replay claim.
-      Next: qualify the new mode on hosted supported hosts alongside V4.
-- [ ] **V4. Qualify the same Linux ELF workflow on Linux, macOS and Windows.**
-      Status: active
+      Follow-up: V4 qualified this mode on all three supported host OSes.
+- [x] **V4. Qualify the same Linux ELF workflow on Linux, macOS and Windows.**
       Depends: V2 V3
       Result: the same pinned library cases and clock fixture execute with explicit engine identity on all three hosts.
       Acceptance: retain per-host toolchains, source/input hashes, output, errors and hosted run links; require byte comparisons and nonzero failure exits. Do not treat cross-host compiler differences as emulator failures without checking the actual inputs.
-      Progress: [Linux hosted qualification](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42523091575) passed. Three-host matrix added with a portable C compiler, Windows binary stdout and explicit host executable suffix; the Linux candidate passes locally. macOS/Windows hosted results are pending.
-      Next: inspect the first three-host run and repair observed failures before claiming acceptance.
-- [ ] **V5. Locate one instruction-level first divergence.**
-      Status: ready
+      Evidence: [three-host qualification](docs/verify/linux-elf/three-host-2026-11-08.json), run 42523628103 at 10db735: Linux, macOS and Windows library jobs passed, both engines identical, all five CLI scenarios passed on each host. Each host builds its own ELF from the same pinned cases; this does not prove transporting identical ELF bytes or general libc compatibility. GitHub artifact digests and execution log excerpts retained; no local ZIP-byte verification claimed.
+      Follow-up: V5/V6 now qualify instruction-level diagnosis and portable replay. Expand library coverage from observed needs.
+- [x] **V5. Locate one instruction-level first divergence.**
       Result: a bounded real failing execution points at its first differing instruction with register state before/after.
       Acceptance: preserve an observed failure, verify the reported location against a controlled reproduction, and distinguish optimized-block behavior from interpreter fallback. Retained frame differences do not satisfy this task.
-      Next: inspect existing fuzzer state snapshots and runner boundaries; pick the smallest demonstrated divergence and connect its report to replay.
-- [ ] **V6. Replay one recorded execution on another host.**
-      Status: ready
+      Evidence: [instruction diagnosis command and real FMUL case](docs/INSTRUCTION_DIAGNOSIS.md), [hardware/local acceptance](docs/verify/insn-fuzzer/default-nan-mul2d/acceptance-before.json). Apple Silicon captured the expected positive default NaN; Linux x86-64 retained its negative-NaN mismatch with exact input/reference/actual state and same-execution snapshot. A synthetic second-line mismatch proves selection and immutability. Full suite: 563 unit tests passed (10 opt-in ignores), 11 CLI tests passed. Tier-4 wrapper/fallback boundary is explicit.
+      Follow-up: V6 portable replay and V9 repair are now qualified without changing the reference. Arbitrary-program first-divergence tracing remains unestablished.
+- [x] **V6. Replay one recorded execution on another host.**
       Depends: V3
       Result: a content-checked portable bundle reproduces one fixed failure with the same input and stop observations on another supported machine.
-      Next: use the bounded ELF workflow, record nondeterministic inputs, validate tampering/missing-input failure paths, and retain the second-host evidence. Existing SDL2 replay remains historical evidence only.
-- [ ] **V7. Replace the scripted browser teaching path with real runtime execution.**
-      Status: parked
+      Evidence: [cross-host replay observations](docs/verify/insn-fuzzer/default-nan-mul2d/cross-host-before.json), run 42559991291 at 9fd1a5a. The exact Linux dossier reproduced its mismatch on hosted Windows after input hash/state validation; macOS reported changed behavior matching hardware. Tampering, inconsistent state and changed/unimplemented execution paths have regressions. Replay steps passed; containing jobs later failed on an old cached LZ4 output directory. Fresh run-specific evidence allocation repairs that separate CI defect; PR #267 subsequently passed all 40 hosted checks.
+      Follow-up: V9 repaired the observed arithmetic while retaining the failure unchanged. This remains one instruction, not general nondeterministic application recording or independent-user evidence.
+- [x] **V9. Repair the measured host-dependent vector multiply result.**
+      Depends: V5 V6
+      Result: the retained zero-times-infinity FMUL case produces ARM default NaNs on x86 hosts as well as ARM hosts.
+      Acceptance: preserve the exact hardware trace and pre-fix dossier; all supported hosts match the reference after the repair, while replay truthfully reports changed behavior against the historical failure. Keep the interpreter/JIT fallback boundary and unmodelled FP exception flags explicit.
+      Progress: shared SIMD FMUL now returns Arm positive default NaNs for zero*infinity while preserving input-NaN propagation and FMULX semantics. [Local after evidence](docs/verify/insn-fuzzer/default-nan-mul2d/after/acceptance.json): all selected engines match the unchanged hardware trace, historical replay reports changed/reference-match, identical prior LZ4 input/output retained, 565 unit and 11 CLI tests passed (10 opt-in ignores). Focused review found no actionable issue.
+      Acceptance: PR #267 passed all 40 hosted checks and merged. Static Linux ELF and historical replay qualification passed on Linux, macOS and Windows; all now match the retained hardware reference. Legacy/scalar FP paths and FP exception flags remain outside this repair.
+- [x] **V7. Replace the scripted browser teaching path with real runtime execution.**
       Result: a visitor steps through an actual small ARM64 program with no installation.
-      Next: isolate an appropriate safe execution API and qualify a real WebAssembly build before connecting it to `site/lab.html`; do not present scripted states as execution.
+      Progress: same CPU/memory source now builds to real WebAssembly; bounded API, 117 tests and actual Chromium instruction stepping pass. Browser artifact includes binary-bound graph/toolchain notices. Existing site links and Pages build are wired; scripted workbench is labeled as a design preview. See [playground evidence](docs/PLAYGROUND.md).
+      Acceptance: PR #269 passed all 40 hosted checks and merged at `888d515`. Pages run 42565903672 deployed successfully; a fresh Chromium context loaded the public Wasm and checked MOV/ADD, hardware FMUL and offline execution. [Live acceptance](docs/verify/playground/live-acceptance.json) retains actual hosted Wasm identity and notice-inventory correspondence.
 - [ ] **V8. Publish a reusable conformance suite and obtain an outside result.**
-      Status: parked
+      Status: blocked
+      Blocked by: an actual outside-project execution and result.
       Result: another emulator project runs a versioned suite and reports a result with exact inputs and reference scope.
-      Next: package already verified instruction cases with provenance and an adapter contract; outside adoption remains external acceptance and is not inferred from internal runs.
+      Progress: [version 0.1.0 seed](conformance/arm64-v0.1.0/README.md) packages the unchanged hardware FMUL trace, hashes, provenance, comparison scope and adapter contract. A runner rejects unsupported, missing/duplicate counts and tampered input. All three local runtime engines pass. PR #270 passed all 21 hosted checks, including each engine on Linux, macOS and Windows, and merged at `2e55a5e`; these remain internal observations.
+      Next: preserve the published seed, expand from measured cases in a new version, and obtain an actual outside-project result. Outside adoption remains external acceptance and is not inferred from internal runs.
 
 ## External acceptance and publication dependencies
 
@@ -133,8 +140,8 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Next: retain the recipe and accept outside evidence when available; no repeated internal reruns as a substitute.
 - [ ] **E2. Disposition historical provenance for affected distribution artifacts.**
       Status: blocked
-      Blocked by: documented component notice decisions (objc2/SDK terms, Rust runtime notices and final-binary coverage), the historical 72-byte program permission question, and separately approved historical/ref or corrected-release actions. PR #203 is merged; its technical controls do not establish legal clearance.
-      Next: use docs/LICENSE_DISPOSITION.md as the current disposition; earlier broad audit/checklist warnings are superseded. Objective-C full-text notices and binary-bound Rust toolchain notice collection are implemented; preserve the actual upstream SDK/contributor qualifications and specific historical permission case. Runtime publication remains gated; the reviewed standalone Python toolkit is separately distributable. Do not repeat completed inventories or treat E2 as a blocker to ordinary development.
+      Blocked by: native-app/optional-feature distribution decisions and actual bundle notice coverage, the historical 72-byte program permission question, and separately approved historical/ref actions. The default CLI v0.6.0 decision and its actual three-platform notice coverage are complete. PR #203 is merged; its technical controls do not establish legal clearance.
+      Next: use docs/LICENSE_DISPOSITION.md as the current disposition; earlier broad audit/checklist warnings are superseded. Objective-C full-text notices and binary-bound Rust toolchain notice collection are implemented; preserve the actual upstream SDK/contributor qualifications and specific historical permission case. The normal default-feature CLI was published as [v0.6.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.6.0) after the documented owner-directed distribution decision, three-platform qualification and strict reviewed packaging. [Downloaded-asset proof](docs/releases/v0.6.0-publication-proof.json) verifies checksums/notices and a Linux smoke run. Optional/native-app distribution and historical permission questions remain separate; no specialist legal review or new third-party grant is claimed. The standalone Python toolkit is separately distributable. Do not repeat completed inventories or treat E2 as a blocker to ordinary development.
 
 ## Delivery cadence and stop conditions
 

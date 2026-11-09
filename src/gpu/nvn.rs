@@ -81,8 +81,8 @@ impl TextureDecompressor {
         let mut dst = vec![0u32; width * height];
         let (bw, bh) = format.block_dims();
         let bsize = format.block_size();
-        let blocks_x = (width + bw - 1) / bw;
-        let blocks_y = (height + bh - 1) / bh;
+        let blocks_x = width.div_ceil(bw);
+        let blocks_y = height.div_ceil(bh);
 
         let mut block_idx = 0;
         let mut decoded_block = [0u32; 64]; // supports up to 8x8 blocks
@@ -776,12 +776,12 @@ impl NvnDriver {
                     idx += 4;
                     cb.clear_color(r, g, b, a);
                 }
-                NVN_CMD_SET_DEPTH_TEST if idx + 1 <= max_words => {
+                NVN_CMD_SET_DEPTH_TEST if idx < max_words => {
                     let en = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0) != 0;
                     idx += 1;
                     cb.set_depth_test(en);
                 }
-                NVN_CMD_BIND_PROGRAM if idx + 1 <= max_words => {
+                NVN_CMD_BIND_PROGRAM if idx < max_words => {
                     let addr = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
                     idx += 1;
                     cb.bind_program(addr);
@@ -793,22 +793,22 @@ impl NvnDriver {
                     idx += 3;
                     cb.bind_texture(addr, w, h);
                 }
-                NVN_CMD_BIND_TEXTURE_DESCRIPTOR if idx + 1 <= max_words => {
+                NVN_CMD_BIND_TEXTURE_DESCRIPTOR if idx < max_words => {
                     let id = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
                     idx += 1;
                     cb.bind_texture_descriptor(id);
                 }
-                NVN_CMD_BIND_VERTEX_BUFFER if idx + 1 <= max_words => {
+                NVN_CMD_BIND_VERTEX_BUFFER if idx < max_words => {
                     let addr = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
                     idx += 1;
                     cb.bind_vertex_buffer(addr);
                 }
-                NVN_CMD_DRAW_ARRAYS if idx + 1 <= max_words => {
+                NVN_CMD_DRAW_ARRAYS if idx < max_words => {
                     let count = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
                     idx += 1;
                     cb.draw_arrays(count);
                 }
-                NVN_CMD_DRAW_TEXTURED if idx + 1 <= max_words => {
+                NVN_CMD_DRAW_TEXTURED if idx < max_words => {
                     let count = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
                     idx += 1;
                     cb.draw_textured(count);
@@ -821,7 +821,7 @@ impl NvnDriver {
                     idx += 4;
                     cb.dispatch_upscale_2x(src, w, h, dst);
                 }
-                NVN_CMD_BUFFER_CYCLE if idx + 1 <= max_words => {
+                NVN_CMD_BUFFER_CYCLE if idx < max_words => {
                     let buf_id = mmu.read_u32(cmd_stream_addr + (idx * 4) as u64).unwrap_or(0);
                     idx += 1;
                     cb.cycle_buffer(buf_id);

@@ -9,6 +9,9 @@ on:
       - 'scripts/verify_differential.py'
       - 'scripts/verify_linux_elf.py'
       - 'scripts/test_verify_linux_elf.py'
+      - 'conformance/**'
+      - 'scripts/run_conformance.py'
+      - 'scripts/test_run_conformance.py'
       - 'tests/linux-elf/**'
       - 'Cargo.*'
       - '.github/workflows/differential.yml'
@@ -20,6 +23,9 @@ on:
       - 'scripts/verify_differential.py'
       - 'scripts/verify_linux_elf.py'
       - 'scripts/test_verify_linux_elf.py'
+      - 'conformance/**'
+      - 'scripts/run_conformance.py'
+      - 'scripts/test_run_conformance.py'
       - 'tests/linux-elf/**'
       - 'Cargo.*'
       - '.github/workflows/differential.yml'
@@ -39,7 +45,7 @@ env:
 
 jobs:
   linux-library:
-    name: Static Linux ELF (${{ matrix.os }}, LZ4)
+    name: Static Linux ELF (${{ matrix.os }}, LZ4 xxHash cJSON zlib)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -53,9 +59,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
+      - name: Allocate fresh evidence outside the Rust cache
+        run: |
+          python3 - <<'PY_EVIDENCE'
+          import os, pathlib
+          leaf = 'ounce-evidence-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / leaf
+          root.mkdir(parents=True, exist_ok=False)
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write('EVIDENCE_ROOT=' + root.as_posix() + '\n')
+          PY_EVIDENCE
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install Linux build dependencies
@@ -69,16 +85,59 @@ jobs:
         run: cargo build --release --locked --features native-jit
       - name: Qualify clock and guest-argument behavior
         run: cargo test --release --locked --features native-jit --test cli_failures
+      - name: Replay a retained real instruction discrepancy
+        run: |
+          python3 - <<'PY_REPLAY'
+          import json, os, pathlib, platform, subprocess
+          evidence = pathlib.Path(os.environ['EVIDENCE_ROOT'])
+          binary = 'target/release/ounce-core' + ('.exe' if platform.system() == 'Windows' else '')
+          result = subprocess.run([binary, 'replay-instruction', 'docs/verify/insn-fuzzer/default-nan-mul2d/before/tier3'], capture_output=True, text=True)
+          (evidence / 'instruction-replay.json').write_text(result.stdout)
+          (evidence / 'instruction-replay.stderr').write_text(result.stderr)
+          assert result.returncode in (0, 1), result.stderr
+          report = json.loads(result.stdout)
+          # Repaired execution must differ from the retained failure and agree
+          # with the unchanged hardware reference on every supported host.
+          expected = ('changed', 'match', 1)
+          actual = (report['replay_verdict'], report['reference_verdict'], result.returncode)
+          assert actual == expected, (actual, expected)
+          print(json.dumps({'host': platform.platform(), 'replay_verdict': actual[0], 'reference_verdict': actual[1], 'exit': actual[2]}))
+          PY_REPLAY
+      - name: Run the versioned conformance seed on each engine
+        run: |
+          binary=target/release/ounce-core
+          if [[ "$RUNNER_OS" == "Windows" ]]; then binary="$binary.exe"; fi
+          for engine in interp tier3 tier4; do
+            python3 scripts/run_conformance.py --report "$EVIDENCE_ROOT/conformance-$engine.json" -- "$binary" fuzz-replay --engine "$engine"
+          done
       - name: Compare unchanged LZ4 cases on host and both ELF engines
-        run: python3 scripts/verify_linux_elf.py --work target/linux-lz4 --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+        run: python3 scripts/verify_linux_elf.py --work "$EVIDENCE_ROOT/linux-lz4" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare unchanged xxhash cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --harness xxhash --work "$EVIDENCE_ROOT/linux-xxhash" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare unchanged cjson cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --harness cjson --work "$EVIDENCE_ROOT/linux-cjson" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare unchanged zlib cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --harness zlib --budget 2000000000 --work "$EVIDENCE_ROOT/linux-zlib" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: linux-elf-lz4-evidence-${{ matrix.os }}
           path: |
-            target/linux-lz4/report.json
-            target/linux-lz4/*.stdout
-            target/linux-lz4/*.stderr
+            ${{ env.EVIDENCE_ROOT }}/conformance-*.json
+            ${{ env.EVIDENCE_ROOT }}/instruction-replay.json
+            ${{ env.EVIDENCE_ROOT }}/instruction-replay.stderr
+            ${{ env.EVIDENCE_ROOT }}/linux-lz4/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-lz4/*.stdout
+            ${{ env.EVIDENCE_ROOT }}/linux-lz4/*.stderr
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-elf-libs-evidence-${{ matrix.os }}
+          path: |
+            ${{ env.EVIDENCE_ROOT }}/linux-xxhash/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-cjson/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-zlib/report.json
           if-no-files-found: warn
 
   instruction-fuzzer:
@@ -99,6 +158,15 @@ jobs:
           mkdir -p fuzz-results
           export TMPDIR="$PWD/fuzz-results"
           bash docs/verify/insn-fuzzer/run_tiers.sh 20000 2>&1 | tee fuzz-results/run.log
+      - name: Retain a hardware reference for invalid vector multiplication
+        shell: bash
+        run: |
+          set -euo pipefail
+          fuzz-results/fuzz_host --case default-nan-mul2d > fuzz-results/default-nan-mul2d.trace
+          cat fuzz-results/default-nan-mul2d.trace
+          for engine in interp tier3 tier4; do
+            target/release/ounce-core fuzz-replay --engine "$engine" fuzz-results/default-nan-mul2d.trace
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -138,7 +206,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install Linux system dependencies

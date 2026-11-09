@@ -1,0 +1,17 @@
+case0 n=0 c=1 hash=050c5d1f d=0 ok=1
+case1 n=1 c=2 hash=759e44a9 d=1 ok=1
+case2 n=1000 c=34 hash=675bc919 d=1000 ok=1
+case3 n=4096 c=26 hash=2622ea88 d=4096 ok=1
+case4 n=30000 c=4224 hash=dea4101c d=30000 ok=1
+case5 n=65000 c=38857 hash=7fd21209 d=65000 ok=1
+smallbuf_compress=0
+smallbuf_decompress=-2
+corrupt0=-1
+corrupt1=-1
+corrupt2=-1
+corrupt3=-1
+corrupt4=-1
+corrupt5=-1
+corrupt6=-1
+corrupt7=-3
+fails=0
