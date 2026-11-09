@@ -1004,6 +1004,19 @@ mod tests {
     }
 
     #[test]
+    fn hardware_zero_times_infinity_vector_multiply_matches_on_all_engines() {
+        let trace = include_str!("../docs/verify/insn-fuzzer/default-nan-mul2d/hardware.trace");
+        let c = case(trace);
+        for engine in [Engine::Interp, Engine::Tier3, Engine::Tier4] {
+            if engine == Engine::Tier4 && !tier4_available() { continue; }
+            match replay_on(&c, engine).0 {
+                Outcome::Ran(differences, _) => assert!(differences.is_empty(), "{engine:?}: {differences:?}"),
+                outcome => panic!("{engine:?}: {outcome:?}"),
+            }
+        }
+    }
+
+    #[test]
     fn replay_reports_a_wrong_host_result() {
         let l = line(0x1e22_2820, &[(1, 0x3f80_0000), (2, 0x4000_0000)], &[(0, 0x4040_0001), (1, 0x3f80_0000), (2, 0x4000_0000)], 0, 0, 0);
         match replay(&case(&l)) {

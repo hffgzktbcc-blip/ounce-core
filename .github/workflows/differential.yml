@@ -90,8 +90,9 @@ jobs:
           (evidence / 'instruction-replay.stderr').write_text(result.stderr)
           assert result.returncode in (0, 1), result.stderr
           report = json.loads(result.stdout)
-          arm = platform.machine().lower() in ('arm64', 'aarch64')
-          expected = ('changed', 'match', 1) if arm else ('reproduced', 'mismatch', 0)
+          # Repaired execution must differ from the retained failure and agree
+          # with the unchanged hardware reference on every supported host.
+          expected = ('changed', 'match', 1)
           actual = (report['replay_verdict'], report['reference_verdict'], result.returncode)
           assert actual == expected, (actual, expected)
           print(json.dumps({'host': platform.platform(), 'replay_verdict': actual[0], 'reference_verdict': actual[1], 'exit': actual[2]}))
