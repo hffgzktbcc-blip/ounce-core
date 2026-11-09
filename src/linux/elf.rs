@@ -54,6 +54,7 @@ pub struct Image {
     pub phdr_addr: u64,
     pub phnum: u64,
     pub phentsize: u64,
+    #[allow(dead_code)] // retained for diagnostics and the loader limit report
     pub loaded_bytes: u64,
 }
 

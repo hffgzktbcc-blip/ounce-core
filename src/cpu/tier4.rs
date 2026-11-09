@@ -858,6 +858,7 @@ pub struct LoweredBlock {
 
 /// Decodes from `pc` and lowers up to the first terminator, untranslated instruction or
 /// [`MAX_BLOCK_INSNS`]. `None` if the first instruction cannot be read or translated.
+#[cfg(test)]
 pub fn lower_block(pc: u64, mmu: &Memory) -> Option<LoweredBlock> {
     lower_block_with(pc, mmu, true)
 }
@@ -887,8 +888,9 @@ fn lower_block_with(pc: u64, mmu: &Memory, indirect_links: bool) -> Option<Lower
                 }
             }
             Err(()) => {
-                // `insn` rejects before emitting anything.
-                debug_assert_eq!(l.b.len(), before);
+                // A rejected instruction may already have emitted operand reads; discard them so
+                // the fallback to Tier-3 sees no partial effect.
+                l.b.truncate(before);
                 if count == 0 {
                     return None;
                 }
