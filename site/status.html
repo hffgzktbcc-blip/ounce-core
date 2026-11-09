@@ -32,6 +32,13 @@
 <li><strong>Legacy corpus:</strong> 50 pinned Switch-era homebrew programs still pass their first-frame checks in CI. They are a regression set, not the product direction.</li>
 <li><strong>Switch 2 work:</strong> archived. It was never evidence of commercial software support.</li>
 </ul>
+<h2>9 November 2026: newer bounded milestones</h2>
+<ul>
+<li><strong>Static Linux AArch64 ELF:</strong> A restricted <code>run-elf</code> path is merged (<a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/255">#255</a>), with pinned LZ4, xxHash, cJSON and zlib static musl ELFs verified across Linux, macOS and Windows runners (#277, #292). This does not imply general Linux application compatibility.</li>
+<li><strong>Interactive lab:</strong> the web verification workbench was merged (<a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/261">#261</a>). It is a bounded inspection and evidence tool, with an in-browser WebAssembly AArch64 CPU stepper (<a href="playground/">/playground/</a>).</li>
+<li><strong>Differential instruction fuzzer:</strong> landed in CI (#258), with commutative vector floating-point NaN operand order pinned in #272. FPSR high-bit retention on Neoverse remains documented in <a href="https://github.com/hffgzktbcc-blip/ounce-core/issues/257">issue #257</a>.</li>
+<li><strong>Outside replication:</strong> no accepted independent run is recorded in <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/LIMITS.md">the limitations register</a>; interested testers can use <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/REPRODUCE.md">the rerun guide</a> and <a href="https://github.com/hffgzktbcc-blip/ounce-core/issues/248">issue #248</a>.</li>
+</ul>
 <h2>Read primary evidence, not a frozen milestone</h2>
 <ul>
 <li><a href="https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml">Legacy Switch corpus workflow</a> — run status and downloadable evidence when available</li>
@@ -43,7 +50,7 @@
 <h2>Corrections for old search results</h2>
 <p>The launch-day state is part of the history, but it is not a description of the current code. An early article may be accurate about what was present in October while omitting subsequent releases, testing and architecture changes. This page does not demand removal of historical criticism or claim that newer work retrospectively validates earlier assertions.</p>
 <p><strong>For researchers and journalists:</strong> cite the relevant commit SHA, release, workflow run ID, registered oracle and execution engine. Distinguish an internally reproduced test from an independent outside rerun. Please link directly to this page and the primary artifact when reporting new results.</p>
-<p><strong>Updated:</strong> 8 November 2026 (editorial overview; live evidence links above remain authoritative).</p>
+<p><strong>Editorial review:</strong> 9 November 2026 (review of merged PR scope and recorded limitations; consult CI for run-specific claims).</p>
 </main>
 <footer>Official Ounce-Core research status · Independent project, unaffiliated with Nintendo or NVIDIA · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE">MIT license</a></footer>
 </body></html>
