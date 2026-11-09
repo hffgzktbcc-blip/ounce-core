@@ -24,6 +24,24 @@ signed and not notarized (Gatekeeper warns on first open), and it is not cleared
 item 4 of [PROVENANCE_OWNER_DECISIONS.md](PROVENANCE_OWNER_DECISIONS.md) is open. Share it only with people you
 choose to, and tell them it is unsigned by an Apple developer identity.
 
+## The workbench window (front door)
+
+On launch the app starts `ounce-core ui --no-open --port 0 --parent-pipe` from the bundled runtime and shows the page in a
+`WKWebView` (`tools/macos-launcher/Workbench.swift`; the pure logic is in `WorkbenchLogic.swift` and is covered by
+`tests/macos/workbench-logic/main.swift`). The window holds no verification logic: see
+[INTERACTIVE_LAB.md](INTERACTIVE_LAB.md) for what the page does and does not show.
+
+- The window loads only the local workbench; any other link opens in your browser.
+- "Check a Program…" (⌘O) and opening a `.nro` from Finder send the program to the workbench, emulator-only
+  (Tier-3 and Tier-4). Comparing with this Mac's CPU is a checkbox in the page, and it asks for confirmation first.
+- The server is a child process on 127.0.0.1 with a per-session key. It exits when the app does: the app holds a pipe to
+  it, so even a crash or a force-quit doesn't leave it running.
+- Results are saved in `~/Library/Application Support/Ounce Core/Checks`.
+- The earlier launcher (run a program in a window, graphics demo, "Verify against Host") is still available from the
+  menu: "Run in a Window (Classic)…" and "Show Classic Launcher".
+
+Swift logic tests: `swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos/workbench-logic/main.swift -o /tmp/wb-tests && /tmp/wb-tests`.
+
 ## What it does
 
 | Area | Behaviour |
