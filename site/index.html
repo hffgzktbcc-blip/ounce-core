@@ -41,13 +41,13 @@
     </section>
     <section aria-label="What is Ounce-Core?" class="card" style="margin:12px 0 28px">
       <h2>What is Ounce-Core?</h2>
-      <p>Ounce-Core is free, open-source <strong>AArch64 (ARM64) software written in Rust</strong>. Its core idea is differential testing: build the same program for your computer and for ARM64, run both, and diff the output. It is not a fast emulator and does not compete with QEMU on speed. Its claim is verified correctness on what it supports, plus small, shareable reproductions of any failure. Read the <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/VISION.md">vision and roadmap</a> and the limits before relying on a result.</p>
+      <p>Ounce-Core is free, open-source <strong>AArch64 (ARM64) software written in Rust</strong>. Its core idea is differential testing: build the same program for your computer and for ARM64, run both, and diff the output. It is not a fast emulator and does not compete with QEMU on speed. Its evidence is bounded agreement with real-hardware references on recorded tests, not a proof of general correctness. Investigations retain small, shareable reproductions. Read the <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/VISION.md">vision and roadmap</a> and the limits before relying on a result.</p>
       <p>Technical details: <a href="https://github.com/hffgzktbcc-blip/ounce-core#quickstart">quickstart</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/verify/README.md">verification method and results</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/ADD_A_PROGRAM.md">add a program as a test</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/CONTRIBUTING.md">contributing</a>.</p>
     </section>
     <section aria-label="Project pillars" class="grid">
-      <div class="card"><h3>Verify</h3><p>Diff any program, or generated instruction sequences, against real ARM64 hardware and get the first difference.</p></div>
-      <div class="card"><h3>Run</h3><p>User-mode ARM64 on any host, in memory-safe Rust. Next: ordinary static Linux ARM64 programs.</p></div>
-      <div class="card"><h3>Debug and learn</h3><p>Compare engines, share small reproductions, and (planned) step through a program in the browser.</p></div>
+      <div class="card"><h3>Verify</h3><p>Diff supported programs and instruction test cases against recorded real ARM64 references, with explicit unsupported cases.</p></div>
+      <div class="card"><h3>Run</h3><p>User-mode ARM64 in memory-safe Rust. A bounded static Linux AArch64 ELF runner and pinned LZ4 cross-platform verification workflow have landed; arbitrary Linux applications remain unsupported.</p></div>
+      <div class="card"><h3>Debug and learn</h3><p>Compare engines, share small reproductions, and explore the merged interactive verification lab. General browser-based program debugging is not established.</p></div>
     </section>
     <section class="card" aria-label="Latest status" style="margin:0 0 35px"><h2>Current status</h2><p>The <a href="status.html">status page</a> lists what is proven and what is not, with links to the evidence. Rerun it with <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/REPRODUCE.md">the reproduction guide</a> and read <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/LIMITS.md">the limits</a>. Coverage is partial: many vector, floating-point and system instructions are still undecoded or untested.</p></section>
     <section class="links">
