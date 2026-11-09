@@ -1,0 +1,41 @@
+[run-elf] syscall 96 [
+    0x107a708,
+    0x1026d18,
+    0x0,
+    0x102188c,
+    0x1021ddc,
+    0x0,
+] -> Return(1)
+[run-elf] syscall 29 [
+    0x1,
+    0x5413,
+    0x7ffeffffd9a8,
+    0x1,
+    0x2000,
+    0x50c5d1f,
+] -> Return(-25)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffd930,
+    0x2,
+    0x1,
+    0x2000,
+    0x50c5d1f,
+] -> Return(37)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffefffffd50,
+    0x2,
+    0x1,
+    0x2000,
+    0x106b4e9,
+] -> Return(369)
+[run-elf] syscall 94 [
+    0x0,
+    0x0,
+    0x2,
+    0x1,
+    0x2000,
+    0x106b4e9,
+] -> Exit(0)
+[run-elf] engine=Tier-4 instructions=3862822 syscalls=5

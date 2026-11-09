@@ -187,3 +187,35 @@ fn tiny_elf(code: &[u32]) -> Vec<u8> {
     }
     e
 }
+
+#[test]
+fn deterministic_clocks_replay_identically_across_engines() {
+    let elf = include_bytes!("../../tests/linux-elf/bin/clock.elf");
+    let expected = b"realtime=1700000000:0\nmonotonic=0:1000000\nraw=0:2000000\nboottime=0:3000000\n";
+    for tier in TIERS {
+        for _ in 0..2 {
+            let mut cap = Capture::default();
+            let opts = Options { tier, deterministic: true, ..Options::default() };
+            let r = run(elf, &["clock".into()], &opts, &mut cap, &mut |_| {});
+            assert_eq!(r.stop, Stop::Exited(0), "{r:?}");
+            assert_eq!(cap.out, expected);
+        }
+    }
+}
+
+#[test]
+fn deterministic_clock_errors_do_not_consume_time_and_seconds_roll_over() {
+    use super::syscalls::{Process, Outcome, SYS_CLOCK_GETTIME, EINVAL, EFAULT};
+    use crate::mmu::{Memory, Permission};
+    let mut proc = Process::new_deterministic(0x1000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    assert_eq!(proc.dispatch(SYS_CLOCK_GETTIME, [99, 0x1000, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EINVAL));
+    assert_eq!(proc.dispatch(SYS_CLOCK_GETTIME, [1, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EFAULT));
+    for i in 0..1002u64 {
+        assert_eq!(proc.dispatch(SYS_CLOCK_GETTIME, [1, 0x1000, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+        assert_eq!(mem.read_u64(0x1000).unwrap(), i / 1000);
+        assert_eq!(mem.read_u64(0x1008).unwrap(), (i % 1000) * 1_000_000);
+    }
+}
