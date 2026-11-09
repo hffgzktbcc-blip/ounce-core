@@ -541,7 +541,7 @@ fn decode_block(b: &[u8], bw: u32, bh: u32, i: usize) -> Option<[f32; 4]> {
     let (js, fs, jt, ft) = (gs >> 4, gs & 0xf, gt >> 4, gt & 0xf);
     let w11 = (fs * ft + 8) >> 4;
     let (w10, w01) = (ft - w11, fs - w11);
-    let w00 = 16 - fs - ft + w11;
+    let w00 = 16 + w11 - fs - ft;
     let v0 = js + jt * gw;
     let weight = |plane: u32| -> u32 {
         let at = |v: u32| weights.get((v * planes + plane) as usize).copied().unwrap_or(0);

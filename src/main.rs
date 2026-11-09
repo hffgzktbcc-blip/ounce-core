@@ -3746,11 +3746,13 @@ const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
 /// as "locked by this thread". Below the scheduler's (0x2000+) and IPC's (0x10001+) handle ranges.
 const NRO_MAIN_THREAD_HANDLE: u32 = 0x1000;
 const NRO_INSTRUCTION_BUDGET: usize = 50_000_000;
+#[cfg(any(feature = "nce", test))]
 /// Parses a wall-clock limit in seconds (`OUNCE_NRO_TIMEOUT_SECS`); anything non-positive or unparsable means no limit.
 fn parse_time_limit(value: &str) -> Option<std::time::Duration> {
     value.trim().parse::<f64>().ok().filter(|secs| secs.is_finite() && *secs > 0.0).map(std::time::Duration::from_secs_f64)
 }
 
+#[cfg(feature = "nce")]
 /// `OUNCE_NRO_TIMEOUT_SECS=<n>` stops a native (`--cpu=native`) run after `n` seconds of wall-clock time. Native has
 /// no instruction budget, so an interactive program that waits for input would otherwise run until killed.
 fn nro_time_limit() -> Option<std::time::Duration> {

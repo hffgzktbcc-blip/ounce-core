@@ -858,6 +858,7 @@ pub struct LoweredBlock {
 
 /// Decodes from `pc` and lowers up to the first terminator, untranslated instruction or
 /// [`MAX_BLOCK_INSNS`]. `None` if the first instruction cannot be read or translated.
+#[cfg(test)]
 pub fn lower_block(pc: u64, mmu: &Memory) -> Option<LoweredBlock> {
     lower_block_with(pc, mmu, true)
 }

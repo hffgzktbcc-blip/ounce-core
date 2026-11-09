@@ -223,6 +223,7 @@ enum Exec {
 fn exec(engine: Engine, word: u32, init: &Init) -> (Exec, u64) {
     let (mut cpu, mut mmu) = setup(word, init);
     let has_data = !init.data.is_empty();
+    #[cfg_attr(not(feature = "native-jit"), allow(unused_mut))]
     let mut native = 0u64;
     let exit = match engine {
         Engine::Interp => {
