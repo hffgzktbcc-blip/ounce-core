@@ -1,19 +1,30 @@
-# Contributing to ounce-core
+# Contributing to Ounce-Core
 
-Ounce-core is evolving into a reproducible execution-debugging and regression toolkit.
-The current runtime and corpus adapters remain experimental and platform-specific.
-Start with [AGENTS.md](AGENTS.md) and the ready outcomes in [PLAN.md](PLAN.md).
+**Understand why programs fail. Prove when they work.**
 
-## Your first contribution (about an hour)
+Ounce-Core is an experimental ARM64 execution and verification lab written in Rust. We compare selected open-source programs across execution engines and real-hardware references. Nintendo Switch knowledge is not required for beginner contributions.
 
-New here? Do one of these. Each ends in a small pull request.
+## Find a first task
 
-1. **Run a program and compare** ([guide](docs/ADD_A_PROGRAM.md)). Pick an open-source program, build it as a Switch program, and compare its output with a host build. A difference is a bug report, and often a fix. This is the most valuable contribution.
-2. **Fix a missing instruction.** If a run prints `[VM Error] Unimplemented instruction 0x...`, decode and implement it in `src/cpu/`, with a unit test. Examples: `PMULL`, the saturating-doubling ops, the narrowing three-different ops.
-3. **Improve the docs.** If something here confused you, fix it.
+- [Good first issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) — scoped documentation and usability improvements; some require only a browser.
+- [Help wanted](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) — additional contributor opportunities.
+- [Independent ARM64 reproduction #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248) — an outside test with evidence is particularly valuable; failed reproductions are welcome.
+- [Cross-host FP discrepancy #257](https://github.com/hffgzktbcc-blip/ounce-core/issues/257) — specialist task, not beginner work.
 
-Setup: install Rust, clone the repository, run `cargo build --release` and `scripts/gate.sh`. If the gate passes you are ready. Ask questions in [Discussions](https://github.com/hffgzktbcc-blip/ounce-core/discussions); no issue is needed before a small fix. Please read the [code of conduct](CODE_OF_CONDUCT.md); report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+## How to contribute without write access
 
+1. Pick an issue; check whether someone has already opened a PR for it.
+2. For documentation-only issues, use GitHub's browser editor in your fork. Rust, ARM64 hardware and a console SDK are not needed.
+3. Submit a focused PR to main with the issue number and what you verified; disclose checks you could not run.
+4. A maintainer reviews the change. A merged PR does not automatically establish verified or independently reproduced behaviour.
+
+Start with [Vision](docs/VISION.md), [Limits](docs/LIMITS.md) and [Reproduction guide](docs/REPRODUCE.md). The current supported envelope is narrower than arbitrary ARM64/Linux applications. Ask in [Discussions](https://github.com/hffgzktbcc-blip/ounce-core/discussions) if stuck.
+
+Preserve independent expectations, source provenance and honest failure reports. Do not submit retail firmware, keys or protected assets. See [Code of conduct](CODE_OF_CONDUCT.md) and [Security](SECURITY.md).
+
+---
+
+## Advanced local development and runtime contributions
 ## Make a useful change
 
 An issue is welcome for a new substantial direction, but is not required for an
