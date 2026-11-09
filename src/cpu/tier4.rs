@@ -888,8 +888,9 @@ fn lower_block_with(pc: u64, mmu: &Memory, indirect_links: bool) -> Option<Lower
                 }
             }
             Err(()) => {
-                // `insn` rejects before emitting anything.
-                debug_assert_eq!(l.b.len(), before);
+                // A rejected instruction may already have emitted operand reads; discard them so
+                // the fallback to Tier-3 sees no partial effect.
+                l.b.truncate(before);
                 if count == 0 {
                     return None;
                 }
