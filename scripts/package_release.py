@@ -46,7 +46,40 @@ def toolchain_entries(directory, binary):
     return entries
 
 
-def package(binary, output, require_reviewed, toolchain_notices=None):
+def native_entries(directory, binary):
+    if directory.is_symlink() or (directory / 'manifest.json').is_symlink():
+        raise ValueError('Linked native notice inventory is not allowed')
+    data = json.loads((directory / 'manifest.json').read_text())
+    if data.get('schema_version') != 'ounce-core/native-notices-v1' or not data.get('libraries'):
+        raise ValueError('Missing native library inventory')
+    if data.get('binary_sha256') != hashlib.sha256(binary.read_bytes()).hexdigest():
+        raise ValueError('Native notice binary hash mismatch')
+    entries = {'licenses/native/manifest.json': (directory / 'manifest.json').read_bytes()}
+    if 'common/LGPL-2.1.txt' not in data.get('files_sha256', {}):
+        raise ValueError('Missing native LGPL-2.1 text')
+    for library in data['libraries']:
+        if not library.get('soname') or not library.get('package') or not library.get('version'):
+            raise ValueError('Incomplete native library identity')
+        package_name = library['package'].split(':')[0]
+        if 'packages/' + package_name + '/copyright.txt' not in data['files_sha256']:
+            raise ValueError('Missing native package copyright')
+    for name, digest in data['files_sha256'].items():
+        relative = PurePosixPath(name)
+        if ('\\' in name or ':' in name or relative.is_absolute()
+                or any(part in {'.', '..'} for part in relative.parts)
+                or not relative.parts or relative.parts[0] not in {'packages', 'common'} or relative.suffix != '.txt'):
+            raise ValueError('Invalid native notice path')
+        source = directory / name
+        if source.is_symlink() or not source.resolve().is_relative_to(directory.resolve()):
+            raise ValueError('Linked or escaping native notice path')
+        raw = source.read_bytes()
+        if not raw or hashlib.sha256(raw).hexdigest() != digest:
+            raise ValueError('Native notice hash mismatch')
+        entries['licenses/native/' + name] = raw
+    return entries
+
+
+def package(binary, output, require_reviewed, toolchain_notices=None, native_notices=None):
     root = Path(__file__).resolve().parents[1]
     review = json.loads((root / 'docs/RELEASE_NOTICE_REVIEW.json').read_text())
     for filename, field in [('Cargo.lock', 'cargo_lock_sha256'),
@@ -60,6 +93,8 @@ def package(binary, output, require_reviewed, toolchain_notices=None):
             raise ValueError('Release publication requires completed notice review')
         if toolchain_notices is None:
             raise ValueError('Release publication requires actual toolchain notices')
+        if binary.read_bytes().startswith(b'\x7fELF') and native_notices is None:
+            raise ValueError('Linux release publication requires actual native library notices')
     entries = {binary.name: binary.read_bytes()}
     for filename in ['LICENSE', 'THIRD_PARTY.md', 'THIRD_PARTY_NOTICES.txt',
                      'assets/fonts/DejaVu-LICENSE.txt', 'docs/RELEASE_NOTICE_REVIEW.json']:
@@ -78,6 +113,8 @@ def package(binary, output, require_reviewed, toolchain_notices=None):
         entries['licenses/' + relative.name] = raw
     if toolchain_notices is not None:
         entries.update(toolchain_entries(toolchain_notices, binary))
+    if native_notices is not None:
+        entries.update(native_entries(native_notices, binary))
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.name.endswith('.tar.gz'):
         with tarfile.open(output, 'w:gz') as archive:
@@ -109,8 +146,10 @@ if __name__ == '__main__':
     parser.add_argument('--require-reviewed', action='store_true')
     parser.add_argument('--toolchain-notices', type=Path,
                         help='notices collected from the Rust toolchain used for this binary')
+    parser.add_argument('--native-notices', type=Path,
+                        help='installed Linux shared-library copyright and license texts')
     args = parser.parse_args()
     try:
-        package(args.binary, args.output, args.require_reviewed, args.toolchain_notices)
+        package(args.binary, args.output, args.require_reviewed, args.toolchain_notices, args.native_notices)
     except (OSError, ValueError, KeyError) as error:
         parser.exit(1, f'Packaging failed: {error}\n')

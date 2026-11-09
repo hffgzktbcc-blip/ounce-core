@@ -56,6 +56,10 @@ jobs:
           targets: ${{ matrix.target }}
           components: rust-docs
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -75,15 +79,25 @@ jobs:
         shell: bash
         run: python scripts/collect_toolchain_notices.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --target ${{ matrix.target }} --output work/toolchain-notices
 
+      - name: Retain actual Linux shared-library notices
+        if: runner.os == 'Linux'
+        run: python scripts/collect_native_notices.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output work/native-notices
+
       - name: Package reviewed publication archives
         if: github.event_name == 'push'
         shell: bash
-        run: python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed --toolchain-notices work/toolchain-notices
+        run: |
+          native_args=()
+          if [[ "$RUNNER_OS" == "Linux" ]]; then native_args=(--native-notices work/native-notices); fi
+          python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed --toolchain-notices work/toolchain-notices "${native_args[@]}"
 
       - name: Package on-runner qualification archives
         if: github.event_name == 'workflow_dispatch'
         shell: bash
-        run: python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --toolchain-notices work/toolchain-notices
+        run: |
+          native_args=()
+          if [[ "$RUNNER_OS" == "Linux" ]]; then native_args=(--native-notices work/native-notices); fi
+          python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --toolchain-notices work/toolchain-notices "${native_args[@]}"
 
       - name: Write SHA-256 checksum (Unix)
         if: matrix.os != 'windows-latest'
@@ -107,13 +121,16 @@ jobs:
           python - <<'PY_QUALIFY'
           import hashlib, json, os, pathlib, sys, tarfile, tomllib, zipfile
           sys.path.insert(0, 'scripts')
-          from package_release import toolchain_entries
+          from package_release import toolchain_entries, native_entries
           binary = pathlib.Path(os.environ['RELEASE_BINARY'])
           archive = pathlib.Path(os.environ['RELEASE_ARCHIVE'])
           notices = pathlib.Path('work/toolchain-notices')
           inventory = json.loads((notices / 'manifest.json').read_text())
           assert inventory['target'] == os.environ['RELEASE_TARGET']
           expected = toolchain_entries(notices, binary)
+          native = pathlib.Path('work/native-notices')
+          native_expected = native_entries(native, binary) if os.environ['RELEASE_TARGET'].endswith('linux-gnu') else {}
+          expected.update(native_expected)
           expected[binary.name] = binary.read_bytes()
           if archive.suffix == '.zip':
               with zipfile.ZipFile(archive) as package:
@@ -130,7 +147,8 @@ jobs:
                     'binary_sha256': inventory['binary_sha256'],
                     'archive_sha256': hashlib.sha256(archive.read_bytes()).hexdigest(),
                     'archive_entries': sorted(actual),
-                    'toolchain_notice_files_verified': len(expected) - 1,
+                    'toolchain_notice_files_verified': len(expected) - len(native_expected) - 1,
+                    'native_notice_files_verified': len(native_expected),
                     'review_status': review['status'],
                     'publication_review_satisfied': bool(review['status'] == 'REVIEWED' and review.get('reviewer') and review.get('decision_evidence') and not review.get('open_items')),
                     'runtime_binaries_uploaded_by_dispatch': False}
@@ -146,6 +164,7 @@ jobs:
           path: |
             work/qualification.json
             work/toolchain-notices/
+            work/native-notices/
           if-no-files-found: error
 
       - name: Attest release archive provenance
