@@ -1,0 +1,4 @@
+clang version 22.1.8
+Target: aarch64-unknown-linux5.10.0-musl
+Thread model: posix
+InstalledDir: /tmp/claude-0/-home-user-ounce-core/c16a36b9-c009-5514-8771-d213f4149b50/scratchpad/zigvenv/lib/python3.13/site-packages/ziglang

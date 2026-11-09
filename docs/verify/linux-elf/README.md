@@ -11,7 +11,7 @@ Exit status is the guest's `exit_group` code (low 8 bits). Failures use: 70 unim
 non-Linux SVC, 71 instruction/memory fault, 72 ELF rejected, 73 instruction budget exhausted. A
 `run-elf: DIAGNOSIS: ...` line on stderr names the syscall number (with args) or the instruction word.
 
-Maturity: **research-only** as a general Linux runner. Six tiny freestanding programs (including a deterministic clock fixture) and the unchanged pinned LZ4 harness linked with musl have been executed. The LZ4 result is bounded to its listed cases; it does not establish general libc compatibility.
+Maturity: **research-only** as a general Linux runner. Six tiny freestanding programs (including a deterministic clock fixture) and four unchanged pinned library harnesses linked with musl (LZ4, xxHash, cJSON, zlib) have been executed. Each result is bounded to its listed cases; it does not establish general libc compatibility.
 
 ## What runs
 
@@ -20,14 +20,15 @@ Maturity: **research-only** as a general Linux runner. Six tiny freestanding pro
 - Syscalls (via `SVC #0`, number in x8): `write`, `writev` (fd 1 and 2 only), `exit`, `exit_group`,
   `brk`, `mmap` (anonymous only, `MAP_FIXED` allowed in the mmap window), `munmap`, `ioctl` (returns
   ENOTTY), `set_tid_address`, `rt_sigaction`/`rt_sigprocmask` (accept and ignore), `getpid`,
-  `clock_gettime` (realtime, monotonic), `uname`, `openat`/`readlinkat` (always ENOENT).
+  `clock_gettime` (realtime, monotonic), `uname`, `openat`/`readlinkat` (always ENOENT),
+  `sched_getaffinity` (one CPU: an 8-byte mask with CPU 0 set).
 - Test programs: `tests/linux-elf/src/*.c`, built by `tests/linux-elf/src/build.sh` (clang plus LLD,
   or rustup's `rust-lld`) into `tests/linux-elf/bin/` (each ELF is about 1-2 KB). Tests run each
   program on `tier3` and `tier4` (Tier-4 falls back to Tier-3 without `--features native-jit`).
 
 ## Honest limits
 
-- **Only one libc-linked library harness verified so far.** The LZ4/musl case below runs; other static glibc/musl binaries may stop early:
+- **Four libc-linked library harnesses verified so far** (LZ4, xxHash, cJSON, zlib; below). Other static glibc/musl binaries may stop early:
   they call `mprotect`, `getrandom`, `prlimit64`, `rseq`, `futex`, `set_robust_list`, `readlinkat`
   paths, etc. Each stops with a diagnosis naming the syscall; none is implemented yet.
 - Dynamic executables, `ET_DYN`/static-PIE, 32-bit and big-endian ELF are rejected. `PT_TLS` is not
@@ -67,6 +68,7 @@ python3 scripts/verify_linux_elf.py --work target/linux-lz4 \
 ```
 
 Alternatively use `--elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'`.
+`--harness NAME` runs another harness from `docs/verify/differential.json` (default `lz4`).
 The work directory must be new; it retains sources, binaries, compiler identities,
 commands, execution output and `report.json`. Source fetch uses the existing
 manifest commit. `--upstream-dir` accepts a clean local checkout of that exact
@@ -77,6 +79,27 @@ is refused rather than overwritten.
 
 The [three-host qualification](three-host-2026-11-08.json) passed on Linux, macOS and Windows: both actual engines match the fresh host build and all five CLI scenarios pass on each host. This covers separately built versions of the same pinned cases, not one transported ELF or arbitrary libc programs. Host stdout uses binary mode on Windows so byte comparisons retain LF rather than CRT CRLF translation.
 No LZ4, libc or runtime binary is redistributed with the checked-in evidence.
+
+## xxHash, cJSON and zlib (2026-11-09)
+
+The same script with `--harness xxhash`, `cjson` and `zlib` runs the unchanged
+pinned cases as static musl ELFs. Before this change, xxHash and cJSON stopped at startup on
+syscall 123 (`sched_getaffinity`, asked by musl with a 128-byte buffer); the
+[before reports](xxhash-2026-11-09/before/report.json) keep that diagnosis. With
+the one-CPU `sched_getaffinity` reply, all three match a fresh x86-64 host build on
+actual Tier-3 and Tier-4 and exit 0. zlib needs `--budget 2000000000` (it runs
+about 314 million instructions; the script default is 100 million):
+
+| harness | output bytes | Tier-3 instructions | syscalls | report |
+|---|---|---|---|---|
+| xxHash `2ec67ca` | 3,444 | 247,981 | 11 | [report](xxhash-2026-11-09/report.json) |
+| cJSON `c859b25` (`-lm`) | 7,025 | 42,830,459 | 63 | [report](cjson-2026-11-09/report.json) |
+| zlib `51b7f2a` | 5,190 | 313,690,936 | 787 | [report](zlib-2026-11-09/report.json) |
+
+LZ4 was rerun as a control with the generalized script and still matched. Linux
+x86-64 host only (Zig 0.17.1 musl); macOS and Windows were not rerun for these
+three. Monocypher was not tried: its tarball host was not reachable from the test
+machine. Internal run, not outside reproduction; no binaries are checked in.
 
 ## Deterministic clock mode
 

@@ -219,3 +219,24 @@ fn deterministic_clock_errors_do_not_consume_time_and_seconds_roll_over() {
         assert_eq!(mem.read_u64(0x1008).unwrap(), (i % 1000) * 1_000_000);
     }
 }
+
+#[test]
+fn sched_getaffinity_reports_one_cpu_and_validates_like_linux() {
+    use super::syscalls::{Process, Outcome, SYS_SCHED_GETAFFINITY, EINVAL, EFAULT, ESRCH, PID};
+    use crate::mmu::{Memory, Permission};
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
+    mem.write_bytes(0x1000, &[0xff; 16]).unwrap();
+    let mut out = Capture::default();
+    let mut call = |pid, len, mask, mem: &mut Memory| proc.dispatch(SYS_SCHED_GETAFFINITY, [pid, len, mask, 0, 0, 0], mem, &mut out);
+    // musl's sysconf passes a 128-byte buffer; only the first 8 bytes are written.
+    assert_eq!(call(0, 0x80, 0x1000, &mut mem), Outcome::Return(8));
+    assert_eq!(mem.read_u64(0x1000).unwrap(), 1);
+    assert_eq!(mem.read_u64(0x1008).unwrap(), u64::MAX);
+    assert_eq!(call(PID, 8, 0x1000, &mut mem), Outcome::Return(8));
+    assert_eq!(call(0, 4, 0x1000, &mut mem), Outcome::Return(-EINVAL));
+    assert_eq!(call(0, 12, 0x1000, &mut mem), Outcome::Return(-EINVAL));
+    assert_eq!(call(PID + 1, 8, 0x1000, &mut mem), Outcome::Return(-ESRCH));
+    assert_eq!(call(0, 8, 0, &mut mem), Outcome::Return(-EFAULT));
+}

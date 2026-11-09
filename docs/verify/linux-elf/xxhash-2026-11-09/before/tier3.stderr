@@ -1,0 +1,18 @@
+[run-elf] syscall 96 [
+    0x103fe90,
+    0x101e954,
+    0x0,
+    0x1019710,
+    0x1019c60,
+    0x0,
+] -> Return(1)
+[run-elf] syscall 123 [
+    0x0,
+    0x80,
+    0x7ffefffffbf0,
+    0x2a,
+    0x1019c60,
+    0x0,
+] -> Unimplemented("unimplemented Linux syscall 123; args x0..x5 = 0x0, 0x80, 0x7ffefffffbf0, 0x2a, 0x1019c60, 0x0")
+[run-elf] engine=Tier-3 instructions=26305 syscalls=2
+run-elf: DIAGNOSIS: unimplemented Linux syscall 123; args x0..x5 = 0x0, 0x80, 0x7ffefffffbf0, 0x2a, 0x1019c60, 0x0 at pc=0x101d1b8

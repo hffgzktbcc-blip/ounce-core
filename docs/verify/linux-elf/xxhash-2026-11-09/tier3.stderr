@@ -1,0 +1,89 @@
+[run-elf] syscall 96 [
+    0x103fe90,
+    0x101e954,
+    0x0,
+    0x1019710,
+    0x1019c60,
+    0x0,
+] -> Return(1)
+[run-elf] syscall 123 [
+    0x0,
+    0x80,
+    0x7ffefffffbf0,
+    0x2a,
+    0x1019c60,
+    0x0,
+] -> Return(8)
+[run-elf] syscall 222 [
+    0x0,
+    0x1f000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744177664)
+[run-elf] syscall 215 [
+    0x400000010000,
+    0xf000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 29 [
+    0x1,
+    0x5413,
+    0x7ffeffffdaf8,
+    0x1,
+    0x2000,
+    0x2d06800538d394c2,
+] -> Return(-25)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffda80,
+    0x2,
+    0x1,
+    0x2000,
+    0x2d06800538d394c2,
+] -> Return(136)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffdae0,
+    0x2,
+    0x1019e38,
+    0x12000,
+    0x54cfc0d331109240,
+] -> Return(1026)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffdae0,
+    0x2,
+    0x1019e38,
+    0x12000,
+    0xe38f5f0f074eaf2a,
+] -> Return(1026)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffdae0,
+    0x2,
+    0x1019e38,
+    0x0,
+    0xd96f023e0c011dd1,
+] -> Return(1036)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffefffffce0,
+    0x2,
+    0x1,
+    0x2000,
+    0x5fc7da0b17f74307,
+] -> Return(220)
+[run-elf] syscall 94 [
+    0x0,
+    0x0,
+    0x2,
+    0x1,
+    0x2000,
+    0x5fc7da0b17f74307,
+] -> Exit(0)
+[run-elf] engine=Tier-3 instructions=247981 syscalls=11

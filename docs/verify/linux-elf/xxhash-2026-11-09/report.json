@@ -1,0 +1,180 @@
+{
+  "schema": "ounce-core/linux-library-v1",
+  "harness": "xxhash",
+  "failed": false,
+  "steps": [
+    {
+      "name": "host-compiler",
+      "argv": [
+        "cc",
+        "--version"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "host-compiler.stdout",
+        "sha256": "3e8cc208c40f60832f67377aa1b03c3e7e858f20cd5d365464944700c0bd7ad1"
+      },
+      "stderr": {
+        "path": "host-compiler.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "elf-compiler",
+      "argv": [
+        "python3",
+        "-m",
+        "ziglang",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "--version"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "elf-compiler.stdout",
+        "sha256": "095ff8ce390eb3e358088d840097f39488ed7faec21753fb33bf578d24b28a3c"
+      },
+      "stderr": {
+        "path": "elf-compiler.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "host-build",
+      "argv": [
+        "cc",
+        "-O1",
+        "-Isources",
+        "sources/host_main.c",
+        "sources/xxh_cases.c",
+        "sources/xxhash.c",
+        "-o",
+        "host-ref.exe"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "host-build.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "host-build.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "elf-build",
+      "argv": [
+        "python3",
+        "-m",
+        "ziglang",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "-O1",
+        "-Isources",
+        "-static",
+        "-no-pie",
+        "sources/host_main.c",
+        "sources/xxh_cases.c",
+        "sources/xxhash.c",
+        "-o",
+        "xxhash.elf"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "elf-build.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "elf-build.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "host-run",
+      "argv": [
+        "target/linux-xxhash/host-ref.exe"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "host-run.stdout",
+        "sha256": "9be43696766caa25981038753037e18d273862a6b58aeccd8f02e34829d841b2"
+      },
+      "stderr": {
+        "path": "host-run.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "tier3",
+      "argv": [
+        "/home/user/ounce-core/target/release/ounce-core",
+        "run-elf",
+        "target/linux-xxhash/xxhash.elf",
+        "--cpu=tier3",
+        "--max-insns=100000000",
+        "--trace-syscalls"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "tier3.stdout",
+        "sha256": "9be43696766caa25981038753037e18d273862a6b58aeccd8f02e34829d841b2"
+      },
+      "stderr": {
+        "path": "tier3.stderr",
+        "sha256": "989a943dee521c72e77f750da1dc31aaf58c747d2c33d059a42079f1d811b6de"
+      }
+    },
+    {
+      "name": "tier4",
+      "argv": [
+        "/home/user/ounce-core/target/release/ounce-core",
+        "run-elf",
+        "target/linux-xxhash/xxhash.elf",
+        "--cpu=tier4",
+        "--max-insns=100000000",
+        "--trace-syscalls"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "tier4.stdout",
+        "sha256": "9be43696766caa25981038753037e18d273862a6b58aeccd8f02e34829d841b2"
+      },
+      "stderr": {
+        "path": "tier4.stderr",
+        "sha256": "fa052c1fdf6596c3a615c2258b356599a2ad29c9ac5b00461bd8de4e27b84613"
+      }
+    }
+  ],
+  "checks": {
+    "tier3": "identical",
+    "tier4": "identical"
+  },
+  "upstream": {
+    "repo": "https://github.com/Cyan4973/xxHash",
+    "commit": "2ec67caeb18ec15ae60c0853174331089acddfc0",
+    "copy": {
+      "xxhash.c": "xxhash.c",
+      "xxhash.h": "xxhash.h"
+    }
+  },
+  "sources_sha256": {
+    "host_main.c": "d6f2291f385777bb7c02a4b6400dda7bc28e461cb4517d23726e7fd78c82d5dd",
+    "xxh_cases.c": "af095e2ff9598d4750e940fd53fc9e5b381e32b905799c2417e7b228bac5625a",
+    "xxhash.c": "5c3591fe6e6c86a619eb26760e9520e37a6fd5152882ab5ad93f912e2a855966",
+    "xxhash.h": "119b5600024bb8dca7dfe039163e3418ecd2a8f62ca4318026a29002d3e4da73"
+  },
+  "runtime_sha256": "b140d7b67993b96fa3e972b4eb2a4cb3b1869809c5d57265b99b345b9b293bd0",
+  "revision": "28f0980c01acf88020decd28917ee8a61b770d56",
+  "working_tree_dirty": true,
+  "host_sha256": "59119353a9dbfb1c6620ee231492223f4a748e22abe777b4f2ba36cabd58f60b",
+  "elf_sha256": "cd25093f4626076fbc2795e1c9b9950833da96b4d31b0ed099b45209dd221ec7"
+}

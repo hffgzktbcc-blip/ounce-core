@@ -6,6 +6,7 @@ use crate::mmu::{Memory, Permission};
 use std::time::Instant;
 
 pub const ENOENT: i64 = 2;
+pub const ESRCH: i64 = 3;
 pub const EBADF: i64 = 9;
 pub const ENOMEM: i64 = 12;
 pub const EFAULT: i64 = 14;
@@ -21,6 +22,7 @@ pub const SYS_EXIT: u64 = 93;
 pub const SYS_EXIT_GROUP: u64 = 94;
 pub const SYS_SET_TID_ADDRESS: u64 = 96;
 pub const SYS_CLOCK_GETTIME: u64 = 113;
+pub const SYS_SCHED_GETAFFINITY: u64 = 123;
 pub const SYS_RT_SIGACTION: u64 = 134;
 pub const SYS_RT_SIGPROCMASK: u64 = 135;
 pub const SYS_UNAME: u64 = 160;
@@ -116,6 +118,7 @@ impl Process {
             SYS_GETPID => PID as i64,
             SYS_CLOCK_GETTIME => self.sys_clock_gettime(a[0], a[1], mmu),
             SYS_UNAME => sys_uname(a[0], mmu),
+            SYS_SCHED_GETAFFINITY => sys_sched_getaffinity(a[0], a[1], a[2], mmu),
             // The guest has no filesystem.
             SYS_OPENAT | SYS_READLINKAT => -ENOENT,
             _ => return Outcome::Unimplemented(describe_unimplemented(nr, &a)),
@@ -282,6 +285,23 @@ fn sys_uname(buf: u64, mmu: &mut Memory) -> i64 {
         -EFAULT
     } else {
         0
+    }
+}
+
+/// The guest sees one CPU. Like the kernel, the mask is one `unsigned long` (8 bytes,
+/// CPU 0 set), `len` must hold it and be a multiple of 8, and the return value is the
+/// number of bytes written. musl's `sysconf(_SC_NPROCESSORS_ONLN)` asks this at startup.
+fn sys_sched_getaffinity(pid: u64, len: u64, mask: u64, mmu: &mut Memory) -> i64 {
+    if pid != 0 && pid != PID {
+        return -ESRCH;
+    }
+    if len < 8 || len % 8 != 0 {
+        return -EINVAL;
+    }
+    if mmu.write_bytes(mask, &1u64.to_le_bytes()).is_err() {
+        -EFAULT
+    } else {
+        8
     }
 }
 
