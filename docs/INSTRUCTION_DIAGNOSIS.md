@@ -66,14 +66,13 @@ The generator fixes inputs but captures actual outputs; it never substitutes the
 expected NaN. The case matched interpreter/Tier-3/Tier-4 on that ARM64 host.
 The [Linux dossier](verify/insn-fuzzer/default-nan-mul2d/before/tier3/diagnosis.json)
 retains the real mismatching execution. On Linux each selected engine reproduced
-that failure. Tier-4 ran one native instruction in the wrapper; `SimdVec2D` itself
-falls back, so this is not a native-JIT vector-FP correctness claim.
+that failure. Tier-4 ran one native instruction in the wrapper; the decoded vector-FP instruction itself
+runs through the shared SIMD interpreter fallback, so this is not a native-JIT vector-FP correctness claim.
 
 ```sh
 ounce-core replay-instruction docs/verify/insn-fuzzer/default-nan-mul2d/before/tier3
 ```
 
-A second-host replay is separate acceptance. Matching on the original Linux
-machine alone does not establish portable reproduction or outside-user evidence.
+The [same Linux dossier was replayed on Windows](verify/insn-fuzzer/default-nan-mul2d/cross-host-before.json), reproducing the mismatch with validated input bytes. macOS correctly reported changed behavior and a matching reference. Those replay steps passed; their containing jobs later failed on an unrelated restored LZ4 evidence directory, which is repaired by placing evidence outside the Rust cache. This is internal cross-host evidence, not outside-user reproduction.
 Synthetic MOV/reference contradictions in the CLI tests exercise dossier handling;
 they are explicitly separate from this hardware-observed case.

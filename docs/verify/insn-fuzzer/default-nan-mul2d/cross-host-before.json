@@ -1,0 +1,50 @@
+{
+  "run_id": 42559991291,
+  "source_commit": "9fd1a5a7537078c1cd5f03014f19707bed22360d",
+  "scope": "Exact retained Linux Tier-3 instruction dossier replayed on separate hosted machines. Internal CI, not outside-user reproduction.",
+  "pipeline_boundary": "Replay steps passed. The containing jobs later failed because a cached LZ4 evidence directory already existed; that separate CI output-path defect is retained and repaired separately.",
+  "results": [
+    {
+      "host": "linux",
+      "job_id": 128974149684,
+      "replay_step": "passed",
+      "job_conclusion": "failure",
+      "observation": {
+        "host": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43",
+        "replay_verdict": "reproduced",
+        "reference_verdict": "mismatch",
+        "exit": 0
+      },
+      "artifact_reported_digest": "aea1b71f44703f2df5b87b0919dde5ae6f83c852fcac093a3ac33a643cc86191"
+    },
+    {
+      "host": "macos",
+      "job_id": 128974149846,
+      "replay_step": "passed",
+      "job_conclusion": "failure",
+      "observation": {
+        "host": "macOS-26.7.2-arm64-arm-64bit",
+        "replay_verdict": "changed",
+        "reference_verdict": "match",
+        "exit": 1
+      },
+      "artifact_reported_digest": "f388290d8c0b61e69e6eb7b035f16578a5d87427bab08b53dcdaa496f4a3206e"
+    },
+    {
+      "host": "windows",
+      "job_id": 128974150004,
+      "replay_step": "passed",
+      "job_conclusion": "failure",
+      "observation": {
+        "host": "Windows-2025Server-10.0.26100-SP0",
+        "replay_verdict": "reproduced",
+        "reference_verdict": "mismatch",
+        "exit": 0
+      },
+      "artifact_reported_digest": "bcc1366b12019dab53376d4a2f8384f7c57bbe689163dceca490b3dce67666ae"
+    }
+  ],
+  "case_sha256": "b98c8bc44fc7c35cbcbf36e8e8ea3efa2f9b2ccaecb637abea819311b6e3151b",
+  "diagnosis_sha256": "60719cedac7817775486d846637b3ed2ca70d38728dc8de2046f54026e09647f",
+  "artifact_boundary": "Digests in job logs are GitHub-reported upload digests; ZIP bytes were not locally downloaded or verified."
+}
