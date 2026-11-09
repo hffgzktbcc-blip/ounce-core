@@ -116,11 +116,12 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Evidence: [cross-host replay observations](docs/verify/insn-fuzzer/default-nan-mul2d/cross-host-before.json), run 42559991291 at 9fd1a5a. The exact Linux dossier reproduced its mismatch on hosted Windows after input hash/state validation; macOS reported changed behavior matching hardware. Tampering, inconsistent state and changed/unimplemented execution paths have regressions. Replay steps passed; containing jobs later failed on an old cached LZ4 output directory. Fresh run-specific evidence allocation repairs that separate CI defect; full pipeline requalification is pending.
       Next: V9 repairs the observed arithmetic while retaining the failure unchanged. This remains one instruction, not general nondeterministic application recording or independent-user evidence.
 - [ ] **V9. Repair the measured host-dependent vector multiply result.**
-      Status: ready
+      Status: active
       Depends: V5 V6
       Result: the retained zero-times-infinity FMUL case produces ARM default NaNs on x86 hosts as well as ARM hosts.
       Acceptance: preserve the exact hardware trace and pre-fix dossier; all supported hosts match the reference after the repair, while replay truthfully reports changed behavior against the historical failure. Keep the interpreter/JIT fallback boundary and unmodelled FP exception flags explicit.
-      Next: canonicalize the observed invalid vector-2D multiplication result in the interpreter path; do not change hardware expectations or claim unrelated floating-point completeness.
+      Progress: shared SIMD FMUL now returns Arm positive default NaNs for zero*infinity while preserving input-NaN propagation and FMULX semantics. [Local after evidence](docs/verify/insn-fuzzer/default-nan-mul2d/after/acceptance.json): all selected engines match the unchanged hardware trace, historical replay reports changed/reference-match, identical prior LZ4 input/output retained, 565 unit and 11 CLI tests passed (10 opt-in ignores). Focused review found no actionable issue.
+      Next: qualify the repaired result on all supported hosted OSes, then close this task. Legacy/scalar FP paths and FP exception flags remain outside this repair.
 - [ ] **V7. Replace the scripted browser teaching path with real runtime execution.**
       Status: parked
       Result: a visitor steps through an actual small ARM64 program with no installation.

@@ -529,6 +529,10 @@ macro_rules! fp_lane_ops {
                 match op {
                     SimdFpOp3::Fadd | SimdFpOp3::Faddp => (a + b).to_bits(),
                     SimdFpOp3::Fsub => (a - b).to_bits(),
+                    // Arm's invalid multiply result is the positive default NaN,
+                    // regardless of the host instruction's NaN sign. Preserve input
+                    // NaN payload/order through nan_in above, and FMULX below.
+                    SimdFpOp3::Fmul if (a == 0.0 && b.is_infinite()) || (b == 0.0 && a.is_infinite()) => <$f>::INFINITY.to_bits() | QUIET,
                     SimdFpOp3::Fmul => (a * b).to_bits(),
                     SimdFpOp3::Fmulx => {
                         if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) {
@@ -1032,6 +1036,20 @@ mod fp_vector_tests {
         // FADDP: pairs of n then pairs of m
         assert_eq!(fp_three_same(SimdFpOp3::Faddp, 0, n, m, false, true), f4([3.5, 7.0, 2.5, -0.75]));
         assert_eq!(fp_three_same(SimdFpOp3::Fadd, 0, f2d([1.0, 2.0]), f2d([0.5, 0.25]), true, true), f2d([1.5, 2.25]));
+    }
+
+    #[test]
+    fn invalid_vector_multiply_uses_positive_default_nan_but_preserves_nan_inputs_and_fmulx() {
+        let n = f4([0.0, -0.0, f32::INFINITY, f32::NEG_INFINITY]);
+        let m = f4([f32::INFINITY, f32::NEG_INFINITY, 0.0, -0.0]);
+        for (a, b) in [(n, m), (m, n)] {
+            assert_eq!(u4(fp_three_same(SimdFpOp3::Fmul, 0, a, b, false, true)), [0x7fc0_0000; 4]);
+        }
+        let d = fp_three_same(SimdFpOp3::Fmul, 0, f2d([0.0, -0.0]), f2d([f64::INFINITY, f64::NEG_INFINITY]), true, true);
+        assert_eq!(d, 0x7ff8_0000_0000_0000_7ff8_0000_0000_0000);
+        let nan = f32::from_bits(0xffc1_2345);
+        assert_eq!(u4(fp_three_same(SimdFpOp3::Fmul, 0, f4([nan; 4]), f4([0.0; 4]), false, true)), [0xffc1_2345; 4]);
+        assert_eq!(fp_three_same(SimdFpOp3::Fmulx, 0, n, m, false, true), f4([2.0; 4]));
     }
 
     #[test]

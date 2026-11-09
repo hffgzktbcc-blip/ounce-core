@@ -1,0 +1,12 @@
+--- fuzz-replay summary ---
+engine:                         Tier3
+host executed (not SIGILL):     1
+host UNDEFINED (SIGILL):        0
+emulator unimplemented:         0 (0 classes)
+emulator other errors:          0
+emulator executed:              1
+  distinct classes executed:    1
+  exact match (X,V,NZCV,QC):    1
+  MISMATCH:                     0 (0 with QC wrong)
+  FPSR exception flags differ on matching results (not modelled): 1
+emulator runs a word the host calls UNDEFINED: 0

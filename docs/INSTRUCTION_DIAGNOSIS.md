@@ -65,7 +65,7 @@ job [128970464303](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42
 The generator fixes inputs but captures actual outputs; it never substitutes the
 expected NaN. The case matched interpreter/Tier-3/Tier-4 on that ARM64 host.
 The [Linux dossier](verify/insn-fuzzer/default-nan-mul2d/before/tier3/diagnosis.json)
-retains the real mismatching execution. On Linux each selected engine reproduced
+retains the real mismatching execution. In the pre-fix Linux run each selected engine reproduced
 that failure. Tier-4 ran one native instruction in the wrapper; the decoded vector-FP instruction itself
 runs through the shared SIMD interpreter fallback, so this is not a native-JIT vector-FP correctness claim.
 
@@ -76,3 +76,19 @@ ounce-core replay-instruction docs/verify/insn-fuzzer/default-nan-mul2d/before/t
 The [same Linux dossier was replayed on Windows](verify/insn-fuzzer/default-nan-mul2d/cross-host-before.json), reproducing the mismatch with validated input bytes. macOS correctly reported changed behavior and a matching reference. Those replay steps passed; their containing jobs later failed on an unrelated restored LZ4 evidence directory, which is repaired by placing evidence outside the Rust cache. This is internal cross-host evidence, not outside-user reproduction.
 Synthetic MOV/reference contradictions in the CLI tests exercise dossier handling;
 they are explicitly separate from this hardware-observed case.
+
+## Repair acceptance
+
+The [local repaired build](verify/insn-fuzzer/default-nan-mul2d/after/acceptance.json)
+returns the positive default NaN in the decoded shared SIMD multiply path. The
+unchanged trace now matches all three selected engines. Replaying the old dossier
+returns `changed` plus reference `match`, preserving the historical failure rather
+than replacing it with passing data. The same pre-existing LZ4 ELF still matches
+its original 406-byte host output on Tier-3 and Tier-4.
+
+Regression tests cover the actual hardware instruction and shared-helper single/
+double precision sign and operand-order cases, input NaN payload preservation,
+and FMULX's distinct result. Full local suite: 565 unit tests and 11 CLI tests
+passed, with 10 existing opt-in tests ignored. Three-host repair qualification is
+pending. The repair does not certify legacy/scalar floating-point paths, other
+invalid arithmetic, FPCR modes or FPSR exception flags.
