@@ -99,6 +99,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var lastProgram: URL?
     private var verifying: (harness: Harness, sd: URL, engine: Engine)?
     private var catalog: [Harness] = []
+    private var workbench: Workbench!
 
     private var support: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -118,8 +119,12 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let applicationMenu = NSMenu()
         applicationMenu.addItem(withTitle: "About Ounce Core", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         applicationMenu.addItem(.separator())
-        openMenuItem = applicationMenu.addItem(withTitle: "Open Program…", action: #selector(chooseHomebrew), keyEquivalent: "o")
+        let checkItem = applicationMenu.addItem(withTitle: "Check a Program…", action: #selector(checkProgram), keyEquivalent: "o")
+        checkItem.target = self
+        openMenuItem = applicationMenu.addItem(withTitle: "Run in a Window (Classic)…", action: #selector(chooseHomebrew), keyEquivalent: "r")
         openMenuItem.target = self
+        let classicItem = applicationMenu.addItem(withTitle: "Show Classic Launcher", action: #selector(showClassic), keyEquivalent: "")
+        classicItem.target = self
         applicationMenu.addItem(.separator())
         applicationMenu.addItem(withTitle: "Quit Ounce Core", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let item = NSMenuItem()
@@ -339,11 +344,14 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         window.initialFirstResponder = openButton
         window.center()
-        window.makeKeyAndOrderFront(nil)
+        // The workbench is the front door. The classic launcher window stays available from the menu.
+        let runtime = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core")
+        workbench = Workbench(runtime: runtime)
+        workbench.show()
         NSApp.activate(ignoringOtherApps: true)
         // Poll one bounded snapshot instead of queueing an unbounded number of UI updates.
         Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.refreshConsole() }
-        if let file = pendingFile { pendingFile = nil; openProgram(file) }
+        if let file = pendingFile { pendingFile = nil; workbench.check(file: file) }
     }
 
     private func button(_ title: String, _ action: Selector) -> NSButton {
@@ -351,6 +359,18 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         button.bezelStyle = .rounded
         button.controlSize = .large
         return button
+    }
+
+    @objc private func checkProgram() {
+        let panel = NSOpenPanel()
+        panel.message = "Choose a homebrew program (.nro) to check"
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url { workbench.check(file: url) }
+    }
+
+    @objc private func showClassic() {
+        window.makeKeyAndOrderFront(nil)
     }
 
     @objc private func chooseHomebrew() {
@@ -766,12 +786,12 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
         let url = URL(fileURLWithPath: filename)
         guard url.pathExtension.lowercased() == "nro" else { return false }
-        if window == nil { pendingFile = url } else { openProgram(url) }
+        if workbench == nil { pendingFile = url } else { workbench.check(file: url) }
         return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-    func applicationWillTerminate(_ notification: Notification) { process?.terminate() }
+    func applicationWillTerminate(_ notification: Notification) { process?.terminate(); workbench?.stop() }
 }
 
 let application = NSApplication.shared
