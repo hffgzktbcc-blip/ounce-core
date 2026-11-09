@@ -1,0 +1,6297 @@
+[run-elf] syscall 96 [
+    0x107e618,
+    0x1028ffc,
+    0x0,
+    0x1023d50,
+    0x10242a0,
+    0x0,
+] -> Return(1)
+[run-elf] syscall 29 [
+    0x1,
+    0x5413,
+    0x7ffeffffda18,
+    0x5,
+    0x2000,
+    0x0,
+] -> Return(-25)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffd9a0,
+    0x2,
+    0x5,
+    0x2000,
+    0x0,
+] -> Return(11)
+[run-elf] syscall 123 [
+    0x0,
+    0x80,
+    0x7ffefffffad0,
+    0xf,
+    0x8,
+    0x0,
+] -> Return(8)
+[run-elf] syscall 222 [
+    0x0,
+    0x1f000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744177664)
+[run-elf] syscall 215 [
+    0x400000010000,
+    0xf000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x3ffffffef000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744304640)
+[run-elf] syscall 222 [
+    0x40000000e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744374272)
+[run-elf] syscall 222 [
+    0x40000001f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744443904)
+[run-elf] syscall 222 [
+    0x400000030000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744513536)
+[run-elf] syscall 215 [
+    0x400000052000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000041000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000030000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000001f000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000041000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744583168)
+[run-elf] syscall 222 [
+    0x400000052000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744652800)
+[run-elf] syscall 222 [
+    0x400000063000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744722432)
+[run-elf] syscall 222 [
+    0x400000074000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744792064)
+[run-elf] syscall 215 [
+    0x400000096000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000085000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000074000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000063000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000085000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744861696)
+[run-elf] syscall 222 [
+    0x400000096000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368744931328)
+[run-elf] syscall 222 [
+    0x4000000a7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745000960)
+[run-elf] syscall 222 [
+    0x4000000b8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745070592)
+[run-elf] syscall 215 [
+    0x4000000da000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000000c9000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000000b8000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000000a7000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000000c9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745140224)
+[run-elf] syscall 222 [
+    0x4000000da000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745209856)
+[run-elf] syscall 222 [
+    0x4000000eb000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745279488)
+[run-elf] syscall 222 [
+    0x4000000fc000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745349120)
+[run-elf] syscall 215 [
+    0x40000011e000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000010d000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000000fc000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000000eb000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000010d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745418752)
+[run-elf] syscall 222 [
+    0x40000011e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745488384)
+[run-elf] syscall 222 [
+    0x40000012f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745558016)
+[run-elf] syscall 222 [
+    0x400000140000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745627648)
+[run-elf] syscall 215 [
+    0x400000162000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000151000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000140000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000012f000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000151000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745697280)
+[run-elf] syscall 222 [
+    0x400000162000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745766912)
+[run-elf] syscall 222 [
+    0x400000173000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745836544)
+[run-elf] syscall 222 [
+    0x400000184000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745906176)
+[run-elf] syscall 215 [
+    0x4000001a6000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000195000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000184000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000173000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000195000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368745975808)
+[run-elf] syscall 222 [
+    0x4000001a6000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746045440)
+[run-elf] syscall 222 [
+    0x4000001b7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746115072)
+[run-elf] syscall 222 [
+    0x4000001c8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746184704)
+[run-elf] syscall 215 [
+    0x4000001ea000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000001d9000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000001c8000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000001b7000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000001d9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746254336)
+[run-elf] syscall 222 [
+    0x4000001ea000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746323968)
+[run-elf] syscall 222 [
+    0x4000001fb000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746393600)
+[run-elf] syscall 222 [
+    0x40000020c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746463232)
+[run-elf] syscall 215 [
+    0x40000022e000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000021d000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000020c000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000001fb000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000021d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746532864)
+[run-elf] syscall 222 [
+    0x40000022e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746602496)
+[run-elf] syscall 222 [
+    0x40000023f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746672128)
+[run-elf] syscall 222 [
+    0x400000250000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746741760)
+[run-elf] syscall 215 [
+    0x400000272000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000261000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000250000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000023f000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000261000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746811392)
+[run-elf] syscall 222 [
+    0x400000272000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746881024)
+[run-elf] syscall 222 [
+    0x400000283000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368746950656)
+[run-elf] syscall 222 [
+    0x400000294000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747020288)
+[run-elf] syscall 215 [
+    0x4000002b6000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000002a5000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000294000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000283000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000002a5000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747089920)
+[run-elf] syscall 222 [
+    0x4000002b6000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747159552)
+[run-elf] syscall 222 [
+    0x4000002c7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747229184)
+[run-elf] syscall 222 [
+    0x4000002d8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747298816)
+[run-elf] syscall 215 [
+    0x4000002fa000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000002e9000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000002d8000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000002c7000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000002e9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747368448)
+[run-elf] syscall 222 [
+    0x4000002fa000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747438080)
+[run-elf] syscall 222 [
+    0x40000030b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747507712)
+[run-elf] syscall 222 [
+    0x40000031c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747577344)
+[run-elf] syscall 215 [
+    0x40000033e000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000032d000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000031c000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000030b000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000032d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747646976)
+[run-elf] syscall 222 [
+    0x40000033e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747716608)
+[run-elf] syscall 222 [
+    0x40000033f000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747786240)
+[run-elf] syscall 222 [
+    0x400000350000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368747921408)
+[run-elf] syscall 215 [
+    0x400000392000,
+    0x21000,
+    0x2,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000371000,
+    0x21000,
+    0x2,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000360000,
+    0x11000,
+    0x2,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000034f000,
+    0x11000,
+    0x2,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000381000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748056576)
+[run-elf] syscall 222 [
+    0x4000003a2000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748126208)
+[run-elf] syscall 222 [
+    0x4000003b3000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748195840)
+[run-elf] syscall 222 [
+    0x4000003c4000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748265472)
+[run-elf] syscall 215 [
+    0x4000003e6000,
+    0x11000,
+    0x8,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000003d5000,
+    0x11000,
+    0x8,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000003c4000,
+    0x11000,
+    0x8,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000003b3000,
+    0x11000,
+    0x8,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000003c1000,
+    0x1f000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748335104)
+[run-elf] syscall 215 [
+    0x4000003f7000,
+    0x9000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000410000,
+    0x6000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000003e1000,
+    0x1f000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748462080)
+[run-elf] syscall 215 [
+    0x400000416000,
+    0xa000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000430000,
+    0x5000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000040f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748589056)
+[run-elf] syscall 222 [
+    0x400000424000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748658688)
+[run-elf] syscall 222 [
+    0x400000435000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748728320)
+[run-elf] syscall 222 [
+    0x400000446000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748797952)
+[run-elf] syscall 215 [
+    0x400000468000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000457000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000446000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000435000,
+    0x11000,
+    0x4,
+    0x2,
+    0x15,
+    0x7,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000457000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748867584)
+[run-elf] syscall 222 [
+    0x400000468000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368748937216)
+[run-elf] syscall 222 [
+    0x400000479000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749006848)
+[run-elf] syscall 222 [
+    0x40000048a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749076480)
+[run-elf] syscall 215 [
+    0x4000004ac000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000049b000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000048a000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000479000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000049b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749146112)
+[run-elf] syscall 222 [
+    0x4000004ac000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749215744)
+[run-elf] syscall 222 [
+    0x4000004bd000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749285376)
+[run-elf] syscall 222 [
+    0x4000004ce000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749355008)
+[run-elf] syscall 215 [
+    0x4000004f0000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000004df000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000004ce000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000004bd000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000004df000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749424640)
+[run-elf] syscall 222 [
+    0x4000004f0000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749494272)
+[run-elf] syscall 222 [
+    0x400000501000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749563904)
+[run-elf] syscall 222 [
+    0x400000512000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749633536)
+[run-elf] syscall 215 [
+    0x400000534000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000523000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000512000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000501000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000523000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749703168)
+[run-elf] syscall 222 [
+    0x400000534000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749772800)
+[run-elf] syscall 222 [
+    0x400000545000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749842432)
+[run-elf] syscall 222 [
+    0x400000556000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749912064)
+[run-elf] syscall 215 [
+    0x400000578000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000567000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000556000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000545000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000567000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368749981696)
+[run-elf] syscall 222 [
+    0x400000578000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750051328)
+[run-elf] syscall 222 [
+    0x400000589000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750120960)
+[run-elf] syscall 222 [
+    0x40000059a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750190592)
+[run-elf] syscall 215 [
+    0x4000005bc000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000005ab000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000059a000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000589000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffda00,
+    0x2,
+    0x1024478,
+    0x2000,
+    0x9,
+] -> Return(1025)
+[run-elf] syscall 222 [
+    0x4000005ab000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750260224)
+[run-elf] syscall 222 [
+    0x4000005bc000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750329856)
+[run-elf] syscall 222 [
+    0x4000005cd000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750399488)
+[run-elf] syscall 222 [
+    0x4000005de000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750469120)
+[run-elf] syscall 215 [
+    0x400000600000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000005ef000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000005de000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000005cd000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000005ef000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750538752)
+[run-elf] syscall 222 [
+    0x400000600000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750608384)
+[run-elf] syscall 222 [
+    0x400000611000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750678016)
+[run-elf] syscall 222 [
+    0x400000622000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750747648)
+[run-elf] syscall 215 [
+    0x400000644000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000633000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000622000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000611000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000633000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750817280)
+[run-elf] syscall 222 [
+    0x400000644000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750886912)
+[run-elf] syscall 222 [
+    0x400000655000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368750956544)
+[run-elf] syscall 222 [
+    0x400000666000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751026176)
+[run-elf] syscall 215 [
+    0x400000688000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000677000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000666000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000655000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000677000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751095808)
+[run-elf] syscall 222 [
+    0x400000688000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751165440)
+[run-elf] syscall 222 [
+    0x400000699000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751235072)
+[run-elf] syscall 222 [
+    0x4000006aa000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751304704)
+[run-elf] syscall 215 [
+    0x4000006cc000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000006bb000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000006aa000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000699000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000006bb000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751374336)
+[run-elf] syscall 222 [
+    0x4000006cc000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751443968)
+[run-elf] syscall 222 [
+    0x4000006dd000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751513600)
+[run-elf] syscall 222 [
+    0x4000006ee000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751583232)
+[run-elf] syscall 215 [
+    0x400000710000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000006ff000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000006ee000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000006dd000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000006ff000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751652864)
+[run-elf] syscall 222 [
+    0x400000710000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751722496)
+[run-elf] syscall 222 [
+    0x400000721000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751792128)
+[run-elf] syscall 222 [
+    0x400000732000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751861760)
+[run-elf] syscall 215 [
+    0x400000754000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000743000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000732000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000721000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000743000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368751931392)
+[run-elf] syscall 222 [
+    0x400000754000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752001024)
+[run-elf] syscall 222 [
+    0x400000765000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752070656)
+[run-elf] syscall 222 [
+    0x400000776000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752140288)
+[run-elf] syscall 215 [
+    0x400000798000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000787000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000776000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000765000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000787000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752209920)
+[run-elf] syscall 222 [
+    0x400000798000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752279552)
+[run-elf] syscall 222 [
+    0x400000799000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752349184)
+[run-elf] syscall 222 [
+    0x4000007aa000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752484352)
+[run-elf] syscall 215 [
+    0x4000007ec000,
+    0x21000,
+    0x3,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000007cb000,
+    0x21000,
+    0x3,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000007ba000,
+    0x11000,
+    0x3,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000007a9000,
+    0x11000,
+    0x3,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000007db000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752619520)
+[run-elf] syscall 222 [
+    0x4000007fc000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752689152)
+[run-elf] syscall 222 [
+    0x40000080d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752758784)
+[run-elf] syscall 222 [
+    0x40000081e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752828416)
+[run-elf] syscall 215 [
+    0x400000840000,
+    0x11000,
+    0x8,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000082f000,
+    0x11000,
+    0x8,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000081e000,
+    0x11000,
+    0x8,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000080d000,
+    0x11000,
+    0x8,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000082f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752898048)
+[run-elf] syscall 222 [
+    0x400000840000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368752967680)
+[run-elf] syscall 222 [
+    0x400000851000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753037312)
+[run-elf] syscall 222 [
+    0x400000862000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753106944)
+[run-elf] syscall 215 [
+    0x400000884000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000873000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000862000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000851000,
+    0x11000,
+    0x4,
+    0x3,
+    0x3,
+    0x26b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000873000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753176576)
+[run-elf] syscall 222 [
+    0x400000884000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753246208)
+[run-elf] syscall 222 [
+    0x400000895000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753315840)
+[run-elf] syscall 222 [
+    0x4000008a6000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753385472)
+[run-elf] syscall 215 [
+    0x4000008c8000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000008b7000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000008a6000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000895000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000008b7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753455104)
+[run-elf] syscall 222 [
+    0x4000008c8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753524736)
+[run-elf] syscall 222 [
+    0x4000008d9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753594368)
+[run-elf] syscall 222 [
+    0x4000008ea000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753664000)
+[run-elf] syscall 215 [
+    0x40000090c000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x9,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000008fb000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x9,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000008ea000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x9,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000008d9000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x9,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000008fb000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753733632)
+[run-elf] syscall 222 [
+    0x40000090c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753803264)
+[run-elf] syscall 222 [
+    0x40000091d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753872896)
+[run-elf] syscall 222 [
+    0x40000092e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368753942528)
+[run-elf] syscall 215 [
+    0x400000950000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x9,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000093f000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x9,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000092e000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x9,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000091d000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x9,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000093f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754012160)
+[run-elf] syscall 222 [
+    0x400000950000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754081792)
+[run-elf] syscall 222 [
+    0x400000961000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754151424)
+[run-elf] syscall 222 [
+    0x400000972000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754221056)
+[run-elf] syscall 215 [
+    0x400000994000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000983000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000972000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000961000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000983000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754290688)
+[run-elf] syscall 222 [
+    0x400000994000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754360320)
+[run-elf] syscall 222 [
+    0x4000009a5000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754429952)
+[run-elf] syscall 222 [
+    0x4000009b6000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754499584)
+[run-elf] syscall 215 [
+    0x4000009d8000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000009c7000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000009b6000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000009a5000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000009c7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754569216)
+[run-elf] syscall 222 [
+    0x4000009d8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754638848)
+[run-elf] syscall 222 [
+    0x4000009e9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754708480)
+[run-elf] syscall 222 [
+    0x4000009fa000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754778112)
+[run-elf] syscall 215 [
+    0x400000a1c000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x5,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000a0b000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x5,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000009fa000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x5,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000009e9000,
+    0x11000,
+    0x4,
+    0xbd,
+    0xa,
+    0x5,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000a0b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754847744)
+[run-elf] syscall 222 [
+    0x400000a1c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754917376)
+[run-elf] syscall 222 [
+    0x400000a2d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368754987008)
+[run-elf] syscall 222 [
+    0x400000a3e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755056640)
+[run-elf] syscall 215 [
+    0x400000a60000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000a4f000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000a3e000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000a2d000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000a4f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755126272)
+[run-elf] syscall 222 [
+    0x400000a60000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755195904)
+[run-elf] syscall 222 [
+    0x400000a71000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755265536)
+[run-elf] syscall 222 [
+    0x400000a82000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755335168)
+[run-elf] syscall 215 [
+    0x400000aa4000,
+    0x11000,
+    0x4,
+    0xc6,
+    0x4,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000a93000,
+    0x11000,
+    0x4,
+    0xc6,
+    0x4,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000a82000,
+    0x11000,
+    0x4,
+    0xc6,
+    0x4,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000a71000,
+    0x11000,
+    0x4,
+    0xc6,
+    0x4,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000a93000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755404800)
+[run-elf] syscall 222 [
+    0x400000aa4000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755474432)
+[run-elf] syscall 222 [
+    0x400000ab5000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755544064)
+[run-elf] syscall 222 [
+    0x400000ac6000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755613696)
+[run-elf] syscall 215 [
+    0x400000ae8000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000ad7000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000ac6000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000ab5000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000ad7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755683328)
+[run-elf] syscall 222 [
+    0x400000ae8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755752960)
+[run-elf] syscall 222 [
+    0x400000af9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755822592)
+[run-elf] syscall 222 [
+    0x400000b0a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755892224)
+[run-elf] syscall 215 [
+    0x400000b2c000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000b1b000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000b0a000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000af9000,
+    0x11000,
+    0x4,
+    0x3a98,
+    0x5,
+    0xa1,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000b1b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368755961856)
+[run-elf] syscall 222 [
+    0x400000b2c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756031488)
+[run-elf] syscall 222 [
+    0x400000b3d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756101120)
+[run-elf] syscall 222 [
+    0x400000b4e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756170752)
+[run-elf] syscall 215 [
+    0x400000b70000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000b5f000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000b4e000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000b3d000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffda00,
+    0x2,
+    0x1024478,
+    0x2000,
+    0x5f,
+] -> Return(1028)
+[run-elf] syscall 222 [
+    0x400000b5f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756240384)
+[run-elf] syscall 222 [
+    0x400000b70000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756310016)
+[run-elf] syscall 222 [
+    0x400000b81000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756379648)
+[run-elf] syscall 222 [
+    0x400000b92000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756449280)
+[run-elf] syscall 215 [
+    0x400000bb4000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000ba3000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000b92000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000b81000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000ba3000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756518912)
+[run-elf] syscall 222 [
+    0x400000bb4000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756588544)
+[run-elf] syscall 222 [
+    0x400000bb5000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756658176)
+[run-elf] syscall 222 [
+    0x400000bc6000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756793344)
+[run-elf] syscall 215 [
+    0x400000c08000,
+    0x21000,
+    0x4c,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000be7000,
+    0x21000,
+    0x4c,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000bd6000,
+    0x11000,
+    0x4c,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000bc5000,
+    0x11000,
+    0x4c,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000bf7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756928512)
+[run-elf] syscall 222 [
+    0x400000c18000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368756998144)
+[run-elf] syscall 222 [
+    0x400000c29000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757067776)
+[run-elf] syscall 222 [
+    0x400000c3a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757137408)
+[run-elf] syscall 215 [
+    0x400000c5c000,
+    0x11000,
+    0x8,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000c4b000,
+    0x11000,
+    0x8,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000c3a000,
+    0x11000,
+    0x8,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000c29000,
+    0x11000,
+    0x8,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000c4b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757207040)
+[run-elf] syscall 222 [
+    0x400000c5c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757276672)
+[run-elf] syscall 222 [
+    0x400000c6d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757346304)
+[run-elf] syscall 222 [
+    0x400000c7e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757415936)
+[run-elf] syscall 215 [
+    0x400000ca0000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000c8f000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000c7e000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000c6d000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000c8f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757485568)
+[run-elf] syscall 222 [
+    0x400000ca0000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757555200)
+[run-elf] syscall 222 [
+    0x400000cb1000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757624832)
+[run-elf] syscall 222 [
+    0x400000cc2000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757694464)
+[run-elf] syscall 215 [
+    0x400000ce4000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000cd3000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000cc2000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000cb1000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000cd3000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757764096)
+[run-elf] syscall 222 [
+    0x400000ce4000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757833728)
+[run-elf] syscall 222 [
+    0x400000cf5000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757903360)
+[run-elf] syscall 222 [
+    0x400000d06000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368757972992)
+[run-elf] syscall 215 [
+    0x400000d28000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000d17000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000d06000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000cf5000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000d17000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758042624)
+[run-elf] syscall 222 [
+    0x400000d28000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758112256)
+[run-elf] syscall 222 [
+    0x400000d39000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758181888)
+[run-elf] syscall 222 [
+    0x400000d4a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758251520)
+[run-elf] syscall 215 [
+    0x400000d6c000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000d5b000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000d4a000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000d39000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000d5b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758321152)
+[run-elf] syscall 222 [
+    0x400000d6c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758390784)
+[run-elf] syscall 222 [
+    0x400000d7d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758460416)
+[run-elf] syscall 222 [
+    0x400000d8e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758530048)
+[run-elf] syscall 215 [
+    0x400000db0000,
+    0x11000,
+    0x4,
+    0x2a63,
+    0xe,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000d9f000,
+    0x11000,
+    0x4,
+    0x2a63,
+    0xe,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000d8e000,
+    0x11000,
+    0x4,
+    0x2a63,
+    0xe,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000d7d000,
+    0x11000,
+    0x4,
+    0x2a63,
+    0xe,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000d9f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758599680)
+[run-elf] syscall 222 [
+    0x400000db0000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758669312)
+[run-elf] syscall 222 [
+    0x400000dc1000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758738944)
+[run-elf] syscall 222 [
+    0x400000dd2000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758808576)
+[run-elf] syscall 215 [
+    0x400000df4000,
+    0x11000,
+    0x4,
+    0xed,
+    0xa,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000de3000,
+    0x11000,
+    0x4,
+    0xed,
+    0xa,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000dd2000,
+    0x11000,
+    0x4,
+    0xed,
+    0xa,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000dc1000,
+    0x11000,
+    0x4,
+    0xed,
+    0xa,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000de3000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758878208)
+[run-elf] syscall 222 [
+    0x400000df4000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368758947840)
+[run-elf] syscall 222 [
+    0x400000e05000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759017472)
+[run-elf] syscall 222 [
+    0x400000e16000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759087104)
+[run-elf] syscall 215 [
+    0x400000e38000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000e27000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000e16000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000e05000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x7,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000e27000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759156736)
+[run-elf] syscall 222 [
+    0x400000e38000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759226368)
+[run-elf] syscall 222 [
+    0x400000e49000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759296000)
+[run-elf] syscall 222 [
+    0x400000e5a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759365632)
+[run-elf] syscall 215 [
+    0x400000e7c000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000e6b000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000e5a000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000e49000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000e6b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759435264)
+[run-elf] syscall 222 [
+    0x400000e7c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759504896)
+[run-elf] syscall 222 [
+    0x400000e8d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759574528)
+[run-elf] syscall 222 [
+    0x400000e9e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759644160)
+[run-elf] syscall 215 [
+    0x400000ec0000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000eaf000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000e9e000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000e8d000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000eaf000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759713792)
+[run-elf] syscall 222 [
+    0x400000ec0000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759783424)
+[run-elf] syscall 222 [
+    0x400000ed1000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759853056)
+[run-elf] syscall 222 [
+    0x400000ee2000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759922688)
+[run-elf] syscall 215 [
+    0x400000f04000,
+    0x11000,
+    0x4,
+    0x2a63,
+    0xe,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000ef3000,
+    0x11000,
+    0x4,
+    0x2a63,
+    0xe,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000ee2000,
+    0x11000,
+    0x4,
+    0x2a63,
+    0xe,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000ed1000,
+    0x11000,
+    0x4,
+    0x2a63,
+    0xe,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000ef3000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368759992320)
+[run-elf] syscall 222 [
+    0x400000f04000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760061952)
+[run-elf] syscall 222 [
+    0x400000f15000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760131584)
+[run-elf] syscall 222 [
+    0x400000f26000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760201216)
+[run-elf] syscall 215 [
+    0x400000f48000,
+    0x11000,
+    0x4,
+    0xed,
+    0xa,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000f37000,
+    0x11000,
+    0x4,
+    0xed,
+    0xa,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000f26000,
+    0x11000,
+    0x4,
+    0xed,
+    0xa,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000f15000,
+    0x11000,
+    0x4,
+    0xed,
+    0xa,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000f37000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760270848)
+[run-elf] syscall 222 [
+    0x400000f48000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760340480)
+[run-elf] syscall 222 [
+    0x400000f59000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760410112)
+[run-elf] syscall 222 [
+    0x400000f6a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760479744)
+[run-elf] syscall 215 [
+    0x400000f8c000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x9,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000f7b000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x9,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000f6a000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x9,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000f59000,
+    0x11000,
+    0x4,
+    0xf0,
+    0x9,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000f7b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760549376)
+[run-elf] syscall 222 [
+    0x400000f8c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760619008)
+[run-elf] syscall 222 [
+    0x400000f9d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760688640)
+[run-elf] syscall 222 [
+    0x400000fae000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760758272)
+[run-elf] syscall 215 [
+    0x400000fd0000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000fbf000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000fae000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000f9d000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400000fbf000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760827904)
+[run-elf] syscall 222 [
+    0x400000fd0000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760897536)
+[run-elf] syscall 222 [
+    0x400000fd1000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368760967168)
+[run-elf] syscall 222 [
+    0x400000fe2000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761102336)
+[run-elf] syscall 215 [
+    0x400001024000,
+    0x21000,
+    0x24,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001003000,
+    0x21000,
+    0x24,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000ff2000,
+    0x11000,
+    0x24,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400000fe1000,
+    0x11000,
+    0x24,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001013000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761237504)
+[run-elf] syscall 222 [
+    0x400001034000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761307136)
+[run-elf] syscall 222 [
+    0x400001045000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761376768)
+[run-elf] syscall 222 [
+    0x400001056000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761446400)
+[run-elf] syscall 215 [
+    0x400001078000,
+    0x11000,
+    0x8,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001067000,
+    0x11000,
+    0x8,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001056000,
+    0x11000,
+    0x8,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001045000,
+    0x11000,
+    0x8,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001067000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761516032)
+[run-elf] syscall 222 [
+    0x400001078000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761585664)
+[run-elf] syscall 222 [
+    0x400001089000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761655296)
+[run-elf] syscall 222 [
+    0x40000109a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761724928)
+[run-elf] syscall 215 [
+    0x4000010bc000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000010ab000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000109a000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001089000,
+    0x11000,
+    0x4,
+    0xf0,
+    0xb,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffda00,
+    0x2,
+    0x1024478,
+    0x12000,
+    0x44e6f5b,
+] -> Return(1025)
+[run-elf] syscall 222 [
+    0x4000010ab000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761794560)
+[run-elf] syscall 222 [
+    0x4000010bc000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761864192)
+[run-elf] syscall 222 [
+    0x4000010cd000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368761933824)
+[run-elf] syscall 222 [
+    0x4000010de000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762003456)
+[run-elf] syscall 215 [
+    0x400001100000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000010ef000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000010de000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000010cd000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000010ef000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762073088)
+[run-elf] syscall 222 [
+    0x400001100000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762142720)
+[run-elf] syscall 222 [
+    0x400001111000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762212352)
+[run-elf] syscall 222 [
+    0x400001122000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762281984)
+[run-elf] syscall 215 [
+    0x400001144000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xb,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001133000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xb,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001122000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xb,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001111000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xb,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001133000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762351616)
+[run-elf] syscall 222 [
+    0x400001144000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762421248)
+[run-elf] syscall 222 [
+    0x400001155000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762490880)
+[run-elf] syscall 222 [
+    0x400001166000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762560512)
+[run-elf] syscall 215 [
+    0x400001188000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xb,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001177000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xb,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001166000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xb,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001155000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xb,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001177000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762630144)
+[run-elf] syscall 222 [
+    0x400001188000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762699776)
+[run-elf] syscall 222 [
+    0x400001199000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762769408)
+[run-elf] syscall 222 [
+    0x4000011aa000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762839040)
+[run-elf] syscall 215 [
+    0x4000011cc000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000011bb000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000011aa000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001199000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000011bb000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762908672)
+[run-elf] syscall 222 [
+    0x4000011cc000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368762978304)
+[run-elf] syscall 222 [
+    0x4000011dd000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763047936)
+[run-elf] syscall 222 [
+    0x4000011ee000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763117568)
+[run-elf] syscall 215 [
+    0x400001210000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000011ff000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000011ee000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000011dd000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000011ff000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763187200)
+[run-elf] syscall 222 [
+    0x400001210000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763256832)
+[run-elf] syscall 222 [
+    0x400001221000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763326464)
+[run-elf] syscall 222 [
+    0x400001232000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763396096)
+[run-elf] syscall 215 [
+    0x400001254000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001243000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001232000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001221000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xd,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001243000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763465728)
+[run-elf] syscall 222 [
+    0x400001254000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763535360)
+[run-elf] syscall 222 [
+    0x400001265000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763604992)
+[run-elf] syscall 222 [
+    0x400001276000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763674624)
+[run-elf] syscall 215 [
+    0x400001298000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001287000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001276000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001265000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001287000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763744256)
+[run-elf] syscall 222 [
+    0x400001298000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763813888)
+[run-elf] syscall 222 [
+    0x4000012a9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763883520)
+[run-elf] syscall 222 [
+    0x4000012ba000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368763953152)
+[run-elf] syscall 215 [
+    0x4000012dc000,
+    0x11000,
+    0x4,
+    0x3132,
+    0xa,
+    0x4,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000012cb000,
+    0x11000,
+    0x4,
+    0x3132,
+    0xa,
+    0x4,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000012ba000,
+    0x11000,
+    0x4,
+    0x3132,
+    0xa,
+    0x4,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000012a9000,
+    0x11000,
+    0x4,
+    0x3132,
+    0xa,
+    0x4,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000012cb000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764022784)
+[run-elf] syscall 222 [
+    0x4000012dc000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764092416)
+[run-elf] syscall 222 [
+    0x4000012ed000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764162048)
+[run-elf] syscall 222 [
+    0x4000012fe000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764231680)
+[run-elf] syscall 215 [
+    0x400001320000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000130f000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000012fe000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000012ed000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000130f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764301312)
+[run-elf] syscall 222 [
+    0x400001320000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764370944)
+[run-elf] syscall 222 [
+    0x400001331000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764440576)
+[run-elf] syscall 222 [
+    0x400001342000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764510208)
+[run-elf] syscall 215 [
+    0x400001364000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001353000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001342000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001331000,
+    0x11000,
+    0x4,
+    0x9f93,
+    0x3,
+    0x3b,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001353000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764579840)
+[run-elf] syscall 222 [
+    0x400001364000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764649472)
+[run-elf] syscall 222 [
+    0x400001375000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764719104)
+[run-elf] syscall 222 [
+    0x400001386000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764788736)
+[run-elf] syscall 215 [
+    0x4000013a8000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x8,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001397000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x8,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001386000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x8,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001375000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x8,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001397000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764858368)
+[run-elf] syscall 222 [
+    0x4000013a8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764928000)
+[run-elf] syscall 222 [
+    0x4000013b9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368764997632)
+[run-elf] syscall 222 [
+    0x4000013ca000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765067264)
+[run-elf] syscall 215 [
+    0x4000013ec000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000013db000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000013ca000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000013b9000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000013db000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765136896)
+[run-elf] syscall 222 [
+    0x4000013ec000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765206528)
+[run-elf] syscall 222 [
+    0x4000013ed000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765276160)
+[run-elf] syscall 222 [
+    0x4000013fe000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765411328)
+[run-elf] syscall 215 [
+    0x400001440000,
+    0x21000,
+    0xa0a,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000141f000,
+    0x21000,
+    0xa0a,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000140e000,
+    0x11000,
+    0xa0a,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000013fd000,
+    0x11000,
+    0xa0a,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000142f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765546496)
+[run-elf] syscall 222 [
+    0x400001450000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765616128)
+[run-elf] syscall 222 [
+    0x400001461000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765685760)
+[run-elf] syscall 222 [
+    0x400001472000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765755392)
+[run-elf] syscall 215 [
+    0x400001494000,
+    0x11000,
+    0x8,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001483000,
+    0x11000,
+    0x8,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001472000,
+    0x11000,
+    0x8,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001461000,
+    0x11000,
+    0x8,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001483000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765825024)
+[run-elf] syscall 222 [
+    0x400001494000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765894656)
+[run-elf] syscall 222 [
+    0x4000014a5000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368765964288)
+[run-elf] syscall 222 [
+    0x4000014b6000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766033920)
+[run-elf] syscall 215 [
+    0x4000014d8000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000014c7000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000014b6000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000014a5000,
+    0x11000,
+    0x4,
+    0x2676,
+    0xa,
+    0x2,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000014c7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766103552)
+[run-elf] syscall 222 [
+    0x4000014d8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766173184)
+[run-elf] syscall 222 [
+    0x4000014e9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766242816)
+[run-elf] syscall 222 [
+    0x4000014fa000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766312448)
+[run-elf] syscall 215 [
+    0x40000151c000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000150b000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000014fa000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000014e9000,
+    0x11000,
+    0x4,
+    0x1,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000150b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766382080)
+[run-elf] syscall 222 [
+    0x40000151c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766451712)
+[run-elf] syscall 222 [
+    0x40000152d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766521344)
+[run-elf] syscall 222 [
+    0x40000153e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766590976)
+[run-elf] syscall 215 [
+    0x400001560000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000154f000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000153e000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000152d000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000154f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766660608)
+[run-elf] syscall 222 [
+    0x400001560000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766730240)
+[run-elf] syscall 222 [
+    0x400001571000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766799872)
+[run-elf] syscall 222 [
+    0x400001582000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766869504)
+[run-elf] syscall 215 [
+    0x4000015a4000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001593000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001582000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001571000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001593000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368766939136)
+[run-elf] syscall 222 [
+    0x4000015a4000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767008768)
+[run-elf] syscall 222 [
+    0x4000015b5000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767078400)
+[run-elf] syscall 222 [
+    0x4000015c6000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767148032)
+[run-elf] syscall 215 [
+    0x4000015e8000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000015d7000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000015c6000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000015b5000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000015d7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767217664)
+[run-elf] syscall 222 [
+    0x4000015e8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767287296)
+[run-elf] syscall 222 [
+    0x4000015f9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767356928)
+[run-elf] syscall 222 [
+    0x40000160a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767426560)
+[run-elf] syscall 215 [
+    0x40000162c000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000161b000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000160a000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000015f9000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffda00,
+    0x2,
+    0x1024478,
+    0x0,
+    0x1118f,
+] -> Return(1025)
+[run-elf] syscall 222 [
+    0x40000161b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767496192)
+[run-elf] syscall 222 [
+    0x40000162c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767565824)
+[run-elf] syscall 222 [
+    0x40000163d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767635456)
+[run-elf] syscall 222 [
+    0x40000164e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767705088)
+[run-elf] syscall 215 [
+    0x400001670000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000165f000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000164e000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000163d000,
+    0x11000,
+    0x4,
+    0x30b7,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000165f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767774720)
+[run-elf] syscall 222 [
+    0x400001670000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767844352)
+[run-elf] syscall 222 [
+    0x400001681000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767913984)
+[run-elf] syscall 222 [
+    0x400001692000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368767983616)
+[run-elf] syscall 215 [
+    0x4000016b4000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000016a3000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001692000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001681000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000016a3000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768053248)
+[run-elf] syscall 222 [
+    0x4000016b4000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768122880)
+[run-elf] syscall 222 [
+    0x4000016c5000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768192512)
+[run-elf] syscall 222 [
+    0x4000016d6000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768262144)
+[run-elf] syscall 215 [
+    0x4000016f8000,
+    0x11000,
+    0x4,
+    0x3903,
+    0x9,
+    0x8,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000016e7000,
+    0x11000,
+    0x4,
+    0x3903,
+    0x9,
+    0x8,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000016d6000,
+    0x11000,
+    0x4,
+    0x3903,
+    0x9,
+    0x8,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000016c5000,
+    0x11000,
+    0x4,
+    0x3903,
+    0x9,
+    0x8,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000016e7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768331776)
+[run-elf] syscall 222 [
+    0x4000016f8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768401408)
+[run-elf] syscall 222 [
+    0x400001709000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768471040)
+[run-elf] syscall 222 [
+    0x40000171a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768540672)
+[run-elf] syscall 215 [
+    0x40000173c000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000172b000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000171a000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001709000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000172b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768610304)
+[run-elf] syscall 222 [
+    0x40000173c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768679936)
+[run-elf] syscall 222 [
+    0x40000174d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768749568)
+[run-elf] syscall 222 [
+    0x40000175e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768819200)
+[run-elf] syscall 215 [
+    0x400001780000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000176f000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000175e000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000174d000,
+    0x11000,
+    0x4,
+    0x1,
+    0x8c48,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000176f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768888832)
+[run-elf] syscall 222 [
+    0x400001780000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368768958464)
+[run-elf] syscall 222 [
+    0x400001791000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769028096)
+[run-elf] syscall 222 [
+    0x4000017a2000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769097728)
+[run-elf] syscall 215 [
+    0x4000017c4000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000017b3000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000017a2000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001791000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000017b3000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769167360)
+[run-elf] syscall 222 [
+    0x4000017c4000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769236992)
+[run-elf] syscall 222 [
+    0x4000017d5000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769306624)
+[run-elf] syscall 222 [
+    0x4000017e6000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769376256)
+[run-elf] syscall 215 [
+    0x400001808000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000017f7000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000017e6000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000017d5000,
+    0x11000,
+    0x4,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000017f7000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769445888)
+[run-elf] syscall 222 [
+    0x400001808000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769515520)
+[run-elf] syscall 222 [
+    0x400001809000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769585152)
+[run-elf] syscall 222 [
+    0x40000181a000,
+    0x21000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769720320)
+[run-elf] syscall 215 [
+    0x40000185c000,
+    0x21000,
+    0x6512,
+    0xef9d,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000183b000,
+    0x21000,
+    0x6512,
+    0xef9d,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000182a000,
+    0x11000,
+    0x6512,
+    0xef9d,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001819000,
+    0x11000,
+    0x6512,
+    0xef9d,
+    0x9,
+    0xff,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000184b000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769855488)
+[run-elf] syscall 222 [
+    0x40000186c000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769925120)
+[run-elf] syscall 222 [
+    0x40000187d000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368769994752)
+[run-elf] syscall 222 [
+    0x40000188e000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770064384)
+[run-elf] syscall 215 [
+    0x4000018b0000,
+    0x11000,
+    0x8,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000189f000,
+    0x11000,
+    0x8,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000188e000,
+    0x11000,
+    0x8,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x40000187d000,
+    0x11000,
+    0x8,
+    0x2fa0,
+    0x9,
+    0x6,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000189f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770134016)
+[run-elf] syscall 222 [
+    0x4000018b0000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770203648)
+[run-elf] syscall 222 [
+    0x4000018c1000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770273280)
+[run-elf] syscall 222 [
+    0x4000018d2000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770342912)
+[run-elf] syscall 215 [
+    0x4000018f4000,
+    0x11000,
+    0x4,
+    0x2fb8,
+    0x9,
+    0x4,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000018e3000,
+    0x11000,
+    0x4,
+    0x2fb8,
+    0x9,
+    0x4,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000018d2000,
+    0x11000,
+    0x4,
+    0x2fb8,
+    0x9,
+    0x4,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000018c1000,
+    0x11000,
+    0x4,
+    0x2fb8,
+    0x9,
+    0x4,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000018e3000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770412544)
+[run-elf] syscall 222 [
+    0x4000018f4000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770482176)
+[run-elf] syscall 222 [
+    0x400001905000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770551808)
+[run-elf] syscall 222 [
+    0x400001916000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770621440)
+[run-elf] syscall 215 [
+    0x400001938000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001927000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001916000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001905000,
+    0x11000,
+    0x4,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000192f000,
+    0x9000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770691072)
+[run-elf] syscall 215 [
+    0x400001949000,
+    0x9000,
+    0x0,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001940000,
+    0x9000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770727936)
+[run-elf] syscall 215 [
+    0x400001952000,
+    0x9000,
+    0x0,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001949000,
+    0x9000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770764800)
+[run-elf] syscall 215 [
+    0x40000195b000,
+    0x9000,
+    0x0,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x40000194a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770801664)
+[run-elf] syscall 222 [
+    0x400001953000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770871296)
+[run-elf] syscall 222 [
+    0x400001964000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368770940928)
+[run-elf] syscall 222 [
+    0x400001975000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771010560)
+[run-elf] syscall 215 [
+    0x400001997000,
+    0x11000,
+    0x3e,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001986000,
+    0x11000,
+    0x3e,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001975000,
+    0x11000,
+    0x3e,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001964000,
+    0x11000,
+    0x3e,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001986000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771080192)
+[run-elf] syscall 222 [
+    0x400001997000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771149824)
+[run-elf] syscall 222 [
+    0x4000019a8000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771219456)
+[run-elf] syscall 222 [
+    0x4000019b9000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771289088)
+[run-elf] syscall 215 [
+    0x4000019db000,
+    0x11000,
+    0x6,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000019ca000,
+    0x11000,
+    0x6,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000019b9000,
+    0x11000,
+    0x6,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000019a8000,
+    0x11000,
+    0x6,
+    0xbd,
+    0x4,
+    0xc,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x4000019ca000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771358720)
+[run-elf] syscall 222 [
+    0x4000019db000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771428352)
+[run-elf] syscall 222 [
+    0x4000019ec000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771497984)
+[run-elf] syscall 222 [
+    0x4000019fd000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771567616)
+[run-elf] syscall 215 [
+    0x400001a1f000,
+    0x11000,
+    0x4,
+    0x3f,
+    0x4,
+    0x3,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001a0e000,
+    0x11000,
+    0x4,
+    0x3f,
+    0x4,
+    0x3,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000019fd000,
+    0x11000,
+    0x4,
+    0x3f,
+    0x4,
+    0x3,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x4000019ec000,
+    0x11000,
+    0x4,
+    0x3f,
+    0x4,
+    0x3,
+] -> Return(0)
+[run-elf] syscall 222 [
+    0x400001a16000,
+    0x9000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771637248)
+[run-elf] syscall 215 [
+    0x400001a30000,
+    0x9000,
+    0x1,
+    0x1,
+    0x2000,
+    0x7fa21105,
+] -> Return(0)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffeffffda00,
+    0x2,
+    0x1024478,
+    0x7ffefffffa70,
+    0x7fa21105,
+] -> Return(1029)
+[run-elf] syscall 222 [
+    0x400001a1f000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771674112)
+[run-elf] syscall 222 [
+    0x400001a28000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771743744)
+[run-elf] syscall 222 [
+    0x400001a39000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771813376)
+[run-elf] syscall 222 [
+    0x400001a4a000,
+    0x11000,
+    0x3,
+    0x22,
+    0xffffffffffffffff,
+    0x0,
+] -> Return(70368771883008)
+[run-elf] syscall 215 [
+    0x400001a6c000,
+    0x11000,
+    0x4,
+    0x3,
+    0x4,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001a5b000,
+    0x11000,
+    0x4,
+    0x3,
+    0x4,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001a4a000,
+    0x11000,
+    0x4,
+    0x3,
+    0x4,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 215 [
+    0x400001a39000,
+    0x11000,
+    0x4,
+    0x3,
+    0x4,
+    0x1,
+] -> Return(0)
+[run-elf] syscall 66 [
+    0x1,
+    0x7ffefffffce0,
+    0x2,
+    0x1,
+    0x2000,
+    0x1f,
+] -> Return(47)
+[run-elf] syscall 94 [
+    0x0,
+    0x0,
+    0x2,
+    0x1,
+    0x2000,
+    0x1f,
+] -> Exit(0)
+[run-elf] engine=Tier-4 instructions=313690936 syscalls=787
