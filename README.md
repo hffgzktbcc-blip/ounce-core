@@ -18,11 +18,21 @@
 
 An open-source ARM64 execution, debugging and verification platform in safe Rust.
 
-[Vision](docs/VISION.md) · [Research paper](site/research.html) · [Browser playground](docs/PLAYGROUND.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Reproduce it](docs/REPRODUCE.md) · [Limits](docs/LIMITS.md) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
+[Vision](docs/VISION.md) · [Research paper](site/research.html) · [Browser playground](docs/PLAYGROUND.md) · [Interactive lab](docs/INTERACTIVE_LAB.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Reproduce it](docs/REPRODUCE.md) · [Limits](docs/LIMITS.md) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
 
 </div>
 
 ---
+
+> [!TIP]
+> **Have an Apple Silicon Mac, Raspberry Pi, or ARM64 Linux VM?**
+> Help verify our AArch64 differential test suite in two minutes:
+> ```bash
+> git clone https://github.com/hffgzktbcc-blip/ounce-core && cd ounce-core
+> cargo build --release
+> python3 scripts/verify_differential.py --json my-results.json
+> ```
+> Report your run in **[Issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248)** using the [External Test Report Template](docs/community/EXTERNAL_TEST_REPORT.md) to have your hardware recorded in our verification ledger!
 
 <a id="the-ounce-vision"></a>
 
