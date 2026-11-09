@@ -42,6 +42,8 @@ jobs:
     name: Static Linux ELF (${{ matrix.os }}, LZ4)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    env:
+      EVIDENCE_ROOT: ${{ runner.temp }}/ounce-evidence-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       fail-fast: false
       matrix:
@@ -72,11 +74,13 @@ jobs:
       - name: Replay a retained real instruction discrepancy
         run: |
           python3 - <<'PY_REPLAY'
-          import json, pathlib, platform, subprocess
+          import json, os, pathlib, platform, subprocess
+          evidence = pathlib.Path(os.environ['EVIDENCE_ROOT'])
+          evidence.mkdir(parents=True, exist_ok=False)
           binary = 'target/release/ounce-core' + ('.exe' if platform.system() == 'Windows' else '')
           result = subprocess.run([binary, 'replay-instruction', 'docs/verify/insn-fuzzer/default-nan-mul2d/before/tier3'], capture_output=True, text=True)
-          pathlib.Path('target/instruction-replay.json').write_text(result.stdout)
-          pathlib.Path('target/instruction-replay.stderr').write_text(result.stderr)
+          (evidence / 'instruction-replay.json').write_text(result.stdout)
+          (evidence / 'instruction-replay.stderr').write_text(result.stderr)
           assert result.returncode in (0, 1), result.stderr
           report = json.loads(result.stdout)
           arm = platform.machine().lower() in ('arm64', 'aarch64')
@@ -86,17 +90,17 @@ jobs:
           print(json.dumps({'host': platform.platform(), 'replay_verdict': actual[0], 'reference_verdict': actual[1], 'exit': actual[2]}))
           PY_REPLAY
       - name: Compare unchanged LZ4 cases on host and both ELF engines
-        run: python3 scripts/verify_linux_elf.py --work target/linux-lz4 --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+        run: python3 scripts/verify_linux_elf.py --work "$EVIDENCE_ROOT/linux-lz4" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: linux-elf-lz4-evidence-${{ matrix.os }}
           path: |
-            target/instruction-replay.json
-            target/instruction-replay.stderr
-            target/linux-lz4/report.json
-            target/linux-lz4/*.stdout
-            target/linux-lz4/*.stderr
+            ${{ env.EVIDENCE_ROOT }}/instruction-replay.json
+            ${{ env.EVIDENCE_ROOT }}/instruction-replay.stderr
+            ${{ env.EVIDENCE_ROOT }}/linux-lz4/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-lz4/*.stdout
+            ${{ env.EVIDENCE_ROOT }}/linux-lz4/*.stderr
           if-no-files-found: warn
 
   instruction-fuzzer:
