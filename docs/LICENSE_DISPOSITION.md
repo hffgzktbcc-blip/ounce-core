@@ -9,6 +9,7 @@ the earlier inventory or the merged controls have not been performed.
 | Project-authored source | Project MIT licence in `LICENSE`; retained port attributions in `THIRD_PARTY.md` | The project licence does not relicense third-party material |
 | Current default-runtime dependencies | 169 retained notice records for the locked graph; supplemented Objective-C MIT grant and attribution in `licenses/objc2-MIT.txt` and the runtime archive | Preserve the upstream SDK qualification below; do not call an overview alone a complete MIT notice |
 | Rust standard/compiler runtime | Release packaging now requires binary-bound notices captured from the actual installed build toolchain, including MIT, Apache and the supplied library/whole-toolchain copyright inventory | Each release build must collect and verify its own notices; no generic licence label or another toolchain's record can substitute |
+| Linux system-library notices | v0.6.0 preparation retains actual installed package copyright records and common license texts, bound to the built ELF; LGPL-2.1 included, missing coverage rejected | Shared libraries are OS-provided and not copied into the archive; build-host identity is not an end-user-library version guarantee |
 | Bundled DejaVu font | Full retained font notice included in both runtime archive formats by merged PR #203 | Existing published v0.5.0 archives have not been replaced by these changes |
 | Standalone Python toolkit 0.2.0 | Published from its reviewed 30-file parentless snapshot; contains project Python and observation data, no runtime, SDK, NRO, fonts or historical tree | Separate release scope; it is not blocked by runtime/fixture history questions |
 | Eleven legacy NRO fixtures | All eleven have registered identities and byte-identical rebuild evidence in `tests/fixtures/`; used as test inputs, not included in the runtime packager's explicit archive entries | Rebuild identity does not prove source authorship or all linked-component redistribution rights; GitHub's full-repository source archives still contain these inputs |
@@ -88,3 +89,30 @@ commit. No rewrite, asset deletion/replacement, Support message or third-party
 contact was performed here. Preserve the existing private evidence and use exact
 object/ref scope for any later approved action. Do not reopen the broad audit
 without new material evidence or a relevant distribution change.
+
+## Normal release qualification — 9 November 2026
+
+The v0.6.0 candidate passed release testing and archive verification on Linux
+x86-64, macOS arm64 and Windows x86-64 in run 42569508955. PR #273 passed all
+40 checks and merged. Exact reports are under
+[the release evidence directory](releases/v0.6.0-qualification/). This satisfies
+the recorded technical artifact-qualification item; the owner/specialist
+distribution decision for the retained objc2/SDK qualification remains pending.
+No normal runtime release publication is claimed.
+
+Linux publication additionally requires the installed native-library notice
+inventory. On the same Debian/Ubuntu host that built the trusted executable:
+
+```sh
+python scripts/collect_native_notices.py --binary PATH_TO_BINARY \
+  --output FRESH_NATIVE_NOTICE_DIRECTORY
+python scripts/package_release.py --binary PATH_TO_BINARY --output release.tar.gz \
+  --toolchain-notices FRESH_RUST_NOTICE_DIRECTORY \
+  --native-notices FRESH_NATIVE_NOTICE_DIRECTORY --require-reviewed
+```
+
+The collector uses `ldd` only on our trusted build, resolves installed package
+owners and retains their actual copyright records and common license files.
+It does not copy the shared libraries. The package verifier checks the runtime
+hash, required coverage, notice bytes and path containment. A real completed
+review is still required for the final command to succeed.
