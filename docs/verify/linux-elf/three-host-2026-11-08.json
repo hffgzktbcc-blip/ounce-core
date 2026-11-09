@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-08",
+  "run_id": 42523628103,
+  "head_sha": "10db7354aa6b787aed1351c6cad95f715927760f",
+  "scope": "Same pinned LZ4 cases built and checked on each host; not the same transported ELF binary, not outside-user reproduction.",
+  "evidence_boundary": "Job logs and GitHub-reported artifact digests retained. ZIP contents were not locally downloaded or byte-verified.",
+  "hosts": [
+    {
+      "job_id": 128862296842,
+      "observations": [
+        "2026-11-08T21:12:46.8171810Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "2026-11-08T21:14:32.1406400Z {\"failed\": false, \"checks\": {\"tier3\": \"identical\", \"tier4\": \"identical\"}, \"error\": null, \"report\": \"/Users/runner/work/ounce-core/ounce-core/target/linux-lz4/report.json\"}",
+        "2026-11-08T21:14:33.1388090Z SHA256 digest of uploaded artifact zip is d1aaafe1fb5d47aca4163d299ad913c0285887c4b4dfe775f01e9ec5237797a5",
+        "2026-11-08T21:14:33.5554200Z Artifact linux-elf-lz4-evidence-macos-latest has been successfully uploaded! Final size is 4453 bytes. Artifact ID is 13634975731"
+      ]
+    },
+    {
+      "job_id": 128862296903,
+      "observations": [
+        "2026-11-08T21:15:06.1413980Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s\r",
+        "2026-11-08T21:17:36.7857035Z {\"failed\": false, \"checks\": {\"tier3\": \"identical\", \"tier4\": \"identical\"}, \"error\": null, \"report\": \"D:\\\\a\\\\ounce-core\\\\ounce-core\\\\target\\\\linux-lz4\\\\report.json\"}\r",
+        "2026-11-08T21:17:37.3391734Z SHA256 digest of uploaded artifact zip is ed7208659454d80db5716968b0e219f9c81256893a7a76dbe459bd03b6256091\r",
+        "2026-11-08T21:17:37.7286388Z Artifact linux-elf-lz4-evidence-windows-latest has been successfully uploaded! Final size is 4447 bytes. Artifact ID is 13635085202\r"
+      ]
+    },
+    {
+      "job_id": 128862296904,
+      "observations": [
+        "2026-11-08T21:11:37.4625875Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "2026-11-08T21:12:00.9908411Z {\"failed\": false, \"checks\": {\"tier3\": \"identical\", \"tier4\": \"identical\"}, \"error\": null, \"report\": \"/home/runner/work/ounce-core/ounce-core/target/linux-lz4/report.json\"}",
+        "2026-11-08T21:12:01.6379468Z SHA256 digest of uploaded artifact zip is fe8f9321b29b75dd42895e458fdbd06ed2b404081289088d4415fbf2620e756b",
+        "2026-11-08T21:12:02.0340145Z Artifact linux-elf-lz4-evidence-ubuntu-latest has been successfully uploaded! Final size is 4438 bytes. Artifact ID is 13634711427"
+      ]
+    }
+  ]
+}
