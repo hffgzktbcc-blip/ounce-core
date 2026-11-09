@@ -20,10 +20,13 @@ COUNTS = {
 def verdict(stdout, returncode):
     counts = {}
     for label, expected in COUNTS.items():
-        values = re.findall(r'^[ \t]*' + re.escape(label) + r':[ \t]*(\d+)(?:[ \t].*)?$', stdout, re.M)
+        values = re.findall(r'^[ \t]*' + re.escape(label) + r':(.*)$', stdout, re.M)
         if len(values) != 1:
             return False, counts, 'missing or duplicate count: ' + label
-        counts[label] = int(values[0])
+        value = re.fullmatch(r'[ \t]*([0-9]+)(?:[ \t].*)?', values[0])
+        if value is None:
+            return False, counts, 'malformed count: ' + label
+        counts[label] = int(value[1])
     passed = returncode == 0 and counts == COUNTS
     return passed, counts, 'pass' if passed else 'adapter reported a nonpass'
 
