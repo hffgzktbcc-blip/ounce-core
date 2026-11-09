@@ -34,9 +34,9 @@
 </ul>
 <h2>9 November 2026: newer bounded milestones</h2>
 <ul>
-<li><strong>Static Linux AArch64 ELF:</strong> A restricted <code>run-elf</code> path is merged (<a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/255">#255</a>), followed by pinned LZ4 ELF verification (<a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/263">#263</a>) and cross-host workflow work (<a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/265">#265</a>). This does not imply general Linux compatibility.</li>
-<li><strong>Interactive lab:</strong> the web verification workbench was merged (<a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/261">#261</a>). It is a bounded inspection and evidence tool, not a full browser emulator.</li>
-<li><strong>Known open work:</strong> <a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/267">#267</a> investigates and repairs vector-FMUL default-NaN disagreement. Its proposed fix is not a shipped capability unless merged and checked.</li>
+<li><strong>Static Linux AArch64 ELF:</strong> A restricted <code>run-elf</code> path is merged (<a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/255">#255</a>), with pinned LZ4, xxHash, cJSON and zlib static musl ELFs verified across Linux, macOS and Windows runners (#277, #292). This does not imply general Linux application compatibility.</li>
+<li><strong>Interactive lab:</strong> the web verification workbench was merged (<a href="https://github.com/hffgzktbcc-blip/ounce-core/pull/261">#261</a>). It is a bounded inspection and evidence tool, with an in-browser WebAssembly AArch64 CPU stepper (<a href="playground/">/playground/</a>).</li>
+<li><strong>Differential instruction fuzzer:</strong> landed in CI (#258), with commutative vector floating-point NaN operand order pinned in #272. FPSR high-bit retention on Neoverse remains documented in <a href="https://github.com/hffgzktbcc-blip/ounce-core/issues/257">issue #257</a>.</li>
 <li><strong>Outside replication:</strong> no accepted independent run is recorded in <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/LIMITS.md">the limitations register</a>; interested testers can use <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/REPRODUCE.md">the rerun guide</a> and <a href="https://github.com/hffgzktbcc-blip/ounce-core/issues/248">issue #248</a>.</li>
 </ul>
 <h2>Read primary evidence, not a frozen milestone</h2>
