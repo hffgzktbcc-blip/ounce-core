@@ -6,6 +6,8 @@ Ounce-Core is an experimental ARM64 execution and verification lab written in Ru
 
 ## Find a first task
 
+New to the project? Visit our [contributor landing page](https://hffgzktbcc-blip.github.io/ounce-core/contribute.html) or [GitHub's live Contribute page](https://github.com/hffgzktbcc-blip/ounce-core/contribute). First-time PRs receive one automated welcome; human maintainers still review all changes.
+
 - [Good first issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) — scoped documentation and usability improvements; some require only a browser.
 - [Help wanted](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) — additional contributor opportunities.
 - [Independent ARM64 reproduction #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248) — an outside test with evidence is particularly valuable; failed reproductions are welcome.
