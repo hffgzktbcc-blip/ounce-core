@@ -61,7 +61,8 @@ MOV/ADD, hardware FMUL and offline execution. V7 is complete.
 
 PR #270: `feat/conformance-seed`, retargeted to main. Exact candidate
 `c8d3d32b5ebe7054b63c11fcf48a009710158ed2`. Hosted differential run 42566067861
-and CI run 42566068002 are qualifying it. Version 0.1.0 contains one unchanged hardware FMUL input, comparison
+and CI run 42566068002 passed: all 21 hosted checks succeeded. PR #270 merged
+at `2e55a5e503f3c00f6d4f1d5355a826fcb44fc9da`. Version 0.1.0 contains one unchanged hardware FMUL input, comparison
 mask, provenance, MIT text and adapter contract under `conformance/`.
 
 `scripts/run_conformance.py` validates exact hashes before executing an argument
@@ -73,8 +74,7 @@ negative duplicate count; regression failed before c0bf7b6 and passes after it.
 Reviewer verified correction and reported no further issue. Existing three-host
 job now retains per-engine seed reports. The seed steps and containing LZ4 jobs
 passed on all three hosted OSes in run 42566067861 (Linux job 128992731749,
-macOS 128992731696, Windows 128992731733); broader differential suites are
-still running. Tooling checks also passed.
+macOS 128992731696, Windows 128992731733); broader differential suites and tooling checks subsequently passed.
 Outside-project execution/adoption remains outstanding; V8 stays open.
 
 ## Rebuild environment
@@ -115,12 +115,14 @@ this native-distribution blocker as blocking ordinary development/browser work.
 
 1. Browser #269 and public V7 acceptance are complete; do not redo them without
    changed inputs or an unresolved issue.
-2. Observe #270 three-host seed reports and tooling, fix real failures, then
-   integrate reviewed passing head. Keep outside adoption open.
+2. Conformance #270 is integrated and qualified on all three hosts. Preserve
+   version 0.1.0 bytes; add future measured cases in a new suite version. Outside
+   adoption is still outstanding.
 3. Continue app prerequisites that can be done with available evidence; preserve
    the exact specialist-review/live-GUI blockers. Expand measured conformance
    inputs as useful, without claiming outside adoption or contacting maintainers.
-4. Refresh this handoff and `/workspace/ounce-core-handoff.bundle` before stopping.
+4. Handoff PR #271 contains final state. The complete Git bundle is
+   `/workspace/ounce-core-handoff.bundle`; refreshed and verified before stopping.
 
 Final-additions review also found no actionable issue in the three-host seed
 workflow or live browser evidence. `gh pr edit` failed in this installed CLI
@@ -137,3 +139,10 @@ preview, but that is not recorded live GUI acceptance or completed notice review
 
 Issue #190 was checked read-only at 2026-11-09 05:18 UTC: still open, no
 comments, last updated 2026-11-08. No fresh outside reproduction was omitted.
+
+The final repository state is on `docs/maturity-handoff-2026-11-09`; the working
+tree should be clean after the handoff commit. Fetch current origin/main before
+starting a new topic branch. The published browser and conformance seed need no
+repeat expensive tests without changed inputs. V8 remains open for its actual
+outside-project result; original vision step 1 still needs wider verified-library
+ELF/syscall coverage beyond the bounded LZ4 case. No native release tag was made.
