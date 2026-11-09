@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ounce-Core workbench</title>
+<style>
+:root{--bg:#f6f7f5;--panel:#fff;--side:#f0f2ee;--line:#dfe3dc;--text:#1c2420;--mut:#5c6a62;--dim:#8a968f;--ok:#1d7a52;--okbg:#e4f3ea;--warn:#8a5a10;--warnbg:#fbf0d9;--bad:#a8322e;--badbg:#fbe7e5;--acc:#1f6f5c;--accbg:#e1f1ed;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1512;--panel:#141d19;--side:#101814;--line:#27342e;--text:#e8efe9;--mut:#a3b3aa;--dim:#71847a;--ok:#7fd2a6;--okbg:#17332a;--warn:#e5b866;--warnbg:#33290f;--bad:#f0928d;--badbg:#3a1a19;--acc:#7cc7b4;--accbg:#173029}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+button{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--dim)}
+button.primary{background:var(--acc);color:var(--bg);border-color:var(--acc);font-weight:600}
+.app{display:grid;grid-template-columns:230px minmax(0,1fr) 270px;height:100vh}
+aside,.right{background:var(--side);padding:16px;overflow:auto}
+aside{border-right:1px solid var(--line)}
+.right{border-left:1px solid var(--line)}
+main{padding:20px 24px;overflow:auto}
+h1{font-size:15px;margin:0 0 2px}
+h2{font-size:12px;font-weight:600;color:var(--mut);text-transform:none;margin:18px 0 8px}
+.sub{color:var(--mut);font-size:12px;margin:0 0 14px}
+.item{display:flex;gap:8px;align-items:center;padding:8px 10px;border-radius:8px;cursor:pointer;border:1px solid transparent;margin-bottom:2px}
+.item:hover{background:var(--panel)}
+.item.on{background:var(--panel);border-color:var(--line)}
+.item span.n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--dim)}
+.dot.matches,.dot.agrees{background:var(--ok)}.dot.diverges,.dot.unfinished{background:#d29a2b}.dot.fails{background:var(--bad)}
+.dot.running{background:var(--acc);animation:p 1s infinite}@keyframes p{50%{opacity:.3}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.verdict.matches,.verdict.agrees{background:var(--okbg);border-color:var(--ok)}
+.verdict.diverges,.verdict.unfinished{background:var(--warnbg);border-color:#d29a2b}
+.verdict.fails{background:var(--badbg);border-color:var(--bad)}
+.verdict .t{font-size:17px;font-weight:600;margin:0 0 4px}
+.mono{font-family:var(--mono);font-size:12px}
+.row{display:flex;justify-content:space-between;gap:8px;padding:4px 0;align-items:center}
+.tag{font-size:11px;padding:1px 8px;border-radius:99px}
+.tag.ok{background:var(--okbg);color:var(--ok)}.tag.bad{background:var(--badbg);color:var(--bad)}.tag.mut{background:var(--side);color:var(--mut)}.tag.warn{background:var(--warnbg);color:var(--warn)}
+.diff .a{color:var(--bad)}.diff .b{color:var(--ok)}
+pre{margin:6px 0 0;padding:10px;background:var(--side);border-radius:8px;overflow:auto;max-height:220px;font:12px/1.5 var(--mono);white-space:pre-wrap;word-break:break-word}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:34px 20px;text-align:center;color:var(--mut)}
+.drop.over{border-color:var(--acc);background:var(--accbg)}
+.step{display:flex;gap:8px;align-items:center;padding:3px 0;color:var(--mut)}
+.step.done{color:var(--text)}.step i{width:16px;text-align:center;font-style:normal}
+label.sw{display:flex;gap:8px;align-items:flex-start;color:var(--mut);font-size:13px}
+.note{color:var(--mut);font-size:12px}
+details summary{cursor:pointer;color:var(--mut);font-size:13px;margin-top:8px}
+.err{color:var(--bad);font-size:13px;margin-top:8px}
+@media (max-width:980px){.app{grid-template-columns:1fr;height:auto}.right,aside{border:0}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside>
+  <h1>Ounce-Core</h1>
+  <p class="sub">Understand why programs fail. Prove when they work.</p>
+  <button class="primary" id="pick" style="width:100%">Check a program…</button>
+  <input type="file" id="file" accept=".nro" hidden>
+  <h2>Programs</h2>
+  <div id="list"></div>
+  <h2>Reference</h2>
+  <label class="sw" id="nativeBox"><input type="checkbox" id="native"> <span>Compare with this Mac<br><span class="note">Runs the program on this Mac's CPU as the reference.</span></span></label>
+  <p class="note" id="noNative" hidden>Not available in this build: it needs an Apple Silicon Mac and a build with native execution.</p>
+</aside>
+<main id="main"></main>
+<div class="right" id="right"></div>
+</div>
+<script>
+const T="__OUNCE_TOKEN__",NATIVE=__OUNCE_NATIVE__;
+let checks=[],cur=null,detail=null,timer=null,lastError="";
+const $=id=>document.getElementById(id);
+const el=(tag,props={},...kids)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(props)){if(k==="class")e.className=v;else if(k==="onclick")e.onclick=v;else e.setAttribute(k,v)}for(const c of kids.flat())if(c!=null)e.append(c.nodeType?c:document.createTextNode(c));return e};
+const api=(p,o={})=>fetch(p,{...o,headers:{"X-Ounce-Token":T,...(o.headers||{})}}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j});
+if(!NATIVE){$("nativeBox").hidden=true;$("noNative").hidden=false}
+async function refresh(){try{checks=(await api("/api/checks")).checks;if(cur)detail=await api("/api/checks/"+cur)}catch(e){lastError=e.message}render();const busy=checks.some(c=>c.status==="running");clearTimeout(timer);if(busy)timer=setTimeout(refresh,1500)}
+function pick(id){cur=id;detail=null;refresh()}
+function renderList(){const l=$("list");l.replaceChildren();if(!checks.length)l.append(el("p",{class:"note"},"Nothing checked yet."));for(const c of checks)l.append(el("div",{class:"item"+(c.id===cur?" on":""),onclick:()=>pick(c.id)},el("span",{class:"dot "+(c.status==="running"?"running":c.kind||"")}),el("span",{class:"n"},c.name),c.native?el("span",{class:"tag mut",title:"Compared with this Mac"},"Mac"):null))}
+const engineName=e=>e==="tier3"?"Tier-3":e==="tier4"?"Tier-4":"This Mac (native)";
+function renderMain(){const m=$("main");m.replaceChildren();
+ if(!detail){m.append(el("div",{class:"drop",id:"drop"},el("h1",{},"Drop a homebrew program here"),el("p",{},"A .nro file. Ounce-Core runs it on its engines and tells you whether they agree and, if you choose, whether they match this Mac."),el("button",{class:"primary",onclick:()=>$("file").click()},"Choose a file…")),el("p",{class:"note",style:"margin-top:14px"},"Nothing is uploaded anywhere: the file goes to this app on your own computer. Programs run headless in the emulator unless you turn on 'Compare with this Mac'."));if(lastError)m.append(el("p",{class:"err"},lastError));wireDrop($("drop"));return}
+ const d=detail;m.append(el("div",{style:"display:flex;justify-content:space-between;align-items:baseline"},el("h1",{style:"font-size:18px"},d.name),el("span",{class:"note mono"},d.sha256.slice(0,12)+" · "+d.bytes.toLocaleString()+" bytes")));
+ if(d.status==="running"){m.append(el("div",{class:"card"},el("p",{class:"t",style:"margin:0 0 4px;font-weight:600"},"Running on "+(d.native?"Tier-3, Tier-4 and this Mac":"Tier-3 and Tier-4")+"…"),el("p",{class:"note",style:"margin:0"},"Long programs can take a minute or two.")));return}
+ const v=d.verdict;m.append(el("div",{class:"card verdict "+v.kind},el("p",{class:"t"},v.headline),el("div",{},v.detail)));
+ if(v.diff){const x=v.diff;m.append(el("h2",{},"Where it differs"),el("div",{class:"card diff mono"},el("div",{},x.path+(x.line?" · line "+x.line:"")),x.note?el("div",{class:"note"},x.note):[el("div",{class:"a"},x.a_label+": "+x.a),el("div",{class:"b"},x.b_label+": "+x.b)]))}
+ m.append(el("h2",{},"Runs"));for(const e of d.engines){const stop=e.stop.line||e.stop.kind;m.append(el("div",{class:"card"},el("div",{class:"row"},el("strong",{},engineName(e.engine)),el("span",{class:"tag "+(e.stop.kind==="exited"?"ok":["budget","timeout","unknown"].includes(e.stop.kind)?"warn":"bad")},e.stop.kind+" · "+e.seconds+" s")),el("div",{class:"note"},stop),el("details",{},el("summary",{},"Last log lines"),el("pre",{},e.log_tail.join("\n")||"(no output)"))))}
+ m.append(el("p",{class:"note"},"This compares how each engine ended and the files the program wrote, for one run. It is evidence about that run, not a proof the program is correct."))}
+function renderRight(){const r=$("right");r.replaceChildren();if(!detail){r.append(el("h2",{style:"margin-top:0"},"How it works"),el("p",{class:"note"},"1. Drop a .nro.  2. It runs on Tier-3 and Tier-4 headless, each in its own process.  3. Optionally it also runs on this Mac's CPU as the reference.  4. Outputs are compared and the first difference is shown."));return}
+ const d=detail,done=d.status==="done";r.append(el("h2",{style:"margin-top:0"},"Progress"));for(const[n,ok]of[["Load",true],["Run",done],["Compare",done]])r.append(el("div",{class:"step"+(ok?" done":"")},el("i",{},ok?"✓":"…"),n));
+ r.append(el("h2",{},"Evidence"));if(!done){r.append(el("p",{class:"note"},"Waiting for the runs."));return}
+ const ref=d.engines.find(e=>e.engine==="native");for(const e of d.engines){if(e.engine==="native")continue;let t,c;if(!ref){t=e.stop.kind==="exited"?"ran":e.stop.kind;c=e.stop.kind==="exited"?"mut":"warn"}else{const same=e.stop.kind===ref.stop.kind&&e.exit_code===ref.exit_code&&JSON.stringify(e.files)===JSON.stringify(ref.files);t=same?"matches":"differs";c=same?"ok":"bad"}r.append(el("div",{class:"row"},engineName(e.engine),el("span",{class:"tag "+c},t)))}
+ r.append(el("div",{class:"row"},"Files compared",el("span",{},String(Object.keys((ref||d.engines[0]).files).length))));
+ r.append(el("div",{class:"row"},"Reference",el("span",{class:"note"},ref?"this Mac's CPU":"none")));
+ r.append(el("h2",{},"Open questions"),el("p",{class:"note"},ref?"A match on one run doesn't cover other inputs. Programs that read input or timers can differ between runs.":"Without the reference, agreement between tiers can't show the program runs correctly on real hardware."))}
+function render(){renderList();renderMain();renderRight()}
+function wireDrop(z){if(!z)return;z.ondragover=e=>{e.preventDefault();z.classList.add("over")};z.ondragleave=()=>z.classList.remove("over");z.ondrop=e=>{e.preventDefault();z.classList.remove("over");if(e.dataTransfer.files[0])upload(e.dataTransfer.files[0])}}
+async function upload(f){lastError="";if($("native").checked&&NATIVE&&!window._okNative){if(!confirm("Compare with this Mac runs the program directly on your computer's CPU, outside the emulator's sandbox. Only do this for programs you trust.\n\nRun it on this Mac?"))return;window._okNative=true}
+ try{const r=await api("/api/checks?name="+encodeURIComponent(f.name)+"&native="+($("native").checked&&NATIVE?1:0),{method:"POST",body:f});pick(r.id)}catch(e){lastError=e.message;render()}}
+$("pick").onclick=()=>$("file").click();$("file").onchange=e=>{if(e.target.files[0])upload(e.target.files[0]);e.target.value=""};
+document.addEventListener("dragover",e=>e.preventDefault());document.addEventListener("drop",e=>e.preventDefault());
+refresh();
+</script>
+</body>
+</html>
