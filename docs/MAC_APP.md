@@ -37,12 +37,21 @@ swiftc tools/macos-launcher/RunLogic.swift tools/macos-launcher/HostVerify.swift
 
 CI compiles and runs it on macOS beside the saved-report tests.
 
-## Not verified on a GUI
+## GUI verification status
 
-The windows, drop target, pop-up and text field, sheets and the diagnosis card were compiled and the logic tested, but
-nobody has driven them in a live session. Also unverified: `tier4` in the windowed (`--gui`) path, and whether the
-card layout fits at every window size. Verification used the real runtime headless against the fixture NROs in
-`tests/fixtures/nro/` (exit codes and logs).
+Checked live on 9 November 2026 on an Apple Silicon Mac (macOS 26.6.2) with the app built from `main` by
+`scripts/build_macos_app.sh`:
+
+- The app launches, shows its first-run window (headline, drop-target card, Open Program / Verify against Host /
+  Try the Demo buttons, engine pop-up, budget field, diagnosis panel, Show Session Details) and quits cleanly. The
+  layout fits at the default window size.
+- The bundled runtime (`Ounce Runtime.app`) runs `tests/fixtures/nro/hello/hello.nro` headless under both `tier3` and
+  `tier4` and exits through `svcExitProcess` with the same instruction count (9,067).
+- The pure logic tests (`tests/macos/run-logic/main.swift`) pass there.
+
+Still not verified: a run started from the window (dropping or choosing an NRO), the diagnosis card for a failing
+run, Verify against Host, `tier4` in the windowed (`--gui`) path, and layout at other window sizes. The window was
+observed in one screenshot and not clicked through; these were not exercised.
 
 ## Known limits
 
