@@ -105,16 +105,23 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Acceptance: retain per-host toolchains, source/input hashes, output, errors and hosted run links; require byte comparisons and nonzero failure exits. Do not treat cross-host compiler differences as emulator failures without checking the actual inputs.
       Evidence: [three-host qualification](docs/verify/linux-elf/three-host-2026-11-08.json), run 42523628103 at 10db735: Linux, macOS and Windows library jobs passed, both engines identical, all five CLI scenarios passed on each host. Each host builds its own ELF from the same pinned cases; this does not prove transporting identical ELF bytes or general libc compatibility. GitHub artifact digests and execution log excerpts retained; no local ZIP-byte verification claimed.
       Next: V5 instruction-level first divergence and V6 portable recording; expand library coverage from observed needs.
-- [ ] **V5. Locate one instruction-level first divergence.**
-      Status: ready
+- [x] **V5. Locate one instruction-level first divergence.**
       Result: a bounded real failing execution points at its first differing instruction with register state before/after.
       Acceptance: preserve an observed failure, verify the reported location against a controlled reproduction, and distinguish optimized-block behavior from interpreter fallback. Retained frame differences do not satisfy this task.
-      Next: inspect existing fuzzer state snapshots and runner boundaries; pick the smallest demonstrated divergence and connect its report to replay.
+      Evidence: [instruction diagnosis command and real FMUL case](docs/INSTRUCTION_DIAGNOSIS.md), [hardware/local acceptance](docs/verify/insn-fuzzer/default-nan-mul2d/acceptance-before.json). Apple Silicon captured the expected positive default NaN; Linux x86-64 retained its negative-NaN mismatch with exact input/reference/actual state and same-execution snapshot. A synthetic second-line mismatch proves selection and immutability. Full suite: 563 unit tests passed (10 opt-in ignores), 11 CLI tests passed. Tier-4 wrapper/fallback boundary is explicit.
+      Next: V6 second-host content-checked replay, then repair the observed vector-FP invalid-result path without changing the reference. Arbitrary-program first-divergence tracing remains unestablished.
 - [ ] **V6. Replay one recorded execution on another host.**
-      Status: ready
+      Status: active
       Depends: V3
       Result: a content-checked portable bundle reproduces one fixed failure with the same input and stop observations on another supported machine.
-      Next: use the bounded ELF workflow, record nondeterministic inputs, validate tampering/missing-input failure paths, and retain the second-host evidence. Existing SDL2 replay remains historical evidence only.
+      Progress: `replay-instruction` checks the one-case input hash and state consistency, reports reproduced/changed independently of reference match/mismatch, and rejects corruption. The Linux FMUL dossier is retained for an actual second-host replay; CI qualification is pending.
+      Next: retain Windows replay of the same Linux dossier, distinguish the expected ARM-host difference, then repair the original arithmetic bug. Existing SDL2 replay remains historical evidence only.
+- [ ] **V9. Repair the measured host-dependent vector multiply result.**
+      Status: ready
+      Depends: V5 V6
+      Result: the retained zero-times-infinity FMUL case produces ARM default NaNs on x86 hosts as well as ARM hosts.
+      Acceptance: preserve the exact hardware trace and pre-fix dossier; all supported hosts match the reference after the repair, while replay truthfully reports changed behavior against the historical failure. Keep the interpreter/JIT fallback boundary and unmodelled FP exception flags explicit.
+      Next: canonicalize the observed invalid vector-2D multiplication result in the interpreter path; do not change hardware expectations or claim unrelated floating-point completeness.
 - [ ] **V7. Replace the scripted browser teaching path with real runtime execution.**
       Status: parked
       Result: a visitor steps through an actual small ARM64 program with no installation.
