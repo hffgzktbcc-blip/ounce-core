@@ -51,7 +51,7 @@ Every claim carries one of four labels:
 | Run static Linux ARM64 programs | research-only runner; six freestanding fixtures and one bounded LZ4/musl case, [run-elf evidence](verify/linux-elf/README.md) |
 | Run arbitrary ARM64 or Linux applications | not established |
 | Automatically find any bug's root cause | not established |
-| Independent reproduction by an outside developer | none yet ([issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190)) |
+| Independent reproduction by an outside developer | none yet ([issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248)) |
 
 ## Known limits and what we do about them
 
@@ -64,7 +64,7 @@ Every claim carries one of four labels:
 
 | # | Result | How we will know |
 |---|---|---|
-| 0 | Prove one outside developer can use it | a library maintainer outside the project runs a harness and reports a result ([issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190)) |
+| 0 | Prove one outside developer can use it | a library maintainer outside the project runs a harness and reports a result ([issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248)) |
 | 1 | Run static Linux ARM64 programs (ELF loader plus about 40 Linux system calls, deterministic mode) | the verified programs run as plain `aarch64-linux` binaries on Linux, macOS and Windows with no console SDK |
 | 2 | Instruction-level differential fuzzer in CI on a real ARM64 runner | thousands of generated sequences per instruction family match hardware; every decoder change is fuzzed |
 | 3 | First-divergence report between engines and against a reference | a failing run points at one instruction with registers before and after |
