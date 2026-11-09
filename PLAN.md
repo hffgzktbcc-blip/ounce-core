@@ -121,11 +121,10 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Acceptance: preserve the exact hardware trace and pre-fix dossier; all supported hosts match the reference after the repair, while replay truthfully reports changed behavior against the historical failure. Keep the interpreter/JIT fallback boundary and unmodelled FP exception flags explicit.
       Progress: shared SIMD FMUL now returns Arm positive default NaNs for zero*infinity while preserving input-NaN propagation and FMULX semantics. [Local after evidence](docs/verify/insn-fuzzer/default-nan-mul2d/after/acceptance.json): all selected engines match the unchanged hardware trace, historical replay reports changed/reference-match, identical prior LZ4 input/output retained, 565 unit and 11 CLI tests passed (10 opt-in ignores). Focused review found no actionable issue.
       Acceptance: PR #267 passed all 40 hosted checks and merged. Static Linux ELF and historical replay qualification passed on Linux, macOS and Windows; all now match the retained hardware reference. Legacy/scalar FP paths and FP exception flags remain outside this repair.
-- [ ] **V7. Replace the scripted browser teaching path with real runtime execution.**
-      Status: active
+- [x] **V7. Replace the scripted browser teaching path with real runtime execution.**
       Result: a visitor steps through an actual small ARM64 program with no installation.
       Progress: same CPU/memory source now builds to real WebAssembly; bounded API, 117 tests and actual Chromium instruction stepping pass. Browser artifact includes binary-bound graph/toolchain notices. Existing site links and Pages build are wired; scripted workbench is labeled as a design preview. See [playground evidence](docs/PLAYGROUND.md).
-      Next: pass hosted browser qualification and verify the public Pages route before closing this milestone.
+      Acceptance: PR #269 passed all 40 hosted checks and merged at `888d515`. Pages run 42565903672 deployed successfully; a fresh Chromium context loaded the public Wasm and checked MOV/ADD, hardware FMUL and offline execution. [Live acceptance](docs/verify/playground/live-acceptance.json) retains actual hosted Wasm identity and notice-inventory correspondence.
 - [ ] **V8. Publish a reusable conformance suite and obtain an outside result.**
       Status: active
       Result: another emulator project runs a versioned suite and reports a result with exact inputs and reference scope.
