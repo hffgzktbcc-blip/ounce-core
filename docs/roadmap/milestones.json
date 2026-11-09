@@ -32,7 +32,7 @@
       "stage": "measured",
       "evidence": "Retained SDL2/audio diagnosis and one hardware-observed instruction mismatch with exact register snapshots",
       "evidence_url": "docs/INSTRUCTION_DIAGNOSIS.md",
-      "next": "Qualify second-host instruction replay; arbitrary-program first divergence remains unestablished"
+      "next": "Repair the measured arithmetic discrepancy; arbitrary-program first divergence remains unestablished"
     },
     {
       "id": "distribution",
