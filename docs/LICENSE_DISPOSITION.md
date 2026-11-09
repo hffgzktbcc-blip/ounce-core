@@ -72,8 +72,8 @@ python scripts/package_release.py --binary PATH_TO_BINARY --output release.zip \
 ```
 
 The publication review gate remains intact. Tests use a clearly labelled synthetic
-review fixture; no test result or agent name is substituted for an actual completed
-rights review. Notice/binary tampering, missing copyright coverage and traversal
+review fixture; no test result or agent name is substituted for an actual
+recorded owner distribution decision or completed rights review. Notice/binary tampering, missing copyright coverage and traversal
 paths are rejected before an archive is written.
 
 ## Historical records are evidence, not recurring work orders
@@ -96,9 +96,12 @@ The v0.6.0 candidate passed release testing and archive verification on Linux
 x86-64, macOS arm64 and Windows x86-64 in run 42569508955. PR #273 passed all
 40 checks and merged. Exact reports are under
 [the release evidence directory](releases/v0.6.0-qualification/). This satisfies
-the recorded technical artifact-qualification item; the owner/specialist
-distribution decision for the retained objc2/SDK qualification remains pending.
-No normal runtime release publication is claimed.
+the recorded technical artifact-qualification item; the owner subsequently delegated the documented distribution choice on
+9 November 2026. The [recorded decision](releases/v0.6.0-distribution-decision.md)
+selects the normal default-feature CLI release with all upstream qualifications
+retained. This is an owner-directed decision, not a specialist legal opinion or
+new third-party grant. Actual publication is established separately by the
+completed tag workflow and release assets.
 
 Linux publication additionally requires the installed native-library notice
 inventory. On the same Debian/Ubuntu host that built the trusted executable:
@@ -114,5 +117,5 @@ python scripts/package_release.py --binary PATH_TO_BINARY --output release.tar.g
 The collector uses `ldd` only on our trusted build, resolves installed package
 owners and retains their actual copyright records and common license files.
 It does not copy the shared libraries. The package verifier checks the runtime
-hash, required coverage, notice bytes and path containment. A real completed
-review is still required for the final command to succeed.
+hash, required coverage, notice bytes and path containment. A recorded distribution decision with actual reviewer/evidence and passing
+artifact checks is still required for the final command to succeed.
