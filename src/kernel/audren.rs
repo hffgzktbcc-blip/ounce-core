@@ -93,7 +93,7 @@ pub fn decode_dsp_adpcm(data: &[u8], coefs: &[i16; 16], start: usize, end: usize
         let frame = n / ADPCM_FRAME_SAMPLES * ADPCM_FRAME_BYTES;
         let pos = n % ADPCM_FRAME_SAMPLES;
         let (Some(&header), Some(&byte)) = (data.get(frame), data.get(frame + 1 + pos / 2)) else { break };
-        let nibble = if pos % 2 == 0 { byte >> 4 } else { byte & 0xF };
+        let nibble = if pos.is_multiple_of(2) { byte >> 4 } else { byte & 0xF };
         let nibble = ((nibble as i8) << 4 >> 4) as i64;
         let scale = 1i64 << (header & 0xF);
         let pair = ((header >> 4) & 7) as usize * 2;

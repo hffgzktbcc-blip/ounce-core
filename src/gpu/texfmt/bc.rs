@@ -402,7 +402,7 @@ fn sign_extend(v: u32, bits: u32) -> i32 {
 
 /// BC6H, unsigned or signed half floats.
 pub(super) fn bc6h(b: &[u8], i: usize, signed: bool) -> [f32; 4] {
-    let two = (b[0] & 3) as u8;
+    let two = b[0] & 3;
     let five = b[0] & 0x1f;
     let Some(m) = BC6_MODES.iter().find(|m| if m.mode_bits == 2 { m.value == two && two < 2 } else { two >= 2 && m.value == five })
     else {

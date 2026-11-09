@@ -168,7 +168,7 @@ impl Cpu {
                         } else {
                             self.regs.read_w(rd) as u64
                         };
-                        let mask = !((0xFFFF as u64) << shift);
+                        let mask = !(0xFFFF_u64 << shift);
                         (cur & mask) | shifted
                     }
                 };
@@ -1360,7 +1360,7 @@ impl Cpu {
                     self.regs.write_x(rd, res);
                 } else {
                     let n = self.regs.read_w(rn);
-                    let shift = (self.regs.read_w(rm) & 31) as u32;
+                    let shift = self.regs.read_w(rm) & 31;
                     let res = match shift_type {
                         ShiftType::Lsl => n.wrapping_shl(shift),
                         ShiftType::Lsr => n.wrapping_shr(shift),

@@ -32,9 +32,9 @@ fn bl(width: u32, height: u32, depth: u32, format: Format, h: u8, d: u8) -> Surf
 fn reference_offset(s: &Surface, x: u32, y: u32, z: u32) -> usize {
     let Layout::BlockLinear { height_log2: h, depth_log2: d } = s.layout else { unreachable!() };
     let (_, rows, _) = s.extent_elements();
-    let gobs_wide = (s.row_bytes() + 63) / 64;
+    let gobs_wide = s.row_bytes().div_ceil(64);
     let block_rows = 8u32 << h;
-    let blocks_high = (rows + block_rows - 1) / block_rows;
+    let blocks_high = rows.div_ceil(block_rows);
     let block_d = 1u32 << d;
     let block = (z / block_d) * blocks_high * gobs_wide + (y / block_rows) * gobs_wide + x / 64;
     let gob = (z % block_d) * (1 << h) + (y % block_rows) / 8;

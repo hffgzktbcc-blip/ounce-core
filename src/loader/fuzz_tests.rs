@@ -195,7 +195,7 @@ fn fuzz_nso_load() {
 #[test]
 fn fuzz_dynamic_section_entries() {
     const TAGS: [u64; 24] = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 17, 18, 19, 20, 23, 25, 26, 27, 28, 32, 33, 35];
-    let seeds = vec![linked_nso_seed(), fixture("nro/hello/hello.nro")];
+    let seeds = [linked_nso_seed(), fixture("nro/hello/hello.nro")];
     let mut rng = Rng::new(0x0D17_A11C);
     for case in 0..cases() {
         let seed = &seeds[rng.below(seeds.len() as u64) as usize];
