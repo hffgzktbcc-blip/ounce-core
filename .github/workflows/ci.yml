@@ -197,14 +197,14 @@ jobs:
 
       - name: Package native Mac app preview
         if: runner.os == 'macOS'
-        run: ditto -c -k --sequesterRsrc --keepParent "dist/Ounce Core.app" "$RUNNER_TEMP/Ounce-Core-workbench-preview.zip"
+        run: python3 scripts/package_macos_app.py --app "dist/Ounce Core.app" --out "$RUNNER_TEMP/macos-preview"
 
       - name: Retain native Mac app preview
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: macos-app-preview
-          path: ${{ runner.temp }}/Ounce-Core-workbench-preview.zip
+          path: ${{ runner.temp }}/macos-preview/
           if-no-files-found: error
           retention-days: 14
 
