@@ -52,7 +52,13 @@ fn main() {
     // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
+    let mut after_separator = false;
     for arg in env::args() {
+        if after_separator || arg == "--" {
+            after_separator = true;
+            args.push(arg);
+            continue;
+        }
         if let Some(value) = arg.strip_prefix("--sdmc=") {
             let _ = SDMC_HOST_DIR.set(std::path::PathBuf::from(value));
             continue;
@@ -312,7 +318,7 @@ fn print_usage() {
     println!("    cargo run --release -- {}<COMMAND>{} [OPTIONS]\n", s.green, s.reset);
     println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
     println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
-    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls)", s.green, s.reset);
+    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
     println!("    {}run-nro{} <file> [args] [--gui]  Load and execute only a homebrew NRO", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
     println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);

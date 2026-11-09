@@ -109,3 +109,25 @@ Results (release build):
 - Harness check: a deliberate bug in the Tier-3 add/sub-immediate overflow flag was caught, then reverted.
 
 Same limits as above: only the instruction classes the interpreter implements, FPCR 0, FPSR flags not compared.
+
+## CI qualification
+
+`.github/workflows/differential.yml` runs `run_tiers.sh 20000` in an independent
+Apple Silicon job on runtime/verification changes and the weekly schedule. Seeds
+1–3 compare Tier-3/Tier-4 with the interpreter; seed 1 also compares Tier-3/Tier-4
+with the hardware trace. The job requires arm64, preserves pipeline failures,
+and uploads the run log and per-engine replay summaries even on failure.
+
+The first [hosted job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42521905867/job/128857024677) passed on 2026-11-08; the [execution excerpt](ci-2026-11-08.log) retains the seed counts and zero-mismatch summaries.
+It covers single instructions with the exclusions above, not generated sequences
+or exhaustive coverage of every family. Reproduce with the same script locally.
+
+## Failure exits and incomplete inputs
+
+`fuzz-replay` returns 2 for an empty trace, a trace read/parse error, an unavailable
+engine, or zero requested generated cases. It returns 1 for value mismatches,
+execution errors, or an encoding accepted by the engine that the reference marks
+UNDEFINED. Zero mismatches from zero input is not a passing run. Coverage gaps
+remain separately counted; a successful run does not imply all encodings executed.
+The contradictory-UNDEFINED regression test intentionally supplies a synthetic
+reference to verify the failure exit; it is not a hardware observation.

@@ -10,7 +10,7 @@ Verification is the product. Ounce-Core is not another emulator promising to run
 
 1. **Ounce-Verify: prove correctness.** Run a program on the interpreter, the JIT and native execution, compare against a reference build on real hardware, detect discrepancies, and preserve hashes and reports. *Most mature pillar.*
 2. **Ounce-Debug: understand failures.** Reproduce an execution problem, compare historical results, and find where behaviour first diverges. *Demonstrated for one bounded workflow; broader tooling planned.*
-3. **Ounce-Learn: make computing understandable.** A practical place to study ARM64 execution, memory, CPU architecture and software verification, eventually one instruction at a time in the browser. *Planned.*
+3. **Ounce-Learn: make computing understandable.** A practical place to study ARM64 execution, memory, CPU architecture and software verification, eventually one instruction at a time in the browser. *Browser teaching prototype exists; real WebAssembly execution is planned.*
 
 ## Who it is for
 
@@ -26,7 +26,7 @@ In one working week, running unmodified open-source programs and diffing them ag
 - two fused floating-point instructions with the wrong sign, so `sin`, `cos` and `pow` returned wrong numbers;
 - a long list of missing vector instructions (widening multiply and add, byte reverse, register shifts, table lookup, polynomial multiply, narrowing and saturating ops), plus CRC32, scalar add and duplicate forms, and a fixed 50-million-instruction cap.
 
-Programs merged and checked on three engines (interpreter, JIT, native host execution): LZ4, xxHash, SQLite, Lua, and a 5,964-line floating-point instruction test. In review: zlib, cJSON, TinyExpr, Monocypher. A 300-input loader fuzz run produced no panics. Method and results: [docs/verify/](verify/README.md).
+Programs merged and checked on three engines (interpreter, JIT, native host execution): LZ4, xxHash, SQLite, Lua, and a 5,964-line floating-point instruction test. Additional harnesses, including zlib, cJSON, TinyExpr, Monocypher and wasm3, are now in the [differential manifest](verify/differential.json); consult each harness for its measured inputs and limits. A 300-input loader fuzz run produced no panics. Method and results: [docs/verify/](verify/README.md).
 
 ## Maturity labels
 
@@ -41,21 +41,21 @@ Every claim carries one of four labels:
 
 | Capability | Maturity today |
 |---|---|
-| Execute selected ARM64 programs on three engines | bounded-verified (LZ4, xxHash, SQLite, Lua; more in review) |
+| Execute selected ARM64 programs on three engines | bounded-verified on listed harness inputs; see [manifest](verify/differential.json) |
 | Compare engines and compare against a host reference | bounded-verified |
 | Record results, hashes and evidence | bounded-verified |
 | Diagnose differences between retained reports | bounded-verified (one workflow) |
 | Bounded replay of a historical failure | bounded-verified (one case) |
-| Instruction-level checking against hardware | research-only (a floating-point test; a fuzzer is planned) |
-| Run static Linux ARM64 programs | not started |
+| Instruction-level checking against hardware | bounded-verified on recorded single-instruction inputs; [fuzzer scope and results](verify/insn-fuzzer/README.md) |
+| Run static Linux ARM64 programs | research-only runner; six freestanding fixtures and one bounded LZ4/musl case, [run-elf evidence](verify/linux-elf/README.md) |
 | Run arbitrary ARM64 or Linux applications | not established |
 | Automatically find any bug's root cause | not established |
 | Independent reproduction by an outside developer | none yet ([issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190)) |
 
 ## Known limits and what we do about them
 
-- **Coverage is partial.** Many vector, floating-point and system instructions are undecoded or untested. *Plan:* a decoder census over real programs ranks what to implement next, and an instruction-level differential fuzzer then keeps decoder changes honest.
-- **The cumulative saturation flag (QC) was not modelled.** *Plan:* model FPSR so saturating instructions set QC and `mrs` reads it back, checked against hardware. In progress.
+- **Coverage is partial.** Many vector, floating-point and system instructions are undecoded or untested. A [decoder census](verify/CENSUS_2026-11-08.md) and [single-instruction fuzzer](verify/insn-fuzzer/README.md) now exist. The recorded census is a revision-specific snapshot, not current coverage. Next: retain CI fuzz results and close observed gaps.
+- **QC is modelled for implemented saturating instructions.** [Hardware comparisons](verify/qc-flag/README.md) cover bounded inputs; FPCR behavior and cumulative FP exception flags remain unmodelled. [Cross-host differences](verify/README.md#hardware-differences) remain explicit.
 - **It is not fast.** The interpreter runs at roughly 20 million instructions per second, which is fine for tests. *Plan:* measure first. The bar is that the whole verified-program suite runs in CI in a few minutes. Speed is not what we compete on; beyond that bar it does not drive the roadmap.
 - **Native execution runs on the host CPU.** On an ARM64 host it checks the harness and the toolchain, not the emulator, so Tier-3 and Tier-4 are the real evidence.
 
@@ -71,7 +71,15 @@ Every claim carries one of four labels:
 | 5 | Browser playground (WebAssembly build) | a visitor steps through a program with no install |
 | 6 | Publish the conformance suite for other emulators | at least one outside project runs it and reports results |
 
-Step 0 comes first: the real test of this vision is an ordinary developer solving a problem they care about, not another internal count. Steps 1 and 2 follow because they remove the console-toolchain dependency and turn the one-off bug hunt into a standing guarantee.
+Current progress and remaining acceptance:
+
+- **Step 1 started:** `run-elf` executes six tiny freestanding fixtures and the unchanged [LZ4 harness linked with musl](verify/linux-elf/README.md#lz4-without-a-console-sdk). A bounded virtual clock is available with `--deterministic`; more library coverage and three-OS acceptance remain.
+- **Step 2 started:** single-instruction host fuzzing and interpreter/Tier-3/Tier-4 comparisons exist. The [Apple Silicon CI job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42521905867/job/128857024677) passed: 60,000 engine-comparison words and a 20,000-word host trace replayed through each tier, with zero unexpected differences. Generated multi-instruction sequences and per-family acceptance remain future work.
+- **Steps 3–4 partial:** the released [diagnosis CLI](DIAGNOSIS_CLI.md) inspects retained reports and one historical replay. It does not locate an arbitrary first differing instruction or demonstrate portable execution recording.
+- **Step 5 prototype:** `site/lab.html` is a scripted teaching/workbench prototype, not a WebAssembly build of the Rust runtime.
+- **Step 6 pending:** no outside-project conformance-suite result is recorded.
+
+Step 0 remains an external acceptance goal, not a block on steps 1–2. The real test of this vision is an ordinary developer solving a problem they care about, not another internal count. Steps 1 and 2 follow because they remove the console-toolchain dependency and turn the one-off bug hunt into a standing guarantee.
 
 ## Where Switch fits
 
