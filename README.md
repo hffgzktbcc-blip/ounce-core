@@ -18,7 +18,7 @@
 
 An open-source ARM64 execution, debugging and verification platform in safe Rust.
 
-[Vision](docs/VISION.md) · [Research paper](site/research.html) · [Browser playground](docs/PLAYGROUND.md) · [Interactive lab](docs/INTERACTIVE_LAB.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Reproduce it](docs/REPRODUCE.md) · [Limits](docs/LIMITS.md) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
+[Vision](docs/VISION.md) · [Research paper](site/research.html) · [Browser playground](docs/PLAYGROUND.md) · [Interactive lab](docs/INTERACTIVE_LAB.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Reproduce it](docs/REPRODUCE.md) · [Limits](docs/LIMITS.md) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](site/contribute.html) · [First issues](https://github.com/hffgzktbcc-blip/ounce-core/contribute)
 
 </div>
 
