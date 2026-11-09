@@ -42,8 +42,6 @@ jobs:
     name: Static Linux ELF (${{ matrix.os }}, LZ4)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    env:
-      EVIDENCE_ROOT: ${{ runner.temp }}/ounce-evidence-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       fail-fast: false
       matrix:
@@ -58,6 +56,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Allocate fresh evidence outside the Rust cache
+        run: |
+          python3 - <<'PY_EVIDENCE'
+          import os, pathlib
+          leaf = 'ounce-evidence-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / leaf
+          root.mkdir(parents=True, exist_ok=False)
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write('EVIDENCE_ROOT=' + root.as_posix() + '\n')
+          PY_EVIDENCE
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install Linux build dependencies
@@ -76,7 +84,6 @@ jobs:
           python3 - <<'PY_REPLAY'
           import json, os, pathlib, platform, subprocess
           evidence = pathlib.Path(os.environ['EVIDENCE_ROOT'])
-          evidence.mkdir(parents=True, exist_ok=False)
           binary = 'target/release/ounce-core' + ('.exe' if platform.system() == 'Windows' else '')
           result = subprocess.run([binary, 'replay-instruction', 'docs/verify/insn-fuzzer/default-nan-mul2d/before/tier3'], capture_output=True, text=True)
           (evidence / 'instruction-replay.json').write_text(result.stdout)
