@@ -9,6 +9,9 @@ on:
       - 'scripts/verify_differential.py'
       - 'scripts/verify_linux_elf.py'
       - 'scripts/test_verify_linux_elf.py'
+      - 'conformance/**'
+      - 'scripts/run_conformance.py'
+      - 'scripts/test_run_conformance.py'
       - 'tests/linux-elf/**'
       - 'Cargo.*'
       - '.github/workflows/differential.yml'
@@ -20,6 +23,9 @@ on:
       - 'scripts/verify_differential.py'
       - 'scripts/verify_linux_elf.py'
       - 'scripts/test_verify_linux_elf.py'
+      - 'conformance/**'
+      - 'scripts/run_conformance.py'
+      - 'scripts/test_run_conformance.py'
       - 'tests/linux-elf/**'
       - 'Cargo.*'
       - '.github/workflows/differential.yml'
@@ -97,6 +103,13 @@ jobs:
           assert actual == expected, (actual, expected)
           print(json.dumps({'host': platform.platform(), 'replay_verdict': actual[0], 'reference_verdict': actual[1], 'exit': actual[2]}))
           PY_REPLAY
+      - name: Run the versioned conformance seed on each engine
+        run: |
+          binary=target/release/ounce-core
+          if [[ "$RUNNER_OS" == "Windows" ]]; then binary="$binary.exe"; fi
+          for engine in interp tier3 tier4; do
+            python3 scripts/run_conformance.py --report "$EVIDENCE_ROOT/conformance-$engine.json" -- "$binary" fuzz-replay --engine "$engine"
+          done
       - name: Compare unchanged LZ4 cases on host and both ELF engines
         run: python3 scripts/verify_linux_elf.py --work "$EVIDENCE_ROOT/linux-lz4" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
       - uses: actions/upload-artifact@v4
@@ -104,6 +117,7 @@ jobs:
         with:
           name: linux-elf-lz4-evidence-${{ matrix.os }}
           path: |
+            ${{ env.EVIDENCE_ROOT }}/conformance-*.json
             ${{ env.EVIDENCE_ROOT }}/instruction-replay.json
             ${{ env.EVIDENCE_ROOT }}/instruction-replay.stderr
             ${{ env.EVIDENCE_ROOT }}/linux-lz4/report.json

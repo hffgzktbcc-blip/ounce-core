@@ -5,7 +5,9 @@ Draft only: no version selected, tag created, assets published or checks claimed
 Ounce Core now has a native macOS workbench around the ARM64 runtime. It accepts
 NRO inputs, exposes CPU engine and execution-budget settings, explains recognized
 runtime failures, and compares supported harness output with bundled references.
-The browser lab is a teaching prototype, not the Rust runtime compiled to WebAssembly.
+The original browser workbench remains a labeled design preview. A separate real
+ARM64 interpreter playground now compiles the shared CPU/memory source to
+WebAssembly; see `docs/PLAYGROUND.md` for its bounded acceptance and deployment.
 
 ## Before publishing
 

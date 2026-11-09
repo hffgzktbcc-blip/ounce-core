@@ -1,0 +1,26 @@
+{
+  "url": "https://hffgzktbcc-blip.github.io/ounce-core/playground/",
+  "http_status": 200,
+  "browser": "156.0.8078.79",
+  "wasm": [
+    {
+      "url": "https://hffgzktbcc-blip.github.io/ounce-core/playground/pkg/ounce_learn_bg.wasm",
+      "status": 200,
+      "sha256": "1ddc4bf218f76b88f7a416deecb03a9138aa198d647dd10e2c6b022c0224de4b"
+    }
+  ],
+  "checks": [
+    "live HTTPS load",
+    "MOV/ADD",
+    "hardware FMUL",
+    "execution after network disabled"
+  ],
+  "page_errors": [],
+  "public_manifest_checks": {
+    "wasm_matches_artifact_manifest": true,
+    "notice_inventory_sha256_verified": true,
+    "project_notices_sha256_verified": true,
+    "all_individual_remote_notice_files_verified": false
+  },
+  "deployment_run": 42565903672
+}
