@@ -33,6 +33,8 @@ const MAX_HEADER: usize = 16 * 1024;
 const LOG_CAP: usize = 512 * 1024;
 const FILE_CAP: usize = 1024 * 1024;
 const PAGE: &str = include_str!("../assets/lab/index.html");
+const SCRIPT: &str = include_str!("../assets/lab/app.js");
+const STYLE: &str = include_str!("../assets/lab/app.css");
 
 /// Command-line options for `ounce-core ui`.
 pub struct Options {
@@ -41,6 +43,8 @@ pub struct Options {
     pub dir: PathBuf,
     pub budget: u64,
     pub timeout_secs: u64,
+    /// Exit when stdin closes. The Mac app holds a pipe to the server so it can't outlive the app.
+    pub parent_pipe: bool,
 }
 
 impl Options {
@@ -51,17 +55,19 @@ impl Options {
             dir: default_dir(),
             budget: 2_000_000_000,
             timeout_secs: 120,
+            parent_pipe: false,
         };
         let mut it = args.iter();
         while let Some(arg) = it.next() {
             let mut value = |name: &str| it.next().cloned().ok_or(format!("{name} needs a value"));
             match arg.as_str() {
                 "--no-open" => options.open_browser = false,
+                "--parent-pipe" => options.parent_pipe = true,
                 "--port" => options.port = value("--port")?.parse().map_err(|_| "--port must be 0-65535")?,
                 "--dir" => options.dir = PathBuf::from(value("--dir")?),
                 "--budget" => options.budget = value("--budget")?.parse().map_err(|_| "--budget must be a number")?,
                 "--timeout" => options.timeout_secs = value("--timeout")?.parse().map_err(|_| "--timeout must be seconds")?,
-                other => return Err(format!("unknown option '{other}' (try --port N, --no-open, --dir DIR, --budget N, --timeout SECS)")),
+                other => return Err(format!("unknown option '{other}' (try --port N, --no-open, --dir DIR, --budget N, --timeout SECS, --parent-pipe)")),
             }
         }
         Ok(options)
@@ -531,7 +537,7 @@ fn respond(stream: &mut TcpStream, status: u16, content_type: &str, body: &[u8])
     let head = format!(
         "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-store\r\n\
          X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n\
-         Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src data:\r\n\
+         Content-Security-Policy: default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src data:\r\n\
          Connection: close\r\n\r\n",
         body.len()
     );
@@ -557,6 +563,12 @@ fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
         }
         let page = PAGE.replace("__OUNCE_TOKEN__", &lab.token).replace("__OUNCE_NATIVE__", if cfg!(all(feature = "nce", target_arch = "aarch64")) { "true" } else { "false" });
         return (200, "text/html; charset=utf-8", page.into_bytes());
+    }
+    if req.method == "GET" && req.path == "/app.js" {
+        return (200, "text/javascript; charset=utf-8", SCRIPT.as_bytes().to_vec());
+    }
+    if req.method == "GET" && req.path == "/app.css" {
+        return (200, "text/css; charset=utf-8", STYLE.as_bytes().to_vec());
     }
     if !req.path.starts_with("/api/") {
         return error(404, "Not found.");
@@ -630,6 +642,13 @@ fn serve(options: Options) -> Result<(), String> {
     println!("  Workbench: {url}");
     println!("  Checks are saved under {}", options.dir.display());
     println!("  Only this computer can reach it. Press Ctrl-C to stop.");
+    if options.parent_pipe {
+        thread::spawn(|| {
+            let mut sink = Vec::new();
+            let _ = std::io::stdin().read_to_end(&mut sink);
+            std::process::exit(0);
+        });
+    }
     if options.open_browser {
         let opener = if cfg!(target_os = "macos") { "open" } else if cfg!(target_os = "windows") { "explorer" } else { "xdg-open" };
         let _ = Command::new(opener).arg(&url).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
