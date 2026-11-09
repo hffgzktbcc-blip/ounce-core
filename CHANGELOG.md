@@ -5,6 +5,11 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 ## Unreleased
 
 ### Added
+- The Mac app now opens the workbench in its window (`tools/macos-launcher/Workbench.swift`, a `WKWebView` around the
+  local `ounce-core ui` server, started from the bundled runtime). Opening an `.nro` or "Check a Program…" (⌘O) sends it
+  to the workbench, emulator-only; the Mac reference stays a choice made in the page. The server exits when the app does
+  (`ui --parent-pipe`). The earlier launcher window is still there under "Show Classic Launcher" and
+  "Run in a Window (Classic)…".
 - `ounce-core ui` is now a real local workbench, not a printout. It serves a page on 127.0.0.1 (random port,
   per-session key, Host/Origin checks, 64 MiB upload cap). Drop a homebrew `.nro` and it runs on Tier-3 and
   Tier-4 in separate processes, and, only if you turn on "Compare with this Mac" and confirm, on this Mac's CPU

@@ -182,6 +182,8 @@ jobs:
           "$RUNNER_TEMP/evidence-report-tests"
           swiftc tools/macos-launcher/RunLogic.swift tools/macos-launcher/HostVerify.swift tests/macos/run-logic/main.swift -o "$RUNNER_TEMP/run-logic-tests"
           "$RUNNER_TEMP/run-logic-tests"
+          swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos/workbench-logic/main.swift -o "$RUNNER_TEMP/workbench-logic-tests"
+          "$RUNNER_TEMP/workbench-logic-tests"
           scripts/build_macos_app.sh
           codesign --verify --deep --strict "dist/Ounce Core.app"
           "dist/Ounce Core.app/Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core" test
