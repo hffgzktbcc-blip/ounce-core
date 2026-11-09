@@ -45,7 +45,7 @@ env:
 
 jobs:
   linux-library:
-    name: Static Linux ELF (${{ matrix.os }}, LZ4)
+    name: Static Linux ELF (${{ matrix.os }}, LZ4 xxHash cJSON zlib)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -112,6 +112,12 @@ jobs:
           done
       - name: Compare unchanged LZ4 cases on host and both ELF engines
         run: python3 scripts/verify_linux_elf.py --work "$EVIDENCE_ROOT/linux-lz4" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare unchanged xxhash cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --harness xxhash --work "$EVIDENCE_ROOT/linux-xxhash" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare unchanged cjson cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --harness cjson --work "$EVIDENCE_ROOT/linux-cjson" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare unchanged zlib cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --harness zlib --budget 2000000000 --work "$EVIDENCE_ROOT/linux-zlib" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -123,6 +129,15 @@ jobs:
             ${{ env.EVIDENCE_ROOT }}/linux-lz4/report.json
             ${{ env.EVIDENCE_ROOT }}/linux-lz4/*.stdout
             ${{ env.EVIDENCE_ROOT }}/linux-lz4/*.stderr
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-elf-libs-evidence-${{ matrix.os }}
+          path: |
+            ${{ env.EVIDENCE_ROOT }}/linux-xxhash/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-cjson/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-zlib/report.json
           if-no-files-found: warn
 
   instruction-fuzzer:
