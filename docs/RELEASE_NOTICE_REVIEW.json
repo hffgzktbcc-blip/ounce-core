@@ -7,8 +7,7 @@
   "reviewer": null,
   "decision_evidence": "docs/LICENSE_DISPOSITION.md",
   "open_items": [
-    "The pinned objc2 LICENSE.md expressly qualifies SDK-derived binding rights; an upstream/rights-holder clarification or a documented distribution decision is not established by adding MIT notices.",
-    "Final built-artifact qualification with the actual toolchain notices must pass on each release platform. The new collector and binary-bound checks close the missing-notice mechanism, not source ownership questions."
+    "The pinned objc2 LICENSE.md expressly qualifies SDK-derived binding rights; an upstream/rights-holder clarification or a documented distribution decision is not established by adding MIT notices."
   ],
   "notice_sources": [
     {
@@ -1381,5 +1380,11 @@
       "source_git_blob": "ce8c4c17fd88f6cf5f3720c08fa685434e3cbcbb",
       "scope": "Upstream supplied full MIT text; retain older inherited notices too. Does not assert that it exhausts every contributor notice or grants Apple SDK rights."
     }
-  ]
+  ],
+  "artifact_qualification": {
+    "source_commit": "84e1faaa87f25051c7fb2acf373f572845682d89",
+    "workflow_run_id": 42569508955,
+    "evidence_directory": "docs/releases/v0.6.0-qualification",
+    "result": "Linux x86-64, macOS arm64 and Windows x86-64 builds/tests/archive verification passed; publication skipped; rights decision remains pending"
+  }
 }
