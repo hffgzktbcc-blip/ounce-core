@@ -222,7 +222,7 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
             return Err(unsup("LDC size other than 32-bit"));
         }
         let offset = bits(w, 20, 36) as u16;
-        if offset % 4 != 0 || offset & 0x8000 != 0 {
+        if !offset.is_multiple_of(4) || offset & 0x8000 != 0 {
             return Err(unsup("unaligned or negative LDC offset"));
         }
         Instr::Ldc { dst, bank: bits(w, 36, 41) as u8, offset, reg: r_off }
@@ -636,5 +636,5 @@ pub fn lower(stage: ShaderStage, code: &[u8]) -> Result<Function, XlateError> {
 /// Inverse of [`instr_offset`]; `None` for a control word or a misaligned offset.
 pub fn instr_index(byte: usize) -> Option<usize> {
     let slot = byte % 32;
-    (byte % 8 == 0 && slot != 0).then(|| (byte / 32) * 3 + (slot - 8) / 8)
+    (byte.is_multiple_of(8) && slot != 0).then(|| (byte / 32) * 3 + (slot - 8) / 8)
 }

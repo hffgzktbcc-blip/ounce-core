@@ -256,7 +256,7 @@ impl DisplayServer {
     }
 
     pub fn is_window_active(&self) -> bool {
-        self.backend.as_ref().map_or(false, |b| b.is_open())
+        self.backend.as_ref().is_some_and(|b| b.is_open())
     }
 
     /// Pumps backend window events (keyboard presses, window close, focus) without
@@ -363,7 +363,7 @@ mod tests {
     fn guest_frames_reach_the_backend_without_overlay_or_dimension_changes() {
         let mut display = headless_server(320, 200);
         let mut frame = Frame::new(2, 2);
-        frame.rgba = vec![10, 20, 30, 40].repeat(4);
+        frame.rgba = [10, 20, 30, 40].repeat(4);
         let expected = frame.content_hash();
         assert!(display.present_guest_frame(frame));
         assert_eq!(display.swapchain.front_buffer.content_hash(), expected);

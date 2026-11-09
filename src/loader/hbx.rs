@@ -80,7 +80,7 @@ impl<'a> HbxImage<'a> {
         let data_region = data_region as usize;
         let data_size = data_region.next_multiple_of(PAGE);
         let end = |base: u64, size: usize| {
-            if base == 0 || base % PAGE as u64 != 0 {
+            if base == 0 || !base.is_multiple_of(PAGE as u64) {
                 return Err(Invalid("segment alignment"));
             }
             base.checked_add(size as u64)

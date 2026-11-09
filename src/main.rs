@@ -619,7 +619,7 @@ fn run_vm_internal(
     max_instructions: usize,
     max_frames: usize,
 ) -> VmOutcome {
-    let is_gpu = display.as_ref().map_or(false, |d| d.is_gpu_accelerated());
+    let is_gpu = display.as_ref().is_some_and(|d| d.is_gpu_accelerated());
     kernel.nvgpu.set_hardware_acceleration(is_gpu);
 
     println!("[VM] Starting execution at PC: 0x{:016X}", cpu.regs.pc);

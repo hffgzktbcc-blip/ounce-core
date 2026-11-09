@@ -83,3 +83,10 @@ specific outstanding distribution questions. They do not prohibit unrelated tool
 Preserve fixed expectations, input identities and failures when repairing behavior.
 Keep `src/` safe Rust; unsafe operations remain confined to existing isolated crate
 boundaries. Describe actual evidence, supported inputs and known limits plainly.
+
+## Community guides
+
+New to the project? Read [Start here](docs/community/START_HERE.md) for a five-step path. The
+[glossary](docs/community/GLOSSARY.md) explains the terms, and the
+[external test report template](docs/community/EXTERNAL_TEST_REPORT.md) is for reporting a
+rerun, whether it matched, mismatched or could not run.

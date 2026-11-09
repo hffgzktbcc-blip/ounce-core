@@ -781,7 +781,7 @@ impl IpcManager {
                     0
                 }
                 // Command 51 | 52 | 53: OpenSaveDataFileSystem -> returns IFileSystem ("save:/")
-                51 | 52 | 53 => {
+                51..=53 => {
                     let fs_h = self.allocate_handle(ServiceType::FileSystem("save:/".to_string()));
                     self.write_cmif_response(tls_addr, mmu, 0, &[fs_h], Some(fs_h));
                     0

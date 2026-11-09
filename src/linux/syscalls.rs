@@ -224,7 +224,7 @@ impl Process {
     }
 
     fn sys_munmap(&mut self, addr: u64, len: u64, mmu: &mut Memory) -> i64 {
-        if addr % PAGE != 0 || len == 0 || len > MAX_MMAP_TOTAL * 4 {
+        if !addr.is_multiple_of(PAGE) || len == 0 || len > MAX_MMAP_TOTAL * 4 {
             return -EINVAL;
         }
         let len = align_up(len);

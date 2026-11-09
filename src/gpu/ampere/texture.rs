@@ -338,7 +338,7 @@ impl TextureHeader {
 
     /// Layer `layer` of a 2D array as a single 2D texture.
     pub(crate) fn layer(&self, layer: u32) -> Option<TextureHeader> {
-        let mut h = self.clone();
+        let mut h = *self;
         h.gpu_va = self.gpu_va.checked_add(self.layer_stride()? as u64 * layer as u64)?;
         h.texture_type = TextureType::TwoD;
         h.depth = 1;

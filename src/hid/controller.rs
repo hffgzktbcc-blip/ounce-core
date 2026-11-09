@@ -212,10 +212,7 @@ impl Default for HostGamepadManager {
 
 impl HostGamepadManager {
     pub fn new() -> Self {
-        let gilrs = match Gilrs::new() {
-            Ok(g) => Some(g),
-            Err(_) => None,
-        };
+        let gilrs = Gilrs::new().ok();
         let connected_gamepads = gilrs.as_ref().map(|g| g.gamepads().count()).unwrap_or(0);
         Self {
             gilrs,
