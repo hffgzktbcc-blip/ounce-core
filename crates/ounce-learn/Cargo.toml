@@ -1,0 +1,27 @@
+[package]
+name = "ounce-learn"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Bounded browser interpreter using Ounce Core CPU and memory modules"
+publish = false
+
+# Keep the browser-only dependency graph separate from the desktop release graph.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+byteorder = "=1.5.0"
+serde_json = "1"
+thiserror = "=2.0.21"
+wasm-bindgen = "=0.2.129"
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("native-jit", "nce"))'] }
