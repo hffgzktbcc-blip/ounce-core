@@ -1,0 +1,109 @@
+name: Community onboarding
+
+# This workflow never checks out or executes code from an outside pull request.
+# It does not contact developers unless they submit a PR to this repository.
+on:
+  pull_request_target:
+    types: [opened, reopened]
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  welcome-newcomer:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Welcome a first-time contributor once
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) return;
+            if (!['FIRST_TIMER', 'FIRST_TIME_CONTRIBUTOR'].includes(pr.author_association)) {
+              core.info('Returning contributor; no automated greeting.');
+              return;
+            }
+            if (pr.user?.type === 'Bot') return;
+            const marker = '<!-- ounce-core-first-pr-welcome-v1 -->';
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: pr.number,
+              per_page: 100
+            });
+            if (comments.some(comment => comment.body?.includes(marker))) {
+              core.info('Welcome comment already present.');
+              return;
+            }
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: pr.number,
+              body: `${marker}
+            Welcome to Ounce-Core! Thanks for taking the time to contribute. 👋
+
+            A maintainer will review this PR. You can use the [contribution guide](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/CONTRIBUTING.md) and the [start-here guide](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/community/START_HERE.md) if you need context.
+
+            Please mention what you tested, what you couldn't test and any remaining limitations. Docs-only changes don't require an ARM64 machine. We welcome reproducible failures as well as successes; no unverified result is treated as independently reproduced.
+
+            *Automated one-time welcome; no access or approval granted.*`
+            });
+
+  keep-starter-issue-supply:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Monitor beginner issue availability without creating fake tasks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repo = context.repo;
+            const marker = '<!-- ounce-core-starter-supply-v1 -->';
+            const minimum = 3;
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              ...repo, state: 'all', per_page: 100
+            });
+            const beginner = issues.filter(i =>
+              i.state === 'open' &&
+              !i.pull_request &&
+              i.labels.some(label => (typeof label === 'string' ? label : label.name) === 'good first issue')
+            );
+            const tracker = issues.find(i => !i.pull_request && i.body?.includes(marker));
+            await core.summary
+              .addHeading('Community recruitment health')
+              .addRaw(`Open beginner issues: ${beginner.length} (target: ${minimum}+).`)
+              .addBreak()
+              .addLink('See beginner issues', `https://github.com/${repo.owner}/${repo.repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22`)
+              .write();
+            if (beginner.length < minimum) {
+              if (tracker?.state === 'open') {
+                core.info('Existing maintainer supply issue remains open; nothing posted.');
+                return;
+              }
+              if (tracker?.state === 'closed') {
+                await github.rest.issues.update({ ...repo, issue_number: tracker.number, state: 'open' });
+                core.info('Reopened the single supply reminder; no duplicate.');
+                return;
+              }
+              await github.rest.issues.create({
+                ...repo,
+                title: 'Community maintenance: replenish approachable first issues',
+                body: `${marker}
+            This single, automated maintainer reminder appears only when fewer than ${minimum} open issues carry the `good first issue` label.
+
+            **Action for maintainers:** add or relabel genuinely scoped, unclaimed beginner tasks. Include the exact file, expected change, acceptance checks and whether browser-only work is possible. Do not generate filler tasks or mislabel advanced work.
+
+            [Beginner issue queue](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+
+            The weekly workflow closes this issue automatically after the supply recovers. No unsolicited outreach occurs.`
+              });
+            } else if (tracker?.state === 'open') {
+              await github.rest.issues.update({
+                ...repo, issue_number: tracker.number,
+                state: 'closed', state_reason: 'completed'
+              });
+              core.info('Closed the supply reminder because beginner issue inventory recovered.');
+            }
