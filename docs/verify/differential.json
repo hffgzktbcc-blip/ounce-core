@@ -71,19 +71,7 @@
    ],
    "host_main": "host_main.c",
    "nx_main": "main_nx.c",
-   "arm64_reference": true,
-   "host_notes": {
-    "linux-arm64": {
-     "expected_different": [
-      "committed-vs-fresh-host",
-      "tier3",
-      "tier4",
-      "native"
-     ],
-     "reason": "Only fadd2d and fmul2d differ, and only where both operands are quiet NaNs: case 107 (-qNaN fff8.. with +qNaN 7ff8..) returns the first operand on Apple Silicon and tier3/tier4/native but the second on the runner build; case 177 (payload 0 vs payload 0x12345) likewise. Non-commutative fsub/fdiv do not differ, so a likely cause is the host C compiler (gcc on Linux) swapping the operands of the commutative vaddq_f64/vmulq_f64 intrinsics (the same issue fp_cases.c already works around for FMLA/FMLS with inline asm); a hardware difference is not excluded. Unproven.",
-     "evidence": "CI run 42501194128 (PR 247), job Differential (ubuntu-24.04-arm), https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42501194128, vector-fp lines 7211, 7213 (case 107) and 11901, 11903 (case 177)"
-    }
-   }
+   "arm64_reference": true
   },
   {
    "name": "lz4",

@@ -7,6 +7,10 @@ static uint32_t st = 91u;
 static uint32_t rnd(void) { st = st * 1664525u + 1013904223u; return st; }
 /* FMLA/FMLS use inline asm so host (clang) and guest (gcc) emit the same operand order: the intrinsic leaves it to the compiler and
    the sign of a NaN product input then differs between compilers. */
+/* Commutative FADD/FMUL use inline asm for the same reason as FMLA/FMLS: with two quiet-NaN operands the architecture (FPProcessNaNs)
+   returns the first operand, and gcc on aarch64 emits `fadd v0, Vm, Vn` for vaddq_f64(n, m) at -O1 (issue #257), so the intrinsic
+   makes the host reference depend on the compiler. The asm pins Vn = first operand on every host. */
+#define PIN2(insn, T, a, b) ({ T r_; __asm__(insn : "=w"(r_) : "w"(a), "w"(b)); r_; })
 /* edge f32 bit patterns: 0, -0, 1, -1, inf, -inf, qNaN (+payload), sNaN, -NaN, smallest/largest subnormal,
    FLT_MIN, FLT_MAX, 2^31, 2^32, int boundaries, 0.5, 1.5, 2.5, -1.5 */
 static const uint32_t E32[] = {
@@ -70,9 +74,9 @@ int fp_run_cases(FILE *o) {
     put(o, "fcmgt4s", i, U(vcgtq_f32(n, m)));
     put(o, "facge4s", i, U(vcageq_f32(n, m)));
     put(o, "facgt4s", i, U(vcagtq_f32(n, m)));
-    put(o, "fadd4s", i, F(vaddq_f32(n, m)));
+    put(o, "fadd4s", i, F(PIN2("fadd %0.4s, %1.4s, %2.4s", float32x4_t, n, m)));
     put(o, "fsub4s", i, F(vsubq_f32(n, m)));
-    put(o, "fmul4s", i, F(vmulq_f32(n, m)));
+    put(o, "fmul4s", i, F(PIN2("fmul %0.4s, %1.4s, %2.4s", float32x4_t, n, m)));
     put(o, "fdiv4s", i, F(vdivq_f32(n, m)));
     put(o, "fabd4s", i, F(vabdq_f32(n, m)));
     put(o, "faddp4s", i, F(vpaddq_f32(n, m)));
@@ -96,7 +100,7 @@ int fp_run_cases(FILE *o) {
     put(o, "fcmeq2s", i, ZU(vceq_f32(nl, ml)));
     put(o, "fcmge2s", i, ZU(vcge_f32(nl, ml)));
     put(o, "fcmgt2s", i, ZU(vcgt_f32(nl, ml)));
-    put(o, "fmul2s", i, Z(vmul_f32(nl, ml)));
+    put(o, "fmul2s", i, Z(PIN2("fmul %0.2s, %1.2s, %2.2s", float32x2_t, nl, ml)));
     { float32x2_t r = vget_low_f32(d); __asm__("fmla %0.2s, %1.2s, %2.2s" : "+w"(r) : "w"(nl), "w"(ml)); put(o, "fmla2s", i, Z(r)); }
     { float32x2_t r = vget_low_f32(d); __asm__("fmls %0.2s, %1.2s, %2.2s" : "+w"(r) : "w"(nl), "w"(ml)); put(o, "fmls2s", i, Z(r)); }
     put(o, "fmax2s", i, Z(vmax_f32(nl, ml)));
@@ -108,9 +112,9 @@ int fp_run_cases(FILE *o) {
     put(o, "fcmgt2d", i, UD(vcgtq_f64(nd, md)));
     put(o, "facge2d", i, UD(vcageq_f64(nd, md)));
     put(o, "facgt2d", i, UD(vcagtq_f64(nd, md)));
-    put(o, "fadd2d", i, D(vaddq_f64(nd, md)));
+    put(o, "fadd2d", i, D(PIN2("fadd %0.2d, %1.2d, %2.2d", float64x2_t, nd, md)));
     put(o, "fsub2d", i, D(vsubq_f64(nd, md)));
-    put(o, "fmul2d", i, D(vmulq_f64(nd, md)));
+    put(o, "fmul2d", i, D(PIN2("fmul %0.2d, %1.2d, %2.2d", float64x2_t, nd, md)));
     put(o, "fdiv2d", i, D(vdivq_f64(nd, md)));
     put(o, "fabd2d", i, D(vabdq_f64(nd, md)));
     put(o, "faddp2d", i, D(vpaddq_f64(nd, md)));
