@@ -11,6 +11,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   block; the block is rolled back so the Tier-3 fallback sees no partial effect. Replaces a
   debug assertion that failed in `random_blocks_match_interpreter_and_tier3` and
   `random_linked_loops_match_interpreter_and_tier3` with `--features native-jit`.
+- CI: `actions/setup-python` 5 → 7 and `actions/dependency-review-action` 4 → 5 (supersedes Dependabot #275 and #274).
 - Default and `nce native-jit` builds are free of compiler warnings.
 
 ## 0.6.0
