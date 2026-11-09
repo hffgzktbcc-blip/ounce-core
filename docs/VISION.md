@@ -85,3 +85,5 @@ Step 0 remains an external acceptance goal, not a block on steps 1–2. The real
 ## Where Switch fits
 
 The first-frame oracle corpus (50 pinned programs) and the Switch-specific services, GPU and audio code remain, are tested in CI, and are maintained as long as they cost little. They are a regression set and a source of real programs, not the product. No Switch or Switch 2 compatibility is claimed.
+
+The real [WebAssembly playground](PLAYGROUND.md) and versioned [conformance seed](../conformance/arm64-v0.1.0/README.md) now have local execution evidence. Hosted/public browser acceptance is recorded separately; the conformance seed does not yet have an outside-project result.
