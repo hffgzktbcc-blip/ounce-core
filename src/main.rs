@@ -307,7 +307,7 @@ fn print_row(s: &Styler, label: &str, val: &str) {
 
 fn print_usage() {
     let s = Styler::new();
-    let header_text = format!("  🚀  {}OUNCE-CORE v0.3.0{} — COMMAND-LINE INTERFACE (CLI) & WORKFLOW GUIDE", s.bold, s.reset);
+    let header_text = format!("  🚀  {}OUNCE-CORE v{}{} — COMMAND-LINE INTERFACE (CLI) & WORKFLOW GUIDE", s.bold, env!("CARGO_PKG_VERSION"), s.reset);
     let header_width = visible_width(&header_text);
     let pad = if BOX_WIDTH - 2 > header_width { (BOX_WIDTH - 2) - header_width } else { 0 };
 
@@ -369,7 +369,7 @@ fn print_specs() {
     let ptr_width = std::mem::size_of::<usize>() * 8;
     let profile = if cfg!(debug_assertions) { "Debug" } else { "Release [Optimized]" };
 
-    let header_text = format!("  🎮  {}OUNCE-CORE v0.3.0{} — TEGRA T239 HARDWARE & RUNTIME SYSTEM PROFILE", s.bold, s.reset);
+    let header_text = format!("  🎮  {}OUNCE-CORE v{}{} — TEGRA T239 HARDWARE & RUNTIME SYSTEM PROFILE", s.bold, env!("CARGO_PKG_VERSION"), s.reset);
     let header_width = visible_width(&header_text);
     let pad = if BOX_WIDTH - 2 > header_width { (BOX_WIDTH - 2) - header_width } else { 0 };
 

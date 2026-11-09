@@ -4,6 +4,9 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+### Fixed
+- CLI help and profile banners print the crate version instead of a hardcoded `v0.3.0`.
+
 ## 0.6.1
 
 ### Fixed
