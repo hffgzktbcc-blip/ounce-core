@@ -46,19 +46,29 @@ fn hex(t: &mut std::str::SplitWhitespace) -> Result<u128, String> {
     u128::from_str_radix(t.next().ok_or("short line")?, 16).map_err(|e| e.to_string())
 }
 
+fn bounded_hex(t: &mut std::str::SplitWhitespace, bits: u32) -> Result<u128, String> {
+    let value = hex(t)?;
+    if bits < 128 && value >> bits != 0 { return Err(format!("value exceeds {bits}-bit field")); }
+    Ok(value)
+}
+
 pub fn parse_line(line: &str) -> Result<Line, String> {
     let mut t = line.split_whitespace();
     match t.next() {
-        Some("U") => Ok(Line::Undefined(hex(&mut t)? as u32)),
+        Some("U") => {
+            let word = bounded_hex(&mut t, 32)? as u32;
+            if t.next().is_some() { return Err("extra fields after U case".into()); }
+            Ok(Line::Undefined(word))
+        },
         Some("T") => {
-            let word = hex(&mut t)? as u32;
-            let nzcv_in = hex(&mut t)? as u32;
+            let word = bounded_hex(&mut t, 32)? as u32;
+            let nzcv_in = bounded_hex(&mut t, 4)? as u32;
             let mut x_in = [0u64; 31];
             let mut v_in = [0u128; 32];
             let mut x_out = [0u64; 31];
             let mut v_out = [0u128; 32];
             for x in x_in.iter_mut() {
-                *x = hex(&mut t)? as u64;
+                *x = bounded_hex(&mut t, 64)? as u64;
             }
             for v in v_in.iter_mut() {
                 *v = hex(&mut t)?;
@@ -66,14 +76,15 @@ pub fn parse_line(line: &str) -> Result<Line, String> {
             if t.next() != Some("=>") {
                 return Err("missing =>".into());
             }
-            let nzcv_out = hex(&mut t)? as u32;
-            let fpsr_out = hex(&mut t)? as u32;
+            let nzcv_out = bounded_hex(&mut t, 4)? as u32;
+            let fpsr_out = bounded_hex(&mut t, 32)? as u32;
             for x in x_out.iter_mut() {
-                *x = hex(&mut t)? as u64;
+                *x = bounded_hex(&mut t, 64)? as u64;
             }
             for v in v_out.iter_mut() {
                 *v = hex(&mut t)?;
             }
+            if t.next().is_some() { return Err("extra fields after T case".into()); }
             Ok(Line::Test(Box::new(Case { word, nzcv_in, x_in, v_in, nzcv_out, fpsr_out, x_out, v_out })))
         }
         _ => Err(format!("bad line: {line:.40}")),
@@ -365,12 +376,20 @@ fn replay_details(c: &Case, engine: Engine) -> (Outcome, u64, Option<Box<State>>
     (Outcome::Ran(diffs, st.fpsr), native, Some(st))
 }
 
+fn register_json(x: &[u64], v: &[u128], nzcv: u32, fpsr: u32) -> serde_json::Value {
+    serde_json::json!({
+        "x": x.iter().map(|v| format!("{v:#018x}")).collect::<Vec<_>>(),
+        "v": v.iter().map(|v| format!("{v:#034x}")).collect::<Vec<_>>(),
+        "nzcv": nzcv, "fpsr": fpsr
+    })
+}
+
 /// Retain a single compared instruction, not a trace of an arbitrary program.
 fn save_difference(dir: &std::path::Path, line: &str, line_number: usize, c: &Case, st: &State,
                    engine: Engine, native: u64, differences: &[String]) -> Result<(), String> {
     use sha2::{Digest, Sha256};
-    let x_hex = |x: &[u64]| x.iter().map(|v| format!("{v:#018x}")).collect::<Vec<_>>();
-    let v_hex = |v: &[u128]| v.iter().map(|v| format!("{v:#034x}")).collect::<Vec<_>>();
+    let mut input = register_json(&c.x_in, &c.v_in, c.nzcv_in, 0);
+    input["fpcr"] = 0.into();
     let trace = format!("{line}\n");
     let engine_name = match engine { Engine::Interp => "interp", Engine::Tier3 => "tier3", Engine::Tier4 => "tier4" };
     let runtime = std::env::current_exe().and_then(std::fs::read).map_err(|e| e.to_string())?;
@@ -386,9 +405,9 @@ fn save_difference(dir: &std::path::Path, line: &str, line_number: usize, c: &Ca
         "host": {"os": std::env::consts::OS, "arch": std::env::consts::ARCH},
         "runtime_sha256": format!("{:x}", Sha256::digest(&runtime)),
         "case_sha256": format!("{:x}", Sha256::digest(trace.as_bytes())),
-        "input": {"x": x_hex(&c.x_in), "v": v_hex(&c.v_in), "nzcv": c.nzcv_in, "fpsr": 0, "fpcr": 0},
-        "reference": {"x": x_hex(&c.x_out), "v": v_hex(&c.v_out), "nzcv": c.nzcv_out, "fpsr": c.fpsr_out},
-        "actual": {"x": x_hex(&st.x), "v": v_hex(&st.v), "nzcv": st.nzcv, "fpsr": st.fpsr},
+        "input": input,
+        "reference": register_json(&c.x_out, &c.v_out, c.nzcv_out, c.fpsr_out),
+        "actual": register_json(&st.x, &st.v, st.nzcv, st.fpsr),
         "comparison": {"excluded_x": [18], "fpsr_mask": format!("{QC:#x}"), "fpcr": 0,
                        "wrapper": "test word followed by SVC #0; PC/SP are not hardware-reference comparisons"},
         "differences": differences,
@@ -400,6 +419,96 @@ fn save_difference(dir: &std::path::Path, line: &str, line_number: usize, c: &Ca
     std::fs::write(dir.join("case.trace"), trace).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("diagnosis.json"), bytes).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Re-execute retained instruction bytes. Success means reproduction, not correctness.
+pub fn replay_bundle(args: &[String]) -> i32 {
+    match replay_bundle_inner(args) {
+        Ok((report, reproduced)) => { println!("{report}"); if reproduced { 0 } else { 1 } }
+        Err(e) => { eprintln!("replay-instruction: {e}"); 2 }
+    }
+}
+
+fn replay_bundle_inner(args: &[String]) -> Result<(serde_json::Value, bool), String> {
+    use sha2::{Digest, Sha256};
+    if args.len() != 1 && !(args.len() == 3 && args[1] == "--engine") {
+        return Err("usage: replay-instruction BUNDLE [--engine interp|tier3|tier4]".into());
+    }
+    let dir = std::path::Path::new(&args[0]);
+    let read = |name: &str| -> Result<Vec<u8>, String> {
+        let path = dir.join(name);
+        if std::fs::metadata(&path).map_err(|e| format!("{name}: {e}"))?.len() > 65536 {
+            return Err(format!("{name} exceeds the 64 KiB dossier limit"));
+        }
+        std::fs::read(path).map_err(|e| format!("{name}: {e}"))
+    };
+    let manifest = read("diagnosis.json")?;
+    let doc: serde_json::Value = serde_json::from_slice(&manifest).map_err(|e| format!("invalid diagnosis.json: {e}"))?;
+    if doc["schema"] != "ounce-core/instruction-difference-v1" {
+        return Err("unsupported dossier schema".into());
+    }
+    let trace = read("case.trace")?;
+    let trace_hash = format!("{:x}", Sha256::digest(&trace));
+    if doc["case_sha256"].as_str() != Some(trace_hash.as_str()) {
+        return Err("case.trace hash mismatch; no execution performed".into());
+    }
+    let text = std::str::from_utf8(&trace).map_err(|e| e.to_string())?;
+    let lines = text.lines().collect::<Vec<_>>();
+    if lines.len() != 1 { return Err("dossier must contain exactly one case".into()); }
+    let Line::Test(c) = parse_line(lines[0])? else { return Err("dossier must contain a compared T case".into()); };
+    let mut input = register_json(&c.x_in, &c.v_in, c.nzcv_in, 0);
+    input["fpcr"] = 0.into();
+    if doc["word"] != format!("{:#010x}", c.word) || doc["input"] != input
+        || doc["reference"] != register_json(&c.x_out, &c.v_out, c.nzcv_out, c.fpsr_out) {
+        return Err("diagnosis state disagrees with retained case.trace".into());
+    }
+    if doc["comparison"]["excluded_x"] != serde_json::json!([18])
+        || doc["comparison"]["fpsr_mask"] != format!("{QC:#x}") || doc["comparison"]["fpcr"] != 0 {
+        return Err("unsupported comparison scope".into());
+    }
+    let actual = &doc["actual"];
+    let valid_regs = |name: &str, count: usize, width: usize| {
+        actual[name].as_array().is_some_and(|values| values.len() == count && values.iter().all(|v| {
+            v.as_str().is_some_and(|s| s.len() == width && s.strip_prefix("0x")
+                .is_some_and(|n| u128::from_str_radix(n, 16).is_ok()))
+        }))
+    };
+    if !actual.as_object().is_some_and(|o| o.len() == 4) || !valid_regs("x", 31, 18) || !valid_regs("v", 32, 34)
+        || !actual["nzcv"].as_u64().is_some_and(|n| n <= 15)
+        || !actual["fpsr"].as_u64().is_some_and(|n| n <= u32::MAX as u64) {
+        return Err("malformed recorded actual state".into());
+    }
+    let recorded_engine = doc["engine"].as_str().and_then(Engine::parse).ok_or("invalid recorded engine")?;
+    let engine = if args.len() == 3 { Engine::parse(&args[2]).ok_or("unknown replay engine")? } else { recorded_engine };
+    if engine == Engine::Tier4 && !tier4_available() { return Err("Tier-4 unavailable; native-jit and a supported host are required".into()); }
+    let (outcome, native, state) = replay_details(&c, engine);
+    let actual = state.as_deref().map(|st| register_json(&st.x, &st.v, st.nzcv, st.fpsr));
+    let (differences, reference_verdict, execution_outcome) = match outcome {
+        Outcome::Ran(differences, _) => {
+            if actual.is_none() { return Err("missing replay execution state".into()); }
+            let verdict = if differences.is_empty() { "match" } else { "mismatch" };
+            (differences, verdict, "completed".to_string())
+        }
+        Outcome::Unimplemented => (Vec::new(), "not-compared", "unimplemented".to_string()),
+        Outcome::OtherError(error) => (Vec::new(), "not-compared", format!("execution-error: {error}")),
+    };
+    let reproduced = execution_outcome == "completed" && actual.as_ref() == Some(&doc["actual"]);
+    let runtime = std::env::current_exe().and_then(std::fs::read).map_err(|e| e.to_string())?;
+    Ok((serde_json::json!({
+        "schema": "ounce-core/instruction-replay-v1",
+        "replay_verdict": if reproduced { "reproduced" } else { "changed" },
+        "reference_verdict": reference_verdict,
+        "execution_outcome": execution_outcome,
+        "scope": "retained single-instruction state only; hash checks do not establish reference provenance",
+        "case_sha256": trace_hash,
+        "diagnosis_sha256": format!("{:x}", Sha256::digest(&manifest)),
+        "runtime_sha256": format!("{:x}", Sha256::digest(&runtime)),
+        "recorded_runtime_sha256": doc["runtime_sha256"],
+        "engine": format!("{engine:?}"),
+        "tier4_native_instructions_including_wrapper": native,
+        "host": {"os": std::env::consts::OS, "arch": std::env::consts::ARCH},
+        "actual": actual, "differences": differences
+    }), reproduced))
 }
 
 /// Does the interpreter run a word the host calls UNDEFINED?
@@ -871,6 +980,20 @@ mod tests {
         assert_eq!(parse_line("U 0fc710c5").unwrap(), Line::Undefined(0x0fc7_10c5));
         assert!(parse_line("T 1 2").is_err());
         assert!(parse_line("garbage").is_err());
+    }
+
+    #[test]
+    fn parser_rejects_overwide_fields_and_trailing_data() {
+        assert!(parse_line("U 1d2800020").is_err());
+        assert!(parse_line("U d2800020 extra").is_err());
+        let good = line(0x1e22_2820, &[], &[], 0, 0, 0);
+        assert!(parse_line(&good).is_ok());
+        assert!(parse_line(&(good.clone() + " extra")).is_err());
+        for (index, value) in [(1, "100000000"), (2, "10"), (3, "10000000000000000"), (67, "10"), (68, "100000000")] {
+            let mut tokens = good.split_whitespace().collect::<Vec<_>>();
+            tokens[index] = value;
+            assert!(parse_line(&tokens.join(" ")).is_err(), "accepted overwide field {index}");
+        }
     }
 
     #[test]

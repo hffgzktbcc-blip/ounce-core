@@ -30,9 +30,9 @@
       "id": "diagnosis",
       "name": "Failure to reproduction",
       "stage": "measured",
-      "evidence": "Retained SDL2 replay and externally grounded audio-channel diagnosis delivered",
-      "evidence_url": "docs/DIAGNOSIS_CLI.md",
-      "next": "Instruction-level first divergence remains unimplemented (vision step 3)"
+      "evidence": "Retained SDL2/audio diagnosis and one hardware-observed instruction mismatch with exact register snapshots",
+      "evidence_url": "docs/INSTRUCTION_DIAGNOSIS.md",
+      "next": "Qualify second-host instruction replay; arbitrary-program first divergence remains unestablished"
     },
     {
       "id": "distribution",

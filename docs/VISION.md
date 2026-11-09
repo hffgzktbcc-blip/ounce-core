@@ -45,7 +45,8 @@ Every claim carries one of four labels:
 | Compare engines and compare against a host reference | bounded-verified |
 | Record results, hashes and evidence | bounded-verified |
 | Diagnose differences between retained reports | bounded-verified (one workflow) |
-| Bounded replay of a historical failure | bounded-verified (one case) |
+| Bounded replay of a historical failure | bounded-verified (SDL2 case); [instruction dossier replay](INSTRUCTION_DIAGNOSIS.md) now also exists |
+| First differing compared instruction case with register snapshots | bounded-verified on one real vector-FP discrepancy; not arbitrary-program tracing |
 | Instruction-level checking against hardware | bounded-verified on recorded single-instruction inputs; [fuzzer scope and results](verify/insn-fuzzer/README.md) |
 | Run static Linux ARM64 programs | research-only runner; six freestanding fixtures and one bounded LZ4/musl case, [run-elf evidence](verify/linux-elf/README.md) |
 | Run arbitrary ARM64 or Linux applications | not established |
@@ -75,7 +76,7 @@ Current progress and remaining acceptance:
 
 - **Step 1 started:** `run-elf` executes six tiny freestanding fixtures and the unchanged [LZ4 harness linked with musl](verify/linux-elf/README.md#lz4-without-a-console-sdk). A bounded virtual clock is available with `--deterministic`; the LZ4 case and CLI scenarios [passed on all three host OSes](verify/linux-elf/three-host-2026-11-08.json). The broader verified-program suite as Linux ELF and wider syscall coverage remain incomplete.
 - **Step 2 started:** single-instruction host fuzzing and interpreter/Tier-3/Tier-4 comparisons exist. The [Apple Silicon CI job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42521905867/job/128857024677) passed: 60,000 engine-comparison words and a 20,000-word host trace replayed through each tier, with zero unexpected differences. Generated multi-instruction sequences and per-family acceptance remain future work.
-- **Steps 3–4 partial:** the released [diagnosis CLI](DIAGNOSIS_CLI.md) inspects retained reports and one historical replay. It does not locate an arbitrary first differing instruction or demonstrate portable execution recording.
+- **Steps 3–4 partial:** the released [diagnosis CLI](DIAGNOSIS_CLI.md) inspects retained reports and one historical replay. [Instruction diagnosis](INSTRUCTION_DIAGNOSIS.md) now retains one hardware-observed discrepancy with register snapshots and checked replay. Arbitrary-program first divergence and second-host instruction replay acceptance remain incomplete.
 - **Step 5 prototype:** `site/lab.html` is a scripted teaching/workbench prototype, not a WebAssembly build of the Rust runtime.
 - **Step 6 pending:** no outside-project conformance-suite result is recorded.
 

@@ -131,3 +131,12 @@ UNDEFINED. Zero mismatches from zero input is not a passing run. Coverage gaps
 remain separately counted; a successful run does not imply all encodings executed.
 The contradictory-UNDEFINED regression test intentionally supplies a synthetic
 reference to verify the failure exit; it is not a hardware observation.
+
+## Retained first differences and replay
+
+`fuzz-replay --engine tier3 --first-difference NEW-DIR reference.trace` retains the
+first value mismatch with exact before/reference/actual state and replay bytes.
+`replay-instruction NEW-DIR` validates those bytes and reports reproduction
+separately from agreement with the reference. See the [command guide and real
+hardware case](../../INSTRUCTION_DIAGNOSIS.md). This is bounded single-instruction
+diagnosis, not an arbitrary program's first divergent instruction.

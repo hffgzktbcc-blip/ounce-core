@@ -142,3 +142,56 @@ fn first_instruction_difference_retains_the_actual_execution_and_replay_input() 
     assert_eq!(std::fs::read(bundle.join("diagnosis.json")).unwrap(), before);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn instruction_dossier_replay_checks_bytes_and_distinguishes_reproduction_from_correctness() {
+    let root = std::env::temp_dir().join(format!("ounce_replay_{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    let trace = root.join("input.trace");
+    let bundle = root.join("bundle");
+    std::fs::write(&trace, mov_trace(2)).unwrap();
+    let saved = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["fuzz-replay", "--engine", "tier3", "--first-difference", bundle.to_str().unwrap(), trace.to_str().unwrap()])
+        .output().unwrap();
+    assert_eq!(saved.status.code(), Some(1));
+    let replay = || Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["replay-instruction", bundle.to_str().unwrap()]).output().unwrap();
+    let result = replay();
+    assert_eq!(result.status.code(), Some(0));
+    assert!(result.stdout.starts_with(b"{"), "{}", String::from_utf8_lossy(&result.stdout));
+    let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(report["replay_verdict"], "reproduced");
+    assert_eq!(report["reference_verdict"], "mismatch");
+    // Corrupting retained input must fail before execution, even if it is valid ARM64.
+    std::fs::write(bundle.join("case.trace"), mov_trace(3)).unwrap();
+    let corrupt = replay();
+    assert_eq!(corrupt.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&corrupt.stderr).contains("hash mismatch"));
+    std::fs::write(bundle.join("case.trace"), mov_trace(2)).unwrap();
+    let file = bundle.join("diagnosis.json");
+    let mut manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    manifest["reference"]["x"][0] = "0x0000000000000063".into();
+    std::fs::write(&file, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    assert_eq!(replay().status.code(), Some(2));
+    manifest["reference"]["x"][0] = "0x0000000000000002".into();
+    manifest["actual"]["x"][0] = "0x0000000000000009".into();
+    std::fs::write(&file, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let changed = replay();
+    assert_eq!(changed.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&changed.stdout).unwrap();
+    assert_eq!(report["replay_verdict"], "changed");
+    // Model a valid historical record whose word the current decoder cannot execute.
+    // The record is synthetic; changed runtime behavior is distinct from corrupt bytes.
+    use sha2::{Digest, Sha256};
+    let unsupported = mov_trace(2).replace("d2800020", "00000000");
+    std::fs::write(bundle.join("case.trace"), unsupported.as_bytes()).unwrap();
+    manifest["word"] = "0x00000000".into();
+    manifest["case_sha256"] = format!("{:x}", Sha256::digest(unsupported.as_bytes())).into();
+    std::fs::write(&file, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    let stopped = replay();
+    assert_eq!(stopped.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&stopped.stdout).unwrap();
+    assert_eq!(report["replay_verdict"], "changed");
+    assert_eq!(report["reference_verdict"], "not-compared");
+    std::fs::remove_dir_all(root).unwrap();
+}
