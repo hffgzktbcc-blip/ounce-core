@@ -636,6 +636,12 @@ fn run_vm_internal(
     let mut stop = VmStop::Budget;
     let mut last_input_poll = Instant::now();
     let mut last_queued_frame = 0;
+    let mut engine = cpu::CpuTier::explicit()
+        .filter(|tier| *tier != cpu::CpuTier::Native)
+        .map(cpu::CpuEngine::new);
+    if let Some(e) = &engine {
+        println!("[CPU] Block engine: {}", e.name());
+    }
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -643,16 +649,38 @@ fn run_vm_internal(
             break;
         }
 
-        match cpu.step(&mut mmu) {
+        // With an explicit `--cpu=tier3|tier4` the block engine runs the guest in slices that end at the next
+        // preemption point, a budget limit or an SVC; otherwise one instruction at a time (the default).
+        let before = instructions_executed;
+        let (stepped, executed) = match engine.as_mut() {
+            Some(e) => {
+                let mut slice = kernel::scheduler::PREEMPT_INTERVAL - before % kernel::scheduler::PREEMPT_INTERVAL;
+                if max_instructions > 0 {
+                    slice = slice.min(max_instructions - before);
+                }
+                let pc = cpu.regs.pc;
+                let (count, exit) = e.run_slice(&mut cpu, &mut mmu, slice.max(1));
+                match exit {
+                    cpu::tier2_jit::BlockExit::Fault { pc: fault_pc } => {
+                        (Err(format!("{} fault at {fault_pc:#x} (slice began at {pc:#x})", e.name())), count)
+                    }
+                    cpu::tier2_jit::BlockExit::Svc { svc_id } => (Ok(StepResult::Svc(svc_id)), count),
+                    _ if count == 0 => (Err(format!("{} made no progress at {pc:#x}", e.name())), 0),
+                    _ => (Ok(StepResult::Continue), count),
+                }
+            }
+            None => (cpu.step(&mut mmu).map_err(|e| e.to_string()), 1),
+        };
+        match stepped {
             Ok(StepResult::Continue) => {
-                instructions_executed += 1;
+                instructions_executed += executed;
                 // Time slice: a guest thread that spins without SVCs must not starve the others.
-                if instructions_executed % kernel::scheduler::PREEMPT_INTERVAL == 0 {
+                if instructions_executed / kernel::scheduler::PREEMPT_INTERVAL != before / kernel::scheduler::PREEMPT_INTERVAL {
                     kernel.scheduler.preempt(&mut cpu);
                 }
             }
             Ok(StepResult::Svc(svc_id)) => {
-                instructions_executed += 1;
+                instructions_executed += executed;
                 let result = kernel.dispatch_svc(svc_id, &mut cpu, &mut mmu);
                 if let Some(ref mut disp) = display {
                     let queued = kernel.ipc.vi_frames_queued();
