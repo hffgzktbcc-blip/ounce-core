@@ -1,0 +1,17 @@
+MISMATCH 6e62dc20 nzcv_in=0
+    v0: host 0x7ff80000000000007ff8000000000000 emu 0xfff8000000000000fff8000000000000
+--- fuzz-replay summary ---
+engine:                         Tier4
+words with native Tier-4 insns: 1
+host executed (not SIGILL):     1
+host UNDEFINED (SIGILL):        0
+emulator unimplemented:         0 (0 classes)
+emulator other errors:          0
+emulator executed:              1
+  distinct classes executed:    1
+  exact match (X,V,NZCV,QC):    0
+  MISMATCH:                     1 (0 with QC wrong)
+  FPSR exception flags differ on matching results (not modelled): 0
+emulator runs a word the host calls UNDEFINED: 0
+mismatching classes (class = word & 0xFFE0FC00: count, example):
+  0x6e60dc00      1 0x6e62dc20

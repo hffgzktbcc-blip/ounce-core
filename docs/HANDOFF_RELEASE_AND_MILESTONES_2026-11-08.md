@@ -1,5 +1,9 @@
 # Release and milestone handoff — 2026-11-08
 
+**Superseded:** see [continued maturity handoff](HANDOFF_MATURITY_CONTINUED_2026-11-08.md).
+The owner clarified to keep working until usage is nearly exhausted; the later
+handoff contains subsequent implementation, PRs and actual execution results.
+
 ## Owner direction
 
 Publish a new release for the newly added app, then advance the vision milestones.
