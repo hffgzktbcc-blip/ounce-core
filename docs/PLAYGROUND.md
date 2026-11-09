@@ -60,7 +60,9 @@ SVC stop, transactional input errors, the hardware vector case, input-preserving
 reset, bounded loops and a mobile viewport. Execution after loading also passed
 with network access disabled. [Browser observations](verify/playground/acceptance.json)
 identify the actual Wasm hash; screenshots are retained alongside them. Hosted
-browser qualification and live deployment are recorded separately when available.
+browser qualification passed in [run 42564695731](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42564695731) at `37cfc26`. Its retained preview artifact is ID 13650454864
+(digest `sha256:099cf1b5cb0a7da7294dce0751dfc172874ac3424153147c9cebba7f0e71ae56`).
+The initial clean-runner attempt exposed an unfetched metadata dependency; the builder now fetches the complete locked graph before offline notice collection. Live deployment is separate from this hosted build/browser acceptance.
 
 The build retains actual license texts from its locked Cargo graph and installed
 Rust toolchain. A notice inventory is tied to the Wasm bytes. The artifact checker
