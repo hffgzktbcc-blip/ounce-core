@@ -71,7 +71,10 @@ focused tests passed; full Python tooling passed 112 tests with one existing
 skip. Actual interp/Tier-3/Tier-4 runs pass locally. Review caught a malformed
 negative duplicate count; regression failed before c0bf7b6 and passes after it.
 Reviewer verified correction and reported no further issue. Existing three-host
-job now retains per-engine seed reports; hosted qualification still needs observing.
+job now retains per-engine seed reports. The seed steps and containing LZ4 jobs
+passed on all three hosted OSes in run 42566067861 (Linux job 128992731749,
+macOS 128992731696, Windows 128992731733); broader differential suites are
+still running. Tooling checks also passed.
 Outside-project execution/adoption remains outstanding; V8 stays open.
 
 ## Rebuild environment
@@ -124,3 +127,13 @@ workflow or live browser evidence. `gh pr edit` failed in this installed CLI
 because it requests deprecated classic-project GraphQL fields; a structured
 REST PATCH to /repos/hffgzktbcc-blip/ounce-core/pulls/270 successfully changed
 the base and body. Do not repeat the broken GraphQL edit command.
+
+App-release inspection confirmed the tag workflow still packages only CLI
+archives. Its package_release.py review identity is tied to the default graph;
+it has no app-feature selector. Do not attach the app by reusing that default
+review. build_macos_app.sh builds `gpu-present nce native-jit` and ad-hoc signs
+the nested runtime and launcher; existing Mac CI tests/smokes and retains a
+preview, but that is not recorded live GUI acceptance or completed notice review.
+
+Issue #190 was checked read-only at 2026-11-09 05:18 UTC: still open, no
+comments, last updated 2026-11-08. No fresh outside reproduction was omitted.
