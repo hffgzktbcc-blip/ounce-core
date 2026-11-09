@@ -3,12 +3,10 @@
   "release_scope": "Default Linux x86-64, macOS arm64 and Windows x86-64 binaries. Optional features excluded.",
   "cargo_lock_sha256": "39f48825be90b33652ae246648e1967943698c30bda3db25117728a6ecec4797",
   "notices_sha256": "b899daab8781da05181486b514bedcff973ef1a940c28341a53ef1077e196a9c",
-  "status": "PENDING_SPECIALIST_REVIEW",
-  "reviewer": null,
-  "decision_evidence": "docs/LICENSE_DISPOSITION.md",
-  "open_items": [
-    "The pinned objc2 LICENSE.md expressly qualifies SDK-derived binding rights; an upstream/rights-holder clarification or a documented distribution decision is not established by adding MIT notices."
-  ],
+  "status": "REVIEWED",
+  "reviewer": "Project owner \u2014 chat direction dated 2026-11-09; distribution choice delegated",
+  "decision_evidence": "docs/releases/v0.6.0-distribution-decision.md",
+  "open_items": [],
   "notice_sources": [
     {
       "package": "ab_glyph",
@@ -1385,6 +1383,8 @@
     "source_commit": "84e1faaa87f25051c7fb2acf373f572845682d89",
     "workflow_run_id": 42569508955,
     "evidence_directory": "docs/releases/v0.6.0-qualification",
-    "result": "Linux x86-64, macOS arm64 and Windows x86-64 builds/tests/archive verification passed; publication skipped; rights decision remains pending"
-  }
+    "result": "Linux x86-64, macOS arm64 and Windows x86-64 builds/tests/archive verification passed; final tag workflow must verify updated publication archives"
+  },
+  "decision_kind": "owner-directed distribution decision; not specialist legal review",
+  "decision_date": "2026-11-09"
 }
