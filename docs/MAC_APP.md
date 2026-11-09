@@ -11,6 +11,19 @@ Build and install: `scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.ap
 No prebuilt macOS binary is offered while the Apple-SDK-derived `objc2` redistribution question in
 [PROVENANCE_OWNER_DECISIONS.md](PROVENANCE_OWNER_DECISIONS.md) is open.
 
+### Local preview archive
+
+`python3 scripts/package_macos_app.py --app "dist/Ounce Core.app" --out dist/macos-preview` (after the build above)
+writes a `.tar.gz` and a `.zip` of the bundle, `MANIFEST.json` (version, git revision, whether the tree was dirty,
+cargo features, rustc and swiftc versions, per-file SHA-256) and `SHA256SUMS`. It refuses an incomplete bundle (a
+missing license notice, helper or reference file) and an existing output folder. CI runs it on macOS and keeps the
+result as the 14-day `macos-app-preview` artifact.
+
+This is a developer preview, not a release. It uploads nothing, and the manifest says so: the bundle is ad-hoc
+signed and not notarized (Gatekeeper warns on first open), and it is not cleared for GitHub release assets while
+item 4 of [PROVENANCE_OWNER_DECISIONS.md](PROVENANCE_OWNER_DECISIONS.md) is open. Share it only with people you
+choose to, and tell them it is unsigned by an Apple developer identity.
+
 ## What it does
 
 | Area | Behaviour |
