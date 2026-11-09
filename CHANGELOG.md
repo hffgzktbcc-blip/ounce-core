@@ -4,6 +4,8 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+## 0.6.1
+
 ### Fixed
 - ASTC texture decoding: the bilinear weight `w00` underflowed in `u32` when
   `fs + ft > 16`, panicking debug builds (`compressed_formats_match_reference_vectors`).
