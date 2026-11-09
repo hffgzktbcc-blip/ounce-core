@@ -160,11 +160,15 @@ static uint32_t gen_word(void) {
 
 int main(int argc, char **argv) {
     uint64_t sd = 1, count = 1000;
+    int default_nan_case = 0;
+    if ((argc - 1) % 2) { fprintf(stderr, "options require values\n"); return 2; }
     for (int i = 1; i + 1 < argc; i += 2) {
         if (!strcmp(argv[i], "--seed")) sd = strtoull(argv[i + 1], 0, 0);
         else if (!strcmp(argv[i], "--count")) count = strtoull(argv[i + 1], 0, 0);
-        else { fprintf(stderr, "usage: fuzz_host [--seed N] [--count N]\n"); return 2; }
+        else if (!strcmp(argv[i], "--case") && !strcmp(argv[i + 1], "default-nan-mul2d")) default_nan_case = 1;
+        else { fprintf(stderr, "usage: fuzz_host [--seed N] [--count N] [--case default-nan-mul2d]\n"); return 2; }
     }
+    if (default_nan_case) count = 1;
     seed(sd);
     size_t tlen = (uintptr_t)tmpl_end - (uintptr_t)tmpl_start;
     uint8_t *page = mmap(0, 16384, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
@@ -181,7 +185,15 @@ int main(int argc, char **argv) {
     void (*fn)(ctx_t *) = (void (*)(ctx_t *))page;
     uint64_t nu = 0, nt = 0;
     for (uint64_t n = 0; n < count; n++) {
-        uint32_t w = gen_word();
+        uint32_t w;
+        if (default_nan_case) {
+            // FMUL V0.2D,V1.2D,V2.2D: zero times positive infinity in each lane.
+            // Capture the actual hardware result; never substitute an expected NaN.
+            memset(&c, 0, sizeof c);
+            w = 0x6e62dc20;
+            c.v[4] = c.v[5] = UINT64_C(0x7ff0000000000000);
+        } else {
+            w = gen_word();
         for (int i = 0; i < 31; i++) c.x[i] = rand_x();
         c.x[18] = 0; // macOS reserves x18 (the kernel clears it on a context switch); replay does not compare it
         c.nzcv = (uint64_t)(rnd() & 0xF) << 28;
@@ -193,6 +205,7 @@ int main(int argc, char **argv) {
         }
         if (rnd() % 4 == 0) { // make operand registers alias in a few cases (same-register forms)
             int a = rnd() % 32, b = rnd() % 32; c.v[2 * a] = c.v[2 * b]; c.v[2 * a + 1] = c.v[2 * b + 1];
+        }
         }
         pthread_jit_write_protect_np(0);
         memcpy(page + woff, &w, 4);
