@@ -953,7 +953,7 @@ impl Cpu {
             } => {
                 if is_double {
                     let (mut n, mut m) = (self.regs.read_d(rn), self.regs.read_d(rm));
-                    let minmax = matches!(op, FpOp2::Fmax | FpOp2::Fmin | FpOp2::Fmaxnm | FpOp2::Fminnm);
+                    let minmax = true; // every two-source FP op honours FPCR.FZ / FPCR.DN
                     if minmax && self.regs.fpcr & (1 << 24) != 0 {
                         // FPCR.FZ: denormal inputs read as signed zero
                         if n != 0.0 && n.is_subnormal() { n = 0.0f64.copysign(n); }
@@ -974,11 +974,11 @@ impl Cpu {
                         FpOp2::Fmaxnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
                         FpOp2::Fminnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
-                    let res = if minmax && self.regs.fpcr & (1 << 25) != 0 && res.is_nan() { f64::from_bits(0x7ff8_0000_0000_0000) } else { res };
+                    let res = if minmax && self.regs.fpcr & (1 << 25) != 0 && res.is_nan() { f64::from_bits(0x7ff8_0000_0000_0000) } else if self.regs.fpcr & (1 << 24) != 0 && res != 0.0 && res.is_subnormal() { 0.0f64.copysign(res) } else { res };
                     self.regs.write_d(rd, res);
                 } else {
                     let (mut n, mut m) = (self.regs.read_s(rn), self.regs.read_s(rm));
-                    let minmax = matches!(op, FpOp2::Fmax | FpOp2::Fmin | FpOp2::Fmaxnm | FpOp2::Fminnm);
+                    let minmax = true; // every two-source FP op honours FPCR.FZ / FPCR.DN
                     if minmax && self.regs.fpcr & (1 << 24) != 0 {
                         if n != 0.0 && n.is_subnormal() { n = 0.0f32.copysign(n); }
                         if m != 0.0 && m.is_subnormal() { m = 0.0f32.copysign(m); }
@@ -998,7 +998,7 @@ impl Cpu {
                         FpOp2::Fmaxnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
                         FpOp2::Fminnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
-                    let res = if minmax && self.regs.fpcr & (1 << 25) != 0 && res.is_nan() { f32::from_bits(0x7fc0_0000) } else { res };
+                    let res = if minmax && self.regs.fpcr & (1 << 25) != 0 && res.is_nan() { f32::from_bits(0x7fc0_0000) } else if self.regs.fpcr & (1 << 24) != 0 && res != 0.0 && res.is_subnormal() { 0.0f32.copysign(res) } else { res };
                     self.regs.write_s(rd, res);
                 }
                 self.regs.advance_pc();
@@ -1406,6 +1406,22 @@ impl Cpu {
             }
 
             Instruction::SimdVec2D { rd, rn, rm, op } => {
+                if self.regs.fpcr & 0x0300_0000 != 0 {
+                    // FPCR.FZ / FPCR.DN: the shared lane code honours them
+                    let generic = match op {
+                        FpOp2::Fadd => Some(crate::cpu::instructions::SimdFpOp3::Fadd),
+                        FpOp2::Fsub => Some(crate::cpu::instructions::SimdFpOp3::Fsub),
+                        FpOp2::Fmul => Some(crate::cpu::instructions::SimdFpOp3::Fmul),
+                        FpOp2::Fdiv => Some(crate::cpu::instructions::SimdFpOp3::Fdiv),
+                        _ => None,
+                    };
+                    if let Some(g) = generic {
+                        let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                        self.regs.write_q(rd, simd::fp_three_same_fpcr(g, 0, n, m, true, true, self.regs.fpcr));
+                        self.regs.advance_pc();
+                        return Ok(StepResult::Continue);
+                    }
+                }
                 let a = self.regs.read_q(rn);
                 let b = self.regs.read_q(rm);
                 let mut out = 0u128;
@@ -1431,6 +1447,22 @@ impl Cpu {
             }
 
             Instruction::SimdVec4S { rd, rn, rm, op } => {
+                if self.regs.fpcr & 0x0300_0000 != 0 {
+                    // FPCR.FZ / FPCR.DN: the shared lane code honours them
+                    let generic = match op {
+                        FpOp2::Fadd => Some(crate::cpu::instructions::SimdFpOp3::Fadd),
+                        FpOp2::Fsub => Some(crate::cpu::instructions::SimdFpOp3::Fsub),
+                        FpOp2::Fmul => Some(crate::cpu::instructions::SimdFpOp3::Fmul),
+                        FpOp2::Fdiv => Some(crate::cpu::instructions::SimdFpOp3::Fdiv),
+                        _ => None,
+                    };
+                    if let Some(g) = generic {
+                        let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                        self.regs.write_q(rd, simd::fp_three_same_fpcr(g, 0, n, m, false, true, self.regs.fpcr));
+                        self.regs.advance_pc();
+                        return Ok(StepResult::Continue);
+                    }
+                }
                 let a = self.regs.read_v4s(rn);
                 let b = self.regs.read_v4s(rm);
                 let mut out = [0.0f32; 4];

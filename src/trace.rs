@@ -109,35 +109,37 @@ impl Tracer {
 mod tests {
     use super::*;
 
-    /// FMAX/FMIN/FMAXNM/FMINNM (scalar and vector) over zeros, infinities, quiet and signalling NaNs and
-    /// denormals, under default, flush-to-zero, default-NaN and both FPCR modes: replayed on the host CPU.
+    /// FMAX/FMIN/FMAXNM/FMINNM/FADD/FSUB/FMUL/FDIV (scalar) and the vector forms (also FABD, FMULX) over zeros,
+    /// infinities, quiet and signalling NaNs, denormals and extremes, under every FPCR.FZ/DN combination:
+    /// replayed on the host CPU.
     #[test]
-    fn float_min_max_edge_cases_match_this_cpu() {
+    fn float_arithmetic_edge_cases_match_this_cpu() {
         use crate::mmu::{Memory, Permission};
         if !cfg!(target_arch = "aarch64") || std::process::Command::new("cc").arg("--version").output().is_err() {
             eprintln!("skipped: needs an AArch64 host and a C compiler");
             return;
         }
         const CODE: u64 = 0x8000_0000;
-        let ops: [u32; 12] = [
-            0x1E20_4820, 0x1E20_5820, 0x1E20_6820, 0x1E20_7820, // FMAX FMIN FMAXNM FMINNM (S): v0 = op(v1, v0)
-            0x1E60_4820, 0x1E60_5820, 0x1E60_6820, 0x1E60_7820, // (D)
-            0x4E20_F420, 0x4EA0_F420, 0x4E20_C420, 0x4EA0_C420, // vector .4S
-        ];
-        let f32s: [u32; 10] = [0, 0x8000_0000, 0x3F80_0000, 0xBF80_0000, 0x7F80_0000, 0xFF80_0000, 0x7FC0_0000, 0x7FA0_0000, 0xFFC0_0001, 1];
+        let scalar: [u32; 8] = [0x1E20_4820, 0x1E20_5820, 0x1E20_6820, 0x1E20_7820, 0x1E20_2820, 0x1E20_3820, 0x1E20_0820, 0x1E20_1820]; // FMAX FMIN FMAXNM FMINNM FADD FSUB FMUL FDIV: v0 = op(v1, v0)
+        let vector: [u32; 10] = [0x4E20_F420, 0x4EA0_F420, 0x4E20_C420, 0x4EA0_C420, 0x4E20_D420, 0x4EA0_D420, 0x6E20_DC20, 0x6E20_FC20, 0x6EA0_D420, 0x4E20_DC20]; // .4S: FMAX FMIN FMAXNM FMINNM FADD FSUB FMUL FDIV FABD FMULX
+        let mut ops: Vec<u32> = scalar.iter().flat_map(|&o| [o, o | 0x0040_0000]).collect();
+        ops.extend(vector.iter().flat_map(|&o| [o, o | 0x0040_0000]));
+        // Zeros, one, half, infinities, quiet and signalling NaNs, the smallest denormal, the smallest normal, the largest finite.
+        let f32s: [u32; 12] = [0, 0x8000_0000, 0x3F80_0000, 0x3F00_0000, 0xFF80_0000, 0x7FC0_0000, 0x7FA0_0000, 0xFFC0_0001, 1, 0x0080_0000, 0x007F_FFFF, 0x7F7F_FFFF];
+        let f64s: [u64; 12] = [0, 1 << 63, 0x3FF0_0000_0000_0000, 0x3FE0_0000_0000_0000, 0xFFF0_0000_0000_0000, 0x7FF8_0000_0000_0000, 0x7FF4_0000_0000_0000, 0xFFF8_0000_0000_0001, 1, 0x0010_0000_0000_0000, 0x000F_FFFF_FFFF_FFFF, 0x7FEF_FFFF_FFFF_FFFF];
         let dir = std::env::temp_dir().join(format!("ounce-minmax-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let mut file = Vec::new();
         let mut count = 0;
         for &op in &ops {
-            let double = op >> 24 == 0x1E && (op & 0x0040_0000) != 0;
+            let double = op & 0x0040_0000 != 0;
             for fpcr in [0u32, 1 << 24, 1 << 25, 3 << 24] {
-                for &a in &f32s {
-                    for &b in &f32s {
+                for i in 0..12 {
+                    for j in 0..12 {
                         let (lo_a, lo_b) = if double {
-                            ((a as u64) << 32 | b as u64, (b as u64) << 32 | a as u64)
+                            (f64s[i], f64s[j])
                         } else {
-                            (a as u64 | (b as u64) << 32, b as u64 | (a as u64) << 32)
+                            (f32s[i] as u64 | (f32s[j] as u64) << 32, f32s[j] as u64 | (f32s[i] as u64) << 32)
                         };
                         let wide = |lo: u64| lo as u128 | ((lo ^ 0x0000_0001_0000_0000) as u128) << 64;
                         let mut memory = Memory::new();
