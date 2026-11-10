@@ -415,6 +415,27 @@
       "aes.h": "aes.h"
      }
     }
+   },
+   {
+    "name": "heatshrink",
+    "dir": "heatshrink-harness",
+    "files": [
+     "hs_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "upstream": {
+     "repo": "https://github.com/atomicobject/heatshrink",
+     "commit": "7d419e1fa4830d0b919b9b6a91fe2fb786cf3280",
+     "copy": {
+      "heatshrink_encoder.c": "heatshrink_encoder.c",
+      "heatshrink_encoder.h": "heatshrink_encoder.h",
+      "heatshrink_decoder.c": "heatshrink_decoder.c",
+      "heatshrink_decoder.h": "heatshrink_decoder.h",
+      "heatshrink_common.h": "heatshrink_common.h",
+      "heatshrink_config.h": "heatshrink_config.h"
+     }
+    }
    }
  ]
 }
