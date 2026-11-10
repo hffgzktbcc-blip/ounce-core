@@ -73,6 +73,7 @@ fn uploads_a_program_and_reports_a_verdict() {
     let engines = check["engines"].as_array().unwrap();
     assert_eq!(engines.len(), 2);
     assert!(engines.iter().all(|e| e["stop"]["kind"] == "exited"), "{check}");
+    assert!(check["instructions"].is_null(), "no instruction check unless the computer reference is on");
     assert!(dir.join(&id).join("result.json").exists(), "the result is saved");
     drop(server);
     let _ = std::fs::remove_dir_all(&dir);
