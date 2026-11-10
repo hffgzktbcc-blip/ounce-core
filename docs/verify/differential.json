@@ -436,6 +436,24 @@
       "heatshrink_config.h": "heatshrink_config.h"
      }
     }
+   },
+   {
+    "name": "stb-image",
+    "dir": "stb-image-harness",
+    "files": [
+     "stbi_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "cflags": "-fwrapv -ffp-contract=off",
+    "upstream": {
+     "repo": "https://github.com/nothings/stb",
+     "commit": "4e9b368bfc071e97206ea5c6adba68dd0cbf8897",
+     "copy": {
+      "stb_image.h": "stb_image.h",
+      "stb_image_write.h": "stb_image_write.h"
+     }
+    }
    }
  ]
 }
