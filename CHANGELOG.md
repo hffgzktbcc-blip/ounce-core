@@ -4,6 +4,8 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+## 0.7.0
+
 ### Changed
 - CI: notices and provenance records under `tests/fixtures/` no longer trigger the Rust jobs; a run that fails only
   because hosted-runner jobs were cancelled is re-run once (`ci-rerun-infra.yml`, never for a real failure); an
@@ -12,6 +14,8 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   on Tier-3 and Tier-4.
 
 ### Added
+- `run-elf` answers `sched_getaffinity`; the pinned xxHash, cJSON and zlib harnesses run as static musl ELFs and match a host build on Tier-3 and Tier-4 (joining LZ4).
+- TestFloat vectors for `fuzz-replay`; every committed `.nro` replayed on the host CPU (22k instructions, 0 disagreements).
 - LodePNG joins the differential suite (`docs/verify/lodepng-harness`): 15 colour formats, all filter strategies, Adam7, deflate settings, corrupt files, zlib and the colour converter; byte-identical to the host on Tier-3 and Tier-4.
 - stb_image joins the differential suite (`docs/verify/stb-image-harness`): generated PNG (all filters and depths), BMP and JPEG inputs plus corrupt files, with the NEON JPEG path active; byte-identical to the host on Tier-3 and Tier-4.
 - heatshrink joins the differential suite (`docs/verify/heatshrink-harness`): 7 window/lookahead settings, chunked and byte-at-a-time streaming, malformed streams; byte-identical to the host on Tier-3 and Tier-4.
@@ -43,6 +47,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   unchanged. Measured on a 200-iteration mixed integer/float/heap workload: interpreter 52 s, Tier-3 36 s,
   Tier-4 16 s, output byte-identical to the host. All 15 differential harnesses still match on every engine.
 - CLI help and profile banners print the crate version instead of a hardcoded `v0.3.0`.
+- The qc-flag harness masks FPSR[31:28], which are RES0 without FEAT_AA32 (resolves #257).
 
 ## 0.6.1
 
