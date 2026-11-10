@@ -4,22 +4,6 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
-### Fixed
-- `LDPSW` now sign-extends both loaded words (it was decoded as a 32-bit `LDP`); this made Monocypher's X25519 differ on every engine.
-- FP results that depended on the host CPU or ignored Arm NaN rules, found by the new FP edge-case experiment: vector
-  `FADD/FSUB/FMUL/FDIV` (.4S/.2D) now pick the NaN operand like Arm (signalling first, quieted); invalid operations
-  (inf-inf, 0*inf, 0/0, sqrt of a negative) return the positive default NaN on every host (x86 gave the negative one) in
-  scalar and vector arithmetic, FNMUL, fused multiply-add and FSQRT; scalar `FRINT*` and `FSQRT` quiet signalling NaNs. Tier-4 scalar `FADD/FSUB/FMUL/FDIV/FNMUL` follow the same NaN rules on non-AArch64 hosts.
-
-### Added
-- Scalar `FADDP Dd, Vn.2D` / `Sd, Vn.2S` and scalar `FMUL/FMLA/FMLS/FMULX` by element; `run-elf` answers `mremap` for anonymous mappings.
-- Ten more programs run as static Linux ELFs and match host, qemu-user, Tier-3 and Tier-4: BLAKE3 (NEON), crypto-algorithms, FastLZ, tinf, jsmn, SHA3, picohttpparser, inih, CoreMark, KISS FFT; Monocypher, Lua, QuickJS, SQLite and four more existing harnesses now also run as ELFs. `verify_linux_elf.py --qemu` adds qemu-user as an independent reference. Summary and limits (wasm3 does not run as an ELF yet): `docs/verify/linux-elf/PROGRAMS.md`.
-- `docs/verify/fp-edge` and `.github/workflows/fp-edge.yml`: a fixed 389,556-case floating-point edge corpus (NaNs, denormals,
-  signed zeros, infinities, rounding modes, FZ/DN, conversions, FMA, min/max) run on real AArch64 hardware and replayed through
-  the interpreter, Tier-3 and Tier-4, with raw per-case results kept as CI artifacts. `fuzz_host` now also builds on Linux
-  AArch64; `fuzz-replay` accepts `TF <fpcr> ...` trace lines and `--results FILE`.
-- `FMAXP`/`FMINP`/`FMAXNMP`/`FMINNMP` (vector, 2S/4S/2D), `FMAXV`/`FMINV`/`FMAXNMV`/`FMINNMV` (4S) and the scalar pairwise `FMAXP` family (`Sd, Vn.2S` / `Dd, Vn.2D`) are decoded and honour FPCR flush-to-zero and default-NaN like `FMAX`/`FMIN`; before they were undefined instructions. Unit tests also pin the `.2D` forms under FZ/DN. The half-precision (FEAT_FP16) forms are decoded too: `.4H`/`.8H` three-same and pairwise, `FMAXV` family on `.4H`/`.8H`, scalar pairwise `.2H` and scalar `FMAX/FMIN/FMAXNM/FMINNM Hd, Hn, Hm`; halves flush denormals under FPCR.FZ16 (not FZ) and honour DN. Checked only against the ARM pseudocode (unit tests), not replayed on hardware.
-
 ## 0.7.0
 
 ### Changed
@@ -54,6 +38,13 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   the guest's console text, names the first differing line, and says plainly that this is one run, not a proof.
   Results are saved under `~/Library/Application Support/Ounce Core/Checks` (macOS) or `~/.ounce-core/checks`.
   `site/lab.html` stays a scripted design preview.
+- Scalar `FADDP Dd, Vn.2D` / `Sd, Vn.2S` and scalar `FMUL/FMLA/FMLS/FMULX` by element; `run-elf` answers `mremap` for anonymous mappings.
+- Ten more programs run as static Linux ELFs and match host, qemu-user, Tier-3 and Tier-4: BLAKE3 (NEON), crypto-algorithms, FastLZ, tinf, jsmn, SHA3, picohttpparser, inih, CoreMark, KISS FFT; Monocypher, Lua, QuickJS, SQLite and four more existing harnesses now also run as ELFs. `verify_linux_elf.py --qemu` adds qemu-user as an independent reference. Summary and limits (wasm3 does not run as an ELF yet): `docs/verify/linux-elf/PROGRAMS.md`.
+- `docs/verify/fp-edge` and `.github/workflows/fp-edge.yml`: a fixed 389,556-case floating-point edge corpus (NaNs, denormals,
+  signed zeros, infinities, rounding modes, FZ/DN, conversions, FMA, min/max) run on real AArch64 hardware and replayed through
+  the interpreter, Tier-3 and Tier-4, with raw per-case results kept as CI artifacts. `fuzz_host` now also builds on Linux
+  AArch64; `fuzz-replay` accepts `TF <fpcr> ...` trace lines and `--results FILE`.
+- `FMAXP`/`FMINP`/`FMAXNMP`/`FMINNMP` (vector, 2S/4S/2D), `FMAXV`/`FMINV`/`FMAXNMV`/`FMINNMV` (4S) and the scalar pairwise `FMAXP` family (`Sd, Vn.2S` / `Dd, Vn.2D`) are decoded and honour FPCR flush-to-zero and default-NaN like `FMAX`/`FMIN`; before they were undefined instructions. Unit tests also pin the `.2D` forms under FZ/DN. The half-precision (FEAT_FP16) forms are decoded too: `.4H`/`.8H` three-same and pairwise, `FMAXV` family on `.4H`/`.8H`, scalar pairwise `.2H` and scalar `FMAX/FMIN/FMAXNM/FMINNM Hd, Hn, Hm`; halves flush denormals under FPCR.FZ16 (not FZ) and honour DN. Checked only against the ARM pseudocode (unit tests), not replayed on hardware.
 
 ### Fixed
 - `FMAX`/`FMIN`/`FMAXNM`/`FMINNM` now honour FPCR flush-to-zero and default-NaN (scalar and vector). Before, 1,208 of 4,800 replayed operand sets disagreed with the host CPU when either was set; now none do. Tier-4 no longer compiles scalar FMAX/FMIN natively so every engine takes the same path.
@@ -66,6 +57,11 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   Tier-4 16 s, output byte-identical to the host. All 15 differential harnesses still match on every engine.
 - CLI help and profile banners print the crate version instead of a hardcoded `v0.3.0`.
 - The qc-flag harness masks FPSR[31:28], which are RES0 without FEAT_AA32 (resolves #257).
+- `LDPSW` now sign-extends both loaded words (it was decoded as a 32-bit `LDP`); this made Monocypher's X25519 differ on every engine.
+- FP results that depended on the host CPU or ignored Arm NaN rules, found by the new FP edge-case experiment: vector
+  `FADD/FSUB/FMUL/FDIV` (.4S/.2D) now pick the NaN operand like Arm (signalling first, quieted); invalid operations
+  (inf-inf, 0*inf, 0/0, sqrt of a negative) return the positive default NaN on every host (x86 gave the negative one) in
+  scalar and vector arithmetic, FNMUL, fused multiply-add and FSQRT; scalar `FRINT*` and `FSQRT` quiet signalling NaNs. Tier-4 scalar `FADD/FSUB/FMUL/FDIV/FNMUL` follow the same NaN rules on non-AArch64 hosts.
 
 ## 0.6.1
 
