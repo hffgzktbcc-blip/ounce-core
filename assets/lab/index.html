@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ounce-Core workbench</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body data-token="__OUNCE_TOKEN__" data-native="__OUNCE_NATIVE__">
+<div class="app">
+<aside>
+  <h1>Ounce-Core</h1>
+  <p class="sub">Understand why programs fail. Prove when they work.</p>
+  <button class="primary wide" id="pick">Check a program…</button>
+  <input type="file" id="file" accept=".nro" hidden>
+  <h2>Programs</h2>
+  <div id="list"></div>
+  <h2>Reference</h2>
+  <label class="sw" id="nativeBox"><input type="checkbox" id="native"> <span>Compare with this Mac<br><span class="note">Runs the program on this Mac's CPU as the reference.</span></span></label>
+  <p class="note" id="noNative" hidden>Not available in this build: it needs an Apple Silicon Mac and a build with native execution.</p>
+</aside>
+<main id="main"></main>
+<div class="right" id="right"></div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

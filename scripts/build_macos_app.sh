@@ -22,9 +22,10 @@ target=$(cargo metadata --no-deps --format-version 1 --manifest-path "$root/Carg
 cp "$target/release/ounce-core" "$runtime/Contents/MacOS/ounce-core"
 cp "$root/tools/macos-launcher/Runtime-Info.plist" "$runtime/Contents/Info.plist"
 xcrun swiftc -O -swift-version 5 -target "$(uname -m)-apple-macos13.0" \
-  -framework AppKit -framework UniformTypeIdentifiers \
+  -framework AppKit -framework UniformTypeIdentifiers -framework WebKit \
   "$root/tools/macos-launcher/EvidenceReport.swift" "$root/tools/macos-launcher/RunLogic.swift" \
-  "$root/tools/macos-launcher/HostVerify.swift" "$root/tools/macos-launcher/main.swift" -o "$bundle/Contents/MacOS/OunceCore"
+  "$root/tools/macos-launcher/HostVerify.swift" "$root/tools/macos-launcher/WorkbenchLogic.swift" \
+  "$root/tools/macos-launcher/Workbench.swift" "$root/tools/macos-launcher/main.swift" -o "$bundle/Contents/MacOS/OunceCore"
 cp "$root/tools/macos-launcher/Info.plist" "$bundle/Contents/Info.plist"
 # Committed host references for "Verify against Host" (the same files scripts/verify_differential.py compares against).
 cp "$root/docs/verify/differential.json" "$bundle/Contents/Resources/Verify/"
