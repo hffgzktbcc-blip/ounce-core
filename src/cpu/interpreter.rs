@@ -952,8 +952,13 @@ impl Cpu {
                 is_double,
             } => {
                 if is_double {
-                    let n = self.regs.read_d(rn);
-                    let m = self.regs.read_d(rm);
+                    let (mut n, mut m) = (self.regs.read_d(rn), self.regs.read_d(rm));
+                    let minmax = matches!(op, FpOp2::Fmax | FpOp2::Fmin | FpOp2::Fmaxnm | FpOp2::Fminnm);
+                    if minmax && self.regs.fpcr & (1 << 24) != 0 {
+                        // FPCR.FZ: denormal inputs read as signed zero
+                        if n != 0.0 && n.is_subnormal() { n = 0.0f64.copysign(n); }
+                        if m != 0.0 && m.is_subnormal() { m = 0.0f64.copysign(m); }
+                    }
                     let res = match op {
                         FpOp2::Fadd | FpOp2::Fsub | FpOp2::Fmul | FpOp2::Fdiv | FpOp2::Fnmul if n.is_nan() || m.is_nan() => {
                             let r = FpNum::process_nans(&[n, m]).unwrap_or(n);
@@ -969,10 +974,15 @@ impl Cpu {
                         FpOp2::Fmaxnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
                         FpOp2::Fminnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
+                    let res = if minmax && self.regs.fpcr & (1 << 25) != 0 && res.is_nan() { f64::from_bits(0x7ff8_0000_0000_0000) } else { res };
                     self.regs.write_d(rd, res);
                 } else {
-                    let n = self.regs.read_s(rn);
-                    let m = self.regs.read_s(rm);
+                    let (mut n, mut m) = (self.regs.read_s(rn), self.regs.read_s(rm));
+                    let minmax = matches!(op, FpOp2::Fmax | FpOp2::Fmin | FpOp2::Fmaxnm | FpOp2::Fminnm);
+                    if minmax && self.regs.fpcr & (1 << 24) != 0 {
+                        if n != 0.0 && n.is_subnormal() { n = 0.0f32.copysign(n); }
+                        if m != 0.0 && m.is_subnormal() { m = 0.0f32.copysign(m); }
+                    }
                     let res = match op {
                         FpOp2::Fadd | FpOp2::Fsub | FpOp2::Fmul | FpOp2::Fdiv | FpOp2::Fnmul if n.is_nan() || m.is_nan() => {
                             let r = FpNum::process_nans(&[n, m]).unwrap_or(n);
@@ -988,6 +998,7 @@ impl Cpu {
                         FpOp2::Fmaxnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
                         FpOp2::Fminnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
                     };
+                    let res = if minmax && self.regs.fpcr & (1 << 25) != 0 && res.is_nan() { f32::from_bits(0x7fc0_0000) } else { res };
                     self.regs.write_s(rd, res);
                 }
                 self.regs.advance_pc();
@@ -1597,7 +1608,7 @@ impl Cpu {
 
             Instruction::SimdFpThreeSame { rd, rn, rm, op, double, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
-                self.regs.write_q(rd, simd::fp_three_same(op, d, n, m, double, q));
+                self.regs.write_q(rd, simd::fp_three_same_fpcr(op, d, n, m, double, q, self.regs.fpcr));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }

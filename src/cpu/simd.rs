@@ -599,6 +599,36 @@ pub fn fp_three_same(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: 
     out
 }
 
+/// `fp_three_same` honouring FPCR.FZ (denormal inputs read as zero) and FPCR.DN (any NaN result is the
+/// default NaN) for FMAX/FMIN/FMAXNM/FMINNM. Other operations ignore FPCR, as before.
+pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
+    let minmax = matches!(op, SimdFpOp3::Fmax | SimdFpOp3::Fmin | SimdFpOp3::Fmaxnm | SimdFpOp3::Fminnm);
+    let (fz, dn) = (fpcr & (1 << 24) != 0, fpcr & (1 << 25) != 0);
+    if !minmax || !(fz || dn) {
+        return fp_three_same(op, d, n, m, double, q);
+    }
+    let esize = if double { 64 } else { 32 };
+    let count = lanes(esize, q);
+    let flush = |x: u64| -> u64 {
+        if !fz {
+            return x;
+        }
+        if double { if x & 0x7ff0_0000_0000_0000 == 0 { x & (1 << 63) } else { x } } else if x & 0x7f80_0000 == 0 { x & 0x8000_0000 } else { x }
+    };
+    let is_nan = |x: u64| if double { f64::from_bits(x).is_nan() } else { f32::from_bits(x as u32).is_nan() };
+    let default_nan: u64 = if double { 0x7ff8_0000_0000_0000 } else { 0x7fc0_0000 };
+    let mut out = 0u128;
+    for i in 0..count {
+        let (a, b) = (flush(lane(n, esize, i)), flush(lane(m, esize, i)));
+        let mut r = if double { fp64::op3(op, lane(d, esize, i), a, b) } else { fp32::op3(op, lane(d, esize, i) as u32, a as u32, b as u32) as u64 };
+        if dn && is_nan(r) {
+            r = default_nan;
+        }
+        set_lane(&mut out, esize, i, r);
+    }
+    out
+}
+
 /// FP two-register misc. `FCVTN`/`FCVTL` are the double/single forms: `q` picks the upper half
 /// (`FCVTN2` keeps the low half of `d`; `FCVTL2` reads the upper two singles).
 pub fn fp_two_misc(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool) -> u128 {
