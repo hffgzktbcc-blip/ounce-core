@@ -23,4 +23,4 @@ Build the NRO: `scripts/verify_differential.py --nro --build-only` (devkitA64, `
 The issue expected this stretch target to find missing instructions or system calls; it did not. This build completes all 46 scripts with no `[VM Error]`. `observed-ounce-core.txt` is the Tier-4 output (Tier-3 is identical). NRO sha256: `d7a90b7e3d3b6268a5e91a9871d789352c652f0944c89624f24154b844ca5848`.
 
 ## Not covered
-Threads, `Atomics.wait`, the module loader, `std`/`os`, the `qjs` binary, bytecode (`qjsc`) output, time zones, `Date.now()`/`Math.random()` (non-deterministic), memory-limit exhaustion, test262, Intl, and the 5 s-scale timing of the scripts (Tier-3 and Tier-4 take about the same here, so these cases do not measure JIT speed-up). One host (Linux x86-64).
+Threads, `Atomics.wait`, the module loader, `std`/`os`, the `qjs` binary, bytecode (`qjsc`) output, time zones, `Date.now()`/`Math.random()` (non-deterministic), memory-limit exhaustion, test262, Intl; Tier-3 and Tier-4 take about the same time here, so these cases say nothing about JIT speed-up. One host (Linux x86-64).
