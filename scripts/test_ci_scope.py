@@ -15,6 +15,16 @@ class ScopeTest(unittest.TestCase):
         self.assertFalse(result['runtime'])
         self.assertFalse(result['corpus'])
 
+    def test_fixture_notices_and_records_do_not_need_rust_but_binaries_do(self):
+        for path in ['tests/fixtures/nro/NOTICES.md', 'tests/fixtures/provenance.json',
+                     'tests/fixtures/nro/hello/README.md']:
+            with self.subTest(path=path):
+                self.assertFalse(classify([path])['runtime'])
+        for path in ['tests/fixtures/nro/hello/hello.nro', 'tests/fixtures/nro/hello/main.c',
+                     'tests/fixtures/nro/hello/Makefile']:
+            with self.subTest(path=path):
+                self.assertTrue(classify([path])['runtime'])
+
     def test_runtime_and_policy_changes_keep_full_regression(self):
         for path in ['src/cpu/decoder.rs', 'crates/ounce-nce/src/exec.rs', 'Cargo.lock',
                      'tests/corpus/oracles.json', '.github/workflows/ci.yml', 'scripts/ci_scope.py']:

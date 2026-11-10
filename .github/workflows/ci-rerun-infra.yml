@@ -1,0 +1,45 @@
+name: CI infrastructure rerun
+
+# When a CI run fails only because hosted-runner jobs were cancelled (for example a macOS runner that
+# never started), re-run the failed jobs once. A job that actually failed is never re-run: if any
+# non-summary job has the conclusion "failure" or "timed_out", this does nothing. No repository code
+# is checked out or executed here.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  rerun:
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-run when only cancelled jobs failed the run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          jobs=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '.jobs[] | [.name, .conclusion] | @tsv')
+          # The "Test (...)" jobs only summarise the others, so ignore them when deciding.
+          real=$(printf '%s\n' "$jobs" | awk -F'\t' '$1 !~ /^Test \(/ && $2 != "success" && $2 != "skipped" && $2 != ""')
+          echo "Non-passing jobs other than the summaries:"
+          printf '%s\n' "$real"
+          if [ -z "$real" ]; then
+            echo "Only summary jobs failed; nothing to re-run."
+            exit 0
+          fi
+          if printf '%s\n' "$real" | awk -F'\t' '$2 != "cancelled" { bad = 1 } END { exit !bad }'; then
+            echo "At least one job really failed; not re-running."
+            exit 0
+          fi
+          echo "Only cancelled jobs; re-running the failed jobs once."
+          gh run rerun "$RUN_ID" --repo "$REPO" --failed

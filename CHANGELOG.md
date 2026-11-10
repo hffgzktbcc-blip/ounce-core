@@ -4,6 +4,16 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+### Changed
+- CI: notices and provenance records under `tests/fixtures/` no longer trigger the Rust jobs; a run that fails only
+  because hosted-runner jobs were cancelled is re-run once (`ci-rerun-infra.yml`, never for a real failure); an
+  advisory job builds the Mac app bundle and checks a program through the bundled runtime.
+- A long-running soak workload joins the differential suite (`docs/verify/soak-harness`), byte-identical to the host
+  on Tier-3 and Tier-4.
+
+### Fixed
+- `ounce-nce`'s arena test no longer fails when another test thread claims the address it just released.
+
 ### Added
 - The Mac app now opens the workbench in its window (`tools/macos-launcher/Workbench.swift`, a `WKWebView` around the
   local `ounce-core ui` server, started from the bundled runtime). Opening an `.nro` or "Check a Program…" (⌘O) sends it

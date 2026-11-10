@@ -332,8 +332,14 @@ mod tests {
     #[test]
     fn commit_read_write_decommit_and_seal() {
         // reserve_at: a spot known to be free (just released), and one that is taken.
-        let free = Arena::reserve(1 << 20).unwrap().base();
-        let fixed = Arena::reserve_at(free, 1 << 20).unwrap();
+        // Other tests run on parallel threads of this process and can claim the address between the release
+        // and `reserve_at`, so retry with a fresh address instead of failing on that race.
+        let (free, fixed) = (0..16)
+            .find_map(|_| {
+                let free = Arena::reserve(1 << 20).unwrap().base();
+                Arena::reserve_at(free, 1 << 20).ok().map(|fixed| (free, fixed))
+            })
+            .expect("a released address could not be reserved again in 16 tries");
         assert_eq!(fixed.base(), free);
         assert!(Arena::reserve_at(free, 1 << 20).is_err(), "taken by `fixed`");
         let mut a = Arena::reserve(1 << 30).unwrap();
