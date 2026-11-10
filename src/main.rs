@@ -12,6 +12,7 @@ mod fuzz_replay;
 mod gpu;
 mod hid;
 mod kernel;
+mod lab;
 mod linux;
 mod loader;
 mod mmu;
@@ -95,7 +96,7 @@ fn main() {
         }
         "ui" | "lab" => {
             print_banner();
-            launch_lab();
+            lab::run_cli(&args[2..]);
         }
         "test" | "demo" => {
             print_banner();
@@ -332,11 +333,11 @@ fn print_usage() {
     println!("    {}gfx{} [frames]            Launch 2D high-bandwidth VRAM Framebuffer Display Demo (1280x720)", s.green, s.reset);
     println!("    {}--present={}<mode>        Presentation backend: auto, gpu (needs --features gpu-present), minifb, headless", s.green, s.reset);
     println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
-    println!("    {}--cpu={}<tier>            CPU block engine for Stage 20: tier3 (default) or tier4 (needs --features native-jit)", s.green, s.reset);
+    println!("    {}--cpu={}<tier>            CPU block engine for run/run-nro and Stage 20: tier3 or tier4 (needs --features native-jit); no flag = interpreter", s.green, s.reset);
     println!("    {}--cpu=native{}            run an NRO on the host CPU (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
-    println!("    {}ui{} | {}lab{}               Open the interactive verification lab and workbench in browser", s.green, s.reset, s.green, s.reset);
+    println!("    {}ui{} | {}lab{}               Open the local verification workbench: drop a .nro, compare engines (and this Mac) [--port N --no-open --dir D]", s.green, s.reset, s.green, s.reset);
     println!("    {}test{}                    Execute 25-stage full-stack verification & hardware benchmark suite", s.green, s.reset);
     println!("    {}jit-selftest{}            Check that this host can run Tier-4 native code (needs --features native-jit)", s.green, s.reset);
     println!("    {}info{}                    Display comprehensive hardware architecture and engine status", s.green, s.reset);
@@ -349,17 +350,6 @@ fn print_usage() {
     println!("    {}cargo run --release -- play 1200{}", s.dim, s.reset);
     println!("    {}cargo run --release -- inspect ./dumps/game_title{}", s.dim, s.reset);
     println!("    {}cargo run --release -- run ./dumps/game_title\n{}", s.dim, s.reset);
-}
-
-fn launch_lab() {
-    let s = Styler::new();
-    println!("  {}🔬 OUNCE-CORE INTERACTIVE VERIFICATION LAB & WORKBENCH{}", s.cyan, s.reset);
-    println!("  {}Understand why programs fail. Prove when they work.{}\n", s.dim, s.reset);
-    println!("  Local workbench file: {}site/lab.html{}", s.green, s.reset);
-    println!("  To open or serve locally:");
-    println!("    {}./scripts/open_lab.sh{}\n", s.bold, s.reset);
-    println!("  Online version available on GitHub Pages:");
-    println!("    {}https://hffgzktbcc-blip.github.io/ounce-core/lab.html{}\n", s.cyan, s.reset);
 }
 
 fn print_specs() {
