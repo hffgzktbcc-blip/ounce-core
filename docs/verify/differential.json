@@ -325,20 +325,39 @@
     }
    },
    {
-    "name": "stb-image",
-    "dir": "stb-image-harness",
+    "name": "quickjs",
+    "dir": "quickjs-harness",
     "files": [
-     "stbi_cases.c"
+     "qjs_cases.c",
+     "qjs_core.c",
+     "qjs_cutils.c",
+     "qjs_dtoa.c",
+     "qjs_libregexp.c",
+     "qjs_libunicode.c"
     ],
     "host_main": "host/host_main.c",
     "nx_main": "main_nx.c",
-    "cflags": "-fwrapv -ffp-contract=off",
+    "libs": "-lm",
+    "libs_linux": "-lpthread -ldl",
     "upstream": {
-     "repo": "https://github.com/nothings/stb",
-     "commit": "4e9b368bfc071e97206ea5c6adba68dd0cbf8897",
+     "repo": "https://github.com/bellard/quickjs",
+     "commit": "e5ac135f8db58f8d6b7b5862b8263ce6ba9c5ab6",
      "copy": {
-      "stb_image.h": "stb_image.h",
-      "stb_image_write.h": "stb_image_write.h"
+      "quickjs.c": "quickjs.inc",
+      "cutils.c": "cutils.inc",
+      "dtoa.c": "dtoa.inc",
+      "libregexp.c": "libregexp.inc",
+      "libunicode.c": "libunicode.inc",
+      "quickjs.h": "quickjs.h",
+      "quickjs-atom.h": "quickjs-atom.h",
+      "quickjs-opcode.h": "quickjs-opcode.h",
+      "cutils.h": "cutils.h",
+      "dtoa.h": "dtoa.h",
+      "libregexp.h": "libregexp.h",
+      "libregexp-opcode.h": "libregexp-opcode.h",
+      "libunicode.h": "libunicode.h",
+      "libunicode-table.h": "libunicode-table.h",
+      "list.h": "list.h"
      }
     }
    },
@@ -363,6 +382,24 @@
     "nx_main": "main_nx.c",
     "libs": "-lm",
     "arm64_reference": true
+   },
+   {
+    "name": "stb-image",
+    "dir": "stb-image-harness",
+    "files": [
+     "stbi_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "cflags": "-fwrapv -ffp-contract=off",
+    "upstream": {
+     "repo": "https://github.com/nothings/stb",
+     "commit": "4e9b368bfc071e97206ea5c6adba68dd0cbf8897",
+     "copy": {
+      "stb_image.h": "stb_image.h",
+      "stb_image_write.h": "stb_image_write.h"
+     }
+    }
    }
  ]
 }
