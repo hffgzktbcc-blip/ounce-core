@@ -20,6 +20,15 @@ An open-source ARM64 execution, debugging and verification platform in safe Rust
 
 [Vision](docs/VISION.md) · [Research paper](site/research.html) · [Browser playground](docs/PLAYGROUND.md) · [Interactive lab](docs/INTERACTIVE_LAB.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Reproduce it](docs/REPRODUCE.md) · [Limits](docs/LIMITS.md) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](site/contribute.html) · [First issues](https://github.com/hffgzktbcc-blip/ounce-core/contribute)
 
+
+<br />
+
+<img src="docs/images/workbench.png" width="860" alt="The Ounce-Core workbench: a green verdict reading 'Matches this Mac on this run', with Tier-3, Tier-4 and native runs listed and an evidence column." />
+
+<sub>The workbench (`ounce-core ui`) checking SQLite on three engines against this Mac. A match is evidence for one run, not a proof.</sub>
+
+<sub>Came here for the Switch emulator? [What changed and why](https://github.com/hffgzktbcc-blip/ounce-core/discussions/330).</sub>
+
 </div>
 
 ---
