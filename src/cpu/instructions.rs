@@ -656,6 +656,21 @@ pub enum Instruction {
 
     /// AdvSIMD two-register miscellaneous (compare against zero, `CNT`, `NOT`, `ABS`, `NEG`)
     /// AdvSIMD across lanes: reduces every lane of `Vn` into scalar `Vd`.
+    /// `FMAXV`/`FMINV`/`FMAXNMV`/`FMINNMV` (`Sd, Vn.4S`; `op` is the lane op: Fmax/Fmin/Fmaxnm/Fminnm) and the
+    /// scalar pairwise `FMAXP`/`FMINP`/`FMAXNMP`/`FMINNMP` (`Sd, Vn.2S` / `Dd, Vn.2D`), which reduce two lanes.
+    SimdFpReduce {
+        rd: u8,
+        rn: u8,
+        op: SimdFpOp3,
+        /// element size in bits: 16 (half), 32 or 64
+        esize: u8,
+        /// number of lanes reduced (2, 4 or 8)
+        lanes: u8,
+    },
+    /// Half-precision `FMAXNM/FMINNM/FMAX/FMIN` and the pairwise forms on `.4H`/`.8H` (FEAT_FP16 three-same).
+    SimdFpThreeSameHalf { rd: u8, rn: u8, rm: u8, op: SimdFpOp3, q: bool },
+    /// Scalar half-precision `FMAX/FMIN/FMAXNM/FMINNM Hd, Hn, Hm`.
+    FpHalfMinMax { rd: u8, rn: u8, rm: u8, op: FpOp2 },
     SimdAcross {
         rd: u8,
         rn: u8,
@@ -1026,6 +1041,11 @@ pub enum SimdFpOp3 {
     Fmin,
     Fmaxnm,
     Fminnm,
+    /// Pairwise forms `FMAXP`/`FMINP`/`FMAXNMP`/`FMINNMP`: lane arithmetic as the non-pairwise op.
+    Fmaxp,
+    Fminp,
+    Fmaxnmp,
+    Fminnmp,
     Fcmeq,
     Fcmge,
     Fcmgt,
