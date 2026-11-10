@@ -19,6 +19,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   `site/lab.html` stays a scripted design preview.
 
 ### Fixed
+- Workbench on Windows keeps checks under `%LOCALAPPDATA%\Ounce Core\Checks` (it used a temp folder) and opens the browser with `start`. On Linux/Windows the wording says "this computer"; a closed stdout no longer kills the server. The Mac launcher records Stop Session in the session log.
 - `run`/`run-nro --cpu=tier3|tier4` (or `OUNCE_CPU`) now runs the guest on the selected block engine. Before, the
   flag was ignored for homebrew programs: every run used the one-instruction interpreter, so the "Tier-3" and
   "Tier-4" columns of the NRO differentials had not exercised those engines. With no flag the default path is
