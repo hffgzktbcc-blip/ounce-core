@@ -1,0 +1,96 @@
+name: Nightly instruction fuzz
+
+# The weekly differential job replays fixed seeds (1, 2, 3), so it can only re-find known problems.
+# This job draws a new seed every day (the UTC date, YYYYMMDD) and checks more instructions, so it
+# keeps exploring. A mismatch opens one issue with the seed, which reproduces the exact words.
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'Seed (default: today as YYYYMMDD)'
+        required: false
+      words:
+        description: 'Words to generate (default 1000000)'
+        required: false
+        default: '1000000'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-fuzz
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: Fresh-seed fuzz (Apple Silicon)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked --features native-jit
+      - name: Compare the engines with each other and with this hardware
+        id: fuzz
+        shell: bash
+        env:
+          SEED_INPUT: ${{ github.event.inputs.seed }}
+          WORDS_INPUT: ${{ github.event.inputs.words }}
+        run: |
+          set -uo pipefail
+          test "$(uname -m)" = arm64
+          seed="${SEED_INPUT:-$(date -u +%Y%m%d)}"
+          words="${WORDS_INPUT:-1000000}"
+          case "$seed$words" in *[!0-9]*) echo "seed and words must be numbers"; exit 2;; esac
+          echo "seed=$seed" >> "$GITHUB_OUTPUT"
+          echo "words=$words" >> "$GITHUB_OUTPUT"
+          mkdir -p fuzz-results
+          cc -O1 -Wall -o fuzz-results/fuzz_host docs/verify/insn-fuzzer/fuzz_host.c
+          bin=target/release/ounce-core
+          rc=0
+          {
+            echo "seed=$seed words=$words"
+            "$bin" fuzz-replay --engine-vs-engine --seed "$seed" --count "$words" --show 10 || rc=1
+            for engine in tier3 tier4; do
+              echo "== host vs $engine"
+              fuzz-results/fuzz_host --seed "$seed" --count "$words" | "$bin" fuzz-replay --engine "$engine" --show 10 - || rc=1
+            done
+          } > fuzz-results/run.log 2>&1
+          tail -n 60 fuzz-results/run.log
+          exit "$rc"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-fuzz-${{ steps.fuzz.outputs.seed }}
+          path: fuzz-results/run.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Open an issue for a mismatch
+        if: failure() && steps.fuzz.outputs.seed != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SEED: ${{ steps.fuzz.outputs.seed }}
+          WORDS: ${{ steps.fuzz.outputs.words }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create nightly-fuzz --color d93f0b --description "Found by the nightly instruction fuzz" 2>/dev/null || true
+          existing=$(gh issue list --label nightly-fuzz --state open --json number --jq '.[0].number // empty')
+          body="The nightly fuzz found a difference.
+
+          - Seed: \`$SEED\`, words: \`$WORDS\`
+          - Run: $RUN_URL (the \`run.log\` artifact lists the first mismatches)
+          - Reproduce on Apple Silicon: \`cc -O1 -o fuzz_host docs/verify/insn-fuzzer/fuzz_host.c && ./fuzz_host --seed $SEED --count $WORDS | target/release/ounce-core fuzz-replay --engine tier4 --show 10 -\`"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "Nightly fuzz mismatch (seed $SEED)" --label nightly-fuzz --body "$body"
+          fi
