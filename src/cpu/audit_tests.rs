@@ -6,6 +6,12 @@ const CODE: u64 = 0x8000_0000;
 const DATA: u64 = 0x9000_0000;
 
 fn check(raw: u32, initialize: impl Fn(&mut Cpu), verify: impl Fn(&Cpu)) {
+    check_with(raw, initialize, verify, true)
+}
+
+/// `expect_native` false: the case is meant to run on Tier-4's reference path (for example FPCR.FZ/DN set).
+#[cfg_attr(not(feature = "native-jit"), allow(unused_variables))]
+fn check_with(raw: u32, initialize: impl Fn(&mut Cpu), verify: impl Fn(&Cpu), expect_native: bool) {
     let mut memory = Memory::new();
     memory.map_range(CODE, 4096, Permission::READ_WRITE_EXECUTE);
     memory.map_range(DATA, 4096, Permission::READ_WRITE);
@@ -63,7 +69,7 @@ fn check(raw: u32, initialize: impl Fn(&mut Cpu), verify: impl Fn(&Cpu)) {
         return;
     }
     #[cfg(feature = "native-jit")]
-    if !matches!(decoder::decode(raw), Instruction::SimdVec2D { .. }) {
+    if expect_native && !matches!(decoder::decode(raw), Instruction::SimdVec2D { .. }) {
         if let CpuEngine::Tier4(engine) = tier4 {
             assert!(
                 engine.native_block_runs > 0,
@@ -218,4 +224,26 @@ fn scalar_negative_multiply_from_ci_binary() {
         },
         |c| assert_eq!(c.regs.read_s(28), -6.0),
     );
+}
+
+#[test]
+fn flush_to_zero_and_default_nan_hold_on_every_engine() {
+    // fadd s0, s1, s2 with FPCR.FZ: the denormal result 2 * 2^-149 becomes zero
+    check_with(0x1E22_2820, |cpu| {
+        cpu.regs.fpcr = 1 << 24;
+        cpu.regs.v[1] = 1;
+        cpu.regs.v[2] = 1;
+    }, |cpu| assert_eq!(cpu.regs.v[0], 0), false);
+    // fmul d0, d1, d2 with FPCR.DN: a signalling NaN operand gives the default NaN
+    check_with(0x1E62_0820, |cpu| {
+        cpu.regs.fpcr = 1 << 25;
+        cpu.regs.v[1] = 0x7FF4_0000_0000_0000;
+        cpu.regs.v[2] = 0x3FF0_0000_0000_0000;
+    }, |cpu| assert_eq!(cpu.regs.v[0], 0x7FF8_0000_0000_0000), false);
+    // fmax s0, s1, s2 with FPCR.FZ: a denormal input reads as zero
+    check_with(0x1E22_4820, |cpu| {
+        cpu.regs.fpcr = 1 << 24;
+        cpu.regs.v[1] = 1;
+        cpu.regs.v[2] = 0;
+    }, |cpu| assert_eq!(cpu.regs.v[0], 0), false);
 }

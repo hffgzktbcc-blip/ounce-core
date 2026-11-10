@@ -599,10 +599,14 @@ pub fn fp_three_same(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: 
     out
 }
 
-/// `fp_three_same` honouring FPCR.FZ (denormal inputs read as zero) and FPCR.DN (any NaN result is the
-/// default NaN) for FMAX/FMIN/FMAXNM/FMINNM. Other operations ignore FPCR, as before.
+/// `fp_three_same` honouring FPCR.FZ (denormal inputs read as zero, denormal results become zero) and FPCR.DN
+/// (any NaN result is the default NaN) for the arithmetic and min/max operations. Compares and the like ignore FPCR.
 pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
-    let minmax = matches!(op, SimdFpOp3::Fmax | SimdFpOp3::Fmin | SimdFpOp3::Fmaxnm | SimdFpOp3::Fminnm);
+    let minmax = matches!(
+        op,
+        SimdFpOp3::Fmax | SimdFpOp3::Fmin | SimdFpOp3::Fmaxnm | SimdFpOp3::Fminnm | SimdFpOp3::Fadd | SimdFpOp3::Faddp | SimdFpOp3::Fsub
+            | SimdFpOp3::Fmul | SimdFpOp3::Fmulx | SimdFpOp3::Fdiv | SimdFpOp3::Fabd
+    );
     let (fz, dn) = (fpcr & (1 << 24) != 0, fpcr & (1 << 25) != 0);
     if !minmax || !(fz || dn) {
         return fp_three_same(op, d, n, m, double, q);
@@ -623,6 +627,8 @@ pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool
         let mut r = if double { fp64::op3(op, lane(d, esize, i), a, b) } else { fp32::op3(op, lane(d, esize, i) as u32, a as u32, b as u32) as u64 };
         if dn && is_nan(r) {
             r = default_nan;
+        } else {
+            r = flush(r);
         }
         set_lane(&mut out, esize, i, r);
     }

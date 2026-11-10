@@ -648,8 +648,10 @@ impl Lowerer {
                     FpOp2::Fsub => FpBinOp::Fsub,
                     FpOp2::Fmul | FpOp2::Fnmul => FpBinOp::Fmul,
                     FpOp2::Fdiv => FpBinOp::Fdiv,
-                    // The interpreter honours FPCR.FZ/DN for these; the compiled form cannot, so they use the reference path.
-                    FpOp2::Fmax | FpOp2::Fmin | FpOp2::Fmaxnm | FpOp2::Fminnm => return Err(()),
+                    FpOp2::Fmax => FpBinOp::Fmax,
+                    FpOp2::Fmin => FpBinOp::Fmin,
+                    // Cranelift min/max propagate NaNs; numeric variants use the reference path.
+                    FpOp2::Fmaxnm | FpOp2::Fminnm => return Err(()),
                 };
                 let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
                 let res = self.b.push(Op::FpBin(fop, w, a, b));
@@ -1213,6 +1215,17 @@ impl Tier4JitEngine {
         let mut result = BlockExit::BudgetExceeded;
         while executed < max_instructions {
             self.sync_code_writes(mmu);
+            // Compiled floating point ignores FPCR.FZ and FPCR.DN, which the interpreter and Tier-3 honour, so
+            // while either is set the reference path runs instead.
+            if cpu.regs.fpcr & 0x0300_0000 != 0 {
+                let (n, exit) = self.run_fallback(cpu, mmu);
+                executed += n;
+                if let Some(exit) = exit {
+                    result = exit;
+                    break;
+                }
+                continue;
+            }
             let (n, exit) = match self.run_native(cpu, mmu, max_instructions - executed) {
                 Some((n, exit, false)) => (n, exit),
                 Some((n, None, true)) => {
