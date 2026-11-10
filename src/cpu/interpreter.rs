@@ -852,6 +852,7 @@ impl Cpu {
                 offset,
                 is_load,
                 is_64,
+                signed_word,
                 writeback,
                 post_index,
             } => {
@@ -872,8 +873,13 @@ impl Cpu {
                     } else {
                         let v1 = mmu.read_u32(eff_addr)?;
                         let v2 = mmu.read_u32(eff_addr.wrapping_add(stride))?;
-                        self.regs.write_w(rt1, v1);
-                        self.regs.write_w(rt2, v2);
+                        if signed_word {
+                            self.regs.write_x(rt1, v1 as i32 as i64 as u64);
+                            self.regs.write_x(rt2, v2 as i32 as i64 as u64);
+                        } else {
+                            self.regs.write_w(rt1, v1);
+                            self.regs.write_w(rt2, v2);
+                        }
                     }
                 } else if is_64 {
                     mmu.write_u64(eff_addr, self.regs.read_x(rt1))?;
@@ -1620,9 +1626,12 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q } => {
+            Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q, scalar } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
-                let res = simd::fp_by_element(op, d, n, m, index as usize, double, q);
+                let mut res = simd::fp_by_element(op, d, n, m, index as usize, double, q);
+                if scalar {
+                    res &= simd::lane_mask(if double { 64 } else { 32 });
+                }
                 self.regs.write_q(rd, res);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -2415,6 +2424,52 @@ mod tests {
             c.regs.write_x(1, 0x40);
         });
         assert_eq!(cpu.regs.read_q(31), 0xDEAD);
+    }
+
+    #[test]
+    fn scalar_fp_by_element() {
+        // fmul d2, d0, v1.d[1]; fmul s3, s4, v1.s[3] (found by running QuickJS as a Linux ELF)
+        let (cpu, _) = run(&[0x5FC19802, 0x5FA19883], |c, _| {
+            c.regs.write_q(0, (3.0f64.to_bits() as u128) | (u128::MAX << 64));
+            c.regs.write_q(1, (1.0f64.to_bits() as u128) | ((0.5f64.to_bits() as u128) << 64));
+            c.regs.write_q(2, u128::MAX);
+            c.regs.write_q(3, u128::MAX);
+            c.regs.write_q(4, 2.0f32.to_bits() as u128 | (u128::MAX << 32));
+        });
+        assert_eq!(cpu.regs.read_q(2), 1.5f64.to_bits() as u128);
+        // v1.s[3] is the high word of 0.5f64 (0x3FE00000 = 1.75f32): 2.0 * 1.75
+        assert_eq!(cpu.regs.read_q(3), 3.5f32.to_bits() as u128);
+    }
+
+    #[test]
+    fn scalar_faddp_sums_two_lanes() {
+        // faddp d0, v1.2d and faddp s2, v3.2s (found by running Lua as a Linux ELF)
+        let (cpu, _) = run(&[0x7E70D820, 0x7E30D862], |c, _| {
+            c.regs.write_q(1, (2.5f64.to_bits() as u128) | ((4.0f64.to_bits() as u128) << 64));
+            c.regs.write_q(3, (1.5f32.to_bits() as u128) | ((0.25f32.to_bits() as u128) << 32) | (u128::MAX << 64));
+        });
+        assert_eq!(cpu.regs.read_q(0), 6.5f64.to_bits() as u128);
+        assert_eq!(cpu.regs.read_q(2), 1.75f32.to_bits() as u128);
+    }
+
+    #[test]
+    fn ldpsw_sign_extends_both_words() {
+        // ldpsw x0, x1, [x2]  (found by running Monocypher X25519 as a Linux ELF against qemu-user)
+        let (cpu, _) = run(&[0x69400440], |c, m| {
+            c.regs.write_x(2, DATA);
+            m.write_u32(DATA, 0xFFFF_FFFB).unwrap(); // -5
+            m.write_u32(DATA + 4, 0x7FFF_FFFF).unwrap();
+        });
+        assert_eq!(cpu.regs.read_x(0), (-5i64) as u64);
+        assert_eq!(cpu.regs.read_x(1), 0x7FFF_FFFF);
+        // ldpsw x0, x1, [x2, #8]!: pre-index writeback, negative high word
+        let (cpu, _) = run(&[0x69c10440], |c, m| {
+            c.regs.write_x(2, DATA);
+            m.write_u32(DATA + 8, 0x8000_0000).unwrap();
+            m.write_u32(DATA + 12, 1).unwrap();
+        });
+        assert_eq!(cpu.regs.read_x(0), 0xFFFF_FFFF_8000_0000);
+        assert_eq!(cpu.regs.read_x(2), DATA + 8);
     }
 
     #[test]

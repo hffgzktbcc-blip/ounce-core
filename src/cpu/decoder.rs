@@ -406,6 +406,10 @@ pub fn decode(raw: u32) -> Instruction {
             };
         }
 
+        // opc 01 with L=1 is LDPSW; opc 01 with L=0 and opc 11 are unallocated.
+        if opc == 3 || (opc == 1 && !is_load) {
+            return Instruction::Unimplemented { raw };
+        }
         return Instruction::LoadStorePair {
             rt1,
             rt2,
@@ -413,6 +417,7 @@ pub fn decode(raw: u32) -> Instruction {
             offset,
             is_load,
             is_64,
+            signed_word: opc == 1,
             writeback,
             post_index,
         };
@@ -1162,8 +1167,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     }
 
     // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q U 01111 1 sz L M Rm opcode H 0 Rn Rd
-    //       (FMLA 0001, FMLS 0101, FMUL 1001, FMULX U=1 1001); other opcodes (SDOT, ...) fall through
-    if (raw & 0x9F80_0400) == 0x0F80_0000 {
+    //       (FMLA 0001, FMLS 0101, FMUL 1001, FMULX U=1 1001); other opcodes (SDOT, ...) fall through.
+    //       Scalar form: 01 U 11111 1 sz L M Rm opcode H 0 Rn Rd (Sd/Dd, Sn/Dn, Vm.S/D[index]), sz 10 or 11 only.
+    for (mask, want, scalar) in [(0x9F80_0400u32, 0x0F80_0000u32, false), (0xDF80_0400, 0x5F80_0000, true)] {
+        if (raw & mask) != want {
+            continue;
+        }
         let op = match ((raw >> 12) & 0xF, u) {
             (0b0001, false) => Some(SimdFpElementOp::Fmla),
             (0b0101, false) => Some(SimdFpElementOp::Fmls),
@@ -1175,11 +1184,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             let (h, l, m) = ((raw >> 11) & 1, (raw >> 21) & 1, (raw >> 20) & 1);
             let rm = ((m << 4) | ((raw >> 16) & 0xF)) as u8;
             let double = size == 3;
-            if double && (l == 1 || !q) {
+            if scalar && size < 2 {
+                return None; // half precision scalar by element is FEAT_FP16, not decoded here
+            }
+            if double && (l == 1 || (!q && !scalar)) {
                 return None;
             }
             let index = if double { h } else { (h << 1) | l } as u8;
-            return Some(Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q });
+            return Some(Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q: q || scalar && double, scalar });
         }
     }
 
@@ -1494,6 +1506,11 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     //      U = 1: Sd, Vn.2S / Dd, Vn.2D. U = 0: Hd, Vn.2H.
     for (mask, want, scalar) in [(0x9F7E_0C00u32, 0x0E30_0800u32, false), (0xDF3E_0C00, 0x5E30_0800, true)] {
         let opcode = (raw >> 12) & 0x1F;
+        // Scalar FADDP Sd/Dd, Vn.2S/2D (opcode 01101, U = 1, bit 23 = 0): sum of the two lanes.
+        if scalar && (raw & mask) == want && opcode == 0b01101 && u && (raw >> 23) & 1 == 0 {
+            let esize = if (raw >> 22) & 1 == 1 { 64 } else { 32 };
+            return Some(Instruction::SimdFpReduce { rd, rn, op: SimdFpOp3::Faddp, esize, lanes: 2 });
+        }
         if (raw & mask) == want && matches!(opcode, 0b01100 | 0b01111) {
             let min = (raw >> 23) & 1 == 1;
             let op = match (opcode, min) {
@@ -1841,6 +1858,8 @@ mod tests {
             (0x7E30_F820, Fmax, false, 2), // fmaxp s0, v1.2s
             (0x7E70_F820, Fmax, true, 2),  // fmaxp d0, v1.2d
             (0x7EF0_C820, Fminnm, true, 2), // fminnmp d0, v1.2d
+            (0x7E30_D820, Faddp, false, 2), // faddp s0, v1.2s
+            (0x7E70_D820, Faddp, true, 2),  // faddp d0, v1.2d
         ] {
             match decode(raw) {
                 Instruction::SimdFpReduce { op, esize, lanes: l, rd: 0, rn: 1 } => assert_eq!((op, esize == 64, l), (want, double, lanes), "{raw:#010x}"),
