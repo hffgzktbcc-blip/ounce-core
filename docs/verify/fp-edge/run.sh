@@ -19,7 +19,7 @@ $host_cc -O1 -Wall -o "$out/fuzz_host" "$here/../insn-fuzzer/fuzz_host.c"
 $host_run "$out/fuzz_host" --list-words > "$out/words.txt"
 # gzip -n: no timestamp in the header, so the same trace gives the same bytes
 { $host_run "$out/fuzz_host" --corpus edge 2> "$out/host.stderr" | gzip -n > "$out/trace.gz"; } || true
-cases=$(zcat "$out/trace.gz" | wc -l | tr -d ' ')
+cases=$(gzip -dc "$out/trace.gz" | wc -l | tr -d ' ')
 [ "$cases" -gt 0 ] || { echo "host produced no cases" >&2; cat "$out/host.stderr" >&2; exit 2; }
 sha() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 cpu=$( (grep -m1 -E 'model name|Model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2- ) || true)
@@ -34,11 +34,11 @@ json.dump({"reference_kind": "$kind", "cpu": "$cpu".strip(), "os": sh("uname", "
            "trace_sha256": "$(sha "$out/trace.gz")", "host_source_sha256": "$(sha "$here/../insn-fuzzer/fuzz_host.c")",
            "ounce_binary_sha256": "$(sha "$bin")", "host_stderr": open(sys.argv[1] + "/host.stderr").read().strip(),
            "commands": ["$host_cc -O1 -o fuzz_host insn-fuzzer/fuzz_host.c", "fuzz_host --corpus edge | gzip -n > trace.gz",
-                        "zcat trace.gz | ounce-core fuzz-replay --engine ENGINE --show 20 --results results-ENGINE.tsv -"]},
+                        "gzip -dc trace.gz | ounce-core fuzz-replay --engine ENGINE --show 20 --results results-ENGINE.tsv -"]},
           open(sys.argv[1] + "/meta.json", "w"), indent=2)
 PY
 for e in interp tier3 tier4; do
-  zcat "$out/trace.gz" | "$bin" fuzz-replay --engine "$e" --show 20 --results "$out/results-$e.tsv" - > "$out/$e.stdout" 2> "$out/$e.stderr" || true
+  gzip -dc "$out/trace.gz" | "$bin" fuzz-replay --engine "$e" --show 20 --results "$out/results-$e.tsv" - > "$out/$e.stdout" 2> "$out/$e.stderr" || true
 done
 rm -f "$out/fuzz_host"
 python3 "$here/summarize.py" "$out"
