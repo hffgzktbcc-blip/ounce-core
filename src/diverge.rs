@@ -40,7 +40,7 @@ fn work_dir() -> PathBuf {
     std::env::temp_dir().join(format!("ounce-diverge-{}", std::process::id()))
 }
 
-fn build_helper(dir: &Path) -> Result<PathBuf, String> {
+pub(crate) fn build_helper(dir: &Path) -> Result<PathBuf, String> {
     let source = dir.join("hwcheck.c");
     let binary = dir.join("hwcheck");
     std::fs::write(&source, HWCHECK_SOURCE).map_err(|e| format!("could not write the helper source: {e}"))?;
