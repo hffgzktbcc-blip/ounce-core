@@ -220,8 +220,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ubuntu/windows are x86_64, macos-latest is Apple Silicon (MAP_JIT path).
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # ubuntu/windows are x86_64, macos-latest is Apple Silicon (MAP_JIT path) and
+        # ubuntu-24.04-arm is AArch64 Linux, where Tier-4 output can be replayed on the host CPU.
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -251,6 +252,23 @@ jobs:
 
       - name: Run Tier-4 unit tests & differential fuzzer
         run: cargo test --release --features native-jit -- --nocapture
+
+      - name: Replay Tier-4 on this CPU for every committed fixture (AArch64 only)
+        if: runner.arch == 'ARM64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --engine tier4 makes an unavailable Tier-4 a hard error, never "NOT CHECKED".
+          checked=0
+          for nro in tests/fixtures/nro/*/*.nro; do
+            out=$(./target/release/ounce-core diverge "$nro" --engine tier4)
+            echo "== $nro"; echo "$out" | tail -n 3
+            grep -q "Tier-4: [0-9]* sampled instructions replayed on this CPU, 0 disagreed" <<< "$out"
+            if grep -q "NOT CHECKED" <<< "$out"; then echo "Tier-4 was not checked for $nro"; exit 1; fi
+            checked=$((checked + 1))
+          done
+          echo "Tier-4 replayed $checked programs with 0 disagreements"
+          test "$checked" -ge 10
 
   nce:
     needs: changes
