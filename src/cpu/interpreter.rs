@@ -1913,6 +1913,34 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdFpThreeSameHalf { rd, rn, rm, op, q } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::fp16_three_same_fpcr(op, n, m, q, self.regs.fpcr));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpHalfMinMax { rd, rn, rm, op } => {
+                let (n, m) = (self.regs.read_q(rn) as u64 & 0xffff, self.regs.read_q(rm) as u64 & 0xffff);
+                let lane_op = match op {
+                    FpOp2::Fmax => crate::cpu::instructions::SimdFpOp3::Fmax,
+                    FpOp2::Fmin => crate::cpu::instructions::SimdFpOp3::Fmin,
+                    FpOp2::Fmaxnm => crate::cpu::instructions::SimdFpOp3::Fmaxnm,
+                    _ => crate::cpu::instructions::SimdFpOp3::Fminnm,
+                };
+                let r = simd::fp_reduce_fpcr(lane_op, (n | m << 16) as u128, 16, 2, self.regs.fpcr);
+                self.regs.write_q(rd, r as u128);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::SimdFpReduce { rd, rn, op, esize, lanes } => {
+                let r = simd::fp_reduce_fpcr(op, self.regs.read_q(rn), esize as u32, lanes as usize, self.regs.fpcr);
+                self.regs.write_q(rd, r as u128);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdAcross { rd, rn, op, esize, q } => {
                 self.regs.write_q(rd, simd::across(op, self.regs.read_q(rn), esize as u32, q));
                 self.regs.advance_pc();
