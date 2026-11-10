@@ -5,7 +5,7 @@
 //! child processes of this same binary and compares what each one did:
 //!
 //! * **Tier-3** and **Tier-4** always (`--cpu=tier3|tier4`, headless, with an instruction budget).
-//! * **Native** (the program on this Mac's CPU, the hardware reference) only when the person asks for it,
+//! * **Native** (the program on this computer's CPU, the hardware reference) only when the person asks for it,
 //!   because it runs the guest program directly on the host. It also needs a build with `--features nce` on an
 //!   AArch64 host.
 //!
@@ -286,7 +286,7 @@ fn label(engine: &str) -> &'static str {
     match engine {
         "tier3" => "Tier-3",
         "tier4" => "Tier-4",
-        _ => "this Mac (native)",
+        _ => "this computer (native)",
     }
 }
 
@@ -335,21 +335,21 @@ fn verdict(runs: &[EngineRun]) -> Value {
 
     if let Some(refr) = reference {
         if unfinished(&refr) {
-            return verdict("unfinished", "The program didn't finish on this Mac".into(),
+            return verdict("unfinished", "The program didn't finish on this computer".into(),
                 "It was still running when the time limit passed (many programs wait for input), so there is nothing to compare yet.".into(), None);
         }
         if refr.faulted() {
             let same = tiers.iter().all(|t| t.stop_kind == refr.stop_kind);
             return if same {
-                verdict("fails", "The program fails the same way on this Mac".into(), describe(refr), None)
+                verdict("fails", "The program fails the same way on this computer".into(), describe(refr), None)
             } else {
-                verdict("diverges", "The program fails on this Mac but Ounce-Core behaves differently".into(),
+                verdict("diverges", "The program fails on this computer but Ounce-Core behaves differently".into(),
                     tiers.iter().map(|t| describe(t)).collect::<Vec<_>>().join(" | "), None)
             };
         }
         for t in &tiers {
             if t.faulted() {
-                return verdict("diverges", format!("{} stops where this Mac keeps going", label(&t.engine)), describe(t), None);
+                return verdict("diverges", format!("{} stops where this computer keeps going", label(&t.engine)), describe(t), None);
             }
             if unfinished(t) {
                 return verdict("unfinished", format!("{} hit its limit before the program finished", label(&t.engine)),
@@ -357,13 +357,13 @@ fn verdict(runs: &[EngineRun]) -> Value {
             }
             if !same_outcome(t, refr) {
                 let diff = first_diff(t, refr);
-                return verdict("diverges", format!("{} differs from this Mac", label(&t.engine)),
+                return verdict("diverges", format!("{} differs from this computer", label(&t.engine)),
                     "Both finished, but they did not produce the same output.".into(), diff);
             }
         }
         let files = refr.files.len();
-        return verdict("matches", "Matches this Mac on this run".into(),
-            format!("Tier-3 and Tier-4 ended the same way as the program on this Mac and produced identical output ({files} compared: the files it wrote and its console text). This is one run, not a proof."), None);
+        return verdict("matches", "Matches this computer on this run".into(),
+            format!("Tier-3 and Tier-4 ended the same way as the program on this computer and produced identical output ({files} compared: the files it wrote and its console text). This is one run, not a proof."), None);
     }
 
     if let Some(t) = tiers.iter().find(|t| t.faulted()) {
@@ -378,10 +378,10 @@ fn verdict(runs: &[EngineRun]) -> Value {
         return verdict("unfinished", "The program didn't finish within the limit".into(), describe(t), None);
     }
     if tiers.len() == 2 && !same_outcome(tiers[0], tiers[1]) {
-        return verdict("diverges", "Tier-3 and Tier-4 disagree".into(), "An emulator bug between engines. Compare with this Mac to see which is right.".into(), first_diff(tiers[0], tiers[1]));
+        return verdict("diverges", "Tier-3 and Tier-4 disagree".into(), "An emulator bug between engines. Compare with this computer to see which is right.".into(), first_diff(tiers[0], tiers[1]));
     }
     verdict("agrees", "Tier-3 and Tier-4 agree".into(),
-        "No host reference was used. Turn on 'Compare with this Mac' to check against the real CPU.".into(), None)
+        "No host reference was used. Turn on 'Compare with this computer' to check against the real CPU.".into(), None)
 }
 
 struct Lab {
@@ -639,9 +639,14 @@ fn serve(options: Options) -> Result<(), String> {
         checks: Mutex::new(Vec::new()), counter: Mutex::new(0),
     });
     let url = format!("http://127.0.0.1:{port}/?t={}", lab.token);
-    println!("  Workbench: {url}");
-    println!("  Checks are saved under {}", options.dir.display());
-    println!("  Only this computer can reach it. Press Ctrl-C to stop.");
+    // A caller may read only the first line and close the pipe (the test harness and the Mac app
+    // both do); `println!` would panic on the next line and kill the server before it accepts.
+    let mut out = std::io::stdout();
+    let _ = writeln!(out, "  Workbench: {url}");
+    let _ = out.flush();
+    let _ = writeln!(out, "  Checks are saved under {}", options.dir.display());
+    let _ = writeln!(out, "  Only this computer can reach it. Press Ctrl-C to stop.");
+    let _ = out.flush();
     if options.parent_pipe {
         thread::spawn(|| {
             let mut sink = Vec::new();
@@ -722,7 +727,7 @@ mod tests {
         assert_eq!(v["kind"], "diverges");
         assert_eq!(v["diff"]["line"], 2);
         assert_eq!(v["diff"]["a"], "WRONG");
-        assert_eq!(v["diff"]["b_label"], "this Mac (native)");
+        assert_eq!(v["diff"]["b_label"], "this computer (native)");
     }
 
     #[test]
