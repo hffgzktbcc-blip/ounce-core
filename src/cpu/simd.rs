@@ -716,6 +716,9 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
 /// `fp_three_same` honouring FPCR.FZ and FPCR.DN for FMAX/FMIN/FMAXNM/FMINNM and their pairwise forms.
 /// Other operations ignore FPCR, as before.
 pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
+    if fpcr & super::softfp::FPCR_ARITH_MASK != 0 && !is_minmax(op) {
+        return fp_three_same_soft(op, d, n, m, double, q, fpcr);
+    }
     if !is_minmax(op) || fpcr & (3 << 24) == 0 {
         return fp_three_same(op, d, n, m, double, q);
     }
@@ -727,6 +730,126 @@ pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool
         set_lane(&mut out, esize, i, minmax_fpcr(op, lane(d, esize, i), a, b, esize, fpcr));
     }
     out
+}
+
+/// Arithmetic and compare lanes under a non-default FPCR (RMode, FZ, DN): the soft-float path. Compares only see
+/// flushed denormals; FADD/FSUB/FMUL/FMULX/FDIV/FABD/FMLA/FMLS round under RMode and honour FZ and DN.
+fn fp_three_same_soft(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
+    use super::softfp::{self, BinOp, Env, Fmt};
+    let esize = if double { 64 } else { 32 };
+    let (f, env) = (Fmt::from_esize(esize), Env::from_fpcr(fpcr));
+    let count = lanes(esize, q);
+    let mut out = 0u128;
+    for i in 0..count {
+        let (a, b) = fp_operands(op, n, m, esize, count, i);
+        let acc = lane(d, esize, i);
+        let r = match op {
+            SimdFpOp3::Fadd | SimdFpOp3::Faddp => softfp::binop(f, env, BinOp::Add, a, b),
+            SimdFpOp3::Fsub => softfp::binop(f, env, BinOp::Sub, a, b),
+            SimdFpOp3::Fmul => softfp::binop(f, env, BinOp::Mul, a, b),
+            SimdFpOp3::Fmulx => softfp::binop(f, env, BinOp::Mulx, a, b),
+            SimdFpOp3::Fdiv => softfp::binop(f, env, BinOp::Div, a, b),
+            SimdFpOp3::Fabd => f.abs(softfp::binop(f, env, BinOp::Sub, a, b)),
+            SimdFpOp3::Fmla => softfp::fma(f, env, a, b, acc),
+            SimdFpOp3::Fmls => softfp::fma(f, env, f.neg(a), b, acc),
+            // compares: a flushed denormal reads as zero, nothing else depends on FPCR
+            _ => {
+                let (a, b) = (softfp::flush_input(f, env, a), softfp::flush_input(f, env, b));
+                if double { fp64::op3(op, acc, a, b) } else { fp32::op3(op, acc as u32, a as u32, b as u32) as u64 }
+            }
+        };
+        set_lane(&mut out, esize, i, r);
+    }
+    out
+}
+
+/// `fp_two_misc` under FPCR: FSQRT rounds under RMode and honours FZ/DN, the compares against zero see flushed
+/// denormals, FCVTN/FCVTL convert under the mode.
+pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, fpcr: u32) -> u128 {
+    use super::softfp::{self, Env, F32, F64};
+    if fpcr & softfp::FPCR_ARITH_MASK == 0 {
+        return fp_two_misc(op, d, n, double, q);
+    }
+    let env = Env::from_fpcr(fpcr);
+    match op {
+        SimdFpOp2::Fcvtn => {
+            let lo = softfp::convert(F64, F32, env, lane(n, 64, 0)) as u128;
+            let hi = softfp::convert(F64, F32, env, lane(n, 64, 1)) as u128;
+            let pair = lo | hi << 32;
+            if q { (d & u64::MAX as u128) | pair << 64 } else { pair }
+        }
+        SimdFpOp2::Fcvtl => {
+            let base = if q { 2 } else { 0 };
+            let a = softfp::convert(F32, F64, env, lane(n, 32, base));
+            let b = softfp::convert(F32, F64, env, lane(n, 32, base + 1));
+            a as u128 | (b as u128) << 64
+        }
+        _ => {
+            let esize = if double { 64 } else { 32 };
+            let f = if double { F64 } else { F32 };
+            let mut out = 0u128;
+            for i in 0..lanes(esize, q) {
+                let a = lane(n, esize, i);
+                let r = match op {
+                    SimdFpOp2::Fsqrt => softfp::sqrt(f, env, a),
+                    SimdFpOp2::Fabs | SimdFpOp2::Fneg => if double { fp64::op2(op, a) } else { fp32::op2(op, a as u32) as u64 },
+                    _ => {
+                        let a = softfp::flush_input(f, env, a);
+                        if double { fp64::op2(op, a) } else { fp32::op2(op, a as u32) as u64 }
+                    }
+                };
+                set_lane(&mut out, esize, i, r);
+            }
+            out
+        }
+    }
+}
+
+/// Vector `SCVTF`/`UCVTF` (rounded under RMode) and `FCVTZS`/`FCVTZU` (flushed input under FZ) with a non-default FPCR.
+pub fn int_fp_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32) -> u128 {
+    use super::softfp::{self, Env, Fmt};
+    let (f, env) = (Fmt::from_esize(esize), Env::from_fpcr(fpcr));
+    let mut out = 0u128;
+    for i in 0..lanes(esize, q) {
+        let a = lane(n, esize, i);
+        let r = match op {
+            SimdOp2::Scvtf => {
+                let s = sext(a, esize);
+                softfp::int_to_fp(f, env, s < 0, s.unsigned_abs(), 0)
+            }
+            SimdOp2::Ucvtf => softfp::int_to_fp(f, env, false, a, 0),
+            _ => {
+                let a = softfp::flush_input(f, env, a);
+                match op {
+                    SimdOp2::Fcvtzs if esize == 32 => f32::from_bits(a as u32) as i32 as u64 & mask(32),
+                    SimdOp2::Fcvtzs => f64::from_bits(a) as i64 as u64,
+                    SimdOp2::Fcvtzu if esize == 32 => f32::from_bits(a as u32) as u32 as u64,
+                    _ => f64::from_bits(a) as u64,
+                }
+            }
+        };
+        set_lane(&mut out, esize, i, r);
+    }
+    out
+}
+
+/// `fp_by_element` under FPCR: the per-lane operation is the soft one when RMode, FZ or DN is set.
+pub fn fp_by_element_fpcr(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool, fpcr: u32) -> u128 {
+    if fpcr & super::softfp::FPCR_ARITH_MASK == 0 {
+        return fp_by_element(op, d, n, m, index, double, q);
+    }
+    let esize = if double { 64 } else { 32 };
+    let op3 = match op {
+        SimdFpElementOp::Fmul => SimdFpOp3::Fmul,
+        SimdFpElementOp::Fmulx => SimdFpOp3::Fmulx,
+        SimdFpElementOp::Fmla => SimdFpOp3::Fmla,
+        SimdFpElementOp::Fmls => SimdFpOp3::Fmls,
+    };
+    let mut bcast = 0u128;
+    for i in 0..lanes(esize, q) {
+        set_lane(&mut bcast, esize, i, lane(m, esize, index));
+    }
+    fp_three_same_soft(op3, d, n, bcast, double, q, fpcr)
 }
 
 /// `FMAXV`/`FMINV`/`FMAXNMV`/`FMINNMV` (4 singles) and scalar pairwise `FMAXP` etc. (2 lanes): `op` is the lane op
