@@ -15,7 +15,7 @@ Drop a homebrew `.nro`; it runs as child processes of the same binary:
 | Run | When | Meaning |
 |---|---|---|
 | Tier-3, Tier-4 | always, headless, instruction budget | the emulator's engines (Tier-4 needs `native-jit`, else it runs Tier-3) |
-| Native | only if "Compare with this Mac" is on and you confirm; needs `--features nce` on an AArch64 host | the program on this Mac's CPU, the hardware reference |
+| Native | only if "Compare with this computer" is on and you confirm; needs `--features nce` on an AArch64 host | the program on this computer's CPU, the hardware reference |
 
 Compared per run: how it stopped (`exited`, `budget`, `unimplemented`, `fault`, ...), exit code, every file under
 `sdmc:/` (SHA-256, first differing line when both are text), and the guest's own console text. Verdicts:
