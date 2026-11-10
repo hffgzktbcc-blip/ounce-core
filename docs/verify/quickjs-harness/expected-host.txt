@@ -1,0 +1,60 @@
+case 0: 6.2
+case 1: 0.30000000000000004 0.3333333333333333 9007199254740992 -9007199254740992 1e+21 1e-7 123456789.125 5e-324 1.7976931348623157e+308
+case 2: ff 11111111 -377.4 0.10000000000000000555 1.235e+3 1234.57
+case 3: 1 -1 1 1.5 0.5 1.4142135623730951 1000000000000000 511 -2147483648 1 4294967295 15 -6
+case 4: 31 -42 314 0 12 NaN 0 NaN 5
+case 5: -2 -1 -1 3 0 -1 0
+case 6: 0.8414709848 0.5403023059 1.557407725 0.4636476090 2.718281828 2.302585093 1.414213562 3.000000000 5.000000000
+case 7: 1024 1.41421356237 -Infinity Infinity NaN 5.5 31 0
+case 8: NaN Infinity -Infinity 0 true false true 9007199254740992
+case 9: 1606938044258990275541962092341162602522202993782792835301376 121932631137021795226185032733622923332237463801111263526900 -3 -2 18446744073709551615
+case 10: 9tshp0ovh8ef526ig6vhpt5lifzshl6l1nzutj400000000000000
+case 11: ABC ǆ SS 2 2 2 3
+case 12: The-Quick-Brown-Fox aXXcaXXc ababx 4
+case 13: 233 3 -1 false a%20b%26c%2F%C3%A9 €
+case 14: 2024/11/09/10/20/30
+case 15: Aaa Bbb  Ccc
+case 16: 42.50 true 1,22,333 true true
+case 17: false a-c true 2
+case 18: {
+ "a": [
+  1,
+  2,
+  {
+   "b": null
+  }
+ ],
+ "c": "x\ny",
+ "f": "1970-01-01T00:00:00.000Z",
+ "g": 1e+21,
+ "h": 0,
+ "i": null
+}
+case 19: {"x":[1,2,350,true,null,{"y":"é😀"}]}
+case 20: SyntaxError: expecting property name
+case 21: 1,10,100,2,20,3 1,2,3,10,20,100 1,4,5 4 1,2,3
+case 22: 0,1,2,3,4 2002 2004445
+case 23: k0,k37,k74,k111,k148,k185 500
+case 24: 1000 0123456789 155:5
+case 25: 17711
+case 26: 3 5
+case 27: 0,1,1,2,3,5,8,13,21,34,55,89,144,233,377,610,987
+case 28: 6 {"q":2,"r":3} 9
+case 29: a1 sync
+case 30: 1 Symbol(t) symbol 1
+case 31: 400
+case 32: InternalError
+case 33: p:foo 2 0,1,length
+case 34: 400921fb54442d18feffffff00000000 1.100000023841858 255,0,2 1
+case 35: 2024-02-29T12:34:56.789Z 1709210096789 6 NaN 0
+case 36: 397501876
+case 37: 399999
+case 38: 300 JKLMN 12
+case 39: 1 object undefined 0,1,4
+case 40: TypeError: cannot read property 'x' of null
+case 41: ReferenceError: 'undefinedFunction' is not defined
+case 42: RangeError: invalid array length
+case 43: 2 42
+case 44: EXC SyntaxError: expecting ';' [name=SyntaxError]
+case 45: EXC RangeError: boom [name=RangeError]
+fails=0
