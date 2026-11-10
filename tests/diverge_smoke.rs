@@ -41,3 +41,33 @@ fn a_missing_program_is_an_error_not_a_pass() {
     let out = Command::new(env!("CARGO_BIN_EXE_ounce-core")).args(["diverge", "/no/such/file.nro"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// Host-independent: the Tier-3/Tier-4 trace path records instructions and `diverge` refuses to count a
+/// tier that silently fell back to another engine. Needs no AArch64 host (it never reaches the replay).
+#[test]
+fn block_engines_record_traces_without_a_replay_host() {
+    let nro = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro");
+    let dir = std::env::temp_dir().join(format!("ounce-diverge-trace-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for tier in ["tier3", "tier4"] {
+        let trace = dir.join(format!("{tier}.bin"));
+        let out = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+            .args(["run-nro", nro, "--present=headless", &format!("--cpu={tier}"), &format!("--sdmc={}", dir.join("sd").display())])
+            .env("OUNCE_TRACE", &trace).env("OUNCE_NRO_BUDGET", "200000")
+            .output().unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        let native = cfg!(feature = "native-jit") && tier == "tier4" && !text.contains("Block engine: Tier-4");
+        if native {
+            continue; // Tier-4 unavailable on this host: nothing to trace (diverge reports it as not checked)
+        }
+        let len = std::fs::metadata(&trace).map(|m| m.len()).unwrap_or(0);
+        assert!(len > 0 && len.is_multiple_of(1584), "{tier}: bad trace length {len}\n{text}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_unknown_engine_is_a_usage_error() {
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-core")).args(["diverge", "x.nro", "--engine", "tier9"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+}

@@ -638,9 +638,10 @@ fn run_vm_internal(
     if let Some(e) = &engine {
         println!("[CPU] Block engine: {}", e.name());
     }
-    // `OUNCE_TRACE=<file>` records register-only instructions for `ounce-core diverge`; it follows the
-    // one-instruction interpreter, so it is ignored when a block engine is selected.
-    let mut tracer = if engine.is_none() { trace::Tracer::from_env() } else { None };
+    // `OUNCE_TRACE=<file>` records register-only instructions for `ounce-core diverge`. With a block engine
+    // selected (`--cpu=tier3|tier4`) it runs one-instruction slices so each recorded instruction is
+    // executed by that engine's own translation (single-instruction blocks, not multi-instruction fusion).
+    let mut tracer = trace::Tracer::from_env();
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -657,8 +658,23 @@ fn run_vm_internal(
                 if max_instructions > 0 {
                     slice = slice.min(max_instructions - before);
                 }
+                if tracer.is_some() {
+                    slice = 1;
+                }
                 let pc = cpu.regs.pc;
+                let traced = match tracer.as_mut() {
+                    Some(t) => mmu.read_u32(pc).ok().and_then(|raw| t.pre(&cpu, raw).map(|pre| (raw, pre))),
+                    None => None,
+                };
                 let (count, exit) = e.run_slice(&mut cpu, &mut mmu, slice.max(1));
+                if let (Some(t), Some((raw, pre))) = (tracer.as_mut(), traced) {
+                    let stopped = matches!(exit, cpu::tier2_jit::BlockExit::Fault { .. } | cpu::tier2_jit::BlockExit::Svc { .. });
+                    if count == 1 && !stopped {
+                        t.post(&cpu, raw, pc, pre);
+                    } else if !stopped {
+                        t.skip(raw);
+                    }
+                }
                 match exit {
                     cpu::tier2_jit::BlockExit::Fault { pc: fault_pc } => {
                         (Err(format!("{} fault at {fault_pc:#x} (slice began at {pc:#x})", e.name())), count)

@@ -5,6 +5,8 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 ## Unreleased
 
 ### Changed
+- `ounce-core diverge` now traces Tier-3 and Tier-4 as well as the interpreter (one-instruction slices), reports a tier
+  it could not run as NOT CHECKED, and adds `--engine`; the JSON report gains `engines` and `not_checked`.
 - CI: notices and provenance records under `tests/fixtures/` no longer trigger the Rust jobs; a run that fails only
   because hosted-runner jobs were cancelled is re-run once (`ci-rerun-infra.yml`, never for a real failure); an
   advisory job builds the Mac app bundle and checks a program through the bundled runtime.
