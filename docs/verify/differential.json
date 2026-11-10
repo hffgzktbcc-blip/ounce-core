@@ -454,6 +454,24 @@
       "stb_image_write.h": "stb_image_write.h"
      }
     }
+   },
+   {
+    "name": "lodepng",
+    "dir": "lodepng-harness",
+    "files": [
+     "lp_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "cflags": "-DLODEPNG_NO_COMPILE_CPP -DLODEPNG_NO_COMPILE_DISK",
+    "upstream": {
+     "repo": "https://github.com/lvandeve/lodepng",
+     "commit": "7b2893e35891c0c85bee5595caafaf3c2044b409",
+     "copy": {
+      "lodepng.cpp": "lodepng.c",
+      "lodepng.h": "lodepng.h"
+     }
+    }
    }
  ]
 }
