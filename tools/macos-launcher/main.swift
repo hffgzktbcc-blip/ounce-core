@@ -742,6 +742,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func stop() {
         guard let process, process.isRunning else { return }
         stopRequested = true
+        currentLog?.append(Data("\n[Launcher] Session stopped by the user.\n".utf8)) // So a saved log shows why it ends here.
         process.terminate()
         stopButton.isEnabled = false
         status.stringValue = "Stopping…"
