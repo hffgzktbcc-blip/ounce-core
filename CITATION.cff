@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use Ounce-Core in research or write about it, please cite it as below."
+title: "Ounce-Core"
+abstract: >-
+  A safe-Rust AArch64 execution and verification lab. It runs ARM64 programs on three CPU
+  engines (an interpreter, a block JIT, and native execution) and compares each result
+  against real Apple Silicon hardware, so failures can be explained and passes can be shown
+  with evidence.
+type: software
+authors:
+  - name: "Ounce-Core contributors"
+repository-code: "https://github.com/hffgzktbcc-blip/ounce-core"
+url: "https://hffgzktbcc-blip.github.io/ounce-core/"
+license: MIT
+version: 0.6.1
+date-released: "2026-11-09"
+keywords:
+  - aarch64
+  - arm64
+  - differential testing
+  - emulation
+  - verification
+  - Rust
