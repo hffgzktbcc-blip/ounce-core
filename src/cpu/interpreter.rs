@@ -1913,6 +1913,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdFpReduce { rd, rn, op, double, lanes } => {
+                let r = simd::fp_reduce_fpcr(op, self.regs.read_q(rn), double, lanes as usize, self.regs.fpcr);
+                self.regs.write_q(rd, r as u128);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdAcross { rd, rn, op, esize, q } => {
                 self.regs.write_q(rd, simd::across(op, self.regs.read_q(rn), esize as u32, q));
                 self.regs.advance_pc();

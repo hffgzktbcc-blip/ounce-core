@@ -1371,6 +1371,10 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11001, false, true) => SimdFpOp3::Fmls,
             (0b11010, false, false) => SimdFpOp3::Fadd,
             (0b11010, false, true) => SimdFpOp3::Fsub,
+            (0b11000, true, false) => SimdFpOp3::Fmaxnmp,
+            (0b11000, true, true) => SimdFpOp3::Fminnmp,
+            (0b11110, true, false) => SimdFpOp3::Fmaxp,
+            (0b11110, true, true) => SimdFpOp3::Fminp,
             (0b11010, true, false) => SimdFpOp3::Faddp,
             (0b11010, true, true) => SimdFpOp3::Fabd,
             (0b11011, true, false) => SimdFpOp3::Fmul,
@@ -1459,6 +1463,23 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         }
         let esize = if bitwise { 8 } else { 8u8 << size };
         return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize, q });
+    }
+
+    // 28a. FMAXNMV/FMINNMV/FMAXV/FMINV (Sd, Vn.4S): 0 1 1 01110 o1 0 11000 opcode 10 Rn Rd, opcode 01100 / 01111.
+    //      sz (bit 22) must be 0 and Q 1; the half-precision forms (U = 0) are not decoded.
+    // 28a2. Scalar pairwise FMAXNMP/FMINNMP/FMAXP/FMINP (Sd, Vn.2S / Dd, Vn.2D): 01 1 11110 o1 sz 11000 opcode 10 Rn Rd
+    for (mask, want, lanes) in [(0xFF7E_0C00u32, 0x6E30_0800u32, 4u8), (0xFF3E_0C00, 0x7E30_0800, 2)] {
+        if (raw & mask) == want && matches!((raw >> 12) & 0x1F, 0b01100 | 0b01111) {
+            let min = (raw >> 23) & 1 == 1;
+            let op = match ((raw >> 12) & 0x1F, min) {
+                (0b01100, false) => SimdFpOp3::Fmaxnm,
+                (0b01100, true) => SimdFpOp3::Fminnm,
+                (_, false) => SimdFpOp3::Fmax,
+                (_, true) => SimdFpOp3::Fmin,
+            };
+            let double = lanes == 2 && (raw >> 22) & 1 == 1;
+            return Some(Instruction::SimdFpReduce { rd, rn, op, double, lanes });
+        }
     }
 
     // 28b. AdvSIMD across lanes: 0 Q U 01110 size 11000 opcode 10 Rn Rd
@@ -1759,6 +1780,45 @@ mod tests {
             decode(0x1E230C00),
             Instruction::FpCondSelect { rd: 0, rn: 0, rm: 3, cond: Condition::from_u8(0), is_double: false }
         );
+    }
+
+    #[test]
+    fn decode_fp_pairwise_and_across_minmax() {
+        use SimdFpOp3::*;
+        // vector pairwise (three-same)
+        for (raw, want, double, q) in [
+            (0x6E22_F420u32, Fmaxp, false, true),  // fmaxp v0.4s, v1.4s, v2.4s
+            (0x6EA2_F420, Fminp, false, true),     // fminp v0.4s, v1.4s, v2.4s
+            (0x6E22_C420, Fmaxnmp, false, true),   // fmaxnmp v0.4s, v1.4s, v2.4s
+            (0x6EA2_C420, Fminnmp, false, true),   // fminnmp v0.4s, v1.4s, v2.4s
+            (0x6E62_F420, Fmaxp, true, true),      // fmaxp v0.2d, v1.2d, v2.2d
+            (0x2E22_F420, Fmaxp, false, false),    // fmaxp v0.2s, v1.2s, v2.2s
+            (0x4E62_F420, Fmax, true, true),       // fmax v0.2d, v1.2d, v2.2d
+        ] {
+            match decode(raw) {
+                Instruction::SimdFpThreeSame { op, double: d, q: qq, .. } => assert_eq!((op, d, qq), (want, double, q), "{raw:#010x}"),
+                other => panic!("{raw:#010x}: {other:?}"),
+            }
+        }
+        // across lanes: fmaxnmv/fminnmv/fmaxv/fminv s0, v1.4s and scalar pairwise Sd/Dd
+        for (raw, want, double, lanes) in [
+            (0x6E30_C820u32, Fmaxnm, false, 4u8),
+            (0x6EB0_C820, Fminnm, false, 4),
+            (0x6E30_F820, Fmax, false, 4),
+            (0x6EB0_F820, Fmin, false, 4),
+            (0x7E30_F820, Fmax, false, 2), // fmaxp s0, v1.2s
+            (0x7E70_F820, Fmax, true, 2),  // fmaxp d0, v1.2d
+            (0x7EF0_C820, Fminnm, true, 2), // fminnmp d0, v1.2d
+        ] {
+            match decode(raw) {
+                Instruction::SimdFpReduce { op, double: d, lanes: l, rd: 0, rn: 1 } => assert_eq!((op, d, l), (want, double, lanes), "{raw:#010x}"),
+                other => panic!("{raw:#010x}: {other:?}"),
+            }
+        }
+        // reserved: .2D across lanes (sz = 1), and the half-precision forms are not decoded
+        for raw in [0x6E70_F820u32, 0x0E40_0420 | 2 << 16 | 1 << 5, 0x0E30_F820 | 1 << 29 & 0] {
+            assert!(!matches!(decode(raw), Instruction::SimdFpReduce { .. } | Instruction::SimdFpThreeSame { .. }), "{raw:#010x}");
+        }
     }
 
     #[test]

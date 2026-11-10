@@ -545,10 +545,10 @@ macro_rules! fp_lane_ops {
                     SimdFpOp3::Fabd => (a - b).abs().to_bits(),
                     SimdFpOp3::Fmla => a.mul_add(b, d).to_bits(),
                     SimdFpOp3::Fmls => (-a).mul_add(b, d).to_bits(),
-                    SimdFpOp3::Fmax => max_min(a, b, true),
-                    SimdFpOp3::Fmin => max_min(a, b, false),
-                    SimdFpOp3::Fmaxnm => max_min_num(a, b, true),
-                    SimdFpOp3::Fminnm => max_min_num(a, b, false),
+                    SimdFpOp3::Fmax | SimdFpOp3::Fmaxp => max_min(a, b, true),
+                    SimdFpOp3::Fmin | SimdFpOp3::Fminp => max_min(a, b, false),
+                    SimdFpOp3::Fmaxnm | SimdFpOp3::Fmaxnmp => max_min_num(a, b, true),
+                    SimdFpOp3::Fminnm | SimdFpOp3::Fminnmp => max_min_num(a, b, false),
                     SimdFpOp3::Fcmeq => flag(a == b),
                     SimdFpOp3::Fcmge => flag(a >= b),
                     SimdFpOp3::Fcmgt => flag(a > b),
@@ -578,20 +578,36 @@ macro_rules! fp_lane_ops {
 fp_lane_ops!(fp32, f32, u32, 1 << 22, 1 << 31);
 fp_lane_ops!(fp64, f64, u64, 1 << 51, 1 << 63);
 
-/// FP three-same on 2S/4S (`double == false`) or 2D lanes. The pairwise `FADDP` reads `n` then `m` pairs.
+/// Pairwise FP ops read adjacent element pairs of `n` then `m`.
+fn is_pairwise(op: SimdFpOp3) -> bool {
+    matches!(op, SimdFpOp3::Faddp | SimdFpOp3::Fmaxp | SimdFpOp3::Fminp | SimdFpOp3::Fmaxnmp | SimdFpOp3::Fminnmp)
+}
+
+fn is_minmax(op: SimdFpOp3) -> bool {
+    matches!(
+        op,
+        SimdFpOp3::Fmax | SimdFpOp3::Fmin | SimdFpOp3::Fmaxnm | SimdFpOp3::Fminnm | SimdFpOp3::Fmaxp | SimdFpOp3::Fminp | SimdFpOp3::Fmaxnmp | SimdFpOp3::Fminnmp
+    )
+}
+
+/// Operands of result lane `i`; the pairwise forms read lane `i` of the concatenation m:n as elements 2i, 2i+1.
+fn fp_operands(op: SimdFpOp3, n: u128, m: u128, esize: u32, count: usize, i: usize) -> (u64, u64) {
+    if is_pairwise(op) {
+        let src = if i < count / 2 { n } else { m };
+        let j = (i % (count / 2)) * 2;
+        (lane(src, esize, j), lane(src, esize, j + 1))
+    } else {
+        (lane(n, esize, i), lane(m, esize, i))
+    }
+}
+
+/// FP three-same on 2S/4S (`double == false`) or 2D lanes. Pairwise forms read `n` then `m` pairs.
 pub fn fp_three_same(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool) -> u128 {
     let esize = if double { 64 } else { 32 };
     let count = lanes(esize, q);
     let mut out = 0u128;
     for i in 0..count {
-        let (a, b) = if op == SimdFpOp3::Faddp {
-            // lane i of the concatenation m:n reads elements 2i and 2i+1
-            let src = if i < count / 2 { n } else { m };
-            let j = (i % (count / 2)) * 2;
-            (lane(src, esize, j), lane(src, esize, j + 1))
-        } else {
-            (lane(n, esize, i), lane(m, esize, i))
-        };
+        let (a, b) = fp_operands(op, n, m, esize, count, i);
         let acc = lane(d, esize, i);
         let r = if double { fp64::op3(op, acc, a, b) } else { fp32::op3(op, acc as u32, a as u32, b as u32) as u64 };
         set_lane(&mut out, esize, i, r);
@@ -599,34 +615,52 @@ pub fn fp_three_same(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: 
     out
 }
 
-/// `fp_three_same` honouring FPCR.FZ (denormal inputs read as zero) and FPCR.DN (any NaN result is the
-/// default NaN) for FMAX/FMIN/FMAXNM/FMINNM. Other operations ignore FPCR, as before.
-pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
-    let minmax = matches!(op, SimdFpOp3::Fmax | SimdFpOp3::Fmin | SimdFpOp3::Fmaxnm | SimdFpOp3::Fminnm);
+/// One FMAX/FMIN/FMAXNM/FMINNM lane under FPCR: FZ reads denormal inputs as signed zero, DN turns any NaN result
+/// into the default NaN.
+fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, double: bool, fpcr: u32) -> u64 {
     let (fz, dn) = (fpcr & (1 << 24) != 0, fpcr & (1 << 25) != 0);
-    if !minmax || !(fz || dn) {
-        return fp_three_same(op, d, n, m, double, q);
-    }
-    let esize = if double { 64 } else { 32 };
-    let count = lanes(esize, q);
     let flush = |x: u64| -> u64 {
         if !fz {
             return x;
         }
         if double { if x & 0x7ff0_0000_0000_0000 == 0 { x & (1 << 63) } else { x } } else if x & 0x7f80_0000 == 0 { x & 0x8000_0000 } else { x }
     };
-    let is_nan = |x: u64| if double { f64::from_bits(x).is_nan() } else { f32::from_bits(x as u32).is_nan() };
-    let default_nan: u64 = if double { 0x7ff8_0000_0000_0000 } else { 0x7fc0_0000 };
+    let (a, b) = (flush(a), flush(b));
+    let r = if double { fp64::op3(op, acc, a, b) } else { fp32::op3(op, acc as u32, a as u32, b as u32) as u64 };
+    let nan = if double { f64::from_bits(r).is_nan() } else { f32::from_bits(r as u32).is_nan() };
+    if dn && nan { if double { 0x7ff8_0000_0000_0000 } else { 0x7fc0_0000 } } else { r }
+}
+
+/// `fp_three_same` honouring FPCR.FZ and FPCR.DN for FMAX/FMIN/FMAXNM/FMINNM and their pairwise forms.
+/// Other operations ignore FPCR, as before.
+pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
+    if !is_minmax(op) || fpcr & (3 << 24) == 0 {
+        return fp_three_same(op, d, n, m, double, q);
+    }
+    let esize = if double { 64 } else { 32 };
+    let count = lanes(esize, q);
     let mut out = 0u128;
     for i in 0..count {
-        let (a, b) = (flush(lane(n, esize, i)), flush(lane(m, esize, i)));
-        let mut r = if double { fp64::op3(op, lane(d, esize, i), a, b) } else { fp32::op3(op, lane(d, esize, i) as u32, a as u32, b as u32) as u64 };
-        if dn && is_nan(r) {
-            r = default_nan;
-        }
-        set_lane(&mut out, esize, i, r);
+        let (a, b) = fp_operands(op, n, m, esize, count, i);
+        set_lane(&mut out, esize, i, minmax_fpcr(op, lane(d, esize, i), a, b, double, fpcr));
     }
     out
+}
+
+/// `FMAXV`/`FMINV`/`FMAXNMV`/`FMINNMV` (4 singles) and scalar pairwise `FMAXP` etc. (2 lanes): `op` is the lane op
+/// (Fmax/Fmin/Fmaxnm/Fminnm). Like the ARM `Reduce` pseudocode this is a balanced tree, which fixes which NaN
+/// wins: (e0 op e1) op (e2 op e3). Returns the scalar result bits; the caller zeroes the rest of the register.
+pub fn fp_reduce_fpcr(op: SimdFpOp3, n: u128, double: bool, count: usize, fpcr: u32) -> u64 {
+    fn go(op: SimdFpOp3, n: u128, esize: u32, lo: usize, len: usize, double: bool, fpcr: u32) -> u64 {
+        if len == 1 {
+            return lane(n, esize, lo);
+        }
+        let half = len / 2;
+        let a = go(op, n, esize, lo, half, double, fpcr);
+        let b = go(op, n, esize, lo + half, half, double, fpcr);
+        minmax_fpcr(op, 0, a, b, double, fpcr)
+    }
+    go(op, n, if double { 64 } else { 32 }, 0, count, double, fpcr)
 }
 
 /// FP two-register misc. `FCVTN`/`FCVTL` are the double/single forms: `q` picks the upper half
@@ -1080,6 +1114,127 @@ mod fp_vector_tests {
         let nan = f32::from_bits(0xffc1_2345);
         assert_eq!(u4(fp_three_same(SimdFpOp3::Fmul, 0, f4([nan; 4]), f4([0.0; 4]), false, true)), [0xffc1_2345; 4]);
         assert_eq!(fp_three_same(SimdFpOp3::Fmulx, 0, n, m, false, true), f4([2.0; 4]));
+    }
+
+    const FZ: u32 = 1 << 24;
+    const DN: u32 = 1 << 25;
+    const MINMAX: [SimdFpOp3; 4] = [SimdFpOp3::Fmax, SimdFpOp3::Fmin, SimdFpOp3::Fmaxnm, SimdFpOp3::Fminnm];
+
+    fn d2(v: u128) -> [u64; 2] {
+        [lane(v, 64, 0), lane(v, 64, 1)]
+    }
+
+    /// The .2D vector form must follow FPCR exactly as the .4S form does (lane for lane).
+    #[test]
+    fn fmax_fmin_2d_honour_fz_and_dn() {
+        let den = f64::from_bits(1); // smallest denormal
+        let snan = f64::from_bits(0x7ff0_0000_0000_0001);
+        let qnan = f64::from_bits(0x7ff8_0000_0000_00aa);
+        let n = f2d([den, qnan]);
+        let m = f2d([-den, snan]);
+        // default FPCR: denormals compare as themselves, NaNs keep their payload (sNaN quieted)
+        assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fmax, 0, n, m, true, true, 0)), [den.to_bits(), snan.to_bits() | 1 << 51]);
+        assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fmin, 0, n, m, true, true, 0)), [(-den).to_bits(), snan.to_bits() | 1 << 51]);
+        // FZ: +den and -den read as +0 and -0, so FMAX is +0 and FMIN is -0
+        assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fmax, 0, n, m, true, true, FZ))[0], 0);
+        assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fmin, 0, n, m, true, true, FZ))[0], 1 << 63);
+        assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fmaxnm, 0, n, m, true, true, FZ))[0], 0);
+        assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fminnm, 0, n, m, true, true, FZ))[0], 1 << 63);
+        // DN: every NaN result is the default NaN, with or without FZ; non-NaN lanes are untouched
+        for fpcr in [DN, DN | FZ] {
+            for op in MINMAX {
+                assert_eq!(d2(fp_three_same_fpcr(op, 0, n, m, true, true, fpcr))[1], 0x7ff8_0000_0000_0000, "{op:?} {fpcr:#x}");
+            }
+        }
+        // FMAXNM/FMINNM with a quiet NaN returns the number even under DN
+        let r = fp_three_same_fpcr(SimdFpOp3::Fmaxnm, 0, f2d([qnan, 1.5]), f2d([2.5, qnan]), true, true, DN);
+        assert_eq!(d2(r), [2.5f64.to_bits(), 1.5f64.to_bits()]);
+        // ...and the FPCR path agrees with the plain path when neither bit is set
+        for op in MINMAX {
+            assert_eq!(fp_three_same_fpcr(op, 0, n, m, true, true, 0), fp_three_same(op, 0, n, m, true, true));
+        }
+    }
+
+    #[test]
+    fn fmaxp_fminp_pairwise_forms() {
+        let (nan, den) = (f32::NAN, f32::from_bits(1));
+        // 4S: result lanes 0,1 pair up n, lanes 2,3 pair up m
+        let n = f4([1.0, 5.0, -2.0, -7.0]);
+        let m = f4([0.0, -0.0, 9.0, 3.0]);
+        assert_eq!(u4(fp_three_same(SimdFpOp3::Fmaxp, 0, n, m, false, true)), f4u([5.0, -2.0, 0.0, 9.0]));
+        assert_eq!(u4(fp_three_same(SimdFpOp3::Fminp, 0, n, m, false, true)), f4u([1.0, -7.0, -0.0, 3.0]));
+        // 2S (Q=0): one pair from n, one from m
+        assert_eq!(u4(fp_three_same(SimdFpOp3::Fmaxp, 0, n, m, false, false))[..2], f4u([5.0, 0.0, 0.0, 0.0])[..2]);
+        // 2D: one pair from each source
+        let r = fp_three_same(SimdFpOp3::Fmaxp, 0, f2d([1.0, 2.0]), f2d([-4.0, -3.0]), true, true);
+        assert_eq!(d2(r), [2.0f64.to_bits(), (-3.0f64).to_bits()]);
+        // NaN: FMAXP propagates, FMAXNMP returns the number
+        let n = f4([nan, 1.0, nan, nan]);
+        let m = f4([1.0, 2.0, 3.0, 4.0]);
+        let r = u4(fp_three_same(SimdFpOp3::Fmaxp, 0, n, m, false, true));
+        assert!(f32::from_bits(r[0]).is_nan() && f32::from_bits(r[1]).is_nan() && f32::from_bits(r[2]) == 2.0 && f32::from_bits(r[3]) == 4.0);
+        assert_eq!(u4(fp_three_same(SimdFpOp3::Fmaxnmp, 0, n, m, false, true)), [1.0f32.to_bits(), nan_to(r[1]).to_bits(), 2.0f32.to_bits(), 4.0f32.to_bits()]);
+        // FPCR: FZ flushes pair inputs, DN canonicalises NaN pair results
+        let n = f4([den, -den, nan, 1.0]);
+        let r = u4(fp_three_same_fpcr(SimdFpOp3::Fmaxp, 0, n, m, false, true, FZ));
+        assert_eq!(r[0], 0); // max(+0, -0)
+        let r = u4(fp_three_same_fpcr(SimdFpOp3::Fminp, 0, n, m, false, true, FZ));
+        assert_eq!(r[0], 0x8000_0000); // min(+0, -0)
+        let r = u4(fp_three_same_fpcr(SimdFpOp3::Fmaxp, 0, f4([f32::from_bits(0x7f80_0001), 1.0, 0.0, 0.0]), m, false, true, DN));
+        assert_eq!(r[0], 0x7fc0_0000);
+    }
+
+    fn f4u(v: [f32; 4]) -> [u32; 4] {
+        v.map(f32::to_bits)
+    }
+    fn nan_to(bits: u32) -> f32 {
+        f32::from_bits(bits)
+    }
+
+    #[test]
+    fn fmaxv_fminv_tree_reduction_and_scalar_pairwise() {
+        let (nan, snan, den) = (f32::from_bits(0x7fc0_0000 | 0xaa), f32::from_bits(0x7f80_0001), f32::from_bits(1));
+        let red = |op, v: [f32; 4], fpcr| fp_reduce_fpcr(op, f4(v), false, 4, fpcr) as u32;
+        assert_eq!(red(SimdFpOp3::Fmax, [1.0, 9.0, -3.0, 4.0], 0), 9.0f32.to_bits());
+        assert_eq!(red(SimdFpOp3::Fmin, [1.0, 9.0, -3.0, 4.0], 0), (-3.0f32).to_bits());
+        // signed zeros: FMAX picks +0, FMIN picks -0 wherever they sit
+        assert_eq!(red(SimdFpOp3::Fmax, [-0.0, -0.0, -0.0, 0.0], 0), 0);
+        assert_eq!(red(SimdFpOp3::Fmin, [0.0, 0.0, 0.0, -0.0], 0), 0x8000_0000);
+        // a quiet NaN poisons FMAXV but FMAXNMV skips it (and only an all-NaN input is NaN)
+        assert_eq!(red(SimdFpOp3::Fmax, [1.0, nan, 3.0, 4.0], 0), nan.to_bits());
+        assert_eq!(red(SimdFpOp3::Fmaxnm, [1.0, nan, 3.0, 2.0], 0), 3.0f32.to_bits());
+        assert_eq!(red(SimdFpOp3::Fminnm, [nan, nan, 3.0, 2.0], 0), 2.0f32.to_bits());
+        assert_eq!(red(SimdFpOp3::Fmaxnm, [nan; 4], 0), nan.to_bits());
+        // tree order: (e0 op e1) op (e2 op e3), so the first quiet NaN of the lowest pair wins
+        let (nan2, nan3) = (f32::from_bits(0x7fc0_0001), f32::from_bits(0x7fc0_0002));
+        assert_eq!(red(SimdFpOp3::Fmax, [1.0, nan2, nan3, 0.0], 0), nan2.to_bits());
+        // a signalling NaN wins over a quiet NaN in the same pair and is quieted
+        assert_eq!(red(SimdFpOp3::Fmax, [nan, snan, 1.0, 0.0], 0), snan.to_bits() | 1 << 22);
+        // ...but in another pair it is already quieted by then, so the first quiet NaN wins
+        assert_eq!(red(SimdFpOp3::Fmax, [nan, 1.0, snan, 0.0], 0), nan.to_bits());
+        // FMAXNMV: the pair holding an sNaN yields a quiet NaN, which the next level of the tree then skips
+        assert_eq!(red(SimdFpOp3::Fmaxnm, [1.0, snan, 2.0, 3.0], 0), 3.0f32.to_bits());
+        // with every lane NaN the quieted sNaN (first pair) is what comes out
+        assert_eq!(red(SimdFpOp3::Fmaxnm, [snan, nan, nan, nan], 0), snan.to_bits() | 1 << 22);
+        // FZ: denormals read as zero, so the result is a signed zero rather than a denormal
+        assert_eq!(red(SimdFpOp3::Fmax, [den, den, den, den], FZ), 0);
+        assert_eq!(red(SimdFpOp3::Fmax, [den, den, den, den], 0), den.to_bits());
+        assert_eq!(red(SimdFpOp3::Fmin, [-den, den, 1.0, 1.0], FZ), 0x8000_0000);
+        // DN: NaN result is the default NaN, FMAXNMV's numeric result is not disturbed
+        assert_eq!(red(SimdFpOp3::Fmax, [1.0, nan, 3.0, 4.0], DN), 0x7fc0_0000);
+        assert_eq!(red(SimdFpOp3::Fmaxnm, [1.0, nan, 3.0, 2.0], DN), 3.0f32.to_bits());
+        assert_eq!(red(SimdFpOp3::Fmaxnm, [nan; 4], DN | FZ), 0x7fc0_0000);
+        // scalar pairwise FMAXP/FMINP/FMAXNMP Sd, Vn.2S and Dd, Vn.2D
+        let pair = |op, a: f32, b: f32, fpcr| fp_reduce_fpcr(op, f4([a, b, 0.0, 0.0]), false, 2, fpcr) as u32;
+        assert_eq!(pair(SimdFpOp3::Fmax, 1.0, 2.0, 0), 2.0f32.to_bits());
+        assert_eq!(pair(SimdFpOp3::Fmin, 1.0, nan.copysign(1.0), DN), 0x7fc0_0000);
+        assert_eq!(pair(SimdFpOp3::Fminnm, nan, 5.0, 0), 5.0f32.to_bits());
+        let dpair = |op, a: f64, b: f64, fpcr| fp_reduce_fpcr(op, f2d([a, b]), true, 2, fpcr);
+        let dden = f64::from_bits(1);
+        assert_eq!(dpair(SimdFpOp3::Fmax, -1.0, -2.0, 0), (-1.0f64).to_bits());
+        assert_eq!(dpair(SimdFpOp3::Fmax, dden, -dden, FZ), 0);
+        assert_eq!(dpair(SimdFpOp3::Fmax, f64::NAN, 1.0, DN), 0x7ff8_0000_0000_0000);
+        assert_eq!(dpair(SimdFpOp3::Fmaxnm, f64::NAN, 1.0, DN), 1.0f64.to_bits());
     }
 
     #[test]

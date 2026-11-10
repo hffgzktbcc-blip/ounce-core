@@ -656,6 +656,16 @@ pub enum Instruction {
 
     /// AdvSIMD two-register miscellaneous (compare against zero, `CNT`, `NOT`, `ABS`, `NEG`)
     /// AdvSIMD across lanes: reduces every lane of `Vn` into scalar `Vd`.
+    /// `FMAXV`/`FMINV`/`FMAXNMV`/`FMINNMV` (`Sd, Vn.4S`; `op` is the lane op: Fmax/Fmin/Fmaxnm/Fminnm) and the
+    /// scalar pairwise `FMAXP`/`FMINP`/`FMAXNMP`/`FMINNMP` (`Sd, Vn.2S` / `Dd, Vn.2D`), which reduce two lanes.
+    SimdFpReduce {
+        rd: u8,
+        rn: u8,
+        op: SimdFpOp3,
+        double: bool,
+        /// number of lanes reduced (2 or 4)
+        lanes: u8,
+    },
     SimdAcross {
         rd: u8,
         rn: u8,
@@ -1026,6 +1036,11 @@ pub enum SimdFpOp3 {
     Fmin,
     Fmaxnm,
     Fminnm,
+    /// Pairwise forms `FMAXP`/`FMINP`/`FMAXNMP`/`FMINNMP`: lane arithmetic as the non-pairwise op.
+    Fmaxp,
+    Fminp,
+    Fmaxnmp,
+    Fminnmp,
     Fcmeq,
     Fcmge,
     Fcmgt,

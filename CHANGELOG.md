@@ -5,6 +5,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 ## Unreleased
 
 ### Changed
+- New: `FMAXP`/`FMINP`/`FMAXNMP`/`FMINNMP` (vector, 2S/4S/2D), `FMAXV`/`FMINV`/`FMAXNMV`/`FMINNMV` (4S) and the scalar pairwise `FMAXP` family (`Sd, Vn.2S` / `Dd, Vn.2D`) are decoded and honour FPCR flush-to-zero and default-NaN like `FMAX`/`FMIN`; before they were undefined instructions. Unit tests also pin the `.2D` forms under FZ/DN. Half-precision (FP16) forms are still not decoded. Checked only against the ARM pseudocode (unit tests), not replayed on hardware.
 - CI: notices and provenance records under `tests/fixtures/` no longer trigger the Rust jobs; a run that fails only
   because hosted-runner jobs were cancelled is re-run once (`ci-rerun-infra.yml`, never for a real failure); an
   advisory job builds the Mac app bundle and checks a program through the bundled runtime.
