@@ -34,7 +34,10 @@ int qc_run_cases(FILE*o){
     d=acc;q=sqdmlsl_2s(&d,n,m);put(o,"sqdmlsl.2s",i,d,q);
   }
   sticky(o);
-  { uint64_t v; __asm__ volatile("msr fpsr, %1\n mrs %0, fpsr":"=r"(v):"r"((uint64_t)0xffffffffu)); fprintf(o,"fpsr write ffffffff reads %08x\n",(unsigned)v);
+  /* FPSR[31:28] (N,Z,C,V) exist only when FEAT_AA32 is implemented (AArch32 FPSCR flags); otherwise they are RES0.
+     Neoverse implements AArch32 and keeps them, Apple Silicon does not and reads 0, so both are architectural (issue #257).
+     Mask them: this checks QC and the cumulative bits, which every AArch64 CPU defines. */
+  { uint64_t v; __asm__ volatile("msr fpsr, %1\n mrs %0, fpsr":"=r"(v):"r"((uint64_t)0xffffffffu)); fprintf(o,"fpsr write ffffffff reads %08x\n",(unsigned)(v&0x0fffffffu));
     __asm__ volatile("msr fpsr, xzr"); }
   { uint64_t v; __asm__ volatile("mrs %0, fpcr":"=r"(v)); uint64_t w=v|0x01000000u; __asm__ volatile("msr fpcr, %0"::"r"(w)); uint64_t r; __asm__ volatile("mrs %0, fpcr":"=r"(r));
     fprintf(o,"fpcr roundtrip bit24=%d\n",(int)((r>>24)&1)); __asm__ volatile("msr fpcr, %0"::"r"(v)); }
