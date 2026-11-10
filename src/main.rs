@@ -7,6 +7,7 @@ mod audio;
 mod census;
 mod cpu;
 mod crypto;
+mod diverge;
 mod fs;
 mod fuzz_replay;
 mod gpu;
@@ -16,6 +17,7 @@ mod lab;
 mod linux;
 mod loader;
 mod mmu;
+mod trace;
 mod ui;
 
 use cpu::{Cpu, StepResult};
@@ -93,6 +95,9 @@ fn main() {
         }
         "info" | "--info" | "-v" | "--version" | "specs" => {
             print_specs();
+        }
+        "diverge" => {
+            std::process::exit(diverge::run_cli(&args[2..]));
         }
         "ui" | "lab" => {
             print_banner();
@@ -321,6 +326,7 @@ fn print_usage() {
     println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
     println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
     println!("    {}replay-instruction{} <bundle>  Check retained instruction bytes and re-execute the recorded case", s.green, s.reset);
+    println!("    {}diverge{} <prog.nro>            Replay the program's instructions on this machine's CPU and name the first disagreement (AArch64 hosts)", s.green, s.reset);
     println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
     println!("    {}run-nro{} <file> [args] [--gui]  Load and execute only a homebrew NRO", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
@@ -632,6 +638,9 @@ fn run_vm_internal(
     if let Some(e) = &engine {
         println!("[CPU] Block engine: {}", e.name());
     }
+    // `OUNCE_TRACE=<file>` records register-only instructions for `ounce-core diverge`; it follows the
+    // one-instruction interpreter, so it is ignored when a block engine is selected.
+    let mut tracer = if engine.is_none() { trace::Tracer::from_env() } else { None };
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -659,7 +668,20 @@ fn run_vm_internal(
                     _ => (Ok(StepResult::Continue), count),
                 }
             }
-            None => (cpu.step(&mut mmu).map_err(|e| e.to_string()), 1),
+            None => {
+                let traced = match tracer.as_mut() {
+                    Some(t) => {
+                        let pc = cpu.regs.pc;
+                        mmu.read_u32(pc).ok().and_then(|raw| t.pre(&cpu, raw).map(|pre| (raw, pc, pre)))
+                    }
+                    None => None,
+                };
+                let step_result = cpu.step(&mut mmu);
+                if let (Some(t), Some((raw, pc, pre)), Ok(StepResult::Continue)) = (tracer.as_mut(), traced, &step_result) {
+                    t.post(&cpu, raw, pc, pre);
+                }
+                (step_result.map_err(|e| e.to_string()), 1)
+            }
         };
         match stepped {
             Ok(StepResult::Continue) => {
@@ -811,6 +833,9 @@ fn run_vm_internal(
                 break;
             }
         }
+    }
+    if let Some(t) = tracer.as_mut() {
+        t.finish();
     }
 
     let elapsed = start.elapsed();
