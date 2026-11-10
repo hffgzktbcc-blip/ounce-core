@@ -33,8 +33,9 @@ number of otherwise-matching cases whose flags differ is reported. The compariso
 - Words every engine reports `unsupported`: half-precision arithmetic, `FRECPE/FRECPS/FRSQRTE/FRSQRTS/FRECPX`, scalar
   `FMULX`, scalar and vector `FADDP`, vector `FRINT*`, vector `FCVT{N,M,A,P}{S,U}`, `FCVT` to/from half. The full list is
   `words_always_unsupported` in `summary.json`.
-- FPCR rounding mode, FZ and DN are not modelled for ordinary arithmetic (documented in `docs/LIMITS.md`; only the min/max
-  families honour FZ/DN). Every non-default FPCR mismatch in the table is this known gap, not a new finding.
+- FPCR RMode, FZ and DN are modelled for scalar and vector add/sub/mul/div/fused multiply-add/sqrt, FRINT*, FCVT between
+  single and double, SCVTF/UCVTF/FCVTZ*, and compares (`src/cpu/softfp.rs`, #363). A mismatch at any FPCR value in the
+  table is a finding. Not modelled: FZ16 and half-precision arithmetic, FPSR exception flags and trap enables.
 
 ## Results
 Only runs whose provenance is recorded count. This section lists what was actually run; hardware numbers come from the CI artifacts.
@@ -53,7 +54,12 @@ After the fix, at default FPCR: interpreter and Tier-3 0 mismatches in 32,628 ex
 Tier-4 on this x86_64 host first returned the host's negative default NaN and the host's NaN operand choice for scalar
 `FADD/FSUB/FMUL/FDIV/FNMUL` (96 cases at default FPCR; this also broke the existing `random_linked_loops` test once the
 interpreter was fixed). The Cranelift lowering now rewrites NaN results to the Arm rule on non-AArch64 hosts only (AArch64
-uses the native instruction unchanged), and Tier-4 then matches the interpreter on all 389,556 cases. Non-default FPCR: 36,941 interpreter mismatches (the unmodelled-mode gap above).
+uses the native instruction unchanged), and Tier-4 then matches the interpreter on all 389,556 cases. Non-default FPCR: 36,941 interpreter mismatches before #363.
+
+**After #363 (same qemu-user setup, same corpus):** interpreter, Tier-3 and Tier-4 each show 0 mismatches over all nine
+FPCR values (293,652 executed cases per engine, 95,904 unsupported). Tier-4 runs translated blocks only with the default
+FPCR; with RMode, FZ or DN set it hands execution to the soft-float interpreter path, so its non-default column checks that
+hand-off rather than separate compiled code.
 
 **Real hardware, CI run 42877863247 on commit de2b909 (artifacts `fp-edge-evidence-ubuntu-24.04-arm` and `-macos-latest`):**
 Linux Arm runner (aarch64, Azure) and Apple M1 (virtual) give the same table. Each engine ran 389,556 cases: default FPCR

@@ -1217,6 +1217,18 @@ impl Tier4JitEngine {
         let mut result = BlockExit::BudgetExceeded;
         while executed < max_instructions {
             self.sync_code_writes(mmu);
+            // Compiled FP arithmetic uses the host's round-to-nearest, no-flush, propagating-NaN behaviour. With
+            // FPCR.RMode, FZ or DN set the interpreter's soft-float path is the reference, and translated blocks
+            // cannot change FPCR themselves (MSR is not translated), so checking here is enough.
+            if cpu.regs.fpcr & crate::cpu::softfp::FPCR_ARITH_MASK != 0 {
+                let (n, exit) = self.run_fallback(cpu, mmu);
+                executed += n;
+                if let Some(exit) = exit {
+                    result = exit;
+                    break;
+                }
+                continue;
+            }
             let (n, exit) = match self.run_native(cpu, mmu, max_instructions - executed) {
                 Some((n, exit, false)) => (n, exit),
                 Some((n, None, true)) => {
@@ -1384,6 +1396,37 @@ mod tests {
         mmu.read_bytes(DATA, &mut buf).unwrap();
         m.write_bytes(DATA, &buf).unwrap();
         (c, m)
+    }
+
+    /// A hot FADD loop that would be compiled must still see FPCR.RMode (#363): translated code only runs with the
+    /// default FPCR, otherwise Tier-4 hands the block to the interpreter's soft-float path.
+    #[test]
+    fn hot_fp_loop_honours_fpcr_rounding_mode() {
+        let words = [
+            0xd51b4408, // msr fpcr, x8
+            0x1e212800, // loop: fadd s0, s0, s1
+            0xf1000442, // subs x2, x2, #1
+            0x54ffffc1, // b.ne loop
+            0xd4000001, // svc #0
+        ];
+        for (fpcr, want) in [(0u64, 0x3f80_0000u128), (1 << 22, 0x3f80_0000 + 200)] {
+            let init = |c: &mut Cpu| {
+                c.regs.write_x(8, fpcr);
+                c.regs.write_x(2, 200);
+                c.regs.write_q(0, 0x3f80_0000);
+                c.regs.write_q(1, 1);
+            };
+            let (mut cpu, mmu) = setup(&words);
+            init(&mut cpu);
+            let (c, m) = clone(&cpu, &mmu);
+            let reference = run_interp(c, m, 100_000);
+            assert_eq!(reference.v[0], want, "interpreter, fpcr {fpcr:#x}");
+            let (t4, engine) = run_tier4(cpu, mmu, 100_000);
+            assert_eq!(t4, reference, "Tier-4, fpcr {fpcr:#x}");
+            if fpcr == 0 {
+                assert!(engine.native_insns > 0, "the default-FPCR loop should run natively");
+            }
+        }
     }
 
     /// FPSR.QC is set by a saturating op that Tier-3/4 hand to the interpreter, stays set, and clears on `msr`.
