@@ -7,6 +7,7 @@ pub mod pauth;
 pub mod jit_cache;
 pub mod registers;
 pub mod simd;
+pub mod softfp;
 pub mod tier2_jit;
 pub mod tier3_jit;
 #[cfg(feature = "native-jit")]

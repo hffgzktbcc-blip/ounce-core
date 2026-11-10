@@ -3,7 +3,7 @@
 
 usage: summarize.py OUTDIR            (OUTDIR holds words.txt, trace.gz, results-<engine>.tsv, meta.json)
 Writes OUTDIR/summary.json and OUTDIR/summary.md. Exit status: 0, or 1 when the gate fails (any engine that ran
-shows a value mismatch with FPCR = 0, the modelled default mode, or no case was compared). Pure standard library.
+shows a value mismatch at any corpus FPCR value, or no case was compared). Pure standard library.
 """
 import collections, gzip, json, pathlib, sys
 
@@ -73,7 +73,8 @@ def main(out):
             "first_divergence_default_fpcr": first_default and {"trace_line": first_default[0], "name": names.get(first_default[2]),
                                                                   "detail": first_default[5], "operands": operands(trace, first_default)},
         }
-        if first_default or not rows:
+        # every FPCR value is modelled now (RMode, FZ, DN): a mismatch at any of them fails the gate
+        if first_any or not rows:
             gate_ok = False
     base = data.get("interp")
     for e in ENGINES[1:]:
@@ -83,7 +84,7 @@ def main(out):
             summary["vs_interp"][e] = {"differing_cases": len(diff),
                                        "first": first and {"trace_line": first[0][0], "name": names.get(first[0][2]), "fpcr": hex(first[0][1]),
                                                            "interp": [first[0][3], first[0][5]], e: [first[1][3], first[1][5]]}}
-    summary["gate"] = {"rule": "no value mismatch at FPCR=0 on any engine that ran, and at least one case compared", "passed": gate_ok}
+    summary["gate"] = {"rule": "no value mismatch at any FPCR value on any engine that ran, and at least one case compared", "passed": gate_ok}
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
     md = [f"# FP edge-case experiment: {meta.get('reference_kind')}", "",
