@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope": "Legacy committed NRO inventory. Hash registration does not establish permission.",
+  "scope": "Legacy committed NRO inventory. Owner-directed review on 2026-11-10; not a specialist legal opinion and not a grant from any third party.",
   "fixtures": [
     {
       "path": "tests/fixtures/nro/audren/audren.nro",
@@ -12,11 +12,13 @@
         "tests/fixtures/nro/audren/README.md": "90b2510ad6c9568b54a60514df9635c5dd2e14e9dd13b635d51ac4a72b4a33e2",
         "tests/fixtures/nro/audren/main.c": "35c206c5d3d485c54a4c5d28e1c55d852e5f16bd1d505d798c47241e30188789"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md",
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     },
     {
       "path": "tests/fixtures/nro/deko3d/deko3d.nro",
@@ -29,11 +31,13 @@
         "tests/fixtures/nro/deko3d/tri_fsh.glsl": "34f4d93c07ab79ea7ddf659bf2b3d9948c071c64dbcad5ad87830a4dc7f494bb",
         "tests/fixtures/nro/deko3d/tri_vsh.glsl": "e3f8e913530e7abeef9809ae048743b967a4771818c75a3f93cff61253b49584"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": null,
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     },
     {
       "path": "tests/fixtures/nro/gpu/gpu.nro",
@@ -45,11 +49,13 @@
         "tests/fixtures/nro/gpu/README.md": "7b934cbebc239327d4742fa1d4f0f8680123982b1df6856bc003457e44eb1f31",
         "tests/fixtures/nro/gpu/main.c": "ff2b40841726061d1cd286770637b49c07517b80c710290c58c6a88b2e5d86e8"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md",
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     },
     {
       "path": "tests/fixtures/nro/hello/hello.nro",
@@ -61,11 +67,13 @@
         "tests/fixtures/nro/hello/README.md": "0b51159f9b3723f6afcfcaa2a38579f89d1a7dc6663b9a7f0d447a962ff9f494",
         "tests/fixtures/nro/hello/main.c": "cc256c9e0eb75783f88456d5aeaa3dddbecd51609b22c0d23a7a93174a1bab8e"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md",
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     },
     {
       "path": "tests/fixtures/nro/input/input.nro",
@@ -77,11 +85,13 @@
         "tests/fixtures/nro/input/README.md": "7e3fc2af325c787ed565821b44150ef522998d799bfc7ef009e213f836643b47",
         "tests/fixtures/nro/input/main.c": "112b74e9c5c8e0f4910376dc6c2d770270e33e56dd40b1257b1d1d81a318d572"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md",
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     },
     {
       "path": "tests/fixtures/nro/input_multi/input_multi.nro",
@@ -93,11 +103,13 @@
         "tests/fixtures/nro/input_multi/README.md": "51e0c280763b0896b903b941a03e8adec30cfaac1a7e78a28dcdff8071518155",
         "tests/fixtures/nro/input_multi/main.c": "4a4b4e364a6577e5547570b262016f5e08fa4cb7fcac57bcb65886b04f04090d"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": null,
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     },
     {
       "path": "tests/fixtures/nro/nvdrv/nvdrv.nro",
@@ -109,11 +121,13 @@
         "tests/fixtures/nro/nvdrv/README.md": "6f716268252e28473c740bc94c71604fbf5f91fcdda3c8e10a04246ff80c5b2d",
         "tests/fixtures/nro/nvdrv/main.c": "d35ccc0b53463cada5f9d4cdd32337c6dc8a66c8dcbca95346fb55716afada00"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md",
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     },
     {
       "path": "tests/fixtures/nro/romfs/romfs.nro",
@@ -127,11 +141,13 @@
         "tests/fixtures/nro/romfs/main.c": "aea105bfdd96da2d8f974823e2a25bfc329da0486c5258b7d8764454327c0703",
         "tests/fixtures/nro/romfs/romfs/greeting.txt": "d44f68017b98804930d7209b876374a7ef647ca0cd80a548c0e7baabd28cc3bb"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md",
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     },
     {
       "path": "tests/fixtures/nro/sdmc/sdmc.nro",
@@ -143,11 +159,13 @@
         "tests/fixtures/nro/sdmc/README.md": "e5958d2597d940c0be548aeb24817139399158d13650ab8143661b307e9c51fc",
         "tests/fixtures/nro/sdmc/main.c": "12767f868c721730b77e0a5bd6fca2a84329cc90f20cdc15a3e787dbdcff7b62"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": null,
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     },
     {
       "path": "tests/fixtures/nro/services/services.nro",
@@ -159,11 +177,13 @@
         "tests/fixtures/nro/services/README.md": "69f6604ba17d2a9d465c48426af4d13f277a269bc189b573b66ac228f8c1ebfa",
         "tests/fixtures/nro/services/main.c": "895784971d903f1e4f13d143ebf7d22bab01c502a49d858710ffb32185425f95"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md",
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     },
     {
       "path": "tests/fixtures/nro/threads/threads.nro",
@@ -175,11 +195,13 @@
         "tests/fixtures/nro/threads/README.md": "209445e221df338f303b8c4037c45fe59c811ae19c24c423e14df9460841f531",
         "tests/fixtures/nro/threads/main.c": "d2b44d13b959470b5ab722858e646435423cd1068693ebf3479f717d47bbcfcb"
       },
-      "review_status": "UNVERIFIED",
-      "source_origin": null,
-      "licence_evidence": null,
-      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md",
-      "binary_component_review": null
+      "review_status": "VERIFIED",
+      "source_origin": "Project-written C source in this folder (main.c, Makefile, README); single project committer, no third-party notices in the sources. Owner-attested.",
+      "licence_evidence": "Project MIT licence for the source; linked components per tests/fixtures/nro/NOTICES.md",
+      "toolchain_evidence": "tests/fixtures/nro/TOOLCHAIN_VERSIONS.md and tests/fixtures/rebuild-evidence.json",
+      "binary_component_review": "tests/fixtures/nro/NOTICES.md (libnx ISC, newlib, libgcc runtime exception)",
+      "reviewer": "Project owner (hffgzktbcc-blip)",
+      "review_date": "2026-11-10"
     }
   ]
 }
