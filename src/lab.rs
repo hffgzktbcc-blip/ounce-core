@@ -291,6 +291,20 @@ fn run_engine(exe: &Path, nro: &Path, work: &Path, engine: &str, budget: u64, ti
 
 const CONSOLE: &str = "(guest console output)";
 
+/// Replays sampled register-only instructions on this CPU (`ounce-core diverge`). Null when it could not run.
+fn instruction_check(exe: &Path, nro: &Path, work: &Path) -> Value {
+    let report = work.join("diverge.json");
+    let out = Command::new(exe).arg("diverge").arg(nro).arg("--json").arg(&report)
+        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    let parsed = std::fs::read_to_string(&report).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+    match (out, parsed) {
+        (Ok(_), Some(r)) => json!({
+            "checked": r["checked"], "mismatched": r["mismatched"], "first": r["mismatches"].get(0).cloned().unwrap_or(Value::Null),
+        }),
+        _ => Value::Null,
+    }
+}
+
 fn label(engine: &str) -> &'static str {
     match engine {
         "tier3" => "Tier-3",
@@ -439,11 +453,12 @@ impl Lab {
                     .collect();
                 handles.into_iter().filter_map(|h| h.join().ok()).collect()
             });
-            let result = json!({"engines": runs.iter().map(EngineRun::to_json).collect::<Vec<_>>(), "verdict": verdict(&runs), "status": "done"});
+            let instructions = if native { instruction_check(&lab.exe, &nro, &work) } else { Value::Null };
+            let result = json!({"engines": runs.iter().map(EngineRun::to_json).collect::<Vec<_>>(), "verdict": verdict(&runs), "instructions": instructions, "status": "done"});
             let _ = std::fs::write(work.join("result.json"), serde_json::to_vec_pretty(&result).unwrap_or_default());
             let mut checks = lab.checks.lock().unwrap();
             if let Some((_, value)) = checks.iter_mut().find(|(i, _)| *i == check_id) {
-                for key in ["engines", "verdict", "status"] {
+                for key in ["engines", "verdict", "instructions", "status"] {
                     value[key] = result[key].clone();
                 }
             }
