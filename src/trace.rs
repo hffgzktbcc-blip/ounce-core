@@ -70,13 +70,15 @@ pub struct Tracer {
     out: std::io::BufWriter<std::fs::File>,
     seen: HashMap<u32, u64>,
     pub records: u64,
+    /// Sampled executions dropped because the engine ran more than one instruction in the slice.
+    pub skipped: u64,
 }
 
 impl Tracer {
     pub fn from_env() -> Option<Tracer> {
         let path = std::env::var("OUNCE_TRACE").ok().filter(|p| !p.is_empty())?;
         let file = std::fs::File::create(&path).map_err(|e| eprintln!("[Trace] cannot create {path}: {e}")).ok()?;
-        Some(Tracer { out: std::io::BufWriter::new(file), seen: HashMap::new(), records: 0 })
+        Some(Tracer { out: std::io::BufWriter::new(file), seen: HashMap::new(), records: 0, skipped: 0 })
     }
 
     /// Call before stepping: returns the pre-state when this execution is to be recorded.
@@ -87,6 +89,15 @@ impl Tracer {
         let n = self.seen.entry(raw).or_insert(0);
         *n += 1;
         (*n <= 4 || n.is_power_of_two()).then(|| State::capture(cpu))
+    }
+
+    /// A block engine ran more than the one traced instruction, so no single-instruction record exists.
+    /// Give the sample back so the opcode's next execution is sampled instead.
+    pub fn skip(&mut self, raw: u32) {
+        if let Some(n) = self.seen.get_mut(&raw) {
+            *n = n.saturating_sub(1);
+        }
+        self.skipped += 1;
     }
 
     /// Call after a step that completed normally.
@@ -102,6 +113,9 @@ impl Tracer {
     pub fn finish(&mut self) {
         let _ = self.out.flush();
         eprintln!("[Trace] {} records written", self.records);
+        if self.skipped > 0 {
+            eprintln!("[Trace] {} sampled instructions skipped: the engine ran several instructions in one slice", self.skipped);
+        }
     }
 }
 
