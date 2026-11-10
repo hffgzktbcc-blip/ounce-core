@@ -1,0 +1,178 @@
+enc ct=0 bd=1 1x1 kind=0 filter=0 il=0 btype=2 lz77=1 win=2048 -> err=0 size=75 hash=21b9a9a431e7150a dec=ok rgba8=ok:4d25077f9dcd5758
+enc ct=0 bd=1 6x12 kind=1 filter=1 il=1 btype=2 lz77=1 win=2048 -> err=0 size=103 hash=6d6387429797758a dec=ok rgba8=ok:9ae0df2d42f9f03d
+enc ct=0 bd=1 11x23 kind=2 filter=2 il=0 btype=2 lz77=1 win=2048 -> err=0 size=137 hash=b25d7e2bbe6c4bb2 dec=ok rgba8=ok:03fc88da7386c260
+enc ct=0 bd=1 16x5 kind=3 filter=3 il=1 btype=2 lz77=1 win=2048 -> err=0 size=93 hash=e309e19736c5f835 dec=ok rgba8=ok:0c2901eaefa1ffa5
+enc ct=0 bd=1 21x16 kind=4 filter=4 il=0 btype=2 lz77=1 win=2048 -> err=0 size=140 hash=fe83dd425b59f9d0 dec=ok rgba8=ok:b05dc30900b2ebf5
+enc ct=0 bd=2 8x4 kind=0 filter=1 il=1 btype=2 lz77=1 win=2048 -> err=0 size=77 hash=a5f2219b5c6279a8 dec=ok rgba8=ok:f808c319bf3bc825
+enc ct=0 bd=2 13x15 kind=1 filter=2 il=0 btype=2 lz77=1 win=2048 -> err=0 size=157 hash=ad37ef0f6bb58088 dec=ok rgba8=ok:72828b1a6c536a81
+enc ct=0 bd=2 18x26 kind=2 filter=3 il=1 btype=2 lz77=1 win=2048 -> err=0 size=259 hash=4e903fc5b3993bc3 dec=ok rgba8=ok:d6c845a26317506c
+enc ct=0 bd=2 23x8 kind=3 filter=4 il=0 btype=2 lz77=1 win=2048 -> err=0 size=103 hash=9a5d9650451d6e5e dec=ok rgba8=ok:4debd8e2b18c607d
+enc ct=0 bd=2 28x19 kind=4 filter=5 il=1 btype=2 lz77=1 win=2048 -> err=0 size=214 hash=08e3d5d538be702c dec=ok rgba8=ok:c909681f486c0fcf
+enc ct=0 bd=4 15x7 kind=0 filter=2 il=0 btype=2 lz77=1 win=2048 -> err=0 size=78 hash=463b6fed78846e3d dec=ok rgba8=ok:ff32c3c72513ad18
+enc ct=0 bd=4 20x18 kind=1 filter=3 il=1 btype=2 lz77=1 win=2048 -> err=0 size=259 hash=e4f75298eb9149f0 dec=ok rgba8=ok:cc7795f0bb6e67df
+enc ct=0 bd=4 25x29 kind=2 filter=4 il=0 btype=2 lz77=1 win=2048 -> err=0 size=521 hash=012fde88f864153b dec=ok rgba8=ok:627edfafda124d15
+enc ct=0 bd=4 30x11 kind=3 filter=5 il=1 btype=2 lz77=1 win=2048 -> err=0 size=128 hash=2e51fe77f8e3e7ea dec=ok rgba8=ok:698a63f7433a92d7
+enc ct=0 bd=4 35x22 kind=4 filter=6 il=0 btype=2 lz77=1 win=2048 -> err=0 size=431 hash=279e92bf11d8389c dec=ok rgba8=ok:3b8584a9f1ab6959
+enc ct=0 bd=8 22x10 kind=0 filter=3 il=1 btype=2 lz77=1 win=2048 -> err=0 size=90 hash=f36c6880eeeea6c6 dec=ok rgba8=ok:6d82e58a6dd6b185
+enc ct=0 bd=8 27x21 kind=1 filter=4 il=0 btype=2 lz77=1 win=2048 -> err=0 size=89 hash=eafcc141bc3efe82 dec=ok rgba8=ok:4b5e2f927589a24b
+enc ct=0 bd=8 32x3 kind=2 filter=5 il=1 btype=2 lz77=1 win=2048 -> err=0 size=204 hash=3d7ec386cc38e641 dec=ok rgba8=ok:613049a2f3f2235b
+enc ct=0 bd=8 37x14 kind=3 filter=6 il=0 btype=2 lz77=1 win=2048 -> err=0 size=113 hash=0d378234d0a429fb dec=ok rgba8=ok:f0089494f99c0575
+enc ct=0 bd=8 5x25 kind=4 filter=0 il=1 btype=2 lz77=1 win=2048 -> err=0 size=185 hash=ce3f0fec178f44c1 dec=ok rgba8=ok:e34296b690b9e08b
+enc ct=0 bd=16 29x13 kind=0 filter=4 il=0 btype=2 lz77=1 win=2048 -> err=0 size=86 hash=d163803b30f9065f dec=ok rgba8=ok:582c4a9e29f75c98
+enc ct=0 bd=16 34x24 kind=1 filter=5 il=1 btype=2 lz77=1 win=2048 -> err=0 size=176 hash=17ec7a1759136c28 dec=ok rgba8=ok:53221b09315b6a85
+enc ct=0 bd=16 2x6 kind=2 filter=6 il=0 btype=2 lz77=1 win=2048 -> err=0 size=114 hash=b5320bd784b15ebe dec=ok rgba8=ok:2ab33eec9614d722
+enc ct=0 bd=16 7x17 kind=3 filter=0 il=1 btype=2 lz77=1 win=2048 -> err=0 size=121 hash=d20a110f2b9ff14b dec=ok rgba8=ok:472b9cb80c1b42f0
+enc ct=0 bd=16 12x28 kind=4 filter=1 il=0 btype=2 lz77=1 win=2048 -> err=0 size=412 hash=e05ba2572343ae86 dec=ok rgba8=ok:5b369c91b9e86f74
+enc ct=2 bd=8 36x16 kind=0 filter=5 il=1 btype=2 lz77=1 win=2048 -> err=0 size=81 hash=ee4edeb38248a069 dec=ok rgba8=ok:69306b3993a9bd25
+enc ct=2 bd=8 4x27 kind=1 filter=6 il=0 btype=2 lz77=1 win=2048 -> err=0 size=91 hash=af3b15f27f53a9ff dec=ok rgba8=ok:38ccb5ba5f189275
+enc ct=2 bd=8 9x9 kind=2 filter=0 il=1 btype=2 lz77=1 win=2048 -> err=0 size=370 hash=318c119ade258659 dec=ok rgba8=ok:a6cc17b5cc577dbd
+enc ct=2 bd=8 14x20 kind=3 filter=1 il=0 btype=2 lz77=1 win=2048 -> err=0 size=110 hash=195e9eac216f0046 dec=ok rgba8=ok:96fe5957d09b0665
+enc ct=2 bd=8 19x2 kind=4 filter=2 il=1 btype=2 lz77=1 win=2048 -> err=0 size=199 hash=0b8797618e31018c dec=ok rgba8=ok:c4f745126f8ecd9a
+enc ct=2 bd=16 6x19 kind=0 filter=6 il=0 btype=2 lz77=1 win=2048 -> err=0 size=80 hash=100be9f81b4bd6c6 dec=ok rgba8=ok:d9ebd87c5302e9f5
+enc ct=2 bd=16 11x1 kind=1 filter=0 il=1 btype=2 lz77=1 win=2048 -> err=0 size=163 hash=5488a880a59f7a42 dec=ok rgba8=ok:60f307e665da5e18
+enc ct=2 bd=16 16x12 kind=2 filter=1 il=0 btype=2 lz77=1 win=2048 -> err=0 size=1282 hash=b7a269b3d67ffc73 dec=ok rgba8=ok:c3d8038783415855
+enc ct=2 bd=16 21x23 kind=3 filter=2 il=1 btype=2 lz77=1 win=2048 -> err=0 size=175 hash=7528d2286276cea4 dec=ok rgba8=ok:a14e8636bb486c50
+enc ct=2 bd=16 26x5 kind=4 filter=3 il=0 btype=2 lz77=1 win=2048 -> err=0 size=573 hash=38994e2db2c4b808 dec=ok rgba8=ok:0f21f9c3e8b1132c
+enc ct=3 bd=1 13x22 kind=0 filter=0 il=1 btype=2 lz77=1 win=2048 -> err=0 size=110 hash=5510da60aef74090 dec=ok rgba8=ok:2a61ce3cd726b015
+enc ct=3 bd=1 18x4 kind=1 filter=1 il=0 btype=2 lz77=1 win=2048 -> err=0 size=121 hash=2e5cdcc75ba68b5a dec=ok rgba8=ok:a6742e37da02a4c5
+enc ct=3 bd=1 23x15 kind=2 filter=2 il=1 btype=2 lz77=1 win=2048 -> err=0 size=187 hash=a634d37f5536b79a dec=ok rgba8=ok:457be12542141425
+enc ct=3 bd=1 28x26 kind=3 filter=3 il=0 btype=2 lz77=1 win=2048 -> err=0 size=142 hash=1da0170f9c336886 dec=ok rgba8=ok:3ebed9357e801812
+enc ct=3 bd=1 33x8 kind=4 filter=4 il=1 btype=2 lz77=1 win=2048 -> err=0 size=160 hash=59128b4620c18534 dec=ok rgba8=ok:2606d9e861e3bed5
+enc ct=3 bd=2 20x25 kind=0 filter=1 il=0 btype=2 lz77=1 win=2048 -> err=0 size=116 hash=f08d5c02090c1f5e dec=ok rgba8=ok:6c1249622971e2c5
+enc ct=3 bd=2 25x7 kind=1 filter=2 il=1 btype=2 lz77=1 win=2048 -> err=0 size=178 hash=5cc5b510c014a4a9 dec=ok rgba8=ok:02bb7472e14c854f
+enc ct=3 bd=2 30x18 kind=2 filter=3 il=0 btype=2 lz77=1 win=2048 -> err=0 size=308 hash=de4ce60883801f58 dec=ok rgba8=ok:e6a711bdab6535ae
+enc ct=3 bd=2 35x29 kind=3 filter=4 il=1 btype=2 lz77=1 win=2048 -> err=0 size=253 hash=741e747b47329174 dec=ok rgba8=ok:11020e0e5992e6a9
+enc ct=3 bd=2 3x11 kind=4 filter=5 il=0 btype=2 lz77=1 win=2048 -> err=0 size=132 hash=23d9b8136dcf712d dec=ok rgba8=ok:ed11e5d511f45b00
+enc ct=3 bd=4 27x28 kind=0 filter=2 il=1 btype=2 lz77=1 win=2048 -> err=0 size=154 hash=0103f0c31fa9b014 dec=ok rgba8=ok:5eaf2fb24061aac5
+enc ct=3 bd=4 32x10 kind=1 filter=3 il=0 btype=2 lz77=1 win=2048 -> err=0 size=248 hash=8868f5052197724d dec=ok rgba8=ok:607e488a705a825c
+enc ct=3 bd=4 37x21 kind=2 filter=4 il=1 btype=2 lz77=1 win=2048 -> err=0 size=623 hash=f8da2fb5c49aeb8c dec=ok rgba8=ok:cd89e9e7e635d64d
+enc ct=3 bd=4 5x3 kind=3 filter=5 il=0 btype=2 lz77=1 win=2048 -> err=0 size=159 hash=0432d00839830482 dec=ok rgba8=ok:65462ffafd946715
+enc ct=3 bd=4 10x14 kind=4 filter=6 il=1 btype=2 lz77=1 win=2048 -> err=0 size=235 hash=ca89774cfdc45b54 dec=ok rgba8=ok:91cb5a9fb9c64c78
+enc ct=3 bd=8 34x2 kind=0 filter=3 il=0 btype=2 lz77=1 win=2048 -> err=0 size=152 hash=45e32329988c6627 dec=ok rgba8=ok:b45f9b582e050545
+enc ct=3 bd=8 2x13 kind=1 filter=4 il=1 btype=2 lz77=1 win=2048 -> err=0 size=174 hash=81dce7147f849929 dec=ok rgba8=ok:197b402940f5819c
+enc ct=3 bd=8 7x24 kind=2 filter=5 il=0 btype=2 lz77=1 win=2048 -> err=0 size=250 hash=0dd992841d30b983 dec=ok rgba8=ok:c25194f7756be00d
+enc ct=3 bd=8 12x6 kind=3 filter=6 il=1 btype=2 lz77=1 win=2048 -> err=0 size=159 hash=8f3bd21288508486 dec=ok rgba8=ok:4c6304f3aa4e4d25
+enc ct=3 bd=8 17x17 kind=4 filter=0 il=0 btype=2 lz77=1 win=2048 -> err=0 size=311 hash=50dbbb754490514a dec=ok rgba8=ok:59f602be4da549e1
+enc ct=4 bd=8 4x5 kind=0 filter=4 il=1 btype=2 lz77=1 win=2048 -> err=0 size=84 hash=5b4aab045b21bdad dec=ok rgba8=ok:f14b84b8290b8965
+enc ct=4 bd=8 9x16 kind=1 filter=5 il=0 btype=2 lz77=1 win=2048 -> err=0 size=88 hash=27cc9a84fb8acc91 dec=ok rgba8=ok:199fcb0ee241f695
+enc ct=4 bd=8 14x27 kind=2 filter=6 il=1 btype=2 lz77=1 win=2048 -> err=0 size=922 hash=e8a62e1dc850e0d1 dec=ok rgba8=ok:4cf41433a4651ca4
+enc ct=4 bd=8 19x9 kind=3 filter=0 il=0 btype=2 lz77=1 win=2048 -> err=0 size=98 hash=484fa1be74fba6df dec=ok rgba8=ok:a94df0c0e769e915
+enc ct=4 bd=8 24x20 kind=4 filter=1 il=1 btype=2 lz77=1 win=2048 -> err=0 size=588 hash=447207e393c52884 dec=ok rgba8=ok:66edbf2f1a925cae
+enc ct=4 bd=16 11x8 kind=0 filter=5 il=0 btype=2 lz77=1 win=2048 -> err=0 size=79 hash=709291dd06d5cc69 dec=ok rgba8=ok:9e75518fa8bfeea5
+enc ct=4 bd=16 16x19 kind=1 filter=6 il=1 btype=2 lz77=1 win=2048 -> err=0 size=167 hash=afe5dab5589c98c1 dec=ok rgba8=ok:ce02446f156b22a5
+enc ct=4 bd=16 21x1 kind=2 filter=0 il=0 btype=2 lz77=1 win=2048 -> err=0 size=190 hash=d1305caeffba6695 dec=ok rgba8=ok:efcf4a5c9c4c0fd2
+enc ct=4 bd=16 26x12 kind=3 filter=1 il=1 btype=2 lz77=1 win=2048 -> err=0 size=167 hash=78b452f31b1754d7 dec=ok rgba8=ok:2890a25e232f7725
+enc ct=4 bd=16 31x23 kind=4 filter=2 il=0 btype=2 lz77=1 win=2048 -> err=0 size=819 hash=b688b5f094079c7a dec=ok rgba8=ok:72838d9f0d6b4165
+enc ct=6 bd=8 18x11 kind=0 filter=6 il=1 btype=2 lz77=1 win=2048 -> err=0 size=80 hash=d4ade32eaee59f29 dec=ok rgba8=ok:3e85bd6e69a75f05
+enc ct=6 bd=8 23x22 kind=1 filter=0 il=0 btype=2 lz77=1 win=2048 -> err=0 size=448 hash=ec162c575cfd1e91 dec=ok rgba8=ok:d534f951e8d8a36d
+enc ct=6 bd=8 28x4 kind=2 filter=1 il=1 btype=2 lz77=1 win=2048 -> err=0 size=576 hash=6dd0997e7dba80fa dec=ok rgba8=ok:a05d2e3e4dd8cb97
+enc ct=6 bd=8 33x15 kind=3 filter=2 il=0 btype=2 lz77=1 win=2048 -> err=0 size=123 hash=b2c99d1a9f441ebd dec=ok rgba8=ok:a01f1edfc5c7a595
+enc ct=6 bd=8 1x26 kind=4 filter=3 il=1 btype=2 lz77=1 win=2048 -> err=0 size=150 hash=cffb89e2b4e220c8 dec=ok rgba8=ok:17e8290bd841ae1c
+enc ct=6 bd=16 25x14 kind=0 filter=0 il=0 btype=2 lz77=1 win=2048 -> err=0 size=81 hash=0bf15cf4b5b44906 dec=ok rgba8=ok:fdf3aabec5c58e85
+enc ct=6 bd=16 30x25 kind=1 filter=1 il=1 btype=2 lz77=1 win=2048 -> err=0 size=610 hash=32bc71e59e1bbc39 dec=ok rgba8=ok:b523111d6b73efa5
+enc ct=6 bd=16 35x7 kind=2 filter=2 il=0 btype=2 lz77=1 win=2048 -> err=0 size=2076 hash=9e8b4b6d51d44870 dec=ok rgba8=ok:8d3984c2089c49e6
+enc ct=6 bd=16 3x18 kind=3 filter=3 il=1 btype=2 lz77=1 win=2048 -> err=0 size=196 hash=73fd0d7c1007b813 dec=ok rgba8=ok:a2a1461726a1d285
+enc ct=6 bd=16 8x29 kind=4 filter=4 il=0 btype=2 lz77=1 win=2048 -> err=0 size=506 hash=dda9ae8d95b6ace5 dec=ok rgba8=ok:6bac6391dab7bdc5
+enc ct=6 bd=8 130x60 kind=1 filter=0 il=0 btype=0 lz77=0 win=32768 -> err=0 size=31328 hash=9910699c2ce8b6ed dec=ok rgba8=ok:fb66e35a467a984d
+enc ct=6 bd=8 130x60 kind=2 filter=0 il=0 btype=0 lz77=0 win=32768 -> err=0 size=31328 hash=d0debc688e3aa6d3 dec=ok rgba8=ok:456690aeac625a8d
+enc ct=6 bd=8 130x60 kind=3 filter=0 il=0 btype=0 lz77=0 win=32768 -> err=0 size=31328 hash=25846d12a1212043 dec=ok rgba8=ok:96ab95687effd7a5
+enc ct=6 bd=8 130x60 kind=4 filter=0 il=0 btype=0 lz77=0 win=32768 -> err=0 size=31328 hash=6d4d6b1ff60749ef dec=ok rgba8=ok:9ba04617df475491
+enc ct=6 bd=8 130x60 kind=1 filter=1 il=0 btype=1 lz77=0 win=32768 -> err=0 size=31336 hash=770e9470cb87bd0e dec=ok rgba8=ok:fb66e35a467a984d
+enc ct=6 bd=8 130x60 kind=2 filter=1 il=0 btype=1 lz77=0 win=32768 -> err=0 size=33029 hash=de870a662d5414f4 dec=ok rgba8=ok:58e2e0d8669c8ea3
+enc ct=6 bd=8 130x60 kind=3 filter=1 il=0 btype=1 lz77=0 win=32768 -> err=0 size=32629 hash=957ff22333532077 dec=ok rgba8=ok:96ab95687effd7a5
+enc ct=6 bd=8 130x60 kind=4 filter=1 il=0 btype=1 lz77=0 win=32768 -> err=0 size=31325 hash=750f3eb97f026321 dec=ok rgba8=ok:46cf957f36911cf9
+enc ct=6 bd=8 130x60 kind=1 filter=2 il=0 btype=1 lz77=1 win=256 -> err=0 size=1012 hash=960b2071805411be dec=ok rgba8=ok:fb66e35a467a984d
+enc ct=6 bd=8 130x60 kind=2 filter=2 il=0 btype=1 lz77=1 win=256 -> err=0 size=33032 hash=bdf0d6f4e550e75a dec=ok rgba8=ok:46db6943801acc17
+enc ct=6 bd=8 130x60 kind=3 filter=2 il=0 btype=1 lz77=1 win=256 -> err=0 size=526 hash=1bc438c163c01334 dec=ok rgba8=ok:96ab95687effd7a5
+enc ct=6 bd=8 130x60 kind=4 filter=2 il=0 btype=1 lz77=1 win=256 -> err=0 size=21186 hash=5746687a60ccf6b5 dec=ok rgba8=ok:d08abe5d414e474d
+enc ct=6 bd=8 130x60 kind=1 filter=3 il=0 btype=2 lz77=1 win=32768 -> err=0 size=977 hash=6707404f941e9d8d dec=ok rgba8=ok:fb66e35a467a984d
+enc ct=6 bd=8 130x60 kind=2 filter=3 il=0 btype=2 lz77=1 win=32768 -> err=0 size=21523 hash=ca337f1e1ae4ca69 dec=ok rgba8=ok:b58f3305ba479fbc
+enc ct=6 bd=8 130x60 kind=3 filter=3 il=0 btype=2 lz77=1 win=32768 -> err=0 size=275 hash=019b9a1c52f2bc45 dec=ok rgba8=ok:96ab95687effd7a5
+enc ct=6 bd=8 130x60 kind=4 filter=3 il=0 btype=2 lz77=1 win=32768 -> err=0 size=3084 hash=1a3e720bb83fa59f dec=ok rgba8=ok:364e44843bb3f2ca
+enc ct=6 bd=8 130x60 kind=1 filter=4 il=0 btype=2 lz77=1 win=2 -> err=0 size=4144 hash=5c3b751f857a0ca7 dec=ok rgba8=ok:fb66e35a467a984d
+enc ct=6 bd=8 130x60 kind=2 filter=4 il=0 btype=2 lz77=1 win=2 -> err=0 size=31361 hash=c73ea710467079d1 dec=ok rgba8=ok:89443389eeed3fb1
+enc ct=6 bd=8 130x60 kind=3 filter=4 il=0 btype=2 lz77=1 win=2 -> err=0 size=4991 hash=dd33f126c6cbd648 dec=ok rgba8=ok:96ab95687effd7a5
+enc ct=6 bd=8 130x60 kind=4 filter=4 il=0 btype=2 lz77=1 win=2 -> err=0 size=11303 hash=347e098da9d93396 dec=ok rgba8=ok:39d1d1eb98ef1c8d
+enc ct=6 bd=8 130x60 kind=1 filter=0 il=0 btype=2 lz77=0 win=32768 -> err=0 size=31367 hash=63436825e1ed0c06 dec=ok rgba8=ok:fb66e35a467a984d
+enc ct=6 bd=8 130x60 kind=2 filter=0 il=0 btype=2 lz77=0 win=32768 -> err=0 size=31364 hash=803eb73d0a3e8e46 dec=ok rgba8=ok:d31dfa43a23554cf
+enc ct=6 bd=8 130x60 kind=3 filter=0 il=0 btype=2 lz77=0 win=32768 -> err=0 size=5950 hash=fba7edf88f178c04 dec=ok rgba8=ok:96ab95687effd7a5
+enc ct=6 bd=8 130x60 kind=4 filter=0 il=0 btype=2 lz77=0 win=32768 -> err=0 size=31364 hash=71edc5d8506a76a2 dec=ok rgba8=ok:0039058c041d7a8d
+enc ct=6 bd=8 130x60 kind=1 filter=1 il=0 btype=2 lz77=1 win=1024 -> err=0 size=604 hash=e0be4a2ee3da5a72 dec=ok rgba8=ok:fb66e35a467a984d
+enc ct=6 bd=8 130x60 kind=2 filter=1 il=0 btype=2 lz77=1 win=1024 -> err=0 size=31364 hash=1adee3497adeac76 dec=ok rgba8=ok:251a621fbd87f13f
+enc ct=6 bd=8 130x60 kind=3 filter=1 il=0 btype=2 lz77=1 win=1024 -> err=0 size=289 hash=c33529fb9d8871f2 dec=ok rgba8=ok:96ab95687effd7a5
+enc ct=6 bd=8 130x60 kind=4 filter=1 il=0 btype=2 lz77=1 win=1024 -> err=0 size=11509 hash=2368b1b1b9019f27 dec=ok rgba8=ok:c933274ed0c83d0d
+enc ct=2 bd=8 160x90 kind=4 filter=0 il=0 btype=2 lz77=1 win=32768 -> err=0 size=28736 hash=1ccf7aea50d4bae3 dec=ok rgba8=ok:ccbd1694f48567ff
+enc ct=2 bd=8 160x90 kind=4 filter=1 il=0 btype=2 lz77=1 win=32768 -> err=0 size=1527 hash=02e3e035c951c68f dec=ok rgba8=ok:c3fa91b34f49585f
+enc ct=2 bd=8 160x90 kind=4 filter=2 il=0 btype=2 lz77=1 win=32768 -> err=0 size=1647 hash=7b71c34fd8c9f9d1 dec=ok rgba8=ok:7bfa4d72f3175ccd
+enc ct=2 bd=8 160x90 kind=4 filter=3 il=0 btype=2 lz77=1 win=32768 -> err=0 size=3588 hash=a981b40cc98eeb64 dec=ok rgba8=ok:d307a458e2047bef
+enc ct=2 bd=8 160x90 kind=4 filter=4 il=0 btype=2 lz77=1 win=32768 -> err=0 size=1788 hash=2e3114253ee89484 dec=ok rgba8=ok:130d722c8875339f
+enc ct=2 bd=8 160x90 kind=4 filter=5 il=0 btype=2 lz77=1 win=32768 -> err=0 size=1242 hash=7f07347bd1268c85 dec=ok rgba8=ok:f79ab0f6131e7f57
+enc ct=2 bd=8 160x90 kind=4 filter=6 il=0 btype=2 lz77=1 win=32768 -> err=0 size=2810 hash=8cb2a3549406beb6 dec=ok rgba8=ok:7abcc4f4a3937369
+enc ct=2 bd=8 160x90 kind=4 filter=7 il=0 btype=2 lz77=1 win=32768 -> err=0 size=1242 hash=63031696bf605c91 dec=ok rgba8=ok:5610e9daea0d39cb
+auto mode=0 err=0 size=81 hash=f880316c15de54d2 file-colortype=0 bd=1 dec-err=0
+auto mode=1 err=0 size=109 hash=35d4a409fd69432d file-colortype=0 bd=8 dec-err=0
+auto mode=2 err=0 size=155 hash=9b5e54d4084bff8b file-colortype=2 bd=8 dec-err=0
+auto mode=3 err=0 size=175 hash=6ce47f9cb0c0107e file-colortype=6 bd=8 dec-err=0
+truncated 1577/1578 -> 30 chunk length too large, chunk broken off at end of file
+truncated 1401/1578 -> 64 the length of the END symbol 256 in the Huffman tree is 0
+truncated 1225/1578 -> 64 the length of the END symbol 256 in the Huffman tree is 0
+truncated 1049/1578 -> 64 the length of the END symbol 256 in the Huffman tree is 0
+truncated 873/1578 -> 64 the length of the END symbol 256 in the Huffman tree is 0
+truncated 697/1578 -> 64 the length of the END symbol 256 in the Huffman tree is 0
+truncated 521/1578 -> 64 the length of the END symbol 256 in the Huffman tree is 0
+truncated 345/1578 -> 64 the length of the END symbol 256 in the Huffman tree is 0
+truncated 169/1578 -> 64 the length of the END symbol 256 in the Huffman tree is 0
+flip@727 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@912 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@562 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1280 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1325 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1286 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1013 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@140 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@722 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1074 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@732 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1445 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@943 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@238 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1443 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@31 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@506 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@726 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@405 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@794 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1226 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1004 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@900 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1122 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@592 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@505 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1310 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@457 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1228 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@698 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@936 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@315 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@113 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@469 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@276 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1294 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@89 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1264 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@437 -> 57 invalid CRC encountered (checking CRC can be disabled)
+flip@1186 -> 57 invalid CRC encountered (checking CRC can be disabled)
+zeroed IHDR len -> 94
+decode as palette -> 0
+decode bad colortype -> 0
+zlib level=0 err=0 size=20011 hash=c3523f6cd93d2e63 rt=ok crc=fe360758
+zlib level=1 err=0 size=7092 hash=de918f55c7247653 rt=ok crc=fe360758
+zlib level=2 err=0 size=5116 hash=6eac537f67adcbb9 rt=ok crc=fe360758
+convert 6/16 -> 2/8 err=0 hash=cbe939c3797fdd3a
+convert 6/8 -> 0/8 err=0 hash=e0350c5c15b4b0d3
+convert 2/8 -> 4/16 err=0 hash=0c0228ca6a7f23bb
+convert 0/16 -> 6/8 err=0 hash=aa21fabeae925fd0
+convert 4/8 -> 6/16 err=0 hash=8168a255aac30f29
+convert 6/8 -> 0/1 err=0 hash=af639d4c8601817f
+convert 0/2 -> 2/8 err=0 hash=57dd4ca279db72ff
+fails=0
