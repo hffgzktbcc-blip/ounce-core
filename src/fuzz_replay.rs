@@ -4,6 +4,7 @@
 //!
 //! Trace lines (hex): `U <word>` (host raised SIGILL) or
 //! `T <word> <nzcv_in> <31 x> <32 v> => <nzcv_out> <fpsr_out> <31 x> <32 v>`.
+//! `TF <fpcr> <word> ...` is the same case run under that FPCR value (`T` means FPCR 0).
 //!
 //! `--engine interp|tier3|tier4` picks the engine that runs the word. Every engine runs the same
 //! two-word block `[word, svc #0]` (see [`exec`]); `tier3` is the Tier-3 super-block engine and
@@ -26,6 +27,7 @@ const EXC: u32 = 0x9F;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Case {
+    pub fpcr: u32,
     pub word: u32,
     pub nzcv_in: u32,
     pub x_in: [u64; 31],
@@ -60,7 +62,8 @@ pub fn parse_line(line: &str) -> Result<Line, String> {
             if t.next().is_some() { return Err("extra fields after U case".into()); }
             Ok(Line::Undefined(word))
         },
-        Some("T") => {
+        Some(tag @ ("T" | "TF")) => {
+            let fpcr = if tag == "TF" { bounded_hex(&mut t, 32)? as u32 } else { 0 };
             let word = bounded_hex(&mut t, 32)? as u32;
             let nzcv_in = bounded_hex(&mut t, 4)? as u32;
             let mut x_in = [0u64; 31];
@@ -85,7 +88,7 @@ pub fn parse_line(line: &str) -> Result<Line, String> {
                 *v = hex(&mut t)?;
             }
             if t.next().is_some() { return Err("extra fields after T case".into()); }
-            Ok(Line::Test(Box::new(Case { word, nzcv_in, x_in, v_in, nzcv_out, fpsr_out, x_out, v_out })))
+            Ok(Line::Test(Box::new(Case { fpcr, word, nzcv_in, x_in, v_in, nzcv_out, fpsr_out, x_out, v_out })))
         }
         _ => Err(format!("bad line: {line:.40}")),
     }
@@ -338,7 +341,7 @@ fn replay_on(c: &Case, engine: Engine) -> (Outcome, u64) {
 }
 
 fn replay_details(c: &Case, engine: Engine) -> (Outcome, u64, Option<Box<State>>) {
-    let init = Init { nzcv: c.nzcv_in, x: c.x_in, sp: DATA, v: c.v_in, fpcr: 0, data: Vec::new() };
+    let init = Init { nzcv: c.nzcv_in, x: c.x_in, sp: DATA, v: c.v_in, fpcr: c.fpcr, data: Vec::new() };
     if engine != Engine::Interp {
         match exec(Engine::Interp, c.word, &init).0 {
             Exec::Unimplemented => return (Outcome::Unimplemented, 0, None),
@@ -390,7 +393,7 @@ fn save_difference(dir: &std::path::Path, line: &str, line_number: usize, c: &Ca
                    engine: Engine, native: u64, differences: &[String]) -> Result<(), String> {
     use sha2::{Digest, Sha256};
     let mut input = register_json(&c.x_in, &c.v_in, c.nzcv_in, 0);
-    input["fpcr"] = 0.into();
+    input["fpcr"] = c.fpcr.into();
     let trace = format!("{line}\n");
     let engine_name = match engine { Engine::Interp => "interp", Engine::Tier3 => "tier3", Engine::Tier4 => "tier4" };
     let runtime = std::env::current_exe().and_then(std::fs::read).map_err(|e| e.to_string())?;
@@ -409,7 +412,7 @@ fn save_difference(dir: &std::path::Path, line: &str, line_number: usize, c: &Ca
         "input": input,
         "reference": register_json(&c.x_out, &c.v_out, c.nzcv_out, c.fpsr_out),
         "actual": register_json(&st.x, &st.v, st.nzcv, st.fpsr),
-        "comparison": {"excluded_x": [18], "fpsr_mask": format!("{QC:#x}"), "fpcr": 0,
+        "comparison": {"excluded_x": [18], "fpsr_mask": format!("{QC:#x}"), "fpcr": c.fpcr,
                        "wrapper": "test word followed by SVC #0; PC/SP are not hardware-reference comparisons"},
         "differences": differences,
         "replay_argv": ["ounce-core", "fuzz-replay", "--engine", engine_name, "case.trace"],
@@ -458,13 +461,13 @@ fn replay_bundle_inner(args: &[String]) -> Result<(serde_json::Value, bool), Str
     if lines.len() != 1 { return Err("dossier must contain exactly one case".into()); }
     let Line::Test(c) = parse_line(lines[0])? else { return Err("dossier must contain a compared T case".into()); };
     let mut input = register_json(&c.x_in, &c.v_in, c.nzcv_in, 0);
-    input["fpcr"] = 0.into();
+    input["fpcr"] = c.fpcr.into();
     if doc["word"] != format!("{:#010x}", c.word) || doc["input"] != input
         || doc["reference"] != register_json(&c.x_out, &c.v_out, c.nzcv_out, c.fpsr_out) {
         return Err("diagnosis state disagrees with retained case.trace".into());
     }
     if doc["comparison"]["excluded_x"] != serde_json::json!([18])
-        || doc["comparison"]["fpsr_mask"] != format!("{QC:#x}") || doc["comparison"]["fpcr"] != 0 {
+        || doc["comparison"]["fpsr_mask"] != format!("{QC:#x}") || doc["comparison"]["fpcr"] != c.fpcr {
         return Err("unsupported comparison scope".into());
     }
     let actual = &doc["actual"];
@@ -545,6 +548,7 @@ pub fn run(args: &[String]) -> i32 {
     let mut filter: Vec<(u32, u32)> = Vec::new();
     let (mut f_exec, mut f_match) = (0u64, 0u64);
     let mut input = None;
+    let mut results_path: Option<std::path::PathBuf> = None;
     let mut engine = Engine::Interp;
     let mut ee = false;
     let mut seed = 1u64;
@@ -569,6 +573,10 @@ pub fn run(args: &[String]) -> i32 {
                 Some(path) => dossier = Some(path.into()),
                 None => { eprintln!("--first-difference requires a new directory"); return 2; }
             },
+            "--results" => match it.next() {
+                Some(path) => results_path = Some(path.into()),
+                None => { eprintln!("--results requires a new file name"); return 2; }
+            },
             "--list-unimplemented" => list_unimpl = true,
             "--top" => top = it.next().and_then(|v| v.parse().ok()).unwrap_or(60),
             "--engine" => match it.next().and_then(|v| Engine::parse(v)) {
@@ -588,6 +596,14 @@ pub fn run(args: &[String]) -> i32 {
         eprintln!("--first-difference requires a new directory; existing evidence is never overwritten");
         return 2;
     }
+    if results_path.as_ref().is_some_and(|p| p.exists()) {
+        eprintln!("--results requires a new file; existing evidence is never overwritten");
+        return 2;
+    }
+    if results_path.is_some() && ee {
+        eprintln!("--results needs a reference trace, not --engine-vs-engine");
+        return 2;
+    }
     if ee {
         if dossier.is_some() {
             eprintln!("--first-difference currently requires a reference trace, not --engine-vs-engine");
@@ -600,7 +616,7 @@ pub fn run(args: &[String]) -> i32 {
         return run_engines(seed, count, show);
     }
     let Some(input) = input else {
-        eprintln!("usage: fuzz-replay [--show N] [--top N] [--filter MASK:VALUE]... [--list-unimplemented] [--engine interp|tier3|tier4] [--first-difference NEW-DIR] <trace-file|->");
+        eprintln!("usage: fuzz-replay [--show N] [--top N] [--filter MASK:VALUE]... [--list-unimplemented] [--engine interp|tier3|tier4] [--first-difference NEW-DIR] [--results NEW-FILE] <trace-file|->");
         eprintln!("       fuzz-replay --engine-vs-engine [--seed N] [--count N] [--show N]");
         return 2;
     };
@@ -617,6 +633,18 @@ pub fn run(args: &[String]) -> i32 {
                 eprintln!("{input}: {e}");
                 return 2;
             }
+        }
+    };
+    // One TSV row per reference case: line, fpcr, word, status, fpsr-exception-flags-differ, detail.
+    let mut results = match results_path.as_ref().map(std::fs::File::create_new) {
+        Some(Ok(f)) => Some(std::io::BufWriter::new(f)),
+        Some(Err(e)) => { eprintln!("--results: {e}"); return 2; }
+        None => None,
+    };
+    let mut record = |n: usize, fpcr: u32, word: u32, status: &str, exc: bool, detail: &str| {
+        if let Some(w) = results.as_mut() {
+            use std::io::Write;
+            let _ = writeln!(w, "{n}\t{fpcr:#x}\t{word:08x}\t{status}\t{}\t{detail}", u8::from(exc));
         }
     };
     let mut t = Tally::default();
@@ -643,6 +671,7 @@ pub fn run(args: &[String]) -> i32 {
         };
         match parsed {
             Line::Undefined(w) => {
+                record(n + 1, 0, w, "host-undefined", false, "");
                 t.host_undefined += 1;
                 if runs_undefined(w) {
                     t.emu_runs_undefined += 1;
@@ -654,6 +683,7 @@ pub fn run(args: &[String]) -> i32 {
                 native_cases += u64::from(native > 0);
                 match outcome {
                 Outcome::Unimplemented => {
+                    record(n + 1, c.fpcr, c.word, "unsupported", false, "");
                     t.unimplemented += 1;
                     if list_unimpl {
                         println!("UNIMPL {:08x}", c.word);
@@ -661,6 +691,7 @@ pub fn run(args: &[String]) -> i32 {
                     unimpl_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
                 }
                 Outcome::OtherError(e) => {
+                    record(n + 1, c.fpcr, c.word, "error", false, &e);
                     t.other_errors += 1;
                     if shown < show {
                         shown += 1;
@@ -675,6 +706,8 @@ pub fn run(args: &[String]) -> i32 {
                     }
                     ran_classes.insert(class(c.word));
                     let exc_differs = fpsr & EXC != c.fpsr_out & EXC;
+                    record(n + 1, c.fpcr, c.word, if diffs.is_empty() { "match" } else { "mismatch" }, exc_differs,
+                           &diffs.iter().take(4).cloned().collect::<Vec<_>>().join(" | "));
                     if diffs.is_empty() {
                         t.matched += 1;
                         if exc_differs {
@@ -697,7 +730,7 @@ pub fn run(args: &[String]) -> i32 {
                         mism_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
                         if shown < show {
                             shown += 1;
-                            println!("MISMATCH {:08x} nzcv_in={:x}", c.word, c.nzcv_in);
+                            println!("MISMATCH {:08x} nzcv_in={:x} fpcr={:#x}", c.word, c.nzcv_in, c.fpcr);
                             for d in diffs.iter().take(6) {
                                 println!("    {d}");
                             }
@@ -981,6 +1014,19 @@ mod tests {
         assert_eq!(parse_line("U 0fc710c5").unwrap(), Line::Undefined(0x0fc7_10c5));
         assert!(parse_line("T 1 2").is_err());
         assert!(parse_line("garbage").is_err());
+    }
+
+    #[test]
+    fn tf_line_carries_fpcr_and_t_means_zero() {
+        // FMAX S3,S0,S1 of +0 and a denormal: flush-to-zero (FPCR.FZ, bit 24) reads the denormal as zero.
+        let t = line(0x1e21_4803, &[(0, 0), (1, 1)], &[(0, 0), (1, 1), (3, 0)], 0, 0, 0x80);
+        assert_eq!(case(&t).fpcr, 0);
+        let tf = t.replacen("T ", "TF 1000000 ", 1);
+        let c = case(&tf);
+        assert_eq!(c.fpcr, 0x100_0000);
+        assert_eq!(replay(&c), Outcome::Ran(Vec::new(), 0), "FZ run must flush the denormal to +0");
+        assert!(matches!(replay(&case(&t)), Outcome::Ran(d, _) if !d.is_empty()), "FPCR 0 keeps the denormal, so the FZ expectation differs");
+        assert!(parse_line("TF 100000000 1e212803").is_err());
     }
 
     #[test]
