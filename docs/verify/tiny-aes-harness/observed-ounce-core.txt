@@ -1,0 +1,103 @@
+ecb-enc nist=ok 3ad77bb40d7a3660a89ecaf32466ef97f5d3d58503b9699de785895a96fdbaaf43b1cd7f598ece23881b00e3ed0306887b0c785e27e8ad3f8223207104725dd4
+ecb-dec roundtrip=ok
+cbc-enc nist=ok 7649abac8119b246cee98e9b12e9197d5086cb9b507219ee95db113a917678b273bed6b8e3c1743b7116e69e222295163ff1caa1681fac09120eca307586e1a7
+cbc-dec roundtrip=ok
+ctr nist=ok 874d6191b620e3261bef6864990db6ce9806f66b7970fdff8617187bb9fffdff5ae4df3edbd5d35e5b4f09020db03eab1e031dda2fbe03d1792170a0f3009cee
+ctr chunked16=ok
+cbc round=0 blocks=1 cthash=069a7f5b0b72b024 first=3df6b710 rt=ok
+cbc round=1 blocks=2 cthash=3140192c70782e75 first=7247e940 rt=ok
+cbc round=2 blocks=3 cthash=511f0b72e19beb5e first=fcbf85a2 rt=ok
+cbc round=3 blocks=4 cthash=bcf36d5853a9d32a first=c98ff9e7 rt=ok
+cbc round=4 blocks=5 cthash=b286cdafed4a64f3 first=c7b4126b rt=ok
+cbc round=5 blocks=6 cthash=dfbc4595f38fedab first=ddf4f735 rt=ok
+cbc round=6 blocks=7 cthash=1a6930d778103cf5 first=f0e42ef9 rt=ok
+cbc round=7 blocks=8 cthash=30ca2a874fa1b0e1 first=dee59518 rt=ok
+cbc round=8 blocks=9 cthash=8e038ea4fcd0e102 first=8622699e rt=ok
+cbc round=9 blocks=10 cthash=ee29234a3e461a7a first=bd924242 rt=ok
+cbc round=10 blocks=11 cthash=a7c7c346c05b2aa6 first=59fb1469 rt=ok
+cbc round=11 blocks=12 cthash=050292e7db44a039 first=29ec2f22 rt=ok
+cbc round=12 blocks=13 cthash=1b4e7821c1414464 first=f9c13e2a rt=ok
+cbc round=13 blocks=14 cthash=2e08d3c247b830c1 first=92a24ae8 rt=ok
+cbc round=14 blocks=15 cthash=b2a6bcb18c126399 first=b783b771 rt=ok
+cbc round=15 blocks=16 cthash=17b7b1207495cedd first=28244585 rt=ok
+cbc round=16 blocks=17 cthash=6072f3ac5e4380f2 first=a211108f rt=ok
+cbc round=17 blocks=18 cthash=aeb56d0ae41a8bd1 first=dca28fa8 rt=ok
+cbc round=18 blocks=19 cthash=cfd8517ff3f0d296 first=8afb9793 rt=ok
+cbc round=19 blocks=20 cthash=9303681e07bce051 first=5d0d58c1 rt=ok
+cbc round=20 blocks=64 cthash=e7b099375340bb35 first=ff925e4d rt=ok
+cbc round=21 blocks=128 cthash=1385041ddbb82485 first=c8825052 rt=ok
+cbc round=22 blocks=192 cthash=06288d9faf6a459a first=7506c50b rt=ok
+cbc round=23 blocks=256 cthash=11ea1de9e55bc049 first=051ebf78 rt=ok
+ctr len=0 cthash=cbf29ce484222325 rt=ok
+ctr len=1 cthash=af63ef4c86020cd5 rt=ok
+ctr len=2 cthash=0abb6b07b7128e0f rt=ok
+ctr len=3 cthash=5eb99b1c1cf7ae05 rt=ok
+ctr len=4 cthash=ad05e05956668bb6 rt=ok
+ctr len=5 cthash=d469e7dc0a47e8b2 rt=ok
+ctr len=6 cthash=2e52828fa25257a7 rt=ok
+ctr len=7 cthash=59a8fa32c513f5d1 rt=ok
+ctr len=8 cthash=b0237728c1e2f4a5 rt=ok
+ctr len=9 cthash=cee50b1fd57d2fca rt=ok
+ctr len=10 cthash=c7d6ffa0a0ecb64b rt=ok
+ctr len=11 cthash=5480b1fe890f5152 rt=ok
+ctr len=12 cthash=bc01a55626b33309 rt=ok
+ctr len=13 cthash=5029b4632d8e8327 rt=ok
+ctr len=14 cthash=948c95b3d2ff56ba rt=ok
+ctr len=15 cthash=62d033df4e371281 rt=ok
+ctr len=16 cthash=741bc572500574c8 rt=ok
+ctr len=17 cthash=b919bd5fdafa7cfa rt=ok
+ctr len=18 cthash=351b4c543f8ecc06 rt=ok
+ctr len=19 cthash=6460e6854aea2da9 rt=ok
+ctr len=20 cthash=2bf49fc01863c3f5 rt=ok
+ctr len=21 cthash=d1053463013ce7f0 rt=ok
+ctr len=22 cthash=9b5df8cf7b60be01 rt=ok
+ctr len=23 cthash=0207e6e5c7746ada rt=ok
+ctr len=24 cthash=a5fc99eea78b1a31 rt=ok
+ctr len=25 cthash=9f6e7a898fce6ca9 rt=ok
+ctr len=26 cthash=d5f679750757dd58 rt=ok
+ctr len=27 cthash=4d29cc3d7eb8d5b1 rt=ok
+ctr len=28 cthash=81ee4e856faa6cdf rt=ok
+ctr len=29 cthash=af563f5c1aaa8ed3 rt=ok
+ctr len=30 cthash=25f98ab9df82c89f rt=ok
+ctr len=31 cthash=79cca9be76a18b9e rt=ok
+ctr len=32 cthash=614da2a00740ac9c rt=ok
+ctr len=33 cthash=7f2393af95f841c3 rt=ok
+ctr len=34 cthash=81b32e49e3e8f4fd rt=ok
+ctr len=35 cthash=35540cd30909cb09 rt=ok
+ctr len=36 cthash=4b3e93cd9c487ea7 rt=ok
+ctr len=37 cthash=dfb7a6a22d38a3b9 rt=ok
+ctr len=38 cthash=1f9c6b6dce5257b5 rt=ok
+ctr len=39 cthash=a2c8a474393bbea6 rt=ok
+ctr len=40 cthash=68d17533fc1b69ce rt=ok
+ctr len=41 cthash=b00679ce0f93656c rt=ok
+ctr len=42 cthash=227c675cccb90346 rt=ok
+ctr len=43 cthash=3fd335cdb0230dbe rt=ok
+ctr len=44 cthash=b6b6e422fa32364b rt=ok
+ctr len=45 cthash=240b8f09780e3bde rt=ok
+ctr len=46 cthash=a89100e481c0b877 rt=ok
+ctr len=47 cthash=6ed96c6a2d630c5f rt=ok
+ctr len=48 cthash=e88fba33b3cbeb19 rt=ok
+ctr len=49 cthash=6b38050b7ee7524e rt=ok
+ctr len=50 cthash=0d02f0f0f54e833d rt=ok
+ctr len=51 cthash=dd1cf72d9a5e9829 rt=ok
+ctr len=52 cthash=f599d596ec502aeb rt=ok
+ctr len=53 cthash=12336ec6b5c5b36f rt=ok
+ctr len=54 cthash=82a75c645cb21cfe rt=ok
+ctr len=55 cthash=2e1dbdaa9b97244a rt=ok
+ctr len=56 cthash=b5d35058cfbb45d7 rt=ok
+ctr len=57 cthash=8ea1ce5583122d78 rt=ok
+ctr len=58 cthash=8426d5f5c9dc0f56 rt=ok
+ctr len=59 cthash=795222756e4a6ef5 rt=ok
+ctr len=60 cthash=b760f156e85dac27 rt=ok
+ctr len=61 cthash=a534d770efdb2c5d rt=ok
+ctr len=62 cthash=b99f52b6d952eaef rt=ok
+ctr len=63 cthash=b79eccee6ec20914 rt=ok
+ctr len=64 cthash=f3a4e0907edd9138 rt=ok
+ctr len=65 cthash=7c08dcc9dfb5dac2 rt=ok
+ctr len=66 cthash=5c02b01b39b27d08 rt=ok
+ctr len=67 cthash=09b5b5ca14dda438 rt=ok
+ctr len=68 cthash=26aa23898f4e7ebd rt=ok
+ctr len=69 cthash=c87de3c8947b541c rt=ok
+ctr len=70 cthash=d0b0468718ad6693 rt=ok
+ctr 4096 cthash=11b51636f0f4e409
+fails=0
