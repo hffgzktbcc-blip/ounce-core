@@ -78,11 +78,20 @@ fn default_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("OUNCE_LAB_DIR") {
         return PathBuf::from(dir);
     }
-    match std::env::var_os("HOME") {
-        Some(home) if cfg!(target_os = "macos") => PathBuf::from(home).join("Library/Application Support/Ounce Core/Checks"),
-        Some(home) => PathBuf::from(home).join(".ounce-core/checks"),
-        None => std::env::temp_dir().join("ounce-core-checks"),
+    let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    if cfg!(target_os = "windows") {
+        // Windows has no HOME; keep results somewhere that survives a reboot.
+        if let Some(base) = var("LOCALAPPDATA").or_else(|| var("USERPROFILE").map(|p| p.join("AppData/Local"))) {
+            return base.join("Ounce Core").join("Checks");
+        }
+    } else if let Some(home) = var("HOME") {
+        return if cfg!(target_os = "macos") {
+            home.join("Library/Application Support/Ounce Core/Checks")
+        } else {
+            home.join(".ounce-core/checks")
+        };
     }
+    std::env::temp_dir().join("ounce-core-checks")
 }
 
 /// One engine's run of the program.
@@ -650,8 +659,18 @@ fn serve(options: Options) -> Result<(), String> {
         });
     }
     if options.open_browser {
-        let opener = if cfg!(target_os = "macos") { "open" } else if cfg!(target_os = "windows") { "explorer" } else { "xdg-open" };
-        let _ = Command::new(opener).arg(&url).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+        // `explorer <url>` is unreliable; `start` hands the URL to the default browser (the empty
+        // string is start's window title, and the URL has no characters cmd treats specially).
+        let mut opener = if cfg!(target_os = "macos") {
+            Command::new("open")
+        } else if cfg!(target_os = "windows") {
+            let mut c = Command::new("cmd");
+            c.args(["/C", "start", ""]);
+            c
+        } else {
+            Command::new("xdg-open")
+        };
+        let _ = opener.arg(&url).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
     }
     for stream in listener.incoming().flatten() {
         let lab = Arc::clone(&lab);
