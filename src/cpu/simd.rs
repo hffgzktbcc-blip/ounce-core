@@ -615,10 +615,86 @@ pub fn fp_three_same(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: 
     out
 }
 
-/// One FMAX/FMIN/FMAXNM/FMINNM lane under FPCR: FZ reads denormal inputs as signed zero, DN turns any NaN result
-/// into the default NaN.
-fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, double: bool, fpcr: u32) -> u64 {
-    let (fz, dn) = (fpcr & (1 << 24) != 0, fpcr & (1 << 25) != 0);
+/// IEEE half precision on raw bits (Rust has no stable `f16`): FMAX/FMIN/FMAXNM/FMINNM only.
+mod fp16 {
+    use super::SimdFpOp3;
+    pub const SIGN: u16 = 0x8000;
+    pub const QUIET: u16 = 0x0200;
+    pub const DEFAULT_NAN: u16 = 0x7e00;
+    pub fn is_nan(x: u16) -> bool {
+        x & 0x7fff > 0x7c00
+    }
+    pub fn is_snan(x: u16) -> bool {
+        is_nan(x) && x & QUIET == 0
+    }
+    pub fn is_denormal(x: u16) -> bool {
+        x & 0x7c00 == 0 && x & 0x03ff != 0
+    }
+    /// Exact widening of a non-NaN half to f32, for ordering only.
+    fn to_f32(x: u16) -> f32 {
+        let mag = match (x >> 10) & 0x1f {
+            0 => (x & 0x3ff) as f32 * (1.0 / 16_777_216.0), // 2^-24
+            0x1f => f32::INFINITY,
+            e => f32::from_bits((((e as u32) + 112) << 23) | ((x as u32 & 0x3ff) << 13)),
+        };
+        if x & SIGN != 0 { -mag } else { mag }
+    }
+    pub fn max_min(a: u16, b: u16, max: bool) -> u16 {
+        if is_snan(a) {
+            return a | QUIET;
+        }
+        if is_snan(b) {
+            return b | QUIET;
+        }
+        if is_nan(a) {
+            return a | QUIET;
+        }
+        if is_nan(b) {
+            return b | QUIET;
+        }
+        let (fa, fb) = (to_f32(a), to_f32(b));
+        if fa == fb {
+            // equal values: only the zeros differ in sign
+            return if max { a & b } else { a | b };
+        }
+        if (fa > fb) == max { a } else { b }
+    }
+    pub fn max_min_num(a: u16, b: u16, max: bool) -> u16 {
+        let (aq, bq) = (is_nan(a) && !is_snan(a), is_nan(b) && !is_snan(b));
+        if aq && !bq {
+            return if is_nan(b) { b | QUIET } else { b };
+        }
+        if bq && !aq {
+            return if is_nan(a) { a | QUIET } else { a };
+        }
+        max_min(a, b, max)
+    }
+    pub fn op(op: SimdFpOp3, a: u16, b: u16) -> u16 {
+        match op {
+            SimdFpOp3::Fmax | SimdFpOp3::Fmaxp => max_min(a, b, true),
+            SimdFpOp3::Fmin | SimdFpOp3::Fminp => max_min(a, b, false),
+            SimdFpOp3::Fmaxnm | SimdFpOp3::Fmaxnmp => max_min_num(a, b, true),
+            SimdFpOp3::Fminnm | SimdFpOp3::Fminnmp => max_min_num(a, b, false),
+            _ => unreachable!("half precision decodes only the FMAX/FMIN family"),
+        }
+    }
+}
+
+/// One FMAX/FMIN/FMAXNM/FMINNM lane (`esize` 16, 32 or 64) under FPCR: flush-to-zero reads denormal inputs as signed
+/// zero (FPCR.FZ for singles and doubles, FPCR.FZ16 for halves), and DN turns any NaN result into the default NaN.
+fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -> u64 {
+    let dn = fpcr & (1 << 25) != 0;
+    if esize == 16 {
+        let (mut a, mut b) = (a as u16, b as u16);
+        if fpcr & (1 << 19) != 0 {
+            if fp16::is_denormal(a) { a &= fp16::SIGN; }
+            if fp16::is_denormal(b) { b &= fp16::SIGN; }
+        }
+        let r = fp16::op(op, a, b);
+        return (if dn && fp16::is_nan(r) { fp16::DEFAULT_NAN } else { r }) as u64;
+    }
+    let double = esize == 64;
+    let fz = fpcr & (1 << 24) != 0;
     let flush = |x: u64| -> u64 {
         if !fz {
             return x;
@@ -642,7 +718,7 @@ pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool
     let mut out = 0u128;
     for i in 0..count {
         let (a, b) = fp_operands(op, n, m, esize, count, i);
-        set_lane(&mut out, esize, i, minmax_fpcr(op, lane(d, esize, i), a, b, double, fpcr));
+        set_lane(&mut out, esize, i, minmax_fpcr(op, lane(d, esize, i), a, b, esize, fpcr));
     }
     out
 }
@@ -650,17 +726,28 @@ pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool
 /// `FMAXV`/`FMINV`/`FMAXNMV`/`FMINNMV` (4 singles) and scalar pairwise `FMAXP` etc. (2 lanes): `op` is the lane op
 /// (Fmax/Fmin/Fmaxnm/Fminnm). Like the ARM `Reduce` pseudocode this is a balanced tree, which fixes which NaN
 /// wins: (e0 op e1) op (e2 op e3). Returns the scalar result bits; the caller zeroes the rest of the register.
-pub fn fp_reduce_fpcr(op: SimdFpOp3, n: u128, double: bool, count: usize, fpcr: u32) -> u64 {
-    fn go(op: SimdFpOp3, n: u128, esize: u32, lo: usize, len: usize, double: bool, fpcr: u32) -> u64 {
+pub fn fp_reduce_fpcr(op: SimdFpOp3, n: u128, esize: u32, count: usize, fpcr: u32) -> u64 {
+    fn go(op: SimdFpOp3, n: u128, esize: u32, lo: usize, len: usize, fpcr: u32) -> u64 {
         if len == 1 {
             return lane(n, esize, lo);
         }
         let half = len / 2;
-        let a = go(op, n, esize, lo, half, double, fpcr);
-        let b = go(op, n, esize, lo + half, half, double, fpcr);
-        minmax_fpcr(op, 0, a, b, double, fpcr)
+        let a = go(op, n, esize, lo, half, fpcr);
+        let b = go(op, n, esize, lo + half, half, fpcr);
+        minmax_fpcr(op, 0, a, b, esize, fpcr)
     }
-    go(op, n, if double { 64 } else { 32 }, 0, count, double, fpcr)
+    go(op, n, esize, 0, count, fpcr)
+}
+
+/// Half-precision FMAX/FMIN/FMAXNM/FMINNM (and pairwise) on `.4H` / `.8H`.
+pub fn fp16_three_same_fpcr(op: SimdFpOp3, n: u128, m: u128, q: bool, fpcr: u32) -> u128 {
+    let count = lanes(16, q);
+    let mut out = 0u128;
+    for i in 0..count {
+        let (a, b) = fp_operands(op, n, m, 16, count, i);
+        set_lane(&mut out, 16, i, minmax_fpcr(op, 0, a, b, 16, fpcr));
+    }
+    out
 }
 
 /// FP two-register misc. `FCVTN`/`FCVTL` are the double/single forms: `q` picks the upper half
@@ -1194,7 +1281,7 @@ mod fp_vector_tests {
     #[test]
     fn fmaxv_fminv_tree_reduction_and_scalar_pairwise() {
         let (nan, snan, den) = (f32::from_bits(0x7fc0_0000 | 0xaa), f32::from_bits(0x7f80_0001), f32::from_bits(1));
-        let red = |op, v: [f32; 4], fpcr| fp_reduce_fpcr(op, f4(v), false, 4, fpcr) as u32;
+        let red = |op, v: [f32; 4], fpcr| fp_reduce_fpcr(op, f4(v), 32, 4, fpcr) as u32;
         assert_eq!(red(SimdFpOp3::Fmax, [1.0, 9.0, -3.0, 4.0], 0), 9.0f32.to_bits());
         assert_eq!(red(SimdFpOp3::Fmin, [1.0, 9.0, -3.0, 4.0], 0), (-3.0f32).to_bits());
         // signed zeros: FMAX picks +0, FMIN picks -0 wherever they sit
@@ -1225,16 +1312,90 @@ mod fp_vector_tests {
         assert_eq!(red(SimdFpOp3::Fmaxnm, [1.0, nan, 3.0, 2.0], DN), 3.0f32.to_bits());
         assert_eq!(red(SimdFpOp3::Fmaxnm, [nan; 4], DN | FZ), 0x7fc0_0000);
         // scalar pairwise FMAXP/FMINP/FMAXNMP Sd, Vn.2S and Dd, Vn.2D
-        let pair = |op, a: f32, b: f32, fpcr| fp_reduce_fpcr(op, f4([a, b, 0.0, 0.0]), false, 2, fpcr) as u32;
+        let pair = |op, a: f32, b: f32, fpcr| fp_reduce_fpcr(op, f4([a, b, 0.0, 0.0]), 32, 2, fpcr) as u32;
         assert_eq!(pair(SimdFpOp3::Fmax, 1.0, 2.0, 0), 2.0f32.to_bits());
         assert_eq!(pair(SimdFpOp3::Fmin, 1.0, nan.copysign(1.0), DN), 0x7fc0_0000);
         assert_eq!(pair(SimdFpOp3::Fminnm, nan, 5.0, 0), 5.0f32.to_bits());
-        let dpair = |op, a: f64, b: f64, fpcr| fp_reduce_fpcr(op, f2d([a, b]), true, 2, fpcr);
+        let dpair = |op, a: f64, b: f64, fpcr| fp_reduce_fpcr(op, f2d([a, b]), 64, 2, fpcr);
         let dden = f64::from_bits(1);
         assert_eq!(dpair(SimdFpOp3::Fmax, -1.0, -2.0, 0), (-1.0f64).to_bits());
         assert_eq!(dpair(SimdFpOp3::Fmax, dden, -dden, FZ), 0);
         assert_eq!(dpair(SimdFpOp3::Fmax, f64::NAN, 1.0, DN), 0x7ff8_0000_0000_0000);
         assert_eq!(dpair(SimdFpOp3::Fmaxnm, f64::NAN, 1.0, DN), 1.0f64.to_bits());
+    }
+
+    const FZ16: u32 = 1 << 19;
+
+    fn h8(v: [u16; 8]) -> u128 {
+        v.iter().rev().fold(0u128, |a, x| a << 16 | *x as u128)
+    }
+    fn u8h(v: u128) -> [u16; 8] {
+        [0, 1, 2, 3, 4, 5, 6, 7].map(|i| lane(v, 16, i) as u16)
+    }
+
+    // half-precision bit patterns: 1.0 3c00, 2.0 4000, 3.0 4200, 4.0 4400, 0.5 3800, -1.0 bc00,
+    // +/-min denormal 0001/8001, +/-inf 7c00/fc00, quiet NaN with payload 7e55, signalling NaN 7c01
+    #[test]
+    fn half_precision_fmax_fmin_lane_semantics() {
+        let n = h8([0x3c00, 0x4000, 0x8000, 0x7e55, 0x0001, 0x8001, 0x7c01, 0xfc00]);
+        let m = h8([0x4000, 0x4000, 0x0000, 0x3c00, 0x8001, 0x0001, 0x7e55, 0x7c00]);
+        let run = |op, fpcr| u8h(fp16_three_same_fpcr(op, n, m, true, fpcr));
+        assert_eq!(run(SimdFpOp3::Fmax, 0), [0x4000, 0x4000, 0x0000, 0x7e55, 0x0001, 0x0001, 0x7e01, 0x7c00]);
+        assert_eq!(run(SimdFpOp3::Fmin, 0), [0x3c00, 0x4000, 0x8000, 0x7e55, 0x8001, 0x8001, 0x7e01, 0xfc00]);
+        assert_eq!(run(SimdFpOp3::Fmaxnm, 0), [0x4000, 0x4000, 0x0000, 0x3c00, 0x0001, 0x0001, 0x7e01, 0x7c00]);
+        assert_eq!(run(SimdFpOp3::Fminnm, 0), [0x3c00, 0x4000, 0x8000, 0x3c00, 0x8001, 0x8001, 0x7e01, 0xfc00]);
+        // FZ16 flushes half denormals; FZ (the single/double bit) does not touch halves
+        assert_eq!(run(SimdFpOp3::Fmax, FZ16)[4..6], [0x0000, 0x0000]);
+        assert_eq!(run(SimdFpOp3::Fmin, FZ16)[4..6], [0x8000, 0x8000]);
+        assert_eq!(run(SimdFpOp3::Fmax, FZ)[4..6], [0x0001, 0x0001]);
+        // DN: NaN results become 0x7e00, FMAXNM's numeric lane 3 does not
+        assert_eq!(run(SimdFpOp3::Fmax, DN), [0x4000, 0x4000, 0x0000, 0x7e00, 0x0001, 0x0001, 0x7e00, 0x7c00]);
+        assert_eq!(run(SimdFpOp3::Fmaxnm, DN | FZ16)[3], 0x3c00);
+        assert_eq!(run(SimdFpOp3::Fmaxnm, DN | FZ16)[6], 0x7e00);
+        // 4H (Q = 0) writes only the low four lanes
+        let r = u8h(fp16_three_same_fpcr(SimdFpOp3::Fmax, n, m, false, 0));
+        assert_eq!(r, [0x4000, 0x4000, 0x0000, 0x7e55, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn half_precision_pairwise_and_reductions() {
+        let n = h8([0x3c00, 0x4000, 0x4400, 0x4200, 0xbc00, 0x3800, 0x4000, 0x4000]);
+        let m = h8([0x3800, 0x3c00, 0x4200, 0x4400, 0xbc00, 0xbc00, 0x0000, 0x8000]);
+        assert_eq!(u8h(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, m, true, 0)), [0x4000, 0x4400, 0x3800, 0x4000, 0x3c00, 0x4400, 0xbc00, 0x0000]);
+        assert_eq!(u8h(fp16_three_same_fpcr(SimdFpOp3::Fminp, n, m, true, 0)), [0x3c00, 0x4200, 0xbc00, 0x4000, 0x3800, 0x4200, 0xbc00, 0x8000]);
+        // 4H pairwise: one result pair from n, one from m
+        let r = u8h(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, m, false, 0));
+        assert_eq!(r, [0x4000, 0x4400, 0x3c00, 0x4400, 0, 0, 0, 0]);
+        // FMAXNMP skips a quiet NaN in the pair, FMAXP does not
+        let n = h8([0x7e55, 0x3c00, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(lane(fp16_three_same_fpcr(SimdFpOp3::Fmaxnmp, n, 0, true, 0), 16, 0), 0x3c00);
+        assert_eq!(lane(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, 0, true, 0), 16, 0), 0x7e55);
+        // reductions: FMAXV/FMINV over 8H and 4H, tree order, signed zeros, NaN, FZ16, DN
+        let red = |op, v: [u16; 8], count, fpcr| fp_reduce_fpcr(op, h8(v), 16, count, fpcr) as u16;
+        let v = [0x3c00, 0x4000, 0x4400, 0x4200, 0xbc00, 0x3800, 0x4000, 0x4000];
+        assert_eq!(red(SimdFpOp3::Fmax, v, 8, 0), 0x4400);
+        assert_eq!(red(SimdFpOp3::Fmin, v, 8, 0), 0xbc00);
+        assert_eq!(red(SimdFpOp3::Fmax, v, 4, 0), 0x4400);
+        assert_eq!(red(SimdFpOp3::Fmin, v, 4, 0), 0x3c00);
+        assert_eq!(red(SimdFpOp3::Fmax, [0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x0000], 8, 0), 0x0000);
+        assert_eq!(red(SimdFpOp3::Fmin, [0, 0, 0, 0, 0, 0, 0, 0x8000], 8, 0), 0x8000);
+        let nanv = [0x3c00, 0x7e55, 0x4000, 0x4200, 0x3c00, 0x3c00, 0x3c00, 0x3c00];
+        assert_eq!(red(SimdFpOp3::Fmax, nanv, 8, 0), 0x7e55);
+        assert_eq!(red(SimdFpOp3::Fmaxnm, nanv, 8, 0), 0x4200);
+        assert_eq!(red(SimdFpOp3::Fmax, nanv, 8, DN), 0x7e00);
+        assert_eq!(red(SimdFpOp3::Fmaxnm, [0x7e55; 8], 8, DN), 0x7e00);
+        // a signalling NaN in the same pair as a quiet NaN comes out quieted; in a later pair it is quieted first
+        assert_eq!(red(SimdFpOp3::Fmax, [0x7e55, 0x7c01, 0x3c00, 0x3c00, 0, 0, 0, 0], 4, 0), 0x7e01);
+        let den = [0x0001, 0x0001, 0x0001, 0x0001, 0x0001, 0x0001, 0x0001, 0x0001];
+        assert_eq!(red(SimdFpOp3::Fmax, den, 8, 0), 0x0001);
+        assert_eq!(red(SimdFpOp3::Fmax, den, 8, FZ16), 0x0000);
+        assert_eq!(red(SimdFpOp3::Fmax, den, 8, FZ), 0x0001);
+        // scalar FMAX/FMIN Hd, Hn, Hm: the two-lane reduction of (n, m)
+        let sc = |op, a: u16, b: u16, fpcr| fp_reduce_fpcr(op, (a as u128) | (b as u128) << 16, 16, 2, fpcr) as u16;
+        assert_eq!(sc(SimdFpOp3::Fmax, 0x3c00, 0x4000, 0), 0x4000);
+        assert_eq!(sc(SimdFpOp3::Fmin, 0x0001, 0x8001, FZ16), 0x8000);
+        assert_eq!(sc(SimdFpOp3::Fminnm, 0x7e55, 0x3c00, 0), 0x3c00);
+        assert_eq!(sc(SimdFpOp3::Fmin, 0x3c00, 0x7c01, DN), 0x7e00);
     }
 
     #[test]
