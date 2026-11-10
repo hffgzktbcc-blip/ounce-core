@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use std::io::Write;
 
 pub const STATE_BYTES: usize = 784;
-pub const RECORD_BYTES: usize = 16 + 2 * STATE_BYTES;
 
 /// A snapshot of the registers an instruction in the checked set can read or write.
 pub struct State(pub [u8; STATE_BYTES]);

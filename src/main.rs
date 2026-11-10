@@ -7,6 +7,7 @@ mod audio;
 mod census;
 mod cpu;
 mod crypto;
+mod diverge;
 mod fs;
 mod fuzz_replay;
 mod gpu;
@@ -94,6 +95,9 @@ fn main() {
         }
         "info" | "--info" | "-v" | "--version" | "specs" => {
             print_specs();
+        }
+        "diverge" => {
+            std::process::exit(diverge::run_cli(&args[2..]));
         }
         "ui" | "lab" => {
             print_banner();
@@ -322,6 +326,7 @@ fn print_usage() {
     println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
     println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
     println!("    {}replay-instruction{} <bundle>  Check retained instruction bytes and re-execute the recorded case", s.green, s.reset);
+    println!("    {}diverge{} <prog.nro>            Replay the program's instructions on this machine's CPU and name the first disagreement (AArch64 hosts)", s.green, s.reset);
     println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
     println!("    {}run-nro{} <file> [args] [--gui]  Load and execute only a homebrew NRO", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
