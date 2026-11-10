@@ -450,7 +450,7 @@ pub fn pmull(n: u128, m: u128, wide: bool, q: bool) -> u128 {
 }
 
 macro_rules! fp_lane_ops {
-    ($mod_name:ident, $f:ty, $b:ty, $quiet:expr, $sign:expr) => {
+    ($mod_name:ident, $f:ty, $b:ty, $quiet:expr, $sign:expr, $dnan:expr) => {
         mod $mod_name {
             use super::{SimdFpOp2, SimdFpOp3};
             const QUIET: $b = $quiet;
@@ -506,6 +506,12 @@ macro_rules! fp_lane_ops {
                 ops.iter().find(|x| x.is_nan()).map(|x| x.to_bits())
             }
 
+            /// Arm `FPDefaultNaN()`: a NaN made by an invalid operation (inf - inf, 0 / 0, ...) is always the positive
+            /// quiet NaN; x86 hosts would give the negative one. Input NaNs never reach here (see `nan_in`).
+            fn dn(x: $f) -> $b {
+                if x.is_nan() { $dnan } else { x.to_bits() }
+            }
+
             pub fn op3(op: SimdFpOp3, acc: $b, n: $b, m: $b) -> $b {
                 let (a, b, d) = (<$f>::from_bits(n), <$f>::from_bits(m), <$f>::from_bits(acc));
                 let flag = |c: bool| if c { ALL } else { 0 };
@@ -527,24 +533,24 @@ macro_rules! fp_lane_ops {
                     return r;
                 }
                 match op {
-                    SimdFpOp3::Fadd | SimdFpOp3::Faddp => (a + b).to_bits(),
-                    SimdFpOp3::Fsub => (a - b).to_bits(),
+                    SimdFpOp3::Fadd | SimdFpOp3::Faddp => dn(a + b),
+                    SimdFpOp3::Fsub => dn(a - b),
                     // Arm's invalid multiply result is the positive default NaN,
                     // regardless of the host instruction's NaN sign. Preserve input
                     // NaN payload/order through nan_in above, and FMULX below.
                     SimdFpOp3::Fmul if (a == 0.0 && b.is_infinite()) || (b == 0.0 && a.is_infinite()) => <$f>::INFINITY.to_bits() | QUIET,
-                    SimdFpOp3::Fmul => (a * b).to_bits(),
+                    SimdFpOp3::Fmul => dn(a * b),
                     SimdFpOp3::Fmulx => {
                         if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) {
                             (if a.is_sign_negative() != b.is_sign_negative() { -2.0 } else { 2.0 } as $f).to_bits()
                         } else {
-                            (a * b).to_bits()
+                            dn(a * b)
                         }
                     }
-                    SimdFpOp3::Fdiv => (a / b).to_bits(),
-                    SimdFpOp3::Fabd => (a - b).abs().to_bits(),
-                    SimdFpOp3::Fmla => a.mul_add(b, d).to_bits(),
-                    SimdFpOp3::Fmls => (-a).mul_add(b, d).to_bits(),
+                    SimdFpOp3::Fdiv => dn(a / b),
+                    SimdFpOp3::Fabd => dn(a - b) & !SIGN,
+                    SimdFpOp3::Fmla => dn(a.mul_add(b, d)),
+                    SimdFpOp3::Fmls => dn((-a).mul_add(b, d)),
                     SimdFpOp3::Fmax | SimdFpOp3::Fmaxp => max_min(a, b, true),
                     SimdFpOp3::Fmin | SimdFpOp3::Fminp => max_min(a, b, false),
                     SimdFpOp3::Fmaxnm | SimdFpOp3::Fmaxnmp => max_min_num(a, b, true),
@@ -568,15 +574,15 @@ macro_rules! fp_lane_ops {
                     SimdFpOp2::Fcmlt0 => flag(a < 0.0),
                     SimdFpOp2::Fabs => n & !SIGN,
                     SimdFpOp2::Fneg => n ^ SIGN,
-                    SimdFpOp2::Fsqrt => a.sqrt().to_bits(),
+                    SimdFpOp2::Fsqrt => if a.is_nan() { n | QUIET } else { dn(a.sqrt()) },
                     SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl => unreachable!(),
                 }
             }
         }
     };
 }
-fp_lane_ops!(fp32, f32, u32, 1 << 22, 1 << 31);
-fp_lane_ops!(fp64, f64, u64, 1 << 51, 1 << 63);
+fp_lane_ops!(fp32, f32, u32, 1 << 22, 1 << 31, 0x7fc0_0000);
+fp_lane_ops!(fp64, f64, u64, 1 << 51, 1 << 63, 0x7ff8_0000_0000_0000);
 
 /// Pairwise FP ops read adjacent element pairs of `n` then `m`.
 fn is_pairwise(op: SimdFpOp3) -> bool {
