@@ -297,6 +297,62 @@ jobs:
           grep -q "ounce-fixture result=0x00000EEE" <<< "$out"
           grep -q "Guest exited (svcExitProcess)" <<< "$out"
 
+  mac-app:
+    # Advisory for now (not in the `required` summary): builds the real app bundle with the packaging script,
+    # checks its signature and drives the bundled runtime through one upload.
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    name: Mac app bundle (macos-latest)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: mac-app
+
+      - name: Build the app bundle
+        run: bash scripts/build_macos_app.sh "$RUNNER_TEMP/Ounce Core.app"
+
+      - name: Verify the bundle signature
+        run: codesign --verify --deep --strict "$RUNNER_TEMP/Ounce Core.app"
+
+      - name: Check a program through the bundled runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          rt="$RUNNER_TEMP/Ounce Core.app/Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core"
+          "$rt" ui --no-open --port 0 --dir "$RUNNER_TEMP/checks" > "$RUNNER_TEMP/ui.log" &
+          server=$!
+          trap 'kill $server 2>/dev/null || true' EXIT
+          for _ in $(seq 1 50); do grep -q "http://127.0.0.1:" "$RUNNER_TEMP/ui.log" && break; sleep 0.2; done
+          url=$(grep -o "http://127.0.0.1:[0-9]*/?t=[0-9a-f]*" "$RUNNER_TEMP/ui.log" | head -1)
+          python3 - "$url" tests/fixtures/nro/hello/hello.nro <<'PYTHON'
+          import json, sys, time, urllib.request
+          url, nro = sys.argv[1], sys.argv[2]
+          base, token = url.split('/?t=')
+          def call(path, data=None):
+              req = urllib.request.Request(base + path, data=data, headers={'X-Ounce-Token': token})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)
+          check_id = call('/api/checks?name=hello.nro&native=0', open(nro, 'rb').read())['id']
+          deadline = time.time() + 180
+          while time.time() < deadline:
+              check = call('/api/checks/' + check_id)
+              if check['status'] == 'done':
+                  break
+              time.sleep(1)
+          else:
+              raise SystemExit('check did not finish')
+          print(json.dumps(check['verdict']))
+          assert check['verdict']['kind'] == 'agrees', check['verdict']
+          PYTHON
+
   required:
     # Preserve the two live ruleset contexts, but make them summarize every
     # applicable job. Docs-only PRs get these statuses without Rust builds.

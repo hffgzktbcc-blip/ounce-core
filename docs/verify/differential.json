@@ -334,6 +334,17 @@
     "nx_main": "main_nx.c",
     "cflags": "-march=armv8-a+crypto -DPMULL_LIB",
     "arm64_reference": true
+   },
+   {
+    "name": "soak",
+    "dir": "soak-harness",
+    "files": [
+     "soak_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "libs": "-lm",
+    "arm64_reference": true
    }
  ]
 }

@@ -4,6 +4,13 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+### Changed
+- CI: notices and provenance records under `tests/fixtures/` no longer trigger the Rust jobs; a run that fails only
+  because hosted-runner jobs were cancelled is re-run once (`ci-rerun-infra.yml`, never for a real failure); an
+  advisory job builds the Mac app bundle and checks a program through the bundled runtime.
+- A long-running soak workload joins the differential suite (`docs/verify/soak-harness`), byte-identical to the host
+  on Tier-3 and Tier-4.
+
 ### Added
 - `ounce-core diverge <program.nro>` replays a sample of a program's register-only instructions on this machine's CPU and names the first one where Ounce-Core disagrees: program counter, opcode, register, both values. AArch64 hosts only. See `docs/DIVERGE.md` for what it does not cover.
 - The Mac app now opens the workbench in its window (`tools/macos-launcher/Workbench.swift`, a `WKWebView` around the
@@ -20,6 +27,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   `site/lab.html` stays a scripted design preview.
 
 ### Fixed
+- `ounce-nce`'s arena test no longer fails when another test thread claims the address it just released.
 - Workbench on Windows keeps checks under `%LOCALAPPDATA%\Ounce Core\Checks` (it used a temp folder) and opens the browser with `start`. On Linux/Windows the wording says "this computer"; a closed stdout no longer kills the server. The Mac launcher records Stop Session in the session log.
 - `run`/`run-nro --cpu=tier3|tier4` (or `OUNCE_CPU`) now runs the guest on the selected block engine. Before, the
   flag was ignored for homebrew programs: every run used the one-instruction interpreter, so the "Tier-3" and
