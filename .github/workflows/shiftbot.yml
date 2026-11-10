@@ -1,0 +1,63 @@
+name: Shiftbot
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+  schedule:
+    - cron: '37 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  statuses: read
+
+jobs:
+  report:
+    # Keep the workflow on free standard runners in public repositories only.
+    if: github.event.repository.private == false
+    name: Shiftbot summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Summarize pull request status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          fields=number,isDraft,mergeable,reviewDecision,statusCheckRollup
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            pulls=$(gh pr view "$PR_NUMBER" --repo "$GH_REPO" --json "$fields" | jq '[.]')
+          else
+            pulls=$(gh pr list --repo "$GH_REPO" --state open --limit 100 --json "$fields")
+          fi
+
+          {
+            echo '## Shiftbot'
+            echo
+            echo 'Snapshot of reported checks and review state. Checks can still be queued after this report.'
+            echo
+            jq -r --arg repo "$GH_REPO" '
+              def checks:
+                [.statusCheckRollup[]? | select(.name != "Shiftbot summary") |
+                  if .__typename == "StatusContext" or has("state") then .state
+                  elif .status != "COMPLETED" then "PENDING"
+                  else .conclusion end];
+              def verdict:
+                if any(.[]; IN("FAILURE", "ERROR", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE")) then "Failed"
+                elif any(.[]; IN("PENDING", "EXPECTED")) then "Pending"
+                elif any(.[]; IN("CANCELLED", "STALE")) then "Incomplete"
+                elif any(.[]; . == "SUCCESS") then "Passing"
+                else "No passing checks" end;
+              if length == 0 then "No open pull requests."
+              else
+                "| PR | Draft | Mergeability | Review | Checks |",
+                "| --- | --- | --- | --- | --- |",
+                (.[] | "| [#\(.number)](https://github.com/\($repo)/pull/\(.number)) | \(if .isDraft then "Yes" else "No" end) | \(if .mergeable == "CONFLICTING" then "Conflict" elif .mergeable == "MERGEABLE" then "No conflict" else "Unknown" end) | \(if (.reviewDecision // "") == "" then "None recorded" else .reviewDecision end) | \(checks | verdict) |"),
+                (if length == 100 then "\nReport capped at 100 pull requests." else empty end)
+              end
+            ' <<< "$pulls"
+          } >> "$GITHUB_STEP_SUMMARY"
