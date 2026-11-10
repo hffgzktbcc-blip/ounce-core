@@ -40,18 +40,7 @@
    ],
    "host_main": "host/host_main.c",
    "nx_main": "main_nx.c",
-   "arm64_reference": true,
-   "host_notes": {
-    "linux-arm64": {
-     "expected_different": [
-      "committed-vs-fresh-host",
-      "tier3",
-      "tier4"
-     ],
-     "reason": "FPSR bits 31:28 (N,Z,C,V) are retained on this Linux ARM64 runner (an msr of 0xffffffff reads back 0xf800009f) but read back 0 on Apple Silicon (0x0800009f). The committed reference and tier3/tier4 follow Apple Silicon; native executes on the runner and matches its own host. Which behaviour the Arm ARM mandates is unresolved (see the tracking issue).",
-     "evidence": "CI run 42501194128 (PR 247), job Differential (ubuntu-24.04-arm), https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42501194128, qc-flag line 2402: committed='fpsr write ffffffff reads 0800009f' vs fresh-host='fpsr write ffffffff reads f800009f'"
-    }
-   }
+   "arm64_reference": true
   },
   {
    "name": "qc-saturating-shifts",
