@@ -639,9 +639,14 @@ fn serve(options: Options) -> Result<(), String> {
         checks: Mutex::new(Vec::new()), counter: Mutex::new(0),
     });
     let url = format!("http://127.0.0.1:{port}/?t={}", lab.token);
-    println!("  Workbench: {url}");
-    println!("  Checks are saved under {}", options.dir.display());
-    println!("  Only this computer can reach it. Press Ctrl-C to stop.");
+    // A caller may read only the first line and close the pipe (the test harness and the Mac app
+    // both do); `println!` would panic on the next line and kill the server before it accepts.
+    let mut out = std::io::stdout();
+    let _ = writeln!(out, "  Workbench: {url}");
+    let _ = out.flush();
+    let _ = writeln!(out, "  Checks are saved under {}", options.dir.display());
+    let _ = writeln!(out, "  Only this computer can reach it. Press Ctrl-C to stop.");
+    let _ = out.flush();
     if options.parent_pipe {
         thread::spawn(|| {
             let mut sink = Vec::new();
