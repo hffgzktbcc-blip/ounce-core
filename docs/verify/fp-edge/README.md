@@ -50,9 +50,10 @@ expected values follow the Arm pseudocode as well as qemu:
 - scalar `FRINT*` and `FSQRT` returned a signalling NaN operand unquieted.
 These are fixed in this branch (unit test `fuzz_scalar_nan::invalid_operations_return_positive_default_nan_and_unary_ops_quiet_snan`).
 After the fix, at default FPCR: interpreter and Tier-3 0 mismatches in 32,628 executed cases (and 10,656 unsupported).
-Tier-4 built for this x86_64 host still returns the host's negative default NaN for scalar `FADD/FSUB/FMUL/FDIV/FNMUL`
-(96 cases at default FPCR); Cranelift's `fadd` leaves the NaN sign to the CPU, so this is expected to disappear on an ARM64
-host and is exactly what the CI job checks. Non-default FPCR: 36,941 interpreter mismatches (the unmodelled-mode gap above).
+Tier-4 on this x86_64 host first returned the host's negative default NaN and the host's NaN operand choice for scalar
+`FADD/FSUB/FMUL/FDIV/FNMUL` (96 cases at default FPCR; this also broke the existing `random_linked_loops` test once the
+interpreter was fixed). The Cranelift lowering now rewrites NaN results to the Arm rule on non-AArch64 hosts only (AArch64
+uses the native instruction unchanged), and Tier-4 then matches the interpreter on all 389,556 cases. Non-default FPCR: 36,941 interpreter mismatches (the unmodelled-mode gap above).
 
 **Hardware (Linux Arm runner, Apple Silicon):** see the CI artifacts for this branch; this README is not updated with numbers that were not observed.
 
