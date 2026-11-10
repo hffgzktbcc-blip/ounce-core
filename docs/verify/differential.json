@@ -325,18 +325,39 @@
     }
    },
    {
-    "name": "qoi",
-    "dir": "qoi-harness",
+    "name": "quickjs",
+    "dir": "quickjs-harness",
     "files": [
-     "qoi_cases.c"
+     "qjs_cases.c",
+     "qjs_core.c",
+     "qjs_cutils.c",
+     "qjs_dtoa.c",
+     "qjs_libregexp.c",
+     "qjs_libunicode.c"
     ],
     "host_main": "host/host_main.c",
     "nx_main": "main_nx.c",
+    "libs": "-lm",
+    "libs_linux": "-lpthread -ldl",
     "upstream": {
-     "repo": "https://github.com/phoboslab/qoi",
-     "commit": "ffb2d2cb74a1de60819b21b939f7209aa53e91c1",
+     "repo": "https://github.com/bellard/quickjs",
+     "commit": "e5ac135f8db58f8d6b7b5862b8263ce6ba9c5ab6",
      "copy": {
-      "qoi.h": "qoi.h"
+      "quickjs.c": "quickjs.inc",
+      "cutils.c": "cutils.inc",
+      "dtoa.c": "dtoa.inc",
+      "libregexp.c": "libregexp.inc",
+      "libunicode.c": "libunicode.inc",
+      "quickjs.h": "quickjs.h",
+      "quickjs-atom.h": "quickjs-atom.h",
+      "quickjs-opcode.h": "quickjs-opcode.h",
+      "cutils.h": "cutils.h",
+      "dtoa.h": "dtoa.h",
+      "libregexp.h": "libregexp.h",
+      "libregexp-opcode.h": "libregexp-opcode.h",
+      "libunicode.h": "libunicode.h",
+      "libunicode-table.h": "libunicode-table.h",
+      "list.h": "list.h"
      }
     }
    },
@@ -361,6 +382,22 @@
     "nx_main": "main_nx.c",
     "libs": "-lm",
     "arm64_reference": true
+   },
+   {
+    "name": "qoi",
+    "dir": "qoi-harness",
+    "files": [
+     "qoi_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "upstream": {
+     "repo": "https://github.com/phoboslab/qoi",
+     "commit": "ffb2d2cb74a1de60819b21b939f7209aa53e91c1",
+     "copy": {
+      "qoi.h": "qoi.h"
+     }
+    }
    }
  ]
 }
