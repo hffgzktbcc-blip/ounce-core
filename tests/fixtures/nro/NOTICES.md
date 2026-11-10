@@ -1,8 +1,8 @@
 # Notices for the legacy NRO fixtures
 
 Applies to the eleven `*.nro` test inputs under `tests/fixtures/nro/`. They are test inputs only and are not
-in the runtime release archives. This file retains notices; it is not a licence review and does not mark any
-fixture `VERIFIED` in `tests/fixtures/provenance.json`.
+in the runtime release archives. This file retains notices. The fixtures are `VERIFIED` in `tests/fixtures/provenance.json` on the strength of
+an owner-directed review dated 2026-11-10, not a specialist legal opinion.
 
 ## Sources
 
