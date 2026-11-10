@@ -109,6 +109,72 @@ impl Tracer {
 mod tests {
     use super::*;
 
+    /// FMAX/FMIN/FMAXNM/FMINNM (scalar and vector) over zeros, infinities, quiet and signalling NaNs and
+    /// denormals, replayed on the host CPU under the default FPCR. Flush-to-zero and default-NaN modes are not
+    /// modelled (docs/LIMITS.md): measured 1,208 of 4,800 operand sets disagree when FPCR.FZ or FPCR.DN is set.
+    #[test]
+    fn float_min_max_edge_cases_match_this_cpu() {
+        use crate::mmu::{Memory, Permission};
+        if !cfg!(target_arch = "aarch64") || std::process::Command::new("cc").arg("--version").output().is_err() {
+            eprintln!("skipped: needs an AArch64 host and a C compiler");
+            return;
+        }
+        const CODE: u64 = 0x8000_0000;
+        let ops: [u32; 12] = [
+            0x1E20_4820, 0x1E20_5820, 0x1E20_6820, 0x1E20_7820, // FMAX FMIN FMAXNM FMINNM (S): v0 = op(v1, v0)
+            0x1E60_4820, 0x1E60_5820, 0x1E60_6820, 0x1E60_7820, // (D)
+            0x4E20_F420, 0x4EA0_F420, 0x4E20_C420, 0x4EA0_C420, // vector .4S
+        ];
+        let f32s: [u32; 10] = [0, 0x8000_0000, 0x3F80_0000, 0xBF80_0000, 0x7F80_0000, 0xFF80_0000, 0x7FC0_0000, 0x7FA0_0000, 0xFFC0_0001, 1];
+        let dir = std::env::temp_dir().join(format!("ounce-minmax-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut file = Vec::new();
+        let mut count = 0;
+        for &op in &ops {
+            let double = op >> 24 == 0x1E && (op & 0x0040_0000) != 0;
+            for fpcr in [0u32] {
+                for &a in &f32s {
+                    for &b in &f32s {
+                        let (lo_a, lo_b) = if double {
+                            ((a as u64) << 32 | b as u64, (b as u64) << 32 | a as u64)
+                        } else {
+                            (a as u64 | (b as u64) << 32, b as u64 | (a as u64) << 32)
+                        };
+                        let wide = |lo: u64| lo as u128 | ((lo ^ 0x0000_0001_0000_0000) as u128) << 64;
+                        let mut memory = Memory::new();
+                        memory.map_range(CODE, 4096, Permission::READ_WRITE_EXECUTE);
+                        memory.write_u32(CODE, op).unwrap();
+                        let mut cpu = Cpu::new();
+                        cpu.regs.v[1] = wide(lo_a);
+                        cpu.regs.v[0] = wide(lo_b);
+                        cpu.regs.fpcr = fpcr;
+                        cpu.regs.pc = CODE;
+                        let pre = State::capture(&cpu);
+                        assert!(matches!(cpu.step(&mut memory), Ok(crate::cpu::StepResult::Continue)));
+                        let post = State::capture(&cpu);
+                        let mut head = [0u8; 16];
+                        head[..4].copy_from_slice(&op.to_le_bytes());
+                        head[8..].copy_from_slice(&CODE.to_le_bytes());
+                        file.extend_from_slice(&head);
+                        file.extend_from_slice(&pre.0);
+                        file.extend_from_slice(&post.0);
+                        count += 1;
+                    }
+                }
+            }
+        }
+        let trace = dir.join("t.bin");
+        std::fs::write(&trace, &file).unwrap();
+        let helper = crate::diverge::build_helper(&dir).unwrap();
+        let report = dir.join("r.json");
+        std::process::Command::new(helper).arg(&trace).arg("--json").arg(&report).status().unwrap();
+        let json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&report).unwrap()).unwrap();
+        let first = json["mismatches"].get(0).map(|m| m.to_string());
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(json["checked"].as_u64(), Some(count), "{json}");
+        assert_eq!(json["mismatched"].as_u64(), Some(0), "first disagreement: {first:?}");
+    }
+
     #[test]
     fn eligibility_keeps_alu_and_simd_and_drops_risky_classes() {
         assert!(eligible(0x8B02_0020)); // add x0, x1, x2
