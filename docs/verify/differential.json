@@ -325,20 +325,39 @@
     }
    },
    {
-    "name": "lodepng",
-    "dir": "lodepng-harness",
+    "name": "quickjs",
+    "dir": "quickjs-harness",
     "files": [
-     "lp_cases.c"
+     "qjs_cases.c",
+     "qjs_core.c",
+     "qjs_cutils.c",
+     "qjs_dtoa.c",
+     "qjs_libregexp.c",
+     "qjs_libunicode.c"
     ],
     "host_main": "host/host_main.c",
     "nx_main": "main_nx.c",
-    "cflags": "-DLODEPNG_NO_COMPILE_CPP -DLODEPNG_NO_COMPILE_DISK",
+    "libs": "-lm",
+    "libs_linux": "-lpthread -ldl",
     "upstream": {
-     "repo": "https://github.com/lvandeve/lodepng",
-     "commit": "7b2893e35891c0c85bee5595caafaf3c2044b409",
+     "repo": "https://github.com/bellard/quickjs",
+     "commit": "e5ac135f8db58f8d6b7b5862b8263ce6ba9c5ab6",
      "copy": {
-      "lodepng.cpp": "lodepng.c",
-      "lodepng.h": "lodepng.h"
+      "quickjs.c": "quickjs.inc",
+      "cutils.c": "cutils.inc",
+      "dtoa.c": "dtoa.inc",
+      "libregexp.c": "libregexp.inc",
+      "libunicode.c": "libunicode.inc",
+      "quickjs.h": "quickjs.h",
+      "quickjs-atom.h": "quickjs-atom.h",
+      "quickjs-opcode.h": "quickjs-opcode.h",
+      "cutils.h": "cutils.h",
+      "dtoa.h": "dtoa.h",
+      "libregexp.h": "libregexp.h",
+      "libregexp-opcode.h": "libregexp-opcode.h",
+      "libunicode.h": "libunicode.h",
+      "libunicode-table.h": "libunicode-table.h",
+      "list.h": "list.h"
      }
     }
    },
@@ -363,6 +382,24 @@
     "nx_main": "main_nx.c",
     "libs": "-lm",
     "arm64_reference": true
+   },
+   {
+    "name": "lodepng",
+    "dir": "lodepng-harness",
+    "files": [
+     "lp_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "cflags": "-DLODEPNG_NO_COMPILE_CPP -DLODEPNG_NO_COMPILE_DISK",
+    "upstream": {
+     "repo": "https://github.com/lvandeve/lodepng",
+     "commit": "7b2893e35891c0c85bee5595caafaf3c2044b409",
+     "copy": {
+      "lodepng.cpp": "lodepng.c",
+      "lodepng.h": "lodepng.h"
+     }
+    }
    }
  ]
 }
