@@ -250,3 +250,30 @@ fn sched_getaffinity_reports_one_cpu_and_validates_like_linux() {
     assert_eq!(call(PID + 1, 8, 0x1000, &mut mem), Outcome::Return(-ESRCH));
     assert_eq!(call(0, 8, 0, &mut mem), Outcome::Return(-EFAULT));
 }
+
+#[test]
+fn mremap_shrinks_in_place_and_grows_by_moving_with_contents() {
+    use super::syscalls::{Process, Outcome, SYS_MMAP, SYS_MREMAP, EINVAL, ENOMEM};
+    use crate::mmu::Memory;
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    let mut out = Capture::default();
+    let Outcome::Return(a) = proc.dispatch(SYS_MMAP, [0, 0x4000, 3, 0x22, u64::MAX, 0], &mut mem, &mut out) else { panic!() };
+    let a = a as u64;
+    mem.write_u64(a, 0x1122_3344_5566_7788).unwrap();
+    mem.write_u64(a + 0x3ff8, 42).unwrap();
+    // without MAYMOVE growth is refused, bad flags are invalid
+    assert_eq!(proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-ENOMEM));
+    assert_eq!(proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 2, 0, 0], &mut mem, &mut out), Outcome::Return(-EINVAL));
+    // grow with MAYMOVE: contents preserved at the new address, old range unmapped
+    let Outcome::Return(b) = proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 1, 0, 0], &mut mem, &mut out) else { panic!() };
+    let b = b as u64;
+    assert_ne!(a, b);
+    assert_eq!(mem.read_u64(b).unwrap(), 0x1122_3344_5566_7788);
+    assert_eq!(mem.read_u64(b + 0x3ff8).unwrap(), 42);
+    assert_eq!(mem.read_u64(b + 0x7ff8).unwrap(), 0);
+    assert!(!mem.is_mapped(a));
+    // shrink in place
+    assert_eq!(proc.dispatch(SYS_MREMAP, [b, 0x8000, 0x1000, 0, 0, 0], &mut mem, &mut out), Outcome::Return(b as i64));
+    assert!(mem.is_mapped(b) && !mem.is_mapped(b + 0x1000));
+}

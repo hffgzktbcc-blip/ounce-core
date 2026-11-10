@@ -17,13 +17,15 @@ enum HarnessCatalog {
             let dir: String
             let resultFile: String?
             let arm64Reference: Bool?
-            enum CodingKeys: String, CodingKey { case name, dir, resultFile = "result_file", arm64Reference = "arm64_reference" }
+            let linuxElfOnly: Bool?
+            enum CodingKeys: String, CodingKey { case name, dir, resultFile = "result_file", arm64Reference = "arm64_reference", linuxElfOnly = "linux_elf_only" }
         }
         let harnesses: [Entry]
     }
 
     static func parse(_ data: Data) throws -> [Harness] {
-        try JSONDecoder().decode(Document.self, from: data).harnesses.map {
+        // Linux-ELF-only harnesses have no console program or committed expected-host.txt to verify against.
+        try JSONDecoder().decode(Document.self, from: data).harnesses.filter { $0.linuxElfOnly != true }.map {
             Harness(name: $0.name, dir: $0.dir, resultFile: $0.resultFile ?? "results.txt", arm64Reference: $0.arm64Reference ?? false)
         }
     }

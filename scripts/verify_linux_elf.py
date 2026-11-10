@@ -43,6 +43,9 @@ def main():
     ap.add_argument('--upstream-dir', type=Path, help='optional clean checkout at the manifest commit')
     ap.add_argument('--seconds', type=int, default=300, help='deadline per build/execution step')
     ap.add_argument('--budget', type=int, default=100_000_000)
+    ap.add_argument('--qemu', help='optional qemu-user command (for example qemu-aarch64): run the same ELF as an independent AArch64 reference. '
+                    'A harness with "elf_reference": "qemu" in differential.json is compared against qemu output instead of the host build '
+                    '(for results that legitimately differ between x86-64 and AArch64, such as the sign of a default NaN)')
     a = ap.parse_args()
     if a.seconds <= 0 or a.budget <= 0:
         ap.error('--seconds and --budget must be positive')
@@ -109,19 +112,33 @@ def main():
                 raise RuntimeError(f'{label} --version failed')
         elf = f'{a.harness}.elf'
         libs = shlex.split(h.get('libs', ''))
-        cfiles = sorted(str(p.relative_to(work)) for p in sources.glob('*.c'))
+        build_flags = [f'-D{d}' for d in h.get('defines', [])] + shlex.split(h.get('cflags', ''))
+        cfiles = sorted(str(p.relative_to(work)) for p in sources.glob('*.c') if p.name != 'main_nx.c')
         for name, compiler, extra in [('host', compilers[0], []), ('elf', compilers[1], ['-static', '-no-pie'])]:
             output = 'host-ref.exe' if name == 'host' else elf
-            r = step(name + '-build', compiler + ['-O1', '-Isources', *extra, *cfiles, '-o', output, *libs])
+            r = step(name + '-build', compiler + ['-O1', '-Isources', *build_flags, *extra, *cfiles, '-o', output, *libs])
             if r.returncode:
                 raise RuntimeError(f'{name} build failed; inspect {name}-build.stderr')
             report[name + '_sha256'] = digest(work / output)
         reference = step('host-run', [str(work / 'host-ref.exe')])
         if reference.returncode:
             raise RuntimeError('host reference returned failure; inspect host-run.stderr')
+        expected = reference.stdout
+        if a.qemu:
+            q = step('qemu', shlex.split(a.qemu) + [str(work / elf)])
+            report['checks']['qemu-vs-host'] = 'identical' if q.returncode == 0 and q.stdout == reference.stdout else 'different'
+            if h.get('elf_reference') == 'qemu':
+                if q.returncode:
+                    raise RuntimeError('qemu reference returned failure; inspect qemu.stderr')
+                expected = q.stdout
+                report['reference'] = 'qemu'
+                report['checks'].pop('qemu-vs-host')
+                report['host_vs_qemu_note'] = 'host and qemu outputs ' + ('match' if q.stdout == reference.stdout else 'differ (architecture-dependent results; engines compared with qemu)')
+        elif h.get('elf_reference') == 'qemu':
+            raise RuntimeError('this harness is compared with qemu-user output; pass --qemu')
         for engine in ('tier3', 'tier4'):
             r = step(engine, [str(ounce), 'run-elf', str(work / elf), f'--cpu={engine}', f'--max-insns={a.budget}', '--trace-syscalls'])
-            report['checks'][engine] = execution_verdict(reference.stdout, r.stdout, r.returncode,
+            report['checks'][engine] = execution_verdict(expected, r.stdout, r.returncode,
                                                          r.stderr.decode('utf-8', 'replace'), engine)
         report['failed'] = any(v != 'identical' for v in report['checks'].values())
     except (OSError, RuntimeError, subprocess.SubprocessError, SystemExit) as e:

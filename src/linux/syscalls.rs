@@ -29,8 +29,10 @@ pub const SYS_UNAME: u64 = 160;
 pub const SYS_GETPID: u64 = 172;
 pub const SYS_BRK: u64 = 214;
 pub const SYS_MUNMAP: u64 = 215;
+pub const SYS_MREMAP: u64 = 216;
 pub const SYS_MMAP: u64 = 222;
 
+const MREMAP_MAYMOVE: u64 = 1;
 const MAP_FIXED: u64 = 0x10;
 const MAP_ANONYMOUS: u64 = 0x20;
 const PROT_READ: u64 = 1;
@@ -90,6 +92,7 @@ impl Process {
                 Err(why) => return Outcome::Unimplemented(why),
             },
             SYS_MUNMAP => self.sys_munmap(a[0], a[1], mmu),
+            SYS_MREMAP => self.sys_mremap(a, mmu),
             SYS_IOCTL => {
                 // Terminal queries are answered "not a tty" so stdio libraries choose full buffering.
                 if a[0] > 2 {
@@ -239,6 +242,49 @@ impl Process {
         mmu.unmap_range(addr, len as usize);
         self.mmap_total -= freed.min(self.mmap_total);
         0
+    }
+
+    /// `mremap(old, old_len, new_len, flags)` for anonymous read/write mappings, as musl's
+    /// `realloc` of large blocks uses it. Shrinking is in place. Growing moves the block
+    /// (MREMAP_MAYMOVE) to fresh address space and copies the contents; without MAYMOVE, or
+    /// with MREMAP_FIXED, growth fails with ENOMEM/EINVAL so callers fall back to copying.
+    fn sys_mremap(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
+        let (old, old_len, new_len, flags) = (a[0], a[1], a[2], a[3]);
+        if !old.is_multiple_of(PAGE) || old_len == 0 || new_len == 0 || flags & !MREMAP_MAYMOVE != 0 {
+            return -EINVAL;
+        }
+        let (old_len, new_len) = (align_up(old_len), align_up(new_len));
+        if old < MMAP_BASE || old.checked_add(old_len).is_none_or(|e| e > STACK_TOP - STACK_SIZE) || Self::mapped_pages(mmu, old, old_len) * PAGE != old_len {
+            return -EFAULT;
+        }
+        if new_len == old_len {
+            return old as i64;
+        }
+        if new_len < old_len {
+            let freed = old_len - new_len;
+            mmu.unmap_range(old + new_len, freed as usize);
+            self.mmap_total -= freed.min(self.mmap_total);
+            return old as i64;
+        }
+        if flags & MREMAP_MAYMOVE == 0 || new_len > MAX_MMAP_CALL || self.mmap_total - old_len + new_len > MAX_MMAP_TOTAL {
+            return -ENOMEM;
+        }
+        let base = self.mmap_next;
+        if base + new_len > STACK_TOP - STACK_SIZE - (1 << 32) {
+            return -ENOMEM;
+        }
+        let mut data = vec![0u8; old_len as usize];
+        if mmu.read_bytes(old, &mut data).is_err() {
+            return -EFAULT;
+        }
+        self.mmap_next = base + new_len;
+        mmu.map_range(base, new_len as usize, Permission { read: true, write: true, execute: false });
+        if mmu.write_bytes(base, &data).is_err() {
+            return -EFAULT;
+        }
+        mmu.unmap_range(old, old_len as usize);
+        self.mmap_total = self.mmap_total - old_len + new_len;
+        base as i64
     }
 
     fn sys_clock_gettime(&mut self, clk: u64, ts: u64, mmu: &mut Memory) -> i64 {

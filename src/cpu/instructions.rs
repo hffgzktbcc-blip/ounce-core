@@ -254,6 +254,8 @@ pub enum Instruction {
         offset: i64,
         is_load: bool,
         is_64: bool,
+        /// `LDPSW`: two 32-bit loads, each sign-extended into a 64-bit register (`is_64` is false).
+        signed_word: bool,
         writeback: bool,
         post_index: bool,
     },
@@ -832,6 +834,8 @@ pub enum Instruction {
         op: SimdFpElementOp,
         double: bool,
         q: bool,
+        /// scalar form `FMUL Sd/Dd, Sn/Dn, Vm.<Ts>[index]` (also FMLA/FMLS/FMULX): only lane 0 is written
+        scalar: bool,
     },
 
     /// `FCCMP/FCCMPE Sn/Dn, Sm/Dm, #nzcv, cond`: compare when `cond` holds, else set the flags to `nzcv`
