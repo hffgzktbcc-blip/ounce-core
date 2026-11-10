@@ -55,7 +55,15 @@ Tier-4 on this x86_64 host first returned the host's negative default NaN and th
 interpreter was fixed). The Cranelift lowering now rewrites NaN results to the Arm rule on non-AArch64 hosts only (AArch64
 uses the native instruction unchanged), and Tier-4 then matches the interpreter on all 389,556 cases. Non-default FPCR: 36,941 interpreter mismatches (the unmodelled-mode gap above).
 
-**Hardware (Linux Arm runner, Apple Silicon):** see the CI artifacts for this branch; this README is not updated with numbers that were not observed.
+**Real hardware, CI run 42877863247 on commit de2b909 (artifacts `fp-edge-evidence-ubuntu-24.04-arm` and `-macos-latest`):**
+Linux Arm runner (aarch64, Azure) and Apple M1 (virtual) give the same table. Each engine ran 389,556 cases: default FPCR
+32,628 match, 0 mismatch, 10,656 unsupported; FZ 3,391, DN 7,129, FZ+DN 9,820, RP 2,016, RM 2,498, RZ 1,796 and all-modes 10,291
+mismatches (the unmodelled-mode gap, issue #363); FZ16 equals default because no supported word is half precision. Tier-3 and
+Tier-4 differ from the interpreter in 0 cases on both. The gate passed on both. The two hardware traces have different
+sha256 values (Linux `ceab2b2c…`, macOS `f82e577a…`), so the hardware outputs are not byte-identical across the two CPUs;
+the engines agree with each on every compared field. The cause of the trace difference (likely FPSR flags or x18, which are not
+compared) was not investigated. The qemu-user trace has the same hash as the Linux Arm trace, so on this corpus qemu and
+that CPU produced identical output.
 
 ## Not covered
 Loads/stores, branches, integer operations, SVE/SME, FEAT_FP16 arithmetic (unsupported), FRINT32/64, FCMA, BF16, trapping
