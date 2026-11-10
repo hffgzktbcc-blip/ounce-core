@@ -398,6 +398,23 @@
       "qoi.h": "qoi.h"
      }
     }
+   },
+   {
+    "name": "tiny-aes",
+    "dir": "tiny-aes-harness",
+    "files": [
+     "aes_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "nx_main": "main_nx.c",
+    "upstream": {
+     "repo": "https://github.com/kokke/tiny-AES-c",
+     "commit": "23856752fbd139da0b8ca6e471a13d5bcc99a08d",
+     "copy": {
+      "aes.c": "aes.c",
+      "aes.h": "aes.h"
+     }
+    }
    }
  ]
 }
