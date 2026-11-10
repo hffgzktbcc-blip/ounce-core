@@ -18,7 +18,7 @@ Maturity: **research-only** as a general Linux runner. Six tiny freestanding pro
 - ELF64 little-endian AArch64 `ET_EXEC`; `PT_LOAD` mapping; stack with argc, argv, empty envp, auxv
   (PHDR, PHENT, PHNUM, PAGESZ, ENTRY, UID/GID, HWCAP, CLKTCK, SECURE, RANDOM, PLATFORM, EXECFN).
 - Syscalls (via `SVC #0`, number in x8): `write`, `writev` (fd 1 and 2 only), `exit`, `exit_group`,
-  `brk`, `mmap` (anonymous only, `MAP_FIXED` allowed in the mmap window), `munmap`, `ioctl` (returns
+  `brk`, `mmap` (anonymous only, `MAP_FIXED` allowed in the mmap window), `munmap`, `mremap` (anonymous mappings; shrink in place, grow only with `MREMAP_MAYMOVE`), `ioctl` (returns
   ENOTTY), `set_tid_address`, `rt_sigaction`/`rt_sigprocmask` (accept and ignore), `getpid`,
   `clock_gettime` (realtime, monotonic), `uname`, `openat`/`readlinkat` (always ENOENT),
   `sched_getaffinity` (one CPU: an 8-byte mask with CPU 0 set).

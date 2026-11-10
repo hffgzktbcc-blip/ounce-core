@@ -472,6 +472,230 @@
       "lodepng.h": "lodepng.h"
      }
     }
+   },
+   {
+    "name": "blake3",
+    "dir": "blake3-harness",
+    "files": [
+     "b3_cases.c",
+     "b3_neon_wrap.c"
+    ],
+    "host_main": "host/host_main.c",
+    "linux_elf_only": true,
+    "defines": [
+     "BLAKE3_NO_SSE2",
+     "BLAKE3_NO_SSE41",
+     "BLAKE3_NO_AVX2",
+     "BLAKE3_NO_AVX512"
+    ],
+    "upstream": {
+     "repo": "https://github.com/BLAKE3-team/BLAKE3",
+     "commit": "f55849f89cd85083c1c9daa2c5de20766f309c00",
+     "copy": {
+      "c/blake3.c": "blake3.c",
+      "c/blake3.h": "blake3.h",
+      "c/blake3_dispatch.c": "blake3_dispatch.c",
+      "c/blake3_impl.h": "blake3_impl.h",
+      "c/blake3_neon.c": "blake3_neon.inc",
+      "c/blake3_portable.c": "blake3_portable.c"
+     }
+    }
+   },
+   {
+    "name": "crypto-algorithms",
+    "dir": "crypto-algorithms-harness",
+    "files": [
+     "ca_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "linux_elf_only": true,
+    "upstream": {
+     "repo": "https://github.com/B-Con/crypto-algorithms",
+     "commit": "cfbde48414baacf51fc7c74f275190881f037d32",
+     "copy": {
+      "sha1.c": "sha1.c",
+      "sha1.h": "sha1.h",
+      "sha256.c": "sha256.c",
+      "sha256.h": "sha256.h",
+      "md5.c": "md5.c",
+      "md5.h": "md5.h",
+      "md2.c": "md2.c",
+      "md2.h": "md2.h",
+      "aes.c": "aes.c",
+      "aes.h": "aes.h",
+      "blowfish.c": "blowfish.c",
+      "blowfish.h": "blowfish.h",
+      "des.c": "des.c",
+      "des.h": "des.h",
+      "arcfour.c": "arcfour.c",
+      "arcfour.h": "arcfour.h",
+      "base64.c": "base64.c",
+      "base64.h": "base64.h",
+      "rot-13.c": "rot-13.c",
+      "rot-13.h": "rot-13.h"
+     }
+    }
+   },
+   {
+    "name": "fastlz",
+    "dir": "fastlz-harness",
+    "files": [
+     "flz_cases.c"
+    ],
+    "host_main": "host/host_main.c",
+    "linux_elf_only": true,
+    "upstream": {
+     "repo": "https://github.com/ariya/FastLZ",
+     "commit": "b1342dabcf5257ab303743c9332fe75e9147a011",
+     "copy": {
+      "fastlz.c": "fastlz.c",
+      "fastlz.h": "fastlz.h"
+     }
+    }
+   },
+   {
+    "name": "tinf",
+    "dir": "tinf-harness",
+    "files": [
+     "tinf_cases.c",
+     "tinf_data.h"
+    ],
+    "host_main": "host/host_main.c",
+    "linux_elf_only": true,
+    "upstream": {
+     "repo": "https://github.com/jibsen/tinf",
+     "commit": "57ffa1f1d5e3dde19011b2127bd26d01689b694b",
+     "copy": {
+      "src/tinf.h": "tinf.h",
+      "src/tinflate.c": "tinflate.c",
+      "src/tinfgzip.c": "tinfgzip.c",
+      "src/tinfzlib.c": "tinfzlib.c",
+      "src/adler32.c": "adler32.c",
+      "src/crc32.c": "crc32.c"
+     }
+    }
+   },
+   {
+    "name": "jsmn",
+    "dir": "jsmn-harness",
+    "files": [
+     "jsmn_cases.c"
+    ],
+    "upstream": {
+     "repo": "https://github.com/zserge/jsmn",
+     "commit": "25647e692c7906b96ffd2b05ca54c097948e879c",
+     "copy": {
+      "jsmn.h": "jsmn.h"
+     }
+    },
+    "host_main": "host/host_main.c",
+    "linux_elf_only": true
+   },
+   {
+    "name": "sha3",
+    "dir": "sha3-harness",
+    "files": [
+     "sha3_cases.c"
+    ],
+    "upstream": {
+     "repo": "https://github.com/brainhub/SHA3IUF",
+     "commit": "fc8504750a5c2174a1874094dd05e6a0d8797753",
+     "copy": {
+      "sha3.c": "sha3.c",
+      "sha3.h": "sha3.h"
+     }
+    },
+    "host_main": "host/host_main.c",
+    "linux_elf_only": true
+   },
+   {
+    "name": "picohttpparser",
+    "dir": "picohttpparser-harness",
+    "files": [
+     "phr_cases.c"
+    ],
+    "upstream": {
+     "repo": "https://github.com/h2o/picohttpparser",
+     "commit": "dd573d8fa9264c646a400e96ce9f07dea6f156e4",
+     "copy": {
+      "picohttpparser.c": "picohttpparser.c",
+      "picohttpparser.h": "picohttpparser.h"
+     }
+    },
+    "host_main": "host/host_main.c",
+    "linux_elf_only": true
+   },
+   {
+    "name": "inih",
+    "dir": "inih-harness",
+    "files": [
+     "inih_cases.c"
+    ],
+    "upstream": {
+     "repo": "https://github.com/benhoyt/inih",
+     "commit": "611ab51f8dd7ec583543815b0de693495045fbf8",
+     "copy": {
+      "ini.c": "ini.c",
+      "ini.h": "ini.h"
+     }
+    },
+    "host_main": "host/host_main.c",
+    "linux_elf_only": true
+   },
+   {
+    "name": "coremark",
+    "dir": "coremark-harness",
+    "files": [
+     "core_portme.c"
+    ],
+    "defines": [
+     "main=coremark_main",
+     "SEED_METHOD=2",
+     "ITERATIONS=25",
+     "PERFORMANCE_RUN=1",
+     "FLAGS_STR=\"fixed\"",
+     "COMPILER_VERSION=\"fixed\"",
+     "MEM_LOCATION=\"STACK\""
+    ],
+    "upstream": {
+     "repo": "https://github.com/eembc/coremark",
+     "commit": "1f483d5b8316753a742cbf5590caf5bd0a4e4777",
+     "copy": {
+      "core_list_join.c": "core_list_join.c",
+      "core_main.c": "core_main.c",
+      "core_matrix.c": "core_matrix.c",
+      "core_state.c": "core_state.c",
+      "core_util.c": "core_util.c",
+      "coremark.h": "coremark.h",
+      "posix/core_portme.h": "core_portme.h",
+      "posix/core_portme_posix_overrides.h": "core_portme_posix_overrides.h"
+     }
+    },
+    "host_main": "host/host_main.c",
+    "linux_elf_only": true
+   },
+   {
+    "name": "kissfft",
+    "dir": "kissfft-harness",
+    "files": [
+     "kfft_cases.c"
+    ],
+    "libs": "-lm",
+    "elf_reference": "qemu",
+    "upstream": {
+     "repo": "https://github.com/mborgerding/kissfft",
+     "commit": "f3fd3a58f1b98972d0f06a1db775a984198cb788",
+     "copy": {
+      "kiss_fft.c": "kiss_fft.c",
+      "kiss_fft.h": "kiss_fft.h",
+      "kiss_fft_log.h": "kiss_fft_log.h",
+      "_kiss_fft_guts.h": "_kiss_fft_guts.h",
+      "kiss_fftr.c": "kiss_fftr.c",
+      "kiss_fftr.h": "kiss_fftr.h"
+     }
+    },
+    "host_main": "host/host_main.c",
+    "linux_elf_only": true
    }
  ]
 }
