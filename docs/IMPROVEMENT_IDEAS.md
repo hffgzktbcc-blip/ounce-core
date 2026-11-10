@@ -32,7 +32,7 @@ FPSR exception flags (unmodelled). Skipped: cases with a NaN input or result.
 | mul | 86,619 | 0 mismatches | 0 mismatches |
 | div | 86,619 | 0 mismatches | 0 mismatches |
 | sqrt | 650 | 0 mismatches | 0 mismatches |
-| fused multiply-add | 10,839,335 | 0 mismatches | see commit history |
+| fused multiply-add | 10,839,335 | 0 mismatches | 0 mismatches |
 
 Not yet covered: NaN inputs and results (Arm default-NaN rules), the rounding modes other than
 nearest-even, conversions, FMAX/FMIN, comparisons, exception flags, Tier-4.
