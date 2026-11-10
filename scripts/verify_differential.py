@@ -246,6 +246,8 @@ def main():
     for h in manifest["harnesses"]:
         if a.only and h["name"] not in a.only:
             continue
+        if h.get("linux_elf_only"):
+            continue  # no console NRO for this harness: run scripts/verify_linux_elf.py instead
         row = {"name": h["name"], "checks": {}}
         report.append(row)
         d = stage(h, work, cache)

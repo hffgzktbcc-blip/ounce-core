@@ -478,15 +478,19 @@ impl Lowerer {
                 }
             }
 
-            Instruction::LoadStorePair { rt1, rt2, rn, offset, is_load, is_64, writeback, post_index } => {
+            Instruction::LoadStorePair { rt1, rt2, rn, offset, is_load, is_64, signed_word, writeback, post_index } => {
                 let base = self.x_or_sp(rn);
                 let size: u8 = if is_64 { 8 } else { 4 };
                 let updated = self.b.bin_imm(BinOp::Add, Width::W64, base, offset as u64);
                 let addr = if post_index { base } else { updated };
                 let addr2 = self.b.bin_imm(BinOp::Add, Width::W64, addr, size as u64);
                 if is_load {
-                    let v1 = self.load(size, addr, site);
-                    let v2 = self.load(size, addr2, site);
+                    let mut v1 = self.load(size, addr, site);
+                    let mut v2 = self.load(size, addr2, site);
+                    if signed_word {
+                        v1 = self.b.push(Op::Sext(32, v1));
+                        v2 = self.b.push(Op::Sext(32, v2));
+                    }
                     self.set_x(rt1, v1);
                     self.set_x(rt2, v2);
                 } else {
@@ -1623,6 +1627,18 @@ mod tests {
             cpu.regs.write_x(29, 0x29);
             cpu.regs.write_x(5, 8);
         });
+    }
+
+    #[test]
+    fn ldpsw_matches_all_tiers() {
+        #[rustfmt::skip]
+        check_all_tiers(&[
+            0x12800001, // 00: movn w1, #0       (w1 = 0xFFFFFFFF)
+            0xB81F8FE1, // 04: str  w1, [sp, #-8]!
+            0xB9000BE1, // 08: str  w1, [sp, #8]
+            0x69400FE2, // 0C: ldpsw x2, x3, [sp]
+            0xD4000001, // 10: svc  #0
+        ], |_| {});
     }
 
     #[test]

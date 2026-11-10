@@ -118,6 +118,13 @@ jobs:
         run: python3 scripts/verify_linux_elf.py --harness cjson --work "$EVIDENCE_ROOT/linux-cjson" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
       - name: Compare unchanged zlib cases on host and both ELF engines
         run: python3 scripts/verify_linux_elf.py --harness zlib --budget 2000000000 --work "$EVIDENCE_ROOT/linux-zlib" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare more real programs on host, qemu-user and both ELF engines
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y qemu-user
+          for h in blake3 crypto-algorithms fastlz tinf jsmn sha3 picohttpparser inih coremark kissfft qoi tiny-aes heatshrink stb-image monocypher lua; do
+            python3 scripts/verify_linux_elf.py --harness "$h" --qemu qemu-aarch64 --budget 4000000000 --work "$EVIDENCE_ROOT/linux-more/$h" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -138,6 +145,7 @@ jobs:
             ${{ env.EVIDENCE_ROOT }}/linux-xxhash/report.json
             ${{ env.EVIDENCE_ROOT }}/linux-cjson/report.json
             ${{ env.EVIDENCE_ROOT }}/linux-zlib/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-more/*/report.json
           if-no-files-found: warn
 
   instruction-fuzzer:
