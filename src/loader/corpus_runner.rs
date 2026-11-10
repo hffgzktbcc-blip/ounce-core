@@ -891,6 +891,46 @@ fn simplegfx_first_frame_oracle() {
     report_speed(&times);
 }
 
+/// SHA-256 of an NRO with its GNU build-id zeroed everywhere it appears (the NRO header's
+/// `build_id` at 0x40..0x60 and the matching `.note.gnu.build-id` descriptor). Everything else,
+/// including code, data and the RomFS payload, is hashed unchanged, so a checkout-path-dependent
+/// build-id no longer changes the digest.
+fn canonical_nro_sha256(nro: &[u8]) -> String {
+    use sha2::Digest;
+    let mut bytes = nro.to_vec();
+    if bytes.len() >= 0x54 && bytes[0x10..0x14] == *b"NRO0" {
+        let id: Vec<u8> = bytes[0x40..0x54].to_vec();
+        if id.iter().any(|b| *b != 0) {
+            let mut i = 0x54;
+            while i + id.len() <= bytes.len() {
+                if bytes[i..i + id.len()] == id[..] {
+                    bytes[i..i + id.len()].fill(0);
+                    i += id.len();
+                } else {
+                    i += 1;
+                }
+            }
+            bytes[0x40..0x54].fill(0);
+        }
+    }
+    format!("{:x}", sha2::Sha256::digest(&bytes))
+}
+
+#[test]
+fn canonical_nro_hash_ignores_only_the_build_id() {
+    let mut a = vec![0u8; 0x200];
+    a[0x10..0x14].copy_from_slice(b"NRO0");
+    let mut b = a.clone();
+    for (n, v) in [(&mut a, 0xAAu8), (&mut b, 0xBBu8)] {
+        n[0x40..0x54].fill(v);
+        n[0x100..0x114].fill(v); // the note descriptor
+    }
+    assert_eq!(canonical_nro_sha256(&a), canonical_nro_sha256(&b));
+    let mut c = b.clone();
+    c[0x180] = 1; // any other byte still changes the digest
+    assert_ne!(canonical_nro_sha256(&b), canonical_nro_sha256(&c));
+}
+
 /// The deko_basic first-frame oracle (`docs/deko-basic-oracle.md`), criteria 3-6, on an NRO built
 /// unchanged from the pinned source. Opt-in: `OUNCE_DEKO_BASIC_NRO=<path> cargo test --release
 /// deko_basic_first_frame_oracle -- --ignored --nocapture`. `OUNCE_DEKO_BASIC_FRAMES` (default 5)
@@ -908,11 +948,19 @@ fn deko_basic_first_frame_oracle() {
         "5cec608c6358d5aa5d110c5f5d98674e9ba46685752c497d567e2d286f8766e9", // devkitpro/devkita64:latest build B (romfs inode timestamp variation)
         "5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696", // local devkitA64 GCC 16.1.0 build
     ];
+    // The GNU build-id hashes `.debug_info`, which embeds the checkout path (DW_AT_comp_dir), so
+    // the same unchanged build differs by those 20 bytes (stored twice) between checkouts. These
+    // digests are taken with the build-id zeroed; `uam` also emits one of two shader schedules.
+    const KNOWN_CANONICAL_SHA256: &[&str] = &[
+        "b9eeedaba67444e802f152fda3cfd470e0292d2e7155e400b67393164eed6db3", // uam variant 0x84
+        "5cd3723d9092b3628ed94fb214f2c22ac0e73413a4161407d81ff974286b2c9f", // uam variant 0x88
+    ];
+    let canonical = canonical_nro_sha256(&nro_bytes);
     assert!(
-        KNOWN_VALID_SHA256.contains(&nro_sha256.as_str()),
-        "unexpected deko_basic NRO SHA-256: {nro_sha256} (expected one of {KNOWN_VALID_SHA256:?})"
+        KNOWN_VALID_SHA256.contains(&nro_sha256.as_str()) || KNOWN_CANONICAL_SHA256.contains(&canonical.as_str()),
+        "unexpected deko_basic NRO SHA-256: {nro_sha256} (build-id-independent: {canonical}; expected one of {KNOWN_VALID_SHA256:?} or canonical {KNOWN_CANONICAL_SHA256:?})"
     );
-    println!("deko_basic NRO SHA-256 verified: {nro_sha256}");
+    println!("deko_basic NRO SHA-256 verified: {nro_sha256} (canonical {canonical})");
     let frames: u64 = std::env::var("OUNCE_DEKO_BASIC_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
     // Every frame draws the triangle (frame 1 corrected in PLAN step 3, see docs/deko-basic-oracle.md).
     let expected_hash = |_: u64| 0x3a00ccf6b6f28ea1u64;
