@@ -700,6 +700,11 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
         return (if dn && fp16::is_nan(r) { fp16::DEFAULT_NAN } else { r }) as u64;
     }
     let double = esize == 64;
+    if matches!(op, SimdFpOp3::Fadd | SimdFpOp3::Faddp) && fpcr & super::softfp::FPCR_ARITH_MASK != 0 {
+        // scalar FADDP reduces through here: it rounds under RMode, flushes under FZ and honours DN like FADD
+        let (f, env) = (super::softfp::Fmt::from_esize(esize), super::softfp::Env::from_fpcr(fpcr));
+        return super::softfp::binop(f, env, super::softfp::BinOp::Add, a, b);
+    }
     let fz = fpcr & (1 << 24) != 0;
     let flush = |x: u64| -> u64 {
         if !fz {

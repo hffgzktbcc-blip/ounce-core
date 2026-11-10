@@ -3061,6 +3061,9 @@ mod fuzz_scalar_nan {
         let (a, b) = (0x3c30_0000_0000_0000u128, 0x3c30_0000_0000_0000u128); // 2^-60
         assert_eq!(run_fpcr(0x1f41_0803, 2 << 22, &[(0, a), (1, b), (2, 0x3ff0_0000_0000_0000)]).regs.v[3], 0x3ff0_0000_0000_0000);
         assert_eq!(run_fpcr(0x1f41_0803, 1 << 22, &[(0, a), (1, b), (2, 0x3ff0_0000_0000_0000)]).regs.v[3], 0x3ff0_0000_0000_0001);
+        // scalar FADDP S0, V1.2S under RP: 1.0 + 2^-149 rounds up
+        assert_eq!(run_fpcr(0x7e30_d820, 1 << 22, &[(1, 0x3f80_0000 | 1u128 << 32)]).regs.v[0], 0x3f80_0001);
+        assert_eq!(run_fpcr(0x7e30_d820, 0, &[(1, 0x3f80_0000 | 1u128 << 32)]).regs.v[0], 0x3f80_0000);
         // vector FADD V.4S under FZ+DN: lane 0 denormal + denormal flushes to +0
         let c = run_fpcr(0x4e22_d420, 0x300_0000, &[(1, 0x0000_0001), (2, 0x0000_0002)]);
         assert_eq!(c.regs.v[0] as u32, 0);
