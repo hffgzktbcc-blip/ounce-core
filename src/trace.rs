@@ -110,8 +110,7 @@ mod tests {
     use super::*;
 
     /// FMAX/FMIN/FMAXNM/FMINNM (scalar and vector) over zeros, infinities, quiet and signalling NaNs and
-    /// denormals, replayed on the host CPU under the default FPCR. Flush-to-zero and default-NaN modes are not
-    /// modelled (docs/LIMITS.md): measured 1,208 of 4,800 operand sets disagree when FPCR.FZ or FPCR.DN is set.
+    /// denormals, under default, flush-to-zero, default-NaN and both FPCR modes: replayed on the host CPU.
     #[test]
     fn float_min_max_edge_cases_match_this_cpu() {
         use crate::mmu::{Memory, Permission};
@@ -132,7 +131,7 @@ mod tests {
         let mut count = 0;
         for &op in &ops {
             let double = op >> 24 == 0x1E && (op & 0x0040_0000) != 0;
-            for fpcr in [0u32] {
+            for fpcr in [0u32, 1 << 24, 1 << 25, 3 << 24] {
                 for &a in &f32s {
                     for &b in &f32s {
                         let (lo_a, lo_b) = if double {

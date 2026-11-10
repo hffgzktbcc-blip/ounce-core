@@ -648,10 +648,8 @@ impl Lowerer {
                     FpOp2::Fsub => FpBinOp::Fsub,
                     FpOp2::Fmul | FpOp2::Fnmul => FpBinOp::Fmul,
                     FpOp2::Fdiv => FpBinOp::Fdiv,
-                    FpOp2::Fmax => FpBinOp::Fmax,
-                    FpOp2::Fmin => FpBinOp::Fmin,
-                    // Cranelift min/max propagate NaNs; numeric variants use the reference path.
-                    FpOp2::Fmaxnm | FpOp2::Fminnm => return Err(()),
+                    // The interpreter honours FPCR.FZ/DN for these; the compiled form cannot, so they use the reference path.
+                    FpOp2::Fmax | FpOp2::Fmin | FpOp2::Fmaxnm | FpOp2::Fminnm => return Err(()),
                 };
                 let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
                 let res = self.b.push(Op::FpBin(fop, w, a, b));
