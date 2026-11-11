@@ -9,7 +9,7 @@ Build and install: `scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.ap
 `--features "gpu-present nce native-jit"`, so `tier4` and `native` work on Apple Silicon and degrade to `tier3`
 (with a message the app recognises) elsewhere. The bundle is ad-hoc signed for local use. It is not notarized.
 No prebuilt macOS binary is offered while the Apple-SDK-derived `objc2` redistribution question in
-[PROVENANCE_OWNER_DECISIONS.md](PROVENANCE_OWNER_DECISIONS.md) is open.
+[PROVENANCE.md](PROVENANCE.md) (Specialist items) is open.
 
 ### Local preview archive
 
@@ -21,7 +21,7 @@ result as the 14-day `macos-app-preview` artifact.
 
 This is a developer preview, not a release. It uploads nothing, and the manifest says so: the bundle is ad-hoc
 signed and not notarized (Gatekeeper warns on first open), and it is not cleared for GitHub release assets while
-item 4 of [PROVENANCE_OWNER_DECISIONS.md](PROVENANCE_OWNER_DECISIONS.md) is open. Share it only with people you
+the specialist review in [PROVENANCE.md](PROVENANCE.md) (Specialist items) is open. Share it only with people you
 choose to, and tell them it is unsigned by an Apple developer identity.
 
 ## The workbench window (front door)
