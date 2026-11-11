@@ -52,7 +52,7 @@ fn main() {
             std::process::exit(2);
         }
     }
-    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4|native>` may appear anywhere; strip them so the
+    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<interpreter|tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     let mut after_separator = false;
@@ -69,7 +69,7 @@ fn main() {
         if let Some(value) = arg.strip_prefix("--cpu=") {
             match cpu::CpuTier::parse(value) {
                 Some(tier) => cpu::CpuTier::set_cli_override(tier),
-                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected tier3, tier4 or native); ignoring."),
+                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected interpreter, tier3, tier4 or native); ignoring."),
             }
             continue;
         }
@@ -327,7 +327,7 @@ fn print_usage() {
     println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
     println!("    {}replay-instruction{} <bundle>  Check retained instruction bytes and re-execute the recorded case", s.green, s.reset);
     println!("    {}diverge{} <prog.nro>            Replay the program's instructions on this machine's CPU and name the first disagreement (AArch64 hosts)", s.green, s.reset);
-    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
+    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
     println!("    {}run-nro{} <file> [args] [--gui]  Load and execute only a homebrew NRO", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
     println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);
@@ -639,7 +639,7 @@ fn run_vm_internal(
         println!("[CPU] Block engine: {}", e.name());
     }
     // `OUNCE_TRACE=<file>` records register-only instructions for `ounce-core diverge`. With a block engine
-    // selected (`--cpu=tier3|tier4`) it runs one-instruction slices so each recorded instruction is
+    // selected (`--cpu=interpreter|tier3|tier4`) it runs one-instruction slices so each recorded instruction is
     // executed by that engine's own translation (single-instruction blocks, not multi-instruction fusion).
     let mut tracer = trace::Tracer::from_env();
 
@@ -649,7 +649,7 @@ fn run_vm_internal(
             break;
         }
 
-        // With an explicit `--cpu=tier3|tier4` the block engine runs the guest in slices that end at the next
+        // With an explicit `--cpu=interpreter|tier3|tier4` the block engine runs the guest in slices that end at the next
         // preemption point, a budget limit or an SVC; otherwise one instruction at a time (the default).
         let before = instructions_executed;
         let (stepped, executed) = match engine.as_mut() {
