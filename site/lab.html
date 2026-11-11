@@ -216,7 +216,7 @@
       <div class="p-3 border-t border-[#355247] bg-[#0e1d18]/70 text-center">
         <label for="fileInput" class="cursor-pointer block border border-dashed border-[#4e7767] hover:border-[#9ad5ac] rounded-lg p-2.5 transition-colors">
           <div class="text-[11px] font-bold text-[#9ad5ac]">Drop any file to inspect</div>
-          <div class="text-[10px] text-[#708a7e] mt-0.5">ELF, NRO, XCI, .a, or custom test</div>
+          <div class="text-[10px] text-[#708a7e] mt-0.5">ELF, NRO, .a, or custom test</div>
         </label>
         <input type="file" id="fileInput" class="hidden" onchange="handleFileSelect(event)">
       </div>
@@ -617,7 +617,7 @@
         <div id="modalDropZone" class="border-2 border-dashed border-[#4e7767] hover:border-[#9ad5ac] rounded-xl p-8 text-center cursor-pointer transition-colors bg-[#0e1d18]/50" onclick="document.getElementById('fileInputModal').click()">
           <svg class="w-8 h-8 mx-auto text-[#9ad5ac] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
           <div class="text-xs font-bold text-[#f1f6ef]">Click to browse or drop file here</div>
-          <div class="text-[11px] text-[#708a7e] mt-1">Accepts Linux ELF, Homebrew NRO, XCI/NSP containers, or archives</div>
+          <div class="text-[11px] text-[#708a7e] mt-1">Accepts Linux ELF, Homebrew NRO, or archives</div>
           <input type="file" id="fileInputModal" class="hidden" onchange="handleFileSelect(event)">
         </div>
 
@@ -627,12 +627,12 @@
             <li><strong>Static AArch64 Linux ELF</strong>: Run with <code class="text-[#9ad5ac]">run-elf</code> (40+ syscalls modeled).</li>
             <li><strong>Homebrew NRO</strong>: Executed via Tier-1 Safe Interpreter or Tier-3 JIT.</li>
             <li><strong>C / C++ Library test</strong>: Build with <code class="text-[#9ad5ac]">aarch64-linux-gnu-gcc -static</code>.</li>
-            <li><strong>Retail / Encrypted</strong>: Container inspected safely; retail decryption disabled by policy.</li>
+            <li><strong>Other files</strong>: Hashed and inspected in your browser only; they are not executed.</li>
           </ul>
         </div>
       </div>
       <div class="p-4 border-t border-[#355247] bg-[#0e1d18]/60 flex items-center justify-between">
-        <span class="text-[10px] text-[#708a7e]">Runs in memory-safe Rust sandbox · No private keys required</span>
+        <span class="text-[10px] text-[#708a7e]">Runs in memory-safe Rust sandbox · Homebrew and synthetic inputs only</span>
         <button onclick="toggleModal('intakeModal')" class="px-4 py-1.5 rounded-lg bg-[#172c23] hover:bg-[#1e382d] border border-[#355247] text-xs font-medium text-[#f1f6ef]">
           Close
         </button>
@@ -814,18 +814,6 @@
           <div><strong>SHA-256:</strong> ${hashHex}</div>
           <div><strong>CLI Run Command:</strong> <span class="text-[#9ad5ac]">target/release/ounce-core run-nro "${file.name}"</span></div>
           <div><strong>Oracles:</strong> Compatible with 50/50 First-Frame regression harness.</div>
-        `;
-      }
-      // Check XCI / Cartridge
-      else if (bytes.length >= 0x104 && bytes[0x100] === 0x48 && bytes[0x101] === 0x45 && bytes[0x102] === 0x41 && bytes[0x103] === 0x44) {
-        format = "Nintendo Switch GameCard (.xci)";
-        badgeEl.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[#0e1d18] text-[#73b9ae] border border-[#355247] font-mono";
-        badgeEl.innerText = "CONTAINER PARSED";
-        summaryEl.innerText = "GameCard container metadata inspected. Retail decryption disabled by policy.";
-        diagnosis = `
-          <div><strong>Format:</strong> GameCard Cartridge (.xci) with HFS0 Partitions</div>
-          <div><strong>SHA-256:</strong> ${hashHex}</div>
-          <div><strong>Clean-Room Status:</strong> No proprietary keys or firmware included. Retail decryption restricted.</div>
         `;
       }
       // Generic / Text / Source

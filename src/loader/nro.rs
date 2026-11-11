@@ -170,9 +170,6 @@ pub enum LoadError {
 
     #[error("Memory mapping error: {0}")]
     Memory(#[from] MemoryError),
-
-    #[error("Cryptographic policy restriction: {0}")]
-    RestrictedCipher(String),
 }
 
 #[derive(Debug, Clone)]

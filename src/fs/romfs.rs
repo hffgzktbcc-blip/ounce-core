@@ -761,8 +761,7 @@ pub struct RomFsEntry {
     pub data: Vec<u8>,
 }
 
-/// Nintendo Switch / Switch 2 Level 3 `RomFS` Binary Image Parser & Builder.
-/// Represents game assets (3D meshes, textures, sound banks, level data) mounted from NCA Section 1.
+/// Level 3 `RomFS` binary image parser & builder for homebrew assets (textures, sound banks, level data).
 #[derive(Debug, Clone, Default)]
 pub struct RomFsArchive {
     pub entries: Vec<RomFsEntry>,

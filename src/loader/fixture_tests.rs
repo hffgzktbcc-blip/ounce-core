@@ -279,7 +279,7 @@ fn boot_with_kernel_tier(
     kernel.test_entropy = Some([0x1234_5678_9ABC_DEF0, 0xCAFE_BABE_1122_3344, 0xDEAD_BEEF_5566_7788, 0x8877_6655_4433_2211]);
     kernel.ipc.hid.input = input;
     configure(&mut kernel.ipc.hid);
-    let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).expect("NRO loads");
+    let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &mut mmu).expect("NRO loads");
     assert_eq!(info.format, "NRO0");
     crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "fixture.nro", nro, args).unwrap();
     if let Some(dir) = sdmc {
