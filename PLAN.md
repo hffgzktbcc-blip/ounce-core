@@ -138,6 +138,7 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
       Status: blocked
       Blocked by: unaffiliated tester evidence through issue #190. Existing internal/CI RomFS results remain useful, but do not establish independence.
       Next: retain the recipe and accept outside evidence when available; no repeated internal reruns as a substitute.
+      Evidence: [issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190) has two comments, both by one outside tester (@cyzcz, 2026-11-07; reports #191 and follow-ups). Reviewed 2026-11-11: that is one self-reported outside run, not an independent rerun, so it stays `self-reported, awaiting independent rerun`. It deviates from the pinned recipe and lacks the byte-checked canonical records. See [E2_DECISION_MEMO.md](docs/E2_DECISION_MEMO.md#issue-190-is-either-comment-an-independent-rerun-e1). E1 is not complete.
 - [ ] **E2. Disposition historical provenance for affected distribution artifacts.**
       Status: blocked
       Blocked by: native-app/optional-feature distribution decisions and actual bundle notice coverage, the historical 72-byte program permission question, and separately approved historical/ref actions. The default CLI v0.6.0 decision and its actual three-platform notice coverage are complete. PR #203 is merged; its technical controls do not establish legal clearance.
