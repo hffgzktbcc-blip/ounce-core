@@ -1,4 +1,4 @@
-//! CPU tier selection: `--cpu=interpreter|tier3|tier4|native` or `OUNCE_CPU` (default `tier3`). Tier-4 needs the
+//! CPU tier selection: `--cpu=tier3|tier4|native` or `OUNCE_CPU` (default `tier3`). Tier-4 needs the
 //! `native-jit` feature; without it, or on a host the recompiler does not support, Tier-3 runs.
 //! `native` (native execution, `--features nce`, AArch64 hosts) runs whole homebrew programs on the
 //! host CPU (`run` and the corpus oracles); block-engine callers get Tier-3 for it.
@@ -13,7 +13,6 @@ use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CpuTier {
-    Interpreter,
     Tier3,
     Tier4,
     Native,
@@ -24,7 +23,6 @@ static CLI_TIER: OnceLock<CpuTier> = OnceLock::new();
 impl CpuTier {
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "interpreter" => Some(Self::Interpreter),
             "tier3" | "3" => Some(Self::Tier3),
             "tier4" | "4" => Some(Self::Tier4),
             "native" | "nce" => Some(Self::Native),
@@ -53,7 +51,6 @@ impl CpuTier {
 
 /// The selected block engine. Same `run_slice` contract for every tier.
 pub enum CpuEngine {
-    Interpreter,
     Tier3(Tier3JitEngine),
     #[cfg(feature = "native-jit")]
     Tier4(Box<Tier4JitEngine>),
@@ -63,7 +60,6 @@ impl CpuEngine {
     /// Builds the engine for `tier`, printing why if Tier-4 cannot run here.
     pub fn new(tier: CpuTier) -> Self {
         match tier {
-            CpuTier::Interpreter => CpuEngine::Interpreter,
             CpuTier::Tier3 => CpuEngine::Tier3(Tier3JitEngine::new()),
             #[cfg(feature = "native-jit")]
             CpuTier::Tier4 => {
@@ -90,7 +86,6 @@ impl CpuEngine {
 
     pub fn name(&self) -> &'static str {
         match self {
-            CpuEngine::Interpreter => "Interpreter",
             CpuEngine::Tier3(_) => "Tier-3",
             #[cfg(feature = "native-jit")]
             CpuEngine::Tier4(_) => "Tier-4",
@@ -104,18 +99,6 @@ impl CpuEngine {
             return (0, BlockExit::Fault { pc: cpu.regs.pc });
         }
         match self {
-            CpuEngine::Interpreter => {
-                for executed in 0..max_instructions {
-                    let pc = cpu.regs.pc;
-                    match cpu.step(mmu) {
-                        Ok(super::interpreter::StepResult::Continue) => {}
-                        Ok(super::interpreter::StepResult::Svc(svc_id)) =>
-                            return (executed + 1, BlockExit::Svc { svc_id }),
-                        _ => return (executed, BlockExit::Fault { pc }),
-                    }
-                }
-                (max_instructions, BlockExit::BudgetExceeded)
-            }
             CpuEngine::Tier3(e) => e.run_slice(cpu, mmu, max_instructions),
             #[cfg(feature = "native-jit")]
             CpuEngine::Tier4(e) => e.run_slice(cpu, mmu, max_instructions),
@@ -124,7 +107,6 @@ impl CpuEngine {
 
     pub fn mips_rate(&self) -> f64 {
         match self {
-            CpuEngine::Interpreter => 0.0,
             CpuEngine::Tier3(e) => e.mips_rate,
             #[cfg(feature = "native-jit")]
             CpuEngine::Tier4(e) => e.mips_rate,
@@ -134,7 +116,6 @@ impl CpuEngine {
     /// One line of engine counters for logs.
     pub fn stats(&self) -> String {
         match self {
-            CpuEngine::Interpreter => "interpreter (no block cache)".into(),
             CpuEngine::Tier3(e) => format!("{} Super-Blocks fused", e.total_super_block_executions),
             #[cfg(feature = "native-jit")]
             CpuEngine::Tier4(e) => format!(
@@ -151,7 +132,6 @@ mod tests {
 
     #[test]
     fn parses_tier_names() {
-        assert_eq!(CpuTier::parse("interpreter"), Some(CpuTier::Interpreter));
         assert_eq!(CpuTier::parse("tier3"), Some(CpuTier::Tier3));
         assert_eq!(CpuTier::parse(" Tier4 "), Some(CpuTier::Tier4));
         assert_eq!(CpuTier::parse("native"), Some(CpuTier::Native));
