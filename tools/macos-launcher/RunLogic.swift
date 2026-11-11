@@ -230,6 +230,7 @@ struct IssueReport {
     let appVersion: String
     let hostOS: String
     let home: String
+    var comparisonSummary: String? = nil
 
     /// Engine labels exactly as the issue form's dropdown spells them, so the form can preselect one.
     var engineLabel: String {
@@ -244,9 +245,9 @@ struct IssueReport {
     private func clean(_ text: String) -> String {
         home.isEmpty ? text : text.replacingOccurrences(of: home, with: "~")
     }
-    var title: String { "\(program): \(diagnosis.headline)" }
+    var title: String { clean("\(program): \(comparisonSummary?.components(separatedBy: "\n").first ?? diagnosis.headline)") }
     /// The runtime lines the diagnosis rests on, or the last log lines when none were recognised.
-    var observed: String { clean(([diagnosis.headline] + diagnosis.evidence).joined(separator: "\n")) }
+    var observed: String { clean(((comparisonSummary.map { [$0] } ?? []) + [diagnosis.headline] + diagnosis.evidence).joined(separator: "\n")) }
     var environment: String { "Ounce Core app \(appVersion), \(hostOS)" }
 
     /// Complete text for the clipboard, so the report survives even if the form does not prefill.
