@@ -59,7 +59,7 @@ It began as a Nintendo Switch homebrew runtime. That is no longer the goal; see 
 
 **Who it is for:** library maintainers who want to know whether their code behaves the same on ARM64 as on x86 without owning ARM hardware; emulator and JIT authors; educators; researchers.
 
-Verification is the product. It is not a fast emulator and does not promise to run everything: running arbitrary ARM64 or Linux applications and automatic root-cause finding are **not established**. Coverage is partial; QC is modelled for implemented saturating instructions, while FPCR behavior and cumulative FP exception flags remain unmodelled. The [roadmap](docs/VISION.md#roadmap-each-step-is-one-small-checkable-result) starts with an outside developer solving a real problem, then running ordinary static Linux ARM64 programs so no console SDK is needed.
+Verification is the product. It is not a fast emulator and does not promise to run everything: running arbitrary ARM64 or Linux applications and automatic root-cause finding are **not established**. Coverage is partial; QC is modelled for implemented saturating instructions. FPCR rounding mode, flush-to-zero and default-NaN are modelled for the common scalar and vector FP arithmetic, conversion and compare forms (#363), while FPCR trap enables, half-precision arithmetic and cumulative FP exception flags (FPSR) remain unmodelled. The [roadmap](docs/VISION.md#roadmap-each-step-is-one-small-checkable-result) starts with an outside developer solving a real problem, then running ordinary static Linux ARM64 programs so no console SDK is needed.
 
 ```mermaid
 flowchart LR
@@ -135,7 +135,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ## What is proven
 
-**Differential tests against real ARM64 hardware** (each folder in [docs/verify](docs/verify/README.md) holds the sources of its test, the pinned program version, the host reference output and the per-engine result): LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and a 5,964-line floating-point instruction test. On Tier-3, Tier-4 and native, output is byte-identical to the host reference. Native execution runs on the host CPU, so Tier-3 and Tier-4 are the real evidence. Additional harnesses (zlib, cJSON, TinyExpr, Monocypher and wasm3) are included in the [differential manifest](docs/verify/differential.json); see their per-harness results and limits. Each shows agreement on the inputs tested, not that the program or the emulator is correct everywhere. To rerun them on your own ARM64 machine see [docs/REPRODUCE.md](docs/REPRODUCE.md); for what they do not show, see [docs/LIMITS.md](docs/LIMITS.md).
+**Differential tests against real ARM64 hardware** (each folder in [docs/verify](docs/verify/README.md) holds the sources of its test, the pinned program version, the host reference output and the per-engine result): LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and a 5,964-line floating-point instruction test. On Tier-3, Tier-4 and native, output is byte-identical to the host reference. Native execution runs on the host CPU, so Tier-3 and Tier-4 are the real evidence. Additional harnesses (zlib, cJSON, TinyExpr, Monocypher, wasm3 and others) are included in the [differential manifest](docs/verify/differential.json); see their per-harness results and limits. 18 programs have also been run as static Linux AArch64 ELFs and matched a host build, qemu-user, Tier-3 and Tier-4 on Linux x86-64 ([list and limits](docs/verify/linux-elf/PROGRAMS.md)); wasm3 does not run as an ELF yet ([#366](https://github.com/hffgzktbcc-blip/ounce-core/issues/366)). Each shows agreement on the inputs tested, not that the program or the emulator is correct everywhere. To rerun them on your own ARM64 machine see [docs/REPRODUCE.md](docs/REPRODUCE.md); for what they do not show, see [docs/LIMITS.md](docs/LIMITS.md).
 
 ### Legacy Switch regression corpus
 
@@ -339,7 +339,7 @@ This section is rendered from [the milestone registry](docs/roadmap/milestones.j
 
 | Research track | Reviewed stage | Supporting evidence | Next proof gate |
 | :--- | :--- | :--- | :--- |
-| Static Linux ARM64 programs | experimental | [Six freestanding fixtures and bounded LZ4/musl verification; library and CLI scenarios qualified on Linux, macOS and Windows](docs/verify/linux-elf/README.md) | Expand Linux library coverage from observed needs; qualify portable execution recording |
+| Static Linux ARM64 programs | experimental | [Six freestanding fixtures plus 18 real programs run as static musl ELFs (LZ4, xxHash, cJSON and zlib also on macOS and Windows); wasm3 does not run yet](docs/verify/linux-elf/README.md) | Fix wasm3 as an ELF (#366); expand Linux library coverage from observed needs; qualify portable execution recording |
 | Differential verification against real ARM64 | measured | [Seeded single-instruction hardware fuzzing and three-engine comparisons; bounded results retained](docs/verify/insn-fuzzer/README.md) | Qualify ARM64 fuzzer CI; then expand per-family and sequence coverage (vision step 2) |
 | Agent workflow | measured | [Handoff snapshots, expiring claims and shared journal; used by four agents in parallel](docs/AGENT_HUB.md) | Keep the tool simple; fix friction as agents report it |
 | Failure to reproduction | measured | [Retained SDL2/audio diagnosis and one hardware-observed instruction mismatch with exact register snapshots](docs/INSTRUCTION_DIAGNOSIS.md) | Repair the measured arithmetic discrepancy; arbitrary-program first divergence remains unestablished |
@@ -405,6 +405,8 @@ Read [the provenance register](docs/PROVENANCE.md), [sources and legal guardrail
 
 ### Known issues
 
+- **Linux ELF runner.** wasm3 built as a static musl ELF fails to load its first module under `run-elf` (an allocator request of about 1 TiB is refused); cause not yet understood ([#366](https://github.com/hffgzktbcc-blip/ounce-core/issues/366)).
+- **Floating point.** FPSR exception flags, FPCR trap enables and half-precision arithmetic are not modelled. The FPCR rounding/flush/default-NaN fix (#363) is verified against a qemu-user reference; its hardware rerun is left to the `fp-edge` CI job.
 - **Historical scope.** The later object-level inventory narrows the firmware-labelled candidate objects to retained PR #1, with no exact matches in current source or the inspected releases. A separate historical 72-byte program has no recorded redistribution grant. See the dated [object-level report](docs/PROVENANCE_REMEDIATION_REPORT.md); no global purge is claimed.
 - **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
 - **Notice and rights status.** Completed controls, remaining upstream qualifications and release-specific requirements are maintained in [one disposition](docs/LICENSE_DISPOSITION.md). An identity check or notice collection does not supply an absent redistribution grant.

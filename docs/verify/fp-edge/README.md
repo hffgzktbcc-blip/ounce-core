@@ -61,7 +61,7 @@ FPCR values (293,652 executed cases per engine, 95,904 unsupported). Tier-4 runs
 FPCR; with RMode, FZ or DN set it hands execution to the soft-float interpreter path, so its non-default column checks that
 hand-off rather than separate compiled code.
 
-**Real hardware, CI run 42877863247 on commit de2b909 (artifacts `fp-edge-evidence-ubuntu-24.04-arm` and `-macos-latest`):**
+**Real hardware, before #363 (superseded for the non-default FPCR columns; a hardware rerun after the fix is left to the `fp-edge` CI job), CI run 42877863247 on commit de2b909 (artifacts `fp-edge-evidence-ubuntu-24.04-arm` and `-macos-latest`):**
 Linux Arm runner (aarch64, Azure) and Apple M1 (virtual) give the same table. Each engine ran 389,556 cases: default FPCR
 32,628 match, 0 mismatch, 10,656 unsupported; FZ 3,391, DN 7,129, FZ+DN 9,820, RP 2,016, RM 2,498, RZ 1,796 and all-modes 10,291
 mismatches (the unmodelled-mode gap, issue #363); FZ16 equals default because no supported word is half precision. Tier-3 and
