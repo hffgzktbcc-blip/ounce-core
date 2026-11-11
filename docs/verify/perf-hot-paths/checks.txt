@@ -1,0 +1,39 @@
+2026-11-11, Apple M3, macOS 26.6.2, rustc 1.98.0
+
+cargo test --release --no-run --message-format=json
+  Passed; copied final CLI/test binaries before running checks.
+/tmp/ounce-perf-final-tests --test-threads=2
+  583 passed; 0 failed; 10 ignored; 46.29 seconds.
+  Includes existing cross-page, overflow, permission and self-modifying-code tests.
+  Linux ELF fixture tests now also exercise the explicit interpreter engine.
+CARGO_BUILD_JOBS=2 cargo check --tests --features nce,native-jit
+  Passed; one existing dead-code warning for with_round.
+  This checks optional-feature compilation, not live NCE execution.
+python3 -m unittest discover -s scripts -p test_benchmark_corpus.py
+  2 passed.
+python3 -m unittest discover -s scripts -p test_verify_linux_elf.py
+  6 passed.
+python3 -m py_compile scripts/benchmark_corpus.py scripts/benchmark_linux_elf.py
+  Passed.
+git diff --check
+  Passed.
+CoreMark host reference verification and paired measurements
+  See coremark-verification.json and coremark-benchmark.json.
+NRO paired oracle-checked measurements
+  See corpus-benchmark.json; both registered cases pass every sample.
+
+python3 scripts/run_corpus_oracles.py --executable /tmp/ounce-perf-final-tests --builds /Users/nathanaelgovender/Projects/ounce-corpus-run/corpus/builds --evidence /tmp/ounce-perf-corpus-final --seconds 300 --shards 2
+  Passed: 50/50 registered programs, 100 Interpreter/Tier3 engine runs.
+  Existing local corpus binaries; expectations unchanged.
+  See corpus-oracles.json for raw per-program observations.
+
+Quiet-window wall-clock-only follow-up, 2026-11-11:
+  One sequential release test build per side:
+    CARGO_BUILD_JOBS=2 cargo test --release --bin ounce-core --no-run --message-format=json
+  Baseline build passed in 47.97s; candidate build passed in 26.56s.
+  python3 scripts/benchmark_corpus.py --baseline /tmp/ounce-perf-quiet-20261111/baseline-tests --executable /tmp/ounce-perf-quiet-20261111/candidate-tests --builds /Users/nathanaelgovender/Projects/ounce-corpus-run/corpus/builds --output /tmp/ounce-perf-quiet-20261111/measurements --only printing-hello-world cpu-jit --repeats 21 --warmups 1
+  Passed (exit 0): 168 measured engine runs plus 8 warmup engine runs.
+  All unchanged frame oracles, per-engine instruction counts and observations agree.
+  Load averages before: 4.68 / 6.20 / 18.23; after: 2.89 / 5.00 / 15.57.
+  Results: corpus-benchmark-quiet.json; environment: quiet-window-environment.json.
+  No CoreMark, full-corpus qualification, or unrelated test reruns in this follow-up.

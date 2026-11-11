@@ -22,6 +22,14 @@ class ExecutionVerdictTests(unittest.TestCase):
                                           '[run-elf] engine=Tier-3 instructions=10 syscalls=1', 'tier3'),
                          'different')
 
+    def test_interpreter_identity_is_required(self):
+        self.assertEqual(execution_verdict(b'ok', b'ok', 0,
+                                          '[run-elf] engine=Interpreter instructions=10 syscalls=1', 'interpreter'),
+                         'identical')
+        self.assertEqual(execution_verdict(b'ok', b'ok', 0,
+                                          '[run-elf] engine=Tier-3 instructions=10 syscalls=1', 'interpreter'),
+                         'engine-not-confirmed')
+
     def test_matching_successful_requested_engine_passes(self):
         self.assertEqual(execution_verdict(b'ok', b'ok', 0,
                                           '[run-elf] engine=Tier-4 instructions=10 syscalls=1', 'tier4'),
