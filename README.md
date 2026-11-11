@@ -478,11 +478,9 @@ homebrew `.nro` on it or choose **Open Program…**. ELF programs are not suppor
   [docs/verify/differential.json](docs/verify/differential.json) (for example `lz4.nro`), runs the NRO
   headless on the chosen engine and compares its output byte for byte with the committed
   `expected-host.txt`. It does not rebuild the host reference; use `scripts/verify_differential.py` for that.
-- **Try the Demo** opens the bundled diagnostic; **Stop Session** ends the current session.
-- **View Check Results…** opens a saved evidence report.
-- **Show Session Details** reveals **Choose SD Card Folder…**, which selects the host folder
-  mounted as `sdmc:`, and **Open Log in Finder**. Logs and the default SD folder live under
-  `~/Library/Application Support/Ounce Core/`.
+- **Graphics Demo** opens the bundled diagnostic; **Stop** ends the current session.
+  **Choose SD Card Folder…** selects the host folder mounted as `sdmc:`. Logs and the default
+  SD folder live under `~/Library/Application Support/Ounce Core/`.
 
 The app is locally ad-hoc signed, not a notarized distribution release, and no
 prebuilt download is offered. Supported programs remain those backed by the compatibility

@@ -41,31 +41,6 @@ struct EvidenceReport {
         }
         let cases: [Item]
     }
-    private struct AudioDiagnosis: Decodable {
-        struct Item: Decodable {
-            let engine: String
-            let rejected_before: Int
-            let stereo_after: Int
-        }
-        let mode: String
-        let cases: [Item]
-        let recorded_repair_matches: Bool
-        let explanation: String
-        let likely_owner: String
-        let limits: String
-    }
-    private struct Comparison: Decodable {
-        struct Change: Decodable {
-            let `case`: String
-            let before: String
-            let after: String
-        }
-        let baseline: String
-        let candidate: String
-        let verdict_changes: [Change]
-        let regressions: [Change]
-        let diagnosis: Diagnosis
-    }
     private struct Repair: Decodable {
         struct Revision: Decodable {
             let commit: String
@@ -96,7 +71,7 @@ struct EvidenceReport {
     enum ReadError: LocalizedError {
         case invalid
         var errorDescription: String? {
-            "Choose a saved Ounce-Verify corpus, diagnosis, comparison, repair or run report, or Ounce-Diagnose audio report (.json), up to 8 MB and 1,000 results. This file could not be read as a supported report."
+            "Choose a saved Ounce-Verify corpus, diagnosis, repair or run report (.json), up to 8 MB and 1,000 results. This file could not be read as a supported report."
         }
     }
     let records: [Case]
@@ -132,36 +107,6 @@ struct EvidenceReport {
                 ]) }
                 heading = "Saved diagnosis"
                 overview = "Suggested causes are hypotheses, not proof that a particular engine or component is wrong."
-            case "ounce-diagnose/audio-padding-v1":
-                let report = try decoder.decode(AudioDiagnosis.self, from: data)
-                guard report.cases.count <= 1000 else { throw ReadError.invalid }
-                records = []
-                sections = [Section(title: "Recorded audio diagnosis", lines: [
-                    "Mode: \(report.mode)", report.explanation,
-                    "Suggested area to inspect (hypothesis): \(report.likely_owner)",
-                    report.recorded_repair_matches ? "Recorded repair matches the saved observations." : "Recorded repair does not match the saved observations.",
-                    "Limits: \(report.limits)"
-                ])] + report.cases.map { item in Section(title: item.engine, lines: [
-                    "Rejected before: \(item.rejected_before) • Stereo after: \(item.stereo_after)"
-                ]) }
-                heading = "Saved audio diagnosis"
-                overview = "Recorded protocol observations only; this view does not execute a guest or independently qualify a repair."
-            case "ounce-verify/comparison-v1":
-                let report = try decoder.decode(Comparison.self, from: data)
-                guard report.verdict_changes.count <= 1000, report.regressions.count <= 1000,
-                      report.diagnosis.cases.count <= 1000 else { throw ReadError.invalid }
-                records = []
-                sections = [Section(title: "Recorded revisions", lines: [
-                    "Earlier revision: \(report.baseline)", "New revision: \(report.candidate)",
-                    "Recorded regressions: \(report.regressions.count)"
-                ])] + report.verdict_changes.map { item in Section(title: item.case, lines: [
-                    "Earlier result: \(item.before) • New result: \(item.after)"
-                ]) } + report.diagnosis.cases.map { item in Section(title: item.caseID, lines: [
-                    "Suggested area to inspect (hypothesis): \(item.hypothesis.owner)",
-                    "Suggested next check: \(item.hypothesis.next)"
-                ]) }
-                heading = "Saved comparison"
-                overview = "Saved verdict changes and diagnosis hypotheses; this view does not rerun checks or establish compatibility."
             case "ounce-verify/repair-v1":
                 let report = try decoder.decode(Repair.self, from: data)
                 guard report.issues.count <= 1000 else { throw ReadError.invalid }

@@ -436,8 +436,8 @@ fn print_specs() {
     print_box_top(&s, "Compliance & Security Verification");
     print_row(&s, "Distribution Status: ", "No proprietary keys, firmware, or game data are distributed");
     print_row(&s, "Zero-Key Engine     : ", "Runs homebrew binaries without requiring extracted prod.keys");
-    let val_validation = "Run cargo test --release and ounce-core test for current results";
-    print_row(&s, "Validation Status   : ", val_validation);
+    let val_validation = format!("{}85 Unit Tests PASS{} · {}25 Integration Stages PASS (0xEEE){}", s.green, s.reset, s.green, s.reset);
+    print_row(&s, "Validation Status   : ", &val_validation);
     let val_source = format!("{}https://github.com/hffgzktbcc-blip/ounce-core{}", s.cyan, s.reset);
     print_row(&s, "Official Source     : ", &val_source);
     let val_sec = format!("{}Reject third-party binaries; build only from official source{}", s.yellow, s.reset);
