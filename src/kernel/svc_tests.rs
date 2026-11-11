@@ -488,3 +488,83 @@ fn unimplemented_svcs_are_reported_not_faked() {
         assert_eq!(call(&mut k, &mut cpu, &mut mmu, id, &[]), SvcResult::Unhandled(id), "svc 0x{id:X}");
     }
 }
+
+// Regression tests for cases found by `svc_fuzz_tests`: a guest register must never choose a host
+// allocation size or the length of a host loop.
+
+/// Runs `f` and fails if it takes long enough to count as a hang.
+fn within_a_second(f: impl FnOnce()) {
+    let start = std::time::Instant::now();
+    f();
+    assert!(start.elapsed() < std::time::Duration::from_secs(1), "took {:?}", start.elapsed());
+}
+
+#[test]
+fn map_physical_memory_rejects_sizes_the_host_cannot_back() {
+    let (mut cpu, mut mmu, mut k) = setup();
+    within_a_second(|| {
+        call(&mut k, &mut cpu, &mut mmu, 0x2c, &[0x8000, 0xFFFF_8000]);
+    });
+    assert_eq!(cpu.regs.read_x(0), RESULT_OUT_OF_MEMORY);
+    assert!(!mmu.is_mapped(0x8000));
+}
+
+#[test]
+fn map_shared_and_transfer_memory_reject_huge_sizes() {
+    let (mut cpu, mut mmu, mut k) = setup();
+    within_a_second(|| {
+        call(&mut k, &mut cpu, &mut mmu, 0x13, &[1, 0x20_0000, 1 << 40, 3]);
+    });
+    assert_eq!(cpu.regs.read_x(0), RESULT_OUT_OF_MEMORY);
+    assert!(!mmu.is_mapped(0x20_0000));
+    let handle = k.ipc.allocate_handle(crate::kernel::ServiceType::TransferMemory { addr: 0, size: 0x1000 });
+    within_a_second(|| {
+        call(&mut k, &mut cpu, &mut mmu, 0x51, &[handle as u64, 0x20_0000, 1 << 40, 3]);
+    });
+    assert_eq!(cpu.regs.read_x(0), RESULT_OUT_OF_MEMORY);
+    assert!(!mmu.is_mapped(0x20_0000));
+}
+
+#[test]
+fn map_process_memory_rejects_huge_sizes() {
+    let (mut cpu, mut mmu, mut k) = setup();
+    within_a_second(|| {
+        call(&mut k, &mut cpu, &mut mmu, 0x74, &[0x20_0000, 0, 0, 1 << 40]);
+    });
+    assert_eq!(cpu.regs.read_x(0), RESULT_OUT_OF_MEMORY);
+    assert!(!mmu.is_mapped(0x20_0000));
+}
+
+#[test]
+fn map_and_code_memory_moves_reject_sizes_that_overflow_or_loop_for_ever() {
+    let (mut cpu, mut mmu, mut k) = setup();
+    within_a_second(|| {
+        for size in [u64::MAX - 0xFFF, 1 << 47] {
+            call(&mut k, &mut cpu, &mut mmu, 0x04, &[0x20_0000, SCRATCH, size]);
+            assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_SIZE);
+            call(&mut k, &mut cpu, &mut mmu, 0x77, &[0, 0x20_0000, SCRATCH, size]);
+            assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_SIZE);
+        }
+    });
+    assert!(mmu.is_mapped(SCRATCH), "a rejected move leaves the source in place");
+}
+
+#[test]
+fn unmap_of_a_huge_range_visits_mapped_pages_only() {
+    let (mut cpu, mut mmu, mut k) = setup();
+    within_a_second(|| {
+        call(&mut k, &mut cpu, &mut mmu, 0x2d, &[0x8000, 1 << 46]);
+    });
+    assert_eq!(cpu.regs.read_x(0), 0);
+    assert!(!mmu.is_mapped(SCRATCH), "pages inside the range are gone");
+    assert!(!mmu.is_mapped(SCRATCH + 0x1000));
+}
+
+#[test]
+fn query_memory_with_a_pointer_at_the_top_of_the_address_space_does_not_overflow() {
+    let (mut cpu, mut mmu, mut k) = setup();
+    for svc in [0x06, 0x76] {
+        call(&mut k, &mut cpu, &mut mmu, svc, &[u64::MAX - 3, 0, SCRATCH]);
+        assert_eq!(cpu.regs.read_x(0), 0);
+    }
+}
