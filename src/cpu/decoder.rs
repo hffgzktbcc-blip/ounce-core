@@ -1414,6 +1414,8 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11010, true, true) => SimdFpOp3::Fabd,
             (0b11011, true, false) => SimdFpOp3::Fmul,
             (0b11011, false, false) => SimdFpOp3::Fmulx,
+            (0b11111, false, false) => SimdFpOp3::Frecps,
+            (0b11111, false, true) => SimdFpOp3::Frsqrts,
             (0b11100, false, false) => SimdFpOp3::Fcmeq,
             (0b11100, true, false) => SimdFpOp3::Fcmge,
             (0b11100, true, true) => SimdFpOp3::Fcmgt,
@@ -1590,6 +1592,20 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b01111, false, true) => Some(SimdFpOp2::Fabs),
             (0b01111, true, true) => Some(SimdFpOp2::Fneg),
             (0b11111, true, true) => Some(SimdFpOp2::Fsqrt),
+            (0b11000, false, false) => Some(SimdFpOp2::Frintn),
+            (0b11000, false, true) => Some(SimdFpOp2::Frintp),
+            (0b11000, true, false) => Some(SimdFpOp2::Frinta),
+            (0b11001, false, false) => Some(SimdFpOp2::Frintm),
+            (0b11001, false, true) => Some(SimdFpOp2::Frintz),
+            (0b11001, true, false) => Some(SimdFpOp2::Frintx),
+            (0b11001, true, true) => Some(SimdFpOp2::Frinti),
+            (0b11100, false, false) => None,
+            (0b11101, false, true) => Some(SimdFpOp2::Frecpe),
+            (0b11101, true, true) => Some(SimdFpOp2::Frsqrte),
+            (0b11110, false, false) => Some(SimdFpOp2::Frint32z),
+            (0b11110, true, false) => Some(SimdFpOp2::Frint32x),
+            (0b11111, false, false) => Some(SimdFpOp2::Frint64z),
+            (0b11111, true, false) => Some(SimdFpOp2::Frint64x),
             (0b10110, false, false) if double => Some(SimdFpOp2::Fcvtn),
             (0b10111, false, false) if double => Some(SimdFpOp2::Fcvtl),
             _ => None,
@@ -1601,6 +1617,27 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 return None;
             }
             return Some(Instruction::SimdFpTwoMisc { rd, rn, op, double, q });
+        }
+        // FCVT{N,M,A,P}{S,U} and URECPE/URSQRTE: integer results
+        let int_op = match ((raw >> 12) & 0x1F, u, a) {
+            (0b11010, false, false) => Some(SimdOp2::Fcvtns),
+            (0b11010, true, false) => Some(SimdOp2::Fcvtnu),
+            (0b11010, false, true) => Some(SimdOp2::Fcvtps),
+            (0b11010, true, true) => Some(SimdOp2::Fcvtpu),
+            (0b11011, false, false) => Some(SimdOp2::Fcvtms),
+            (0b11011, true, false) => Some(SimdOp2::Fcvtmu),
+            (0b11100, false, false) => Some(SimdOp2::Fcvtas),
+            (0b11100, true, false) => Some(SimdOp2::Fcvtau),
+            (0b11100, false, true) if !double => Some(SimdOp2::Urecpe),
+            (0b11100, true, true) if !double => Some(SimdOp2::Ursqrte),
+            _ => None,
+        };
+        if let Some(op) = int_op {
+            if double && !q {
+                return None;
+            }
+            let esize = if double { 64 } else { 32 };
+            return Some(Instruction::SimdTwoMisc { rd, rn, op, esize, q });
         }
         // FCVTZS/FCVTZU vector, integer result: a == 1, opcode 11011
         if (raw >> 12) & 0x1F == 0b11011 && a {
