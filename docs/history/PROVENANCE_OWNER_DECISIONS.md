@@ -1,3 +1,5 @@
+Archived 2026-11-11, superseded by docs/PROVENANCE.md
+
 # Provenance: what is resolved and what needs the owner
 
 Status 2026-11-08. Summarises `PROVENANCE_REMEDIATION_REPORT.md`, `HISTORY_REMEDIATION.md`

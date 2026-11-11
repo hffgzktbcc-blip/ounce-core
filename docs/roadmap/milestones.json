@@ -6,9 +6,9 @@
       "id": "linux-elf",
       "name": "Static Linux ARM64 programs",
       "stage": "experimental",
-      "evidence": "Six freestanding fixtures and bounded LZ4/musl verification; library and CLI scenarios qualified on Linux, macOS and Windows",
+      "evidence": "Six freestanding fixtures plus 18 real programs run as static musl ELFs (LZ4, xxHash, cJSON and zlib also on macOS and Windows); wasm3 does not run yet",
       "evidence_url": "docs/verify/linux-elf/README.md",
-      "next": "Expand Linux library coverage from observed needs; qualify portable execution recording"
+      "next": "Fix wasm3 as an ELF (#366); expand Linux library coverage from observed needs; qualify portable execution recording"
     },
     {
       "id": "differential",
@@ -16,7 +16,7 @@
       "stage": "measured",
       "evidence": "Seeded single-instruction hardware fuzzing and three-engine comparisons; bounded results retained",
       "evidence_url": "docs/verify/insn-fuzzer/README.md",
-      "next": "Qualify ARM64 fuzzer CI; then expand per-family and sequence coverage (vision step 2)"
+      "next": "ARM64 fuzzer CI is qualified (hosted Apple Silicon job passed 2026-11-08); next expand per-family and sequence coverage (vision step 2)"
     },
     {
       "id": "workflow",
@@ -30,17 +30,17 @@
       "id": "diagnosis",
       "name": "Failure to reproduction",
       "stage": "measured",
-      "evidence": "Retained SDL2/audio diagnosis and one hardware-observed instruction mismatch with exact register snapshots",
+      "evidence": "R1, R2 and R4 done: retained SDL2/audio diagnosis (failure-to-reproduction walkthrough, one externally grounded developer issue, audio-case result) and one hardware-observed instruction mismatch with exact register snapshots",
       "evidence_url": "docs/INSTRUCTION_DIAGNOSIS.md",
-      "next": "Repair the measured arithmetic discrepancy; arbitrary-program first divergence remains unestablished"
+      "next": "The measured vector-multiply discrepancy is repaired; the scalar-FP sibling is open as #362; arbitrary-program first divergence remains unestablished"
     },
     {
       "id": "distribution",
       "name": "Usable community tool",
       "stage": "measured",
-      "evidence": "Standalone diagnosis toolkit 0.2.0 published with checksums and acceptance evidence",
+      "evidence": "R3 and R5 done: standalone diagnosis toolkit 0.2.0 installable and published with checksums and acceptance evidence (R1–R5 are all complete)",
       "evidence_url": "docs/releases/diagnosis-0.2.0-readiness.md",
-      "next": "Collect outside feedback; runtime distribution has separate provenance dependencies"
+      "next": "No outside feedback received yet; collect it. Runtime distribution has separate provenance dependencies"
     },
     {
       "id": "original-switch",

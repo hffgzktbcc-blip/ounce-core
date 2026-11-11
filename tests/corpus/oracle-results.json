@@ -1,5 +1,5 @@
 {
-  "note": "Observed verdicts of tests/corpus/oracles.json, copied from CI (see docs/corpus-oracles.md). not-run = no CI run yet. A recorded pass is a ratchet: CI fails if it stops passing.",
+  "note": "Verdicts of tests/corpus/oracles.json copied from the retained canonical report named in recorded_from (produced at core_commit; not a fresh run, see docs/corpus-oracles.md). A recorded pass is a ratchet: CI fails if it stops passing. scripts/corpus_verify.py snapshot checks this file against the README headline.",
   "results": {
     "printing-hello-world": "pass",
     "vt52-demo": "pass",
@@ -21,7 +21,7 @@
     "deko-basic": "pass",
     "startup": "pass",
     "romfs": "pass",
-    "account": "fail",
+    "account": "pass",
     "alarm-notifications": "pass",
     "app-playstats": "pass",
     "applet-error": "pass",
@@ -32,10 +32,10 @@
     "lockexit": "pass",
     "screenshot-overlay": "pass",
     "vrmode": "pass",
-    "audio-echo": "fail",
-    "playtone": "fail",
+    "audio-echo": "pass",
+    "playtone": "pass",
     "exception-handler": "pass",
-    "save-data": "fail",
+    "save-data": "pass",
     "sdmc": "pass",
     "abstracted-pad": "pass",
     "controller-colors": "pass",
@@ -52,5 +52,6 @@
     "usbhs": "pass",
     "cpu-jit": "pass"
   },
-  "recorded_from": "https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42229774290"
+  "recorded_from": "docs/verify/corpus-c47fa14/canonical-corpus.json",
+  "core_commit": "c47fa14"
 }

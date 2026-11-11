@@ -262,7 +262,11 @@ impl HorizonKernel {
             // 0x04: svcMapMemory(dst, src, size) / 0x05: svcUnmapMemory(dst, src, size).
             // Horizon makes the source inaccessible while it is mapped at dst, so the pages move (and back).
             0x04 | 0x05 => {
-                let (dst, src, size) = (cpu.regs.read_x(0), cpu.regs.read_x(1), cpu.regs.read_x(2) as usize);
+                let (dst, src, size) = (cpu.regs.read_x(0), cpu.regs.read_x(1), cpu.regs.read_x(2));
+                let Ok(size) = checked_move_size(dst, src, size) else {
+                    cpu.regs.write_x(0, RESULT_INVALID_SIZE);
+                    return SvcResult::Success;
+                };
                 if svc_id == 0x04 {
                     mmu.move_range(src, dst, size);
                 } else {
@@ -283,10 +287,10 @@ impl HorizonKernel {
                 let (start, end, mapped) = mmu.region_at(aligned_base);
                 let (state, perm) = if mapped { (0x03, 0x03) } else { (0x00, 0x00) };
                 let _ = mmu.write_u64(mem_info_ptr, start);
-                let _ = mmu.write_u64(mem_info_ptr + 8, end - start);
-                let _ = mmu.write_u32(mem_info_ptr + 16, state);
-                let _ = mmu.write_u32(mem_info_ptr + 20, 0);
-                let _ = mmu.write_u32(mem_info_ptr + 24, perm);
+                let _ = mmu.write_u64(mem_info_ptr.wrapping_add(8), end - start);
+                let _ = mmu.write_u32(mem_info_ptr.wrapping_add(16), state);
+                let _ = mmu.write_u32(mem_info_ptr.wrapping_add(20), 0);
+                let _ = mmu.write_u32(mem_info_ptr.wrapping_add(24), perm);
 
                 cpu.regs.write_x(0, 0);
                 cpu.regs.write_x(1, 0);
@@ -482,8 +486,14 @@ impl HorizonKernel {
             0x13 => {
                 let handle = cpu.regs.read_w(0);
                 let addr = cpu.regs.read_x(1);
-                let size = cpu.regs.read_x(2) as usize;
-                if addr != 0 && size > 0 {
+                if addr != 0 && cpu.regs.read_x(2) > 0 {
+                    let size = match checked_map_size(addr, cpu.regs.read_x(2)) {
+                        Ok(size) => size,
+                        Err(result) => {
+                            cpu.regs.write_x(0, result);
+                            return SvcResult::Success;
+                        }
+                    };
                     mmu.map_range(addr, size, Permission::READ_WRITE);
                     self.ipc.shared_memory_mapped(handle, addr, mmu);
                 }
@@ -493,7 +503,14 @@ impl HorizonKernel {
 
             // 0x14: svcUnmapSharedMemory(handle, addr, size)
             0x14 => {
-                let (addr, size) = (cpu.regs.read_x(1), cpu.regs.read_x(2) as usize);
+                let (addr, size) = (cpu.regs.read_x(1), cpu.regs.read_x(2));
+                let size = match checked_guest_range(addr, size) {
+                    Ok(size) => size,
+                    Err(result) => {
+                        cpu.regs.write_x(0, result);
+                        return SvcResult::Success;
+                    }
+                };
                 mmu.unmap_range(addr, size);
                 self.ipc.shared_memory_unmapped(addr);
                 cpu.regs.write_x(0, 0);
@@ -966,15 +983,20 @@ impl HorizonKernel {
             }
 
             // 0x2C: svcMapPhysicalMemory(addr, size) / 0x2D: svcUnmapPhysicalMemory(addr, size)
-            0x2C => {
-                let (addr, size) = (cpu.regs.read_x(0), cpu.regs.read_x(1) as usize);
-                mmu.map_range(addr, size, Permission::READ_WRITE);
-                cpu.regs.write_x(0, 0);
-                SvcResult::Success
-            }
-            0x2D => {
-                let (addr, size) = (cpu.regs.read_x(0), cpu.regs.read_x(1) as usize);
-                mmu.unmap_range(addr, size);
+            0x2C | 0x2D => {
+                let addr = cpu.regs.read_x(0);
+                let size = match checked_map_or_unmap_size(svc_id == 0x2C, addr, cpu.regs.read_x(1)) {
+                    Ok(size) => size,
+                    Err(result) => {
+                        cpu.regs.write_x(0, result);
+                        return SvcResult::Success;
+                    }
+                };
+                if svc_id == 0x2C {
+                    mmu.map_range(addr, size, Permission::READ_WRITE);
+                } else {
+                    mmu.unmap_range(addr, size);
+                }
                 cpu.regs.write_x(0, 0);
                 SvcResult::Success
             }
@@ -1196,11 +1218,18 @@ impl HorizonKernel {
             // 0x51: svcMapTransferMemory(handle, addr, size, perm) / 0x52: svcUnmapTransferMemory(handle, addr, size).
             // Maps a fresh view; the lender's pages are not shared (one process only).
             0x51 | 0x52 => {
-                let (handle, addr, size) = (cpu.regs.read_w(0), cpu.regs.read_x(1), cpu.regs.read_x(2) as usize);
+                let (handle, addr, size) = (cpu.regs.read_w(0), cpu.regs.read_x(1), cpu.regs.read_x(2));
                 if !matches!(self.ipc.handles.get(&handle), Some(ServiceType::TransferMemory { .. })) {
                     cpu.regs.write_x(0, RESULT_INVALID_HANDLE);
                     return SvcResult::Success;
                 }
+                let size = match checked_map_or_unmap_size(svc_id == 0x51, addr, size) {
+                    Ok(size) => size,
+                    Err(result) => {
+                        cpu.regs.write_x(0, result);
+                        return SvcResult::Success;
+                    }
+                };
                 if svc_id == 0x51 {
                     mmu.map_range(addr, size, Permission::READ_WRITE);
                 } else {
@@ -1220,8 +1249,12 @@ impl HorizonKernel {
             // libnx `jit.c` (JitType_SetProcessMemoryPermission) writes code at src, then maps it at dst with 0x77:
             // the pages move to dst like svcMapMemory, and 0x78 moves them back.
             0x77 | 0x78 => {
-                let (dst, src, size) = (cpu.regs.read_x(1), cpu.regs.read_x(2), cpu.regs.read_x(3) as usize);
+                let (dst, src, size) = (cpu.regs.read_x(1), cpu.regs.read_x(2), cpu.regs.read_x(3));
                 let from = if svc_id == 0x77 { src } else { dst };
+                let Ok(size) = checked_move_size(dst, src, size) else {
+                    cpu.regs.write_x(0, RESULT_INVALID_SIZE);
+                    return SvcResult::Success;
+                };
                 if (dst | src | size as u64) & 0xFFF != 0 || size == 0 {
                     cpu.regs.write_x(0, RESULT_INVALID_ADDRESS);
                 } else if !(0..size as u64).step_by(0x1000).all(|o| mmu.is_mapped(from + o)) {
@@ -1240,9 +1273,15 @@ impl HorizonKernel {
             0x73..=0x75 => {
                 if svc_id == 0x74 {
                     let dst_addr = cpu.regs.read_x(0);
-                    let size = (cpu.regs.read_x(3) as usize).max(0x1000);
+                    let size = cpu.regs.read_x(3).max(0x1000);
                     if dst_addr != 0 {
-                        mmu.map_range(dst_addr, size, Permission::READ_WRITE_EXECUTE);
+                        match checked_map_size(dst_addr, size) {
+                            Ok(size) => mmu.map_range(dst_addr, size, Permission::READ_WRITE_EXECUTE),
+                            Err(result) => {
+                                cpu.regs.write_x(0, result);
+                                return SvcResult::Success;
+                            }
+                        }
                     }
                 }
                 cpu.regs.write_x(0, 0); // ResultSuccess
@@ -1254,10 +1293,10 @@ impl HorizonKernel {
                 let query_addr = cpu.regs.read_x(2);
                 let aligned_base = query_addr & !0xFFF;
                 let _ = mmu.write_u64(mem_info_ptr, aligned_base);
-                let _ = mmu.write_u64(mem_info_ptr + 8, 0x1000);
-                let _ = mmu.write_u32(mem_info_ptr + 16, 0x03); // MemoryType::CodeStatic (3)
-                let _ = mmu.write_u32(mem_info_ptr + 20, 0);    // attributes = 0
-                let _ = mmu.write_u32(mem_info_ptr + 24, 0x04); // permission = Execute-Only (4) on Switch 2 FS
+                let _ = mmu.write_u64(mem_info_ptr.wrapping_add(8), 0x1000);
+                let _ = mmu.write_u32(mem_info_ptr.wrapping_add(16), 0x03); // MemoryType::CodeStatic (3)
+                let _ = mmu.write_u32(mem_info_ptr.wrapping_add(20), 0);    // attributes = 0
+                let _ = mmu.write_u32(mem_info_ptr.wrapping_add(24), 0x04); // permission = Execute-Only (4) on Switch 2 FS
                 cpu.regs.write_x(0, 0);
                 cpu.regs.write_x(1, 0);
                 SvcResult::Success
@@ -1334,10 +1373,114 @@ pub const FS_QUERY_PAYLOAD: [u32; 18] = [
     0xD65F03C0, // ret
 ];
 
+/// Validate guest arithmetic before converting to host sizes or changing mappings.
+fn checked_guest_range(addr: u64, size: u64) -> Result<usize, u64> {
+    addr.checked_add(size).ok_or(RESULT_INVALID_ADDRESS)?;
+    usize::try_from(size).map_err(|_| RESULT_INVALID_SIZE)
+}
+
+/// Largest range one SVC may map. Pages are backed by host memory when mapped, so a register value
+/// must not choose the allocation size; svcSetHeapSize is the one call that may reach 4 GiB.
+const MAX_MAP_SIZE: u64 = 0x1000_0000;
+
+/// `checked_guest_range` for calls that map new pages: also rejects sizes the host cannot back.
+fn checked_map_size(addr: u64, size: u64) -> Result<usize, u64> {
+    let size = checked_guest_range(addr, size)?;
+    if size as u64 > MAX_MAP_SIZE {
+        return Err(RESULT_OUT_OF_MEMORY);
+    }
+    Ok(size)
+}
+
+fn checked_map_or_unmap_size(map: bool, addr: u64, size: u64) -> Result<usize, u64> {
+    if map { checked_map_size(addr, size) } else { checked_guest_range(addr, size) }
+}
+
+/// Size of a svcMapMemory-style move: both ends must stay inside the address space and the page
+/// loop must stay short.
+fn checked_move_size(dst: u64, src: u64, size: u64) -> Result<usize, u64> {
+    dst.checked_add(size).ok_or(RESULT_INVALID_SIZE)?;
+    src.checked_add(size).ok_or(RESULT_INVALID_SIZE)?;
+    if size > HEAP_REGION_SIZE {
+        return Err(RESULT_INVALID_SIZE);
+    }
+    Ok(size as usize)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::cpu::StepResult;
+
+    #[test]
+    fn guest_input_mapping_ranges_return_errors_without_changing_memory() {
+        for svc in [0x2c, 0x2d, 0x51, 0x52] {
+            for (addr, size, expected) in [
+                (u64::MAX, 4096, RESULT_INVALID_ADDRESS),
+                (u64::MAX - 4095, 8192, RESULT_INVALID_ADDRESS),
+                (0x9000, u64::MAX - 4095, RESULT_INVALID_ADDRESS),
+            ] {
+                let mut cpu = Cpu::new();
+                let mut mmu = Memory::new();
+                let mut kernel = HorizonKernel::new();
+                mmu.map_range(0x9000, 4096, Permission::READ_WRITE);
+                mmu.write_u32(0x9000, 0x12345678).unwrap();
+                if svc == 0x2c || svc == 0x2d {
+                    cpu.regs.write_x(0, addr);
+                    cpu.regs.write_x(1, size);
+                } else {
+                    let handle = kernel.ipc.allocate_handle(ServiceType::TransferMemory { addr: 0x9000, size: 4096 });
+                    cpu.regs.write_x(0, handle as u64);
+                    cpu.regs.write_x(1, addr);
+                    cpu.regs.write_x(2, size);
+                }
+                assert_eq!(kernel.dispatch_svc(svc, &mut cpu, &mut mmu), SvcResult::Success);
+                assert_eq!(cpu.regs.read_x(0), expected, "svc {svc:#x}");
+                assert_eq!(mmu.read_u32(0x9000).unwrap(), 0x12345678);
+                assert!(mmu.read_u32(u64::MAX - 4095).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn guest_input_valid_mapping_and_unmapping_still_work() {
+        for (map, unmap) in [(0x2c, 0x2d), (0x51, 0x52)] {
+            let mut cpu = Cpu::new();
+            let mut mmu = Memory::new();
+            let mut kernel = HorizonKernel::new();
+            let handle = kernel.ipc.allocate_handle(ServiceType::TransferMemory { addr: 0x9000, size: 4096 });
+            for svc in [map, unmap] {
+                if svc == 0x2c || svc == 0x2d {
+                    cpu.regs.write_x(0, 0x9000);
+                    cpu.regs.write_x(1, 4096);
+                } else {
+                    cpu.regs.write_x(0, handle as u64);
+                    cpu.regs.write_x(1, 0x9000);
+                    cpu.regs.write_x(2, 4096);
+                }
+                assert_eq!(kernel.dispatch_svc(svc, &mut cpu, &mut mmu), SvcResult::Success);
+                assert_eq!(cpu.regs.read_x(0), 0);
+                assert_eq!(mmu.read_u32(0x9000).is_ok(), svc == map);
+            }
+        }
+    }
+
+    #[test]
+    fn guest_input_overflow_instruction_reproducer_returns_guest_error() {
+        let words = [0x92800000u32, 0xd2820001, 0xd4000581];
+        let bytes: Vec<_> = words.into_iter().flat_map(u32::to_le_bytes).collect();
+        let image = crate::loader::nro::NroLoader::build_synthetic_nro(&bytes);
+        let mut mmu = Memory::new();
+        crate::loader::nro::NroLoader::load_into_memory(&image, 0x80000000, &mut mmu).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.regs.pc = 0x80000000 + 0x80;
+        let mut kernel = HorizonKernel::new();
+        assert_eq!(cpu.step(&mut mmu).unwrap(), StepResult::Continue);
+        assert_eq!(cpu.step(&mut mmu).unwrap(), StepResult::Continue);
+        assert_eq!(cpu.step(&mut mmu).unwrap(), StepResult::Svc(0x2c));
+        assert_eq!(kernel.dispatch_svc(0x2c, &mut cpu, &mut mmu), SvcResult::Success);
+        assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_ADDRESS);
+    }
 
     /// Runs `FS_QUERY_PAYLOAD` and checks the challenge response it writes to the output buffer.
     #[test]

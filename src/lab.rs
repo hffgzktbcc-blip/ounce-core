@@ -156,8 +156,11 @@ fn classify(log: &str) -> (&'static str, String) {
             continue;
         };
         let mut text = line.trim().to_string();
-        if let Some(next) = lines.get(i + 1).filter(|n| n.contains("Final PC")) {
-            text = format!("{text} ({})", next.trim());
+        for next in lines.iter().skip(i + 1).take(2) {
+            let trimmed = next.trim();
+            if trimmed.contains("Final PC") || trimmed.contains("Break PC:") || trimmed.contains("Break result:") {
+                text = format!("{text} ({trimmed})");
+            }
         }
         return (kind, text);
     }
@@ -364,7 +367,27 @@ fn verdict(runs: &[EngineRun]) -> Value {
         if refr.faulted() {
             let same = tiers.iter().all(|t| t.stop_kind == refr.stop_kind);
             return if same {
-                verdict("fails", "The program fails the same way on this computer".into(), describe(refr), None)
+                match refr.stop_kind {
+                    "unhandled-svc" => verdict(
+                        "fails",
+                        "The program called a service Ounce-Core does not handle yet".into(),
+                        format!(
+                            "{} (Native runs also dispatch SVCs through Ounce-Core's Horizon kernel; report this missing service with .github/ISSUE_TEMPLATE/emulation_bug.yml.)",
+                            describe(refr)
+                        ),
+                        None,
+                    ),
+                    "unimplemented" => verdict(
+                        "fails",
+                        "The program used an instruction Ounce-Core could not decode".into(),
+                        format!(
+                            "{} (Shared code/data pages use Ounce-Core's interpreter even on native runs; run `ounce-core diverge <program.nro>` or report the instruction word with .github/ISSUE_TEMPLATE/emulation_bug.yml.)",
+                            describe(refr)
+                        ),
+                        None,
+                    ),
+                    _ => verdict("fails", "The program fails the same way on this computer".into(), describe(refr), None),
+                }
             } else {
                 verdict("diverges", "The program fails on this computer but Ounce-Core behaves differently".into(),
                     tiers.iter().map(|t| describe(t)).collect::<Vec<_>>().join(" | "), None)
@@ -372,7 +395,8 @@ fn verdict(runs: &[EngineRun]) -> Value {
         }
         for t in &tiers {
             if t.faulted() {
-                return verdict("diverges", format!("{} stops where this computer keeps going", label(&t.engine)), describe(t), None);
+                return verdict("diverges", format!("{} stops where this computer keeps going", label(&t.engine)),
+                    format!("{} Run `ounce-core diverge <program.nro>` or report this gap with .github/ISSUE_TEMPLATE/emulation_bug.yml.", describe(t)), None);
             }
             if unfinished(t) {
                 return verdict("unfinished", format!("{} hit its limit before the program finished", label(&t.engine)),
@@ -381,7 +405,7 @@ fn verdict(runs: &[EngineRun]) -> Value {
             if !same_outcome(t, refr) {
                 let diff = first_diff(t, refr);
                 return verdict("diverges", format!("{} differs from this computer", label(&t.engine)),
-                    "Both finished, but they did not produce the same output.".into(), diff);
+                    "Both finished, but they did not produce the same output. Run `ounce-core diverge <program.nro>` to check whether a single instruction disagreed, or report this run with .github/ISSUE_TEMPLATE/emulation_bug.yml.".into(), diff);
             }
         }
         let files = refr.files.len();
@@ -392,16 +416,36 @@ fn verdict(runs: &[EngineRun]) -> Value {
     if let Some(t) = tiers.iter().find(|t| t.faulted()) {
         let all = tiers.iter().all(|x| x.stop_kind == t.stop_kind);
         return if all {
-            verdict("fails", "The program stops with an error".into(), format!("{} No host reference was used, so this can't say whether the program or Ounce-Core is at fault.", describe(t)), None)
+            match t.stop_kind {
+                "unhandled-svc" => verdict(
+                    "fails",
+                    "The program called a service Ounce-Core does not handle yet".into(),
+                    format!("{} This is a missing Horizon service in Ounce-Core; report the SVC line using .github/ISSUE_TEMPLATE/emulation_bug.yml.", describe(t)),
+                    None,
+                ),
+                "unimplemented" => verdict(
+                    "fails",
+                    "The program used an instruction Ounce-Core could not decode".into(),
+                    format!("{} Turn on 'Compare with this computer' or run `ounce-core diverge <program.nro>` to check it against the host CPU, and report the instruction word using .github/ISSUE_TEMPLATE/emulation_bug.yml.", describe(t)),
+                    None,
+                ),
+                _ => verdict(
+                    "fails",
+                    "The program stops with an error".into(),
+                    format!("{} No host reference was used, so this can't say whether the program or Ounce-Core is at fault. Turn on 'Compare with this computer' to check against the real CPU.", describe(t)),
+                    None,
+                ),
+            }
         } else {
-            verdict("diverges", "Tier-3 and Tier-4 disagree".into(), tiers.iter().map(|x| describe(x)).collect::<Vec<_>>().join(" | "), None)
+            verdict("diverges", "Tier-3 and Tier-4 disagree".into(),
+                format!("{} | Run `ounce-core diverge <program.nro>` or report with .github/ISSUE_TEMPLATE/emulation_bug.yml.", tiers.iter().map(|x| describe(x)).collect::<Vec<_>>().join(" | ")), None)
         };
     }
     if let Some(t) = tiers.iter().find(|t| unfinished(t)) {
         return verdict("unfinished", "The program didn't finish within the limit".into(), describe(t), None);
     }
     if tiers.len() == 2 && !same_outcome(tiers[0], tiers[1]) {
-        return verdict("diverges", "Tier-3 and Tier-4 disagree".into(), "An emulator bug between engines. Compare with this computer to see which is right.".into(), first_diff(tiers[0], tiers[1]));
+        return verdict("diverges", "Tier-3 and Tier-4 disagree".into(), "An emulator bug between engines. Compare with this computer to see which is right, or run `ounce-core diverge <program.nro>` and report with .github/ISSUE_TEMPLATE/emulation_bug.yml.".into(), first_diff(tiers[0], tiers[1]));
     }
     verdict("agrees", "Tier-3 and Tier-4 agree".into(),
         "No host reference was used. Turn on 'Compare with this computer' to check against the real CPU.".into(), None)
@@ -435,13 +479,17 @@ impl Lab {
         let nro = work.join("program.nro");
         std::fs::write(&nro, &bytes).map_err(|e| (500, format!("could not save the program: {e}")))?;
         let name: String = name.chars().filter(|c| !c.is_control()).take(120).collect();
+        let bytes_len = bytes.len();
         let started = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         self.checks.lock().unwrap().push((id.clone(), json!({
-            "id": id, "name": name, "sha256": sha, "bytes": bytes.len(), "native": native,
+            "schema_version": "ounce-core/workbench-check-v1",
+            "id": id, "name": name, "sha256": sha, "bytes": bytes_len, "native": native,
             "status": "running", "started": started, "engines": [], "verdict": null,
         })));
         let lab = Arc::clone(self);
         let check_id = id.clone();
+        let check_name = name;
+        let check_sha = sha;
         thread::spawn(move || {
             let mut names = vec!["tier3", "tier4"];
             if native {
@@ -454,7 +502,19 @@ impl Lab {
                 handles.into_iter().filter_map(|h| h.join().ok()).collect()
             });
             let instructions = if native { instruction_check(&lab.exe, &nro, &work) } else { Value::Null };
-            let result = json!({"engines": runs.iter().map(EngineRun::to_json).collect::<Vec<_>>(), "verdict": verdict(&runs), "instructions": instructions, "status": "done"});
+            let result = json!({
+                "schema_version": "ounce-core/workbench-check-v1",
+                "id": check_id,
+                "name": check_name,
+                "sha256": check_sha,
+                "bytes": bytes_len,
+                "native": native,
+                "started": started,
+                "engines": runs.iter().map(EngineRun::to_json).collect::<Vec<_>>(),
+                "verdict": verdict(&runs),
+                "instructions": instructions,
+                "status": "done"
+            });
             let _ = std::fs::write(work.join("result.json"), serde_json::to_vec_pretty(&result).unwrap_or_default());
             let mut checks = lab.checks.lock().unwrap();
             if let Some((_, value)) = checks.iter_mut().find(|(i, _)| *i == check_id) {
@@ -732,6 +792,12 @@ mod tests {
         let (kind, line) = classify("[VM Error] Unimplemented instruction 0xdeadbeef at PC: 0x80\n  Final PC: 0x80");
         assert_eq!(kind, "unimplemented");
         assert!(line.contains("Final PC"));
+        let (bkind, bline) = classify(
+            "[VM] Hit svcBreak: reason=0x0, info1=0x7FFFFFFED0, info2=0x4\n[VM] Break PC: 0x80000090\n[VM] Break result: 0x0000F601 (module=1, description=123)",
+        );
+        assert_eq!(bkind, "break");
+        assert!(bline.contains("Break PC: 0x80000090"));
+        assert!(bline.contains("Break result: 0x0000F601"));
         assert_eq!(classify("nothing useful").0, "unknown");
         // A failure line wins over an earlier graceful-looking one.
         assert_eq!(classify("Process exited gracefully\n[VM Error] boom").0, "fault");
@@ -776,6 +842,29 @@ mod tests {
     fn verdict_flags_an_emulator_stop_where_the_mac_continues() {
         let runs = [run("tier3", "unimplemented", &[]), run("tier4", "unimplemented", &[]), run("native", "exited", &[])];
         assert_eq!(verdict(&runs)["kind"], "diverges");
+    }
+
+    #[test]
+    fn verdict_identifies_missing_service_and_unimplemented_instruction_gaps() {
+        let svc_runs = [run("tier3", "unhandled-svc", &[]), run("tier4", "unhandled-svc", &[])];
+        let v = verdict(&svc_runs);
+        assert_eq!(v["kind"], "fails");
+        assert!(v["headline"].as_str().unwrap().contains("service Ounce-Core does not handle yet"));
+        assert!(v["detail"].as_str().unwrap().contains("emulation_bug.yml"));
+
+        let svc_native = [
+            run("tier3", "unhandled-svc", &[]),
+            run("tier4", "unhandled-svc", &[]),
+            run("native", "unhandled-svc", &[]),
+        ];
+        let vn = verdict(&svc_native);
+        assert_eq!(vn["kind"], "fails");
+        assert!(vn["headline"].as_str().unwrap().contains("service Ounce-Core does not handle yet"));
+
+        let unimpl_runs = [run("tier3", "unimplemented", &[]), run("tier4", "unimplemented", &[])];
+        let vu = verdict(&unimpl_runs);
+        assert_eq!(vu["kind"], "fails");
+        assert!(vu["headline"].as_str().unwrap().contains("instruction Ounce-Core could not decode"));
     }
 
     #[test]

@@ -191,7 +191,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             Drop a program here, or choose Open Program….
 
             • Homebrew .nro files run today.
-            • ELF programs are planned and not supported yet.
+            • Static AArch64 Linux ELF programs run in the CLI with: ounce-core run-elf <file>.
             • Choose an engine and an instruction budget under Run Settings.
             • If a run stops early, the Diagnosis panel says why in plain language.
             • For a known verification harness (lz4, xxhash, sqlite, lua and others), Verify against Host compares the output with the committed host reference.
@@ -460,8 +460,11 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let file = try FileHandle(forReadingFrom: url)
             defer { try? file.close() }
             let header = try file.read(upToCount: 20) ?? Data()
+            if header.starts(with: Data([0x7F, 0x45, 0x4C, 0x46])) {
+                return "This file is an ELF binary, not a Switch homebrew .nro. Run static AArch64 Linux ELFs from Terminal with: ounce-core run-elf \(url.path)"
+            }
             guard header.count == 20, header.suffix(4) == Data("NRO0".utf8) else {
-                return "This file isn’t an NRO program. Choose another .nro file."
+                return "This file isn’t a valid Switch homebrew .nro program (missing 'NRO0' header at offset 0x10). Choose another .nro file."
             }
             return nil
         } catch {
@@ -473,7 +476,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         switch url.pathExtension.lowercased() {
         case "nro": break
         case "elf":
-            showError("ELF programs are planned but not supported yet. Ounce Core runs .nro files today.")
+            showError("The Mac app runs Switch homebrew .nro files. Run static AArch64 Linux ELF programs from Terminal with: ounce-core run-elf \(url.path)")
             return
         default:
             showError("Choose a program ending in .nro.")
@@ -483,7 +486,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             showError("Stop the current session before opening another program.")
             return
         }
-        if let problem = nroProblem(url) { status.stringValue = problem; return }
+        if let problem = nroProblem(url) { status.stringValue = problem; showError(problem); return }
         guard let current = currentSettings() else { return }
         lastProgram = url
         verifying = nil
@@ -551,7 +554,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func verify(_ url: URL) {
         guard process == nil else { showError("Stop the current session first."); return }
-        if let problem = nroProblem(url) { status.stringValue = problem; return }
+        if let problem = nroProblem(url) { status.stringValue = problem; showError(problem); return }
         guard !catalog.isEmpty else {
             showError("The bundled verification data is missing. Rebuild Ounce Core.app with scripts/build_macos_app.sh.")
             return

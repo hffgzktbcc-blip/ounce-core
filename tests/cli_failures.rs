@@ -195,3 +195,22 @@ fn instruction_dossier_replay_checks_bytes_and_distinguishes_reproduction_from_c
     assert_eq!(report["reference_verdict"], "not-compared");
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn truncated_nso_is_a_loader_error_before_guest_execution() {
+    let path = std::env::temp_dir().join(format!("ounce_truncated_{}.nso", std::process::id()));
+    // Self-authored NSO0: a four-byte text segment begins exactly at EOF.
+    let mut bytes = [0u8; 0x100];
+    bytes[..4].copy_from_slice(b"NSO0");
+    bytes[0x10..0x14].copy_from_slice(&0x100u32.to_le_bytes());
+    bytes[0x18..0x1c].copy_from_slice(&4u32.to_le_bytes());
+    std::fs::write(&path, bytes).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run", path.to_str().unwrap(), "--present=headless"])
+        .output().unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("[Loader Error]") && stderr.contains("file"), "{stderr}");
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("Successfully loaded package"));
+}
