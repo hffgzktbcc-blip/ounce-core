@@ -478,6 +478,9 @@ homebrew `.nro` on it or choose **Open Program…**. Static AArch64 Linux ELF pr
   [docs/verify/differential.json](docs/verify/differential.json) (for example `lz4.nro`), runs the NRO
   headless on the chosen engine and compares its output byte for byte with the committed
   `expected-host.txt`. It does not rebuild the host reference; use `scripts/verify_differential.py` for that.
+- **Report This Problem…** appears after a failed run. It copies a report (file name, engine, command, OS and the
+  runtime's stop lines; your home folder is replaced by `~`) and opens the issue form with those fields filled in.
+  Nothing is sent until you submit the form.
 - **Try the Demo** opens the bundled diagnostic; **Stop Session** ends the current session.
 - **View Check Results…** opens a saved evidence report.
 - **Show Session Details** reveals **Choose SD Card Folder…**, which selects the host folder
