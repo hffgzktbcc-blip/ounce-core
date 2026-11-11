@@ -22,8 +22,7 @@ WebAssembly; see `docs/PLAYGROUND.md` for its bounded acceptance and deployment.
   diagnosis, reference comparison, cancellation and relaunch. Check window sizing.
 - Decide explicitly between an ad-hoc-signed development preview and notarized
   distribution; explain the installation experience accurately in release notes.
-- Extend release packaging to include the app. The current tag workflow publishes
-  CLI archives, not the app bundle. Preserve checksums and notice verification.
+- Qualify the app archive produced by the release workflow, including checksums and retained notices.
 - Choose a version, update matching package/tag/release notes, run required hosted
   checks, then publish the verified assets. User authorized a new release on
   2026-11-08; no repeat publication permission is needed within that scope.
@@ -31,3 +30,7 @@ WebAssembly; see `docs/PLAYGROUND.md` for its bounded acceptance and deployment.
 Known limitations: no ELF input in the Mac app, filename-based harness matching,
 committed-reference comparison rather than independent proof, and no demonstrated
 live GUI acceptance yet. See `docs/MAC_APP.md` for current behavior.
+
+## macOS launcher download
+
+The release workflow also builds `ounce-core-macos-arm64-app.zip` for Apple Silicon, with a `.sha256` file and an entry in `SHA256SUMS`. The bundle includes licence notices. It is **unsigned by a Developer ID and unnotarized**, with only an ad-hoc signature. Unzip and move `Ounce Core.app` to Applications; on first launch, right-click > Open and confirm, or run `xattr -d com.apple.quarantine "/Applications/Ounce Core.app"` after verifying the source and checksum. Publication still requires the existing notice review; these changes do not publish a release.
