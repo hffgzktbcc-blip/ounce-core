@@ -417,6 +417,7 @@ impl Memory {
     }
 
     /// Read raw byte slice from virtual memory.
+    #[inline]
     pub fn read_bytes(&self, addr: u64, buf: &mut [u8]) -> Result<(), MemoryError> {
         if !buf.is_empty() && addr.checked_add((buf.len() - 1) as u64).is_none() {
             return Err(MemoryError::Unmapped { addr });
@@ -455,6 +456,7 @@ impl Memory {
     }
 
     /// Write raw byte slice into virtual memory.
+    #[inline]
     pub fn write_bytes(&mut self, addr: u64, data: &[u8]) -> Result<(), MemoryError> {
         if !data.is_empty() && addr.checked_add((data.len() - 1) as u64).is_none() {
             return Err(MemoryError::Unmapped { addr });
@@ -467,7 +469,7 @@ impl Memory {
             let page_offset = (curr_addr as usize) & (PAGE_SIZE - 1);
             let bytes_in_page = (PAGE_SIZE - page_offset).min(data.len() - offset);
 
-            let page = self.pages.get(&page_idx).ok_or(MemoryError::Unmapped {
+            let page = self.pages.get_mut(&page_idx).ok_or(MemoryError::Unmapped {
                 addr: curr_addr,
             })?;
 
@@ -479,10 +481,13 @@ impl Memory {
                 });
             }
 
-            if let Some(result) = self.arena_write(curr_addr, &data[offset..offset + bytes_in_page]) {
-                result?;
+            // Borrow the disjoint arena field directly so permission checking, copying and
+            // code invalidation share one page-table lookup, including for ordinary RAM.
+            #[cfg(feature = "nce")]
+            if let Some(arena) = &mut self.arena {
+                arena.write(curr_addr, &data[offset..offset + bytes_in_page])
+                    .map_err(|_| MemoryError::Unmapped { addr: curr_addr })?;
             }
-            let page = self.pages.get_mut(&page_idx).expect("checked above");
             #[cfg(feature = "nce")]
             let in_arena = self.arena.is_some();
             #[cfg(not(feature = "nce"))]
