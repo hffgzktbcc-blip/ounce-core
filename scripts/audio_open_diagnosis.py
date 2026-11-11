@@ -64,8 +64,14 @@ def observations(document):
 
 def read_case(root):
     try:
+        require(root.is_dir(), f'evidence path is not a directory: {root}')
         manifest_path = root / 'manifest.json'
         require(manifest_path.resolve().is_relative_to(root.resolve()), 'audio case manifest path escapes directory')
+        require(
+            manifest_path.is_file(),
+            f'missing manifest.json in {root} '
+            '(omit --evidence to inspect the built-in audout-padding dossier)',
+        )
         manifest_bytes = manifest_path.read_bytes()
         manifest = json.loads(manifest_bytes)
         require(manifest['schema_version'] == 'ounce-verify/audout-case-dossier-v1', 'unsupported dossier schema')
