@@ -128,3 +128,58 @@ fn by_element_dot_and_fmulx_classes() {
     let c = run1(0x6fc1_9bfe, &[(31, 0x3ff8_0000_0000_0000), (1, 0x7ff0_0000_0000_0000u128 << 64)]);
     assert_eq!(c.regs.v[30], 0x7ff0_0000_0000_0000 | 0x4000_0000_0000_0000u128 << 64);
 }
+
+fn v4(l: [u32; 4]) -> u128 {
+    l[0] as u128 | (l[1] as u128) << 32 | (l[2] as u128) << 64 | (l[3] as u128) << 96
+}
+
+#[test]
+fn fp_round_convert_estimate_classes() {
+    // frintn v0.4s: ties to even (2.5 -> 2, -2.5 -> -2, 0.5 -> 0, 1.5 -> 2)
+    let c = run1(0x4e21_8820, &[(1, v4([0x4020_0000, 0xc020_0000, 0x3f00_0000, 0x3fc0_0000]))]);
+    assert_eq!(c.regs.v[0], v4([0x4000_0000, 0xc000_0000, 0, 0x4000_0000]));
+    // frinta v4.4s: ties away from zero (3, -3, 1, 2)
+    let c = run1(0x6e21_88a4, &[(5, v4([0x4020_0000, 0xc020_0000, 0x3f00_0000, 0x3fc0_0000]))]);
+    assert_eq!(c.regs.v[4], v4([0x4040_0000, 0xc040_0000, 0x3f80_0000, 0x4000_0000]));
+    // frintp v2.2d: -0.5 -> -0.0, 1.2 -> 2.0
+    let c = run1(0x4ee1_8862, &[(3, 0xbfe0_0000_0000_0000 | 0x3ff3_3333_3333_3333u128 << 64)]);
+    assert_eq!(c.regs.v[2], 0x8000_0000_0000_0000 | 0x4000_0000_0000_0000u128 << 64);
+    // frint32z v6.4s: 2.7 -> 2.0, 2^32 and NaN -> -2^31, -1.5 -> -1.0
+    let c = run1(0x4e21_e8e6, &[(7, v4([0x402c_cccd, 0x4f80_0000, 0xbfc0_0000, 0x7fc0_0000]))]);
+    assert_eq!(c.regs.v[6], v4([0x4000_0000, 0xcf00_0000, 0xbf80_0000, 0xcf00_0000]));
+    // fcvtns v8.4s: 2.5 -> 2, 3.5 -> 4, -2.5 -> -2, 1e10 saturates
+    let c = run1(0x4e21_a928, &[(9, v4([0x4020_0000, 0x4060_0000, 0xc020_0000, 0x5015_02f9]))]);
+    assert_eq!(c.regs.v[8], v4([2, 4, 0xffff_fffe, 0x7fff_ffff]));
+    // fcvtau v10.2d: 2.5 -> 3, -1.0 -> 0
+    let c = run1(0x6e61_c96a, &[(11, 0x4004_0000_0000_0000 | 0xbff0_0000_0000_0000u128 << 64)]);
+    assert_eq!(c.regs.v[10], 3);
+    // fcvtps v12.4s: 1.1 -> 2, -1.1 -> -1, 0 -> 0, NaN -> 0
+    let c = run1(0x4ea1_a9ac, &[(13, v4([0x3f8c_cccd, 0xbf8c_cccd, 0, 0x7fc0_0000]))]);
+    assert_eq!(c.regs.v[12], v4([2, 0xffff_ffff, 0, 0]));
+    // estimates; expected values are what Apple Silicon returned for these inputs
+    // frecpe v14.4s: 1.0, 3.0, 0.0, -2.0
+    let c = run1(0x4ea1_d9ee, &[(15, v4([0x3f80_0000, 0x4040_0000, 0, 0xc000_0000]))]);
+    assert_eq!(c.regs.v[14], v4([0x3f7f_8000, 0x3eaa_8000, 0x7f80_0000, 0xbeff_8000]));
+    // frsqrte v16.4s: 1.0, 3.0, 4.0, 0.25
+    let c = run1(0x6ea1_da30, &[(17, v4([0x3f80_0000, 0x4040_0000, 0x4080_0000, 0x3e80_0000]))]);
+    assert_eq!(c.regs.v[16], v4([0x3f7f_8000, 0x3f13_8000, 0x3eff_8000, 0x3fff_8000]));
+    // urecpe v18.4s
+    let c = run1(0x4ea1_ca72, &[(19, v4([0x8000_0000, 0xc000_0000, 0x4000_0000, 0x00ff_ffff]))]);
+    assert_eq!(c.regs.v[18], v4([0xff80_0000, 0xaa80_0000, 0xffff_ffff, 0xffff_ffff]));
+    // ursqrte v20.4s
+    let c = run1(0x6ea1_cab4, &[(21, v4([0x8000_0000, 0xc000_0000, 0x4000_0000, 0x00ff_ffff]))]);
+    assert_eq!(c.regs.v[20], v4([0xb480_0000, 0x9380_0000, 0xff80_0000, 0xffff_ffff]));
+}
+
+#[test]
+fn fp_recip_step_classes() {
+    // inputs: n = [2.0, 0.0, NaN, f32::MAX], m = [3.0, inf, 1.0, -2.0]; expected values are what Apple Silicon returned
+    let n = v4([0x4000_0000, 0, 0x7fc0_0001, 0x7f7f_ffff]);
+    let m = v4([0x4040_0000, 0x7f80_0000, 0x3f80_0000, 0xc000_0000]);
+    // frecps v22.4s, v23.4s, v24.4s: 2 - 6, 0*inf -> 2.0, NaN with its sign flipped, overflow to inf
+    let c = run1(0x4e38_fef6, &[(23, n), (24, m)]);
+    assert_eq!(c.regs.v[22], v4([0xc080_0000, 0x4000_0000, 0xffc0_0001, 0x7f80_0000]));
+    // frsqrts v25.4s, v26.4s, v27.4s: (3 - 6) / 2, 0*inf -> 1.5, NaN flipped, (3 + 2*MAX) / 2 does not overflow
+    let c = run1(0x4ebb_ff59, &[(26, n), (27, m)]);
+    assert_eq!(c.regs.v[25], v4([0xbfc0_0000, 0x3fc0_0000, 0xffc0_0001, 0x7f7f_ffff]));
+}

@@ -37,11 +37,11 @@ Final state, seeds 1, 2, 3, 11, 12, 20261108, 21, 22, 1,000,000 words each:
 | generated | 8,000,000 |
 | host SIGILL (UNDEFINED) | 4,777,660 |
 | host executed | 3,222,340 |
-| interpreter `Unimplemented` | 577,800 (about 830 encoding classes per seed; was 1,288,396 before the class work below) |
-| interpreter executed and compared | 2,644,540 (about 1,920 distinct classes per seed) |
-| exact match (X, V, NZCV, QC) | 2,644,540 |
+| interpreter `Unimplemented` | 359,291 (about 690 encoding classes per seed; was 1,288,396 before the class work below) |
+| interpreter executed and compared | 2,863,049 (about 2,010 distinct classes per seed) |
+| exact match (X, V, NZCV, QC) | 2,863,049 |
 | mismatches | 0 |
-| executed words whose FPSR exception flags differ from the host | 261,038 (not modelled, not counted as mismatches) |
+| executed words whose FPSR exception flags differ from the host | 367,032 (not modelled, not counted as mismatches) |
 | words the interpreter runs but the host calls UNDEFINED | 0 |
 
 ### Mismatches found and fixed
@@ -78,14 +78,26 @@ words in a class.
    FMULX (three-same and by element). Seeds 1 to 16: 266,727 executed vector words, 0 mismatches; scalar by element: 214,000
    words (seeds 17-24 and 301-380), 0 mismatches. Test `fuzz_insn_tests::by_element_dot_and_fmulx_classes`.
    Scalar FP by-element (FMUL/FMLA/FMLS/FMULX Sd/Dd) and scalar FMULX are not implemented.
+4. **FP round, convert and estimate two-register ops** (vector, f32 and f64 lanes): FRINTN/P/M/Z/A/X/I, FRINT32Z/32X/64Z/64X,
+   FCVTNS/NU/MS/MU/AS/AU/PS/PU, FRECPE, FRSQRTE, URECPE, URSQRTE. Seeds 1 to 16: about 314,000 executed words of the group,
+   0 mismatches (the estimates, FRECPE/FRSQRTE/URECPE/URSQRTE, are about 19,000 of those words in 8M generated, so they are the
+   most lightly tested part). The default-FPCR path was fuzzed; under non-default FPCR the ops flush denormal inputs under FZ and
+   FRINTX/FRINTI/FRINT32X/FRINT64X honour RMode, but those paths and DN were not fuzzed. Scalar forms (FCVTNS Sd, FRECPE Sd, ...)
+   and half precision are not implemented. Test `fuzz_insn_tests::fp_round_convert_estimate_classes`.
+   Decoder gap found on the way: FRINTA (opcode 11000, U=1) was missing.
+5. **FRECPS and FRSQRTS** (vector, f32 and f64). The first operand is negated before NaN processing (so its NaN returns with
+   the sign flipped), and FRSQRTS halves before rounding so `(3 - a*b) / 2` does not overflow early; the fuzzer found both.
+   Seeds 1 to 96: 209,840 executed words, 0 mismatches after those two fixes (3,707 mismatches before). Under non-default FPCR
+   they take the default-rounding path (untested). Test `fuzz_insn_tests::fp_recip_step_classes`. FMAXP/FMINP/FMAXNMP/FMINNMP were
+   already implemented on main.
 
 ## Not covered (explicit)
 - Loads/stores, branches, system, integer scalar data-processing, SVE/SME, crypto, atomics.
 - Features the interpreter lacks: half-precision scalar and vector FP (FEAT_FP16), BF16/I8MM, FCMA, RDM, and
   every encoding class it reports as unimplemented (top classes by count: 0x4f00fc00, 0x0f00fc00, 0x6e20f800; see the summary the tool prints).
-  That is about 18% of the words the host executes in this space (was 40%). The largest remaining groups are scalar FP16
-  (about a third of it), FP rounding/convert two-register ops (FRINT*, FCVT*, FRECPE, FRSQRTE), FP three-same extras (FRECPS,
-  FRSQRTS, FMAXP/FMINP/FMAXNMP), scalar FP by-element, and some shift-immediate forms.
+  That is about 11% of the words the host executes in this space (was 40%). The largest remaining groups are scalar FP16
+  (about a third of it), the FEAT_FHM widening FMLAL/FMLSL(2), FCVTN/FCVTL/FCVTXN half-precision and round-to-odd forms, scalar
+  FP by-element and scalar two-register FP ops, and some shift-immediate forms.
 - FPCR is always 0 (default rounding, no flush-to-zero, no default-NaN, no trapping). Other FPCR modes are untested.
 - FPSR exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are not modelled by the interpreter and are not compared.
 - Tier-3 and Tier-4 are covered by the section "Tier-3 and Tier-4" below.
