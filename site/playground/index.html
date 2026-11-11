@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ARM64 Browser Playground | Ounce-Core</title>
+  <meta name="description" content="Step AArch64 instructions in safe Rust compiled to WebAssembly.">
+  <meta name="theme-color" content="#13261f">
+  <style>
+    :root{color-scheme:dark;--bg:#0e1d18;--fg:#f1f6ef;--muted:#b7c8bf;--accent:#9ad5ac;--edge:#355247;--edge-strong:#8ab8a3}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0%,#294b3a 0,transparent 40%),var(--bg);color:var(--fg);font:16px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}
+    a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:3px solid #f9e9a3;outline-offset:3px}
+    main,footer{max-width:900px;margin:auto;padding:0 24px}header{padding:14px 24px;border-bottom:1px solid var(--edge)}
+    nav{max-width:900px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap}
+    nav div{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+    nav a{color:var(--fg);text-decoration:none;display:inline-flex;align-items:center;min-height:44px;padding:8px 8px}
+    nav a:hover,a:hover{text-decoration:underline}
+    .hero{padding:40px 0 20px}
+    h1{font-size:clamp(2rem,5vw,3rem);line-height:1.15;letter-spacing:-.03em;margin:20px 0 16px}
+    h2{font-size:1.35rem;margin-top:1.8em}
+    p,li{color:var(--muted)}
+    strong{color:var(--fg)}
+    a{color:var(--accent)}
+    .card{background:#172c23;border:1px solid var(--edge);border-radius:14px;padding:22px;margin:20px 0}
+    code{background:#10251a;padding:2px 6px;border-radius:4px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em;color:#e3fce7}
+    pre{background:#07130e;border:1px solid var(--edge);padding:14px 18px;border-radius:10px;overflow-x:auto;max-width:100%}
+    pre code{background:none;padding:0;color:#e1f5e6}
+    .button{display:inline-flex;align-items:center;min-height:44px;background:var(--accent);color:#10251a;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:10px;margin:8px 10px 8px 0}
+    .button.secondary{background:transparent;color:var(--fg);border:1px solid var(--edge-strong)}
+    footer{border-top:1px solid var(--edge);padding:30px 24px 50px;color:var(--muted);font-size:.9rem}
+    @media(max-width:768px){a,button{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:8px 6px}}
+  </style>
+</head>
+<body>
+  <header><nav aria-label="Primary navigation"><strong>OUNCE-CORE</strong><div><a href="../index.html">Home</a><a href="../index.html#get-started">Get started</a><a href="../lab.html">Interactive Lab</a><a href="../results.html">Results</a><a href="../status.html">Status</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">Repository</a></div></nav></header>
+  <main>
+    <section class="hero">
+      <h1>ARM64 Browser Playground</h1>
+      <p>The playground compiles the safe Rust AArch64 CPU interpreter and memory model to WebAssembly. A browser loads the engine and steps instructions directly, displaying actual register snapshots rather than scripted animations.</p>
+      <a class="button" href="https://hffgzktbcc-blip.github.io/ounce-core/playground/">Open live hosted playground</a>
+      <a class="button secondary" href="../lab.html">Open workbench design</a>
+      <a class="button secondary" href="../index.html#get-started">Get started locally</a>
+    </section>
+
+    <section class="card">
+      <h2>Build and run locally</h2>
+      <p>To run the compiled WebAssembly playground offline on your computer, build it from the repository checkout:</p>
+      <pre><code># 1. Add WebAssembly target and install the pinned wasm-bindgen CLI (0.2.129)
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
+
+# 2. Build the browser package
+scripts/build_playground.sh
+
+# 3. Serve the generated bundle
+python3 -m http.server 8090 --bind 127.0.0.1 --directory target/playground</code></pre>
+      <p>Open <code>http://127.0.0.1:8090/</code> in your browser. Details, memory boundaries and tested browser scope are documented in <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/PLAYGROUND.md">docs/PLAYGROUND.md</a>.</p>
+    </section>
+
+    <section class="card">
+      <h2>Scope and limits</h2>
+      <p>The playground exercises an interpreter subset: 256 instruction words, an 8 KiB text input cap, a 4 KiB code page and 4 KiB stack, and a 10,000 total step ceiling. No operating system services, JIT, or full floating-point exception trap semantics are provided in this mode. It is a learning and inspection tool, not a correctness certificate.</p>
+    </section>
+  </main>
+  <footer>Ounce-Core · Experimental ARM64 execution lab · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE">MIT source license</a></footer>
+</body>
+</html>
