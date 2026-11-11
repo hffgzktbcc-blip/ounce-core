@@ -45,15 +45,16 @@
     ::-webkit-scrollbar-track { background: var(--bg-surface); }
     ::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--edge-bright); }
+    a:focus-visible, button:focus-visible, [tabindex]:focus-visible { outline: 3px solid #f9e9a3; outline-offset: 2px; }
   </style>
 </head>
 <body class="flex flex-col select-none text-xs">
-  <div style="padding:10px 20px;background:#203d31;color:#d4eadc;font:13px system-ui">Scripted workbench design preview · <a style="color:#b1ebc7;text-decoration:underline" href="playground/">Open the real ARM64 interpreter playground</a></div>
+  <div style="padding:10px 20px;background:#203d31;color:#d4eadc;font:13px system-ui">Scripted workbench design preview · <a style="color:#b1ebc7;text-decoration:underline;display:inline-flex;align-items:center;min-height:44px;padding:4px 6px" href="playground/">Open the real ARM64 interpreter playground</a></div>
 
   <!-- ==================== TOP NAVIGATION ==================== -->
   <header class="h-14 bg-[#13261f] border-b border-[#355247] px-4 flex items-center justify-between shrink-0">
     <div class="flex items-center gap-3">
-      <a href="./" class="flex items-center gap-2.5 text-decoration-none">
+      <a href="index.html" class="flex items-center gap-2.5 text-decoration-none min-h-[44px]">
         <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#9ad5ac] via-[#73b9ae] to-[#cc754f] p-0.5 shadow">
           <div class="w-full h-full bg-[#0e1d18] rounded-[6px] flex items-center justify-center font-mono font-black text-xs text-[#9ad5ac]">
             oz

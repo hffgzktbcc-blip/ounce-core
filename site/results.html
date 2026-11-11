@@ -14,17 +14,19 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="theme-color" content="#13261f">
   <style>
-    :root{color-scheme:dark;--bg:#0e1d18;--fg:#f1f6ef;--muted:#b7c8bf;--accent:#9ad5ac;--edge:#355247}
+    :root{color-scheme:dark;--bg:#0e1d18;--fg:#f1f6ef;--muted:#b7c8bf;--accent:#9ad5ac;--edge:#355247;--edge-strong:#8ab8a3}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0%,#294b3a 0,transparent 40%),var(--bg);color:var(--fg);font:16px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}
-    main,footer{max-width:1000px;margin:auto;padding:0 24px}header{padding:20px 24px;border-bottom:1px solid var(--edge)}nav{max-width:1000px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}nav a{color:var(--fg);text-decoration:none;margin-right:15px}nav a:hover,a:hover{text-decoration:underline}
+    a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:3px solid #f9e9a3;outline-offset:3px}
+    main,footer{max-width:1000px;margin:auto;padding:0 24px}header{padding:14px 24px;border-bottom:1px solid var(--edge)}nav{max-width:1000px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap}nav div{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}nav a{color:var(--fg);text-decoration:none;display:inline-flex;align-items:center;min-height:44px;padding:8px 8px}nav a:hover,a:hover{text-decoration:underline}
     .hero{padding:40px 0 18px}.hero img{width:100%;height:auto;border-radius:18px;border:1px solid var(--edge)}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.15;letter-spacing:-.04em;margin:30px 0 16px}h2{font-size:1.5rem}p{color:var(--muted)}
-    .tag{font-size:.75rem;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);font-weight:800}.button{display:inline-block;background:var(--accent);color:#10251a;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:10px;margin:10px 10px 10px 0}.button.secondary{background:transparent;color:var(--fg);border:1px solid var(--edge)}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:25px 0 48px}.card{background:#172c23;border:1px solid var(--edge);border-radius:14px;padding:21px}.card h3{margin:0 0 8px}.card p{margin:0}.links{padding:0 0 60px}a{color:var(--accent)}footer{border-top:1px solid var(--edge);padding-top:25px;padding-bottom:50px;color:var(--muted);font-size:.9rem}
+    .tag{font-size:.75rem;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);font-weight:800}.button{display:inline-flex;align-items:center;min-height:44px;background:var(--accent);color:#10251a;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:10px;margin:8px 10px 8px 0}.button.secondary{background:transparent;color:var(--fg);border:1px solid var(--edge-strong)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:25px 0 48px}.card{background:#172c23;border:1px solid var(--edge);border-radius:14px;padding:21px}.card h3{margin:0 0 8px}.card p{margin:0}.links{padding:0 0 60px}.links p{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}a{color:var(--accent)}footer{border-top:1px solid var(--edge);padding-top:25px;padding-bottom:50px;color:var(--muted);font-size:.9rem}
+    @media(max-width:768px){a,button{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:8px 6px}}
   </style>
   <style>table{width:100%;border-collapse:collapse;margin:16px 0}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--edge);vertical-align:top;font-size:.95rem}th{color:var(--accent)}caption{caption-side:top;text-align:left;color:var(--muted);font-size:.9rem;padding:0 0 8px;position:sticky;left:0;width:min(calc(100vw - 48px),952px);box-sizing:border-box}td{color:var(--muted)}code{background:#10251a;padding:1px 6px;border-radius:5px}.tbl{overflow-x:auto}</style>
 </head>
 <body>
-  <header><nav><strong>OUNCE-CORE</strong><div><a href="./">Home</a><a href="lab.html">Interactive Lab</a><a href="results.html">Results</a><a href="maintainers.html">For maintainers</a><a href="status.html">Status</a><a href="press.html">Press</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">Repository</a></div></nav></header>
+  <header><nav aria-label="Primary navigation"><strong>OUNCE-CORE</strong><div><a href="index.html">Home</a><a href="lab.html">Interactive Lab</a><a href="results.html">Results</a><a href="maintainers.html">For maintainers</a><a href="status.html">Status</a><a href="press.html">Press</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">Repository</a></div></nav></header>
   <main>
 
     <section class="hero">
