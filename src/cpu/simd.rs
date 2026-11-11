@@ -973,6 +973,8 @@ fn fp_three_same_soft(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q:
             SimdFpOp3::Fabd => f.abs(softfp::binop(f, env, BinOp::Sub, a, b)),
             SimdFpOp3::Fmla => softfp::fma(f, env, a, b, acc),
             SimdFpOp3::Fmls => softfp::fma(f, env, f.neg(a), b, acc),
+            SimdFpOp3::Frecps => softfp::recip_step(f, env, a, b),
+            SimdFpOp3::Frsqrts => softfp::rsqrt_step(f, env, a, b),
             // compares: a flushed denormal reads as zero, nothing else depends on FPCR
             _ => {
                 let (a, b) = (softfp::flush_input(f, env, a), softfp::flush_input(f, env, b));
@@ -1023,7 +1025,25 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
                                 softfp::Round::Down => Rm::Down,
                                 softfp::Round::Zero => Rm::Zero,
                             };
-                            fp_special_op2(op, a, esize, cur)
+                            let r = fp_special_op2(op, a, esize, cur);
+                            // DN turns a NaN result into the default NaN; FZ flushes a denormal FRECPE result (large inputs)
+                            if env.dn && f.is_nan(r) {
+                                f.default_nan()
+                            } else if env.fz && op == SimdFpOp2::Frecpe && f.is_denormal(r) {
+                                r & !f.abs(u64::MAX)
+                            } else if op == SimdFpOp2::Frecpe && f.is_inf(r) && !f.is_zero(a) && !f.is_inf(a) && !f.is_nan(a) {
+                                // a tiny input overflows: infinity only when the mode rounds that way, else the largest finite value
+                                let neg = r != f.infinity(false);
+                                let to_inf = match env.round {
+                                    softfp::Round::Nearest => true,
+                                    softfp::Round::Up => !neg,
+                                    softfp::Round::Down => neg,
+                                    softfp::Round::Zero => false,
+                                };
+                                if to_inf { r } else { r - 1 }
+                            } else {
+                                r
+                            }
                         } else if double {
                             fp64::op2(op, a)
                         } else {
