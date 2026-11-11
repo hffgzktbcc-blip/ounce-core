@@ -81,6 +81,15 @@ Mark a PLAN task complete manually with its acceptance evidence. A green build,
 PR creation or agent assertion does not by itself complete the user's scenario.
 Outside dependencies block their dependent action, not all other work.
 
+## Automated repository bots
+
+The repository uses automated GitHub Actions workflows powered by standard runners and GitHub Models to streamline contributions:
+
+- **Issue triage** (`.github/workflows/issue-triage.yml`): Runs on newly opened issues. It verifies required reproduction fields (`program`, `version`, `command`, `output`), asks politely for any missing information, suggests existing repository labels, searches for potential duplicate open issues, and summarizes crash or problem reports with their likely code area.
+- **CI explainer** (`.github/workflows/ci-explainer.yml`): Runs when a pull request CI workflow run completes with failure. It posts or updates a single comment identifying the failing job and step, extracts relevant trailing log lines, explains the root cause using GitHub Models, and provides the local `scripts/gate.sh` command to reproduce the failure.
+- **Shiftbot** (`.github/workflows/shiftbot.yml`): Provides status summaries of open pull request review states and checks.
+- **Community onboarding** (`.github/workflows/community.yml`): Welcomes first-time contributors and monitors beginner issue availability.
+
 ## Sources and integrity
 
 Permissively licensed code may be ported with notices in THIRD_PARTY.md and source
