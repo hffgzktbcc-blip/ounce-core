@@ -1,6 +1,6 @@
 name: Suggest a program to test
 description: Propose an open-source program to run as a differential test.
-labels: ["program", "good first issue"]
+labels: ["program"]
 body:
   - type: input
     id: program

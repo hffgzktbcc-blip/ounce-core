@@ -6,6 +6,7 @@ use crate::mmu::{Memory, Permission};
 use std::time::Instant;
 
 pub const ENOENT: i64 = 2;
+pub const ESRCH: i64 = 3;
 pub const EBADF: i64 = 9;
 pub const ENOMEM: i64 = 12;
 pub const EFAULT: i64 = 14;
@@ -21,14 +22,17 @@ pub const SYS_EXIT: u64 = 93;
 pub const SYS_EXIT_GROUP: u64 = 94;
 pub const SYS_SET_TID_ADDRESS: u64 = 96;
 pub const SYS_CLOCK_GETTIME: u64 = 113;
+pub const SYS_SCHED_GETAFFINITY: u64 = 123;
 pub const SYS_RT_SIGACTION: u64 = 134;
 pub const SYS_RT_SIGPROCMASK: u64 = 135;
 pub const SYS_UNAME: u64 = 160;
 pub const SYS_GETPID: u64 = 172;
 pub const SYS_BRK: u64 = 214;
 pub const SYS_MUNMAP: u64 = 215;
+pub const SYS_MREMAP: u64 = 216;
 pub const SYS_MMAP: u64 = 222;
 
+const MREMAP_MAYMOVE: u64 = 1;
 const MAP_FIXED: u64 = 0x10;
 const MAP_ANONYMOUS: u64 = 0x20;
 const PROT_READ: u64 = 1;
@@ -63,11 +67,18 @@ pub struct Process {
     mmap_next: u64,
     mmap_total: u64,
     started: Instant,
+    deterministic_ticks: Option<u64>,
 }
 
 impl Process {
     pub fn new(brk_start: u64) -> Self {
-        Self { brk_start, brk_cur: brk_start, brk_mapped_end: brk_start, mmap_next: MMAP_BASE, mmap_total: 0, started: Instant::now() }
+        Self { brk_start, brk_cur: brk_start, brk_mapped_end: brk_start, mmap_next: MMAP_BASE, mmap_total: 0, started: Instant::now(), deterministic_ticks: None }
+    }
+
+    /// Fixed virtual time for reproducible single-process experiments. Each successful
+    /// clock read advances the shared clock by 1 ms; rejected reads do not advance it.
+    pub fn new_deterministic(brk_start: u64) -> Self {
+        Self { deterministic_ticks: Some(0), ..Self::new(brk_start) }
     }
 
     pub fn dispatch(&mut self, nr: u64, a: [u64; 6], mmu: &mut Memory, out: &mut dyn Output) -> Outcome {
@@ -81,6 +92,7 @@ impl Process {
                 Err(why) => return Outcome::Unimplemented(why),
             },
             SYS_MUNMAP => self.sys_munmap(a[0], a[1], mmu),
+            SYS_MREMAP => self.sys_mremap(a, mmu),
             SYS_IOCTL => {
                 // Terminal queries are answered "not a tty" so stdio libraries choose full buffering.
                 if a[0] > 2 {
@@ -109,6 +121,7 @@ impl Process {
             SYS_GETPID => PID as i64,
             SYS_CLOCK_GETTIME => self.sys_clock_gettime(a[0], a[1], mmu),
             SYS_UNAME => sys_uname(a[0], mmu),
+            SYS_SCHED_GETAFFINITY => sys_sched_getaffinity(a[0], a[1], a[2], mmu),
             // The guest has no filesystem.
             SYS_OPENAT | SYS_READLINKAT => -ENOENT,
             _ => return Outcome::Unimplemented(describe_unimplemented(nr, &a)),
@@ -217,7 +230,7 @@ impl Process {
     }
 
     fn sys_munmap(&mut self, addr: u64, len: u64, mmu: &mut Memory) -> i64 {
-        if addr % PAGE != 0 || len == 0 || len > MAX_MMAP_TOTAL * 4 {
+        if !addr.is_multiple_of(PAGE) || len == 0 || len > MAX_MMAP_TOTAL * 4 {
             return -EINVAL;
         }
         let len = align_up(len);
@@ -231,17 +244,68 @@ impl Process {
         0
     }
 
+    /// `mremap(old, old_len, new_len, flags)` for anonymous read/write mappings, as musl's
+    /// `realloc` of large blocks uses it. Shrinking is in place. Growing moves the block
+    /// (MREMAP_MAYMOVE) to fresh address space and copies the contents; without MAYMOVE, or
+    /// with MREMAP_FIXED, growth fails with ENOMEM/EINVAL so callers fall back to copying.
+    fn sys_mremap(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
+        let (old, old_len, new_len, flags) = (a[0], a[1], a[2], a[3]);
+        if !old.is_multiple_of(PAGE) || old_len == 0 || new_len == 0 || flags & !MREMAP_MAYMOVE != 0 {
+            return -EINVAL;
+        }
+        let (old_len, new_len) = (align_up(old_len), align_up(new_len));
+        if old < MMAP_BASE || old.checked_add(old_len).is_none_or(|e| e > STACK_TOP - STACK_SIZE) || Self::mapped_pages(mmu, old, old_len) * PAGE != old_len {
+            return -EFAULT;
+        }
+        if new_len == old_len {
+            return old as i64;
+        }
+        if new_len < old_len {
+            let freed = old_len - new_len;
+            mmu.unmap_range(old + new_len, freed as usize);
+            self.mmap_total -= freed.min(self.mmap_total);
+            return old as i64;
+        }
+        if flags & MREMAP_MAYMOVE == 0 || new_len > MAX_MMAP_CALL || self.mmap_total - old_len + new_len > MAX_MMAP_TOTAL {
+            return -ENOMEM;
+        }
+        let base = self.mmap_next;
+        if base + new_len > STACK_TOP - STACK_SIZE - (1 << 32) {
+            return -ENOMEM;
+        }
+        let mut data = vec![0u8; old_len as usize];
+        if mmu.read_bytes(old, &mut data).is_err() {
+            return -EFAULT;
+        }
+        self.mmap_next = base + new_len;
+        mmu.map_range(base, new_len as usize, Permission { read: true, write: true, execute: false });
+        if mmu.write_bytes(base, &data).is_err() {
+            return -EFAULT;
+        }
+        mmu.unmap_range(old, old_len as usize);
+        self.mmap_total = self.mmap_total - old_len + new_len;
+        base as i64
+    }
+
     fn sys_clock_gettime(&mut self, clk: u64, ts: u64, mmu: &mut Memory) -> i64 {
-        let (sec, nsec) = match clk {
-            0 => {
-                let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
-                (d.as_secs(), d.subsec_nanos() as u64)
+        if !matches!(clk, 0 | 1 | 4 | 7) {
+            return -EINVAL;
+        }
+        let (sec, nsec) = if let Some(ticks) = self.deterministic_ticks {
+            let epoch = if clk == 0 { 1_700_000_000 } else { 0 };
+            (epoch + ticks / 1000, (ticks % 1000) * 1_000_000)
+        } else {
+            match clk {
+                0 => {
+                    let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+                    (d.as_secs(), d.subsec_nanos() as u64)
+                }
+                1 | 4 | 7 => {
+                    let d = self.started.elapsed() + std::time::Duration::from_secs(1000);
+                    (d.as_secs(), d.subsec_nanos() as u64)
+                }
+                _ => unreachable!(),
             }
-            1 | 4 | 7 => {
-                let d = self.started.elapsed() + std::time::Duration::from_secs(1000);
-                (d.as_secs(), d.subsec_nanos() as u64)
-            }
-            _ => return -EINVAL,
         };
         let mut buf = [0u8; 16];
         buf[..8].copy_from_slice(&sec.to_le_bytes());
@@ -249,6 +313,9 @@ impl Process {
         if mmu.write_bytes(ts, &buf).is_err() {
             -EFAULT
         } else {
+            if let Some(ticks) = &mut self.deterministic_ticks {
+                *ticks = ticks.saturating_add(1);
+            }
             0
         }
     }
@@ -264,6 +331,23 @@ fn sys_uname(buf: u64, mmu: &mut Memory) -> i64 {
         -EFAULT
     } else {
         0
+    }
+}
+
+/// The guest sees one CPU. Like the kernel, the mask is one `unsigned long` (8 bytes,
+/// CPU 0 set), `len` must hold it and be a multiple of 8, and the return value is the
+/// number of bytes written. musl's `sysconf(_SC_NPROCESSORS_ONLN)` asks this at startup.
+fn sys_sched_getaffinity(pid: u64, len: u64, mask: u64, mmu: &mut Memory) -> i64 {
+    if pid != 0 && pid != PID {
+        return -ESRCH;
+    }
+    if len < 8 || len % 8 != 0 {
+        return -EINVAL;
+    }
+    if mmu.write_bytes(mask, &1u64.to_le_bytes()).is_err() {
+        -EFAULT
+    } else {
+        8
     }
 }
 

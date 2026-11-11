@@ -1,0 +1,66 @@
+name: FP edge-case experiment
+
+# Issue #359. Runs one fixed floating-point edge-case corpus on real AArch64 hardware (Linux Arm runner and Apple
+# Silicon) and replays the same hardware results through the interpreter, Tier-3 and Tier-4. The raw hardware trace,
+# per-case results for every engine, and a summary are uploaded as artifacts. See docs/verify/fp-edge/README.md.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/verify/fp-edge/**'
+      - 'docs/verify/insn-fuzzer/fuzz_host.c'
+      - 'src/fuzz_replay.rs'
+      - 'src/cpu/**'
+      - 'crates/ounce-recompiler/**'
+      - '.github/workflows/fp-edge.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: fp-edge-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fp-edge:
+    name: FP edge cases (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+      - name: Build ounce-core with Tier-4
+        run: cargo build --release --locked --features native-jit
+      - name: Run the corpus on hardware and replay it through every engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in arm64|aarch64) ;; *) echo "not an AArch64 runner" >&2; exit 2 ;; esac
+          bash docs/verify/fp-edge/run.sh "$RUNNER_TEMP/fp-edge-${{ matrix.os }}"
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: cat "$RUNNER_TEMP/fp-edge-${{ matrix.os }}/summary.md" >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fp-edge-evidence-${{ matrix.os }}
+          path: ${{ runner.temp }}/fp-edge-${{ matrix.os }}/
+          if-no-files-found: warn

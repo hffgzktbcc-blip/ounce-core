@@ -414,7 +414,7 @@ impl Textures {
                 Some(h) => h,
                 None => return [0.0; 4],
             },
-            None => t.header.clone(),
+            None => t.header,
         };
         let (u, v) = (f32::from_bits(x), f32::from_bits(y));
         let texel = match (op, &t.sampler, lod) {

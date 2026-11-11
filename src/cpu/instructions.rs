@@ -254,6 +254,8 @@ pub enum Instruction {
         offset: i64,
         is_load: bool,
         is_64: bool,
+        /// `LDPSW`: two 32-bit loads, each sign-extended into a 64-bit register (`is_64` is false).
+        signed_word: bool,
         writeback: bool,
         post_index: bool,
     },
@@ -525,6 +527,20 @@ pub enum Instruction {
         post_index: bool,
     },
 
+    /// AdvSIMD vector x indexed element, integer: `MUL`/`MLA`/`MLS`/`SQDMULH`/`SQRDMULH`, the long multiplies
+    /// (`S/UMULL`, `SQDMULL`, ...) and `SDOT`/`UDOT`. `esize` is the element size (for `Dot`, 32). `index` selects the
+    /// element of `Vm`; for the vector (non-indexed) `SDOT`/`UDOT` it is `0xFF`. `scalar` is the scalar form (lane 0 only).
+    SimdByElement {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        index: u8,
+        op: SimdElemOp,
+        esize: u8,
+        q: bool,
+        scalar: bool,
+    },
+
     /// AdvSIMD scalar two-register miscellaneous (`SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU Sd/Dd, Sn/Dn`): lane 0 only,
     /// the rest of `Vd` is zeroed
     SimdScalarTwoMisc {
@@ -631,8 +647,32 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// AdvSIMD scalar three same (`SQADD`, `SQDMULH`, `SRSHL`, ...): lane 0 only, the rest of `Vd` zeroed.
+    SimdScalarThreeSame {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdOp3,
+        esize: u8,
+    },
+
     /// AdvSIMD two-register miscellaneous (compare against zero, `CNT`, `NOT`, `ABS`, `NEG`)
     /// AdvSIMD across lanes: reduces every lane of `Vn` into scalar `Vd`.
+    /// `FMAXV`/`FMINV`/`FMAXNMV`/`FMINNMV` (`Sd, Vn.4S`; `op` is the lane op: Fmax/Fmin/Fmaxnm/Fminnm) and the
+    /// scalar pairwise `FMAXP`/`FMINP`/`FMAXNMP`/`FMINNMP` (`Sd, Vn.2S` / `Dd, Vn.2D`), which reduce two lanes.
+    SimdFpReduce {
+        rd: u8,
+        rn: u8,
+        op: SimdFpOp3,
+        /// element size in bits: 16 (half), 32 or 64
+        esize: u8,
+        /// number of lanes reduced (2, 4 or 8)
+        lanes: u8,
+    },
+    /// Half-precision `FMAXNM/FMINNM/FMAX/FMIN` and the pairwise forms on `.4H`/`.8H` (FEAT_FP16 three-same).
+    SimdFpThreeSameHalf { rd: u8, rn: u8, rm: u8, op: SimdFpOp3, q: bool },
+    /// Scalar half-precision `FMAX/FMIN/FMAXNM/FMINNM Hd, Hn, Hm`.
+    FpHalfMinMax { rd: u8, rn: u8, rm: u8, op: FpOp2 },
     SimdAcross {
         rd: u8,
         rn: u8,
@@ -794,6 +834,8 @@ pub enum Instruction {
         op: SimdFpElementOp,
         double: bool,
         q: bool,
+        /// scalar form `FMUL Sd/Dd, Sn/Dn, Vm.<Ts>[index]` (also FMLA/FMLS/FMULX): only lane 0 is written
+        scalar: bool,
     },
 
     /// `FCCMP/FCCMPE Sn/Dn, Sm/Dm, #nzcv, cond`: compare when `cond` holds, else set the flags to `nzcv`
@@ -934,10 +976,55 @@ pub enum SimdOp3 {
     /// `SSHL`/`USHL` (register shift: the low signed byte of each `m` lane is the shift, negative shifts right)
     Sshl,
     Ushl,
+    /// Halving add/sub (`SHADD`, `UHADD`, `SRHADD`, `URHADD`, `SHSUB`, `UHSUB`)
+    Shadd,
+    Uhadd,
+    Srhadd,
+    Urhadd,
+    Shsub,
+    Uhsub,
+    /// Saturating add/sub (set `FPSR.QC`)
+    Sqadd,
+    Uqadd,
+    Sqsub,
+    Uqsub,
+    /// Rounding and/or saturating register shifts
+    Srshl,
+    Urshl,
+    Sqshl,
+    Uqshl,
+    Sqrshl,
+    Uqrshl,
+    /// Absolute difference, with and without accumulate
+    Sabd,
+    Uabd,
+    Saba,
+    Uaba,
+    /// Multiply-accumulate / subtract, polynomial multiply
+    Mla,
+    Mls,
+    Pmul,
+    /// Saturating (rounding) doubling multiply returning the high half
+    Sqdmulh,
+    Sqrdmulh,
+}
+
+/// Operation of an integer by-element (or vector dot-product) instruction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdElemOp {
+    /// Same-size ops reusing the three-same arithmetic: `Mul`, `Mla`, `Mls`, `Sqdmulh`, `Sqrdmulh`
+    Op3(SimdOp3),
+    /// Widening multiply (`signed`): `Mull`, `Mlal`, `Mlsl`
+    Long(SimdLongOp, bool),
+    /// Saturating doubling widening multiply
+    SatLong(SimdSatLongOp),
+    /// `SDOT` (`true`) / `UDOT` (`false`): four byte products accumulated into each 32-bit lane
+    Dot(bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimdFpElementOp {
+    Fmulx,
     Fmul,
     Fmla,
     Fmls,
@@ -958,11 +1045,18 @@ pub enum SimdFpOp3 {
     Fmin,
     Fmaxnm,
     Fminnm,
+    /// Pairwise forms `FMAXP`/`FMINP`/`FMAXNMP`/`FMINNMP`: lane arithmetic as the non-pairwise op.
+    Fmaxp,
+    Fminp,
+    Fmaxnmp,
+    Fminnmp,
     Fcmeq,
     Fcmge,
     Fcmgt,
     Facge,
     Facgt,
+    /// `FMULX`: like `FMUL`, but `0 * inf` is `+-2.0`
+    Fmulx,
 }
 
 /// AdvSIMD floating-point two-register operations: zero compares, `FABS`/`FNEG`/`FSQRT`, and the
@@ -1046,6 +1140,15 @@ pub enum SimdOp2 {
     /// `FCVTZS`/`FCVTZU` (vector or scalar, integer): float lanes to integer, rounding toward zero
     Fcvtzs,
     Fcvtzu,
+    /// Count leading sign bits / zero bits, reverse bits within bytes
+    Cls,
+    Clz,
+    Rbit,
+    /// Saturating abs/neg and accumulate-with-opposite-signedness (set `FPSR.QC`; the accumulate forms read `Vd`)
+    Sqabs,
+    Sqneg,
+    Suqadd,
+    Usqadd,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

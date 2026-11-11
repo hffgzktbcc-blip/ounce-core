@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -38,11 +39,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Check release tag matches package version
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          version=$(python -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
+          test "$GITHUB_REF_NAME" = "v$version"
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
           components: rust-docs
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
 
       - name: Install Linux system dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -63,16 +79,25 @@ jobs:
         shell: bash
         run: python scripts/collect_toolchain_notices.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --target ${{ matrix.target }} --output work/toolchain-notices
 
-      - name: Package artifacts (Unix)
-        if: matrix.os != 'windows-latest'
-        run: |
-          python3 scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed --toolchain-notices work/toolchain-notices
+      - name: Retain actual Linux shared-library notices
+        if: runner.os == 'Linux'
+        run: python scripts/collect_native_notices.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output work/native-notices
 
-      - name: Package artifacts (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
+      - name: Package reviewed publication archives
+        if: github.event_name == 'push'
+        shell: bash
         run: |
-          python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed --toolchain-notices work/toolchain-notices
+          native_args=()
+          if [[ "$RUNNER_OS" == "Linux" ]]; then native_args=(--native-notices work/native-notices); fi
+          python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --require-reviewed --toolchain-notices work/toolchain-notices "${native_args[@]}"
+
+      - name: Package on-runner qualification archives
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          native_args=()
+          if [[ "$RUNNER_OS" == "Linux" ]]; then native_args=(--native-notices work/native-notices); fi
+          python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --toolchain-notices work/toolchain-notices "${native_args[@]}"
 
       - name: Write SHA-256 checksum (Unix)
         if: matrix.os != 'windows-latest'
@@ -86,18 +111,70 @@ jobs:
           $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
           "$hash  $archive" | Out-File -Encoding ascii "$archive.sha256"
 
+      - name: Record exact candidate qualification
+        shell: bash
+        env:
+          RELEASE_TARGET: ${{ matrix.target }}
+          RELEASE_BINARY: target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+          RELEASE_ARCHIVE: ${{ matrix.archive_name }}
+        run: |
+          python - <<'PY_QUALIFY'
+          import hashlib, json, os, pathlib, sys, tarfile, tomllib, zipfile
+          sys.path.insert(0, 'scripts')
+          from package_release import toolchain_entries, native_entries
+          binary = pathlib.Path(os.environ['RELEASE_BINARY'])
+          archive = pathlib.Path(os.environ['RELEASE_ARCHIVE'])
+          notices = pathlib.Path('work/toolchain-notices')
+          inventory = json.loads((notices / 'manifest.json').read_text())
+          assert inventory['target'] == os.environ['RELEASE_TARGET']
+          expected = toolchain_entries(notices, binary)
+          native = pathlib.Path('work/native-notices')
+          native_expected = native_entries(native, binary) if os.environ['RELEASE_TARGET'].endswith('linux-gnu') else {}
+          expected.update(native_expected)
+          expected[binary.name] = binary.read_bytes()
+          if archive.suffix == '.zip':
+              with zipfile.ZipFile(archive) as package:
+                  actual = {name: package.read(name) for name in package.namelist()}
+          else:
+              with tarfile.open(archive) as package:
+                  actual = {item.name: package.extractfile(item).read() for item in package if item.isfile()}
+          assert all(actual.get(name) == data for name, data in expected.items())
+          review = json.loads(pathlib.Path('docs/RELEASE_NOTICE_REVIEW.json').read_text())
+          report = {'schema': 'ounce-core/release-qualification-v1',
+                    'source_commit': os.environ['GITHUB_SHA'],
+                    'version': tomllib.loads(pathlib.Path('Cargo.toml').read_text())['package']['version'],
+                    'target': inventory['target'], 'rustc_version': inventory['rustc_version'],
+                    'binary_sha256': inventory['binary_sha256'],
+                    'archive_sha256': hashlib.sha256(archive.read_bytes()).hexdigest(),
+                    'archive_entries': sorted(actual),
+                    'toolchain_notice_files_verified': len(expected) - len(native_expected) - 1,
+                    'native_notice_files_verified': len(native_expected),
+                    'review_status': review['status'],
+                    'publication_review_satisfied': bool(review['status'] == 'REVIEWED' and review.get('reviewer') and review.get('decision_evidence') and not review.get('open_items')),
+                    'runtime_binaries_uploaded_by_dispatch': False}
+          pathlib.Path('work/qualification.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report))
+          PY_QUALIFY
+
+      - name: Retain qualification evidence without publishing runtime binaries
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-${{ matrix.target }}
+          path: |
+            work/qualification.json
+            work/toolchain-notices/
+            work/native-notices/
+          if-no-files-found: error
+
       - name: Attest release archive provenance
+        if: github.event_name == 'push'
         uses: actions/attest@v4
         with:
           subject-path: "${{ matrix.archive_name }}"
 
-      - name: Check tag matches package version
-        shell: bash
-        run: |
-          version=$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "ounce-core"))')
-          test "$GITHUB_REF_NAME" = "v$version"
-
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
         with:
           name: release-${{ matrix.target }}
           path: |
@@ -106,6 +183,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: github.event_name == 'push'
     needs: build-release
     runs-on: ubuntu-latest
     permissions:

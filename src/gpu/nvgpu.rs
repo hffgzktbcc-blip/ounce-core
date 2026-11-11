@@ -566,14 +566,14 @@ impl NvgpuChannel {
             METHOD_SET_INDEX_ARRAY_ADDR => {
                 if let Some(&addr) = cmd.args.first() {
                     self.state.index_array_addr = addr as u64;
-                    self.state.is_index_32 = cmd.args.get(1).map_or(false, |&val| val == 1);
+                    self.state.is_index_32 = cmd.args.get(1).is_some_and(|&val| val == 1);
                 }
             }
             // 0x05F4: Draw Indexed Elements (Args: [index_count, textured])
             METHOD_DRAW_INDEXED => {
                 self.state.total_draw_calls += 1;
                 let raw_index_count = cmd.args.first().copied().unwrap_or(0) as usize;
-                let textured = cmd.args.get(1).map_or(false, |&val| val == 1);
+                let textured = cmd.args.get(1).is_some_and(|&val| val == 1);
 
                 if self.hardware_acceleration_enabled {
                     let index_count = raw_index_count.min(MAX_INDEX_COUNT_PER_DRAW);

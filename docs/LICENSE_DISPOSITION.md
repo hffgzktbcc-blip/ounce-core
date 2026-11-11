@@ -9,6 +9,7 @@ the earlier inventory or the merged controls have not been performed.
 | Project-authored source | Project MIT licence in `LICENSE`; retained port attributions in `THIRD_PARTY.md` | The project licence does not relicense third-party material |
 | Current default-runtime dependencies | 169 retained notice records for the locked graph; supplemented Objective-C MIT grant and attribution in `licenses/objc2-MIT.txt` and the runtime archive | Preserve the upstream SDK qualification below; do not call an overview alone a complete MIT notice |
 | Rust standard/compiler runtime | Release packaging now requires binary-bound notices captured from the actual installed build toolchain, including MIT, Apache and the supplied library/whole-toolchain copyright inventory | Each release build must collect and verify its own notices; no generic licence label or another toolchain's record can substitute |
+| Linux system-library notices | v0.6.0 preparation retains actual installed package copyright records and common license texts, bound to the built ELF; LGPL-2.1 included, missing coverage rejected | Shared libraries are OS-provided and not copied into the archive; build-host identity is not an end-user-library version guarantee |
 | Bundled DejaVu font | Full retained font notice included in both runtime archive formats by merged PR #203 | Existing published v0.5.0 archives have not been replaced by these changes |
 | Standalone Python toolkit 0.2.0 | Published from its reviewed 30-file parentless snapshot; contains project Python and observation data, no runtime, SDK, NRO, fonts or historical tree | Separate release scope; it is not blocked by runtime/fixture history questions |
 | Eleven legacy NRO fixtures | All eleven have registered identities and byte-identical rebuild evidence in `tests/fixtures/`; used as test inputs, not included in the runtime packager's explicit archive entries | Rebuild identity does not prove source authorship or all linked-component redistribution rights; GitHub's full-repository source archives still contain these inputs |
@@ -71,9 +72,20 @@ python scripts/package_release.py --binary PATH_TO_BINARY --output release.zip \
 ```
 
 The publication review gate remains intact. Tests use a clearly labelled synthetic
-review fixture; no test result or agent name is substituted for an actual completed
-rights review. Notice/binary tampering, missing copyright coverage and traversal
+review fixture; no test result or agent name is substituted for an actual
+recorded owner distribution decision or completed rights review. Notice/binary tampering, missing copyright coverage and traversal
 paths are rejected before an archive is written.
+
+## Open E2 items: recorded outcomes — 10 November 2026
+
+Tracked as issues #308–#311. Each is an owner-directed engineering record, not legal advice and not a grant from any rights holder. None blocks ordinary development.
+
+| Issue | Outcome recorded | Still open |
+| --- | --- | --- |
+| #308, 72-byte program | Owner decision of 8 November 2026 (item 2 in [PROVENANCE_OWNER_DECISIONS.md](PROVENANCE_OWNER_DECISIONS.md)) stands: remove, do not seek a grant. The program is absent from the current tree. The [request draft](permissions/NS2JB_REQUEST_DRAFT.md) is marked as not to be sent. The program stays treated as unpermitted. | Removing it from history needs an explicit old-to-new ref map and approval (decision 3). Not done. |
+| #309, objects isolated to PR #1 | Option (b) in the decisions table: leave the host-managed reference and document it. No request was sent to GitHub Support and no purge is claimed. | Option (a), asking GitHub Support to hide or purge `refs/pull/1/head`, can be chosen later. |
+| #310, Mac app and optional features | Kept source-only. No prebuilt Mac app or optional-feature build is offered, and the README says to build from source. The app's system `WKWebView` adds no third-party dependency. | Specialist review of the objc2 and Apple SDK terms before any prebuilt app is distributed. |
+| #311, eleven legacy NRO fixtures | Owner-directed review on 10 November 2026: the owner is the reviewer of record. All eleven are `VERIFIED` in `tests/fixtures/provenance.json` on this basis: project-written sources, byte-identical rebuilds, and notices for the linked components in [tests/fixtures/nro/NOTICES.md](../tests/fixtures/nro/NOTICES.md) (libnx ISC, newlib, libgcc runtime exception). This is not a specialist legal opinion and not a grant from any third party. | GitHub source archives still contain the binaries, now as reviewed test inputs. |
 
 ## Historical records are evidence, not recurring work orders
 
@@ -88,3 +100,33 @@ commit. No rewrite, asset deletion/replacement, Support message or third-party
 contact was performed here. Preserve the existing private evidence and use exact
 object/ref scope for any later approved action. Do not reopen the broad audit
 without new material evidence or a relevant distribution change.
+
+## Normal release qualification — 9 November 2026
+
+The v0.6.0 candidate passed release testing and archive verification on Linux
+x86-64, macOS arm64 and Windows x86-64 in run 42569508955. PR #273 passed all
+40 checks and merged. Exact reports are under
+[the release evidence directory](releases/v0.6.0-qualification/). This satisfies
+the recorded technical artifact-qualification item; the owner subsequently delegated the documented distribution choice on
+9 November 2026. The [recorded decision](releases/v0.6.0-distribution-decision.md)
+selects the normal default-feature CLI release with all upstream qualifications
+retained. This is an owner-directed decision, not a specialist legal opinion or
+new third-party grant. Actual publication is established separately by the
+completed tag workflow and release assets.
+
+Linux publication additionally requires the installed native-library notice
+inventory. On the same Debian/Ubuntu host that built the trusted executable:
+
+```sh
+python scripts/collect_native_notices.py --binary PATH_TO_BINARY \
+  --output FRESH_NATIVE_NOTICE_DIRECTORY
+python scripts/package_release.py --binary PATH_TO_BINARY --output release.tar.gz \
+  --toolchain-notices FRESH_RUST_NOTICE_DIRECTORY \
+  --native-notices FRESH_NATIVE_NOTICE_DIRECTORY --require-reviewed
+```
+
+The collector uses `ldd` only on our trusted build, resolves installed package
+owners and retains their actual copyright records and common license files.
+It does not copy the shared libraries. The package verifier checks the runtime
+hash, required coverage, notice bytes and path containment. A recorded distribution decision with actual reviewer/evidence and passing
+artifact checks is still required for the final command to succeed.

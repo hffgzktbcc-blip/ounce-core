@@ -6,17 +6,17 @@
       "id": "linux-elf",
       "name": "Static Linux ARM64 programs",
       "stage": "experimental",
-      "evidence": "Not started: programs currently load as NRO through a libnx stub",
-      "evidence_url": "docs/VISION.md",
-      "next": "ELF loader and a deterministic subset of Linux system calls (docs/VISION.md step 1)"
+      "evidence": "Six freestanding fixtures plus 18 real programs run as static musl ELFs (LZ4, xxHash, cJSON and zlib also on macOS and Windows); wasm3 does not run yet",
+      "evidence_url": "docs/verify/linux-elf/README.md",
+      "next": "Fix wasm3 as an ELF (#366); expand Linux library coverage from observed needs; qualify portable execution recording"
     },
     {
       "id": "differential",
       "name": "Differential verification against real ARM64",
       "stage": "measured",
-      "evidence": "Eight real programs and an FP instruction test diffed against an Apple Silicon host; a dozen CPU bugs found and fixed",
-      "evidence_url": "docs/verify/README.md",
-      "next": "Instruction-level differential fuzzer on an ARM64 CI runner (docs/VISION.md step 2)"
+      "evidence": "Seeded single-instruction hardware fuzzing and three-engine comparisons; bounded results retained",
+      "evidence_url": "docs/verify/insn-fuzzer/README.md",
+      "next": "Qualify ARM64 fuzzer CI; then expand per-family and sequence coverage (vision step 2)"
     },
     {
       "id": "workflow",
@@ -29,18 +29,18 @@
     {
       "id": "diagnosis",
       "name": "Failure to reproduction",
-      "stage": "experimental",
-      "evidence": "Existing verifier, diagnosis and replay interfaces",
-      "evidence_url": "docs/verify/README.md",
-      "next": "Ship one fresh-checkout walkthrough and solve a real developer issue (R1–R2)"
+      "stage": "measured",
+      "evidence": "Retained SDL2/audio diagnosis and one hardware-observed instruction mismatch with exact register snapshots",
+      "evidence_url": "docs/INSTRUCTION_DIAGNOSIS.md",
+      "next": "Repair the measured arithmetic discrepancy; arbitrary-program first divergence remains unestablished"
     },
     {
       "id": "distribution",
       "name": "Usable community tool",
-      "stage": "experimental",
-      "evidence": "Outcome acceptance plan; distribution not yet delivered",
-      "evidence_url": "PLAN.md",
-      "next": "Package the demonstrated workflow; connect one lagging component and release the result (R3–R5)"
+      "stage": "measured",
+      "evidence": "Standalone diagnosis toolkit 0.2.0 published with checksums and acceptance evidence",
+      "evidence_url": "docs/releases/diagnosis-0.2.0-readiness.md",
+      "next": "Collect outside feedback; runtime distribution has separate provenance dependencies"
     },
     {
       "id": "original-switch",

@@ -7,14 +7,17 @@ mod audio;
 mod census;
 mod cpu;
 mod crypto;
+mod diverge;
 mod fs;
 mod fuzz_replay;
 mod gpu;
 mod hid;
 mod kernel;
+mod lab;
 mod linux;
 mod loader;
 mod mmu;
+mod trace;
 mod ui;
 
 use cpu::{Cpu, StepResult};
@@ -52,7 +55,13 @@ fn main() {
     // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
+    let mut after_separator = false;
     for arg in env::args() {
+        if after_separator || arg == "--" {
+            after_separator = true;
+            args.push(arg);
+            continue;
+        }
         if let Some(value) = arg.strip_prefix("--sdmc=") {
             let _ = SDMC_HOST_DIR.set(std::path::PathBuf::from(value));
             continue;
@@ -87,9 +96,12 @@ fn main() {
         "info" | "--info" | "-v" | "--version" | "specs" => {
             print_specs();
         }
+        "diverge" => {
+            std::process::exit(diverge::run_cli(&args[2..]));
+        }
         "ui" | "lab" => {
             print_banner();
-            launch_lab();
+            lab::run_cli(&args[2..]);
         }
         "test" | "demo" => {
             print_banner();
@@ -123,6 +135,7 @@ fn main() {
             };
             run_gpu3d_demo(max_frames);
         }
+        "replay-instruction" => std::process::exit(fuzz_replay::replay_bundle(&args[2..])),
         "run-elf" => std::process::exit(linux::runner::cli(&args[2..])),
         "run" | "run-nro" => {
             print_banner();
@@ -300,7 +313,7 @@ fn print_row(s: &Styler, label: &str, val: &str) {
 
 fn print_usage() {
     let s = Styler::new();
-    let header_text = format!("  🚀  {}OUNCE-CORE v0.3.0{} — COMMAND-LINE INTERFACE (CLI) & WORKFLOW GUIDE", s.bold, s.reset);
+    let header_text = format!("  🚀  {}OUNCE-CORE v{}{} — COMMAND-LINE INTERFACE (CLI) & WORKFLOW GUIDE", s.bold, env!("CARGO_PKG_VERSION"), s.reset);
     let header_width = visible_width(&header_text);
     let pad = if BOX_WIDTH - 2 > header_width { (BOX_WIDTH - 2) - header_width } else { 0 };
 
@@ -312,7 +325,9 @@ fn print_usage() {
     println!("    cargo run --release -- {}<COMMAND>{} [OPTIONS]\n", s.green, s.reset);
     println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
     println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
-    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls)", s.green, s.reset);
+    println!("    {}replay-instruction{} <bundle>  Check retained instruction bytes and re-execute the recorded case", s.green, s.reset);
+    println!("    {}diverge{} <prog.nro>            Replay the program's instructions on this machine's CPU and name the first disagreement (AArch64 hosts)", s.green, s.reset);
+    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
     println!("    {}run-nro{} <file> [args] [--gui]  Load and execute only a homebrew NRO", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
     println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);
@@ -324,11 +339,11 @@ fn print_usage() {
     println!("    {}gfx{} [frames]            Launch 2D high-bandwidth VRAM Framebuffer Display Demo (1280x720)", s.green, s.reset);
     println!("    {}--present={}<mode>        Presentation backend: auto, gpu (needs --features gpu-present), minifb, headless", s.green, s.reset);
     println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
-    println!("    {}--cpu={}<tier>            CPU block engine for Stage 20: tier3 (default) or tier4 (needs --features native-jit)", s.green, s.reset);
+    println!("    {}--cpu={}<tier>            CPU block engine for run/run-nro and Stage 20: tier3 or tier4 (needs --features native-jit); no flag = interpreter", s.green, s.reset);
     println!("    {}--cpu=native{}            run an NRO on the host CPU (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!();
     println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
-    println!("    {}ui{} | {}lab{}               Open the interactive verification lab and workbench in browser", s.green, s.reset, s.green, s.reset);
+    println!("    {}ui{} | {}lab{}               Open the local verification workbench: drop a .nro, compare engines (and this Mac) [--port N --no-open --dir D]", s.green, s.reset, s.green, s.reset);
     println!("    {}test{}                    Execute 25-stage full-stack verification & hardware benchmark suite", s.green, s.reset);
     println!("    {}jit-selftest{}            Check that this host can run Tier-4 native code (needs --features native-jit)", s.green, s.reset);
     println!("    {}info{}                    Display comprehensive hardware architecture and engine status", s.green, s.reset);
@@ -343,17 +358,6 @@ fn print_usage() {
     println!("    {}cargo run --release -- run ./dumps/game_title\n{}", s.dim, s.reset);
 }
 
-fn launch_lab() {
-    let s = Styler::new();
-    println!("  {}🔬 OUNCE-CORE INTERACTIVE VERIFICATION LAB & WORKBENCH{}", s.cyan, s.reset);
-    println!("  {}Understand why programs fail. Prove when they work.{}\n", s.dim, s.reset);
-    println!("  Local workbench file: {}site/lab.html{}", s.green, s.reset);
-    println!("  To open or serve locally:");
-    println!("    {}./scripts/open_lab.sh{}\n", s.bold, s.reset);
-    println!("  Online version available on GitHub Pages:");
-    println!("    {}https://hffgzktbcc-blip.github.io/ounce-core/lab.html{}\n", s.cyan, s.reset);
-}
-
 fn print_specs() {
     let s = Styler::new();
     let host_arch = std::env::consts::ARCH;
@@ -361,7 +365,7 @@ fn print_specs() {
     let ptr_width = std::mem::size_of::<usize>() * 8;
     let profile = if cfg!(debug_assertions) { "Debug" } else { "Release [Optimized]" };
 
-    let header_text = format!("  🎮  {}OUNCE-CORE v0.3.0{} — TEGRA T239 HARDWARE & RUNTIME SYSTEM PROFILE", s.bold, s.reset);
+    let header_text = format!("  🎮  {}OUNCE-CORE v{}{} — TEGRA T239 HARDWARE & RUNTIME SYSTEM PROFILE", s.bold, env!("CARGO_PKG_VERSION"), s.reset);
     let header_width = visible_width(&header_text);
     let pad = if BOX_WIDTH - 2 > header_width { (BOX_WIDTH - 2) - header_width } else { 0 };
 
@@ -432,8 +436,8 @@ fn print_specs() {
     print_box_top(&s, "Compliance & Security Verification");
     print_row(&s, "Distribution Status: ", "No proprietary keys, firmware, or game data are distributed");
     print_row(&s, "Zero-Key Engine     : ", "Runs homebrew binaries without requiring extracted prod.keys");
-    let val_validation = format!("{}85 Unit Tests PASS{} · {}25 Integration Stages PASS (0xEEE){}", s.green, s.reset, s.green, s.reset);
-    print_row(&s, "Validation Status   : ", &val_validation);
+    let val_validation = "Run cargo test --release and ounce-core test for current results";
+    print_row(&s, "Validation Status   : ", val_validation);
     let val_source = format!("{}https://github.com/hffgzktbcc-blip/ounce-core{}", s.cyan, s.reset);
     print_row(&s, "Official Source     : ", &val_source);
     let val_sec = format!("{}Reject third-party binaries; build only from official source{}", s.yellow, s.reset);
@@ -611,7 +615,7 @@ fn run_vm_internal(
     max_instructions: usize,
     max_frames: usize,
 ) -> VmOutcome {
-    let is_gpu = display.as_ref().map_or(false, |d| d.is_gpu_accelerated());
+    let is_gpu = display.as_ref().is_some_and(|d| d.is_gpu_accelerated());
     kernel.nvgpu.set_hardware_acceleration(is_gpu);
 
     println!("[VM] Starting execution at PC: 0x{:016X}", cpu.regs.pc);
@@ -628,6 +632,16 @@ fn run_vm_internal(
     let mut stop = VmStop::Budget;
     let mut last_input_poll = Instant::now();
     let mut last_queued_frame = 0;
+    let mut engine = cpu::CpuTier::explicit()
+        .filter(|tier| *tier != cpu::CpuTier::Native)
+        .map(cpu::CpuEngine::new);
+    if let Some(e) = &engine {
+        println!("[CPU] Block engine: {}", e.name());
+    }
+    // `OUNCE_TRACE=<file>` records register-only instructions for `ounce-core diverge`. With a block engine
+    // selected (`--cpu=tier3|tier4`) it runs one-instruction slices so each recorded instruction is
+    // executed by that engine's own translation (single-instruction blocks, not multi-instruction fusion).
+    let mut tracer = trace::Tracer::from_env();
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -635,16 +649,66 @@ fn run_vm_internal(
             break;
         }
 
-        match cpu.step(&mut mmu) {
+        // With an explicit `--cpu=tier3|tier4` the block engine runs the guest in slices that end at the next
+        // preemption point, a budget limit or an SVC; otherwise one instruction at a time (the default).
+        let before = instructions_executed;
+        let (stepped, executed) = match engine.as_mut() {
+            Some(e) => {
+                let mut slice = kernel::scheduler::PREEMPT_INTERVAL - before % kernel::scheduler::PREEMPT_INTERVAL;
+                if max_instructions > 0 {
+                    slice = slice.min(max_instructions - before);
+                }
+                if tracer.is_some() {
+                    slice = 1;
+                }
+                let pc = cpu.regs.pc;
+                let traced = match tracer.as_mut() {
+                    Some(t) => mmu.read_u32(pc).ok().and_then(|raw| t.pre(&cpu, raw).map(|pre| (raw, pre))),
+                    None => None,
+                };
+                let (count, exit) = e.run_slice(&mut cpu, &mut mmu, slice.max(1));
+                if let (Some(t), Some((raw, pre))) = (tracer.as_mut(), traced) {
+                    let stopped = matches!(exit, cpu::tier2_jit::BlockExit::Fault { .. } | cpu::tier2_jit::BlockExit::Svc { .. });
+                    if count == 1 && !stopped {
+                        t.post(&cpu, raw, pc, pre);
+                    } else if !stopped {
+                        t.skip(raw);
+                    }
+                }
+                match exit {
+                    cpu::tier2_jit::BlockExit::Fault { pc: fault_pc } => {
+                        (Err(format!("{} fault at {fault_pc:#x} (slice began at {pc:#x})", e.name())), count)
+                    }
+                    cpu::tier2_jit::BlockExit::Svc { svc_id } => (Ok(StepResult::Svc(svc_id)), count),
+                    _ if count == 0 => (Err(format!("{} made no progress at {pc:#x}", e.name())), 0),
+                    _ => (Ok(StepResult::Continue), count),
+                }
+            }
+            None => {
+                let traced = match tracer.as_mut() {
+                    Some(t) => {
+                        let pc = cpu.regs.pc;
+                        mmu.read_u32(pc).ok().and_then(|raw| t.pre(&cpu, raw).map(|pre| (raw, pc, pre)))
+                    }
+                    None => None,
+                };
+                let step_result = cpu.step(&mut mmu);
+                if let (Some(t), Some((raw, pc, pre)), Ok(StepResult::Continue)) = (tracer.as_mut(), traced, &step_result) {
+                    t.post(&cpu, raw, pc, pre);
+                }
+                (step_result.map_err(|e| e.to_string()), 1)
+            }
+        };
+        match stepped {
             Ok(StepResult::Continue) => {
-                instructions_executed += 1;
+                instructions_executed += executed;
                 // Time slice: a guest thread that spins without SVCs must not starve the others.
-                if instructions_executed % kernel::scheduler::PREEMPT_INTERVAL == 0 {
+                if instructions_executed / kernel::scheduler::PREEMPT_INTERVAL != before / kernel::scheduler::PREEMPT_INTERVAL {
                     kernel.scheduler.preempt(&mut cpu);
                 }
             }
             Ok(StepResult::Svc(svc_id)) => {
-                instructions_executed += 1;
+                instructions_executed += executed;
                 let result = kernel.dispatch_svc(svc_id, &mut cpu, &mut mmu);
                 if let Some(ref mut disp) = display {
                     let queued = kernel.ipc.vi_frames_queued();
@@ -785,6 +849,9 @@ fn run_vm_internal(
                 break;
             }
         }
+    }
+    if let Some(t) = tracer.as_mut() {
+        t.finish();
     }
 
     let elapsed = start.elapsed();
@@ -3738,11 +3805,13 @@ const NRO_EXIT_STUB_ADDR: u64 = 0x7FFE_0000;
 /// as "locked by this thread". Below the scheduler's (0x2000+) and IPC's (0x10001+) handle ranges.
 const NRO_MAIN_THREAD_HANDLE: u32 = 0x1000;
 const NRO_INSTRUCTION_BUDGET: usize = 50_000_000;
+#[cfg(any(feature = "nce", test))]
 /// Parses a wall-clock limit in seconds (`OUNCE_NRO_TIMEOUT_SECS`); anything non-positive or unparsable means no limit.
 fn parse_time_limit(value: &str) -> Option<std::time::Duration> {
     value.trim().parse::<f64>().ok().filter(|secs| secs.is_finite() && *secs > 0.0).map(std::time::Duration::from_secs_f64)
 }
 
+#[cfg(feature = "nce")]
 /// `OUNCE_NRO_TIMEOUT_SECS=<n>` stops a native (`--cpu=native`) run after `n` seconds of wall-clock time. Native has
 /// no instruction budget, so an interactive program that waits for input would otherwise run until killed.
 fn nro_time_limit() -> Option<std::time::Duration> {

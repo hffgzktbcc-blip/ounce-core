@@ -31,7 +31,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Classify candidate inputs
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Check local workflow and evidence tools
@@ -75,7 +75,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
       - uses: dtolnay/rust-toolchain@stable
@@ -180,6 +180,10 @@ jobs:
         run: |
           swiftc tools/macos-launcher/EvidenceReport.swift tests/macos/evidence-report/main.swift -o "$RUNNER_TEMP/evidence-report-tests"
           "$RUNNER_TEMP/evidence-report-tests"
+          swiftc tools/macos-launcher/RunLogic.swift tools/macos-launcher/HostVerify.swift tests/macos/run-logic/main.swift -o "$RUNNER_TEMP/run-logic-tests"
+          "$RUNNER_TEMP/run-logic-tests"
+          swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos/workbench-logic/main.swift -o "$RUNNER_TEMP/workbench-logic-tests"
+          "$RUNNER_TEMP/workbench-logic-tests"
           scripts/build_macos_app.sh
           codesign --verify --deep --strict "dist/Ounce Core.app"
           "dist/Ounce Core.app/Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core" test
@@ -195,14 +199,14 @@ jobs:
 
       - name: Package native Mac app preview
         if: runner.os == 'macOS'
-        run: ditto -c -k --sequesterRsrc --keepParent "dist/Ounce Core.app" "$RUNNER_TEMP/Ounce-Core-workbench-preview.zip"
+        run: python3 scripts/package_macos_app.py --app "dist/Ounce Core.app" --out "$RUNNER_TEMP/macos-preview"
 
       - name: Retain native Mac app preview
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: macos-app-preview
-          path: ${{ runner.temp }}/Ounce-Core-workbench-preview.zip
+          path: ${{ runner.temp }}/macos-preview/
           if-no-files-found: error
           retention-days: 14
 
@@ -216,8 +220,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ubuntu/windows are x86_64, macos-latest is Apple Silicon (MAP_JIT path).
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # ubuntu/windows are x86_64, macos-latest is Apple Silicon (MAP_JIT path) and
+        # ubuntu-24.04-arm is AArch64 Linux, where Tier-4 output can be replayed on the host CPU.
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -247,6 +252,23 @@ jobs:
 
       - name: Run Tier-4 unit tests & differential fuzzer
         run: cargo test --release --features native-jit -- --nocapture
+
+      - name: Replay Tier-4 on this CPU for every committed fixture (AArch64 only)
+        if: runner.arch == 'ARM64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --engine tier4 makes an unavailable Tier-4 a hard error, never "NOT CHECKED".
+          checked=0
+          for nro in tests/fixtures/nro/*/*.nro; do
+            out=$(./target/release/ounce-core diverge "$nro" --engine tier4)
+            echo "== $nro"; echo "$out" | tail -n 3
+            grep -q "Tier-4: [0-9]* sampled instructions replayed on this CPU, 0 disagreed" <<< "$out"
+            if grep -q "NOT CHECKED" <<< "$out"; then echo "Tier-4 was not checked for $nro"; exit 1; fi
+            checked=$((checked + 1))
+          done
+          echo "Tier-4 replayed $checked programs with 0 disagreements"
+          test "$checked" -ge 10
 
   nce:
     needs: changes
@@ -292,6 +314,62 @@ jobs:
           echo "$out"
           grep -q "ounce-fixture result=0x00000EEE" <<< "$out"
           grep -q "Guest exited (svcExitProcess)" <<< "$out"
+
+  mac-app:
+    # Advisory for now (not in the `required` summary): builds the real app bundle with the packaging script,
+    # checks its signature and drives the bundled runtime through one upload.
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    name: Mac app bundle (macos-latest)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: mac-app
+
+      - name: Build the app bundle
+        run: bash scripts/build_macos_app.sh "$RUNNER_TEMP/Ounce Core.app"
+
+      - name: Verify the bundle signature
+        run: codesign --verify --deep --strict "$RUNNER_TEMP/Ounce Core.app"
+
+      - name: Check a program through the bundled runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          rt="$RUNNER_TEMP/Ounce Core.app/Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core"
+          "$rt" ui --no-open --port 0 --dir "$RUNNER_TEMP/checks" > "$RUNNER_TEMP/ui.log" &
+          server=$!
+          trap 'kill $server 2>/dev/null || true' EXIT
+          for _ in $(seq 1 50); do grep -q "http://127.0.0.1:" "$RUNNER_TEMP/ui.log" && break; sleep 0.2; done
+          url=$(grep -o "http://127.0.0.1:[0-9]*/?t=[0-9a-f]*" "$RUNNER_TEMP/ui.log" | head -1)
+          python3 - "$url" tests/fixtures/nro/hello/hello.nro <<'PYTHON'
+          import json, sys, time, urllib.request
+          url, nro = sys.argv[1], sys.argv[2]
+          base, token = url.split('/?t=')
+          def call(path, data=None):
+              req = urllib.request.Request(base + path, data=data, headers={'X-Ounce-Token': token})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)
+          check_id = call('/api/checks?name=hello.nro&native=0', open(nro, 'rb').read())['id']
+          deadline = time.time() + 180
+          while time.time() < deadline:
+              check = call('/api/checks/' + check_id)
+              if check['status'] == 'done':
+                  break
+              time.sleep(1)
+          else:
+              raise SystemExit('check did not finish')
+          print(json.dumps(check['verdict']))
+          assert check['verdict']['kind'] == 'agrees', check['verdict']
+          PYTHON
 
   required:
     # Preserve the two live ruleset contexts, but make them summarize every

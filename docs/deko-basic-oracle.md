@@ -23,9 +23,12 @@ against upstream `switchbrew/switch-examples` pinned commit `669786898205b7beb25
   `graphics/deko3d/deko_basic` (pinned in `tests/corpus/manifest.json`). Upstream README: Public Domain Mark 1.0.
 - Build: unchanged source, default Makefile, built with devkitA64 toolchain.
 - SHA-256 (canonical CI build variants, devkitpro/devkita64:latest image `sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282`, devkitA64 GCC 15.2.0, binutils 2.45.1):
-  - `4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa`
-  - `5cec608c6358d5aa5d110c5f5d98674e9ba46685752c497d567e2d286f8766e9`
-  (Note: deko_basic packages bundled shaders via libnx `build_romfs` during make, which embeds filesystem timestamps into RomFS metadata, yielding either hash across clean builds; both binaries have identical graphics bytecode and execution behavior).
+  - `4f2ea875311acc46e5cef0632b2031091c72787aca64e676d91eaadf6cee5dfa` (`/corpus/build` checkout path, `uam` vertex-shader variant `0x84`)
+  - `5cec608c6358d5aa5d110c5f5d98674e9ba46685752c497d567e2d286f8766e9` (`/corpus/build` checkout path, `uam` vertex-shader variant `0x88`)
+  - `3dcf3a3c981451ea1837e0b63ea8c3cc9f40f9148fc940619e6e648296f79cc8` (`/tmp/corpus/build` checkout path, `uam` vertex-shader variant `0x84`)
+  - Path-independent canonical NRO SHA-256 (after zeroing the 20-byte GNU build-id in `NRO0` header `0x40..0x60` and `.note.gnu.build-id` in `.rodata`, which vary when `-g` embeds `DW_AT_comp_dir` into the intermediate `.elf`):
+    - `b9eeedaba67444e802f152fda3cfd470e0292d2e7155e400b67393164eed6db3` (`uam` variant `0x84`)
+    - `5cd3723d9092b3628ed94fb214f2c22ac0e73413a4161407d81ff974286b2c9f` (`uam` variant `0x88`)
 - SHA-256 (local build variant): `5d108784619f6830952f7a7342ab5079c678d3d09521659204a83ac45a52b696`
   (built with local devkitA64 GCC 16.1.0).
 - Why this one: First sample using deko3d and Maxwell/Ampere 3D GPU hardware rendering (command buffers, rasterization, block-linear render target, vertex and fragment shaders via RomFS).

@@ -18,11 +18,30 @@
 
 An open-source ARM64 execution, debugging and verification platform in safe Rust.
 
-[Vision](docs/VISION.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Reproduce it](docs/REPRODUCE.md) · [Limits](docs/LIMITS.md) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](CONTRIBUTING.md#your-first-contribution-about-an-hour)
+[Our journey](docs/OUR_JOURNEY.md) · [Vision](docs/VISION.md) · [Research paper](site/research.html) · [Browser playground](docs/PLAYGROUND.md) · [Interactive lab](docs/INTERACTIVE_LAB.md) · [How it works](#the-system) · [Get started](#quickstart) · [What is proven](#what-is-proven) · [Reproduce it](docs/REPRODUCE.md) · [Limits](docs/LIMITS.md) · [Add a program](docs/ADD_A_PROGRAM.md) · [Roadmap](#the-road-ahead) · [Contribute](site/contribute.html) · [First issues](https://github.com/hffgzktbcc-blip/ounce-core/contribute)
+
+
+<br />
+
+<img src="docs/images/workbench.png" width="860" alt="The Ounce-Core workbench: a green verdict reading 'Matches this Mac on this run', with Tier-3, Tier-4 and native runs listed and an evidence column." />
+
+<sub>The workbench (`ounce-core ui`) checking SQLite on three engines against this Mac. A match is evidence for one run, not a proof.</sub>
+
+<sub>Came here for the Switch emulator? [What changed and why](https://github.com/hffgzktbcc-blip/ounce-core/discussions/330).</sub>
 
 </div>
 
 ---
+
+> [!TIP]
+> **Have an Apple Silicon Mac, Raspberry Pi, or ARM64 Linux VM?**
+> Help verify our AArch64 differential test suite in two minutes:
+> ```bash
+> git clone https://github.com/hffgzktbcc-blip/ounce-core && cd ounce-core
+> cargo build --release
+> python3 scripts/verify_differential.py --json my-results.json
+> ```
+> Report your run in **[Issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248)** using the [External Test Report Template](docs/community/EXTERNAL_TEST_REPORT.md) to have your hardware recorded in our verification ledger!
 
 <a id="the-ounce-vision"></a>
 
@@ -36,11 +55,11 @@ It began as a Nintendo Switch homebrew runtime. That is no longer the goal; see 
 
 - **Ounce-Verify: prove correctness.** Compare engines and a real-hardware reference, detect discrepancies, keep hashes and reports. *Most mature.*
 - **Ounce-Debug: understand failures.** Reproduce a problem, compare results, find where behaviour first diverges. *Demonstrated for one bounded workflow.*
-- **Ounce-Learn: make computing understandable.** Study ARM64 execution one instruction at a time. *Planned.*
+- **Ounce-Learn: make computing understandable.** Study ARM64 execution one instruction at a time in the [real WebAssembly playground](docs/PLAYGROUND.md). *Bounded Chromium execution verified.*
 
 **Who it is for:** library maintainers who want to know whether their code behaves the same on ARM64 as on x86 without owning ARM hardware; emulator and JIT authors; educators; researchers.
 
-Verification is the product. It is not a fast emulator and does not promise to run everything: running arbitrary ARM64 or Linux applications and automatic root-cause finding are **not established**. Coverage is partial and the cumulative saturation flag was not modelled (being added). The [roadmap](docs/VISION.md#roadmap-each-step-is-one-small-checkable-result) starts with an outside developer solving a real problem, then running ordinary static Linux ARM64 programs so no console SDK is needed.
+Verification is the product. It is not a fast emulator and does not promise to run everything: running arbitrary ARM64 or Linux applications and automatic root-cause finding are **not established**. Coverage is partial; QC is modelled for implemented saturating instructions. FPCR rounding mode, flush-to-zero and default-NaN are modelled for the common scalar and vector FP arithmetic, conversion and compare forms (#363), while FPCR trap enables, half-precision arithmetic and cumulative FP exception flags (FPSR) remain unmodelled. The [roadmap](docs/VISION.md#roadmap-each-step-is-one-small-checkable-result) starts with an outside developer solving a real problem, then running ordinary static Linux ARM64 programs so no console SDK is needed.
 
 ```mermaid
 flowchart LR
@@ -116,7 +135,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ## What is proven
 
-**Differential tests against real ARM64 hardware** (each folder in [docs/verify](docs/verify/README.md) holds the sources of its test, the pinned program version, the host reference output and the per-engine result): LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and a 5,964-line floating-point instruction test. On Tier-3, Tier-4 and native, output is byte-identical to the host reference. Native execution runs on the host CPU, so Tier-3 and Tier-4 are the real evidence. More programs (zlib, cJSON, TinyExpr, Monocypher) are in review. Each shows agreement on the inputs tested, not that the program or the emulator is correct everywhere. To rerun them on your own ARM64 machine see [docs/REPRODUCE.md](docs/REPRODUCE.md); for what they do not show, see [docs/LIMITS.md](docs/LIMITS.md).
+**Differential tests against real ARM64 hardware** (each folder in [docs/verify](docs/verify/README.md) holds the sources of its test, the pinned program version, the host reference output and the per-engine result): LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and a 5,964-line floating-point instruction test. On Tier-3, Tier-4 and native, output is byte-identical to the host reference. Native execution runs on the host CPU, so Tier-3 and Tier-4 are the real evidence. Additional harnesses (zlib, cJSON, TinyExpr, Monocypher, wasm3 and others) are included in the [differential manifest](docs/verify/differential.json); see their per-harness results and limits. 18 programs have also been run as static Linux AArch64 ELFs and matched a host build, qemu-user, Tier-3 and Tier-4 on Linux x86-64 ([list and limits](docs/verify/linux-elf/PROGRAMS.md)); wasm3 does not run as an ELF yet ([#366](https://github.com/hffgzktbcc-blip/ounce-core/issues/366)). Each shows agreement on the inputs tested, not that the program or the emulator is correct everywhere. To rerun them on your own ARM64 machine see [docs/REPRODUCE.md](docs/REPRODUCE.md); for what they do not show, see [docs/LIMITS.md](docs/LIMITS.md).
 
 ### Legacy Switch regression corpus
 
@@ -300,7 +319,7 @@ cargo run --release --features native-jit -- jit-selftest # Check whether this h
 cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for the Stage 20 benchmark
 ```
 
-`--present=auto|gpu|minifb|headless` (or `OUNCE_PRESENT`) picks the presentation backend; `auto` tries the GPU first when the feature is compiled in. `WGPU_BACKEND` (`vulkan`, `metal`, `dx12`, `gl`) and `WGPU_ADAPTER_NAME` select the GPU, and `OUNCE_VSYNC=0` disables vsync. `--cpu=tier3|tier4` (or `OUNCE_CPU`) selects the Stage 20 CPU engine. Tier-4 requires `--features native-jit`; the native engine is not currently used for general `run` workloads.
+`--present=auto|gpu|minifb|headless` (or `OUNCE_PRESENT`) picks the presentation backend; `auto` tries the GPU first when the feature is compiled in. `WGPU_BACKEND` (`vulkan`, `metal`, `dx12`, `gl`) and `WGPU_ADAPTER_NAME` select the GPU, and `OUNCE_VSYNC=0` disables vsync. `--cpu=tier3|tier4` (or `OUNCE_CPU`) selects the block engine for the Stage 20 benchmark and for `run`/`run-nro` (with no flag, `run-nro` executes one instruction at a time in the interpreter). Tier-4 requires `--features native-jit`; the native engine is not currently used for general `run` workloads.
 
 </details>
 
@@ -320,11 +339,11 @@ This section is rendered from [the milestone registry](docs/roadmap/milestones.j
 
 | Research track | Reviewed stage | Supporting evidence | Next proof gate |
 | :--- | :--- | :--- | :--- |
-| Static Linux ARM64 programs | experimental | [Not started: programs currently load as NRO through a libnx stub](docs/VISION.md) | ELF loader and a deterministic subset of Linux system calls (docs/VISION.md step 1) |
-| Differential verification against real ARM64 | measured | [Eight real programs and an FP instruction test diffed against an Apple Silicon host; a dozen CPU bugs found and fixed](docs/verify/README.md) | Instruction-level differential fuzzer on an ARM64 CI runner (docs/VISION.md step 2) |
+| Static Linux ARM64 programs | experimental | [Six freestanding fixtures plus 18 real programs run as static musl ELFs (LZ4, xxHash, cJSON and zlib also on macOS and Windows); wasm3 does not run yet](docs/verify/linux-elf/README.md) | Fix wasm3 as an ELF (#366); expand Linux library coverage from observed needs; qualify portable execution recording |
+| Differential verification against real ARM64 | measured | [Seeded single-instruction hardware fuzzing and three-engine comparisons; bounded results retained](docs/verify/insn-fuzzer/README.md) | Qualify ARM64 fuzzer CI; then expand per-family and sequence coverage (vision step 2) |
 | Agent workflow | measured | [Handoff snapshots, expiring claims and shared journal; used by four agents in parallel](docs/AGENT_HUB.md) | Keep the tool simple; fix friction as agents report it |
-| Failure to reproduction | experimental | [Existing verifier, diagnosis and replay interfaces](docs/verify/README.md) | Ship one fresh-checkout walkthrough and solve a real developer issue (R1–R2) |
-| Usable community tool | experimental | [Outcome acceptance plan; distribution not yet delivered](PLAN.md) | Package the demonstrated workflow; connect one lagging component and release the result (R3–R5) |
+| Failure to reproduction | measured | [Retained SDL2/audio diagnosis and one hardware-observed instruction mismatch with exact register snapshots](docs/INSTRUCTION_DIAGNOSIS.md) | Repair the measured arithmetic discrepancy; arbitrary-program first divergence remains unestablished |
+| Usable community tool | measured | [Standalone diagnosis toolkit 0.2.0 published with checksums and acceptance evidence](docs/releases/diagnosis-0.2.0-readiness.md) | Collect outside feedback; runtime distribution has separate provenance dependencies |
 | Switch regression corpus (legacy) | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->50/50<!-- /corpus-headline --> passes** (CI-certified) | Keep passing in CI; no expansion unless a program reproduces a concrete CPU bug |
 | Switch 2 research (archived) | experimental | [Limited SDK-path observation](docs/verify/README.md) | No further work; kept as a record. Not part of the product direction (see docs/VISION.md) |
 
@@ -386,6 +405,8 @@ Read [the provenance register](docs/PROVENANCE.md), [sources and legal guardrail
 
 ### Known issues
 
+- **Linux ELF runner.** wasm3 built as a static musl ELF fails to load its first module under `run-elf` (an allocator request of about 1 TiB is refused); cause not yet understood ([#366](https://github.com/hffgzktbcc-blip/ounce-core/issues/366)).
+- **Floating point.** FPSR exception flags, FPCR trap enables and half-precision arithmetic are not modelled. The FPCR rounding/flush/default-NaN fix (#363) matched Linux Arm and Apple M1 hardware on the fp-edge corpus: 0 mismatches at all nine FPCR values on all three engines ([CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42971358680)); that corpus is bounded.
 - **Historical scope.** The later object-level inventory narrows the firmware-labelled candidate objects to retained PR #1, with no exact matches in current source or the inspected releases. A separate historical 72-byte program has no recorded redistribution grant. See the dated [object-level report](docs/PROVENANCE_REMEDIATION_REPORT.md); no global purge is claimed.
 - **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
 - **Notice and rights status.** Completed controls, remaining upstream qualifications and release-specific requirements are maintained in [one disposition](docs/LICENSE_DISPOSITION.md). An identity check or notice collection does not supply an absent redistribution grant.
@@ -442,10 +463,28 @@ With Rust and Xcode command-line tools installed, build and install locally:
 scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.app"
 ```
 
-Open **Ounce Core.app**, choose **Open Homebrew…**, and select a homebrew `.nro`.
-**Graphics Demo** opens the bundled diagnostic; **Stop** ends the current session.
-**SD Card Folder…** selects the host folder mounted as `sdmc:`. Logs and the default
-SD folder live under `~/Library/Application Support/Ounce Core/`. **Show Logs** opens
-the log folder. Closing the launcher stops its session. The app is locally ad-hoc
-signed, not a notarized distribution release. Supported programs remain those backed
-by the compatibility oracles; this launcher does not expand that claim.
+Open **Ounce Core.app**. The first screen explains what the app does; drop a
+homebrew `.nro` on it or choose **Open Program…**. ELF programs are not supported yet.
+
+- **Run Settings:** pick the engine (interpreter `tier3`, JIT `tier4`, or `native`) and an
+  instruction budget (blank = the runtime default of 50 million, the `OUNCE_NRO_BUDGET` mechanism).
+  The bundled runtime is built with the `nce` and `native-jit` features, so `tier4` and `native`
+  work on an Apple Silicon Mac; elsewhere the runtime falls back to `tier3`, and the app says so
+  instead of reporting a pass. `native` runs headless with no window.
+- **Diagnosis:** when a run ends, the app reads the runtime's own log and explains it in plain
+  language: unimplemented instruction word, unhandled SVC, program break, fault, budget exhausted,
+  load error. It reads what the runtime printed; it does not re-execute anything.
+- **Verify against Host…:** for harness programs named after the harnesses in
+  [docs/verify/differential.json](docs/verify/differential.json) (for example `lz4.nro`), runs the NRO
+  headless on the chosen engine and compares its output byte for byte with the committed
+  `expected-host.txt`. It does not rebuild the host reference; use `scripts/verify_differential.py` for that.
+- **Try the Demo** opens the bundled diagnostic; **Stop Session** ends the current session.
+- **View Check Results…** opens a saved evidence report.
+- **Show Session Details** reveals **Choose SD Card Folder…**, which selects the host folder
+  mounted as `sdmc:`, and **Open Log in Finder**. Logs and the default SD folder live under
+  `~/Library/Application Support/Ounce Core/`.
+
+The app is locally ad-hoc signed, not a notarized distribution release, and no
+prebuilt download is offered. Supported programs remain those backed by the compatibility
+oracles; this launcher does not expand that claim. Details, tests and untested GUI areas:
+[docs/MAC_APP.md](docs/MAC_APP.md).

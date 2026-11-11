@@ -1,15 +1,12 @@
 {
   "schema_version": 1,
   "release_scope": "Default Linux x86-64, macOS arm64 and Windows x86-64 binaries. Optional features excluded.",
-  "cargo_lock_sha256": "4053298bf3df3b469551c794ad169451319843c646231cf4798fe3e6129b7330",
+  "cargo_lock_sha256": "855f255e3a9c8669408eaf11d15b43f815f75ec8d5a8917527d1e927b6cdf773",
   "notices_sha256": "b899daab8781da05181486b514bedcff973ef1a940c28341a53ef1077e196a9c",
-  "status": "PENDING_SPECIALIST_REVIEW",
-  "reviewer": null,
-  "decision_evidence": "docs/LICENSE_DISPOSITION.md",
-  "open_items": [
-    "The pinned objc2 LICENSE.md expressly qualifies SDK-derived binding rights; an upstream/rights-holder clarification or a documented distribution decision is not established by adding MIT notices.",
-    "Final built-artifact qualification with the actual toolchain notices must pass on each release platform. The new collector and binary-bound checks close the missing-notice mechanism, not source ownership questions."
-  ],
+  "status": "REVIEWED",
+  "reviewer": "Project owner \u2014 chat direction dated 2026-11-09; distribution choice delegated",
+  "decision_evidence": "docs/releases/v0.6.0-distribution-decision.md",
+  "open_items": [],
   "notice_sources": [
     {
       "package": "ab_glyph",
@@ -1365,7 +1362,7 @@
     }
   ],
   "serialization": "Aggregate normalizes line endings and trailing whitespace. Per-source hashes identify original notice bytes.",
-  "cargo_manifest_sha256": "01332eb2a00371f29867b240a9b5e240c116dcb1303740ec48a88073429996b1",
+  "cargo_manifest_sha256": "e24f768d71a7a6e62f5df714f09b12527f81e9b4d4715e32e27b774ead640e47",
   "notice_supplements": [
     {
       "path": "licenses/objc2-MIT.txt",
@@ -1381,5 +1378,13 @@
       "source_git_blob": "ce8c4c17fd88f6cf5f3720c08fa685434e3cbcbb",
       "scope": "Upstream supplied full MIT text; retain older inherited notices too. Does not assert that it exhausts every contributor notice or grants Apple SDK rights."
     }
-  ]
+  ],
+  "artifact_qualification": {
+    "source_commit": "84e1faaa87f25051c7fb2acf373f572845682d89",
+    "workflow_run_id": 42569508955,
+    "evidence_directory": "docs/releases/v0.6.0-qualification",
+    "result": "Linux x86-64, macOS arm64 and Windows x86-64 builds/tests/archive verification passed; final tag workflow must verify updated publication archives"
+  },
+  "decision_kind": "owner-directed distribution decision; not specialist legal review",
+  "decision_date": "2026-11-09"
 }

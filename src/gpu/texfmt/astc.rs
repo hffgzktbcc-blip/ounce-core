@@ -34,9 +34,9 @@ impl Range {
     fn ise_bits(&self, n: u32) -> u32 {
         n * self.bits
             + if self.trits {
-                (8 * n + 4) / 5
+                (8 * n).div_ceil(5)
             } else if self.quints {
-                (7 * n + 2) / 3
+                (7 * n).div_ceil(3)
             } else {
                 0
             }
@@ -357,7 +357,7 @@ fn select_partition(seed: u32, mut x: u32, mut y: u32, count: u32, small: bool) 
     s[8] = (r >> 18) & 0xf;
     s[9] = (r >> 22) & 0xf;
     s[10] = (r >> 26) & 0xf;
-    s[11] = ((r >> 30) | (r << 2)) & 0xf;
+    s[11] = r.rotate_left(2) & 0xf;
     for v in s.iter_mut() {
         *v *= *v;
     }
@@ -498,7 +498,7 @@ fn decode_block(b: &[u8], bw: u32, bh: u32, i: usize) -> Option<[f32; 4]> {
     }
     let ccs_pos = 128 - wbits - extra - if dual { 2 } else { 0 };
     let ccs = if dual { bits(ccs_pos, 2) as usize } else { 4 };
-    if (color_start as u32) > ccs_pos {
+    if color_start > ccs_pos {
         return None;
     }
     let ncolor: u32 = cems[..partitions as usize].iter().map(|c| 2 * ((c >> 2) + 1)).sum();
@@ -541,7 +541,7 @@ fn decode_block(b: &[u8], bw: u32, bh: u32, i: usize) -> Option<[f32; 4]> {
     let (js, fs, jt, ft) = (gs >> 4, gs & 0xf, gt >> 4, gt & 0xf);
     let w11 = (fs * ft + 8) >> 4;
     let (w10, w01) = (ft - w11, fs - w11);
-    let w00 = 16 - fs - ft + w11;
+    let w00 = 16 + w11 - fs - ft;
     let v0 = js + jt * gw;
     let weight = |plane: u32| -> u32 {
         let at = |v: u32| weights.get((v * planes + plane) as usize).copied().unwrap_or(0);

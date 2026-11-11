@@ -7,6 +7,7 @@ const EXITCODE: &[u8] = include_bytes!("../../tests/linux-elf/bin/exitcode.elf")
 const ARGS: &[u8] = include_bytes!("../../tests/linux-elf/bin/args.elf");
 const MEMORY: &[u8] = include_bytes!("../../tests/linux-elf/bin/memory.elf");
 const BADSYS: &[u8] = include_bytes!("../../tests/linux-elf/bin/badsyscall.elf");
+const BASIC_MATH: &[u8] = include_bytes!("../../tests/linux-elf/bin/basic_math.elf");
 
 #[derive(Default)]
 struct Capture {
@@ -44,6 +45,15 @@ fn exit_code_propagates() {
         let (r, _) = go(EXITCODE, &["exitcode"], t);
         assert_eq!(r.stop, Stop::Exited(42));
         assert_eq!(r.exit_status(), 42);
+    }
+}
+
+#[test]
+fn basic_math_execution() {
+    for t in TIERS {
+        let (r, out) = go(BASIC_MATH, &["basic_math"], t);
+        assert_eq!(r.stop, Stop::Exited(42), "{r:?}");
+        assert_eq!(out, "calculating 15 + 27 = 42\n");
     }
 }
 
@@ -186,4 +196,84 @@ fn tiny_elf(code: &[u32]) -> Vec<u8> {
         e.extend_from_slice(&w.to_le_bytes());
     }
     e
+}
+
+#[test]
+fn deterministic_clocks_replay_identically_across_engines() {
+    let elf = include_bytes!("../../tests/linux-elf/bin/clock.elf");
+    let expected = b"realtime=1700000000:0\nmonotonic=0:1000000\nraw=0:2000000\nboottime=0:3000000\n";
+    for tier in TIERS {
+        for _ in 0..2 {
+            let mut cap = Capture::default();
+            let opts = Options { tier, deterministic: true, ..Options::default() };
+            let r = run(elf, &["clock".into()], &opts, &mut cap, &mut |_| {});
+            assert_eq!(r.stop, Stop::Exited(0), "{r:?}");
+            assert_eq!(cap.out, expected);
+        }
+    }
+}
+
+#[test]
+fn deterministic_clock_errors_do_not_consume_time_and_seconds_roll_over() {
+    use super::syscalls::{Process, Outcome, SYS_CLOCK_GETTIME, EINVAL, EFAULT};
+    use crate::mmu::{Memory, Permission};
+    let mut proc = Process::new_deterministic(0x1000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    assert_eq!(proc.dispatch(SYS_CLOCK_GETTIME, [99, 0x1000, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EINVAL));
+    assert_eq!(proc.dispatch(SYS_CLOCK_GETTIME, [1, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EFAULT));
+    for i in 0..1002u64 {
+        assert_eq!(proc.dispatch(SYS_CLOCK_GETTIME, [1, 0x1000, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+        assert_eq!(mem.read_u64(0x1000).unwrap(), i / 1000);
+        assert_eq!(mem.read_u64(0x1008).unwrap(), (i % 1000) * 1_000_000);
+    }
+}
+
+#[test]
+fn sched_getaffinity_reports_one_cpu_and_validates_like_linux() {
+    use super::syscalls::{Process, Outcome, SYS_SCHED_GETAFFINITY, EINVAL, EFAULT, ESRCH, PID};
+    use crate::mmu::{Memory, Permission};
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
+    mem.write_bytes(0x1000, &[0xff; 16]).unwrap();
+    let mut out = Capture::default();
+    let mut call = |pid, len, mask, mem: &mut Memory| proc.dispatch(SYS_SCHED_GETAFFINITY, [pid, len, mask, 0, 0, 0], mem, &mut out);
+    // musl's sysconf passes a 128-byte buffer; only the first 8 bytes are written.
+    assert_eq!(call(0, 0x80, 0x1000, &mut mem), Outcome::Return(8));
+    assert_eq!(mem.read_u64(0x1000).unwrap(), 1);
+    assert_eq!(mem.read_u64(0x1008).unwrap(), u64::MAX);
+    assert_eq!(call(PID, 8, 0x1000, &mut mem), Outcome::Return(8));
+    assert_eq!(call(0, 4, 0x1000, &mut mem), Outcome::Return(-EINVAL));
+    assert_eq!(call(0, 12, 0x1000, &mut mem), Outcome::Return(-EINVAL));
+    assert_eq!(call(PID + 1, 8, 0x1000, &mut mem), Outcome::Return(-ESRCH));
+    assert_eq!(call(0, 8, 0, &mut mem), Outcome::Return(-EFAULT));
+}
+
+#[test]
+fn mremap_shrinks_in_place_and_grows_by_moving_with_contents() {
+    use super::syscalls::{Process, Outcome, SYS_MMAP, SYS_MREMAP, EINVAL, ENOMEM};
+    use crate::mmu::Memory;
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    let mut out = Capture::default();
+    let Outcome::Return(a) = proc.dispatch(SYS_MMAP, [0, 0x4000, 3, 0x22, u64::MAX, 0], &mut mem, &mut out) else { panic!() };
+    let a = a as u64;
+    mem.write_u64(a, 0x1122_3344_5566_7788).unwrap();
+    mem.write_u64(a + 0x3ff8, 42).unwrap();
+    // without MAYMOVE growth is refused, bad flags are invalid
+    assert_eq!(proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-ENOMEM));
+    assert_eq!(proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 2, 0, 0], &mut mem, &mut out), Outcome::Return(-EINVAL));
+    // grow with MAYMOVE: contents preserved at the new address, old range unmapped
+    let Outcome::Return(b) = proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 1, 0, 0], &mut mem, &mut out) else { panic!() };
+    let b = b as u64;
+    assert_ne!(a, b);
+    assert_eq!(mem.read_u64(b).unwrap(), 0x1122_3344_5566_7788);
+    assert_eq!(mem.read_u64(b + 0x3ff8).unwrap(), 42);
+    assert_eq!(mem.read_u64(b + 0x7ff8).unwrap(), 0);
+    assert!(!mem.is_mapped(a));
+    // shrink in place
+    assert_eq!(proc.dispatch(SYS_MREMAP, [b, 0x8000, 0x1000, 0, 0, 0], &mut mem, &mut out), Outcome::Return(b as i64));
+    assert!(mem.is_mapped(b) && !mem.is_mapped(b + 0x1000));
 }

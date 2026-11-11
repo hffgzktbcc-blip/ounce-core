@@ -1,0 +1,40 @@
+{
+  "release_url": "https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.6.0",
+  "tag": "v0.6.0",
+  "published_at": "2026-11-09T06:46:52Z",
+  "release_commit": "429f44bd8c21edc0d79b4359730e9f86d9eb8ccc",
+  "workflow_run": 42574581442,
+  "all_seven_assets_downloaded_and_api_hash_verified": true,
+  "combined_and_individual_checksums_verified": true,
+  "platform_archives": [
+    {
+      "archive": "ounce-core-linux-x86_64.tar.gz",
+      "sha256": "08f54a575f77a509f8b1e465b17a3b2c52cfc3f33850002f8f16425d33e8ff61",
+      "binary_sha256": "7604874a43b5222d1af617381ad9830652e3dea91ec65f31422ed48c2c56afa9",
+      "entries_verified": 47,
+      "notice_hashes_verified": true,
+      "review_record_verified": true
+    },
+    {
+      "archive": "ounce-core-macos-arm64.tar.gz",
+      "sha256": "254cc091153f439ba64c2b224c1926e8463274ea4ac24829f3ead3d5b0baa243",
+      "binary_sha256": "905795922ce1069b6ee1c4dac0ea83d8a5d34ef9f0f3e8ab5dd51f8b8a5a1a0d",
+      "entries_verified": 25,
+      "notice_hashes_verified": true,
+      "review_record_verified": true
+    },
+    {
+      "archive": "ounce-core-windows-x86_64.zip",
+      "sha256": "2a167ab2686976e84835336982ba7b6e047c1f5aaa483f951ba20b4fedeae9c4",
+      "binary_sha256": "f6dd88353bd319012cf75480dc085fc2cc519a02b06e2decec9cf0b476bb1a6b",
+      "entries_verified": 25,
+      "notice_hashes_verified": true,
+      "review_record_verified": true
+    }
+  ],
+  "downloaded_linux_cli_outside_checkout_smoke": "all 36 checks passed across 25 stages",
+  "scope": "default-feature CLI; no native Mac app or optional feature clearance",
+  "latest_verified": true,
+  "platform_provenance_attestation_steps_passed": true,
+  "attestation_signatures_independently_verified": false
+}

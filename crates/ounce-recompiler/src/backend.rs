@@ -281,6 +281,57 @@ impl Lowering<'_> {
         MemFlagsData::trusted()
     }
 
+    /// On AArch64 the native FP instruction already gives Arm's NaN results; other hosts (x86) pick a different NaN
+    /// operand and a negative default NaN, so their results are rewritten to the Arm rule.
+    fn host_nan_needs_fixup(op: FpBinOp) -> bool {
+        !cfg!(target_arch = "aarch64") && !matches!(op, FpBinOp::Fmax | FpBinOp::Fmin)
+    }
+
+    /// Arm `FPProcessNaNs` / `FPDefaultNaN` on the integer bit patterns `a`, `b` of the operands and the host result `r`:
+    /// a signalling NaN operand wins (quieted), then a quiet NaN operand (`a` first); with no NaN operand an invalid
+    /// operation gives the positive default NaN.
+    fn arm_nan(&mut self, a: cranelift_codegen::ir::Value, b: cranelift_codegen::ir::Value, r: cranelift_codegen::ir::Value, ty: types::Type, quiet: u64, default_nan: u64) -> cranelift_codegen::ir::Value {
+        let q = self.b.ins().iconst(ty, quiet as i64);
+        let is_nan = |this: &mut Self, x: cranelift_codegen::ir::Value| {
+            // exponent all ones and a non-zero fraction: |x| > inf in unsigned compare once the sign is dropped
+            let (abs_mask, inf) = if ty == types::I32 { (0x7fff_ffffi64, 0x7f80_0000i64) } else { (0x7fff_ffff_ffff_ffffi64, 0x7ff0_0000_0000_0000i64) };
+            let m = this.b.ins().iconst(ty, abs_mask);
+            let ax = this.b.ins().band(x, m);
+            let ic = this.b.ins().iconst(ty, inf);
+            this.b.ins().icmp(IntCC::UnsignedGreaterThan, ax, ic)
+        };
+        let na = is_nan(self, a);
+        let nb = is_nan(self, b);
+        let qa = self.b.ins().band(a, q);
+        let qb = self.b.ins().band(b, q);
+        let zero = self.b.ins().iconst(ty, 0);
+        let a_quiet = self.b.ins().icmp(IntCC::NotEqual, qa, zero);
+        let b_quiet = self.b.ins().icmp(IntCC::NotEqual, qb, zero);
+        let not_aq = self.b.ins().bnot(a_quiet);
+        let not_bq = self.b.ins().bnot(b_quiet);
+        let sa = self.b.ins().band(na, not_aq);
+        let sb = self.b.ins().band(nb, not_bq);
+        let aq = self.b.ins().bor(a, q);
+        let bq = self.b.ins().bor(b, q);
+        // priority from lowest to highest: invalid-op default, b quiet, a quiet, b signalling, a signalling
+        let dn = self.b.ins().iconst(ty, default_nan as i64);
+        let r_nan = {
+            let (abs_mask, inf) = if ty == types::I32 { (0x7fff_ffffi64, 0x7f80_0000i64) } else { (0x7fff_ffff_ffff_ffffi64, 0x7ff0_0000_0000_0000i64) };
+            let m = self.b.ins().iconst(ty, abs_mask);
+            let ar = self.b.ins().band(r, m);
+            let ic = self.b.ins().iconst(ty, inf);
+            self.b.ins().icmp(IntCC::UnsignedGreaterThan, ar, ic)
+        };
+        let any_in = self.b.ins().bor(na, nb);
+        let not_in = self.b.ins().bnot(any_in);
+        let invalid = self.b.ins().band(r_nan, not_in);
+        let mut v = self.b.ins().select(invalid, dn, r);
+        v = self.b.ins().select(nb, b, v);
+        v = self.b.ins().select(na, a, v);
+        v = self.b.ins().select(sb, bq, v);
+        self.b.ins().select(sa, aq, v)
+    }
+
     fn bitcast_flags() -> MemFlagsData {
         MemFlagsData::new().with_endianness(Endianness::Little)
     }
@@ -637,6 +688,7 @@ impl Lowering<'_> {
                             FpBinOp::Fmin => self.b.ins().fmin(fa, fb),
                         };
                         let ires32 = self.b.ins().bitcast(types::I32, Self::bitcast_flags(), fres);
+                        let ires32 = if Self::host_nan_needs_fixup(op) { self.arm_nan(a32, b32, ires32, types::I32, 1 << 22, 0x7fc0_0000) } else { ires32 };
                         self.b.ins().uextend(types::I64, ires32)
                     }
                     FpWidth::F64 => {
@@ -650,7 +702,8 @@ impl Lowering<'_> {
                             FpBinOp::Fmax => self.b.ins().fmax(fa, fb),
                             FpBinOp::Fmin => self.b.ins().fmin(fa, fb),
                         };
-                        self.b.ins().bitcast(types::I64, Self::bitcast_flags(), fres)
+                        let ires = self.b.ins().bitcast(types::I64, Self::bitcast_flags(), fres);
+                        if Self::host_nan_needs_fixup(op) { self.arm_nan(va, vb, ires, types::I64, 1 << 51, 0x7ff8_0000_0000_0000) } else { ires }
                     }
                 }
             }

@@ -104,8 +104,8 @@ mod tests {
         // Fill a 4x4 low-res surface with gradient values
         for y in 0..4u32 {
             for x in 0..4u32 {
-                let r = (x * 60) as u32;
-                let g = (y * 60) as u32;
+                let r = x * 60;
+                let g = y * 60;
                 let px = r | (g << 8) | (128 << 16) | 0xFF00_0000;
                 mmu.write_u32(src_addr + ((y * 4 + x) as u64) * 4, px).unwrap();
             }

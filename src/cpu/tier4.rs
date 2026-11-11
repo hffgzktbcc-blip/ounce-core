@@ -478,15 +478,19 @@ impl Lowerer {
                 }
             }
 
-            Instruction::LoadStorePair { rt1, rt2, rn, offset, is_load, is_64, writeback, post_index } => {
+            Instruction::LoadStorePair { rt1, rt2, rn, offset, is_load, is_64, signed_word, writeback, post_index } => {
                 let base = self.x_or_sp(rn);
                 let size: u8 = if is_64 { 8 } else { 4 };
                 let updated = self.b.bin_imm(BinOp::Add, Width::W64, base, offset as u64);
                 let addr = if post_index { base } else { updated };
                 let addr2 = self.b.bin_imm(BinOp::Add, Width::W64, addr, size as u64);
                 if is_load {
-                    let v1 = self.load(size, addr, site);
-                    let v2 = self.load(size, addr2, site);
+                    let mut v1 = self.load(size, addr, site);
+                    let mut v2 = self.load(size, addr2, site);
+                    if signed_word {
+                        v1 = self.b.push(Op::Sext(32, v1));
+                        v2 = self.b.push(Op::Sext(32, v2));
+                    }
                     self.set_x(rt1, v1);
                     self.set_x(rt2, v2);
                 } else {
@@ -648,10 +652,8 @@ impl Lowerer {
                     FpOp2::Fsub => FpBinOp::Fsub,
                     FpOp2::Fmul | FpOp2::Fnmul => FpBinOp::Fmul,
                     FpOp2::Fdiv => FpBinOp::Fdiv,
-                    FpOp2::Fmax => FpBinOp::Fmax,
-                    FpOp2::Fmin => FpBinOp::Fmin,
-                    // Cranelift min/max propagate NaNs; numeric variants use the reference path.
-                    FpOp2::Fmaxnm | FpOp2::Fminnm => return Err(()),
+                    // The interpreter honours FPCR.FZ/DN for these; the compiled form cannot, so they use the reference path.
+                    FpOp2::Fmax | FpOp2::Fmin | FpOp2::Fmaxnm | FpOp2::Fminnm => return Err(()),
                 };
                 let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
                 let res = self.b.push(Op::FpBin(fop, w, a, b));
@@ -858,6 +860,7 @@ pub struct LoweredBlock {
 
 /// Decodes from `pc` and lowers up to the first terminator, untranslated instruction or
 /// [`MAX_BLOCK_INSNS`]. `None` if the first instruction cannot be read or translated.
+#[cfg(test)]
 pub fn lower_block(pc: u64, mmu: &Memory) -> Option<LoweredBlock> {
     lower_block_with(pc, mmu, true)
 }
@@ -887,8 +890,9 @@ fn lower_block_with(pc: u64, mmu: &Memory, indirect_links: bool) -> Option<Lower
                 }
             }
             Err(()) => {
-                // `insn` rejects before emitting anything.
-                debug_assert_eq!(l.b.len(), before);
+                // A rejected instruction may already have emitted operand reads; discard them so
+                // the fallback to Tier-3 sees no partial effect.
+                l.b.truncate(before);
                 if count == 0 {
                     return None;
                 }
@@ -1213,6 +1217,18 @@ impl Tier4JitEngine {
         let mut result = BlockExit::BudgetExceeded;
         while executed < max_instructions {
             self.sync_code_writes(mmu);
+            // Compiled FP arithmetic uses the host's round-to-nearest, no-flush, propagating-NaN behaviour. With
+            // FPCR.RMode, FZ or DN set the interpreter's soft-float path is the reference, and translated blocks
+            // cannot change FPCR themselves (MSR is not translated), so checking here is enough.
+            if cpu.regs.fpcr & crate::cpu::softfp::FPCR_ARITH_MASK != 0 {
+                let (n, exit) = self.run_fallback(cpu, mmu);
+                executed += n;
+                if let Some(exit) = exit {
+                    result = exit;
+                    break;
+                }
+                continue;
+            }
             let (n, exit) = match self.run_native(cpu, mmu, max_instructions - executed) {
                 Some((n, exit, false)) => (n, exit),
                 Some((n, None, true)) => {
@@ -1380,6 +1396,37 @@ mod tests {
         mmu.read_bytes(DATA, &mut buf).unwrap();
         m.write_bytes(DATA, &buf).unwrap();
         (c, m)
+    }
+
+    /// A hot FADD loop that would be compiled must still see FPCR.RMode (#363): translated code only runs with the
+    /// default FPCR, otherwise Tier-4 hands the block to the interpreter's soft-float path.
+    #[test]
+    fn hot_fp_loop_honours_fpcr_rounding_mode() {
+        let words = [
+            0xd51b4408, // msr fpcr, x8
+            0x1e212800, // loop: fadd s0, s0, s1
+            0xf1000442, // subs x2, x2, #1
+            0x54ffffc1, // b.ne loop
+            0xd4000001, // svc #0
+        ];
+        for (fpcr, want) in [(0u64, 0x3f80_0000u128), (1 << 22, 0x3f80_0000 + 200)] {
+            let init = |c: &mut Cpu| {
+                c.regs.write_x(8, fpcr);
+                c.regs.write_x(2, 200);
+                c.regs.write_q(0, 0x3f80_0000);
+                c.regs.write_q(1, 1);
+            };
+            let (mut cpu, mmu) = setup(&words);
+            init(&mut cpu);
+            let (c, m) = clone(&cpu, &mmu);
+            let reference = run_interp(c, m, 100_000);
+            assert_eq!(reference.v[0], want, "interpreter, fpcr {fpcr:#x}");
+            let (t4, engine) = run_tier4(cpu, mmu, 100_000);
+            assert_eq!(t4, reference, "Tier-4, fpcr {fpcr:#x}");
+            if fpcr == 0 {
+                assert!(engine.native_insns > 0, "the default-FPCR loop should run natively");
+            }
+        }
     }
 
     /// FPSR.QC is set by a saturating op that Tier-3/4 hand to the interpreter, stays set, and clears on `msr`.
@@ -1580,6 +1627,18 @@ mod tests {
             cpu.regs.write_x(29, 0x29);
             cpu.regs.write_x(5, 8);
         });
+    }
+
+    #[test]
+    fn ldpsw_matches_all_tiers() {
+        #[rustfmt::skip]
+        check_all_tiers(&[
+            0x12800001, // 00: movn w1, #0       (w1 = 0xFFFFFFFF)
+            0xB81F8FE1, // 04: str  w1, [sp, #-8]!
+            0xB9000BE1, // 08: str  w1, [sp, #8]
+            0x69400FE2, // 0C: ldpsw x2, x3, [sp]
+            0xD4000001, // 10: svc  #0
+        ], |_| {});
     }
 
     #[test]

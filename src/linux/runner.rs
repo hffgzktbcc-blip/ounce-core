@@ -20,11 +20,12 @@ pub struct Options {
     pub tier: CpuTier,
     pub max_instructions: u64,
     pub trace_syscalls: bool,
+    pub deterministic: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { tier: CpuTier::Tier3, max_instructions: 2_000_000_000, trace_syscalls: false }
+        Self { tier: CpuTier::Tier3, max_instructions: 2_000_000_000, trace_syscalls: false, deterministic: false }
     }
 }
 
@@ -77,7 +78,7 @@ pub fn run(elf_bytes: &[u8], argv: &[String], opts: &Options, out: &mut dyn Outp
     let mut cpu = Cpu::new();
     cpu.regs.pc = image.entry;
     cpu.regs.sp = sp;
-    let mut proc = Process::new(image.brk_start);
+    let mut proc = if opts.deterministic { Process::new_deterministic(image.brk_start) } else { Process::new(image.brk_start) };
     let (mut insns, mut syscalls) = (0u64, 0u64);
     loop {
         if insns >= opts.max_instructions {
@@ -175,6 +176,8 @@ pub fn cli(args: &[String]) -> i32 {
                     return 2;
                 }
             }
+        } else if a == "--deterministic" {
+            opts.deterministic = true;
         } else if a == "--trace-syscalls" {
             opts.trace_syscalls = true;
         } else if a.starts_with("--") && path.is_none() {
@@ -189,7 +192,7 @@ pub fn cli(args: &[String]) -> i32 {
         i += 1;
     }
     let Some(path) = path else {
-        eprintln!("usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=tier3|tier4] [--max-insns=N] [--trace-syscalls] [-- args...]");
+        eprintln!("usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [-- args...]");
         return 2;
     };
     let bytes = match std::fs::read(path) {
