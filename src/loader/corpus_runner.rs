@@ -94,12 +94,14 @@ struct Limits {
     /// Pixels (x, y) sampled from every queued frame.
     probes: Vec<(usize, usize)>,
     frame_inputs: Vec<FrameInput>,
+    /// Record a `SoakSample` after every N-th queued frame (0 = never). Used by the soak test.
+    sample_every: u64,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Self { instructions: crate::NRO_INSTRUCTION_BUDGET, host_time: Duration::from_secs(10),
-            frames: 16, trace_entries: 256, debug_bytes: 8192, queued_frames: 0, probes: Vec::new(), frame_inputs: Vec::new() }
+            frames: 16, trace_entries: 256, debug_bytes: 8192, queued_frames: 0, probes: Vec::new(), frame_inputs: Vec::new(), sample_every: 0 }
     }
 }
 
@@ -129,8 +131,46 @@ struct Report {
     queued: Vec<QueuedFrame>,
     first_present_diagnostic: Option<String>,
     post_queue_diagnostic: Option<String>,
+    /// Periodic long-run observations (see `Limits::sample_every`).
+    samples: Vec<SoakSample>,
+    /// Host milliseconds from start of run to the most recent VI queue (hang detection).
+    last_queue_ms: u64,
     // A report is an observation. A normal guest exit alone is not a compatibility verdict.
     compatibility: &'static str,
+}
+
+/// One periodic observation of a long run, taken right after a VI queue.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SoakSample {
+    queued: u64,
+    instructions: usize,
+    /// FNV-1a 64 of x0..x30, sp and pc of the running thread.
+    regs_fnv1a64: u64,
+    guest_pages: usize,
+    /// Tier-3 super-block cache entries (0 for other engines).
+    jit_blocks: usize,
+    /// Resident set of the whole test process in KiB (None where the host gives no cheap reading).
+    host_rss_kib: Option<u64>,
+}
+
+fn soak_sample(queued: u64, instructions: usize, cpu: &Cpu, mmu: &Memory, tier3: Option<&Tier3JitEngine>) -> SoakSample {
+    let mut hash = 0xcbf29ce484222325u64;
+    let words = (0..31).map(|i| cpu.regs.read_x(i as u8)).chain([cpu.regs.sp, cpu.regs.pc]);
+    for word in words {
+        for byte in word.to_le_bytes() { hash = (hash ^ byte as u64).wrapping_mul(0x100000001b3); }
+    }
+    SoakSample { queued, instructions, regs_fnv1a64: hash, guest_pages: mmu.bucket_stats().total_pages,
+        jit_blocks: tier3.map_or(0, |jit| jit.super_blocks.len()), host_rss_kib: host_rss_kib() }
+}
+
+/// Resident set size of this process. `/proc` on Linux, `ps` elsewhere (sampled sparsely).
+fn host_rss_kib() -> Option<u64> {
+    if let Ok(statm) = std::fs::read_to_string("/proc/self/statm") {
+        let pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
+        return Some(pages * 4);
+    }
+    let out = std::process::Command::new("ps").args(["-o", "rss=", "-p", &std::process::id().to_string()]).output().ok()?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
 }
 
 /// The submitted VI buffer right after the `index`-th queue (1-based).
@@ -162,7 +202,7 @@ fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
     Report { requested_engine: engine, actual_engine: engine, stop,
         instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
         preemptions: 0, svc_count: 0, svcs: Vec::new(), last_svcs: Default::default(), debug_output: String::new(),
-        input_applied_at: Vec::new(), frame_inputs_applied: Vec::new(), raw_frame: None, queued: Vec::new(), first_present_diagnostic: None, post_queue_diagnostic: None, compatibility: "not-assessed" }
+        input_applied_at: Vec::new(), frame_inputs_applied: Vec::new(), raw_frame: None, queued: Vec::new(), first_present_diagnostic: None, post_queue_diagnostic: None, samples: Vec::new(), last_queue_ms: 0, compatibility: "not-assessed" }
 }
 
 fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64, probes: &[(usize, usize)]) -> QueuedFrame {
@@ -393,6 +433,10 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
         let queued = kernel.ipc.vi_frames_queued();
         if queued > result.queued.len() as u64 {
             result.queued.push(capture_queued(&kernel, &mmu, queued, &limits.probes));
+            result.last_queue_ms = started.elapsed().as_millis() as u64;
+            if limits.sample_every != 0 && queued % limits.sample_every == 0 {
+                result.samples.push(soak_sample(queued, result.instructions, &cpu, &mmu, tier3.as_ref()));
+            }
             if limits.queued_frames != 0 && queued >= limits.queued_frames {
                 result.stop = Stop::FrameLimit;
                 break;
@@ -542,6 +586,9 @@ fn synthetic(words: &[u32], engine: Engine, limits: &Limits) -> Report {
     cpu.regs.pc = base;
     execute(cpu, mmu, kernel, engine, limits, &[]).0
 }
+
+#[path = "corpus_soak.rs"]
+mod corpus_soak;
 
 #[test]
 fn corpus_runner_returns_from_functions_but_exits_only_on_svc() {

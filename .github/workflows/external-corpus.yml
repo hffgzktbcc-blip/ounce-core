@@ -518,6 +518,52 @@ jobs:
           retention-days: 30
 
 
+  corpus-soak-smoke:
+    # CI-sized soak (docs/soak.md): four registered programs, up to 300 frames or 90 s per engine,
+    # interpreter vs Tier-3. Fails on a crash, hang, unbounded growth or divergence not listed in
+    # tests/corpus/soak-known.json. The full-corpus soak is a manual run (scripts/soak_corpus.py).
+    name: Corpus soak smoke
+    needs: first-frame-oracles
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install runtime build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+      - uses: actions/download-artifact@v4
+        with:
+          name: corpus-nros
+          path: ${{ runner.temp }}/soak-nros
+      - name: Build the soak test
+        run: cargo test --release --locked corpus_soak --no-run --message-format=json > "$RUNNER_TEMP/soak-build.jsonl"
+      - name: Soak smoke
+        run: |
+          set -euo pipefail
+          executable=$(python3 -c '
+          import json, sys
+          paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
+                   if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
+                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
+          assert len(paths) == 1, paths
+          print(paths.pop())' "$RUNNER_TEMP/soak-build.jsonl")
+          python3 scripts/soak_corpus.py --smoke --executable "$executable" \
+            --builds "$RUNNER_TEMP/soak-nros" --evidence "$RUNNER_TEMP/soak-evidence"
+      - name: Retain soak evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-soak-smoke
+          path: ${{ runner.temp }}/soak-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
   interaction-host-gpu:
     name: Menu-to-Triangle interaction (${{ matrix.os }})
     needs: first-frame-oracles
