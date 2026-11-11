@@ -16,7 +16,7 @@
       "stage": "measured",
       "evidence": "Seeded single-instruction hardware fuzzing and three-engine comparisons; bounded results retained",
       "evidence_url": "docs/verify/insn-fuzzer/README.md",
-      "next": "Qualify ARM64 fuzzer CI; then expand per-family and sequence coverage (vision step 2)"
+      "next": "ARM64 fuzzer CI is qualified (hosted Apple Silicon job passed 2026-11-08); next expand per-family and sequence coverage (vision step 2)"
     },
     {
       "id": "workflow",
@@ -32,7 +32,7 @@
       "stage": "measured",
       "evidence": "R1, R2 and R4 done: retained SDL2/audio diagnosis (failure-to-reproduction walkthrough, one externally grounded developer issue, audio-case result) and one hardware-observed instruction mismatch with exact register snapshots",
       "evidence_url": "docs/INSTRUCTION_DIAGNOSIS.md",
-      "next": "Repair the measured arithmetic discrepancy; arbitrary-program first divergence remains unestablished"
+      "next": "The measured vector-multiply discrepancy is repaired; the scalar-FP sibling is open as #362; arbitrary-program first divergence remains unestablished"
     },
     {
       "id": "distribution",
