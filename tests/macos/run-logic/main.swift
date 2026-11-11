@@ -91,3 +91,16 @@ check(different.summary(harness: lz4, engine: .tier3, hostIsARM64: true).hasPref
 let fp = catalog[catalog.firstIndex { $0.name == "fp-instructions" }!]
 check(different.summary(harness: fp, engine: .tier3, hostIsARM64: false).contains("ARM64 host"), "arm64 caveat")
 print("Run settings, diagnosis and host-comparison checks passed.")
+
+// A successful runtime exit can still yield a reportable verification mismatch.
+let mismatchSummary = different.summary(harness: lz4, engine: .tier3, hostIsARM64: true)
+let mismatchReport = IssueReport(program: "lz4.nro", engine: .tier3, diagnosis: hello,
+    appVersion: "test", hostOS: "macOS", home: "/Users/sam",
+    comparisonSummary: mismatchSummary + "\n/Users/sam/private")
+check(mismatchReport.body.contains("Line 2") && mismatchReport.body.contains("reference: b") && mismatchReport.body.contains("this run:  X"), "comparison report includes both results and differing lines")
+check(!mismatchReport.body.contains("/Users/sam") && mismatchReport.body.contains("~/private"), "comparison is redacted")
+let observed = URLComponents(url: mismatchReport.url!, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "observed" }!.value!
+check(observed.contains("Mismatch.") && observed.contains("reference: b") && !observed.contains("/Users/sam"), "issue form includes redacted comparison")
+let errorReport = IssueReport(program: "lz4.nro", engine: .tier3, diagnosis: failed,
+    appVersion: "test", hostOS: "macOS", home: "/Users/sam", comparisonSummary: "No output; no comparison was made.")
+check(errorReport.body.contains("No output; no comparison was made."), "verification errors retain comparison context")
