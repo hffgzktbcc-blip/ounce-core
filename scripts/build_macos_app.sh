@@ -6,14 +6,6 @@ if [[ "$(uname -s)" != Darwin ]]; then
   exit 1
 fi
 root="$(cd "$(dirname "$0")/.." && pwd)"
-missing=()
-command -v cargo >/dev/null 2>&1 || missing+=("Rust (install from https://rustup.rs, then open a new terminal)")
-xcrun --find swiftc >/dev/null 2>&1 || missing+=("Xcode command-line tools (run: xcode-select --install)")
-if (( ${#missing[@]} )); then
-  echo "Cannot build Ounce Core.app. Missing:" >&2
-  printf '  - %s\n' "${missing[@]}" >&2
-  exit 1
-fi
 app="${1:-$root/dist/Ounce Core.app}"
 case "$app" in *.app) ;; *) echo "Output must be an .app bundle path." >&2; exit 1 ;; esac
 if [[ -e "$app" ]]; then
@@ -62,6 +54,3 @@ if ! ditto "$bundle" "$app" || ! codesign --verify --deep --strict "$app"; then
   exit 1
 fi
 echo "Built $app"
-echo "Next: open \"$app\""
-echo "  The app is ad-hoc signed, not notarized. If macOS blocks the first open, Control-click the app, choose Open, then confirm."
-echo "  Command line: \"$app/Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core\" help"
