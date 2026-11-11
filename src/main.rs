@@ -55,7 +55,7 @@ fn main() {
             std::process::exit(2);
         }
     }
-    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4|native>` may appear anywhere; strip them so the
+    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<interpreter|tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     let mut after_separator = false;
@@ -72,7 +72,7 @@ fn main() {
         if let Some(value) = arg.strip_prefix("--cpu=") {
             match cpu::CpuTier::parse(value) {
                 Some(tier) => cpu::CpuTier::set_cli_override(tier),
-                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected tier3, tier4 or native); ignoring."),
+                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected interpreter, tier3, tier4 or native); ignoring."),
             }
             continue;
         }
@@ -325,7 +325,7 @@ fn print_usage() {
     println!("  {}RUN AND CHECK A PROGRAM (start here):{}", s.bold, s.reset);
     println!("    {}ui{} | {}lab{}               Open the local workbench: drop a .nro, compare engines (and this Mac) [--port N --no-open --dir D]", s.green, s.reset, s.green, s.reset);
     println!("    {}run-nro{} <file> [args] [--gui]  Run a homebrew .nro; if it stops early, the output says why and what to do next", s.green, s.reset);
-    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
+    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
     println!("    {}diverge{} <prog.nro>            Replay the program's instructions on this machine's CPU and name the first disagreement (AArch64 hosts)", s.green, s.reset);
     println!("    {}run{} <file|dir> [args] [--gui]  Like run-nro, but also accepts .xci, .nsp, .nca, .nso and unencrypted loose folders", s.green, s.reset);
     println!();
@@ -639,7 +639,7 @@ fn run_vm_internal(
         println!("[CPU] Block engine: {}", e.name());
     }
     // `OUNCE_TRACE=<file>` records register-only instructions for `ounce-core diverge`. With a block engine
-    // selected (`--cpu=tier3|tier4`) it runs one-instruction slices so each recorded instruction is
+    // selected (`--cpu=interpreter|tier3|tier4`) it runs one-instruction slices so each recorded instruction is
     // executed by that engine's own translation (single-instruction blocks, not multi-instruction fusion).
     let mut tracer = trace::Tracer::from_env();
 
@@ -649,7 +649,7 @@ fn run_vm_internal(
             break;
         }
 
-        // With an explicit `--cpu=tier3|tier4` the block engine runs the guest in slices that end at the next
+        // With an explicit `--cpu=interpreter|tier3|tier4` the block engine runs the guest in slices that end at the next
         // preemption point, a budget limit or an SVC; otherwise one instruction at a time (the default).
         let before = instructions_executed;
         let (stepped, executed) = match engine.as_mut() {
@@ -677,7 +677,15 @@ fn run_vm_internal(
                 }
                 match exit {
                     cpu::tier2_jit::BlockExit::Fault { pc: fault_pc } => {
-                        (Err(format!("{} fault at {fault_pc:#x} (slice began at {pc:#x})", e.name())), count)
+                        let detail = cpu.last_error.take().or_else(|| {
+                            cpu.regs.pc = fault_pc;
+                            cpu.step(&mut mmu).err().map(|err| err.to_string())
+                        });
+                        let msg = match detail {
+                            Some(reason) => format!("{} fault at {fault_pc:#x} (slice began at {pc:#x}): {reason}", e.name()),
+                            None => format!("{} fault at {fault_pc:#x} (slice began at {pc:#x})", e.name()),
+                        };
+                        (Err(msg), count)
                     }
                     cpu::tier2_jit::BlockExit::Svc { svc_id } => (Ok(StepResult::Svc(svc_id)), count),
                     _ if count == 0 => (Err(format!("{} made no progress at {pc:#x}", e.name())), 0),
@@ -3659,7 +3667,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("Failed to read file: {}", e);
+            eprintln!("[Loader Error] Failed to read file '{}': {}", path, e);
             std::process::exit(1);
         }
     };
@@ -3741,7 +3749,21 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
             }
         }
         Err(e) => {
-            eprintln!("[Loader Error] {}", e);
+            if nro_only && bytes.starts_with(b"\x7fELF") {
+                eprintln!(
+                    "[Loader Error] '{}' is an ELF binary, not a Switch homebrew .nro ({}). Static AArch64 Linux ELFs run with: ounce-core run-elf {}",
+                    path, e, path
+                );
+            } else if nro_only && matches!(e, loader::LoadError::TooSmall) {
+                eprintln!(
+                    "[Loader Error] '{}' is {} bytes (an NRO0 header requires at least 128 bytes): {}",
+                    path,
+                    bytes.len(),
+                    e
+                );
+            } else {
+                eprintln!("[Loader Error] {}", e);
+            }
             std::process::exit(1);
         }
     }
@@ -3793,13 +3815,32 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> bool {
                         println!("[VM] VSync / Frame {frames} presented.");
                     }
                     SvcResult::ExitProcess => { completed = true; println!("[VM] Guest exited (svcExitProcess)."); break; }
-                    SvcResult::Break { reason, .. } => { println!("[VM] Hit svcBreak: reason 0x{reason:X}"); break; }
-                    SvcResult::Unhandled(id) => { println!("[VM] Stopping on unhandled SVC 0x{id:X}"); break; }
+                    SvcResult::Break { reason, info1, info2 } => {
+                        println!("[VM] Hit svcBreak: reason=0x{reason:X}, info1=0x{info1:X}, info2=0x{info2:X}");
+                        println!("[VM] Break PC: 0x{:016X}", cpu.regs.pc);
+                        if info2 == 4 {
+                            match mmu.read_u32(info1) {
+                                Ok(result) => println!(
+                                    "[VM] Break result: 0x{result:08X} (module={}, description={})",
+                                    result & 0x1FF,
+                                    (result >> 9) & 0x1FFF
+                                ),
+                                Err(error) => println!("[VM] Break result unreadable: {error}"),
+                            }
+                        }
+                        break;
+                    }
+                    SvcResult::Unhandled(id) => { println!("[VM] Stopping on unhandled SVC #0x{id:02X}."); break; }
                 }
             }
             NceExit::Preempted => kernel.scheduler.preempt(&mut cpu),
             NceExit::Fault { pc, signal, addr } => {
-                println!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
+                if let Some(reason) = cpu.last_error.take().filter(|_| signal == 0) {
+                    println!("[VM Error] {reason}");
+                    println!("  Final PC: 0x{pc:016X}");
+                } else {
+                    println!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
+                }
                 break;
             }
             NceExit::Error(e) => { eprintln!("[NCE] {e}"); break; }

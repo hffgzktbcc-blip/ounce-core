@@ -97,6 +97,16 @@ Preserve fixed expectations, input identities and failures when repairing behavi
 Keep `src/` safe Rust; unsafe operations remain confined to existing isolated crate
 boundaries. Describe actual evidence, supported inputs and known limits plainly.
 
+## AI-assisted contributions
+
+Contributions prepared with AI assistants (LLMs, coding assistants, or agents) are welcome under the following conditions:
+
+- **Disclose AI use**: Note the tool or model used and what it did in your pull request description.
+- **Human responsibility**: The submitter is accountable for the change. You must understand the proposed code, verify that it works, and be able to explain and defend it during review. Do not submit unreviewed machine output.
+- **Test results over claims**: Run focused checks locally and report the exact commands and output. Never fabricate compatibility or performance claims; state untested boundaries and known limits plainly.
+- **Integrity and provenance**: Follow [AGENTS.md](AGENTS.md) and repository safety rules. Do not commit keys, retail content, firmware, dumps, or incompatible licensed code.
+- **Safe Rust**: Keep `src/` safe Rust; `unsafe` operations remain confined to existing isolated crate boundaries.
+
 ## Community guides
 
 New to the project? Read [Start here](docs/community/START_HERE.md) for a five-step path. The

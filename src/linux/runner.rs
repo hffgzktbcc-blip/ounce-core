@@ -192,7 +192,7 @@ pub fn cli(args: &[String]) -> i32 {
         i += 1;
     }
     let Some(path) = path else {
-        eprintln!("usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [-- args...]");
+        eprintln!("usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [-- args...]");
         return 2;
     };
     let bytes = match std::fs::read(path) {

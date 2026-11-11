@@ -1,0 +1,13 @@
+{
+  "note": "Soak findings (scripts/soak_corpus.py) that are understood, filed as issues and not fixed yet. A finding is matched by prefix; anything else fails the soak. Remove an entry when its issue is fixed.",
+  "known": {
+    "exception-handler": [
+      {"finding": "Interpreter: crash (Fault { pc: 2147484100", "issue": "https://github.com/hffgzktbcc-blip/ounce-core/issues/386"},
+      {"finding": "Tier3: crash (Fault { pc: 2147484100", "issue": "https://github.com/hffgzktbcc-blip/ounce-core/issues/386"}
+    ],
+    "applet-software-keyboard": [
+      {"finding": "Interpreter: crash (Break { reason: 3735883972", "issue": "https://github.com/hffgzktbcc-blip/ounce-core/issues/387"},
+      {"finding": "Tier3: crash (Break { reason: 3735883972", "issue": "https://github.com/hffgzktbcc-blip/ounce-core/issues/387"}
+    ]
+  }
+}

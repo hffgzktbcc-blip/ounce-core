@@ -122,7 +122,7 @@ struct Diagnosis: Equatable {
             return Diagnosis(kind: .unimplementedInstruction,
                 headline: "The program used an ARM64 instruction Ounce Core does not implement yet.",
                 explanation: "At address \(pc) the CPU fetched the instruction word \(word) and the decoder has no rule for it. This is a gap in Ounce Core, not necessarily a bug in your program, and nothing after this point can be trusted.",
-                nextStep: "Look up the word \(word) in the Arm Architecture Reference Manual, and check docs/verify/ for the decoder census, which ranks missing instructions. Running with the native engine on an Apple Silicon Mac shows what real hardware does with the same program.",
+                nextStep: "Look up the word \(word) in the Arm Architecture Reference Manual, and check docs/verify/ for the decoder census, which ranks missing instructions. Running with the native engine on an Apple Silicon Mac shows what real hardware does with the same program. To report this gap, use .github/ISSUE_TEMPLATE/emulation_bug.yml and include the instruction word \(word), PC \(pc), and the log line below.",
                 evidence: [line])
         }
         if let line = first("Execution budget reached") {
@@ -138,16 +138,17 @@ struct Diagnosis: Equatable {
             return Diagnosis(kind: .unhandledSVC,
                 headline: "The program asked the system for something Ounce Core does not provide.",
                 explanation: "It made supervisor call \(id) (an SVC, the way a program requests a kernel service) and the kernel model has no handler for it, so the run stopped.",
-                nextStep: "Check docs/svc-coverage.md for call \(id). A missing service is a gap in Ounce Core.",
+                nextStep: "Check docs/svc-coverage.md for call \(id). A missing service is a gap in Ounce Core; report it with .github/ISSUE_TEMPLATE/emulation_bug.yml and include the line below.",
                 evidence: [line])
         }
         if let line = first("Hit svcBreak") {
             var evidence = [line]
+            if let pc = first("Break PC:") { evidence.append(pc) }
             if let result = first("Break result:") { evidence.append(result) }
             return Diagnosis(kind: .guestBreak,
                 headline: "The program stopped itself on purpose.",
                 explanation: "It called svcBreak, which programs use to report a fatal error (an assertion or an unrecoverable service error). Ounce Core ran the program correctly up to its own error exit; the cause is usually a service result the program did not like.",
-                nextStep: "Read the lines just above the break in the session log for the last service request the program made.",
+                nextStep: "Read the lines just above the break in the session log for the last service request the program made. If Break result is shown below, its module and description identify the Horizon error code.",
                 evidence: evidence)
         }
         if let line = first("CPU Halted") {
@@ -170,7 +171,7 @@ struct Diagnosis: Equatable {
             return Diagnosis(kind: .fault,
                 headline: "The program caused a fault.",
                 explanation: "The CPU or memory model rejected an operation (such as reading unmapped memory or breaking an alignment rule). The final program counter shows where it stopped.",
-                nextStep: "Run it on another engine to see whether they agree. A fault that every engine reports points at the program, one only the interpreter reports points at Ounce Core.",
+                nextStep: "Run it on another engine to see whether they agree. A fault that every engine reports points at the program, one only the interpreter reports points at Ounce Core (use ounce-core diverge <file.nro> and .github/ISSUE_TEMPLATE/emulation_bug.yml).",
                 evidence: evidence)
         }
         if let line = first("Time limit reached") {
