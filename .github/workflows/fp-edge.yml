@@ -92,7 +92,7 @@ jobs:
           mkdir "$RUNNER_TEMP/tf" && cd "$RUNNER_TEMP/tf"
           git clone -q https://github.com/ucb-bar/berkeley-softfloat-3.git && git -C berkeley-softfloat-3 checkout -q 07ebd29db0cfb55723a79fbbffe99103ef38e305
           git clone -q https://github.com/ucb-bar/berkeley-testfloat-3.git && git -C berkeley-testfloat-3 checkout -q a9c849f1b0eb0264b626d9686ffae167d996e3be
-          make -C berkeley-softfloat-3/build/Linux-x86_64-GCC SPECIALIZE_TYPE=ARM-VFPv2 -j"$(nproc)" > sf.log 2>&1 || { tail -30 sf.log; exit 1; }
+          make -C berkeley-softfloat-3/build/Linux-x86_64-GCC -j"$(nproc)" > sf.log 2>&1 || { tail -30 sf.log; exit 1; }
           make -C berkeley-testfloat-3/build/Linux-x86_64-GCC -j"$(nproc)" testfloat_gen > tf.log 2>&1 || { tail -30 tf.log; exit 1; }
           echo "TESTFLOAT_GEN=$PWD/berkeley-testfloat-3/build/Linux-x86_64-GCC/testfloat_gen" >> "$GITHUB_ENV"
       - name: Replay TestFloat vectors through the interpreter and Tier-3
