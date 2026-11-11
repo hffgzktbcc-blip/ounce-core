@@ -29,6 +29,7 @@ prioritized backlog, not a permission system. Historical notes do not add rules.
 - Do not commit keys, retail content, firmware, leaked/private material, or
   incompatible licensed code. Keep port notices/provenance. Keep `src/` safe Rust
   and unsafe operations in the existing isolated crate boundaries.
+- Provenance has been audited; do not re-audit or re-inventory. Only the owner/specialist items in docs/PROVENANCE.md remain.
 
 Usage can run out at any moment, so make your state recoverable before you need to:
 - At session start: `scripts/handoff.sh resume` (see where earlier agents stopped; `--apply NAME`
