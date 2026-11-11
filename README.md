@@ -18,6 +18,8 @@
 
 **[Try it in your browser →](https://hffgzktbcc-blip.github.io/ounce-core/playground/)**
 
+**[Have five minutes? Run an outside test or pick a no-code task →](docs/community/TRY_THIS_WEEK.md)**
+
 **Understand why programs fail. Prove when they work.**
 
 An open-source ARM64 execution, debugging and verification platform in safe Rust.
