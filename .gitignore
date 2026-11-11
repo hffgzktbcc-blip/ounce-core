@@ -16,3 +16,6 @@ dumps/
 
 # Interpreter caches are not execution inputs.
 __pycache__/
+
+# Generated Quickstart demo
+/demo/

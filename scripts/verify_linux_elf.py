@@ -22,7 +22,7 @@ from verify_differential import REPO, VERIFY, fetch_upstream, upstream_complete
 def execution_verdict(expected, actual, returncode, stderr, engine):
     if returncode != 0:
         return 'execution-failed'
-    selected = {'tier3': 'Tier-3', 'tier4': 'Tier-4'}[engine]
+    selected = {'interpreter': 'Interpreter', 'tier3': 'Tier-3', 'tier4': 'Tier-4'}[engine]
     summaries = re.findall(r'^\[run-elf\] engine=(\S+) instructions=\d+ syscalls=\d+$', stderr, re.M)
     if summaries != [selected]:
         return 'engine-not-confirmed'
@@ -41,6 +41,7 @@ def main():
     ap.add_argument('--ounce', type=Path, default=REPO / 'target/release' / ('ounce-core.exe' if sys.platform == 'win32' else 'ounce-core'))
     ap.add_argument('--harness', default='lz4', help='harness name in docs/verify/differential.json')
     ap.add_argument('--upstream-dir', type=Path, help='optional clean checkout at the manifest commit')
+    ap.add_argument('--engines', nargs='+', choices=['interpreter', 'tier3', 'tier4'], default=['tier3', 'tier4'])
     ap.add_argument('--seconds', type=int, default=300, help='deadline per build/execution step')
     ap.add_argument('--budget', type=int, default=100_000_000)
     ap.add_argument('--qemu', help='optional qemu-user command (for example qemu-aarch64): run the same ELF as an independent AArch64 reference. '
@@ -136,7 +137,7 @@ def main():
                 report['host_vs_qemu_note'] = 'host and qemu outputs ' + ('match' if q.stdout == reference.stdout else 'differ (architecture-dependent results; engines compared with qemu)')
         elif h.get('elf_reference') == 'qemu':
             raise RuntimeError('this harness is compared with qemu-user output; pass --qemu')
-        for engine in ('tier3', 'tier4'):
+        for engine in a.engines:
             r = step(engine, [str(ounce), 'run-elf', str(work / elf), f'--cpu={engine}', f'--max-insns={a.budget}', '--trace-syscalls'])
             report['checks'][engine] = execution_verdict(expected, r.stdout, r.returncode,
                                                          r.stderr.decode('utf-8', 'replace'), engine)

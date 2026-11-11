@@ -28,7 +28,7 @@ fn go(elf: &[u8], args: &[&str], tier: CpuTier) -> (Report, String) {
     (r, String::from_utf8_lossy(&cap.out).into_owned())
 }
 
-const TIERS: [CpuTier; 2] = [CpuTier::Tier3, CpuTier::Tier4];
+const TIERS: [CpuTier; 3] = [CpuTier::Interpreter, CpuTier::Tier3, CpuTier::Tier4];
 
 #[test]
 fn hello_world() {
