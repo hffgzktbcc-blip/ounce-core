@@ -251,25 +251,46 @@ Any other code, ported or new, that genuinely needs `unsafe` goes into an isolat
 
 Build from source using **Rust 1.85+ (edition 2024)** on a supported Linux, macOS or Windows host. OS-specific development libraries may be required on Linux; see the expanded setup notes below.
 
-**macOS binaries:** no prebuilt macOS download is offered for now. Build from source on a Mac instead (see above). The macOS build links Apple-SDK-derived `objc2` crates, and whether redistributing a compiled binary that includes them is allowed is an open question; see [docs/PROVENANCE.md](docs/PROVENANCE.md) (Specialist items). Linux and Windows builds are not affected.
+**macOS binaries:** no prebuilt macOS download is offered for now. Build from source on a Mac instead (see below). The macOS build links Apple-SDK-derived `objc2` crates, and whether redistributing a compiled binary that includes them is allowed is an open question; see [docs/PROVENANCE.md](docs/PROVENANCE.md) (Specialist items). Linux and Windows builds are not affected.
+
+### 1. Install
 
 ```bash
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core
 
-# Run the self-checks
+# Build the runtime executable
+cargo build --release
+
+# Optional: compile native execution on ARM64 hosts (Apple Silicon / Linux ARM64)
+cargo build --release --features "nce native-jit"
+```
+
+### 2. Run your first program
+
+Verify that your build works by running the self-checks:
+
+```bash
 cargo test --release
 cargo run --release -- test
+```
 
-# Explore the runtime
-cargo run --release -- info
-cargo run --release -- demo-dir ./demo --gui
+Execute an actual AArch64 program:
+
+```bash
+# Option A: Run a static AArch64 Linux ELF binary
+cargo run --release -- run-elf tests/linux-elf/bin/hello.elf
+
+# Option B: Run a homebrew AArch64 NRO fixture
+cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture
+
+# Option C: Open the local interactive verification workbench
+cargo run --release -- ui
 ```
 
 **Check a program against the three engines (about five minutes once built):**
 
 ```bash
-cargo build --release --features "nce native-jit"   # native needs an ARM64 host; drop the features otherwise
 for cpu in tier3 tier4 native; do
   OUNCE_NRO_BUDGET=100000000 \
     target/release/ounce-core run-nro tests/fixtures/nro/hello/hello.nro --present=headless --cpu=$cpu
@@ -287,6 +308,33 @@ cargo run --release --features gpu-present -- gfx --present=gpu
 # Tier-4 native recompiler host self-test
 cargo run --release --features native-jit -- jit-selftest
 ```
+
+### 3. When something fails: diagnosis and reproduction
+
+When an execution stops, fails, or produces unexpected output:
+
+- **Inspect error messages:** An unhandled SVC, unimplemented opcode, or memory fault prints the program counter (PC), opcode word, and register snapshot. If a loop exceeds the instruction budget, increase it with `OUNCE_NRO_BUDGET=100000000`.
+- **Pinpoint divergence against real hardware:** On an AArch64 host, run `diverge` to compare execution against the host CPU and locate the exact first instruction where the emulator and hardware disagree:
+  ```bash
+  target/release/ounce-core diverge path/to/program.nro
+  ```
+- **Package a reproducible failure dossier:** Use the diagnosis CLI to generate a portable dossier with `diagnosis.json`, `comparison.json`, and `REPLAY.md` without private paths or credentials:
+  ```bash
+  python3 scripts/diagnosis_cli.py example --output ./my-diagnosis
+  ```
+  The resulting dossier packages exact inputs, revisions, and replay instructions. See [docs/DIAGNOSIS_CLI.md](docs/DIAGNOSIS_CLI.md) and [docs/FAILURE_TO_REPRODUCTION.md](docs/FAILURE_TO_REPRODUCTION.md).
+
+### 4. How to report findings
+
+- **Report emulation bugs:** If a program behaves differently in Ounce-Core than on real ARM64 hardware or in a reference build, open an issue using the [Emulation bug template](https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=emulation_bug.yml). Provide:
+  1. Pinned program name, commit or version, and build command.
+  2. Engine used (`--cpu=tier3`, `--cpu=tier4`, or `--cpu=native`).
+  3. Expected reference output from real hardware or host build.
+  4. Observed output, including the first differing line or `[VM Error]` line.
+  5. Exact command line, host OS/architecture, and Git commit (`git rev-parse HEAD`).
+- **Submit differential test runs:** Run `python3 scripts/verify_differential.py --json my-results.json` on an ARM64 computer and report your findings on [Issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248) using the [External Test Report Template](docs/community/EXTERNAL_TEST_REPORT.md).
+- **Propose a new test program:** Suggest an open-source library or test case using the [Program request template](https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=program_request.yml).
+- **Responsible reporting guardrails:** Do not submit or link retail keys, copyrighted firmware, commercial game dumps, or proprietary assets. Only open-source or synthetic test material is accepted.
 
 Use **self-authored, licensed or synthetic material** only. Do not supply retail keys, firmware or commercial game dumps.
 
@@ -321,9 +369,42 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 
 `--present=auto|gpu|minifb|headless` (or `OUNCE_PRESENT`) picks the presentation backend; `auto` tries the GPU first when the feature is compiled in. `WGPU_BACKEND` (`vulkan`, `metal`, `dx12`, `gl`) and `WGPU_ADAPTER_NAME` select the GPU, and `OUNCE_VSYNC=0` disables vsync. `--cpu=tier3|tier4` (or `OUNCE_CPU`) selects the block engine for the Stage 20 benchmark and for `run`/`run-nro` (with no flag, `run-nro` executes one instruction at a time in the interpreter). Tier-4 requires `--features native-jit`; the native engine is not currently used for general `run` workloads.
 
-</details>
+### Native Mac launcher (local preview)
 
----
+With Rust and Xcode command-line tools installed, build and install locally:
+
+```sh
+scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.app"
+```
+
+Open **Ounce Core.app**. The first screen explains what the app does; drop a
+homebrew `.nro` on it or choose **Open Program…**. Static AArch64 Linux ELF programs run in the CLI with `ounce-core run-elf <file>`.
+
+- **Run Settings:** pick the engine (interpreter `tier3`, JIT `tier4`, or `native`) and an
+  instruction budget (blank = the runtime default of 50 million, the `OUNCE_NRO_BUDGET` mechanism).
+  The bundled runtime is built with the `nce` and `native-jit` features, so `tier4` and `native`
+  work on an Apple Silicon Mac; elsewhere the runtime falls back to `tier3`, and the app says so
+  instead of reporting a pass. `native` runs headless with no window.
+- **Diagnosis:** when a run ends, the app reads the runtime's own log and explains it in plain
+  language: unimplemented instruction word, unhandled SVC, program break, fault, budget exhausted,
+  load error. It reads what the runtime printed; it does not re-execute anything.
+- **Verify against Host…:** for harness programs named after the harnesses in
+  [docs/verify/differential.json](docs/verify/differential.json) (for example `lz4.nro`), runs the NRO
+  headless on the chosen engine and compares its output byte for byte with the committed
+  `expected-host.txt`. It does not rebuild the host reference; use `scripts/verify_differential.py` for that.
+- **Report This Problem…** appears after a failed run. It copies a report (file name, engine, command, OS and the
+  runtime's stop lines; your home folder is replaced by `~`) and opens the issue form with those fields filled in.
+  Nothing is sent until you submit the form.
+- **Try the Demo** opens the bundled diagnostic; **Stop Session** ends the current session.
+- **View Check Results…** opens a saved evidence report.
+- **Show Session Details** reveals **Choose SD Card Folder…**, which selects the host folder
+  mounted as `sdmc:`, and **Open Log in Finder**. Logs and the default SD folder live under
+  `~/Library/Application Support/Ounce Core/`.
+
+The app is locally ad-hoc signed, not a notarized distribution release, and no
+prebuilt download is offered. Supported programs remain those backed by the compatibility
+oracles; this launcher does not expand that claim. Details, tests and untested GUI areas:
+[docs/MAC_APP.md](docs/MAC_APP.md).
 
 ## The road ahead
 
@@ -454,40 +535,3 @@ ounce-core/
 <sub>Ounce-Core · experimental systems research · maintained in the open</sub>
 
 </div>
-
-### Native Mac launcher (local preview)
-
-With Rust and Xcode command-line tools installed, build and install locally:
-
-```sh
-scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.app"
-```
-
-Open **Ounce Core.app**. The first screen explains what the app does; drop a
-homebrew `.nro` on it or choose **Open Program…**. Static AArch64 Linux ELF programs run in the CLI with `ounce-core run-elf <file>`.
-
-- **Run Settings:** pick the engine (interpreter `tier3`, JIT `tier4`, or `native`) and an
-  instruction budget (blank = the runtime default of 50 million, the `OUNCE_NRO_BUDGET` mechanism).
-  The bundled runtime is built with the `nce` and `native-jit` features, so `tier4` and `native`
-  work on an Apple Silicon Mac; elsewhere the runtime falls back to `tier3`, and the app says so
-  instead of reporting a pass. `native` runs headless with no window.
-- **Diagnosis:** when a run ends, the app reads the runtime's own log and explains it in plain
-  language: unimplemented instruction word, unhandled SVC, program break, fault, budget exhausted,
-  load error. It reads what the runtime printed; it does not re-execute anything.
-- **Verify against Host…:** for harness programs named after the harnesses in
-  [docs/verify/differential.json](docs/verify/differential.json) (for example `lz4.nro`), runs the NRO
-  headless on the chosen engine and compares its output byte for byte with the committed
-  `expected-host.txt`. It does not rebuild the host reference; use `scripts/verify_differential.py` for that.
-- **Report This Problem…** appears after a failed run. It copies a report (file name, engine, command, OS and the
-  runtime's stop lines; your home folder is replaced by `~`) and opens the issue form with those fields filled in.
-  Nothing is sent until you submit the form.
-- **Try the Demo** opens the bundled diagnostic; **Stop Session** ends the current session.
-- **View Check Results…** opens a saved evidence report.
-- **Show Session Details** reveals **Choose SD Card Folder…**, which selects the host folder
-  mounted as `sdmc:`, and **Open Log in Finder**. Logs and the default SD folder live under
-  `~/Library/Application Support/Ounce Core/`.
-
-The app is locally ad-hoc signed, not a notarized distribution release, and no
-prebuilt download is offered. Supported programs remain those backed by the compatibility
-oracles; this launcher does not expand that claim. Details, tests and untested GUI areas:
-[docs/MAC_APP.md](docs/MAC_APP.md).

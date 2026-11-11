@@ -22,14 +22,18 @@
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0%,#294b3a 0,transparent 40%),var(--bg);color:var(--fg);font:16px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}
     a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:3px solid #f9e9a3;outline-offset:3px}
     main,footer{max-width:1000px;margin:auto;padding:0 24px}header{padding:14px 24px;border-bottom:1px solid var(--edge)}nav{max-width:1000px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap}nav div{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}nav a{color:var(--fg);text-decoration:none;display:inline-flex;align-items:center;min-height:44px;padding:8px 8px}nav a:hover,a:hover{text-decoration:underline}
-    .hero{padding:40px 0 18px}.hero img{width:100%;height:auto;border-radius:18px;border:1px solid var(--edge)}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.15;letter-spacing:-.04em;margin:30px 0 16px}h2{font-size:1.5rem}p{color:var(--muted)}
+    .hero{padding:40px 0 18px}.hero img{width:100%;height:auto;border-radius:18px;border:1px solid var(--edge)}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.15;letter-spacing:-.04em;margin:30px 0 16px}h2{font-size:1.5rem}h3{font-size:1.18rem;margin:1.4em 0 .5em}p{color:var(--muted)}
     .tag{font-size:.75rem;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);font-weight:800}.button{display:inline-flex;align-items:center;min-height:44px;background:var(--accent);color:#10251a;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:10px;margin:8px 10px 8px 0}.button.secondary{background:transparent;color:var(--fg);border:1px solid var(--edge-strong)}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:25px 0 48px}.card{background:#172c23;border:1px solid var(--edge);border-radius:14px;padding:21px}.card h3{margin:0 0 8px}.card p{margin:0}.links{padding:0 0 60px}.links p{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}a{color:var(--accent)}footer{border-top:1px solid var(--edge);padding-top:25px;padding-bottom:50px;color:var(--muted);font-size:.9rem}
+    code{background:#10251a;padding:2px 6px;border-radius:4px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em;color:#e3fce7}
+    pre{background:#07130e;border:1px solid var(--edge);padding:14px 18px;border-radius:10px;overflow-x:auto;max-width:100%}
+    pre code{background:none;padding:0;color:#e1f5e6}
+    ul,ol{padding-left:1.5rem;color:var(--muted)}li{margin:8px 0}strong{color:var(--fg)}
     @media(max-width:768px){a,button{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:8px 6px}}
   </style>
 </head>
 <body>
-  <header><nav aria-label="Primary navigation"><strong>OUNCE-CORE</strong><div><a href="index.html">Home</a><a href="playground/">ARM64 playground</a><a href="lab.html">Workbench design</a><a href="results.html">Results</a><a href="research.html">Research paper</a><a href="contribute.html">Contribute</a><a href="maintainers.html">For maintainers</a><a href="status.html">Status</a><a href="press.html">Press</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">Repository</a></div></nav></header>
+  <header><nav aria-label="Primary navigation"><strong>OUNCE-CORE</strong><div><a href="index.html">Home</a><a href="#get-started">Get started</a><a href="playground/">ARM64 playground</a><a href="lab.html">Workbench design</a><a href="results.html">Results</a><a href="research.html">Research paper</a><a href="contribute.html">Contribute</a><a href="maintainers.html">For maintainers</a><a href="status.html">Status</a><a href="press.html">Press</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">Repository</a></div></nav></header>
   <main>
     <section class="hero">
       <img src="../assets/ounce-core-vista.png" onerror="this.onerror=null;this.src='assets/ounce-core-vista.png'" alt="Ounce-Core banner">
@@ -37,16 +41,70 @@
       <h1>Run ARM64 programs anywhere, and prove the answer matches real hardware</h1>
       <p><strong>Ounce-Core</strong> is an open-source ARM64 execution lab written in safe Rust. It runs a program on three CPU engines (an interpreter, a JIT and native execution) and compares the result with a reference build on real hardware. When they disagree it points to where.</p>
       <p>In one week, running unmodified open-source programs (LZ4, xxHash, SQLite, Lua) and comparing against an Apple Silicon machine found a prefetch instruction silently corrupting registers, two floating-point instructions with the wrong sign, and a long list of missing vector instructions. All were fixed with tests. The project began as a Switch homebrew runtime; that is no longer its goal.</p>
-      <a class="button" href="playground/">Step ARM64 in your browser</a>
+      <a class="button" href="#get-started">Get started</a>
+      <a class="button secondary" href="playground/">Browser playground</a>
       <a class="button secondary" href="maintainers.html">Check your library</a>
-      <a class="button secondary" href="results.html">See the results</a>
-      <a class="button secondary" href="research.html">Read the research paper</a>
-      <a class="button secondary" href="contribute.html">Contribute in 15 minutes</a>
+      <a class="button secondary" href="results.html">See results</a>
+      <a class="button secondary" href="research.html">Read research paper</a>
+      <a class="button secondary" href="contribute.html">Contribute</a>
     </section>
     <section aria-label="What is Ounce-Core?" class="card" style="margin:12px 0 28px">
       <h2>What is Ounce-Core?</h2>
       <p>Ounce-Core is free, open-source <strong>AArch64 (ARM64) software written in Rust</strong>. Its core idea is differential testing: build the same program for your computer and for ARM64, run both, and diff the output. It is not a fast emulator and does not compete with QEMU on speed. Its evidence is bounded agreement with real-hardware references on recorded tests, not a proof of general correctness. Investigations retain small, shareable reproductions through the shipped <a href="https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/diagnosis-v0.2.0"><code>ounce-diagnose</code> v0.2.0 toolkit</a>. Read the <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/VISION.md">vision and roadmap</a> and the limits before relying on a result.</p>
-      <p>Technical details: <a href="https://github.com/hffgzktbcc-blip/ounce-core#quickstart">quickstart</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/verify/README.md">verification method and results</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/DIAGNOSIS_CLI.md"><code>ounce-diagnose</code> v0.2.0 CLI</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/FAILURE_TO_REPRODUCTION.md">failure-to-reproduction walkthrough</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/verify/AUDIO_CHANNEL_CASE.md">audio-channel case</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/ADD_A_PROGRAM.md">add a program as a test</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/CONTRIBUTING.md">contributing</a>.</p>
+      <p>Technical details: <a href="#get-started">getting started</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/verify/README.md">verification method and results</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/DIAGNOSIS_CLI.md"><code>ounce-diagnose</code> v0.2.0 CLI</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/FAILURE_TO_REPRODUCTION.md">failure-to-reproduction walkthrough</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/verify/AUDIO_CHANNEL_CASE.md">audio-channel case</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/ADD_A_PROGRAM.md">add a program as a test</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/CONTRIBUTING.md">contributing</a>.</p>
+    </section>
+
+    <section id="get-started" class="card" aria-label="Getting started" style="margin:20px 0 32px">
+      <h2>Getting started</h2>
+      <p>Follow the steps below to install Ounce-Core, run your first program, diagnose failures, and report reproducible findings.</p>
+
+      <h3>1. Install</h3>
+      <p>Build from source using <strong>Rust 1.85+ (edition 2024)</strong> on Linux, macOS or Windows:</p>
+      <pre><code># Clone repository
+git clone https://github.com/hffgzktbcc-blip/ounce-core.git
+cd ounce-core
+
+# Build runtime binary
+cargo build --release
+
+# Optional: compile native execution for ARM64 hosts (Apple Silicon / Linux ARM64)
+cargo build --release --features "nce native-jit"</code></pre>
+
+      <h3>2. Run your first program</h3>
+      <p>Verify that your build works by running the self-checks, then execute an AArch64 binary:</p>
+      <pre><code># Run self-checks and 25-stage verification harness
+cargo test --release
+cargo run --release -- test
+
+# Option A: Run a static AArch64 Linux ELF binary
+cargo run --release -- run-elf tests/linux-elf/bin/hello.elf
+
+# Option B: Run a homebrew AArch64 NRO fixture
+cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture
+
+# Option C: Open the local interactive verification workbench
+cargo run --release -- ui</code></pre>
+
+      <h3>3. When something fails: diagnosis and reproduction</h3>
+      <p>When an execution halts, diverges or encounters an unsupported instruction:</p>
+      <ul>
+        <li><strong>Inspect error output:</strong> Unimplemented opcodes, unhandled SVCs, or memory faults output the program counter (PC), opcode word, and register state. If execution exceeds the default instruction cap, increase it with <code>OUNCE_NRO_BUDGET=100000000</code>.</li>
+        <li><strong>Pinpoint hardware divergence:</strong> On an AArch64 host, run <code>diverge</code> to compare execution against the host processor and identify the first differing instruction:
+          <pre><code>target/release/ounce-core diverge path/to/program.nro</code></pre>
+        </li>
+        <li><strong>Package a reproduction dossier:</strong> Use the diagnosis CLI to generate a portable dossier (<code>diagnosis.json</code>, <code>comparison.json</code>, <code>REPLAY.md</code>) without private paths or credentials:
+          <pre><code>python3 scripts/diagnosis_cli.py example --output ./my-diagnosis</code></pre>
+          See the <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/DIAGNOSIS_CLI.md">diagnosis CLI guide</a> and <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/FAILURE_TO_REPRODUCTION.md">failure-to-reproduction walkthrough</a>.
+        </li>
+      </ul>
+
+      <h3>4. How to report findings</h3>
+      <ul>
+        <li><strong>Emulation discrepancies:</strong> If an outside program computes a different result in Ounce-Core than on real ARM64 hardware or a host reference build, open an issue using the <a href="https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=emulation_bug.yml">emulation bug template</a>. Include your Git commit SHA, CPU engine, expected output, and the first differing line.</li>
+        <li><strong>Differential test suite runs:</strong> Run <code>python3 scripts/verify_differential.py --json my-results.json</code> on an ARM64 computer and report your findings on <a href="https://github.com/hffgzktbcc-blip/ounce-core/issues/248">issue #248</a> using the <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/community/EXTERNAL_TEST_REPORT.md">external test report template</a>.</li>
+        <li><strong>Propose a new test program:</strong> Suggest an open-source library or test using the <a href="https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=program_request.yml">program request template</a>.</li>
+        <li><strong>Guardrails:</strong> Do not submit or attach retail keys, copyrighted firmware, commercial game ROMs, or proprietary SDK files. Only open-source or synthetic test material is accepted.</li>
+      </ul>
     </section>
     <section aria-label="Project pillars" class="grid">
       <div class="card"><h3>Verify</h3><p>Diff supported programs and instruction test cases against recorded real ARM64 references, with explicit unsupported cases.</p></div>
