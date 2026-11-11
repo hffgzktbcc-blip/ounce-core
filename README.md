@@ -377,20 +377,34 @@ With Rust and Xcode command-line tools installed, build and install locally:
 scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.app"
 ```
 
-Open **Ounce Core.app**. The first screen explains what the app does; drop a homebrew `.nro` on it or choose **Open Program…**. Static AArch64 Linux ELF programs run in the CLI with `ounce-core run-elf <file>`.
+Open **Ounce Core.app**. The first screen explains what the app does; drop a
+homebrew `.nro` on it or choose **Open Program…**. Static AArch64 Linux ELF programs run in the CLI with `ounce-core run-elf <file>`.
 
-- **Run Settings:** pick the engine (interpreter `tier3`, JIT `tier4`, or `native`) and an instruction budget (blank = the runtime default of 50 million, the `OUNCE_NRO_BUDGET` mechanism). The bundled runtime is built with the `nce` and `native-jit` features, so `tier4` and `native` work on an Apple Silicon Mac; elsewhere the runtime falls back to `tier3`, and the app says so instead of reporting a pass. `native` runs headless with no window.
-- **Diagnosis:** when a run ends, the app reads the runtime's own log and explains it in plain language: unimplemented instruction word, unhandled SVC, program break, fault, budget exhausted, load error. It reads what the runtime printed; it does not re-execute anything.
-- **Verify against Host…:** for harness programs named after the harnesses in [docs/verify/differential.json](docs/verify/differential.json) (for example `lz4.nro`), runs the NRO headless on the chosen engine and compares its output byte for byte with the committed `expected-host.txt`. It does not rebuild the host reference; use `scripts/verify_differential.py` for that.
+- **Run Settings:** pick the engine (interpreter `tier3`, JIT `tier4`, or `native`) and an
+  instruction budget (blank = the runtime default of 50 million, the `OUNCE_NRO_BUDGET` mechanism).
+  The bundled runtime is built with the `nce` and `native-jit` features, so `tier4` and `native`
+  work on an Apple Silicon Mac; elsewhere the runtime falls back to `tier3`, and the app says so
+  instead of reporting a pass. `native` runs headless with no window.
+- **Diagnosis:** when a run ends, the app reads the runtime's own log and explains it in plain
+  language: unimplemented instruction word, unhandled SVC, program break, fault, budget exhausted,
+  load error. It reads what the runtime printed; it does not re-execute anything.
+- **Verify against Host…:** for harness programs named after the harnesses in
+  [docs/verify/differential.json](docs/verify/differential.json) (for example `lz4.nro`), runs the NRO
+  headless on the chosen engine and compares its output byte for byte with the committed
+  `expected-host.txt`. It does not rebuild the host reference; use `scripts/verify_differential.py` for that.
+- **Report This Problem…** appears after a failed run. It copies a report (file name, engine, command, OS and the
+  runtime's stop lines; your home folder is replaced by `~`) and opens the issue form with those fields filled in.
+  Nothing is sent until you submit the form.
 - **Try the Demo** opens the bundled diagnostic; **Stop Session** ends the current session.
 - **View Check Results…** opens a saved evidence report.
-- **Show Session Details** reveals **Choose SD Card Folder…**, which selects the host folder mounted as `sdmc:`, and **Open Log in Finder**. Logs and the default SD folder live under `~/Library/Application Support/Ounce Core/`.
+- **Show Session Details** reveals **Choose SD Card Folder…**, which selects the host folder
+  mounted as `sdmc:`, and **Open Log in Finder**. Logs and the default SD folder live under
+  `~/Library/Application Support/Ounce Core/`.
 
-The app is locally ad-hoc signed, not a notarized distribution release, and no prebuilt download is offered. Supported programs remain those backed by the compatibility oracles; this launcher does not expand that claim. Details, tests and untested GUI areas: [docs/MAC_APP.md](docs/MAC_APP.md).
-
-</details>
-
----
+The app is locally ad-hoc signed, not a notarized distribution release, and no
+prebuilt download is offered. Supported programs remain those backed by the compatibility
+oracles; this launcher does not expand that claim. Details, tests and untested GUI areas:
+[docs/MAC_APP.md](docs/MAC_APP.md).
 
 ## The road ahead
 
