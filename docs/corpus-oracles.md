@@ -141,11 +141,15 @@ artifact. All 100 engine records were checked against the built NRO bytes.
 ## Current status
 
 `tests/corpus/oracle-results.json` records 50/50 programs passing on interpreter and Tier-3. It was
-copied from the retained canonical report
-[`docs/verify/audout-padding/canonical-corpus.json`](verify/audout-padding/canonical-corpus.json)
-(100 records, all at core commit `430ce19`, the audout padding repair), not from a fresh corpus run;
-no new run was made when the snapshot was updated. The earlier snapshot (46/50) listed `account`, `audio-echo`, `playtone` and `save-data` as failing;
-the retained report records them as passing. This document does not attribute those changes to a cause.
+written from a fresh local corpus run,
+[`docs/verify/corpus-c47fa14/canonical-corpus.json`](verify/corpus-c47fa14/canonical-corpus.json),
+made on 2026-11-11 at core commit `c47fa14` with `scripts/verify_corpus_run.py` (macOS arm64 host,
+Lima Docker, devkitA64 image recorded in `toolchain-image.json`). It is a maintainer run, not the
+independent rerun PLAN E1 asks for. The previous retained report
+([`audout-padding/canonical-corpus.json`](verify/audout-padding/canonical-corpus.json), core commit
+`430ce19`) also recorded 50/50. The earlier snapshot (46/50) listed `account`, `audio-echo`, `playtone`
+and `save-data` as failing; both reports record them as passing.
+This document does not attribute those changes to a cause.
 `deko-basic` remains a regression check of an observed frame hash, not a source-derived oracle.
 
 `python3 scripts/corpus_verify.py snapshot` fails when the snapshot and the README headline
