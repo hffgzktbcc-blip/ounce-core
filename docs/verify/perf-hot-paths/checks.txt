@@ -26,3 +26,14 @@ python3 scripts/run_corpus_oracles.py --executable /tmp/ounce-perf-final-tests -
   Passed: 50/50 registered programs, 100 Interpreter/Tier3 engine runs.
   Existing local corpus binaries; expectations unchanged.
   See corpus-oracles.json for raw per-program observations.
+
+Quiet-window wall-clock-only follow-up, 2026-11-11:
+  One sequential release test build per side:
+    CARGO_BUILD_JOBS=2 cargo test --release --bin ounce-core --no-run --message-format=json
+  Baseline build passed in 47.97s; candidate build passed in 26.56s.
+  python3 scripts/benchmark_corpus.py --baseline /tmp/ounce-perf-quiet-20261111/baseline-tests --executable /tmp/ounce-perf-quiet-20261111/candidate-tests --builds /Users/nathanaelgovender/Projects/ounce-corpus-run/corpus/builds --output /tmp/ounce-perf-quiet-20261111/measurements --only printing-hello-world cpu-jit --repeats 21 --warmups 1
+  Passed (exit 0): 168 measured engine runs plus 8 warmup engine runs.
+  All unchanged frame oracles, per-engine instruction counts and observations agree.
+  Load averages before: 4.68 / 6.20 / 18.23; after: 2.89 / 5.00 / 15.57.
+  Results: corpus-benchmark-quiet.json; environment: quiet-window-environment.json.
+  No CoreMark, full-corpus qualification, or unrelated test reruns in this follow-up.
