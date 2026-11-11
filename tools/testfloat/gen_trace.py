@@ -72,7 +72,9 @@ def gen(a, name, rnd=None, exact=None):
         cmd.append("-exact" if exact else "-notexact")
     if a.count:
         cmd += ["-n", str(a.count)]
-    r = subprocess.run(cmd + [name], capture_output=True, text=True, check=True)
+    r = subprocess.run(cmd + [name], capture_output=True, text=True)
+    if r.returncode:
+        raise SystemExit(f"{' '.join(cmd + [name])} exited {r.returncode}:\n{r.stderr.strip()[:2000]}")
     return [[int(t, 16) for t in ln.split()] for ln in r.stdout.splitlines() if ln.strip()]
 
 
