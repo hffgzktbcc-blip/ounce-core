@@ -9,7 +9,7 @@ Build and install: `scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.ap
 `--features "gpu-present nce native-jit"`, so `tier4` and `native` work on Apple Silicon and degrade to `tier3`
 (with a message the app recognises) elsewhere. The bundle is ad-hoc signed for local use. It is not notarized.
 No prebuilt macOS binary is offered while the Apple-SDK-derived `objc2` redistribution question in
-[PROVENANCE_OWNER_DECISIONS.md](PROVENANCE_OWNER_DECISIONS.md) is open.
+[PROVENANCE.md](PROVENANCE.md) (Specialist items) is open.
 
 ### Local preview archive
 
@@ -21,7 +21,7 @@ result as the 14-day `macos-app-preview` artifact.
 
 This is a developer preview, not a release. It uploads nothing, and the manifest says so: the bundle is ad-hoc
 signed and not notarized (Gatekeeper warns on first open), and it is not cleared for GitHub release assets while
-item 4 of [PROVENANCE_OWNER_DECISIONS.md](PROVENANCE_OWNER_DECISIONS.md) is open. Share it only with people you
+the specialist review in [PROVENANCE.md](PROVENANCE.md) (Specialist items) is open. Share it only with people you
 choose to, and tell them it is unsigned by an Apple developer identity.
 
 ## The workbench window (front door)
@@ -46,9 +46,10 @@ Swift logic tests: `swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos
 
 | Area | Behaviour |
 |---|---|
-| First run | Explains the product; accepts a dropped or chosen `.nro`. A dropped `.elf` gets an honest "not supported yet" (ELF loading is a separate change). |
+| First run | Explains the product; accepts a dropped or chosen `.nro`. A dropped `.elf` or ELF-headed file directs the user to `ounce-core run-elf <file>` in Terminal. |
 | Engine and budget | `--cpu=tier3|tier4|native` is always passed explicitly; `OUNCE_CPU` is stripped from the child. A budget sets `OUNCE_NRO_BUDGET`; blank clears any inherited value. `native` ignores the budget (it has a time limit, `OUNCE_NRO_TIMEOUT_SECS`) and runs headless. |
-| Diagnosis | `RunLogic.swift` parses the runtime's printed stop messages (see below) into a headline, an explanation and a next step, quoting the log lines it relied on. The first failure line wins. A silent engine fallback is reported as such, never as a pass. |
+| Diagnosis | `RunLogic.swift` parses the runtime's printed stop messages (see below) into a headline, an explanation and a next step (including `.github/ISSUE_TEMPLATE/emulation_bug.yml` when an emulator gap is found), quoting the log lines it relied on. The first failure line wins. A silent engine fallback is reported as such, never as a pass. |
+| View Check Results… | `EvidenceReport.swift` decodes saved `ounce-verify` reports (`v0`, `diagnosis-v1`, `comparison-v1`, `repair-v1`, `run-v1`, `hbx-first-frame-v1`), `ounce-diagnose` audio (`audio-padding-v1`, `audout-padding-v1`) and replay (`replay-v1`) reports, and Workbench `result.json` files (`workbench-check-v1`). Selecting a dossier `manifest.json` explains which report file in that folder to open instead. |
 | Verify against Host | `HostVerify.swift` matches the NRO file name to a harness in `docs/verify/differential.json`, runs it headless with a 4e9 budget (as `verify_differential.py` does) in a temporary SD folder, and diffs the harness's result file against the bundled `expected-host.txt`. A harness whose reference is `arm64_reference` carries a caveat on non-ARM64 hosts. |
 
 Recognised runtime messages: `Unimplemented instruction 0x… at PC: 0x…`, `Execution budget reached (N instructions)`,

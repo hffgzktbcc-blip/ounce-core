@@ -1,3 +1,5 @@
+Archived 2026-11-11, superseded by docs/PROVENANCE.md
+
 # Historical provenance remediation — evidence and controlled plan
 
 The latest actionable disposition is consolidated in

@@ -1,3 +1,5 @@
+Archived 2026-11-11, superseded by docs/PROVENANCE.md
+
 # Provenance and release-trust inventory — dated snapshot 2026-11-07
 
 PLAN step 16 working inventory. Read-only checks only; **no ref mutation, no
