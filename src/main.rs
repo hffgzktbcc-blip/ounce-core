@@ -5,6 +5,7 @@
 
 mod audio;
 mod census;
+mod cli_flow;
 mod cpu;
 mod crypto;
 mod diverge;
@@ -44,6 +45,8 @@ const STACK_SIZE: usize = 0x100000; // 1 MB stack
 
 /// `--sdmc=<dir>`: host folder behind the guest's `sdmc:/` (unset: in-memory SD card only).
 static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+/// The program path given to `run`/`run-nro`, quoted back in the next-step text when a run stops early.
+static RUN_TARGET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 fn main() {
     if let Ok(backend) = std::env::var("OUNCE_GPU_BACKEND") {
@@ -52,7 +55,7 @@ fn main() {
             std::process::exit(2);
         }
     }
-    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<tier3|tier4|native>` may appear anywhere; strip them so the
+    // `--present=<auto|gpu|minifb|headless>` and `--cpu=<interpreter|tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     let mut after_separator = false;
@@ -69,7 +72,7 @@ fn main() {
         if let Some(value) = arg.strip_prefix("--cpu=") {
             match cpu::CpuTier::parse(value) {
                 Some(tier) => cpu::CpuTier::set_cli_override(tier),
-                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected tier3, tier4 or native); ignoring."),
+                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected interpreter, tier3, tier4 or native); ignoring."),
             }
             continue;
         }
@@ -83,9 +86,7 @@ fn main() {
     }
 
     if args.len() < 2 {
-        print_banner();
-        print_usage();
-        run_built_in_demo();
+        print!("{}", cli_flow::getting_started(env!("CARGO_PKG_VERSION")));
         return;
     }
 
@@ -138,17 +139,19 @@ fn main() {
         "replay-instruction" => std::process::exit(fuzz_replay::replay_bundle(&args[2..])),
         "run-elf" => std::process::exit(linux::runner::cli(&args[2..])),
         "run" | "run-nro" => {
-            print_banner();
             let nro_only = args[1] == "run-nro";
             if args.len() < 3 {
-                if nro_only {
-                    eprintln!("Error: Please provide a homebrew NRO path");
-                    std::process::exit(1);
-                }
-                eprintln!("Error: Please provide path to .nsp, .nca, .nro or loose directory");
-                return;
+                let what = if nro_only { "the path of a homebrew .nro file" } else { "the path of an .nsp, .nca, .nro or loose folder" };
+                eprint!("{}", cli_flow::missing_path(&args[1], what));
+                std::process::exit(2);
             }
             let file_path = &args[2];
+            if !std::path::Path::new(file_path).exists() {
+                eprint!("{}", cli_flow::file_not_found(file_path));
+                std::process::exit(1);
+            }
+            let _ = RUN_TARGET.set(file_path.clone());
+            print_banner();
             let gui_mode = args.iter().any(|a| a == "--gui" || a == "--window" || a == "-g");
             // Anything after the path that is not a flag is passed to homebrew as argv[1..].
             let guest_args: Vec<&str> = args[3..].iter().filter(|a| !a.starts_with('-')).map(|a| a.as_str()).collect();
@@ -180,11 +183,11 @@ fn main() {
             std::process::exit(census::run(&args[2..]));
         }
         "inspect" => {
-            print_banner();
             if args.len() < 3 {
-                eprintln!("Error: Please provide path to package (.xci, .nsp, .nca, .nro or loose directory)");
-                return;
+                eprint!("{}", cli_flow::missing_path("inspect", "the path of an .xci, .nsp, .nca, .nro or loose folder"));
+                std::process::exit(2);
             }
+            print_banner();
             let file_path = &args[2];
             if std::path::Path::new(file_path).is_dir() {
                 inspect_directory_package(file_path);
@@ -202,8 +205,9 @@ fn main() {
                 Err(e) => eprintln!("Failed to read file '{}': {}", file_path, e),
             }
         }
-        _ => {
-            print_usage();
+        other => {
+            eprint!("{}", cli_flow::unknown_command(other));
+            std::process::exit(2);
         }
     }
 }
@@ -313,49 +317,45 @@ fn print_row(s: &Styler, label: &str, val: &str) {
 
 fn print_usage() {
     let s = Styler::new();
-    let header_text = format!("  🚀  {}OUNCE-CORE v{}{} — COMMAND-LINE INTERFACE (CLI) & WORKFLOW GUIDE", s.bold, env!("CARGO_PKG_VERSION"), s.reset);
-    let header_width = visible_width(&header_text);
-    let pad = if BOX_WIDTH - 2 > header_width { (BOX_WIDTH - 2) - header_width } else { 0 };
-
-    println!("{}╭{}╮{}", s.cyan, "─".repeat(BOX_WIDTH - 2), s.reset);
-    println!("{}│{}{}{}│{}", s.cyan, header_text, " ".repeat(pad), s.cyan, s.reset);
-    println!("{}╰{}╯{}", s.cyan, "─".repeat(BOX_WIDTH - 2), s.reset);
+    println!("{}Ounce Core v{}{}  command reference", s.bold, env!("CARGO_PKG_VERSION"), s.reset);
     println!();
     println!("  {}USAGE:{}", s.bold, s.reset);
-    println!("    cargo run --release -- {}<COMMAND>{} [OPTIONS]\n", s.green, s.reset);
-    println!("  {}CORE EXECUTION COMMANDS:{}", s.bold, s.reset);
-    println!("    {}run{} <file|dir> [args] [--gui]  Load and execute an .xci, .nsp, .nca, .nso, .nro or unencrypted loose folder (args go to homebrew argv)", s.green, s.reset);
-    println!("    {}replay-instruction{} <bundle>  Check retained instruction bytes and re-execute the recorded case", s.green, s.reset);
+    println!("    ounce-core {}<COMMAND>{} [OPTIONS]", s.green, s.reset);
+    println!("    From a source checkout: cargo run --release -- <COMMAND> [OPTIONS]\n");
+    println!("  {}RUN AND CHECK A PROGRAM (start here):{}", s.bold, s.reset);
+    println!("    {}ui{} | {}lab{}               Open the local workbench: drop a .nro, compare engines (and this Mac) [--port N --no-open --dir D]", s.green, s.reset, s.green, s.reset);
+    println!("    {}run-nro{} <file> [args] [--gui]  Run a homebrew .nro; if it stops early, the output says why and what to do next", s.green, s.reset);
+    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
     println!("    {}diverge{} <prog.nro>            Replay the program's instructions on this machine's CPU and name the first disagreement (AArch64 hosts)", s.green, s.reset);
-    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
-    println!("    {}run-nro{} <file> [args] [--gui]  Load and execute only a homebrew NRO", s.green, s.reset);
-    println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package (OunceCake format)", s.green, s.reset);
-    println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);
-    println!("    {}inspect{} <file|dir>      Audit .xci/.nsp/.nca/.nro headers, loose NPDM metadata & RomFS assets", s.green, s.reset);
+    println!("    {}run{} <file|dir> [args] [--gui]  Like run-nro, but also accepts .xci, .nsp, .nca, .nso and unencrypted loose folders", s.green, s.reset);
     println!();
-    println!("  {}GRAPHICS & INTERACTIVE DEMOS:{}", s.bold, s.reset);
-    println!("    {}play{} [frames]           Launch interactive game with real-time Joy-Con 2 controls", s.green, s.reset);
-    println!("    {}3d{} [frames]             Run software 3D pushbuffer rasterizer benchmark", s.green, s.reset);
-    println!("    {}gfx{} [frames]            Launch 2D high-bandwidth VRAM Framebuffer Display Demo (1280x720)", s.green, s.reset);
-    println!("    {}--present={}<mode>        Presentation backend: auto, gpu (needs --features gpu-present), minifb, headless", s.green, s.reset);
+    println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
+    println!("    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)", s.green, s.reset);
+    println!("    {}--present={}<mode>        Display: auto, gpu (needs --features gpu-present), minifb, headless", s.green, s.reset);
     println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
-    println!("    {}--cpu={}<tier>            CPU block engine for run/run-nro and Stage 20: tier3 or tier4 (needs --features native-jit); no flag = interpreter", s.green, s.reset);
-    println!("    {}--cpu=native{}            run an NRO on the host CPU (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!();
-    println!("  {}VERIFICATION & DIAGNOSTICS:{}", s.bold, s.reset);
-    println!("    {}ui{} | {}lab{}               Open the local verification workbench: drop a .nro, compare engines (and this Mac) [--port N --no-open --dir D]", s.green, s.reset, s.green, s.reset);
-    println!("    {}test{}                    Execute 25-stage full-stack verification & hardware benchmark suite", s.green, s.reset);
+    println!("  {}INSPECT AND REPLAY:{}", s.bold, s.reset);
+    println!("    {}inspect{} <file|dir>      Audit .xci/.nsp/.nca/.nro headers, loose NPDM metadata and RomFS assets", s.green, s.reset);
+    println!("    {}replay-instruction{} <bundle>  Check retained instruction bytes and re-execute the recorded case", s.green, s.reset);
+    println!("    {}info{}                    Show hardware architecture and engine status (also --version)", s.green, s.reset);
+    println!("    {}help{}                    Show this reference", s.green, s.reset);
+    println!();
+    println!("  {}DEMOS AND SELF-TESTS:{}", s.bold, s.reset);
+    println!("    {}test{}                    Run the 25-stage verification and benchmark suite", s.green, s.reset);
     println!("    {}jit-selftest{}            Check that this host can run Tier-4 native code (needs --features native-jit)", s.green, s.reset);
-    println!("    {}info{}                    Display comprehensive hardware architecture and engine status", s.green, s.reset);
-    println!("    {}help{}                    Display this command-line manual and option reference", s.green, s.reset);
+    println!("    {}play{} [frames]           Interactive demo game with Joy-Con 2 controls", s.green, s.reset);
+    println!("    {}gfx{} [frames]            2D framebuffer display demo (1280x720)", s.green, s.reset);
+    println!("    {}3d{} [frames]             Software 3D pushbuffer rasterizer benchmark", s.green, s.reset);
+    println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package", s.green, s.reset);
+    println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);
     println!();
     println!("  {}EXAMPLES:{}", s.bold, s.reset);
-    println!("    {}cargo run --release -- ui{}", s.dim, s.reset);
-    println!("    {}cargo run --release -- info{}", s.dim, s.reset);
-    println!("    {}cargo run --release -- test{}", s.dim, s.reset);
-    println!("    {}cargo run --release -- play 1200{}", s.dim, s.reset);
-    println!("    {}cargo run --release -- inspect ./dumps/game_title{}", s.dim, s.reset);
-    println!("    {}cargo run --release -- run ./dumps/game_title\n{}", s.dim, s.reset);
+    println!("    {}ounce-core ui{}", s.dim, s.reset);
+    println!("    {}ounce-core run-nro tests/fixtures/nro/hello/hello.nro --present=headless{}", s.dim, s.reset);
+    println!("    {}ounce-core run-nro my_program.nro --cpu=tier4{}", s.dim, s.reset);
+    println!("    {}ounce-core diverge my_program.nro{}", s.dim, s.reset);
+    println!();
+    println!("  Report a problem: {}\n", cli_flow::ISSUE_FORM);
 }
 
 fn print_specs() {
@@ -639,7 +639,7 @@ fn run_vm_internal(
         println!("[CPU] Block engine: {}", e.name());
     }
     // `OUNCE_TRACE=<file>` records register-only instructions for `ounce-core diverge`. With a block engine
-    // selected (`--cpu=tier3|tier4`) it runs one-instruction slices so each recorded instruction is
+    // selected (`--cpu=interpreter|tier3|tier4`) it runs one-instruction slices so each recorded instruction is
     // executed by that engine's own translation (single-instruction blocks, not multi-instruction fusion).
     let mut tracer = trace::Tracer::from_env();
 
@@ -649,7 +649,7 @@ fn run_vm_internal(
             break;
         }
 
-        // With an explicit `--cpu=tier3|tier4` the block engine runs the guest in slices that end at the next
+        // With an explicit `--cpu=interpreter|tier3|tier4` the block engine runs the guest in slices that end at the next
         // preemption point, a budget limit or an SVC; otherwise one instruction at a time (the default).
         let before = instructions_executed;
         let (stepped, executed) = match engine.as_mut() {
@@ -677,7 +677,15 @@ fn run_vm_internal(
                 }
                 match exit {
                     cpu::tier2_jit::BlockExit::Fault { pc: fault_pc } => {
-                        (Err(format!("{} fault at {fault_pc:#x} (slice began at {pc:#x})", e.name())), count)
+                        let detail = cpu.last_error.take().or_else(|| {
+                            cpu.regs.pc = fault_pc;
+                            cpu.step(&mut mmu).err().map(|err| err.to_string())
+                        });
+                        let msg = match detail {
+                            Some(reason) => format!("{} fault at {fault_pc:#x} (slice began at {pc:#x}): {reason}", e.name()),
+                            None => format!("{} fault at {fault_pc:#x} (slice began at {pc:#x})", e.name()),
+                        };
+                        (Err(msg), count)
                     }
                     cpu::tier2_jit::BlockExit::Svc { svc_id } => (Ok(StepResult::Svc(svc_id)), count),
                     _ if count == 0 => (Err(format!("{} made no progress at {pc:#x}", e.name())), 0),
@@ -3568,6 +3576,21 @@ fn inspect_directory_package(dir_path: &str) {
 /// Shell callers must distinguish a completed run from a load/execution failure.
 fn require_cli_success(outcome: VmOutcome) {
     if !matches!(outcome.stop, VmStop::ExitProcess | VmStop::WindowClosed | VmStop::FrameLimit) {
+        let stop = match outcome.stop {
+            VmStop::Break => cli_flow::Stop::Break,
+            VmStop::UnhandledSvc => cli_flow::Stop::UnhandledSvc,
+            VmStop::Halt => cli_flow::Stop::Halt,
+            VmStop::Budget => cli_flow::Stop::Budget,
+            _ => cli_flow::Stop::Fault,
+        };
+        let engine = match cpu::CpuTier::from_env() {
+            cpu::CpuTier::Interpreter => "interpreter",
+            cpu::CpuTier::Tier3 => "tier3",
+            cpu::CpuTier::Tier4 => "tier4",
+            cpu::CpuTier::Native => "native",
+        };
+        let program = RUN_TARGET.get().map(String::as_str).unwrap_or("<file.nro>");
+        eprint!("{}", cli_flow::next_steps(stop, program, engine));
         std::process::exit(1);
     }
 }
@@ -3645,7 +3668,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("Failed to read file: {}", e);
+            eprintln!("[Loader Error] Failed to read file '{}': {}", path, e);
             std::process::exit(1);
         }
     };
@@ -3727,7 +3750,21 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
             }
         }
         Err(e) => {
-            eprintln!("[Loader Error] {}", e);
+            if nro_only && bytes.starts_with(b"\x7fELF") {
+                eprintln!(
+                    "[Loader Error] '{}' is an ELF binary, not a Switch homebrew .nro ({}). Static AArch64 Linux ELFs run with: ounce-core run-elf {}",
+                    path, e, path
+                );
+            } else if nro_only && matches!(e, loader::LoadError::TooSmall) {
+                eprintln!(
+                    "[Loader Error] '{}' is {} bytes (an NRO0 header requires at least 128 bytes): {}",
+                    path,
+                    bytes.len(),
+                    e
+                );
+            } else {
+                eprintln!("[Loader Error] {}", e);
+            }
             std::process::exit(1);
         }
     }
@@ -3779,13 +3816,32 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> bool {
                         println!("[VM] VSync / Frame {frames} presented.");
                     }
                     SvcResult::ExitProcess => { completed = true; println!("[VM] Guest exited (svcExitProcess)."); break; }
-                    SvcResult::Break { reason, .. } => { println!("[VM] Hit svcBreak: reason 0x{reason:X}"); break; }
-                    SvcResult::Unhandled(id) => { println!("[VM] Stopping on unhandled SVC 0x{id:X}"); break; }
+                    SvcResult::Break { reason, info1, info2 } => {
+                        println!("[VM] Hit svcBreak: reason=0x{reason:X}, info1=0x{info1:X}, info2=0x{info2:X}");
+                        println!("[VM] Break PC: 0x{:016X}", cpu.regs.pc);
+                        if info2 == 4 {
+                            match mmu.read_u32(info1) {
+                                Ok(result) => println!(
+                                    "[VM] Break result: 0x{result:08X} (module={}, description={})",
+                                    result & 0x1FF,
+                                    (result >> 9) & 0x1FFF
+                                ),
+                                Err(error) => println!("[VM] Break result unreadable: {error}"),
+                            }
+                        }
+                        break;
+                    }
+                    SvcResult::Unhandled(id) => { println!("[VM] Stopping on unhandled SVC #0x{id:02X}."); break; }
                 }
             }
             NceExit::Preempted => kernel.scheduler.preempt(&mut cpu),
             NceExit::Fault { pc, signal, addr } => {
-                println!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
+                if let Some(reason) = cpu.last_error.take().filter(|_| signal == 0) {
+                    println!("[VM Error] {reason}");
+                    println!("  Final PC: 0x{pc:016X}");
+                } else {
+                    println!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
+                }
                 break;
             }
             NceExit::Error(e) => { eprintln!("[NCE] {e}"); break; }

@@ -81,15 +81,6 @@ Mark a PLAN task complete manually with its acceptance evidence. A green build,
 PR creation or agent assertion does not by itself complete the user's scenario.
 Outside dependencies block their dependent action, not all other work.
 
-## Automated repository bots
-
-The repository uses automated GitHub Actions workflows powered by standard runners and GitHub Models to streamline contributions:
-
-- **Issue triage** (`.github/workflows/issue-triage.yml`): Runs on newly opened issues. It verifies required reproduction fields (`program`, `version`, `command`, `output`), asks politely for any missing information, suggests existing repository labels, searches for potential duplicate open issues, and summarizes crash or problem reports with their likely code area.
-- **CI explainer** (`.github/workflows/ci-explainer.yml`): Runs when a pull request CI workflow run completes with failure. It posts or updates a single comment identifying the failing job and step, extracts relevant trailing log lines, explains the root cause using GitHub Models, and provides the local `scripts/gate.sh` command to reproduce the failure.
-- **Shiftbot** (`.github/workflows/shiftbot.yml`): Provides status summaries of open pull request review states and checks.
-- **Community onboarding** (`.github/workflows/community.yml`): Welcomes first-time contributors and monitors beginner issue availability.
-
 ## Sources and integrity
 
 Permissively licensed code may be ported with notices in THIRD_PARTY.md and source
@@ -105,6 +96,16 @@ specific outstanding distribution questions. They do not prohibit unrelated tool
 Preserve fixed expectations, input identities and failures when repairing behavior.
 Keep `src/` safe Rust; unsafe operations remain confined to existing isolated crate
 boundaries. Describe actual evidence, supported inputs and known limits plainly.
+
+## AI-assisted contributions
+
+Contributions prepared with AI assistants (LLMs, coding assistants, or agents) are welcome under the following conditions:
+
+- **Disclose AI use**: Note the tool or model used and what it did in your pull request description.
+- **Human responsibility**: The submitter is accountable for the change. You must understand the proposed code, verify that it works, and be able to explain and defend it during review. Do not submit unreviewed machine output.
+- **Test results over claims**: Run focused checks locally and report the exact commands and output. Never fabricate compatibility or performance claims; state untested boundaries and known limits plainly.
+- **Integrity and provenance**: Follow [AGENTS.md](AGENTS.md) and repository safety rules. Do not commit keys, retail content, firmware, dumps, or incompatible licensed code.
+- **Safe Rust**: Keep `src/` safe Rust; `unsafe` operations remain confined to existing isolated crate boundaries.
 
 ## Community guides
 
