@@ -464,7 +464,7 @@ scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.app"
 ```
 
 Open **Ounce Core.app**. The first screen explains what the app does; drop a
-homebrew `.nro` on it or choose **Open Program…**. ELF programs are not supported yet.
+homebrew `.nro` on it or choose **Open Program…**. Static AArch64 Linux ELF programs run in the CLI with `ounce-core run-elf <file>`.
 
 - **Run Settings:** pick the engine (interpreter `tier3`, JIT `tier4`, or `native`) and an
   instruction budget (blank = the runtime default of 50 million, the `OUNCE_NRO_BUDGET` mechanism).

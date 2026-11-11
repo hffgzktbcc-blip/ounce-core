@@ -62,3 +62,27 @@ if CommandLine.arguments.count == 3 {
     precondition(comparison.overview.contains("does not rerun"))
     print("Generated audio and comparison dossiers decoded with recorded-evidence limits.")
 }
+
+let beforeAudio = try EvidenceReport.read(URL(fileURLWithPath: "docs/verify/audout-padding/before.json"))
+precondition(beforeAudio.heading == "Saved audio observation")
+precondition(beforeAudio.sections.count == 2)
+precondition(beforeAudio.sections[0].lines.contains { $0.contains("Rejected: 7") })
+
+let replayResult = try EvidenceReport.read(URL(fileURLWithPath: "docs/verify/diagnosis-cli-0.1.0/failure-result.json"))
+precondition(replayResult.heading == "Saved replay result")
+precondition(replayResult.sections[0].lines.contains { $0.contains("Side: failure") })
+
+let workbenchFixture = Data("""
+{"schema_version":"ounce-core/workbench-check-v1","id":"0001-deadbeef","name":"demo.nro","sha256":"deadbeef123456","bytes":1024,"native":true,"status":"done","verdict":{"kind":"fails","headline":"The program called a service Ounce-Core does not handle yet","detail":"Tier-3: [VM] Stopping on unhandled SVC #0x7F."},"instructions":{"checked":120,"mismatched":0},"engines":[{"engine":"tier3","status":"exited","seconds":0.2,"stop":{"kind":"unhandled-svc","line":"[VM] Stopping on unhandled SVC #0x7F."}}]}
+""".utf8)
+let workbenchReport = try EvidenceReport(data: workbenchFixture)
+precondition(workbenchReport.heading == "Saved workbench check")
+precondition(workbenchReport.sections.count == 3)
+
+do {
+    _ = try EvidenceReport.read(URL(fileURLWithPath: "docs/verify/audout-padding/manifest.json"))
+    fatalError("dossier manifest should be rejected with specific guidance")
+} catch let error as EvidenceReport.ReadError {
+    precondition(error == .manifestSelected)
+    precondition(error.localizedDescription.contains("diagnosis.json"))
+}

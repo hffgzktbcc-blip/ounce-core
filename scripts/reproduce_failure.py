@@ -16,9 +16,26 @@ EXAMPLE = REPO / "docs/reproduce/sdl2-failure"
 
 
 def read_evidence(root):
-    manifest = json.loads((root / "manifest.json").read_bytes())
+    if not root.is_dir():
+        raise ValueError(
+            f"evidence path is not a directory: {root} "
+            f"(ounce-diagnose bundle expects a retained SDL2 evidence directory with manifest.json; "
+            f"to diagnose a .nro program, use 'ounce-core run-nro {root}', 'ounce-core ui', or 'ounce-core diverge {root}')"
+        )
+    manifest_path = root / "manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError(
+            f"missing manifest.json in {root} "
+            "(ounce-diagnose bundle expects a retained SDL2 evidence directory; "
+            "use 'ounce-diagnose example --output <dir>' for the built-in SDL2 dossier, "
+            "or 'ounce-core run-nro <file.nro>' / 'ounce-core ui' for your own program)"
+        )
+    manifest = json.loads(manifest_path.read_bytes())
     if manifest["schema_version"] != "ounce-verify/retained-example-v1":
-        raise ValueError("unsupported retained-example schema")
+        raise ValueError(
+            f"unsupported retained-example schema '{manifest.get('schema_version')}' "
+            "(for the audio-padding dossier, use 'ounce-diagnose audio-case --evidence <dir> --output <out>')"
+        )
     files = {}
     for name, identity in manifest["files"].items():
         path = root / name

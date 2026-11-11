@@ -677,7 +677,15 @@ fn run_vm_internal(
                 }
                 match exit {
                     cpu::tier2_jit::BlockExit::Fault { pc: fault_pc } => {
-                        (Err(format!("{} fault at {fault_pc:#x} (slice began at {pc:#x})", e.name())), count)
+                        let detail = cpu.last_error.take().or_else(|| {
+                            cpu.regs.pc = fault_pc;
+                            cpu.step(&mut mmu).err().map(|err| err.to_string())
+                        });
+                        let msg = match detail {
+                            Some(reason) => format!("{} fault at {fault_pc:#x} (slice began at {pc:#x}): {reason}", e.name()),
+                            None => format!("{} fault at {fault_pc:#x} (slice began at {pc:#x})", e.name()),
+                        };
+                        (Err(msg), count)
                     }
                     cpu::tier2_jit::BlockExit::Svc { svc_id } => (Ok(StepResult::Svc(svc_id)), count),
                     _ if count == 0 => (Err(format!("{} made no progress at {pc:#x}", e.name())), 0),
@@ -3645,7 +3653,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("Failed to read file: {}", e);
+            eprintln!("[Loader Error] Failed to read file '{}': {}", path, e);
             std::process::exit(1);
         }
     };
@@ -3727,7 +3735,21 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
             }
         }
         Err(e) => {
-            eprintln!("[Loader Error] {}", e);
+            if nro_only && bytes.starts_with(b"\x7fELF") {
+                eprintln!(
+                    "[Loader Error] '{}' is an ELF binary, not a Switch homebrew .nro ({}). Static AArch64 Linux ELFs run with: ounce-core run-elf {}",
+                    path, e, path
+                );
+            } else if nro_only && matches!(e, loader::LoadError::TooSmall) {
+                eprintln!(
+                    "[Loader Error] '{}' is {} bytes (an NRO0 header requires at least 128 bytes): {}",
+                    path,
+                    bytes.len(),
+                    e
+                );
+            } else {
+                eprintln!("[Loader Error] {}", e);
+            }
             std::process::exit(1);
         }
     }
@@ -3779,13 +3801,32 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> bool {
                         println!("[VM] VSync / Frame {frames} presented.");
                     }
                     SvcResult::ExitProcess => { completed = true; println!("[VM] Guest exited (svcExitProcess)."); break; }
-                    SvcResult::Break { reason, .. } => { println!("[VM] Hit svcBreak: reason 0x{reason:X}"); break; }
-                    SvcResult::Unhandled(id) => { println!("[VM] Stopping on unhandled SVC 0x{id:X}"); break; }
+                    SvcResult::Break { reason, info1, info2 } => {
+                        println!("[VM] Hit svcBreak: reason=0x{reason:X}, info1=0x{info1:X}, info2=0x{info2:X}");
+                        println!("[VM] Break PC: 0x{:016X}", cpu.regs.pc);
+                        if info2 == 4 {
+                            match mmu.read_u32(info1) {
+                                Ok(result) => println!(
+                                    "[VM] Break result: 0x{result:08X} (module={}, description={})",
+                                    result & 0x1FF,
+                                    (result >> 9) & 0x1FFF
+                                ),
+                                Err(error) => println!("[VM] Break result unreadable: {error}"),
+                            }
+                        }
+                        break;
+                    }
+                    SvcResult::Unhandled(id) => { println!("[VM] Stopping on unhandled SVC #0x{id:02X}."); break; }
                 }
             }
             NceExit::Preempted => kernel.scheduler.preempt(&mut cpu),
             NceExit::Fault { pc, signal, addr } => {
-                println!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
+                if let Some(reason) = cpu.last_error.take().filter(|_| signal == 0) {
+                    println!("[VM Error] {reason}");
+                    println!("  Final PC: 0x{pc:016X}");
+                } else {
+                    println!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
+                }
                 break;
             }
             NceExit::Error(e) => { eprintln!("[NCE] {e}"); break; }
