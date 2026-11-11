@@ -1,5 +1,72 @@
 # MMU scalar access measurements — 2026-11-11
 
+## Quiet-window NRO wall-clock rerun — 2026-11-11
+
+With all other agents' builds and benchmarks paused, **Tier-3 showed a repeatable
+wall-clock throughput gain on both tested NRO cases**. Every one of the 21
+measured pairs per case improved, and both observed paired ranges stay above
+zero. This is a claim about these two registered inputs on this host; it is not
+a general game-performance or compatibility claim. The interpreter results
+remain inconclusive under the conservative criterion used here because their
+paired ranges cross zero.
+
+| Case | Engine | Baseline M guest insns / wall second, median | Candidate | Paired throughput gain, median [min, max] | Positive pairs |
+| --- | --- | ---: | ---: | ---: | ---: |
+| printing-hello-world | Interpreter | 19.394 | 20.035 | +3.30% [-3.18%, +26.91%] | 19/21 |
+| printing-hello-world | Tier-3 | 38.279 | 43.834 | **+14.44% [+2.62%, +26.37%]** | **21/21** |
+| cpu-jit | Interpreter | 17.568 | 18.947 | +8.02% [-0.94%, +16.73%] | 20/21 |
+| cpu-jit | Tier-3 | 37.730 | 41.771 | **+10.89% [+2.94%, +17.71%]** | **21/21** |
+
+The paired statistic is `100 * (baseline_seconds / candidate_seconds - 1)`;
+it is not computed by dividing the two medians in the table. Median elapsed
+seconds were 1.642909 → 1.590360 (printing interpreter), 0.832388 → 0.726907
+(printing Tier-3), 0.940008 → 0.871588 (CPU-JIT interpreter), and
+0.437680 → 0.395345 (CPU-JIT Tier-3).
+
+The measurement window was **11:25:51–11:28:43 UTC** (13:25:51–13:28:43 local).
+On this 8-logical-CPU Apple M3, load averages (1 / 5 / 15 minutes) were:
+
+| Point | 1 minute | 5 minutes | 15 minutes |
+| --- | ---: | ---: | ---: |
+| Immediately before the paired measurements | 4.68 | 6.20 | 18.23 |
+| Immediately after the paired measurements | 2.89 | 5.00 | 15.57 |
+
+This was a quiet **agent** window, not an idle operating system: the user's apps
+could remain open, longer load averages retain earlier work, and scheduling,
+core placement, frequency and thermal state were not pinned. The observed
+Tier-3 gains consistently exceeded zero despite the paired spread; the full
+ranges are shown rather than suppressing outliers. No interpreter wall-clock
+speedup is claimed from this follow-up.
+
+Methodology stayed the same: unchanged NRO bytes and registered frame oracles,
+fresh engines in every process, baseline then candidate in interleaved ABAB
+pairs, the same fixed frame counts and engine order, one discarded warmup pair,
+and the runner's existing elapsed-time boundary (including load/kernel/frame
+capture, excluding process startup). The repetition count increased from 9 to
+21 per case. All **168 measured engine runs** passed their unchanged oracles,
+with identical instruction counts and frame observations between baseline and
+candidate; warmup executions also passed. Instructions per engine remained
+31,863,353 for printing and 16,513,824 for CPU-JIT.
+
+Exactly one release test build was run for each side, sequentially, using
+`CARGO_BUILD_JOBS=2 cargo test --release --bin ounce-core --no-run --message-format=json`,
+the same Rust toolchain, worktree, target directory and default features. The
+baseline Rust source is `d06eb0127cf93deecb89f895ea8c0598db1e5fc3`; the candidate
+is `96bb32514f7f90014dd8381cf5f2157b7a72adaf`. The only Rust source difference is
+`src/mmu/memory.rs`; both sides include explicit interpreter selection. Both
+builds finished before measurement, with no cargo/rustc process left running.
+No CoreMark, full-corpus qualification, or unrelated tests were rerun for this
+wall-clock-only follow-up; their earlier evidence below remains historical.
+
+`corpus-benchmark-quiet.json` retains every measured sample, frame observation,
+input/executable hash, per-engine rate, and paired difference.
+`quiet-window-environment.json` records the exact command, source mapping,
+build settings, timestamps, executable hashes, before/after loads and exit
+status. Raw per-execution logs, warmup verdicts and timing files are also kept
+locally under `/tmp/ounce-perf-quiet-20261111/measurements`.
+
+## Earlier contended measurements (history)
+
 On this shared Apple M3/macOS 26.6.2 machine, the pinned CoreMark harness used
 less **child user+system CPU time** after the MMU change in every measured pair:
 
