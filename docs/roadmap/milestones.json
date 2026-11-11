@@ -6,9 +6,9 @@
       "id": "linux-elf",
       "name": "Static Linux ARM64 programs",
       "stage": "experimental",
-      "evidence": "Six freestanding fixtures and bounded LZ4/musl verification; library and CLI scenarios qualified on Linux, macOS and Windows",
+      "evidence": "Six freestanding fixtures plus 18 real programs run as static musl ELFs (LZ4, xxHash, cJSON and zlib also on macOS and Windows); wasm3 does not run yet",
       "evidence_url": "docs/verify/linux-elf/README.md",
-      "next": "Expand Linux library coverage from observed needs; qualify portable execution recording"
+      "next": "Fix wasm3 as an ELF (#366); expand Linux library coverage from observed needs; qualify portable execution recording"
     },
     {
       "id": "differential",

@@ -48,7 +48,7 @@
     </section>
     <section aria-label="Project pillars" class="grid">
       <div class="card"><h3>Verify</h3><p>Diff supported programs and instruction test cases against recorded real ARM64 references, with explicit unsupported cases.</p></div>
-      <div class="card"><h3>Run</h3><p>User-mode ARM64 in memory-safe Rust. A bounded static Linux AArch64 ELF runner and pinned LZ4 cross-platform verification workflow have landed; arbitrary Linux applications remain unsupported.</p></div>
+      <div class="card"><h3>Run</h3><p>User-mode ARM64 in memory-safe Rust. A bounded static Linux AArch64 ELF runner has landed; 18 pinned open-source programs run as static ELFs and match a host build and qemu-user on Tier-3 and Tier-4. One (wasm3) does not run yet, and arbitrary Linux applications remain unsupported.</p></div>
       <div class="card"><h3>Debug and learn</h3><p>Compare engines, share small reproductions, and explore the merged interactive verification lab. General browser-based program debugging is not established.</p></div>
     </section>
     <section class="card" aria-label="Latest status" style="margin:0 0 35px"><h2>Current status</h2><p>The <a href="status.html">status page</a> lists what is proven and what is not, with links to the evidence. Rerun it with <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/REPRODUCE.md">the reproduction guide</a> and read <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/LIMITS.md">the limits</a>. Coverage is partial: many vector, floating-point and system instructions are still undecoded or untested.</p></section>

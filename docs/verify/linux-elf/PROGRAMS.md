@@ -16,7 +16,7 @@ Tier-4 outputs are byte-identical (KISS FFT is compared with qemu only; it also 
 eight of the new programs (all except CoreMark and KISS FFT) also ran clean under AddressSanitizer; UBSan reported only
 benign misaligned loads (FastLZ) and a signed shift (SHA-1). Native (`--cpu=native`, ARM64 hosts only), macOS and
 Windows were **not** run for these programs. A new Linux-only CI step runs them on every PR; macOS and Windows stay
-covered only for LZ4, xxHash, cJSON and zlib. The CI step itself has not run yet.
+covered only for LZ4, xxHash, cJSON and zlib. The Linux CI step has since run: the Differential verification workflow succeeded on main at `90c7649` ([run 42897000107](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42897000107)).
 
 | Program (pinned) | Licence | Instructions (Tier-3) | Checked against |
 |---|---|---|---|

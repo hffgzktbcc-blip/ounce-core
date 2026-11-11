@@ -61,7 +61,9 @@ FPCR values (293,652 executed cases per engine, 95,904 unsupported). Tier-4 runs
 FPCR; with RMode, FZ or DN set it hands execution to the soft-float interpreter path, so its non-default column checks that
 hand-off rather than separate compiled code.
 
-**Real hardware, CI run 42877863247 on commit de2b909 (artifacts `fp-edge-evidence-ubuntu-24.04-arm` and `-macos-latest`):**
+**Real hardware after #363, CI run 42971358680 (PR #372 merge ref `5b70f1b`, artifacts `fp-edge-evidence-ubuntu-24.04-arm` and `-macos-latest`):** Linux Arm runner and Apple M1 (virtual) give the same table. Each of the interpreter, Tier-3 and Tier-4 ran 389,556 cases: at every one of the nine FPCR values 32,684 match, 0 mismatch, 10,600 unsupported (294,156 matched and 95,400 unsupported per engine); Tier-3 and Tier-4 differ from the interpreter in 0 cases; the gate passed on both. The two hardware traces still have different sha256 values (Linux `ceab2b2c…`, macOS `f82e577a…`). Exception flags are still not compared. Same bounded corpus, not arbitrary programs.
+
+**Real hardware, before #363 (historical), CI run 42877863247 on commit de2b909 (artifacts `fp-edge-evidence-ubuntu-24.04-arm` and `-macos-latest`):**
 Linux Arm runner (aarch64, Azure) and Apple M1 (virtual) give the same table. Each engine ran 389,556 cases: default FPCR
 32,628 match, 0 mismatch, 10,656 unsupported; FZ 3,391, DN 7,129, FZ+DN 9,820, RP 2,016, RM 2,498, RZ 1,796 and all-modes 10,291
 mismatches (the unmodelled-mode gap, issue #363); FZ16 equals default because no supported word is half precision. Tier-3 and
