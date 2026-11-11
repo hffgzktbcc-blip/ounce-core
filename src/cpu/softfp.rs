@@ -4,8 +4,34 @@
 //!
 //! The interpreter keeps its fast host-float paths for the default FPCR (RN, FZ=0, DN=0) and calls in here only when
 //! one of the three controls is set. Semantics follow the Arm ARM pseudocode (`FPAdd`, `FPMul`, `FPDiv`, `FPSqrt`,
-//! `FPMulAdd`, `FPRound`, `FPProcessNaNs`, `FPUnpack`); the cumulative exception flags (FPSR.IOC..IDC) and trap
-//! enables are not modelled, as before. Operands and results are raw bit patterns in the low bits of a `u64`.
+//! `FPMulAdd`, `FPRound`, `FPProcessNaNs`, `FPUnpack`). The cumulative exception flags (FPSR.IOC, DZC, OFC, UFC, IXC,
+//! IDC) are raised as the pseudocode's `FPProcessException` does, into a per-thread accumulator that the interpreter
+//! drains into `FPSR` after each instruction ([`take_flags`]); trap enables (FPCR.IOE..IDE) are not modelled.
+//! Operands and results are raw bit patterns in the low bits of a `u64`.
+
+use std::cell::Cell;
+
+/// FPSR cumulative exception bits.
+pub const IOC: u32 = 1;
+pub const DZC: u32 = 1 << 1;
+pub const OFC: u32 = 1 << 2;
+pub const UFC: u32 = 1 << 3;
+pub const IXC: u32 = 1 << 4;
+pub const IDC: u32 = 1 << 7;
+
+thread_local! {
+    static FLAGS: Cell<u32> = const { Cell::new(0) };
+}
+
+/// Records exception flags (`FPProcessException`).
+pub fn raise(flags: u32) {
+    FLAGS.with(|c| c.set(c.get() | flags));
+}
+
+/// Returns and clears the flags raised on this thread since the last call.
+pub fn take_flags() -> u32 {
+    FLAGS.with(|c| c.replace(0))
+}
 
 /// FPCR bits used here.
 pub const FPCR_FZ: u32 = 1 << 24;
@@ -145,8 +171,14 @@ fn unpack(f: Fmt, x: u64) -> Fin {
 }
 
 /// FPUnpack's flush: with FZ a denormal operand (single or double) reads as a zero of the same sign.
+/// A flushed denormal raises IDC.
 pub fn flush_input(f: Fmt, env: Env, x: u64) -> u64 {
-    if env.fz && f.is_denormal(x) { x & f.sign_bit() } else { x }
+    if env.fz && f.is_denormal(x) {
+        raise(IDC);
+        x & f.sign_bit()
+    } else {
+        x
+    }
 }
 
 /// Rounds `(-1)^sign * (m + s) * 2^e` where `0 <= s < 1` is the sticky remainder below `m`'s last bit (`sticky`).
@@ -160,6 +192,8 @@ fn round_pack(f: Fmt, env: Env, sign: bool, e: i32, m: u128, sticky: bool) -> u6
     let emin = 1 - f.bias();
     let tiny = top < emin;
     if tiny && env.fz {
+        // FPRound flushes a tiny result to zero: UFC, and no IXC
+        raise(UFC);
         return f.zero(sign);
     }
     let p = f.mbits as i32 + 1;
@@ -177,6 +211,10 @@ fn round_pack(f: Fmt, env: Env, sign: bool, e: i32, m: u128, sticky: bool) -> u6
         (0, false, true)
     };
     let inexact = round_bit || rest;
+    // tininess is detected before rounding; underflow needs an inexact result
+    if inexact {
+        raise(if tiny { UFC | IXC } else { IXC });
+    }
     let up = match env.round {
         Round::Nearest => round_bit && (rest || q & 1 == 1),
         Round::Up => !sign && inexact,
@@ -189,6 +227,7 @@ fn round_pack(f: Fmt, env: Env, sign: bool, e: i32, m: u128, sticky: bool) -> u6
         // q in [2^mbits, 2^(mbits+1)]: the top bit of q supplies the +1 of the exponent field (and the carry case)
         let field = field_base + (q >> f.mbits) as i64;
         if field >= f.max_field() as i64 {
+            raise(OFC | IXC);
             return overflow(f, env, sign);
         }
         let bits = ((field_base as u64) << f.mbits).wrapping_add(q);
@@ -211,6 +250,7 @@ fn overflow(f: Fmt, env: Env, sign: bool) -> u64 {
 /// FPProcessNaNs over the operands in order: the first signalling NaN (quieted), else the first quiet NaN.
 fn process_nans(f: Fmt, ops: &[u64]) -> Option<u64> {
     if let Some(&x) = ops.iter().find(|&&x| f.is_snan(x)) {
+        raise(IOC);
         return Some(x | f.quiet_bit());
     }
     ops.iter().find(|&&x| f.is_nan(x)).copied()
@@ -276,7 +316,11 @@ pub fn binop(f: Fmt, env: Env, op: BinOp, a: u64, b: u64) -> u64 {
     match op {
         BinOp::Add | BinOp::Sub => {
             if a_inf && b_inf {
-                return if sa == sb { a } else { f.default_nan() };
+                if sa == sb {
+                    return a;
+                }
+                raise(IOC);
+                return f.default_nan();
             }
             if a_inf {
                 return a;
@@ -298,7 +342,11 @@ pub fn binop(f: Fmt, env: Env, op: BinOp, a: u64, b: u64) -> u64 {
         BinOp::Mul | BinOp::Mulx => {
             let sign = sa != sb;
             if (a_inf && b_zero) || (a_zero && b_inf) {
-                return if op == BinOp::Mulx { f.neg_if(f.two(), sign) } else { f.default_nan() };
+                if op == BinOp::Mulx {
+                    return f.neg_if(f.two(), sign);
+                }
+                raise(IOC);
+                return f.default_nan();
             }
             if a_inf || b_inf {
                 return f.infinity(sign);
@@ -312,9 +360,13 @@ pub fn binop(f: Fmt, env: Env, op: BinOp, a: u64, b: u64) -> u64 {
         BinOp::Div => {
             let sign = sa != sb;
             if (a_inf && b_inf) || (a_zero && b_zero) {
+                raise(IOC);
                 return f.default_nan();
             }
             if a_inf || b_zero {
+                if !a_inf {
+                    raise(DZC);
+                }
                 return f.infinity(sign);
             }
             if a_zero || b_inf {
@@ -344,18 +396,21 @@ pub fn fma(f: Fmt, env: Env, n: u64, m: u64, a: u64) -> u64 {
     let (n_inf, m_inf, n_zero, m_zero) = (f.is_inf(n), f.is_inf(m), f.is_zero(n), f.is_zero(m));
     let zero_times_inf = (n_inf && m_zero) || (n_zero && m_inf);
     if f.is_nan(a) && !f.is_snan(a) && zero_times_inf {
+        raise(IOC);
         return nan_result(f, env, f.default_nan());
     }
     if let Some(r) = process_nans(f, &[a, n, m]) {
         return nan_result(f, env, r);
     }
     if zero_times_inf {
+        raise(IOC);
         return f.default_nan();
     }
     let sp = f.sign(n) != f.sign(m);
     let (a_inf, a_zero) = (f.is_inf(a), f.is_zero(a));
     if n_inf || m_inf {
         if a_inf && f.sign(a) != sp {
+            raise(IOC);
             return f.default_nan();
         }
         return f.infinity(sp);
@@ -388,12 +443,16 @@ pub fn fma(f: Fmt, env: Env, n: u64, m: u64, a: u64) -> u64 {
 pub fn sqrt(f: Fmt, env: Env, a: u64) -> u64 {
     let a = flush_input(f, env, a);
     if f.is_nan(a) {
+        if f.is_snan(a) {
+            raise(IOC);
+        }
         return nan_result(f, env, a | f.quiet_bit());
     }
     if f.is_zero(a) {
         return a;
     }
     if f.sign(a) {
+        raise(IOC);
         return f.default_nan();
     }
     if f.is_inf(a) {
@@ -440,6 +499,9 @@ pub fn convert(from: Fmt, to: Fmt, env: Env, a: u64) -> u64 {
     // hardware (and the reference) flush a denormal input under FZ
     let a = flush_input(from, env, a);
     if from.is_nan(a) {
+        if from.is_snan(a) {
+            raise(IOC);
+        }
         // FPConvert: signalling NaNs are quieted, the payload is kept (truncated when narrowing), DN gives the default
         if env.dn {
             return to.default_nan();
@@ -456,6 +518,51 @@ pub fn convert(from: Fmt, to: Fmt, env: Env, a: u64) -> u64 {
     }
     let x = unpack(from, a);
     round_pack(to, env, x.sign, x.exp, x.mant as u128, false)
+}
+
+/// Flags of a float-to-integer conversion (`FPToFixed`). `exact` is the operand (times `2^fbits`) as an exact `f64`
+/// and `rounded` that value rounded to an integer by the instruction's rounding mode. A NaN or an out-of-range
+/// result is IOC (the result saturates); an in-range result that differs from `exact` is IXC.
+pub fn raise_to_int(f: Fmt, a: u64, exact: f64, rounded: f64, signed: bool, is_64: bool) {
+    if f.is_nan(a) {
+        raise(IOC);
+        return;
+    }
+    let (lo, hi) = match (signed, is_64) {
+        (true, true) => (-9223372036854775808.0, 9223372036854775808.0),
+        (true, false) => (-2147483648.0, 2147483648.0),
+        (false, true) => (0.0, 18446744073709551616.0),
+        (false, false) => (0.0, 4294967296.0),
+    };
+    if !(rounded >= lo && rounded < hi) {
+        raise(IOC);
+    } else if rounded != exact {
+        raise(IXC);
+    }
+}
+
+/// `FCMP`/`FCMPE`: a signalling NaN is always IOC; with `signalling` (FCMPE) a quiet NaN is too.
+pub fn raise_compare(f: Fmt, a: u64, b: u64, signalling: bool) {
+    if f.is_snan(a) || f.is_snan(b) || (signalling && (f.is_nan(a) || f.is_nan(b))) {
+        raise(IOC);
+    }
+}
+
+/// FMAX/FMIN/FMAXNM/FMINNM: IOC for a signalling NaN operand (quiet NaNs raise nothing), IDC for a flushed denormal.
+pub fn raise_minmax(f: Fmt, env: Env, a: u64, b: u64) {
+    if f.is_snan(a) || f.is_snan(b) {
+        raise(IOC);
+    }
+    let _ = (flush_input(f, env, a), flush_input(f, env, b));
+}
+
+/// `FRINT*`: a signalling NaN is IOC; with `inexact` (FRINTX only) a result that differs from the operand is IXC.
+pub fn raise_round_int(f: Fmt, a: u64, exact: f64, rounded: f64, inexact: bool) {
+    if f.is_snan(a) {
+        raise(IOC);
+    } else if inexact && !f.is_nan(a) && exact != rounded {
+        raise(IXC);
+    }
 }
 
 #[cfg(test)]
@@ -605,6 +712,75 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Flags raised by one soft operation.
+    fn flags_of(f: impl FnOnce()) -> u32 {
+        take_flags();
+        f();
+        take_flags()
+    }
+
+    /// The five cumulative exception flags against hand-derived Arm results (FPProcessException cases).
+    #[test]
+    fn exception_flags() {
+        let d = Env::DEFAULT;
+        let s = |op, a, b| flags_of(|| { binop(F32, d, op, a, b); });
+        let (one, two, big, tiny, den) = (0x3f80_0000u64, 0x4000_0000u64, 0x7f7f_ffffu64, 0x0080_0000u64, 1u64);
+        assert_eq!(s(BinOp::Add, one, one), 0, "exact");
+        assert_eq!(s(BinOp::Add, one, 0x3380_0000), IXC, "1 + 2^-24 is inexact");
+        assert_eq!(s(BinOp::Add, 0x7f80_0000, 0xff80_0000), IOC, "inf - inf");
+        assert_eq!(s(BinOp::Mul, 0, 0x7f80_0000), IOC, "0 * inf");
+        assert_eq!(s(BinOp::Mulx, 0, 0x7f80_0000), 0, "FMULX 0 * inf is +-2, no flag");
+        assert_eq!(s(BinOp::Div, 0, 0), IOC, "0 / 0");
+        assert_eq!(s(BinOp::Div, 0x7f80_0000, 0x7f80_0000), IOC, "inf / inf");
+        assert_eq!(s(BinOp::Div, one, 0), DZC, "1 / 0");
+        assert_eq!(s(BinOp::Div, 0x7f80_0000, 0), 0, "inf / 0 is exactly inf");
+        assert_eq!(s(BinOp::Mul, big, two), OFC | IXC, "overflow is also inexact");
+        assert_eq!(s(BinOp::Mul, tiny, 0x3f00_0000), 0, "min normal / 2 is an exact denormal: no UFC");
+        assert_eq!(s(BinOp::Mul, tiny, 0x3eaa_aaab), UFC | IXC, "tiny and inexact");
+        assert_eq!(s(BinOp::Add, 0x7fa0_0000, one), IOC, "signalling NaN operand");
+        assert_eq!(s(BinOp::Add, 0x7fc0_0000, one), 0, "quiet NaN operand");
+        let fz = Env { fz: true, ..d };
+        assert_eq!(flags_of(|| { binop(F32, fz, BinOp::Add, den, one); }), IDC, "FZ: denormal input is IDC, 1 + 0 exact");
+        assert_eq!(flags_of(|| { binop(F32, fz, BinOp::Mul, tiny, 0x3f00_0000); }), UFC, "FZ: tiny result flushed, UFC without IXC");
+        assert_eq!(flags_of(|| { sqrt(F32, d, 0xbf80_0000); }), IOC, "sqrt(-1)");
+        assert_eq!(flags_of(|| { sqrt(F32, d, 0x4000_0000); }), IXC, "sqrt(2)");
+        assert_eq!(flags_of(|| { sqrt(F32, d, 0x8000_0000); }), 0, "sqrt(-0)");
+        assert_eq!(flags_of(|| { fma(F32, d, 0, 0x7f80_0000, 0x7fc0_0000); }), IOC, "0 * inf + qNaN");
+        assert_eq!(flags_of(|| { convert(F64, F32, d, 0x47f0_0000_0000_0000); }), OFC | IXC, "double to single overflow");
+        assert_eq!(flags_of(|| { convert(F32, F64, d, 0x7fa0_0000); }), IOC, "widening an sNaN");
+        assert_eq!(flags_of(|| { convert(F32, F64, d, 0x7fc0_0000); }), 0);
+        assert_eq!(flags_of(|| { int_to_fp(F32, d, false, (1 << 24) + 1, 0); }), IXC, "2^24+1 is not a single");
+        assert_eq!(flags_of(|| { int_to_fp(F32, d, false, 1 << 24, 0); }), 0);
+        // flags accumulate until taken
+        take_flags();
+        binop(F32, d, BinOp::Div, one, 0);
+        binop(F32, d, BinOp::Add, one, 0x3380_0000);
+        assert_eq!(take_flags(), DZC | IXC);
+        assert_eq!(take_flags(), 0);
+    }
+
+    #[test]
+    fn conversion_flags() {
+        let to_int = |v: f64, rounded: f64, signed, is64| flags_of(|| raise_to_int(F64, v.to_bits(), v, rounded, signed, is64));
+        assert_eq!(to_int(2.0, 2.0, true, false), 0);
+        assert_eq!(to_int(1.5, 2.0, true, false), IXC);
+        assert_eq!(to_int(2147483648.0, 2147483648.0, true, false), IOC, "out of i32 range");
+        assert_eq!(to_int(-2147483648.0, -2147483648.0, true, false), 0, "i32::MIN is in range");
+        assert_eq!(to_int(-0.5, -0.0, false, true), IXC, "rounds to zero: in range for unsigned, inexact");
+        assert_eq!(to_int(-1.0, -1.0, false, false), IOC, "negative to unsigned");
+        assert_eq!(to_int(f64::INFINITY, f64::INFINITY, true, true), IOC);
+        assert_eq!(flags_of(|| raise_to_int(F64, f64::NAN.to_bits(), f64::NAN, f64::NAN, true, true)), IOC);
+        // compares: FCMP only for signalling NaNs, FCMPE for any NaN
+        let (snan, qnan) = (0x7ff0_0000_0000_0001u64, 0x7ff8_0000_0000_0000u64);
+        assert_eq!(flags_of(|| raise_compare(F64, qnan, 0, false)), 0);
+        assert_eq!(flags_of(|| raise_compare(F64, qnan, 0, true)), IOC);
+        assert_eq!(flags_of(|| raise_compare(F64, 0, snan, false)), IOC);
+        // FRINTX raises IXC only when it changes the value
+        assert_eq!(flags_of(|| raise_round_int(F64, 1.5f64.to_bits(), 1.5, 2.0, true)), IXC);
+        assert_eq!(flags_of(|| raise_round_int(F64, 1.5f64.to_bits(), 1.5, 2.0, false)), 0);
+        assert_eq!(flags_of(|| raise_round_int(F64, 2.0f64.to_bits(), 2.0, 2.0, true)), 0);
     }
 
     #[test]
