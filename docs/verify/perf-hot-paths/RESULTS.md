@@ -57,7 +57,10 @@ instead of hashing the same page number for permission checking and again for
 copying/invalidation. The arena field is borrowed separately under `nce`.
 Permissions, page splitting, overflow behavior, code-write generations, and the
 arena-vs-page storage choice are preserved. No unsafe Rust or hashing algorithm
-change was introduced. No timers or validation work were removed to improve scores.
+change was introduced. No timers or validation work were removed to improve scores. The remaining
+per-instruction deadline-polling overhead is recorded as community follow-up
+[issue #383](https://github.com/hffgzktbcc-blip/ounce-core/issues/383), with
+reproduction steps and exact-boundary requirements.
 
 ## Identity and reproduction
 
@@ -88,3 +91,18 @@ The benchmark summaries retain every measured sample. Raw per-execution logs
 and observations were also retained locally under `/tmp/ounce-perf-paired-cpu`,
 `/tmp/ounce-perf-coremark-paired`, and `/tmp/ounce-perf-coremark-final` during this
 run; those temporary directories are not required to read the committed results.
+
+## Correctness qualification
+
+The final optimized test executable passed **50/50 registered first-frame programs
+(100 interpreter/Tier-3 runs)** using unchanged expectations and the existing
+`run_corpus_oracles.py` runner (`--seconds 300 --shards 2`).
+`corpus-oracles.json` retains the per-program NRO hashes, all captured frame
+hashes/probes, exact instruction counts, stop reasons and verdicts. The program
+binaries came from the existing local registered corpus build root; they were
+not rebuilt or distributed by this task. This is local qualification of these
+inputs, not an independent compatibility or reproducible-build claim.
+
+The release suite passed 583 tests (10 intentionally ignored), and optional
+`nce,native-jit` test compilation passed. Eight focused Python tests passed.
+See `checks.txt` for commands and limits; no live NCE run was performed.
