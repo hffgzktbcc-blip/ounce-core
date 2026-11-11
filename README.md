@@ -14,6 +14,10 @@
 
 # Ounce-Core
 
+![Real CLI demo: start screen, successful homebrew fixture, and early-stop diagnosis.](docs/media/cli-demo.gif)
+
+**[Try it in your browser →](https://hffgzktbcc-blip.github.io/ounce-core/playground/)**
+
 **Understand why programs fail. Prove when they work.**
 
 An open-source ARM64 execution, debugging and verification platform in safe Rust.
