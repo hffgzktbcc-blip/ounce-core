@@ -58,7 +58,7 @@ jobs:
         run: |
           bash -n scripts/next.sh scripts/gate.sh scripts/check_legal_guardrails.sh scripts/check_unsafe_boundary.sh
           python3 scripts/agent_workflow.py next
-          python3 scripts/corpus_verify.py headline docs/verify/audout-padding/canonical-corpus.json --check-readme
+          python3 scripts/corpus_verify.py headline docs/verify/corpus-c47fa14/canonical-corpus.json --check-readme
           python3 scripts/corpus_verify.py snapshot
           python3 -m unittest discover -s scripts -p 'test_*.py'
           python3 -m unittest discover -s tests -p 'test_*.py'

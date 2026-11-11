@@ -58,6 +58,10 @@ pub struct Cpu {
     /// [`COUNTER_READ_TICKS`] so a loop polling the counter always sees time pass. It depends on
     /// nothing the CPU engines differ in.
     pub counter_ticks: u64,
+    /// Most recent fault or halt reason produced by [`Self::step`] or [`Self::check_landing_pad`],
+    /// so block engines that collapse step errors into `BlockExit::Fault` can still report the exact
+    /// underlying instruction or memory fault.
+    pub last_error: Option<String>,
 }
 
 /// Counter ticks (19.2 MHz) one `CNTPCT_EL0` read takes: about 52 microseconds.
@@ -77,6 +81,7 @@ impl Cpu {
             counter_ticks: 0x0123_4560,
             exclusive: None,
             pauth: PointerAuth::default(),
+            last_error: None,
         }
     }
 
@@ -88,10 +93,17 @@ impl Cpu {
             return Ok(());
         }
         let pc = self.regs.pc;
-        if pauth::bti_compatible(mmu.read_u32(pc)?, btype, self.pauth.bt0) {
+        let raw = mmu.read_u32(pc).map_err(|e| {
+            let err = CpuError::Memory(e);
+            self.last_error = Some(err.to_string());
+            err
+        })?;
+        if pauth::bti_compatible(raw, btype, self.pauth.bt0) {
             Ok(())
         } else {
-            Err(CpuError::BranchTarget { pc, btype })
+            let err = CpuError::BranchTarget { pc, btype };
+            self.last_error = Some(err.to_string());
+            Err(err)
         }
     }
 
@@ -119,6 +131,16 @@ impl Cpu {
 
     /// Fetches, basic-block JIT-compiles/looks up, and executes a single AArch64 instruction.
     pub fn step(&mut self, mmu: &mut Memory) -> Result<StepResult, CpuError> {
+        let res = self.step_inner(mmu);
+        match &res {
+            Err(err) => self.last_error = Some(err.to_string()),
+            Ok(StepResult::Halt(msg)) => self.last_error = Some(format!("CPU halted: {msg}")),
+            _ => {}
+        }
+        res
+    }
+
+    fn step_inner(&mut self, mmu: &mut Memory) -> Result<StepResult, CpuError> {
         let pc = self.regs.pc;
         let raw_inst = mmu.read_u32(pc)?;
         if self.regs.pstate.btype != 0 {

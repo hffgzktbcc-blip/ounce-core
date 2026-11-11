@@ -46,11 +46,12 @@ Swift logic tests: `swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos
 
 | Area | Behaviour |
 |---|---|
-| First run | Explains the product; accepts a dropped or chosen `.nro`. A dropped `.elf` gets an honest "not supported yet" (ELF loading is a separate change). |
+| First run | Explains the product; accepts a dropped or chosen `.nro`. A dropped `.elf` or ELF-headed file directs the user to `ounce-core run-elf <file>` in Terminal. |
 | Engine and budget | `--cpu=tier3|tier4|native` is always passed explicitly; `OUNCE_CPU` is stripped from the child. A budget sets `OUNCE_NRO_BUDGET`; blank clears any inherited value. `native` ignores the budget (it has a time limit, `OUNCE_NRO_TIMEOUT_SECS`) and runs headless. |
 | Diagnosis | `RunLogic.swift` parses the runtime's printed stop messages (see below) into a headline, an explanation and a next step, quoting the log lines it relied on. The first failure line wins. A silent engine fallback is reported as such, never as a pass. |
 | Finished run | The diagnosis card shows `Program output:` (what the program printed, last 8 lines) above the runtime evidence, so the result is visible without opening session details. |
 | Report This Problem… | Shown after a failed run. Copies a report (file name only, home folder replaced by `~`, engine, command, OS, evidence) and opens `.github/ISSUE_TEMPLATE/emulation_bug.yml` in the browser with fields prefilled. The app submits nothing. |
+| View Check Results… | `EvidenceReport.swift` decodes saved `ounce-verify` reports (`v0`, `diagnosis-v1`, `comparison-v1`, `repair-v1`, `run-v1`, `hbx-first-frame-v1`), `ounce-diagnose` audio (`audio-padding-v1`, `audout-padding-v1`) and replay (`replay-v1`) reports, and Workbench `result.json` files (`workbench-check-v1`). Selecting a dossier `manifest.json` explains which report file in that folder to open instead. |
 | Classic window | Not shown at launch. Every classic action (Run in a Window, Verify, View Results, any diagnosis or error) brings it forward first. |
 | Verify against Host | `HostVerify.swift` matches the NRO file name to a harness in `docs/verify/differential.json`, runs it headless with a 4e9 budget (as `verify_differential.py` does) in a temporary SD folder, and diffs the harness's result file against the bundled `expected-host.txt`. A harness whose reference is `arm64_reference` carries a caveat on non-ARM64 hosts. |
 

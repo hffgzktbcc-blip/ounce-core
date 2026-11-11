@@ -52,6 +52,6 @@
     "usbhs": "pass",
     "cpu-jit": "pass"
   },
-  "recorded_from": "docs/verify/audout-padding/canonical-corpus.json",
-  "core_commit": "430ce19da2aaad7e6bbe21bfe57b519ba4bb22a6"
+  "recorded_from": "docs/verify/corpus-c47fa14/canonical-corpus.json",
+  "core_commit": "c47fa14"
 }

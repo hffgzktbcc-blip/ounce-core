@@ -165,7 +165,7 @@ pub enum LoadError {
     #[error("Image segment layout is out of range (offset {offset:#x}, size {size:#x})")]
     SegmentOutOfRange { offset: u64, size: u64 },
 
-    #[error("NSO {segment} segment exceeds file bounds (offset {offset:#x}, size {size:#x}, file size {file_size:#x})")]
+    #[error("Image {segment} segment exceeds file bounds (offset {offset:#x}, size {size:#x}, available {file_size:#x} bytes)")]
     SegmentPastEof { segment: &'static str, offset: usize, size: usize, file_size: usize },
 
     #[error("Memory mapping error: {0}")]
@@ -243,14 +243,19 @@ impl NroLoader {
 
         // Validate every file-backed extent before installing any mappings. Assets appended
         // after the NRO image cannot make a truncated program segment valid.
-        for (offset, size) in [
-            (header.text_offset, header.text_size),
-            (header.rodata_offset, header.rodata_size),
-            (header.data_offset, header.data_size),
+        for (segment, offset, size) in [
+            ("text", header.text_offset, header.text_size),
+            ("rodata", header.rodata_offset, header.rodata_size),
+            ("data", header.data_offset, header.data_size),
         ] {
             if size != 0 && (offset as u64 + size as u64 > header.size as u64
                 || offset as u64 + size as u64 > bytes.len() as u64) {
-                return Err(LoadError::SegmentOutOfRange { offset: offset as u64, size: size as u64 });
+                return Err(LoadError::SegmentPastEof {
+                    segment,
+                    offset: offset as usize,
+                    size: size as usize,
+                    file_size: bytes.len().min(header.size as usize),
+                });
             }
         }
 

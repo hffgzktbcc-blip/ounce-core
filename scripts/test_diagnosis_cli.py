@@ -47,9 +47,20 @@ class InstalledCliTests(unittest.TestCase):
         self.assertEqual(self.archive.with_suffix('.pyz.sha256').read_text().split()[0], digest)
 
     def test_missing_corrupt_evidence_and_existing_output_are_actionable(self):
+        help_out = self.command('--help')
+        self.assertEqual(help_out.returncode, 0, help_out.stderr)
+        self.assertIn('ounce-core run-nro', help_out.stdout)
+        self.assertIn('ounce-core ui', help_out.stdout)
         missing = self.command('bundle', '--evidence', self.root / 'missing', '--output', self.root / 'out')
         self.assertEqual(missing.returncode, 2)
         self.assertNotIn('Traceback', missing.stderr)
+        self.assertIn('ounce-core run-nro', missing.stderr)
+        empty_dir = self.root / 'empty-dir'
+        empty_dir.mkdir()
+        no_manifest = self.command('bundle', '--evidence', empty_dir, '--output', self.root / 'out')
+        self.assertEqual(no_manifest.returncode, 2)
+        self.assertIn('missing manifest.json', no_manifest.stderr)
+        self.assertIn('ounce-diagnose example', no_manifest.stderr)
         evidence = self.root / 'bad'
         evidence.mkdir()
         (evidence / 'manifest.json').write_text('{bad')

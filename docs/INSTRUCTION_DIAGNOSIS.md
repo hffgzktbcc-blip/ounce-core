@@ -89,6 +89,6 @@ its original 406-byte host output on Tier-3 and Tier-4.
 Regression tests cover the actual hardware instruction and shared-helper single/
 double precision sign and operand-order cases, input NaN payload preservation,
 and FMULX's distinct result. Full local suite: 565 unit tests and 11 CLI tests
-passed, with 10 existing opt-in tests ignored. Three-host repair qualification is
-pending. The repair does not certify legacy/scalar floating-point paths, other
+passed, with 10 existing opt-in tests ignored. Hosted Linux, macOS and Windows qualification passed in
+[PR #267](https://github.com/hffgzktbcc-blip/ounce-core/pull/267) (recorded in PLAN.md V9). The repair does not certify legacy/scalar floating-point paths, other
 invalid arithmetic, FPCR modes or FPSR exception flags.
