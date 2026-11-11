@@ -1275,6 +1275,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn guest_input_truncated_nso_segments_are_rejected_before_mapping() {
+        for descriptor in [0x10, 0x20, 0x30] {
+            for offset in [0x100u32, u32::MAX] {
+                let mut bytes = vec![0u8; 0x100];
+                bytes[..4].copy_from_slice(b"NSO0");
+                bytes[descriptor..descriptor + 4].copy_from_slice(&offset.to_le_bytes());
+                bytes[descriptor + 8..descriptor + 12].copy_from_slice(&4u32.to_le_bytes());
+                let mut mmu = Memory::new();
+                mmu.map_range(0x80000000, 4096, Permission::READ_WRITE);
+                mmu.write_u32(0x80000000, 0x12345678).unwrap();
+                let error = NroLoader::load_nso_segments(&bytes, 0x80000000, &mut mmu).unwrap_err();
+                assert!(error.to_string().contains("file"), "{error}");
+                assert_eq!(mmu.read_u32(0x80000000).unwrap(), 0x12345678);
+            }
+        }
+    }
+
+    #[test]
+    fn guest_input_nso_address_validation_precedes_mapping() {
+        let bytes = NroLoader::build_synthetic_nso(&0xd40000e1u32.to_le_bytes());
+        let mut mmu = Memory::new();
+        assert!(matches!(NroLoader::load_nso_segments(&bytes, u64::MAX - 1, &mut mmu),
+            Err(LoadError::SegmentOutOfRange { .. })));
+        assert!(mmu.read_u8(u64::MAX - 1).is_err());
+    }
+
+    #[test]
     fn truncated_nro_sections_are_rejected_before_mapping() {
         for field in [0x24usize, 0x2c, 0x34] {
             let mut bytes = NroLoader::build_synthetic_nro(&0xd40000e1u32.to_le_bytes());
