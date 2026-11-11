@@ -1,113 +1,167 @@
 # Fixture and source provenance register
 
-Maintained by the project. This register records the source provenance, build evidence, and rights status for fixtures, corpus inputs, specifications, ported code, and repository history. Source and licensing guardrails are in [CLEAN_ROOM.md](CLEAN_ROOM.md); licensing and notice distribution details are in [LICENSE_DISPOSITION.md](LICENSE_DISPOSITION.md).
-
-## Status
-
-| Group | Items / Status |
-|---|---|
-| **Done** | Current tree and 16 release assets scan clean; 11 NROs rebuild byte-for-byte; fixture validator and CODEOWNERS merged; notice packaging lock merged. |
-| **Owner items** | 1. GitHub `refs/pull/1/head` retains 23 historical objects: support ticket SENT by owner, awaiting GitHub.<br>2. 72-byte third-party program in wider history: owner decided remove, needs targeted history rewrite or written risk acceptance, deferred until open PRs merge. |
-| **Specialist items** | objc2/Apple SDK and Rust runtime notices; `RELEASE_NOTICE_REVIEW.json` reviewer. |
-
----
+Maintained by the project. Current notice and distribution decisions: [LICENSE_DISPOSITION.md](LICENSE_DISPOSITION.md). This is an evidence register, not a third-party legal opinion. Dated older findings are distinguished below.
 
 ## Test fixtures (`tests/fixtures/nro/*`)
 
-All eleven committed NROs have registered binary and build-input identities and byte-identical rebuild evidence. See [the register](../tests/fixtures/provenance.json), [rebuilds and linker evidence](../tests/fixtures/rebuild-evidence.json), [component notices](../tests/fixtures/nro/NOTICES.md), and [toolchain records](../tests/fixtures/nro/TOOLCHAIN_VERSIONS.md).
+All eleven committed NROs have registered binary/build-input identities and
+byte-identical rebuild evidence. See [the register](../tests/fixtures/provenance.json),
+[rebuilds and selected linker inputs](../tests/fixtures/rebuild-evidence.json), and
+[toolchain record](../tests/fixtures/nro/TOOLCHAIN_VERSIONS.md).
 
-| Fixtures | Identity/build evidence | Distribution |
-| --- | --- | --- |
-| `hello`, `services`, `romfs`, `nvdrv`, `gpu`, `input`, `input_multi`, `threads`, `audren`, `sdmc`, `deko3d` | All eleven rebuilds match committed NRO bytes exactly from tracked inputs; selected archive members retained | Present in repository source archives as reviewed test inputs; excluded from runtime binary release archives and the standalone Python toolkit |
+| Fixtures | Identity/build evidence | Rights scope | Distribution |
+| --- | --- | --- | --- |
+| hello, services, romfs, nvdrv, gpu, input, input_multi, threads, audren, sdmc, deko3d | All eleven rebuilds match committed NRO bytes; selected archive members retained | Source authorship and component redistribution review remain unverified; rebuild equality does not supply permission | Present in the full repository/source archives; excluded from runtime binary archives and the standalone Python toolkit |
 
-`scripts/check_fixture_provenance.py` validates fixture identity against `tests/fixtures/provenance.json` in CI, rejecting unregistered NROs and requiring review evidence for changes.
-
-The RomFS asset identity and all tracked fixture inputs are in the register. Outside RomFS programs and containers under `docs/reproduce/` have separate pinned-source review packets; they are not repository fixtures.
+The RomFS asset identity and all tracked fixture inputs are in the register. The
+separate outside RomFS program and container have their own pinned-source review
+packet under `docs/reproduce/`; they are not the repository's synthetic fixture.
 
 ## External corpus programs (built in CI)
 
-Sources are fetched at pinned commits and built unchanged using the `devkitpro/devkita64` Docker image. Both source and compiled NROs remain outside the repository. CI transfers permitted NROs to the native job in ephemeral artifacts. Build manifests are under `tests/corpus/` and `tests/corpus/oracle-builds/`.
+Sources are fetched at pinned commits and built unchanged with the `devkitpro/devkita64`
+Docker image. Source and NROs stay out of the repository. CI transfers permitted NROs to the
+native job in a one-day artifact. Build manifests are under `tests/corpus/`. Licences are as declared upstream at the
+pinned commit; not legally reviewed. The oracles' glyph model reads libnx 4.12.0's
+`nx/data/default_font.bin` (ISC) at generation time; the font is not committed.
 
-| Program | Repository | Commit | Path | Licence observed |
+| program | repository | commit | path | licence observed |
 |---|---|---|---|---|
-| `simplegfx` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/simplegfx` | Public Domain Mark 1.0 (README notice; links libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
-| `deko-basic` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/deko3d/deko_basic` | Public Domain Mark 1.0 (README notice; links libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
-| `romfs` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `fs/romfs` | Public Domain Mark 1.0 (README notice; links libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
-| `startup` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `templates/application` | Public Domain Mark 1.0 (README notice; links libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
-| `printing-hello-world` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/printing/hello-world` | Public Domain Mark 1.0 (README notice) |
-| `vt52-demo` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/printing/vt52-demo` | Public Domain Mark 1.0 (README notice) |
-| `read-controls` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `hid/read-controls` | Public Domain Mark 1.0 (README notice) |
-| `touch-screen` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `hid/touch-screen` | Public Domain Mark 1.0 (README notice) |
-| `sixaxis` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `hid/sixaxis` | Public Domain Mark 1.0 (README notice) |
-| `audren-simple` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `audio/audren-simple` | Public Domain Mark 1.0 (README notice) |
-| `get-system-language` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `settings/get_system_language` | Public Domain Mark 1.0 (README notice) |
-| `barrier` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `misc/barrier` | Public Domain Mark 1.0 (README notice) |
-| `user-events` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `misc/user_events` | Public Domain Mark 1.0 (README notice) |
-| `user-timers` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `misc/user_timers` | Public Domain Mark 1.0 (README notice) |
-| `deko-console` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/deko3d/deko_console` | Public Domain Mark 1.0 (README notice) |
-| `deko-examples-menu` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/deko3d/deko_examples` | Public Domain Mark 1.0 (README notice) |
-| `sdl2-simple` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/sdl2/sdl2-simple` | Public Domain Mark 1.0 (README notice) |
+| `simplegfx` (original 4) | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/simplegfx` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `deko-basic` (original 4) | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/deko3d/deko_basic` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `romfs` (original 4) | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `fs/romfs` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `startup` (original 4) | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `templates/application` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `printing-hello-world` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/printing/hello-world` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `vt52-demo` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/printing/vt52-demo` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `read-controls` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `hid/read-controls` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `touch-screen` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `hid/touch-screen` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `sixaxis` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `hid/sixaxis` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `audren-simple` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `audio/audren-simple` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `get-system-language` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `settings/get_system_language` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `barrier` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `misc/barrier` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `user-events` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `misc/user_events` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `user-timers` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `misc/user_timers` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `deko-console` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/deko3d/deko_console` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `deko-examples-menu` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/deko3d/deko_examples` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
+| `sdl2-simple` | switchbrew/switch-examples | `669786898205b7beb25ff1731e72982e6d0397d3` | `graphics/sdl2/sdl2-simple` | Public Domain Mark 1.0 (README notice; linked libnx ISC, newlib, deko3d zlib, SDL2 zlib, Mesa MIT) |
 | `hybrid-app` | fincs/hybrid_app | `8c43d74b41740703b732783fa35f9d3fa63d1b2e` | `.` | zlib (`COPYING`, Copyright (c) 2019 fincs) |
 | `nx-hbmenu` | switchbrew/nx-hbmenu | `089fdf85ff82ad7077527092f8615f2e57ffc985` | `.` | ISC (`LICENSE.md`, nx-hbmenu Authors) |
 | `raufang-hello-cpp` | Raufang/switch-hello-world | `fbe545bad4eb9b188990f66b0315b697ad74371a` | `.` | MIT (`LICENSE`, Copyright (c) 2025 Raufang) |
 
-Thirty additional Switch examples are pinned at `switchbrew/switch-examples` revision `669786898205b7beb25ff1731e72982e6d0397d3` and registered in `tests/corpus/oracle-builds/switch-examples.json`. The CPU JIT sample uses the pinned `jit` build in `tests/corpus/manifest.json`.
+### Step 7 Switch examples intake
+
+The 30 added cases use the same public `switchbrew/switch-examples` revision
+`669786898205b7beb25ff1731e72982e6d0397d3` and its Public Domain Mark 1.0 README notice.
+The paths are registered in `tests/corpus/oracle-builds/switch-examples.json`.
+The CPU JIT sample uses the already pinned `jit` build in `tests/corpus/manifest.json`.
+The new programs link libnx (ISC) and the devkitA64 standard runtime. CI retains each build's
+source and binary hashes, compiler details, and the container package inventory.
 
 ## Synthetic inputs in source
 
-The test harness (`src/main.rs`) and unit tests use AArch64 instruction words written by hand from public Arm architecture documentation, alongside containers generated at runtime with in-repo synthetic keys. No proprietary or retail binaries are included.
+The 25-stage harness (`src/main.rs`) and unit tests use AArch64 instruction words written by hand from the
+public Arm architecture documentation, plus containers built at runtime with an in-repo synthetic test key.
+No external binaries are read.
 
-## Specifications and public references
+## Specifications and public references used for implementation
 
 | Area | Public reference | Used for |
 |---|---|---|
-| AArch64 | Arm Architecture Reference Manual (public) | Decoder, interpreter, JIT |
-| Horizon service and SVC behaviour | libnx public headers and source (ISC), SwitchBrew wiki | Homebrew ABI, CMIF message layouts, service protocol flows |
-| GPU methods and layouts | Nouveau/Mesa class headers, NVIDIA public documentation | Maxwell and Ampere method tables |
-| Shader encodings | Mesa NAK sources, envytools, public SASS research | Shader translator front-ends |
-| Block-linear tiling | Nouveau and Tegra public documentation | `src/gpu/tiling` |
+| AArch64 | Arm Architecture Reference Manual (public) | decoder, interpreter, JIT |
+| Horizon service/SVC behaviour | libnx public headers and source (ISC), SwitchBrew wiki | what homebrew calls and expects |
+| GPU methods and layouts | public Nouveau/Mesa class headers, NVIDIA public documentation | Maxwell/Ampere method tables |
+| Shader encodings | public SASS research and Mesa sources | translator front ends |
+| Block-linear tiling | public Nouveau/Tegra documentation | `src/gpu/tiling` |
 
-Rules for implementation: implement from behaviour described, written in project code. Do not copy binary data tables or proprietary source. Method numbers and hardware structure layouts matching public specifications cite the corresponding header in comments.
+Rule: implement from the *behaviour* described, in our own code. Do not paste code or data tables from these
+sources. Where a table must match a public layout (for example method numbers), cite the header in a comment.
 
-### SASS encodings: sources read and cross-checked (`src/gpu/sass`)
+## SASS encodings: sources read and cross-checked (`src/gpu/sass`, PLAN step 5)
 
-Field positions and arithmetic formulas were cross-checked against these MIT sources and re-written in project code. Attributions and license notices are in `THIRD_PARTY.md`.
+Read 2026-11-03. Field positions and small semantic formulas were taken from these MIT sources and
+re-written in our own code; their notices are in `THIRD_PARTY.md`.
 
 | Source | Version read | Used for |
 |---|---|---|
-| Mesa NAK `src/nouveau/compiler/nak/` (MIT) | `f4a706c5a218cbee80caef7f40cd511a6fa46b36` | Ampere `ALD`/`AST`/`IPA` fields, `IPA` frequency codes, `PLOP3` negate bits and tables, `MUFU` function width and operands, `TEX`/`TLD` flags, SM70+ `MUFU.SIN`/`COS` scaling, 32-word SPH v4; Maxwell `XMAD` and `RRO` encodings |
-| envytools `envydis/gm107.c` (MIT) | `master` (fetched 2026-11-03) | Maxwell `XMAD` signedness/mode tables, `LOP`/`LOP3` predicate-output fields, `TEX` LOD modes |
-| Ryujinx `Ryujinx.Graphics.Shader/` (MIT) | Archive copy | `XMAD` semantics (`.CHI`/`.CLO` zero-extension, `.CBCC`/`.MRG`, `.CSFU` formula) |
+| Mesa NAK `src/nouveau/compiler/nak/sm70_encode.rs`, `nvdisasm_tests.rs`, `from_nir.rs`, `sph.rs`, `nak_nir_lower_fs_inputs.c` (MIT) | mesa `f4a706c5a218cbee80caef7f40cd511a6fa46b36` | Ampere `ALD`/`AST`/`IPA` fields, `IPA` frequency codes (PASS 0, CONSTANT 1, STATE 2; no PASS_MUL_W on SM70+), `PLOP3` negate bits and second table (checked by NAK against `nvdisasm`), `MUFU` function width and operand forms, `TEX`/`TLD` flag bits, SM70+ `MUFU.SIN`/`COS` input scaling, 32-word SPH v4 for SM 7.3+ |
+| Mesa NAK `src/nouveau/compiler/nak/sm50.rs` (MIT) | same | independent check of the Maxwell fields already read from envytools; `RRO` encoding |
+| envytools `envydis/gm107.c` (MIT) | `master`, fetched 2026-11-03 | Maxwell `XMAD` signedness/mode tables, `LOP`/`LOP3` predicate-output fields, `TEX` LOD modes |
+| Ryujinx `Ryujinx.Graphics.Shader/Instructions/InstEmitIntegerArithmetic.cs` (MIT), read from an archive copy | as archived | `XMAD` semantics: `.CHI`/`.CLO` addends zero-extended regardless of operand signedness, `.CBCC`/`.MRG` use the unmodified B, `.CSFU` formula |
 
-### Switch 2 homebrew SDK
+Unresolved disagreements (we keep the reading with real-word evidence): NAK's SM50 bound `TEX` opcode
+`0x0380` against the CuAssembler-checked `0xc038`; the Maxwell `FSET` constant-buffer form's b negate bit
+(NAK bit 6, envytools bit 53).
 
-The split-image loader follows the public MIT-licensed [HBLauncher app builder](https://github.com/ravensclawx/HBLauncher/blob/18b4748ba98eeac7df17beb5d3418985eb74897c/sdk/tools/hbx-build.py) at commit `18b4748ba98eeac7df17beb5d3418985eb74897c`.
+## Switch 2 homebrew SDK
 
-### Account, audio, and controller protocols
-
-- `src/kernel/account.rs` and `src/kernel/audio_device.rs` follow the protocol layouts in public libnx sources (`nx/source/services/acc.c`, `applet.c`, `audin.c`, `audout.c` at commit `b156b4774fb2df7b93402169509266da7547fc4c`). Account is an offline local profile ("Ounce User"); headless audio returns silence and tracks buffer tags.
-- Controller color attributes and shared memory layouts follow libnx 4.12.0 `include/switch/services/hid.h`. Workload `hid/colors` is built from pinned `switchbrew/switch-examples` in CI; toolchain and binaries remain outside the repository.
+The split-image loader follows the public MIT-licensed
+[HBLauncher app builder](https://github.com/ravensclawx/HBLauncher/blob/18b4748ba98eeac7df17beb5d3418985eb74897c/sdk/tools/hbx-build.py)
+at commit `18b4748ba98eeac7df17beb5d3418985eb74897c`. The build report supplies
+segment addresses, sizes, entry point, and SHA-256 hashes. The first-frame
+oracle uses the pinned outside Hello CPU sample's drawing calls.
 
 ## Ported code
 
-Ported MIT code adheres to the sources policy in [CLEAN_ROOM.md](CLEAN_ROOM.md). Full license notices are maintained in `THIRD_PARTY.md`.
+MIT code ported into this repository under the "Sources" rules of `PLAN.md`. Notices are in `THIRD_PARTY.md`.
 
 | Ported into | Upstream | Licence | What was taken |
 |---|---|---|---|
-| `crates/ounce-nce/src/patch.rs` | [seedds/nxnative](https://github.com/seedds/nxnative) `dm/tools/patch_nso.py` and `dm/tools/nso_asm.py` at commit `abd5ac2cce8e164f455188e4984281d14161d4cb` | MIT | Native-execution rewrite rules (SVC and timer reads to host gates, `TPIDR_EL0`/`TPIDRRO_EL0` to thread context, `x18` users to scratch register: `site_gate`, `site_sysreg_read`, `site_tpidr_write`, `site_plain`, `site_sp`, `site_cond`, `site_pcrel`, `site_blr`), instruction encoders, and 16 KiB host page sealing (`dm/host/loader.c`). Re-implemented in safe Rust; game-specific patches omitted. |
+| `crates/ounce-nce/src/patch.rs` | [seedds/nxnative](https://github.com/seedds/nxnative) `dm/tools/patch_nso.py` and `dm/tools/nso_asm.py`, read at commit `abd5ac2cce8e164f455188e4984281d14161d4cb` | MIT | The native-execution rewrite rules (svc and timer reads to host gates, `TPIDR_EL0`/`TPIDRRO_EL0` to a thread context, `x18` users to a scratch register backed by the context: `site_gate`, `site_sysreg_read`, `site_tpidr_write`, `site_plain`, `site_sp`, `site_cond`, `site_pcrel`, `site_blr`), the instruction encoders, and the 16 KiB host page sealing approach (`dm/host/loader.c`). Re-written in Rust; game-specific parts (registered cuts, spin gates, engine fixes) not taken. |
 
-## Historical objects and repository state
+## Historical object disposition
 
-- **Current tree and release assets:** The current source tree and 16 release assets have been scanned clean for exact matches of suspect byte sequences. All release assets match their recorded SHA-256 digests.
-- **`refs/pull/1/head`:** Retains 23 historical objects (21 historical source-file versions containing 12 firmware-labelled byte arrays, plus 2 standalone files). These objects are reachable solely from the host-managed `refs/pull/1/head` reference and are absent from all branches and tags. The repository owner has submitted a support ticket to GitHub requesting removal of this reference and garbage collection, and is awaiting GitHub's response.
-- **72-byte third-party program:** A 72-byte compiled test function from `pepsipu/ns2jb` was historically committed in early revisions. The owner decided on 8 November 2026 to remove the program rather than seek an upstream grant. The bytes are absent from current code. Removing them from historical commits requires a targeted history rewrite (or written risk acceptance), which is deferred until open PRs merge to prevent disruptive commit rebases.
-- **No global rewrite:** No branch or release tag history has been rewritten.
+The October commit-reachability statements are retained in the dated
+[historical audit](HISTORY_REMEDIATION.md). They are superseded for actionable
+scope by the later [object-level report](PROVENANCE_REMEDIATION_REPORT.md): twelve
+firmware-labelled arrays and two standalone objects were isolated to retained
+PR #1 in that snapshot, with no exact matches in current source or the inspected
+release archives. A separate historical 72-byte outside program has no recorded
+redistribution grant. Host-managed PR treatment and that permission question
+remain specific cases; no global purge or blanket historical clearance is claimed.
+Main/tag rewrites must not be inferred from an old commit merely being reachable.
 
-## Notice packaging and release controls
+## Audits
 
-- **Dependencies:** 169 dependency notices are tracked and hash-bound.
-- **DejaVu font:** Full notice bundled in release packaging (`assets/fonts/DejaVu-LICENSE.txt`).
-- **Toolchain notices:** Captured from the active build toolchain by `scripts/collect_toolchain_notices.py`.
-- **Linux shared libraries:** Package copyright notices captured by `scripts/collect_native_notices.py`.
-- **Review gate:** `scripts/package_release.py` enforces reviewer sign-off in `docs/RELEASE_NOTICE_REVIEW.json`.
-- **Specialist items:** The macOS build links `objc2` bindings derived from Apple SDKs. The terms and notices require specialist review before prebuilt macOS applications are attached to releases; the macOS app currently builds from source.
+- Cargo licence metadata inventory: recorded 2026-10-28; it covers declared Cargo metadata, not source texts or fixture binaries. See `docs/DEPENDENCY_LICENSE_AUDIT.md`.
+- Shader tooling and selected linker identities are in the fixture rebuild evidence; retain the per-component rights distinction.
+- Fixture source authorship: compare each `main.c` with relevant libnx/deko3d examples and record the result.
+
+## Controller color availability (2026-11-06)
+
+The HID color attributes and shared-memory layout follow libnx 4.12.0
+`include/switch/services/hid.h` (`HidColorAttribute`, `HidNpadFullKeyColorState`,
+`HidNpadJoyColorState`). Connected devices without host-provided color metadata
+report ReadError, disconnected devices report NoController, and supplied metadata
+reports Ok. No runtime implementation code was copied.
+
+The runtime regression workload is unchanged switchbrew/switch-examples
+`hid/colors` at `669786898205b7beb25ff1731e72982e6d0397d3`, built locally with
+devkitA64 GCC 16.1.0, newlib 4.6.0.20260123 and libnx 4.12.0. The existing registered
+frame expectation is unchanged. Package digests were checked against the official
+devkitPro repository databases; toolchain and binaries remain outside the repository.
+
+### Local account and libnx audio device sessions (2026-11-07)
+
+`src/kernel/account.rs` and `src/kernel/audio_device.rs` implement the message
+layouts described by public switchbrew/libnx sources at commit
+`b156b4774fb2df7b93402169509266da7547fc4c` in `nx/source/services/acc.c`,
+`applet.c`, `audin.c`, `audout.c` and their public headers. These are protocol
+references. The implementation uses ounce-core's existing CMIF and memory APIs.
+
+The account is an offline runtime-local identity with the nickname Ounce User.
+The headless audio input supplies silence. Device buffers complete synchronously,
+output PCM enters the existing audio queue, and completion events track released
+buffer tags. First-frame passes establish only the registered output behavior.
+They do not establish microphone capture, real-time audio pacing or complete
+account and savedata service coverage.
+
+## Provenance remediation evidence update
+
+The local corrective work and scoped history proposal are consolidated in
+`PROVENANCE_REMEDIATION_REPORT.md`. All eleven committed NROs rebuilt
+byte-for-byte from their tracked inputs. `tests/fixtures/provenance.json` now
+registers every binary and build input, including input_multi, sdmc and deko3d.
+`tests/fixtures/rebuild-evidence.json` retains exact build and linker evidence.
+Reproducibility is verified. Source authorship and full redistribution
+obligations remain unresolved. The fixture identity gate preserves this
+explicit legacy baseline and requires review evidence for changes.

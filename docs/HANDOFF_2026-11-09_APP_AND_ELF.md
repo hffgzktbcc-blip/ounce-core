@@ -14,7 +14,7 @@ Verified on an Apple Silicon Mac (macOS 26.6.2) with the CI-built preview: check
 **Not verified:** running a chosen program from the window, the failure-diagnosis card, Verify against Host from the window, cancel and relaunch, other window sizes, tier4 inside the GUI, first-open Gatekeeper experience. The file dialogs cannot be driven safely by script; a person at the Mac (or a screen-control tool) is needed.
 
 ## Decisions in force
-- Mac app: ad-hoc-signed developer preview only. **No prebuilt macOS binary in GitHub release assets** (`docs/PROVENANCE.md` Specialist items, objc2/Apple SDK terms). Do not flip `RELEASE_NOTICE_REVIEW.json` status or infer clearance.
+- Mac app: ad-hoc-signed developer preview only. **No prebuilt macOS binary in GitHub release assets** (`docs/PROVENANCE_OWNER_DECISIONS.md` item 4, objc2/Apple SDK terms). Do not flip `RELEASE_NOTICE_REVIEW.json` status or infer clearance.
 - `docs/releases/v0.7.0-draft.md` is named `-draft` so `release.yml` cannot pick it up by tag. Renaming it to `v0.7.0.md` is the publishing step.
 - Tag pushes are blocked from the cloud container; they were pushed from the owner's Mac.
 

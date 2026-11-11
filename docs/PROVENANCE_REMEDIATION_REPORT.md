@@ -1,5 +1,3 @@
-Archived 2026-11-11, superseded by docs/PROVENANCE.md
-
 # Provenance remediation progress
 
 Updated 8 November 2026. This public summary records the controls merged in PR #203 and integrated with the developer toolkit in PR #205. Current notice decisions are in [LICENSE_DISPOSITION.md](LICENSE_DISPOSITION.md). Detailed historical object manifests and suspect contents remain private. Remote historical cleanup and release publication require separate owner decisions.
