@@ -259,6 +259,8 @@ Build from source using **Rust 1.85+ (edition 2024)** on a supported Linux, macO
 
 ### 1. Install
 
+**macOS launcher (Apple Silicon), once that review clears:** the release workflow can build `ounce-core-macos-arm64-app.zip` with a `.sha256` and an entry in `SHA256SUMS`; publication stays blocked by the notice review in [docs/RELEASE_NOTICE_REVIEW.json](docs/RELEASE_NOTICE_REVIEW.json). The app is **unsigned by a Developer ID and unnotarized** (local ad-hoc signature only). On first launch, right-click > Open and confirm, or run `xattr -d com.apple.quarantine "/Applications/Ounce Core.app"` after checking the download's source and checksum. To build locally now, run `scripts/build_macos_app.sh`.
+
 ```bash
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core
