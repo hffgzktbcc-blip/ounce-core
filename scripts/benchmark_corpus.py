@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import resource
 import statistics
 import subprocess
 
@@ -63,6 +64,7 @@ def main():
         for case in a.only:
             samples = {label: {'Interpreter': [], 'Tier3': []} for label in executables}
             binary = None
+            cpu_samples = {label: [] for label in executables}
             for n in range(a.warmups + a.repeats):
                 for label, executable in executables.items():
                     stem = a.output / f'{case}-{n}-{label}'
@@ -72,9 +74,16 @@ def main():
                                OUNCE_ORACLE_SECONDS=str(a.seconds))
                     env.pop('OUNCE_CPU', None)
                     cmd = [str(executable), TEST, '--exact', '--ignored', '--nocapture', '--test-threads=1']
+                    cpu_start = resource.getrusage(resource.RUSAGE_CHILDREN)
                     with stem.with_suffix('.log').open('w') as log:
                         subprocess.run(cmd, cwd=REPO, env=env, stdout=log, stderr=subprocess.STDOUT,
                                        timeout=2 * a.seconds + 30, check=True)
+                    cpu_end = resource.getrusage(resource.RUSAGE_CHILDREN)
+                    if n >= a.warmups:
+                        cpu_samples[label].append(cpu_end.ru_utime + cpu_end.ru_stime - cpu_start.ru_utime - cpu_start.ru_stime)
+                    stem.with_suffix('.timing.json').write_text(json.dumps({
+                        'cpu_seconds': cpu_end.ru_utime + cpu_end.ru_stime - cpu_start.ru_utime - cpu_start.ru_stime,
+                        'warmup': n < a.warmups}) + '\n')
                     verdict = json.loads(result.read_text())
                     if not verdict['pass'] or verdict['id'] != case or [r['engine'] for r in verdict['runs']] != ['Interpreter', 'Tier3']:
                         raise ValueError(f'{case}: oracle failed or wrong engines')
@@ -86,9 +95,12 @@ def main():
                             raise ValueError(f'{case}: incomplete execution')
                         if n >= a.warmups:
                             samples[label][r['engine']].append(r)
-            entry = {'nro_sha256': binary, 'runtimes': {
+            entry = {'nro_sha256': binary, 'combined_engine_cpu_seconds': cpu_samples, 'runtimes': {
                 label: {e: summarize(s) for e, s in engines.items()} for label, engines in samples.items()}}
             if a.baseline:
+                cpu_changes = [100 * (b / c - 1) for b, c in zip(cpu_samples['baseline'], cpu_samples['candidate'])]
+                entry['paired_combined_cpu_speedup_percent'] = {'samples': cpu_changes, 'median': statistics.median(cpu_changes),
+                                                               'min': min(cpu_changes), 'max': max(cpu_changes)}
                 entry['paired_speedup_percent'] = {}
                 for engine in ('Interpreter', 'Tier3'):
                     before, after = samples['baseline'][engine], samples['candidate'][engine]
