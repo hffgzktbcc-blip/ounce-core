@@ -26,6 +26,7 @@ them, because the result is just "unordered".
 import argparse, subprocess, sys
 
 ZERO_X = [0] * 31
+MIN_CASES = 46464
 RM = {"-rnear_even": 0, "-rmax": 1 << 22, "-rmin": 2 << 22, "-rminMag": 3 << 22}  # FPCR.RMode RN RP RM RZ
 # TestFloat exception flags -> FPSR cumulative bits
 TF_FLAGS = [(0x10, 0x01), (0x08, 0x02), (0x04, 0x04), (0x02, 0x08), (0x01, 0x10)]  # invalid, infinite, overflow, underflow, inexact
@@ -71,11 +72,15 @@ def gen(a, name, rnd=None, exact=None):
     if exact is not None:
         cmd.append("-exact" if exact else "-notexact")
     if a.count:
-        cmd += ["-n", str(a.count)]
+        cmd += ["-n", str(max(a.count, MIN_CASES))]  # testfloat_gen refuses fewer than 46464 at level 1
     r = subprocess.run(cmd + [name], capture_output=True, text=True)
     if r.returncode:
         raise SystemExit(f"{' '.join(cmd + [name])} exited {r.returncode}:\n{r.stderr.strip()[:2000]}")
-    return [[int(t, 16) for t in ln.split()] for ln in r.stdout.splitlines() if ln.strip()]
+    rows = [[int(t, 16) for t in ln.split()] for ln in r.stdout.splitlines() if ln.strip()]
+    if a.count and len(rows) > a.count:
+        # an even stride keeps the whole enumeration (special values first, random-ish later), same rows for equal inputs
+        rows = rows[:: len(rows) // a.count][: a.count]
+    return rows
 
 
 def emit_arith(a, out, stats):
@@ -196,7 +201,7 @@ def emit_cmp(a, out, stats):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gen", required=True)
-    ap.add_argument("--count", type=int, default=0, help="cases per op and rounding mode (0 = TestFloat level default, about 46k)")
+    ap.add_argument("--count", type=int, default=0, help="cases per op and rounding mode, sampled evenly from the level-1 enumeration (0 = all, about 46k or more)")
     ap.add_argument("--level", default="1")
     ap.add_argument("--ops", default="add,sub,mul,div,sqrt,mulAdd,cvt,from_int,to_int,round,cmp")
     a = ap.parse_args()
