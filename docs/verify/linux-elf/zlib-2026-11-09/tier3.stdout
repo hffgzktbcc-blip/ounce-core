@@ -1,0 +1,122 @@
+zlib 1.3.1
+input0 n=0 crc32=00000000 adler32=00000001
+  k0 L0 default c=11 hash=7ef15d4c r=1 r2=1 ok=1
+  k0 L1 default c=8 hash=7f2b21d6 r=1 r2=1 ok=1
+  k0 L1 filtered c=8 hash=7f2b21d6 r=1 r2=1 ok=1
+  k0 L1 huffman c=8 hash=7f2b21d6 r=1 r2=1 ok=1
+  k0 L1 rle c=8 hash=7f2b21d6 r=1 r2=1 ok=1
+  k0 L1 fixed c=8 hash=7f2b21d6 r=1 r2=1 ok=1
+  k0 L6 default c=8 hash=9a293805 r=1 r2=1 ok=1
+  k0 L6 filtered c=8 hash=9a293805 r=1 r2=1 ok=1
+  k0 L6 huffman c=8 hash=7f2b21d6 r=1 r2=1 ok=1
+  k0 L6 rle c=8 hash=7f2b21d6 r=1 r2=1 ok=1
+  k0 L6 fixed c=8 hash=7f2b21d6 r=1 r2=1 ok=1
+  k0 L9 default c=8 hash=26d350d7 r=1 r2=1 ok=1
+  raw c=2 hash=37791236 ok=1
+  gzip c=20 hash=ba5bfaf1 ok=1
+  w9m1 c=8 hash=b9543f54 ok=1
+  compress2 c=8 hash=802c5a6b bound=13 ok=1
+input1 n=1 crc32=d1b40d81 adler32=00830083
+  k1 L0 default c=12 hash=36e39bc7 r=1 r2=1 ok=1
+  k1 L1 default c=9 hash=89d653e9 r=1 r2=1 ok=1
+  k1 L1 filtered c=9 hash=89d653e9 r=1 r2=1 ok=1
+  k1 L1 huffman c=9 hash=89d653e9 r=1 r2=1 ok=1
+  k1 L1 rle c=9 hash=89d653e9 r=1 r2=1 ok=1
+  k1 L1 fixed c=9 hash=89d653e9 r=1 r2=1 ok=1
+  k1 L6 default c=9 hash=9e3c31a4 r=1 r2=1 ok=1
+  k1 L6 filtered c=9 hash=9e3c31a4 r=1 r2=1 ok=1
+  k1 L6 huffman c=9 hash=89d653e9 r=1 r2=1 ok=1
+  k1 L6 rle c=9 hash=89d653e9 r=1 r2=1 ok=1
+  k1 L6 fixed c=9 hash=89d653e9 r=1 r2=1 ok=1
+  k1 L9 default c=9 hash=806d7efe r=1 r2=1 ok=1
+  raw c=3 hash=57f1e728 ok=1
+  gzip c=21 hash=d2115f91 ok=1
+  w9m1 c=9 hash=4f856a17 ok=1
+  compress2 c=9 hash=cf94348a bound=14 ok=1
+input2 n=5000 crc32=d2856b05 adler32=7fa21105
+  k2 L0 default c=5011 hash=6b4433a9 r=1 r2=1 ok=1
+  k2 L1 default c=103 hash=c5694e5c r=1 r2=1 ok=1
+  k2 L1 filtered c=103 hash=c5694e5c r=1 r2=1 ok=1
+  k2 L1 huffman c=2834 hash=17f55914 r=1 r2=1 ok=1
+  k2 L1 rle c=2834 hash=17f55914 r=1 r2=1 ok=1
+  k2 L1 fixed c=108 hash=03aed0d1 r=1 r2=1 ok=1
+  k2 L6 default c=82 hash=ca5e7809 r=1 r2=1 ok=1
+  k2 L6 filtered c=80 hash=e528084c r=1 r2=1 ok=1
+  k2 L6 huffman c=2834 hash=17f55914 r=1 r2=1 ok=1
+  k2 L6 rle c=2834 hash=17f55914 r=1 r2=1 ok=1
+  k2 L6 fixed c=95 hash=e7041b32 r=1 r2=1 ok=1
+  k2 L9 default c=82 hash=12441a6b r=1 r2=1 ok=1
+  raw c=76 hash=5b99e592 ok=1
+  gzip c=94 hash=d3694df7 ok=1
+  w9m1 c=82 hash=667e9734 ok=1
+  compress2 c=82 hash=995ac4ff bound=5014 ok=1
+input3 n=20000 crc32=972f5302 adler32=4e200001
+  k3 L0 default c=20011 hash=005f9eca r=1 r2=1 ok=1
+  k3 L1 default c=111 hash=a0fef323 r=1 r2=1 ok=1
+  k3 L1 filtered c=111 hash=a0fef323 r=1 r2=1 ok=1
+  k3 L1 huffman c=2529 hash=72a0fe46 r=1 r2=1 ok=1
+  k3 L1 rle c=42 hash=862afc4d r=1 r2=1 ok=1
+  k3 L1 fixed c=204 hash=86b2290f r=1 r2=1 ok=1
+  k3 L6 default c=42 hash=8a4bd665 r=1 r2=1 ok=1
+  k3 L6 filtered c=42 hash=8a4bd665 r=1 r2=1 ok=1
+  k3 L6 huffman c=2529 hash=72a0fe46 r=1 r2=1 ok=1
+  k3 L6 rle c=42 hash=862afc4d r=1 r2=1 ok=1
+  k3 L6 fixed c=137 hash=a1e532f9 r=1 r2=1 ok=1
+  k3 L9 default c=42 hash=79dd3dfb r=1 r2=1 ok=1
+  raw c=36 hash=b5859090 ok=1
+  gzip c=54 hash=f6a2fb18 ok=1
+  w9m1 c=42 hash=9c25c420 ok=1
+  compress2 c=42 hash=62c29467 bound=20018 ok=1
+input4 n=30000 crc32=9e4618d5 adler32=044e6f5b
+  k4 L0 default c=30011 hash=8d5a970e r=1 r2=1 ok=1
+  k4 L1 default c=2638 hash=02df13a3 r=1 r2=1 ok=1
+  k4 L1 filtered c=2638 hash=02df13a3 r=1 r2=1 ok=1
+  k4 L1 huffman c=15270 hash=09ff6a0a r=1 r2=1 ok=1
+  k4 L1 rle c=15270 hash=09ff6a0a r=1 r2=1 ok=1
+  k4 L1 fixed c=4199 hash=a5395a28 r=1 r2=1 ok=1
+  k4 L6 default c=2576 hash=1725ca99 r=1 r2=1 ok=1
+  k4 L6 filtered c=2322 hash=ccae550e r=1 r2=1 ok=1
+  k4 L6 huffman c=15270 hash=09ff6a0a r=1 r2=1 ok=1
+  k4 L6 rle c=15270 hash=09ff6a0a r=1 r2=1 ok=1
+  k4 L6 fixed c=4176 hash=e64552fc r=1 r2=1 ok=1
+  k4 L9 default c=2576 hash=39b995ff r=1 r2=1 ok=1
+  raw c=2570 hash=5f174309 ok=1
+  gzip c=2588 hash=79d02120 ok=1
+  w9m1 c=19352 hash=09dd5e58 ok=1
+  compress2 c=2576 hash=ac6a871b bound=30021 ok=1
+input5 n=70000 crc32=ccb28140 adler32=dfae2fdc
+  k5 L0 default c=70016 hash=c499b686 r=1 r2=1 ok=1
+  k5 L1 default c=26041 hash=19dfd62e r=1 r2=1 ok=1
+  k5 L1 filtered c=26041 hash=19dfd62e r=1 r2=1 ok=1
+  k5 L1 huffman c=70031 hash=ebb443a8 r=1 r2=1 ok=1
+  k5 L1 rle c=70031 hash=ebb443a8 r=1 r2=1 ok=1
+  k5 L1 fixed c=37328 hash=fc2b6b51 r=1 r2=1 ok=1
+  k5 L6 default c=25937 hash=da1053b1 r=1 r2=1 ok=1
+  k5 L6 filtered c=26549 hash=84ddc791 r=1 r2=1 ok=1
+  k5 L6 huffman c=70031 hash=ebb443a8 r=1 r2=1 ok=1
+  k5 L6 rle c=70031 hash=ebb443a8 r=1 r2=1 ok=1
+  k5 L6 fixed c=37147 hash=7b5795ff r=1 r2=1 ok=1
+  k5 L9 default c=25937 hash=2f8de8af r=1 r2=1 ok=1
+  raw c=25874 hash=12dd440b ok=1
+  gzip c=25949 hash=4bb9a37d ok=1
+  w9m1 c=72575 hash=cd772492 ok=1
+  compress2 c=25923 hash=002ca383 bound=70034 ok=1
+combine crc=463ee7e9/463ee7e9 adler=0a724773/0a724773 ok=1
+crc_bytewise=c3654fb3 bulk=c3654fb3
+crc_table=00000000 77073096 edb88320 2d02ef8d
+truncated r=-5 out=18
+corrupt@16 r=-3 out=0
+corrupt@32 r=-3 out=5
+corrupt@48 r=-3 out=33
+corrupt@64 r=-5 out=4792
+smallout_inflate r=-5 out=64
+smallout_deflate r=0 out=64
+compress_small r=-5
+badheader r=-3
+badtrailer r=-3
+dict_deflate r=1 c=43 hash=dcd976cd
+wrongdict set=-3
+dict_inflate first=2 set=0 r=1 adler=7fa21105 ok=1
+nodict r=2
+stream_sync c=945 hash=415ef8c3 ok=1
+fails=0

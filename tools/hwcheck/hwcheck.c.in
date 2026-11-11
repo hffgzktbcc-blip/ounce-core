@@ -1,0 +1,183 @@
+// hwcheck: replay a trace written by `OUNCE_TRACE=<file> ounce-core run-nro ...` on the host CPU and
+// report where the host and the emulator disagree. AArch64 hosts only.
+//
+//   hwcheck <trace.bin> [--json out.json] [--max N]      check every record
+//   hwcheck <trace.bin> --only N                          check just record N and print its details
+//
+// Each record is one register-only instruction with the emulator's registers before and after it.
+// The host runs the same 32-bit opcode from the same "before" registers; any register, NZCV or
+// FPSR.QC difference is a divergence. Sampled by opcode (see src/trace.rs), so absence of a report
+// means "no divergence in the sampled executions", not a proof for every operand.
+#include <setjmp.h>
+#include <signal.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#if defined(__APPLE__)
+#include <libkern/OSCacheControl.h>
+#include <pthread.h>
+#endif
+
+#if !defined(__aarch64__)
+int main(void) { fprintf(stderr, "hwcheck needs an AArch64 host\n"); return 2; }
+#else
+
+typedef struct { uint64_t x[31]; uint64_t sp; uint64_t v[64]; uint32_t nzcv, fpsr, fpcr, pad; } State;
+typedef struct { uint32_t op, pad; uint64_t pc; State pre, post; } Record;
+_Static_assert(sizeof(State) == 784, "State layout");
+_Static_assert(sizeof(Record) == 1584, "Record layout");
+
+#if defined(__APPLE__)
+#define SYM(s) "_" #s
+#else
+#define SYM(s) #s
+#endif
+
+extern char tmpl_start[], tmpl_insn[], tmpl_end[];
+extern void hw_run(State *in, State *out, void *code);
+
+__asm__(
+    ".text\n.balign 16\n.globl " SYM(hw_run) "\n" SYM(hw_run) ":\n"
+    "stp x29, x30, [sp, #-96]!\n"
+    "stp x19, x20, [sp, #16]\nstp x21, x22, [sp, #32]\nstp x23, x24, [sp, #48]\n"
+    "stp x25, x26, [sp, #64]\nstp x27, x28, [sp, #80]\n"
+    "sub sp, sp, #64\nstp d8, d9, [sp]\nstp d10, d11, [sp, #16]\nstp d12, d13, [sp, #32]\nstp d14, d15, [sp, #48]\n"
+    "sub sp, sp, #32\n"
+    "str x1, [sp]\nstr x0, [sp, #8]\nadr x3, 1f\nstr x3, [sp, #16]\n"
+    "br x2\n"
+    "1:\n"
+    "add sp, sp, #32\n"
+    "ldp d8, d9, [sp]\nldp d10, d11, [sp, #16]\nldp d12, d13, [sp, #32]\nldp d14, d15, [sp, #48]\nadd sp, sp, #64\n"
+    "ldp x19, x20, [sp, #16]\nldp x21, x22, [sp, #32]\nldp x23, x24, [sp, #48]\n"
+    "ldp x25, x26, [sp, #64]\nldp x27, x28, [sp, #80]\n"
+    "ldp x29, x30, [sp], #96\nret\n"
+    ".balign 16\n.globl " SYM(tmpl_start) "\n" SYM(tmpl_start) ":\n"
+@@PRE@@
+    ".globl " SYM(tmpl_insn) "\n" SYM(tmpl_insn) ":\n"
+    "nop\n"
+@@POST@@
+    ".globl " SYM(tmpl_end) "\n" SYM(tmpl_end) ":\n");
+
+static sigjmp_buf jb;
+static void on_signal(int s) { (void)s; siglongjmp(jb, 1); }
+
+static uint8_t *page;
+static size_t tmpl_len(void) { return (size_t)(tmpl_end - tmpl_start); }
+
+static void setup_page(void) {
+    int flags = MAP_PRIVATE | MAP_ANON;
+#if defined(__APPLE__)
+    flags |= MAP_JIT;
+#endif
+    page = mmap(NULL, 16384, PROT_READ | PROT_WRITE | PROT_EXEC, flags, -1, 0);
+    if (page == MAP_FAILED) { perror("mmap"); exit(2); }
+}
+
+// Returns 0 on success, 1 if the host rejected the opcode (SIGILL and friends).
+static int run_on_host(uint32_t op, const State *pre, State *out) {
+    State in = *pre;
+    in.fpsr &= 0x08000000u; // exception flags are not modelled by the emulator; keep only QC
+#if defined(__APPLE__)
+    pthread_jit_write_protect_np(0);
+#endif
+    memcpy(page, tmpl_start, tmpl_len());
+    memcpy(page + (tmpl_insn - tmpl_start), &op, 4);
+#if defined(__APPLE__)
+    pthread_jit_write_protect_np(1);
+    sys_icache_invalidate(page, tmpl_len());
+#else
+    __builtin___clear_cache((char *)page, (char *)page + tmpl_len());
+#endif
+    memset(out, 0, sizeof *out);
+    if (sigsetjmp(jb, 1)) return 1;
+    hw_run(&in, out, page);
+    return 0;
+}
+
+typedef struct { char name[8]; unsigned __int128 expected, observed; } Diff;
+
+static int compare(const Record *r, const State *hw, Diff *d) {
+    int n = 0;
+    for (int i = 0; i < 31; i++) {
+        if (i == 18) continue; // platform register
+        if (hw->x[i] != r->post.x[i]) {
+            snprintf(d[n].name, 8, "x%d", i); d[n].expected = hw->x[i]; d[n].observed = r->post.x[i]; n++;
+        }
+    }
+    for (int i = 0; i < 32; i++) {
+        unsigned __int128 a = ((unsigned __int128)hw->v[2 * i + 1] << 64) | hw->v[2 * i];
+        unsigned __int128 b = ((unsigned __int128)r->post.v[2 * i + 1] << 64) | r->post.v[2 * i];
+        if (a != b) { snprintf(d[n].name, 8, "v%d", i); d[n].expected = a; d[n].observed = b; n++; }
+    }
+    if ((hw->nzcv & 0xF0000000u) != (r->post.nzcv & 0xF0000000u)) {
+        strcpy(d[n].name, "nzcv"); d[n].expected = hw->nzcv & 0xF0000000u; d[n].observed = r->post.nzcv & 0xF0000000u; n++;
+    }
+    if ((hw->fpsr & 0x08000000u) != (r->post.fpsr & 0x08000000u)) {
+        strcpy(d[n].name, "fpsr.QC"); d[n].expected = (hw->fpsr >> 27) & 1; d[n].observed = (r->post.fpsr >> 27) & 1; n++;
+    }
+    return n;
+}
+
+static void hex128(FILE *f, unsigned __int128 v) {
+    fprintf(f, "\"0x%016llx%016llx\"", (unsigned long long)(v >> 64), (unsigned long long)v);
+}
+
+int main(int argc, char **argv) {
+    if (argc < 2) { fprintf(stderr, "usage: hwcheck <trace.bin> [--json out.json] [--max N] [--only N]\n"); return 2; }
+    const char *json_path = NULL; long only = -1; int max = 20;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "--json") && i + 1 < argc) json_path = argv[++i];
+        else if (!strcmp(argv[i], "--only") && i + 1 < argc) only = atol(argv[++i]);
+        else if (!strcmp(argv[i], "--max") && i + 1 < argc) max = atoi(argv[++i]);
+    }
+    FILE *in = fopen(argv[1], "rb");
+    if (!in) { perror(argv[1]); return 2; }
+    struct sigaction sa; memset(&sa, 0, sizeof sa); sa.sa_handler = on_signal; sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_NODEFER;
+    sigaction(SIGILL, &sa, NULL); sigaction(SIGSEGV, &sa, NULL); sigaction(SIGBUS, &sa, NULL); sigaction(SIGTRAP, &sa, NULL);
+    setup_page();
+
+    FILE *js = json_path ? fopen(json_path, "w") : NULL;
+    if (js) fprintf(js, "{\"mismatches\":[");
+    Record r; State hw; Diff diffs[96];
+    long idx = -1, checked = 0, bad = 0, illegal = 0; int first = 1;
+    while (fread(&r, sizeof r, 1, in) == 1) {
+        idx++;
+        if (only >= 0 && idx != only) continue;
+        checked++;
+        int ill = run_on_host(r.op, &r.pre, &hw);
+        int nd = ill ? 0 : compare(&r, &hw, diffs);
+        if (!ill && !nd) continue;
+        bad++; illegal += ill;
+        if (bad <= max || only >= 0) {
+            printf("record %ld pc=0x%llx opcode=0x%08x %s\n", idx, (unsigned long long)r.pc, r.op, ill ? "HOST REJECTS THIS ENCODING (emulator executed it)" : "");
+            for (int i = 0; i < nd; i++) {
+                printf("  %s expected(host)=0x%016llx%016llx observed(emulator)=0x%016llx%016llx\n", diffs[i].name,
+                       (unsigned long long)(diffs[i].expected >> 64), (unsigned long long)diffs[i].expected,
+                       (unsigned long long)(diffs[i].observed >> 64), (unsigned long long)diffs[i].observed);
+            }
+            if (js) {
+                fprintf(js, "%s{\"record\":%ld,\"pc\":\"0x%llx\",\"opcode\":\"0x%08x\",\"host_rejects\":%s,\"diffs\":[", first ? "" : ",", idx,
+                        (unsigned long long)r.pc, r.op, ill ? "true" : "false");
+                for (int i = 0; i < nd; i++) {
+                    fprintf(js, "%s{\"reg\":\"%s\",\"expected\":", i ? "," : "", diffs[i].name); hex128(js, diffs[i].expected);
+                    fprintf(js, ",\"observed\":"); hex128(js, diffs[i].observed); fprintf(js, "}");
+                }
+                fprintf(js, "],\"inputs\":{");
+                int k = 0;
+                for (int i = 0; i < 31; i++) if (r.pre.x[i]) fprintf(js, "%s\"x%d\":\"0x%llx\"", k++ ? "," : "", i, (unsigned long long)r.pre.x[i]);
+                for (int i = 0; i < 32; i++) if (r.pre.v[2 * i] || r.pre.v[2 * i + 1]) {
+                    fprintf(js, "%s\"v%d\":", k++ ? "," : "", i); hex128(js, ((unsigned __int128)r.pre.v[2 * i + 1] << 64) | r.pre.v[2 * i]);
+                }
+                fprintf(js, ",\"nzcv\":\"0x%08x\",\"fpcr\":\"0x%08x\"}}", r.pre.nzcv & 0xF0000000u, r.pre.fpcr);
+                first = 0;
+            }
+        }
+    }
+    if (js) { fprintf(js, "],\"checked\":%ld,\"mismatched\":%ld,\"host_rejected\":%ld}\n", checked, bad, illegal); fclose(js); }
+    printf("hwcheck: %ld records checked, %ld mismatched (%ld rejected by host)\n", checked, bad, illegal);
+    return bad ? 1 : 0;
+}
+#endif

@@ -1,0 +1,176 @@
+{
+  "schema": "ounce-core/linux-library-v1",
+  "harness": "lz4",
+  "failed": false,
+  "steps": [
+    {
+      "name": "host-compiler",
+      "argv": [
+        "cc",
+        "--version"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "host-compiler.stdout",
+        "sha256": "78fc11ae2c3ff7c235eb18ed90989d18f6cc864fb27027f839368cd0888deebc"
+      },
+      "stderr": {
+        "path": "host-compiler.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "elf-compiler",
+      "argv": [
+        "/workspace/toolchains/zig/ziglang/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "--version"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "elf-compiler.stdout",
+        "sha256": "12f3de61555f18d45b112634290deaa5aac4a6ab37e635323691eced948e3b5d"
+      },
+      "stderr": {
+        "path": "elf-compiler.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "host-build",
+      "argv": [
+        "cc",
+        "-O1",
+        "-Isources",
+        "sources/host_main.c",
+        "sources/lz4.c",
+        "sources/lz4_cases.c",
+        "-o",
+        "host-ref"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "host-build.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "host-build.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "elf-build",
+      "argv": [
+        "/workspace/toolchains/zig/ziglang/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "-O1",
+        "-Isources",
+        "-static",
+        "-no-pie",
+        "sources/host_main.c",
+        "sources/lz4.c",
+        "sources/lz4_cases.c",
+        "-o",
+        "lz4.elf"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "elf-build.stdout",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "elf-build.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "host-run",
+      "argv": [
+        "/workspace/evidence/linux-lz4-verified/host-ref"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "host-run.stdout",
+        "sha256": "e0c701319fea9379f0687dd1a53778425653baac45cab085dddee868283ec9fd"
+      },
+      "stderr": {
+        "path": "host-run.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "tier3",
+      "argv": [
+        "/workspace/ounce-core/target/release/ounce-core",
+        "run-elf",
+        "/workspace/evidence/linux-lz4-verified/lz4.elf",
+        "--cpu=tier3",
+        "--max-insns=100000000",
+        "--trace-syscalls"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "tier3.stdout",
+        "sha256": "e0c701319fea9379f0687dd1a53778425653baac45cab085dddee868283ec9fd"
+      },
+      "stderr": {
+        "path": "tier3.stderr",
+        "sha256": "28fb9d14b8b8354bef04a9828e2ac8b0631c32de4803a2669abaa752ed17fb87"
+      }
+    },
+    {
+      "name": "tier4",
+      "argv": [
+        "/workspace/ounce-core/target/release/ounce-core",
+        "run-elf",
+        "/workspace/evidence/linux-lz4-verified/lz4.elf",
+        "--cpu=tier4",
+        "--max-insns=100000000",
+        "--trace-syscalls"
+      ],
+      "timeout_seconds": 300,
+      "returncode": 0,
+      "stdout": {
+        "path": "tier4.stdout",
+        "sha256": "e0c701319fea9379f0687dd1a53778425653baac45cab085dddee868283ec9fd"
+      },
+      "stderr": {
+        "path": "tier4.stderr",
+        "sha256": "841e49ea18084be915e651695f009940d9f8c7245e94b07397e524e5527b8c00"
+      }
+    }
+  ],
+  "checks": {
+    "tier3": "identical",
+    "tier4": "identical"
+  },
+  "upstream": {
+    "repo": "https://github.com/lz4/lz4",
+    "commit": "d04dab3152ffdb8f8e8708e4d135f7293c0f6136",
+    "copy": {
+      "lib/lz4.c": "lz4.c",
+      "lib/lz4.h": "lz4.h"
+    }
+  },
+  "sources_sha256": {
+    "host_main.c": "e487855cca3570c9b40bc13075ba408f52f41bd64b494d8bab84858e1f90f107",
+    "lz4.c": "2e58f124f1032f15aecc99772b7de624c4289245729fa5403506f00b06a54937",
+    "lz4.h": "c204caad0638a12c9ce80831094ec8fffb34aa57e74307067b08fc9452fc2611",
+    "lz4_cases.c": "0d4604fdbf73bc96b4a2cdfdd6b4713663d9cce5857000bdc7197eb816df4498"
+  },
+  "runtime_sha256": "f3f830c3dd88826bddc3cd6cba2c129616a35306ee3901c3afa755972af9ab2c",
+  "revision": "f237146c832eadab58fe6acc6b6588aaef635a17",
+  "working_tree_dirty": true,
+  "host_sha256": "1080048ede9e969c5cb7ebe1f7c3a1edc5748c8a334c95c41fc9665e20e6e86d",
+  "elf_sha256": "56d40c06238d26ffd8238d7ba85411b576c66b413710a2731d634fe37aeabd93"
+}

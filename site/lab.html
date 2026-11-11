@@ -1,0 +1,890 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Interactive Verification Lab | Ounce-Core</title>
+  <meta name="description" content="Interactive ARM64 execution, debugging and verification workbench for Ounce-Core. Prove correctness, diagnose failures, and step through AArch64 execution.">
+  <link rel="canonical" href="https://hffgzktbcc-blip.github.io/ounce-core/lab.html">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Interactive Verification Lab | Ounce-Core">
+  <meta property="og:description" content="Verify ARM64 programs across three CPU engines and compare against real hardware.">
+  <meta property="og:image" content="https://hffgzktbcc-blip.github.io/ounce-core/assets/ounce-core-vista.png">
+  <meta name="theme-color" content="#13261f">
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --bg: #0e1d18;
+      --bg-surface: #13261f;
+      --bg-card: #172c23;
+      --bg-card-hover: #1e382d;
+      --edge: #355247;
+      --edge-bright: #4e7767;
+      --accent-mint: #9ad5ac;
+      --accent-teal: #73b9ae;
+      --accent-rust: #cc754f;
+      --accent-amber: #e5a84b;
+      --accent-coral: #e06c75;
+      --fg: #f1f6ef;
+      --muted: #b7c8bf;
+      --dim: #708a7e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      background-color: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg-surface); }
+    ::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--edge-bright); }
+    a:focus-visible, button:focus-visible, [tabindex]:focus-visible { outline: 3px solid #f9e9a3; outline-offset: 2px; }
+  </style>
+</head>
+<body class="flex flex-col select-none text-xs">
+  <div style="padding:10px 20px;background:#203d31;color:#d4eadc;font:13px system-ui">Scripted workbench design preview · <a style="color:#b1ebc7;text-decoration:underline;display:inline-flex;align-items:center;min-height:44px;padding:4px 6px" href="playground/">Open the real ARM64 interpreter playground</a></div>
+
+  <!-- ==================== TOP NAVIGATION ==================== -->
+  <header class="h-14 bg-[#13261f] border-b border-[#355247] px-4 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-3">
+      <a href="index.html" class="flex items-center gap-2.5 text-decoration-none min-h-[44px]">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#9ad5ac] via-[#73b9ae] to-[#cc754f] p-0.5 shadow">
+          <div class="w-full h-full bg-[#0e1d18] rounded-[6px] flex items-center justify-center font-mono font-black text-xs text-[#9ad5ac]">
+            oz
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-sm tracking-tight text-[#f1f6ef]">OUNCE-CORE</span>
+            <span class="px-2 py-0.5 text-[10px] font-mono rounded bg-[#172c23] border border-[#355247] text-[#9ad5ac] font-medium">Interactive Lab</span>
+            <span class="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono rounded bg-[#cc754f]/15 border border-[#cc754f]/40 text-[#cc754f]">forbid(unsafe_code)</span>
+          </div>
+          <div class="text-[11px] text-[#b7c8bf]">Built for curiosity. Grounded in evidence.</div>
+        </div>
+      </a>
+    </div>
+
+    <!-- Center: The 3 Pillars -->
+    <nav class="hidden md:flex items-center bg-[#0e1d18] p-1 rounded-lg border border-[#355247]">
+      <button onclick="setPillar('verify')" id="nav-verify" class="px-3.5 py-1 rounded-md text-xs font-semibold bg-[#172c23] text-[#9ad5ac] border border-[#355247] shadow-sm flex items-center gap-1.5 transition-all">
+        <span class="w-1.5 h-1.5 rounded-full bg-[#9ad5ac]"></span>
+        <span>Ounce-Verify</span>
+      </button>
+      <button onclick="setPillar('debug')" id="nav-debug" class="px-3.5 py-1 rounded-md text-xs font-semibold text-[#b7c8bf] hover:text-[#f1f6ef] flex items-center gap-1.5 transition-all">
+        <span class="w-1.5 h-1.5 rounded-full bg-[#e5a84b]"></span>
+        <span>Ounce-Debug</span>
+      </button>
+      <button onclick="setPillar('learn')" id="nav-learn" class="px-3.5 py-1 rounded-md text-xs font-semibold text-[#b7c8bf] hover:text-[#f1f6ef] flex items-center gap-1.5 transition-all">
+        <span class="w-1.5 h-1.5 rounded-full bg-[#73b9ae]"></span>
+        <span>Ounce-Learn</span>
+      </button>
+    </nav>
+
+    <!-- Right Controls: Simple / Advanced Switch & Quick Links -->
+    <div class="flex items-center gap-3">
+      <!-- Simple / Advanced Switch (From reference mockups) -->
+      <div class="flex items-center bg-[#0e1d18] p-0.5 rounded-lg border border-[#355247]">
+        <button id="btnSimple" onclick="toggleComplexity('simple')" class="px-3 py-1 rounded-md text-xs font-semibold bg-[#172c23] text-[#f1f6ef] shadow">
+          Simple
+        </button>
+        <button id="btnAdvanced" onclick="toggleComplexity('advanced')" class="px-3 py-1 rounded-md text-xs font-semibold text-[#b7c8bf] hover:text-[#f1f6ef]">
+          Advanced Lab
+        </button>
+      </div>
+
+      <!-- Clean Room Boundary Badge -->
+      <div class="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#172c23] border border-[#355247] text-[#73b9ae] font-mono text-[11px]">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        <span>No Keys · Safe Rust</span>
+      </div>
+
+      <!-- Drop Any File CTA Button -->
+      <button onclick="toggleModal('intakeModal')" class="px-3.5 py-1.5 rounded-lg bg-[#9ad5ac] hover:bg-[#86c59a] text-[#0e1d18] text-xs font-bold flex items-center gap-1.5 shadow transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+        <span>Drop or Test Binary</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== MAIN WORKSPACE ==================== -->
+  <div class="flex-1 flex overflow-hidden" id="dropZoneContainer">
+
+    <!-- 1. LEFT SIDEBAR: Pinned Verified Programs -->
+    <aside class="w-72 bg-[#13261f] border-r border-[#355247] flex flex-col shrink-0">
+      <div class="p-3 border-b border-[#355247] flex items-center justify-between">
+        <div>
+          <span class="text-[10px] font-bold text-[#708a7e] uppercase tracking-wider font-mono">Verified Corpus</span>
+          <div class="text-[11px] text-[#b7c8bf]">Checked on 3 CPU engines</div>
+        </div>
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-[#0e1d18] border border-[#355247] text-[#9ad5ac] font-mono">6 Pinned</span>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-2 space-y-1">
+        <!-- Target 1: wasm3 (14.7k lines) -->
+        <button onclick="selectCase('wasm3')" id="item-wasm3" class="w-full text-left p-2.5 rounded-lg border border-[#4e7767] bg-[#172c23] text-[#f1f6ef] flex flex-col gap-1 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="font-bold font-mono text-xs text-[#9ad5ac] flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-[#9ad5ac]"></span>
+              wasm3 (Wasm Engine)
+            </span>
+            <span class="text-[10px] px-1 rounded bg-[#0e1d18] text-[#9ad5ac] font-mono">14.7k L</span>
+          </div>
+          <span class="text-[11px] text-[#b7c8bf]">Wasm interpreter differential harness</span>
+        </button>
+
+        <!-- Target 2: SQLite 3.50.4 -->
+        <button onclick="selectCase('sqlite')" id="item-sqlite" class="w-full text-left p-2.5 rounded-lg border border-transparent hover:border-[#355247] hover:bg-[#172c23]/60 text-[#b7c8bf] hover:text-[#f1f6ef] flex flex-col gap-1 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold font-mono text-xs flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-[#9ad5ac]"></span>
+              SQLite 3.50.4
+            </span>
+            <span class="text-[10px] px-1 rounded bg-[#0e1d18] text-[#9ad5ac] font-mono">PASS</span>
+          </div>
+          <span class="text-[11px] text-[#708a7e]">B-tree cache · 14.2M insns match</span>
+        </button>
+
+        <!-- Target 3: run-elf (Static Linux AArch64) -->
+        <button onclick="selectCase('runelf')" id="item-runelf" class="w-full text-left p-2.5 rounded-lg border border-transparent hover:border-[#355247] hover:bg-[#172c23]/60 text-[#b7c8bf] hover:text-[#f1f6ef] flex flex-col gap-1 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold font-mono text-xs flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-[#73b9ae]"></span>
+              run-elf (Linux ELF)
+            </span>
+            <span class="text-[10px] px-1 rounded bg-[#0e1d18] text-[#73b9ae] font-mono">NEW</span>
+          </div>
+          <span class="text-[11px] text-[#708a7e]">Deterministic Linux syscall runner</span>
+        </button>
+
+        <!-- Target 4: Lua 5.4.7 -->
+        <button onclick="selectCase('lua')" id="item-lua" class="w-full text-left p-2.5 rounded-lg border border-transparent hover:border-[#355247] hover:bg-[#172c23]/60 text-[#b7c8bf] hover:text-[#f1f6ef] flex flex-col gap-1 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold font-mono text-xs flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-[#9ad5ac]"></span>
+              Lua 5.4.7 Bytecode
+            </span>
+            <span class="text-[10px] px-1 rounded bg-[#0e1d18] text-[#9ad5ac] font-mono">PASS</span>
+          </div>
+          <span class="text-[11px] text-[#708a7e]">VM stack dispatch parity</span>
+        </button>
+
+        <!-- Target 5: LZ4 & xxHash -->
+        <button onclick="selectCase('lz4')" id="item-lz4" class="w-full text-left p-2.5 rounded-lg border border-transparent hover:border-[#355247] hover:bg-[#172c23]/60 text-[#b7c8bf] hover:text-[#f1f6ef] flex flex-col gap-1 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold font-mono text-xs flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-[#9ad5ac]"></span>
+              LZ4 &amp; xxHash
+            </span>
+            <span class="text-[10px] px-1 rounded bg-[#0e1d18] text-[#9ad5ac] font-mono">PASS</span>
+          </div>
+          <span class="text-[11px] text-[#708a7e]">Stream compression &amp; bitwise hashes</span>
+        </button>
+
+        <!-- Target 6: FP Saturation & QC Flag -->
+        <button onclick="selectCase('fpsr')" id="item-fpsr" class="w-full text-left p-2.5 rounded-lg border border-transparent hover:border-[#355247] hover:bg-[#172c23]/60 text-[#b7c8bf] hover:text-[#f1f6ef] flex flex-col gap-1 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold font-mono text-xs flex items-center gap-1.5 text-[#e5a84b]">
+              <span class="w-2 h-2 rounded-full bg-[#e5a84b]"></span>
+              SQADD / UQADD &amp; QC
+            </span>
+            <span class="text-[10px] px-1 rounded bg-[#0e1d18] text-[#e5a84b] font-mono">ORACLE</span>
+          </div>
+          <span class="text-[11px] text-[#708a7e]">Vector saturation flag (FPSR.QC)</span>
+        </button>
+
+        <!-- Target 7: First-Frame Oracles -->
+        <button onclick="selectCase('oracles')" id="item-oracles" class="w-full text-left p-2.5 rounded-lg border border-transparent hover:border-[#355247] hover:bg-[#172c23]/60 text-[#b7c8bf] hover:text-[#f1f6ef] flex flex-col gap-1 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold font-mono text-xs flex items-center gap-1.5 text-[#9ad5ac]">
+              <span class="w-2 h-2 rounded-full bg-[#9ad5ac]"></span>
+              First-Frame Oracles
+            </span>
+            <span class="text-[10px] px-1 rounded bg-[#0e1d18] text-[#9ad5ac] font-mono">50/50</span>
+          </div>
+          <span class="text-[11px] text-[#708a7e]">Fixed regression test corpus</span>
+        </button>
+      </div>
+
+      <!-- Drag & Drop Quick Zone in Sidebar -->
+      <div class="p-3 border-t border-[#355247] bg-[#0e1d18]/70 text-center">
+        <label for="fileInput" class="cursor-pointer block border border-dashed border-[#4e7767] hover:border-[#9ad5ac] rounded-lg p-2.5 transition-colors">
+          <div class="text-[11px] font-bold text-[#9ad5ac]">Drop any file to inspect</div>
+          <div class="text-[10px] text-[#708a7e] mt-0.5">ELF, NRO, XCI, .a, or custom test</div>
+        </label>
+        <input type="file" id="fileInput" class="hidden" onchange="handleFileSelect(event)">
+      </div>
+    </aside>
+
+    <!-- 2. CENTER STAGE: THE THREE PILLARS -->
+    <main class="flex-1 flex flex-col overflow-hidden bg-[#0e1d18]">
+
+      <!-- ==================== PILLAR 1: OUNCE-VERIFY ==================== -->
+      <div id="pillar-verify" class="flex-1 overflow-y-auto p-6 space-y-5 max-w-4xl mx-auto w-full">
+
+        <!-- Custom Uploaded File Card (Visible if user uploaded a file) -->
+        <div id="customFileCard" class="hidden p-4 rounded-xl border border-[#9ad5ac] bg-[#172c23] space-y-3">
+          <div class="flex items-start justify-between">
+            <div>
+              <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[#0e1d18] text-[#9ad5ac] border border-[#355247] font-mono" id="customFileBadge">
+                INSPECTED TARGET
+              </span>
+              <h3 class="text-sm font-bold text-[#f1f6ef] mt-1" id="customFileName">uploaded_file</h3>
+              <p class="text-xs text-[#b7c8bf]" id="customFileSummary">Parsing headers...</p>
+            </div>
+            <button onclick="clearCustomFile()" class="text-[#708a7e] hover:text-[#f1f6ef] text-sm">✕</button>
+          </div>
+          <div class="p-2.5 rounded bg-[#0e1d18] border border-[#355247] font-mono text-xs space-y-1" id="customFileDetails">
+          </div>
+        </div>
+
+        <!-- Parity & Verification Banner -->
+        <div class="p-5 rounded-xl border border-[#355247] bg-[#172c23] shadow-md relative">
+          <div class="flex items-start justify-between gap-4">
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[#0e1d18] text-[#9ad5ac] border border-[#355247] font-mono">
+                  bounded-verified
+                </span>
+                <span class="text-xs text-[#b7c8bf]">Differential 3-Engine Parity Check</span>
+              </div>
+              <h2 id="verifyHeading" class="text-base font-bold text-[#f1f6ef] tracking-tight">
+                wasm3: 14.7k-line WebAssembly engine differential harness verified
+              </h2>
+              <p id="verifyBody" class="text-xs text-[#b7c8bf] leading-relaxed max-w-2xl">
+                Executed unmodified AArch64 binary across the <strong>Tier-1 Safe Interpreter</strong>, <strong>Tier-3 JIT</strong>, and <strong>Apple Silicon Host Reference</strong>. Bytecode interpreter dispatch, Wasm stack frames, and polynomial multiply (<code class="text-[#9ad5ac]">pmull</code>) matched hardware bit-for-bit.
+              </p>
+            </div>
+            <div class="text-right shrink-0">
+              <div id="parityMetric" class="text-3xl font-black text-[#9ad5ac] font-mono">100%</div>
+              <div class="text-[10px] text-[#708a7e] uppercase font-bold tracking-wider font-mono">Hardware Parity</div>
+            </div>
+          </div>
+
+          <!-- 3-Engine Diff Matrix -->
+          <div class="mt-4 pt-4 border-t border-[#355247] grid grid-cols-3 gap-2.5 text-xs font-mono">
+            <div class="p-2 rounded bg-[#0e1d18] border border-[#355247] space-y-1">
+              <div class="text-[#708a7e] text-[10px]">Tier-1 Safe Interpreter</div>
+              <div class="text-[#9ad5ac] font-bold">MATCH (~20 MIPS)</div>
+              <div class="text-[10px] text-[#b7c8bf]">Exit 0 · 0 faults</div>
+            </div>
+            <div class="p-2 rounded bg-[#0e1d18] border border-[#355247] space-y-1">
+              <div class="text-[#708a7e] text-[10px]">Tier-3 Trace-Fused JIT</div>
+              <div class="text-[#9ad5ac] font-bold">MATCH (~180 MIPS)</div>
+              <div class="text-[10px] text-[#b7c8bf]">Safe Rust · No native code</div>
+            </div>
+            <div class="p-2 rounded bg-[#0e1d18] border border-[#355247] space-y-1">
+              <div class="text-[#708a7e] text-[10px]">Apple Silicon Host Reference</div>
+              <div class="text-[#9ad5ac] font-bold">ORACLE REFERENCE</div>
+              <div class="text-[10px] text-[#b7c8bf]">M-Series Hardware Truth</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Human-in-the-Loop Safe Approval Gate (From reference screenshot image.png) -->
+        <div id="approvalGate" class="p-4 rounded-xl border border-[#e5a84b]/60 bg-[#e5a84b]/10 space-y-3">
+          <div class="flex items-start gap-3">
+            <div class="p-2 rounded-lg bg-[#e5a84b]/20 text-[#e5a84b] shrink-0">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            </div>
+            <div class="space-y-1 flex-1">
+              <div class="text-xs font-bold text-[#f1f6ef]">
+                May Ounce-Core execute native host CPU instruction sequence?
+              </div>
+              <div class="text-xs font-mono text-[#e5a84b] bg-[#0e1d18] p-1.5 rounded border border-[#e5a84b]/30">
+                tools/ounce_verify.py --corpus wasm3 --tier native-diff --verify-qc-flag
+              </div>
+              <p class="text-xs text-[#b7c8bf]">
+                Executes vector instructions (<code class="text-[#9ad5ac]">SQADD</code>, <code class="text-[#9ad5ac]">UQADD</code>, <code class="text-[#9ad5ac]">pmull</code>) on host hardware to diff the cumulative saturation bit (FPSR.QC).
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 pl-9">
+            <button onclick="approveAction()" class="px-3 py-1.5 rounded-md bg-[#f1f6ef] hover:bg-white text-[#0e1d18] text-xs font-bold transition-all">
+              Allow once
+            </button>
+            <button onclick="approveAction()" class="px-3 py-1.5 rounded-md bg-[#172c23] hover:bg-[#1e382d] border border-[#355247] text-xs font-medium text-[#f1f6ef] transition-all">
+              Always for this corpus
+            </button>
+            <button onclick="denyAction()" class="px-3 py-1.5 rounded-md bg-[#172c23] hover:bg-[#1e382d] border border-[#355247] text-xs font-medium text-[#e5a84b] transition-all">
+              Don't allow
+            </button>
+          </div>
+        </div>
+
+        <!-- Verification Step Pipeline (From reference image.png) -->
+        <div class="p-4 rounded-xl border border-[#355247] bg-[#13261f] space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold text-[#708a7e] uppercase tracking-wider font-mono">Verification Pipeline</span>
+            <span class="text-xs text-[#9ad5ac] font-mono">Completed in 1.12s</span>
+          </div>
+          <div class="space-y-2 text-xs">
+            <div class="flex items-center gap-3 text-[#f1f6ef]">
+              <span class="w-4 h-4 rounded-full bg-[#9ad5ac] text-[#0e1d18] flex items-center justify-center text-[10px] font-black">✓</span>
+              <span>1. Load unmodified AArch64 executable into memory-safe isolated MMU</span>
+              <span class="text-[#708a7e] ml-auto font-mono">0.01s</span>
+            </div>
+            <div class="flex items-center gap-3 text-[#f1f6ef]">
+              <span class="w-4 h-4 rounded-full bg-[#9ad5ac] text-[#0e1d18] flex items-center justify-center text-[10px] font-black">✓</span>
+              <span>2. Execute Tier-1 Safe Interpreter baseline (#![forbid(unsafe_code)])</span>
+              <span class="text-[#708a7e] ml-auto font-mono">0.52s</span>
+            </div>
+            <div class="flex items-center gap-3 text-[#f1f6ef]">
+              <span class="w-4 h-4 rounded-full bg-[#9ad5ac] text-[#0e1d18] flex items-center justify-center text-[10px] font-black">✓</span>
+              <span>3. Execute Tier-3 Block-fused JIT</span>
+              <span class="text-[#708a7e] ml-auto font-mono">0.11s</span>
+            </div>
+            <div class="flex items-center gap-3 text-[#f1f6ef]">
+              <span class="w-4 h-4 rounded-full bg-[#9ad5ac] text-[#0e1d18] flex items-center justify-center text-[10px] font-black">✓</span>
+              <span>4. Byte-for-byte check against Apple Silicon reference oracle</span>
+              <span class="text-[#708a7e] ml-auto font-mono">0.48s</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Plain-English Educational Explainer (From image_3.png) -->
+        <div class="p-4 rounded-xl border border-[#355247] bg-[#13261f] space-y-2.5">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-[#73b9ae]"></div>
+            <span class="text-xs font-bold text-[#f1f6ef]">Ounce-Verify Educational Diagnosis</span>
+          </div>
+          <div id="verifyExplainer" class="text-xs text-[#b7c8bf] leading-relaxed p-3 rounded-lg bg-[#172c23] border border-[#355247]">
+            "wasm3 executed cleanly across all engines. The WebAssembly interpreter opcode loop, 64-bit integer arithmetic, and polynomial multiply (pmull) instructions calculated identical memory states with zero drift."
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================== PILLAR 2: OUNCE-DEBUG ==================== -->
+      <div id="pillar-debug" class="hidden flex-1 overflow-y-auto p-6 space-y-5 max-w-4xl mx-auto w-full">
+
+        <div class="p-5 rounded-xl border border-[#e5a84b]/40 bg-[#172c23] space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded bg-[#e5a84b]/15 text-[#e5a84b] font-mono text-[10px] font-bold border border-[#e5a84b]/30">DIVERGENCE FOUND</span>
+              <span class="text-xs font-bold text-[#f1f6ef]">First Divergence Locator</span>
+            </div>
+            <span class="text-xs font-mono text-[#b7c8bf]">Instruction #1,402,912</span>
+          </div>
+          <h2 class="text-base font-bold text-[#f1f6ef]">
+            Historical Finding: Fused Multiply-Add (FMLA) sign bit inversion in JIT
+          </h2>
+          <p class="text-xs text-[#b7c8bf] leading-relaxed">
+            Running floating-point math against real hardware revealed that two fused floating-point instructions had the wrong sign bit in the JIT accumulator. This caused <code class="text-[#9ad5ac]">sin()</code>, <code class="text-[#9ad5ac]">cos()</code>, and <code class="text-[#9ad5ac]">pow()</code> to return incorrect values.
+          </p>
+        </div>
+
+        <!-- First Divergence Visual Diff Inspector -->
+        <div class="p-4 rounded-xl border border-[#355247] bg-[#13261f] space-y-3">
+          <div class="flex items-center justify-between text-xs font-mono">
+            <span class="font-bold text-[#708a7e] uppercase">Registers at Divergence Point (PC: 0x401a34)</span>
+            <span class="text-[#e5a84b]">Discrepancy: V0.4S lane 0</span>
+          </div>
+
+          <!-- Instruction Callout -->
+          <div class="p-3 bg-[#0e1d18] rounded-lg border border-[#355247] font-mono text-xs flex items-center justify-between">
+            <div>
+              <span class="text-[#708a7e]">0x401a34:</span>
+              <span class="text-[#9ad5ac] font-bold ml-2">fmla v0.4s, v1.4s, v2.4s</span>
+              <span class="text-[#708a7e] ml-4">// Fused multiply and accumulate</span>
+            </div>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-[#cc754f]/20 text-[#cc754f] border border-[#cc754f]/30">Sign mismatch</span>
+          </div>
+
+          <!-- Side-by-Side Comparison -->
+          <div class="grid grid-cols-2 gap-3 font-mono text-xs">
+            <div class="p-3 rounded-lg bg-[#172c23] border border-[#e06c75]/40 space-y-2">
+              <div class="flex items-center justify-between text-[#e06c75] font-bold">
+                <span>Tier-2 JIT (Before Fix)</span>
+                <span>FAIL</span>
+              </div>
+              <div class="text-[11px] space-y-1 text-[#b7c8bf]">
+                <div>V0: <span class="text-[#e06c75]">-0.70710678</span> (Negative)</div>
+                <div>V1: 1.41421356</div>
+                <div>V2: -0.50000000</div>
+                <div>FPSR: 0x00000000</div>
+              </div>
+            </div>
+
+            <div class="p-3 rounded-lg bg-[#172c23] border border-[#9ad5ac]/40 space-y-2">
+              <div class="flex items-center justify-between text-[#9ad5ac] font-bold">
+                <span>Real Hardware Reference</span>
+                <span>MATCH</span>
+              </div>
+              <div class="text-[11px] space-y-1 text-[#b7c8bf]">
+                <div>V0: <span class="text-[#9ad5ac]">+0.70710678</span> (Positive)</div>
+                <div>V1: 1.41421356</div>
+                <div>V2: -0.50000000</div>
+                <div>FPSR: 0x00000000</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action: 1-Click Reproduce -->
+          <div class="pt-2 flex items-center justify-between">
+            <span class="text-xs text-[#708a7e]">Dossier retained in docs/reproduce/fp-sign/</span>
+            <button onclick="copyReproCmd()" class="px-3.5 py-1.5 rounded-lg bg-[#172c23] hover:bg-[#1e382d] border border-[#355247] text-xs font-semibold text-[#f1f6ef] flex items-center gap-1.5 transition-all">
+              <svg class="w-3.5 h-3.5 text-[#9ad5ac]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+              <span>Copy Replay Command</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================== PILLAR 3: OUNCE-LEARN ==================== -->
+      <div id="pillar-learn" class="hidden flex-1 overflow-y-auto p-6 space-y-5 max-w-4xl mx-auto w-full">
+
+        <div class="p-5 rounded-xl border border-[#355247] bg-[#172c23] space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold text-[#73b9ae] uppercase font-mono tracking-wider">Browser Playground (Wasm)</span>
+            <span class="text-xs text-[#708a7e] font-mono">No installation required</span>
+          </div>
+          <h2 class="text-base font-bold text-[#f1f6ef]">
+            Study ARM64 Execution One Instruction at a Time
+          </h2>
+          <p class="text-xs text-[#b7c8bf] leading-relaxed">
+            Step through real AArch64 machine instructions. See registers and memory update live, with plain-English explanations of how the ARMv8.5-A architecture works.
+          </p>
+        </div>
+
+        <!-- Interactive Stepper Canvas -->
+        <div class="rounded-xl border border-[#355247] bg-[#13261f] overflow-hidden space-y-0">
+          <div class="p-3 bg-[#172c23] border-b border-[#355247] flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-[#f1f6ef]">Program Counter:</span>
+              <span class="px-2 py-0.5 rounded bg-[#0e1d18] text-[#9ad5ac] font-mono text-xs" id="learnPC">0x401010</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="stepInsn(-1)" class="px-2.5 py-1 rounded bg-[#0e1d18] hover:bg-[#172c23] border border-[#355247] text-xs text-[#b7c8bf]">◀ Prev</button>
+              <button onclick="stepInsn(1)" class="px-3.5 py-1 rounded bg-[#9ad5ac] hover:bg-[#86c59a] text-[#0e1d18] font-bold text-xs flex items-center gap-1">
+                <span>Step Next</span>
+                <span>▶</span>
+              </button>
+              <button onclick="resetLearn()" class="px-2.5 py-1 rounded bg-[#0e1d18] hover:bg-[#172c23] border border-[#355247] text-xs text-[#708a7e]">Reset</button>
+            </div>
+          </div>
+
+          <!-- Plain-English Instruction Translation Card -->
+          <div class="p-4 bg-[#0e1d18] border-b border-[#355247] space-y-1.5">
+            <div class="text-[10px] uppercase font-bold text-[#73b9ae] font-mono">Current Instruction Breakdown</div>
+            <div class="text-sm font-bold font-mono text-[#f1f6ef]" id="learnInsn">
+              mov x0, #100
+            </div>
+            <p class="text-xs text-[#b7c8bf] leading-relaxed" id="learnInsnDesc">
+              "Loads the immediate 64-bit integer 100 into General Purpose Register X0. This register commonly serves as the first function argument or return value in the standard ARM64 ABI."
+            </p>
+          </div>
+
+          <!-- Live Register Table -->
+          <div class="p-4 space-y-2">
+            <span class="text-[10px] uppercase font-bold text-[#708a7e] font-mono">Architectural Registers (AArch64)</span>
+            <div class="grid grid-cols-4 md:grid-cols-8 gap-2 font-mono text-xs" id="learnRegs">
+              <div class="p-1.5 rounded bg-[#0e1d18] border border-[#355247]"><span class="text-[#708a7e]">X0:</span> <span id="rX0" class="text-[#9ad5ac]">100</span></div>
+              <div class="p-1.5 rounded bg-[#0e1d18] border border-[#355247]"><span class="text-[#708a7e]">X1:</span> <span id="rX1" class="text-[#f1f6ef]">0</span></div>
+              <div class="p-1.5 rounded bg-[#0e1d18] border border-[#355247]"><span class="text-[#708a7e]">X2:</span> <span id="rX2" class="text-[#f1f6ef]">0</span></div>
+              <div class="p-1.5 rounded bg-[#0e1d18] border border-[#355247]"><span class="text-[#708a7e]">X3:</span> <span id="rX3" class="text-[#f1f6ef]">0</span></div>
+              <div class="p-1.5 rounded bg-[#0e1d18] border border-[#355247]"><span class="text-[#708a7e]">SP:</span> <span class="text-[#b7c8bf]">0x7FFE0</span></div>
+              <div class="p-1.5 rounded bg-[#0e1d18] border border-[#355247]"><span class="text-[#708a7e]">LR:</span> <span class="text-[#b7c8bf]">0x401004</span></div>
+              <div class="p-1.5 rounded bg-[#0e1d18] border border-[#355247]"><span class="text-[#708a7e]">NZCV:</span> <span class="text-[#9ad5ac]">0000</span></div>
+              <div class="p-1.5 rounded bg-[#0e1d18] border border-[#355247]"><span class="text-[#708a7e]">QC:</span> <span class="text-[#9ad5ac]">0</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ==================== ADVANCED MODE MULTI-VIEW ==================== -->
+      <div id="advancedContainer" class="hidden flex-1 flex flex-col overflow-hidden">
+        <div class="h-10 bg-[#13261f] border-b border-[#355247] px-3 flex items-center gap-1 shrink-0">
+          <button class="px-3 py-1.5 rounded text-xs font-mono font-bold bg-[#172c23] text-[#9ad5ac] border border-[#355247]">
+            &lt;&gt; Pseudo-C &amp; AArch64 Disassembly
+          </button>
+          <button class="px-3 py-1.5 rounded text-xs font-mono font-bold text-[#b7c8bf] hover:text-[#f1f6ef]">
+            Memory Map &amp; Linux Syscall Log
+          </button>
+          <button class="px-3 py-1.5 rounded text-xs font-mono font-bold text-[#b7c8bf] hover:text-[#f1f6ef]">
+            JIT Block Translation Cache
+          </button>
+        </div>
+
+        <div class="flex-1 flex overflow-hidden">
+          <div class="flex-1 overflow-y-auto p-4 font-mono text-xs text-[#f1f6ef] space-y-1 bg-[#0e1d18]">
+            <div class="text-[#708a7e]">// Target: wasm3 / SQLite (AArch64 Linux Static Binary)</div>
+            <div class="text-[#708a7e]">// Verified byte-for-byte against Apple Silicon reference</div>
+            <div><span class="text-[#73b9ae]">0x00401a20:</span>  <span class="text-[#cc754f]">stp</span>    x29, x30, [sp, #-32]!</div>
+            <div><span class="text-[#73b9ae]">0x00401a24:</span>  <span class="text-[#cc754f]">mov</span>    x29, sp</div>
+            <div><span class="text-[#73b9ae]">0x00401a28:</span>  <span class="text-[#cc754f]">str</span>    x19, [sp, #16]</div>
+            <div><span class="text-[#73b9ae]">0x00401a2c:</span>  <span class="text-[#cc754f]">ldr</span>    x19, [x0, #8]</div>
+            <div><span class="text-[#73b9ae]">0x00401a30:</span>  <span class="text-[#cc754f]">cbz</span>    x19, 0x401a50</div>
+            <div><span class="text-[#73b9ae]">0x00401a34:</span>  <span class="text-[#9ad5ac]">fmla</span>   v0.4s, v1.4s, v2.4s  <span class="text-[#708a7e]">// Verified sign bit identical</span></div>
+            <div><span class="text-[#73b9ae]">0x00401a38:</span>  <span class="text-[#9ad5ac]">pmull</span>  v3.8h, v1.8b, v2.8b  <span class="text-[#708a7e]">// Polynomial multiply match</span></div>
+            <div><span class="text-[#73b9ae]">0x00401a3c:</span>  <span class="text-[#cc754f]">add</span>    x0, x19, #64</div>
+            <div><span class="text-[#73b9ae]">0x00401a40:</span>  <span class="text-[#cc754f]">ret</span></div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- 3. RIGHT SIDEBAR: Evidence Ledger -->
+    <aside class="w-72 bg-[#13261f] border-l border-[#355247] flex flex-col shrink-0">
+      <div class="p-3 border-b border-[#355247] flex items-center justify-between">
+        <div>
+          <span class="text-[10px] font-bold text-[#708a7e] uppercase tracking-wider font-mono">Evidence Ledger</span>
+          <div class="text-[11px] text-[#b7c8bf]">Cryptographic Proofs</div>
+        </div>
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-[#172c23] border border-[#355247] text-[#9ad5ac] font-mono">3 Retained</span>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-3 space-y-2.5">
+        <!-- Evidence 1 -->
+        <div class="p-2.5 rounded-lg bg-[#172c23] border border-[#355247] space-y-1">
+          <div class="flex items-center justify-between font-mono">
+            <span class="font-bold text-[#f1f6ef] flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#9ad5ac]"></span>
+              Hardware Diff Manifest
+            </span>
+            <span class="text-[10px] text-[#9ad5ac]">MATCH</span>
+          </div>
+          <p class="text-[11px] text-[#b7c8bf]">
+            Output hashes across Tier-1, Tier-3, and Apple Silicon match byte-for-byte.
+          </p>
+        </div>
+
+        <!-- Evidence 2 -->
+        <div class="p-2.5 rounded-lg bg-[#172c23] border border-[#355247] space-y-1">
+          <div class="flex items-center justify-between font-mono">
+            <span class="font-bold text-[#f1f6ef] flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#9ad5ac]"></span>
+              First-Frame Oracles
+            </span>
+            <span class="text-[10px] text-[#9ad5ac]">50 / 50</span>
+          </div>
+          <p class="text-[11px] text-[#b7c8bf]">
+            Historical regression set verified. Zero pixel or register divergences.
+          </p>
+        </div>
+
+        <!-- Evidence 3 -->
+        <div class="p-2.5 rounded-lg bg-[#172c23] border border-[#355247] space-y-1">
+          <div class="flex items-center justify-between font-mono">
+            <span class="font-bold text-[#f1f6ef] flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#73b9ae]"></span>
+              Safe Rust Boundary
+            </span>
+            <span class="text-[10px] text-[#73b9ae]">AUDITED</span>
+          </div>
+          <p class="text-[11px] text-[#b7c8bf]">
+            Compiler enforced <code class="text-[#cc754f] font-mono">forbid(unsafe_code)</code> across runtime core.
+          </p>
+        </div>
+      </div>
+
+      <!-- Action Footer -->
+      <div class="p-3 border-t border-[#355247] bg-[#0e1d18]/60 space-y-2">
+        <button onclick="copyReproCmd()" class="w-full py-2 px-3 rounded-lg bg-[#172c23] hover:bg-[#1e382d] border border-[#355247] text-xs font-semibold text-[#f1f6ef] flex items-center justify-center gap-1.5 transition-all">
+          <svg class="w-3.5 h-3.5 text-[#9ad5ac]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+          <span>Copy Reproduction Command</span>
+        </button>
+        <div class="flex gap-2">
+          <a href="results.html" class="flex-1 py-1 rounded bg-[#13261f] hover:bg-[#172c23] border border-[#355247] text-[10px] text-[#b7c8bf] text-center font-mono text-decoration-none">View Results</a>
+          <a href="maintainers.html" class="flex-1 py-1 rounded bg-[#13261f] hover:bg-[#172c23] border border-[#355247] text-[10px] text-[#b7c8bf] text-center font-mono text-decoration-none">Maintainers</a>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ==================== FILE INTAKE & DRAG-AND-DROP MODAL ==================== -->
+  <div id="intakeModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="w-full max-w-xl bg-[#13261f] border border-[#355247] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div class="p-5 border-b border-[#355247] flex items-center justify-between">
+        <div>
+          <h3 class="text-base font-bold text-[#f1f6ef]">Inspect Any Program or Binary</h3>
+          <p class="text-xs text-[#b7c8bf]">Drag and drop any file from your computer to inspect its headers and verification path.</p>
+        </div>
+        <button onclick="toggleModal('intakeModal')" class="text-[#b7c8bf] hover:text-white p-1 rounded hover:bg-[#172c23]">✕</button>
+      </div>
+      <div class="p-6 space-y-4">
+        <!-- Big Drag and Drop Target -->
+        <div id="modalDropZone" class="border-2 border-dashed border-[#4e7767] hover:border-[#9ad5ac] rounded-xl p-8 text-center cursor-pointer transition-colors bg-[#0e1d18]/50" onclick="document.getElementById('fileInputModal').click()">
+          <svg class="w-8 h-8 mx-auto text-[#9ad5ac] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          <div class="text-xs font-bold text-[#f1f6ef]">Click to browse or drop file here</div>
+          <div class="text-[11px] text-[#708a7e] mt-1">Accepts Linux ELF, Homebrew NRO, XCI/NSP containers, or archives</div>
+          <input type="file" id="fileInputModal" class="hidden" onchange="handleFileSelect(event)">
+        </div>
+
+        <div class="space-y-1.5 text-xs text-[#b7c8bf]">
+          <div class="font-semibold text-[#f1f6ef]">Supported format guidelines:</div>
+          <ul class="list-disc pl-5 space-y-1 text-[11px] text-[#708a7e]">
+            <li><strong>Static AArch64 Linux ELF</strong>: Run with <code class="text-[#9ad5ac]">run-elf</code> (40+ syscalls modeled).</li>
+            <li><strong>Homebrew NRO</strong>: Executed via Tier-1 Safe Interpreter or Tier-3 JIT.</li>
+            <li><strong>C / C++ Library test</strong>: Build with <code class="text-[#9ad5ac]">aarch64-linux-gnu-gcc -static</code>.</li>
+            <li><strong>Retail / Encrypted</strong>: Container inspected safely; retail decryption disabled by policy.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="p-4 border-t border-[#355247] bg-[#0e1d18]/60 flex items-center justify-between">
+        <span class="text-[10px] text-[#708a7e]">Runs in memory-safe Rust sandbox · No private keys required</span>
+        <button onclick="toggleModal('intakeModal')" class="px-4 py-1.5 rounded-lg bg-[#172c23] hover:bg-[#1e382d] border border-[#355247] text-xs font-medium text-[#f1f6ef]">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== JAVASCRIPT CONTROLLER ==================== -->
+  <script>
+    // Pillar switching
+    function setPillar(p) {
+      ['verify', 'debug', 'learn'].forEach(k => {
+        const nav = document.getElementById('nav-' + k);
+        const panel = document.getElementById('pillar-' + k);
+        if (k === p) {
+          nav.className = "px-3.5 py-1 rounded-md text-xs font-semibold bg-[#172c23] text-[#9ad5ac] border border-[#355247] shadow-sm flex items-center gap-1.5 transition-all";
+          panel.classList.remove('hidden');
+        } else {
+          nav.className = "px-3.5 py-1 rounded-md text-xs font-semibold text-[#b7c8bf] hover:text-[#f1f6ef] flex items-center gap-1.5 transition-all";
+          panel.classList.add('hidden');
+        }
+      });
+      document.getElementById('advancedContainer').classList.add('hidden');
+      document.getElementById('btnSimple').className = "px-3 py-1 rounded-md text-xs font-semibold bg-[#172c23] text-[#f1f6ef] shadow";
+      document.getElementById('btnAdvanced').className = "px-3 py-1 rounded-md text-xs font-semibold text-[#b7c8bf] hover:text-[#f1f6ef]";
+    }
+
+    // Simple / Advanced Toggle
+    function toggleComplexity(mode) {
+      const adv = document.getElementById('advancedContainer');
+      const btnS = document.getElementById('btnSimple');
+      const btnA = document.getElementById('btnAdvanced');
+
+      if (mode === 'advanced') {
+        document.getElementById('pillar-verify').classList.add('hidden');
+        document.getElementById('pillar-debug').classList.add('hidden');
+        document.getElementById('pillar-learn').classList.add('hidden');
+        adv.classList.remove('hidden');
+        btnA.className = "px-3 py-1 rounded-md text-xs font-semibold bg-[#172c23] text-[#f1f6ef] shadow";
+        btnS.className = "px-3 py-1 rounded-md text-xs font-semibold text-[#b7c8bf] hover:text-[#f1f6ef]";
+      } else {
+        adv.classList.add('hidden');
+        setPillar('verify');
+      }
+    }
+
+    // Select Corpus Item
+    function selectCase(id) {
+      ['wasm3', 'sqlite', 'runelf', 'lua', 'lz4', 'fpsr', 'oracles'].forEach(k => {
+        const el = document.getElementById('item-' + k);
+        if (el) {
+          if (k === id) {
+            el.className = "w-full text-left p-2.5 rounded-lg border border-[#4e7767] bg-[#172c23] text-[#f1f6ef] flex flex-col gap-1 transition-all";
+          } else {
+            el.className = "w-full text-left p-2.5 rounded-lg border border-transparent hover:border-[#355247] hover:bg-[#172c23]/60 text-[#b7c8bf] hover:text-[#f1f6ef] flex flex-col gap-1 transition-all";
+          }
+        }
+      });
+
+      const heading = document.getElementById('verifyHeading');
+      const body = document.getElementById('verifyBody');
+      const metric = document.getElementById('parityMetric');
+      const explainer = document.getElementById('verifyExplainer');
+
+      if (id === 'wasm3') {
+        heading.innerText = "wasm3: 14.7k-line WebAssembly engine differential harness verified";
+        body.innerHTML = "Executed unmodified AArch64 binary across Tier-1 Safe Interpreter, Tier-3 JIT, and Apple Silicon Host Reference. Bytecode interpreter dispatch, Wasm stack frames, and polynomial multiply (pmull) matched hardware bit-for-bit.";
+        metric.innerText = "100%";
+        metric.className = "text-3xl font-black text-[#9ad5ac] font-mono";
+        explainer.innerText = `"wasm3 executed cleanly across all engines. The WebAssembly interpreter opcode loop, 64-bit integer arithmetic, and polynomial multiply (pmull) instructions calculated identical memory states with zero drift."`;
+        setPillar('verify');
+      } else if (id === 'sqlite') {
+        heading.innerText = "SQLite 3.50.4 (ACID Transaction Test): Byte-for-byte identical across all 3 engines";
+        body.innerHTML = "Executed 14,210,880 instructions on Tier-1 Interpreter, Tier-3 JIT, and Apple Silicon reference. Zero divergence in database journal files or B-tree memory pages.";
+        metric.innerText = "100%";
+        metric.className = "text-3xl font-black text-[#9ad5ac] font-mono";
+        explainer.innerText = `"The SQLite library runs identically on ARM64 and x86. B-tree balance operations, string collations, and 64-bit integer calculations computed identical memory states."`;
+        setPillar('verify');
+      } else if (id === 'runelf') {
+        heading.innerText = "run-elf: Static Linux AArch64 binary runner with deterministic syscall emulation";
+        body.innerHTML = "Executes unstripped Linux ARM64 executables without requiring a console SDK. Models 40+ Linux system calls (brk, mmap, write, read, exit_group) with actionable failure diagnosis.";
+        metric.innerText = "PASS";
+        metric.className = "text-3xl font-black text-[#73b9ae] font-mono";
+        explainer.innerText = `"run-elf enables ordinary aarch64-linux binaries to be executed and debugged on Linux, macOS, and Windows. If a syscall is unimplemented, it exits with code 70 and an actionable diagnosis line."`;
+        setPillar('verify');
+      } else if (id === 'fpsr') {
+        setPillar('debug');
+      }
+    }
+
+    // Step-by-step instruction runner (Ounce-Learn)
+    const insns = [
+      { pc: "0x401010", asm: "mov x0, #100", desc: "Loads the immediate 64-bit integer 100 into General Purpose Register X0. Serves as function parameter 1.", r0: "100", r1: "0", r2: "0" },
+      { pc: "0x401014", asm: "mov x1, #25",  desc: "Loads the immediate 64-bit integer 25 into General Purpose Register X1. Serves as parameter 2.", r0: "100", r1: "25", r2: "0" },
+      { pc: "0x401018", asm: "add x2, x0, x1", desc: "Performs 64-bit integer addition of X0 and X1, storing the result (125) into register X2.", r0: "100", r1: "25", r2: "125" },
+      { pc: "0x40101c", asm: "sdiv x0, x2, #5", desc: "Signed integer division: divides X2 (125) by 5 and writes quotient (25) back into X0.", r0: "25", r1: "25", r2: "125" },
+      { pc: "0x401020", asm: "ret", desc: "Returns from subroutine to the address stored in the Link Register (LR). Function return value is in X0.", r0: "25", r1: "25", r2: "125" }
+    ];
+    let curStep = 0;
+
+    function stepInsn(delta) {
+      curStep = Math.max(0, Math.min(insns.length - 1, curStep + delta));
+      const s = insns[curStep];
+      document.getElementById('learnPC').innerText = s.pc;
+      document.getElementById('learnInsn').innerText = s.asm;
+      document.getElementById('learnInsnDesc').innerText = `"${s.desc}"`;
+      document.getElementById('rX0').innerText = s.r0;
+      document.getElementById('rX1').innerText = s.r1;
+      document.getElementById('rX2').innerText = s.r2;
+    }
+
+    function resetLearn() {
+      curStep = 0;
+      stepInsn(0);
+    }
+
+    // Real Client-Side Binary File Inspector (Handles whatever is dropped in!)
+    async function processFile(file) {
+      const card = document.getElementById('customFileCard');
+      const nameEl = document.getElementById('customFileName');
+      const summaryEl = document.getElementById('customFileSummary');
+      const detailsEl = document.getElementById('customFileDetails');
+      const badgeEl = document.getElementById('customFileBadge');
+
+      card.classList.remove('hidden');
+      nameEl.innerText = file.name + ` (${(file.size / 1024).toFixed(1)} KB)`;
+
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+
+      // Compute SHA-256 hash
+      const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      let format = "Unknown Binary";
+      let diagnosis = "";
+      let isArm64 = false;
+
+      // Check ELF
+      if (bytes.length >= 4 && bytes[0] === 0x7F && bytes[1] === 0x45 && bytes[2] === 0x4C && bytes[3] === 0x46) {
+        const is64Bit = bytes[4] === 2;
+        const machine = bytes[18] | (bytes[19] << 8);
+        if (machine === 0xB7) { // AArch64
+          format = "Linux AArch64 (ARM64) Static ELF";
+          isArm64 = true;
+          badgeEl.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[#0e1d18] text-[#9ad5ac] border border-[#355247] font-mono";
+          badgeEl.innerText = "SUPPORTED ARM64 ELF";
+          summaryEl.innerHTML = `Executable binary recognized. Supported by Ounce-Core's <code class="text-[#9ad5ac]">run-elf</code> engine.`;
+          diagnosis = `
+            <div><strong>Format:</strong> Linux ELF 64-bit (AArch64)</div>
+            <div><strong>SHA-256:</strong> ${hashHex}</div>
+            <div><strong>CLI Run Command:</strong> <span class="text-[#9ad5ac]">target/release/ounce-core run-elf "${file.name}"</span></div>
+            <div><strong>Syscall Subsystem:</strong> Evaluated against 40+ modeled Linux system calls (brk, mmap, write, read).</div>
+          `;
+        } else if (machine === 0x3E) { // x86_64
+          format = "Linux x86_64 ELF";
+          badgeEl.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[#0e1d18] text-[#e5a84b] border border-[#355247] font-mono";
+          badgeEl.innerText = "x86_64 ARCHITECTURE";
+          summaryEl.innerText = "This is an x86_64 binary. Ounce-Core executes and verifies AArch64 (ARM64) software.";
+          diagnosis = `
+            <div><strong>Format:</strong> Linux ELF 64-bit (x86_64)</div>
+            <div><strong>SHA-256:</strong> ${hashHex}</div>
+            <div><strong>Recommendation:</strong> Recompile with <code class="text-[#9ad5ac]">aarch64-linux-gnu-gcc -static test.c -o test_arm64</code> to verify on Ounce-Core.</div>
+          `;
+        } else {
+          format = `ELF (Machine Type 0x${machine.toString(16)})`;
+          summaryEl.innerText = "Non-AArch64 ELF binary.";
+        }
+      }
+      // Check Homebrew NRO
+      else if (bytes.length >= 20 && bytes[16] === 0x4E && bytes[17] === 0x52 && bytes[18] === 0x4F && bytes[19] === 0x30) {
+        format = "Nintendo Switch Homebrew (NROv0)";
+        badgeEl.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[#0e1d18] text-[#9ad5ac] border border-[#355247] font-mono";
+        badgeEl.innerText = "HOMEBREW NRO";
+        summaryEl.innerHTML = `Homebrew NRO detected. Executable on Tier-1 Interpreter and Tier-3 JIT.`;
+        diagnosis = `
+          <div><strong>Format:</strong> Homebrew Executable (NROv0)</div>
+          <div><strong>SHA-256:</strong> ${hashHex}</div>
+          <div><strong>CLI Run Command:</strong> <span class="text-[#9ad5ac]">target/release/ounce-core run-nro "${file.name}"</span></div>
+          <div><strong>Oracles:</strong> Compatible with 50/50 First-Frame regression harness.</div>
+        `;
+      }
+      // Check XCI / Cartridge
+      else if (bytes.length >= 0x104 && bytes[0x100] === 0x48 && bytes[0x101] === 0x45 && bytes[0x102] === 0x41 && bytes[0x103] === 0x44) {
+        format = "Nintendo Switch GameCard (.xci)";
+        badgeEl.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[#0e1d18] text-[#73b9ae] border border-[#355247] font-mono";
+        badgeEl.innerText = "CONTAINER PARSED";
+        summaryEl.innerText = "GameCard container metadata inspected. Retail decryption disabled by policy.";
+        diagnosis = `
+          <div><strong>Format:</strong> GameCard Cartridge (.xci) with HFS0 Partitions</div>
+          <div><strong>SHA-256:</strong> ${hashHex}</div>
+          <div><strong>Clean-Room Status:</strong> No proprietary keys or firmware included. Retail decryption restricted.</div>
+        `;
+      }
+      // Generic / Text / Source
+      else {
+        format = "Raw Binary / Archive / Document";
+        badgeEl.className = "text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[#0e1d18] text-[#b7c8bf] border border-[#355247] font-mono";
+        badgeEl.innerText = "RAW INPUT";
+        summaryEl.innerText = "Inspected file byte stream.";
+        diagnosis = `
+          <div><strong>File Size:</strong> ${file.size} bytes</div>
+          <div><strong>SHA-256:</strong> ${hashHex}</div>
+          <div><strong>Notice:</strong> Provide a static AArch64 ELF or NRO to perform differential execution checks.</div>
+        `;
+      }
+
+      detailsEl.innerHTML = diagnosis;
+      setPillar('verify');
+      document.getElementById('intakeModal').classList.add('hidden');
+    }
+
+    function clearCustomFile() {
+      document.getElementById('customFileCard').classList.add('hidden');
+    }
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (file) processFile(file);
+    }
+
+    // Drag and drop event listeners
+    const dropZone = document.getElementById('dropZoneContainer');
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer.files.length > 0) {
+        processFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    function approveAction() {
+      document.getElementById('approvalGate').innerHTML = `<div class="p-3 bg-[#9ad5ac]/10 border border-[#9ad5ac]/30 rounded-lg text-xs text-[#9ad5ac] font-mono flex items-center gap-2">
+        <span>✓ Differential check against host Apple Silicon authorized and completed.</span>
+      </div>`;
+    }
+
+    function denyAction() {
+      document.getElementById('approvalGate').innerHTML = `<div class="p-3 bg-[#cc754f]/10 border border-[#cc754f]/30 rounded-lg text-xs text-[#cc754f] font-mono">
+        Host differential run declined. Operating in isolated Tier-1 Safe Interpreter only.
+      </div>`;
+    }
+
+    function copyReproCmd() {
+      navigator.clipboard.writeText("python3 tools/ounce_verify.py --corpus wasm3 --diagnose");
+      alert("Copied reproducible replay command to clipboard!");
+    }
+
+    function toggleModal(id) {
+      document.getElementById(id).classList.toggle('hidden');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,405 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Keep only the newest CI run per branch/PR to avoid stale feedback and
+  # reduce queue time while active branches are updated.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      runtime: ${{ steps.scope.outputs.runtime }}
+      corpus: ${{ steps.scope.outputs.corpus }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Classify candidate inputs
+        id: scope
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            BASE=$(git rev-list --max-parents=0 HEAD | head -1)
+          fi
+          python3 scripts/ci_scope.py --base "$BASE" --github-output "$GITHUB_OUTPUT"
+
+  tooling:
+    name: Workflow and evidence tooling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Check local workflow and evidence tools
+        run: |
+          bash -n scripts/next.sh scripts/gate.sh scripts/check_legal_guardrails.sh scripts/check_unsafe_boundary.sh
+          python3 scripts/agent_workflow.py next
+          python3 scripts/corpus_verify.py headline docs/verify/audout-padding/canonical-corpus.json --check-readme
+          python3 scripts/corpus_verify.py snapshot
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          python3 -m unittest discover -s tests -p 'test_*.py'
+
+  corpus:
+    name: Canonical regression evidence
+    needs: changes
+    if: needs.changes.outputs.corpus == 'true'
+    uses: ./.github/workflows/external-corpus.yml
+  release-notice-packaging:
+    name: Release notice packaging (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-docs
+      - name: Exercise archive creation and byte verification
+        shell: bash
+        run: |
+          mkdir -p work/notice-check
+          printf 'packaging test input\n' > work/notice-check/ounce-core
+          target=$(rustc -vV | sed -n 's/^host: //p')
+          python scripts/collect_toolchain_notices.py --binary work/notice-check/ounce-core --target "$target" --output work/notice-check/rust
+          python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/test.tar.gz --toolchain-notices work/notice-check/rust
+          python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/test.zip --toolchain-notices work/notice-check/rust
+          if python -c 'import json,sys; review=json.load(open("docs/RELEASE_NOTICE_REVIEW.json")); sys.exit(review["status"] != "REVIEWED")'; then
+            python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/publish.zip --require-reviewed --toolchain-notices work/notice-check/rust
+          else
+            if python scripts/package_release.py --binary work/notice-check/ounce-core --output work/notice-check/publish.zip --require-reviewed --toolchain-notices work/notice-check/rust; then
+              echo 'Pending notice review unexpectedly permitted publication'
+              exit 1
+            fi
+          fi
+
+  legal-guardrails:
+    name: Legal guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Fail on key files, retail containers or ROM/key-site links
+        run: scripts/check_legal_guardrails.sh
+      - name: Check fixture identities and provenance review records
+        run: python3 scripts/check_fixture_provenance.py
+      - name: Fail on unsafe outside the README's Safe Rust boundary
+        run: scripts/check_unsafe_boundary.sh
+
+  test:
+    name: Runtime (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run unit tests
+        run: cargo test --release
+
+      - name: Run 25-stage integration verification suite
+        run: cargo run --release -- test
+
+  gpu-present:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    name: GPU presentation feature (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # lavapipe (mesa-vulkan-drivers) is a software Vulkan driver, so the offscreen
+      # GPU blit test really runs on runners without a GPU instead of skipping.
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: gpu-present
+
+      - name: Build with gpu-present
+        run: cargo build --release --features gpu-present
+
+      - name: Build and smoke-test native Mac app
+        if: runner.os == 'macOS'
+        run: |
+          swiftc tools/macos-launcher/EvidenceReport.swift tests/macos/evidence-report/main.swift -o "$RUNNER_TEMP/evidence-report-tests"
+          "$RUNNER_TEMP/evidence-report-tests"
+          swiftc tools/macos-launcher/RunLogic.swift tools/macos-launcher/HostVerify.swift tests/macos/run-logic/main.swift -o "$RUNNER_TEMP/run-logic-tests"
+          "$RUNNER_TEMP/run-logic-tests"
+          swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos/workbench-logic/main.swift -o "$RUNNER_TEMP/workbench-logic-tests"
+          "$RUNNER_TEMP/workbench-logic-tests"
+          scripts/build_macos_app.sh
+          codesign --verify --deep --strict "dist/Ounce Core.app"
+          "dist/Ounce Core.app/Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core" test
+
+      - name: Run unit tests with gpu-present
+        run: cargo test --release --features gpu-present -- --nocapture --test-threads=1
+
+      - name: Check actual guest shader writeback
+        if: runner.os != 'Windows'
+        env:
+          OUNCE_GPU_REQUIRE_HARDWARE: ${{ runner.os == 'macOS' && '1' || '0' }}
+        run: cargo test --release --features gpu-present host_sass_draw_writes_original_guest_surface -- --ignored --nocapture
+
+      - name: Package native Mac app preview
+        if: runner.os == 'macOS'
+        run: python3 scripts/package_macos_app.py --app "dist/Ounce Core.app" --out "$RUNNER_TEMP/macos-preview"
+
+      - name: Retain native Mac app preview
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app-preview
+          path: ${{ runner.temp }}/macos-preview/
+          if-no-files-found: error
+          retention-days: 14
+
+
+
+  native-jit:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    name: Tier-4 native code (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu/windows are x86_64, macos-latest is Apple Silicon (MAP_JIT path) and
+        # ubuntu-24.04-arm is AArch64 Linux, where Tier-4 output can be replayed on the host CPU.
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: native-jit
+
+      - name: Run recompiler crate tests (W^X buffer, generated code execution)
+        run: cargo test --release -p ounce-recompiler
+
+      - name: Build with native-jit
+        run: cargo build --release --features native-jit
+
+      - name: Run Tier-4 host self-test
+        run: cargo run --release --features native-jit -- jit-selftest
+
+      - name: Run Tier-4 unit tests & differential fuzzer
+        run: cargo test --release --features native-jit -- --nocapture
+
+      - name: Replay Tier-4 on this CPU for every committed fixture (AArch64 only)
+        if: runner.arch == 'ARM64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --engine tier4 makes an unavailable Tier-4 a hard error, never "NOT CHECKED".
+          checked=0
+          for nro in tests/fixtures/nro/*/*.nro; do
+            out=$(./target/release/ounce-core diverge "$nro" --engine tier4)
+            echo "== $nro"; echo "$out" | tail -n 3
+            grep -q "Tier-4: [0-9]* sampled instructions replayed on this CPU, 0 disagreed" <<< "$out"
+            if grep -q "NOT CHECKED" <<< "$out"; then echo "Tier-4 was not checked for $nro"; exit 1; fi
+            checked=$((checked + 1))
+          done
+          echo "Tier-4 replayed $checked programs with 0 disagreements"
+          test "$checked" -ge 10
+
+  nce:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    name: Native execution (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-latest is Apple Silicon and ubuntu-24.04-arm is AArch64 Linux: guest code runs on the
+        # host CPU there. ubuntu-latest (x86_64) builds the stubs and skips the native tests.
+        os: [macos-latest, ubuntu-24.04-arm, ubuntu-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: nce
+
+      - name: Run ounce-nce tests (arena, rewriter, guest code on the host CPU)
+        run: cargo test --release -p ounce-nce
+
+      - name: Run unit tests with nce (libnx fixtures run natively)
+        run: cargo test --release --features nce -- --nocapture
+
+      - name: Run a fixture NRO with --cpu=native
+        if: runner.arch == 'ARM64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(cargo run --release --features nce -- run tests/fixtures/nro/hello/hello.nro fixture --cpu=native --present=headless)
+          echo "$out"
+          grep -q "ounce-fixture result=0x00000EEE" <<< "$out"
+          grep -q "Guest exited (svcExitProcess)" <<< "$out"
+
+  mac-app:
+    # Advisory for now (not in the `required` summary): builds the real app bundle with the packaging script,
+    # checks its signature and drives the bundled runtime through one upload.
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    name: Mac app bundle (macos-latest)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: mac-app
+
+      - name: Build the app bundle
+        run: bash scripts/build_macos_app.sh "$RUNNER_TEMP/Ounce Core.app"
+
+      - name: Verify the bundle signature
+        run: codesign --verify --deep --strict "$RUNNER_TEMP/Ounce Core.app"
+
+      - name: Check a program through the bundled runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          rt="$RUNNER_TEMP/Ounce Core.app/Contents/Helpers/Ounce Runtime.app/Contents/MacOS/ounce-core"
+          "$rt" ui --no-open --port 0 --dir "$RUNNER_TEMP/checks" > "$RUNNER_TEMP/ui.log" &
+          server=$!
+          trap 'kill $server 2>/dev/null || true' EXIT
+          for _ in $(seq 1 50); do grep -q "http://127.0.0.1:" "$RUNNER_TEMP/ui.log" && break; sleep 0.2; done
+          url=$(grep -o "http://127.0.0.1:[0-9]*/?t=[0-9a-f]*" "$RUNNER_TEMP/ui.log" | head -1)
+          python3 - "$url" tests/fixtures/nro/hello/hello.nro <<'PYTHON'
+          import json, sys, time, urllib.request
+          url, nro = sys.argv[1], sys.argv[2]
+          base, token = url.split('/?t=')
+          def call(path, data=None):
+              req = urllib.request.Request(base + path, data=data, headers={'X-Ounce-Token': token})
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)
+          check_id = call('/api/checks?name=hello.nro&native=0', open(nro, 'rb').read())['id']
+          deadline = time.time() + 180
+          while time.time() < deadline:
+              check = call('/api/checks/' + check_id)
+              if check['status'] == 'done':
+                  break
+              time.sleep(1)
+          else:
+              raise SystemExit('check did not finish')
+          print(json.dumps(check['verdict']))
+          assert check['verdict']['kind'] == 'agrees', check['verdict']
+          PYTHON
+
+  required:
+    # Preserve the two live ruleset contexts, but make them summarize every
+    # applicable job. Docs-only PRs get these statuses without Rust builds.
+    name: Test (${{ matrix.context }})
+    if: always()
+    needs: [changes, legal-guardrails, tooling, release-notice-packaging, test, gpu-present, native-jit, nce, corpus]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        context: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check applicable results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          needs = json.loads(os.environ['RESULTS'])
+          required = ['changes', 'legal-guardrails', 'tooling', 'release-notice-packaging']
+          scope = needs['changes'].get('outputs', {})
+          if scope.get('runtime') == 'true':
+              required += ['test', 'gpu-present', 'native-jit', 'nce']
+          if scope.get('corpus') == 'true':
+              required += ['corpus']
+          bad = {job: needs[job]['result'] for job in required if needs[job]['result'] != 'success'}
+          print('Applicable checks:', ', '.join(required))
+          if bad:
+              raise SystemExit('Required checks did not pass: ' + str(bad))
+          print('All applicable checks passed; see their logs for tested behavior.')
+          PYTHON

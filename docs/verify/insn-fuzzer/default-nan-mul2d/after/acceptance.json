@@ -1,0 +1,43 @@
+{
+  "scope": "invalid zero*infinity result in shared SIMD FMUL helper; exact 2D hardware encoding regression tested; no blanket FP correctness claim",
+  "runtime_sha256": "64b120304b7321f61560540c190b2188cd33834b6ba715329c33341042f81516",
+  "hardware_trace_sha256": "b98c8bc44fc7c35cbcbf36e8e8ea3efa2f9b2ccaecb637abea819311b6e3151b",
+  "simd_source_sha256": "1d3b508cdd16c56d420e467902ead168e12575a1a4a421cf276f5c4c35f5e83c",
+  "tests": {
+    "unit_passed": 565,
+    "unit_ignored": 10,
+    "cli_passed": 11
+  },
+  "observations": [
+    {
+      "engine": "interp",
+      "hardware_comparison_exit": 0,
+      "historical_replay_exit": 1,
+      "reference_verdict": "match"
+    },
+    {
+      "engine": "tier3",
+      "hardware_comparison_exit": 0,
+      "historical_replay_exit": 1,
+      "reference_verdict": "match"
+    },
+    {
+      "engine": "tier4",
+      "hardware_comparison_exit": 0,
+      "historical_replay_exit": 1,
+      "reference_verdict": "match"
+    }
+  ],
+  "prior_lz4": {
+    "same_elf_sha256": "56d40c06238d26ffd8238d7ba85411b576c66b413710a2731d634fe37aeabd93",
+    "same_output_bytes": 406,
+    "tier3": "identical",
+    "tier4": "identical"
+  },
+  "limits": [
+    "FP exception flags remain unmodelled; only QC compared",
+    "FPCR modes remain unimplemented",
+    "Legacy and scalar FP paths are not certified by this repair",
+    "Tier-4 test word runs in fallback; one native instruction is the wrapper sentinel"
+  ]
+}

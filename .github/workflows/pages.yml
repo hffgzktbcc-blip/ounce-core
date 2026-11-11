@@ -1,0 +1,69 @@
+name: Documentation website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'crates/ounce-learn/**'
+      - 'tools/playground/**'
+      - 'src/cpu/**'
+      - 'src/mmu/**'
+      - 'scripts/build_playground.sh'
+      - 'scripts/package_playground_notices.py'
+      - 'scripts/collect_toolchain_notices.py'
+      - 'LICENSE'
+      - 'THIRD_PARTY.md'
+      - 'THIRD_PARTY_NOTICES.txt'
+      - 'assets/ounce-core-vista.png'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy static documentation
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rust-docs
+      - name: Install pinned WebAssembly binding tool
+        run: |
+          curl -fsSL https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.129/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl.tar.gz -o bindgen.tar.gz
+          echo '82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e  bindgen.tar.gz' | sha256sum --check
+          tar -xzf bindgen.tar.gz
+          echo "$PWD/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl" >> "$GITHUB_PATH"
+      - name: Build and check the actual browser interpreter
+        run: |
+          scripts/build_playground.sh
+          python3 tools/playground/check_artifact.py target/playground
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Assemble site
+        shell: bash
+        run: |
+          mkdir -p site/assets
+          cp assets/ounce-core-vista.png site/assets/ounce-core-vista.png
+          cp -R target/playground site/playground
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      - name: Deploy website
+        id: deployment
+        uses: actions/deploy-pages@v5

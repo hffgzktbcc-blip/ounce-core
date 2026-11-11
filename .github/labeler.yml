@@ -1,0 +1,32 @@
+'area: website':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'site/**'
+
+'area: runtime':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/**'
+          - 'crates/**'
+          - 'Cargo.toml'
+          - 'Cargo.lock'
+
+'area: verification':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'tests/**'
+          - 'conformance/**'
+          - 'docs/verify/**'
+
+'area: docs':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**'
+          - '*.md'
+
+'area: ci':
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/workflows/**'
+          - '.github/labeler.yml'
+          - '.github/dependabot.yml'

@@ -1,0 +1,371 @@
+w=8 l=4 kind=0 n=0 chunk=1 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=8 l=4 kind=0 n=1 chunk=14 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=8 l=4 kind=0 n=2 chunk=27 clen=2 chash=08328007b4eb6255 dec=ok dec1=ok
+w=8 l=4 kind=0 n=3 chunk=40 clen=2 chash=08327807b4eb54bd dec=ok dec1=ok
+w=8 l=4 kind=0 n=17 chunk=53 clen=3 chash=d8812a186b61f21b dec=ok dec1=ok
+w=8 l=4 kind=0 n=255 chunk=66 clen=26 chash=f03e1008aa8c1c52 dec=ok dec1=ok
+w=8 l=4 kind=0 n=256 chunk=79 clen=26 chash=f03e1108aa8c1e05 dec=ok dec1=ok
+w=8 l=4 kind=0 n=1000 chunk=92 clen=103 chash=978d1d0230160ef1 dec=ok dec1=ok
+w=8 l=4 kind=0 n=4097 chunk=105 clen=418 chash=98539c388a506e6d dec=ok dec1=ok
+w=8 l=4 kind=0 n=20000 chunk=118 clen=2032 chash=5ae3708fd75da0b6 dec=ok dec1=ok
+w=8 l=4 kind=1 n=0 chunk=1 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=8 l=4 kind=1 n=1 chunk=14 clen=2 chash=0aebb607b73c3142 dec=ok dec1=ok
+w=8 l=4 kind=1 n=2 chunk=27 clen=3 chash=6a21991b01f01a53 dec=ok dec1=ok
+w=8 l=4 kind=1 n=3 chunk=40 clen=4 chash=98eec4f0f3cf9faa dec=ok dec1=ok
+w=8 l=4 kind=1 n=17 chunk=53 clen=20 chash=650c46b6164d9644 dec=ok dec1=ok
+w=8 l=4 kind=1 n=255 chunk=66 clen=287 chash=281e1169bdaaae0a dec=ok dec1=ok
+w=8 l=4 kind=1 n=256 chunk=79 clen=288 chash=b578b70aaba03298 dec=ok dec1=ok
+w=8 l=4 kind=1 n=1000 chunk=92 clen=1123 chash=784fe5fe3f2e1d9b dec=ok dec1=ok
+w=8 l=4 kind=1 n=4097 chunk=105 clen=4603 chash=3e6e1b06be9b5f0a dec=ok dec1=ok
+w=8 l=4 kind=1 n=20000 chunk=118 clen=22467 chash=98e5812f15fc5926 dec=ok dec1=ok
+w=8 l=4 kind=2 n=0 chunk=1 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=8 l=4 kind=2 n=1 chunk=14 clen=2 chash=09d12407b64bb177 dec=ok dec1=ok
+w=8 l=4 kind=2 n=2 chunk=27 clen=3 chash=fb0d2c1ac374370f dec=ok dec1=ok
+w=8 l=4 kind=2 n=3 chunk=40 clen=4 chash=0b3a387a1e295921 dec=ok dec1=ok
+w=8 l=4 kind=2 n=17 chunk=53 clen=20 chash=b1874059daab145f dec=ok dec1=ok
+w=8 l=4 kind=2 n=255 chunk=66 clen=70 chash=b8dc219916f16c43 dec=ok dec1=ok
+w=8 l=4 kind=2 n=256 chunk=79 clen=70 chash=b8dc419916f1a2a3 dec=ok dec1=ok
+w=8 l=4 kind=2 n=1000 chunk=92 clen=146 chash=08b8739f96ca739c dec=ok dec1=ok
+w=8 l=4 kind=2 n=4097 chunk=105 clen=460 chash=455a9c5e4f495ee9 dec=ok dec1=ok
+w=8 l=4 kind=2 n=20000 chunk=118 clen=2075 chash=ac103c072409a8ae dec=ok dec1=ok
+w=8 l=4 kind=3 n=0 chunk=1 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=8 l=4 kind=3 n=1 chunk=14 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=8 l=4 kind=3 n=2 chunk=27 clen=2 chash=08328007b4eb6255 dec=ok dec1=ok
+w=8 l=4 kind=3 n=3 chunk=40 clen=2 chash=08327807b4eb54bd dec=ok dec1=ok
+w=8 l=4 kind=3 n=17 chunk=53 clen=17 chash=72eb5019ed216e1a dec=ok dec1=ok
+w=8 l=4 kind=3 n=255 chunk=66 clen=284 chash=7bbf9166286e629e dec=ok dec1=ok
+w=8 l=4 kind=3 n=256 chunk=79 clen=286 chash=f4ea04131fd14d9e dec=ok dec1=ok
+w=8 l=4 kind=3 n=1000 chunk=92 clen=1119 chash=43ca1baa6bf79a55 dec=ok dec1=ok
+w=8 l=4 kind=3 n=4097 chunk=105 clen=4577 chash=5876e5a0e486cbf5 dec=ok dec1=ok
+w=8 l=4 kind=3 n=20000 chunk=118 clen=22334 chash=e8e42a363b1c71ba dec=ok dec1=ok
+w=8 l=4 kind=4 n=0 chunk=1 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=8 l=4 kind=4 n=1 chunk=14 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=8 l=4 kind=4 n=2 chunk=27 clen=3 chash=2d31521adf5627b7 dec=ok dec1=ok
+w=8 l=4 kind=4 n=3 chunk=40 clen=4 chash=20893aa97f08aa15 dec=ok dec1=ok
+w=8 l=4 kind=4 n=17 chunk=53 clen=18 chash=a4ae77e2577395d5 dec=ok dec1=ok
+w=8 l=4 kind=4 n=255 chunk=66 clen=89 chash=65c7b9a571b21628 dec=ok dec1=ok
+w=8 l=4 kind=4 n=256 chunk=79 clen=98 chash=6a0c8b65af3a1c21 dec=ok dec1=ok
+w=8 l=4 kind=4 n=1000 chunk=92 clen=346 chash=4ed60135d6b9cb71 dec=ok dec1=ok
+w=8 l=4 kind=4 n=4097 chunk=105 clen=1409 chash=d6e97e77608eb6d1 dec=ok dec1=ok
+w=8 l=4 kind=4 n=20000 chunk=118 clen=6772 chash=1f8765f39e001fb7 dec=ok dec1=ok
+w=8 l=3 kind=0 n=0 chunk=8 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=8 l=3 kind=0 n=1 chunk=21 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=8 l=3 kind=0 n=2 chunk=34 clen=2 chash=08327807b4eb54bd dec=ok dec1=ok
+w=8 l=3 kind=0 n=3 chunk=47 clen=2 chash=0832a807b4eba64d dec=ok dec1=ok
+w=8 l=3 kind=0 n=17 chunk=60 clen=5 chash=ca0c9d48eaeefd9e dec=ok dec1=ok
+w=8 l=3 kind=0 n=255 chunk=73 clen=48 chash=dcfdfff2ba364682 dec=ok dec1=ok
+w=8 l=3 kind=0 n=256 chunk=86 clen=48 chash=dcfe00f2ba364835 dec=ok dec1=ok
+w=8 l=3 kind=0 n=1000 chunk=99 clen=188 chash=0cf6ad5668006377 dec=ok dec1=ok
+w=8 l=3 kind=0 n=4097 chunk=112 clen=770 chash=ce511ba31ec7956d dec=ok dec1=ok
+w=8 l=3 kind=0 n=20000 chunk=125 clen=3750 chash=83c4463586d2688b dec=ok dec1=ok
+w=8 l=3 kind=1 n=0 chunk=8 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=8 l=3 kind=1 n=1 chunk=21 clen=2 chash=0af56807b744013d dec=ok dec1=ok
+w=8 l=3 kind=1 n=2 chunk=34 clen=3 chash=f5b7eb1b51482546 dec=ok dec1=ok
+w=8 l=3 kind=1 n=3 chunk=47 clen=4 chash=e1f0533510fef53e dec=ok dec1=ok
+w=8 l=3 kind=1 n=17 chunk=60 clen=20 chash=afd1cd979d397ce2 dec=ok dec1=ok
+w=8 l=3 kind=1 n=255 chunk=73 clen=287 chash=fa5d621619a2438a dec=ok dec1=ok
+w=8 l=3 kind=1 n=256 chunk=86 clen=288 chash=98b6fdd79c3f6f9d dec=ok dec1=ok
+w=8 l=3 kind=1 n=1000 chunk=99 clen=1123 chash=51a436ab6ec01676 dec=ok dec1=ok
+w=8 l=3 kind=1 n=4097 chunk=112 clen=4602 chash=ce83032364f3c902 dec=ok dec1=ok
+w=8 l=3 kind=1 n=20000 chunk=125 clen=22461 chash=4f443b711934e7af dec=ok dec1=ok
+w=8 l=3 kind=2 n=0 chunk=8 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=8 l=3 kind=2 n=1 chunk=21 clen=2 chash=09d12407b64bb177 dec=ok dec1=ok
+w=8 l=3 kind=2 n=2 chunk=34 clen=3 chash=fb0d2c1ac374370f dec=ok dec1=ok
+w=8 l=3 kind=2 n=3 chunk=47 clen=4 chash=0b3a387a1e295921 dec=ok dec1=ok
+w=8 l=3 kind=2 n=17 chunk=60 clen=20 chash=b1874059daab145f dec=ok dec1=ok
+w=8 l=3 kind=2 n=255 chunk=73 clen=87 chash=ffe52f02f1e03b67 dec=ok dec1=ok
+w=8 l=3 kind=2 n=256 chunk=86 clen=87 chash=ffe53002f1e03d1a dec=ok dec1=ok
+w=8 l=3 kind=2 n=1000 chunk=99 clen=227 chash=32d07f43b7737d13 dec=ok dec1=ok
+w=8 l=3 kind=2 n=4097 chunk=112 clen=807 chash=fd91885dde1a8bcd dec=ok dec1=ok
+w=8 l=3 kind=2 n=20000 chunk=125 clen=3789 chash=8c814a8a1c425bba dec=ok dec1=ok
+w=8 l=3 kind=3 n=0 chunk=8 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=8 l=3 kind=3 n=1 chunk=21 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=8 l=3 kind=3 n=2 chunk=34 clen=2 chash=08327807b4eb54bd dec=ok dec1=ok
+w=8 l=3 kind=3 n=3 chunk=47 clen=2 chash=0832a807b4eba64d dec=ok dec1=ok
+w=8 l=3 kind=3 n=17 chunk=60 clen=17 chash=4e7f3936a297967b dec=ok dec1=ok
+w=8 l=3 kind=3 n=255 chunk=73 clen=284 chash=5425278e4dfb0131 dec=ok dec1=ok
+w=8 l=3 kind=3 n=256 chunk=86 clen=285 chash=f62021ce8180597a dec=ok dec1=ok
+w=8 l=3 kind=3 n=1000 chunk=99 clen=1118 chash=903aa6275200752a dec=ok dec1=ok
+w=8 l=3 kind=3 n=4097 chunk=112 clen=4574 chash=18aa53df900523d9 dec=ok dec1=ok
+w=8 l=3 kind=3 n=20000 chunk=125 clen=22320 chash=9747595805253fef dec=ok dec1=ok
+w=8 l=3 kind=4 n=0 chunk=8 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=8 l=3 kind=4 n=1 chunk=21 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=8 l=3 kind=4 n=2 chunk=34 clen=3 chash=2d31521adf5627b7 dec=ok dec1=ok
+w=8 l=3 kind=4 n=3 chunk=47 clen=4 chash=20893aa97f08aa15 dec=ok dec1=ok
+w=8 l=3 kind=4 n=17 chunk=60 clen=19 chash=41e0ceb153c95185 dec=ok dec1=ok
+w=8 l=3 kind=4 n=255 chunk=73 clen=113 chash=b968416ba8fe61c6 dec=ok dec1=ok
+w=8 l=3 kind=4 n=256 chunk=86 clen=118 chash=4f7f1962c81b509f dec=ok dec1=ok
+w=8 l=3 kind=4 n=1000 chunk=99 clen=401 chash=03b5870dcd391bc9 dec=ok dec1=ok
+w=8 l=3 kind=4 n=4097 chunk=112 clen=1590 chash=22b2d77f53b025da dec=ok dec1=ok
+w=8 l=3 kind=4 n=20000 chunk=125 clen=7711 chash=abdab8e8a424e525 dec=ok dec1=ok
+w=10 l=5 kind=0 n=0 chunk=15 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=10 l=5 kind=0 n=1 chunk=28 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=10 l=5 kind=0 n=2 chunk=41 clen=3 chash=2d31121adf55baf7 dec=ok dec1=ok
+w=10 l=5 kind=0 n=3 chunk=54 clen=2 chash=08328607b4eb6c87 dec=ok dec1=ok
+w=10 l=5 kind=0 n=17 chunk=67 clen=2 chash=08327807b4eb54bd dec=ok dec1=ok
+w=10 l=5 kind=0 n=255 chunk=80 clen=16 chash=efdafd61c64d5c92 dec=ok dec1=ok
+w=10 l=5 kind=0 n=256 chunk=93 clen=16 chash=efdafe61c64d5e45 dec=ok dec1=ok
+w=10 l=5 kind=0 n=1000 chunk=106 clen=64 chash=9c775080b9f1e86d dec=ok dec1=ok
+w=10 l=5 kind=0 n=4097 chunk=119 clen=258 chash=571080c16416466d dec=ok dec1=ok
+w=10 l=5 kind=0 n=20000 chunk=132 clen=1250 chash=2351f128c203ed00 dec=ok dec1=ok
+w=10 l=5 kind=1 n=0 chunk=15 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=10 l=5 kind=1 n=1 chunk=28 clen=2 chash=0a041e07b67700de dec=ok dec1=ok
+w=10 l=5 kind=1 n=2 chunk=41 clen=3 chash=74e1051c2ae1ae2b dec=ok dec1=ok
+w=10 l=5 kind=1 n=3 chunk=54 clen=4 chash=78b76497dcb3cd9d dec=ok dec1=ok
+w=10 l=5 kind=1 n=17 chunk=67 clen=20 chash=0c01c72cc40da37d dec=ok dec1=ok
+w=10 l=5 kind=1 n=255 chunk=80 clen=287 chash=e5c9e9a2fb3f30ed dec=ok dec1=ok
+w=10 l=5 kind=1 n=256 chunk=93 clen=288 chash=c11dbd9ff161f33d dec=ok dec1=ok
+w=10 l=5 kind=1 n=1000 chunk=106 clen=1125 chash=5c6b0b625159e961 dec=ok dec1=ok
+w=10 l=5 kind=1 n=4097 chunk=119 clen=4610 chash=0e7ca0fc04be3846 dec=ok dec1=ok
+w=10 l=5 kind=1 n=20000 chunk=132 clen=22500 chash=c8453316dd8b28c4 dec=ok dec1=ok
+w=10 l=5 kind=2 n=0 chunk=15 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=10 l=5 kind=2 n=1 chunk=28 clen=2 chash=09d12407b64bb177 dec=ok dec1=ok
+w=10 l=5 kind=2 n=2 chunk=41 clen=3 chash=fb0d2c1ac374370f dec=ok dec1=ok
+w=10 l=5 kind=2 n=3 chunk=54 clen=4 chash=0b3a387a1e295921 dec=ok dec1=ok
+w=10 l=5 kind=2 n=17 chunk=67 clen=20 chash=b1874059daab145f dec=ok dec1=ok
+w=10 l=5 kind=2 n=255 chunk=80 clen=63 chash=29773f57f054d1b4 dec=ok dec1=ok
+w=10 l=5 kind=2 n=256 chunk=93 clen=63 chash=29774257f054d6cd dec=ok dec1=ok
+w=10 l=5 kind=2 n=1000 chunk=106 clen=109 chash=e7b4eabc68502789 dec=ok dec1=ok
+w=10 l=5 kind=2 n=4097 chunk=119 clen=303 chash=3793431e9afe1d3a dec=ok dec1=ok
+w=10 l=5 kind=2 n=20000 chunk=132 clen=1297 chash=36a75649509dff29 dec=ok dec1=ok
+w=10 l=5 kind=3 n=0 chunk=15 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=10 l=5 kind=3 n=1 chunk=28 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=10 l=5 kind=3 n=2 chunk=41 clen=3 chash=2d31121adf55baf7 dec=ok dec1=ok
+w=10 l=5 kind=3 n=3 chunk=54 clen=2 chash=08328607b4eb6c87 dec=ok dec1=ok
+w=10 l=5 kind=3 n=17 chunk=67 clen=17 chash=d074dbf266eb361d dec=ok dec1=ok
+w=10 l=5 kind=3 n=255 chunk=80 clen=285 chash=7d818b4aa093632a dec=ok dec1=ok
+w=10 l=5 kind=3 n=256 chunk=93 clen=286 chash=d689a5ceda7746b0 dec=ok dec1=ok
+w=10 l=5 kind=3 n=1000 chunk=106 clen=1122 chash=ef260a661dffaec6 dec=ok dec1=ok
+w=10 l=5 kind=3 n=4097 chunk=119 clen=4588 chash=b34848be01441372 dec=ok dec1=ok
+w=10 l=5 kind=3 n=20000 chunk=132 clen=22391 chash=83cd4ddd8cfbf9fc dec=ok dec1=ok
+w=10 l=5 kind=4 n=0 chunk=15 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=10 l=5 kind=4 n=1 chunk=28 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=10 l=5 kind=4 n=2 chunk=41 clen=3 chash=2d31521adf5627b7 dec=ok dec1=ok
+w=10 l=5 kind=4 n=3 chunk=54 clen=4 chash=20b94ea97f31efd3 dec=ok dec1=ok
+w=10 l=5 kind=4 n=17 chunk=67 clen=20 chash=6eef35206502e937 dec=ok dec1=ok
+w=10 l=5 kind=4 n=255 chunk=80 clen=112 chash=4eeba0d778092767 dec=ok dec1=ok
+w=10 l=5 kind=4 n=256 chunk=93 clen=91 chash=83c87171b557e892 dec=ok dec1=ok
+w=10 l=5 kind=4 n=1000 chunk=106 clen=411 chash=eff3116aa69dff2d dec=ok dec1=ok
+w=10 l=5 kind=4 n=4097 chunk=119 clen=1435 chash=42d51d974198348f dec=ok dec1=ok
+w=10 l=5 kind=4 n=20000 chunk=132 clen=6995 chash=af11fbe9f777ad0f dec=ok dec1=ok
+w=11 l=4 kind=0 n=0 chunk=22 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=11 l=4 kind=0 n=1 chunk=35 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=11 l=4 kind=0 n=2 chunk=48 clen=3 chash=2d31121adf55baf7 dec=ok dec1=ok
+w=11 l=4 kind=0 n=3 chunk=61 clen=2 chash=08328607b4eb6c87 dec=ok dec1=ok
+w=11 l=4 kind=0 n=17 chunk=74 clen=4 chash=ccea417f55a7bc70 dec=ok dec1=ok
+w=11 l=4 kind=0 n=255 chunk=87 clen=32 chash=bf9e9868598c1fb2 dec=ok dec1=ok
+w=11 l=4 kind=0 n=256 chunk=100 clen=32 chash=bf9e9968598c2165 dec=ok dec1=ok
+w=11 l=4 kind=0 n=1000 chunk=113 clen=126 chash=353e12ef71f73480 dec=ok dec1=ok
+w=11 l=4 kind=1 n=0 chunk=22 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=11 l=4 kind=1 n=1 chunk=35 clen=2 chash=09784807b5ffc5cd dec=ok dec1=ok
+w=11 l=4 kind=1 n=2 chunk=48 clen=3 chash=50700f1c15bb7c20 dec=ok dec1=ok
+w=11 l=4 kind=1 n=3 chunk=61 clen=4 chash=597b46f72166d262 dec=ok dec1=ok
+w=11 l=4 kind=1 n=17 chunk=74 clen=20 chash=cbbb34369ed8cdf4 dec=ok dec1=ok
+w=11 l=4 kind=1 n=255 chunk=87 clen=287 chash=7d85a7518d3cf4a6 dec=ok dec1=ok
+w=11 l=4 kind=1 n=256 chunk=100 clen=288 chash=090040058a8a6248 dec=ok dec1=ok
+w=11 l=4 kind=1 n=1000 chunk=113 clen=1125 chash=c05d8ed1505e3590 dec=ok dec1=ok
+w=11 l=4 kind=2 n=0 chunk=22 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=11 l=4 kind=2 n=1 chunk=35 clen=2 chash=09d12407b64bb177 dec=ok dec1=ok
+w=11 l=4 kind=2 n=2 chunk=48 clen=3 chash=fb0d2c1ac374370f dec=ok dec1=ok
+w=11 l=4 kind=2 n=3 chunk=61 clen=4 chash=0b3a387a1e295921 dec=ok dec1=ok
+w=11 l=4 kind=2 n=17 chunk=74 clen=20 chash=b1874059daab145f dec=ok dec1=ok
+w=11 l=4 kind=2 n=255 chunk=87 clen=75 chash=f091527bf9e18382 dec=ok dec1=ok
+w=11 l=4 kind=2 n=256 chunk=100 clen=75 chash=f091517bf9e181cf dec=ok dec1=ok
+w=11 l=4 kind=2 n=1000 chunk=113 clen=169 chash=29fcc7ef86164230 dec=ok dec1=ok
+w=11 l=4 kind=2 n=4097 chunk=126 clen=555 chash=848f0ab842702d3c dec=ok dec1=ok
+w=11 l=4 kind=2 n=20000 chunk=139 clen=2543 chash=5ec2fdf2a9700c9b dec=ok dec1=ok
+w=11 l=4 kind=3 n=0 chunk=22 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=11 l=4 kind=3 n=1 chunk=35 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=11 l=4 kind=3 n=2 chunk=48 clen=3 chash=2d31121adf55baf7 dec=ok dec1=ok
+w=11 l=4 kind=3 n=3 chunk=61 clen=2 chash=08328607b4eb6c87 dec=ok dec1=ok
+w=11 l=4 kind=3 n=17 chunk=74 clen=17 chash=d074dbf266eb361d dec=ok dec1=ok
+w=11 l=4 kind=3 n=255 chunk=87 clen=285 chash=7d818b4aa093632a dec=ok dec1=ok
+w=11 l=4 kind=3 n=256 chunk=100 clen=286 chash=d689a5ceda7746b0 dec=ok dec1=ok
+w=11 l=4 kind=3 n=1000 chunk=113 clen=1122 chash=71b76bb95a5a6a3c dec=ok dec1=ok
+w=11 l=4 kind=4 n=0 chunk=22 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=11 l=4 kind=4 n=1 chunk=35 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=11 l=4 kind=4 n=2 chunk=48 clen=3 chash=2d31521adf5627b7 dec=ok dec1=ok
+w=11 l=4 kind=4 n=3 chunk=61 clen=4 chash=17063fa97967e12a dec=ok dec1=ok
+w=11 l=4 kind=4 n=17 chunk=74 clen=17 chash=a75b755fdb389104 dec=ok dec1=ok
+w=11 l=4 kind=4 n=255 chunk=87 clen=112 chash=506264c33d3ff38d dec=ok dec1=ok
+w=11 l=4 kind=4 n=256 chunk=100 clen=116 chash=8f6e2cc328c748ae dec=ok dec1=ok
+w=11 l=4 kind=4 n=1000 chunk=113 clen=406 chash=2570df3c88ab30b1 dec=ok dec1=ok
+w=4 l=3 kind=0 n=0 chunk=29 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=4 l=3 kind=0 n=1 chunk=42 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=4 l=3 kind=0 n=2 chunk=55 clen=1 chash=af63bc4c8601b62c dec=ok dec1=ok
+w=4 l=3 kind=0 n=3 chunk=68 clen=1 chash=af63bf4c8601bb45 dec=ok dec1=ok
+w=4 l=3 kind=0 n=17 chunk=81 clen=4 chash=40330b668133506b dec=ok dec1=ok
+w=4 l=3 kind=0 n=255 chunk=94 clen=32 chash=f160fc08b6d9a912 dec=ok dec1=ok
+w=4 l=3 kind=0 n=256 chunk=107 clen=32 chash=f160fd08b6d9aac5 dec=ok dec1=ok
+w=4 l=3 kind=0 n=1000 chunk=120 clen=125 chash=e95aef914c38579a dec=ok dec1=ok
+w=4 l=3 kind=1 n=0 chunk=29 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=4 l=3 kind=1 n=1 chunk=42 clen=2 chash=0ac93a07b71e7828 dec=ok dec1=ok
+w=4 l=3 kind=1 n=2 chunk=55 clen=3 chash=b58b0f1c4e32615e dec=ok dec1=ok
+w=4 l=3 kind=1 n=3 chunk=68 clen=4 chash=95dcbe811c20577e dec=ok dec1=ok
+w=4 l=3 kind=1 n=17 chunk=81 clen=20 chash=ef6482cb5c01257e dec=ok dec1=ok
+w=4 l=3 kind=1 n=255 chunk=94 clen=287 chash=c70e8987ffc0b004 dec=ok dec1=ok
+w=4 l=3 kind=1 n=256 chunk=107 clen=288 chash=a9a3640d777223b5 dec=ok dec1=ok
+w=4 l=3 kind=1 n=1000 chunk=120 clen=1124 chash=368173510eb4e20d dec=ok dec1=ok
+w=4 l=3 kind=2 n=0 chunk=29 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=4 l=3 kind=2 n=1 chunk=42 clen=2 chash=09d12407b64bb177 dec=ok dec1=ok
+w=4 l=3 kind=2 n=2 chunk=55 clen=3 chash=fb0d2c1ac374370f dec=ok dec1=ok
+w=4 l=3 kind=2 n=3 chunk=68 clen=4 chash=0b3a387a1e295921 dec=ok dec1=ok
+w=4 l=3 kind=2 n=17 chunk=81 clen=20 chash=b1874059daab145f dec=ok dec1=ok
+w=4 l=3 kind=2 n=255 chunk=94 clen=264 chash=c6bf1a930a82936b dec=ok dec1=ok
+w=4 l=3 kind=2 n=256 chunk=107 clen=265 chash=39541edadbe5d863 dec=ok dec1=ok
+w=4 l=3 kind=2 n=1000 chunk=120 clen=1024 chash=d99349914c97ac6c dec=ok dec1=ok
+w=4 l=3 kind=2 n=4097 chunk=133 clen=4191 chash=92bd641a2dcddaad dec=ok dec1=ok
+w=4 l=3 kind=2 n=20000 chunk=146 clen=20447 chash=2045db618daf0765 dec=ok dec1=ok
+w=4 l=3 kind=3 n=0 chunk=29 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=4 l=3 kind=3 n=1 chunk=42 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=4 l=3 kind=3 n=2 chunk=55 clen=1 chash=af63bc4c8601b62c dec=ok dec1=ok
+w=4 l=3 kind=3 n=3 chunk=68 clen=1 chash=af63bf4c8601bb45 dec=ok dec1=ok
+w=4 l=3 kind=3 n=17 chunk=81 clen=16 chash=442d41cabd6274bb dec=ok dec1=ok
+w=4 l=3 kind=3 n=255 chunk=94 clen=284 chash=ea83b08877704504 dec=ok dec1=ok
+w=4 l=3 kind=3 n=256 chunk=107 clen=285 chash=ee1e5fe2f3d698c2 dec=ok dec1=ok
+w=4 l=3 kind=3 n=1000 chunk=120 clen=1116 chash=3a93d08ad0ec21df dec=ok dec1=ok
+w=4 l=3 kind=4 n=0 chunk=29 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=4 l=3 kind=4 n=1 chunk=42 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=4 l=3 kind=4 n=2 chunk=55 clen=3 chash=2d534e1adf730751 dec=ok dec1=ok
+w=4 l=3 kind=4 n=3 chunk=68 clen=4 chash=c746a2a94bbafc08 dec=ok dec1=ok
+w=4 l=3 kind=4 n=17 chunk=81 clen=18 chash=ef2cee0173dfe045 dec=ok dec1=ok
+w=4 l=3 kind=4 n=255 chunk=94 clen=127 chash=60e08fa94fbfcff2 dec=ok dec1=ok
+w=4 l=3 kind=4 n=256 chunk=107 clen=146 chash=9552703139aef9b1 dec=ok dec1=ok
+w=4 l=3 kind=4 n=1000 chunk=120 clen=460 chash=fc142e97558f3197 dec=ok dec1=ok
+w=15 l=8 kind=0 n=0 chunk=36 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=15 l=8 kind=0 n=1 chunk=49 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=15 l=8 kind=0 n=2 chunk=62 clen=3 chash=2d31121adf55baf7 dec=ok dec1=ok
+w=15 l=8 kind=0 n=3 chunk=75 clen=4 chash=1faffaa97e504c95 dec=ok dec1=ok
+w=15 l=8 kind=0 n=17 chunk=88 clen=3 chash=d94d22186c0f4ae7 dec=ok dec1=ok
+w=15 l=8 kind=0 n=255 chunk=101 clen=3 chash=d94c38186c0dbd49 dec=ok dec1=ok
+w=15 l=8 kind=0 n=256 chunk=114 clen=3 chash=d94c37186c0dbb96 dec=ok dec1=ok
+w=15 l=8 kind=0 n=1000 chunk=127 clen=840 chash=f91112538e4e0afd dec=ok dec1=ok
+w=15 l=8 kind=1 n=0 chunk=36 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=15 l=8 kind=1 n=1 chunk=49 clen=2 chash=09c9d807b64511a5 dec=ok dec1=ok
+w=15 l=8 kind=1 n=2 chunk=62 clen=3 chash=e712f11b49be8cca dec=ok dec1=ok
+w=15 l=8 kind=1 n=3 chunk=75 clen=4 chash=1a22d79862708389 dec=ok dec1=ok
+w=15 l=8 kind=1 n=17 chunk=88 clen=20 chash=a32d361c3cff09f6 dec=ok dec1=ok
+w=15 l=8 kind=1 n=255 chunk=101 clen=287 chash=53fc3a26473282d7 dec=ok dec1=ok
+w=15 l=8 kind=1 n=256 chunk=114 clen=288 chash=ee30da3c3eb035cb dec=ok dec1=ok
+w=15 l=8 kind=1 n=1000 chunk=127 clen=1125 chash=6ddbb33c876158a1 dec=ok dec1=ok
+w=15 l=8 kind=2 n=0 chunk=36 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=15 l=8 kind=2 n=1 chunk=49 clen=2 chash=09d12407b64bb177 dec=ok dec1=ok
+w=15 l=8 kind=2 n=2 chunk=62 clen=3 chash=fb0d2c1ac374370f dec=ok dec1=ok
+w=15 l=8 kind=2 n=3 chunk=75 clen=4 chash=0b3a387a1e295921 dec=ok dec1=ok
+w=15 l=8 kind=2 n=17 chunk=88 clen=20 chash=b1874059daab145f dec=ok dec1=ok
+w=15 l=8 kind=2 n=255 chunk=101 clen=287 chash=5f26f80a9e266d57 dec=ok dec1=ok
+w=15 l=8 kind=2 n=256 chunk=114 clen=288 chash=d5a14b0abb48b14c dec=ok dec1=ok
+w=15 l=8 kind=2 n=1000 chunk=127 clen=1125 chash=cc84d9a0cc85e618 dec=ok dec1=ok
+w=15 l=8 kind=2 n=4097 chunk=140 clen=4610 chash=42038d7e4e92ccc5 dec=ok dec1=ok
+w=15 l=8 kind=2 n=20000 chunk=153 clen=22500 chash=5e6f99914b04ca80 dec=ok dec1=ok
+w=15 l=8 kind=3 n=0 chunk=36 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=15 l=8 kind=3 n=1 chunk=49 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=15 l=8 kind=3 n=2 chunk=62 clen=3 chash=2d31121adf55baf7 dec=ok dec1=ok
+w=15 l=8 kind=3 n=3 chunk=75 clen=4 chash=1faffaa97e504c95 dec=ok dec1=ok
+w=15 l=8 kind=3 n=17 chunk=88 clen=18 chash=0674587a31e12df3 dec=ok dec1=ok
+w=15 l=8 kind=3 n=255 chunk=101 clen=286 chash=01046ee1635984fc dec=ok dec1=ok
+w=15 l=8 kind=3 n=256 chunk=114 clen=287 chash=13eb68fbd100189a dec=ok dec1=ok
+w=15 l=8 kind=3 n=1000 chunk=127 clen=1124 chash=97568bd79946c1f0 dec=ok dec1=ok
+w=15 l=8 kind=4 n=0 chunk=36 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=15 l=8 kind=4 n=1 chunk=49 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=15 l=8 kind=4 n=2 chunk=62 clen=3 chash=2d31521adf5627b7 dec=ok dec1=ok
+w=15 l=8 kind=4 n=3 chunk=75 clen=4 chash=20893aa97f08aa15 dec=ok dec1=ok
+w=15 l=8 kind=4 n=17 chunk=88 clen=20 chash=a6f7cded29b9d89c dec=ok dec1=ok
+w=15 l=8 kind=4 n=255 chunk=101 clen=287 chash=e572d431b2a1fb93 dec=ok dec1=ok
+w=15 l=8 kind=4 n=256 chunk=114 clen=288 chash=813d1969397a5fdd dec=ok dec1=ok
+w=15 l=8 kind=4 n=1000 chunk=127 clen=1125 chash=7b9439c9b026fd01 dec=ok dec1=ok
+w=12 l=6 kind=0 n=0 chunk=43 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=12 l=6 kind=0 n=1 chunk=56 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=12 l=6 kind=0 n=2 chunk=69 clen=3 chash=2d31121adf55baf7 dec=ok dec1=ok
+w=12 l=6 kind=0 n=3 chunk=82 clen=3 chash=d94cd2186c0ec2f7 dec=ok dec1=ok
+w=12 l=6 kind=0 n=17 chunk=95 clen=3 chash=d94646186c096965 dec=ok dec1=ok
+w=12 l=6 kind=0 n=255 chunk=108 clen=10 chash=67478e15ec9f8180 dec=ok dec1=ok
+w=12 l=6 kind=0 n=256 chunk=121 clen=10 chash=67479e15ec9f9cb0 dec=ok dec1=ok
+w=12 l=6 kind=0 n=1000 chunk=134 clen=38 chash=12c954d243f09c8d dec=ok dec1=ok
+w=12 l=6 kind=1 n=0 chunk=43 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=12 l=6 kind=1 n=1 chunk=56 clen=2 chash=0a66ac07b6cabc83 dec=ok dec1=ok
+w=12 l=6 kind=1 n=2 chunk=69 clen=3 chash=8faf871b1807fc52 dec=ok dec1=ok
+w=12 l=6 kind=1 n=3 chunk=82 clen=4 chash=dfef4c2e0be8f035 dec=ok dec1=ok
+w=12 l=6 kind=1 n=17 chunk=95 clen=20 chash=480da53607106622 dec=ok dec1=ok
+w=12 l=6 kind=1 n=255 chunk=108 clen=287 chash=b7abd812a738d948 dec=ok dec1=ok
+w=12 l=6 kind=1 n=256 chunk=121 clen=288 chash=5ff39e17b2080636 dec=ok dec1=ok
+w=12 l=6 kind=1 n=1000 chunk=134 clen=1125 chash=d06e155643279f5b dec=ok dec1=ok
+w=12 l=6 kind=2 n=0 chunk=43 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=12 l=6 kind=2 n=1 chunk=56 clen=2 chash=09d12407b64bb177 dec=ok dec1=ok
+w=12 l=6 kind=2 n=2 chunk=69 clen=3 chash=fb0d2c1ac374370f dec=ok dec1=ok
+w=12 l=6 kind=2 n=3 chunk=82 clen=4 chash=0b3a387a1e295921 dec=ok dec1=ok
+w=12 l=6 kind=2 n=17 chunk=95 clen=20 chash=b1874059daab145f dec=ok dec1=ok
+w=12 l=6 kind=2 n=255 chunk=108 clen=60 chash=32bed2760215fd40 dec=ok dec1=ok
+w=12 l=6 kind=2 n=256 chunk=121 clen=60 chash=32be12760214b700 dec=ok dec1=ok
+w=12 l=6 kind=2 n=1000 chunk=134 clen=86 chash=b1f416e8462e45b7 dec=ok dec1=ok
+w=12 l=6 kind=2 n=4097 chunk=147 clen=202 chash=830bc4df63a833b0 dec=ok dec1=ok
+w=12 l=6 kind=2 n=20000 chunk=160 clen=791 chash=154efff3a915d08b dec=ok dec1=ok
+w=12 l=6 kind=3 n=0 chunk=43 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=12 l=6 kind=3 n=1 chunk=56 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=12 l=6 kind=3 n=2 chunk=69 clen=3 chash=2d31121adf55baf7 dec=ok dec1=ok
+w=12 l=6 kind=3 n=3 chunk=82 clen=3 chash=d94cd2186c0ec2f7 dec=ok dec1=ok
+w=12 l=6 kind=3 n=17 chunk=95 clen=17 chash=b4091e4ce3719de4 dec=ok dec1=ok
+w=12 l=6 kind=3 n=255 chunk=108 clen=285 chash=a08aa75318d0cf48 dec=ok dec1=ok
+w=12 l=6 kind=3 n=256 chunk=121 clen=286 chash=9c740c332ad94d93 dec=ok dec1=ok
+w=12 l=6 kind=3 n=1000 chunk=134 clen=1122 chash=7d716456baac5e0b dec=ok dec1=ok
+w=12 l=6 kind=4 n=0 chunk=43 clen=0 chash=cbf29ce484222325 dec=ok dec1=ok
+w=12 l=6 kind=4 n=1 chunk=56 clen=2 chash=09e58807b65d046d dec=ok dec1=ok
+w=12 l=6 kind=4 n=2 chunk=69 clen=3 chash=80b58f1ba01eaec4 dec=ok dec1=ok
+w=12 l=6 kind=4 n=3 chunk=82 clen=4 chash=20893aa97f08aa15 dec=ok dec1=ok
+w=12 l=6 kind=4 n=17 chunk=95 clen=20 chash=e94d001deb4f9e92 dec=ok dec1=ok
+w=12 l=6 kind=4 n=255 chunk=108 clen=153 chash=890a3f70a5fe8a76 dec=ok dec1=ok
+w=12 l=6 kind=4 n=256 chunk=121 clen=101 chash=aca992d23a384718 dec=ok dec1=ok
+w=12 l=6 kind=4 n=1000 chunk=134 clen=398 chash=04379b94a61cd6af dec=ok dec1=ok
+noise 0 n=163 -> 505 hash=c36c9d733e927f4e
+noise 1 n=141 -> 438 hash=d0ee750848acbd76
+noise 2 n=25 -> 88 hash=3ca62a8234a58ea1
+noise 3 n=218 -> 827 hash=6241fdb6697cada2
+noise 4 n=249 -> 869 hash=b8ff5dec8f1bee15
+noise 5 n=294 -> 888 hash=afc75ba3ff2d943a
+noise 6 n=292 -> 1010 hash=261fccd4415fe0b2
+noise 7 n=138 -> 479 hash=b10da16570a70819
+noise 8 n=143 -> 503 hash=be593d889af2cdb6
+noise 9 n=207 -> 764 hash=2c2699b125b78678
+noise 10 n=72 -> 223 hash=eb96e531a744f335
+noise 11 n=31 -> 99 hash=82d51d008ab08e22
+noise 12 n=181 -> 626 hash=a72473403d4bd7ec
+noise 13 n=255 -> 856 hash=31c230f42697877c
+noise 14 n=56 -> 186 hash=be318d56ffd57c32
+noise 15 n=129 -> 415 hash=d2b31b6c3433e044
+noise 16 n=10 -> 43 hash=251fa4818edd41d7
+noise 17 n=173 -> 677 hash=0be473022da2db4f
+noise 18 n=40 -> 147 hash=461f556c89662f28
+noise 19 n=206 -> 787 hash=484910370f9d7fe7
+noise 20 n=62 -> 226 hash=c104f18d9ef22885
+noise 21 n=217 -> 710 hash=bcd8d1a9451a6788
+noise 22 n=147 -> 522 hash=422eac4dab74ae07
+noise 23 n=214 -> 751 hash=136c8b07b325f1cc
+noise 24 n=295 -> 990 hash=1609a4ba58c64d78
+noise 25 n=216 -> 793 hash=9659efad5920704b
+noise 26 n=134 -> 383 hash=65e053469c8f3ee4
+noise 27 n=20 -> 68 hash=e8c732dbb5101346
+noise 28 n=183 -> 658 hash=1c91442be53aef30
+noise 29 n=38 -> 139 hash=998b9e20d29eb194
+noise 30 n=100 -> 380 hash=a1f6d7b620172eee
+noise 31 n=22 -> 57 hash=e906b44101f6b867
+noise 32 n=113 -> 393 hash=02bea4916763468c
+noise 33 n=259 -> 863 hash=820c8f92ec6e2726
+noise 34 n=115 -> 359 hash=6131d9724f173947
+noise 35 n=74 -> 244 hash=f263988456f6ec79
+noise 36 n=185 -> 693 hash=3a830436d82ebcc1
+noise 37 n=132 -> 494 hash=86ad4674ae717440
+noise 38 n=163 -> 595 hash=c0ba737d1cb05baa
+noise 39 n=165 -> 597 hash=40ce7b8bac1f1e3d
+truncated cut=349/349 -> 3000 hash=da3c9d8a2025d3a1
+truncated cut=344/349 -> 2961 hash=922170213fd8337b
+truncated cut=339/349 -> 2897 hash=65e77902a180dc35
+truncated cut=334/349 -> 2849 hash=36d712233d457b9a
+truncated cut=329/349 -> 2801 hash=48b4fa113fb7facf
+truncated cut=324/349 -> 2753 hash=7742b850b267dc81
+alloc bad-window 0
+alloc bad-lookahead 0
+alloc window16 0
+dec-alloc zero-buf 0
+sink-null enc=-1 dec=-1
+sink-after-finish=-2 got=4
+fails=0

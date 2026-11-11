@@ -1,0 +1,535 @@
+{
+ "schema": "ounce-core/linux-library-batch-v1",
+ "date": "2026-11-10",
+ "base_revision": "800ff1129aedac0a2b6f82ff91a9548f21dd4999",
+ "working_tree_dirty": true,
+ "note": "Ran on Linux x86-64 with Zig 0.17.1 (aarch64-linux-musl, -O1, static), qemu-user 8.2.2 and the release build with native-jit. Harness sources, CI wiring and docs were uncommitted at run time; the emulator fixes were committed. Produced by scripts/verify_linux_elf.py --qemu; per-run logs are not retained here.",
+ "programs": [
+  {
+   "harness": "qoi",
+   "upstream": "https://github.com/phoboslab/qoi",
+   "upstream_pin": "ffb2d2cb74a1de60819b21b939f7209aa53e91c1",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 332453474,
+   "tier4_instructions": 332453474,
+   "output_bytes": 28460,
+   "elf_sha256": "a01dc5301ad1ccbf686930967802e97b1bcfa86afd51109eadd6ee645fb2411e",
+   "host_build_sha256": "2d4d47c1d2191c52aae4701948f45c30dc5344f665abf9ee3d77d3160376a529",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "host_main.c": "b7534c025791c4592d3a93a451f1fa42df3db84d1ead72b78cc973e65b3c2ba8",
+    "qoi.h": "7de6fca1a285b1c20d38f2723dec8b774eb9f144edb9710800a95feeea09375a",
+    "qoi_cases.c": "8996d3d5a73253930717a28e09fc0718d52cfa504dd2aae69eae66e5895bb154"
+   }
+  },
+  {
+   "harness": "tiny-aes",
+   "upstream": "https://github.com/kokke/tiny-AES-c",
+   "upstream_pin": "23856752fbd139da0b8ca6e471a13d5bcc99a08d",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 6381489,
+   "tier4_instructions": 6381489,
+   "output_bytes": 5048,
+   "elf_sha256": "2ca0df6d2ac0302478a3aba20862dae581786d409d44c1f1ee897a68b8f9954f",
+   "host_build_sha256": "5d5aa1f956ea128ef51bcf744db1a22c971afa5aeff6071935e4f70a447afa21",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "aes.c": "f7f78b44654efd3542b6886923dd05194286807ebcfeb078ea05d21fe901ee9e",
+    "aes.h": "9f74a4de3bd11621ff6e8fb9b352b060f699e6c1c67f81a22d104aacad61a23b",
+    "aes_cases.c": "9d6456ee91a20fc8ccd250b7e697ae808a36b3f4f0c85d098d5a246b0d6be63f",
+    "host_main.c": "e27cc1fe9b0a481f832c18dd2c9173d1172eadb380526b1f2841403e3668c93a"
+   }
+  },
+  {
+   "harness": "heatshrink",
+   "upstream": "https://github.com/atomicobject/heatshrink",
+   "upstream_pin": "7d419e1fa4830d0b919b9b6a91fe2fb786cf3280",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 251243926,
+   "tier4_instructions": 251243926,
+   "output_bytes": 26407,
+   "elf_sha256": "8a3ccf936c0e493f488d72942bb1e888a11eade66890799dce3a1a44ad5642d1",
+   "host_build_sha256": "b47137c8948001534a059c46b1bec44cb5d39ba9515fd77c49f4d3bfc28eec57",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "heatshrink_common.h": "b64f5af3614f6f892d0e01cbe030bf13f1f781a018840a27b64ede82d6971ef3",
+    "heatshrink_config.h": "7e91307108451351dfe5631410c7344466ff153f3d2a2454dcf8d003325512ff",
+    "heatshrink_decoder.c": "5ced6bb057741a5772edaf46f7c8466b5da1751d7e704ffdb79eedd5aadf7821",
+    "heatshrink_decoder.h": "2678f67add847b08b5debd234e2435135f3b83c8e5cee565789cf9f8c4887096",
+    "heatshrink_encoder.c": "67ec42bb911790cab8e2c2ec5f8d5f81d6feb3a121609d8e8fd1381706e5484c",
+    "heatshrink_encoder.h": "941a4f89e29a774faf2d2ce3ef86a23e3fb7c42fb04dd9e68d0abb207ba9e950",
+    "host_main.c": "c26ce55c927c3ab2e470ff8cb5668e964e6a17448d02a6d5846167a8b70ea136",
+    "hs_cases.c": "d5950e2b5088f288126d61949063ec37109d7a8f1e27ad1f93e716c33e0491b0"
+   }
+  },
+  {
+   "harness": "stb-image",
+   "upstream": "https://github.com/nothings/stb",
+   "upstream_pin": "4e9b368bfc071e97206ea5c6adba68dd0cbf8897",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 262445598,
+   "tier4_instructions": 262445598,
+   "output_bytes": 51938,
+   "elf_sha256": "7bb9118a2336da180a96fe3c4dc450758d0e09ee2b7ada87005bbd9a03ad1800",
+   "host_build_sha256": "87dd3a324b8d6d0fa46c870b575bb975b93864818fe8eed498dc2754ec908cda",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "host_main.c": "e1939fcd45f1ed88ba4b161fef9983d6e4385931420ffaaa5c0b11422e3b0532",
+    "stb_image.h": "594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3",
+    "stb_image_write.h": "cbd5f0ad7a9cf4468affb36354a1d2338034f2c12473cf1a8e32053cb6914a05",
+    "stbi_cases.c": "355b5994bdc1346e52f39a3bb2ff7507e97354758b8be072a961b6a91dd7efc4"
+   }
+  },
+  {
+   "harness": "monocypher",
+   "upstream": "https://monocypher.org/download/monocypher-4.0.3.tar.gz",
+   "upstream_pin": "8cc9bc341a66249016db9bd70e9142d8d0aef9945973744b1ac05dbc55d8ee66",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 661433766,
+   "tier4_instructions": 661433766,
+   "output_bytes": 2512,
+   "elf_sha256": "ee673ed1a90db6106bae344a4d5fd41e488465f4d61f4284f5c48db0b0298829",
+   "host_build_sha256": "ed03bee7ff17443801729d44a370699cc4a6d338b16757d8a5c5647d44136bf0",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "host_main.c": "9fbabc811d30f41582cfd3a73955d1bfe9f4d95d876fe5e0489f63ca5c36e8b9",
+    "mc_cases.c": "39d553388bb0cea6a4a0a6978e1ae99872675dfee8d913cc439ad1f2038c9cb6",
+    "monocypher-ed25519.c": "60fce3578fb00b00da96490653d993c4cb427b1e1be38183285c66e04d22cc18",
+    "monocypher-ed25519.h": "abc4fad381879f5c29176ebe014b9189956b3dfe0a3e36459b6990bc57212380",
+    "monocypher.c": "57eb914fc88136119bd41655cccb8c250048bf54d470540625186f8ab16f64be",
+    "monocypher.h": "c494da712122da7ff679fdcf318a5317e84972b6c950fe9d896212947797facd"
+   }
+  },
+  {
+   "harness": "lua",
+   "upstream": "https://github.com/lua/lua",
+   "upstream_pin": "1ab3208a1fceb12fca8f24ba57d6e13c5bff15e3",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 50158341,
+   "tier4_instructions": 50161545,
+   "output_bytes": 1122,
+   "elf_sha256": "d043088deeea6b1a401a083dc1e1220bc7fb524aa956965082867eb939eccbf6",
+   "host_build_sha256": "1e3316ba37af941e989dcc3dc85435547fa644bcf26a61f0a3604642872bbf6b",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "host_main.c": "0abdc8ed9c8ae611497231c23eadae4c9e948110b405ffda766871a38088f907",
+    "lapi.c": "31611303561f660701b03f75e090cf729103d9878bf7ac43b49234f17b4f02ba",
+    "lapi.h": "9522209670086adfbb11379416078a7f4dafe154043e320cd435fa1811aaabfb",
+    "lauxlib.c": "50ef12f21926fa3b80d1e9e611c5e4669012efe792b5a3515fd5a7ee1cc796e3",
+    "lauxlib.h": "2d9e18e577a6062646268e7f7228264c28bd9b972c186e1af81b8357179c0ab4",
+    "lbaselib.c": "5dc9a64468c1ac31e59066c7d3597eeb8ea4ac8fc19a257a74c431624300b487",
+    "lcode.c": "12d834467b3d6792621f148641e65ea938e442020b26f18c2649fe7e9f963f0f",
+    "lcode.h": "c5ad73fb12fd3e9f6b6a5f37fea5b60e4c09f8a262e9ac3ca85e8e047f745cea",
+    "lcorolib.c": "5408ccec737678d045d421f84a56e1ce03192a42c55440ffef07bec356aaec89",
+    "lctype.c": "3e21ae6a8faab3ed470ae0de19360da6b4e21a0a0f8572f502f7e13d590186f8",
+    "lctype.h": "c800311872ecba642f6d013b290eda83ba6cd8df8061e25cdca1dd4adcbed8b5",
+    "ldebug.c": "a7e5abf6aadacbbe45e1d31f9ab3bae5cd9a4390086e18f3396dadca50658254",
+    "ldebug.h": "b0fd38f6461251ec481cf5633d622569cef939067e37cac23331d9f96b601702",
+    "ldo.c": "bed5e9cb2da0bf4d47ffdd9d47c7065589caa3c1f7ac4b41d8e5659e59c63ceb",
+    "ldo.h": "98846aab1dd474afb1573ee7a485d3dc73e0cb7d81de040b0d96319c254e8b42",
+    "ldump.c": "3c05402c5e282e06c2218f2469b1f38e1b84c783b9387aec7740c60b287d82c9",
+    "lfunc.c": "38809428b76fafa79db9f65b7248cc0c02c9b696e7410fc4ab1699940768f1b2",
+    "lfunc.h": "81dc02d55ae8000461ab90bb9689d2600ba51f2ea9ac9fb019386995c07e3e4a",
+    "lgc.c": "bf28b521954d66ba02a49569c0f7bf37ebdd4f0a62fde4312284e817fb1e42fe",
+    "lgc.h": "c83d3b8e31345c0aacd37442954a7f2434312ee48f98a8b9ae4fc8aad26d0c99",
+    "ljumptab.h": "6c3e9858b9dad03ccd61445ab0bff0eb6ddfa5e731e044f93350fe6c6b2ad8d5",
+    "llex.c": "5cfbaabf3dc0d75835aaafc37fcd87a92f3dba451e002732747b602fda122958",
+    "llex.h": "5ce0302528260ed6a40ec3ebf5e27d3bc108242d9dca57e8cdbe80fe34e13410",
+    "llimits.h": "d588bdac3c8e1adc88df3dc92c950a1bfa29663d15f9221f58e2aa553b05a422",
+    "lmathlib.c": "da5c7d74cffce22f0a9eb468e6e7e80b543ea6bec5c21aefb8cf285a3556722a",
+    "lmem.c": "6154c2865bec97e61a92d8284be7e8ba21818f6edc95f5d72adb5dcf3e9532ca",
+    "lmem.h": "8318a170a1d4bf21c3cb4deb1f8661f1dc7cf4eb688e4ec9a1e7ea16bfc3b5cf",
+    "lobject.c": "7a9748e38c52e45bc468cae74ccea08b98f8c53a523c1b0f9a117e5cf162c921",
+    "lobject.h": "8539beae7dd9a08efc09b04d64c09663e9afc0f2ad342abc612bb000c0c9be70",
+    "lopcodes.c": "bdc9d39fd8bf1a350c0249f726c5f61bef64b122b93a0fbc172b0328dc01f594",
+    "lopcodes.h": "b3f511933be3039a4b92ba79601b2e5daf75b34f268bfc757adf3e24ea4f1ec9",
+    "lopnames.h": "fbdbebc96b136efc6165cba1ac2b311b0c52413aaef59ae9ec750748f13c9e9a",
+    "lparser.c": "bc3f7f5dbffd7f67228a455e8b280b2cfc36c6e604081687dc9ff923fcf1599e",
+    "lparser.h": "68c34ef2d6e5a227f7cff18436a42c6739b1470ce12f059f168d9bb69fc8d49c",
+    "lprefix.h": "626785d4eda75e9435f0ac21a780ae3b11f8b27dc36934e637a5c2305f906531",
+    "lstate.c": "d7c9380de9388dcbafff6139b1bf1020eb99e3a62f41508a0c2cbe02e301ab44",
+    "lstate.h": "ac1f8464e0d0dc6c9d22220bc3b5ec682c91de81a661bfb5f971e22b8fce0a9a",
+    "lstring.c": "b6162f3a65735a902911ffafcafe1db0994c3b0df441581dcbb04dca6bc0b71d",
+    "lstring.h": "a8cb0d737276f6a41071a0776ee1d8aa13cf02fa7c79ea096d202b14ea792e31",
+    "lstrlib.c": "3257cd857653560773947d70b65c8b8bf8ef43f920ed449587fa662224d859e1",
+    "ltable.c": "27a711276b1e22aaea3b9182e2d17693f598cfe9bc7fd203c05d400df6673853",
+    "ltable.h": "1c8736b87aa408ef2afebfe693f46ae5424d658d798fb2a8a88b6868cf5569b5",
+    "ltablib.c": "3d430a6f9cde66d0b791444c6164e7559ccf62b7cdc3a6325882408c6806e26c",
+    "ltm.c": "7cbe645ed7e1161d31eb32ea467d8220b592c0acfa6107f0194487f0ddbf954b",
+    "ltm.h": "5b2f6e59951edeef6e71bebe5ac4351f4b3602ee0461729308b80dcee8cea910",
+    "lua.h": "341014ee8b49570fc01c1fb2afc6a7decc853525636c74e7a6a9507a933aa62e",
+    "lua_cases.c": "f55e287dbe7c8e9a03df2d248cc50c6e3134e30f78c14336039e74ec2b980d9d",
+    "luaconf.h": "af243c94bee6d2601383e8b65ed66a0d1b4ab3b7418ff903fcd0679912160e3a",
+    "lualib.h": "4ea0f67d3e467f5d6a327616e22a3c2da8e03d47a3c3660916275f2842f521ea",
+    "lundump.c": "7f7b078026e162161d402feba73a69cbe66a98558ec0745a445a595f42eac688",
+    "lundump.h": "1137c0c9d8654ce223374d21c52a599fd1cc1ccb869801f87a27238a7bf55e8e",
+    "lutf8lib.c": "ed24c3faa8abda78ee6df53f011475ab9565a2e3ace64e714bd412c90160742c",
+    "lvm.c": "e72a783157291555290d2de9b4e8855c9bd00a4ea02dc367caf498daa25928b6",
+    "lvm.h": "aba601b887236d5e135392e0c49370df3b5a9ac5c66ab2d44156b3244f2dcef3",
+    "lzio.c": "fba61ceeeb257a3fe5f63310f21e14fc26c4be647583dcf8e74cbc7fb7e43e8a",
+    "lzio.h": "9673f62eac2d0fe3010f9d23148be7b8113319fdf4c4490015cd9feae2ecaad4"
+   }
+  },
+  {
+   "harness": "quickjs",
+   "upstream": "https://github.com/bellard/quickjs",
+   "upstream_pin": "e5ac135f8db58f8d6b7b5862b8263ce6ba9c5ab6",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 2765640064,
+   "tier4_instructions": 2765640064,
+   "output_bytes": 2189,
+   "elf_sha256": "73385af3e98282ce116f66b2391a88415c447680d9ebcd87f0dbc91743a24493",
+   "host_build_sha256": "9020214334148d921197c1f47680b658cf1c60be63244177727f7231c3ff6409",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "cutils.h": "d2da6d06a75b9e6c116c82b7a41df6bcc170c8b1779f374fa953ecf688eda647",
+    "cutils.inc": "b73a403a59da30726257ddbdf5e399298941c1def997782ee0d4d33f796a80a2",
+    "dtoa.h": "462070f7678a894b9f3612422f280f4dce412eb360a5cc585a513f407fc23114",
+    "dtoa.inc": "af5abd68fa9806d1a19bdd5f2daef00d5fd0990ae56311382dfed4700343f074",
+    "host_main.c": "642eb22226594afa3cc69556dfe37c14913c6cf0580847e74cc1a6a5816b1542",
+    "libregexp-opcode.h": "2a98d646089f3a72f25480116297c5fdb5b28fd9f815447273951f4ade4a115e",
+    "libregexp.h": "f5c5ef1899f224dcc718422a22c789ef9d8b5b837b622818fcfaf681ae793446",
+    "libregexp.inc": "b588a514fb2717cc088d44f5fafbb874c9a4eb52aeca9b82bee851173bb77a28",
+    "libunicode-table.h": "7fb4fbeffc7bc3e12c837ce602cd9f5a7e9e2b06a9bba95e23d61cdb8b6bc409",
+    "libunicode.h": "645fd5fc7f7268da025b717653a37b1b1dfe1d917f8f2ed270397db771cbf3da",
+    "libunicode.inc": "ccfed51868dae0ee619d474d36bd2f7f084bf08220a580d4e566500473d24245",
+    "list.h": "181c6b25d9d0e4853315d36a6e6fab3b2c3554271693d898a439384ba0f67c2b",
+    "qjs_cases.c": "988e5aaa33043a93b22d2ec6e4f544f70003928b0d2671cb5af905beab02c431",
+    "qjs_core.c": "4b1cd15f47b859b6caa9158c8ccd6f5ffc3db19a9ce17f8b6c44ccff2600b243",
+    "qjs_cutils.c": "9df56b38ef9fe8585d0980c8539586126337800a03a208fcd131439c2675bca0",
+    "qjs_dtoa.c": "90d3d497df63f6919e0e9fea57440fea64ac53fee8432e4b0a6ddfaed7490fa8",
+    "qjs_libregexp.c": "184eb2476d70b1abfc1c157c0a9653bcacb256d38a3c18758bc09b347169c91d",
+    "qjs_libunicode.c": "2e6b1733f23601e39b2580f2c8c8c9db3067fd2618101d1e90d963c04720b9aa",
+    "quickjs-atom.h": "9dff5d3f6c91c4782fa76c42bb43fcd4afb81ad205da33d2207805e41561efc8",
+    "quickjs-opcode.h": "a67d4798afe0a35a61c91c87e978b703791d6a7803afe610e4660c10a142140e",
+    "quickjs.h": "15960c0c31480e4bda8d8d52c6b7c755385f5f7a353d82b43212cb9a5e234e8a",
+    "quickjs.inc": "78b80f9e0f9593f0e79eec49d6edddac5858c8cc60663b7932db615c5b45127d"
+   }
+  },
+  {
+   "harness": "sqlite",
+   "upstream": "https://www.sqlite.org/2025/sqlite-amalgamation-3500400.zip",
+   "upstream_pin": "1d3049dd0f830a025a53105fc79fd2ab9431aea99e137809d064d8ee8356b032",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 36121671,
+   "tier4_instructions": 36121671,
+   "output_bytes": 913,
+   "elf_sha256": "73438bc02c5e980aacbe8c30621ac80d2956bdb8b7a34485834accfb0d2666a4",
+   "host_build_sha256": "016f1ac0bf26b6c21a7e6a755020df4359b437f2ca42b843c559b0bd04d91687",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "host_main.c": "fa1ffe09d977058c451f0ae2c5bef4a2e07f798d8cc21b714c8985e990ed1ba1",
+    "sql_cases.c": "dce10e725a2c9055091e1d76bf59e20b96025663db75184d257a6a621a97e0f4",
+    "sqlite3.c": "e3f5d6901e7492af4a1fc8c4d745cae84c264942524c3fbfc02b82a5ca8818c8",
+    "sqlite3.h": "abd1514e0351f79393d1be882830afdb40a8099e8257f311f0bfdf8486f11bea",
+    "stubs.c": "a11888c3d47045cc2e10b577fe985b65078927ffa887360ad63a343b98fa677b"
+   }
+  },
+  {
+   "harness": "blake3",
+   "upstream": "https://github.com/BLAKE3-team/BLAKE3",
+   "upstream_pin": "f55849f89cd85083c1c9daa2c5de20766f309c00",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 5946973,
+   "tier4_instructions": 5946973,
+   "output_bytes": 3673,
+   "elf_sha256": "61cef81d973cae272507ed62c38a689dce4dc696f68a4d0bb1f2747bd234f0e2",
+   "host_build_sha256": "163380f34269729e56e4cb4c9a9aa3c3d4f32845e0b746f189ff40e9c1f35acf",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "b3_cases.c": "ddfa13c5f86939d7a8c356e0abdd1d364ecdefd1d89c33f518b632175131bb1e",
+    "b3_neon_wrap.c": "7b5488105bbd6cfdb50eb06314fa490422f6bf35e7f9589fd76e00a8e69bb596",
+    "blake3.c": "b118ddf7cf9e6e5ef3fded72dcb1acf9dfdc4ea923cbe4605900ad6ee9afe1af",
+    "blake3.h": "81bbb11ad1909341565dce4914cc0e5c29718eca27e6950b28f9226a91aaf8c5",
+    "blake3_dispatch.c": "134f21550138c0af6312925c988aeee35df287e4119e8ad1d206fccdb2238fe3",
+    "blake3_impl.h": "d388dca3574602c8849805ea3c8c0a12d082ac0e428756f305e111942f099af4",
+    "blake3_neon.inc": "67e88d017a82df1b76d5f841e7b7215135a007486ac14c5be1407e1bca5201b0",
+    "blake3_portable.c": "2bc25b0dad67b4329d0b49cfa075ab2b0d04e424addbddc4e9c389c52a192524",
+    "host_main.c": "5a0f15bc791ad6ae6a9361072f3d9d831d49691d551afcc0117754e1a254439d"
+   }
+  },
+  {
+   "harness": "crypto-algorithms",
+   "upstream": "https://github.com/B-Con/crypto-algorithms",
+   "upstream_pin": "cfbde48414baacf51fc7c74f275190881f037d32",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 9543726,
+   "tier4_instructions": 9543726,
+   "output_bytes": 6927,
+   "elf_sha256": "229a5db2eb9c1f8fcbccb1901a5aff47f0a5a18c84484e0b034207a4367ac364",
+   "host_build_sha256": "1355589de57d0ce5226dac29e0fb7de803b697659b1b2bf196253e6b2a485d5d",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "aes.c": "f59be01f535478a16264a82f304802a627362ca27328c35efd9af816ea0e0d45",
+    "aes.h": "295eca4ebe89419c2d3fbd78e975aa800972986248989b6757f0a2211e21174a",
+    "arcfour.c": "1ff12d57f47ea299ccdb51bec9b23166593866895e74ac3b17db328ff46ddeb8",
+    "arcfour.h": "560dadb506ef6e388dccd282919c67c8ef06428d6474b8329168347a0b575776",
+    "base64.c": "2c6c1eb346ec85ec7e21e1eeba1ed1a349e53692408ab6cdf6644c37c4daabd6",
+    "base64.h": "f18434438b25705fd8dce08320b47dec2b7522855ba327c691accf7e0884a0f7",
+    "blowfish.c": "a096d3338a43b390f801516e1461bcbcdce434188176a3c138136826989c6de6",
+    "blowfish.h": "44b4f981562d13a1f67600402285d81a1c0e63d0a82c8efa4279eb391aa1545d",
+    "ca_cases.c": "3dfca0401506d15f6b608df34cae5f854f67056cb68b7ca4c39ffb7f8102236c",
+    "des.c": "a19af365968d4b5f4f99958b05ab50c8127e11b05e1d804a356be5a39dd1a29f",
+    "des.h": "f5c76b3d45b2083d48040270cc2f94c07dada6caabf6d6836f958e3b134ead9f",
+    "host_main.c": "63ece7c2c0c5e1ccf03618c2bf301bb091cac77865cd43449e3e014c202aa6cc",
+    "md2.c": "b1c31c3fe5d28a65de8e33549956dfeba7dbd74eb265b8e3b25460a1457ca9a8",
+    "md2.h": "e35ba4d34832ff54d0570e4262f6e3679978dbc9b6b48609df956e3a576adb0c",
+    "md5.c": "c97df0fa155b7b421a9ea8815f0e6ff9c64b2a2096a3cfd445b7e288a126aa84",
+    "md5.h": "374c758fcc838bb4c23f591e284be41bb67d059cfa0dbd65997d65fee81c3e07",
+    "rot-13.c": "5e5846d76e35d6db61d18226253868a13c2855842cc8e576b99790458bb47130",
+    "rot-13.h": "e424db1f39490d8e120ca566018d49e321ce6fabb096799904e9f6277270f63d",
+    "sha1.c": "7e5965e83bcafc361e31aff99136ba5ebae338448d4d33496e11e071ec437029",
+    "sha1.h": "b76cc80cfc7a760150f2d0047ad39673d472d09900115bf8361b4e30f398f5b8",
+    "sha256.c": "4cbc93d30c28cee2a056d6f52cbce6e66ff9450f1d712ee4f59761b9b4486fad",
+    "sha256.h": "a946e621775fd8251624e77d19f25407c4b6074ab780027e5797b77c7acf79b5"
+   }
+  },
+  {
+   "harness": "fastlz",
+   "upstream": "https://github.com/ariya/FastLZ",
+   "upstream_pin": "b1342dabcf5257ab303743c9332fe75e9147a011",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 66668347,
+   "tier4_instructions": 66668347,
+   "output_bytes": 5400,
+   "elf_sha256": "a70079edc4276b905d355b4e92c12763cbe932eeb83ac41b417ac1d1285e47a3",
+   "host_build_sha256": "2bcfa2afcfaca42562b87ee02ba07d77cb4bcb0bdce9e7cdaabb8102f59516be",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "fastlz.c": "44065d56055c1dcf6d8f1664369e769c40161953fc8a6b53325f837a9fc02013",
+    "fastlz.h": "d2b6ca9c0f4b5cdd0855d90695e3b7e0da70203ac93119971020e46bb0b68039",
+    "flz_cases.c": "4c015052a0fe84e97a199a50066fcf7dd4c96608cff4e6e74bd74907a309f41e",
+    "host_main.c": "1b569e77abb0b1c32bc61e43dc4e812195861c3e3ed8acbc8a04d3ebe6c5127c"
+   }
+  },
+  {
+   "harness": "tinf",
+   "upstream": "https://github.com/jibsen/tinf",
+   "upstream_pin": "57ffa1f1d5e3dde19011b2127bd26d01689b694b",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 12610204,
+   "tier4_instructions": 12610204,
+   "output_bytes": 3383,
+   "elf_sha256": "a33181bbf8f22b1e14d2984db611a9d8ff458036f80c747ae0e2c77aef6198d4",
+   "host_build_sha256": "a17f3f00d8fa4f9b29deb6ec72fd2008d597290ffa873ac80be88c8cc3c72303",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "adler32.c": "f35e2d7e6864cccccbdf6d8f1a34caacbbb69dbb70de276829a22216cbc4710f",
+    "crc32.c": "7f9b8a8149134e4b9c8ed36d2f0426eebd7264f4117d4648a971fe207cea2350",
+    "host_main.c": "f72a2428abef56995fd5367c4567f5b24eb38dbf2ae04fa6a647bb2073306ec1",
+    "tinf.h": "e5c3a9e9d54ed69c5b36c1b09c78defac1ea1f83cf97abeb4fdf16853dcd7f68",
+    "tinf_cases.c": "dba489f4b6e5e1eee13d458a5e189b46dd6f6158010722351f4c23acd1f8322b",
+    "tinf_data.h": "0687b97be6d267e1a28d363ffe2740b69b9917169aa3d62d96a42f230fc19237",
+    "tinfgzip.c": "ab34e4dc18fb231544e447b80d8b35b25916fd488bf14226ce82dcc082b1f8cd",
+    "tinflate.c": "b3240fa0c9e8ef385667680a321dd5b0bfefb9871996366c0a7d5f6a0309cb6e",
+    "tinfzlib.c": "1f9b046b23d074c4ce5044b4065463d3ec468569d2bcd87efb88c573785c1d6f"
+   }
+  },
+  {
+   "harness": "jsmn",
+   "upstream": "https://github.com/zserge/jsmn",
+   "upstream_pin": "25647e692c7906b96ffd2b05ca54c097948e879c",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 422536,
+   "tier4_instructions": 422536,
+   "output_bytes": 2033,
+   "elf_sha256": "1ec9ce21f7a46b442a77c04447876b30e7a8802f00bfbf03dcd2d6f6e6834ced",
+   "host_build_sha256": "abc8b0f15d81f2988df16330192bad9892f0d9f57f4e5d323161a96a8fb4af4d",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "host_main.c": "001134dce10b3fb768575a16497126967232a56430f9bdabc9366dd032697c13",
+    "jsmn.h": "c04533e9181e1e33baceb0f55ac449b05145bb936e8c68cc77dfe0d8277514fb",
+    "jsmn_cases.c": "549754e5044d3f17b6cd00a34a3f9bc2235f855cf9f52bb67f66bc44d5cf6be4"
+   }
+  },
+  {
+   "harness": "sha3",
+   "upstream": "https://github.com/brainhub/SHA3IUF",
+   "upstream_pin": "fc8504750a5c2174a1874094dd05e6a0d8797753",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 12253521,
+   "tier4_instructions": 12253521,
+   "output_bytes": 13420,
+   "elf_sha256": "9f707c0e0d3999846430dfdb143068d2bdee1a6cd8247ddb162968eeb615e179",
+   "host_build_sha256": "49c5a56574a95559d3ef3c0b3447868c37dc11ae1414c441b0c2bd947937e715",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "host_main.c": "fbd0f500327cec3c6196e0c7fb6d19a0e595941e58986515be4b78c332939787",
+    "sha3.c": "9499df301d240fdd296fb53aae554d2615f875156e39174390dc0b7dd2a25fea",
+    "sha3.h": "ba0f5cb513018ae84959293f82a2f1b2c027457c6564e8e1b8397fa439bcce6c",
+    "sha3_cases.c": "7998b7b597c9e22f4c93e1ae7b6d32eaea30d3dfd278ff35eef11af1a1d2a5d5"
+   }
+  },
+  {
+   "harness": "picohttpparser",
+   "upstream": "https://github.com/h2o/picohttpparser",
+   "upstream_pin": "dd573d8fa9264c646a400e96ce9f07dea6f156e4",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 200720,
+   "tier4_instructions": 200720,
+   "output_bytes": 1898,
+   "elf_sha256": "1646769d19417cd0dcb5cee9b8a9fd8724e3cb12ebe7767fff61c191c1e37015",
+   "host_build_sha256": "05deb046900f83d41441e67eefd8e20a0596b804fd463e4bcb7054349e99982d",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "host_main.c": "45a3a5c6c1c942266f95d392d2267fdc177d4cbf179a3cdeb8246c774b05b73a",
+    "phr_cases.c": "780f6bc0aeda54d252ad902d84997809fe073cca26e2fcbed05a44b7130aa1fb",
+    "picohttpparser.c": "8aacb701e60a3a5c600f51845d9554463773eafed88f9c4f47472ed5dac6a942",
+    "picohttpparser.h": "1fc9074dd12418b2b91e55ef3a8279bccf8d3577b790dea6f2f908ab2a157f1c"
+   }
+  },
+  {
+   "harness": "inih",
+   "upstream": "https://github.com/benhoyt/inih",
+   "upstream_pin": "611ab51f8dd7ec583543815b0de693495045fbf8",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 508846,
+   "tier4_instructions": 508846,
+   "output_bytes": 3475,
+   "elf_sha256": "00b596cda5892abef6e71bc78512aef78c50a0638472c45226c8f80fd84c867c",
+   "host_build_sha256": "554f71d30697ddb264e1a4dcdce9fa4020bd418dbc8db09279367c387b4a718b",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "host_main.c": "62409240d16be7c332e11b9639b5e0db54c439b6db790a674ef799f8ca75a021",
+    "ini.c": "49635826cc1ae71209ba88cdad0640d7d1a079779ee24c521efd1e06f4a60633",
+    "ini.h": "db3995229183d50d42cb675bf048f04525aed857fe3e4e39a54a1d7dd2f0f2e9",
+    "inih_cases.c": "fc3a5b9b4a371548a608a4223b00f283f212775e26999eb54d52ef8b81d20d0c"
+   }
+  },
+  {
+   "harness": "coremark",
+   "upstream": "https://github.com/eembc/coremark",
+   "upstream_pin": "1f483d5b8316753a742cbf5590caf5bd0a4e4777",
+   "checks": {
+    "qemu-vs-host": "identical",
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "host",
+   "tier3_instructions": 7046287,
+   "tier4_instructions": 7046287,
+   "output_bytes": 420,
+   "elf_sha256": "15690276d947b4c1c543b9967a53fb4cdb9e1f30b9a28f49cb4a36d58e4ac6e5",
+   "host_build_sha256": "4b3e113a3a07978cd315acd61041e9987fbc63bf20f74c72362cf77f1a173da6",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "core_list_join.c": "ca00e4e010ece47d7f040cb92aa50a95345a00d3171b59d088f6b243be06ce7b",
+    "core_main.c": "17884c93c5b94378eb0ff02b4df3725756cf2addb9b8cbcaa6200a4649ff5ca7",
+    "core_matrix.c": "ecdff717b5a5c4907d221a606760e25499899cbf617582c05d40db71c91351e4",
+    "core_portme.c": "174a1550e6e8ecd505fd5db63ee117c2f4dcd4eca7d39d8b82d8a8775063f18e",
+    "core_portme.h": "a40e90ef4c5a5626d438afee1f8da628c2800105d4c3b5318e8810b34be554f2",
+    "core_portme_posix_overrides.h": "1dc67b5c1b9c773cccc740b911d708333d3bf154c3313f77b8a52e18209eda59",
+    "core_state.c": "f4b84bb0a3452c45a4daa664ab502bfdccbd31cb57d93e9ac490c60937717a4e",
+    "core_util.c": "a3fbfcb9bb943b638624b8ece01c5836dd56a96d7bcde2697b248d077447327f",
+    "coremark.h": "42642b9a06c7ed2b3bd9eda971b7c3868c4f5d27bf7ef6c4bba11291a0c2598a",
+    "host_main.c": "aa39fe5522736f7880c81d55d7536c2d822a291987c34073a337d8e519d3f854"
+   }
+  },
+  {
+   "harness": "kissfft",
+   "upstream": "https://github.com/mborgerding/kissfft",
+   "upstream_pin": "f3fd3a58f1b98972d0f06a1db775a984198cb788",
+   "checks": {
+    "tier3": "identical",
+    "tier4": "identical"
+   },
+   "reference": "qemu",
+   "tier3_instructions": 3320458,
+   "tier4_instructions": 3320458,
+   "output_bytes": 2695,
+   "elf_sha256": "15f411e9c8f76b3cfa29af81e8f59b740f0bc9ac33ffb81c467c1ec1988d1a45",
+   "host_build_sha256": "e37681b4e7fa17f778254aa932d8a2aa2b1c7d891cccbf3a21d270d79d83b59c",
+   "runtime_sha256": "80fe76c9fffd10bf674eb504b4649eec397a68c6b01021798433c07db452aedb",
+   "sources_sha256": {
+    "_kiss_fft_guts.h": "8140ad59872effc33922c954f3a682a2dc5668532de8000a134e1a6c0e994595",
+    "host_main.c": "1d7a6de9842462fa27eec6839360882f682991e0e05aa6998724a55f3e50ba46",
+    "kfft_cases.c": "a0ba6e0d4891e665316ae57ed7e3a16f9b685a34ec9c1f7a7793c2df0c2c8a64",
+    "kiss_fft.c": "cb0ddfb3cfdacbd3d1ae2be41f5524451694805f69e90ed8a91f3312080021ee",
+    "kiss_fft.h": "9f42dd7b65645d7e8a4c5ff0d7616b70a0eb0fa95497512ddf00ef30b423fd4b",
+    "kiss_fft_log.h": "f954cb6890ec999f7fbc80cdd1c8c0194bbaeb0f1c27e11bd23450f53871cf8c",
+    "kiss_fftr.c": "df411538fa8870c090ab0d3232775fe97416ae6811b7c7df0e8ee01a7250276d",
+    "kiss_fftr.h": "a31ebbfa0d25945222e57fef8020f63c2726941e95eaf100ac2529618dd0b2d2"
+   }
+  }
+ ]
+}
