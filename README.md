@@ -251,7 +251,7 @@ Any other code, ported or new, that genuinely needs `unsafe` goes into an isolat
 
 Build from source using **Rust 1.85+ (edition 2024)** on a supported Linux, macOS or Windows host. OS-specific development libraries may be required on Linux; see the expanded setup notes below.
 
-**macOS binaries:** no prebuilt macOS download is offered for now. Build from source on a Mac instead (see above). The macOS build links Apple-SDK-derived `objc2` crates, and whether redistributing a compiled binary that includes them is allowed is an open question; see [docs/PROVENANCE_OWNER_DECISIONS.md](docs/PROVENANCE_OWNER_DECISIONS.md). Linux and Windows builds are not affected.
+**macOS binaries:** no prebuilt macOS download is offered for now. Build from source on a Mac instead (see above). The macOS build links Apple-SDK-derived `objc2` crates, and whether redistributing a compiled binary that includes them is allowed is an open question; see [docs/PROVENANCE.md](docs/PROVENANCE.md) (Specialist items). Linux and Windows builds are not affected.
 
 ```bash
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
@@ -407,7 +407,7 @@ Read [the provenance register](docs/PROVENANCE.md), [sources and legal guardrail
 
 - **Linux ELF runner.** wasm3 built as a static musl ELF fails to load its first module under `run-elf` (an allocator request of about 1 TiB is refused); cause not yet understood ([#366](https://github.com/hffgzktbcc-blip/ounce-core/issues/366)).
 - **Floating point.** FPSR exception flags, FPCR trap enables and half-precision arithmetic are not modelled. The FPCR rounding/flush/default-NaN fix (#363) matched Linux Arm and Apple M1 hardware on the fp-edge corpus: 0 mismatches at all nine FPCR values on all three engines ([CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42971358680)); that corpus is bounded.
-- **Historical scope.** The later object-level inventory narrows the firmware-labelled candidate objects to retained PR #1, with no exact matches in current source or the inspected releases. A separate historical 72-byte program has no recorded redistribution grant. See the dated [object-level report](docs/PROVENANCE_REMEDIATION_REPORT.md); no global purge is claimed.
+- **Historical scope.** The later object-level inventory narrows the firmware-labelled candidate objects to retained PR #1, with no exact matches in current source or the inspected releases. A separate historical 72-byte program has no recorded redistribution grant. See [docs/PROVENANCE.md](docs/PROVENANCE.md); no global purge is claimed.
 - **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
 - **Notice and rights status.** Completed controls, remaining upstream qualifications and release-specific requirements are maintained in [one disposition](docs/LICENSE_DISPOSITION.md). An identity check or notice collection does not supply an absent redistribution grant.
 

@@ -1,3 +1,5 @@
+Archived 2026-11-11, superseded by docs/PROVENANCE.md
+
 # Drafts for owner action (nothing here has been sent or applied)
 
 Prepared 2026-11-08. Not legal advice. Send/apply only after the owner decides.
