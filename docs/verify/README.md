@@ -74,6 +74,13 @@ a stage using its recorded argument vector and working directory with its input 
 available. Use `--image` to select the recorded toolchain image if available locally
 or from the registry. Start a full rerun in a fresh output directory.
 
+## CPU throughput benchmarks
+
+[The paired benchmark drivers](perf-hot-paths/README.md) measure unchanged registered
+NROs and pinned Linux library harnesses on the interpreter and Tier-3, checking their
+existing oracles on every repetition. [The retained MMU results](perf-hot-paths/RESULTS.md)
+report CPU-time improvements separately from inconclusive wall-time measurements.
+
 ## Corpus diagnosis
 
 For a Python-only worked example with retained CI inputs already in the checkout,
