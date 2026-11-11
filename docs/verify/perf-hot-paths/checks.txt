@@ -1,0 +1,23 @@
+2026-11-11, Apple M3, macOS 26.6.2, rustc 1.98.0
+
+cargo test --release --no-run --message-format=json
+  Passed; copied final CLI/test binaries before running checks.
+/tmp/ounce-perf-final-tests --test-threads=2
+  583 passed; 0 failed; 10 ignored; 46.29 seconds.
+  Includes existing cross-page, overflow, permission and self-modifying-code tests.
+  Linux ELF fixture tests now also exercise the explicit interpreter engine.
+CARGO_BUILD_JOBS=2 cargo check --tests --features nce,native-jit
+  Passed; one existing dead-code warning for with_round.
+  This checks optional-feature compilation, not live NCE execution.
+python3 -m unittest discover -s scripts -p test_benchmark_corpus.py
+  2 passed.
+python3 -m unittest discover -s scripts -p test_verify_linux_elf.py
+  6 passed.
+python3 -m py_compile scripts/benchmark_corpus.py scripts/benchmark_linux_elf.py
+  Passed.
+git diff --check
+  Passed.
+CoreMark host reference verification and paired measurements
+  See coremark-verification.json and coremark-benchmark.json.
+NRO paired oracle-checked measurements
+  See corpus-benchmark.json; both registered cases pass every sample.
