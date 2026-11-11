@@ -9,7 +9,7 @@ Licences and legal notices stay in `LICENSE`, `THIRD_PARTY.md` and
 ## AI coding agents (recorded via `Co-authored-by` trailers in Git history)
 - **Codex** (OpenAI): corpus preparation, diagnosis CLI, provenance audit and
   remediation preparation, workflow tooling. See `docs/CODEX_HANDOFF.md` and
-  `docs/PROVENANCE.md` (and archived `docs/history/PROVENANCE_REMEDIATION_REPORT.md`).
+  `docs/PROVENANCE_REMEDIATION_REPORT.md` (historical/evidence records).
 - **Claude** (Anthropic): workflow simplification, release work, multi-agent setup.
 - **GitHub Copilot** (coding agent and Autofix): assorted fixes and PRs.
 - **Dependabot**: dependency updates.

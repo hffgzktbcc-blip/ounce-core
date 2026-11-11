@@ -114,7 +114,7 @@ Consequences:
 Evidence:
 - Identified as `pepsipu/ns2jb` `engine/switch2/process/test-function.bin`,
   SHA-256 `71544d50…1b42`. No permission grant was found.
-- Your decision of 8 Nov 2026 (PROVENANCE.md Owner item 2, repeated in
+- Your decision of 8 Nov 2026 (PROVENANCE_OWNER_DECISIONS item 2, repeated in
   LICENSE_DISPOSITION #308) is to remove it and not seek a grant. The request
   draft is marked "Do not send" and nothing was sent.
 - It is absent from the current tree. It remains in 20 source blobs, reachable
@@ -124,7 +124,7 @@ Evidence:
   158 of 159 refs. It covered only two other paths, so it is not a plan for this
   program. The array sits inside mixed source files, so removing it needs an
   approved byte-range manifest and an explicit old-to-new ref map
-  (Owner items in PROVENANCE.md, formerly PROVENANCE_OWNER_DECISIONS). None exists.
+  (decision 3 in PROVENANCE_OWNER_DECISIONS). None exists.
 
 Consequences:
 - **Yes:** you must also approve a specific ref map. The rewrite changes nearly

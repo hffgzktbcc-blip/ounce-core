@@ -1,6 +1,6 @@
 # Permission request — draft, not sent
 
-> **Do not send.** On 8 November 2026 the owner decided to remove the program and not seek a grant (see [docs/PROVENANCE.md](../PROVENANCE.md), Owner items). This draft is kept only as a record. Send it only if the owner reverses that decision.
+> **Do not send.** On 8 November 2026 the owner decided to remove the program and not seek a grant (see [PROVENANCE_OWNER_DECISIONS.md](../PROVENANCE_OWNER_DECISIONS.md), item 2). This draft is kept only as a record. Send it only if the owner reverses that decision.
 
 Recipient: the author/rightsholder of `pepsipu/ns2jb` on GitLab.
 Subject: Permission for one historical 72-byte test function in Ounce-Core
