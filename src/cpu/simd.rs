@@ -589,6 +589,19 @@ fn is_pairwise(op: SimdFpOp3) -> bool {
     matches!(op, SimdFpOp3::Faddp | SimdFpOp3::Fmaxp | SimdFpOp3::Fminp | SimdFpOp3::Fmaxnmp | SimdFpOp3::Fminnmp)
 }
 
+fn is_compare(op: SimdFpOp3) -> bool {
+    matches!(op, SimdFpOp3::Fcmeq | SimdFpOp3::Fcmge | SimdFpOp3::Fcmgt | SimdFpOp3::Facge | SimdFpOp3::Facgt)
+}
+
+/// IOC for the compare lanes: FCMEQ only for a signalling NaN, the ordered compares for any NaN.
+fn compare_flags(op: SimdFpOp3, n: u128, m: u128, double: bool, q: bool) {
+    let esize = if double { 64 } else { 32 };
+    let f = super::softfp::Fmt::from_esize(esize);
+    for i in 0..lanes(esize, q) {
+        super::softfp::raise_compare(f, lane(n, esize, i), lane(m, esize, i), op != SimdFpOp3::Fcmeq);
+    }
+}
+
 fn is_minmax(op: SimdFpOp3) -> bool {
     matches!(
         op,
@@ -692,7 +705,11 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
     let dn = fpcr & (1 << 25) != 0;
     if esize == 16 {
         let (mut a, mut b) = (a as u16, b as u16);
+        if fp16::is_snan(a) || fp16::is_snan(b) {
+            super::softfp::raise(super::softfp::IOC);
+        }
         if fpcr & (1 << 19) != 0 {
+            // half-precision flushes do not raise IDC (qemu agrees; hardware is checked by the fp-edge CI job)
             if fp16::is_denormal(a) { a &= fp16::SIGN; }
             if fp16::is_denormal(b) { b &= fp16::SIGN; }
         }
@@ -700,10 +717,15 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
         return (if dn && fp16::is_nan(r) { fp16::DEFAULT_NAN } else { r }) as u64;
     }
     let double = esize == 64;
-    if matches!(op, SimdFpOp3::Fadd | SimdFpOp3::Faddp) && fpcr & super::softfp::FPCR_ARITH_MASK != 0 {
-        // scalar FADDP reduces through here: it rounds under RMode, flushes under FZ and honours DN like FADD
+    if matches!(op, SimdFpOp3::Fadd | SimdFpOp3::Faddp) {
+        // scalar FADDP reduces through here: it rounds under RMode, flushes under FZ and honours DN like FADD, and
+        // raises the exception flags
         let (f, env) = (super::softfp::Fmt::from_esize(esize), super::softfp::Env::from_fpcr(fpcr));
         return super::softfp::binop(f, env, super::softfp::BinOp::Add, a, b);
+    }
+    {
+        let (f, env) = (super::softfp::Fmt::from_esize(esize), super::softfp::Env::from_fpcr(fpcr));
+        super::softfp::raise_minmax(f, env, a, b);
     }
     let fz = fpcr & (1 << 24) != 0;
     let flush = |x: u64| -> u64 {
@@ -721,10 +743,24 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
 /// `fp_three_same` honouring FPCR.FZ and FPCR.DN for FMAX/FMIN/FMAXNM/FMINNM and their pairwise forms.
 /// Other operations ignore FPCR, as before.
 pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
-    if fpcr & super::softfp::FPCR_ARITH_MASK != 0 && !is_minmax(op) {
+    let arith = !is_minmax(op) && !is_compare(op);
+    if arith || (fpcr & super::softfp::FPCR_ARITH_MASK != 0 && !is_minmax(op)) {
         return fp_three_same_soft(op, d, n, m, double, q, fpcr);
     }
+    if is_compare(op) {
+        compare_flags(op, n, m, double, q);
+    }
     if !is_minmax(op) || fpcr & (3 << 24) == 0 {
+        if is_minmax(op) {
+            // the host-float lanes below are exact for FMAX/FMIN; only the flags need the soft helper
+            let esize = if double { 64 } else { 32 };
+            let (f, env) = (super::softfp::Fmt::from_esize(esize), super::softfp::Env::from_fpcr(fpcr));
+            let count = lanes(esize, q);
+            for i in 0..count {
+                let (a, b) = fp_operands(op, n, m, esize, count, i);
+                super::softfp::raise_minmax(f, env, a, b);
+            }
+        }
         return fp_three_same(op, d, n, m, double, q);
     }
     let esize = if double { 64 } else { 32 };
@@ -760,6 +796,7 @@ fn fp_three_same_soft(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q:
             // compares: a flushed denormal reads as zero, nothing else depends on FPCR
             _ => {
                 let (a, b) = (softfp::flush_input(f, env, a), softfp::flush_input(f, env, b));
+                softfp::raise_compare(f, a, b, op != SimdFpOp3::Fcmeq);
                 if double { fp64::op3(op, acc, a, b) } else { fp32::op3(op, acc as u32, a as u32, b as u32) as u64 }
             }
         };
@@ -768,11 +805,23 @@ fn fp_three_same_soft(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q:
     out
 }
 
+/// IOC for the compare-with-zero lanes: FCMEQ only for a signalling NaN, the ordered compares for any NaN.
+fn zero_compare_flags(op: SimdFpOp2, n: u128, double: bool, q: bool) {
+    let esize = if double { 64 } else { 32 };
+    let f = super::softfp::Fmt::from_esize(esize);
+    for i in 0..lanes(esize, q) {
+        super::softfp::raise_compare(f, lane(n, esize, i), 0, op != SimdFpOp2::Fcmeq0);
+    }
+}
+
 /// `fp_two_misc` under FPCR: FSQRT rounds under RMode and honours FZ/DN, the compares against zero see flushed
 /// denormals, FCVTN/FCVTL convert under the mode.
 pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, fpcr: u32) -> u128 {
     use super::softfp::{self, Env, F32, F64};
-    if fpcr & softfp::FPCR_ARITH_MASK == 0 {
+    if fpcr & softfp::FPCR_ARITH_MASK == 0 && !matches!(op, SimdFpOp2::Fsqrt | SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl) {
+        if !matches!(op, SimdFpOp2::Fabs | SimdFpOp2::Fneg) {
+            zero_compare_flags(op, n, double, q);
+        }
         return fp_two_misc(op, d, n, double, q);
     }
     let env = Env::from_fpcr(fpcr);
@@ -800,6 +849,7 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
                     SimdFpOp2::Fabs | SimdFpOp2::Fneg => if double { fp64::op2(op, a) } else { fp32::op2(op, a as u32) as u64 },
                     _ => {
                         let a = softfp::flush_input(f, env, a);
+                        softfp::raise_compare(f, a, 0, op != SimdFpOp2::Fcmeq0);
                         if double { fp64::op2(op, a) } else { fp32::op2(op, a as u32) as u64 }
                     }
                 };
@@ -825,6 +875,8 @@ pub fn int_fp_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32)
             SimdOp2::Ucvtf => softfp::int_to_fp(f, env, false, a, 0),
             _ => {
                 let a = softfp::flush_input(f, env, a);
+                let v = if esize == 32 { f32::from_bits(a as u32) as f64 } else { f64::from_bits(a) };
+                softfp::raise_to_int(f, a, v, v.trunc(), op == SimdOp2::Fcvtzs, esize == 64);
                 match op {
                     SimdOp2::Fcvtzs if esize == 32 => f32::from_bits(a as u32) as i32 as u64 & mask(32),
                     SimdOp2::Fcvtzs => f64::from_bits(a) as i64 as u64,
@@ -840,9 +892,6 @@ pub fn int_fp_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32)
 
 /// `fp_by_element` under FPCR: the per-lane operation is the soft one when RMode, FZ or DN is set.
 pub fn fp_by_element_fpcr(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool, fpcr: u32) -> u128 {
-    if fpcr & super::softfp::FPCR_ARITH_MASK == 0 {
-        return fp_by_element(op, d, n, m, index, double, q);
-    }
     let esize = if double { 64 } else { 32 };
     let op3 = match op {
         SimdFpElementOp::Fmul => SimdFpOp3::Fmul,

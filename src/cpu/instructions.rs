@@ -350,6 +350,8 @@ pub enum Instruction {
         rm: u8,
         is_zero: bool,
         is_double: bool,
+        /// `FCMPE`: a quiet NaN also raises `FPSR.IOC`.
+        signalling: bool,
     },
 
     /// Floating-Point / GP Register Transfer: `FMOV Dd, Xn`, `FMOV Xd, Dn`, etc.
@@ -845,6 +847,8 @@ pub enum Instruction {
         nzcv: u8,
         cond: Condition,
         is_double: bool,
+        /// `FCCMPE`: a quiet NaN also raises `FPSR.IOC`.
+        signalling: bool,
     },
 
     /// `ADC/ADCS/SBC/SBCS Rd, Rn, Rm`

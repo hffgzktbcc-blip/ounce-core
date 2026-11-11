@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - 'docs/verify/fp-edge/**'
+      - 'tools/testfloat/**'
       - 'docs/verify/insn-fuzzer/fuzz_host.c'
       - 'src/fuzz_replay.rs'
       - 'src/cpu/**'
@@ -63,4 +64,54 @@ jobs:
         with:
           name: fp-edge-evidence-${{ matrix.os }}
           path: ${{ runner.temp }}/fp-edge-${{ matrix.os }}/
+          if-no-files-found: warn
+
+  # Berkeley TestFloat (SoftFloat 3e) as an independent software oracle for results and FPSR flags: add sub mul div sqrt
+  # mulAdd, FCVT, SCVTF/UCVTF, FCVT*S/U, FRINT*, FCMP/FCMPE, in all four rounding modes. Tier-4 is not replayed here
+  # (it runs through the interpreter once FPSR flags are tracked, see docs/verify/fp-edge/README.md). TestFloat is built
+  # at pinned commits at test time; nothing from it is committed.
+  testfloat:
+    name: TestFloat oracle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+      - name: Build ounce-core
+        run: cargo build --release --locked
+      - name: Build TestFloat at pinned commits
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/tf" && cd "$RUNNER_TEMP/tf"
+          git clone -q https://github.com/ucb-bar/berkeley-softfloat-3.git && git -C berkeley-softfloat-3 checkout -q 07ebd29db0cfb55723a79fbbffe99103ef38e305
+          git clone -q https://github.com/ucb-bar/berkeley-testfloat-3.git && git -C berkeley-testfloat-3 checkout -q a9c849f1b0eb0264b626d9686ffae167d996e3be
+          make -C berkeley-softfloat-3/build/Linux-x86_64-GCC SPECIALIZE_TYPE=ARM-VFPv2 -j"$(nproc)" > sf.log 2>&1 || { tail -30 sf.log; exit 1; }
+          make -C berkeley-testfloat-3/build/Linux-x86_64-GCC -j"$(nproc)" testfloat_gen > tf.log 2>&1 || { tail -30 tf.log; exit 1; }
+          echo "TESTFLOAT_GEN=$PWD/berkeley-testfloat-3/build/Linux-x86_64-GCC/testfloat_gen" >> "$GITHUB_ENV"
+      - name: Replay TestFloat vectors through the interpreter and Tier-3
+        shell: bash
+        run: |
+          set -euo pipefail
+          trace="$RUNNER_TEMP/testfloat.trace"
+          python3 tools/testfloat/gen_trace.py --gen "$TESTFLOAT_GEN" --count 3000 > "$trace"
+          wc -l "$trace"
+          for engine in interp tier3; do
+            echo "== $engine =="
+            target/release/ounce-core fuzz-replay --engine "$engine" --show 10 "$trace" | tee "$RUNNER_TEMP/testfloat-$engine.txt"
+            # fuzz-replay exits 1 on a value mismatch; flag mismatches are printed, so fail on those too
+            grep -q 'differ on matching results: 0$' "$RUNNER_TEMP/testfloat-$engine.txt"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: testfloat-results
+          path: |
+            ${{ runner.temp }}/testfloat-*.txt
           if-no-files-found: warn

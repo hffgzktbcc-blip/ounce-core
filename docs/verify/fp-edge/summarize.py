@@ -3,7 +3,8 @@
 
 usage: summarize.py OUTDIR            (OUTDIR holds words.txt, trace.gz, results-<engine>.tsv, meta.json)
 Writes OUTDIR/summary.json and OUTDIR/summary.md. Exit status: 0, or 1 when the gate fails (any engine that ran
-shows a value mismatch at any corpus FPCR value, or no case was compared). Pure standard library.
+shows a value mismatch or an FPSR exception-flag mismatch (IOC, DZC, OFC, UFC, IXC, IDC) at any corpus FPCR value, or
+no case was compared). Pure standard library.
 """
 import collections, gzip, json, pathlib, sys
 
@@ -61,11 +62,17 @@ def main(out):
             u = unsupported_all[names.get(r[2], r[2])]
             u[0] += 1
             u[1] += r[3] == "unsupported"
-        fpsr = sum(1 for r in rows if r[3] == "match" and r[4])
+        flag_rows = [r for r in rows if r[3] == "match" and r[4]]
+        fpsr = len(flag_rows)
+        flag_words = collections.Counter(names.get(r[2], r[2]) for r in flag_rows)
+        first_flag = flag_rows[0] if flag_rows else None
         bad_words = collections.Counter(names.get(r[2], r[2]) for r in rows if r[3] == "mismatch")
         summary["engines"][e] = {
             "cases": len(rows), "status": dict(total), "by_fpcr": {k: dict(v) for k, v in by_mode.items()},
-            "fpsr_exception_flags_differ_on_matching_results_not_modelled": fpsr,
+            "fpsr_exception_flags_differ_on_matching_results": fpsr,
+            "flag_mismatch_words_top": flag_words.most_common(15),
+            "first_flag_divergence": first_flag and {"trace_line": first_flag[0], "name": names.get(first_flag[2]), "fpcr": hex(first_flag[1]),
+                                                     "operands": operands(trace, first_flag)},
             "words_always_unsupported": sorted(n for n, (c, u) in unsupported_all.items() if c == u),
             "mismatching_words_top": bad_words.most_common(15),
             "first_divergence": first_any and {"trace_line": first_any[0], "name": names.get(first_any[2]), "fpcr": hex(first_any[1]),
@@ -73,8 +80,8 @@ def main(out):
             "first_divergence_default_fpcr": first_default and {"trace_line": first_default[0], "name": names.get(first_default[2]),
                                                                   "detail": first_default[5], "operands": operands(trace, first_default)},
         }
-        # every FPCR value is modelled now (RMode, FZ, DN): a mismatch at any of them fails the gate
-        if first_any or not rows:
+        # every FPCR value and the FPSR exception flags are modelled: a mismatch in either fails the gate
+        if first_any or fpsr or not rows:
             gate_ok = False
     base = data.get("interp")
     for e in ENGINES[1:]:
@@ -84,7 +91,7 @@ def main(out):
             summary["vs_interp"][e] = {"differing_cases": len(diff),
                                        "first": first and {"trace_line": first[0][0], "name": names.get(first[0][2]), "fpcr": hex(first[0][1]),
                                                            "interp": [first[0][3], first[0][5]], e: [first[1][3], first[1][5]]}}
-    summary["gate"] = {"rule": "no value mismatch at any FPCR value on any engine that ran, and at least one case compared", "passed": gate_ok}
+    summary["gate"] = {"rule": "no value or FPSR exception-flag mismatch at any FPCR value on any engine that ran, and at least one case compared", "passed": gate_ok}
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 
     md = [f"# FP edge-case experiment: {meta.get('reference_kind')}", "",
@@ -96,7 +103,8 @@ def main(out):
         for m in modes:
             c = s["by_fpcr"].get(m, {})
             md.append(f"| {m} | {c.get('match', 0)} | {c.get('mismatch', 0)} | {c.get('unsupported', 0)} |")
-        md += ["", f"total: {s['status']}", ""]
+        md += ["", f"total: {s['status']}", "", f"FPSR exception flags differ on {s['fpsr_exception_flags_differ_on_matching_results']} otherwise-matching cases"
+               + (f" (top words: {s['flag_mismatch_words_top'][:5]})" if s["flag_mismatch_words_top"] else ""), ""]
         for key in ("first_divergence_default_fpcr", "first_divergence"):
             fd = s[key]
             md.append(f"- {key.replace('_', ' ')}: " + (f"`{fd['name']}` trace line {fd['trace_line']}: {fd['detail'][:160]}" if fd else "none"))

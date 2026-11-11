@@ -22,7 +22,7 @@ use std::io::BufRead;
 const CODE: u64 = 0x1000;
 /// FPSR.QC (bit 27): saturation, modelled.
 const QC: u32 = 1 << 27;
-/// FPSR exception flags (IOC, DZC, OFC, UFC, IXC, IDC): the interpreter does not model them.
+/// FPSR exception flags (IOC, DZC, OFC, UFC, IXC, IDC): compared against the reference.
 const EXC: u32 = 0x9F;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -176,6 +176,8 @@ fn setup(word: u32, i: &Init) -> (Cpu, Memory) {
     cpu.regs.sp = i.sp;
     cpu.regs.v = i.v;
     cpu.regs.fpcr = i.fpcr;
+    // Tier-4 compiled FP does not accumulate FPSR flags; replay needs them, so keep FP arithmetic out of compiled code
+    cpu.fp_flags_tracked = true;
     cpu.regs.pstate.from_bits(i.nzcv << 28);
     (cpu, mmu)
 }
@@ -758,7 +760,7 @@ pub fn run(args: &[String]) -> i32 {
     println!("  distinct classes executed:    {}", ran_classes.len());
     println!("  exact match (X,V,NZCV,QC):    {}", t.matched);
     println!("  MISMATCH:                     {} ({} with QC wrong)", t.value_mismatch, t.qc_mismatch);
-    println!("  FPSR exception flags differ on matching results (not modelled): {}", t.fpsr_exc_only);
+    println!("  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: {}", t.fpsr_exc_only);
     println!("emulator runs a word the host calls UNDEFINED: {}", t.emu_runs_undefined);
     if !filter.is_empty() {
         println!("filter (any of {} masks): executed {f_exec}, exact match {f_match}, mismatch {}", filter.len(), f_exec - f_match);
@@ -1024,7 +1026,7 @@ mod tests {
         let tf = t.replacen("T ", "TF 1000000 ", 1);
         let c = case(&tf);
         assert_eq!(c.fpcr, 0x100_0000);
-        assert_eq!(replay(&c), Outcome::Ran(Vec::new(), 0), "FZ run must flush the denormal to +0");
+        assert_eq!(replay(&c), Outcome::Ran(Vec::new(), 0x80), "FZ run must flush the denormal to +0 and raise IDC");
         assert!(matches!(replay(&case(&t)), Outcome::Ran(d, _) if !d.is_empty()), "FPCR 0 keeps the denormal, so the FZ expectation differs");
         assert!(parse_line("TF 100000000 1e212803").is_err());
     }
