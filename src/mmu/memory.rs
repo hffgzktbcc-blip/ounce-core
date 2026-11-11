@@ -327,7 +327,14 @@ impl Memory {
             return;
         }
         let last = base_addr.saturating_add(size as u64 - 1) >> 12;
-        for page_idx in (base_addr >> 12)..=last {
+        let first = base_addr >> 12;
+        // A range wider than the address space holds pages visits the mapped pages, not every index.
+        let doomed: Vec<u64> = if last - first >= self.pages.len() as u64 {
+            self.pages.keys().copied().filter(|i| (first..=last).contains(i)).collect()
+        } else {
+            (first..=last).collect()
+        };
+        for page_idx in doomed {
             if let Some(page) = self.pages.remove(&page_idx) {
                 if page.guarded {
                     self.guarded_pages -= 1;
