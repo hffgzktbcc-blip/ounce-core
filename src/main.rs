@@ -3584,6 +3584,7 @@ fn require_cli_success(outcome: VmOutcome) {
             _ => cli_flow::Stop::Fault,
         };
         let engine = match cpu::CpuTier::from_env() {
+            cpu::CpuTier::Interpreter => "interpreter",
             cpu::CpuTier::Tier3 => "tier3",
             cpu::CpuTier::Tier4 => "tier4",
             cpu::CpuTier::Native => "native",
