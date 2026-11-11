@@ -63,6 +63,12 @@ def replay(args):
     expected = json.loads(files[manifest['runs'][args.side]['observation']])
     corpus = args.corpus_root.resolve()
     binary = corpus / NRO
+    if not binary.is_file():
+        raise ValueError(
+            f'missing recorded NRO at {binary} under --corpus-root '
+            '(ounce-diagnose replay runs only the pinned sdl2-simple recipe; '
+            "to run or check another .nro, use 'ounce-core run-nro <file.nro>' or 'ounce-core ui')"
+        )
     if hashlib.sha256(binary.read_bytes()).hexdigest() != expected['nro_sha256']:
         raise ValueError('NRO SHA-256 does not match the recorded input; use the exact authorized binary')
     checkout = args.checkout.resolve()
@@ -114,7 +120,18 @@ def replay(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    epilog = (
+        'To diagnose your own .nro or .elf program instead of the retained SDL2/audio dossiers, run:\n'
+        '  ounce-core run-nro <program.nro>       run a Switch homebrew .nro and print stop/fault details\n'
+        '  ounce-core ui                          open the local verification workbench (Tier-3 vs Tier-4 vs host)\n'
+        '  ounce-core diverge <program.nro>       replay sampled instructions on this computer\'s CPU\n'
+        '  ounce-core run-elf <program.elf>       run a static AArch64 Linux ELF binary'
+    )
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument('--version', action='version', version=f'ounce-diagnose {VERSION}')
     commands = parser.add_subparsers(dest='command', required=True)
     example = commands.add_parser('example', help='create the reviewed offline SDL2 dossier; no execution')
