@@ -49,6 +49,9 @@ Swift logic tests: `swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos
 | First run | Explains the product; accepts a dropped or chosen `.nro`. A dropped `.elf` gets an honest "not supported yet" (ELF loading is a separate change). |
 | Engine and budget | `--cpu=tier3|tier4|native` is always passed explicitly; `OUNCE_CPU` is stripped from the child. A budget sets `OUNCE_NRO_BUDGET`; blank clears any inherited value. `native` ignores the budget (it has a time limit, `OUNCE_NRO_TIMEOUT_SECS`) and runs headless. |
 | Diagnosis | `RunLogic.swift` parses the runtime's printed stop messages (see below) into a headline, an explanation and a next step, quoting the log lines it relied on. The first failure line wins. A silent engine fallback is reported as such, never as a pass. |
+| Finished run | The diagnosis card shows `Program output:` (what the program printed, last 8 lines) above the runtime evidence, so the result is visible without opening session details. |
+| Report This Problem… | Shown after a failed run. Copies a report (file name only, home folder replaced by `~`, engine, command, OS, evidence) and opens `.github/ISSUE_TEMPLATE/emulation_bug.yml` in the browser with fields prefilled. The app submits nothing. |
+| Classic window | Not shown at launch. Every classic action (Run in a Window, Verify, View Results, any diagnosis or error) brings it forward first. |
 | Verify against Host | `HostVerify.swift` matches the NRO file name to a harness in `docs/verify/differential.json`, runs it headless with a 4e9 budget (as `verify_differential.py` does) in a temporary SD folder, and diffs the harness's result file against the bundled `expected-host.txt`. A harness whose reference is `arm64_reference` carries a caveat on non-ARM64 hosts. |
 
 Recognised runtime messages: `Unimplemented instruction 0x… at PC: 0x…`, `Execution budget reached (N instructions)`,
