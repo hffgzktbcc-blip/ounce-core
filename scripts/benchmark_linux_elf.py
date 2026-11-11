@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import platform
 import re
+import resource
 import statistics
 import subprocess
 import time
@@ -52,28 +53,38 @@ def main():
             for n in range(a.warmups + a.repeats):
                 for label, exe in executables.items():
                     cmd = [str(exe), 'run-elf', str(elf), '--cpu=' + engine, '--deterministic']
+                    cpu_start = resource.getrusage(resource.RUSAGE_CHILDREN)
                     start = time.perf_counter()
                     r = subprocess.run(cmd, capture_output=True, timeout=a.seconds)
                     seconds = time.perf_counter() - start
+                    cpu_end = resource.getrusage(resource.RUSAGE_CHILDREN)
+                    cpu_seconds = (cpu_end.ru_utime + cpu_end.ru_stime - cpu_start.ru_utime - cpu_start.ru_stime)
                     stem = a.output / f'{engine}-{n}-{label}'
+                    stem.with_suffix('.timing.json').write_text(json.dumps({
+                        'wall_seconds': seconds, 'cpu_seconds': cpu_seconds, 'warmup': n < a.warmups,
+                        'argv': cmd}) + '\n')
                     stem.with_suffix('.stdout').write_bytes(r.stdout)
                     stem.with_suffix('.stderr').write_bytes(r.stderr)
                     matches = re.findall(rb'^\[run-elf\] engine=(\S+) instructions=(\d+) syscalls=(\d+)$', r.stderr, re.M)
                     if r.returncode or r.stdout != expected.read_bytes() or len(matches) != 1 or matches[0][0].decode() != identity:
                         raise ValueError(f'{stem}: failed execution, engine identity or reference mismatch')
                     if n >= a.warmups:
-                        samples[label].append({'seconds': seconds, 'instructions': int(matches[0][1]),
+                        samples[label].append({'seconds': seconds, 'cpu_seconds': cpu_seconds, 'instructions': int(matches[0][1]),
                                                'syscalls': int(matches[0][2])})
             if len({s['instructions'] for runs in samples.values() for s in runs}) != 1:
                 raise ValueError('guest instruction counts changed')
             changes = [100 * (b['seconds'] / c['seconds'] - 1)
                        for b, c in zip(samples['baseline'], samples['candidate'])]
-            entry = {'runtimes': {label: {'samples': runs, 'instructions_per_second_median': statistics.median(
-                s['instructions'] / s['seconds'] for s in runs)} for label, runs in samples.items()},
+            cpu_changes = [100 * (b['cpu_seconds'] / c['cpu_seconds'] - 1)
+                           for b, c in zip(samples['baseline'], samples['candidate'])]
+            entry = {'paired_cpu_speedup_percent': {'samples': cpu_changes, 'median': statistics.median(cpu_changes),
+                                                    'min': min(cpu_changes), 'max': max(cpu_changes)}, 'runtimes': {label: {'samples': runs, 'instructions_per_second_median': statistics.median(
+                s['instructions'] / s['seconds'] for s in runs),
+                'cpu_instructions_per_second_median': statistics.median(s['instructions'] / s['cpu_seconds'] for s in runs)} for label, runs in samples.items()},
                 'paired_speedup_percent': {'samples': changes, 'median': statistics.median(changes),
                                           'min': min(changes), 'max': max(changes)}}
             report['engines'][engine] = entry
-            print(engine, entry['paired_speedup_percent'], flush=True)
+            print(engine, {'wall': entry['paired_speedup_percent'], 'cpu': entry['paired_cpu_speedup_percent']}, flush=True)
         report['complete'] = True
     finally:
         (a.output / 'benchmark.json').write_text(json.dumps(report, indent=2) + '\n')

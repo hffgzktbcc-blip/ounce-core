@@ -2,7 +2,7 @@
 """Run an existing pinned library harness (default LZ4) as a static Linux ARM64 ELF, without a console SDK.
 
 Requires a host C compiler, a static AArch64 Linux C toolchain (for example
---elf-cc 'zig cc -target aarch64-linux-musl'), and ounce-core built with native-jit.
+--elf-cc 'zig cc -target aarch64-linux-musl'), and ounce-core (native-jit is required only when selecting Tier-4).
 Writes source/binary identities, commands, stdout/stderr and report.json to a NEW
 work directory. A byte match with a failing exit or engine fallback is not a pass.
 """
