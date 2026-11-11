@@ -139,7 +139,7 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 
 ### Legacy Switch regression corpus
 
-**<!-- corpus-headline -->50/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Interpreter and Tier-3 both pass the registered pixel checks. The oracle manifest distinguishes whole-frame hashes from named pixel probes ([method](docs/corpus-oracles.md)). The count comes from the [Ounce-Verify](docs/verify/README.md) canonical report, with [current external-corpus runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml) containing the underlying artifacts; CI fails if this README disagrees with the report or with the committed [snapshot](tests/corpus/oracle-results.json). The committed snapshot comes from the retained [canonical report](docs/verify/audout-padding/canonical-corpus.json) at core commit `430ce19`, not from a fresh corpus run. Failures are the to-do list.
+**<!-- corpus-headline -->50/50<!-- /corpus-headline --> outside homebrew programs pass their registered first-frame oracle.** These are programs we did not write, built unchanged from pinned upstream commits ([provenance](docs/PROVENANCE.md)). Interpreter and Tier-3 both pass the registered pixel checks. The oracle manifest distinguishes whole-frame hashes from named pixel probes ([method](docs/corpus-oracles.md)). The count comes from the [Ounce-Verify](docs/verify/README.md) canonical report, with [current external-corpus runs](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/external-corpus.yml) containing the underlying artifacts; CI fails if this README disagrees with the report or with the committed [snapshot](tests/corpus/oracle-results.json). The committed snapshot comes from a fresh local [canonical report](docs/verify/corpus-c47fa14/canonical-corpus.json) at core commit `c47fa14` (macOS arm64 host, Lima Docker; not an independent rerun). Failures are the to-do list.
 
 | Selected program | Source | Oracle | Result (both engines) |
 | :--- | :--- | :--- | :--- |
@@ -340,9 +340,9 @@ This section is rendered from [the milestone registry](docs/roadmap/milestones.j
 | Research track | Reviewed stage | Supporting evidence | Next proof gate |
 | :--- | :--- | :--- | :--- |
 | Static Linux ARM64 programs | experimental | [Six freestanding fixtures plus 18 real programs run as static musl ELFs (LZ4, xxHash, cJSON and zlib also on macOS and Windows); wasm3 does not run yet](docs/verify/linux-elf/README.md) | Fix wasm3 as an ELF (#366); expand Linux library coverage from observed needs; qualify portable execution recording |
-| Differential verification against real ARM64 | measured | [Seeded single-instruction hardware fuzzing and three-engine comparisons; bounded results retained](docs/verify/insn-fuzzer/README.md) | Qualify ARM64 fuzzer CI; then expand per-family and sequence coverage (vision step 2) |
+| Differential verification against real ARM64 | measured | [Seeded single-instruction hardware fuzzing and three-engine comparisons; bounded results retained](docs/verify/insn-fuzzer/README.md) | ARM64 fuzzer CI is qualified (hosted Apple Silicon job passed 2026-11-08); next expand per-family and sequence coverage (vision step 2) |
 | Agent workflow | measured | [Handoff snapshots, expiring claims and shared journal; used by four agents in parallel](docs/AGENT_HUB.md) | Keep the tool simple; fix friction as agents report it |
-| Failure to reproduction | measured | [R1, R2 and R4 done: retained SDL2/audio diagnosis (failure-to-reproduction walkthrough, one externally grounded developer issue, audio-case result) and one hardware-observed instruction mismatch with exact register snapshots](docs/INSTRUCTION_DIAGNOSIS.md) | Repair the measured arithmetic discrepancy; arbitrary-program first divergence remains unestablished |
+| Failure to reproduction | measured | [R1, R2 and R4 done: retained SDL2/audio diagnosis (failure-to-reproduction walkthrough, one externally grounded developer issue, audio-case result) and one hardware-observed instruction mismatch with exact register snapshots](docs/INSTRUCTION_DIAGNOSIS.md) | The measured vector-multiply discrepancy is repaired; the scalar-FP sibling is open as #362; arbitrary-program first divergence remains unestablished |
 | Usable community tool | measured | [R3 and R5 done: standalone diagnosis toolkit 0.2.0 installable and published with checksums and acceptance evidence (R1–R5 are all complete)](docs/releases/diagnosis-0.2.0-readiness.md) | No outside feedback received yet; collect it. Runtime distribution has separate provenance dependencies |
 | Switch regression corpus (legacy) | measured | [Canonical first-frame oracle corpus](docs/verify/README.md) — **<!-- corpus-headline -->50/50<!-- /corpus-headline --> passes** (CI-certified) | Keep passing in CI; no expansion unless a program reproduces a concrete CPU bug |
 | Switch 2 research (archived) | experimental | [Limited SDK-path observation](docs/verify/README.md) | No further work; kept as a record. Not part of the product direction (see docs/VISION.md) |
@@ -464,7 +464,7 @@ scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.app"
 ```
 
 Open **Ounce Core.app**. The first screen explains what the app does; drop a
-homebrew `.nro` on it or choose **Open Program…**. ELF programs are not supported yet.
+homebrew `.nro` on it or choose **Open Program…**. Static AArch64 Linux ELF programs run in the CLI with `ounce-core run-elf <file>`.
 
 - **Run Settings:** pick the engine (interpreter `tier3`, JIT `tier4`, or `native`) and an
   instruction budget (blank = the runtime default of 50 million, the `OUNCE_NRO_BUDGET` mechanism).
