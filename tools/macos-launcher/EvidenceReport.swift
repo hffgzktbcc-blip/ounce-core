@@ -18,7 +18,7 @@ struct EvidenceReport {
     struct Oracle: Decodable { let name: String; let status: String }
     struct Section { let title: String; let lines: [String] }
     private struct Version: Decodable {
-        let schema: String
+        let schema: String?
         enum CodingKeys: String, CodingKey { case schema = "schema_version" }
     }
     private struct Document: Decodable { let records: [Case] }
@@ -40,6 +40,31 @@ struct EvidenceReport {
             enum CodingKeys: String, CodingKey { case caseID = "case_id", observations, hypothesis }
         }
         let cases: [Item]
+    }
+    private struct AudioDiagnosis: Decodable {
+        struct Item: Decodable {
+            let engine: String
+            let rejected_before: Int
+            let stereo_after: Int
+        }
+        let mode: String
+        let cases: [Item]
+        let recorded_repair_matches: Bool
+        let explanation: String
+        let likely_owner: String
+        let limits: String
+    }
+    private struct Comparison: Decodable {
+        struct Change: Decodable {
+            let `case`: String
+            let before: String
+            let after: String
+        }
+        let baseline: String
+        let candidate: String
+        let verdict_changes: [Change]
+        let regressions: [Change]
+        let diagnosis: Diagnosis
     }
     private struct Repair: Decodable {
         struct Revision: Decodable {
@@ -68,10 +93,67 @@ struct EvidenceReport {
         let target: String
         let runs: [Item]
     }
+    private struct AudioObservation: Decodable {
+        struct RunItem: Decodable {
+            struct Attempt: Decodable {
+                let rate: Int
+                let raw_channels: Int
+                let result: Int
+                let channels: Int?
+            }
+            let engine: String
+            let pass: Bool
+            let audio_open: [Attempt]
+        }
+        let nro_sha256: String
+        let queued_frames: Int
+        let pass: Bool
+        let runs: [RunItem]
+    }
+    private struct ReplayResult: Decodable {
+        let side: String
+        let core_commit: String
+        let binary_sha256: String
+        let timeout_seconds: Double
+        let matched: Bool
+        let status: String
+        let exit_code: Int
+        let observation_error: String?
+    }
+    private struct WorkbenchCheck: Decodable {
+        struct EngineItem: Decodable {
+            struct Stop: Decodable { let kind: String; let line: String }
+            let engine: String
+            let status: String
+            let seconds: Double
+            let stop: Stop
+        }
+        struct Verdict: Decodable {
+            let kind: String
+            let headline: String
+            let detail: String
+        }
+        struct Instructions: Decodable {
+            let checked: Int
+            let mismatched: Int
+        }
+        let name: String?
+        let sha256: String?
+        let status: String
+        let engines: [EngineItem]
+        let verdict: Verdict
+        let instructions: Instructions?
+    }
     enum ReadError: LocalizedError {
         case invalid
+        case manifestSelected
         var errorDescription: String? {
-            "Choose a saved Ounce-Verify corpus, diagnosis, repair or run report (.json), up to 8 MB and 1,000 results. This file could not be read as a supported report."
+            switch self {
+            case .manifestSelected:
+                return "This file is a dossier manifest (manifest.json) that lists file hashes. Open diagnosis.json, comparison.json, before.json, after.json, or canonical-corpus.json in the same folder instead."
+            case .invalid:
+                return "Choose a saved Ounce-Verify corpus, diagnosis, comparison, repair or run report, an Ounce-Diagnose audio or replay report, or a Workbench result.json (.json), up to 8 MB and 1,000 results. This file could not be read as a supported report."
+            }
         }
     }
     let records: [Case]
@@ -83,7 +165,7 @@ struct EvidenceReport {
         let decoder = JSONDecoder()
         do {
             let version = try decoder.decode(Version.self, from: data)
-            switch version.schema {
+            switch version.schema ?? "ounce-core/workbench-check-v1" {
             case "ounce-verify/v0":
                 let report = try decoder.decode(Document.self, from: data)
                 guard !report.records.isEmpty, report.records.count <= 1000,
@@ -107,6 +189,36 @@ struct EvidenceReport {
                 ]) }
                 heading = "Saved diagnosis"
                 overview = "Suggested causes are hypotheses, not proof that a particular engine or component is wrong."
+            case "ounce-diagnose/audio-padding-v1":
+                let report = try decoder.decode(AudioDiagnosis.self, from: data)
+                guard report.cases.count <= 1000 else { throw ReadError.invalid }
+                records = []
+                sections = [Section(title: "Recorded audio diagnosis", lines: [
+                    "Mode: \(report.mode)", report.explanation,
+                    "Suggested area to inspect (hypothesis): \(report.likely_owner)",
+                    report.recorded_repair_matches ? "Recorded repair matches the saved observations." : "Recorded repair does not match the saved observations.",
+                    "Limits: \(report.limits)"
+                ])] + report.cases.map { item in Section(title: item.engine, lines: [
+                    "Rejected before: \(item.rejected_before) • Stereo after: \(item.stereo_after)"
+                ]) }
+                heading = "Saved audio diagnosis"
+                overview = "Recorded protocol observations only; this view does not execute a guest or independently qualify a repair."
+            case "ounce-verify/comparison-v1":
+                let report = try decoder.decode(Comparison.self, from: data)
+                guard report.verdict_changes.count <= 1000, report.regressions.count <= 1000,
+                      report.diagnosis.cases.count <= 1000 else { throw ReadError.invalid }
+                records = []
+                sections = [Section(title: "Recorded revisions", lines: [
+                    "Earlier revision: \(report.baseline)", "New revision: \(report.candidate)",
+                    "Recorded regressions: \(report.regressions.count)"
+                ])] + report.verdict_changes.map { item in Section(title: item.case, lines: [
+                    "Earlier result: \(item.before) • New result: \(item.after)"
+                ]) } + report.diagnosis.cases.map { item in Section(title: item.caseID, lines: [
+                    "Suggested area to inspect (hypothesis): \(item.hypothesis.owner)",
+                    "Suggested next check: \(item.hypothesis.next)"
+                ]) }
+                heading = "Saved comparison"
+                overview = "Saved verdict changes and diagnosis hypotheses; this view does not rerun checks or establish compatibility."
             case "ounce-verify/repair-v1":
                 let report = try decoder.decode(Repair.self, from: data)
                 guard report.issues.count <= 1000 else { throw ReadError.invalid }
@@ -136,10 +248,63 @@ struct EvidenceReport {
                 ]) }
                 heading = "Saved Switch 2 SDK-path results"
                 overview = "Recorded target: \(report.target). This path uses HBLauncher host UI callbacks; it is not Switch 2 GPU-path validation."
+            case "ounce-verify/audout-padding-v1":
+                let report = try decoder.decode(AudioObservation.self, from: data)
+                guard !report.runs.isEmpty, report.runs.count <= 1000,
+                      report.runs.allSatisfy({ $0.audio_open.count <= 1000 }) else { throw ReadError.invalid }
+                records = []
+                sections = report.runs.map { run in
+                    let selected = Array(run.audio_open.dropFirst())
+                    let rejected = selected.filter { $0.result != 0 }.count
+                    let stereo = selected.filter { $0.result == 0 && $0.channels == 2 }.count
+                    return Section(title: run.engine, lines: [
+                        run.pass ? "Recorded run passed all open checks." : "Recorded run rejected \(rejected) of \(selected.count) padded default-stereo opens.",
+                        "Selected opens: \(selected.count) • Rejected: \(rejected) • Stereo replies: \(stereo)"
+                    ])
+                }
+                heading = "Saved audio observation"
+                overview = "Binary SHA-256: \(report.nro_sha256.prefix(12)) • Queued frames: \(report.queued_frames). Recorded observation only; opening this file does not execute a guest."
+            case "ounce-diagnose/replay-v1":
+                let report = try decoder.decode(ReplayResult.self, from: data)
+                records = []
+                var lines = [
+                    "Side: \(report.side) • Process status: \(report.status) (exit code \(report.exit_code))",
+                    "Revision: \(report.core_commit) • Binary SHA-256: \(report.binary_sha256.prefix(12))",
+                    report.matched ? "Recorded observations matched this replay." : "Recorded observations did not match this replay."
+                ]
+                if let err = report.observation_error { lines.append("Observation note: \(err)") }
+                sections = [Section(title: "Bounded SDL2 replay", lines: lines)]
+                heading = "Saved replay result"
+                overview = "Timeout limit: \(Int(report.timeout_seconds)) s. This view shows a saved replay result and does not re-run Cargo."
+            case "ounce-core/workbench-check-v1":
+                let report = try decoder.decode(WorkbenchCheck.self, from: data)
+                guard !report.engines.isEmpty, report.engines.count <= 32 else { throw ReadError.invalid }
+                records = []
+                var list = [Section(title: report.verdict.headline, lines: [report.verdict.detail])]
+                if let ic = report.instructions {
+                    list.append(Section(title: "Instruction check", lines: [
+                        "Sampled instructions checked: \(ic.checked) • Mismatched: \(ic.mismatched)"
+                    ]))
+                }
+                list += report.engines.map { eng in Section(title: eng.engine, lines: [
+                    "Stop: \(eng.stop.kind) (\(eng.seconds) s)",
+                    eng.stop.line.isEmpty ? "No stop message recorded." : eng.stop.line
+                ]) }
+                sections = list
+                heading = "Saved workbench check"
+                let title = report.name ?? "program.nro"
+                let sha = report.sha256.map { " (\($0.prefix(12)))" } ?? ""
+                overview = "Program: \(title)\(sha). Saved one-run comparison from the Ounce Core Workbench; not a proof of correctness."
+            case "ounce-verify/retained-example-v1", "ounce-verify/audout-case-dossier-v1":
+                throw ReadError.manifestSelected
             default: throw ReadError.invalid
             }
             guard overview.count <= 4096, sections.allSatisfy({ $0.title.count <= 512 && $0.lines.allSatisfy({ $0.count <= 4096 }) }) else { throw ReadError.invalid }
-        } catch { throw ReadError.invalid }
+        } catch let error as ReadError {
+            throw error
+        } catch {
+            throw ReadError.invalid
+        }
     }
     static func read(_ url: URL) throws -> EvidenceReport {
         let handle = try FileHandle(forReadingFrom: url)
