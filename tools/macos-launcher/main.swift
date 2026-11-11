@@ -97,9 +97,6 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var diagnosisBody = NSTextField(wrappingLabelWithString: "")
     private var settings = RunSettings()
     private var lastProgram: URL?
-    private var reportButton: NSButton!
-    private var lastEngine: Engine?
-    private var pendingReport: IssueReport?
     private var verifying: (harness: Harness, sd: URL, engine: Engine)?
     private var catalog: [Harness] = []
     private var workbench: Workbench!
@@ -291,10 +288,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         diagnosisCard.isHidden = true
         diagnosisCard.setAccessibilityLabel("Diagnosis")
         stack.addArrangedSubview(diagnosisCard)
-        reportButton = button("Report This Problem…", #selector(reportProblem))
-        reportButton.setAccessibilityHelp("Copy a report about this failed run and open the GitHub issue form in your browser. Nothing is sent until you submit the form.")
-        reportButton.isHidden = true
-        let diagnosisStack = NSStackView(views: [diagnosisHeadline, diagnosisBody, reportButton])
+        let diagnosisStack = NSStackView(views: [diagnosisHeadline, diagnosisBody])
         diagnosisStack.orientation = .vertical
         diagnosisStack.alignment = .leading
         diagnosisStack.spacing = 6
@@ -379,17 +373,8 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
-    /// The classic window is not shown at launch (the workbench is the front door), so every classic action brings it
-    /// forward first. Otherwise its status, diagnosis and error sheets would update a window that is not on screen.
-    private func revealClassic() {
-        guard !window.isVisible else { return }
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
     @objc private func chooseHomebrew() {
         guard process == nil, window.attachedSheet == nil else { return }
-        revealClassic()
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "nro") ?? .data]
         panel.allowsMultipleSelection = false
@@ -403,7 +388,6 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func chooseReport() {
         guard window.attachedSheet == nil else { return }
-        revealClassic()
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
@@ -511,7 +495,6 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         var demo = settings
         demo.engine = .tier3 // The built-in demo is a graphics demo for the interpreter path.
         verifying = nil
-        lastProgram = nil // A failed demo is not a report about the last program that was opened.
         start(["gfx", "--present=gpu"], name: "graphics demo", settings: demo)
     }
 
@@ -555,7 +538,6 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func chooseVerification() {
         guard process == nil, window.attachedSheet == nil else { return }
-        revealClassic()
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "nro") ?? .data]
         panel.allowsMultipleSelection = false
@@ -604,25 +586,21 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func finishVerification(_ run: (harness: Harness, sd: URL, engine: Engine), diagnosis: Diagnosis, log: String) {
         defer { try? FileManager.default.removeItem(at: run.sd) }
         let title = "Verify against host: \(run.harness.name) on \(run.engine.rawValue)"
-        func showFailure(_ headline: String, _ summary: String) {
-            showDiagnosisText(headline, summary)
-            prepareReport(diagnosis, comparisonSummary: headline + "\n" + summary)
-        }
         if diagnosis.kind == .engineUnavailable {
-            showFailure(title + " — not run on that engine", diagnosis.text + "\n\nNo comparison was made, because it would not describe the engine you chose.")
+            showDiagnosisText(title + " — not run on that engine", diagnosis.text + "\n\nNo comparison was made, because it would not describe the engine you chose.")
             return
         }
         guard diagnosis.succeeded else {
-            showFailure(title + " — the run did not finish", diagnosis.text)
+            showDiagnosisText(title + " — the run did not finish", diagnosis.text)
             return
         }
         let produced = run.sd.appendingPathComponent(run.harness.resultFile)
         guard let actual = try? String(contentsOf: produced, encoding: .utf8) else {
-            showFailure(title + " — no output", "The program ran but did not write \(run.harness.resultFile) to the SD card, so there is nothing to compare. Check that the NRO was built from the matching harness.")
+            showDiagnosisText(title + " — no output", "The program ran but did not write \(run.harness.resultFile) to the SD card, so there is nothing to compare. Check that the NRO was built from the matching harness.")
             return
         }
         guard let expected = try? String(contentsOf: expectedHostURL(run.harness), encoding: .utf8) else {
-            showFailure(title + " — reference error", "The committed host reference could not be read; no comparison was made.")
+            showError("The committed host reference could not be read.")
             return
         }
         let comparison = ResultComparison.compare(expected: expected, actual: actual)
@@ -631,44 +609,22 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #else
         let hostIsARM64 = false
         #endif
-        let summary = comparison.summary(harness: run.harness, engine: run.engine, hostIsARM64: hostIsARM64)
-        if comparison.identical { showDiagnosisText(title + " — match", summary) }
-        else { showFailure(title + " — mismatch", summary) }
+        showDiagnosisText(title + (comparison.identical ? " — match" : " — mismatch"),
+                          comparison.summary(harness: run.harness, engine: run.engine, hostIsARM64: hostIsARM64))
     }
 
     // MARK: Diagnosis panel
 
     private func showDiagnosisText(_ headline: String, _ body: String) {
-        revealClassic()
         emptyCard.isHidden = true
-        reportButton.isHidden = true
-        pendingReport = nil
         diagnosisHeadline.stringValue = headline
         diagnosisBody.stringValue = body
         diagnosisCard.isHidden = false
     }
 
     private func showDiagnosis(_ diagnosis: Diagnosis) {
-        showDiagnosisText(diagnosis.headline, diagnosis.text.replacingOccurrences(of: diagnosis.headline + "\n\n", with: "", options: .anchored))
-        // A failed run ends with an action: one click copies a report and opens the issue form.
-        guard !diagnosis.succeeded else { return }
-        prepareReport(diagnosis)
-    }
-
-    private func prepareReport(_ diagnosis: Diagnosis, comparisonSummary: String? = nil) {
-        guard let program = lastProgram, let engine = lastEngine else { return }
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
-        pendingReport = IssueReport(program: program.lastPathComponent, engine: engine, diagnosis: diagnosis, appVersion: version,
-                                    hostOS: ProcessInfo.processInfo.operatingSystemVersionString, home: NSHomeDirectory(), comparisonSummary: comparisonSummary)
-        reportButton.isHidden = false
-    }
-
-    @objc private func reportProblem() {
-        guard let report = pendingReport else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(report.body, forType: .string)
-        if let url = report.url { NSWorkspace.shared.open(url) }
-        status.stringValue = "Report text copied. Review the issue form in your browser before submitting; add the expected result."
+        showDiagnosisText(diagnosis.headline, diagnosis.explanation + "\n\nWhat to try: " + diagnosis.nextStep
+            + (diagnosis.evidence.isEmpty ? "" : "\n\nFrom the log:\n" + diagnosis.evidence.map { "  " + $0 }.joined(separator: "\n")))
     }
 
     private func start(_ arguments: [String], name: String, waitsForGuestFrame: Bool = false,
@@ -685,7 +641,6 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             lastLog = log.url
             currentLog = log
             stopRequested = false
-            lastEngine = run.engine
             let child = Process()
             child.executableURL = runtime
             child.arguments = arguments
@@ -822,7 +777,6 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func showError(_ message: String) {
-        revealClassic()
         let alert = NSAlert()
         alert.messageText = "Ounce Core"
         alert.informativeText = message

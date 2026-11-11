@@ -251,7 +251,7 @@ Any other code, ported or new, that genuinely needs `unsafe` goes into an isolat
 
 Build from source using **Rust 1.85+ (edition 2024)** on a supported Linux, macOS or Windows host. OS-specific development libraries may be required on Linux; see the expanded setup notes below.
 
-**macOS launcher (Apple Silicon):** the release workflow builds `ounce-core-macos-arm64-app.zip` alongside the CLI archive, with a `.sha256` and an entry in `SHA256SUMS`. Publication remains subject to the notice review described in [docs/RELEASE_NOTICE_REVIEW.json](docs/RELEASE_NOTICE_REVIEW.json), including review of the app's optional features. When available on the Releases page, unzip it and move `Ounce Core.app` to Applications. It is **unsigned by a Developer ID and unnotarized** (it has only a local ad-hoc signature). On first launch, right-click > Open and confirm; alternatively run `xattr -d com.apple.quarantine "/Applications/Ounce Core.app"`, then open it. Only remove quarantine after checking the download's source and checksum. To build locally, run `scripts/build_macos_app.sh`.
+**macOS binaries:** no prebuilt macOS download is offered for now. Build from source on a Mac instead (see above). The macOS build links Apple-SDK-derived `objc2` crates, and whether redistributing a compiled binary that includes them is allowed is an open question; see [docs/PROVENANCE_OWNER_DECISIONS.md](docs/PROVENANCE_OWNER_DECISIONS.md). Linux and Windows builds are not affected.
 
 ```bash
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
@@ -478,9 +478,6 @@ homebrew `.nro` on it or choose **Open Program…**. ELF programs are not suppor
   [docs/verify/differential.json](docs/verify/differential.json) (for example `lz4.nro`), runs the NRO
   headless on the chosen engine and compares its output byte for byte with the committed
   `expected-host.txt`. It does not rebuild the host reference; use `scripts/verify_differential.py` for that.
-- **Report This Problem…** appears after a failed run. It copies a report (file name, engine, command, OS and the
-  runtime's stop lines; your home folder is replaced by `~`) and opens the issue form with those fields filled in.
-  Nothing is sent until you submit the form.
 - **Try the Demo** opens the bundled diagnostic; **Stop Session** ends the current session.
 - **View Check Results…** opens a saved evidence report.
 - **Show Session Details** reveals **Choose SD Card Folder…**, which selects the host folder

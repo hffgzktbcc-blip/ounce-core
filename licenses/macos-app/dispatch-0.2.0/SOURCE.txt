@@ -1,5 +1,0 @@
-Upstream dispatch 0.2.0 declares MIT and author Steven Sheldon in Cargo.toml.
-https://github.com/SSheldon/rust-dispatch/tree/82d6c7a5b75dc0c71c3f46f87bb6c16a476f7748
-That revision supplies no standalone licence file. Retain the manifest declaration
-and Steven Sheldon's rust-objc MIT text conservatively; this is not a new grant.
-The inherited MIT text provenance is recorded in licenses/objc2-MIT.txt.
