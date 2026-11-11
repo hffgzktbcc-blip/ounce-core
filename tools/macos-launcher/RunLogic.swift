@@ -75,12 +75,27 @@ struct Diagnosis: Equatable {
     let nextStep: String
     /// Verbatim runtime lines the conclusion rests on.
     let evidence: [String]
+    /// What the program itself printed (not runtime status lines), so a finished run shows its result.
+    var output: [String] = []
     var succeeded: Bool { kind == .finished }
 
     var text: String {
         var out = "\(headline)\n\n\(explanation)\n\nWhat to try: \(nextStep)"
+        if !output.isEmpty { out += "\n\nProgram output:\n" + output.map { "  " + $0 }.joined(separator: "\n") }
         if !evidence.isEmpty { out += "\n\nFrom the log:\n" + evidence.map { "  " + $0 }.joined(separator: "\n") }
         return out
+    }
+
+    /// Lines the guest printed: everything except the runtime's own bracketed or indented status lines and banner.
+    /// At most the last `limit` lines, each cut to 200 characters.
+    static func programOutput(log: String, limit: Int = 8) -> [String] {
+        let own = ["Format ", "Title ID", "Code size", "MOD0 ", "sdmc:/", "OUNCE-CORE", "Target:", "Loader]"]
+        let lines = log.split(whereSeparator: \.isNewline).map(String.init).filter { line in
+            guard let first = line.first, !line.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+            if first == "[" || first == " " || first == "=" || first == "\t" { return false }
+            return !own.contains { line.hasPrefix($0) }
+        }
+        return lines.suffix(limit).map { String($0.prefix(200)) }
     }
 
     /// The runtime prints one of these when it silently runs a different engine than requested.
@@ -107,7 +122,7 @@ struct Diagnosis: Equatable {
             return Diagnosis(kind: .unimplementedInstruction,
                 headline: "The program used an ARM64 instruction Ounce Core does not implement yet.",
                 explanation: "At address \(pc) the CPU fetched the instruction word \(word) and the decoder has no rule for it. This is a gap in Ounce Core, not necessarily a bug in your program, and nothing after this point can be trusted.",
-                nextStep: "Look up the word \(word) in the Arm Architecture Reference Manual, and check docs/verify/ for the decoder census, which ranks missing instructions. Running with the native engine on an Apple Silicon Mac shows what real hardware does with the same program.",
+                nextStep: "Look up the word \(word) in the Arm Architecture Reference Manual, and check docs/verify/ for the decoder census, which ranks missing instructions. Running with the native engine on an Apple Silicon Mac shows what real hardware does with the same program. To report this gap, use .github/ISSUE_TEMPLATE/emulation_bug.yml and include the instruction word \(word), PC \(pc), and the log line below.",
                 evidence: [line])
         }
         if let line = first("Execution budget reached") {
@@ -123,16 +138,17 @@ struct Diagnosis: Equatable {
             return Diagnosis(kind: .unhandledSVC,
                 headline: "The program asked the system for something Ounce Core does not provide.",
                 explanation: "It made supervisor call \(id) (an SVC, the way a program requests a kernel service) and the kernel model has no handler for it, so the run stopped.",
-                nextStep: "Check docs/svc-coverage.md for call \(id). A missing service is a gap in Ounce Core.",
+                nextStep: "Check docs/svc-coverage.md for call \(id). A missing service is a gap in Ounce Core; report it with .github/ISSUE_TEMPLATE/emulation_bug.yml and include the line below.",
                 evidence: [line])
         }
         if let line = first("Hit svcBreak") {
             var evidence = [line]
+            if let pc = first("Break PC:") { evidence.append(pc) }
             if let result = first("Break result:") { evidence.append(result) }
             return Diagnosis(kind: .guestBreak,
                 headline: "The program stopped itself on purpose.",
                 explanation: "It called svcBreak, which programs use to report a fatal error (an assertion or an unrecoverable service error). Ounce Core ran the program correctly up to its own error exit; the cause is usually a service result the program did not like.",
-                nextStep: "Read the lines just above the break in the session log for the last service request the program made.",
+                nextStep: "Read the lines just above the break in the session log for the last service request the program made. If Break result is shown below, its module and description identify the Horizon error code.",
                 evidence: evidence)
         }
         if let line = first("CPU Halted") {
@@ -155,7 +171,7 @@ struct Diagnosis: Equatable {
             return Diagnosis(kind: .fault,
                 headline: "The program caused a fault.",
                 explanation: "The CPU or memory model rejected an operation (such as reading unmapped memory or breaking an alignment rule). The final program counter shows where it stopped.",
-                nextStep: "Run it on another engine to see whether they agree. A fault that every engine reports points at the program, one only the interpreter reports points at Ounce Core.",
+                nextStep: "Run it on another engine to see whether they agree. A fault that every engine reports points at the program, one only the interpreter reports points at Ounce Core (use ounce-core diverge <file.nro> and .github/ISSUE_TEMPLATE/emulation_bug.yml).",
                 evidence: evidence)
         }
         if let line = first("Time limit reached") {
@@ -192,12 +208,71 @@ struct Diagnosis: Equatable {
                 headline: "The program ran to completion.",
                 explanation: "It exited normally on \(engine.title). That says it ran; it does not say the output is correct. Use Verify against host for a harness program to compare results with a real reference.",
                 nextStep: "For known verification harnesses, choose Verify against Host….",
-                evidence: exit.map { [$0] } ?? [])
+                evidence: exit.map { [$0] } ?? [],
+                output: programOutput(log: log))
         }
         return Diagnosis(kind: .unknownFailure,
             headline: "The run ended with an error Ounce Core could not classify.",
             explanation: "The runtime exited with status \(exitStatus) and the log has none of the stop messages this panel recognises.",
             nextStep: "Open the session log and look at the last lines.",
             evidence: Array(lines.suffix(3)))
+    }
+}
+
+/// Text for a bug report about a failed run, shaped like .github/ISSUE_TEMPLATE/emulation_bug.yml. It names the program by
+/// file name only and replaces the home folder with "~", so nothing about the user's account leaves the Mac unless they add it.
+struct IssueReport {
+    static let formURL = "https://github.com/hffgzktbcc-blip/ounce-core/issues/new"
+
+    let program: String
+    let engine: Engine
+    let diagnosis: Diagnosis
+    let appVersion: String
+    let hostOS: String
+    let home: String
+
+    /// Engine labels exactly as the issue form's dropdown spells them, so the form can preselect one.
+    var engineLabel: String {
+        switch engine {
+        case .tier3: return "Tier-3 (default)"
+        case .tier4: return "Tier-4 JIT (--cpu=tier4)"
+        case .native: return "Native (--cpu=native)"
+        }
+    }
+    var command: String { "ounce-core run-nro \(program) --cpu=\(engine.rawValue)" }
+
+    private func clean(_ text: String) -> String {
+        home.isEmpty ? text : text.replacingOccurrences(of: home, with: "~")
+    }
+    var title: String { "\(program): \(diagnosis.headline)" }
+    /// The runtime lines the diagnosis rests on, or the last log lines when none were recognised.
+    var observed: String { clean(([diagnosis.headline] + diagnosis.evidence).joined(separator: "\n")) }
+    var environment: String { "Ounce Core app \(appVersion), \(hostOS)" }
+
+    /// Complete text for the clipboard, so the report survives even if the form does not prefill.
+    var body: String {
+        """
+        Program and version: \(program) (give the source, commit or release, and how it was built)
+        Engine: \(engineLabel)
+        Expected result and where it comes from: (describe the reference, for example a host build of the same source)
+        What Ounce-Core did:
+        \(observed)
+        Exact command: \(command)
+        Environment: \(environment)
+        """
+    }
+
+    /// The issue form with the known fields filled in. Opening it does not submit anything.
+    var url: URL? {
+        var parts = URLComponents(string: IssueReport.formURL)
+        parts?.queryItems = [
+            URLQueryItem(name: "template", value: "emulation_bug.yml"),
+            URLQueryItem(name: "title", value: title),
+            URLQueryItem(name: "program", value: program),
+            URLQueryItem(name: "engine", value: engineLabel),
+            URLQueryItem(name: "observed", value: String(observed.prefix(1500))),
+            URLQueryItem(name: "repro", value: "\(command)\n\(environment)")
+        ]
+        return parts?.url
     }
 }

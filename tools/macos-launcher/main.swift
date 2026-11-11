@@ -97,6 +97,9 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var diagnosisBody = NSTextField(wrappingLabelWithString: "")
     private var settings = RunSettings()
     private var lastProgram: URL?
+    private var reportButton: NSButton!
+    private var lastEngine: Engine?
+    private var pendingReport: IssueReport?
     private var verifying: (harness: Harness, sd: URL, engine: Engine)?
     private var catalog: [Harness] = []
     private var workbench: Workbench!
@@ -191,7 +194,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             Drop a program here, or choose Open Program….
 
             • Homebrew .nro files run today.
-            • ELF programs are planned and not supported yet.
+            • Static AArch64 Linux ELF programs run in the CLI with: ounce-core run-elf <file>.
             • Choose an engine and an instruction budget under Run Settings.
             • If a run stops early, the Diagnosis panel says why in plain language.
             • For a known verification harness (lz4, xxhash, sqlite, lua and others), Verify against Host compares the output with the committed host reference.
@@ -288,7 +291,10 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         diagnosisCard.isHidden = true
         diagnosisCard.setAccessibilityLabel("Diagnosis")
         stack.addArrangedSubview(diagnosisCard)
-        let diagnosisStack = NSStackView(views: [diagnosisHeadline, diagnosisBody])
+        reportButton = button("Report This Problem…", #selector(reportProblem))
+        reportButton.setAccessibilityHelp("Copy a report about this failed run and open the GitHub issue form in your browser. Nothing is sent until you submit the form.")
+        reportButton.isHidden = true
+        let diagnosisStack = NSStackView(views: [diagnosisHeadline, diagnosisBody, reportButton])
         diagnosisStack.orientation = .vertical
         diagnosisStack.alignment = .leading
         diagnosisStack.spacing = 6
@@ -373,8 +379,17 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// The classic window is not shown at launch (the workbench is the front door), so every classic action brings it
+    /// forward first. Otherwise its status, diagnosis and error sheets would update a window that is not on screen.
+    private func revealClassic() {
+        guard !window.isVisible else { return }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     @objc private func chooseHomebrew() {
         guard process == nil, window.attachedSheet == nil else { return }
+        revealClassic()
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "nro") ?? .data]
         panel.allowsMultipleSelection = false
@@ -388,6 +403,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func chooseReport() {
         guard window.attachedSheet == nil else { return }
+        revealClassic()
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
@@ -460,8 +476,11 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let file = try FileHandle(forReadingFrom: url)
             defer { try? file.close() }
             let header = try file.read(upToCount: 20) ?? Data()
+            if header.starts(with: Data([0x7F, 0x45, 0x4C, 0x46])) {
+                return "This file is an ELF binary, not a Switch homebrew .nro. Run static AArch64 Linux ELFs from Terminal with: ounce-core run-elf \(url.path)"
+            }
             guard header.count == 20, header.suffix(4) == Data("NRO0".utf8) else {
-                return "This file isn’t an NRO program. Choose another .nro file."
+                return "This file isn’t a valid Switch homebrew .nro program (missing 'NRO0' header at offset 0x10). Choose another .nro file."
             }
             return nil
         } catch {
@@ -473,7 +492,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         switch url.pathExtension.lowercased() {
         case "nro": break
         case "elf":
-            showError("ELF programs are planned but not supported yet. Ounce Core runs .nro files today.")
+            showError("The Mac app runs Switch homebrew .nro files. Run static AArch64 Linux ELF programs from Terminal with: ounce-core run-elf \(url.path)")
             return
         default:
             showError("Choose a program ending in .nro.")
@@ -483,7 +502,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             showError("Stop the current session before opening another program.")
             return
         }
-        if let problem = nroProblem(url) { status.stringValue = problem; return }
+        if let problem = nroProblem(url) { status.stringValue = problem; showError(problem); return }
         guard let current = currentSettings() else { return }
         lastProgram = url
         verifying = nil
@@ -495,6 +514,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
         var demo = settings
         demo.engine = .tier3 // The built-in demo is a graphics demo for the interpreter path.
         verifying = nil
+        lastProgram = nil // A failed demo is not a report about the last program that was opened.
         start(["gfx", "--present=gpu"], name: "graphics demo", settings: demo)
     }
 
@@ -538,6 +558,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func chooseVerification() {
         guard process == nil, window.attachedSheet == nil else { return }
+        revealClassic()
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "nro") ?? .data]
         panel.allowsMultipleSelection = false
@@ -551,7 +572,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func verify(_ url: URL) {
         guard process == nil else { showError("Stop the current session first."); return }
-        if let problem = nroProblem(url) { status.stringValue = problem; return }
+        if let problem = nroProblem(url) { status.stringValue = problem; showError(problem); return }
         guard !catalog.isEmpty else {
             showError("The bundled verification data is missing. Rebuild Ounce Core.app with scripts/build_macos_app.sh.")
             return
@@ -616,15 +637,31 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: Diagnosis panel
 
     private func showDiagnosisText(_ headline: String, _ body: String) {
+        revealClassic()
         emptyCard.isHidden = true
+        reportButton.isHidden = true
+        pendingReport = nil
         diagnosisHeadline.stringValue = headline
         diagnosisBody.stringValue = body
         diagnosisCard.isHidden = false
     }
 
     private func showDiagnosis(_ diagnosis: Diagnosis) {
-        showDiagnosisText(diagnosis.headline, diagnosis.explanation + "\n\nWhat to try: " + diagnosis.nextStep
-            + (diagnosis.evidence.isEmpty ? "" : "\n\nFrom the log:\n" + diagnosis.evidence.map { "  " + $0 }.joined(separator: "\n")))
+        showDiagnosisText(diagnosis.headline, diagnosis.text.replacingOccurrences(of: diagnosis.headline + "\n\n", with: "", options: .anchored))
+        // A failed run ends with an action: one click copies a report and opens the issue form.
+        guard !diagnosis.succeeded, let program = lastProgram, let engine = lastEngine else { return }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        pendingReport = IssueReport(program: program.lastPathComponent, engine: engine, diagnosis: diagnosis, appVersion: version,
+                                    hostOS: ProcessInfo.processInfo.operatingSystemVersionString, home: NSHomeDirectory())
+        reportButton.isHidden = false
+    }
+
+    @objc private func reportProblem() {
+        guard let report = pendingReport else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report.body, forType: .string)
+        if let url = report.url { NSWorkspace.shared.open(url) }
+        status.stringValue = "Report text copied. Review the issue form in your browser before submitting; add the expected result."
     }
 
     private func start(_ arguments: [String], name: String, waitsForGuestFrame: Bool = false,
@@ -641,6 +678,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
             lastLog = log.url
             currentLog = log
             stopRequested = false
+            lastEngine = run.engine
             let child = Process()
             child.executableURL = runtime
             child.arguments = arguments
@@ -777,6 +815,7 @@ final class Launcher: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func showError(_ message: String) {
+        revealClassic()
         let alert = NSAlert()
         alert.messageText = "Ounce Core"
         alert.informativeText = message
