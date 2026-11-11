@@ -9,7 +9,7 @@ Writes into a fresh output directory:
 
 This is not a release. It never uploads anything, and the manifest records that
 the bundle is ad-hoc signed, not notarized, and not cleared for public
-distribution (docs/PROVENANCE_OWNER_DECISIONS.md, item 4).
+distribution (docs/PROVENANCE.md, Specialist items).
 """
 import argparse
 import hashlib
@@ -102,7 +102,7 @@ def package(app, out, root):
         "host": platform.platform(),
         "signing": "ad-hoc (codesign --sign -); not notarized; Gatekeeper will warn on first open",
         "distribution": "Not cleared for public release or GitHub release assets: "
-                        "docs/PROVENANCE_OWNER_DECISIONS.md item 4 (objc2/Apple SDK terms) is open.",
+                        "docs/PROVENANCE.md Specialist items (objc2/Apple SDK terms) is open.",
         "archives": {a.name: sha256(a) for a in archives},
         "bundle_files": bundle_files(app),
     }
