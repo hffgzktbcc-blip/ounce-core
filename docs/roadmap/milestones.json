@@ -30,7 +30,7 @@
       "id": "diagnosis",
       "name": "Failure to reproduction",
       "stage": "measured",
-      "evidence": "Retained SDL2/audio diagnosis and one hardware-observed instruction mismatch with exact register snapshots",
+      "evidence": "R1, R2 and R4 done: retained SDL2/audio diagnosis (failure-to-reproduction walkthrough, one externally grounded developer issue, audio-case result) and one hardware-observed instruction mismatch with exact register snapshots",
       "evidence_url": "docs/INSTRUCTION_DIAGNOSIS.md",
       "next": "Repair the measured arithmetic discrepancy; arbitrary-program first divergence remains unestablished"
     },
@@ -38,9 +38,9 @@
       "id": "distribution",
       "name": "Usable community tool",
       "stage": "measured",
-      "evidence": "Standalone diagnosis toolkit 0.2.0 published with checksums and acceptance evidence",
+      "evidence": "R3 and R5 done: standalone diagnosis toolkit 0.2.0 installable and published with checksums and acceptance evidence (R1–R5 are all complete)",
       "evidence_url": "docs/releases/diagnosis-0.2.0-readiness.md",
-      "next": "Collect outside feedback; runtime distribution has separate provenance dependencies"
+      "next": "No outside feedback received yet; collect it. Runtime distribution has separate provenance dependencies"
     },
     {
       "id": "original-switch",

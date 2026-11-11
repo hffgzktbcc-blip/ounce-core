@@ -1,6 +1,6 @@
 # First-frame corpus oracles
 
-PLAN step 2 grows the corpus from 4 to 20 outside programs. The 4 original programs keep their own
+The corpus holds 50 registered outside programs (grown from 4 to 20 in PLAN step 2, then to 50 in step 7). The 4 original programs keep their own
 oracles (`docs/first-frame-oracle.md`, `docs/deko-basic-oracle.md`, `docs/romfs-oracle.md`,
 `docs/startup-oracle.md`). The original 20 are registered in `tests/corpus/oracles.json`: the 16 added in step 2, plus the
 original 4 restated so one runner and one evidence format cover the whole corpus. Their dedicated
@@ -116,7 +116,7 @@ program counts only when both of its records pass, and CI fails if the README co
 ## Results
 
 First full run: [41700028345](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41700028345), 15/20 pass on both engines. Step 3: sixaxis and deko-console pass from [41872194259](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/41872194259) (17/20); deko-basic's frame 1 was corrected with owner approval (see docs/deko-basic-oracle.md). Observed verdicts are copied from CI into `tests/corpus/oracle-results.json`. A recorded pass is a
-ratchet: CI fails if it stops passing. Failures are PLAN step 3's to-do list.
+ratchet: CI fails if it stops passing. This paragraph and the 20-program counts below are historical; see Current status.
 
 
 The hybrid-app scene is checked on queued frame 2; frame 1 is the swap performed during GLFW window
@@ -132,8 +132,22 @@ hybrid-app are now recorded passes. Expected pixel values were not changed durin
 
 The 30 new checks were registered in `53b8a1d` before execution.
 The [first 50-program canonical report](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42180887173)
-records 45/50 passing on interpreter and Tier-3, including 26 whole-frame checks and 19 probe checks.
+recorded 45/50 passing (historical, superseded by Current status) on interpreter and Tier-3, including 26 whole-frame checks and 19 probe checks.
 The Native corpus job records the same 45 passes. All original 20 remain green.
-The new failures are `account`, `audio-echo`, `playtone`, `save-data`, and
+The failures at that time were `account`, `audio-echo`, `playtone`, `save-data`, and
 `controller-colors`. Their raw observations and logs are in the `first-frame-oracles`
 artifact. All 100 engine records were checked against the built NRO bytes.
+
+## Current status
+
+`tests/corpus/oracle-results.json` records 50/50 programs passing on interpreter and Tier-3. It was
+copied from the retained canonical report
+[`docs/verify/audout-padding/canonical-corpus.json`](verify/audout-padding/canonical-corpus.json)
+(100 records, all at core commit `430ce19`, the audout padding repair), not from a fresh corpus run;
+no new run was made when the snapshot was updated. The earlier snapshot (46/50) listed `account`, `audio-echo`, `playtone` and `save-data` as failing;
+the retained report records them as passing. This document does not attribute those changes to a cause.
+`deko-basic` remains a regression check of an observed frame hash, not a source-derived oracle.
+
+`python3 scripts/corpus_verify.py snapshot` fails when the snapshot and the README headline
+disagree (CI runs it in the tooling job); `snapshot --write --report <report> --core-commit <sha>`
+regenerates the snapshot from a canonical report.

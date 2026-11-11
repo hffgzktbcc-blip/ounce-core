@@ -69,6 +69,24 @@ class ReadmeTests(unittest.TestCase):
             corpus_verify.render_readme("<!-- corpus-headline -->1/1<!-- /corpus-headline -->", 1, 1)
 
 
+class SnapshotTests(unittest.TestCase):
+    def test_readme_counts_agree(self):
+        text = ("first--frame_oracles-3%2F4_pass <!-- corpus-headline -->3/4<!-- /corpus-headline -->")
+        self.assertEqual(corpus_verify.readme_counts(text), (3, 4))
+
+    def test_readme_marker_and_badge_disagreement_fails(self):
+        text = ("first--frame_oracles-3%2F4_pass <!-- corpus-headline -->4/4<!-- /corpus-headline -->")
+        with self.assertRaises(SystemExit):
+            corpus_verify.readme_counts(text)
+
+    def test_snapshot_counts(self):
+        self.assertEqual(corpus_verify.snapshot_counts({"results": {"a": "pass", "b": "fail", "c": "not-run"}}), (1, 3))
+
+    def test_committed_snapshot_matches_readme(self):
+        args = type("A", (), {"report": None, "write": False, "core_commit": None})()
+        corpus_verify.snapshot(args)
+
+
 class CoverageTests(unittest.TestCase):
     def count(self, values, engines=None):
         with tempfile.TemporaryDirectory() as directory:

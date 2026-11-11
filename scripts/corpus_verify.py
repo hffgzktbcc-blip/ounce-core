@@ -3,6 +3,7 @@
 
   evidence  map run_corpus_oracles.py verdicts to `ounce-verify/v0` records, one per program and engine
   headline  derive the README headline count from a canonical report written by tools/ounce_verify.py
+  snapshot  keep tests/corpus/oracle-results.json consistent with the README headline (and a report)
 
 A program counts toward the headline only when its record for every engine has verdict `pass`.
 The README count (the headline markers and the oracle badge) is never edited by hand:
@@ -194,6 +195,51 @@ def headline(args):
         raise SystemExit(f"README headline or oracle badge differs from the report ({len(passed)}/{total})")
 
 
+def snapshot_counts(snapshot):
+    results = snapshot["results"]
+    return sum(v == "pass" for v in results.values()), len(results)
+
+
+def readme_counts(text):
+    """(passed, total) from every headline marker and the badge; fails if they disagree."""
+    found = {tuple(map(int, m.split("/"))) for m in
+             re.findall(r"<!-- corpus-headline -->(\d+/\d+)<!-- /corpus-headline -->", text)}
+    found |= {(int(a), int(b)) for a, b in re.findall(r"first--frame_oracles-(\d+)%2F(\d+)_pass", text)}
+    if len(found) != 1:
+        raise SystemExit(f"README headline markers and badge disagree or are missing: {sorted(found)}")
+    return found.pop()
+
+
+def snapshot(args):
+    path = REPO / "tests/corpus/oracle-results.json"
+    ids = [o["id"] for o in json.loads((REPO / "tests/corpus/oracles.json").read_text())["oracles"]]
+    if args.write:
+        if not args.report:
+            raise SystemExit("--write needs --report")
+        passed, _ = count(args.report)
+        data = json.loads(path.read_text())
+        data["results"] = {i: "pass" if i in passed else "fail" for i in ids}
+        data["recorded_from"] = str(args.report.resolve().relative_to(REPO))
+        data["core_commit"] = args.core_commit or data.get("core_commit")
+        path.write_text(json.dumps(data, indent=2) + "\n")
+    data = json.loads(path.read_text())
+    problems = []
+    if set(data["results"]) != set(ids):
+        problems.append("snapshot programs differ from tests/corpus/oracles.json")
+    got = snapshot_counts(data)
+    want = readme_counts((REPO / "README.md").read_text())
+    if got != want:
+        problems.append(f"snapshot records {got[0]}/{got[1]} but README headline says {want[0]}/{want[1]}")
+    if args.report:
+        passed, total = count(args.report)
+        reported = {i: "pass" if i in passed else "fail" for i in ids}
+        if {k: ("pass" if v == "pass" else "fail") for k, v in data["results"].items()} != reported:
+            problems.append(f"snapshot verdicts differ from the report ({len(passed)}/{total})")
+    if problems:
+        raise SystemExit("; ".join(problems))
+    print(f"snapshot, README headline{' and report' if args.report else ''} agree: {got[0]}/{got[1]}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -208,8 +254,12 @@ def main():
     mode = h.add_mutually_exclusive_group()
     mode.add_argument("--check-readme", action="store_true")
     mode.add_argument("--write-readme", action="store_true")
+    n = sub.add_parser("snapshot", help="check (default) or --write tests/corpus/oracle-results.json")
+    n.add_argument("--report", type=Path, help="canonical report to compare with (required by --write)")
+    n.add_argument("--write", action="store_true")
+    n.add_argument("--core-commit", help="core commit the report was produced at (with --write)")
     args = parser.parse_args()
-    evidence(args) if args.command == "evidence" else headline(args)
+    {"evidence": evidence, "headline": headline, "snapshot": snapshot}[args.command](args)
 
 
 if __name__ == "__main__":
