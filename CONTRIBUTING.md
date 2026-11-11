@@ -98,7 +98,7 @@ permitted open-source workloads, and synthetic focused tests as appropriate. Rec
 source, licence, version/hash and build recipe for new redistributed fixtures.
 
 Do not commit keys, retail software, firmware, dumps, leaked/private material or
-incompatible licensed code. Retail decryption remains disabled. See
+incompatible licensed code. Key handling and encrypted-container decryption are out of scope. See
 [the source policy](docs/CLEAN_ROOM.md) and [provenance](docs/PROVENANCE.md) for the
 specific outstanding distribution questions. They do not prohibit unrelated tooling.
 

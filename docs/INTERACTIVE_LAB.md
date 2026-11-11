@@ -52,14 +52,13 @@ verified results.
 
 - **File intake, in your browser only.** Dropping a file computes its SHA-256 with the browser's Web
   Crypto (`crypto.subtle.digest`) and reads the header in JavaScript: ELF machine (`0xB7` is
-  AArch64, other values are reported as other architectures), the Homebrew NRO magic, and
-  container magics for XCI/HFS0. Nothing is uploaded. The page's messages about support (for
+  AArch64, other values are reported as other architectures), and the Homebrew NRO magic. Nothing is uploaded. The page's messages about support (for
   example "Supported by run-elf" or "Compatible with 50/50 First-Frame") come from the header
   check alone. They do not mean the file runs, and the 50/50 oracles cover the repository's
   own corpus, not an arbitrary NRO.
 - **Layout and wording.** The Simple / Advanced Lab switch, the maturity labels
   (`research-only`, `bounded-verified`, `independently reproduced`, `publicly supported`) and the
-  no-keys, no-firmware, no-retail-content notice are fixed text on the page.
+  homebrew-only notice are fixed text on the page.
 
 ### What is scripted in site/lab.html (not executed)
 
