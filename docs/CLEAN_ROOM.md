@@ -25,7 +25,7 @@ Cite each one in `docs/PROVENANCE.md` when used.
 
 Do not commit keys, retail content, firmware, dumps, leaked/private material, or
 incompatible licensed code. Do not distribute artifacts with unresolved rights.
-Retail decryption remains disabled (`LoadError::RestrictedCipher`). The existing
+Key handling and encrypted-container decryption are out of scope; `scripts/check_legal_guardrails.sh` fails if they reappear (see `docs/CAPABILITY_SCOPE.md`). The existing
 legal and unsafe-boundary checks remain in CI; they do not require repeating a
 full runtime build to save ordinary work.
 

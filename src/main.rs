@@ -7,7 +7,6 @@ mod audio;
 mod census;
 mod cli_flow;
 mod cpu;
-mod crypto;
 mod diverge;
 mod fs;
 mod fuzz_replay;
@@ -34,7 +33,7 @@ use audio::HostAudioSink;
 use gpu::{DisplayConfig, DisplayServer, DEFAULT_FRAMEBUFFER_ADDR, SCREEN_HEIGHT, SCREEN_WIDTH};
 use hid::{HidServer, HostGamepadManager, HID_SHARED_MEM_ADDR};
 use kernel::{HorizonKernel, ServiceType, SvcResult, CMIF_IN_MAGIC, DEFAULT_TLS_ADDR, TLS_SIZE};
-use loader::{BootLoader, NcaImage, Pfs0Archive};
+use loader::BootLoader;
 use mmu::{Memory, Permission};
 use std::env;
 use std::time::Instant;
@@ -141,7 +140,7 @@ fn main() {
         "run" | "run-nro" => {
             let nro_only = args[1] == "run-nro";
             if args.len() < 3 {
-                let what = if nro_only { "the path of a homebrew .nro file" } else { "the path of an .nsp, .nca, .nro or loose folder" };
+                let what = if nro_only { "the path of a homebrew .nro file" } else { "the path of a .nro, .nso or loose folder" };
                 eprint!("{}", cli_flow::missing_path(&args[1], what));
                 std::process::exit(2);
             }
@@ -167,15 +166,6 @@ fn main() {
             let gui_mode = args.iter().any(|a| a == "--gui" || a == "--window" || a == "-g");
             build_and_boot_demo_dir(out_dir, gui_mode);
         }
-        "package" | "showcase" => {
-            print_banner();
-            let out_path = if args.len() >= 3 {
-                &args[2]
-            } else {
-                "switch2_showcase.nsp"
-            };
-            build_and_boot_showcase_nsp(out_path);
-        }
         "fuzz-replay" => {
             std::process::exit(fuzz_replay::run(&args[2..]));
         }
@@ -184,7 +174,7 @@ fn main() {
         }
         "inspect" => {
             if args.len() < 3 {
-                eprint!("{}", cli_flow::missing_path("inspect", "the path of an .xci, .nsp, .nca, .nro or loose folder"));
+                eprint!("{}", cli_flow::missing_path("inspect", "the path of a .nro, .nso or loose folder"));
                 std::process::exit(2);
             }
             print_banner();
@@ -193,12 +183,8 @@ fn main() {
                 inspect_directory_package(file_path);
                 return;
             }
-            let default_key: [u8; 16] = [
-                0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
-                0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
-            ];
             match std::fs::read(file_path) {
-                Ok(bytes) => match ui::PackageInspector::inspect_bytes(file_path, &bytes, &default_key) {
+                Ok(bytes) => match ui::PackageInspector::inspect_bytes(file_path, &bytes) {
                     Ok(report) => ui::PackageInspector::print_report(&report),
                     Err(e) => eprintln!("Inspector error: {}", e),
                 },
@@ -327,7 +313,7 @@ fn print_usage() {
     println!("    {}run-nro{} <file> [args] [--gui]  Run a homebrew .nro; if it stops early, the output says why and what to do next", s.green, s.reset);
     println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
     println!("    {}diverge{} <prog.nro>            Replay the program's instructions on this machine's CPU and name the first disagreement (AArch64 hosts)", s.green, s.reset);
-    println!("    {}run{} <file|dir> [args] [--gui]  Like run-nro, but also accepts .xci, .nsp, .nca, .nso and unencrypted loose folders", s.green, s.reset);
+    println!("    {}run{} <file|dir> [args] [--gui]  Like run-nro, but also accepts .nso and loose folders", s.green, s.reset);
     println!();
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
     println!("    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)", s.green, s.reset);
@@ -335,7 +321,7 @@ fn print_usage() {
     println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
     println!();
     println!("  {}INSPECT AND REPLAY:{}", s.bold, s.reset);
-    println!("    {}inspect{} <file|dir>      Audit .xci/.nsp/.nca/.nro headers, loose NPDM metadata and RomFS assets", s.green, s.reset);
+    println!("    {}inspect{} <file|dir>      Audit .nro/.nso headers, loose NPDM metadata and RomFS assets", s.green, s.reset);
     println!("    {}replay-instruction{} <bundle>  Check retained instruction bytes and re-execute the recorded case", s.green, s.reset);
     println!("    {}info{}                    Show hardware architecture and engine status (also --version)", s.green, s.reset);
     println!("    {}help{}                    Show this reference", s.green, s.reset);
@@ -347,7 +333,6 @@ fn print_usage() {
     println!("    {}gfx{} [frames]            2D framebuffer display demo (1280x720)", s.green, s.reset);
     println!("    {}3d{} [frames]             Software 3D pushbuffer rasterizer benchmark", s.green, s.reset);
     println!("    {}demo-dir{} [out_dir]      Synthesize and launch a loose synthetic directory package", s.green, s.reset);
-    println!("    {}package{} [out.nsp]       Synthesize and boot an encrypted synthetic .nsp package", s.green, s.reset);
     println!();
     println!("  {}EXAMPLES:{}", s.bold, s.reset);
     println!("    {}ounce-core ui{}", s.dim, s.reset);
@@ -376,7 +361,7 @@ fn print_specs() {
     println!("  {}Target Platform{}   : {}NVIDIA Tegra T239 'Drake'{} (Codename: 'Ounce' / Horizon OS FW 23.0.1 ABI)", s.bold, s.reset, s.green, s.reset);
     println!("  {}Execution Model{}   : {}AArch64 Systems Research Runtime & Translation Layer{}", s.bold, s.reset, s.green, s.reset);
     println!("  {}Host Environment{}  : {}-{}-{}bit ({})", s.bold, s.reset, host_arch, host_os, ptr_width, profile);
-    println!("  {}Legal Posture{}     : {}No proprietary keys, firmware, or game data are distributed{}", s.bold, s.reset, s.green, s.reset);
+    println!("  {}Legal Posture{}     : {}No keys, firmware, or retail content are distributed{}", s.bold, s.reset, s.green, s.reset);
     println!();
 
     print_box_top(&s, "CPU Subsystem: ARMv8.5-A AArch64 (PAC + BTI)");
@@ -416,11 +401,9 @@ fn print_specs() {
     print_box_bottom(&s);
     println!();
 
-    print_box_top(&s, "Storage Containers & Cryptographic Engine");
-    print_row(&s, "GameCard Media      : ", "64GB GameCard image format (.xci / HEAD at 0x100 / HFS0)");
-    print_row(&s, "Digital Packages    : ", "Nintendo Submission Package (.nsp / PFS0 Hierarchical Archive)");
-    print_row(&s, "Loose Folders       : ", "Unencrypted ExeFS/RomFS Dumps (OunceCake / Atmosphere Direct Boot)");
-    print_row(&s, "Decryption Engine   : ", "Synthetic test vector decryption (commercial retail decryption disabled)");
+    print_box_top(&s, "Homebrew Formats & Storage");
+    print_row(&s, "Executables        : ", "Homebrew NRO0 and NSO0 modules");
+    print_row(&s, "Loose Folders       : ", "Unencrypted exefs/ + romfs/ directories (OunceCake format)");
     print_row(&s, "RomFS Filesystem    : ", "Level 3 Directory & File Hash Tables with Hierarchical Trees");
     print_box_bottom(&s);
     println!();
@@ -434,8 +417,8 @@ fn print_specs() {
     println!();
 
     print_box_top(&s, "Compliance & Security Verification");
-    print_row(&s, "Distribution Status: ", "No proprietary keys, firmware, or game data are distributed");
-    print_row(&s, "Zero-Key Engine     : ", "Runs homebrew binaries without requiring extracted prod.keys");
+    print_row(&s, "Distribution Status: ", "No keys, firmware, or retail content are distributed");
+    print_row(&s, "Homebrew Loader     : ", "Runs unencrypted homebrew NRO/NSO binaries");
     let val_validation = "Run cargo test --release and ounce-core test for current results";
     print_row(&s, "Validation Status   : ", val_validation);
     let val_source = format!("{}https://github.com/hffgzktbcc-blip/ounce-core{}", s.cyan, s.reset);
@@ -1175,19 +1158,9 @@ fn run_built_in_demo() {
     gate.expect_exit(5, &outcome, 0x3840);
     println!();
 
-    println!("[Stage 06/25] AES-128-CTR NCA Decryption, SASS Decompiler & Multi-Threading");
+    println!("[Stage 06/25] SASS Decompiler & Multi-Threading");
 
-    // 6a. Build an encrypted Switch 2 .nsp -> .nca -> ExeFS package and decrypt it
-    let title_key: [u8; 16] = [
-        0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
-        0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
-    ];
-    let ctr_iv: [u8; 16] = [
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-    ];
-
-    // Worker thread AArch64 code embedded inside the encrypted NCA ExeFS ("main"):
+    // Worker thread AArch64 code mapped as the worker entry point:
     // Reads argument pointer X0 (shared memory 0x80060000), writes 7777 to [X0], and calls SVC #0x0A (svcExitThread)
     let worker_insns: [u32; 4] = [
         0xD283CC21, // MOVZ X1, #7777
@@ -1199,22 +1172,8 @@ fn run_built_in_demo() {
     for insn in &worker_insns {
         worker_code_bytes.extend_from_slice(&insn.to_le_bytes());
     }
-
-    let exefs_pfs0 = Pfs0Archive::build(&[("main", &worker_code_bytes)]);
-    let encrypted_nca = NcaImage::build_encrypted(0x0100_F2C0_115B_6000, &title_key, &ctr_iv, &exefs_pfs0);
-    let nsp_archive = Pfs0Archive::build(&[("0100f2c0115b6000.nca", &encrypted_nca)]);
-
-    // Parse outer .nsp, decrypt inner NCA3 with AES-128-CTR, and extract "main"
-    let parsed_nsp = Pfs0Archive::parse(nsp_archive).unwrap();
-    let raw_nca = parsed_nsp.extract_file("0100f2c0115b6000.nca").unwrap();
-    let decrypted_nca = NcaImage::parse_and_decrypt(raw_nca, &title_key).unwrap();
-    let decrypted_exefs = Pfs0Archive::parse(decrypted_nca.decrypted_payload).unwrap();
-    let decrypted_worker_code = decrypted_exefs.extract_file("main").unwrap();
-    println!(
-        "  [Crypto/NCA] Decrypted TitleID 0x{:016X} via AES-128-CTR ({} bytes ExeFS 'main')",
-        decrypted_nca.title_id,
-        decrypted_worker_code.len()
-    );
+    let worker_code = &worker_code_bytes;
+    println!("  [Worker] {} bytes of guest worker code", worker_code.len());
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1233,8 +1192,8 @@ fn run_built_in_demo() {
     mmu.map_range(shader_addr, 4096, Permission::READ_WRITE);
     mmu.map_range(pb_addr, 4096, Permission::READ_WRITE);
 
-    // Load decrypted worker code into guest RAM at 0x80050000
-    mmu.write_bytes(worker_pc, decrypted_worker_code).unwrap();
+    // Load worker code into guest RAM at 0x80050000
+    mmu.write_bytes(worker_pc, worker_code).unwrap();
 
     // 6b. Write 64-bit Ampere SASS shader program into guest VRAM at 0x80030000
     let sass_program = [
@@ -1304,10 +1263,10 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 7: Unified .nsp Package Boot, Futex/Mutex Arbitration,
+    // Test 7: BootLoader Image Boot, Futex/Mutex Arbitration,
     //         & 2D-Textured 3D Triangle Rasterization
     // ---------------------------------------------------------
-    println!("\n[Stage 07/25] Unified NSP Boot, Futex Arbiters & 2D-Textured Rasterization");
+    println!("\n[Stage 07/25] BootLoader Image Boot, Futex Arbiters & 2D-Textured Rasterization");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1355,7 +1314,7 @@ fn run_built_in_demo() {
         mmu.write_u32(pb_addr + (i * 4) as u64, w).unwrap();
     }
 
-    // Guest AArch64 executable that will be packaged inside an encrypted .nsp and booted via BootLoader:
+    // Guest AArch64 executable that will be booted via BootLoader:
     //  X10 = sync_addr (0x80070000), X11 = pb_addr (0x80010000), X12 = center_pixel_addr
     cpu.regs.write_x(10, sync_addr);
     cpu.regs.write_x(11, pb_addr);
@@ -1394,16 +1353,11 @@ fn run_built_in_demo() {
         nsp_exec_bytes.extend_from_slice(&insn.to_le_bytes());
     }
 
-    // Wrap the executable inside ExeFS -> AES-128-CTR encrypted NCA3 -> .nsp (PFS0)
-    let exefs7 = Pfs0Archive::build(&[("main", &nsp_exec_bytes)]);
-    let nca7 = NcaImage::build_encrypted(0x0100_A2B0_2026_7000, &title_key, &ctr_iv, &exefs7);
-    let nsp7 = Pfs0Archive::build(&[("0100a2b020267000.nca", &nca7)]);
-
-    // Boot directly via Unified BootLoader::load_any_package!
-    let boot_info = BootLoader::load_any_package(&nsp7, DEFAULT_BASE_ADDR, &title_key, &mut mmu).unwrap();
+    // Boot the raw AArch64 image via BootLoader::load_any_package.
+    let boot_info = BootLoader::load_any_package(&nsp_exec_bytes, DEFAULT_BASE_ADDR, &mut mmu).unwrap();
     println!(
-        "  [BootLoader] Format: {} | TitleID: 0x{:016X} | Code: {} bytes",
-        boot_info.format, boot_info.title_id, boot_info.code_size
+        "  [BootLoader] Format: {} | Code: {} bytes",
+        boot_info.format, boot_info.code_size
     );
 
     let outcome = run_vm(cpu, mmu, kernel, 10_000);
@@ -1653,7 +1607,7 @@ fn run_built_in_demo() {
 
     let (cpu, mut mmu, kernel) = setup_vm();
     let nso_bytes = loader::NroLoader::synthetic_nso_payload();
-    let boot_nso = BootLoader::load_any_package(&nso_bytes, DEFAULT_BASE_ADDR, &[0u8; 16], &mut mmu).unwrap();
+    let boot_nso = BootLoader::load_any_package(&nso_bytes, DEFAULT_BASE_ADDR, &mut mmu).unwrap();
     println!(
         "  [BootLoader] Format: {} | ProgramID: 0x{:016X} | .text: {} bytes",
         boot_nso.format, boot_nso.title_id, boot_nso.code_size
@@ -1753,20 +1707,16 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 14: Switch 2 `.XCI` 64GB GameCard Cartridge Boot (`HEAD` -> `HFS0` `secure` -> `NCA3` -> `NSO0`)
+    // Test 14: Homebrew NSO0 boot through BootLoader
     // ---------------------------------------------------------
-    println!("\n[Stage 14/25] High-Speed GameCard (.XCI) Boot (HFS0 -> NCA3 -> NSO0)");
+    println!("\n[Stage 14/25] Homebrew NSO0 Boot");
     {
         let (mut cpu14, mut mmu14, kernel14) = setup_vm();
         let nso14 = loader::NroLoader::synthetic_nso_payload();
-        let exefs14 = Pfs0Archive::build(&[("main", &nso14), ("main.npdm", b"META")]);
-        let nca14 = NcaImage::build_encrypted(0x0400_0000_0000_0037, &title_key, &ctr_iv, &exefs14);
-        let xci14 = loader::XciCartridge::build_cartridge(&[("0400000000000037.nca", &nca14)]);
-
-        let info14 = BootLoader::load_any_package(&xci14, DEFAULT_BASE_ADDR, &title_key, &mut mmu14).unwrap();
+        let info14 = BootLoader::load_any_package(&nso14, DEFAULT_BASE_ADDR, &mut mmu14).unwrap();
         println!(
-            "  [BootLoader] Format: {} | ProgramID: 0x{:016X} | .text: {} bytes",
-            info14.format, info14.title_id, info14.code_size
+            "  [BootLoader] Format: {} | .text: {} bytes",
+            info14.format, info14.code_size
         );
         cpu14.regs.pc = DEFAULT_BASE_ADDR;
         let outcome = run_vm(cpu14, mmu14, kernel14, 50_000);
@@ -1775,27 +1725,14 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 15: Switch 2 NVN 3D Command Buffer Execution & Multi-Section RomFS Asset Loading
-    //          Boots a synthetic AES-128-CTR encrypted NCA3 with ExeFS (Section 0) and RomFS (Section 1).
+    // Test 15: NVN 3D Command Buffer Execution & RomFS Asset Mounting
+    //          Boots a raw AArch64 image and mounts a synthetic RomFS archive.
     //          Guest builds an NVN command buffer (Clear Color + Draw) and submits via SVC #0x105,
     //          verifies RomFS asset mounting, and exits cleanly.
     // ---------------------------------------------------------
-    println!("\n[Stage 15/25] NVN 3D Command Buffer Execution & Multi-Section RomFS Mount");
+    println!("\n[Stage 15/25] NVN 3D Command Buffer Execution & RomFS Mount");
     {
         let (mut cpu15, mut mmu15, mut kernel15) = setup_vm();
-        let key15: [u8; 16] = [
-            0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
-            0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
-        ];
-        let iv0: [u8; 16] = [
-            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-            0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
-        ];
-        let iv1: [u8; 16] = [
-            0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
-            0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
-        ];
-
         // 1. Build RomFS Section 1 assets (Ampere shader, textures, manifest)
         let romfs_bytes = fs::RomFsArchive::build(&[
             ("/shaders/t239_ampere.glsl", b"#version 450\nlayout(location=0) out vec4 color;\nvoid main() { color = vec4(1.0, 0.5, 0.2, 1.0); }"),
@@ -1847,32 +1784,13 @@ fn run_built_in_demo() {
             guest_code.extend_from_slice(&inst.to_le_bytes());
         }
 
-        let exefs_bytes = Pfs0Archive::build(&[("main", &guest_code), ("main.npdm", b"NPDM")]);
-        let title_id = 0x0100_0239_0000_2026;
-        let encrypted_nca = NcaImage::build_encrypted_with_romfs(
-            title_id,
-            &key15,
-            &iv0,
-            &iv1,
-            &exefs_bytes,
-            Some(&romfs_bytes),
-        );
-        let nsp_bytes = Pfs0Archive::build(&[("game.nca", &encrypted_nca)]);
+        let boot_info = BootLoader::load_any_package(&guest_code, DEFAULT_BASE_ADDR, &mut mmu15).unwrap();
+        let romfs_archive = fs::RomFsArchive::parse(&romfs_bytes).unwrap();
+        kernel15.vfs.mount_romfs_archive(&romfs_archive);
 
-        let boot_info = BootLoader::load_package_with_vfs(
-            &nsp_bytes,
-            DEFAULT_BASE_ADDR,
-            &key15,
-            &mut mmu15,
-            Some(&mut kernel15.vfs),
-        ).unwrap();
+        println!("  [BootLoader] Loaded raw AArch64 image: Format='{}'", boot_info.format);
 
-        println!(
-            "  [BootLoader] Loaded encrypted NCA3 package: TitleID=0x{:016X} Format='{}'",
-            boot_info.title_id, boot_info.format
-        );
-
-        // Verify RomFS Level 3 archive automatically mounted in kernel VFS:
+        // Verify the RomFS Level 3 archive is mounted in the kernel VFS:
         let manifest = kernel15.vfs.get_file("romfs:/manifest.json").expect("RomFS asset mounted");
         println!("  [RomFS] Mounted asset 'romfs:/manifest.json': {}", String::from_utf8_lossy(manifest));
         let shader = kernel15.vfs.get_file("romfs:/shaders/t239_ampere.glsl").expect("RomFS shader mounted");
@@ -3687,15 +3605,10 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
     }
 
     let (mut cpu, mut mmu, mut kernel) = setup_vm();
-    let default_key: [u8; 16] = [
-        0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
-        0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
-    ];
-
     let package = if nro_only {
         BootLoader::load_homebrew_nro(&bytes, DEFAULT_BASE_ADDR, &mut mmu)
     } else {
-        BootLoader::load_any_package(&bytes, DEFAULT_BASE_ADDR, &default_key, &mut mmu)
+        BootLoader::load_any_package(&bytes, DEFAULT_BASE_ADDR, &mut mmu)
     };
     match package {
         Ok(info) => {
@@ -4035,60 +3948,6 @@ fn build_and_boot_demo_dir(out_dir: &str, gui_mode: bool) {
 
     println!("  -> Created unencrypted ExeFS and RomFS in '{}'\n", out_dir);
     run_directory_package(out_dir, gui_mode);
-}
-
-/// Builds a self-contained, AES-128-CTR encrypted Switch 2 `.nsp` cartridge file on disk
-/// (`switch2_showcase.nsp`) and boots it directly through `run_file`.
-fn build_and_boot_showcase_nsp(out_path: &str) {
-    println!("============================================================");
-    println!("  📦 BUILDING ENCRYPTED SWITCH 2 CARTRIDGE: {}", out_path);
-    println!("============================================================");
-
-    let default_key: [u8; 16] = [
-        0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
-        0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c,
-    ];
-    let ctr_iv: [u8; 16] = [
-        0x20, 0x26, 0x02, 0x39, 0x00, 0x01, 0x02, 0x03,
-        0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
-    ];
-
-    // Self-contained AArch64 Switch 2 Showcase Binary:
-    //  1. Queries Switch 2 8-Core Cortex-A78C CoreMask (0xFF) via SVC #0x29 (svcGetInfo)
-    //  2. Queries Switch 2 12 GB LPDDR5 TotalMemoryAvailable via SVC #0x29 (info_type = 6)
-    //  3. Computes (12 GB >> 30) = 12 GB in X2 and combines with CoreMask (0xFF00 | 12 = 0xFF0C = 65292)
-    //  4. Exits cleanly via SVC #0x07 (svcExitProcess)
-    #[rustfmt::skip]
-    let showcase_insns: Vec<u32> = vec![
-        0xD2800001, // MOVZ X1, #0      (InfoType::CoreMask = 0)
-        0xD4000521, // SVC  #0x29       (svcGetInfo -> X1 = 0xFF)
-        0xD2800102, // MOVZ X2, #8
-        0x9AC22024, // LSLV X4, X1, X2  (X4 = 0xFF << 8 = 0xFF00)
-        0xD28000C1, // MOVZ X1, #6      (InfoType::TotalMemoryAvailable = 6 -> 12 GB)
-        0xD4000521, // SVC  #0x29       (svcGetInfo -> X1 = 12 * 1024^3)
-        0xD28003C2, // MOVZ X2, #30
-        0x9AC22425, // LSRV X5, X1, X2  (X5 = 12 GB >> 30 = 12)
-        0xAA050080, // ORR  X0, X4, X5  (X0 = 0xFF0C = 65292: 8 Cores + 12 GB LPDDR5!)
-        0xD40000E1, // SVC  #0x07       (svcExitProcess)
-    ];
-
-    let mut code_bytes = Vec::new();
-    for insn in &showcase_insns {
-        code_bytes.extend_from_slice(&insn.to_le_bytes());
-    }
-
-    let exefs = Pfs0Archive::build(&[("main", &code_bytes), ("main.npdm", b"OUNCE_NPDM_2026")]);
-    let encrypted_nca = NcaImage::build_encrypted(0x0100_2026_0002_3900, &default_key, &ctr_iv, &exefs);
-    let nsp_bytes = Pfs0Archive::build(&[("0100202600023900.nca", &encrypted_nca)]);
-
-    std::fs::write(out_path, &nsp_bytes).expect("Failed to write .nsp file to disk");
-    println!(
-        "  -> Wrote {} bytes to '{}' (PFS0 -> AES-128-CTR NCA3 -> ExeFS)\n",
-        nsp_bytes.len(),
-        out_path
-    );
-
-    run_file(out_path, &[], false, false);
 }
 
 #[cfg(test)]

@@ -28,7 +28,7 @@
       "id": "services",
       "name": "Services and loading",
       "capability": "Selected CMIF/TIPC service models; NRO/NSO and package parsing; homebrew and synthetic execution paths",
-      "boundary": "Incomplete service coverage; retail decryption remains restricted; parsing a container does not demonstrate execution.",
+      "boundary": "Incomplete service coverage; only unencrypted homebrew formats are loaded; parsing a file does not demonstrate execution.",
       "sources": [
         "src/kernel/cmif.rs",
         "src/kernel/hipc.rs",
