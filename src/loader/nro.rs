@@ -165,6 +165,9 @@ pub enum LoadError {
     #[error("Image segment layout is out of range (offset {offset:#x}, size {size:#x})")]
     SegmentOutOfRange { offset: u64, size: u64 },
 
+    #[error("NSO {segment} segment exceeds file bounds (offset {offset:#x}, size {size:#x}, file size {file_size:#x})")]
+    SegmentPastEof { segment: &'static str, offset: usize, size: usize, file_size: usize },
+
     #[error("Memory mapping error: {0}")]
     Memory(#[from] MemoryError),
 
@@ -336,7 +339,21 @@ impl NroLoader {
         let data_size = LittleEndian::read_u32(&bytes[0x38..0x3C]) as usize;
         let bss_size = LittleEndian::read_u32(&bytes[0x3C..0x40]) as usize;
 
-        if text_file_off.checked_add(text_size).is_some_and(|e| e <= bytes.len()) && text_size > 0 {
+        // Check all virtual and file-backed extents before changing any mappings.
+        Self::check_segment(base_addr, text_mem_off, text_size as u64)?;
+        Self::check_segment(base_addr, ro_mem_off, ro_size as u64)?;
+        Self::check_segment(base_addr, data_mem_off, data_size as u64 + bss_size as u64)?;
+        for (segment, offset, size) in [
+            ("text", text_file_off, text_size),
+            ("rodata", ro_file_off, ro_size),
+            ("data", data_file_off, data_size),
+        ] {
+            if size > 0 && !offset.checked_add(size).is_some_and(|end| end <= bytes.len()) {
+                return Err(LoadError::SegmentPastEof { segment, offset, size, file_size: bytes.len() });
+            }
+        }
+
+        if text_size > 0 {
             mmu.map_range(
                 base_addr + text_mem_off,
                 text_size,
@@ -348,7 +365,7 @@ impl NroLoader {
             )?;
         }
 
-        if ro_file_off.checked_add(ro_size).is_some_and(|e| e <= bytes.len()) && ro_size > 0 {
+        if ro_size > 0 {
             mmu.map_range(base_addr + ro_mem_off, ro_size, Permission::READ_WRITE);
             mmu.write_bytes(
                 base_addr + ro_mem_off,
@@ -356,11 +373,8 @@ impl NroLoader {
             )?;
         }
 
-        Self::check_segment(base_addr, text_mem_off, text_size as u64)?;
-        Self::check_segment(base_addr, ro_mem_off, ro_size as u64)?;
-        Self::check_segment(base_addr, data_mem_off, data_size as u64 + bss_size as u64)?;
         let total_data = data_size + bss_size;
-        if data_file_off.checked_add(data_size).is_some_and(|e| e <= bytes.len()) && total_data > 0 {
+        if total_data > 0 {
             mmu.map_range(base_addr + data_mem_off, total_data, Permission::READ_WRITE);
             if data_size > 0 {
                 mmu.write_bytes(
@@ -1273,6 +1287,58 @@ pub(crate) fn elf_with_pt_tls(tls: TlsTemplate) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guest_input_truncated_nso_segments_are_rejected_before_mapping() {
+        for descriptor in [0x10, 0x20, 0x30] {
+            for offset in [0x100u32, u32::MAX] {
+                let mut bytes = vec![0u8; 0x100];
+                bytes[..4].copy_from_slice(b"NSO0");
+                if descriptor != 0x10 {
+                    // Earlier valid text must not overwrite existing memory on a later error.
+                    bytes.extend_from_slice(&0xd40000e1u32.to_le_bytes());
+                    bytes[0x10..0x14].copy_from_slice(&0x100u32.to_le_bytes());
+                    bytes[0x18..0x1c].copy_from_slice(&4u32.to_le_bytes());
+                }
+                let offset = if offset == 0x100 { bytes.len() as u32 } else { offset };
+                bytes[descriptor..descriptor + 4].copy_from_slice(&offset.to_le_bytes());
+                bytes[descriptor + 8..descriptor + 12].copy_from_slice(&4u32.to_le_bytes());
+                let mut mmu = Memory::new();
+                mmu.map_range(0x80000000, 4096, Permission::READ_WRITE);
+                mmu.write_u32(0x80000000, 0x12345678).unwrap();
+                let error = NroLoader::load_nso_segments(&bytes, 0x80000000, &mut mmu).unwrap_err();
+                assert!(error.to_string().contains("file"), "{error}");
+                assert_eq!(mmu.read_u32(0x80000000).unwrap(), 0x12345678);
+            }
+        }
+    }
+
+    #[test]
+    fn guest_input_valid_nso_segments_and_bss_load() {
+        let mut bytes = NroLoader::build_synthetic_nso(&0xd40000e1u32.to_le_bytes());
+        for (descriptor, mem_offset, value) in [(0x20, 0x1000u32, 42u32), (0x30, 0x2000, 99)] {
+            let offset = bytes.len() as u32;
+            bytes[descriptor..descriptor + 4].copy_from_slice(&offset.to_le_bytes());
+            bytes[descriptor + 4..descriptor + 8].copy_from_slice(&mem_offset.to_le_bytes());
+            bytes[descriptor + 8..descriptor + 12].copy_from_slice(&4u32.to_le_bytes());
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes[0x3c..0x40].copy_from_slice(&4u32.to_le_bytes());
+        let mut mmu = Memory::new();
+        NroLoader::load_nso_segments(&bytes, 0x80000000, &mut mmu).unwrap();
+        for (offset, value) in [(0, 0xd40000e1), (0x1000, 42), (0x2000, 99), (0x2004, 0)] {
+            assert_eq!(mmu.read_u32(0x80000000 + offset).unwrap(), value);
+        }
+    }
+
+    #[test]
+    fn guest_input_nso_address_validation_precedes_mapping() {
+        let bytes = NroLoader::build_synthetic_nso(&0xd40000e1u32.to_le_bytes());
+        let mut mmu = Memory::new();
+        assert!(matches!(NroLoader::load_nso_segments(&bytes, u64::MAX - 1, &mut mmu),
+            Err(LoadError::SegmentOutOfRange { .. })));
+        assert!(mmu.read_u8(u64::MAX - 1).is_err());
+    }
 
     #[test]
     fn truncated_nro_sections_are_rejected_before_mapping() {
