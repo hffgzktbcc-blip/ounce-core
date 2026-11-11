@@ -491,7 +491,7 @@ fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
     };
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm_in(memory, base, alias_size);
     kernel.set_deterministic_clock(DETERMINISTIC_UNIX_SECS);
-    let loaded = super::super::BootLoader::load_any_package(nro, base + crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu);
+    let loaded = super::super::BootLoader::load_any_package(nro, base + crate::DEFAULT_BASE_ADDR, &mut mmu);
     let error = match loaded {
         Ok(info) if info.format == "NRO0" => None,
         Ok(_) => Some("external runner accepts NRO0 only".into()),
@@ -734,7 +734,7 @@ fn corpus_runner_hello_differential_slices() {
     let nro = super::fixture();
     let initialize = || {
         let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
-        crate::loader::BootLoader::load_any_package(&nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut mmu).unwrap();
+        crate::loader::BootLoader::load_any_package(&nro, crate::DEFAULT_BASE_ADDR, &mut mmu).unwrap();
         crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, "fixture.nro", &nro, &["fixture"]).unwrap();
         cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
         (cpu, mmu, kernel)
@@ -886,7 +886,7 @@ fn simplegfx_first_frame_oracle() {
     {
         let nro = std::fs::read(&path).unwrap();
         let (mut cpu, mut memory, mut kernel) = crate::setup_vm();
-        super::super::BootLoader::load_any_package(&nro, crate::DEFAULT_BASE_ADDR, &[0; 16], &mut memory).unwrap();
+        super::super::BootLoader::load_any_package(&nro, crate::DEFAULT_BASE_ADDR, &mut memory).unwrap();
         crate::setup_homebrew_nro(&mut cpu, &mut memory, &mut kernel, "simplegfx.nro", &nro, &[]).unwrap();
         cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
         let mut display = crate::gpu::DisplayServer::new(crate::gpu::display::DEFAULT_FRAMEBUFFER_ADDR,

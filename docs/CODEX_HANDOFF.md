@@ -54,4 +54,4 @@ The next display implementation must produce a real validated native-window parc
 
 ## Boundaries
 
-These trials exercise original Switch homebrew foundations, not Switch 2 compatibility. Keep retail decryption disabled. Do not import firmware, keys, proprietary/game material, upstream implementation code or generated NRO binaries into the repository. Upstream README's Public Domain Mark declaration and linked-component review caveats are recorded in the category documents; preparation hashes are not a full binary provenance audit.
+These trials exercise original Switch homebrew foundations, not Switch 2 compatibility. Do not add key handling or encrypted-container support. Do not import firmware, keys, proprietary/game material, upstream implementation code or generated NRO binaries into the repository. Upstream README's Public Domain Mark declaration and linked-component review caveats are recorded in the category documents; preparation hashes are not a full binary provenance audit.

@@ -1,12 +1,10 @@
 //! Bounded fuzz tests for the parsers that read untrusted guest files: NRO, NSO, ELF `PT_TLS`, the
-//! MOD0 dynamic section (RELA/REL/RELR, symbols, hash tables, init/fini arrays, TLS), PFS0, HFS0,
-//! XCI, NCA, NPDM and RomFS. Malformed input must return an error or a partial result, never panic,
+//! MOD0 dynamic section (RELA/REL/RELR, symbols, hash tables, init/fini arrays, TLS), NPDM and RomFS. Malformed input must return an error or a partial result, never panic,
 //! hang or try to allocate the address space.
 //!
 //! Every test mutates valid seeds with a fixed-seed PRNG, so a failure names a case that reproduces.
 //! `OUNCE_FUZZ_CASES=<n>` runs more cases per target (default 400, enough for CI).
 
-use super::nca::{Hfs0Archive, NcaImage, Pfs0Archive, XciCartridge, SYNTHETIC_TEST_KEY};
 use super::nro::{build_linked_nso, NroLoader};
 use super::package::NpdmDescriptor;
 use crate::fs::RomFsArchive;
@@ -250,40 +248,6 @@ fn fuzz_elf_pt_tls() {
             let layout = NroLoader::build_tls_layout_with_templates(&[BASE], &mmu, &HashMap::from([(BASE, t)]));
             let _ = NroLoader::tls_thread_image(&layout, &mmu);
         }
-    });
-}
-
-#[test]
-fn fuzz_containers() {
-    let files: &[(&str, &[u8])] = &[("main", b"\x1f\x20\x03\xd5"), ("main.npdm", b"META"), ("x", b"")];
-    let pfs0 = Pfs0Archive::build(files);
-    let hfs0 = Hfs0Archive::build(files);
-    let xci = XciCartridge::build_cartridge(files);
-    let nca = NcaImage::build_encrypted_with_romfs(
-        0x0100_0000_0000_1000,
-        &SYNTHETIC_TEST_KEY,
-        &[0x11; 16],
-        &[0x22; 16],
-        &pfs0,
-        Some(&RomFsArchive::build(&[("a.txt", b"hello")])),
-    );
-    fuzz("pfs0", 0x5046_5330, &[pfs0], |b| {
-        if let Ok(a) = Pfs0Archive::parse(b.to_vec()) {
-            let _ = a.extract_file("main");
-        }
-    });
-    fuzz("hfs0", 0x4846_5330, &[hfs0], |b| {
-        if let Ok(a) = Hfs0Archive::parse(b.to_vec()) {
-            let _ = a.extract_file("main");
-        }
-    });
-    fuzz("xci", 0x4845_4144, &[xci], |b| {
-        if let Ok(x) = XciCartridge::parse(b) {
-            let _ = x.open_secure_partition();
-        }
-    });
-    fuzz("nca", 0x4E43_4133, &[nca], |b| {
-        let _ = NcaImage::parse_and_decrypt(b, &SYNTHETIC_TEST_KEY);
     });
 }
 
