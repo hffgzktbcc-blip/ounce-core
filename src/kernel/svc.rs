@@ -1339,6 +1339,53 @@ mod tests {
     use super::*;
     use crate::cpu::StepResult;
 
+    #[test]
+    fn guest_input_mapping_ranges_return_errors_without_changing_memory() {
+        for svc in [0x2c, 0x51, 0x52] {
+            for (addr, size, expected) in [
+                (u64::MAX, 4096, RESULT_INVALID_ADDRESS),
+                (u64::MAX - 4095, 8192, RESULT_INVALID_ADDRESS),
+                (0x9000, u64::MAX - 4095, RESULT_INVALID_ADDRESS),
+            ] {
+                let mut cpu = Cpu::new();
+                let mut mmu = Memory::new();
+                let mut kernel = HorizonKernel::new();
+                mmu.map_range(0x9000, 4096, Permission::READ_WRITE);
+                mmu.write_u32(0x9000, 0x12345678).unwrap();
+                if svc == 0x2c {
+                    cpu.regs.write_x(0, addr);
+                    cpu.regs.write_x(1, size);
+                } else {
+                    let handle = kernel.ipc.allocate_handle(ServiceType::TransferMemory { addr: 0x9000, size: 4096 });
+                    cpu.regs.write_x(0, handle as u64);
+                    cpu.regs.write_x(1, addr);
+                    cpu.regs.write_x(2, size);
+                }
+                assert_eq!(kernel.dispatch_svc(svc, &mut cpu, &mut mmu), SvcResult::Success);
+                assert_eq!(cpu.regs.read_x(0), expected, "svc {svc:#x}");
+                assert_eq!(mmu.read_u32(0x9000).unwrap(), 0x12345678);
+                assert!(mmu.read_u32(u64::MAX - 4095).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn guest_input_overflow_instruction_reproducer_returns_guest_error() {
+        let words = [0x92800000u32, 0xd2820001, 0xd4000581];
+        let bytes: Vec<_> = words.into_iter().flat_map(u32::to_le_bytes).collect();
+        let image = crate::loader::nro::NroLoader::build_synthetic_nro(&bytes);
+        let mut mmu = Memory::new();
+        crate::loader::nro::NroLoader::load_into_memory(&image, 0x80000000, &mut mmu).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.regs.pc = 0x80000000 + 0x80;
+        let mut kernel = HorizonKernel::new();
+        assert_eq!(cpu.step(&mut mmu).unwrap(), StepResult::Continue);
+        assert_eq!(cpu.step(&mut mmu).unwrap(), StepResult::Continue);
+        assert_eq!(cpu.step(&mut mmu).unwrap(), StepResult::Svc(0x2c));
+        assert_eq!(kernel.dispatch_svc(0x2c, &mut cpu, &mut mmu), SvcResult::Success);
+        assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_ADDRESS);
+    }
+
     /// Runs `FS_QUERY_PAYLOAD` and checks the challenge response it writes to the output buffer.
     #[test]
     fn test_fs_query_payload_challenge_response() {
