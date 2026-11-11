@@ -23,7 +23,7 @@ non-NaN inputs gives the positive default NaN; float-to-integer saturates and a 
 conversion cases with a NaN *input* are skipped (TestFloat's propagation rules are not Arm's); compare cases keep
 them, because the result is just "unordered".
 """
-import argparse, subprocess, sys
+import argparse, re, subprocess, sys
 
 ZERO_X = [0] * 31
 MIN_CASES = 46464
@@ -66,21 +66,30 @@ def line(word, fpcr, vin=(), xin=(), vout=None, xout=None, nzcv_in=0, nzcv_out=0
 
 
 def gen(a, name, rnd=None, exact=None):
-    cmd = [a.gen, "-tininessbefore", "-level", a.level]
+    """Rows of `testfloat_gen`. It refuses `-n` below a per-function minimum (46464 for add, 6133248 for mulAdd at
+    level 1), so ask for the minimum and keep an even stride of `--count` rows, streaming so the big ones stay cheap."""
+    base = [a.gen, "-tininessbefore", "-level", a.level]
     if rnd:
-        cmd.append(rnd)
+        base.append(rnd)
     if exact is not None:
-        cmd.append("-exact" if exact else "-notexact")
-    if a.count:
-        cmd += ["-n", str(max(a.count, MIN_CASES))]  # testfloat_gen refuses fewer than 46464 at level 1
-    r = subprocess.run(cmd + [name], capture_output=True, text=True)
-    if r.returncode:
-        raise SystemExit(f"{' '.join(cmd + [name])} exited {r.returncode}:\n{r.stderr.strip()[:2000]}")
-    rows = [[int(t, 16) for t in ln.split()] for ln in r.stdout.splitlines() if ln.strip()]
-    if a.count and len(rows) > a.count:
-        # an even stride keeps the whole enumeration (special values first, random-ish later), same rows for equal inputs
-        rows = rows[:: len(rows) // a.count][: a.count]
-    return rows
+        base.append("-exact" if exact else "-notexact")
+    n = max(a.count, MIN_CASES) if a.count else 0
+    for _ in range(2):
+        cmd = base + (["-n", str(n)] if n else []) + [name]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stride = max(1, n // a.count) if a.count else 1
+        rows = []
+        for i, ln in enumerate(p.stdout):
+            if i % stride == 0 and (not a.count or len(rows) < a.count) and ln.strip():
+                rows.append([int(t, 16) for t in ln.split()])
+        err = p.stderr.read()
+        if p.wait() == 0:
+            return rows
+        m = re.search(r"minimum is (\d+)", err)
+        if not m or n == int(m.group(1)):
+            raise SystemExit(f"{' '.join(cmd)} exited {p.returncode}:\n{err.strip()[:2000]}")
+        n = int(m.group(1))
+    raise SystemExit(f"{' '.join(cmd)}: could not satisfy the minimum case count")
 
 
 def emit_arith(a, out, stats):
