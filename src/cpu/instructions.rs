@@ -1061,6 +1061,9 @@ pub enum SimdFpOp3 {
     Facgt,
     /// `FMULX`: like `FMUL`, but `0 * inf` is `+-2.0`
     Fmulx,
+    /// `FRECPS` (`2 - n*m`) and `FRSQRTS` (`(3 - n*m) / 2`), fused
+    Frecps,
+    Frsqrts,
 }
 
 /// AdvSIMD floating-point two-register operations: zero compares, `FABS`/`FNEG`/`FSQRT`, and the
@@ -1077,6 +1080,23 @@ pub enum SimdFpOp2 {
     Fsqrt,
     Fcvtn,
     Fcvtl,
+    /// Round to integral in FP format: N = nearest even, P = +inf, M = -inf, Z = zero, A = nearest away,
+    /// X/I = current FPCR rounding mode (X also signals inexact)
+    Frintn,
+    Frintp,
+    Frintm,
+    Frintz,
+    Frinta,
+    Frintx,
+    Frinti,
+    /// Round to an integral value that fits 32 (or 64) bits, else the most negative such integer
+    Frint32z,
+    Frint32x,
+    Frint64z,
+    Frint64x,
+    /// Reciprocal / reciprocal square root estimate
+    Frecpe,
+    Frsqrte,
 }
 
 /// Widening multiply flavours of AdvSIMD three-different.
@@ -1153,6 +1173,18 @@ pub enum SimdOp2 {
     Sqneg,
     Suqadd,
     Usqadd,
+    /// FP to integer with the rounding mode in the name (N nearest even, M -inf, A nearest away, P +inf), signed/unsigned
+    Fcvtns,
+    Fcvtnu,
+    Fcvtms,
+    Fcvtmu,
+    Fcvtas,
+    Fcvtau,
+    Fcvtps,
+    Fcvtpu,
+    /// Unsigned reciprocal / reciprocal square root estimate on 32-bit lanes
+    Urecpe,
+    Ursqrte,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
