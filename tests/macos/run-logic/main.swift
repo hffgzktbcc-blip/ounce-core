@@ -51,6 +51,23 @@ check(diag("", 0).kind == .finished, "exit 0 without markers is finished")
 // The first failure wins over later consequences.
 check(diag("[VM Error] Unimplemented instruction 0x1 at PC: 0x2\n[VM] Execution budget reached (5 instructions).").kind == .unimplementedInstruction, "first failure wins")
 
+// A finished run shows what the program printed, not the runtime's status lines.
+let hello = diag("====\n  OUNCE-CORE: x\n====\n\n[Loader] Reading package/executable: /a.nro\n[BootLoader] Successfully loaded package:\n  Format      : NRO0\n  Code size   : 0x4000\n[VM] Starting execution\nounce-fixture result=0x0BAD0008\n[VM] Process exited gracefully (svcExitProcess).\n[VM Summary] Executed 9067 instructions\n  -> Basic-Block JIT Cache: 1\n", 0)
+check(hello.succeeded && hello.output == ["ounce-fixture result=0x0BAD0008"], "program output is extracted: \(hello.output)")
+check(hello.text.contains("Program output:\n  ounce-fixture result=0x0BAD0008"), "program output is shown")
+check(Diagnosis.programOutput(log: (1...20).map { "line \($0)" }.joined(separator: "\n")).count == 8, "output is limited to the last 8 lines")
+check(Diagnosis.programOutput(log: String(repeating: "x", count: 500))[0].count == 200, "long output lines are cut")
+
+// A failed run produces a report that names the file only and hides the home folder.
+let failed = diag("[VM Error] Unimplemented instruction 0x9AC04021 at PC: 0x0000000080001234\n  Final PC: /Users/sam/secret", 1, .tier4)
+let report = IssueReport(program: "app.nro", engine: .tier4, diagnosis: failed, appVersion: "0.7.0", hostOS: "macOS 26", home: "/Users/sam")
+check(report.command == "ounce-core run-nro app.nro --cpu=tier4", "report command")
+check(report.engineLabel == "Tier-4 JIT (--cpu=tier4)", "engine label matches the form dropdown")
+check(report.body.contains("0x9AC04021") && report.body.contains("macOS 26") && !report.body.contains("/Users/sam"), "report keeps evidence and hides the home folder")
+let reportURL = report.url?.absoluteString ?? ""
+check(reportURL.hasPrefix("https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=emulation_bug.yml"), "report opens the emulation bug form")
+check(reportURL.contains("engine=Tier-4%20JIT") && !reportURL.contains("Users"), "form is prefilled without the home folder")
+
 // Harness catalog against the committed differential.json
 let catalogData = try Data(contentsOf: URL(fileURLWithPath: "docs/verify/differential.json"))
 let catalog = try HarnessCatalog.parse(catalogData)
@@ -78,3 +95,16 @@ check(different.summary(harness: lz4, engine: .tier3, hostIsARM64: true).hasPref
 let fp = catalog[catalog.firstIndex { $0.name == "fp-instructions" }!]
 check(different.summary(harness: fp, engine: .tier3, hostIsARM64: false).contains("ARM64 host"), "arm64 caveat")
 print("Run settings, diagnosis and host-comparison checks passed.")
+
+// A successful runtime exit can still yield a reportable verification mismatch.
+let mismatchSummary = different.summary(harness: lz4, engine: .tier3, hostIsARM64: true)
+let mismatchReport = IssueReport(program: "lz4.nro", engine: .tier3, diagnosis: hello,
+    appVersion: "test", hostOS: "macOS", home: "/Users/sam",
+    comparisonSummary: mismatchSummary + "\n/Users/sam/private")
+check(mismatchReport.body.contains("Line 2") && mismatchReport.body.contains("reference: b") && mismatchReport.body.contains("this run:  X"), "comparison report includes both results and differing lines")
+check(!mismatchReport.body.contains("/Users/sam") && mismatchReport.body.contains("~/private"), "comparison is redacted")
+let observed = URLComponents(url: mismatchReport.url!, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "observed" }!.value!
+check(observed.contains("Mismatch.") && observed.contains("reference: b") && !observed.contains("/Users/sam"), "issue form includes redacted comparison")
+let errorReport = IssueReport(program: "lz4.nro", engine: .tier3, diagnosis: failed,
+    appVersion: "test", hostOS: "macOS", home: "/Users/sam", comparisonSummary: "No output; no comparison was made.")
+check(errorReport.body.contains("No output; no comparison was made."), "verification errors retain comparison context")

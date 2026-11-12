@@ -10,9 +10,15 @@
 [![Rust 2024](https://img.shields.io/badge/Rust-2024-cc754f?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![MIT](https://img.shields.io/badge/License-MIT-84b89e?style=flat-square)](LICENSE)
 [![Research](https://img.shields.io/badge/Status-Experimental-a9bcc4?style=flat-square)](#what-is-proven)
-[![No retail assets](https://img.shields.io/badge/Assets-No%20firmware%20or%20retail%20keys-7cae9f?style=flat-square)](#responsible-research)
+[![No retail assets](https://img.shields.io/badge/Assets-Homebrew%20and%20synthetic%20only-7cae9f?style=flat-square)](#responsible-research)
 
 # Ounce-Core
+
+![Real CLI demo: start screen, successful homebrew fixture, and early-stop diagnosis.](docs/media/cli-demo.gif)
+
+**[Try it in your browser →](https://hffgzktbcc-blip.github.io/ounce-core/playground/)**
+
+**[Have five minutes? Run an outside test or pick a no-code task →](docs/community/TRY_THIS_WEEK.md)**
 
 **Understand why programs fail. Prove when they work.**
 
@@ -92,7 +98,7 @@ Implemented code paths are not universal compatibility proof. Source links ident
 | :--- | :--- | :--- | :--- |
 | **CPU execution** | AArch64 interpreter, cached/decoded/fused block paths (Tier 1–3), optional Tier-4 native JIT and AArch64-host native execution | Instruction coverage is partial; Tier-4 and native execution are separate from the Interpreter/Tier-3 headline oracle count. | [interpreter.rs](src/cpu/interpreter.rs), [tier3_jit.rs](src/cpu/tier3_jit.rs) |
 | **Memory and kernel** | 4 KiB paged guest memory, access permissions, thread scheduling, synchronization and selected SVCs | Horizon-style subsets, not complete OS semantics, hardware timing or a security sandbox. | [memory.rs](src/mmu/memory.rs), [scheduler.rs](src/kernel/scheduler.rs) |
-| **Services and loading** | Selected CMIF/TIPC service models; NRO/NSO and package parsing; homebrew and synthetic execution paths | Incomplete service coverage; retail decryption remains restricted; parsing a container does not demonstrate execution. | [cmif.rs](src/kernel/cmif.rs), [hipc.rs](src/kernel/hipc.rs) |
+| **Services and loading** | Selected CMIF/TIPC service models; NRO/NSO and loose-directory loading; homebrew and synthetic execution paths | Incomplete service coverage; only unencrypted homebrew formats are loaded; parsing a file does not demonstrate execution. | [cmif.rs](src/kernel/cmif.rs), [hipc.rs](src/kernel/hipc.rs) |
 | **Graphics and presentation** | Guest-frame capture, software rasterization, and experimental guest SASS execution through wgpu with render-target readback | Physical GPU execution and unchanged outside-frame oracles have separate qualification gates. | [host.rs](src/gpu/ampere/host.rs), [render.rs](src/gpu/ampere/render.rs) |
 | **Audio and input** | Software audio mixing with CPAL host output; keyboard/gamepad mapping and selected HID service paths | Host device support varies by platform; external-program correctness needs case-specific tests. | [host.rs](src/audio/host.rs), [audren.rs](src/audio/audren.rs) |
 | **Execution evidence** | Ounce-Verify records, first-frame oracles, artifact-integrity checks, corpus comparison, diagnosis, retries, bisection and resumable runs | Passing local unit tests or CI does not certify general compatibility, provenance or an independent rerun. | [ounce_verify.py](tools/ounce_verify.py), [corpus_verify.py](scripts/corpus_verify.py) |
@@ -120,9 +126,8 @@ Status reflects what the code does and what the tests exercise. "Modelled" means
 | Upscaler (`gpu/upscaler.rs`) | Modelled | 2× bilinear interpolation with sharpening. **Not DLSS**; there is no neural network. |
 | Audio | Implemented | Software 64-voice mixer; continuous non-blocking ring-buffer streaming from `audout:u` and `audren:u` to 48 kHz stereo host audio sink via `cpal` with polyphonic resampling, underrun tracking and latency metrics. |
 | Input (`hid/`) | Implemented | Controller state filled from host keyboard and physical USB/Bluetooth gamepads via `gilrs` (analog stick threshold synthesis to D-pad bitmasks). |
-| Containers | Implemented (parsing) | PFS0/NSP, HFS0/XCI, NCA3, NSO0, NRO0, NPDM, RomFS, unencrypted loose directories. |
+| Formats | Implemented (parsing) | NSO0, NRO0, NPDM, RomFS, unencrypted loose directories. |
 | Dynamic linking | Implemented (subset) | MOD0 `.dynamic` parsing; `R_AARCH64_RELATIVE`, `ABS64`, `GLOB_DAT`, `JUMP_SLOT`; imports resolved across modules in loose packages; `DT_REL`/`DT_RELA` tables; unresolved imports reported; `DT_GNU_HASH` symbol counts; TLS relocations (`TPREL64`, `DTPMOD64`, `DTPREL64`, `TLSDESC`) against a static TLS layout; `DT_INIT`/`INIT_ARRAY`/`FINI_ARRAY`/`DT_FINI` runner (opt-in, `OUNCE_RUN_INIT=1`). `PT_TLS` templates (`.tdata` copied, `.tbss` zeroed, `p_align` honoured) when supplied from an ELF; each `svcCreateThread` thread gets its own TLS area and `TPIDR_EL0`. Limits: NSO/NRO carry no `PT_TLS`, so for them TLS block sizes come from `STT_TLS` symbols, alignment is assumed 16, and blocks start zeroed. Guest SVCs inside initialisers are not serviced. |
-| Crypto | Implemented, tested | AES-128 tested against FIPS-197 vectors. Decryption works only with the in-repo synthetic test key; retail keys are rejected (`RestrictedCipher`). ounce-core accepts only already-decrypted inputs. |
 
 **Known limitations**
 
@@ -191,16 +196,16 @@ CI coverage is feature-specific: the default job runs unit tests and the 25-stag
 | 03 | Calling convention | Stack frame, `BL` and `RET` | `42` |
 | 04 | CMIF IPC & vector math | `sm:` lookup of `nvdrv`, IEEE-754 `FADD` | `D0 = 42.0` |
 | 05 | RomFS & PCM audio | Reads `romfs:/title.txt`, queues audio to `audout:u` | — |
-| 06 | AES-CTR & threads | NCA section decryption, SASS-subset decode, thread spawn | — |
-| 07 | Package boot & rasterizer | Boots an NSP, futex arbitration, textured triangle | — |
+| 06 | SASS decode & threads | SASS-subset decode, thread spawn | — |
+| 07 | Image boot & rasterizer | Boots a raw AArch64 image, futex arbitration, textured triangle | — |
 | 08 | crt0 & depth | `svcGetInfo`, direct-chained JIT, Z-buffer occlusion | — |
 | 09 | NEON & upscaler | 128-bit vector arithmetic, 2× upscaler, save sync | — |
 | 10 | FS query payload | BTI landing pad, process/thread queries, challenge response | — |
 | 11 | Dynamic linker | `RO` NSO0 module over TIPC, `NS2ROEXE` reply | — |
 | 12 | Thread-affinity wrapper | `BL` into a leaf that returns `0xFF`, then `AND X0, X0, #7` | `0x07` |
 | 13 | Timing & events | Synthetic event init, try-wait and tick frequency | `0x124F801` (19,200,001) |
-| 14 | XCI container boot | Synthetic cartridge image → HFS0 → NCA3 → NSO0 | — |
-| 15 | NVN command buffer | `SVC #0x105` (research range) submission, multi-section RomFS | — |
+| 14 | NSO0 boot | Synthetic NSO0 module loaded through `BootLoader` | — |
+| 15 | NVN command buffer | `SVC #0x105` (research range) submission, RomFS mount | — |
 | 16 | audren & Vulkan model | Memory pools, voice mixing, SPIR-V module construction | — |
 | 17 | Service handshake | `set:sys`, `am:appletOE`, `vi:m`, `hid`, `fsp-srv` | `0x777` |
 | 18 | ro:1 & texture pools | `LoadNro`, BC7 descriptor binding | `0x888` |
@@ -251,25 +256,48 @@ Any other code, ported or new, that genuinely needs `unsafe` goes into an isolat
 
 Build from source using **Rust 1.85+ (edition 2024)** on a supported Linux, macOS or Windows host. OS-specific development libraries may be required on Linux; see the expanded setup notes below.
 
-**macOS binaries:** no prebuilt macOS download is offered for now. Build from source on a Mac instead (see above). The macOS build links Apple-SDK-derived `objc2` crates, and whether redistributing a compiled binary that includes them is allowed is an open question; see [docs/PROVENANCE.md](docs/PROVENANCE.md) (Specialist items). Linux and Windows builds are not affected.
+**macOS binaries:** no prebuilt macOS download is offered for now. Build from source on a Mac instead (see below). The macOS build links Apple-SDK-derived `objc2` crates, and whether redistributing a compiled binary that includes them is allowed is an open question; see [docs/PROVENANCE.md](docs/PROVENANCE.md) (Specialist items). Linux and Windows builds are not affected.
+
+### 1. Install
+
+**macOS launcher (Apple Silicon), once that review clears:** the release workflow can build `ounce-core-macos-arm64-app.zip` with a `.sha256` and an entry in `SHA256SUMS`; publication stays blocked by the notice review in [docs/RELEASE_NOTICE_REVIEW.json](docs/RELEASE_NOTICE_REVIEW.json). The app is **unsigned by a Developer ID and unnotarized** (local ad-hoc signature only). On first launch, right-click > Open and confirm, or run `xattr -d com.apple.quarantine "/Applications/Ounce Core.app"` after checking the download's source and checksum. To build locally now, run `scripts/build_macos_app.sh`.
 
 ```bash
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core
 
-# Run the self-checks
+# Build the runtime executable
+cargo build --release
+
+# Optional: compile native execution on ARM64 hosts (Apple Silicon / Linux ARM64)
+cargo build --release --features "nce native-jit"
+```
+
+### 2. Run your first program
+
+Verify that your build works by running the self-checks:
+
+```bash
 cargo test --release
 cargo run --release -- test
+```
 
-# Explore the runtime
-cargo run --release -- info
-cargo run --release -- demo-dir ./demo --gui
+Execute an actual AArch64 program:
+
+```bash
+# Option A: Run a static AArch64 Linux ELF binary
+cargo run --release -- run-elf tests/linux-elf/bin/hello.elf
+
+# Option B: Run a homebrew AArch64 NRO fixture
+cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture
+
+# Option C: Open the local interactive verification workbench
+cargo run --release -- ui
 ```
 
 **Check a program against the three engines (about five minutes once built):**
 
 ```bash
-cargo build --release --features "nce native-jit"   # native needs an ARM64 host; drop the features otherwise
 for cpu in tier3 tier4 native; do
   OUNCE_NRO_BUDGET=100000000 \
     target/release/ounce-core run-nro tests/fixtures/nro/hello/hello.nro --present=headless --cpu=$cpu
@@ -287,6 +315,33 @@ cargo run --release --features gpu-present -- gfx --present=gpu
 # Tier-4 native recompiler host self-test
 cargo run --release --features native-jit -- jit-selftest
 ```
+
+### 3. When something fails: diagnosis and reproduction
+
+When an execution stops, fails, or produces unexpected output:
+
+- **Inspect error messages:** An unhandled SVC, unimplemented opcode, or memory fault prints the program counter (PC), opcode word, and register snapshot. If a loop exceeds the instruction budget, increase it with `OUNCE_NRO_BUDGET=100000000`.
+- **Pinpoint divergence against real hardware:** On an AArch64 host, run `diverge` to compare execution against the host CPU and locate the exact first instruction where the emulator and hardware disagree:
+  ```bash
+  target/release/ounce-core diverge path/to/program.nro
+  ```
+- **Package a reproducible failure dossier:** Use the diagnosis CLI to generate a portable dossier with `diagnosis.json`, `comparison.json`, and `REPLAY.md` without private paths or credentials:
+  ```bash
+  python3 scripts/diagnosis_cli.py example --output ./my-diagnosis
+  ```
+  The resulting dossier packages exact inputs, revisions, and replay instructions. See [docs/DIAGNOSIS_CLI.md](docs/DIAGNOSIS_CLI.md) and [docs/FAILURE_TO_REPRODUCTION.md](docs/FAILURE_TO_REPRODUCTION.md).
+
+### 4. How to report findings
+
+- **Report emulation bugs:** If a program behaves differently in Ounce-Core than on real ARM64 hardware or in a reference build, open an issue using the [Emulation bug template](https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=emulation_bug.yml). Provide:
+  1. Pinned program name, commit or version, and build command.
+  2. Engine used (`--cpu=tier3`, `--cpu=tier4`, or `--cpu=native`).
+  3. Expected reference output from real hardware or host build.
+  4. Observed output, including the first differing line or `[VM Error]` line.
+  5. Exact command line, host OS/architecture, and Git commit (`git rev-parse HEAD`).
+- **Submit differential test runs:** Run `python3 scripts/verify_differential.py --json my-results.json` on an ARM64 computer and report your findings on [Issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248) using the [External Test Report Template](docs/community/EXTERNAL_TEST_REPORT.md).
+- **Propose a new test program:** Suggest an open-source library or test case using the [Program request template](https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=program_request.yml).
+- **Responsible reporting guardrails:** Do not submit or link retail keys, copyrighted firmware, commercial game dumps, or proprietary assets. Only open-source or synthetic test material is accepted.
 
 Use **self-authored, licensed or synthetic material** only. Do not supply retail keys, firmware or commercial game dumps.
 
@@ -308,8 +363,8 @@ Use **self-authored, licensed or synthetic material** only. Do not supply retail
 cargo run --release -- info                      # Show modelled hardware and engine status
 cargo run --release -- test                      # Run the 25-stage harness
 cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture  # Boot the libnx homebrew fixture (prints result=0x00000EEE)
-cargo run --release -- inspect ./dumps/title     # Inspect a user-supplied unencrypted directory
-cargo run --release -- run ./dumps/title --gui   # Boot an unencrypted loose directory in a window
+cargo run --release -- inspect ./my_program     # Inspect a loose exefs/ + romfs/ directory
+cargo run --release -- run ./my_program --gui   # Boot a loose directory in a window
 cargo run --release -- demo-dir ./demo --gui     # Generate a synthetic loose package and boot it
 cargo run --release -- play                      # Keyboard-driven controller and graphics demo
 cargo run --release -- 3d 120                    # Software rasterizer benchmark
@@ -321,9 +376,42 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 
 `--present=auto|gpu|minifb|headless` (or `OUNCE_PRESENT`) picks the presentation backend; `auto` tries the GPU first when the feature is compiled in. `WGPU_BACKEND` (`vulkan`, `metal`, `dx12`, `gl`) and `WGPU_ADAPTER_NAME` select the GPU, and `OUNCE_VSYNC=0` disables vsync. `--cpu=tier3|tier4` (or `OUNCE_CPU`) selects the block engine for the Stage 20 benchmark and for `run`/`run-nro` (with no flag, `run-nro` executes one instruction at a time in the interpreter). Tier-4 requires `--features native-jit`; the native engine is not currently used for general `run` workloads.
 
-</details>
+### Native Mac launcher (local preview)
 
----
+With Rust and Xcode command-line tools installed, build and install locally:
+
+```sh
+scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.app"
+```
+
+Open **Ounce Core.app**. The first screen explains what the app does; drop a
+homebrew `.nro` on it or choose **Open Program…**. Static AArch64 Linux ELF programs run in the CLI with `ounce-core run-elf <file>`.
+
+- **Run Settings:** pick the engine (interpreter `tier3`, JIT `tier4`, or `native`) and an
+  instruction budget (blank = the runtime default of 50 million, the `OUNCE_NRO_BUDGET` mechanism).
+  The bundled runtime is built with the `nce` and `native-jit` features, so `tier4` and `native`
+  work on an Apple Silicon Mac; elsewhere the runtime falls back to `tier3`, and the app says so
+  instead of reporting a pass. `native` runs headless with no window.
+- **Diagnosis:** when a run ends, the app reads the runtime's own log and explains it in plain
+  language: unimplemented instruction word, unhandled SVC, program break, fault, budget exhausted,
+  load error. It reads what the runtime printed; it does not re-execute anything.
+- **Verify against Host…:** for harness programs named after the harnesses in
+  [docs/verify/differential.json](docs/verify/differential.json) (for example `lz4.nro`), runs the NRO
+  headless on the chosen engine and compares its output byte for byte with the committed
+  `expected-host.txt`. It does not rebuild the host reference; use `scripts/verify_differential.py` for that.
+- **Report This Problem…** appears after a failed run. It copies a report (file name, engine, command, OS and the
+  runtime's stop lines; your home folder is replaced by `~`) and opens the issue form with those fields filled in.
+  Nothing is sent until you submit the form.
+- **Try the Demo** opens the bundled diagnostic; **Stop Session** ends the current session.
+- **View Check Results…** opens a saved evidence report.
+- **Show Session Details** reveals **Choose SD Card Folder…**, which selects the host folder
+  mounted as `sdmc:`, and **Open Log in Finder**. Logs and the default SD folder live under
+  `~/Library/Application Support/Ounce Core/`.
+
+The app is locally ad-hoc signed, not a notarized distribution release, and no
+prebuilt download is offered. Supported programs remain those backed by the compatibility
+oracles; this launcher does not expand that claim. Details, tests and untested GUI areas:
+[docs/MAC_APP.md](docs/MAC_APP.md).
 
 ## The road ahead
 
@@ -373,7 +461,7 @@ That background shapes the project's emphasis on careful experimentation, reprod
 > [!IMPORTANT]
 > Ounce-Core is **unaffiliated** with Nintendo, NVIDIA or their affiliates. Nintendo Switch, Switch 2, NVIDIA, Tegra, Horizon and related names are used descriptively and remain the respective owners' trademarks. This project runs open-source homebrew; it is not a commercial-game product.
 
-- **No distributed retail keys, firmware, game dumps or commercial assets.** Retail decryption is disabled by project policy.
+- **Homebrew and synthetic material only.** The runtime loads unencrypted homebrew formats; it has no key handling and no encrypted-container support.
 - **Distribution scope:** runtime archives exclude NRO fixtures and SDK files; the standalone Python toolkit uses its own reviewed source snapshot. [Current licensing disposition](docs/LICENSE_DISPOSITION.md) records the exact notice, fixture and historical boundaries.
 - **Test fixtures:** all eleven committed NROs have byte-identical rebuild evidence and registered inputs. Source/component permission review is separate from build identity.
 - **Licensing:** project source is [MIT-licensed](LICENSE), with [third-party notices](THIRD_PARTY.md). This does not certify the status of every historical or binary component.
@@ -388,7 +476,7 @@ Read [the provenance register](docs/PROVENANCE.md), [sources and legal guardrail
 **What this repository does not contain**
 
 - No firmware, system archives, or code or data derived from them.
-- No encryption keys. The loader decrypts only containers built with the in-repo synthetic test key; retail keys are rejected (`LoadError::RestrictedCipher`). A `prod.keys`-format parser exists for unit tests of the key-file format only. The `.gitignore` excludes key files.
+- No encryption keys and no key handling or decryption code. The loader accepts only unencrypted homebrew formats (NRO, NSO, loose directories). The `.gitignore` excludes key files and a CI check fails if key-parsing or container-decryption code is added.
 - No retail game content, ROMs, or dumps. Tests include generated synthetic programs and checked-in homebrew NRO fixtures. The `hello` fixture build links libnx and uses the devkitA64/newlib toolchain; see [`tests/fixtures/nro/hello/README.md`](tests/fixtures/nro/hello/README.md). Fixture identities, rebuilds and selected linked inputs are recorded; source/component permission review remains separate; see [`docs/PROVENANCE.md`](docs/PROVENANCE.md) and [`THIRD_PARTY.md`](THIRD_PARTY.md).
 - Earlier revisions contained firmware-derived and third-party-derived byte sequences; they were removed from the current tree but remain in git history. See *Known Issues*.
 
@@ -408,7 +496,6 @@ Read [the provenance register](docs/PROVENANCE.md), [sources and legal guardrail
 - **Linux ELF runner.** wasm3 built as a static musl ELF fails to load its first module under `run-elf` (an allocator request of about 1 TiB is refused); cause not yet understood ([#366](https://github.com/hffgzktbcc-blip/ounce-core/issues/366)).
 - **Floating point.** FPSR exception flags, FPCR trap enables and half-precision arithmetic are not modelled. The FPCR rounding/flush/default-NaN fix (#363) matched Linux Arm and Apple M1 hardware on the fp-edge corpus: 0 mismatches at all nine FPCR values on all three engines ([CI run](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/42971358680)); that corpus is bounded.
 - **Historical scope.** The later object-level inventory narrows the firmware-labelled candidate objects to retained PR #1, with no exact matches in current source or the inspected releases. A separate historical 72-byte program has no recorded redistribution grant. See [docs/PROVENANCE.md](docs/PROVENANCE.md); no global purge is claimed.
-- **Commercial container decryption.** Decryption in `loader/nca.rs` is restricted by policy to synthetic test vectors (`SYNTHETIC_TEST_KEY`). Retail key decryption is disabled; research binaries must be supplied as unencrypted loose directories or homebrew packages.
 - **Notice and rights status.** Completed controls, remaining upstream qualifications and release-specific requirements are maintained in [one disposition](docs/LICENSE_DISPOSITION.md). An identity check or notice collection does not supply an absent redistribution grant.
 
 </details>
@@ -454,37 +541,3 @@ ounce-core/
 <sub>Ounce-Core · experimental systems research · maintained in the open</sub>
 
 </div>
-
-### Native Mac launcher (local preview)
-
-With Rust and Xcode command-line tools installed, build and install locally:
-
-```sh
-scripts/build_macos_app.sh "$HOME/Applications/Ounce Core.app"
-```
-
-Open **Ounce Core.app**. The first screen explains what the app does; drop a
-homebrew `.nro` on it or choose **Open Program…**. Static AArch64 Linux ELF programs run in the CLI with `ounce-core run-elf <file>`.
-
-- **Run Settings:** pick the engine (interpreter `tier3`, JIT `tier4`, or `native`) and an
-  instruction budget (blank = the runtime default of 50 million, the `OUNCE_NRO_BUDGET` mechanism).
-  The bundled runtime is built with the `nce` and `native-jit` features, so `tier4` and `native`
-  work on an Apple Silicon Mac; elsewhere the runtime falls back to `tier3`, and the app says so
-  instead of reporting a pass. `native` runs headless with no window.
-- **Diagnosis:** when a run ends, the app reads the runtime's own log and explains it in plain
-  language: unimplemented instruction word, unhandled SVC, program break, fault, budget exhausted,
-  load error. It reads what the runtime printed; it does not re-execute anything.
-- **Verify against Host…:** for harness programs named after the harnesses in
-  [docs/verify/differential.json](docs/verify/differential.json) (for example `lz4.nro`), runs the NRO
-  headless on the chosen engine and compares its output byte for byte with the committed
-  `expected-host.txt`. It does not rebuild the host reference; use `scripts/verify_differential.py` for that.
-- **Try the Demo** opens the bundled diagnostic; **Stop Session** ends the current session.
-- **View Check Results…** opens a saved evidence report.
-- **Show Session Details** reveals **Choose SD Card Folder…**, which selects the host folder
-  mounted as `sdmc:`, and **Open Log in Finder**. Logs and the default SD folder live under
-  `~/Library/Application Support/Ounce Core/`.
-
-The app is locally ad-hoc signed, not a notarized distribution release, and no
-prebuilt download is offered. Supported programs remain those backed by the compatibility
-oracles; this launcher does not expand that claim. Details, tests and untested GUI areas:
-[docs/MAC_APP.md](docs/MAC_APP.md).

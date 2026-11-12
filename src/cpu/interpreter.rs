@@ -2060,7 +2060,7 @@ impl Cpu {
             }
 
             Instruction::SimdTwoMisc { rd, rn, op, esize, q } => {
-                if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf | SimdOp2::Fcvtzs | SimdOp2::Fcvtzu) {
+                if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf | SimdOp2::Fcvtzs | SimdOp2::Fcvtzu | SimdOp2::Fcvtns | SimdOp2::Fcvtnu | SimdOp2::Fcvtms | SimdOp2::Fcvtmu | SimdOp2::Fcvtas | SimdOp2::Fcvtau | SimdOp2::Fcvtps | SimdOp2::Fcvtpu) {
                     let r = simd::int_fp_convert_fpcr(op, self.regs.read_q(rn), esize as u32, q, self.regs.fpcr);
                     self.regs.write_q(rd, r);
                     self.regs.advance_pc();

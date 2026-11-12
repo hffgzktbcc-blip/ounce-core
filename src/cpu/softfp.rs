@@ -384,6 +384,12 @@ impl Fmt {
     fn two(self) -> u64 {
         ((self.bias() as u64 + 1) << self.mbits) as u64
     }
+    fn three(self) -> u64 {
+        self.two() | (1 << (self.mbits - 1))
+    }
+    fn one_and_half(self) -> u64 {
+        self.three() - (1 << self.mbits)
+    }
     fn neg_if(self, x: u64, c: bool) -> u64 {
         if c { self.neg(x) } else { x }
     }
@@ -437,6 +443,37 @@ pub fn fma(f: Fmt, env: Env, n: u64, m: u64, a: u64) -> u64 {
         return round_pack(f, env, sp, pe, pm, false);
     }
     add_aligned(f, env, (sp, pm, pe), aligned(unpack(f, a)))
+}
+
+/// `FPRecipStepFused(n, m)`: `2 - n * m` with one rounding; `inf * 0` gives 2.0. The first operand is negated before NaN
+/// processing, so a NaN `n` comes back with its sign flipped (unless DN gives the default NaN).
+pub fn recip_step(f: Fmt, env: Env, n: u64, m: u64) -> u64 {
+    let (n, m) = (flush_input(f, env, f.neg(n)), flush_input(f, env, m));
+    if !f.is_nan(n) && !f.is_nan(m) && ((f.is_inf(n) && f.is_zero(m)) || (f.is_zero(n) && f.is_inf(m))) {
+        return f.two();
+    }
+    fma(f, env, n, m, f.two())
+}
+
+/// `FPRSqrtStepFused(n, m)`: `(3 - n * m) / 2` with one rounding; `inf * 0` gives 1.5.
+pub fn rsqrt_step(f: Fmt, env: Env, n: u64, m: u64) -> u64 {
+    let (n, m) = (flush_input(f, env, f.neg(n)), flush_input(f, env, m));
+    if !f.is_nan(n) && !f.is_nan(m) && ((f.is_inf(n) && f.is_zero(m)) || (f.is_zero(n) && f.is_inf(m))) {
+        return f.one_and_half();
+    }
+    // halve `n` first so a product near the overflow edge still lands in range; exact unless `n` is tiny, where the
+    // product cannot overflow and halving the fused result is exact (3 - n*m is never within 2^-22 of zero but non-zero)
+    let half_n = if f.field(n) > 1 && f.field(n) != f.max_field() { n - (1 << f.mbits) } else { n };
+    if half_n != n {
+        return fma(f, env, half_n, m, f.one_and_half());
+    }
+    let r = fma(f, env, n, m, f.three());
+    if f.is_nan(r) || f.is_inf(r) || f.field(r) == 0 && !f.is_zero(r) { r } else { half_value(f, r) }
+}
+
+/// Exact halving of a finite normal or zero value whose result stays normal; callers guarantee that.
+fn half_value(f: Fmt, r: u64) -> u64 {
+    if f.is_zero(r) { r } else { r - (1 << f.mbits) }
 }
 
 /// `FPSqrt`.
