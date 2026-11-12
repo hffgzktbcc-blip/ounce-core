@@ -4,7 +4,6 @@
 const TOKEN = document.body.dataset.token;
 const NATIVE = document.body.dataset.native === "true";
 const COMPUTER = /Mac/i.test(navigator.platform || "") ? "this Mac" : "this computer";
-const ISSUE_URL = "https://github.com/hffgzktbcc-blip/ounce-core/issues/new";
 const SETTINGS_KEY = "ounce.workbench.settings";
 
 const $ = id => document.getElementById(id);
@@ -272,21 +271,10 @@ function outcome(d) {
   }
 }
 
-function reportText(d, o) {
-  const engines = d.engines.map(e => engineName(e.engine) + ": " + (e.stop.line || e.stop.kind)).join("\n");
-  const diff = d.verdict.diff ? "\nFirst difference: " + d.verdict.diff.path + (d.verdict.diff.line ? " line " + d.verdict.diff.line : "") : "";
-  return ["Result: " + o.label + ". " + o.headline, engines + diff, "Program: " + d.name + " (" + fmt(d.bytes) + " bytes)", "SHA-256: " + d.sha256,
-    "Step limit: " + fmt(d.budget || config.default_budget), "Checked with the Ounce Core workbench."].join("\n");
-}
-
-function reportUrl(d, o) {
-  const first = d.engines.find(e => FAULTS[e.stop.kind]) || d.engines[0] || { engine: "tier3", stop: {} };
-  // The form's Engine dropdown only preselects one of its own labels.
-  const formEngine = { tier3: "Tier-3 (default)", tier4: "Tier-4 JIT (--cpu=tier4)", native: "Native (--cpu=native)" }[first.engine] || "Not sure";
-  const q = new URLSearchParams({ template: "emulation_bug.yml", title: "Workbench: " + o.label + " - " + d.name, program: d.name,
-    engine: formEngine, observed: reportText(d, o).slice(0, 1500), repro: (d.format === "elf" ? "ounce-core run-elf " : "ounce-core run-nro ") + d.name + " --cpu=" + first.engine });
-  return ISSUE_URL + "?" + q.toString();
-}
+// The report comes from report.js, so the button, Copy details and Help > Report a Problem all agree.
+const reportContext = () => ({ config, app: !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ounceWorkbench), platform: navigator.platform });
+const reportText = (d, o) => OunceReport.text(d, o, reportContext());
+const reportUrl = (d, o) => OunceReport.url(d, o, reportContext());
 
 // Opens the report form. The Mac app handles the "ounceWorkbench" message; a browser opens a new tab.
 function report(d, o) {

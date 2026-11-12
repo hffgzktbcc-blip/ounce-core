@@ -87,8 +87,16 @@ enum WorkbenchLogic {
         guard let message = body as? [String: Any], message["action"] as? String == "report",
               let text = message["url"] as? String, text.hasPrefix(IssueFormLocation.url + "?") || text == IssueFormLocation.url,
               var parts = URLComponents(string: text) else { return nil }
-        if !home.isEmpty {
-            parts.queryItems = parts.queryItems?.map { URLQueryItem(name: $0.name, value: $0.value?.replacingOccurrences(of: home, with: "~")) }
+        if !home.isEmpty, let query = parts.percentEncodedQuery {
+            // Decode each value, hide the home folder, and encode it again ourselves: URLComponents would leave a
+            // literal "+" (which GitHub reads as a space) and "&" handling to chance.
+            let keep = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+            func decode(_ text: Substring) -> String { String(text).replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? String(text) }
+            parts.percentEncodedQuery = query.split(separator: "&", omittingEmptySubsequences: true).map { pair -> String in
+                let kv = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                let value = decode(kv.count > 1 ? kv[1] : "").replacingOccurrences(of: home, with: "~")
+                return "\(kv[0])=\(value.addingPercentEncoding(withAllowedCharacters: keep) ?? "")"
+            }.joined(separator: "&")
         }
         return parts.url
     }
@@ -114,14 +122,23 @@ extension WorkbenchLogic {
     }
 
     /// The generic issue form, for when no check has finished. Opening it sends nothing: the person reviews and submits it.
-    static func problemReportURL(appVersion: String, hostOS: String) -> URL? {
+    static func problemReportURL(appVersion: String, hostOS: String, hostChip: String = "") -> URL? {
         var parts = URLComponents(string: IssueFormLocation.url)
         parts?.queryItems = [
             URLQueryItem(name: "template", value: "emulation_bug.yml"),
             URLQueryItem(name: "observed", value: "Describe what happened and what you expected."),
-            URLQueryItem(name: "repro", value: "Ounce Core app \(appVersion), \(hostOS)"),
+            URLQueryItem(name: "environment", value: ["Ounce Core app \(appVersion)", hostOS, hostChip].filter { !$0.isEmpty }.joined(separator: ", ")),
         ]
         return parts?.url
+    }
+
+    /// The Mac's chip, for example "Apple M2", or an empty string when the system does not say.
+    static func chipName() -> String {
+        var size = 0
+        guard sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0) == 0, size > 1 else { return "" }
+        var buffer = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("machdep.cpu.brand_string", &buffer, &size, nil, 0) == 0 else { return "" }
+        return String(cString: buffer)
     }
 
     /// A report the page asks the app to save: a plain file name and text, with home folders replaced by `~`.

@@ -264,7 +264,8 @@ final class AdvancedRunner {
         guard let program = lastProgram else { return nil }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         return IssueReport(program: program.lastPathComponent, engine: lastEngine, diagnosis: diagnosis, appVersion: version,
-                           hostOS: ProcessInfo.processInfo.operatingSystemVersionString, home: NSHomeDirectory())
+                           hostOS: ProcessInfo.processInfo.operatingSystemVersionString, home: NSHomeDirectory(),
+                           hostChip: WorkbenchLogic.chipName())
     }
 
     /// One dialog for an outcome. A failed run offers Report a Problem: it copies the report and opens the issue form.

@@ -38,6 +38,7 @@ const LOG_CAP: usize = 512 * 1024;
 const FILE_CAP: usize = 1024 * 1024;
 const PAGE: &str = include_str!("../assets/lab/index.html");
 const SCRIPT: &str = include_str!("../assets/lab/app.js");
+const REPORT_SCRIPT: &str = include_str!("../assets/lab/report.js");
 const STYLE: &str = include_str!("../assets/lab/app.css");
 
 /// Command-line options for `ounce-core ui`.
@@ -617,7 +618,7 @@ fn compare_reference(harness: &str, expected: &str, actual: &str) -> Value {
     let same = expected == actual;
     json!({
         "status": if same { "matches" } else { "differs" }, "harness": harness,
-        "expected_lines": want.len(), "actual_lines": got.len(),
+        "expected_lines": want.len(), "actual_lines": got.len(), "expected_sha256": hex(&Sha256::digest(expected.as_bytes())),
         "first_difference": first.map(|i| json!({"line": i + 1, "expected": want.get(i), "actual": got.get(i)})),
     })
 }
@@ -642,6 +643,25 @@ fn host_reference(verify_dir: Option<&Path>, name: &str, runs: &[EngineRun], for
         return json!({"status": "no-output", "harness": harness.dir, "note": note});
     };
     compare_reference(&harness.dir, &expected, actual)
+}
+
+/// What an issue report needs to know about this computer: operating system, version and chip. Best effort:
+/// a field the system does not answer is left empty, never guessed.
+fn host_info() -> Value {
+    fn run(program: &str, args: &[&str]) -> String {
+        std::process::Command::new(program).args(args).output().ok().filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+    }
+    let (os, version, chip) = if cfg!(target_os = "macos") {
+        ("macOS".to_string(), run("sw_vers", &["-productVersion"]), run("sysctl", &["-n", "machdep.cpu.brand_string"]))
+    } else {
+        let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+        let pretty = release.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=")).map(|v| v.trim_matches('"').to_string()).unwrap_or_default();
+        let cpu = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
+        let chip = cpu.lines().find(|l| l.starts_with("model name")).and_then(|l| l.split_once(':')).map(|(_, v)| v.trim().to_string()).unwrap_or_default();
+        (if pretty.is_empty() { std::env::consts::OS.to_string() } else { pretty }, String::new(), chip)
+    };
+    json!({"os": os, "os_version": version, "arch": std::env::consts::ARCH, "chip": chip})
 }
 
 struct Lab {
@@ -885,6 +905,9 @@ fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
     if req.method == "GET" && req.path == "/app.js" {
         return (200, "text/javascript; charset=utf-8", SCRIPT.as_bytes().to_vec());
     }
+    if req.method == "GET" && req.path == "/report.js" {
+        return (200, "text/javascript; charset=utf-8", REPORT_SCRIPT.as_bytes().to_vec());
+    }
     if req.method == "GET" && req.path == "/app.css" {
         return (200, "text/css; charset=utf-8", STYLE.as_bytes().to_vec());
     }
@@ -916,6 +939,9 @@ fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
             "timeout_seconds": lab.timeout,
             "engines": ["tier3", "tier4"],
             "reference_data": lab.verify_dir.is_some(),
+            "version": env!("CARGO_PKG_VERSION"),
+            "commit": option_env!("OUNCE_GIT_COMMIT").unwrap_or(""),
+            "host": host_info(),
         })),
         ("GET", path) if path.starts_with("/api/checks/") && path.ends_with("/program") => {
             // The program a check was started with, so the page can check it again after the app uploaded it.
@@ -1259,7 +1285,9 @@ mod tests {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/verify");
         let expected = std::fs::read_to_string(dir.join("lz4-harness/expected-host.txt")).unwrap();
         let same = [run("tier3", "exited", &[(CONSOLE, expected.as_str())])];
-        assert_eq!(host_reference(Some(&dir), "lz4.elf", &same, Format::Elf)["status"], "matches");
+        let matched = host_reference(Some(&dir), "lz4.elf", &same, Format::Elf);
+        assert_eq!(matched["status"], "matches");
+        assert_eq!(matched["expected_sha256"].as_str().map(str::len), Some(64), "the expected output has a fingerprint for reports");
         assert_eq!(host_reference(Some(&dir), "LZ4", &same, Format::Elf)["status"], "matches", "extensionless names work too");
         let other = [run("tier3", "exited", &[(CONSOLE, "case0 n=0\n")])];
         assert_eq!(host_reference(Some(&dir), "lz4.elf", &other, Format::Elf)["status"], "differs");

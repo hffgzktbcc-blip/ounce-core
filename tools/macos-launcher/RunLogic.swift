@@ -229,12 +229,13 @@ struct IssueReport {
     let appVersion: String
     let hostOS: String
     let home: String
+    var hostChip = ""
 
     /// Engine labels exactly as the issue form's dropdown spells them, so the form can preselect one.
     var engineLabel: String {
         switch engine {
-        case .tier3: return "Tier-3 (default)"
-        case .tier4: return "Tier-4 JIT (--cpu=tier4)"
+        case .tier3: return "Tier-3 interpreter (default)"
+        case .tier4: return "Tier-4 recompiler (--cpu=tier4)"
         case .native: return "Native (--cpu=native)"
         }
     }
@@ -246,18 +247,33 @@ struct IssueReport {
     var title: String { clean("\(program): \(diagnosis.headline)") }
     /// The runtime lines the diagnosis rests on, or the last log lines when none were recognised.
     var observed: String { clean(([diagnosis.headline] + diagnosis.evidence).joined(separator: "\n")) }
-    var environment: String { "Ounce Core app \(appVersion), \(hostOS)" }
+    var environment: String { clean(["Ounce Core app \(appVersion)", hostOS, hostChip].filter { !$0.isEmpty }.joined(separator: ", ")) }
+    /// What the run was compared with: a run from this app is a single run, so the expectation is a clean finish.
+    var expected: String { "Compared: nothing (one engine only), so the only expectation is that the program runs to the end." }
 
-    /// Complete text for the clipboard, so the report survives even if the form does not prefill.
+    /// Complete text for the clipboard, in the order and under the headings of the issue form, so the report survives
+    /// even if the form does not prefill.
     var body: String {
         """
-        Program and version: \(program) (give the source, commit or release, and how it was built)
-        Engine: \(engineLabel)
-        Expected result and where it comes from: (describe the reference, for example a host build of the same source)
-        What Ounce-Core did:
+        \(title)
+
+        Program and version
+        \(program) (give the source, commit or release, and how it was built)
+
+        Engine
+        \(engineLabel)
+
+        Expected result and where it comes from
+        \(expected)
+
+        What Ounce-Core did
         \(observed)
-        Exact command: \(command)
-        Environment: \(environment)
+
+        Exact command
+        \(command)
+
+        Operating system, chip and Ounce Core version
+        \(environment)
         """
     }
 
@@ -270,7 +286,9 @@ struct IssueReport {
             URLQueryItem(name: "program", value: program),
             URLQueryItem(name: "engine", value: engineLabel),
             URLQueryItem(name: "observed", value: String(observed.prefix(1500))),
-            URLQueryItem(name: "repro", value: "\(command)\n\(environment)")
+            URLQueryItem(name: "expected", value: expected),
+            URLQueryItem(name: "repro", value: command),
+            URLQueryItem(name: "environment", value: environment)
         ]
         return parts?.url
     }
