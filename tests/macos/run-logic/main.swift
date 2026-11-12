@@ -68,43 +68,4 @@ let reportURL = report.url?.absoluteString ?? ""
 check(reportURL.hasPrefix("https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=emulation_bug.yml"), "report opens the emulation bug form")
 check(reportURL.contains("engine=Tier-4%20JIT") && !reportURL.contains("Users"), "form is prefilled without the home folder")
 
-// Harness catalog against the committed differential.json
-let catalogData = try Data(contentsOf: URL(fileURLWithPath: "docs/verify/differential.json"))
-let catalog = try HarnessCatalog.parse(catalogData)
-check(catalog.count >= 10, "catalog loaded")
-check(HarnessCatalog.match(nroFile: "lz4.nro", in: catalog)?.resultFile == "lz4-results.txt", "lz4 result file")
-check(HarnessCatalog.match(nroFile: "lz4_harness.nro", in: catalog)?.name == "lz4", "harness suffix")
-check(HarnessCatalog.match(nroFile: "Vector-FP.nro", in: catalog)?.arm64Reference == true, "case-insensitive, arm64 reference")
-check(HarnessCatalog.match(nroFile: "homebrew-menu.nro", in: catalog) == nil, "unknown nro")
-for harness in catalog {
-    let path = "docs/verify/\(harness.dir)/expected-host.txt"
-    check(FileManager.default.fileExists(atPath: path), "reference exists for \(harness.name)")
-}
-
-// Comparison
-let same = ResultComparison.compare(expected: "a\nb\n", actual: "a\nb")
-check(same.identical && same.actualLines == 2, "trailing newline tolerated")
-let different = ResultComparison.compare(expected: "a\nb\nc\n", actual: "a\nX\n")
-check(!different.identical && different.differingLines == 2 && different.firstDifference == 2, "diff counts")
-check(different.samples[1].actual == "(missing)", "missing line shown")
-let many = ResultComparison.compare(expected: String(repeating: "x\n", count: 20), actual: String(repeating: "y\n", count: 20))
-check(many.samples.count == ResultComparison.sampleLimit && many.differingLines == 20, "sample limit")
-let lz4 = catalog[catalog.firstIndex { $0.name == "lz4" }!]
-check(same.summary(harness: lz4, engine: .tier3, hostIsARM64: true).hasPrefix("Match."), "match summary")
-check(different.summary(harness: lz4, engine: .tier3, hostIsARM64: true).hasPrefix("Mismatch."), "mismatch summary")
-let fp = catalog[catalog.firstIndex { $0.name == "fp-instructions" }!]
-check(different.summary(harness: fp, engine: .tier3, hostIsARM64: false).contains("ARM64 host"), "arm64 caveat")
-print("Run settings, diagnosis and host-comparison checks passed.")
-
-// A successful runtime exit can still yield a reportable verification mismatch.
-let mismatchSummary = different.summary(harness: lz4, engine: .tier3, hostIsARM64: true)
-let mismatchReport = IssueReport(program: "lz4.nro", engine: .tier3, diagnosis: hello,
-    appVersion: "test", hostOS: "macOS", home: "/Users/sam",
-    comparisonSummary: mismatchSummary + "\n/Users/sam/private")
-check(mismatchReport.body.contains("Line 2") && mismatchReport.body.contains("reference: b") && mismatchReport.body.contains("this run:  X"), "comparison report includes both results and differing lines")
-check(!mismatchReport.body.contains("/Users/sam") && mismatchReport.body.contains("~/private"), "comparison is redacted")
-let observed = URLComponents(url: mismatchReport.url!, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "observed" }!.value!
-check(observed.contains("Mismatch.") && observed.contains("reference: b") && !observed.contains("/Users/sam"), "issue form includes redacted comparison")
-let errorReport = IssueReport(program: "lz4.nro", engine: .tier3, diagnosis: failed,
-    appVersion: "test", hostOS: "macOS", home: "/Users/sam", comparisonSummary: "No output; no comparison was made.")
-check(errorReport.body.contains("No output; no comparison was made."), "verification errors retain comparison context")
+print("Run settings and diagnosis checks passed.")

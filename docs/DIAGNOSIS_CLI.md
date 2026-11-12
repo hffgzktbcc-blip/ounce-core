@@ -9,7 +9,7 @@ dependencies and an authorized exact-hash NRO.
 To diagnose your own `.nro` or `.elf` program rather than the retained SDL2/audio dossiers:
 
 - `cargo run --release -- run-nro <program.nro>` (or `--cpu=tier3|tier4|native`) runs the program and prints the exact stop reason (`Unimplemented instruction`, `Stopping on unhandled SVC`, `Hit svcBreak` with `Break PC` and `Break result`, `[VM Error]` with faulting address and `Final PC`, or `[Loader Error]`).
-- `cargo run --release -- ui` opens the local Verification Workbench (`docs/INTERACTIVE_LAB.md`), which runs your `.nro` on Tier-3, Tier-4, and optionally this computer's CPU (`native`), compares outputs, and saves `result.json` under `~/Library/Application Support/Ounce Core/Checks/<id>/` (openable in the Mac launcher's **View Check Results…**).
+- `cargo run --release -- ui` opens the local Verification Workbench (`docs/INTERACTIVE_LAB.md`), which runs your `.nro` on Tier-3, Tier-4, and optionally this computer's CPU (`native`), compares outputs, and saves `result.json` under `~/Library/Application Support/Ounce Core/Checks/<id>/` (openable in the Mac app's **File > Open Saved Results…**).
 - `cargo run --release -- diverge <program.nro>` (`docs/DIVERGE.md`) replays sampled register-only instructions on this computer's CPU to isolate the first instruction that disagrees.
 - `cargo run --release -- run-elf <program.elf>` runs a static AArch64 Linux ELF binary.
 - When a run exposes a missing instruction, missing SVC, or engine divergence in Ounce Core, file an issue with `.github/ISSUE_TEMPLATE/emulation_bug.yml` including the `run-nro` command, host OS, `git rev-parse HEAD`, and the printed stop line.

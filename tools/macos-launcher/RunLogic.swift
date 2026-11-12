@@ -27,7 +27,6 @@ enum Engine: String, CaseIterable {
 
 struct RunSettings: Equatable {
     static let defaultBudget = 50_000_000
-    static let verifyBudget = 4_000_000_000
     var engine: Engine = .tier3
     /// nil means the runtime default (50 million instructions).
     var budget: Int? = nil
@@ -207,7 +206,7 @@ struct Diagnosis: Equatable {
             return Diagnosis(kind: .finished,
                 headline: "The program ran to completion.",
                 explanation: "It exited normally on \(engine.title). That says it ran; it does not say the output is correct. Use Verify against host for a harness program to compare results with a real reference.",
-                nextStep: "For known verification harnesses, choose Verify against Host….",
+                nextStep: "For known test programs, turn on Compare with the recorded reference in the workbench (Advanced).",
                 evidence: exit.map { [$0] } ?? [],
                 output: programOutput(log: log))
         }
@@ -230,7 +229,6 @@ struct IssueReport {
     let appVersion: String
     let hostOS: String
     let home: String
-    var comparisonSummary: String? = nil
 
     /// Engine labels exactly as the issue form's dropdown spells them, so the form can preselect one.
     var engineLabel: String {
@@ -245,9 +243,9 @@ struct IssueReport {
     private func clean(_ text: String) -> String {
         home.isEmpty ? text : text.replacingOccurrences(of: home, with: "~")
     }
-    var title: String { clean("\(program): \(comparisonSummary?.components(separatedBy: "\n").first ?? diagnosis.headline)") }
+    var title: String { clean("\(program): \(diagnosis.headline)") }
     /// The runtime lines the diagnosis rests on, or the last log lines when none were recognised.
-    var observed: String { clean(((comparisonSummary.map { [$0] } ?? []) + [diagnosis.headline] + diagnosis.evidence).joined(separator: "\n")) }
+    var observed: String { clean(([diagnosis.headline] + diagnosis.evidence).joined(separator: "\n")) }
     var environment: String { "Ounce Core app \(appVersion), \(hostOS)" }
 
     /// Complete text for the clipboard, so the report survives even if the form does not prefill.
