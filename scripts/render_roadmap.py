@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "docs/roadmap/milestones.json"
-README = ROOT / "README.md"
+DETAILS = ROOT / "docs/DETAILS.md"
 START = "## The road ahead\n"
 END = "## Sources and porting policy\n"
 HEADLINE = re.compile(r"<!-- corpus-headline -->(\d+/\d+)<!-- /corpus-headline -->")
@@ -85,13 +85,20 @@ def render(data, corpus):
         "---",
         "",
     ])
-    return "\n".join(out) + "\n"
+    return for_docs("\n".join(out)) + "\n"
 
+
+ROOT_LINK = re.compile(r"\]\(((?:src|crates|scripts|tools|tests|assets|site|\.github)/|(?:PLAN|LICENSE|THIRD_PARTY|CONTRIBUTING|AGENTS)(?:\.md)?[)#])")
+
+
+def for_docs(text):
+    """Re-root repository links so they resolve from docs/DETAILS.md."""
+    return ROOT_LINK.sub(lambda m: "](../" + m.group(1), text).replace("](docs/", "](")
 
 
 ARCH_REGISTRY = ROOT / "docs/architecture/layers.json"
 ARCH_START = "### The architecture at a glance\n"
-ARCH_END = "<details>\n"
+ARCH_END = "<!-- END GENERATED ARCHITECTURE -->\n"
 
 
 def render_architecture():
@@ -125,8 +132,8 @@ def render_architecture():
         links = ", ".join("[" + path.rsplit("/", 1)[-1] + "](" + path + ")" for path in sources[:2])
         lines.append("| **" + row["name"] + "** | " + row["capability"] +
                      " | " + row["boundary"] + " | " + links + " |")
-    lines.extend(["", "<!-- END GENERATED ARCHITECTURE -->", ""])
-    return "\n".join(lines) + "\n"
+    lines.extend(["", "<!-- END GENERATED ARCHITECTURE -->"])
+    return for_docs("\n".join(lines)) + "\n"
 
 
 def refresh_architecture(readme):
@@ -136,7 +143,7 @@ def refresh_architecture(readme):
     if ARCH_END not in rest:
         raise ValueError("architecture section end missing")
     _, after = rest.split(ARCH_END, 1)
-    return before + render_architecture() + ARCH_END + after
+    return before + render_architecture() + after
 
 
 def sync_prs(data):
@@ -163,7 +170,7 @@ def sync_prs(data):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true", help="fail if README differs from generated roadmap")
+    parser.add_argument("--check", action="store_true", help="fail if docs/DETAILS.md differs from generated roadmap")
     parser.add_argument("--sync-prs", action="store_true", help="fetch PR state only, never advance reviewed stage")
     args = parser.parse_args()
     if args.check and args.sync_prs:
@@ -171,9 +178,9 @@ def main():
     data = load_registry()
     if args.sync_prs:
         sync_prs(data)
-    original = README.read_text(encoding="utf-8")
+    original = DETAILS.read_text(encoding="utf-8")
     if original.count(START) != 1 or original.count(END) != 1:
-        raise ValueError("README roadmap boundaries must be unique")
+        raise ValueError("DETAILS roadmap boundaries must be unique")
     match = HEADLINE.search(original[:original.index(START)])
     if not match:
         raise ValueError("CI-managed corpus headline missing")
@@ -182,9 +189,9 @@ def main():
     expected = refresh_architecture(left + render(data, match.group(1)) + END + right)
     if args.check:
         if original != expected:
-            raise SystemExit("README roadmap stale: run python3 scripts/render_roadmap.py")
+            raise SystemExit("docs/DETAILS.md roadmap stale: run python3 scripts/render_roadmap.py")
     else:
-        README.write_text(expected, encoding="utf-8")
+        DETAILS.write_text(expected, encoding="utf-8")
     print("roadmap generated and checked" if args.check else "roadmap generated")
 
 
