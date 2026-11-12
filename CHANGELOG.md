@@ -4,6 +4,13 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+### Changed
+- The Mac app is one window, the workbench. The older launcher window is gone. The menu is File (Check a Program, Open
+  Recent, Open Saved Results), View, Advanced and Help (Report a Problem, Documentation). Run in a Window, Graphics Demo,
+  Verify Against Host Reference, Run Settings, SD Card Folder and the session log moved to the Advanced menu and report
+  their outcome in a dialog. A program can be dropped anywhere on the window or on the Dock icon. Not yet clicked
+  through on a Mac; see `docs/MAC_APP.md`.
+
 ### Added
 - FPSR cumulative exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are set by FP arithmetic, conversions, FRINT*, compares and FMAX/FMIN in the interpreter and Tier-3, scalar and vector (`src/cpu/softfp.rs`, `Cpu::step`). FP arithmetic now always goes through the soft-float path, so interpreter FP is slower than before (not measured). Tier-4 compiled FP does not set the flags until the program first accesses FPSR; after that FP arithmetic and compares run in the interpreter. The fp-edge gate now compares flags (0 mismatches over 294,156 cases per engine against qemu-user; hardware left to CI). `tools/testfloat/gen_trace.py` emits flags, all four rounding modes, conversions, FRINT* and compares, with a CI job (`testfloat` in `fp-edge.yml`) that has not run yet.
 
