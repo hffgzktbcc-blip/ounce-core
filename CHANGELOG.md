@@ -4,6 +4,17 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+## 0.8.0
+
+### Removed
+- Key handling and encrypted-container support (NCA/XCI, `prod.keys` parsing). Ounce-core is homebrew-only; a CI guard
+  (`scripts/check_legal_guardrails.sh`) rejects reintroducing it.
+
+### Added
+- The workbench and the Mac app check static AArch64 Linux ELF programs as well as `.nro` files; real-program runs are
+  recorded under `docs/mac-app-real-programs/`.
+- Contributor bots: welcome, claim and gentle-nudge workflows, plus `scripts/outside_activity.py` for drafting replies.
+
 ### Changed
 - Report This Problem, Copy details and Help > Report a Problem now fill in every field the app knows: program name,
   size and SHA-256, the engine, what was compared and the expected output fingerprint, the stop reason (an unimplemented
