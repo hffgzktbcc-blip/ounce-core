@@ -158,7 +158,7 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMes
         let home = NSHomeDirectory()
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let fallback = {
-            guard let url = WorkbenchLogic.problemReportURL(appVersion: version, hostOS: ProcessInfo.processInfo.operatingSystemVersionString) else { return }
+            guard let url = WorkbenchLogic.problemReportURL(appVersion: version, hostOS: ProcessInfo.processInfo.operatingSystemVersionString, hostChip: WorkbenchLogic.chipName()) else { return }
             NSWorkspace.shared.open(url)
         }
         guard address != nil else { return fallback() }

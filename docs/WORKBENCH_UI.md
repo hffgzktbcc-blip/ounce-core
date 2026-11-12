@@ -23,8 +23,29 @@ door: everything the older launcher window offered is an option here.
    difference, recorded-reference comparison, instruction check) and *Details* (hash, step limit, logs) are
    collapsed below.
 4. **If it fails.** The headline is a diagnosis in plain words. **Report This Problem** opens the project's
-   issue form with the known fields filled in; **Copy details** copies the same text. Nothing is sent
-   without the person submitting the form.
+   issue form with every field the app can know filled in; **Copy details** copies the same fields as text, under the
+   form's headings. Nothing is sent until the person presses **Submit new issue** on GitHub; the form says so.
+
+### The problem report
+
+`assets/lab/report.js` builds one report from a finished check, so the page button, **Copy details** and Help > Report a
+Problem in the Mac app always agree (Help asks the page through `reportRequest()`). The field ids are those of
+`.github/ISSUE_TEMPLATE/emulation_bug.yml`:
+
+| Field (`id`) | What is filled in |
+|---|---|
+| `program` | file name, kind (static AArch64 Linux program or `.nro`), size, SHA-256, which engines ran and the step limit. The source, commit or release stays for the person to add. |
+| `engine` | an exact dropdown label: the engine that stopped the run (`Tier-3 interpreter (default)`, `Tier-4 recompiler (--cpu=tier4)`), `Tier-3 and Tier-4 (both)` when both fault or differ, `Native (--cpu=native)`, else `Not sure`. |
+| `expected` | what was compared (*engine vs engine*, *engine vs this computer*, or the *recorded reference* with its harness and line count) and the expected output SHA-256: the recorded reference's (`expected_sha256` from the server), else the output of the run that finished, else "none". |
+| `observed` | the result and headline, how each engine ended (an unimplemented instruction keeps its word and address), the first difference, the recorded-reference difference, the instruction-check mismatch and the last log lines of the failing engine. |
+| `repro` | `ounce-core run-elf NAME --cpu=… --max-insns=N` (or `run-nro NAME --cpu=…`), one line per engine involved. Only the file name is given, never a path. |
+| `environment` | Ounce Core version and commit, OS version and chip (from `GET /api/config`: `version`, `commit`, `host`), and whether it came from the Mac app or the browser. |
+
+Limits: the address stays under 6,500 characters (GitHub refuses about 8,000), so each long field is cut with an ellipsis
+and, if needed, cut harder; program bytes are never sent. Home folders (`/Users/x`, `/home/x`, `C:\Users\x`) become `~` in
+the page, and the Mac app removes its own home folder again before opening the address. Without a finished check, Help >
+Report a Problem opens the form with only the app version, macOS version and chip. Tests: `tests/lab/report.test.js`
+(run by `cargo test --test lab_report_js`), `tests/macos/workbench-logic` and `tests/macos/run-logic`.
 
 Light and dark follow the system. The page works from 320 px wide, is fully keyboard-operable (the verdict
 takes focus when a result arrives), and respects reduced motion. The page uses no inline script or style

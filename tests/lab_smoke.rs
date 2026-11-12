@@ -51,10 +51,14 @@ fn uploads_a_program_and_reports_a_verdict() {
     assert!(page.contains(token), "the session key is embedded for the page's own script");
     assert_eq!(http(port, "GET", "/app.js", None, b"").0, 200);
     assert_eq!(http(port, "GET", "/app.css", None, b"").0, 200);
+    assert!(page.contains(r#"src="/report.js""#) && http(port, "GET", "/report.js", None, b"").0 == 200, "the report builder is served");
     assert_eq!(http(port, "POST", "/api/checks?name=x", Some(token), b"not an nro").0, 400);
     let (status, config) = http(port, "GET", "/api/config", Some(token), b"");
     assert_eq!(status, 200, "{config}");
-    assert!(serde_json::from_str::<serde_json::Value>(&config).unwrap()["default_budget"].as_u64().is_some());
+    let config: serde_json::Value = serde_json::from_str(&config).unwrap();
+    assert!(config["default_budget"].as_u64().is_some());
+    assert_eq!(config["version"], env!("CARGO_PKG_VERSION"), "reports name the version");
+    assert!(config["host"]["os"].as_str().is_some_and(|s| !s.is_empty()) && config["host"]["arch"].as_str().is_some(), "reports name the system: {config}");
     assert_eq!(http(port, "GET", "/api/config", None, b"").0, 403, "config needs the session key");
     let nro_head = [vec![0u8; 0x10], b"NRO0".to_vec()].concat();
     assert_eq!(http(port, "POST", "/api/checks?name=x.nro&engines=gpu", Some(token), &nro_head).0, 400, "unknown engine");

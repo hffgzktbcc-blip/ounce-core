@@ -60,12 +60,14 @@ check(Diagnosis.programOutput(log: String(repeating: "x", count: 500))[0].count 
 
 // A failed run produces a report that names the file only and hides the home folder.
 let failed = diag("[VM Error] Unimplemented instruction 0x9AC04021 at PC: 0x0000000080001234\n  Final PC: /Users/sam/secret", 1, .tier4)
-let report = IssueReport(program: "app.nro", engine: .tier4, diagnosis: failed, appVersion: "0.7.0", hostOS: "macOS 26", home: "/Users/sam")
+let report = IssueReport(program: "app.nro", engine: .tier4, diagnosis: failed, appVersion: "0.7.0", hostOS: "macOS 26", home: "/Users/sam", hostChip: "Apple M2")
 check(report.command == "ounce-core run-nro app.nro --cpu=tier4", "report command")
-check(report.engineLabel == "Tier-4 JIT (--cpu=tier4)", "engine label matches the form dropdown")
+check(report.engineLabel == "Tier-4 recompiler (--cpu=tier4)", "engine label matches the form dropdown")
 check(report.body.contains("0x9AC04021") && report.body.contains("macOS 26") && !report.body.contains("/Users/sam"), "report keeps evidence and hides the home folder")
 let reportURL = report.url?.absoluteString ?? ""
 check(reportURL.hasPrefix("https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=emulation_bug.yml"), "report opens the emulation bug form")
-check(reportURL.contains("engine=Tier-4%20JIT") && !reportURL.contains("Users"), "form is prefilled without the home folder")
+check(reportURL.contains("engine=Tier-4%20recompiler") && !reportURL.contains("Users"), "form is prefilled without the home folder")
+check(reportURL.contains("expected=") && reportURL.contains("environment=Ounce%20Core%20app%200.7.0,%20macOS%2026,%20Apple%20M2"), "form carries expected result and environment: \(reportURL)")
+check(report.body.contains("Expected result and where it comes from\nCompared:") && report.body.contains("Apple M2"), "clipboard text follows the form's headings")
 
 print("Run settings and diagnosis checks passed.")

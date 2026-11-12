@@ -5,6 +5,11 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 ## Unreleased
 
 ### Changed
+- Report This Problem, Copy details and Help > Report a Problem now fill in every field the app knows: program name,
+  size and SHA-256, the engine, what was compared and the expected output fingerprint, the stop reason (an unimplemented
+  instruction keeps its word and address), the command to reproduce, and the OS, chip and Ounce Core version and commit.
+  The issue form says nothing is sent until you press Submit and asks you to search open issues first. See
+  `docs/WORKBENCH_UI.md`.
 - The Mac app is one window, the workbench. The older launcher window is gone. The menu bar is File (Check a Program, Open
   Recent, Open Saved Results), View (with Advanced inside it) and Help (Report a Problem, Documentation). Run in a
   Window, Graphics Demo, Run Settings, SD Card Folder and the session log are under View > Advanced. Verify Against Host
