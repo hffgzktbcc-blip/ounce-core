@@ -33,7 +33,15 @@ enum Notice {
     }
 }
 
-final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
+/// Lets the page talk to the app without the app holding a strong reference to it.
+private final class ScriptBridge: NSObject, WKScriptMessageHandler {
+    weak var target: WKScriptMessageHandler?
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.userContentController(controller, didReceive: message)
+    }
+}
+
+final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private let runtime: URL
     private var process: Process?
     private var keepAlive: Pipe?
@@ -42,6 +50,7 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var buffer = ""
     private var pendingFiles: [URL] = []
     private var stopping = false
+    private var acceptedThisMac = false
     private(set) var lastProgram: URL?
     private(set) var window: NSWindow!
     private var webView: WKWebView!
@@ -50,6 +59,9 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     func show() {
         let configuration = WKWebViewConfiguration()
+        let bridge = ScriptBridge()
+        bridge.target = self
+        configuration.userContentController.add(bridge, name: "ounceWorkbench")
         let view = WorkbenchWebView(frame: .zero, configuration: configuration)
         view.onDrop = { [weak self] url in self?.check(file: url) }
         webView = view
@@ -82,7 +94,27 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
         NSDocumentController.shared.noteNewRecentDocumentURL(file)
         lastProgram = file
-        let request = WorkbenchLogic.uploadRequest(address, name: file.lastPathComponent, body: data)
+        // Use the settings currently shown in the page; an older page or a failed call falls back to emulator-only.
+        webView.evaluateJavaScript("OunceWorkbench.queryString()") { [weak self] value, _ in
+            guard let self else { return }
+            let options = WorkbenchLogic.checkOptions(fromPage: value)
+            if WorkbenchLogic.runsOnThisMac(options) && !self.acceptedThisMac {
+                let alert = NSAlert()
+                alert.messageText = "Run this program on this Mac?"
+                alert.informativeText = "This runs \(file.lastPathComponent) directly on this Mac, outside the emulator’s protection. Only do this for programs you trust."
+                alert.addButton(withTitle: "Run on This Mac")
+                alert.addButton(withTitle: "Cancel")
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+                self.acceptedThisMac = true
+            }
+            self.upload(file: file, data: data, options: options)
+        }
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func upload(file: URL, data: Data, options: String) {
+        guard let address else { return }
+        let request = WorkbenchLogic.uploadRequest(address, name: file.lastPathComponent, body: data, options: options)
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -93,7 +125,6 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
                 }
             }
         }.resume()
-        window.makeKeyAndOrderFront(nil)
     }
 
     func zoom(by factor: CGFloat) { webView.pageZoom = min(3, max(0.5, webView.pageZoom * factor)) }
@@ -118,7 +149,8 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
     private func start() {
         let process = Process()
         process.executableURL = runtime
-        process.arguments = ["ui", "--no-open", "--port", "0", "--parent-pipe"]
+        process.arguments = WorkbenchLogic.serverArguments(verifyDir: Bundle.main.resourceURL?.appendingPathComponent("Verify", isDirectory: true).standardizedFileURL
+            .nilIfMissing)
         process.environment = WorkbenchLogic.serverEnvironment(base: ProcessInfo.processInfo.environment)
         let pipe = Pipe(), stdin = Pipe()
         process.standardOutput = pipe
@@ -174,6 +206,14 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     private func fail(_ what: String, _ next: String) { Notice.show(what, next, on: window) }
 
+    // MARK: WKScriptMessageHandler (Report This Problem in the page)
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let address, WorkbenchLogic.isInternal(message.frameInfo.request.url, port: address.port),
+              let url = WorkbenchLogic.reportDestination(message.body, home: NSHomeDirectory()) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     // MARK: WKNavigationDelegate
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
@@ -216,4 +256,9 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction,
                  windowFeatures: WKWindowFeatures) -> WKWebView? { nil }
+}
+
+private extension URL {
+    /// This folder, if it exists.
+    var nilIfMissing: URL? { FileManager.default.fileExists(atPath: path) ? self : nil }
 }

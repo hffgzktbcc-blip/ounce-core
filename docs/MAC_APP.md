@@ -55,8 +55,19 @@ On launch the app starts `ounce-core ui --no-open --port 0 --parent-pipe` from t
   Advanced run or a mismatched host verification (those dialogs also offer it, and copy the full report text).
 - **Closing the window quits the app.** The server is a child process on 127.0.0.1 with a per-session key. It exits when
   the app does: the app holds a pipe to it, so even a crash or a force-quit doesn't leave it running.
-- The window loads only the local workbench; any other link opens in your browser. The only page hook the app calls is
-  `pick(id)` (select a check that was just started); if the page renames it, change `Workbench.check(file:)`.
+- The window loads only the local workbench; any other link opens in your browser. The page hooks are documented in
+  [WORKBENCH_UI.md](WORKBENCH_UI.md). The app uses these:
+  - `--verify-dir <bundle>/Contents/Resources/Verify` is passed to the server when that folder exists, so the page's
+    "Compare with the recorded reference" option works.
+  - When the app hands over a program itself (Finder, Dock, drag-drop, File menu, Open Recent), it appends
+    `OunceWorkbench.queryString()` (the engines, step limit and checkboxes currently shown in the page) to
+    `POST /api/checks`, then calls `pick(id)`. If the page does not answer, it falls back to `native=0`. If the settings ask
+    for the Mac reference run, the app asks for the same confirmation the page would, once per session.
+  - The page's *Report This Problem* posts `{action: "report", url, text}` to the `ounceWorkbench` message handler. The app
+    opens `url` in the default browser only if it is the project's issue form (anything else is ignored), with the home
+    folder replaced by `~`. It does not touch the clipboard; *Copy details* in the page does that.
+  - Known gap: a program the app sends is not "chosen" in the page, so the result's "Check again…" buttons say to choose
+    the program again (the page re-runs from the file it holds, and the app's upload bypasses that). Fix needs a page hook.
 
 ### Advanced
 
@@ -72,6 +83,8 @@ window of their own (`Advanced.swift`). The outcome of each is shown in a dialog
 | SD Card Folder… | The folder these runs see as their SD card (default `~/Library/Application Support/Ounce Core/SD Card`). |
 | Show Last Session Log | Reveals the newest log in `~/Library/Application Support/Ounce Core/Logs` (8 MiB cap per log). |
 | Stop Running Program | Ends the run. Only enabled while one is running; the Dock icon shows "Running" or "Verifying". |
+
+Screenshots of a click-through of this build are in [mac-app-one-door/](mac-app-one-door/).
 
 Swift logic tests: `swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos/workbench-logic/main.swift -o /tmp/wb-tests && /tmp/wb-tests`.
 

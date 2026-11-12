@@ -33,10 +33,24 @@ enum WorkbenchLogic {
         return set
     }()
 
-    /// The request that hands a program to the server. Emulator-only: the Mac reference is a choice made in the page.
-    static func uploadRequest(_ address: WorkbenchAddress, name: String, body: Data) -> URLRequest {
+    /// Settings used when the page can't supply its own: emulator-only, no Mac reference run.
+    static let defaultOptions = "native=0"
+
+    /// The page's own settings (`OunceWorkbench.queryString()`) if they look like plain query text, else the defaults.
+    /// The page is local, but the text goes into a URL, so anything unexpected is dropped rather than passed on.
+    static func checkOptions(fromPage value: Any?) -> String {
+        guard let text = value as? String, !text.isEmpty, text.count <= 200,
+              text.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "=&,%-_.".contains($0)) }) else { return defaultOptions }
+        return text
+    }
+
+    /// True when the settings ask for the program to run directly on this Mac (`native=1`).
+    static func runsOnThisMac(_ options: String) -> Bool { options.split(separator: "&").contains("native=1") }
+
+    /// The request that hands a program to the server, with the page's settings appended.
+    static func uploadRequest(_ address: WorkbenchAddress, name: String, body: Data, options: String = defaultOptions) -> URLRequest {
         let escaped = name.addingPercentEncoding(withAllowedCharacters: queryAllowed) ?? "program.nro"
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(address.port)/api/checks?name=\(escaped)&native=0")!)
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(address.port)/api/checks?name=\(escaped)&\(options)")!)
         request.httpMethod = "POST"
         request.httpBody = body
         request.setValue(address.token, forHTTPHeaderField: "X-Ounce-Token")
@@ -51,6 +65,25 @@ enum WorkbenchLogic {
         }
         if let id = object["id"] as? String, id.allSatisfy({ $0.isNumber || $0.isLetter || $0 == "-" }) { return .success(id) }
         return .failure(WorkbenchError(message: (object["error"] as? String) ?? "The workbench didn't accept that file."))
+    }
+
+    /// Arguments for the bundled server. `verifyDir` is the bundled recorded-reference data, when it is present.
+    static func serverArguments(verifyDir: URL?) -> [String] {
+        var arguments = ["ui", "--no-open", "--port", "0", "--parent-pipe"]
+        if let verifyDir { arguments += ["--verify-dir", verifyDir.path] }
+        return arguments
+    }
+
+    /// The issue-form address in a page's `{action: "report", url, text}` message, or nil for anything else.
+    /// Only the project's own issue form is opened. Home folders are replaced by `~`.
+    static func reportDestination(_ body: Any, home: String) -> URL? {
+        guard let message = body as? [String: Any], message["action"] as? String == "report",
+              let text = message["url"] as? String, text.hasPrefix(IssueFormLocation.url + "?") || text == IssueFormLocation.url,
+              var parts = URLComponents(string: text) else { return nil }
+        if !home.isEmpty {
+            parts.queryItems = parts.queryItems?.map { URLQueryItem(name: $0.name, value: $0.value?.replacingOccurrences(of: home, with: "~")) }
+        }
+        return parts.url
     }
 
     /// Environment for the server process: never inherit an engine choice from the shell.

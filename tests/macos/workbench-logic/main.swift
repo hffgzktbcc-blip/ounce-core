@@ -30,6 +30,30 @@ check(query.hasSuffix("&native=0"), "never asks for the Mac reference on its own
 check(query.contains("name=my%20game%2Bv2%20%26%20co.nro"), "name is escaped, including + and &: \(query)")
 check(request.url!.host == "127.0.0.1" && request.url!.port == 52948, "request goes to the workbench")
 
+// The page's own settings are used when they look like plain query text.
+let pageOptions = "engines=tier3%2Ctier4&budget=5000&native=0&reference=1"
+check(WorkbenchLogic.checkOptions(fromPage: pageOptions) == pageOptions, "page settings are passed on")
+check(WorkbenchLogic.checkOptions(fromPage: nil) == "native=0", "no answer falls back to emulator-only")
+check(WorkbenchLogic.checkOptions(fromPage: "engines=tier3&x=1#frag /../") == "native=0", "unexpected characters fall back to the defaults")
+check(WorkbenchLogic.checkOptions(fromPage: 42) == "native=0", "a non-string answer falls back")
+check(WorkbenchLogic.runsOnThisMac("engines=tier3&native=1") && !WorkbenchLogic.runsOnThisMac("native=0&reference=1"), "native=1 is recognised")
+let withOptions = WorkbenchLogic.uploadRequest(address, name: "a.nro", body: Data(), options: pageOptions).url!.absoluteString
+check(withOptions.hasSuffix("name=a.nro&" + pageOptions), "upload carries the page settings: \(withOptions)")
+
+// Server arguments: the recorded-reference data is passed when it is bundled.
+check(WorkbenchLogic.serverArguments(verifyDir: nil) == ["ui", "--no-open", "--port", "0", "--parent-pipe"], "no verify dir, no option")
+check(WorkbenchLogic.serverArguments(verifyDir: URL(fileURLWithPath: "/App/Resources/Verify")).suffix(2) == ["--verify-dir", "/App/Resources/Verify"], "bundled verify dir is passed")
+
+// The page's report message opens the project's issue form and nothing else.
+let issue = IssueFormLocation.url + "?template=emulation_bug.yml&observed=at%20/Users/me/x"
+let reportMessage: [String: Any] = ["action": "report", "url": issue, "text": "details"]
+let destination = WorkbenchLogic.reportDestination(reportMessage, home: "/Users/me")
+check(destination?.host == "github.com" && destination?.absoluteString.contains("Users") == false, "report url accepted, home removed: \(String(describing: destination))")
+check(WorkbenchLogic.reportDestination(["action": "report", "url": "https://evil.example/issues/new"], home: "/Users/me") == nil, "another site is refused")
+check(WorkbenchLogic.reportDestination(["action": "report", "url": IssueFormLocation.url + ".evil.example/x"], home: "") == nil, "a look-alike address is refused")
+check(WorkbenchLogic.reportDestination(["action": "open", "url": issue], home: "") == nil, "other actions are ignored")
+check(WorkbenchLogic.reportDestination("report", home: "") == nil, "a non-object message is ignored")
+
 // Server answers.
 check(WorkbenchLogic.parseUploadResponse(Data(#"{"id":"0001-abc123"}"#.utf8)) == .success("0001-abc123"), "id accepted")
 check(WorkbenchLogic.parseUploadResponse(Data(#"{"error":"That isn't a homebrew .nro file."}"#.utf8)) == .failure(WorkbenchError(message: "That isn't a homebrew .nro file.")), "server message passed on")
