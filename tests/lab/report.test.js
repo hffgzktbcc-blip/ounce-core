@@ -45,7 +45,7 @@ function params(url) { const u = new URL(url); return Object.fromEntries(u.searc
   assert.strictEqual(e(run("native", "fault", "x"), run("tier3", "exited", "")), R.ENGINES.native);
   assert.strictEqual(e(run("native", "fault", "x"), run("tier3", "fault", "x")), R.ENGINES.unsure);
   assert.strictEqual(e(), R.ENGINES.unsure);
-  const template = fs.readFileSync(path.join(__dirname, "../../.github/ISSUE_TEMPLATE/emulation_bug.yml"), "utf8");
+  const template = fs.readFileSync(path.join(__dirname, "../../.github/ISSUE_TEMPLATE/emulation_bug.yml"), "utf8").replace(/\r\n/g, "\n"); // Windows checkouts may use CRLF
   for (const label of Object.values(R.ENGINES)) assert(template.includes("- " + label + "\n"), "template lists the option: " + label);
   for (const id of ["program", "engine", "expected", "observed", "repro", "environment"]) assert(template.includes("id: " + id), "template has field " + id);
 }
