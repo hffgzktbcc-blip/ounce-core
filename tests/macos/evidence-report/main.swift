@@ -78,6 +78,18 @@ let workbenchFixture = Data("""
 let workbenchReport = try EvidenceReport(data: workbenchFixture)
 precondition(workbenchReport.heading == "Saved workbench check")
 precondition(workbenchReport.sections.count == 3)
+precondition(workbenchReport.sections[0].title == "Could not run this program", "saved results use the page's outcome words")
+func firstTitle(_ kind: String, _ headline: String) throws -> (String, String) {
+    let json = Data("""
+    {"schema_version":"ounce-core/workbench-check-v1","name":"a.nro","status":"done","verdict":{"kind":"\(kind)","headline":"\(headline)","detail":"d"},"engines":[{"engine":"tier3","status":"exited","seconds":0.1,"stop":{"kind":"exited","line":""}}]}
+    """.utf8)
+    let section = try EvidenceReport(data: json).sections[0]
+    return (section.title, section.lines[0])
+}
+let legacy = try firstTitle("agrees", "Tier-3 and Tier-4 agree")
+precondition(legacy.0 == "Results match" && !legacy.1.contains("Tier"), "an older saved result no longer says Tier 3 and Tier 4 agree: \(legacy)")
+let differs = try firstTitle("diverges", "Tier-3 and Tier-4 disagree")
+precondition(differs.0 == "Results differ")
 
 do {
     _ = try EvidenceReport.read(URL(fileURLWithPath: "docs/verify/audout-padding/manifest.json"))

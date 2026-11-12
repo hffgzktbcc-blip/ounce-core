@@ -96,47 +96,35 @@ enum WorkbenchLogic {
 
 struct WorkbenchError: Error, Equatable { let message: String }
 
-/// The most recent check the workbench holds, as listed by `GET /api/checks` (newest first).
-struct LatestCheck: Equatable {
-    let name: String
-    let kind: String
-    let headline: String
-    let finished: Bool
-}
-
 extension WorkbenchLogic {
-    static func listRequest(_ address: WorkbenchAddress) -> URLRequest {
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(address.port)/api/checks")!)
-        request.setValue(address.token, forHTTPHeaderField: "X-Ounce-Token")
-        return request
+    /// What the page's `OunceWorkbench.reportRequest()` returned (JSON text `{url, text}`), as the issue-form address.
+    /// This is the same prefilled report as the page's Report This Problem button, so Help > Report a Problem agrees with it.
+    /// Nil when there is no finished check yet or the answer is not understood.
+    static func pageReport(_ value: Any?, home: String) -> URL? {
+        guard let text = value as? String, text.count <= 20_000,
+              let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { return nil }
+        return reportDestination(["action": "report", "url": object["url"] as Any], home: home)
     }
 
-    /// The newest check in a listing, or nil when there are none or the answer is not understood.
-    static func parseLatestCheck(_ data: Data) -> LatestCheck? {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let checks = object["checks"] as? [[String: Any]], let first = checks.first,
-              let name = first["name"] as? String else { return nil }
-        return LatestCheck(name: name, kind: first["kind"] as? String ?? "", headline: first["headline"] as? String ?? "",
-                           finished: (first["status"] as? String) == "done")
-    }
-
-    /// The issue form with what the app knows filled in. Opening it sends nothing: the person reviews and submits it.
-    /// Home folders are replaced by `~` so a user name is not published by accident.
-    static func problemReportURL(check: LatestCheck?, appVersion: String, hostOS: String, home: String) -> URL? {
-        func clean(_ text: String) -> String { home.isEmpty ? text : text.replacingOccurrences(of: home, with: "~") }
-        let program = check.map { clean($0.name) } ?? ""
-        var observed = "Describe what happened and what you expected."
-        if let check, check.finished, !check.headline.isEmpty { observed = clean("Workbench result: \(check.headline)") }
+    /// The generic issue form, for when no check has finished. Opening it sends nothing: the person reviews and submits it.
+    static func problemReportURL(appVersion: String, hostOS: String) -> URL? {
         var parts = URLComponents(string: IssueFormLocation.url)
-        var items = [URLQueryItem(name: "template", value: "emulation_bug.yml")]
-        if !program.isEmpty {
-            items.append(URLQueryItem(name: "title", value: clean("\(program): \(check?.headline ?? "")")))
-            items.append(URLQueryItem(name: "program", value: program))
-        }
-        items.append(URLQueryItem(name: "observed", value: String(observed.prefix(1500))))
-        items.append(URLQueryItem(name: "repro", value: "Ounce Core app \(appVersion), \(hostOS)"))
-        parts?.queryItems = items
+        parts?.queryItems = [
+            URLQueryItem(name: "template", value: "emulation_bug.yml"),
+            URLQueryItem(name: "observed", value: "Describe what happened and what you expected."),
+            URLQueryItem(name: "repro", value: "Ounce Core app \(appVersion), \(hostOS)"),
+        ]
         return parts?.url
+    }
+
+    /// A report the page asks the app to save: a plain file name and text, with home folders replaced by `~`.
+    static func saveRequest(_ body: Any, home: String) -> (name: String, text: String)? {
+        guard let message = body as? [String: Any], message["action"] as? String == "save",
+              let name = message["name"] as? String, var text = message["text"] as? String, text.utf8.count <= 200_000 else { return nil }
+        let safe = (name as NSString).lastPathComponent.filter { !$0.isNewline && $0 != "/" && $0 != ":" }
+        guard !safe.isEmpty, !safe.hasPrefix(".") else { return nil }
+        if !home.isEmpty { text = text.replacingOccurrences(of: home, with: "~") }
+        return (String(safe.prefix(120)), text)
     }
 }
 

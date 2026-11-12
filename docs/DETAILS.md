@@ -222,15 +222,12 @@ Open **Ounce Core.app**. It opens one window, the workbench. Drop a homebrew `.n
 icon, or choose **File > Check a Program…**. Static AArch64 Linux ELF programs run in the CLI with `ounce-core run-elf <file>`.
 
 - **File > Open Saved Results…** opens a saved `result.json` or Ounce-Verify report in a read-only window. It runs nothing.
-- **Help > Report a Problem…** opens the issue form with the program, the newest check's headline, the app and macOS
-  versions filled in (your home folder is replaced by `~`). Nothing is sent until you submit the form.
-- **Advanced** keeps the older launcher functions: **Run in a Window…** and **Graphics Demo** (the runtime's own graphics
-  window), **Verify Against Host Reference…** (for harness programs named after the harnesses in
-  [docs/verify/differential.json](verify/differential.json), for example `lz4.nro`: runs the NRO headless and compares its
-  output byte for byte with the committed `expected-host.txt`; use `scripts/verify_differential.py` to rebuild the
-  reference), **Run Settings…** (engine `tier3`, `tier4` or `native`, and an instruction budget; blank = 50 million),
-  **SD Card Folder…**, **Show Last Session Log** and **Stop Running Program**. A failed run shows a plain-language
-  diagnosis read from the runtime's own log, with **Report a Problem…**.
+- **Help > Report a Problem…** opens the same prefilled issue form as the page's Report This Problem (program, engine, hash, headline) (your home folder is replaced by `~`). Nothing is sent until you submit the form.
+- **View > Advanced** keeps the older launcher functions: **Run in a Window…** and **Graphics Demo** (the runtime's own
+  graphics window), **Run Settings…** (engine `tier3`, `tier4` or `native`, and an instruction budget; blank = 50
+  million), **SD Card Folder…**, **Show Last Session Log** and **Stop Running Program**. Comparing a known test program
+  with its recorded reference is an option on the page (Advanced > Compare with the recorded reference). A failed run
+  shows a plain-language diagnosis read from the runtime's own log, with **Report a Problem…**.
 - The bundled runtime is built with the `nce` and `native-jit` features, so `tier4` and `native` work on an Apple
   Silicon Mac; elsewhere the runtime falls back to `tier3`, and the app says so instead of reporting a pass.
   Logs and the default SD folder live under `~/Library/Application Support/Ounce Core/`.

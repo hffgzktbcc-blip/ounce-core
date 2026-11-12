@@ -64,18 +64,22 @@ check(WorkbenchLogic.parseUploadResponse(Data("nonsense".utf8)) == .failure(Work
 let env = WorkbenchLogic.serverEnvironment(base: ["OUNCE_CPU": "native", "PATH": "/bin"])
 check(env["OUNCE_CPU"] == nil && env["PATH"] == "/bin", "OUNCE_CPU stripped, rest kept")
 
-// Latest check and the problem report.
-let listing = Data(#"{"checks":[{"id":"2","name":"/Users/me/game.nro","status":"done","kind":"unhandled-svc","headline":"Stopped at an unhandled system call"},{"id":"1","name":"old.nro","status":"done","kind":"agree","headline":"Same result"}]}"#.utf8)
-let latest = WorkbenchLogic.parseLatestCheck(listing)
-check(latest?.name == "/Users/me/game.nro" && latest?.finished == true, "newest check is the first in the list")
-check(WorkbenchLogic.parseLatestCheck(Data(#"{"checks":[]}"#.utf8)) == nil, "an empty list has no latest check")
-check(WorkbenchLogic.parseLatestCheck(Data("nope".utf8)) == nil, "garbage has no latest check")
-check(WorkbenchLogic.listRequest(address).value(forHTTPHeaderField: "X-Ounce-Token") == address.token, "list request sends the key")
-let reportURL = WorkbenchLogic.problemReportURL(check: latest, appVersion: "0.5.0", hostOS: "macOS 26", home: "/Users/me")!.absoluteString
-check(reportURL.contains("template=emulation_bug.yml") && reportURL.contains("0.5.0"), "report opens the issue form with the app version")
-check(!reportURL.contains("/Users/me") && !reportURL.contains("%2FUsers%2Fme"), "home folder is not included in the report")
-let blank = WorkbenchLogic.problemReportURL(check: nil, appVersion: "0.5.0", hostOS: "macOS 26", home: "/Users/me")!.absoluteString
-check(blank.contains("template=emulation_bug.yml") && !blank.contains("title="), "report without a check still opens the form")
+// Help > Report a Problem uses the page's own report, so both agree.
+let pageJSON = #"{"url":"\#(IssueFormLocation.url)?template=emulation_bug.yml&title=Workbench%3A%20Results%20differ%20-%20demo.nro&engine=tier3&observed=SHA-256%3A%20abc%20/Users/me/x","text":"details"}"#
+let fromPage = WorkbenchLogic.pageReport(pageJSON, home: "/Users/me")
+check(fromPage?.absoluteString.contains("engine=tier3") == true && fromPage?.absoluteString.contains("SHA-256") == true, "page report keeps engine and hash: \(String(describing: fromPage))")
+check(fromPage?.absoluteString.contains("Users") == false, "page report hides the home folder")
+check(WorkbenchLogic.pageReport("null", home: "") == nil, "no finished check, no page report")
+check(WorkbenchLogic.pageReport(#"{"url":"https://evil.example/x"}"#, home: "") == nil, "a page report for another site is refused")
+check(WorkbenchLogic.pageReport(nil, home: "") == nil, "a missing answer is no report")
+let blank = WorkbenchLogic.problemReportURL(appVersion: "0.5.0", hostOS: "macOS 26")!.absoluteString
+check(blank.contains("template=emulation_bug.yml") && blank.contains("0.5.0") && !blank.contains("title="), "report without a check still opens the form")
+
+// Saving a report from the page.
+let saved = WorkbenchLogic.saveRequest(["action": "save", "name": "../demo - report.txt", "text": "from /Users/me/x"], home: "/Users/me")
+check(saved?.name == "demo - report.txt" && saved?.text == "from ~/x", "save keeps a plain file name and hides the home folder: \(String(describing: saved))")
+check(WorkbenchLogic.saveRequest(["action": "save", "name": ".hidden", "text": "x"], home: "") == nil, "a hidden file name is refused")
+check(WorkbenchLogic.saveRequest(["action": "report", "name": "a.txt", "text": "x"], home: "") == nil, "other actions are not saves")
 
 // Program problems: say what happened and what to do.
 let dir = FileManager.default.temporaryDirectory.appendingPathComponent("wb-problem-\(UUID().uuidString)")

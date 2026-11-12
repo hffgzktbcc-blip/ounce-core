@@ -57,32 +57,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         add(file, "Close Window", #selector(NSWindow.performClose(_:)), "w")
         attach(file)
 
-        let edit = NSMenu(title: "Edit")
-        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        attach(edit)
-
+        // Menu bar: File, View, Help. The Advanced tools sit under View. There is no Edit menu; OunceApplication
+        // routes ⌘X ⌘C ⌘V ⌘A ⌘Z to whatever has focus, which is all the page and the settings dialog need.
         let view = NSMenu(title: "View")
         add(view, "Actual Size", #selector(zoomReset), "0")
         add(view, "Zoom In", #selector(zoomIn), "+")
         add(view, "Zoom Out", #selector(zoomOut), "-")
         view.addItem(.separator())
-        add(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
-        attach(view)
-
         let advancedMenu = NSMenu(title: "Advanced")
         add(advancedMenu, "Run in a Window…", #selector(runInWindow), "r")
         add(advancedMenu, "Graphics Demo", #selector(graphicsDemo))
-        add(advancedMenu, "Verify Against Host Reference…", #selector(verifyAgainstHost))
         advancedMenu.addItem(.separator())
         add(advancedMenu, "Run Settings…", #selector(runSettings))
         add(advancedMenu, "SD Card Folder…", #selector(sdCardFolder))
         add(advancedMenu, "Show Last Session Log", #selector(showLog))
         advancedMenu.addItem(.separator())
         add(advancedMenu, "Stop Running Program", #selector(stopRunning), ".")
-        attach(advancedMenu)
+        let advancedItem = NSMenuItem(title: "Advanced", action: nil, keyEquivalent: "")
+        advancedItem.submenu = advancedMenu
+        view.addItem(advancedItem)
+        view.addItem(.separator())
+        add(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
+        attach(view)
 
         let help = NSMenu(title: "Help")
         add(help, "Report a Problem…", #selector(reportProblem))
@@ -115,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard let advanced else { return true }
         switch item.action {
-        case #selector(runInWindow), #selector(graphicsDemo), #selector(verifyAgainstHost), #selector(runSettings), #selector(sdCardFolder):
+        case #selector(runInWindow), #selector(graphicsDemo), #selector(runSettings), #selector(sdCardFolder):
             return !advanced.isRunning
         case #selector(stopRunning): return advanced.isRunning
         default: return true
@@ -131,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [UTType(filenameExtension: "nro") ?? .data]
-        if panel.runModal() == .OK, let url = panel.url { workbench.check(file: url) }
+        Sheet.show(panel, on: workbench.window) { [weak self] in if $0 == .OK, let url = panel.url { self?.workbench.check(file: url) } }
     }
 
     @objc private func openRecent(_ sender: NSMenuItem) { if let url = sender.representedObject as? URL { workbench.check(file: url) } }
@@ -147,11 +143,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
         let checks = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Ounce Core/Checks", isDirectory: true)
         if FileManager.default.fileExists(atPath: checks.path) { panel.directoryURL = checks }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { results.show(try EvidenceReport.read(url), from: url) }
-        catch {
-            Notice.show("Ounce Core couldn’t open \(url.lastPathComponent).",
-                        "\(error.localizedDescription) Choose a result.json saved by a check, or a report written by Ounce-Verify.", on: workbench.window)
+        Sheet.show(panel, on: workbench.window) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            do { self.results.show(try EvidenceReport.read(url), from: url) }
+            catch {
+                Notice.show("Ounce Core couldn’t open \(url.lastPathComponent).",
+                            "\(error.localizedDescription) Choose a result.json saved by a check, or a report written by Ounce-Verify.", on: self.workbench.window)
+            }
         }
     }
 
@@ -160,7 +158,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     @objc private func zoomReset() { workbench.zoom(to: 1) }
     @objc private func runInWindow() { advanced.chooseProgram() }
     @objc private func graphicsDemo() { advanced.graphicsDemo() }
-    @objc private func verifyAgainstHost() { advanced.chooseVerification() }
     @objc private func runSettings() { advanced.showSettings() }
     @objc private func sdCardFolder() { advanced.chooseSDFolder() }
     @objc private func showLog() { advanced.showLastLog() }
@@ -183,7 +180,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     func applicationWillTerminate(_ notification: Notification) { advanced?.terminate(); workbench?.stop() }
 }
 
-let application = NSApplication.shared
+/// Standard editing shortcuts without an Edit menu: the key goes to the focused view (the page, a text field).
+final class OunceApplication: NSApplication {
+    private static let editing: [String: Selector] = [
+        "x": #selector(NSText.cut(_:)), "c": #selector(NSText.copy(_:)), "v": #selector(NSText.paste(_:)),
+        "a": #selector(NSText.selectAll(_:)), "z": Selector(("undo:")),
+    ]
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           let key = event.charactersIgnoringModifiers, let action = Self.editing[key], sendAction(action, to: nil, from: self) { return }
+        super.sendEvent(event)
+    }
+}
+
+let application = OunceApplication.shared
 let delegate = AppDelegate()
 application.delegate = delegate
 application.run()

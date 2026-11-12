@@ -317,10 +317,16 @@ fn instruction_check(exe: &Path, nro: &Path, work: &Path) -> Value {
     }
 }
 
+/// What the person calls the machine the native reference runs on. The page uses the same words.
+fn computer() -> &'static str {
+    if cfg!(target_os = "macos") { "this Mac" } else { "this computer" }
+}
+
 fn label(engine: &str) -> &'static str {
     match engine {
         "tier3" => "Tier-3",
         "tier4" => "Tier-4",
+        _ if cfg!(target_os = "macos") => "this Mac (native)",
         _ => "this computer (native)",
     }
 }
@@ -359,7 +365,9 @@ fn same_outcome(a: &EngineRun, b: &EngineRun) -> bool {
 }
 
 fn verdict(runs: &[EngineRun]) -> Value {
+    // Saved results and the app's results window show this text, so it uses the page's words (this Mac, results match).
     let verdict = |kind: &str, headline: String, detail: String, diff: Option<Value>| {
+        let (headline, detail) = (headline.replace("this computer", computer()), detail.replace("this computer", computer()));
         json!({"kind": kind, "headline": headline, "detail": detail, "diff": diff,
                "reference": runs.iter().any(|r| r.engine == "native")})
     };
@@ -418,7 +426,7 @@ fn verdict(runs: &[EngineRun]) -> Value {
             }
         }
         let files = refr.files.len();
-        return verdict("matches", "Matches this computer on this run".into(),
+        return verdict("matches", "Same result as this computer on this run".into(),
             format!("Tier-3 and Tier-4 ended the same way as the program on this computer and produced identical output ({files} compared: the files it wrote and its console text). This is one run, not a proof."), None);
     }
 
@@ -446,7 +454,7 @@ fn verdict(runs: &[EngineRun]) -> Value {
                 ),
             }
         } else {
-            verdict("diverges", "Tier-3 and Tier-4 disagree".into(),
+            verdict("diverges", "The two engines gave different results".into(),
                 format!("{} | Run `ounce-core diverge <program.nro>` or report with .github/ISSUE_TEMPLATE/emulation_bug.yml.", tiers.iter().map(|x| describe(x)).collect::<Vec<_>>().join(" | ")), None)
         };
     }
@@ -454,9 +462,9 @@ fn verdict(runs: &[EngineRun]) -> Value {
         return verdict("unfinished", "The program didn't finish within the limit".into(), describe(t), None);
     }
     if tiers.len() == 2 && !same_outcome(tiers[0], tiers[1]) {
-        return verdict("diverges", "Tier-3 and Tier-4 disagree".into(), "An emulator bug between engines. Compare with this computer to see which is right, or run `ounce-core diverge <program.nro>` and report with .github/ISSUE_TEMPLATE/emulation_bug.yml.".into(), first_diff(tiers[0], tiers[1]));
+        return verdict("diverges", "The two engines gave different results".into(), "An emulator bug between engines. Compare with this computer to see which is right, or run `ounce-core diverge <program.nro>` and report with .github/ISSUE_TEMPLATE/emulation_bug.yml.".into(), first_diff(tiers[0], tiers[1]));
     }
-    verdict("agrees", "Tier-3 and Tier-4 agree".into(),
+    verdict("agrees", "Both engines agreed; not compared with this computer".into(),
         "No host reference was used. Turn on 'Compare with this computer' to check against the real CPU.".into(), None)
 }
 
@@ -793,6 +801,18 @@ fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
             "engines": ["tier3", "tier4"],
             "reference_data": lab.verify_dir.is_some(),
         })),
+        ("GET", path) if path.starts_with("/api/checks/") && path.ends_with("/program") => {
+            // The program a check was started with, so the page can check it again after the app uploaded it.
+            let id = &path["/api/checks/".len()..path.len() - "/program".len()];
+            let known = lab.checks.lock().unwrap().iter().any(|(i, _)| i == id);
+            if !known {
+                return error(404, "No such check.");
+            }
+            match std::fs::read(lab.dir.join(id).join("program.nro")) {
+                Ok(bytes) => (200, "application/octet-stream", bytes),
+                Err(_) => error(404, "No such check."),
+            }
+        }
         ("GET", path) if path.starts_with("/api/checks/") => {
             let id = &path["/api/checks/".len()..];
             match lab.checks.lock().unwrap().iter().find(|(i, _)| i == id) {
@@ -833,6 +853,16 @@ pub fn run_cli(args: &[String]) {
     }
 }
 
+/// TEST ONLY. When OUNCE_LAB_TEST_FIXTURES names a folder, every `*.json` in it is shown as a finished check, so a
+/// state the machine cannot produce on demand (such as "Results differ") can be looked at in the real window.
+/// Fixtures are labelled by their own file names; nothing is run and nothing is saved.
+fn load_test_fixtures() -> Vec<(String, Value)> {
+    let Some(dir) = std::env::var_os("OUNCE_LAB_TEST_FIXTURES") else { return Vec::new() };
+    let mut files: Vec<_> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect();
+    files.sort();
+    files.iter().filter_map(|p| serde_json::from_slice::<Value>(&std::fs::read(p).ok()?).ok()).filter_map(|v| Some((v["id"].as_str()?.to_string(), v))).collect()
+}
+
 fn serve(options: Options) -> Result<(), String> {
     let listener = TcpListener::bind(("127.0.0.1", options.port)).map_err(|e| format!("could not listen on 127.0.0.1:{}: {e}", options.port))?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
@@ -840,7 +870,7 @@ fn serve(options: Options) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| format!("could not find this program: {e}"))?;
     let lab = Arc::new(Lab {
         exe, dir: options.dir.clone(), token: token(), port, budget: options.budget, timeout: options.timeout_secs, verify_dir: options.verify_dir.clone(),
-        checks: Mutex::new(Vec::new()), counter: Mutex::new(0),
+        checks: Mutex::new(load_test_fixtures()), counter: Mutex::new(0),
     });
     let url = format!("http://127.0.0.1:{port}/?t={}", lab.token);
     // A caller may read only the first line and close the pipe (the test harness and the Mac app
@@ -947,7 +977,7 @@ mod tests {
         assert_eq!(v["kind"], "diverges");
         assert_eq!(v["diff"]["line"], 2);
         assert_eq!(v["diff"]["a"], "WRONG");
-        assert_eq!(v["diff"]["b_label"], "this computer (native)");
+        assert_eq!(v["diff"]["b_label"], format!("{} (native)", computer()));
     }
 
     #[test]
@@ -1056,5 +1086,26 @@ mod tests {
             checks: Mutex::new(vec![]), counter: Mutex::new(0),
         });
         assert_eq!(lab.start_check("a.elf", b"\x7fELF".to_vec(), check_options(&HashMap::new()).unwrap()).unwrap_err().0, 400);
+    }
+
+    #[test]
+    fn a_check_can_hand_its_program_back_but_only_for_known_ids() {
+        let dir = std::env::temp_dir().join(format!("ounce-lab-program-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("0001-abc")).unwrap();
+        std::fs::write(dir.join("0001-abc/program.nro"), b"bytes").unwrap();
+        std::fs::write(dir.join("secret.txt"), b"no").unwrap();
+        let lab = Arc::new(Lab {
+            exe: PathBuf::from("x"), dir: dir.clone(), token: "t".into(), port: 1, budget: 1, timeout: 1, verify_dir: None,
+            checks: Mutex::new(vec![("0001-abc".into(), json!({"id": "0001-abc"}))]), counter: Mutex::new(0),
+        });
+        let get = |path: &str| route(&lab, &Req {
+            method: "GET".into(), path: path.into(), query: HashMap::new(),
+            headers: [("host".to_string(), "127.0.0.1:1".to_string()), ("x-ounce-token".to_string(), "t".to_string())].into_iter().collect(), body: vec![],
+        });
+        let (status, kind, body) = get("/api/checks/0001-abc/program");
+        assert_eq!((status, kind, body.as_slice()), (200, "application/octet-stream", b"bytes".as_slice()));
+        assert_eq!(get("/api/checks/nope/program").0, 404);
+        assert_eq!(get("/api/checks/../secret.txt/program").0, 404);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

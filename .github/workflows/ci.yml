@@ -182,7 +182,7 @@ jobs:
         run: |
           swiftc tools/macos-launcher/EvidenceReport.swift tests/macos/evidence-report/main.swift -o "$RUNNER_TEMP/evidence-report-tests"
           "$RUNNER_TEMP/evidence-report-tests"
-          swiftc tools/macos-launcher/RunLogic.swift tools/macos-launcher/HostVerify.swift tests/macos/run-logic/main.swift -o "$RUNNER_TEMP/run-logic-tests"
+          swiftc tools/macos-launcher/RunLogic.swift tests/macos/run-logic/main.swift -o "$RUNNER_TEMP/run-logic-tests"
           "$RUNNER_TEMP/run-logic-tests"
           swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos/workbench-logic/main.swift -o "$RUNNER_TEMP/workbench-logic-tests"
           "$RUNNER_TEMP/workbench-logic-tests"

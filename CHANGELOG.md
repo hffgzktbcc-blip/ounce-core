@@ -5,11 +5,17 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 ## Unreleased
 
 ### Changed
-- The Mac app is one window, the workbench. The older launcher window is gone. The menu is File (Check a Program, Open
-  Recent, Open Saved Results), View, Advanced and Help (Report a Problem, Documentation). Run in a Window, Graphics Demo,
-  Verify Against Host Reference, Run Settings, SD Card Folder and the session log moved to the Advanced menu and report
-  their outcome in a dialog. A program can be dropped anywhere on the window or on the Dock icon. Not yet clicked
-  through on a Mac; see `docs/MAC_APP.md`.
+- The Mac app is one window, the workbench. The older launcher window is gone. The menu bar is File (Check a Program, Open
+  Recent, Open Saved Results), View (with Advanced inside it) and Help (Report a Problem, Documentation). Run in a
+  Window, Graphics Demo, Run Settings, SD Card Folder and the session log are under View > Advanced. Verify Against Host
+  Reference is gone: the page's "Compare with the recorded reference" does it. A program can be dropped anywhere on the
+  window or on the Dock icon. Clicked through on a Mac; see `docs/MAC_APP.md` for what was and was not seen.
+- The workbench page follows the approved mockup: heading "Check whether a program behaves the same everywhere", verdicts
+  "Results match / Results differ / Could not run this program", a chosen-program row with "Choose another", a progress
+  state, and Save Report….
+- Saved results and the app's results window use the same words as the page (this Mac, Results match) instead of
+  "Tier-3 and Tier-4 agree".
+- Dialogs and file panels in the app are sheets, so Quit is never blocked by one.
 
 ### Added
 - FPSR cumulative exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are set by FP arithmetic, conversions, FRINT*, compares and FMAX/FMIN in the interpreter and Tier-3, scalar and vector (`src/cpu/softfp.rs`, `Cpu::step`). FP arithmetic now always goes through the soft-float path, so interpreter FP is slower than before (not measured). Tier-4 compiled FP does not set the flags until the program first accesses FPSR; after that FP arithmetic and compares run in the interpreter. The fp-edge gate now compares flags (0 mismatches over 294,156 cases per engine against qemu-user; hardware left to CI). `tools/testfloat/gen_trace.py` emits flags, all four rounding modes, conversions, FRINT* and compares, with a CI job (`testfloat` in `fp-edge.yml`) that has not run yet.
