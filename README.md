@@ -200,8 +200,8 @@ CI coverage is feature-specific: the default job runs unit tests and the 25-stag
 | 07 | Image boot & rasterizer | Boots a raw AArch64 image, futex arbitration, textured triangle | — |
 | 08 | crt0 & depth | `svcGetInfo`, direct-chained JIT, Z-buffer occlusion | — |
 | 09 | NEON & upscaler | 128-bit vector arithmetic, 2× upscaler, save sync | — |
-| 10 | FS query payload | BTI landing pad, process/thread queries, challenge response | — |
-| 11 | Dynamic linker | `RO` NSO0 module over TIPC, `NS2ROEXE` reply | — |
+| 10 | FS query test | BTI landing pad, process/thread queries, challenge response | — |
+| 11 | Dynamic linker | `RO` NSO0 module over TIPC, `TESTRPLY` reply | — |
 | 12 | Thread-affinity wrapper | `BL` into a leaf that returns `0xFF`, then `AND X0, X0, #7` | `0x07` |
 | 13 | Timing & events | Synthetic event init, try-wait and tick frequency | `0x124F801` (19,200,001) |
 | 14 | NSO0 boot | Synthetic NSO0 module loaded through `BootLoader` | — |

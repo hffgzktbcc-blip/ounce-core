@@ -1352,7 +1352,7 @@ pub fn thread_context3(regs: &crate::cpu::CpuRegisters) -> [u8; THREAD_CONTEXT_S
 ///   str  x0, [x9, #40]
 ///   ldr  x30, [sp], #16
 ///   ret
-pub const FS_QUERY_PAYLOAD: [u32; 18] = [
+pub const FS_QUERY_TEST: [u32; 18] = [
     0xD503245F, // bti c
     0xF81F0FFE, // str x30, [sp, #-16]!
     0xAA0003E9, // mov x9, x0
@@ -1482,9 +1482,9 @@ mod tests {
         assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_ADDRESS);
     }
 
-    /// Runs `FS_QUERY_PAYLOAD` and checks the challenge response it writes to the output buffer.
+    /// Runs `FS_QUERY_TEST` and checks the challenge response it writes to the output buffer.
     #[test]
-    fn test_fs_query_payload_challenge_response() {
+    fn test_fs_query_test_challenge_response() {
         let mut cpu = Cpu::new();
         let mut mmu = Memory::new();
         let mut kernel = HorizonKernel::new();
@@ -1497,7 +1497,7 @@ mod tests {
         mmu.map_range(code_base, 4096, Permission::READ_WRITE_EXECUTE);
         mmu.map_range(out_buf, 4096, Permission::READ_WRITE);
         mmu.map_range(stack_base, 4096, Permission::READ_WRITE);
-        for (i, &w) in FS_QUERY_PAYLOAD.iter().enumerate() {
+        for (i, &w) in FS_QUERY_TEST.iter().enumerate() {
             mmu.write_u32(code_base + (i * 4) as u64, w).unwrap();
         }
         mmu.write_u32(code_base + 0x100, 0xD400_00E1).unwrap(); // svcExitProcess
