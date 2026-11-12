@@ -1,0 +1,41 @@
+name: Contributor welcome
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  welcome:
+    if: |
+      github.event.repository.private == false &&
+      github.event.sender.type != 'Bot' &&
+      !endsWith(github.event.sender.login, '[bot]') &&
+      github.event.sender.login != github.repository_owner
+    name: Welcome first-time contributor
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Post welcome comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          AUTHOR_LOGIN: ${{ github.event.issue.user.login || github.event.pull_request.user.login }}
+          IS_PR: ${{ github.event_name == 'pull_request_target' && 'true' || 'false' }}
+        run: |
+          python3 -B scripts/welcome.py
