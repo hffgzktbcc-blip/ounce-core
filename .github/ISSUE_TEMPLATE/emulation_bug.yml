@@ -5,40 +5,53 @@ body:
   - type: markdown
     attributes:
       value: |
-        The best reports compare Ounce-Core against a reference (your own ARM64 machine, or the same C code built for the host). Please do not attach firmware, keys, game files or any retail content.
-  - type: input
+        **Search open issues first; the workbench may already list this problem.**
+
+        Reporting from the Ounce Core app or workbench fills in what it knows. Nothing is sent until you press **Submit new issue**; check the text first. Please do not attach firmware, keys, game files or any retail content.
+  - type: textarea
     id: program
     attributes:
       label: Program and version
-      description: An open-source program, the commit or release, and how you built it.
+      description: Name, SHA-256 and size are filled in by the app. Add the open-source project, commit or release, and how you built it.
     validations:
       required: true
   - type: dropdown
     id: engine
     attributes:
       label: Engine
-      options: ["Tier-3 (default)", "Tier-4 JIT (--cpu=tier4)", "Native (--cpu=native)", "More than one", "Not sure"]
+      description: Which engine stopped or differed. The app chooses this for you.
+      options:
+        - Tier-3 interpreter (default)
+        - Tier-4 recompiler (--cpu=tier4)
+        - Tier-3 and Tier-4 (both)
+        - Native (--cpu=native)
+        - Not sure
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
       label: Expected result and where it comes from
-      description: The reference output, and how you produced it (for example, host build of the same source).
+      description: What the result was compared with (engine vs engine, a recorded reference, or your own ARM64 machine) and the expected output.
     validations:
       required: true
   - type: textarea
     id: observed
     attributes:
       label: What Ounce-Core did
-      description: Output, the first differing line, and any `[VM Error]` line (it names the failing instruction).
+      description: The result, the first difference or the stop reason (an unimplemented instruction names its word and address), and the last log lines.
     validations:
       required: true
   - type: textarea
     id: repro
     attributes:
       label: Exact command
-      description: The `ounce-core run-nro ...` line, host OS, and `git rev-parse HEAD` of your checkout.
+      description: The `ounce-core run-elf ...` or `run-nro ...` line that reproduces it.
       render: shell
     validations:
       required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Operating system, chip and Ounce Core version
+      description: Filled in by the app. Otherwise your OS, chip, and `git rev-parse HEAD` of your checkout.

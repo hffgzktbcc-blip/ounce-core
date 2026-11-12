@@ -69,11 +69,14 @@ let pageJSON = #"{"url":"\#(IssueFormLocation.url)?template=emulation_bug.yml&ti
 let fromPage = WorkbenchLogic.pageReport(pageJSON, home: "/Users/me")
 check(fromPage?.absoluteString.contains("engine=tier3") == true && fromPage?.absoluteString.contains("SHA-256") == true, "page report keeps engine and hash: \(String(describing: fromPage))")
 check(fromPage?.absoluteString.contains("Users") == false, "page report hides the home folder")
+let plusPage = #"{"url":"\#(IssueFormLocation.url)?template=emulation_bug.yml&observed=a%2Bb%20c%26d%0Aline%20/Users/me/x","text":""}"#
+let plusURL = WorkbenchLogic.pageReport(plusPage, home: "/Users/me")?.absoluteString ?? ""
+check(plusURL.contains("observed=a%2Bb%20c%26d%0Aline%20~%2Fx"), "a plus, an ampersand and a newline survive the home-folder pass: \(plusURL)")
 check(WorkbenchLogic.pageReport("null", home: "") == nil, "no finished check, no page report")
 check(WorkbenchLogic.pageReport(#"{"url":"https://evil.example/x"}"#, home: "") == nil, "a page report for another site is refused")
 check(WorkbenchLogic.pageReport(nil, home: "") == nil, "a missing answer is no report")
-let blank = WorkbenchLogic.problemReportURL(appVersion: "0.5.0", hostOS: "macOS 26")!.absoluteString
-check(blank.contains("template=emulation_bug.yml") && blank.contains("0.5.0") && !blank.contains("title="), "report without a check still opens the form")
+let blank = WorkbenchLogic.problemReportURL(appVersion: "0.5.0", hostOS: "macOS 26", hostChip: "Apple M2")!.absoluteString
+check(blank.contains("template=emulation_bug.yml") && blank.contains("environment=") && blank.contains("0.5.0") && blank.contains("Apple%20M2") && !blank.contains("title="), "report without a check still opens the form with the environment: \(blank)")
 
 // Saving a report from the page.
 let saved = WorkbenchLogic.saveRequest(["action": "save", "name": "../demo - report.txt", "text": "from /Users/me/x"], home: "/Users/me")
@@ -107,4 +110,9 @@ check(WorkbenchLogic.programProblem(dir.appendingPathComponent("missing.nro"))?.
 check(WorkbenchLogic.options("engines=tier3,tier4&native=1&reference=1", for: .linux) == "engines=tier3,tier4&native=0&reference=1", "a Linux program never asks for a Mac run")
 check(WorkbenchLogic.options("engines=tier3,tier4&native=1", for: .homebrew) == "engines=tier3,tier4&native=1", "an NRO keeps its settings")
 check(!WorkbenchLogic.runsOnThisMac(WorkbenchLogic.options("native=1", for: .linux)), "no Mac confirmation for a Linux program")
+// The chip name is a short single line, or empty when the system does not say.
+let chip = WorkbenchLogic.chipName()
+check(!chip.contains("\n") && chip.count < 80, "chip name is one short line: \(chip)")
+
 print("workbench-logic: all checks passed")
+
