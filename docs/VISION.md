@@ -56,7 +56,7 @@ Every claim carries one of four labels:
 ## Known limits and what we do about them
 
 - **Coverage is partial.** Many vector, floating-point and system instructions are undecoded or untested. A [decoder census](verify/CENSUS_2026-11-08.md) and [single-instruction fuzzer](verify/insn-fuzzer/README.md) now exist. The recorded census is a revision-specific snapshot, not current coverage. Next: retain CI fuzz results and close observed gaps.
-- **QC is modelled for implemented saturating instructions.** [Hardware comparisons](verify/qc-flag/README.md) cover bounded inputs; FPCR behavior and cumulative FP exception flags remain unmodelled. [Cross-host differences](verify/README.md#hardware-differences) remain explicit.
+- **QC is modelled for implemented saturating instructions.** [Hardware comparisons](verify/qc-flag/README.md) cover bounded inputs; FPCR rounding, flush-to-zero and default-NaN, and the FPSR exception flags, are modelled for common scalar and vector FP forms on the interpreter and Tier-3. Tier-4 compiled FP cannot raise the flags, and FPCR trap enables and half-precision arithmetic remain unmodelled. [Cross-host differences](verify/README.md#hardware-differences) remain explicit.
 - **It is not fast.** The interpreter runs at roughly 20 million instructions per second, which is fine for tests. *Plan:* measure first. The bar is that the whole verified-program suite runs in CI in a few minutes. Speed is not what we compete on; beyond that bar it does not drive the roadmap.
 - **Native execution runs on the host CPU.** On an ARM64 host it checks the harness and the toolchain, not the emulator, so Tier-3 and Tier-4 are the real evidence.
 

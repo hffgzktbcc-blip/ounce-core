@@ -189,10 +189,15 @@ def headline(args):
     readme = REPO / "README.md"
     current = readme.read_text()
     expected = render_readme(current, len(passed), total)
+    # docs/DETAILS.md repeats the headline in the corpus section and the roadmap table.
+    details = REPO / "docs/DETAILS.md"
+    details_now = details.read_text()
+    details_expected = README_MARK.sub(f"<!-- corpus-headline -->{len(passed)}/{total}<!-- /corpus-headline -->", details_now)
     if args.write_readme:
         readme.write_text(expected)
-    elif args.check_readme and current != expected:
-        raise SystemExit(f"README headline or oracle badge differs from the report ({len(passed)}/{total})")
+        details.write_text(details_expected)
+    elif args.check_readme and (current != expected or details_now != details_expected):
+        raise SystemExit(f"README or docs/DETAILS.md headline differs from the report ({len(passed)}/{total})")
 
 
 def snapshot_counts(snapshot):

@@ -7,15 +7,16 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
+DETAILS = ROOT / "docs/DETAILS.md"
 REGISTRY = ROOT / "docs/roadmap/milestones.json"
 
 
 class ReadmeRoadmapTest(unittest.TestCase):
     def test_architecture_is_generated_from_source_registry(self):
         registry = json.loads((ROOT / "docs/architecture/layers.json").read_text(encoding="utf-8"))
-        text = README.read_text(encoding="utf-8")
+        text = DETAILS.read_text(encoding="utf-8")
         architecture = text.split("### The architecture at a glance", 1)[1].split(
-            "<details>", 1
+            "## Subsystem status", 1
         )[0]
         self.assertIn("BEGIN GENERATED ARCHITECTURE", architecture)
         self.assertIn("END GENERATED ARCHITECTURE", architecture)
@@ -33,8 +34,8 @@ class ReadmeRoadmapTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_readme_uses_registry_not_a_frozen_roadmap(self):
-        text = README.read_text(encoding="utf-8")
+    def test_details_uses_registry_not_a_frozen_roadmap(self):
+        text = DETAILS.read_text(encoding="utf-8")
         registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
         roadmap = text.split("## The road ahead", 1)[1].split(
             "## Sources and porting policy", 1
@@ -47,12 +48,16 @@ class ReadmeRoadmapTest(unittest.TestCase):
         self.assertIn("scripts/corpus_verify.py", roadmap)
         self.assertIn("A green badge or merged PR is not proof", roadmap)
 
-    def test_vision_navigation_points_to_the_section(self):
+    def test_readme_links_the_vision(self):
         text = README.read_text(encoding="utf-8")
-        self.assertIn("[Vision](docs/VISION.md)", text)
+        self.assertIn("(docs/VISION.md)", text)
         self.assertTrue((ROOT / "docs/VISION.md").is_file())
-        self.assertEqual(text.count('<a id="the-ounce-vision"></a>'), 1)
-        self.assertIn("## What it is", text)
+
+    def test_readme_stays_short_and_links_the_details(self):
+        text = README.read_text(encoding="utf-8")
+        self.assertLess(len(text.splitlines()), 130)
+        self.assertIn("docs/DETAILS.md", text)
+        self.assertEqual(text.count("<!-- corpus-headline -->50/50<!-- /corpus-headline -->"), 1)
 
     def test_old_claims_have_not_returned(self):
         text = README.read_text(encoding="utf-8")
