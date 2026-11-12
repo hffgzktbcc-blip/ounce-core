@@ -65,10 +65,12 @@ pub struct CpuRegisters {
     pub tpidrro_el0: u64,
     /// 32 128-bit SIMD / Floating-Point registers (V0 to V31)
     pub v: [u128; 32],
-    /// FPSR. Only the cumulative `QC` bit (27) is ever set by an instruction (see [`FPSR_QC`]); the
-    /// other defined bits are stored when written by `MSR` but nothing sets them.
+    /// FPSR: the cumulative `QC` bit (27, see [`FPSR_QC`]) and the floating-point exception flags IOC DZC OFC UFC
+    /// IXC IDC, which the interpreter and Tier-3 set as the Arm pseudocode does (`softfp`). Tier-4 compiled FP
+    /// does not set them until the program touches FPSR (`Cpu::fp_flags_tracked`).
     pub fpsr: u32,
-    /// FPCR. Stored and read back; rounding mode, flush-to-zero and default-NaN are NOT honoured.
+    /// FPCR. Rounding mode, flush-to-zero and default-NaN are honoured for single and double arithmetic
+    /// (`softfp`); the trap enables (IOE..IDE) are stored but never trap.
     pub fpcr: u32,
 }
 

@@ -15,9 +15,8 @@ status line says so. Ranked by value for effort.
 
 ## Known gap found while planning
 
-`fuzz-replay` masks the FPSR exception flags (`EXC = 0x9F` in `src/fuzz_replay.rs`) because the
-interpreter does not model them. A program that reads FPSR after a floating-point operation sees
-different flags from real hardware. TestFloat checks flags, so it will make this visible.
+`fuzz-replay` compares the FPSR exception flags (`EXC = 0x9F` in `src/fuzz_replay.rs`) since the interpreter models
+them (`src/cpu/softfp.rs`); TestFloat checks them too, against an independent oracle.
 
 ## TestFloat results (10 November 2026)
 
@@ -34,5 +33,14 @@ FPSR exception flags (unmodelled). Skipped: cases with a NaN input or result.
 | sqrt | 650 | 0 mismatches | 0 mismatches |
 | fused multiply-add | 10,839,335 | 0 mismatches | 0 mismatches |
 
-Not yet covered: NaN inputs and results (Arm default-NaN rules), the rounding modes other than
-nearest-even, conversions, FMAX/FMIN, comparisons, exception flags, Tier-4.
+That run (above) used round-to-nearest-even only and compared results, not flags.
+
+`tools/testfloat/gen_trace.py` now also emits the exception flags, all four FPCR rounding modes, invalid operations
+on non-NaN inputs (positive default NaN), FCVT, SCVTF/UCVTF, FCVT*S/U (saturating, NaN gives 0), FRINT*, FCMP and
+FCMPE (NaNs included). The `testfloat` job in `.github/workflows/fp-edge.yml` builds SoftFloat/TestFloat at pinned
+commits and replays that through the interpreter and Tier-3. **Not yet run:** the vectors were not generated in the
+session that wrote the extension (TestFloat could not be run there; the script was exercised only against a stub with
+a few hand-derived vectors), so there are no results to report until that job has run.
+
+Still not covered: NaN *inputs* (TestFloat's propagation rules differ from Arm's), FMAX/FMIN, FZ and DN, half
+precision, Tier-4 compiled FP.

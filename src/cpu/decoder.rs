@@ -667,6 +667,7 @@ pub fn decode(raw: u32) -> Instruction {
             rm,
             is_zero: raw & 0x8 != 0,
             is_double,
+            signalling: raw & 0x10 != 0,
         };
     }
 
@@ -1163,6 +1164,7 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             nzcv: (raw & 0xF) as u8,
             cond: Condition::from_u8(((raw >> 12) & 0xF) as u8),
             is_double: size == 1,
+            signalling: raw & 0x10 != 0,
         });
     }
 
