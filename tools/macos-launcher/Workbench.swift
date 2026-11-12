@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import WebKit
 
 /// The Ounce-Core workbench in a window: starts `ounce-core ui` from the bundled runtime and shows its page.
@@ -21,6 +22,17 @@ final class WorkbenchWebView: WKWebView {
     }
 }
 
+/// Dialogs and file panels are sheets on the window, never `runModal()`: a modal loop does not take Apple events, so
+/// Quit from the Dock, a script or the system would be ignored while one was open.
+enum Sheet {
+    static func show(_ alert: NSAlert, on window: NSWindow?, _ done: @escaping (NSApplication.ModalResponse) -> Void) {
+        if let window, window.isVisible { alert.beginSheetModal(for: window, completionHandler: done) } else { done(alert.runModal()) }
+    }
+    static func show(_ panel: NSSavePanel, on window: NSWindow?, _ done: @escaping (NSApplication.ModalResponse) -> Void) {
+        if let window, window.isVisible { panel.beginSheetModal(for: window, completionHandler: done) } else { done(panel.runModal()) }
+    }
+}
+
 /// One plain way to tell the person something went wrong: what happened, then what to do.
 enum Notice {
     static func show(_ what: String, _ next: String, on window: NSWindow?) {
@@ -29,7 +41,7 @@ enum Notice {
         alert.informativeText = next
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
-        if let window, window.isVisible { alert.beginSheetModal(for: window) } else { alert.runModal() }
+        Sheet.show(alert, on: window) { _ in }
     }
 }
 
@@ -71,6 +83,7 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMes
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Ounce Core"
+        window.tabbingMode = .disallowed // no "Show Tab Bar" items in the View menu
         window.minSize = NSSize(width: 720, height: 480)
         window.contentView = webView
         window.setFrameAutosaveName("OunceCoreWorkbench")
@@ -104,8 +117,12 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMes
                 alert.informativeText = "This runs \(file.lastPathComponent) directly on this Mac, outside the emulator’s protection. Only do this for programs you trust."
                 alert.addButton(withTitle: "Run on This Mac")
                 alert.addButton(withTitle: "Cancel")
-                guard alert.runModal() == .alertFirstButtonReturn else { return }
-                self.acceptedThisMac = true
+                Sheet.show(alert, on: self.window) { response in
+                    guard response == .alertFirstButtonReturn else { return }
+                    self.acceptedThisMac = true
+                    self.upload(file: file, data: data, options: options)
+                }
+                return
             }
             self.upload(file: file, data: data, options: options)
         }
@@ -120,7 +137,9 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMes
                 guard let self else { return }
                 if let error { return self.fail("Ounce Core couldn’t reach its checker.", "\(error.localizedDescription) Quit and reopen Ounce Core, then try again.") }
                 switch WorkbenchLogic.parseUploadResponse(data ?? Data()) {
-                case .success(let id): self.webView.evaluateJavaScript("pick('\(id)')")
+                case .success(let id):
+                    // stage(id) lets "Check again" reuse the program the server now holds; pick(id) shows the check.
+                    self.webView.evaluateJavaScript("OunceWorkbench.stage('\(id)'); OunceWorkbench.pick('\(id)')")
                 case .failure(let problem): self.fail("Ounce Core didn’t accept \(file.lastPathComponent).", problem.message)
                 }
             }
@@ -132,18 +151,20 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMes
 
     func reveal() { window?.makeKeyAndOrderFront(nil) }
 
-    /// Opens the issue form for the newest check in the workbench. Nothing is sent until the person submits the form.
+    /// Opens the same prefilled issue form as the page's Report This Problem button (engine, hash, headline), for the
+    /// check on screen or the newest finished one. Without a finished check it opens the plain form. Nothing is sent
+    /// until the person submits the form.
     func reportProblem() {
-        let open: (LatestCheck?) -> Void = { latest in
-            let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
-            guard let url = WorkbenchLogic.problemReportURL(check: latest, appVersion: version,
-                                                            hostOS: ProcessInfo.processInfo.operatingSystemVersionString, home: NSHomeDirectory()) else { return }
+        let home = NSHomeDirectory()
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let fallback = {
+            guard let url = WorkbenchLogic.problemReportURL(appVersion: version, hostOS: ProcessInfo.processInfo.operatingSystemVersionString) else { return }
             NSWorkspace.shared.open(url)
         }
-        guard let address else { return open(nil) }
-        URLSession.shared.dataTask(with: WorkbenchLogic.listRequest(address)) { data, _, _ in
-            DispatchQueue.main.async { open(data.flatMap(WorkbenchLogic.parseLatestCheck)) }
-        }.resume()
+        guard address != nil else { return fallback() }
+        webView.evaluateJavaScript("JSON.stringify(OunceWorkbench.reportRequest())") { value, _ in
+            if let url = WorkbenchLogic.pageReport(value, home: home) { NSWorkspace.shared.open(url) } else { fallback() }
+        }
     }
 
     private func start() {
@@ -209,9 +230,23 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMes
     // MARK: WKScriptMessageHandler (Report This Problem in the page)
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let address, WorkbenchLogic.isInternal(message.frameInfo.request.url, port: address.port),
-              let url = WorkbenchLogic.reportDestination(message.body, home: NSHomeDirectory()) else { return }
-        NSWorkspace.shared.open(url)
+        guard let address, WorkbenchLogic.isInternal(message.frameInfo.request.url, port: address.port) else { return }
+        if let url = WorkbenchLogic.reportDestination(message.body, home: NSHomeDirectory()) { NSWorkspace.shared.open(url); return }
+        if let report = WorkbenchLogic.saveRequest(message.body, home: NSHomeDirectory()) { saveReport(report.name, report.text) }
+    }
+
+    /// Save Report… on a result: a save panel, then the text file. The report holds the verdict, the evidence summary and the
+    /// program's file name and hash. It never holds the program itself.
+    private func saveReport(_ name: String, _ text: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = name
+        panel.allowedContentTypes = [.plainText]
+        panel.message = "Save a plain-text report of this check."
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            do { try text.write(to: url, atomically: true, encoding: .utf8) }
+            catch { self?.fail("Ounce Core couldn’t save the report.", "\(error.localizedDescription) Choose another folder and try again.") }
+        }
     }
 
     // MARK: WKNavigationDelegate
@@ -232,7 +267,8 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMes
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping (Bool) -> Void) {
         let alert = NSAlert()
-        alert.messageText = "Continue?"
+        // The page only asks for confirmation before running a program directly on this computer.
+        alert.messageText = message.contains("directly on") ? "Run this program on this Mac?" : "Continue?"
         alert.informativeText = message
         alert.addButton(withTitle: "Continue")
         alert.addButton(withTitle: "Cancel")

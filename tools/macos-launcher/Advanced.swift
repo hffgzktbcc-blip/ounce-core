@@ -85,7 +85,8 @@ final class ResultsViewer {
         label(url.lastPathComponent)
         if !report.records.isEmpty { label("\(report.records.count) recorded results") }
         for section in report.sections {
-            label(section.title.replacingOccurrences(of: "-", with: " ").capitalized, bold: true)
+            // Slugs ("audio-padding") become words; titles that are already sentences stay as written.
+            label(section.title.contains(" ") || section.title.contains("(") ? section.title : section.title.replacingOccurrences(of: "-", with: " ").capitalized, bold: true)
             for line in section.lines { label(line) }
         }
         for record in report.records {
@@ -118,9 +119,7 @@ final class AdvancedRunner {
     private var stopRequested = false
     private var lastProgram: URL?
     private var lastEngine: Engine = .tier3
-    private var verifying: (harness: Harness, sd: URL, engine: Engine)?
     private var settings: RunSettings
-    private let catalog: [Harness]
 
     init(runtime: URL, window: @escaping () -> NSWindow?) {
         self.runtime = runtime
@@ -129,8 +128,6 @@ final class AdvancedRunner {
             .appendingPathComponent("Ounce Core", isDirectory: true)
         let engine = UserDefaults.standard.string(forKey: "engine").flatMap(Engine.init(rawValue:)) ?? .tier3
         settings = RunSettings(engine: engine, budget: UserDefaults.standard.object(forKey: "instructionBudget") as? Int)
-        if let url = Bundle.main.url(forResource: "differential", withExtension: "json", subdirectory: "Verify"),
-           let data = try? Data(contentsOf: url) { catalog = (try? HarnessCatalog.parse(data)) ?? [] } else { catalog = [] }
     }
 
     var isRunning: Bool { process != nil }
@@ -149,8 +146,7 @@ final class AdvancedRunner {
         panel.canChooseDirectories = false
         panel.message = message
         panel.prompt = prompt
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        handler(url)
+        Sheet.show(panel, on: window()) { if $0 == .OK, let url = panel.url { handler(url) } }
     }
 
     private let nro = UTType(filenameExtension: "nro") ?? .data
@@ -167,7 +163,6 @@ final class AdvancedRunner {
         if let problem = WorkbenchLogic.programProblem(url) { return notice(problem.what, problem.next) }
         guard let current = validatedSettings() else { return }
         lastProgram = url
-        verifying = nil
         start(current.arguments(nro: url.path, sdCard: sdCard.path), name: url.deletingPathExtension().lastPathComponent, settings: current)
     }
 
@@ -175,14 +170,8 @@ final class AdvancedRunner {
         guard !isRunning else { return busyNotice() }
         var demo = settings
         demo.engine = .tier3 // The built-in demo is a graphics demo for the interpreter path.
-        verifying = nil
         lastProgram = nil
         start(["gfx", "--present=gpu"], name: "the graphics demo", settings: demo)
-    }
-
-    func chooseVerification() {
-        guard !isRunning else { return busyNotice() }
-        choose("Choose a verification program, named like the one it was built from (for example lz4.nro).", prompt: "Verify", types: [nro]) { self.verify($0) }
     }
 
     func showSettings() {
@@ -218,12 +207,13 @@ final class AdvancedRunner {
         budget.widthAnchor.constraint(equalToConstant: 170).isActive = true
         let alert = NSAlert()
         alert.messageText = "Run settings"
-        alert.informativeText = "These apply to Run in a Window and Verify Against Host Reference. The workbench chooses its own engines."
+        alert.informativeText = "These apply to Run in a Window. The workbench chooses its own engines."
         alert.accessoryView = form
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
-        withExtendedLifetime(handler) {
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Sheet.show(alert, on: window()) { [self] response in
+            withExtendedLifetime(handler) {}
+            guard response == .alertFirstButtonReturn else { return }
             switch RunSettings.parseBudget(budget.stringValue) {
             case .success(let value):
                 settings.engine = Engine.allCases[max(engines.indexOfSelectedItem, 0)]
@@ -245,7 +235,7 @@ final class AdvancedRunner {
         panel.directoryURL = sdCard
         panel.message = "Programs run from the Advanced menu see this folder as their SD card. Currently: \(sdCard.path)"
         panel.prompt = "Use as SD Card"
-        if panel.runModal() == .OK, let url = panel.url { UserDefaults.standard.set(url.path, forKey: "sdCardFolder") }
+        Sheet.show(panel, on: window()) { if $0 == .OK, let url = panel.url { UserDefaults.standard.set(url.path, forKey: "sdCardFolder") } }
     }
 
     func showLastLog() {
@@ -268,68 +258,13 @@ final class AdvancedRunner {
 
     private func validatedSettings() -> RunSettings? { settings }
 
-    // MARK: Verify against the host reference
-
-    private func expectedHostURL(_ harness: Harness) -> URL { Bundle.main.resourceURL!.appendingPathComponent("Verify/\(harness.dir)/expected-host.txt") }
-
-    private func verify(_ url: URL) {
-        if let problem = WorkbenchLogic.programProblem(url) { return notice(problem.what, problem.next) }
-        guard !catalog.isEmpty else {
-            return notice("The built-in verification data is missing.", "Reinstall Ounce Core, or rebuild it with scripts/build_macos_app.sh.")
-        }
-        guard let harness = HarnessCatalog.match(nroFile: url.lastPathComponent, in: catalog) else {
-            return notice("\(url.lastPathComponent) isn’t a known verification program.",
-                          "Verification only works for programs built from the harnesses recorded in docs/verify, matched by file name: \(catalog.map(\.name).joined(separator: ", ")). To check any other program, use File > Check a Program.")
-        }
-        guard FileManager.default.fileExists(atPath: expectedHostURL(harness).path) else {
-            return notice("The reference result for \(harness.name) is missing from this app.", "Reinstall Ounce Core, or rebuild it with scripts/build_macos_app.sh.")
-        }
-        var current = settings
-        // verify_differential.py uses a large budget for harnesses; an explicit user budget still wins.
-        if current.budget == nil { current.budget = RunSettings.verifyBudget }
-        do {
-            let sd = FileManager.default.temporaryDirectory.appendingPathComponent("ounce-verify-\(UUID().uuidString)", isDirectory: true)
-            try FileManager.default.createDirectory(at: sd, withIntermediateDirectories: true)
-            verifying = (harness, sd, current.engine)
-            lastProgram = url
-            start(["run-nro", url.path, "--present=headless", "--sdmc=\(sd.path)", "--cpu=\(current.engine.rawValue)"],
-                  name: "verification of \(harness.name)", settings: current, extraEnvironment: ["OUNCE_NRO_TIMEOUT_SECS": "300"])
-        } catch { notice("Ounce Core couldn’t prepare the verification.", error.localizedDescription) }
-    }
-
-    /// Compares the harness output with the bundled host reference. Only a byte-for-byte comparison.
-    private func finishVerification(_ run: (harness: Harness, sd: URL, engine: Engine), diagnosis: Diagnosis) {
-        defer { try? FileManager.default.removeItem(at: run.sd) }
-        let title = "\(run.harness.name) on \(run.engine.rawValue)"
-        func failure(_ headline: String, _ summary: String) { present(headline, summary, report: report(diagnosis, summary: headline + "\n" + summary)) }
-        if diagnosis.kind == .engineUnavailable {
-            return failure("\(title): not run on that engine", diagnosis.text + "\n\nNo comparison was made, because it would not describe the engine you chose.")
-        }
-        guard diagnosis.succeeded else { return failure("\(title): the run did not finish", diagnosis.text) }
-        guard let actual = try? String(contentsOf: run.sd.appendingPathComponent(run.harness.resultFile), encoding: .utf8) else {
-            return failure("\(title): no output", "The program ran but did not write \(run.harness.resultFile), so there is nothing to compare. Check that it was built from the matching harness.")
-        }
-        guard let expected = try? String(contentsOf: expectedHostURL(run.harness), encoding: .utf8) else {
-            return failure("\(title): reference unreadable", "The reference result could not be read, so no comparison was made. Reinstall Ounce Core.")
-        }
-        let comparison = ResultComparison.compare(expected: expected, actual: actual)
-        #if arch(arm64)
-        let hostIsARM64 = true
-        #else
-        let hostIsARM64 = false
-        #endif
-        let summary = comparison.summary(harness: run.harness, engine: run.engine, hostIsARM64: hostIsARM64)
-        if comparison.identical { present("\(title): matches the host reference", summary, report: nil) }
-        else { failure("\(title): differs from the host reference", summary) }
-    }
-
     // MARK: Running
 
-    private func report(_ diagnosis: Diagnosis, summary: String? = nil) -> IssueReport? {
+    private func report(_ diagnosis: Diagnosis) -> IssueReport? {
         guard let program = lastProgram else { return nil }
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         return IssueReport(program: program.lastPathComponent, engine: lastEngine, diagnosis: diagnosis, appVersion: version,
-                           hostOS: ProcessInfo.processInfo.operatingSystemVersionString, home: NSHomeDirectory(), comparisonSummary: summary)
+                           hostOS: ProcessInfo.processInfo.operatingSystemVersionString, home: NSHomeDirectory())
     }
 
     /// One dialog for an outcome. A failed run offers Report a Problem: it copies the report and opens the issue form.
@@ -343,15 +278,16 @@ final class AdvancedRunner {
         alert.addButton(withTitle: "OK")
         if report != nil { alert.addButton(withTitle: "Report a Problem…") }
         if lastLog != nil { alert.addButton(withTitle: "Show Log") }
-        let response = alert.runModal()
-        if response == .alertSecondButtonReturn, let report {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(report.body, forType: .string)
-            if let url = report.url { NSWorkspace.shared.open(url) }
-        } else if response != .alertFirstButtonReturn { showLastLog() }
+        Sheet.show(alert, on: window()) { [self] response in
+            if response == .alertSecondButtonReturn, let report {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(report.body, forType: .string)
+                if let url = report.url { NSWorkspace.shared.open(url) }
+            } else if response != .alertFirstButtonReturn { showLastLog() }
+        }
     }
 
-    private func start(_ arguments: [String], name: String, settings run: RunSettings, extraEnvironment: [String: String] = [:]) {
+    private func start(_ arguments: [String], name: String, settings run: RunSettings) {
         guard FileManager.default.isExecutableFile(atPath: runtime.path) else {
             return notice("The built-in runtime is missing.", "Reinstall Ounce Core, or rebuild it with scripts/build_macos_app.sh.")
         }
@@ -368,7 +304,6 @@ final class AdvancedRunner {
             child.currentDirectoryURL = support
             var environment = run.environment(base: ProcessInfo.processInfo.environment) // The GUI path must not inherit OUNCE_CPU.
             environment["RUST_BACKTRACE"] = "1"
-            for (key, value) in extraEnvironment { environment[key] = value }
             child.environment = environment
             child.standardInput = FileHandle.nullDevice
             let pipe = Pipe()
@@ -389,12 +324,8 @@ final class AdvancedRunner {
                     NSApp.dockTile.badgeLabel = nil
                     let diagnosis = Diagnosis.analyze(log: String(decoding: log.snapshot(), as: UTF8.self), exitStatus: finished.terminationStatus,
                                                       engine: run.engine, budget: run.budget)
-                    let verification = self.verifying
-                    self.verifying = nil
                     if self.stopRequested {
-                        if let verification { try? FileManager.default.removeItem(at: verification.sd) }
-                    } else if let verification {
-                        self.finishVerification(verification, diagnosis: diagnosis)
+                        // Stopped on purpose: nothing to report.
                     } else if finished.terminationStatus != 0 {
                         self.present("Ounce Core couldn’t finish running \(name).", diagnosis.text, report: self.report(diagnosis))
                     }
@@ -402,7 +333,7 @@ final class AdvancedRunner {
             }
             try child.run()
             process = child
-            NSApp.dockTile.badgeLabel = verifying != nil ? "Verifying" : "Running"
+            NSApp.dockTile.badgeLabel = "Running"
         } catch { notice("Ounce Core couldn’t start \(name).", error.localizedDescription) }
     }
 }

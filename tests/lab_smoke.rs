@@ -77,6 +77,7 @@ fn uploads_a_program_and_reports_a_verdict() {
     };
     assert_eq!(check["verdict"]["kind"], "agrees", "{check}");
     assert_eq!(check["verdict"]["reference"], false);
+    assert_eq!(check["verdict"]["headline"], "Both engines agreed; not compared with this computer".replace("this computer", if cfg!(target_os = "macos") { "this Mac" } else { "this computer" }), "saved wording uses the page's words");
     let engines = check["engines"].as_array().unwrap();
     assert_eq!(engines.len(), 2);
     assert!(engines.iter().all(|e| e["stop"]["kind"] == "exited"), "{check}");

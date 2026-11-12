@@ -27,7 +27,12 @@ const api = (path, opts = {}) => fetch(path, { ...opts, headers: { "X-Ounce-Toke
 let config = { native: NATIVE, default_budget: 2000000000, reference_data: false };
 let staged = null;          // the file chosen in step 1, not yet checked
 let checks = [], cur = null, detail = null, timer = null, starting = false;
+let busySince = 0;         // when the check on screen started showing its progress
+const MIN_BUSY_MS = 800;    // a very short check still shows its progress state, so the person sees it ran
 let announced = null;       // id of the finished check whose result already took focus
+
+// The three outcomes, in the words the Mac app and saved results use too.
+const LABELS = { match: "Results match", differ: "Results differ", fail: "Could not run this program" };
 
 const engineName = e => e === "tier3" ? "Interpreter (Tier-3)" : e === "tier4" ? "Recompiler (Tier-4)" : "Directly on " + COMPUTER;
 const fmt = n => Number(n).toLocaleString();
@@ -101,12 +106,24 @@ function setupAvailability() {
 
 // ---------- step 1: choose ----------
 
-function stage(file) {
+// Stage a program for the next check: a File, or the id of a check the server already holds (the Mac app uploads
+// programs itself, then calls stage(id) so "Check again" has the program to work with).
+async function stage(source) {
   $("chooseError").hidden = true;
-  if (!file) return;
-  if (!/\.nro$/i.test(file.name)) return chooseError("That is not a homebrew program. Choose a file that ends in .nro.");
+  if (!source) return;
+  let file = source;
+  if (typeof source === "string") {
+    try {
+      const r = await fetch("/api/checks/" + encodeURIComponent(source) + "/program", { headers: { "X-Ounce-Token": TOKEN } });
+      if (!r.ok) throw new Error();
+      const d = checks.find(c => c.id === source) || (cur === source && detail) || (await api("/api/checks/" + encodeURIComponent(source)));
+      file = new File([await r.blob()], d.name, { type: "application/octet-stream" });
+    } catch (_) { return false; }
+  }
+  if (!/\.nro$/i.test(file.name)) { chooseError("That is not a homebrew program. Choose a file that ends in .nro."); return false; }
   staged = file;
   renderStaged();
+  return true;
 }
 
 function chooseError(message) {
@@ -115,10 +132,11 @@ function chooseError(message) {
 }
 
 function renderStaged() {
-  const drop = $("drop");
-  drop.classList.toggle("chosen", !!staged);
-  $("dropMain").textContent = staged ? staged.name : "Drop a program here, or choose one";
-  $("dropSub").textContent = staged ? fmt(staged.size) + " bytes. Choose another file to replace it." : "Only .nro files are supported.";
+  // Once a program is chosen the drop zone gives way to its name and "Choose another".
+  $("drop").hidden = !!staged;
+  $("chosen").hidden = !staged;
+  $("chosenName").textContent = staged ? staged.name : "";
+  $("chosenSize").textContent = staged ? fmt(staged.size) + " bytes" : "";
   $("first").hidden = !!staged || checks.length > 0;
   $("go").disabled = !staged || starting;
   $("goHelp").textContent = staged ? "" : "Choose a program first.";
@@ -133,22 +151,23 @@ async function startCheck() {
     if (!confirm("This runs the program directly on " + COMPUTER + ", outside the emulator's protection. Only do this for programs you trust.\n\nRun it on " + COMPUTER + "?")) return;
     window._nativeAccepted = true;
   }
-  starting = true; renderStaged();
+  starting = true; renderStaged(); renderResult(); $("result").scrollIntoView({ block: "nearest" });
   try {
     const r = await api("/api/checks?name=" + encodeURIComponent(staged.name) + "&" + queryString(o), { method: "POST", body: staged });
     saveSettings();
-    pick(r.id);
+    showCheck(r.id, true);
   } catch (e) {
     chooseError(e.message);
   } finally {
-    starting = false; renderStaged();
+    starting = false; renderStaged(); renderResult();
   }
 }
 
 // ---------- step 3: result ----------
 
-function pick(id) {
-  cur = id; detail = null; announced = null;
+// fresh: a check that was just started, so its progress shows even when it ends at once.
+function showCheck(id, fresh = false) {
+  cur = id; detail = null; announced = null; busySince = fresh ? Date.now() : 0;
   refresh();
 }
 
@@ -183,26 +202,26 @@ function outcome(d) {
   const n = Object.keys(files).length;
   if (hr && hr.status === "differs") {
     const f = hr.first_difference;
-    return { tone: "bad", label: "Differed", headline: "The output does not match the recorded reference.",
+    return { tone: "bad", label: LABELS.differ, headline: "The output does not match the recorded reference.",
       why: "The program finished, but its output differs from the output recorded from real hardware" + (f ? ", starting at line " + f.line + "." : "."),
       next: ["Send a report so this can be investigated. It includes the details below."], report: true };
   }
   if (!d.engines.length || d.engines.every(e => e.stop.kind === "unknown")) {
     const note = (d.engines.find(e => e.note) || {}).note;
-    return { tone: "bad", label: "Could not run", headline: "The check could not start the program.",
+    return { tone: "bad", label: LABELS.fail, headline: "The check could not start the program.",
       why: note || "Ounce Core did not report how the program ended.", next: ["Check that the program is a valid .nro file and try again. If it keeps happening, send a report."], report: true };
   }
   switch (v.kind) {
-    case "matches": return { tone: "ok", label: "Matched",
+    case "matches": return { tone: "ok", label: LABELS.match,
       headline: "The program behaved the same in Ounce Core and on " + COMPUTER + ".",
       why: "Ounce Core's engines ended the same way as the program running directly on " + COMPUTER + ", and everything it wrote was identical (" + n + " compared: its files and console text). This covers this one run only.",
       next: ["Nothing more to do. Check another program, or try different settings."] };
     case "agrees": {
-      if (hr && hr.status === "matches") return { tone: "ok", label: "Matched",
+      if (hr && hr.status === "matches") return { tone: "ok", label: LABELS.match,
         headline: "The output matches the recorded reference.",
         why: "The program finished and wrote exactly the output recorded from real hardware (" + hr.expected_lines + " lines for " + hr.harness + "). The engines also agreed with each other.", next: ["Nothing more to do."] };
       const one = d.engines.filter(e => e.engine !== "native").length < 2;
-      return { tone: "ok", label: "Matched",
+      return { tone: "ok", label: LABELS.match,
         headline: one ? "The program ran to the end." : "Both of Ounce Core's engines agreed.",
         why: (one ? "It finished on the one engine you chose." : "They ended the same way and produced identical output.") + " It was not compared with " + COMPUTER + ", so this does not show it matches real hardware.",
         next: config.native ? ["To compare with " + COMPUTER + ", check again with that option turned on."] : ["Comparing with " + COMPUTER + " is not available in this build."],
@@ -210,12 +229,12 @@ function outcome(d) {
     }
     case "diverges": {
       const refd = ref || (hr && hr.status === "differs");
-      return { tone: "bad", label: "Differed",
+      return { tone: "bad", label: LABELS.differ,
         headline: refd ? "Ounce Core and " + COMPUTER + " gave different results." : "Ounce Core's two engines gave different results.",
         why: "Both finished, but they did not end the same way or write the same output. " + (v.diff ? "The first difference is below." : "The details show where."),
         next: ["Send a report so this can be investigated. It includes the details below."], report: true };
     }
-    case "unfinished": return { tone: "warn", label: "Could not run",
+    case "unfinished": return { tone: "warn", label: LABELS.fail,
       headline: "The program did not finish within the limit.",
       why: "It was still running when the step limit or time limit was reached. Programs that wait for a button press or a timer never finish on their own.",
       next: ["Raise the step limit under Advanced and check again."],
@@ -223,10 +242,10 @@ function outcome(d) {
     case "fails": default: {
       const reason = describeRun(d) || "The program stopped with an error.";
       const next = [ref ? "It fails the same way on " + COMPUTER + ", so the program itself is the likely cause." :
-        "This does not say whether the program or Ounce Core is at fault." + (config.native ? " Check again with the " + COMPUTER + " comparison turned on to find out." : "")];
+        "This does not say whether the program or Ounce Core is at fault." + (config.native ? " Check again with the comparison against " + COMPUTER + " turned on to find out." : "")];
       if (d.engines.some(e => e.stop.kind === "loader")) next.unshift("Check that the file is a complete, unmodified program, then try again.");
       next.push("If you think Ounce Core is at fault, send a report.");
-      return { tone: "bad", label: "Could not run", headline: reason, why: "The check stopped before the program finished. The details show exactly where.",
+      return { tone: "bad", label: LABELS.fail, headline: reason, why: "The check stopped before the program finished. The details show exactly where.",
         next, report: true, again: !ref && config.native ? { label: "Check again and compare with " + COMPUTER, opts: { native: true } } : null };
     }
   }
@@ -241,8 +260,10 @@ function reportText(d, o) {
 
 function reportUrl(d, o) {
   const first = d.engines.find(e => FAULTS[e.stop.kind]) || d.engines[0] || { engine: "tier3", stop: {} };
+  // The form's Engine dropdown only preselects one of its own labels.
+  const formEngine = { tier3: "Tier-3 (default)", tier4: "Tier-4 JIT (--cpu=tier4)", native: "Native (--cpu=native)" }[first.engine] || "Not sure";
   const q = new URLSearchParams({ template: "emulation_bug.yml", title: "Workbench: " + o.label + " - " + d.name, program: d.name,
-    engine: first.engine, observed: reportText(d, o).slice(0, 1500), repro: "ounce-core run-nro " + d.name + " --cpu=" + first.engine });
+    engine: formEngine, observed: reportText(d, o).slice(0, 1500), repro: "ounce-core run-nro " + d.name + " --cpu=" + first.engine });
   return ISSUE_URL + "?" + q.toString();
 }
 
@@ -252,6 +273,29 @@ function report(d, o) {
   const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ounceWorkbench;
   if (bridge) return bridge.postMessage({ action: "report", url, text });
   if (!window.open(url, "_blank", "noopener")) location.assign(url); // embedded views route this to the default browser
+}
+
+// The saved report: the answer in words first, then the same details Report This Problem carries.
+function reportFile(d, o) {
+  return [o.label, "", o.headline, o.why, "", "What to do next:", ...o.next.map(t => "- " + t), "", reportText(d, o), ""].join("\n");
+}
+
+// Saves the report as a text file: the Mac app shows a save panel, a browser downloads it.
+function saveReport(d, o) {
+  const text = reportFile(d, o), name = d.name.replace(/\.nro$/i, "") + " - report.txt";
+  const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ounceWorkbench;
+  if (bridge) return bridge.postMessage({ action: "save", name, text });
+  const link = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/plain" })), download: name });
+  document.body.append(link); link.click(); link.remove();
+}
+
+// What Help > Report a Problem in the Mac app opens: the same prefilled report as the button, for the check on
+// screen (or the newest finished one). Null when there is no finished check yet.
+function reportRequest() {
+  const d = detail && detail.status !== "running" ? detail : null;
+  if (!d) return null;
+  const o = outcome(d);
+  return { url: reportUrl(d, o), text: reportText(d, o) };
 }
 
 async function copy(text, button) {
@@ -300,17 +344,29 @@ function details(d) {
   return [facts, el("h3", {}, "Last lines of each log"), logs, el("p", { class: "help" }, d.verdict.detail ? "Technical summary: " + d.verdict.detail : "")];
 }
 
+// The progress state: what is happening now, in the three steps the person can follow.
+function busyView(name, loading, d) {
+  const where = d && d.native ? "both engines and " + COMPUTER : "the engines";
+  const step = (text, on) => el("span", { class: on ? "on" : "", "aria-current": on ? "step" : false }, text);
+  return el("div", { class: "verdict busy", role: "status" }, el("div", { class: "label" }, "Checking " + name + "…"),
+    el("p", { class: "why" }, "Running the program on " + where + ". Long programs can take a minute or two."),
+    el("div", { class: "steps" }, step("Load program", loading), step("Run on engines", !loading), step("Compare results", false)),
+    el("div", { class: "bar", "aria-hidden": "true" }));
+}
+
 function renderResult() {
   const sec = $("result"), body = $("resultBody");
-  sec.hidden = !detail;
+  const showBusy = starting && !detail;
+  sec.hidden = !detail && !showBusy;
   body.replaceChildren();
+  if (showBusy) return body.append(busyView(staged ? staged.name : "the program", true));
   if (!detail) return;
   const d = detail;
   body.append(el("div", { class: "run-head" }, el("span", { class: "run-name" }, d.name), el("span", { class: "run-meta mono" }, d.sha256.slice(0, 12) + " · " + fmt(d.bytes) + " bytes")));
-  if (d.status === "running") {
-    const names = d.engines.length ? "" : (d.native ? "both engines and " + COMPUTER : "the engines");
-    body.append(el("div", { class: "verdict busy", role: "status" }, el("div", { class: "label" }, "Checking…"),
-      el("p", { class: "why" }, "Running the program" + (names ? " on " + names : "") + ". Long programs can take a minute or two."), el("div", { class: "bar", "aria-hidden": "true" })));
+  const wait = MIN_BUSY_MS - (Date.now() - busySince);
+  if (d.status === "running" || (wait > 0 && announced !== d.id && busySince)) {
+    body.append(busyView(d.name, false, d));
+    if (d.status !== "running") setTimeout(renderResult, wait + 20);
     return;
   }
   const o = outcome(d);
@@ -318,7 +374,7 @@ function renderResult() {
   const acts = [];
   if (o.again) acts.push(el("button", { type: "button", class: "primary", onclick: () => rerun(o.again.opts) }, o.again.label));
   if (o.report) acts.push(el("button", { type: "button", class: o.again ? "" : "primary", onclick: () => report(d, o) }, "Report This Problem"), el("button", { type: "button", onclick: ev => copy(reportText(d, o), ev.target) }, "Copy details"));
-  acts.push(el("button", { type: "button", onclick: reset }, "Check another program"));
+  acts.push(el("button", { type: "button", onclick: () => saveReport(d, o) }, "Save Report…"), el("button", { type: "button", onclick: reset }, "Check another program"));
   verdict.append(el("div", { class: "next" }, el("h3", {}, "What to do next"), o.next.map(t => el("p", {}, t)), el("div", { class: "actions" }, acts)));
   body.append(verdict, el("div", { class: "more" },
     el("details", {}, el("summary", {}, "Evidence"), el("div", {}, evidence(d))),
@@ -326,7 +382,9 @@ function renderResult() {
   if (announced !== d.id) { announced = d.id; verdict.focus({ preventScroll: false }); }
 }
 
-function rerun(opts) {
+async function rerun(opts) {
+  // A program the app uploaded is not staged yet: ask the server for it.
+  if (!staged && cur) await stage(cur);
   if (!staged) { reset(); return chooseError("Choose the program again to check it with different settings."); }
   setOptions(opts);
   startCheck();
@@ -344,7 +402,7 @@ function reset() {
 
 function outcomeOf(c) {
   if (c.status === "running") return "Checking";
-  return { matches: "Matched", agrees: "Matched", diverges: "Differed", fails: "Could not run", unfinished: "Could not run" }[c.kind] || "Done";
+  return { matches: LABELS.match, agrees: LABELS.match, diverges: LABELS.differ, fails: LABELS.fail, unfinished: LABELS.fail }[c.kind] || "Done";
 }
 
 function renderList() {
@@ -353,7 +411,7 @@ function renderList() {
   $("recent").hidden = !checks.length;
   $("first").hidden = !!checks.length || !!staged;
   $("recentSummary").textContent = "Recent checks (" + checks.length + ")";
-  for (const c of checks) l.append(el("li", {}, el("button", { type: "button", "aria-current": c.id === cur ? "true" : "false", onclick: () => { pick(c.id); $("result").scrollIntoView(); } },
+  for (const c of checks) l.append(el("li", {}, el("button", { type: "button", "aria-current": c.id === cur ? "true" : "false", onclick: () => { showCheck(c.id); $("result").scrollIntoView(); } },
     el("span", { class: "n" }, c.name), el("span", { class: "run-meta" }, outcomeOf(c)))));
 }
 
@@ -369,7 +427,8 @@ function wire() {
   drop.ondragleave = () => drop.classList.remove("over");
   drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); if (e.dataTransfer.files[0]) stage(e.dataTransfer.files[0]); };
   document.addEventListener("dragover", e => e.preventDefault());
-  document.addEventListener("drop", e => e.preventDefault());
+  document.addEventListener("drop", e => { e.preventDefault(); if (e.dataTransfer.files[0]) stage(e.dataTransfer.files[0]); });
+  $("another").onclick = () => $("file").click();
   for (const id of ["engines", "budget", "native", "reference"]) $(id).addEventListener("input", () => { describeSettings(); saveSettings(); });
   $("go").onclick = startCheck;
   $("budget").addEventListener("keydown", e => { if (e.key === "Enter") startCheck(); });
@@ -379,10 +438,11 @@ function wire() {
 window.OunceWorkbench = {
   choose: () => $("file").click(),
   options, setOptions, queryString,
-  pick: id => pick(id),
+  pick: id => showCheck(id, true),
+  stage, reportRequest,
   reset,
 };
-window.pick = pick; // kept: the Mac app already calls pick('<id>') after uploading a program itself
+window.pick = id => showCheck(id, true); // kept: the Mac app already calls pick('<id>') after uploading a program itself
 
 (async function init() {
   wire();
