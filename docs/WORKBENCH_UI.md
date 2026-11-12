@@ -6,17 +6,18 @@ door: everything the older launcher window offered is an option here.
 
 ## The flow
 
-1. **Choose a program.** A drop zone that is also a button; once a program is chosen it becomes the file name, its size and
+1. **Choose a program.** A Switch homebrew `.nro` or a static Linux ARM64 program (`.elf` or no extension); the drop zone says ".nro or Linux ARM64 program". The kind is decided by the file's content on the server (NRO magic at 0x10; ELF64 little-endian with machine AArch64), never by its name. A drop zone that is also a button; once a program is chosen it becomes the file name, its size and
    a "Choose another" link. One line says the file stays on this computer.
    A short "What happens next" list shows until the first check has been made.
 2. **Pick how to check it.** A one-sentence summary of the standard check, and one **Advanced** section:
    * *Engines to use*: both (default), interpreter only, recompiler only.
    * *Step limit*: the instruction budget (the old "Run Settings" budget). Empty means the server default.
    * *Also run on this computer and compare*: the native reference run. Disabled with a reason when the
-     build cannot do it.
+     build cannot do it, and always disabled for a Linux program (`run-elf` has no native engine, so there is
+     nothing to compare with on this Mac; the page and the saved result say so).
    * *Compare with the recorded reference*: the old "Verify against Host". For the known test programs
      (matched by file name, like `scripts/verify_differential.py`), compares the program's result file with
-     `<verify dir>/<harness>/expected-host.txt`. Disabled with a reason when the data is not installed.
+     `<verify dir>/<harness>/expected-host.txt`. For a Linux program the name may end in `.elf` or have no extension, and what it printed is compared with the same file (the recorded output is that of a native build of the same source, not of this Mac). A program that is not a known harness, or a harness with no recorded file (the ELF-only ones), says so instead of comparing. Disabled with a reason when the data is not installed.
 3. **Result.** One large verdict, in plain words: **Results match**, **Results differ** or **Could not run this program**, then a
    headline, one paragraph, and "What to do next" with buttons. *Evidence* (per-engine outcomes, first
    difference, recorded-reference comparison, instruction check) and *Details* (hash, step limit, logs) are
@@ -35,7 +36,8 @@ takes focus when a result arrives), and respects reduced motion. The page uses n
 | --- | --- |
 | `POST /api/checks?name=NAME&native=0\|1` | Unchanged. New optional query: `engines=tier3,tier4` (any non-empty subset), `budget=N` (positive integer, overrides the server's `--budget`), `reference=1` (run the recorded-reference comparison). Bad values return `400` with a plain message. |
 | `GET /api/checks`, `GET /api/checks/ID` | Unchanged. A check now also carries `budget` and, when requested, `host_reference` (`status` is `matches`, `differs`, `unknown-program`, `no-output`, `not-run` or `unavailable`). |
-| `GET /api/checks/ID/program` | New. The `.nro` the check was started with (`application/octet-stream`); `404` for an unknown id. |
+| `POST /api/checks` with a Linux program | A static AArch64 Linux ELF is accepted and run with `run-elf --cpu=tier3\|tier4 --max-insns=BUDGET`. `native=1` is ignored for it and the result carries `native_note` saying why. The result has `format` (`nro` or `elf`). Other files get `400` with a plain message (an x86-64 ELF is named as such). For an ELF the compared evidence is its stdout, Tier-3 against Tier-4. A run that ends without a `run-elf: DIAGNOSIS:` line counts as finished whatever its exit code; a diagnosis maps to the same stop kinds as for `.nro` (missing syscall = `unhandled-svc`, undecodable instruction = `unimplemented`, budget = unfinished). The verdict kinds and the *Results match / differ / could not run* labels are unchanged. |
+| `GET /api/checks/ID/program` | New. The `.nro` (or `.elf`) the check was started with (`application/octet-stream`); `404` for an unknown id. |
 | `GET /api/config` | New. `{native, default_budget, timeout_seconds, engines, reference_data}`. Needs the session key like every `/api/` call. |
 
 `ounce-core ui --verify-dir DIR` (or `OUNCE_VERIFY_DIR`) points at a folder laid out like `docs/verify`:

@@ -88,8 +88,23 @@ defer { try? FileManager.default.removeItem(at: dir) }
 func make(_ name: String, _ bytes: [UInt8]) -> URL { let u = dir.appendingPathComponent(name); try? Data(bytes).write(to: u); return u }
 let nroBytes: [UInt8] = Array(repeating: 0, count: 16) + Array("NRO0".utf8)
 check(WorkbenchLogic.programProblem(make("ok.nro", nroBytes)) == nil, "a valid NRO has no problem")
-check(WorkbenchLogic.programProblem(make("linux.elf", [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1]))?.next.contains("run-elf") == true, "an ELF points to run-elf")
-check(WorkbenchLogic.programProblem(make("bad.nro", [1, 2, 3]))?.what.contains("isn’t a Switch homebrew program") == true, "a short .nro is refused")
+func elf(machine: UInt8, cls: UInt8 = 2, data: UInt8 = 1) -> [UInt8] {
+    var h = [UInt8](repeating: 0, count: 24)
+    h.replaceSubrange(0..<4, with: [0x7F, 0x45, 0x4C, 0x46]); h[4] = cls; h[5] = data; h[18] = machine
+    return h
+}
+check(WorkbenchLogic.programProblem(make("linux.elf", elf(machine: 0xB7))) == nil, "a static AArch64 ELF is accepted")
+check(WorkbenchLogic.programProblem(make("lz4", elf(machine: 0xB7))) == nil, "an extensionless AArch64 ELF is accepted")
+check(WorkbenchLogic.programKind(header: Data(elf(machine: 0xB7))) == .linux, "ELF kind is judged by content")
+check(WorkbenchLogic.programKind(header: Data(nroBytes)) == .homebrew, "NRO kind is judged by content")
+check(WorkbenchLogic.programProblem(make("x86.elf", elf(machine: 0x3E)))?.what.contains("not for 64-bit ARM") == true, "an x86-64 ELF is refused with the reason")
+check(WorkbenchLogic.programProblem(make("arm32.elf", elf(machine: 0xB7, cls: 1))) != nil, "a 32-bit ELF is refused")
+check(WorkbenchLogic.programProblem(make("be.elf", elf(machine: 0xB7, data: 2))) != nil, "a big-endian ELF is refused")
+check(WorkbenchLogic.programProblem(make("short.elf", [0x7F, 0x45, 0x4C, 0x46, 2, 1, 1])) != nil, "a truncated ELF header is refused")
+check(WorkbenchLogic.programProblem(make("bad.nro", [1, 2, 3]))?.what.contains("isn’t a program Ounce Core can check") == true, "a short .nro is refused")
 check(WorkbenchLogic.programProblem(make("data.bin", nroBytes)) != nil, "a wrong extension is refused")
 check(WorkbenchLogic.programProblem(dir.appendingPathComponent("missing.nro"))?.what.contains("couldn’t read") == true, "a missing file is explained")
+check(WorkbenchLogic.options("engines=tier3,tier4&native=1&reference=1", for: .linux) == "engines=tier3,tier4&native=0&reference=1", "a Linux program never asks for a Mac run")
+check(WorkbenchLogic.options("engines=tier3,tier4&native=1", for: .homebrew) == "engines=tier3,tier4&native=1", "an NRO keeps its settings")
+check(!WorkbenchLogic.runsOnThisMac(WorkbenchLogic.options("native=1", for: .linux)), "no Mac confirmation for a Linux program")
 print("workbench-logic: all checks passed")

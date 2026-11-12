@@ -122,11 +122,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
     @objc private func checkProgram() {
         let panel = NSOpenPanel()
-        panel.message = "Choose a Switch homebrew program (a file ending in .nro) to check."
+        panel.message = "Choose a Switch homebrew program (.nro) or a Linux ARM64 program (.elf, or a file with no extension) to check."
         panel.prompt = "Check"
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [UTType(filenameExtension: "nro") ?? .data]
+        // .nro, .elf and extensionless executables (a cross-compiled Linux program has no extension). Anything else is
+        // explained by programProblem if it is dropped on the window or the Dock instead.
+        panel.allowedContentTypes = [UTType(filenameExtension: "nro") ?? .data, UTType(filenameExtension: "elf") ?? .data, .unixExecutable]
         Sheet.show(panel, on: workbench.window) { [weak self] in if $0 == .OK, let url = panel.url { self?.workbench.check(file: url) } }
     }
 
@@ -169,7 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         let urls = filenames.map { URL(fileURLWithPath: $0) }
-        guard let program = urls.first(where: { $0.pathExtension.lowercased() == "nro" }) ?? urls.first else {
+        guard let program = urls.first(where: { ["nro", "elf"].contains($0.pathExtension.lowercased()) }) ?? urls.first else {
             return sender.reply(toOpenOrPrint: .failure)
         }
         sender.reply(toOpenOrPrint: .success)
