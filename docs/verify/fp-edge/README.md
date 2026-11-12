@@ -92,7 +92,7 @@ for half-precision flushes, which matches qemu and which the hardware run below 
 **Hardware, with flags (CI run 43180713127, commit 5ba3cd9, 2026-11-12):** on `ubuntu-24.04-arm` the same 389,556-case
 corpus gives, for the interpreter, Tier-3 and Tier-4 alike, 314,388 matching cases (34,932 at each of the nine FPCR values),
 0 value mismatches, 0 flag mismatches, 75,168 unsupported; tier3 and tier4 differ from the interpreter in 0 cases; the gate
-passes. The `macos-latest` (Apple Silicon) job passed the same gate in that run; its counts were not read for this note. The
+passes. The `macos-latest` (Apple Silicon) job in that run shows the identical counts on all three engines and passes the gate. The
 executed count is higher than in the qemu paragraph above because main's vector FRINT*/FRECPE/FRSQRTE/FCVT* forms (#390)
 were merged in between. That merge is also where the hardware found 1,149 flag mismatches in those new forms
 (FRSQRTE, FRECPE and FRINTX vector, run 43179514158 on 946bba5), which 5ba3cd9 fixed.
