@@ -110,7 +110,7 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMes
         // Use the settings currently shown in the page; an older page or a failed call falls back to emulator-only.
         webView.evaluateJavaScript("OunceWorkbench.queryString()") { [weak self] value, _ in
             guard let self else { return }
-            let options = WorkbenchLogic.checkOptions(fromPage: value)
+            let options = WorkbenchLogic.options(WorkbenchLogic.checkOptions(fromPage: value), for: WorkbenchLogic.programKind(header: data.prefix(20)))
             if WorkbenchLogic.runsOnThisMac(options) && !self.acceptedThisMac {
                 let alert = NSAlert()
                 alert.messageText = "Run this program on this Mac?"

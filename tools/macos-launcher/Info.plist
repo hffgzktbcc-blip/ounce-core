@@ -17,11 +17,21 @@
     <key>CFBundleTypeRole</key><string>Viewer</string>
     <key>LSHandlerRank</key><string>Alternate</string>
     <key>LSItemContentTypes</key><array><string>org.ounce-core.homebrew</string></array>
+  </dict><dict>
+    <key>CFBundleTypeName</key><string>Linux ARM64 program</string>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>LSHandlerRank</key><string>Alternate</string>
+    <key>LSItemContentTypes</key><array><string>org.ounce-core.linux-arm64-program</string><string>public.unix-executable</string></array>
   </dict></array>
   <key>UTExportedTypeDeclarations</key><array><dict>
     <key>UTTypeIdentifier</key><string>org.ounce-core.homebrew</string>
     <key>UTTypeDescription</key><string>Homebrew NRO</string>
     <key>UTTypeConformsTo</key><array><string>public.data</string></array>
     <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>nro</string></array></dict>
+  </dict><dict>
+    <key>UTTypeIdentifier</key><string>org.ounce-core.linux-arm64-program</string>
+    <key>UTTypeDescription</key><string>Linux ARM64 program</string>
+    <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+    <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>elf</string></array></dict>
   </dict></array>
 </dict></plist>

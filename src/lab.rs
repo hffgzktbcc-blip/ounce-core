@@ -1,13 +1,17 @@
 //! Local verification workbench: `ounce-core ui`.
 //!
 //! A small localhost-only web server (safe Rust, `std::net`, no new dependencies). The page it serves
-//! (`assets/lab/index.html`) lets a person drop a homebrew `.nro`; the server runs it on the real engines as
+//! (`assets/lab/index.html`) lets a person drop a homebrew `.nro` or a static AArch64 Linux ELF; the server runs it on the real engines as
 //! child processes of this same binary and compares what each one did:
 //!
 //! * **Tier-3** and **Tier-4** always (`--cpu=tier3|tier4`, headless, with an instruction budget).
 //! * **Native** (the program on this computer's CPU, the hardware reference) only when the person asks for it,
 //!   because it runs the guest program directly on the host. It also needs a build with `--features nce` on an
 //!   AArch64 host.
+//!
+//! ELF programs run with `run-elf` on Tier-3 and Tier-4 only: `run-elf` has no native engine, so there is no
+//! run on this computer's CPU for them. Their console output (stdout) is what is compared, and, when asked,
+//! checked against the same recorded host reference the `.nro` harnesses use.
 //!
 //! "Compared" means: how each run stopped, its exit code, and every file the program wrote under `sdmc:/`
 //! (by SHA-256, with the first differing line when both are text). That is evidence for one run of one
@@ -103,6 +107,45 @@ fn default_dir() -> PathBuf {
     std::env::temp_dir().join("ounce-core-checks")
 }
 
+/// What kind of program was uploaded.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Format {
+    Nro,
+    Elf,
+}
+
+impl Format {
+    fn name(self) -> &'static str {
+        match self {
+            Format::Nro => "nro",
+            Format::Elf => "elf",
+        }
+    }
+    fn file(self) -> &'static str {
+        match self {
+            Format::Nro => "program.nro",
+            Format::Elf => "program.elf",
+        }
+    }
+}
+
+/// Recognises a homebrew NRO (magic at 0x10) or a 64-bit little-endian AArch64 ELF by content, never by file name.
+fn detect(bytes: &[u8]) -> Result<Format, String> {
+    if bytes.get(0x10..0x14) == Some(b"NRO0".as_slice()) {
+        return Ok(Format::Nro);
+    }
+    if bytes.starts_with(b"\x7fELF") {
+        let (class, data) = (bytes.get(4).copied(), bytes.get(5).copied());
+        let machine = bytes.get(18..20).map(|m| u16::from_le_bytes([m[0], m[1]]));
+        return if class == Some(2) && data == Some(1) && machine == Some(0xB7) {
+            Ok(Format::Elf)
+        } else {
+            Err("That is a Linux program, but not for 64-bit ARM (AArch64). Ounce Core can check static AArch64 Linux programs and Switch homebrew .nro files.".into())
+        };
+    }
+    Err("That isn't a program Ounce Core can check. Choose a Switch homebrew .nro file or a static AArch64 Linux program (.elf).".into())
+}
+
 /// One engine's run of the program.
 struct EngineRun {
     engine: String,
@@ -176,6 +219,28 @@ fn classify(log: &str) -> (&'static str, String) {
     soft.unwrap_or(("unknown", String::new()))
 }
 
+/// Reads how a `run-elf` process ended. `run-elf` prints one `run-elf: DIAGNOSIS:` line when it stops for any
+/// reason other than the guest exiting, so a guest that exits with a non-zero code still counts as finished.
+fn classify_elf(stderr: &str) -> (&'static str, String) {
+    let Some(line) = stderr.lines().find_map(|l| l.strip_prefix("run-elf: DIAGNOSIS:")) else {
+        let summary = stderr.lines().rev().find(|l| l.starts_with("[run-elf] engine="));
+        return if summary.is_some() { ("exited", String::new()) } else { ("unknown", String::new()) };
+    };
+    let line = line.trim();
+    let kind = if line.starts_with("instruction budget") {
+        "budget"
+    } else if line.starts_with("cannot load ELF") || line.starts_with("cannot build process stack") || line.contains("--cpu=native") {
+        "loader"
+    } else if line.contains("syscall") || line.contains("is not a Linux syscall") {
+        "unhandled-svc"
+    } else if line.starts_with("fault at pc=") && (line.contains("nimplemented") || line.contains("not implemented") || line.contains("Unsupported")) {
+        "unimplemented"
+    } else {
+        "fault"
+    };
+    (kind, line.to_string())
+}
+
 /// What the guest itself printed: the runtime's own lines (banner, `[VM]`, `[NCE]`, summary) are removed, and a
 /// guest line with no trailing newline is cut where a runtime message was glued onto it.
 fn guest_console(log: &str) -> String {
@@ -238,7 +303,7 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn run_engine(exe: &Path, nro: &Path, work: &Path, engine: &str, budget: u64, timeout: u64) -> EngineRun {
+fn run_engine(exe: &Path, program: &Path, format: Format, work: &Path, engine: &str, budget: u64, timeout: u64) -> EngineRun {
     let sdmc = work.join(engine).join("sdmc");
     let _ = std::fs::remove_dir_all(&sdmc);
     let mut run = EngineRun {
@@ -251,10 +316,18 @@ fn run_engine(exe: &Path, nro: &Path, work: &Path, engine: &str, budget: u64, ti
     }
     let start = Instant::now();
     let mut command = Command::new(exe);
+    match format {
+        Format::Nro => {
+            command
+                .arg("run-nro").arg(program).arg("--present=headless")
+                .arg(format!("--sdmc={}", sdmc.display())).arg(format!("--cpu={engine}"))
+                .env("OUNCE_NRO_BUDGET", budget.to_string()).env("OUNCE_NRO_TIMEOUT_SECS", timeout.to_string());
+        }
+        Format::Elf => {
+            command.arg("run-elf").arg(program).arg(format!("--cpu={engine}")).arg(format!("--max-insns={budget}"));
+        }
+    }
     command
-        .arg("run-nro").arg(nro).arg("--present=headless")
-        .arg(format!("--sdmc={}", sdmc.display())).arg(format!("--cpu={engine}"))
-        .env("OUNCE_NRO_BUDGET", budget.to_string()).env("OUNCE_NRO_TIMEOUT_SECS", timeout.to_string())
         .env_remove("OUNCE_CPU")
         .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = match command.spawn() {
@@ -285,15 +358,17 @@ fn run_engine(exe: &Path, nro: &Path, work: &Path, engine: &str, budget: u64, ti
         }
     }
     run.seconds = start.elapsed().as_secs_f64();
-    let mut log = String::from_utf8_lossy(&readers.0.join().unwrap_or_default()).into_owned();
-    log.push_str(&String::from_utf8_lossy(&readers.1.join().unwrap_or_default()));
-    let (kind, line) = classify(&log);
+    let out_text = String::from_utf8_lossy(&readers.0.join().unwrap_or_default()).into_owned();
+    let err_text = String::from_utf8_lossy(&readers.1.join().unwrap_or_default()).into_owned();
+    let mut log = out_text.clone();
+    log.push_str(&err_text);
+    let (kind, line) = if format == Format::Elf { classify_elf(&err_text) } else { classify(&log) };
     run.stop_kind = if run.status == "timeout" { "timeout" } else { kind };
     run.stop_line = line;
     let lines: Vec<&str> = log.lines().filter(|l| !l.trim().is_empty()).collect();
     run.log_tail = lines[lines.len().saturating_sub(30)..].iter().map(|l| l.chars().take(240).collect()).collect();
-    collect_files(&sdmc, &sdmc, &mut run);
-    let console = guest_console(&log);
+    // An ELF has no SD card: what it writes to stdout is its output, byte for byte.
+    let console = if format == Format::Elf { out_text } else { collect_files(&sdmc, &sdmc, &mut run); guest_console(&log) };
     if !console.is_empty() {
         run.files.insert(CONSOLE.into(), (hex(&Sha256::digest(console.as_bytes())), console.len() as u64));
         run.texts.insert(CONSOLE.into(), console);
@@ -364,7 +439,8 @@ fn same_outcome(a: &EngineRun, b: &EngineRun) -> bool {
     a.stop_kind == b.stop_kind && a.exit_code == b.exit_code && first_diff(a, b).is_none()
 }
 
-fn verdict(runs: &[EngineRun]) -> Value {
+fn verdict(runs: &[EngineRun], format: Format) -> Value {
+    let elf = format == Format::Elf;
     // Saved results and the app's results window show this text, so it uses the page's words (this Mac, results match).
     let verdict = |kind: &str, headline: String, detail: String, diff: Option<Value>| {
         let (headline, detail) = (headline.replace("this computer", computer()), detail.replace("this computer", computer()));
@@ -434,16 +510,34 @@ fn verdict(runs: &[EngineRun]) -> Value {
         let all = tiers.iter().all(|x| x.stop_kind == t.stop_kind);
         return if all {
             match t.stop_kind {
+                "unhandled-svc" if elf => verdict(
+                    "fails",
+                    "The program called a Linux system call Ounce-Core does not handle yet".into(),
+                    format!("{} Report the system call using .github/ISSUE_TEMPLATE/emulation_bug.yml.", describe(t)),
+                    None,
+                ),
                 "unhandled-svc" => verdict(
                     "fails",
                     "The program called a service Ounce-Core does not handle yet".into(),
                     format!("{} This is a missing Horizon service in Ounce-Core; report the SVC line using .github/ISSUE_TEMPLATE/emulation_bug.yml.", describe(t)),
                     None,
                 ),
+                "unimplemented" if elf => verdict(
+                    "fails",
+                    "The program used an instruction Ounce-Core could not decode".into(),
+                    format!("{} Report the instruction word using .github/ISSUE_TEMPLATE/emulation_bug.yml. Linux programs cannot be run on this computer's CPU by Ounce-Core, so there is no host run to compare with.", describe(t)),
+                    None,
+                ),
                 "unimplemented" => verdict(
                     "fails",
                     "The program used an instruction Ounce-Core could not decode".into(),
                     format!("{} Turn on 'Compare with this computer' or run `ounce-core diverge <program.nro>` to check it against the host CPU, and report the instruction word using .github/ISSUE_TEMPLATE/emulation_bug.yml.", describe(t)),
+                    None,
+                ),
+                _ if elf => verdict(
+                    "fails",
+                    "The program stops with an error".into(),
+                    format!("{} Both engines stop the same way, so this can't say whether the program or Ounce-Core is at fault. If the program is one of the known test programs, 'Compare with the recorded reference' shows what it should write.", describe(t)),
                     None,
                 ),
                 _ => verdict(
@@ -455,14 +549,27 @@ fn verdict(runs: &[EngineRun]) -> Value {
             }
         } else {
             verdict("diverges", "The two engines gave different results".into(),
-                format!("{} | Run `ounce-core diverge <program.nro>` or report with .github/ISSUE_TEMPLATE/emulation_bug.yml.", tiers.iter().map(|x| describe(x)).collect::<Vec<_>>().join(" | ")), None)
+                if elf {
+                    format!("{} | Report this with .github/ISSUE_TEMPLATE/emulation_bug.yml.", tiers.iter().map(|x| describe(x)).collect::<Vec<_>>().join(" | "))
+                } else {
+                    format!("{} | Run `ounce-core diverge <program.nro>` or report with .github/ISSUE_TEMPLATE/emulation_bug.yml.", tiers.iter().map(|x| describe(x)).collect::<Vec<_>>().join(" | "))
+                }, None)
         };
     }
     if let Some(t) = tiers.iter().find(|t| unfinished(t)) {
         return verdict("unfinished", "The program didn't finish within the limit".into(), describe(t), None);
     }
     if tiers.len() == 2 && !same_outcome(tiers[0], tiers[1]) {
-        return verdict("diverges", "The two engines gave different results".into(), "An emulator bug between engines. Compare with this computer to see which is right, or run `ounce-core diverge <program.nro>` and report with .github/ISSUE_TEMPLATE/emulation_bug.yml.".into(), first_diff(tiers[0], tiers[1]));
+        let detail = if elf {
+            "An emulator bug between engines. Report this with .github/ISSUE_TEMPLATE/emulation_bug.yml, including the program and the first differing line."
+        } else {
+            "An emulator bug between engines. Compare with this computer to see which is right, or run `ounce-core diverge <program.nro>` and report with .github/ISSUE_TEMPLATE/emulation_bug.yml."
+        };
+        return verdict("diverges", "The two engines gave different results".into(), detail.into(), first_diff(tiers[0], tiers[1]));
+    }
+    if elf {
+        return verdict("agrees", "Both engines agreed; not compared with this computer".into(),
+            "Linux programs run on Tier-3 and Tier-4 only, so there is no run on this computer to compare with. Turn on 'Compare with the recorded reference' to check a known test program's output.".into(), None);
     }
     verdict("agrees", "Both engines agreed; not compared with this computer".into(),
         "No host reference was used. Turn on 'Compare with this computer' to check against the real CPU.".into(), None)
@@ -487,10 +594,14 @@ fn norm(name: &str) -> String {
 }
 
 /// Harness programs are matched by file name, as `scripts/verify_differential.py` names them.
-fn find_harness(verify_dir: &Path, nro_name: &str) -> Option<Harness> {
+/// A Linux ELF may also be named after a harness that only exists as an ELF; those have no recorded reference file,
+/// which `host_reference` reports.
+fn find_harness(verify_dir: &Path, name: &str, format: Format) -> Option<Harness> {
     let doc: Value = serde_json::from_slice(&std::fs::read(verify_dir.join("differential.json")).ok()?).ok()?;
-    let stem = norm(nro_name.strip_suffix(".nro").unwrap_or(nro_name));
-    doc["harnesses"].as_array()?.iter().filter(|h| h["linux_elf_only"] != true).find_map(|h| {
+    let lower = name.to_lowercase();
+    let suffix = if format == Format::Elf { ".elf" } else { ".nro" };
+    let stem = norm(if lower.ends_with(suffix) { &name[..name.len() - suffix.len()] } else { name });
+    doc["harnesses"].as_array()?.iter().filter(|h| format == Format::Elf || h["linux_elf_only"] != true).find_map(|h| {
         let (name, dir) = (norm(h["name"].as_str()?), norm(h["dir"].as_str()?));
         (stem == name || stem == dir || stem == format!("{name}-harness")).then(|| Harness {
             dir: h["dir"].as_str().unwrap_or_default().to_string(),
@@ -511,11 +622,11 @@ fn compare_reference(harness: &str, expected: &str, actual: &str) -> Value {
     })
 }
 
-fn host_reference(verify_dir: Option<&Path>, name: &str, runs: &[EngineRun]) -> Value {
+fn host_reference(verify_dir: Option<&Path>, name: &str, runs: &[EngineRun], format: Format) -> Value {
     let Some(dir) = verify_dir else {
         return json!({"status": "unavailable", "note": "The recorded reference data is not installed with this copy."});
     };
-    let Some(harness) = find_harness(dir, name) else {
+    let Some(harness) = find_harness(dir, name, format) else {
         return json!({"status": "unknown-program", "note": "This program is not one of the known test programs, so there is no recorded reference to compare with."});
     };
     let Ok(expected) = std::fs::read_to_string(dir.join(&harness.dir).join("expected-host.txt")) else {
@@ -524,8 +635,11 @@ fn host_reference(verify_dir: Option<&Path>, name: &str, runs: &[EngineRun]) -> 
     let Some(run) = runs.iter().find(|r| r.engine != "native" && r.finished()) else {
         return json!({"status": "not-run", "harness": harness.dir, "note": "The program did not finish, so there is no output to compare."});
     };
-    let Some(actual) = run.texts.get(&harness.result_file) else {
-        return json!({"status": "no-output", "harness": harness.dir, "note": format!("The program finished but did not write {}.", harness.result_file)});
+    // An ELF's output is what it printed; an NRO writes its result file to the SD card.
+    let result_file = if format == Format::Elf { CONSOLE } else { harness.result_file.as_str() };
+    let Some(actual) = run.texts.get(result_file) else {
+        let note = if format == Format::Elf { "The program finished but printed nothing.".to_string() } else { format!("The program finished but did not write {result_file}.") };
+        return json!({"status": "no-output", "harness": harness.dir, "note": note});
     };
     compare_reference(&harness.dir, &expected, actual)
 }
@@ -546,10 +660,10 @@ impl Lab {
     fn start_check(self: &Arc<Self>, name: &str, bytes: Vec<u8>, options: CheckOptions) -> Result<String, (u16, String)> {
         let CheckOptions { native, engines, budget, reference } = options;
         let budget = budget.unwrap_or(self.budget);
-        if bytes.get(0x10..0x14) != Some(b"NRO0".as_slice()) {
-            return Err((400, "That isn't a homebrew .nro file. ELF programs run with `ounce-core run-elf` for now.".into()));
-        }
-        let native = native && cfg!(all(feature = "nce", target_arch = "aarch64"));
+        let format = detect(&bytes).map_err(|message| (400, message))?;
+        // `run-elf` has no native engine, so a Linux program is never run on this computer's CPU.
+        let native_unavailable = native && format == Format::Elf;
+        let native = native && format == Format::Nro && cfg!(all(feature = "nce", target_arch = "aarch64"));
         let sha = hex(&Sha256::digest(&bytes));
         let id = {
             let mut n = self.counter.lock().unwrap();
@@ -558,14 +672,14 @@ impl Lab {
         };
         let work = self.dir.join(&id);
         std::fs::create_dir_all(&work).map_err(|e| (500, format!("could not create {}: {e}", work.display())))?;
-        let nro = work.join("program.nro");
+        let nro = work.join(format.file());
         std::fs::write(&nro, &bytes).map_err(|e| (500, format!("could not save the program: {e}")))?;
         let name: String = name.chars().filter(|c| !c.is_control()).take(120).collect();
         let bytes_len = bytes.len();
         let started = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         self.checks.lock().unwrap().push((id.clone(), json!({
             "schema_version": "ounce-core/workbench-check-v1",
-            "id": id, "name": name, "sha256": sha, "bytes": bytes_len, "native": native, "budget": budget,
+            "id": id, "name": name, "sha256": sha, "bytes": bytes_len, "native": native, "budget": budget, "format": format.name(),
             "status": "running", "started": started, "engines": [], "verdict": null,
         })));
         let lab = Arc::clone(self);
@@ -579,7 +693,7 @@ impl Lab {
             }
             let runs: Vec<EngineRun> = thread::scope(|scope| {
                 let handles: Vec<_> = names.iter()
-                    .map(|n| scope.spawn(|| run_engine(&lab.exe, &nro, &work, n, budget, lab.timeout)))
+                    .map(|n| scope.spawn(|| run_engine(&lab.exe, &nro, format, &work, n, budget, lab.timeout)))
                     .collect();
                 handles.into_iter().filter_map(|h| h.join().ok()).collect()
             });
@@ -591,18 +705,20 @@ impl Lab {
                 "sha256": check_sha,
                 "bytes": bytes_len,
                 "native": native,
+                "native_note": if native_unavailable { Value::from("Linux programs can't be run on this computer's CPU by Ounce Core (run-elf has no native engine), so they were checked on Tier-3 and Tier-4 only.") } else { Value::Null },
+                "format": format.name(),
                 "budget": budget,
                 "started": started,
                 "engines": runs.iter().map(EngineRun::to_json).collect::<Vec<_>>(),
-                "verdict": verdict(&runs),
+                "verdict": verdict(&runs, format),
                 "instructions": instructions,
-                "host_reference": if reference { host_reference(lab.verify_dir.as_deref(), &check_name, &runs) } else { Value::Null },
+                "host_reference": if reference { host_reference(lab.verify_dir.as_deref(), &check_name, &runs, format) } else { Value::Null },
                 "status": "done"
             });
             let _ = std::fs::write(work.join("result.json"), serde_json::to_vec_pretty(&result).unwrap_or_default());
             let mut checks = lab.checks.lock().unwrap();
             if let Some((_, value)) = checks.iter_mut().find(|(i, _)| *i == check_id) {
-                for key in ["engines", "verdict", "instructions", "host_reference", "status"] {
+                for key in ["engines", "verdict", "instructions", "host_reference", "native_note", "status"] {
                     value[key] = result[key].clone();
                 }
             }
@@ -808,7 +924,8 @@ fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
             if !known {
                 return error(404, "No such check.");
             }
-            match std::fs::read(lab.dir.join(id).join("program.nro")) {
+            let dir = lab.dir.join(id);
+            match std::fs::read(dir.join("program.nro")).or_else(|_| std::fs::read(dir.join("program.elf"))) {
                 Ok(bytes) => (200, "application/octet-stream", bytes),
                 Err(_) => error(404, "No such check."),
             }
@@ -967,13 +1084,13 @@ mod tests {
     #[test]
     fn verdict_matches_when_everything_agrees() {
         let runs = [run("tier3", "exited", &[("results.txt", "a\nb\n")]), run("tier4", "exited", &[("results.txt", "a\nb\n")]), run("native", "exited", &[("results.txt", "a\nb\n")])];
-        assert_eq!(verdict(&runs)["kind"], "matches");
+        assert_eq!(verdict(&runs, Format::Nro)["kind"], "matches");
     }
 
     #[test]
     fn verdict_names_the_first_differing_line_against_the_host() {
         let runs = [run("tier3", "exited", &[("results.txt", "a\nWRONG\n")]), run("tier4", "exited", &[("results.txt", "a\nb\n")]), run("native", "exited", &[("results.txt", "a\nb\n")])];
-        let v = verdict(&runs);
+        let v = verdict(&runs, Format::Nro);
         assert_eq!(v["kind"], "diverges");
         assert_eq!(v["diff"]["line"], 2);
         assert_eq!(v["diff"]["a"], "WRONG");
@@ -983,7 +1100,7 @@ mod tests {
     #[test]
     fn verdict_without_reference_does_not_claim_a_match_with_the_mac() {
         let runs = [run("tier3", "exited", &[]), run("tier4", "exited", &[])];
-        let v = verdict(&runs);
+        let v = verdict(&runs, Format::Nro);
         assert_eq!(v["kind"], "agrees");
         assert_eq!(v["reference"], false);
     }
@@ -991,13 +1108,13 @@ mod tests {
     #[test]
     fn verdict_flags_an_emulator_stop_where_the_mac_continues() {
         let runs = [run("tier3", "unimplemented", &[]), run("tier4", "unimplemented", &[]), run("native", "exited", &[])];
-        assert_eq!(verdict(&runs)["kind"], "diverges");
+        assert_eq!(verdict(&runs, Format::Nro)["kind"], "diverges");
     }
 
     #[test]
     fn verdict_identifies_missing_service_and_unimplemented_instruction_gaps() {
         let svc_runs = [run("tier3", "unhandled-svc", &[]), run("tier4", "unhandled-svc", &[])];
-        let v = verdict(&svc_runs);
+        let v = verdict(&svc_runs, Format::Nro);
         assert_eq!(v["kind"], "fails");
         assert!(v["headline"].as_str().unwrap().contains("service Ounce-Core does not handle yet"));
         assert!(v["detail"].as_str().unwrap().contains("emulation_bug.yml"));
@@ -1007,12 +1124,12 @@ mod tests {
             run("tier4", "unhandled-svc", &[]),
             run("native", "unhandled-svc", &[]),
         ];
-        let vn = verdict(&svc_native);
+        let vn = verdict(&svc_native, Format::Nro);
         assert_eq!(vn["kind"], "fails");
         assert!(vn["headline"].as_str().unwrap().contains("service Ounce-Core does not handle yet"));
 
         let unimpl_runs = [run("tier3", "unimplemented", &[]), run("tier4", "unimplemented", &[])];
-        let vu = verdict(&unimpl_runs);
+        let vu = verdict(&unimpl_runs, Format::Nro);
         assert_eq!(vu["kind"], "fails");
         assert!(vu["headline"].as_str().unwrap().contains("instruction Ounce-Core could not decode"));
     }
@@ -1020,7 +1137,7 @@ mod tests {
     #[test]
     fn unfinished_programs_are_not_called_divergent() {
         let runs = [run("tier3", "budget", &[]), run("tier4", "budget", &[]), run("native", "timeout", &[])];
-        assert_eq!(verdict(&runs)["kind"], "unfinished");
+        assert_eq!(verdict(&runs, Format::Nro)["kind"], "unfinished");
     }
 
     #[test]
@@ -1035,12 +1152,12 @@ mod tests {
     #[test]
     fn harnesses_are_matched_by_file_name() {
         let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/verify"));
-        let h = find_harness(dir, "LZ4.nro").expect("lz4 is a known harness");
+        let h = find_harness(dir, "LZ4.nro", Format::Nro).expect("lz4 is a known harness");
         assert!(dir.join(&h.dir).join("expected-host.txt").is_file());
-        assert!(find_harness(dir, "integer_vector.nro").is_some(), "underscores and hyphens are interchangeable");
-        assert!(find_harness(dir, "hello.nro").is_none());
-        assert_eq!(host_reference(Some(dir), "hello.nro", &[])["status"], "unknown-program");
-        assert_eq!(host_reference(None, "lz4.nro", &[])["status"], "unavailable");
+        assert!(find_harness(dir, "integer_vector.nro", Format::Nro).is_some(), "underscores and hyphens are interchangeable");
+        assert!(find_harness(dir, "hello.nro", Format::Nro).is_none());
+        assert_eq!(host_reference(Some(dir), "hello.nro", &[], Format::Nro)["status"], "unknown-program");
+        assert_eq!(host_reference(None, "lz4.nro", &[], Format::Nro)["status"], "unavailable");
     }
 
     #[test]
@@ -1085,7 +1202,68 @@ mod tests {
             exe: PathBuf::from("x"), dir: std::env::temp_dir(), token: "t".into(), port: 1, budget: 1, timeout: 1, verify_dir: None,
             checks: Mutex::new(vec![]), counter: Mutex::new(0),
         });
+        // A truncated ELF header, an x86-64 ELF and plain bytes are all refused before anything runs.
         assert_eq!(lab.start_check("a.elf", b"\x7fELF".to_vec(), check_options(&HashMap::new()).unwrap()).unwrap_err().0, 400);
+        assert_eq!(lab.start_check("a", vec![1, 2, 3], check_options(&HashMap::new()).unwrap()).unwrap_err().0, 400);
+    }
+
+    fn elf_header(machine: u16, class: u8, data: u8) -> Vec<u8> {
+        let mut h = vec![0u8; 64];
+        h[..4].copy_from_slice(b"\x7fELF");
+        h[4] = class;
+        h[5] = data;
+        h[18..20].copy_from_slice(&machine.to_le_bytes());
+        h
+    }
+
+    #[test]
+    fn programs_are_recognised_by_content_not_name() {
+        let mut nro = vec![0u8; 0x20];
+        nro[0x10..0x14].copy_from_slice(b"NRO0");
+        assert_eq!(detect(&nro), Ok(Format::Nro));
+        assert_eq!(detect(&elf_header(0xB7, 2, 1)), Ok(Format::Elf));
+        assert!(detect(&elf_header(0x3E, 2, 1)).unwrap_err().contains("not for 64-bit ARM"), "x86-64 ELF");
+        assert!(detect(&elf_header(0xB7, 1, 1)).is_err(), "32-bit");
+        assert!(detect(&elf_header(0xB7, 2, 2)).is_err(), "big-endian");
+        assert!(detect(b"MZ\x90\0").unwrap_err().contains("isn't a program"));
+    }
+
+    #[test]
+    fn elf_stop_messages_are_classified_from_the_diagnosis_line() {
+        let ok = "[run-elf] engine=Tier-3 instructions=10 syscalls=2\n";
+        assert_eq!(classify_elf(ok).0, "exited");
+        assert_eq!(classify_elf("").0, "unknown");
+        let d = |text: &str| classify_elf(&format!("{ok}run-elf: DIAGNOSIS: {text}\n"));
+        assert_eq!(d("unimplemented syscall 278 (getrandom) at pc=0x400000").0, "unhandled-svc");
+        assert_eq!(d("instruction budget of 5 exhausted at pc=0x1 (raise with --max-insns=N)").0, "budget");
+        assert_eq!(d("cannot load ELF: not static").0, "loader");
+        assert_eq!(d("fault at pc=0x10, instruction word 0x2e20dc00: Unimplemented instruction 0x2E20DC00 at PC: 0x0000000000000010").0, "unimplemented");
+        assert_eq!(d("fault at pc=0x10, instruction word 0x00000000: memory fault").0, "fault");
+    }
+
+    #[test]
+    fn elf_verdicts_do_not_mention_the_nro_tools() {
+        let agree = verdict(&[run("tier3", "exited", &[(CONSOLE, "ok\n")]), run("tier4", "exited", &[(CONSOLE, "ok\n")])], Format::Elf);
+        assert_eq!(agree["kind"], "agrees");
+        assert!(!agree["detail"].as_str().unwrap().contains("diverge"));
+        let gap = verdict(&[run("tier3", "unimplemented", &[]), run("tier4", "unimplemented", &[])], Format::Elf);
+        assert_eq!(gap["kind"], "fails");
+        assert!(!gap["detail"].as_str().unwrap().contains(".nro"), "{gap}");
+        let differ = verdict(&[run("tier3", "exited", &[(CONSOLE, "a\n")]), run("tier4", "exited", &[(CONSOLE, "b\n")])], Format::Elf);
+        assert_eq!(differ["kind"], "diverges");
+        assert_eq!(differ["diff"]["line"], 1);
+    }
+
+    #[test]
+    fn an_elf_is_checked_against_the_recorded_reference_by_what_it_printed() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/verify");
+        let expected = std::fs::read_to_string(dir.join("lz4-harness/expected-host.txt")).unwrap();
+        let same = [run("tier3", "exited", &[(CONSOLE, expected.as_str())])];
+        assert_eq!(host_reference(Some(&dir), "lz4.elf", &same, Format::Elf)["status"], "matches");
+        assert_eq!(host_reference(Some(&dir), "LZ4", &same, Format::Elf)["status"], "matches", "extensionless names work too");
+        let other = [run("tier3", "exited", &[(CONSOLE, "case0 n=0\n")])];
+        assert_eq!(host_reference(Some(&dir), "lz4.elf", &other, Format::Elf)["status"], "differs");
+        assert_eq!(host_reference(Some(&dir), "hello.elf", &same, Format::Elf)["status"], "unknown-program");
     }
 
     #[test]

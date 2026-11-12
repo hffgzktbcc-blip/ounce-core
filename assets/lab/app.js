@@ -24,6 +24,7 @@ const api = (path, opts = {}) => fetch(path, { ...opts, headers: { "X-Ounce-Toke
   return j;
 });
 
+let nativeDefaultHint = "";
 let config = { native: NATIVE, default_budget: 2000000000, reference_data: false };
 let staged = null;          // the file chosen in step 1, not yet checked
 let checks = [], cur = null, detail = null, timer = null, starting = false;
@@ -46,9 +47,12 @@ function readBudget() {
   return { value: Number(text) };
 }
 
+// A Linux program has no run on this computer to compare with: `run-elf` has only the two emulator engines.
+function isLinux(file) { return !!file && !/\.nro$/i.test(file.name); }
+
 function options() {
   const b = readBudget();
-  return { engines: $("engines").value, budget: b.value ?? null, native: $("native").checked && config.native, reference: $("reference").checked && config.reference_data };
+  return { engines: $("engines").value, budget: b.value ?? null, native: $("native").checked && config.native && !isLinux(staged), reference: $("reference").checked && config.reference_data };
 }
 
 function queryString(o = options()) {
@@ -79,10 +83,12 @@ function loadSettings() {
 
 function describeSettings() {
   const o = options(), parts = [];
-  parts.push(o.engines === "tier3,tier4" ? "runs the program on both of Ounce Core's engines and compares what they do" :
+  const linux = isLinux(staged);
+  parts.push(o.engines === "tier3,tier4" ? "runs the program on both of Ounce Core's engines and compares " + (linux ? "what they print" : "what they do") :
     "runs the program on the " + (o.engines === "tier3" ? "interpreter" : "recompiler") + " only");
   if (o.native) parts.push("also runs it on " + COMPUTER + " as the reference");
   if (o.reference) parts.push("compares its output with the recorded reference");
+  if (linux) parts.push("does not run it on " + COMPUTER + " (Linux programs only run on Ounce Core's engines)");
   const custom = o.engines !== "tier3,tier4" || o.budget || o.native || o.reference;
   $("howSummary").textContent = (custom ? "Custom check: " : "Standard check: ") + parts.join(", ") + ".";
   const b = readBudget();
@@ -92,6 +98,7 @@ function describeSettings() {
 
 function setupAvailability() {
   const native = $("native").closest(".field"), ref = $("reference").closest(".field");
+  nativeDefaultHint = $("nativeHint").textContent;
   $("nativeLabel").textContent = "Also run on " + COMPUTER + " and compare";
   if (!config.native) {
     $("native").disabled = true; native.classList.add("off");
@@ -120,7 +127,11 @@ async function stage(source) {
       file = new File([await r.blob()], d.name, { type: "application/octet-stream" });
     } catch (_) { return false; }
   }
-  if (!/\.nro$/i.test(file.name)) { chooseError("That is not a homebrew program. Choose a file that ends in .nro."); return false; }
+  // The server tells the kinds apart by content; the name only rules out files that are plainly something else.
+  if (!/\.(nro|elf)$/i.test(file.name) && /\.[^./\\]+$/.test(file.name)) {
+    chooseError("That is not a program Ounce Core can check. Choose a Switch homebrew .nro file or a static Linux ARM64 program (.elf, or a file with no extension).");
+    return false;
+  }
   staged = file;
   renderStaged();
   return true;
@@ -136,7 +147,13 @@ function renderStaged() {
   $("drop").hidden = !!staged;
   $("chosen").hidden = !staged;
   $("chosenName").textContent = staged ? staged.name : "";
-  $("chosenSize").textContent = staged ? fmt(staged.size) + " bytes" : "";
+  $("chosenSize").textContent = staged ? fmt(staged.size) + " bytes, " + (isLinux(staged) ? "Linux ARM64 program" : "Switch homebrew program") : "";
+  const linux = isLinux(staged), native = $("native");
+  if (config.native) {
+    native.disabled = linux; native.closest(".field").classList.toggle("off", linux);
+    $("nativeHint").textContent = linux ? "Not available for Linux programs: Ounce Core can run them on its own two engines only, so there is no run on " + COMPUTER + " to compare with." : nativeDefaultHint;
+  }
+  describeSettings();
   $("first").hidden = !!staged || checks.length > 0;
   $("go").disabled = !staged || starting;
   $("goHelp").textContent = staged ? "" : "Choose a program first.";
@@ -203,13 +220,13 @@ function outcome(d) {
   if (hr && hr.status === "differs") {
     const f = hr.first_difference;
     return { tone: "bad", label: LABELS.differ, headline: "The output does not match the recorded reference.",
-      why: "The program finished, but its output differs from the output recorded from real hardware" + (f ? ", starting at line " + f.line + "." : "."),
+      why: "The program finished, but its output differs from the output recorded " + (d.format === "elf" ? "from a native build of the same program" : "from real hardware") + (f ? ", starting at line " + f.line + "." : "."),
       next: ["Send a report so this can be investigated. It includes the details below."], report: true };
   }
   if (!d.engines.length || d.engines.every(e => e.stop.kind === "unknown")) {
     const note = (d.engines.find(e => e.note) || {}).note;
     return { tone: "bad", label: LABELS.fail, headline: "The check could not start the program.",
-      why: note || "Ounce Core did not report how the program ended.", next: ["Check that the program is a valid .nro file and try again. If it keeps happening, send a report."], report: true };
+      why: note || "Ounce Core did not report how the program ended.", next: ["Check that the program is a valid .nro file or a static Linux ARM64 program and try again. If it keeps happening, send a report."], report: true };
   }
   switch (v.kind) {
     case "matches": return { tone: "ok", label: LABELS.match,
@@ -219,8 +236,12 @@ function outcome(d) {
     case "agrees": {
       if (hr && hr.status === "matches") return { tone: "ok", label: LABELS.match,
         headline: "The output matches the recorded reference.",
-        why: "The program finished and wrote exactly the output recorded from real hardware (" + hr.expected_lines + " lines for " + hr.harness + "). The engines also agreed with each other.", next: ["Nothing more to do."] };
+        why: d.format === "elf" ? "The program finished and printed exactly the output recorded from a native build of the same program (" + hr.expected_lines + " lines for " + hr.harness + "). It was run on Ounce Core's engines only, not on " + COMPUTER + ". The engines also agreed with each other." : "The program finished and wrote exactly the output recorded from real hardware (" + hr.expected_lines + " lines for " + hr.harness + "). The engines also agreed with each other.", next: ["Nothing more to do."] };
       const one = d.engines.filter(e => e.engine !== "native").length < 2;
+      if (d.format === "elf") return { tone: "ok", label: LABELS.match,
+        headline: one ? "The program ran to the end." : "Both of Ounce Core's engines agreed.",
+        why: (one ? "It finished on the one engine you chose." : "Tier-3 and Tier-4 ended the same way and printed identical output.") + " Linux programs are not run on " + COMPUTER + ", so this does not show it matches real hardware.",
+        next: ["For one of the known test programs, turn on \"Compare with the recorded reference\" under Advanced and check again."] };
       return { tone: "ok", label: LABELS.match,
         headline: one ? "The program ran to the end." : "Both of Ounce Core's engines agreed.",
         why: (one ? "It finished on the one engine you chose." : "They ended the same way and produced identical output.") + " It was not compared with " + COMPUTER + ", so this does not show it matches real hardware.",
@@ -241,12 +262,12 @@ function outcome(d) {
       again: { label: "Check again with a larger limit", opts: { budget: Math.min((d.budget || config.default_budget) * 10, 100000000000) } } };
     case "fails": default: {
       const reason = describeRun(d) || "The program stopped with an error.";
-      const next = [ref ? "It fails the same way on " + COMPUTER + ", so the program itself is the likely cause." :
+      const next = d.format === "elf" ? ["Both engines stop the same way, so this does not say whether the program or Ounce Core is at fault. Linux programs cannot be run on " + COMPUTER + " here."] : [ref ? "It fails the same way on " + COMPUTER + ", so the program itself is the likely cause." :
         "This does not say whether the program or Ounce Core is at fault." + (config.native ? " Check again with the comparison against " + COMPUTER + " turned on to find out." : "")];
-      if (d.engines.some(e => e.stop.kind === "loader")) next.unshift("Check that the file is a complete, unmodified program, then try again.");
+      if (d.engines.some(e => e.stop.kind === "loader")) next.unshift("Check that the file is a complete, unmodified static AArch64 program, then try again.");
       next.push("If you think Ounce Core is at fault, send a report.");
       return { tone: "bad", label: LABELS.fail, headline: reason, why: "The check stopped before the program finished. The details show exactly where.",
-        next, report: true, again: !ref && config.native ? { label: "Check again and compare with " + COMPUTER, opts: { native: true } } : null };
+        next, report: true, again: !ref && config.native && d.format !== "elf" ? { label: "Check again and compare with " + COMPUTER, opts: { native: true } } : null };
     }
   }
 }
@@ -263,7 +284,7 @@ function reportUrl(d, o) {
   // The form's Engine dropdown only preselects one of its own labels.
   const formEngine = { tier3: "Tier-3 (default)", tier4: "Tier-4 JIT (--cpu=tier4)", native: "Native (--cpu=native)" }[first.engine] || "Not sure";
   const q = new URLSearchParams({ template: "emulation_bug.yml", title: "Workbench: " + o.label + " - " + d.name, program: d.name,
-    engine: formEngine, observed: reportText(d, o).slice(0, 1500), repro: "ounce-core run-nro " + d.name + " --cpu=" + first.engine });
+    engine: formEngine, observed: reportText(d, o).slice(0, 1500), repro: (d.format === "elf" ? "ounce-core run-elf " : "ounce-core run-nro ") + d.name + " --cpu=" + first.engine });
   return ISSUE_URL + "?" + q.toString();
 }
 
@@ -282,7 +303,7 @@ function reportFile(d, o) {
 
 // Saves the report as a text file: the Mac app shows a save panel, a browser downloads it.
 function saveReport(d, o) {
-  const text = reportFile(d, o), name = d.name.replace(/\.nro$/i, "") + " - report.txt";
+  const text = reportFile(d, o), name = d.name.replace(/\.(nro|elf)$/i, "") + " - report.txt";
   const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.ounceWorkbench;
   if (bridge) return bridge.postMessage({ action: "save", name, text });
   const link = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/plain" })), download: name });
@@ -317,6 +338,7 @@ function evidence(d) {
   const x = d.verdict.diff;
   if (x) parts.push(el("div", { class: "diff" }, el("div", {}, x.path + (x.line ? ", line " + x.line : "")),
     x.note ? el("div", {}, x.note) : [el("div", { class: "a" }, x.a_label + ": " + x.a), el("div", { class: "b" }, x.b_label + ": " + x.b)]));
+  if (d.native_note) parts.push(el("p", { class: "help" }, d.native_note));
   const hr = d.host_reference;
   if (hr) {
     const f = hr.first_difference;
@@ -337,9 +359,10 @@ function evidence(d) {
 function details(d) {
   const facts = el("dl", { class: "facts" },
     el("dt", {}, "Program"), el("dd", {}, d.name), el("dt", {}, "Size"), el("dd", {}, fmt(d.bytes) + " bytes"),
+    el("dt", {}, "Type"), el("dd", {}, d.format === "elf" ? "Linux ARM64 program (static ELF), run with run-elf on Tier-3 and Tier-4" : "Switch homebrew program (.nro)"),
     el("dt", {}, "SHA-256"), el("dd", { class: "mono" }, d.sha256),
     el("dt", {}, "Step limit"), el("dd", {}, fmt(d.budget || config.default_budget)),
-    el("dt", {}, "Compared"), el("dd", {}, Object.keys((d.engines.find(e => e.engine === "native") || d.engines[0] || { files: {} }).files).join(", ") || "nothing written"));
+    el("dt", {}, "Compared"), el("dd", {}, (d.format === "elf" ? "Tier-3 against Tier-4: " : "") + Object.keys((d.engines.find(e => e.engine === "native") || d.engines[0] || { files: {} }).files).join(", ") || "nothing written"));
   const logs = d.engines.map(e => el("div", { class: "engine" }, el("h4", {}, engineName(e.engine)), el("pre", {}, e.log_tail.join("\n") || "(no output)")));
   return [facts, el("h3", {}, "Last lines of each log"), logs, el("p", { class: "help" }, d.verdict.detail ? "Technical summary: " + d.verdict.detail : "")];
 }
