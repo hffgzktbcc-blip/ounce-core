@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Ounce Core</title>
+<title>Check whether a program behaves the same everywhere</title>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body data-token="__OUNCE_TOKEN__" data-native="__OUNCE_NATIVE__">
 <a class="skip" href="#choose">Skip to the program chooser</a>
 <div class="page">
   <header class="top">
-    <h1>Ounce Core</h1>
-    <p class="lede">Check how a homebrew program behaves in Ounce Core, and whether that matches real hardware.</p>
+    <h1>Check whether a program behaves the same everywhere</h1>
+    <p class="lede">Choose a homebrew program. Ounce Core runs it on its engines and tells you whether the results match. Results are saved on this computer and nothing is uploaded.</p>
   </header>
 
   <section class="step" id="choose" aria-labelledby="h-choose">
@@ -22,6 +22,10 @@
       <span class="drop-main" id="dropMain">Drop a program here, or choose one</span>
       <span class="drop-sub" id="dropSub">Only <code>.nro</code> files are supported.</span>
     </button>
+    <div class="file" id="chosen" hidden>
+      <div><strong id="chosenName"></strong><br><span class="run-meta" id="chosenSize"></span></div>
+      <button type="button" class="link" id="another">Choose another</button>
+    </div>
     <input type="file" id="file" accept=".nro" hidden>
     <p class="error" id="chooseError" role="alert" hidden></p>
     <div class="first" id="first">
@@ -68,7 +72,7 @@
       </div>
     </details>
     <div class="actions">
-      <button type="button" class="primary" id="go" disabled>Check program</button>
+      <button type="button" class="primary" id="go" disabled>Run Check</button>
       <span class="help" id="goHelp">Choose a program first.</span>
     </div>
   </section>

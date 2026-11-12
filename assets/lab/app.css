@@ -48,6 +48,12 @@ button.primary{background:var(--accent);color:var(--on-accent);border-color:var(
 .drop.chosen{border-style:solid}
 .drop-main{font-weight:600;overflow-wrap:anywhere}
 .drop-sub{color:var(--muted);font-size:13px}
+.file{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s4);align-items:center;justify-content:space-between;margin-top:var(--s4);padding:var(--s3) var(--s4);border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.file[hidden],.drop[hidden]{display:none}
+.file strong{overflow-wrap:anywhere}
+button.link{border:0;background:none;color:var(--accent);text-decoration:underline;text-underline-offset:3px;min-height:32px;padding:var(--s1) 0}
+.steps{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s4);margin-top:var(--s3);font-size:13px;color:var(--muted)}
+.steps .on{color:var(--text);font-weight:650}
 .first{margin-top:var(--s5);padding-top:var(--s4);border-top:1px solid var(--line)}
 .first[hidden]{display:none}
 .first ol{margin:0;padding-left:var(--s5);color:var(--muted);font-size:14px}
