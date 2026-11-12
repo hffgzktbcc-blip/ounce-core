@@ -45,6 +45,8 @@ pub struct Options {
     pub timeout_secs: u64,
     /// Exit when stdin closes. The Mac app holds a pipe to the server so it can't outlive the app.
     pub parent_pipe: bool,
+    /// Folder holding `differential.json` and `<harness>/expected-host.txt` for the committed-reference check.
+    pub verify_dir: Option<PathBuf>,
 }
 
 impl Options {
@@ -56,6 +58,7 @@ impl Options {
             budget: 2_000_000_000,
             timeout_secs: 120,
             parent_pipe: false,
+            verify_dir: default_verify_dir(),
         };
         let mut it = args.iter();
         while let Some(arg) = it.next() {
@@ -63,15 +66,21 @@ impl Options {
             match arg.as_str() {
                 "--no-open" => options.open_browser = false,
                 "--parent-pipe" => options.parent_pipe = true,
+                "--verify-dir" => options.verify_dir = Some(PathBuf::from(value("--verify-dir")?)),
                 "--port" => options.port = value("--port")?.parse().map_err(|_| "--port must be 0-65535")?,
                 "--dir" => options.dir = PathBuf::from(value("--dir")?),
                 "--budget" => options.budget = value("--budget")?.parse().map_err(|_| "--budget must be a number")?,
                 "--timeout" => options.timeout_secs = value("--timeout")?.parse().map_err(|_| "--timeout must be seconds")?,
-                other => return Err(format!("unknown option '{other}' (try --port N, --no-open, --dir DIR, --budget N, --timeout SECS, --parent-pipe)")),
+                other => return Err(format!("unknown option '{other}' (try --port N, --no-open, --dir DIR, --budget N, --timeout SECS, --verify-dir DIR, --parent-pipe)")),
             }
         }
         Ok(options)
     }
+}
+
+fn default_verify_dir() -> Option<PathBuf> {
+    let dir = std::env::var_os("OUNCE_VERIFY_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("docs/verify"));
+    dir.join("differential.json").is_file().then_some(dir)
 }
 
 fn default_dir() -> PathBuf {
@@ -451,6 +460,68 @@ fn verdict(runs: &[EngineRun]) -> Value {
         "No host reference was used. Turn on 'Compare with this computer' to check against the real CPU.".into(), None)
 }
 
+/// What one check should do. Defaults reproduce the original behaviour: both emulator tiers, the server's budget.
+struct CheckOptions {
+    native: bool,
+    engines: Vec<&'static str>,
+    budget: Option<u64>,
+    reference: bool,
+}
+
+/// One known harness the committed reference can be checked against.
+struct Harness {
+    dir: String,
+    result_file: String,
+}
+
+fn norm(name: &str) -> String {
+    name.to_lowercase().replace('_', "-")
+}
+
+/// Harness programs are matched by file name, as `scripts/verify_differential.py` names them.
+fn find_harness(verify_dir: &Path, nro_name: &str) -> Option<Harness> {
+    let doc: Value = serde_json::from_slice(&std::fs::read(verify_dir.join("differential.json")).ok()?).ok()?;
+    let stem = norm(nro_name.strip_suffix(".nro").unwrap_or(nro_name));
+    doc["harnesses"].as_array()?.iter().filter(|h| h["linux_elf_only"] != true).find_map(|h| {
+        let (name, dir) = (norm(h["name"].as_str()?), norm(h["dir"].as_str()?));
+        (stem == name || stem == dir || stem == format!("{name}-harness")).then(|| Harness {
+            dir: h["dir"].as_str().unwrap_or_default().to_string(),
+            result_file: h["result_file"].as_str().unwrap_or("results.txt").to_string(),
+        })
+    })
+}
+
+/// Byte-for-byte comparison of a harness's output with the committed host reference.
+fn compare_reference(harness: &str, expected: &str, actual: &str) -> Value {
+    let (want, got): (Vec<&str>, Vec<&str>) = (expected.lines().collect(), actual.lines().collect());
+    let first = (0..want.len().max(got.len())).find(|&i| want.get(i) != got.get(i));
+    let same = expected == actual;
+    json!({
+        "status": if same { "matches" } else { "differs" }, "harness": harness,
+        "expected_lines": want.len(), "actual_lines": got.len(),
+        "first_difference": first.map(|i| json!({"line": i + 1, "expected": want.get(i), "actual": got.get(i)})),
+    })
+}
+
+fn host_reference(verify_dir: Option<&Path>, name: &str, runs: &[EngineRun]) -> Value {
+    let Some(dir) = verify_dir else {
+        return json!({"status": "unavailable", "note": "The recorded reference data is not installed with this copy."});
+    };
+    let Some(harness) = find_harness(dir, name) else {
+        return json!({"status": "unknown-program", "note": "This program is not one of the known test programs, so there is no recorded reference to compare with."});
+    };
+    let Ok(expected) = std::fs::read_to_string(dir.join(&harness.dir).join("expected-host.txt")) else {
+        return json!({"status": "unavailable", "harness": harness.dir, "note": "The recorded reference for this test program is missing."});
+    };
+    let Some(run) = runs.iter().find(|r| r.engine != "native" && r.finished()) else {
+        return json!({"status": "not-run", "harness": harness.dir, "note": "The program did not finish, so there is no output to compare."});
+    };
+    let Some(actual) = run.texts.get(&harness.result_file) else {
+        return json!({"status": "no-output", "harness": harness.dir, "note": format!("The program finished but did not write {}.", harness.result_file)});
+    };
+    compare_reference(&harness.dir, &expected, actual)
+}
+
 struct Lab {
     exe: PathBuf,
     dir: PathBuf,
@@ -458,12 +529,15 @@ struct Lab {
     port: u16,
     budget: u64,
     timeout: u64,
+    verify_dir: Option<PathBuf>,
     checks: Mutex<Vec<(String, Value)>>,
     counter: Mutex<u32>,
 }
 
 impl Lab {
-    fn start_check(self: &Arc<Self>, name: &str, bytes: Vec<u8>, native: bool) -> Result<String, (u16, String)> {
+    fn start_check(self: &Arc<Self>, name: &str, bytes: Vec<u8>, options: CheckOptions) -> Result<String, (u16, String)> {
+        let CheckOptions { native, engines, budget, reference } = options;
+        let budget = budget.unwrap_or(self.budget);
         if bytes.get(0x10..0x14) != Some(b"NRO0".as_slice()) {
             return Err((400, "That isn't a homebrew .nro file. ELF programs run with `ounce-core run-elf` for now.".into()));
         }
@@ -483,7 +557,7 @@ impl Lab {
         let started = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         self.checks.lock().unwrap().push((id.clone(), json!({
             "schema_version": "ounce-core/workbench-check-v1",
-            "id": id, "name": name, "sha256": sha, "bytes": bytes_len, "native": native,
+            "id": id, "name": name, "sha256": sha, "bytes": bytes_len, "native": native, "budget": budget,
             "status": "running", "started": started, "engines": [], "verdict": null,
         })));
         let lab = Arc::clone(self);
@@ -491,13 +565,13 @@ impl Lab {
         let check_name = name;
         let check_sha = sha;
         thread::spawn(move || {
-            let mut names = vec!["tier3", "tier4"];
+            let mut names = engines;
             if native {
                 names.push("native");
             }
             let runs: Vec<EngineRun> = thread::scope(|scope| {
                 let handles: Vec<_> = names.iter()
-                    .map(|n| scope.spawn(|| run_engine(&lab.exe, &nro, &work, n, lab.budget, lab.timeout)))
+                    .map(|n| scope.spawn(|| run_engine(&lab.exe, &nro, &work, n, budget, lab.timeout)))
                     .collect();
                 handles.into_iter().filter_map(|h| h.join().ok()).collect()
             });
@@ -509,16 +583,18 @@ impl Lab {
                 "sha256": check_sha,
                 "bytes": bytes_len,
                 "native": native,
+                "budget": budget,
                 "started": started,
                 "engines": runs.iter().map(EngineRun::to_json).collect::<Vec<_>>(),
                 "verdict": verdict(&runs),
                 "instructions": instructions,
+                "host_reference": if reference { host_reference(lab.verify_dir.as_deref(), &check_name, &runs) } else { Value::Null },
                 "status": "done"
             });
             let _ = std::fs::write(work.join("result.json"), serde_json::to_vec_pretty(&result).unwrap_or_default());
             let mut checks = lab.checks.lock().unwrap();
             if let Some((_, value)) = checks.iter_mut().find(|(i, _)| *i == check_id) {
-                for key in ["engines", "verdict", "instructions", "status"] {
+                for key in ["engines", "verdict", "instructions", "host_reference", "status"] {
                     value[key] = result[key].clone();
                 }
             }
@@ -629,6 +705,40 @@ fn respond(stream: &mut TcpStream, status: u16, content_type: &str, body: &[u8])
     let _ = stream.write_all(body);
 }
 
+/// Reads the optional settings of a new check: `native=1`, `engines=tier3,tier4`, `budget=N`, `reference=1`.
+fn check_options(query: &HashMap<String, String>) -> Result<CheckOptions, String> {
+    let engines = match query.get("engines").map(String::as_str) {
+        None | Some("") => vec!["tier3", "tier4"],
+        Some(list) => {
+            let mut out: Vec<&'static str> = Vec::new();
+            for name in list.split(',') {
+                let name = match name {
+                    "tier3" => "tier3",
+                    "tier4" => "tier4",
+                    _ => return Err(format!("Unknown engine '{name}'. Choose tier3, tier4 or both.")),
+                };
+                if !out.contains(&name) {
+                    out.push(name);
+                }
+            }
+            out
+        }
+    };
+    let budget = match query.get("budget").map(String::as_str) {
+        None | Some("") => None,
+        Some(text) => match text.parse::<u64>() {
+            Ok(n) if n > 0 => Some(n),
+            _ => return Err("The instruction budget must be a whole number greater than zero.".into()),
+        },
+    };
+    Ok(CheckOptions {
+        native: query.get("native").is_some_and(|v| v == "1"),
+        engines,
+        budget,
+        reference: query.get("reference").is_some_and(|v| v == "1"),
+    })
+}
+
 fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
     let json_body = |status: u16, value: Value| (status, "application/json", serde_json::to_vec(&value).unwrap_or_default());
     let error = |status: u16, message: &str| json_body(status, json!({"error": message}));
@@ -667,12 +777,22 @@ fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
         }
         ("POST", "/api/checks") => {
             let name = req.query.get("name").map(String::as_str).unwrap_or("program.nro");
-            let native = req.query.get("native").is_some_and(|v| v == "1");
-            match lab.start_check(name, req.body.clone(), native) {
+            let options = match check_options(&req.query) {
+                Ok(options) => options,
+                Err(message) => return error(400, &message),
+            };
+            match lab.start_check(name, req.body.clone(), options) {
                 Ok(id) => json_body(202, json!({"id": id})),
                 Err((status, message)) => error(status, &message),
             }
         }
+        ("GET", "/api/config") => json_body(200, json!({
+            "native": cfg!(all(feature = "nce", target_arch = "aarch64")),
+            "default_budget": lab.budget,
+            "timeout_seconds": lab.timeout,
+            "engines": ["tier3", "tier4"],
+            "reference_data": lab.verify_dir.is_some(),
+        })),
         ("GET", path) if path.starts_with("/api/checks/") => {
             let id = &path["/api/checks/".len()..];
             match lab.checks.lock().unwrap().iter().find(|(i, _)| i == id) {
@@ -719,7 +839,7 @@ fn serve(options: Options) -> Result<(), String> {
     std::fs::create_dir_all(&options.dir).map_err(|e| format!("could not create {}: {e}", options.dir.display()))?;
     let exe = std::env::current_exe().map_err(|e| format!("could not find this program: {e}"))?;
     let lab = Arc::new(Lab {
-        exe, dir: options.dir.clone(), token: token(), port, budget: options.budget, timeout: options.timeout_secs,
+        exe, dir: options.dir.clone(), token: token(), port, budget: options.budget, timeout: options.timeout_secs, verify_dir: options.verify_dir.clone(),
         checks: Mutex::new(Vec::new()), counter: Mutex::new(0),
     });
     let url = format!("http://127.0.0.1:{port}/?t={}", lab.token);
@@ -874,6 +994,38 @@ mod tests {
     }
 
     #[test]
+    fn reference_comparison_names_the_first_differing_line() {
+        assert_eq!(compare_reference("lz4", "a\nb\n", "a\nb\n")["status"], "matches");
+        let d = compare_reference("lz4", "a\nb\nc\n", "a\nX\nc\n");
+        assert_eq!(d["status"], "differs");
+        assert_eq!(d["first_difference"]["line"], 2);
+        assert_eq!(compare_reference("lz4", "a\n", "a\nb\n")["first_difference"]["line"], 2);
+    }
+
+    #[test]
+    fn harnesses_are_matched_by_file_name() {
+        let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/verify"));
+        let h = find_harness(dir, "LZ4.nro").expect("lz4 is a known harness");
+        assert!(dir.join(&h.dir).join("expected-host.txt").is_file());
+        assert!(find_harness(dir, "integer_vector.nro").is_some(), "underscores and hyphens are interchangeable");
+        assert!(find_harness(dir, "hello.nro").is_none());
+        assert_eq!(host_reference(Some(dir), "hello.nro", &[])["status"], "unknown-program");
+        assert_eq!(host_reference(None, "lz4.nro", &[])["status"], "unavailable");
+    }
+
+    #[test]
+    fn check_options_default_to_both_tiers_and_reject_bad_values() {
+        let q = |pairs: &[(&str, &str)]| pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<HashMap<_, _>>();
+        let o = check_options(&q(&[])).unwrap();
+        assert_eq!(o.engines, vec!["tier3", "tier4"]);
+        assert!(o.budget.is_none() && !o.native && !o.reference);
+        assert_eq!(check_options(&q(&[("engines", "tier3"), ("budget", "5000")])).unwrap().budget, Some(5000));
+        assert!(check_options(&q(&[("engines", "gpu")])).is_err());
+        assert!(check_options(&q(&[("budget", "0")])).is_err());
+        assert!(check_options(&q(&[("budget", "lots")])).is_err());
+    }
+
+    #[test]
     fn percent_decoding() {
         assert_eq!(pct_decode("my%20game%2Enro+x"), "my game.nro x");
         assert_eq!(pct_decode("100%"), "100%");
@@ -883,7 +1035,7 @@ mod tests {
     #[test]
     fn rejects_foreign_hosts_origins_and_missing_tokens() {
         let lab = Arc::new(Lab {
-            exe: PathBuf::from("x"), dir: std::env::temp_dir(), token: "tok".into(), port: 4000, budget: 1, timeout: 1,
+            exe: PathBuf::from("x"), dir: std::env::temp_dir(), token: "tok".into(), port: 4000, budget: 1, timeout: 1, verify_dir: None,
             checks: Mutex::new(vec![]), counter: Mutex::new(0),
         });
         let req = |method: &str, path: &str, headers: &[(&str, &str)]| Req {
@@ -900,9 +1052,9 @@ mod tests {
     #[test]
     fn uploads_must_be_nro_files() {
         let lab = Arc::new(Lab {
-            exe: PathBuf::from("x"), dir: std::env::temp_dir(), token: "t".into(), port: 1, budget: 1, timeout: 1,
+            exe: PathBuf::from("x"), dir: std::env::temp_dir(), token: "t".into(), port: 1, budget: 1, timeout: 1, verify_dir: None,
             checks: Mutex::new(vec![]), counter: Mutex::new(0),
         });
-        assert_eq!(lab.start_check("a.elf", b"\x7fELF".to_vec(), false).unwrap_err().0, 400);
+        assert_eq!(lab.start_check("a.elf", b"\x7fELF".to_vec(), check_options(&HashMap::new()).unwrap()).unwrap_err().0, 400);
     }
 }
