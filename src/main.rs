@@ -1553,11 +1553,11 @@ fn run_built_in_demo() {
     println!();
 
     // ---------------------------------------------------------
-    // Test 10: Native FS Payload (BTI landing pad, Horizon process/thread queries & stack spill)
+    // Test 10: FS query test (BTI landing pad, Horizon process/thread queries & stack spill)
     //          Clean-room AArch64 program that queries svcGetProcessId / svcGetThreadId /
     //          svcGetInfo(SystemTick) and stores the results into a guest output buffer.
     // ---------------------------------------------------------
-    println!("\n[Stage 10/25] Native FS Payload Execution (BTI & Horizon SVCs)");
+    println!("\n[Stage 10/25] FS query test execution (BTI & Horizon SVCs)");
 
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
@@ -1584,7 +1584,7 @@ fn run_built_in_demo() {
     //   str x0, [x9, #40]
     //   ldr x30, [sp], #16
     //   ret
-    for (i, &w) in kernel::svc::FS_QUERY_PAYLOAD.iter().enumerate() {
+    for (i, &w) in kernel::svc::FS_QUERY_TEST.iter().enumerate() {
         mmu.write_u32(DEFAULT_BASE_ADDR + (i * 4) as u64, w).unwrap();
     }
     // Place svcExitProcess (0xD40000E1) at return address 0x80000100
@@ -1601,7 +1601,7 @@ fn run_built_in_demo() {
 
     // ---------------------------------------------------------
     // Test 11: Switch 2 `RO` `NSO0` Module Execution & Tipc Interface Verification
-    //          Boots the NSO0 binary through `sm:` Tipc & `"NS2ROEXE"` IPC reply
+    //          Boots the NSO0 binary through `sm:` Tipc & `"TESTRPLY"` IPC reply
     // ---------------------------------------------------------
     println!("\n[Stage 11/25] Horizon Dynamic Linker (RO NSO0) & TIPC Handshake");
 
