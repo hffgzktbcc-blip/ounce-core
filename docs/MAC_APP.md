@@ -24,36 +24,63 @@ signed and not notarized (Gatekeeper warns on first open), and it is not cleared
 the specialist review in [PROVENANCE.md](PROVENANCE.md) (Specialist items) is open. Share it only with people you
 choose to, and tell them it is unsigned by an Apple developer identity.
 
-## The workbench window (front door)
+## One app, one door
+
+Ounce Core opens one window: the workbench. There is no second launcher window. Everything you do to check a program
+happens in that window; the menus only start it or open its results.
 
 On launch the app starts `ounce-core ui --no-open --port 0 --parent-pipe` from the bundled runtime and shows the page in a
 `WKWebView` (`tools/macos-launcher/Workbench.swift`; the pure logic is in `WorkbenchLogic.swift` and is covered by
 `tests/macos/workbench-logic/main.swift`). The window holds no verification logic: see
 [INTERACTIVE_LAB.md](INTERACTIVE_LAB.md) for what the page does and does not show.
 
-- The window loads only the local workbench; any other link opens in your browser.
-- "Check a Program…" (⌘O) and opening a `.nro` from Finder send the program to the workbench, emulator-only
+| Menu | Items |
+|---|---|
+| File | Check a Program… (⌘O), Open Recent, Open Saved Results… (⇧⌘O), Close Window |
+| Edit | Cut, Copy, Paste, Select All (the page needs them) |
+| View | Actual Size, Zoom In, Zoom Out, Enter Full Screen |
+| Advanced | Run in a Window…, Graphics Demo, Verify Against Host Reference…, Run Settings…, SD Card Folder…, Show Last Session Log, Stop Running Program |
+| Help | Report a Problem…, Documentation |
+
+- **Ways to give it a program:** File > Check a Program, File > Open Recent, drop a `.nro` anywhere on the window,
+  drop one on the Dock icon, or open one from Finder. All of them send the program to the workbench, emulator-only
   (Tier-3 and Tier-4). Comparing with this Mac's CPU is a checkbox in the page, and it asks for confirmation first.
-- The server is a child process on 127.0.0.1 with a per-session key. It exits when the app does: the app holds a pipe to
-  it, so even a crash or a force-quit doesn't leave it running.
-- Results are saved in `~/Library/Application Support/Ounce Core/Checks`.
-- The earlier launcher (run a program in a window, graphics demo, "Verify against Host") is still available from the
-  menu: "Run in a Window (Classic)…" and "Show Classic Launcher".
+  A file that is not a `.nro` gets a dialog that says what it is and what to do (an ELF points to `ounce-core run-elf`).
+- **Results:** the workbench saves each check in `~/Library/Application Support/Ounce Core/Checks`. File > Open Saved
+  Results… reads one of those `result.json` files (or an Ounce-Verify report) in a read-only window
+  (`EvidenceReport.swift`). It runs nothing.
+- **Report a Problem:** Help > Report a Problem… opens the GitHub issue form (`emulation_bug.yml`) filled in with the
+  program name, the headline of the newest check, the app version and macOS version. The home folder is replaced by `~`.
+  Nothing is sent until you submit the form. It works with or without a check, and it is the same entry for a failed
+  Advanced run or a mismatched host verification (those dialogs also offer it, and copy the full report text).
+- **Closing the window quits the app.** The server is a child process on 127.0.0.1 with a per-session key. It exits when
+  the app does: the app holds a pipe to it, so even a crash or a force-quit doesn't leave it running.
+- The window loads only the local workbench; any other link opens in your browser. The only page hook the app calls is
+  `pick(id)` (select a check that was just started); if the page renames it, change `Workbench.check(file:)`.
+
+### Advanced
+
+The old launcher window is retired. Its three functions that the workbench does not cover remain as menu items with no
+window of their own (`Advanced.swift`). The outcome of each is shown in a dialog that says what happened and what to try.
+
+| Item | Behaviour |
+|---|---|
+| Run in a Window… | Runs a `.nro` in the runtime's own graphics window (`run-nro --gui`) on the engine chosen under Run Settings. A run that ends normally shows nothing; a failed one shows the diagnosis with Report a Problem… and Show Log. |
+| Graphics Demo | Runs the built-in graphics demo on the interpreter. |
+| Verify Against Host Reference… | `HostVerify.swift` matches the NRO file name to a harness in `docs/verify/differential.json`, runs it headless with a 4e9 budget (as `verify_differential.py` does) in a temporary SD folder, and diffs the harness's result file against the bundled `expected-host.txt`. A harness whose reference is `arm64_reference` carries a caveat on non-ARM64 hosts. |
+| Run Settings… | Engine (`--cpu=tier3|tier4|native`, always passed explicitly; `OUNCE_CPU` is stripped from the child) and instruction budget (`OUNCE_NRO_BUDGET`; blank clears it). `native` ignores the budget, has a time limit (`OUNCE_NRO_TIMEOUT_SECS`) and runs headless. These do not change the workbench. |
+| SD Card Folder… | The folder these runs see as their SD card (default `~/Library/Application Support/Ounce Core/SD Card`). |
+| Show Last Session Log | Reveals the newest log in `~/Library/Application Support/Ounce Core/Logs` (8 MiB cap per log). |
+| Stop Running Program | Ends the run. Only enabled while one is running; the Dock icon shows "Running" or "Verifying". |
 
 Swift logic tests: `swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos/workbench-logic/main.swift -o /tmp/wb-tests && /tmp/wb-tests`.
 
-## What it does
+## How a run is explained
 
 | Area | Behaviour |
 |---|---|
-| First run | Explains the product; accepts a dropped or chosen `.nro`. A dropped `.elf` or ELF-headed file directs the user to `ounce-core run-elf <file>` in Terminal. |
-| Engine and budget | `--cpu=tier3|tier4|native` is always passed explicitly; `OUNCE_CPU` is stripped from the child. A budget sets `OUNCE_NRO_BUDGET`; blank clears any inherited value. `native` ignores the budget (it has a time limit, `OUNCE_NRO_TIMEOUT_SECS`) and runs headless. |
-| Diagnosis | `RunLogic.swift` parses the runtime's printed stop messages (see below) into a headline, an explanation and a next step, quoting the log lines it relied on. The first failure line wins. A silent engine fallback is reported as such, never as a pass. |
-| Finished run | The diagnosis card shows `Program output:` (what the program printed, last 8 lines) above the runtime evidence, so the result is visible without opening session details. |
-| Report This Problem… | Shown after a failed run. Copies a report (file name only, home folder replaced by `~`, engine, command, OS, evidence) and opens `.github/ISSUE_TEMPLATE/emulation_bug.yml` in the browser with fields prefilled. The app submits nothing. |
-| View Check Results… | `EvidenceReport.swift` decodes saved `ounce-verify` reports (`v0`, `diagnosis-v1`, `comparison-v1`, `repair-v1`, `run-v1`, `hbx-first-frame-v1`), `ounce-diagnose` audio (`audio-padding-v1`, `audout-padding-v1`) and replay (`replay-v1`) reports, and Workbench `result.json` files (`workbench-check-v1`). Selecting a dossier `manifest.json` explains which report file in that folder to open instead. |
-| Classic window | Not shown at launch. Every classic action (Run in a Window, Verify, View Results, any diagnosis or error) brings it forward first. |
-| Verify against Host | `HostVerify.swift` matches the NRO file name to a harness in `docs/verify/differential.json`, runs it headless with a 4e9 budget (as `verify_differential.py` does) in a temporary SD folder, and diffs the harness's result file against the bundled `expected-host.txt`. A harness whose reference is `arm64_reference` carries a caveat on non-ARM64 hosts. |
+| Diagnosis | `RunLogic.swift` parses the runtime's printed stop messages (see below) into a headline, an explanation and a next step, quoting the log lines it relied on. The first failure line wins. A silent engine fallback is reported as such, never as a pass. This is used by the Advanced runs; the workbench has its own verdicts. |
+| Saved results | `EvidenceReport.swift` decodes saved `ounce-verify` reports (`v0`, `diagnosis-v1`, `comparison-v1`, `repair-v1`, `run-v1`, `hbx-first-frame-v1`), `ounce-diagnose` audio (`audio-padding-v1`, `audout-padding-v1`) and replay (`replay-v1`) reports, and Workbench `result.json` files (`workbench-check-v1`). Selecting a dossier `manifest.json` explains which report file in that folder to open instead. |
 
 Recognised runtime messages: `Unimplemented instruction 0x… at PC: 0x…`, `Execution budget reached (N instructions)`,
 `unhandled SVC`, `Hit svcBreak` (and `Break result`), `CPU Halted`, `CPU fault (native signal …)`, `[VM Error]` with
@@ -74,23 +101,15 @@ CI compiles and runs it on macOS beside the saved-report tests.
 
 ## GUI verification status
 
-Checked live on 9 November 2026 on an Apple Silicon Mac (macOS 26.6.2) with the app built from `main` by
-`scripts/build_macos_app.sh`:
-
-- The app launches, shows its first-run window (headline, drop-target card, Open Program / Verify against Host /
-  Try the Demo buttons, engine pop-up, budget field, diagnosis panel, Show Session Details) and quits cleanly. The
-  layout fits at the default window size.
-- The bundled runtime (`Ounce Runtime.app`) runs `tests/fixtures/nro/hello/hello.nro` headless under both `tier3` and
-  `tier4` and exits through `svcExitProcess` with the same instruction count (9,067).
-- The pure logic tests (`tests/macos/run-logic/main.swift`) pass there.
-
-Still not verified: a run started from the window (dropping or choosing an NRO), the diagnosis card for a failing
-run, Verify against Host, `tier4` in the windowed (`--gui`) path, and layout at other window sizes. The window was
-observed in one screenshot and not clicked through; these were not exercised.
+Compiled with the same `swiftc` command as `scripts/build_macos_app.sh`, and the logic tests pass (see the PR for
+the commands and results). The windows, menus, drag-and-drop and dialogs of this one-door layout were **not**
+clicked through: nobody has yet launched the rebuilt app and used File > Check a Program, Open Recent, a drop on the
+window or the Dock icon, Help > Report a Problem, or any Advanced item. What was seen: the rebuilt app launched with one window titled "Ounce Core" and the menus Ounce Core, File, Edit, View, Advanced, Help; opening `hello.nro` from the command line (`open -a`, the same path as a Dock or Finder drop) ran a check and showed the result ([screenshot](mac-app-one-door.png)). The last live check of the earlier two-window
+app was on 9 November 2026 (app launch, bundled runtime running `hello.nro` under `tier3` and `tier4`).
 
 ## Known limits
 
-- Verify against Host needs a prebuilt harness NRO (devkitA64). The app does not build harnesses or fetch upstream sources.
+- Verify Against Host Reference needs a prebuilt harness NRO (devkitA64). The app does not build harnesses or fetch upstream sources.
 - Matching is by file name. A renamed or modified NRO that writes the expected file is compared as that harness.
 - It reports a byte comparison with the committed reference, not a proof; each harness README states its own bounds.
 - The diagnosis reads the last 256 KiB of the log; a failure earlier in a very long run can be missed.

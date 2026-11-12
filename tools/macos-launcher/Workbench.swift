@@ -4,6 +4,35 @@ import WebKit
 /// The Ounce-Core workbench in a window: starts `ounce-core ui` from the bundled runtime and shows its page.
 /// The window holds no logic of its own. The server is a child process (so `forbid(unsafe_code)` is untouched), it
 /// listens on 127.0.0.1 only, and it exits when this app does (the stdin pipe below closes).
+/// The page itself, plus a drop target for a program anywhere in the window. It only reports the file.
+final class WorkbenchWebView: WKWebView {
+    var onDrop: ((URL) -> Void)?
+
+    private func file(_ info: NSDraggingInfo) -> URL? {
+        (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL])?.first
+    }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { file(sender) == nil ? super.draggingEntered(sender) : .copy }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { file(sender) == nil ? super.draggingUpdated(sender) : .copy }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { file(sender) != nil ? true : super.prepareForDragOperation(sender) }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let url = file(sender) else { return super.performDragOperation(sender) }
+        onDrop?(url)
+        return true
+    }
+}
+
+/// One plain way to tell the person something went wrong: what happened, then what to do.
+enum Notice {
+    static func show(_ what: String, _ next: String, on window: NSWindow?) {
+        let alert = NSAlert()
+        alert.messageText = what
+        alert.informativeText = next
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        if let window, window.isVisible { alert.beginSheetModal(for: window) } else { alert.runModal() }
+    }
+}
+
 final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
     private let runtime: URL
     private var process: Process?
@@ -13,6 +42,7 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
     private var buffer = ""
     private var pendingFiles: [URL] = []
     private var stopping = false
+    private(set) var lastProgram: URL?
     private(set) var window: NSWindow!
     private var webView: WKWebView!
 
@@ -20,7 +50,9 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     func show() {
         let configuration = WKWebViewConfiguration()
-        webView = WKWebView(frame: .zero, configuration: configuration)
+        let view = WorkbenchWebView(frame: .zero, configuration: configuration)
+        view.onDrop = { [weak self] url in self?.check(file: url) }
+        webView = view
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.setAccessibilityLabel("Ounce-Core workbench")
@@ -32,7 +64,7 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
         window.setFrameAutosaveName("OunceCoreWorkbench")
         if !window.setFrameUsingName("OunceCoreWorkbench") { window.center() }
         window.makeKeyAndOrderFront(nil)
-        message("Starting the workbench…")
+        message("Starting Ounce Core…")
         start()
     }
 
@@ -43,23 +75,45 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
 
     /// Hands a program to the workbench (waits until the server is up).
     func check(file: URL) {
+        if let problem = WorkbenchLogic.programProblem(file) { window?.makeKeyAndOrderFront(nil); return fail(problem.what, problem.next) }
         guard let address else { pendingFiles.append(file); return }
-        guard let data = try? Data(contentsOf: file) else { return fail("Couldn't read \(file.lastPathComponent).") }
+        guard let data = try? Data(contentsOf: file) else {
+            return fail("Ounce Core couldn’t read \(file.lastPathComponent).", "Check that the file is still there and that you can open it, then try again.")
+        }
+        NSDocumentController.shared.noteNewRecentDocumentURL(file)
+        lastProgram = file
         let request = WorkbenchLogic.uploadRequest(address, name: file.lastPathComponent, body: data)
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
             DispatchQueue.main.async {
                 guard let self else { return }
-                if let error { return self.fail(error.localizedDescription) }
+                if let error { return self.fail("Ounce Core couldn’t reach its checker.", "\(error.localizedDescription) Quit and reopen Ounce Core, then try again.") }
                 switch WorkbenchLogic.parseUploadResponse(data ?? Data()) {
                 case .success(let id): self.webView.evaluateJavaScript("pick('\(id)')")
-                case .failure(let problem): self.fail(problem.message)
+                case .failure(let problem): self.fail("Ounce Core didn’t accept \(file.lastPathComponent).", problem.message)
                 }
             }
         }.resume()
         window.makeKeyAndOrderFront(nil)
     }
 
+    func zoom(by factor: CGFloat) { webView.pageZoom = min(3, max(0.5, webView.pageZoom * factor)) }
+    func zoom(to value: CGFloat) { webView.pageZoom = value }
+
     func reveal() { window?.makeKeyAndOrderFront(nil) }
+
+    /// Opens the issue form for the newest check in the workbench. Nothing is sent until the person submits the form.
+    func reportProblem() {
+        let open: (LatestCheck?) -> Void = { latest in
+            let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+            guard let url = WorkbenchLogic.problemReportURL(check: latest, appVersion: version,
+                                                            hostOS: ProcessInfo.processInfo.operatingSystemVersionString, home: NSHomeDirectory()) else { return }
+            NSWorkspace.shared.open(url)
+        }
+        guard let address else { return open(nil) }
+        URLSession.shared.dataTask(with: WorkbenchLogic.listRequest(address)) { data, _, _ in
+            DispatchQueue.main.async { open(data.flatMap(WorkbenchLogic.parseLatestCheck)) }
+        }.resume()
+    }
 
     private func start() {
         let process = Process()
@@ -78,13 +132,13 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
         process.terminationHandler = { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self, !self.stopping else { return }
-                self.fail("The workbench stopped unexpectedly.\n\n" + self.tail())
+                self.fail("The checker stopped unexpectedly.", "Quit and reopen Ounce Core. If it happens again, choose Help > Report a Problem and include this:\n\n" + self.tail())
             }
         }
-        do { try process.run() } catch { return fail("Couldn't start the runtime: \(error.localizedDescription)") }
+        do { try process.run() } catch { return fail("Ounce Core couldn’t start its checker.", "The bundled runtime could not be launched (\(error.localizedDescription)). Reinstall Ounce Core, then open it again.") }
         self.process = process
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
-            if let self, self.address == nil, !self.stopping { self.fail("The workbench didn't start.\n\n" + self.tail()) }
+            if let self, self.address == nil, !self.stopping { self.fail("Ounce Core didn’t start its checker.", "Quit and reopen Ounce Core. If it happens again, choose Help > Report a Problem and include this:\n\n" + self.tail()) }
         }
     }
 
@@ -118,13 +172,7 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
         webView.loadHTMLString("<body style=\"font:15px -apple-system;margin:40px;color:#888\"><pre style=\"white-space:pre-wrap\">\(escaped)</pre>", baseURL: nil)
     }
 
-    private func fail(_ text: String) {
-        let alert = NSAlert()
-        alert.messageText = "Ounce Core"
-        alert.informativeText = text
-        alert.addButton(withTitle: "OK")
-        if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
-    }
+    private func fail(_ what: String, _ next: String) { Notice.show(what, next, on: window) }
 
     // MARK: WKNavigationDelegate
 
@@ -144,7 +192,7 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping (Bool) -> Void) {
         let alert = NSAlert()
-        alert.messageText = "Ounce Core"
+        alert.messageText = "Continue?"
         alert.informativeText = message
         alert.addButton(withTitle: "Continue")
         alert.addButton(withTitle: "Cancel")
@@ -154,8 +202,7 @@ final class Workbench: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
                  completionHandler: @escaping () -> Void) {
         let alert = NSAlert()
-        alert.messageText = "Ounce Core"
-        alert.informativeText = message
+        alert.messageText = message
         alert.beginSheetModal(for: window) { _ in completionHandler() }
     }
 
