@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fails if `unsafe` appears outside the modules README "Safe Rust by construction" names.
-# Keep this list and that README section in step.
+# Fails if `unsafe` appears outside the modules docs/DETAILS.md "Safe Rust by construction" names.
+# Keep this list and that section in step.
 set -u
 allowed='^(crates/ounce-recompiler/src/exec\.rs|crates/ounce-nce/src/(arena|exec)\.rs):'
 fail=0
