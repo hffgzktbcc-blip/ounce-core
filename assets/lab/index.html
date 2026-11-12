@@ -12,21 +12,21 @@
 <div class="page">
   <header class="top">
     <h1>Check whether a program behaves the same everywhere</h1>
-    <p class="lede">Choose a homebrew program. Ounce Core runs it on its engines and tells you whether the results match. Results are saved on this computer and nothing is uploaded.</p>
+    <p class="lede">Choose a program. Ounce Core runs it on its engines and tells you whether the results match. Results are saved on this computer and nothing is uploaded.</p>
   </header>
 
   <section class="step" id="choose" aria-labelledby="h-choose">
     <h2 id="h-choose"><span class="num" aria-hidden="true">1</span>Choose a program</h2>
-    <p class="help">Pick a homebrew <code>.nro</code> file. It is read by this app on your computer and is not sent anywhere.</p>
+    <p class="help">Pick a Switch homebrew <code>.nro</code> file or a static Linux ARM64 program (<code>.elf</code>, or a file with no extension). It is read by this app on your computer and is not sent anywhere.</p>
     <button type="button" class="drop" id="drop">
       <span class="drop-main" id="dropMain">Drop a program here, or choose one</span>
-      <span class="drop-sub" id="dropSub">Only <code>.nro</code> files are supported.</span>
+      <span class="drop-sub" id="dropSub"><code>.nro</code> or Linux ARM64 program</span>
     </button>
     <div class="file" id="chosen" hidden>
       <div><strong id="chosenName"></strong><br><span class="run-meta" id="chosenSize"></span></div>
       <button type="button" class="link" id="another">Choose another</button>
     </div>
-    <input type="file" id="file" accept=".nro" hidden>
+    <input type="file" id="file" hidden>
     <p class="error" id="chooseError" role="alert" hidden></p>
     <div class="first" id="first">
       <h3>What happens next</h3>
@@ -67,7 +67,7 @@
         <div class="field check">
           <input type="checkbox" id="reference">
           <label for="reference">Compare with the recorded reference</label>
-          <p class="hint" id="referenceHint">For the known test programs shipped with Ounce Core (matched by file name): compares what the program wrote with the output recorded from real hardware.</p>
+          <p class="hint" id="referenceHint">For the known test programs shipped with Ounce Core (matched by file name): compares what the program wrote (a Linux program: what it printed) with the recorded output.</p>
         </div>
       </div>
     </details>

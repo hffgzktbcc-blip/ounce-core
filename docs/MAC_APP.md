@@ -45,10 +45,14 @@ There is no Edit menu. ⌘X, ⌘C, ⌘V, ⌘A and ⌘Z are routed to whatever ha
 `OunceApplication` in `main.swift`, so copy and paste work without a menu that would only repeat them. Every dialog and
 file panel is a sheet on the window rather than `runModal()`, so an Apple Event quit is never blocked by one.
 
-- **Ways to give it a program:** File > Check a Program, File > Open Recent, drop a `.nro` anywhere on the window,
+- **Ways to give it a program:** File > Check a Program, File > Open Recent, drop a `.nro` or a Linux ARM64 program anywhere on the window,
   drop one on the Dock icon, or open one from Finder. All of them send the program to the workbench, emulator-only
   (Tier-3 and Tier-4). Comparing with this Mac's CPU is a checkbox in the page, and it asks for confirmation first.
-  A file that is not a `.nro` gets a dialog that says what it is and what to do (an ELF points to `ounce-core run-elf`).
+  A Linux ARM64 program (a static AArch64 ELF: `.elf` or no extension, recognised by content) is checked on Tier-3 and
+  Tier-4 only: `run-elf` has no native engine, so the app never offers or confirms a Mac run for it. The Open dialog
+  lists `.nro`, `.elf` and executables; Info.plist registers both kinds (`org.ounce-core.homebrew`,
+  `org.ounce-core.linux-arm64-program` and `public.unix-executable`, rank Alternate). A file that is neither (an x86-64 ELF, a
+  32-bit ELF, anything else) gets a dialog that says what it is and what to do.
 - **Results:** the workbench saves each check in `~/Library/Application Support/Ounce Core/Checks`. File > Open Saved
   Results… reads one of those `result.json` files (or an Ounce-Verify report) in a read-only window
   (`EvidenceReport.swift`). It runs nothing.
@@ -128,11 +132,12 @@ menu bar (Ounce Core, File, View, Help); ⌘A and ⌘C without an Edit menu; and
 open. **Results differ** was seen only through a test fixture (`OUNCE_LAB_TEST_FIXTURES`, a crafted result named
 `TEST-FIXTURE-…`; nothing was run), because no program in the repo diverges on demand.
 
-Not seen: a real *differ* from a real program; Linux ARM64 programs (not supported in the app); the app on an Intel Mac;
-the Dock-icon drop; Graphics Demo in this pass; a failed *Run in a Window* dialog in this pass.
+Not seen in that pass: Linux ARM64 programs, the Dock-icon drop, a real *differ*. Those are covered in
+[mac-app-real-programs/](mac-app-real-programs/README.md). Still not seen: the app on an Intel Mac (none was available);
+Graphics Demo in this pass; a failed *Run in a Window* dialog in this pass.
 
 ## Known limits
 
 - The page's "Compare with the recorded reference" needs a prebuilt harness NRO (devkitA64) and matches by file name. The app does not build harnesses or fetch upstream sources. It is a byte comparison with the committed reference, not a proof.
-- Linux ARM64 programs are not accepted in the app yet (the mockup shows them). They run in the CLI with `ounce-core run-elf`.
+- Linux ARM64 programs are accepted (static AArch64 ELF only; dynamic, PIE, 32-bit and x86-64 files are refused or stop with a diagnosis). They are never run on this Mac's CPU, so *Results match* for one means Tier-3 and Tier-4 agreed (and, for a known test program, matched the recorded output), not that it matched this Mac.
 - The diagnosis reads the last 256 KiB of the log; a failure earlier in a very long run can be missed.

@@ -47,6 +47,13 @@ enum WorkbenchLogic {
     /// True when the settings ask for the program to run directly on this Mac (`native=1`).
     static func runsOnThisMac(_ options: String) -> Bool { options.split(separator: "&").contains("native=1") }
 
+    /// A Linux program has no run on this Mac to compare with (`run-elf` has only Tier-3 and Tier-4), so the settings
+    /// for it never ask for one, and the app never shows the "run on this Mac" confirmation for it.
+    static func options(_ options: String, for kind: ProgramKind?) -> String {
+        guard kind == .linux else { return options }
+        return options.split(separator: "&").map { $0 == "native=1" ? "native=0" : String($0) }.joined(separator: "&")
+    }
+
     /// The request that hands a program to the server, with the page's settings appended.
     static func uploadRequest(_ address: WorkbenchAddress, name: String, body: Data, options: String = defaultOptions) -> URLRequest {
         let escaped = name.addingPercentEncoding(withAllowedCharacters: queryAllowed) ?? "program.nro"
@@ -136,8 +143,22 @@ enum IssueFormLocation {
 struct ProgramProblem: Equatable { let what: String; let next: String }
 
 extension WorkbenchLogic {
-    /// Why a file can't be checked, or nil when it looks like a Switch homebrew program (.nro).
-    /// Reads at most 20 bytes: the NRO magic sits at offset 0x10.
+    /// What the workbench can check: a Switch homebrew program or a static AArch64 Linux program.
+    enum ProgramKind: Equatable { case homebrew, linux }
+
+    /// The kind of program in these leading bytes (at least 20), judged by content: the NRO magic sits at offset
+    /// 0x10; a Linux program is a 64-bit little-endian ELF whose machine (offset 18) is AArch64 (0xB7).
+    /// A Linux program that is another kind of ELF (x86-64, 32-bit) is `nil`, like any other file.
+    static func programKind(header: Data) -> ProgramKind? {
+        let bytes = [UInt8](header.prefix(20))
+        if bytes.count >= 20, Array(bytes[16..<20]) == Array("NRO0".utf8) { return .homebrew }
+        if bytes.count >= 20, Array(bytes[0..<4]) == [0x7F, 0x45, 0x4C, 0x46],
+           bytes[4] == 2, bytes[5] == 1, bytes[18] == 0xB7, bytes[19] == 0 { return .linux }
+        return nil
+    }
+
+    /// Why a file can't be checked, or nil when it looks like a Switch homebrew program (.nro) or a static AArch64
+    /// Linux program. Reads at most 20 bytes.
     static func programProblem(_ url: URL) -> ProgramProblem? {
         let name = url.lastPathComponent
         let header: Data
@@ -148,14 +169,17 @@ extension WorkbenchLogic {
         } catch {
             return ProgramProblem(what: "Ounce Core couldn’t read \(name).", next: "Check that the file is still there and that you can open it, then try again.")
         }
-        if header.starts(with: Data([0x7F, 0x45, 0x4C, 0x46])) {
-            return ProgramProblem(what: "\(name) is a Linux program, not a Switch program.",
-                                  next: "Ounce Core checks Switch homebrew files ending in .nro. To run a static AArch64 Linux program, use Terminal: ounce-core run-elf \(url.path)")
+        switch programKind(header: header) {
+        case .linux: return nil
+        case .homebrew:
+            if url.pathExtension.lowercased() == "nro" { return nil }
+        case nil:
+            if header.starts(with: Data([0x7F, 0x45, 0x4C, 0x46])) {
+                return ProgramProblem(what: "\(name) is a Linux program, but not for 64-bit ARM (AArch64).",
+                                      next: "Ounce Core checks static AArch64 Linux programs and Switch homebrew files ending in .nro. Programs built for Intel (x86-64) or 32-bit ARM can’t be checked here.")
+            }
         }
-        if url.pathExtension.lowercased() != "nro" || header.count < 20 || header.suffix(4) != Data("NRO0".utf8) {
-            return ProgramProblem(what: "\(name) isn’t a Switch homebrew program.",
-                                  next: "Choose a file ending in .nro. Files built for other systems can’t be checked here.")
-        }
-        return nil
+        return ProgramProblem(what: "\(name) isn’t a program Ounce Core can check.",
+                              next: "Choose a Switch homebrew file ending in .nro, or a static Linux ARM64 program (.elf, or a file with no extension). Files built for other systems can’t be checked here.")
     }
 }
