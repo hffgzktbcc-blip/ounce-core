@@ -52,6 +52,13 @@ fn uploads_a_program_and_reports_a_verdict() {
     assert_eq!(http(port, "GET", "/app.js", None, b"").0, 200);
     assert_eq!(http(port, "GET", "/app.css", None, b"").0, 200);
     assert_eq!(http(port, "POST", "/api/checks?name=x", Some(token), b"not an nro").0, 400);
+    let (status, config) = http(port, "GET", "/api/config", Some(token), b"");
+    assert_eq!(status, 200, "{config}");
+    assert!(serde_json::from_str::<serde_json::Value>(&config).unwrap()["default_budget"].as_u64().is_some());
+    assert_eq!(http(port, "GET", "/api/config", None, b"").0, 403, "config needs the session key");
+    let nro_head = [vec![0u8; 0x10], b"NRO0".to_vec()].concat();
+    assert_eq!(http(port, "POST", "/api/checks?name=x.nro&engines=gpu", Some(token), &nro_head).0, 400, "unknown engine");
+    assert_eq!(http(port, "POST", "/api/checks?name=x.nro&budget=0", Some(token), &nro_head).0, 400, "zero budget");
 
     let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro")).unwrap();
     let (status, body) = http(port, "POST", "/api/checks?name=hello.nro", Some(token), &nro);
