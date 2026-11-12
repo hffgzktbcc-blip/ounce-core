@@ -84,10 +84,18 @@ that CPU produced identical output.
 **After the FPSR exception flags (local qemu-user, same corpus, same trace sha256 `ceab2b2c…`, this branch, 389,556
 cases):** interpreter, Tier-3 and Tier-4 each show 0 value mismatches and 0 flag mismatches over all nine FPCR values
 (294,156 executed cases per engine, 95,400 unsupported); the gate passes. The reference is qemu, not silicon: hardware
-agreement on the flags is what the `fp-edge` CI job on `ubuntu-24.04-arm` and `macos-latest` decides, and it is not yet
-recorded here. The one place the first local run disagreed with qemu was half-precision `FMAX/FMIN/FMAXNM/FMINNM` with
+agreement on the flags is what the `fp-edge` CI job on `ubuntu-24.04-arm` and `macos-latest` decides.
+The one place the first local run disagreed with qemu was half-precision `FMAX/FMIN/FMAXNM/FMINNM` with
 FPCR.FZ16 and a denormal input (1,024 cases, interpreter raised IDC, qemu does not); the interpreter now raises nothing
-for half-precision flushes, which is a choice made to match qemu until the hardware run confirms or refutes it.
+for half-precision flushes, which matches qemu and which the hardware run below did not contradict.
+
+**Hardware, with flags (CI run 43180713127, commit 5ba3cd9, 2026-11-12):** on `ubuntu-24.04-arm` the same 389,556-case
+corpus gives, for the interpreter, Tier-3 and Tier-4 alike, 314,388 matching cases (34,932 at each of the nine FPCR values),
+0 value mismatches, 0 flag mismatches, 75,168 unsupported; tier3 and tier4 differ from the interpreter in 0 cases; the gate
+passes. The `macos-latest` (Apple Silicon) job in that run shows the identical counts on all three engines and passes the gate. The
+executed count is higher than in the qemu paragraph above because main's vector FRINT*/FRECPE/FRSQRTE/FCVT* forms (#390)
+were merged in between. That merge is also where the hardware found 1,149 flag mismatches in those new forms
+(FRSQRTE, FRECPE and FRINTX vector, run 43179514158 on 946bba5), which 5ba3cd9 fixed.
 
 ## Not covered
 Loads/stores, branches, integer operations, SVE/SME, FEAT_FP16 arithmetic (unsupported), FRINT32/64, FCMA, BF16, trapping
