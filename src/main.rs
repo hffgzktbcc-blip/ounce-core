@@ -317,7 +317,7 @@ fn print_usage() {
     println!();
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
     println!("    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)", s.green, s.reset);
-    println!("    {}--present={}<mode>        Display: auto, gpu (needs --features gpu-present), minifb, headless", s.green, s.reset);
+    println!("    {}--present={}<mode>        Display: auto, gpu (needs --features gpu-present), minifb, headless (no window, no audio device)", s.green, s.reset);
     println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
     println!();
     println!("  {}INSPECT AND REPLAY:{}", s.bold, s.reset);
@@ -611,7 +611,7 @@ fn run_vm_internal(
     if let Some(pad_name) = gamepad_mgr.active_gamepad_name() {
         println!("[HID] Physical gamepad attached: {}", pad_name);
     }
-    let host_audio = HostAudioSink::new();
+    let host_audio = host_audio_for(gpu::BackendKind::from_env());
     let mut stop = VmStop::Budget;
     let mut last_input_poll = Instant::now();
     let mut last_queued_frame = 0;
@@ -3791,6 +3791,21 @@ fn nro_time_limit() -> Option<std::time::Duration> {
 fn nro_instruction_budget() -> usize {
     std::env::var("OUNCE_NRO_BUDGET").ok().and_then(|v| v.parse().ok()).filter(|n| *n > 0).unwrap_or(NRO_INSTRUCTION_BUDGET)
 }
+/// The host audio sink for a run. Headless runs (`--present=headless`, or `OUNCE_PRESENT=headless`) have no window and
+/// open no audio device, so an audio-less machine (a CI runner) prints no device errors. Other modes open the default
+/// output device as before.
+fn host_audio_for(present: gpu::BackendKind) -> HostAudioSink {
+    if audio_wanted(present) {
+        HostAudioSink::new()
+    } else {
+        HostAudioSink::disabled()
+    }
+}
+
+fn audio_wanted(present: gpu::BackendKind) -> bool {
+    present != gpu::BackendKind::Headless
+}
+
 /// Mixed audio (interleaved stereo samples) allowed to queue on the host before the guest waits for
 /// playback to catch up: 100 ms at 48 kHz.
 const AUDIO_LEAD_SAMPLES: usize = 48_000 * 2 / 10;
@@ -4024,6 +4039,24 @@ fn run_jit_selftest() {
     {
         eprintln!("[Tier-4] Not available: rebuild with `--features native-jit`.");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod host_audio_tests {
+    use super::*;
+
+    #[test]
+    fn headless_run_does_not_open_the_audio_device() {
+        // Only headless skips the device; the other presentation modes keep opening it (not exercised here, so
+        // this test needs no audio hardware).
+        let sink = host_audio_for(gpu::BackendKind::Headless);
+        assert!(!sink.open_attempted);
+        assert!(!sink.is_enabled);
+        assert!(!audio_wanted(gpu::BackendKind::Headless));
+        assert!(audio_wanted(gpu::BackendKind::Auto));
+        assert!(audio_wanted(gpu::BackendKind::Minifb));
+        assert!(audio_wanted(gpu::BackendKind::Gpu));
     }
 }
 
