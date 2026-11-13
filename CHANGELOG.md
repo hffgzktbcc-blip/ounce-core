@@ -4,6 +4,13 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+### Fixed
+- `run-nro` and `run` refuse a guest argument string over 62,855 bytes with a `[Loader Error]` and exit 1 before the
+  program starts (#418). The string is the program path (`sdmc:/<file>`) and the guest arguments joined by spaces, so a
+  longer path leaves less room for the guest arguments. Before, a longer string overwrote the program's first
+  instruction. The limit is the 64 KiB between the homebrew config block and the NRO load address, less the 5 config
+  entries and the 2,560 bytes of next-load buffers.
+
 ## 0.8.0
 
 ### Removed
