@@ -844,6 +844,10 @@ impl Lowerer {
                 }
             }
 
+            // FEAT_SHA3 uses the decoded Tier-3 implementation on every host. Returning
+            // before emitting IR preserves all source registers when Vd aliases a source.
+            Instruction::Sha3 { .. } => return Err(()),
+
             // System registers, exclusives, and untranslated encodings stay on Tier-3.
             _ => return Err(()),
         }
@@ -1972,6 +1976,24 @@ mod tests {
                 | Instruction::SimdThreeSame { .. }
                 | Instruction::SimdTwoMisc { .. }
         )
+    }
+
+    #[test]
+    fn sha3_fallback_between_native_blocks() {
+        let e = check_all_tiers(&[
+            0xd2800020, // mov x0, #1 (native prefix)
+            0xce000e10, // Issue #414 EOR3
+            0xce220c24, // bcax v4.16b, v1.16b, v2.16b, v3.16b
+            0xce628c25, // rax1 v5.2d, v1.2d, v2.2d
+            0xce82fc26, // xar v6.2d, v1.2d, v2.2d, #63
+            0x91000400, // add x0, x0, #1
+            0xd4000001,
+        ], |cpu| {
+            for (i, v) in cpu.regs.v.iter_mut().enumerate() {
+                *v = 0x8001020304050607fedcba9876543210u128.rotate_left(i as u32);
+            }
+        });
+        assert!(e.fallback_insns >= 4);
     }
 
     #[test]
