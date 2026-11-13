@@ -11,6 +11,12 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   instruction. The limit is the 64 KiB between the homebrew config block and the NRO load address, less the 5 config
   entries and the 2,560 bytes of next-load buffers.
 
+### Changed
+- `--present=headless` (or `OUNCE_PRESENT=headless`) opens no host audio device, so a run on a machine with no audio output
+  no longer prints ALSA or `[HostAudioSink]` errors to stderr (#419). Guest audio is discarded in that mode. The other
+  modes (`auto`, `gpu`, `minifb`) still open the default output device as before. Documented in `docs/DETAILS.md` and
+  `--help`.
+
 ## 0.8.0
 
 ### Removed

@@ -103,6 +103,29 @@ fn guest_argument_one_byte_over_the_limit_is_refused_before_the_program_starts()
 }
 
 #[test]
+fn headless_run_prints_no_host_audio_errors() {
+    // Headless opens no audio device, so no ALSA or HostAudioSink lines appear on stderr, whatever the machine has.
+    // The issue's minimal NRO: `mov w0, #0; svc #7` (svcExitProcess).
+    let mut nro = vec![0u8; 0x88];
+    nro[0..4].copy_from_slice(&0x1400_0020u32.to_le_bytes());
+    nro[0x10..0x14].copy_from_slice(b"NRO0");
+    nro[0x18..0x1c].copy_from_slice(&0x88u32.to_le_bytes());
+    nro[0x24..0x28].copy_from_slice(&0x88u32.to_le_bytes());
+    nro[0x80..0x88].copy_from_slice(&[0x00, 0x00, 0x80, 0x52, 0xE1, 0x00, 0x00, 0xD4]);
+    let path = std::env::temp_dir().join(format!("ounce_headless_audio_{}.nro", std::process::id()));
+    std::fs::write(&path, nro).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run-nro", path.to_str().unwrap(), "--present=headless"])
+        .output()
+        .unwrap();
+    std::fs::remove_file(path).unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stderr: {stderr}");
+    assert!(!stderr.contains("ALSA"), "stderr: {stderr}");
+    assert!(!stderr.contains("HostAudioSink"), "stderr: {stderr}");
+}
+
+#[test]
 fn linux_deterministic_clock_cli_repeats_the_same_output() {
     let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/linux-elf/bin/clock.elf");
     for _ in 0..2 {
