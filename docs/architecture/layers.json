@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "layers": [
+    {
+      "id": "cpu",
+      "name": "CPU execution",
+      "capability": "AArch64 interpreter, cached/decoded/fused block paths (Tier 1–3), optional Tier-4 native JIT and AArch64-host native execution",
+      "boundary": "Instruction coverage is partial; Tier-4 and native execution are separate from the Interpreter/Tier-3 headline oracle count.",
+      "sources": [
+        "src/cpu/interpreter.rs",
+        "src/cpu/tier3_jit.rs",
+        "src/cpu/engine.rs",
+        "crates/ounce-nce/src/lib.rs"
+      ]
+    },
+    {
+      "id": "memory",
+      "name": "Memory and kernel",
+      "capability": "4 KiB paged guest memory, access permissions, thread scheduling, synchronization and selected SVCs",
+      "boundary": "Horizon-style subsets, not complete OS semantics, hardware timing or a security sandbox.",
+      "sources": [
+        "src/mmu/memory.rs",
+        "src/kernel/scheduler.rs",
+        "src/kernel/svc.rs"
+      ]
+    },
+    {
+      "id": "services",
+      "name": "Services and loading",
+      "capability": "Selected CMIF/TIPC service models; NRO/NSO and loose-directory loading; homebrew and synthetic execution paths",
+      "boundary": "Incomplete service coverage; only unencrypted homebrew formats are loaded; parsing a file does not demonstrate execution.",
+      "sources": [
+        "src/kernel/cmif.rs",
+        "src/kernel/hipc.rs",
+        "src/loader/nro.rs",
+        "src/loader/boot.rs"
+      ]
+    },
+    {
+      "id": "graphics",
+      "name": "Graphics and presentation",
+      "capability": "Guest-frame capture, software rasterization, and experimental guest SASS execution through wgpu with render-target readback",
+      "boundary": "Physical GPU execution and unchanged outside-frame oracles have separate qualification gates.",
+      "sources": [
+        "src/gpu/ampere/host.rs",
+        "src/gpu/ampere/render.rs",
+        "src/gpu/sass/wgsl.rs",
+        "src/gpu/present/mod.rs",
+        "src/loader/corpus_runner.rs"
+      ]
+    },
+    {
+      "id": "audio",
+      "name": "Audio and input",
+      "capability": "Software audio mixing with CPAL host output; keyboard/gamepad mapping and selected HID service paths",
+      "boundary": "Host device support varies by platform; external-program correctness needs case-specific tests.",
+      "sources": [
+        "src/audio/host.rs",
+        "src/audio/audren.rs",
+        "src/hid/controller.rs"
+      ]
+    },
+    {
+      "id": "verification",
+      "name": "Execution evidence",
+      "capability": "Ounce-Verify records, first-frame oracles, artifact-integrity checks, corpus comparison, diagnosis, retries, bisection and resumable runs",
+      "boundary": "Passing local unit tests or CI does not certify general compatibility, provenance or an independent rerun.",
+      "sources": [
+        "tools/ounce_verify.py",
+        "scripts/corpus_verify.py",
+        "scripts/verify_corpus_run.py",
+        "scripts/compare_corpus_runs.py"
+      ]
+    }
+  ]
+}

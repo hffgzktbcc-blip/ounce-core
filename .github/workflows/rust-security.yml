@@ -1,0 +1,63 @@
+# Additional opt-in quality gates. Existing 9-job ci.yml remains unchanged.
+name: Rust security checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/rust-security.yml'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/rust-security.yml'
+  schedule:
+    # New RustSec advisories may arrive without a code change.
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codeql-rust:
+    name: CodeQL (Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+      - name: Initialize CodeQL Rust analysis
+        uses: github/codeql-action/init@v4
+        with:
+          languages: rust
+      - name: Build Rust code for extraction
+        run: cargo build --locked --release
+      - name: Analyze code
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:rust
+
+  rustsec:
+    name: RustSec dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+      - name: Audit locked dependencies
+        run: cargo audit --file Cargo.lock

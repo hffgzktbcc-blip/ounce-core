@@ -1,0 +1,4 @@
+main.o
+threads.elf
+# The root .gitignore ignores *.nro; this fixture is checked in.
+!threads.nro

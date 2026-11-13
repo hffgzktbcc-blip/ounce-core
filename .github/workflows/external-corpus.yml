@@ -1,0 +1,692 @@
+name: External corpus execution probe
+
+on:
+  workflow_call:
+    inputs:
+      comparison_baseline:
+        required: false
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      comparison_baseline:
+        description: Successful baseline run ID for a manual comparison
+        required: false
+        type: string
+  schedule:
+    - cron: '17 3 * * *'
+
+concurrency:
+  group: corpus-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  startup-probe:
+    # PR execution has read-only permissions, no inherited secrets, and no checkout credentials.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate external corpus preparation tooling
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Install runtime build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Build interpreter CLI
+        run: cargo build --release --locked
+
+      - name: Build unchanged external samples and record toolchain
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          set -euo pipefail
+          mkdir -p "$CORPUS_ROOT" "$EVIDENCE_ROOT"
+          # Use the same pinned toolchain as the canonical regression job.
+          # This is an observed toolchain, not a claim of reproducible package inputs.
+          docker pull devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282
+          image_id=$(docker image inspect devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282 --format '{{.Id}}')
+          docker image inspect "$image_id" > "$EVIDENCE_ROOT/toolchain-image.json"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$CORPUS_ROOT:/corpus" \
+            -v "$EVIDENCE_ROOT:/evidence" \
+            "$image_id" bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y python3 git make
+              {
+                uname -a
+                command -v dkp-pacman
+                dkp-pacman -Q
+              } > /evidence/toolchain-packages.txt
+              python3 /repo/scripts/prepare_external_corpus.py \
+                --manifest /repo/tests/corpus/manifest.json \
+                --output /corpus/build --build
+            ' 2>&1 | tee "$EVIDENCE_ROOT/build.log"
+          cp "$CORPUS_ROOT/build/inventory.json" "$EVIDENCE_ROOT/inventory.json"
+          cp "$CORPUS_ROOT/build/"*.build.log "$EVIDENCE_ROOT/"
+
+      - name: Probe startup with the existing interpreter
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+          OUNCE_TRACE_IPC: "1"
+          CORPUS_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import re
+          root = Path(os.environ["CORPUS_ROOT"]) / "build"
+          evidence = Path(os.environ["EVIDENCE_ROOT"])
+          inventory = json.loads((root / "inventory.json").read_text())
+          startup = next(s for s in inventory["samples"] if s["id"] == "startup")
+          outputs = startup["nro_sha256"]
+          if len(outputs) != 1:
+              raise SystemExit("Expected exactly one startup NRO")
+          relative, expected_hash = next(iter(outputs.items()))
+          nro = root / "source" / relative
+          actual_hash = hashlib.sha256(nro.read_bytes()).hexdigest()
+          if actual_hash != expected_hash:
+              raise SystemExit("Startup NRO hash differs from build inventory")
+          command = ["target/release/ounce-core", "run", str(nro), "--present=headless"]
+          result = {
+              "sample": "startup", "source_revision": inventory["revision"],
+              "nro_sha256": actual_hash, "runtime_commit": os.environ["GITHUB_SHA"],
+              "source_head": os.environ["CORPUS_SOURCE_HEAD"],
+              "requested_engine": "interpreter", "actual_engine": "interpreter",
+              "host_timeout_seconds": 60, "command": command,
+              "compatibility": "not-assessed",
+              "note": "Diagnostic CLI probe only: no scripted input, raw-frame oracle or structured guest stop adapter. Host exit zero is not compatibility success.",
+          }
+          with (evidence / "startup-interpreter.log").open("wb") as log:
+              try:
+                  completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
+                                             timeout=60, check=False)
+                  result.update(probe_stop="host_process_exit", host_exit_code=completed.returncode)
+              except subprocess.TimeoutExpired:
+                  result.update(probe_stop="host_timeout", host_exit_code=None)
+          log_text = (evidence / "startup-interpreter.log").read_text(errors="replace")
+          # Diagnostic classification only; do not infer a compatibility verdict.
+          result["guest_stop"] = next((stop for marker, stop in (
+              ("[VM] Hit svcBreak:", "svc_break"),
+              ("[VM] Stopping on unhandled SVC", "unhandled_svc"),
+              ("[VM] CPU Halted:", "cpu_halt"),
+              ("[VM] Execution budget reached", "instruction_budget"),
+              ("[Loader Error]", "load_error"),
+          ) if marker in log_text), "unknown")
+          break_result = re.search(r"\[VM\] Break result: (0x[0-9A-Fa-f]+)", log_text)
+          if break_result:
+              result["break_result"] = break_result.group(1)
+          result["log_sha256"] = hashlib.sha256(
+              (evidence / "startup-interpreter.log").read_bytes()).hexdigest()
+          (evidence / "startup-probe.json").write_text(json.dumps(result, indent=2) + "\n")
+          print(json.dumps(result, indent=2))
+          print("=== Startup interpreter log (last 32 KiB) ===")
+          print((evidence / "startup-interpreter.log").read_bytes()[-32768:].decode("utf-8", errors="replace"))
+          PY
+
+
+      - name: Prebuild two-engine diagnostic test
+        run: cargo test --release --locked external_corpus_nro_probe_both_engines --no-run --message-format=json > "$RUNNER_TEMP/ounce-corpus-test-build.jsonl"
+
+      - name: Probe all samples under interpreter and Tier-3
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+          CORPUS_SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          OUNCE_TRACE_IPC: "1"
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          root = Path(os.environ["CORPUS_ROOT"]) / "build"
+          evidence = Path(os.environ["EVIDENCE_ROOT"])
+          inventory = json.loads((root / "inventory.json").read_text())
+          # Invoke the compiled test executable directly so timeout kills the guest
+          # process itself, not just a cargo parent with a surviving test child.
+          messages = [json.loads(line) for line in
+              (Path(os.environ["RUNNER_TEMP"]) / "ounce-corpus-test-build.jsonl").read_text().splitlines()]
+          executables = {m["executable"] for m in messages
+              if m.get("reason") == "compiler-artifact"
+              and m.get("profile", {}).get("test")
+              and m.get("target", {}).get("name") == "ounce-core"
+              and m.get("executable")}
+          if len(executables) != 1:
+              raise SystemExit("Expected one compiled ounce-core test executable")
+          executable = next(iter(executables))
+          records = []
+          for sample in inventory["samples"]:
+              if len(sample["nro_sha256"]) != 1:
+                  raise SystemExit("Expected one NRO per trial")
+              relative, expected = next(iter(sample["nro_sha256"].items()))
+              nro = root / "source" / relative
+              actual = hashlib.sha256(nro.read_bytes()).hexdigest()
+              if actual != expected:
+                  raise SystemExit("NRO hash differs from inventory")
+              record = {
+                  "sample": sample["id"], "nro_sha256": actual,
+                  "source_revision": inventory["revision"],
+                  "runtime_commit": os.environ["GITHUB_SHA"],
+                  "source_head": os.environ["CORPUS_SOURCE_HEAD"],
+                  "requested_engines": ["interpreter", "tier3"],
+                  "compatibility": "not-assessed",
+                  "outer_host_timeout_seconds": 90,
+              }
+              path = evidence / (sample["id"] + ".two-engine.log")
+              env = dict(os.environ, OUNCE_CORPUS_NRO=str(nro))
+              command = [executable,
+                         "loader::fixture_tests::corpus_runner::external_corpus_nro_probe_both_engines",
+                         "--exact", "--ignored", "--nocapture", "--test-threads=1"]
+              with path.open("wb") as log:
+                  try:
+                      done = subprocess.run(command, env=env, stdout=log,
+                                            stderr=subprocess.STDOUT, timeout=90, check=False)
+                      record.update(probe_stop="host_process_exit", host_exit_code=done.returncode)
+                  except subprocess.TimeoutExpired:
+                      record.update(probe_stop="outer_host_timeout", host_exit_code=None)
+              data = path.read_bytes()
+              record["log_sha256"] = hashlib.sha256(data).hexdigest()
+              text = data.decode("utf-8", errors="replace")
+              record["diagnostic_test_completed"] = (
+                  record["host_exit_code"] == 0 and
+                  re.search(r"test result: ok\. 1 passed;", text) is not None)
+              records.append(record)
+              print(json.dumps(record))
+              print(text[-32768:])
+          (evidence / "two-engine-probes.json").write_text(json.dumps(records, indent=2) + "\n")
+          # Diagnostic guest breaks/budgets are observations, not compatibility passes.
+          # Missing input/test selection/build failures remain workflow errors.
+          if not all(r["diagnostic_test_completed"] for r in records):
+              raise SystemExit("At least one diagnostic test failed or exceeded its outer deadline")
+          PY
+
+      - name: simplegfx first-frame oracle (finish line, docs/first-frame-oracle.md)
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          set -euo pipefail
+          nro="$CORPUS_ROOT/build/source/graphics/simplegfx/simplegfx.nro"
+          sha256sum "$nro" | tee "$EVIDENCE_ROOT/simplegfx-oracle.txt"
+          OUNCE_SIMPLEGFX_NRO="$nro" timeout 1500 cargo test --release --locked \
+            simplegfx_first_frame_oracle -- --ignored --nocapture 2>&1 | tee -a "$EVIDENCE_ROOT/simplegfx-oracle.txt"
+
+      - name: deko_basic first-frame oracle (finish line, docs/deko-basic-oracle.md)
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          set -euo pipefail
+          nro="$CORPUS_ROOT/build/source/graphics/deko3d/deko_basic/deko_basic.nro"
+          sha256sum "$nro" | tee "$EVIDENCE_ROOT/deko-basic-oracle.txt"
+          OUNCE_DEKO_BASIC_NRO="$nro" timeout 1500 cargo test --release --locked \
+            deko_basic_first_frame_oracle -- --ignored --nocapture 2>&1 | tee -a "$EVIDENCE_ROOT/deko-basic-oracle.txt"
+
+      - name: romfs first-frame oracle (finish line 3, docs/romfs-oracle.md)
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          set -euo pipefail
+          nro="$CORPUS_ROOT/build/source/fs/romfs/romfs.nro"
+          sha256sum "$nro" | tee "$EVIDENCE_ROOT/romfs-oracle.txt"
+          OUNCE_ROMFS_NRO="$nro" timeout 1500 cargo test --release --locked \
+            romfs_first_frame_oracle -- --ignored --nocapture 2>&1 | tee -a "$EVIDENCE_ROOT/romfs-oracle.txt"
+
+      - name: startup first-frame oracle (sample 4, docs/startup-oracle.md)
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+          EVIDENCE_ROOT: ${{ runner.temp }}/ounce-corpus-evidence
+        run: |
+          set -euo pipefail
+          nro="$CORPUS_ROOT/build/source/templates/application/application.nro"
+          sha256sum "$nro" | tee "$EVIDENCE_ROOT/startup-oracle.txt"
+          OUNCE_STARTUP_NRO="$nro" timeout 1500 cargo test --release --locked \
+            startup_first_frame_oracle -- --ignored --nocapture 2>&1 | tee -a "$EVIDENCE_ROOT/startup-oracle.txt"
+
+      # Hand the four oracle NROs to the native-execution job (Apple Silicon has no devkitA64 docker).
+      # Public-domain switch-examples builds, kept one day for that job only.
+      - name: Pass oracle NROs to the native job
+        env:
+          CORPUS_ROOT: ${{ runner.temp }}/ounce-external-corpus
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/oracle-nros"
+          src="$CORPUS_ROOT/build/source"
+          cp "$src/graphics/simplegfx/simplegfx.nro" "$src/graphics/deko3d/deko_basic/deko_basic.nro" \
+             "$src/fs/romfs/romfs.nro" "$src/templates/application/application.nro" "$RUNNER_TEMP/oracle-nros/"
+          sha256sum "$RUNNER_TEMP"/oracle-nros/*.nro
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oracle-nros
+          path: ${{ runner.temp }}/oracle-nros/
+          retention-days: 1
+
+      - name: Retain diagnostic evidence (no upstream source or NRO binaries)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-corpus-probe
+          path: ${{ runner.temp }}/ounce-corpus-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
+  first-frame-oracles:
+    # PLAN step 2: the pre-registered oracles of tests/corpus/oracles.json (docs/corpus-oracles.md).
+    # Every verdict is recorded; the job fails only if a recorded pass regresses or a program is missing.
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check oracle tooling and specs
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          # Recompute every expected value from its spec with libnx 4.12.0's console font.
+          git clone --quiet --depth 1 --branch v4.12.0 https://github.com/switchbrew/libnx.git "$RUNNER_TEMP/libnx"
+          python3 tools/corpus_oracle.py --font "$RUNNER_TEMP/libnx/nx/data/default_font.bin" --check
+
+      - name: Install runtime build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Verify recovery from a refused registry connection
+        env:
+          OUNCE_VERIFY_DOCKER_RECOVERY_TEST: '1'
+        run: PYTHONPATH=scripts python3 -m unittest test_verify_corpus_run.PullRecoveryTests.test_real_registry_connection_recovers
+
+      - name: Cache registered homebrew builds
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ounce-verify-build-cache
+          key: ounce-nros-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/external-corpus.yml', 'scripts/verify_corpus_run.py', 'scripts/corpus_build_cache.py', 'scripts/prepare_external_corpus.py', 'tests/corpus/manifest.json', 'tests/corpus/oracles.json', 'tests/corpus/oracle-builds/*.json') }}
+
+      - name: Build, run and verify the registered corpus
+        id: corpus
+        env:
+          DEVKITA64_IMAGE: devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282
+        run: |
+          python3 -m unittest tests/test_ounce_verify.py
+          python3 scripts/verify_corpus_run.py --output "$RUNNER_TEMP/ounce-verify" \
+            --image "$DEVKITA64_IMAGE" --build-cache "$RUNNER_TEMP/ounce-verify-build-cache" \
+            --shards 2 --check-readme
+
+      - name: Compare against the previous successful corpus run
+        if: ${{ !cancelled() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.comparison_baseline != '')) && (steps.corpus.outcome == 'success' || steps.corpus.outcome == 'failure') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_RUN: ${{ inputs.comparison_baseline }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$BASELINE_RUN" ]]; then
+            BASELINE_RUN=$(gh run list --workflow external-corpus.yml --branch main --event schedule \
+              --status success --limit 10 --json databaseId \
+              --jq "map(select(.databaseId != $GITHUB_RUN_ID)) | .[0].databaseId // empty")
+          fi
+          if [[ -z "$BASELINE_RUN" ]]; then
+            echo "No previous successful scheduled run. This run will establish the baseline." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          [[ "$BASELINE_RUN" =~ ^[0-9]+$ ]] && [[ "$BASELINE_RUN" != "$GITHUB_RUN_ID" ]]
+          [[ "$(gh run view "$BASELINE_RUN" --json conclusion --jq .conclusion)" == success ]]
+          gh run download "$BASELINE_RUN" --name first-frame-oracles --dir "$RUNNER_TEMP/ounce-baseline"
+          evidence="$RUNNER_TEMP/ounce-verify/evidence"
+          echo "Baseline run: $BASELINE_RUN" >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/compare_corpus_runs.py "$RUNNER_TEMP/ounce-baseline" "$evidence" \
+            --output "$evidence/comparison.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Hand the corpus NROs to the native-execution job (Apple Silicon has no devkitA64 docker).
+      # Permissive builds (public domain, MIT, ISC, zlib), kept one day for that job only.
+      - name: Pass corpus NROs to the native job
+        id: corpus-nros
+        if: ${{ !cancelled() && (steps.corpus.outcome == 'success' || steps.corpus.outcome == 'failure') }}
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/ounce-verify/builds" "$RUNNER_TEMP/corpus-nros" <<'PY'
+          import json, shutil, sys
+          from pathlib import Path
+          builds, out = Path(sys.argv[1]), Path(sys.argv[2])
+          for o in json.load(open("tests/corpus/oracles.json"))["oracles"]:
+              rel = Path(o["build"]) / "build/source" / o["nro"]
+              if (builds / rel).is_file():
+                  (out / rel).parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(builds / rel, out / rel)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.corpus-nros.outcome == 'success' }}
+        with:
+          name: corpus-nros
+          path: ${{ runner.temp }}/corpus-nros/
+          retention-days: 1
+
+      - name: Retain oracle evidence (no upstream source or NRO binaries)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-frame-oracles
+          path: ${{ runner.temp }}/ounce-verify/evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload Ounce-Verify canonical report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ounce-verify-canonical-report
+          path: ${{ runner.temp }}/ounce-verify/evidence/canonical-report.json
+          if-no-files-found: error
+          retention-days: 90
+
+  native-oracles:
+    # PLAN.md step 4: the same four first-frame oracles with guest code running on Apple Silicon
+    # (OUNCE_CPU=native, the --cpu=native switch). Each oracle runs Tier-3 first as the frame
+    # reference and the speed baseline, then native execution, and prints both wall times.
+    needs: startup-probe
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: never
+      OUNCE_CPU: native
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: oracle-nros
+          path: ${{ runner.temp }}/oracle-nros
+
+      - name: Build oracle tests with nce
+        run: cargo test --release --locked --features nce --no-run
+
+      - name: Four first-frame oracles under --cpu=native
+        env:
+          NROS: ${{ runner.temp }}/oracle-nros
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/native-evidence"
+          shasum -a 256 "$NROS"/*.nro | tee "$RUNNER_TEMP/native-evidence/nro-sha256.txt"
+          sysctl -n machdep.cpu.brand_string | tee "$RUNNER_TEMP/native-evidence/host.txt"
+          run() {
+            local name=$1 var=$2 nro=$3
+            env "$var=$NROS/$nro" cargo test --release --locked --features nce "${name}_first_frame_oracle" \
+              -- --ignored --nocapture --test-threads=1 2>&1 | tee "$RUNNER_TEMP/native-evidence/$name.txt"
+          }
+          run simplegfx OUNCE_SIMPLEGFX_NRO simplegfx.nro
+          run deko_basic OUNCE_DEKO_BASIC_NRO deko_basic.nro
+          run romfs OUNCE_ROMFS_NRO romfs.nro
+          run startup OUNCE_STARTUP_NRO application.nro
+          echo "=== speed (wall time per oracle run, Tier-3 vs native) ==="
+          grep -h "^\[speed\]" "$RUNNER_TEMP"/native-evidence/*.txt | tee "$RUNNER_TEMP/native-evidence/speed.txt"
+
+      - name: Retain native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-oracle-evidence
+          path: ${{ runner.temp }}/native-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  native-corpus-oracles:
+    # PLAN.md step 4: every pre-registered corpus oracle again with guest code running on Apple
+    # Silicon (OUNCE_CPU=native). Each runs Tier-3 first (frame reference, speed baseline), then
+    # native execution; a recorded pass that does not pass natively fails the job.
+    needs: first-frame-oracles
+    if: always() && needs.first-frame-oracles.result != 'skipped'
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: never
+      OUNCE_CPU: native
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: corpus-nros
+          path: ${{ runner.temp }}/ounce-oracle-builds
+
+      - name: Build oracle tests with nce
+        run: cargo test --release --locked --features nce corpus_first_frame_oracle --no-run --message-format=json > "$RUNNER_TEMP/build.jsonl"
+
+      - name: Corpus oracles under --cpu=native
+        run: |
+          set -euo pipefail
+          executable=$(python3 -c '
+          import json, sys
+          paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
+                   if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
+                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
+          assert len(paths) == 1, paths
+          print(paths.pop())' "$RUNNER_TEMP/build.jsonl")
+          sysctl -n machdep.cpu.brand_string
+          python3 scripts/run_corpus_oracles.py --executable "$executable" \
+            --builds "$RUNNER_TEMP/ounce-oracle-builds" --evidence "$RUNNER_TEMP/native-corpus-evidence" --seconds 180
+          echo "=== speed (wall time per oracle run, Tier-3 vs native) ==="
+          for f in "$RUNNER_TEMP"/native-corpus-evidence/*.oracle.log; do
+            echo "$(basename "$f" .oracle.log): $(grep -h "native speedup" "$f" || echo 'no native run')"
+          done | tee "$RUNNER_TEMP/native-corpus-evidence/speed.txt"
+
+      - name: Retain native corpus evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-corpus-oracle-evidence
+          path: ${{ runner.temp }}/native-corpus-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+
+  corpus-soak-smoke:
+    # CI-sized soak (docs/soak.md): four registered programs, up to 300 frames or 90 s per engine,
+    # interpreter vs Tier-3. Fails on a crash, hang, unbounded growth or divergence not listed in
+    # tests/corpus/soak-known.json. The full-corpus soak is a manual run (scripts/soak_corpus.py).
+    name: Corpus soak smoke
+    needs: first-frame-oracles
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install runtime build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+      - uses: actions/download-artifact@v4
+        with:
+          name: corpus-nros
+          path: ${{ runner.temp }}/soak-nros
+      - name: Build the soak test
+        run: cargo test --release --locked corpus_soak --no-run --message-format=json > "$RUNNER_TEMP/soak-build.jsonl"
+      - name: Soak smoke
+        run: |
+          set -euo pipefail
+          executable=$(python3 -c '
+          import json, sys
+          paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
+                   if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
+                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
+          assert len(paths) == 1, paths
+          print(paths.pop())' "$RUNNER_TEMP/soak-build.jsonl")
+          python3 scripts/soak_corpus.py --smoke --executable "$executable" \
+            --builds "$RUNNER_TEMP/soak-nros" --evidence "$RUNNER_TEMP/soak-evidence"
+      - name: Retain soak evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-soak-smoke
+          path: ${{ runner.temp }}/soak-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  interaction-host-gpu:
+    name: Menu-to-Triangle interaction (${{ matrix.os }})
+    needs: first-frame-oracles
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      CARGO_TERM_COLOR: never
+      OUNCE_GPU_BACKEND: host
+      OUNCE_GPU_REQUIRE_HARDWARE: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
+      OUNCE_ORACLE_ID: deko-menu-triangle
+      OUNCE_ORACLE_SECONDS: '180'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: interaction-host-gpu
+      - name: Install Linux build and graphics dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1
+      - uses: actions/download-artifact@v4
+        with:
+          name: corpus-nros
+          path: ${{ runner.temp }}/interaction-nros
+      - name: Compile the interaction adapter
+        run: cargo test --release --locked --features gpu-present --no-run --message-format=json > "$RUNNER_TEMP/interaction-build.jsonl"
+      - name: Drive the unchanged menu into Triangle with bounded execution
+        shell: bash
+        env:
+          OUNCE_CORPUS_ROOT: ${{ runner.temp }}/interaction-nros
+          OUNCE_ORACLE_RESULT: ${{ runner.temp }}/interaction-evidence/triangle.json
+        run: |
+          mkdir -p "$RUNNER_TEMP/interaction-evidence"
+          cp tests/corpus/interactions.json "$RUNNER_TEMP/interaction-evidence/registered-interactions.json"
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          messages = [json.loads(line) for line in
+              (pathlib.Path(os.environ["RUNNER_TEMP"]) / "interaction-build.jsonl").read_text().splitlines()]
+          executables = {m["executable"] for m in messages
+              if m.get("reason") == "compiler-artifact"
+              and m.get("profile", {}).get("test")
+              and m.get("target", {}).get("name") == "ounce-core"
+              and m.get("executable")}
+          if len(executables) != 1:
+              raise SystemExit("Expected one compiled ounce-core test executable")
+          log = pathlib.Path(os.environ["RUNNER_TEMP"]) / "interaction-evidence/triangle.log"
+          with log.open("wb") as output:
+              try:
+                  # Timeout kills the VM process itself, without a surviving cargo child.
+                  result = subprocess.run([
+                      next(iter(executables)),
+                      "loader::fixture_tests::corpus_runner::corpus_interaction_oracle",
+                      "--exact", "--ignored", "--nocapture", "--test-threads=1"
+                  ], stdout=output, stderr=subprocess.STDOUT, timeout=480)
+              except subprocess.TimeoutExpired:
+                  raise SystemExit("interaction exceeded outer host deadline; see retained log")
+          print(log.read_text())
+          raise SystemExit(result.returncode)
+          PY
+      - name: Retain separate interaction evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interaction-triangle-${{ matrix.os }}
+          path: ${{ runner.temp }}/interaction-evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  guest-host-gpu:
+    name: Guest SASS host execution (${{ matrix.os }})
+    needs: startup-probe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      CARGO_TERM_COLOR: never
+      OUNCE_GPU_BACKEND: host
+      # Linux validates the API through lavapipe; Mac qualification requires a physical GPU.
+      OUNCE_GPU_REQUIRE_HARDWARE: ${{ matrix.os == 'macos-latest' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: guest-host-gpu
+      - name: Install Linux graphics dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1
+      - uses: actions/download-artifact@v4
+        with:
+          name: oracle-nros
+          path: ${{ runner.temp }}/guest-gpu-nros
+      - name: Check guest-surface writeback and unchanged outside oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          export OUNCE_DEKO_BASIC_NRO="$RUNNER_TEMP/guest-gpu-nros/deko_basic.nro"
+          cargo test --release --locked --features gpu-present \
+            host_sass_draw_writes_original_guest_surface -- --ignored --nocapture 2>&1 \
+            | tee "$RUNNER_TEMP/guest-gpu-unit.log"
+          cargo test --release --locked --features gpu-present \
+            guest_gpu_deko_existing_oracle -- --ignored --nocapture 2>&1 \
+            | tee "$RUNNER_TEMP/guest-gpu-oracle.log"
+      - name: Retain host-execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guest-host-gpu-${{ matrix.os }}
+          path: ${{ runner.temp }}/guest-gpu-*.log
+          if-no-files-found: warn
+          retention-days: 14

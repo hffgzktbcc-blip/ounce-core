@@ -1,0 +1,61 @@
+running 1 test
+test loader::fixture_tests::corpus_runner::corpus_first_frame_oracle ... Interpreter: stop=ExitProcess instructions=9104054 svcs=0 queued=0 pc=0x7ffe0004
+Tier3: stop=ExitProcess instructions=9104054 svcs=0 queued=0 pc=0x7ffe0004
+[speed] Interpreter: 0.423 s
+[speed] Tier3: 0.150 s
+{
+  "failures": [
+    "Interpreter: stopped with ExitProcess after 0 of 2 queued frames",
+    "Tier3: stopped with ExitProcess after 0 of 2 queued frames"
+  ],
+  "id": "sdl2-simple",
+  "nro_sha256": "d92512342d6d571023da3c98d907f04c0c85043de7b2ffd50a745cbcc928bc7f",
+  "pass": false,
+  "runs": [
+    {
+      "engine": "Interpreter",
+      "failures": [
+        "stopped with ExitProcess after 0 of 2 queued frames"
+      ],
+      "host_timeout_seconds": 180,
+      "instructions": 9104054,
+      "max_guest_instructions": 4000000000,
+      "pc": "0x000000007ffe0004",
+      "queued": [],
+      "stop": "ExitProcess",
+      "wall_seconds": 0.422770792,
+      "x0": "0x0000000000000000"
+    },
+    {
+      "engine": "Tier3",
+      "failures": [
+        "stopped with ExitProcess after 0 of 2 queued frames"
+      ],
+      "host_timeout_seconds": 180,
+      "instructions": 9104054,
+      "max_guest_instructions": 4000000000,
+      "pc": "0x000000007ffe0004",
+      "queued": [],
+      "stop": "ExitProcess",
+      "wall_seconds": 0.149939417,
+      "x0": "0x0000000000000000"
+    }
+  ]
+}
+
+thread 'loader::fixture_tests::corpus_runner::corpus_first_frame_oracle' (15760227) panicked at src/loader/corpus_runner.rs:963:5:
+oracle sdl2-simple failed: [
+    "Interpreter: stopped with ExitProcess after 0 of 2 queued frames",
+    "Tier3: stopped with ExitProcess after 0 of 2 queued frames",
+]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    loader::fixture_tests::corpus_runner::corpus_first_frame_oracle
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 440 filtered out; finished in 0.59s
+
+error: test failed, to rerun pass `--bin ounce-core`

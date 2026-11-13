@@ -1,0 +1,169 @@
+{
+  "schema_version": "ounce-verify/run-v1",
+  "core_commit": "c47fa1468e36316b61a5aff2d54029d98799f90d",
+  "cwd": "$RUN_ROOT/clone",
+  "inputs_sha256": {
+    "tests/corpus/oracles.json": "7a0f2be6e19d51aa34f2fac346c8f74571750484eccd87ecbc65749821c66a47",
+    "tests/corpus/oracle-results.json": "13799c84b7d500d6bcb78ad51280e21459c19e58e7c4c2a5fe7540b4ec7fef9d",
+    "tests/corpus/manifest.json": "f4ab557b689458466f3b309129ca776ba4f9a2d449fe4d9060105b35ebba6b49",
+    "tests/corpus/oracle-builds/hybrid-app.json": "2211b220cc724f72f5d78d655d3b96cb2a6140f6820b40c6b63a309fee7e8c22",
+    "tests/corpus/oracle-builds/nx-hbmenu.json": "597d884291146b5e2bb9b9d1eac9dad9d3d5d4a0653b99a9f2947fc55ae1e841",
+    "tests/corpus/oracle-builds/raufang-switch-hello-world.json": "8416bdf541bbb0d6c41f4fa6c77a152ceee4050c85de21c81d3433d3e60fbd65",
+    "tests/corpus/oracle-builds/switch-examples.json": "46693d419891a1915a541ea6f6bdb2084a4ca0443f2828cfe096b23e673431db"
+  },
+  "seconds_per_engine": 180,
+  "oracle_shards": 2,
+  "timing_host": null,
+  "image_reference": "devkitpro/devkita64:latest",
+  "runner_sha256": "7479ebe5f7e74b682f5be2cbbf2ad85fe263b792a7bda281f590dd5e2a05305c",
+  "resumable": false,
+  "stages": [
+    {
+      "name": "pull",
+      "argv": [
+        "docker",
+        "pull",
+        "devkitpro/devkita64:latest"
+      ],
+      "timeout_seconds": 1800,
+      "stdout": "pull.log",
+      "stderr": "pull.stderr.log",
+      "status": "exited",
+      "returncode": 0
+    },
+    {
+      "name": "inspect",
+      "argv": [
+        "docker",
+        "image",
+        "inspect",
+        "devkitpro/devkita64:latest"
+      ],
+      "timeout_seconds": 30,
+      "stdout": "toolchain-image.json",
+      "stderr": "inspect.stderr.log",
+      "status": "exited",
+      "returncode": 0
+    },
+    {
+      "name": "build",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        "ounce-verify-da9ec04ca4cf428389eea1ac0dfb5add",
+        "-v",
+        "$RUN_ROOT/clone:/repo:ro",
+        "-v",
+        "$RUN_ROOT/corpus/builds:/corpus",
+        "-v",
+        "$RUN_ROOT/corpus/evidence:/evidence",
+        "sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282",
+        "bash",
+        "-c",
+        "\nset -euo pipefail\napt-get update\napt-get install -y python3 git make zip\ndkp-pacman -Q > /evidence/toolchain-packages.txt\nfor manifest in /repo/tests/corpus/manifest.json /repo/tests/corpus/oracle-builds/*.json; do\n    id=$(basename \"$manifest\" .json)\n    if [ \"$id\" = manifest ]; then id=original; fi\n    python3 /repo/scripts/prepare_external_corpus.py --manifest \"$manifest\" \\\n        --output \"/corpus/$id/build\" --build > \"/evidence/$id.prepare.log\" 2>&1 \\\n        || echo \"build of $id failed (see $id.prepare.log)\"\n    inventory=\"/corpus/$id/build/inventory.json\"\n    if [ -f \"$inventory\" ]; then cp \"$inventory\" \"/evidence/$id.inventory.json\"; fi\n    for log in /corpus/$id/build/*.build.log; do\n        if [ -f \"$log\" ]; then cp \"$log\" /evidence/; fi\n    done\ndone\n"
+      ],
+      "timeout_seconds": 1800,
+      "stdout": "build.log",
+      "stderr": "build.stderr.log",
+      "status": "exited",
+      "returncode": 0
+    },
+    {
+      "name": "compile",
+      "argv": [
+        "cargo",
+        "test",
+        "--release",
+        "--locked",
+        "corpus_first_frame_oracle",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "timeout_seconds": 1200,
+      "stdout": "cargo-artifacts.jsonl",
+      "stderr": "compile.stderr.log",
+      "status": "exited",
+      "returncode": 0
+    },
+    {
+      "name": "oracles",
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "scripts/run_corpus_oracles.py",
+        "--executable",
+        "$RUN_ROOT/clone/target/release/deps/ounce_core-e33083bf9d2e6b39",
+        "--builds",
+        "$RUN_ROOT/corpus/builds",
+        "--evidence",
+        "$RUN_ROOT/corpus/evidence",
+        "--seconds",
+        "180",
+        "--shards",
+        "2"
+      ],
+      "timeout_seconds": 12060,
+      "stdout": "oracles.log",
+      "stderr": "oracles.stderr.log",
+      "status": "exited",
+      "returncode": 0
+    },
+    {
+      "name": "evidence",
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "scripts/corpus_verify.py",
+        "evidence",
+        "--verdicts",
+        "$RUN_ROOT/corpus/evidence/oracle-verdicts.json",
+        "--builds",
+        "$RUN_ROOT/corpus/builds",
+        "--toolchain-image",
+        "$RUN_ROOT/corpus/evidence/toolchain-image.json",
+        "--core-commit",
+        "c47fa1468e36316b61a5aff2d54029d98799f90d",
+        "--output",
+        "$RUN_ROOT/corpus/evidence/ounce-verify-evidence.json"
+      ],
+      "timeout_seconds": 60,
+      "stdout": "evidence.log",
+      "stderr": "evidence.stderr.log",
+      "status": "exited",
+      "returncode": 0
+    },
+    {
+      "name": "verify",
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "tools/ounce_verify.py",
+        "$RUN_ROOT/corpus/evidence/ounce-verify-evidence.json",
+        "--artifact-root",
+        "$RUN_ROOT/corpus/builds",
+        "--output",
+        "$RUN_ROOT/corpus/evidence/canonical-report.json"
+      ],
+      "timeout_seconds": 60,
+      "stdout": "verify.log",
+      "stderr": "verify.stderr.log",
+      "status": "exited",
+      "returncode": 0
+    },
+    {
+      "name": "headline",
+      "argv": [
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "scripts/corpus_verify.py",
+        "headline",
+        "$RUN_ROOT/corpus/evidence/canonical-report.json",
+        "--check-readme"
+      ],
+      "timeout_seconds": 60,
+      "stdout": "headline.log",
+      "stderr": "headline.stderr.log",
+      "status": "exited",
+      "returncode": 0
+    }
+  ],
+  "attempt": 1
+}

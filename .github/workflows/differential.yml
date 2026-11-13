@@ -1,0 +1,250 @@
+name: Differential verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docs/verify/**'
+      - 'scripts/verify_differential.py'
+      - 'scripts/verify_linux_elf.py'
+      - 'scripts/test_verify_linux_elf.py'
+      - 'conformance/**'
+      - 'scripts/run_conformance.py'
+      - 'scripts/test_run_conformance.py'
+      - 'tests/linux-elf/**'
+      - 'Cargo.*'
+      - '.github/workflows/differential.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docs/verify/**'
+      - 'scripts/verify_differential.py'
+      - 'scripts/verify_linux_elf.py'
+      - 'scripts/test_verify_linux_elf.py'
+      - 'conformance/**'
+      - 'scripts/run_conformance.py'
+      - 'scripts/test_run_conformance.py'
+      - 'tests/linux-elf/**'
+      - 'Cargo.*'
+      - '.github/workflows/differential.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
+
+concurrency:
+  group: differential-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux-library:
+    name: Static Linux ELF (${{ matrix.os }}, LZ4 xxHash cJSON zlib)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Allocate fresh evidence outside the Rust cache
+        run: |
+          python3 - <<'PY_EVIDENCE'
+          import os, pathlib
+          leaf = 'ounce-evidence-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / leaf
+          root.mkdir(parents=True, exist_ok=False)
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write('EVIDENCE_ROOT=' + root.as_posix() + '\n')
+          PY_EVIDENCE
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+      - name: Install portable C compiler
+        run: python3 -m pip install ziglang==0.17.1
+      - name: Build runtime with actual Tier-4 support
+        run: cargo build --release --locked --features native-jit
+      - name: Qualify clock and guest-argument behavior
+        run: cargo test --release --locked --features native-jit --test cli_failures
+      - name: Replay a retained real instruction discrepancy
+        run: |
+          python3 - <<'PY_REPLAY'
+          import json, os, pathlib, platform, subprocess
+          evidence = pathlib.Path(os.environ['EVIDENCE_ROOT'])
+          binary = 'target/release/ounce-core' + ('.exe' if platform.system() == 'Windows' else '')
+          result = subprocess.run([binary, 'replay-instruction', 'docs/verify/insn-fuzzer/default-nan-mul2d/before/tier3'], capture_output=True, text=True)
+          (evidence / 'instruction-replay.json').write_text(result.stdout)
+          (evidence / 'instruction-replay.stderr').write_text(result.stderr)
+          assert result.returncode in (0, 1), result.stderr
+          report = json.loads(result.stdout)
+          # Repaired execution must differ from the retained failure and agree
+          # with the unchanged hardware reference on every supported host.
+          expected = ('changed', 'match', 1)
+          actual = (report['replay_verdict'], report['reference_verdict'], result.returncode)
+          assert actual == expected, (actual, expected)
+          print(json.dumps({'host': platform.platform(), 'replay_verdict': actual[0], 'reference_verdict': actual[1], 'exit': actual[2]}))
+          PY_REPLAY
+      - name: Run the versioned conformance seed on each engine
+        run: |
+          binary=target/release/ounce-core
+          if [[ "$RUNNER_OS" == "Windows" ]]; then binary="$binary.exe"; fi
+          for engine in interp tier3 tier4; do
+            python3 scripts/run_conformance.py --report "$EVIDENCE_ROOT/conformance-$engine.json" -- "$binary" fuzz-replay --engine "$engine"
+          done
+      - name: Compare unchanged LZ4 cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --work "$EVIDENCE_ROOT/linux-lz4" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare unchanged xxhash cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --harness xxhash --work "$EVIDENCE_ROOT/linux-xxhash" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare unchanged cjson cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --harness cjson --work "$EVIDENCE_ROOT/linux-cjson" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare unchanged zlib cases on host and both ELF engines
+        run: python3 scripts/verify_linux_elf.py --harness zlib --budget 2000000000 --work "$EVIDENCE_ROOT/linux-zlib" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+      - name: Compare more real programs on host, qemu-user and both ELF engines
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y qemu-user
+          for h in blake3 crypto-algorithms fastlz tinf jsmn sha3 picohttpparser inih coremark kissfft qoi tiny-aes heatshrink stb-image monocypher lua; do
+            python3 scripts/verify_linux_elf.py --harness "$h" --qemu qemu-aarch64 --budget 4000000000 --work "$EVIDENCE_ROOT/linux-more/$h" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-elf-lz4-evidence-${{ matrix.os }}
+          path: |
+            ${{ env.EVIDENCE_ROOT }}/conformance-*.json
+            ${{ env.EVIDENCE_ROOT }}/instruction-replay.json
+            ${{ env.EVIDENCE_ROOT }}/instruction-replay.stderr
+            ${{ env.EVIDENCE_ROOT }}/linux-lz4/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-lz4/*.stdout
+            ${{ env.EVIDENCE_ROOT }}/linux-lz4/*.stderr
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-elf-libs-evidence-${{ matrix.os }}
+          path: |
+            ${{ env.EVIDENCE_ROOT }}/linux-xxhash/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-cjson/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-zlib/report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-more/*/report.json
+          if-no-files-found: warn
+
+  instruction-fuzzer:
+    name: Instruction fuzzer (Apple Silicon)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check seeded instructions against hardware and across engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          mkdir -p fuzz-results
+          export TMPDIR="$PWD/fuzz-results"
+          bash docs/verify/insn-fuzzer/run_tiers.sh 20000 2>&1 | tee fuzz-results/run.log
+      - name: Retain a hardware reference for invalid vector multiplication
+        shell: bash
+        run: |
+          set -euo pipefail
+          fuzz-results/fuzz_host --case default-nan-mul2d > fuzz-results/default-nan-mul2d.trace
+          cat fuzz-results/default-nan-mul2d.trace
+          for engine in interp tier3 tier4; do
+            target/release/ounce-core fuzz-replay --engine "$engine" fuzz-results/default-nan-mul2d.trace
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: instruction-fuzzer-apple-silicon
+          path: fuzz-results/
+          if-no-files-found: warn
+
+  build-nros:
+    name: Build differential NROs (devkitA64)
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64
+    steps:
+      - name: Ensure git and python3
+        run: |
+          command -v git >/dev/null && command -v python3 >/dev/null || \
+            (apt-get update && apt-get install -y --no-install-recommends git python3 ca-certificates)
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build every NRO
+        run: python3 scripts/verify_differential.py --nro --build-only --nro-out nros
+      - uses: actions/upload-artifact@v4
+        with:
+          name: differential-nros
+          path: nros/*.nro
+          if-no-files-found: error
+
+  differential:
+    name: Differential (${{ matrix.os }})
+    needs: build-nros
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+      - name: Build ounce-core
+        run: cargo build --release --features "nce native-jit"
+      - uses: actions/download-artifact@v4
+        with:
+          name: differential-nros
+          path: nros
+      - name: Run differential checks
+        run: python3 scripts/verify_differential.py --nro-dir nros --json report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: differential-report-${{ matrix.os }}
+          path: report.json
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: differential-outputs-${{ matrix.os }}
+          path: |
+            target/differential/*/host-output.txt
+            target/differential/*/engine-*-results.txt
+          if-no-files-found: warn

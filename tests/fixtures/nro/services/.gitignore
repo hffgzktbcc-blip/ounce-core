@@ -1,0 +1,4 @@
+main.o
+services.elf
+# The root .gitignore ignores *.nro; this fixture is checked in.
+!services.nro
