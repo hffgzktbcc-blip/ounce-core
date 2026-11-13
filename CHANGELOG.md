@@ -4,6 +4,12 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+## 0.8.1
+
+### Removed
+- The release workflow no longer builds or attaches a prebuilt Mac app (`ounce-core-macos-arm64-app.zip`). The app stays
+  build-from-source. Releases carry the Linux, macOS and Windows command-line archives and `SHA256SUMS`.
+
 ### Fixed
 - `run-nro` and `run` refuse a guest argument string over 62,855 bytes with a `[Loader Error]` and exit 1 before the
   program starts (#418). The string is the program path (`sdmc:/<file>`) and the guest arguments joined by spaces, so a
