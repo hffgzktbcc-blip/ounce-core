@@ -8,6 +8,24 @@ use super::instructions::{
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
 pub fn decode(raw: u32) -> Instruction {
+    // FEAT_SHA3 has a separate encoding space from ordinary AdvSIMD.
+    use super::instructions::Sha3Op;
+    let sha3 = match raw & 0xFFE0_8000 {
+        0xCE00_0000 => Some(Sha3Op::Eor3),
+        0xCE20_0000 => Some(Sha3Op::Bcax),
+        _ if raw & 0xFFE0_FC00 == 0xCE60_8C00 => Some(Sha3Op::Rax1),
+        _ if raw & 0xFFE0_0000 == 0xCE80_0000 => Some(Sha3Op::Xar(((raw >> 10) & 63) as u8)),
+        _ => None,
+    };
+    if let Some(op) = sha3 {
+        return Instruction::Sha3 {
+            rd: (raw & 31) as u8,
+            rn: ((raw >> 5) & 31) as u8,
+            rm: ((raw >> 16) & 31) as u8,
+            ra: ((raw >> 10) & 31) as u8,
+            op,
+        };
+    }
     // 1. NOP / HINT / Barrier / Cache Maintenance check:
     //    0xD503201F (NOP), 0xD503245F (BTI c, checked by `Cpu::step` from the raw word), DSB/DMB/ISB (0xD5033xxx), DC/IC (0xD5087xxx / 0xD50B7xxx)
     // DC ZVA, Xt zeroes a cache-line-sized block, so it is not a no-op like the other cache operations.

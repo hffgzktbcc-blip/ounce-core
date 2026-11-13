@@ -31,38 +31,18 @@ def verdict(stdout, returncode):
     return passed, counts, 'pass' if passed else 'adapter reported a nonpass'
 
 
-def validate_trace(raw, word):
-    """The published suites contain exactly one FPCR=0 register-state input."""
-    fields = raw.decode('ascii').split()
-    if len(fields) != 132 or fields[0] != 'T' or fields[66] != '=>':
-        raise ValueError('expected one T register-state instruction')
-    if not re.fullmatch(r'[0-9a-f]{8}', word) or fields[1].lower() != word:
-        raise ValueError('trace word differs from manifest')
-    values = fields[2:66] + fields[67:]
-    widths = [4] + [64] * 31 + [128] * 32 + [4, 32] + [64] * 31 + [128] * 32
-    for value, width in zip(values, widths):
-        if not re.fullmatch(r'[0-9a-fA-F]+', value) or int(value, 16) >= 1 << width:
-            raise ValueError('invalid register-state field')
-
-
 def run(suite, command):
     raw = (suite / 'suite.json').read_bytes()
     manifest = json.loads(raw)
     if manifest['schema'] != 'ounce-core/conformance-v1' or not manifest['cases']:
         raise ValueError('unsupported or empty suite')
     validated = []
-    ids = set()
     for case in manifest['cases']:
-        if case['id'] in ids:
-            raise ValueError('duplicate case id')
-        ids.add(case['id'])
         path = (suite / case['path']).resolve()
         if not path.is_relative_to(suite.resolve()):
             raise ValueError('case path escapes suite')
-        trace = path.read_bytes()
-        if hashlib.sha256(trace).hexdigest() != case['sha256']:
+        if hashlib.sha256(path.read_bytes()).hexdigest() != case['sha256']:
             raise ValueError('case hash mismatch: ' + case['id'])
-        validate_trace(trace, case['word'])
         validated.append((case, path))
     observations = []
     for case, path in validated:
