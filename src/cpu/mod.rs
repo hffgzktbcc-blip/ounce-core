@@ -31,3 +31,6 @@ pub use tier4::Tier4JitEngine;
 
 #[cfg(test)]
 mod rcpc2_tests;
+
+#[cfg(test)]
+mod sha3_tests;
