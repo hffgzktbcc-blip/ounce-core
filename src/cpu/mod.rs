@@ -28,3 +28,6 @@ mod audit_tests;
 mod fuzz_insn_tests;
 #[cfg(feature = "native-jit")]
 pub use tier4::Tier4JitEngine;
+
+#[cfg(test)]
+mod rcpc2_tests;
