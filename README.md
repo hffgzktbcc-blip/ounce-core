@@ -30,17 +30,20 @@ Ounce-Core runs the program and diffs its output byte for byte against a referen
 
 **Limit:** this is a testing tool, not a fast emulator. It does not run arbitrary programs, instruction coverage is partial, and a match is evidence for the inputs tested, not proof ([limits](docs/LIMITS.md)).
 
-## The Ounce family
+## The Growing Family
 
-This repository is ounce-core, the engine and verification tool. Two sibling projects build on it:
+> *Built by curiosity. Tested by evidence. Powered by community.*
+
+Four independent, open-source projects sharing a development philosophy, an evidence-first discipline, and an active community:
 
 | Project | What it is for | When to choose it | Licence | Link |
 | :--- | :--- | :--- | :--- | :--- |
-| **ounce-core** (this repo) | Runs ARM64 programs on three CPU engines and compares the output with real ARM64 hardware. | You want to check whether your code gives the same result on ARM64, or you want the engines, corpus and differential tools. | MIT | You are here |
-| **ounce-hb** | A runner for your own homebrew programs. It calls the released ounce-core CLI and adds diagnostics and exit codes. | You want a simple homebrew-only runner, plain-language stop reasons and exit codes that scripts can read. It is at an early milestone (M0). | MIT | [ounce-hb](https://github.com/hffgzktbcc-blip/ounce-hb) |
-| **ounce-runtime** | A separate derivative of ounce-core with native JIT, GPU presentation and Mac controller support. | You want to experiment with those features and you accept GPL-3.0 terms. | GPL-3.0-or-later | [ounce-runtime](https://github.com/hffgzktbcc-blip/ounce-runtime) |
+| **ounce-core** (this repo) | ARM64 execution and verification research engine. Runs programs across three CPU tiers and compares output with real hardware. | You want evidence-first correctness, hardware differential checks, or the safe-Rust core. | MIT | You are here |
+| **ounce-hb** | Simplified homebrew runner built around Ounce-Core with diagnostics and exit codes. | You want a turn-key CLI to run and diagnose homebrew with stable exit codes and plain-language failure explanations. | MIT | [ounce-hb](https://github.com/hffgzktbcc-blip/ounce-hb) |
+| **ounce-runtime** | Experimental performance runtime with native JIT and GPU development. | You want high performance, visual presentation via Metal/Vulkan/DX12, or controller input under GPL-3.0 terms. | GPL-3.0-or-later | [ounce-runtime](https://github.com/hffgzktbcc-blip/ounce-runtime) |
+| **deckstream** | Steam Deck NAS/WebDAV game launcher and streaming experimentation. | You want an on-demand virtual filesystem for handheld Linux gaming PCs (SteamOS) with Gaming Mode integration. | MIT | [deckstream](https://github.com/hffgzktbcc-blip/deckstream) |
 
-**ounce-runtime is a separate GPL derivative.** It lives in its own repository, and no code flows from it into the MIT-licensed repositories (ounce-core and ounce-hb). ounce-hb uses ounce-core only by running its released CLI as a separate program. Results from one project do not carry over to the others.
+**Independent siblings, clean boundaries.** Each project solves a distinct problem with its own repository, tests, and releases. DeckStream is an independent sibling, not an Ounce-Core derivative; no code flows inappropriately across licensing boundaries (`ounce-core`, `ounce-hb`, and `deckstream` are MIT; `ounce-runtime` is GPL-3.0-or-later).
 
 ## Try it
 
