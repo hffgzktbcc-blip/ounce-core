@@ -46,6 +46,56 @@ fn nro_only_command_rejects_raw_input_before_execution() {
     assert!(!String::from_utf8_lossy(&output.stdout).contains("Starting execution"));
 }
 
+/// The issue's minimal NRO: `mov w0, #0; svc #7` (svcExitProcess), 128 bytes.
+fn exit_nro_bytes() -> Vec<u8> {
+    let text: Vec<u8> = [0x5280_0000u32, 0xD400_00E1].iter().flat_map(|w| w.to_le_bytes()).collect();
+    let total = 0x80 + text.len();
+    let mut b = vec![0u8; total];
+    b[0..4].copy_from_slice(&0x1400_0020u32.to_le_bytes());
+    b[0x10..0x14].copy_from_slice(b"NRO0");
+    b[0x18..0x1c].copy_from_slice(&(total as u32).to_le_bytes());
+    b[0x24..0x28].copy_from_slice(&(total as u32).to_le_bytes());
+    b[0x80..].copy_from_slice(&text);
+    b
+}
+
+/// Runs the exit NRO with one guest argument of `arg_len` bytes. Returns the output and the file name, which sets
+/// the program path that run-nro puts in front of the guest argument (`sdmc:/<file>`).
+fn run_exit_nro_with_argument(tag: &str, arg_len: usize) -> std::process::Output {
+    let path = std::env::temp_dir().join(format!("ounce_argv_{tag}_{}.nro", std::process::id()));
+    std::fs::write(&path, exit_nro_bytes()).unwrap();
+    let argument = "a".repeat(arg_len);
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run-nro", path.to_str().unwrap(), "--present=headless", &argument])
+        .output()
+        .unwrap();
+    std::fs::remove_file(path).unwrap();
+    output
+}
+
+#[test]
+fn guest_argument_at_the_documented_limit_runs() {
+    // The argument string is "sdmc:/<file> " plus the guest argument; 62,855 bytes is the limit (`MAX_ARGV_LEN`).
+    let file_name_len = format!("ounce_argv_at_{}.nro", std::process::id()).len();
+    let prefix_len = "sdmc:/".len() + file_name_len + " ".len();
+    let output = run_exit_nro_with_argument("at", 62_855 - prefix_len);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.contains("Process exited gracefully"));
+}
+
+#[test]
+fn guest_argument_one_byte_over_the_limit_is_refused_before_the_program_starts() {
+    let file_name_len = format!("ounce_argv_over_{}.nro", std::process::id()).len();
+    let prefix_len = "sdmc:/".len() + file_name_len + " ".len();
+    let output = run_exit_nro_with_argument("over", 62_855 - prefix_len + 1);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success());
+    assert!(stderr.contains("[Loader Error]"), "stderr: {stderr}");
+    assert!(stderr.contains("over the 62855-byte limit"), "stderr: {stderr}");
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("Starting execution"));
+}
+
 #[test]
 fn linux_deterministic_clock_cli_repeats_the_same_output() {
     let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/linux-elf/bin/clock.elf");

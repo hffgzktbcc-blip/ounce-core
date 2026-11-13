@@ -8,7 +8,7 @@ pub mod nro;
 pub mod package;
 
 pub use boot::{BootLoader, BootPackageInfo};
-pub use homebrew::{ConfigEntry, HomebrewConfig};
+pub use homebrew::{ConfigEntry, ConfigError, HomebrewConfig};
 pub use init::{call_guest_function, run_finalizers, run_initializers, GuestCallError, InitReport};
 pub use nro::{HomebrewEnvironment, LoadError, NroHeader, NroLoader, TlsBlock, TlsLayout};
 pub use package::{
