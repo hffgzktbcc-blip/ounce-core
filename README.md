@@ -25,10 +25,22 @@ Ounce-Core runs the program and diffs its output byte for byte against a referen
 ## What it has done
 
 - **It found real bugs.** In one week of running unmodified open-source programs (LZ4, xxHash, SQLite, Lua) against an Apple Silicon Mac, it found a prefetch instruction that corrupted registers, two floating-point instructions with the wrong sign (so `sin`, `cos` and `pow` returned wrong values), and many missing vector instructions. All were fixed, each with a test.
-- **It agrees with the hardware on real programs.** LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7 and a 5,964-line floating-point test give byte-identical output on Tier-3, Tier-4 and native. 18 programs also run as static Linux ARM64 programs and match a host build and qemu-user. The older corpus of <!-- corpus-headline -->50/50<!-- /corpus-headline --> outside homebrew programs passes its pixel checks, on the inputs those checks cover.
+- **It agrees with the hardware on real programs.** LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7 and a 5,964-line floating-point test give byte-identical output on Tier-3, Tier-4 and native. 18 programs also run as static Linux ARM64 programs and match a host build and qemu-user. The first-frame corpus of <!-- corpus-headline -->50/50<!-- /corpus-headline --> outside programs passes its pixel checks, on the inputs those checks cover.
 - **It is safe Rust.** The runtime in `src/` forbids `unsafe` code, and the compiler enforces it. The two small crates that need `unsafe` are kept apart, and CI checks the boundary.
 
 **Limit:** this is a testing tool, not a fast emulator. It does not run arbitrary programs, instruction coverage is partial, and a match is evidence for the inputs tested, not proof ([limits](docs/LIMITS.md)).
+
+## The Ounce family
+
+This repository is ounce-core, the engine and verification tool. Two sibling projects build on it:
+
+| Project | What it is for | When to choose it | Licence | Link |
+| :--- | :--- | :--- | :--- | :--- |
+| **ounce-core** (this repo) | Runs ARM64 programs on three CPU engines and compares the output with real ARM64 hardware. | You want to check whether your code gives the same result on ARM64, or you want the engines, corpus and differential tools. | MIT | You are here |
+| **ounce-hb** | A runner for your own homebrew programs. It calls the released ounce-core CLI and adds diagnostics and exit codes. | You want a simple homebrew-only runner, plain-language stop reasons and exit codes that scripts can read. It is at an early milestone (M0). | MIT | [ounce-hb](https://github.com/hffgzktbcc-blip/ounce-hb) |
+| **ounce-runtime** | A separate derivative of ounce-core with native JIT, GPU presentation and Mac controller support. | You want to experiment with those features and you accept GPL-3.0 terms. | GPL-3.0-or-later | [ounce-runtime](https://github.com/hffgzktbcc-blip/ounce-runtime) |
+
+**ounce-runtime is a separate GPL derivative.** It lives in its own repository, and no code flows from it into the MIT-licensed repositories (ounce-core and ounce-hb). ounce-hb uses ounce-core only by running its released CLI as a separate program. Results from one project do not carry over to the others.
 
 ## Try it
 
