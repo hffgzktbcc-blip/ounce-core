@@ -32,6 +32,10 @@ Ounce-Core runs the program and diffs its output byte for byte against a referen
 
 ## The Growing Family
 
+<p align="center">
+  <img src="docs/assets/family-banner.jpg" alt="The Ounce Project Family: Ounce-Core, Ounce-HB, Ounce-Runtime, and DeckStream" width="100%">
+</p>
+
 > *Built by curiosity. Tested by evidence. Powered by community.*
 
 Four independent, open-source projects sharing a development philosophy, an evidence-first discipline, and an active community:
