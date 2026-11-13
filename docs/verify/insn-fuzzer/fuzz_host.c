@@ -356,24 +356,59 @@ static void edge_corpus(void) {
     }
 }
 
+// Published v0.2.0 inputs: explicit register bits, no PRNG or expected outputs.
+// Keep these stable so hardware captures can be reproduced by case name.
+static int named_case(const char *name) {
+    memset(&c, 0, sizeof c);
+    uint32_t w;
+    if (!strcmp(name, "default-nan-mul2d")) {
+        w = 0x6e62dc20; c.v[4] = c.v[5] = UINT64_C(0x7ff0000000000000);
+    } else if (!strcmp(name, "snan-add-d")) {
+        w = 0x1e622820; c.v[2] = UINT64_C(0x7ff0000000000042); c.v[4] = UINT64_C(0x3ff0000000000000);
+    } else if (!strcmp(name, "qnan-fmaxnm-d")) {
+        w = 0x1e626820; c.v[2] = UINT64_C(0xfff8000000000042); c.v[4] = UINT64_C(0x4000000000000000);
+    } else if (!strcmp(name, "frintn-tie-d")) {
+        w = 0x1e644020; c.v[2] = UINT64_C(0x4004000000000000);
+    } else if (!strcmp(name, "frinta-negative-tie-d")) {
+        w = 0x1e664020; c.v[2] = UINT64_C(0xc004000000000000);
+    } else if (!strcmp(name, "fcmp-unordered-d")) {
+        w = 0x1e622020; c.v[2] = UINT64_C(0x7ff8000000000042); c.v[4] = UINT64_C(0x3ff0000000000000);
+    } else if (!strcmp(name, "fcvtzs-negative-d")) {
+        w = 0x9e780020; c.v[2] = UINT64_C(0xc00e000000000000);
+    } else if (!strcmp(name, "sqadd-saturate-16b")) {
+        w = 0x4e220c20; c.v[2] = c.v[3] = UINT64_C(0x7f807f807f807f80);
+        c.v[4] = c.v[5] = UINT64_C(0x01ff01ff01ff01ff);
+    } else if (!strcmp(name, "adds-signed-overflow")) {
+        w = 0xab020020; c.x[1] = UINT64_C(0x7fffffffffffffff); c.x[2] = 1;
+    } else if (!strcmp(name, "adcs-carry-wrap")) {
+        w = 0xba020020; c.x[1] = UINT64_MAX; c.nzcv = UINT64_C(2) << 28;
+    } else if (!strcmp(name, "sbfm-sign-extend")) {
+        w = 0x93483c20; c.x[1] = UINT64_C(0x123456789abc8000);
+    } else if (!strcmp(name, "bfm-wrap-insert")) {
+        w = 0xb3781c20; c.x[0] = UINT64_C(0xaaaaaaaaaaaaaaaa); c.x[1] = UINT64_C(0x81);
+    } else return 0;
+    run_case(w, 0);
+    return 1;
+}
+
 int main(int argc, char **argv) {
     uint64_t sd = 1, count = 1000;
-    int default_nan_case = 0, edge = 0, list_words = 0;
+    int edge = 0, list_words = 0;
+    const char *case_name = NULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--list-words")) { list_words = 1; continue; }
         if (i + 1 >= argc) { fprintf(stderr, "options require values\n"); return 2; }
         if (!strcmp(argv[i], "--seed")) sd = strtoull(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--count")) count = strtoull(argv[++i], 0, 0);
-        else if (!strcmp(argv[i], "--case") && !strcmp(argv[i + 1], "default-nan-mul2d")) { default_nan_case = 1; i++; }
+        else if (!strcmp(argv[i], "--case")) case_name = argv[++i];
         else if (!strcmp(argv[i], "--corpus") && !strcmp(argv[i + 1], "edge")) { edge = 1; i++; }
-        else { fprintf(stderr, "usage: fuzz_host [--seed N] [--count N] [--case default-nan-mul2d] | --corpus edge [--list-words]\n"); return 2; }
+        else { fprintf(stderr, "usage: fuzz_host [--seed N] [--count N] [--case NAME (see conformance/arm64-v0.2.0/README.md)] | --corpus edge [--list-words]\n"); return 2; }
     }
     if (list_words) {
         build_ops();
         for (int i = 0; i < nops; i++) printf("%08x %s\n", ops[i].word, ops[i].name);
         return 0;
     }
-    if (default_nan_case) count = 1;
     seed(sd);
     size_t tlen = (uintptr_t)tmpl_end - (uintptr_t)tmpl_start;
     page = mmap(0, 16384, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | JIT_FLAGS, -1, 0);
@@ -387,6 +422,12 @@ int main(int argc, char **argv) {
     JIT_WRITE(0);
     ICACHE(page, tlen);
     fn = (void (*)(ctx_t *))page;
+    if (case_name) {
+        if (!named_case(case_name)) { fprintf(stderr, "unknown case: %s\n", case_name); return 2; }
+        fprintf(stderr, "fuzz_host case=%s executed=%llu undefined(SIGILL)=%llu\n", case_name,
+                (unsigned long long)nt, (unsigned long long)nu);
+        return nu ? 1 : 0;
+    }
     if (edge) {
         build_ops();
         edge_corpus();
@@ -396,13 +437,7 @@ int main(int argc, char **argv) {
     }
     for (uint64_t n = 0; n < count; n++) {
         uint32_t w;
-        if (default_nan_case) {
-            // FMUL V0.2D,V1.2D,V2.2D: zero times positive infinity in each lane.
-            // Capture the actual hardware result; never substitute an expected NaN.
-            memset(&c, 0, sizeof c);
-            w = 0x6e62dc20;
-            c.v[4] = c.v[5] = UINT64_C(0x7ff0000000000000);
-        } else {
+        {
             w = gen_word();
             for (int i = 0; i < 31; i++) c.x[i] = rand_x();
             c.x[18] = 0; // macOS reserves x18 (the kernel clears it on a context switch); replay does not compare it
