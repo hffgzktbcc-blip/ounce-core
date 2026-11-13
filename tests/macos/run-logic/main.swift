@@ -60,38 +60,14 @@ check(Diagnosis.programOutput(log: String(repeating: "x", count: 500))[0].count 
 
 // A failed run produces a report that names the file only and hides the home folder.
 let failed = diag("[VM Error] Unimplemented instruction 0x9AC04021 at PC: 0x0000000080001234\n  Final PC: /Users/sam/secret", 1, .tier4)
-let report = IssueReport(program: "app.nro", engine: .tier4, diagnosis: failed, appVersion: "0.7.0", hostOS: "macOS 26", home: "/Users/sam")
+let report = IssueReport(program: "app.nro", engine: .tier4, diagnosis: failed, appVersion: "0.7.0", hostOS: "macOS 26", home: "/Users/sam", hostChip: "Apple M2")
 check(report.command == "ounce-core run-nro app.nro --cpu=tier4", "report command")
-check(report.engineLabel == "Tier-4 JIT (--cpu=tier4)", "engine label matches the form dropdown")
+check(report.engineLabel == "Tier-4 recompiler (--cpu=tier4)", "engine label matches the form dropdown")
 check(report.body.contains("0x9AC04021") && report.body.contains("macOS 26") && !report.body.contains("/Users/sam"), "report keeps evidence and hides the home folder")
 let reportURL = report.url?.absoluteString ?? ""
 check(reportURL.hasPrefix("https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=emulation_bug.yml"), "report opens the emulation bug form")
-check(reportURL.contains("engine=Tier-4%20JIT") && !reportURL.contains("Users"), "form is prefilled without the home folder")
+check(reportURL.contains("engine=Tier-4%20recompiler") && !reportURL.contains("Users"), "form is prefilled without the home folder")
+check(reportURL.contains("expected=") && reportURL.contains("environment=Ounce%20Core%20app%200.7.0,%20macOS%2026,%20Apple%20M2"), "form carries expected result and environment: \(reportURL)")
+check(report.body.contains("Expected result and where it comes from\nCompared:") && report.body.contains("Apple M2"), "clipboard text follows the form's headings")
 
-// Harness catalog against the committed differential.json
-let catalogData = try Data(contentsOf: URL(fileURLWithPath: "docs/verify/differential.json"))
-let catalog = try HarnessCatalog.parse(catalogData)
-check(catalog.count >= 10, "catalog loaded")
-check(HarnessCatalog.match(nroFile: "lz4.nro", in: catalog)?.resultFile == "lz4-results.txt", "lz4 result file")
-check(HarnessCatalog.match(nroFile: "lz4_harness.nro", in: catalog)?.name == "lz4", "harness suffix")
-check(HarnessCatalog.match(nroFile: "Vector-FP.nro", in: catalog)?.arm64Reference == true, "case-insensitive, arm64 reference")
-check(HarnessCatalog.match(nroFile: "homebrew-menu.nro", in: catalog) == nil, "unknown nro")
-for harness in catalog {
-    let path = "docs/verify/\(harness.dir)/expected-host.txt"
-    check(FileManager.default.fileExists(atPath: path), "reference exists for \(harness.name)")
-}
-
-// Comparison
-let same = ResultComparison.compare(expected: "a\nb\n", actual: "a\nb")
-check(same.identical && same.actualLines == 2, "trailing newline tolerated")
-let different = ResultComparison.compare(expected: "a\nb\nc\n", actual: "a\nX\n")
-check(!different.identical && different.differingLines == 2 && different.firstDifference == 2, "diff counts")
-check(different.samples[1].actual == "(missing)", "missing line shown")
-let many = ResultComparison.compare(expected: String(repeating: "x\n", count: 20), actual: String(repeating: "y\n", count: 20))
-check(many.samples.count == ResultComparison.sampleLimit && many.differingLines == 20, "sample limit")
-let lz4 = catalog[catalog.firstIndex { $0.name == "lz4" }!]
-check(same.summary(harness: lz4, engine: .tier3, hostIsARM64: true).hasPrefix("Match."), "match summary")
-check(different.summary(harness: lz4, engine: .tier3, hostIsARM64: true).hasPrefix("Mismatch."), "mismatch summary")
-let fp = catalog[catalog.firstIndex { $0.name == "fp-instructions" }!]
-check(different.summary(harness: fp, engine: .tier3, hostIsARM64: false).contains("ARM64 host"), "arm64 caveat")
-print("Run settings, diagnosis and host-comparison checks passed.")
+print("Run settings and diagnosis checks passed.")

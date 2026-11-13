@@ -280,13 +280,14 @@ struct EvidenceReport {
                 let report = try decoder.decode(WorkbenchCheck.self, from: data)
                 guard !report.engines.isEmpty, report.engines.count <= 32 else { throw ReadError.invalid }
                 records = []
-                var list = [Section(title: report.verdict.headline, lines: [report.verdict.detail])]
+                // Same words as the page: the outcome first, then the sentence the server saved.
+                var list = [Section(title: Self.outcomeLabel(report.verdict.kind), lines: [Self.currentWording(report.verdict.headline), report.verdict.detail])]
                 if let ic = report.instructions {
                     list.append(Section(title: "Instruction check", lines: [
                         "Sampled instructions checked: \(ic.checked) • Mismatched: \(ic.mismatched)"
                     ]))
                 }
-                list += report.engines.map { eng in Section(title: eng.engine, lines: [
+                list += report.engines.map { eng in Section(title: Self.engineName(eng.engine), lines: [
                     "Stop: \(eng.stop.kind) (\(eng.seconds) s)",
                     eng.stop.line.isEmpty ? "No stop message recorded." : eng.stop.line
                 ]) }
@@ -311,6 +312,31 @@ struct EvidenceReport {
         defer { try? handle.close() }
         let data = try handle.read(upToCount: 8 * 1024 * 1024 + 1) ?? Data()
         return try EvidenceReport(data: data)
+    }
+    static func engineName(_ engine: String) -> String {
+        switch engine {
+        case "tier3": return "Interpreter (Tier-3)"
+        case "tier4": return "Recompiler (Tier-4)"
+        case "native": return "Directly on this Mac"
+        default: return engine
+        }
+    }
+    /// The three outcomes as the workbench page words them.
+    static func outcomeLabel(_ kind: String) -> String {
+        switch kind {
+        case "matches", "agrees": return "Results match"
+        case "diverges": return "Results differ"
+        default: return "Could not run this program"
+        }
+    }
+    /// Results saved by earlier versions used engine names in the headline. Show them in the page's words.
+    static func currentWording(_ headline: String) -> String {
+        switch headline {
+        case "Tier-3 and Tier-4 agree": return "Both engines agreed; not compared with this Mac"
+        case "Tier-3 and Tier-4 disagree": return "The two engines gave different results"
+        case "Matches this computer on this run": return "Same result as this Mac on this run"
+        default: return headline
+        }
     }
     static func explanation(_ verdict: String) -> String {
         switch verdict {

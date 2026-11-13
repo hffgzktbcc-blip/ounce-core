@@ -4,6 +4,59 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+## 0.8.1
+
+### Removed
+- The release workflow no longer builds or attaches a prebuilt Mac app (`ounce-core-macos-arm64-app.zip`). The app stays
+  build-from-source. Releases carry the Linux, macOS and Windows command-line archives and `SHA256SUMS`.
+
+### Fixed
+- `run-nro` and `run` refuse a guest argument string over 62,855 bytes with a `[Loader Error]` and exit 1 before the
+  program starts (#418). The string is the program path (`sdmc:/<file>`) and the guest arguments joined by spaces, so a
+  longer path leaves less room for the guest arguments. Before, a longer string overwrote the program's first
+  instruction. The limit is the 64 KiB between the homebrew config block and the NRO load address, less the 5 config
+  entries and the 2,560 bytes of next-load buffers.
+
+### Changed
+- `--present=headless` (or `OUNCE_PRESENT=headless`) opens no host audio device, so a run on a machine with no audio output
+  no longer prints ALSA or `[HostAudioSink]` errors to stderr (#419). Guest audio is discarded in that mode. The other
+  modes (`auto`, `gpu`, `minifb`) still open the default output device as before. Documented in `docs/DETAILS.md` and
+  `--help`.
+
+## 0.8.0
+
+### Removed
+- Key handling and encrypted-container support (NCA/XCI, `prod.keys` parsing). Ounce-core is homebrew-only; a CI guard
+  (`scripts/check_legal_guardrails.sh`) rejects reintroducing it.
+
+### Added
+- The workbench and the Mac app check static AArch64 Linux ELF programs as well as `.nro` files; real-program runs are
+  recorded under `docs/mac-app-real-programs/`.
+- Contributor bots: welcome, claim and gentle-nudge workflows, plus `scripts/outside_activity.py` for drafting replies.
+
+### Changed
+- Report This Problem, Copy details and Help > Report a Problem now fill in every field the app knows: program name,
+  size and SHA-256, the engine, what was compared and the expected output fingerprint, the stop reason (an unimplemented
+  instruction keeps its word and address), the command to reproduce, and the OS, chip and Ounce Core version and commit.
+  The issue form says nothing is sent until you press Submit and asks you to search open issues first. See
+  `docs/WORKBENCH_UI.md`.
+- The Mac app is one window, the workbench. The older launcher window is gone. The menu bar is File (Check a Program, Open
+  Recent, Open Saved Results), View (with Advanced inside it) and Help (Report a Problem, Documentation). Run in a
+  Window, Graphics Demo, Run Settings, SD Card Folder and the session log are under View > Advanced. Verify Against Host
+  Reference is gone: the page's "Compare with the recorded reference" does it. A program can be dropped anywhere on the
+  window or on the Dock icon. Clicked through on a Mac; see `docs/MAC_APP.md` for what was and was not seen.
+- The workbench page follows the approved mockup: heading "Check whether a program behaves the same everywhere", verdicts
+  "Results match / Results differ / Could not run this program", a chosen-program row with "Choose another", a progress
+  state, and Save Report….
+- Saved results and the app's results window use the same words as the page (this Mac, Results match) instead of
+  "Tier-3 and Tier-4 agree".
+- Dialogs and file panels in the app are sheets, so Quit is never blocked by one.
+
+### Added
+- FPSR cumulative exception flags (IOC, DZC, OFC, UFC, IXC, IDC) are set by FP arithmetic, conversions, FRINT*, compares and FMAX/FMIN in the interpreter and Tier-3, scalar and vector (`src/cpu/softfp.rs`, `Cpu::step`). FP arithmetic now always goes through the soft-float path, so interpreter FP is slower than before (not measured). Tier-4 compiled FP does not set the flags until the program first accesses FPSR; after that FP arithmetic and compares run in the interpreter. The fp-edge gate now compares flags (0 mismatches over 294,156 cases per engine against qemu-user; hardware left to CI). `tools/testfloat/gen_trace.py` emits flags, all four rounding modes, conversions, FRINT* and compares, with a CI job (`testfloat` in `fp-edge.yml`) that has not run yet.
+
+### Fixed
+- FPCR rounding mode, flush-to-zero and default-NaN are now honoured by ordinary FP arithmetic (#363): scalar and vector `FADD/FSUB/FMUL/FDIV/FNMUL/FMULX/FABD`, `FMLA/FMLS` and `FMADD` family, `FSQRT`, `FRINT*`, `FCVT` single/double, `SCVTF/UCVTF/FCVTZ*` and FP compares, through a pure-integer soft-float (`src/cpu/softfp.rs`) used only when one of those FPCR fields is set. The fp-edge corpus shows 0 mismatches at all nine FPCR values against a qemu-user reference (was 36,941); hardware runs are left to CI. Tier-4 defers to the interpreter while those FPCR fields are set. FPSR exception flags and half-precision arithmetic are still not modelled.
 
 ## 0.7.0
 

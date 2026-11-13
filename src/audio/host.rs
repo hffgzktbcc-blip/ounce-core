@@ -28,6 +28,8 @@ pub struct HostAudioSink {
     pub max_capacity: usize,
     _stream: Option<cpal::Stream>,
     pub is_enabled: bool,
+    /// Whether this sink asked the host for an output device. `false` for [`HostAudioSink::disabled`].
+    pub open_attempted: bool,
     pub sample_rate: u32,
     pub channels: u16,
 }
@@ -43,7 +45,17 @@ impl HostAudioSink {
         Self::with_capacity(DEFAULT_MAX_CAPACITY)
     }
 
+    /// A sink that never asks the host for an audio device, so nothing plays and no device errors are printed.
+    /// `is_enabled` is false. Used when the run is headless (`--present=headless`).
+    pub fn disabled() -> Self {
+        Self::build(DEFAULT_MAX_CAPACITY, false)
+    }
+
     pub fn with_capacity(max_capacity: usize) -> Self {
+        Self::build(max_capacity, true)
+    }
+
+    fn build(max_capacity: usize, open_device: bool) -> Self {
         let queue = Arc::new(Mutex::new(VecDeque::with_capacity(max_capacity.min(96_000))));
         let underruns = Arc::new(AtomicU64::new(0));
         let samples_played = Arc::new(AtomicU64::new(0));
@@ -56,13 +68,11 @@ impl HostAudioSink {
         let sample_rate = DEFAULT_SAMPLE_RATE;
         let channels = DEFAULT_CHANNELS;
 
-        let stream = Self::init_stream(
-            queue_clone,
-            underruns_clone,
-            played_clone,
-            sample_rate,
-            channels,
-        ).ok();
+        let stream = if open_device {
+            Self::init_stream(queue_clone, underruns_clone, played_clone, sample_rate, channels).ok()
+        } else {
+            None
+        };
 
         let is_enabled = stream.is_some();
         Self {
@@ -73,6 +83,7 @@ impl HostAudioSink {
             max_capacity,
             _stream: stream,
             is_enabled,
+            open_attempted: open_device,
             sample_rate,
             channels,
         }

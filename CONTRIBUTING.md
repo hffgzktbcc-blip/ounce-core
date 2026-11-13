@@ -81,6 +81,19 @@ Mark a PLAN task complete manually with its acceptance evidence. A green build,
 PR creation or agent assertion does not by itself complete the user's scenario.
 Outside dependencies block their dependent action, not all other work.
 
+## Automated repository bots
+
+The repository uses automated GitHub Actions workflows and scripts to streamline contributions:
+
+- **Issue triage** (`.github/workflows/issue-triage.yml`): Runs on newly opened issues. It verifies required reproduction fields (`program`, `version`, `command`, `output`), asks politely for any missing information, suggests existing repository labels, searches for potential duplicate open issues, and summarizes crash or problem reports with their likely code area.
+- **CI explainer** (`.github/workflows/ci-explainer.yml`): Runs when a pull request CI workflow run completes with failure. It posts or updates a single comment identifying the failing job and step, extracts relevant trailing log lines, explains the root cause using GitHub Models, and provides the local `scripts/gate.sh` command to reproduce the failure.
+- **Welcome** (`.github/workflows/welcome.yml`): Welcomes first-time contributors with a single comment on their first issue or pull request, explaining next steps, local test commands (`scripts/gate.sh --check quick`), links to `CONTRIBUTING.md` and `docs/community/TRY_THIS_WEEK.md`, and AI-assistance disclosure expectations for pull requests.
+- **Issue claim** (`.github/workflows/claim.yml`): Automatically self-assigns contributors when they comment phrases like "I'll take this", "can I work on this", or "claim" on open, unassigned issues with the `good first issue` label. If an issue is already assigned, it politely explains so and points to other available starter issues.
+- **Inactivity nudge** (`.github/workflows/nudge.yml`): Weekly check that posts a single gentle check-in on open assigned issues if the assignee has had no comment, commit, or PR activity in 14 days. If silence persists for another 14 days, it unassigns the issue with a thank-you to keep tasks open for others. Maintainer assignments are skipped.
+- **Outside activity helper** (`scripts/outside_activity.py`): Read-only maintainer CLI tool using `gh` that lists new issues, pull requests, and comments from outside contributors since a timestamp cached in `~/.cache/ounce-outside-activity.json`.
+- **Shiftbot** (`.github/workflows/shiftbot.yml`): Provides status summaries of open pull request review states and checks.
+- **Community onboarding** (`.github/workflows/community.yml`): Welcomes first-time contributors and monitors beginner issue availability.
+
 ## Sources and integrity
 
 Permissively licensed code may be ported with notices in THIRD_PARTY.md and source
@@ -89,7 +102,7 @@ permitted open-source workloads, and synthetic focused tests as appropriate. Rec
 source, licence, version/hash and build recipe for new redistributed fixtures.
 
 Do not commit keys, retail software, firmware, dumps, leaked/private material or
-incompatible licensed code. Retail decryption remains disabled. See
+incompatible licensed code. Key handling and encrypted-container decryption are out of scope. See
 [the source policy](docs/CLEAN_ROOM.md) and [provenance](docs/PROVENANCE.md) for the
 specific outstanding distribution questions. They do not prohibit unrelated tooling.
 

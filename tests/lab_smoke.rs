@@ -51,7 +51,18 @@ fn uploads_a_program_and_reports_a_verdict() {
     assert!(page.contains(token), "the session key is embedded for the page's own script");
     assert_eq!(http(port, "GET", "/app.js", None, b"").0, 200);
     assert_eq!(http(port, "GET", "/app.css", None, b"").0, 200);
+    assert!(page.contains(r#"src="/report.js""#) && http(port, "GET", "/report.js", None, b"").0 == 200, "the report builder is served");
     assert_eq!(http(port, "POST", "/api/checks?name=x", Some(token), b"not an nro").0, 400);
+    let (status, config) = http(port, "GET", "/api/config", Some(token), b"");
+    assert_eq!(status, 200, "{config}");
+    let config: serde_json::Value = serde_json::from_str(&config).unwrap();
+    assert!(config["default_budget"].as_u64().is_some());
+    assert_eq!(config["version"], env!("CARGO_PKG_VERSION"), "reports name the version");
+    assert!(config["host"]["os"].as_str().is_some_and(|s| !s.is_empty()) && config["host"]["arch"].as_str().is_some(), "reports name the system: {config}");
+    assert_eq!(http(port, "GET", "/api/config", None, b"").0, 403, "config needs the session key");
+    let nro_head = [vec![0u8; 0x10], b"NRO0".to_vec()].concat();
+    assert_eq!(http(port, "POST", "/api/checks?name=x.nro&engines=gpu", Some(token), &nro_head).0, 400, "unknown engine");
+    assert_eq!(http(port, "POST", "/api/checks?name=x.nro&budget=0", Some(token), &nro_head).0, 400, "zero budget");
 
     let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro")).unwrap();
     let (status, body) = http(port, "POST", "/api/checks?name=hello.nro", Some(token), &nro);
@@ -70,6 +81,7 @@ fn uploads_a_program_and_reports_a_verdict() {
     };
     assert_eq!(check["verdict"]["kind"], "agrees", "{check}");
     assert_eq!(check["verdict"]["reference"], false);
+    assert_eq!(check["verdict"]["headline"], "Both engines agreed; not compared with this computer".replace("this computer", if cfg!(target_os = "macos") { "this Mac" } else { "this computer" }), "saved wording uses the page's words");
     let engines = check["engines"].as_array().unwrap();
     assert_eq!(engines.len(), 2);
     assert!(engines.iter().all(|e| e["stop"]["kind"] == "exited"), "{check}");
