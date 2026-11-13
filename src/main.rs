@@ -3822,7 +3822,7 @@ fn setup_homebrew_nro(
     path: &str,
     nro: &[u8],
     guest_args: &[&str],
-) -> Result<(), mmu::MemoryError> {
+) -> Result<(), loader::ConfigError> {
     mmu.map_range(kernel.heap_base, NRO_HEAP_SIZE, Permission::READ_WRITE);
     kernel.heap_size = NRO_HEAP_SIZE;
     kernel.scheduler.main_handle = Some(NRO_MAIN_THREAD_HANDLE);
