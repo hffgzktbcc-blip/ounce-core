@@ -73,6 +73,9 @@ fn run_exit_nro_with_argument(tag: &str, arg_len: usize) -> std::process::Output
     output
 }
 
+// Windows caps a command line at 32,767 characters, so these arguments cannot be passed there; the
+// loader unit tests cover the same limit on every platform.
+#[cfg(not(windows))]
 #[test]
 fn guest_argument_at_the_documented_limit_runs() {
     // The argument string is "sdmc:/<file> " plus the guest argument; 62,855 bytes is the limit (`MAX_ARGV_LEN`).
@@ -84,6 +87,9 @@ fn guest_argument_at_the_documented_limit_runs() {
     assert!(stdout.contains("Process exited gracefully"));
 }
 
+// Windows caps a command line at 32,767 characters, so these arguments cannot be passed there; the
+// loader unit tests cover the same limit on every platform.
+#[cfg(not(windows))]
 #[test]
 fn guest_argument_one_byte_over_the_limit_is_refused_before_the_program_starts() {
     let file_name_len = format!("ounce_argv_over_{}.nro", std::process::id()).len();
