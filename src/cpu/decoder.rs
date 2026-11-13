@@ -511,6 +511,27 @@ pub fn decode(raw: u32) -> Instruction {
         }
     }
 
+    // FEAT_LRCPC2: STLUR/LDAPUR, with an unscaled signed imm9 and no writeback.
+    // Reuse ordinary memory operations, as for LDAR/STLR in this single-core emulator.
+    if (raw & 0x3F200C00) == 0x19000000 {
+        let size = ((raw >> 30) & 0x3) as u8;
+        let opc = ((raw >> 22) & 0x3) as u8;
+        if (size == 2 && opc == 3) || (size == 3 && opc >= 2) {
+            return Instruction::Unimplemented { raw };
+        }
+        return Instruction::LoadStoreImm {
+            rt: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            offset: sign_extend(((raw >> 12) & 0x1FF) as u64, 9),
+            size_bytes: 1u8 << size,
+            is_load: opc != 0,
+            is_signed: opc == 2 || opc == 3,
+            is_64_target: size == 3 || opc == 2,
+            writeback: false,
+            post_index: false,
+        };
+    }
+
     // 13c. Load/Store Exclusive & Load-Acquire/Store-Release (LDXR, LDAXR, LDAR, STXR, STLXR, STLR)
     // Pattern: size 001000 o2 L o1 Rs o0 Rt2 Rn Rt
     if (raw & 0x3F000000) == 0x08000000 {
