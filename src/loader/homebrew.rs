@@ -9,6 +9,25 @@
 
 use crate::mmu::{Memory, MemoryError, Permission};
 
+/// Bytes between the config block (`0x7FFF_0000`) and the NRO load address (`0x8000_0000`). The block must end
+/// below the NRO: it is mapped in whole pages, so anything past this window would overwrite the program's code.
+pub const CONFIG_WINDOW: u64 = 0x1_0000;
+
+/// Longest argument string (the `sdmc:/<file>` program path, then the guest arguments, joined by spaces and quoted
+/// where they contain spaces) that fits in `CONFIG_WINDOW` with the entries and next-load buffers `run-nro` passes:
+/// 5 entries (120 bytes), the string and its NUL, 16-byte alignment, then 512 + 2048 bytes of next-load buffers.
+/// `ounce-core run-nro` refuses longer strings with a non-zero exit before the program starts.
+pub const MAX_ARGV_LEN: usize = 62_855;
+
+/// Why the homebrew config block could not be written.
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    #[error("argument string is {len} bytes, over the {max}-byte limit (the program path and the guest arguments, joined by spaces)")]
+    ArgvTooLong { len: usize, max: usize },
+    #[error(transparent)]
+    Memory(#[from] MemoryError),
+}
+
 pub const ENTRY_SIZE: u64 = 24;
 pub const FLAG_MANDATORY: u32 = 1;
 
@@ -78,14 +97,13 @@ impl HomebrewConfig {
 
     /// Maps pages at `addr` (page aligned), writes the list there and the argument string after it.
     /// Returns the list address, which goes in `X0`.
-    pub fn write(&self, mmu: &mut Memory, addr: u64) -> Result<u64, MemoryError> {
+    pub fn write(&self, mmu: &mut Memory, addr: u64) -> Result<u64, ConfigError> {
         // The argument string follows the list; point the Argv entry at it once the list length is known.
         let mut entries = self.entries(0);
         let argv_addr = addr + (entries.len() as u64) * ENTRY_SIZE;
         for e in entries.iter_mut().filter(|e| e.key == ENTRY_ARGV) {
             e.value[1] = argv_addr;
         }
-        // Map as many pages as the list and the string need (a long command line spills past one page).
         let argv_len = self.argv.as_ref().map_or(0, |a| a.len() as u64 + 1);
         let next_path_addr = (argv_addr + argv_len).next_multiple_of(16);
         let next_argv_addr = next_path_addr + NEXT_LOAD_PATH_SIZE;
@@ -94,6 +112,11 @@ impl HomebrewConfig {
         }
         let end = if self.next_load { next_argv_addr + NEXT_LOAD_ARGV_SIZE } else { argv_addr + argv_len };
         let total = end - addr;
+        // Refuse before mapping anything: a block past the window would map and overwrite the NRO's first page.
+        if total > CONFIG_WINDOW {
+            return Err(ConfigError::ArgvTooLong { len: self.argv.as_ref().map_or(0, |a| a.len()), max: MAX_ARGV_LEN });
+        }
+        // Map as many pages as the list and the string need (a long command line spills past one page).
         mmu.map_range(addr, total.max(1).div_ceil(0x1000) as usize * 0x1000, Permission::READ_WRITE);
         for (i, e) in entries.iter().enumerate() {
             let at = addr + i as u64 * ENTRY_SIZE;
@@ -118,7 +141,7 @@ impl HomebrewConfig {
     }
 
     /// Writes the list at `addr` and sets the entry registers: `X0` = list, `X1` = `-1`.
-    pub fn setup(&self, cpu: &mut crate::cpu::Cpu, mmu: &mut Memory, addr: u64) -> Result<(), MemoryError> {
+    pub fn setup(&self, cpu: &mut crate::cpu::Cpu, mmu: &mut Memory, addr: u64) -> Result<(), ConfigError> {
         let list = self.write(mmu, addr)?;
         cpu.regs.write_x(0, list);
         cpu.regs.write_x(1, u64::MAX);
@@ -168,6 +191,49 @@ mod tests {
         let ptr = mmu.read_u64(0x7000_0000 + 16).unwrap();
         assert_eq!(mmu.read_u8(ptr + argv.len() as u64).unwrap(), 0);
         assert_eq!(mmu.read_u8(ptr + argv.len() as u64 - 1).unwrap(), b'x');
+    }
+
+    /// Maps the NRO's first page at `0x8000_0000` with a sentinel and returns the config block address, which is
+    /// `CONFIG_WINDOW` below it (the layout `run-nro` uses).
+    fn map_nro_page_with_sentinel(mmu: &mut Memory) -> u64 {
+        mmu.map_range(0x8000_0000, 0x1000, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(0x8000_0000, 0xD400_00E1).unwrap();
+        0x8000_0000 - CONFIG_WINDOW
+    }
+
+    fn run_nro_config(argv: String) -> HomebrewConfig {
+        HomebrewConfig {
+            main_thread_handle: Some(0x1000),
+            heap: Some((0x2_0000_0000, 0x1000_0000)),
+            argv: Some(argv),
+            next_load: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn argv_at_the_limit_fits_below_the_nro() {
+        let mut mmu = Memory::new();
+        let addr = map_nro_page_with_sentinel(&mut mmu);
+        let argv = "x".repeat(MAX_ARGV_LEN);
+        run_nro_config(argv.clone()).write(&mut mmu, addr).unwrap();
+        // The block stops short of the NRO and the NRO's first instruction is untouched.
+        assert_eq!(mmu.read_u32(0x8000_0000).unwrap(), 0xD400_00E1);
+        // Argv is the third entry; its string follows the five entries of the run-nro list.
+        let ptr = mmu.read_u64(addr + 2 * ENTRY_SIZE + 16).unwrap();
+        assert_eq!(ptr, addr + 5 * ENTRY_SIZE);
+        assert_eq!(mmu.read_u8(ptr + argv.len() as u64).unwrap(), 0);
+        assert_eq!(mmu.read_u8(ptr + argv.len() as u64 - 1).unwrap(), b'x');
+    }
+
+    #[test]
+    fn argv_one_byte_over_the_limit_is_refused_before_anything_is_mapped() {
+        let mut mmu = Memory::new();
+        let addr = map_nro_page_with_sentinel(&mut mmu);
+        let err = run_nro_config("x".repeat(MAX_ARGV_LEN + 1)).write(&mut mmu, addr).unwrap_err();
+        assert!(matches!(err, ConfigError::ArgvTooLong { len, max } if len == MAX_ARGV_LEN + 1 && max == MAX_ARGV_LEN));
+        assert_eq!(mmu.read_u32(0x8000_0000).unwrap(), 0xD400_00E1);
+        assert!(mmu.read_u32(addr).is_err(), "nothing was mapped for the refused block");
     }
 
     #[test]
