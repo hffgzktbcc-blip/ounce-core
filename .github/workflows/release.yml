@@ -99,15 +99,6 @@ jobs:
           if [[ "$RUNNER_OS" == "Linux" ]]; then native_args=(--native-notices work/native-notices); fi
           python scripts/package_release.py --binary target/${{ matrix.target }}/release/${{ matrix.binary_name }} --output ${{ matrix.archive_name }} --toolchain-notices work/toolchain-notices "${native_args[@]}"
 
-      - name: Build and package macOS launcher
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          scripts/build_macos_app.sh
-          review_args=()
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then review_args=(--require-reviewed); fi
-          scripts/package_macos_release.sh "dist/Ounce Core.app" ounce-core-macos-arm64-app.zip "${review_args[@]}"
-
       - name: Write SHA-256 checksum (Unix)
         if: matrix.os != 'windows-latest'
         run: shasum -a 256 "${{ matrix.archive_name }}" > "${{ matrix.archive_name }}.sha256"
@@ -182,22 +173,6 @@ jobs:
         with:
           subject-path: "${{ matrix.archive_name }}"
 
-      - name: Attest macOS app archive provenance
-        if: github.event_name == 'push' && runner.os == 'macOS'
-        uses: actions/attest@v4
-        with:
-          subject-path: ounce-core-macos-arm64-app.zip
-
-      - name: Retain macOS app release assets
-        if: github.event_name == 'push' && runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-macos-app
-          path: |
-            ounce-core-macos-arm64-app.zip
-            ounce-core-macos-arm64-app.zip.sha256
-          if-no-files-found: error
-
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'push'
         with:
@@ -223,7 +198,7 @@ jobs:
       - name: Generate archive checksums
         run: |
           cd dist
-          sha256sum ounce-core-linux-x86_64.tar.gz ounce-core-macos-arm64.tar.gz ounce-core-macos-arm64-app.zip ounce-core-windows-x86_64.zip > SHA256SUMS
+          sha256sum ounce-core-linux-x86_64.tar.gz ounce-core-macos-arm64.tar.gz ounce-core-windows-x86_64.zip > SHA256SUMS
       - name: Publish complete release
         uses: softprops/action-gh-release@v2
         with:
