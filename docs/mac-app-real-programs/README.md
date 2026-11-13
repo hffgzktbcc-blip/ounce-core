@@ -16,6 +16,8 @@ program is an unmodified pinned upstream source from [docs/verify/linux-elf/PROG
 | 7 | wasm3 `wasm3.elf` | **Results differ** | stdout vs `wasm3-harness/expected-host.txt`: differs from line 2. Both engines exit 1 with `fib load memory allocation failed` | [07](07-wasm3.png) |
 | 8 | xxHash built with `-O3 -mcpu=apple_m1` (`xxhash-apple-m1.elf`) | **Could not run this program** | both engines stop at `0x190D011F` (`STLURB`, FEAT_LRCPC2): [#414](https://github.com/hffgzktbcc-blip/ounce-core/issues/414) | [08](08-xxhash-apple-m1.png) |
 
+A later command-line verification fixes the Apple M1 xxHash stop with FEAT_LRCPC2 and FEAT_SHA3: both engines exit 0 with `fails=0` and match the host. See [the reproducible SHA3 follow-up](../verify/linux-elf/SHA3-414.md); the screenshots above record the earlier app run.
+
 The verdict for 1 to 6 was also read from the saved `result.json` of each check (`verdict.kind` `agrees`, `host_reference.status` `matches`, both engines `exited`).
 tinf and jsmn also ran through the server API (not the window) and agreed on both engines; they have no recorded reference file.
 

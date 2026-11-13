@@ -1927,6 +1927,31 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::Sha3 { rd, rn, rm, ra, op } => {
+                use super::instructions::Sha3Op;
+                let (n, m, a) = (self.regs.read_q(rn), self.regs.read_q(rm), self.regs.read_q(ra));
+                let r = match op {
+                    Sha3Op::Eor3 => n ^ m ^ a,
+                    Sha3Op::Bcax => n ^ (m & !a),
+                    Sha3Op::Rax1 | Sha3Op::Xar(_) => {
+                        let mut r = 0u128;
+                        for shift in [0, 64] {
+                            let (n, m) = ((n >> shift) as u64, (m >> shift) as u64);
+                            let lane = match op {
+                                Sha3Op::Rax1 => n ^ m.rotate_left(1),
+                                Sha3Op::Xar(imm) => (n ^ m).rotate_right(u32::from(imm)),
+                                _ => unreachable!(),
+                            };
+                            r |= u128::from(lane) << shift;
+                        }
+                        r
+                    }
+                };
+                self.regs.write_q(rd, r);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdThreeSame { rd, rn, rm, op, esize, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 let (r, qc) = simd::three_same_qc(op, d, n, m, esize as u32, q);
