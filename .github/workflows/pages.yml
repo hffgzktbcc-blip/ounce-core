@@ -16,6 +16,8 @@ on:
       - 'THIRD_PARTY.md'
       - 'THIRD_PARTY_NOTICES.txt'
       - 'assets/ounce-core-vista.png'
+      - 'docs/media/ounce-core-main.mp4'
+      - 'docs/media/ounce-core-poster.jpg'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -59,6 +61,7 @@ jobs:
         run: |
           mkdir -p site/assets
           cp assets/ounce-core-vista.png site/assets/ounce-core-vista.png
+          cp docs/media/ounce-core-main.mp4 docs/media/ounce-core-poster.jpg site/assets/
           cp -R target/playground site/playground
       - name: Upload website
         uses: actions/upload-pages-artifact@v5

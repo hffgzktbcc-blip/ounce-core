@@ -220,6 +220,212 @@ pub fn scalar_three_same(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32) -> 
     (r & keep, qc)
 }
 
+/// Rounding direction of the FP round-to-integral and FP-to-integer conversions.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Rm {
+    Ne,
+    Up,
+    Down,
+    Zero,
+    Away,
+}
+
+fn round_f64(x: f64, m: Rm) -> f64 {
+    match m {
+        Rm::Ne => x.round_ties_even(),
+        Rm::Up => x.ceil(),
+        Rm::Down => x.floor(),
+        Rm::Zero => x.trunc(),
+        Rm::Away => x.round(),
+    }
+}
+
+fn is_special_op2(op: SimdFpOp2) -> bool {
+    use SimdFpOp2::*;
+    matches!(op, Frintn | Frintp | Frintm | Frintz | Frinta | Frintx | Frinti | Frint32z | Frint32x | Frint64z | Frint64x | Frecpe | Frsqrte)
+}
+
+/// FP lane ops that need more than the plain Rust float methods: round-to-integral and the estimates.
+/// `cur` is the rounding mode FRINTX/FRINTI/FRINT32X/FRINT64X use (FPCR.RMode).
+fn fp_special_op2(op: SimdFpOp2, bits: u64, esize: u32, cur: Rm) -> u64 {
+    use SimdFpOp2::*;
+    match op {
+        Frecpe => return fp_recip_estimate(bits, esize),
+        Frsqrte => return fp_rsqrt_estimate(bits, esize),
+        _ => {}
+    }
+    let quiet = if esize == 32 { 1u64 << 22 } else { 1u64 << 51 };
+    let v = if esize == 32 { f32::from_bits(bits as u32) as f64 } else { f64::from_bits(bits) };
+    let (bits_range, wide_only) = match op {
+        Frint32z | Frint32x => (Some(32u32), true),
+        Frint64z | Frint64x => (Some(64u32), true),
+        _ => (None, false),
+    };
+    let _ = wide_only;
+    if bits_range.is_none() && v.is_nan() {
+        return bits | quiet;
+    }
+    let rm = match op {
+        Frintn => Rm::Ne,
+        Frintp => Rm::Up,
+        Frintm => Rm::Down,
+        Frintz | Frint32z | Frint64z => Rm::Zero,
+        Frinta => Rm::Away,
+        _ => cur,
+    };
+    let r = round_f64(v, rm);
+    if let Some(w) = bits_range {
+        let lim = if w == 32 { 2147483648.0f64 } else { 9223372036854775808.0f64 };
+        if v.is_nan() || !(r >= -lim && r < lim) {
+            // out of range (also NaN and infinity): the most negative integer of that width
+            return if esize == 32 { (-lim as f32).to_bits() as u64 } else { (-lim).to_bits() };
+        }
+    }
+    if esize == 32 { (r as f32).to_bits() as u64 } else { r.to_bits() }
+}
+
+/// FP to integer conversion with an explicit rounding direction (saturating, NaN becomes 0).
+fn fcvt_mode(op: SimdOp2) -> (Rm, bool) {
+    match op {
+        SimdOp2::Fcvtzs => (Rm::Zero, true),
+        SimdOp2::Fcvtzu => (Rm::Zero, false),
+        SimdOp2::Fcvtns => (Rm::Ne, true),
+        SimdOp2::Fcvtnu => (Rm::Ne, false),
+        SimdOp2::Fcvtms => (Rm::Down, true),
+        SimdOp2::Fcvtmu => (Rm::Down, false),
+        SimdOp2::Fcvtas => (Rm::Away, true),
+        SimdOp2::Fcvtau => (Rm::Away, false),
+        SimdOp2::Fcvtps => (Rm::Up, true),
+        _ => (Rm::Up, false),
+    }
+}
+
+fn fcvt_int(op: SimdOp2, bits: u64, esize: u32) -> u64 {
+    let v = if esize == 32 { f32::from_bits(bits as u32) as f64 } else { f64::from_bits(bits) };
+    let (rm, signed) = fcvt_mode(op);
+    let r = round_f64(v, rm);
+    match (esize, signed) {
+        (32, true) => r as i32 as u32 as u64,
+        (32, false) => r as u32 as u64,
+        (_, true) => r as i64 as u64,
+        (_, false) => r as u64,
+    }
+}
+
+/// Arm `RecipEstimate`: `a` is a 9-bit value in 256..=511 (0.5 <= x < 1.0); the result is in 256..=511.
+fn recip_estimate(a: u32) -> u32 {
+    let a = a * 2 + 1;
+    let b = (1u32 << 19) / a;
+    (b + 1) / 2
+}
+
+/// Arm `RecipSqrtEstimate`: `a` is in 128..=511; the result is in 256..=511.
+fn rsqrt_estimate(a: u32) -> u32 {
+    let a = if a < 256 { a * 2 + 1 } else { ((a >> 1) << 1 | 0) * 2 + 2 };
+    let mut b = 512u64;
+    while (a as u64) * (b + 1) * (b + 1) < (1u64 << 28) {
+        b += 1;
+    }
+    ((b + 1) / 2) as u32
+}
+
+fn urecpe(x: u32) -> u32 {
+    if x >> 31 == 0 {
+        return u32::MAX;
+    }
+    recip_estimate(x >> 23) << 23
+}
+
+fn ursqrte(x: u32) -> u32 {
+    if x >> 30 == 0 {
+        return u32::MAX;
+    }
+    rsqrt_estimate(x >> 23) << 23
+}
+
+/// (sign, biased exponent, 52-bit fraction, exponent bits, mantissa bits) of an FP32/FP64 value.
+fn fp_parts(bits: u64, esize: u32) -> (u64, i64, u64, u32, u32) {
+    let (e, m) = if esize == 32 { (8u32, 23u32) } else { (11, 52) };
+    let sign = bits >> (esize - 1) & 1;
+    let exp = (bits >> m & ((1 << e) - 1)) as i64;
+    let frac = (bits & ((1u64 << m) - 1)) << (52 - m);
+    (sign, exp, frac, e, m)
+}
+
+fn fp_pack(sign: u64, exp: i64, frac52: u64, esize: u32) -> u64 {
+    let (e, m) = if esize == 32 { (8u32, 23u32) } else { (11, 52) };
+    sign << (esize - 1) | ((exp as u64) & ((1 << e) - 1)) << m | frac52 >> (52 - m)
+}
+
+/// `FRECPE` (default FPCR: round to nearest).
+fn fp_recip_estimate(bits: u64, esize: u32) -> u64 {
+    let (sign, mut exp, mut frac, e, _m) = fp_parts(bits, esize);
+    let max = (1i64 << e) - 1;
+    let quiet = if esize == 32 { 1u64 << 22 } else { 1u64 << 51 };
+    if exp == max && frac != 0 {
+        return bits | quiet;
+    }
+    if exp == max {
+        return sign << (esize - 1);
+    }
+    if exp == 0 && frac == 0 {
+        return fp_pack(sign, max, 0, esize);
+    }
+    if exp == 0 && frac >> 50 == 0 {
+        // magnitude below 2^-(bias+1): overflows to infinity
+        return fp_pack(sign, max, 0, esize);
+    }
+    if exp == 0 {
+        if frac >> 51 & 1 == 0 {
+            exp = -1;
+            frac = (frac << 2) & ((1u64 << 52) - 1);
+        } else {
+            frac = (frac << 1) & ((1u64 << 52) - 1);
+        }
+    }
+    let scaled = (1u32 << 8) | (frac >> 44) as u32;
+    let mut result_exp = if esize == 32 { 253 } else { 2045 } - exp;
+    let estimate = recip_estimate(scaled);
+    let mut fraction = ((estimate & 0xFF) as u64) << 44;
+    if result_exp == 0 {
+        fraction = (1u64 << 51) | fraction >> 1;
+    } else if result_exp == -1 {
+        fraction = (1u64 << 50) | fraction >> 2;
+        result_exp = 0;
+    }
+    fp_pack(sign, result_exp, fraction, esize)
+}
+
+/// `FRSQRTE` (default FPCR).
+fn fp_rsqrt_estimate(bits: u64, esize: u32) -> u64 {
+    let (sign, mut exp, mut frac, e, _m) = fp_parts(bits, esize);
+    let max = (1i64 << e) - 1;
+    let quiet = if esize == 32 { 1u64 << 22 } else { 1u64 << 51 };
+    if exp == max && frac != 0 {
+        return bits | quiet;
+    }
+    if exp == 0 && frac == 0 {
+        return fp_pack(sign, max, 0, esize);
+    }
+    if sign == 1 {
+        return if esize == 32 { 0x7fc0_0000 } else { 0x7ff8_0000_0000_0000 };
+    }
+    if exp == max {
+        return 0;
+    }
+    if exp == 0 {
+        while frac >> 51 & 1 == 0 {
+            exp -= 1;
+            frac = (frac << 1) & ((1u64 << 52) - 1);
+        }
+        frac = (frac << 1) & ((1u64 << 52) - 1);
+    }
+    let scaled = if exp & 1 == 0 { (1u32 << 8) | (frac >> 44) as u32 } else { (1u32 << 7) | (frac >> 45) as u32 };
+    let result_exp = (if esize == 32 { 380 } else { 3068 } - exp).div_euclid(2);
+    let estimate = rsqrt_estimate(scaled);
+    fp_pack(0, result_exp, ((estimate & 0xFF) as u64) << 44, esize)
+}
+
 /// Two-register miscellaneous operations.
 pub fn two_misc(op: SimdOp2, n: u128, esize: u32, q: bool) -> u128 {
     if op == SimdOp2::Not {
@@ -258,6 +464,10 @@ pub fn two_misc(op: SimdOp2, n: u128, esize: u32, q: bool) -> u128 {
             SimdOp2::Fcvtzs => f64::from_bits(a) as i64 as u64,
             SimdOp2::Fcvtzu if esize == 32 => f32::from_bits(a as u32) as u32 as u64,
             SimdOp2::Fcvtzu => f64::from_bits(a) as u64,
+            SimdOp2::Fcvtns | SimdOp2::Fcvtnu | SimdOp2::Fcvtms | SimdOp2::Fcvtmu | SimdOp2::Fcvtas | SimdOp2::Fcvtau
+            | SimdOp2::Fcvtps | SimdOp2::Fcvtpu => fcvt_int(op, a, esize),
+            SimdOp2::Urecpe => urecpe(a as u32) as u64,
+            SimdOp2::Ursqrte => ursqrte(a as u32) as u64,
             SimdOp2::Clz => (a.leading_zeros() - (64 - esize)) as u64,
             SimdOp2::Cls => {
                 let x = if s < 0 { !a & all } else { a };
@@ -517,6 +727,8 @@ macro_rules! fp_lane_ops {
                 let flag = |c: bool| if c { ALL } else { 0 };
                 let nan = match op {
                     SimdFpOp3::Fadd | SimdFpOp3::Faddp | SimdFpOp3::Fsub | SimdFpOp3::Fmul | SimdFpOp3::Fmulx | SimdFpOp3::Fdiv => nan_in(&[a, b]),
+                    // the step ops negate the first operand before NaN processing, so its NaN comes back with the sign flipped
+                    SimdFpOp3::Frecps | SimdFpOp3::Frsqrts => nan_in(&[-a, b]),
                     SimdFpOp3::Fabd => nan_in(&[a, b]).map(|r| r & !SIGN),
                     // FPMulAdd: a quiet-NaN addend with 0 * inf is the default NaN; otherwise addend, then operands
                     SimdFpOp3::Fmla | SimdFpOp3::Fmls => {
@@ -540,6 +752,16 @@ macro_rules! fp_lane_ops {
                     // NaN payload/order through nan_in above, and FMULX below.
                     SimdFpOp3::Fmul if (a == 0.0 && b.is_infinite()) || (b == 0.0 && a.is_infinite()) => <$f>::INFINITY.to_bits() | QUIET,
                     SimdFpOp3::Fmul => dn(a * b),
+                    SimdFpOp3::Frecps => {
+                        if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) { (2.0 as $f).to_bits() } else { (-a).mul_add(b, 2.0).to_bits() }
+                    }
+                    SimdFpOp3::Frsqrts => {
+                        if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) { (1.5 as $f).to_bits() } else {
+                            // (3 - a*b) / 2 with one rounding: halve `a` first (exact unless it is tiny, where the
+                            // product cannot overflow and halving the result is exact)
+                            if a.abs() >= <$f>::MIN_POSITIVE * 2.0 { (-a * 0.5).mul_add(b, 1.5).to_bits() } else { ((-a).mul_add(b, 3.0) * 0.5).to_bits() }
+                        }
+                    }
                     SimdFpOp3::Fmulx => {
                         if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) {
                             (if a.is_sign_negative() != b.is_sign_negative() { -2.0 } else { 2.0 } as $f).to_bits()
@@ -575,7 +797,7 @@ macro_rules! fp_lane_ops {
                     SimdFpOp2::Fabs => n & !SIGN,
                     SimdFpOp2::Fneg => n ^ SIGN,
                     SimdFpOp2::Fsqrt => if a.is_nan() { n | QUIET } else { dn(a.sqrt()) },
-                    SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl => unreachable!(),
+                    _ => unreachable!("handled by fp_special_op2"),
                 }
             }
         }
@@ -587,6 +809,19 @@ fp_lane_ops!(fp64, f64, u64, 1 << 51, 1 << 63, 0x7ff8_0000_0000_0000);
 /// Pairwise FP ops read adjacent element pairs of `n` then `m`.
 fn is_pairwise(op: SimdFpOp3) -> bool {
     matches!(op, SimdFpOp3::Faddp | SimdFpOp3::Fmaxp | SimdFpOp3::Fminp | SimdFpOp3::Fmaxnmp | SimdFpOp3::Fminnmp)
+}
+
+fn is_compare(op: SimdFpOp3) -> bool {
+    matches!(op, SimdFpOp3::Fcmeq | SimdFpOp3::Fcmge | SimdFpOp3::Fcmgt | SimdFpOp3::Facge | SimdFpOp3::Facgt)
+}
+
+/// IOC for the compare lanes: FCMEQ only for a signalling NaN, the ordered compares for any NaN.
+fn compare_flags(op: SimdFpOp3, n: u128, m: u128, double: bool, q: bool) {
+    let esize = if double { 64 } else { 32 };
+    let f = super::softfp::Fmt::from_esize(esize);
+    for i in 0..lanes(esize, q) {
+        super::softfp::raise_compare(f, lane(n, esize, i), lane(m, esize, i), op != SimdFpOp3::Fcmeq);
+    }
 }
 
 fn is_minmax(op: SimdFpOp3) -> bool {
@@ -692,7 +927,11 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
     let dn = fpcr & (1 << 25) != 0;
     if esize == 16 {
         let (mut a, mut b) = (a as u16, b as u16);
+        if fp16::is_snan(a) || fp16::is_snan(b) {
+            super::softfp::raise(super::softfp::IOC);
+        }
         if fpcr & (1 << 19) != 0 {
+            // half-precision flushes do not raise IDC (qemu agrees; hardware is checked by the fp-edge CI job)
             if fp16::is_denormal(a) { a &= fp16::SIGN; }
             if fp16::is_denormal(b) { b &= fp16::SIGN; }
         }
@@ -700,10 +939,15 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
         return (if dn && fp16::is_nan(r) { fp16::DEFAULT_NAN } else { r }) as u64;
     }
     let double = esize == 64;
-    if matches!(op, SimdFpOp3::Fadd | SimdFpOp3::Faddp) && fpcr & super::softfp::FPCR_ARITH_MASK != 0 {
-        // scalar FADDP reduces through here: it rounds under RMode, flushes under FZ and honours DN like FADD
+    if matches!(op, SimdFpOp3::Fadd | SimdFpOp3::Faddp) {
+        // scalar FADDP reduces through here: it rounds under RMode, flushes under FZ and honours DN like FADD, and
+        // raises the exception flags
         let (f, env) = (super::softfp::Fmt::from_esize(esize), super::softfp::Env::from_fpcr(fpcr));
         return super::softfp::binop(f, env, super::softfp::BinOp::Add, a, b);
+    }
+    {
+        let (f, env) = (super::softfp::Fmt::from_esize(esize), super::softfp::Env::from_fpcr(fpcr));
+        super::softfp::raise_minmax(f, env, a, b);
     }
     let fz = fpcr & (1 << 24) != 0;
     let flush = |x: u64| -> u64 {
@@ -721,10 +965,24 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
 /// `fp_three_same` honouring FPCR.FZ and FPCR.DN for FMAX/FMIN/FMAXNM/FMINNM and their pairwise forms.
 /// Other operations ignore FPCR, as before.
 pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
-    if fpcr & super::softfp::FPCR_ARITH_MASK != 0 && !is_minmax(op) {
+    let arith = !is_minmax(op) && !is_compare(op);
+    if arith || (fpcr & super::softfp::FPCR_ARITH_MASK != 0 && !is_minmax(op)) {
         return fp_three_same_soft(op, d, n, m, double, q, fpcr);
     }
+    if is_compare(op) {
+        compare_flags(op, n, m, double, q);
+    }
     if !is_minmax(op) || fpcr & (3 << 24) == 0 {
+        if is_minmax(op) {
+            // the host-float lanes below are exact for FMAX/FMIN; only the flags need the soft helper
+            let esize = if double { 64 } else { 32 };
+            let (f, env) = (super::softfp::Fmt::from_esize(esize), super::softfp::Env::from_fpcr(fpcr));
+            let count = lanes(esize, q);
+            for i in 0..count {
+                let (a, b) = fp_operands(op, n, m, esize, count, i);
+                super::softfp::raise_minmax(f, env, a, b);
+            }
+        }
         return fp_three_same(op, d, n, m, double, q);
     }
     let esize = if double { 64 } else { 32 };
@@ -757,9 +1015,12 @@ fn fp_three_same_soft(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q:
             SimdFpOp3::Fabd => f.abs(softfp::binop(f, env, BinOp::Sub, a, b)),
             SimdFpOp3::Fmla => softfp::fma(f, env, a, b, acc),
             SimdFpOp3::Fmls => softfp::fma(f, env, f.neg(a), b, acc),
+            SimdFpOp3::Frecps => softfp::recip_step(f, env, a, b),
+            SimdFpOp3::Frsqrts => softfp::rsqrt_step(f, env, a, b),
             // compares: a flushed denormal reads as zero, nothing else depends on FPCR
             _ => {
                 let (a, b) = (softfp::flush_input(f, env, a), softfp::flush_input(f, env, b));
+                softfp::raise_compare(f, a, b, op != SimdFpOp3::Fcmeq);
                 if double { fp64::op3(op, acc, a, b) } else { fp32::op3(op, acc as u32, a as u32, b as u32) as u64 }
             }
         };
@@ -768,11 +1029,88 @@ fn fp_three_same_soft(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q:
     out
 }
 
+/// IOC for the compare-with-zero lanes: FCMEQ only for a signalling NaN, the ordered compares for any NaN.
+fn zero_compare_flags(op: SimdFpOp2, n: u128, double: bool, q: bool) {
+    let esize = if double { 64 } else { 32 };
+    let f = super::softfp::Fmt::from_esize(esize);
+    for i in 0..lanes(esize, q) {
+        if is_special_op2(op) {
+            special_op2_flags(op, f, lane(n, esize, i), Rm::Ne, false);
+        } else {
+            super::softfp::raise_compare(f, lane(n, esize, i), 0, op != SimdFpOp2::Fcmeq0);
+        }
+    }
+}
+
+/// Exception flags of the round-to-integral ops and the two estimates (`a` is already flushed under FZ). A signalling
+/// NaN is IOC for all of them; the FRINT32/64 forms are also IOC for a NaN, infinity or out-of-range result; the X
+/// forms are IXC when the rounded value differs; FRECPE/FRSQRTE of zero is DZC, FRSQRTE of a negative is IOC, and
+/// FRECPE of a tiny input overflows (OFC+IXC) while a large one flushes to zero under FZ (UFC).
+fn special_op2_flags(op: SimdFpOp2, f: super::softfp::Fmt, a: u64, cur: Rm, fz: bool) {
+    use super::softfp::{raise, DZC, IOC, IXC, OFC, UFC};
+    use SimdFpOp2::*;
+    let esize = if f == super::softfp::F32 { 32 } else { 64 };
+    let n32_64 = matches!(op, Frint32z | Frint32x | Frint64z | Frint64x);
+    if f.is_snan(a) || (f.is_nan(a) && n32_64) {
+        raise(IOC);
+        return;
+    }
+    if f.is_nan(a) {
+        return;
+    }
+    match op {
+        Frecpe => {
+            if f.is_zero(a) {
+                raise(DZC);
+            } else if !f.is_inf(a) {
+                let (_, exp, frac, _, _) = fp_parts(a, esize);
+                if exp == 0 && frac >> 50 == 0 {
+                    raise(OFC | IXC);
+                } else if fz && exp >= if esize == 32 { 253 } else { 2045 } {
+                    raise(UFC);
+                }
+            }
+        }
+        Frsqrte => {
+            if f.is_zero(a) {
+                raise(DZC);
+            } else if a >> (esize - 1) & 1 == 1 {
+                raise(IOC);
+            }
+        }
+        _ => {
+            let v = if esize == 32 { f32::from_bits(a as u32) as f64 } else { f64::from_bits(a) };
+            let rm = match op {
+                Frintn => Rm::Ne,
+                Frintp => Rm::Up,
+                Frintm => Rm::Down,
+                Frintz | Frint32z | Frint64z => Rm::Zero,
+                Frinta => Rm::Away,
+                _ => cur,
+            };
+            let r = round_f64(v, rm);
+            if n32_64 {
+                let lim = if matches!(op, Frint32z | Frint32x) { 2147483648.0f64 } else { 9223372036854775808.0f64 };
+                if v.is_infinite() || !(r >= -lim && r < lim) {
+                    raise(IOC);
+                    return;
+                }
+            }
+            if matches!(op, Frintx | Frint32x | Frint64x) && r != v {
+                raise(IXC);
+            }
+        }
+    }
+}
+
 /// `fp_two_misc` under FPCR: FSQRT rounds under RMode and honours FZ/DN, the compares against zero see flushed
 /// denormals, FCVTN/FCVTL convert under the mode.
 pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, fpcr: u32) -> u128 {
     use super::softfp::{self, Env, F32, F64};
-    if fpcr & softfp::FPCR_ARITH_MASK == 0 {
+    if fpcr & softfp::FPCR_ARITH_MASK == 0 && !matches!(op, SimdFpOp2::Fsqrt | SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl) {
+        if !matches!(op, SimdFpOp2::Fabs | SimdFpOp2::Fneg) {
+            zero_compare_flags(op, n, double, q);
+        }
         return fp_two_misc(op, d, n, double, q);
     }
     let env = Env::from_fpcr(fpcr);
@@ -800,7 +1138,37 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
                     SimdFpOp2::Fabs | SimdFpOp2::Fneg => if double { fp64::op2(op, a) } else { fp32::op2(op, a as u32) as u64 },
                     _ => {
                         let a = softfp::flush_input(f, env, a);
-                        if double { fp64::op2(op, a) } else { fp32::op2(op, a as u32) as u64 }
+                        if is_special_op2(op) {
+                            let cur = match env.round {
+                                softfp::Round::Nearest => Rm::Ne,
+                                softfp::Round::Up => Rm::Up,
+                                softfp::Round::Down => Rm::Down,
+                                softfp::Round::Zero => Rm::Zero,
+                            };
+                            special_op2_flags(op, f, a, cur, env.fz);
+                            let r = fp_special_op2(op, a, esize, cur);
+                            // DN turns a NaN result into the default NaN; FZ flushes a denormal FRECPE result (large inputs)
+                            if env.dn && f.is_nan(r) {
+                                f.default_nan()
+                            } else if env.fz && op == SimdFpOp2::Frecpe && f.is_denormal(r) {
+                                r & !f.abs(u64::MAX)
+                            } else if op == SimdFpOp2::Frecpe && f.is_inf(r) && !f.is_zero(a) && !f.is_inf(a) && !f.is_nan(a) {
+                                // a tiny input overflows: infinity only when the mode rounds that way, else the largest finite value
+                                let neg = r != f.infinity(false);
+                                let to_inf = match env.round {
+                                    softfp::Round::Nearest => true,
+                                    softfp::Round::Up => !neg,
+                                    softfp::Round::Down => neg,
+                                    softfp::Round::Zero => false,
+                                };
+                                if to_inf { r } else { r - 1 }
+                            } else {
+                                r
+                            }
+                        } else {
+                            softfp::raise_compare(f, a, 0, op != SimdFpOp2::Fcmeq0);
+                            if double { fp64::op2(op, a) } else { fp32::op2(op, a as u32) as u64 }
+                        }
                     }
                 };
                 set_lane(&mut out, esize, i, r);
@@ -825,11 +1193,16 @@ pub fn int_fp_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32)
             SimdOp2::Ucvtf => softfp::int_to_fp(f, env, false, a, 0),
             _ => {
                 let a = softfp::flush_input(f, env, a);
+                let v = if esize == 32 { f32::from_bits(a as u32) as f64 } else { f64::from_bits(a) };
+                let (rm, signed) = fcvt_mode(op);
+                let rounded = if rm == Rm::Zero { v.trunc() } else { round_f64(v, rm) };
+                softfp::raise_to_int(f, a, v, rounded, signed, esize == 64);
                 match op {
                     SimdOp2::Fcvtzs if esize == 32 => f32::from_bits(a as u32) as i32 as u64 & mask(32),
                     SimdOp2::Fcvtzs => f64::from_bits(a) as i64 as u64,
                     SimdOp2::Fcvtzu if esize == 32 => f32::from_bits(a as u32) as u32 as u64,
-                    _ => f64::from_bits(a) as u64,
+                    SimdOp2::Fcvtzu => f64::from_bits(a) as u64,
+                    _ => fcvt_int(op, a, esize),
                 }
             }
         };
@@ -840,9 +1213,6 @@ pub fn int_fp_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32)
 
 /// `fp_by_element` under FPCR: the per-lane operation is the soft one when RMode, FZ or DN is set.
 pub fn fp_by_element_fpcr(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool, fpcr: u32) -> u128 {
-    if fpcr & super::softfp::FPCR_ARITH_MASK == 0 {
-        return fp_by_element(op, d, n, m, index, double, q);
-    }
     let esize = if double { 64 } else { 32 };
     let op3 = match op {
         SimdFpElementOp::Fmul => SimdFpOp3::Fmul,
@@ -905,7 +1275,13 @@ pub fn fp_two_misc(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool) -> u1
             let mut out = 0u128;
             for i in 0..lanes(esize, q) {
                 let a = lane(n, esize, i);
-                let r = if double { fp64::op2(op, a) } else { fp32::op2(op, a as u32) as u64 };
+                let r = if is_special_op2(op) {
+                    fp_special_op2(op, a, esize, Rm::Ne)
+                } else if double {
+                    fp64::op2(op, a)
+                } else {
+                    fp32::op2(op, a as u32) as u64
+                };
                 set_lane(&mut out, esize, i, r);
             }
             out
@@ -1027,6 +1403,31 @@ pub fn permute(op: SimdPermuteOp, n: u128, m: u128, esize: u32, q: bool) -> u128
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn round_and_estimate_flags() {
+        use super::super::softfp::{take_flags, F32, DZC, IOC, IXC, OFC, UFC};
+        let flags = |op, bits: u32, cur, fz| {
+            take_flags();
+            special_op2_flags(op, F32, bits as u64, cur, fz);
+            take_flags()
+        };
+        let snan = 0x7f80_0001;
+        assert_eq!(flags(SimdFpOp2::Frintx, 1.5f32.to_bits(), Rm::Ne, false), IXC);
+        assert_eq!(flags(SimdFpOp2::Frintx, 2.0f32.to_bits(), Rm::Ne, false), 0);
+        assert_eq!(flags(SimdFpOp2::Frintz, 1.5f32.to_bits(), Rm::Ne, false), 0, "only FRINTX is inexact");
+        assert_eq!(flags(SimdFpOp2::Frintn, snan, Rm::Ne, false), IOC);
+        assert_eq!(flags(SimdFpOp2::Frintn, 0x7fc0_0000, Rm::Ne, false), 0, "quiet NaN raises nothing");
+        assert_eq!(flags(SimdFpOp2::Frint32z, 3e9f32.to_bits(), Rm::Ne, false), IOC);
+        assert_eq!(flags(SimdFpOp2::Frint32x, 1.5f32.to_bits(), Rm::Ne, false), IXC);
+        assert_eq!(flags(SimdFpOp2::Frecpe, 0, Rm::Ne, false), DZC);
+        assert_eq!(flags(SimdFpOp2::Frecpe, 1, Rm::Ne, false), OFC | IXC, "tiny input overflows");
+        assert_eq!(flags(SimdFpOp2::Frecpe, 2.0e38f32.to_bits(), Rm::Ne, true), UFC);
+        assert_eq!(flags(SimdFpOp2::Frecpe, 2.0e38f32.to_bits(), Rm::Ne, false), 0);
+        assert_eq!(flags(SimdFpOp2::Frsqrte, 0x8000_0000, Rm::Ne, false), DZC);
+        assert_eq!(flags(SimdFpOp2::Frsqrte, (-1.0f32).to_bits(), Rm::Ne, false), IOC);
+        assert_eq!(flags(SimdFpOp2::Frsqrte, 4.0f32.to_bits(), Rm::Ne, false), 0);
+    }
 
     #[test]
     fn register_shifts() {

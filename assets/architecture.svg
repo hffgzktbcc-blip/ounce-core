@@ -58,21 +58,21 @@
       <!-- Node 1 -->
       <g transform="translate(0, 0)">
         <rect width="165" height="32" rx="6" fill="#0c121c" stroke="#223348" stroke-width="1"/>
-        <text x="12" y="20" fill="#e0e8f5">64GB GameCard (.xci)</text>
+        <text x="12" y="20" fill="#e0e8f5">Homebrew .nro / .nso</text>
       </g>
       <!-- Arrow -->
       <path d="M 175 16 L 195 16" stroke="#00D2FF" stroke-width="1.5" stroke-dasharray="3,3"/>
       <!-- Node 2 -->
       <g transform="translate(205, 0)">
         <rect width="145" height="32" rx="6" fill="#0c121c" stroke="#223348" stroke-width="1"/>
-        <text x="12" y="20" fill="#e0e8f5">HFS0 / PFS0 Partition</text>
+        <text x="12" y="20" fill="#e0e8f5">Loose exefs/ + romfs/</text>
       </g>
       <!-- Arrow -->
       <path d="M 360 16 L 380 16" stroke="#00D2FF" stroke-width="1.5" stroke-dasharray="3,3"/>
       <!-- Node 3 -->
       <g transform="translate(390, 0)">
         <rect width="195" height="32" rx="6" fill="#0c121c" stroke="#223348" stroke-width="1"/>
-        <text x="12" y="20" fill="#00FFA3">NCA3 (AES-128-CTR)</text>
+        <text x="12" y="20" fill="#00FFA3">NPDM metadata</text>
       </g>
       <!-- Fork Arrows -->
       <path d="M 595 16 L 625 16" stroke="#00D2FF" stroke-width="1.5"/>

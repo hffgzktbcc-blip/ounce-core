@@ -32,3 +32,7 @@ For other hosts, select the matching binary from the same
 Menlo or choose an available monospace font in the script. The recording is
 112 columns by 28 rows, uses a neutral GitHub Dark theme, and lasts about 20
 seconds. `asciinema play docs/media/cli-demo.cast` replays the source recording.
+
+## Hero video
+
+`ounce-core-main.mp4` is the owner's overview video, re-encoded for the web (H.264, 960x540, 24 fps, no audio track). `ounce-core-poster.jpg` is its poster frame and `ounce-core-hero.gif` is the first 26 seconds as a looping GIF for the README, because GitHub does not autoplay committed MP4 files. The site embeds the MP4 muted and looping, and shows it paused with controls when the reader prefers reduced motion.

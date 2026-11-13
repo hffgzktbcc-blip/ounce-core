@@ -170,9 +170,6 @@ pub enum LoadError {
 
     #[error("Memory mapping error: {0}")]
     Memory(#[from] MemoryError),
-
-    #[error("Cryptographic policy restriction: {0}")]
-    RestrictedCipher(String),
 }
 
 #[derive(Debug, Clone)]
@@ -1050,7 +1047,7 @@ impl NroLoader {
     /// Provides test NSO0 payload bytes: loads from external disk file if present,
     /// or generates a synthetic NSO0 module.
     pub fn synthetic_nso_payload() -> Vec<u8> {
-        // Clean-room synthetic AArch64 NSO0 (generated in-process; never read from disk) that writes SFCO, NS2ROEXE, challenge, pid, and tid to TLS and exits cleanly:
+        // Clean-room synthetic AArch64 NSO0 (generated in-process; never read from disk) that writes SFCO, TESTRPLY, challenge, pid, and tid to TLS and exits cleanly:
         #[rustfmt::skip]
         let synthetic_code: [u32; 21] = [
             0xD53BD068, // mrs  x8, tpidrro_el0
@@ -1058,10 +1055,10 @@ impl NroLoader {
             0x72A9E869, // movk w9, #0x4f43, lsl #16 (0x4F434653 "SFCO")
             0xB9002109, // str  w9, [x8, #32]
             0xB900291F, // str  wzr, [x8, #40] (result = 0)
-            0xD28A69CA, // movz x10, #0x534e
-            0xF2AA464A, // movk x10, #0x5232, lsl #16
-            0xF2C8A9EA, // movk x10, #0x454f, lsl #32
-            0xF2E8AB0A, // movk x10, #0x4558, lsl #48 (0x4558454F5232534E "NS2ROEXE")
+            0xD288AA8A, // movz x10, #0x4554
+            0xF2AA8A6A, // movk x10, #0x5453, lsl #16
+            0xF2CA0A4A, // movk x10, #0x5052, lsl #32
+            0xF2EB298A, // movk x10, #0x594c, lsl #48 (0x594C505254534554 "TESTRPLY")
             0xF900190A, // str  x10, [x8, #48]
             0xD28E60EB, // movz x11, #0x7307
             0xF2B67A8B, // movk x11, #0xb3d4, lsl #16

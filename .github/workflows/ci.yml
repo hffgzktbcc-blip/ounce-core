@@ -107,7 +107,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Fail on key files, retail containers or ROM/key-site links
+      - name: Fail on key files, containers, ROM/key-site links or key-parsing/decryption code
         run: scripts/check_legal_guardrails.sh
       - name: Check fixture identities and provenance review records
         run: python3 scripts/check_fixture_provenance.py
@@ -182,7 +182,7 @@ jobs:
         run: |
           swiftc tools/macos-launcher/EvidenceReport.swift tests/macos/evidence-report/main.swift -o "$RUNNER_TEMP/evidence-report-tests"
           "$RUNNER_TEMP/evidence-report-tests"
-          swiftc tools/macos-launcher/RunLogic.swift tools/macos-launcher/HostVerify.swift tests/macos/run-logic/main.swift -o "$RUNNER_TEMP/run-logic-tests"
+          swiftc tools/macos-launcher/RunLogic.swift tests/macos/run-logic/main.swift -o "$RUNNER_TEMP/run-logic-tests"
           "$RUNNER_TEMP/run-logic-tests"
           swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos/workbench-logic/main.swift -o "$RUNNER_TEMP/workbench-logic-tests"
           "$RUNNER_TEMP/workbench-logic-tests"

@@ -87,6 +87,9 @@ struct Lowerer {
     b: BlockBuilder,
     /// Mark `BR`/`BLR`/`RET` exits linkable.
     indirect_links: bool,
+    /// Leave the FP instructions that raise FPSR flags (arithmetic, compares) to the interpreter: compiled
+    /// code does not accumulate the flags.
+    exact_fp: bool,
     /// Set by a `BL`/`BLR` terminator (see [`LoweredBlock::return_site`]).
     return_site: Option<u64>,
 }
@@ -645,6 +648,9 @@ impl Lowerer {
                 op,
                 is_double,
             } => {
+                if self.exact_fp {
+                    return Err(());
+                }
                 let a = self.b.get(Reg::VLo(rn));
                 let b = self.b.get(Reg::VLo(rm));
                 let fop = match op {
@@ -670,7 +676,11 @@ impl Lowerer {
                 rm,
                 is_zero,
                 is_double,
+                ..
             } => {
+                if self.exact_fp {
+                    return Err(());
+                }
                 let a = self.b.get(Reg::VLo(rn));
                 let b = if is_zero { self.k(0) } else { self.b.get(Reg::VLo(rm)) };
                 let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
@@ -862,12 +872,12 @@ pub struct LoweredBlock {
 /// [`MAX_BLOCK_INSNS`]. `None` if the first instruction cannot be read or translated.
 #[cfg(test)]
 pub fn lower_block(pc: u64, mmu: &Memory) -> Option<LoweredBlock> {
-    lower_block_with(pc, mmu, true)
+    lower_block_with(pc, mmu, true, false)
 }
 
 /// [`lower_block`], choosing whether indirect branches and returns are linkable.
-fn lower_block_with(pc: u64, mmu: &Memory, indirect_links: bool) -> Option<LoweredBlock> {
-    let mut l = Lowerer { b: BlockBuilder::new(), indirect_links, return_site: None };
+fn lower_block_with(pc: u64, mmu: &Memory, indirect_links: bool, exact_fp: bool) -> Option<LoweredBlock> {
+    let mut l = Lowerer { b: BlockBuilder::new(), indirect_links, exact_fp, return_site: None };
     let mut cur = pc;
     let mut count = 0u32;
     let term = loop {
@@ -962,6 +972,9 @@ pub struct Tier4JitEngine {
     /// With `linking`, `BR`/`BLR`/`RET` also look their target up in the link table at run time
     /// instead of always returning to Rust. On by default; set before blocks are compiled.
     pub indirect_links: bool,
+    /// Set once the program has touched FPSR (`Cpu::fp_flags_tracked`): FP arithmetic and compares are no longer
+    /// compiled, because compiled code does not accumulate the exception flags. Blocks translated earlier are dropped.
+    exact_fp: bool,
     /// With `linking`, compile each hot block together with the blocks its direct branches reach
     /// (up to `MAX_REGION_BLOCKS`), so loops that span them run inside one function. On by
     /// default; set before blocks are compiled.
@@ -1009,12 +1022,31 @@ impl Tier4JitEngine {
             unavailable,
             linking: true,
             indirect_links: true,
+            exact_fp: false,
             regions: true,
             fast_cache: Box::new([(u64::MAX, BlockId::default()); 1024]),
         }
     }
 
     /// Drops translations whose guest pages were written since the last sweep.
+    /// The program touched FPSR: from now on FP arithmetic and compares run in the interpreter (they raise the
+    /// exception flags), everything else stays compiled. Translations made before this point contain compiled FP.
+    fn enter_exact_fp(&mut self) {
+        self.exact_fp = true;
+        for (_, t) in self.blocks.drain() {
+            if let Some(rec) = self.rec.as_mut() {
+                rec.remove(t.id);
+            }
+            self.blocks_invalidated += 1;
+        }
+        self.hot.clear();
+        self.no_compile.clear();
+        self.fast_cache.fill((u64::MAX, BlockId::default()));
+        if let Some(rec) = self.rec.as_mut() {
+            rec.flush_tlb();
+        }
+    }
+
     pub fn sync_code_writes(&mut self, mmu: &Memory) {
         let code_gen = mmu.code_write_gen();
         if code_gen == self.seen_code_gen {
@@ -1067,7 +1099,7 @@ impl Tier4JitEngine {
         if *n < self.threshold {
             return None;
         }
-        let Some(lowered) = lower_block_with(pc, mmu, self.indirect_links) else {
+        let Some(lowered) = lower_block_with(pc, mmu, self.indirect_links, self.exact_fp) else {
             self.no_compile.insert(pc);
             return None;
         };
@@ -1089,7 +1121,7 @@ impl Tier4JitEngine {
                     if self.no_compile.contains(&target) {
                         continue;
                     }
-                    if let Some(l) = lower_block_with(target, mmu, self.indirect_links)
+                    if let Some(l) = lower_block_with(target, mmu, self.indirect_links, self.exact_fp)
                         && insns + l.insns <= MAX_REGION_INSNS
                     {
                         insns += l.insns;
@@ -1219,7 +1251,11 @@ impl Tier4JitEngine {
             self.sync_code_writes(mmu);
             // Compiled FP arithmetic uses the host's round-to-nearest, no-flush, propagating-NaN behaviour. With
             // FPCR.RMode, FZ or DN set the interpreter's soft-float path is the reference, and translated blocks
-            // cannot change FPCR themselves (MSR is not translated), so checking here is enough.
+            // cannot change FPCR themselves (MSR is not translated), so checking here is enough. FPSR exception
+            // flags are handled by `enter_exact_fp` once the program touches FPSR.
+            if cpu.fp_flags_tracked && !self.exact_fp {
+                self.enter_exact_fp();
+            }
             if cpu.regs.fpcr & crate::cpu::softfp::FPCR_ARITH_MASK != 0 {
                 let (n, exit) = self.run_fallback(cpu, mmu);
                 executed += n;
@@ -1295,7 +1331,8 @@ mod tests {
             sp: cpu.regs.sp,
             pc: cpu.regs.pc,
             nzcv: cpu.regs.pstate.to_bits(),
-            fpsr: cpu.regs.fpsr,
+            // compiled FP does not accumulate exception flags (see `touching_fpsr_drops_compiled_fp_and_raises_flags`)
+            fpsr: cpu.regs.fpsr & crate::cpu::registers::FPSR_QC,
             fpcr: cpu.regs.fpcr,
             v: cpu.regs.v,
             exit,
@@ -1457,6 +1494,60 @@ mod tests {
         let r = run_interp(c, m, 1000);
         assert_eq!((r.x[5], r.x[6], r.x[7], r.x[9]), (0, 1 << 27, 0, 0x0300_0000));
         check_all_tiers(&words, init);
+    }
+
+    /// FPSR exception flags: once the program has touched FPSR (the first `msr`), Tier-4 runs FP through the
+    /// interpreter, so its flags equal the interpreter's and Tier-3's.
+    #[test]
+    fn fp_exception_flags_match_interpreter_on_all_tiers() {
+        let words = [
+            0xd51b443f, // msr fpsr, xzr
+            0x1e211802, // fdiv s2, s0, s1         1.0 / 0.0: DZC
+            0xd53b4425, // mrs x5, fpsr            -> DZC
+            0x1e242803, // fadd s3, s0, s4         1.0 + 2^-24: IXC (sticky with DZC)
+            0xd53b4426, // mrs x6, fpsr            -> DZC | IXC
+            0x1e200805, // fmul s5, s0, s0         exact: nothing new
+            0xd51b443f, // msr fpsr, xzr
+            0x1e202807, // fadd s7, s0, s0         exact
+            0xd53b4427, // mrs x7, fpsr            -> 0
+            0xd4000001, // svc #0
+        ];
+        let init = |c: &mut Cpu| {
+            c.regs.write_q(0, 0x3f80_0000);
+            c.regs.write_q(1, 0);
+            c.regs.write_q(4, 0x3380_0000);
+        };
+        let (mut cpu, mmu) = setup(&words);
+        init(&mut cpu);
+        let (c, m) = clone(&cpu, &mmu);
+        let r = run_interp(c, m, 1000);
+        assert_eq!((r.x[5], r.x[6], r.x[7]), (0x02, 0x12, 0));
+        check_all_tiers(&words, init);
+    }
+
+    /// Compiled FP leaves no exception flags (the documented limit); once the program touches FPSR the translations
+    /// that contain FP are dropped and the same code raises them.
+    #[test]
+    fn touching_fpsr_drops_compiled_fp_and_raises_flags() {
+        let (mut cpu, mut mmu) = setup(&[0x1e24_2803, 0xD4000001]); // fadd s3, s0, s4; svc #0
+        let mut e = Tier4JitEngine::with_threshold(1);
+        if e.unavailable.is_some() {
+            return; // no native code on this host: nothing to compare
+        }
+        let init = |c: &mut Cpu| {
+            c.regs.pc = CODE;
+            c.regs.write_q(0, 0x3f80_0000); // 1.0
+            c.regs.write_q(4, 0x3380_0000); // 2^-24: the sum is inexact
+        };
+        init(&mut cpu);
+        e.run_slice(&mut cpu, &mut mmu, 10);
+        assert!(e.native_insns > 0, "the fadd should have been compiled");
+        assert_eq!(cpu.regs.fpsr, 0, "compiled FP does not accumulate flags");
+        cpu.fp_flags_tracked = true;
+        init(&mut cpu);
+        e.run_slice(&mut cpu, &mut mmu, 10);
+        assert!(e.blocks_invalidated > 0, "the translation containing FP was dropped");
+        assert_eq!(cpu.regs.fpsr, crate::cpu::softfp::IXC);
     }
 
     /// Interpreter, Tier-3 and Tier-4 must agree.

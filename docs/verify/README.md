@@ -221,7 +221,7 @@ manifest; separately labeled Switch 2 results cannot inflate that metric.
 
 ## Native results viewer
 
-In the Mac app, choose **View Check Results…** and open a saved corpus, diagnosis, repair or run JSON
+In the Mac app, choose **File > Open Saved Results…** and open a saved corpus, diagnosis, repair or run JSON
 report. The viewer shows hypotheses as suggestions, repair decisions as recorded
 results rather than approvals, and retry history as process states. It explains pass, failure, blocked and not-assessed outcomes and shows
 case IDs, target, engine, revision and oracle results. It is read-only: imported

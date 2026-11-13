@@ -3,63 +3,112 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Ounce-Core is an open-source Rust AArch64 (ARM64) execution lab. It runs programs on three CPU engines and checks the results byte for byte against real ARM64 hardware, so emulation bugs show up fast.">
+  <meta name="description" content="Does your code behave the same on ARM64? Ounce-Core runs a program on three CPU engines and compares the output with real ARM64 hardware. Open source, written in Rust.">
   <meta name="robots" content="index,follow">
   <link rel="canonical" href="https://hffgzktbcc-blip.github.io/ounce-core/">
   <meta property="og:url" content="https://hffgzktbcc-blip.github.io/ounce-core/">
   <meta property="og:image" content="https://hffgzktbcc-blip.github.io/ounce-core/assets/ounce-core-vista.png">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Ounce-Core | Run ARM64 anywhere, prove it matches real hardware">
-  <meta property="og:description" content="Open-source Rust ARM64 execution lab: differential testing against real hardware, three CPU engines, reproducible evidence and clear limits.">
-  <meta name="theme-color" content="#13261f">
-  <title>Ounce-Core | ARM64 Execution Lab in Rust</title>
+  <meta property="og:title" content="Ounce-Core | Does your code behave the same on ARM64?">
+  <meta property="og:description" content="Run a program on three CPU engines and compare the output with real ARM64 hardware.">
+  <meta name="theme-color" content="#fafaf8">
+  <title>Ounce-Core | Does your code behave the same on ARM64?</title>
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Ounce-Core: run ARM64 anywhere, prove it matches real hardware">
-  <meta name="twitter:description" content="Differential testing for ARM64 execution, in safe Rust.">
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"Ounce-Core","alternateName":"Ounce Core","codeRepository":"https://github.com/hffgzktbcc-blip/ounce-core","url":"https://github.com/hffgzktbcc-blip/ounce-core","programmingLanguage":"Rust","license":"https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE","isAccessibleForFree":true,"description":"Open-source Rust ARM64 execution lab: runs programs on three CPU engines and checks results against real ARM64 hardware.","keywords":["Ounce-Core","AArch64","ARM64","Rust","differential testing","emulator verification","execution lab"]}</script>
+  <meta name="twitter:title" content="Ounce-Core: does your code behave the same on ARM64?">
+  <meta name="twitter:description" content="Compare program output with real ARM64 hardware.">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"Ounce-Core","alternateName":"Ounce Core","codeRepository":"https://github.com/hffgzktbcc-blip/ounce-core","url":"https://github.com/hffgzktbcc-blip/ounce-core","programmingLanguage":"Rust","license":"https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE","isAccessibleForFree":true,"description":"Runs programs on three CPU engines and compares the output with real ARM64 hardware.","keywords":["Ounce-Core","AArch64","ARM64","Rust","differential testing"]}</script>
   <style>
-    :root{color-scheme:dark;--bg:#0e1d18;--fg:#f1f6ef;--muted:#b7c8bf;--accent:#9ad5ac;--edge:#355247;--edge-strong:#8ab8a3}
-    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0%,#294b3a 0,transparent 40%),var(--bg);color:var(--fg);font:16px/1.7 system-ui,-apple-system,Segoe UI,sans-serif}
-    a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:3px solid #f9e9a3;outline-offset:3px}
-    main,footer{max-width:1000px;margin:auto;padding:0 24px}header{padding:14px 24px;border-bottom:1px solid var(--edge)}nav{max-width:1000px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap}nav div{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}nav a{color:var(--fg);text-decoration:none;display:inline-flex;align-items:center;min-height:44px;padding:8px 8px}nav a:hover,a:hover{text-decoration:underline}
-    .hero{padding:40px 0 18px}.hero img{width:100%;height:auto;border-radius:18px;border:1px solid var(--edge)}h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.15;letter-spacing:-.04em;margin:30px 0 16px}h2{font-size:1.5rem}p{color:var(--muted)}
-    .tag{font-size:.75rem;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);font-weight:800}.button{display:inline-flex;align-items:center;min-height:44px;background:var(--accent);color:#10251a;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:10px;margin:8px 10px 8px 0}.button.secondary{background:transparent;color:var(--fg);border:1px solid var(--edge-strong)}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin:25px 0 48px}.card{background:#172c23;border:1px solid var(--edge);border-radius:14px;padding:21px}.card h3{margin:0 0 8px}.card p{margin:0}.links{padding:0 0 60px}.links p{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}a{color:var(--accent)}footer{border-top:1px solid var(--edge);padding-top:25px;padding-bottom:50px;color:var(--muted);font-size:.9rem}
-    @media(max-width:768px){a,button{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:8px 6px}}
+    :root{color-scheme:light dark;--bg:#fafaf8;--fg:#1a2420;--muted:#4d5b54;--accent:#1f6b47;--accent-fg:#fff;--edge:#d9dfda;--code:#eef1ee}
+    @media(prefers-color-scheme:dark){:root{--bg:#0f1a15;--fg:#eef3ee;--muted:#aebdb4;--accent:#8fd1a8;--accent-fg:#0f1a15;--edge:#2d4036;--code:#16251e}}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.65 system-ui,-apple-system,Segoe UI,sans-serif}
+    a{color:var(--accent)}
+    a:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+    header,main,footer{max-width:720px;margin:0 auto;padding-left:16px;padding-right:16px}
+    nav{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 16px;padding:12px 0;border-bottom:1px solid var(--edge)}
+    nav div{display:flex;flex-wrap:wrap;gap:0 4px}
+    nav a{color:var(--fg);text-decoration:none;display:inline-flex;align-items:center;min-height:44px;padding:0 8px}
+    nav a:hover{text-decoration:underline}
+    section{padding:40px 0 0}
+    h1{font-size:clamp(2rem,6vw,3rem);line-height:1.15;letter-spacing:-.02em;margin:40px 0 12px}
+    h2{font-size:1.4rem;line-height:1.3;margin:0 0 12px}
+    p{margin:0 0 14px}.lead{font-size:1.15rem;color:var(--muted)}
+    .demo{display:block;width:100%;height:auto;border:1px solid var(--edge);border-radius:8px;margin:24px 0}
+    .button{display:inline-flex;align-items:center;min-height:48px;padding:0 22px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-weight:600;text-decoration:none}
+    .button:hover{opacity:.9}
+    .badges{display:flex;flex-wrap:wrap;gap:8px}.badges img{height:20px}
+    ul.results{padding-left:1.2rem;margin:0 0 14px}ul.results li{margin:0 0 12px}
+    .limit{border-left:3px solid var(--edge);padding-left:14px;color:var(--muted)}
+    code{background:var(--code);padding:2px 6px;border-radius:4px;font:.9em ui-monospace,SFMono-Regular,Consolas,monospace}
+    pre{background:var(--code);border:1px solid var(--edge);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:12px 0 14px}
+    pre code{background:none;padding:0}
+    ul.more{padding-left:1.2rem;margin:0}ul.more li{margin:6px 0}
+    footer{margin-top:48px;padding-top:20px;padding-bottom:48px;border-top:1px solid var(--edge);color:var(--muted);font-size:.9rem}
   </style>
 </head>
 <body>
-  <header><nav aria-label="Primary navigation"><strong>OUNCE-CORE</strong><div><a href="index.html">Home</a><a href="playground/">ARM64 playground</a><a href="lab.html">Workbench design</a><a href="results.html">Results</a><a href="research.html">Research paper</a><a href="contribute.html">Contribute</a><a href="maintainers.html">For maintainers</a><a href="status.html">Status</a><a href="press.html">Press</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">Repository</a></div></nav></header>
+  <header><nav aria-label="Primary navigation"><strong>Ounce-Core</strong><div><a href="playground/">Playground</a><a href="results.html">Results</a><a href="contribute.html">Contribute</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">GitHub</a></div></nav></header>
   <main>
-    <section class="hero">
-      <img src="../assets/ounce-core-vista.png" onerror="this.onerror=null;this.src='assets/ounce-core-vista.png'" alt="Ounce-Core banner">
-      <div class="tag">Open source · Rust · ARM64</div>
-      <h1>Run ARM64 programs anywhere, and prove the answer matches real hardware</h1>
-      <p><strong>Ounce-Core</strong> is an open-source ARM64 execution lab written in safe Rust. It runs a program on three CPU engines (an interpreter, a JIT and native execution) and compares the result with a reference build on real hardware. When they disagree it points to where.</p>
-      <p>In one week, running unmodified open-source programs (LZ4, xxHash, SQLite, Lua) and comparing against an Apple Silicon machine found a prefetch instruction silently corrupting registers, two floating-point instructions with the wrong sign, and a long list of missing vector instructions. All were fixed with tests. The project began as a Switch homebrew runtime; that is no longer its goal.</p>
-      <a class="button" href="playground/">Step ARM64 in your browser</a>
-      <a class="button secondary" href="maintainers.html">Check your library</a>
-      <a class="button secondary" href="results.html">See the results</a>
-      <a class="button secondary" href="research.html">Read the research paper</a>
-      <a class="button secondary" href="contribute.html">Contribute in 15 minutes</a>
+    <section style="padding-top:0">
+      <h1>Does your code behave the same on ARM64?</h1>
+      <p class="lead">Ounce-Core runs a program on three CPU engines and compares the output with real ARM64 hardware.</p>
+      <p><a class="button" href="playground/">Try it in your browser</a></p>
+      <video class="demo" id="hero-video" muted loop playsinline autoplay preload="metadata" poster="../docs/media/ounce-core-poster.jpg" aria-label="A 90-second silent overview: one program, three engines, one hardware reference, and the bugs it found.">
+        <source src="../docs/media/ounce-core-main.mp4" type="video/mp4">
+        <source src="assets/ounce-core-main.mp4" type="video/mp4">
+      </video>
+      <div class="badges">
+        <a href="https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml"><img src="https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+        <a href="status.html"><img src="https://img.shields.io/badge/first--frame_oracles-50%2F50_pass-84b89e?style=flat-square" alt="First-frame oracles: 50 of 50 pass"></a>
+        <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-84b89e?style=flat-square" alt="MIT license"></a>
+      </div>
     </section>
-    <section aria-label="What is Ounce-Core?" class="card" style="margin:12px 0 28px">
-      <h2>What is Ounce-Core?</h2>
-      <p>Ounce-Core is free, open-source <strong>AArch64 (ARM64) software written in Rust</strong>. Its core idea is differential testing: build the same program for your computer and for ARM64, run both, and diff the output. It is not a fast emulator and does not compete with QEMU on speed. Its evidence is bounded agreement with real-hardware references on recorded tests, not a proof of general correctness. Investigations retain small, shareable reproductions through the shipped <a href="https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/diagnosis-v0.2.0"><code>ounce-diagnose</code> v0.2.0 toolkit</a>. Read the <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/VISION.md">vision and roadmap</a> and the limits before relying on a result.</p>
-      <p>Technical details: <a href="https://github.com/hffgzktbcc-blip/ounce-core#quickstart">quickstart</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/verify/README.md">verification method and results</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/DIAGNOSIS_CLI.md"><code>ounce-diagnose</code> v0.2.0 CLI</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/FAILURE_TO_REPRODUCTION.md">failure-to-reproduction walkthrough</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/verify/AUDIO_CHANNEL_CASE.md">audio-channel case</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/ADD_A_PROGRAM.md">add a program as a test</a>, <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/CONTRIBUTING.md">contributing</a>.</p>
+
+    <section aria-labelledby="problem">
+      <h2 id="problem">The problem</h2>
+      <p>You ship a library built on x86. Will it give the same answer on ARM64? You may not own an ARM64 machine to find out.</p>
+      <p>Ounce-Core runs the program and diffs its output byte for byte against a reference recorded on real ARM64 hardware. When the two differ, it helps you find where they split. It is open source and written in Rust.</p>
     </section>
-    <section aria-label="Project pillars" class="grid">
-      <div class="card"><h3>Verify</h3><p>Diff supported programs and instruction test cases against recorded real ARM64 references, with explicit unsupported cases.</p></div>
-      <div class="card"><h3>Run</h3><p>User-mode ARM64 in memory-safe Rust. A bounded static Linux AArch64 ELF runner has landed; 18 pinned open-source programs run as static ELFs and match a host build and qemu-user on Tier-3 and Tier-4. One (wasm3) does not run yet, and arbitrary Linux applications remain unsupported.</p></div>
-      <div class="card"><h3>Debug and learn</h3><p>Compare engines, package retained failure-to-reproduction dossiers with the shipped <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/DIAGNOSIS_CLI.md"><code>ounce-diagnose</code> v0.2.0 toolkit</a>, and explore the merged interactive verification lab. General browser-based program debugging is not established.</p></div>
+
+    <section aria-labelledby="results">
+      <h2 id="results">What it has done</h2>
+      <ul class="results">
+        <li><strong>It found real bugs.</strong> In one week of running unmodified open-source programs (LZ4, xxHash, SQLite, Lua) against an Apple Silicon Mac, it found a prefetch instruction that corrupted registers, two floating-point instructions with the wrong sign, and many missing vector instructions. All were fixed, each with a test.</li>
+        <li><strong>It agrees with the hardware on real programs.</strong> LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7 and a 5,964-line floating-point test give byte-identical output on Tier-3, Tier-4 and native. 18 programs also run as static Linux ARM64 programs and match a host build and qemu-user. The older corpus of 50/50 outside homebrew programs passes its pixel checks, on the inputs those checks cover.</li>
+        <li><strong>It is safe Rust.</strong> The runtime forbids <code>unsafe</code> code, and the compiler enforces it. The two small crates that need it are kept apart, and CI checks the boundary.</li>
+      </ul>
+      <p class="limit"><strong>Limit:</strong> this is a testing tool, not a fast emulator. It does not run arbitrary programs, instruction coverage is partial, and a match is evidence for the inputs tested, not proof. <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/LIMITS.md">Read the limits</a>.</p>
     </section>
-    <section class="card" aria-label="Latest status" style="margin:0 0 35px"><h2>Current status</h2><p>The <a href="status.html">status page</a> lists what is proven and what is not, with links to the evidence. Rerun it with <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/REPRODUCE.md">the reproduction guide</a> and read <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/LIMITS.md">the limits</a>. Coverage is partial: many vector, floating-point and system instructions are still undecoded or untested.</p></section>
-    <section class="links">
-      <h2>Go deeper</h2><p><a href="contribute.html">Join the contributor community</a> · <a href="research.html">Evidence-first AArch64 research paper</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/diagnosis-v0.2.0">ounce-diagnose v0.2.0 release</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/DIAGNOSIS_CLI.md">Diagnosis CLI guide</a> · <a href="press.html">Press & research kit</a> · <a href="beyond-first-frame.html">Beyond the First Frame</a> · <a href="status.html">Latest evidence status</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/REPRODUCE.md">Reproduce it yourself</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/LIMITS.md">What this does not prove</a></p>
-      <p><a href="https://github.com/hffgzktbcc-blip/ounce-core#the-system">Architecture and subsystem matrix</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/PROVENANCE.md">Provenance register</a> · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/CONTRIBUTING.md">Contributing</a></p>
-      <p><strong>Boundary:</strong> no Switch or Switch 2 compatibility is claimed. Switch 2 work is parked per <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/PLAN.md">PLAN.md</a>, and the earlier Switch work stays as a regression test set. Ounce-Core is unaffiliated with Nintendo or NVIDIA. Do not submit proprietary firmware, retail keys or game content.</p>
+
+    <section id="get-started" aria-labelledby="try">
+      <h2 id="try">Try it</h2>
+      <p><strong>In your browser.</strong> Step through ARM64 code one instruction at a time. Nothing to install.</p>
+      <p><a class="button" href="playground/">Open the playground</a></p>
+      <p><strong>On your machine.</strong> You need Rust 1.85 or newer. On Debian or Ubuntu, first run <code>sudo apt-get install -y libasound2-dev libudev-dev</code>.</p>
+      <pre><code>git clone https://github.com/hffgzktbcc-blip/ounce-core.git &amp;&amp; cd ounce-core
+cargo build --release
+cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture</code></pre>
+      <p>The last command runs a small test program and prints <code>result=0x00000EEE</code>. To check your own program against a host build, see <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/ADD_A_PROGRAM.md">Add a program</a>.</p>
+      <p><strong>Help out.</strong> Have an ARM64 machine? Run the test suite and <a href="https://github.com/hffgzktbcc-blip/ounce-core/issues/248">report the result</a>. Otherwise pick a <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/community/TRY_THIS_WEEK.md">no-code task</a> or a <a href="https://github.com/hffgzktbcc-blip/ounce-core/contribute">good first issue</a>. More on the <a href="contribute.html">contribute page</a>.</p>
+    </section>
+
+    <section aria-labelledby="more">
+      <h2 id="more">More</h2>
+      <ul class="more">
+        <li><a href="results.html">Results</a> and <a href="status.html">status</a></li>
+        <li><a href="research.html">Research paper</a> and <a href="beyond-first-frame.html">Beyond the first frame</a></li>
+        <li><a href="maintainers.html">For library maintainers</a></li>
+        <li><a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/DETAILS.md">Details</a>: subsystems, proof method, commands, roadmap</li>
+        <li><a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/REPRODUCE.md">Reproduce the results</a></li>
+        <li><a href="press.html">Press kit</a></li>
+      </ul>
     </section>
   </main>
-  <footer>Ounce-Core · Experimental ARM64 execution lab · <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE">MIT source license</a> · Historical provenance review remains open.</footer>
+  <script>
+    (function(){var v=document.getElementById('hero-video');if(!v)return;
+      v.addEventListener('error',function(){v.poster='assets/ounce-core-poster.jpg'},true);
+      if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){v.removeAttribute('autoplay');v.pause();v.controls=true}})();
+  </script>
+  <footer>Ounce-Core is not affiliated with Nintendo or NVIDIA. It loads homebrew and synthetic programs only. <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE">MIT license</a>.</footer>
 </body>
 </html>
