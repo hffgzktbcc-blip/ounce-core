@@ -17,6 +17,7 @@ mod lab;
 mod linux;
 mod loader;
 mod mmu;
+mod run_report;
 mod trace;
 mod ui;
 
@@ -48,6 +49,17 @@ static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceL
 static RUN_TARGET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 fn main() {
+    if let Ok(path) = std::env::var("OUNCE_REPORT_JSON") {
+        if !path.is_empty() {
+            run_report::set_report_path(std::path::PathBuf::from(path));
+        }
+    }
+    if std::env::var("OUNCE_AUDIO").as_deref() == Ok("null") {
+        run_report::set_audio_null(true);
+    }
+    if matches!(std::env::var("OUNCE_DETERMINISTIC").as_deref(), Ok("1" | "true")) {
+        run_report::set_deterministic(true);
+    }
     if let Ok(backend) = std::env::var("OUNCE_GPU_BACKEND") {
         if !matches!(backend.as_str(), "cpu" | "host") || (backend == "host" && !cfg!(feature = "gpu-present")) {
             eprintln!("[guest-gpu] OUNCE_GPU_BACKEND expects cpu or host; host requires --features gpu-present");
@@ -58,9 +70,29 @@ fn main() {
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     let mut after_separator = false;
-    for arg in env::args() {
+    let mut raw_args = env::args().peekable();
+    while let Some(arg) = raw_args.next() {
         if after_separator || arg == "--" {
             after_separator = true;
+            args.push(arg);
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--report-json=") {
+            run_report::set_report_path(std::path::PathBuf::from(value));
+            continue;
+        }
+        if arg == "--report-json" {
+            if let Some(value) = raw_args.next() {
+                run_report::set_report_path(std::path::PathBuf::from(value));
+            }
+            continue;
+        }
+        if arg == "--audio=null" {
+            run_report::set_audio_null(true);
+            continue;
+        }
+        if arg == "--deterministic" {
+            run_report::set_deterministic(true);
             args.push(arg);
             continue;
         }
@@ -485,11 +517,12 @@ enum VmStop {
 }
 
 /// Final guest state of a run, used by the verification harness.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct VmOutcome {
     stop: VmStop,
     x0: u64,
     d0: f64,
+    report: run_report::RunReport,
 }
 
 fn run_vm(
@@ -620,6 +653,12 @@ fn run_vm_internal(
     }
     let host_audio = host_audio_for(gpu::BackendKind::from_env());
     let mut stop = VmStop::Budget;
+    let mut stop_pc: Option<u64> = None;
+    let mut stop_opcode: Option<u32> = None;
+    let mut stop_fault_addr: Option<u64> = None;
+    let mut stop_svc_id: Option<u32> = None;
+    let mut stop_break_result: Option<u32> = None;
+    let mut stop_message: Option<String> = None;
     let mut last_input_poll = Instant::now();
     let mut last_queued_frame = 0;
     let mut engine = cpu::CpuTier::explicit()
@@ -821,15 +860,21 @@ fn run_vm_internal(
                         println!("[VM] Break PC: 0x{:016X}", cpu.regs.pc);
                         if info2 == 4 {
                             match mmu.read_u32(info1) {
-                                Ok(result) => println!("[VM] Break result: 0x{:08X} (module={}, description={})", result, result & 0x1FF, (result >> 9) & 0x1FFF),
+                                Ok(result) => {
+                                    stop_break_result = Some(result);
+                                    println!("[VM] Break result: 0x{:08X} (module={}, description={})", result, result & 0x1FF, (result >> 9) & 0x1FFF);
+                                }
                                 Err(error) => println!("[VM] Break result unreadable: {}", error),
                             }
                         }
+                        stop_pc = Some(cpu.regs.pc);
                         stop = VmStop::Break;
                         break;
                     }
                     SvcResult::Unhandled(id) => {
                         println!("\n[VM] Stopping on unhandled SVC #0x{:02X}.", id);
+                        stop_svc_id = Some(id as u32);
+                        stop_pc = Some(cpu.regs.pc);
                         stop = VmStop::UnhandledSvc;
                         break;
                     }
@@ -837,12 +882,34 @@ fn run_vm_internal(
             }
             Ok(StepResult::Halt(msg)) => {
                 println!("\n[VM] CPU Halted: {}", msg);
+                stop_pc = Some(cpu.regs.pc);
+                stop_message = Some(msg);
                 stop = VmStop::Halt;
                 break;
             }
             Err(e) => {
                 eprintln!("\n[VM Error] {}", e);
                 eprintln!("  Final PC: 0x{:016X}", cpu.regs.pc);
+                stop_pc = Some(cpu.regs.pc);
+                stop_message = Some(e.clone());
+                if let Some(rest) = e.strip_prefix("Unimplemented instruction 0x") {
+                    if let Some(hex_word) = rest.split_whitespace().next() {
+                        stop_opcode = u32::from_str_radix(hex_word, 16).ok();
+                    }
+                    if let Some(pc_hex) = rest.split("at PC: 0x").nth(1) {
+                        if let Some(parsed) = u64::from_str_radix(pc_hex.trim(), 16).ok() {
+                            stop_pc = Some(parsed);
+                        }
+                    }
+                } else if e.contains("Memory access violation:") {
+                    if let Some(addr_hex) = e.split("0x").nth(1) {
+                        let digits: String = addr_hex.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+                        stop_fault_addr = u64::from_str_radix(&digits, 16).ok();
+                    }
+                    if stop_fault_addr.is_none() {
+                        stop_fault_addr = Some(0);
+                    }
+                }
                 stop = VmStop::Fault;
                 break;
             }
@@ -950,10 +1017,49 @@ fn run_vm_internal(
         cpu.regs.read_d(0)
     );
 
+    let tier_str = match cpu::CpuTier::from_env() {
+        cpu::CpuTier::Interpreter => "interpreter",
+        cpu::CpuTier::Tier3 => "tier3",
+        cpu::CpuTier::Tier4 => "tier4",
+        cpu::CpuTier::Native => "nce",
+    };
+    let (stop_kind, exit_code) = match stop {
+        VmStop::ExitProcess => ("clean_exit", 0),
+        VmStop::WindowClosed => ("window_closed", 0),
+        VmStop::FrameLimit => ("frame_limit", 0),
+        VmStop::Break => ("svc_break", 13),
+        VmStop::UnhandledSvc => ("unhandled_svc", 14),
+        VmStop::Halt => ("cpu_halted", 15),
+        VmStop::Budget => ("budget_exhausted", 16),
+        VmStop::Fault => {
+            if stop_opcode.is_some() {
+                ("unimplemented_insn", 10)
+            } else if stop_fault_addr.is_some() {
+                ("memory_fault", 11)
+            } else {
+                ("cpu_error", 12)
+            }
+        }
+    };
+    let report = run_report::RunReport {
+        tier: tier_str,
+        silent_fallback: false,
+        stop_kind,
+        exit_code,
+        pc: stop_pc,
+        opcode: stop_opcode,
+        fault_addr: stop_fault_addr,
+        svc_id: stop_svc_id,
+        break_result: stop_break_result,
+        insns_executed: instructions_executed as u64,
+        message: stop_message,
+    };
+
     VmOutcome {
         stop,
         x0: cpu.regs.read_x(0),
         d0: cpu.regs.read_d(0),
+        report,
     }
 }
 
@@ -3500,6 +3606,7 @@ fn inspect_directory_package(dir_path: &str) {
 
 /// Shell callers must distinguish a completed run from a load/execution failure.
 fn require_cli_success(outcome: VmOutcome) {
+    run_report::write_if_configured(&outcome.report);
     if !matches!(outcome.stop, VmStop::ExitProcess | VmStop::WindowClosed | VmStop::FrameLimit) {
         let stop = match outcome.stop {
             VmStop::Break => cli_flow::Stop::Break,
@@ -3810,7 +3917,7 @@ fn host_audio_for(present: gpu::BackendKind) -> HostAudioSink {
 }
 
 fn audio_wanted(present: gpu::BackendKind) -> bool {
-    present != gpu::BackendKind::Headless
+    present != gpu::BackendKind::Headless && !run_report::is_audio_null()
 }
 
 /// Mixed audio (interleaved stereo samples) allowed to queue on the host before the guest waits for
@@ -4009,7 +4116,24 @@ mod harness_gate_tests {
     }
 
     fn outcome(stop: VmStop, x0: u64) -> VmOutcome {
-        VmOutcome { stop, x0, d0: 0.0 }
+        VmOutcome {
+            stop,
+            x0,
+            d0: 0.0,
+            report: run_report::RunReport {
+                tier: "interpreter",
+                silent_fallback: false,
+                stop_kind: "clean_exit",
+                exit_code: 0,
+                pc: None,
+                opcode: None,
+                fault_addr: None,
+                svc_id: None,
+                break_result: None,
+                insns_executed: 0,
+                message: None,
+            },
+        }
     }
 
     #[test]
