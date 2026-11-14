@@ -186,9 +186,15 @@ fn main() {
             match std::fs::read(file_path) {
                 Ok(bytes) => match ui::PackageInspector::inspect_bytes(file_path, &bytes) {
                     Ok(report) => ui::PackageInspector::print_report(&report),
-                    Err(e) => eprintln!("Inspector error: {}", e),
+                    Err(e) => {
+                        eprintln!("Inspector error: {}", e);
+                        std::process::exit(1);
+                    }
                 },
-                Err(e) => eprintln!("Failed to read file '{}': {}", file_path, e),
+                Err(e) => {
+                    eprintln!("Failed to read file '{}': {}", file_path, e);
+                    std::process::exit(1);
+                }
             }
         }
         other => {
