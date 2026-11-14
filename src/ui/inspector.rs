@@ -30,10 +30,28 @@ pub struct PackageReport {
 pub struct PackageInspector;
 
 impl PackageInspector {
-    /// Inspects a homebrew `.nro`/`.nso` (or raw AArch64 image) and generates a report.
-    pub fn inspect_bytes(file_path: &str, raw: &[u8]) -> Result<PackageReport, &'static str> {
-        let mut format = "Unknown".to_string();
-        let mut code_size = 0usize;
+    /// Inspects a homebrew `.nro`/`.nso` executable and generates a report.
+    pub fn inspect_bytes(file_path: &str, raw: &[u8]) -> Result<PackageReport, String> {
+        let is_nso = raw.starts_with(b"NSO0");
+        let is_nro = raw.len() >= 0x14 && &raw[0x10..0x14] == b"NRO0";
+        if !is_nso && !is_nro {
+            return Err(format!(
+                "unrecognized file format for '{}' (expected Switch NRO0 or NSO0 executable)",
+                file_path
+            ));
+        }
+
+        let mut mmu = Memory::new();
+        let info = if is_nso {
+            if raw.len() < 0x100 {
+                return Err("truncated NSO0 header (< 256 bytes)".to_string());
+            }
+            BootLoader::load_any_package(raw, 0x8000_0000, &mut mmu)
+                .map_err(|e| format!("invalid NSO0 executable: {:?}", e))?
+        } else {
+            BootLoader::load_homebrew_nro(raw, 0x8000_0000, &mut mmu)
+                .map_err(|e| format!("invalid NRO0 executable: {:?}", e))?
+        };
 
         let mut security_features = Vec::new();
         let mut has_pac = false;
@@ -62,17 +80,11 @@ impl PackageInspector {
             security_features.push("Standard AArch64 (ARMv8.0-A)".to_string());
         }
 
-        let mut mmu = Memory::new();
-        if let Ok(info) = BootLoader::load_any_package(raw, 0x8000_0000, &mut mmu) {
-            format = info.format.to_string();
-            code_size = info.code_size;
-        }
-
         Ok(PackageReport {
             file_path: file_path.to_string(),
             total_file_size: raw.len(),
-            format,
-            code_size,
+            format: info.format.to_string(),
+            code_size: info.code_size,
             security_features,
         })
     }
@@ -101,5 +113,27 @@ mod tests {
         let report = PackageInspector::inspect_bytes("synthetic.nso", &nso).unwrap();
         assert_eq!(report.format, "NSO0 (Nintendo Shared Object)");
         assert!(report.code_size > 0);
+    }
+
+    #[test]
+    fn inspector_rejects_non_switch_bytes() {
+        let err = PackageInspector::inspect_bytes("plain.txt", b"this is plain text, not an NRO binary\n").unwrap_err();
+        assert!(err.contains("unrecognized file format"), "unexpected error: {err}");
+
+        let err_elf = PackageInspector::inspect_bytes("prog.elf", b"\x7fELF\x02\x01\x01\x00").unwrap_err();
+        assert!(err_elf.contains("unrecognized file format"), "unexpected error: {err_elf}");
+    }
+
+    #[test]
+    fn inspector_rejects_truncated_nro_and_nso() {
+        let mut hdr = vec![0u8; 0x100];
+        hdr[0x10..0x14].copy_from_slice(b"NRO0");
+        hdr[0x18..0x1C].copy_from_slice(&0x3000u32.to_le_bytes());
+        hdr[0x24..0x28].copy_from_slice(&0x1000u32.to_le_bytes());
+        let err = PackageInspector::inspect_bytes("truncated.nro", &hdr).unwrap_err();
+        assert!(err.contains("invalid NRO0"), "unexpected error: {err}");
+
+        let err_nso = PackageInspector::inspect_bytes("truncated.nso", b"NSO0\x00\x00").unwrap_err();
+        assert!(err_nso.contains("truncated NSO0"), "unexpected error: {err_nso}");
     }
 }
