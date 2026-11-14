@@ -639,6 +639,15 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// FEAT_SHA3 bitwise operations; `ra` is used only by EOR3/BCAX.
+    Sha3 {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        ra: u8,
+        op: Sha3Op,
+    },
+
     /// AdvSIMD three registers of the same type (integer and bitwise)
     SimdThreeSame {
         rd: u8,
@@ -1246,4 +1255,13 @@ pub enum SimdSatAddSubOp {
     Uqadd,
     Sqsub,
     Uqsub,
+}
+
+/// FEAT_SHA3 operations on a full 128-bit vector or independent 64-bit lanes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sha3Op {
+    Eor3,
+    Bcax,
+    Rax1,
+    Xar(u8),
 }
