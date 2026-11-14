@@ -9,6 +9,7 @@ work directory. A byte match with a failing exit or engine fallback is not a pas
 import argparse
 import hashlib
 import json
+import platform
 from pathlib import Path
 import re
 import shlex
@@ -29,6 +30,11 @@ def execution_verdict(expected, actual, returncode, stderr, engine):
     return 'identical' if expected == actual else 'different'
 
 
+def uses_qemu_reference(harness, machine):
+    policy = harness.get('elf_reference')
+    return policy == 'qemu' or (policy == 'aarch64' and machine.lower() not in ('arm64', 'aarch64'))
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -45,7 +51,7 @@ def main():
     ap.add_argument('--seconds', type=int, default=300, help='deadline per build/execution step')
     ap.add_argument('--budget', type=int, default=100_000_000)
     ap.add_argument('--qemu', help='optional qemu-user command (for example qemu-aarch64): run the same ELF as an independent AArch64 reference. '
-                    'A harness with "elf_reference": "qemu" in differential.json is compared against qemu output instead of the host build '
+                    'A harness with "elf_reference": "qemu" (or "aarch64" on a non-ARM64 host) is compared against qemu output instead of the host build '
                     '(for results that legitimately differ between x86-64 and AArch64, such as the sign of a default NaN)')
     a = ap.parse_args()
     if a.seconds <= 0 or a.budget <= 0:
@@ -125,17 +131,18 @@ def main():
         if reference.returncode:
             raise RuntimeError('host reference returned failure; inspect host-run.stderr')
         expected = reference.stdout
+        qemu_reference = uses_qemu_reference(h, platform.machine())
         if a.qemu:
             q = step('qemu', shlex.split(a.qemu) + [str(work / elf)])
             report['checks']['qemu-vs-host'] = 'identical' if q.returncode == 0 and q.stdout == reference.stdout else 'different'
-            if h.get('elf_reference') == 'qemu':
+            if qemu_reference:
                 if q.returncode:
                     raise RuntimeError('qemu reference returned failure; inspect qemu.stderr')
                 expected = q.stdout
                 report['reference'] = 'qemu'
                 report['checks'].pop('qemu-vs-host')
                 report['host_vs_qemu_note'] = 'host and qemu outputs ' + ('match' if q.stdout == reference.stdout else 'differ (architecture-dependent results; engines compared with qemu)')
-        elif h.get('elf_reference') == 'qemu':
+        elif qemu_reference:
             raise RuntimeError('this harness is compared with qemu-user output; pass --qemu')
         for engine in a.engines:
             r = step(engine, [str(ounce), 'run-elf', str(work / elf), f'--cpu={engine}', f'--max-insns={a.budget}', '--trace-syscalls'])
