@@ -1,0 +1,3 @@
+{
+  "install": "./scripts/setup_env.sh"
+}
