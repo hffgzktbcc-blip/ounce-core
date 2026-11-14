@@ -9,6 +9,8 @@ on:
       - 'scripts/verify_differential.py'
       - 'scripts/verify_linux_elf.py'
       - 'scripts/test_verify_linux_elf.py'
+      - 'scripts/run_linux_arm64_matrix.py'
+      - 'scripts/test_run_linux_arm64_matrix.py'
       - 'conformance/**'
       - 'scripts/run_conformance.py'
       - 'scripts/test_run_conformance.py'
@@ -23,6 +25,8 @@ on:
       - 'scripts/verify_differential.py'
       - 'scripts/verify_linux_elf.py'
       - 'scripts/test_verify_linux_elf.py'
+      - 'scripts/run_linux_arm64_matrix.py'
+      - 'scripts/test_run_linux_arm64_matrix.py'
       - 'conformance/**'
       - 'scripts/run_conformance.py'
       - 'scripts/test_run_conformance.py'
@@ -247,4 +251,46 @@ jobs:
           path: |
             target/differential/*/host-output.txt
             target/differential/*/engine-*-results.txt
+          if-no-files-found: warn
+
+  linux-arm64-elf-matrix:
+    name: Linux ARM64 ELF matrix
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Allocate fresh evidence outside the Rust cache
+        run: |
+          python3 - <<'PY_EVIDENCE'
+          import os, pathlib
+          leaf = 'ounce-arm64-evidence-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT']
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / leaf
+          root.mkdir(parents=True, exist_ok=False)
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write('EVIDENCE_ROOT=' + root.as_posix() + '\n')
+          PY_EVIDENCE
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Linux ARM64 build and verification dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libasound2-dev libudev-dev qemu-user
+      - name: Install portable C compiler
+        run: python3 -m pip install ziglang==0.17.1
+      - name: Build ounce-core
+        run: cargo build --release --locked --features "nce native-jit"
+      - name: Run Linux ARM64 ELF matrix
+        run: python3 scripts/run_linux_arm64_matrix.py --work "$EVIDENCE_ROOT/linux-arm64-matrix" --report "$EVIDENCE_ROOT/linux-arm64-matrix-report.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-arm64-elf-matrix-report
+          path: |
+            ${{ env.EVIDENCE_ROOT }}/linux-arm64-matrix-report.json
+            ${{ env.EVIDENCE_ROOT }}/linux-arm64-matrix/*/report.json
           if-no-files-found: warn
