@@ -1,0 +1,763 @@
+{
+  "description": "Local Apple M3 qualification; adapter observations, not independent validation.",
+  "runtime_source_revision": "d034aa6789edee39a7ac7d613c8e913ad98f90a1",
+  "runtime_source_changes": "No Rust runtime changes; only capture harness, runner, tests and new suite changed.",
+  "build": "cargo build --release --features native-jit",
+  "runtime_binary_sha256": "55e9d21c55fecd354f6309f0d8d999077b96d13bc1e2149c7645020414526250",
+  "host": "Darwin 25.6.0 arm64",
+  "results": [
+    {
+      "schema": "ounce-core/conformance-result-v1",
+      "suite_version": "0.1.0",
+      "suite_manifest_sha256": "093231bb02bf6849bf1604d6b99573ebc462ada73efe667d57917e03e05c4eb3",
+      "adapter_argv": [
+        "target/release/ounce-core",
+        "fuzz-replay",
+        "--engine",
+        "interp"
+      ],
+      "scope": "adapter-reported internal result; independence not established",
+      "cases": [
+        {
+          "id": "default-nan-mul2d",
+          "trace_sha256": "b98c8bc44fc7c35cbcbf36e8e8ea3efa2f9b2ccaecb637abea819311b6e3151b",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "schema": "ounce-core/conformance-result-v1",
+      "suite_version": "0.1.0",
+      "suite_manifest_sha256": "093231bb02bf6849bf1604d6b99573ebc462ada73efe667d57917e03e05c4eb3",
+      "adapter_argv": [
+        "target/release/ounce-core",
+        "fuzz-replay",
+        "--engine",
+        "tier3"
+      ],
+      "scope": "adapter-reported internal result; independence not established",
+      "cases": [
+        {
+          "id": "default-nan-mul2d",
+          "trace_sha256": "b98c8bc44fc7c35cbcbf36e8e8ea3efa2f9b2ccaecb637abea819311b6e3151b",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "schema": "ounce-core/conformance-result-v1",
+      "suite_version": "0.1.0",
+      "suite_manifest_sha256": "093231bb02bf6849bf1604d6b99573ebc462ada73efe667d57917e03e05c4eb3",
+      "adapter_argv": [
+        "target/release/ounce-core",
+        "fuzz-replay",
+        "--engine",
+        "tier4"
+      ],
+      "scope": "adapter-reported internal result; independence not established",
+      "cases": [
+        {
+          "id": "default-nan-mul2d",
+          "trace_sha256": "b98c8bc44fc7c35cbcbf36e8e8ea3efa2f9b2ccaecb637abea819311b6e3151b",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "schema": "ounce-core/conformance-result-v1",
+      "suite_version": "0.2.0",
+      "suite_manifest_sha256": "be277f02e2fb50c0900fdfafee3e60cb0b867fce6b0e80460346efbe47581237",
+      "adapter_argv": [
+        "target/release/ounce-core",
+        "fuzz-replay",
+        "--engine",
+        "interp"
+      ],
+      "scope": "adapter-reported internal result; independence not established",
+      "cases": [
+        {
+          "id": "default-nan-mul2d",
+          "trace_sha256": "b98c8bc44fc7c35cbcbf36e8e8ea3efa2f9b2ccaecb637abea819311b6e3151b",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "snan-add-d",
+          "trace_sha256": "df725d6973f7aaa11baf14b9e3d3976a0e85447fe6a3bceea71222db59a39829",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "qnan-fmaxnm-d",
+          "trace_sha256": "c0cfbdef336219912541b74384a1e5bf6675bd4c85431f62bec162915f5b7c39",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "frintn-tie-d",
+          "trace_sha256": "436cdc345ce3be268099760af59798b3034d93d6cc61e1dc672d4980aac2bd94",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "frinta-negative-tie-d",
+          "trace_sha256": "1d5fd5c863b62009f9b3fab0394fd9a66d1bbe58085bfaf107c356cfe1004d77",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "fcmp-unordered-d",
+          "trace_sha256": "557ffb902b37c91825538da3f95d716a278c6528a0260c7236e4e34cdf2fffb1",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "fcvtzs-negative-d",
+          "trace_sha256": "311b4fb87b9c90d8d6fd74bd87d8e1b34a5e1a6bf54174905f24d69f10a4016c",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "sqadd-saturate-16b",
+          "trace_sha256": "a9e1a7be0d3f54df31ba99f7574c6a311ff255a6babe5547b03727da2550cb91",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "adds-signed-overflow",
+          "trace_sha256": "0a03f3ba29ad58ccbb3eb5ac10d651b7027cb415b0f7e1b79609bb75b48aebd7",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "adcs-carry-wrap",
+          "trace_sha256": "fe9267061f11410990e5d83739432fbf6e987c5b740941fc3953d585db8ffb4a",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "sbfm-sign-extend",
+          "trace_sha256": "9bb1e07b68ce6b4f7f3df20aed29195bfc06cd462042b165550684fd86ea6187",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "bfm-wrap-insert",
+          "trace_sha256": "4a0976ade4ab0f201f8821562c4f28f2db9751d256132655d27526676a5fe593",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "schema": "ounce-core/conformance-result-v1",
+      "suite_version": "0.2.0",
+      "suite_manifest_sha256": "be277f02e2fb50c0900fdfafee3e60cb0b867fce6b0e80460346efbe47581237",
+      "adapter_argv": [
+        "target/release/ounce-core",
+        "fuzz-replay",
+        "--engine",
+        "tier3"
+      ],
+      "scope": "adapter-reported internal result; independence not established",
+      "cases": [
+        {
+          "id": "default-nan-mul2d",
+          "trace_sha256": "b98c8bc44fc7c35cbcbf36e8e8ea3efa2f9b2ccaecb637abea819311b6e3151b",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "snan-add-d",
+          "trace_sha256": "df725d6973f7aaa11baf14b9e3d3976a0e85447fe6a3bceea71222db59a39829",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "qnan-fmaxnm-d",
+          "trace_sha256": "c0cfbdef336219912541b74384a1e5bf6675bd4c85431f62bec162915f5b7c39",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "frintn-tie-d",
+          "trace_sha256": "436cdc345ce3be268099760af59798b3034d93d6cc61e1dc672d4980aac2bd94",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "frinta-negative-tie-d",
+          "trace_sha256": "1d5fd5c863b62009f9b3fab0394fd9a66d1bbe58085bfaf107c356cfe1004d77",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "fcmp-unordered-d",
+          "trace_sha256": "557ffb902b37c91825538da3f95d716a278c6528a0260c7236e4e34cdf2fffb1",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "fcvtzs-negative-d",
+          "trace_sha256": "311b4fb87b9c90d8d6fd74bd87d8e1b34a5e1a6bf54174905f24d69f10a4016c",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "sqadd-saturate-16b",
+          "trace_sha256": "a9e1a7be0d3f54df31ba99f7574c6a311ff255a6babe5547b03727da2550cb91",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "adds-signed-overflow",
+          "trace_sha256": "0a03f3ba29ad58ccbb3eb5ac10d651b7027cb415b0f7e1b79609bb75b48aebd7",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "adcs-carry-wrap",
+          "trace_sha256": "fe9267061f11410990e5d83739432fbf6e987c5b740941fc3953d585db8ffb4a",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "sbfm-sign-extend",
+          "trace_sha256": "9bb1e07b68ce6b4f7f3df20aed29195bfc06cd462042b165550684fd86ea6187",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "bfm-wrap-insert",
+          "trace_sha256": "4a0976ade4ab0f201f8821562c4f28f2db9751d256132655d27526676a5fe593",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier3\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "schema": "ounce-core/conformance-result-v1",
+      "suite_version": "0.2.0",
+      "suite_manifest_sha256": "be277f02e2fb50c0900fdfafee3e60cb0b867fce6b0e80460346efbe47581237",
+      "adapter_argv": [
+        "target/release/ounce-core",
+        "fuzz-replay",
+        "--engine",
+        "tier4"
+      ],
+      "scope": "adapter-reported internal result; independence not established",
+      "cases": [
+        {
+          "id": "default-nan-mul2d",
+          "trace_sha256": "b98c8bc44fc7c35cbcbf36e8e8ea3efa2f9b2ccaecb637abea819311b6e3151b",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "snan-add-d",
+          "trace_sha256": "df725d6973f7aaa11baf14b9e3d3976a0e85447fe6a3bceea71222db59a39829",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "qnan-fmaxnm-d",
+          "trace_sha256": "c0cfbdef336219912541b74384a1e5bf6675bd4c85431f62bec162915f5b7c39",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "frintn-tie-d",
+          "trace_sha256": "436cdc345ce3be268099760af59798b3034d93d6cc61e1dc672d4980aac2bd94",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "frinta-negative-tie-d",
+          "trace_sha256": "1d5fd5c863b62009f9b3fab0394fd9a66d1bbe58085bfaf107c356cfe1004d77",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "fcmp-unordered-d",
+          "trace_sha256": "557ffb902b37c91825538da3f95d716a278c6528a0260c7236e4e34cdf2fffb1",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "fcvtzs-negative-d",
+          "trace_sha256": "311b4fb87b9c90d8d6fd74bd87d8e1b34a5e1a6bf54174905f24d69f10a4016c",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "sqadd-saturate-16b",
+          "trace_sha256": "a9e1a7be0d3f54df31ba99f7574c6a311ff255a6babe5547b03727da2550cb91",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "adds-signed-overflow",
+          "trace_sha256": "0a03f3ba29ad58ccbb3eb5ac10d651b7027cb415b0f7e1b79609bb75b48aebd7",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "adcs-carry-wrap",
+          "trace_sha256": "fe9267061f11410990e5d83739432fbf6e987c5b740941fc3953d585db8ffb4a",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "sbfm-sign-extend",
+          "trace_sha256": "9bb1e07b68ce6b4f7f3df20aed29195bfc06cd462042b165550684fd86ea6187",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        },
+        {
+          "id": "bfm-wrap-insert",
+          "trace_sha256": "4a0976ade4ab0f201f8821562c4f28f2db9751d256132655d27526676a5fe593",
+          "passed": true,
+          "counts": {
+            "host executed (not SIGILL)": 1,
+            "host UNDEFINED (SIGILL)": 0,
+            "emulator unimplemented": 0,
+            "emulator other errors": 0,
+            "emulator executed": 1,
+            "exact match (X,V,NZCV,QC)": 1,
+            "MISMATCH": 0,
+            "emulator runs a word the host calls UNDEFINED": 0
+          },
+          "returncode": 0,
+          "stdout": "--- fuzz-replay summary ---\nengine:                         Tier4\nwords with native Tier-4 insns: 1\nhost executed (not SIGILL):     1\nhost UNDEFINED (SIGILL):        0\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              1\n  distinct classes executed:    1\n  exact match (X,V,NZCV,QC):    1\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: 0\nemulator runs a word the host calls UNDEFINED: 0\n"
+        }
+      ],
+      "passed": true
+    }
+  ]
+}
