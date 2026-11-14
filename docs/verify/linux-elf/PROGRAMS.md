@@ -45,10 +45,7 @@ interpreter and Tier-4 unit tests; the original failures were captured first.
 
 ## Not working, and limits
 
-- **wasm3 as an ELF does not run yet.** musl's allocator asks the runner for a PROT_NONE `MAP_NORESERVE` mapping
-  starting at about 1 TiB and halving; the runner refuses anything over 512 MiB, so the first module fails to
-  load ("allocation failed"). qemu-user runs the same ELF. The same program passes as an NRO in the existing
-  harness. Cause of the oversized first request is not yet understood (see the issue filed for it).
+- **wasm3 (`#366`)**: Previously stopped on musl/wasm3's oversized `PROT_NONE | MAP_NORESERVE` arena reservation; resolved in `#429` (`8cc0ecf`) by tracking sparse virtual reservations separately from backed MMU pages and delivering synchronous guest `SIGSEGV` frames (`rt_sigframe` / `rt_sigreturn`). See [wasm3-366.md](wasm3-366.md).
 - Host x86-64 and AArch64 legitimately differ for wasm3 (default-NaN sign), so wasm3 must use qemu as its reference.
 - The programs' own hazards, avoided in the cases: `base64_decode` reads `in[-1]` for empty input (crypto-algorithms),
   and it scans to the end of its input, so encoded buffers are NUL-terminated.
