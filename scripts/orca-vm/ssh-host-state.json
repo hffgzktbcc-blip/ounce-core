@@ -1,0 +1,8 @@
+{
+  "host": "127.0.0.1",
+  "port": 22,
+  "username": "ubuntu",
+  "projectRoot": "/home/ubuntu/workspace/ounce-core",
+  "repoUrl": "https://github.com/hffgzktbcc-blip/ounce-core.git",
+  "repoRef": "main"
+}

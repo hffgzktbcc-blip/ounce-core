@@ -11,7 +11,7 @@ Exit status is the guest's `exit_group` code (low 8 bits). Failures use: 70 unim
 non-Linux SVC, 71 instruction/memory fault, 72 ELF rejected, 73 instruction budget exhausted. A
 `run-elf: DIAGNOSIS: ...` line on stderr names the syscall number (with args) or the instruction word.
 
-Maturity: **research-only** as a general Linux runner. Six tiny freestanding programs (including a deterministic clock fixture) and 18 unchanged pinned real programs linked with musl (LZ4, xxHash, cJSON, zlib and the ones in [PROGRAMS.md](PROGRAMS.md)) have been executed; wasm3 does not run yet (#366). Each result is bounded to its listed cases; it does not establish general libc compatibility.
+Maturity: **research-only** as a general Linux runner. Six tiny freestanding programs (including a deterministic clock fixture) and pinned real programs linked with musl (LZ4, xxHash, cJSON, zlib, wasm3 after #429 / [wasm3-366.md](wasm3-366.md), the programs in [PROGRAMS.md](PROGRAMS.md), and the opt-matrix harnesses in [HIGH-STAR-OPT-MATRIX.md](HIGH-STAR-OPT-MATRIX.md)) have been executed. Each result is bounded to its listed cases; it does not establish general libc compatibility.
 
 ## What runs
 
@@ -29,7 +29,7 @@ Maturity: **research-only** as a general Linux runner. Six tiny freestanding pro
 
 ## Honest limits
 
-- **18 libc-linked programs verified so far** (LZ4, xxHash, cJSON, zlib; below, and [PROGRAMS.md](PROGRAMS.md)); wasm3 fails (#366). Other static glibc/musl binaries may stop early:
+- **Libc-linked programs verified so far** (LZ4, xxHash, cJSON, zlib, wasm3, [PROGRAMS.md](PROGRAMS.md), and [HIGH-STAR-OPT-MATRIX.md](HIGH-STAR-OPT-MATRIX.md)). Other static glibc/musl binaries may stop early:
   they call `mprotect`, `getrandom`, `prlimit64`, `rseq`, `futex`, `set_robust_list`, `readlinkat`
   paths, etc. Each stops with a diagnosis naming the syscall; none is implemented yet.
 - Dynamic executables, `ET_DYN`/static-PIE, 32-bit and big-endian ELF are rejected. `PT_TLS` is not
