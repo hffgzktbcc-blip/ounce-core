@@ -93,6 +93,7 @@ fn main() {
         }
         if arg == "--deterministic" {
             run_report::set_deterministic(true);
+            args.push(arg);
             continue;
         }
         if let Some(value) = arg.strip_prefix("--sdmc=") {
