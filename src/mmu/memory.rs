@@ -260,6 +260,41 @@ impl Memory {
         }
     }
 
+    /// Copy software-backed memory for a fault probe without changing the live guest.
+    /// Native arenas cannot be copied this way.
+    pub(crate) fn fault_snapshot(&self) -> Option<Self> {
+        #[cfg(feature = "nce")]
+        if self.arena.is_some() { return None; }
+        Some(Self {
+            pages: self.pages.clone(),
+            guarded_pages: self.guarded_pages,
+            code_write_gen: self.code_write_gen,
+            unmapped_code_gen: self.unmapped_code_gen.clone(),
+            exec_map_gen: self.exec_map_gen,
+            ..Self::new()
+        })
+    }
+
+    /// Commit missing pages and change permissions without discarding existing bytes.
+    pub fn commit_range(&mut self, start: u64, size: usize, perm: Permission) {
+        for addr in (start..start + size as u64).step_by(PAGE_SIZE) {
+            if !self.is_mapped(addr) { self.map_range(addr, PAGE_SIZE, perm); }
+        }
+        self.protect_range(start, size, perm);
+    }
+
+    /// Change only existing pages; holes remain unbacked. Invalidate compiled code.
+    pub fn protect_range(&mut self, start: u64, size: usize, perm: Permission) {
+        let end = start.saturating_add(size as u64);
+        for (&idx, page) in &mut self.pages {
+            if idx << 12 >= start && idx << 12 < end {
+                if page.holds_code { self.code_write_gen += 1; page.code_write_gen = self.code_write_gen; }
+                page.perm = perm;
+            }
+        }
+        if perm.execute { self.exec_map_gen += 1; }
+    }
+
     /// Checks if a virtual address is mapped.
     /// Moves the pages of `src..src + size` to `dst` (both page aligned): the data appears at `dst` and
     /// `src` becomes unmapped. Models svcMapMemory, after which Horizon makes the source inaccessible.
@@ -467,6 +502,20 @@ impl Memory {
     pub fn write_bytes(&mut self, addr: u64, data: &[u8]) -> Result<(), MemoryError> {
         if !data.is_empty() && addr.checked_add((data.len() - 1) as u64).is_none() {
             return Err(MemoryError::Unmapped { addr });
+        }
+        // A faulting cross-page guest store must not modify its accessible prefix.
+        // Keep the common single-page path to one page-table lookup.
+        if !data.is_empty() && addr >> 12 != (addr + (data.len() - 1) as u64) >> 12 {
+            let mut next = addr;
+            let end = addr + (data.len() - 1) as u64;
+            loop {
+                let page = self.pages.get(&(next >> 12)).ok_or(MemoryError::Unmapped { addr: next })?;
+                if !page.perm.write {
+                    return Err(MemoryError::PermissionDenied { addr: next, required: "WRITE", actual: page.perm });
+                }
+                if next >> 12 == end >> 12 { break; }
+                next = (next | (PAGE_SIZE as u64 - 1)) + 1;
+            }
         }
         let mut curr_addr = addr;
         let mut offset = 0;
@@ -744,6 +793,29 @@ mod tests {
             assert!(result.is_err());
             assert_eq!(memory.pages.len(), 1);
             assert_eq!(memory.read_u8(0x1000).unwrap(), 42);
+        }
+    }
+}
+
+#[cfg(test)]
+mod fault_atomicity_tests {
+    use super::*;
+
+    #[test]
+    fn cross_page_store_fault_leaves_prefix_and_code_generation_unchanged() {
+        for perm in [None, Some(Permission::NONE), Some(Permission::READ_ONLY)] {
+            let mut mem = Memory::new();
+            mem.map_range(0x1000, PAGE_SIZE, Permission::READ_WRITE_EXECUTE);
+            mem.write_u64(0x1ff8, u64::MAX).unwrap();
+            mem.mark_code_range(0x1000, 0x2000);
+            let generation = mem.code_write_gen();
+            if let Some(perm) = perm { mem.map_range(0x2000, PAGE_SIZE, perm); }
+            assert!(mem.write_u64(0x1ffc, 0).is_err());
+            assert_eq!(mem.read_u64(0x1ff8).unwrap(), u64::MAX);
+            assert_eq!(mem.code_write_gen(), generation);
+            mem.map_range(0x2000, PAGE_SIZE, Permission::READ_WRITE);
+            mem.write_u64(0x1ffc, 42).unwrap();
+            assert_eq!(mem.read_u64(0x1ffc).unwrap(), 42);
         }
     }
 }

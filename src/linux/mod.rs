@@ -7,6 +7,7 @@
 pub mod elf;
 pub mod runner;
 pub mod syscalls;
+mod signals;
 
 #[cfg(test)]
 mod tests;

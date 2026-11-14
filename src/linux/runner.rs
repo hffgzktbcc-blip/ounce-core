@@ -102,6 +102,12 @@ pub fn run(elf_bytes: &[u8], argv: &[String], opts: &Options, out: &mut dyn Outp
                 let nr = cpu.regs.read_x(8);
                 let args: [u64; 6] = std::array::from_fn(|i| cpu.regs.read_x(i as u8));
                 syscalls += 1;
+                if nr == 139 {
+                    if proc.signal_return(&mut cpu, &mmu).is_err() {
+                        return fail("invalid rt_sigreturn frame".into(), EXIT_FAULT, engine_name, insns, syscalls);
+                    }
+                    continue;
+                }
                 let outcome = proc.dispatch(nr, args, &mut mmu, out);
                 if opts.trace_syscalls {
                     log(&format!("syscall {nr} {args:#x?} -> {outcome:?}"));
@@ -117,6 +123,7 @@ pub fn run(elf_bytes: &[u8], argv: &[String], opts: &Options, out: &mut dyn Outp
                 }
             }
             BlockExit::Fault { pc } => {
+                if proc.deliver_segv(&mut cpu, &mut mmu, pc) { continue; }
                 return fail(diagnose_fault(&mut cpu, &mut mmu, pc), EXIT_FAULT, engine_name, insns, syscalls);
             }
             _ => {}
