@@ -144,6 +144,7 @@ def stage(h, work, cache):
     if up:
         root = fetch_upstream(up, cache)
         for s, t in up["copy"].items():
+            (d / t).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(root / s, d / t)
     return d
 
