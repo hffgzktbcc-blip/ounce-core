@@ -282,6 +282,7 @@
     "host_main": "host/host_main.c",
     "nx_main": "main_nx.c",
     "libs": "-lm",
+    "elf_reference": "aarch64",
     "upstream": {
      "repo": "https://github.com/wasm3/wasm3",
      "commit": "28ecb9af6d2040e474a70f7cb7f43666740141fb",
