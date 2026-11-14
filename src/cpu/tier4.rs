@@ -1081,6 +1081,11 @@ impl Tier4JitEngine {
 
     #[inline]
     fn lookup_or_compile_fast(&mut self, pc: u64, mmu: &mut Memory) -> Option<BlockId> {
+        // Misaligned guest targets fault through Tier-3. In particular, u64::MAX
+        // must not match the empty fast-cache tag and reuse BlockId::default().
+        if pc & 3 != 0 {
+            return None;
+        }
         let idx = ((pc >> 2) as usize) & 1023;
         if self.fast_cache[idx].0 == pc {
             return Some(self.fast_cache[idx].1);
@@ -1567,6 +1572,75 @@ mod tests {
         assert_eq!(t4, reference, "Tier-4 differs from the interpreter");
         assert!(engine.native_insns > 0, "nothing ran natively");
         engine
+    }
+
+    /// An unmapped target equal to the link table's empty tag must fault in the guest (#391).
+    #[test]
+    fn indirect_branch_to_empty_link_sentinel_faults_all_tiers() {
+        for (word, rn) in [
+            (0xd61f_0000, 0),  // br x0
+            (0xd63f_0000, 0),  // blr x0
+            (0xd65f_0000, 0),  // ret x0
+            (0xd79f_01c0, 14), // br x14 (seed 20261111)
+        ] {
+            let (mut cpu, mmu) = setup(&[word, 0xd400_0001]);
+            cpu.regs.x[rn] = u64::MAX;
+            let (c, m) = clone(&cpu, &mmu);
+            let reference = run_interp(c, m, 16);
+            assert_eq!(reference.exit, BlockExit::Fault { pc: u64::MAX });
+            assert_eq!(reference.x[rn], u64::MAX);
+            if word == 0xd63f_0000 { assert_eq!(reference.x[30], CODE + 4); }
+            let (c, m) = clone(&cpu, &mmu);
+            assert_eq!(run_tier3(c, m, 16), reference, "tier3 {word:08x}");
+            let (result, engine) = run_tier4(cpu, mmu, 16);
+            assert_eq!(result, reference, "tier4 {word:08x}");
+            assert!(engine.native_insns > 0);
+        }
+    }
+
+    /// Exact Arm FPCR=0 scalar results, including the x86 default-NaN sign regression (#362).
+    #[test]
+    fn scalar_arithmetic_nan_bits_all_tiers() {
+        for (double, one, two, three, inf, dn, sign, quiet) in [
+            (false, 0x3f80_0000u64, 0x4000_0000u64, 0x4040_0000u64, 0x7f80_0000u64,
+                0x7fc0_0000u64, 1u64 << 31, 1u64 << 22),
+            (true, 0x3ff0_0000_0000_0000, 0x4000_0000_0000_0000, 0x4008_0000_0000_0000,
+                0x7ff0_0000_0000_0000, 0x7ff8_0000_0000_0000, 1u64 << 63, 1u64 << 51),
+        ] {
+            // Rd=3, Rn=0, Rm=1; FNMUL negates after processing NaNs.
+            for (base, finite, invalids, negate) in [
+                (0x1e21_2803, three, vec![(inf, inf | sign)], false),
+                (0x1e21_3803, one, vec![(inf, inf)], false),
+                (0x1e21_0803, two, vec![(0, inf), (inf, 0)], false),
+                (0x1e21_1803, two, vec![(0, 0), (inf, inf)], false),
+                (0x1e21_8803, two, vec![(0, inf), (inf, 0)], true),
+            ] {
+                let word = base | if double { 1 << 22 } else { 0 };
+                let neg = if negate { sign } else { 0 };
+                let mut cases = vec![(two, one, finite ^ neg)];
+                cases.extend(invalids.into_iter().map(|(a, b)| (a, b, dn ^ neg)));
+                cases.extend([
+                    (dn | sign | 1, dn | 2, (dn | sign | 1) ^ neg),
+                    (dn | 1, (dn - quiet) | 2, (dn | 2) ^ neg),
+                    ((dn - quiet) | sign | 1, (dn - quiet) | 2, (dn | sign | 1) ^ neg),
+                    (one, dn | sign | 2, (dn | sign | 2) ^ neg),
+                    (one, (dn - quiet) | sign | 2, (dn | sign | 2) ^ neg),
+                ]);
+                for (a, b, expected) in cases {
+                    let (mut cpu, mmu) = setup(&[word, 0xd400_0001]);
+                    cpu.regs.v[0] = a as u128;
+                    cpu.regs.v[1] = b as u128;
+                    cpu.regs.v[3] = u128::MAX;
+                    let (c, m) = clone(&cpu, &mmu);
+                    assert_eq!(run_interp(c, m, 10).v[3], expected as u128, "interp {word:08x}");
+                    let (c, m) = clone(&cpu, &mmu);
+                    assert_eq!(run_tier3(c, m, 10).v[3], expected as u128, "tier3 {word:08x}");
+                    let (result, engine) = run_tier4(cpu, mmu, 10);
+                    assert_eq!(result.v[3], expected as u128, "tier4 {word:08x}: {a:x}, {b:x}");
+                    assert!(engine.native_insns > 0, "scalar arithmetic must run natively");
+                }
+            }
+        }
     }
 
     #[test]
