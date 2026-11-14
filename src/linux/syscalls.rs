@@ -31,6 +31,7 @@ pub const SYS_BRK: u64 = 214;
 pub const SYS_MUNMAP: u64 = 215;
 pub const SYS_MREMAP: u64 = 216;
 pub const SYS_MMAP: u64 = 222;
+pub const SYS_MPROTECT: u64 = 226;
 
 const MREMAP_MAYMOVE: u64 = 1;
 const MAP_FIXED: u64 = 0x10;
@@ -66,13 +67,18 @@ pub struct Process {
     brk_mapped_end: u64,
     mmap_next: u64,
     mmap_total: u64,
+    /// Virtual anonymous mappings, including unbacked PROT_NONE reservations.
+    mappings: Vec<(u64, u64)>,
+    pub(super) signal_mask: u64,
+    pub(super) alt_stack: [u64; 3],
+    pub(super) sigactions: [[u8; 32]; 65],
     started: Instant,
     deterministic_ticks: Option<u64>,
 }
 
 impl Process {
     pub fn new(brk_start: u64) -> Self {
-        Self { brk_start, brk_cur: brk_start, brk_mapped_end: brk_start, mmap_next: MMAP_BASE, mmap_total: 0, started: Instant::now(), deterministic_ticks: None }
+        Self { brk_start, brk_cur: brk_start, brk_mapped_end: brk_start, mmap_next: MMAP_BASE, mmap_total: 0, mappings: Vec::new(), sigactions: [[0; 32]; 65], signal_mask: 0, alt_stack: [0, 2, 0], started: Instant::now(), deterministic_ticks: None }
     }
 
     /// Fixed virtual time for reproducible single-process experiments. Each successful
@@ -91,6 +97,7 @@ impl Process {
                 Ok(v) => v,
                 Err(why) => return Outcome::Unimplemented(why),
             },
+            SYS_MPROTECT => self.sys_mprotect(a, mmu),
             SYS_MUNMAP => self.sys_munmap(a[0], a[1], mmu),
             SYS_MREMAP => self.sys_mremap(a, mmu),
             SYS_IOCTL => {
@@ -104,21 +111,44 @@ impl Process {
             }
             SYS_SET_TID_ADDRESS => PID as i64,
             SYS_RT_SIGACTION => {
-                // oldact (x2), if requested, reads back as SIG_DFL with an empty mask.
-                if a[2] != 0 && mmu.write_bytes(a[2], &[0u8; 32]).is_err() {
-                    -EFAULT
+                if a[0] == 0 || a[0] > 64 || matches!(a[0], 9 | 19) || a[3] != 8 {
+                    -EINVAL
                 } else {
-                    0
+                    let mut action = [0; 32];
+                    if a[1] != 0 && mmu.read_bytes(a[1], &mut action).is_err() {
+                        -EFAULT
+                    } else if a[2] != 0 && mmu.write_bytes(a[2], &self.sigactions[a[0] as usize]).is_err() {
+                        -EFAULT
+                    } else {
+                        if a[1] != 0 { self.sigactions[a[0] as usize] = action; }
+                        0
+                    }
                 }
             }
             SYS_RT_SIGPROCMASK => {
-                if a[2] != 0 && mmu.write_bytes(a[2], &[0u8; 8]).is_err() {
-                    -EFAULT
-                } else {
+                let old = self.signal_mask;
+                if a[3] != 8 || (a[1] != 0 && a[0] > 2) { -EINVAL }
+                else if a[2] != 0 && mmu.write_u64(a[2], old).is_err() { -EFAULT }
+                else if a[1] == 0 { 0 }
+                else if let Ok(mask) = mmu.read_u64(a[1]) {
+                    self.signal_mask = match a[0] { 0 => old | mask, 1 => old & !mask, _ => mask } & !(1 << 8 | 1 << 18);
                     0
-                }
+                } else { -EFAULT }
             }
-            SYS_GETPID => PID as i64,
+            132 => self.sys_sigaltstack(a, mmu),
+            SYS_GETPID | 178 => PID as i64,
+            261 => {
+                if a[0] != 0 && a[0] != PID { -ESRCH }
+                else if a[1] != 3 || a[2] != 0 { -EINVAL }
+                else if a[3] == 0 { 0 }
+                else if mmu.write_u64(a[3], STACK_SIZE).is_err() || mmu.write_u64(a[3].saturating_add(8), STACK_SIZE).is_err() { -EFAULT }
+                else { 0 }
+            }
+            163 => {
+                if a[0] != 3 { -EINVAL }
+                else if mmu.write_u64(a[1], STACK_SIZE).is_err() || mmu.write_u64(a[1].saturating_add(8), STACK_SIZE).is_err() { -EFAULT }
+                else { 0 }
+            }
             SYS_CLOCK_GETTIME => self.sys_clock_gettime(a[0], a[1], mmu),
             SYS_UNAME => sys_uname(a[0], mmu),
             SYS_SCHED_GETAFFINITY => sys_sched_getaffinity(a[0], a[1], a[2], mmu),
@@ -188,7 +218,40 @@ impl Process {
     }
 
     fn mapped_pages(mmu: &Memory, addr: u64, len: u64) -> u64 {
-        (0..len / PAGE).filter(|i| mmu.is_mapped(addr + i * PAGE)).count() as u64
+        mmu.regions().iter().map(|&(s, e, _)| e.min(addr.saturating_add(len)).saturating_sub(s.max(addr)) / PAGE).sum()
+    }
+
+    fn forget_mapping(&mut self, start: u64, end: u64) {
+        let mut ranges = Vec::new();
+        for &(s, e) in &self.mappings {
+            if e <= start || s >= end { ranges.push((s, e)); }
+            else {
+                if s < start { ranges.push((s, start)); }
+                if e > end { ranges.push((end, e)); }
+            }
+        }
+        self.mappings = ranges;
+    }
+
+    pub(super) fn covered(&self, start: u64, end: u64, mmu: &Memory) -> bool {
+        let mut ranges = self.mappings.clone();
+        ranges.extend(mmu.regions().into_iter().map(|(s, e, _)| (s, e)));
+        ranges.sort_unstable();
+        let mut next = start;
+        for (s, e) in ranges {
+            if s > next { break; }
+            next = next.max(e);
+            if next >= end { return true; }
+        }
+        false
+    }
+
+    fn accounted_bytes(&self, mmu: &Memory, start: u64, len: u64) -> u64 {
+        self.mappings.iter().map(|&(s, e)| {
+            let lo = s.max(start);
+            let hi = e.min(start + len);
+            if hi > lo { Self::mapped_pages(mmu, lo, hi - lo) * PAGE } else { 0 }
+        }).sum()
     }
 
     fn sys_mmap(&mut self, a: [u64; 6], mmu: &mut Memory) -> Result<i64, String> {
@@ -196,51 +259,63 @@ impl Process {
         if flags & MAP_ANONYMOUS == 0 {
             return Err(format!("mmap of file descriptor {fd} (only MAP_ANONYMOUS is supported), flags={flags:#x} at x0={addr:#x} len={len:#x}"));
         }
-        if len == 0 {
-            return Ok(-EINVAL);
-        }
+        if len == 0 || len > u64::MAX - (PAGE - 1) || prot & !7 != 0 { return Ok(-EINVAL); }
         let len = align_up(len);
-        if len > MAX_MMAP_CALL || self.mmap_total + len > MAX_MMAP_TOTAL {
-            return Ok(-ENOMEM);
-        }
-        let perm = Permission {
-            read: prot & PROT_READ != 0 || prot & (PROT_WRITE | PROT_EXEC) != 0,
-            write: prot & PROT_WRITE != 0,
-            execute: prot & PROT_EXEC != 0,
-        };
+        let backed = if prot == 0 { 0 } else { len };
+        if backed > MAX_MMAP_CALL { return Ok(-ENOMEM); }
         let base = if flags & MAP_FIXED != 0 {
-            if addr % PAGE != 0 || addr < MMAP_BASE || addr.checked_add(len).is_none_or(|e| e > STACK_TOP - STACK_SIZE) {
+            if addr % PAGE != 0 || addr < PAGE || addr.checked_add(len).is_none_or(|e| e > STACK_TOP - STACK_SIZE) {
                 return Ok(-EINVAL);
             }
-            // Replaces whatever was there.
-            let old = Self::mapped_pages(mmu, addr, len) * PAGE;
-            self.mmap_total -= old.min(self.mmap_total);
             addr
         } else {
-            let b = self.mmap_next;
-            if b + len > STACK_TOP - STACK_SIZE - (1 << 32) {
-                return Ok(-ENOMEM);
+            // Hints are advisory. Never overlap a live reservation or a fixed mapping.
+            let hint = addr & !(PAGE - 1);
+            let mut b = if hint >= MMAP_BASE && hint.checked_add(len).is_some_and(|e| e <= STACK_TOP - STACK_SIZE - (1 << 32)) { hint } else { self.mmap_next };
+            loop {
+                let Some(end) = b.checked_add(len).filter(|&e| e <= STACK_TOP - STACK_SIZE - (1 << 32)) else { return Ok(-ENOMEM); };
+                let overlap = self.mappings.iter().filter(|&&(s, e)| s < end && e > b).map(|&(_, e)| e).max();
+                match overlap { Some(e) => b = e, None => break b }
             }
-            self.mmap_next = b + len;
-            b
         };
-        mmu.map_range(base, len as usize, perm);
-        self.mmap_total += len;
+        let old = self.accounted_bytes(mmu, base, len);
+        if self.mmap_total.saturating_sub(old) + backed > MAX_MMAP_TOTAL { return Ok(-ENOMEM); }
+        mmu.unmap_range(base, len as usize);
+        self.forget_mapping(base, base + len);
+        self.mappings.push((base, base + len));
+        if backed != 0 { mmu.map_range(base, len as usize, protection(prot)); }
+        self.mmap_total = self.mmap_total.saturating_sub(old) + backed;
+        self.mmap_next = self.mmap_next.max(base + len);
         Ok(base as i64)
     }
 
-    fn sys_munmap(&mut self, addr: u64, len: u64, mmu: &mut Memory) -> i64 {
-        if !addr.is_multiple_of(PAGE) || len == 0 || len > MAX_MMAP_TOTAL * 4 {
-            return -EINVAL;
-        }
+    fn sys_mprotect(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
+        let (addr, len, prot) = (a[0], a[1], a[2]);
+        if addr % PAGE != 0 || prot & !7 != 0 || len > u64::MAX - (PAGE - 1) { return -EINVAL; }
         let len = align_up(len);
-        if addr < MMAP_BASE || addr.checked_add(len).is_none_or(|e| e > STACK_TOP - STACK_SIZE) {
-            return -EINVAL;
+        let Some(end) = addr.checked_add(len) else { return -ENOMEM; };
+        if len == 0 { return 0; }
+        if !self.covered(addr, end, mmu) { return -ENOMEM; }
+        let old = Self::mapped_pages(mmu, addr, len) * PAGE;
+        if prot != 0 {
+            let additional = len - old;
+            if len > MAX_MMAP_CALL || self.mmap_total + additional > MAX_MMAP_TOTAL { return -ENOMEM; }
+            mmu.commit_range(addr, len as usize, protection(prot));
+            self.mmap_total += additional;
+        } else {
+            mmu.protect_range(addr, len as usize, Permission::NONE);
         }
-        // Count only pages that exist; a huge range over empty space is cheap to skip.
-        let freed = Self::mapped_pages(mmu, addr, len) * PAGE;
+        0
+    }
+
+    fn sys_munmap(&mut self, addr: u64, len: u64, mmu: &mut Memory) -> i64 {
+        if addr % PAGE != 0 || len == 0 || len > u64::MAX - (PAGE - 1) { return -EINVAL; }
+        let len = align_up(len);
+        if addr < PAGE || addr.checked_add(len).is_none_or(|e| e > STACK_TOP - STACK_SIZE) { return -EINVAL; }
+        let freed = self.accounted_bytes(mmu, addr, len);
         mmu.unmap_range(addr, len as usize);
-        self.mmap_total -= freed.min(self.mmap_total);
+        self.forget_mapping(addr, addr + len);
+        self.mmap_total = self.mmap_total.saturating_sub(freed);
         0
     }
 
@@ -254,6 +329,12 @@ impl Process {
             return -EINVAL;
         }
         let (old_len, new_len) = (align_up(old_len), align_up(new_len));
+        // musl pthread_getattr_np probes the main stack with a non-moving
+        // growth request, stopping when it reaches an unmapped page.
+        if old >= STACK_TOP - STACK_SIZE && old.checked_add(old_len).is_some_and(|e| e <= STACK_TOP)
+            && flags == 0 && new_len > old_len && Self::mapped_pages(mmu, old, old_len) * PAGE == old_len {
+            return -ENOMEM;
+        }
         if old < MMAP_BASE || old.checked_add(old_len).is_none_or(|e| e > STACK_TOP - STACK_SIZE) || Self::mapped_pages(mmu, old, old_len) * PAGE != old_len {
             return -EFAULT;
         }
@@ -263,6 +344,7 @@ impl Process {
         if new_len < old_len {
             let freed = old_len - new_len;
             mmu.unmap_range(old + new_len, freed as usize);
+            self.forget_mapping(old + new_len, old + old_len);
             self.mmap_total -= freed.min(self.mmap_total);
             return old as i64;
         }
@@ -277,6 +359,8 @@ impl Process {
         if mmu.read_bytes(old, &mut data).is_err() {
             return -EFAULT;
         }
+        self.forget_mapping(old, old + old_len);
+        self.mappings.push((base, base + new_len));
         self.mmap_next = base + new_len;
         mmu.map_range(base, new_len as usize, Permission { read: true, write: true, execute: false });
         if mmu.write_bytes(base, &data).is_err() {
@@ -397,4 +481,8 @@ fn describe_unimplemented(nr: u64, a: &[u64; 6]) -> String {
         "unimplemented Linux syscall {nr}{name}; args x0..x5 = {:#x}, {:#x}, {:#x}, {:#x}, {:#x}, {:#x}",
         a[0], a[1], a[2], a[3], a[4], a[5]
     )
+}
+
+fn protection(prot: u64) -> Permission {
+    Permission { read: prot & (PROT_READ | PROT_WRITE | PROT_EXEC) != 0, write: prot & PROT_WRITE != 0, execute: prot & PROT_EXEC != 0 }
 }

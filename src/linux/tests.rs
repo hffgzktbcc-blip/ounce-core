@@ -277,3 +277,58 @@ fn mremap_shrinks_in_place_and_grows_by_moving_with_contents() {
     assert_eq!(proc.dispatch(SYS_MREMAP, [b, 0x8000, 0x1000, 0, 0, 0], &mut mem, &mut out), Outcome::Return(b as i64));
     assert!(mem.is_mapped(b) && !mem.is_mapped(b + 0x1000));
 }
+
+#[test]
+fn guarded_virtual_memory_and_linux_signal_return() {
+    let elf = include_bytes!("../../tests/linux-elf/bin/guarded_memory.elf");
+    for tier in TIERS {
+        let (report, out) = go(elf, &["guarded_memory"], tier);
+        assert_eq!(report.stop, Stop::Exited(0), "{tier:?}: {report:?}");
+        assert_eq!(out, "guarded reservation, commit, fault, return, decommit: ok\n");
+    }
+}
+
+#[test]
+fn reservations_are_sparse_bounded_and_preserve_holes() {
+    use super::syscalls::{Process, Outcome, SYS_MMAP, SYS_MUNMAP, SYS_MPROTECT, ENOMEM, EINVAL};
+    use crate::mmu::Memory;
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    let mut out = Capture::default();
+    let n = 0x10000100000;
+    let Outcome::Return(base) = proc.dispatch(SYS_MMAP, [0, n, 0, 0x4022, u64::MAX, 0], &mut mem, &mut out) else { panic!() };
+    assert!(base > 0);
+    let base = base as u64;
+    assert_eq!(mem.bucket_stats().total_pages, 0);
+    assert_eq!(proc.dispatch(SYS_MPROTECT, [base, n, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-ENOMEM));
+    assert_eq!(proc.dispatch(SYS_MPROTECT, [base + 4096, 1, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(mem.bucket_stats().total_pages, 1);
+    assert_eq!(proc.dispatch(SYS_MUNMAP, [base + 8192, 4096, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(proc.dispatch(SYS_MPROTECT, [base + 4096, 8192, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-ENOMEM));
+    assert_eq!(mem.bucket_stats().total_pages, 1);
+    assert_eq!(proc.dispatch(SYS_MMAP, [0, u64::MAX, 0, 0x4022, u64::MAX, 0], &mut mem, &mut out), Outcome::Return(-EINVAL));
+    assert_eq!(proc.dispatch(SYS_MUNMAP, [base, n, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(mem.bucket_stats().total_pages, 0);
+}
+
+#[test]
+fn mmap_hints_do_not_overlap_reservations_and_fixed_maps_trim_them() {
+    use super::syscalls::{Process, Outcome, SYS_MMAP, SYS_MPROTECT, SYS_MUNMAP, ENOMEM};
+    use crate::mmu::Memory;
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    let mut out = Capture::default();
+    let mut map = |hint, len, prot, flags, mem: &mut Memory| {
+        let Outcome::Return(addr) = proc.dispatch(SYS_MMAP, [hint, len, prot, flags, u64::MAX, 0], mem, &mut out) else { panic!() };
+        assert!(addr > 0);
+        addr as u64
+    };
+    let a = map(0, 0x100000000, 0, 0x4022, &mut mem);
+    let b = map(a + 4096, 4096, 3, 0x22, &mut mem);
+    assert!(b >= a + 0x100000000);
+    assert_eq!(map(a + 8192, 4096, 3, 0x32, &mut mem), a + 8192);
+    assert_eq!(mem.bucket_stats().total_pages, 2);
+    assert_eq!(proc.dispatch(SYS_MPROTECT, [a, 4096, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(proc.dispatch(SYS_MUNMAP, [a + 4096, 4096, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(proc.dispatch(SYS_MPROTECT, [a, 12288, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-ENOMEM));
+}
