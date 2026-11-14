@@ -623,7 +623,7 @@ mod tests {
         assert_eq!((st.x[0], st.pc), (2, 0x5000));
 
         // Same slot, different pc (0x4000 + 4 * LINK_SIZE), and a misaligned pc: both miss.
-        for miss in [0x4000 + 4 * LINK_SIZE as u64, 0x4002] {
+        for miss in [0x4000 + 4 * LINK_SIZE as u64, 0x4002, u64::MAX] {
             st.x[1] = miss;
             let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
             assert_eq!(exit, Exit { kind: ExitKind::Code(3), insns: 1 });
