@@ -18,8 +18,9 @@ Maturity: **research-only** as a general Linux runner. Six tiny freestanding pro
 - ELF64 little-endian AArch64 `ET_EXEC`; `PT_LOAD` mapping; stack with argc, argv, empty envp, auxv
   (PHDR, PHENT, PHNUM, PAGESZ, ENTRY, UID/GID, HWCAP, CLKTCK, SECURE, RANDOM, PLATFORM, EXECFN).
 - Syscalls (via `SVC #0`, number in x8): `write`, `writev` (fd 1 and 2 only), `exit`, `exit_group`,
-  `brk`, `mmap` (anonymous only, `MAP_FIXED` allowed in the mmap window), `munmap`, `mremap` (anonymous mappings; shrink in place, grow only with `MREMAP_MAYMOVE`), `ioctl` (returns
-  ENOTTY), `set_tid_address`, `rt_sigaction`/`rt_sigprocmask` (accept and ignore), `getpid`,
+  `brk`, `mmap` (anonymous only, including sparse reservations and `MAP_FIXED`), `mprotect`, `munmap`, `mremap` (anonymous mappings; shrink in place, grow only with `MREMAP_MAYMOVE`), `ioctl` (returns
+  ENOTTY), `set_tid_address`, `rt_sigaction`/`rt_sigprocmask`, `sigaltstack`, `rt_sigreturn`, `getpid`/`gettid`,
+  `getrlimit`/`prlimit64` (read-only stack limit),
   `clock_gettime` (realtime, monotonic), `uname`, `openat`/`readlinkat` (always ENOENT),
   `sched_getaffinity` (one CPU: an 8-byte mask with CPU 0 set).
 - Test programs: `tests/linux-elf/src/*.c`, built by `tests/linux-elf/src/build.sh` (clang plus LLD,
@@ -33,10 +34,13 @@ Maturity: **research-only** as a general Linux runner. Six tiny freestanding pro
   paths, etc. Each stops with a diagnosis naming the syscall; none is implemented yet.
 - Dynamic executables, `ET_DYN`/static-PIE, 32-bit and big-endian ELF are rejected. `PT_TLS` is not
   set up (libc startup is expected to do it).
-- No files, `read`, sockets, threads, `clone`, `execve`, signals delivery, or `fork`.
+- No files, `read`, sockets, threads, `clone`, `execve`, asynchronous signals, or `fork`. Synchronous memory faults can deliver a guest
+  SIGSEGV handler (including an alternate stack and `rt_sigreturn`).
 - Segment pages are RW or RWX only: read-only data is not write-protected, and no W^X.
-- Memory is allocated eagerly: `brk` growth is capped at 512 MiB, one `mmap` at 512 MiB, total
-  anonymous mappings at 1 GiB. Environment is empty; `AT_RANDOM` is fixed bytes (deterministic).
+- Accessible memory is allocated eagerly: `brk` growth is capped at 512 MiB, one accessible
+  `mmap`/`mprotect` at 512 MiB, and backed anonymous pages at 1 GiB. `PROT_NONE` reservations
+  use virtual ranges without page buffers; `mprotect` commits bounded portions, and `munmap`
+  or fixed anonymous mappings trim/replace them. Environment is empty; `AT_RANDOM` is fixed bytes (deterministic).
 - Time: `clock_gettime` reads the host clock by default. `--deterministic` supplies a fixed virtual clock (below), not physical time.
 - `--cpu=native` is rejected. Missing-instruction failures belong to the decoder/interpreter; this
   runner only reports them (instruction word plus the interpreter's error).
@@ -109,7 +113,7 @@ zero. The clocks share a tick counter and advance by one millisecond after each
 successful clock read. Invalid clocks and bad output pointers return EINVAL/EFAULT
 without consuming a tick. Each process run starts over; instruction counts and
 host scheduling do not affect virtual time. This is a test clock, not a model of
-hardware time, signal delivery or scheduler timing. Default mode keeps host time.
+hardware time, asynchronous signal delivery or scheduler timing. Default mode keeps host time.
 
 ```sh
 ounce-core run-elf tests/linux-elf/bin/clock.elf --deterministic --cpu=tier3
@@ -128,3 +132,14 @@ boottime=0:3000000
 The fixture is project-owned freestanding C; rebuild with the fixture build script.
 The implementation does not provide full record/replay or guarantee deterministic
 behavior for arbitrary Linux applications.
+
+
+## wasm3 guarded memory (#366)
+
+See [the reproduction and evidence](wasm3-366.md). The unchanged pinned wasm3
+sources reserve `(8 GiB + 2*4096) * 128 = 0x10000100000` bytes for guarded
+Wasm memories, using `PROT_NONE | MAP_NORESERVE`; this is intentional virtual
+address space, not a malloc size corruption. Linux ELF verification runs wasm3
+in the Linux CI qemu-user matrix. Its `aarch64` reference policy uses a real ARM64
+host directly or requires `--qemu` on other host architectures, preserving the
+architecture's default-NaN sign rather than normalizing output.
