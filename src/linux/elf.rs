@@ -59,13 +59,22 @@ pub struct Image {
 }
 
 fn rd16(b: &[u8], o: usize) -> Result<u16, ElfError> {
-    b.get(o..o + 2).map(|s| u16::from_le_bytes([s[0], s[1]])).ok_or_else(|| ElfError::Malformed("header past end of file".into()))
+    o.checked_add(2)
+        .and_then(|end| b.get(o..end))
+        .map(|s| u16::from_le_bytes([s[0], s[1]]))
+        .ok_or_else(|| ElfError::Malformed("header past end of file".into()))
 }
 fn rd32(b: &[u8], o: usize) -> Result<u32, ElfError> {
-    b.get(o..o + 4).map(|s| u32::from_le_bytes(s.try_into().unwrap())).ok_or_else(|| ElfError::Malformed("header past end of file".into()))
+    o.checked_add(4)
+        .and_then(|end| b.get(o..end))
+        .map(|s| u32::from_le_bytes(s.try_into().unwrap()))
+        .ok_or_else(|| ElfError::Malformed("header past end of file".into()))
 }
 fn rd64(b: &[u8], o: usize) -> Result<u64, ElfError> {
-    b.get(o..o + 8).map(|s| u64::from_le_bytes(s.try_into().unwrap())).ok_or_else(|| ElfError::Malformed("header past end of file".into()))
+    o.checked_add(8)
+        .and_then(|end| b.get(o..end))
+        .map(|s| u64::from_le_bytes(s.try_into().unwrap()))
+        .ok_or_else(|| ElfError::Malformed("header past end of file".into()))
 }
 
 pub fn align_up(v: u64) -> u64 {
@@ -121,7 +130,7 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
     for i in 0..phnum {
         let o = phoff
             .checked_add(i * 56)
-            .and_then(|v| usize::try_from(v).ok())
+            .and_then(|v| v.checked_add(56).and_then(|end| usize::try_from(end).ok().map(|_| v as usize)))
             .ok_or_else(|| ElfError::Malformed("program header offset overflow".into()))?;
         let p_type = rd32(bytes, o)?;
         let flags = rd32(bytes, o + 4)?;
@@ -156,11 +165,20 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
         return Err(ElfError::Malformed("no PT_LOAD segments".into()));
     }
     let mut pages: BTreeMap<u64, bool> = BTreeMap::new();
+    let max_pages = (MAX_LOAD_BYTES / PAGE) as usize;
     for s in &segs {
         let first = s.vaddr & !(PAGE - 1);
         let last = align_up(s.vaddr + s.memsz);
+        let seg_bytes = last - first;
+        if seg_bytes > MAX_LOAD_BYTES {
+            return Err(ElfError::Unsupported(format!("{seg_bytes} bytes to map exceeds the {MAX_LOAD_BYTES} byte limit")));
+        }
         let mut p = first;
         while p < last {
+            if !pages.contains_key(&p) && pages.len() >= max_pages {
+                let loaded_bytes = (pages.len() as u64 + 1) * PAGE;
+                return Err(ElfError::Unsupported(format!("{loaded_bytes} bytes to map exceeds the {MAX_LOAD_BYTES} byte limit")));
+            }
             let e = pages.entry(p).or_insert(false);
             *e |= s.exec;
             p += PAGE;
@@ -170,6 +188,9 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
     if loaded_bytes > MAX_LOAD_BYTES {
         return Err(ElfError::Unsupported(format!("{loaded_bytes} bytes to map exceeds the {MAX_LOAD_BYTES} byte limit")));
     }
+    if !segs.iter().any(|s| s.exec && entry >= s.vaddr && entry < s.vaddr + s.memsz) {
+        return Err(ElfError::Malformed(format!("entry point {entry:#x} is not inside an executable segment")));
+    }
     for (&p, &exec) in &pages {
         mmu.map_range(p, PAGE as usize, if exec { Permission::READ_WRITE_EXECUTE } else { Permission::READ_WRITE });
     }
@@ -177,15 +198,15 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
         let data = &bytes[s.offset as usize..(s.offset + s.filesz) as usize];
         mmu.write_bytes(s.vaddr, data).map_err(|e| ElfError::Malformed(format!("mapping segment: {e}")))?;
     }
-    if !segs.iter().any(|s| s.exec && entry >= s.vaddr && entry < s.vaddr + s.memsz) {
-        return Err(ElfError::Malformed(format!("entry point {entry:#x} is not inside an executable segment")));
-    }
     let brk_start = pages.keys().next_back().map(|p| p + PAGE).unwrap();
     // AT_PHDR: address where the program headers are visible in memory, if a segment covers them.
-    let phdr_addr = segs
-        .iter()
-        .find(|s| phoff >= s.offset && phoff + phnum * 56 <= s.offset + s.filesz)
-        .map(|s| s.vaddr + (phoff - s.offset))
+    let phdr_addr = phoff
+        .checked_add(phnum * 56)
+        .and_then(|ph_end| {
+            segs.iter()
+                .find(|s| phoff >= s.offset && ph_end <= s.offset + s.filesz)
+                .map(|s| s.vaddr + (phoff - s.offset))
+        })
         .unwrap_or(0);
     Ok(Image { entry, brk_start, phdr_addr, phnum, phentsize, loaded_bytes })
 }
