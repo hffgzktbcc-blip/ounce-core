@@ -1,9 +1,18 @@
 """An output match alone must never certify an ELF execution."""
 import unittest
-from verify_linux_elf import execution_verdict
+from verify_linux_elf import execution_verdict, uses_qemu_reference
 
 
 class ExecutionVerdictTests(unittest.TestCase):
+    def test_aarch64_reference_requires_qemu_only_on_other_architectures(self):
+        h = {'elf_reference': 'aarch64'}
+        for machine in ('arm64', 'aarch64', 'ARM64'):
+            self.assertFalse(uses_qemu_reference(h, machine))
+        for machine in ('x86_64', 'AMD64', 'riscv64'):
+            self.assertTrue(uses_qemu_reference(h, machine))
+        self.assertTrue(uses_qemu_reference({'elf_reference': 'qemu'}, 'arm64'))
+        self.assertFalse(uses_qemu_reference({}, 'x86_64'))
+
     def test_matching_output_with_guest_failure_is_not_a_pass(self):
         self.assertEqual(execution_verdict(b'fails=0\n', b'fails=0\n', 71,
                                           '[run-elf] engine=Tier-3 instructions=10 syscalls=1', 'tier3'),

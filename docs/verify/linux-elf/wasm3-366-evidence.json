@@ -1,0 +1,1375 @@
+{
+  "schema": "ounce-core/wasm3-linux-elf-366-v1",
+  "host": "macOS ARM64",
+  "reference": "fresh ARM64 host cc build; local qemu-user unavailable",
+  "baseline": {
+    "harness": "wasm3",
+    "checks": {
+      "tier3": "execution-failed",
+      "tier4": "execution-failed"
+    },
+    "runtime_sha256": "6a90068b81395e39695031cb6cece0fa8c64aec4921d39a662376a5e6d0f6bf8",
+    "revision": "1e9c4d6b1f8905377ffd68f97c9574ac6532820a",
+    "working_tree_dirty": true,
+    "host_sha256": "6552bc9789d789d8b1f5447bd93a91fb34b745ba56213b2b1378fb6d57269690",
+    "elf_sha256": "7387b2c68e06073f2771a33ec43ac69b561348394dd99a444fcc234d206b9087",
+    "commands": {
+      "host-compiler": [
+        "cc",
+        "--version"
+      ],
+      "elf-compiler": [
+        "/tmp/wasm3-venv/bin/python",
+        "-m",
+        "ziglang",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "--version"
+      ],
+      "host-build": [
+        "cc",
+        "-O1",
+        "-Isources",
+        "sources/host_main.c",
+        "sources/m3_bind.c",
+        "sources/m3_code.c",
+        "sources/m3_compile.c",
+        "sources/m3_core.c",
+        "sources/m3_env.c",
+        "sources/m3_exec.c",
+        "sources/m3_function.c",
+        "sources/m3_info.c",
+        "sources/m3_module.c",
+        "sources/m3_parse.c",
+        "sources/m3_snapshot.c",
+        "sources/m3_validate.c",
+        "sources/m3_xxh64.c",
+        "sources/wasm3_cases.c",
+        "-o",
+        "host-ref.exe",
+        "-lm"
+      ],
+      "elf-build": [
+        "/tmp/wasm3-venv/bin/python",
+        "-m",
+        "ziglang",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "-O1",
+        "-Isources",
+        "-static",
+        "-no-pie",
+        "sources/host_main.c",
+        "sources/m3_bind.c",
+        "sources/m3_code.c",
+        "sources/m3_compile.c",
+        "sources/m3_core.c",
+        "sources/m3_env.c",
+        "sources/m3_exec.c",
+        "sources/m3_function.c",
+        "sources/m3_info.c",
+        "sources/m3_module.c",
+        "sources/m3_parse.c",
+        "sources/m3_snapshot.c",
+        "sources/m3_validate.c",
+        "sources/m3_xxh64.c",
+        "sources/wasm3_cases.c",
+        "-o",
+        "wasm3.elf",
+        "-lm"
+      ],
+      "host-run": [
+        "/private/tmp/wasm3-baseline/host-ref.exe"
+      ],
+      "tier3": [
+        "/private/tmp/wasm3-before-runtime",
+        "run-elf",
+        "/private/tmp/wasm3-baseline/wasm3.elf",
+        "--cpu=tier3",
+        "--max-insns=4000000000",
+        "--trace-syscalls"
+      ],
+      "tier4": [
+        "/private/tmp/wasm3-before-runtime",
+        "run-elf",
+        "/private/tmp/wasm3-baseline/wasm3.elf",
+        "--cpu=tier4",
+        "--max-insns=4000000000",
+        "--trace-syscalls"
+      ]
+    },
+    "runs": {
+      "host-run": {
+        "stdout_sha256": "33536c8f3564a8fcac47f5dc30b440cf3c2690136dc59575dfa7f379611e678a",
+        "stdout_bytes": 727018,
+        "stdout_lines": 14766,
+        "summaries": []
+      },
+      "tier3": {
+        "stdout_sha256": "3cd99689d7de0e0eeafd9d67e9d8947cacdb0df1a1e41287eee5087647c7be4a",
+        "stdout_bytes": 58,
+        "stdout_lines": 2,
+        "summaries": [
+          "engine=Tier-3 instructions=357384 syscalls=30"
+        ]
+      },
+      "tier4": {
+        "stdout_sha256": "3cd99689d7de0e0eeafd9d67e9d8947cacdb0df1a1e41287eee5087647c7be4a",
+        "stdout_bytes": 58,
+        "stdout_lines": 2,
+        "summaries": [
+          "engine=Tier-4 instructions=357384 syscalls=30"
+        ]
+      }
+    },
+    "virtual_memory_trace": [
+      {
+        "syscall": 222,
+        "args": [
+          "0x0",
+          "0x10108",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(70368744177664)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x0",
+          "0x1f000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(70368744247296)"
+      },
+      {
+        "syscall": 215,
+        "args": [
+          "0x400000011000",
+          "0xf000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(0)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x400000001000",
+          "0x1f000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(70368744374272)"
+      },
+      {
+        "syscall": 215,
+        "args": [
+          "0x400000040000",
+          "0xf000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(0)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x400000023000",
+          "0xd000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(70368744501248)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x40000003e000",
+          "0x11000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(70368744554496)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x400000031000",
+          "0x1f000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(70368744624128)"
+      },
+      {
+        "syscall": 215,
+        "args": [
+          "0x40000006d000",
+          "0x3000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(0)"
+      },
+      {
+        "syscall": 215,
+        "args": [
+          "0x400000080000",
+          "0xc000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(0)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x400000051000",
+          "0x1f000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(70368744751104)"
+      },
+      {
+        "syscall": 215,
+        "args": [
+          "0x40000008c000",
+          "0x4000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(0)"
+      },
+      {
+        "syscall": 215,
+        "args": [
+          "0x4000000a0000",
+          "0xb000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(0)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x400000071000",
+          "0x1f000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(70368744878080)"
+      },
+      {
+        "syscall": 215,
+        "args": [
+          "0x4000000ab000",
+          "0x5000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(0)"
+      },
+      {
+        "syscall": 215,
+        "args": [
+          "0x4000000c0000",
+          "0xa000",
+          "0x3",
+          "0x22",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(0)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x0",
+          "0x10000100000",
+          "0x0",
+          "0x4022",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(-12)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x0",
+          "0x8000080000",
+          "0x0",
+          "0x4022",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(-12)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x0",
+          "0x4000040000",
+          "0x0",
+          "0x4022",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(-12)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x0",
+          "0x2000020000",
+          "0x0",
+          "0x4022",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(-12)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x0",
+          "0x1000010000",
+          "0x0",
+          "0x4022",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(-12)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x0",
+          "0x800008000",
+          "0x0",
+          "0x4022",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(-12)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x0",
+          "0x400004000",
+          "0x0",
+          "0x4022",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(-12)"
+      },
+      {
+        "syscall": 222,
+        "args": [
+          "0x0",
+          "0x200002000",
+          "0x0",
+          "0x4022",
+          "0xffffffffffffffff",
+          "0x0"
+        ],
+        "result": "Return(-12)"
+      }
+    ]
+  },
+  "before_store_atomicity": {
+    "harness": "wasm3",
+    "checks": {
+      "tier3": "different",
+      "tier4": "different"
+    },
+    "runtime_sha256": "1e2332c76264d296d2de81af1ce6dc3af217b001fc521d0390d644cad9159add",
+    "revision": "1e9c4d6b1f8905377ffd68f97c9574ac6532820a",
+    "working_tree_dirty": true,
+    "host_sha256": "6552bc9789d789d8b1f5447bd93a91fb34b745ba56213b2b1378fb6d57269690",
+    "elf_sha256": "b2b61ac36d8bfd430853c06ddb5b541ca3950c3122a7a78f8a2749c79b16c48f",
+    "commands": {
+      "host-compiler": [
+        "cc",
+        "--version"
+      ],
+      "elf-compiler": [
+        "/tmp/wasm3-venv/bin/python",
+        "-m",
+        "ziglang",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "--version"
+      ],
+      "host-build": [
+        "cc",
+        "-O1",
+        "-Isources",
+        "sources/host_main.c",
+        "sources/m3_bind.c",
+        "sources/m3_code.c",
+        "sources/m3_compile.c",
+        "sources/m3_core.c",
+        "sources/m3_env.c",
+        "sources/m3_exec.c",
+        "sources/m3_function.c",
+        "sources/m3_info.c",
+        "sources/m3_module.c",
+        "sources/m3_parse.c",
+        "sources/m3_snapshot.c",
+        "sources/m3_validate.c",
+        "sources/m3_xxh64.c",
+        "sources/wasm3_cases.c",
+        "-o",
+        "host-ref.exe",
+        "-lm"
+      ],
+      "elf-build": [
+        "/tmp/wasm3-venv/bin/python",
+        "-m",
+        "ziglang",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "-O1",
+        "-Isources",
+        "-static",
+        "-no-pie",
+        "sources/host_main.c",
+        "sources/m3_bind.c",
+        "sources/m3_code.c",
+        "sources/m3_compile.c",
+        "sources/m3_core.c",
+        "sources/m3_env.c",
+        "sources/m3_exec.c",
+        "sources/m3_function.c",
+        "sources/m3_info.c",
+        "sources/m3_module.c",
+        "sources/m3_parse.c",
+        "sources/m3_snapshot.c",
+        "sources/m3_validate.c",
+        "sources/m3_xxh64.c",
+        "sources/wasm3_cases.c",
+        "-o",
+        "wasm3.elf",
+        "-lm"
+      ],
+      "host-run": [
+        "/private/tmp/wasm3-verify-final/host-ref.exe"
+      ],
+      "tier3": [
+        "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+        "run-elf",
+        "/private/tmp/wasm3-verify-final/wasm3.elf",
+        "--cpu=tier3",
+        "--max-insns=4000000000",
+        "--trace-syscalls"
+      ],
+      "tier4": [
+        "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+        "run-elf",
+        "/private/tmp/wasm3-verify-final/wasm3.elf",
+        "--cpu=tier4",
+        "--max-insns=4000000000",
+        "--trace-syscalls"
+      ]
+    },
+    "runs": {
+      "host-run": {
+        "stdout_sha256": "33536c8f3564a8fcac47f5dc30b440cf3c2690136dc59575dfa7f379611e678a",
+        "stdout_bytes": 727018,
+        "stdout_lines": 14766,
+        "summaries": []
+      },
+      "tier3": {
+        "stdout_sha256": "784440310826993f394797c3c930bd865c6d8f2ed14ecabf64884d49623bb882",
+        "stdout_bytes": 727018,
+        "stdout_lines": 14766,
+        "summaries": [
+          "engine=Tier-3 instructions=224870120 syscalls=1277"
+        ]
+      },
+      "tier4": {
+        "stdout_sha256": "784440310826993f394797c3c930bd865c6d8f2ed14ecabf64884d49623bb882",
+        "stdout_bytes": 727018,
+        "stdout_lines": 14766,
+        "summaries": [
+          "engine=Tier-4 instructions=224870010 syscalls=1277"
+        ]
+      }
+    }
+  },
+  "fixed": {
+    "harness": "wasm3",
+    "checks": {
+      "tier3": "identical",
+      "tier4": "identical"
+    },
+    "runtime_sha256": "5cb83dc9005ae11ad8edad52df99665f0ea4cedcdd808e34a4897bcce60e1088",
+    "revision": "1e9c4d6b1f8905377ffd68f97c9574ac6532820a",
+    "working_tree_dirty": true,
+    "host_sha256": "6552bc9789d789d8b1f5447bd93a91fb34b745ba56213b2b1378fb6d57269690",
+    "elf_sha256": "a1701ba096a1aab35a65bf837b74c9c18cdf6a189ccf43cf80b5ffafa49695f7",
+    "commands": {
+      "host-compiler": [
+        "cc",
+        "--version"
+      ],
+      "elf-compiler": [
+        "/tmp/wasm3-venv/bin/python",
+        "-m",
+        "ziglang",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "--version"
+      ],
+      "host-build": [
+        "cc",
+        "-O1",
+        "-Isources",
+        "sources/host_main.c",
+        "sources/m3_bind.c",
+        "sources/m3_code.c",
+        "sources/m3_compile.c",
+        "sources/m3_core.c",
+        "sources/m3_env.c",
+        "sources/m3_exec.c",
+        "sources/m3_function.c",
+        "sources/m3_info.c",
+        "sources/m3_module.c",
+        "sources/m3_parse.c",
+        "sources/m3_snapshot.c",
+        "sources/m3_validate.c",
+        "sources/m3_xxh64.c",
+        "sources/wasm3_cases.c",
+        "-o",
+        "host-ref.exe",
+        "-lm"
+      ],
+      "elf-build": [
+        "/tmp/wasm3-venv/bin/python",
+        "-m",
+        "ziglang",
+        "cc",
+        "-target",
+        "aarch64-linux-musl",
+        "-O1",
+        "-Isources",
+        "-static",
+        "-no-pie",
+        "sources/host_main.c",
+        "sources/m3_bind.c",
+        "sources/m3_code.c",
+        "sources/m3_compile.c",
+        "sources/m3_core.c",
+        "sources/m3_env.c",
+        "sources/m3_exec.c",
+        "sources/m3_function.c",
+        "sources/m3_info.c",
+        "sources/m3_module.c",
+        "sources/m3_parse.c",
+        "sources/m3_snapshot.c",
+        "sources/m3_validate.c",
+        "sources/m3_xxh64.c",
+        "sources/wasm3_cases.c",
+        "-o",
+        "wasm3.elf",
+        "-lm"
+      ],
+      "host-run": [
+        "/private/tmp/wasm3-verified/host-ref.exe"
+      ],
+      "tier3": [
+        "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+        "run-elf",
+        "/private/tmp/wasm3-verified/wasm3.elf",
+        "--cpu=tier3",
+        "--max-insns=4000000000",
+        "--trace-syscalls"
+      ],
+      "tier4": [
+        "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+        "run-elf",
+        "/private/tmp/wasm3-verified/wasm3.elf",
+        "--cpu=tier4",
+        "--max-insns=4000000000",
+        "--trace-syscalls"
+      ]
+    },
+    "runs": {
+      "host-run": {
+        "stdout_sha256": "33536c8f3564a8fcac47f5dc30b440cf3c2690136dc59575dfa7f379611e678a",
+        "stdout_bytes": 727018,
+        "stdout_lines": 14766,
+        "summaries": []
+      },
+      "tier3": {
+        "stdout_sha256": "33536c8f3564a8fcac47f5dc30b440cf3c2690136dc59575dfa7f379611e678a",
+        "stdout_bytes": 727018,
+        "stdout_lines": 14766,
+        "summaries": [
+          "engine=Tier-3 instructions=224870100 syscalls=1277"
+        ]
+      },
+      "tier4": {
+        "stdout_sha256": "33536c8f3564a8fcac47f5dc30b440cf3c2690136dc59575dfa7f379611e678a",
+        "stdout_bytes": 727018,
+        "stdout_lines": 14766,
+        "summaries": [
+          "engine=Tier-4 instructions=224869990 syscalls=1277"
+        ]
+      }
+    },
+    "sources_sha256": {
+      "host_main.c": "7734af12bde60db8e7bed3bae5cc272394a26b6b09fb0df4e0209552270cc3ab",
+      "m3_atomic.h": "573d3878b258f7fdfc646b2379b0c2f6d036fd565cc4e3c272b5c307cf5093bc",
+      "m3_bind.c": "f16dbf95951f637e866d328db11489251ba1b37702029b9a11deeaf8c3268481",
+      "m3_bind.h": "ce64038a2d215e382cfef30f622dcd1bd7f38869dc0d5ceb6acf4490df4c9988",
+      "m3_code.c": "6e2d919601c8ce3ef2cc94cc86e47e5433028b843a1e45ae4c2dd5511a01ddaf",
+      "m3_code.h": "61c27c76e86c744199a58e00eea1b0cdf78555c8f495577f69f7a852e70b44c3",
+      "m3_compile.c": "f67677c5c874f16eded074e966b83145d19f8daadb5d572e78d3ea31ef70c3a7",
+      "m3_compile.h": "0e417b0ea71774c56b17508ba4ffe3bae6fff1bac147fd6ec2c4de33fedd6dcc",
+      "m3_config.h": "9aff6cdcfa15099b4c752e3f701c45594be619730ce6ad6f61eb2d96fb85d307",
+      "m3_config_platforms.h": "aa1516a004fe126f71accf9f9d7de0c6149723c17ae66cf99e6995ab1db7c1df",
+      "m3_core.c": "2b82e687a2cbc6fce137703cc35295ab93ee883dfe99ce21b07d6670ada6a710",
+      "m3_core.h": "34a48186bdd0b665ef5a2ccb10bbc6a3e8569df76f4f4992c0fa75ee1bd46caa",
+      "m3_deterministic.h": "1b3c83503a078792184e4769e497346dd6c7e595512fb70e356be7f27f053a77",
+      "m3_env.c": "3891c23f3f86d92bc8bf00ea71f65200cb694fefd14d5ace50ddef9d913ac866",
+      "m3_env.h": "d3cb218fae420784111f17fc3ea5b06a0d7908beda495c07eb94d5c06ce7a5cb",
+      "m3_exception.h": "843b9ac34ba7dff69d2a5e9892a37b5d012872d2c81ce6f71f7fd20d944eb8b6",
+      "m3_exec.c": "9e5d6adb9c757c0e8fa06c8c18c335b1f8ccc16922b65693071f1878124f09ec",
+      "m3_exec.h": "2ce4c70780ad1721a963925378cfdd89983e2ea12245a673c829e74a379f96c6",
+      "m3_exec_atomic.h": "221e4fe2ae50c19697e21ada57fe73573357a87ffbadb9105a0a47d0098846cd",
+      "m3_exec_defs.h": "42193b06fbe6b47757005b182ccafba40bc17c1764bbac4c131ca48ac04d2038",
+      "m3_function.c": "272d249758737bdace0785928d6c83dcd239a3c3d6081aa3739dd36669f22e3a",
+      "m3_function.h": "c2875858ee3f4ea4add0137fc62ccce59558cfe899965ac313397dd833b36687",
+      "m3_host.h": "a3c5e67a5d90bc40ee26f002926a8ce9f0f948353c19b7372b353e27b50e0c35",
+      "m3_host_none.h": "cf47d4e2383edddcf09538c63ab956581ff1e270a992915b3a5db97d18b0b9b3",
+      "m3_host_posix.h": "de8b9eb734fa18e528a12750c1c9b0bbe193b2003cf07b1ae5f2b4e6ade26863",
+      "m3_info.c": "82c7ff69244667d58fd473d1290f4684f5795bfce772532ecaa17720ef332082",
+      "m3_info.h": "bd0a3bfe76912687f8c99f080ce3e176a68c06fd64fb371ae9ae269d4cdb4a64",
+      "m3_math_utils.h": "083ad1ebcebe6e09bbc6f9652005f55098a7454951dc76b1ee3f547bfb754e41",
+      "m3_module.c": "06572f5b9612ebef77c68f7491df89b4d4ebb54e9d9b0ea3cd8a0630001421b0",
+      "m3_parse.c": "74b7f582a8178f01b4eff2eb26d76749e9db19d4ca56754ad814c78b987849a2",
+      "m3_snapshot.c": "a9ee3e52a58bdc48e3e60ab76cd6fd3a7b88809d71878cd2816e0354cc573566",
+      "m3_validate.c": "bc59451d24943620013917e582fe7b2ddf5ef256557b7cadb920785bc923c0a5",
+      "m3_validate.h": "5b8cda1f3aa6a3af770dcbf2da497387a9ae9dba9d824e165b1037b8441f6d78",
+      "m3_xxh64.c": "d7e3ec10cad7e93fb52d61d4faa88f7ab8871609a2d2ef3fddb13eed14fffce5",
+      "wasm3.h": "e7bdc85ce73a5e6c60b359dac04f57354fec1aa706471e319825ca184edd6b91",
+      "wasm3_cases.c": "79d1d6e468dd73e26c581d447ce66319912abb9fe6cc8807369012ae9c9563d6",
+      "wasm3_defs.h": "5af2a623aee8ce7541d4ab0774a31984f6e8db18b85b4d4d483eba5ede25b088",
+      "wasm_modules.h": "72f7f49f2f046b5dd6be767804a86d90ecbd2b38500b699de1f769a7072afe74"
+    }
+  },
+  "regression_builds": [
+    {
+      "harness": "lz4",
+      "checks": {
+        "tier3": "identical",
+        "tier4": "identical"
+      },
+      "runtime_sha256": "d6d70d5e55983b6c8eaaf4ab448ad78595e7886a36ac619b063e3a9620e8e4a9",
+      "revision": "1e9c4d6b1f8905377ffd68f97c9574ac6532820a",
+      "working_tree_dirty": true,
+      "host_sha256": "7da301880ea7102c9bf23f8c6202e7dd630ffb8bcf8ad3650f27f03fcd8f90c1",
+      "elf_sha256": "030dae48188536ee4de1ed690a6c01b2054e41e873fb780872b249b41662e10f",
+      "commands": {
+        "host-compiler": [
+          "cc",
+          "--version"
+        ],
+        "elf-compiler": [
+          "/tmp/wasm3-venv/bin/python",
+          "-m",
+          "ziglang",
+          "cc",
+          "-target",
+          "aarch64-linux-musl",
+          "--version"
+        ],
+        "host-build": [
+          "cc",
+          "-O1",
+          "-Isources",
+          "sources/host_main.c",
+          "sources/lz4.c",
+          "sources/lz4_cases.c",
+          "-o",
+          "host-ref.exe"
+        ],
+        "elf-build": [
+          "/tmp/wasm3-venv/bin/python",
+          "-m",
+          "ziglang",
+          "cc",
+          "-target",
+          "aarch64-linux-musl",
+          "-O1",
+          "-Isources",
+          "-static",
+          "-no-pie",
+          "sources/host_main.c",
+          "sources/lz4.c",
+          "sources/lz4_cases.c",
+          "-o",
+          "lz4.elf"
+        ],
+        "host-run": [
+          "/private/tmp/wasm3-regress-lz4/host-ref.exe"
+        ],
+        "tier3": [
+          "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+          "run-elf",
+          "/private/tmp/wasm3-regress-lz4/lz4.elf",
+          "--cpu=tier3",
+          "--max-insns=4000000000",
+          "--trace-syscalls"
+        ],
+        "tier4": [
+          "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+          "run-elf",
+          "/private/tmp/wasm3-regress-lz4/lz4.elf",
+          "--cpu=tier4",
+          "--max-insns=4000000000",
+          "--trace-syscalls"
+        ]
+      },
+      "runs": {
+        "host-run": {
+          "stdout_sha256": "e0c701319fea9379f0687dd1a53778425653baac45cab085dddee868283ec9fd",
+          "stdout_bytes": 406,
+          "stdout_lines": 17,
+          "summaries": []
+        },
+        "tier3": {
+          "stdout_sha256": "e0c701319fea9379f0687dd1a53778425653baac45cab085dddee868283ec9fd",
+          "stdout_bytes": 406,
+          "stdout_lines": 17,
+          "summaries": [
+            "engine=Tier-3 instructions=3862782 syscalls=5"
+          ]
+        },
+        "tier4": {
+          "stdout_sha256": "e0c701319fea9379f0687dd1a53778425653baac45cab085dddee868283ec9fd",
+          "stdout_bytes": 406,
+          "stdout_lines": 17,
+          "summaries": [
+            "engine=Tier-4 instructions=3862782 syscalls=5"
+          ]
+        }
+      }
+    },
+    {
+      "harness": "xxhash",
+      "checks": {
+        "tier3": "identical",
+        "tier4": "identical"
+      },
+      "runtime_sha256": "d6d70d5e55983b6c8eaaf4ab448ad78595e7886a36ac619b063e3a9620e8e4a9",
+      "revision": "1e9c4d6b1f8905377ffd68f97c9574ac6532820a",
+      "working_tree_dirty": true,
+      "host_sha256": "81651d35868743e4350a6c11e605d864fe1f3ae906f6f3808c02fdf116cc2f56",
+      "elf_sha256": "d0803c8250942de56f4a55bc0efacf7f732019ea1fbaaf22a8a8e974c50c926c",
+      "commands": {
+        "host-compiler": [
+          "cc",
+          "--version"
+        ],
+        "elf-compiler": [
+          "/tmp/wasm3-venv/bin/python",
+          "-m",
+          "ziglang",
+          "cc",
+          "-target",
+          "aarch64-linux-musl",
+          "--version"
+        ],
+        "host-build": [
+          "cc",
+          "-O1",
+          "-Isources",
+          "sources/host_main.c",
+          "sources/xxh_cases.c",
+          "sources/xxhash.c",
+          "-o",
+          "host-ref.exe"
+        ],
+        "elf-build": [
+          "/tmp/wasm3-venv/bin/python",
+          "-m",
+          "ziglang",
+          "cc",
+          "-target",
+          "aarch64-linux-musl",
+          "-O1",
+          "-Isources",
+          "-static",
+          "-no-pie",
+          "sources/host_main.c",
+          "sources/xxh_cases.c",
+          "sources/xxhash.c",
+          "-o",
+          "xxhash.elf"
+        ],
+        "host-run": [
+          "/private/tmp/wasm3-regress-xxhash/host-ref.exe"
+        ],
+        "tier3": [
+          "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+          "run-elf",
+          "/private/tmp/wasm3-regress-xxhash/xxhash.elf",
+          "--cpu=tier3",
+          "--max-insns=4000000000",
+          "--trace-syscalls"
+        ],
+        "tier4": [
+          "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+          "run-elf",
+          "/private/tmp/wasm3-regress-xxhash/xxhash.elf",
+          "--cpu=tier4",
+          "--max-insns=4000000000",
+          "--trace-syscalls"
+        ]
+      },
+      "runs": {
+        "host-run": {
+          "stdout_sha256": "9be43696766caa25981038753037e18d273862a6b58aeccd8f02e34829d841b2",
+          "stdout_bytes": 3444,
+          "stdout_lines": 26,
+          "summaries": []
+        },
+        "tier3": {
+          "stdout_sha256": "9be43696766caa25981038753037e18d273862a6b58aeccd8f02e34829d841b2",
+          "stdout_bytes": 3444,
+          "stdout_lines": 26,
+          "summaries": [
+            "engine=Tier-3 instructions=247676 syscalls=11"
+          ]
+        },
+        "tier4": {
+          "stdout_sha256": "9be43696766caa25981038753037e18d273862a6b58aeccd8f02e34829d841b2",
+          "stdout_bytes": 3444,
+          "stdout_lines": 26,
+          "summaries": [
+            "engine=Tier-4 instructions=247676 syscalls=11"
+          ]
+        }
+      }
+    },
+    {
+      "harness": "cjson",
+      "checks": {
+        "tier3": "identical",
+        "tier4": "identical"
+      },
+      "runtime_sha256": "d6d70d5e55983b6c8eaaf4ab448ad78595e7886a36ac619b063e3a9620e8e4a9",
+      "revision": "1e9c4d6b1f8905377ffd68f97c9574ac6532820a",
+      "working_tree_dirty": true,
+      "host_sha256": "595678ce7a0467d8fb7b08f477b465ca58595f32d570480bbca24ec8e5d25acd",
+      "elf_sha256": "0815d1e92f01e5fb51044cb2cf9519f08c1964647461123e846613582b7af7ff",
+      "commands": {
+        "host-compiler": [
+          "cc",
+          "--version"
+        ],
+        "elf-compiler": [
+          "/tmp/wasm3-venv/bin/python",
+          "-m",
+          "ziglang",
+          "cc",
+          "-target",
+          "aarch64-linux-musl",
+          "--version"
+        ],
+        "host-build": [
+          "cc",
+          "-O1",
+          "-Isources",
+          "sources/cJSON.c",
+          "sources/cjson_cases.c",
+          "sources/host_main.c",
+          "-o",
+          "host-ref.exe",
+          "-lm"
+        ],
+        "elf-build": [
+          "/tmp/wasm3-venv/bin/python",
+          "-m",
+          "ziglang",
+          "cc",
+          "-target",
+          "aarch64-linux-musl",
+          "-O1",
+          "-Isources",
+          "-static",
+          "-no-pie",
+          "sources/cJSON.c",
+          "sources/cjson_cases.c",
+          "sources/host_main.c",
+          "-o",
+          "cjson.elf",
+          "-lm"
+        ],
+        "host-run": [
+          "/private/tmp/wasm3-regress-cjson/host-ref.exe"
+        ],
+        "tier3": [
+          "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+          "run-elf",
+          "/private/tmp/wasm3-regress-cjson/cjson.elf",
+          "--cpu=tier3",
+          "--max-insns=4000000000",
+          "--trace-syscalls"
+        ],
+        "tier4": [
+          "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+          "run-elf",
+          "/private/tmp/wasm3-regress-cjson/cjson.elf",
+          "--cpu=tier4",
+          "--max-insns=4000000000",
+          "--trace-syscalls"
+        ]
+      },
+      "runs": {
+        "host-run": {
+          "stdout_sha256": "b423301436cfff268b7084ee8b310c61805c0d9bc1ebd48d9933b09d1d0e8d97",
+          "stdout_bytes": 7025,
+          "stdout_lines": 263,
+          "summaries": []
+        },
+        "tier3": {
+          "stdout_sha256": "b423301436cfff268b7084ee8b310c61805c0d9bc1ebd48d9933b09d1d0e8d97",
+          "stdout_bytes": 7025,
+          "stdout_lines": 263,
+          "summaries": [
+            "engine=Tier-3 instructions=42829846 syscalls=49"
+          ]
+        },
+        "tier4": {
+          "stdout_sha256": "b423301436cfff268b7084ee8b310c61805c0d9bc1ebd48d9933b09d1d0e8d97",
+          "stdout_bytes": 7025,
+          "stdout_lines": 263,
+          "summaries": [
+            "engine=Tier-4 instructions=42829846 syscalls=49"
+          ]
+        }
+      }
+    },
+    {
+      "harness": "sqlite",
+      "checks": {
+        "tier3": "identical",
+        "tier4": "identical"
+      },
+      "runtime_sha256": "d6d70d5e55983b6c8eaaf4ab448ad78595e7886a36ac619b063e3a9620e8e4a9",
+      "revision": "1e9c4d6b1f8905377ffd68f97c9574ac6532820a",
+      "working_tree_dirty": true,
+      "host_sha256": "8fdd33fdcf170fea10930bde27bdbbf2ec6d87d320af337206bedc8c4004cbe8",
+      "elf_sha256": "04db85d20b1f838a9a5a5daeb432a292a7b9f448b54809a025e40abe5aae5030",
+      "commands": {
+        "host-compiler": [
+          "cc",
+          "--version"
+        ],
+        "elf-compiler": [
+          "/tmp/wasm3-venv/bin/python",
+          "-m",
+          "ziglang",
+          "cc",
+          "-target",
+          "aarch64-linux-musl",
+          "--version"
+        ],
+        "host-build": [
+          "cc",
+          "-O1",
+          "-Isources",
+          "-DSQLITE_THREADSAFE=0",
+          "-DSQLITE_OMIT_LOAD_EXTENSION",
+          "-DSQLITE_TEMP_STORE=3",
+          "-DSQLITE_OMIT_WAL",
+          "-DSQLITE_DQS=0",
+          "sources/host_main.c",
+          "sources/sql_cases.c",
+          "sources/sqlite3.c",
+          "sources/stubs.c",
+          "-o",
+          "host-ref.exe",
+          "-lm"
+        ],
+        "elf-build": [
+          "/tmp/wasm3-venv/bin/python",
+          "-m",
+          "ziglang",
+          "cc",
+          "-target",
+          "aarch64-linux-musl",
+          "-O1",
+          "-Isources",
+          "-DSQLITE_THREADSAFE=0",
+          "-DSQLITE_OMIT_LOAD_EXTENSION",
+          "-DSQLITE_TEMP_STORE=3",
+          "-DSQLITE_OMIT_WAL",
+          "-DSQLITE_DQS=0",
+          "-static",
+          "-no-pie",
+          "sources/host_main.c",
+          "sources/sql_cases.c",
+          "sources/sqlite3.c",
+          "sources/stubs.c",
+          "-o",
+          "sqlite.elf",
+          "-lm"
+        ],
+        "host-run": [
+          "/private/tmp/wasm3-regress-sqlite/host-ref.exe"
+        ],
+        "tier3": [
+          "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+          "run-elf",
+          "/private/tmp/wasm3-regress-sqlite/sqlite.elf",
+          "--cpu=tier3",
+          "--max-insns=4000000000",
+          "--trace-syscalls"
+        ],
+        "tier4": [
+          "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+          "run-elf",
+          "/private/tmp/wasm3-regress-sqlite/sqlite.elf",
+          "--cpu=tier4",
+          "--max-insns=4000000000",
+          "--trace-syscalls"
+        ]
+      },
+      "runs": {
+        "host-run": {
+          "stdout_sha256": "4b638a3694b090991115277f3671a005509c87db5e09afc115a2d795a1ed28f8",
+          "stdout_bytes": 913,
+          "stdout_lines": 22,
+          "summaries": []
+        },
+        "tier3": {
+          "stdout_sha256": "4b638a3694b090991115277f3671a005509c87db5e09afc115a2d795a1ed28f8",
+          "stdout_bytes": 913,
+          "stdout_lines": 22,
+          "summaries": [
+            "engine=Tier-3 instructions=36121446 syscalls=43"
+          ]
+        },
+        "tier4": {
+          "stdout_sha256": "4b638a3694b090991115277f3671a005509c87db5e09afc115a2d795a1ed28f8",
+          "stdout_bytes": 913,
+          "stdout_lines": 22,
+          "summaries": [
+            "engine=Tier-4 instructions=36121446 syscalls=43"
+          ]
+        }
+      }
+    },
+    {
+      "harness": "lua",
+      "checks": {
+        "tier3": "identical",
+        "tier4": "identical"
+      },
+      "runtime_sha256": "1e2332c76264d296d2de81af1ce6dc3af217b001fc521d0390d644cad9159add",
+      "revision": "1e9c4d6b1f8905377ffd68f97c9574ac6532820a",
+      "working_tree_dirty": true,
+      "host_sha256": "5a102ced4e090dce9f5550f593c036f56f755fb4d44825d7df9b7dac65a9572c",
+      "elf_sha256": "e0873df8801a9ffa7af6dd5a31638506fa5987c3cca888fcc68c14f889f162ce",
+      "commands": {
+        "host-compiler": [
+          "cc",
+          "--version"
+        ],
+        "elf-compiler": [
+          "/tmp/wasm3-venv/bin/python",
+          "-m",
+          "ziglang",
+          "cc",
+          "-target",
+          "aarch64-linux-musl",
+          "--version"
+        ],
+        "host-build": [
+          "cc",
+          "-O1",
+          "-Isources",
+          "sources/host_main.c",
+          "sources/lapi.c",
+          "sources/lauxlib.c",
+          "sources/lbaselib.c",
+          "sources/lcode.c",
+          "sources/lcorolib.c",
+          "sources/lctype.c",
+          "sources/ldebug.c",
+          "sources/ldo.c",
+          "sources/ldump.c",
+          "sources/lfunc.c",
+          "sources/lgc.c",
+          "sources/llex.c",
+          "sources/lmathlib.c",
+          "sources/lmem.c",
+          "sources/lobject.c",
+          "sources/lopcodes.c",
+          "sources/lparser.c",
+          "sources/lstate.c",
+          "sources/lstring.c",
+          "sources/lstrlib.c",
+          "sources/ltable.c",
+          "sources/ltablib.c",
+          "sources/ltm.c",
+          "sources/lua_cases.c",
+          "sources/lundump.c",
+          "sources/lutf8lib.c",
+          "sources/lvm.c",
+          "sources/lzio.c",
+          "-o",
+          "host-ref.exe",
+          "-lm"
+        ],
+        "elf-build": [
+          "/tmp/wasm3-venv/bin/python",
+          "-m",
+          "ziglang",
+          "cc",
+          "-target",
+          "aarch64-linux-musl",
+          "-O1",
+          "-Isources",
+          "-static",
+          "-no-pie",
+          "sources/host_main.c",
+          "sources/lapi.c",
+          "sources/lauxlib.c",
+          "sources/lbaselib.c",
+          "sources/lcode.c",
+          "sources/lcorolib.c",
+          "sources/lctype.c",
+          "sources/ldebug.c",
+          "sources/ldo.c",
+          "sources/ldump.c",
+          "sources/lfunc.c",
+          "sources/lgc.c",
+          "sources/llex.c",
+          "sources/lmathlib.c",
+          "sources/lmem.c",
+          "sources/lobject.c",
+          "sources/lopcodes.c",
+          "sources/lparser.c",
+          "sources/lstate.c",
+          "sources/lstring.c",
+          "sources/lstrlib.c",
+          "sources/ltable.c",
+          "sources/ltablib.c",
+          "sources/ltm.c",
+          "sources/lua_cases.c",
+          "sources/lundump.c",
+          "sources/lutf8lib.c",
+          "sources/lvm.c",
+          "sources/lzio.c",
+          "-o",
+          "lua.elf",
+          "-lm"
+        ],
+        "host-run": [
+          "/private/tmp/wasm3-regress-lua/host-ref.exe"
+        ],
+        "tier3": [
+          "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+          "run-elf",
+          "/private/tmp/wasm3-regress-lua/lua.elf",
+          "--cpu=tier3",
+          "--max-insns=4000000000",
+          "--trace-syscalls"
+        ],
+        "tier4": [
+          "/Users/nathanaelgovender/orca/workspaces/ounce-core/core-wasm3-elf-366/target/release/ounce-core",
+          "run-elf",
+          "/private/tmp/wasm3-regress-lua/lua.elf",
+          "--cpu=tier4",
+          "--max-insns=4000000000",
+          "--trace-syscalls"
+        ]
+      },
+      "runs": {
+        "host-run": {
+          "stdout_sha256": "5860b58673a94808c07b61b5774d6950557b580c57c3265f89b228fc5d77e097",
+          "stdout_bytes": 1122,
+          "stdout_lines": 29,
+          "summaries": []
+        },
+        "tier3": {
+          "stdout_sha256": "5860b58673a94808c07b61b5774d6950557b580c57c3265f89b228fc5d77e097",
+          "stdout_bytes": 1122,
+          "stdout_lines": 29,
+          "summaries": [
+            "engine=Tier-3 instructions=50186232 syscalls=34"
+          ]
+        },
+        "tier4": {
+          "stdout_sha256": "5860b58673a94808c07b61b5774d6950557b580c57c3265f89b228fc5d77e097",
+          "stdout_bytes": 1122,
+          "stdout_lines": 29,
+          "summaries": [
+            "engine=Tier-4 instructions=50158764 syscalls=34"
+          ]
+        }
+      }
+    }
+  ],
+  "final_runtime_regression_replays": {
+    "runtime_sha256": "5cb83dc9005ae11ad8edad52df99665f0ea4cedcdd808e34a4897bcce60e1088",
+    "checks": {
+      "lz4-tier3": {
+        "returncode": 0,
+        "identical": true,
+        "summary": [
+          "engine=Tier-3 instructions=3862742 syscalls=5"
+        ]
+      },
+      "lz4-tier4": {
+        "returncode": 0,
+        "identical": true,
+        "summary": [
+          "engine=Tier-4 instructions=3862742 syscalls=5"
+        ]
+      },
+      "xxhash-tier3": {
+        "returncode": 0,
+        "identical": true,
+        "summary": [
+          "engine=Tier-3 instructions=247636 syscalls=11"
+        ]
+      },
+      "xxhash-tier4": {
+        "returncode": 0,
+        "identical": true,
+        "summary": [
+          "engine=Tier-4 instructions=247636 syscalls=11"
+        ]
+      },
+      "cjson-tier3": {
+        "returncode": 0,
+        "identical": true,
+        "summary": [
+          "engine=Tier-3 instructions=42829806 syscalls=49"
+        ]
+      },
+      "cjson-tier4": {
+        "returncode": 0,
+        "identical": true,
+        "summary": [
+          "engine=Tier-4 instructions=42829806 syscalls=49"
+        ]
+      },
+      "sqlite-tier3": {
+        "returncode": 0,
+        "identical": true,
+        "summary": [
+          "engine=Tier-3 instructions=36121406 syscalls=43"
+        ]
+      },
+      "sqlite-tier4": {
+        "returncode": 0,
+        "identical": true,
+        "summary": [
+          "engine=Tier-4 instructions=36121406 syscalls=43"
+        ]
+      },
+      "lua-tier3": {
+        "returncode": 0,
+        "identical": true,
+        "summary": [
+          "engine=Tier-3 instructions=50159128 syscalls=34"
+        ]
+      },
+      "lua-tier4": {
+        "returncode": 0,
+        "identical": true,
+        "summary": [
+          "engine=Tier-4 instructions=50158103 syscalls=34"
+        ]
+      }
+    }
+  },
+  "checks": {
+    "rust-default": {
+      "argv": [
+        "cargo",
+        "test",
+        "--locked",
+        "--config",
+        "profile.test.package.ounce-core.opt-level=2"
+      ],
+      "results": [
+        "test result: ok. 614 passed; 0 failed; 11 ignored; 0 measured; 0 filtered out; finished in 39.50s",
+        "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.26s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.42s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s"
+      ]
+    },
+    "rust-native-jit": {
+      "argv": [
+        "cargo",
+        "test",
+        "--locked",
+        "--features",
+        "native-jit",
+        "--config",
+        "profile.test.package.ounce-core.opt-level=2"
+      ],
+      "results": [
+        "test result: ok. 644 passed; 0 failed; 11 ignored; 0 measured; 0 filtered out; finished in 85.16s",
+        "test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.93s",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.62s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s"
+      ]
+    },
+    "python-verifier": "7 tests passed",
+    "legal-guardrails": "passed",
+    "diff-check": "passed"
+  }
+}
