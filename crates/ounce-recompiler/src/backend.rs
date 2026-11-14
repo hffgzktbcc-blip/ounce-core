@@ -272,6 +272,52 @@ struct Lowering<'a> {
     budget: clif::Value,
 }
 
+/// Arm `FPProcessNaNs` / `FPDefaultNaN` on the integer bit patterns `a`, `b` of the operands and the host result `r`:
+/// a signalling NaN operand wins (quieted), then a quiet NaN operand (`a` first); with no NaN operand an invalid
+/// operation gives the positive default NaN.
+fn arm_nan(builder: &mut FunctionBuilder<'_>, a: cranelift_codegen::ir::Value, b: cranelift_codegen::ir::Value, r: cranelift_codegen::ir::Value, ty: types::Type, quiet: u64, default_nan: u64) -> cranelift_codegen::ir::Value {
+    let q = builder.ins().iconst(ty, quiet as i64);
+    let is_nan = |builder: &mut FunctionBuilder<'_>, x: cranelift_codegen::ir::Value| {
+        // exponent all ones and a non-zero fraction: |x| > inf in unsigned compare once the sign is dropped
+        let (abs_mask, inf) = if ty == types::I32 { (0x7fff_ffffi64, 0x7f80_0000i64) } else { (0x7fff_ffff_ffff_ffffi64, 0x7ff0_0000_0000_0000i64) };
+        let m = builder.ins().iconst(ty, abs_mask);
+        let ax = builder.ins().band(x, m);
+        let ic = builder.ins().iconst(ty, inf);
+        builder.ins().icmp(IntCC::UnsignedGreaterThan, ax, ic)
+    };
+    let na = is_nan(builder, a);
+    let nb = is_nan(builder, b);
+    let qa = builder.ins().band(a, q);
+    let qb = builder.ins().band(b, q);
+    let zero = builder.ins().iconst(ty, 0);
+    let a_quiet = builder.ins().icmp(IntCC::NotEqual, qa, zero);
+    let b_quiet = builder.ins().icmp(IntCC::NotEqual, qb, zero);
+    let not_aq = builder.ins().bnot(a_quiet);
+    let not_bq = builder.ins().bnot(b_quiet);
+    let sa = builder.ins().band(na, not_aq);
+    let sb = builder.ins().band(nb, not_bq);
+    let aq = builder.ins().bor(a, q);
+    let bq = builder.ins().bor(b, q);
+    // priority from lowest to highest: invalid-op default, b quiet, a quiet, b signalling, a signalling
+    let dn = builder.ins().iconst(ty, default_nan as i64);
+    let r_nan = {
+        let (abs_mask, inf) = if ty == types::I32 { (0x7fff_ffffi64, 0x7f80_0000i64) } else { (0x7fff_ffff_ffff_ffffi64, 0x7ff0_0000_0000_0000i64) };
+        let m = builder.ins().iconst(ty, abs_mask);
+        let ar = builder.ins().band(r, m);
+        let ic = builder.ins().iconst(ty, inf);
+        builder.ins().icmp(IntCC::UnsignedGreaterThan, ar, ic)
+    };
+    let any_in = builder.ins().bor(na, nb);
+    let not_in = builder.ins().bnot(any_in);
+    let invalid = builder.ins().band(r_nan, not_in);
+    let mut v = builder.ins().select(invalid, dn, r);
+    v = builder.ins().select(nb, b, v);
+    v = builder.ins().select(na, a, v);
+    v = builder.ins().select(sb, bq, v);
+    builder.ins().select(sa, aq, v)
+}
+
+
 impl Lowering<'_> {
     fn v(&self, v: Value) -> clif::Value {
         self.vals[v.0 as usize].expect("validated IR")
@@ -285,51 +331,6 @@ impl Lowering<'_> {
     /// operand and a negative default NaN, so their results are rewritten to the Arm rule.
     fn host_nan_needs_fixup(op: FpBinOp) -> bool {
         !cfg!(target_arch = "aarch64") && !matches!(op, FpBinOp::Fmax | FpBinOp::Fmin)
-    }
-
-    /// Arm `FPProcessNaNs` / `FPDefaultNaN` on the integer bit patterns `a`, `b` of the operands and the host result `r`:
-    /// a signalling NaN operand wins (quieted), then a quiet NaN operand (`a` first); with no NaN operand an invalid
-    /// operation gives the positive default NaN.
-    fn arm_nan(&mut self, a: cranelift_codegen::ir::Value, b: cranelift_codegen::ir::Value, r: cranelift_codegen::ir::Value, ty: types::Type, quiet: u64, default_nan: u64) -> cranelift_codegen::ir::Value {
-        let q = self.b.ins().iconst(ty, quiet as i64);
-        let is_nan = |this: &mut Self, x: cranelift_codegen::ir::Value| {
-            // exponent all ones and a non-zero fraction: |x| > inf in unsigned compare once the sign is dropped
-            let (abs_mask, inf) = if ty == types::I32 { (0x7fff_ffffi64, 0x7f80_0000i64) } else { (0x7fff_ffff_ffff_ffffi64, 0x7ff0_0000_0000_0000i64) };
-            let m = this.b.ins().iconst(ty, abs_mask);
-            let ax = this.b.ins().band(x, m);
-            let ic = this.b.ins().iconst(ty, inf);
-            this.b.ins().icmp(IntCC::UnsignedGreaterThan, ax, ic)
-        };
-        let na = is_nan(self, a);
-        let nb = is_nan(self, b);
-        let qa = self.b.ins().band(a, q);
-        let qb = self.b.ins().band(b, q);
-        let zero = self.b.ins().iconst(ty, 0);
-        let a_quiet = self.b.ins().icmp(IntCC::NotEqual, qa, zero);
-        let b_quiet = self.b.ins().icmp(IntCC::NotEqual, qb, zero);
-        let not_aq = self.b.ins().bnot(a_quiet);
-        let not_bq = self.b.ins().bnot(b_quiet);
-        let sa = self.b.ins().band(na, not_aq);
-        let sb = self.b.ins().band(nb, not_bq);
-        let aq = self.b.ins().bor(a, q);
-        let bq = self.b.ins().bor(b, q);
-        // priority from lowest to highest: invalid-op default, b quiet, a quiet, b signalling, a signalling
-        let dn = self.b.ins().iconst(ty, default_nan as i64);
-        let r_nan = {
-            let (abs_mask, inf) = if ty == types::I32 { (0x7fff_ffffi64, 0x7f80_0000i64) } else { (0x7fff_ffff_ffff_ffffi64, 0x7ff0_0000_0000_0000i64) };
-            let m = self.b.ins().iconst(ty, abs_mask);
-            let ar = self.b.ins().band(r, m);
-            let ic = self.b.ins().iconst(ty, inf);
-            self.b.ins().icmp(IntCC::UnsignedGreaterThan, ar, ic)
-        };
-        let any_in = self.b.ins().bor(na, nb);
-        let not_in = self.b.ins().bnot(any_in);
-        let invalid = self.b.ins().band(r_nan, not_in);
-        let mut v = self.b.ins().select(invalid, dn, r);
-        v = self.b.ins().select(nb, b, v);
-        v = self.b.ins().select(na, a, v);
-        v = self.b.ins().select(sb, bq, v);
-        self.b.ins().select(sa, aq, v)
     }
 
     fn bitcast_flags() -> MemFlagsData {
@@ -461,13 +462,16 @@ impl Lowering<'_> {
             }
         };
         let entry_pc = self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, guest_pc) as i32);
+        let entry = self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, host_entry) as i32);
         let hit = self.b.ins().icmp(IntCC::Equal, entry_pc, pc);
+        // u64::MAX is both a possible guest branch target and the empty-slot tag.
+        // A matching tag alone must never turn an empty entry into a null host call.
+        let populated = self.b.ins().icmp_imm_u(IntCC::NotEqual, entry, 0);
+        let hit = self.b.ins().band(hit, populated);
         self.b.ins().brif(hit, go, &[], ret, &[]);
 
         self.b.switch_to_block(go);
         self.count_link(chained);
-        let entry =
-            self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, host_entry) as i32);
         self.flush_regs();
         self.b.ins().return_call_indirect(self.tail_sig, entry, &[self.state, ctx]);
 
@@ -688,7 +692,7 @@ impl Lowering<'_> {
                             FpBinOp::Fmin => self.b.ins().fmin(fa, fb),
                         };
                         let ires32 = self.b.ins().bitcast(types::I32, Self::bitcast_flags(), fres);
-                        let ires32 = if Self::host_nan_needs_fixup(op) { self.arm_nan(a32, b32, ires32, types::I32, 1 << 22, 0x7fc0_0000) } else { ires32 };
+                        let ires32 = if Self::host_nan_needs_fixup(op) { arm_nan(&mut self.b, a32, b32, ires32, types::I32, 1 << 22, 0x7fc0_0000) } else { ires32 };
                         self.b.ins().uextend(types::I64, ires32)
                     }
                     FpWidth::F64 => {
@@ -703,7 +707,7 @@ impl Lowering<'_> {
                             FpBinOp::Fmin => self.b.ins().fmin(fa, fb),
                         };
                         let ires = self.b.ins().bitcast(types::I64, Self::bitcast_flags(), fres);
-                        if Self::host_nan_needs_fixup(op) { self.arm_nan(va, vb, ires, types::I64, 1 << 51, 0x7ff8_0000_0000_0000) } else { ires }
+                        if Self::host_nan_needs_fixup(op) { arm_nan(&mut self.b, va, vb, ires, types::I64, 1 << 51, 0x7ff8_0000_0000_0000) } else { ires }
                     }
                 }
             }
@@ -773,5 +777,68 @@ impl Lowering<'_> {
                 return None;
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod nan_tests {
+    use super::*;
+    use crate::{GuestState, MemFault, MemoryBus, WriteEffect};
+    use crate::exec::{LinkEntry, TlbEntry, LINK_SIZE, TLB_SIZE};
+
+    struct NoMemory;
+    impl MemoryBus for NoMemory {
+        fn read(&mut self, _: u64, _: u8) -> Result<u64, MemFault> { Err(MemFault) }
+        fn write(&mut self, _: u64, _: u8, _: u64) -> Result<WriteEffect, MemFault> { Err(MemFault) }
+    }
+
+    // Execute the actual portable lowering even on Arm, supplying the negative NaN an x86
+    // arithmetic instruction produces. Operands are runtime loads, not folded constants.
+    #[test]
+    fn portable_nan_lowering_rewrites_negative_host_nan() {
+        let isa = host_isa().unwrap();
+        for (ty, quiet, dn, sign, one) in [
+            (types::I32, 1u64 << 22, 0x7fc0_0000u64, 1u64 << 31, 0x3f80_0000u64),
+            (types::I64, 1u64 << 51, 0x7ff8_0000_0000_0000, 1u64 << 63, 0x3ff0_0000_0000_0000),
+        ] {
+            let mut ctx = Context::new();
+            let mut fctx = FunctionBuilderContext::new();
+            let trampoline = compile_trampoline(&*isa, &mut ctx, &mut fctx).unwrap();
+            ctx.clear();
+            ctx.func.signature = block_sig();
+            {
+                let mut b = FunctionBuilder::new(&mut ctx.func, &mut fctx);
+                let entry = b.create_block();
+                b.append_block_params_for_function_params(entry);
+                b.switch_to_block(entry);
+                let state = b.block_params(entry)[0];
+                let a = b.ins().load(ty, MemFlagsData::trusted(), state, reg_offset(Reg::X(0)));
+                let bv = b.ins().load(ty, MemFlagsData::trusted(), state, reg_offset(Reg::X(1)));
+                let r = b.ins().load(ty, MemFlagsData::trusted(), state, reg_offset(Reg::X(2)));
+                let v = arm_nan(&mut b, a, bv, r, ty, quiet, dn);
+                let v = if ty == types::I32 { b.ins().uextend(types::I64, v) } else { v };
+                b.ins().store(MemFlagsData::trusted(), v, state, reg_offset(Reg::X(3)));
+                let zero = b.ins().iconst(types::I64, 0);
+                b.ins().return_(&[zero]);
+                b.seal_all_blocks();
+                b.finalize(isa.frontend_config());
+            }
+            let code = BlockCode::new(&finish(&*isa, &mut ctx).unwrap()).unwrap();
+            for (a, bv, r, expected) in [
+                (0, dn - quiet, dn | sign, dn), // 0 * inf
+                (dn - quiet, 0, dn | sign, dn), // inf * 0
+                (one, one, one, one),
+                (one, dn | sign | 2, dn | sign, dn | sign | 2),
+                (dn | sign | 1, dn | 2, dn | sign, dn | sign | 1),
+                (dn | 1, (dn - quiet) | 2, dn | sign, dn | 2),
+                ((dn - quiet) | sign | 1, (dn - quiet) | 2, dn, dn | sign | 1),
+            ] {
+                let mut st = GuestState::default();
+                st.x[..3].copy_from_slice(&[a, bv, r]);
+                trampoline.run(&code, &mut st, &mut NoMemory,
+                    &mut [TlbEntry::default(); TLB_SIZE], &[LinkEntry::default(); LINK_SIZE], 1);
+                assert_eq!(st.x[3], expected, "{ty}: {a:x}, {bv:x}, host {r:x}");
+            }
+        }
     }
 }
