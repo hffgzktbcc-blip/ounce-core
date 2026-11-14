@@ -49,6 +49,17 @@ static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceL
 static RUN_TARGET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 fn main() {
+    if let Ok(path) = std::env::var("OUNCE_REPORT_JSON") {
+        if !path.is_empty() {
+            run_report::set_report_path(std::path::PathBuf::from(path));
+        }
+    }
+    if std::env::var("OUNCE_AUDIO").as_deref() == Ok("null") {
+        run_report::set_audio_null(true);
+    }
+    if matches!(std::env::var("OUNCE_DETERMINISTIC").as_deref(), Ok("1" | "true")) {
+        run_report::set_deterministic(true);
+    }
     if let Ok(backend) = std::env::var("OUNCE_GPU_BACKEND") {
         if !matches!(backend.as_str(), "cpu" | "host") || (backend == "host" && !cfg!(feature = "gpu-present")) {
             eprintln!("[guest-gpu] OUNCE_GPU_BACKEND expects cpu or host; host requires --features gpu-present");
