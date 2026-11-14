@@ -11,7 +11,7 @@ Exit status is the guest's `exit_group` code (low 8 bits). Failures use: 70 unim
 non-Linux SVC, 71 instruction/memory fault, 72 ELF rejected, 73 instruction budget exhausted. A
 `run-elf: DIAGNOSIS: ...` line on stderr names the syscall number (with args) or the instruction word.
 
-Maturity: **research-only** as a general Linux runner. Six tiny freestanding programs (including a deterministic clock fixture) and pinned real programs linked with musl (LZ4, xxHash, cJSON, zlib, wasm3 after #429 / [wasm3-366.md](wasm3-366.md), the programs in [PROGRAMS.md](PROGRAMS.md), and the opt-matrix harnesses in [HIGH-STAR-OPT-MATRIX.md](HIGH-STAR-OPT-MATRIX.md)) have been executed. Each result is bounded to its listed cases; it does not establish general libc compatibility.
+Maturity: **bounded-verified** for **static musl AArch64 ELFs** (not a general Linux runner). Six tiny freestanding programs (including a deterministic clock fixture) and pinned real programs linked with musl (LZ4, xxHash, cJSON, zlib, wasm3 after #429 / [wasm3-366.md](wasm3-366.md), the programs in [PROGRAMS.md](PROGRAMS.md), the opt-matrix harnesses in [HIGH-STAR-OPT-MATRIX.md](HIGH-STAR-OPT-MATRIX.md), and the Linux ARM64 matrix in `scripts/run_linux_arm64_matrix.py`) pass differential and cross-engine (`diverge`) checks. This qualification is scoped strictly to static musl AArch64 `ET_EXEC` binaries using the supported syscall subset; dynamic/PIE executables, threads, sockets, and general Linux syscalls or glibc compatibility remain out of scope (see [Honest limits](#honest-limits)).
 
 ## What runs
 
