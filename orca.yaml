@@ -1,0 +1,8 @@
+scripts:
+  setup: ./scripts/setup_env.sh
+
+environmentRecipes:
+  - id: ssh-host
+    name: SSH Remote Workspace Host
+    create: ./scripts/orca-vm/ssh-host-create.sh
+    destroy: ./scripts/orca-vm/ssh-host-destroy.sh
