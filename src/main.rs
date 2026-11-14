@@ -312,7 +312,7 @@ fn print_usage() {
     println!("    {}ui{} | {}lab{}               Open the local workbench: drop a .nro, compare engines (and this Mac) [--port N --no-open --dir D]", s.green, s.reset, s.green, s.reset);
     println!("    {}run-nro{} <file> [args] [--gui]  Run a homebrew .nro; if it stops early, the output says why and what to do next", s.green, s.reset);
     println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
-    println!("    {}diverge{} <prog.nro>            Replay the program's instructions on this machine's CPU and name the first disagreement (AArch64 hosts)", s.green, s.reset);
+    println!("    {}diverge{} <prog.nro|prog.elf> [-- args]  Compare NRO (AArch64 hardware replay) or static ELF across interpreter/Tier-3/Tier-4", s.green, s.reset);
     println!("    {}run{} <file|dir> [args] [--gui]  Like run-nro, but also accepts .nso and loose folders", s.green, s.reset);
     println!();
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
@@ -339,6 +339,7 @@ fn print_usage() {
     println!("    {}ounce-core run-nro tests/fixtures/nro/hello/hello.nro --present=headless{}", s.dim, s.reset);
     println!("    {}ounce-core run-nro my_program.nro --cpu=tier4{}", s.dim, s.reset);
     println!("    {}ounce-core diverge my_program.nro{}", s.dim, s.reset);
+    println!("    {}ounce-core diverge tests/linux-elf/bin/basic_math.elf{}", s.dim, s.reset);
     println!();
     println!("  Report a problem: {}\n", cli_flow::ISSUE_FORM);
 }

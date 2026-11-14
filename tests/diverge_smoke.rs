@@ -71,3 +71,47 @@ fn an_unknown_engine_is_a_usage_error() {
     let out = Command::new(env!("CARGO_BIN_EXE_ounce-core")).args(["diverge", "x.nro", "--engine", "tier9"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
+
+#[test]
+fn static_elf_diverges_cleanly_across_engines() {
+    let elf = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/linux-elf/bin/basic_math.elf");
+    let report = std::env::temp_dir().join(format!("ounce-diverge-elf-{}.json", std::process::id()));
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["diverge", elf, "--json"])
+        .arg(&report)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "stdout:\n{text}\nstderr:\n{err}");
+    assert!(text.contains("interpreter: exit Some(42)"), "{text}");
+    assert!(text.contains("Tier-3: exit Some(42)"), "{text}");
+    let json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&report).unwrap()).unwrap();
+    let _ = std::fs::remove_file(&report);
+    assert_eq!(json["mode"], "elf");
+    assert_eq!(json["mismatched"], 0);
+    assert!(json["checked"].as_u64().unwrap_or(0) >= 1);
+    if !cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        assert!(text.contains("host (Linux AArch64): NOT CHECKED"), "{text}");
+        assert!(json["not_checked"].as_array().unwrap().iter().any(|e| e["engine"] == "host (Linux AArch64)"));
+    }
+}
+
+#[test]
+fn static_elf_forwards_program_args_and_rejects_bad_format() {
+    let elf = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/linux-elf/bin/args.elf");
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["diverge", elf, "--", "alpha", "beta"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "stdout:\n{text}\nstderr:\n{err}");
+    assert!(text.contains("exit Some(3)"), "{text}");
+
+    let bad = std::env::temp_dir().join(format!("ounce-diverge-bad-{}.bin", std::process::id()));
+    std::fs::write(&bad, b"NOT_A_VALID_BINARY").unwrap();
+    let bad_out = Command::new(env!("CARGO_BIN_EXE_ounce-core")).arg("diverge").arg(&bad).output().unwrap();
+    let _ = std::fs::remove_file(&bad);
+    assert_eq!(bad_out.status.code(), Some(2));
+}
