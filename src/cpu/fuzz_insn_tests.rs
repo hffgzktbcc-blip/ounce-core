@@ -129,6 +129,23 @@ fn by_element_dot_and_fmulx_classes() {
     assert_eq!(c.regs.v[30], 0x7ff0_0000_0000_0000 | 0x4000_0000_0000_0000u128 << 64);
 }
 
+#[test]
+fn fmov_vector_half_immediate() {
+    let rep16 = |h: u128| h | h << 16 | h << 32 | h << 48;
+    // fmov v29.8h, #-0.21093750: imm8 0xCB expands to 0xB2C0 in every lane
+    let c = run1(0x4f06_fd7d, &[(29, u128::MAX)]);
+    assert_eq!(c.regs.v[29], rep16(0xB2C0) | rep16(0xB2C0) << 64);
+    // fmov v17.4h, #11.0 zeroes the upper 64 bits (Q = 0)
+    let c = run1(0x0f01_fcd1, &[(17, u128::MAX)]);
+    assert_eq!(c.regs.v[17], rep16(0x4980));
+    // imm8 = 0x70 is 1.0h (0x3C00). fmov v0.8h, #1.0 fills both halves.
+    let c = run1(0x4f03_fe00, &[(0, u128::MAX)]);
+    assert_eq!(c.regs.v[0], rep16(0x3C00) | rep16(0x3C00) << 64);
+    // fmov v1.4h, #1.0 keeps only the low four lanes
+    let c = run1(0x0f03_fe01, &[(1, u128::MAX)]);
+    assert_eq!(c.regs.v[1], rep16(0x3C00));
+}
+
 fn v4(l: [u32; 4]) -> u128 {
     l[0] as u128 | (l[1] as u128) << 32 | (l[2] as u128) << 64 | (l[3] as u128) << 96
 }

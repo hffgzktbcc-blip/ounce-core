@@ -1738,6 +1738,17 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdTwoMisc { rd, rn, op, esize, q });
     }
 
+    // 31a. FMOV (vector, immediate) half precision: 0 Q 0 0111100000 abc 1111 1 1 defgh Rd.
+    //      cmode = 1111, op = 0, o2 = 1. VFPExpandImm (N = 16) replicated across four 16-bit
+    //      lanes. op = 1 with o2 = 1, and every other o2 = 1 cmode, stay undecoded.
+    if (raw & 0xBFF8_FC00) == 0x0F00_FC00 {
+        let imm8 = (((raw >> 16) & 0x7) << 5 | ((raw >> 5) & 0x1F)) as u64;
+        let (a, b, cd, efgh) = (imm8 >> 7, (imm8 >> 6) & 1, (imm8 >> 4) & 3, imm8 & 0xF);
+        let half = a << 15 | (b ^ 1) << 14 | (if b != 0 { 0x3 } else { 0 }) << 12 | cd << 10 | efgh << 6;
+        let imm = half | half << 16 | half << 32 | half << 48;
+        return Some(Instruction::SimdModImm { rd, imm, op: SimdImmOp::Mov, q });
+    }
+
     // 31. AdvSIMD modified immediate: 0 Q op 0111100000 abc cmode o2 1 defgh Rd
     if (raw & 0x9FF8_0C00) == 0x0F00_0400 {
         let imm8 = (((raw >> 16) & 0x7) << 5 | ((raw >> 5) & 0x1F)) as u64;
@@ -2062,6 +2073,38 @@ mod tests {
         assert_eq!(decode(0x4EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: true }); // pmull2 v0.1q, v1.2d, v2.2d
         assert!(!matches!(decode(0x0E62E020), Instruction::Pmull { .. })); // size 1 reserved
         assert!(!matches!(decode(0x2E22E020), Instruction::Pmull { .. })); // U=1 is not PMULL
+    }
+
+    #[test]
+    fn decode_fmov_vector_half_immediate() {
+        let lane = |imm8: u64| {
+            let (a, b, cd, efgh) = (imm8 >> 7, (imm8 >> 6) & 1, (imm8 >> 4) & 3, imm8 & 0xF);
+            let half = a << 15 | (b ^ 1) << 14 | (if b != 0 { 0x3 } else { 0 }) << 12 | cd << 10 | efgh << 6;
+            half | half << 16 | half << 32 | half << 48
+        };
+        // fmov v29.8h, #-0.21093750 (imm8 = 0xCB -> 0xB2C0)
+        assert_eq!(
+            decode(0x4f06_fd7d),
+            Instruction::SimdModImm { rd: 29, imm: lane(0xCB), op: SimdImmOp::Mov, q: true }
+        );
+        assert_eq!(lane(0xCB), 0xB2C0_B2C0_B2C0_B2C0);
+        // fmov v17.4h, #11.0 (imm8 = 0x26 -> 0x4980); Q = 0 keeps the pattern in the low half
+        assert_eq!(
+            decode(0x0f01_fcd1),
+            Instruction::SimdModImm { rd: 17, imm: lane(0x26), op: SimdImmOp::Mov, q: false }
+        );
+        assert_eq!(lane(0x26), 0x4980_4980_4980_4980);
+        // imm8 = 0x70 is 1.0h (0x3C00) in every lane: fmov v0.8h, #1.0 / fmov v1.4h, #1.0
+        assert_eq!(lane(0x70), 0x3C00_3C00_3C00_3C00);
+        assert_eq!(decode(0x4f03_fe00), Instruction::SimdModImm { rd: 0, imm: lane(0x70), op: SimdImmOp::Mov, q: true });
+        assert_eq!(decode(0x0f03_fe01), Instruction::SimdModImm { rd: 1, imm: lane(0x70), op: SimdImmOp::Mov, q: false });
+        // single and double forms are unchanged (o2 = 0)
+        assert!(matches!(decode(0x4f03_f607), Instruction::SimdModImm { q: true, op: SimdImmOp::Mov, .. })); // fmov v7.4s, #1.0
+        assert!(matches!(decode(0x6f04_f488), Instruction::SimdModImm { q: true, op: SimdImmOp::Mov, .. })); // fmov v8.2d, #-2.5
+        // o2 = 1 with op = 1, and o2 = 1 with cmode != 1111, stay undecoded
+        for w in [0x2f03_fe00u32, 0x6f03_fe00, 0x0f00_0c00] {
+            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#010x} {:?}", decode(w));
+        }
     }
 }
 
