@@ -53,7 +53,7 @@ pub enum Round {
     Zero,
     /// Round to odd (von Neumann). Not an `FPCR.RMode` value; `FCVTXN` forces it.
     /// Truncate toward zero, then set the fraction LSB when the result is inexact.
-    /// Overflow becomes infinity. `FZ` still flushes a tiny result to zero.
+    /// Overflow stays at the largest finite value. `FZ` still flushes a tiny result to zero.
     Odd,
 }
 
@@ -248,10 +248,12 @@ fn odd_lsb(env: Env, bits: u64, inexact: bool) -> u64 {
 
 fn overflow(f: Fmt, env: Env, sign: bool) -> u64 {
     let to_inf = match env.round {
-        Round::Nearest | Round::Odd => true,
+        Round::Nearest => true,
         Round::Up => !sign,
         Round::Down => sign,
-        Round::Zero => false,
+        // Round-to-odd overflows to the largest finite value (its fraction LSB is already 1).
+        // Apple Silicon FCVTXN returns 0x7f7fffff / 0xff7fffff, not an infinity.
+        Round::Zero | Round::Odd => false,
     };
     if to_inf { f.infinity(sign) } else { f.max_finite(sign) }
 }
