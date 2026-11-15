@@ -30,7 +30,9 @@ DEFAULT_HOST_CC = 'cc'
 DEFAULT_ELF_CC = 'python3 -m ziglang cc -target aarch64-linux-musl'
 DEFAULT_FAST_OPT_MATRIX = 'O1,O2,O3_M1'
 DEFAULT_HEAVY_OPT_MATRIX = 'O1,O2'
-DEFAULT_FAST_BUDGET = 100_000_000
+# qoi and heatshrink finish in about 332M and 251M instructions. 100M made CI
+# report execution-failed before the guest exited.
+DEFAULT_FAST_BUDGET = 500_000_000
 DEFAULT_HEAVY_BUDGET = 4_000_000_000
 DEFAULT_SECONDS = 600
 
