@@ -303,8 +303,18 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
     let mut next_preemption = quantum;
     let mut next_input = 0;
     let mut next_frame_input = 0;
+    // The interpreter used to read the host clock before every guest instruction. Tier-3 already
+    // checks between slices. Poll every INTERP_CLOCK_STRIDE interpreter steps instead: instruction
+    // budgets, input checkpoints and preemption are still tested every step, and a cooperative
+    // timeout can run at most one stride past the deadline.
+    const INTERP_CLOCK_STRIDE: u32 = 64;
+    let mut steps_since_clock = 0u32;
     'run: loop {
-        if started.elapsed() >= limits.host_time { result.stop = Stop::HostTimeout; break; }
+        let interpreter = tier3.is_none() && native.is_none();
+        if (!interpreter || steps_since_clock == 0) && started.elapsed() >= limits.host_time {
+            result.stop = Stop::HostTimeout;
+            break;
+        }
         if result.instructions >= limits.instructions { break; }
         if let Some(input) = limits.frame_inputs.get(next_frame_input)
             && input.after_queued_frame <= kernel.ipc.vi_frames_queued()
@@ -353,6 +363,10 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                 match cpu.step(&mut mmu) {
                     Ok(step) => {
                         result.instructions += 1;
+                        steps_since_clock += 1;
+                        if steps_since_clock >= INTERP_CLOCK_STRIDE {
+                            steps_since_clock = 0;
+                        }
                         match step {
                             StepResult::Continue => {}
                             StepResult::Svc(id) => svc = Some(id),
@@ -601,6 +615,41 @@ fn corpus_runner_returns_from_functions_but_exits_only_on_svc() {
         assert_eq!(result.instructions, 4);
         assert_eq!(result.svcs.last(), Some(&(crate::DEFAULT_BASE_ADDR + 4, 7)));
     }
+}
+
+#[test]
+fn interpreter_deadline_stride_stops_and_keeps_the_instruction_budget() {
+    // A tight branch. The host clock is polled every INTERP_CLOCK_STRIDE steps, so a zero
+    // deadline still stops before any instruction, and a finite deadline overruns by less than
+    // one stride of guest instructions (microseconds, not a missed budget).
+    let branch = [0x1400_0000u32];
+    let exact = Limits { instructions: 10_000, host_time: Duration::from_secs(30), ..Limits::default() };
+    let counted = synthetic(&branch, Engine::Interpreter, &exact);
+    assert_eq!(counted.stop, Stop::InstructionBudget);
+    assert_eq!(counted.instructions, exact.instructions);
+    let zero = Limits { host_time: Duration::ZERO, instructions: 1_000_000, ..Limits::default() };
+    let timed = synthetic(&branch, Engine::Interpreter, &zero);
+    assert_eq!((timed.stop, timed.instructions), (Stop::HostTimeout, 0));
+    let slice = Limits { host_time: Duration::from_millis(40), instructions: usize::MAX, ..Limits::default() };
+    let started = std::time::Instant::now();
+    let bounded = synthetic(&branch, Engine::Interpreter, &slice);
+    let elapsed = started.elapsed();
+    assert_eq!(bounded.stop, Stop::HostTimeout);
+    assert!(bounded.instructions > 0, "{bounded:?}");
+    // Setup sits outside the runner clock. The overrun after the deadline is one stride.
+    assert!(elapsed < Duration::from_millis(40) + Duration::from_millis(200), "{elapsed:?} {bounded:?}");
+}
+
+#[test]
+#[ignore = "local before/after timing for the interpreter host-clock stride"]
+fn interpreter_tight_loop_timing() {
+    let budget = 2_000_000usize;
+    let limits = Limits { instructions: budget, host_time: Duration::from_secs(120), ..Limits::default() };
+    let started = std::time::Instant::now();
+    let result = synthetic(&[0x1400_0000], Engine::Interpreter, &limits);
+    let elapsed = started.elapsed();
+    assert_eq!(result.instructions, budget);
+    eprintln!("interp {budget} ins in {elapsed:?} ({:.0} ins/s)", budget as f64 / elapsed.as_secs_f64());
 }
 
 #[test]
