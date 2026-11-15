@@ -129,6 +129,32 @@ fn by_element_dot_and_fmulx_classes() {
     assert_eq!(c.regs.v[30], 0x7ff0_0000_0000_0000 | 0x4000_0000_0000_0000u128 << 64);
 }
 
+#[test]
+fn fcadd_rotations() {
+    // n = 1+2i, m = 3+4i. #90 is -3+5i, #270 is 5-1i.
+    let n = 0x3f80_0000u128 | 0x4000_0000u128 << 32;
+    let m = 0x4040_0000u128 | 0x4080_0000u128 << 32;
+    let rot90 = 0xc040_0000u128 | 0x40a0_0000u128 << 32;
+    let rot270 = 0x40a0_0000u128 | 0xbf80_0000u128 << 32;
+    // fcadd v0.2s, v1.2s, v2.2s, #90
+    let c = run1(0x2e82_e420, &[(1, n), (2, m)]);
+    assert_eq!(c.regs.v[0], rot90);
+    // #270
+    let c = run1(0x2e82_f420, &[(1, n), (2, m)]);
+    assert_eq!(c.regs.v[0], rot270);
+    // .4S repeats the pair in the high half
+    let c = run1(0x6e82_e420, &[(1, n | n << 64), (2, m | m << 64)]);
+    assert_eq!(c.regs.v[0], rot90 | rot90 << 64);
+    // .2D, #270
+    let nd = 0x3ff0_0000_0000_0000u128 | 0x4000_0000_0000_0000u128 << 64;
+    let md = 0x4008_0000_0000_0000u128 | 0x4010_0000_0000_0000u128 << 64;
+    let c = run1(0x6ec2_f420, &[(1, nd), (2, md)]);
+    assert_eq!(c.regs.v[0], 0x4014_0000_0000_0000u128 | 0xbff0_0000_0000_0000u128 << 64);
+    // NaN imag of m: the real part is that NaN (FPSub sees it second), imag is 2+3.
+    let c = run1(0x2e82_e420, &[(1, n), (2, 0x4040_0000u128 | 0x7fc0_0001u128 << 32)]);
+    assert_eq!(c.regs.v[0], 0x7fc0_0001 | 0x40a0_0000u128 << 32);
+}
+
 fn v4(l: [u32; 4]) -> u128 {
     l[0] as u128 | (l[1] as u128) << 32 | (l[2] as u128) << 64 | (l[3] as u128) << 96
 }

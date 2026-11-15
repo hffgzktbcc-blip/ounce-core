@@ -1681,6 +1681,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::Fcadd { rd, rn, rm, esize, q, rot90 } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::fcadd(n, m, esize as u32, q, rot90, self.regs.fpcr));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdFpThreeSame { rd, rn, rm, op, double, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::fp_three_same_fpcr(op, d, n, m, double, q, self.regs.fpcr));

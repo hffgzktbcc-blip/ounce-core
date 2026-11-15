@@ -1290,6 +1290,23 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdByElement { rd, rn, rm, index, op, esize: 8u8 << size, q: false, scalar: true });
     }
 
+    // 26a4c. FCADD (single/double): 0 Q 1 01110 size 0 Rm 1 11 rot 0 1 Rn Rd.
+    //        size 10 = .2S/.4S, size 11 = .2D and needs Q. Half precision and size 11 with Q = 0 stay undecoded.
+    if (raw & 0xBF20_EC00) == 0x2E00_E400 {
+        let double = size == 3;
+        if size < 2 || (double && !q) {
+            return None;
+        }
+        return Some(Instruction::Fcadd {
+            rd,
+            rn,
+            rm,
+            esize: if double { 64 } else { 32 },
+            q: q || double,
+            rot90: (raw >> 12) & 1 == 0,
+        });
+    }
+
     // 26a4. AdvSIMD vector SDOT/UDOT: 0 Q U 01110 10 0 Rm 10010 1 Rn Rd
     if (raw & 0x9FE0_FC00) == 0x0E80_9400 {
         return Some(Instruction::SimdByElement { rd, rn, rm, index: 0xFF, op: SimdElemOp::Dot(!u), esize: 32, q, scalar: false });
@@ -2062,6 +2079,24 @@ mod tests {
         assert_eq!(decode(0x4EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: true }); // pmull2 v0.1q, v1.2d, v2.2d
         assert!(!matches!(decode(0x0E62E020), Instruction::Pmull { .. })); // size 1 reserved
         assert!(!matches!(decode(0x2E22E020), Instruction::Pmull { .. })); // U=1 is not PMULL
+    }
+
+    #[test]
+    fn decode_fcadd() {
+        assert_eq!(
+            decode(0x2e93_e7c7),
+            Instruction::Fcadd { rd: 7, rn: 30, rm: 19, esize: 32, q: false, rot90: true }
+        ); // fcadd v7.2s, v30.2s, v19.2s, #90
+        assert_eq!(
+            decode(0x2e8e_f54c),
+            Instruction::Fcadd { rd: 12, rn: 10, rm: 14, esize: 32, q: false, rot90: false }
+        ); // fcadd v12.2s, v10.2s, v14.2s, #270
+        assert!(matches!(decode(0x6e82_e420), Instruction::Fcadd { esize: 32, q: true, rot90: true, .. }));
+        assert!(matches!(decode(0x6ec2_f420), Instruction::Fcadd { esize: 64, q: true, rot90: false, .. }));
+        // half precision and double without Q stay undecoded
+        for w in [0x2e42_e420u32, 0x2ec2_e420] {
+            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#x} {:?}", decode(w));
+        }
     }
 }
 
