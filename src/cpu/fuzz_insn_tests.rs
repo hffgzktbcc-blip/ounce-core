@@ -157,11 +157,14 @@ fn fcvtxn_round_to_odd() {
     assert_eq!(c.regs.v[0], 0x3fc0_0000 | 0x3f80_0001u128 << 32);
     assert_eq!(c.regs.fpsr & (IXC | OFC | UFC | IOC), IXC);
 
-    // fcvtxn2 keeps the low half of Vd. Overflow to +inf, and just below 2^128 stays at f32::MAX.
+    // fcvtxn2 keeps the low half of Vd. Round-to-odd overflow is the largest finite single,
+    // for 2^128 and for the double just below it. A negative overflow keeps the sign.
     let keep = 0x1111_2222_3333_4444u128;
     let c = run1(0x6e61_6820, &[(0, keep), (1, d2(0x47F0_0000_0000_0000, 0x47EF_FFFF_FFFF_FFFF))]);
-    assert_eq!(c.regs.v[0], keep | (0x7f80_0000u128 | 0x7f7f_ffffu128 << 32) << 64);
+    assert_eq!(c.regs.v[0], keep | (0x7f7f_ffffu128 | 0x7f7f_ffffu128 << 32) << 64);
     assert_eq!(c.regs.fpsr & (OFC | IXC), OFC | IXC);
+    let c = run1(0x2e61_6820, &[(1, d2(0xC7F0_0000_0000_0000, 0x47F0_0000_0000_0001))]);
+    assert_eq!(c.regs.v[0], 0xff7f_ffff | 0x7f7f_ffffu128 << 32);
 
     // scalar fcvtxn s0, d1: denormal 2^-140 is exact (0x0200); the rest of Vd is cleared.
     let c = run1(0x7e61_6820, &[(0, u128::MAX), (1, 0x3730_0000_0000_0000)]);
