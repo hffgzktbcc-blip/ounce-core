@@ -8,7 +8,7 @@
 //! `IApplicationFunctions` calls libnx makes at startup. Command IDs follow libnx's public source.
 //! Values that come from a real system (resource user ID, display version, device ID) are synthetic.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use super::ipc::{IpcManager, ServiceType};
 use crate::mmu::Memory;
@@ -17,6 +17,14 @@ use crate::mmu::Memory;
 pub const RESULT_NO_MESSAGES: u32 = 3 << 9 | 128;
 /// `am` ResultNoDataInChannel (module 128, description 2): no launch parameter to pop.
 pub const RESULT_NO_DATA_IN_CHANNEL: u32 = 2 << 9 | 128;
+
+/// Software-keyboard pop-out result: the user cancelled (public keyboard output word 0).
+pub const LIBRARY_APPLET_CANCEL_RESULT: u32 = 1;
+/// Size of that pop-out storage, including the UTF-16 text that follows the result word.
+pub const LIBRARY_APPLET_OUT_SIZE: usize = 0x7D8;
+/// Largest library-applet storage this model will allocate.
+const APPLET_STORAGE_CAP: u64 = 0x10_0000;
+const APPLET_STORAGE_INVALID: u32 = 0xF601;
 
 /// `AppletMessage` values (libnx `applet.h`).
 pub const MESSAGE_EXIT_REQUEST: u32 = 4;
@@ -58,6 +66,14 @@ pub enum AppletInterface {
     DisplayController,
     ApplicationFunctions,
     LibraryAppletSelfAccessor,
+    /// `ILibraryAppletCreator`.
+    LibraryAppletCreator,
+    /// `ILibraryAppletAccessor`: a holder that finishes immediately with a cancelled pop-out.
+    LibraryAppletAccessor,
+    /// Library-applet `IStorage`. Bytes live in `AppletState::storages`.
+    AppletStorage,
+    /// `IStorageAccessor` opened from `AppletStorage`.
+    AppletStorageAccessor,
     /// Interfaces libnx only opens at startup; their commands are not modelled.
     Other(&'static str),
 }
@@ -79,6 +95,10 @@ pub struct AppletState {
     /// The guest asked for operation / performance mode change messages.
     pub operation_mode_notifications: bool,
     pub performance_mode_notifications: bool,
+    /// Bytes for each library-applet `IStorage` handle.
+    pub storages: HashMap<u32, Vec<u8>>,
+    /// Accessor handle -> storage handle.
+    pub storage_accessors: HashMap<u32, u32>,
 }
 
 impl Default for AppletState {
@@ -93,6 +113,8 @@ impl Default for AppletState {
             notified_running: false,
             operation_mode_notifications: false,
             performance_mode_notifications: false,
+            storages: HashMap::new(),
+            storage_accessors: HashMap::new(),
         }
     }
 }
@@ -144,7 +166,7 @@ impl IpcManager {
         self.allocate_handle(ServiceType::ServiceEvent(name))
     }
 
-    pub(super) fn handle_applet(&mut self, iface: AppletInterface, cmd: u32, args: u64, tls: u64, mmu: &mut Memory) -> u64 {
+    pub(super) fn handle_applet(&mut self, iface: AppletInterface, cmd: u32, args: u64, tls: u64, mmu: &mut Memory, object: u32) -> u64 {
         use AppletInterface as I;
         let open = |kind| ServiceType::Applet(I::Proxy(kind));
         match iface {
@@ -187,6 +209,10 @@ impl IpcManager {
                 11 => self.reply_data(tls, mmu, &[0u8; 8]),
                 _ => self.reply_unimplemented("ILibraryAppletSelfAccessor", cmd, tls, mmu),
             },
+            I::LibraryAppletCreator => self.handle_library_applet_creator(cmd, args, tls, mmu),
+            I::LibraryAppletAccessor => self.handle_library_applet_accessor(cmd, tls, mmu),
+            I::AppletStorage => self.handle_applet_storage(object, cmd, tls, mmu),
+            I::AppletStorageAccessor => self.handle_applet_storage_accessor(object, cmd, args, tls, mmu),
             I::Other(name) => self.reply_unimplemented(name, cmd, tls, mmu),
         }
     }
@@ -202,7 +228,7 @@ impl IpcManager {
             (3, _) => I::AudioController,
             (4, _) => I::DisplayController,
             (10, _) => I::Other("IProcessWindingController"),
-            (11, _) => I::Other("ILibraryAppletCreator"),
+            (11, _) => I::LibraryAppletCreator,
             (1000, _) => I::Other("IDebugFunctions"),
             (20, K::Application | K::SystemApplication) => I::ApplicationFunctions,
             (20, K::SystemApplet) => I::Other("IHomeMenuFunctions"),
@@ -391,12 +417,159 @@ impl IpcManager {
             _ => self.reply_unimplemented("IApplicationFunctions", cmd, tls, mmu),
         }
     }
+
+    /// `ILibraryAppletCreator`. A created holder is already finished: its state-changed event is
+    /// signaled and its pop-out storage says the user cancelled, so `swkbdShow` returns instead of
+    /// waiting forever. The interactive-out event stays clear, so a wait on both events observes
+    /// the state change rather than spinning on interactive output.
+    fn handle_library_applet_creator(&mut self, cmd: u32, args: u64, tls: u64, mmu: &mut Memory) -> u64 {
+        match cmd {
+            // CreateLibraryAppletOld (id, mode) and the later CreateLibraryApplet (id, mode, thread id).
+            0 | 3 => self.reply_object(tls, mmu, ServiceType::Applet(AppletInterface::LibraryAppletAccessor)),
+            // TerminateAllLibraryApplets
+            1 => self.reply_ok(tls, mmu),
+            // AreAnyLibraryAppletsLeft -> false. Holders finish immediately.
+            2 => self.reply_data(tls, mmu, &[0]),
+            // CreateStorage(s64 size)
+            10 => match applet_storage_len(mmu.read_u64(args).unwrap_or(u64::MAX)) {
+                Ok(len) => self.reply_applet_storage(tls, mmu, vec![0u8; len]),
+                Err(()) => self.reply_error(tls, mmu, APPLET_STORAGE_INVALID),
+            },
+            // CreateTransferMemoryStorage: `{ u8 writable; u64 size }` with the u64 at offset 8.
+            11 => match applet_storage_len(mmu.read_u64(args.wrapping_add(8)).unwrap_or(u64::MAX)) {
+                Ok(len) => self.reply_applet_storage(tls, mmu, vec![0u8; len]),
+                Err(()) => self.reply_error(tls, mmu, APPLET_STORAGE_INVALID),
+            },
+            // CreateHandleStorage(s64 size, copy handle)
+            12 => match applet_storage_len(mmu.read_u64(args).unwrap_or(u64::MAX)) {
+                Ok(len) => self.reply_applet_storage(tls, mmu, vec![0u8; len]),
+                Err(()) => self.reply_error(tls, mmu, APPLET_STORAGE_INVALID),
+            },
+            _ => self.reply_unimplemented("ILibraryAppletCreator", cmd, tls, mmu),
+        }
+    }
+
+    fn handle_library_applet_accessor(&mut self, cmd: u32, tls: u64, mmu: &mut Memory) -> u64 {
+        match cmd {
+            // GetAppletStateChangedEvent. Signaled: the holder has already exited.
+            0 => {
+                let ev = self.applet_event("LibraryAppletStateChanged");
+                self.reply_event(tls, mmu, ev)
+            }
+            // IsCompleted -> true
+            1 => self.reply_data(tls, mmu, &[1]),
+            // Start / RequestExit / Terminate
+            10 | 20 | 25 => self.reply_ok(tls, mmu),
+            // GetResult. Success, so the guest reads the pop-out storage for the cancel word.
+            30 => self.reply_ok(tls, mmu),
+            // PushInData / PushExtraStorage / PushInteractiveInData. The bytes stay in the caller's storage.
+            100 | 102 | 103 => self.reply_ok(tls, mmu),
+            // PopOutData / PopInteractiveOutData: result word 1 (cancel), then empty UTF-16 text.
+            101 | 104 => self.reply_applet_storage(tls, mmu, cancelled_library_applet_output()),
+            // GetPopOutDataEvent is signaled; interactive output is not, so waiters take the state change.
+            105 => {
+                let ev = self.applet_event("LibraryAppletStateChanged");
+                self.reply_event(tls, mmu, ev)
+            }
+            106 => {
+                let ev = self.applet_event("LibraryAppletInteractive");
+                self.reply_event(tls, mmu, ev)
+            }
+            _ => self.reply_unimplemented("ILibraryAppletAccessor", cmd, tls, mmu),
+        }
+    }
+
+    fn handle_applet_storage(&mut self, storage: u32, cmd: u32, tls: u64, mmu: &mut Memory) -> u64 {
+        if !self.applet.storages.contains_key(&storage) {
+            return self.reply_error(tls, mmu, APPLET_STORAGE_INVALID);
+        }
+        match cmd {
+            // Open -> IStorageAccessor
+            0 => {
+                let accessor = self.allocate_handle(ServiceType::Applet(AppletInterface::AppletStorageAccessor));
+                self.applet.storage_accessors.insert(accessor, storage);
+                self.reply(tls, mmu, 0, &[], &[], Some(accessor));
+                0
+            }
+            _ => self.reply_unimplemented("IStorage", cmd, tls, mmu),
+        }
+    }
+
+    fn handle_applet_storage_accessor(&mut self, accessor: u32, cmd: u32, args: u64, tls: u64, mmu: &mut Memory) -> u64 {
+        let Some(&storage) = self.applet.storage_accessors.get(&accessor) else {
+            return self.reply_error(tls, mmu, APPLET_STORAGE_INVALID);
+        };
+        match cmd {
+            // GetSize -> s64
+            0 => {
+                let len = self.applet.storages.get(&storage).map(|b| b.len() as u64).unwrap_or(0);
+                self.reply_data(tls, mmu, &len.to_le_bytes())
+            }
+            // Write(offset) from the send buffer / Read(offset) into the receive buffer.
+            10 | 11 => self.applet_storage_transfer(storage, cmd == 10, args, tls, mmu),
+            _ => self.reply_unimplemented("IStorageAccessor", cmd, tls, mmu),
+        }
+    }
+
+    fn reply_applet_storage(&mut self, tls: u64, mmu: &mut Memory, bytes: Vec<u8>) -> u64 {
+        let h = self.allocate_handle(ServiceType::Applet(AppletInterface::AppletStorage));
+        self.applet.storages.insert(h, bytes);
+        self.reply(tls, mmu, 0, &[], &[], Some(h));
+        0
+    }
+
+    fn applet_storage_transfer(&mut self, storage: u32, write: bool, args: u64, tls: u64, mmu: &mut Memory) -> u64 {
+        let offset = mmu.read_u64(args).unwrap_or(u64::MAX);
+        let statics: Vec<super::hipc::Buffer> = self.request.send_statics.iter().map(|(_, b)| *b).collect();
+        let buffer = if write {
+            self.request.send_buffers.iter().copied().chain(statics).find(|b| b.size > 0)
+        } else {
+            self.request.recv_buffers.iter().copied().chain(self.request.recv_list.iter().copied()).find(|b| b.size > 0)
+        };
+        let Some(buffer) = buffer else {
+            return self.reply_error(tls, mmu, APPLET_STORAGE_INVALID);
+        };
+        let Some(end) = offset.checked_add(buffer.size) else {
+            return self.reply_error(tls, mmu, APPLET_STORAGE_INVALID);
+        };
+        let Some(data) = self.applet.storages.get_mut(&storage) else {
+            return self.reply_error(tls, mmu, APPLET_STORAGE_INVALID);
+        };
+        if end > data.len() as u64 {
+            return self.reply_error(tls, mmu, APPLET_STORAGE_INVALID);
+        }
+        let start = offset as usize;
+        let n = buffer.size as usize;
+        if write {
+            if mmu.read_bytes(buffer.addr, &mut data[start..start + n]).is_err() {
+                return self.reply_error(tls, mmu, APPLET_STORAGE_INVALID);
+            }
+        } else if mmu.write_bytes(buffer.addr, &data[start..start + n]).is_err() {
+            return self.reply_error(tls, mmu, APPLET_STORAGE_INVALID);
+        }
+        self.reply_ok(tls, mmu)
+    }
+}
+
+fn applet_storage_len(raw: u64) -> Result<usize, ()> {
+    let size = raw as i64;
+    if size < 0 || raw > APPLET_STORAGE_CAP {
+        Err(())
+    } else {
+        Ok(size as usize)
+    }
+}
+
+fn cancelled_library_applet_output() -> Vec<u8> {
+    let mut bytes = vec![0u8; LIBRARY_APPLET_OUT_SIZE];
+    bytes[..4].copy_from_slice(&LIBRARY_APPLET_CANCEL_RESULT.to_le_bytes());
+    bytes
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kernel::cmif::test_util::{Harness, Req};
+    use crate::kernel::cmif::test_util::{BUF, Harness, Req};
 
     /// Opens appletOE the way `appletInitialize` does (domain, PID + process handle) and returns
     /// (root, proxy).
@@ -428,7 +601,7 @@ mod tests {
             (2, AppletInterface::WindowController),
             (3, AppletInterface::AudioController),
             (4, AppletInterface::DisplayController),
-            (11, AppletInterface::Other("ILibraryAppletCreator")),
+            (11, AppletInterface::LibraryAppletCreator),
             (20, AppletInterface::ApplicationFunctions),
             (1000, AppletInterface::Other("IDebugFunctions")),
         ] {
@@ -573,6 +746,61 @@ mod tests {
         let r = h.call(root, Req { cmd: 0, domain_object: Some(sc), ..Default::default() });
         assert_eq!(r.result, 0);
         assert!(h.ipc.applet.exit_requested);
+    }
+
+    /// The path `swkbdShow` takes: the launchable event is already signaled, storage round-trips,
+    /// the holder is finished, and the pop-out word is cancel (1) with the rest of the buffer clear.
+    #[test]
+    fn library_applet_holder_returns_cancelled_output() {
+        let mut h = Harness::new();
+        let (root, proxy) = open_application_proxy(&mut h);
+        let sc = get(&mut h, root, proxy, 1);
+        let launchable = h.call(root, Req { cmd: 9, domain_object: Some(sc), ..Default::default() }).copy_handles[0];
+        assert_eq!(h.ipc.service_event_signaled(launchable), Some(true));
+
+        let creator = get(&mut h, root, proxy, 11);
+        let id_mode = 0x11u32.to_le_bytes();
+        let mut create = [0u8; 8];
+        create[..4].copy_from_slice(&id_mode);
+        let holder = h
+            .call(root, Req { cmd: 0, data: &create, domain_object: Some(creator), ..Default::default() })
+            .object();
+        assert_eq!(h.ipc.handles.get(&holder), Some(&ServiceType::Applet(AppletInterface::LibraryAppletAccessor)));
+
+        let state = h.call(root, Req { cmd: 0, domain_object: Some(holder), ..Default::default() }).copy_handles[0];
+        let interactive = h.call(root, Req { cmd: 106, domain_object: Some(holder), ..Default::default() }).copy_handles[0];
+        assert_eq!(h.ipc.service_event_signaled(state), Some(true));
+        assert_eq!(h.ipc.service_event_signaled(interactive), Some(false));
+        assert_eq!(h.call_out(root, Req { cmd: 1, domain_object: Some(holder), ..Default::default() }, 1).u8(0), 1);
+        assert_eq!(h.call(root, Req { cmd: 10, domain_object: Some(holder), ..Default::default() }).result, 0);
+        assert_eq!(h.call(root, Req { cmd: 30, domain_object: Some(holder), ..Default::default() }).result, 0);
+
+        let size = 16u64.to_le_bytes();
+        let storage = h.call(root, Req { cmd: 10, data: &size, domain_object: Some(creator), ..Default::default() }).object();
+        let accessor = h.call(root, Req { cmd: 0, domain_object: Some(storage), ..Default::default() }).object();
+        assert_eq!(h.call_out(root, Req { cmd: 0, domain_object: Some(accessor), ..Default::default() }, 8).u64(0), 16);
+        let payload = b"cancelled-stub!!";
+        h.mmu.write_bytes(BUF, payload).unwrap();
+        assert_eq!(
+            h.call(root, Req { cmd: 10, data: &0u64.to_le_bytes(), send: Some((BUF, 16)), domain_object: Some(accessor), ..Default::default() }).result,
+            0
+        );
+        assert_eq!(
+            h.call(root, Req { cmd: 11, data: &0u64.to_le_bytes(), recv_list: Some((BUF, 16)), domain_object: Some(accessor), ..Default::default() }).result,
+            0
+        );
+        assert_eq!(h.read_buf(BUF, 16), payload);
+
+        let out = h.call(root, Req { cmd: 101, domain_object: Some(holder), ..Default::default() }).object();
+        let out_acc = h.call(root, Req { cmd: 0, domain_object: Some(out), ..Default::default() }).object();
+        assert_eq!(h.call_out(root, Req { cmd: 0, domain_object: Some(out_acc), ..Default::default() }, 8).u64(0), LIBRARY_APPLET_OUT_SIZE as u64);
+        assert_eq!(
+            h.call(root, Req { cmd: 11, data: &0u64.to_le_bytes(), recv_list: Some((BUF, 8)), domain_object: Some(out_acc), ..Default::default() }).result,
+            0
+        );
+        let got = h.read_buf(BUF, 8);
+        assert_eq!(u32::from_le_bytes(got[..4].try_into().unwrap()), LIBRARY_APPLET_CANCEL_RESULT);
+        assert_eq!(&got[4..], &[0, 0, 0, 0]);
     }
 
     /// The harness's inline frames (no HIPC header) keep the older handlers in ipc.rs.
