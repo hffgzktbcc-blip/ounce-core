@@ -197,6 +197,7 @@ Install, build and first-run steps are in the [README](../README.md#run-it-local
 cargo run --release -- info                      # Show modelled hardware and engine status
 cargo run --release -- test                      # Run the 25-stage harness
 cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture  # Boot the libnx homebrew fixture (prints result=0x00000EEE)
+cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro --present=headless --report-json=run.json  # Same run, plus ounce.run.v1 JSON (main after v0.8.2)
 cargo run --release -- inspect ./my_program     # Inspect a loose exefs/ + romfs/ directory
 cargo run --release -- run ./my_program --gui   # Boot a loose directory in a window
 cargo run --release -- demo-dir ./demo --gui     # Generate a synthetic loose package and boot it
@@ -208,7 +209,9 @@ cargo run --release --features native-jit -- jit-selftest # Check whether this h
 cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for the Stage 20 benchmark
 ```
 
-`--present=auto|gpu|minifb|headless` (or `OUNCE_PRESENT`) picks the presentation backend; `auto` tries the GPU first when the feature is compiled in. `headless` opens no window and no host audio device, so it runs the same on a machine with no audio output (CI runners); the other modes play guest audio on the default output device. `WGPU_BACKEND` (`vulkan`, `metal`, `dx12`, `gl`) and `WGPU_ADAPTER_NAME` select the GPU, and `OUNCE_VSYNC=0` disables vsync. `--cpu=tier3|tier4` (or `OUNCE_CPU`) selects the block engine for the Stage 20 benchmark and for `run`/`run-nro` (with no flag, `run-nro` executes one instruction at a time in the interpreter). Tier-4 requires `--features native-jit`; the native engine is not currently used for general `run` workloads.
+`--present=auto|gpu|minifb|headless` (or `OUNCE_PRESENT`) picks the presentation backend; `auto` tries the GPU first when the feature is compiled in. `headless` opens no window and no host audio device, so it runs the same on a machine with no audio output (CI runners); the other modes play guest audio on the default output device unless `--audio=null` or `OUNCE_AUDIO=null` is set, which skips the device in every presentation mode. `WGPU_BACKEND` (`vulkan`, `metal`, `dx12`, `gl`) and `WGPU_ADAPTER_NAME` select the GPU, and `OUNCE_VSYNC=0` disables vsync. `--cpu=interpreter|tier3|tier4|native` (or `OUNCE_CPU`) selects the engine for the Stage 20 benchmark and for `run`/`run-nro`. With no flag the default is Tier-3. `--cpu=interpreter` is the one-instruction interpreter. Tier-4 requires `--features native-jit`; without it, Tier-3 runs. `--cpu=native` runs a homebrew NRO on an AArch64 host when the binary was built with `--features nce`; otherwise the interpreter runs and the program prints that.
+
+`--report-json <path>` or `--report-json=<path>` (or `OUNCE_REPORT_JSON`) writes an `ounce.run.v1` file for `run` and `run-nro`. It is not in the v0.8.2 release archive. `run-elf` does not write it. On `run-elf`, `--deterministic` uses a fixed guest clock. On `run` and `run-nro`, `--deterministic` and `OUNCE_DETERMINISTIC=1` or `true` are accepted and do not change the kernel clock. See [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md) and [QUICKSTART.md](QUICKSTART.md).
 
 ### Native Mac launcher (local preview)
 
