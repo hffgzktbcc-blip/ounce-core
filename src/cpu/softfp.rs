@@ -51,6 +51,10 @@ pub enum Round {
     Down,
     /// Towards zero.
     Zero,
+    /// Round to odd (von Neumann). Not an `FPCR.RMode` value; `FCVTXN` forces it.
+    /// Truncate toward zero, then set the fraction LSB when the result is inexact.
+    /// Overflow becomes infinity. `FZ` still flushes a tiny result to zero.
+    Odd,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -219,7 +223,7 @@ fn round_pack(f: Fmt, env: Env, sign: bool, e: i32, m: u128, sticky: bool) -> u6
         Round::Nearest => round_bit && (rest || q & 1 == 1),
         Round::Up => !sign && inexact,
         Round::Down => sign && inexact,
-        Round::Zero => false,
+        Round::Zero | Round::Odd => false,
     };
     let q = q as u64 + up as u64;
     let field_base = if tiny { 0i64 } else { (top + f.bias()) as i64 - 1 };
@@ -231,15 +235,20 @@ fn round_pack(f: Fmt, env: Env, sign: bool, e: i32, m: u128, sticky: bool) -> u6
             return overflow(f, env, sign);
         }
         let bits = ((field_base as u64) << f.mbits).wrapping_add(q);
-        return bits | f.zero(sign);
+        return odd_lsb(env, bits | f.zero(sign), inexact);
     }
     // denormal range: q < 2^mbits is a denormal fraction; q == 2^mbits rounded up to the smallest normal
-    q | f.zero(sign)
+    odd_lsb(env, q | f.zero(sign), inexact)
+}
+
+/// Round-to-odd forces the fraction LSB when the result is inexact and finite.
+fn odd_lsb(env: Env, bits: u64, inexact: bool) -> u64 {
+    if env.round == Round::Odd && inexact { bits | 1 } else { bits }
 }
 
 fn overflow(f: Fmt, env: Env, sign: bool) -> u64 {
     let to_inf = match env.round {
-        Round::Nearest => true,
+        Round::Nearest | Round::Odd => true,
         Round::Up => !sign,
         Round::Down => sign,
         Round::Zero => false,
