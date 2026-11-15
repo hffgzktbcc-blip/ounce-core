@@ -16,10 +16,10 @@ sudo apt-get install -y libasound2-dev libudev-dev
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
 cd ounce-core
 cargo build --release --locked
-cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro --present=headless
+cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture --present=headless
 ```
 
-A clean run prints `result=0x00000EEE` and exits 0. The default engine is
+`fixture` is a guest argument. With it, a clean run prints `result=0x00000EEE` and exits 0. Without a guest argument the same file still exits 0 and prints `result=0x0BAD0008`. The default engine is
 Tier-3. `--cpu=interpreter` is one instruction at a time.
 `--cpu=tier4` needs `cargo build --release --features native-jit`.
 `--cpu=native` runs a homebrew NRO on an AArch64 host and needs
@@ -32,7 +32,7 @@ says so.
 the v0.8.2 release archive. Build from `main` to use it.
 
 ```sh
-cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro \
+cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture \
   --present=headless --report-json=run.json
 ```
 

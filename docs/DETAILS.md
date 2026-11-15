@@ -197,7 +197,7 @@ Install, build and first-run steps are in the [README](../README.md#run-it-local
 cargo run --release -- info                      # Show modelled hardware and engine status
 cargo run --release -- test                      # Run the 25-stage harness
 cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture  # Boot the libnx homebrew fixture (prints result=0x00000EEE)
-cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro --present=headless --report-json=run.json  # Same run, plus ounce.run.v1 JSON (main after v0.8.2)
+cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture --present=headless --report-json=run.json  # Same run, plus ounce.run.v1 JSON (main after v0.8.2)
 cargo run --release -- inspect ./my_program     # Inspect a loose exefs/ + romfs/ directory
 cargo run --release -- run ./my_program --gui   # Boot a loose directory in a window
 cargo run --release -- demo-dir ./demo --gui     # Generate a synthetic loose package and boot it
