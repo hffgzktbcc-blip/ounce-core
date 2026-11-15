@@ -180,6 +180,12 @@ fn three_same_inner(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool,
             }
             SimdOp3::Sqdmulh => sat1((2 * ia * ib) >> esize, true),
             SimdOp3::Sqrdmulh => sat1((2 * ia * ib + (1i128 << (esize - 1))) >> esize, true),
+            SimdOp3::Sqrdmlah | SimdOp3::Sqrdmlsh => {
+                let acc = sext(lane(d, esize, i), esize) as i128;
+                let prod = 2 * ia * ib;
+                let prod = if op == SimdOp3::Sqrdmlsh { -prod } else { prod };
+                sat1(((acc << esize) + prod + (1i128 << (esize - 1))) >> esize, true)
+            }
             SimdOp3::Add | SimdOp3::Addp => a.wrapping_add(b),
             SimdOp3::Sub => a.wrapping_sub(b),
             SimdOp3::Mul => a.wrapping_mul(b),

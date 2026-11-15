@@ -129,6 +129,35 @@ fn by_element_dot_and_fmulx_classes() {
     assert_eq!(c.regs.v[30], 0x7ff0_0000_0000_0000 | 0x4000_0000_0000_0000u128 << 64);
 }
 
+#[test]
+fn sqrdmlah_sqrdmlsh_three_same() {
+    // sqrdmlah v0.4h, v1.4h, v2.4h: 5 + rounded high half of 128*128 is 6, no saturation.
+    // Q = 0 leaves the upper 64 bits clear.
+    let c = run1(0x2e42_8420, &[(0, 5 | u128::MAX << 64), (1, 128), (2, 128)]);
+    assert_eq!(c.regs.v[0], 6);
+    assert_eq!(c.regs.fpsr & FPSR_QC, 0);
+
+    // sqrdmlah v0.8h: lane 0 saturates (0x7fff + high half of min*min), lane 4 rounds 5 → 6.
+    let acc = 0x7fffu128 | 5u128 << 64;
+    let ab = 0x8000u128 | 128u128 << 64;
+    let c = run1(0x6e42_8420, &[(0, acc), (1, ab), (2, ab)]);
+    assert_eq!(c.regs.v[0], 0x7fff | 6u128 << 64);
+    assert_ne!(c.regs.fpsr & FPSR_QC, 0);
+
+    // sqrdmlah v0.4s: min*min into i32::MAX saturates, QC set.
+    let c = run1(0x6e82_8420, &[(0, 0x7fff_ffff), (1, 0x8000_0000), (2, 0x8000_0000)]);
+    assert_eq!(c.regs.v[0], 0x7fff_ffff);
+    assert_ne!(c.regs.fpsr & FPSR_QC, 0);
+
+    // sqrdmlsh v0.4h: 0x1000 - high half of 0x2000*0x3000 = 0x400, QC clear.
+    let c = run1(0x2e42_8c20, &[(0, 0x1000), (1, 0x2000), (2, 0x3000)]);
+    assert_eq!((c.regs.v[0], c.regs.fpsr & FPSR_QC), (0x400, 0));
+    // subtracting min*min-scale positives from i16::MIN saturates to 0x8000.
+    let c = run1(0x2e42_8c20, &[(0, 0x8000), (1, 0x7fff), (2, 0x7fff)]);
+    assert_eq!(c.regs.v[0], 0x8000);
+    assert_ne!(c.regs.fpsr & FPSR_QC, 0);
+}
+
 fn v4(l: [u32; 4]) -> u128 {
     l[0] as u128 | (l[1] as u128) << 32 | (l[2] as u128) << 64 | (l[3] as u128) << 96
 }
