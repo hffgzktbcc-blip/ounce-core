@@ -5,8 +5,8 @@ Archived 2026-11-11, superseded by docs/PROVENANCE.md
 PLAN step 16 working inventory. Read-only checks only; **no ref mutation, no
 legal finding, no destructive remediation**. Extends, does not replace,
 [HISTORY_REMEDIATION.md](HISTORY_REMEDIATION.md) (2026-10-29) and
-[PROVENANCE.md](PROVENANCE.md). Raw reachability output:
-[history-reachability-2026-11-07.json](history-reachability-2026-11-07.json).
+[PROVENANCE.md](../PROVENANCE.md). Raw reachability output:
+[history-reachability-2026-11-07.json](../history-reachability-2026-11-07.json).
 
 ## Dispositions
 
