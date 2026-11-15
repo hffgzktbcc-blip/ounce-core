@@ -1609,6 +1609,10 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
 
     // 29a. AdvSIMD scalar two-register miscellaneous: 01 U 11110 size 10000 opcode 10 Rn Rd (conversions only)
     if (raw & 0xDF3E_0C00) == 0x5E20_0800 {
+        // FCVTXN Sd, Dn: size = 01, U = 1, opcode = 10110. One single, rest of Vd zero.
+        if (raw >> 12) & 0x1F == 0b10110 && u && size == 1 {
+            return Some(Instruction::SimdFpTwoMisc { rd, rn, op: SimdFpOp2::Fcvtxn, double: true, q: false, scalar: true });
+        }
         let op = match ((raw >> 12) & 0x1F, u, size >> 1) {
             (0b11101, false, 0) => SimdOp2::Scvtf,
             (0b11101, true, 0) => SimdOp2::Ucvtf,
@@ -1648,16 +1652,17 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11111, false, false) => Some(SimdFpOp2::Frint64z),
             (0b11111, true, false) => Some(SimdFpOp2::Frint64x),
             (0b10110, false, false) if double => Some(SimdFpOp2::Fcvtn),
+            (0b10110, true, false) if double => Some(SimdFpOp2::Fcvtxn),
             (0b10111, false, false) if double => Some(SimdFpOp2::Fcvtl),
             _ => None,
         };
         if let Some(op) = fp {
             // FCVTN/FCVTL use Q to pick the half of the wide/narrow register, not the lane count
-            let wide_q = matches!(op, SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl);
+            let wide_q = matches!(op, SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl | SimdFpOp2::Fcvtxn);
             if double && !q && !wide_q {
                 return None;
             }
-            return Some(Instruction::SimdFpTwoMisc { rd, rn, op, double, q });
+            return Some(Instruction::SimdFpTwoMisc { rd, rn, op, double, q, scalar: false });
         }
         // FCVT{N,M,A,P}{S,U} and URECPE/URSQRTE: integer results
         let int_op = match ((raw >> 12) & 0x1F, u, a) {
@@ -2062,6 +2067,26 @@ mod tests {
         assert_eq!(decode(0x4EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: true }); // pmull2 v0.1q, v1.2d, v2.2d
         assert!(!matches!(decode(0x0E62E020), Instruction::Pmull { .. })); // size 1 reserved
         assert!(!matches!(decode(0x2E22E020), Instruction::Pmull { .. })); // U=1 is not PMULL
+    }
+
+    #[test]
+    fn decode_fcvtxn() {
+        assert_eq!(
+            decode(0x2e61_6b86),
+            Instruction::SimdFpTwoMisc { rd: 6, rn: 28, op: SimdFpOp2::Fcvtxn, double: true, q: false, scalar: false }
+        ); // fcvtxn v6.2s, v28.2d
+        assert_eq!(
+            decode(0x6e61_6b10),
+            Instruction::SimdFpTwoMisc { rd: 16, rn: 24, op: SimdFpOp2::Fcvtxn, double: true, q: true, scalar: false }
+        ); // fcvtxn2 v16.4s, v24.2d
+        assert_eq!(
+            decode(0x7e61_6b19),
+            Instruction::SimdFpTwoMisc { rd: 25, rn: 24, op: SimdFpOp2::Fcvtxn, double: true, q: false, scalar: true }
+        ); // fcvtxn s25, d24
+        // sz = 0 is not the double-to-single form; scalar size != 01 stays undecoded
+        assert!(matches!(decode(0x2e21_6820), Instruction::Unimplemented { .. }), "{:?}", decode(0x2e21_6820));
+        assert!(matches!(decode(0x7e21_6820), Instruction::Unimplemented { .. }), "{:?}", decode(0x7e21_6820));
+        assert!(matches!(decode(0x0e61_6820), Instruction::SimdFpTwoMisc { op: SimdFpOp2::Fcvtn, .. })); // fcvtn, U = 0
     }
 }
 
