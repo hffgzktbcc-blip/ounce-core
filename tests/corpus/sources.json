@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "recorded_on": "2026-10-28",
+  "purpose": "Source and build provenance for three external Switch homebrew candidates; this is not a legal assessment or a corpus-pass report.",
+  "build_host": {
+    "os": "macOS",
+    "architecture": "arm64"
+  },
+  "toolchain_observed": {
+    "devkitA64": "r30-1",
+    "gcc": "16.1.0-1",
+    "g++": "16.1.0-1",
+    "newlib": "4.6.0.20260123-4",
+    "libnx": "4.12.0-1",
+    "binutils": "2.46.0.20260210",
+    "deko3d": "0.5.0-1",
+    "uam": "1.1.0-1"
+  },
+  "candidates": [
+    {
+      "id": "raufang-switch-hello-world",
+      "role": "basic startup and C++ console smoke candidate",
+      "upstream": {
+        "repository": "https://github.com/Raufang/switch-hello-world",
+        "commit": "fbe545bad4eb9b188990f66b0315b697ad74371a",
+        "commit_date": "2025-11-25T13:05:30Z",
+        "source_files": [
+          "source/main.cpp",
+          "Makefile"
+        ]
+      },
+      "source_status": "Unchanged upstream source and Makefile; no project-authored source adaptation.",
+      "notices_observed": {
+        "license_file": "LICENSE",
+        "declared_license": "MIT License",
+        "copyright_line": "Copyright (c) 2025 Raufang",
+        "additional_notice": "README says the Makefile was copied from devkitPro examples. No separate notice for that copied Makefile was found in the repository root.",
+        "redistribution_review": "Not assessed."
+      },
+      "build": {
+        "command": "make DEVKITPRO=/opt/devkitpro NO_ICON=1",
+        "inputs": [
+          "devkitPro libnx switch_rules and switch.specs",
+          "devkitA64 GCC/G++",
+          "libnx (linked with -lnx)",
+          "newlib and GCC C++ runtime from the installed toolchain"
+        ],
+        "sha256": "85c360569d793bae76e02061d917eca9091e3d4784198f1b0c5073ba8c7034fa",
+        "artifact_committed": false,
+        "checkout_directory": "independent-homebrew-raufang",
+        "make_arguments": [
+          "NO_ICON=1"
+        ],
+        "pre_normalization_sha256": "0684f1dbe256791800c462b2aaa355a2ee35ebfe5c006b373397cffc9b6e2834",
+        "path_normalization": "Compiler CC/CXX -ffile-prefix-map maps the fresh build root to /ounce-corpus; see build.py.",
+        "pre_normalization_artifact": "../independent-homebrew-raufang/independent-homebrew-raufang.nro",
+        "artifact_relative_to_build_root": "independent-homebrew-raufang/independent-homebrew-raufang.nro"
+      },
+      "source_oracle": "Writes the fixed text 'Hello World from C++!' to the libnx console, then waits for Plus and returns 0. The main return value is not treated as the test oracle.",
+      "ounce_observation": {
+        "status": "not_passed",
+        "observation": "Local Ounce-Core run loaded the NRO, then stopped at svcBreak (reason 0x0) after 38,595 instructions and 71 HIPC calls. The expected console text was not observed.",
+        "corpus_pass_claim": false
+      }
+    },
+    {
+      "id": "switchbrew-read-controls",
+      "role": "controller input candidate",
+      "upstream": {
+        "repository": "https://github.com/switchbrew/switch-examples",
+        "commit": "669786898205b7beb25ff1731e72982e6d0397d3",
+        "commit_date": "2026-02-01T23:22:02Z",
+        "source_files": [
+          "hid/read-controls/source/main.c",
+          "hid/read-controls/Makefile"
+        ]
+      },
+      "source_status": "Unchanged upstream source and Makefile; no project-authored source adaptation.",
+      "notices_observed": {
+        "readme_notice": "Repository README links to the Creative Commons Public Domain Mark 1.0: http://creativecommons.org/publicdomain/mark/1.0/.",
+        "root_license_file": null,
+        "notice_scope": "Recorded as the README notice observed at the pinned commit; its scope has not been independently determined.",
+        "redistribution_review": "Not assessed."
+      },
+      "build": {
+        "command": "make DEVKITPRO=/opt/devkitpro",
+        "working_directory": "hid/read-controls",
+        "inputs": [
+          "devkitPro libnx switch_rules and switch.specs",
+          "devkitA64 GCC",
+          "libnx (linked with -lnx)",
+          "newlib from the installed toolchain",
+          "libnx default_icon.jpg, selected by the unchanged upstream Makefile"
+        ],
+        "sha256": "2b53a6def835e00a617935c5ef86590a248f5c5188f1bd185539959fd51c5254",
+        "artifact_committed": false,
+        "checkout_directory": "switch-examples",
+        "make_arguments": [],
+        "pre_normalization_sha256": "dcabb2daf4579215f79142d9b22a1c72d428f8bfe7e308398376d4bd0031ceee",
+        "path_normalization": "Compiler CC/CXX -ffile-prefix-map maps the fresh build root to /ounce-corpus; see build.py.",
+        "pre_normalization_artifact": "../switch-examples-upstream/hid/read-controls/read-controls.nro",
+        "artifact_relative_to_build_root": "switch-examples/hid/read-controls/read-controls.nro"
+      },
+      "source_oracle": "Displays button down/held/up state and analog-stick coordinates in the libnx console; Plus exits the app. It has no fixed numeric result or source-level output checksum.",
+      "ounce_observation": {
+        "status": "blocked_at_startup",
+        "observation": "Recorded guest startup abort result 0x2559; no corpus assertion passed.",
+        "corpus_pass_claim": false
+      }
+    },
+    {
+      "id": "switchbrew-deko-basic",
+      "role": "deterministic graphics behavior candidate",
+      "upstream": {
+        "repository": "https://github.com/switchbrew/switch-examples",
+        "commit": "669786898205b7beb25ff1731e72982e6d0397d3",
+        "commit_date": "2026-02-01T23:22:02Z",
+        "source_files": [
+          "graphics/deko3d/deko_basic/source/main.c",
+          "graphics/deko3d/deko_basic/source/triangle_vsh.glsl",
+          "graphics/deko3d/deko_basic/source/color_fsh.glsl",
+          "graphics/deko3d/deko_basic/Makefile"
+        ]
+      },
+      "source_status": "Unchanged upstream source and shaders; generated DKSH files are build outputs, not source adaptations.",
+      "notices_observed": {
+        "readme_notice": "Repository README links to the Creative Commons Public Domain Mark 1.0: http://creativecommons.org/publicdomain/mark/1.0/.",
+        "root_license_file": null,
+        "notice_scope": "Recorded as the README notice observed at the pinned commit; its scope has not been independently determined.",
+        "redistribution_review": "Not assessed."
+      },
+      "build": {
+        "command": "make DEVKITPRO=/opt/devkitpro NO_ICON=1",
+        "working_directory": "graphics/deko3d/deko_basic",
+        "inputs": [
+          "devkitPro libnx switch_rules and switch.specs",
+          "devkitA64 GCC",
+          "libnx (linked with -lnx)",
+          "deko3d (linked with -ldeko3dd)",
+          "uam compiles the GLSL shaders to DKSH files placed in ROMFS",
+          "newlib from the installed toolchain"
+        ],
+        "sha256": "d12f12ae2658c7bd028fed0b802c6a0308e01f95f8769930029498879f001821",
+        "artifact_committed": false,
+        "checkout_directory": "switch-examples",
+        "make_arguments": [
+          "NO_ICON=1"
+        ],
+        "pre_normalization_sha256": "af5c0e93d400b92808e3bf0270705eab23dedcfab563cfd1a8effd2e7d37ec45",
+        "path_normalization": "Compiler CC/CXX -ffile-prefix-map maps the fresh build root to /ounce-corpus; see build.py.",
+        "pre_normalization_artifact": "../upstream-switch-examples/graphics/deko3d/deko_basic/deko_basic.nro",
+        "artifact_relative_to_build_root": "switch-examples/graphics/deko3d/deko_basic/deko_basic.nro"
+      },
+      "source_oracle": "The program clears an RGBA8 render target to fixed color values, draws a triangle, presents frames, and exits on Plus. The source has no pixel checksum or guest-visible completion result; an external image/output oracle is still needed.",
+      "ounce_observation": {
+        "status": "no_pass_recorded",
+        "observation": "No independent corpus pass is claimed in this manifest.",
+        "corpus_pass_claim": false
+      }
+    }
+  ],
+  "milestone_gaps": [
+    "None of these artifacts has passed the independent corpus gate under both Interpreter and Tier-3 on Linux.",
+    "Clean-checkout reproduction by an outside developer has not been completed.",
+    "Authorized Switch 2 build-toolchain and reference-hardware access remain unavailable; these original-Switch samples provide no Switch 2 compatibility evidence."
+  ],
+  "binary_scope": "All three NROs remain in external work/ directories and are not committed by this change. No binary redistribution or legal conclusion is made here.",
+  "rebuild_verification": {
+    "host": "macOS arm64",
+    "separate_clean_directories": 2,
+    "all_three_raw_nro_hashes_match": true,
+    "runtime_pass_claim": false
+  }
+}

@@ -1,0 +1,57 @@
+name: Emulation bug (a program gives a different result)
+description: A program behaves differently in Ounce-Core than on real ARM64 hardware or a reference build.
+labels: ["bug", "differential"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Search open issues first; the workbench may already list this problem.**
+
+        Reporting from the Ounce Core app or workbench fills in what it knows. Nothing is sent until you press **Submit new issue**; check the text first. Please do not attach firmware, keys, game files or any retail content.
+  - type: textarea
+    id: program
+    attributes:
+      label: Program and version
+      description: Name, SHA-256 and size are filled in by the app. Add the open-source project, commit or release, and how you built it.
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      description: Which engine stopped or differed. The app chooses this for you.
+      options:
+        - Tier-3 interpreter (default)
+        - Tier-4 recompiler (--cpu=tier4)
+        - Tier-3 and Tier-4 (both)
+        - Native (--cpu=native)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result and where it comes from
+      description: What the result was compared with (engine vs engine, a recorded reference, or your own ARM64 machine) and the expected output.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: What Ounce-Core did
+      description: The result, the first difference or the stop reason (an unimplemented instruction names its word and address), and the last log lines.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Exact command
+      description: The `ounce-core run-elf ...` or `run-nro ...` line that reproduces it.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Operating system, chip and Ounce Core version
+      description: Filled in by the app. Otherwise your OS, chip, and `git rev-parse HEAD` of your checkout.

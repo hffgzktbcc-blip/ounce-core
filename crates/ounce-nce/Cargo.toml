@@ -1,0 +1,10 @@
+[package]
+name = "ounce-nce"
+version = "0.1.0"
+edition = "2024"
+description = "Native code execution (NCE) for ounce-core on AArch64 hosts: guest code runs on the host CPU after svc and thread-register instructions are rewritten into trampolines. All unsafe code lives in the arena and exec modules."
+license = "MIT"
+publish = false
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"

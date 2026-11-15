@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/Raufang/switch-hello-world.git",
+  "revision": "fbe545bad4eb9b188990f66b0315b697ad74371a",
+  "status": "step-2-oracle-corpus",
+  "upstream_terms": "MIT License (LICENSE, Copyright (c) 2025 Raufang).",
+  "samples": [
+    {
+      "id": "raufang-hello-cpp",
+      "path": "."
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+[
+    {
+        "Id": "sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282",
+        "RepoTags": [
+            "devkitpro/devkita64:latest"
+        ],
+        "RepoDigests": [
+            "devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-02-19T17:57:58.577789836Z",
+        "Config": {
+            "Env": [
+                "PATH=/opt/devkitpro/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "DEBIAN_FRONTEND=noninteractive",
+                "LANG=en_US.UTF-8",
+                "DEVKITPRO=/opt/devkitpro",
+                "DEVKITARM=/opt/devkitpro/devkitARM"
+            ],
+            "Cmd": [
+                "bash"
+            ],
+            "Labels": {
+                "maintainer": "devkitPro developers support@devkitpro.org"
+            }
+        },
+        "Architecture": "arm64",
+        "Os": "linux",
+        "Size": 2721897442,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:dd97e58b4e812b247f3cd261fa7eac247b7c5896b8e34d9474762678cae7774d",
+                "sha256:7574779c6ec120557a4869c38dc44475ce90b6a8609a7250b765b88c439902db",
+                "sha256:f9c50b179a82aba11917b30748d38ed6578c1fc7fa1830b2bde7c24c85981542",
+                "sha256:d61de0a05a4fb73c1843f27e956e638a91162987c4ef709eb0b47554e338828d"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-11-11T09:45:26.44830447Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282",
+            "size": 1609
+        },
+        "Identity": {
+            "Pull": [
+                {
+                    "Repository": "docker.io/devkitpro/devkita64"
+                }
+            ]
+        }
+    }
+]

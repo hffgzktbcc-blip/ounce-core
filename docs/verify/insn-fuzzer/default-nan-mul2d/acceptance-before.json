@@ -1,0 +1,54 @@
+{
+  "scope": "one real cross-host default-NaN discrepancy; reference captured on Apple Silicon, local failing execution on Linux x86-64",
+  "hardware": {
+    "run_id": 42558815987,
+    "job_id": 128970464303,
+    "source_commit": "8b65ba1a613952b154d49875f4ece14fd3ab93f0",
+    "trace_sha256": "b98c8bc44fc7c35cbcbf36e8e8ea3efa2f9b2ccaecb637abea819311b6e3151b",
+    "generator_sha256": "3d7915e2df3cc4dba1a0843aba65fd931a8d839f641215121e3471a7d9c16909",
+    "tested_on_reference": [
+      "interp",
+      "tier3",
+      "tier4"
+    ],
+    "reference_results": "all one-case comparisons matched; zero SIGILL",
+    "artifact_id": 13648746476
+  },
+  "observations": [
+    {
+      "engine": "interp",
+      "failure_exit": 1,
+      "replay_exit": 0,
+      "native_instructions_including_wrapper": 0
+    },
+    {
+      "engine": "tier3",
+      "failure_exit": 1,
+      "replay_exit": 0,
+      "native_instructions_including_wrapper": 0
+    },
+    {
+      "engine": "tier4",
+      "failure_exit": 1,
+      "replay_exit": 0,
+      "native_instructions_including_wrapper": 1
+    }
+  ],
+  "runtime_sha256": "dbd669f89b10f288e4ea8101c86fcba8692cf53caf618a322f432e1f9838a6ab",
+  "tested_sources_sha256": {
+    "src/fuzz_replay.rs": "0d0ff0d7b9d71de8dd63d4bb467859f191d00bfea73427e145a9a094ccd28deb",
+    "src/main.rs": "dd50400bb577c6db62043bbf648f4ffe5d1dd6e477d5b5a3ce351ec220410eee",
+    "tests/cli_failures.rs": "17353d06ff017fe66c2e9aa438c27464b6fcf927521857edea6ed7632596efa8"
+  },
+  "tests": {
+    "unit_passed": 563,
+    "unit_ignored": 10,
+    "cli_passed": 11
+  },
+  "limits": [
+    "FPSR exception flags are not compared; QC only",
+    "PC is harness address, not original program PC",
+    "case is an independent instruction, not first divergence in arbitrary program execution",
+    "native instruction count includes the sentinel wrapper; inspect counts rather than assuming JIT execution"
+  ]
+}

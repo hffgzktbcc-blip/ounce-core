@@ -1,0 +1,21 @@
+/target
+/dist
+**/*.rs.bk
+.DS_Store
+
+# Never commit user-supplied keys, firmware, game containers or dumps
+*.keys
+*.nsp
+*.xci
+*.nca
+*.nro
+*.nso
+*.npdm
+ns2jb*
+dumps/
+
+# Interpreter caches are not execution inputs.
+__pycache__/
+
+# Generated Quickstart demo
+/demo/

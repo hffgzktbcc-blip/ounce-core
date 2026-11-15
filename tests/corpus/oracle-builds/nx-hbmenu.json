@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/switchbrew/nx-hbmenu.git",
+  "revision": "089fdf85ff82ad7077527092f8615f2e57ffc985",
+  "status": "step-2-oracle-corpus",
+  "upstream_terms": "ISC License (LICENSE.md).",
+  "samples": [
+    {
+      "id": "nx-hbmenu",
+      "path": ".",
+      "make_args": [
+        "nx"
+      ]
+    }
+  ]
+}

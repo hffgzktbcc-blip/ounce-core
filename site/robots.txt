@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://hffgzktbcc-blip.github.io/ounce-core/sitemap.xml

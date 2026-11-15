@@ -1,0 +1,47 @@
+{
+  "date": "2026-11-08",
+  "scope": "negative-path exit-code qualification; contradictory UNDEFINED input is synthetic, not a hardware observation",
+  "baseline_runtime_sha256": "2cd2c4a387f2a31b90e2ca5f09bb092b3712e4043a963e42e0edc2e4f985b8e1",
+  "before": {
+    "empty_exit": 0,
+    "read_error_exit": 0,
+    "accepted_undefined_exit": 0
+  },
+  "runtime_sha256": "7a166383862468d2ee036add63554bdee48264cfba1e54d63136bbf2068b352f",
+  "source_sha256": "b8a6e574cac06ad81ac5252ed9d783f54fe800f2ab14c8e8fbe36561d407deb7",
+  "unit_tests": {
+    "passed": 562,
+    "ignored": 10,
+    "failed": 0
+  },
+  "cli_tests": {
+    "passed": 9,
+    "failed": 0
+  },
+  "observations": [
+    {
+      "case": "empty",
+      "returncode": 2,
+      "stderr": "trace contains no cases; nothing was compared\n",
+      "stdout": ""
+    },
+    {
+      "case": "read-error",
+      "returncode": 2,
+      "stderr": "line 1: trace read error: Is a directory (os error 21)\n",
+      "stdout": ""
+    },
+    {
+      "case": "zero-count",
+      "returncode": 2,
+      "stderr": "--count must be positive; no cases would be compared\n",
+      "stdout": ""
+    },
+    {
+      "case": "accepted-undefined",
+      "returncode": 1,
+      "stderr": "",
+      "stdout": "--- fuzz-replay summary ---\nengine:                         Interp\nhost executed (not SIGILL):     0\nhost UNDEFINED (SIGILL):        1\nemulator unimplemented:         0 (0 classes)\nemulator other errors:          0\nemulator executed:              0\n  distinct classes executed:    0\n  exact match (X,V,NZCV,QC):    0\n  MISMATCH:                     0 (0 with QC wrong)\n  FPSR exception flags differ on matching results (not modelled): 0\nemulator runs a word the host calls UNDEFINED: 1\nclasses the emulator runs but the host rejects (class = word & 0xFFE0FC00: count, example):\n  0xd2800000      1 0xd2800020\n"
+    }
+  ]
+}

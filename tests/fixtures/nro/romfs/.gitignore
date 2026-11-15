@@ -1,0 +1,5 @@
+main.o
+romfs.elf
+romfs.bin
+# The root .gitignore ignores *.nro; this fixture is checked in.
+!romfs.nro
