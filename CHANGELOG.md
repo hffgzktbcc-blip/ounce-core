@@ -4,6 +4,73 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+## 0.9.0 — draft, not tagged
+
+Draft for review. Do not tag from this text. The Q1 gate in
+`docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md` is still open: legal and release
+workflow pull requests are open, and the `linux-arm64-elf-matrix` job has not
+passed on `main` (workflow run `43630557848` was cancelled). History below is
+`v0.8.2..main` (`1dc78ad..2c52649`).
+
+### Added
+- `run` and `run-nro` can write an `ounce.run.v1` JSON report with
+  `--report-json <path>` or `--report-json=<path>`, or `OUNCE_REPORT_JSON`.
+  Guest stdout stays on stdout. The file records schema, engine, version, tier,
+  stop kind, exit code, PC, opcode, fault address, SVC id, break result,
+  instructions executed, and an optional message (#439). `run-elf` does not
+  write this file yet.
+- `--audio=null` or `OUNCE_AUDIO=null` skips the host audio device even when a
+  window is open. `--present=headless` already skipped it.
+- `--deterministic` on `run-elf` uses a fixed guest clock. The same flag and
+  `OUNCE_DETERMINISTIC=1` (or `true`) are accepted on every command. They do
+  not switch the homebrew kernel clock; that path still follows the host clock
+  unless a caller such as the corpus runner sets it itself.
+- `scripts/run_linux_arm64_matrix.py` runs the Linux ELF harnesses from
+  `docs/verify/differential.json` and writes one JSON report. CI job
+  `linux-arm64-elf-matrix` on `ubuntu-24.04-arm` calls it (`differential.yml`,
+  #440). `docs/verify/linux-elf/README.md` now calls `run-elf` bounded-verified
+  for static musl AArch64 `ET_EXEC` programs.
+- Family and education roadmaps under `docs/roadmap/` (#441, #443).
+
+### Fixed
+- `inspect` on a file that is not an NRO0 or NSO0 executable, or whose header
+  does not load, prints the reason and exits 1. It used to report an unknown
+  format and exit 0 (#385, #433). Inspecting a loose directory is unchanged.
+
+### Known limits of this draft
+- `silent_fallback` is always `false`. `frames_presented` and
+  `framebuffer_hash` are not fields on ounce-core's report.
+- Asking for Tier-4 without `native-jit` still runs Tier-3, and the report's
+  `silent_fallback` field does not say so.
+- Nothing here closes the pre-tag items still in pull requests: MIT
+  `license` / `cargo-deny` / linux-arm64 release archives (#442), the
+  ounce-hb release and `setup-ounce` follow-ups (#40), or the ounce-runtime
+  notice and release workflow (#13).
+
+## 0.8.2
+
+The tag commit only bumped the version and the notice-review hashes. The
+changes below landed between v0.8.1 and that tag and were not listed here at
+the time. This section is reconstructed from that git history for review.
+
+### Added
+- Static AArch64 Linux ELFs can be compared with `diverge`, and the ELF loader
+  and decoder have a fuzzer (#430).
+- Twelve measured ARM64 v0.2.0 conformance cases (#427).
+- A multi-optimisation matrix and the high-star C programs yyjson,
+  stb_truetype, and zstd (#434), with the README and community guide updated
+  to match (#436, #437).
+- The Growing Family section and banner in the README (#423, #424, #425).
+
+### Fixed
+- Tier-4 no longer treats `u64::MAX` as a sentinel in a way that collided with
+  a real value (#391). Scalar NaN regression tests were added with that fix
+  (#362, #431).
+- Decoder accepts the LRCPC2 unscaled atomic loads and stores `LDAPUR` and
+  `STLUR` (#426).
+- FEAT_SHA3 SIMD bitwise instructions used by the Apple M1 xxHash build (#428).
+- Guarded wasm3 Linux ELF reservations and faults (#429).
+
 ## 0.8.1
 
 ### Removed
