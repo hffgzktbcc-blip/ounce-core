@@ -1020,6 +1020,9 @@ pub enum SimdOp3 {
     /// Saturating (rounding) doubling multiply returning the high half
     Sqdmulh,
     Sqrdmulh,
+    /// `SQRDMLAH` / `SQRDMLSH`: saturating rounding doubling multiply-accumulate / subtract, high half
+    Sqrdmlah,
+    Sqrdmlsh,
 }
 
 /// Operation of an integer by-element (or vector dot-product) instruction.
