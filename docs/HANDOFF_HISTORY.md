@@ -416,9 +416,9 @@ Moved out of `AGENTS.md` on 2026-11-01 to keep the session-start file small. Rea
 
 * **Codex swarm: independent corpus preparation (2026-10-29)**: Added `docs/independent-corpus.md`, per-category source investigations, a runner audit, `tests/corpus/manifest.json` and Python preparation tooling. External source pin: switchbrew/switch-examples `669786898205b7beb25ff1731e72982e6d0397d3`. Source checkout and SHA-256 inventory verified outside the repository; seven offline tooling tests passed. No external binary built or executed; no compatibility milestone completed. Source inspection identifies VI/Binder window presentation, raw guest framebuffer capture, NRO interpreter/Tier-3 selection, and JIT capability hints as follow-up work. No runtime files or reserved workflow files changed. Rust/devkitPro unavailable locally; existing nine-job CI remains the merge gate.
 
-* **Next Codex agent**: Read [`docs/CODEX_HANDOFF.md`](docs/CODEX_HANDOFF.md) and PR #89 before continuing the independent-corpus work. It records verified preparation results, unexecuted candidates, first-run instructions and the VI/Binder / NRO tier-selection / loader-capability follow-ups.
+* **Next Codex agent**: Read [`docs/CODEX_HANDOFF.md`](CODEX_HANDOFF.md) and PR #89 before continuing the independent-corpus work. It records verified preparation results, unexecuted candidates, first-run instructions and the VI/Binder / NRO tier-selection / loader-capability follow-ups.
 
-* **Continuing Codex: corpus execution and VI protocol correction (2026-10-29, PR #89)**: Supersedes the preparation-only execution status above for later runs. GitHub Actions built all four unchanged pinned samples and probed startup; observed guest stop is `svc_break`, libnx `BadGfxInit` (`0x2559`), not compatibility success. Added proper VI discovery session handles, explicit unsupported native-window errors, a HIPC regression, opt-in bounded IPC trace and break PC/result diagnostics. Code head `563cf5e8` passed all nine CI jobs (run 40841651067; default Linux 365 tests and harness 27/27). Later heads require fresh checks. Full producer queue/parcel/frame capture and Tier-3 external validation remain unfinished. See updated [Codex handoff](docs/CODEX_HANDOFF.md) for evidence and acknowledged lanes.
+* **Continuing Codex: corpus execution and VI protocol correction (2026-10-29, PR #89)**: Supersedes the preparation-only execution status above for later runs. GitHub Actions built all four unchanged pinned samples and probed startup; observed guest stop is `svc_break`, libnx `BadGfxInit` (`0x2559`), not compatibility success. Added proper VI discovery session handles, explicit unsupported native-window errors, a HIPC regression, opt-in bounded IPC trace and break PC/result diagnostics. Code head `563cf5e8` passed all nine CI jobs (run 40841651067; default Linux 365 tests and harness 27/27). Later heads require fresh checks. Full producer queue/parcel/frame capture and Tier-3 external validation remain unfinished. See updated [Codex handoff](CODEX_HANDOFF.md) for evidence and acknowledged lanes.
   - Continuing session alone edits PR #89 implementation/workflow/handoff; preparation/swarm session independently reviews without branch edits (PR comments 6491694410 / 6491728010).
   - Owner-requested subordinate follow-ups, acknowledged in comment 6491732532, use separate branches/draft PRs: `codex/vi-binder-bootstrap` owns new `src/kernel/vi.rs` plus minimal IPC/module hooks (bounded parcel/relay-object bootstrap only; OpenLayer stays unsupported until a complete format is established); `codex/bounded-nro-runner` owns new loader corpus runner mounted from `fixture_tests.rs`, without kernel/CLI/workflow overlap. Read latest PR comments before integration. No merge or compatibility completion implied.
 
@@ -485,7 +485,7 @@ Build a clean, inspectable, and high-performance AArch64 research runtime that e
 
 #### READ THIS FIRST (overrides everything below; owner decision 2026-11-03)
 
-1. **The only plan is [`PLAN.md`](PLAN.md).** Read it before any work, do only its next unchecked step, tick it with
+1. **The only plan is [`PLAN.md`](../PLAN.md).** Read it before any work, do only its next unchecked step, tick it with
    one line of proof, then end the session. `HANDOFF.md` and older notes are history, not plans.
 2. **Proof = a real outside homebrew program passing its pixel oracle in CI.** Unit tests guard code but are never
    a milestone or a "verified" claim.
@@ -499,7 +499,7 @@ Build a clean, inspectable, and high-performance AArch64 research runtime that e
 
 #### Agent rules for `ounce-core`
 
-Short on purpose: every agent loads this file at session start. The plan is [`PLAN.md`](PLAN.md); finished milestones and past handoffs are history in `docs/HANDOFF_HISTORY.md` (grep it only when a step needs it).
+Short on purpose: every agent loads this file at session start. The plan is [`PLAN.md`](../PLAN.md); finished milestones and past handoffs are history in `docs/HANDOFF_HISTORY.md` (grep it only when a step needs it).
 
 **Outside samples with a verified frame: 4** (`simplegfx`, `deko_basic`, `romfs`, `startup`; oracles in `docs/*-oracle.md`).
 
