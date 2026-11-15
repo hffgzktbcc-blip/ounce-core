@@ -26,6 +26,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary_name: ounce-core
             archive_name: ounce-core-linux-x86_64.tar.gz
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            binary_name: ounce-core
+            archive_name: ounce-core-linux-arm64.tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
             binary_name: ounce-core
@@ -61,7 +65,7 @@ jobs:
           key: release-${{ matrix.target }}
 
       - name: Install Linux system dependencies
-        if: matrix.os == 'ubuntu-latest'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev
@@ -198,7 +202,7 @@ jobs:
       - name: Generate archive checksums
         run: |
           cd dist
-          sha256sum ounce-core-linux-x86_64.tar.gz ounce-core-macos-arm64.tar.gz ounce-core-windows-x86_64.zip > SHA256SUMS
+          sha256sum *.tar.gz *.zip > SHA256SUMS
       - name: Publish complete release
         uses: softprops/action-gh-release@v2
         with:
