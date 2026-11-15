@@ -256,7 +256,9 @@ jobs:
   linux-arm64-elf-matrix:
     name: Linux ARM64 ELF matrix
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    # The matrix step itself ran for 43 minutes on ubuntu-24.04-arm before the 45-minute
+    # job limit cancelled it (run 43743883110, job 132902900841).
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:

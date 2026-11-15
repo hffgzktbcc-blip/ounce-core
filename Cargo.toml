@@ -2,6 +2,7 @@
 name = "ounce-core"
 version = "0.8.2"
 edition = "2024"
+license = "MIT"
 description = "Homebrew systems research runtime and architecture compatibility layer for NVIDIA Tegra T239"
 
 [workspace]
