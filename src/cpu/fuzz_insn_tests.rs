@@ -194,6 +194,28 @@ fn fcvtxn_round_to_odd() {
     assert_eq!(c.regs.fpsr & UFC, UFC);
 }
 
+#[test]
+fn scalar_fmulx_zero_times_infinity_and_lane0_only() {
+    // fmulx s3, s0, s1: +0 * +inf = +2, and the rest of v3 is cleared
+    let c = run1(0x5e21_dc03, &[(3, u128::MAX), (0, 0), (1, 0x7f80_0000)]);
+    assert_eq!(c.regs.v[3], 0x4000_0000);
+    // fmulx s3, s0, s1: -0 * +inf = -2
+    let c = run1(0x5e21_dc03, &[(3, u128::MAX), (0, 0x8000_0000), (1, 0x7f80_0000)]);
+    assert_eq!(c.regs.v[3], 0xc000_0000);
+    // fmulx s3, s0, s1: 1.5 * 2 = 3. Upper bits of the sources must not leak into v3.
+    let c = run1(0x5e21_dc03, &[(3, u128::MAX), (0, 0x3fc0_0000 | 0x7f80_0000u128 << 32), (1, 0x4000_0000 | 0x7fc0_0000u128 << 32)]);
+    assert_eq!(c.regs.v[3], 0x4040_0000);
+    // fmulx d3, d0, d1: +0 * +inf = +2.0, upper 64 bits cleared
+    let c = run1(0x5e61_dc03, &[(3, u128::MAX), (0, 0), (1, 0x7ff0_0000_0000_0000)]);
+    assert_eq!(c.regs.v[3], 0x4000_0000_0000_0000);
+    // fmulx d3, d0, d1: -0 * +inf = -2.0
+    let c = run1(0x5e61_dc03, &[(3, u128::MAX), (0, 1u128 << 63), (1, 0x7ff0_0000_0000_0000)]);
+    assert_eq!(c.regs.v[3], 0xc000_0000_0000_0000);
+    // fmulx d3, d0, d1: 1.5 * 4 = 6
+    let c = run1(0x5e61_dc03, &[(0, 0x3ff8_0000_0000_0000), (1, 0x4010_0000_0000_0000)]);
+    assert_eq!(c.regs.v[3], 0x4018_0000_0000_0000);
+}
+
 fn v4(l: [u32; 4]) -> u128 {
     l[0] as u128 | (l[1] as u128) << 32 | (l[2] as u128) << 64 | (l[3] as u128) << 96
 }
