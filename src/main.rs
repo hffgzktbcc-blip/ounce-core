@@ -1052,6 +1052,8 @@ fn run_vm_internal(
         svc_id: stop_svc_id,
         break_result: stop_break_result,
         insns_executed: instructions_executed as u64,
+        frames_presented: frames_presented as u64,
+        framebuffer_hash: display.as_ref().and_then(|d| d.last_frame_hash()).map(str::to_owned),
         message: stop_message,
     };
 
@@ -4131,6 +4133,8 @@ mod harness_gate_tests {
                 svc_id: None,
                 break_result: None,
                 insns_executed: 0,
+                frames_presented: 0,
+                framebuffer_hash: None,
                 message: None,
             },
         }
