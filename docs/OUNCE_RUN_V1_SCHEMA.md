@@ -1,10 +1,8 @@
 # `ounce.run.v1` — Machine-Readable Run Report Contract
 
-`ounce.run.v1` is a **data-only** JSON contract emitted by execution engines (`ounce-core`, `ounce-runtime`) when invoked with `--report-json=<path>` (or `--report-json <path>`). `OUNCE_REPORT_JSON` sets the same path. The flag landed on `main` on 14 Nov 2026 (`#439` in ounce-core, `#11` in ounce-runtime). It is not in the ounce-core v0.8.2 or ounce-runtime v0.5.0 release archives.
+`ounce.run.v1` is a **data-only** JSON contract emitted by execution engines (`ounce-core`, `ounce-runtime`) when invoked with `--report-json=<path>` (or `--report-json <path>`).
 
 Using an out-of-band report file keeps guest `svcOutputDebugString` output on `stdout` completely separate from engine diagnostics and preserves clean MIT / GPL-3.0-or-later process isolation.
-
-On ounce-core today, `run` and `run-nro` write the file. `run-elf` does not. `silent_fallback` is written and is always `false`, including when a requested Tier-4 build falls back to Tier-3. `frames_presented` and `framebuffer_hash` are not ounce-core fields. ounce-runtime's report adds those two fields. The two engines do not yet use the same `stop_kind` for every fault.
 
 ---
 
@@ -50,6 +48,6 @@ On ounce-core today, `run` and `run-nro` write the file. `run-elf` does not. `si
 ## Companion Determinism Flags
 
 When orchestrating cross-engine parity or escalation, callers pass:
-- `--present=headless` (no window and no host audio device)
-- `--audio=null` or `OUNCE_AUDIO=null` (no host audio device, including when a window is open)
-- `--deterministic` or `OUNCE_DETERMINISTIC=1` / `true`. On `run-elf` this uses a fixed guest clock. On homebrew `run` / `run-nro` the flag is accepted and the kernel clock is unchanged unless the caller sets that clock itself (the corpus runner does).
+- `--present=headless`
+- `--audio=null` (suppresses host audio sink initialization)
+- `--deterministic` (fixes non-deterministic clocks/entropy where supported)

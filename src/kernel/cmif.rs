@@ -24,28 +24,27 @@ impl IpcManager {
         args: u64,
         tls: u64,
         mmu: &mut Memory,
-        object: u32,
     ) -> Option<u64> {
         use super::applet::AppletInterface as A;
         use ServiceType as S;
         let libnx = self.is_libnx_request();
         Some(match service {
             // Services the harness also drives inline: only libnx-shaped requests come here.
-            S::AppletOE if libnx => self.handle_applet(A::OeRoot, cmd, args, tls, mmu, object),
+            S::AppletOE if libnx => self.handle_applet(A::OeRoot, cmd, args, tls, mmu),
             S::ApplicationProxy if libnx => {
-                self.handle_applet(A::Proxy(super::applet::ProxyKind::Application), cmd, args, tls, mmu, object)
+                self.handle_applet(A::Proxy(super::applet::ProxyKind::Application), cmd, args, tls, mmu)
             }
-            S::CommonStateGetter if libnx => self.handle_applet(A::CommonStateGetter, cmd, args, tls, mmu, object),
-            S::SelfController if libnx => self.handle_applet(A::SelfController, cmd, args, tls, mmu, object),
-            S::ApplicationFunctions if libnx => self.handle_applet(A::ApplicationFunctions, cmd, args, tls, mmu, object),
+            S::CommonStateGetter if libnx => self.handle_applet(A::CommonStateGetter, cmd, args, tls, mmu),
+            S::SelfController if libnx => self.handle_applet(A::SelfController, cmd, args, tls, mmu),
+            S::ApplicationFunctions if libnx => self.handle_applet(A::ApplicationFunctions, cmd, args, tls, mmu),
             S::SetSys if libnx => self.handle_setsys(cmd, args, tls, mmu),
             S::Time if libnx => self.handle_time(cmd, tls, mmu),
             S::Pl if libnx => self.handle_pl(cmd, args, tls, mmu),
             S::SystemClock if libnx => self.handle_system_clock(cmd, tls, mmu),
             S::SteadyClock if libnx => self.handle_steady_clock(cmd, tls, mmu),
             // Services only libnx-shaped code reaches.
-            S::AppletAE => self.handle_applet(A::AeRoot, cmd, args, tls, mmu, object),
-            S::Applet(iface) => self.handle_applet(*iface, cmd, args, tls, mmu, object),
+            S::AppletAE => self.handle_applet(A::AeRoot, cmd, args, tls, mmu),
+            S::Applet(iface) => self.handle_applet(*iface, cmd, args, tls, mmu),
             S::Set => self.handle_set(cmd, args, tls, mmu),
             S::TimeZoneService => self.handle_time_zone(cmd, args, tls, mmu),
             S::Psm => self.handle_psm(cmd, tls, mmu),
@@ -117,13 +116,8 @@ impl IpcManager {
     pub fn service_event_signaled(&self, handle: u32) -> Option<bool> {
         match self.handles.get(&handle) {
             Some(ServiceType::AudioDeviceEvent(id)) => Some(self.audio_device_event_signaled(*id)),
-            Some(ServiceType::ServiceEvent(name)) => Some(match *name {
-                "ViBufferQueue" => true,
-                // Launchable immediately, and a library-applet holder is already finished (cancelled).
-                // The interactive-out event stays clear so a combined wait returns the state change.
-                "LibraryAppletLaunchable" | "LibraryAppletStateChanged" => true,
-                _ => self.applet.message_event == Some(handle) && !self.applet.messages.is_empty(),
-            }),
+            Some(ServiceType::ServiceEvent("ViBufferQueue")) => Some(true),
+            Some(ServiceType::ServiceEvent(_)) => Some(self.applet.message_event == Some(handle) && !self.applet.messages.is_empty()),
             _ => None,
         }
     }
