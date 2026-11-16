@@ -1,0 +1,43 @@
+{
+  "schema": "ounce.q1-release-readiness.v1",
+  "checked_on": "2026-11-16",
+  "core_source_revision": "6a4ccb8cffcbc411f9dc9baa99d15f06ca40a3dc",
+  "publication_status": "not_published",
+  "linux_arm64_matrix": {
+    "run_id": 43803024996,
+    "job_id": 133087400644,
+    "event": "push",
+    "branch": "main",
+    "conclusion": "success",
+    "job_url": "https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/43803024996/job/133087400644",
+    "artifact_id": 14199555723,
+    "artifact_digest": "sha256:283c71cc3b9a4ad82ceb87950d65689f36e5518e374ed0387ee80e388d23120d",
+    "downloaded_report_sha256": "6275db7645c9b4d4016083fd05bd3c2e5d99f5d44c04a950dbb0a8736ca96113",
+    "machine": "aarch64",
+    "total_harnesses": 28,
+    "passed_harnesses": 28,
+    "failed_harnesses": 0,
+    "total_rows": 76,
+    "passed_rows": 76,
+    "failed_rows": 0
+  },
+  "merged_infrastructure": {
+    "ounce-core": {
+      "pr": 442,
+      "commit": "9ae2d46"
+    },
+    "ounce-hb": {
+      "pr": 40,
+      "commit": "7dc306eb407799950e2def002629d5d64965502e"
+    },
+    "ounce-runtime": {
+      "pr": 13,
+      "commit": "5cb8b73d5eae0d8b53d4dccaa6661640015bc3df"
+    }
+  },
+  "limits": [
+    "Hosted result is for the recorded main commit, not a later release candidate.",
+    "Artifact report was downloaded and its pass counters inspected; no local ARM64/Linux execution is claimed.",
+    "No tag, release publication, outside reproduction or additional provenance clearance is claimed."
+  ]
+}

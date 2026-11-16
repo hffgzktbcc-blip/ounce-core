@@ -2,7 +2,7 @@
 
 use super::instructions::{
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacModifier, PauthOp, ShiftType,
-    SimdImmOp, SimdOp2, SimdShiftOp,
+    SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftOp,
 };
 use super::pauth::{self, PointerAuth};
 use super::simd;
@@ -1089,7 +1089,17 @@ impl Cpu {
                 // FRINTX/FRINTI (op 6, 7) round with FPCR.RMode; with FPCR.FZ a denormal input reads as zero
                 let (f, env) = self.fp_env(is_double);
                 let inexact_flag = op == 6; // FRINTX raises IXC, FRINTI does not
-                let op = if op >= 6 { match env.round { softfp::Round::Nearest => 0, softfp::Round::Up => 1, softfp::Round::Down => 2, softfp::Round::Zero => 3 } } else { op };
+                let op = if op >= 6 {
+                    match env.round {
+                        softfp::Round::Nearest => 0,
+                        softfp::Round::Up => 1,
+                        softfp::Round::Down => 2,
+                        softfp::Round::Zero => 3,
+                        softfp::Round::Odd => unreachable!("round-to-odd is not an FPCR mode"),
+                    }
+                } else {
+                    op
+                };
                 let flushed = softfp::flush_input(f, env, self.fp_bits(rn, is_double));
                 if is_double {
                     let v = f64::from_bits(flushed);
@@ -1681,6 +1691,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::Fcadd { rd, rn, rm, esize, q, rot90 } => {
+                let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
+                self.regs.write_q(rd, simd::fcadd(n, m, esize as u32, q, rot90, self.regs.fpcr));
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdFpThreeSame { rd, rn, rm, op, double, q } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::fp_three_same_fpcr(op, d, n, m, double, q, self.regs.fpcr));
@@ -1688,15 +1705,26 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdFpTwoMisc { rd, rn, op, double, q } => {
+            Instruction::SimdFpTwoMisc { rd, rn, op, double, q, scalar } => {
                 let (d, n) = (self.regs.read_q(rd), self.regs.read_q(rn));
-                self.regs.write_q(rd, simd::fp_two_misc_fpcr(op, d, n, double, q, self.regs.fpcr));
+                let res = if scalar {
+                    simd::fcvtxn_f32(simd::lane(n, 64, 0), self.regs.fpcr) as u128
+                } else {
+                    simd::fp_two_misc_fpcr(op, d, n, double, q, self.regs.fpcr)
+                };
+                self.regs.write_q(rd, res);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
             Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q, scalar } => {
-                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let (mut d, mut n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                if scalar {
+                    // a scalar op reads lane 0 only: replicate it so the unread lanes cannot raise exception flags
+                    let e = if double { 64 } else { 32 };
+                    n = simd::dup(simd::lane(n, e, 0), e, true);
+                    d = simd::dup(simd::lane(d, e, 0), e, true);
+                }
                 let mut res = simd::fp_by_element_fpcr(op, d, n, m, index as usize, double, q, self.regs.fpcr);
                 if scalar {
                     res &= simd::lane_mask(if double { 64 } else { 32 });
@@ -2051,7 +2079,8 @@ impl Cpu {
             }
 
             Instruction::FpAbd { rd, rn, rm, is_double } => {
-                if self.soft_fp() {
+                // always the soft path: it raises the exception flags (IXC, IOC, ...) the host does at default FPCR too
+                {
                     let (f, env) = self.fp_env(is_double);
                     let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
                     let r = f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b));
@@ -2070,10 +2099,36 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::FpMulx { rd, rn, rm, is_double } => {
+                let esize = if is_double { 64 } else { 32 };
+                let keep = simd::lane_mask(esize);
+                // `q == false` still evaluates two 32-bit lanes. Mask the sources so leftover
+                // upper bits cannot raise flags, then keep only lane 0.
+                let raw = simd::fp_three_same_fpcr(
+                    SimdFpOp3::Fmulx,
+                    0,
+                    self.regs.read_q(rn) & keep,
+                    self.regs.read_q(rm) & keep,
+                    is_double,
+                    false,
+                    self.regs.fpcr,
+                );
+                self.regs.write_q(rd, raw & keep);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdScalarTwoMisc { rd, rn, op, esize } => {
                 let e = esize as u32;
                 // only lane 0 of the sources is read, so upper lanes cannot set QC
                 let keep = simd::lane_mask(e);
+                if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf | SimdOp2::Fcvtzs | SimdOp2::Fcvtzu) {
+                    // SCVTF/UCVTF round under FPCR.RMode, FCVTZ* flush inputs under FZ (lane 0 only)
+                    let r = simd::int_fp_convert_fpcr(op, self.regs.read_q(rn) & keep, e, false, self.regs.fpcr);
+                    self.regs.write_q(rd, simd::lane(r, e, 0) as u128);
+                    self.regs.advance_pc();
+                    return Ok(StepResult::Continue);
+                }
                 let (r, qc) = simd::two_misc_sat(op, self.regs.read_q(rd) & keep, self.regs.read_q(rn) & keep, e, true);
                 if qc {
                     self.regs.fpsr |= super::registers::FPSR_QC;
@@ -2272,6 +2327,8 @@ mod tests {
             (0x4ebc9f5a, "SimdThreeSame"),      // mul v26.4s, v26.4s, v28.4s
             (0x0e21db9c, "SimdTwoMisc"),        // scvtf v28.2s, v28.2s
             (0x7efcd7de, "FpAbd"),              // fabd d30, d30, d28
+            (0x5e21dc03, "FpMulx"),             // fmulx s3, s0, s1
+            (0x5e61dc03, "FpMulx"),             // fmulx d3, d0, d1
             (0x7e21dbee, "SimdScalarTwoMisc"),  // ucvtf s14, s31
             (0x6e22e420, "SimdFpThreeSame"),    // fcmge v0.4s, v1.4s, v2.4s
             (0x4e62e420, "SimdFpThreeSame"),    // fcmeq v0.2d, v1.2d, v2.2d

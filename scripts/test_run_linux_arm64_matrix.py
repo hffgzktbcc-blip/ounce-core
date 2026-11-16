@@ -37,7 +37,7 @@ class HarnessSelectionTests(unittest.TestCase):
         fast = matrix.harness_profile('lz4')
         self.assertFalse(fast['heavy'])
         self.assertEqual(fast['levels'], ['O1', 'O2', 'O3_M1'])
-        self.assertEqual(fast['budget'], 100_000_000)
+        self.assertEqual(fast['budget'], 500_000_000)
 
         for name in ('lua', 'monocypher', 'quickjs', 'sqlite', 'stb-image', 'wasm3', 'zlib'):
             heavy = matrix.harness_profile(name)

@@ -129,6 +129,171 @@ fn by_element_dot_and_fmulx_classes() {
     assert_eq!(c.regs.v[30], 0x7ff0_0000_0000_0000 | 0x4000_0000_0000_0000u128 << 64);
 }
 
+fn run1_fpcr(word: u32, fpcr: u32, set: &[(usize, u128)]) -> Cpu {
+    let mut mmu = Memory::new();
+    let mut cpu = Cpu::new();
+    mmu.map_range(0x1000, 0x1000, Permission::READ_WRITE_EXECUTE);
+    mmu.write_u32(0x1000, word).unwrap();
+    cpu.regs.pc = 0x1000;
+    cpu.regs.fpcr = fpcr;
+    for &(r, v) in set {
+        cpu.regs.v[r] = v;
+    }
+    assert!(matches!(cpu.step(&mut mmu), Ok(StepResult::Continue)), "{word:#x}");
+    cpu
+}
+
+#[test]
+fn fcvtxn_round_to_odd() {
+    const IXC: u32 = 1 << 4;
+    const OFC: u32 = 1 << 2;
+    const UFC: u32 = 1 << 3;
+    const IOC: u32 = 1;
+    let d2 = |a: u64, b: u64| a as u128 | (b as u128) << 64;
+    // fcvtxn v0.2s, v1.2d. Lane 0 is an exact 1.5; lane 1 is inexact and round-to-nearest would
+    // round up to the even single 0x3f800002. Round-to-odd stays on the odd neighbour 0x3f800001.
+    // 1 + 2^-23 + 2^-24 + 2^-52 sits just above the single midpoint, so nearest rounds up.
+    let c = run1(0x2e61_6820, &[(1, d2(0x3FF8_0000_0000_0000, 0x3FF0_0000_3000_0001))]);
+    assert_eq!(c.regs.v[0], 0x3fc0_0000 | 0x3f80_0001u128 << 32);
+    assert_eq!(c.regs.fpsr & (IXC | OFC | UFC | IOC), IXC);
+
+    // fcvtxn2 keeps the low half of Vd. Round-to-odd overflow is the largest finite single,
+    // for 2^128 and for the double just below it. A negative overflow keeps the sign.
+    let keep = 0x1111_2222_3333_4444u128;
+    let c = run1(0x6e61_6820, &[(0, keep), (1, d2(0x47F0_0000_0000_0000, 0x47EF_FFFF_FFFF_FFFF))]);
+    assert_eq!(c.regs.v[0], keep | (0x7f7f_ffffu128 | 0x7f7f_ffffu128 << 32) << 64);
+    assert_eq!(c.regs.fpsr & (OFC | IXC), OFC | IXC);
+    let c = run1(0x2e61_6820, &[(1, d2(0xC7F0_0000_0000_0000, 0x47F0_0000_0000_0001))]);
+    assert_eq!(c.regs.v[0], 0xff7f_ffff | 0x7f7f_ffffu128 << 32);
+
+    // scalar fcvtxn s0, d1: denormal 2^-140 is exact (0x0200); the rest of Vd is cleared.
+    let c = run1(0x7e61_6820, &[(0, u128::MAX), (1, 0x3730_0000_0000_0000)]);
+    assert_eq!((c.regs.v[0], c.regs.fpsr), (0x0200, 0));
+    // 2^-150 is below the smallest single and inexact: the odd result is the smallest denormal.
+    let c = run1(0x7e61_6820, &[(0, u128::MAX), (1, 0x3690_0000_0000_0000)]);
+    assert_eq!(c.regs.v[0], 1);
+    assert_eq!(c.regs.fpsr & (UFC | IXC), UFC | IXC);
+
+    // ±0, ±inf, and a signalling NaN whose retained payload bit survives (quieted).
+    let c = run1(0x2e61_6820, &[(1, d2(0, 0x8000_0000_0000_0000))]);
+    assert_eq!(c.regs.v[0], 0x8000_0000u128 << 32);
+    let c = run1(0x2e61_6820, &[(1, d2(0x7FF0_0000_0000_0000, 0xFFF0_0000_0000_0000))]);
+    assert_eq!(c.regs.v[0], 0x7f80_0000 | 0xff80_0000u128 << 32);
+    let c = run1(0x7e61_6820, &[(1, 0x7FF0_0000_2000_0000)]);
+    assert_eq!(c.regs.v[0], 0x7fc0_0001);
+    assert_eq!(c.regs.fpsr & IOC, IOC);
+    // FPCR.RMode toward zero does not change round-to-odd; DN replaces the NaN with the default.
+    let rz = 3 << 22;
+    let c = run1_fpcr(0x7e61_6820, rz, &[(1, 0x3FF0_0000_3000_0001)]);
+    assert_eq!(c.regs.v[0], 0x3f80_0001);
+    let c = run1_fpcr(0x7e61_6820, 1 << 25, &[(1, 0x7FF0_0000_2000_0000)]);
+    assert_eq!(c.regs.v[0], 0x7fc0_0000);
+    // FZ flushes the exact denormal result to zero.
+    let c = run1_fpcr(0x7e61_6820, 1 << 24, &[(1, 0x3730_0000_0000_0000)]);
+    assert_eq!(c.regs.v[0], 0);
+    assert_eq!(c.regs.fpsr & UFC, UFC);
+}
+
+#[test]
+fn fmov_vector_half_immediate() {
+    let rep16 = |h: u128| h | h << 16 | h << 32 | h << 48;
+    // fmov v29.8h, #-0.21093750: imm8 0xCB expands to 0xB2C0 in every lane
+    let c = run1(0x4f06_fd7d, &[(29, u128::MAX)]);
+    assert_eq!(c.regs.v[29], rep16(0xB2C0) | rep16(0xB2C0) << 64);
+    // fmov v17.4h, #11.0 zeroes the upper 64 bits (Q = 0)
+    let c = run1(0x0f01_fcd1, &[(17, u128::MAX)]);
+    assert_eq!(c.regs.v[17], rep16(0x4980));
+    // imm8 = 0x70 is 1.0h (0x3C00). fmov v0.8h, #1.0 fills both halves.
+    let c = run1(0x4f03_fe00, &[(0, u128::MAX)]);
+    assert_eq!(c.regs.v[0], rep16(0x3C00) | rep16(0x3C00) << 64);
+    // fmov v1.4h, #1.0 keeps only the low four lanes
+    let c = run1(0x0f03_fe01, &[(1, u128::MAX)]);
+    assert_eq!(c.regs.v[1], rep16(0x3C00));
+}
+
+#[test]
+fn fcadd_rotations() {
+    // n = 1+2i, m = 3+4i. #90 is -3+5i, #270 is 5-1i.
+    let n = 0x3f80_0000u128 | 0x4000_0000u128 << 32;
+    let m = 0x4040_0000u128 | 0x4080_0000u128 << 32;
+    let rot90 = 0xc040_0000u128 | 0x40a0_0000u128 << 32;
+    let rot270 = 0x40a0_0000u128 | 0xbf80_0000u128 << 32;
+    // fcadd v0.2s, v1.2s, v2.2s, #90
+    let c = run1(0x2e82_e420, &[(1, n), (2, m)]);
+    assert_eq!(c.regs.v[0], rot90);
+    // #270
+    let c = run1(0x2e82_f420, &[(1, n), (2, m)]);
+    assert_eq!(c.regs.v[0], rot270);
+    // .4S repeats the pair in the high half
+    let c = run1(0x6e82_e420, &[(1, n | n << 64), (2, m | m << 64)]);
+    assert_eq!(c.regs.v[0], rot90 | rot90 << 64);
+    // .2D, #270
+    let nd = 0x3ff0_0000_0000_0000u128 | 0x4000_0000_0000_0000u128 << 64;
+    let md = 0x4008_0000_0000_0000u128 | 0x4010_0000_0000_0000u128 << 64;
+    let c = run1(0x6ec2_f420, &[(1, nd), (2, md)]);
+    assert_eq!(c.regs.v[0], 0x4014_0000_0000_0000u128 | 0xbff0_0000_0000_0000u128 << 64);
+    // NaN imag of m is sign-flipped by FPNeg before the add. Payload stays. imag is 2+3.
+    let c = run1(0x2e82_e420, &[(1, n), (2, 0x4040_0000u128 | 0x7fc0_0001u128 << 32)]);
+    assert_eq!(c.regs.v[0], 0xffc0_0001 | 0x40a0_0000u128 << 32);
+    // The Apple Silicon mismatch: a negative NaN in m.im comes back positive.
+    let c = run1(0x2e82_e420, &[(1, 0x3f80_0000), (2, 0xfff8_0000u128 << 32)]);
+    assert_eq!(c.regs.v[0], 0x7ff8_0000);
+    // #270 flips the sign of a NaN in m.re into the imag lane.
+    let c = run1(0x2e82_f420, &[(1, 0x3f80_0000), (2, 0xfff8_0000)]);
+    assert_eq!(c.regs.v[0], 0x3f80_0000 | 0x7ff8_0000u128 << 32);
+}
+
+#[test]
+fn sqrdmlah_sqrdmlsh_three_same() {
+    // sqrdmlah v0.4h, v1.4h, v2.4h: 5 + rounded high half of 128*128 is 6, no saturation.
+    // Q = 0 leaves the upper 64 bits clear.
+    let c = run1(0x2e42_8420, &[(0, 5 | u128::MAX << 64), (1, 128), (2, 128)]);
+    assert_eq!(c.regs.v[0], 6);
+    assert_eq!(c.regs.fpsr & FPSR_QC, 0);
+
+    // sqrdmlah v0.8h: lane 0 saturates (0x7fff + high half of min*min), lane 4 rounds 5 → 6.
+    let acc = 0x7fffu128 | 5u128 << 64;
+    let ab = 0x8000u128 | 128u128 << 64;
+    let c = run1(0x6e42_8420, &[(0, acc), (1, ab), (2, ab)]);
+    assert_eq!(c.regs.v[0], 0x7fff | 6u128 << 64);
+    assert_ne!(c.regs.fpsr & FPSR_QC, 0);
+
+    // sqrdmlah v0.4s: min*min into i32::MAX saturates, QC set.
+    let c = run1(0x6e82_8420, &[(0, 0x7fff_ffff), (1, 0x8000_0000), (2, 0x8000_0000)]);
+    assert_eq!(c.regs.v[0], 0x7fff_ffff);
+    assert_ne!(c.regs.fpsr & FPSR_QC, 0);
+
+    // sqrdmlsh v0.4h: 0x1000 - high half of 0x2000*0x3000 = 0x400, QC clear.
+    let c = run1(0x2e42_8c20, &[(0, 0x1000), (1, 0x2000), (2, 0x3000)]);
+    assert_eq!((c.regs.v[0], c.regs.fpsr & FPSR_QC), (0x400, 0));
+    // subtracting min*min-scale positives from i16::MIN saturates to 0x8000.
+    let c = run1(0x2e42_8c20, &[(0, 0x8000), (1, 0x7fff), (2, 0x7fff)]);
+    assert_eq!(c.regs.v[0], 0x8000);
+    assert_ne!(c.regs.fpsr & FPSR_QC, 0);
+}
+
+#[test]
+fn scalar_fmulx_zero_times_infinity_and_lane0_only() {
+    // fmulx s3, s0, s1: +0 * +inf = +2, and the rest of v3 is cleared
+    let c = run1(0x5e21_dc03, &[(3, u128::MAX), (0, 0), (1, 0x7f80_0000)]);
+    assert_eq!(c.regs.v[3], 0x4000_0000);
+    // fmulx s3, s0, s1: -0 * +inf = -2
+    let c = run1(0x5e21_dc03, &[(3, u128::MAX), (0, 0x8000_0000), (1, 0x7f80_0000)]);
+    assert_eq!(c.regs.v[3], 0xc000_0000);
+    // fmulx s3, s0, s1: 1.5 * 2 = 3. Upper bits of the sources must not leak into v3.
+    let c = run1(0x5e21_dc03, &[(3, u128::MAX), (0, 0x3fc0_0000 | 0x7f80_0000u128 << 32), (1, 0x4000_0000 | 0x7fc0_0000u128 << 32)]);
+    assert_eq!(c.regs.v[3], 0x4040_0000);
+    // fmulx d3, d0, d1: +0 * +inf = +2.0, upper 64 bits cleared
+    let c = run1(0x5e61_dc03, &[(3, u128::MAX), (0, 0), (1, 0x7ff0_0000_0000_0000)]);
+    assert_eq!(c.regs.v[3], 0x4000_0000_0000_0000);
+    // fmulx d3, d0, d1: -0 * +inf = -2.0
+    let c = run1(0x5e61_dc03, &[(3, u128::MAX), (0, 1u128 << 63), (1, 0x7ff0_0000_0000_0000)]);
+    assert_eq!(c.regs.v[3], 0xc000_0000_0000_0000);
+    // fmulx d3, d0, d1: 1.5 * 4 = 6
+    let c = run1(0x5e61_dc03, &[(0, 0x3ff8_0000_0000_0000), (1, 0x4010_0000_0000_0000)]);
+    assert_eq!(c.regs.v[3], 0x4018_0000_0000_0000);
+}
+
 fn v4(l: [u32; 4]) -> u128 {
     l[0] as u128 | (l[1] as u128) << 32 | (l[2] as u128) << 64 | (l[3] as u128) << 96
 }
@@ -182,4 +347,48 @@ fn fp_recip_step_classes() {
     // frsqrts v25.4s, v26.4s, v27.4s: (3 - 6) / 2, 0*inf -> 1.5, NaN flipped, (3 + 2*MAX) / 2 does not overflow
     let c = run1(0x4ebb_ff59, &[(26, n), (27, m)]);
     assert_eq!(c.regs.v[25], v4([0xbfc0_0000, 0x3fc0_0000, 0xffc0_0001, 0x7f7f_ffff]));
+}
+
+const RP: u32 = 1 << 22;
+const RM: u32 = 2 << 22;
+const IXC: u32 = 0x10;
+
+/// Found by running the fuzzer under FPCR RMode/FZ/DN: the scalar SCVTF/UCVTF forms ignored FPCR.RMode, and some scalar
+/// ops raised (or missed) exception flags at FPCR 0.
+#[test]
+fn scalar_convert_honours_rmode_and_flags() {
+    // ucvtf s0, s1 with 16777219 (a tie between 16777218 and 16777220)
+    let n = 16_777_219u128;
+    assert_eq!(run1_fpcr(0x7e21_d820, 0, &[(1, n)]).regs.v[0], 0x4b80_0002); // ties to even
+    assert_eq!(run1_fpcr(0x7e21_d820, RM, &[(1, n)]).regs.v[0], 0x4b80_0001); // round down
+    assert_eq!(run1_fpcr(0x7e21_d820, RP, &[(1, n)]).regs.v[0], 0x4b80_0002);
+    assert_eq!(run1_fpcr(0x7e21_d820, 0, &[(1, n)]).regs.fpsr & 0x9f, IXC);
+    // scvtf d2, d3 with 2^53 + 1
+    let n = (1u128 << 53) + 1;
+    assert_eq!(run1_fpcr(0x5e61_d862, RP, &[(3, n)]).regs.v[2], 0x4340_0000_0000_0001);
+    assert_eq!(run1_fpcr(0x5e61_d862, RM, &[(3, n)]).regs.v[2], 0x4340_0000_0000_0000);
+}
+
+#[test]
+fn fabd_scalar_raises_inexact_at_default_fpcr() {
+    // fabd s4, s5, s6: 1.0 - 1e-30 is inexact
+    let c = run1_fpcr(0x7ea6_d4a4, 0, &[(5, 0x3f80_0000), (6, 0x0da2_4260)]);
+    assert_eq!(c.regs.v[4], 0x3f80_0000);
+    assert_eq!(c.regs.fpsr & 0x9f, IXC);
+}
+
+#[test]
+fn scalar_fp_by_element_ignores_unread_lanes_for_flags() {
+    // fmul s7, s8, v9.s[0]: lane 1 of s8 (inf) times lane 0 of v9 (0.0) would be IOC if computed
+    let c = run1_fpcr(0x5f89_9107, 0, &[(8, 0x3f80_0000 | 0x7f80_0000u128 << 32), (9, 0)]);
+    assert_eq!(c.regs.v[7], 0);
+    assert_eq!(c.regs.fpsr & 0x9f, 0);
+}
+
+#[test]
+fn frint32z_raises_inexact() {
+    // frint32z v6.4s: 1.5 -> 1.0, IXC; an out-of-range lane is IOC only for that lane
+    let c = run1_fpcr(0x4e21_e8e6, 0, &[(7, v4([0x3fc0_0000, 0, 0, 0]))]);
+    assert_eq!(c.regs.v[6] as u32, 0x3f80_0000);
+    assert_eq!(c.regs.fpsr & 0x9f, IXC);
 }
