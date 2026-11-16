@@ -394,21 +394,17 @@ static int named_case(const char *name) {
 int main(int argc, char **argv) {
     uint64_t sd = 1, count = 1000;
     int edge = 0, list_words = 0, fpcr_mix = 0;
-    uint32_t wmask = 0, wval = 0;
     const char *case_name = NULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--list-words")) { list_words = 1; continue; }
         // --fpcr-mix: run each random case under one of 8 FPCR values (default, FZ, DN, FZ+DN, RP, RM, RZ, FZ+DN+RZ)
         if (!strcmp(argv[i], "--fpcr-mix")) { fpcr_mix = 1; continue; }
         if (i + 1 >= argc) { fprintf(stderr, "options require values\n"); return 2; }
-        // --word-mask M --word-value V: force the bits in M to V in every generated word (target one encoding class)
-        if (!strcmp(argv[i], "--word-mask")) wmask = (uint32_t)strtoull(argv[++i], 0, 0);
-        else if (!strcmp(argv[i], "--word-value")) wval = (uint32_t)strtoull(argv[++i], 0, 0);
-        else if (!strcmp(argv[i], "--seed")) sd = strtoull(argv[++i], 0, 0);
+        if (!strcmp(argv[i], "--seed")) sd = strtoull(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--count")) count = strtoull(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--case")) case_name = argv[++i];
         else if (!strcmp(argv[i], "--corpus") && !strcmp(argv[i + 1], "edge")) { edge = 1; i++; }
-        else { fprintf(stderr, "usage: fuzz_host [--seed N] [--count N] [--fpcr-mix] [--word-mask M --word-value V] [--case NAME (see conformance/arm64-v0.2.0/README.md)] | --corpus edge [--list-words]\n"); return 2; }
+        else { fprintf(stderr, "usage: fuzz_host [--seed N] [--count N] [--fpcr-mix] [--case NAME (see conformance/arm64-v0.2.0/README.md)] | --corpus edge [--list-words]\n"); return 2; }
     }
     if (list_words) {
         build_ops();
@@ -445,7 +441,6 @@ int main(int argc, char **argv) {
         uint32_t w;
         {
             w = gen_word();
-            if (wmask) w = (w & ~wmask) | wval;
             for (int i = 0; i < 31; i++) c.x[i] = rand_x();
             c.x[18] = 0; // macOS reserves x18 (the kernel clears it on a context switch); replay does not compare it
             c.nzcv = (uint64_t)(rnd() & 0xF) << 28;
