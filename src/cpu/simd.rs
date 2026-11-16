@@ -1128,7 +1128,7 @@ fn special_op2_flags(op: SimdFpOp2, f: super::softfp::Fmt, a: u64, cur: Rm, fz: 
                     return;
                 }
             }
-            if matches!(op, Frintx | Frint32x | Frint64x) && r != v {
+            if matches!(op, Frintx | Frint32x | Frint64x | Frint32z | Frint64z) && r != v {
                 raise(IXC);
             }
         }
