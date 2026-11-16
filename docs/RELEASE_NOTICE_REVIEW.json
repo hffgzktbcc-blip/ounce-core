@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "release_scope": "Default Linux x86-64, Linux arm64, macOS arm64 and Windows x86-64 binaries. Optional features excluded.",
-  "cargo_lock_sha256": "aa558b0331c8f0c9c47242beabee79a769073233fac726357644321450313fdd",
+  "cargo_lock_sha256": "1baee027e990d1ec645e59b2151bc6a04bba4351b6e48ea8235bd74a19cd60ca",
   "notices_sha256": "b899daab8781da05181486b514bedcff973ef1a940c28341a53ef1077e196a9c",
   "status": "REVIEWED",
   "reviewer": "Project owner \u2014 chat direction dated 2026-11-09; distribution choice delegated",
