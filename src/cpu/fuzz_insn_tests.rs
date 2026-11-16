@@ -195,6 +195,23 @@ fn fcvtxn_round_to_odd() {
 }
 
 #[test]
+fn fmov_vector_half_immediate() {
+    let rep16 = |h: u128| h | h << 16 | h << 32 | h << 48;
+    // fmov v29.8h, #-0.21093750: imm8 0xCB expands to 0xB2C0 in every lane
+    let c = run1(0x4f06_fd7d, &[(29, u128::MAX)]);
+    assert_eq!(c.regs.v[29], rep16(0xB2C0) | rep16(0xB2C0) << 64);
+    // fmov v17.4h, #11.0 zeroes the upper 64 bits (Q = 0)
+    let c = run1(0x0f01_fcd1, &[(17, u128::MAX)]);
+    assert_eq!(c.regs.v[17], rep16(0x4980));
+    // imm8 = 0x70 is 1.0h (0x3C00). fmov v0.8h, #1.0 fills both halves.
+    let c = run1(0x4f03_fe00, &[(0, u128::MAX)]);
+    assert_eq!(c.regs.v[0], rep16(0x3C00) | rep16(0x3C00) << 64);
+    // fmov v1.4h, #1.0 keeps only the low four lanes
+    let c = run1(0x0f03_fe01, &[(1, u128::MAX)]);
+    assert_eq!(c.regs.v[1], rep16(0x3C00));
+}
+
+#[test]
 fn fcadd_rotations() {
     // n = 1+2i, m = 3+4i. #90 is -3+5i, #270 is 5-1i.
     let n = 0x3f80_0000u128 | 0x4000_0000u128 << 32;
