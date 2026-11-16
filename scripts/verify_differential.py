@@ -193,7 +193,7 @@ def run_engine(ounce, nro, engine, d, budget, result_file="results.txt"):
     shutil.rmtree(sd, ignore_errors=True)
     sd.mkdir()
     env = dict(os.environ, OUNCE_NRO_BUDGET=str(budget), OUNCE_NRO_TIMEOUT_SECS="300")
-    r = run([str(ounce), "run-nro", str(nro), "--present=headless", f"--sdmc={sd}", f"--cpu={engine}"], env=env)
+    r = run([str(ounce), "run-nro", str(nro), "--present=headless", f"--sdmc={sd}", "--sdmc-writeback", f"--cpu={engine}"], env=env)
     res = sd / result_file
     return (res.read_bytes() if res.exists() else None), r
 

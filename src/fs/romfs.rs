@@ -111,6 +111,8 @@ pub struct VirtualFileSystem {
     deleted_paths: HashSet<String>,
     pub save_dir: Option<std::path::PathBuf>,
     pub sdmc_dir: Option<std::path::PathBuf>,
+    /// `--sdmc-writeback`: guest writes under `sdmc:/` reach the host folder instead of a copy-on-write overlay.
+    pub sdmc_write_through: bool,
     pub total_bytes_read: u64,
     pub total_bytes_written: u64,
 }
@@ -138,6 +140,7 @@ impl VirtualFileSystem {
             deleted_paths: HashSet::new(),
             save_dir: None,
             sdmc_dir: None,
+            sdmc_write_through: false,
             total_bytes_read: 0,
             total_bytes_written: 0,
         };
@@ -167,6 +170,12 @@ impl VirtualFileSystem {
         let p = path.as_ref().to_path_buf();
         let _ = std::fs::create_dir_all(&p);
         self.sdmc_dir = Some(p);
+    }
+
+    /// True when writes to `norm` stay in the in-memory overlay: anything under `sdmc:/`, unless
+    /// `--sdmc-writeback` asked for host writes.
+    fn overlay(&self, norm: &str) -> bool {
+        !self.sdmc_write_through && norm.starts_with("sdmc:/")
     }
 
     /// Returns whether `norm` or any of its directory ancestors has been deleted.
@@ -258,7 +267,7 @@ impl VirtualFileSystem {
 
     fn sync_file_to_disk(&self, path: &str, data: &[u8]) -> Result<(), VfsError> {
         let norm = normalize_vfs_path(path);
-        if norm.starts_with("sdmc:/") {
+        if self.overlay(&norm) {
             // SDMC writes go to an overlay so the host folder is never modified.
             return Ok(());
         }
@@ -390,7 +399,7 @@ impl VirtualFileSystem {
             return Err(VfsError::TooLarge(norm));
         }
         let data = vec![0u8; size as usize];
-        if !norm.starts_with("sdmc:/") {
+        if !self.overlay(&norm) {
             self.sync_file_to_disk(&norm, &data)?;
         }
         let clean = norm.trim_end_matches('/');
@@ -408,7 +417,7 @@ impl VirtualFileSystem {
         if !self.ensure_loaded(&norm)? {
             return Err(VfsError::NotFound(norm));
         }
-        let is_sdmc = norm.starts_with("sdmc:/");
+        let is_sdmc = self.overlay(&norm);
         let host = if is_sdmc {
             // Keep existing sandboxing check: returns Err(Escape) if path leaves host folder
             self.host_path(&norm)?;
@@ -442,7 +451,7 @@ impl VirtualFileSystem {
         if !self.ensure_loaded(&norm)? {
             return Err(VfsError::NotFound(norm));
         }
-        let is_sdmc = norm.starts_with("sdmc:/");
+        let is_sdmc = self.overlay(&norm);
         let host = if is_sdmc {
             self.host_path(&norm)?;
             None
@@ -475,7 +484,7 @@ impl VirtualFileSystem {
             return Err(VfsError::AlreadyExists(to));
         }
         self.check_parent(&to)?;
-        let is_sdmc = from.starts_with("sdmc:/");
+        let is_sdmc = self.overlay(&from);
         if !is_sdmc {
             if let (Some(a), Some(b)) = (host_from, host_to) {
                 if std::fs::symlink_metadata(&a).is_ok() {
@@ -758,7 +767,7 @@ impl VirtualFileSystem {
         let clean = norm.trim_end_matches('/').to_string();
         Self::check_writable(&clean)?;
         let host = self.host_path(&clean)?;
-        let is_sdmc = clean.starts_with("sdmc:/");
+        let is_sdmc = self.overlay(&clean);
         if !is_sdmc {
             if let Some(disk_path) = host {
                 std::fs::create_dir_all(&disk_path)?;
@@ -794,7 +803,7 @@ impl VirtualFileSystem {
         }
         let host = self.host_path(&norm)?;
         let cached = self.files.contains_key(&norm);
-        let is_sdmc = norm.starts_with("sdmc:/");
+        let is_sdmc = self.overlay(&norm);
         let mut disk_removed = false;
         if let Some(disk_path) = host {
             if disk_path.is_file() {
@@ -831,7 +840,7 @@ impl VirtualFileSystem {
         let host = self.host_path(&clean)?;
         let prefix = format!("{}/", clean);
 
-        let is_sdmc = clean.starts_with("sdmc:/");
+        let is_sdmc = self.overlay(&clean);
         let dir_existed = (self.directories.contains(&clean) || self.directories.contains(&prefix)) && !self.is_deleted(&clean);
 
         let to_remove: Vec<String> = self.files.keys()

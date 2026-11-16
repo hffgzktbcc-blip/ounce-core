@@ -45,6 +45,7 @@ const STACK_SIZE: usize = 0x100000; // 1 MB stack
 
 /// `--sdmc=<dir>`: host folder behind the guest's `sdmc:/` (unset: in-memory SD card only).
 static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+static SDMC_WRITEBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// The program path given to `run`/`run-nro`, quoted back in the next-step text when a run stops early.
 static RUN_TARGET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
@@ -94,6 +95,10 @@ fn main() {
         if arg == "--deterministic" {
             run_report::set_deterministic(true);
             args.push(arg);
+            continue;
+        }
+        if arg == "--sdmc-writeback" {
+            SDMC_WRITEBACK.store(true, std::sync::atomic::Ordering::Relaxed);
             continue;
         }
         if let Some(value) = arg.strip_prefix("--sdmc=") {
@@ -357,6 +362,7 @@ fn print_usage() {
     println!("    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!("    {}--present={}<mode>        Display: auto, gpu (needs --features gpu-present), minifb, headless (no window, no audio device)", s.green, s.reset);
     println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed copy-on-write; default: in-memory SD card)", s.green, s.reset);
+    println!("    {}--sdmc-writeback{}        With --sdmc: write guest changes through to the host folder (default: never modify it)", s.green, s.reset);
     println!();
     println!("  {}INSPECT AND REPLAY:{}", s.bold, s.reset);
     println!("    {}inspect{} <file|dir>      Audit .nro/.nso headers, loose NPDM metadata and RomFS assets", s.green, s.reset);
@@ -3744,6 +3750,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
             // After the NRO went on the virtual SD card, so it stays in memory and is not copied into the folder.
             if let Some(dir) = SDMC_HOST_DIR.get() {
                 kernel.vfs.set_sdmc_directory(dir);
+                kernel.vfs.sdmc_write_through = SDMC_WRITEBACK.load(std::sync::atomic::Ordering::Relaxed);
                 println!("  sdmc:/      : {} (sandboxed copy-on-write overlay)", dir.display());
             }
 
@@ -3816,6 +3823,7 @@ fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> bool {
     }
     if let Some(dir) = SDMC_HOST_DIR.get() {
         kernel.vfs.set_sdmc_directory(dir);
+                kernel.vfs.sdmc_write_through = SDMC_WRITEBACK.load(std::sync::atomic::Ordering::Relaxed);
     }
     cpu.regs.pc = code;
     // The NRO header (after the entry branch) is data.
