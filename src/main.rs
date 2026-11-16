@@ -803,7 +803,8 @@ fn run_vm_internal(
                     SvcResult::Success => {
                         // libnx homebrew reads HID shared memory between SVCs rather than per presented
                         // frame: hand it the host controller every few milliseconds.
-                        if kernel.ipc.hid.addr.is_some() && last_input_poll.elapsed() >= INPUT_POLL_INTERVAL {
+                        // Scripted --press runs poll after every SVC: a wall-clock interval would let a fast guest read the pad first.
+                        if kernel.ipc.hid.addr.is_some() && (!injected_presses.is_empty() || last_input_poll.elapsed() >= INPUT_POLL_INTERVAL) {
                             last_input_poll = Instant::now();
                             if let Some(ref mut h) = hid {
                                 if let Some(ref mut disp) = display {
