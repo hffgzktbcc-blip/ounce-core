@@ -1290,6 +1290,19 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdByElement { rd, rn, rm, index, op, esize: 8u8 << size, q: false, scalar: true });
     }
 
+    // 26a4b. SQRDMLAH/SQRDMLSH (vector, three-same): 0 Q 1 01110 size 0 Rm 1 000x 1 Rn Rd.
+    //        size 01 (half) or 10 (word). Bit 11 selects SH. Other sizes and opcodes stay undecoded.
+    if (raw & 0xBF20_8400) == 0x2E00_8400 && (size == 1 || size == 2) {
+        let op = match (raw >> 11) & 0xF {
+            0b0000 => Some(SimdOp3::Sqrdmlah),
+            0b0001 => Some(SimdOp3::Sqrdmlsh),
+            _ => None,
+        };
+        if let Some(op) = op {
+            return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 8u8 << size, q });
+        }
+    }
+
     // 26a4. AdvSIMD vector SDOT/UDOT: 0 Q U 01110 10 0 Rm 10010 1 Rn Rd
     if (raw & 0x9FE0_FC00) == 0x0E80_9400 {
         return Some(Instruction::SimdByElement { rd, rn, rm, index: 0xFF, op: SimdElemOp::Dot(!u), esize: 32, q, scalar: false });
@@ -2085,6 +2098,21 @@ mod tests {
         assert_eq!(decode(0x4EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: true }); // pmull2 v0.1q, v1.2d, v2.2d
         assert!(!matches!(decode(0x0E62E020), Instruction::Pmull { .. })); // size 1 reserved
         assert!(!matches!(decode(0x2E22E020), Instruction::Pmull { .. })); // U=1 is not PMULL
+    }
+
+    #[test]
+    fn decode_sqrdmlah() {
+        assert_eq!(
+            decode(0x2e87_8560),
+            Instruction::SimdThreeSame { rd: 0, rn: 11, rm: 7, op: SimdOp3::Sqrdmlah, esize: 32, q: false }
+        ); // sqrdmlah v0.2s, v11.2s, v7.2s
+        assert!(matches!(decode(0x6e42_8420), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlah, esize: 16, q: true, .. }));
+        assert!(matches!(decode(0x2e42_8c20), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlsh, esize: 16, q: false, .. }));
+        assert!(matches!(decode(0x6e82_8c20), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlsh, esize: 32, q: true, .. }));
+        // size 00 and size 11 are not these instructions
+        for w in [0x2e02_8420u32, 0x6ec2_8420] {
+            assert!(!matches!(decode(w), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlah | SimdOp3::Sqrdmlsh, .. }), "{w:#x} {:?}", decode(w));
+        }
     }
 
     #[test]
