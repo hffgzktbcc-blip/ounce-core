@@ -328,7 +328,7 @@ jobs:
         run: PYTHONPATH=scripts python3 -m unittest test_verify_corpus_run.PullRecoveryTests.test_real_registry_connection_recovers
 
       - name: Cache registered homebrew builds
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/ounce-verify-build-cache
           key: ounce-nros-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/external-corpus.yml', 'scripts/verify_corpus_run.py', 'scripts/corpus_build_cache.py', 'scripts/prepare_external_corpus.py', 'tests/corpus/manifest.json', 'tests/corpus/oracles.json', 'tests/corpus/oracle-builds/*.json') }}
