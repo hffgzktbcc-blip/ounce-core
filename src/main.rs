@@ -356,7 +356,7 @@ fn print_usage() {
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
     println!("    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!("    {}--present={}<mode>        Display: auto, gpu (needs --features gpu-present), minifb, headless (no window, no audio device)", s.green, s.reset);
-    println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
+    println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed copy-on-write; default: in-memory SD card)", s.green, s.reset);
     println!();
     println!("  {}INSPECT AND REPLAY:{}", s.bold, s.reset);
     println!("    {}inspect{} <file|dir>      Audit .nro/.nso headers, loose NPDM metadata and RomFS assets", s.green, s.reset);
@@ -3744,7 +3744,7 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
             // After the NRO went on the virtual SD card, so it stays in memory and is not copied into the folder.
             if let Some(dir) = SDMC_HOST_DIR.get() {
                 kernel.vfs.set_sdmc_directory(dir);
-                println!("  sdmc:/      : {} (sandboxed host folder)", dir.display());
+                println!("  sdmc:/      : {} (sandboxed copy-on-write overlay)", dir.display());
             }
 
             let fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
