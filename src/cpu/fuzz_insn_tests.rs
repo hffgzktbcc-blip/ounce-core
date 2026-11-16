@@ -212,6 +212,38 @@ fn fmov_vector_half_immediate() {
 }
 
 #[test]
+fn fcadd_rotations() {
+    // n = 1+2i, m = 3+4i. #90 is -3+5i, #270 is 5-1i.
+    let n = 0x3f80_0000u128 | 0x4000_0000u128 << 32;
+    let m = 0x4040_0000u128 | 0x4080_0000u128 << 32;
+    let rot90 = 0xc040_0000u128 | 0x40a0_0000u128 << 32;
+    let rot270 = 0x40a0_0000u128 | 0xbf80_0000u128 << 32;
+    // fcadd v0.2s, v1.2s, v2.2s, #90
+    let c = run1(0x2e82_e420, &[(1, n), (2, m)]);
+    assert_eq!(c.regs.v[0], rot90);
+    // #270
+    let c = run1(0x2e82_f420, &[(1, n), (2, m)]);
+    assert_eq!(c.regs.v[0], rot270);
+    // .4S repeats the pair in the high half
+    let c = run1(0x6e82_e420, &[(1, n | n << 64), (2, m | m << 64)]);
+    assert_eq!(c.regs.v[0], rot90 | rot90 << 64);
+    // .2D, #270
+    let nd = 0x3ff0_0000_0000_0000u128 | 0x4000_0000_0000_0000u128 << 64;
+    let md = 0x4008_0000_0000_0000u128 | 0x4010_0000_0000_0000u128 << 64;
+    let c = run1(0x6ec2_f420, &[(1, nd), (2, md)]);
+    assert_eq!(c.regs.v[0], 0x4014_0000_0000_0000u128 | 0xbff0_0000_0000_0000u128 << 64);
+    // NaN imag of m is sign-flipped by FPNeg before the add. Payload stays. imag is 2+3.
+    let c = run1(0x2e82_e420, &[(1, n), (2, 0x4040_0000u128 | 0x7fc0_0001u128 << 32)]);
+    assert_eq!(c.regs.v[0], 0xffc0_0001 | 0x40a0_0000u128 << 32);
+    // The Apple Silicon mismatch: a negative NaN in m.im comes back positive.
+    let c = run1(0x2e82_e420, &[(1, 0x3f80_0000), (2, 0xfff8_0000u128 << 32)]);
+    assert_eq!(c.regs.v[0], 0x7ff8_0000);
+    // #270 flips the sign of a NaN in m.re into the imag lane.
+    let c = run1(0x2e82_f420, &[(1, 0x3f80_0000), (2, 0xfff8_0000)]);
+    assert_eq!(c.regs.v[0], 0x3f80_0000 | 0x7ff8_0000u128 << 32);
+}
+
+#[test]
 fn sqrdmlah_sqrdmlsh_three_same() {
     // sqrdmlah v0.4h, v1.4h, v2.4h: 5 + rounded high half of 128*128 is 6, no saturation.
     // Q = 0 leaves the upper 64 bits clear.
