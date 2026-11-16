@@ -654,7 +654,10 @@ pub fn run(args: &[String]) -> i32 {
     let mut mism_classes: BTreeMap<u32, (u64, u32)> = BTreeMap::new();
     let mut unimpl_classes: BTreeMap<u32, (u64, u32)> = BTreeMap::new();
     let mut accepts: BTreeMap<u32, (u64, u32)> = BTreeMap::new();
+    let mut exc_classes: BTreeMap<u32, (u64, u32)> = BTreeMap::new();
     let mut shown = 0;
+    // per FPCR value: (executed, value mismatches, matching results whose exception flags differ)
+    let mut by_fpcr: BTreeMap<u32, (u64, u64, u64)> = BTreeMap::new();
     let mut ran_classes = std::collections::BTreeSet::new();
     for (n, line) in reader.lines().enumerate() {
         let line = match line {
@@ -702,18 +705,29 @@ pub fn run(args: &[String]) -> i32 {
                 }
                 Outcome::Ran(diffs, fpsr) => {
                     t.executed += 1;
+                    {
+                        let e = by_fpcr.entry(c.fpcr).or_insert((0, 0, 0));
+                        e.0 += 1;
+                        e.1 += !diffs.is_empty() as u64;
+                        e.2 += (diffs.is_empty() && fpsr & EXC != c.fpsr_out & EXC) as u64;
+                    }
                     if filter.iter().any(|&(m, v)| c.word & m == v) {
                         f_exec += 1;
                         f_match += diffs.is_empty() as u64;
                     }
                     ran_classes.insert(class(c.word));
                     let exc_differs = fpsr & EXC != c.fpsr_out & EXC;
-                    record(n + 1, c.fpcr, c.word, if diffs.is_empty() { "match" } else { "mismatch" }, exc_differs,
-                           &diffs.iter().take(4).cloned().collect::<Vec<_>>().join(" | "));
+                    let detail = if diffs.is_empty() && exc_differs {
+                        format!("fpsr flags: host {:#x} emu {:#x}", c.fpsr_out & EXC, fpsr & EXC)
+                    } else {
+                        diffs.iter().take(4).cloned().collect::<Vec<_>>().join(" | ")
+                    };
+                    record(n + 1, c.fpcr, c.word, if diffs.is_empty() { "match" } else { "mismatch" }, exc_differs, &detail);
                     if diffs.is_empty() {
                         t.matched += 1;
                         if exc_differs {
                             t.fpsr_exc_only += 1;
+                            exc_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
                         }
                     } else {
                         t.value_mismatch += 1;
@@ -762,6 +776,12 @@ pub fn run(args: &[String]) -> i32 {
     println!("  MISMATCH:                     {} ({} with QC wrong)", t.value_mismatch, t.qc_mismatch);
     println!("  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: {}", t.fpsr_exc_only);
     println!("emulator runs a word the host calls UNDEFINED: {}", t.emu_runs_undefined);
+    if by_fpcr.len() > 1 {
+        println!("by FPCR (value: executed, value mismatches, exception-flag-only differences):");
+        for (k, (e, m, x)) in &by_fpcr {
+            println!("  fpcr {k:#010x}: {e}, {m}, {x}");
+        }
+    }
     if !filter.is_empty() {
         println!("filter (any of {} masks): executed {f_exec}, exact match {f_match}, mismatch {}", filter.len(), f_exec - f_match);
     }
@@ -777,6 +797,7 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
     dump("mismatching classes", &mism_classes);
+    dump("classes whose matching results differ only in FPSR exception flags", &exc_classes);
     dump("unimplemented classes", &unimpl_classes);
     dump("classes the emulator runs but the host rejects", &accepts);
     if t.value_mismatch + t.other_errors + t.emu_runs_undefined > 0 {

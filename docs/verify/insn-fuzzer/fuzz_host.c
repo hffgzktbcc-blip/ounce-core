@@ -393,16 +393,18 @@ static int named_case(const char *name) {
 
 int main(int argc, char **argv) {
     uint64_t sd = 1, count = 1000;
-    int edge = 0, list_words = 0;
+    int edge = 0, list_words = 0, fpcr_mix = 0;
     const char *case_name = NULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--list-words")) { list_words = 1; continue; }
+        // --fpcr-mix: run each random case under one of 8 FPCR values (default, FZ, DN, FZ+DN, RP, RM, RZ, FZ+DN+RZ)
+        if (!strcmp(argv[i], "--fpcr-mix")) { fpcr_mix = 1; continue; }
         if (i + 1 >= argc) { fprintf(stderr, "options require values\n"); return 2; }
         if (!strcmp(argv[i], "--seed")) sd = strtoull(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--count")) count = strtoull(argv[++i], 0, 0);
         else if (!strcmp(argv[i], "--case")) case_name = argv[++i];
         else if (!strcmp(argv[i], "--corpus") && !strcmp(argv[i + 1], "edge")) { edge = 1; i++; }
-        else { fprintf(stderr, "usage: fuzz_host [--seed N] [--count N] [--case NAME (see conformance/arm64-v0.2.0/README.md)] | --corpus edge [--list-words]\n"); return 2; }
+        else { fprintf(stderr, "usage: fuzz_host [--seed N] [--count N] [--fpcr-mix] [--case NAME (see conformance/arm64-v0.2.0/README.md)] | --corpus edge [--list-words]\n"); return 2; }
     }
     if (list_words) {
         build_ops();
@@ -452,7 +454,8 @@ int main(int argc, char **argv) {
                 int a = rnd() % 32, b = rnd() % 32; c.v[2 * a] = c.v[2 * b]; c.v[2 * a + 1] = c.v[2 * b + 1];
             }
         }
-        run_case(w, 0);
+        static const uint64_t mixes[8] = {0, 1u << 24, 1u << 25, 3u << 24, 1u << 22, 2u << 22, 3u << 22, (3u << 24) | (3u << 22)};
+        run_case(w, fpcr_mix ? mixes[rnd() & 7] : 0);
     }
     fprintf(stderr, "fuzz_host seed=%llu words=%llu executed=%llu undefined(SIGILL)=%llu\n",
             (unsigned long long)sd, (unsigned long long)count, (unsigned long long)nt, (unsigned long long)nu);

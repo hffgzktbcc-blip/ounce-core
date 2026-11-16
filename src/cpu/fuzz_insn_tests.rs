@@ -348,3 +348,47 @@ fn fp_recip_step_classes() {
     let c = run1(0x4ebb_ff59, &[(26, n), (27, m)]);
     assert_eq!(c.regs.v[25], v4([0xbfc0_0000, 0x3fc0_0000, 0xffc0_0001, 0x7f7f_ffff]));
 }
+
+const RP: u32 = 1 << 22;
+const RM: u32 = 2 << 22;
+const IXC: u32 = 0x10;
+
+/// Found by running the fuzzer under FPCR RMode/FZ/DN: the scalar SCVTF/UCVTF forms ignored FPCR.RMode, and some scalar
+/// ops raised (or missed) exception flags at FPCR 0.
+#[test]
+fn scalar_convert_honours_rmode_and_flags() {
+    // ucvtf s0, s1 with 16777219 (a tie between 16777218 and 16777220)
+    let n = 16_777_219u128;
+    assert_eq!(run1_fpcr(0x7e21_d820, 0, &[(1, n)]).regs.v[0], 0x4b80_0002); // ties to even
+    assert_eq!(run1_fpcr(0x7e21_d820, RM, &[(1, n)]).regs.v[0], 0x4b80_0001); // round down
+    assert_eq!(run1_fpcr(0x7e21_d820, RP, &[(1, n)]).regs.v[0], 0x4b80_0002);
+    assert_eq!(run1_fpcr(0x7e21_d820, 0, &[(1, n)]).regs.fpsr & 0x9f, IXC);
+    // scvtf d2, d3 with 2^53 + 1
+    let n = (1u128 << 53) + 1;
+    assert_eq!(run1_fpcr(0x5e61_d862, RP, &[(3, n)]).regs.v[2], 0x4340_0000_0000_0001);
+    assert_eq!(run1_fpcr(0x5e61_d862, RM, &[(3, n)]).regs.v[2], 0x4340_0000_0000_0000);
+}
+
+#[test]
+fn fabd_scalar_raises_inexact_at_default_fpcr() {
+    // fabd s4, s5, s6: 1.0 - 1e-30 is inexact
+    let c = run1_fpcr(0x7ea6_d4a4, 0, &[(5, 0x3f80_0000), (6, 0x0da2_4260)]);
+    assert_eq!(c.regs.v[4], 0x3f80_0000);
+    assert_eq!(c.regs.fpsr & 0x9f, IXC);
+}
+
+#[test]
+fn scalar_fp_by_element_ignores_unread_lanes_for_flags() {
+    // fmul s7, s8, v9.s[0]: lane 1 of s8 (inf) times lane 0 of v9 (0.0) would be IOC if computed
+    let c = run1_fpcr(0x5f89_9107, 0, &[(8, 0x3f80_0000 | 0x7f80_0000u128 << 32), (9, 0)]);
+    assert_eq!(c.regs.v[7], 0);
+    assert_eq!(c.regs.fpsr & 0x9f, 0);
+}
+
+#[test]
+fn frint32z_raises_inexact() {
+    // frint32z v6.4s: 1.5 -> 1.0, IXC; an out-of-range lane is IOC only for that lane
+    let c = run1_fpcr(0x4e21_e8e6, 0, &[(7, v4([0x3fc0_0000, 0, 0, 0]))]);
+    assert_eq!(c.regs.v[6] as u32, 0x3f80_0000);
+    assert_eq!(c.regs.fpsr & 0x9f, IXC);
+}
