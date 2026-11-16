@@ -1089,7 +1089,17 @@ impl Cpu {
                 // FRINTX/FRINTI (op 6, 7) round with FPCR.RMode; with FPCR.FZ a denormal input reads as zero
                 let (f, env) = self.fp_env(is_double);
                 let inexact_flag = op == 6; // FRINTX raises IXC, FRINTI does not
-                let op = if op >= 6 { match env.round { softfp::Round::Nearest => 0, softfp::Round::Up => 1, softfp::Round::Down => 2, softfp::Round::Zero => 3 } } else { op };
+                let op = if op >= 6 {
+                    match env.round {
+                        softfp::Round::Nearest => 0,
+                        softfp::Round::Up => 1,
+                        softfp::Round::Down => 2,
+                        softfp::Round::Zero => 3,
+                        softfp::Round::Odd => unreachable!("round-to-odd is not an FPCR mode"),
+                    }
+                } else {
+                    op
+                };
                 let flushed = softfp::flush_input(f, env, self.fp_bits(rn, is_double));
                 if is_double {
                     let v = f64::from_bits(flushed);
@@ -1688,9 +1698,14 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdFpTwoMisc { rd, rn, op, double, q } => {
+            Instruction::SimdFpTwoMisc { rd, rn, op, double, q, scalar } => {
                 let (d, n) = (self.regs.read_q(rd), self.regs.read_q(rn));
-                self.regs.write_q(rd, simd::fp_two_misc_fpcr(op, d, n, double, q, self.regs.fpcr));
+                let res = if scalar {
+                    simd::fcvtxn_f32(simd::lane(n, 64, 0), self.regs.fpcr) as u128
+                } else {
+                    simd::fp_two_misc_fpcr(op, d, n, double, q, self.regs.fpcr)
+                };
+                self.regs.write_q(rd, res);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
