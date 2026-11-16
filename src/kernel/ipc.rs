@@ -240,6 +240,9 @@ impl IpcManager {
 
     pub fn close_handle(&mut self, handle: u32) -> bool {
         let removed = self.handles.remove(&handle);
+        self.applet.storages.remove(&handle);
+        self.applet.storage_accessors.remove(&handle);
+        self.applet.storage_accessors.retain(|_, storage| *storage != handle);
         if let Some(ServiceType::AudioDevice(id) | ServiceType::AudioDeviceEvent(id)) = &removed {
             if !self.handles.values().any(|service| matches!(service,
                 ServiceType::AudioDevice(other) | ServiceType::AudioDeviceEvent(other) if other == id)) {
@@ -356,7 +359,7 @@ impl IpcManager {
             return res;
         }
 
-        if let Some(res) = self.handle_system_service(&service, cmd_id, args_base, tls_addr, mmu) {
+        if let Some(res) = self.handle_system_service(&service, cmd_id, args_base, tls_addr, mmu, object_handle) {
             return res;
         }
 
