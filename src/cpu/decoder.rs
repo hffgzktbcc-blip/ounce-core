@@ -1377,6 +1377,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::FpAbd { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
     }
 
+    // FMULX (scalar): 01 0 11110 0 sz 1 Rm 11011 1 Rn Rd.
+    // Opcode 11011 is outside the scalar integer three-same decode below (opcode < 11000).
+    if (raw & 0xFFA0_FC00) == 0x5E20_DC00 {
+        return Some(Instruction::FpMulx { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
+    }
+
     // 27c. AdvSIMD scalar three same: 01 U 11110 size 1 Rm opcode 1 Rn Rd.
     //      A one-lane op writes lane 0 and zeroes the rest, exactly the scalar semantics.
     if (raw & 0xDF20_0400) == 0x5E20_0400 && (raw >> 11) & 0x1F < 0b11000 {
@@ -2019,6 +2025,18 @@ mod tests {
             decode(0x7EA2D420),
             Instruction::FpAbd { rd: 0, rn: 1, rm: 2, is_double: false }
         ); // fabd s0, s1, s2
+    }
+
+    #[test]
+    fn test_decode_fmulx_scalar() {
+        assert_eq!(
+            decode(0x5E21DC03),
+            Instruction::FpMulx { rd: 3, rn: 0, rm: 1, is_double: false }
+        ); // fmulx s3, s0, s1
+        assert_eq!(
+            decode(0x5E61DC03),
+            Instruction::FpMulx { rd: 3, rn: 0, rm: 1, is_double: true }
+        ); // fmulx d3, d0, d1
     }
 
     #[test]
