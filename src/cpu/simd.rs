@@ -180,6 +180,12 @@ fn three_same_inner(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool,
             }
             SimdOp3::Sqdmulh => sat1((2 * ia * ib) >> esize, true),
             SimdOp3::Sqrdmulh => sat1((2 * ia * ib + (1i128 << (esize - 1))) >> esize, true),
+            SimdOp3::Sqrdmlah | SimdOp3::Sqrdmlsh => {
+                let acc = sext(lane(d, esize, i), esize) as i128;
+                let prod = 2 * ia * ib;
+                let prod = if op == SimdOp3::Sqrdmlsh { -prod } else { prod };
+                sat1(((acc << esize) + prod + (1i128 << (esize - 1))) >> esize, true)
+            }
             SimdOp3::Add | SimdOp3::Addp => a.wrapping_add(b),
             SimdOp3::Sub => a.wrapping_sub(b),
             SimdOp3::Mul => a.wrapping_mul(b),
@@ -962,6 +968,32 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
     if dn && nan { if double { 0x7ff8_0000_0000_0000 } else { 0x7fc0_0000 } } else { r }
 }
 
+/// `FCADD`: pairs of (real, imag) lanes. `#90` is `re = n.re + neg(m.im)`, `im = n.im + m.re`.
+/// `#270` is `re = n.re + m.im`, `im = n.im + neg(m.re)`. The negation is a sign-bit flip before
+/// `FPAdd`, so a NaN subtrahend comes back with its sign flipped and its payload unchanged.
+/// `FPSub` does not do that flip (it reports the original NaN), which is why this is not `FPSub`.
+pub fn fcadd(n: u128, m: u128, esize: u32, q: bool, rot90: bool, fpcr: u32) -> u128 {
+    use super::softfp::{self, BinOp, Env, Fmt};
+    let (f, env) = (Fmt::from_esize(esize), Env::from_fpcr(fpcr));
+    let neg = |x: u64| x ^ (1u64 << (esize - 1));
+    let count = lanes(esize, q);
+    let mut out = 0u128;
+    let mut e = 0;
+    while e + 1 < count {
+        let (nre, nim) = (lane(n, esize, e), lane(n, esize, e + 1));
+        let (mre, mim) = (lane(m, esize, e), lane(m, esize, e + 1));
+        let (real, imag) = if rot90 {
+            (softfp::binop(f, env, BinOp::Add, nre, neg(mim)), softfp::binop(f, env, BinOp::Add, nim, mre))
+        } else {
+            (softfp::binop(f, env, BinOp::Add, nre, mim), softfp::binop(f, env, BinOp::Add, nim, neg(mre)))
+        };
+        set_lane(&mut out, esize, e, real);
+        set_lane(&mut out, esize, e + 1, imag);
+        e += 2;
+    }
+    out
+}
+
 /// `fp_three_same` honouring FPCR.FZ and FPCR.DN for FMAX/FMIN/FMAXNM/FMINNM and their pairwise forms.
 /// Other operations ignore FPCR, as before.
 pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
@@ -1103,11 +1135,27 @@ fn special_op2_flags(op: SimdFpOp2, f: super::softfp::Fmt, a: u64, cur: Rm, fz: 
     }
 }
 
+/// One `FCVTXN` lane: double to single, round to odd. `FPCR.RMode` is ignored; `FZ` and `DN` apply.
+pub fn fcvtxn_f32(bits: u64, fpcr: u32) -> u64 {
+    use super::softfp::{self, Env, F32, F64, Round};
+    let base = Env::from_fpcr(fpcr);
+    softfp::convert(F64, F32, Env { round: Round::Odd, fz: base.fz, dn: base.dn }, bits)
+}
+
+fn fcvtxn_pair(d: u128, n: u128, q: bool, env: super::softfp::Env) -> u128 {
+    use super::softfp::{self, Env, F32, F64, Round};
+    let env = Env { round: Round::Odd, fz: env.fz, dn: env.dn };
+    let lo = softfp::convert(F64, F32, env, lane(n, 64, 0)) as u128;
+    let hi = softfp::convert(F64, F32, env, lane(n, 64, 1)) as u128;
+    let pair = lo | hi << 32;
+    if q { (d & u64::MAX as u128) | pair << 64 } else { pair }
+}
+
 /// `fp_two_misc` under FPCR: FSQRT rounds under RMode and honours FZ/DN, the compares against zero see flushed
-/// denormals, FCVTN/FCVTL convert under the mode.
+/// denormals, FCVTN/FCVTL convert under the mode. FCVTXN always rounds to odd.
 pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, fpcr: u32) -> u128 {
     use super::softfp::{self, Env, F32, F64};
-    if fpcr & softfp::FPCR_ARITH_MASK == 0 && !matches!(op, SimdFpOp2::Fsqrt | SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl) {
+    if fpcr & softfp::FPCR_ARITH_MASK == 0 && !matches!(op, SimdFpOp2::Fsqrt | SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl | SimdFpOp2::Fcvtxn) {
         if !matches!(op, SimdFpOp2::Fabs | SimdFpOp2::Fneg) {
             zero_compare_flags(op, n, double, q);
         }
@@ -1121,6 +1169,7 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
             let pair = lo | hi << 32;
             if q { (d & u64::MAX as u128) | pair << 64 } else { pair }
         }
+        SimdFpOp2::Fcvtxn => fcvtxn_pair(d, n, q, env),
         SimdFpOp2::Fcvtl => {
             let base = if q { 2 } else { 0 };
             let a = softfp::convert(F32, F64, env, lane(n, 32, base));
@@ -1144,6 +1193,7 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
                                 softfp::Round::Up => Rm::Up,
                                 softfp::Round::Down => Rm::Down,
                                 softfp::Round::Zero => Rm::Zero,
+                                softfp::Round::Odd => unreachable!("round-to-odd is not an FPCR mode"),
                             };
                             special_op2_flags(op, f, a, cur, env.fz);
                             let r = fp_special_op2(op, a, esize, cur);
@@ -1160,6 +1210,7 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
                                     softfp::Round::Up => !neg,
                                     softfp::Round::Down => neg,
                                     softfp::Round::Zero => false,
+                                    softfp::Round::Odd => unreachable!("round-to-odd is not an FPCR mode"),
                                 };
                                 if to_inf { r } else { r - 1 }
                             } else {
@@ -1264,6 +1315,7 @@ pub fn fp_two_misc(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool) -> u1
             let pair = lo | hi << 32;
             if q { (d & u64::MAX as u128) | pair << 64 } else { pair }
         }
+        SimdFpOp2::Fcvtxn => fcvtxn_pair(d, n, q, super::softfp::Env::DEFAULT),
         SimdFpOp2::Fcvtl => {
             let base = if q { 2 } else { 0 };
             let a = f32::from_bits(lane(n, 32, base) as u32) as f64;

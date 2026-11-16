@@ -560,6 +560,15 @@ pub enum Instruction {
         is_double: bool,
     },
 
+    /// AdvSIMD scalar three same `FMULX Sd/Dd, Sn/Dn, Sm/Dm`. `0 × ∞` is ±2.0 rather than a NaN.
+    /// Lane 0 is written and the rest of `Vd` is zeroed.
+    FpMulx {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        is_double: bool,
+    },
+
     /// `DUP Vd.<T>, Wn/Xn`
     SimdDupGeneral {
         rd: u8,
@@ -692,6 +701,16 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// `FCADD`: complex add of pairs. `rot90` is rotation `#90` (else `#270`). `esize` is 32 or 64.
+    Fcadd {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        esize: u8,
+        q: bool,
+        rot90: bool,
+    },
+
     /// FP vector three-same (`FADD`, `FMLA`, `FCMEQ`, ...): `double` selects 64-bit lanes, else 32-bit.
     SimdFpThreeSame {
         rd: u8,
@@ -702,13 +721,15 @@ pub enum Instruction {
         q: bool,
     },
 
-    /// FP vector two-register misc (`FABS`, `FCMGT #0.0`, `FCVTN`, ...): `double` as above.
+    /// FP vector two-register misc (`FABS`, `FCMGT #0.0`, `FCVTN`, `FCVTXN`, ...): `double` as above.
+    /// `scalar` is `FCVTXN Sd, Dn`: one single in lane 0, the rest of `Vd` zero.
     SimdFpTwoMisc {
         rd: u8,
         rn: u8,
         op: SimdFpOp2,
         double: bool,
         q: bool,
+        scalar: bool,
     },
 
     SimdTwoMisc {
@@ -1020,6 +1041,9 @@ pub enum SimdOp3 {
     /// Saturating (rounding) doubling multiply returning the high half
     Sqdmulh,
     Sqrdmulh,
+    /// `SQRDMLAH` / `SQRDMLSH`: saturating rounding doubling multiply-accumulate / subtract, high half
+    Sqrdmlah,
+    Sqrdmlsh,
 }
 
 /// Operation of an integer by-element (or vector dot-product) instruction.
@@ -1089,6 +1113,8 @@ pub enum SimdFpOp2 {
     Fsqrt,
     Fcvtn,
     Fcvtl,
+    /// `FCVTXN`/`FCVTXN2`: double to single, round to odd. `q` selects the half, as `FCVTN`.
+    Fcvtxn,
     /// Round to integral in FP format: N = nearest even, P = +inf, M = -inf, Z = zero, A = nearest away,
     /// X/I = current FPCR rounding mode (X also signals inexact)
     Frintn,
