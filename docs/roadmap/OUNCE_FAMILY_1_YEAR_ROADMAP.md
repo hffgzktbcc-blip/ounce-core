@@ -2,15 +2,25 @@
 
 *Vetted on 2026-11-14 across 4 independent reviews: Architecture & Contract Stability, Licensing & Clean-Room Legal, CI & Release Infrastructure, and Homebrew Developer Experience.*
 
+**Status: Done / In PR / Next**
+
+| Status | Item |
+| --- | --- |
+| **Done** | Landed 14 Nov 2026: `ounce.run.v1` / `--report-json`; `ounce-hb` `doctor` / `--auto` / `repro`; `setup-ounce`; the Linux ARM64 ELF matrix workflow. |
+| **In PR** | `ounce-core` #442, `ounce-hb` #40, `ounce-runtime` #13. |
+| **Next** | A passing `linux-arm64-elf-matrix` run on `main`, then the Q1 tags. |
+
+**Source of truth:** This document supersedes `docs/roadmap/milestones.json` and the `ounce-hb` wiki roadmap. The education roadmap (`OUNCE_EDUCATION_ROADMAP.md`) is deferred until the Q1 tags exist.
+
 **North Star:** Make **`ounce-core`** (MIT), **`ounce-hb`** (MIT), **`ounce-runtime`** (GPL-3.0-or-later), and **`deckstream`** (MIT, SteamOS WebDAV launcher & Decky UI) the self-diagnosing, zero-AI-needed standard for **building, testing, running, and debugging open-source AArch64 homebrew (`.nro` / `.nso`) and static musl Linux AArch64 ELFs**, with strict license isolation (subprocess + CLI/JSON contracts only) and **zero retail/key/SDK material** (`ounce-hb`: strict clean-room per `docs/CLEAN_ROOM.md`; `ounce-core`: public specs + attributed MIT ports per `docs/CLEAN_ROOM.md`; `ounce-runtime`: GPL-3.0-or-later; `deckstream`: MIT).
 
 ---
 
 ## Q1 (Months 1–3 | Nov 2026 – Feb 2027): Release Alignment, Day-1 Homebrew DX & Visual Parity
 
-**Theme:** Unify release/CI pipelines, ship Stage 1–4 + `linux-arm64` binaries, and make real `appletMainLoop()` + RomFS/SDMC homebrew work on day 1.
+**Theme:** Unify release/CI pipelines, ship `linux-arm64` binaries, and make real `appletMainLoop()` + RomFS/SDMC homebrew work on day 1.
 
-1. **Pre-Release Legal & CI Infrastructure Alignment (Hard Gate Before `v0.9.0`/`v0.1.0`/`v0.6.0`):**
+1. **Pre-Release Legal & CI Infrastructure Alignment (single hard gate for synchronized `ounce-core` `v0.9.0` / `ounce-hb` `v0.1.0` / `ounce-runtime` `v0.6.0`):**
    - **Metadata & `cargo-deny`:** Add `license = "MIT"` to `ounce-core/Cargo.toml`; add `deny.toml` and PR `cargo-deny` checks to `ounce-core` and `ounce-runtime`.
    - **Fix `release.yml` across all 3 repos:**
      - Replace `if: matrix.os == 'ubuntu-latest'` with `if: runner.os == 'Linux'` in `ounce-core` & `ounce-runtime` `release.yml` so `ubuntu-24.04-arm` (`linux-arm64`) builds cleanly.
@@ -21,24 +31,29 @@
      - Add missing `input_multi` and `sdmc` entries to `docs/PROVENANCE.md` and `tests/fixtures/nro/TOOLCHAIN_VERSIONS.md`; rebuild `tests/fixtures/nro/deko3d/deko3d.nro` in a recorded toolchain env to capture `deko3d` + `uam` versions, SHA-256, and notices.
    - **Refresh `RELEASE_NOTICE_REVIEW.json`:** Run toolchain/native notice collection on `ubuntu-24.04-arm` and update `release_scope` before tagging `ounce-core` `v0.9.0`.
    - **Fix `setup-ounce` & tag collision:** Update `ounce-hb/release.yml` trigger from `'v*'` to `'v[0-9]+.[0-9]+.[0-9]+*'` so floating action tags (`setup-ounce@v1`) never trigger binary releases; update `.github/actions/setup-ounce/action.yml` to detect `RUNNER_ARCH` (`linux-arm64`), fix Windows `.exe` / `pwsh` extraction + CI verification, enable `verify_sha="true"` for `ounce-runtime`, and support `install-hb: 'false'` for dogfooding.
-   - **Cut Synchronized Releases:** Verify `linux-arm64-elf-matrix` (`43630557848`) passes on `ounce-core` `main`, then tag **`ounce-core` `v0.9.0`**, **`ounce-hb` `v0.1.0`**, and **`ounce-runtime` `v0.6.0`** (including `linux-arm64` assets).
+   - **Cut Synchronized Releases:** Verify a passing `linux-arm64-elf-matrix` run on `main`, then tag **`ounce-core` `v0.9.0`**, **`ounce-hb` `v0.1.0`**, and **`ounce-runtime` `v0.6.0`** (including `linux-arm64` assets). Nothing else in this quarter blocks these tags.
 
-2. **Day-1 Homebrew Ergonomics & Doc/CLI Sync:**
+**November product goal (not a tag blocker):** The `ounce-core` #357 community sprint outcome — a second independent rerun of #191, or a first #248 report.
+
+**After the tag** (one theme at a time):
+
+1. **Day-1 Homebrew Ergonomics & Doc/CLI Sync:**
    - **Loop-exit controls:** Add `--max-frames <N>` and inline `--press PLUS@60` (plus `OUNCE_INPUT_SCRIPT=<path>`) so standard `while (appletMainLoop())` `libnx` apps exit cleanly instead of hitting the 60s timeout.
    - **Q1 `--sdmc` & RomFS support:** Support ephemeral/copy-on-write `--sdmc <dir>` staging and RomFS (`romfsInit()`) verification in Q1 rather than deferring to Q2.
    - **CLI & Doc parity:** Implement `--timeout <dur>` and `--json` on `ounce-hb run` (matching `HOMEBREW_DEVELOPER_GUIDE.md`), sync `ounce-hb/README.md` with `doctor`, `repro`, and `--auto`, and extend `ounce-hb doctor` to check `DEVKITPRO`/`devkitA64`/`cargo-nx` alongside engine binaries.
+   - **Applet deadlock (`ounce-core` #387):** `applet-software-keyboard` deadlocks in `swkbdShow`; library applets are not modelled.
 
-3. **End-to-End Graphical & Determinism Parity (`ounce.run.v1` / `ounce.repro.v1`):**
+2. **End-to-End Graphical & Determinism Parity (`ounce.run.v1` / `ounce.repro.v1`):**
    - **Prerequisites before comparing `framebuffer_hash`:**
      - Hash **pre-HUD** guest framebuffer pixels (disable `draw_hud_overlay` under `--present=headless` / `OUNCE_DETERMINISTIC=1`) in both `ounce-core` and `ounce-runtime` to prevent false-positive HUD divergences.
      - Wire `run_report::is_deterministic()` in `ounce-runtime` to match `ounce-core`'s deterministic clock/scheduler behavior.
    - Emit `frames_presented` and `framebuffer_hash` (`fnv1a64:...`) from `ounce-core`'s `RunReport`.
    - Extend `ounce.repro.v1` (`format_repro_bundle` & `ReproManifest`) with `framebuffer_hash`, `frames_presented`, and `input_script`, and teach `ounce-hb run --auto` and `ounce-hb repro` to compare `framebuffer_hash`.
 
-4. **Real-World Homebrew Validation (Metadata-Only Corpus):**
+3. **Real-World Homebrew Validation (Metadata-Only Corpus):**
    - Run 5–10 real open-source `libnx` / SDL2 homebrew `.nro` projects through `ounce-hb run --auto` and `ounce-core diverge`; store **only** `ounce.repro.v1` JSON metadata/hashes in `tests/repro/` (never commit `.nro` or RomFS binaries).
 
-5. **DeckStream Family Alignment & Security/CI Gate (`deckstream`, MIT):**
+4. **DeckStream Family Alignment & Security/CI Gate (`deckstream`, MIT):**
    - Complete `deckstream/PLAN.md` baseline gates (own-storage Steam Deck launch report on `#9`, `assertPublicHttpUrl` SSRF guard, CodeQL high findings, Decky TypeScript check, and `shellcheck` in CI).
    - Sync "The Growing Family" sibling table in `ounce-hb/README.md` and `ounce-runtime/README.md` with `deckstream`, and verify `ounce-hb` / `ounce-runtime` `linux-x86_64` release binaries run on SteamOS 3.5+.
 
@@ -84,6 +99,7 @@
    - Feed Q1–Q2 `ounce.repro.v1` bug reports into `ounce-runtime` Tier-3 / Tier-4 / NCE so fast execution matches `ounce-core` on FP/SIMD, NaN, and SVC edge cases.
    - **Strict One-Way Rule:** `ounce.repro.v1` JSON discoveries may inform GPL `ounce-runtime` fixes, **never** the reverse—no code or patterns from `ounce-runtime` may ever flow into MIT `ounce-core` or `ounce-hb`.
    - Track CI performance regressions strictly via deterministic `insns_executed` budgets (keep wall-time tracking advisory on shared runners).
+   - **#400–#404 (instruction gaps, good first issues):** takeable anytime; they do not wait on this quarter.
 
 3. **Quarterly Coordinated Releases & Supply-Chain Hardening:**
    - Cut Q2/Q3 releases (`ounce-core` `v0.10.0` → `v0.11.0`, `ounce-hb` `v0.2.0` → `v0.3.0`, `ounce-runtime` `v0.7.0` → `v0.8.0`) with SPDX/SBOM generation, SHA-pinned GitHub Actions / Dependabot across all 3 repos, and `SHA256SUMS`.

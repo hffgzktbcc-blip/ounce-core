@@ -8,6 +8,7 @@ on:
       - '**/*.rs'
       - '**/Cargo.toml'
       - 'Cargo.lock'
+      - 'deny.toml'
       - '.github/workflows/rust-security.yml'
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - '**/*.rs'
       - '**/Cargo.toml'
       - 'Cargo.lock'
+      - 'deny.toml'
       - '.github/workflows/rust-security.yml'
   schedule:
     # New RustSec advisories may arrive without a code change.
@@ -61,3 +63,14 @@ jobs:
         run: cargo install --locked cargo-audit
       - name: Audit locked dependencies
         run: cargo audit --file Cargo.lock
+
+  cargo-deny:
+    name: Cargo Deny (licenses, bans, advisories)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          arguments: --locked
