@@ -129,6 +129,71 @@ fn by_element_dot_and_fmulx_classes() {
     assert_eq!(c.regs.v[30], 0x7ff0_0000_0000_0000 | 0x4000_0000_0000_0000u128 << 64);
 }
 
+fn run1_fpcr(word: u32, fpcr: u32, set: &[(usize, u128)]) -> Cpu {
+    let mut mmu = Memory::new();
+    let mut cpu = Cpu::new();
+    mmu.map_range(0x1000, 0x1000, Permission::READ_WRITE_EXECUTE);
+    mmu.write_u32(0x1000, word).unwrap();
+    cpu.regs.pc = 0x1000;
+    cpu.regs.fpcr = fpcr;
+    for &(r, v) in set {
+        cpu.regs.v[r] = v;
+    }
+    assert!(matches!(cpu.step(&mut mmu), Ok(StepResult::Continue)), "{word:#x}");
+    cpu
+}
+
+#[test]
+fn fcvtxn_round_to_odd() {
+    const IXC: u32 = 1 << 4;
+    const OFC: u32 = 1 << 2;
+    const UFC: u32 = 1 << 3;
+    const IOC: u32 = 1;
+    let d2 = |a: u64, b: u64| a as u128 | (b as u128) << 64;
+    // fcvtxn v0.2s, v1.2d. Lane 0 is an exact 1.5; lane 1 is inexact and round-to-nearest would
+    // round up to the even single 0x3f800002. Round-to-odd stays on the odd neighbour 0x3f800001.
+    // 1 + 2^-23 + 2^-24 + 2^-52 sits just above the single midpoint, so nearest rounds up.
+    let c = run1(0x2e61_6820, &[(1, d2(0x3FF8_0000_0000_0000, 0x3FF0_0000_3000_0001))]);
+    assert_eq!(c.regs.v[0], 0x3fc0_0000 | 0x3f80_0001u128 << 32);
+    assert_eq!(c.regs.fpsr & (IXC | OFC | UFC | IOC), IXC);
+
+    // fcvtxn2 keeps the low half of Vd. Round-to-odd overflow is the largest finite single,
+    // for 2^128 and for the double just below it. A negative overflow keeps the sign.
+    let keep = 0x1111_2222_3333_4444u128;
+    let c = run1(0x6e61_6820, &[(0, keep), (1, d2(0x47F0_0000_0000_0000, 0x47EF_FFFF_FFFF_FFFF))]);
+    assert_eq!(c.regs.v[0], keep | (0x7f7f_ffffu128 | 0x7f7f_ffffu128 << 32) << 64);
+    assert_eq!(c.regs.fpsr & (OFC | IXC), OFC | IXC);
+    let c = run1(0x2e61_6820, &[(1, d2(0xC7F0_0000_0000_0000, 0x47F0_0000_0000_0001))]);
+    assert_eq!(c.regs.v[0], 0xff7f_ffff | 0x7f7f_ffffu128 << 32);
+
+    // scalar fcvtxn s0, d1: denormal 2^-140 is exact (0x0200); the rest of Vd is cleared.
+    let c = run1(0x7e61_6820, &[(0, u128::MAX), (1, 0x3730_0000_0000_0000)]);
+    assert_eq!((c.regs.v[0], c.regs.fpsr), (0x0200, 0));
+    // 2^-150 is below the smallest single and inexact: the odd result is the smallest denormal.
+    let c = run1(0x7e61_6820, &[(0, u128::MAX), (1, 0x3690_0000_0000_0000)]);
+    assert_eq!(c.regs.v[0], 1);
+    assert_eq!(c.regs.fpsr & (UFC | IXC), UFC | IXC);
+
+    // ±0, ±inf, and a signalling NaN whose retained payload bit survives (quieted).
+    let c = run1(0x2e61_6820, &[(1, d2(0, 0x8000_0000_0000_0000))]);
+    assert_eq!(c.regs.v[0], 0x8000_0000u128 << 32);
+    let c = run1(0x2e61_6820, &[(1, d2(0x7FF0_0000_0000_0000, 0xFFF0_0000_0000_0000))]);
+    assert_eq!(c.regs.v[0], 0x7f80_0000 | 0xff80_0000u128 << 32);
+    let c = run1(0x7e61_6820, &[(1, 0x7FF0_0000_2000_0000)]);
+    assert_eq!(c.regs.v[0], 0x7fc0_0001);
+    assert_eq!(c.regs.fpsr & IOC, IOC);
+    // FPCR.RMode toward zero does not change round-to-odd; DN replaces the NaN with the default.
+    let rz = 3 << 22;
+    let c = run1_fpcr(0x7e61_6820, rz, &[(1, 0x3FF0_0000_3000_0001)]);
+    assert_eq!(c.regs.v[0], 0x3f80_0001);
+    let c = run1_fpcr(0x7e61_6820, 1 << 25, &[(1, 0x7FF0_0000_2000_0000)]);
+    assert_eq!(c.regs.v[0], 0x7fc0_0000);
+    // FZ flushes the exact denormal result to zero.
+    let c = run1_fpcr(0x7e61_6820, 1 << 24, &[(1, 0x3730_0000_0000_0000)]);
+    assert_eq!(c.regs.v[0], 0);
+    assert_eq!(c.regs.fpsr & UFC, UFC);
+}
+
 #[test]
 fn fcadd_rotations() {
     // n = 1+2i, m = 3+4i. #90 is -3+5i, #270 is 5-1i.
