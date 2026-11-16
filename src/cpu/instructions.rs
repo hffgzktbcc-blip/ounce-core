@@ -560,6 +560,15 @@ pub enum Instruction {
         is_double: bool,
     },
 
+    /// AdvSIMD scalar three same `FMULX Sd/Dd, Sn/Dn, Sm/Dm`. `0 × ∞` is ±2.0 rather than a NaN.
+    /// Lane 0 is written and the rest of `Vd` is zeroed.
+    FpMulx {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        is_double: bool,
+    },
+
     /// `DUP Vd.<T>, Wn/Xn`
     SimdDupGeneral {
         rd: u8,
