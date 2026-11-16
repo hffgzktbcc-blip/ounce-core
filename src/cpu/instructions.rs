@@ -711,13 +711,15 @@ pub enum Instruction {
         q: bool,
     },
 
-    /// FP vector two-register misc (`FABS`, `FCMGT #0.0`, `FCVTN`, ...): `double` as above.
+    /// FP vector two-register misc (`FABS`, `FCMGT #0.0`, `FCVTN`, `FCVTXN`, ...): `double` as above.
+    /// `scalar` is `FCVTXN Sd, Dn`: one single in lane 0, the rest of `Vd` zero.
     SimdFpTwoMisc {
         rd: u8,
         rn: u8,
         op: SimdFpOp2,
         double: bool,
         q: bool,
+        scalar: bool,
     },
 
     SimdTwoMisc {
@@ -1101,6 +1103,8 @@ pub enum SimdFpOp2 {
     Fsqrt,
     Fcvtn,
     Fcvtl,
+    /// `FCVTXN`/`FCVTXN2`: double to single, round to odd. `q` selects the half, as `FCVTN`.
+    Fcvtxn,
     /// Round to integral in FP format: N = nearest even, P = +inf, M = -inf, Z = zero, A = nearest away,
     /// X/I = current FPCR rounding mode (X also signals inexact)
     Frintn,
