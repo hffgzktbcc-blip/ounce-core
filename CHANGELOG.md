@@ -6,11 +6,13 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## 0.9.0 — draft, not tagged
 
-Draft for review. Do not tag from this text. The Q1 gate in
-`docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md` is still open: legal and release
-workflow pull requests are open, and the `linux-arm64-elf-matrix` job has not
-passed on `main` (workflow run `43630557848` was cancelled). History below is
-`v0.8.2..main` (`1dc78ad..2c52649`).
+Release candidate for review; no tag has been published. The release-infrastructure
+PRs are merged, and the Linux ARM64 ELF matrix passed on `main` at `6a4ccb8`
+([run 43803024996](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/43803024996)).
+The downloaded report records 28/28 harnesses and 76/76 optimization rows passing.
+See [Q1 release readiness](docs/releases/v0.9.0.md) for candidate
+versions, evidence and remaining publication steps. Changes below cover
+`v0.8.2..6a4ccb8`; PR #452 is not included.
 
 ### Added
 - `run` and `run-nro` can write an `ounce.run.v1` JSON report with
@@ -36,16 +38,25 @@ passed on `main` (workflow run `43630557848` was cancelled). History below is
 - `inspect` on a file that is not an NRO0 or NSO0 executable, or whose header
   does not load, prints the reason and exits 1. It used to report an unknown
   format and exit 0 (#385, #433). Inspecting a loose directory is unchanged.
+- The software-keyboard applet returns a deterministic cancelled result instead
+  of deadlocking in `swkbdShow` (#446); interactive text entry is not implemented.
+- Scalar FMULX decoding (#445), FCVTXN/FCVTXN2 round-to-odd (#449), vector
+  SQRDMLAH/SQRDMLSH (#450), FCADD (#451), and half-precision vector FMOV
+  immediates (#444) now have interpreter coverage. These bounded changes do not
+  establish general application compatibility.
+
+### Release infrastructure
+- The package declares MIT licensing and PR checks run `cargo-deny`.
+- Release archives include Linux ARM64; Linux checksum generation covers the
+  archives produced by all four release targets (#442).
 
 ### Known limits of this draft
 - `silent_fallback` is always `false`. `frames_presented` and
   `framebuffer_hash` are not fields on ounce-core's report.
 - Asking for Tier-4 without `native-jit` still runs Tier-3, and the report's
   `silent_fallback` field does not say so.
-- Nothing here closes the pre-tag items still in pull requests: MIT
-  `license` / `cargo-deny` / linux-arm64 release archives (#442), the
-  ounce-hb release and `setup-ounce` follow-ups (#40), or the ounce-runtime
-  notice and release workflow (#13).
+- This candidate does not publish or merge the synchronized family releases. The
+  sibling version bumps and final-candidate CI remain separate publication steps.
 
 ## 0.8.2
 
