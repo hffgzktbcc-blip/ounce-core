@@ -215,9 +215,15 @@ fn fcadd_rotations() {
     let md = 0x4008_0000_0000_0000u128 | 0x4010_0000_0000_0000u128 << 64;
     let c = run1(0x6ec2_f420, &[(1, nd), (2, md)]);
     assert_eq!(c.regs.v[0], 0x4014_0000_0000_0000u128 | 0xbff0_0000_0000_0000u128 << 64);
-    // NaN imag of m: the real part is that NaN (FPSub sees it second), imag is 2+3.
+    // NaN imag of m is sign-flipped by FPNeg before the add. Payload stays. imag is 2+3.
     let c = run1(0x2e82_e420, &[(1, n), (2, 0x4040_0000u128 | 0x7fc0_0001u128 << 32)]);
-    assert_eq!(c.regs.v[0], 0x7fc0_0001 | 0x40a0_0000u128 << 32);
+    assert_eq!(c.regs.v[0], 0xffc0_0001 | 0x40a0_0000u128 << 32);
+    // The Apple Silicon mismatch: a negative NaN in m.im comes back positive.
+    let c = run1(0x2e82_e420, &[(1, 0x3f80_0000), (2, 0xfff8_0000u128 << 32)]);
+    assert_eq!(c.regs.v[0], 0x7ff8_0000);
+    // #270 flips the sign of a NaN in m.re into the imag lane.
+    let c = run1(0x2e82_f420, &[(1, 0x3f80_0000), (2, 0xfff8_0000)]);
+    assert_eq!(c.regs.v[0], 0x3f80_0000 | 0x7ff8_0000u128 << 32);
 }
 
 #[test]
