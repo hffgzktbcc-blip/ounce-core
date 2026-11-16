@@ -1290,36 +1290,6 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdByElement { rd, rn, rm, index, op, esize: 8u8 << size, q: false, scalar: true });
     }
 
-    // 26a4c. FCADD (single/double): 0 Q 1 01110 size 0 Rm 1 11 rot 0 1 Rn Rd.
-    //        size 10 = .2S/.4S, size 11 = .2D and needs Q. Half precision and size 11 with Q = 0 stay undecoded.
-    if (raw & 0xBF20_EC00) == 0x2E00_E400 {
-        let double = size == 3;
-        if size < 2 || (double && !q) {
-            return None;
-        }
-        return Some(Instruction::Fcadd {
-            rd,
-            rn,
-            rm,
-            esize: if double { 64 } else { 32 },
-            q: q || double,
-            rot90: (raw >> 12) & 1 == 0,
-        });
-    }
-
-    // 26a4b. SQRDMLAH/SQRDMLSH (vector, three-same): 0 Q 1 01110 size 0 Rm 1 000x 1 Rn Rd.
-    //        size 01 (half) or 10 (word). Bit 11 selects SH. Other sizes and opcodes stay undecoded.
-    if (raw & 0xBF20_8400) == 0x2E00_8400 && (size == 1 || size == 2) {
-        let op = match (raw >> 11) & 0xF {
-            0b0000 => Some(SimdOp3::Sqrdmlah),
-            0b0001 => Some(SimdOp3::Sqrdmlsh),
-            _ => None,
-        };
-        if let Some(op) = op {
-            return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 8u8 << size, q });
-        }
-    }
-
     // 26a4. AdvSIMD vector SDOT/UDOT: 0 Q U 01110 10 0 Rm 10010 1 Rn Rd
     if (raw & 0x9FE0_FC00) == 0x0E80_9400 {
         return Some(Instruction::SimdByElement { rd, rn, rm, index: 0xFF, op: SimdElemOp::Dot(!u), esize: 32, q, scalar: false });
@@ -1405,12 +1375,6 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     // 27b2. FABD (scalar): 01 1 11110 1 sz 1 Rm 11010 1 Rn Rd (bit 23 set, sz = bit 22)
     if (raw & 0xFFA0_FC00) == 0x7EA0_D400 {
         return Some(Instruction::FpAbd { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
-    }
-
-    // FMULX (scalar): 01 0 11110 0 sz 1 Rm 11011 1 Rn Rd.
-    // Opcode 11011 is outside the scalar integer three-same decode below (opcode < 11000).
-    if (raw & 0xFFA0_FC00) == 0x5E20_DC00 {
-        return Some(Instruction::FpMulx { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
     }
 
     // 27c. AdvSIMD scalar three same: 01 U 11110 size 1 Rm opcode 1 Rn Rd.
@@ -1645,10 +1609,6 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
 
     // 29a. AdvSIMD scalar two-register miscellaneous: 01 U 11110 size 10000 opcode 10 Rn Rd (conversions only)
     if (raw & 0xDF3E_0C00) == 0x5E20_0800 {
-        // FCVTXN Sd, Dn: size = 01, U = 1, opcode = 10110. One single, rest of Vd zero.
-        if (raw >> 12) & 0x1F == 0b10110 && u && size == 1 {
-            return Some(Instruction::SimdFpTwoMisc { rd, rn, op: SimdFpOp2::Fcvtxn, double: true, q: false, scalar: true });
-        }
         let op = match ((raw >> 12) & 0x1F, u, size >> 1) {
             (0b11101, false, 0) => SimdOp2::Scvtf,
             (0b11101, true, 0) => SimdOp2::Ucvtf,
@@ -1688,17 +1648,16 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11111, false, false) => Some(SimdFpOp2::Frint64z),
             (0b11111, true, false) => Some(SimdFpOp2::Frint64x),
             (0b10110, false, false) if double => Some(SimdFpOp2::Fcvtn),
-            (0b10110, true, false) if double => Some(SimdFpOp2::Fcvtxn),
             (0b10111, false, false) if double => Some(SimdFpOp2::Fcvtl),
             _ => None,
         };
         if let Some(op) = fp {
             // FCVTN/FCVTL use Q to pick the half of the wide/narrow register, not the lane count
-            let wide_q = matches!(op, SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl | SimdFpOp2::Fcvtxn);
+            let wide_q = matches!(op, SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl);
             if double && !q && !wide_q {
                 return None;
             }
-            return Some(Instruction::SimdFpTwoMisc { rd, rn, op, double, q, scalar: false });
+            return Some(Instruction::SimdFpTwoMisc { rd, rn, op, double, q });
         }
         // FCVT{N,M,A,P}{S,U} and URECPE/URSQRTE: integer results
         let int_op = match ((raw >> 12) & 0x1F, u, a) {
@@ -1777,17 +1736,6 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             return None;
         }
         return Some(Instruction::SimdTwoMisc { rd, rn, op, esize, q });
-    }
-
-    // 31a. FMOV (vector, immediate) half precision: 0 Q 0 0111100000 abc 1111 1 1 defgh Rd.
-    //      cmode = 1111, op = 0, o2 = 1. VFPExpandImm (N = 16) replicated across four 16-bit
-    //      lanes. op = 1 with o2 = 1, and every other o2 = 1 cmode, stay undecoded.
-    if (raw & 0xBFF8_FC00) == 0x0F00_FC00 {
-        let imm8 = (((raw >> 16) & 0x7) << 5 | ((raw >> 5) & 0x1F)) as u64;
-        let (a, b, cd, efgh) = (imm8 >> 7, (imm8 >> 6) & 1, (imm8 >> 4) & 3, imm8 & 0xF);
-        let half = a << 15 | (b ^ 1) << 14 | (if b != 0 { 0x3 } else { 0 }) << 12 | cd << 10 | efgh << 6;
-        let imm = half | half << 16 | half << 32 | half << 48;
-        return Some(Instruction::SimdModImm { rd, imm, op: SimdImmOp::Mov, q });
     }
 
     // 31. AdvSIMD modified immediate: 0 Q op 0111100000 abc cmode o2 1 defgh Rd
@@ -2063,18 +2011,6 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_fmulx_scalar() {
-        assert_eq!(
-            decode(0x5E21DC03),
-            Instruction::FpMulx { rd: 3, rn: 0, rm: 1, is_double: false }
-        ); // fmulx s3, s0, s1
-        assert_eq!(
-            decode(0x5E61DC03),
-            Instruction::FpMulx { rd: 3, rn: 0, rm: 1, is_double: true }
-        ); // fmulx d3, d0, d1
-    }
-
-    #[test]
     fn test_decode_svc() {
         assert_eq!(decode(0xD40004E1), Instruction::Svc { imm: 0x27 });
     }
@@ -2126,91 +2062,6 @@ mod tests {
         assert_eq!(decode(0x4EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: true }); // pmull2 v0.1q, v1.2d, v2.2d
         assert!(!matches!(decode(0x0E62E020), Instruction::Pmull { .. })); // size 1 reserved
         assert!(!matches!(decode(0x2E22E020), Instruction::Pmull { .. })); // U=1 is not PMULL
-    }
-
-    #[test]
-    fn decode_fmov_vector_half_immediate() {
-        let lane = |imm8: u64| {
-            let (a, b, cd, efgh) = (imm8 >> 7, (imm8 >> 6) & 1, (imm8 >> 4) & 3, imm8 & 0xF);
-            let half = a << 15 | (b ^ 1) << 14 | (if b != 0 { 0x3 } else { 0 }) << 12 | cd << 10 | efgh << 6;
-            half | half << 16 | half << 32 | half << 48
-        };
-        // fmov v29.8h, #-0.21093750 (imm8 = 0xCB -> 0xB2C0)
-        assert_eq!(
-            decode(0x4f06_fd7d),
-            Instruction::SimdModImm { rd: 29, imm: lane(0xCB), op: SimdImmOp::Mov, q: true }
-        );
-        assert_eq!(lane(0xCB), 0xB2C0_B2C0_B2C0_B2C0);
-        // fmov v17.4h, #11.0 (imm8 = 0x26 -> 0x4980); Q = 0 keeps the pattern in the low half
-        assert_eq!(
-            decode(0x0f01_fcd1),
-            Instruction::SimdModImm { rd: 17, imm: lane(0x26), op: SimdImmOp::Mov, q: false }
-        );
-        assert_eq!(lane(0x26), 0x4980_4980_4980_4980);
-        // imm8 = 0x70 is 1.0h (0x3C00) in every lane: fmov v0.8h, #1.0 / fmov v1.4h, #1.0
-        assert_eq!(lane(0x70), 0x3C00_3C00_3C00_3C00);
-        assert_eq!(decode(0x4f03_fe00), Instruction::SimdModImm { rd: 0, imm: lane(0x70), op: SimdImmOp::Mov, q: true });
-        assert_eq!(decode(0x0f03_fe01), Instruction::SimdModImm { rd: 1, imm: lane(0x70), op: SimdImmOp::Mov, q: false });
-        // single and double forms are unchanged (o2 = 0)
-        assert!(matches!(decode(0x4f03_f607), Instruction::SimdModImm { q: true, op: SimdImmOp::Mov, .. })); // fmov v7.4s, #1.0
-        assert!(matches!(decode(0x6f04_f488), Instruction::SimdModImm { q: true, op: SimdImmOp::Mov, .. })); // fmov v8.2d, #-2.5
-        // o2 = 1 with op = 1, and o2 = 1 with cmode != 1111, stay undecoded
-        for w in [0x2f03_fe00u32, 0x6f03_fe00, 0x0f00_0c00] {
-            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#010x} {:?}", decode(w));
-        }
-    }
-
-    #[test]
-    fn decode_fcadd() {
-        assert_eq!(
-            decode(0x2e93_e7c7),
-            Instruction::Fcadd { rd: 7, rn: 30, rm: 19, esize: 32, q: false, rot90: true }
-        ); // fcadd v7.2s, v30.2s, v19.2s, #90
-        assert_eq!(
-            decode(0x2e8e_f54c),
-            Instruction::Fcadd { rd: 12, rn: 10, rm: 14, esize: 32, q: false, rot90: false }
-        ); // fcadd v12.2s, v10.2s, v14.2s, #270
-        assert!(matches!(decode(0x6e82_e420), Instruction::Fcadd { esize: 32, q: true, rot90: true, .. }));
-        assert!(matches!(decode(0x6ec2_f420), Instruction::Fcadd { esize: 64, q: true, rot90: false, .. }));
-        // half precision and double without Q stay undecoded
-        for w in [0x2e42_e420u32, 0x2ec2_e420] {
-            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#x} {:?}", decode(w));
-        }
-    }
-
-    #[test]
-    fn decode_sqrdmlah() {
-        assert_eq!(
-            decode(0x2e87_8560),
-            Instruction::SimdThreeSame { rd: 0, rn: 11, rm: 7, op: SimdOp3::Sqrdmlah, esize: 32, q: false }
-        ); // sqrdmlah v0.2s, v11.2s, v7.2s
-        assert!(matches!(decode(0x6e42_8420), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlah, esize: 16, q: true, .. }));
-        assert!(matches!(decode(0x2e42_8c20), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlsh, esize: 16, q: false, .. }));
-        assert!(matches!(decode(0x6e82_8c20), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlsh, esize: 32, q: true, .. }));
-        // size 00 and size 11 are not these instructions
-        for w in [0x2e02_8420u32, 0x6ec2_8420] {
-            assert!(!matches!(decode(w), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlah | SimdOp3::Sqrdmlsh, .. }), "{w:#x} {:?}", decode(w));
-        }
-    }
-
-    #[test]
-    fn decode_fcvtxn() {
-        assert_eq!(
-            decode(0x2e61_6b86),
-            Instruction::SimdFpTwoMisc { rd: 6, rn: 28, op: SimdFpOp2::Fcvtxn, double: true, q: false, scalar: false }
-        ); // fcvtxn v6.2s, v28.2d
-        assert_eq!(
-            decode(0x6e61_6b10),
-            Instruction::SimdFpTwoMisc { rd: 16, rn: 24, op: SimdFpOp2::Fcvtxn, double: true, q: true, scalar: false }
-        ); // fcvtxn2 v16.4s, v24.2d
-        assert_eq!(
-            decode(0x7e61_6b19),
-            Instruction::SimdFpTwoMisc { rd: 25, rn: 24, op: SimdFpOp2::Fcvtxn, double: true, q: false, scalar: true }
-        ); // fcvtxn s25, d24
-        // sz = 0 is not the double-to-single form; scalar size != 01 stays undecoded
-        assert!(matches!(decode(0x2e21_6820), Instruction::Unimplemented { .. }), "{:?}", decode(0x2e21_6820));
-        assert!(matches!(decode(0x7e21_6820), Instruction::Unimplemented { .. }), "{:?}", decode(0x7e21_6820));
-        assert!(matches!(decode(0x0e61_6820), Instruction::SimdFpTwoMisc { op: SimdFpOp2::Fcvtn, .. })); // fcvtn, U = 0
     }
 }
 
