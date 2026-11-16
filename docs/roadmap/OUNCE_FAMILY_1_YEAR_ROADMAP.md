@@ -7,8 +7,8 @@
 | Status | Item |
 | --- | --- |
 | **Done** | Landed 14 Nov 2026: `ounce.run.v1` / `--report-json`; `ounce-hb` `doctor` / `--auto` / `repro`; `setup-ounce`; the Linux ARM64 ELF matrix workflow. |
-| **In PR** | `ounce-core` #442, `ounce-hb` #40, `ounce-runtime` #13. |
-| **Next** | A passing `linux-arm64-elf-matrix` run on `main`, then the Q1 tags. |
+| **Done** | Release infrastructure merged: `ounce-core` #442, `ounce-hb` #40, `ounce-runtime` #13. Linux ARM64 ELF matrix passed on core `main` at `6a4ccb8` ([job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/43803024996/job/133087400644)): 28 harnesses / 76 rows. |
+| **Next** | Prepare the Q1 package versions, qualify each exact candidate head and its archives, then obtain the owner publication decision for the synchronized tags. [Current candidate notes](../releases/v0.9.0.md). |
 
 **Source of truth:** This document supersedes `docs/roadmap/milestones.json` and the `ounce-hb` wiki roadmap. The education roadmap (`OUNCE_EDUCATION_ROADMAP.md`) is deferred until the Q1 tags exist.
 
