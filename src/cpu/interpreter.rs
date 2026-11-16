@@ -2,7 +2,7 @@
 
 use super::instructions::{
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacModifier, PauthOp, ShiftType,
-    SimdImmOp, SimdOp2, SimdShiftOp,
+    SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftOp,
 };
 use super::pauth::{self, PointerAuth};
 use super::simd;
@@ -2077,6 +2077,25 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::FpMulx { rd, rn, rm, is_double } => {
+                let esize = if is_double { 64 } else { 32 };
+                let keep = simd::lane_mask(esize);
+                // `q == false` still evaluates two 32-bit lanes. Mask the sources so leftover
+                // upper bits cannot raise flags, then keep only lane 0.
+                let raw = simd::fp_three_same_fpcr(
+                    SimdFpOp3::Fmulx,
+                    0,
+                    self.regs.read_q(rn) & keep,
+                    self.regs.read_q(rm) & keep,
+                    is_double,
+                    false,
+                    self.regs.fpcr,
+                );
+                self.regs.write_q(rd, raw & keep);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdScalarTwoMisc { rd, rn, op, esize } => {
                 let e = esize as u32;
                 // only lane 0 of the sources is read, so upper lanes cannot set QC
@@ -2279,6 +2298,8 @@ mod tests {
             (0x4ebc9f5a, "SimdThreeSame"),      // mul v26.4s, v26.4s, v28.4s
             (0x0e21db9c, "SimdTwoMisc"),        // scvtf v28.2s, v28.2s
             (0x7efcd7de, "FpAbd"),              // fabd d30, d30, d28
+            (0x5e21dc03, "FpMulx"),             // fmulx s3, s0, s1
+            (0x5e61dc03, "FpMulx"),             // fmulx d3, d0, d1
             (0x7e21dbee, "SimdScalarTwoMisc"),  // ucvtf s14, s31
             (0x6e22e420, "SimdFpThreeSame"),    // fcmge v0.4s, v1.4s, v2.4s
             (0x4e62e420, "SimdFpThreeSame"),    // fcmeq v0.2d, v1.2d, v2.2d
