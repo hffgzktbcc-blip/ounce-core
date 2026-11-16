@@ -1718,7 +1718,13 @@ impl Cpu {
             }
 
             Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q, scalar } => {
-                let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                let (mut d, mut n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
+                if scalar {
+                    // a scalar op reads lane 0 only: replicate it so the unread lanes cannot raise exception flags
+                    let e = if double { 64 } else { 32 };
+                    n = simd::dup(simd::lane(n, e, 0), e, true);
+                    d = simd::dup(simd::lane(d, e, 0), e, true);
+                }
                 let mut res = simd::fp_by_element_fpcr(op, d, n, m, index as usize, double, q, self.regs.fpcr);
                 if scalar {
                     res &= simd::lane_mask(if double { 64 } else { 32 });
@@ -2073,7 +2079,8 @@ impl Cpu {
             }
 
             Instruction::FpAbd { rd, rn, rm, is_double } => {
-                if self.soft_fp() {
+                // always the soft path: it raises the exception flags (IXC, IOC, ...) the host does at default FPCR too
+                {
                     let (f, env) = self.fp_env(is_double);
                     let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
                     let r = f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b));
@@ -2115,6 +2122,13 @@ impl Cpu {
                 let e = esize as u32;
                 // only lane 0 of the sources is read, so upper lanes cannot set QC
                 let keep = simd::lane_mask(e);
+                if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf | SimdOp2::Fcvtzs | SimdOp2::Fcvtzu) {
+                    // SCVTF/UCVTF round under FPCR.RMode, FCVTZ* flush inputs under FZ (lane 0 only)
+                    let r = simd::int_fp_convert_fpcr(op, self.regs.read_q(rn) & keep, e, false, self.regs.fpcr);
+                    self.regs.write_q(rd, simd::lane(r, e, 0) as u128);
+                    self.regs.advance_pc();
+                    return Ok(StepResult::Continue);
+                }
                 let (r, qc) = simd::two_misc_sat(op, self.regs.read_q(rd) & keep, self.regs.read_q(rn) & keep, e, true);
                 if qc {
                     self.regs.fpsr |= super::registers::FPSR_QC;
