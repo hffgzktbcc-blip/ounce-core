@@ -1290,6 +1290,23 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::SimdByElement { rd, rn, rm, index, op, esize: 8u8 << size, q: false, scalar: true });
     }
 
+    // 26a4c. FCADD (single/double): 0 Q 1 01110 size 0 Rm 1 11 rot 0 1 Rn Rd.
+    //        size 10 = .2S/.4S, size 11 = .2D and needs Q. Half precision and size 11 with Q = 0 stay undecoded.
+    if (raw & 0xBF20_EC00) == 0x2E00_E400 {
+        let double = size == 3;
+        if size < 2 || (double && !q) {
+            return None;
+        }
+        return Some(Instruction::Fcadd {
+            rd,
+            rn,
+            rm,
+            esize: if double { 64 } else { 32 },
+            q: q || double,
+            rot90: (raw >> 12) & 1 == 0,
+        });
+    }
+
     // 26a4b. SQRDMLAH/SQRDMLSH (vector, three-same): 0 Q 1 01110 size 0 Rm 1 000x 1 Rn Rd.
     //        size 01 (half) or 10 (word). Bit 11 selects SH. Other sizes and opcodes stay undecoded.
     if (raw & 0xBF20_8400) == 0x2E00_8400 && (size == 1 || size == 2) {
@@ -2140,6 +2157,24 @@ mod tests {
         // o2 = 1 with op = 1, and o2 = 1 with cmode != 1111, stay undecoded
         for w in [0x2f03_fe00u32, 0x6f03_fe00, 0x0f00_0c00] {
             assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#010x} {:?}", decode(w));
+        }
+    }
+
+    #[test]
+    fn decode_fcadd() {
+        assert_eq!(
+            decode(0x2e93_e7c7),
+            Instruction::Fcadd { rd: 7, rn: 30, rm: 19, esize: 32, q: false, rot90: true }
+        ); // fcadd v7.2s, v30.2s, v19.2s, #90
+        assert_eq!(
+            decode(0x2e8e_f54c),
+            Instruction::Fcadd { rd: 12, rn: 10, rm: 14, esize: 32, q: false, rot90: false }
+        ); // fcadd v12.2s, v10.2s, v14.2s, #270
+        assert!(matches!(decode(0x6e82_e420), Instruction::Fcadd { esize: 32, q: true, rot90: true, .. }));
+        assert!(matches!(decode(0x6ec2_f420), Instruction::Fcadd { esize: 64, q: true, rot90: false, .. }));
+        // half precision and double without Q stay undecoded
+        for w in [0x2e42_e420u32, 0x2ec2_e420] {
+            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#x} {:?}", decode(w));
         }
     }
 

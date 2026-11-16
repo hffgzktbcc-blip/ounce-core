@@ -701,6 +701,16 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// `FCADD`: complex add of pairs. `rot90` is rotation `#90` (else `#270`). `esize` is 32 or 64.
+    Fcadd {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        esize: u8,
+        q: bool,
+        rot90: bool,
+    },
+
     /// FP vector three-same (`FADD`, `FMLA`, `FCMEQ`, ...): `double` selects 64-bit lanes, else 32-bit.
     SimdFpThreeSame {
         rd: u8,
