@@ -968,6 +968,32 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
     if dn && nan { if double { 0x7ff8_0000_0000_0000 } else { 0x7fc0_0000 } } else { r }
 }
 
+/// `FCADD`: pairs of (real, imag) lanes. `#90` is `re = n.re + neg(m.im)`, `im = n.im + m.re`.
+/// `#270` is `re = n.re + m.im`, `im = n.im + neg(m.re)`. The negation is a sign-bit flip before
+/// `FPAdd`, so a NaN subtrahend comes back with its sign flipped and its payload unchanged.
+/// `FPSub` does not do that flip (it reports the original NaN), which is why this is not `FPSub`.
+pub fn fcadd(n: u128, m: u128, esize: u32, q: bool, rot90: bool, fpcr: u32) -> u128 {
+    use super::softfp::{self, BinOp, Env, Fmt};
+    let (f, env) = (Fmt::from_esize(esize), Env::from_fpcr(fpcr));
+    let neg = |x: u64| x ^ (1u64 << (esize - 1));
+    let count = lanes(esize, q);
+    let mut out = 0u128;
+    let mut e = 0;
+    while e + 1 < count {
+        let (nre, nim) = (lane(n, esize, e), lane(n, esize, e + 1));
+        let (mre, mim) = (lane(m, esize, e), lane(m, esize, e + 1));
+        let (real, imag) = if rot90 {
+            (softfp::binop(f, env, BinOp::Add, nre, neg(mim)), softfp::binop(f, env, BinOp::Add, nim, mre))
+        } else {
+            (softfp::binop(f, env, BinOp::Add, nre, mim), softfp::binop(f, env, BinOp::Add, nim, neg(mre)))
+        };
+        set_lane(&mut out, esize, e, real);
+        set_lane(&mut out, esize, e + 1, imag);
+        e += 2;
+    }
+    out
+}
+
 /// `fp_three_same` honouring FPCR.FZ and FPCR.DN for FMAX/FMIN/FMAXNM/FMINNM and their pairwise forms.
 /// Other operations ignore FPCR, as before.
 pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
