@@ -66,15 +66,34 @@ def recent_merged(count):
     return out.stdout.strip().splitlines() if out.returncode == 0 else []
 
 
+def merged_commits_citing(ref, needle, pattern, limit=12):
+    """Commits on `ref` whose message matches `pattern`, newest first.
+
+    Git only pre-filters with a fixed string. The exact match happens in Python, because
+    `git log -E --grep` hands the pattern to the platform's regcomp: `\\b` is a GNU
+    extension that macOS's ERE treats as a literal `b`, so `#401\\b` found nothing there.
+    """
+    out = subprocess.run(['git', 'log', ref, '-i', '-F', '--grep', needle, '--date=short',
+                          '--pretty=format:%h %ad %s%x1f%B%x1e'], capture_output=True, text=True).stdout
+    hits = []
+    for record in out.split('\x1e'):
+        summary, _, message = record.strip('\n').partition('\x1f')
+        if summary and re.search(pattern, message, re.I):
+            hits.append('  ' + summary)
+            if len(hits) == limit:
+                break
+    return '\n'.join(hits)
+
+
 def done_search(args):
     """Answer 'has this already been done?' from merged history and shipped-work records."""
     ref = main_ref()
     for query in args.query:
         number = query.lstrip('#')
+        needle = f'#{number}' if number.isdigit() else query
         pattern = rf'#{number}\b' if number.isdigit() else re.escape(query)
         print(f'== {query}  (searching {ref}, CHANGELOG, PLAN, roadmap, release notes; local data only)')
-        log = subprocess.run(['git', 'log', ref, '-12', '-i', '-E', '--grep', pattern, '--pretty=  %h %ad %s', '--date=short'],
-                             capture_output=True, text=True).stdout.rstrip()
+        log = merged_commits_citing(ref, needle, pattern)
         if log:
             print('Merged commits:\n' + log)
         for name in ['CHANGELOG.md', 'PLAN.md', 'docs/history/PLAN-COMPLETED.md', 'docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md',
