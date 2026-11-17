@@ -11,6 +11,10 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 - Docs: one roadmap entry point for agents (#461); past handoffs moved under `docs/history/`.
 - CI: a `lint` job fails on any rustc or clippy warning (default, `native-jit,nce` and `gpu-present` features, pinned
   toolchain), and an `msrv` job builds default features with Rust 1.89. The tree now has zero warnings.
+- CI: `ci-rerun-infra.yml` re-runs a second time when every job that failed the run was cancelled without ever
+  reaching a runner, as macOS jobs were on two attempts of run 44144034971. At most two automatic re-runs. A real
+  failure is never re-run, and after the first attempt neither is a job that started and was then cancelled.
+  Tested by `scripts/test_ci_rerun_infra.py`.
 - Docs: the stated minimum Rust version was wrong. The committed lockfile and code need Rust 1.89 for the default
   build (not 1.85); `gpu-present` needs 1.90 and `native-jit` 1.97.
 - `run-elf` writes the `ounce.run.v1` report (`--report-json` / `OUNCE_REPORT_JSON`), with `stop_kind`, `pc`, `opcode`,
