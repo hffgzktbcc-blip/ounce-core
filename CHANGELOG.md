@@ -13,6 +13,9 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   toolchain), and an `msrv` job builds default features with Rust 1.89. The tree now has zero warnings.
 - Docs: the stated minimum Rust version was wrong. The committed lockfile and code need Rust 1.89 for the default
   build (not 1.85); `gpu-present` needs 1.90 and `native-jit` 1.97.
+- Fixed: `run` / `run-nro` silently dropped every guest argument starting with `-`, including after `--` (#487).
+  Everything after `--` now reaches the program unchanged; an unknown option before `--` exits 2 with the corrected
+  command; `--gui` after `--` is the guest's, not a window request. `ounce-core run-nro --help` documents this.
 - Fixed: `scripts/done.sh '#N'` found nothing on macOS, because `\b` in `git log -E --grep` is a GNU extension (#484).
 
 ## 0.9.0 — released 2026-11-16

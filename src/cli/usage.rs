@@ -114,10 +114,10 @@ pub(crate) fn print_usage() {
     println!("    From a source checkout: cargo run --release -- <COMMAND> [OPTIONS]\n");
     println!("  {}RUN AND CHECK A PROGRAM (start here):{}", s.bold, s.reset);
     println!("    {}ui{} | {}lab{}               Open the local workbench: drop a .nro, compare engines (and this Mac) [--port N --no-open --dir D]", s.green, s.reset, s.green, s.reset);
-    println!("    {}run-nro{} <file> [args] [--gui]  Run a homebrew .nro; if it stops early, the output says why and what to do next", s.green, s.reset);
+    println!("    {}run-nro{} <file> [args] [-- args]  Run a homebrew .nro; if it stops early, the output says why and what to do next (run-nro --help)", s.green, s.reset);
     println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
     println!("    {}diverge{} <prog.nro|prog.elf> [-- args]  Compare NRO (AArch64 hardware replay) or static ELF across interpreter/Tier-3/Tier-4", s.green, s.reset);
-    println!("    {}run{} <file|dir> [args] [--gui]  Like run-nro, but also accepts .nso and loose folders", s.green, s.reset);
+    println!("    {}run{} <file|dir> [args] [-- args]  Like run-nro, but also accepts .nso and loose folders", s.green, s.reset);
     println!();
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
     println!("    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)", s.green, s.reset);
