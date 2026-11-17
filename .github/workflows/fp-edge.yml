@@ -70,7 +70,7 @@ jobs:
           if-no-files-found: warn
 
   # Issue #485: docs/verify/fp-workload (#359) builds one C source natively, as the reference, and as a static ELF for
-  # `run-elf`, then compares 47 FP ops x 8 FPCR modes byte for byte (value and FPSR) on Tier-3 and Tier-4. Any row that
+  # `run-elf`, then compares 48 FP ops x 8 FPCR modes byte for byte (value and FPSR) on Tier-3 and Tier-4. Any row that
   # is not identical on both tiers fails the job: MISMATCH, OTHER-FAIL, and also UNSUPPORTED, which run.sh itself lets
   # pass. A negative control then re-runs one op with an edited reference and requires MISMATCH, so a comparison that
   # stopped comparing would turn the job red. Limits: this runner is Linux on an Arm Neoverse core, not Apple silicon
@@ -100,7 +100,7 @@ jobs:
           count=$(printf '%s\n' "$rows" | grep -c .)
           bad=$(printf '%s\n' "$rows" | awk -F'\t' '$3 != "identical" || $4 != "identical"')
           echo "$count ops compared"
-          if [ "$count" -lt 47 ]; then echo "expected all 47 ops"; exit 1; fi
+          if [ "$count" -lt 48 ]; then echo "expected all 48 ops"; exit 1; fi
           if [ -n "$bad" ]; then printf 'Not identical on both tiers:\n%s\n' "$bad"; exit 1; fi
       - name: Negative control (an edited reference must be flagged)
         shell: bash

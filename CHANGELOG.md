@@ -14,7 +14,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 - Fixed: guest debug output (`svcOutputDebugString`) on `run` / `run-nro` waited in stdout's buffer until the next
   newline, so a hung program's last partial line was lost when an outer timeout killed the run (#476). It is now
   flushed as it is written; `run-elf` already did this.
-- CI: the whole-program FP workload (`docs/verify/fp-workload`, 47 ops x 8 FPCR modes, native vs `run-elf` Tier-3
+- CI: the whole-program FP workload (`docs/verify/fp-workload`, 48 ops x 8 FPCR modes, native vs `run-elf` Tier-3
   and Tier-4) runs on a Linux ARM64 runner for pull requests that touch the engines (#485). Any op that is not
   identical on both tiers fails it, and a deliberately edited reference must fail it too.
 - `framebuffer_hash` for 3D frames (#486): `--deterministic` / `OUNCE_DETERMINISTIC=1` on `run` / `run-nro` now draws
