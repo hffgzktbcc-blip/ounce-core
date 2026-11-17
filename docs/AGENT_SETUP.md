@@ -42,6 +42,10 @@ prints `scripts/next.sh`). Python 3.9+ for tools; Rust edition 2024 (cargo >= 1.
    backlog is `PLAN.md` plus open issues and PRs.
 6. **Reading CI.** `scripts/gate.sh` is the fast local equivalent. A hosted job that needs
    artifacts from another job fails as a cascade when that job fails; fix the first red job.
+   A run that fails only because hosted jobs were cancelled is re-run automatically
+   (`ci-rerun-infra.yml`: once, and a second time if those jobs never reached a runner). If it is
+   still red, re-run the cancelled job or use "Re-run failed jobs". Re-running only a `Test (...)`
+   summary re-reads the stored `cancelled` result and fails again.
 7. **Version and link drift is checked in CI.** `python3 scripts/check_pins.py` (Cargo.toml, CITATION.cff, CHANGELOG
    and `docs/releases/` must agree) and `python3 scripts/check_links.py` (no broken relative Markdown links) run as
    tests. When you cut a release or move a doc, run them first.
