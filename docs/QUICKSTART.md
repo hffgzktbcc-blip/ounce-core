@@ -37,7 +37,8 @@ cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture \
   --present=headless --report-json=run.json
 ```
 
-`run.json` is `ounce.run.v1`. Guest text stays on stdout. The same path can be
+`run.json` is `ounce.run.v1`. Guest text stays on stdout and is flushed as the
+guest writes it, so a hung program's output shows before a timeout stops it. The same path can be
 given as `OUNCE_REPORT_JSON`. `run`, `run-nro` and `run-elf` write the file.
 
 `--audio=null` (or `OUNCE_AUDIO=null`) does not open a host audio device.

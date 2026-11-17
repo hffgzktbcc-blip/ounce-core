@@ -48,16 +48,62 @@ fn nro_only_command_rejects_raw_input_before_execution() {
 
 /// The issue's minimal NRO: `mov w0, #0; svc #7` (svcExitProcess), 128 bytes.
 #[cfg(not(windows))]
-fn exit_nro_bytes() -> Vec<u8> {
-    let text: Vec<u8> = [0x5280_0000u32, 0xD400_00E1].iter().flat_map(|w| w.to_le_bytes()).collect();
+/// A minimal NRO whose header branches to 0x80, where `text` (code, then any data it uses) starts.
+fn nro_with_text(text: &[u8]) -> Vec<u8> {
     let total = 0x80 + text.len();
     let mut b = vec![0u8; total];
     b[0..4].copy_from_slice(&0x1400_0020u32.to_le_bytes());
     b[0x10..0x14].copy_from_slice(b"NRO0");
     b[0x18..0x1c].copy_from_slice(&(total as u32).to_le_bytes());
     b[0x24..0x28].copy_from_slice(&(total as u32).to_le_bytes());
-    b[0x80..].copy_from_slice(&text);
+    b[0x80..].copy_from_slice(text);
     b
+}
+
+fn exit_nro_bytes() -> Vec<u8> {
+    let text: Vec<u8> = [0x5280_0000u32, 0xD400_00E1].iter().flat_map(|w| w.to_le_bytes()).collect();
+    nro_with_text(&text)
+}
+
+/// #476: guest debug output reaches stdout as it is written, not when the run ends, so a hung program's last words
+/// survive an outer timeout. The guest prints a partial line (no newline) and then spins; stdout is a pipe, as it is
+/// under `ounce-hb`. The run is killed as soon as the text arrives, or after 20 seconds.
+#[test]
+fn guest_output_is_visible_while_a_hung_program_still_runs() {
+    use std::io::Read;
+    let message = b"guest says hello, then hangs";
+    // ADR X0, message; MOVZ X1, #len; SVC #0x27 (svcOutputDebugString); B . (spin)
+    let code = [0x1000_0080u32, 0xD280_0001 | ((message.len() as u32) << 5), 0xD400_04E1, 0x1400_0000];
+    let mut text: Vec<u8> = code.iter().flat_map(|w| w.to_le_bytes()).collect();
+    text.extend_from_slice(message);
+    let path = std::env::temp_dir().join(format!("ounce_hang_{}.nro", std::process::id()));
+    std::fs::write(&path, nro_with_text(&text)).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run-nro", path.to_str().unwrap(), "--present=headless"])
+        .env("OUNCE_NRO_BUDGET", "1000000000000")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+    let (seen_tx, seen_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let (mut seen, mut chunk) = (Vec::new(), [0u8; 4096]);
+        while let Ok(n @ 1..) = stdout.read(&mut chunk) {
+            seen.extend_from_slice(&chunk[..n]);
+            if seen.windows(message.len()).any(|w| w == message) {
+                let _ = seen_tx.send(());
+                return;
+            }
+        }
+    });
+    let visible = seen_rx.recv_timeout(std::time::Duration::from_secs(20)).is_ok();
+    let still_running = child.try_wait().unwrap().is_none();
+    let _ = child.kill();
+    let _ = child.wait();
+    std::fs::remove_file(path).unwrap();
+    assert!(visible, "the guest's text did not reach stdout while the program ran");
+    assert!(still_running, "the program had already stopped, so this did not test a hung run");
 }
 
 /// Runs the exit NRO with one guest argument of `arg_len` bytes. Returns the output and the file name, which sets
