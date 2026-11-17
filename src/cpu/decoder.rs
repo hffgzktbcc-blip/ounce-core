@@ -631,6 +631,22 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
+    // 14a3. FRINT32Z/FRINT32X/FRINT64Z/FRINT64X (scalar): 0 0 0 11110 ftype 1 0100 op2 10000 Rn Rd (FEAT_FRINTTS)
+    if (raw & 0xFF3E_7C00) == 0x1E28_4000 && (raw >> 22) & 0x3 <= 1 {
+        let op = match (raw >> 15) & 0x3 {
+            0 => SimdFpOp2::Frint32z,
+            1 => SimdFpOp2::Frint32x,
+            2 => SimdFpOp2::Frint64z,
+            _ => SimdFpOp2::Frint64x,
+        };
+        return Instruction::FpScalarTwoMisc {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            op,
+            is_double: (raw >> 22) & 0x3 == 1,
+        };
+    }
+
     // 14a4. Float <-> fixed-point conversion: FCVTZS/FCVTZU (rmode 11, opcode 0/1), SCVTF/UCVTF (rmode 00,
     // opcode 2/3). Pattern: sf 0 0 11110 ftype 0 rmode opcode scale Rn Rd, fbits = 64 - scale
     if (raw & 0x7F200000) == 0x1E000000 && (raw >> 22) & 0x3 <= 1 {
@@ -1413,6 +1429,18 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         return Some(Instruction::FpMulx { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
     }
 
+    // FRECPS / FRSQRTS (scalar): 01 0 11110 a sz 1 Rm 11111 1 Rn Rd (a = 0 FRECPS, a = 1 FRSQRTS)
+    if (raw & 0xFF20_FC00) == 0x5E20_FC00 {
+        let op = if (raw >> 23) & 1 == 1 { SimdFpOp3::Frsqrts } else { SimdFpOp3::Frecps };
+        return Some(Instruction::FpScalarThreeSame { rd, rn, rm, op, is_double: (raw >> 22) & 1 == 1 });
+    }
+
+    // FRECPE / FRSQRTE (scalar): 01 U 11110 1 sz 10000 11101 10 Rn Rd (U = 0 FRECPE, U = 1 FRSQRTE)
+    if (raw & 0xDFBF_FC00) == 0x5EA1_D800 {
+        let op = if (raw >> 29) & 1 == 1 { SimdFpOp2::Frsqrte } else { SimdFpOp2::Frecpe };
+        return Some(Instruction::FpScalarTwoMisc { rd, rn, op, is_double: (raw >> 22) & 1 == 1 });
+    }
+
     // 27c. AdvSIMD scalar three same: 01 U 11110 size 1 Rm opcode 1 Rn Rd.
     //      A one-lane op writes lane 0 and zeroes the rest, exactly the scalar semantics.
     if (raw & 0xDF20_0400) == 0x5E20_0400 && (raw >> 11) & 0x1F < 0b11000 {
@@ -2060,6 +2088,31 @@ mod tests {
             decode(0x7EA2D420),
             Instruction::FpAbd { rd: 0, rn: 1, rm: 2, is_double: false }
         ); // fabd s0, s1, s2
+    }
+
+    #[test]
+    fn test_decode_scalar_recip_and_frint3264() {
+        use SimdFpOp2::*;
+        use SimdFpOp3::*;
+        let three = |w| match decode(w) { Instruction::FpScalarThreeSame { op, is_double, .. } => Some((op, is_double)), _ => None };
+        assert_eq!(three(0x5E21_FC02), Some((Frecps, false)));
+        assert_eq!(three(0x5E61_FC02), Some((Frecps, true)));
+        assert_eq!(three(0x5EA1_FC02), Some((Frsqrts, false)));
+        assert_eq!(three(0x5EE1_FC02), Some((Frsqrts, true)));
+        let two = |w| match decode(w) { Instruction::FpScalarTwoMisc { op, is_double, .. } => Some((op, is_double)), _ => None };
+        assert_eq!(two(0x5EA1_D802), Some((Frecpe, false)));
+        assert_eq!(two(0x5EE1_D802), Some((Frecpe, true)));
+        assert_eq!(two(0x7EA1_D802), Some((Frsqrte, false)));
+        assert_eq!(two(0x7EE1_D802), Some((Frsqrte, true)));
+        assert_eq!(two(0x1E28_4002), Some((Frint32z, false)));
+        assert_eq!(two(0x1E68_4002), Some((Frint32z, true)));
+        assert_eq!(two(0x1E28_C002), Some((Frint32x, false)));
+        assert_eq!(two(0x1E69_4002), Some((Frint64z, true)));
+        assert_eq!(two(0x1E69_C002), Some((Frint64x, true)));
+        // neighbours stay what they were: FMULX scalar, scalar FRINTP, vector FRECPE
+        assert!(matches!(decode(0x5E21_DC03), Instruction::FpMulx { .. }));
+        assert!(matches!(decode(0x1E24_C021), Instruction::FpRound { .. }));
+        assert!(matches!(decode(0x4EA1_D800), Instruction::SimdFpTwoMisc { op: Frecpe, .. }));
     }
 
     #[test]

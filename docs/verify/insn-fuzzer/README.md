@@ -120,6 +120,9 @@ per class, host vs interpreter, all 8 FPCR values:
 | FCVTXN/FCVTXN2 vector (`0xbf3ffc00:0x2e216800`) | 798,753 | 0 | 0 |
 | FCVTXN scalar (`0xff3ffc00:0x7e216800`) | 800,772 | 0 | 0 |
 | FMOV vector immediate half precision (`0xbff8fc00:0x0f00fc00`) | 3,200,000 | 0 | 0 |
+| FRECPE/FRSQRTE scalar S/D (`0xdfbffc00:0x5ea1d800`) | 3,200,000 | 0 | 0 |
+| FRECPS/FRSQRTS scalar S/D (`0xff20fc00:0x5e20fc00`) | 3,200,000 | 0 | 0 |
+| FRINT32Z/32X/64Z/64X scalar (`0xff3e7c00:0x1e284000`) | 1,801,223 | 0 | 0 |
 
 ## Not covered (explicit)
 - Loads/stores, branches, system, integer scalar data-processing, SVE/SME, crypto, atomics.
