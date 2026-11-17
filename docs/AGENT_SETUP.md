@@ -40,3 +40,6 @@ prints `scripts/next.sh`). Python 3.9+ for tools; Rust edition 2024 (cargo >= 1.
    backlog is `PLAN.md` plus open issues and PRs.
 6. **Reading CI.** `scripts/gate.sh` is the fast local equivalent. A hosted job that needs
    artifacts from another job fails as a cascade when that job fails; fix the first red job.
+7. **Version and link drift is checked in CI.** `python3 scripts/check_pins.py` (Cargo.toml, CITATION.cff, CHANGELOG
+   and `docs/releases/` must agree) and `python3 scripts/check_links.py` (no broken relative Markdown links) run as
+   tests. When you cut a release or move a doc, run them first.
