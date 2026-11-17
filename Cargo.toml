@@ -16,7 +16,7 @@ default = []
 native-jit = ["dep:ounce-recompiler"]
 # Host GPU presentation (Vulkan on Linux/Windows, Metal on macOS) via wgpu.
 gpu-present = ["dep:wgpu", "dep:winit", "dep:pollster"]
-# Native execution on AArch64 hosts (`--cpu=native`, PLAN.md step 4). Off by default.
+# Native execution on AArch64 hosts (`--cpu=native`). Off by default.
 nce = ["dep:ounce-nce"]
 
 [dependencies]

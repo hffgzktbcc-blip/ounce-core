@@ -147,7 +147,7 @@ That was a much more defensible foundation.
 
 It did not erase our history or resolve every provenance question. It gave us a better standard for the work ahead.
 
-Read the actual [provenance documentation](PROVENANCE.md), [clean-room boundaries](CLEAN_ROOM.md), and [evidence limits](LIMITS.md). This story is no substitute for any of them.
+Read the actual [provenance documentation](../PROVENANCE.md), [clean-room boundaries](../CLEAN_ROOM.md), and [evidence limits](../LIMITS.md). This story is no substitute for any of them.
 
 ## Chapter 4: We were eating good KFC tonight
 
@@ -333,4 +333,4 @@ And to the next person who finds a bug, challenges a result or helps us solve a 
 
 ---
 
-*Author's note: This is an affectionate personal account of the project's journey. The AI-agent personalities and call-signs are humour, not literal descriptions of independent actors. For technical capabilities, independent verification and historical provenance, consult Ounce-Core's formal [limits](LIMITS.md), [reproduction instructions](REPRODUCE.md) and [provenance documentation](PROVENANCE.md).*
+*Author's note: This is an affectionate personal account of the project's journey. The AI-agent personalities and call-signs are humour, not literal descriptions of independent actors. For technical capabilities, independent verification and historical provenance, consult Ounce-Core's formal [limits](../LIMITS.md), [reproduction instructions](../REPRODUCE.md) and [provenance documentation](../PROVENANCE.md).*

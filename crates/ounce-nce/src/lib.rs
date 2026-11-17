@@ -1,4 +1,4 @@
-//! Native code execution (NCE, PLAN.md step 4).
+//! Native code execution (NCE).
 //!
 //! A homebrew image runs directly on an AArch64 host CPU. Its `svc`, `TPIDR_EL0` / `TPIDRRO_EL0`,
 //! timer and `x18` instructions are rewritten into trampolines first ([`patch`]); everything else is

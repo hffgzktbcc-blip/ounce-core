@@ -485,7 +485,7 @@ Build a clean, inspectable, and high-performance AArch64 research runtime that e
 
 #### READ THIS FIRST (overrides everything below; owner decision 2026-11-03)
 
-1. **The only plan is [`PLAN.md`](../PLAN.md).** Read it before any work, do only its next unchecked step, tick it with
+1. **The only plan is [`PLAN.md`](../../../PLAN.md).** Read it before any work, do only its next unchecked step, tick it with
    one line of proof, then end the session. `HANDOFF.md` and older notes are history, not plans.
 2. **Proof = a real outside homebrew program passing its pixel oracle in CI.** Unit tests guard code but are never
    a milestone or a "verified" claim.
@@ -499,7 +499,7 @@ Build a clean, inspectable, and high-performance AArch64 research runtime that e
 
 #### Agent rules for `ounce-core`
 
-Short on purpose: every agent loads this file at session start. The plan is [`PLAN.md`](../PLAN.md); finished milestones and past handoffs are history in `docs/HANDOFF_HISTORY.md` (grep it only when a step needs it).
+Short on purpose: every agent loads this file at session start. The plan is [`PLAN.md`](../../../PLAN.md); finished milestones and past handoffs are history in `docs/HANDOFF_HISTORY.md` (grep it only when a step needs it).
 
 **Outside samples with a verified frame: 4** (`simplegfx`, `deko_basic`, `romfs`, `startup`; oracles in `docs/*-oracle.md`).
 
