@@ -387,3 +387,31 @@ fn run_nro_help_documents_the_separator() {
     assert!(stdout.contains("usage: ounce-core run-nro <path>"), "{stdout}");
     assert!(stdout.contains("Everything after `--` is passed to the program unchanged"), "{stdout}");
 }
+
+/// `run-elf` writes the same `ounce.run.v1` file as `run-nro`; its field set must match the schema document (#473).
+#[test]
+fn run_elf_writes_an_ounce_run_v1_report_and_dumps_registers() {
+    let elf = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/linux-elf/bin/exitcode.elf");
+    let report = std::env::temp_dir().join(format!("ounce_run_elf_report_{}.json", std::process::id()));
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run-elf", elf, "--cpu=tier3", "--dump-regs"])
+        .arg(format!("--report-json={}", report.display()))
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(42), "the process status is still the guest's");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("[run-elf] registers at stop: pc=0x") && stderr.contains("x0=0x000000000000002a"), "{stderr}");
+    let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+    std::fs::remove_file(&report).unwrap();
+    assert_eq!(json["schema"], "ounce.run.v1");
+    assert_eq!(json["stop_kind"], "clean_exit");
+    assert_eq!(json["exit_code"], 0);
+    assert_eq!(json["guest_exit_status"], 42);
+    assert_eq!(json["tier"], "tier3");
+    assert!(json["insns_executed"].as_u64().unwrap() > 0);
+    let doc = include_str!("../docs/OUNCE_RUN_V1_SCHEMA.md");
+    let fields = doc.split("## Schema Fields").nth(1).unwrap().split("\n---").next().unwrap();
+    for key in json.as_object().unwrap().keys() {
+        assert!(fields.contains(&format!("| `{key}` |")), "{key} is not in docs/OUNCE_RUN_V1_SCHEMA.md");
+    }
+}

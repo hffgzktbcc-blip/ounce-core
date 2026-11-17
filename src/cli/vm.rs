@@ -556,35 +556,23 @@ pub(crate) fn run_vm_internal(
         cpu.regs.read_d(0)
     );
 
-    let tier_str = match cpu::CpuTier::from_env() {
-        cpu::CpuTier::Interpreter => "interpreter",
-        cpu::CpuTier::Tier3 => "tier3",
-        cpu::CpuTier::Tier4 => "tier4",
-        cpu::CpuTier::Native => "nce",
-    };
-    let (stop_kind, exit_code) = match stop {
-        VmStop::ExitProcess => ("clean_exit", 0),
-        VmStop::WindowClosed => ("window_closed", 0),
-        VmStop::FrameLimit => ("frame_limit", 0),
-        VmStop::Break => ("svc_break", 13),
-        VmStop::UnhandledSvc => ("unhandled_svc", 14),
-        VmStop::Halt => ("cpu_halted", 15),
-        VmStop::Budget => ("budget_exhausted", 16),
-        VmStop::Fault => {
-            if stop_opcode.is_some() {
-                ("unimplemented_insn", 10)
-            } else if stop_fault_addr.is_some() {
-                ("memory_fault", 11)
-            } else {
-                ("cpu_error", 12)
-            }
-        }
+    let stop_kind = match stop {
+        VmStop::ExitProcess => "clean_exit",
+        VmStop::WindowClosed => "window_closed",
+        VmStop::FrameLimit => "frame_limit",
+        VmStop::Break => "svc_break",
+        VmStop::UnhandledSvc => "unhandled_svc",
+        VmStop::Halt => "cpu_halted",
+        VmStop::Budget => "budget_exhausted",
+        VmStop::Fault if stop_opcode.is_some() => "unimplemented_insn",
+        VmStop::Fault if stop_fault_addr.is_some() => "memory_fault",
+        VmStop::Fault => "cpu_error",
     };
     let report = run_report::RunReport {
-        tier: tier_str,
+        tier: cpu::CpuTier::from_env().report_label(),
         silent_fallback: false,
         stop_kind,
-        exit_code,
+        exit_code: run_report::exit_code_for(stop_kind),
         pc: stop_pc,
         opcode: stop_opcode,
         fault_addr: stop_fault_addr,
@@ -593,6 +581,7 @@ pub(crate) fn run_vm_internal(
         insns_executed: instructions_executed as u64,
         frames_presented: frames_presented as u64,
         framebuffer_hash: display.as_ref().and_then(|d| d.last_frame_hash()).map(str::to_owned),
+        guest_exit_status: None,
         message: stop_message,
     };
 
@@ -693,6 +682,7 @@ mod harness_gate_tests {
                 insns_executed: 0,
                 frames_presented: 0,
                 framebuffer_hash: None,
+                guest_exit_status: None,
                 message: None,
             },
         }

@@ -3,8 +3,9 @@
 use super::elf::{self, ElfError};
 use super::syscalls::{Outcome, Output, Process};
 use crate::cpu::tier2_jit::BlockExit;
-use crate::cpu::{Cpu, CpuEngine, CpuTier, StepResult};
+use crate::cpu::{Cpu, CpuEngine, CpuError, CpuTier, StepResult};
 use crate::mmu::Memory;
+use crate::run_report::{self, RunReport};
 
 /// Exit status when the guest hit a syscall the layer does not implement.
 pub const EXIT_UNIMPLEMENTED_SYSCALL: i32 = 70;
@@ -36,12 +37,54 @@ pub enum Stop {
     Failed { diagnosis: String, status: i32 },
 }
 
+/// Registers when the program stopped, for `--dump-regs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StopRegs {
+    pub pc: u64,
+    pub x0: u64,
+    /// Raw bits of D0 (the low 64 bits of V0).
+    pub d0: u64,
+    /// N, Z, C, V as bits 3..0.
+    pub nzcv: u32,
+}
+
+impl StopRegs {
+    fn capture(cpu: &Cpu, pc: u64) -> Self {
+        Self { pc, x0: cpu.regs.read_x(0), d0: cpu.regs.read_q(0) as u64, nzcv: cpu.regs.pstate.to_bits() >> 28 }
+    }
+}
+
+/// Structured facts about how the program stopped: the `ounce.run.v1` fields and `--dump-regs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct StopDetail {
+    /// `ounce.run.v1` `stop_kind` (docs/OUNCE_RUN_V1_SCHEMA.md).
+    pub stop_kind: &'static str,
+    pub pc: Option<u64>,
+    pub opcode: Option<u32>,
+    pub fault_addr: Option<u64>,
+    /// The Linux syscall number (`x8`) of an unimplemented syscall, or the immediate of a non-zero `SVC #imm`.
+    pub svc_id: Option<u32>,
+    /// `None` when the program never started.
+    pub regs: Option<StopRegs>,
+}
+
+impl StopDetail {
+    fn at(stop_kind: &'static str, cpu: &Cpu, pc: u64) -> Self {
+        Self { stop_kind, pc: Some(pc), regs: Some(StopRegs::capture(cpu, pc)), ..Self::default() }
+    }
+
+    fn not_started() -> Self {
+        Self { stop_kind: "loader_error", ..Self::default() }
+    }
+}
+
 #[derive(Debug)]
 pub struct Report {
     pub stop: Stop,
     pub instructions: u64,
     pub syscalls: u64,
     pub engine: &'static str,
+    pub detail: StopDetail,
 }
 
 impl Report {
@@ -51,10 +94,54 @@ impl Report {
             Stop::Failed { status, .. } => *status,
         }
     }
+
+    /// The `ounce.run.v1` report. `exit_code` says how the engine stopped (0 for any clean exit);
+    /// `guest_exit_status` carries the program's own status, which is what a test harness reports through.
+    pub fn to_run_report(&self, requested: CpuTier) -> RunReport {
+        let tier = match self.engine {
+            "Interpreter" => "interpreter",
+            "Tier-3" => "tier3",
+            "Tier-4" => "tier4",
+            _ => requested.report_label(),
+        };
+        RunReport {
+            tier,
+            silent_fallback: tier != requested.report_label(),
+            stop_kind: self.detail.stop_kind,
+            exit_code: run_report::exit_code_for(self.detail.stop_kind),
+            pc: self.detail.pc,
+            opcode: self.detail.opcode,
+            fault_addr: self.detail.fault_addr,
+            svc_id: self.detail.svc_id,
+            break_result: None,
+            insns_executed: self.instructions,
+            frames_presented: 0,
+            framebuffer_hash: None,
+            guest_exit_status: match self.stop {
+                Stop::Exited(code) => Some(code & 0xff),
+                Stop::Failed { .. } => None,
+            },
+            message: match &self.stop {
+                Stop::Failed { diagnosis, .. } => Some(diagnosis.clone()),
+                Stop::Exited(_) => None,
+            },
+        }
+    }
 }
 
-fn fail(diagnosis: String, status: i32, engine: &'static str, instructions: u64, syscalls: u64) -> Report {
-    Report { stop: Stop::Failed { diagnosis, status }, instructions, syscalls, engine }
+/// `--dump-regs` text: one line, stable field order.
+pub fn describe_regs(regs: Option<StopRegs>) -> String {
+    match regs {
+        Some(r) => format!(
+            "registers at stop: pc={:#018x} x0={:#018x} d0={:#018x} ({}) nzcv={:04b}",
+            r.pc, r.x0, r.d0, f64::from_bits(r.d0), r.nzcv
+        ),
+        None => "registers at stop: unavailable (the program did not start)".to_string(),
+    }
+}
+
+fn fail(diagnosis: String, status: i32, detail: StopDetail, engine: &'static str, instructions: u64, syscalls: u64) -> Report {
+    Report { stop: Stop::Failed { diagnosis, status }, instructions, syscalls, engine, detail }
 }
 
 pub fn run(elf_bytes: &[u8], argv: &[String], opts: &Options, out: &mut dyn Output, log: &mut dyn FnMut(&str)) -> Report {
@@ -62,16 +149,19 @@ pub fn run(elf_bytes: &[u8], argv: &[String], opts: &Options, out: &mut dyn Outp
     let image = match elf::load(elf_bytes, &mut mmu) {
         Ok(i) => i,
         Err(e @ (ElfError::NotElf | ElfError::Unsupported(_) | ElfError::Malformed(_))) => {
-            return fail(format!("cannot load ELF: {e}"), EXIT_LOAD_ERROR, "none", 0, 0);
+            return fail(format!("cannot load ELF: {e}"), EXIT_LOAD_ERROR, StopDetail::not_started(), "none", 0, 0);
         }
     };
     let execfn = argv.first().map(String::as_str).unwrap_or("a.out");
     let sp = match elf::build_stack(&mut mmu, &image, argv, &[], execfn) {
         Ok(sp) => sp,
-        Err(e) => return fail(format!("cannot build process stack: {e}"), EXIT_LOAD_ERROR, "none", 0, 0),
+        Err(e) => {
+            return fail(format!("cannot build process stack: {e}"), EXIT_LOAD_ERROR, StopDetail::not_started(), "none", 0, 0);
+        }
     };
     if opts.tier == CpuTier::Native {
-        return fail("--cpu=native is not supported by run-elf (use tier3 or tier4)".into(), EXIT_LOAD_ERROR, "none", 0, 0);
+        let why = "--cpu=native is not supported by run-elf (use tier3 or tier4)".into();
+        return fail(why, EXIT_LOAD_ERROR, StopDetail::not_started(), "none", 0, 0);
     }
     let mut engine = CpuEngine::new(opts.tier);
     let engine_name = engine.name();
@@ -84,7 +174,7 @@ pub fn run(elf_bytes: &[u8], argv: &[String], opts: &Options, out: &mut dyn Outp
         if insns >= opts.max_instructions {
             return fail(
                 format!("instruction budget of {} exhausted at pc={:#x} (raise with --max-insns=N)", opts.max_instructions, cpu.regs.pc),
-                EXIT_BUDGET, engine_name, insns, syscalls,
+                EXIT_BUDGET, StopDetail::at("budget_exhausted", &cpu, cpu.regs.pc), engine_name, insns, syscalls,
             );
         }
         let slice = (opts.max_instructions - insns).min(200_000) as usize;
@@ -94,9 +184,10 @@ pub fn run(elf_bytes: &[u8], argv: &[String], opts: &Options, out: &mut dyn Outp
             BlockExit::Svc { svc_id } => {
                 let svc_pc = cpu.regs.pc.wrapping_sub(4);
                 if svc_id != 0 {
+                    let detail = StopDetail { svc_id: Some(svc_id as u32), ..StopDetail::at("unhandled_svc", &cpu, svc_pc) };
                     return fail(
                         format!("SVC #{svc_id:#x} at pc={svc_pc:#x} is not a Linux syscall (Linux AArch64 uses SVC #0)"),
-                        EXIT_UNIMPLEMENTED_SYSCALL, engine_name, insns, syscalls,
+                        EXIT_UNIMPLEMENTED_SYSCALL, detail, engine_name, insns, syscalls,
                     );
                 }
                 let nr = cpu.regs.read_x(8);
@@ -104,7 +195,8 @@ pub fn run(elf_bytes: &[u8], argv: &[String], opts: &Options, out: &mut dyn Outp
                 syscalls += 1;
                 if nr == 139 {
                     if proc.signal_return(&mut cpu, &mmu).is_err() {
-                        return fail("invalid rt_sigreturn frame".into(), EXIT_FAULT, engine_name, insns, syscalls);
+                        let detail = StopDetail::at("cpu_error", &cpu, svc_pc);
+                        return fail("invalid rt_sigreturn frame".into(), EXIT_FAULT, detail, engine_name, insns, syscalls);
                     }
                     continue;
                 }
@@ -115,25 +207,29 @@ pub fn run(elf_bytes: &[u8], argv: &[String], opts: &Options, out: &mut dyn Outp
                 match outcome {
                     Outcome::Return(v) => cpu.regs.write_x(0, v as u64),
                     Outcome::Exit(code) => {
-                        return Report { stop: Stop::Exited(code), instructions: insns, syscalls, engine: engine_name };
+                        let detail = StopDetail::at("clean_exit", &cpu, svc_pc);
+                        return Report { stop: Stop::Exited(code), instructions: insns, syscalls, engine: engine_name, detail };
                     }
                     Outcome::Unimplemented(why) => {
-                        return fail(format!("{why} at pc={svc_pc:#x}"), EXIT_UNIMPLEMENTED_SYSCALL, engine_name, insns, syscalls);
+                        let detail = StopDetail { svc_id: u32::try_from(nr).ok(), ..StopDetail::at("unhandled_svc", &cpu, svc_pc) };
+                        return fail(format!("{why} at pc={svc_pc:#x}"), EXIT_UNIMPLEMENTED_SYSCALL, detail, engine_name, insns, syscalls);
                     }
                 }
             }
             BlockExit::Fault { pc } => {
                 if proc.deliver_segv(&mut cpu, &mut mmu, pc) { continue; }
-                return fail(diagnose_fault(&mut cpu, &mut mmu, pc), EXIT_FAULT, engine_name, insns, syscalls);
+                let (diagnosis, detail) = diagnose_fault(&mut cpu, &mut mmu, pc);
+                return fail(diagnosis, EXIT_FAULT, detail, engine_name, insns, syscalls);
             }
             _ => {}
         }
     }
 }
 
-/// Re-steps the faulting instruction on the interpreter to learn why it failed. The program is
-/// being stopped anyway, so the register state this disturbs does not matter.
-fn diagnose_fault(cpu: &mut Cpu, mmu: &mut Memory, pc: u64) -> String {
+/// Re-steps the faulting instruction on the interpreter to learn why it failed. Registers are captured
+/// first; the program is being stopped anyway, so the state the re-step disturbs does not matter.
+fn diagnose_fault(cpu: &mut Cpu, mmu: &mut Memory, pc: u64) -> (String, StopDetail) {
+    let mut detail = StopDetail::at("cpu_error", cpu, pc);
     let word = mmu.read_u32(pc).ok();
     let word_text = match word {
         Some(w) => format!("instruction word {w:#010x}"),
@@ -141,11 +237,27 @@ fn diagnose_fault(cpu: &mut Cpu, mmu: &mut Memory, pc: u64) -> String {
     };
     cpu.regs.pc = pc;
     let reason = match cpu.step(mmu) {
-        Err(e) => e.to_string(),
-        Ok(StepResult::Halt(m)) => format!("CPU halted: {m}"),
+        Err(e) => {
+            match &e {
+                CpuError::UnimplementedInstruction { raw, .. } => {
+                    detail.stop_kind = "unimplemented_insn";
+                    detail.opcode = Some(*raw);
+                }
+                CpuError::Memory(m) => {
+                    detail.stop_kind = "memory_fault";
+                    detail.fault_addr = Some(m.addr());
+                }
+                CpuError::Breakpoint { .. } | CpuError::Halted(_) | CpuError::BranchTarget { .. } => {}
+            }
+            e.to_string()
+        }
+        Ok(StepResult::Halt(m)) => {
+            detail.stop_kind = "cpu_halted";
+            format!("CPU halted: {m}")
+        }
         Ok(_) => "engine faulted but the interpreter executes it (engine disagreement; try --cpu=tier3)".to_string(),
     };
-    format!("fault at pc={pc:#x}, {word_text}: {reason}")
+    (format!("fault at pc={pc:#x}, {word_text}: {reason}"), detail)
 }
 
 /// Writes guest fd 1 and 2 to the host's stdout and stderr.
@@ -167,6 +279,7 @@ impl Output for HostOutput {
 /// CLI entry: `args` are everything after `run-elf`. Returns the process exit status.
 pub fn cli(args: &[String]) -> i32 {
     let mut opts = Options { tier: CpuTier::from_env(), ..Options::default() };
+    let mut dump_regs = false;
     let mut path: Option<&String> = None;
     let mut guest: Vec<String> = Vec::new();
     let mut i = 0;
@@ -187,6 +300,8 @@ pub fn cli(args: &[String]) -> i32 {
             opts.deterministic = true;
         } else if a == "--trace-syscalls" {
             opts.trace_syscalls = true;
+        } else if a == "--dump-regs" {
+            dump_regs = true;
         } else if a.starts_with("--") && path.is_none() {
             eprintln!("run-elf: unknown option '{a}'");
             return 2;
@@ -199,22 +314,24 @@ pub fn cli(args: &[String]) -> i32 {
         i += 1;
     }
     let Some(path) = path else {
-        eprintln!("usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [-- args...]");
+        eprintln!("usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [-- args...]");
         return 2;
     };
-    let bytes = match std::fs::read(path) {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("run-elf: cannot read {path}: {e}");
-            return EXIT_LOAD_ERROR;
+    let report = match std::fs::read(path) {
+        Ok(bytes) => {
+            let mut argv = vec![path.clone()];
+            argv.extend(guest);
+            run(&bytes, &argv, &opts, &mut HostOutput, &mut |l| eprintln!("[run-elf] {l}"))
         }
+        Err(e) => fail(format!("cannot read {path}: {e}"), EXIT_LOAD_ERROR, StopDetail::not_started(), "none", 0, 0),
     };
-    let mut argv = vec![path.clone()];
-    argv.extend(guest);
-    let report = run(&bytes, &argv, &opts, &mut HostOutput, &mut |l| eprintln!("[run-elf] {l}"));
     eprintln!("[run-elf] engine={} instructions={} syscalls={}", report.engine, report.instructions, report.syscalls);
     if let Stop::Failed { diagnosis, .. } = &report.stop {
         eprintln!("run-elf: DIAGNOSIS: {diagnosis}");
     }
+    if dump_regs {
+        eprintln!("[run-elf] {}", describe_regs(report.detail.regs));
+    }
+    run_report::write_if_configured(&report.to_run_report(opts.tier));
     report.exit_status()
 }

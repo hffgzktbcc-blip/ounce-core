@@ -1,4 +1,4 @@
-use super::runner::{run, Options, Report, Stop};
+use super::runner::{describe_regs, run, Options, Report, Stop};
 use super::syscalls::Output;
 use crate::cpu::CpuTier;
 
@@ -331,4 +331,74 @@ fn mmap_hints_do_not_overlap_reservations_and_fixed_maps_trim_them() {
     assert_eq!(proc.dispatch(SYS_MPROTECT, [a, 4096, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
     assert_eq!(proc.dispatch(SYS_MUNMAP, [a + 4096, 4096, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
     assert_eq!(proc.dispatch(SYS_MPROTECT, [a, 12288, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-ENOMEM));
+}
+
+// ---- ounce.run.v1 stop details (#473) ----
+
+fn go_t3(elf: &[u8]) -> Report {
+    let opts = Options { max_instructions: 10_000, ..Options::default() };
+    run(elf, &["t".to_string()], &opts, &mut Capture::default(), &mut |_| {})
+}
+
+#[test]
+fn clean_exit_reports_the_guest_status_separately_from_the_engine_exit_code() {
+    for t in TIERS {
+        let (r, _) = go(EXITCODE, &["exitcode"], t);
+        let report = r.to_run_report(t);
+        assert_eq!((report.stop_kind, report.exit_code, report.guest_exit_status), ("clean_exit", 0, Some(42)), "{t:?}");
+        assert_eq!(r.detail.regs.map(|regs| regs.x0), Some(42), "x0 holds the exit status at the exit syscall");
+        assert!(report.message.is_none());
+    }
+}
+
+#[test]
+fn unimplemented_syscall_reports_its_number_as_svc_id() {
+    let (r, _) = go(BADSYS, &["badsyscall"], CpuTier::Tier3);
+    let report = r.to_run_report(CpuTier::Tier3);
+    assert_eq!((report.stop_kind, report.exit_code, report.svc_id), ("unhandled_svc", 14, Some(278)));
+    assert!(report.message.unwrap().contains("getrandom"));
+    assert_eq!(report.pc, r.detail.regs.map(|regs| regs.pc));
+}
+
+#[test]
+fn non_linux_svc_reports_its_immediate_as_svc_id() {
+    let r = go_t3(&tiny_elf(&[0xD400_00E1])); // svc #0x7
+    assert_eq!((r.detail.stop_kind, r.detail.svc_id), ("unhandled_svc", Some(7)));
+}
+
+#[test]
+fn undefined_instruction_reports_its_opcode() {
+    let r = go_t3(&tiny_elf(&[0x0000_0000])); // UDF #0
+    let report = r.to_run_report(CpuTier::Tier3);
+    assert_eq!((report.stop_kind, report.exit_code, report.opcode), ("unimplemented_insn", 10, Some(0)));
+    assert_eq!(report.pc, Some(r.detail.regs.unwrap().pc));
+}
+
+#[test]
+fn unmapped_load_reports_the_fault_address() {
+    // mov x1, #0x10; ldr x0, [x1]
+    let r = go_t3(&tiny_elf(&[0xD280_0201, 0xF940_0020]));
+    let report = r.to_run_report(CpuTier::Tier3);
+    assert_eq!((report.stop_kind, report.exit_code, report.fault_addr), ("memory_fault", 11, Some(0x10)), "{r:?}");
+}
+
+#[test]
+fn budget_and_loader_stops_map_to_their_stop_kinds() {
+    let spin = go_t3(&tiny_elf(&[0x1400_0000])); // b .
+    assert_eq!(spin.to_run_report(CpuTier::Tier3).exit_code, 16);
+    assert_eq!(spin.detail.stop_kind, "budget_exhausted");
+    let bad = go_t3(b"not an elf at all");
+    let report = bad.to_run_report(CpuTier::Tier3);
+    assert_eq!((report.stop_kind, report.exit_code, report.tier, report.silent_fallback), ("loader_error", 17, "tier3", false));
+    assert!(bad.detail.regs.is_none());
+    assert_eq!(describe_regs(bad.detail.regs), "registers at stop: unavailable (the program did not start)");
+}
+
+#[test]
+fn dump_regs_line_has_pc_x0_d0_and_nzcv() {
+    let (r, _) = go(EXITCODE, &["exitcode"], CpuTier::Tier3);
+    let line = describe_regs(r.detail.regs);
+    assert!(line.starts_with("registers at stop: pc=0x"), "{line}");
+    assert!(line.contains(" x0=0x000000000000002a "), "{line}");
+    assert!(line.contains(" d0=0x") && line.contains(" nzcv="), "{line}");
 }

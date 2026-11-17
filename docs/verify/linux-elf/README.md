@@ -4,7 +4,7 @@ Vision step 1: run **static AArch64 Linux ELF executables** on the Tier-3 or Tie
 program cannot run, say exactly why.
 
 ```
-ounce-core run-elf <elf> [--cpu=tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [-- guest args...]
+ounce-core run-elf <elf> [--cpu=tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [-- guest args...]
 ```
 
 Exit status is the guest's `exit_group` code (low 8 bits). Failures use: 70 unimplemented syscall or

@@ -4,7 +4,9 @@
 
 Using an out-of-band report file keeps guest `svcOutputDebugString` output on `stdout` completely separate from engine diagnostics and preserves clean MIT / GPL-3.0-or-later process isolation.
 
-On ounce-core today, `run` and `run-nro` write the file. `run-elf` does not. `silent_fallback` is written and is always `false`, including when a requested Tier-4 build falls back to Tier-3. `frames_presented` and `framebuffer_hash` are not ounce-core fields. ounce-runtime's report adds those two fields. The two engines do not yet use the same `stop_kind` for every fault.
+On ounce-core, `run`, `run-nro` and `run-elf` write the file. For `run` / `run-nro`, `silent_fallback` is always `false`, even when a requested Tier-4 build falls back to Tier-3; `run-elf` sets it to `true` in that case. ounce-core and ounce-runtime both write `frames_presented` and `framebuffer_hash`. The two engines do not yet use the same `stop_kind` for every fault.
+
+Every field is a flat scalar or `null`. Nested objects and arrays wait for the recursive JSON parser in `ounce-hb` (roadmap Q2). New fields are additive: consumers must ignore fields they do not know. `src/run_report.rs` tests that the emitted fields equal the table below and that the `exit_code` mapping matches the second table.
 
 ---
 
@@ -22,11 +24,12 @@ On ounce-core today, `run` and `run-nro` write the file. `run-elf` does not. `si
 | `pc` | `u64 \| null` | Faulting or stopping program counter |
 | `opcode` | `u32 \| null` | Raw instruction word for `unimplemented_insn` |
 | `fault_addr` | `u64 \| null` | Virtual address for `memory_fault` |
-| `svc_id` | `u32 \| null` | Supervisor call number for `unhandled_svc` |
+| `svc_id` | `u32 \| null` | Supervisor call number for `unhandled_svc`. `run-elf`: the Linux syscall number (`x8`) of an unimplemented syscall, or the immediate of a non-zero `SVC #imm` |
 | `break_result` | `u32 \| null` | Horizon `Result` code read from `info1` on `svc_break` |
 | `insns_executed` | `u64` | Total guest instructions executed |
 | `frames_presented` | `u64` | Frames the run loop presented (`0` when the run had no display or the guest never presented). `run` / `run-nro` have a display only with a window (`--gui`) or `--present=headless`; use the latter for comparisons. Additive field |
 | `framebuffer_hash` | `string \| null` | `fnv1a64:<16 lowercase hex>`: FNV-1a 64 over the RGBA bytes of the last presented guest frame, **before** the telemetry HUD, alpha forced to `0xFF`. Width and height are not mixed in. `null` if no frame was presented or the frame was drawn on the host GPU. Additive field |
+| `guest_exit_status` | `i32 \| null` | Status the guest passed to `exit` / `exit_group` (low 8 bits). `run-elf` only; `null` for homebrew, which has no exit status, and for any stop other than `clean_exit`. `exit_code` says how the engine stopped (`0` for every clean exit); this field is the program's own pass/fail. Additive field |
 | `message` | `string \| null` | Optional human-readable error/halt detail |
 
 ---
