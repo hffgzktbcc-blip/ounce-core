@@ -25,6 +25,8 @@ On ounce-core today, `run` and `run-nro` write the file. `run-elf` does not. `si
 | `svc_id` | `u32 \| null` | Supervisor call number for `unhandled_svc` |
 | `break_result` | `u32 \| null` | Horizon `Result` code read from `info1` on `svc_break` |
 | `insns_executed` | `u64` | Total guest instructions executed |
+| `frames_presented` | `u64` | Frames the run loop presented (`0` when the run had no display or the guest never presented). `run` / `run-nro` have a display only with a window (`--gui`) or `--present=headless`; use the latter for comparisons. Additive field |
+| `framebuffer_hash` | `string \| null` | `fnv1a64:<16 lowercase hex>`: FNV-1a 64 over the RGBA bytes of the last presented guest frame, **before** the telemetry HUD, alpha forced to `0xFF`. Width and height are not mixed in. `null` if no frame was presented or the frame was drawn on the host GPU. Additive field |
 | `message` | `string \| null` | Optional human-readable error/halt detail |
 
 ---

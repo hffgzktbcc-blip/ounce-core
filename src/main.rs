@@ -1087,6 +1087,8 @@ fn run_vm_internal(
         svc_id: stop_svc_id,
         break_result: stop_break_result,
         insns_executed: instructions_executed as u64,
+        frames_presented: frames_presented as u64,
+        framebuffer_hash: display.as_ref().and_then(|d| d.last_frame_hash()).map(str::to_owned),
         message: stop_message,
     };
 
@@ -3809,9 +3811,19 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
                 // libnx startup alone runs tens of thousands of instructions.
                 let budget = if is_nro { nro_instruction_budget() } else { 100_000 };
+                // `--present=headless` gets a windowless display so queued VI frames are decoded, counted and
+                // hashed for the run report. Without it the run has no display, as before.
+                let mut headless_display = (gpu::BackendKind::from_env() == gpu::BackendKind::Headless).then(|| {
+                    DisplayServer::new(
+                        DEFAULT_FRAMEBUFFER_ADDR,
+                        DisplayConfig { backend: gpu::BackendKind::Headless, ..Default::default() },
+                    )
+                });
                 if loop_controls::active() {
                     let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
-                    require_cli_success(run_vm_internal(cpu, mmu, kernel, None, Some(&mut hid), budget, 0));
+                    require_cli_success(run_vm_internal(cpu, mmu, kernel, headless_display.as_mut(), Some(&mut hid), budget, 0));
+                } else if headless_display.is_some() {
+                    require_cli_success(run_vm_internal(cpu, mmu, kernel, headless_display.as_mut(), None, budget, 0));
                 } else {
                     require_cli_success(run_vm(cpu, mmu, kernel, budget));
                 }
@@ -4157,6 +4169,41 @@ mod harness_gate_tests {
         }
     }
 
+    /// Runs a tiny program that fills the framebuffer and calls the present SVC, on a windowless display.
+    fn headless_present_report(fill: u32, max_frames: usize) -> run_report::RunReport {
+        let program: [u32; 6] = [
+            0xD2800004, // MOVZ X4, #0
+            0xF2B20004, // MOVK X4, #0x9000, LSL #16 (framebuffer base 0x90000000)
+            0xD2800000 | (fill << 5) | 2, // MOVZ X2, #fill
+            0xB9000082, // STR  W2, [X4]
+            0xD4000301, // SVC  #0x18 (present)
+            0x17FFFFFE, // B    . (present again)
+        ];
+        let (mut cpu, mut mmu, kernel) = setup_vm();
+        mmu.map_range(DEFAULT_FRAMEBUFFER_ADDR, SCREEN_WIDTH * SCREEN_HEIGHT * 4, Permission::READ_WRITE);
+        mmu.map_range(DEFAULT_BASE_ADDR, 4096, Permission::READ_WRITE_EXECUTE);
+        let code: Vec<u8> = program.iter().flat_map(|i| i.to_le_bytes()).collect();
+        mmu.write_bytes(DEFAULT_BASE_ADDR, &code).unwrap();
+        cpu.regs.pc = DEFAULT_BASE_ADDR;
+        let mut display = DisplayServer::new(
+            DEFAULT_FRAMEBUFFER_ADDR,
+            DisplayConfig { backend: gpu::BackendKind::Headless, ..Default::default() },
+        );
+        run_vm_internal(cpu, mmu, kernel, Some(&mut display), None, 0, max_frames).report
+    }
+
+    #[test]
+    fn report_carries_frame_count_and_hash_that_follow_the_pixels() {
+        let a = headless_present_report(0x1234, 2);
+        assert_eq!(a.stop_kind, "frame_limit");
+        assert_eq!(a.frames_presented, 2);
+        let hash = a.framebuffer_hash.clone().expect("a presented frame has a hash");
+        assert!(hash.starts_with("fnv1a64:") && hash.len() == "fnv1a64:".len() + 16, "{hash}");
+        // Same program, same hash; different guest pixels, different hash (the HUD does not mask the change).
+        assert_eq!(headless_present_report(0x1234, 2).framebuffer_hash.as_deref(), Some(hash.as_str()));
+        assert_ne!(headless_present_report(0x4321, 2).framebuffer_hash.as_deref(), Some(hash.as_str()));
+    }
+
     fn outcome(stop: VmStop, x0: u64) -> VmOutcome {
         VmOutcome {
             stop,
@@ -4173,6 +4220,8 @@ mod harness_gate_tests {
                 svc_id: None,
                 break_result: None,
                 insns_executed: 0,
+                frames_presented: 0,
+                framebuffer_hash: None,
                 message: None,
             },
         }
