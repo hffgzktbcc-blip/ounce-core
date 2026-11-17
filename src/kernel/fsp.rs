@@ -521,13 +521,15 @@ mod tests {
     }
 
     /// A host folder behind `sdmc:/`: existing host files are visible, and every libnx file and directory
-    /// operation lands in the folder.
+    /// operation lands in the folder
+    /// when `--sdmc-writeback` is given (the harness in scripts/verify_differential.py relies on this).
     #[test]
     fn libnx_shaped_sdmc_operations_reach_the_host_folder() {
-        let root = temp_root("ops");
+        let root = temp_root("ops_writeback");
         std::fs::write(root.join("hello.txt"), b"hi host").unwrap();
         std::fs::create_dir(root.join("data")).unwrap();
         let mut t = Fsp::new(Some(&root));
+        t.vfs.sdmc_write_through = true; // --sdmc-writeback: main's behaviour
         let fs = t.sdmc();
 
         // GetEntryType
@@ -606,6 +608,108 @@ mod tests {
         std::fs::write(root.join("c/d/f"), b"1").unwrap();
         assert_eq!(t.call(fs, 13, &[], &["/c"], Data::None).0, 0);
         assert!(root.join("c").is_dir() && std::fs::read_dir(root.join("c")).unwrap().count() == 0);
+        assert_eq!(t.call(fs, 4, &[], &["/"], Data::None).0, RESULT_INVALID_PATH);
+        assert!(root.join("c").is_dir());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A host folder behind `sdmc:/`: existing host files are visible, and guest writes go to a
+    /// copy-on-write overlay so the host folder is never modified.
+    #[test]
+    fn libnx_shaped_sdmc_operations_use_copy_on_write_overlay() {
+        let root = temp_root("ops");
+        std::fs::write(root.join("hello.txt"), b"hi host").unwrap();
+        std::fs::create_dir(root.join("data")).unwrap();
+        let mut t = Fsp::new(Some(&root));
+        let fs = t.sdmc();
+
+        // GetEntryType
+        assert_eq!(t.call(fs, 7, &[], &["/hello.txt"], Data::None), (0, vec![1, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(t.call(fs, 7, &[], &["/data"], Data::None).1[0], 0);
+        assert_eq!(t.call(fs, 7, &[], &["/nope"], Data::None).0, RESULT_PATH_NOT_FOUND);
+
+        // OpenFile (read) + Read into the B buffer + GetSize
+        let (rc, out) = t.call(fs, 8, &[1], &["/hello.txt"], Data::None);
+        assert_eq!(rc, 0);
+        let f = out[0];
+        assert_eq!(t.call(f, 0, &[0, 0, 64], &[], Data::Recv(64)), (0, vec![7, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(t.buf(7), b"hi host");
+        assert_eq!(t.call(f, 4, &[], &[], Data::None).1[..2], [7, 0]);
+        // Writing through a read-only handle fails.
+        assert_eq!(t.call(f, 1, &[0, 0, 1], &[], Data::Send(b"x")).0, RESULT_INVALID_OPEN_MODE);
+        assert_eq!(std::fs::read(root.join("hello.txt")).unwrap(), b"hi host");
+
+        // CreateFile: new, existing, missing parent.
+        assert_eq!(t.call(fs, 0, &[0, 0], &["/data/out.bin"], Data::None).0, 0);
+        assert_eq!(t.call(fs, 0, &[0, 0], &["/data/out.bin"], Data::None).0, RESULT_PATH_ALREADY_EXISTS);
+        assert_eq!(t.call(fs, 0, &[0, 0], &["/missing/x"], Data::None).0, RESULT_PATH_NOT_FOUND);
+        assert_eq!(t.vfs.entry_kind("sdmc:/data/out.bin"), Some(VfsEntryKind::File(0)));
+        assert!(!root.join("data/out.bin").exists(), "host folder must not be modified by CreateFile");
+
+        // Write (A buffer) at two offsets, SetSize.
+        let (rc, out) = t.call(fs, 8, &[2 | 4], &["/data/out.bin"], Data::None);
+        assert_eq!(rc, 0);
+        let w = out[0];
+        assert_eq!(t.call(w, 1, &[0, 0, 3], &[], Data::Send(b"abc")).0, 0);
+        assert_eq!(t.call(w, 1, &[0, 5, 2], &[], Data::Send(b"XY")).0, 0);
+        assert_eq!(t.vfs.get_file("sdmc:/data/out.bin"), Some(&b"abc\0\0XY"[..]));
+        assert!(!root.join("data/out.bin").exists(), "host folder must not be modified by Write");
+        assert_eq!(t.call(w, 4, &[], &[], Data::None).1[..2], [7, 0]);
+        assert_eq!(t.call(w, 3, &[2], &[], Data::None).0, 0);
+        assert_eq!(t.vfs.get_file("sdmc:/data/out.bin"), Some(&b"ab"[..]));
+        assert!(!root.join("data/out.bin").exists(), "host folder must not be modified by SetSize");
+
+        // OpenDirectory + Read: FsDirectoryEntry with real type and size, filtered by mode.
+        let (_, out) = t.call(fs, 9, &[3], &["/"], Data::None);
+        let d = out[0];
+        assert_eq!(t.call(d, 1, &[], &[], Data::None).1[..2], [2, 0]);
+        assert_eq!(t.call(d, 0, &[], &[], Data::Recv(4 * DIRECTORY_ENTRY_SIZE)).1[..2], [2, 0]);
+        let entries = t.buf(2 * DIRECTORY_ENTRY_SIZE as usize);
+        let entry = |i: usize| &entries[i * 0x310..(i + 1) * 0x310];
+        assert_eq!(&entry(0)[..5], b"data\0");
+        assert_eq!(entry(0)[0x304], ENTRY_TYPE_DIR);
+        assert_eq!(&entry(1)[..10], b"hello.txt\0");
+        assert_eq!(entry(1)[0x304], ENTRY_TYPE_FILE);
+        assert_eq!(u64::from_le_bytes(entry(1)[0x308..0x310].try_into().unwrap()), 7);
+        assert_eq!(t.call(d, 0, &[], &[], Data::Recv(4 * DIRECTORY_ENTRY_SIZE)).1[..2], [0, 0], "exhausted");
+        let (_, out) = t.call(fs, 9, &[DIR_OPEN_READ_FILES as u64], &["/"], Data::None);
+        assert_eq!(t.call(out[0], 1, &[], &[], Data::None).1[0], 1);
+        assert_eq!(t.call(fs, 9, &[3], &["/nope"], Data::None).0, RESULT_PATH_NOT_FOUND);
+
+        // RenameFile / RenameDirectory
+        assert_eq!(t.call(fs, 5, &[], &["/data/out.bin", "/data/renamed.bin"], Data::None).0, 0);
+        assert_eq!(t.vfs.get_file("sdmc:/data/renamed.bin"), Some(&b"ab"[..]));
+        assert_eq!(t.vfs.get_file("sdmc:/data/out.bin"), None);
+        assert!(!root.join("data/renamed.bin").exists());
+        assert_eq!(t.call(fs, 5, &[], &["/data", "/data2"], Data::None).0, RESULT_PATH_NOT_FOUND, "not a file");
+        assert_eq!(t.call(fs, 6, &[], &["/data", "/data2"], Data::None).0, 0);
+        assert_eq!(t.vfs.get_file("sdmc:/data2/renamed.bin"), Some(&b"ab"[..]));
+        assert!(!root.join("data2").exists());
+        assert!(root.join("data").is_dir(), "host directory must not be renamed on disk");
+        assert_eq!(t.call(w, 4, &[], &[], Data::None).1[0], 2, "open handle follows the rename");
+
+        // CreateDirectory, DeleteDirectory (must be empty), DeleteDirectoryRecursively, DeleteFile.
+        assert_eq!(t.call(fs, 2, &[], &["/newdir"], Data::None).0, 0);
+        assert!(t.vfs.directory_exists("sdmc:/newdir"));
+        assert!(!root.join("newdir").exists(), "host directory must not be created on disk");
+        assert_eq!(t.call(fs, 2, &[], &["/newdir"], Data::None).0, RESULT_PATH_ALREADY_EXISTS);
+        assert_eq!(t.call(fs, 2, &[], &["/no/such"], Data::None).0, RESULT_PATH_NOT_FOUND);
+        assert_eq!(t.call(fs, 3, &[], &["/data2"], Data::None).0, RESULT_DIRECTORY_NOT_EMPTY);
+        assert_eq!(t.call(fs, 3, &[], &["/newdir"], Data::None).0, 0);
+        assert!(!t.vfs.directory_exists("sdmc:/newdir"));
+        assert_eq!(t.call(fs, 4, &[], &["/data2"], Data::None).0, 0);
+        assert!(!t.vfs.directory_exists("sdmc:/data2"));
+        assert_eq!(t.call(fs, 1, &[], &["/hello.txt"], Data::None).0, 0);
+        assert_eq!(t.vfs.entry_kind("sdmc:/hello.txt"), None);
+        assert_eq!(std::fs::read(root.join("hello.txt")).unwrap(), b"hi host", "host file must not be deleted on disk");
+
+        // CleanDirectoryRecursively keeps the directory; the mount root itself cannot be deleted.
+        std::fs::create_dir_all(root.join("c/d")).unwrap();
+        std::fs::write(root.join("c/d/f"), b"1").unwrap();
+        assert_eq!(t.call(fs, 13, &[], &["/c"], Data::None).0, 0);
+        assert_eq!(t.vfs.list_directory("sdmc:/c").unwrap(), Vec::<String>::new());
+        assert!(root.join("c/d/f").is_file(), "host file in c/d/f must not be deleted on disk");
         assert_eq!(t.call(fs, 4, &[], &["/"], Data::None).0, RESULT_INVALID_PATH);
         assert!(root.join("c").is_dir());
 
