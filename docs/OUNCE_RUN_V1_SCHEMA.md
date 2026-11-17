@@ -28,7 +28,7 @@ Every field is a flat scalar or `null`. Nested objects and arrays wait for the r
 | `break_result` | `u32 \| null` | Horizon `Result` code read from `info1` on `svc_break` |
 | `insns_executed` | `u64` | Total guest instructions executed |
 | `frames_presented` | `u64` | Frames the run loop presented (`0` when the run had no display or the guest never presented). `run` / `run-nro` have a display only with a window (`--gui`) or `--present=headless`; use the latter for comparisons. Additive field |
-| `framebuffer_hash` | `string \| null` | `fnv1a64:<16 lowercase hex>`: FNV-1a 64 over the RGBA bytes of the last presented guest frame, **before** the telemetry HUD, alpha forced to `0xFF`. Width and height are not mixed in. `null` if no frame was presented or the frame was drawn on the host GPU. Additive field |
+| `framebuffer_hash` | `string \| null` | `fnv1a64:<16 lowercase hex>`: FNV-1a 64 over the RGBA bytes of the last presented guest frame, **before** the telemetry HUD, alpha forced to `0xFF`. Width and height are not mixed in. `null` if no frame was presented, or if the host GPU drew the last frame's 3D draws. That happens only in a `--features gpu-present` build with a GPU window open, outside deterministic mode; guest memory never holds those frames. `--present=headless` and `--deterministic` / `OUNCE_DETERMINISTIC=1` draw 3D with the software rasterizer, so every frame they present has a hash, and the two give the same hash. Additive field |
 | `guest_exit_status` | `i32 \| null` | Status the guest passed to `exit` / `exit_group` (low 8 bits). `run-elf` only; `null` for homebrew, which has no exit status, and for any stop other than `clean_exit`. `exit_code` says how the engine stopped (`0` for every clean exit); this field is the program's own pass/fail. Additive field |
 | `message` | `string \| null` | Optional human-readable error/halt detail |
 
@@ -57,4 +57,4 @@ Every field is a flat scalar or `null`. Nested objects and arrays wait for the r
 When orchestrating cross-engine parity or escalation, callers pass:
 - `--present=headless` (no window and no host audio device)
 - `--audio=null` or `OUNCE_AUDIO=null` (no host audio device, including when a window is open)
-- `--deterministic` or `OUNCE_DETERMINISTIC=1` / `true`. On `run-elf` this uses a fixed guest clock. On homebrew `run` / `run-nro` the flag is accepted and the kernel clock is unchanged unless the caller sets that clock itself (the corpus runner does).
+- `--deterministic` or `OUNCE_DETERMINISTIC=1` / `true`. On `run-elf` this uses a fixed guest clock. On homebrew `run` / `run-nro` it makes 3D draws use the software rasterizer, even with a GPU window, so `framebuffer_hash` is never `null` for a presented frame; the kernel clock is unchanged unless the caller sets that clock itself (the corpus runner does).

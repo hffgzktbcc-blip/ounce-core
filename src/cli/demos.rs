@@ -2392,6 +2392,19 @@ pub(crate) fn run_gpu3d_demo(max_frames: usize) {
     println!("  Resolution: {}x{} | Engine: Tegra 3D Subchannel", SCREEN_WIDTH, SCREEN_HEIGHT);
     println!("  Pipeline: Guest Float32 Math -> GPFIFO Pushbuffer -> Barycentric 3D Rasterizer\n");
 
+    let mut display = DisplayServer::new(DEFAULT_FRAMEBUFFER_ADDR, DisplayConfig::default());
+    if let Err(e) = display.init_window() {
+        eprintln!("Failed to initialize display window: {}", e);
+        return;
+    }
+    let (cpu, mmu, kernel) = gpu3d_demo_machine();
+    run_vm_internal(cpu, mmu, kernel, Some(&mut display), None, 0, max_frames);
+}
+
+/// The `gpu3d` demo's guest: each frame it moves one vertex, submits a GPFIFO pushbuffer that clears the
+/// framebuffer and draws a shaded triangle (`svc 0x101`), then presents (`svc 0x18`). Shared with the
+/// `framebuffer_hash` tests, which run it without a window.
+pub(crate) fn gpu3d_demo_machine() -> (Cpu, Memory, HorizonKernel) {
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
     // 1. Map Framebuffer VRAM (1280x720x4)
@@ -2403,12 +2416,6 @@ pub(crate) fn run_gpu3d_demo(max_frames: usize) {
     let vb_addr = 0x80020000u64;
     mmu.map_range(pb_addr, 4096, Permission::READ_WRITE);
     mmu.map_range(vb_addr, 4096, Permission::READ_WRITE);
-
-    let mut display = DisplayServer::new(DEFAULT_FRAMEBUFFER_ADDR, DisplayConfig::default());
-    if let Err(e) = display.init_window() {
-        eprintln!("Failed to initialize display window: {}", e);
-        return;
-    }
 
     // Write initial 3D Triangle Vertex Buffer (3 vertices x 6 floats [x, y, z, r, g, b]):
     let vertices: [f32; 18] = [
@@ -2488,7 +2495,7 @@ pub(crate) fn run_gpu3d_demo(max_frames: usize) {
     mmu.map_range(DEFAULT_BASE_ADDR, 4096, Permission::READ_WRITE_EXECUTE);
     mmu.write_bytes(DEFAULT_BASE_ADDR, &code_bytes).unwrap();
 
-    run_vm_internal(cpu, mmu, kernel, Some(&mut display), None, 0, max_frames);
+    (cpu, mmu, kernel)
 }
 
 /// Checks that this host can run natively generated code (Tier-4, feature `native-jit`).

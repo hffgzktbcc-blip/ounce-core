@@ -23,7 +23,6 @@ pub fn set_deterministic(enabled: bool) {
     let _ = DETERMINISTIC.set(enabled);
 }
 
-#[allow(dead_code)]
 pub fn is_deterministic() -> bool {
     DETERMINISTIC.get().copied().unwrap_or(false)
 }

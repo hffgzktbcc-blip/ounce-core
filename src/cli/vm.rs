@@ -172,8 +172,14 @@ pub(crate) fn run_vm_internal(
     max_instructions: usize,
     max_frames: usize,
 ) -> VmOutcome {
-    let is_gpu = display.as_ref().is_some_and(|d| d.is_gpu_accelerated());
-    kernel.nvgpu.set_hardware_acceleration(is_gpu);
+    // Open the backend before choosing who draws 3D. Until it is open, `is_gpu_accelerated` only guesses from the
+    // configuration, and a GPU window that then failed to open would leave queued draws that nothing renders.
+    if let Some(disp) = display.as_mut()
+        && let Err(e) = disp.init_window()
+    {
+        eprintln!("[Display Error] {e}");
+    }
+    kernel.nvgpu.set_hardware_acceleration(display.as_ref().is_some_and(|d| d.draws_3d_on_host()));
 
     println!("[VM] Starting execution at PC: 0x{:016X}", cpu.regs.pc);
     println!("[VM] Stack Pointer: 0x{:016X}", cpu.regs.sp);
@@ -662,6 +668,73 @@ mod harness_gate_tests {
         // Same program, same hash; different guest pixels, different hash (the HUD does not mask the change).
         assert_eq!(headless_present_report(0x1234, 2).framebuffer_hash.as_deref(), Some(hash.as_str()));
         assert_ne!(headless_present_report(0x4321, 2).framebuffer_hash.as_deref(), Some(hash.as_str()));
+    }
+
+    /// Runs the `gpu3d` demo guest (pushbuffer-driven 3D triangle, `svc 0x101` then present) for `frames` frames.
+    fn gpu3d_report(display: &mut DisplayServer, frames: usize) -> run_report::RunReport {
+        let (cpu, mmu, kernel) = crate::cli::demos::gpu3d_demo_machine();
+        run_vm_internal(cpu, mmu, kernel, Some(display), None, 0, frames).report
+    }
+
+    fn headless_display() -> DisplayServer {
+        DisplayServer::new(DEFAULT_FRAMEBUFFER_ADDR, DisplayConfig { backend: gpu::BackendKind::Headless, ..Default::default() })
+    }
+
+    // #486. The software rasterizer uses only IEEE-754 arithmetic (no libm), so these hashes are expected on
+    // every host. CI checks them on Linux x86_64, Windows x86_64 and macOS ARM64.
+    const GPU3D_FRAME_1: &str = "fnv1a64:97a8aa93af93aad1";
+    const GPU3D_FRAME_2: &str = "fnv1a64:5f51ab702c9d8c90";
+
+    #[test]
+    fn software_3d_frames_have_a_stable_hash_that_follows_the_drawing() {
+        let first = gpu3d_report(&mut headless_display(), 1);
+        let second = gpu3d_report(&mut headless_display(), 2);
+        assert_eq!((first.stop_kind, first.frames_presented), ("frame_limit", 1));
+        assert_eq!((second.stop_kind, second.frames_presented), ("frame_limit", 2));
+        // The guest moves a vertex every frame, so the last presented frame, and its hash, change.
+        assert_eq!(first.framebuffer_hash.as_deref(), Some(GPU3D_FRAME_1));
+        assert_eq!(second.framebuffer_hash.as_deref(), Some(GPU3D_FRAME_2));
+        assert_eq!(gpu3d_report(&mut headless_display(), 2).framebuffer_hash.as_deref(), Some(GPU3D_FRAME_2));
+    }
+
+    #[test]
+    fn frames_the_host_gpu_draws_report_no_hash() {
+        let backend = gpu::display::FakeGpuBackend::default();
+        let batches = backend.batches_3d.clone();
+        let config = DisplayConfig { deterministic: false, ..Default::default() };
+        let mut display = DisplayServer::with_backend(DEFAULT_FRAMEBUFFER_ADDR, config, Box::new(backend));
+        let report = gpu3d_report(&mut display, 2);
+        assert_eq!(report.frames_presented, 2);
+        assert_eq!(batches.get(), 2, "each frame's draws went to the host GPU");
+        // Guest memory never held these frames, so there is nothing to hash (see OUNCE_RUN_V1_SCHEMA.md).
+        assert_eq!(report.framebuffer_hash, None);
+    }
+
+    #[test]
+    fn deterministic_runs_draw_3d_on_the_cpu_and_match_headless() {
+        let backend = gpu::display::FakeGpuBackend::default();
+        let batches = backend.batches_3d.clone();
+        let config = DisplayConfig { deterministic: true, ..Default::default() };
+        let mut display = DisplayServer::with_backend(DEFAULT_FRAMEBUFFER_ADDR, config, Box::new(backend));
+        let report = gpu3d_report(&mut display, 2);
+        assert_eq!(batches.get(), 0, "nothing went to the host GPU");
+        assert_eq!(report.framebuffer_hash.as_deref(), Some(GPU3D_FRAME_2), "same frame as the headless run");
+    }
+
+    /// Before the backend opens, a `gpu-present` build guesses that `auto`/`gpu` means a GPU. When that window cannot
+    /// open, the run falls back to software presentation and must still rasterize the 3D draws.
+    #[cfg(all(feature = "gpu-present", target_os = "linux"))]
+    #[test]
+    fn a_gpu_window_that_cannot_open_still_gets_its_3d_drawn() {
+        if std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some() {
+            return; // a real window could open here; this checks the fallback only
+        }
+        let mut display =
+            DisplayServer::new(DEFAULT_FRAMEBUFFER_ADDR, DisplayConfig { backend: gpu::BackendKind::Gpu, ..Default::default() });
+        assert!(display.is_gpu_accelerated(), "unopened, the configuration alone says GPU");
+        let report = gpu3d_report(&mut display, 2);
+        assert_ne!(display.backend_name(), Some("wgpu"));
+        assert_eq!(report.framebuffer_hash.as_deref(), Some(GPU3D_FRAME_2));
     }
 
     fn outcome(stop: VmStop, x0: u64) -> VmOutcome {
