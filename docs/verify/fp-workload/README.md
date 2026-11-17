@@ -17,21 +17,20 @@ square root, rounding, converts to and from integer and between precisions, comp
 docs/verify/fp-workload/run.sh <new out dir>      # from the repo root; ARM64 host, clang, rust-lld or ld.lld
 ```
 
-## Result (2026-11-17, Apple M3, macOS, ounce-core 008e3dd, Apple clang 21.0.0)
+## Results (Apple M3, macOS, Apple clang 21.0.0)
 
-[summary.tsv](result-2026-11-17/summary.tsv), [toolchain and hashes](result-2026-11-17/).
+**Before** the scalar change (base 008e3dd): [summary.tsv](result-2026-11-17/summary.tsv). Tier-3 and Tier-4: 39 ops identical, 8 ops
+UNSUPPORTED (engine stops with exit 71, `Unimplemented instruction`), 0 mismatches. The 8 were scalar `FRECPS`, `FRSQRTS`,
+`FRECPE`, `FRSQRTE` (double: `0x5e61fc02`, `0x5ee1fc02`, `0x5ee1d802`, `0x7ee1d802`; single `FRECPE`/`FRSQRTE`: `0x5ea1d802`,
+`0x7ea1d802`), `FRINT32Z` and `FRINT64X` (`0x1e684002`, `0x1e69c002`).
 
-| | Tier-3 | Tier-4 |
-|---|---|---|
-| ops byte-identical to the host (value and FPSR, every case) | 39 | 39 |
-| ops UNSUPPORTED (engine stops on an unimplemented instruction) | 8 | 8 |
-| ops that ran and differed (MISMATCH) | 0 | 0 |
-
-Unsupported scalar instructions (exit 71, `Unimplemented instruction`), identical on both tiers: `FRECPS`, `FRSQRTS`,
-`FRECPE`, `FRSQRTE` (double: `0x5e61fc02`, `0x5ee1fc02`, `0x5ee1d802`, `0x7ee1d802`; single `FRECPE`/`FRSQRTE`:
-`0x5ea1d802`, `0x7ea1d802`) and `FRINT32Z`, `FRINT64X` (`0x1e684002`, `0x1e69c002`). These are reported as
-unsupported, not failed and not passed. [`../fp-edge/`](../fp-edge/README.md) already lists the `FRECPE/FRECPS/FRSQRTE/FRSQRTS`
-family as unsupported on every engine; this run adds the scalar `FRINT32Z` and `FRINT64X` forms and shows the same gap at whole-program level.
+**After** implementing those scalar forms (this folder's PR; [summary.tsv](result-2026-11-17-after-scalar-recip/summary.tsv)):
+all 47 ops are byte-identical to the host on Tier-3 and Tier-4, every case (value and FPSR); 0 unsupported, 0 mismatches.
+The first attempt after the change showed single-precision `FRECPE`/`FRSQRTE` with matching values but a spurious
+divide-by-zero flag (an unread lane evaluated as zero); that was fixed by replicating lane 0, and the table above is the
+rerun. The instruction fuzzer agrees (host vs interpreter, 8 seeds x 400,000 words, all 8 FPCR values): scalar
+FRECPE/FRSQRTE 3,200,000 executed, scalar FRECPS/FRSQRTS 3,200,000, scalar FRINT32Z/32X/64Z/64X 1,801,223 (the host
+rejects the other words); 0 value mismatches, 0 flag-only differences, 0 unimplemented.
 
 ## Checks on the harness itself
 
