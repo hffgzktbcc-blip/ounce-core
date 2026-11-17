@@ -63,13 +63,11 @@ fn check(raw: u32, initialize: impl Fn(&mut Cpu), verify: impl Fn(&Cpu)) {
         return;
     }
     #[cfg(feature = "native-jit")]
-    if !matches!(decoder::decode(raw), Instruction::SimdVec2D { .. }) {
-        if let CpuEngine::Tier4(engine) = tier4 {
-            assert!(
-                engine.native_block_runs > 0,
-                "regression must exercise native lowering"
-            );
-        }
+    if !matches!(decoder::decode(raw), Instruction::SimdVec2D { .. }) && let CpuEngine::Tier4(engine) = tier4 {
+        assert!(
+            engine.native_block_runs > 0,
+            "regression must exercise native lowering"
+        );
     }
 }
 

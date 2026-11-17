@@ -404,7 +404,7 @@ impl NceEngine {
             r.x = ctx.x;
             r.sp = ctx.sp;
             r.pc = ctx.pc;
-            r.pstate.from_bits(ctx.nzcv as u32);
+            r.pstate.set_bits(ctx.nzcv as u32);
             r.v = ctx.v;
             r.tpidr_el0 = ctx.tpidr;
             r.tpidrro_el0 = ctx.tpidrro;

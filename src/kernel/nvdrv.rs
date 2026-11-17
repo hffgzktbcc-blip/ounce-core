@@ -530,10 +530,8 @@ impl NvDrv {
             // The mask goes to the guest buffer `mask_buf_addr` names, which the IPC layer writes
             // (see `TPC_MASKS`); an Ioctl3 output buffer gets it too.
             0x06 => {
-                if let Some(out) = extra.outbuf {
-                    if out.len() >= 4 {
-                        out[..4].copy_from_slice(&TPC_MASKS.to_le_bytes());
-                    }
+                if let Some(out) = extra.outbuf && out.len() >= 4 {
+                    out[..4].copy_from_slice(&TPC_MASKS.to_le_bytes());
                 }
                 NV_OK
             }
@@ -622,7 +620,7 @@ impl NvDrv {
             0x08 => {
                 wr32(data, 8, 0x30);
                 // Small pages (4 KiB) and big pages (128 KiB), each { u64 offset; u32 page_size; u32 pad; u64 pages; }
-                for (i, (offset, page, pages)) in [(GPU_VA_BASE, 0x1000u32, 0x3FFF_Fu64), (0x10_0000_0000, 0x2_0000, 0x7_FFFF)].iter().enumerate() {
+                for (i, (offset, page, pages)) in [(GPU_VA_BASE, 0x1000u32, 0x3_FFFF_u64), (0x10_0000_0000, 0x2_0000, 0x7_FFFF)].iter().enumerate() {
                     let at = 16 + i * 24;
                     wr64(data, at, *offset);
                     wr32(data, at + 8, *page);

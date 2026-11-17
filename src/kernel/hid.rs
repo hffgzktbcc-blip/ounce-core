@@ -320,10 +320,8 @@ impl InputFeed {
 
     fn slot(id: u32, style: Option<NpadStyle>) -> Result<usize, InputError> {
         let index = npad_index(id).ok_or(InputError::BadNpadId(id))?;
-        if let Some(style) = style {
-            if (id == NPAD_ID_HANDHELD) != (style == NpadStyle::Handheld) {
-                return Err(InputError::StyleNotAllowed { id, style });
-            }
+        if let Some(style) = style && (id == NPAD_ID_HANDHELD) != (style == NpadStyle::Handheld) {
+            return Err(InputError::StyleNotAllowed { id, style });
         }
         Ok(index)
     }

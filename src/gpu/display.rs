@@ -205,11 +205,9 @@ impl DisplayServer {
     pub fn present_frame_3d(&mut self, mmu: &Memory, draw_ops: &[Gpu3DDrawOp]) -> bool {
         let frame_start = Instant::now();
 
-        if self.backend.is_none() {
-            if let Err(e) = self.init_window() {
-                eprintln!("[Display Error] {}", e);
-                return false;
-            }
+        if self.backend.is_none() && let Err(e) = self.init_window() {
+            eprintln!("[Display Error] {}", e);
+            return false;
         }
 
         let is_gpu = self.is_gpu_accelerated();
@@ -281,11 +279,9 @@ impl DisplayServer {
     /// Pumps backend window events (keyboard presses, window close, focus) without
     /// waiting for a guest frame presentation.
     pub fn pump_events(&mut self) -> bool {
-        if self.backend.is_none() {
-            if let Err(e) = self.init_window() {
-                eprintln!("[Display Error] {}", e);
-                return false;
-            }
+        if self.backend.is_none() && let Err(e) = self.init_window() {
+            eprintln!("[Display Error] {}", e);
+            return false;
         }
         let backend = self.backend.as_mut().expect("backend opened above");
         backend.pump_events() != PresentStatus::Closed

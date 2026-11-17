@@ -435,10 +435,10 @@ pub(crate) fn run_vm_internal(
                     if let Some(hex_word) = rest.split_whitespace().next() {
                         stop_opcode = u32::from_str_radix(hex_word, 16).ok();
                     }
-                    if let Some(pc_hex) = rest.split("at PC: 0x").nth(1) {
-                        if let Some(parsed) = u64::from_str_radix(pc_hex.trim(), 16).ok() {
-                            stop_pc = Some(parsed);
-                        }
+                    if let Some(pc_hex) = rest.split("at PC: 0x").nth(1)
+                        && let Some(parsed) = u64::from_str_radix(pc_hex.trim(), 16).ok()
+                    {
+                        stop_pc = Some(parsed);
                     }
                 } else if e.contains("Memory access violation:") {
                     if let Some(addr_hex) = e.split("0x").nth(1) {

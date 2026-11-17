@@ -113,9 +113,7 @@ impl TextureDecompressor {
                         }
                         _ => {
                             // Fallback raw unpack
-                            for i in 0..16 {
-                                decoded_block[i] = 0xFFFFFFFF;
-                            }
+                            decoded_block[..16].fill(0xFFFF_FFFF);
                         }
                     }
 
@@ -180,9 +178,9 @@ impl TextureDecompressor {
             ]
         };
 
-        for i in 0..16 {
+        for (i, px) in out.iter_mut().enumerate().take(16) {
             let code = ((indices >> (i * 2)) & 0x03) as usize;
-            out[i] = colors[code];
+            *px = colors[code];
         }
     }
 
@@ -207,13 +205,13 @@ impl TextureDecompressor {
             let b1 = ((bytes[7] as u32) & 0x7F) << 1;
             let a1 = ((bytes[8] as u32) & 0x7F) << 1;
 
-            for i in 0..16 {
+            for (i, px) in out.iter_mut().enumerate().take(16) {
                 let weight = (i as u32 * 64) / 15;
                 let r = (r0 * (64 - weight) + r1 * weight + 32) / 64;
                 let g = (g0 * (64 - weight) + g1 * weight + 32) / 64;
                 let b = (b0 * (64 - weight) + b1 * weight + 32) / 64;
                 let a = (a0 * (64 - weight) + a1 * weight + 32) / 64;
-                out[i] = (a.min(255) << 24) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
+                *px = (a.min(255) << 24) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
             }
         } else {
             // General BC7 fallback: Decode primary endpoints from bytes 0..8
@@ -227,12 +225,12 @@ impl TextureDecompressor {
             let b1 = bytes[6] as u32;
             let _a1 = 255u32;
 
-            for i in 0..16 {
+            for (i, px) in out.iter_mut().enumerate().take(16) {
                 let weight = (i as u32 * 64) / 15;
                 let r = (r0 * (64 - weight) + r1 * weight + 32) / 64;
                 let g = (g0 * (64 - weight) + g1 * weight + 32) / 64;
                 let b = (b0 * (64 - weight) + b1 * weight + 32) / 64;
-                out[i] = (a0 << 24) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
+                *px = (a0 << 24) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
             }
         }
     }
@@ -270,7 +268,7 @@ impl TextureDecompressor {
         let a1 = bytes[9] as u32;
 
         // Apply 4-bit per-texel weights from bytes 10..16
-        for i in 0..16 {
+        for (i, px) in out.iter_mut().enumerate().take(16) {
             let byte_idx = 10 + (i / 2);
             let shift = (i % 2) * 4;
             let weight_4bit = if byte_idx < bytes.len() {
@@ -289,7 +287,7 @@ impl TextureDecompressor {
                 (a0 * (64 - w) + a1 * w + 32) / 64
             };
 
-            out[i] = (a.min(255) << 24) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
+            *px = (a.min(255) << 24) | (r.min(255) << 16) | (g.min(255) << 8) | b.min(255);
         }
     }
 

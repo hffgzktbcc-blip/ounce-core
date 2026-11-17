@@ -327,11 +327,9 @@ impl AudioRendererModel {
         let _ = perf_sz;
 
         for (i, c) in channels.chunks_exact(CHANNEL_IN_SIZE).enumerate() {
-            if let Some(dst) = self.channels.get_mut(i) {
-                if c[0x64] != 0 {
-                    for (b, m) in dst.iter_mut().enumerate() {
-                        *m = rdf32(c, 4 + b * 4);
-                    }
+            if let Some(dst) = self.channels.get_mut(i) && c[0x64] != 0 {
+                for (b, m) in dst.iter_mut().enumerate() {
+                    *m = rdf32(c, 4 + b * 4);
                 }
             }
         }
@@ -453,8 +451,9 @@ impl AudioRendererModel {
         let left = self.sink_inputs.first().copied().unwrap_or(0) as usize % MIX_BUFFERS;
         let right = self.sink_inputs.get(1).copied().unwrap_or(left as u8) as usize % MIX_BUFFERS;
         let clamp = |x: f32| (x * volume).round().clamp(i16::MIN as f32, i16::MAX as f32) as i16;
-        for i in 0..SAMPLES_PER_FRAME {
-            let (l, r) = final_mix.map_or((0.0, 0.0), |m| (buffers[m][left][i], buffers[m][right][i]));
+        let silent = [0f32; SAMPLES_PER_FRAME];
+        let (ls, rs) = final_mix.map_or((&silent, &silent), |m| (&buffers[m][left], &buffers[m][right]));
+        for (&l, &r) in ls.iter().zip(rs) {
             self.output.push(clamp(l));
             self.output.push(clamp(r));
         }
@@ -476,10 +475,10 @@ impl AudioRendererModel {
             let dest_count = self.mixes[dest].buffer_count as usize;
             let src = std::mem::take(&mut buffers[i]);
             for (s, src_buf) in src.iter().enumerate().take(mix.buffer_count as usize) {
-                for d in 0..dest_count {
+                for (d, dst_buf) in buffers[dest].iter_mut().enumerate().take(dest_count) {
                     let gain = mix.volume * mix.matrix[s * MIX_BUFFERS + d];
                     if gain != 0.0 {
-                        for (o, x) in buffers[dest][d].iter_mut().zip(src_buf) {
+                        for (o, x) in dst_buf.iter_mut().zip(src_buf) {
                             *o += x * gain;
                         }
                     }
@@ -498,6 +497,8 @@ impl AudioRendererModel {
         // DSP-ADPCM voices are mono.
         let ch = if voice.format == PCM_ADPCM { 1 } else { voice.channel_count as usize };
         let step = voice.sample_rate as f64 * voice.pitch.max(0.0) as f64 / OUTPUT_RATE as f64;
+        // `i` is the sample position within every destination buffer, not an index into one slice.
+        #[allow(clippy::needless_range_loop)]
         for i in 0..SAMPLES_PER_FRAME {
             // The current slot plays unless it is empty or the client has not replaced the wave buffer
             // finished there (then nothing more is queued).
@@ -669,6 +670,7 @@ mod tests {
     }
 
     /// A new, started voice at 48 kHz, pitch 1, volume 1, playing one wave buffer of `samples` frames.
+    #[allow(clippy::too_many_arguments)]
     fn set_voice(b: &mut [u8], at: usize, format: u8, channel_ids: &[u32], dest: u32, addr: u64, size: u64, samples: i32) {
         b[at + 0x8] = 1;
         b[at + 0x9] = 1;

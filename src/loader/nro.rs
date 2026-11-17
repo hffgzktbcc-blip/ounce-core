@@ -956,10 +956,8 @@ impl NroLoader {
         };
         let mut applied = 0;
         let mut add_base = |mmu: &mut Memory, addr: u64| {
-            if let Ok(v) = mmu.read_u64(addr) {
-                if mmu.write_u64(addr, v.wrapping_add(base_addr)).is_ok() {
-                    applied += 1;
-                }
+            if let Ok(v) = mmu.read_u64(addr) && mmu.write_u64(addr, v.wrapping_add(base_addr)).is_ok() {
+                applied += 1;
             }
         };
         let mut next = 0u64;

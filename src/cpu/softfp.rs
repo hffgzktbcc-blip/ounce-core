@@ -393,7 +393,7 @@ pub fn binop(f: Fmt, env: Env, op: BinOp, a: u64, b: u64) -> u64 {
 
 impl Fmt {
     fn two(self) -> u64 {
-        ((self.bias() as u64 + 1) << self.mbits) as u64
+        (self.bias() as u64 + 1) << self.mbits
     }
     fn three(self) -> u64 {
         self.two() | (1 << (self.mbits - 1))

@@ -269,27 +269,23 @@ impl NnFsManager {
         vfs: &VirtualFileSystem,
         mmu: &mut Memory,
     ) -> (u32, usize) {
-        if let Some(file) = self.open_files.get_mut(&handle) {
-            if let Some(data) = vfs.get_file(&file.path) {
-                let off = offset.max(0) as usize;
-                if off >= data.len() {
-                    return (RESULT_SUCCESS, 0);
-                }
-                let bytes_to_read = size.min(data.len() - off);
-                if mmu.write_bytes(dest_addr, &data[off..off + bytes_to_read]).is_ok() {
-                    file.current_offset = (off + bytes_to_read) as i64;
-                    return (RESULT_SUCCESS, bytes_to_read);
-                }
+        if let Some(file) = self.open_files.get_mut(&handle) && let Some(data) = vfs.get_file(&file.path) {
+            let off = offset.max(0) as usize;
+            if off >= data.len() {
+                return (RESULT_SUCCESS, 0);
+            }
+            let bytes_to_read = size.min(data.len() - off);
+            if mmu.write_bytes(dest_addr, &data[off..off + bytes_to_read]).is_ok() {
+                file.current_offset = (off + bytes_to_read) as i64;
+                return (RESULT_SUCCESS, bytes_to_read);
             }
         }
         (RESULT_FS_PATH_NOT_FOUND, 0)
     }
 
     pub fn get_file_size(&self, handle: u32, vfs: &VirtualFileSystem) -> (u32, i64) {
-        if let Some(file) = self.open_files.get(&handle) {
-            if let Some(data) = vfs.get_file(&file.path) {
-                return (RESULT_SUCCESS, data.len() as i64);
-            }
+        if let Some(file) = self.open_files.get(&handle) && let Some(data) = vfs.get_file(&file.path) {
+            return (RESULT_SUCCESS, data.len() as i64);
         }
         (RESULT_FS_PATH_NOT_FOUND, 0)
     }
@@ -383,6 +379,7 @@ impl SdkHleRuntime {
     }
 
     /// Dispatches an SDK call invoked from guest AArch64 code.
+    #[allow(clippy::too_many_arguments)]
     pub fn dispatch_call(
         &mut self,
         function_id: u32,

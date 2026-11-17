@@ -83,12 +83,12 @@ impl Process {
 
     pub(super) fn signal_return(&mut self, cpu: &mut Cpu, mmu: &Memory) -> Result<(), MemoryError> {
         let frame = cpu.regs.sp;
-        if frame % 16 != 0 || frame.checked_add(FRAME_SIZE).is_none() { return Err(MemoryError::Unmapped { addr: frame }); }
+        if !frame.is_multiple_of(16) || frame.checked_add(FRAME_SIZE).is_none() { return Err(MemoryError::Unmapped { addr: frame }); }
         let mut regs = cpu.regs.clone();
         for i in 0..31 { regs.x[i] = mmu.read_u64(frame + MC + 8 + i as u64 * 8)?; }
         regs.sp = mmu.read_u64(frame + MC + 256)?;
         regs.pc = mmu.read_u64(frame + MC + 264)?;
-        regs.pstate.from_bits(mmu.read_u64(frame + MC + 272)? as u32);
+        regs.pstate.set_bits(mmu.read_u64(frame + MC + 272)? as u32);
         regs.fpsr = mmu.read_u32(frame + FP + 8)?;
         regs.fpcr = mmu.read_u32(frame + FP + 12)?;
         for i in 0..32 {

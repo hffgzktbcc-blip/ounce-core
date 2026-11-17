@@ -31,7 +31,7 @@ impl Pstate {
     }
 
     /// Read raw NZCV bit representation
-    pub fn to_bits(&self) -> u32 {
+    pub fn to_bits(self) -> u32 {
         ((self.n as u32) << 31)
             | ((self.z as u32) << 30)
             | ((self.c as u32) << 29)
@@ -39,7 +39,7 @@ impl Pstate {
     }
 
     /// Set from raw NZCV bit representation
-    pub fn from_bits(&mut self, val: u32) {
+    pub fn set_bits(&mut self, val: u32) {
         self.n = (val & (1 << 31)) != 0;
         self.z = (val & (1 << 30)) != 0;
         self.c = (val & (1 << 29)) != 0;

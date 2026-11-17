@@ -698,7 +698,7 @@ fn fetch_attributes(rec: &DrawRecord, index: u32, mem: &mut dyn GpuMemoryWriter,
         // Instanced streams step per instance; frequency 0 keeps every instance on the base
         // element (UNVERIFIED: read as a divisor, as Vulkan's is).
         let element = if stream.instanced {
-            let step = if stream.frequency == 0 { 0 } else { rec.instance / stream.frequency };
+            let step = rec.instance.checked_div(stream.frequency).unwrap_or(0);
             rec.base_instance.wrapping_add(step)
         } else {
             index
@@ -1102,10 +1102,8 @@ impl Ampere3d {
                         if let Some((zt, t)) = zbuf.as_mut() {
                             let texel = t.texel(px, py);
                             let stored_z = read_depth(zt.format, texel);
-                            if let Some((min, max)) = bounds_test {
-                                if !(min..=max).contains(&stored_z) {
-                                    continue;
-                                }
+                            if let Some((min, max)) = bounds_test && !(min..=max).contains(&stored_z) {
+                                continue;
                             }
                             let s = stencil.as_ref().map(|s| s.face(front));
                             let stored_s = read_stencil(zt.format, texel);
@@ -1146,10 +1144,8 @@ impl Ampere3d {
                             }
                             let wm = write_mask(&self.regs, ct.index);
                             let texel = st.texel(px, py);
-                            if let Some(b) = blend {
-                                if let Some(dst) = read_color(ct.format, texel) {
-                                    color = b.apply(color, dst, ct.format != ColorFormat::Rf32Gf32Bf32Af32);
-                                }
+                            if let Some(b) = blend && let Some(dst) = read_color(ct.format, texel) {
+                                color = b.apply(color, dst, ct.format != ColorFormat::Rf32Gf32Bf32Af32);
                             }
                             write_color(ct.format, texel, color, wm);
                         }

@@ -13,7 +13,7 @@ historical record only: do not take tasks or rules from it.
 
 ## Environment
 `scripts/setup_env.sh` (Linux: installs ALSA/udev dev headers, runs `cargo build --locked`,
-prints `scripts/next.sh`). Python 3.9+ for tools; Rust edition 2024 (cargo >= 1.85).
+prints `scripts/next.sh`). Python 3.9+ for tools; Rust edition 2024 (cargo >= 1.89; the `msrv` CI job checks it).
 
 ## Coordination
 - One agent per topic branch; stage only your own paths; never rewrite another agent's branch.
@@ -45,3 +45,7 @@ prints `scripts/next.sh`). Python 3.9+ for tools; Rust edition 2024 (cargo >= 1.
 7. **Version and link drift is checked in CI.** `python3 scripts/check_pins.py` (Cargo.toml, CITATION.cff, CHANGELOG
    and `docs/releases/` must agree) and `python3 scripts/check_links.py` (no broken relative Markdown links) run as
    tests. When you cut a release or move a doc, run them first.
+8. **Warnings fail CI.** The `lint` job runs clippy with `-D warnings` on default, `native-jit,nce` and
+   `gpu-present` features, on a pinned toolchain (see `.github/workflows/ci.yml`); `scripts/gate.sh --check runtime`
+   runs the default-feature pass locally. The tree is not rustfmt-clean, so do not run `cargo fmt` on whole files you
+   did not otherwise change: it rewrites unrelated lines and causes merge conflicts.

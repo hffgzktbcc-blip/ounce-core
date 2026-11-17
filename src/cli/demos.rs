@@ -309,8 +309,7 @@ pub(crate) fn run_built_in_demo() {
     mmu.write_bytes(DEFAULT_BASE_ADDR, &main_bytes).unwrap();
 
     // Run VM and inspect shader + scheduler state
-    let mut display_none: Option<&mut DisplayServer> = None;
-    let outcome = run_vm_internal(cpu, mmu, kernel, display_none.as_mut().map(|x| &mut **x), None, 10_000, 0);
+    let outcome = run_vm_internal(cpu, mmu, kernel, None, None, 10_000, 0);
     gate.expect_exit(6, &outcome, 0x1E61);
     println!();
 

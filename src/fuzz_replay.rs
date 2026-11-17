@@ -178,7 +178,7 @@ fn setup(word: u32, i: &Init) -> (Cpu, Memory) {
     cpu.regs.fpcr = i.fpcr;
     // Tier-4 compiled FP does not accumulate FPSR flags; replay needs them, so keep FP arithmetic out of compiled code
     cpu.fp_flags_tracked = true;
-    cpu.regs.pstate.from_bits(i.nzcv << 28);
+    cpu.regs.pstate.set_bits(i.nzcv << 28);
     (cpu, mmu)
 }
 
@@ -391,6 +391,7 @@ fn register_json(x: &[u64], v: &[u128], nzcv: u32, fpsr: u32) -> serde_json::Val
 }
 
 /// Retain a single compared instruction, not a trace of an arbitrary program.
+#[allow(clippy::too_many_arguments)]
 fn save_difference(dir: &std::path::Path, line: &str, line_number: usize, c: &Case, st: &State,
                    engine: Engine, native: u64, differences: &[String]) -> Result<(), String> {
     use sha2::{Digest, Sha256};
@@ -791,7 +792,7 @@ pub fn run(args: &[String]) -> i32 {
         }
         println!("{title} (class = word & 0xFFE0FC00: count, example):");
         let mut v: Vec<_> = m.iter().collect();
-        v.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+        v.sort_by_key(|&(_, &(count, _))| std::cmp::Reverse(count));
         for (k, (cnt, ex)) in v.iter().take(top) {
             println!("  {k:#010x} {cnt:>6} {ex:#010x}");
         }
@@ -868,7 +869,7 @@ fn rand_x(r: &mut Rng) -> u64 {
         1 => 1,
         2 => u64::MAX,
         3 => r.below(0x100),
-        4 | 5 => DATA + 0x400 + r.below(0x1000) & if r.below(2) == 0 { !7 } else { !0 },
+        4 | 5 => (DATA + 0x400 + r.below(0x1000)) & if r.below(2) == 0 { !7 } else { !0 },
         6 => [0x8000_0000, 0x7fff_ffff, 0xffff_ffff, 0x8000_0000_0000_0000, 0x7fff_ffff_ffff_ffff][r.below(5) as usize],
         _ => r.next(),
     }
