@@ -108,6 +108,22 @@ Tests in `src/cpu/fuzz_insn_tests.rs`: `scalar_convert_honours_rmode_and_flags`,
 Still untested: FZ16 and half precision, trap enables, FPCR bits other than FZ, DN and RMode, FPSR flags of ops the interpreter
 reports as unimplemented.
 
+## Targeted classes (`--word-mask` / `--word-value`)
+`fuzz_host --word-mask M --word-value V` forces the bits in M to V in every generated word, so a rare encoding class can be
+fuzzed in volume (the random families reach FCADD about 0 times per million words). With `--fpcr-mix`, 8 seeds x 400,000 words
+per class, host vs interpreter, all 8 FPCR values:
+
+| class (mask:value) | executed | value mismatches | flag-only differences |
+|---|---|---|---|
+| FCADD .2S/.4S/.2D (`0xbf20ec00:0x2e00e400`) | 1,024,258 | 0 | 0 |
+| SQRDMLAH/SQRDMLSH vector (`0xbf20f400:0x2e008400`) | 1,500,888 | 0 | 0 |
+| FCVTXN/FCVTXN2 vector (`0xbf3ffc00:0x2e216800`) | 798,753 | 0 | 0 |
+| FCVTXN scalar (`0xff3ffc00:0x7e216800`) | 800,772 | 0 | 0 |
+| FMOV vector immediate half precision (`0xbff8fc00:0x0f00fc00`) | 3,200,000 | 0 | 0 |
+| FRECPE/FRSQRTE scalar S/D (`0xdfbffc00:0x5ea1d800`) | 3,200,000 | 0 | 0 |
+| FRECPS/FRSQRTS scalar S/D (`0xff20fc00:0x5e20fc00`) | 3,200,000 | 0 | 0 |
+| FRINT32Z/32X/64Z/64X scalar (`0xff3e7c00:0x1e284000`) | 1,801,223 | 0 | 0 |
+
 ## Not covered (explicit)
 - Loads/stores, branches, system, integer scalar data-processing, SVE/SME, crypto, atomics.
 - Features the interpreter lacks: half-precision scalar and vector FP (FEAT_FP16), BF16/I8MM, FCMA, RDM, and

@@ -1,5 +1,8 @@
 # M5 step 1: deko3d "clear + one triangle" (design note)
 
+> **Status as of 2026-11-17: historical design note, not an open task.** This proposal was not implemented as written (there is no `src/gpu/maxwell/`). Rendering of the `deko_basic` oracle shipped through `src/gpu/ampere/` and `src/gpu/sass/` instead; see [deko-basic-oracle.md](../deko-basic-oracle.md) and [corpus-oracles.md](../corpus-oracles.md). "Track A/B" is a retired ownership label.
+
+
 Status: proposal from Track B (Claude). Needs a Track A (Antigravity) ack on the ownership split below
 before any code lands. Nothing here touches `src/gpu/present/*`, `tier4.rs`, the recompiler or CI.
 

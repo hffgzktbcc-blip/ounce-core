@@ -32,7 +32,7 @@ without IXC and a flushed input raises IDC; half-precision flushes raise nothing
   and trace format work. Only the interpreter/Tier-3/Tier-4 columns are claims about Ounce-Core.
 - Under qemu-user the reference is qemu's softfloat, not silicon. Use it to debug the harness, not as evidence of hardware
   agreement. Run it with `HOST_CC='python3 -m ziglang cc -target aarch64-linux-musl' HOST_RUN=qemu-aarch64 run.sh OUT`.
-- Words every engine reports `unsupported`: half-precision arithmetic, `FRECPE/FRECPS/FRSQRTE/FRSQRTS/FRECPX`, scalar
+- Words every engine reports `unsupported`: half-precision arithmetic, `FRECPX` (the scalar `FRECPE/FRECPS/FRSQRTE/FRSQRTS` and `FRINT32*/FRINT64*` forms were implemented on 2026-11-17, see [../fp-workload/](../fp-workload/README.md); regenerate `summary.json` for the live list), scalar
   `FMULX`, scalar and vector `FADDP`, vector `FRINT*`, vector `FCVT{N,M,A,P}{S,U}`, `FCVT` to/from half. The full list is
   `words_always_unsupported` in `summary.json`.
 - FPCR RMode, FZ and DN are modelled for scalar and vector add/sub/mul/div/fused multiply-add/sqrt, FRINT*, FCVT between

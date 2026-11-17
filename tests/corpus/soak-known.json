@@ -4,10 +4,6 @@
     "exception-handler": [
       {"finding": "Interpreter: crash (Fault { pc: 2147484100", "issue": "https://github.com/hffgzktbcc-blip/ounce-core/issues/386"},
       {"finding": "Tier3: crash (Fault { pc: 2147484100", "issue": "https://github.com/hffgzktbcc-blip/ounce-core/issues/386"}
-    ],
-    "applet-software-keyboard": [
-      {"finding": "Interpreter: crash (Break { reason: 3735883972", "issue": "https://github.com/hffgzktbcc-blip/ounce-core/issues/387"},
-      {"finding": "Tier3: crash (Break { reason: 3735883972", "issue": "https://github.com/hffgzktbcc-blip/ounce-core/issues/387"}
     ]
   }
 }

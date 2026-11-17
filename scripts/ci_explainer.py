@@ -55,6 +55,18 @@ def extract_relevant_log_lines(raw_log, max_lines=MAX_LOG_LINES, max_chars=MAX_L
     return snippet or 'No log lines available.'
 
 
+SUMMARY_GATE = re.compile(r'^Test \(')
+
+
+def first_failed_job(jobs):
+    """First job whose own work failed. The `Test (...)` jobs only summarise others: when a newer push
+    cancels the run they report failure with nothing failing underneath, so they are never the cause."""
+    for job in jobs:
+        if job.get('conclusion') == 'failure' and not SUMMARY_GATE.match(job.get('name', '')):
+            return job
+    return None
+
+
 def determine_repro_command(job_name, step_name='', log_snippet=''):
     """Map a failing CI job and step to its reproduction command in scripts/gate.sh."""
     combined = f'{job_name} {step_name} {log_snippet}'.lower()
@@ -240,18 +252,17 @@ def main():
     failing_step = None
     failed_job_id = None
 
-    for job in jobs_data:
-        if job.get('conclusion') == 'failure':
-            failed_job = job.get('name', 'Unknown job')
-            failed_job_id = job.get('id')
-            steps = job.get('steps', [])
-            for step in steps:
-                if step.get('conclusion') == 'failure':
-                    failing_step = step.get('name', 'Unknown step')
-                    break
-            if not failing_step and steps:
-                failing_step = steps[-1].get('name', 'Workflow step')
-            break
+    job = first_failed_job(jobs_data)
+    if job:
+        failed_job = job.get('name', 'Unknown job')
+        failed_job_id = job.get('id')
+        steps = job.get('steps', [])
+        for step in steps:
+            if step.get('conclusion') == 'failure':
+                failing_step = step.get('name', 'Unknown step')
+                break
+        if not failing_step and steps:
+            failing_step = steps[-1].get('name', 'Workflow step')
 
     if not failed_job or not failed_job_id:
         print(f'No failed jobs found in workflow run {run_id}.', file=sys.stderr)

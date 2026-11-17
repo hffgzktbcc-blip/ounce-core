@@ -94,7 +94,7 @@ window of their own (`Advanced.swift`). The outcome of each is shown in a dialog
 | Show Last Session Log | Reveals the newest log in `~/Library/Application Support/Ounce Core/Logs` (8 MiB cap per log). |
 | Stop Running Program | Ends the run. Only enabled while one is running; the Dock icon shows "Running". |
 
-Screenshots of a click-through of this build are in [mac-app-one-door/](mac-app-one-door/).
+Screenshots of a click-through of this build are in [mac-app-one-door/](mac-app-one-door).
 
 Swift logic tests: `swiftc tools/macos-launcher/WorkbenchLogic.swift tests/macos/workbench-logic/main.swift -o /tmp/wb-tests && /tmp/wb-tests`.
 
@@ -124,7 +124,7 @@ CI compiles and runs it on macOS beside the saved-report tests.
 ## GUI verification status
 
 Clicked through on a Mac (Apple Silicon, macOS 26) with Orca computer use against a build of this branch, screenshots in
-[mac-app-one-door/](mac-app-one-door/): first launch; a program opened from Finder (`open -a`) with its progress state,
+[mac-app-one-door/](mac-app-one-door): first launch; a program opened from Finder (`open -a`) with its progress state,
 then *Results match*; *Check again and compare with this Mac* after that app-side upload (the confirmation sheet, then
 *Results match* on this Mac); Save Report… (the file was written); Help > Report a Problem (same URL as the page's
 button, for a match and for a differ); File > Open Recent; File > Open Saved Results; Advanced > Run in a Window; the

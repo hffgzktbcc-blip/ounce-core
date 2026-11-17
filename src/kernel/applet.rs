@@ -803,6 +803,75 @@ mod tests {
         assert_eq!(&got[4..], &[0, 0, 0, 0]);
     }
 
+    /// Regression test for issue #387:
+    /// swkbdShow deadlocks (0xDEAD10C4) if the library applet state-changed event never signals.
+    /// Verify both the deadlock condition when waiting on an unsignaled event, and that the
+    /// modelled library applet signals immediately so svcWaitSynchronization succeeds.
+    #[test]
+    fn issue_387_software_keyboard_deadlock_regression() {
+        let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
+
+        // 1. Deadlock reproduction: waiting on an un-signaled event with infinite timeout
+        // triggers kernel deadlock (0xDEAD10C4).
+        let unsignaled_event = kernel.sync.create_event(false);
+        let handle_ptr = 0x2000u64;
+        mmu.map_range(handle_ptr, 0x1000, crate::mmu::Permission::READ_WRITE);
+        mmu.write_u32(handle_ptr, unsignaled_event).unwrap();
+        cpu.regs.write_x(1, handle_ptr); // pointer to handles
+        cpu.regs.write_x(2, 1); // 1 handle
+        cpu.regs.write_x(3, u64::MAX); // timeout = -1 (infinite)
+        match kernel.dispatch_svc(0x18, &mut cpu, &mut mmu) {
+            crate::kernel::SvcResult::Break { reason, .. } => {
+                assert_eq!(reason, 0xDEAD10C4, "reproduction must hit deadlock 0xDEAD10C4");
+            }
+            other => panic!("expected 0xDEAD10C4 deadlock on unsignaled wait, got: {other:?}"),
+        }
+
+        // 2. Verified fix: swkbdShow path through appletOE and ILibraryAppletCreator.
+        // Opening ApplicationProxy -> LibraryAppletCreator -> LibraryAppletAccessor.
+        let mut h = Harness::new();
+        let (root, proxy) = open_application_proxy(&mut h);
+        let creator = get(&mut h, root, proxy, 11);
+        let id_mode = 0x11u32.to_le_bytes(); // AppletId_SoftwareKeyboard
+        let mut create = [0u8; 8];
+        create[..4].copy_from_slice(&id_mode);
+        let holder = h
+            .call(root, Req { cmd: 0, data: &create, domain_object: Some(creator), ..Default::default() })
+            .object();
+
+        // The state-changed event returned to swkbdShow must be signaled.
+        let state_event_handle = h.call(root, Req { cmd: 0, domain_object: Some(holder), ..Default::default() }).copy_handles[0];
+        assert_eq!(h.ipc.service_event_signaled(state_event_handle), Some(true), "state-changed event must be signaled");
+
+        // Guest starts the applet (cmd 10)
+        assert_eq!(h.call(root, Req { cmd: 10, domain_object: Some(holder), ..Default::default() }).result, 0);
+
+        // Guest calls svcWaitSynchronization on the state-changed event: it completes immediately.
+        let (mut cpu2, mut mmu2, mut kernel2) = crate::setup_vm();
+        let state_event_handle2 = kernel2.ipc.allocate_handle(ServiceType::ServiceEvent("LibraryAppletStateChanged"));
+        mmu2.map_range(handle_ptr, 0x1000, crate::mmu::Permission::READ_WRITE);
+        mmu2.write_u32(handle_ptr, state_event_handle2).unwrap();
+        cpu2.regs.write_x(1, handle_ptr);
+        cpu2.regs.write_x(2, 1);
+        cpu2.regs.write_x(3, u64::MAX);
+        let res = kernel2.dispatch_svc(0x18, &mut cpu2, &mut mmu2);
+        assert_eq!(res, crate::kernel::SvcResult::Success);
+        assert_eq!(cpu2.regs.read_x(0), 0, "svcWaitSynchronization must return RESULT_SUCCESS (0)");
+        assert_eq!(cpu2.regs.read_x(1), 0, "signaled index must be 0");
+
+        // swkbdShow retrieves the cancellation result from pop-out storage
+        assert_eq!(h.call(root, Req { cmd: 30, domain_object: Some(holder), ..Default::default() }).result, 0);
+        let out = h.call(root, Req { cmd: 101, domain_object: Some(holder), ..Default::default() }).object();
+        let out_acc = h.call(root, Req { cmd: 0, domain_object: Some(out), ..Default::default() }).object();
+        assert_eq!(
+            h.call(root, Req { cmd: 11, data: &0u64.to_le_bytes(), recv_list: Some((BUF, 8)), domain_object: Some(out_acc), ..Default::default() }).result,
+            0
+        );
+        let got = h.read_buf(BUF, 8);
+        let result_code = u32::from_le_bytes(got[..4].try_into().unwrap());
+        assert_eq!(result_code, LIBRARY_APPLET_CANCEL_RESULT, "must return cancelled result");
+    }
+
     /// The harness's inline frames (no HIPC header) keep the older handlers in ipc.rs.
     #[test]
     fn inline_harness_frames_keep_legacy_behaviour() {

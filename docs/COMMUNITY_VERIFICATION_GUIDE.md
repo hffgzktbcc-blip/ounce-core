@@ -42,7 +42,7 @@ In `ounce-core`, we maintain a **27-program differential verification gauntlet**
 You can run the full multi-optimization matrix locally:
 
 ```sh
-# Run all 27 harnesses across -O1, -O2, -O3, and -O3 -mcpu=apple_m1
+# Run all 28 harnesses across -O1, -O2, -O3, and -O3 -mcpu=apple_m1
 python3 scripts/verify_linux_elf.py --opt-matrix --diverge
 ```
 

@@ -59,7 +59,7 @@ checked on the guest bytes before that conversion.
    recorded, and a second clean build reproduces it.
 2. The guest gets through `nwindowGetDefault`/`framebufferCreate` without a libnx
    fatal error. Today the startup sample stops at `BadGfxInit` (`0x2559`); see
-   `docs/CODEX_HANDOFF.md`.
+   `docs/history/handoffs/CODEX_HANDOFF.md`.
 3. At least frames 1 and 2 are captured from the **submitted** VI buffer
    (`submitted_vi_surface` -> `tiling_surface` -> `frame_from_surface`), at
    1280x720 RGBA8, and match the table. All 921,600 pixels have the stated value.

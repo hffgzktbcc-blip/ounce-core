@@ -2,15 +2,17 @@
 
 *Vetted on 2026-11-14 across 4 independent reviews: Architecture & Contract Stability, Licensing & Clean-Room Legal, CI & Release Infrastructure, and Homebrew Developer Experience.*
 
-**Status: Done / In PR / Next**
+**Verified release update (17 Nov 2026):** The Q1 family releases are **published**, not pending: [ounce-core v0.9.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.9.0), [ounce-hb v0.1.0](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.1.0), and [ounce-runtime v0.6.0](https://github.com/hffgzktbcc-blip/ounce-runtime/releases/tag/v0.6.0). The older pre-release instructions below remain as historical acceptance criteria; do **not** recreate these release PRs or re-tag these versions. Continue the post-tag Q1 developer-experience, deterministic-reporting, real-world validation and DeckStream work after checking live PRs and actual evidence.
+
+**Status: Done / In PR / Next (historical 14–16 Nov checklist; live GitHub wins on current state)**
 
 | Status | Item |
 | --- | --- |
 | **Done** | Landed 14 Nov 2026: `ounce.run.v1` / `--report-json`; `ounce-hb` `doctor` / `--auto` / `repro`; `setup-ounce`; the Linux ARM64 ELF matrix workflow. |
 | **Done** | Release infrastructure merged: `ounce-core` #442, `ounce-hb` #40, `ounce-runtime` #13. Linux ARM64 ELF matrix passed on core `main` at `6a4ccb8` ([job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/43803024996/job/133087400644)): 28 harnesses / 76 rows. |
-| **Next** | Prepare the Q1 package versions, qualify each exact candidate head and its archives, then obtain the owner publication decision for the synchronized tags. [Current candidate notes](../releases/v0.9.0.md). |
+| **Done** | The Q1 release tags v0.9.0 / v0.1.0 / v0.6.0 are published (links above). Preserve the candidate notes as historical qualification evidence. |
 
-**Source of truth:** This document supersedes `docs/roadmap/milestones.json` and the `ounce-hb` wiki roadmap. The education roadmap (`OUNCE_EDUCATION_ROADMAP.md`) is deferred until the Q1 tags exist.
+**Source of truth:** This document supersedes `docs/roadmap/milestones.json` and the `ounce-hb` wiki roadmap. The education roadmap (`OUNCE_EDUCATION_ROADMAP.md`) was deferred until the Q1 tags existed; they now do (see the verified release update above), so scheduling it is an owner decision.
 
 **North Star:** Make **`ounce-core`** (MIT), **`ounce-hb`** (MIT), **`ounce-runtime`** (GPL-3.0-or-later), and **`deckstream`** (MIT, SteamOS WebDAV launcher & Decky UI) the self-diagnosing, zero-AI-needed standard for **building, testing, running, and debugging open-source AArch64 homebrew (`.nro` / `.nso`) and static musl Linux AArch64 ELFs**, with strict license isolation (subprocess + CLI/JSON contracts only) and **zero retail/key/SDK material** (`ounce-hb`: strict clean-room per `docs/CLEAN_ROOM.md`; `ounce-core`: public specs + attributed MIT ports per `docs/CLEAN_ROOM.md`; `ounce-runtime`: GPL-3.0-or-later; `deckstream`: MIT).
 
@@ -38,10 +40,10 @@
 **After the tag** (one theme at a time):
 
 1. **Day-1 Homebrew Ergonomics & Doc/CLI Sync:**
-   - **Loop-exit controls:** Add `--max-frames <N>` and inline `--press PLUS@60` (plus `OUNCE_INPUT_SCRIPT=<path>`) so standard `while (appletMainLoop())` `libnx` apps exit cleanly instead of hitting the 60s timeout.
-   - **Q1 `--sdmc` & RomFS support:** Support ephemeral/copy-on-write `--sdmc <dir>` staging and RomFS (`romfsInit()`) verification in Q1 rather than deferring to Q2.
+   - **Loop-exit controls (`--max-frames <N>` and inline `--press PLUS@60` DONE, #458 merged 17 Nov; `OUNCE_INPUT_SCRIPT=<path>` was not built):** so standard `while (appletMainLoop())` `libnx` apps exit cleanly instead of hitting the 60s timeout.
+   - **Q1 `--sdmc` & RomFS support (IN FLIGHT: PR #459, not merged):** Support ephemeral/copy-on-write `--sdmc <dir>` staging and RomFS (`romfsInit()`) verification in Q1 rather than deferring to Q2.
    - **CLI & Doc parity:** Implement `--timeout <dur>` and `--json` on `ounce-hb run` (matching `HOMEBREW_DEVELOPER_GUIDE.md`), sync `ounce-hb/README.md` with `doctor`, `repro`, and `--auto`, and extend `ounce-hb doctor` to check `DEVKITPRO`/`devkitA64`/`cargo-nx` alongside engine binaries.
-   - **Applet deadlock (`ounce-core` #387):** `applet-software-keyboard` deadlocks in `swkbdShow`; library applets are not modelled.
+   - **Applet deadlock (`ounce-core` #387): DONE.** Issue closed, fixed by `0b4489b` (cancelled software-keyboard result); PR #459 adds a regression test. Do not redo.
 
 2. **End-to-End Graphical & Determinism Parity (`ounce.run.v1` / `ounce.repro.v1`):**
    - **Prerequisites before comparing `framebuffer_hash`:**
@@ -68,7 +70,7 @@
 
 2. **Zero-AI Diagnostic Tooling (`ounce-hb` + `ounce-core`):**
    - **Symbolicated fault telemetry:** Pure safe Rust DWARF/ELF symbolication (`#![forbid(unsafe_code)]`, permissive crate only, no GPL/LGPL C bindings) emitting `pc`, `lr`, `sp`, and top stack frames in `ounce.run.v1`. Exit `11` prints PC + faulting VA + symbol; exit `14` names exact `sm` service + command ID.
-   - **Live hang visibility & guest args:** Add `--stream` (or flush-on-timeout) so hung `.nro` runs show stdout/stderr immediately, and lift the guest `-` argument restriction (`ounce-core #418`) so homebrew test harnesses can pass flags like `--verbose` after `--`.
+   - **Live hang visibility & guest args:** Add `--stream` (or flush-on-timeout) so hung `.nro` runs show stdout/stderr immediately, and lift the guest `-` argument restriction (`ounce-core #418`, DONE in #420; headless no-audio #419 DONE in #421) so homebrew test harnesses can pass flags like `--verbose` after `--`.
    - **`ounce-hb bisect`:** Automated `git bisect run` wrapper around `ounce-hb repro`, mapping `ounce-hb` infrastructure exits (`2..5`) to `125` (skip untestable commit) and guest pass/fail to `0`/`1`.
    - **`ounce-hb diff-trace` via `ounce.trace.v1`:** Define a bounded first-divergence summary contract (`OUNCE_TRACE_SUMMARY=<path>`) implemented independently by both `ounce-core` and `ounce-runtime`, preserving license isolation.
 
@@ -99,7 +101,7 @@
    - Feed Q1–Q2 `ounce.repro.v1` bug reports into `ounce-runtime` Tier-3 / Tier-4 / NCE so fast execution matches `ounce-core` on FP/SIMD, NaN, and SVC edge cases.
    - **Strict One-Way Rule:** `ounce.repro.v1` JSON discoveries may inform GPL `ounce-runtime` fixes, **never** the reverse—no code or patterns from `ounce-runtime` may ever flow into MIT `ounce-core` or `ounce-hb`.
    - Track CI performance regressions strictly via deterministic `insns_executed` budgets (keep wall-time tracking advisory on shared runners).
-   - **#400–#404 (instruction gaps, good first issues):** takeable anytime; they do not wait on this quarter.
+   - **#400–#404 (instruction gaps): ALL CLOSED 16 Nov 2026** (#400 `32e69ac`, #401 #449, #402 #444, #403 #450, #404 #451). Do not restart them.
 
 3. **Quarterly Coordinated Releases & Supply-Chain Hardening:**
    - Cut Q2/Q3 releases (`ounce-core` `v0.10.0` → `v0.11.0`, `ounce-hb` `v0.2.0` → `v0.3.0`, `ounce-runtime` `v0.7.0` → `v0.8.0`) with SPDX/SBOM generation, SHA-pinned GitHub Actions / Dependabot across all 3 repos, and `SHA256SUMS`.
