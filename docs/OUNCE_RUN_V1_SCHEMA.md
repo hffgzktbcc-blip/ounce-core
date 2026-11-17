@@ -57,4 +57,4 @@ Every field is a flat scalar or `null`. Nested objects and arrays wait for the r
 When orchestrating cross-engine parity or escalation, callers pass:
 - `--present=headless` (no window and no host audio device)
 - `--audio=null` or `OUNCE_AUDIO=null` (no host audio device, including when a window is open)
-- `--deterministic` or `OUNCE_DETERMINISTIC=1` / `true`. On `run-elf` this uses a fixed guest clock. On homebrew `run` / `run-nro` it makes 3D draws use the software rasterizer, even with a GPU window, so `framebuffer_hash` is never `null` for a presented frame; the kernel clock is unchanged unless the caller sets that clock itself (the corpus runner does).
+- `--deterministic` or `OUNCE_DETERMINISTIC=1` / `true`. On `run`, `run-nro` and `run-elf` the guest runs on a fixed clock: guest time advances per system call, not with the host clock, and the wall-clock date is fixed, so `insns_executed` is the same on every run and host (#479). On homebrew `run` / `run-nro` it also makes 3D draws use the software rasterizer, even with a GPU window, so `framebuffer_hash` is never `null` for a presented frame.
