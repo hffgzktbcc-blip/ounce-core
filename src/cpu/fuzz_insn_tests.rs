@@ -392,3 +392,50 @@ fn frint32z_raises_inexact() {
     assert_eq!(c.regs.v[6] as u32, 0x3f80_0000);
     assert_eq!(c.regs.fpsr & 0x9f, IXC);
 }
+
+// Scalar FRECPE/FRSQRTE/FRECPS/FRSQRTS and FRINT32*/FRINT64* (#359). Expected values and flags are what an
+// Apple M3 returned at FPCR 0 for the same inputs (docs/verify/fp-workload). Each writes lane 0 and zeroes the rest.
+#[test]
+fn scalar_recip_estimate_flags_come_from_lane_zero_only() {
+    // frecpe s4, s5: 1.0 -> 0x3f7f8000 with no flags (an unread zero lane would raise DZC)
+    let c = run1_fpcr(0x5ea1_d8a4, 0, &[(4, u128::MAX), (5, 0x3f80_0000 | 0xffff_ffffu128 << 32)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x3f7f_8000, 0));
+    // frecpe s4, s5: +0 -> +inf, DZC; a signalling NaN -> quiet NaN, IOC
+    let c = run1_fpcr(0x5ea1_d8a4, 0, &[(5, 0)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x7f80_0000, 0x02));
+    let c = run1_fpcr(0x5ea1_d8a4, 0, &[(5, 0x7f80_0001)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x7fc0_0001, 0x01));
+    // frsqrte d4, d5: 1.0 -> 0x3feff00000000000; -1.0 -> default NaN, IOC
+    let c = run1_fpcr(0x7ee1_d8a4, 0, &[(5, 0x3ff0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x3fef_f000_0000_0000, 0));
+    let c = run1_fpcr(0x7ee1_d8a4, 0, &[(5, 0xbff0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x7ff8_0000_0000_0000, 0x01));
+}
+
+#[test]
+fn scalar_recip_and_rsqrt_steps() {
+    // frecps d4, d5, d6: 2 - 0*inf = 2.0, 2 - 1*inf = -inf, no flags (fused, 0*inf is special-cased)
+    let c = run1_fpcr(0x5e66_fca4, 0, &[(5, 0), (6, 0x7ff0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x4000_0000_0000_0000, 0));
+    let c = run1_fpcr(0x5e66_fca4, 0, &[(5, 0x3ff0_0000_0000_0000), (6, 0x7ff0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0xfff0_0000_0000_0000, 0));
+    // frsqrts d4, d5, d6: (3 - 0*inf)/2 = 1.5, (3 - 1*1)/2 = 1.0
+    let c = run1_fpcr(0x5ee6_fca4, 0, &[(5, 0), (6, 0x7ff0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x3ff8_0000_0000_0000, 0));
+    let c = run1_fpcr(0x5ee6_fca4, 0, &[(5, 0x3ff0_0000_0000_0000), (6, 0x3ff0_0000_0000_0000)]);
+    assert_eq!(c.regs.v[4], 0x3ff0_0000_0000_0000);
+}
+
+#[test]
+fn scalar_frint32z_and_frint64x() {
+    // frint32z d4, d5: 1.5 -> 1.0 (IXC); 2^63 is out of int32 range -> -2^31 as a double, IOC
+    let c = run1_fpcr(0x1e68_40a4, 0, &[(5, 0x3ff8_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x3ff0_0000_0000_0000, IXC));
+    let c = run1_fpcr(0x1e68_40a4, 0, &[(5, 0x43e0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0xc1e0_0000_0000_0000, 0x01));
+    // frint64x d4, d5: 1.5 -> 2.0 (ties to even, IXC); 2^63 is out of int64 range -> -2^63, IOC
+    let c = run1_fpcr(0x1e69_c0a4, 0, &[(5, 0x3ff8_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x4000_0000_0000_0000, IXC));
+    let c = run1_fpcr(0x1e69_c0a4, 0, &[(5, 0x43e0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0xc3e0_0000_0000_0000, 0x01));
+}

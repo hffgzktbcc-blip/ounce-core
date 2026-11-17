@@ -2118,6 +2118,29 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::FpScalarThreeSame { rd, rn, rm, op, is_double } => {
+                let e = if is_double { 64 } else { 32 };
+                let keep = simd::lane_mask(e);
+                // a scalar op reads lane 0 only: replicate it so the unread lane cannot raise exception flags
+                let n = simd::dup(simd::lane(self.regs.read_q(rn), e, 0), e, true);
+                let m = simd::dup(simd::lane(self.regs.read_q(rm), e, 0), e, true);
+                let raw = simd::fp_three_same_fpcr(op, 0, n, m, is_double, false, self.regs.fpcr);
+                self.regs.write_q(rd, raw & keep);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpScalarTwoMisc { rd, rn, op, is_double } => {
+                let e = if is_double { 64 } else { 32 };
+                let keep = simd::lane_mask(e);
+                // replicate lane 0 so the unread lane (zero would be a divide-by-zero for FRECPE) raises no flags
+                let n = simd::dup(simd::lane(self.regs.read_q(rn), e, 0), e, true);
+                let raw = simd::fp_two_misc_fpcr(op, 0, n, is_double, false, self.regs.fpcr);
+                self.regs.write_q(rd, raw & keep);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::SimdScalarTwoMisc { rd, rn, op, esize } => {
                 let e = esize as u32;
                 // only lane 0 of the sources is read, so upper lanes cannot set QC

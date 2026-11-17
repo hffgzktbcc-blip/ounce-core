@@ -4,15 +4,21 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
-## 0.9.0 — draft, not tagged
+- CLI: `--max-frames N` and a repeatable `--press BUTTON@FRAME` (for example `PLUS@60`) let scripted runs
+  exit cleanly and press buttons (#458).
+- Fuzzer: `--word-mask` / `--word-value` targeted generation, with hardware evidence for FCADD, SQRDMLAH/SQRDMLSH,
+  FCVTXN and half-precision FMOV (#457).
+- Docs: one roadmap entry point for agents (#461); past handoffs moved under `docs/history/`.
 
-Release candidate for review; no tag has been published. The release-infrastructure
+## 0.9.0 — released 2026-11-16
+
+Published as [v0.9.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.9.0), tagged at `4b63f7a`. The release-infrastructure
 PRs are merged, and the Linux ARM64 ELF matrix passed on `main` at `6a4ccb8`
 ([run 43803024996](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/43803024996)).
 The downloaded report records 28/28 harnesses and 76/76 optimization rows passing.
-See [Q1 release readiness](docs/releases/v0.9.0.md) for candidate
-versions, evidence and remaining publication steps. Changes below cover
-`v0.8.2..6a4ccb8`; PR #452 is not included.
+See [Q1 release readiness](docs/releases/v0.9.0.md) for the pre-tag
+evidence record. The list below was drafted against `v0.8.2..6a4ccb8` and may not itemise every commit up to the
+tag (for example #452 and #456); `git log v0.8.2..v0.9.0` is the full list.
 
 ### Added
 - `run` and `run-nro` can write an `ounce.run.v1` JSON report with
@@ -50,7 +56,7 @@ versions, evidence and remaining publication steps. Changes below cover
 - Release archives include Linux ARM64; Linux checksum generation covers the
   archives produced by all four release targets (#442).
 
-### Known limits of this draft
+### Known limits at release
 - `silent_fallback` is always `false`. `frames_presented` and
   `framebuffer_hash` are not fields on ounce-core's report.
 - Asking for Tier-4 without `native-jit` still runs Tier-3, and the report's

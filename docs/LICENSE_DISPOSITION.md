@@ -106,7 +106,7 @@ without new material evidence or a relevant distribution change.
 The v0.6.0 candidate passed release testing and archive verification on Linux
 x86-64, macOS arm64 and Windows x86-64 in run 42569508955. PR #273 passed all
 40 checks and merged. Exact reports are under
-[the release evidence directory](releases/v0.6.0-qualification/). This satisfies
+[the release evidence directory](releases/v0.6.0-qualification). This satisfies
 the recorded technical artifact-qualification item; the owner subsequently delegated the documented distribution choice on
 9 November 2026. The [recorded decision](releases/v0.6.0-distribution-decision.md)
 selects the normal default-feature CLI release with all upstream qualifications
