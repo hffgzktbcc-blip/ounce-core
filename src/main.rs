@@ -17,6 +17,7 @@ mod kernel;
 mod lab;
 mod linux;
 mod loader;
+mod loop_controls;
 mod mmu;
 mod run_report;
 mod trace;
@@ -47,6 +48,7 @@ const STACK_SIZE: usize = 0x100000; // 1 MB stack
 
 /// `--sdmc=<dir>`: host folder behind the guest's `sdmc:/` (unset: in-memory SD card only).
 static SDMC_HOST_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+static SDMC_WRITEBACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// The program path given to `run`/`run-nro`, quoted back in the next-step text when a run stops early.
 static RUN_TARGET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
@@ -72,6 +74,8 @@ fn main() {
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     let mut after_separator = false;
+    let mut loop_max_frames: Option<usize> = None;
+    let mut loop_presses: Vec<loop_controls::Press> = Vec::new();
     let mut raw_args = env::args().peekable();
     while let Some(arg) = raw_args.next() {
         if after_separator || arg == "--" {
@@ -89,6 +93,23 @@ fn main() {
             }
             continue;
         }
+        if arg == "--max-frames" || arg == "--press" || arg.starts_with("--max-frames=") || arg.starts_with("--press=") {
+            let (flag, inline) = match arg.split_once('=') {
+                Some((f, v)) => (f.to_string(), Some(v.to_string())),
+                None => (arg.clone(), None),
+            };
+            let value = inline.or_else(|| raw_args.next()).unwrap_or_default();
+            let parsed = if flag == "--max-frames" {
+                loop_controls::parse_max_frames(&value).map(|n| loop_max_frames = Some(n))
+            } else {
+                loop_controls::parse_press(&value).map(|p| loop_presses.push(p))
+            };
+            if let Err(e) = parsed {
+                eprintln!("[CLI] {e}");
+                std::process::exit(2);
+            }
+            continue;
+        }
         if arg == "--audio=null" {
             run_report::set_audio_null(true);
             continue;
@@ -96,6 +117,10 @@ fn main() {
         if arg == "--deterministic" {
             run_report::set_deterministic(true);
             args.push(arg);
+            continue;
+        }
+        if arg == "--sdmc-writeback" {
+            SDMC_WRITEBACK.store(true, std::sync::atomic::Ordering::Relaxed);
             continue;
         }
         if let Some(value) = arg.strip_prefix("--sdmc=") {
@@ -118,6 +143,7 @@ fn main() {
         }
     }
 
+    loop_controls::configure(loop_max_frames, loop_presses);
     if args.len() < 2 {
         print!("{}", cli_flow::getting_started(env!("CARGO_PKG_VERSION")));
         return;

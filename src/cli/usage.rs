@@ -122,7 +122,11 @@ pub(crate) fn print_usage() {
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
     println!("    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!("    {}--present={}<mode>        Display: auto, gpu (needs --features gpu-present), minifb, headless (no window, no audio device)", s.green, s.reset);
-    println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
+    println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed copy-on-write; default: in-memory SD card)", s.green, s.reset);
+    println!("    {}--sdmc-writeback{}        With --sdmc: write guest changes through to the host folder (default: never modify it)", s.green, s.reset);
+    println!("    {}--max-frames {}<N>        Exit with status 0 after N presented frames (headless runs count guest present calls)", s.green, s.reset);
+    println!("    {}--press {}<BTN@FRAME>     Hold a HID button for {} frames from presented frame FRAME; repeatable (e.g. --press PLUS@60)", s.green, s.reset, loop_controls::PRESS_HOLD_FRAMES);
+    println!("      valid buttons: {}", loop_controls::button_list());
     println!();
     println!("  {}INSPECT AND REPLAY:{}", s.bold, s.reset);
     println!("    {}inspect{} <file|dir>      Audit .nro/.nso headers, loose NPDM metadata and RomFS assets", s.green, s.reset);

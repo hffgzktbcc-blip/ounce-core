@@ -193,7 +193,8 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
             // After the NRO went on the virtual SD card, so it stays in memory and is not copied into the folder.
             if let Some(dir) = SDMC_HOST_DIR.get() {
                 kernel.vfs.set_sdmc_directory(dir);
-                println!("  sdmc:/      : {} (sandboxed host folder)", dir.display());
+                kernel.vfs.sdmc_write_through = SDMC_WRITEBACK.load(std::sync::atomic::Ordering::Relaxed);
+                println!("  sdmc:/      : {} (sandboxed copy-on-write overlay)", dir.display());
             }
 
             let fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
@@ -222,7 +223,22 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
                 // libnx startup alone runs tens of thousands of instructions.
                 let budget = if is_nro { nro_instruction_budget() } else { 100_000 };
-                require_cli_success(run_vm(cpu, mmu, kernel, budget));
+                // `--present=headless` gets a windowless display so queued VI frames are decoded, counted and
+                // hashed for the run report. Without it the run has no display, as before.
+                let mut headless_display = (gpu::BackendKind::from_env() == gpu::BackendKind::Headless).then(|| {
+                    DisplayServer::new(
+                        DEFAULT_FRAMEBUFFER_ADDR,
+                        DisplayConfig { backend: gpu::BackendKind::Headless, ..Default::default() },
+                    )
+                });
+                if loop_controls::active() {
+                    let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
+                    require_cli_success(run_vm_internal(cpu, mmu, kernel, headless_display.as_mut(), Some(&mut hid), budget, 0));
+                } else if headless_display.is_some() {
+                    require_cli_success(run_vm_internal(cpu, mmu, kernel, headless_display.as_mut(), None, budget, 0));
+                } else {
+                    require_cli_success(run_vm(cpu, mmu, kernel, budget));
+                }
             }
         }
         Err(e) => {
@@ -265,6 +281,7 @@ pub(crate) fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> b
     }
     if let Some(dir) = SDMC_HOST_DIR.get() {
         kernel.vfs.set_sdmc_directory(dir);
+                kernel.vfs.sdmc_write_through = SDMC_WRITEBACK.load(std::sync::atomic::Ordering::Relaxed);
     }
     cpu.regs.pc = code;
     // The NRO header (after the entry branch) is data.

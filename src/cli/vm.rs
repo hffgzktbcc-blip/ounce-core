@@ -181,6 +181,8 @@ pub(crate) fn run_vm_internal(
     let start = Instant::now();
     let mut instructions_executed = 0;
     let mut frames_presented = 0;
+    let max_frames = if max_frames == 0 { loop_controls::max_frames() } else { max_frames };
+    let injected_presses = loop_controls::presses();
     let mut gamepad_mgr = HostGamepadManager::new();
     if let Some(pad_name) = gamepad_mgr.active_gamepad_name() {
         println!("[HID] Physical gamepad attached: {}", pad_name);
@@ -311,7 +313,8 @@ pub(crate) fn run_vm_internal(
                     SvcResult::Success => {
                         // libnx homebrew reads HID shared memory between SVCs rather than per presented
                         // frame: hand it the host controller every few milliseconds.
-                        if kernel.ipc.hid.addr.is_some() && last_input_poll.elapsed() >= INPUT_POLL_INTERVAL {
+                        // Scripted --press runs poll after every SVC: a wall-clock interval would let a fast guest read the pad first.
+                        if kernel.ipc.hid.addr.is_some() && (!injected_presses.is_empty() || last_input_poll.elapsed() >= INPUT_POLL_INTERVAL) {
                             last_input_poll = Instant::now();
                             if let Some(ref mut h) = hid {
                                 if let Some(ref mut disp) = display {
@@ -323,6 +326,7 @@ pub(crate) fn run_vm_internal(
                                     h.poll_keyboard(&disp.get_active_keys());
                                 }
                                 gamepad_mgr.poll(h);
+                                h.state.buttons |= loop_controls::held_mask(injected_presses, frames_presented);
                                 kernel.ipc.hid.input = kernel::hid::NpadInput::from_controller(&h.state);
                             }
                         }
@@ -342,6 +346,7 @@ pub(crate) fn run_vm_internal(
                                 h.poll_keyboard(&active_keys);
                             }
                             gamepad_mgr.poll(h);
+                            h.state.buttons |= loop_controls::held_mask(injected_presses, frames_presented);
                             let _ = h.update_shared_memory(&mut mmu);
                         }
 
