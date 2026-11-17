@@ -16,7 +16,7 @@ class WorkflowTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         (self.root / 'scripts').mkdir()
-        for name in ('next.sh', 'gate.sh', 'agent_workflow.py', 'ci_scope.py'):
+        for name in ('next.sh', 'gate.sh', 'done.sh', 'agent_workflow.py', 'ci_scope.py'):
             if (SOURCE / name).exists():
                 shutil.copy(SOURCE / name, self.root / 'scripts' / name)
         self.git('init', '-q', '-b', 'work')
@@ -135,6 +135,34 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('/pull/1', result.stdout)
         self.assertEqual(before, (self.git('rev-parse', 'HEAD'), (self.root / 'PLAN.md').read_bytes()))
+
+class DoneCommandTest(WorkflowTest):
+    def run_done(self, *query):
+        return subprocess.run(['bash', 'scripts/done.sh', *query], cwd=self.root, capture_output=True, text=True)
+
+    def test_finds_merged_work_by_issue_number_and_keyword(self):
+        self.write('x.txt', 'x')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'Implement widget frobnication (#401) (#449)')
+        by_number = self.run_done('#401')
+        self.assertEqual(0, by_number.returncode, by_number.stderr)
+        self.assertIn('Implement widget frobnication', by_number.stdout)
+        self.assertIn('Implement widget frobnication', self.run_done('401').stdout)
+        self.assertIn('Implement widget frobnication', self.run_done('frobnication').stdout)
+
+    def test_number_match_is_exact_and_absence_is_explained(self):
+        self.write('x.txt', 'x')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'Fix thing (#4010)')
+        result = self.run_done('401')
+        self.assertNotIn('Fix thing', result.stdout)
+        self.assertIn('No merged commit mentions it', result.stdout)
+
+    def test_next_lists_recently_merged_work(self):
+        out = subprocess.run(['bash', 'scripts/next.sh'], cwd=self.root, capture_output=True, text=True)
+        self.assertIn('Recently merged', out.stdout)
+        self.assertIn('baseline', out.stdout)
+        self.assertIn('scripts/done.sh', out.stdout)
 
 
 if __name__ == '__main__':

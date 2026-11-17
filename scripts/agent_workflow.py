@@ -53,6 +53,51 @@ def ready(task, plan):
             and all(plan[identity]['done'] for identity in task['depends']))
 
 
+def main_ref():
+    for ref in ('origin/main', 'main'):
+        if subprocess.run(['git', 'rev-parse', '--verify', '-q', ref], capture_output=True).returncode == 0:
+            return ref
+    return 'HEAD'
+
+
+def recent_merged(count):
+    out = subprocess.run(['git', 'log', main_ref(), f'-{count}', '--pretty=%h %ad %s', '--date=short'],
+                         capture_output=True, text=True)
+    return out.stdout.strip().splitlines() if out.returncode == 0 else []
+
+
+def done_search(args):
+    """Answer 'has this already been done?' from merged history and shipped-work records."""
+    ref = main_ref()
+    hits = 0
+    for query in args.query:
+        number = query.lstrip('#')
+        pattern = rf'#{number}\b' if number.isdigit() else re.escape(query)
+        print(f'== {query}  (searching {ref}, CHANGELOG, release notes, completed plan; local data only)')
+        log = subprocess.run(['git', 'log', ref, '-12', '-i', '-E', '--grep', pattern, '--pretty=  %h %ad %s', '--date=short'],
+                             capture_output=True, text=True).stdout.rstrip()
+        if log:
+            hits += 1
+            print('Merged commits:\n' + log)
+        for name in ['CHANGELOG.md', 'docs/history/PLAN-COMPLETED.md', *sorted(str(p) for p in Path('docs/releases').glob('*.md'))]:
+            path = Path(name)
+            if not path.is_file():
+                continue
+            shown = 0
+            for number_, line in enumerate(path.read_text(errors='replace').splitlines(), 1):
+                if re.search(pattern, line, re.I):
+                    hits += 1
+                    shown += 1
+                    if shown <= 3:
+                        print(f'  {name}:{number_}: {line.strip()[:140]}')
+            if shown > 3:
+                print(f'  {name}: ... {shown - 3} more lines')
+        if not log:
+            print('  No merged commit mentions it. It may still be done under other words: try another keyword,')
+            print('  then check open PRs/branches (`git branch -r`, GitHub) before starting.')
+    return 0
+
+
 def next_task(args):
     plan = tasks()
     if args.step:
@@ -71,6 +116,12 @@ def next_task(args):
             print(f'  {detail}')
     else:
         print('\nNo ready task. Record the blocker or propose the next useful result; do not repeat completed work.')
+    merged = recent_merged(8)
+    if merged:
+        print(f'\nRecently merged ({main_ref()}; run `git fetch` first for the latest). Check before starting work:')
+        for line in merged:
+            print(f'  {line}')
+        print('  Already done? scripts/done.sh <issue number or keyword>')
     waiting = [t for t in plan.values() if not t['done'] and not ready(t, plan)]
     if waiting:
         print('Waiting: ' + ', '.join(f'{t["id"]} ({t["status"]}; dependencies: {" ".join(t["depends"]) or "none"})' for t in waiting))
@@ -203,6 +254,8 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     next_parser = sub.add_parser('next', help='read local status and the next ready task')
     next_parser.add_argument('step', nargs='?')
+    done_parser = sub.add_parser('done', help='has this already been done? search merged history and shipped-work records')
+    done_parser.add_argument('query', nargs='+', help='issue number (401 or #401) or keyword')
     gate = sub.add_parser('gate', help='validation, staged checkpoint, or PR submission')
     mode = gate.add_mutually_exclusive_group()
     mode.add_argument('--checkpoint', metavar='SUMMARY', help='commit staged files locally; no tests or push')
@@ -220,6 +273,8 @@ def main():
         os.chdir(git('rev-parse', '--show-toplevel'))
         if args.command == 'next':
             next_task(args)
+        elif args.command == 'done':
+            done_search(args)
         elif args.checkpoint:
             checkpoint(args)
         elif args.submit:
