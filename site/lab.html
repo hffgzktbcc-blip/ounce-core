@@ -624,7 +624,7 @@
         <div class="space-y-1.5 text-xs text-[#b7c8bf]">
           <div class="font-semibold text-[#f1f6ef]">Supported format guidelines:</div>
           <ul class="list-disc pl-5 space-y-1 text-[11px] text-[#708a7e]">
-            <li><strong>Static AArch64 Linux ELF</strong>: Run with <code class="text-[#9ad5ac]">run-elf</code> (40+ syscalls modeled).</li>
+            <li><strong>Static AArch64 Linux ELF</strong>: Run with <code class="text-[#9ad5ac]">run-elf</code> (19 Linux system calls modeled; see docs/verify/linux-elf/README.md).</li>
             <li><strong>Homebrew NRO</strong>: Executed via Tier-1 Safe Interpreter or Tier-3 JIT.</li>
             <li><strong>C / C++ Library test</strong>: Build with <code class="text-[#9ad5ac]">aarch64-linux-gnu-gcc -static</code>.</li>
             <li><strong>Other files</strong>: Hashed and inspected in your browser only; they are not executed.</li>
@@ -713,7 +713,7 @@
         setPillar('verify');
       } else if (id === 'runelf') {
         heading.innerText = "run-elf: Static Linux AArch64 binary runner with deterministic syscall emulation";
-        body.innerHTML = "Executes unstripped Linux ARM64 executables without requiring a console SDK. Models 40+ Linux system calls (brk, mmap, write, read, exit_group) with actionable failure diagnosis.";
+        body.innerHTML = "Executes unstripped Linux ARM64 executables without requiring a console SDK. Models 19 Linux system calls (brk, mmap, write, writev, exit_group and others; anything else stops with a named unimplemented-syscall diagnosis) with actionable failure diagnosis.";
         metric.innerText = "PASS";
         metric.className = "text-3xl font-black text-[#73b9ae] font-mono";
         explainer.innerText = `"run-elf enables ordinary aarch64-linux binaries to be executed and debugged on Linux, macOS, and Windows. If a syscall is unimplemented, it exits with code 70 and an actionable diagnosis line."`;
@@ -786,7 +786,7 @@
             <div><strong>Format:</strong> Linux ELF 64-bit (AArch64)</div>
             <div><strong>SHA-256:</strong> ${hashHex}</div>
             <div><strong>CLI Run Command:</strong> <span class="text-[#9ad5ac]">target/release/ounce-core run-elf "${file.name}"</span></div>
-            <div><strong>Syscall Subsystem:</strong> Evaluated against 40+ modeled Linux system calls (brk, mmap, write, read).</div>
+            <div><strong>Syscall Subsystem:</strong> Evaluated against 19 modeled Linux system calls (brk, mmap, write, writev, exit_group and others).</div>
           `;
         } else if (machine === 0x3E) { // x86_64
           format = "Linux x86_64 ELF";

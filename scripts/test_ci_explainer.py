@@ -4,6 +4,7 @@ import unittest
 
 from ci_explainer import (
     EXPLAINER_MARKER,
+    first_failed_job,
     determine_repro_command,
     explain_failure_with_model,
     extract_relevant_log_lines,
@@ -92,6 +93,16 @@ class TestCiExplainer(unittest.TestCase):
         for char in comment:
             code = ord(char)
             self.assertFalse(0x1F300 <= code <= 0x1FAD6 or 0x1F600 <= code <= 0x1F64F)
+
+    def test_summary_gate_is_not_blamed_when_a_newer_push_cancelled_the_run(self):
+        jobs = [{'name': 'Test (ubuntu-latest)', 'conclusion': 'failure', 'id': 1},
+                {'name': 'Runtime (ubuntu-latest)', 'conclusion': 'cancelled', 'id': 2}]
+        self.assertIsNone(first_failed_job(jobs))
+
+    def test_real_failure_is_picked_over_the_gate(self):
+        jobs = [{'name': 'Test (windows-latest)', 'conclusion': 'failure', 'id': 1},
+                {'name': 'Runtime (windows-latest)', 'conclusion': 'failure', 'id': 2}]
+        self.assertEqual(2, first_failed_job(jobs)['id'])
 
 
 if __name__ == "__main__":

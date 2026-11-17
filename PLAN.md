@@ -2,7 +2,7 @@
 
 > **Agent orientation (17 Nov 2026):** For the four-repository strategy and upcoming-quarter priorities, consult the [Ounce Family one-year roadmap](docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) **first**. This 8 November file retains historical task evidence and the Core-local backlog; its old `Next:` notes and release references may describe work now shipped. Before beginning a task, verify the current repo state, closed PRs/issues, releases, and CI, then choose only genuinely unfinished work. Never treat a historical handoff as an open assignment.
 
-Updated 2026-11-08 to reconcile vision progress with current main and continue
+Compacted 2026-11-17 (done tasks are one-liners; evidence in docs/history/PLAN-COMPLETED.md). Originally updated 2026-11-08 to reconcile vision progress with current main and continue
 the owner's direction: remove agent friction and deliver community value beyond
 Switch/Switch 2 coverage. This file replaces the previous
 milestone order. [Previous plan and evidence](docs/history/PLAN-2026-11-07.md) remain

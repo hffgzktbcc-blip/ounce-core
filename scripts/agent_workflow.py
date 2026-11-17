@@ -69,32 +69,30 @@ def recent_merged(count):
 def done_search(args):
     """Answer 'has this already been done?' from merged history and shipped-work records."""
     ref = main_ref()
-    hits = 0
     for query in args.query:
         number = query.lstrip('#')
         pattern = rf'#{number}\b' if number.isdigit() else re.escape(query)
-        print(f'== {query}  (searching {ref}, CHANGELOG, release notes, completed plan; local data only)')
+        print(f'== {query}  (searching {ref}, CHANGELOG, PLAN, roadmap, release notes; local data only)')
         log = subprocess.run(['git', 'log', ref, '-12', '-i', '-E', '--grep', pattern, '--pretty=  %h %ad %s', '--date=short'],
                              capture_output=True, text=True).stdout.rstrip()
         if log:
-            hits += 1
             print('Merged commits:\n' + log)
-        for name in ['CHANGELOG.md', 'docs/history/PLAN-COMPLETED.md', *sorted(str(p) for p in Path('docs/releases').glob('*.md'))]:
+        for name in ['CHANGELOG.md', 'PLAN.md', 'docs/history/PLAN-COMPLETED.md', 'docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md',
+                     'docs/roadmap/milestones.json', *sorted(str(p) for p in Path('docs/releases').glob('*.md'))]:
             path = Path(name)
             if not path.is_file():
                 continue
             shown = 0
             for number_, line in enumerate(path.read_text(errors='replace').splitlines(), 1):
                 if re.search(pattern, line, re.I):
-                    hits += 1
                     shown += 1
                     if shown <= 3:
                         print(f'  {name}:{number_}: {line.strip()[:140]}')
             if shown > 3:
                 print(f'  {name}: ... {shown - 3} more lines')
         if not log:
-            print('  No merged commit mentions it. It may still be done under other words: try another keyword,')
-            print('  then check open PRs/branches (`git branch -r`, GitHub) before starting.')
+            print('  No merged commit message cites it. A squash-merged PR can fix an issue without citing the number,')
+            print('  so this is not proof it is open: try a keyword, `git log -S<symbol>`, and check the issue/PR on GitHub.')
     return 0
 
 
@@ -115,7 +113,7 @@ def next_task(args):
         for detail in selected['details']:
             print(f'  {detail}')
     else:
-        print('\nNo ready task. Record the blocker or propose the next useful result; do not repeat completed work.')
+        print('\nNo ready task in PLAN.md. Other open work lives in open PRs and issues and in docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md; check scripts/done.sh before picking anything. Do not repeat completed work.')
     merged = recent_merged(8)
     if merged:
         print(f'\nRecently merged ({main_ref()}; run `git fetch` first for the latest). Check before starting work:')
@@ -124,7 +122,10 @@ def next_task(args):
         print('  Already done? scripts/done.sh <issue number or keyword>')
     waiting = [t for t in plan.values() if not t['done'] and not ready(t, plan)]
     if waiting:
-        print('Waiting: ' + ', '.join(f'{t["id"]} ({t["status"]}; dependencies: {" ".join(t["depends"]) or "none"})' for t in waiting))
+        def reason(t):
+            blocker = next((d.split(':', 1)[1].strip() for d in t['details'] if d.startswith('Blocked by:')), '')
+            return f'{t["status"]}: {blocker[:70]}' if blocker else f'{t["status"]}; depends on {" ".join(t["depends"]) or "nothing"}'
+        print('Waiting: ' + '; '.join(f'{t["id"]} ({reason(t)})' for t in waiting))
     handoff = subprocess.run([sys.executable, '-B', str(Path(__file__).with_name('handoff.py')), '--offline', 'status', '--limit', '3'],
                              capture_output=True, text=True)
     if handoff.returncode == 0 and ('expires' in handoff.stdout or 'ago' in handoff.stdout):

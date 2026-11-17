@@ -68,6 +68,6 @@ They are separate repositories. ounce-core does not build or download them.
 
 `doctor` checks that the engine binaries are on `PATH` (or `OUNCE_CORE_BIN` /
 `OUNCE_RUNTIME_BIN`). It does not install a compiler. `setup-ounce` installs
-release archives. On current `main` it does not install a linux-arm64 archive
-and it does not verify the ounce-runtime checksum; those changes are in
-ounce-hb pull request 40.
+release archives. Linux arm64 archive selection and ounce-runtime checksum
+verification were added in ounce-hb pull request 40, which is merged; check the
+ounce-hb release you install includes it.

@@ -156,7 +156,8 @@ class DoneCommandTest(WorkflowTest):
         self.git('commit', '-qm', 'Fix thing (#4010)')
         result = self.run_done('401')
         self.assertNotIn('Fix thing', result.stdout)
-        self.assertIn('No merged commit mentions it', result.stdout)
+        self.assertIn('No merged commit message cites it', result.stdout)
+        self.assertIn('not proof it is open', result.stdout)
 
     def test_next_lists_recently_merged_work(self):
         out = subprocess.run(['bash', 'scripts/next.sh'], cwd=self.root, capture_output=True, text=True)
