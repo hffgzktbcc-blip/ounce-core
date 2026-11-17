@@ -545,6 +545,7 @@ pub(crate) fn build_and_boot_demo_dir(out_dir: &str, gui_mode: bool) {
     run_directory_package(out_dir, gui_mode);
 }
 
+#[cfg(test)]
 mod host_audio_tests {
     use super::*;
 

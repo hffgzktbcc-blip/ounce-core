@@ -2080,21 +2080,10 @@ impl Cpu {
 
             Instruction::FpAbd { rd, rn, rm, is_double } => {
                 // always the soft path: it raises the exception flags (IXC, IOC, ...) the host does at default FPCR too
-                {
-                    let (f, env) = self.fp_env(is_double);
-                    let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
-                    let r = f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b));
-                    self.regs.write_q(rd, r as u128);
-                    self.regs.advance_pc();
-                    return Ok(StepResult::Continue);
-                }
-                if is_double {
-                    let r = (self.regs.read_d(rn) - self.regs.read_d(rm)).abs();
-                    self.regs.write_q(rd, r.to_bits() as u128);
-                } else {
-                    let r = (self.regs.read_s(rn) - self.regs.read_s(rm)).abs();
-                    self.regs.write_q(rd, r.to_bits() as u128);
-                }
+                let (f, env) = self.fp_env(is_double);
+                let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
+                let r = f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b));
+                self.regs.write_q(rd, r as u128);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
