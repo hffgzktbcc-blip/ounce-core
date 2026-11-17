@@ -179,6 +179,7 @@ pub(crate) fn print_run_usage(command: &str) {
     let accepts = if command == "run-nro" { "a homebrew .nro" } else { "a .nro, .nso or loose folder" };
     println!("usage: ounce-core {command} <path> [--gui] [args...] [-- args...]\n");
     println!("Runs {accepts}. Words after the path that do not start with '-' become the program's argv[1..].");
+    println!("Only .nro programs have an argv: guest arguments for a .nso or a folder are refused (exit status 2).");
     println!("Everything after `--` is passed to the program unchanged, including words that start with '-'.");
     println!("Any other word starting with '-' before `--` is an error (exit status 2), never silently dropped.\n");
     println!("  --gui, --window, -g   open a window");
@@ -190,8 +191,21 @@ pub(crate) fn print_run_usage(command: &str) {
     println!("  ounce-core {command} my_test.nro --present=headless -- --verbose --filter=fp");
 }
 
+/// Only `.nro` programs receive an argv (the homebrew ABI). Refuse guest arguments for any other target instead of
+/// dropping them (#487).
+fn refuse_guest_args(target: &str, guest_args: &[&str]) -> ! {
+    eprintln!(
+        "[CLI] guest arguments ({}) are only passed to .nro programs; {target} has no argv. Remove them, or run a .nro.",
+        guest_args.join(" ")
+    );
+    std::process::exit(2);
+}
+
 pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
     if !nro_only && std::path::Path::new(path).is_dir() {
+        if !guest_args.is_empty() {
+            refuse_guest_args("a loose package folder", guest_args);
+        }
         run_directory_package(path, gui_mode);
         return;
     }
@@ -203,6 +217,9 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
             std::process::exit(1);
         }
     };
+    if !guest_args.is_empty() && bytes.get(0x10..0x14) != Some(b"NRO0".as_slice()) {
+        refuse_guest_args("this file is not an NRO and", guest_args);
+    }
 
     if cpu::CpuTier::from_env() == cpu::CpuTier::Native && bytes.get(0x10..0x14) == Some(b"NRO0".as_slice()) {
         #[cfg(feature = "nce")]
