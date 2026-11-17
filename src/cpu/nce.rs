@@ -1,4 +1,4 @@
-//! Native execution engine (`--cpu=native`, PLAN.md step 4): guest AArch64 code runs directly on
+//! Native execution engine (`--cpu=native`): guest AArch64 code runs directly on
 //! an AArch64 host CPU. `ounce-nce` holds the `unsafe` parts (the host window, entering guest code,
 //! fault signals) and the rewriter ported from nxnative; this side keeps it in step with the guest:
 //!

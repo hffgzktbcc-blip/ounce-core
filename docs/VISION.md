@@ -48,7 +48,7 @@ Every claim carries one of four labels:
 | Bounded replay of a historical failure | bounded-verified (SDL2 case); [instruction dossier replay](INSTRUCTION_DIAGNOSIS.md) now also exists |
 | First differing compared instruction case with register snapshots | bounded-verified on one real vector-FP discrepancy; not arbitrary-program tracing |
 | Instruction-level checking against hardware | bounded-verified on recorded single-instruction inputs; [fuzzer scope and results](verify/insn-fuzzer/README.md) |
-| Run static Linux ARM64 programs | research-only runner; six freestanding fixtures and one bounded LZ4/musl case, [run-elf evidence](verify/linux-elf/README.md) |
+| Run static Linux ARM64 programs | bounded-verified runner for static musl ELFs; six freestanding fixtures plus the pinned real-program suite (28 harnesses pass on the hosted gate), [run-elf evidence](verify/linux-elf/README.md) |
 | Run arbitrary ARM64 or Linux applications | not established |
 | Automatically find any bug's root cause | not established |
 | Independent reproduction by an outside developer | none yet ([issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248)) |

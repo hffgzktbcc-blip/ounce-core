@@ -86,7 +86,8 @@ def package(binary, output, require_reviewed, toolchain_notices=None, native_not
                             ('Cargo.toml', 'cargo_manifest_sha256'),
                             ('THIRD_PARTY_NOTICES.txt', 'notices_sha256')]:
         if hashlib.sha256((root / filename).read_bytes()).hexdigest() != review[field]:
-            raise ValueError(f'Notice review identity is stale for {filename}')
+            raise ValueError(f'Notice review identity is stale for {filename}; '
+                             'run: python3 scripts/refresh_notice_review.py')
     if require_reviewed:
         if (review['status'] != 'REVIEWED' or not review.get('reviewer')
                 or not review.get('decision_evidence') or review.get('open_items')):

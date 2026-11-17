@@ -19,7 +19,7 @@ decision". The reviewer field reads "Project owner — chat direction dated
 2026-11-09; distribution choice delegated".
 
 The decisive owner words, quoted in
-[v0.6.0-distribution-decision.md](releases/v0.6.0-distribution-decision.md), are
+[v0.6.0-distribution-decision.md](../releases/v0.6.0-distribution-decision.md), are
 "Do what ever is easier", given when asked whether to approve with qualifications
 or require specialist review first. That delegates the choice. It does not itself
 say "yes, no specialist is needed". Decisions 1–3 below therefore ask the owner
@@ -77,7 +77,7 @@ Evidence:
   substitute (LICENSE_DISPOSITION, "Rust notices are tied to builds").
 - v0.6.0 qualification run 42569508955 passed on all three platforms. The
   archive verifier checks notice bytes and tampering fails closed.
-- v0.6.0 publication proof: [v0.6.0-publication-proof.json](releases/v0.6.0-publication-proof.json).
+- v0.6.0 publication proof: [v0.6.0-publication-proof.json](../releases/v0.6.0-publication-proof.json).
 
 Consequences:
 - **Yes:** the open item stays closed. Each release must keep collecting its own

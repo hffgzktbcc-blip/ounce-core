@@ -9,7 +9,7 @@ Prepared 2026-10-29. Start from PR [#89](https://github.com/hffgzktbcc-blip/ounc
 - Four unchanged external-source candidates pinned in `tests/corpus/manifest.json`: startup template, CPU/JIT, RomFS, simple graphics. All are from switchbrew/switch-examples `669786898205b7beb25ff1731e72982e6d0397d3`.
 - Python source-preparation tool and seven offline tests, with opt-in upstream builds and source/binary SHA-256 inventories outside this repository.
 - Actual pinned-source fetch succeeded and inventoried 210 tracked files. Local temporary inventory is disposable and not committed; rerun the tool to recreate it.
-- Category investigations and a runner design are linked from `docs/independent-corpus.md`.
+- Category investigations and a runner design are linked from `docs/history/independent-corpus/independent-corpus.md`.
 - No Rust runtime code or CI workflow changed. No external sample was built or executed. No compatibility milestone is complete.
 
 ## Verification and limitations
@@ -47,7 +47,7 @@ The next display implementation must produce a real validated native-window parc
 ## Next implementation steps
 
 - Implement the required VI/Binder/window submission bridge, resolving real submitted guest buffers. The fixed synthetic display address is insufficient. Reuse the existing surface conversion where appropriate; capture raw pixels before HUD, host scaling or alpha replacement.
-- Add a bounded, explicitly engine-selectable NRO test adapter using the existing fixture setup seam. Current global `--cpu=tier3` selects Stage 20 only: it does not prove Tier-3 NRO execution. Preserve SVC dispatch, scheduler/preemption, deterministic input and complete stop reasons. Read `docs/independent-corpus-runner.md` before designing it.
+- Add a bounded, explicitly engine-selectable NRO test adapter using the existing fixture setup seam. Current global `--cpu=tier3` selects Stage 20 only: it does not prove Tier-3 NRO execution. Preserve SVC dispatch, scheduler/preemption, deterministic input and complete stop reasons. Read `docs/history/independent-corpus/independent-corpus-runner.md` before designing it.
 - CPU/JIT sample likely reports unavailable because HomebrewConfig does not emit SVC capability hints or own-process handle. Verify before fixing; advertise only implemented fallback SVCs (0x73/0x77/0x78), never unsupported CodeMemory calls.
 - Once startup works, exercise the exact same binaries under interpreter and Tier-3 on Linux: generated return 7, both RomFS files including Unicode path, and simplegfx raw first-frame pixels. Inject Plus only after the relevant observation; require expected guest completion rather than host exit zero or budget exhaustion.
 - Preserve first-failure evidence and obtain an outside developer's clean-checkout reproduction before completing the roadmap milestone.
