@@ -402,3 +402,66 @@ fn dump_regs_line_has_pc_x0_d0_and_nzcv() {
     assert!(line.contains(" x0=0x000000000000002a "), "{line}");
     assert!(line.contains(" d0=0x") && line.contains(" nzcv="), "{line}");
 }
+
+#[test]
+fn identity_and_process_syscalls() {
+    use super::syscalls::{
+        Process, Outcome, PID, UID, GID,
+        SYS_GETPID, SYS_GETTID, SYS_GETPPID, SYS_GETUID, SYS_GETEUID, SYS_GETGID, SYS_GETEGID,
+        SYS_SCHED_YIELD, SYS_CLOSE, EBADF,
+    };
+    use crate::mmu::Memory;
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    let mut out = Capture::default();
+
+    assert_eq!(proc.dispatch(SYS_GETPID, [0; 6], &mut mem, &mut out), Outcome::Return(PID as i64));
+    assert_eq!(proc.dispatch(SYS_GETTID, [0; 6], &mut mem, &mut out), Outcome::Return(PID as i64));
+    assert_eq!(proc.dispatch(SYS_GETPPID, [0; 6], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(proc.dispatch(SYS_GETUID, [0; 6], &mut mem, &mut out), Outcome::Return(UID as i64));
+    assert_eq!(proc.dispatch(SYS_GETEUID, [0; 6], &mut mem, &mut out), Outcome::Return(UID as i64));
+    assert_eq!(proc.dispatch(SYS_GETGID, [0; 6], &mut mem, &mut out), Outcome::Return(GID as i64));
+    assert_eq!(proc.dispatch(SYS_GETEGID, [0; 6], &mut mem, &mut out), Outcome::Return(GID as i64));
+    assert_eq!(proc.dispatch(SYS_SCHED_YIELD, [0; 6], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(proc.dispatch(SYS_CLOSE, [0, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(proc.dispatch(SYS_CLOSE, [1, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(proc.dispatch(SYS_CLOSE, [2, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(proc.dispatch(SYS_CLOSE, [3, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EBADF));
+}
+
+#[test]
+fn gettimeofday_writes_timeval_and_supports_deterministic_mode() {
+    use super::syscalls::{Process, Outcome, SYS_GETTIMEOFDAY, EFAULT};
+    use crate::mmu::Memory;
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    let mut out = Capture::default();
+
+    // Null pointer returns 0 without writing
+    assert_eq!(proc.dispatch(SYS_GETTIMEOFDAY, [0, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+
+    // Unmapped pointer returns -EFAULT
+    assert_eq!(proc.dispatch(SYS_GETTIMEOFDAY, [0x2000, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EFAULT));
+
+    // Mapped buffer receives seconds and microseconds
+    mem.map_range(0x2000, 4096, crate::mmu::Permission { read: true, write: true, execute: false });
+    assert_eq!(proc.dispatch(SYS_GETTIMEOFDAY, [0x2000, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    let sec = mem.read_u64(0x2000).unwrap();
+    let usec = mem.read_u64(0x2008).unwrap();
+    assert!(sec > 0);
+    assert!(usec < 1_000_000);
+
+    // Deterministic mode produces reproducible progressive virtual time
+    let mut det_proc = Process::new_deterministic(0x1000);
+    assert_eq!(det_proc.dispatch(SYS_GETTIMEOFDAY, [0x2000, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    let sec1 = mem.read_u64(0x2000).unwrap();
+    let usec1 = mem.read_u64(0x2008).unwrap();
+    assert_eq!(sec1, 1_700_000_000);
+    assert_eq!(usec1, 0);
+
+    assert_eq!(det_proc.dispatch(SYS_GETTIMEOFDAY, [0x2000, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    let sec2 = mem.read_u64(0x2000).unwrap();
+    let usec2 = mem.read_u64(0x2008).unwrap();
+    assert_eq!(sec2, 1_700_000_000);
+    assert_eq!(usec2, 1_000); // 1 ms tick = 1000 microseconds
+}
