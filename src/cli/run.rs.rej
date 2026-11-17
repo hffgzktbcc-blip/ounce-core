@@ -1,0 +1,23 @@
+--- src/cli/run.rs
++++ src/cli/run.rs
+@@ -3809,9 +3811,19 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
+                 cpu.regs.pc = DEFAULT_BASE_ADDR;
+                 // libnx startup alone runs tens of thousands of instructions.
+                 let budget = if is_nro { nro_instruction_budget() } else { 100_000 };
++                // `--present=headless` gets a windowless display so queued VI frames are decoded, counted and
++                // hashed for the run report. Without it the run has no display, as before.
++                let mut headless_display = (gpu::BackendKind::from_env() == gpu::BackendKind::Headless).then(|| {
++                    DisplayServer::new(
++                        DEFAULT_FRAMEBUFFER_ADDR,
++                        DisplayConfig { backend: gpu::BackendKind::Headless, ..Default::default() },
++                    )
++                });
+                 if loop_controls::active() {
+                     let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
+-                    require_cli_success(run_vm_internal(cpu, mmu, kernel, None, Some(&mut hid), budget, 0));
++                    require_cli_success(run_vm_internal(cpu, mmu, kernel, headless_display.as_mut(), Some(&mut hid), budget, 0));
++                } else if headless_display.is_some() {
++                    require_cli_success(run_vm_internal(cpu, mmu, kernel, headless_display.as_mut(), None, budget, 0));
+                 } else {
+                     require_cli_success(run_vm(cpu, mmu, kernel, budget));
+                 }
