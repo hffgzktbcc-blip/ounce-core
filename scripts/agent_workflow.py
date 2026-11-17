@@ -181,6 +181,7 @@ def check(args):
     commands = [
         ['bash', 'scripts/check_legal_guardrails.sh'],
         ['bash', 'scripts/check_unsafe_boundary.sh'],
+        [sys.executable, 'scripts/refresh_notice_review.py', '--check'],
         [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_*.py'],
         [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'],
         ['git', 'diff', '--check'],
