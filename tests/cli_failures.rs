@@ -417,3 +417,23 @@ fn run_elf_writes_an_ounce_run_v1_report_and_dumps_registers() {
         assert!(fields.contains(&format!("| `{key}` |")), "{key} is not in docs/OUNCE_RUN_V1_SCHEMA.md");
     }
 }
+
+/// Only `.nro` programs have an argv; `run` must refuse guest arguments for a folder or another format, not drop them.
+#[test]
+fn run_refuses_guest_arguments_for_targets_without_an_argv() {
+    let dir = std::env::temp_dir().join(format!("ounce_args_dir_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = std::env::temp_dir().join(format!("ounce_args_file_{}.nso", std::process::id()));
+    std::fs::write(&file, b"NSO0 not an nro").unwrap();
+    for target in [&dir, &file] {
+        let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+            .args(["run", target.to_str().unwrap(), "--present=headless", "--", "--verbose"])
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(2), "{}: {stderr}", target.display());
+        assert!(stderr.contains("only passed to .nro programs"), "{stderr}");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+    std::fs::remove_file(&file).unwrap();
+}

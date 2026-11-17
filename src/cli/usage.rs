@@ -117,7 +117,7 @@ pub(crate) fn print_usage() {
     println!("    {}run-nro{} <file> [args] [-- args]  Run a homebrew .nro; if it stops early, the output says why and what to do next (run-nro --help)", s.green, s.reset);
     println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic, --dump-regs)", s.green, s.reset);
     println!("    {}diverge{} <prog.nro|prog.elf> [-- args]  Compare NRO (AArch64 hardware replay) or static ELF across interpreter/Tier-3/Tier-4", s.green, s.reset);
-    println!("    {}run{} <file|dir> [args] [-- args]  Like run-nro, but also accepts .nso and loose folders", s.green, s.reset);
+    println!("    {}run{} <file|dir> [args] [-- args]  Like run-nro, but also accepts .nso and loose folders (guest args: .nro only)", s.green, s.reset);
     println!();
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
     println!("    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)", s.green, s.reset);
