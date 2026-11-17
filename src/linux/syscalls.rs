@@ -15,6 +15,7 @@ pub const ENOTTY: i64 = 25;
 
 pub const SYS_IOCTL: u64 = 29;
 pub const SYS_OPENAT: u64 = 56;
+pub const SYS_CLOSE: u64 = 57;
 pub const SYS_WRITE: u64 = 64;
 pub const SYS_WRITEV: u64 = 66;
 pub const SYS_READLINKAT: u64 = 78;
@@ -23,10 +24,18 @@ pub const SYS_EXIT_GROUP: u64 = 94;
 pub const SYS_SET_TID_ADDRESS: u64 = 96;
 pub const SYS_CLOCK_GETTIME: u64 = 113;
 pub const SYS_SCHED_GETAFFINITY: u64 = 123;
+pub const SYS_SCHED_YIELD: u64 = 124;
 pub const SYS_RT_SIGACTION: u64 = 134;
 pub const SYS_RT_SIGPROCMASK: u64 = 135;
 pub const SYS_UNAME: u64 = 160;
+pub const SYS_GETTIMEOFDAY: u64 = 169;
 pub const SYS_GETPID: u64 = 172;
+pub const SYS_GETPPID: u64 = 173;
+pub const SYS_GETUID: u64 = 174;
+pub const SYS_GETEUID: u64 = 175;
+pub const SYS_GETGID: u64 = 176;
+pub const SYS_GETEGID: u64 = 177;
+pub const SYS_GETTID: u64 = 178;
 pub const SYS_BRK: u64 = 214;
 pub const SYS_MUNMAP: u64 = 215;
 pub const SYS_MREMAP: u64 = 216;
@@ -46,6 +55,8 @@ const MAX_MMAP_TOTAL: u64 = 1 << 30;
 const MAX_IO_CALL: u64 = 64 << 20;
 const MAX_IOV: u64 = 1024;
 pub const PID: u64 = 1;
+pub const UID: u64 = 1000;
+pub const GID: u64 = 1000;
 
 /// Where guest `write`s to fd 1 and 2 go.
 pub trait Output {
@@ -137,7 +148,15 @@ impl Process {
                 } else { -EFAULT }
             }
             132 => self.sys_sigaltstack(a, mmu),
-            SYS_GETPID | 178 => PID as i64,
+            SYS_CLOSE => {
+                if a[0] <= 2 { 0 } else { -EBADF }
+            }
+            SYS_SCHED_YIELD => 0,
+            SYS_GETTIMEOFDAY => self.sys_gettimeofday(a[0], a[1], mmu),
+            SYS_GETPID | SYS_GETTID => PID as i64,
+            SYS_GETPPID => 0,
+            SYS_GETUID | SYS_GETEUID => UID as i64,
+            SYS_GETGID | SYS_GETEGID => GID as i64,
             261 => {
                 if a[0] != 0 && a[0] != PID { -ESRCH }
                 else if a[1] != 3 || a[2] != 0 { -EINVAL }
@@ -396,6 +415,33 @@ impl Process {
         buf[..8].copy_from_slice(&sec.to_le_bytes());
         buf[8..].copy_from_slice(&nsec.to_le_bytes());
         if mmu.write_bytes(ts, &buf).is_err() {
+            -EFAULT
+        } else {
+            if let Some(ticks) = &mut self.deterministic_ticks {
+                *ticks = ticks.saturating_add(1);
+            }
+            0
+        }
+    }
+
+    fn sys_gettimeofday(&mut self, tv: u64, _tz: u64, mmu: &mut Memory) -> i64 {
+        if tv == 0 {
+            return 0;
+        }
+        let (sec, nsec) = if let Some(ticks) = self.deterministic_ticks {
+            let epoch = 1_700_000_000u64;
+            (epoch + ticks / 1000, (ticks % 1000) * 1_000_000)
+        } else {
+            let d = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            (d.as_secs(), d.subsec_nanos() as u64)
+        };
+        let usec = nsec / 1000;
+        let mut buf = [0u8; 16];
+        buf[..8].copy_from_slice(&sec.to_le_bytes());
+        buf[8..].copy_from_slice(&usec.to_le_bytes());
+        if mmu.write_bytes(tv, &buf).is_err() {
             -EFAULT
         } else {
             if let Some(ticks) = &mut self.deterministic_ticks {

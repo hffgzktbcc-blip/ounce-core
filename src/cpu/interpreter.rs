@@ -2079,7 +2079,7 @@ impl Cpu {
             }
 
             Instruction::FpAbd { rd, rn, rm, is_double } => {
-                // Always the soft path: it raises the exception flags (IXC, IOC, ...) the host does at default FPCR too.
+                // always the soft path: it raises the exception flags (IXC, IOC, ...) the host does at default FPCR too
                 let (f, env) = self.fp_env(is_double);
                 let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
                 let r = f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b));

@@ -47,6 +47,7 @@ fn nro_only_command_rejects_raw_input_before_execution() {
 }
 
 /// The issue's minimal NRO: `mov w0, #0; svc #7` (svcExitProcess), 128 bytes.
+#[cfg(not(windows))]
 fn exit_nro_bytes() -> Vec<u8> {
     let text: Vec<u8> = [0x5280_0000u32, 0xD400_00E1].iter().flat_map(|w| w.to_le_bytes()).collect();
     let total = 0x80 + text.len();
@@ -61,6 +62,7 @@ fn exit_nro_bytes() -> Vec<u8> {
 
 /// Runs the exit NRO with one guest argument of `arg_len` bytes. Returns the output and the file name, which sets
 /// the program path that run-nro puts in front of the guest argument (`sdmc:/<file>`).
+#[cfg(not(windows))]
 fn run_exit_nro_with_argument(tag: &str, arg_len: usize) -> std::process::Output {
     let path = std::env::temp_dir().join(format!("ounce_argv_{tag}_{}.nro", std::process::id()));
     std::fs::write(&path, exit_nro_bytes()).unwrap();
