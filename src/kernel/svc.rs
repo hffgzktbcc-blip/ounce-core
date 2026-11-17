@@ -126,15 +126,19 @@ impl HorizonKernel {
         self.alias_size = alias_size;
     }
 
-    /// System tick at 19.2 MHz on the scheduler's clock (at least one millisecond's worth), so time skipped
-    /// while every thread slept shows up here too.
+    /// Wall-clock date of the deterministic clock (2024-01-01 00:00:00 UTC).
+    pub const DETERMINISTIC_UNIX_SECS: u64 = 1_704_067_200;
+
     /// Runs this kernel on the deterministic clock with a fixed wall-clock date, so repeated runs and
-    /// both CPU engines see the same time (the corpus runner's frame comparison needs that).
+    /// both CPU engines see the same time. Used by the corpus runner's frame comparison and by
+    /// `--deterministic` / `OUNCE_DETERMINISTIC=1` on `run` and `run-nro` (#479).
     pub fn set_deterministic_clock(&mut self, unix_secs: u64) {
         self.scheduler.set_deterministic();
         self.ipc.time.fixed_unix_secs = Some(unix_secs);
     }
 
+    /// System tick at 19.2 MHz on the scheduler's clock (at least one millisecond's worth), so time skipped
+    /// while every thread slept shows up here too.
     pub fn system_tick(&self) -> u64 {
         let elapsed = self.scheduler.now_ns() as u128;
         (((elapsed * 19_200_000) / 1_000_000_000) as u64).max(19_200)

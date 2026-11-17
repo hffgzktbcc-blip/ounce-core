@@ -494,9 +494,6 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
     (result, kernel)
 }
 
-/// Wall-clock date the corpus runner gives guests (2024-01-01 00:00:00 UTC).
-const DETERMINISTIC_UNIX_SECS: u64 = 1_704_067_200;
-
 fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
     limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
     let (memory, base, alias_size) = match guest_memory(engine) {
@@ -504,7 +501,7 @@ fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
         Err(error) => { let (cpu, _, kernel) = crate::setup_vm(); return (report(engine, Stop::LoadError(error), &cpu), kernel); }
     };
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm_in(memory, base, alias_size);
-    kernel.set_deterministic_clock(DETERMINISTIC_UNIX_SECS);
+    kernel.set_deterministic_clock(HorizonKernel::DETERMINISTIC_UNIX_SECS);
     let loaded = super::super::BootLoader::load_any_package(nro, base + crate::DEFAULT_BASE_ADDR, &mut mmu);
     let error = match loaded {
         Ok(info) if info.format == "NRO0" => None,

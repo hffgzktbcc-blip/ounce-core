@@ -22,6 +22,10 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   headless run reports. Only a `gpu-present` GPU window outside deterministic mode still reports `null`; the schema
   doc says so. Fixed: a `gpu-present` build whose GPU window failed to open sent 3D draws to a GPU that was not
   there, so frames were presented without them; the backend is now opened before that choice is made.
+- Fixed: `--deterministic` / `OUNCE_DETERMINISTIC=1` on `run` / `run-nro` left the homebrew kernel on the host clock,
+  so a guest that waited on time executed a different number of instructions from run to run (`input.nro` gave
+  7,602 or 8,207). The kernel now uses the same fixed clock as the corpus runner: guest time advances per SVC and the
+  date is fixed. Tested by `deterministic_runs_execute_the_same_instructions_while_waiting_on_time` (#479).
 - CI: `ci-rerun-infra.yml` re-runs a second time when every job that failed the run was cancelled without ever
   reaching a runner, as macOS jobs were on two attempts of run 44144034971. At most two automatic re-runs. A real
   failure is never re-run, and after the first attempt neither is a job that started and was then cancelled.

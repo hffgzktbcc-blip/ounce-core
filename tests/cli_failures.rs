@@ -106,6 +106,43 @@ fn guest_output_is_visible_while_a_hung_program_still_runs() {
     assert!(still_running, "the program had already stopped, so this did not test a hung run");
 }
 
+/// #479: `--deterministic` on `run-nro` runs the kernel on a fixed clock, so a guest that waits on time executes
+/// the same instruction count every run and on every host. The guest polls svcGetSystemTick until 100 ms of guest
+/// time have passed, then exits. Each SVC advances the deterministic clock by 20 us, so the wait takes exactly 5000
+/// polls: the header's branch to the code, 2 setup instructions, 3 per poll, 2 to exit. On the host clock the
+/// number of polls follows host speed.
+#[test]
+fn deterministic_runs_execute_the_same_instructions_while_waiting_on_time() {
+    // MOVZ X1, #0x1D, LSL #16; MOVK X1, #0x4C00 (X1 = 1,920,000 ticks = 100 ms at 19.2 MHz)
+    // loop: SVC #0x1E (svcGetSystemTick -> X0); CMP X0, X1; B.LO loop
+    // MOVZ W0, #0; SVC #0x07 (svcExitProcess)
+    let code = [0xD2A0_03A1u32, 0xF289_8001, 0xD400_03C1, 0xEB01_001F, 0x54FF_FFC3, 0x5280_0000, 0xD400_00E1];
+    let text: Vec<u8> = code.iter().flat_map(|w| w.to_le_bytes()).collect();
+    let dir = std::env::temp_dir().join(format!("ounce_deterministic_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let nro = dir.join("wait.nro");
+    std::fs::write(&nro, nro_with_text(&text)).unwrap();
+    let counts: Vec<u64> = ["interpreter", "tier3", "interpreter"]
+        .iter()
+        .map(|tier| {
+            let report = dir.join(format!("{tier}.json"));
+            let _ = std::fs::remove_file(&report);
+            let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+                .args(["run-nro", nro.to_str().unwrap(), "--present=headless", "--deterministic"])
+                .arg(format!("--cpu={tier}"))
+                .arg(format!("--report-json={}", report.display()))
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{tier}: {}", String::from_utf8_lossy(&output.stderr));
+            let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+            assert_eq!(json["stop_kind"], "clean_exit", "{tier}: {json}");
+            json["insns_executed"].as_u64().unwrap()
+        })
+        .collect();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(counts, [1 + 2 + 3 * 5000 + 2; 3], "interpreter, Tier-3, interpreter again");
+}
+
 /// Runs the exit NRO with one guest argument of `arg_len` bytes. Returns the output and the file name, which sets
 /// the program path that run-nro puts in front of the guest argument (`sdmc:/<file>`).
 #[cfg(not(windows))]

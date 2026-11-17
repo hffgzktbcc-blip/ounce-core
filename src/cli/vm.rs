@@ -12,6 +12,11 @@ pub(crate) fn setup_vm_in(mut mmu: Memory, base: u64, alias_size: u64) -> (Cpu, 
     let mut cpu = Cpu::new();
     let mut kernel = HorizonKernel::new();
     kernel.set_addr_base(base, alias_size);
+    // `--deterministic` / OUNCE_DETERMINISTIC=1: guest time advances per SVC instead of with the host clock, so a
+    // program that waits on time runs the same instructions on every run and host (#479).
+    if crate::run_report::is_deterministic() {
+        kernel.set_deterministic_clock(HorizonKernel::DETERMINISTIC_UNIX_SECS);
+    }
 
     // Map stack space: 0x7FFFF00000 .. 0x7FFFFFF000
     let stack_base = STACK_TOP - STACK_SIZE as u64;
