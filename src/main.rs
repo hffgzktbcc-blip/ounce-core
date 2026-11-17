@@ -16,6 +16,7 @@ mod kernel;
 mod lab;
 mod linux;
 mod loader;
+mod loop_controls;
 mod mmu;
 mod run_report;
 mod trace;
@@ -70,6 +71,8 @@ fn main() {
     // positional arguments of every command stay where they were.
     let mut args: Vec<String> = Vec::new();
     let mut after_separator = false;
+    let mut loop_max_frames: Option<usize> = None;
+    let mut loop_presses: Vec<loop_controls::Press> = Vec::new();
     let mut raw_args = env::args().peekable();
     while let Some(arg) = raw_args.next() {
         if after_separator || arg == "--" {
@@ -84,6 +87,23 @@ fn main() {
         if arg == "--report-json" {
             if let Some(value) = raw_args.next() {
                 run_report::set_report_path(std::path::PathBuf::from(value));
+            }
+            continue;
+        }
+        if arg == "--max-frames" || arg == "--press" || arg.starts_with("--max-frames=") || arg.starts_with("--press=") {
+            let (flag, inline) = match arg.split_once('=') {
+                Some((f, v)) => (f.to_string(), Some(v.to_string())),
+                None => (arg.clone(), None),
+            };
+            let value = inline.or_else(|| raw_args.next()).unwrap_or_default();
+            let parsed = if flag == "--max-frames" {
+                loop_controls::parse_max_frames(&value).map(|n| loop_max_frames = Some(n))
+            } else {
+                loop_controls::parse_press(&value).map(|p| loop_presses.push(p))
+            };
+            if let Err(e) = parsed {
+                eprintln!("[CLI] {e}");
+                std::process::exit(2);
             }
             continue;
         }
@@ -116,6 +136,7 @@ fn main() {
         }
     }
 
+    loop_controls::configure(loop_max_frames, loop_presses);
     if args.len() < 2 {
         print!("{}", cli_flow::getting_started(env!("CARGO_PKG_VERSION")));
         return;
@@ -357,6 +378,9 @@ fn print_usage() {
     println!("    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)", s.green, s.reset);
     println!("    {}--present={}<mode>        Display: auto, gpu (needs --features gpu-present), minifb, headless (no window, no audio device)", s.green, s.reset);
     println!("    {}--sdmc={}<dir>            Host folder behind the guest's sdmc:/ (sandboxed; default: in-memory SD card)", s.green, s.reset);
+    println!("    {}--max-frames {}<N>        Exit with status 0 after N presented frames (headless runs count guest present calls)", s.green, s.reset);
+    println!("    {}--press {}<BTN@FRAME>     Hold a HID button for {} frames from presented frame FRAME; repeatable (e.g. --press PLUS@60)", s.green, s.reset, loop_controls::PRESS_HOLD_FRAMES);
+    println!("      valid buttons: {}", loop_controls::button_list());
     println!();
     println!("  {}INSPECT AND REPLAY:{}", s.bold, s.reset);
     println!("    {}inspect{} <file|dir>      Audit .nro/.nso headers, loose NPDM metadata and RomFS assets", s.green, s.reset);
@@ -647,6 +671,8 @@ fn run_vm_internal(
     let start = Instant::now();
     let mut instructions_executed = 0;
     let mut frames_presented = 0;
+    let max_frames = if max_frames == 0 { loop_controls::max_frames() } else { max_frames };
+    let injected_presses = loop_controls::presses();
     let mut gamepad_mgr = HostGamepadManager::new();
     if let Some(pad_name) = gamepad_mgr.active_gamepad_name() {
         println!("[HID] Physical gamepad attached: {}", pad_name);
@@ -777,7 +803,8 @@ fn run_vm_internal(
                     SvcResult::Success => {
                         // libnx homebrew reads HID shared memory between SVCs rather than per presented
                         // frame: hand it the host controller every few milliseconds.
-                        if kernel.ipc.hid.addr.is_some() && last_input_poll.elapsed() >= INPUT_POLL_INTERVAL {
+                        // Scripted --press runs poll after every SVC: a wall-clock interval would let a fast guest read the pad first.
+                        if kernel.ipc.hid.addr.is_some() && (!injected_presses.is_empty() || last_input_poll.elapsed() >= INPUT_POLL_INTERVAL) {
                             last_input_poll = Instant::now();
                             if let Some(ref mut h) = hid {
                                 if let Some(ref mut disp) = display {
@@ -789,6 +816,7 @@ fn run_vm_internal(
                                     h.poll_keyboard(&disp.get_active_keys());
                                 }
                                 gamepad_mgr.poll(h);
+                                h.state.buttons |= loop_controls::held_mask(injected_presses, frames_presented);
                                 kernel.ipc.hid.input = kernel::hid::NpadInput::from_controller(&h.state);
                             }
                         }
@@ -808,6 +836,7 @@ fn run_vm_internal(
                                 h.poll_keyboard(&active_keys);
                             }
                             gamepad_mgr.poll(h);
+                            h.state.buttons |= loop_controls::held_mask(injected_presses, frames_presented);
                             let _ = h.update_shared_memory(&mut mmu);
                         }
 
@@ -3773,7 +3802,12 @@ fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
                 cpu.regs.pc = DEFAULT_BASE_ADDR;
                 // libnx startup alone runs tens of thousands of instructions.
                 let budget = if is_nro { nro_instruction_budget() } else { 100_000 };
-                require_cli_success(run_vm(cpu, mmu, kernel, budget));
+                if loop_controls::active() {
+                    let mut hid = HidServer::new(HID_SHARED_MEM_ADDR);
+                    require_cli_success(run_vm_internal(cpu, mmu, kernel, None, Some(&mut hid), budget, 0));
+                } else {
+                    require_cli_success(run_vm(cpu, mmu, kernel, budget));
+                }
             }
         }
         Err(e) => {
