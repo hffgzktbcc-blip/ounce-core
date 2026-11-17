@@ -7,7 +7,7 @@ status line says so. Ranked by value for effort.
 |---|---|---|---|
 | 1 | Berkeley TestFloat as a floating-point oracle | Checks every operation across edge cases and rounding modes; would settle the FMAX/FMIN SNaN question. BSD-3 licence (SoftFloat 3e `COPYING.txt`), so it is fine as a test-time tool; do not vendor it without adding notices. | Built: `tools/testfloat/gen_trace.py` (see Results below) |
 | 2 | Arm machine-readable spec (AARCHMRS, JSON) | Lists every encoding, so decoder coverage can be measured instead of guessed (the thin "QC not set" coverage). The full XML/ASL packages carry Arm's own licence: use at test time only, never commit them. | Not started |
-| 3 | `diverge` for Tier-3 and Tier-4 | The JIT tiers are where silent errors are most likely; `diverge` only replays the interpreter today (see `docs/DIVERGE.md`). | Not started |
+| 3 | `diverge` for Tier-3 and Tier-4 | The JIT tiers are where silent errors are most likely; `diverge` only replays the interpreter today (see `docs/DIVERGE.md`). | Done: `diverge` runs the interpreter, Tier-3 and Tier-4 (see `docs/DIVERGE.md`) |
 | 4 | `cargo-fuzz` on the decoder and the ELF/NRO loaders | There is only the instruction fuzzer, no parser fuzzing. | Not started |
 | 4 | Miri on `ounce-nce` where it runs | `ounce-nce` holds the only unsafe code. | Not started |
 | 4 | `cargo-mutants` on the decoder | Shows whether the tests notice a flipped bit. | Not started |

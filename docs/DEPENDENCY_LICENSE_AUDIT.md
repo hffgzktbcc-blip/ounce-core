@@ -1,5 +1,8 @@
 # Declared Cargo licence metadata inventory
 
+> **Dated snapshot (inventory date 2026-10-28).** `Cargo.lock` has grown since (now 328 packages). For the current dependency set read `Cargo.lock`, `deny.toml` and `docs/RELEASE_NOTICE_REVIEW.json`; this file is a record, not the current inventory.
+
+
 Inventory date: **2026-10-28**
 
 Scope: all workspace crates and all resolved third-party dependencies in `Cargo.lock` (including

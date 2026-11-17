@@ -28,8 +28,7 @@ says so.
 
 ## A JSON report
 
-`--report-json` is on `main` after v0.8.2 (14 Nov 2026, `#439`). It is not in
-the v0.8.2 release archive. Build from `main` to use it.
+`--report-json` ships in v0.9.0 and later (added 14 Nov 2026, `#439`).
 
 ```sh
 cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture \

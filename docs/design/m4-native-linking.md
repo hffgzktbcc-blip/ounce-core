@@ -1,5 +1,8 @@
 # M4 step 6b: native block-to-block linking (design, Track A)
 
+> **Status as of 2026-11-17: historical design note, not an open task.** The linking spike is implemented in `src/cpu/tier4.rs` and `crates/ounce-recompiler/`; see "Spike result" below. "Track A" is a retired ownership label ([AGENTS.md](../../AGENTS.md)).
+
+
 Status: spike implemented (2026-10-28), see "Spike result". Owner: Track A (`crates/ounce-recompiler/*`, `src/cpu/tier4.rs`).
 
 ## Problem

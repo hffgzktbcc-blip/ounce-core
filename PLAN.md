@@ -70,7 +70,8 @@ Done tasks are one-liners; full evidence is in [docs/history/PLAN-COMPLETED.md](
       Blocked by: an actual outside-project execution and result.
       Result: another emulator project runs a versioned suite and reports a result with exact inputs and reference scope.
       Progress: [version 0.1.0 seed](conformance/arm64-v0.1.0/README.md) packages the unchanged hardware FMUL trace, hashes, provenance, comparison scope and adapter contract. A runner rejects unsupported, missing/duplicate counts and tampered input. All three local runtime engines pass. PR #270 passed all 21 hosted checks, including each engine on Linux, macOS and Windows, and merged at `2e55a5e`; these remain internal observations.
-      Next: preserve the published seed, expand from measured cases in a new version, and obtain an actual outside-project result. Outside adoption remains external acceptance and is not inferred from internal runs.
+      Update: [version 0.2.0](conformance/arm64-v0.2.0) (twelve measured cases) is also published (#427).
+      Next: obtain an actual outside-project result; expanding the suite is no longer the blocker. Outside adoption remains external acceptance and is not inferred from internal runs.
 
 ## External acceptance and publication dependencies
 
@@ -78,7 +79,7 @@ Done tasks are one-liners; full evidence is in [docs/history/PLAN-COMPLETED.md](
       Status: blocked
       Blocked by: unaffiliated tester evidence through issue #190. Existing internal/CI RomFS results remain useful, but do not establish independence.
       Next: retain the recipe and accept outside evidence when available; no repeated internal reruns as a substitute.
-      Evidence: [issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190) has two comments, both by one outside tester (@cyzcz, 2026-11-07; reports #191 and follow-ups). Reviewed 2026-11-11: that is one self-reported outside run, not an independent rerun, so it stays `self-reported, awaiting independent rerun`. It deviates from the pinned recipe and lacks the byte-checked canonical records. See [E2_DECISION_MEMO.md](docs/E2_DECISION_MEMO.md#issue-190-is-either-comment-an-independent-rerun-e1). E1 is not complete.
+      Evidence: [issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190) has two comments, both by one outside tester (@cyzcz, 2026-11-07; reports #191 and follow-ups). Reviewed 2026-11-11: that is one self-reported outside run, not an independent rerun, so it stays `self-reported, awaiting independent rerun`. It deviates from the pinned recipe and lacks the byte-checked canonical records. See [E2_DECISION_MEMO.md](docs/history/E2_DECISION_MEMO.md#issue-190-is-either-comment-an-independent-rerun-e1). E1 is not complete.
 - [ ] **E2. Disposition historical provenance for affected distribution artifacts.**
       Status: blocked
       Blocked by: native-app/optional-feature distribution decisions and actual bundle notice coverage, the historical 72-byte program permission question, and separately approved historical/ref actions. The default CLI v0.6.0 decision and its actual three-platform notice coverage are complete. PR #203 is merged; its technical controls do not establish legal clearance.

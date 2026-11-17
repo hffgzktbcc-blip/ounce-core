@@ -80,8 +80,8 @@ Nothing on this page is evidence for a compatibility, performance or correctness
 | Frontend | What it does | Where |
 | :--- | :--- | :--- |
 | Interactive lab | Design preview plus local file inspection | [`site/lab.html`](../site/lab.html) |
-| WebAssembly playground | Real AArch64 instruction stepping, compiled from the safe-Rust core | [`crates/ounce-learn`](../crates/ounce-learn/), [PLAYGROUND.md](PLAYGROUND.md) |
-| Native Mac app | Runs `.nro` files through the runtime on Apple Silicon | [`tools/macos-launcher`](../tools/macos-launcher/), [MAC_APP.md](MAC_APP.md) |
+| WebAssembly playground | Real AArch64 instruction stepping, compiled from the safe-Rust core | [`crates/ounce-learn`](../crates/ounce-learn), [PLAYGROUND.md](PLAYGROUND.md) |
+| Native Mac app | Runs `.nro` files through the runtime on Apple Silicon | [`tools/macos-launcher`](../tools/macos-launcher), [MAC_APP.md](MAC_APP.md) |
 | CLI | The runtime and verification commands | [`src/main.rs`](../src/main.rs) |
 
 The page loads its Tailwind script from `gstatic.com` at view time, so it needs network access to
