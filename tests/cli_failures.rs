@@ -345,3 +345,45 @@ fn an_early_stop_ends_with_the_next_step_and_the_report_form() {
     assert!(stderr.contains("Run stopped early."), "{stderr}");
     assert!(stderr.contains("issues/new?template=emulation_bug.yml") && stderr.contains("--cpu=tier3"), "{stderr}");
 }
+
+/// `hello.nro` reports `0x00000EEE` only when its argv is exactly `[path, "fixture"]`; bit 3 (`0x0BAD0008`) means
+/// `argc != 2 || argv[1] != "fixture"`. That makes it a probe for what the guest actually received (#487).
+fn run_hello(args: &[&str]) -> std::process::Output {
+    let nro = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro");
+    Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run-nro", nro, "--present=headless"])
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn guest_arguments_after_separator_reach_an_nro_unchanged() {
+    let exact = run_hello(&["--", "fixture"]);
+    assert!(String::from_utf8_lossy(&exact.stdout).contains("result=0x00000EEE"), "{}", String::from_utf8_lossy(&exact.stdout));
+    // A dashed word after `--` used to be dropped silently, so the guest still saw argc == 2 and passed.
+    for extra in ["--verbose", "-x", "--gui"] {
+        let output = run_hello(&["--", "fixture", extra]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("result=0x0BAD0008"), "guest did not receive {extra}: {stdout}");
+    }
+}
+
+#[test]
+fn unknown_dashed_nro_argument_before_separator_is_refused_with_the_fix() {
+    let output = run_hello(&["fixture", "-x"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "stderr: {stderr}");
+    assert!(stderr.contains("unknown option '-x'"), "stderr: {stderr}");
+    assert!(stderr.contains("-- -x"), "stderr: {stderr}");
+    assert!(output.stdout.is_empty(), "the program must not start: {}", String::from_utf8_lossy(&output.stdout));
+}
+
+#[test]
+fn run_nro_help_documents_the_separator() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core")).args(["run-nro", "--help"]).output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("usage: ounce-core run-nro <path>"), "{stdout}");
+    assert!(stdout.contains("Everything after `--` is passed to the program unchanged"), "{stdout}");
+}

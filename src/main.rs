@@ -206,16 +206,24 @@ fn main() {
                 std::process::exit(2);
             }
             let file_path = &args[2];
+            if matches!(file_path.as_str(), "--help" | "-h") {
+                print_run_usage(&args[1]);
+                return;
+            }
+            let run_args = match parse_run_args(&args[1], file_path, &args[3..]) {
+                Ok(parsed) => parsed,
+                Err(message) => {
+                    eprintln!("{message}");
+                    std::process::exit(2);
+                }
+            };
             if !std::path::Path::new(file_path).exists() {
                 eprint!("{}", cli_flow::file_not_found(file_path));
                 std::process::exit(1);
             }
             let _ = RUN_TARGET.set(file_path.clone());
             print_banner();
-            let gui_mode = args.iter().any(|a| a == "--gui" || a == "--window" || a == "-g");
-            // Anything after the path that is not a flag is passed to homebrew as argv[1..].
-            let guest_args: Vec<&str> = args[3..].iter().filter(|a| !a.starts_with('-')).map(|a| a.as_str()).collect();
-            run_file(file_path, &guest_args, gui_mode, nro_only);
+            run_file(file_path, &run_args.guest, run_args.gui, nro_only);
         }
         "demo-dir" | "dir-demo" | "loose-demo" => {
             print_banner();
