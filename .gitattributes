@@ -8,3 +8,4 @@ licenses/*.txt text eol=lf
 docs/verify/insn-fuzzer/default-nan-mul2d/** text eol=lf
 
 conformance/** text eol=lf
+scripts/*.sh text eol=lf
