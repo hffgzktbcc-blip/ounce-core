@@ -11,6 +11,9 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 - Docs: one roadmap entry point for agents (#461); past handoffs moved under `docs/history/`.
 - CI: a `lint` job fails on any rustc or clippy warning (default, `native-jit,nce` and `gpu-present` features, pinned
   toolchain), and an `msrv` job builds default features with Rust 1.89. The tree now has zero warnings.
+- Fixed: guest debug output (`svcOutputDebugString`) on `run` / `run-nro` waited in stdout's buffer until the next
+  newline, so a hung program's last partial line was lost when an outer timeout killed the run (#476). It is now
+  flushed as it is written; `run-elf` already did this.
 - CI: the whole-program FP workload (`docs/verify/fp-workload`, 47 ops x 8 FPCR modes, native vs `run-elf` Tier-3
   and Tier-4) runs on a Linux ARM64 runner for pull requests that touch the engines (#485). Any op that is not
   identical on both tiers fails it, and a deliberately edited reference must fail it too.

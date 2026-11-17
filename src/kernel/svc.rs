@@ -956,7 +956,11 @@ impl HorizonKernel {
                 let mut buf = vec![0u8; str_len];
                 if mmu.read_bytes(str_addr, &mut buf).is_ok() {
                     let text = String::from_utf8_lossy(&buf);
-                    print!("{text}");
+                    // Flush now: stdout holds a partial line until the next newline, and a hung guest that an outer
+                    // timeout kills would lose it (#476). After a newline-terminated write the buffer is empty already.
+                    let mut out = std::io::stdout().lock();
+                    let _ = std::io::Write::write_all(&mut out, text.as_bytes());
+                    let _ = std::io::Write::flush(&mut out);
                 } else {
                     cpu.regs.write_x(0, RESULT_INVALID_MEMORY_STATE);
                     return SvcResult::Success;
