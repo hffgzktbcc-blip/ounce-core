@@ -49,6 +49,16 @@ impl CpuTier {
     pub fn set_cli_override(tier: Self) {
         let _ = CLI_TIER.set(tier);
     }
+
+    /// The `tier` value written to `ounce.run.v1` reports.
+    pub fn report_label(self) -> &'static str {
+        match self {
+            Self::Interpreter => "interpreter",
+            Self::Tier3 => "tier3",
+            Self::Tier4 => "tier4",
+            Self::Native => "nce",
+        }
+    }
 }
 
 /// The selected block engine. Same `run_slice` contract for every tier.

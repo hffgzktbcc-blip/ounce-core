@@ -13,6 +13,11 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   toolchain), and an `msrv` job builds default features with Rust 1.89. The tree now has zero warnings.
 - Docs: the stated minimum Rust version was wrong. The committed lockfile and code need Rust 1.89 for the default
   build (not 1.85); `gpu-present` needs 1.90 and `native-jit` 1.97.
+- `run-elf` writes the `ounce.run.v1` report (`--report-json` / `OUNCE_REPORT_JSON`), with `stop_kind`, `pc`, `opcode`,
+  `fault_addr` and `svc_id` (the Linux syscall number) filled in, and `silent_fallback` true when Tier-4 fell back. New
+  additive field `guest_exit_status` carries the program's own exit status; `exit_code` stays the engine's. `--dump-regs`
+  prints PC, X0, D0 and NZCV at the stop (#473). Tests now check the emitted fields and exit-code mapping against
+  `docs/OUNCE_RUN_V1_SCHEMA.md`.
 - Fixed: `run` / `run-nro` silently dropped every guest argument starting with `-`, including after `--` (#487).
   Everything after `--` now reaches the program unchanged; an unknown option before `--` exits 2 with the corrected
   command; `--gui` after `--` is the guest's, not a window request. `ounce-core run-nro --help` documents this.

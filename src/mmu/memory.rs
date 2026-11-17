@@ -61,6 +61,15 @@ pub enum MemoryError {
     Misaligned { addr: u64, size: usize },
 }
 
+impl MemoryError {
+    /// The guest virtual address of the failed access.
+    pub fn addr(&self) -> u64 {
+        match self {
+            Self::Unmapped { addr } | Self::PermissionDenied { addr, .. } | Self::Misaligned { addr, .. } => *addr,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MemoryBucketStats {
     pub total_pages: usize,

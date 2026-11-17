@@ -78,7 +78,7 @@
    - Add `audio_frames_mixed` / `audio_hash` for headless `audout` / SDL_mixer verification, plus a golden-output / `framebuffer_hash` assertion flag on `ounce-hb run`/`repro` for `Makefile` & CI test suites.
 
 4. **Expand `run-elf` Bounded Envelope & `ounce.run.v1` Parity (Static musl AArch64):**
-   - Wire `ounce.run.v1` (`--report-json` / `OUNCE_REPORT_JSON`) and `--dump-regs` (`X0`/`D0`/`NZCV` on stop) into `ounce-core`'s `run-elf` runner (`src/linux/runner.rs`) so ELF workloads share the same machine-readable contract as `.nro`.
+   - **DONE (#473, unreleased):** Wire `ounce.run.v1` (`--report-json` / `OUNCE_REPORT_JSON`) and `--dump-regs` (`X0`/`D0`/`NZCV` on stop) into `ounce-core`'s `run-elf` runner (`src/linux/runner.rs`) so ELF workloads share the same machine-readable contract as `.nro`. Adds the flat, additive `guest_exit_status` field.
    - Expand `run-elf` & `linux-arm64-elf-matrix` toward 50+ single-threaded/bounded-file/deterministic static musl AArch64 workloads fetched/built cleanly in CI (no vendored unclear/GPL binaries), keeping scope strictly bounded to static musl `ET_EXEC`.
 
 5. **DeckStream `.nro` Subprocess & `ounce.run.v1` Integration (`deckstream`, MIT):**
