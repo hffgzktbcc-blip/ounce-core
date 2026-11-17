@@ -38,8 +38,7 @@ cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture \
 ```
 
 `run.json` is `ounce.run.v1`. Guest text stays on stdout. The same path can be
-given as `OUNCE_REPORT_JSON`. `run` and `run-nro` write the file.
-`run-elf` does not, yet.
+given as `OUNCE_REPORT_JSON`. `run`, `run-nro` and `run-elf` write the file.
 
 `--audio=null` (or `OUNCE_AUDIO=null`) does not open a host audio device.
 `--present=headless` already skips that device. On `run-elf`,

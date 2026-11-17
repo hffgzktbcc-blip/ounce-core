@@ -41,7 +41,7 @@
 
 1. **Day-1 Homebrew Ergonomics & Doc/CLI Sync:**
    - **Loop-exit controls (`--max-frames <N>` and inline `--press PLUS@60` DONE, #458 merged 17 Nov; `OUNCE_INPUT_SCRIPT=<path>` was not built):** so standard `while (appletMainLoop())` `libnx` apps exit cleanly instead of hitting the 60s timeout.
-   - **Q1 `--sdmc` & RomFS support (IN FLIGHT: PR #459, not merged):** Support ephemeral/copy-on-write `--sdmc <dir>` staging and RomFS (`romfsInit()`) verification in Q1 rather than deferring to Q2.
+   - **Q1 `--sdmc` & RomFS support: DONE** (#459 merged 17 Nov: copy-on-write `--sdmc <dir>` overlay, `--sdmc-writeback` for write-through, `romfsInit()` verification). Do not redo.
    - **CLI & Doc parity:** Implement `--timeout <dur>` and `--json` on `ounce-hb run` (matching `HOMEBREW_DEVELOPER_GUIDE.md`), sync `ounce-hb/README.md` with `doctor`, `repro`, and `--auto`, and extend `ounce-hb doctor` to check `DEVKITPRO`/`devkitA64`/`cargo-nx` alongside engine binaries.
    - **Applet deadlock (`ounce-core` #387): DONE.** Issue closed, fixed by `0b4489b` (cancelled software-keyboard result); PR #459 adds a regression test. Do not redo.
 
