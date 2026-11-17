@@ -98,7 +98,7 @@ pub(crate) fn print_box_bottom(s: &Styler) {
 pub(crate) fn print_row(s: &Styler, label: &str, val: &str) {
     let used = visible_width(label) + visible_width(val);
     let max_inner = BOX_WIDTH - 6;
-    let pad = if max_inner > used { max_inner - used } else { 0 };
+    let pad = max_inner.saturating_sub(used);
     println!(
         "{}│  {}{}{}{}{}{}  │{}",
         s.blue, s.bold, label, s.reset, val, " ".repeat(pad), s.blue, s.reset
@@ -161,7 +161,7 @@ pub(crate) fn print_specs() {
 
     let header_text = format!("  🎮  {}OUNCE-CORE v{}{} — TEGRA T239 HARDWARE & RUNTIME SYSTEM PROFILE", s.bold, env!("CARGO_PKG_VERSION"), s.reset);
     let header_width = visible_width(&header_text);
-    let pad = if BOX_WIDTH - 2 > header_width { (BOX_WIDTH - 2) - header_width } else { 0 };
+    let pad = (BOX_WIDTH - 2).saturating_sub(header_width);
 
     println!("{}╭{}╮{}", s.cyan, "─".repeat(BOX_WIDTH - 2), s.reset);
     println!("{}│{}{}{}│{}", s.cyan, header_text, " ".repeat(pad), s.cyan, s.reset);

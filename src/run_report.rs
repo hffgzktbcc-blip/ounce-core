@@ -69,15 +69,11 @@ pub fn write_if_configured(report: &RunReport) {
         "framebuffer_hash": report.framebuffer_hash,
         "message": report.message,
     });
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+    if let Some(parent) = path.parent() && !parent.as_os_str().is_empty() {
+        let _ = std::fs::create_dir_all(parent);
     }
-    if let Ok(bytes) = serde_json::to_vec_pretty(&payload) {
-        if let Err(err) = std::fs::write(path, bytes) {
-            eprintln!("[Report] Failed to write {}: {err}", path.display());
-        }
+    if let Ok(bytes) = serde_json::to_vec_pretty(&payload) && let Err(err) = std::fs::write(path, bytes) {
+        eprintln!("[Report] Failed to write {}: {err}", path.display());
     }
 }
 

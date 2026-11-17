@@ -239,7 +239,7 @@ impl Cpu {
                         (res, !borrow, v)
                     } else {
                         let (res, carry) = op1.overflowing_add(op2);
-                        let v = (!((op1 ^ op2)) & (op1 ^ res) & (1 << 63)) != 0;
+                        let v = (!(op1 ^ op2) & (op1 ^ res) & (1 << 63)) != 0;
                         (res, carry, v)
                     };
 
@@ -262,7 +262,7 @@ impl Cpu {
                         (res, !borrow, v)
                     } else {
                         let (res, carry) = op1_32.overflowing_add(op2_32);
-                        let v = (!((op1_32 ^ op2_32)) & (op1_32 ^ res) & (1 << 31)) != 0;
+                        let v = (!(op1_32 ^ op2_32) & (op1_32 ^ res) & (1 << 31)) != 0;
                         (res, carry, v)
                     };
 
@@ -340,7 +340,7 @@ impl Cpu {
                         (res, !borrow, v)
                     } else {
                         let (res, carry) = op1.overflowing_add(op2);
-                        let v = (!((op1 ^ op2)) & (op1 ^ res) & (1 << 63)) != 0;
+                        let v = (!(op1 ^ op2) & (op1 ^ res) & (1 << 63)) != 0;
                         (res, carry, v)
                     };
 
@@ -366,7 +366,7 @@ impl Cpu {
                         (res, !borrow, v)
                     } else {
                         let (res, carry) = op1_32.overflowing_add(op2_32);
-                        let v = (!((op1_32 ^ op2_32)) & (op1_32 ^ res) & (1 << 31)) != 0;
+                        let v = (!(op1_32 ^ op2_32) & (op1_32 ^ res) & (1 << 31)) != 0;
                         (res, carry, v)
                     };
 
@@ -643,7 +643,7 @@ impl Cpu {
                             (r, !borrow, v)
                         } else {
                             let (r, carry) = op1.overflowing_add(op2);
-                            let v = (!((op1 ^ op2)) & (op1 ^ r) & (1 << 63)) != 0;
+                            let v = (!(op1 ^ op2) & (op1 ^ r) & (1 << 63)) != 0;
                             (r, carry, v)
                         };
                         self.regs.pstate.n = (res as i64) < 0;
@@ -659,7 +659,7 @@ impl Cpu {
                             (r, !borrow, v)
                         } else {
                             let (r, carry) = op1_32.overflowing_add(op2_32);
-                            let v = (!((op1_32 ^ op2_32)) & (op1_32 ^ r) & (1 << 31)) != 0;
+                            let v = (!(op1_32 ^ op2_32) & (op1_32 ^ r) & (1 << 31)) != 0;
                             (r, carry, v)
                         };
                         self.regs.pstate.n = (res as i32) < 0;
@@ -976,7 +976,7 @@ impl Cpu {
                     match sysreg {
                         0x5E82 => self.regs.tpidr_el0 = val,
                         0x5E83 => self.regs.tpidrro_el0 = val,
-                        0x5A10 => self.regs.pstate.from_bits(val as u32),
+                        0x5A10 => self.regs.pstate.set_bits(val as u32),
                         0x5A20 => self.regs.fpcr = val as u32,
                         0x5A21 => self.regs.fpsr = val as u32 & super::registers::FPSR_MASK,
                         _ => {}
@@ -1901,14 +1901,14 @@ impl Cpu {
                 let regs: Vec<u8> = (0..selem).map(|s| (rt + s) % 32).collect();
                 let mut vals: Vec<u128> = if is_load { vec![0; regs.len()] } else { regs.iter().map(|&r| self.regs.read_q(r)).collect() };
                 for e in 0..elements {
-                    for s in 0..selem as usize {
+                    for (s, val) in vals.iter_mut().enumerate() {
                         let addr = base.wrapping_add(((e * selem as usize + s) * ebytes) as u64);
                         if is_load {
                             let mut buf = [0u8; 8];
                             mmu.read_bytes(addr, &mut buf[..ebytes])?;
-                            simd::set_lane(&mut vals[s], esize as u32, e, u64::from_le_bytes(buf));
+                            simd::set_lane(val, esize as u32, e, u64::from_le_bytes(buf));
                         } else {
-                            let v = simd::lane(vals[s], esize as u32, e);
+                            let v = simd::lane(*val, esize as u32, e);
                             mmu.write_bytes(addr, &v.to_le_bytes()[..ebytes])?;
                         }
                     }
@@ -2079,22 +2079,11 @@ impl Cpu {
             }
 
             Instruction::FpAbd { rd, rn, rm, is_double } => {
-                // always the soft path: it raises the exception flags (IXC, IOC, ...) the host does at default FPCR too
-                {
-                    let (f, env) = self.fp_env(is_double);
-                    let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
-                    let r = f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b));
-                    self.regs.write_q(rd, r as u128);
-                    self.regs.advance_pc();
-                    return Ok(StepResult::Continue);
-                }
-                if is_double {
-                    let r = (self.regs.read_d(rn) - self.regs.read_d(rm)).abs();
-                    self.regs.write_q(rd, r.to_bits() as u128);
-                } else {
-                    let r = (self.regs.read_s(rn) - self.regs.read_s(rm)).abs();
-                    self.regs.write_q(rd, r.to_bits() as u128);
-                }
+                // Always the soft path: it raises the exception flags (IXC, IOC, ...) the host does at default FPCR too.
+                let (f, env) = self.fp_env(is_double);
+                let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
+                let r = f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b));
+                self.regs.write_q(rd, r as u128);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }

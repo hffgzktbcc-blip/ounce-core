@@ -184,11 +184,9 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
 
             // Homebrew ABI for NRO0: ConfigEntry list in X0 (X1 = -1), a heap handed over so libnx skips
             // svcSetHeapSize, and X30 at a svcExitProcess stub, which is where libnx's exit returns.
-            if is_nro {
-                if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, &bytes, guest_args) {
-                    eprintln!("[Loader Error] homebrew environment: {}", e);
-                    std::process::exit(1);
-                }
+            if is_nro && let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, &bytes, guest_args) {
+                eprintln!("[Loader Error] homebrew environment: {}", e);
+                std::process::exit(1);
             }
             // After the NRO went on the virtual SD card, so it stays in memory and is not copied into the folder.
             if let Some(dir) = SDMC_HOST_DIR.get() {
@@ -545,6 +543,7 @@ pub(crate) fn build_and_boot_demo_dir(out_dir: &str, gui_mode: bool) {
     run_directory_package(out_dir, gui_mode);
 }
 
+#[cfg(test)]
 mod host_audio_tests {
     use super::*;
 

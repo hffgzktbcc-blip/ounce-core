@@ -15,7 +15,7 @@ def classify(paths):
             path.endswith('.md') or (path.count('/') == 2 and path.endswith('.json')))
         rust = ((path.startswith(('src/', 'crates/', 'tests/fixtures/', 'tools/macos-launcher/', 'tests/macos/', '.cargo/', 'assets/fonts/'))
                  and not fixture_record)
-                or path in {'Cargo.toml', 'Cargo.lock', 'build.rs', 'rust-toolchain.toml',
+                or path in {'Cargo.toml', 'Cargo.lock', 'build.rs', 'rust-toolchain.toml', 'clippy.toml',
                             '.github/workflows/ci.yml', 'scripts/ci_scope.py', 'scripts/build_macos_app.sh'}
                 or path.endswith('.rs'))
         oracle = path.startswith('tests/corpus/')

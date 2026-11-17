@@ -186,7 +186,7 @@ Install, build and first-run steps are in the [README](../README.md#run-it-local
 
 ### Prerequisites
 
-- Rust 1.85 or newer (edition 2024).
+- Rust 1.89 or newer (edition 2024) for the default build, checked in CI by the `msrv` job. Optional features need newer compilers: `gpu-present` 1.90, `native-jit` 1.97.
 - Host: `aarch64` or `x86_64`, Linux, macOS or Windows.
 - Prebuilt Linux binaries dynamically link to the system ALSA and udev libraries. On Debian/Ubuntu: `sudo apt install libasound2 libudev1`. On Fedora: `sudo dnf install alsa-lib systemd-libs`. On Arch: `sudo pacman -S alsa-lib systemd-libs`. Building from source also needs the development headers (`libasound2-dev libudev-dev` on Debian/Ubuntu).
 - GPU presentation (optional): build with `--features gpu-present`. macOS uses Metal and needs nothing extra. Windows uses Vulkan or DX12 from the installed GPU driver. Linux needs a Vulkan driver plus `libvulkan1` and `libxkbcommon-x11-0` on Debian/Ubuntu (`vulkan-loader libxkbcommon-x11` on Fedora, `vulkan-icd-loader libxkbcommon-x11` on Arch); `mesa-vulkan-drivers` gives a software Vulkan driver for machines without a GPU. If the GPU path cannot start, the runtime falls back to the software window and then to headless.

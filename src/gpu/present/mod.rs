@@ -267,10 +267,8 @@ pub fn open_backend(kind: BackendKind, config: &BackendConfig) -> Box<dyn Presen
         return Box::new(headless::HeadlessBackend::new(config));
     }
 
-    if matches!(kind, BackendKind::Auto | BackendKind::Gpu) {
-        if let Some(backend) = open_gpu_backend(kind, config) {
-            return backend;
-        }
+    if matches!(kind, BackendKind::Auto | BackendKind::Gpu) && let Some(backend) = open_gpu_backend(kind, config) {
+        return backend;
     }
 
     match minifb_window::MinifbBackend::new(config) {

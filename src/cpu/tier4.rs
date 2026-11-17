@@ -830,18 +830,13 @@ impl Lowerer {
                 }
             }
 
-            Instruction::SimdTwoMisc { rd, rn, op, esize: _, q } => {
-                match op {
-                    SimdOp2::Not => {
-                        let n_lo = self.b.get(Reg::VLo(rn));
-                        let n_hi = self.b.get(Reg::VHi(rn));
-                        let lo = self.b.push(Op::Not(Width::W64, n_lo));
-                        let hi = if q { self.b.push(Op::Not(Width::W64, n_hi)) } else { self.k(0) };
-                        self.b.set(Reg::VLo(rd), lo);
-                        self.b.set(Reg::VHi(rd), hi);
-                    }
-                    _ => return Err(()),
-                }
+            Instruction::SimdTwoMisc { rd, rn, op: SimdOp2::Not, esize: _, q } => {
+                let n_lo = self.b.get(Reg::VLo(rn));
+                let n_hi = self.b.get(Reg::VHi(rn));
+                let lo = self.b.push(Op::Not(Width::W64, n_lo));
+                let hi = if q { self.b.push(Op::Not(Width::W64, n_hi)) } else { self.k(0) };
+                self.b.set(Reg::VLo(rd), lo);
+                self.b.set(Reg::VHi(rd), hi);
             }
 
             // FEAT_SHA3 uses the decoded Tier-3 implementation on every host. Returning
@@ -1225,7 +1220,7 @@ impl Tier4JitEngine {
         r.x = state.x;
         r.sp = state.sp;
         r.pc = state.pc;
-        r.pstate.from_bits(state.nzcv as u32);
+        r.pstate.set_bits(state.nzcv as u32);
         r.v = state.v;
         Some((executed, outcome.0, outcome.1))
     }
@@ -2131,7 +2126,7 @@ mod tests {
                     1 => rng.next() % 64,
                     2 => DATA + 0xFF8 + (rng.next() % 16), // near page boundary
                     3 => DATA + 0x1000 + (rng.next() % 0x100), // unmapped page
-                    _ => DATA + (rng.next() % 0x800) & !7,
+                    _ => (DATA + (rng.next() % 0x800)) & !7,
                 };
                 cpu.regs.write_x(r, v);
             }
@@ -2140,7 +2135,7 @@ mod tests {
                 let hi = (rng.next() as u128) << 64;
                 cpu.regs.write_q(v, lo | hi);
             }
-            cpu.regs.pstate.from_bits((rng.next() as u32) & 0xF000_0000);
+            cpu.regs.pstate.set_bits((rng.next() as u32) & 0xF000_0000);
             let (c, m) = clone(&cpu, &mmu);
             let reference = run_interp(c, m, 1_000);
             let (c, m) = clone(&cpu, &mmu);
@@ -2215,12 +2210,12 @@ mod tests {
                     0 => rng.next(),
                     1 => rng.next() % 64,
                     2 => DATA + 0xFF8 + (rng.next() % 16),
-                    _ => DATA + (rng.next() % 0x800) & !7,
+                    _ => (DATA + (rng.next() % 0x800)) & !7,
                 };
                 cpu.regs.write_x(r, v);
             }
             cpu.regs.write_x(28, 3);
-            cpu.regs.pstate.from_bits((rng.next() as u32) & 0xF000_0000);
+            cpu.regs.pstate.set_bits((rng.next() as u32) & 0xF000_0000);
             let (c, m) = clone(&cpu, &mmu);
             let reference = run_interp(c, m, 1_000);
             let (c, m) = clone(&cpu, &mmu);

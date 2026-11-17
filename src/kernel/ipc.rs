@@ -135,7 +135,7 @@ pub const SHARED_FONT_SIZE: usize = 0x10_0000; // 1 MB Shared Font Buffer
 /// Reads a null-terminated string from CMIF arguments or a guest pointer.
 fn read_cmif_string(mmu: &Memory, args_base: u64, max_len: usize) -> String {
     let maybe_ptr = mmu.read_u64(args_base).unwrap_or(0);
-    if maybe_ptr >= 0x10000 && maybe_ptr < 0x0001_0000_0000_0000 && mmu.is_mapped(maybe_ptr) {
+    if (0x10000..0x0001_0000_0000_0000).contains(&maybe_ptr) && mmu.is_mapped(maybe_ptr) {
         let mut buf = vec![0u8; max_len];
         if mmu.read_bytes(maybe_ptr, &mut buf).is_ok() {
             let len = buf.iter().position(|&b| b == 0).unwrap_or(max_len);
@@ -243,12 +243,11 @@ impl IpcManager {
         self.applet.storages.remove(&handle);
         self.applet.storage_accessors.remove(&handle);
         self.applet.storage_accessors.retain(|_, storage| *storage != handle);
-        if let Some(ServiceType::AudioDevice(id) | ServiceType::AudioDeviceEvent(id)) = &removed {
-            if !self.handles.values().any(|service| matches!(service,
+        if let Some(ServiceType::AudioDevice(id) | ServiceType::AudioDeviceEvent(id)) = &removed
+            && !self.handles.values().any(|service| matches!(service,
                 ServiceType::AudioDevice(other) | ServiceType::AudioDeviceEvent(other) if other == id)) {
                 self.audio_devices.remove(id);
             }
-        }
         removed.is_some()
     }
 
@@ -1304,11 +1303,9 @@ impl IpcManager {
                 // plain store), so syncpoint reads and waits below see current fences.
                 self.nvdrv.poll_3d(mmu);
                 let status = self.nvdrv.ioctl_ex(fd, request, &mut data, extra);
-                if ioctl_has_output(request) {
-                    if let Some(b) = output(0) {
-                        let n = data.len().min(b.size as usize);
-                        let _ = mmu.write_bytes(b.addr, &data[..n]);
-                    }
+                if ioctl_has_output(request) && let Some(b) = output(0) {
+                    let n = data.len().min(b.size as usize);
+                    let _ = mmu.write_bytes(b.addr, &data[..n]);
                 }
                 if let Some(b) = out2 {
                     let _ = mmu.write_bytes(b.addr, &outbuf);

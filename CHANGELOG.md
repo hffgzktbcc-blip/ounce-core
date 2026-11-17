@@ -9,6 +9,11 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 - Fuzzer: `--word-mask` / `--word-value` targeted generation, with hardware evidence for FCADD, SQRDMLAH/SQRDMLSH,
   FCVTXN and half-precision FMOV (#457).
 - Docs: one roadmap entry point for agents (#461); past handoffs moved under `docs/history/`.
+- CI: a `lint` job fails on any rustc or clippy warning (default, `native-jit,nce` and `gpu-present` features, pinned
+  toolchain), and an `msrv` job builds default features with Rust 1.89. The tree now has zero warnings.
+- Docs: the stated minimum Rust version was wrong. The committed lockfile and code need Rust 1.89 for the default
+  build (not 1.85); `gpu-present` needs 1.90 and `native-jit` 1.97.
+- Fixed: `scripts/done.sh '#N'` found nothing on macOS, because `\b` in `git log -E --grep` is a GNU extension (#484).
 
 ## 0.9.0 — released 2026-11-16
 

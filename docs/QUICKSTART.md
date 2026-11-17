@@ -5,7 +5,7 @@ Run one homebrew program and, if you want a machine-readable result, write an
 [LIMITS.md](LIMITS.md). The family roadmap is in
 [roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md](roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md).
 
-You need Rust 1.85 or newer (edition 2024). On Debian or Ubuntu, install the
+You need Rust 1.89 or newer (edition 2024). On Debian or Ubuntu, install the
 audio and device headers before building:
 
 ```sh

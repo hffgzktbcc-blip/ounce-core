@@ -111,12 +111,10 @@ impl SyncManager {
     /// Releases the user-space Horizon mutex at `mutex_addr` or hands it to the next waiting thread.
     pub fn arbitrate_unlock(&mut self, mmu: &mut Memory, mutex_addr: u64) -> u64 {
         self.total_locks_arbitrated += 1;
-        if let Some(queue) = self.wait_queues.get_mut(&mutex_addr) {
-            if let Some(next_owner) = queue.pop_front() {
-                let has_more = if queue.is_empty() { 0 } else { 0x4000_0000 };
-                let _ = mmu.write_u32(mutex_addr, next_owner | has_more);
-                return 0;
-            }
+        if let Some(queue) = self.wait_queues.get_mut(&mutex_addr) && let Some(next_owner) = queue.pop_front() {
+            let has_more = if queue.is_empty() { 0 } else { 0x4000_0000 };
+            let _ = mmu.write_u32(mutex_addr, next_owner | has_more);
+            return 0;
         }
         let _ = mmu.write_u32(mutex_addr, 0);
         0

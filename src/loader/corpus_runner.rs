@@ -448,7 +448,7 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
         if queued > result.queued.len() as u64 {
             result.queued.push(capture_queued(&kernel, &mmu, queued, &limits.probes));
             result.last_queue_ms = started.elapsed().as_millis() as u64;
-            if limits.sample_every != 0 && queued % limits.sample_every == 0 {
+            if limits.sample_every != 0 && queued.is_multiple_of(limits.sample_every) {
                 result.samples.push(soak_sample(queued, result.instructions, &cpu, &mmu, tier3.as_ref()));
             }
             if limits.queued_frames != 0 && queued >= limits.queued_frames {

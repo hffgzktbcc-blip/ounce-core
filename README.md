@@ -55,7 +55,7 @@ Build, run the hello fixture, and write an `ounce.run.v1` report: [docs/QUICKSTA
 
 **1. In your browser.** Step through ARM64 code one instruction at a time in the [playground](https://hffgzktbcc-blip.github.io/ounce-core/playground/). Nothing to install.
 
-**2. On your machine.** You need Rust 1.85 or newer. On Debian or Ubuntu, first run `sudo apt-get install -y libasound2-dev libudev-dev`.
+**2. On your machine.** You need Rust 1.89 or newer. On Debian or Ubuntu, first run `sudo apt-get install -y libasound2-dev libudev-dev`.
 
 ```bash
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git && cd ounce-core

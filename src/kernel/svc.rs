@@ -567,10 +567,8 @@ impl HorizonKernel {
                     })
                 });
                 if let Some(i) = signaled {
-                    if let Some(e) = self.sync.events.get_mut(&handles[i]) {
-                        if e.auto_clear {
-                            e.signaled = false;
-                        }
+                    if let Some(e) = self.sync.events.get_mut(&handles[i]) && e.auto_clear {
+                        e.signaled = false;
                     }
                     cpu.regs.write_x(0, 0);
                     cpu.regs.write_x(1, i as u64);

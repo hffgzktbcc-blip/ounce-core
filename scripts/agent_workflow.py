@@ -259,7 +259,8 @@ def check(args):
     ]
     runtime = mode in {'runtime', 'full'} or (mode == 'auto' and local_scope()['runtime'])
     if runtime:
-        commands += [['cargo', 'test', '--release', '--locked'], ['cargo', 'run', '--release', '--locked', '--', 'test']]
+        commands += [['cargo', 'clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings'],
+                     ['cargo', 'test', '--release', '--locked'], ['cargo', 'run', '--release', '--locked', '--', 'test']]
     if mode == 'full':
         for feature in ('gpu-present', 'native-jit', 'nce'):
             commands.append(['cargo', 'test', '--release', '--locked', '--features', feature])
