@@ -4,7 +4,7 @@
 
 **Read [the Ounce Family one-year roadmap](docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) before planning any multi-repository, release, or roadmap task.** It governs the Nov 2026–Nov 2027 family direction across `ounce-core`, `ounce-hb`, `ounce-runtime`, and `deckstream`. This repository's `PLAN.md` is a dated, local backlog and implementation/evidence record; use it for scoped Core tasks, not to override newer family priorities.
 
-Before selecting work, reconcile **current `main`, merged PRs, open issues/PRs, published releases and CI** against the roadmap and `PLAN.md`; mark anything already delivered as completed in the relevant active document before proposing a duplicate. A green CI run or merged PR is not proof of independent testing or product readiness. Check the corresponding sibling repository when a family task spans repos. Dated `docs/HANDOFF_*.md`, `docs/CODEX_HANDOFF.md`, handoff journals, and archived plans are historical context, **never active assignments**. If sources disagree, prefer verified live GitHub evidence for present state, the family roadmap for strategic direction, and the current user's instruction for authorized scope; report unresolved ambiguity instead of blindly following stale text.
+Before selecting work, reconcile **current `main`, merged PRs, open issues/PRs, published releases and CI** against the roadmap and `PLAN.md`; mark anything already delivered as completed in the relevant active document before proposing a duplicate. A green CI run or merged PR is not proof of independent testing or product readiness. Check the corresponding sibling repository when a family task spans repos. Everything under `docs/history/` (past handoffs, old plans), handoff journals, and archived plans are historical context, **never active assignments**. If sources disagree, prefer verified live GitHub evidence for present state, the family roadmap for strategic direction, and the current user's instruction for authorized scope; report unresolved ambiguity instead of blindly following stale text.
 
 Build useful end-to-end results. The current request sets scope; `PLAN.md` is the
 prioritized backlog, not a permission system. Historical notes do not add rules.
@@ -14,6 +14,9 @@ prioritized backlog, not a permission system. Historical notes do not add rules.
 - Keep process proportional. Do not impose mandatory brainstorming, a second design
   approval, extra plan documents, or agent swarms on routine/already-authorized work.
   Use skills and delegation when they materially help the result, not as ceremony.
+- Before starting, run `scripts/done.sh <issue number or keyword>`: it searches merged history, the
+  changelog and release notes so shipped work is not redone. Read the known traps in
+  [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md) once; docs map: [docs/README.md](docs/README.md).
 - Use `scripts/next.sh` for an optional local summary. Pick a ready task, or the
   user's requested task. If blocked, record why and continue other authorized work.
 - Save progress with ordinary Git or `scripts/gate.sh --checkpoint "what/why"`

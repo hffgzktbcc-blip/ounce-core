@@ -411,7 +411,7 @@ jobs:
           retention-days: 90
 
   native-oracles:
-    # PLAN.md step 4: the same four first-frame oracles with guest code running on Apple Silicon
+    # Native engine: the same four first-frame oracles with guest code running on Apple Silicon
     # (OUNCE_CPU=native, the --cpu=native switch). Each oracle runs Tier-3 first as the frame
     # reference and the speed baseline, then native execution, and prints both wall times.
     needs: startup-probe
@@ -465,7 +465,7 @@ jobs:
           retention-days: 30
 
   native-corpus-oracles:
-    # PLAN.md step 4: every pre-registered corpus oracle again with guest code running on Apple
+    # Native engine: every pre-registered corpus oracle again with guest code running on Apple
     # Silicon (OUNCE_CPU=native). Each runs Tier-3 first (frame reference, speed baseline), then
     # native execution; a recorded pass that does not pass natively fails the job.
     needs: first-frame-oracles

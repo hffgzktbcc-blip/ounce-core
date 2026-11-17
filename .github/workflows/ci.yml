@@ -400,6 +400,9 @@ jobs:
           bad = {job: needs[job]['result'] for job in required if needs[job]['result'] != 'success'}
           print('Applicable checks:', ', '.join(required))
           if bad:
-              raise SystemExit('Required checks did not pass: ' + str(bad))
+              hint = ''
+              if set(bad.values()) == {'cancelled'}:
+                  hint = ' (all cancelled: a newer push superseded this run; judge the newest run instead)'
+              raise SystemExit('Required checks did not pass: ' + str(bad) + hint)
           print('All applicable checks passed; see their logs for tested behavior.')
           PYTHON

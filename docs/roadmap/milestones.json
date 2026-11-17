@@ -6,9 +6,9 @@
       "id": "linux-elf",
       "name": "Static Linux ARM64 programs",
       "stage": "experimental",
-      "evidence": "Six freestanding fixtures plus 18 real programs run as static musl ELFs (LZ4, xxHash, cJSON and zlib also on macOS and Windows); wasm3 does not run yet",
+      "evidence": "Six freestanding fixtures plus the pinned real programs run as static musl ELFs (28 harnesses / 76 optimization rows pass on the hosted Linux ARM64 gate; LZ4, xxHash, cJSON and zlib also on macOS and Windows); wasm3 runs as a static ELF (#366 closed by #429)",
       "evidence_url": "docs/verify/linux-elf/README.md",
-      "next": "Fix wasm3 as an ELF (#366); expand Linux library coverage from observed needs; qualify portable execution recording"
+      "next": "Expand Linux library coverage from observed needs; qualify portable execution recording"
     },
     {
       "id": "differential",
@@ -32,7 +32,7 @@
       "stage": "measured",
       "evidence": "R1, R2 and R4 done: retained SDL2/audio diagnosis (failure-to-reproduction walkthrough, one externally grounded developer issue, audio-case result) and one hardware-observed instruction mismatch with exact register snapshots",
       "evidence_url": "docs/INSTRUCTION_DIAGNOSIS.md",
-      "next": "The measured vector-multiply discrepancy is repaired; the scalar-FP sibling is open as #362; arbitrary-program first divergence remains unestablished"
+      "next": "The measured vector-multiply discrepancy is repaired; the scalar-FP sibling #362 is closed (fixed in #431); arbitrary-program first divergence remains unestablished"
     },
     {
       "id": "distribution",

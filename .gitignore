@@ -19,3 +19,8 @@ __pycache__/
 
 # Generated Quickstart demo
 /demo/
+
+# Local scratch from agents and CI-style runs
+/work/
+*.log.tmp
+.claude/settings.local.json

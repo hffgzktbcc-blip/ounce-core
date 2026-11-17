@@ -1,5 +1,8 @@
 # `ounce-education` 1-Year Roadmap (Nov 2026 – Nov 2027)
 
+> **Status as of 2026-11-17: proposal, not committed, and not part of any current task list.** Some commands it names (for example `--dump-png`, `--dump-regs`) do not exist in `ounce-core`. The committed direction is [OUNCE_FAMILY_1_YEAR_ROADMAP.md](OUNCE_FAMILY_1_YEAR_ROADMAP.md).
+
+
 **North Star:** Build **`ounce-education`** (MIT) as a zero-hardware, clean-room **AArch64 architecture, operating systems, compilers/JIT, and graphics lab curriculum** for university students and self-learners—powered exclusively by MIT **`ounce-core`** + **`ounce-hb`** via CLI & `ounce.run.v1` / `ounce.repro.v1` (no `GPL` mixing, no retail/key/SDK material, no AI needed to grade or debug).
 
 ---
