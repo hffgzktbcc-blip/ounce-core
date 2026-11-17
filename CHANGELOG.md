@@ -11,6 +11,9 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 - Docs: one roadmap entry point for agents (#461); past handoffs moved under `docs/history/`.
 - CI: a `lint` job fails on any rustc or clippy warning (default, `native-jit,nce` and `gpu-present` features, pinned
   toolchain), and an `msrv` job builds default features with Rust 1.89. The tree now has zero warnings.
+- CI: the whole-program FP workload (`docs/verify/fp-workload`, 47 ops x 8 FPCR modes, native vs `run-elf` Tier-3
+  and Tier-4) runs on a Linux ARM64 runner for pull requests that touch the engines (#485). Any op that is not
+  identical on both tiers fails it, and a deliberately edited reference must fail it too.
 - `framebuffer_hash` for 3D frames (#486): `--deterministic` / `OUNCE_DETERMINISTIC=1` on `run` / `run-nro` now draws
   3D with the software rasterizer even in a GPU window, so every presented frame is hashed, with the same value a
   headless run reports. Only a `gpu-present` GPU window outside deterministic mode still reports `null`; the schema
