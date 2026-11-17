@@ -104,6 +104,12 @@ impl Swapchain {
     }
 }
 
+/// `fnv1a64:<16 hex digits>`: FNV-1a 64 over the frame's RGBA bytes (alpha forced to 0xFF), the same value as
+/// `Frame::content_hash`. Width and height are not mixed in; they are reported by the run itself.
+pub fn format_frame_hash(frame: &Frame) -> String {
+    format!("fnv1a64:{:016x}", frame.content_hash())
+}
+
 /// The Display Server connects guest video memory (VRAM) to a host presentation
 /// backend, composites the telemetry overlay and paces the swapchain.
 pub struct DisplayServer {
@@ -116,6 +122,7 @@ pub struct DisplayServer {
     frame_count: u64,
     fps_timer: Instant,
     last_fps: f64,
+    last_frame_hash: Option<String>,
 }
 
 impl DisplayServer {
@@ -131,6 +138,7 @@ impl DisplayServer {
             frame_count: 0,
             fps_timer: Instant::now(),
             last_fps: 60.0,
+            last_frame_hash: None,
         }
     }
 
@@ -170,6 +178,8 @@ impl DisplayServer {
             }
         }
 
+        // Hash the guest pixels before the telemetry overlay, which varies between runs and engines.
+        self.last_frame_hash = Some(format_frame_hash(&self.swapchain.back_buffer));
         self.draw_hud_overlay(mmu);
     }
 
@@ -208,6 +218,8 @@ impl DisplayServer {
             if let Err(e) = backend.render_3d(draw_ops) {
                 eprintln!("[Display Error] 3D render failed: {}", e);
             }
+            // Hardware-rendered frames have no CPU-side pixels to hash.
+            self.last_frame_hash = None;
         } else {
             self.composite(mmu);
         }
@@ -250,9 +262,16 @@ impl DisplayServer {
     /// Present decoded VI pixels without the synthetic framebuffer or telemetry overlay.
     pub fn present_guest_frame(&mut self, frame: Frame) -> bool {
         if self.backend.is_none() && self.init_window().is_err() { return false; }
+        self.last_frame_hash = Some(format_frame_hash(&frame));
         self.swapchain.back_buffer = frame;
         self.swapchain.flip(0);
         self.backend.as_mut().expect("backend opened above").present(&self.swapchain.front_buffer) != PresentStatus::Closed
+    }
+
+    /// Hash of the most recently presented guest frame before any overlay, or `None` if nothing was
+    /// presented or the frame was drawn on the host GPU (see `format_frame_hash`).
+    pub fn last_frame_hash(&self) -> Option<&str> {
+        self.last_frame_hash.as_deref()
     }
 
     pub fn is_window_active(&self) -> bool {
@@ -357,6 +376,38 @@ mod tests {
         assert_eq!(frame.pixel(0, 0), Some((0x20, 0x20, 0x20, 0xFF)));
         // The first bucket segment is emerald.
         assert_eq!(frame.pixel(16, 7), Some((0x00, 0xFF, 0xA3, 0xFF)));
+    }
+
+    #[test]
+    fn frame_hash_ignores_the_hud_and_tracks_guest_pixels() {
+        let (width, height) = (320, 64);
+        let mut mmu = Memory::new();
+        mmu.map_range(DEFAULT_FRAMEBUFFER_ADDR, width * height * 4, Permission::READ_WRITE);
+        mmu.write_bytes(DEFAULT_FRAMEBUFFER_ADDR, &vec![0x40u8; width * height * 4]).unwrap();
+        let mut display = headless_server(width, height);
+        assert_eq!(display.last_frame_hash(), None);
+        display.composite(&mmu);
+        let mut expected = Frame::new(width, height);
+        expected.rgba.fill(0x40);
+        expected.rgba.chunks_exact_mut(4).for_each(|p| p[3] = 0xFF);
+        assert_eq!(display.last_frame_hash(), Some(format_frame_hash(&expected).as_str()));
+        // The overlay changed the presented pixels but not the hash.
+        assert_ne!(display.swapchain.back_buffer, expected);
+        mmu.write_bytes(DEFAULT_FRAMEBUFFER_ADDR, &vec![0x41u8; width * height * 4]).unwrap();
+        display.composite(&mmu);
+        assert_ne!(display.last_frame_hash(), Some(format_frame_hash(&expected).as_str()));
+    }
+
+    #[test]
+    fn frame_hash_format_matches_fnv1a64_of_rgba_bytes() {
+        // 1x1 frame, bytes 00 00 00 ff, FNV-1a 64 computed independently here.
+        let mut f = Frame::new(1, 1);
+        f.rgba.copy_from_slice(&[0, 0, 0, 0xFF]);
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in [0u8, 0, 0, 0xFF] {
+            h = (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        assert_eq!(format_frame_hash(&f), format!("fnv1a64:{h:016x}"));
     }
 
     #[test]
