@@ -425,6 +425,37 @@ fn libnx_sdmc_fixture_performs_host_file_operations() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// Exercise host SD-card operations under copy-on-write overlay: guest writes, creates, and renames
+/// go into the overlay, and the host folder is never modified.
+#[test]
+fn libnx_sdmc_copy_on_write_overlay_never_modifies_host_folder() {
+    let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/sdmc/sdmc.nro")).unwrap();
+    let dir = std::env::temp_dir().join(format!("ounce_sdmc_cow_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("host.txt"), b"from host\n").unwrap();
+    std::fs::write(dir.join("readonly_seed.bin"), b"seed data 1234").unwrap();
+
+    let (output, svcs, mut kernel) = boot_with_kernel_sdmc(&nro, &[], Default::default(), Some(&dir));
+    assert!(output.ends_with("ounce-sdmc result=0x00000EEE\n"), "output: {output:?}; SVCs: {svcs:x?}");
+
+    // The host folder remains byte-for-byte identical to its initial state.
+    assert_eq!(std::fs::read(dir.join("host.txt")).unwrap(), b"from host\n");
+    assert_eq!(std::fs::read(dir.join("readonly_seed.bin")).unwrap(), b"seed data 1234");
+    let mut names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+    names.sort();
+    assert_eq!(names, ["host.txt", "readonly_seed.bin"]);
+
+    // Further guest writes to host-backed files and newly created files remain isolated to the overlay.
+    kernel.vfs.write_file_at("sdmc:/readonly_seed.bin", 0, b"OVERWRITTEN!").unwrap();
+    kernel.vfs.create_file("sdmc:/overlay_only.txt", 16).unwrap();
+    assert_eq!(kernel.vfs.get_file("sdmc:/readonly_seed.bin"), Some(&b"OVERWRITTEN!34"[..]));
+    assert_eq!(std::fs::read(dir.join("readonly_seed.bin")).unwrap(), b"seed data 1234");
+    assert!(!dir.join("overlay_only.txt").exists());
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// `tests/fixtures/nro/nvdrv`: libnx `nvInitialize` (transfer memory, Initialize, cloned session),
 /// `nvMapInit` and `nvMapCreate` (nvmap CREATE, ALLOC, GET_ID ioctls).
 #[test]
