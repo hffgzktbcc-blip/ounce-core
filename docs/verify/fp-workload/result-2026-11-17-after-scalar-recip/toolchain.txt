@@ -1,5 +1,0 @@
-Apple clang version 21.0.0 (clang-2100.4.1.1)
-Darwin arm64
-Apple M3
-008e3dd181d5b2a122641b3e889b6509bfe4a79a
-note: run at base 008e3dd plus the uncommitted scalar FRECPE/FRSQRTE/FRECPS/FRSQRTS/FRINT32-64 change, committed afterwards (this PR's cpu commit)

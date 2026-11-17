@@ -26,6 +26,9 @@ changelog and release notes) so shipped work is not redone.
 Oracles were written **before** execution and are referenced by path from code and tests, so they never move.
 [corpus-oracles.md](corpus-oracles.md), [startup](startup-oracle.md), [simplegfx](first-frame-oracle.md), [deko_basic](deko-basic-oracle.md), [romfs](romfs-oracle.md), [interactive triangle](interactive-triangle-oracle.md). Reproduce recipes: [simplegfx](REPRODUCE_SIMPLEGFX.md), [deko_basic](REPRODUCE_DEKO_BASIC.md), [romfs](REPRODUCE_ROMFS.md). Also [soak.md](soak.md), [svc-coverage.md](svc-coverage.md), [guest-host-gpu.md](guest-host-gpu.md). The early corpus-preparation proposals are in [history/independent-corpus/](history/independent-corpus/).
 
+## Code layout
+`src/main.rs` (dispatch only) -> `src/cli/` (commands) -> `src/cpu`, `kernel`, `gpu`, `loader`, `mmu`, `audio`, `hid`, `fs`, `linux` (runtime); `crates/` holds the isolated unsafe-capable crates. See [AGENT_SETUP.md](AGENT_SETUP.md#known-traps-each-one-has-cost-real-time).
+
 ## Design notes
 Live: [design/ounce-verify.md](design/ounce-verify.md), [design/gpu-replay-correctness.md](design/gpu-replay-correctness.md), [architecture/layers.json](architecture/layers.json), [VISION.md](VISION.md).
 Shipped or dropped (banner at the top of each; code is the truth): [design/m4-native-jit.md](design/m4-native-jit.md) and [design/m4-native-linking.md](design/m4-native-linking.md) shipped as `native-jit`; [design/m5-deko3d-triangle.md](design/m5-deko3d-triangle.md) was not built as written. Archived: [history/design/](history/design/).
