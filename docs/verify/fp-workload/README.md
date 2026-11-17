@@ -10,7 +10,7 @@ stops on one op cannot hide the others.
 Cases: 18 fixed bit patterns per precision (signed zeros, smallest/largest subnormal, smallest normal, max finite,
 infinities, quiet/signalling/negative-payload NaNs, 0.1, 2^63, 2^53) x 8 FPCR values (default, FZ, DN, FZ+DN, RMode
 RP/RM/RZ, FZ+DN+RZ) x all operand pairs (2,592 cases per binary op, 144 per unary op). FPSR is cleared before each case
-and printed masked to `0x9f` (IOC, DZC, OFC, UFC, IXC, IDC, QC). 47 ops: arithmetic, min/max(NM), fused multiply-add,
+and printed masked to `0x9f` (IOC, DZC, OFC, UFC, IXC, IDC, QC). 48 ops: arithmetic, min/max(NM), fused multiply-add,
 square root, rounding, converts to and from integer and between precisions, compare.
 
 ```sh
@@ -22,18 +22,18 @@ reference after it is written; that op must then come out `MISMATCH` on both tie
 
 **CI (#485):** the `fp-workload` job in [`fp-edge.yml`](../../../.github/workflows/fp-edge.yml) runs this on a Linux ARM64
 runner (`ubuntu-24.04-arm`) for pull requests that touch the CPU engines, the ELF runner or this folder. It fails unless
-all 47 ops are `identical` on both tiers (so `UNSUPPORTED` fails too), and it runs the negative control with
+all 48 ops are `identical` on both tiers (so `UNSUPPORTED` fails too), and it runs the negative control with
 `FP_WORKLOAD_TAMPER=fadd.d`. That runner is not Apple silicon, and its runs are the project's own, not independent.
 
 ## Results (Apple M3, macOS, Apple clang 21.0.0)
 
-**Before** the scalar change (base 008e3dd): [summary.tsv](result-2026-11-17/summary.tsv). Tier-3 and Tier-4: 39 ops identical, 8 ops
+**Before** the scalar change (base 008e3dd): [summary.tsv](result-2026-11-17/summary.tsv). Tier-3 and Tier-4: 40 ops identical, 8 ops
 UNSUPPORTED (engine stops with exit 71, `Unimplemented instruction`), 0 mismatches. The 8 were scalar `FRECPS`, `FRSQRTS`,
 `FRECPE`, `FRSQRTE` (double: `0x5e61fc02`, `0x5ee1fc02`, `0x5ee1d802`, `0x7ee1d802`; single `FRECPE`/`FRSQRTE`: `0x5ea1d802`,
 `0x7ea1d802`), `FRINT32Z` and `FRINT64X` (`0x1e684002`, `0x1e69c002`).
 
 **After** implementing those scalar forms (this folder's PR; [summary.tsv](result-2026-11-17-after-scalar-recip/summary.tsv)):
-all 47 ops are byte-identical to the host on Tier-3 and Tier-4, every case (value and FPSR); 0 unsupported, 0 mismatches.
+all 48 ops are byte-identical to the host on Tier-3 and Tier-4, every case (value and FPSR); 0 unsupported, 0 mismatches.
 The first attempt after the change showed single-precision `FRECPE`/`FRSQRTE` with matching values but a spurious
 divide-by-zero flag (an unread lane evaluated as zero); that was fixed by replicating lane 0, and the table above is the
 rerun. The instruction fuzzer agrees (host vs interpreter, 8 seeds x 400,000 words, all 8 FPCR values): scalar
