@@ -145,6 +145,32 @@ jobs:
       - name: Run 25-stage integration verification suite
         run: cargo run --release -- test
 
+      # Issue #479: guest instruction counts of committed NRO and ELF fixtures, run with --deterministic on the
+      # interpreter and Tier-3 (tests/insn-budgets.json, docs/INSN_BUDGETS.md). A count over its budget, a different
+      # stop, tiers that disagree or a rebuilt fixture fails the job. Wall time is shown only: shared runners are too
+      # noisy to fail on it. One budget file passing on all three hosts also shows the counts do not depend on the host.
+      - name: Instruction budgets (deterministic insns_executed)
+        shell: bash
+        run: python scripts/insn_budgets.py --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Instruction budgets negative control (a budget below the count must fail)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tampered="$RUNNER_TEMP/insn-budgets-tampered.json"
+          python - "$tampered" <<'PY'
+          import json, sys
+          data = json.load(open('tests/insn-budgets.json'))
+          spec = data['workloads']['nro/hello']
+          spec['budget'] = spec['baseline'] - 1
+          json.dump(data, open(sys.argv[1], 'w'))
+          PY
+          # GITHUB_ACTIONS=false keeps the expected failure out of the run's error annotations.
+          if GITHUB_ACTIONS=false python scripts/insn_budgets.py --budgets "$tampered" --only nro/hello > "$RUNNER_TEMP/negative.txt"; then
+            cat "$RUNNER_TEMP/negative.txt"; echo "the check passed a count over its budget"; exit 1
+          fi
+          grep 'over its budget' "$RUNNER_TEMP/negative.txt"
+
   lint:
     name: Lint (clippy, warnings are errors)
     needs: changes

@@ -22,6 +22,10 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   headless run reports. Only a `gpu-present` GPU window outside deterministic mode still reports `null`; the schema
   doc says so. Fixed: a `gpu-present` build whose GPU window failed to open sent 3D draws to a GPU that was not
   there, so frames were presented without them; the backend is now opened before that choice is made.
+- CI: instruction budgets (#479). The Runtime job runs 14 committed NRO and ELF fixtures with `--deterministic` on the
+  interpreter and Tier-3 and fails when `insns_executed` goes over its budget (baseline + 2%), the stop changes, the
+  tiers disagree or a fixture was rebuilt; wall time is shown but never fails. Budgets live in
+  `tests/insn-budgets.json` (`scripts/insn_budgets.py --update` records new ones); see `docs/INSN_BUDGETS.md`.
 - Fixed: `--deterministic` / `OUNCE_DETERMINISTIC=1` on `run` / `run-nro` left the homebrew kernel on the host clock,
   so a guest that waited on time executed a different number of instructions from run to run (`input.nro` gave
   7,602 or 8,207). The kernel now uses the same fixed clock as the corpus runner: guest time advances per SVC and the

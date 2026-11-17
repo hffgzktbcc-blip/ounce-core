@@ -34,6 +34,11 @@ class ScopeTest(unittest.TestCase):
                 self.assertTrue(result['runtime'])
                 self.assertTrue(result['corpus'])
 
+    def test_instruction_budget_and_linux_elf_changes_run_the_runtime_job_only(self):
+        for path in ['tests/insn-budgets.json', 'scripts/insn_budgets.py', 'tests/linux-elf/bin/memory.elf']:
+            with self.subTest(path=path):
+                self.assertEqual(classify([path]), {'runtime': True, 'corpus': False})
+
     def test_workflow_tools_and_demo_changes_run_relevant_checks(self):
         self.assertFalse(classify(['scripts/agent_workflow.py'])['runtime'])
         self.assertTrue(classify(['scripts/corpus_verify.py'])['corpus'])

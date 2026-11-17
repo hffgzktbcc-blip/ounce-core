@@ -1,0 +1,162 @@
+{
+  "schema": "ounce.insn-budgets.v1",
+  "about": "Issue #479: guest instruction budgets for committed fixtures, checked by scripts/insn_budgets.py in CI on every runtime change. A count over its budget fails CI; raise a budget only with --update and a reason in the PR. See docs/INSN_BUDGETS.md.",
+  "headroom_percent": 2,
+  "tiers": [
+    "interpreter",
+    "tier3"
+  ],
+  "workloads": {
+    "nro/audren": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/audren/audren.nro",
+        "--present=headless"
+      ],
+      "sha256": "3fd52f32643de7e3869d954a7f5e6b66f8b243e7e2ec465f729483ed9ef0916f",
+      "stop_kind": "clean_exit",
+      "baseline": 60267,
+      "budget": 61473
+    },
+    "nro/deko3d": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/deko3d/deko3d.nro",
+        "--present=headless"
+      ],
+      "sha256": "9e555711561ce16f846170a97545245422961b3991bb6526d16ef62833798af6",
+      "stop_kind": "clean_exit",
+      "baseline": 1619330,
+      "budget": 1651717
+    },
+    "nro/gpu": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/gpu/gpu.nro",
+        "--present=headless"
+      ],
+      "sha256": "6583a56cf3afb5d88b167379330e6d8dcce27d4e6c55d67c9ac008cbc7079c74",
+      "stop_kind": "clean_exit",
+      "baseline": 536977,
+      "budget": 547717
+    },
+    "nro/hello": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/hello/hello.nro",
+        "--present=headless"
+      ],
+      "sha256": "b1d6a5723be27dd1e2f3dd304458f2e5574f6c7c8982c31f493aee4dc82a2b03",
+      "stop_kind": "clean_exit",
+      "baseline": 9067,
+      "budget": 9249
+    },
+    "nro/input": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/input/input.nro",
+        "--present=headless"
+      ],
+      "sha256": "a67aeb592aa4d03db8d52b0b6780073b73a3f797ddd9e4aaa3f8af1549453204",
+      "stop_kind": "clean_exit",
+      "baseline": 7602,
+      "budget": 7755
+    },
+    "nro/input_multi": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/input_multi/input_multi.nro",
+        "--present=headless"
+      ],
+      "sha256": "7810f89006c9f54db3cdb4fbbde1f2476527f4c1a395ee33a82ab08edb6fdda8",
+      "stop_kind": "clean_exit",
+      "baseline": 6542,
+      "budget": 6673
+    },
+    "nro/nvdrv": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/nvdrv/nvdrv.nro",
+        "--present=headless"
+      ],
+      "sha256": "356f59517e2f610a42d153564fba85ca52f07b6cfa956ff0f6d2895fcbf63dc8",
+      "stop_kind": "clean_exit",
+      "baseline": 533872,
+      "budget": 544550
+    },
+    "nro/romfs": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/romfs/romfs.nro",
+        "--present=headless"
+      ],
+      "sha256": "0ddd814f2d1c81899a3171b2eacd0d2684644bb0688a4f1cc1edc7dc8ac929b9",
+      "stop_kind": "clean_exit",
+      "baseline": 24916,
+      "budget": 25415
+    },
+    "nro/sdmc": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/sdmc/sdmc.nro",
+        "--present=headless"
+      ],
+      "sha256": "42d46955e74b1aa01cd6181f442b54a19c7138721de15b19999e93e938004f48",
+      "stop_kind": "clean_exit",
+      "baseline": 93795,
+      "budget": 95671
+    },
+    "nro/services": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/services/services.nro",
+        "--present=headless"
+      ],
+      "sha256": "6ff6970a5eb75360892400b71312a279417a255bdeeec2241e9c77f89e3c172e",
+      "stop_kind": "clean_exit",
+      "baseline": 5631,
+      "budget": 5744
+    },
+    "nro/threads": {
+      "command": [
+        "run-nro",
+        "tests/fixtures/nro/threads/threads.nro",
+        "--present=headless"
+      ],
+      "sha256": "496c6db53ec97bacfde9f25e7dba6e8e7deeae9c974d072e8c9adb0abebad78c",
+      "stop_kind": "clean_exit",
+      "baseline": 62912,
+      "budget": 64171
+    },
+    "elf/clock": {
+      "command": [
+        "run-elf",
+        "tests/linux-elf/bin/clock.elf"
+      ],
+      "sha256": "68209f24d0a3bab3ec467e5bdc7d09803fe37d8973e2478c4f4bcc7501c5ec24",
+      "stop_kind": "clean_exit",
+      "baseline": 866,
+      "budget": 884
+    },
+    "elf/guarded_memory": {
+      "command": [
+        "run-elf",
+        "tests/linux-elf/bin/guarded_memory.elf"
+      ],
+      "sha256": "fb996339581e0ba16d4723d5793d37346d3e2842914861421d5b18f09b9b8f3c",
+      "stop_kind": "clean_exit",
+      "baseline": 235,
+      "budget": 240
+    },
+    "elf/memory": {
+      "command": [
+        "run-elf",
+        "tests/linux-elf/bin/memory.elf"
+      ],
+      "sha256": "9aedef5c82d875d852ee6c8628ff516999439c49296f718ee006e77c5aa25907",
+      "stop_kind": "clean_exit",
+      "baseline": 790849,
+      "budget": 806666
+    }
+  }
+}
