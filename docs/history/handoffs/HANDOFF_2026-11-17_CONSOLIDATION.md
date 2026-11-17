@@ -16,14 +16,14 @@
 - Merge #460 and #459 only after their hosted CI is fully green. #459 changes the `--sdmc` default (guest writes no longer reach the host folder without `--sdmc-writeback`) and removed `applet-software-keyboard` from `tests/corpus/soak-known.json` without a soak re-run; check "Corpus soak smoke".
 - Redo the `src/main.rs` split (4.2k lines) into `src/cli/{usage,vm,demos,run}.rs` after #459/#460 land. It was built and passed 640 unit tests (commit `68c1727`) but reverted (`a118721`) so those PRs would not need hand-porting. Method: extract by line range, make items `pub(crate)`, start each module with `use crate::*;`, keep `main()` and the statics in `main.rs`.
 - CodeQL raised 9 "cleartext logging" alerts on the split (moved code gets new file locations). They look like false positives (offline stand-in account; VM status prints). Dismissal is the owner's call and was not done.
-- Owner approval needed before closing fixed issue #383 (by #452) and obsolete-looking #359, #298, #211, #212.
+- Issues closed 2026-11-17 on owner instruction: #383 (completed, fixed by #452), #211 and #212 (superseded drafts; reopen if wanted). Kept open on purpose: #298 (reserved for outside contributors through 18 Nov), #359 (timeboxed experiment to 10 Dec), #357 (sprint), #190, #191, #248 (outside-evidence asks).
 - `site/status.html` does not mention v0.9.0. Workflow automation (23 workflows) and sibling repos (`ounce-hb`, `ounce-runtime`, `deckstream`) were not audited or pruned.
 
 ## Open items from the full audit (owner decisions; nothing below was changed)
 - The published GitHub release v0.9.0 body still carries the pre-tag "candidate" text (says no tags published, #452 open). Editing a release is an owner call; the repo copies (`docs/releases/v0.9.0.md`, CHANGELOG) are fixed.
 - `.github/workflows/community.yml` runs Mondays and opens a "replenish first issues" issue when fewer than 3 open `good first issue` items exist; there are none now (first fire 2026-11-23). Add real items or relax the threshold.
 - 159 remote branches are merged but undeleted (each merged PR's head SHA equals the branch tip); 7 more have commits after their merge, 31 belong to PRs closed unmerged, 7 have no PR. Delete only with owner approval.
-- #459's description is stale (it says it fixes #387, which `0b4489b` already fixed); #383 is done by #452 (close it).
+- #459's description is stale (it says it fixes #387, which `0b4489b` already fixed); retitle it before merge.
 - Orphan-looking tracked assets (`assets/banner.svg`, `logo.svg`, `tech-garden-banner.svg`, `docs/media/workbench/*.png`) and unused scripts (`package_macos_release.sh`, `stress_nro.py`, `open_lab.sh`, `audit_history_reachability.py`) were left: they may serve external uses (social preview, history audit).
 - `scripts/handoff.sh log` silently drops an entry when the publish push fails while printing "saved locally"; treat that message as untrustworthy.
 
