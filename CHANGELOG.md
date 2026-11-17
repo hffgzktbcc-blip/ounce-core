@@ -11,6 +11,11 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 - Docs: one roadmap entry point for agents (#461); past handoffs moved under `docs/history/`.
 - CI: a `lint` job fails on any rustc or clippy warning (default, `native-jit,nce` and `gpu-present` features, pinned
   toolchain), and an `msrv` job builds default features with Rust 1.89. The tree now has zero warnings.
+- `framebuffer_hash` for 3D frames (#486): `--deterministic` / `OUNCE_DETERMINISTIC=1` on `run` / `run-nro` now draws
+  3D with the software rasterizer even in a GPU window, so every presented frame is hashed, with the same value a
+  headless run reports. Only a `gpu-present` GPU window outside deterministic mode still reports `null`; the schema
+  doc says so. Fixed: a `gpu-present` build whose GPU window failed to open sent 3D draws to a GPU that was not
+  there, so frames were presented without them; the backend is now opened before that choice is made.
 - CI: `ci-rerun-infra.yml` re-runs a second time when every job that failed the run was cancelled without ever
   reaching a runner, as macOS jobs were on two attempts of run 44144034971. At most two automatic re-runs. A real
   failure is never re-run, and after the first attempt neither is a job that started and was then cancelled.

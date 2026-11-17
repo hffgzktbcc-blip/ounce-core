@@ -49,7 +49,7 @@
    - **Prerequisites before comparing `framebuffer_hash`:**
      - Hash **pre-HUD** guest framebuffer pixels (disable `draw_hud_overlay` under `--present=headless` / `OUNCE_DETERMINISTIC=1`) in both `ounce-core` and `ounce-runtime` to prevent false-positive HUD divergences.
      - Wire `run_report::is_deterministic()` in `ounce-runtime` to match `ounce-core`'s deterministic clock/scheduler behavior.
-   - Emit `frames_presented` and `framebuffer_hash` (`fnv1a64:...`) from `ounce-core`'s `RunReport`.
+   - **DONE (#460):** Emit `frames_presented` and `framebuffer_hash` (`fnv1a64:...`) from `ounce-core`'s `RunReport`. **3D frames (#486, unreleased):** headless and `--deterministic` runs draw 3D with the software rasterizer and hash it; only a `gpu-present` GPU window outside deterministic mode reports `null`.
    - Extend `ounce.repro.v1` (`format_repro_bundle` & `ReproManifest`) with `framebuffer_hash`, `frames_presented`, and `input_script`, and teach `ounce-hb run --auto` and `ounce-hb repro` to compare `framebuffer_hash`.
 
 3. **Real-World Homebrew Validation (Metadata-Only Corpus):**

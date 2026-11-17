@@ -42,8 +42,9 @@ given as `OUNCE_REPORT_JSON`. `run`, `run-nro` and `run-elf` write the file.
 
 `--audio=null` (or `OUNCE_AUDIO=null`) does not open a host audio device.
 `--present=headless` already skips that device. On `run-elf`,
-`--deterministic` uses a fixed guest clock. On `run` and `run-nro` the flag is
-accepted and does not change the kernel clock.
+`--deterministic` uses a fixed guest clock. On `run` and `run-nro` it draws 3D
+with the software rasterizer even in a GPU window, so every presented frame has
+a `framebuffer_hash`; it does not change the kernel clock.
 
 Field list, stop kinds, and the limits of this report:
 [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md).
