@@ -19,7 +19,9 @@ def classify(paths):
                             '.github/workflows/ci.yml', 'scripts/ci_scope.py', 'scripts/build_macos_app.sh'}
                 or path.endswith('.rs'))
         oracle = path.startswith('tests/corpus/')
-        runtime |= rust or oracle
+        # The runtime job measures instruction budgets (#479) and runs the Linux ELF fixtures; the corpus does neither.
+        budgets = path in {'tests/insn-budgets.json', 'scripts/insn_budgets.py'} or path.startswith('tests/linux-elf/')
+        runtime |= rust or oracle or budgets
         corpus |= rust or oracle or path in {
             '.github/workflows/external-corpus.yml', 'tools/ounce_verify.py',
             'tools/corpus_oracle.py', 'tests/test_ounce_verify.py',

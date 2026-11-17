@@ -100,7 +100,7 @@
 2. **One-Way JIT / NCE Hardening (`ounce-runtime` & `ounce-core`):**
    - Feed Q1–Q2 `ounce.repro.v1` bug reports into `ounce-runtime` Tier-3 / Tier-4 / NCE so fast execution matches `ounce-core` on FP/SIMD, NaN, and SVC edge cases.
    - **Strict One-Way Rule:** `ounce.repro.v1` JSON discoveries may inform GPL `ounce-runtime` fixes, **never** the reverse—no code or patterns from `ounce-runtime` may ever flow into MIT `ounce-core` or `ounce-hb`.
-   - Track CI performance regressions strictly via deterministic `insns_executed` budgets (keep wall-time tracking advisory on shared runners).
+   - Track CI performance regressions strictly via deterministic `insns_executed` budgets (keep wall-time tracking advisory on shared runners). **Core side DONE (#479):** `tests/insn-budgets.json`, checked by `scripts/insn_budgets.py` in the Runtime CI job on three hosts; see `docs/INSN_BUDGETS.md`.
    - **#400–#404 (instruction gaps): ALL CLOSED 16 Nov 2026** (#400 `32e69ac`, #401 #449, #402 #444, #403 #450, #404 #451). Do not restart them.
 
 3. **Quarterly Coordinated Releases & Supply-Chain Hardening:**
