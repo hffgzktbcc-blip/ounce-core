@@ -17,6 +17,14 @@ square root, rounding, converts to and from integer and between precisions, comp
 docs/verify/fp-workload/run.sh <new out dir>      # from the repo root; ARM64 host, clang, rust-lld or ld.lld
 ```
 
+`FP_WORKLOAD_OPS="fadd.d fsqrt.s"` runs only those ops. `FP_WORKLOAD_TAMPER=<op>` edits one result in that op's host
+reference after it is written; that op must then come out `MISMATCH` on both tiers.
+
+**CI (#485):** the `fp-workload` job in [`fp-edge.yml`](../../../.github/workflows/fp-edge.yml) runs this on a Linux ARM64
+runner (`ubuntu-24.04-arm`) for pull requests that touch the CPU engines, the ELF runner or this folder. It fails unless
+all 47 ops are `identical` on both tiers (so `UNSUPPORTED` fails too), and it runs the negative control with
+`FP_WORKLOAD_TAMPER=fadd.d`. That runner is not Apple silicon, and its runs are the project's own, not independent.
+
 ## Results (Apple M3, macOS, Apple clang 21.0.0)
 
 **Before** the scalar change (base 008e3dd): [summary.tsv](result-2026-11-17/summary.tsv). Tier-3 and Tier-4: 39 ops identical, 8 ops
@@ -34,7 +42,7 @@ rejects the other words); 0 value mismatches, 0 flag-only differences, 0 unimple
 
 ## Checks on the harness itself
 
-- Negative control: a host reference with one result edited is flagged by the comparison (`cmp`), and the reported line is the edited one.
+- Negative control: a host reference with one result edited is flagged by the comparison (`cmp`), and the reported line is the edited one. CI repeats this on every run (`FP_WORKLOAD_TAMPER`).
 - The FPCR modes change the observable result, so they are exercised: `fadd.d` of the smallest subnormal and 1.0 gives
   FPSR `0x10` (inexact) at default FPCR and `0x80` (input denormal) under FZ, on host and both tiers.
 - FPSR values seen on the host across all ops: 00, 01, 10, 80, 81, 18, 14, 02 and others.
