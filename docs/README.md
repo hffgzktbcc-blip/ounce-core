@@ -23,6 +23,9 @@ tasks and not rules.
 Independent homebrew corpus: [independent-corpus.md](independent-corpus.md) ([cpu](independent-corpus-cpu.md), [graphics](independent-corpus-graphics.md), [services](independent-corpus-services.md), [runner](independent-corpus-runner.md)).
 Oracles (each was written before execution): [corpus-oracles.md](corpus-oracles.md), [startup](startup-oracle.md), [simplegfx](first-frame-oracle.md), [deko_basic](deko-basic-oracle.md), [romfs](romfs-oracle.md), [interactive triangle](interactive-triangle-oracle.md). Reproduce recipes: [simplegfx](REPRODUCE_SIMPLEGFX.md), [deko_basic](REPRODUCE_DEKO_BASIC.md), [romfs](REPRODUCE_ROMFS.md). Also [soak.md](soak.md), [svc-coverage.md](svc-coverage.md).
 
+## Code layout
+`src/main.rs` (dispatch only) -> `src/cli/` (commands) -> `src/cpu`, `kernel`, `gpu`, `loader`, `mmu`, `audio`, `hid`, `fs`, `linux` (runtime); `crates/` holds the isolated unsafe-capable crates. See [AGENT_SETUP.md](AGENT_SETUP.md#known-traps-each-one-has-cost-real-time).
+
 ## Design notes
 [design/](design/) (per-milestone designs; a design note is intent, check code and PLAN.md for what shipped), [architecture/layers.json](architecture/layers.json), [guest-host-gpu.md](guest-host-gpu.md), [VISION.md](VISION.md), [DETAILS.md](DETAILS.md).
 

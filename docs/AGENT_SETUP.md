@@ -31,9 +31,11 @@ prints `scripts/next.sh`). Python 3.9+ for tools; Rust edition 2024 (cargo >= 1.
 2. **Pushing again cancels CI.** Each branch keeps only its newest CI run. Failures on an older
    commit after a new push (including `Artifact not found: corpus-nros` and a red `Test (...)`
    gate whose jobs all say `cancelled`) are not real. Read the check list for the head commit.
-3. **`src/main.rs` is the merge-conflict hotspot** (about 4,200 lines holding the whole CLI).
-   If another open PR touches it, say so in the PR and merge one first; do not stack PRs on each
-   other's branches unless the base is the previous PR.
+3. **Where the CLI lives.** `src/main.rs` is now only `main()` and the command dispatch (about
+   240 lines). Command code is in `src/cli/`: `usage.rs` (banner/help/specs), `vm.rs` (VM setup,
+   `StageGate`, `run_vm_internal`), `demos.rs` (built-in test suite and demos), `run.rs`
+   (`run`, `run-nro`, directory packages, NRO helpers). Add new commands in `src/cli/` or their own
+   module, not in `main.rs`, so parallel PRs do not collide. Each module starts with `use crate::*;`.
 4. **Branch names.** Use the prefix in the table above. Other prefixes already in use are
    `feat/`, `fix/`, `docs/`, `cursor/`; the claim is the task ID in the name or `handoff.sh claim`.
 5. **Do not take work from `docs/history/`.** Handoffs and old plans there are records; the live
