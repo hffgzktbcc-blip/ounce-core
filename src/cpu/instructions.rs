@@ -569,24 +569,6 @@ pub enum Instruction {
         is_double: bool,
     },
 
-    /// Scalar `FRECPS` / `FRSQRTS Sd/Dd, Sn/Dn, Sm/Dm` (AdvSIMD scalar three same). Lane 0 is written, the rest zeroed.
-    FpScalarThreeSame {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-        op: SimdFpOp3,
-        is_double: bool,
-    },
-
-    /// Scalar `FRECPE` / `FRSQRTE Sd/Dd, Sn/Dn` (AdvSIMD scalar two-register misc) and the scalar
-    /// `FRINT32Z/32X/64Z/64X` (FP data processing, one source). Lane 0 is written, the rest zeroed.
-    FpScalarTwoMisc {
-        rd: u8,
-        rn: u8,
-        op: SimdFpOp2,
-        is_double: bool,
-    },
-
     /// `DUP Vd.<T>, Wn/Xn`
     SimdDupGeneral {
         rd: u8,
