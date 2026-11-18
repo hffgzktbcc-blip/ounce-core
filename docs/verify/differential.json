@@ -811,6 +811,178 @@
     },
     "host_main": "host/host_main.c",
     "linux_elf_only": true
+   },
+   {
+    "name": "elf-strops",
+    "dir": "elf-workloads/strops",
+    "files": [
+     "strops_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-sorts",
+    "dir": "elf-workloads/sorts",
+    "files": [
+     "sorts_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-hashes",
+    "dir": "elf-workloads/hashes",
+    "files": [
+     "hashes_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-bigint",
+    "dir": "elf-workloads/bigint",
+    "files": [
+     "bigint_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-printfmt",
+    "dir": "elf-workloads/printfmt",
+    "files": [
+     "printfmt_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-intmath",
+    "dir": "elf-workloads/intmath",
+    "files": [
+     "intmath_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-memstream",
+    "dir": "elf-workloads/memstream",
+    "files": [
+     "memstream_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-heapmix",
+    "dir": "elf-workloads/heapmix",
+    "files": [
+     "heapmix_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-fpmath",
+    "dir": "elf-workloads/fpmath",
+    "files": [
+     "fpmath_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md",
+    "cflags": "-ffp-contract=off",
+    "libs": "-lm"
+   },
+   {
+    "name": "elf-wordfreq",
+    "dir": "elf-workloads/wordfreq",
+    "files": [
+     "wordfreq_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-codecs",
+    "dir": "elf-workloads/codecs",
+    "files": [
+     "codecs_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-bytecode",
+    "dir": "elf-workloads/bytecode",
+    "files": [
+     "bytecode_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-puzzles",
+    "dir": "elf-workloads/puzzles",
+    "files": [
+     "puzzles_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-rng",
+    "dir": "elf-workloads/rng",
+    "files": [
+     "rng_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-calendar",
+    "dir": "elf-workloads/calendar",
+    "files": [
+     "calendar_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-control",
+    "dir": "elf-workloads/control",
+    "files": [
+     "control_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-trees",
+    "dir": "elf-workloads/trees",
+    "files": [
+     "trees_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
    }
  ]
 }

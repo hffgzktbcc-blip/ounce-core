@@ -86,6 +86,12 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   retired instructions (pc, opcode, changed registers); `ounce-core trace-diff <expected> <actual> [--window N] [--json out]`
   reports the first differing step, both values and the steps before it (exit 0 / 1 / 2). Registers only; no memory deltas
   recorded yet, and ounce-runtime does not implement the contract yet.
+- Linux ARM64 ELF matrix: 17 new first-party, single-threaded, deterministic static musl workloads (`elf-*` harnesses
+  in `docs/verify/elf-workloads/`: strings, sorts, hashes, bignum, printf, 64/128-bit integer math, in-memory file
+  streams, allocator churn, floating point, word counts, codecs, a bytecode VM, puzzles, RNGs, calendar, control flow,
+  trees) take the matrix from 28 to 45 harnesses toward the 50+ goal (#474, in progress). Each is original MIT source with
+  a per-workload provenance entry; none is vendored or downloaded. Verified locally on x86-64 against host builds at
+  O1/O2/O3_M1 on Tier-3, Tier-4 and `diverge`; not yet run on the native ARM64 CI job.
 
 ## 0.9.0 — released 2026-11-16
 
