@@ -522,10 +522,16 @@ jobs:
     # CI-sized soak (docs/soak.md): four registered programs, up to 300 frames or 90 s per engine,
     # interpreter vs Tier-3. Fails on a crash, hang, unbounded growth or divergence not listed in
     # tests/corpus/soak-known.json. The full-corpus soak is a manual run (scripts/soak_corpus.py).
-    name: Corpus soak smoke
+    name: Corpus soak smoke (${{ matrix.id }})
     needs: first-frame-oracles
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      # One program per runner: the smoke soaks four programs one after another (up to 90 s per engine each),
+      # which made this the slowest step of CI. Same programs, frames and time cap, run in parallel.
+      fail-fast: false
+      matrix:
+        id: [printing-hello-world, sdl2-simple, user-timers, deko-basic]
     env:
       CARGO_TERM_COLOR: never
     steps:
@@ -533,6 +539,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: corpus-soak-smoke
       - name: Install runtime build dependencies
         run: |
           sudo apt-get update
@@ -553,13 +562,13 @@ jobs:
                    and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
           assert len(paths) == 1, paths
           print(paths.pop())' "$RUNNER_TEMP/soak-build.jsonl")
-          python3 scripts/soak_corpus.py --smoke --executable "$executable" \
+          python3 scripts/soak_corpus.py --smoke --ids "${{ matrix.id }}" --executable "$executable" \
             --builds "$RUNNER_TEMP/soak-nros" --evidence "$RUNNER_TEMP/soak-evidence"
       - name: Retain soak evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: corpus-soak-smoke
+          name: corpus-soak-smoke-${{ matrix.id }}
           path: ${{ runner.temp }}/soak-evidence/
           if-no-files-found: warn
           retention-days: 30
