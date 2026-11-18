@@ -490,6 +490,10 @@ jobs:
         with:
           toolchain: stable
 
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: native-corpus-oracles
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: corpus-nros
@@ -510,7 +514,7 @@ jobs:
           print(paths.pop())' "$RUNNER_TEMP/build.jsonl")
           sysctl -n machdep.cpu.brand_string
           python3 scripts/run_corpus_oracles.py --executable "$executable" \
-            --builds "$RUNNER_TEMP/ounce-oracle-builds" --evidence "$RUNNER_TEMP/native-corpus-evidence" --seconds 180
+            --builds "$RUNNER_TEMP/ounce-oracle-builds" --evidence "$RUNNER_TEMP/native-corpus-evidence" --seconds 180 --shards 2
           echo "=== speed (wall time per oracle run, Tier-3 vs native) ==="
           for f in "$RUNNER_TEMP"/native-corpus-evidence/*.oracle.log; do
             echo "$(basename "$f" .oracle.log): $(grep -h "native speedup" "$f" || echo 'no native run')"
@@ -530,10 +534,16 @@ jobs:
     # CI-sized soak (docs/soak.md): four registered programs, up to 300 frames or 90 s per engine,
     # interpreter vs Tier-3. Fails on a crash, hang, unbounded growth or divergence not listed in
     # tests/corpus/soak-known.json. The full-corpus soak is a manual run (scripts/soak_corpus.py).
-    name: Corpus soak smoke
+    name: Corpus soak smoke (${{ matrix.id }})
     needs: first-frame-oracles
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      # One program per runner: the smoke soaks four programs one after another (up to 90 s per engine each),
+      # which made this the slowest step of CI. Same programs, frames and time cap, run in parallel.
+      fail-fast: false
+      matrix:
+        id: [printing-hello-world, sdl2-simple, user-timers, deko-basic]
     env:
       CARGO_TERM_COLOR: never
     steps:
@@ -543,6 +553,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: corpus-soak-smoke
       - name: Install runtime build dependencies
         run: |
           sudo apt-get update
@@ -563,13 +576,13 @@ jobs:
                    and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
           assert len(paths) == 1, paths
           print(paths.pop())' "$RUNNER_TEMP/soak-build.jsonl")
-          python3 scripts/soak_corpus.py --smoke --executable "$executable" \
+          python3 scripts/soak_corpus.py --smoke --ids "${{ matrix.id }}" --executable "$executable" \
             --builds "$RUNNER_TEMP/soak-nros" --evidence "$RUNNER_TEMP/soak-evidence"
       - name: Retain soak evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: corpus-soak-smoke
+          name: corpus-soak-smoke-${{ matrix.id }}
           path: ${{ runner.temp }}/soak-evidence/
           if-no-files-found: warn
           retention-days: 30

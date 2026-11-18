@@ -39,6 +39,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: codeql-rust
       - name: Linux native dependencies
         run: |
           sudo apt-get update
@@ -63,6 +66,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
+      # Restores ~/.cargo/bin too, so cargo-audit is compiled once instead of on every run.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: rustsec
       - name: Install cargo-audit
         run: cargo install --locked cargo-audit
       - name: Audit locked dependencies

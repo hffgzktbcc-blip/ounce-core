@@ -23,6 +23,7 @@ env:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       runtime: ${{ steps.scope.outputs.runtime }}
       corpus: ${{ steps.scope.outputs.corpus }}
@@ -47,6 +48,7 @@ jobs:
   tooling:
     name: Workflow and evidence tooling
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -72,6 +74,7 @@ jobs:
   release-notice-packaging:
     name: Release notice packaging (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -106,6 +109,7 @@ jobs:
   legal-guardrails:
     name: Legal guardrails
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -121,6 +125,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.runtime == 'true'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -249,6 +254,7 @@ jobs:
     if: needs.changes.outputs.runtime == 'true'
     name: GPU presentation feature (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -320,6 +326,7 @@ jobs:
     if: needs.changes.outputs.runtime == 'true'
     name: Tier-4 native code (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -380,6 +387,7 @@ jobs:
     if: needs.changes.outputs.runtime == 'true'
     name: Native execution (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -425,10 +433,13 @@ jobs:
   mac-app:
     # Advisory for now (not in the `required` summary): builds the real app bundle with the packaging script,
     # checks its signature and drives the bundled runtime through one upload.
+    # Not run on pull requests: it is advisory and macOS runners are scarce, so on a busy PR it queued for ~20 min
+    # behind the required macOS jobs. It still runs on every push to main and on manual runs.
     needs: changes
-    if: needs.changes.outputs.runtime == 'true'
+    if: needs.changes.outputs.runtime == 'true' && github.event_name != 'pull_request'
     name: Mac app bundle (macos-latest)
     runs-on: macos-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -487,6 +498,7 @@ jobs:
     if: always()
     needs: [changes, legal-guardrails, tooling, release-notice-packaging, lint, msrv, test, gpu-present, native-jit, nce, corpus]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     strategy:
       matrix:
         context: [ubuntu-latest, windows-latest]
