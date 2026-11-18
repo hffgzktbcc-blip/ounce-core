@@ -143,6 +143,58 @@ fn deterministic_runs_execute_the_same_instructions_while_waiting_on_time() {
     assert_eq!(counts, [1 + 2 + 3 * 5000 + 2; 3], "interpreter, Tier-3, interpreter again");
 }
 
+/// Runs `run-nro <nro> --present=headless --deterministic` on `tier` and returns its `ounce.run.v1` report.
+fn deterministic_report(nro: &str, tier: &str, tag: &str, guest_args: &[&str]) -> serde_json::Value {
+    let report = std::env::temp_dir().join(format!("ounce_audio_{tag}_{tier}_{}.json", std::process::id()));
+    let _ = std::fs::remove_file(&report);
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run-nro", nro, "--present=headless", "--deterministic"])
+        .arg(format!("--cpu={tier}"))
+        .arg(format!("--report-json={}", report.display()))
+        .arg("--")
+        .args(guest_args)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{tier}: {}", String::from_utf8_lossy(&output.stderr));
+    let json = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+    std::fs::remove_file(&report).unwrap();
+    json
+}
+
+/// FNV-1a 64 over the little-endian bytes of stereo frames, written out here so the expected hashes below come from
+/// the fixture's documented waveform and not from the engine under test.
+fn expected_audio_hash(frames: impl Iterator<Item = i16>) -> String {
+    let hash = frames
+        .flat_map(|sample| [sample, sample]) // the fixture routes one voice to both channels
+        .flat_map(i16::to_le_bytes)
+        .fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3));
+    format!("fnv1a64:{hash:016x}")
+}
+
+/// #478: a headless run reports how much audio the guest mixed and a hash of it, so audout / audren output can be
+/// verified without a sound device. `tests/fixtures/nro/audren` plays a square wave (period 48 frames, starting high)
+/// and mixes in blocks of 240 frames. Its default mode plays 2400 frames of +/-8000, then one block of silence; "long"
+/// loops at 20% volume for 400 blocks. The report must match those streams exactly, on every run and both tiers. A
+/// program that never opens an audio service reports none.
+#[test]
+fn headless_audio_is_reported_as_a_frame_count_and_a_deterministic_hash() {
+    let audren = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/audren/audren.nro");
+    let hello = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro");
+    let square = |amplitude: i16, frames: usize| (0..frames).map(move |i| if (i / 24) % 2 == 1 { -amplitude } else { amplitude });
+    let tone_then_silence = expected_audio_hash(square(8000, 2400).chain(std::iter::repeat_n(0, 240)));
+    let long = expected_audio_hash(square(1600, 400 * 240));
+    for (guest_args, frames, expected) in [(&[][..], 2400 + 240, tone_then_silence), (&["long"][..], 400 * 240, long)] {
+        for tier in ["interpreter", "tier3", "interpreter"] {
+            let run = deterministic_report(audren, tier, "audren", guest_args);
+            assert_eq!(run["audio_frames_mixed"], frames, "{tier} {guest_args:?}: {run}");
+            assert_eq!(run["audio_hash"], expected.as_str(), "{tier} {guest_args:?}: {run}");
+        }
+    }
+    let silent = deterministic_report(hello, "interpreter", "hello", &[]);
+    assert_eq!(silent["audio_frames_mixed"], 0, "{silent}");
+    assert!(silent["audio_hash"].is_null(), "{silent}");
+}
+
 /// Runs the exit NRO with one guest argument of `arg_len` bytes. Returns the output and the file name, which sets
 /// the program path that run-nro puts in front of the guest argument (`sdmc:/<file>`).
 #[cfg(not(windows))]

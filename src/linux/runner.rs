@@ -117,6 +117,8 @@ impl Report {
             insns_executed: self.instructions,
             frames_presented: 0,
             framebuffer_hash: None,
+            audio_frames_mixed: 0,
+            audio_hash: None,
             guest_exit_status: match self.stop {
                 Stop::Exited(code) => Some(code & 0xff),
                 Stop::Failed { .. } => None,

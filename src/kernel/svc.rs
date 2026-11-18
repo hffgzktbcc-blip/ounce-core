@@ -200,7 +200,7 @@ impl HorizonKernel {
         if let Some(r) = self.ipc.audio_renderer.as_mut() {
             r.render_frame(mmu);
             let pcm = r.drain();
-            self.audren.output_ring_buffer.extend_from_slice(&pcm);
+            self.audren.queue_pcm(&pcm);
         }
     }
 

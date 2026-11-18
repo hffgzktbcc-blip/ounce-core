@@ -2,6 +2,7 @@
 
 use crate::audio::audout::{generate_synth_pcm16, Waveform};
 use crate::audio::host::HostAudioSink;
+use crate::audio::tap::AudioTap;
 use crate::mmu::Memory;
 
 /// Horizon OS `audren:u` Audio Renderer Sample Rates
@@ -152,6 +153,8 @@ pub struct AudioRenderer {
     pub is_active: bool,
     pub voices: Vec<AudioVoice>,
     pub output_ring_buffer: Vec<i16>,
+    /// Count and hash of everything mixed, however the host drains the buffer (`audio_hash` in the run report).
+    pub tap: AudioTap,
     pub frames_rendered: u64,
     pub total_samples_mixed: u64,
     pub peak_amplitude: i16,
@@ -170,6 +173,7 @@ impl AudioRenderer {
             is_active: true,
             voices,
             output_ring_buffer: Vec::with_capacity(192_000),
+            tap: AudioTap::new(),
             frames_rendered: 0,
             total_samples_mixed: 0,
             peak_amplitude: 0,
@@ -358,6 +362,8 @@ impl AudioRenderer {
             if self.output_ring_buffer.len() < 192_000 {
                 self.output_ring_buffer.push(sample_l);
                 self.output_ring_buffer.push(sample_r);
+                self.tap.push(sample_l);
+                self.tap.push(sample_r);
             }
         }
 
@@ -459,6 +465,13 @@ impl AudioRenderer {
         } else {
             0.0
         }
+    }
+
+    /// Queues interleaved stereo samples mixed elsewhere (the HLE `audren:u` renderer model) for the host, and records
+    /// them in the run's audio count and hash. Like `render_frame` for samples it mixes itself, but without its cap.
+    pub fn queue_pcm(&mut self, pcm: &[i16]) {
+        self.output_ring_buffer.extend_from_slice(pcm);
+        pcm.iter().for_each(|&sample| self.tap.push(sample));
     }
 
     /// Drains all mixed output samples from the ring buffer for host audio playback.

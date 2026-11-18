@@ -579,6 +579,7 @@ pub(crate) fn run_vm_internal(
         VmStop::Fault if stop_fault_addr.is_some() => "memory_fault",
         VmStop::Fault => "cpu_error",
     };
+    let audio = audio::combined_summary(&kernel.audren.tap, &kernel.audio.tap);
     let report = run_report::RunReport {
         tier: cpu::CpuTier::from_env().report_label(),
         silent_fallback: false,
@@ -592,6 +593,8 @@ pub(crate) fn run_vm_internal(
         insns_executed: instructions_executed as u64,
         frames_presented: frames_presented as u64,
         framebuffer_hash: display.as_ref().and_then(|d| d.last_frame_hash()).map(str::to_owned),
+        audio_frames_mixed: audio.frames_mixed,
+        audio_hash: audio.hash,
         guest_exit_status: None,
         message: stop_message,
     };
@@ -760,6 +763,8 @@ mod harness_gate_tests {
                 insns_executed: 0,
                 frames_presented: 0,
                 framebuffer_hash: None,
+                audio_frames_mixed: 0,
+                audio_hash: None,
                 guest_exit_status: None,
                 message: None,
             },
