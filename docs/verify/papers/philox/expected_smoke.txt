@@ -1,0 +1,19 @@
+Philox4x32 with 10 rounds, 1048576 32-bit words per stream
+stream A: key (0,0), counters 0, 1, 2, ...
+  frequency of ones (NIST 2.1): z = -1.42  ok
+  runs of equal bits (NIST 2.3): z = -0.22  ok
+  chi-square of bytes, 256 bins: z = +0.38  ok
+  chi-square of 16-bit halves, 65536 bins: z = +0.63  ok
+  lag-1 serial correlation: z = +0.58  ok
+stream B: key (deadbeef,12345678), counters 0, 1, 2, ...
+  frequency of ones (NIST 2.1): z = -0.44  ok
+  runs of equal bits (NIST 2.3): z = +0.88  ok
+  chi-square of bytes, 256 bins: z = -0.04  ok
+  chi-square of 16-bit halves, 65536 bins: z = -1.19  ok
+  lag-1 serial correlation: z = +1.19  ok
+two streams whose keys differ in one bit (0,0) and (1,0)
+  correlation between the streams: z = -1.35  ok
+strict avalanche: flip each of 128 counter bits and 64 key bits, 1024 random inputs, 128 output bits
+  worst of 24576 (input bit, output bit) pairs is input 106 -> output 7
+  worst flip-probability deviation (limit 5): z = +3.88  ok
+PASS
