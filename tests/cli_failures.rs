@@ -195,38 +195,57 @@ fn headless_audio_is_reported_as_a_frame_count_and_a_deterministic_hash() {
     assert!(silent["audio_hash"].is_null(), "{silent}");
 }
 
-/// #475: a stop that has a `pc` also reports the link register and stack pointer, so a failure can be located without
-/// a debugger. The guest calls a function (`BL`, so `lr` is the instruction after it) which loads from unmapped memory:
-/// `lr` is exactly 8 bytes before the faulting `pc`, and `sp` is the guest's 16-byte-aligned stack. A clean exit has
-/// no `pc` on `run-nro`, so it reports neither.
-#[test]
-fn a_fault_reports_the_link_register_and_stack_pointer() {
-    // 0x80: BL +8 (to 0x88)   0x84: MOVZ W0,#0 (never reached)   0x88: MOVZ X1,#0x10   0x8C: LDR X0,[X1] (unmapped)
+/// Runs a minimal NRO that calls a function (`BL`), which loads from unmapped memory, on `tier` and returns its report.
+/// 0x80: BL +8 (to 0x88)   0x84: MOVZ W0,#0 (never reached)   0x88: MOVZ X1,#0x10   0x8C: LDR X0,[X1] (unmapped)
+fn faulting_nro_report(tier: &str) -> serde_json::Value {
     let code = [0x9400_0002u32, 0x5280_0000, 0xD280_0201, 0xF940_0020];
     let text: Vec<u8> = code.iter().flat_map(|w| w.to_le_bytes()).collect();
-    let dir = std::env::temp_dir().join(format!("ounce_fault_lr_{}", std::process::id()));
+    // Tests run in parallel inside one process, so each call gets its own directory.
+    static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("ounce_fault_{tier}_{}_{call}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let nro = dir.join("fault.nro");
     std::fs::write(&nro, nro_with_text(&text)).unwrap();
+    let report = dir.join("report.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run-nro", nro.to_str().unwrap(), "--present=headless", "--deterministic"])
+        .arg(format!("--cpu={tier}"))
+        .arg(format!("--report-json={}", report.display()))
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "{tier}: a fault is a failed run");
+    let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!((json["stop_kind"].as_str(), json["exit_code"].as_i64()), (Some("memory_fault"), Some(11)), "{tier}: {json}");
+    json
+}
+
+/// #475: a stop that has a `pc` also reports the link register and stack pointer, so a failure can be located without
+/// a debugger. `lr` is the instruction after the `BL`, exactly 8 bytes before the faulting `pc`, and `sp` is the
+/// guest's 16-byte-aligned stack. A clean exit has no `pc` on `run-nro`, so it reports neither.
+#[test]
+fn a_fault_reports_the_link_register_and_stack_pointer() {
     for tier in ["interpreter", "tier3"] {
-        let report = dir.join(format!("{tier}.json"));
-        let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-            .args(["run-nro", nro.to_str().unwrap(), "--present=headless", "--deterministic"])
-            .arg(format!("--cpu={tier}"))
-            .arg(format!("--report-json={}", report.display()))
-            .output()
-            .unwrap();
-        assert!(!output.status.success(), "{tier}: a fault is a failed run");
-        let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
-        assert_eq!((json["stop_kind"].as_str(), json["exit_code"].as_i64()), (Some("memory_fault"), Some(11)), "{tier}: {json}");
+        let json = faulting_nro_report(tier);
         let (pc, lr, sp) = (json["pc"].as_u64(), json["lr"].as_u64(), json["sp"].as_u64());
         assert!(pc.is_some() && lr.is_some() && sp.is_some(), "{tier}: pc, lr and sp are numbers: {json}");
         assert_eq!(pc.unwrap() - lr.unwrap(), 8, "{tier}: lr is the BL's return address: {json}");
         assert!(sp.unwrap() != 0 && sp.unwrap() % 16 == 0, "{tier}: sp is the aligned guest stack: {json}");
     }
-    let exit = deterministic_report(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro"), "interpreter", "lr", &[]);
+    let hello = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro");
+    let exit = deterministic_report(hello, "interpreter", "lr", &[]);
     assert!(exit["pc"].is_null() && exit["lr"].is_null() && exit["sp"].is_null(), "{exit}");
-    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A run that stops on a fault reports the instructions that completed before it: the header's branch, the `BL` and
+/// the `MOVZ`, three, on every tier. The faulting load did not complete. A report of 0 would hide how far the program
+/// got, and make the two tiers impossible to compare.
+#[test]
+fn a_fault_still_counts_the_instructions_that_ran_before_it() {
+    let counts: Vec<u64> =
+        ["interpreter", "tier3", "interpreter"].iter().map(|tier| faulting_nro_report(tier)["insns_executed"].as_u64().unwrap()).collect();
+    assert_eq!(counts, [3; 3], "interpreter, Tier-3, interpreter again");
 }
 
 /// Runs the exit NRO with one guest argument of `arg_len` bytes. Returns the output and the file name, which sets
