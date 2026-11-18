@@ -1,0 +1,38 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Accurate Sum and Dot Product",
+    "authors": ["Takeshi Ogita", "Siegfried M. Rump", "Shin'ichi Oishi"],
+    "venue": "SIAM Journal on Scientific Computing 26(6)",
+    "year": 2005,
+    "text_read": "https://www.tuhh.de/ti3/paper/rump/OgRuOi05.pdf (read on 2026-11-18; algorithms, bounds and Table 6.2 taken from the text)"
+  },
+  "program": {
+    "source": "accurate_sum.c",
+    "how": "written for ounce-core from the algorithms in the paper; the exact reference values come from a long-integer accumulator written in the same file; random numbers come from Philox4x32-10 (see ../philox)",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "Theorem 3.4 (3000 random pairs): TwoSum gives a+b = x+y exactly with x = fl(a+b) and |y| <= eps|x|; TwoProduct (Algorithm 3.3, Veltkamp/Dekker split) and TwoProductFMA (Algorithm 3.5) give a*b = x+y exactly, and the two agree",
+    "Proposition 4.5: Sum2 satisfies |res - s| <= eps|s| + gamma_{n-1}^2 S",
+    "Proposition 4.10 (K = 3): SumK satisfies |res - s| <= (eps + 3 gamma_{n-1}^2)|s| + gamma_{2n-2}^3 S",
+    "Proposition 5.5: Dot2 satisfies |res - x'y| <= eps|x'y| + gamma_n^2 |x|'|y|",
+    "Table 6.2 (median correct digits of DSum, Sum2 and Sum3 at condition numbers 1e7, 1e14, 1e21, 1e28), using the paper's own generator (Algorithm 6.1, GenDot): every median within 1.0 digit of the published median"
+  ],
+  "expected_values_source": {
+    "what": "the bounds and the Table 6.2 medians as printed in the paper",
+    "tolerance": "1.0 digit, chosen before the first run because our random numbers differ from the authors' Matlab random numbers, our lengths are 100 to 1000 (the paper uses 100 to 5000) and we run 60 cases per row (the paper runs about 1000 per length)"
+  },
+  "observations": [
+    "All 12 medians passed, but the DSum and Sum2 medians were 0.4 to 0.7 digit below the published ones in every row where the published value is above 0; not investigated, the tolerance was not changed",
+    "the paper's Kahan-Babuska and Anderson columns are not reproduced: the paper cites them from other sources and they were not implemented here"
+  ],
+  "not_checked": [
+    "the paper's timing tables and any speed claim (an emulator's run time says nothing about the hardware the authors measured)",
+    "SumXBLAS, Kahan-Babuska and Anderson columns, DotK for K > 2, and the dot product accuracy figures",
+    "lengths above 1000, more than 60 cases per row, and condition numbers outside 1e7 to 1e28",
+    "behaviour with underflow (the test data avoids it) and other rounding modes",
+    "Tier-4 and native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "ounce-core's floating point, including fused multiply-add, runs the paper's algorithms to the paper's published accuracy, every proven bound holds on 240 generated cases, and the output is identical to a native build. It does not show that every program using these algorithms is correct."
+}
