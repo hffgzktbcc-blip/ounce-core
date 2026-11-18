@@ -2,7 +2,8 @@
 // Linux, one line per case: "<input bits> <fz> <w result> <NZCV nibble> <FPSR>". fp_edge does not print NZCV.
 // Build like fp_edge.c's freestanding ELF (clang --target=aarch64-linux-gnu -ffreestanding -march=armv8.5-a, ld.lld -static
 // -nostdlib -e _start), then compare `qemu-aarch64 x.elf`, `ounce-core run-elf x.elf --cpu=tier3` and, on ARM64 hardware, x.elf
-// itself. Not part of run.sh or CI.
+// itself. fjcvtzs_gate.sh does that comparison and the fp-workload CI job runs it on the ARM64 runner (#469); run.sh does not.
+// Measured on an Apple M-series Mac: a denormal flushed by FZ gives Z = 0 for either sign (FPSR 0x80).
 typedef unsigned long u64;
 typedef unsigned int u32;
 

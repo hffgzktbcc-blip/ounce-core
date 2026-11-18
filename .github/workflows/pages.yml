@@ -56,7 +56,7 @@ jobs:
           scripts/build_playground.sh
           python3 tools/playground/check_artifact.py target/playground
       - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - name: Assemble site
         shell: bash
         run: |
@@ -65,9 +65,9 @@ jobs:
           cp docs/media/ounce-core-main.mp4 docs/media/ounce-core-poster.jpg site/assets/
           cp -R target/playground site/playground
       - name: Upload website
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: site
       - name: Deploy website
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

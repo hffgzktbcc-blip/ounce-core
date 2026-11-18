@@ -82,9 +82,13 @@ The same five ops were rerun the same informal way (x86_64 `run-elf --cpu=tier3`
 and are byte-identical to qemu over their 144 cases each. That is again a software-model comparison, not hardware: the native
 run of these five ops still has not happened, and a hardware difference would show up as a `MISMATCH` in the `fp-workload` job.
 The workload does not print NZCV, which `FJCVTZS` writes (`0 Z 0 0`). [fjcvtzs_nzcv.c](fjcvtzs_nzcv.c) prints result, NZCV and
-FPSR for 31 doubles at FPCR 0 and FZ, so it can be built like `fp_edge.c` and run natively against `run-elf` later. Under qemu and
-Tier-3 it agrees on 61 of 62 rows; the one difference is a negative denormal under FZ: the engine follows the `FPToFixedJS`
-pseudocode as read (the flushed input keeps its sign, so Z = 0) and qemu gives Z = 1. Which one silicon does is unverified.
+FPSR for 31 doubles at FPCR 0 and FZ. [fjcvtzs_gate.sh](fjcvtzs_gate.sh) builds it like `fp_edge.c`, runs it natively and requires
+`run-elf` on Tier-3 and Tier-4 to print the same 62 lines; the `fp-workload` job runs it on the ARM64 runner (it needs FEAT_JSCVT
+and fails without it), with a negative control. Measured once by hand on an Apple M-series Mac, all 62 rows now agree with the engine
+on Tier-2, Tier-3, Tier-4 and the interpreter. The one earlier difference, a denormal under FZ, is settled by that run: silicon
+gives Z = 0 for either sign (FPSR 0x80), as the `FPToFixedJS` pseudocode reads. The engine had Z = 1 for the positive denormals and
+was fixed; qemu gives Z = 1 for the negative one, so qemu is not a reference for this case. One CPU generation was checked by hand;
+the CI runner is the second.
 
 Also checked: the file compiles without warnings for both targets with `-Wall -Wextra` (plus `-Wno-missing-field-initializers`,
 since the older table rows leave the new `vfn` field null on purpose), links, and `fp_edge.elf --list` prints 199 names.
@@ -109,7 +113,7 @@ since the older table rows leave the new `vfn` field null on purpose), links, an
   `BFCVT`/`BFMLAL`, and scalar `FCVT` between half and single/double.
 - Lane patterns are the rotation described above, not all 18^lanes combinations, so a bug that needs a lane-pair that the
   rotation never produces can be missed. Each fixed-point op uses one `#fbits` value (scalar 16, 5, 33, 7; vector `.4s` 7,
-  `.2d` 20), not every shift amount. `FJCVTZS` also writes NZCV, which is not printed.
+  `.2d` 20), not every shift amount. `FJCVTZS` also writes NZCV, which only the separate fjcvtzs gate prints.
 - The qemu figures above use a different reference with a different failure profile; they are a smoke check only.
 - Per-op outputs (about 3 MB) are not committed; `SHA256SUMS` in the result folder pins the ELF, the host binary and every
   per-op host output so a rerun can be checked against them. Rebuilt binaries are not bit-for-bit pinned across toolchains.

@@ -4,6 +4,14 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+- Added: `docs/verify/fp-workload/fjcvtzs_gate.sh` builds `fjcvtzs_nzcv.c`, runs it natively and requires `run-elf` on Tier-3 and
+  Tier-4 to print the same 62 lines (result, NZCV, FPSR for 31 inputs at FZ 0 and 1), with a negative control; the `fp-workload`
+  job runs it on the ARM64 runner, so FJCVTZS is now compared against silicon in CI as well as by hand. Run by hand on an Apple
+  M-series Mac, it settled the Z flag of a denormal flushed by FZ.
+- Changed: the six action refs that were unpinned (`actions/attest`, `softprops/action-gh-release`, `actions/configure-pages`,
+  `actions/upload-pages-artifact`, `actions/deploy-pages`, `taiki-e/install-action`) are now pinned to the commit their tag
+  points to, read with `git ls-remote`, and `PENDING` in `scripts/check_action_pins.py` is empty. Only the pins changed:
+  release, pages and coverage workflows have still not run with them.
 - Contract (#481, DRAFT, not a freeze): `docs/CONTRACT_V1.md` states the additive-only rule and lists what `ounce.run.v1`,
   `ounce.trace.v1`, the exit codes and the flags `--max-frames`, `--sdmc`, `--timeout`, `--json` are today, with the
   questions the owner must answer before anything is frozen. `tests/contract_v1.rs` and `tests/contract/*.json` pin the
