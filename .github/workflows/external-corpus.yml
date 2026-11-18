@@ -482,6 +482,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: native-corpus-oracles
+
       - uses: actions/download-artifact@v4
         with:
           name: corpus-nros
@@ -502,7 +506,7 @@ jobs:
           print(paths.pop())' "$RUNNER_TEMP/build.jsonl")
           sysctl -n machdep.cpu.brand_string
           python3 scripts/run_corpus_oracles.py --executable "$executable" \
-            --builds "$RUNNER_TEMP/ounce-oracle-builds" --evidence "$RUNNER_TEMP/native-corpus-evidence" --seconds 180
+            --builds "$RUNNER_TEMP/ounce-oracle-builds" --evidence "$RUNNER_TEMP/native-corpus-evidence" --seconds 180 --shards 2
           echo "=== speed (wall time per oracle run, Tier-3 vs native) ==="
           for f in "$RUNNER_TEMP"/native-corpus-evidence/*.oracle.log; do
             echo "$(basename "$f" .oracle.log): $(grep -h "native speedup" "$f" || echo 'no native run')"
