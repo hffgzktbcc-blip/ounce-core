@@ -179,7 +179,7 @@ jobs:
 
       - name: Attest release archive provenance
         if: github.event_name == 'push'
-        uses: actions/attest@v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: "${{ matrix.archive_name }}"
 
@@ -211,7 +211,7 @@ jobs:
           cd dist
           sha256sum *.tar.gz *.zip *.spdx.json > SHA256SUMS
       - name: Publish complete release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
           body_path: docs/releases/${{ github.ref_name }}.md
           files: dist/*
