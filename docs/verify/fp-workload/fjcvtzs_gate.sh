@@ -12,11 +12,15 @@ here="$(cd "$(dirname "$0")" && pwd)"
 [ ! -e "$out" ] || { echo "$out already exists" >&2; exit 1; }
 mkdir -p "$out"
 
-LD=ld.lld
-command -v "$LD" >/dev/null 2>&1 || LD="$(find "$(rustc --print sysroot)" -name rust-lld -type f | head -1)"
+if command -v ld.lld >/dev/null 2>&1; then LD=(ld.lld); else
+  # rust-lld picks its flavour from its own name, so say "gnu" (run.sh does the same).
+  sysroot="$(rustc --print sysroot)"; host="$(rustc -vV | sed -n 's/^host: //p')"
+  LD=("$sysroot/lib/rustlib/$host/bin/rust-lld" -flavor gnu)
+  export DYLD_FALLBACK_LIBRARY_PATH="$sysroot/lib" LD_LIBRARY_PATH="$sysroot/lib"
+fi
 clang --target=aarch64-linux-gnu -O1 -ffreestanding -fno-builtin -fno-stack-protector -fno-pic -mno-outline-atomics \
   -march=armv8.5-a -c "$here/fjcvtzs_nzcv.c" -o "$out/fjcvtzs.o"
-"$LD" -static -nostdlib -e _start "$out/fjcvtzs.o" -o "$out/fjcvtzs.elf"
+"${LD[@]}" -static -nostdlib -e _start "$out/fjcvtzs.o" -o "$out/fjcvtzs.elf"
 
 if [ -n "${FJCVTZS_NATIVE_REF:-}" ]; then
   cp "$FJCVTZS_NATIVE_REF" "$out/native.txt"
