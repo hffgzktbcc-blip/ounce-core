@@ -26,6 +26,13 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   fault, so a program that faulted early reported 0 (and the interpreter and Tier-3 could not be compared). A fault
   now counts the instructions that completed before it. A new test faults the fourth instruction of a minimal NRO and
   expects 3 on every tier.
+- Supply chain (#480): `release.yml` writes an SPDX 2.3 SBOM for each release target (`scripts/generate_sbom.py`: the
+  crates reachable through normal and build dependencies for that target, with declared licenses, crates.io download
+  locations and lockfile SHA-256 checksums). It also runs on a manual dry run, is uploaded with the archives and is
+  listed in `SHA256SUMS`. Every workflow `uses:` is now pinned to a commit SHA, with `# version` comments for
+  Dependabot, and `scripts/check_action_pins.py` fails on a tag or branch; six refs used only by release, pages and
+  coverage workflows could not be pinned yet and are listed there by name. `dtolnay/rust-toolchain` steps now say
+  `toolchain:` explicitly, which the action requires once pinned.
 - Fixed: in `--deterministic` mode on `run` / `run-nro`, guest time advanced only inside system calls, so a thread
   asleep on a timeout never woke while another thread spun on a shared flag without making any; the run ended on the
   instruction budget. Each scheduler time slice (20,000 instructions) now also advances guest time by 1 ms, the same

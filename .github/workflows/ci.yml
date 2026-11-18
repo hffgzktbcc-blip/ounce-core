@@ -27,11 +27,11 @@ jobs:
       runtime: ${{ steps.scope.outputs.runtime }}
       corpus: ${{ steps.scope.outputs.corpus }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.12'
       - name: Classify candidate inputs
@@ -48,15 +48,16 @@ jobs:
     name: Workflow and evidence tooling
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.12'
       - name: Check local workflow and evidence tools
         run: |
           bash -n scripts/next.sh scripts/gate.sh scripts/check_legal_guardrails.sh scripts/check_unsafe_boundary.sh
+          python3 scripts/check_action_pins.py
           python3 scripts/agent_workflow.py next
           python3 scripts/corpus_verify.py headline docs/verify/corpus-c47fa14/canonical-corpus.json --check-readme
           python3 scripts/corpus_verify.py snapshot
@@ -76,12 +77,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.x'
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: stable
           components: rust-docs
       - name: Exercise archive creation and byte verification
         shell: bash
@@ -106,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Fail on key files, containers, ROM/key-site links or key-parsing/decryption code
         run: scripts/check_legal_guardrails.sh
       - name: Check fixture identities and provenance review records
@@ -125,10 +127,12 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -137,7 +141,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Run unit tests
         run: cargo test --release
@@ -178,15 +182,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
       # Pinned, not `stable`: each Rust release adds warn-by-default lints, which would turn
       # unrelated PRs red. Bump this version on purpose and fix what the new clippy reports.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.97.0
+        uses: dtolnay/rust-toolchain@fa51344246423bb1896f389ae2a83b9784ddb363 # 1.97.0
         with:
+          toolchain: 1.97.0
           components: clippy
 
       - name: Install Linux system dependencies
@@ -195,7 +200,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: lint
 
@@ -215,14 +220,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
       # Keep in step with clippy.toml `msrv` and the README. Optional features need newer
       # compilers (gpu-present 1.90, native-jit 1.97), so only default features are checked here.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.89.0
+        uses: dtolnay/rust-toolchain@d92bbbb03544f480ed5c7ba4b54020e4ed2c4f65 # 1.89.0
+        with:
+          toolchain: 1.89.0
 
       - name: Install Linux system dependencies
         run: |
@@ -230,7 +237,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: msrv
 
@@ -248,10 +255,12 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       # lavapipe (mesa-vulkan-drivers) is a software Vulkan driver, so the offscreen
       # GPU blit test really runs on runners without a GPU instead of skipping.
@@ -262,7 +271,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: gpu-present
 
@@ -297,7 +306,7 @@ jobs:
 
       - name: Retain native Mac app preview
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: macos-app-preview
           path: ${{ runner.temp }}/macos-preview/
@@ -319,10 +328,12 @@ jobs:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -331,7 +342,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: native-jit
 
@@ -377,10 +388,12 @@ jobs:
         os: [macos-latest, ubuntu-24.04-arm, ubuntu-latest]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -389,7 +402,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: nce
 
@@ -418,13 +431,15 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: mac-app
 
