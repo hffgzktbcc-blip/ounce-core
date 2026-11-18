@@ -335,6 +335,13 @@ pub enum Instruction {
         is_double: bool,
     },
 
+    /// `FJCVTZS Wd, Dn` (FEAT_JSCVT): double to signed 32-bit integer as JavaScript `ToInt32` does it (truncate
+    /// toward zero, wrap modulo 2^32). Writes `NZCV` = `0 Z 0 0`: Z is set only when the conversion was exact.
+    Fjcvtzs {
+        rd: u8,
+        rn: u8,
+    },
+
     /// Floating-Point Conditional Select: `FCSEL Dd/Sd, Dn/Sn, Dm/Sm, cond`
     FpCondSelect {
         rd: u8,
@@ -550,6 +557,18 @@ pub enum Instruction {
         rn: u8,
         op: SimdOp2,
         esize: u8,
+    },
+
+    /// AdvSIMD shift-by-immediate float <-> fixed-point conversion, vector form: `SCVTF`/`UCVTF Vd.<T>, Vn.<T>, #fbits`
+    /// (`op` Scvtf/Ucvtf: lanes are fixed-point integers divided by 2^`fbits`) and `FCVTZS`/`FCVTZU` (`op` Fcvtzs/Fcvtzu:
+    /// lanes are floats multiplied by 2^`fbits`, truncated toward zero with saturation). `esize` is 32 or 64.
+    SimdFixedConv {
+        rd: u8,
+        rn: u8,
+        op: SimdOp2,
+        esize: u8,
+        fbits: u8,
+        q: bool,
     },
 
     /// AdvSIMD scalar three same `FABD Sd/Dd, Sn/Dn, Sm/Dm`: `|n - m|` (NaN propagates), upper bits zeroed
