@@ -104,7 +104,7 @@
    - **#400–#404 (instruction gaps): ALL CLOSED 16 Nov 2026** (#400 `32e69ac`, #401 #449, #402 #444, #403 #450, #404 #451). Do not restart them.
 
 3. **Quarterly Coordinated Releases & Supply-Chain Hardening:**
-   - Cut Q2/Q3 releases (`ounce-core` `v0.10.0` → `v0.11.0`, `ounce-hb` `v0.2.0` → `v0.3.0`, `ounce-runtime` `v0.7.0` → `v0.8.0`) with SPDX/SBOM generation, SHA-pinned GitHub Actions / Dependabot across all 3 repos, and `SHA256SUMS`.
+   - Cut Q2/Q3 releases (`ounce-core` `v0.10.0` → `v0.11.0`, `ounce-hb` `v0.2.0` → `v0.3.0`, `ounce-runtime` `v0.7.0` → `v0.8.0`) with SPDX/SBOM generation, SHA-pinned GitHub Actions / Dependabot across all 3 repos, and `SHA256SUMS`. **`ounce-core` side partly done (#480, unreleased):** `release.yml` generates an SPDX 2.3 SBOM per target (`scripts/generate_sbom.py`, also on a manual dry run) and `SHA256SUMS` covers it; every workflow `uses:` is pinned to a commit SHA except six listed in `scripts/check_action_pins.py` (their SHAs were not available), which a test keeps from growing. Not done: the six pins, a hosted release dry run, and the other two repositories.
 
 4. **DeckStream SteamOS Gaming Mode Verification & Mock CI:**
    - Verify end-to-end `.nro` launch over WebDAV/rclone in SteamOS Gaming Mode via `ounce-runtime --present=gpu` (Steam Deck `gilrs` gamepad input, `MESA_SHADER_CACHE_DIR`, `DECKSTREAM_FPS_CAP`), and profile cold/warm RomFS range reads in `startup_profile.py`.

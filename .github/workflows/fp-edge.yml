@@ -40,11 +40,13 @@ jobs:
       matrix:
         os: [ubuntu-24.04-arm, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
@@ -62,7 +64,7 @@ jobs:
         if: always()
         shell: bash
         run: cat "$RUNNER_TEMP/fp-edge-${{ matrix.os }}/summary.md" >> "$GITHUB_STEP_SUMMARY" || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: fp-edge-evidence-${{ matrix.os }}
@@ -80,11 +82,13 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Install system dependencies and the C toolchain
         run: |
           sudo apt-get update
@@ -120,7 +124,7 @@ jobs:
           { echo '### FP workload: native ARM64 vs run-elf'; echo; echo '```'
             column -t -s "$(printf '\t')" "$RUNNER_TEMP/fp-workload/summary.tsv" 2>/dev/null || cat "$RUNNER_TEMP/fp-workload/summary.tsv"
             echo '```'; } >> "$GITHUB_STEP_SUMMARY" || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: fp-workload-evidence
@@ -140,11 +144,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Install Linux system dependencies
         run: |
           sudo apt-get update
@@ -173,7 +179,7 @@ jobs:
             # fuzz-replay exits 1 on a value mismatch; flag mismatches are printed, so fail on those too
             grep -q 'differ on matching results: 0$' "$RUNNER_TEMP/testfloat-$engine.txt"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: testfloat-results
