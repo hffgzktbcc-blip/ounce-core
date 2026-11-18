@@ -186,7 +186,7 @@ Install, build and first-run steps are in the [README](../README.md#run-it-local
 
 ### Prerequisites
 
-- Rust 1.85 or newer (edition 2024).
+- Rust 1.89 or newer (edition 2024) for the default build, checked in CI by the `msrv` job. Optional features need newer compilers: `gpu-present` 1.90, `native-jit` 1.97.
 - Host: `aarch64` or `x86_64`, Linux, macOS or Windows.
 - Prebuilt Linux binaries dynamically link to the system ALSA and udev libraries. On Debian/Ubuntu: `sudo apt install libasound2 libudev1`. On Fedora: `sudo dnf install alsa-lib systemd-libs`. On Arch: `sudo pacman -S alsa-lib systemd-libs`. Building from source also needs the development headers (`libasound2-dev libudev-dev` on Debian/Ubuntu).
 - GPU presentation (optional): build with `--features gpu-present`. macOS uses Metal and needs nothing extra. Windows uses Vulkan or DX12 from the installed GPU driver. Linux needs a Vulkan driver plus `libvulkan1` and `libxkbcommon-x11-0` on Debian/Ubuntu (`vulkan-loader libxkbcommon-x11` on Fedora, `vulkan-icd-loader libxkbcommon-x11` on Arch); `mesa-vulkan-drivers` gives a software Vulkan driver for machines without a GPU. If the GPU path cannot start, the runtime falls back to the software window and then to headless.
@@ -211,7 +211,7 @@ cargo run --release --features native-jit -- test --cpu=tier4 # Run Tier-4 for t
 
 `--present=auto|gpu|minifb|headless` (or `OUNCE_PRESENT`) picks the presentation backend; `auto` tries the GPU first when the feature is compiled in. `headless` opens no window and no host audio device, so it runs the same on a machine with no audio output (CI runners); the other modes play guest audio on the default output device unless `--audio=null` or `OUNCE_AUDIO=null` is set, which skips the device in every presentation mode. `WGPU_BACKEND` (`vulkan`, `metal`, `dx12`, `gl`) and `WGPU_ADAPTER_NAME` select the GPU, and `OUNCE_VSYNC=0` disables vsync. `--cpu=interpreter|tier3|tier4|native` (or `OUNCE_CPU`) selects the engine for the Stage 20 benchmark and for `run`/`run-nro`. With no flag the default is Tier-3. `--cpu=interpreter` is the one-instruction interpreter. Tier-4 requires `--features native-jit`; without it, Tier-3 runs. `--cpu=native` runs a homebrew NRO on an AArch64 host when the binary was built with `--features nce`; otherwise the interpreter runs and the program prints that.
 
-`--report-json <path>` or `--report-json=<path>` (or `OUNCE_REPORT_JSON`) writes an `ounce.run.v1` file for `run` and `run-nro`. It ships in v0.9.0 and later. `run-elf` does not write it. On `run-elf`, `--deterministic` uses a fixed guest clock. On `run` and `run-nro`, `--deterministic` and `OUNCE_DETERMINISTIC=1` or `true` are accepted and do not change the kernel clock. See [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md) and [QUICKSTART.md](QUICKSTART.md).
+`--report-json <path>` or `--report-json=<path>` (or `OUNCE_REPORT_JSON`) writes an `ounce.run.v1` file for `run` and `run-nro` (v0.9.0 and later) and for `run-elf` (on `main`, unreleased; adds `guest_exit_status`). `run-elf --dump-regs` prints PC, X0, D0 and NZCV at the stop. On `run-elf`, `--deterministic` uses a fixed guest clock. On `run` and `run-nro`, `--deterministic` and `OUNCE_DETERMINISTIC=1` or `true` are accepted and do not change the kernel clock. See [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md) and [QUICKSTART.md](QUICKSTART.md).
 
 ### Native Mac launcher (local preview)
 

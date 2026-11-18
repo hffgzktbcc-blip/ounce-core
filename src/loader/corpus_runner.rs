@@ -448,7 +448,7 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
         if queued > result.queued.len() as u64 {
             result.queued.push(capture_queued(&kernel, &mmu, queued, &limits.probes));
             result.last_queue_ms = started.elapsed().as_millis() as u64;
-            if limits.sample_every != 0 && queued % limits.sample_every == 0 {
+            if limits.sample_every != 0 && queued.is_multiple_of(limits.sample_every) {
                 result.samples.push(soak_sample(queued, result.instructions, &cpu, &mmu, tier3.as_ref()));
             }
             if limits.queued_frames != 0 && queued >= limits.queued_frames {
@@ -494,9 +494,6 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
     (result, kernel)
 }
 
-/// Wall-clock date the corpus runner gives guests (2024-01-01 00:00:00 UTC).
-const DETERMINISTIC_UNIX_SECS: u64 = 1_704_067_200;
-
 fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
     limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
     let (memory, base, alias_size) = match guest_memory(engine) {
@@ -504,7 +501,7 @@ fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
         Err(error) => { let (cpu, _, kernel) = crate::setup_vm(); return (report(engine, Stop::LoadError(error), &cpu), kernel); }
     };
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm_in(memory, base, alias_size);
-    kernel.set_deterministic_clock(DETERMINISTIC_UNIX_SECS);
+    kernel.set_deterministic_clock(HorizonKernel::DETERMINISTIC_UNIX_SECS);
     let loaded = super::super::BootLoader::load_any_package(nro, base + crate::DEFAULT_BASE_ADDR, &mut mmu);
     let error = match loaded {
         Ok(info) if info.format == "NRO0" => None,

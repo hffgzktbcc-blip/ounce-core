@@ -98,7 +98,7 @@ pub(crate) fn print_box_bottom(s: &Styler) {
 pub(crate) fn print_row(s: &Styler, label: &str, val: &str) {
     let used = visible_width(label) + visible_width(val);
     let max_inner = BOX_WIDTH - 6;
-    let pad = if max_inner > used { max_inner - used } else { 0 };
+    let pad = max_inner.saturating_sub(used);
     println!(
         "{}│  {}{}{}{}{}{}  │{}",
         s.blue, s.bold, label, s.reset, val, " ".repeat(pad), s.blue, s.reset
@@ -114,10 +114,11 @@ pub(crate) fn print_usage() {
     println!("    From a source checkout: cargo run --release -- <COMMAND> [OPTIONS]\n");
     println!("  {}RUN AND CHECK A PROGRAM (start here):{}", s.bold, s.reset);
     println!("    {}ui{} | {}lab{}               Open the local workbench: drop a .nro, compare engines (and this Mac) [--port N --no-open --dir D]", s.green, s.reset, s.green, s.reset);
-    println!("    {}run-nro{} <file> [args] [--gui]  Run a homebrew .nro; if it stops early, the output says why and what to do next", s.green, s.reset);
-    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic)", s.green, s.reset);
+    println!("    {}run-nro{} <file> [args] [-- args]  Run a homebrew .nro; if it stops early, the output says why and what to do next (run-nro --help)", s.green, s.reset);
+    println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic, --dump-regs)", s.green, s.reset);
     println!("    {}diverge{} <prog.nro|prog.elf> [-- args]  Compare NRO (AArch64 hardware replay) or static ELF across interpreter/Tier-3/Tier-4", s.green, s.reset);
-    println!("    {}run{} <file|dir> [args] [--gui]  Like run-nro, but also accepts .nso and loose folders", s.green, s.reset);
+    println!("    {}trace-diff{} <expected.json> <actual.json>  First step where two ounce.trace.v1 traces differ (record with OUNCE_TRACE_SUMMARY=<file>); [--window N] [--json out.json]", s.green, s.reset);
+    println!("    {}run{} <file|dir> [args] [-- args]  Like run-nro, but also accepts .nso and loose folders (guest args: .nro only)", s.green, s.reset);
     println!();
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
     println!("    {}--cpu={}<tier>            Engine: tier3 (reference interpreter, default), tier4 (needs --features native-jit) or native (AArch64 hosts, needs --features nce)", s.green, s.reset);
@@ -161,7 +162,7 @@ pub(crate) fn print_specs() {
 
     let header_text = format!("  🎮  {}OUNCE-CORE v{}{} — TEGRA T239 HARDWARE & RUNTIME SYSTEM PROFILE", s.bold, env!("CARGO_PKG_VERSION"), s.reset);
     let header_width = visible_width(&header_text);
-    let pad = if BOX_WIDTH - 2 > header_width { (BOX_WIDTH - 2) - header_width } else { 0 };
+    let pad = (BOX_WIDTH - 2).saturating_sub(header_width);
 
     println!("{}╭{}╮{}", s.cyan, "─".repeat(BOX_WIDTH - 2), s.reset);
     println!("{}│{}{}{}│{}", s.cyan, header_text, " ".repeat(pad), s.cyan, s.reset);

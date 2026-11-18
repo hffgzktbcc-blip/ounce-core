@@ -28,11 +28,11 @@ jobs:
       runtime: ${{ steps.scope.outputs.runtime }}
       corpus: ${{ steps.scope.outputs.corpus }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.12'
       - name: Classify candidate inputs
@@ -50,15 +50,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.12'
       - name: Check local workflow and evidence tools
         run: |
           bash -n scripts/next.sh scripts/gate.sh scripts/check_legal_guardrails.sh scripts/check_unsafe_boundary.sh
+          python3 scripts/check_action_pins.py
           python3 scripts/agent_workflow.py next
           python3 scripts/corpus_verify.py headline docs/verify/corpus-c47fa14/canonical-corpus.json --check-readme
           python3 scripts/corpus_verify.py snapshot
@@ -79,12 +80,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.x'
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: stable
           components: rust-docs
       - name: Exercise archive creation and byte verification
         shell: bash
@@ -110,7 +112,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Fail on key files, containers, ROM/key-site links or key-parsing/decryption code
         run: scripts/check_legal_guardrails.sh
       - name: Check fixture identities and provenance review records
@@ -130,10 +132,12 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -142,13 +146,108 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Run unit tests
         run: cargo test --release
 
       - name: Run 25-stage integration verification suite
         run: cargo run --release -- test
+
+      # Issue #479: guest instruction counts of committed NRO and ELF fixtures, run with --deterministic on the
+      # interpreter and Tier-3 (tests/insn-budgets.json, docs/INSN_BUDGETS.md). A count over its budget, a different
+      # stop, tiers that disagree or a rebuilt fixture fails the job. Wall time is shown only: shared runners are too
+      # noisy to fail on it. One budget file passing on all three hosts also shows the counts do not depend on the host.
+      - name: Instruction budgets (deterministic insns_executed)
+        shell: bash
+        run: python scripts/insn_budgets.py --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Instruction budgets negative control (a budget below the count must fail)
+        shell: bash
+        run: |
+          set -euo pipefail
+          tampered="$RUNNER_TEMP/insn-budgets-tampered.json"
+          python - "$tampered" <<'PY'
+          import json, sys
+          data = json.load(open('tests/insn-budgets.json'))
+          spec = data['workloads']['nro/hello']
+          spec['budget'] = spec['baseline'] - 1
+          json.dump(data, open(sys.argv[1], 'w'))
+          PY
+          # GITHUB_ACTIONS=false keeps the expected failure out of the run's error annotations.
+          if GITHUB_ACTIONS=false python scripts/insn_budgets.py --budgets "$tampered" --only nro/hello > "$RUNNER_TEMP/negative.txt"; then
+            cat "$RUNNER_TEMP/negative.txt"; echo "the check passed a count over its budget"; exit 1
+          fi
+          grep 'over its budget' "$RUNNER_TEMP/negative.txt"
+
+  lint:
+    name: Lint (clippy, warnings are errors)
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # Pinned, not `stable`: each Rust release adds warn-by-default lints, which would turn
+      # unrelated PRs red. Bump this version on purpose and fix what the new clippy reports.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@fa51344246423bb1896f389ae2a83b9784ddb363 # 1.97.0
+        with:
+          toolchain: 1.97.0
+          components: clippy
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: lint
+
+      - name: Clippy (default features)
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Clippy (native-jit, nce)
+        run: cargo clippy --locked --workspace --all-targets --features native-jit,nce -- -D warnings
+
+      - name: Clippy (gpu-present)
+        run: cargo clippy --locked --workspace --all-targets --features gpu-present -- -D warnings
+
+  msrv:
+    name: Minimum supported Rust (1.89, default features)
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      # Keep in step with clippy.toml `msrv` and the README. Optional features need newer
+      # compilers (gpu-present 1.90, native-jit 1.97), so only default features are checked here.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@d92bbbb03544f480ed5c7ba4b54020e4ed2c4f65 # 1.89.0
+        with:
+          toolchain: 1.89.0
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev
+
+      - name: Cache Cargo build artifacts
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: msrv
+
+      - name: Build with the minimum supported Rust
+        run: cargo check --locked --all-targets
 
   gpu-present:
     needs: changes
@@ -162,10 +261,12 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       # lavapipe (mesa-vulkan-drivers) is a software Vulkan driver, so the offscreen
       # GPU blit test really runs on runners without a GPU instead of skipping.
@@ -176,7 +277,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: gpu-present
 
@@ -211,7 +312,7 @@ jobs:
 
       - name: Retain native Mac app preview
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: macos-app-preview
           path: ${{ runner.temp }}/macos-preview/
@@ -234,10 +335,12 @@ jobs:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -246,7 +349,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: native-jit
 
@@ -293,10 +396,12 @@ jobs:
         os: [macos-latest, ubuntu-24.04-arm, ubuntu-latest]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -305,7 +410,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: nce
 
@@ -337,13 +442,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: mac-app
 
@@ -389,7 +496,7 @@ jobs:
     # applicable job. Docs-only PRs get these statuses without Rust builds.
     name: Test (${{ matrix.context }})
     if: always()
-    needs: [changes, legal-guardrails, tooling, release-notice-packaging, test, gpu-present, native-jit, nce, corpus]
+    needs: [changes, legal-guardrails, tooling, release-notice-packaging, lint, msrv, test, gpu-present, native-jit, nce, corpus]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -406,7 +513,7 @@ jobs:
           required = ['changes', 'legal-guardrails', 'tooling', 'release-notice-packaging']
           scope = needs['changes'].get('outputs', {})
           if scope.get('runtime') == 'true':
-              required += ['test', 'gpu-present', 'native-jit', 'nce']
+              required += ['lint', 'msrv', 'test', 'gpu-present', 'native-jit', 'nce']
           if scope.get('corpus') == 'true':
               required += ['corpus']
           bad = {job: needs[job]['result'] for job in required if needs[job]['result'] != 'success'}

@@ -61,6 +61,15 @@ pub enum MemoryError {
     Misaligned { addr: u64, size: usize },
 }
 
+impl MemoryError {
+    /// The guest virtual address of the failed access.
+    pub fn addr(&self) -> u64 {
+        match self {
+            Self::Unmapped { addr } | Self::PermissionDenied { addr, .. } | Self::Misaligned { addr, .. } => *addr,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MemoryBucketStats {
     pub total_pages: usize,
@@ -205,7 +214,7 @@ impl Memory {
             let va = page_idx << 12;
             if (0x9000_0000..0xA000_0000).contains(&va) {
                 stats.vram_bytes += PAGE_SIZE;
-            } else if va >= 0x7FFF_0000_00 {
+            } else if va >= 0x7F_FF00_0000 {
                 stats.stack_tls_bytes += PAGE_SIZE;
             } else if page.perm.execute {
                 stats.code_bytes += PAGE_SIZE;
@@ -262,6 +271,8 @@ impl Memory {
 
     /// Copy software-backed memory for a fault probe without changing the live guest.
     /// Native arenas cannot be copied this way.
+    // `..Self::new()` supplies the `nce`-only `arena` field; without that feature it is redundant.
+    #[allow(clippy::needless_update)]
     pub(crate) fn fault_snapshot(&self) -> Option<Self> {
         #[cfg(feature = "nce")]
         if self.arena.is_some() { return None; }

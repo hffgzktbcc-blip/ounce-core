@@ -88,26 +88,26 @@ impl NpdmDescriptor {
         let mut allowed_services = Vec::new();
         let allowed_syscalls_mask = 0xFFFFFFFFFFFFFFFFu64;
 
-        if let Some(aci0_bytes) = aci0_offset.checked_add(aci0_size).and_then(|end| bytes.get(aci0_offset..end)).filter(|_| aci0_size >= 0x20) {
-            if aci0_bytes.len() >= 0x20 && aci0_bytes[0x00..0x04] == ACI0_MAGIC {
-                title_id = LittleEndian::read_u64(&aci0_bytes[0x10..0x18]);
+        if let Some(aci0_bytes) = aci0_offset.checked_add(aci0_size).and_then(|end| bytes.get(aci0_offset..end)).filter(|_| aci0_size >= 0x20)
+            && aci0_bytes.len() >= 0x20 && aci0_bytes[0x00..0x04] == ACI0_MAGIC
+        {
+            title_id = LittleEndian::read_u64(&aci0_bytes[0x10..0x18]);
 
-                let sac_offset = LittleEndian::read_u32(&aci0_bytes[0x18..0x1C]) as usize;
-                let sac_size = LittleEndian::read_u32(&aci0_bytes[0x1C..0x20]) as usize;
+            let sac_offset = LittleEndian::read_u32(&aci0_bytes[0x18..0x1C]) as usize;
+            let sac_size = LittleEndian::read_u32(&aci0_bytes[0x1C..0x20]) as usize;
 
-                if let Some(sac_data) = sac_offset.checked_add(sac_size).and_then(|end| aci0_bytes.get(sac_offset..end)).filter(|d| !d.is_empty()) {
-                    let mut cursor = 0;
-                    while cursor < sac_data.len() {
-                        let len = sac_data[cursor] as usize;
-                        cursor += 1;
-                        if len == 0 || cursor + len > sac_data.len() {
-                            break;
-                        }
-                        if let Ok(srv) = std::str::from_utf8(&sac_data[cursor..cursor + len]) {
-                            allowed_services.push(srv.to_string());
-                        }
-                        cursor += len;
+            if let Some(sac_data) = sac_offset.checked_add(sac_size).and_then(|end| aci0_bytes.get(sac_offset..end)).filter(|d| !d.is_empty()) {
+                let mut cursor = 0;
+                while cursor < sac_data.len() {
+                    let len = sac_data[cursor] as usize;
+                    cursor += 1;
+                    if len == 0 || cursor + len > sac_data.len() {
+                        break;
                     }
+                    if let Ok(srv) = std::str::from_utf8(&sac_data[cursor..cursor + len]) {
+                        allowed_services.push(srv.to_string());
+                    }
+                    cursor += len;
                 }
             }
         }
@@ -386,22 +386,20 @@ impl LoosePackageLoader {
             candidates.into_iter().find(|p| p.is_file())
         };
 
-        if let Some(elf_path) = check_elf("main", &package.main_nso) {
-            if let Ok(bytes) = fs::read(&elf_path) {
-                if let Some(tmpl) = NroLoader::parse_pt_tls(&bytes) {
-                    templates.insert(base_addr, tmpl);
-                }
-            }
+        if let Some(elf_path) = check_elf("main", &package.main_nso)
+            && let Ok(bytes) = fs::read(&elf_path)
+            && let Some(tmpl) = NroLoader::parse_pt_tls(&bytes)
+        {
+            templates.insert(base_addr, tmpl);
         }
 
         for (i, (mod_name, mod_path)) in package.companion_nsos.iter().enumerate() {
             let mod_base = base_addr + ((i as u64 + 1) * 0x04000000);
-            if let Some(elf_path) = check_elf(mod_name, mod_path) {
-                if let Ok(bytes) = fs::read(&elf_path) {
-                    if let Some(tmpl) = NroLoader::parse_pt_tls(&bytes) {
-                        templates.insert(mod_base, tmpl);
-                    }
-                }
+            if let Some(elf_path) = check_elf(mod_name, mod_path)
+                && let Ok(bytes) = fs::read(&elf_path)
+                && let Some(tmpl) = NroLoader::parse_pt_tls(&bytes)
+            {
+                templates.insert(mod_base, tmpl);
             }
         }
 
@@ -444,10 +442,10 @@ impl LoosePackageLoader {
 
         // 6. Mount RomFS Directory Assets (if present)
         let mut romfs_files_mounted = 0usize;
-        if let Some(ref romfs_path) = package.romfs_dir {
-            if let Ok(count) = kernel.vfs.mount_host_directory(romfs_path, "romfs") {
-                romfs_files_mounted = count;
-            }
+        if let Some(ref romfs_path) = package.romfs_dir
+            && let Ok(count) = kernel.vfs.mount_host_directory(romfs_path, "romfs")
+        {
+            romfs_files_mounted = count;
         }
 
         // 7. Configure Title and Capabilities from NPDM (or default)

@@ -78,14 +78,14 @@ fn execute(raw: u32, tier: u8) {
                         m.to_le_bytes()[lane * 8..lane * 8 + 8].try_into().unwrap(),
                     );
                     let value = if raw & 0xffe00000 == 0xce600000 {
-                        n ^ ((m << 1) | (m >> 63))
+                        n ^ m.rotate_left(1)
                     } else {
                         let imm = (raw >> 10) & 63;
                         let x = n ^ m;
                         if imm == 0 {
                             x
                         } else {
-                            (x >> imm) | (x << (64 - imm))
+                            x.rotate_right(imm)
                         }
                     };
                     out.copy_from_slice(&value.to_le_bytes());

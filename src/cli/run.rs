@@ -140,8 +140,81 @@ pub(crate) fn run_directory_package(dir_path: &str, gui_mode: bool) {
     }
 }
 
+/// The words after the program path of `run` / `run-nro`: host flags, and the guest's `argv[1..]`.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct RunArgs<'a> {
+    pub gui: bool,
+    pub guest: Vec<&'a str>,
+}
+
+/// Splits the words after the program path. Words after `--` go to the guest unchanged, dashes and all.
+/// Before `--`, a dashed word must be a `run` flag: an unknown one is an error rather than being
+/// dropped, so a flag meant for the program never silently disappears (#487). Global options
+/// (`--cpu=`, `--present=`, `--sdmc=`, `--report-json`, ...) were already removed by `main`.
+pub(crate) fn parse_run_args<'a>(command: &str, path: &str, words: &'a [String]) -> Result<RunArgs<'a>, String> {
+    let mut parsed = RunArgs { gui: false, guest: Vec::new() };
+    let mut words = words.iter();
+    while let Some(word) = words.next() {
+        match word.as_str() {
+            "--" => {
+                parsed.guest.extend(words.map(String::as_str));
+                break;
+            }
+            "--gui" | "--window" | "-g" => parsed.gui = true,
+            // Already applied by `main`; kept in the argument list for commands that forward it.
+            "--deterministic" => {}
+            flag if flag.starts_with('-') && flag != "-" => {
+                return Err(format!(
+                    "{command}: unknown option '{flag}'. To pass it to the program, put it after `--`:\n  \
+                     ounce-core {command} {path} -- {flag}\nSee `ounce-core {command} --help`."
+                ));
+            }
+            arg => parsed.guest.push(arg),
+        }
+    }
+    // libnx splits argv on spaces and drops an empty token even inside quotes, so an empty argument would vanish and
+    // the guest would see a smaller argc than it was run with. Refuse it before anything starts.
+    if let Some(position) = parsed.guest.iter().position(|a| a.is_empty()) {
+        return Err(format!(
+            "{command}: empty guest argument (word {} of the program's arguments). libnx cannot receive an empty argv \
+             entry, so the program would see fewer arguments than you passed. Remove it.",
+            position + 1
+        ));
+    }
+    Ok(parsed)
+}
+
+pub(crate) fn print_run_usage(command: &str) {
+    let accepts = if command == "run-nro" { "a homebrew .nro" } else { "a .nro, .nso or loose folder" };
+    println!("usage: ounce-core {command} <path> [--gui] [args...] [-- args...]\n");
+    println!("Runs {accepts}. Words after the path that do not start with '-' become the program's argv[1..].");
+    println!("Only .nro programs have an argv: guest arguments for a .nso or a folder are refused (exit status 2).");
+    println!("Everything after `--` is passed to the program unchanged, including words that start with '-'.");
+    println!("Any other word starting with '-' before `--` is an error (exit status 2), never silently dropped.\n");
+    println!("  --gui, --window, -g   open a window");
+    println!("  --deterministic       fixed guest clock (time advances per system call) and software 3D, so a run repeats");
+    println!("Global options such as --cpu=, --present=, --sdmc=, --report-json, --max-frames and --press may appear");
+    println!("anywhere before `--`; see `ounce-core help`.\n");
+    println!("examples:");
+    println!("  ounce-core {command} tests/fixtures/nro/hello/hello.nro --present=headless fixture");
+    println!("  ounce-core {command} my_test.nro --present=headless -- --verbose --filter=fp");
+}
+
+/// Only `.nro` programs receive an argv (the homebrew ABI). Refuse guest arguments for any other target instead of
+/// dropping them (#487).
+fn refuse_guest_args(target: &str, guest_args: &[&str]) -> ! {
+    eprintln!(
+        "[CLI] guest arguments ({}) are only passed to .nro programs; {target} has no argv. Remove them, or run a .nro.",
+        guest_args.join(" ")
+    );
+    std::process::exit(2);
+}
+
 pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only: bool) {
     if !nro_only && std::path::Path::new(path).is_dir() {
+        if !guest_args.is_empty() {
+            refuse_guest_args("a loose package folder", guest_args);
+        }
         run_directory_package(path, gui_mode);
         return;
     }
@@ -153,6 +226,9 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
             std::process::exit(1);
         }
     };
+    if !guest_args.is_empty() && bytes.get(0x10..0x14) != Some(b"NRO0".as_slice()) {
+        refuse_guest_args("this file is not an NRO and", guest_args);
+    }
 
     if cpu::CpuTier::from_env() == cpu::CpuTier::Native && bytes.get(0x10..0x14) == Some(b"NRO0".as_slice()) {
         #[cfg(feature = "nce")]
@@ -184,11 +260,9 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
 
             // Homebrew ABI for NRO0: ConfigEntry list in X0 (X1 = -1), a heap handed over so libnx skips
             // svcSetHeapSize, and X30 at a svcExitProcess stub, which is where libnx's exit returns.
-            if is_nro {
-                if let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, &bytes, guest_args) {
-                    eprintln!("[Loader Error] homebrew environment: {}", e);
-                    std::process::exit(1);
-                }
+            if is_nro && let Err(e) = setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, &bytes, guest_args) {
+                eprintln!("[Loader Error] homebrew environment: {}", e);
+                std::process::exit(1);
             }
             // After the NRO went on the virtual SD card, so it stays in memory and is not copied into the folder.
             if let Some(dir) = SDMC_HOST_DIR.get() {
@@ -575,5 +649,53 @@ mod time_limit_tests {
         for bad in ["", "0", "-3", "abc", "NaN", "inf"] {
             assert_eq!(parse_time_limit(bad), None, "{bad:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod run_args_tests {
+    use super::{parse_run_args, RunArgs};
+
+    fn words(list: &[&str]) -> Vec<String> {
+        list.iter().map(|w| w.to_string()).collect()
+    }
+
+    #[test]
+    fn plain_words_before_the_separator_are_guest_arguments() {
+        let w = words(&["fixture", "two"]);
+        assert_eq!(parse_run_args("run-nro", "a.nro", &w), Ok(RunArgs { gui: false, guest: vec!["fixture", "two"] }));
+    }
+
+    #[test]
+    fn everything_after_the_separator_reaches_the_guest_unchanged() {
+        // Including words that look like ounce-core flags: they belong to the program now (#487).
+        let w = words(&["fixture", "--", "-x", "--gui", "--", "--deterministic"]);
+        let parsed = parse_run_args("run-nro", "a.nro", &w).unwrap();
+        assert_eq!(parsed.guest, ["fixture", "-x", "--gui", "--", "--deterministic"]);
+        assert!(!parsed.gui, "--gui after `--` is a guest argument, not a window request");
+    }
+
+    #[test]
+    fn run_flags_before_the_separator_are_consumed() {
+        for flag in ["--gui", "--window", "-g"] {
+            let w = words(&[flag, "fixture"]);
+            assert_eq!(parse_run_args("run", "a.nro", &w), Ok(RunArgs { gui: true, guest: vec!["fixture"] }));
+        }
+        let w = words(&["--deterministic"]);
+        assert_eq!(parse_run_args("run", "a.nro", &w), Ok(RunArgs { gui: false, guest: vec![] }));
+    }
+
+    #[test]
+    fn unknown_dashed_word_before_the_separator_is_an_error_that_shows_the_fix() {
+        let w = words(&["fixture", "--verbose"]);
+        let err = parse_run_args("run-nro", "app.nro", &w).unwrap_err();
+        assert!(err.contains("unknown option '--verbose'"), "{err}");
+        assert!(err.contains("ounce-core run-nro app.nro -- --verbose"), "{err}");
+    }
+
+    #[test]
+    fn a_lone_dash_is_an_ordinary_argument() {
+        let w = words(&["-"]);
+        assert_eq!(parse_run_args("run", "a.nro", &w).unwrap().guest, ["-"]);
     }
 }

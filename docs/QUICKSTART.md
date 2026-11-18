@@ -5,7 +5,7 @@ Run one homebrew program and, if you want a machine-readable result, write an
 [LIMITS.md](LIMITS.md). The family roadmap is in
 [roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md](roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md).
 
-You need Rust 1.85 or newer (edition 2024). On Debian or Ubuntu, install the
+You need Rust 1.89 or newer (edition 2024). On Debian or Ubuntu, install the
 audio and device headers before building:
 
 ```sh
@@ -21,6 +21,8 @@ cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture --pres
 
 `fixture` is a guest argument. With it, a clean run prints `result=0x00000EEE` and exits 0. Without a guest argument the same file still exits 0 and prints `result=0x0BAD0008`. The default engine is
 Tier-3. `--cpu=interpreter` is one instruction at a time.
+Guest arguments that start with `-` go after `--`, for example `... hello.nro -- --verbose`; before `--`,
+an unknown option is refused with exit status 2 rather than dropped (`ounce-core run-nro --help`).
 `--cpu=tier4` needs `cargo build --release --features native-jit`.
 `--cpu=native` runs a homebrew NRO on an AArch64 host and needs
 `--features nce`; without that feature the run stays on the interpreter and
@@ -35,14 +37,18 @@ cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture \
   --present=headless --report-json=run.json
 ```
 
-`run.json` is `ounce.run.v1`. Guest text stays on stdout. The same path can be
-given as `OUNCE_REPORT_JSON`. `run` and `run-nro` write the file.
-`run-elf` does not, yet.
+`run.json` is `ounce.run.v1`. Guest text stays on stdout and is flushed as the
+guest writes it, so a hung program's output shows before a timeout stops it. The same path can be
+given as `OUNCE_REPORT_JSON`. `run`, `run-nro` and `run-elf` write the file.
 
 `--audio=null` (or `OUNCE_AUDIO=null`) does not open a host audio device.
-`--present=headless` already skips that device. On `run-elf`,
-`--deterministic` uses a fixed guest clock. On `run` and `run-nro` the flag is
-accepted and does not change the kernel clock.
+`--present=headless` already skips that device. `--deterministic` runs the
+guest on a fixed clock on `run`, `run-nro` and `run-elf`: guest time advances
+with each system call instead of with the host clock, and a guest that sleeps
+skips ahead instead of waiting, so a run executes the same instructions every
+time and on every host. On `run` and `run-nro` it also draws 3D with the
+software rasterizer even in a GPU window, so every presented frame has a
+`framebuffer_hash`.
 
 Field list, stop kinds, and the limits of this report:
 [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md).

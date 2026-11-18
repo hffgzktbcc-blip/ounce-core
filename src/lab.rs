@@ -890,10 +890,10 @@ fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
     if !req.headers.get("host").is_some_and(|h| *h == own_host || *h == own_local) {
         return error(403, "This server only answers requests addressed to it on localhost.");
     }
-    if let Some(origin) = req.headers.get("origin") {
-        if *origin != format!("http://{own_host}") && *origin != format!("http://{own_local}") {
-            return error(403, "Cross-site requests are refused.");
-        }
+    if let Some(origin) = req.headers.get("origin")
+        && *origin != format!("http://{own_host}") && *origin != format!("http://{own_local}")
+    {
+        return error(403, "Cross-site requests are refused.");
     }
     if req.method == "GET" && req.path == "/" {
         if req.query.get("t") != Some(&lab.token) {

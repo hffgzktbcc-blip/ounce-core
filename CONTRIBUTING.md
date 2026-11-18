@@ -50,7 +50,7 @@ scripts/gate.sh --checkpoint "what/why"    # local signed-off commit; no tests/p
 scripts/gate.sh --checkpoint "what/why" --push  # save and push explicitly
 scripts/gate.sh                            # relevant local checks by changed paths
 scripts/gate.sh --check quick               # shell/Python/policy checks; no Rust
-scripts/gate.sh --check runtime             # quick + default release tests/harness
+scripts/gate.sh --check runtime             # quick + clippy + default release tests/harness
 scripts/gate.sh --check full                # runtime + optional feature tests
 scripts/gate.sh --submit                    # push and open/update a PR; no merge
 ```
@@ -69,6 +69,11 @@ runtime and feature checks; failed or cancelled applicable checks fail the summa
 Docs/metadata/Python-only changes avoid Rust rebuilds. Runtime/build/oracle changes
 run the supported platform/feature matrices and canonical corpus. Full release
 qualification remains separate. See the workflow files for exact triggers.
+Rust changes must build without warnings: the `lint` job runs
+`cargo clippy --locked --workspace --all-targets -- -D warnings` (also with
+`--features native-jit,nce` and `--features gpu-present`) on a pinned toolchain, and the
+`msrv` job builds default features with Rust 1.89. Fix a lint rather than silencing it;
+when a lint is wrong for a site, use a scoped `#[allow(clippy::...)]` with a one-line reason.
 README prose edits stay cheap; changing certified headline/badge values requires
 fresh canonical corpus validation. Embedded fonts count as runtime inputs.
 

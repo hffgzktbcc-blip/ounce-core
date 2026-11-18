@@ -126,9 +126,10 @@ impl Process {
                     -EINVAL
                 } else {
                     let mut action = [0; 32];
-                    if a[1] != 0 && mmu.read_bytes(a[1], &mut action).is_err() {
-                        -EFAULT
-                    } else if a[2] != 0 && mmu.write_bytes(a[2], &self.sigactions[a[0] as usize]).is_err() {
+                    // Read the new action before writing the old one back, as the kernel does.
+                    if (a[1] != 0 && mmu.read_bytes(a[1], &mut action).is_err())
+                        || (a[2] != 0 && mmu.write_bytes(a[2], &self.sigactions[a[0] as usize]).is_err())
+                    {
                         -EFAULT
                     } else {
                         if a[1] != 0 { self.sigactions[a[0] as usize] = action; }
@@ -328,7 +329,7 @@ impl Process {
     }
 
     fn sys_munmap(&mut self, addr: u64, len: u64, mmu: &mut Memory) -> i64 {
-        if addr % PAGE != 0 || len == 0 || len > u64::MAX - (PAGE - 1) { return -EINVAL; }
+        if !addr.is_multiple_of(PAGE) || len == 0 || len > u64::MAX - (PAGE - 1) { return -EINVAL; }
         let len = align_up(len);
         if addr < PAGE || addr.checked_add(len).is_none_or(|e| e > STACK_TOP - STACK_SIZE) { return -EINVAL; }
         let freed = self.accounted_bytes(mmu, addr, len);
@@ -471,7 +472,7 @@ fn sys_sched_getaffinity(pid: u64, len: u64, mask: u64, mmu: &mut Memory) -> i64
     if pid != 0 && pid != PID {
         return -ESRCH;
     }
-    if len < 8 || len % 8 != 0 {
+    if len < 8 || !len.is_multiple_of(8) {
         return -EINVAL;
     }
     if mmu.write_bytes(mask, &1u64.to_le_bytes()).is_err() {

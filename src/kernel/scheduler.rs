@@ -7,6 +7,10 @@ use std::time::{Duration, Instant};
 
 /// Guest time one SVC takes under the deterministic clock.
 const DETERMINISTIC_NS_PER_SVC: u64 = 20_000;
+/// Guest time one preemption slice (`PREEMPT_INTERVAL` instructions) takes under the deterministic clock: 1 ms, a guest
+/// running 20 million instructions per second. Without it a thread that spins without SVCs would freeze guest time,
+/// and a thread asleep on a timeout could never wake.
+const DETERMINISTIC_NS_PER_SLICE: u64 = 1_000_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThreadState {
@@ -382,6 +386,9 @@ impl ThreadScheduler {
     /// Only threads that could take this core from the running one get it: equal or better priority on the
     /// same core, or any thread whose ideal core is another one (on hardware it would run in parallel).
     pub fn preempt(&mut self, cpu: &mut Cpu) {
+        if let Some(ns) = self.deterministic_ns.as_mut() {
+            *ns += DETERMINISTIC_NS_PER_SLICE;
+        }
         self.expire_timers();
         self.yield_to(cpu, YieldTo::SameCore);
     }
@@ -984,6 +991,29 @@ mod tests {
         // svcGetCurrentProcessorNumber: the worker asked for the process's ideal core (-2).
         kernel.dispatch_svc(0x10, &mut cpu, &mut mmu);
         assert_eq!(cpu.regs.read_x(0), PROCESS_IDEAL_CORE as u64);
+    }
+
+    /// Deterministic mode runs on guest time, which used to advance only inside SVCs. A worker asleep on a timeout then
+    /// never woke while the main thread spun on a shared flag without making SVCs, and the run ended on the
+    /// instruction budget. Each preemption slice now carries guest time too, so the sleep ends after a fixed number of
+    /// slices, the same on every run and host.
+    #[test]
+    fn a_sleeping_thread_wakes_while_another_spins_without_svcs_in_deterministic_mode() {
+        let wake_after_slices = || {
+            let (mut kernel, mut cpu, mut mmu, worker) = kernel_with_worker();
+            kernel.set_deterministic_clock(crate::kernel::HorizonKernel::DETERMINISTIC_UNIX_SECS);
+            cpu.regs.write_x(0, 10 * MS);
+            kernel.dispatch_svc(0x0B, &mut cpu, &mut mmu); // the worker sleeps 10 ms; the main thread runs
+            assert_eq!(kernel.scheduler.current, MAIN_THREAD_KEY);
+            // The main thread spins: no SVCs, only preemption slices.
+            (1..=1_000).find(|_| {
+                kernel.scheduler.preempt(&mut cpu);
+                kernel.scheduler.current == worker
+            })
+        };
+        let slices = wake_after_slices().expect("the worker's 10 ms sleep ends although the main thread makes no SVCs");
+        assert!((5..=20).contains(&slices), "a 10 ms sleep took {slices} slices");
+        assert_eq!(wake_after_slices(), Some(slices), "the same on every run");
     }
 
     #[test]

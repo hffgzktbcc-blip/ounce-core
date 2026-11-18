@@ -225,13 +225,11 @@ impl HostAudioSink {
         if let Ok(mut q) = self.queue.lock() {
             let available = q.len();
             let to_read = out.len().min(available);
-            for i in 0..to_read {
-                out[i] = q.pop_front().unwrap_or(0);
+            for slot in &mut out[..to_read] {
+                *slot = q.pop_front().unwrap_or(0);
             }
             if to_read < out.len() {
-                for i in to_read..out.len() {
-                    out[i] = 0;
-                }
+                out[to_read..].fill(0);
                 let deficit = (out.len() - to_read) as u64;
                 self.underruns.fetch_add(deficit, Ordering::Relaxed);
             }
