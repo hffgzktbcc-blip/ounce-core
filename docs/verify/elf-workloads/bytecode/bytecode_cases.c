@@ -69,9 +69,9 @@ int workload_run(FILE *o) {
 
     /* gcd(1071, 462) via Euclid with mem0=a mem1=b */
     int64_t gcd[] = {PUSH, 1071, STORE, 0, PUSH, 462, STORE, 1,
-                     /*8*/ LOAD, 1, JZ, 24,
+                     /*8*/ LOAD, 1, JZ, 25,
                      LOAD, 0, LOAD, 1, MOD, LOAD, 1, STORE, 0, STORE, 1, JMP, 8,
-                     /*24*/ LOAD, 0, PRINT, HALT};
+                     /*25*/ LOAD, 0, PRINT, HALT};
     fprintf(o, "gcd(1071,462):\n");
     rc = run(&m, gcd, o);
     fprintf(o, "  rc=%d steps=%llu native=%lld\n", rc, (unsigned long long)m.steps, (long long)native_gcd(1071, 462));

@@ -476,6 +476,7 @@ fn recorded_traces(tag: &str) -> (Vec<PathBuf>, PathBuf) {
     let out = Command::new(BIN)
         .args(["run-nro", program.to_str().unwrap(), "--present=headless", "--deterministic"])
         .env("OUNCE_TRACE_SUMMARY", &a)
+        .env("OUNCE_TRACE_STEPS", "1024") // do not inherit the caller's limit
         .output()
         .unwrap();
     assert_eq!(code(&out), 1, "the program faults on purpose; the trace is written on every stop");

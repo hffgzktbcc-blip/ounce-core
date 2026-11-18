@@ -110,7 +110,7 @@ int workload_run(FILE *o) {
     dec[len] = 0;
     fprintf(o, "34! = %s\n", dec);
     if (strcmp(dec, "295232799039604140847618609643520000000")) fails++;
-    __int128 neg = -(__int128)1 << 100;
+    __int128 neg = -((__int128)1 << 100);
     fprintf(o, "-(2^100)/12345 = %lld rem %lld\n", (long long)(neg / 12345), (long long)(neg % 12345));
 
     fprintf(o, "isqrt: %llu %llu %llu %llu\n", (unsigned long long)isqrt(99), (unsigned long long)isqrt(1000000),

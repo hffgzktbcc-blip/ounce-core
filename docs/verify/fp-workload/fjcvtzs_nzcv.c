@@ -34,7 +34,8 @@ void _start(void) {
         for (int fz = 0; fz < 2; fz++) {
             u64 fpcr = fz ? (1ul << 24) : 0, nzcv, fpsr;
             u32 res;
-            double d = *(const double *)&in[i];
+            double d;
+            __builtin_memcpy(&d, &in[i], sizeof d); /* copy the bits; a cast or aliasing read would not be defined */
             __asm__ volatile(
                 "msr fpcr, %[fpcr]\n msr fpsr, xzr\n msr nzcv, %[ones]\n"
                 "fjcvtzs %w[res], %d[d]\n"
