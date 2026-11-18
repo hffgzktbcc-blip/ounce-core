@@ -12,6 +12,14 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   `actions/upload-pages-artifact`, `actions/deploy-pages`, `taiki-e/install-action`) are now pinned to the commit their tag
   points to, read with `git ls-remote`, and `PENDING` in `scripts/check_action_pins.py` is empty. Only the pins changed:
   release, pages and coverage workflows have still not run with them.
+- Family check: `scripts/family_check.py` runs the same programs (default `tests/fixtures/nro`) through two or more Ounce
+  tools and compares their `ounce.run.v1` reports. Five keys (`schema`, `stop_kind`, `exit_code`, `frames_presented`,
+  `framebuffer_hash`) must agree or the check fails; other keys (`insns_executed`, the audio keys, `lr`, `sp`,
+  `guest_exit_status`) are only reported. Run on 2026-11-19 with ounce-core and ounce-runtime both built from `main`, 11 of 11
+  programs agree on every strict key and neither tool is missing an advisory key. `insns_executed` still differs: ounce-core
+  counts 15 more on 10 programs and 1 fewer on `threads`; that is unexplained. The first run (2026-11-18, before
+  ounce-runtime wrote `lr`, `sp`, `guest_exit_status` and the audio keys) showed the same 11 of 11 on the strict keys. Data and
+  CLI only; no code is shared between the tools.
 - Contract (#481, DRAFT, not a freeze): `docs/CONTRACT_V1.md` states the additive-only rule and lists what `ounce.run.v1`,
   `ounce.trace.v1`, the exit codes and the flags `--max-frames`, `--sdmc`, `--timeout`, `--json` are today, with the
   questions the owner must answer before anything is frozen. `tests/contract_v1.rs` and `tests/contract/*.json` pin the
