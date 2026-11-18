@@ -586,6 +586,9 @@ pub(crate) fn run_vm_internal(
         stop_kind,
         exit_code: run_report::exit_code_for(stop_kind),
         pc: stop_pc,
+        // The link register and stack pointer are reported with the pc, so a stop can be located without a debugger.
+        lr: stop_pc.map(|_| cpu.regs.read_x(30)),
+        sp: stop_pc.map(|_| cpu.regs.sp),
         opcode: stop_opcode,
         fault_addr: stop_fault_addr,
         svc_id: stop_svc_id,
@@ -756,6 +759,8 @@ mod harness_gate_tests {
                 stop_kind: "clean_exit",
                 exit_code: 0,
                 pc: None,
+                lr: None,
+                sp: None,
                 opcode: None,
                 fault_addr: None,
                 svc_id: None,

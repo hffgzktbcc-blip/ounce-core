@@ -195,6 +195,40 @@ fn headless_audio_is_reported_as_a_frame_count_and_a_deterministic_hash() {
     assert!(silent["audio_hash"].is_null(), "{silent}");
 }
 
+/// #475: a stop that has a `pc` also reports the link register and stack pointer, so a failure can be located without
+/// a debugger. The guest calls a function (`BL`, so `lr` is the instruction after it) which loads from unmapped memory:
+/// `lr` is exactly 8 bytes before the faulting `pc`, and `sp` is the guest's 16-byte-aligned stack. A clean exit has
+/// no `pc` on `run-nro`, so it reports neither.
+#[test]
+fn a_fault_reports_the_link_register_and_stack_pointer() {
+    // 0x80: BL +8 (to 0x88)   0x84: MOVZ W0,#0 (never reached)   0x88: MOVZ X1,#0x10   0x8C: LDR X0,[X1] (unmapped)
+    let code = [0x9400_0002u32, 0x5280_0000, 0xD280_0201, 0xF940_0020];
+    let text: Vec<u8> = code.iter().flat_map(|w| w.to_le_bytes()).collect();
+    let dir = std::env::temp_dir().join(format!("ounce_fault_lr_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let nro = dir.join("fault.nro");
+    std::fs::write(&nro, nro_with_text(&text)).unwrap();
+    for tier in ["interpreter", "tier3"] {
+        let report = dir.join(format!("{tier}.json"));
+        let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+            .args(["run-nro", nro.to_str().unwrap(), "--present=headless", "--deterministic"])
+            .arg(format!("--cpu={tier}"))
+            .arg(format!("--report-json={}", report.display()))
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{tier}: a fault is a failed run");
+        let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+        assert_eq!((json["stop_kind"].as_str(), json["exit_code"].as_i64()), (Some("memory_fault"), Some(11)), "{tier}: {json}");
+        let (pc, lr, sp) = (json["pc"].as_u64(), json["lr"].as_u64(), json["sp"].as_u64());
+        assert!(pc.is_some() && lr.is_some() && sp.is_some(), "{tier}: pc, lr and sp are numbers: {json}");
+        assert_eq!(pc.unwrap() - lr.unwrap(), 8, "{tier}: lr is the BL's return address: {json}");
+        assert!(sp.unwrap() != 0 && sp.unwrap() % 16 == 0, "{tier}: sp is the aligned guest stack: {json}");
+    }
+    let exit = deterministic_report(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro"), "interpreter", "lr", &[]);
+    assert!(exit["pc"].is_null() && exit["lr"].is_null() && exit["sp"].is_null(), "{exit}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// Runs the exit NRO with one guest argument of `arg_len` bytes. Returns the output and the file name, which sets
 /// the program path that run-nro puts in front of the guest argument (`sdmc:/<file>`).
 #[cfg(not(windows))]
@@ -546,6 +580,8 @@ fn run_elf_writes_an_ounce_run_v1_report_and_dumps_registers() {
     assert_eq!(json["guest_exit_status"], 42);
     assert_eq!(json["tier"], "tier3");
     assert!(json["insns_executed"].as_u64().unwrap() > 0);
+    assert!(json["sp"].as_u64().is_some_and(|sp| sp != 0 && sp % 16 == 0), "run-elf reports the stack pointer: {json}");
+    assert!(json["lr"].is_u64(), "run-elf reports the link register: {json}");
     let doc = include_str!("../docs/OUNCE_RUN_V1_SCHEMA.md");
     let fields = doc.split("## Schema Fields").nth(1).unwrap().split("\n---").next().unwrap();
     for key in json.as_object().unwrap().keys() {
