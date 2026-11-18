@@ -53,15 +53,21 @@ impl IpcManager {
                 };
                 let accepted = matches!(rate, 0 | 48000) && valid_channels;
                 let trace = AudioOpenTrace {
-                    input, rate, raw_channels: channels,
+                    input,
+                    rate,
+                    raw_channels: channels,
                     result: if accepted { 0 } else { INVALID_ARGUMENT },
                     channels: accepted.then_some(2),
                 };
                 if std::env::var_os("OUNCE_TRACE_IPC").is_some() {
-                    eprintln!("[audio open] input={} rate={} raw_channels={:#010x} result={:#010x} channels={:?}",
-                        trace.input, trace.rate, trace.raw_channels, trace.result, trace.channels);
+                    eprintln!(
+                        "[audio open] input={} rate={} raw_channels={:#010x} result={:#010x} channels={:?}",
+                        trace.input, trace.rate, trace.raw_channels, trace.result, trace.channels
+                    );
                 }
-                if self.audio_open_trace.len() < 64 { self.audio_open_trace.push(trace); }
+                if self.audio_open_trace.len() < 64 {
+                    self.audio_open_trace.push(trace);
+                }
                 if !accepted {
                     return Some(self.reply_error(tls, mmu, INVALID_ARGUMENT));
                 }
@@ -75,24 +81,12 @@ impl IpcManager {
                         released: VecDeque::new(),
                     },
                 );
-                self.write_out_buffer(
-                    mmu,
-                    if input {
-                        b"BuiltInHeadset\0"
-                    } else {
-                        b"DeviceOut\0"
-                    },
-                );
-                let data: Vec<u8> = [48000u32, 2, 2, 1]
-                    .into_iter()
-                    .flat_map(u32::to_le_bytes)
-                    .collect();
+                self.write_out_buffer(mmu, if input { b"BuiltInHeadset\0" } else { b"DeviceOut\0" });
+                let data: Vec<u8> = [48000u32, 2, 2, 1].into_iter().flat_map(u32::to_le_bytes).collect();
                 self.reply(tls, mmu, 0, &data, &[], Some(id));
                 Some(0)
             }
-            ServiceType::AudioDevice(id) => {
-                Some(self.audio_device_command(*id, cmd, args, tls, mmu, audio))
-            }
+            ServiceType::AudioDevice(id) => Some(self.audio_device_command(*id, cmd, args, tls, mmu, audio)),
             _ => None,
         }
     }
@@ -177,11 +171,7 @@ impl IpcManager {
         if !self.audio_devices[&id].input {
             audio.append_pcm_buffer(mmu, start, (size / 2) as usize);
         }
-        self.audio_devices
-            .get_mut(&id)
-            .unwrap()
-            .released
-            .push_back(tag);
+        self.audio_devices.get_mut(&id).unwrap().released.push_back(tag);
         self.reply_ok(tls, mmu)
     }
 
@@ -229,8 +219,16 @@ mod tests {
             let mut h = Harness::new();
             let root = h.ipc.allocate_handle(ServiceType::AudOut);
             let args: Vec<u8> = [48000u32, raw, 0, 0].into_iter().flat_map(u32::to_le_bytes).collect();
-            let opened = h.call_out(root, Req { cmd: 3, data: &args, recv: Some((BUF, 256)),
-                ..Default::default() }, 16);
+            let opened = h.call_out(
+                root,
+                Req {
+                    cmd: 3,
+                    data: &args,
+                    recv: Some((BUF, 256)),
+                    ..Default::default()
+                },
+                16,
+            );
             assert_eq!(opened.result, 0, "raw channels {raw:#010x}");
             assert_eq!(opened.u32(4), 2);
             assert_eq!(opened.move_handles.len(), 1);
@@ -241,7 +239,15 @@ mod tests {
             let mut h = Harness::new();
             let root = h.ipc.allocate_handle(ServiceType::AudOut);
             let args: Vec<u8> = [48000u32, raw, 0, 0].into_iter().flat_map(u32::to_le_bytes).collect();
-            let opened = h.call_out(root, Req { cmd: 3, data: &args, ..Default::default() }, 16);
+            let opened = h.call_out(
+                root,
+                Req {
+                    cmd: 3,
+                    data: &args,
+                    ..Default::default()
+                },
+                16,
+            );
             assert_eq!(opened.result, INVALID_ARGUMENT, "raw channels {raw:#010x}");
             assert!(opened.move_handles.is_empty());
             assert_eq!(h.ipc.audio_open_trace.last().unwrap().channels, None);

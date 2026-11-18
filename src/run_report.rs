@@ -105,10 +105,14 @@ pub fn write_if_configured(report: &RunReport) {
         return;
     };
     let payload = to_json(report);
-    if let Some(parent) = path.parent() && !parent.as_os_str().is_empty() {
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Ok(bytes) = serde_json::to_vec_pretty(&payload) && let Err(err) = std::fs::write(path, bytes) {
+    if let Ok(bytes) = serde_json::to_vec_pretty(&payload)
+        && let Err(err) = std::fs::write(path, bytes)
+    {
         eprintln!("[Report] Failed to write {}: {err}", path.display());
     }
 }
@@ -153,7 +157,10 @@ mod tests {
             .filter_map(|l| {
                 let cells: Vec<&str> = l.split('|').map(str::trim).collect();
                 let name = cells.get(1)?.strip_prefix('`')?.strip_suffix('`')?;
-                Some((name.to_string(), cells.get(2).copied().unwrap_or("").trim_matches('`').to_string()))
+                Some((
+                    name.to_string(),
+                    cells.get(2).copied().unwrap_or("").trim_matches('`').to_string(),
+                ))
             })
             .collect()
     }
@@ -180,8 +187,17 @@ mod tests {
         let mut documented: Vec<&str> = documented.iter().map(|(name, _)| name.as_str()).collect();
         emitted.sort_unstable();
         documented.sort_unstable();
-        assert_eq!(emitted, documented, "update docs/OUNCE_RUN_V1_SCHEMA.md and to_json together");
-        assert!(json.as_object().unwrap().values().all(|v| !v.is_object() && !v.is_array()), "fields must stay flat");
+        assert_eq!(
+            emitted, documented,
+            "update docs/OUNCE_RUN_V1_SCHEMA.md and to_json together"
+        );
+        assert!(
+            json.as_object()
+                .unwrap()
+                .values()
+                .all(|v| !v.is_object() && !v.is_array()),
+            "fields must stay flat"
+        );
     }
 
     #[test]

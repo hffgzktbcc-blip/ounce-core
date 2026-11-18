@@ -17,11 +17,7 @@ pub struct BootPackageInfo {
 pub struct BootLoader;
 
 impl BootLoader {
-    pub fn load_homebrew_nro(
-        bytes: &[u8],
-        base_addr: u64,
-        mmu: &mut Memory,
-    ) -> Result<BootPackageInfo, LoadError> {
+    pub fn load_homebrew_nro(bytes: &[u8], base_addr: u64, mmu: &mut Memory) -> Result<BootPackageInfo, LoadError> {
         Self::load_nro_executable(bytes, base_addr, 0, "NRO0", mmu)
     }
 
@@ -42,11 +38,7 @@ impl BootLoader {
     }
 
     /// Loads a homebrew `.nro`, `.nso` or raw AArch64 image at `base_addr`.
-    pub fn load_any_package(
-        raw: &[u8],
-        base_addr: u64,
-        mmu: &mut Memory,
-    ) -> Result<BootPackageInfo, LoadError> {
+    pub fn load_any_package(raw: &[u8], base_addr: u64, mmu: &mut Memory) -> Result<BootPackageInfo, LoadError> {
         Self::load_executable_bytes(raw, base_addr, 0, "NRO0", mmu)
     }
 
@@ -62,11 +54,7 @@ impl BootLoader {
             let hdr = NroLoader::load_nso_into_memory(exec_bytes, base_addr, mmu)?;
             return Ok(BootPackageInfo {
                 format: "NSO0 (Nintendo Shared Object)",
-                title_id: if title_id != 0 {
-                    title_id
-                } else {
-                    0x0400_0000_0000_0037
-                },
+                title_id: if title_id != 0 { title_id } else { 0x0400_0000_0000_0037 },
                 code_size: hdr.text_size as usize,
                 relocations_applied: hdr.relocations_applied,
             });
@@ -97,7 +85,10 @@ mod tests {
 
     #[test]
     fn raw_aarch64_image_is_mapped_at_base() {
-        let code: Vec<u8> = [0xD2800000u32, 0xD40000E1].iter().flat_map(|w| w.to_le_bytes()).collect();
+        let code: Vec<u8> = [0xD2800000u32, 0xD40000E1]
+            .iter()
+            .flat_map(|w| w.to_le_bytes())
+            .collect();
         let mut mmu = Memory::new();
         let info = BootLoader::load_any_package(&code, 0x8000_0000, &mut mmu).unwrap();
         assert_eq!(info.code_size, code.len());

@@ -5,9 +5,9 @@
 
 use super::svc::HorizonKernel;
 use crate::cpu::Cpu;
-use crate::loader::fuzz_tests::{cases, Rng};
+use crate::loader::fuzz_tests::{Rng, cases};
 use crate::mmu::{Memory, Permission};
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::{Duration, Instant};
 
 const RW: u64 = 0x9000;
@@ -38,7 +38,11 @@ fn argument(rng: &mut Rng, handles: &[u64]) -> u64 {
 
 /// SVC numbers that exist, plus a few that do not.
 fn svc_id(rng: &mut Rng) -> u16 {
-    if rng.below(8) == 0 { rng.next() as u16 } else { rng.below(0x80) as u16 }
+    if rng.below(8) == 0 {
+        rng.next() as u16
+    } else {
+        rng.below(0x80) as u16
+    }
 }
 
 fn run_case(seed: u64, case: u64) {
@@ -85,6 +89,9 @@ fn fuzz_svc_dispatch() {
             panic!("svc: case {case} panicked (fuzz seed {seed:#x})");
         }
         let elapsed = start.elapsed();
-        assert!(elapsed < CASE_BUDGET, "svc: case {case} took {elapsed:?} (fuzz seed {seed:#x})");
+        assert!(
+            elapsed < CASE_BUDGET,
+            "svc: case {case} took {elapsed:?} (fuzz seed {seed:#x})"
+        );
     }
 }

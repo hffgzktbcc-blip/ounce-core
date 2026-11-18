@@ -60,7 +60,13 @@ pub(super) fn bc4(b: &[u8], i: usize, signed: bool) -> f32 {
         0 => a0 as f32,
         1 => a1 as f32,
         s if a0 > a1 => ((8 - s) * a0 + (s - 1) * a1) as f32 / 7.0,
-        6 => if signed { -127.0 } else { 0.0 },
+        6 => {
+            if signed {
+                -127.0
+            } else {
+                0.0
+            }
+        }
         7 => scale,
         s => ((6 - s) * a0 + (s - 1) * a1) as f32 / 5.0,
     };
@@ -81,10 +87,11 @@ fn weights(bits: u32) -> &'static [u32] {
 
 /// Two-subset partitions: bit `i` is texel `i`'s subset.
 const P2: [u16; 64] = [
-    0xcccc, 0x8888, 0xeeee, 0xecc8, 0xc880, 0xfeec, 0xfec8, 0xec80, 0xc800, 0xffec, 0xfe80, 0xe800, 0xffe8, 0xff00, 0xfff0, 0xf000,
-    0xf710, 0x008e, 0x7100, 0x08ce, 0x008c, 0x7310, 0x3100, 0x8cce, 0x088c, 0x3110, 0x6666, 0x366c, 0x17e8, 0x0ff0, 0x718e, 0x399c,
-    0xaaaa, 0xf0f0, 0x5a5a, 0x33cc, 0x3c3c, 0x55aa, 0x9696, 0xa55a, 0x73ce, 0x13c8, 0x324c, 0x3bdc, 0x6996, 0xc33c, 0x9966, 0x0660,
-    0x0272, 0x04e4, 0x4e40, 0x2720, 0xc936, 0x936c, 0x39c6, 0x639c, 0x9336, 0x9cc6, 0x817e, 0xe718, 0xccf0, 0x0fcc, 0x7744, 0xee22,
+    0xcccc, 0x8888, 0xeeee, 0xecc8, 0xc880, 0xfeec, 0xfec8, 0xec80, 0xc800, 0xffec, 0xfe80, 0xe800, 0xffe8, 0xff00,
+    0xfff0, 0xf000, 0xf710, 0x008e, 0x7100, 0x08ce, 0x008c, 0x7310, 0x3100, 0x8cce, 0x088c, 0x3110, 0x6666, 0x366c,
+    0x17e8, 0x0ff0, 0x718e, 0x399c, 0xaaaa, 0xf0f0, 0x5a5a, 0x33cc, 0x3c3c, 0x55aa, 0x9696, 0xa55a, 0x73ce, 0x13c8,
+    0x324c, 0x3bdc, 0x6996, 0xc33c, 0x9966, 0x0660, 0x0272, 0x04e4, 0x4e40, 0x2720, 0xc936, 0x936c, 0x39c6, 0x639c,
+    0x9336, 0x9cc6, 0x817e, 0xe718, 0xccf0, 0x0fcc, 0x7744, 0xee22,
 ];
 
 /// Three-subset partitions: two bits per texel, texel 0 in bits 1:0.
@@ -175,8 +182,8 @@ const A2: [u8; 64] = [
 ];
 /// Anchors of subsets 1 and 2 for three-subset partitions.
 const A3A: [u8; 64] = [
-    3, 3, 15, 15, 8, 3, 15, 15, 8, 8, 6, 6, 6, 5, 3, 3, 3, 3, 8, 15, 3, 3, 6, 10, 5, 8, 8, 6, 8, 5, 15, 15,
-    8, 15, 3, 5, 6, 10, 8, 15, 15, 3, 15, 5, 15, 15, 15, 15, 3, 15, 5, 5, 5, 8, 5, 10, 5, 10, 8, 13, 15, 12, 3, 3,
+    3, 3, 15, 15, 8, 3, 15, 15, 8, 8, 6, 6, 6, 5, 3, 3, 3, 3, 8, 15, 3, 3, 6, 10, 5, 8, 8, 6, 8, 5, 15, 15, 8, 15, 3,
+    5, 6, 10, 8, 15, 15, 3, 15, 5, 15, 15, 15, 15, 3, 15, 5, 5, 5, 8, 5, 10, 5, 10, 8, 13, 15, 12, 3, 3,
 ];
 const A3B: [u8; 64] = [
     15, 8, 8, 3, 15, 15, 3, 8, 15, 15, 15, 15, 15, 15, 15, 8, 15, 8, 15, 3, 15, 8, 15, 8, 3, 15, 6, 10, 15, 15, 10, 8,
@@ -215,7 +222,9 @@ fn interp(e0: u32, e1: u32, w: u32) -> u32 {
 
 /// BC7: eight modes.
 pub(super) fn bc7(b: &[u8], i: usize) -> [f32; 4] {
-    let Some(mode) = (0..8).find(|m| b[0] & (1 << m) != 0) else { return [0.0; 4] };
+    let Some(mode) = (0..8).find(|m| b[0] & (1 << m) != 0) else {
+        return [0.0; 4];
+    };
     // (subsets, partition bits, rotation bits, index selection bit, colour bits, alpha bits,
     //  per-endpoint p-bits, shared p-bits, index bits, second index bits)
     type Mode = (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
@@ -255,10 +264,12 @@ pub(super) fn bc7(b: &[u8], i: usize) -> [f32; 4] {
         let pbits: Vec<u32> = if epb != 0 {
             (0..ne).map(|_| read(1)).collect()
         } else {
-            (0..ns).flat_map(|_| {
-                let p = read(1);
-                [p, p]
-            }).collect()
+            (0..ns)
+                .flat_map(|_| {
+                    let p = read(1);
+                    [p, p]
+                })
+                .collect()
         };
         for (e, p) in ep.iter_mut().take(ne).zip(pbits) {
             for c in e.iter_mut().take(3) {
@@ -294,7 +305,11 @@ pub(super) fn bc7(b: &[u8], i: usize) -> [f32; 4] {
         }
     } else {
         let secondary = index_of(b, idx_base + 16 * ib - 1, ib2, 1, 0, i);
-        let (ci, cbits_i, ai, abits_i) = if isel == 0 { (primary, ib, secondary, ib2) } else { (secondary, ib2, primary, ib) };
+        let (ci, cbits_i, ai, abits_i) = if isel == 0 {
+            (primary, ib, secondary, ib2)
+        } else {
+            (secondary, ib2, primary, ib)
+        };
         let (wc, wa) = (weights(cbits_i)[ci as usize], weights(abits_i)[ai as usize]);
         for ch in 0..3 {
             c[ch] = interp(e0[ch], e1[ch], wc);
@@ -337,64 +352,382 @@ struct Bc6Mode {
 }
 
 const BC6_MODES: [Bc6Mode; 14] = [
-    Bc6Mode { value: 0x00, mode_bits: 2, transformed: true, subsets: 2, epb: 10, delta: [5, 5, 5], fields: &[
-        (GY, 4, 1), (BY, 4, 1), (BZ, 4, 1), (RW, 0, 10), (GW, 0, 10), (BW, 0, 10), (RX, 0, 5), (GZ, 4, 1), (GY, 0, 4),
-        (GX, 0, 5), (BZ, 0, 1), (GZ, 0, 4), (BX, 0, 5), (BZ, 1, 1), (BY, 0, 4), (RY, 0, 5), (BZ, 2, 1), (RZ, 0, 5), (BZ, 3, 1),
-    ] },
-    Bc6Mode { value: 0x01, mode_bits: 2, transformed: true, subsets: 2, epb: 7, delta: [6, 6, 6], fields: &[
-        (GY, 5, 1), (GZ, 4, 1), (GZ, 5, 1), (RW, 0, 7), (BZ, 0, 1), (BZ, 1, 1), (BY, 4, 1), (GW, 0, 7), (BY, 5, 1),
-        (BZ, 2, 1), (GY, 4, 1), (BW, 0, 7), (BZ, 3, 1), (BZ, 5, 1), (BZ, 4, 1), (RX, 0, 6), (GY, 0, 4), (GX, 0, 6),
-        (GZ, 0, 4), (BX, 0, 6), (BY, 0, 4), (RY, 0, 6), (RZ, 0, 6),
-    ] },
-    Bc6Mode { value: 0x02, mode_bits: 5, transformed: true, subsets: 2, epb: 11, delta: [5, 4, 4], fields: &[
-        (RW, 0, 10), (GW, 0, 10), (BW, 0, 10), (RX, 0, 5), (RW, 10, 1), (GY, 0, 4), (GX, 0, 4), (GW, 10, 1), (BZ, 0, 1),
-        (GZ, 0, 4), (BX, 0, 4), (BW, 10, 1), (BZ, 1, 1), (BY, 0, 4), (RY, 0, 5), (BZ, 2, 1), (RZ, 0, 5), (BZ, 3, 1),
-    ] },
-    Bc6Mode { value: 0x06, mode_bits: 5, transformed: true, subsets: 2, epb: 11, delta: [4, 5, 4], fields: &[
-        (RW, 0, 10), (GW, 0, 10), (BW, 0, 10), (RX, 0, 4), (RW, 10, 1), (GZ, 4, 1), (GY, 0, 4), (GX, 0, 5), (GW, 10, 1),
-        (GZ, 0, 4), (BX, 0, 4), (BW, 10, 1), (BZ, 1, 1), (BY, 0, 4), (RY, 0, 4), (BZ, 0, 1), (BZ, 2, 1), (RZ, 0, 4),
-        (GY, 4, 1), (BZ, 3, 1),
-    ] },
-    Bc6Mode { value: 0x0a, mode_bits: 5, transformed: true, subsets: 2, epb: 11, delta: [4, 4, 5], fields: &[
-        (RW, 0, 10), (GW, 0, 10), (BW, 0, 10), (RX, 0, 4), (RW, 10, 1), (BY, 4, 1), (GY, 0, 4), (GX, 0, 4), (GW, 10, 1),
-        (BZ, 0, 1), (GZ, 0, 4), (BX, 0, 5), (BW, 10, 1), (BY, 0, 4), (RY, 0, 4), (BZ, 1, 1), (BZ, 2, 1), (RZ, 0, 4),
-        (BZ, 4, 1), (BZ, 3, 1),
-    ] },
-    Bc6Mode { value: 0x0e, mode_bits: 5, transformed: true, subsets: 2, epb: 9, delta: [5, 5, 5], fields: &[
-        (RW, 0, 9), (BY, 4, 1), (GW, 0, 9), (GY, 4, 1), (BW, 0, 9), (BZ, 4, 1), (RX, 0, 5), (GZ, 4, 1), (GY, 0, 4),
-        (GX, 0, 5), (BZ, 0, 1), (GZ, 0, 4), (BX, 0, 5), (BZ, 1, 1), (BY, 0, 4), (RY, 0, 5), (BZ, 2, 1), (RZ, 0, 5), (BZ, 3, 1),
-    ] },
-    Bc6Mode { value: 0x12, mode_bits: 5, transformed: true, subsets: 2, epb: 8, delta: [6, 5, 5], fields: &[
-        (RW, 0, 8), (GZ, 4, 1), (BY, 4, 1), (GW, 0, 8), (BZ, 2, 1), (GY, 4, 1), (BW, 0, 8), (BZ, 3, 1), (BZ, 4, 1),
-        (RX, 0, 6), (GY, 0, 4), (GX, 0, 5), (BZ, 0, 1), (GZ, 0, 4), (BX, 0, 5), (BZ, 1, 1), (BY, 0, 4), (RY, 0, 6), (RZ, 0, 6),
-    ] },
-    Bc6Mode { value: 0x16, mode_bits: 5, transformed: true, subsets: 2, epb: 8, delta: [5, 6, 5], fields: &[
-        (RW, 0, 8), (BZ, 0, 1), (BY, 4, 1), (GW, 0, 8), (GY, 5, 1), (GY, 4, 1), (BW, 0, 8), (GZ, 5, 1), (BZ, 4, 1),
-        (RX, 0, 5), (GZ, 4, 1), (GY, 0, 4), (GX, 0, 6), (GZ, 0, 4), (BX, 0, 5), (BZ, 1, 1), (BY, 0, 4), (RY, 0, 5),
-        (BZ, 2, 1), (RZ, 0, 5), (BZ, 3, 1),
-    ] },
-    Bc6Mode { value: 0x1a, mode_bits: 5, transformed: true, subsets: 2, epb: 8, delta: [5, 5, 6], fields: &[
-        (RW, 0, 8), (BZ, 1, 1), (BY, 4, 1), (GW, 0, 8), (BY, 5, 1), (GY, 4, 1), (BW, 0, 8), (BZ, 5, 1), (BZ, 4, 1),
-        (RX, 0, 5), (GZ, 4, 1), (GY, 0, 4), (GX, 0, 5), (BZ, 0, 1), (GZ, 0, 4), (BX, 0, 6), (BY, 0, 4), (RY, 0, 5),
-        (BZ, 2, 1), (RZ, 0, 5), (BZ, 3, 1),
-    ] },
-    Bc6Mode { value: 0x1e, mode_bits: 5, transformed: false, subsets: 2, epb: 6, delta: [6, 6, 6], fields: &[
-        (RW, 0, 6), (GZ, 4, 1), (BZ, 0, 1), (BZ, 1, 1), (BY, 4, 1), (GW, 0, 6), (GY, 5, 1), (BY, 5, 1), (BZ, 2, 1),
-        (GY, 4, 1), (BW, 0, 6), (GZ, 5, 1), (BZ, 3, 1), (BZ, 5, 1), (BZ, 4, 1), (RX, 0, 6), (GY, 0, 4), (GX, 0, 6),
-        (GZ, 0, 4), (BX, 0, 6), (BY, 0, 4), (RY, 0, 6), (RZ, 0, 6),
-    ] },
-    Bc6Mode { value: 0x03, mode_bits: 5, transformed: false, subsets: 1, epb: 10, delta: [10, 10, 10], fields: &[
-        (RW, 0, 10), (GW, 0, 10), (BW, 0, 10), (RX, 0, 10), (GX, 0, 10), (BX, 0, 10),
-    ] },
-    Bc6Mode { value: 0x07, mode_bits: 5, transformed: true, subsets: 1, epb: 11, delta: [9, 9, 9], fields: &[
-        (RW, 0, 10), (GW, 0, 10), (BW, 0, 10), (RX, 0, 9), (RW, 10, 1), (GX, 0, 9), (GW, 10, 1), (BX, 0, 9), (BW, 10, 1),
-    ] },
-    Bc6Mode { value: 0x0b, mode_bits: 5, transformed: true, subsets: 1, epb: 12, delta: [8, 8, 8], fields: &[
-        (RW, 0, 10), (GW, 0, 10), (BW, 0, 10), (RX, 0, 8), (RW, 10, -2), (GX, 0, 8), (GW, 10, -2), (BX, 0, 8), (BW, 10, -2),
-    ] },
-    Bc6Mode { value: 0x0f, mode_bits: 5, transformed: true, subsets: 1, epb: 16, delta: [4, 4, 4], fields: &[
-        (RW, 0, 10), (GW, 0, 10), (BW, 0, 10), (RX, 0, 4), (RW, 10, -6), (GX, 0, 4), (GW, 10, -6), (BX, 0, 4), (BW, 10, -6),
-    ] },
+    Bc6Mode {
+        value: 0x00,
+        mode_bits: 2,
+        transformed: true,
+        subsets: 2,
+        epb: 10,
+        delta: [5, 5, 5],
+        fields: &[
+            (GY, 4, 1),
+            (BY, 4, 1),
+            (BZ, 4, 1),
+            (RW, 0, 10),
+            (GW, 0, 10),
+            (BW, 0, 10),
+            (RX, 0, 5),
+            (GZ, 4, 1),
+            (GY, 0, 4),
+            (GX, 0, 5),
+            (BZ, 0, 1),
+            (GZ, 0, 4),
+            (BX, 0, 5),
+            (BZ, 1, 1),
+            (BY, 0, 4),
+            (RY, 0, 5),
+            (BZ, 2, 1),
+            (RZ, 0, 5),
+            (BZ, 3, 1),
+        ],
+    },
+    Bc6Mode {
+        value: 0x01,
+        mode_bits: 2,
+        transformed: true,
+        subsets: 2,
+        epb: 7,
+        delta: [6, 6, 6],
+        fields: &[
+            (GY, 5, 1),
+            (GZ, 4, 1),
+            (GZ, 5, 1),
+            (RW, 0, 7),
+            (BZ, 0, 1),
+            (BZ, 1, 1),
+            (BY, 4, 1),
+            (GW, 0, 7),
+            (BY, 5, 1),
+            (BZ, 2, 1),
+            (GY, 4, 1),
+            (BW, 0, 7),
+            (BZ, 3, 1),
+            (BZ, 5, 1),
+            (BZ, 4, 1),
+            (RX, 0, 6),
+            (GY, 0, 4),
+            (GX, 0, 6),
+            (GZ, 0, 4),
+            (BX, 0, 6),
+            (BY, 0, 4),
+            (RY, 0, 6),
+            (RZ, 0, 6),
+        ],
+    },
+    Bc6Mode {
+        value: 0x02,
+        mode_bits: 5,
+        transformed: true,
+        subsets: 2,
+        epb: 11,
+        delta: [5, 4, 4],
+        fields: &[
+            (RW, 0, 10),
+            (GW, 0, 10),
+            (BW, 0, 10),
+            (RX, 0, 5),
+            (RW, 10, 1),
+            (GY, 0, 4),
+            (GX, 0, 4),
+            (GW, 10, 1),
+            (BZ, 0, 1),
+            (GZ, 0, 4),
+            (BX, 0, 4),
+            (BW, 10, 1),
+            (BZ, 1, 1),
+            (BY, 0, 4),
+            (RY, 0, 5),
+            (BZ, 2, 1),
+            (RZ, 0, 5),
+            (BZ, 3, 1),
+        ],
+    },
+    Bc6Mode {
+        value: 0x06,
+        mode_bits: 5,
+        transformed: true,
+        subsets: 2,
+        epb: 11,
+        delta: [4, 5, 4],
+        fields: &[
+            (RW, 0, 10),
+            (GW, 0, 10),
+            (BW, 0, 10),
+            (RX, 0, 4),
+            (RW, 10, 1),
+            (GZ, 4, 1),
+            (GY, 0, 4),
+            (GX, 0, 5),
+            (GW, 10, 1),
+            (GZ, 0, 4),
+            (BX, 0, 4),
+            (BW, 10, 1),
+            (BZ, 1, 1),
+            (BY, 0, 4),
+            (RY, 0, 4),
+            (BZ, 0, 1),
+            (BZ, 2, 1),
+            (RZ, 0, 4),
+            (GY, 4, 1),
+            (BZ, 3, 1),
+        ],
+    },
+    Bc6Mode {
+        value: 0x0a,
+        mode_bits: 5,
+        transformed: true,
+        subsets: 2,
+        epb: 11,
+        delta: [4, 4, 5],
+        fields: &[
+            (RW, 0, 10),
+            (GW, 0, 10),
+            (BW, 0, 10),
+            (RX, 0, 4),
+            (RW, 10, 1),
+            (BY, 4, 1),
+            (GY, 0, 4),
+            (GX, 0, 4),
+            (GW, 10, 1),
+            (BZ, 0, 1),
+            (GZ, 0, 4),
+            (BX, 0, 5),
+            (BW, 10, 1),
+            (BY, 0, 4),
+            (RY, 0, 4),
+            (BZ, 1, 1),
+            (BZ, 2, 1),
+            (RZ, 0, 4),
+            (BZ, 4, 1),
+            (BZ, 3, 1),
+        ],
+    },
+    Bc6Mode {
+        value: 0x0e,
+        mode_bits: 5,
+        transformed: true,
+        subsets: 2,
+        epb: 9,
+        delta: [5, 5, 5],
+        fields: &[
+            (RW, 0, 9),
+            (BY, 4, 1),
+            (GW, 0, 9),
+            (GY, 4, 1),
+            (BW, 0, 9),
+            (BZ, 4, 1),
+            (RX, 0, 5),
+            (GZ, 4, 1),
+            (GY, 0, 4),
+            (GX, 0, 5),
+            (BZ, 0, 1),
+            (GZ, 0, 4),
+            (BX, 0, 5),
+            (BZ, 1, 1),
+            (BY, 0, 4),
+            (RY, 0, 5),
+            (BZ, 2, 1),
+            (RZ, 0, 5),
+            (BZ, 3, 1),
+        ],
+    },
+    Bc6Mode {
+        value: 0x12,
+        mode_bits: 5,
+        transformed: true,
+        subsets: 2,
+        epb: 8,
+        delta: [6, 5, 5],
+        fields: &[
+            (RW, 0, 8),
+            (GZ, 4, 1),
+            (BY, 4, 1),
+            (GW, 0, 8),
+            (BZ, 2, 1),
+            (GY, 4, 1),
+            (BW, 0, 8),
+            (BZ, 3, 1),
+            (BZ, 4, 1),
+            (RX, 0, 6),
+            (GY, 0, 4),
+            (GX, 0, 5),
+            (BZ, 0, 1),
+            (GZ, 0, 4),
+            (BX, 0, 5),
+            (BZ, 1, 1),
+            (BY, 0, 4),
+            (RY, 0, 6),
+            (RZ, 0, 6),
+        ],
+    },
+    Bc6Mode {
+        value: 0x16,
+        mode_bits: 5,
+        transformed: true,
+        subsets: 2,
+        epb: 8,
+        delta: [5, 6, 5],
+        fields: &[
+            (RW, 0, 8),
+            (BZ, 0, 1),
+            (BY, 4, 1),
+            (GW, 0, 8),
+            (GY, 5, 1),
+            (GY, 4, 1),
+            (BW, 0, 8),
+            (GZ, 5, 1),
+            (BZ, 4, 1),
+            (RX, 0, 5),
+            (GZ, 4, 1),
+            (GY, 0, 4),
+            (GX, 0, 6),
+            (GZ, 0, 4),
+            (BX, 0, 5),
+            (BZ, 1, 1),
+            (BY, 0, 4),
+            (RY, 0, 5),
+            (BZ, 2, 1),
+            (RZ, 0, 5),
+            (BZ, 3, 1),
+        ],
+    },
+    Bc6Mode {
+        value: 0x1a,
+        mode_bits: 5,
+        transformed: true,
+        subsets: 2,
+        epb: 8,
+        delta: [5, 5, 6],
+        fields: &[
+            (RW, 0, 8),
+            (BZ, 1, 1),
+            (BY, 4, 1),
+            (GW, 0, 8),
+            (BY, 5, 1),
+            (GY, 4, 1),
+            (BW, 0, 8),
+            (BZ, 5, 1),
+            (BZ, 4, 1),
+            (RX, 0, 5),
+            (GZ, 4, 1),
+            (GY, 0, 4),
+            (GX, 0, 5),
+            (BZ, 0, 1),
+            (GZ, 0, 4),
+            (BX, 0, 6),
+            (BY, 0, 4),
+            (RY, 0, 5),
+            (BZ, 2, 1),
+            (RZ, 0, 5),
+            (BZ, 3, 1),
+        ],
+    },
+    Bc6Mode {
+        value: 0x1e,
+        mode_bits: 5,
+        transformed: false,
+        subsets: 2,
+        epb: 6,
+        delta: [6, 6, 6],
+        fields: &[
+            (RW, 0, 6),
+            (GZ, 4, 1),
+            (BZ, 0, 1),
+            (BZ, 1, 1),
+            (BY, 4, 1),
+            (GW, 0, 6),
+            (GY, 5, 1),
+            (BY, 5, 1),
+            (BZ, 2, 1),
+            (GY, 4, 1),
+            (BW, 0, 6),
+            (GZ, 5, 1),
+            (BZ, 3, 1),
+            (BZ, 5, 1),
+            (BZ, 4, 1),
+            (RX, 0, 6),
+            (GY, 0, 4),
+            (GX, 0, 6),
+            (GZ, 0, 4),
+            (BX, 0, 6),
+            (BY, 0, 4),
+            (RY, 0, 6),
+            (RZ, 0, 6),
+        ],
+    },
+    Bc6Mode {
+        value: 0x03,
+        mode_bits: 5,
+        transformed: false,
+        subsets: 1,
+        epb: 10,
+        delta: [10, 10, 10],
+        fields: &[
+            (RW, 0, 10),
+            (GW, 0, 10),
+            (BW, 0, 10),
+            (RX, 0, 10),
+            (GX, 0, 10),
+            (BX, 0, 10),
+        ],
+    },
+    Bc6Mode {
+        value: 0x07,
+        mode_bits: 5,
+        transformed: true,
+        subsets: 1,
+        epb: 11,
+        delta: [9, 9, 9],
+        fields: &[
+            (RW, 0, 10),
+            (GW, 0, 10),
+            (BW, 0, 10),
+            (RX, 0, 9),
+            (RW, 10, 1),
+            (GX, 0, 9),
+            (GW, 10, 1),
+            (BX, 0, 9),
+            (BW, 10, 1),
+        ],
+    },
+    Bc6Mode {
+        value: 0x0b,
+        mode_bits: 5,
+        transformed: true,
+        subsets: 1,
+        epb: 12,
+        delta: [8, 8, 8],
+        fields: &[
+            (RW, 0, 10),
+            (GW, 0, 10),
+            (BW, 0, 10),
+            (RX, 0, 8),
+            (RW, 10, -2),
+            (GX, 0, 8),
+            (GW, 10, -2),
+            (BX, 0, 8),
+            (BW, 10, -2),
+        ],
+    },
+    Bc6Mode {
+        value: 0x0f,
+        mode_bits: 5,
+        transformed: true,
+        subsets: 1,
+        epb: 16,
+        delta: [4, 4, 4],
+        fields: &[
+            (RW, 0, 10),
+            (GW, 0, 10),
+            (BW, 0, 10),
+            (RX, 0, 4),
+            (RW, 10, -6),
+            (GX, 0, 4),
+            (GW, 10, -6),
+            (BX, 0, 4),
+            (BW, 10, -6),
+        ],
+    },
 ];
 
 fn sign_extend(v: u32, bits: u32) -> i32 {
@@ -405,8 +738,13 @@ fn sign_extend(v: u32, bits: u32) -> i32 {
 pub(super) fn bc6h(b: &[u8], i: usize, signed: bool) -> [f32; 4] {
     let two = b[0] & 3;
     let five = b[0] & 0x1f;
-    let Some(m) = BC6_MODES.iter().find(|m| if m.mode_bits == 2 { m.value == two && two < 2 } else { two >= 2 && m.value == five })
-    else {
+    let Some(m) = BC6_MODES.iter().find(|m| {
+        if m.mode_bits == 2 {
+            m.value == two && two < 2
+        } else {
+            two >= 2 && m.value == five
+        }
+    }) else {
         return [0.0, 0.0, 0.0, 1.0];
     };
     let mut ep = [0u32; 12];
@@ -469,7 +807,11 @@ pub(super) fn bc6h(b: &[u8], i: usize, signed: bool) -> [f32; 4] {
         let (a, c) = (unq(e[2 * s][ch]), unq(e[2 * s + 1][ch]));
         let v = ((64 - w) * a + w * c + 32) >> 6;
         let h = if signed {
-            if v < 0 { 0x8000 | (((-v) * 31) >> 5) as u16 } else { ((v * 31) >> 5) as u16 }
+            if v < 0 {
+                0x8000 | (((-v) * 31) >> 5) as u16
+            } else {
+                ((v * 31) >> 5) as u16
+            }
         } else {
             ((v * 31) >> 6) as u16
         };

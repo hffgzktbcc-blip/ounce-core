@@ -1,11 +1,11 @@
 #![allow(dead_code)]
+use crate::kernel::HorizonKernel;
+use crate::loader::nro::{NroHeader, NroLoader};
+use crate::mmu::Memory;
 use byteorder::{ByteOrder, LittleEndian};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::kernel::HorizonKernel;
-use crate::loader::nro::{NroHeader, NroLoader};
-use crate::mmu::Memory;
 
 pub const NPDM_MAGIC: [u8; 4] = *b"META";
 pub const ACI0_MAGIC: [u8; 4] = *b"ACI0";
@@ -67,19 +67,15 @@ impl NpdmDescriptor {
 
         // Process Name (12 bytes at 0x14)
         let name_slice = &bytes[0x14..0x20];
-        let process_name = String::from_utf8_lossy(
-            name_slice.split(|&b| b == 0).next().unwrap_or(name_slice),
-        )
-        .trim()
-        .to_string();
+        let process_name = String::from_utf8_lossy(name_slice.split(|&b| b == 0).next().unwrap_or(name_slice))
+            .trim()
+            .to_string();
 
         // Product Code (16 bytes at 0x20)
         let code_slice = &bytes[0x20..0x30];
-        let product_code = String::from_utf8_lossy(
-            code_slice.split(|&b| b == 0).next().unwrap_or(code_slice),
-        )
-        .trim()
-        .to_string();
+        let product_code = String::from_utf8_lossy(code_slice.split(|&b| b == 0).next().unwrap_or(code_slice))
+            .trim()
+            .to_string();
 
         let aci0_offset = LittleEndian::read_u32(&bytes[0x30..0x34]) as usize;
         let aci0_size = LittleEndian::read_u32(&bytes[0x34..0x38]) as usize;
@@ -88,15 +84,23 @@ impl NpdmDescriptor {
         let mut allowed_services = Vec::new();
         let allowed_syscalls_mask = 0xFFFFFFFFFFFFFFFFu64;
 
-        if let Some(aci0_bytes) = aci0_offset.checked_add(aci0_size).and_then(|end| bytes.get(aci0_offset..end)).filter(|_| aci0_size >= 0x20)
-            && aci0_bytes.len() >= 0x20 && aci0_bytes[0x00..0x04] == ACI0_MAGIC
+        if let Some(aci0_bytes) = aci0_offset
+            .checked_add(aci0_size)
+            .and_then(|end| bytes.get(aci0_offset..end))
+            .filter(|_| aci0_size >= 0x20)
+            && aci0_bytes.len() >= 0x20
+            && aci0_bytes[0x00..0x04] == ACI0_MAGIC
         {
             title_id = LittleEndian::read_u64(&aci0_bytes[0x10..0x18]);
 
             let sac_offset = LittleEndian::read_u32(&aci0_bytes[0x18..0x1C]) as usize;
             let sac_size = LittleEndian::read_u32(&aci0_bytes[0x1C..0x20]) as usize;
 
-            if let Some(sac_data) = sac_offset.checked_add(sac_size).and_then(|end| aci0_bytes.get(sac_offset..end)).filter(|d| !d.is_empty()) {
+            if let Some(sac_data) = sac_offset
+                .checked_add(sac_size)
+                .and_then(|end| aci0_bytes.get(sac_offset..end))
+                .filter(|d| !d.is_empty())
+            {
                 let mut cursor = 0;
                 while cursor < sac_data.len() {
                     let len = sac_data[cursor] as usize;
@@ -129,8 +133,16 @@ impl NpdmDescriptor {
         }
 
         Ok(Self {
-            process_name: if process_name.is_empty() { "Switch2Program".into() } else { process_name },
-            product_code: if product_code.is_empty() { "OUNCE-P-BASE".into() } else { product_code },
+            process_name: if process_name.is_empty() {
+                "Switch2Program".into()
+            } else {
+                process_name
+            },
+            product_code: if product_code.is_empty() {
+                "OUNCE-P-BASE".into()
+            } else {
+                product_code
+            },
             title_id,
             flags,
             main_thread_priority,
@@ -248,10 +260,7 @@ impl LoosePackageLoader {
             let sub_exefs = path.join("exefs");
             let sub_romfs = path.join("romfs");
             if sub_exefs.is_dir() {
-                (
-                    sub_exefs,
-                    if sub_romfs.is_dir() { Some(sub_romfs) } else { None },
-                )
+                (sub_exefs, if sub_romfs.is_dir() { Some(sub_romfs) } else { None })
             } else {
                 // The given directory is the exefs folder itself
                 let sibling_romfs = path.parent().map(|p| p.join("romfs"));
@@ -329,7 +338,9 @@ impl LoosePackageLoader {
         //    `main` sits at `base_addr`; companions (`sdk`, `subsdk*`) follow in 64 MB slots.
         let mut inputs = vec![("main".to_string(), base_addr, fs::read(&package.main_nso)?)];
         for (i, (name, path)) in package.companion_nsos.iter().enumerate() {
-            let base = (i as u64 + 1).checked_mul(0x0400_0000).and_then(|offset| base_addr.checked_add(offset))
+            let base = (i as u64 + 1)
+                .checked_mul(0x0400_0000)
+                .and_then(|offset| base_addr.checked_add(offset))
                 .ok_or_else(|| PackageError::NsoLoad("module base overflow".into()))?;
             inputs.push((name.clone(), base, fs::read(path)?));
         }
@@ -342,14 +353,29 @@ impl LoosePackageLoader {
             for offset in [0x10, 0x20, 0x30] {
                 let memory_offset = LittleEndian::read_u32(&bytes[offset + 4..offset + 8]) as u64;
                 let mut size = LittleEndian::read_u32(&bytes[offset + 8..offset + 12]) as u64;
-                if offset == 0x30 { size += LittleEndian::read_u32(&bytes[0x3c..0x40]) as u64; }
-                if size == 0 { continue; }
-                let start = base.checked_add(memory_offset).ok_or_else(|| PackageError::NsoLoad("segment address overflow".into()))?;
-                let end = start.checked_add(size).and_then(|end| end.checked_add(0xfff))
-                    .ok_or_else(|| PackageError::NsoLoad("segment extent overflow".into()))? & !0xfff;
+                if offset == 0x30 {
+                    size += LittleEndian::read_u32(&bytes[0x3c..0x40]) as u64;
+                }
+                if size == 0 {
+                    continue;
+                }
+                let start = base
+                    .checked_add(memory_offset)
+                    .ok_or_else(|| PackageError::NsoLoad("segment address overflow".into()))?;
+                let end = start
+                    .checked_add(size)
+                    .and_then(|end| end.checked_add(0xfff))
+                    .ok_or_else(|| PackageError::NsoLoad("segment extent overflow".into()))?
+                    & !0xfff;
                 let start = start & !0xfff;
-                if let Some((_, _, other)) = occupied.iter().find(|&&(a, b, other)| other != module_index && start < b && end > a) {
-                    return Err(PackageError::NsoLoad(format!("module {name} overlaps {}", inputs[*other].0)));
+                if let Some((_, _, other)) = occupied
+                    .iter()
+                    .find(|&&(a, b, other)| other != module_index && start < b && end > a)
+                {
+                    return Err(PackageError::NsoLoad(format!(
+                        "module {name} overlaps {}",
+                        inputs[*other].0
+                    )));
                 }
                 occupied.push((start, end, module_index));
             }
@@ -495,10 +521,15 @@ mod tests {
         main[0x34..0x38].copy_from_slice(&0x0400_0000u32.to_le_bytes());
         main[0x3c..0x40].copy_from_slice(&0x1000u32.to_le_bytes());
         fs::write(exefs.join("main"), main).unwrap();
-        fs::write(exefs.join("subsdk0"), NroLoader::build_synthetic_nso(&0xD400_00E1u32.to_le_bytes())).unwrap();
+        fs::write(
+            exefs.join("subsdk0"),
+            NroLoader::build_synthetic_nso(&0xD400_00E1u32.to_le_bytes()),
+        )
+        .unwrap();
         let package = LoosePackageLoader::discover(&root).unwrap();
         let mut memory = Memory::new();
-        let result = LoosePackageLoader::load_into_kernel(&package, 0x8000_0000, &mut memory, &mut HorizonKernel::new());
+        let result =
+            LoosePackageLoader::load_into_kernel(&package, 0x8000_0000, &mut memory, &mut HorizonKernel::new());
         fs::remove_dir_all(root).unwrap();
         assert!(matches!(result, Err(PackageError::NsoLoad(ref message)) if message.contains("overlaps")));
         assert!(memory.regions().is_empty());
@@ -517,9 +548,13 @@ mod tests {
         fs::write(exefs.join("subsdk0"), large).unwrap();
         fs::write(exefs.join("subsdk0.nso"), normal).unwrap();
         let mut package = LoosePackageLoader::discover(&root).unwrap();
-        package.companion_nsos = vec![("subsdk0".into(), exefs.join("subsdk0")), ("subsdk0".into(), exefs.join("subsdk0.nso"))];
+        package.companion_nsos = vec![
+            ("subsdk0".into(), exefs.join("subsdk0")),
+            ("subsdk0".into(), exefs.join("subsdk0.nso")),
+        ];
         let mut memory = Memory::new();
-        let result = LoosePackageLoader::load_into_kernel(&package, 0x8000_0000, &mut memory, &mut HorizonKernel::new());
+        let result =
+            LoosePackageLoader::load_into_kernel(&package, 0x8000_0000, &mut memory, &mut HorizonKernel::new());
         fs::remove_dir_all(root).unwrap();
         assert!(matches!(result, Err(PackageError::NsoLoad(ref message)) if message.contains("overlaps")));
         assert!(memory.regions().is_empty());
@@ -548,11 +583,14 @@ mod tests {
 
     #[test]
     fn test_companion_imports_resolve_against_main_exports() {
-        use crate::loader::nro::{build_linked_nso, R_AARCH64_GLOB_DAT};
+        use crate::loader::nro::{R_AARCH64_GLOB_DAT, build_linked_nso};
 
         let temp_dir = std::env::temp_dir().join(format!(
             "ounce_test_link_{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         let exefs = temp_dir.join("exefs");
         fs::create_dir_all(&exefs).unwrap();
@@ -597,21 +635,38 @@ mod tests {
 
     #[test]
     fn test_companion_tls_import_uses_static_tls_layout() {
-        use crate::loader::nro::{build_linked_nso_with, TestSymbol, R_AARCH64_TLS_TPREL64};
+        use crate::loader::nro::{R_AARCH64_TLS_TPREL64, TestSymbol, build_linked_nso_with};
 
         let temp_dir = std::env::temp_dir().join(format!(
             "ounce_test_tls_{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         let exefs = temp_dir.join("exefs");
         fs::create_dir_all(&exefs).unwrap();
 
         // `main` defines a 16-byte TLS variable `errno_slot` at offset 8 of its block.
-        let tls_var = TestSymbol { name: "errno_slot", shndx: 1, bind: 1, kind: 6, value: 8, size: 16 };
+        let tls_var = TestSymbol {
+            name: "errno_slot",
+            shndx: 1,
+            bind: 1,
+            kind: 6,
+            value: 8,
+            size: 16,
+        };
         fs::write(exefs.join("main"), build_linked_nso_with(&[tls_var], &[], &[])).unwrap();
 
         // `subsdk0` reaches it through an initial-exec TPREL64 GOT slot.
-        let import = TestSymbol { name: "errno_slot", shndx: 0, bind: 1, kind: 6, value: 0, size: 0 };
+        let import = TestSymbol {
+            name: "errno_slot",
+            shndx: 0,
+            bind: 1,
+            kind: 6,
+            value: 0,
+            size: 0,
+        };
         let subsdk = build_linked_nso_with(&[import], &[(0x300, R_AARCH64_TLS_TPREL64, 1, 0)], &[]);
         fs::write(exefs.join("subsdk0"), subsdk).unwrap();
 
@@ -629,18 +684,24 @@ mod tests {
         assert_eq!(mmu.read_u64(STATIC_TLS_ADDR + 24).unwrap(), 0);
         assert_eq!(mmu.read_u32(TLSDESC_RESOLVER_ADDR).unwrap(), 0xF940_0400);
         // New threads get a copy of the same image.
-        assert_eq!(kernel.scheduler.tls_image.as_ref().map(|i| i.bytes.len()), Some(16 + 8 + 16));
+        assert_eq!(
+            kernel.scheduler.tls_image.as_ref().map(|i| i.bytes.len()),
+            Some(16 + 8 + 16)
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
     fn test_main_imports_resolve_against_subsdk_exports() {
-        use crate::loader::nro::{build_linked_nso, R_AARCH64_GLOB_DAT, R_AARCH64_JUMP_SLOT};
+        use crate::loader::nro::{R_AARCH64_GLOB_DAT, R_AARCH64_JUMP_SLOT, build_linked_nso};
 
         let temp_dir = std::env::temp_dir().join(format!(
             "ounce_test_rev_link_{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         let exefs = temp_dir.join("exefs");
         fs::create_dir_all(&exefs).unwrap();
@@ -652,7 +713,11 @@ mod tests {
             &[(0x308, R_AARCH64_JUMP_SLOT, 1, 0)],
         );
         fs::write(exefs.join("main"), &main_nso).unwrap();
-        fs::write(exefs.join("subsdk0"), build_linked_nso(&[("harness_entry", 1, 1, 0x600)], &[], &[])).unwrap();
+        fs::write(
+            exefs.join("subsdk0"),
+            build_linked_nso(&[("harness_entry", 1, 1, 0x600)], &[], &[]),
+        )
+        .unwrap();
 
         let pkg = LoosePackageLoader::discover(&temp_dir).expect("Failed to discover loose package");
         let mut mmu = Memory::new();
@@ -672,7 +737,13 @@ mod tests {
     #[test]
     fn test_loose_package_discovery_and_multimodule_load() {
         // Create a temporary directory structure mimicking an OunceCake dump
-        let temp_dir = std::env::temp_dir().join(format!("ounce_test_pkg_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ounce_test_pkg_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let exefs = temp_dir.join("exefs");
         let romfs = temp_dir.join("romfs");
         fs::create_dir_all(&exefs).unwrap();
@@ -726,10 +797,16 @@ mod tests {
         assert_eq!(boot_info.romfs_files_mounted, 2);
 
         // Verify RomFS files are accessible in kernel VFS
-        let manifest = kernel.vfs.get_file("romfs:/manifest.json").expect("Missing manifest in VFS");
+        let manifest = kernel
+            .vfs
+            .get_file("romfs:/manifest.json")
+            .expect("Missing manifest in VFS");
         assert_eq!(manifest, b"{\"game\":\"Showcase2\"}");
 
-        let config = kernel.vfs.get_file("romfs:/data/config.bin").expect("Missing config in VFS");
+        let config = kernel
+            .vfs
+            .get_file("romfs:/data/config.bin")
+            .expect("Missing config in VFS");
         assert_eq!(config, b"\x01\x02\x03\x04");
 
         // Clean up
@@ -739,14 +816,16 @@ mod tests {
     #[test]
     fn test_homebrew_multimodule_tls_and_thread_lifecycle() {
         use crate::loader::nro::{
-            build_linked_nso_with, elf_with_pt_tls, TestSymbol, TlsTemplate,
-            R_AARCH64_GLOB_DAT, R_AARCH64_TLS_TPREL64,
+            R_AARCH64_GLOB_DAT, R_AARCH64_TLS_TPREL64, TestSymbol, TlsTemplate, build_linked_nso_with, elf_with_pt_tls,
         };
         use crate::mmu::Permission;
 
         let temp_dir = std::env::temp_dir().join(format!(
             "ounce_test_homebrew_{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         let exefs = temp_dir.join("exefs");
         fs::create_dir_all(&exefs).unwrap();
@@ -764,8 +843,22 @@ mod tests {
         // 1. `main` module:
         //    - Defines TLS variable `g_worker_seed` (size 8, offset 0 in TLS segment)
         //    - Defines exported function `main_compute` at offset 0x600
-        let tls_var = TestSymbol { name: "g_worker_seed", shndx: 1, bind: 1, kind: 6, value: 0, size: 8 };
-        let main_fn = TestSymbol { name: "main_compute", shndx: 1, bind: 1, kind: 2, value: 0x600, size: 8 };
+        let tls_var = TestSymbol {
+            name: "g_worker_seed",
+            shndx: 1,
+            bind: 1,
+            kind: 6,
+            value: 0,
+            size: 8,
+        };
+        let main_fn = TestSymbol {
+            name: "main_compute",
+            shndx: 1,
+            bind: 1,
+            kind: 2,
+            value: 0x600,
+            size: 8,
+        };
 
         let mut main_nso = build_linked_nso_with(&[tls_var, main_fn], &[], &[]);
         // Code for main_compute at offset 0x600 (file offset 0x100 + 0x600 = 0x700):
@@ -794,14 +887,25 @@ mod tests {
         //    - Imports `main_compute` from `main` (relocated at GOT offset 0x300 via R_AARCH64_GLOB_DAT)
         //    - Imports `g_worker_seed` from `main` (relocated at GOT offset 0x308 via R_AARCH64_TLS_TPREL64)
         //    - Worker thread entry point at offset 0x600
-        let import_var = TestSymbol { name: "g_worker_seed", shndx: 0, bind: 1, kind: 6, value: 0, size: 0 };
-        let import_fn = TestSymbol { name: "main_compute", shndx: 0, bind: 1, kind: 2, value: 0, size: 0 };
+        let import_var = TestSymbol {
+            name: "g_worker_seed",
+            shndx: 0,
+            bind: 1,
+            kind: 6,
+            value: 0,
+            size: 0,
+        };
+        let import_fn = TestSymbol {
+            name: "main_compute",
+            shndx: 0,
+            bind: 1,
+            kind: 2,
+            value: 0,
+            size: 0,
+        };
         let mut subsdk_nso = build_linked_nso_with(
             &[import_var, import_fn],
-            &[
-                (0x300, R_AARCH64_GLOB_DAT, 2, 0),
-                (0x308, R_AARCH64_TLS_TPREL64, 1, 0),
-            ],
+            &[(0x300, R_AARCH64_GLOB_DAT, 2, 0), (0x308, R_AARCH64_TLS_TPREL64, 1, 0)],
             &[],
         );
 
@@ -860,8 +964,13 @@ mod tests {
 
         // Create and start worker thread in subsdk0 via Horizon kernel scheduler
         let worker_entry = subsdk_base + 0x600;
-        let handle = kernel.scheduler.create_thread(worker_entry, shared_buf, worker_stack, 44, 1);
-        let worker_tls = kernel.scheduler.setup_thread_tls(handle, &mut mmu).expect("Failed to setup worker TLS");
+        let handle = kernel
+            .scheduler
+            .create_thread(worker_entry, shared_buf, worker_stack, 44, 1);
+        let worker_tls = kernel
+            .scheduler
+            .setup_thread_tls(handle, &mut mmu)
+            .expect("Failed to setup worker TLS");
         assert_ne!(worker_tls, STATIC_TLS_ADDR);
 
         // Verify worker thread starts with a fresh copy of the initial non-zero TLS value
@@ -870,7 +979,10 @@ mod tests {
         // Run worker thread to completion
         let finished = kernel.scheduler.start_and_run_thread(handle, &mut mmu, 500);
         assert!(finished);
-        assert_eq!(kernel.scheduler.threads[&handle].state, crate::kernel::ThreadState::Exited);
+        assert_eq!(
+            kernel.scheduler.threads[&handle].state,
+            crate::kernel::ThreadState::Exited
+        );
         assert_eq!(kernel.scheduler.total_threads_completed, 1);
 
         // Check shared buffer:
@@ -890,20 +1002,44 @@ mod tests {
 
     #[test]
     fn test_homebrew_devkita64_linker_script_tls_fallback() {
-        use crate::loader::nro::{build_linked_nso_with, TestSymbol};
+        use crate::loader::nro::{TestSymbol, build_linked_nso_with};
 
         let temp_dir = std::env::temp_dir().join(format!(
             "ounce_test_devkita64_{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         let exefs = temp_dir.join("exefs");
         fs::create_dir_all(&exefs).unwrap();
 
         // `main` defines TLS variable and exports devkitA64 linker script symbols:
         // __tdata_lma at 0x1800, __tdata_lma_end at 0x1808.
-        let tls_sym = TestSymbol { name: "errno_val", shndx: 1, bind: 1, kind: 6, value: 0, size: 8 };
-        let lma_start = TestSymbol { name: "__tdata_lma", shndx: 1, bind: 1, kind: 1, value: 0x1800, size: 0 };
-        let lma_end = TestSymbol { name: "__tdata_lma_end", shndx: 1, bind: 1, kind: 1, value: 0x1808, size: 0 };
+        let tls_sym = TestSymbol {
+            name: "errno_val",
+            shndx: 1,
+            bind: 1,
+            kind: 6,
+            value: 0,
+            size: 8,
+        };
+        let lma_start = TestSymbol {
+            name: "__tdata_lma",
+            shndx: 1,
+            bind: 1,
+            kind: 1,
+            value: 0x1800,
+            size: 0,
+        };
+        let lma_end = TestSymbol {
+            name: "__tdata_lma_end",
+            shndx: 1,
+            bind: 1,
+            kind: 1,
+            value: 0x1808,
+            size: 0,
+        };
 
         let mut main_nso = build_linked_nso_with(&[tls_sym, lma_start, lma_end], &[], &[]);
         const ERRNO_INIT: u64 = 0xDEADC0DE_0000002A;

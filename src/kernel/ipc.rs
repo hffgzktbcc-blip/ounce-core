@@ -2,11 +2,11 @@
 
 use crate::audio::AudioOutServer;
 use crate::fs::VirtualFileSystem;
-use crate::gpu::nvgpu::{NvgpuChannel, NVGPU_IOCTL_CHANNEL_SUBMIT_GPFIFO};
+use crate::gpu::nvgpu::{NVGPU_IOCTL_CHANNEL_SUBMIT_GPFIFO, NvgpuChannel};
 use crate::mmu::Memory;
 use std::collections::HashMap;
 
-pub const CMIF_IN_MAGIC: u32 = 0x49434653;  // "SFCI"
+pub const CMIF_IN_MAGIC: u32 = 0x49434653; // "SFCI"
 pub const CMIF_OUT_MAGIC: u32 = 0x4F434653; // "SFCO"
 pub const DEFAULT_TLS_ADDR: u64 = 0x7FFFE00000;
 pub const TLS_SIZE: usize = 0x1000;
@@ -110,11 +110,19 @@ pub enum ServiceType {
     /// Generic stubbed service
     Generic(String),
     /// Shared memory object (not a session): handed out as a copy handle, mapped with svcMapSharedMemory.
-    SharedMemory { size: u64 },
+    SharedMemory {
+        size: u64,
+    },
     /// Transfer memory object from svcCreateTransferMemory: guest memory lent to a service.
-    TransferMemory { addr: u64, size: u64 },
+    TransferMemory {
+        addr: u64,
+        size: u64,
+    },
     /// Readable event handed out by nvdrv `QueryEvent` (syncpoint and channel error events).
-    NvEvent { fd: u32, event_id: u32 },
+    NvEvent {
+        fd: u32,
+        event_id: u32,
+    },
     /// `IAudioRenderer` opened through `audren:u` (state in `IpcManager::audio_renderer`).
     AudioRenderer,
     /// The audio renderer's system event: signaled once per rendered frame.
@@ -244,10 +252,13 @@ impl IpcManager {
         self.applet.storage_accessors.remove(&handle);
         self.applet.storage_accessors.retain(|_, storage| *storage != handle);
         if let Some(ServiceType::AudioDevice(id) | ServiceType::AudioDeviceEvent(id)) = &removed
-            && !self.handles.values().any(|service| matches!(service,
-                ServiceType::AudioDevice(other) | ServiceType::AudioDeviceEvent(other) if other == id)) {
-                self.audio_devices.remove(id);
-            }
+            && !self.handles.values().any(|service| {
+                matches!(service,
+                ServiceType::AudioDevice(other) | ServiceType::AudioDeviceEvent(other) if other == id)
+            })
+        {
+            self.audio_devices.remove(id);
+        }
         removed.is_some()
     }
 
@@ -297,8 +308,18 @@ impl IpcManager {
         self.request = super::hipc::parse_request(mmu, tls_addr);
         let mut cmif_base = tls_addr + self.request.cmif_offset;
         let magic = mmu.read_u32(cmif_base).unwrap_or(0);
-        if matches!(self.request.kind, super::hipc::TYPE_CONTROL | super::hipc::TYPE_CONTROL_WITH_CONTEXT) && magic == CMIF_IN_MAGIC {
-            return self.handle_control(session_handle, &service, tls_addr, mmu, mmu.read_u32(cmif_base + 8).unwrap_or(0));
+        if matches!(
+            self.request.kind,
+            super::hipc::TYPE_CONTROL | super::hipc::TYPE_CONTROL_WITH_CONTEXT
+        ) && magic == CMIF_IN_MAGIC
+        {
+            return self.handle_control(
+                session_handle,
+                &service,
+                tls_addr,
+                mmu,
+                mmu.read_u32(cmif_base + 8).unwrap_or(0),
+            );
         }
 
         let mut object_handle = session_handle;
@@ -334,9 +355,11 @@ impl IpcManager {
         let args_base = cmif_base + 0x10;
         // Explicit diagnostic opt-in; cap output even for a looping guest.
         if self.total_ipc_requests <= 100000 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
-            eprintln!("[IPC trace] #{} handle=0x{:X} service={:?} command={}", self.total_ipc_requests, object_handle, service, cmd_id);
+            eprintln!(
+                "[IPC trace] #{} handle=0x{:X} service={:?} command={}",
+                self.total_ipc_requests, object_handle, service, cmd_id
+            );
         }
-
 
         // libnx-shaped nvdrv requests carry their data in buffers; the harness's inline form keeps the
         // older handler below.
@@ -444,10 +467,10 @@ impl IpcManager {
                         nvn.submit_guest_command_stream(mmu, nvgpu, pb_addr, word_count);
                     } else if ioctl_cmd == 0x80B0_4705 && pb_addr != 0 {
                         // NVGPU_GPU_IOCTL_GET_CHARACTERISTICS: Write NVIDIA T239 Ampere GA10B (SM 8.7) characteristics
-                        let _ = mmu.write_u32(pb_addr, 0x0170);      // arch = NVGPU_GPU_ARCH_GA100 (Ampere)
-                        let _ = mmu.write_u32(pb_addr + 4, 0x000B);  // impl = NVGPU_GPU_IMPL_GA10B (Tegra T239)
-                        let _ = mmu.write_u32(pb_addr + 8, 0x00A1);  // rev = A1
-                        let _ = mmu.write_u32(pb_addr + 12, 12);     // num_gpc / 12 SMs (1536 CUDA cores)
+                        let _ = mmu.write_u32(pb_addr, 0x0170); // arch = NVGPU_GPU_ARCH_GA100 (Ampere)
+                        let _ = mmu.write_u32(pb_addr + 4, 0x000B); // impl = NVGPU_GPU_IMPL_GA10B (Tegra T239)
+                        let _ = mmu.write_u32(pb_addr + 8, 0x00A1); // rev = A1
+                        let _ = mmu.write_u32(pb_addr + 12, 12); // num_gpc / 12 SMs (1536 CUDA cores)
                         let _ = mmu.write_u32(pb_addr + 16, 0x0807); // sm_arch_sm_version = SM 8.7
                     } else if ioctl_cmd == 0xC018_4102 && pb_addr != 0 {
                         // NVGPU_AS_IOCTL_ALLOC_SPACE: Return allocated GPU VA
@@ -476,19 +499,16 @@ impl IpcManager {
                 self.reply_error(tls_addr, mmu, RESULT_UNKNOWN_COMMAND)
             }
 
-            ServiceType::Account | ServiceType::AccountProfile | ServiceType::AccountLaunchStorage | ServiceType::AccountLaunchAccessor => unreachable!("account services dispatched above"),
+            ServiceType::Account
+            | ServiceType::AccountProfile
+            | ServiceType::AccountLaunchStorage
+            | ServiceType::AccountLaunchAccessor => unreachable!("account services dispatched above"),
 
             ServiceType::AudOut => match cmd_id {
                 // Command 0/1: OpenAudioOut / StartAudioOut -> returns (sample_rate=48000, channels=2)
                 0 | 1 => {
                     audio.is_playing = true;
-                    self.write_cmif_response(
-                        tls_addr,
-                        mmu,
-                        0,
-                        &[audio.sample_rate, audio.channels],
-                        None,
-                    );
+                    self.write_cmif_response(tls_addr, mmu, 0, &[audio.sample_rate, audio.channels], None);
                     0
                 }
                 // Command 3: AppendAudioOutBuffer(pcm_addr, sample_count)
@@ -753,7 +773,9 @@ impl IpcManager {
             ServiceType::AppletResource => match cmd_id {
                 // Command 0: GetSharedMemoryHandle -> copy handle to the HID shared memory object
                 0 => {
-                    let shm = self.allocate_handle(ServiceType::SharedMemory { size: HID_SHARED_MEMORY_SIZE });
+                    let shm = self.allocate_handle(ServiceType::SharedMemory {
+                        size: HID_SHARED_MEMORY_SIZE,
+                    });
                     self.hid.handle = Some(shm);
                     self.reply(tls_addr, mmu, 0, &[], &[shm], None);
                     0
@@ -829,9 +851,17 @@ impl IpcManager {
             },
 
             ServiceType::FileSystem(mount) => self.handle_filesystem(&mount, cmd_id, args_base, tls_addr, mmu, vfs),
-            ServiceType::Directory { path, entries, index } => {
-                self.handle_directory(object_handle, path, entries, index, cmd_id, args_base, tls_addr, mmu, vfs)
-            }
+            ServiceType::Directory { path, entries, index } => self.handle_directory(
+                object_handle,
+                path,
+                entries,
+                index,
+                cmd_id,
+                args_base,
+                tls_addr,
+                mmu,
+                vfs,
+            ),
             ServiceType::File(handle) => self.handle_file(handle, cmd_id, args_base, tls_addr, mmu, vfs),
 
             ServiceType::Storage => match cmd_id {
@@ -916,7 +946,9 @@ impl IpcManager {
                             let mod0_offset = mmu.read_u32(nro_addr + 4).unwrap_or(0) as u64;
                             if mod0_offset > 0 {
                                 let mut mod0_magic = [0u8; 4];
-                                if mmu.read_bytes(nro_addr + mod0_offset, &mut mod0_magic).is_ok() && &mod0_magic == b"MOD0" {
+                                if mmu.read_bytes(nro_addr + mod0_offset, &mut mod0_magic).is_ok()
+                                    && &mod0_magic == b"MOD0"
+                                {
                                     // Valid NRO0 / MOD0 identified
                                 }
                             }
@@ -1214,8 +1246,20 @@ impl IpcManager {
             // RequestUpdate(in update data; out output data, out performance data), buffers A/B or X/C
             4 | 10 => {
                 let req = self.request.clone();
-                let input = req.send_buffers.first().copied().filter(|b| b.size > 0).or(req.send_statics.first().map(|&(_, b)| b)).unwrap_or_default();
-                let output = req.recv_buffers.first().copied().filter(|b| b.size > 0).or(req.recv_list.first().copied()).unwrap_or_default();
+                let input = req
+                    .send_buffers
+                    .first()
+                    .copied()
+                    .filter(|b| b.size > 0)
+                    .or(req.send_statics.first().map(|&(_, b)| b))
+                    .unwrap_or_default();
+                let output = req
+                    .recv_buffers
+                    .first()
+                    .copied()
+                    .filter(|b| b.size > 0)
+                    .or(req.recv_list.first().copied())
+                    .unwrap_or_default();
                 let mut inb = vec![0u8; input.size.min(0x10_0000) as usize];
                 let _ = mmu.read_bytes(input.addr, &mut inb);
                 let mut outb = vec![0u8; output.size.min(0x10_0000) as usize];
@@ -1247,14 +1291,31 @@ impl IpcManager {
 
     /// `nvdrv` commands in the form libnx sends them. Each reply carries the nvdrv status word that
     /// libnx turns into a result with `nvConvertError`.
-    fn handle_nvdrv(&mut self, cmd_id: u32, args_base: u64, tls_addr: u64, mmu: &mut Memory, nvgpu: &mut NvgpuChannel) -> u64 {
+    fn handle_nvdrv(
+        &mut self,
+        cmd_id: u32,
+        args_base: u64,
+        tls_addr: u64,
+        mmu: &mut Memory,
+        nvgpu: &mut NvgpuChannel,
+    ) -> u64 {
         let req = self.request.clone();
         // The i-th input is an X buffer with a size, else the i-th A buffer (libnx "auto select");
         // outputs likewise use C, else B.
         let input = |i: usize| {
-            req.send_statics.get(i).map(|&(_, b)| b).filter(|b| b.size > 0).or(req.send_buffers.get(i).copied())
+            req.send_statics
+                .get(i)
+                .map(|&(_, b)| b)
+                .filter(|b| b.size > 0)
+                .or(req.send_buffers.get(i).copied())
         };
-        let output = |i: usize| req.recv_list.get(i).copied().filter(|b| b.size > 0).or(req.recv_buffers.get(i).copied());
+        let output = |i: usize| {
+            req.recv_list
+                .get(i)
+                .copied()
+                .filter(|b| b.size > 0)
+                .or(req.recv_buffers.get(i).copied())
+        };
         let read_buf = |mmu: &Memory, b: Option<super::hipc::Buffer>, len: usize| {
             let mut v = vec![0u8; len];
             if let Some(b) = b {
@@ -1275,7 +1336,7 @@ impl IpcManager {
             // Ioctl(fd, request), argument block in X/A, written back to C/B -> status.
             // Ioctl2 (11) adds an input buffer; Ioctl3 (12) adds an output buffer.
             1 | 11 | 12 => {
-                use super::nvdrv::{ioctl_has_input, ioctl_has_output, ioctl_size, IoctlExtra};
+                use super::nvdrv::{IoctlExtra, ioctl_has_input, ioctl_has_output, ioctl_size};
                 let fd = mmu.read_u32(args_base).unwrap_or(0);
                 let request = mmu.read_u32(args_base + 4).unwrap_or(0);
                 let size = ioctl_size(request);
@@ -1285,11 +1346,16 @@ impl IpcManager {
                 let extra_in = if cmd_id == 11 { input(1) } else { None };
                 let extra_out = if cmd_id == 12 { output(1) } else { None };
                 if extra_in.is_some_and(|b| b.size > MAX_IOCTL_EXTRA)
-                    || extra_out.is_some_and(|b| b.size > MAX_IOCTL_EXTRA) {
+                    || extra_out.is_some_and(|b| b.size > MAX_IOCTL_EXTRA)
+                {
                     self.write_cmif_response(tls_addr, mmu, 0, &[super::nvdrv::NV_BAD_PARAMETER], None);
                     return 0;
                 }
-                let mut data = if ioctl_has_input(request) { read_buf(mmu, input(0), size) } else { vec![0u8; size] };
+                let mut data = if ioctl_has_input(request) {
+                    read_buf(mmu, input(0), size)
+                } else {
+                    vec![0u8; size]
+                };
                 let inbuf = if cmd_id == 11 {
                     let b = input(1).unwrap_or_default();
                     read_buf(mmu, Some(b), b.size as usize)
@@ -1298,12 +1364,17 @@ impl IpcManager {
                 };
                 let out2 = if cmd_id == 12 { output(1) } else { None };
                 let mut outbuf = vec![0u8; out2.map_or(0, |b| b.size as usize)];
-                let extra = IoctlExtra { inbuf: &inbuf, outbuf: out2.map(|_| outbuf.as_mut_slice()) };
+                let extra = IoctlExtra {
+                    inbuf: &inbuf,
+                    outbuf: out2.map(|_| outbuf.as_mut_slice()),
+                };
                 // Blocked 3D channels may be free now (the guest can release a semaphore with a
                 // plain store), so syncpoint reads and waits below see current fences.
                 self.nvdrv.poll_3d(mmu);
                 let status = self.nvdrv.ioctl_ex(fd, request, &mut data, extra);
-                if ioctl_has_output(request) && let Some(b) = output(0) {
+                if ioctl_has_output(request)
+                    && let Some(b) = output(0)
+                {
                     let n = data.len().min(b.size as usize);
                     let _ = mmu.write_bytes(b.addr, &data[..n]);
                 }
@@ -1311,7 +1382,10 @@ impl IpcManager {
                     let _ = mmu.write_bytes(b.addr, &outbuf);
                 }
                 // GET_TPC_MASKS returns its masks through the guest pointer in the argument block.
-                if request == super::nvdrv::NVGPU_GPU_IOCTL_GET_TPC_MASKS && status == super::nvdrv::NV_OK && data.len() >= 0x18 {
+                if request == super::nvdrv::NVGPU_GPU_IOCTL_GET_TPC_MASKS
+                    && status == super::nvdrv::NV_OK
+                    && data.len() >= 0x18
+                {
                     let addr = u64::from_le_bytes(data[0x10..0x18].try_into().unwrap());
                     let size = (u32::from_le_bytes(data[..4].try_into().unwrap()) as usize).min(4);
                     let _ = mmu.write_bytes(addr, &super::nvdrv::TPC_MASKS.to_le_bytes()[..size]);
@@ -1381,7 +1455,14 @@ impl IpcManager {
     }
 
     /// HIPC control requests (`TYPE_CONTROL`): domain conversion, cloning, pointer buffer size.
-    fn handle_control(&mut self, session_handle: u32, service: &ServiceType, tls_addr: u64, mmu: &mut Memory, cmd_id: u32) -> u64 {
+    fn handle_control(
+        &mut self,
+        session_handle: u32,
+        service: &ServiceType,
+        tls_addr: u64,
+        mmu: &mut Memory,
+        cmd_id: u32,
+    ) -> u64 {
         match cmd_id {
             // CloneCurrentObject / CloneCurrentObjectEx -> a new session to the same service
             2 | 4 => {
@@ -1416,7 +1497,15 @@ impl IpcManager {
     /// Writes a response. `new_object` is a session this request created: a move handle on a plain session,
     /// an out object ID on a domain. Handlers echo that handle as their first out word for the harness's
     /// fixed-offset reads; on a domain the echo is dropped so the object ID lands right after the real data.
-    pub(super) fn reply(&self, tls_addr: u64, mmu: &mut Memory, result: u32, data: &[u8], copy_handles: &[u32], new_object: Option<u32>) {
+    pub(super) fn reply(
+        &self,
+        tls_addr: u64,
+        mmu: &mut Memory,
+        result: u32,
+        data: &[u8],
+        copy_handles: &[u32],
+        new_object: Option<u32>,
+    ) {
         let objects: Vec<u32> = new_object.into_iter().collect();
         if self.domain_reply {
             let data = match new_object {
@@ -1426,13 +1515,25 @@ impl IpcManager {
             super::hipc::write_response(
                 mmu,
                 tls_addr,
-                &super::hipc::Response { result, data, copy_handles, domain_objects: Some(&objects), ..Default::default() },
+                &super::hipc::Response {
+                    result,
+                    data,
+                    copy_handles,
+                    domain_objects: Some(&objects),
+                    ..Default::default()
+                },
             );
         } else {
             super::hipc::write_response(
                 mmu,
                 tls_addr,
-                &super::hipc::Response { result, data, copy_handles, move_handles: &objects, ..Default::default() },
+                &super::hipc::Response {
+                    result,
+                    data,
+                    copy_handles,
+                    move_handles: &objects,
+                    ..Default::default()
+                },
             );
         }
     }
@@ -1476,7 +1577,10 @@ mod tests {
             mmu.write_u64(tls + cmif + 16, arg).unwrap();
         };
         request(&mut mmu, true, 0, 0);
-        assert_eq!(ipc.handle_sync_request(sm, tls, &mut mmu, &mut nvgpu, &mut audio, &mut vfs), 0);
+        assert_eq!(
+            ipc.handle_sync_request(sm, tls, &mut mmu, &mut nvgpu, &mut audio, &mut vfs),
+            0
+        );
         assert_eq!(ipc.registered_pid, Some(0x77));
         assert_eq!(mmu.read_u32(tls + 0x10).unwrap(), CMIF_OUT_MAGIC);
 
@@ -1497,7 +1601,12 @@ mod tests {
         ipc.handle_sync_request(res, tls, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
         assert_eq!(mmu.read_u32(tls + 8).unwrap(), 1 << 1);
         let shm = mmu.read_u32(tls + 12).unwrap();
-        assert_eq!(ipc.handles.get(&shm), Some(&ServiceType::SharedMemory { size: HID_SHARED_MEMORY_SIZE }));
+        assert_eq!(
+            ipc.handles.get(&shm),
+            Some(&ServiceType::SharedMemory {
+                size: HID_SHARED_MEMORY_SIZE
+            })
+        );
 
         // Control: QueryPointerBufferSize.
         request(&mut mmu, false, 3, 0);
@@ -1512,8 +1621,7 @@ mod tests {
         let tls = 0x8000_0000u64;
         mmu.map_range(tls, 4096, Permission::READ_WRITE);
         let mut ipc = IpcManager::new();
-        let (mut gpu, mut audio, mut vfs) =
-            (NvgpuChannel::new(), AudioOutServer::new(), VirtualFileSystem::new());
+        let (mut gpu, mut audio, mut vfs) = (NvgpuChannel::new(), AudioOutServer::new(), VirtualFileSystem::new());
         let display = ipc.allocate_handle(ServiceType::ApplicationDisplayService);
         let request = |mmu: &mut Memory, cmd: u32| {
             for offset in (0..0x100u64).step_by(4) {
@@ -1524,11 +1632,19 @@ mod tests {
             mmu.write_u32(tls + 0x10, CMIF_IN_MAGIC).unwrap();
             mmu.write_u32(tls + 0x18, cmd).unwrap();
         };
-        let names = ["vi:binder-relay", "vi:system-display", "vi:manager-display", "vi:binder-indirect"];
+        let names = [
+            "vi:binder-relay",
+            "vi:system-display",
+            "vi:manager-display",
+            "vi:binder-indirect",
+        ];
         let mut sessions = Vec::new();
         for (cmd, name) in (100..=103).zip(names) {
             request(&mut mmu, cmd);
-            assert_eq!(ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+            assert_eq!(
+                ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs),
+                0
+            );
             assert_eq!(mmu.read_u32(tls + 8).unwrap(), 1 << 5, "one move handle");
             let session = mmu.read_u32(tls + 12).unwrap();
             assert_eq!(ipc.handles.get(&session), Some(&ServiceType::Generic(name.into())));
@@ -1536,12 +1652,18 @@ mod tests {
             sessions.push(session);
         }
         request(&mut mmu, 2020);
-        assert_eq!(ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+        assert_eq!(
+            ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs),
+            0
+        );
         assert_eq!(mmu.read_u32(tls + 0x10).unwrap(), CMIF_OUT_MAGIC);
         assert_eq!(mmu.read_u32(tls + 0x18).unwrap(), (102 << 9) | 1);
         for cmd in [2030, 9999] {
             request(&mut mmu, cmd);
-            assert_eq!(ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs), 0);
+            assert_eq!(
+                ipc.handle_sync_request(display, tls, &mut mmu, &mut gpu, &mut audio, &mut vfs),
+                0
+            );
             assert_eq!(mmu.read_u32(tls + 0x10).unwrap(), CMIF_OUT_MAGIC);
             assert_eq!(mmu.read_u32(tls + 0x18).unwrap(), RESULT_UNKNOWN_COMMAND);
         }
@@ -1721,9 +1843,18 @@ mod tests {
             memory.write_u32(0x8080, 0).unwrap();
             memory.write_u32(0x8084, 0).unwrap();
             let mut ipc = IpcManager::new();
-            let buffers = vec![Buffer::default(), Buffer { addr: 0, size: (1u64 << 36) - 1 }];
-            if cmd == 11 { ipc.request.send_buffers = buffers; }
-            else { ipc.request.recv_buffers = buffers; }
+            let buffers = vec![
+                Buffer::default(),
+                Buffer {
+                    addr: 0,
+                    size: (1u64 << 36) - 1,
+                },
+            ];
+            if cmd == 11 {
+                ipc.request.send_buffers = buffers;
+            } else {
+                ipc.request.recv_buffers = buffers;
+            }
             ipc.handle_nvdrv(cmd, 0x8080, 0x8000, &mut memory, &mut NvgpuChannel::new());
             assert_eq!(memory.read_u32(0x8020).unwrap(), super::super::nvdrv::NV_BAD_PARAMETER);
         }
@@ -1850,7 +1981,10 @@ mod tests {
         let res = ipc.handle_sync_request(fsp_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
         assert_eq!(res, 0);
         let sdmc_fs_h = mmu.read_u32(tls_addr + 0x20).unwrap();
-        assert_eq!(ipc.handles.get(&sdmc_fs_h), Some(&ServiceType::FileSystem("sdmc:/".to_string())));
+        assert_eq!(
+            ipc.handles.get(&sdmc_fs_h),
+            Some(&ServiceType::FileSystem("sdmc:/".to_string()))
+        );
 
         // 2. Query free space via IFileSystem (Cmd 11)
         mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
@@ -1902,7 +2036,10 @@ mod tests {
         let res = ipc.handle_sync_request(fsp_h, tls_addr, &mut mmu, &mut nvgpu, &mut audio, &mut vfs);
         assert_eq!(res, 0);
         let save_fs_h = mmu.read_u32(tls_addr + 0x20).unwrap();
-        assert_eq!(ipc.handles.get(&save_fs_h), Some(&ServiceType::FileSystem("save:/".to_string())));
+        assert_eq!(
+            ipc.handles.get(&save_fs_h),
+            Some(&ServiceType::FileSystem("save:/".to_string()))
+        );
 
         // 7. Direct fsp-srv commands (OpenDirectory Cmd 10 & GetFreeSpaceSize Cmd 12)
         mmu.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
@@ -1912,7 +2049,10 @@ mod tests {
         assert_eq!(res, 0);
         let save_free_lo = mmu.read_u32(tls_addr + 0x20).unwrap();
         let save_free_hi = mmu.read_u32(tls_addr + 0x24).unwrap();
-        assert_eq!(((save_free_hi as u64) << 32) | (save_free_lo as u64), 64 * 1024 * 1024 * 1024);
+        assert_eq!(
+            ((save_free_hi as u64) << 32) | (save_free_lo as u64),
+            64 * 1024 * 1024 * 1024
+        );
     }
 
     #[test]

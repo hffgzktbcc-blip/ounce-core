@@ -33,11 +33,7 @@ pub struct HbxImage<'a> {
 impl<'a> HbxImage<'a> {
     pub fn parse(report: &[u8], code: &'a [u8], data: &'a [u8]) -> Result<Self, HbxLoadError> {
         use HbxLoadError::Invalid;
-        if report.len() > PAGE
-            || code.is_empty()
-            || code.len() > MAX_SEGMENT
-            || data.len() > MAX_SEGMENT
-        {
+        if report.len() > PAGE || code.is_empty() || code.len() > MAX_SEGMENT || data.len() > MAX_SEGMENT {
             return Err(Invalid("image size"));
         }
         let report: Value = serde_json::from_slice(report)?;
@@ -65,10 +61,7 @@ impl<'a> HbxImage<'a> {
         {
             return Err(Invalid("data region"));
         }
-        for (size, digest, bytes) in [
-            ("codeBytes", "codeSha256", code),
-            ("dataBytes", "dataSha256", data),
-        ] {
+        for (size, digest, bytes) in [("codeBytes", "codeSha256", code), ("dataBytes", "dataSha256", data)] {
             if number(size)? != bytes.len() as u64 {
                 return Err(Invalid(size));
             }
@@ -113,12 +106,7 @@ impl<'a> HbxImage<'a> {
                 self.code,
                 Permission::READ_WRITE_EXECUTE,
             ),
-            (
-                self.data_base,
-                self.data_region,
-                self.data,
-                Permission::READ_WRITE,
-            ),
+            (self.data_base, self.data_region, self.data, Permission::READ_WRITE),
         ];
         for (base, size, _, _) in segments {
             if (0..size)

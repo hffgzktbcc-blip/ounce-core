@@ -63,11 +63,10 @@ fn check(raw: u32, initialize: impl Fn(&mut Cpu), verify: impl Fn(&Cpu)) {
         return;
     }
     #[cfg(feature = "native-jit")]
-    if !matches!(decoder::decode(raw), Instruction::SimdVec2D { .. }) && let CpuEngine::Tier4(engine) = tier4 {
-        assert!(
-            engine.native_block_runs > 0,
-            "regression must exercise native lowering"
-        );
+    if !matches!(decoder::decode(raw), Instruction::SimdVec2D { .. })
+        && let CpuEngine::Tier4(engine) = tier4
+    {
+        assert!(engine.native_block_runs > 0, "regression must exercise native lowering");
     }
 }
 
@@ -104,12 +103,7 @@ fn numeric_fp_minmax_keeps_numbers_and_signed_zero_when_combining_branches() {
                     write(c, 1, -0.0);
                     write(c, 2, 0.0);
                 },
-                |c| {
-                    assert_eq!(
-                        read(c).to_bits(),
-                        if minimum { (-0.0f64).to_bits() } else { 0 }
-                    )
-                },
+                |c| assert_eq!(read(c).to_bits(), if minimum { (-0.0f64).to_bits() } else { 0 }),
             );
         }
     }
@@ -161,16 +155,11 @@ fn vector_double_add_uses_two_double_lanes() {
     check(
         0x4e62_d420,
         |c| {
-            c.regs
-                .write_q(1, (1.0f64.to_bits() as u128) * ((1u128 << 64) + 1));
-            c.regs
-                .write_q(2, (2.0f64.to_bits() as u128) * ((1u128 << 64) + 1));
+            c.regs.write_q(1, (1.0f64.to_bits() as u128) * ((1u128 << 64) + 1));
+            c.regs.write_q(2, (2.0f64.to_bits() as u128) * ((1u128 << 64) + 1));
         },
         |c| {
-            assert_eq!(
-                c.regs.read_q(0),
-                (3.0f64.to_bits() as u128) * ((1u128 << 64) + 1)
-            );
+            assert_eq!(c.regs.read_q(0), (3.0f64.to_bits() as u128) * ((1u128 << 64) + 1));
         },
     );
 }

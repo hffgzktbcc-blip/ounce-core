@@ -4,7 +4,10 @@
 //! `esize` is the element size in bits (8, 16, 32 or 64). With `q == false` only the low 64 bits are
 //! used and the result's upper 64 bits are zero, as the architecture requires.
 
-use super::instructions::{SimdElemOp, SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatAddSubOp, SimdSatLongOp, SimdShiftExtOp};
+use super::instructions::{
+    SimdAcrossOp, SimdElemOp, SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdLongOp, SimdNarrowOp, SimdOp2, SimdOp3,
+    SimdPermuteOp, SimdSatAddSubOp, SimdSatLongOp, SimdShiftExtOp,
+};
 
 #[inline]
 /// Mask of one `esize`-bit lane, as a 128-bit value.
@@ -93,7 +96,11 @@ fn shift_lane(a: u64, sh: i32, esize: u32, signed: bool, round: bool, sat: bool)
             }
             return saturate(v << sh, esize, signed);
         }
-        let r = if sh as u32 >= esize { 0 } else { (v << sh) as u64 & mask(esize) };
+        let r = if sh as u32 >= esize {
+            0
+        } else {
+            (v << sh) as u64 & mask(esize)
+        };
         return (r, false);
     }
     let rs = ((-sh) as u32).min(100);
@@ -127,11 +134,20 @@ fn three_same_inner(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool,
     let count = lanes(esize, q);
     let all = mask(esize);
     let mut out = 0u128;
-    let pairwise = matches!(op, SimdOp3::Addp | SimdOp3::Uminp | SimdOp3::Umaxp | SimdOp3::Sminp | SimdOp3::Smaxp);
+    let pairwise = matches!(
+        op,
+        SimdOp3::Addp | SimdOp3::Uminp | SimdOp3::Umaxp | SimdOp3::Sminp | SimdOp3::Smaxp
+    );
     for i in 0..count {
         let (a, b) = if pairwise {
             // Lanes of `n` then `m`, taken two at a time.
-            let pick = |j: usize| if j < count { lane(n, esize, j) } else { lane(m, esize, j - count) };
+            let pick = |j: usize| {
+                if j < count {
+                    lane(n, esize, j)
+                } else {
+                    lane(m, esize, j - count)
+                }
+            };
             (pick(2 * i), pick(2 * i + 1))
         } else {
             (lane(n, esize, i), lane(m, esize, i))
@@ -189,12 +205,48 @@ fn three_same_inner(op: SimdOp3, d: u128, n: u128, m: u128, esize: u32, q: bool,
             SimdOp3::Add | SimdOp3::Addp => a.wrapping_add(b),
             SimdOp3::Sub => a.wrapping_sub(b),
             SimdOp3::Mul => a.wrapping_mul(b),
-            SimdOp3::Cmeq => if a == b { all } else { 0 },
-            SimdOp3::Cmtst => if a & b != 0 { all } else { 0 },
-            SimdOp3::Cmhi => if a > b { all } else { 0 },
-            SimdOp3::Cmhs => if a >= b { all } else { 0 },
-            SimdOp3::Cmgt => if sa > sb { all } else { 0 },
-            SimdOp3::Cmge => if sa >= sb { all } else { 0 },
+            SimdOp3::Cmeq => {
+                if a == b {
+                    all
+                } else {
+                    0
+                }
+            }
+            SimdOp3::Cmtst => {
+                if a & b != 0 {
+                    all
+                } else {
+                    0
+                }
+            }
+            SimdOp3::Cmhi => {
+                if a > b {
+                    all
+                } else {
+                    0
+                }
+            }
+            SimdOp3::Cmhs => {
+                if a >= b {
+                    all
+                } else {
+                    0
+                }
+            }
+            SimdOp3::Cmgt => {
+                if sa > sb {
+                    all
+                } else {
+                    0
+                }
+            }
+            SimdOp3::Cmge => {
+                if sa >= sb {
+                    all
+                } else {
+                    0
+                }
+            }
             SimdOp3::Umax | SimdOp3::Umaxp => a.max(b),
             SimdOp3::Umin | SimdOp3::Uminp => a.min(b),
             SimdOp3::Smax | SimdOp3::Smaxp => sa.max(sb) as u64,
@@ -248,7 +300,22 @@ fn round_f64(x: f64, m: Rm) -> f64 {
 
 fn is_special_op2(op: SimdFpOp2) -> bool {
     use SimdFpOp2::*;
-    matches!(op, Frintn | Frintp | Frintm | Frintz | Frinta | Frintx | Frinti | Frint32z | Frint32x | Frint64z | Frint64x | Frecpe | Frsqrte)
+    matches!(
+        op,
+        Frintn
+            | Frintp
+            | Frintm
+            | Frintz
+            | Frinta
+            | Frintx
+            | Frinti
+            | Frint32z
+            | Frint32x
+            | Frint64z
+            | Frint64x
+            | Frecpe
+            | Frsqrte
+    )
 }
 
 /// FP lane ops that need more than the plain Rust float methods: round-to-integral and the estimates.
@@ -261,7 +328,11 @@ fn fp_special_op2(op: SimdFpOp2, bits: u64, esize: u32, cur: Rm) -> u64 {
         _ => {}
     }
     let quiet = if esize == 32 { 1u64 << 22 } else { 1u64 << 51 };
-    let v = if esize == 32 { f32::from_bits(bits as u32) as f64 } else { f64::from_bits(bits) };
+    let v = if esize == 32 {
+        f32::from_bits(bits as u32) as f64
+    } else {
+        f64::from_bits(bits)
+    };
     let (bits_range, wide_only) = match op {
         Frint32z | Frint32x => (Some(32u32), true),
         Frint64z | Frint64x => (Some(64u32), true),
@@ -281,13 +352,25 @@ fn fp_special_op2(op: SimdFpOp2, bits: u64, esize: u32, cur: Rm) -> u64 {
     };
     let r = round_f64(v, rm);
     if let Some(w) = bits_range {
-        let lim = if w == 32 { 2147483648.0f64 } else { 9223372036854775808.0f64 };
+        let lim = if w == 32 {
+            2147483648.0f64
+        } else {
+            9223372036854775808.0f64
+        };
         if v.is_nan() || !(r >= -lim && r < lim) {
             // out of range (also NaN and infinity): the most negative integer of that width
-            return if esize == 32 { (-lim as f32).to_bits() as u64 } else { (-lim).to_bits() };
+            return if esize == 32 {
+                (-lim as f32).to_bits() as u64
+            } else {
+                (-lim).to_bits()
+            };
         }
     }
-    if esize == 32 { (r as f32).to_bits() as u64 } else { r.to_bits() }
+    if esize == 32 {
+        (r as f32).to_bits() as u64
+    } else {
+        r.to_bits()
+    }
 }
 
 /// FP to integer conversion with an explicit rounding direction (saturating, NaN becomes 0).
@@ -307,7 +390,11 @@ fn fcvt_mode(op: SimdOp2) -> (Rm, bool) {
 }
 
 fn fcvt_int(op: SimdOp2, bits: u64, esize: u32) -> u64 {
-    let v = if esize == 32 { f32::from_bits(bits as u32) as f64 } else { f64::from_bits(bits) };
+    let v = if esize == 32 {
+        f32::from_bits(bits as u32) as f64
+    } else {
+        f64::from_bits(bits)
+    };
     let (rm, signed) = fcvt_mode(op);
     let r = round_f64(v, rm);
     match (esize, signed) {
@@ -414,7 +501,11 @@ fn fp_rsqrt_estimate(bits: u64, esize: u32) -> u64 {
         return fp_pack(sign, max, 0, esize);
     }
     if sign == 1 {
-        return if esize == 32 { 0x7fc0_0000 } else { 0x7ff8_0000_0000_0000 };
+        return if esize == 32 {
+            0x7fc0_0000
+        } else {
+            0x7ff8_0000_0000_0000
+        };
     }
     if exp == max {
         return 0;
@@ -426,7 +517,11 @@ fn fp_rsqrt_estimate(bits: u64, esize: u32) -> u64 {
         }
         frac = (frac << 1) & ((1u64 << 52) - 1);
     }
-    let scaled = if exp & 1 == 0 { (1u32 << 8) | (frac >> 44) as u32 } else { (1u32 << 7) | (frac >> 45) as u32 };
+    let scaled = if exp & 1 == 0 {
+        (1u32 << 8) | (frac >> 44) as u32
+    } else {
+        (1u32 << 7) | (frac >> 45) as u32
+    };
     let result_exp = (if esize == 32 { 380 } else { 3068 } - exp).div_euclid(2);
     let estimate = rsqrt_estimate(scaled);
     fp_pack(0, result_exp, ((estimate & 0xFF) as u64) << 44, esize)
@@ -438,7 +533,11 @@ pub fn two_misc(op: SimdOp2, n: u128, esize: u32, q: bool) -> u128 {
         return !n & width_mask(q);
     }
     if let SimdOp2::Rev64 | SimdOp2::Rev32 | SimdOp2::Rev16 = op {
-        let container = match op { SimdOp2::Rev64 => 64, SimdOp2::Rev32 => 32, _ => 16 };
+        let container = match op {
+            SimdOp2::Rev64 => 64,
+            SimdOp2::Rev32 => 32,
+            _ => 16,
+        };
         let per = (container / esize) as usize;
         let mut out = 0u128;
         for i in 0..lanes(esize, q) {
@@ -453,11 +552,41 @@ pub fn two_misc(op: SimdOp2, n: u128, esize: u32, q: bool) -> u128 {
         let a = lane(n, esize, i);
         let s = sext(a, esize);
         let r = match op {
-            SimdOp2::Cmeq0 => if a == 0 { all } else { 0 },
-            SimdOp2::Cmgt0 => if s > 0 { all } else { 0 },
-            SimdOp2::Cmge0 => if s >= 0 { all } else { 0 },
-            SimdOp2::Cmle0 => if s <= 0 { all } else { 0 },
-            SimdOp2::Cmlt0 => if s < 0 { all } else { 0 },
+            SimdOp2::Cmeq0 => {
+                if a == 0 {
+                    all
+                } else {
+                    0
+                }
+            }
+            SimdOp2::Cmgt0 => {
+                if s > 0 {
+                    all
+                } else {
+                    0
+                }
+            }
+            SimdOp2::Cmge0 => {
+                if s >= 0 {
+                    all
+                } else {
+                    0
+                }
+            }
+            SimdOp2::Cmle0 => {
+                if s <= 0 {
+                    all
+                } else {
+                    0
+                }
+            }
+            SimdOp2::Cmlt0 => {
+                if s < 0 {
+                    all
+                } else {
+                    0
+                }
+            }
             SimdOp2::Cnt => a.count_ones() as u64,
             SimdOp2::Abs => s.unsigned_abs(),
             SimdOp2::Neg => (s.wrapping_neg()) as u64,
@@ -470,8 +599,14 @@ pub fn two_misc(op: SimdOp2, n: u128, esize: u32, q: bool) -> u128 {
             SimdOp2::Fcvtzs => f64::from_bits(a) as i64 as u64,
             SimdOp2::Fcvtzu if esize == 32 => f32::from_bits(a as u32) as u32 as u64,
             SimdOp2::Fcvtzu => f64::from_bits(a) as u64,
-            SimdOp2::Fcvtns | SimdOp2::Fcvtnu | SimdOp2::Fcvtms | SimdOp2::Fcvtmu | SimdOp2::Fcvtas | SimdOp2::Fcvtau
-            | SimdOp2::Fcvtps | SimdOp2::Fcvtpu => fcvt_int(op, a, esize),
+            SimdOp2::Fcvtns
+            | SimdOp2::Fcvtnu
+            | SimdOp2::Fcvtms
+            | SimdOp2::Fcvtmu
+            | SimdOp2::Fcvtas
+            | SimdOp2::Fcvtau
+            | SimdOp2::Fcvtps
+            | SimdOp2::Fcvtpu => fcvt_int(op, a, esize),
             SimdOp2::Urecpe => urecpe(a as u32) as u64,
             SimdOp2::Ursqrte => ursqrte(a as u32) as u64,
             SimdOp2::Clz => (a.leading_zeros() - (64 - esize)) as u64,
@@ -567,9 +702,17 @@ pub fn mul_long(op: SimdLongOp, d: u128, n: u128, m: u128, esize: u32, q: bool, 
     let mut out = 0u128;
     for i in 0..64 / esize as usize {
         let b = ext(lane(hm, esize, i));
-        let a = if matches!(op, SimdLongOp::Addw | SimdLongOp::Subw) { lane(n, wide, i) } else { ext(lane(hn, esize, i)) };
+        let a = if matches!(op, SimdLongOp::Addw | SimdLongOp::Subw) {
+            lane(n, wide, i)
+        } else {
+            ext(lane(hn, esize, i))
+        };
         let acc = lane(d, wide, i);
-        let abd = if signed { (a as i64).wrapping_sub(b as i64).unsigned_abs() } else { a.abs_diff(b) };
+        let abd = if signed {
+            (a as i64).wrapping_sub(b as i64).unsigned_abs()
+        } else {
+            a.abs_diff(b)
+        };
         let r = match op {
             SimdLongOp::Mull => a.wrapping_mul(b),
             SimdLongOp::Mlal => acc.wrapping_add(a.wrapping_mul(b)),
@@ -601,7 +744,11 @@ pub fn narrow_high(op: SimdNarrowOp, d: u128, n: u128, m: u128, esize: u32, q: b
         }
         set_lane(&mut half, esize, i, ((r >> esize) as u64) & mask(esize));
     }
-    if q { (d & ((1u128 << 64) - 1)) | (half << 64) } else { half }
+    if q {
+        (d & ((1u128 << 64) - 1)) | (half << 64)
+    } else {
+        half
+    }
 }
 
 fn saturate_signed(v: i128, bits: u32) -> u64 {
@@ -705,10 +852,18 @@ macro_rules! fp_lane_ops {
                 let (aq, bq) = (a.is_nan() && !is_snan(a), b.is_nan() && !is_snan(b));
                 // ARM swaps a quiet NaN for -inf (max) / +inf (min) when the other side is not a quiet NaN
                 if aq && !bq {
-                    return if b.is_nan() { b.to_bits() | QUIET } else { b.to_bits() };
+                    return if b.is_nan() {
+                        b.to_bits() | QUIET
+                    } else {
+                        b.to_bits()
+                    };
                 }
                 if bq && !aq {
-                    return if a.is_nan() { a.to_bits() | QUIET } else { a.to_bits() };
+                    return if a.is_nan() {
+                        a.to_bits() | QUIET
+                    } else {
+                        a.to_bits()
+                    };
                 }
                 max_min(a, b, max)
             }
@@ -732,14 +887,20 @@ macro_rules! fp_lane_ops {
                 let (a, b, d) = (<$f>::from_bits(n), <$f>::from_bits(m), <$f>::from_bits(acc));
                 let flag = |c: bool| if c { ALL } else { 0 };
                 let nan = match op {
-                    SimdFpOp3::Fadd | SimdFpOp3::Faddp | SimdFpOp3::Fsub | SimdFpOp3::Fmul | SimdFpOp3::Fmulx | SimdFpOp3::Fdiv => nan_in(&[a, b]),
+                    SimdFpOp3::Fadd
+                    | SimdFpOp3::Faddp
+                    | SimdFpOp3::Fsub
+                    | SimdFpOp3::Fmul
+                    | SimdFpOp3::Fmulx
+                    | SimdFpOp3::Fdiv => nan_in(&[a, b]),
                     // the step ops negate the first operand before NaN processing, so its NaN comes back with the sign flipped
                     SimdFpOp3::Frecps | SimdFpOp3::Frsqrts => nan_in(&[-a, b]),
                     SimdFpOp3::Fabd => nan_in(&[a, b]).map(|r| r & !SIGN),
                     // FPMulAdd: a quiet-NaN addend with 0 * inf is the default NaN; otherwise addend, then operands
                     SimdFpOp3::Fmla | SimdFpOp3::Fmls => {
                         let a = if op == SimdFpOp3::Fmls { -a } else { a };
-                        if d.is_nan() && !is_snan(d) && ((a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite())) {
+                        if d.is_nan() && !is_snan(d) && ((a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()))
+                        {
                             Some(<$f>::NAN.to_bits())
                         } else {
                             nan_in(&[d, a, b])
@@ -756,21 +917,38 @@ macro_rules! fp_lane_ops {
                     // Arm's invalid multiply result is the positive default NaN,
                     // regardless of the host instruction's NaN sign. Preserve input
                     // NaN payload/order through nan_in above, and FMULX below.
-                    SimdFpOp3::Fmul if (a == 0.0 && b.is_infinite()) || (b == 0.0 && a.is_infinite()) => <$f>::INFINITY.to_bits() | QUIET,
+                    SimdFpOp3::Fmul if (a == 0.0 && b.is_infinite()) || (b == 0.0 && a.is_infinite()) => {
+                        <$f>::INFINITY.to_bits() | QUIET
+                    }
                     SimdFpOp3::Fmul => dn(a * b),
                     SimdFpOp3::Frecps => {
-                        if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) { (2.0 as $f).to_bits() } else { (-a).mul_add(b, 2.0).to_bits() }
+                        if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) {
+                            (2.0 as $f).to_bits()
+                        } else {
+                            (-a).mul_add(b, 2.0).to_bits()
+                        }
                     }
                     SimdFpOp3::Frsqrts => {
-                        if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) { (1.5 as $f).to_bits() } else {
+                        if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) {
+                            (1.5 as $f).to_bits()
+                        } else {
                             // (3 - a*b) / 2 with one rounding: halve `a` first (exact unless it is tiny, where the
                             // product cannot overflow and halving the result is exact)
-                            if a.abs() >= <$f>::MIN_POSITIVE * 2.0 { (-a * 0.5).mul_add(b, 1.5).to_bits() } else { ((-a).mul_add(b, 3.0) * 0.5).to_bits() }
+                            if a.abs() >= <$f>::MIN_POSITIVE * 2.0 {
+                                (-a * 0.5).mul_add(b, 1.5).to_bits()
+                            } else {
+                                ((-a).mul_add(b, 3.0) * 0.5).to_bits()
+                            }
                         }
                     }
                     SimdFpOp3::Fmulx => {
                         if (a.is_infinite() && b == 0.0) || (a == 0.0 && b.is_infinite()) {
-                            (if a.is_sign_negative() != b.is_sign_negative() { -2.0 } else { 2.0 } as $f).to_bits()
+                            (if a.is_sign_negative() != b.is_sign_negative() {
+                                -2.0
+                            } else {
+                                2.0
+                            } as $f)
+                                .to_bits()
                         } else {
                             dn(a * b)
                         }
@@ -802,7 +980,13 @@ macro_rules! fp_lane_ops {
                     SimdFpOp2::Fcmlt0 => flag(a < 0.0),
                     SimdFpOp2::Fabs => n & !SIGN,
                     SimdFpOp2::Fneg => n ^ SIGN,
-                    SimdFpOp2::Fsqrt => if a.is_nan() { n | QUIET } else { dn(a.sqrt()) },
+                    SimdFpOp2::Fsqrt => {
+                        if a.is_nan() {
+                            n | QUIET
+                        } else {
+                            dn(a.sqrt())
+                        }
+                    }
                     _ => unreachable!("handled by fp_special_op2"),
                 }
             }
@@ -814,11 +998,17 @@ fp_lane_ops!(fp64, f64, u64, 1 << 51, 1 << 63, 0x7ff8_0000_0000_0000);
 
 /// Pairwise FP ops read adjacent element pairs of `n` then `m`.
 fn is_pairwise(op: SimdFpOp3) -> bool {
-    matches!(op, SimdFpOp3::Faddp | SimdFpOp3::Fmaxp | SimdFpOp3::Fminp | SimdFpOp3::Fmaxnmp | SimdFpOp3::Fminnmp)
+    matches!(
+        op,
+        SimdFpOp3::Faddp | SimdFpOp3::Fmaxp | SimdFpOp3::Fminp | SimdFpOp3::Fmaxnmp | SimdFpOp3::Fminnmp
+    )
 }
 
 fn is_compare(op: SimdFpOp3) -> bool {
-    matches!(op, SimdFpOp3::Fcmeq | SimdFpOp3::Fcmge | SimdFpOp3::Fcmgt | SimdFpOp3::Facge | SimdFpOp3::Facgt)
+    matches!(
+        op,
+        SimdFpOp3::Fcmeq | SimdFpOp3::Fcmge | SimdFpOp3::Fcmgt | SimdFpOp3::Facge | SimdFpOp3::Facgt
+    )
 }
 
 /// IOC for the compare lanes: FCMEQ only for a signalling NaN, the ordered compares for any NaN.
@@ -833,7 +1023,14 @@ fn compare_flags(op: SimdFpOp3, n: u128, m: u128, double: bool, q: bool) {
 fn is_minmax(op: SimdFpOp3) -> bool {
     matches!(
         op,
-        SimdFpOp3::Fmax | SimdFpOp3::Fmin | SimdFpOp3::Fmaxnm | SimdFpOp3::Fminnm | SimdFpOp3::Fmaxp | SimdFpOp3::Fminp | SimdFpOp3::Fmaxnmp | SimdFpOp3::Fminnmp
+        SimdFpOp3::Fmax
+            | SimdFpOp3::Fmin
+            | SimdFpOp3::Fmaxnm
+            | SimdFpOp3::Fminnm
+            | SimdFpOp3::Fmaxp
+            | SimdFpOp3::Fminp
+            | SimdFpOp3::Fmaxnmp
+            | SimdFpOp3::Fminnmp
     )
 }
 
@@ -856,7 +1053,11 @@ pub fn fp_three_same(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: 
     for i in 0..count {
         let (a, b) = fp_operands(op, n, m, esize, count, i);
         let acc = lane(d, esize, i);
-        let r = if double { fp64::op3(op, acc, a, b) } else { fp32::op3(op, acc as u32, a as u32, b as u32) as u64 };
+        let r = if double {
+            fp64::op3(op, acc, a, b)
+        } else {
+            fp32::op3(op, acc as u32, a as u32, b as u32) as u64
+        };
         set_lane(&mut out, esize, i, r);
     }
     out
@@ -938,8 +1139,12 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
         }
         if fpcr & (1 << 19) != 0 {
             // half-precision flushes do not raise IDC (qemu agrees; hardware is checked by the fp-edge CI job)
-            if fp16::is_denormal(a) { a &= fp16::SIGN; }
-            if fp16::is_denormal(b) { b &= fp16::SIGN; }
+            if fp16::is_denormal(a) {
+                a &= fp16::SIGN;
+            }
+            if fp16::is_denormal(b) {
+                b &= fp16::SIGN;
+            }
         }
         let r = fp16::op(op, a, b);
         return (if dn && fp16::is_nan(r) { fp16::DEFAULT_NAN } else { r }) as u64;
@@ -948,11 +1153,17 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
     if matches!(op, SimdFpOp3::Fadd | SimdFpOp3::Faddp) {
         // scalar FADDP reduces through here: it rounds under RMode, flushes under FZ and honours DN like FADD, and
         // raises the exception flags
-        let (f, env) = (super::softfp::Fmt::from_esize(esize), super::softfp::Env::from_fpcr(fpcr));
+        let (f, env) = (
+            super::softfp::Fmt::from_esize(esize),
+            super::softfp::Env::from_fpcr(fpcr),
+        );
         return super::softfp::binop(f, env, super::softfp::BinOp::Add, a, b);
     }
     {
-        let (f, env) = (super::softfp::Fmt::from_esize(esize), super::softfp::Env::from_fpcr(fpcr));
+        let (f, env) = (
+            super::softfp::Fmt::from_esize(esize),
+            super::softfp::Env::from_fpcr(fpcr),
+        );
         super::softfp::raise_minmax(f, env, a, b);
     }
     let fz = fpcr & (1 << 24) != 0;
@@ -960,12 +1171,34 @@ fn minmax_fpcr(op: SimdFpOp3, acc: u64, a: u64, b: u64, esize: u32, fpcr: u32) -
         if !fz {
             return x;
         }
-        if double { if x & 0x7ff0_0000_0000_0000 == 0 { x & (1 << 63) } else { x } } else if x & 0x7f80_0000 == 0 { x & 0x8000_0000 } else { x }
+        if double {
+            if x & 0x7ff0_0000_0000_0000 == 0 {
+                x & (1 << 63)
+            } else {
+                x
+            }
+        } else if x & 0x7f80_0000 == 0 {
+            x & 0x8000_0000
+        } else {
+            x
+        }
     };
     let (a, b) = (flush(a), flush(b));
-    let r = if double { fp64::op3(op, acc, a, b) } else { fp32::op3(op, acc as u32, a as u32, b as u32) as u64 };
-    let nan = if double { f64::from_bits(r).is_nan() } else { f32::from_bits(r as u32).is_nan() };
-    if dn && nan { if double { 0x7ff8_0000_0000_0000 } else { 0x7fc0_0000 } } else { r }
+    let r = if double {
+        fp64::op3(op, acc, a, b)
+    } else {
+        fp32::op3(op, acc as u32, a as u32, b as u32) as u64
+    };
+    let nan = if double {
+        f64::from_bits(r).is_nan()
+    } else {
+        f32::from_bits(r as u32).is_nan()
+    };
+    if dn && nan {
+        if double { 0x7ff8_0000_0000_0000 } else { 0x7fc0_0000 }
+    } else {
+        r
+    }
 }
 
 /// `FCADD`: pairs of (real, imag) lanes. `#90` is `re = n.re + neg(m.im)`, `im = n.im + m.re`.
@@ -983,9 +1216,15 @@ pub fn fcadd(n: u128, m: u128, esize: u32, q: bool, rot90: bool, fpcr: u32) -> u
         let (nre, nim) = (lane(n, esize, e), lane(n, esize, e + 1));
         let (mre, mim) = (lane(m, esize, e), lane(m, esize, e + 1));
         let (real, imag) = if rot90 {
-            (softfp::binop(f, env, BinOp::Add, nre, neg(mim)), softfp::binop(f, env, BinOp::Add, nim, mre))
+            (
+                softfp::binop(f, env, BinOp::Add, nre, neg(mim)),
+                softfp::binop(f, env, BinOp::Add, nim, mre),
+            )
         } else {
-            (softfp::binop(f, env, BinOp::Add, nre, mim), softfp::binop(f, env, BinOp::Add, nim, neg(mre)))
+            (
+                softfp::binop(f, env, BinOp::Add, nre, mim),
+                softfp::binop(f, env, BinOp::Add, nim, neg(mre)),
+            )
         };
         set_lane(&mut out, esize, e, real);
         set_lane(&mut out, esize, e + 1, imag);
@@ -1008,7 +1247,10 @@ pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool
         if is_minmax(op) {
             // the host-float lanes below are exact for FMAX/FMIN; only the flags need the soft helper
             let esize = if double { 64 } else { 32 };
-            let (f, env) = (super::softfp::Fmt::from_esize(esize), super::softfp::Env::from_fpcr(fpcr));
+            let (f, env) = (
+                super::softfp::Fmt::from_esize(esize),
+                super::softfp::Env::from_fpcr(fpcr),
+            );
             let count = lanes(esize, q);
             for i in 0..count {
                 let (a, b) = fp_operands(op, n, m, esize, count, i);
@@ -1022,7 +1264,12 @@ pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool
     let mut out = 0u128;
     for i in 0..count {
         let (a, b) = fp_operands(op, n, m, esize, count, i);
-        set_lane(&mut out, esize, i, minmax_fpcr(op, lane(d, esize, i), a, b, esize, fpcr));
+        set_lane(
+            &mut out,
+            esize,
+            i,
+            minmax_fpcr(op, lane(d, esize, i), a, b, esize, fpcr),
+        );
     }
     out
 }
@@ -1053,7 +1300,11 @@ fn fp_three_same_soft(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q:
             _ => {
                 let (a, b) = (softfp::flush_input(f, env, a), softfp::flush_input(f, env, b));
                 softfp::raise_compare(f, a, b, op != SimdFpOp3::Fcmeq);
-                if double { fp64::op3(op, acc, a, b) } else { fp32::op3(op, acc as u32, a as u32, b as u32) as u64 }
+                if double {
+                    fp64::op3(op, acc, a, b)
+                } else {
+                    fp32::op3(op, acc as u32, a as u32, b as u32) as u64
+                }
             }
         };
         set_lane(&mut out, esize, i, r);
@@ -1079,7 +1330,7 @@ fn zero_compare_flags(op: SimdFpOp2, n: u128, double: bool, q: bool) {
 /// forms are IXC when the rounded value differs; FRECPE/FRSQRTE of zero is DZC, FRSQRTE of a negative is IOC, and
 /// FRECPE of a tiny input overflows (OFC+IXC) while a large one flushes to zero under FZ (UFC).
 fn special_op2_flags(op: SimdFpOp2, f: super::softfp::Fmt, a: u64, cur: Rm, fz: bool) {
-    use super::softfp::{raise, DZC, IOC, IXC, OFC, UFC};
+    use super::softfp::{DZC, IOC, IXC, OFC, UFC, raise};
     use SimdFpOp2::*;
     let esize = if f == super::softfp::F32 { 32 } else { 64 };
     let n32_64 = matches!(op, Frint32z | Frint32x | Frint64z | Frint64x);
@@ -1111,7 +1362,11 @@ fn special_op2_flags(op: SimdFpOp2, f: super::softfp::Fmt, a: u64, cur: Rm, fz: 
             }
         }
         _ => {
-            let v = if esize == 32 { f32::from_bits(a as u32) as f64 } else { f64::from_bits(a) };
+            let v = if esize == 32 {
+                f32::from_bits(a as u32) as f64
+            } else {
+                f64::from_bits(a)
+            };
             let rm = match op {
                 Frintn => Rm::Ne,
                 Frintp => Rm::Up,
@@ -1122,7 +1377,11 @@ fn special_op2_flags(op: SimdFpOp2, f: super::softfp::Fmt, a: u64, cur: Rm, fz: 
             };
             let r = round_f64(v, rm);
             if n32_64 {
-                let lim = if matches!(op, Frint32z | Frint32x) { 2147483648.0f64 } else { 9223372036854775808.0f64 };
+                let lim = if matches!(op, Frint32z | Frint32x) {
+                    2147483648.0f64
+                } else {
+                    9223372036854775808.0f64
+                };
                 if v.is_infinite() || !(r >= -lim && r < lim) {
                     raise(IOC);
                     return;
@@ -1154,7 +1413,12 @@ fn fcvtxn_pair(d: u128, n: u128, q: bool, env: super::softfp::Env) -> u128 {
 /// denormals, FCVTN/FCVTL convert under the mode. FCVTXN always rounds to odd.
 pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, fpcr: u32) -> u128 {
     use super::softfp::{self, Env, F32, F64};
-    if fpcr & softfp::FPCR_ARITH_MASK == 0 && !matches!(op, SimdFpOp2::Fsqrt | SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl | SimdFpOp2::Fcvtxn) {
+    if fpcr & softfp::FPCR_ARITH_MASK == 0
+        && !matches!(
+            op,
+            SimdFpOp2::Fsqrt | SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl | SimdFpOp2::Fcvtxn
+        )
+    {
         if !matches!(op, SimdFpOp2::Fabs | SimdFpOp2::Fneg) {
             zero_compare_flags(op, n, double, q);
         }
@@ -1183,7 +1447,13 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
                 let a = lane(n, esize, i);
                 let r = match op {
                     SimdFpOp2::Fsqrt => softfp::sqrt(f, env, a),
-                    SimdFpOp2::Fabs | SimdFpOp2::Fneg => if double { fp64::op2(op, a) } else { fp32::op2(op, a as u32) as u64 },
+                    SimdFpOp2::Fabs | SimdFpOp2::Fneg => {
+                        if double {
+                            fp64::op2(op, a)
+                        } else {
+                            fp32::op2(op, a as u32) as u64
+                        }
+                    }
                     _ => {
                         let a = softfp::flush_input(f, env, a);
                         if is_special_op2(op) {
@@ -1201,7 +1471,12 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
                                 f.default_nan()
                             } else if env.fz && op == SimdFpOp2::Frecpe && f.is_denormal(r) {
                                 r & !f.abs(u64::MAX)
-                            } else if op == SimdFpOp2::Frecpe && f.is_inf(r) && !f.is_zero(a) && !f.is_inf(a) && !f.is_nan(a) {
+                            } else if op == SimdFpOp2::Frecpe
+                                && f.is_inf(r)
+                                && !f.is_zero(a)
+                                && !f.is_inf(a)
+                                && !f.is_nan(a)
+                            {
                                 // a tiny input overflows: infinity only when the mode rounds that way, else the largest finite value
                                 let neg = r != f.infinity(false);
                                 let to_inf = match env.round {
@@ -1217,7 +1492,11 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
                             }
                         } else {
                             softfp::raise_compare(f, a, 0, op != SimdFpOp2::Fcmeq0);
-                            if double { fp64::op2(op, a) } else { fp32::op2(op, a as u32) as u64 }
+                            if double {
+                                fp64::op2(op, a)
+                            } else {
+                                fp32::op2(op, a as u32) as u64
+                            }
                         }
                     }
                 };
@@ -1243,7 +1522,11 @@ pub fn int_fp_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32)
             SimdOp2::Ucvtf => softfp::int_to_fp(f, env, false, a, 0),
             _ => {
                 let a = softfp::flush_input(f, env, a);
-                let v = if esize == 32 { f32::from_bits(a as u32) as f64 } else { f64::from_bits(a) };
+                let v = if esize == 32 {
+                    f32::from_bits(a as u32) as f64
+                } else {
+                    f64::from_bits(a)
+                };
                 let (rm, signed) = fcvt_mode(op);
                 let rounded = if rm == Rm::Zero { v.trunc() } else { round_f64(v, rm) };
                 softfp::raise_to_int(f, a, v, rounded, signed, esize == 64);
@@ -1277,7 +1560,11 @@ pub fn fixed_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fbits: u32,
             SimdOp2::Ucvtf => softfp::int_to_fp(f, env, false, a, fbits),
             _ => {
                 let a = softfp::flush_input(f, env, a);
-                let v = if esize == 32 { f32::from_bits(a as u32) as f64 } else { f64::from_bits(a) };
+                let v = if esize == 32 {
+                    f32::from_bits(a as u32) as f64
+                } else {
+                    f64::from_bits(a)
+                };
                 // scaling by a power of two is exact in f64 (an overflow to infinity is out of range either way)
                 let scaled = v * 2f64.powi(fbits as i32);
                 let t = scaled.trunc();
@@ -1299,7 +1586,16 @@ pub fn fixed_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fbits: u32,
 
 /// `fp_by_element` under FPCR: the per-lane operation is the soft one when RMode, FZ or DN is set.
 #[allow(clippy::too_many_arguments)]
-pub fn fp_by_element_fpcr(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool, fpcr: u32) -> u128 {
+pub fn fp_by_element_fpcr(
+    op: SimdFpElementOp,
+    d: u128,
+    n: u128,
+    m: u128,
+    index: usize,
+    double: bool,
+    q: bool,
+    fpcr: u32,
+) -> u128 {
     let esize = if double { 64 } else { 32 };
     let op3 = match op {
         SimdFpElementOp::Fmul => SimdFpOp3::Fmul,
@@ -1389,7 +1685,11 @@ pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usiz
     let mut out = 0u128;
     for i in 0..lanes(esize, q) {
         let (a, b, acc) = (lane(n, esize, i), lane(m, esize, index), lane(d, esize, i));
-        let r = if double { fp64::op3(op3, acc, a, b) } else { fp32::op3(op3, acc as u32, a as u32, b as u32) as u64 };
+        let r = if double {
+            fp64::op3(op3, acc, a, b)
+        } else {
+            fp32::op3(op3, acc as u32, a as u32, b as u32) as u64
+        };
         set_lane(&mut out, esize, i, r);
     }
     out
@@ -1398,15 +1698,32 @@ pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usiz
 /// Integer by-element and dot-product forms. `m` is the whole `Vm`; `index` picks the element (`0xFF`: vector `SDOT`/`UDOT`,
 /// whose second operand is the full vector). Returns the result and whether it saturated (`FPSR.QC`).
 #[allow(clippy::too_many_arguments)]
-pub fn by_element(op: SimdElemOp, d: u128, n: u128, m: u128, index: u8, esize: u32, q: bool, scalar: bool) -> (u128, bool) {
+pub fn by_element(
+    op: SimdElemOp,
+    d: u128,
+    n: u128,
+    m: u128,
+    index: u8,
+    esize: u32,
+    q: bool,
+    scalar: bool,
+) -> (u128, bool) {
     if let SimdElemOp::Dot(signed) = op {
         let mut out = 0u128;
         for i in 0..lanes(32, q) {
-            let group = if index == 0xFF { lane(m, 32, i) } else { lane(m, 32, index as usize) };
+            let group = if index == 0xFF {
+                lane(m, 32, i)
+            } else {
+                lane(m, 32, index as usize)
+            };
             let mut acc = lane(d, 32, i) as u32;
             for k in 0..4 {
                 let (a, b) = (lane(n, 8, 4 * i + k), (group >> (8 * k)) & 0xFF);
-                let prod = if signed { (a as u8 as i8 as i32).wrapping_mul(b as u8 as i8 as i32) } else { (a as u32).wrapping_mul(b as u32) as i32 };
+                let prod = if signed {
+                    (a as u8 as i8 as i32).wrapping_mul(b as u8 as i8 as i32)
+                } else {
+                    (a as u32).wrapping_mul(b as u32) as i32
+                };
                 acc = acc.wrapping_add(prod as u32);
             }
             set_lane(&mut out, 32, i, acc as u64);
@@ -1450,7 +1767,11 @@ pub fn table_lookup(table: &[u128], idx: u128, dst: u128, is_tbx: bool, q: bool)
 
 /// `EXT`: the `16 (8 when !q)` bytes starting at byte `index` of `m:n`.
 pub fn extract(n: u128, m: u128, index: u32, q: bool) -> u128 {
-    let (n, m) = if q { (n, m) } else { (n & u64::MAX as u128, m & u64::MAX as u128) };
+    let (n, m) = if q {
+        (n, m)
+    } else {
+        (n & u64::MAX as u128, m & u64::MAX as u128)
+    };
     let shift = index * 8;
     if shift == 0 {
         n
@@ -1471,17 +1792,29 @@ pub fn permute(op: SimdPermuteOp, n: u128, m: u128, esize: u32, q: bool) -> u128
             // Even (UZP1) or odd (UZP2) lanes of n then m.
             SimdPermuteOp::Uzp1 | SimdPermuteOp::Uzp2 => {
                 let j = 2 * i + (op == SimdPermuteOp::Uzp2) as usize;
-                if j < count { lane(n, esize, j) } else { lane(m, esize, j - count) }
+                if j < count {
+                    lane(n, esize, j)
+                } else {
+                    lane(m, esize, j - count)
+                }
             }
             // Pairs: n[2k + p], m[2k + p] with p = 0 (TRN1) or 1 (TRN2).
             SimdPermuteOp::Trn1 | SimdPermuteOp::Trn2 => {
                 let j = (i & !1) + (op == SimdPermuteOp::Trn2) as usize;
-                if i % 2 == 0 { lane(n, esize, j) } else { lane(m, esize, j) }
+                if i % 2 == 0 {
+                    lane(n, esize, j)
+                } else {
+                    lane(m, esize, j)
+                }
             }
             // Interleave the low (ZIP1) or high (ZIP2) halves.
             SimdPermuteOp::Zip1 | SimdPermuteOp::Zip2 => {
                 let j = i / 2 + if op == SimdPermuteOp::Zip2 { half } else { 0 };
-                if i % 2 == 0 { lane(n, esize, j) } else { lane(m, esize, j) }
+                if i % 2 == 0 {
+                    lane(n, esize, j)
+                } else {
+                    lane(m, esize, j)
+                }
             }
         };
         set_lane(&mut out, esize, i, v);
@@ -1495,7 +1828,7 @@ mod tests {
 
     #[test]
     fn round_and_estimate_flags() {
-        use super::super::softfp::{take_flags, F32, DZC, IOC, IXC, OFC, UFC};
+        use super::super::softfp::{DZC, F32, IOC, IXC, OFC, UFC, take_flags};
         let flags = |op, bits: u32, cur, fz| {
             take_flags();
             special_op2_flags(op, F32, bits as u64, cur, fz);
@@ -1504,13 +1837,25 @@ mod tests {
         let snan = 0x7f80_0001;
         assert_eq!(flags(SimdFpOp2::Frintx, 1.5f32.to_bits(), Rm::Ne, false), IXC);
         assert_eq!(flags(SimdFpOp2::Frintx, 2.0f32.to_bits(), Rm::Ne, false), 0);
-        assert_eq!(flags(SimdFpOp2::Frintz, 1.5f32.to_bits(), Rm::Ne, false), 0, "only FRINTX is inexact");
+        assert_eq!(
+            flags(SimdFpOp2::Frintz, 1.5f32.to_bits(), Rm::Ne, false),
+            0,
+            "only FRINTX is inexact"
+        );
         assert_eq!(flags(SimdFpOp2::Frintn, snan, Rm::Ne, false), IOC);
-        assert_eq!(flags(SimdFpOp2::Frintn, 0x7fc0_0000, Rm::Ne, false), 0, "quiet NaN raises nothing");
+        assert_eq!(
+            flags(SimdFpOp2::Frintn, 0x7fc0_0000, Rm::Ne, false),
+            0,
+            "quiet NaN raises nothing"
+        );
         assert_eq!(flags(SimdFpOp2::Frint32z, 3e9f32.to_bits(), Rm::Ne, false), IOC);
         assert_eq!(flags(SimdFpOp2::Frint32x, 1.5f32.to_bits(), Rm::Ne, false), IXC);
         assert_eq!(flags(SimdFpOp2::Frecpe, 0, Rm::Ne, false), DZC);
-        assert_eq!(flags(SimdFpOp2::Frecpe, 1, Rm::Ne, false), OFC | IXC, "tiny input overflows");
+        assert_eq!(
+            flags(SimdFpOp2::Frecpe, 1, Rm::Ne, false),
+            OFC | IXC,
+            "tiny input overflows"
+        );
         assert_eq!(flags(SimdFpOp2::Frecpe, 2.0e38f32.to_bits(), Rm::Ne, true), UFC);
         assert_eq!(flags(SimdFpOp2::Frecpe, 2.0e38f32.to_bits(), Rm::Ne, false), 0);
         assert_eq!(flags(SimdFpOp2::Frsqrte, 0x8000_0000, Rm::Ne, false), DZC);
@@ -1532,7 +1877,10 @@ mod tests {
         assert_eq!(lane(s, 32, 1), 0xC000_0000);
         assert_eq!(lane(s, 32, 3), 0xFFFF_FFFF);
         // 64-bit scalar form: shift by -63 of the minimum is all ones for SSHL.
-        assert_eq!(lane(three_same(SimdOp3::Sshl, 0, 1u128 << 63, 0xC1, 64, false), 64, 0), u64::MAX);
+        assert_eq!(
+            lane(three_same(SimdOp3::Sshl, 0, 1u128 << 63, 0xC1, 64, false), 64, 0),
+            u64::MAX
+        );
     }
 
     #[test]
@@ -1594,9 +1942,18 @@ mod tests {
         assert_eq!(two_misc(SimdOp2::Cnt, 0xFF07, 8, false), 0x0803);
         // REV16/REV32/REV64 (vector)
         let v: u128 = 0x0F0E_0D0C_0B0A_0908_0706_0504_0302_0100;
-        assert_eq!(two_misc(SimdOp2::Rev16, v, 8, true), 0x0E0F_0C0D_0A0B_0809_0607_0405_0203_0001);
-        assert_eq!(two_misc(SimdOp2::Rev32, v, 8, true), 0x0C0D_0E0F_0809_0A0B_0405_0607_0001_0203);
-        assert_eq!(two_misc(SimdOp2::Rev64, v, 8, true), 0x0809_0A0B_0C0D_0E0F_0001_0203_0405_0607);
+        assert_eq!(
+            two_misc(SimdOp2::Rev16, v, 8, true),
+            0x0E0F_0C0D_0A0B_0809_0607_0405_0203_0001
+        );
+        assert_eq!(
+            two_misc(SimdOp2::Rev32, v, 8, true),
+            0x0C0D_0E0F_0809_0A0B_0405_0607_0001_0203
+        );
+        assert_eq!(
+            two_misc(SimdOp2::Rev64, v, 8, true),
+            0x0809_0A0B_0C0D_0E0F_0001_0203_0405_0607
+        );
         assert_eq!(two_misc(SimdOp2::Rev64, v, 32, false), 0x0302_0100_0706_0504);
         assert_eq!(three_same(SimdOp3::Smax, 0, 0x80, 0x7F, 8, false), 0x7F);
         assert_eq!(three_same(SimdOp3::Umax, 0, 0x80, 0x7F, 8, false), 0x80);
@@ -1607,12 +1964,27 @@ mod tests {
         let n = 0x0F0E_0D0C_0B0A_0908_0706_0504_0302_0100u128;
         let m = 0x1F1E_1D1C_1B1A_1918_1716_1514_1312_1110u128;
         let bytes = |v: u128| v.to_le_bytes();
-        assert_eq!(bytes(permute(SimdPermuteOp::Zip1, n, m, 8, true))[..4], [0x00, 0x10, 0x01, 0x11]);
-        assert_eq!(bytes(permute(SimdPermuteOp::Zip2, n, m, 8, true))[..4], [0x08, 0x18, 0x09, 0x19]);
-        assert_eq!(bytes(permute(SimdPermuteOp::Uzp1, n, m, 8, true))[6..10], [0x0C, 0x0E, 0x10, 0x12]);
+        assert_eq!(
+            bytes(permute(SimdPermuteOp::Zip1, n, m, 8, true))[..4],
+            [0x00, 0x10, 0x01, 0x11]
+        );
+        assert_eq!(
+            bytes(permute(SimdPermuteOp::Zip2, n, m, 8, true))[..4],
+            [0x08, 0x18, 0x09, 0x19]
+        );
+        assert_eq!(
+            bytes(permute(SimdPermuteOp::Uzp1, n, m, 8, true))[6..10],
+            [0x0C, 0x0E, 0x10, 0x12]
+        );
         assert_eq!(bytes(permute(SimdPermuteOp::Uzp2, n, m, 8, true))[..2], [0x01, 0x03]);
-        assert_eq!(bytes(permute(SimdPermuteOp::Trn1, n, m, 8, true))[..4], [0x00, 0x10, 0x02, 0x12]);
-        assert_eq!(bytes(permute(SimdPermuteOp::Trn2, n, m, 8, true))[..4], [0x01, 0x11, 0x03, 0x13]);
+        assert_eq!(
+            bytes(permute(SimdPermuteOp::Trn1, n, m, 8, true))[..4],
+            [0x00, 0x10, 0x02, 0x12]
+        );
+        assert_eq!(
+            bytes(permute(SimdPermuteOp::Trn2, n, m, 8, true))[..4],
+            [0x01, 0x11, 0x03, 0x13]
+        );
         assert_eq!(permute(SimdPermuteOp::Zip1, n, m, 8, false) >> 64, 0);
     }
 
@@ -1621,10 +1993,22 @@ mod tests {
         // SHRN v.8b, v.8h, #4: each halfword 0x0AB0 -> byte 0xAB.
         let n = dup(0x0AB0, 16, true);
         assert_eq!(shrn(0, n, 8, 4, false), 0xABAB_ABAB_ABAB_ABABu128);
-        assert_eq!(shrn(0x1111, n, 8, 4, true), 0xABAB_ABAB_ABAB_ABAB_0000_0000_0000_1111u128);
-        assert_eq!(shift_imm(dup(0x80, 8, false), 8, 7, false, false, false), dup(1, 8, false));
-        assert_eq!(shift_imm(dup(0x80, 8, false), 8, 7, false, true, false), dup(0xFF, 8, false));
-        assert_eq!(shift_imm(dup(1, 32, true), 32, 31, true, false, true), dup(0x8000_0000, 32, true));
+        assert_eq!(
+            shrn(0x1111, n, 8, 4, true),
+            0xABAB_ABAB_ABAB_ABAB_0000_0000_0000_1111u128
+        );
+        assert_eq!(
+            shift_imm(dup(0x80, 8, false), 8, 7, false, false, false),
+            dup(1, 8, false)
+        );
+        assert_eq!(
+            shift_imm(dup(0x80, 8, false), 8, 7, false, true, false),
+            dup(0xFF, 8, false)
+        );
+        assert_eq!(
+            shift_imm(dup(1, 32, true), 32, 31, true, false, true),
+            dup(0x8000_0000, 32, true)
+        );
     }
 }
 
@@ -1738,12 +2122,17 @@ mod pmull_tests {
     #[test]
     fn pmull_64bit() {
         // (x^63 + 1)(x + 1) = x^64 + x^63 + x + 1
-        assert_eq!(pmull(0x8000_0000_0000_0001, 3, true, false), (1u128 << 64) | 0x8000_0000_0000_0003);
+        assert_eq!(
+            pmull(0x8000_0000_0000_0001, 3, true, false),
+            (1u128 << 64) | 0x8000_0000_0000_0003
+        );
         assert_eq!(pmull(1u128 << 63, 1u128 << 63, true, false), 1u128 << 126);
         let hi = (0x8000_0000_0000_0001u128 << 64) | 7;
-        assert_eq!(pmull(hi, 3u128 << 64, true, true), (1u128 << 64) | 0x8000_0000_0000_0003);
+        assert_eq!(
+            pmull(hi, 3u128 << 64, true, true),
+            (1u128 << 64) | 0x8000_0000_0000_0003
+        );
     }
-
 }
 
 #[cfg(test)]
@@ -1772,10 +2161,40 @@ mod fp_vector_tests {
         assert_eq!(u4(fp_three_same(SimdFpOp3::Fcmgt, 0, m, n, false, true)), [z, o, z, z]);
         // FACGE/FACGT compare magnitudes: |-0.0| >= |0.0|, not >
         assert_eq!(u4(fp_three_same(SimdFpOp3::Facge, 0, n, m, false, true)), [o, z, z, o]);
-        assert_eq!(u4(fp_three_same(SimdFpOp3::Facgt, 0, f4([-3.0, 1.0, 0.0, 0.0]), f4([2.0, -1.0, 0.0, 1.0]), false, true)), [o, z, z, z]);
+        assert_eq!(
+            u4(fp_three_same(
+                SimdFpOp3::Facgt,
+                0,
+                f4([-3.0, 1.0, 0.0, 0.0]),
+                f4([2.0, -1.0, 0.0, 1.0]),
+                false,
+                true
+            )),
+            [o, z, z, z]
+        );
         // 2D, and 2S leaves the upper half zero
-        assert_eq!(fp_three_same(SimdFpOp3::Fcmeq, 0, f2d([1.0, f64::NAN]), f2d([1.0, f64::NAN]), true, true), u64::MAX as u128);
-        assert_eq!(fp_three_same(SimdFpOp3::Fcmge, 0, f4([1.0, 1.0, 1.0, 1.0]), f4([1.0, 2.0, 0.0, 0.0]), false, false), 0xFFFF_FFFF);
+        assert_eq!(
+            fp_three_same(
+                SimdFpOp3::Fcmeq,
+                0,
+                f2d([1.0, f64::NAN]),
+                f2d([1.0, f64::NAN]),
+                true,
+                true
+            ),
+            u64::MAX as u128
+        );
+        assert_eq!(
+            fp_three_same(
+                SimdFpOp3::Fcmge,
+                0,
+                f4([1.0, 1.0, 1.0, 1.0]),
+                f4([1.0, 2.0, 0.0, 0.0]),
+                false,
+                false
+            ),
+            0xFFFF_FFFF
+        );
     }
 
     #[test]
@@ -1787,30 +2206,73 @@ mod fp_vector_tests {
         assert_eq!(u4(fp_two_misc(SimdFpOp2::Fcmgt0, 0, n, false, true)), [z, z, z, z]);
         assert_eq!(u4(fp_two_misc(SimdFpOp2::Fcmle0, 0, n, false, true)), [o, o, o, z]);
         assert_eq!(u4(fp_two_misc(SimdFpOp2::Fcmlt0, 0, n, false, true)), [z, z, o, z]);
-        assert_eq!(u4(fp_two_misc(SimdFpOp2::Fabs, 0, n, false, true))[..3], [0, 0, 1.5f32.to_bits()]);
-        assert_eq!(u4(fp_two_misc(SimdFpOp2::Fneg, 0, n, false, true))[..3], [(-0.0f32).to_bits(), 0, 1.5f32.to_bits()]);
-        assert_eq!(fp_two_misc(SimdFpOp2::Fsqrt, 0, f2d([9.0, 2.25]), true, true), f2d([3.0, 1.5]));
-        assert_eq!(fp_two_misc(SimdFpOp2::Fsqrt, 0, f4([16.0, 4.0, 1.0, 0.0]), false, false), f4([4.0, 2.0, 0.0, 0.0]));
+        assert_eq!(
+            u4(fp_two_misc(SimdFpOp2::Fabs, 0, n, false, true))[..3],
+            [0, 0, 1.5f32.to_bits()]
+        );
+        assert_eq!(
+            u4(fp_two_misc(SimdFpOp2::Fneg, 0, n, false, true))[..3],
+            [(-0.0f32).to_bits(), 0, 1.5f32.to_bits()]
+        );
+        assert_eq!(
+            fp_two_misc(SimdFpOp2::Fsqrt, 0, f2d([9.0, 2.25]), true, true),
+            f2d([3.0, 1.5])
+        );
+        assert_eq!(
+            fp_two_misc(SimdFpOp2::Fsqrt, 0, f4([16.0, 4.0, 1.0, 0.0]), false, false),
+            f4([4.0, 2.0, 0.0, 0.0])
+        );
     }
 
     #[test]
     fn fp_arith_and_fused() {
         let n = f4([1.5, 2.0, 3.0, 4.0]);
         let m = f4([2.0, 0.5, -1.0, 0.25]);
-        assert_eq!(fp_three_same(SimdFpOp3::Fmul, 0, n, m, false, true), f4([3.0, 1.0, -3.0, 1.0]));
-        assert_eq!(fp_three_same(SimdFpOp3::Fdiv, 0, n, m, false, true), f4([0.75, 4.0, -3.0, 16.0]));
-        assert_eq!(fp_three_same(SimdFpOp3::Fsub, 0, n, m, false, true), f4([-0.5, 1.5, 4.0, 3.75]));
-        assert_eq!(fp_three_same(SimdFpOp3::Fabd, 0, n, m, false, true), f4([0.5, 1.5, 4.0, 3.75]));
+        assert_eq!(
+            fp_three_same(SimdFpOp3::Fmul, 0, n, m, false, true),
+            f4([3.0, 1.0, -3.0, 1.0])
+        );
+        assert_eq!(
+            fp_three_same(SimdFpOp3::Fdiv, 0, n, m, false, true),
+            f4([0.75, 4.0, -3.0, 16.0])
+        );
+        assert_eq!(
+            fp_three_same(SimdFpOp3::Fsub, 0, n, m, false, true),
+            f4([-0.5, 1.5, 4.0, 3.75])
+        );
+        assert_eq!(
+            fp_three_same(SimdFpOp3::Fabd, 0, n, m, false, true),
+            f4([0.5, 1.5, 4.0, 3.75])
+        );
         let acc = f4([10.0, 10.0, 10.0, 10.0]);
-        assert_eq!(fp_three_same(SimdFpOp3::Fmla, acc, n, m, false, true), f4([13.0, 11.0, 7.0, 11.0]));
-        assert_eq!(fp_three_same(SimdFpOp3::Fmls, acc, n, m, false, true), f4([7.0, 9.0, 13.0, 9.0]));
+        assert_eq!(
+            fp_three_same(SimdFpOp3::Fmla, acc, n, m, false, true),
+            f4([13.0, 11.0, 7.0, 11.0])
+        );
+        assert_eq!(
+            fp_three_same(SimdFpOp3::Fmls, acc, n, m, false, true),
+            f4([7.0, 9.0, 13.0, 9.0])
+        );
         // fused: (1 + 2^-12)^2 - (1 + 2^-11) = 2^-24 exactly; an unfused multiply rounds the 2^-24 away
         let x = 1.0f32 + 2f32.powi(-12);
-        let r = fp_three_same(SimdFpOp3::Fmla, f4([-(1.0 + 2f32.powi(-11)); 4]), f4([x; 4]), f4([x; 4]), false, true);
+        let r = fp_three_same(
+            SimdFpOp3::Fmla,
+            f4([-(1.0 + 2f32.powi(-11)); 4]),
+            f4([x; 4]),
+            f4([x; 4]),
+            false,
+            true,
+        );
         assert_eq!(u4(r)[0], 2f32.powi(-24).to_bits());
         // FADDP: pairs of n then pairs of m
-        assert_eq!(fp_three_same(SimdFpOp3::Faddp, 0, n, m, false, true), f4([3.5, 7.0, 2.5, -0.75]));
-        assert_eq!(fp_three_same(SimdFpOp3::Fadd, 0, f2d([1.0, 2.0]), f2d([0.5, 0.25]), true, true), f2d([1.5, 2.25]));
+        assert_eq!(
+            fp_three_same(SimdFpOp3::Faddp, 0, n, m, false, true),
+            f4([3.5, 7.0, 2.5, -0.75])
+        );
+        assert_eq!(
+            fp_three_same(SimdFpOp3::Fadd, 0, f2d([1.0, 2.0]), f2d([0.5, 0.25]), true, true),
+            f2d([1.5, 2.25])
+        );
     }
 
     #[test]
@@ -1818,12 +2280,32 @@ mod fp_vector_tests {
         let n = f4([0.0, -0.0, f32::INFINITY, f32::NEG_INFINITY]);
         let m = f4([f32::INFINITY, f32::NEG_INFINITY, 0.0, -0.0]);
         for (a, b) in [(n, m), (m, n)] {
-            assert_eq!(u4(fp_three_same(SimdFpOp3::Fmul, 0, a, b, false, true)), [0x7fc0_0000; 4]);
+            assert_eq!(
+                u4(fp_three_same(SimdFpOp3::Fmul, 0, a, b, false, true)),
+                [0x7fc0_0000; 4]
+            );
         }
-        let d = fp_three_same(SimdFpOp3::Fmul, 0, f2d([0.0, -0.0]), f2d([f64::INFINITY, f64::NEG_INFINITY]), true, true);
+        let d = fp_three_same(
+            SimdFpOp3::Fmul,
+            0,
+            f2d([0.0, -0.0]),
+            f2d([f64::INFINITY, f64::NEG_INFINITY]),
+            true,
+            true,
+        );
         assert_eq!(d, 0x7ff8_0000_0000_0000_7ff8_0000_0000_0000);
         let nan = f32::from_bits(0xffc1_2345);
-        assert_eq!(u4(fp_three_same(SimdFpOp3::Fmul, 0, f4([nan; 4]), f4([0.0; 4]), false, true)), [0xffc1_2345; 4]);
+        assert_eq!(
+            u4(fp_three_same(
+                SimdFpOp3::Fmul,
+                0,
+                f4([nan; 4]),
+                f4([0.0; 4]),
+                false,
+                true
+            )),
+            [0xffc1_2345; 4]
+        );
         assert_eq!(fp_three_same(SimdFpOp3::Fmulx, 0, n, m, false, true), f4([2.0; 4]));
     }
 
@@ -1844,17 +2326,33 @@ mod fp_vector_tests {
         let n = f2d([den, qnan]);
         let m = f2d([-den, snan]);
         // default FPCR: denormals compare as themselves, NaNs keep their payload (sNaN quieted)
-        assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fmax, 0, n, m, true, true, 0)), [den.to_bits(), snan.to_bits() | 1 << 51]);
-        assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fmin, 0, n, m, true, true, 0)), [(-den).to_bits(), snan.to_bits() | 1 << 51]);
+        assert_eq!(
+            d2(fp_three_same_fpcr(SimdFpOp3::Fmax, 0, n, m, true, true, 0)),
+            [den.to_bits(), snan.to_bits() | 1 << 51]
+        );
+        assert_eq!(
+            d2(fp_three_same_fpcr(SimdFpOp3::Fmin, 0, n, m, true, true, 0)),
+            [(-den).to_bits(), snan.to_bits() | 1 << 51]
+        );
         // FZ: +den and -den read as +0 and -0, so FMAX is +0 and FMIN is -0
         assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fmax, 0, n, m, true, true, FZ))[0], 0);
-        assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fmin, 0, n, m, true, true, FZ))[0], 1 << 63);
+        assert_eq!(
+            d2(fp_three_same_fpcr(SimdFpOp3::Fmin, 0, n, m, true, true, FZ))[0],
+            1 << 63
+        );
         assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fmaxnm, 0, n, m, true, true, FZ))[0], 0);
-        assert_eq!(d2(fp_three_same_fpcr(SimdFpOp3::Fminnm, 0, n, m, true, true, FZ))[0], 1 << 63);
+        assert_eq!(
+            d2(fp_three_same_fpcr(SimdFpOp3::Fminnm, 0, n, m, true, true, FZ))[0],
+            1 << 63
+        );
         // DN: every NaN result is the default NaN, with or without FZ; non-NaN lanes are untouched
         for fpcr in [DN, DN | FZ] {
             for op in MINMAX {
-                assert_eq!(d2(fp_three_same_fpcr(op, 0, n, m, true, true, fpcr))[1], 0x7ff8_0000_0000_0000, "{op:?} {fpcr:#x}");
+                assert_eq!(
+                    d2(fp_three_same_fpcr(op, 0, n, m, true, true, fpcr))[1],
+                    0x7ff8_0000_0000_0000,
+                    "{op:?} {fpcr:#x}"
+                );
             }
         }
         // FMAXNM/FMINNM with a quiet NaN returns the number even under DN
@@ -1862,7 +2360,10 @@ mod fp_vector_tests {
         assert_eq!(d2(r), [2.5f64.to_bits(), 1.5f64.to_bits()]);
         // ...and the FPCR path agrees with the plain path when neither bit is set
         for op in MINMAX {
-            assert_eq!(fp_three_same_fpcr(op, 0, n, m, true, true, 0), fp_three_same(op, 0, n, m, true, true));
+            assert_eq!(
+                fp_three_same_fpcr(op, 0, n, m, true, true, 0),
+                fp_three_same(op, 0, n, m, true, true)
+            );
         }
     }
 
@@ -1872,10 +2373,19 @@ mod fp_vector_tests {
         // 4S: result lanes 0,1 pair up n, lanes 2,3 pair up m
         let n = f4([1.0, 5.0, -2.0, -7.0]);
         let m = f4([0.0, -0.0, 9.0, 3.0]);
-        assert_eq!(u4(fp_three_same(SimdFpOp3::Fmaxp, 0, n, m, false, true)), f4u([5.0, -2.0, 0.0, 9.0]));
-        assert_eq!(u4(fp_three_same(SimdFpOp3::Fminp, 0, n, m, false, true)), f4u([1.0, -7.0, -0.0, 3.0]));
+        assert_eq!(
+            u4(fp_three_same(SimdFpOp3::Fmaxp, 0, n, m, false, true)),
+            f4u([5.0, -2.0, 0.0, 9.0])
+        );
+        assert_eq!(
+            u4(fp_three_same(SimdFpOp3::Fminp, 0, n, m, false, true)),
+            f4u([1.0, -7.0, -0.0, 3.0])
+        );
         // 2S (Q=0): one pair from n, one from m
-        assert_eq!(u4(fp_three_same(SimdFpOp3::Fmaxp, 0, n, m, false, false))[..2], f4u([5.0, 0.0, 0.0, 0.0])[..2]);
+        assert_eq!(
+            u4(fp_three_same(SimdFpOp3::Fmaxp, 0, n, m, false, false))[..2],
+            f4u([5.0, 0.0, 0.0, 0.0])[..2]
+        );
         // 2D: one pair from each source
         let r = fp_three_same(SimdFpOp3::Fmaxp, 0, f2d([1.0, 2.0]), f2d([-4.0, -3.0]), true, true);
         assert_eq!(d2(r), [2.0f64.to_bits(), (-3.0f64).to_bits()]);
@@ -1883,15 +2393,36 @@ mod fp_vector_tests {
         let n = f4([nan, 1.0, nan, nan]);
         let m = f4([1.0, 2.0, 3.0, 4.0]);
         let r = u4(fp_three_same(SimdFpOp3::Fmaxp, 0, n, m, false, true));
-        assert!(f32::from_bits(r[0]).is_nan() && f32::from_bits(r[1]).is_nan() && f32::from_bits(r[2]) == 2.0 && f32::from_bits(r[3]) == 4.0);
-        assert_eq!(u4(fp_three_same(SimdFpOp3::Fmaxnmp, 0, n, m, false, true)), [1.0f32.to_bits(), nan_to(r[1]).to_bits(), 2.0f32.to_bits(), 4.0f32.to_bits()]);
+        assert!(
+            f32::from_bits(r[0]).is_nan()
+                && f32::from_bits(r[1]).is_nan()
+                && f32::from_bits(r[2]) == 2.0
+                && f32::from_bits(r[3]) == 4.0
+        );
+        assert_eq!(
+            u4(fp_three_same(SimdFpOp3::Fmaxnmp, 0, n, m, false, true)),
+            [
+                1.0f32.to_bits(),
+                nan_to(r[1]).to_bits(),
+                2.0f32.to_bits(),
+                4.0f32.to_bits()
+            ]
+        );
         // FPCR: FZ flushes pair inputs, DN canonicalises NaN pair results
         let n = f4([den, -den, nan, 1.0]);
         let r = u4(fp_three_same_fpcr(SimdFpOp3::Fmaxp, 0, n, m, false, true, FZ));
         assert_eq!(r[0], 0); // max(+0, -0)
         let r = u4(fp_three_same_fpcr(SimdFpOp3::Fminp, 0, n, m, false, true, FZ));
         assert_eq!(r[0], 0x8000_0000); // min(+0, -0)
-        let r = u4(fp_three_same_fpcr(SimdFpOp3::Fmaxp, 0, f4([f32::from_bits(0x7f80_0001), 1.0, 0.0, 0.0]), m, false, true, DN));
+        let r = u4(fp_three_same_fpcr(
+            SimdFpOp3::Fmaxp,
+            0,
+            f4([f32::from_bits(0x7f80_0001), 1.0, 0.0, 0.0]),
+            m,
+            false,
+            true,
+            DN,
+        ));
         assert_eq!(r[0], 0x7fc0_0000);
     }
 
@@ -1904,7 +2435,11 @@ mod fp_vector_tests {
 
     #[test]
     fn fmaxv_fminv_tree_reduction_and_scalar_pairwise() {
-        let (nan, snan, den) = (f32::from_bits(0x7fc0_0000 | 0xaa), f32::from_bits(0x7f80_0001), f32::from_bits(1));
+        let (nan, snan, den) = (
+            f32::from_bits(0x7fc0_0000 | 0xaa),
+            f32::from_bits(0x7f80_0001),
+            f32::from_bits(1),
+        );
         let red = |op, v: [f32; 4], fpcr| fp_reduce_fpcr(op, f4(v), 32, 4, fpcr) as u32;
         assert_eq!(red(SimdFpOp3::Fmax, [1.0, 9.0, -3.0, 4.0], 0), 9.0f32.to_bits());
         assert_eq!(red(SimdFpOp3::Fmin, [1.0, 9.0, -3.0, 4.0], 0), (-3.0f32).to_bits());
@@ -1926,7 +2461,10 @@ mod fp_vector_tests {
         // FMAXNMV: the pair holding an sNaN yields a quiet NaN, which the next level of the tree then skips
         assert_eq!(red(SimdFpOp3::Fmaxnm, [1.0, snan, 2.0, 3.0], 0), 3.0f32.to_bits());
         // with every lane NaN the quieted sNaN (first pair) is what comes out
-        assert_eq!(red(SimdFpOp3::Fmaxnm, [snan, nan, nan, nan], 0), snan.to_bits() | 1 << 22);
+        assert_eq!(
+            red(SimdFpOp3::Fmaxnm, [snan, nan, nan, nan], 0),
+            snan.to_bits() | 1 << 22
+        );
         // FZ: denormals read as zero, so the result is a signed zero rather than a denormal
         assert_eq!(red(SimdFpOp3::Fmax, [den, den, den, den], FZ), 0);
         assert_eq!(red(SimdFpOp3::Fmax, [den, den, den, den], 0), den.to_bits());
@@ -1964,16 +2502,31 @@ mod fp_vector_tests {
         let n = h8([0x3c00, 0x4000, 0x8000, 0x7e55, 0x0001, 0x8001, 0x7c01, 0xfc00]);
         let m = h8([0x4000, 0x4000, 0x0000, 0x3c00, 0x8001, 0x0001, 0x7e55, 0x7c00]);
         let run = |op, fpcr| u8h(fp16_three_same_fpcr(op, n, m, true, fpcr));
-        assert_eq!(run(SimdFpOp3::Fmax, 0), [0x4000, 0x4000, 0x0000, 0x7e55, 0x0001, 0x0001, 0x7e01, 0x7c00]);
-        assert_eq!(run(SimdFpOp3::Fmin, 0), [0x3c00, 0x4000, 0x8000, 0x7e55, 0x8001, 0x8001, 0x7e01, 0xfc00]);
-        assert_eq!(run(SimdFpOp3::Fmaxnm, 0), [0x4000, 0x4000, 0x0000, 0x3c00, 0x0001, 0x0001, 0x7e01, 0x7c00]);
-        assert_eq!(run(SimdFpOp3::Fminnm, 0), [0x3c00, 0x4000, 0x8000, 0x3c00, 0x8001, 0x8001, 0x7e01, 0xfc00]);
+        assert_eq!(
+            run(SimdFpOp3::Fmax, 0),
+            [0x4000, 0x4000, 0x0000, 0x7e55, 0x0001, 0x0001, 0x7e01, 0x7c00]
+        );
+        assert_eq!(
+            run(SimdFpOp3::Fmin, 0),
+            [0x3c00, 0x4000, 0x8000, 0x7e55, 0x8001, 0x8001, 0x7e01, 0xfc00]
+        );
+        assert_eq!(
+            run(SimdFpOp3::Fmaxnm, 0),
+            [0x4000, 0x4000, 0x0000, 0x3c00, 0x0001, 0x0001, 0x7e01, 0x7c00]
+        );
+        assert_eq!(
+            run(SimdFpOp3::Fminnm, 0),
+            [0x3c00, 0x4000, 0x8000, 0x3c00, 0x8001, 0x8001, 0x7e01, 0xfc00]
+        );
         // FZ16 flushes half denormals; FZ (the single/double bit) does not touch halves
         assert_eq!(run(SimdFpOp3::Fmax, FZ16)[4..6], [0x0000, 0x0000]);
         assert_eq!(run(SimdFpOp3::Fmin, FZ16)[4..6], [0x8000, 0x8000]);
         assert_eq!(run(SimdFpOp3::Fmax, FZ)[4..6], [0x0001, 0x0001]);
         // DN: NaN results become 0x7e00, FMAXNM's numeric lane 3 does not
-        assert_eq!(run(SimdFpOp3::Fmax, DN), [0x4000, 0x4000, 0x0000, 0x7e00, 0x0001, 0x0001, 0x7e00, 0x7c00]);
+        assert_eq!(
+            run(SimdFpOp3::Fmax, DN),
+            [0x4000, 0x4000, 0x0000, 0x7e00, 0x0001, 0x0001, 0x7e00, 0x7c00]
+        );
         assert_eq!(run(SimdFpOp3::Fmaxnm, DN | FZ16)[3], 0x3c00);
         assert_eq!(run(SimdFpOp3::Fmaxnm, DN | FZ16)[6], 0x7e00);
         // 4H (Q = 0) writes only the low four lanes
@@ -1985,15 +2538,27 @@ mod fp_vector_tests {
     fn half_precision_pairwise_and_reductions() {
         let n = h8([0x3c00, 0x4000, 0x4400, 0x4200, 0xbc00, 0x3800, 0x4000, 0x4000]);
         let m = h8([0x3800, 0x3c00, 0x4200, 0x4400, 0xbc00, 0xbc00, 0x0000, 0x8000]);
-        assert_eq!(u8h(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, m, true, 0)), [0x4000, 0x4400, 0x3800, 0x4000, 0x3c00, 0x4400, 0xbc00, 0x0000]);
-        assert_eq!(u8h(fp16_three_same_fpcr(SimdFpOp3::Fminp, n, m, true, 0)), [0x3c00, 0x4200, 0xbc00, 0x4000, 0x3800, 0x4200, 0xbc00, 0x8000]);
+        assert_eq!(
+            u8h(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, m, true, 0)),
+            [0x4000, 0x4400, 0x3800, 0x4000, 0x3c00, 0x4400, 0xbc00, 0x0000]
+        );
+        assert_eq!(
+            u8h(fp16_three_same_fpcr(SimdFpOp3::Fminp, n, m, true, 0)),
+            [0x3c00, 0x4200, 0xbc00, 0x4000, 0x3800, 0x4200, 0xbc00, 0x8000]
+        );
         // 4H pairwise: one result pair from n, one from m
         let r = u8h(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, m, false, 0));
         assert_eq!(r, [0x4000, 0x4400, 0x3c00, 0x4400, 0, 0, 0, 0]);
         // FMAXNMP skips a quiet NaN in the pair, FMAXP does not
         let n = h8([0x7e55, 0x3c00, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(lane(fp16_three_same_fpcr(SimdFpOp3::Fmaxnmp, n, 0, true, 0), 16, 0), 0x3c00);
-        assert_eq!(lane(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, 0, true, 0), 16, 0), 0x7e55);
+        assert_eq!(
+            lane(fp16_three_same_fpcr(SimdFpOp3::Fmaxnmp, n, 0, true, 0), 16, 0),
+            0x3c00
+        );
+        assert_eq!(
+            lane(fp16_three_same_fpcr(SimdFpOp3::Fmaxp, n, 0, true, 0), 16, 0),
+            0x7e55
+        );
         // reductions: FMAXV/FMINV over 8H and 4H, tree order, signed zeros, NaN, FZ16, DN
         let red = |op, v: [u16; 8], count, fpcr| fp_reduce_fpcr(op, h8(v), 16, count, fpcr) as u16;
         let v = [0x3c00, 0x4000, 0x4400, 0x4200, 0xbc00, 0x3800, 0x4000, 0x4000];
@@ -2001,7 +2566,15 @@ mod fp_vector_tests {
         assert_eq!(red(SimdFpOp3::Fmin, v, 8, 0), 0xbc00);
         assert_eq!(red(SimdFpOp3::Fmax, v, 4, 0), 0x4400);
         assert_eq!(red(SimdFpOp3::Fmin, v, 4, 0), 0x3c00);
-        assert_eq!(red(SimdFpOp3::Fmax, [0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x0000], 8, 0), 0x0000);
+        assert_eq!(
+            red(
+                SimdFpOp3::Fmax,
+                [0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x0000],
+                8,
+                0
+            ),
+            0x0000
+        );
         assert_eq!(red(SimdFpOp3::Fmin, [0, 0, 0, 0, 0, 0, 0, 0x8000], 8, 0), 0x8000);
         let nanv = [0x3c00, 0x7e55, 0x4000, 0x4200, 0x3c00, 0x3c00, 0x3c00, 0x3c00];
         assert_eq!(red(SimdFpOp3::Fmax, nanv, 8, 0), 0x7e55);
@@ -2009,7 +2582,10 @@ mod fp_vector_tests {
         assert_eq!(red(SimdFpOp3::Fmax, nanv, 8, DN), 0x7e00);
         assert_eq!(red(SimdFpOp3::Fmaxnm, [0x7e55; 8], 8, DN), 0x7e00);
         // a signalling NaN in the same pair as a quiet NaN comes out quieted; in a later pair it is quieted first
-        assert_eq!(red(SimdFpOp3::Fmax, [0x7e55, 0x7c01, 0x3c00, 0x3c00, 0, 0, 0, 0], 4, 0), 0x7e01);
+        assert_eq!(
+            red(SimdFpOp3::Fmax, [0x7e55, 0x7c01, 0x3c00, 0x3c00, 0, 0, 0, 0], 4, 0),
+            0x7e01
+        );
         let den = [0x0001, 0x0001, 0x0001, 0x0001, 0x0001, 0x0001, 0x0001, 0x0001];
         assert_eq!(red(SimdFpOp3::Fmax, den, 8, 0), 0x0001);
         assert_eq!(red(SimdFpOp3::Fmax, den, 8, FZ16), 0x0000);
@@ -2031,12 +2607,26 @@ mod fp_vector_tests {
         let max = u4(fp_three_same(SimdFpOp3::Fmax, 0, n, m, false, true));
         assert_eq!(max, [nan.to_bits(), nan.to_bits(), 0.0f32.to_bits(), 3.0f32.to_bits()]);
         let min = u4(fp_three_same(SimdFpOp3::Fmin, 0, n, m, false, true));
-        assert_eq!(min, [nan.to_bits(), nan.to_bits(), (-0.0f32).to_bits(), 2.0f32.to_bits()]);
+        assert_eq!(
+            min,
+            [nan.to_bits(), nan.to_bits(), (-0.0f32).to_bits(), 2.0f32.to_bits()]
+        );
         // MAXNM/MINNM return the number against a quiet NaN
         let maxnm = u4(fp_three_same(SimdFpOp3::Fmaxnm, 0, n, m, false, true));
-        assert_eq!(maxnm, [1.0f32.to_bits(), 1.0f32.to_bits(), 0.0f32.to_bits(), 3.0f32.to_bits()]);
+        assert_eq!(
+            maxnm,
+            [1.0f32.to_bits(), 1.0f32.to_bits(), 0.0f32.to_bits(), 3.0f32.to_bits()]
+        );
         let minnm = u4(fp_three_same(SimdFpOp3::Fminnm, 0, n, m, false, true));
-        assert_eq!(minnm, [1.0f32.to_bits(), 1.0f32.to_bits(), (-0.0f32).to_bits(), 2.0f32.to_bits()]);
+        assert_eq!(
+            minnm,
+            [
+                1.0f32.to_bits(),
+                1.0f32.to_bits(),
+                (-0.0f32).to_bits(),
+                2.0f32.to_bits()
+            ]
+        );
         // a signalling NaN beats a quiet NaN in the other operand, even in the second position
         let r = fp_three_same(SimdFpOp3::Fmax, 0, f4([nan; 4]), f4([snan; 4]), false, true);
         assert_eq!(u4(r)[0], snan.to_bits() | 1 << 22);
@@ -2049,14 +2639,29 @@ mod fp_vector_tests {
     fn fp_convert_vector() {
         // FCVTZS/FCVTZU truncate toward zero, saturate and map NaN to 0
         let n = f4([-1.9, 2.7, f32::NAN, 3e10]);
-        assert_eq!(u4(two_misc(SimdOp2::Fcvtzs, n, 32, true)), [(-1i32) as u32, 2, 0, i32::MAX as u32]);
+        assert_eq!(
+            u4(two_misc(SimdOp2::Fcvtzs, n, 32, true)),
+            [(-1i32) as u32, 2, 0, i32::MAX as u32]
+        );
         assert_eq!(u4(two_misc(SimdOp2::Fcvtzu, n, 32, true)), [0, 2, 0, u32::MAX]);
         // FCVTN/FCVTL double <-> single
-        assert_eq!(fp_two_misc(SimdFpOp2::Fcvtn, 0, f2d([1.5, -2.25]), true, false), f4([1.5, -2.25, 0.0, 0.0]));
+        assert_eq!(
+            fp_two_misc(SimdFpOp2::Fcvtn, 0, f2d([1.5, -2.25]), true, false),
+            f4([1.5, -2.25, 0.0, 0.0])
+        );
         let keep = f4([7.0, 8.0, 0.0, 0.0]);
-        assert_eq!(fp_two_misc(SimdFpOp2::Fcvtn, keep, f2d([1.5, -2.25]), true, true), f4([7.0, 8.0, 1.5, -2.25]));
-        assert_eq!(fp_two_misc(SimdFpOp2::Fcvtl, 0, f4([1.5, -2.25, 3.0, 4.0]), true, false), f2d([1.5, -2.25]));
-        assert_eq!(fp_two_misc(SimdFpOp2::Fcvtl, 0, f4([1.5, -2.25, 3.0, 4.0]), true, true), f2d([3.0, 4.0]));
+        assert_eq!(
+            fp_two_misc(SimdFpOp2::Fcvtn, keep, f2d([1.5, -2.25]), true, true),
+            f4([7.0, 8.0, 1.5, -2.25])
+        );
+        assert_eq!(
+            fp_two_misc(SimdFpOp2::Fcvtl, 0, f4([1.5, -2.25, 3.0, 4.0]), true, false),
+            f2d([1.5, -2.25])
+        );
+        assert_eq!(
+            fp_two_misc(SimdFpOp2::Fcvtl, 0, f4([1.5, -2.25, 3.0, 4.0]), true, true),
+            f2d([3.0, 4.0])
+        );
     }
 }
 
@@ -2097,18 +2702,36 @@ pub fn shift_ext_flag(op: SimdShiftExtOp, d: u128, n: u128, esize: u32, shift: u
     use SimdShiftExtOp::*;
     let mut sat = false;
     let round = matches!(op, Srshr | Urshr | Srsra | Ursra | Rshrn | Sqrshrn | Uqrshrn | Sqrshrun);
-    let rnd = |v: i128| if round && shift > 0 { v + (1i128 << (shift - 1)) } else { v };
+    let rnd = |v: i128| {
+        if round && shift > 0 {
+            v + (1i128 << (shift - 1))
+        } else {
+            v
+        }
+    };
     if matches!(op, Rshrn | Sqshrn | Uqshrn | Sqshrun | Sqrshrn | Uqrshrn | Sqrshrun) {
         let signed_in = matches!(op, Sqshrn | Sqshrun | Sqrshrn | Sqrshrun);
         let mut half = 0u128;
         for i in 0..64 / esize as usize {
             let a = lane(n, esize * 2, i);
-            let a = if signed_in { sext(a, esize * 2) as i128 } else { a as i128 };
+            let a = if signed_in {
+                sext(a, esize * 2) as i128
+            } else {
+                a as i128
+            };
             let v = rnd(a) >> shift;
             let r = match op {
                 Rshrn => v as u64,
-                Sqshrn | Sqrshrn => { let (x, f) = saturate(v, esize, true); sat |= f; x }
-                _ => { let (x, f) = saturate(v, esize, false); sat |= f; x }
+                Sqshrn | Sqrshrn => {
+                    let (x, f) = saturate(v, esize, true);
+                    sat |= f;
+                    x
+                }
+                _ => {
+                    let (x, f) = saturate(v, esize, false);
+                    sat |= f;
+                    x
+                }
             };
             set_lane(&mut half, esize, i, r);
         }
@@ -2134,9 +2757,21 @@ pub fn shift_ext_flag(op: SimdShiftExtOp, d: u128, n: u128, esize: u32, shift: u
                 let m = (ones << shift) & ones;
                 ((dv as u128 & !m) | ((uv as u128) << shift & m)) as u64
             }
-            Sqshl => { let (x, f) = saturate(sv << shift, esize, true); sat |= f; x }
-            Uqshl => { let (x, f) = saturate(uv << shift, esize, false); sat |= f; x }
-            Sqshlu => { let (x, f) = saturate(sv << shift, esize, false); sat |= f; x }
+            Sqshl => {
+                let (x, f) = saturate(sv << shift, esize, true);
+                sat |= f;
+                x
+            }
+            Uqshl => {
+                let (x, f) = saturate(uv << shift, esize, false);
+                sat |= f;
+                x
+            }
+            Sqshlu => {
+                let (x, f) = saturate(sv << shift, esize, false);
+                sat |= f;
+                x
+            }
             _ => unreachable!(),
         };
         set_lane(&mut out, esize, i, r);
@@ -2162,7 +2797,13 @@ pub fn pairwise_long(d: u128, n: u128, esize: u32, q: bool, signed: bool, acc: b
 /// `SQADD`/`UQADD`/`SQSUB`/`UQSUB`: per-lane saturating add or subtract. Returns the result (upper half zeroed
 /// for 64-bit and scalar forms) and whether any lane saturated, which the caller ORs into FPSR.QC.
 pub fn sat_add_sub(op: SimdSatAddSubOp, n: u128, m: u128, esize: u32, q: bool, scalar: bool) -> (u128, bool) {
-    let total = if scalar { esize } else if q { 128 } else { 64 };
+    let total = if scalar {
+        esize
+    } else if q {
+        128
+    } else {
+        64
+    };
     let signed = matches!(op, SimdSatAddSubOp::Sqadd | SimdSatAddSubOp::Sqsub);
     let sub = matches!(op, SimdSatAddSubOp::Sqsub | SimdSatAddSubOp::Uqsub);
     let (mut out, mut sat) = (0u128, false);
@@ -2170,7 +2811,11 @@ pub fn sat_add_sub(op: SimdSatAddSubOp, n: u128, m: u128, esize: u32, q: bool, s
         let sh = lane * esize;
         let (a, b) = (((n >> sh) as u64) & mask(esize), ((m >> sh) as u64) & mask(esize));
         let ext = |v: u64| -> i128 {
-            if signed { (((v << (64 - esize)) as i64) >> (64 - esize)) as i128 } else { v as i128 }
+            if signed {
+                (((v << (64 - esize)) as i64) >> (64 - esize)) as i128
+            } else {
+                v as i128
+            }
         };
         let r = if sub { ext(a) - ext(b) } else { ext(a) + ext(b) };
         let (v, s) = saturate(r, esize, signed);
@@ -2190,10 +2835,19 @@ mod sat_add_sub_tests {
         assert_eq!(sat_add_sub(SimdSatAddSubOp::Uqsub, 1, 2, 8, false, true), (0, true));
         assert_eq!(sat_add_sub(SimdSatAddSubOp::Uqsub, 5, 2, 8, false, true), (3, false));
         // sqadd h: 0x7FFF + 1 clamps to 0x7FFF; 0x8000 - 1 (sqsub) clamps to 0x8000
-        assert_eq!(sat_add_sub(SimdSatAddSubOp::Sqadd, 0x7FFF, 1, 16, false, true), (0x7FFF, true));
-        assert_eq!(sat_add_sub(SimdSatAddSubOp::Sqsub, 0x8000, 1, 16, false, true), (0x8000, true));
+        assert_eq!(
+            sat_add_sub(SimdSatAddSubOp::Sqadd, 0x7FFF, 1, 16, false, true),
+            (0x7FFF, true)
+        );
+        assert_eq!(
+            sat_add_sub(SimdSatAddSubOp::Sqsub, 0x8000, 1, 16, false, true),
+            (0x8000, true)
+        );
         // 64-bit unsigned add clamps at u64::MAX
-        assert_eq!(sat_add_sub(SimdSatAddSubOp::Uqadd, u64::MAX as u128, 1, 64, true, false).0, u64::MAX as u128);
+        assert_eq!(
+            sat_add_sub(SimdSatAddSubOp::Uqadd, u64::MAX as u128, 1, 64, true, false).0,
+            u64::MAX as u128
+        );
     }
 }
 

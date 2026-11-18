@@ -95,9 +95,17 @@ impl PackageInspector {
         println!("  HOMEBREW EXECUTABLE INSPECTOR");
         println!("============================================================");
         println!("  File Path     : {}", report.file_path);
-        println!("  File Size     : {} ({} bytes)", format_bytes(report.total_file_size), report.total_file_size);
+        println!(
+            "  File Size     : {} ({} bytes)",
+            format_bytes(report.total_file_size),
+            report.total_file_size
+        );
         println!("  Format        : {}", report.format);
-        println!("  Code (.text)  : {} ({} bytes)", format_bytes(report.code_size), report.code_size);
+        println!(
+            "  Code (.text)  : {} ({} bytes)",
+            format_bytes(report.code_size),
+            report.code_size
+        );
         println!("  ISA Security  : {}", report.security_features.join(" | "));
         println!("============================================================\n");
     }
@@ -121,7 +129,10 @@ mod tests {
         assert!(err.contains("unrecognized file format"), "unexpected error: {err}");
 
         let err_elf = PackageInspector::inspect_bytes("prog.elf", b"\x7fELF\x02\x01\x01\x00").unwrap_err();
-        assert!(err_elf.contains("unrecognized file format"), "unexpected error: {err_elf}");
+        assert!(
+            err_elf.contains("unrecognized file format"),
+            "unexpected error: {err_elf}"
+        );
     }
 
     #[test]

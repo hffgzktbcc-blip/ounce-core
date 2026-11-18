@@ -43,7 +43,11 @@ pub fn census_words(words: &[u32], mask: u32) -> Census {
         .map(|(key, (count, example))| Class { key, count, example })
         .collect();
     classes.sort_by(|a, b| b.count.cmp(&a.count).then(a.key.cmp(&b.key)));
-    Census { total: words.len() as u64, decoded, classes }
+    Census {
+        total: words.len() as u64,
+        decoded,
+        classes,
+    }
 }
 
 /// Merges `other` into `acc` (same mask assumed); keeps the first example seen.
@@ -56,7 +60,8 @@ pub fn merge(acc: &mut Census, other: Census) {
             None => acc.classes.push(c),
         }
     }
-    acc.classes.sort_by(|a, b| b.count.cmp(&a.count).then(a.key.cmp(&b.key)));
+    acc.classes
+        .sort_by(|a, b| b.count.cmp(&a.count).then(a.key.cmp(&b.key)));
 }
 
 fn rd_u32(b: &[u8], o: usize) -> Option<u32> {
@@ -70,7 +75,10 @@ fn rd_u16(b: &[u8], o: usize) -> Option<u16> {
 }
 
 fn words_of(bytes: &[u8]) -> Vec<u32> {
-    bytes.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
+    bytes
+        .chunks_exact(4)
+        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }
 
 /// Extracts the executable words of an NRO (text segment) or a 64-bit little-endian AArch64 ELF
@@ -96,9 +104,12 @@ pub fn extract_text_words(bytes: &[u8]) -> Result<Vec<u32>, String> {
         let mut out = Vec::new();
         for i in 0..phnum {
             let p = phoff.saturating_add(i.saturating_mul(phentsize));
-            let (Some(ty), Some(flags), Some(foff), Some(fsz)) =
-                (rd_u32(bytes, p), rd_u32(bytes, p + 4), rd_u64(bytes, p + 8), rd_u64(bytes, p + 32))
-            else {
+            let (Some(ty), Some(flags), Some(foff), Some(fsz)) = (
+                rd_u32(bytes, p),
+                rd_u32(bytes, p + 4),
+                rd_u64(bytes, p + 8),
+                rd_u64(bytes, p + 32),
+            ) else {
                 return Err("truncated program header".into());
             };
             if ty == 1 && flags & 1 != 0 {
@@ -144,12 +155,24 @@ pub fn render_text(c: &Census, mask: u32, min_count: u64, top: usize, files: usi
         c.total,
         c.decoded,
         undecoded,
-        if c.total == 0 { 0.0 } else { undecoded as f64 * 100.0 / c.total as f64 }
+        if c.total == 0 {
+            0.0
+        } else {
+            undecoded as f64 * 100.0 / c.total as f64
+        }
     ));
-    s.push_str(&format!("class key = word & {mask:#010x} (Rd/Rn and bits 20..16 masked)\n"));
+    s.push_str(&format!(
+        "class key = word & {mask:#010x} (Rd/Rn and bits 20..16 masked)\n"
+    ));
     s.push_str("rank  count   class       example\n");
     for (i, k) in c.classes.iter().filter(|k| k.count >= min_count).take(top).enumerate() {
-        s.push_str(&format!("{:>4}  {:>6}  {:#010x}  {:#010x}\n", i + 1, k.count, k.key, k.example));
+        s.push_str(&format!(
+            "{:>4}  {:>6}  {:#010x}  {:#010x}\n",
+            i + 1,
+            k.count,
+            k.key,
+            k.example
+        ));
     }
     s
 }
@@ -161,7 +184,10 @@ pub fn render_json(c: &Census, mask: u32, min_count: u64, top: usize, files: usi
         .filter(|k| k.count >= min_count)
         .take(top)
         .map(|k| {
-            format!("{{\"class\":\"{:#010x}\",\"count\":{},\"example\":\"{:#010x}\"}}", k.key, k.count, k.example)
+            format!(
+                "{{\"class\":\"{:#010x}\",\"count\":{},\"example\":\"{:#010x}\"}}",
+                k.key, k.count, k.example
+            )
         })
         .collect();
     format!(
@@ -198,7 +224,10 @@ pub fn run(args: &[String]) -> i32 {
     let mut acc = Census::default();
     let mut n = 0;
     for f in &files {
-        match std::fs::read(f).map_err(|e| e.to_string()).and_then(|b| extract_text_words(&b)) {
+        match std::fs::read(f)
+            .map_err(|e| e.to_string())
+            .and_then(|b| extract_text_words(&b))
+        {
             Ok(w) => {
                 merge(&mut acc, census_words(&w, mask));
                 n += 1;
@@ -226,7 +255,14 @@ mod tests {
         let c = census_words(&w, DEFAULT_MASK);
         assert_eq!(c.total, 5);
         assert_eq!(c.decoded, 2);
-        assert_eq!(c.classes[0], Class { key: 0, count: 2, example: 0 });
+        assert_eq!(
+            c.classes[0],
+            Class {
+                key: 0,
+                count: 2,
+                example: 0
+            }
+        );
         assert_eq!(c.classes[1].key, 0xFFFF_FFFF & DEFAULT_MASK);
     }
 

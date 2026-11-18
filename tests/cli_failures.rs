@@ -2,10 +2,7 @@ use std::process::Command;
 
 #[test]
 fn missing_input_is_a_nonzero_cli_failure() {
-    let path = std::env::temp_dir().join(format!(
-        "ounce_missing_{}_not_created.nro",
-        std::process::id()
-    ));
+    let path = std::env::temp_dir().join(format!("ounce_missing_{}_not_created.nro", std::process::id()));
     let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
         .args(["run", path.to_str().unwrap(), "--present=headless"])
         .output()
@@ -61,7 +58,10 @@ fn nro_with_text(text: &[u8]) -> Vec<u8> {
 /// The issue's minimal NRO: `mov w0, #0; svc #7` (svcExitProcess), 128 bytes.
 #[cfg(not(windows))]
 fn exit_nro_bytes() -> Vec<u8> {
-    let text: Vec<u8> = [0x5280_0000u32, 0xD400_00E1].iter().flat_map(|w| w.to_le_bytes()).collect();
+    let text: Vec<u8> = [0x5280_0000u32, 0xD400_00E1]
+        .iter()
+        .flat_map(|w| w.to_le_bytes())
+        .collect();
     nro_with_text(&text)
 }
 
@@ -73,7 +73,12 @@ fn guest_output_is_visible_while_a_hung_program_still_runs() {
     use std::io::Read;
     let message = b"guest says hello, then hangs";
     // ADR X0, message; MOVZ X1, #len; SVC #0x27 (svcOutputDebugString); B . (spin)
-    let code = [0x1000_0080u32, 0xD280_0001 | ((message.len() as u32) << 5), 0xD400_04E1, 0x1400_0000];
+    let code = [
+        0x1000_0080u32,
+        0xD280_0001 | ((message.len() as u32) << 5),
+        0xD400_04E1,
+        0x1400_0000,
+    ];
     let mut text: Vec<u8> = code.iter().flat_map(|w| w.to_le_bytes()).collect();
     text.extend_from_slice(message);
     let path = std::env::temp_dir().join(format!("ounce_hang_{}.nro", std::process::id()));
@@ -103,7 +108,10 @@ fn guest_output_is_visible_while_a_hung_program_still_runs() {
     let _ = child.wait();
     std::fs::remove_file(path).unwrap();
     assert!(visible, "the guest's text did not reach stdout while the program ran");
-    assert!(still_running, "the program had already stopped, so this did not test a hung run");
+    assert!(
+        still_running,
+        "the program had already stopped, so this did not test a hung run"
+    );
 }
 
 /// #479: `--deterministic` on `run-nro` runs the kernel on a fixed clock, so a guest that waits on time executes
@@ -116,7 +124,15 @@ fn deterministic_runs_execute_the_same_instructions_while_waiting_on_time() {
     // MOVZ X1, #0x1D, LSL #16; MOVK X1, #0x4C00 (X1 = 1,920,000 ticks = 100 ms at 19.2 MHz)
     // loop: SVC #0x1E (svcGetSystemTick -> X0); CMP X0, X1; B.LO loop
     // MOVZ W0, #0; SVC #0x07 (svcExitProcess)
-    let code = [0xD2A0_03A1u32, 0xF289_8001, 0xD400_03C1, 0xEB01_001F, 0x54FF_FFC3, 0x5280_0000, 0xD400_00E1];
+    let code = [
+        0xD2A0_03A1u32,
+        0xF289_8001,
+        0xD400_03C1,
+        0xEB01_001F,
+        0x54FF_FFC3,
+        0x5280_0000,
+        0xD400_00E1,
+    ];
     let text: Vec<u8> = code.iter().flat_map(|w| w.to_le_bytes()).collect();
     let dir = std::env::temp_dir().join(format!("ounce_deterministic_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -128,19 +144,32 @@ fn deterministic_runs_execute_the_same_instructions_while_waiting_on_time() {
             let report = dir.join(format!("{tier}.json"));
             let _ = std::fs::remove_file(&report);
             let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-                .args(["run-nro", nro.to_str().unwrap(), "--present=headless", "--deterministic"])
+                .args([
+                    "run-nro",
+                    nro.to_str().unwrap(),
+                    "--present=headless",
+                    "--deterministic",
+                ])
                 .arg(format!("--cpu={tier}"))
                 .arg(format!("--report-json={}", report.display()))
                 .output()
                 .unwrap();
-            assert!(output.status.success(), "{tier}: {}", String::from_utf8_lossy(&output.stderr));
+            assert!(
+                output.status.success(),
+                "{tier}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
             let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
             assert_eq!(json["stop_kind"], "clean_exit", "{tier}: {json}");
             json["insns_executed"].as_u64().unwrap()
         })
         .collect();
     std::fs::remove_dir_all(&dir).unwrap();
-    assert_eq!(counts, [1 + 2 + 3 * 5000 + 2; 3], "interpreter, Tier-3, interpreter again");
+    assert_eq!(
+        counts,
+        [1 + 2 + 3 * 5000 + 2; 3],
+        "interpreter, Tier-3, interpreter again"
+    );
 }
 
 /// Runs `run-nro <nro> --present=headless --deterministic` on `tier` and returns its `ounce.run.v1` report.
@@ -155,7 +184,11 @@ fn deterministic_report(nro: &str, tier: &str, tag: &str, guest_args: &[&str]) -
         .args(guest_args)
         .output()
         .unwrap();
-    assert!(output.status.success(), "{tier}: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "{tier}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let json = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
     std::fs::remove_file(&report).unwrap();
     json
@@ -167,7 +200,9 @@ fn expected_audio_hash(frames: impl Iterator<Item = i16>) -> String {
     let hash = frames
         .flat_map(|sample| [sample, sample]) // the fixture routes one voice to both channels
         .flat_map(i16::to_le_bytes)
-        .fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3));
+        .fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3)
+        });
     format!("fnv1a64:{hash:016x}")
 }
 
@@ -180,10 +215,15 @@ fn expected_audio_hash(frames: impl Iterator<Item = i16>) -> String {
 fn headless_audio_is_reported_as_a_frame_count_and_a_deterministic_hash() {
     let audren = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/audren/audren.nro");
     let hello = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro");
-    let square = |amplitude: i16, frames: usize| (0..frames).map(move |i| if (i / 24) % 2 == 1 { -amplitude } else { amplitude });
+    let square = |amplitude: i16, frames: usize| {
+        (0..frames).map(move |i| if (i / 24) % 2 == 1 { -amplitude } else { amplitude })
+    };
     let tone_then_silence = expected_audio_hash(square(8000, 2400).chain(std::iter::repeat_n(0, 240)));
     let long = expected_audio_hash(square(1600, 400 * 240));
-    for (guest_args, frames, expected) in [(&[][..], 2400 + 240, tone_then_silence), (&["long"][..], 400 * 240, long)] {
+    for (guest_args, frames, expected) in [
+        (&[][..], 2400 + 240, tone_then_silence),
+        (&["long"][..], 400 * 240, long),
+    ] {
         for tier in ["interpreter", "tier3", "interpreter"] {
             let run = deterministic_report(audren, tier, "audren", guest_args);
             assert_eq!(run["audio_frames_mixed"], frames, "{tier} {guest_args:?}: {run}");
@@ -209,7 +249,12 @@ fn faulting_nro_report(tier: &str) -> serde_json::Value {
     std::fs::write(&nro, nro_with_text(&text)).unwrap();
     let report = dir.join("report.json");
     let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["run-nro", nro.to_str().unwrap(), "--present=headless", "--deterministic"])
+        .args([
+            "run-nro",
+            nro.to_str().unwrap(),
+            "--present=headless",
+            "--deterministic",
+        ])
         .arg(format!("--cpu={tier}"))
         .arg(format!("--report-json={}", report.display()))
         .output()
@@ -217,7 +262,11 @@ fn faulting_nro_report(tier: &str) -> serde_json::Value {
     assert!(!output.status.success(), "{tier}: a fault is a failed run");
     let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
     std::fs::remove_dir_all(&dir).unwrap();
-    assert_eq!((json["stop_kind"].as_str(), json["exit_code"].as_i64()), (Some("memory_fault"), Some(11)), "{tier}: {json}");
+    assert_eq!(
+        (json["stop_kind"].as_str(), json["exit_code"].as_i64()),
+        (Some("memory_fault"), Some(11)),
+        "{tier}: {json}"
+    );
     json
 }
 
@@ -229,13 +278,26 @@ fn a_fault_reports_the_link_register_and_stack_pointer() {
     for tier in ["interpreter", "tier3"] {
         let json = faulting_nro_report(tier);
         let (pc, lr, sp) = (json["pc"].as_u64(), json["lr"].as_u64(), json["sp"].as_u64());
-        assert!(pc.is_some() && lr.is_some() && sp.is_some(), "{tier}: pc, lr and sp are numbers: {json}");
-        assert_eq!(pc.unwrap() - lr.unwrap(), 8, "{tier}: lr is the BL's return address: {json}");
-        assert!(sp.unwrap() != 0 && sp.unwrap() % 16 == 0, "{tier}: sp is the aligned guest stack: {json}");
+        assert!(
+            pc.is_some() && lr.is_some() && sp.is_some(),
+            "{tier}: pc, lr and sp are numbers: {json}"
+        );
+        assert_eq!(
+            pc.unwrap() - lr.unwrap(),
+            8,
+            "{tier}: lr is the BL's return address: {json}"
+        );
+        assert!(
+            sp.unwrap() != 0 && sp.unwrap() % 16 == 0,
+            "{tier}: sp is the aligned guest stack: {json}"
+        );
     }
     let hello = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro");
     let exit = deterministic_report(hello, "interpreter", "lr", &[]);
-    assert!(exit["pc"].is_null() && exit["lr"].is_null() && exit["sp"].is_null(), "{exit}");
+    assert!(
+        exit["pc"].is_null() && exit["lr"].is_null() && exit["sp"].is_null(),
+        "{exit}"
+    );
 }
 
 /// A run that stops on a fault reports the instructions that completed before it: the header's branch, the `BL` and
@@ -243,8 +305,10 @@ fn a_fault_reports_the_link_register_and_stack_pointer() {
 /// got, and make the two tiers impossible to compare.
 #[test]
 fn a_fault_still_counts_the_instructions_that_ran_before_it() {
-    let counts: Vec<u64> =
-        ["interpreter", "tier3", "interpreter"].iter().map(|tier| faulting_nro_report(tier)["insns_executed"].as_u64().unwrap()).collect();
+    let counts: Vec<u64> = ["interpreter", "tier3", "interpreter"]
+        .iter()
+        .map(|tier| faulting_nro_report(tier)["insns_executed"].as_u64().unwrap())
+        .collect();
     assert_eq!(counts, [3; 3], "interpreter, Tier-3, interpreter again");
 }
 
@@ -273,7 +337,11 @@ fn guest_argument_at_the_documented_limit_runs() {
     let prefix_len = "sdmc:/".len() + file_name_len + " ".len();
     let output = run_exit_nro_with_argument("at", 62_855 - prefix_len);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(stdout.contains("Process exited gracefully"));
 }
 
@@ -321,9 +389,13 @@ fn linux_deterministic_clock_cli_repeats_the_same_output() {
     for _ in 0..2 {
         let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
             .args(["run-elf", fixture, "--deterministic", "--cpu=tier3"])
-            .output().unwrap();
+            .output()
+            .unwrap();
         assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-        assert_eq!(output.stdout, b"realtime=1700000000:0\nmonotonic=0:1000000\nraw=0:2000000\nboottime=0:3000000\n");
+        assert_eq!(
+            output.stdout,
+            b"realtime=1700000000:0\nmonotonic=0:1000000\nraw=0:2000000\nboottime=0:3000000\n"
+        );
     }
 }
 
@@ -331,10 +403,21 @@ fn linux_deterministic_clock_cli_repeats_the_same_output() {
 fn linux_guest_arguments_after_separator_are_not_host_options() {
     let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/linux-elf/bin/args.elf");
     let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["run-elf", fixture, "--cpu=tier3", "--", "--cpu=tier4", "--present=headless", "--sdmc=/guest"])
-        .output().unwrap();
+        .args([
+            "run-elf",
+            fixture,
+            "--cpu=tier3",
+            "--",
+            "--cpu=tier4",
+            "--present=headless",
+            "--sdmc=/guest",
+        ])
+        .output()
+        .unwrap();
     assert_eq!(output.status.code(), Some(4)); // fixture exits with argc
-    let expected = format!("argc=4\nargv: {fixture}\nargv: --cpu=tier4\nargv: --present=headless\nargv: --sdmc=/guest\npagesz=4096\n");
+    let expected = format!(
+        "argc=4\nargv: {fixture}\nargv: --cpu=tier4\nargv: --present=headless\nargv: --sdmc=/guest\npagesz=4096\n"
+    );
     assert_eq!(output.stdout, expected.as_bytes());
     assert!(String::from_utf8_lossy(&output.stderr).contains("engine=Tier-3"));
 }
@@ -344,7 +427,9 @@ fn fuzzer_rejects_empty_trace_instead_of_reporting_zero_mismatches_as_success() 
     let path = std::env::temp_dir().join(format!("ounce_empty_trace_{}.txt", std::process::id()));
     std::fs::write(&path, b"").unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["fuzz-replay", path.to_str().unwrap()]).output().unwrap();
+        .args(["fuzz-replay", path.to_str().unwrap()])
+        .output()
+        .unwrap();
     std::fs::remove_file(path).unwrap();
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("no cases"));
@@ -353,14 +438,18 @@ fn fuzzer_rejects_empty_trace_instead_of_reporting_zero_mismatches_as_success() 
 #[test]
 fn fuzzer_does_not_ignore_trace_read_errors() {
     let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["fuzz-replay", std::env::temp_dir().to_str().unwrap()]).output().unwrap();
+        .args(["fuzz-replay", std::env::temp_dir().to_str().unwrap()])
+        .output()
+        .unwrap();
     assert_eq!(output.status.code(), Some(2));
 }
 
 #[test]
 fn fuzzer_rejects_zero_generated_cases() {
     let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["fuzz-replay", "--engine-vs-engine", "--count", "0"]).output().unwrap();
+        .args(["fuzz-replay", "--engine-vs-engine", "--count", "0"])
+        .output()
+        .unwrap();
     assert_eq!(output.status.code(), Some(2));
 }
 
@@ -370,7 +459,9 @@ fn fuzzer_fails_when_the_engine_accepts_a_host_undefined_word() {
     // A deliberately contradictory reference: MOV X0,#1 is implemented, not UNDEFINED.
     std::fs::write(&path, b"U d2800020\n").unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["fuzz-replay", path.to_str().unwrap()]).output().unwrap();
+        .args(["fuzz-replay", path.to_str().unwrap()])
+        .output()
+        .unwrap();
     std::fs::remove_file(path).unwrap();
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stdout).contains("emulator runs a word the host calls UNDEFINED: 1"));
@@ -392,21 +483,44 @@ fn first_instruction_difference_retains_the_actual_execution_and_replay_input() 
     // First case agrees; the second and third deliberately contradict MOV X0,#1.
     std::fs::write(&trace, mov_trace(1) + &mov_trace(2) + &mov_trace(3)).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["fuzz-replay", "--engine", "tier3", "--first-difference", bundle.to_str().unwrap(), trace.to_str().unwrap()])
-        .output().unwrap();
+        .args([
+            "fuzz-replay",
+            "--engine",
+            "tier3",
+            "--first-difference",
+            bundle.to_str().unwrap(),
+            trace.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
     assert_eq!(output.status.code(), Some(1));
-    assert!(bundle.join("diagnosis.json").exists(), "{}", String::from_utf8_lossy(&output.stderr));
-    let report: serde_json::Value = serde_json::from_slice(&std::fs::read(bundle.join("diagnosis.json")).unwrap()).unwrap();
+    assert!(
+        bundle.join("diagnosis.json").exists(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(bundle.join("diagnosis.json")).unwrap()).unwrap();
     assert_eq!(report["line_number"], 2);
     assert_eq!(report["word"], "0xd2800020");
     assert_eq!(report["input"]["x"][0], "0x0000000000000000");
     assert_eq!(report["reference"]["x"][0], "0x0000000000000002");
     assert_eq!(report["actual"]["x"][0], "0x0000000000000001");
-    assert_eq!(std::fs::read_to_string(bundle.join("case.trace")).unwrap(), mov_trace(2));
+    assert_eq!(
+        std::fs::read_to_string(bundle.join("case.trace")).unwrap(),
+        mov_trace(2)
+    );
     // The bundle is immutable; rerunning never overwrites the original diagnosis.
     let before = std::fs::read(bundle.join("diagnosis.json")).unwrap();
     let again = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["fuzz-replay", "--first-difference", bundle.to_str().unwrap(), trace.to_str().unwrap()]).output().unwrap();
+        .args([
+            "fuzz-replay",
+            "--first-difference",
+            bundle.to_str().unwrap(),
+            trace.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
     assert_eq!(again.status.code(), Some(2));
     assert_eq!(std::fs::read(bundle.join("diagnosis.json")).unwrap(), before);
     std::fs::remove_dir_all(root).unwrap();
@@ -420,14 +534,30 @@ fn instruction_dossier_replay_checks_bytes_and_distinguishes_reproduction_from_c
     let bundle = root.join("bundle");
     std::fs::write(&trace, mov_trace(2)).unwrap();
     let saved = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["fuzz-replay", "--engine", "tier3", "--first-difference", bundle.to_str().unwrap(), trace.to_str().unwrap()])
-        .output().unwrap();
+        .args([
+            "fuzz-replay",
+            "--engine",
+            "tier3",
+            "--first-difference",
+            bundle.to_str().unwrap(),
+            trace.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
     assert_eq!(saved.status.code(), Some(1));
-    let replay = || Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["replay-instruction", bundle.to_str().unwrap()]).output().unwrap();
+    let replay = || {
+        Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+            .args(["replay-instruction", bundle.to_str().unwrap()])
+            .output()
+            .unwrap()
+    };
     let result = replay();
     assert_eq!(result.status.code(), Some(0));
-    assert!(result.stdout.starts_with(b"{"), "{}", String::from_utf8_lossy(&result.stdout));
+    assert!(
+        result.stdout.starts_with(b"{"),
+        "{}",
+        String::from_utf8_lossy(&result.stdout)
+    );
     let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
     assert_eq!(report["replay_verdict"], "reproduced");
     assert_eq!(report["reference_verdict"], "mismatch");
@@ -476,7 +606,8 @@ fn truncated_nso_is_a_loader_error_before_guest_execution() {
     std::fs::write(&path, bytes).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
         .args(["run", path.to_str().unwrap(), "--present=headless"])
-        .output().unwrap();
+        .output()
+        .unwrap();
     std::fs::remove_file(path).unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -485,7 +616,10 @@ fn truncated_nso_is_a_loader_error_before_guest_execution() {
 }
 
 fn run_cli(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_ounce-core")).args(args).output().unwrap()
+    Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(args)
+        .output()
+        .unwrap()
 }
 
 #[test]
@@ -512,7 +646,10 @@ fn commands_without_a_path_are_usage_errors() {
         let output = run_cli(&[command]);
         assert_eq!(output.status.code(), Some(2), "{command}");
         assert!(String::from_utf8_lossy(&output.stderr).contains(&format!("'{command}' needs")));
-        assert!(!String::from_utf8_lossy(&output.stdout).contains("OUNCE-CORE:"), "no banner before the error");
+        assert!(
+            !String::from_utf8_lossy(&output.stdout).contains("OUNCE-CORE:"),
+            "no banner before the error"
+        );
     }
 }
 
@@ -533,7 +670,10 @@ fn an_early_stop_ends_with_the_next_step_and_the_report_form() {
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Run stopped early."), "{stderr}");
-    assert!(stderr.contains("issues/new?template=emulation_bug.yml") && stderr.contains("--cpu=tier3"), "{stderr}");
+    assert!(
+        stderr.contains("issues/new?template=emulation_bug.yml") && stderr.contains("--cpu=tier3"),
+        "{stderr}"
+    );
 }
 
 /// `hello.nro` reports `0x00000EEE` only when its argv is exactly `[path, "fixture"]`; bit 3 (`0x0BAD0008`) means
@@ -550,12 +690,19 @@ fn run_hello(args: &[&str]) -> std::process::Output {
 #[test]
 fn guest_arguments_after_separator_reach_an_nro_unchanged() {
     let exact = run_hello(&["--", "fixture"]);
-    assert!(String::from_utf8_lossy(&exact.stdout).contains("result=0x00000EEE"), "{}", String::from_utf8_lossy(&exact.stdout));
+    assert!(
+        String::from_utf8_lossy(&exact.stdout).contains("result=0x00000EEE"),
+        "{}",
+        String::from_utf8_lossy(&exact.stdout)
+    );
     // A dashed word after `--` used to be dropped silently, so the guest still saw argc == 2 and passed.
     for extra in ["--verbose", "-x", "--gui"] {
         let output = run_hello(&["--", "fixture", extra]);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("result=0x0BAD0008"), "guest did not receive {extra}: {stdout}");
+        assert!(
+            stdout.contains("result=0x0BAD0008"),
+            "guest did not receive {extra}: {stdout}"
+        );
     }
 }
 
@@ -568,7 +715,11 @@ fn an_empty_guest_argument_is_refused_instead_of_dropped() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(2), "stderr: {stderr}");
     assert!(stderr.contains("empty guest argument"), "stderr: {stderr}");
-    assert!(output.stdout.is_empty(), "the program must not start: {}", String::from_utf8_lossy(&output.stdout));
+    assert!(
+        output.stdout.is_empty(),
+        "the program must not start: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 }
 
 #[test]
@@ -578,16 +729,26 @@ fn unknown_dashed_nro_argument_before_separator_is_refused_with_the_fix() {
     assert_eq!(output.status.code(), Some(2), "stderr: {stderr}");
     assert!(stderr.contains("unknown option '-x'"), "stderr: {stderr}");
     assert!(stderr.contains("-- -x"), "stderr: {stderr}");
-    assert!(output.stdout.is_empty(), "the program must not start: {}", String::from_utf8_lossy(&output.stdout));
+    assert!(
+        output.stdout.is_empty(),
+        "the program must not start: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 }
 
 #[test]
 fn run_nro_help_documents_the_separator() {
-    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core")).args(["run-nro", "--help"]).output().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["run-nro", "--help"])
+        .output()
+        .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("usage: ounce-core run-nro <path>"), "{stdout}");
-    assert!(stdout.contains("Everything after `--` is passed to the program unchanged"), "{stdout}");
+    assert!(
+        stdout.contains("Everything after `--` is passed to the program unchanged"),
+        "{stdout}"
+    );
 }
 
 /// `run-elf` writes the same `ounce.run.v1` file as `run-nro`; its field set must match the schema document (#473).
@@ -600,9 +761,16 @@ fn run_elf_writes_an_ounce_run_v1_report_and_dumps_registers() {
         .arg(format!("--report-json={}", report.display()))
         .output()
         .unwrap();
-    assert_eq!(output.status.code(), Some(42), "the process status is still the guest's");
+    assert_eq!(
+        output.status.code(),
+        Some(42),
+        "the process status is still the guest's"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("[run-elf] registers at stop: pc=0x") && stderr.contains("x0=0x000000000000002a"), "{stderr}");
+    assert!(
+        stderr.contains("[run-elf] registers at stop: pc=0x") && stderr.contains("x0=0x000000000000002a"),
+        "{stderr}"
+    );
     let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
     std::fs::remove_file(&report).unwrap();
     assert_eq!(json["schema"], "ounce.run.v1");
@@ -611,12 +779,24 @@ fn run_elf_writes_an_ounce_run_v1_report_and_dumps_registers() {
     assert_eq!(json["guest_exit_status"], 42);
     assert_eq!(json["tier"], "tier3");
     assert!(json["insns_executed"].as_u64().unwrap() > 0);
-    assert!(json["sp"].as_u64().is_some_and(|sp| sp != 0 && sp % 16 == 0), "run-elf reports the stack pointer: {json}");
+    assert!(
+        json["sp"].as_u64().is_some_and(|sp| sp != 0 && sp % 16 == 0),
+        "run-elf reports the stack pointer: {json}"
+    );
     assert!(json["lr"].is_u64(), "run-elf reports the link register: {json}");
     let doc = include_str!("../docs/OUNCE_RUN_V1_SCHEMA.md");
-    let fields = doc.split("## Schema Fields").nth(1).unwrap().split("\n---").next().unwrap();
+    let fields = doc
+        .split("## Schema Fields")
+        .nth(1)
+        .unwrap()
+        .split("\n---")
+        .next()
+        .unwrap();
     for key in json.as_object().unwrap().keys() {
-        assert!(fields.contains(&format!("| `{key}` |")), "{key} is not in docs/OUNCE_RUN_V1_SCHEMA.md");
+        assert!(
+            fields.contains(&format!("| `{key}` |")),
+            "{key} is not in docs/OUNCE_RUN_V1_SCHEMA.md"
+        );
     }
 }
 

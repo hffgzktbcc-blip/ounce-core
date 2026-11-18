@@ -81,7 +81,11 @@ pub fn reg_rank(name: &str) -> Option<usize> {
     // `get` is None when the first character is multi-byte, so a hostile register name cannot panic here.
     let prefix = name.get(..1)?;
     let digits = &name[1..];
-    if digits.is_empty() || digits.len() > 2 || !digits.bytes().all(|b| b.is_ascii_digit()) || (digits.len() == 2 && digits.starts_with('0')) {
+    if digits.is_empty()
+        || digits.len() > 2
+        || !digits.bytes().all(|b| b.is_ascii_digit())
+        || (digits.len() == 2 && digits.starts_with('0'))
+    {
         return None;
     }
     let n: usize = digits.parse().ok()?;
@@ -107,7 +111,9 @@ fn hex64(value: u64) -> String {
 
 fn parse_hex(v: &Value, what: &str, max_bits: u32) -> Result<u128, String> {
     let s = v.as_str().ok_or_else(|| format!("{what}: expected a hex string"))?;
-    let digits = s.strip_prefix("0x").ok_or_else(|| format!("{what}: expected 0x-prefixed hex, got {s:?}"))?;
+    let digits = s
+        .strip_prefix("0x")
+        .ok_or_else(|| format!("{what}: expected 0x-prefixed hex, got {s:?}"))?;
     if digits.is_empty() || digits.len() > 32 {
         return Err(format!("{what}: bad hex {s:?}"));
     }
@@ -126,11 +132,16 @@ fn field<'a>(v: &'a Value, key: &str, ctx: &str) -> Result<&'a Value, String> {
 }
 
 fn string_field(v: &Value, key: &str) -> Result<String, String> {
-    field(v, key, "document")?.as_str().map(str::to_string).ok_or_else(|| format!("document: {key} must be a string"))
+    field(v, key, "document")?
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| format!("document: {key} must be a string"))
 }
 
 fn u64_field(v: &Value, key: &str) -> Result<u64, String> {
-    field(v, key, "document")?.as_u64().ok_or_else(|| format!("document: {key} must be a non-negative integer"))
+    field(v, key, "document")?
+        .as_u64()
+        .ok_or_else(|| format!("document: {key} must be a non-negative integer"))
 }
 
 impl MemWrite {
@@ -139,14 +150,25 @@ impl MemWrite {
     }
 
     fn describe(&self) -> String {
-        format!("{}/{}=0x{:0width$x}", hex64(self.addr), self.size, self.value, width = self.size as usize * 2)
+        format!(
+            "{}/{}=0x{:0width$x}",
+            hex64(self.addr),
+            self.size,
+            self.value,
+            width = self.size as usize * 2
+        )
     }
 }
 
 impl Step {
     fn to_json(&self, index: usize) -> Value {
-        let regs: Map<String, Value> = self.regs.iter().map(|(rank, v)| (reg_name(*rank), json!(reg_hex(*rank, *v)))).collect();
-        let mut step = json!({"i": index, "pc": hex64(self.pc), "opcode": format!("0x{:08x}", self.opcode), "regs": regs});
+        let regs: Map<String, Value> = self
+            .regs
+            .iter()
+            .map(|(rank, v)| (reg_name(*rank), json!(reg_hex(*rank, *v))))
+            .collect();
+        let mut step =
+            json!({"i": index, "pc": hex64(self.pc), "opcode": format!("0x{:08x}", self.opcode), "regs": regs});
         if let Some(mem) = &self.mem {
             step["mem"] = Value::Array(mem.iter().map(MemWrite::to_json).collect());
         }
@@ -161,9 +183,18 @@ impl Step {
         let pc = parse_hex(field(v, "pc", &ctx)?, &format!("{ctx}.pc"), 64)? as u64;
         let opcode = parse_hex(field(v, "opcode", &ctx)?, &format!("{ctx}.opcode"), 32)? as u32;
         let mut regs = Vec::new();
-        for (name, value) in field(v, "regs", &ctx)?.as_object().ok_or_else(|| format!("{ctx}.regs must be an object"))? {
+        for (name, value) in field(v, "regs", &ctx)?
+            .as_object()
+            .ok_or_else(|| format!("{ctx}.regs must be an object"))?
+        {
             let rank = reg_rank(name).ok_or_else(|| format!("{ctx}.regs: unknown register {name}"))?;
-            let bits = if rank >= RANK_V0 { 128 } else if rank >= RANK_NZCV { 32 } else { 64 };
+            let bits = if rank >= RANK_V0 {
+                128
+            } else if rank >= RANK_NZCV {
+                32
+            } else {
+                64
+            };
             regs.push((rank, parse_hex(value, &format!("{ctx}.regs.{name}"), bits)?));
         }
         regs.sort();
@@ -174,7 +205,10 @@ impl Step {
                 let mut out = Vec::new();
                 for (k, w) in list.iter().enumerate() {
                     let c = format!("{ctx}.mem[{k}]");
-                    let size = field(w, "size", &c)?.as_u64().filter(|s| (1..=16).contains(s)).ok_or_else(|| format!("{c}.size must be 1..=16"))? as u8;
+                    let size = field(w, "size", &c)?
+                        .as_u64()
+                        .filter(|s| (1..=16).contains(s))
+                        .ok_or_else(|| format!("{c}.size must be 1..=16"))? as u8;
                     out.push(MemWrite {
                         addr: parse_hex(field(w, "addr", &c)?, &format!("{c}.addr"), 64)? as u64,
                         size,
@@ -212,20 +246,31 @@ impl Trace {
         }
         let step_limit = u64_field(v, "step_limit")?;
         if step_limit == 0 || step_limit > MAX_STEP_LIMIT {
-            return Err(format!("document: step_limit {step_limit} is outside 1..={MAX_STEP_LIMIT}"));
+            return Err(format!(
+                "document: step_limit {step_limit} is outside 1..={MAX_STEP_LIMIT}"
+            ));
         }
-        let list = field(v, "steps", "document")?.as_array().ok_or("document: steps must be an array")?;
+        let list = field(v, "steps", "document")?
+            .as_array()
+            .ok_or("document: steps must be an array")?;
         let recorded = u64_field(v, "steps_recorded")?;
         if recorded != list.len() as u64 || recorded > step_limit {
-            return Err(format!("document: steps_recorded {recorded} must equal the steps array length {} and not exceed step_limit {step_limit}", list.len()));
+            return Err(format!(
+                "document: steps_recorded {recorded} must equal the steps array length {} and not exceed step_limit {step_limit}",
+                list.len()
+            ));
         }
         let steps_executed = u64_field(v, "steps_executed")?;
         if steps_executed < recorded {
             return Err("document: steps_executed is smaller than steps_recorded".into());
         }
-        let truncated = field(v, "truncated", "document")?.as_bool().ok_or("document: truncated must be a boolean")?;
+        let truncated = field(v, "truncated", "document")?
+            .as_bool()
+            .ok_or("document: truncated must be a boolean")?;
         if steps_executed > recorded && !truncated {
-            return Err(format!("document: truncated is false but steps_executed {steps_executed} exceeds steps_recorded {recorded}"));
+            return Err(format!(
+                "document: truncated is false but steps_executed {steps_executed} exceeds steps_recorded {recorded}"
+            ));
         }
         Ok(Trace {
             engine: string_field(v, "engine")?,
@@ -233,7 +278,11 @@ impl Trace {
             step_limit,
             steps_executed,
             truncated,
-            steps: list.iter().enumerate().map(|(i, s)| Step::from_json(s, i)).collect::<Result<_, _>>()?,
+            steps: list
+                .iter()
+                .enumerate()
+                .map(|(i, s)| Step::from_json(s, i))
+                .collect::<Result<_, _>>()?,
         })
     }
 }
@@ -311,7 +360,11 @@ impl Recorder {
         }
         let pc = cpu.regs.pc;
         let opcode = mmu.read_u32(pc).ok()?;
-        Some(Pending { pc, opcode, pre: State::capture(cpu) })
+        Some(Pending {
+            pc,
+            opcode,
+            pre: State::capture(cpu),
+        })
     }
 
     /// Call after an instruction retired, with what `pre` returned. Instructions past the bound are counted only.
@@ -330,7 +383,12 @@ impl Recorder {
                 (before != after).then_some((rank, after))
             })
             .collect();
-        self.trace.steps.push(Step { pc: p.pc, opcode: p.opcode, regs, mem: None });
+        self.trace.steps.push(Step {
+            pc: p.pc,
+            opcode: p.opcode,
+            regs,
+            mem: None,
+        });
     }
 
     /// The engine ran something other than exactly one instruction, so the step index would drift: stop recording.
@@ -348,9 +406,17 @@ impl Recorder {
         if let Some(parent) = self.path.parent().filter(|p| !p.as_os_str().is_empty()) {
             let _ = std::fs::create_dir_all(parent);
         }
-        let written = serde_json::to_vec_pretty(&self.trace.to_json()).map_err(|e| e.to_string()).and_then(|b| std::fs::write(&self.path, b).map_err(|e| e.to_string()));
+        let written = serde_json::to_vec_pretty(&self.trace.to_json())
+            .map_err(|e| e.to_string())
+            .and_then(|b| std::fs::write(&self.path, b).map_err(|e| e.to_string()));
         match written {
-            Ok(()) => eprintln!("[Trace] {} of {} steps written to {}{}", self.trace.steps.len(), self.trace.steps_executed, self.path.display(), if self.trace.truncated { " (truncated)" } else { "" }),
+            Ok(()) => eprintln!(
+                "[Trace] {} of {} steps written to {}{}",
+                self.trace.steps.len(),
+                self.trace.steps_executed,
+                self.path.display(),
+                if self.trace.truncated { " (truncated)" } else { "" }
+            ),
             Err(err) => eprintln!("[Trace] cannot write {}: {err}", self.path.display()),
         }
     }
@@ -407,15 +473,33 @@ fn first_mem_diff(a: &[MemWrite], b: &[MemWrite]) -> Option<(usize, Option<Strin
 }
 
 fn step_diff(index: u64, e: &Step, a: &Step) -> Option<Divergence> {
-    let hit = |field, name: Option<String>, expected: Option<String>, actual: Option<String>| Some(Divergence { step: index, field, name, expected, actual });
+    let hit = |field, name: Option<String>, expected: Option<String>, actual: Option<String>| {
+        Some(Divergence {
+            step: index,
+            field,
+            name,
+            expected,
+            actual,
+        })
+    };
     if e.pc != a.pc {
         return hit("pc", None, Some(hex64(e.pc)), Some(hex64(a.pc)));
     }
     if e.opcode != a.opcode {
-        return hit("opcode", None, Some(format!("0x{:08x}", e.opcode)), Some(format!("0x{:08x}", a.opcode)));
+        return hit(
+            "opcode",
+            None,
+            Some(format!("0x{:08x}", e.opcode)),
+            Some(format!("0x{:08x}", a.opcode)),
+        );
     }
     if let Some((rank, x, y)) = first_reg_diff(&e.regs, &a.regs) {
-        return hit("register", Some(reg_name(rank)), x.map(|v| reg_hex(rank, v)), y.map(|v| reg_hex(rank, v)));
+        return hit(
+            "register",
+            Some(reg_name(rank)),
+            x.map(|v| reg_hex(rank, v)),
+            y.map(|v| reg_hex(rank, v)),
+        );
     }
     if let (Some(em), Some(am)) = (&e.mem, &a.mem)
         && let Some((k, x, y)) = first_mem_diff(em, am)
@@ -439,7 +523,11 @@ pub fn compare(expected: &Trace, actual: &Trace, window: usize) -> Comparison {
         }
     }
     if divergence.is_none() && expected.steps.len() != actual.steps.len() {
-        let shorter_is_complete = if expected.steps.len() < actual.steps.len() { !expected.truncated } else { !actual.truncated };
+        let shorter_is_complete = if expected.steps.len() < actual.steps.len() {
+            !expected.truncated
+        } else {
+            !actual.truncated
+        };
         if shorter_is_complete {
             divergence = Some(Divergence {
                 step: common as u64,
@@ -454,14 +542,21 @@ pub fn compare(expected: &Trace, actual: &Trace, window: usize) -> Comparison {
     let window_steps = match at {
         Some(at) => {
             let take = window.min(MAX_WINDOW).min(at);
-            expected.steps[at - take..at].iter().enumerate().map(|(k, s)| ((at - take + k) as u64, s.pc, s.opcode)).collect()
+            expected.steps[at - take..at]
+                .iter()
+                .enumerate()
+                .map(|(k, s)| ((at - take + k) as u64, s.pc, s.opcode))
+                .collect()
         }
         None => Vec::new(),
     };
     let (pc, opcode) = match at {
         Some(at) => (
             (expected.steps.get(at).map(|s| s.pc), actual.steps.get(at).map(|s| s.pc)),
-            (expected.steps.get(at).map(|s| s.opcode), actual.steps.get(at).map(|s| s.opcode)),
+            (
+                expected.steps.get(at).map(|s| s.opcode),
+                actual.steps.get(at).map(|s| s.opcode),
+            ),
         ),
         None => ((None, None), (None, None)),
     };
@@ -505,7 +600,11 @@ impl Comparison {
 
     fn describe(&self) -> String {
         let Some(d) = &self.divergence else {
-            let note = if self.truncated { " (a trace was truncated: only the compared steps are covered)" } else { "" };
+            let note = if self.truncated {
+                " (a trace was truncated: only the compared steps are covered)"
+            } else {
+                ""
+            };
             return format!("no divergence in {} compared steps{note}", self.compared_steps);
         };
         let show = |v: &Option<String>| v.clone().unwrap_or_else(|| "(unchanged / absent)".into());
@@ -513,8 +612,20 @@ impl Comparison {
             Some(n) => format!("{} {n}", d.field),
             None => d.field.to_string(),
         };
-        let pc = self.pc.0.or(self.pc.1).map(|p| format!(" at pc {}", hex64(p))).unwrap_or_default();
-        format!("first divergence at step {}{pc}: {what}: expected {} ({}), actual {} ({})", d.step, show(&d.expected), self.expected_engine, show(&d.actual), self.actual_engine)
+        let pc = self
+            .pc
+            .0
+            .or(self.pc.1)
+            .map(|p| format!(" at pc {}", hex64(p)))
+            .unwrap_or_default();
+        format!(
+            "first divergence at step {}{pc}: {what}: expected {} ({}), actual {} ({})",
+            d.step,
+            show(&d.expected),
+            self.expected_engine,
+            show(&d.actual),
+            self.actual_engine
+        )
     }
 }
 
@@ -542,19 +653,26 @@ fn cli(args: &[String]) -> Result<i32, String> {
         match arg.as_str() {
             "--window" => {
                 let v = it.next().ok_or(USAGE)?;
-                window = v.parse().map_err(|_| format!("--window needs a non-negative integer, got {v:?}\n{USAGE}"))?;
+                window = v
+                    .parse()
+                    .map_err(|_| format!("--window needs a non-negative integer, got {v:?}\n{USAGE}"))?;
             }
             "--json" => json_out = Some(it.next().ok_or(USAGE)?.clone()),
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}\n{USAGE}")),
             _ => files.push(arg.as_str()),
         }
     }
-    let [expected, actual] = files[..] else { return Err(USAGE.into()) };
+    let [expected, actual] = files[..] else {
+        return Err(USAGE.into());
+    };
     let comparison = compare(&load(expected)?, &load(actual)?, window);
     println!("{}", comparison.describe());
     if let Some(path) = json_out {
         let bytes = serde_json::to_vec_pretty(&comparison.to_json()).map_err(|e| e.to_string())?;
-        if let Some(dir) = std::path::Path::new(&path).parent().filter(|d| !d.as_os_str().is_empty()) {
+        if let Some(dir) = std::path::Path::new(&path)
+            .parent()
+            .filter(|d| !d.as_os_str().is_empty())
+        {
             std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
         }
         std::fs::write(&path, bytes).map_err(|e| format!("cannot write {path}: {e}"))?;
@@ -576,7 +694,12 @@ mod tests {
     fn step(pc: u64, opcode: u32, regs: &[(&str, u128)]) -> Step {
         let mut regs: Vec<(usize, u128)> = regs.iter().map(|(n, v)| (reg_rank(n).unwrap(), *v)).collect();
         regs.sort();
-        Step { pc, opcode, regs, mem: None }
+        Step {
+            pc,
+            opcode,
+            regs,
+            mem: None,
+        }
     }
 
     fn trace(engine: &str, steps: Vec<Step>) -> Trace {
@@ -594,7 +717,15 @@ mod tests {
     fn base(engine: &str, n: u64) -> Trace {
         trace(
             engine,
-            (0..n).map(|i| step(CODE + 4 * i, ADD_X0_X1_X2, &[("x0", i as u128 + 100), ("nzcv", 0x6000_0000)])).collect(),
+            (0..n)
+                .map(|i| {
+                    step(
+                        CODE + 4 * i,
+                        ADD_X0_X1_X2,
+                        &[("x0", i as u128 + 100), ("nzcv", 0x6000_0000)],
+                    )
+                })
+                .collect(),
         )
     }
 
@@ -671,8 +802,14 @@ mod tests {
     #[test]
     fn trace_round_trips_through_json() {
         let mut t = base("ounce-core", 3);
-        t.steps[1].regs.push((reg_rank("v7").unwrap(), 0x0123_4567_89ab_cdef_0011_2233_4455_6677));
-        t.steps[2].mem = Some(vec![MemWrite { addr: 0x1000, size: 8, value: 0xdead_beef }]);
+        t.steps[1]
+            .regs
+            .push((reg_rank("v7").unwrap(), 0x0123_4567_89ab_cdef_0011_2233_4455_6677));
+        t.steps[2].mem = Some(vec![MemWrite {
+            addr: 0x1000,
+            size: 8,
+            value: 0xdead_beef,
+        }]);
         t.truncated = true;
         let v = t.to_json();
         assert_eq!(v["schema"], "ounce.trace.v1");
@@ -765,7 +902,14 @@ mod tests {
             })
         );
         assert_eq!(c.compared_steps, 7);
-        assert_eq!(c.window, vec![(3, CODE + 12, ADD_X0_X1_X2), (4, CODE + 16, ADD_X0_X1_X2), (5, CODE + 20, ADD_X0_X1_X2)]);
+        assert_eq!(
+            c.window,
+            vec![
+                (3, CODE + 12, ADD_X0_X1_X2),
+                (4, CODE + 16, ADD_X0_X1_X2),
+                (5, CODE + 20, ADD_X0_X1_X2)
+            ]
+        );
         let j = c.to_json();
         assert_eq!(j["match"], false);
         assert_eq!(j["step"], 6);
@@ -787,7 +931,10 @@ mod tests {
         // scalar registers sort before vector registers
         let expected = trace("a", vec![step(CODE, 1, &[("v0", 1)])]);
         let actual = trace("b", vec![step(CODE, 1, &[("v0", 2), ("x10", 4)])]);
-        assert_eq!(compare(&expected, &actual, 4).divergence.unwrap().name.as_deref(), Some("x10"));
+        assert_eq!(
+            compare(&expected, &actual, 4).divergence.unwrap().name.as_deref(),
+            Some("x10")
+        );
     }
 
     #[test]
@@ -816,7 +963,11 @@ mod tests {
         assert_eq!(c.window.last().unwrap().0, 29);
         let mut early = base("b", 3);
         early.steps[1].regs[0].1 = 0;
-        assert_eq!(compare(&base("a", 3), &early, 8).window.len(), 1, "cannot reach before step 0");
+        assert_eq!(
+            compare(&base("a", 3), &early, 8).window.len(),
+            1,
+            "cannot reach before step 0"
+        );
     }
 
     #[test]
@@ -836,7 +987,10 @@ mod tests {
         let c = compare(&base("a", 6), &short, 2);
         assert_eq!(c.divergence, None);
         assert_eq!(c.compared_steps, 4);
-        assert!(c.truncated, "a match over a truncated trace only covers the compared steps");
+        assert!(
+            c.truncated,
+            "a match over a truncated trace only covers the compared steps"
+        );
         let mut a = base("a", 4);
         a.truncated = true;
         let c = compare(&a, &short, 2);
@@ -845,11 +999,21 @@ mod tests {
 
     #[test]
     fn memory_deltas_compare_only_when_both_sides_record_them() {
-        let w = |v: u128| Some(vec![MemWrite { addr: 0x2000, size: 4, value: v }]);
+        let w = |v: u128| {
+            Some(vec![MemWrite {
+                addr: 0x2000,
+                size: 4,
+                value: v,
+            }])
+        };
         let mut expected = base("a", 3);
         let mut actual = base("b", 3);
         expected.steps[1].mem = w(1);
-        assert_eq!(compare(&expected, &actual, 2).divergence, None, "absent means not recorded");
+        assert_eq!(
+            compare(&expected, &actual, 2).divergence,
+            None,
+            "absent means not recorded"
+        );
         actual.steps[1].mem = w(2);
         let d = compare(&expected, &actual, 2).divergence.unwrap();
         assert_eq!((d.step, d.field, d.name.as_deref()), (1, "memory", Some("mem[0]")));
@@ -864,7 +1028,9 @@ mod tests {
 
     fn doc_fields(heading: &str) -> Vec<String> {
         let doc = include_str!("../docs/OUNCE_TRACE_V1_SCHEMA.md");
-        let start = doc.find(&format!("## {heading}")).unwrap_or_else(|| panic!("section {heading} missing"));
+        let start = doc
+            .find(&format!("## {heading}"))
+            .unwrap_or_else(|| panic!("section {heading} missing"));
         let body = &doc[start + 3..];
         let end = body.find("\n## ").unwrap_or(body.len());
         sorted(
@@ -889,7 +1055,11 @@ mod tests {
     #[test]
     fn schema_doc_lists_exactly_the_emitted_keys() {
         let mut t = base("ounce-core", 3);
-        t.steps[0].mem = Some(vec![MemWrite { addr: 1, size: 1, value: 1 }]);
+        t.steps[0].mem = Some(vec![MemWrite {
+            addr: 1,
+            size: 1,
+            value: 1,
+        }]);
         let tv = t.to_json();
         assert_eq!(keys(&tv), doc_fields("Trace document"));
         assert_eq!(keys(&tv["steps"][0]), doc_fields("Step"));
@@ -900,13 +1070,26 @@ mod tests {
         let dv = compare(&t, &a, 4).to_json();
         assert_eq!(keys(&dv), doc_fields("Divergence summary"));
         assert_eq!(keys(&dv["window"][0]), doc_fields("Window entry"));
-        assert_eq!(keys(&compare(&t, &t, 4).to_json()), keys(&dv), "match and divergence summaries share one key set");
+        assert_eq!(
+            keys(&compare(&t, &t, 4).to_json()),
+            keys(&dv),
+            "match and divergence summaries share one key set"
+        );
     }
 
     #[test]
     fn schema_doc_names_every_env_var_value_and_limit() {
         let doc = include_str!("../docs/OUNCE_TRACE_V1_SCHEMA.md");
-        for needle in ["OUNCE_TRACE_SUMMARY", "OUNCE_TRACE_STEPS", "ounce.trace.v1", "`length`", "`memory`", "`register`", "`opcode`", "`pc`"] {
+        for needle in [
+            "OUNCE_TRACE_SUMMARY",
+            "OUNCE_TRACE_STEPS",
+            "ounce.trace.v1",
+            "`length`",
+            "`memory`",
+            "`register`",
+            "`opcode`",
+            "`pc`",
+        ] {
             assert!(doc.contains(needle), "doc lacks {needle}");
         }
         assert!(doc.contains(&MAX_STEP_LIMIT.to_string()) && doc.contains(&DEFAULT_STEP_LIMIT.to_string()));

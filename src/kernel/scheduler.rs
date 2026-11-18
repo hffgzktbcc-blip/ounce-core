@@ -28,7 +28,12 @@ pub enum WaitReason {
     /// svcArbitrateLock: ownership of the mutex word at `addr`, then the word becomes `tag`.
     Mutex { addr: u64, tag: u32 },
     /// svcWaitProcessWideKeyAtomic: a signal on `cvar`, then the mutex at `mutex` (as `tag`).
-    CondVar { cvar: u64, mutex: u64, tag: u32, timed: bool },
+    CondVar {
+        cvar: u64,
+        mutex: u64,
+        tag: u32,
+        timed: bool,
+    },
     /// svcWaitSynchronization: any of `handles` becoming signaled.
     Objects { handles: Vec<u32>, timed: bool },
     /// svcSleepThread with a positive time: only the deadline wakes it.
@@ -187,21 +192,18 @@ impl ThreadScheduler {
     }
 
     /// Creates a new `KThread` object (`svcCreateThread`).
-    pub fn create_thread(
-        &mut self,
-        entry_pc: u64,
-        arg_x0: u64,
-        stack_top: u64,
-        priority: i32,
-        core_id: u32,
-    ) -> u32 {
+    pub fn create_thread(&mut self, entry_pc: u64, arg_x0: u64, stack_top: u64, priority: i32, core_id: u32) -> u32 {
         let handle = self.next_handle;
         self.next_handle += 1;
         let thread_id = self.next_thread_id;
         self.next_thread_id += 1;
 
         // -2 (`IdealCoreUseProcessValue`, libnx's default) is the process's ideal core.
-        let core_id = if core_id as i32 == -2 { PROCESS_IDEAL_CORE } else { core_id % CORE_COUNT };
+        let core_id = if core_id as i32 == -2 {
+            PROCESS_IDEAL_CORE
+        } else {
+            core_id % CORE_COUNT
+        };
         let mut cpu_context = Cpu::new();
         cpu_context.regs.pc = entry_pc;
         cpu_context.regs.sp = stack_top;
@@ -235,7 +237,9 @@ impl ThreadScheduler {
     fn next_static_tls(&self) -> Option<(u64, u64)> {
         let image = self.tls_image.as_ref()?;
         let align = image.align.max(0x1000);
-        if !align.is_power_of_two() { return None; }
+        if !align.is_power_of_two() {
+            return None;
+        }
         let area = self.next_tls_area.checked_add(align - 1)? & !(align - 1);
         let size = image.mapped_size();
         (area.checked_add(size)? <= THREAD_TLS_POOL_BASE + THREAD_TLS_POOL_SIZE).then_some((area, size))
@@ -243,8 +247,7 @@ impl ThreadScheduler {
 
     /// Check both lifetime allocation pools before publishing a thread handle.
     pub fn can_allocate_thread(&self) -> bool {
-        self.next_tlr_page < THREAD_TLR_POOL_PAGES
-            && (self.tls_image.is_none() || self.next_static_tls().is_some())
+        self.next_tlr_page < THREAD_TLR_POOL_PAGES && (self.tls_image.is_none() || self.next_static_tls().is_some())
     }
 
     /// Gives a created thread its own static TLS area: maps it from the TLS pool, copies `tls_image`
@@ -540,7 +543,12 @@ impl ThreadScheduler {
             if let Some(next) = self.take_ready(|_| true) {
                 return Some(next);
             }
-            let deadline = self.threads.values().filter(|t| t.state == ThreadState::Blocked).filter_map(|t| t.deadline).min()?;
+            let deadline = self
+                .threads
+                .values()
+                .filter(|t| t.state == ThreadState::Blocked)
+                .filter_map(|t| t.deadline)
+                .min()?;
             self.advance_to(deadline);
         }
     }
@@ -588,7 +596,10 @@ impl ThreadScheduler {
     pub fn yield_to(&mut self, cpu: &mut Cpu, to: YieldTo) {
         self.ensure_main();
         let cur = self.current;
-        let (prio, core) = self.threads.get(&cur).map_or((44, PROCESS_IDEAL_CORE), |t| (t.priority, t.core_id));
+        let (prio, core) = self
+            .threads
+            .get(&cur)
+            .map_or((44, PROCESS_IDEAL_CORE), |t| (t.priority, t.core_id));
         let next = self.take_ready(|t| match to {
             YieldTo::Any => true,
             YieldTo::SameCore => t.priority <= prio || t.core_id != core,
@@ -643,7 +654,10 @@ impl ThreadScheduler {
             .values()
             .filter(|t| t.state == ThreadState::Blocked)
             .filter_map(|t| match &t.wait {
-                Some(WaitReason::Objects { handles, .. }) => handles.iter().position(|&h| h == handle).map(|i| (t.wait_seq, t.handle, i)),
+                Some(WaitReason::Objects { handles, .. }) => handles
+                    .iter()
+                    .position(|&h| h == handle)
+                    .map(|i| (t.wait_seq, t.handle, i)),
                 _ => None,
             })
             .collect();
@@ -655,7 +669,10 @@ impl ThreadScheduler {
 
     /// Whether `handle` names a thread that has exited (signaled for svcWaitSynchronization).
     pub fn thread_signaled(&self, handle: u32) -> Option<bool> {
-        self.threads.get(&handle).filter(|_| handle != MAIN_THREAD_KEY).map(|t| t.state == ThreadState::Exited)
+        self.threads
+            .get(&handle)
+            .filter(|_| handle != MAIN_THREAD_KEY)
+            .map(|t| t.state == ThreadState::Exited)
     }
 
     /// Blocked threads waiting for `pred`, earliest first.
@@ -750,7 +767,10 @@ mod tests {
             let mut memory = Memory::new();
             let mut cpu = Cpu::new();
             if static_tls {
-                kernel.scheduler.tls_image = Some(ThreadTlsImage { bytes: vec![1], align: 16 });
+                kernel.scheduler.tls_image = Some(ThreadTlsImage {
+                    bytes: vec![1],
+                    align: 16,
+                });
                 kernel.scheduler.next_tls_area = THREAD_TLS_POOL_BASE + THREAD_TLS_POOL_SIZE;
             } else {
                 kernel.scheduler.next_tlr_page = THREAD_TLR_POOL_PAGES;
@@ -893,7 +913,10 @@ mod tests {
         }
 
         let handle = sched.create_thread(code_addr, shared_addr, stack_top, 44, 1);
-        assert_eq!(sched.threads[&handle].cpu_context.regs.read_x(30), THREAD_RETURN_SENTINEL);
+        assert_eq!(
+            sched.threads[&handle].cpu_context.regs.read_x(30),
+            THREAD_RETURN_SENTINEL
+        );
         assert!(sched.start_and_run_thread(handle, &mut mmu, 100));
         assert_eq!(sched.threads[&handle].state, ThreadState::Exited);
         assert_eq!(sched.total_threads_completed, 1);
@@ -1030,7 +1053,10 @@ mod tests {
         cpu.regs.write_x(2, 1);
         cpu.regs.write_x(3, 5_000_000);
         kernel.dispatch_svc(0x18, &mut cpu, &mut mmu);
-        assert_eq!((kernel.scheduler.current, cpu.regs.read_x(0)), (MAIN_THREAD_KEY, RESULT_TIMED_OUT));
+        assert_eq!(
+            (kernel.scheduler.current, cpu.regs.read_x(0)),
+            (MAIN_THREAD_KEY, RESULT_TIMED_OUT)
+        );
         let waited = kernel.scheduler.now_ns() - t0;
         assert!((5 * MS..50 * MS).contains(&waited), "waited {waited} ns");
 
@@ -1042,7 +1068,10 @@ mod tests {
         cpu.regs.write_x(2, tag as u64);
         cpu.regs.write_x(3, 1_000_000);
         kernel.dispatch_svc(0x1C, &mut cpu, &mut mmu);
-        assert_eq!((kernel.scheduler.current, cpu.regs.read_x(0)), (MAIN_THREAD_KEY, RESULT_TIMED_OUT));
+        assert_eq!(
+            (kernel.scheduler.current, cpu.regs.read_x(0)),
+            (MAIN_THREAD_KEY, RESULT_TIMED_OUT)
+        );
         assert_eq!(mmu.read_u32(mutex).unwrap(), tag);
         assert!(kernel.scheduler.pending_relock.is_empty());
         assert_eq!(kernel.scheduler.threads[&worker].state, ThreadState::Blocked);
@@ -1056,8 +1085,14 @@ mod tests {
             kernel.dispatch_svc(0x0C, cpu, mmu);
             (cpu.regs.read_x(0), cpu.regs.read_x(1))
         };
-        assert_eq!(get_prio(&mut kernel, &mut cpu, &mut mmu, CURRENT_THREAD_HANDLE), (0, 44));
-        assert_eq!(get_prio(&mut kernel, &mut cpu, &mut mmu, 0xBAD).0, RESULT_INVALID_HANDLE);
+        assert_eq!(
+            get_prio(&mut kernel, &mut cpu, &mut mmu, CURRENT_THREAD_HANDLE),
+            (0, 44)
+        );
+        assert_eq!(
+            get_prio(&mut kernel, &mut cpu, &mut mmu, 0xBAD).0,
+            RESULT_INVALID_HANDLE
+        );
 
         // Out of range is refused; a valid change sticks.
         for (prio, result) in [(64u64, RESULT_INVALID_PRIORITY), (10, 0)] {
@@ -1078,20 +1113,33 @@ mod tests {
         assert_eq!(kernel.scheduler.current, MAIN_THREAD_KEY);
 
         // svcSetThreadCoreMask / svcGetThreadCoreMask.
-        let set_mask = |kernel: &mut crate::kernel::HorizonKernel, cpu: &mut Cpu, mmu: &mut Memory, core: i32, mask: u64| {
-            cpu.regs.write_x(0, worker as u64);
-            cpu.regs.write_x(1, core as u32 as u64);
-            cpu.regs.write_x(2, mask);
-            kernel.dispatch_svc(0x0F, cpu, mmu);
-            cpu.regs.read_x(0)
-        };
+        let set_mask =
+            |kernel: &mut crate::kernel::HorizonKernel, cpu: &mut Cpu, mmu: &mut Memory, core: i32, mask: u64| {
+                cpu.regs.write_x(0, worker as u64);
+                cpu.regs.write_x(1, core as u32 as u64);
+                cpu.regs.write_x(2, mask);
+                kernel.dispatch_svc(0x0F, cpu, mmu);
+                cpu.regs.read_x(0)
+            };
         assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, 2, 0b1100), 0);
         cpu.regs.write_x(2, worker as u64);
         kernel.dispatch_svc(0x0E, &mut cpu, &mut mmu);
-        assert_eq!((cpu.regs.read_x(0), cpu.regs.read_x(1), cpu.regs.read_x(2)), (0, 2, 0b1100));
-        assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, 1, 0b1100), RESULT_INVALID_COMBINATION);
-        assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, 0, 0), RESULT_INVALID_COMBINATION);
-        assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, 9, 0x200), RESULT_INVALID_CORE_ID);
+        assert_eq!(
+            (cpu.regs.read_x(0), cpu.regs.read_x(1), cpu.regs.read_x(2)),
+            (0, 2, 0b1100)
+        );
+        assert_eq!(
+            set_mask(&mut kernel, &mut cpu, &mut mmu, 1, 0b1100),
+            RESULT_INVALID_COMBINATION
+        );
+        assert_eq!(
+            set_mask(&mut kernel, &mut cpu, &mut mmu, 0, 0),
+            RESULT_INVALID_COMBINATION
+        );
+        assert_eq!(
+            set_mask(&mut kernel, &mut cpu, &mut mmu, 9, 0x200),
+            RESULT_INVALID_CORE_ID
+        );
         assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, -3, 0b1000), 0); // keeps no core it may not use
         assert_eq!(kernel.scheduler.threads[&worker].core_id, 3);
         assert_eq!(set_mask(&mut kernel, &mut cpu, &mut mmu, -2, 0), 0);

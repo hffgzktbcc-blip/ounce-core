@@ -18,14 +18,7 @@ impl UpscaleEngine {
 
     /// Upscale an RGBA8888 surface at `src_addr` (`src_w x src_h`) by 2x in both dimensions
     /// (`(src_w * 2) x (src_h * 2)`) into `dst_addr` in guest VRAM.
-    pub fn upscale_2x(
-        &mut self,
-        mmu: &mut Memory,
-        src_addr: u64,
-        src_w: u32,
-        src_h: u32,
-        dst_addr: u64,
-    ) {
+    pub fn upscale_2x(&mut self, mmu: &mut Memory, src_addr: u64, src_w: u32, src_h: u32, dst_addr: u64) {
         if src_w == 0 || src_h == 0 || src_addr == 0 || dst_addr == 0 {
             return;
         }
@@ -59,10 +52,8 @@ impl UpscaleEngine {
                 }
                 out_rgba[3] = 0xFF;
 
-                let packed = (out_rgba[0] as u32)
-                    | ((out_rgba[1] as u32) << 8)
-                    | ((out_rgba[2] as u32) << 16)
-                    | 0xFF00_0000;
+                let packed =
+                    (out_rgba[0] as u32) | ((out_rgba[1] as u32) << 8) | ((out_rgba[2] as u32) << 16) | 0xFF00_0000;
 
                 let out_offset = ((dy * dst_w + dx) as u64) * 4;
                 let _ = mmu.write_u32(dst_addr + out_offset, packed);

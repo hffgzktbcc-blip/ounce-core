@@ -2,7 +2,10 @@
 use std::process::{Command, Output};
 
 fn run(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_ounce-core")).args(args).output().unwrap()
+    Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(args)
+        .output()
+        .unwrap()
 }
 
 fn stdout(o: &Output) -> String {
@@ -13,7 +16,14 @@ const INPUT_NRO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro
 
 #[test]
 fn press_reaches_the_guest_pad() {
-    let o = run(&["run", INPUT_NRO, "--present=headless", "--press", "A@0", "--press=DRIGHT@0"]);
+    let o = run(&[
+        "run",
+        INPUT_NRO,
+        "--present=headless",
+        "--press",
+        "A@0",
+        "--press=DRIGHT@0",
+    ]);
     assert!(o.status.success());
     assert!(stdout(&o).contains("ounce-input buttons=0x00004001"), "{}", stdout(&o));
 }

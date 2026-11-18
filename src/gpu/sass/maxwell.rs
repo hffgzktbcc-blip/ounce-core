@@ -48,10 +48,10 @@
 //!   and y from Rb, `TEX`/`TLD` from Ra, Ra+1.
 
 use super::decode::{
-    mask_comps, next_reg, pack_pairs, BoolOp, Compare, DecodeError, Decoded, FCmp, FSrc, ICmp, Instr, IpaFreq, MufuOp, PSrc,
-    Round, Src, Tex, TexHandle, TexLod, TexOp, XmadMode, LUT_A, LUT_B, RZ,
+    BoolOp, Compare, DecodeError, Decoded, FCmp, FSrc, ICmp, Instr, IpaFreq, LUT_A, LUT_B, MufuOp, PSrc, RZ, Round,
+    Src, Tex, TexHandle, TexLod, TexOp, XmadMode, mask_comps, next_reg, pack_pairs,
 };
-use super::ir::{lower_with, Function};
+use super::ir::{Function, lower_with};
 use super::{ShaderStage, XlateError};
 
 /// Bytes between the header start and the first bundle (20-word SPH, open-gpu-doc).
@@ -72,12 +72,19 @@ fn reg(w: u64, lo: u32) -> u8 {
 }
 
 fn r(w: u64, lo: u32, neg: Option<u32>, abs: Option<u32>) -> FSrc {
-    FSrc { src: Src::Reg(reg(w, lo)), neg: neg.is_some_and(|b| bit(w, b)), abs: abs.is_some_and(|b| bit(w, b)) }
+    FSrc {
+        src: Src::Reg(reg(w, lo)),
+        neg: neg.is_some_and(|b| bit(w, b)),
+        abs: abs.is_some_and(|b| bit(w, b)),
+    }
 }
 
 /// `c[bank][offset]` in the bit-20 slot: bank 34..39, word offset 20..34.
 fn cbuf34(w: u64) -> Src {
-    Src::Cbuf { bank: bits(w, 34, 39) as u8, offset: (bits(w, 20, 34) << 2) as u16 }
+    Src::Cbuf {
+        bank: bits(w, 34, 39) as u8,
+        offset: (bits(w, 20, 34) << 2) as u16,
+    }
 }
 
 /// 19-bit float immediate at 20..39 with its sign at bit 56: the top 20 bits of an f32.
@@ -90,7 +97,11 @@ fn imm32(w: u64) -> Src {
 }
 
 fn with(src: Src, neg: Option<u32>, abs: Option<u32>, w: u64) -> FSrc {
-    FSrc { src, neg: neg.is_some_and(|b| bit(w, b)), abs: abs.is_some_and(|b| bit(w, b)) }
+    FSrc {
+        src,
+        neg: neg.is_some_and(|b| bit(w, b)),
+        abs: abs.is_some_and(|b| bit(w, b)),
+    }
 }
 
 /// Decodes one 64-bit instruction word (not a control word).
@@ -100,7 +111,13 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
     let pred = bits(w, 16, 19) as u8;
     let pred_neg = bit(w, 19);
     let dst = reg(w, 0);
-    let rnd = |lo: u32| if bits(w, lo, lo + 2) != 0 { Err(unsup("rounding mode other than RN")) } else { Ok(()) };
+    let rnd = |lo: u32| {
+        if bits(w, lo, lo + 2) != 0 {
+            Err(unsup("rounding mode other than RN"))
+        } else {
+            Ok(())
+        }
+    };
     // FTZ/FMZ field: 0 none, 1 FTZ, 2 FMZ (FMZ's 0 * x = 0 rule has no WGSL form).
     let ftz2 = |lo: u32| match bits(w, lo, lo + 2) {
         0 => Ok(false),
@@ -142,12 +159,24 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
             0x4c00 => cbuf34(w),
             _ => fimm20(w),
         };
-        Instr::FAdd { dst, a: r(w, 8, Some(48), Some(46)), b: with(b, Some(45), Some(49), w), sat: bit(w, 50), ftz: bit(w, 44) }
+        Instr::FAdd {
+            dst,
+            a: r(w, 8, Some(48), Some(46)),
+            b: with(b, Some(45), Some(49), w),
+            sat: bit(w, 50),
+            ftz: bit(w, 44),
+        }
     } else if top(0xfc00 << 48, 0x0800 << 48) {
         if bit(w, 52) {
             return Err(unsup("FADD32I.CC"));
         }
-        Instr::FAdd { dst, a: r(w, 8, Some(56), Some(54)), b: with(imm32(w), Some(53), Some(57), w), sat: false, ftz: bit(w, 55) }
+        Instr::FAdd {
+            dst,
+            a: r(w, 8, Some(56), Some(54)),
+            b: with(imm32(w), Some(53), Some(57), w),
+            sat: false,
+            ftz: bit(w, 55),
+        }
     } else if top(0xfff8 << 48, 0x5c68 << 48) || top(0xfff8 << 48, 0x4c68 << 48) || top(0xfef8 << 48, 0x3868 << 48) {
         rnd(39)?;
         if bits(w, 41, 44) != 0 {
@@ -162,12 +191,24 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
             0x4c00 => cbuf34(w),
             _ => fimm20(w),
         };
-        Instr::FMul { dst, a: r(w, 8, None, None), b: with(b, Some(48), None, w), sat: bit(w, 50), ftz }
+        Instr::FMul {
+            dst,
+            a: r(w, 8, None, None),
+            b: with(b, Some(48), None, w),
+            sat: bit(w, 50),
+            ftz,
+        }
     } else if top(0xff00 << 48, 0x1e00 << 48) {
         if bit(w, 52) {
             return Err(unsup("FMUL32I.CC"));
         }
-        Instr::FMul { dst, a: r(w, 8, None, None), b: with(imm32(w), None, None, w), sat: bit(w, 55), ftz: ftz2(53)? }
+        Instr::FMul {
+            dst,
+            a: r(w, 8, None, None),
+            b: with(imm32(w), None, None, w),
+            sat: bit(w, 55),
+            ftz: ftz2(53)?,
+        }
     } else if top(0xff80 << 48, 0x5980 << 48)
         || top(0xff80 << 48, 0x4980 << 48)
         || top(0xff80 << 48, 0x5180 << 48)
@@ -184,7 +225,14 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
             0x5180 => (Src::Reg(reg(w, 39)), cbuf34(w)),
             _ => (fimm20(w), Src::Reg(reg(w, 39))),
         };
-        Instr::FFma { dst, a: r(w, 8, None, None), b: with(b, Some(48), None, w), c: with(c, Some(49), None, w), sat: bit(w, 50), ftz }
+        Instr::FFma {
+            dst,
+            a: r(w, 8, None, None),
+            b: with(b, Some(48), None, w),
+            c: with(c, Some(49), None, w),
+            sat: bit(w, 50),
+            ftz,
+        }
     } else if top(0xfc00 << 48, 0x0c00 << 48) {
         // FFMA32I: c is the destination register.
         if bit(w, 52) {
@@ -194,7 +242,11 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
             dst,
             a: r(w, 8, Some(56), None),
             b: with(imm32(w), None, None, w),
-            c: FSrc { src: Src::Reg(dst), neg: bit(w, 57), abs: false },
+            c: FSrc {
+                src: Src::Reg(dst),
+                neg: bit(w, 57),
+                abs: false,
+            },
             sat: bit(w, 55),
             ftz: ftz2(53)?,
         }
@@ -212,7 +264,11 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
         if bit(w, 50) {
             return Err(unsup("MUFU.SAT"));
         }
-        Instr::Mufu { dst, op, src: r(w, 8, Some(48), Some(46)) }
+        Instr::Mufu {
+            dst,
+            op,
+            src: r(w, 8, Some(48), Some(46)),
+        }
     } else if top(0xfff8 << 48, 0xef90 << 48) {
         let r_off = reg(w, 8);
         if bits(w, 44, 46) != 0 {
@@ -225,7 +281,12 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
         if !offset.is_multiple_of(4) || offset & 0x8000 != 0 {
             return Err(unsup("unaligned or negative LDC offset"));
         }
-        Instr::Ldc { dst, bank: bits(w, 36, 41) as u8, offset, reg: r_off }
+        Instr::Ldc {
+            dst,
+            bank: bits(w, 36, 41) as u8,
+            offset,
+            reg: r_off,
+        }
     } else if top(0xfff8 << 48, 0xefd8 << 48) {
         if reg(w, 8) != RZ || reg(w, 39) != RZ {
             return Err(unsup("ALD vertex/offset register"));
@@ -233,7 +294,11 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
         if bit(w, 31) || bit(w, 32) {
             return Err(unsup("ALD .P/.O"));
         }
-        Instr::Ald { dst, addr: bits(w, 20, 30) as u16, comps: bits(w, 47, 49) as u8 + 1 }
+        Instr::Ald {
+            dst,
+            addr: bits(w, 20, 30) as u16,
+            comps: bits(w, 47, 49) as u8 + 1,
+        }
     } else if top(0xfff8 << 48, 0xeff0 << 48) {
         if reg(w, 8) != RZ || reg(w, 39) != RZ {
             return Err(unsup("AST vertex/offset register"));
@@ -241,7 +306,11 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
         if bit(w, 31) {
             return Err(unsup("AST .P"));
         }
-        Instr::Ast { src: reg(w, 0), addr: bits(w, 20, 30) as u16, comps: bits(w, 47, 49) as u8 + 1 }
+        Instr::Ast {
+            src: reg(w, 0),
+            addr: bits(w, 20, 30) as u16,
+            comps: bits(w, 47, 49) as u8 + 1,
+        }
     } else if top(0xff00 << 48, 0xe000 << 48) {
         if bit(w, 38) || reg(w, 8) != RZ {
             return Err(unsup("IPA indexed attribute"));
@@ -261,7 +330,12 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
             2 => IpaFreq::Constant,
             _ => return Err(unsup("IPA.SC")),
         };
-        Instr::Ipa { dst, addr: bits(w, 28, 38) as u16, freq, mul: reg(w, 20) }
+        Instr::Ipa {
+            dst,
+            addr: bits(w, 28, 38) as u16,
+            freq,
+            mul: reg(w, 20),
+        }
     } else if top(0xf6 << 56, 0xd0 << 56) || top(0xf6 << 56, 0xd2 << 56) {
         // TEXS / TLDS: the scalar-register forms.
         let fetch = bit(w, 57);
@@ -277,7 +351,11 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
             (false, 8) => (TexLod::Zero, true),
             _ => return Err(unsup("texture target other than 2D / 2D array (.LZ for TLDS)")),
         };
-        let (x, layer) = if array { (next_reg(reg(w, 8)), Some(reg(w, 8))) } else { (reg(w, 8), None) };
+        let (x, layer) = if array {
+            (next_reg(reg(w, 8)), Some(reg(w, 8)))
+        } else {
+            (reg(w, 8), None)
+        };
         let rd2 = reg(w, 28);
         let comps: &[usize] = match (rd2 == RZ, bits(w, 50, 53)) {
             (true, 0) => &[0],
@@ -297,7 +375,9 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
         };
         Instr::Tex(Tex {
             op: if fetch { TexOp::Fetch } else { TexOp::Sample },
-            handle: TexHandle::Bound { index: bits(w, 36, 49) as u16 },
+            handle: TexHandle::Bound {
+                index: bits(w, 36, 49) as u16,
+            },
             lod,
             x,
             y: reg(w, 20),
@@ -337,7 +417,9 @@ pub fn decode(w: u64) -> Result<Decoded, DecodeError> {
         let ra = reg(w, 8);
         Instr::Tex(Tex {
             op: if fetch { TexOp::Fetch } else { TexOp::Sample },
-            handle: TexHandle::Bound { index: bits(w, 36, 49) as u16 },
+            handle: TexHandle::Bound {
+                index: bits(w, 36, 49) as u16,
+            },
             lod,
             x: ra,
             y: next_reg(ra),
@@ -361,7 +443,10 @@ fn simm20(w: u64) -> Src {
 
 /// Predicate operand at `lo..lo + 3` with its negate bit.
 fn psrc(w: u64, lo: u32, neg: u32) -> PSrc {
-    PSrc { p: bits(w, lo, lo + 3) as u8, neg: bit(w, neg) }
+    PSrc {
+        p: bits(w, lo, lo + 3) as u8,
+        neg: bit(w, neg),
+    }
 }
 
 /// Operand `b` of an ALU op by the form in the top nibble: 0x5 register (Rb at 20), 0x4
@@ -410,70 +495,197 @@ fn decode_ext(w: u64) -> Result<Option<Instr>, DecodeError> {
     let no_cc = |b: u32| if bit(w, b) { Err(unsup(".CC")) } else { Ok(()) };
     let bop = |lo: u32| BoolOp::from_code(bits(w, lo, lo + 2)).ok_or(unsup("predicate combine op"));
     // Condition code field of EXIT-like ops: only "always" (0xf).
-    let cc_true = || if bits(w, 0, 5) != 0xf { Err(unsup("condition code")) } else { Ok(()) };
+    let cc_true = || {
+        if bits(w, 0, 5) != 0xf {
+            Err(unsup("condition code"))
+        } else {
+            Ok(())
+        }
+    };
 
     let i = if cmp3(0x5b60) {
         if bit(w, 43) {
             return Err(unsup("ISETP.X"));
         }
-        let cmp = Compare::I { cmp: ICmp::from_code(bits(w, 49, 52)), signed: bit(w, 48), a: ra, b: slot_b(w, false) };
-        Instr::Setp { pd: bits(w, 3, 6) as u8, pd2: bits(w, 0, 3) as u8, cmp, bop: bop(45)?, c: pc39 }
+        let cmp = Compare::I {
+            cmp: ICmp::from_code(bits(w, 49, 52)),
+            signed: bit(w, 48),
+            a: ra,
+            b: slot_b(w, false),
+        };
+        Instr::Setp {
+            pd: bits(w, 3, 6) as u8,
+            pd2: bits(w, 0, 3) as u8,
+            cmp,
+            bop: bop(45)?,
+            c: pc39,
+        }
     } else if cmp3(0x5bb0) {
-        let a = FSrc { src: ra, neg: bit(w, 43), abs: bit(w, 7) };
-        let b = FSrc { src: slot_b(w, true), neg: bit(w, 6), abs: bit(w, 44) };
-        let cmp = Compare::F { cmp: FCmp::from_code(bits(w, 48, 52)), a, b };
-        Instr::Setp { pd: bits(w, 3, 6) as u8, pd2: bits(w, 0, 3) as u8, cmp, bop: bop(45)?, c: pc39 }
+        let a = FSrc {
+            src: ra,
+            neg: bit(w, 43),
+            abs: bit(w, 7),
+        };
+        let b = FSrc {
+            src: slot_b(w, true),
+            neg: bit(w, 6),
+            abs: bit(w, 44),
+        };
+        let cmp = Compare::F {
+            cmp: FCmp::from_code(bits(w, 48, 52)),
+            a,
+            b,
+        };
+        Instr::Setp {
+            pd: bits(w, 3, 6) as u8,
+            pd2: bits(w, 0, 3) as u8,
+            cmp,
+            bop: bop(45)?,
+            c: pc39,
+        }
     } else if is(0xfff8, 0x5090) {
         let op = BoolOp::from_code(bits(w, 24, 26)).ok_or(unsup("PSETP op"))?;
-        let cmp = Compare::P { op, a: psrc(w, 12, 15), b: psrc(w, 29, 32) };
-        Instr::Setp { pd: bits(w, 3, 6) as u8, pd2: bits(w, 0, 3) as u8, cmp, bop: bop(45)?, c: pc39 }
+        let cmp = Compare::P {
+            op,
+            a: psrc(w, 12, 15),
+            b: psrc(w, 29, 32),
+        };
+        Instr::Setp {
+            pd: bits(w, 3, 6) as u8,
+            pd2: bits(w, 0, 3) as u8,
+            cmp,
+            bop: bop(45)?,
+            c: pc39,
+        }
     } else if is(0xff00, 0x5800) || is(0xfe00, 0x4800) || is(0xfe00, 0x3000) {
         no_cc(47)?;
-        let a = FSrc { src: ra, neg: bit(w, 43), abs: bit(w, 54) };
-        let b = FSrc { src: slot_b(w, true), neg: bit(w, 53), abs: bit(w, 44) };
-        let cmp = Compare::F { cmp: FCmp::from_code(bits(w, 48, 52)), a, b };
-        Instr::Set { dst, cmp, bop: bop(45)?, c: pc39, bf: bit(w, 52) }
+        let a = FSrc {
+            src: ra,
+            neg: bit(w, 43),
+            abs: bit(w, 54),
+        };
+        let b = FSrc {
+            src: slot_b(w, true),
+            neg: bit(w, 53),
+            abs: bit(w, 44),
+        };
+        let cmp = Compare::F {
+            cmp: FCmp::from_code(bits(w, 48, 52)),
+            a,
+            b,
+        };
+        Instr::Set {
+            dst,
+            cmp,
+            bop: bop(45)?,
+            c: pc39,
+            bf: bit(w, 52),
+        }
     } else if cmp3(0x5b50) {
         no_cc(47)?;
         if bit(w, 43) {
             return Err(unsup("ISET.X"));
         }
-        let cmp = Compare::I { cmp: ICmp::from_code(bits(w, 49, 52)), signed: bit(w, 48), a: ra, b: slot_b(w, false) };
-        Instr::Set { dst, cmp, bop: bop(45)?, c: pc39, bf: bit(w, 44) }
+        let cmp = Compare::I {
+            cmp: ICmp::from_code(bits(w, 49, 52)),
+            signed: bit(w, 48),
+            a: ra,
+            b: slot_b(w, false),
+        };
+        Instr::Set {
+            dst,
+            cmp,
+            bop: bop(45)?,
+            c: pc39,
+            bf: bit(w, 44),
+        }
     } else if alu3(0x5ca0) {
-        Instr::Sel { dst, a: ra, b: slot_b(w, false), c: pc39 }
+        Instr::Sel {
+            dst,
+            a: ra,
+            b: slot_b(w, false),
+            c: pc39,
+        }
     } else if alu3(0x5c60) {
         no_cc(47)?;
-        let a = FSrc { src: ra, neg: bit(w, 48), abs: bit(w, 46) };
-        let b = FSrc { src: slot_b(w, true), neg: bit(w, 45), abs: bit(w, 49) };
+        let a = FSrc {
+            src: ra,
+            neg: bit(w, 48),
+            abs: bit(w, 46),
+        };
+        let b = FSrc {
+            src: slot_b(w, true),
+            neg: bit(w, 45),
+            abs: bit(w, 49),
+        };
         Instr::FMnmx { dst, a, b, c: pc39 }
     } else if alu3(0x5c20) {
         no_cc(47)?;
         if bits(w, 43, 45) != 0 {
             return Err(unsup("IMNMX .XLO/.XMED/.XHI"));
         }
-        Instr::IMnmx { dst, a: ra, b: slot_b(w, false), signed: bit(w, 48), c: pc39 }
+        Instr::IMnmx {
+            dst,
+            a: ra,
+            b: slot_b(w, false),
+            signed: bit(w, 48),
+            c: pc39,
+        }
     } else if is(0xfff0, 0x5ba0) || is(0xfff0, 0x4ba0) || is(0xfef0, 0x36a0) || is(0xfff0, 0x53a0) {
-        let (b, c) = if is(0xfff0, 0x53a0) { (Src::Reg(reg(w, 39)), cbuf34(w)) } else { (slot_b(w, true), Src::Reg(reg(w, 39))) };
-        Instr::FCmpSel { dst, cmp: FCmp::from_code(bits(w, 48, 52)), a: ra, b, c }
+        let (b, c) = if is(0xfff0, 0x53a0) {
+            (Src::Reg(reg(w, 39)), cbuf34(w))
+        } else {
+            (slot_b(w, true), Src::Reg(reg(w, 39)))
+        };
+        Instr::FCmpSel {
+            dst,
+            cmp: FCmp::from_code(bits(w, 48, 52)),
+            a: ra,
+            b,
+            c,
+        }
     } else if alu3(0x5c10) {
         no_cc(47)?;
         if bit(w, 50) || bit(w, 43) {
             return Err(unsup("IADD .SAT/.X"));
         }
-        Instr::IAdd { dst, a: ra, b: slot_b(w, false), c: Src::Reg(RZ), neg: [bit(w, 49), bit(w, 48), false] }
+        Instr::IAdd {
+            dst,
+            a: ra,
+            b: slot_b(w, false),
+            c: Src::Reg(RZ),
+            neg: [bit(w, 49), bit(w, 48), false],
+        }
     } else if is(0xfe80, 0x1c00) {
         no_cc(52)?;
         if bit(w, 54) || bit(w, 53) {
             return Err(unsup("IADD32I .SAT/.X"));
         }
-        Instr::IAdd { dst, a: ra, b: imm32(w), c: Src::Reg(RZ), neg: [bit(w, 56), false, false] }
+        Instr::IAdd {
+            dst,
+            a: ra,
+            b: imm32(w),
+            c: Src::Reg(RZ),
+            neg: [bit(w, 56), false, false],
+        }
     } else if alu3(0x5c18) {
         no_cc(47)?;
-        Instr::IScAdd { dst, a: ra, b: slot_b(w, false), shift: bits(w, 39, 44) as u8, neg: [bit(w, 49), bit(w, 48)] }
+        Instr::IScAdd {
+            dst,
+            a: ra,
+            b: slot_b(w, false),
+            shift: bits(w, 39, 44) as u8,
+            neg: [bit(w, 49), bit(w, 48)],
+        }
     } else if is(0xfc00, 0x1400) {
         no_cc(52)?;
-        Instr::IScAdd { dst, a: ra, b: imm32(w), shift: bits(w, 53, 58) as u8, neg: [false, false] }
+        Instr::IScAdd {
+            dst,
+            a: ra,
+            b: imm32(w),
+            shift: bits(w, 53, 58) as u8,
+            neg: [false, false],
+        }
     } else if is(0xffc0, 0x5b00) || is(0xfec0, 0x3600) || is(0xfe00, 0x4e00) || is(0xff80, 0x5100) {
         no_cc(47)?;
         let mode2 = |m: u32| match m {
@@ -485,63 +697,146 @@ fn decode_ext(w: u64) -> Result<Option<Instr>, DecodeError> {
             _ => Err(unsup("XMAD addend mode")),
         };
         let (b, c, b_hi, psl, mrg, mode, x) = match opcode >> 12 {
-            0x5 if is(0xffc0, 0x5b00) => {
-                (Src::Reg(reg(w, 20)), Src::Reg(reg(w, 39)), bit(w, 35), bit(w, 36), bit(w, 37), mode2(bits(w, 50, 53))?, bit(w, 38))
-            }
+            0x5 if is(0xffc0, 0x5b00) => (
+                Src::Reg(reg(w, 20)),
+                Src::Reg(reg(w, 39)),
+                bit(w, 35),
+                bit(w, 36),
+                bit(w, 37),
+                mode2(bits(w, 50, 53))?,
+                bit(w, 38),
+            ),
             0x3 => {
                 if bit(w, 56) {
                     return Err(unsup("XMAD immediate bit 56"));
                 }
-                (Src::Imm(bits(w, 20, 36)), Src::Reg(reg(w, 39)), false, bit(w, 36), bit(w, 37), mode2(bits(w, 50, 53))?, bit(w, 38))
+                (
+                    Src::Imm(bits(w, 20, 36)),
+                    Src::Reg(reg(w, 39)),
+                    false,
+                    bit(w, 36),
+                    bit(w, 37),
+                    mode2(bits(w, 50, 53))?,
+                    bit(w, 38),
+                )
             }
-            0x4 => (cbuf34(w), Src::Reg(reg(w, 39)), bit(w, 52), bit(w, 55), bit(w, 56), mode2(bits(w, 50, 52))?, bit(w, 54)),
-            _ => (Src::Reg(reg(w, 39)), cbuf34(w), bit(w, 52), false, false, mode2(bits(w, 50, 52))?, bit(w, 54)),
+            0x4 => (
+                cbuf34(w),
+                Src::Reg(reg(w, 39)),
+                bit(w, 52),
+                bit(w, 55),
+                bit(w, 56),
+                mode2(bits(w, 50, 52))?,
+                bit(w, 54),
+            ),
+            _ => (
+                Src::Reg(reg(w, 39)),
+                cbuf34(w),
+                bit(w, 52),
+                false,
+                false,
+                mode2(bits(w, 50, 52))?,
+                bit(w, 54),
+            ),
         };
         if x {
             return Err(unsup("XMAD.X"));
         }
-        Instr::Xmad { dst, a: ra, b, c, a_signed: bit(w, 48), b_signed: bit(w, 49), a_hi: bit(w, 53), b_hi, psl, mrg, mode }
+        Instr::Xmad {
+            dst,
+            a: ra,
+            b,
+            c,
+            a_signed: bit(w, 48),
+            b_signed: bit(w, 49),
+            a_hi: bit(w, 53),
+            b_hi,
+            psl,
+            mrg,
+            mode,
+        }
     } else if alu3(0x5c40) {
         no_cc(47)?;
         if bit(w, 43) || bits(w, 44, 46) != 0 {
             return Err(unsup("LOP .X / predicate output"));
         }
         let lut = lop_lut(bits(w, 41, 43), bit(w, 39), bit(w, 40));
-        Instr::Lop3 { dst, lut, a: ra, b: slot_b(w, false), c: Src::Reg(RZ) }
+        Instr::Lop3 {
+            dst,
+            lut,
+            a: ra,
+            b: slot_b(w, false),
+            c: Src::Reg(RZ),
+        }
     } else if is(0xfc00, 0x0400) {
         no_cc(52)?;
         if bit(w, 57) {
             return Err(unsup("LOP32I.X"));
         }
         let lut = lop_lut(bits(w, 53, 55), bit(w, 55), bit(w, 56));
-        Instr::Lop3 { dst, lut, a: ra, b: imm32(w), c: Src::Reg(RZ) }
+        Instr::Lop3 {
+            dst,
+            lut,
+            a: ra,
+            b: imm32(w),
+            c: Src::Reg(RZ),
+        }
     } else if is(0xfff8, 0x5be0) {
         no_cc(47)?;
         if bits(w, 36, 39) != 0 {
             return Err(unsup("LOP3 .X / predicate output"));
         }
-        Instr::Lop3 { dst, lut: bits(w, 28, 36) as u8, a: ra, b: Src::Reg(reg(w, 20)), c: Src::Reg(reg(w, 39)) }
+        Instr::Lop3 {
+            dst,
+            lut: bits(w, 28, 36) as u8,
+            a: ra,
+            b: Src::Reg(reg(w, 20)),
+            c: Src::Reg(reg(w, 39)),
+        }
     } else if is(0xfc00, 0x3c00) {
         no_cc(47)?;
-        Instr::Lop3 { dst, lut: bits(w, 48, 56) as u8, a: ra, b: simm20(w), c: Src::Reg(reg(w, 39)) }
+        Instr::Lop3 {
+            dst,
+            lut: bits(w, 48, 56) as u8,
+            a: ra,
+            b: simm20(w),
+            c: Src::Reg(reg(w, 39)),
+        }
     } else if is(0xfe00, 0x0200) {
         no_cc(47)?;
         if bit(w, 56) {
             return Err(unsup("LOP3.X"));
         }
-        Instr::Lop3 { dst, lut: bits(w, 48, 56) as u8, a: ra, b: cbuf34(w), c: Src::Reg(reg(w, 39)) }
+        Instr::Lop3 {
+            dst,
+            lut: bits(w, 48, 56) as u8,
+            a: ra,
+            b: cbuf34(w),
+            c: Src::Reg(reg(w, 39)),
+        }
     } else if alu3(0x5c48) {
         no_cc(47)?;
         if bit(w, 43) {
             return Err(unsup("SHL.X"));
         }
-        Instr::Shl { dst, a: ra, b: slot_b(w, false), wrap: bit(w, 39) }
+        Instr::Shl {
+            dst,
+            a: ra,
+            b: slot_b(w, false),
+            wrap: bit(w, 39),
+        }
     } else if alu3(0x5c28) {
         no_cc(47)?;
         if bit(w, 44) || bit(w, 40) {
             return Err(unsup("SHR .X/.BREV"));
         }
-        Instr::Shr { dst, a: ra, b: slot_b(w, false), signed: bit(w, 48), wrap: bit(w, 39) }
+        Instr::Shr {
+            dst,
+            a: ra,
+            b: slot_b(w, false),
+            signed: bit(w, 48),
+            wrap: bit(w, 39),
+        }
     } else if alu3(0x5cb8) {
         no_cc(47)?;
         if bits(w, 8, 10) != 2 || bits(w, 10, 12) != 2 {
@@ -550,7 +845,11 @@ fn decode_ext(w: u64) -> Result<Option<Instr>, DecodeError> {
         if bits(w, 39, 43) != 0 || bit(w, 45) || bit(w, 49) {
             return Err(unsup("I2F rounding / byte select / modifiers"));
         }
-        Instr::I2F { dst, src: slot_b(w, false), signed: bit(w, 13) }
+        Instr::I2F {
+            dst,
+            src: slot_b(w, false),
+            signed: bit(w, 13),
+        }
     } else if alu3(0x5cb0) {
         no_cc(47)?;
         // Destination format 1 is 16-bit; only the unsigned form is modelled.
@@ -559,8 +858,18 @@ fn decode_ext(w: u64) -> Result<Option<Instr>, DecodeError> {
             return Err(unsup("F2I format other than 32-bit or U16 <- F32"));
         }
         let round = [Round::Nearest, Round::Floor, Round::Ceil, Round::Trunc][bits(w, 39, 41) as usize];
-        let src = FSrc { src: slot_b(w, true), neg: bit(w, 45), abs: bit(w, 49) };
-        Instr::F2I { dst, src, signed: bit(w, 12), round, u16 }
+        let src = FSrc {
+            src: slot_b(w, true),
+            neg: bit(w, 45),
+            abs: bit(w, 49),
+        };
+        Instr::F2I {
+            dst,
+            src,
+            signed: bit(w, 12),
+            round,
+            u16,
+        }
     } else if alu3(0x5ca8) {
         no_cc(47)?;
         if bits(w, 8, 10) != 2 || bits(w, 10, 12) != 2 {
@@ -571,11 +880,28 @@ fn decode_ext(w: u64) -> Result<Option<Instr>, DecodeError> {
             (true, r) => Some([Round::Nearest, Round::Floor, Round::Ceil, Round::Trunc][r as usize]),
             _ => return Err(unsup("F2F rounding mode")),
         };
-        let src = FSrc { src: slot_b(w, true), neg: bit(w, 45), abs: bit(w, 49) };
-        Instr::F2F { dst, src, round, sat: bit(w, 50) }
+        let src = FSrc {
+            src: slot_b(w, true),
+            neg: bit(w, 45),
+            abs: bit(w, 49),
+        };
+        Instr::F2F {
+            dst,
+            src,
+            round,
+            sat: bit(w, 50),
+        }
     } else if alu3(0x5c90) {
-        let src = FSrc { src: slot_b(w, true), neg: bit(w, 45), abs: bit(w, 49) };
-        Instr::Rro { dst, ex2: bit(w, 39), src }
+        let src = FSrc {
+            src: slot_b(w, true),
+            neg: bit(w, 45),
+            abs: bit(w, 49),
+        };
+        Instr::Rro {
+            dst,
+            ex2: bit(w, 39),
+            src,
+        }
     } else if is(0xfff0, 0xe240) {
         if bit(w, 5) || bit(w, 6) {
             return Err(unsup("BRA through a constant buffer / .LMT"));
@@ -586,7 +912,11 @@ fn decode_ext(w: u64) -> Result<Option<Instr>, DecodeError> {
         if bit(w, 5) {
             return Err(unsup("SSY/PBK through a constant buffer"));
         }
-        if is(0xfff0, 0xe290) { Instr::Ssy { rel: btarg(w) } } else { Instr::Pbk { rel: btarg(w) } }
+        if is(0xfff0, 0xe290) {
+            Instr::Ssy { rel: btarg(w) }
+        } else {
+            Instr::Pbk { rel: btarg(w) }
+        }
     } else if is(0xfff8, 0xf0f8) {
         cc_true()?;
         Instr::Sync
@@ -626,7 +956,11 @@ pub fn lower(stage: ShaderStage, code: &[u8]) -> Result<Function, XlateError> {
         |pc| {
             let at = instr_offset(pc);
             let w = word_at(code, pc).ok_or(XlateError::MissingExit)?;
-            let d = decode(w).map_err(|e| XlateError::Decode { at, word: w as u128, err: e })?;
+            let d = decode(w).map_err(|e| XlateError::Decode {
+                at,
+                word: w as u128,
+                err: e,
+            })?;
             Ok((at, d))
         },
         instr_index,

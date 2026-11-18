@@ -32,13 +32,7 @@ fn sha3_decode() {
         assert!(matches!(decoder::decode(0xce800000 | (imm << 10)),
             Instruction::Sha3 { op: Sha3Op::Xar(got), .. } if got == imm as u8));
     }
-    for raw in [
-        0xce008000,
-        0xce208000,
-        0xce608800,
-        0xce608c00 ^ (1 << 22),
-        0xcec00000,
-    ] {
+    for raw in [0xce008000, 0xce208000, 0xce608800, 0xce608c00 ^ (1 << 22), 0xcec00000] {
         assert_eq!(decoder::decode(raw), Instruction::Unimplemented { raw });
     }
 }
@@ -56,8 +50,7 @@ fn execute(raw: u32, tier: u8) {
     for iteration in 0..=Tier3JitEngine::HOT_THRESHOLD {
         cpu.regs.pc = 0x1000;
         for (i, v) in cpu.regs.v.iter_mut().enumerate() {
-            *v = (0x8001020304050607fedcba9876543210u128.rotate_left(i as u32 * 3))
-                ^ u128::from(iteration as u64);
+            *v = (0x8001020304050607fedcba9876543210u128.rotate_left(i as u32 * 3)) ^ u128::from(iteration as u64);
         }
         cpu.regs.fpsr = 0x08000010;
         let mut expected = cpu.regs.v;
@@ -71,22 +64,14 @@ fn execute(raw: u32, tier: u8) {
             _ => {
                 let mut bytes = [0u8; 16];
                 for (lane, out) in bytes.chunks_exact_mut(8).enumerate() {
-                    let n = u64::from_le_bytes(
-                        n.to_le_bytes()[lane * 8..lane * 8 + 8].try_into().unwrap(),
-                    );
-                    let m = u64::from_le_bytes(
-                        m.to_le_bytes()[lane * 8..lane * 8 + 8].try_into().unwrap(),
-                    );
+                    let n = u64::from_le_bytes(n.to_le_bytes()[lane * 8..lane * 8 + 8].try_into().unwrap());
+                    let m = u64::from_le_bytes(m.to_le_bytes()[lane * 8..lane * 8 + 8].try_into().unwrap());
                     let value = if raw & 0xffe00000 == 0xce600000 {
                         n ^ m.rotate_left(1)
                     } else {
                         let imm = (raw >> 10) & 63;
                         let x = n ^ m;
-                        if imm == 0 {
-                            x
-                        } else {
-                            x.rotate_right(imm)
-                        }
+                        if imm == 0 { x } else { x.rotate_right(imm) }
                     };
                     out.copy_from_slice(&value.to_le_bytes());
                 }

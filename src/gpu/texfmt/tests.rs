@@ -2,11 +2,18 @@ use super::vectors::SETS;
 use super::*;
 
 fn hex(s: &str) -> Vec<u8> {
-    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect()
 }
 
 fn desc(components: u32, ty: NumType) -> FormatDesc {
-    FormatDesc { components, types: [Some(ty); 4], srgb: false }
+    FormatDesc {
+        components,
+        types: [Some(ty); 4],
+        srgb: false,
+    }
 }
 
 /// Every reference vector, decoded texel by texel, within one 8-bit step (BC6H: only texels the
@@ -21,7 +28,9 @@ fn compressed_formats_match_reference_vectors() {
         for (k, &(block, want)) in vecs.iter().enumerate() {
             let (block, want) = (hex(block), hex(want));
             let n = (bw * bh) as usize;
-            if name.starts_with("ASTC") && (0..n).all(|i| decode_texel(&d, &block, i as u32 % bw, i as u32 / bw) == Some([1.0, 0.0, 1.0, 1.0])) {
+            if name.starts_with("ASTC")
+                && (0..n).all(|i| decode_texel(&d, &block, i as u32 % bw, i as u32 / bw) == Some([1.0, 0.0, 1.0, 1.0]))
+            {
                 skipped.push(format!("{name} #{k}"));
                 continue;
             }
@@ -38,7 +47,9 @@ fn compressed_formats_match_reference_vectors() {
                     let bc6 = name.starts_with("BC6H");
                     // The reference decodes BC1 as opaque; the 3-colour mode's fourth entry is
                     // transparent black, as the BC1 RGBA format defines it.
-                    if (name == "BC1" || name == "ETC2_RGB_PTA") && c == [0.0; 4] && want[4 * i + 3] == 0 || (name == "BC1" && ch == 3 && c == [0.0; 4]) {
+                    if (name == "BC1" || name == "ETC2_RGB_PTA") && c == [0.0; 4] && want[4 * i + 3] == 0
+                        || (name == "BC1" && ch == 3 && c == [0.0; 4])
+                    {
                         continue;
                     }
                     // Single-channel signed EAC: the reference leaves G and B at 0.
@@ -61,11 +72,24 @@ fn compressed_formats_match_reference_vectors() {
         *per.entry(f.split(' ').next().unwrap()).or_default() += 1;
     }
     // Exactly the blocks astcenc rejects decode to the error colour.
-    assert!(skipped.iter().all(|s| s.contains("_ERR")), "rejected legal ASTC blocks: {skipped:?}");
-    assert_eq!(skipped.len(), SETS.iter().filter(|s| s.0.ends_with("_ERR")).map(|s| s.5.len()).sum::<usize>());
-    assert!(failures.is_empty(), "{per:?} {} mismatches, first: {:#?}", failures.len(), &failures[..failures.len().min(20)]);
+    assert!(
+        skipped.iter().all(|s| s.contains("_ERR")),
+        "rejected legal ASTC blocks: {skipped:?}"
+    );
+    assert_eq!(
+        skipped.len(),
+        SETS.iter()
+            .filter(|s| s.0.ends_with("_ERR"))
+            .map(|s| s.5.len())
+            .sum::<usize>()
+    );
+    assert!(
+        failures.is_empty(),
+        "{per:?} {} mismatches, first: {:#?}",
+        failures.len(),
+        &failures[..failures.len().min(20)]
+    );
 }
-
 
 fn texel(components: u32, ty: NumType, bytes: &[u8]) -> [f32; 4] {
     decode_texel(&desc(components, ty), bytes, 0, 0).unwrap()
@@ -75,7 +99,10 @@ fn texel(components: u32, ty: NumType, bytes: &[u8]) -> [f32; 4] {
 fn packed_formats_place_r_in_the_low_bits() {
     // A1B5G5R5: R 4:0, G 9:5, B 14:10, A 15.
     let v: u16 = 31 | (0 << 5) | (16 << 10) | (1 << 15);
-    assert_eq!(texel(0x14, NumType::Unorm, &v.to_le_bytes()), [1.0, 0.0, 16.0 / 31.0, 1.0]);
+    assert_eq!(
+        texel(0x14, NumType::Unorm, &v.to_le_bytes()),
+        [1.0, 0.0, 16.0 / 31.0, 1.0]
+    );
     // A4B4G4R4.
     assert_eq!(texel(0x12, NumType::Unorm, &[0x0f, 0xf0]), [1.0, 0.0, 0.0, 1.0]);
     // G4R4 and the missing channels' defaults.
@@ -128,7 +155,11 @@ fn depth_formats() {
 
 #[test]
 fn srgb_applies_to_colour_channels_only() {
-    let d = FormatDesc { components: 0x08, types: [Some(NumType::Unorm); 4], srgb: true };
+    let d = FormatDesc {
+        components: 0x08,
+        types: [Some(NumType::Unorm); 4],
+        srgb: true,
+    };
     let c = decode_texel(&d, &[188, 0, 255, 188], 0, 0).unwrap();
     assert!((c[0] - 0.5029).abs() < 1e-3, "{c:?}");
     assert_eq!((c[1], c[2]), (0.0, 1.0));
@@ -137,9 +168,23 @@ fn srgb_applies_to_colour_channels_only() {
 
 #[test]
 fn element_sizes() {
-    assert_eq!(element(DXT1), Some(Element { block_w: 4, block_h: 4, bytes: 8 }));
+    assert_eq!(
+        element(DXT1),
+        Some(Element {
+            block_w: 4,
+            block_h: 4,
+            bytes: 8
+        })
+    );
     assert_eq!(element(BC7U).map(|e| e.bytes), Some(16));
-    assert_eq!(element(0x54), Some(Element { block_w: 12, block_h: 10, bytes: 16 }));
+    assert_eq!(
+        element(0x54),
+        Some(Element {
+            block_w: 12,
+            block_h: 10,
+            bytes: 16
+        })
+    );
     assert_eq!(element(0x30).map(|e| e.bytes), Some(8));
     assert_eq!(element(0x01).map(|e| e.bytes), Some(16));
     assert_eq!(element(0x02), None, "R32_G32_B32 has no tiling element size");
@@ -178,23 +223,49 @@ fn texture_header_fetches_compressed_blocks() {
     const VA: u64 = 0x10_0000;
     // Solid blocks: c0 = c1, all selectors 0. Pure red, green, blue, white in RGB565.
     let colours: [u16; 4] = [0xf800, 0x07e0, 0x001f, 0xffff];
-    let linear: Vec<u8> = colours.iter().flat_map(|c| [c.to_le_bytes(), c.to_le_bytes(), [0, 0], [0, 0]].concat()).collect();
-    let surf = Surface::new_2d(6, 6, Format::Bc1RgbaUnorm, Layout::BlockLinear { height_log2: 0, depth_log2: 0 });
+    let linear: Vec<u8> = colours
+        .iter()
+        .flat_map(|c| [c.to_le_bytes(), c.to_le_bytes(), [0, 0], [0, 0]].concat())
+        .collect();
+    let surf = Surface::new_2d(
+        6,
+        6,
+        Format::Bc1RgbaUnorm,
+        Layout::BlockLinear {
+            height_log2: 0,
+            depth_log2: 0,
+        },
+    );
     let mem_bytes = tiling::tile(&surf, &linear).unwrap();
     let mut w = [0u32; 8];
     let unorm = 2;
-    w[0] = DXT1 | (unorm << 7) | (unorm << 10) | (unorm << 13) | (unorm << 16) | (2 << 19) | (3 << 22) | (4 << 25) | (5 << 28);
+    w[0] = DXT1
+        | (unorm << 7)
+        | (unorm << 10)
+        | (unorm << 13)
+        | (unorm << 16)
+        | (2 << 19)
+        | (3 << 22)
+        | (4 << 25)
+        | (5 << 28);
     w[1] = VA as u32;
     w[2] = 3 << 21; // BLOCKLINEAR
     w[4] = 5 | (1 << 23); // WIDTH_MINUS_ONE, TWO_D
     w[5] = 5 | (1 << 31); // HEIGHT_MINUS_ONE, NORMALIZED_COORDS
     let bytes: Vec<u8> = w.iter().flat_map(|v| v.to_le_bytes()).collect();
     let header = TextureHeader::parse(bytes.as_slice().try_into().unwrap());
-    let mut mem = Flat { base: VA, bytes: mem_bytes };
+    let mut mem = Flat {
+        base: VA,
+        bytes: mem_bytes,
+    };
     assert_eq!(header.fetch(1, 1, &mut mem), Some([1.0, 0.0, 0.0, 1.0]));
     assert_eq!(header.fetch(5, 0, &mut mem), Some([0.0, 1.0, 0.0, 1.0]));
     assert_eq!(header.fetch(0, 4, &mut mem), Some([0.0, 0.0, 1.0, 1.0]));
     assert_eq!(header.fetch(5, 5, &mut mem), Some([1.0, 1.0, 1.0, 1.0]));
     assert_eq!(header.fetch(6, 0, &mut mem), None, "past the texture's width");
-    assert_eq!(header.bytes_per_texel(), None, "compressed formats have no per-texel size");
+    assert_eq!(
+        header.bytes_per_texel(),
+        None,
+        "compressed formats have no per-texel size"
+    );
 }
