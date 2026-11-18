@@ -2065,6 +2065,25 @@ mod tests {
         assert!(e.fallback_insns >= 4);
     }
 
+    /// FJCVTZS and the vector fixed-point converts are interpreter-only (#469): Tier-4 falls back for them and the
+    /// results, NZCV and FPSR must equal the interpreter's.
+    #[test]
+    fn fjcvtzs_and_vector_fixed_converts_fall_back_in_all_tiers() {
+        let e = check_all_tiers(&[
+            0xd2800020, // mov x0, #1 (native prefix)
+            0x4f39e402, // scvtf v2.4s, v0.4s, #7
+            0x6f6ce403, // ucvtf v3.2d, v0.2d, #20
+            0x4f39fc04, // fcvtzs v4.4s, v0.4s, #7
+            0x6f6cfc05, // fcvtzu v5.2d, v0.2d, #20
+            0x1e7e0008, // fjcvtzs w8, d0
+            0x91000400, // add x0, x0, #1 (native suffix)
+            0xd4000001,
+        ], |cpu| {
+            cpu.regs.v[0] = 0x4b80_0001_c020_0000_41f7_ffff_fff0_0000u128;
+        });
+        assert!(e.fallback_insns >= 5);
+    }
+
     #[test]
     fn fp_and_simd_ops_match_all_tiers() {
         #[rustfmt::skip]

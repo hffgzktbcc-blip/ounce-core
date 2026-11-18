@@ -76,6 +76,16 @@ five are engine gaps this run found, independent of which reference is used. "Id
 softfloat agree on these inputs. It does not say either matches silicon, and a qemu-versus-hardware difference would show up as
 a `MISMATCH` on the real run. Do not read the 147 as host-verified.
 
+**Update (#469): the five engine gaps are filled.** `FJCVTZS` and the vector fixed-point `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU`
+(`.2s`, `.4s`, `.2d`) are now decoded and executed (interpreter, Tier-3; Tier-4 runs them through its interpreter fallback).
+The same five ops were rerun the same informal way (x86_64 `run-elf --cpu=tier3` against `qemu-aarch64` 8.2.2): all five exit 0
+and are byte-identical to qemu over their 144 cases each. That is again a software-model comparison, not hardware: the native
+run of these five ops still has not happened, and a hardware difference would show up as a `MISMATCH` in the `fp-workload` job.
+The workload does not print NZCV, which `FJCVTZS` writes (`0 Z 0 0`). [fjcvtzs_nzcv.c](fjcvtzs_nzcv.c) prints result, NZCV and
+FPSR for 31 doubles at FPCR 0 and FZ, so it can be built like `fp_edge.c` and run natively against `run-elf` later. Under qemu and
+Tier-3 it agrees on 61 of 62 rows; the one difference is a negative denormal under FZ: the engine follows the `FPToFixedJS`
+pseudocode as read (the flushed input keeps its sign, so Z = 0) and qemu gives Z = 1. Which one silicon does is unverified.
+
 Also checked: the file compiles without warnings for both targets with `-Wall -Wextra` (plus `-Wno-missing-field-initializers`,
 since the older table rows leave the new `vfn` field null on purpose), links, and `fp_edge.elf --list` prints 199 names.
 

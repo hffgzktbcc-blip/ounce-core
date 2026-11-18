@@ -81,6 +81,13 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   host comparison has not been run locally (it runs in the `fp-workload` CI job, which gates only the original 48 ops); an informational Tier-3 versus qemu-user run
   on x86_64 found 147 of the 151 new ops (plus `fcvtzs.sw`, an original op) identical and 5 unimplemented
   (`FJCVTZS`, vector fixed-point `FCVTZS`/`SCVTF`) (#488).
+- New instructions (#469): `FJCVTZS` (FEAT_JSCVT; truncate toward zero, wrap modulo 2^32, writes NZCV `0 Z 0 0`) and the
+  vector fixed-point converts `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU Vd.<2S|4S|2D>, Vn, #fbits`, the five ops the informational
+  qemu run found stopping with exit 71. Unit tests use hand-derived expected values (saturation, NaN to 0, rounding,
+  FPSR flags, FZ/RMode), a per-lane cross-check against the existing scalar fixed-point converts, and an interpreter vs
+  Tier-3 vs Tier-4 agreement test. `run-elf --cpu=tier3` output for the five fp-workload ops is byte-identical to
+  `qemu-aarch64` (informational, not hardware); the native ARM64 comparison has not been run. The scalar-SIMD fixed forms
+  (`scvtf s0, s1, #n`) and half precision are still undecoded.
 - Trace: `ounce.trace.v1`, a bounded step trace and first-divergence summary ([schema](docs/OUNCE_TRACE_V1_SCHEMA.md), #477).
   `OUNCE_TRACE_SUMMARY=<file>` makes `run` / `run-nro` write the first `OUNCE_TRACE_STEPS` (default 1024, max 65536)
   retired instructions (pc, opcode, changed registers); `ounce-core trace-diff <expected> <actual> [--window N] [--json out]`

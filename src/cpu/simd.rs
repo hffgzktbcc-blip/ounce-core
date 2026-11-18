@@ -1261,6 +1261,42 @@ pub fn int_fp_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32)
     out
 }
 
+/// Vector fixed-point `SCVTF`/`UCVTF` (lane / 2^`fbits`, rounded under RMode) and `FCVTZS`/`FCVTZU` (lane * 2^`fbits`,
+/// truncated toward zero, saturating, NaN to 0; input flushed under FZ). Flags as `FixedToFP` / `FPToFixed`.
+pub fn fixed_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fbits: u32, fpcr: u32) -> u128 {
+    use super::softfp::{self, Env, Fmt};
+    let (f, env) = (Fmt::from_esize(esize), Env::from_fpcr(fpcr));
+    let mut out = 0u128;
+    for i in 0..lanes(esize, q) {
+        let a = lane(n, esize, i);
+        let r = match op {
+            SimdOp2::Scvtf => {
+                let s = sext(a, esize);
+                softfp::int_to_fp(f, env, s < 0, s.unsigned_abs(), fbits)
+            }
+            SimdOp2::Ucvtf => softfp::int_to_fp(f, env, false, a, fbits),
+            _ => {
+                let a = softfp::flush_input(f, env, a);
+                let v = if esize == 32 { f32::from_bits(a as u32) as f64 } else { f64::from_bits(a) };
+                // scaling by a power of two is exact in f64 (an overflow to infinity is out of range either way)
+                let scaled = v * 2f64.powi(fbits as i32);
+                let t = scaled.trunc();
+                let signed = op == SimdOp2::Fcvtzs;
+                softfp::raise_to_int(f, a, scaled, t, signed, esize == 64);
+                // Rust's float-to-int `as` saturates and maps NaN to 0, as FPToFixed does
+                match (signed, esize) {
+                    (true, 32) => t as i32 as u32 as u64,
+                    (true, _) => t as i64 as u64,
+                    (false, 32) => t as u32 as u64,
+                    (false, _) => t as u64,
+                }
+            }
+        };
+        set_lane(&mut out, esize, i, r);
+    }
+    out
+}
+
 /// `fp_by_element` under FPCR: the per-lane operation is the soft one when RMode, FZ or DN is set.
 #[allow(clippy::too_many_arguments)]
 pub fn fp_by_element_fpcr(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool, fpcr: u32) -> u128 {
