@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::audio::audout::{generate_synth_pcm16, Waveform};
+use crate::audio::audout::{Waveform, generate_synth_pcm16};
 use crate::audio::host::HostAudioSink;
 use crate::audio::tap::AudioTap;
 use crate::mmu::Memory;
@@ -428,12 +428,7 @@ impl AudioRenderer {
     }
 
     /// Renders multiple DSP frames in sequence, pacing each to the host audio sink if provided.
-    pub fn render_and_pace_frames(
-        &mut self,
-        mmu: &Memory,
-        frame_count: usize,
-        host: Option<&HostAudioSink>,
-    ) -> usize {
+    pub fn render_and_pace_frames(&mut self, mmu: &Memory, frame_count: usize, host: Option<&HostAudioSink>) -> usize {
         let mut total = 0;
         for _ in 0..frame_count {
             total += self.pace_frame(mmu, host);

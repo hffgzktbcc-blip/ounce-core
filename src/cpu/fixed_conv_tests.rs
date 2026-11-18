@@ -60,7 +60,14 @@ const FCVTZS_2S_7: u32 = 0x0f39_fc02;
 #[test]
 fn decode_fixed_point_vector_converts() {
     use instructions::SimdOp2::*;
-    let want = |op, esize, fbits, q| Instruction::SimdFixedConv { rd: 2, rn: 0, op, esize, fbits, q };
+    let want = |op, esize, fbits, q| Instruction::SimdFixedConv {
+        rd: 2,
+        rn: 0,
+        op,
+        esize,
+        fbits,
+        q,
+    };
     // immh:immb = 0111001 (57) -> 32-bit lanes, fbits = 64 - 57 = 7; 1101100 (108) -> 64-bit, fbits = 128 - 108 = 20
     assert_eq!(decoder::decode(SCVTF_4S_7), want(Scvtf, 32, 7, true));
     assert_eq!(decoder::decode(UCVTF_4S_7), want(Ucvtf, 32, 7, true));
@@ -76,8 +83,19 @@ fn decode_fixed_point_vector_converts() {
     assert_eq!(decoder::decode(0x4f40_e402), want(Scvtf, 64, 64, true));
     assert_eq!(decoder::decode(0x4f7f_e402), want(Scvtf, 64, 1, true));
     // reserved or not decoded: 64-bit lanes need Q, immh = 0001 is reserved, immh = 001x is half precision
-    for w in [0x0f6c_e402u32, 0x0f6c_fc02, 0x4f09_e402, 0x4f19_e402, 0x4f11_e402, 0x4f19_fc02] {
-        assert!(matches!(decoder::decode(w), Instruction::Unimplemented { .. }), "{w:#010x} {:?}", decoder::decode(w));
+    for w in [
+        0x0f6c_e402u32,
+        0x0f6c_fc02,
+        0x4f09_e402,
+        0x4f19_e402,
+        0x4f11_e402,
+        0x4f19_fc02,
+    ] {
+        assert!(
+            matches!(decoder::decode(w), Instruction::Unimplemented { .. }),
+            "{w:#010x} {:?}",
+            decoder::decode(w)
+        );
     }
 }
 
@@ -110,7 +128,12 @@ fn scvtf_vector_fixed_rounds_under_fpcr_rmode() {
     }
     // the negative value rounds the other way under RP / RM
     let n = s4([(-0x0100_0001i32) as u32, 0, 0, 0]);
-    for (fpcr, want) in [(0, 0xc800_0000u32), (RP, 0xc800_0000), (RM, 0xc800_0001), (RZ, 0xc800_0000)] {
+    for (fpcr, want) in [
+        (0, 0xc800_0000u32),
+        (RP, 0xc800_0000),
+        (RM, 0xc800_0001),
+        (RZ, 0xc800_0000),
+    ] {
         let (r, _) = vec_op(SCVTF_4S_7, n, fpcr);
         assert_eq!(r, s4([want, 0, 0, 0]), "fpcr {fpcr:#x}");
     }
@@ -184,7 +207,13 @@ fn fcvtzs_vector_fixed_saturation_and_nan() {
     assert_eq!(r, s4([0x8000_0000, 0, 0, 0]));
     assert_eq!(fpsr, IOC);
     // +inf -> i32::MAX, -inf -> i32::MIN, quiet NaN -> 0, signalling NaN -> 0, each invalid
-    for (bits, want) in [(0x7f80_0000u32, 0x7fff_ffffu32), (0xff80_0000, 0x8000_0000), (0x7fc0_0000, 0), (0x7fa0_0000, 0), (0xffc0_0001, 0)] {
+    for (bits, want) in [
+        (0x7f80_0000u32, 0x7fff_ffffu32),
+        (0xff80_0000, 0x8000_0000),
+        (0x7fc0_0000, 0),
+        (0x7fa0_0000, 0),
+        (0xffc0_0001, 0),
+    ] {
         let (r, fpsr) = vec_op(FCVTZS_4S_7, s4([bits, 0, 0, 0]), 0);
         assert_eq!(r, s4([want, 0, 0, 0]), "{bits:#x}");
         assert_eq!(fpsr, IOC, "{bits:#x}");
@@ -214,7 +243,7 @@ fn fcvtzs_vector_fixed_2d() {
     assert_eq!(r, d2([0x10_0000, 0xffff_ffff_ffe8_0000]));
     assert_eq!(fpsr, 0);
     // 2^43 * 2^20 = 2^63 -> i64::MAX (invalid); -2^43 * 2^20 = i64::MIN exactly (in range)
-    let (r, fpsr) = vec_op(FCVTZS_2D_20, d2([0x42a0_0000_0000_0000, 0, ]), 0);
+    let (r, fpsr) = vec_op(FCVTZS_2D_20, d2([0x42a0_0000_0000_0000, 0]), 0);
     assert_eq!((r, fpsr), (d2([0x7fff_ffff_ffff_ffff, 0]), IOC));
     let (r, fpsr) = vec_op(FCVTZS_2D_20, d2([0xc2a0_0000_0000_0000, 0]), 0);
     assert_eq!((r, fpsr), (d2([0x8000_0000_0000_0000, 0]), 0));
@@ -357,7 +386,13 @@ fn fjcvtzs_out_of_range_wraps_modulo_2_pow_32_and_raises_ioc() {
 
 #[test]
 fn fjcvtzs_infinity_and_nan_give_zero_with_ioc() {
-    for bits in [0x7ff0_0000_0000_0000u64, 0xfff0_0000_0000_0000, 0x7ff8_0000_0000_0000, 0x7ff0_0000_0000_0001, 0xfff8_0000_0000_0001] {
+    for bits in [
+        0x7ff0_0000_0000_0000u64,
+        0xfff0_0000_0000_0000,
+        0x7ff8_0000_0000_0000,
+        0x7ff0_0000_0000_0001,
+        0xfff8_0000_0000_0001,
+    ] {
         assert_eq!(js(bits, 0), (0, false, IOC), "{bits:#x}");
     }
 }
@@ -411,7 +446,12 @@ fn new_converts_agree_between_interpreter_and_tier3() {
                     assert!(matches!(cpu.step(&mut mmu), Ok(StepResult::Continue)));
                 }
             }
-            (cpu.regs.v, cpu.regs.x[8], cpu.regs.pstate.to_bits() >> 28, cpu.regs.fpsr)
+            (
+                cpu.regs.v,
+                cpu.regs.x[8],
+                cpu.regs.pstate.to_bits() >> 28,
+                cpu.regs.fpsr,
+            )
         };
         let reference = run_with(false);
         assert_eq!(run_with(true), reference, "v0 {v0:#x} fpcr {fpcr:#x}");
@@ -436,10 +476,10 @@ impl Rng {
         let max_e = (1u64 << ebits) - 1;
         let bias = max_e >> 1;
         let e = match (r >> 8) % 8 {
-            0 => 0,                           // zero and denormals
-            1 => max_e,                       // infinities and NaNs
-            2 => bias + (r >> 16) % 70 + 10,  // magnitudes 2^10 .. 2^79: saturation edges
-            _ => bias - 5 + (r >> 16) % 80,   // the bulk: 2^-5 .. 2^74
+            0 => 0,                          // zero and denormals
+            1 => max_e,                      // infinities and NaNs
+            2 => bias + (r >> 16) % 70 + 10, // magnitudes 2^10 .. 2^79: saturation edges
+            _ => bias - 5 + (r >> 16) % 80,  // the bulk: 2^-5 .. 2^74
         };
         sign | e.min(max_e) << mbits | frac
     }
@@ -477,13 +517,21 @@ fn vector_fixed_lanes_match_scalar_fixed_converts() {
                 // float -> fixed: fcvtzs (opcode 0) and fcvtzu (opcode 1), lane 0 and lane 1
                 for (u, opcode) in [(0u32, 0u32), (1, 1)] {
                     let f = [rng.float_bits(double), rng.float_bits(double)];
-                    let src = if double { d2(f) } else { s4([f[0] as u32, f[1] as u32, 0, 0]) };
+                    let src = if double {
+                        d2(f)
+                    } else {
+                        s4([f[0] as u32, f[1] as u32, 0, 0])
+                    };
                     let (v, fpsr) = vec_op(vector(u, 0b11111), src, fpcr);
                     let mut scalar_flags = 0;
                     for (i, &bits) in f.iter().enumerate() {
                         let cpu = scalar_op(scalar(opcode, 0, 1), 0, bits, fpcr);
                         let lane = (v >> (esize as usize * i)) as u64 & mask;
-                        assert_eq!(lane, cpu.regs.read_x(1) & mask, "fcvtz u={u} lane {i} {bits:#x} #{fbits} fpcr {fpcr:#x}");
+                        assert_eq!(
+                            lane,
+                            cpu.regs.read_x(1) & mask,
+                            "fcvtz u={u} lane {i} {bits:#x} #{fbits} fpcr {fpcr:#x}"
+                        );
                         scalar_flags |= cpu.regs.fpsr;
                     }
                     assert_eq!(fpsr, scalar_flags, "fcvtz flags u={u} {f:x?} #{fbits} fpcr {fpcr:#x}");
@@ -491,13 +539,21 @@ fn vector_fixed_lanes_match_scalar_fixed_converts() {
                 // fixed -> float: scvtf (opcode 2) and ucvtf (opcode 3)
                 for (u, opcode) in [(0u32, 2u32), (1, 3)] {
                     let x = [rng.next() & mask, rng.next() & mask];
-                    let src = if double { d2(x) } else { s4([x[0] as u32, x[1] as u32, 0, 0]) };
+                    let src = if double {
+                        d2(x)
+                    } else {
+                        s4([x[0] as u32, x[1] as u32, 0, 0])
+                    };
                     let (v, fpsr) = vec_op(vector(u, 0b11100), src, fpcr);
                     let mut scalar_flags = 0;
                     for (i, &bits) in x.iter().enumerate() {
                         let cpu = scalar_op(scalar(opcode, 1, 1), bits, 0, fpcr);
                         let lane = (v >> (esize as usize * i)) as u64 & mask;
-                        assert_eq!(lane, cpu.regs.v[1] as u64 & mask, "cvtf u={u} lane {i} {bits:#x} #{fbits} fpcr {fpcr:#x}");
+                        assert_eq!(
+                            lane,
+                            cpu.regs.v[1] as u64 & mask,
+                            "cvtf u={u} lane {i} {bits:#x} #{fbits} fpcr {fpcr:#x}"
+                        );
                         scalar_flags |= cpu.regs.fpsr;
                     }
                     assert_eq!(fpsr, scalar_flags, "cvtf flags u={u} {x:x?} #{fbits} fpcr {fpcr:#x}");
@@ -526,7 +582,13 @@ fn fjcvtzs_matches_i64_truncation_modulo_2_pow_32() {
         let (got, z, fpsr) = js(bits, 0);
         assert_eq!(got, (t as i64) as u32, "{bits:#x}");
         assert_eq!(z, in_range && exact, "{bits:#x}");
-        let flags = if !in_range { IOC } else if t != v { IXC } else { 0 };
+        let flags = if !in_range {
+            IOC
+        } else if t != v {
+            IXC
+        } else {
+            0
+        };
         assert_eq!(fpsr, flags, "{bits:#x}");
     }
     assert!(checked > 10_000);

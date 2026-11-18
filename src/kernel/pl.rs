@@ -42,7 +42,9 @@ impl IpcManager {
                 let h = match self.pl_shm_handle {
                     Some(h) => h,
                     None => {
-                        let h = self.allocate_handle(ServiceType::SharedMemory { size: SHARED_MEMORY_SIZE });
+                        let h = self.allocate_handle(ServiceType::SharedMemory {
+                            size: SHARED_MEMORY_SIZE,
+                        });
                         self.pl_shm_handle = Some(h);
                         h
                     }

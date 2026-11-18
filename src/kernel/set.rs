@@ -58,7 +58,10 @@ impl IpcManager {
             0 => self.reply_data(tls, mmu, &DEFAULT_LANGUAGE_CODE.to_le_bytes()),
             // GetAvailableLanguageCodes (pre-4.0.0 / 4.0.0+): out s32 total, language codes in the buffer
             1 | 5 => {
-                let codes: Vec<u8> = LANGUAGE_TAGS.iter().flat_map(|t| language_code(t).to_le_bytes()).collect();
+                let codes: Vec<u8> = LANGUAGE_TAGS
+                    .iter()
+                    .flat_map(|t| language_code(t).to_le_bytes())
+                    .collect();
                 let written = self.write_out_buffer(mmu, &codes) / 8;
                 self.reply_data(tls, mmu, &(written as u32).to_le_bytes())
             }
@@ -133,7 +136,7 @@ pub const RESULT_INVALID_LANGUAGE: u32 = 1 << 9 | 105;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kernel::cmif::test_util::{Harness, Req, BUF};
+    use crate::kernel::cmif::test_util::{BUF, Harness, Req};
     use crate::kernel::ipc::RESULT_UNKNOWN_COMMAND;
 
     #[test]
@@ -149,28 +152,146 @@ mod tests {
         let mut h = Harness::new();
         let set = h.get_service("set");
         assert_eq!(h.ipc.handles.get(&set), Some(&ServiceType::Set));
-        assert_eq!(h.call_out(set, Req { cmd: 0, ..Default::default() }, 8).u64(0), DEFAULT_LANGUAGE_CODE);
-        assert_eq!(h.call_out(set, Req { cmd: 6, ..Default::default() }, 4).u32(0), 18);
-        assert_eq!(h.call_out(set, Req { cmd: 3, ..Default::default() }, 4).u32(0), 18);
-        assert_eq!(h.call_out(set, Req { cmd: 4, ..Default::default() }, 4).u32(0), REGION_USA);
-        assert_eq!(h.call_out(set, Req { cmd: 8, ..Default::default() }, 1).u8(0), 0);
+        assert_eq!(
+            h.call_out(
+                set,
+                Req {
+                    cmd: 0,
+                    ..Default::default()
+                },
+                8
+            )
+            .u64(0),
+            DEFAULT_LANGUAGE_CODE
+        );
+        assert_eq!(
+            h.call_out(
+                set,
+                Req {
+                    cmd: 6,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            18
+        );
+        assert_eq!(
+            h.call_out(
+                set,
+                Req {
+                    cmd: 3,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            18
+        );
+        assert_eq!(
+            h.call_out(
+                set,
+                Req {
+                    cmd: 4,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            REGION_USA
+        );
+        assert_eq!(
+            h.call_out(
+                set,
+                Req {
+                    cmd: 8,
+                    ..Default::default()
+                },
+                1
+            )
+            .u8(0),
+            0
+        );
 
         // GetAvailableLanguageCodes through a map-alias buffer; a short buffer truncates the count.
-        let r = h.call_out(set, Req { cmd: 5, recv: Some((BUF, 18 * 8)), ..Default::default() }, 4);
+        let r = h.call_out(
+            set,
+            Req {
+                cmd: 5,
+                recv: Some((BUF, 18 * 8)),
+                ..Default::default()
+            },
+            4,
+        );
         assert_eq!(r.u32(0), 18);
         let codes = h.read_buf(BUF, 18 * 8);
-        assert_eq!(u64::from_le_bytes(codes[8..16].try_into().unwrap()), DEFAULT_LANGUAGE_CODE);
-        let r = h.call_out(set, Req { cmd: 5, recv: Some((BUF, 3 * 8)), ..Default::default() }, 4);
+        assert_eq!(
+            u64::from_le_bytes(codes[8..16].try_into().unwrap()),
+            DEFAULT_LANGUAGE_CODE
+        );
+        let r = h.call_out(
+            set,
+            Req {
+                cmd: 5,
+                recv: Some((BUF, 3 * 8)),
+                ..Default::default()
+            },
+            4,
+        );
         assert_eq!(r.u32(0), 3);
 
         // MakeLanguageCode
-        assert_eq!(h.call_out(set, Req { cmd: 2, data: &1u32.to_le_bytes(), ..Default::default() }, 8).u64(0), DEFAULT_LANGUAGE_CODE);
-        assert_eq!(h.call(set, Req { cmd: 2, data: &99u32.to_le_bytes(), ..Default::default() }).result, RESULT_INVALID_LANGUAGE);
+        assert_eq!(
+            h.call_out(
+                set,
+                Req {
+                    cmd: 2,
+                    data: &1u32.to_le_bytes(),
+                    ..Default::default()
+                },
+                8
+            )
+            .u64(0),
+            DEFAULT_LANGUAGE_CODE
+        );
+        assert_eq!(
+            h.call(
+                set,
+                Req {
+                    cmd: 2,
+                    data: &99u32.to_le_bytes(),
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_INVALID_LANGUAGE
+        );
 
         // Nickname
-        assert_eq!(h.call(set, Req { cmd: 11, recv: Some((BUF + 0x400, 0x80)), ..Default::default() }).result, 0);
+        assert_eq!(
+            h.call(
+                set,
+                Req {
+                    cmd: 11,
+                    recv: Some((BUF + 0x400, 0x80)),
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
         assert_eq!(&h.read_buf(BUF + 0x400, 10), DEVICE_NICKNAME);
-        assert_eq!(h.call(set, Req { cmd: 200, ..Default::default() }).result, RESULT_UNKNOWN_COMMAND);
+        assert_eq!(
+            h.call(
+                set,
+                Req {
+                    cmd: 200,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_UNKNOWN_COMMAND
+        );
     }
 
     #[test]
@@ -179,14 +300,28 @@ mod tests {
         let sys = h.get_service("set:sys");
         assert_eq!(h.ipc.handles.get(&sys), Some(&ServiceType::SetSys));
         // libnx setsysGetFirmwareVersion: HipcPointer out buffer = receive list entry.
-        let r = h.call(sys, Req { cmd: 4, recv_list: Some((BUF, 0x100)), ..Default::default() });
+        let r = h.call(
+            sys,
+            Req {
+                cmd: 4,
+                recv_list: Some((BUF, 0x100)),
+                ..Default::default()
+            },
+        );
         assert_eq!(r.result, 0);
         let fw = h.read_buf(BUF, 0x100);
         assert_eq!(&fw[..8], &[23, 0, 1, 0, 0, 0, 0, 0]);
         assert_eq!(&fw[0x68..0x6E], b"23.0.1");
         assert_eq!(fw, firmware_version());
         // Pre-3.0.0 command ID gives the same data.
-        h.call(sys, Req { cmd: 3, recv_list: Some((BUF + 0x200, 0x100)), ..Default::default() });
+        h.call(
+            sys,
+            Req {
+                cmd: 3,
+                recv_list: Some((BUF + 0x200, 0x100)),
+                ..Default::default()
+            },
+        );
         assert_eq!(h.read_buf(BUF + 0x200, 0x100), fw);
     }
 
@@ -194,16 +329,104 @@ mod tests {
     fn setsys_model_serial_and_flags() {
         let mut h = Harness::new();
         let sys = h.get_service("set:sys");
-        assert_eq!(h.call_out(sys, Req { cmd: 79, ..Default::default() }, 4).u32(0), PRODUCT_MODEL_T239);
-        assert_eq!(h.call_out(sys, Req { cmd: 183, ..Default::default() }, 4).u32(0), PLATFORM_REGION_GLOBAL);
-        assert_eq!(h.call_out(sys, Req { cmd: 23, ..Default::default() }, 4).u32(0), COLOR_SET_BASIC_BLACK);
-        assert_eq!(&h.call_out(sys, Req { cmd: 68, ..Default::default() }, 0x18).data[..13], SERIAL_NUMBER);
-        assert_eq!(h.call_out(sys, Req { cmd: 5, ..Default::default() }, 0x40).data.len(), 0x40);
+        assert_eq!(
+            h.call_out(
+                sys,
+                Req {
+                    cmd: 79,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            PRODUCT_MODEL_T239
+        );
+        assert_eq!(
+            h.call_out(
+                sys,
+                Req {
+                    cmd: 183,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            PLATFORM_REGION_GLOBAL
+        );
+        assert_eq!(
+            h.call_out(
+                sys,
+                Req {
+                    cmd: 23,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            COLOR_SET_BASIC_BLACK
+        );
+        assert_eq!(
+            &h.call_out(
+                sys,
+                Req {
+                    cmd: 68,
+                    ..Default::default()
+                },
+                0x18
+            )
+            .data[..13],
+            SERIAL_NUMBER
+        );
+        assert_eq!(
+            h.call_out(
+                sys,
+                Req {
+                    cmd: 5,
+                    ..Default::default()
+                },
+                0x40
+            )
+            .data
+            .len(),
+            0x40
+        );
         for cmd in [7, 47] {
-            assert_eq!(h.call_out(sys, Req { cmd, ..Default::default() }, 1).u8(0), 0);
+            assert_eq!(
+                h.call_out(
+                    sys,
+                    Req {
+                        cmd,
+                        ..Default::default()
+                    },
+                    1
+                )
+                .u8(0),
+                0
+            );
         }
-        assert_eq!(h.call(sys, Req { cmd: 77, recv: Some((BUF, 0x80)), ..Default::default() }).result, 0);
+        assert_eq!(
+            h.call(
+                sys,
+                Req {
+                    cmd: 77,
+                    recv: Some((BUF, 0x80)),
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
         assert_eq!(&h.read_buf(BUF, 10), DEVICE_NICKNAME);
-        assert_eq!(h.call(sys, Req { cmd: 9999, ..Default::default() }).result, RESULT_UNKNOWN_COMMAND);
+        assert_eq!(
+            h.call(
+                sys,
+                Req {
+                    cmd: 9999,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_UNKNOWN_COMMAND
+        );
     }
 }

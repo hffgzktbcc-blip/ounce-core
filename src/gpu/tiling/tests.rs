@@ -24,13 +24,28 @@ fn pattern(len: usize, seed: u32) -> Vec<u8> {
 }
 
 fn bl(width: u32, height: u32, depth: u32, format: Format, h: u8, d: u8) -> Surface {
-    Surface { width, height, depth, format, layout: Layout::BlockLinear { height_log2: h, depth_log2: d } }
+    Surface {
+        width,
+        height,
+        depth,
+        format,
+        layout: Layout::BlockLinear {
+            height_log2: h,
+            depth_log2: d,
+        },
+    }
 }
 
 /// Independent reference, written straight from the TRM description with the GOB as a
 /// bit interleave: offset bits = x[3:0] | y[0]<<4 | x[4]<<5 | y[2:1]<<6 | x[5]<<8.
 fn reference_offset(s: &Surface, x: u32, y: u32, z: u32) -> usize {
-    let Layout::BlockLinear { height_log2: h, depth_log2: d } = s.layout else { unreachable!() };
+    let Layout::BlockLinear {
+        height_log2: h,
+        depth_log2: d,
+    } = s.layout
+    else {
+        unreachable!()
+    };
     let (_, rows, _) = s.extent_elements();
     let gobs_wide = s.row_bytes().div_ceil(64);
     let block_rows = 8u32 << h;
@@ -129,7 +144,10 @@ fn block_linear_known_vectors() {
     // 3D: 64x16x4 R8, block 1 GOB high, 2 deep.
     let s = bl(64, 16, 4, Format::R8Unorm, 0, 1);
     let g = s.block_linear().unwrap();
-    assert_eq!((g.gobs_wide, g.blocks_high, g.blocks_deep, g.block_bytes()), (1, 2, 2, 1024));
+    assert_eq!(
+        (g.gobs_wide, g.blocks_high, g.blocks_deep, g.block_bytes()),
+        (1, 2, 2, 1024)
+    );
     assert_eq!(s.byte_offset(0, 0, 1), 512);
     assert_eq!(s.byte_offset(0, 8, 0), 1024);
     assert_eq!(s.byte_offset(0, 0, 2), 2048);
@@ -150,7 +168,11 @@ fn bc_formats_address_4x4_blocks() {
     assert_eq!(s.row_bytes(), 64);
     for f in BC {
         assert_eq!(f.element_extent(), (4, 4));
-        let expect = if matches!(f, Format::Bc1RgbaUnorm | Format::Bc4Unorm) { 8 } else { 16 };
+        let expect = if matches!(f, Format::Bc1RgbaUnorm | Format::Bc4Unorm) {
+            8
+        } else {
+            16
+        };
         assert_eq!(f.bytes_per_element(), expect, "{f:?}");
     }
 }
@@ -158,7 +180,15 @@ fn bc_formats_address_4x4_blocks() {
 #[test]
 fn offsets_are_unique_and_in_bounds() {
     let sizes = [(1, 1, 1), (3, 5, 1), (17, 9, 1), (100, 37, 1), (65, 70, 3), (33, 20, 5)];
-    for &format in &[Format::R8Unorm, Format::R5G6B5Unorm, Format::R8G8B8A8Unorm, Format::R16G16B16A16Float, Format::R32G32B32A32Float, Format::Bc1RgbaUnorm, Format::Bc7Unorm] {
+    for &format in &[
+        Format::R8Unorm,
+        Format::R5G6B5Unorm,
+        Format::R8G8B8A8Unorm,
+        Format::R16G16B16A16Float,
+        Format::R32G32B32A32Float,
+        Format::Bc1RgbaUnorm,
+        Format::Bc7Unorm,
+    ] {
         for &(w, h, d) in &sizes {
             for hl in 0..=3 {
                 for dl in 0..=2 {
@@ -204,7 +234,12 @@ fn round_trip_every_format_and_block_height() {
 #[test]
 fn round_trip_3d() {
     let mut seed = 1000;
-    for format in [Format::R8Unorm, Format::R8G8B8A8Unorm, Format::R32G32B32A32Float, Format::Bc3Unorm] {
+    for format in [
+        Format::R8Unorm,
+        Format::R8G8B8A8Unorm,
+        Format::R32G32B32A32Float,
+        Format::Bc3Unorm,
+    ] {
         for (w, h, d) in [(9, 9, 2), (70, 20, 5), (128, 64, 9)] {
             for hl in 0..=2 {
                 for dl in 0..=MAX_BLOCK_LOG2 {
@@ -249,7 +284,12 @@ fn pitch_with_padding_round_trips_and_keeps_padding() {
 
 #[test]
 fn pitch_to_block_linear_and_back() {
-    for format in [Format::B8G8R8A8Unorm, Format::Z24UnormS8Uint, Format::Z32FloatS8X24Uint, Format::Bc5Unorm] {
+    for format in [
+        Format::B8G8R8A8Unorm,
+        Format::Z24UnormS8Uint,
+        Format::Z32FloatS8X24Uint,
+        Format::Bc5Unorm,
+    ] {
         let pitch = Surface::new_2d(200, 90, format, Layout::Pitch { stride: 2048 });
         let tiled = bl(200, 90, 1, format, 3, 0);
         let src = pattern(pitch.size_bytes().unwrap(), 42);
@@ -289,18 +329,33 @@ fn clamp_shrinks_blocks_for_small_surfaces() {
 #[test]
 fn errors() {
     let f = Format::R8G8B8A8Unorm;
-    assert_eq!(Surface::new_2d(0, 4, f, Layout::Pitch { stride: 0 }).size_bytes(), Err(TilingError::ZeroExtent));
+    assert_eq!(
+        Surface::new_2d(0, 4, f, Layout::Pitch { stride: 0 }).size_bytes(),
+        Err(TilingError::ZeroExtent)
+    );
     assert_eq!(
         Surface::new_2d(10, 4, f, Layout::Pitch { stride: 39 }).size_bytes(),
-        Err(TilingError::StrideTooSmall { stride: 39, row_bytes: 40 })
+        Err(TilingError::StrideTooSmall {
+            stride: 39,
+            row_bytes: 40
+        })
     );
     assert_eq!(
         bl(8, 8, 1, f, 6, 0).size_bytes(),
-        Err(TilingError::BlockLog2TooLarge { height_log2: 6, depth_log2: 0 })
+        Err(TilingError::BlockLog2TooLarge {
+            height_log2: 6,
+            depth_log2: 0
+        })
     );
     let s = bl(16, 16, 1, f, 1, 0);
-    assert_eq!(detile(&s, &[0; 100]), Err(TilingError::BufferTooSmall { needed: 1024, got: 100 }));
-    assert_eq!(tile(&s, &[0; 10]), Err(TilingError::BufferTooSmall { needed: 1024, got: 10 }));
+    assert_eq!(
+        detile(&s, &[0; 100]),
+        Err(TilingError::BufferTooSmall { needed: 1024, got: 100 })
+    );
+    assert_eq!(
+        tile(&s, &[0; 10]),
+        Err(TilingError::BufferTooSmall { needed: 1024, got: 10 })
+    );
     let other = bl(16, 15, 1, f, 1, 0);
     let mut out = vec![0; other.size_bytes().unwrap()];
     assert_eq!(convert(&s, &[0; 1024], &other, &mut out), Err(TilingError::Mismatch));
@@ -332,7 +387,15 @@ fn row_bytes_overflow_is_rejected_not_wrapped() {
         let pitch = Surface::new_2d(width, 2, rgba, Layout::Pitch { stride: 4 });
         assert_eq!(pitch.checked_row_bytes(), None, "width {width:#x}");
         assert_eq!(pitch.size_bytes(), Err(TilingError::Overflow));
-        let bl = Surface::new_2d(width, 8, rgba, Layout::BlockLinear { height_log2: 4, depth_log2: 0 });
+        let bl = Surface::new_2d(
+            width,
+            8,
+            rgba,
+            Layout::BlockLinear {
+                height_log2: 4,
+                depth_log2: 0,
+            },
+        );
         assert_eq!(bl.size_bytes(), Err(TilingError::Overflow));
         assert!(detile(&pitch, &[0; 64]).is_err());
         assert!(detile(&bl, &[]).is_err());
@@ -345,10 +408,26 @@ fn row_bytes_overflow_is_rejected_not_wrapped() {
 #[test]
 fn block_linear_padded_row_must_fit_u32() {
     // 0xFFFF_FFF0 row bytes fit u32, but rounding up to whole 64-byte GOBs does not.
-    let s = Surface::new_2d(0x3FFF_FFFC, 1, Format::R8G8B8A8Unorm, Layout::BlockLinear { height_log2: 0, depth_log2: 0 });
+    let s = Surface::new_2d(
+        0x3FFF_FFFC,
+        1,
+        Format::R8G8B8A8Unorm,
+        Layout::BlockLinear {
+            height_log2: 0,
+            depth_log2: 0,
+        },
+    );
     assert_eq!(s.checked_row_bytes(), Some(0xFFFF_FFF0));
     assert_eq!(s.size_bytes(), Err(TilingError::Overflow));
-    let ok = Surface::new_2d(0x3FFF_FFF0, 1, Format::R8G8B8A8Unorm, Layout::BlockLinear { height_log2: 0, depth_log2: 0 });
+    let ok = Surface::new_2d(
+        0x3FFF_FFF0,
+        1,
+        Format::R8G8B8A8Unorm,
+        Layout::BlockLinear {
+            height_log2: 0,
+            depth_log2: 0,
+        },
+    );
     assert!(ok.size_bytes().is_ok());
 }
 

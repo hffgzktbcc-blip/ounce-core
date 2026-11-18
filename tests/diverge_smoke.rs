@@ -10,9 +10,17 @@ fn replaying_hello_on_this_cpu_finds_no_disagreement() {
         return;
     }
     let nro = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/hello/hello.nro");
-    let out = Command::new(env!("CARGO_BIN_EXE_ounce-core")).args(["diverge", nro]).output().unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["diverge", nro])
+        .output()
+        .unwrap();
     let text = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(out.status.code(), Some(0), "{text}{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{text}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(text.contains("0 disagreed"), "{text}");
 }
 
@@ -24,11 +32,29 @@ fn every_committed_program_replays_cleanly_on_this_cpu() {
     }
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro");
     let mut checked = 0;
-    for dir in std::fs::read_dir(&root).unwrap().flatten().filter(|d| d.path().is_dir()) {
-        for file in std::fs::read_dir(dir.path()).unwrap().flatten().filter(|f| f.path().extension().is_some_and(|e| e == "nro")) {
-            let out = Command::new(env!("CARGO_BIN_EXE_ounce-core")).arg("diverge").arg(file.path()).output().unwrap();
+    for dir in std::fs::read_dir(&root)
+        .unwrap()
+        .flatten()
+        .filter(|d| d.path().is_dir())
+    {
+        for file in std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|f| f.path().extension().is_some_and(|e| e == "nro"))
+        {
+            let out = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+                .arg("diverge")
+                .arg(file.path())
+                .output()
+                .unwrap();
             let text = String::from_utf8_lossy(&out.stdout);
-            assert_eq!(out.status.code(), Some(0), "{}: {text}{}", file.path().display(), String::from_utf8_lossy(&out.stderr));
+            assert_eq!(
+                out.status.code(),
+                Some(0),
+                "{}: {text}{}",
+                file.path().display(),
+                String::from_utf8_lossy(&out.stderr)
+            );
             assert!(text.contains("0 disagreed"), "{}: {text}", file.path().display());
             checked += 1;
         }
@@ -38,7 +64,10 @@ fn every_committed_program_replays_cleanly_on_this_cpu() {
 
 #[test]
 fn a_missing_program_is_an_error_not_a_pass() {
-    let out = Command::new(env!("CARGO_BIN_EXE_ounce-core")).args(["diverge", "/no/such/file.nro"]).output().unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["diverge", "/no/such/file.nro"])
+        .output()
+        .unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
 
@@ -52,23 +81,37 @@ fn block_engines_record_traces_without_a_replay_host() {
     for tier in ["tier3", "tier4"] {
         let trace = dir.join(format!("{tier}.bin"));
         let out = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-            .args(["run-nro", nro, "--present=headless", &format!("--cpu={tier}"), &format!("--sdmc={}", dir.join("sd").display())])
-            .env("OUNCE_TRACE", &trace).env("OUNCE_NRO_BUDGET", "200000")
-            .output().unwrap();
+            .args([
+                "run-nro",
+                nro,
+                "--present=headless",
+                &format!("--cpu={tier}"),
+                &format!("--sdmc={}", dir.join("sd").display()),
+            ])
+            .env("OUNCE_TRACE", &trace)
+            .env("OUNCE_NRO_BUDGET", "200000")
+            .output()
+            .unwrap();
         let text = String::from_utf8_lossy(&out.stdout);
         let native = cfg!(feature = "native-jit") && tier == "tier4" && !text.contains("Block engine: Tier-4");
         if native {
             continue; // Tier-4 unavailable on this host: nothing to trace (diverge reports it as not checked)
         }
         let len = std::fs::metadata(&trace).map(|m| m.len()).unwrap_or(0);
-        assert!(len > 0 && len.is_multiple_of(1584), "{tier}: bad trace length {len}\n{text}");
+        assert!(
+            len > 0 && len.is_multiple_of(1584),
+            "{tier}: bad trace length {len}\n{text}"
+        );
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn an_unknown_engine_is_a_usage_error() {
-    let out = Command::new(env!("CARGO_BIN_EXE_ounce-core")).args(["diverge", "x.nro", "--engine", "tier9"]).output().unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(["diverge", "x.nro", "--engine", "tier9"])
+        .output()
+        .unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
 
@@ -93,7 +136,13 @@ fn static_elf_diverges_cleanly_across_engines() {
     assert!(json["checked"].as_u64().unwrap_or(0) >= 1);
     if !cfg!(all(target_os = "linux", target_arch = "aarch64")) {
         assert!(text.contains("host (Linux AArch64): NOT CHECKED"), "{text}");
-        assert!(json["not_checked"].as_array().unwrap().iter().any(|e| e["engine"] == "host (Linux AArch64)"));
+        assert!(
+            json["not_checked"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["engine"] == "host (Linux AArch64)")
+        );
     }
 }
 
@@ -111,7 +160,11 @@ fn static_elf_forwards_program_args_and_rejects_bad_format() {
 
     let bad = std::env::temp_dir().join(format!("ounce-diverge-bad-{}.bin", std::process::id()));
     std::fs::write(&bad, b"NOT_A_VALID_BINARY").unwrap();
-    let bad_out = Command::new(env!("CARGO_BIN_EXE_ounce-core")).arg("diverge").arg(&bad).output().unwrap();
+    let bad_out = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .arg("diverge")
+        .arg(&bad)
+        .output()
+        .unwrap();
     let _ = std::fs::remove_file(&bad);
     assert_eq!(bad_out.status.code(), Some(2));
 }

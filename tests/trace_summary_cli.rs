@@ -23,12 +23,21 @@ fn record(out: &Path, cpu: Option<&str>) -> Output {
     if let Some(cpu) = cpu {
         cmd.arg(format!("--cpu={cpu}"));
     }
-    cmd.env("OUNCE_TRACE_SUMMARY", out).env("OUNCE_TRACE_STEPS", STEPS).output().unwrap()
+    cmd.env("OUNCE_TRACE_SUMMARY", out)
+        .env("OUNCE_TRACE_STEPS", STEPS)
+        .output()
+        .unwrap()
 }
 
 fn diff(expected: &Path, actual: &Path, json: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_ounce-core"))
-        .args(["trace-diff", expected.to_str().unwrap(), actual.to_str().unwrap(), "--json", json.to_str().unwrap()])
+        .args([
+            "trace-diff",
+            expected.to_str().unwrap(),
+            actual.to_str().unwrap(),
+            "--json",
+            json.to_str().unwrap(),
+        ])
         .output()
         .unwrap()
 }
@@ -51,9 +60,15 @@ fn engines_agree_on_the_bounded_prefix() {
     assert_eq!(t["step_limit"], 4000);
     assert_eq!(t["steps_recorded"], 4000);
     assert_eq!(t["truncated"], true);
-    assert!(t["steps_executed"].as_u64().unwrap() > 4000, "the run kept going past the bound");
+    assert!(
+        t["steps_executed"].as_u64().unwrap() > 4000,
+        "the run kept going past the bound"
+    );
     assert_eq!(t["steps"].as_array().unwrap().len(), 4000, "bounded");
-    assert_eq!(t["steps"][0]["pc"], "0x0000000080000000", "first step is the entry point");
+    assert_eq!(
+        t["steps"][0]["pc"], "0x0000000080000000",
+        "first step is the entry point"
+    );
 
     let out = diff(&interp, &tier3, &summary);
     assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
@@ -81,7 +96,13 @@ fn planted_register_regression_is_found_at_the_right_step() {
     let (good, bad, summary) = (d.join("good.json"), d.join("bad.json"), d.join("bad-summary.json"));
     assert!(record(&good, Some("tier3")).status.success());
     let mut doc = read(&good);
-    let target = (2000..4000).find(|i| doc["steps"][*i]["regs"].as_object().is_some_and(|r| r.keys().any(|k| k.starts_with('x')))).unwrap();
+    let target = (2000..4000)
+        .find(|i| {
+            doc["steps"][*i]["regs"]
+                .as_object()
+                .is_some_and(|r| r.keys().any(|k| k.starts_with('x')))
+        })
+        .unwrap();
     let (reg, real) = {
         let regs = doc["steps"][target]["regs"].as_object().unwrap();
         let (k, v) = regs.iter().find(|(k, _)| k.starts_with('x')).unwrap();
@@ -104,7 +125,10 @@ fn planted_register_regression_is_found_at_the_right_step() {
     assert_eq!(s["window"].as_array().unwrap().len(), 4);
     assert_eq!(s["window"][3]["i"], target as u64 - 1);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains(&format!("step {target}")) && stdout.contains(planted), "{stdout}");
+    assert!(
+        stdout.contains(&format!("step {target}")) && stdout.contains(planted),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -122,7 +146,10 @@ fn a_shorter_bound_is_not_a_divergence() {
     assert_eq!(read(&short)["steps_recorded"], 100);
     assert_eq!(diff(&long, &short, &summary).status.code(), Some(0));
     let s = read(&summary);
-    assert_eq!((s["compared_steps"].clone(), s["truncated"].clone()), (Value::from(100), Value::from(true)));
+    assert_eq!(
+        (s["compared_steps"].clone(), s["truncated"].clone()),
+        (Value::from(100), Value::from(true))
+    );
 }
 
 #[test]
@@ -145,7 +172,10 @@ fn trace_diff_reports_bad_input_with_exit_2() {
     let out = diff(&missing, &missing, &d.join("o.json"));
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("cannot read"));
-    let usage = Command::new(env!("CARGO_BIN_EXE_ounce-core")).arg("trace-diff").output().unwrap();
+    let usage = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .arg("trace-diff")
+        .output()
+        .unwrap();
     assert_eq!(usage.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&usage.stderr).contains("usage: ounce-core trace-diff"));
 }
@@ -157,7 +187,10 @@ fn tier4_is_refused_instead_of_recording_a_trace_that_silently_stops_early() {
     let run = record(&out, Some("tier4"));
     assert_eq!(run.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&run.stderr).contains("one-instruction slices"));
-    assert!(!out.exists(), "no trace may be written for an engine that cannot record one");
+    assert!(
+        !out.exists(),
+        "no trace may be written for an engine that cannot record one"
+    );
 }
 
 #[test]
@@ -170,7 +203,12 @@ fn a_non_ascii_register_name_is_bad_input_not_a_crash() {
     let bad = d.join("bad.json");
     std::fs::write(&bad, serde_json::to_vec(&doc).unwrap()).unwrap();
     let out = diff(&bad, &bad, &d.join("o.json"));
-    assert_eq!(out.status.code(), Some(2), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(!String::from_utf8_lossy(&out.stderr).contains("panicked"));
 }
 

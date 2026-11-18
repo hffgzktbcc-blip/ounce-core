@@ -224,11 +224,7 @@ impl Cpu {
                 is_64,
             } => {
                 // Immediate arithmetic always interprets Rn == 31 as SP, including CMP/CMN.
-                let op1 = if rn == 31 {
-                    self.regs.sp
-                } else {
-                    self.regs.read_x(rn)
-                };
+                let op1 = if rn == 31 { self.regs.sp } else { self.regs.read_x(rn) };
 
                 let op2 = imm;
 
@@ -301,14 +297,14 @@ impl Cpu {
                 let raw_rm = self.regs.read_x(rm);
                 let op2 = if is_extended {
                     let ext: u64 = match extend_option {
-                        0b000 => (raw_rm as u8) as u64,                  // UXTB
-                        0b001 => (raw_rm as u16) as u64,                 // UXTH
-                        0b010 => (raw_rm as u32) as u64,                 // UXTW
-                        0b011 => raw_rm,                                 // UXTX
-                        0b100 => ((raw_rm as i8) as i64) as u64,         // SXTB
-                        0b101 => ((raw_rm as i16) as i64) as u64,        // SXTH
-                        0b110 => ((raw_rm as i32) as i64) as u64,        // SXTW
-                        _ => raw_rm,                                     // SXTX
+                        0b000 => (raw_rm as u8) as u64,           // UXTB
+                        0b001 => (raw_rm as u16) as u64,          // UXTH
+                        0b010 => (raw_rm as u32) as u64,          // UXTW
+                        0b011 => raw_rm,                          // UXTX
+                        0b100 => ((raw_rm as i8) as i64) as u64,  // SXTB
+                        0b101 => ((raw_rm as i16) as i64) as u64, // SXTH
+                        0b110 => ((raw_rm as i32) as i64) as u64, // SXTW
+                        _ => raw_rm,                              // SXTX
                     };
                     ext.wrapping_shl((shift_amount & 7) as u32)
                 } else if shift_amount == 0 {
@@ -544,11 +540,11 @@ impl Cpu {
                             // SBFIZ
                             let sign_bit = (extracted >> s) & 1;
                             if sign_bit != 0 {
-                               let top_shift = lshift + width;
-                               let top_mask = if top_shift >= 64 { 0 } else { u64::MAX << top_shift };
-                               positioned | top_mask
+                                let top_shift = lshift + width;
+                                let top_mask = if top_shift >= 64 { 0 } else { u64::MAX << top_shift };
+                                positioned | top_mask
                             } else {
-                               positioned
+                                positioned
                             }
                         }
                         1 => {
@@ -569,13 +565,7 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::Extract {
-                rd,
-                rn,
-                rm,
-                lsb,
-                is_64,
-            } => {
+            Instruction::Extract { rd, rn, rm, lsb, is_64 } => {
                 if is_64 {
                     let hi = self.regs.read_x(rn) as u128;
                     let lo = self.regs.read_x(rm) as u128;
@@ -605,10 +595,10 @@ impl Cpu {
                 } else {
                     let m = self.regs.read_x(rm);
                     match op {
-                        0 => m,                   // CSEL
-                        1 => m.wrapping_add(1),   // CSINC
-                        2 => !m,                  // CSINV
-                        _ => m.wrapping_neg(),    // CSNEG
+                        0 => m,                 // CSEL
+                        1 => m.wrapping_add(1), // CSINC
+                        2 => !m,                // CSINV
+                        _ => m.wrapping_neg(),  // CSNEG
                     }
                 };
                 if is_64 {
@@ -707,10 +697,10 @@ impl Cpu {
                 let base = self.regs.read_x_or_sp(rn);
                 let raw_m = self.regs.read_x(rm);
                 let index: u64 = match option {
-                    0b010 => (raw_m as u32) as u64,               // UXTW
-                    0b110 => ((raw_m as i32) as i64) as u64,      // SXTW
-                    0b111 => raw_m,                               // SXTX
-                    _ => raw_m,                                   // LSL / UXTX
+                    0b010 => (raw_m as u32) as u64,          // UXTW
+                    0b110 => ((raw_m as i32) as i64) as u64, // SXTW
+                    0b111 => raw_m,                          // SXTX
+                    _ => raw_m,                              // LSL / UXTX
                 };
                 let eff_addr = base.wrapping_add(index.wrapping_shl(shift as u32));
 
@@ -793,7 +783,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::LoadAuth { rt, rn, offset, key, writeback } => {
+            Instruction::LoadAuth {
+                rt,
+                rn,
+                offset,
+                key,
+                writeback,
+            } => {
                 let base = self.pauth.auth(self.regs.read_x_or_sp(rn), 0, key);
                 let addr = base.wrapping_add(offset as u64);
                 let val = mmu.read_u64(addr)?;
@@ -931,11 +927,7 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SystemReg {
-                rt,
-                sysreg,
-                is_read,
-            } => {
+            Instruction::SystemReg { rt, sysreg, is_read } => {
                 // System registers:
                 // 0x5E82 = TPIDR_EL0   (S3_3_C13_C0_2)
                 // 0x5E83 = TPIDRRO_EL0 (S3_3_C13_C0_3) - Horizon TLS Pointer
@@ -1017,33 +1009,149 @@ impl Cpu {
                     let minmax = matches!(op, FpOp2::Fmax | FpOp2::Fmin | FpOp2::Fmaxnm | FpOp2::Fminnm);
                     if minmax && self.regs.fpcr & (1 << 24) != 0 {
                         // FPCR.FZ: denormal inputs read as signed zero
-                        if n != 0.0 && n.is_subnormal() { n = 0.0f64.copysign(n); }
-                        if m != 0.0 && m.is_subnormal() { m = 0.0f64.copysign(m); }
+                        if n != 0.0 && n.is_subnormal() {
+                            n = 0.0f64.copysign(n);
+                        }
+                        if m != 0.0 && m.is_subnormal() {
+                            m = 0.0f64.copysign(m);
+                        }
                     }
                     let res = match op {
-                        FpOp2::Fadd | FpOp2::Fsub | FpOp2::Fmul | FpOp2::Fdiv | FpOp2::Fnmul => unreachable!("arithmetic takes the soft-float path"),
-                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { FpNum::process_nans(&[n, m]).unwrap_or(n) } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
-                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { FpNum::process_nans(&[n, m]).unwrap_or(n) } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
-                        FpOp2::Fmaxnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
-                        FpOp2::Fminnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fadd | FpOp2::Fsub | FpOp2::Fmul | FpOp2::Fdiv | FpOp2::Fnmul => {
+                            unreachable!("arithmetic takes the soft-float path")
+                        }
+                        FpOp2::Fmax => {
+                            if n.is_nan() || m.is_nan() {
+                                FpNum::process_nans(&[n, m]).unwrap_or(n)
+                            } else if n == 0.0 && m == 0.0 {
+                                if n.is_sign_positive() || m.is_sign_positive() {
+                                    0.0
+                                } else {
+                                    -0.0
+                                }
+                            } else {
+                                n.max(m)
+                            }
+                        }
+                        FpOp2::Fmin => {
+                            if n.is_nan() || m.is_nan() {
+                                FpNum::process_nans(&[n, m]).unwrap_or(n)
+                            } else if n == 0.0 && m == 0.0 {
+                                if n.is_sign_negative() || m.is_sign_negative() {
+                                    -0.0
+                                } else {
+                                    0.0
+                                }
+                            } else {
+                                n.min(m)
+                            }
+                        }
+                        FpOp2::Fmaxnm => {
+                            if let Some(r) = FpNum::nm_nan(n, m) {
+                                r
+                            } else if n == 0.0 && m == 0.0 {
+                                if n.is_sign_positive() || m.is_sign_positive() {
+                                    0.0
+                                } else {
+                                    -0.0
+                                }
+                            } else {
+                                n.max(m)
+                            }
+                        }
+                        FpOp2::Fminnm => {
+                            if let Some(r) = FpNum::nm_nan(n, m) {
+                                r
+                            } else if n == 0.0 && m == 0.0 {
+                                if n.is_sign_negative() || m.is_sign_negative() {
+                                    -0.0
+                                } else {
+                                    0.0
+                                }
+                            } else {
+                                n.min(m)
+                            }
+                        }
                     };
-                    let res = if minmax && self.regs.fpcr & (1 << 25) != 0 && res.is_nan() { f64::from_bits(0x7ff8_0000_0000_0000) } else { res };
+                    let res = if minmax && self.regs.fpcr & (1 << 25) != 0 && res.is_nan() {
+                        f64::from_bits(0x7ff8_0000_0000_0000)
+                    } else {
+                        res
+                    };
                     self.regs.write_d(rd, res);
                 } else {
                     let (mut n, mut m) = (self.regs.read_s(rn), self.regs.read_s(rm));
                     let minmax = matches!(op, FpOp2::Fmax | FpOp2::Fmin | FpOp2::Fmaxnm | FpOp2::Fminnm);
                     if minmax && self.regs.fpcr & (1 << 24) != 0 {
-                        if n != 0.0 && n.is_subnormal() { n = 0.0f32.copysign(n); }
-                        if m != 0.0 && m.is_subnormal() { m = 0.0f32.copysign(m); }
+                        if n != 0.0 && n.is_subnormal() {
+                            n = 0.0f32.copysign(n);
+                        }
+                        if m != 0.0 && m.is_subnormal() {
+                            m = 0.0f32.copysign(m);
+                        }
                     }
                     let res = match op {
-                        FpOp2::Fadd | FpOp2::Fsub | FpOp2::Fmul | FpOp2::Fdiv | FpOp2::Fnmul => unreachable!("arithmetic takes the soft-float path"),
-                        FpOp2::Fmax => if n.is_nan() || m.is_nan() { FpNum::process_nans(&[n, m]).unwrap_or(n) } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
-                        FpOp2::Fmin => if n.is_nan() || m.is_nan() { FpNum::process_nans(&[n, m]).unwrap_or(n) } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
-                        FpOp2::Fmaxnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
-                        FpOp2::Fminnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                        FpOp2::Fadd | FpOp2::Fsub | FpOp2::Fmul | FpOp2::Fdiv | FpOp2::Fnmul => {
+                            unreachable!("arithmetic takes the soft-float path")
+                        }
+                        FpOp2::Fmax => {
+                            if n.is_nan() || m.is_nan() {
+                                FpNum::process_nans(&[n, m]).unwrap_or(n)
+                            } else if n == 0.0 && m == 0.0 {
+                                if n.is_sign_positive() || m.is_sign_positive() {
+                                    0.0
+                                } else {
+                                    -0.0
+                                }
+                            } else {
+                                n.max(m)
+                            }
+                        }
+                        FpOp2::Fmin => {
+                            if n.is_nan() || m.is_nan() {
+                                FpNum::process_nans(&[n, m]).unwrap_or(n)
+                            } else if n == 0.0 && m == 0.0 {
+                                if n.is_sign_negative() || m.is_sign_negative() {
+                                    -0.0
+                                } else {
+                                    0.0
+                                }
+                            } else {
+                                n.min(m)
+                            }
+                        }
+                        FpOp2::Fmaxnm => {
+                            if let Some(r) = FpNum::nm_nan(n, m) {
+                                r
+                            } else if n == 0.0 && m == 0.0 {
+                                if n.is_sign_positive() || m.is_sign_positive() {
+                                    0.0
+                                } else {
+                                    -0.0
+                                }
+                            } else {
+                                n.max(m)
+                            }
+                        }
+                        FpOp2::Fminnm => {
+                            if let Some(r) = FpNum::nm_nan(n, m) {
+                                r
+                            } else if n == 0.0 && m == 0.0 {
+                                if n.is_sign_negative() || m.is_sign_negative() {
+                                    -0.0
+                                } else {
+                                    0.0
+                                }
+                            } else {
+                                n.min(m)
+                            }
+                        }
                     };
-                    let res = if minmax && self.regs.fpcr & (1 << 25) != 0 && res.is_nan() { f32::from_bits(0x7fc0_0000) } else { res };
+                    let res = if minmax && self.regs.fpcr & (1 << 25) != 0 && res.is_nan() {
+                        f32::from_bits(0x7fc0_0000)
+                    } else {
+                        res
+                    };
                     self.regs.write_s(rd, res);
                 }
                 self.regs.advance_pc();
@@ -1069,15 +1177,32 @@ impl Cpu {
                     (1, true) => self.regs.write_d(rd, self.regs.read_d(rn).abs()),
                     (2, false) => self.regs.write_s(rd, -self.regs.read_s(rn)),
                     (2, true) => self.regs.write_d(rd, -self.regs.read_d(rn)),
-                    _ => return Err(CpuError::UnimplementedInstruction { raw: 0, pc: self.regs.pc }),
+                    _ => {
+                        return Err(CpuError::UnimplementedInstruction {
+                            raw: 0,
+                            pc: self.regs.pc,
+                        });
+                    }
                 }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpData3 { rd, rn, rm, ra, o1, o0, is_double } => {
+            Instruction::FpData3 {
+                rd,
+                rn,
+                rm,
+                ra,
+                o1,
+                o0,
+                is_double,
+            } => {
                 let (f, env) = self.fp_env(is_double);
-                let (n, m, a) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double), self.fp_bits(ra, is_double));
+                let (n, m, a) = (
+                    self.fp_bits(rn, is_double),
+                    self.fp_bits(rm, is_double),
+                    self.fp_bits(ra, is_double),
+                );
                 let n = if o0 != o1 { f.neg(n) } else { n };
                 let a = if o1 { f.neg(a) } else { a };
                 self.set_fp_bits(rd, is_double, softfp::fma(f, env, n, m, a));
@@ -1104,25 +1229,41 @@ impl Cpu {
                 if is_double {
                     let v = f64::from_bits(flushed);
                     // Arm FPRoundInt: a NaN operand is returned quieted (a signalling NaN gets its quiet bit set)
-                    let r = if v.is_nan() { if env.dn { FpNum::default_nan_if_nan(v) } else { v.quieted() } } else { match op {
-                        1 => v.ceil(),
-                        2 => v.floor(),
-                        3 => v.trunc(),
-                        4 => v.round(),
-                        _ => v.round_ties_even(),
-                    } };
+                    let r = if v.is_nan() {
+                        if env.dn {
+                            FpNum::default_nan_if_nan(v)
+                        } else {
+                            v.quieted()
+                        }
+                    } else {
+                        match op {
+                            1 => v.ceil(),
+                            2 => v.floor(),
+                            3 => v.trunc(),
+                            4 => v.round(),
+                            _ => v.round_ties_even(),
+                        }
+                    };
                     softfp::raise_round_int(f, flushed, v, r, inexact_flag);
                     self.regs.write_d(rd, r);
                 } else {
                     let v = f32::from_bits(flushed as u32);
                     // Arm FPRoundInt: a NaN operand is returned quieted (a signalling NaN gets its quiet bit set)
-                    let r = if v.is_nan() { if env.dn { FpNum::default_nan_if_nan(v) } else { v.quieted() } } else { match op {
-                        1 => v.ceil(),
-                        2 => v.floor(),
-                        3 => v.trunc(),
-                        4 => v.round(),
-                        _ => v.round_ties_even(),
-                    } };
+                    let r = if v.is_nan() {
+                        if env.dn {
+                            FpNum::default_nan_if_nan(v)
+                        } else {
+                            v.quieted()
+                        }
+                    } else {
+                        match op {
+                            1 => v.ceil(),
+                            2 => v.floor(),
+                            3 => v.trunc(),
+                            4 => v.round(),
+                            _ => v.round_ties_even(),
+                        }
+                    };
                     softfp::raise_round_int(f, flushed, v as f64, r as f64, inexact_flag);
                     self.regs.write_s(rd, r);
                 }
@@ -1130,12 +1271,27 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpIntConv { rd, rn, opcode, rmode, is_64, is_double } => {
+            Instruction::FpIntConv {
+                rd,
+                rn,
+                opcode,
+                rmode,
+                is_64,
+                is_double,
+            } => {
                 if opcode == 2 || opcode == 3 {
                     // SCVTF / UCVTF: integer register to float
                     let signed = opcode == 2;
-                    let x = if is_64 { self.regs.read_x(rn) } else { self.regs.read_w(rn) as u64 };
-                    let x = if signed && !is_64 { x as u32 as i32 as i64 as u64 } else { x };
+                    let x = if is_64 {
+                        self.regs.read_x(rn)
+                    } else {
+                        self.regs.read_w(rn) as u64
+                    };
+                    let x = if signed && !is_64 {
+                        x as u32 as i32 as i64 as u64
+                    } else {
+                        x
+                    };
                     let (f, env) = self.fp_env(is_double);
                     let neg = signed && (x as i64) < 0;
                     let mag = if neg { (x as i64).unsigned_abs() } else { x };
@@ -1144,7 +1300,11 @@ impl Cpu {
                     // float to integer with the rounding mode in rmode (opcodes 4/5 are ties-away)
                     let (f, env) = self.fp_env(is_double);
                     let src = softfp::flush_input(f, env, self.fp_bits(rn, is_double));
-                    let v = if is_double { f64::from_bits(src) } else { f32::from_bits(src as u32) as f64 };
+                    let v = if is_double {
+                        f64::from_bits(src)
+                    } else {
+                        f32::from_bits(src as u32) as f64
+                    };
                     let rounded = if opcode >= 4 {
                         v.round()
                     } else {
@@ -1169,21 +1329,42 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpFixedConv { rd, rn, opcode, fbits, is_64, is_double } => {
+            Instruction::FpFixedConv {
+                rd,
+                rn,
+                opcode,
+                fbits,
+                is_64,
+                is_double,
+            } => {
                 let scale = 2f64.powi(fbits as i32);
                 if opcode >= 2 {
                     // SCVTF / UCVTF: fixed-point integer register to float
-                    let x = if is_64 { self.regs.read_x(rn) } else { self.regs.read_w(rn) as u64 };
+                    let x = if is_64 {
+                        self.regs.read_x(rn)
+                    } else {
+                        self.regs.read_w(rn) as u64
+                    };
                     let (f, env) = self.fp_env(is_double);
                     let sx = if is_64 { x as i64 } else { x as u32 as i32 as i64 };
                     let neg = opcode == 2 && sx < 0;
-                    let mag = if opcode == 2 { sx.unsigned_abs() } else if is_64 { x } else { x as u32 as u64 };
+                    let mag = if opcode == 2 {
+                        sx.unsigned_abs()
+                    } else if is_64 {
+                        x
+                    } else {
+                        x as u32 as u64
+                    };
                     self.set_fp_bits(rd, is_double, softfp::int_to_fp(f, env, neg, mag, fbits as u32));
                 } else {
                     // FCVTZS / FCVTZU: scale, then truncate toward zero with saturation
                     let (f, env) = self.fp_env(is_double);
                     let src = softfp::flush_input(f, env, self.fp_bits(rn, is_double));
-                    let v = if is_double { f64::from_bits(src) } else { f32::from_bits(src as u32) as f64 };
+                    let v = if is_double {
+                        f64::from_bits(src)
+                    } else {
+                        f32::from_bits(src as u32) as f64
+                    };
                     let t = (v * scale).trunc();
                     softfp::raise_to_int(f, src, v * scale, t, opcode == 0, is_64);
                     let out: u64 = match (opcode == 0, is_64) {
@@ -1257,7 +1438,14 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::AddSubCarry { rd, rn, rm, is_sub, set_flags, is_64 } => {
+            Instruction::AddSubCarry {
+                rd,
+                rn,
+                rm,
+                is_sub,
+                set_flags,
+                is_64,
+            } => {
                 let bits = if is_64 { 64 } else { 32 };
                 let mask = if is_64 { u64::MAX } else { u32::MAX as u64 };
                 let a = self.regs.read_x(rn) & mask;
@@ -1278,7 +1466,14 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpCondCompare { rn, rm, nzcv, cond, is_double, signalling } => {
+            Instruction::FpCondCompare {
+                rn,
+                rm,
+                nzcv,
+                cond,
+                is_double,
+                signalling,
+            } => {
                 let (n, z, c, v) = if self.check_condition(cond) {
                     let (f, _) = self.fp_env(is_double);
                     softfp::raise_compare(f, self.fp_bits(rn, is_double), self.fp_bits(rm, is_double), signalling);
@@ -1303,12 +1498,7 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpMovGen {
-                rd,
-                rn,
-                to_fp,
-                is_64,
-            } => {
+            Instruction::FpMovGen { rd, rn, to_fp, is_64 } => {
                 if to_fp {
                     if is_64 {
                         self.regs.write_d(rd, f64::from_bits(self.regs.read_x(rn)));
@@ -1493,10 +1683,46 @@ impl Cpu {
                         let m = f64::from_bits((b >> (lane * 64)) as u64);
                         let value = match op {
                             FpOp2::Fnmul => -(n * m),
-                            FpOp2::Fmax => if n.is_nan() || m.is_nan() { n + m } else { n.max(m) },
-                            FpOp2::Fmin => if n.is_nan() || m.is_nan() { n + m } else { n.min(m) },
-                            FpOp2::Fmaxnm => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_positive() || m.is_sign_positive() { 0.0 } else { -0.0 } } else { n.max(m) },
-                            _ => if let Some(r) = FpNum::nm_nan(n, m) { r } else if n == 0.0 && m == 0.0 { if n.is_sign_negative() || m.is_sign_negative() { -0.0 } else { 0.0 } } else { n.min(m) },
+                            FpOp2::Fmax => {
+                                if n.is_nan() || m.is_nan() {
+                                    n + m
+                                } else {
+                                    n.max(m)
+                                }
+                            }
+                            FpOp2::Fmin => {
+                                if n.is_nan() || m.is_nan() {
+                                    n + m
+                                } else {
+                                    n.min(m)
+                                }
+                            }
+                            FpOp2::Fmaxnm => {
+                                if let Some(r) = FpNum::nm_nan(n, m) {
+                                    r
+                                } else if n == 0.0 && m == 0.0 {
+                                    if n.is_sign_positive() || m.is_sign_positive() {
+                                        0.0
+                                    } else {
+                                        -0.0
+                                    }
+                                } else {
+                                    n.max(m)
+                                }
+                            }
+                            _ => {
+                                if let Some(r) = FpNum::nm_nan(n, m) {
+                                    r
+                                } else if n == 0.0 && m == 0.0 {
+                                    if n.is_sign_negative() || m.is_sign_negative() {
+                                        -0.0
+                                    } else {
+                                        0.0
+                                    }
+                                } else {
+                                    n.min(m)
+                                }
+                            }
                         };
                         out |= (value.to_bits() as u128) << (lane * 64);
                     }
@@ -1516,7 +1742,8 @@ impl Cpu {
                 };
                 if let Some(s) = shared {
                     let (a, b) = (self.regs.read_q(rn), self.regs.read_q(rm));
-                    self.regs.write_q(rd, simd::fp_three_same_fpcr(s, 0, a, b, false, true, self.regs.fpcr));
+                    self.regs
+                        .write_q(rd, simd::fp_three_same_fpcr(s, 0, a, b, false, true, self.regs.fpcr));
                     self.regs.advance_pc();
                     return Ok(StepResult::Continue);
                 }
@@ -1583,7 +1810,16 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdLoadStorePair { rt1, rt2, rn, offset, size_bytes, is_load, writeback, post_index } => {
+            Instruction::SimdLoadStorePair {
+                rt1,
+                rt2,
+                rn,
+                offset,
+                size_bytes,
+                is_load,
+                writeback,
+                post_index,
+            } => {
                 let base = self.regs.read_x_or_sp(rn);
                 let updated = (base as i64).wrapping_add(offset) as u64;
                 let addr = if post_index { base } else { updated };
@@ -1613,7 +1849,11 @@ impl Cpu {
             }
 
             Instruction::SimdModImm { rd, imm, op, q } => {
-                let pattern = if q { imm as u128 | (imm as u128) << 64 } else { imm as u128 };
+                let pattern = if q {
+                    imm as u128 | (imm as u128) << 64
+                } else {
+                    imm as u128
+                };
                 let width = if q { u128::MAX } else { u64::MAX as u128 };
                 let d = self.regs.read_q(rd);
                 let res = match op {
@@ -1633,7 +1873,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdDupElement { rd, rn, esize, index, q } => {
+            Instruction::SimdDupElement {
+                rd,
+                rn,
+                esize,
+                index,
+                q,
+            } => {
                 let v = simd::lane(self.regs.read_q(rn), esize as u32, index as usize);
                 self.regs.write_q(rd, simd::dup(v, esize as u32, q));
                 self.regs.advance_pc();
@@ -1648,7 +1894,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdInsElement { rd, rn, esize, dst_index, src_index } => {
+            Instruction::SimdInsElement {
+                rd,
+                rn,
+                esize,
+                dst_index,
+                src_index,
+            } => {
                 let v = simd::lane(self.regs.read_q(rn), esize as u32, src_index as usize);
                 let mut d = self.regs.read_q(rd);
                 simd::set_lane(&mut d, esize as u32, dst_index as usize, v);
@@ -1657,7 +1909,17 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdLoadStoreSingle { rt, rn, rm, esize, index, replicate, q, is_load, post_index } => {
+            Instruction::SimdLoadStoreSingle {
+                rt,
+                rn,
+                rm,
+                esize,
+                index,
+                replicate,
+                q,
+                is_load,
+                post_index,
+            } => {
                 let base = self.regs.read_x_or_sp(rn);
                 let n = esize as usize / 8;
                 if is_load {
@@ -1684,28 +1946,58 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdPermute { rd, rn, rm, op, esize, q } => {
+            Instruction::SimdPermute {
+                rd,
+                rn,
+                rm,
+                op,
+                esize,
+                q,
+            } => {
                 let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::permute(op, n, m, esize as u32, q));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::Fcadd { rd, rn, rm, esize, q, rot90 } => {
+            Instruction::Fcadd {
+                rd,
+                rn,
+                rm,
+                esize,
+                q,
+                rot90,
+            } => {
                 let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
-                self.regs.write_q(rd, simd::fcadd(n, m, esize as u32, q, rot90, self.regs.fpcr));
+                self.regs
+                    .write_q(rd, simd::fcadd(n, m, esize as u32, q, rot90, self.regs.fpcr));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdFpThreeSame { rd, rn, rm, op, double, q } => {
+            Instruction::SimdFpThreeSame {
+                rd,
+                rn,
+                rm,
+                op,
+                double,
+                q,
+            } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
-                self.regs.write_q(rd, simd::fp_three_same_fpcr(op, d, n, m, double, q, self.regs.fpcr));
+                self.regs
+                    .write_q(rd, simd::fp_three_same_fpcr(op, d, n, m, double, q, self.regs.fpcr));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdFpTwoMisc { rd, rn, op, double, q, scalar } => {
+            Instruction::SimdFpTwoMisc {
+                rd,
+                rn,
+                op,
+                double,
+                q,
+                scalar,
+            } => {
                 let (d, n) = (self.regs.read_q(rd), self.regs.read_q(rn));
                 let res = if scalar {
                     simd::fcvtxn_f32(simd::lane(n, 64, 0), self.regs.fpcr) as u128
@@ -1717,7 +2009,16 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q, scalar } => {
+            Instruction::SimdFpByElement {
+                rd,
+                rn,
+                rm,
+                index,
+                op,
+                double,
+                q,
+                scalar,
+            } => {
                 let (mut d, mut n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 if scalar {
                     // a scalar op reads lane 0 only: replicate it so the unread lanes cannot raise exception flags
@@ -1734,7 +2035,16 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdByElement { rd, rn, rm, index, op, esize, q, scalar } => {
+            Instruction::SimdByElement {
+                rd,
+                rn,
+                rm,
+                index,
+                op,
+                esize,
+                q,
+                scalar,
+            } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 let (r, qc) = simd::by_element(op, d, n, m, index, esize as u32, q, scalar);
                 if qc {
@@ -1752,12 +2062,25 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdTbl { rd, rn, rm, regs, is_tbx, q } => {
+            Instruction::SimdTbl {
+                rd,
+                rn,
+                rm,
+                regs,
+                is_tbx,
+                q,
+            } => {
                 let mut table = [0u128; 4];
                 for (i, t) in table.iter_mut().take(regs as usize).enumerate() {
                     *t = self.regs.read_q(rn.wrapping_add(i as u8) & 0x1F);
                 }
-                let res = simd::table_lookup(&table[..regs as usize], self.regs.read_q(rm), self.regs.read_q(rd), is_tbx, q);
+                let res = simd::table_lookup(
+                    &table[..regs as usize],
+                    self.regs.read_q(rm),
+                    self.regs.read_q(rd),
+                    is_tbx,
+                    q,
+                );
                 self.regs.write_q(rd, res);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -1792,7 +2115,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::Crc32 { rd, rn, rm, size, castagnoli } => {
+            Instruction::Crc32 {
+                rd,
+                rn,
+                rm,
+                size,
+                castagnoli,
+            } => {
                 let poly: u32 = if castagnoli { 0x82F6_3B78 } else { 0xEDB8_8320 };
                 let mut crc = self.regs.read_w(rn);
                 let data = self.regs.read_x(rm);
@@ -1819,7 +2148,14 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::MultiplyLong { rd, rn, rm, ra, is_signed, is_sub } => {
+            Instruction::MultiplyLong {
+                rd,
+                rn,
+                rm,
+                ra,
+                is_signed,
+                is_sub,
+            } => {
                 let (n, m) = (self.regs.read_w(rn), self.regs.read_w(rm));
                 let prod = if is_signed {
                     (n as i32 as i64).wrapping_mul(m as i32 as i64) as u64
@@ -1827,12 +2163,27 @@ impl Cpu {
                     (n as u64).wrapping_mul(m as u64)
                 };
                 let a = self.regs.read_x(ra);
-                self.regs.write_x(rd, if is_sub { a.wrapping_sub(prod) } else { a.wrapping_add(prod) });
+                self.regs.write_x(
+                    rd,
+                    if is_sub {
+                        a.wrapping_sub(prod)
+                    } else {
+                        a.wrapping_add(prod)
+                    },
+                );
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdLoadStore { rt, rn, offset, size_bytes, is_load, writeback, post_index } => {
+            Instruction::SimdLoadStore {
+                rt,
+                rn,
+                offset,
+                size_bytes,
+                is_load,
+                writeback,
+                post_index,
+            } => {
                 let base = self.regs.read_x_or_sp(rn);
                 let updated = (base as i64).wrapping_add(offset) as u64;
                 let addr = if post_index { base } else { updated };
@@ -1852,14 +2203,25 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdLoadStoreReg { rt, rn, rm, option, shift, size_bytes, is_load } => {
+            Instruction::SimdLoadStoreReg {
+                rt,
+                rn,
+                rm,
+                option,
+                shift,
+                size_bytes,
+                is_load,
+            } => {
                 let raw_m = self.regs.read_x(rm);
                 let index: u64 = match option {
                     0b010 => (raw_m as u32) as u64,          // UXTW
                     0b110 => ((raw_m as i32) as i64) as u64, // SXTW
                     _ => raw_m,                              // LSL / SXTX
                 };
-                let addr = self.regs.read_x_or_sp(rn).wrapping_add(index.wrapping_shl(shift as u32));
+                let addr = self
+                    .regs
+                    .read_x_or_sp(rn)
+                    .wrapping_add(index.wrapping_shl(shift as u32));
                 let n = size_bytes as usize;
                 if is_load {
                     let mut buf = [0u8; 16];
@@ -1872,7 +2234,15 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdLoadStoreMulti { rt, rn, rm, regs, q, is_load, post_index } => {
+            Instruction::SimdLoadStoreMulti {
+                rt,
+                rn,
+                rm,
+                regs,
+                q,
+                is_load,
+                post_index,
+            } => {
                 let base = self.regs.read_x_or_sp(rn);
                 let per_reg = if q { 16 } else { 8 };
                 for r in 0..regs as u64 {
@@ -1887,19 +2257,36 @@ impl Cpu {
                     }
                 }
                 if post_index {
-                    let step = if rm == 31 { regs as u64 * per_reg as u64 } else { self.regs.read_x(rm) };
+                    let step = if rm == 31 {
+                        regs as u64 * per_reg as u64
+                    } else {
+                        self.regs.read_x(rm)
+                    };
                     self.regs.write_x_or_sp(rn, base.wrapping_add(step));
                 }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdLoadStoreStruct { rt, rn, rm, selem, esize, q, is_load, post_index } => {
+            Instruction::SimdLoadStoreStruct {
+                rt,
+                rn,
+                rm,
+                selem,
+                esize,
+                q,
+                is_load,
+                post_index,
+            } => {
                 let base = self.regs.read_x_or_sp(rn);
                 let ebytes = esize as usize / 8;
                 let elements = if q { 16 } else { 8 } / ebytes;
                 let regs: Vec<u8> = (0..selem).map(|s| (rt + s) % 32).collect();
-                let mut vals: Vec<u128> = if is_load { vec![0; regs.len()] } else { regs.iter().map(|&r| self.regs.read_q(r)).collect() };
+                let mut vals: Vec<u128> = if is_load {
+                    vec![0; regs.len()]
+                } else {
+                    regs.iter().map(|&r| self.regs.read_q(r)).collect()
+                };
                 for e in 0..elements {
                     for (s, val) in vals.iter_mut().enumerate() {
                         let addr = base.wrapping_add(((e * selem as usize + s) * ebytes) as u64);
@@ -1919,7 +2306,11 @@ impl Cpu {
                     }
                 }
                 if post_index {
-                    let step = if rm == 31 { (selem as usize * elements * ebytes) as u64 } else { self.regs.read_x(rm) };
+                    let step = if rm == 31 {
+                        (selem as usize * elements * ebytes) as u64
+                    } else {
+                        self.regs.read_x(rm)
+                    };
                     self.regs.write_x_or_sp(rn, base.wrapping_add(step));
                 }
                 self.regs.advance_pc();
@@ -1943,7 +2334,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdSmov { rd, rn, esize, index, x } => {
+            Instruction::SimdSmov {
+                rd,
+                rn,
+                esize,
+                index,
+                x,
+            } => {
                 let val = simd::lane(self.regs.read_q(rn), esize as u32, index as usize);
                 let ext = (((val << (64 - esize as u32)) as i64) >> (64 - esize as u32)) as u64;
                 if x {
@@ -1980,7 +2377,14 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdThreeSame { rd, rn, rm, op, esize, q } => {
+            Instruction::SimdThreeSame {
+                rd,
+                rn,
+                rm,
+                op,
+                esize,
+                q,
+            } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 let (r, qc) = simd::three_same_qc(op, d, n, m, esize as u32, q);
                 if qc {
@@ -2002,14 +2406,29 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdNarrow { rd, rn, rm, op, esize, q } => {
+            Instruction::SimdNarrow {
+                rd,
+                rn,
+                rm,
+                op,
+                esize,
+                q,
+            } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 self.regs.write_q(rd, simd::narrow_high(op, d, n, m, esize as u32, q));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdSatAddSub { rd, rn, rm, op, esize, q, scalar } => {
+            Instruction::SimdSatAddSub {
+                rd,
+                rn,
+                rm,
+                op,
+                esize,
+                q,
+                scalar,
+            } => {
                 let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
                 let (r, sat) = simd::sat_add_sub(op, n, m, esize as u32, q, scalar);
                 if sat {
@@ -2019,7 +2438,14 @@ impl Cpu {
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
-            Instruction::SimdSatLong { rd, rn, rm, op, esize, q } => {
+            Instruction::SimdSatLong {
+                rd,
+                rn,
+                rm,
+                op,
+                esize,
+                q,
+            } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
                 let (r, sat) = simd::sat_doubling_mul_long(op, d, n, m, esize as u32, q);
                 if sat {
@@ -2030,9 +2456,18 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdLong { rd, rn, rm, op, signed, esize, q } => {
+            Instruction::SimdLong {
+                rd,
+                rn,
+                rm,
+                op,
+                signed,
+                esize,
+                q,
+            } => {
                 let (d, n, m) = (self.regs.read_q(rd), self.regs.read_q(rn), self.regs.read_q(rm));
-                self.regs.write_q(rd, simd::mul_long(op, d, n, m, esize as u32, q, signed));
+                self.regs
+                    .write_q(rd, simd::mul_long(op, d, n, m, esize as u32, q, signed));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -2046,13 +2481,17 @@ impl Cpu {
 
             Instruction::SimdFpThreeSameHalf { rd, rn, rm, op, q } => {
                 let (n, m) = (self.regs.read_q(rn), self.regs.read_q(rm));
-                self.regs.write_q(rd, simd::fp16_three_same_fpcr(op, n, m, q, self.regs.fpcr));
+                self.regs
+                    .write_q(rd, simd::fp16_three_same_fpcr(op, n, m, q, self.regs.fpcr));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
             Instruction::FpHalfMinMax { rd, rn, rm, op } => {
-                let (n, m) = (self.regs.read_q(rn) as u64 & 0xffff, self.regs.read_q(rm) as u64 & 0xffff);
+                let (n, m) = (
+                    self.regs.read_q(rn) as u64 & 0xffff,
+                    self.regs.read_q(rm) as u64 & 0xffff,
+                );
                 let lane_op = match op {
                     FpOp2::Fmax => crate::cpu::instructions::SimdFpOp3::Fmax,
                     FpOp2::Fmin => crate::cpu::instructions::SimdFpOp3::Fmin,
@@ -2065,7 +2504,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdFpReduce { rd, rn, op, esize, lanes } => {
+            Instruction::SimdFpReduce {
+                rd,
+                rn,
+                op,
+                esize,
+                lanes,
+            } => {
                 let r = simd::fp_reduce_fpcr(op, self.regs.read_q(rn), esize as u32, lanes as usize, self.regs.fpcr);
                 self.regs.write_q(rd, r as u128);
                 self.regs.advance_pc();
@@ -2073,7 +2518,8 @@ impl Cpu {
             }
 
             Instruction::SimdAcross { rd, rn, op, esize, q } => {
-                self.regs.write_q(rd, simd::across(op, self.regs.read_q(rn), esize as u32, q));
+                self.regs
+                    .write_q(rd, simd::across(op, self.regs.read_q(rn), esize as u32, q));
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -2107,7 +2553,13 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpScalarThreeSame { rd, rn, rm, op, is_double } => {
+            Instruction::FpScalarThreeSame {
+                rd,
+                rn,
+                rm,
+                op,
+                is_double,
+            } => {
                 let e = if is_double { 64 } else { 32 };
                 let keep = simd::lane_mask(e);
                 // a scalar op reads lane 0 only: replicate it so the unread lane cannot raise exception flags
@@ -2152,7 +2604,21 @@ impl Cpu {
             }
 
             Instruction::SimdTwoMisc { rd, rn, op, esize, q } => {
-                if matches!(op, SimdOp2::Scvtf | SimdOp2::Ucvtf | SimdOp2::Fcvtzs | SimdOp2::Fcvtzu | SimdOp2::Fcvtns | SimdOp2::Fcvtnu | SimdOp2::Fcvtms | SimdOp2::Fcvtmu | SimdOp2::Fcvtas | SimdOp2::Fcvtau | SimdOp2::Fcvtps | SimdOp2::Fcvtpu) {
+                if matches!(
+                    op,
+                    SimdOp2::Scvtf
+                        | SimdOp2::Ucvtf
+                        | SimdOp2::Fcvtzs
+                        | SimdOp2::Fcvtzu
+                        | SimdOp2::Fcvtns
+                        | SimdOp2::Fcvtnu
+                        | SimdOp2::Fcvtms
+                        | SimdOp2::Fcvtmu
+                        | SimdOp2::Fcvtas
+                        | SimdOp2::Fcvtau
+                        | SimdOp2::Fcvtps
+                        | SimdOp2::Fcvtpu
+                ) {
                     let r = simd::int_fp_convert_fpcr(op, self.regs.read_q(rn), esize as u32, q, self.regs.fpcr);
                     self.regs.write_q(rd, r);
                     self.regs.advance_pc();
@@ -2167,7 +2633,14 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdShiftImm { rd, rn, op, esize, shift, q } => {
+            Instruction::SimdShiftImm {
+                rd,
+                rn,
+                op,
+                esize,
+                shift,
+                q,
+            } => {
                 let (n, e, sh) = (self.regs.read_q(rn), esize as u32, shift as u32);
                 let res = match op {
                     SimdShiftOp::Sshr => simd::shift_imm(n, e, sh, q, true, false),
@@ -2184,7 +2657,15 @@ impl Cpu {
 
             Instruction::Brk { imm } => Err(CpuError::Breakpoint { imm, pc }),
 
-            Instruction::SimdShiftExt { rd, rn, op, esize, shift, q, scalar } => {
+            Instruction::SimdShiftExt {
+                rd,
+                rn,
+                op,
+                esize,
+                shift,
+                q,
+                scalar,
+            } => {
                 let (n, e) = (self.regs.read_q(rn), esize as u32);
                 // a scalar form only reads lane 0 (twice the width for narrowing), so mask the rest out of QC
                 let src = if scalar { n & simd::scalar_source_mask(op, e) } else { n };
@@ -2192,19 +2673,34 @@ impl Cpu {
                 if sat {
                     self.regs.fpsr |= super::registers::FPSR_QC;
                 }
-                self.regs.write_q(rd, if scalar { simd::lane(res, e, 0) as u128 } else { res });
+                self.regs
+                    .write_q(rd, if scalar { simd::lane(res, e, 0) as u128 } else { res });
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdPairwiseLong { rd, rn, signed, acc, esize, q } => {
+            Instruction::SimdPairwiseLong {
+                rd,
+                rn,
+                signed,
+                acc,
+                esize,
+                q,
+            } => {
                 let res = simd::pairwise_long(self.regs.read_q(rd), self.regs.read_q(rn), esize as u32, q, signed, acc);
                 self.regs.write_q(rd, res);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdQNarrow { rd, rn, op, esize, q, scalar } => {
+            Instruction::SimdQNarrow {
+                rd,
+                rn,
+                op,
+                esize,
+                q,
+                scalar,
+            } => {
                 let e = esize as u32;
                 let n = self.regs.read_q(rn);
                 let src = if scalar { n & simd::scalar_source_mask(op, e) } else { n }; // scalar: only the source lane counts
@@ -2212,13 +2708,22 @@ impl Cpu {
                 if sat {
                     self.regs.fpsr |= super::registers::FPSR_QC;
                 }
-                self.regs.write_q(rd, if scalar { simd::lane(res, e, 0) as u128 } else { res });
+                self.regs
+                    .write_q(rd, if scalar { simd::lane(res, e, 0) as u128 } else { res });
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::SimdFixedConv { rd, rn, op, esize, fbits, q } => {
-                let r = simd::fixed_convert_fpcr(op, self.regs.read_q(rn), esize as u32, q, fbits as u32, self.regs.fpcr);
+            Instruction::SimdFixedConv {
+                rd,
+                rn,
+                op,
+                esize,
+                fbits,
+                q,
+            } => {
+                let r =
+                    simd::fixed_convert_fpcr(op, self.regs.read_q(rn), esize as u32, q, fbits as u32, self.regs.fpcr);
                 self.regs.write_q(rd, r);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -2236,9 +2741,7 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::Unimplemented { raw } => {
-                Err(CpuError::UnimplementedInstruction { raw, pc })
-            }
+            Instruction::Unimplemented { raw } => Err(CpuError::UnimplementedInstruction { raw, pc }),
         }
     }
 
@@ -2286,7 +2789,11 @@ mod tests {
         cpu.regs.pc = CODE;
         setup(&mut cpu, &mut mmu);
         for _ in words {
-            assert!(matches!(cpu.step(&mut mmu), Ok(StepResult::Continue)), "step failed at 0x{:X}", cpu.regs.pc);
+            assert!(
+                matches!(cpu.step(&mut mmu), Ok(StepResult::Continue)),
+                "step failed at 0x{:X}",
+                cpu.regs.pc
+            );
         }
         (cpu, mmu)
     }
@@ -2294,87 +2801,87 @@ mod tests {
     #[test]
     fn libnx_ops_decode() {
         let table: &[(u32, &str)] = &[
-            (0xdac00043, "DataProc1"),          // rbit x3, x2
-            (0xdac00c84, "DataProc1"),          // rev x4, x4
-            (0x5ac008a4, "DataProc1"),          // rev w4, w5
-            (0x5ac00441, "DataProc1"),          // rev16 w1, w2
-            (0xdac00841, "DataProc1"),          // rev32 x1, x2
-            (0xdac01063, "DataProc1"),          // clz x3, x3
-            (0xdac014c5, "DataProc1"),          // cls x5, x6
-            (0x9bc17c00, "MultiplyHigh"),       // umulh x0, x0, x1
-            (0x9b447c62, "MultiplyHigh"),       // smulh x2, x3, x4
-            (0x9ba20c20, "MultiplyLong"),       // umaddl x0, w1, w2, x3
-            (0x9b228c20, "MultiplyLong"),       // smsubl x0, w1, w2, x3
-            (0x3cc0827f, "SimdLoadStore"),      // ldur q31, [x19, #8]
-            (0x3c9f0080, "SimdLoadStore"),      // stur q0, [x4, #-16]
-            (0xfc408441, "SimdLoadStore"),      // ldr d1, [x2], #8
-            (0xbc004c83, "SimdLoadStore"),      // str s3, [x4, #4]!
-            (0x3ce1681f, "SimdLoadStoreReg"),   // ldr q31, [x0, x1]
-            (0xfc24d862, "SimdLoadStoreReg"),   // str d2, [x3, w4, sxtw #3]
-            (0x4c40a021, "SimdLoadStoreMulti"), // ld1 {v1.16b-v2.16b}, [x1]
-            (0x4cdf7020, "SimdLoadStoreMulti"), // ld1 {v0.16b}, [x1], #16
-            (0x0c836044, "SimdLoadStoreMulti"), // st1 {v4.8b-v6.8b}, [x2], x3
-            (0x4e010c20, "SimdDupGeneral"),     // dup v0.16b, w1
-            (0x4e080c83, "SimdDupGeneral"),     // dup v3.2d, x4
-            (0x4e083c01, "SimdMovToGeneral"),   // mov x1, v0.d[0]
-            (0x0e0b3c22, "SimdMovToGeneral"),   // umov w2, v1.b[5]
-            (0x6e22ac20, "SimdThreeSame"),      // uminp v0.16b, v1.16b, v2.16b
-            (0x4e22bc20, "SimdThreeSame"),      // addp v0.16b, v1.16b, v2.16b
-            (0x4e201c21, "SimdThreeSame"),      // and v1.16b, v1.16b, v0.16b
-            (0x4ea41c83, "SimdThreeSame"),      // mov v3.16b, v4.16b
-            (0x6e621c20, "SimdThreeSame"),      // bsl v0.16b, v1.16b, v2.16b
-            (0x4ea28420, "SimdThreeSame"),      // add v0.4s, v1.4s, v2.4s
-            (0x6e623420, "SimdThreeSame"),      // cmhi v0.8h, v1.8h, v2.8h
-            (0x0e209800, "SimdTwoMisc"),        // cmeq v0.8b, v0.8b, #0
-            (0x0e31b800, "SimdAcross"),         // addv b0, v0.8b
-            (0x0e205820, "SimdTwoMisc"),        // cnt v0.8b, v1.8b
-            (0x6e205820, "SimdTwoMisc"),        // mvn v0.16b, v1.16b
-            (0x0f0c8400, "SimdShiftImm"),       // shrn v0.8b, v0.8h, #4
-            (0x4f088420, "SimdShiftImm"),       // shrn2 v0.16b, v1.8h, #8
-            (0x6f3d0420, "SimdShiftImm"),       // ushr v0.4s, v1.4s, #3
-            (0x7f6007fe, "SimdShiftImm"),       // ushr d30, d31, #32
-            (0x4f4c5420, "SimdShiftImm"),       // shl v0.2d, v1.2d, #12
-            (0xad3e0080, "SimdLoadStorePair"),  // stp q0, q0, [x4, #-64]
-            (0x6cc107e0, "SimdLoadStorePair"),  // ldp d0, d1, [sp], #16
-            (0xac0008a1, "SimdLoadStorePair"),  // stnp q1, q2, [x5]
-            (0xd50b7423, "DcZva"),              // dc zva, x3
-            (0x4f00e41f, "SimdModImm"),         // movi v31.16b, #0
-            (0x1a010001, "AddSubCarry"),        // adc w1, w0, w1
-            (0x1e6105e1, "FpCondCompare"),      // fccmp d15, d1, #1, eq
-            (0x1e756bff, "FpData2"),            // fmaxnm d31, d31, d21
-            (0x4f9f939f, "SimdFpByElement"),    // fmul v31.4s, v28.4s, v31.s[0]
-            (0x6e1f43ff, "SimdExt"),            // ext v31.16b, v31.16b, v31.16b, #8
-            (0x4e1d3bde, "SimdPermute"),        // zip1 v30.16b, v30.16b, v29.16b
-            (0x0e095907, "SimdPermute"),        // uzp2 v7.8b, v8.8b, v9.8b
-            (0x4e1f0549, "SimdDupElement"),     // dup v9.16b, v10.b[15]
-            (0x6e1c2441, "SimdInsElement"),     // mov v1.s[3], v2.s[1]
-            (0x4e181cc5, "SimdInsGeneral"),     // mov v5.d[1], x6
+            (0xdac00043, "DataProc1"),           // rbit x3, x2
+            (0xdac00c84, "DataProc1"),           // rev x4, x4
+            (0x5ac008a4, "DataProc1"),           // rev w4, w5
+            (0x5ac00441, "DataProc1"),           // rev16 w1, w2
+            (0xdac00841, "DataProc1"),           // rev32 x1, x2
+            (0xdac01063, "DataProc1"),           // clz x3, x3
+            (0xdac014c5, "DataProc1"),           // cls x5, x6
+            (0x9bc17c00, "MultiplyHigh"),        // umulh x0, x0, x1
+            (0x9b447c62, "MultiplyHigh"),        // smulh x2, x3, x4
+            (0x9ba20c20, "MultiplyLong"),        // umaddl x0, w1, w2, x3
+            (0x9b228c20, "MultiplyLong"),        // smsubl x0, w1, w2, x3
+            (0x3cc0827f, "SimdLoadStore"),       // ldur q31, [x19, #8]
+            (0x3c9f0080, "SimdLoadStore"),       // stur q0, [x4, #-16]
+            (0xfc408441, "SimdLoadStore"),       // ldr d1, [x2], #8
+            (0xbc004c83, "SimdLoadStore"),       // str s3, [x4, #4]!
+            (0x3ce1681f, "SimdLoadStoreReg"),    // ldr q31, [x0, x1]
+            (0xfc24d862, "SimdLoadStoreReg"),    // str d2, [x3, w4, sxtw #3]
+            (0x4c40a021, "SimdLoadStoreMulti"),  // ld1 {v1.16b-v2.16b}, [x1]
+            (0x4cdf7020, "SimdLoadStoreMulti"),  // ld1 {v0.16b}, [x1], #16
+            (0x0c836044, "SimdLoadStoreMulti"),  // st1 {v4.8b-v6.8b}, [x2], x3
+            (0x4e010c20, "SimdDupGeneral"),      // dup v0.16b, w1
+            (0x4e080c83, "SimdDupGeneral"),      // dup v3.2d, x4
+            (0x4e083c01, "SimdMovToGeneral"),    // mov x1, v0.d[0]
+            (0x0e0b3c22, "SimdMovToGeneral"),    // umov w2, v1.b[5]
+            (0x6e22ac20, "SimdThreeSame"),       // uminp v0.16b, v1.16b, v2.16b
+            (0x4e22bc20, "SimdThreeSame"),       // addp v0.16b, v1.16b, v2.16b
+            (0x4e201c21, "SimdThreeSame"),       // and v1.16b, v1.16b, v0.16b
+            (0x4ea41c83, "SimdThreeSame"),       // mov v3.16b, v4.16b
+            (0x6e621c20, "SimdThreeSame"),       // bsl v0.16b, v1.16b, v2.16b
+            (0x4ea28420, "SimdThreeSame"),       // add v0.4s, v1.4s, v2.4s
+            (0x6e623420, "SimdThreeSame"),       // cmhi v0.8h, v1.8h, v2.8h
+            (0x0e209800, "SimdTwoMisc"),         // cmeq v0.8b, v0.8b, #0
+            (0x0e31b800, "SimdAcross"),          // addv b0, v0.8b
+            (0x0e205820, "SimdTwoMisc"),         // cnt v0.8b, v1.8b
+            (0x6e205820, "SimdTwoMisc"),         // mvn v0.16b, v1.16b
+            (0x0f0c8400, "SimdShiftImm"),        // shrn v0.8b, v0.8h, #4
+            (0x4f088420, "SimdShiftImm"),        // shrn2 v0.16b, v1.8h, #8
+            (0x6f3d0420, "SimdShiftImm"),        // ushr v0.4s, v1.4s, #3
+            (0x7f6007fe, "SimdShiftImm"),        // ushr d30, d31, #32
+            (0x4f4c5420, "SimdShiftImm"),        // shl v0.2d, v1.2d, #12
+            (0xad3e0080, "SimdLoadStorePair"),   // stp q0, q0, [x4, #-64]
+            (0x6cc107e0, "SimdLoadStorePair"),   // ldp d0, d1, [sp], #16
+            (0xac0008a1, "SimdLoadStorePair"),   // stnp q1, q2, [x5]
+            (0xd50b7423, "DcZva"),               // dc zva, x3
+            (0x4f00e41f, "SimdModImm"),          // movi v31.16b, #0
+            (0x1a010001, "AddSubCarry"),         // adc w1, w0, w1
+            (0x1e6105e1, "FpCondCompare"),       // fccmp d15, d1, #1, eq
+            (0x1e756bff, "FpData2"),             // fmaxnm d31, d31, d21
+            (0x4f9f939f, "SimdFpByElement"),     // fmul v31.4s, v28.4s, v31.s[0]
+            (0x6e1f43ff, "SimdExt"),             // ext v31.16b, v31.16b, v31.16b, #8
+            (0x4e1d3bde, "SimdPermute"),         // zip1 v30.16b, v30.16b, v29.16b
+            (0x0e095907, "SimdPermute"),         // uzp2 v7.8b, v8.8b, v9.8b
+            (0x4e1f0549, "SimdDupElement"),      // dup v9.16b, v10.b[15]
+            (0x6e1c2441, "SimdInsElement"),      // mov v1.s[3], v2.s[1]
+            (0x4e181cc5, "SimdInsGeneral"),      // mov v5.d[1], x6
             (0x4d0048a4, "SimdLoadStoreSingle"), // st1 {v4.h}[5], [x5]
-            (0x3d4a001d, "SimdLoadStore"),      // ldr b29, [x0, #640]
-            (0x1e2e101f, "SimdModImm"),         // fmov s31, #1.0
-            (0x1e22c042, "FpData1"),            // fcvt d2, s2
-            (0x1e19e027, "FpFixedConv"),        // fcvtzu w7, s1, #8
-            (0x1f5effbf, "FpData3"),            // fmsub d31, d29, d30, d31
-            (0x4ebc9f5a, "SimdThreeSame"),      // mul v26.4s, v26.4s, v28.4s
-            (0x0e21db9c, "SimdTwoMisc"),        // scvtf v28.2s, v28.2s
-            (0x7efcd7de, "FpAbd"),              // fabd d30, d30, d28
-            (0x5e21dc03, "FpMulx"),             // fmulx s3, s0, s1
-            (0x5e61dc03, "FpMulx"),             // fmulx d3, d0, d1
-            (0x7e21dbee, "SimdScalarTwoMisc"),  // ucvtf s14, s31
-            (0x6e22e420, "SimdFpThreeSame"),    // fcmge v0.4s, v1.4s, v2.4s
-            (0x4e62e420, "SimdFpThreeSame"),    // fcmeq v0.2d, v1.2d, v2.2d
-            (0x6ea2e420, "SimdFpThreeSame"),    // fcmgt v0.4s, v1.4s, v2.4s
-            (0x6e22dc20, "SimdVec4S"),          // fmul v0.4s, v1.4s, v2.4s (older dedicated arm)
-            (0x6e62dc20, "SimdFpThreeSame"),    // fmul v0.2d, v1.2d, v2.2d
-            (0x4e22cc20, "SimdFpThreeSame"),    // fmla v0.4s, v1.4s, v2.4s
-            (0x6e62fc20, "SimdFpThreeSame"),    // fdiv v0.2d, v1.2d, v2.2d
-            (0x4ea0f820, "SimdFpTwoMisc"),      // fabs v0.4s, v1.4s
-            (0x4ea0c820, "SimdFpTwoMisc"),      // fcmgt v0.4s, v1.4s, #0.0
-            (0x0e616820, "SimdFpTwoMisc"),      // fcvtn v0.2s, v1.2d
-            (0x4ea1b820, "SimdTwoMisc"),        // fcvtzs v0.4s, v1.4s
-            (0x7ea1b800, "SimdScalarTwoMisc"),  // fcvtzu s0, s0
-            (0x0e612800, "SimdShiftImm"),       // xtn v0.4h, v0.4s
-            (0x2f10a400, "SimdShiftImm"),       // uxtl v0.4s, v0.4h
+            (0x3d4a001d, "SimdLoadStore"),       // ldr b29, [x0, #640]
+            (0x1e2e101f, "SimdModImm"),          // fmov s31, #1.0
+            (0x1e22c042, "FpData1"),             // fcvt d2, s2
+            (0x1e19e027, "FpFixedConv"),         // fcvtzu w7, s1, #8
+            (0x1f5effbf, "FpData3"),             // fmsub d31, d29, d30, d31
+            (0x4ebc9f5a, "SimdThreeSame"),       // mul v26.4s, v26.4s, v28.4s
+            (0x0e21db9c, "SimdTwoMisc"),         // scvtf v28.2s, v28.2s
+            (0x7efcd7de, "FpAbd"),               // fabd d30, d30, d28
+            (0x5e21dc03, "FpMulx"),              // fmulx s3, s0, s1
+            (0x5e61dc03, "FpMulx"),              // fmulx d3, d0, d1
+            (0x7e21dbee, "SimdScalarTwoMisc"),   // ucvtf s14, s31
+            (0x6e22e420, "SimdFpThreeSame"),     // fcmge v0.4s, v1.4s, v2.4s
+            (0x4e62e420, "SimdFpThreeSame"),     // fcmeq v0.2d, v1.2d, v2.2d
+            (0x6ea2e420, "SimdFpThreeSame"),     // fcmgt v0.4s, v1.4s, v2.4s
+            (0x6e22dc20, "SimdVec4S"),           // fmul v0.4s, v1.4s, v2.4s (older dedicated arm)
+            (0x6e62dc20, "SimdFpThreeSame"),     // fmul v0.2d, v1.2d, v2.2d
+            (0x4e22cc20, "SimdFpThreeSame"),     // fmla v0.4s, v1.4s, v2.4s
+            (0x6e62fc20, "SimdFpThreeSame"),     // fdiv v0.2d, v1.2d, v2.2d
+            (0x4ea0f820, "SimdFpTwoMisc"),       // fabs v0.4s, v1.4s
+            (0x4ea0c820, "SimdFpTwoMisc"),       // fcmgt v0.4s, v1.4s, #0.0
+            (0x0e616820, "SimdFpTwoMisc"),       // fcvtn v0.2s, v1.2d
+            (0x4ea1b820, "SimdTwoMisc"),         // fcvtzs v0.4s, v1.4s
+            (0x7ea1b800, "SimdScalarTwoMisc"),   // fcvtzu s0, s0
+            (0x0e612800, "SimdShiftImm"),        // xtn v0.4h, v0.4s
+            (0x2f10a400, "SimdShiftImm"),        // uxtl v0.4s, v0.4h
             (0x4c400844, "SimdLoadStoreStruct"), // ld4 {v4.4s-v7.4s}, [x2]
             (0x4c9f4836, "SimdLoadStoreStruct"), // st3 {v22.4s-v24.4s}, [x1], #48
         ];
@@ -2415,31 +2922,57 @@ mod tests {
         let words = [0x4E03_0000u32, 0x4E03_23C4, 0x0E03_1025];
         let names = ["SimdTbl"; 3];
         for (w, n) in words.iter().zip(names) {
-            assert!(format!("{:?}", super::super::decoder::decode(*w)).starts_with(n), "0x{w:08X}");
+            assert!(
+                format!("{:?}", super::super::decoder::decode(*w)).starts_with(n),
+                "0x{w:08X}"
+            );
         }
         let (cpu, _) = run(&words, |c, _| {
             // v0 = bytes 0x00..0x0F reversed index source, v3 = indices 15..0
-            c.regs.write_q(0, (0..16u128).fold(0, |a, i| a | ((0x40 + i) << (8 * i))));
+            c.regs
+                .write_q(0, (0..16u128).fold(0, |a, i| a | ((0x40 + i) << (8 * i))));
             c.regs.write_q(3, (0..16u128).fold(0, |a, i| a | ((15 - i) << (8 * i))));
-            c.regs.write_q(30, (0..16u128).fold(0, |a, i| a | ((0x50 + i) << (8 * i))));
-            c.regs.write_q(31, (0..16u128).fold(0, |a, i| a | ((0x60 + i) << (8 * i))));
-            c.regs.write_q(1, (0..16u128).fold(0, |a, i| a | ((0x70 + i) << (8 * i))));
+            c.regs
+                .write_q(30, (0..16u128).fold(0, |a, i| a | ((0x50 + i) << (8 * i))));
+            c.regs
+                .write_q(31, (0..16u128).fold(0, |a, i| a | ((0x60 + i) << (8 * i))));
+            c.regs
+                .write_q(1, (0..16u128).fold(0, |a, i| a | ((0x70 + i) << (8 * i))));
             c.regs.write_q(5, u128::MAX);
         });
         // tbl reverses the byte order of v0
-        assert_eq!(cpu.regs.read_q(0), (0..16u128).fold(0, |a, i| a | ((0x40 + 15 - i) << (8 * i))));
+        assert_eq!(
+            cpu.regs.read_q(0),
+            (0..16u128).fold(0, |a, i| a | ((0x40 + 15 - i) << (8 * i)))
+        );
         // two-register table: indices 0..15 only touch v30
-        assert_eq!(cpu.regs.read_q(4), (0..16u128).fold(0, |a, i| a | ((0x50 + 15 - i) << (8 * i))));
+        assert_eq!(
+            cpu.regs.read_q(4),
+            (0..16u128).fold(0, |a, i| a | ((0x50 + 15 - i) << (8 * i)))
+        );
         // tbx 64-bit: low 8 bytes looked up from v1 with indices 15..8, upper half zeroed
-        assert_eq!(cpu.regs.read_q(5), (0..8u128).fold(0, |a, i| a | ((0x70 + 15 - i) << (8 * i))));
+        assert_eq!(
+            cpu.regs.read_q(5),
+            (0..8u128).fold(0, |a, i| a | ((0x70 + 15 - i) << (8 * i)))
+        );
     }
 
     #[test]
     fn crc32_instructions() {
         // crc32b w1,w1,w0 ; crc32cb w3,w3,w0 ; crc32x w5,w5,x0 ; crc32w w6,w6,w0 ; crc32h w7,w7,w0 ; crc32cx w8,w8,x0
-        let words = [0x1AC0_4021u32, 0x1AC0_5063, 0x9AC0_4CA5, 0x1AC0_48C6, 0x1AC0_44E7, 0x9AC0_5D08];
+        let words = [
+            0x1AC0_4021u32,
+            0x1AC0_5063,
+            0x9AC0_4CA5,
+            0x1AC0_48C6,
+            0x1AC0_44E7,
+            0x9AC0_5D08,
+        ];
         for w in words {
-            assert!(format!("{:?}", super::super::decoder::decode(w)).starts_with("Crc32"), "0x{w:08X}");
+            assert!(
+                format!("{:?}", super::super::decoder::decode(w)).starts_with("Crc32"),
+                "0x{w:08X}"
+            );
         }
         // sf=1 with a byte size is not a valid encoding
         assert!(format!("{:?}", super::super::decoder::decode(0x9AC0_4021)).starts_with("Unimplemented"));
@@ -2489,7 +3022,12 @@ mod tests {
         assert_eq!(cpu.regs.read_x(7), 0);
         assert_eq!(cpu.regs.read_d(31), 4.0); // fmsub: 10 - 2 * 3
         // all four fused 3-source forms, d29 = 2, d30 = 3, d31 = 10 (regression: FNMADD/FNMSUB had the product sign wrong)
-        for (word, want) in [(0x1F5E7FBFu32, 16.0), (0x1F5EFFBF, 4.0), (0x1F7E7FBF, -16.0), (0x1F7EFFBF, -4.0)] {
+        for (word, want) in [
+            (0x1F5E7FBFu32, 16.0),
+            (0x1F5EFFBF, 4.0),
+            (0x1F7E7FBF, -16.0),
+            (0x1F7EFFBF, -4.0),
+        ] {
             let (cpu, _) = run(&[word], |c, _| {
                 c.regs.write_d(29, 2.0);
                 c.regs.write_d(30, 3.0);
@@ -2592,7 +3130,10 @@ mod tests {
             c.regs.write_x(4, DATA + 0x100);
             c.regs.write_x(2, DATA);
         });
-        assert_eq!(cpu.regs.read_q(31), u128::from_le_bytes(core::array::from_fn(|i| i as u8 + 8)));
+        assert_eq!(
+            cpu.regs.read_q(31),
+            u128::from_le_bytes(core::array::from_fn(|i| i as u8 + 8))
+        );
         assert_eq!(mmu.read_u64(DATA + 0xF0).unwrap(), 0xA5A5_A5A5_A5A5_A5A5);
         assert_eq!(cpu.regs.read_q(1), 0x0706_0504_0302_0100); // D load zeroes the upper bits
         assert_eq!(cpu.regs.read_x(2), DATA + 8); // post-index writeback
@@ -2627,7 +3168,8 @@ mod tests {
         // fmul d2, d0, v1.d[1]; fmul s3, s4, v1.s[3] (found by running QuickJS as a Linux ELF)
         let (cpu, _) = run(&[0x5FC19802, 0x5FA19883], |c, _| {
             c.regs.write_q(0, (3.0f64.to_bits() as u128) | (u128::MAX << 64));
-            c.regs.write_q(1, (1.0f64.to_bits() as u128) | ((0.5f64.to_bits() as u128) << 64));
+            c.regs
+                .write_q(1, (1.0f64.to_bits() as u128) | ((0.5f64.to_bits() as u128) << 64));
             c.regs.write_q(2, u128::MAX);
             c.regs.write_q(3, u128::MAX);
             c.regs.write_q(4, 2.0f32.to_bits() as u128 | (u128::MAX << 32));
@@ -2641,8 +3183,12 @@ mod tests {
     fn scalar_faddp_sums_two_lanes() {
         // faddp d0, v1.2d and faddp s2, v3.2s (found by running Lua as a Linux ELF)
         let (cpu, _) = run(&[0x7E70D820, 0x7E30D862], |c, _| {
-            c.regs.write_q(1, (2.5f64.to_bits() as u128) | ((4.0f64.to_bits() as u128) << 64));
-            c.regs.write_q(3, (1.5f32.to_bits() as u128) | ((0.25f32.to_bits() as u128) << 32) | (u128::MAX << 64));
+            c.regs
+                .write_q(1, (2.5f64.to_bits() as u128) | ((4.0f64.to_bits() as u128) << 64));
+            c.regs.write_q(
+                3,
+                (1.5f32.to_bits() as u128) | ((0.25f32.to_bits() as u128) << 32) | (u128::MAX << 64),
+            );
         });
         assert_eq!(cpu.regs.read_q(0), 6.5f64.to_bits() as u128);
         assert_eq!(cpu.regs.read_q(2), 1.75f32.to_bits() as u128);
@@ -2698,13 +3244,19 @@ mod tests {
     fn saturating_narrows_and_shifts_set_qc() {
         use super::super::decoder::decode;
         // sqxtun v0.8b, v1.8h: a negative lane saturates to 0 and sets QC; in-range lanes do not
-        assert!(matches!(decode(0x2E212820), Instruction::SimdQNarrow { scalar: false, .. }), "decode");
+        assert!(
+            matches!(decode(0x2E212820), Instruction::SimdQNarrow { scalar: false, .. }),
+            "decode"
+        );
         let (cpu, _) = run(&[0x2E212820], |c, _| c.regs.write_q(1, 0xFFFF));
         assert_ne!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
         let (cpu, _) = run(&[0x2E212820], |c, _| c.regs.write_q(1, 5));
         assert_eq!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
         // scalar sqxtun b0, h1 reads only lane 0: a saturating value in lane 1 must not set QC
-        assert!(matches!(decode(0x7E212820), Instruction::SimdQNarrow { scalar: true, .. }), "decode scalar");
+        assert!(
+            matches!(decode(0x7E212820), Instruction::SimdQNarrow { scalar: true, .. }),
+            "decode scalar"
+        );
         let (cpu, _) = run(&[0x7E212820], |c, _| c.regs.write_q(1, 0xFFFF_0005));
         assert_eq!(cpu.regs.fpsr & super::super::registers::FPSR_QC, 0);
         assert_eq!(cpu.regs.read_q(0), 5);
@@ -2729,7 +3281,10 @@ mod tests {
         // msr fpsr, xzr; fdiv s8, s0, s1; mrs x0, fpsr
         let (cpu, _) = run(&[0xd51b443f, 0x1e211808, 0xd53b4420], init);
         assert_eq!(cpu.regs.read_x(0), DZC);
-        assert!(cpu.fp_flags_tracked, "touching FPSR switches Tier-4 to the interpreter's FP");
+        assert!(
+            cpu.fp_flags_tracked,
+            "touching FPSR switches Tier-4 to the interpreter's FP"
+        );
         // fadd s8, s2, s3 (inf + -inf); fadd s9, s0, s4 (inexact); mrs x0; msr fpsr, xzr; mrs x1: sticky, then cleared
         let (cpu, _) = run(&[0x1e232848, 0x1e242809, 0xd53b4420, 0xd51b443f, 0xd53b4421], init);
         assert_eq!(cpu.regs.read_x(0), IOC | IXC);
@@ -2817,7 +3372,8 @@ mod tests {
                 c.regs.write_x(2, DATA);
                 c.regs.write_q(29, 0xAB);
                 c.regs.write_x(4, 0xCAFE_F00D);
-                c.regs.write_q(8, 0x0000_0002_0000_0001u128 << 64 | 0xDEAD_BEEF_0000_0000);
+                c.regs
+                    .write_q(8, 0x0000_0002_0000_0001u128 << 64 | 0xDEAD_BEEF_0000_0000);
                 c.regs.write_x(1, DATA + 1);
                 c.regs.write_x(3, DATA + 4);
                 c.regs.write_q(6, 0x0102_0304_0506_0708u128 << 64);
@@ -2842,7 +3398,10 @@ mod tests {
 
     #[test]
     fn simd_modified_immediate() {
-        let words = [0x4f00e41f, 0x4f052561, 0x6f008642, 0x6f05e4a3, 0x2f00e424, 0x4f005425, 0x6f0797e6, 0x4f03f607, 0x6f04f488, 0x4f02c749];
+        let words = [
+            0x4f00e41f, 0x4f052561, 0x6f008642, 0x6f05e4a3, 0x2f00e424, 0x4f005425, 0x6f0797e6, 0x4f03f607, 0x6f04f488,
+            0x4f02c749,
+        ];
         let (cpu, _) = run(&words, |c, _| {
             c.regs.write_q(31, u128::MAX);
             c.regs.write_q(4, u128::MAX);
@@ -2879,7 +3438,9 @@ mod tests {
         });
         assert_eq!(cpu.regs.read_x(1), 0xFFFF_FFFF_FFFF_00FF);
         // shrn v0.8b, v0.8h, #4 on 0x0AB0 halfwords
-        let (cpu, _) = run(&[0x0f0c8400], |c, _| c.regs.write_q(0, super::simd::dup(0x0AB0, 16, true)));
+        let (cpu, _) = run(&[0x0f0c8400], |c, _| {
+            c.regs.write_q(0, super::simd::dup(0x0AB0, 16, true))
+        });
         assert_eq!(cpu.regs.read_q(0), 0xABAB_ABAB_ABAB_ABAB);
         // umov w2, v1.b[5]
         let (cpu, _) = run(&[0x0e0b3c22], |c, _| c.regs.write_q(1, 0x7700_0000_0000));
@@ -2932,7 +3493,10 @@ mod intvec_tests {
         // sqxtun v0.8b, v1.8h: negatives to 0, above 255 to 255
         assert_eq!(one(0x2e212820, u128::MAX, n16), 0x0100_ffff_0005_00ff);
         // sqxtun2 v0.16b, v1.8h keeps the low half of v0
-        assert_eq!(one(0x6e212820, 0x1111_2222_3333_4444, n16), 0x0100_ffff_0005_00ffu128 << 64 | 0x1111_2222_3333_4444);
+        assert_eq!(
+            one(0x6e212820, 0x1111_2222_3333_4444, n16),
+            0x0100_ffff_0005_00ffu128 << 64 | 0x1111_2222_3333_4444
+        );
         // sqxtn v0.4h, v1.4s
         let n32 = lanes(32, &[0x8000_0000, 0x7FFF_FFFF, 0xFFFF_FFFE, 0x0001_0000]);
         assert_eq!(one(0x0e614820, u128::MAX, n32), 0x7FFF_FFFE_7FFF_8000);
@@ -2978,37 +3542,61 @@ mod intvec_tests {
         // srsra v0.8h, v1.8h, #3: 5 + ((-9 + 4) >> 3) = 5 + -1 = 4
         assert_eq!(one(0x4f1d3420, dup(16, 5), dup(16, (-9i16) as u16 as u64)), dup(16, 4));
         // ursra v0.2d, v1.2d, #5: 1 + ((0xFFFF_FFFF_FFFF_FFFF + 16) >> 5) = 1 + 0x0800_0000_0000_0000
-        assert_eq!(one(0x6f7b3420, dup(64, 1), dup(64, u64::MAX)), dup(64, 0x0800_0000_0000_0001));
+        assert_eq!(
+            one(0x6f7b3420, dup(64, 1), dup(64, u64::MAX)),
+            dup(64, 0x0800_0000_0000_0001)
+        );
         // usra d0, d1, #7: scalar, 5 + (1 << 63 >> 7), upper half zeroed
         assert_eq!(one(0x7f791420, 5, 1u128 << 63 | 1u128 << 100), 0x0100_0000_0000_0005);
         // sri v0.4s, v1.4s, #8: top byte of d kept, n >> 8 below
-        assert_eq!(one(0x6f384420, dup(32, 0xAABB_CCDD), dup(32, 0x1122_3344)), dup(32, 0xAA11_2233));
+        assert_eq!(
+            one(0x6f384420, dup(32, 0xAABB_CCDD), dup(32, 0x1122_3344)),
+            dup(32, 0xAA11_2233)
+        );
         // sli v0.4s, v1.4s, #8: low byte of d kept, n << 8 above
-        assert_eq!(one(0x6f285420, dup(32, 0xAABB_CCDD), dup(32, 0x1122_3344)), dup(32, 0x2233_44DD));
+        assert_eq!(
+            one(0x6f285420, dup(32, 0xAABB_CCDD), dup(32, 0x1122_3344)),
+            dup(32, 0x2233_44DD)
+        );
     }
 
     #[test]
     fn saturating_shift_left() {
         let n = lanes(32, &[0x1000_0000, 0xF000_0000, 0xE000_0000, 5]);
         // sqshl v0.4s, v1.4s, #3: 2^31 overflows, -2^31 fits exactly, below saturates to INT_MIN
-        assert_eq!(one(0x4f237420, 0, n), lanes(32, &[0x7FFF_FFFF, 0x8000_0000, 0x8000_0000, 40]));
+        assert_eq!(
+            one(0x4f237420, 0, n),
+            lanes(32, &[0x7FFF_FFFF, 0x8000_0000, 0x8000_0000, 40])
+        );
         // uqshl v0.16b, v1.16b, #2: bytes 40 3f 01 80 -> ff fc 04 ff
-        assert_eq!(one(0x6f0a7420, 0, simd::dup(0x8001_3F40, 32, true)), simd::dup(0xFF04_FCFF, 32, true));
+        assert_eq!(
+            one(0x6f0a7420, 0, simd::dup(0x8001_3F40, 32, true)),
+            simd::dup(0xFF04_FCFF, 32, true)
+        );
         // sqshlu v0.8h, v1.8h, #4: signed source, unsigned result
         let n = lanes(16, &[0xFFFF, 0x07FF, 0x0800, 0x1000, 0, 0, 0, 0]);
-        assert_eq!(one(0x6f146420, 0, n), lanes(16, &[0, 0x7FF0, 0x8000, 0xFFFF, 0, 0, 0, 0]));
+        assert_eq!(
+            one(0x6f146420, 0, n),
+            lanes(16, &[0, 0x7FF0, 0x8000, 0xFFFF, 0, 0, 0, 0])
+        );
     }
 
     #[test]
     fn pairwise_long() {
         // uaddlp v0.1d, v1.2s (0x2ea02820): 0xFFFFFFFF + 0xFFFFFFFF = 0x1_FFFF_FFFE
-        assert_eq!(one(0x2ea02820, u128::MAX, lanes(32, &[0xFFFF_FFFF, 0xFFFF_FFFF])), 0x1_FFFF_FFFE);
+        assert_eq!(
+            one(0x2ea02820, u128::MAX, lanes(32, &[0xFFFF_FFFF, 0xFFFF_FFFF])),
+            0x1_FFFF_FFFE
+        );
         // saddlp v0.8h, v1.16b (0x4e202820): -1 + -1 = -2 ; 127 + 127 = 254
         let n = lanes(8, &[0xFF, 0xFF, 127, 127, 0x80, 0x80, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(one(0x4e202820, 0, n), lanes(16, &[0xFFFE, 254, 0xFF00, 3, 0, 0, 0, 0]));
         // uadalp v0.4s, v1.8h (0x6e606820): 10 + (0xFFFF + 1)
         let n = lanes(16, &[0xFFFF, 1, 0, 0, 0, 0, 0, 0]);
-        assert_eq!(one(0x6e606820, lanes(32, &[10, 20, 30, 40]), n), lanes(32, &[10 + 0x10000, 20, 30, 40]));
+        assert_eq!(
+            one(0x6e606820, lanes(32, &[10, 20, 30, 40]), n),
+            lanes(32, &[10 + 0x10000, 20, 30, 40])
+        );
     }
 
     #[test]
@@ -3046,7 +3634,10 @@ impl Cpu {
         self.regs.fpcr & softfp::FPCR_ARITH_MASK != 0
     }
     fn fp_env(&self, double: bool) -> (FpFmt, FpEnv) {
-        (if double { softfp::F64 } else { softfp::F32 }, FpEnv::from_fpcr(self.regs.fpcr))
+        (
+            if double { softfp::F64 } else { softfp::F32 },
+            FpEnv::from_fpcr(self.regs.fpcr),
+        )
     }
     fn fp_bits(&self, r: u8, double: bool) -> u64 {
         let v = self.regs.read_q(r);
@@ -3061,7 +3652,11 @@ impl Cpu {
     fn fp_cmp_operand(&self, r: u8, double: bool) -> f64 {
         let (f, env) = self.fp_env(double);
         let b = softfp::flush_input(f, env, self.fp_bits(r, double));
-        if double { f64::from_bits(b) } else { f32::from_bits(b as u32) as f64 }
+        if double {
+            f64::from_bits(b)
+        } else {
+            f32::from_bits(b as u32) as f64
+        }
     }
 }
 
@@ -3079,14 +3674,26 @@ trait FpFused: Sized {
     fn fused(self, m: Self, a: Self) -> Self;
 }
 impl FpFused for f32 {
-    fn zero_times_inf(self, m: Self) -> bool { (self == 0.0 && m.is_infinite()) || (self.is_infinite() && m == 0.0) }
-    fn default_nan() -> Self { f32::NAN }
-    fn fused(self, m: Self, a: Self) -> Self { self.mul_add(m, a) }
+    fn zero_times_inf(self, m: Self) -> bool {
+        (self == 0.0 && m.is_infinite()) || (self.is_infinite() && m == 0.0)
+    }
+    fn default_nan() -> Self {
+        f32::NAN
+    }
+    fn fused(self, m: Self, a: Self) -> Self {
+        self.mul_add(m, a)
+    }
 }
 impl FpFused for f64 {
-    fn zero_times_inf(self, m: Self) -> bool { (self == 0.0 && m.is_infinite()) || (self.is_infinite() && m == 0.0) }
-    fn default_nan() -> Self { f64::NAN }
-    fn fused(self, m: Self, a: Self) -> Self { self.mul_add(m, a) }
+    fn zero_times_inf(self, m: Self) -> bool {
+        (self == 0.0 && m.is_infinite()) || (self.is_infinite() && m == 0.0)
+    }
+    fn default_nan() -> Self {
+        f64::NAN
+    }
+    fn fused(self, m: Self, a: Self) -> Self {
+        self.mul_add(m, a)
+    }
 }
 
 /// NaN handling shared by scalar `FMAXNM`/`FMINNM`: a quiet NaN against a number returns the number;
@@ -3110,23 +3717,53 @@ trait FpNum: Copy + std::ops::Add<Output = Self> + std::ops::Neg<Output = Self> 
     }
     fn nm_nan(n: Self, m: Self) -> Option<Self> {
         if n.is_any_nan() || m.is_any_nan() {
-            Some(if n.is_qnan() && !m.is_any_nan() { m } else if m.is_qnan() && !n.is_any_nan() { n } else { Self::process_nans(&[n, m]).unwrap_or(n + m) })
+            Some(if n.is_qnan() && !m.is_any_nan() {
+                m
+            } else if m.is_qnan() && !n.is_any_nan() {
+                n
+            } else {
+                Self::process_nans(&[n, m]).unwrap_or(n + m)
+            })
         } else {
             None
         }
     }
 }
 impl FpNum for f32 {
-    fn quieted(self) -> Self { f32::from_bits(self.to_bits() | 1 << 22) }
-    fn default_nan_if_nan(self) -> Self { if self.is_nan() { f32::from_bits(0x7fc0_0000) } else { self } }
-    fn is_qnan(self) -> bool { self.is_nan() && self.to_bits() & (1 << 22) != 0 }
-    fn is_any_nan(self) -> bool { self.is_nan() }
+    fn quieted(self) -> Self {
+        f32::from_bits(self.to_bits() | 1 << 22)
+    }
+    fn default_nan_if_nan(self) -> Self {
+        if self.is_nan() {
+            f32::from_bits(0x7fc0_0000)
+        } else {
+            self
+        }
+    }
+    fn is_qnan(self) -> bool {
+        self.is_nan() && self.to_bits() & (1 << 22) != 0
+    }
+    fn is_any_nan(self) -> bool {
+        self.is_nan()
+    }
 }
 impl FpNum for f64 {
-    fn quieted(self) -> Self { f64::from_bits(self.to_bits() | 1 << 51) }
-    fn default_nan_if_nan(self) -> Self { if self.is_nan() { f64::from_bits(0x7ff8_0000_0000_0000) } else { self } }
-    fn is_qnan(self) -> bool { self.is_nan() && self.to_bits() & (1 << 51) != 0 }
-    fn is_any_nan(self) -> bool { self.is_nan() }
+    fn quieted(self) -> Self {
+        f64::from_bits(self.to_bits() | 1 << 51)
+    }
+    fn default_nan_if_nan(self) -> Self {
+        if self.is_nan() {
+            f64::from_bits(0x7ff8_0000_0000_0000)
+        } else {
+            self
+        }
+    }
+    fn is_qnan(self) -> bool {
+        self.is_nan() && self.to_bits() & (1 << 51) != 0
+    }
+    fn is_any_nan(self) -> bool {
+        self.is_nan()
+    }
 }
 
 #[cfg(test)]
@@ -3198,22 +3835,56 @@ mod fuzz_scalar_nan {
     #[test]
     fn fpcr_fz_dn_and_rounding_mode_apply_to_arithmetic() {
         // FMUL S3,S0,S1 with FZ: 1.0 * denormal reads the denormal as zero
-        assert_eq!(run_fpcr(0x1e21_0803, 0x100_0000, &[(0, 0x3f80_0000), (1, 1)]).regs.v[3], 0);
+        assert_eq!(
+            run_fpcr(0x1e21_0803, 0x100_0000, &[(0, 0x3f80_0000), (1, 1)]).regs.v[3],
+            0
+        );
         assert_eq!(run_fpcr(0x1e21_0803, 0, &[(0, 0x3f80_0000), (1, 1)]).regs.v[3], 1);
         // FADD S3,S0,S1 with DN: a quiet NaN with payload becomes the default NaN
-        assert_eq!(run_fpcr(0x1e21_2803, 0x200_0000, &[(0, 0), (1, 0xffc0_0001)]).regs.v[3], 0x7fc0_0000);
-        assert_eq!(run_fpcr(0x1e21_2803, 0, &[(0, 0), (1, 0xffc0_0001)]).regs.v[3], 0xffc0_0001);
+        assert_eq!(
+            run_fpcr(0x1e21_2803, 0x200_0000, &[(0, 0), (1, 0xffc0_0001)]).regs.v[3],
+            0x7fc0_0000
+        );
+        assert_eq!(
+            run_fpcr(0x1e21_2803, 0, &[(0, 0), (1, 0xffc0_0001)]).regs.v[3],
+            0xffc0_0001
+        );
         // FADD S3,S0,S1 with RMode: 1.0 + 2^-149 rounds up for RP, stays for RN/RM/RZ
-        for (rmode, want) in [(0u32, 0x3f80_0000u128), (1, 0x3f80_0001), (2, 0x3f80_0000), (3, 0x3f80_0000)] {
-            assert_eq!(run_fpcr(0x1e21_2803, rmode << 22, &[(0, 0x3f80_0000), (1, 1)]).regs.v[3], want, "rmode {rmode}");
+        for (rmode, want) in [
+            (0u32, 0x3f80_0000u128),
+            (1, 0x3f80_0001),
+            (2, 0x3f80_0000),
+            (3, 0x3f80_0000),
+        ] {
+            assert_eq!(
+                run_fpcr(0x1e21_2803, rmode << 22, &[(0, 0x3f80_0000), (1, 1)]).regs.v[3],
+                want,
+                "rmode {rmode}"
+            );
         }
         // FMADD D3,D0,D1,D2 (fused) under RM: 1 + 2^-60 * 2^-60 rounds down to 1.0; RP gives the next double up
         let (a, b) = (0x3c30_0000_0000_0000u128, 0x3c30_0000_0000_0000u128); // 2^-60
-        assert_eq!(run_fpcr(0x1f41_0803, 2 << 22, &[(0, a), (1, b), (2, 0x3ff0_0000_0000_0000)]).regs.v[3], 0x3ff0_0000_0000_0000);
-        assert_eq!(run_fpcr(0x1f41_0803, 1 << 22, &[(0, a), (1, b), (2, 0x3ff0_0000_0000_0000)]).regs.v[3], 0x3ff0_0000_0000_0001);
+        assert_eq!(
+            run_fpcr(0x1f41_0803, 2 << 22, &[(0, a), (1, b), (2, 0x3ff0_0000_0000_0000)])
+                .regs
+                .v[3],
+            0x3ff0_0000_0000_0000
+        );
+        assert_eq!(
+            run_fpcr(0x1f41_0803, 1 << 22, &[(0, a), (1, b), (2, 0x3ff0_0000_0000_0000)])
+                .regs
+                .v[3],
+            0x3ff0_0000_0000_0001
+        );
         // scalar FADDP S0, V1.2S under RP: 1.0 + 2^-149 rounds up
-        assert_eq!(run_fpcr(0x7e30_d820, 1 << 22, &[(1, 0x3f80_0000 | 1u128 << 32)]).regs.v[0], 0x3f80_0001);
-        assert_eq!(run_fpcr(0x7e30_d820, 0, &[(1, 0x3f80_0000 | 1u128 << 32)]).regs.v[0], 0x3f80_0000);
+        assert_eq!(
+            run_fpcr(0x7e30_d820, 1 << 22, &[(1, 0x3f80_0000 | 1u128 << 32)]).regs.v[0],
+            0x3f80_0001
+        );
+        assert_eq!(
+            run_fpcr(0x7e30_d820, 0, &[(1, 0x3f80_0000 | 1u128 << 32)]).regs.v[0],
+            0x3f80_0000
+        );
         // vector FADD V.4S under FZ+DN: lane 0 denormal + denormal flushes to +0
         let c = run_fpcr(0x4e22_d420, 0x300_0000, &[(1, 0x0000_0001), (2, 0x0000_0002)]);
         assert_eq!(c.regs.v[0] as u32, 0);
@@ -3231,16 +3902,25 @@ mod fuzz_scalar_nan {
         // fnmul s0,s1,s2: 0 * inf is the default NaN, then negated
         assert_eq!(run1(0x1e22_8820, &[(1, 0), (2, inf)]).regs.v[0], 0xffc0_0000);
         // fmadd s0,s1,s2,s3: 0 * inf + 1.0
-        assert_eq!(run1(0x1f02_0c20, &[(1, 0), (2, inf), (3, 0x3f80_0000)]).regs.v[0], 0x7fc0_0000);
+        assert_eq!(
+            run1(0x1f02_0c20, &[(1, 0), (2, inf), (3, 0x3f80_0000)]).regs.v[0],
+            0x7fc0_0000
+        );
         // fsqrt s0,s1: sqrt(-1) is the default NaN, a signalling NaN comes back quieted
         assert_eq!(run1(0x1e21_c020, &[(1, 0xbf80_0000)]).regs.v[0], 0x7fc0_0000);
         assert_eq!(run1(0x1e21_c020, &[(1, 0x7f80_0001)]).regs.v[0], 0x7fc0_0001);
         // frintn s0,s1 / frintn d0,d1 on a signalling NaN
         assert_eq!(run1(0x1e24_4020, &[(1, 0x7f80_0001)]).regs.v[0], 0x7fc0_0001);
-        assert_eq!(run1(0x1e64_4020, &[(1, 0x7ff0_0000_0000_0001)]).regs.v[0], 0x7ff8_0000_0000_0001);
+        assert_eq!(
+            run1(0x1e64_4020, &[(1, 0x7ff0_0000_0000_0001)]).regs.v[0],
+            0x7ff8_0000_0000_0001
+        );
         // fadd v0.4s,v1.4s,v2.4s: lane 0 quiet NaN + signalling NaN returns the signalling one quieted;
         // lane 1 is inf + -inf (default NaN); fdiv v0.2d: lane 0 is 0 / 0
-        let c = run1(0x4e22_d420, &[(1, 0x7fc0_0000 | inf << 32), (2, 0x7f80_0001 | ninf << 32)]);
+        let c = run1(
+            0x4e22_d420,
+            &[(1, 0x7fc0_0000 | inf << 32), (2, 0x7f80_0001 | ninf << 32)],
+        );
         assert_eq!(c.regs.v[0] & 0xffff_ffff_ffff_ffff, 0x7fc0_0000_7fc0_0001);
         let c = run1(0x6e62_fc20, &[(1, 0), (2, 0)]);
         assert_eq!(c.regs.v[0], 0x7ff8_0000_0000_0000_7ff8_0000_0000_0000);

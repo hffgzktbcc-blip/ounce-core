@@ -37,13 +37,19 @@ impl CpuTier {
         if let Some(tier) = CLI_TIER.get() {
             return *tier;
         }
-        std::env::var("OUNCE_CPU").ok().and_then(|v| Self::parse(&v)).unwrap_or(Self::Tier3)
+        std::env::var("OUNCE_CPU")
+            .ok()
+            .and_then(|v| Self::parse(&v))
+            .unwrap_or(Self::Tier3)
     }
 
     /// The tier the user asked for with `--cpu=` or `OUNCE_CPU`, or `None` when neither was given
     /// (callers then keep their default execution path).
     pub fn explicit() -> Option<Self> {
-        CLI_TIER.get().copied().or_else(|| std::env::var("OUNCE_CPU").ok().and_then(|v| Self::parse(&v)))
+        CLI_TIER
+            .get()
+            .copied()
+            .or_else(|| std::env::var("OUNCE_CPU").ok().and_then(|v| Self::parse(&v)))
     }
 
     pub fn set_cli_override(tier: Self) {
@@ -119,8 +125,9 @@ impl CpuEngine {
                     let pc = cpu.regs.pc;
                     match cpu.step(mmu) {
                         Ok(super::interpreter::StepResult::Continue) => {}
-                        Ok(super::interpreter::StepResult::Svc(svc_id)) =>
-                            return (executed + 1, BlockExit::Svc { svc_id }),
+                        Ok(super::interpreter::StepResult::Svc(svc_id)) => {
+                            return (executed + 1, BlockExit::Svc { svc_id });
+                        }
                         _ => return (executed, BlockExit::Fault { pc }),
                     }
                 }

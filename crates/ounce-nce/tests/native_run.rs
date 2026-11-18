@@ -3,11 +3,18 @@
 #![cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))]
 
 use ounce_nce::patch::{Patcher, SiteKind};
-use ounce_nce::{enter, Arena, Exit};
+use ounce_nce::{Arena, Exit, enter};
 
-struct Vm { arena: Arena, patcher: Patcher, code: u64, stack_top: u64 }
+struct Vm {
+    arena: Arena,
+    patcher: Patcher,
+    code: u64,
+    stack_top: u64,
+}
 
-fn words_to_bytes(w: &[u32]) -> Vec<u8> { w.iter().flat_map(|w| w.to_le_bytes()).collect() }
+fn words_to_bytes(w: &[u32]) -> Vec<u8> {
+    w.iter().flat_map(|w| w.to_le_bytes()).collect()
+}
 
 fn vm(mut program: Vec<u32>) -> Vm {
     let mut arena = Arena::reserve(1 << 32).unwrap();
@@ -19,10 +26,17 @@ fn vm(mut program: Vec<u32>) -> Vm {
     arena.commit(code, 0x1_0000).unwrap();
     arena.commit(stack, 0x1_0000).unwrap();
     arena.write(code, &words_to_bytes(&program)).unwrap();
-    arena.write(patcher.code_base(), &words_to_bytes(&patcher.areas()[0].code)).unwrap();
+    arena
+        .write(patcher.code_base(), &words_to_bytes(&patcher.areas()[0].code))
+        .unwrap();
     arena.seal_exec(code, 0x1_0000).unwrap();
     arena.seal_exec(patcher.code_base(), 0x1_0000).unwrap();
-    Vm { arena, patcher, code, stack_top: stack + 0x1_0000 }
+    Vm {
+        arena,
+        patcher,
+        code,
+        stack_top: stack + 0x1_0000,
+    }
 }
 
 fn launch(vm: &mut Vm, pc: u64) -> Exit {
@@ -68,7 +82,9 @@ fn svc_tls_x18_resume_and_fault() {
         ctx.x[17] = 100;
     }
     let exit = enter(&mut vm.arena, vm.patcher.context(), resume).unwrap();
-    let Exit::Fault { pc, addr, .. } = exit else { panic!("{exit:?}") };
+    let Exit::Fault { pc, addr, .. } = exit else {
+        panic!("{exit:?}")
+    };
     assert_eq!((pc, addr), (code + 44, 7));
     let ctx = vm.arena.context_mut(vm.patcher.context()).unwrap();
     assert_eq!((ctx.x[0], ctx.x[3], ctx.pc), (7, 7 + 7 + 100, code + 44));
@@ -118,7 +134,9 @@ fn fault_keeps_simd_registers() {
     vm.arena.context_mut(vm.patcher.context()).unwrap().sp = vm.stack_top;
     let code = vm.code;
     let exit = launch(&mut vm, code);
-    let Exit::Fault { pc, .. } = exit else { panic!("{exit:?}") };
+    let Exit::Fault { pc, .. } = exit else {
+        panic!("{exit:?}")
+    };
     assert_eq!(pc, code + 4);
     let ctx = vm.arena.context_mut(vm.patcher.context()).unwrap();
     assert_eq!(ctx.v[14] as u64, 2.0f64.to_bits());

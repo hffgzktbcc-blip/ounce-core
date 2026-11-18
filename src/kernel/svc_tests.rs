@@ -2,7 +2,9 @@
 //! public libnx `svc.h`/`result.h` and Atmosphère's kernel for semantics. Thread tests drive the scheduler at
 //! SVC level: after svcStartThread the new thread is the running one, and its SVCs are dispatched directly.
 
-use super::scheduler::{MAIN_THREAD_KEY, RESULT_CANCELLED, RESULT_INVALID_HANDLE, RESULT_INVALID_STATE, RESULT_TIMED_OUT};
+use super::scheduler::{
+    MAIN_THREAD_KEY, RESULT_CANCELLED, RESULT_INVALID_HANDLE, RESULT_INVALID_STATE, RESULT_TIMED_OUT,
+};
 use super::svc::*;
 use crate::cpu::Cpu;
 use crate::mmu::{Memory, Permission};
@@ -71,7 +73,13 @@ fn set_heap_size_steps_keep_contents_and_shrink() {
     let (mut cpu, mut mmu, mut k) = setup();
     call(&mut k, &mut cpu, &mut mmu, 0x01, &[0, 0x1000]);
     assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_SIZE);
-    call(&mut k, &mut cpu, &mut mmu, 0x01, &[0, HEAP_REGION_SIZE + HEAP_SIZE_ALIGN]);
+    call(
+        &mut k,
+        &mut cpu,
+        &mut mmu,
+        0x01,
+        &[0, HEAP_REGION_SIZE + HEAP_SIZE_ALIGN],
+    );
     assert_eq!(cpu.regs.read_x(0), RESULT_OUT_OF_MEMORY);
 
     call(&mut k, &mut cpu, &mut mmu, 0x01, &[0, 0x40_0000]);
@@ -96,7 +104,29 @@ fn set_heap_size_steps_keep_contents_and_shrink() {
 fn get_info_answers_every_type_libnx_asks_for() {
     let (mut cpu, mut mmu, mut k) = setup();
     // init.c, virtmem.c, newlib.c, random.c, detect.h.
-    for (ty, sub) in [(0, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (8, 0), (11, 0), (11, 3), (12, 0), (13, 0), (14, 0), (15, 0), (16, 0), (17, 0), (18, 0), (21, 0), (22, 0), (23, 0), (28, 0)] {
+    for (ty, sub) in [
+        (0, 0),
+        (2, 0),
+        (3, 0),
+        (4, 0),
+        (5, 0),
+        (6, 0),
+        (7, 0),
+        (8, 0),
+        (11, 0),
+        (11, 3),
+        (12, 0),
+        (13, 0),
+        (14, 0),
+        (15, 0),
+        (16, 0),
+        (17, 0),
+        (18, 0),
+        (21, 0),
+        (22, 0),
+        (23, 0),
+        (28, 0),
+    ] {
         call(&mut k, &mut cpu, &mut mmu, 0x29, &[0, ty, CURRENT_PROCESS, sub]);
         assert_eq!(cpu.regs.read_x(0), 0, "info type {ty}/{sub}");
     }
@@ -105,7 +135,11 @@ fn get_info_answers_every_type_libnx_asks_for() {
     let (alias, heap, stack) = ((info(2), info(3)), (info(4), info(5)), (info(14), info(15)));
     let overlap = |a: (u64, u64), b: (u64, u64)| a.0 < b.0 + b.1 && b.0 < a.0 + a.1;
     assert!(!overlap(alias, heap) && !overlap(alias, stack) && !overlap(heap, stack));
-    assert_eq!(k.info(28, 0), Some(0), "no alias extra size, so virtmem keeps the whole alias region");
+    assert_eq!(
+        k.info(28, 0),
+        Some(0),
+        "no alias extra size, so virtmem keeps the whole alias region"
+    );
     // Mesosphere's meta type (detect.h) and RandomEntropy past sub-type 3 are not provided.
     for (ty, sub) in [(65000, 0), (11, 4), (19, 0)] {
         call(&mut k, &mut cpu, &mut mmu, 0x29, &[0, ty, 0, sub]);
@@ -178,9 +212,21 @@ fn process_code_memory_moves_jit_pages() {
     assert_eq!(mmu.read_u32(src + 0x1000).unwrap(), 0xD65F_03C0);
     assert!(!mmu.is_mapped(dst));
 
-    call(&mut k, &mut cpu, &mut mmu, 0x77, &[CURRENT_PROCESS, dst + 4, src, 0x2000]);
+    call(
+        &mut k,
+        &mut cpu,
+        &mut mmu,
+        0x77,
+        &[CURRENT_PROCESS, dst + 4, src, 0x2000],
+    );
     assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_ADDRESS);
-    call(&mut k, &mut cpu, &mut mmu, 0x77, &[CURRENT_PROCESS, dst, 0x5_0000_0000, 0x1000]);
+    call(
+        &mut k,
+        &mut cpu,
+        &mut mmu,
+        0x77,
+        &[CURRENT_PROCESS, dst, 0x5_0000_0000, 0x1000],
+    );
     assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_MEMORY_STATE);
 }
 
@@ -233,7 +279,8 @@ fn sync_request_with_user_buffer_uses_the_supplied_hipc_area() {
     // A minimal HIPC request with an unknown CMIF command gets a real SFCO response.
     mmu.write_u32(user_buffer, 4).unwrap(); // HIPC request
     mmu.write_u32(user_buffer + 4, 4).unwrap(); // four CMIF words
-    mmu.write_u32(user_buffer + 0x10, crate::kernel::ipc::CMIF_IN_MAGIC).unwrap();
+    mmu.write_u32(user_buffer + 0x10, crate::kernel::ipc::CMIF_IN_MAGIC)
+        .unwrap();
     mmu.write_u32(user_buffer + 0x14, 0).unwrap();
     mmu.write_u32(user_buffer + 0x18, 0xDEAD).unwrap();
     mmu.write_u32(SCRATCH, 0xA5A5_A5A5).unwrap(); // TLS must not become the request area.
@@ -254,18 +301,35 @@ fn sync_request_with_user_buffer_uses_the_supplied_hipc_area() {
 
     // The whole requested range must be mapped and writable, including every crossed page.
     call(&mut k, &mut cpu, &mut mmu, 0x22, &[user_buffer, 0x2000, session]);
-    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_MEMORY_STATE, "second page is unmapped");
-    assert_eq!(k.ipc.total_ipc_requests, requests, "invalid buffers must not dispatch IPC");
+    assert_eq!(
+        cpu.regs.read_x(0),
+        RESULT_INVALID_MEMORY_STATE,
+        "second page is unmapped"
+    );
+    assert_eq!(
+        k.ipc.total_ipc_requests, requests,
+        "invalid buffers must not dispatch IPC"
+    );
     mmu.map_range(user_buffer + 0x1000, 0x1000, Permission::READ_WRITE);
 
     call(&mut k, &mut cpu, &mut mmu, 0x22, &[user_buffer, 0x2000, session]);
     assert_eq!(cpu.regs.read_x(0), 0);
-    assert_eq!(mmu.read_u32(user_buffer + 0x10).unwrap(), crate::kernel::ipc::CMIF_OUT_MAGIC);
-    assert_eq!(mmu.read_u32(user_buffer + 0x18).unwrap(), crate::kernel::ipc::RESULT_UNKNOWN_COMMAND);
+    assert_eq!(
+        mmu.read_u32(user_buffer + 0x10).unwrap(),
+        crate::kernel::ipc::CMIF_OUT_MAGIC
+    );
+    assert_eq!(
+        mmu.read_u32(user_buffer + 0x18).unwrap(),
+        crate::kernel::ipc::RESULT_UNKNOWN_COMMAND
+    );
     assert_eq!(mmu.read_u32(SCRATCH).unwrap(), 0xA5A5_A5A5);
 
     call(&mut k, &mut cpu, &mut mmu, 0x22, &[user_buffer, 0x1000, 0xDEAD]);
-    assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_HANDLE, "invalid session handle result");
+    assert_eq!(
+        cpu.regs.read_x(0),
+        RESULT_INVALID_HANDLE,
+        "invalid session handle result"
+    );
 }
 
 #[test]
@@ -318,16 +382,37 @@ fn wait_for_address_checks_value_alignment_and_type() {
     // WaitIfEqual64 compares the whole doubleword and needs 8-byte alignment.
     mmu.write_u64(addr, 0x1_0000_0002).unwrap();
     assert_eq!(wait(&mut k, &mut cpu, &mut mmu, addr, 3, 2, 0), RESULT_INVALID_STATE);
-    assert_eq!(wait(&mut k, &mut cpu, &mut mmu, addr, 3, 0x1_0000_0002, 0), RESULT_TIMED_OUT);
-    assert_eq!(wait(&mut k, &mut cpu, &mut mmu, addr + 4, 3, 0, 0), RESULT_INVALID_ADDRESS);
+    assert_eq!(
+        wait(&mut k, &mut cpu, &mut mmu, addr, 3, 0x1_0000_0002, 0),
+        RESULT_TIMED_OUT
+    );
+    assert_eq!(
+        wait(&mut k, &mut cpu, &mut mmu, addr + 4, 3, 0, 0),
+        RESULT_INVALID_ADDRESS
+    );
 
-    assert_eq!(wait(&mut k, &mut cpu, &mut mmu, addr + 2, 2, 0, 0), RESULT_INVALID_ADDRESS);
-    assert_eq!(wait(&mut k, &mut cpu, &mut mmu, addr, 4, 0, 0), RESULT_INVALID_ENUM_VALUE);
-    assert_eq!(wait(&mut k, &mut cpu, &mut mmu, 0x5_0000_0000, 2, 0, 0), RESULT_INVALID_MEMORY_STATE);
+    assert_eq!(
+        wait(&mut k, &mut cpu, &mut mmu, addr + 2, 2, 0, 0),
+        RESULT_INVALID_ADDRESS
+    );
+    assert_eq!(
+        wait(&mut k, &mut cpu, &mut mmu, addr, 4, 0, 0),
+        RESULT_INVALID_ENUM_VALUE
+    );
+    assert_eq!(
+        wait(&mut k, &mut cpu, &mut mmu, 0x5_0000_0000, 2, 0, 0),
+        RESULT_INVALID_MEMORY_STATE
+    );
     // A timed wait that nothing signals times out; an endless one is a deadlock.
     mmu.write_u32(addr, 1).unwrap();
-    assert_eq!(wait(&mut k, &mut cpu, &mut mmu, addr, 2, 1, 1_000_000), RESULT_TIMED_OUT);
-    assert!(matches!(call(&mut k, &mut cpu, &mut mmu, 0x34, &[addr, 2, 1, u64::MAX]), SvcResult::Break { .. }));
+    assert_eq!(
+        wait(&mut k, &mut cpu, &mut mmu, addr, 2, 1, 1_000_000),
+        RESULT_TIMED_OUT
+    );
+    assert!(matches!(
+        call(&mut k, &mut cpu, &mut mmu, 0x34, &[addr, 2, 1, u64::MAX]),
+        SvcResult::Break { .. }
+    ));
 }
 
 #[test]
@@ -445,7 +530,10 @@ fn thread_activity_pauses_and_context_reads_registers() {
     call(&mut k, &mut cpu, &mut mmu, 0x32, &[worker as u64, 0]);
     assert_eq!(cpu.regs.read_x(0), 0);
     call(&mut k, &mut cpu, &mut mmu, 0x0B, &[(-2i64) as u64]);
-    assert_eq!((k.scheduler.current, cpu.regs.read_x(0), cpu.regs.read_x(7)), (worker, 0, 0x7777));
+    assert_eq!(
+        (k.scheduler.current, cpu.regs.read_x(0), cpu.regs.read_x(7)),
+        (worker, 0, 0x7777)
+    );
 
     call(&mut k, &mut cpu, &mut mmu, 0x32, &[0xDEAD, 1]);
     assert_eq!(cpu.regs.read_x(0), RESULT_INVALID_HANDLE);
@@ -473,7 +561,11 @@ fn identity_debug_and_process_svcs() {
 
     assert_eq!(
         call(&mut k, &mut cpu, &mut mmu, 0x26, &[1, 2, 3]),
-        SvcResult::Break { reason: 1, info1: 2, info2: 3 }
+        SvcResult::Break {
+            reason: 1,
+            info1: 2,
+            info2: 3
+        }
     );
     assert_eq!(call(&mut k, &mut cpu, &mut mmu, 0x07, &[]), SvcResult::ExitProcess);
     // The last thread exiting ends the process.
@@ -484,8 +576,14 @@ fn identity_debug_and_process_svcs() {
 fn unimplemented_svcs_are_reported_not_faked() {
     let (mut cpu, mut mmu, mut k) = setup();
     // Code memory (needs aliased pages), resource limits, light IPC, debug and process management.
-    for id in [0x20, 0x23, 0x2E, 0x2F, 0x30, 0x31, 0x36, 0x37, 0x40, 0x42, 0x44, 0x4B, 0x4C, 0x6F, 0x72, 0x7F] {
-        assert_eq!(call(&mut k, &mut cpu, &mut mmu, id, &[]), SvcResult::Unhandled(id), "svc 0x{id:X}");
+    for id in [
+        0x20, 0x23, 0x2E, 0x2F, 0x30, 0x31, 0x36, 0x37, 0x40, 0x42, 0x44, 0x4B, 0x4C, 0x6F, 0x72, 0x7F,
+    ] {
+        assert_eq!(
+            call(&mut k, &mut cpu, &mut mmu, id, &[]),
+            SvcResult::Unhandled(id),
+            "svc 0x{id:X}"
+        );
     }
 }
 
@@ -496,7 +594,11 @@ fn unimplemented_svcs_are_reported_not_faked() {
 fn within_a_second(f: impl FnOnce()) {
     let start = std::time::Instant::now();
     f();
-    assert!(start.elapsed() < std::time::Duration::from_secs(1), "took {:?}", start.elapsed());
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(1),
+        "took {:?}",
+        start.elapsed()
+    );
 }
 
 #[test]
@@ -517,9 +619,17 @@ fn map_shared_and_transfer_memory_reject_huge_sizes() {
     });
     assert_eq!(cpu.regs.read_x(0), RESULT_OUT_OF_MEMORY);
     assert!(!mmu.is_mapped(0x20_0000));
-    let handle = k.ipc.allocate_handle(crate::kernel::ServiceType::TransferMemory { addr: 0, size: 0x1000 });
+    let handle = k
+        .ipc
+        .allocate_handle(crate::kernel::ServiceType::TransferMemory { addr: 0, size: 0x1000 });
     within_a_second(|| {
-        call(&mut k, &mut cpu, &mut mmu, 0x51, &[handle as u64, 0x20_0000, 1 << 40, 3]);
+        call(
+            &mut k,
+            &mut cpu,
+            &mut mmu,
+            0x51,
+            &[handle as u64, 0x20_0000, 1 << 40, 3],
+        );
     });
     assert_eq!(cpu.regs.read_x(0), RESULT_OUT_OF_MEMORY);
     assert!(!mmu.is_mapped(0x20_0000));

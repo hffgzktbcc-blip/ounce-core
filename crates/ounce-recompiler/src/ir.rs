@@ -108,7 +108,10 @@ pub enum Op {
     Store(u8, Value, Value, FaultSite),
     /// Instruction boundary after a store: if a store in this block wrote cached code, exit with
     /// `pc = next_pc` and `insns` completed. No result.
-    EndInsn { next_pc: u64, insns: u32 },
+    EndInsn {
+        next_pc: u64,
+        insns: u32,
+    },
 }
 
 impl Op {
@@ -153,7 +156,11 @@ pub const RESERVED_CODES: u32 = 0xFFFF_0000;
 pub enum Terminator {
     Exit(ExitTo),
     /// `taken` if `cond != 0`, else `not_taken`.
-    Branch { cond: Value, taken: ExitTo, not_taken: ExitTo },
+    Branch {
+        cond: Value,
+        taken: ExitTo,
+        not_taken: ExitTo,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -296,6 +303,10 @@ impl BlockBuilder {
     }
 
     pub fn finish(self, term: Terminator) -> Block {
-        Block { ops: self.ops, term, entry_pc: None }
+        Block {
+            ops: self.ops,
+            term,
+            entry_pc: None,
+        }
     }
 }

@@ -27,7 +27,14 @@ impl Range {
     }
 
     fn levels(&self) -> u32 {
-        (1 << self.bits) * if self.trits { 3 } else if self.quints { 5 } else { 1 }
+        (1 << self.bits)
+            * if self.trits {
+                3
+            } else if self.quints {
+                5
+            } else {
+                1
+            }
     }
 
     /// Bits that `n` values take in the integer sequence encoding.
@@ -79,11 +86,11 @@ fn weight_range(r: u32, high: bool) -> Option<Range> {
         Range::new(false, false, 3), // 8
     ];
     let hi = [
-        Range::new(false, true, 1), // 10
-        Range::new(true, false, 2), // 12
+        Range::new(false, true, 1),  // 10
+        Range::new(true, false, 2),  // 12
         Range::new(false, false, 4), // 16
-        Range::new(false, true, 2), // 20
-        Range::new(true, false, 3), // 24
+        Range::new(false, true, 2),  // 20
+        Range::new(true, false, 3),  // 24
         Range::new(false, false, 5), // 32
     ];
     let idx = r.checked_sub(2)? as usize;
@@ -223,7 +230,11 @@ fn quints(q: u32) -> [u32; 3] {
     } else {
         (field(q, 6, 5), field(q, 4, 0))
     };
-    let (q1, q0) = if field(c, 2, 0) == 5 { (4, field(c, 4, 3)) } else { (field(c, 4, 3), field(c, 2, 0)) };
+    let (q1, q0) = if field(c, 2, 0) == 5 {
+        (4, field(c, 4, 3))
+    } else {
+        (field(c, 4, 3), field(c, 2, 0))
+    };
     [q0, q1, q2]
 }
 
@@ -301,7 +312,11 @@ fn unquantize_weight(range: Range, (d, m): (u32, u32)) -> u32 {
     let v = if !range.trits && !range.quints {
         replicate(m, b, 6)
     } else if b == 0 {
-        return if range.trits { [0, 32, 64][d as usize] } else { [0, 16, 32, 48, 64][d as usize] };
+        return if range.trits {
+            [0, 32, 64][d as usize]
+        } else {
+            [0, 16, 32, 48, 64][d as usize]
+        };
     } else {
         let a = if m & 1 != 0 { 0x7f } else { 0 };
         let bit = |n: u32| (m >> n) & 1;
@@ -368,12 +383,26 @@ fn select_partition(seed: u32, mut x: u32, mut y: u32, count: u32, small: bool) 
     };
     let sh3 = if seed & 0x10 != 0 { sh1 } else { sh2 };
     for (k, v) in s.iter_mut().enumerate() {
-        *v >>= if k >= 8 { sh3 } else if k % 2 == 0 { sh1 } else { sh2 };
+        *v >>= if k >= 8 {
+            sh3
+        } else if k % 2 == 0 {
+            sh1
+        } else {
+            sh2
+        };
     }
     let a = (s[0] * x + s[1] * y + (r >> 14)) & 0x3f;
     let b = (s[2] * x + s[3] * y + (r >> 10)) & 0x3f;
-    let c = if count < 3 { 0 } else { (s[4] * x + s[5] * y + (r >> 6)) & 0x3f };
-    let d = if count < 4 { 0 } else { (s[6] * x + s[7] * y + (r >> 2)) & 0x3f };
+    let c = if count < 3 {
+        0
+    } else {
+        (s[4] * x + s[5] * y + (r >> 6)) & 0x3f
+    };
+    let d = if count < 4 {
+        0
+    } else {
+        (s[6] * x + s[7] * y + (r >> 2)) & 0x3f
+    };
     if a >= b && a >= c && a >= d {
         0
     } else if b >= c && b >= d {
@@ -416,7 +445,10 @@ fn endpoints(cem: u32, v: &[i32]) -> Option<([i32; 4], [i32; 4])> {
             bit_transfer_signed(&mut v3, &mut v2);
             ([v0, v0, v0, v2], [v0 + v1, v0 + v1, v0 + v1, v2 + v3])
         }
-        6 => ([(v[0] * v[3]) >> 8, (v[1] * v[3]) >> 8, (v[2] * v[3]) >> 8, 255], [v[0], v[1], v[2], 255]),
+        6 => (
+            [(v[0] * v[3]) >> 8, (v[1] * v[3]) >> 8, (v[2] * v[3]) >> 8, 255],
+            [v[0], v[1], v[2], 255],
+        ),
         8 | 12 => {
             let (a0, a1) = if cem == 12 { (v[6], v[7]) } else { (255, 255) };
             if v[1] + v[3] + v[5] >= v[0] + v[2] + v[4] {
@@ -438,10 +470,16 @@ fn endpoints(cem: u32, v: &[i32]) -> Option<([i32; 4], [i32; 4])> {
             if w[1] + w[3] + w[5] >= 0 {
                 ([w[0], w[2], w[4], a0], [w[0] + w[1], w[2] + w[3], w[4] + w[5], a1])
             } else {
-                (blue_contract(w[0] + w[1], w[2] + w[3], w[4] + w[5], a1), blue_contract(w[0], w[2], w[4], a0))
+                (
+                    blue_contract(w[0] + w[1], w[2] + w[3], w[4] + w[5], a1),
+                    blue_contract(w[0], w[2], w[4], a0),
+                )
             }
         }
-        10 => ([(v[0] * v[3]) >> 8, (v[1] * v[3]) >> 8, (v[2] * v[3]) >> 8, v[4]], [v[0], v[1], v[2], v[5]]),
+        10 => (
+            [(v[0] * v[3]) >> 8, (v[1] * v[3]) >> 8, (v[2] * v[3]) >> 8, v[4]],
+            [v[0], v[1], v[2], v[5]],
+        ),
         _ => return None,
     };
     Some((clamp(e0), clamp(e1)))
@@ -510,16 +548,20 @@ fn decode_block(b: &[u8], bw: u32, bh: u32, i: usize) -> Option<[f32; 4]> {
     if crange.levels() < 6 {
         return None;
     }
-    let colors: Vec<i32> =
-        ise(data, color_start, ncolor as usize, crange, ccs_pos).into_iter().map(|v| unquantize_color(crange, v) as i32).collect();
+    let colors: Vec<i32> = ise(data, color_start, ncolor as usize, crange, ccs_pos)
+        .into_iter()
+        .map(|v| unquantize_color(crange, v) as i32)
+        .collect();
 
     // Weights are stored bit-reversed from the top of the block.
     let mut rev = [0u8; 16];
     for (k, byte) in rev.iter_mut().enumerate() {
         *byte = data[15 - k].reverse_bits();
     }
-    let weights: Vec<u32> =
-        ise(&rev, 0, nweights as usize, wrange, wbits).into_iter().map(|v| unquantize_weight(wrange, v)).collect();
+    let weights: Vec<u32> = ise(&rev, 0, nweights as usize, wrange, wbits)
+        .into_iter()
+        .map(|v| unquantize_weight(wrange, v))
+        .collect();
 
     let (x, y) = (i as u32 % bw, i as u32 / bw);
     let part = if partitions == 1 {

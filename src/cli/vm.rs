@@ -64,12 +64,7 @@ pub(crate) struct VmOutcome {
     pub(crate) report: run_report::RunReport,
 }
 
-pub(crate) fn run_vm(
-    cpu: Cpu,
-    mmu: Memory,
-    kernel: HorizonKernel,
-    max_instructions: usize,
-) -> VmOutcome {
+pub(crate) fn run_vm(cpu: Cpu, mmu: Memory, kernel: HorizonKernel, max_instructions: usize) -> VmOutcome {
     run_vm_internal(cpu, mmu, kernel, None, None, max_instructions, 0)
 }
 
@@ -87,7 +82,9 @@ pub(crate) fn checked_service_program(words: &[u32], svc_id: u16, cmif: bool) ->
     let mut code = Vec::new();
     let mut guards = Vec::new();
     for &word in words {
-        if word == 0x5400_0001 { guards.push(code.len()); }
+        if word == 0x5400_0001 {
+            guards.push(code.len());
+        }
         code.push(word);
         if word == kernel::svc::ext::svc(svc_id) {
             guards.push(code.len());
@@ -101,13 +98,19 @@ pub(crate) fn checked_service_program(words: &[u32], svc_id: u16, cmif: bool) ->
     }
     let failure = code.len();
     code.extend([0xD281_75A0, 0xD400_00E1]); // movz x0,#0xBAD; svcExitProcess
-    for index in guards { code[index] |= ((failure - index) as u32) << 5; }
+    for index in guards {
+        code[index] |= ((failure - index) as u32) << 5;
+    }
     code
 }
 
 impl StageGate {
     pub(crate) fn expect_surface(&mut self, stage: u32, pixels: &[u32], count: usize, color: u32) -> bool {
-        self.expect(stage, "decoded constant-color surface", pixels.len() == count && pixels.iter().all(|&pixel| pixel == color))
+        self.expect(
+            stage,
+            "decoded constant-color surface",
+            pixels.len() == count && pixels.iter().all(|&pixel| pixel == color),
+        )
     }
     /// Checks a guest run and prints the verdict. Returns `true` on pass.
     pub(crate) fn expect_exit(&mut self, stage: u32, outcome: &VmOutcome, expected_x0: u64) -> bool {
@@ -158,12 +161,19 @@ impl StageGate {
 }
 
 pub(crate) fn queued_vi_frame(kernel: &HorizonKernel, memory: &Memory) -> Result<gpu::present::Frame, String> {
-    let submitted = kernel.ipc.submitted_vi_surface().ok_or("queued VI buffer cannot be resolved")?;
-    let surface = submitted.tiling_surface().ok_or("unsupported queued VI surface descriptor")?;
+    let submitted = kernel
+        .ipc
+        .submitted_vi_surface()
+        .ok_or("queued VI buffer cannot be resolved")?;
+    let surface = submitted
+        .tiling_surface()
+        .ok_or("unsupported queued VI surface descriptor")?;
     let frame = gpu::present::surface::frame_from_surface(memory, submitted.guest_addr, &surface)
         .map_err(|error| format!("cannot decode queued VI surface: {error:?}"))?;
     Ok(match kernel.ipc.submitted_vi_crop() {
-        Some((left, top, right, bottom)) => frame.cropped((left as usize, top as usize, right as usize, bottom as usize)),
+        Some((left, top, right, bottom)) => {
+            frame.cropped((left as usize, top as usize, right as usize, bottom as usize))
+        }
         None => frame,
     })
 }
@@ -184,7 +194,9 @@ pub(crate) fn run_vm_internal(
     {
         eprintln!("[Display Error] {e}");
     }
-    kernel.nvgpu.set_hardware_acceleration(display.as_ref().is_some_and(|d| d.draws_3d_on_host()));
+    kernel
+        .nvgpu
+        .set_hardware_acceleration(display.as_ref().is_some_and(|d| d.draws_3d_on_host()));
 
     println!("[VM] Starting execution at PC: 0x{:016X}", cpu.regs.pc);
     println!("[VM] Stack Pointer: 0x{:016X}", cpu.regs.sp);
@@ -192,7 +204,11 @@ pub(crate) fn run_vm_internal(
     let start = Instant::now();
     let mut instructions_executed = 0;
     let mut frames_presented = 0;
-    let max_frames = if max_frames == 0 { loop_controls::max_frames() } else { max_frames };
+    let max_frames = if max_frames == 0 {
+        loop_controls::max_frames()
+    } else {
+        max_frames
+    };
     let injected_presses = loop_controls::presses();
     let mut gamepad_mgr = HostGamepadManager::new();
     if let Some(pad_name) = gamepad_mgr.active_gamepad_name() {
@@ -224,7 +240,9 @@ pub(crate) fn run_vm_internal(
     if step_trace.is_some() && cpu::CpuTier::explicit() == Some(cpu::CpuTier::Tier4) {
         // Native Tier-4 runs a whole translated block per slice, so it cannot retire exactly one instruction at a time
         // and the recording would silently stop early (and under-count). Refuse instead of writing a misleading trace.
-        eprintln!("[Trace] OUNCE_TRACE_SUMMARY needs one-instruction slices, which --cpu=tier4 cannot give; use --cpu=interpreter or --cpu=tier3");
+        eprintln!(
+            "[Trace] OUNCE_TRACE_SUMMARY needs one-instruction slices, which --cpu=tier4 cannot give; use --cpu=interpreter or --cpu=tier3"
+        );
         std::process::exit(2);
     }
 
@@ -248,7 +266,10 @@ pub(crate) fn run_vm_internal(
                 }
                 let pc = cpu.regs.pc;
                 let traced = match tracer.as_mut() {
-                    Some(t) => mmu.read_u32(pc).ok().and_then(|raw| t.pre(&cpu, raw).map(|pre| (raw, pre))),
+                    Some(t) => mmu
+                        .read_u32(pc)
+                        .ok()
+                        .and_then(|raw| t.pre(&cpu, raw).map(|pre| (raw, pre))),
                     None => None,
                 };
                 let summary_pending = step_trace.as_mut().and_then(|t| t.pre(&cpu, &mmu));
@@ -261,7 +282,10 @@ pub(crate) fn run_vm_internal(
                     }
                 }
                 if let (Some(t), Some((raw, pre))) = (tracer.as_mut(), traced) {
-                    let stopped = matches!(exit, cpu::tier2_jit::BlockExit::Fault { .. } | cpu::tier2_jit::BlockExit::Svc { .. });
+                    let stopped = matches!(
+                        exit,
+                        cpu::tier2_jit::BlockExit::Fault { .. } | cpu::tier2_jit::BlockExit::Svc { .. }
+                    );
                     if count == 1 && !stopped {
                         t.post(&cpu, raw, pc, pre);
                     } else if !stopped {
@@ -275,7 +299,9 @@ pub(crate) fn run_vm_internal(
                             cpu.step(&mut mmu).err().map(|err| err.to_string())
                         });
                         let msg = match detail {
-                            Some(reason) => format!("{} fault at {fault_pc:#x} (slice began at {pc:#x}): {reason}", e.name()),
+                            Some(reason) => {
+                                format!("{} fault at {fault_pc:#x} (slice began at {pc:#x}): {reason}", e.name())
+                            }
                             None => format!("{} fault at {fault_pc:#x} (slice began at {pc:#x})", e.name()),
                         };
                         (Err(msg), count)
@@ -289,7 +315,9 @@ pub(crate) fn run_vm_internal(
                 let traced = match tracer.as_mut() {
                     Some(t) => {
                         let pc = cpu.regs.pc;
-                        mmu.read_u32(pc).ok().and_then(|raw| t.pre(&cpu, raw).map(|pre| (raw, pc, pre)))
+                        mmu.read_u32(pc)
+                            .ok()
+                            .and_then(|raw| t.pre(&cpu, raw).map(|pre| (raw, pc, pre)))
                     }
                     None => None,
                 };
@@ -298,7 +326,9 @@ pub(crate) fn run_vm_internal(
                 if let (Some(t), Ok(StepResult::Continue | StepResult::Svc(_))) = (step_trace.as_mut(), &step_result) {
                     t.post(&cpu, summary_pending);
                 }
-                if let (Some(t), Some((raw, pc, pre)), Ok(StepResult::Continue)) = (tracer.as_mut(), traced, &step_result) {
+                if let (Some(t), Some((raw, pc, pre)), Ok(StepResult::Continue)) =
+                    (tracer.as_mut(), traced, &step_result)
+                {
                     t.post(&cpu, raw, pc, pre);
                 }
                 // A step that faults did not complete, so it is not counted (the block engine counts the same way).
@@ -310,7 +340,9 @@ pub(crate) fn run_vm_internal(
             Ok(StepResult::Continue) => {
                 instructions_executed += executed;
                 // Time slice: a guest thread that spins without SVCs must not starve the others.
-                if instructions_executed / kernel::scheduler::PREEMPT_INTERVAL != before / kernel::scheduler::PREEMPT_INTERVAL {
+                if instructions_executed / kernel::scheduler::PREEMPT_INTERVAL
+                    != before / kernel::scheduler::PREEMPT_INTERVAL
+                {
                     kernel.scheduler.preempt(&mut cpu);
                 }
             }
@@ -348,7 +380,9 @@ pub(crate) fn run_vm_internal(
                         // libnx homebrew reads HID shared memory between SVCs rather than per presented
                         // frame: hand it the host controller every few milliseconds.
                         // Scripted --press runs poll after every SVC: a wall-clock interval would let a fast guest read the pad first.
-                        if kernel.ipc.hid.addr.is_some() && (!injected_presses.is_empty() || last_input_poll.elapsed() >= INPUT_POLL_INTERVAL) {
+                        if kernel.ipc.hid.addr.is_some()
+                            && (!injected_presses.is_empty() || last_input_poll.elapsed() >= INPUT_POLL_INTERVAL)
+                        {
                             last_input_poll = Instant::now();
                             if let Some(ref mut h) = hid {
                                 if let Some(ref mut disp) = display {
@@ -371,7 +405,9 @@ pub(crate) fn run_vm_internal(
                         }
                     }
                     SvcResult::PresentFrame => {
-                        if last_queued_frame == 0 { frames_presented += 1; }
+                        if last_queued_frame == 0 {
+                            frames_presented += 1;
+                        }
 
                         // 1. Poll host keyboard and physical gamepad input
                         if let Some(ref mut h) = hid {
@@ -418,7 +454,10 @@ pub(crate) fn run_vm_internal(
                             stream_audio_to_host(&mut kernel, &host_audio);
                             // Let the last queued audio play out (bounded) before the process ends.
                             let deadline = Instant::now() + std::time::Duration::from_secs(3);
-                            while host_audio.is_enabled && host_audio.queued_sample_count() > 0 && Instant::now() < deadline {
+                            while host_audio.is_enabled
+                                && host_audio.queued_sample_count() > 0
+                                && Instant::now() < deadline
+                            {
                                 std::thread::sleep(std::time::Duration::from_millis(5));
                             }
                         }
@@ -435,7 +474,12 @@ pub(crate) fn run_vm_internal(
                             match mmu.read_u32(info1) {
                                 Ok(result) => {
                                     stop_break_result = Some(result);
-                                    println!("[VM] Break result: 0x{:08X} (module={}, description={})", result, result & 0x1FF, (result >> 9) & 0x1FFF);
+                                    println!(
+                                        "[VM] Break result: 0x{:08X} (module={}, description={})",
+                                        result,
+                                        result & 0x1FF,
+                                        (result >> 9) & 0x1FFF
+                                    );
                                 }
                                 Err(error) => println!("[VM] Break result unreadable: {}", error),
                             }
@@ -532,16 +576,14 @@ pub(crate) fn run_vm_internal(
     if kernel.scheduler.total_threads_spawned > 0 {
         println!(
             "  -> Multi-Core Scheduler: {} KThreads Spawned | {} KThreads Completed",
-            kernel.scheduler.total_threads_spawned,
-            kernel.scheduler.total_threads_completed
+            kernel.scheduler.total_threads_spawned, kernel.scheduler.total_threads_completed
         );
     }
     if let Some(ref glsl) = kernel.nvgpu.state.last_decompiled_glsl {
         let line_count = glsl.lines().count();
         println!(
             "  -> Ampere SM86 Decompiler: GLSL 450 ({} lines) + Binary SPIR-V 1.5 ({} words, magic 0x07230203)",
-            line_count,
-            kernel.nvgpu.state.last_decompiled_spirv_words
+            line_count, kernel.nvgpu.state.last_decompiled_spirv_words
         );
     }
     if kernel.nvgpu.state.total_texels_sampled > 0
@@ -555,13 +597,10 @@ pub(crate) fn run_vm_internal(
             kernel.sync.total_condvar_signals
         );
     }
-    if kernel.nvgpu.state.total_depth_tests_passed > 0
-        || kernel.nvgpu.state.total_depth_tests_rejected > 0
-    {
+    if kernel.nvgpu.state.total_depth_tests_passed > 0 || kernel.nvgpu.state.total_depth_tests_rejected > 0 {
         println!(
             "  -> 3D Z-Buffer Depth Test: {} Passed | {} Occluded (Rejected)",
-            kernel.nvgpu.state.total_depth_tests_passed,
-            kernel.nvgpu.state.total_depth_tests_rejected
+            kernel.nvgpu.state.total_depth_tests_passed, kernel.nvgpu.state.total_depth_tests_rejected
         );
     }
     if kernel.nvgpu.upscaler.frames_upscaled > 0 || kernel.vfs.total_bytes_written > 0 {
@@ -574,10 +613,7 @@ pub(crate) fn run_vm_internal(
     }
     println!(
         "  -> Basic-Block JIT Cache: {} Blocks ({} Insns) | Hits: {} | Misses: {}",
-        cpu.jit.blocks_compiled,
-        cpu.jit.instructions_compiled,
-        cpu.jit.cache_hits,
-        cpu.jit.cache_misses
+        cpu.jit.blocks_compiled, cpu.jit.instructions_compiled, cpu.jit.cache_hits, cpu.jit.cache_misses
     );
     let mem_stats = mmu.bucket_stats();
     println!(
@@ -658,14 +694,19 @@ mod harness_gate_tests {
             let code = checked_service_program(&[0xD400_20C1, 0xD281_3320, 0xD400_00E1], 0x106, false);
             let mut memory = Memory::new();
             memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE);
-            for (i, word) in code.iter().enumerate() { memory.write_u32(0x8000 + 4 * i as u64, *word).unwrap(); }
+            for (i, word) in code.iter().enumerate() {
+                memory.write_u32(0x8000 + 4 * i as u64, *word).unwrap();
+            }
             let mut cpu = Cpu::new();
             cpu.regs.pc = 0x8000;
             let mut exited = false;
             for _ in 0..12 {
                 match cpu.step(&mut memory).unwrap() {
                     cpu::StepResult::Svc(0x106) => cpu.regs.write_x(0, result),
-                    cpu::StepResult::Svc(7) => { exited = true; break; }
+                    cpu::StepResult::Svc(7) => {
+                        exited = true;
+                        break;
+                    }
                     _ => {}
                 }
             }
@@ -677,22 +718,29 @@ mod harness_gate_tests {
     /// Runs a tiny program that fills the framebuffer and calls the present SVC, on a windowless display.
     fn headless_present_report(fill: u32, max_frames: usize) -> run_report::RunReport {
         let program: [u32; 6] = [
-            0xD2800004, // MOVZ X4, #0
-            0xF2B20004, // MOVK X4, #0x9000, LSL #16 (framebuffer base 0x90000000)
+            0xD2800004,                   // MOVZ X4, #0
+            0xF2B20004,                   // MOVK X4, #0x9000, LSL #16 (framebuffer base 0x90000000)
             0xD2800000 | (fill << 5) | 2, // MOVZ X2, #fill
-            0xB9000082, // STR  W2, [X4]
-            0xD4000301, // SVC  #0x18 (present)
-            0x17FFFFFE, // B    . (present again)
+            0xB9000082,                   // STR  W2, [X4]
+            0xD4000301,                   // SVC  #0x18 (present)
+            0x17FFFFFE,                   // B    . (present again)
         ];
         let (mut cpu, mut mmu, kernel) = setup_vm();
-        mmu.map_range(DEFAULT_FRAMEBUFFER_ADDR, SCREEN_WIDTH * SCREEN_HEIGHT * 4, Permission::READ_WRITE);
+        mmu.map_range(
+            DEFAULT_FRAMEBUFFER_ADDR,
+            SCREEN_WIDTH * SCREEN_HEIGHT * 4,
+            Permission::READ_WRITE,
+        );
         mmu.map_range(DEFAULT_BASE_ADDR, 4096, Permission::READ_WRITE_EXECUTE);
         let code: Vec<u8> = program.iter().flat_map(|i| i.to_le_bytes()).collect();
         mmu.write_bytes(DEFAULT_BASE_ADDR, &code).unwrap();
         cpu.regs.pc = DEFAULT_BASE_ADDR;
         let mut display = DisplayServer::new(
             DEFAULT_FRAMEBUFFER_ADDR,
-            DisplayConfig { backend: gpu::BackendKind::Headless, ..Default::default() },
+            DisplayConfig {
+                backend: gpu::BackendKind::Headless,
+                ..Default::default()
+            },
         );
         run_vm_internal(cpu, mmu, kernel, Some(&mut display), None, 0, max_frames).report
     }
@@ -703,10 +751,19 @@ mod harness_gate_tests {
         assert_eq!(a.stop_kind, "frame_limit");
         assert_eq!(a.frames_presented, 2);
         let hash = a.framebuffer_hash.clone().expect("a presented frame has a hash");
-        assert!(hash.starts_with("fnv1a64:") && hash.len() == "fnv1a64:".len() + 16, "{hash}");
+        assert!(
+            hash.starts_with("fnv1a64:") && hash.len() == "fnv1a64:".len() + 16,
+            "{hash}"
+        );
         // Same program, same hash; different guest pixels, different hash (the HUD does not mask the change).
-        assert_eq!(headless_present_report(0x1234, 2).framebuffer_hash.as_deref(), Some(hash.as_str()));
-        assert_ne!(headless_present_report(0x4321, 2).framebuffer_hash.as_deref(), Some(hash.as_str()));
+        assert_eq!(
+            headless_present_report(0x1234, 2).framebuffer_hash.as_deref(),
+            Some(hash.as_str())
+        );
+        assert_ne!(
+            headless_present_report(0x4321, 2).framebuffer_hash.as_deref(),
+            Some(hash.as_str())
+        );
     }
 
     /// Runs the `gpu3d` demo guest (pushbuffer-driven 3D triangle, `svc 0x101` then present) for `frames` frames.
@@ -716,7 +773,13 @@ mod harness_gate_tests {
     }
 
     fn headless_display() -> DisplayServer {
-        DisplayServer::new(DEFAULT_FRAMEBUFFER_ADDR, DisplayConfig { backend: gpu::BackendKind::Headless, ..Default::default() })
+        DisplayServer::new(
+            DEFAULT_FRAMEBUFFER_ADDR,
+            DisplayConfig {
+                backend: gpu::BackendKind::Headless,
+                ..Default::default()
+            },
+        )
     }
 
     // #486. The software rasterizer uses only IEEE-754 arithmetic (no libm), so these hashes are expected on
@@ -733,14 +796,20 @@ mod harness_gate_tests {
         // The guest moves a vertex every frame, so the last presented frame, and its hash, change.
         assert_eq!(first.framebuffer_hash.as_deref(), Some(GPU3D_FRAME_1));
         assert_eq!(second.framebuffer_hash.as_deref(), Some(GPU3D_FRAME_2));
-        assert_eq!(gpu3d_report(&mut headless_display(), 2).framebuffer_hash.as_deref(), Some(GPU3D_FRAME_2));
+        assert_eq!(
+            gpu3d_report(&mut headless_display(), 2).framebuffer_hash.as_deref(),
+            Some(GPU3D_FRAME_2)
+        );
     }
 
     #[test]
     fn frames_the_host_gpu_draws_report_no_hash() {
         let backend = gpu::display::FakeGpuBackend::default();
         let batches = backend.batches_3d.clone();
-        let config = DisplayConfig { deterministic: false, ..Default::default() };
+        let config = DisplayConfig {
+            deterministic: false,
+            ..Default::default()
+        };
         let mut display = DisplayServer::with_backend(DEFAULT_FRAMEBUFFER_ADDR, config, Box::new(backend));
         let report = gpu3d_report(&mut display, 2);
         assert_eq!(report.frames_presented, 2);
@@ -753,11 +822,18 @@ mod harness_gate_tests {
     fn deterministic_runs_draw_3d_on_the_cpu_and_match_headless() {
         let backend = gpu::display::FakeGpuBackend::default();
         let batches = backend.batches_3d.clone();
-        let config = DisplayConfig { deterministic: true, ..Default::default() };
+        let config = DisplayConfig {
+            deterministic: true,
+            ..Default::default()
+        };
         let mut display = DisplayServer::with_backend(DEFAULT_FRAMEBUFFER_ADDR, config, Box::new(backend));
         let report = gpu3d_report(&mut display, 2);
         assert_eq!(batches.get(), 0, "nothing went to the host GPU");
-        assert_eq!(report.framebuffer_hash.as_deref(), Some(GPU3D_FRAME_2), "same frame as the headless run");
+        assert_eq!(
+            report.framebuffer_hash.as_deref(),
+            Some(GPU3D_FRAME_2),
+            "same frame as the headless run"
+        );
     }
 
     /// Before the backend opens, a `gpu-present` build guesses that `auto`/`gpu` means a GPU. When that window cannot
@@ -768,9 +844,17 @@ mod harness_gate_tests {
         if std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some() {
             return; // a real window could open here; this checks the fallback only
         }
-        let mut display =
-            DisplayServer::new(DEFAULT_FRAMEBUFFER_ADDR, DisplayConfig { backend: gpu::BackendKind::Gpu, ..Default::default() });
-        assert!(display.is_gpu_accelerated(), "unopened, the configuration alone says GPU");
+        let mut display = DisplayServer::new(
+            DEFAULT_FRAMEBUFFER_ADDR,
+            DisplayConfig {
+                backend: gpu::BackendKind::Gpu,
+                ..Default::default()
+            },
+        );
+        assert!(
+            display.is_gpu_accelerated(),
+            "unopened, the configuration alone says GPU"
+        );
         let report = gpu3d_report(&mut display, 2);
         assert_ne!(display.backend_name(), Some("wgpu"));
         assert_eq!(report.framebuffer_hash.as_deref(), Some(GPU3D_FRAME_2));

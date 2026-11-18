@@ -17,13 +17,17 @@
 
 use super::interpreter::Cpu;
 use crate::mmu::{Memory, Permission};
-use ounce_nce::patch::{Patcher, SiteKind, Stats, CONTEXT_AREA, SYSREG_CNTFRQ_EL0};
+use ounce_nce::patch::{CONTEXT_AREA, Patcher, SYSREG_CNTFRQ_EL0, SiteKind, Stats};
 use ounce_nce::{Exit, NceError};
 use std::collections::HashSet;
 
 /// Signal numbers of an instruction fetch from a non-executable page (they differ per host).
-fn libc_sigsegv() -> i32 { 11 }
-fn libc_sigbus() -> i32 { if cfg!(target_os = "macos") { 10 } else { 7 } }
+fn libc_sigsegv() -> i32 {
+    11
+}
+fn libc_sigbus() -> i32 {
+    if cfg!(target_os = "macos") { 10 } else { 7 }
+}
 
 /// The host window guest memory lives in: the top 64 GiB of Horizon's 39-bit address space. Guest
 /// addresses must stay below 2^39 (HIPC buffer descriptors carry 39 bits), and macOS on Apple Silicon
@@ -75,7 +79,10 @@ mod budget_tests {
                 _ => memory.write_u32(code, 0xD400_0141).unwrap(),
             }
             let result = engine.sync_code(&mut memory);
-            assert!(result.unwrap_err().contains("native rewritten code changed"), "code lifecycle change {change}");
+            assert!(
+                result.unwrap_err().contains("native rewritten code changed"),
+                "code lifecycle change {change}"
+            );
         }
     }
 
@@ -86,10 +93,17 @@ mod budget_tests {
             memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE);
             memory.mark_code_range(0x8000, 0x9000);
             let mut engine = NceEngine {
-                patcher: Patcher::new(0x1000, STUB_CAPACITY).unwrap(), areas: vec![], written: vec![],
-                patched: HashSet::from([8]), interpreted: HashSet::new(), interpreted_steps: 0,
-                exec_gen: memory.exec_map_gen(), code_gen: memory.code_write_gen(),
-                skip: vec![], stats: Stats::default(), entries: 0,
+                patcher: Patcher::new(0x1000, STUB_CAPACITY).unwrap(),
+                areas: vec![],
+                written: vec![],
+                patched: HashSet::from([8]),
+                interpreted: HashSet::new(),
+                interpreted_steps: 0,
+                exec_gen: memory.exec_map_gen(),
+                code_gen: memory.code_write_gen(),
+                skip: vec![],
+                stats: Stats::default(),
+                entries: 0,
             };
             match change {
                 0 => memory.map_range(0x8000, 4096, Permission::READ_WRITE_EXECUTE),
@@ -100,7 +114,12 @@ mod budget_tests {
                 2 => memory.move_range(0x8000, 0xa000, 4096),
                 _ => memory.write_u32(0x8000, 0xD400_0141).unwrap(),
             }
-            assert!(engine.sync_code(&mut memory).unwrap_err().contains("native rewritten code changed"));
+            assert!(
+                engine
+                    .sync_code(&mut memory)
+                    .unwrap_err()
+                    .contains("native rewritten code changed")
+            );
         }
     }
 
@@ -112,12 +131,22 @@ mod budget_tests {
         let mut cpu = Cpu::new();
         cpu.regs.pc = 0x8000;
         let mut engine = NceEngine {
-            patcher: Patcher::new(0x1000, STUB_CAPACITY).unwrap(), areas: vec![], written: vec![],
-            patched: HashSet::new(), interpreted: HashSet::from([8]), interpreted_steps: 0,
-            exec_gen: 0, code_gen: 0, skip: vec![], stats: Stats::default(), entries: 0,
+            patcher: Patcher::new(0x1000, STUB_CAPACITY).unwrap(),
+            areas: vec![],
+            written: vec![],
+            patched: HashSet::new(),
+            interpreted: HashSet::from([8]),
+            interpreted_steps: 0,
+            exec_gen: 0,
+            code_gen: 0,
+            skip: vec![],
+            stats: Stats::default(),
+            entries: 0,
         };
-        assert_eq!(engine.interpret(&mut cpu, &mut memory, std::time::Instant::now() + SLICE),
-            Some(NceExit::Preempted));
+        assert_eq!(
+            engine.interpret(&mut cpu, &mut memory, std::time::Instant::now() + SLICE),
+            Some(NceExit::Preempted)
+        );
         assert_eq!(cpu.regs.pc, 0x8000);
     }
 }
@@ -170,19 +199,33 @@ impl NceEngine {
         mmu.map_range(ctx, CONTEXT_AREA as usize, Permission::READ_WRITE);
         let code = patcher.code_base();
         mmu.map_range(code, STUB_CAPACITY as usize, Permission::READ_EXECUTE);
-        Ok(Self { patcher, areas: vec![(code, code + STUB_CAPACITY)], written: vec![0], patched: HashSet::new(),
-            interpreted: HashSet::new(), interpreted_steps: 0, exec_gen: u64::MAX, code_gen: mmu.code_write_gen(), skip, stats: Stats::default(), entries: 0 })
+        Ok(Self {
+            patcher,
+            areas: vec![(code, code + STUB_CAPACITY)],
+            written: vec![0],
+            patched: HashSet::new(),
+            interpreted: HashSet::new(),
+            interpreted_steps: 0,
+            exec_gen: u64::MAX,
+            code_gen: mmu.code_write_gen(),
+            skip,
+            stats: Stats::default(),
+            entries: 0,
+        })
     }
 
     /// A free, unmapped spot for a satellite area near `at`, or `None`.
     fn satellite_spot(mmu: &Memory, at: u64) -> Option<u64> {
         let need = SATELLITE_CAPACITY + 2 * HOST_PAGE_MAX;
         let step = 0x10_0000u64;
-        (1..64u64).flat_map(|i| [at.checked_sub(i * step), at.checked_add(i * step)]).flatten().find_map(|c| {
-            let c = c & !(HOST_PAGE_MAX - 1);
-            let (lo, hi, mapped) = mmu.region_at(c - HOST_PAGE_MAX);
-            (!mapped && lo <= c - HOST_PAGE_MAX && hi >= c - HOST_PAGE_MAX + need).then_some(c)
-        })
+        (1..64u64)
+            .flat_map(|i| [at.checked_sub(i * step), at.checked_add(i * step)])
+            .flatten()
+            .find_map(|c| {
+                let c = c & !(HOST_PAGE_MAX - 1);
+                let (lo, hi, mapped) = mmu.region_at(c - HOST_PAGE_MAX);
+                (!mapped && lo <= c - HOST_PAGE_MAX && hi >= c - HOST_PAGE_MAX + need).then_some(c)
+            })
     }
 
     /// Rewrites and seals executable pages mapped since the last call, and writes new stubs.
@@ -191,7 +234,9 @@ impl NceEngine {
             for &page in self.patched.difference(&self.interpreted) {
                 let start = page << 12;
                 if mmu.code_written_since(start, start + 0x1000, self.code_gen) {
-                    return Err(format!("native rewritten code changed at {start:#x}; reload the guest image in a fresh native engine"));
+                    return Err(format!(
+                        "native rewritten code changed at {start:#x}; reload the guest image in a fresh native engine"
+                    ));
                 }
             }
             self.code_gen = mmu.code_write_gen();
@@ -219,7 +264,10 @@ impl NceEngine {
                     continue;
                 }
                 let run_start = page;
-                while page < end && !self.patched.contains(&(page >> 12)) && !Self::shares_host_page(&regions, page, host_page) {
+                while page < end
+                    && !self.patched.contains(&(page >> 12))
+                    && !Self::shares_host_page(&regions, page, host_page)
+                {
                     page += 0x1000;
                 }
                 self.rewrite_run(mmu, run_start, page)?;
@@ -232,7 +280,9 @@ impl NceEngine {
             let words = &area.code[self.written[i]..];
             if !words.is_empty() {
                 let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
-                arena.write(area.base + self.written[i] as u64 * 4, &bytes).map_err(err)?;
+                arena
+                    .write(area.base + self.written[i] as u64 * 4, &bytes)
+                    .map_err(err)?;
                 self.written[i] = area.code.len();
             }
         }
@@ -251,7 +301,9 @@ impl NceEngine {
     fn shares_host_page(regions: &[(u64, u64, Permission)], page: u64, host_page: u64) -> bool {
         let lo = page & !(host_page - 1);
         let hi = lo + host_page;
-        regions.iter().any(|&(s, e, perm)| s < hi && e > lo && perm.write && !perm.execute)
+        regions
+            .iter()
+            .any(|&(s, e, perm)| s < hi && e > lo && perm.write && !perm.execute)
     }
 
     fn rewrite_run(&mut self, mmu: &mut Memory, start: u64, end: u64) -> Result<(), String> {
@@ -264,9 +316,17 @@ impl NceEngine {
         }
         let mut bytes = vec![0u8; (end - start) as usize];
         mmu.read_bytes(start, &mut bytes).map_err(|e| e.to_string())?;
-        let mut words: Vec<u32> = bytes.chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect();
+        let mut words: Vec<u32> = bytes
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
+            .collect();
         // Rewrite each stretch between skipped ranges.
-        let mut cuts: Vec<(u64, u64)> = self.skip.iter().copied().filter(|&(a, b)| a < end && b > start).collect();
+        let mut cuts: Vec<(u64, u64)> = self
+            .skip
+            .iter()
+            .copied()
+            .filter(|&(a, b)| a < end && b > start)
+            .collect();
         cuts.sort_unstable();
         let mut at = start;
         for (a, b) in cuts.into_iter().chain([(end, end)]) {
@@ -306,7 +366,9 @@ impl NceEngine {
         self.sync_code(mmu)?;
         let deadline = std::time::Instant::now() + SLICE;
         loop {
-            if std::time::Instant::now() >= deadline { return Ok(NceExit::Preempted); }
+            if std::time::Instant::now() >= deadline {
+                return Ok(NceExit::Preempted);
+            }
             if self.interpreted.contains(&(cpu.regs.pc >> 12)) {
                 if let Some(exit) = self.interpret(cpu, mmu, deadline) {
                     return Ok(exit);
@@ -315,8 +377,13 @@ impl NceEngine {
             }
             match self.native(cpu, mmu, tick, deadline)? {
                 // Native code branched into an interpreted page: carry on there.
-                NceExit::Fault { pc, signal, addr } if addr == pc && self.interpreted.contains(&(pc >> 12))
-                    && (signal == libc_sigsegv() || signal == libc_sigbus()) => continue,
+                NceExit::Fault { pc, signal, addr }
+                    if addr == pc
+                        && self.interpreted.contains(&(pc >> 12))
+                        && (signal == libc_sigsegv() || signal == libc_sigbus()) =>
+                {
+                    continue;
+                }
                 exit => return Ok(exit),
             }
         }
@@ -326,22 +393,34 @@ impl NceEngine {
     fn interpret(&mut self, cpu: &mut Cpu, mmu: &mut Memory, deadline: std::time::Instant) -> Option<NceExit> {
         use super::interpreter::StepResult;
         while self.interpreted.contains(&(cpu.regs.pc >> 12)) {
-            if std::time::Instant::now() >= deadline { return Some(NceExit::Preempted); }
+            if std::time::Instant::now() >= deadline {
+                return Some(NceExit::Preempted);
+            }
             let pc = cpu.regs.pc;
             self.interpreted_steps += 1;
             match cpu.step(mmu) {
                 Ok(StepResult::Continue) => {}
                 Ok(StepResult::Svc(id)) => return Some(NceExit::Svc(id)),
-                Ok(StepResult::Halt(message)) => return Some(NceExit::Error(format!("interpreter halt at {pc:#x}: {message}"))),
-                Err(error) => return Some(NceExit::Fault { pc, signal: 0, addr: 0 }).inspect(|_| {
-                    eprintln!("[NCE] interpreted page fault at {pc:#x}: {error}");
-                }),
+                Ok(StepResult::Halt(message)) => {
+                    return Some(NceExit::Error(format!("interpreter halt at {pc:#x}: {message}")));
+                }
+                Err(error) => {
+                    return Some(NceExit::Fault { pc, signal: 0, addr: 0 }).inspect(|_| {
+                        eprintln!("[NCE] interpreted page fault at {pc:#x}: {error}");
+                    });
+                }
             }
         }
         None
     }
 
-    fn native(&mut self, cpu: &mut Cpu, mmu: &mut Memory, tick: &dyn Fn() -> u64, deadline: std::time::Instant) -> Result<NceExit, String> {
+    fn native(
+        &mut self,
+        cpu: &mut Cpu,
+        mmu: &mut Memory,
+        tick: &dyn Fn() -> u64,
+        deadline: std::time::Instant,
+    ) -> Result<NceExit, String> {
         let ctx_va = self.patcher.context();
         let mut no_preempt = vec![(ctx_va, ctx_va + ounce_nce::patch::CONTEXT_AREA)];
         no_preempt.extend(self.areas.iter().copied());
@@ -364,7 +443,10 @@ impl NceEngine {
         let mut target = match self.patcher.resume_for(pc) {
             Some(resume) => resume,
             None => {
-                let slot = self.patcher.launch_slot(pc).ok_or_else(|| format!("no launch slot reaches {pc:#x}"))?;
+                let slot = self
+                    .patcher
+                    .launch_slot(pc)
+                    .ok_or_else(|| format!("no launch slot reaches {pc:#x}"))?;
                 let words = Patcher::launch_words(slot, pc).map_err(err)?;
                 let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
                 arena.write(slot, &bytes).map_err(err)?;
@@ -377,7 +459,11 @@ impl NceEngine {
             let ctx = arena.context_mut(ctx_va).map_err(err)?;
             let result = match exit {
                 Exit::Trampoline(id) => {
-                    let site = *self.patcher.sites().get(id as usize).ok_or_else(|| format!("unknown exit id {id}"))?;
+                    let site = *self
+                        .patcher
+                        .sites()
+                        .get(id as usize)
+                        .ok_or_else(|| format!("unknown exit id {id}"))?;
                     match site.kind {
                         SiteKind::ReadTimer { rt, sysreg } => {
                             if rt != 31 {

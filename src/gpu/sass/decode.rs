@@ -62,7 +62,10 @@ pub enum Src {
     /// Raw 32-bit immediate.
     Imm(u32),
     /// `c[bank][offset]`, byte offset.
-    Cbuf { bank: u8, offset: u16 },
+    Cbuf {
+        bank: u8,
+        offset: u16,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,7 +148,11 @@ pub(crate) fn pack_pairs(comps: &[usize], a: u8, b: u8) -> [u8; 4] {
     let mut dst = [RZ; 4];
     for (i, &c) in comps.iter().enumerate() {
         let base = if i < 2 { a } else { b };
-        dst[c] = if base == RZ { RZ } else { base.wrapping_add((i % 2) as u8) };
+        dst[c] = if base == RZ {
+            RZ
+        } else {
+            base.wrapping_add((i % 2) as u8)
+        };
     }
     dst
 }
@@ -251,10 +258,23 @@ impl PSrc {
 /// The comparison inside a `*SETP`/`*SET` instruction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Compare {
-    F { cmp: FCmp, a: FSrc, b: FSrc },
-    I { cmp: ICmp, signed: bool, a: Src, b: Src },
+    F {
+        cmp: FCmp,
+        a: FSrc,
+        b: FSrc,
+    },
+    I {
+        cmp: ICmp,
+        signed: bool,
+        a: Src,
+        b: Src,
+    },
     /// `PSETP`: `a op b` on predicates.
-    P { op: BoolOp, a: PSrc, b: PSrc },
+    P {
+        op: BoolOp,
+        a: PSrc,
+        b: PSrc,
+    },
 }
 
 /// `XMAD` addend mode ([envytools] `tab5b00_1`). Semantics as in Ryujinx's `EmitXmad`
@@ -284,69 +304,224 @@ pub const LUT_C: u8 = 0xaa;
 pub enum Instr {
     Nop,
     Exit,
-    Mov { dst: u8, src: Src },
-    FAdd { dst: u8, a: FSrc, b: FSrc, sat: bool, ftz: bool },
-    FMul { dst: u8, a: FSrc, b: FSrc, sat: bool, ftz: bool },
-    FFma { dst: u8, a: FSrc, b: FSrc, c: FSrc, sat: bool, ftz: bool },
-    Mufu { dst: u8, op: MufuOp, src: FSrc },
+    Mov {
+        dst: u8,
+        src: Src,
+    },
+    FAdd {
+        dst: u8,
+        a: FSrc,
+        b: FSrc,
+        sat: bool,
+        ftz: bool,
+    },
+    FMul {
+        dst: u8,
+        a: FSrc,
+        b: FSrc,
+        sat: bool,
+        ftz: bool,
+    },
+    FFma {
+        dst: u8,
+        a: FSrc,
+        b: FSrc,
+        c: FSrc,
+        sat: bool,
+        ftz: bool,
+    },
+    Mufu {
+        dst: u8,
+        op: MufuOp,
+        src: FSrc,
+    },
     /// `LDC.32 Rd, c[bank][offset + reg]` (`reg == RZ` for unindexed).
-    Ldc { dst: u8, bank: u8, offset: u16, reg: u8 },
+    Ldc {
+        dst: u8,
+        bank: u8,
+        offset: u16,
+        reg: u8,
+    },
     /// `ALD Rd, a[addr]`, `comps` consecutive words into `Rd..`.
-    Ald { dst: u8, addr: u16, comps: u8 },
+    Ald {
+        dst: u8,
+        addr: u16,
+        comps: u8,
+    },
     /// `AST a[addr], Rs`, `comps` consecutive words from `Rs..`.
-    Ast { src: u8, addr: u16, comps: u8 },
-    Ipa { dst: u8, addr: u16, freq: IpaFreq, mul: u8 },
+    Ast {
+        src: u8,
+        addr: u16,
+        comps: u8,
+    },
+    Ipa {
+        dst: u8,
+        addr: u16,
+        freq: IpaFreq,
+        mul: u8,
+    },
     Tex(Tex),
     /// `pd = cmp bop c`, `pd2 = !cmp bop c` (`PT` destinations are discarded).
-    Setp { pd: u8, pd2: u8, cmp: Compare, bop: BoolOp, c: PSrc },
+    Setp {
+        pd: u8,
+        pd2: u8,
+        cmp: Compare,
+        bop: BoolOp,
+        c: PSrc,
+    },
     /// As [`Instr::Setp`] into a register: 1.0 (`bf`) or 0xffffffff when true, 0 when false.
-    Set { dst: u8, cmp: Compare, bop: BoolOp, c: PSrc, bf: bool },
+    Set {
+        dst: u8,
+        cmp: Compare,
+        bop: BoolOp,
+        c: PSrc,
+        bf: bool,
+    },
     /// `dst = c ? a : b`.
-    Sel { dst: u8, a: Src, b: Src, c: PSrc },
+    Sel {
+        dst: u8,
+        a: Src,
+        b: Src,
+        c: PSrc,
+    },
     /// `FMNMX`: `c ? min(a, b) : max(a, b)`.
-    FMnmx { dst: u8, a: FSrc, b: FSrc, c: PSrc },
+    FMnmx {
+        dst: u8,
+        a: FSrc,
+        b: FSrc,
+        c: PSrc,
+    },
     /// `IMNMX`: `c ? min(a, b) : max(a, b)`.
-    IMnmx { dst: u8, a: Src, b: Src, signed: bool, c: PSrc },
+    IMnmx {
+        dst: u8,
+        a: Src,
+        b: Src,
+        signed: bool,
+        c: PSrc,
+    },
     /// `FCMP`: `dst = (c cmp 0.0) ? a : b`.
-    FCmpSel { dst: u8, cmp: FCmp, a: Src, b: Src, c: Src },
+    FCmpSel {
+        dst: u8,
+        cmp: FCmp,
+        a: Src,
+        b: Src,
+        c: Src,
+    },
     /// `dst = (+/-a) + (+/-b) + (+/-c)`, 32-bit wrapping (`IADD`, `IADD32I`, `IADD3`).
-    IAdd { dst: u8, a: Src, b: Src, c: Src, neg: [bool; 3] },
+    IAdd {
+        dst: u8,
+        a: Src,
+        b: Src,
+        c: Src,
+        neg: [bool; 3],
+    },
     /// `ISCADD`: `dst = ((+/-a) << shift) + (+/-b)`.
-    IScAdd { dst: u8, a: Src, b: Src, shift: u8, neg: [bool; 2] },
+    IScAdd {
+        dst: u8,
+        a: Src,
+        b: Src,
+        shift: u8,
+        neg: [bool; 2],
+    },
     /// `IMAD` (low 32 bits): `dst = a * b + c`.
-    IMad { dst: u8, a: Src, b: Src, c: Src },
+    IMad {
+        dst: u8,
+        a: Src,
+        b: Src,
+        c: Src,
+    },
     /// Maxwell 16x16-bit multiply-add, see [`XmadMode`].
-    Xmad { dst: u8, a: Src, b: Src, c: Src, a_signed: bool, b_signed: bool, a_hi: bool, b_hi: bool, psl: bool, mrg: bool, mode: XmadMode },
+    Xmad {
+        dst: u8,
+        a: Src,
+        b: Src,
+        c: Src,
+        a_signed: bool,
+        b_signed: bool,
+        a_hi: bool,
+        b_hi: bool,
+        psl: bool,
+        mrg: bool,
+        mode: XmadMode,
+    },
     /// `dst = LUT(a, b, c)` bitwise (`LOP`/`LOP32I` are mapped onto a table).
-    Lop3 { dst: u8, lut: u8, a: Src, b: Src, c: Src },
+    Lop3 {
+        dst: u8,
+        lut: u8,
+        a: Src,
+        b: Src,
+        c: Src,
+    },
     /// `dst = a << b`; `wrap`: shift by `b & 31`, else amounts >= 32 give 0.
-    Shl { dst: u8, a: Src, b: Src, wrap: bool },
+    Shl {
+        dst: u8,
+        a: Src,
+        b: Src,
+        wrap: bool,
+    },
     /// `dst = a >> b` (arithmetic when `signed`); `wrap` as for [`Instr::Shl`], else
     /// amounts >= 32 act as 32.
-    Shr { dst: u8, a: Src, b: Src, signed: bool, wrap: bool },
+    Shr {
+        dst: u8,
+        a: Src,
+        b: Src,
+        signed: bool,
+        wrap: bool,
+    },
     /// 32-bit integer to f32 (round to nearest).
-    I2F { dst: u8, src: Src, signed: bool },
+    I2F {
+        dst: u8,
+        src: Src,
+        signed: bool,
+    },
     /// f32 to 32-bit integer after `round`, saturating; NaN gives 0.
     /// `u16`: an unsigned 16-bit destination (the result saturates to `0..=0xffff`).
-    F2I { dst: u8, src: FSrc, signed: bool, round: Round, u16: bool },
+    F2I {
+        dst: u8,
+        src: FSrc,
+        signed: bool,
+        round: Round,
+        u16: bool,
+    },
     /// f32 to f32: optional rounding to an integral value (`F2F.FLOOR`, `FRND`), then `.SAT`.
-    F2F { dst: u8, src: FSrc, round: Option<Round>, sat: bool },
+    F2F {
+        dst: u8,
+        src: FSrc,
+        round: Option<Round>,
+        sat: bool,
+    },
     /// Branch to the instruction `rel` bytes from this one's start.
-    Bra { rel: i32 },
+    Bra {
+        rel: i32,
+    },
     /// Maxwell `SSY`: push a reconvergence point `rel` bytes from this instruction.
-    Ssy { rel: i32 },
+    Ssy {
+        rel: i32,
+    },
     /// Maxwell `SYNC`: jump to the innermost `SSY` point.
     Sync,
     /// Maxwell `PBK`: push a break point.
-    Pbk { rel: i32 },
+    Pbk {
+        rel: i32,
+    },
     /// Maxwell `BRK`: jump to the innermost `PBK` point.
     Brk,
     /// Fragment discard (`KIL`, `KILL`).
     Kill,
     /// Maxwell `RRO` range reduction before `MUFU`: `.SINCOS` (`ex2` false) or `.EX2`.
-    Rro { dst: u8, ex2: bool, src: FSrc },
+    Rro {
+        dst: u8,
+        ex2: bool,
+        src: FSrc,
+    },
     /// `PLOP3`: `pd = LUT(a, b, c)` on predicates.
-    PLop3 { pd: u8, lut: u8, a: PSrc, b: PSrc, c: PSrc },
+    PLop3 {
+        pd: u8,
+        lut: u8,
+        a: PSrc,
+        b: PSrc,
+        c: PSrc,
+    },
     /// Warp-level hint with no effect on one thread's result (`BSSY`, `BSYNC`, `WARPSYNC`).
     Hint(&'static str),
 }
@@ -367,15 +542,26 @@ pub enum DecodeError {
 }
 
 fn reg_slot(w: u128, lo: u32, neg: u32, abs: u32) -> FSrc {
-    FSrc { src: Src::Reg(bits(w, lo, lo + 8) as u8), neg: bit(w, neg), abs: bit(w, abs) }
+    FSrc {
+        src: Src::Reg(bits(w, lo, lo + 8) as u8),
+        neg: bit(w, neg),
+        abs: bit(w, abs),
+    }
 }
 
 fn cbuf(w: u128) -> Src {
-    Src::Cbuf { bank: bits(w, 54, 59) as u8, offset: bits(w, 38, 54) as u16 }
+    Src::Cbuf {
+        bank: bits(w, 54, 59) as u8,
+        offset: bits(w, 38, 54) as u16,
+    }
 }
 
 fn plain(src: Src) -> FSrc {
-    FSrc { src, neg: false, abs: false }
+    FSrc {
+        src,
+        neg: false,
+        abs: false,
+    }
 }
 
 /// Operand in the bit-32 slot. `imm`/`cb` are the form numbers (bits 9..12) this opcode
@@ -387,15 +573,25 @@ fn slot32(w: u128, form: u32, imm: u32, cb: u32, opcode: u16) -> Result<FSrc, De
     } else if form == imm {
         Ok(plain(Src::Imm(bits(w, 32, 64))))
     } else if form == cb {
-        Ok(FSrc { src: cbuf(w), neg: bit(w, 63), abs: bit(w, 62) })
+        Ok(FSrc {
+            src: cbuf(w),
+            neg: bit(w, 63),
+            abs: bit(w, 62),
+        })
     } else {
-        Err(DecodeError::Unsupported { opcode, what: "operand form" })
+        Err(DecodeError::Unsupported {
+            opcode,
+            what: "operand form",
+        })
     }
 }
 
 fn fp_ctl(w: u128, opcode: u16) -> Result<(bool, bool), DecodeError> {
     if bits(w, 78, 80) != 0 {
-        return Err(DecodeError::Unsupported { opcode, what: "rounding mode other than RN" });
+        return Err(DecodeError::Unsupported {
+            opcode,
+            what: "rounding mode other than RN",
+        });
     }
     Ok((bit(w, 77), bit(w, 80)))
 }
@@ -422,7 +618,12 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
                 return Err(unsup("LDC addressing mode"));
             }
             match cbuf(w) {
-                Src::Cbuf { bank, offset } if offset % 4 == 0 => Instr::Ldc { dst, bank, offset, reg: r_off },
+                Src::Cbuf { bank, offset } if offset % 4 == 0 => Instr::Ldc {
+                    dst,
+                    bank,
+                    offset,
+                    reg: r_off,
+                },
                 _ => return Err(unsup("unaligned LDC")),
             }
         }
@@ -433,7 +634,11 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
             if bit(w, 76) || bit(w, 77) || bit(w, 79) {
                 return Err(unsup("ALD .P/.PHYS/.O"));
             }
-            Instr::Ald { dst, addr: bits(w, 40, 50) as u16, comps: bits(w, 74, 76) as u8 + 1 }
+            Instr::Ald {
+                dst,
+                addr: bits(w, 40, 50) as u16,
+                comps: bits(w, 74, 76) as u8 + 1,
+            }
         }
         0x322 => {
             if bits(w, 24, 32) as u8 != RZ || bits(w, 64, 72) as u8 != RZ {
@@ -442,7 +647,11 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
             if bit(w, 76) || bit(w, 77) {
                 return Err(unsup("AST .P/.PHYS"));
             }
-            Instr::Ast { src: bits(w, 32, 40) as u8, addr: bits(w, 40, 50) as u16, comps: bits(w, 74, 76) as u8 + 1 }
+            Instr::Ast {
+                src: bits(w, 32, 40) as u8,
+                addr: bits(w, 40, 50) as u16,
+                comps: bits(w, 74, 76) as u8 + 1,
+            }
         }
         0x326 => {
             // [NAK] leaves bits 24..32 clear and puts the `.OFFSET` register at 32..40, used
@@ -458,7 +667,12 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
                 1 => IpaFreq::Constant,
                 _ => return Err(unsup("IPA.STATE")),
             };
-            Instr::Ipa { dst, addr: (bits(w, 64, 72) << 2) as u16, freq, mul: RZ }
+            Instr::Ipa {
+                dst,
+                addr: (bits(w, 64, 72) << 2) as u16,
+                freq,
+                mul: RZ,
+            }
         }
         0xb60 | 0xb66 => {
             let op = if full == 0xb60 { TexOp::Sample } else { TexOp::Fetch };
@@ -481,7 +695,10 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
             let ra = bits(w, 24, 32) as u8;
             Instr::Tex(Tex {
                 op,
-                handle: TexHandle::Cbuf { bank: bits(w, 54, 59) as u8, offset: (bits(w, 40, 54) * 4) as u16 },
+                handle: TexHandle::Cbuf {
+                    bank: bits(w, 54, 59) as u8,
+                    offset: (bits(w, 40, 54) * 4) as u16,
+                },
                 lod,
                 x: ra,
                 y: next_reg(ra),
@@ -504,16 +721,32 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
                 Instr::Mov { dst, src: s.src }
             }
             0x020 | 0x021 => {
-                let b = if base == 0x020 { slot32(w, form, 4, 5, full)? } else { slot32(w, form, 2, 3, full)? };
+                let b = if base == 0x020 {
+                    slot32(w, form, 4, 5, full)?
+                } else {
+                    slot32(w, form, 2, 3, full)?
+                };
                 let (sat, ftz) = fp_ctl(w, full)?;
                 if base == 0x020 {
                     // CuAsm sets 4 in bits 84..87 on every FMUL without .D2/.M2-style scaling.
                     if bits(w, 84, 87) != 4 {
                         return Err(unsup("FMUL scale"));
                     }
-                    Instr::FMul { dst, a: ra, b, sat, ftz }
+                    Instr::FMul {
+                        dst,
+                        a: ra,
+                        b,
+                        sat,
+                        ftz,
+                    }
                 } else {
-                    Instr::FAdd { dst, a: ra, b, sat, ftz }
+                    Instr::FAdd {
+                        dst,
+                        a: ra,
+                        b,
+                        sat,
+                        ftz,
+                    }
                 }
             }
             0x023 => {
@@ -521,13 +754,34 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
                 let (b, c) = match form {
                     1 => (reg_slot(w, 32, 63, 62), r64),
                     2 => (r64, plain(Src::Imm(bits(w, 32, 64)))),
-                    3 => (r64, FSrc { src: cbuf(w), neg: bit(w, 63), abs: bit(w, 62) }),
+                    3 => (
+                        r64,
+                        FSrc {
+                            src: cbuf(w),
+                            neg: bit(w, 63),
+                            abs: bit(w, 62),
+                        },
+                    ),
                     4 => (plain(Src::Imm(bits(w, 32, 64))), r64),
-                    5 => (FSrc { src: cbuf(w), neg: bit(w, 63), abs: bit(w, 62) }, r64),
+                    5 => (
+                        FSrc {
+                            src: cbuf(w),
+                            neg: bit(w, 63),
+                            abs: bit(w, 62),
+                        },
+                        r64,
+                    ),
                     _ => return Err(unsup("operand form")),
                 };
                 let (sat, ftz) = fp_ctl(w, full)?;
-                Instr::FFma { dst, a: ra, b, c, sat, ftz }
+                Instr::FFma {
+                    dst,
+                    a: ra,
+                    b,
+                    c,
+                    sat,
+                    ftz,
+                }
             }
             0x108 => {
                 // Forms 1/4/5 from [NAK]'s `encode_alu_base`; [CuAsm] shows only form 1.
@@ -558,7 +812,10 @@ pub fn decode(w: u128) -> Result<Decoded, DecodeError> {
 }
 
 fn psrc(w: u128, lo: u32) -> PSrc {
-    PSrc { p: bits(w, lo, lo + 3) as u8, neg: bit(w, lo + 3) }
+    PSrc {
+        p: bits(w, lo, lo + 3) as u8,
+        neg: bit(w, lo + 3),
+    }
 }
 
 /// Integer operand in the bit-32 slot: form 1 register, 4 immediate, 5 constant buffer.
@@ -568,7 +825,10 @@ fn islot32(w: u128, form: u32, opcode: u16) -> Result<(Src, bool), DecodeError> 
         1 => Ok((Src::Reg(bits(w, 32, 40) as u8), bit(w, 63))),
         4 => Ok((Src::Imm(bits(w, 32, 64)), false)),
         5 => Ok((cbuf(w), bit(w, 63))),
-        _ => Err(DecodeError::Unsupported { opcode, what: "operand form (uniform registers?)" }),
+        _ => Err(DecodeError::Unsupported {
+            opcode,
+            what: "operand form (uniform registers?)",
+        }),
     }
 }
 
@@ -585,13 +845,26 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
     let pc87 = psrc(w, 87);
     // Predicate destinations at 81..84 / 84..87.
     let (pd, pd2) = (bits(w, 81, 84) as u8, bits(w, 84, 87) as u8);
-    let no_pout = || if pd != PT || pd2 != PT { Err(unsup("carry / predicate output")) } else { Ok(()) };
+    let no_pout = || {
+        if pd != PT || pd2 != PT {
+            Err(unsup("carry / predicate output"))
+        } else {
+            Ok(())
+        }
+    };
     let fslot = |opcode| -> Result<FSrc, DecodeError> {
         match form {
             1 => Ok(reg_slot(w, 32, 63, 62)),
             4 => Ok(plain(Src::Imm(bits(w, 32, 64)))),
-            5 => Ok(FSrc { src: cbuf(w), neg: bit(w, 63), abs: bit(w, 62) }),
-            _ => Err(DecodeError::Unsupported { opcode, what: "operand form (uniform registers?)" }),
+            5 => Ok(FSrc {
+                src: cbuf(w),
+                neg: bit(w, 63),
+                abs: bit(w, 62),
+            }),
+            _ => Err(DecodeError::Unsupported {
+                opcode,
+                what: "operand form (uniform registers?)",
+            }),
         }
     };
     let rnd = [Round::Nearest, Round::Floor, Round::Ceil, Round::Trunc];
@@ -604,13 +877,34 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
             if neg {
                 return Err(unsup("ISETP negated operand"));
             }
-            let cmp = Compare::I { cmp: ICmp::from_code(bits(w, 76, 79)), signed: bit(w, 73), a: ra, b };
-            Instr::Setp { pd, pd2, cmp, bop: bop()?, c: pc87 }
+            let cmp = Compare::I {
+                cmp: ICmp::from_code(bits(w, 76, 79)),
+                signed: bit(w, 73),
+                a: ra,
+                b,
+            };
+            Instr::Setp {
+                pd,
+                pd2,
+                cmp,
+                bop: bop()?,
+                c: pc87,
+            }
         }
         0x00b => {
             let a = reg_slot(w, 24, 72, 73);
-            let cmp = Compare::F { cmp: FCmp::from_code(bits(w, 76, 80)), a, b: fslot(full)? };
-            Instr::Setp { pd, pd2, cmp, bop: bop()?, c: pc87 }
+            let cmp = Compare::F {
+                cmp: FCmp::from_code(bits(w, 76, 80)),
+                a,
+                b: fslot(full)?,
+            };
+            Instr::Setp {
+                pd,
+                pd2,
+                cmp,
+                bop: bop()?,
+                c: pc87,
+            }
         }
         0x01c if form == 4 => {
             // [NAK]: the second output (84..87) takes its own table at 16..24.
@@ -618,7 +912,13 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
                 return Err(unsup("PLOP3 second output"));
             }
             let lut = ((bits(w, 72, 77) << 3) | bits(w, 64, 67)) as u8;
-            Instr::PLop3 { pd, lut, a: psrc(w, 87), b: psrc(w, 77), c: psrc(w, 68) }
+            Instr::PLop3 {
+                pd,
+                lut,
+                a: psrc(w, 87),
+                b: psrc(w, 77),
+                c: psrc(w, 68),
+            }
         }
         0x007 | 0x008 => {
             let (b, neg) = islot32(w, form, full)?;
@@ -631,14 +931,25 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
             if bit(w, 81) {
                 return Err(unsup("FMNMX.NAN"));
             }
-            Instr::FMnmx { dst, a: reg_slot(w, 24, 72, 73), b: fslot(full)?, c: pc87 }
+            Instr::FMnmx {
+                dst,
+                a: reg_slot(w, 24, 72, 73),
+                b: fslot(full)?,
+                c: pc87,
+            }
         }
         0x017 => {
             let (b, neg) = islot32(w, form, full)?;
             if neg {
                 return Err(unsup("IMNMX negated operand"));
             }
-            Instr::IMnmx { dst, a: ra, b, signed: bit(w, 73), c: pc87 }
+            Instr::IMnmx {
+                dst,
+                a: ra,
+                b,
+                signed: bit(w, 73),
+                c: pc87,
+            }
         }
         0x010 => {
             if bit(w, 74) {
@@ -646,7 +957,13 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
             }
             no_pout()?;
             let (b, nb) = islot32(w, form, full)?;
-            Instr::IAdd { dst, a: ra, b, c: rc, neg: [bit(w, 72), nb, bit(w, 75)] }
+            Instr::IAdd {
+                dst,
+                a: ra,
+                b,
+                c: rc,
+                neg: [bit(w, 72), nb, bit(w, 75)],
+            }
         }
         0x024 => {
             if bit(w, 74) || bit(w, 72) {
@@ -666,10 +983,20 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
             if nc {
                 // a * b - c: no IR op subtracts, so route through IADD3 when the product is trivial.
                 match (ra, b) {
-                    (Src::Reg(RZ), _) | (_, Src::Reg(RZ)) | (_, Src::Imm(0)) => {
-                        Instr::IAdd { dst, a: Src::Reg(RZ), b: Src::Reg(RZ), c, neg: [false, false, true] }
-                    }
-                    (a, Src::Imm(1)) => Instr::IAdd { dst, a, b: Src::Reg(RZ), c, neg: [false, false, true] },
+                    (Src::Reg(RZ), _) | (_, Src::Reg(RZ)) | (_, Src::Imm(0)) => Instr::IAdd {
+                        dst,
+                        a: Src::Reg(RZ),
+                        b: Src::Reg(RZ),
+                        c,
+                        neg: [false, false, true],
+                    },
+                    (a, Src::Imm(1)) => Instr::IAdd {
+                        dst,
+                        a,
+                        b: Src::Reg(RZ),
+                        c,
+                        neg: [false, false, true],
+                    },
                     _ => return Err(unsup("IMAD with a negated addend and a real product")),
                 }
             } else {
@@ -687,7 +1014,13 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
             if neg {
                 return Err(unsup("LOP3 negated operand"));
             }
-            Instr::Lop3 { dst, lut: bits(w, 72, 80) as u8, a: ra, b, c: rc }
+            Instr::Lop3 {
+                dst,
+                lut: bits(w, 72, 80) as u8,
+                a: ra,
+                b,
+                c: rc,
+            }
         }
         0x019 => {
             let (b, neg) = islot32(w, form, full)?;
@@ -701,7 +1034,13 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
             let (right, hi, wrap) = (bit(w, 76), bit(w, 80), bit(w, 75));
             match (right, hi, ra, rc) {
                 (false, false, a, Src::Reg(RZ)) => Instr::Shl { dst, a, b, wrap },
-                (true, true, Src::Reg(RZ), c) => Instr::Shr { dst, a: c, b, signed: ty == 2, wrap },
+                (true, true, Src::Reg(RZ), c) => Instr::Shr {
+                    dst,
+                    a: c,
+                    b,
+                    signed: ty == 2,
+                    wrap,
+                },
                 _ => return Err(unsup("SHF funnel shift across two registers")),
             }
         }
@@ -716,19 +1055,34 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
             if neg || bit(w, 72) {
                 return Err(unsup("I2F modifiers / byte select"));
             }
-            Instr::I2F { dst, src, signed: bit(w, 74) }
+            Instr::I2F {
+                dst,
+                src,
+                signed: bit(w, 74),
+            }
         }
         0x105 => {
             if bits(w, 75, 77) != 2 || bits(w, 84, 87) != 2 {
                 return Err(unsup("F2I format other than 32-bit <- F32"));
             }
-            Instr::F2I { dst, src: fslot(full)?, signed: bit(w, 72), round: rnd[bits(w, 78, 80) as usize], u16: false }
+            Instr::F2I {
+                dst,
+                src: fslot(full)?,
+                signed: bit(w, 72),
+                round: rnd[bits(w, 78, 80) as usize],
+                u16: false,
+            }
         }
         0x107 => {
             if bits(w, 75, 77) != 2 || bits(w, 84, 87) != 2 {
                 return Err(unsup("FRND format other than F32"));
             }
-            Instr::F2F { dst, src: fslot(full)?, round: Some(rnd[bits(w, 78, 80) as usize]), sat: false }
+            Instr::F2F {
+                dst,
+                src: fslot(full)?,
+                round: Some(rnd[bits(w, 78, 80) as usize]),
+                sat: false,
+            }
         }
         _ => match full {
             0x947 => {
@@ -737,7 +1091,9 @@ fn decode_ext(w: u128, full: u16) -> Result<Option<Instr>, DecodeError> {
                 }
                 // Byte offset bits 34..82 (word aligned), relative to the next instruction.
                 let off = ((bits(w, 34, 64) as u64 | ((bits(w, 64, 82) as u64) << 30)) << 16) as i64 >> 14;
-                Instr::Bra { rel: i32::try_from(off + 16).map_err(|_| unsup("branch offset"))? }
+                Instr::Bra {
+                    rel: i32::try_from(off + 16).map_err(|_| unsup("branch offset"))?,
+                }
             }
             0x945 => Instr::Hint("BSSY"),
             0x941 => Instr::Hint("BSYNC"),
@@ -773,7 +1129,11 @@ impl fmt::Display for Src {
 impl fmt::Display for FSrc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let n = if self.neg { "-" } else { "" };
-        if self.abs { write!(f, "{n}|{}|", self.src) } else { write!(f, "{n}{}", self.src) }
+        if self.abs {
+            write!(f, "{n}|{}|", self.src)
+        } else {
+            write!(f, "{n}{}", self.src)
+        }
     }
 }
 
@@ -818,7 +1178,11 @@ fn cmp_args(c: &Compare) -> String {
 impl fmt::Display for Decoded {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.pred != PT || self.pred_neg {
-            let p = if self.pred == PT { "PT".to_string() } else { format!("P{}", self.pred) };
+            let p = if self.pred == PT {
+                "PT".to_string()
+            } else {
+                format!("P{}", self.pred)
+            };
             write!(f, "@{}{p} ", if self.pred_neg { "!" } else { "" })?;
         }
         let m = |sat: bool, ftz: bool| format!("{}{}", if ftz { ".FTZ" } else { "" }, if sat { ".SAT" } else { "" });
@@ -831,7 +1195,12 @@ impl fmt::Display for Decoded {
             Instr::FFma { dst, a, b, c, sat, ftz } => write!(f, "FFMA{} {}, {a}, {b}, {c}", m(sat, ftz), reg(dst)),
             Instr::Mufu { dst, op, src } => write!(f, "MUFU.{} {}, {src}", format!("{op:?}").to_uppercase(), reg(dst)),
             Instr::Rro { dst, ex2, src } => write!(f, "RRO.{} {}, {src}", if ex2 { "EX2" } else { "SINCOS" }, reg(dst)),
-            Instr::Ldc { dst, bank, offset, reg: r_off } => {
+            Instr::Ldc {
+                dst,
+                bank,
+                offset,
+                reg: r_off,
+            } => {
                 if r_off == RZ {
                     write!(f, "LDC {}, c[{bank:#x}][{offset:#x}]", reg(dst))
                 } else {
@@ -858,16 +1227,44 @@ impl fmt::Display for Decoded {
                 };
                 let d: Vec<String> = t.dst.iter().map(|&r| reg(r)).collect();
                 match t.layer {
-                    Some(l) => write!(f, "{name}.ARRAY_2D{lod} {{{}}}, {}, {}, {}, {h}", d.join(", "), reg(l), reg(t.x), reg(t.y)),
-                    None => write!(f, "{name}.2D{lod} {{{}}}, {}, {}, {h}", d.join(", "), reg(t.x), reg(t.y)),
+                    Some(l) => write!(
+                        f,
+                        "{name}.ARRAY_2D{lod} {{{}}}, {}, {}, {}, {h}",
+                        d.join(", "),
+                        reg(l),
+                        reg(t.x),
+                        reg(t.y)
+                    ),
+                    None => write!(
+                        f,
+                        "{name}.2D{lod} {{{}}}, {}, {}, {h}",
+                        d.join(", "),
+                        reg(t.x),
+                        reg(t.y)
+                    ),
                 }
             }
             Instr::Setp { pd, pd2, cmp, bop, c } => {
-                write!(f, "{}SETP{}.{bop:?} {}, {}, {}, {c}", cmp_kind(&cmp), cmp_name(&cmp), pr(pd), pr(pd2), cmp_args(&cmp))
+                write!(
+                    f,
+                    "{}SETP{}.{bop:?} {}, {}, {}, {c}",
+                    cmp_kind(&cmp),
+                    cmp_name(&cmp),
+                    pr(pd),
+                    pr(pd2),
+                    cmp_args(&cmp)
+                )
             }
             Instr::Set { dst, cmp, bop, c, bf } => {
                 let bf = if bf { ".BF" } else { "" };
-                write!(f, "{}SET{bf}{}.{bop:?} {}, {}, {c}", cmp_kind(&cmp), cmp_name(&cmp), reg(dst), cmp_args(&cmp))
+                write!(
+                    f,
+                    "{}SET{bf}{}.{bop:?} {}, {}, {c}",
+                    cmp_kind(&cmp),
+                    cmp_name(&cmp),
+                    reg(dst),
+                    cmp_args(&cmp)
+                )
             }
             Instr::Sel { dst, a, b, c } => write!(f, "SEL {}, {a}, {b}, {c}", reg(dst)),
             Instr::FMnmx { dst, a, b, c } => write!(f, "FMNMX {}, {a}, {b}, {c}", reg(dst)),
@@ -882,8 +1279,24 @@ impl fmt::Display for Decoded {
                 write!(f, "ISCADD {}, {}{a}, {}{b}, {shift:#x}", reg(dst), n(0), n(1))
             }
             Instr::IMad { dst, a, b, c } => write!(f, "IMAD {}, {a}, {b}, {c}", reg(dst)),
-            Instr::Xmad { dst, a, b, c, a_signed, b_signed, a_hi, b_hi, psl, mrg, mode } => {
-                let mode = if mode == XmadMode::None { String::new() } else { format!(".{}", format!("{mode:?}").to_uppercase()) };
+            Instr::Xmad {
+                dst,
+                a,
+                b,
+                c,
+                a_signed,
+                b_signed,
+                a_hi,
+                b_hi,
+                psl,
+                mrg,
+                mode,
+            } => {
+                let mode = if mode == XmadMode::None {
+                    String::new()
+                } else {
+                    format!(".{}", format!("{mode:?}").to_uppercase())
+                };
                 let s = |signed: bool| if signed { "S16" } else { "U16" };
                 let h = |hi: bool| if hi { ".H1" } else { "" };
                 write!(
@@ -900,13 +1313,37 @@ impl fmt::Display for Decoded {
             }
             Instr::Lop3 { dst, lut, a, b, c } => write!(f, "LOP3.LUT {}, {a}, {b}, {c}, {lut:#04x}", reg(dst)),
             Instr::Shl { dst, a, b, wrap } => write!(f, "SHL{} {}, {a}, {b}", if wrap { ".W" } else { "" }, reg(dst)),
-            Instr::Shr { dst, a, b, signed, wrap } => {
-                write!(f, "SHR{}{} {}, {a}, {b}", sgn(signed), if wrap { ".W" } else { "" }, reg(dst))
+            Instr::Shr {
+                dst,
+                a,
+                b,
+                signed,
+                wrap,
+            } => {
+                write!(
+                    f,
+                    "SHR{}{} {}, {a}, {b}",
+                    sgn(signed),
+                    if wrap { ".W" } else { "" },
+                    reg(dst)
+                )
             }
             Instr::I2F { dst, src, signed } => write!(f, "I2F.F32{} {}, {src}", sgn(signed), reg(dst)),
-            Instr::F2I { dst, src, signed, round, u16 } => {
+            Instr::F2I {
+                dst,
+                src,
+                signed,
+                round,
+                u16,
+            } => {
                 let width = if u16 { "16" } else { "" };
-                write!(f, "F2I{}{width}.F32.{} {}, {src}", sgn(signed), format!("{round:?}").to_uppercase(), reg(dst))
+                write!(
+                    f,
+                    "F2I{}{width}.F32.{} {}, {src}",
+                    sgn(signed),
+                    format!("{round:?}").to_uppercase(),
+                    reg(dst)
+                )
             }
             Instr::F2F { dst, src, round, sat } => {
                 let r = round.map_or(String::new(), |r| format!(".{}", format!("{r:?}").to_uppercase()));

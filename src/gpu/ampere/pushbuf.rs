@@ -66,7 +66,11 @@ pub fn decode(words: &[u32]) -> Result<Vec<MethodCall>, PushbufError> {
             SEC_OP_GRP0_USE_TERT => {
                 // Sub-device mask controls (TERT_OP 17:16); a single GPU ignores them.
             }
-            SEC_OP_IMMD_DATA_METHOD => calls.push(MethodCall { subchannel, method, data: count as u32 }),
+            SEC_OP_IMMD_DATA_METHOD => calls.push(MethodCall {
+                subchannel,
+                method,
+                data: count as u32,
+            }),
             SEC_OP_END_PB_SEGMENT => break,
             SEC_OP_INC_METHOD | SEC_OP_NON_INC_METHOD | SEC_OP_ONE_INC => {
                 if i + count > words.len() {
@@ -78,7 +82,11 @@ pub fn decode(words: &[u32]) -> Result<Vec<MethodCall>, PushbufError> {
                         SEC_OP_ONE_INC => (n > 0) as u32,
                         _ => 0,
                     };
-                    calls.push(MethodCall { subchannel, method: method + step * 4, data });
+                    calls.push(MethodCall {
+                        subchannel,
+                        method: method + step * 4,
+                        data,
+                    });
                 }
                 i += count;
             }
@@ -95,22 +103,34 @@ mod tests {
     #[test]
     fn decodes_each_sec_op() {
         let words = [
-            inc_header(0, 0x0d80, 2), 1, 2,
-            non_inc_header(1, 0x0d78, 2), 3, 4,
-            one_inc_header(2, 0x1b00, 3), 5, 6, 7,
+            inc_header(0, 0x0d80, 2),
+            1,
+            2,
+            non_inc_header(1, 0x0d78, 2),
+            3,
+            4,
+            one_inc_header(2, 0x1b00, 3),
+            5,
+            6,
+            7,
             immd_header(3, 0x1614, 0x1abc),
             0, // GRP0_USE_TERT with TERT_OP 0: ignored
             7 << 29,
-            inc_header(0, 0x0100, 1), 9, // after END_PB_SEGMENT: not decoded
+            inc_header(0, 0x0100, 1),
+            9, // after END_PB_SEGMENT: not decoded
         ];
         let calls = decode(&words).unwrap();
         let got: Vec<(u8, u32, u32)> = calls.iter().map(|c| (c.subchannel, c.method, c.data)).collect();
         assert_eq!(
             got,
             vec![
-                (0, 0x0d80, 1), (0, 0x0d84, 2),
-                (1, 0x0d78, 3), (1, 0x0d78, 4),
-                (2, 0x1b00, 5), (2, 0x1b04, 6), (2, 0x1b04, 7),
+                (0, 0x0d80, 1),
+                (0, 0x0d84, 2),
+                (1, 0x0d78, 3),
+                (1, 0x0d78, 4),
+                (2, 0x1b00, 5),
+                (2, 0x1b04, 6),
+                (2, 0x1b04, 7),
                 (3, 0x1614, 0x1abc),
             ]
         );
@@ -118,7 +138,16 @@ mod tests {
 
     #[test]
     fn rejects_truncated_and_reserved() {
-        assert_eq!(decode(&[inc_header(0, 0x800, 3), 1]), Err(PushbufError::Truncated { header_index: 0 }));
-        assert_eq!(decode(&[0, 2 << 29]), Err(PushbufError::ReservedOpcode { header_index: 1, sec_op: 2 }));
+        assert_eq!(
+            decode(&[inc_header(0, 0x800, 3), 1]),
+            Err(PushbufError::Truncated { header_index: 0 })
+        );
+        assert_eq!(
+            decode(&[0, 2 << 29]),
+            Err(PushbufError::ReservedOpcode {
+                header_index: 1,
+                sec_op: 2
+            })
+        );
     }
 }

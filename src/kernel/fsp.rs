@@ -9,7 +9,7 @@
 //! working: `path_arg` falls back to it.
 
 use super::ipc::{IpcManager, ServiceType};
-use crate::fs::{resolve_guest_path, VfsEntryKind, VfsError, VirtualFileSystem, MAX_FILE_SIZE};
+use crate::fs::{MAX_FILE_SIZE, VfsEntryKind, VfsError, VirtualFileSystem, resolve_guest_path};
 use crate::mmu::Memory;
 
 /// A result in Horizon's `fs` module (2). libnx's fsdev maps not-found and already-exists to
@@ -61,7 +61,14 @@ fn child_path(dir: &str, name: &str) -> String {
 impl IpcManager {
     /// Path argument `index` (X buffer `index`; the first falls back to the CMIF data at `fallback`),
     /// resolved against `mount` and checked against the mount's host folder.
-    fn fs_path(&self, mmu: &Memory, vfs: &VirtualFileSystem, index: usize, fallback: u64, mount: &str) -> Result<String, VfsError> {
+    fn fs_path(
+        &self,
+        mmu: &Memory,
+        vfs: &VirtualFileSystem,
+        index: usize,
+        fallback: u64,
+        mount: &str,
+    ) -> Result<String, VfsError> {
         let path = resolve_guest_path(mount, &self.path_arg_at(mmu, index, fallback))?;
         vfs.check_host_path(&path)?;
         Ok(path)
@@ -177,7 +184,11 @@ impl IpcManager {
                         None => false,
                     })
                     .collect();
-                let h = self.allocate_handle(ServiceType::Directory { path, entries, index: 0 });
+                let h = self.allocate_handle(ServiceType::Directory {
+                    path,
+                    entries,
+                    index: 0,
+                });
                 Ok((vec![h], Some(h)))
             }
             // Commit
@@ -303,7 +314,10 @@ impl IpcManager {
                     Some(b) => (b.addr, (b.size / DIRECTORY_ENTRY_SIZE) as usize),
                     None => {
                         let max = mmu.read_u64(args_base + 8).unwrap_or(0) as usize;
-                        (mmu.read_u64(args_base).unwrap_or(0), if max == 0 { usize::MAX } else { max })
+                        (
+                            mmu.read_u64(args_base).unwrap_or(0),
+                            if max == 0 { usize::MAX } else { max },
+                        )
                     }
                 };
                 let remaining = entries.len().saturating_sub(index);
@@ -329,7 +343,8 @@ impl IpcManager {
                     return 0;
                 }
                 index += count;
-                self.handles.insert(session_handle, ServiceType::Directory { path, entries, index });
+                self.handles
+                    .insert(session_handle, ServiceType::Directory { path, entries, index });
                 self.write_cmif_response(tls_addr, mmu, 0, &u64_words(count as u64), None);
             }
             // GetEntryCount -> s64
@@ -384,7 +399,13 @@ mod tests {
             if let Some(dir) = sdmc {
                 vfs.set_sdmc_directory(dir);
             }
-            Fsp { mmu, ipc: IpcManager::new(), vfs, nvgpu: NvgpuChannel::new(), audio: AudioOutServer::new() }
+            Fsp {
+                mmu,
+                ipc: IpcManager::new(),
+                vfs,
+                nvgpu: NvgpuChannel::new(),
+                audio: AudioOutServer::new(),
+            }
         }
 
         /// Sends `cmd` with `args` (CMIF data), `paths` in X buffers 0 and 1 and `data`. Returns the result
@@ -399,7 +420,8 @@ mod tests {
                 Data::Send(_) => (1, 0),
                 Data::Recv(_) => (0, 1),
             };
-            m.write_u32(TLS, 4 | (paths.len() as u32) << 16 | num_send << 20 | num_recv << 24).unwrap();
+            m.write_u32(TLS, 4 | (paths.len() as u32) << 16 | num_send << 20 | num_recv << 24)
+                .unwrap();
             m.write_u32(TLS + 4, 16).unwrap();
             let mut off = 8;
             for (i, p) in paths.iter().enumerate() {
@@ -433,7 +455,8 @@ mod tests {
             for (i, a) in args.iter().enumerate() {
                 m.write_u64(TLS + cmif + 16 + i as u64 * 8, *a).unwrap();
             }
-            self.ipc.handle_sync_request(h, TLS, &mut self.mmu, &mut self.nvgpu, &mut self.audio, &mut self.vfs);
+            self.ipc
+                .handle_sync_request(h, TLS, &mut self.mmu, &mut self.nvgpu, &mut self.audio, &mut self.vfs);
             // Response: header, optional special header + handles, CMIF aligned to 16.
             let w1 = self.mmu.read_u32(TLS + 4).unwrap();
             let mut off = 8;
@@ -443,7 +466,9 @@ mod tests {
             }
             let cmif = (off + 15) & !15;
             let result = self.mmu.read_u32(TLS + cmif + 8).unwrap();
-            let words = (0..8).map(|i| self.mmu.read_u32(TLS + cmif + 16 + i * 4).unwrap()).collect();
+            let words = (0..8)
+                .map(|i| self.mmu.read_u32(TLS + cmif + 16 + i * 4).unwrap())
+                .collect();
             (result, words)
         }
 
@@ -491,17 +516,43 @@ mod tests {
         f.vfs.mount_file("sdmc:/b", b"b");
         let entries = vec!["a".to_string(), "b".to_string()];
         let handle = f.ipc.allocate_handle(ServiceType::Directory {
-            path: "sdmc:/".into(), entries: entries.clone(), index: 0 });
+            path: "sdmc:/".into(),
+            entries: entries.clone(),
+            index: 0,
+        });
         f.mmu.unmap_range(BUF + 4096, (BUF_SIZE - 4096) as usize);
         f.ipc.request.recv_buffers = vec![crate::kernel::hipc::Buffer {
-            addr: BUF + 4096 - 100, size: 2 * DIRECTORY_ENTRY_SIZE }];
-        f.ipc.handle_directory(handle, "sdmc:/".into(), entries.clone(), 0, 0, PATH0, TLS,
-            &mut f.mmu, &mut f.vfs);
+            addr: BUF + 4096 - 100,
+            size: 2 * DIRECTORY_ENTRY_SIZE,
+        }];
+        f.ipc.handle_directory(
+            handle,
+            "sdmc:/".into(),
+            entries.clone(),
+            0,
+            0,
+            PATH0,
+            TLS,
+            &mut f.mmu,
+            &mut f.vfs,
+        );
         assert_ne!(f.mmu.read_u32(TLS + 0x18).unwrap(), 0);
-        assert!(matches!(f.ipc.handles.get(&handle), Some(ServiceType::Directory { index: 0, .. })));
+        assert!(matches!(
+            f.ipc.handles.get(&handle),
+            Some(ServiceType::Directory { index: 0, .. })
+        ));
         f.ipc.request.recv_buffers[0].addr = BUF;
-        f.ipc.handle_directory(handle, "sdmc:/".into(), entries, 0, 0, PATH0, TLS,
-            &mut f.mmu, &mut f.vfs);
+        f.ipc.handle_directory(
+            handle,
+            "sdmc:/".into(),
+            entries,
+            0,
+            0,
+            PATH0,
+            TLS,
+            &mut f.mmu,
+            &mut f.vfs,
+        );
         assert_eq!(f.mmu.read_u32(TLS + 0x18).unwrap(), 0);
         assert_eq!(f.mmu.read_u64(TLS + 0x20).unwrap(), 2);
     }
@@ -510,13 +561,22 @@ mod tests {
     fn resolve_guest_path_stays_inside_the_mount() {
         assert_eq!(resolve_guest_path("sdmc:/", "/").unwrap(), "sdmc:/");
         assert_eq!(resolve_guest_path("sdmc:/", "/a//./b/../c").unwrap(), "sdmc:/a/c");
-        assert_eq!(resolve_guest_path("sdmc:/", "sdmc:/switch/x.nro").unwrap(), "sdmc:/switch/x.nro");
+        assert_eq!(
+            resolve_guest_path("sdmc:/", "sdmc:/switch/x.nro").unwrap(),
+            "sdmc:/switch/x.nro"
+        );
         assert_eq!(resolve_guest_path("save:/", "/slot0.sav").unwrap(), "save:/slot0.sav");
         for bad in ["/..", "/../x", "/a/../../x", "../../etc/passwd"] {
-            assert!(matches!(resolve_guest_path("sdmc:/", bad), Err(VfsError::Escape(_))), "{bad}");
+            assert!(
+                matches!(resolve_guest_path("sdmc:/", bad), Err(VfsError::Escape(_))),
+                "{bad}"
+            );
         }
         for bad in ["save:/x", "romfs:/title.txt", "/a:b", "C:/x", "/a\\..\\..\\x"] {
-            assert!(matches!(resolve_guest_path("sdmc:/", bad), Err(VfsError::InvalidPath(_))), "{bad}");
+            assert!(
+                matches!(resolve_guest_path("sdmc:/", bad), Err(VfsError::InvalidPath(_))),
+                "{bad}"
+            );
         }
     }
 
@@ -533,7 +593,10 @@ mod tests {
         let fs = t.sdmc();
 
         // GetEntryType
-        assert_eq!(t.call(fs, 7, &[], &["/hello.txt"], Data::None), (0, vec![1, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            t.call(fs, 7, &[], &["/hello.txt"], Data::None),
+            (0, vec![1, 0, 0, 0, 0, 0, 0, 0])
+        );
         assert_eq!(t.call(fs, 7, &[], &["/data"], Data::None).1[0], 0);
         assert_eq!(t.call(fs, 7, &[], &["/nope"], Data::None).0, RESULT_PATH_NOT_FOUND);
 
@@ -541,17 +604,29 @@ mod tests {
         let (rc, out) = t.call(fs, 8, &[1], &["/hello.txt"], Data::None);
         assert_eq!(rc, 0);
         let f = out[0];
-        assert_eq!(t.call(f, 0, &[0, 0, 64], &[], Data::Recv(64)), (0, vec![7, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            t.call(f, 0, &[0, 0, 64], &[], Data::Recv(64)),
+            (0, vec![7, 0, 0, 0, 0, 0, 0, 0])
+        );
         assert_eq!(t.buf(7), b"hi host");
         assert_eq!(t.call(f, 4, &[], &[], Data::None).1[..2], [7, 0]);
         // Writing through a read-only handle fails.
-        assert_eq!(t.call(f, 1, &[0, 0, 1], &[], Data::Send(b"x")).0, RESULT_INVALID_OPEN_MODE);
+        assert_eq!(
+            t.call(f, 1, &[0, 0, 1], &[], Data::Send(b"x")).0,
+            RESULT_INVALID_OPEN_MODE
+        );
         assert_eq!(std::fs::read(root.join("hello.txt")).unwrap(), b"hi host");
 
         // CreateFile: new, existing, missing parent.
         assert_eq!(t.call(fs, 0, &[0, 0], &["/data/out.bin"], Data::None).0, 0);
-        assert_eq!(t.call(fs, 0, &[0, 0], &["/data/out.bin"], Data::None).0, RESULT_PATH_ALREADY_EXISTS);
-        assert_eq!(t.call(fs, 0, &[0, 0], &["/missing/x"], Data::None).0, RESULT_PATH_NOT_FOUND);
+        assert_eq!(
+            t.call(fs, 0, &[0, 0], &["/data/out.bin"], Data::None).0,
+            RESULT_PATH_ALREADY_EXISTS
+        );
+        assert_eq!(
+            t.call(fs, 0, &[0, 0], &["/missing/x"], Data::None).0,
+            RESULT_PATH_NOT_FOUND
+        );
         assert!(root.join("data/out.bin").is_file());
 
         // Write (A buffer) at two offsets, SetSize.
@@ -569,7 +644,10 @@ mod tests {
         let (_, out) = t.call(fs, 9, &[3], &["/"], Data::None);
         let d = out[0];
         assert_eq!(t.call(d, 1, &[], &[], Data::None).1[..2], [2, 0]);
-        assert_eq!(t.call(d, 0, &[], &[], Data::Recv(4 * DIRECTORY_ENTRY_SIZE)).1[..2], [2, 0]);
+        assert_eq!(
+            t.call(d, 0, &[], &[], Data::Recv(4 * DIRECTORY_ENTRY_SIZE)).1[..2],
+            [2, 0]
+        );
         let entries = t.buf(2 * DIRECTORY_ENTRY_SIZE as usize);
         let entry = |i: usize| &entries[i * 0x310..(i + 1) * 0x310];
         assert_eq!(&entry(0)[..5], b"data\0");
@@ -577,25 +655,47 @@ mod tests {
         assert_eq!(&entry(1)[..10], b"hello.txt\0");
         assert_eq!(entry(1)[0x304], ENTRY_TYPE_FILE);
         assert_eq!(u64::from_le_bytes(entry(1)[0x308..0x310].try_into().unwrap()), 7);
-        assert_eq!(t.call(d, 0, &[], &[], Data::Recv(4 * DIRECTORY_ENTRY_SIZE)).1[..2], [0, 0], "exhausted");
+        assert_eq!(
+            t.call(d, 0, &[], &[], Data::Recv(4 * DIRECTORY_ENTRY_SIZE)).1[..2],
+            [0, 0],
+            "exhausted"
+        );
         let (_, out) = t.call(fs, 9, &[DIR_OPEN_READ_FILES as u64], &["/"], Data::None);
         assert_eq!(t.call(out[0], 1, &[], &[], Data::None).1[0], 1);
         assert_eq!(t.call(fs, 9, &[3], &["/nope"], Data::None).0, RESULT_PATH_NOT_FOUND);
 
         // RenameFile / RenameDirectory
-        assert_eq!(t.call(fs, 5, &[], &["/data/out.bin", "/data/renamed.bin"], Data::None).0, 0);
+        assert_eq!(
+            t.call(fs, 5, &[], &["/data/out.bin", "/data/renamed.bin"], Data::None)
+                .0,
+            0
+        );
         assert!(root.join("data/renamed.bin").is_file() && !root.join("data/out.bin").exists());
-        assert_eq!(t.call(fs, 5, &[], &["/data", "/data2"], Data::None).0, RESULT_PATH_NOT_FOUND, "not a file");
+        assert_eq!(
+            t.call(fs, 5, &[], &["/data", "/data2"], Data::None).0,
+            RESULT_PATH_NOT_FOUND,
+            "not a file"
+        );
         assert_eq!(t.call(fs, 6, &[], &["/data", "/data2"], Data::None).0, 0);
         assert!(root.join("data2/renamed.bin").is_file());
-        assert_eq!(t.call(w, 4, &[], &[], Data::None).1[0], 2, "open handle follows the rename");
+        assert_eq!(
+            t.call(w, 4, &[], &[], Data::None).1[0],
+            2,
+            "open handle follows the rename"
+        );
 
         // CreateDirectory, DeleteDirectory (must be empty), DeleteDirectoryRecursively, DeleteFile.
         assert_eq!(t.call(fs, 2, &[], &["/newdir"], Data::None).0, 0);
         assert!(root.join("newdir").is_dir());
-        assert_eq!(t.call(fs, 2, &[], &["/newdir"], Data::None).0, RESULT_PATH_ALREADY_EXISTS);
+        assert_eq!(
+            t.call(fs, 2, &[], &["/newdir"], Data::None).0,
+            RESULT_PATH_ALREADY_EXISTS
+        );
         assert_eq!(t.call(fs, 2, &[], &["/no/such"], Data::None).0, RESULT_PATH_NOT_FOUND);
-        assert_eq!(t.call(fs, 3, &[], &["/data2"], Data::None).0, RESULT_DIRECTORY_NOT_EMPTY);
+        assert_eq!(
+            t.call(fs, 3, &[], &["/data2"], Data::None).0,
+            RESULT_DIRECTORY_NOT_EMPTY
+        );
         assert_eq!(t.call(fs, 3, &[], &["/newdir"], Data::None).0, 0);
         assert!(!root.join("newdir").exists());
         assert_eq!(t.call(fs, 4, &[], &["/data2"], Data::None).0, 0);
@@ -625,7 +725,10 @@ mod tests {
         let fs = t.sdmc();
 
         // GetEntryType
-        assert_eq!(t.call(fs, 7, &[], &["/hello.txt"], Data::None), (0, vec![1, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            t.call(fs, 7, &[], &["/hello.txt"], Data::None),
+            (0, vec![1, 0, 0, 0, 0, 0, 0, 0])
+        );
         assert_eq!(t.call(fs, 7, &[], &["/data"], Data::None).1[0], 0);
         assert_eq!(t.call(fs, 7, &[], &["/nope"], Data::None).0, RESULT_PATH_NOT_FOUND);
 
@@ -633,19 +736,34 @@ mod tests {
         let (rc, out) = t.call(fs, 8, &[1], &["/hello.txt"], Data::None);
         assert_eq!(rc, 0);
         let f = out[0];
-        assert_eq!(t.call(f, 0, &[0, 0, 64], &[], Data::Recv(64)), (0, vec![7, 0, 0, 0, 0, 0, 0, 0]));
+        assert_eq!(
+            t.call(f, 0, &[0, 0, 64], &[], Data::Recv(64)),
+            (0, vec![7, 0, 0, 0, 0, 0, 0, 0])
+        );
         assert_eq!(t.buf(7), b"hi host");
         assert_eq!(t.call(f, 4, &[], &[], Data::None).1[..2], [7, 0]);
         // Writing through a read-only handle fails.
-        assert_eq!(t.call(f, 1, &[0, 0, 1], &[], Data::Send(b"x")).0, RESULT_INVALID_OPEN_MODE);
+        assert_eq!(
+            t.call(f, 1, &[0, 0, 1], &[], Data::Send(b"x")).0,
+            RESULT_INVALID_OPEN_MODE
+        );
         assert_eq!(std::fs::read(root.join("hello.txt")).unwrap(), b"hi host");
 
         // CreateFile: new, existing, missing parent.
         assert_eq!(t.call(fs, 0, &[0, 0], &["/data/out.bin"], Data::None).0, 0);
-        assert_eq!(t.call(fs, 0, &[0, 0], &["/data/out.bin"], Data::None).0, RESULT_PATH_ALREADY_EXISTS);
-        assert_eq!(t.call(fs, 0, &[0, 0], &["/missing/x"], Data::None).0, RESULT_PATH_NOT_FOUND);
+        assert_eq!(
+            t.call(fs, 0, &[0, 0], &["/data/out.bin"], Data::None).0,
+            RESULT_PATH_ALREADY_EXISTS
+        );
+        assert_eq!(
+            t.call(fs, 0, &[0, 0], &["/missing/x"], Data::None).0,
+            RESULT_PATH_NOT_FOUND
+        );
         assert_eq!(t.vfs.entry_kind("sdmc:/data/out.bin"), Some(VfsEntryKind::File(0)));
-        assert!(!root.join("data/out.bin").exists(), "host folder must not be modified by CreateFile");
+        assert!(
+            !root.join("data/out.bin").exists(),
+            "host folder must not be modified by CreateFile"
+        );
 
         // Write (A buffer) at two offsets, SetSize.
         let (rc, out) = t.call(fs, 8, &[2 | 4], &["/data/out.bin"], Data::None);
@@ -654,17 +772,26 @@ mod tests {
         assert_eq!(t.call(w, 1, &[0, 0, 3], &[], Data::Send(b"abc")).0, 0);
         assert_eq!(t.call(w, 1, &[0, 5, 2], &[], Data::Send(b"XY")).0, 0);
         assert_eq!(t.vfs.get_file("sdmc:/data/out.bin"), Some(&b"abc\0\0XY"[..]));
-        assert!(!root.join("data/out.bin").exists(), "host folder must not be modified by Write");
+        assert!(
+            !root.join("data/out.bin").exists(),
+            "host folder must not be modified by Write"
+        );
         assert_eq!(t.call(w, 4, &[], &[], Data::None).1[..2], [7, 0]);
         assert_eq!(t.call(w, 3, &[2], &[], Data::None).0, 0);
         assert_eq!(t.vfs.get_file("sdmc:/data/out.bin"), Some(&b"ab"[..]));
-        assert!(!root.join("data/out.bin").exists(), "host folder must not be modified by SetSize");
+        assert!(
+            !root.join("data/out.bin").exists(),
+            "host folder must not be modified by SetSize"
+        );
 
         // OpenDirectory + Read: FsDirectoryEntry with real type and size, filtered by mode.
         let (_, out) = t.call(fs, 9, &[3], &["/"], Data::None);
         let d = out[0];
         assert_eq!(t.call(d, 1, &[], &[], Data::None).1[..2], [2, 0]);
-        assert_eq!(t.call(d, 0, &[], &[], Data::Recv(4 * DIRECTORY_ENTRY_SIZE)).1[..2], [2, 0]);
+        assert_eq!(
+            t.call(d, 0, &[], &[], Data::Recv(4 * DIRECTORY_ENTRY_SIZE)).1[..2],
+            [2, 0]
+        );
         let entries = t.buf(2 * DIRECTORY_ENTRY_SIZE as usize);
         let entry = |i: usize| &entries[i * 0x310..(i + 1) * 0x310];
         assert_eq!(&entry(0)[..5], b"data\0");
@@ -672,44 +799,76 @@ mod tests {
         assert_eq!(&entry(1)[..10], b"hello.txt\0");
         assert_eq!(entry(1)[0x304], ENTRY_TYPE_FILE);
         assert_eq!(u64::from_le_bytes(entry(1)[0x308..0x310].try_into().unwrap()), 7);
-        assert_eq!(t.call(d, 0, &[], &[], Data::Recv(4 * DIRECTORY_ENTRY_SIZE)).1[..2], [0, 0], "exhausted");
+        assert_eq!(
+            t.call(d, 0, &[], &[], Data::Recv(4 * DIRECTORY_ENTRY_SIZE)).1[..2],
+            [0, 0],
+            "exhausted"
+        );
         let (_, out) = t.call(fs, 9, &[DIR_OPEN_READ_FILES as u64], &["/"], Data::None);
         assert_eq!(t.call(out[0], 1, &[], &[], Data::None).1[0], 1);
         assert_eq!(t.call(fs, 9, &[3], &["/nope"], Data::None).0, RESULT_PATH_NOT_FOUND);
 
         // RenameFile / RenameDirectory
-        assert_eq!(t.call(fs, 5, &[], &["/data/out.bin", "/data/renamed.bin"], Data::None).0, 0);
+        assert_eq!(
+            t.call(fs, 5, &[], &["/data/out.bin", "/data/renamed.bin"], Data::None)
+                .0,
+            0
+        );
         assert_eq!(t.vfs.get_file("sdmc:/data/renamed.bin"), Some(&b"ab"[..]));
         assert_eq!(t.vfs.get_file("sdmc:/data/out.bin"), None);
         assert!(!root.join("data/renamed.bin").exists());
-        assert_eq!(t.call(fs, 5, &[], &["/data", "/data2"], Data::None).0, RESULT_PATH_NOT_FOUND, "not a file");
+        assert_eq!(
+            t.call(fs, 5, &[], &["/data", "/data2"], Data::None).0,
+            RESULT_PATH_NOT_FOUND,
+            "not a file"
+        );
         assert_eq!(t.call(fs, 6, &[], &["/data", "/data2"], Data::None).0, 0);
         assert_eq!(t.vfs.get_file("sdmc:/data2/renamed.bin"), Some(&b"ab"[..]));
         assert!(!root.join("data2").exists());
         assert!(root.join("data").is_dir(), "host directory must not be renamed on disk");
-        assert_eq!(t.call(w, 4, &[], &[], Data::None).1[0], 2, "open handle follows the rename");
+        assert_eq!(
+            t.call(w, 4, &[], &[], Data::None).1[0],
+            2,
+            "open handle follows the rename"
+        );
 
         // CreateDirectory, DeleteDirectory (must be empty), DeleteDirectoryRecursively, DeleteFile.
         assert_eq!(t.call(fs, 2, &[], &["/newdir"], Data::None).0, 0);
         assert!(t.vfs.directory_exists("sdmc:/newdir"));
-        assert!(!root.join("newdir").exists(), "host directory must not be created on disk");
-        assert_eq!(t.call(fs, 2, &[], &["/newdir"], Data::None).0, RESULT_PATH_ALREADY_EXISTS);
+        assert!(
+            !root.join("newdir").exists(),
+            "host directory must not be created on disk"
+        );
+        assert_eq!(
+            t.call(fs, 2, &[], &["/newdir"], Data::None).0,
+            RESULT_PATH_ALREADY_EXISTS
+        );
         assert_eq!(t.call(fs, 2, &[], &["/no/such"], Data::None).0, RESULT_PATH_NOT_FOUND);
-        assert_eq!(t.call(fs, 3, &[], &["/data2"], Data::None).0, RESULT_DIRECTORY_NOT_EMPTY);
+        assert_eq!(
+            t.call(fs, 3, &[], &["/data2"], Data::None).0,
+            RESULT_DIRECTORY_NOT_EMPTY
+        );
         assert_eq!(t.call(fs, 3, &[], &["/newdir"], Data::None).0, 0);
         assert!(!t.vfs.directory_exists("sdmc:/newdir"));
         assert_eq!(t.call(fs, 4, &[], &["/data2"], Data::None).0, 0);
         assert!(!t.vfs.directory_exists("sdmc:/data2"));
         assert_eq!(t.call(fs, 1, &[], &["/hello.txt"], Data::None).0, 0);
         assert_eq!(t.vfs.entry_kind("sdmc:/hello.txt"), None);
-        assert_eq!(std::fs::read(root.join("hello.txt")).unwrap(), b"hi host", "host file must not be deleted on disk");
+        assert_eq!(
+            std::fs::read(root.join("hello.txt")).unwrap(),
+            b"hi host",
+            "host file must not be deleted on disk"
+        );
 
         // CleanDirectoryRecursively keeps the directory; the mount root itself cannot be deleted.
         std::fs::create_dir_all(root.join("c/d")).unwrap();
         std::fs::write(root.join("c/d/f"), b"1").unwrap();
         assert_eq!(t.call(fs, 13, &[], &["/c"], Data::None).0, 0);
         assert_eq!(t.vfs.list_directory("sdmc:/c").unwrap(), Vec::<String>::new());
-        assert!(root.join("c/d/f").is_file(), "host file in c/d/f must not be deleted on disk");
+        assert!(
+            root.join("c/d/f").is_file(),
+            "host file in c/d/f must not be deleted on disk"
+        );
         assert_eq!(t.call(fs, 4, &[], &["/"], Data::None).0, RESULT_INVALID_PATH);
         assert!(root.join("c").is_dir());
 
@@ -727,21 +886,48 @@ mod tests {
         let mut t = Fsp::new(Some(&root));
         let fs = t.sdmc();
 
-        assert_eq!(t.call(fs, 8, &[1], &["/../outside/secret.txt"], Data::None).0, RESULT_DIRECTORY_UNOBTAINABLE);
-        assert_eq!(t.call(fs, 0, &[0, 0], &["/a/../../outside/new"], Data::None).0, RESULT_DIRECTORY_UNOBTAINABLE);
-        assert_eq!(t.call(fs, 9, &[3], &["/.."], Data::None).0, RESULT_DIRECTORY_UNOBTAINABLE);
-        assert_eq!(t.call(fs, 8, &[1], &["romfs:/title.txt"], Data::None).0, RESULT_INVALID_PATH);
+        assert_eq!(
+            t.call(fs, 8, &[1], &["/../outside/secret.txt"], Data::None).0,
+            RESULT_DIRECTORY_UNOBTAINABLE
+        );
+        assert_eq!(
+            t.call(fs, 0, &[0, 0], &["/a/../../outside/new"], Data::None).0,
+            RESULT_DIRECTORY_UNOBTAINABLE
+        );
+        assert_eq!(
+            t.call(fs, 9, &[3], &["/.."], Data::None).0,
+            RESULT_DIRECTORY_UNOBTAINABLE
+        );
+        assert_eq!(
+            t.call(fs, 8, &[1], &["romfs:/title.txt"], Data::None).0,
+            RESULT_INVALID_PATH
+        );
         assert_eq!(t.call(fs, 0, &[0, 0], &["save:/x"], Data::None).0, RESULT_INVALID_PATH);
-        assert_eq!(t.call(fs, 5, &[], &["/x", "/../moved"], Data::None).0, RESULT_DIRECTORY_UNOBTAINABLE);
+        assert_eq!(
+            t.call(fs, 5, &[], &["/x", "/../moved"], Data::None).0,
+            RESULT_DIRECTORY_UNOBTAINABLE
+        );
 
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
             std::os::unix::fs::symlink(outside.join("made-by-guest"), root.join("dangling")).unwrap();
-            assert_eq!(t.call(fs, 8, &[1], &["/link/secret.txt"], Data::None).0, RESULT_DIRECTORY_UNOBTAINABLE);
-            assert_eq!(t.call(fs, 0, &[0, 0], &["/link/new.txt"], Data::None).0, RESULT_DIRECTORY_UNOBTAINABLE);
-            assert_eq!(t.call(fs, 0, &[0, 0], &["/dangling"], Data::None).0, RESULT_DIRECTORY_UNOBTAINABLE);
-            assert_eq!(t.call(fs, 4, &[], &["/link"], Data::None).0, RESULT_DIRECTORY_UNOBTAINABLE);
+            assert_eq!(
+                t.call(fs, 8, &[1], &["/link/secret.txt"], Data::None).0,
+                RESULT_DIRECTORY_UNOBTAINABLE
+            );
+            assert_eq!(
+                t.call(fs, 0, &[0, 0], &["/link/new.txt"], Data::None).0,
+                RESULT_DIRECTORY_UNOBTAINABLE
+            );
+            assert_eq!(
+                t.call(fs, 0, &[0, 0], &["/dangling"], Data::None).0,
+                RESULT_DIRECTORY_UNOBTAINABLE
+            );
+            assert_eq!(
+                t.call(fs, 4, &[], &["/link"], Data::None).0,
+                RESULT_DIRECTORY_UNOBTAINABLE
+            );
             assert!(!outside.join("new.txt").exists() && !outside.join("made-by-guest").exists());
         }
         assert_eq!(std::fs::read(outside.join("secret.txt")).unwrap(), b"secret");
@@ -762,8 +948,17 @@ mod tests {
         let (_, out) = t.call(fs, 8, &[3], &["/switch/a.cfg"], Data::None);
         assert_eq!(t.call(out[0], 1, &[0, 2, 2], &[], Data::Send(b"hi")).0, 0);
         assert_eq!(t.vfs.get_file("sdmc:/switch/a.cfg"), Some(&b"\0\0hi"[..]));
-        assert_eq!(t.call(out[0], 1, &[0, MAX_FILE_SIZE, 2], &[], Data::Send(b"hi")).0, RESULT_USABLE_SPACE_NOT_ENOUGH);
-        assert_eq!(t.call(fs, 0, &[0, MAX_FILE_SIZE + 1], &["/big"], Data::None).0, RESULT_USABLE_SPACE_NOT_ENOUGH);
-        assert_eq!(t.call(fs, 0, &[0, u64::MAX], &["/big"], Data::None).0, RESULT_USABLE_SPACE_NOT_ENOUGH);
+        assert_eq!(
+            t.call(out[0], 1, &[0, MAX_FILE_SIZE, 2], &[], Data::Send(b"hi")).0,
+            RESULT_USABLE_SPACE_NOT_ENOUGH
+        );
+        assert_eq!(
+            t.call(fs, 0, &[0, MAX_FILE_SIZE + 1], &["/big"], Data::None).0,
+            RESULT_USABLE_SPACE_NOT_ENOUGH
+        );
+        assert_eq!(
+            t.call(fs, 0, &[0, u64::MAX], &["/big"], Data::None).0,
+            RESULT_USABLE_SPACE_NOT_ENOUGH
+        );
     }
 }

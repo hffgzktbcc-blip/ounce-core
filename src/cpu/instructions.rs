@@ -180,16 +180,10 @@ pub enum Instruction {
     },
 
     /// Conditional Branch: `B.cond label`
-    BranchCond {
-        offset: i64,
-        cond: Condition,
-    },
+    BranchCond { offset: i64, cond: Condition },
 
     /// Branch to Register: `BR/BLR/RET Xn`
-    BranchReg {
-        rn: u8,
-        op: BranchRegOp,
-    },
+    BranchReg { rn: u8, op: BranchRegOp },
 
     /// Authenticated branch to register: `BRAA/BRAB/BLRAA/BLRAB Xn, Xm|SP`, the `*Z` forms
     /// (modifier 0) and `RETAA/RETAB` (`rn` = 30, modifier SP).
@@ -210,11 +204,7 @@ pub enum Instruction {
     },
 
     /// `PACGA Xd, Xn, Xm|SP`
-    Pacga {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-    },
+    Pacga { rd: u8, rn: u8, rm: u8 },
 
     /// `LDRAA/LDRAB Xt, [Xn|SP, #simm]{!}`: authenticates `Xn` with the DA/DB key and modifier 0.
     LoadAuth {
@@ -261,16 +251,10 @@ pub enum Instruction {
     },
 
     /// System Call / Supervisor Call: `SVC #imm16`
-    Svc {
-        imm: u16,
-    },
+    Svc { imm: u16 },
 
     /// System Register Read / Write: `MRS/MSR`
-    SystemReg {
-        rt: u8,
-        sysreg: u16,
-        is_read: bool,
-    },
+    SystemReg { rt: u8, sysreg: u16, is_read: bool },
 
     /// No Operation / Hint
     Nop,
@@ -286,12 +270,7 @@ pub enum Instruction {
 
     /// Floating-Point 1-Source: `FMOV`/`FABS`/`FNEG`/`FSQRT Dd/Sd, Dn/Sn` (op 0..3) and
     /// `FCVT` (op = bits 17..15: 4 to single from double, 5 to double from single)
-    FpData1 {
-        rd: u8,
-        rn: u8,
-        op: u8,
-        is_double: bool,
-    },
+    FpData1 { rd: u8, rn: u8, op: u8, is_double: bool },
 
     /// Floating-Point 3-Source: `FMADD` (o1 0, o0 0), `FMSUB` (0, 1), `FNMADD` (1, 0), `FNMSUB` (1, 1),
     /// fused (one rounding): `Dd = (o1 ? -Da : Da) + (o0 ? -Dn : Dn) * Dm`
@@ -306,12 +285,7 @@ pub enum Instruction {
     },
 
     /// Floating-Point round to integral: `FRINT{N,P,M,Z,A,X,I}` (op = bits 17..15 of the encoding)
-    FpRound {
-        rd: u8,
-        rn: u8,
-        op: u8,
-        is_double: bool,
-    },
+    FpRound { rd: u8, rn: u8, op: u8, is_double: bool },
 
     /// Float <-> integer register conversion: `FCVT{N,P,M,Z,A}{S,U}` (to integer), `SCVTF`, `UCVTF`.
     /// `opcode` is bits 18..16 (0 S, 1 U, 2 SCVTF, 3 UCVTF, 4 FCVTAS, 5 FCVTAU), `rmode` bits 20..19.
@@ -337,10 +311,7 @@ pub enum Instruction {
 
     /// `FJCVTZS Wd, Dn` (FEAT_JSCVT): double to signed 32-bit integer as JavaScript `ToInt32` does it (truncate
     /// toward zero, wrap modulo 2^32). Writes `NZCV` = `0 Z 0 0`: Z is set only when the conversion was exact.
-    Fjcvtzs {
-        rd: u8,
-        rn: u8,
-    },
+    Fjcvtzs { rd: u8, rn: u8 },
 
     /// Floating-Point Conditional Select: `FCSEL Dd/Sd, Dn/Sn, Dm/Sm, cond`
     FpCondSelect {
@@ -362,12 +333,7 @@ pub enum Instruction {
     },
 
     /// Floating-Point / GP Register Transfer: `FMOV Dd, Xn`, `FMOV Xd, Dn`, etc.
-    FpMovGen {
-        rd: u8,
-        rn: u8,
-        to_fp: bool,
-        is_64: bool,
-    },
+    FpMovGen { rd: u8, rn: u8, to_fp: bool, is_64: bool },
 
     /// Floating-Point Single Load / Store (Immediate unsigned offset): `LDR/STR St/Dt, [Xn, #offset]`
     FpLoadStoreImm {
@@ -407,23 +373,13 @@ pub enum Instruction {
     },
 
     /// 128-bit NEON Vector Load / Store (`LDR Qt, [Xn, #offset]` / `STR Qt, [Xn, #offset]`)
-    SimdLoadStoreQ {
-        rt: u8,
-        rn: u8,
-        offset: i64,
-        is_load: bool,
-    },
+    SimdLoadStoreQ { rt: u8, rn: u8, offset: i64, is_load: bool },
 
     /// Two double-precision lanes; never interpreted as four single-precision values.
     SimdVec2D { rd: u8, rn: u8, rm: u8, op: FpOp2 },
 
     /// 128-bit NEON vector arithmetic on four single-precision lanes.
-    SimdVec4S {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-        op: FpOp2,
-    },
+    SimdVec4S { rd: u8, rn: u8, rm: u8, op: FpOp2 },
 
     /// Exclusive & Acquire/Release Load / Store (`LDXR`, `LDAXR`, `LDAR`, `STXR`, `STLXR`, `STLR`)
     LoadStoreExclusive {
@@ -448,9 +404,7 @@ pub enum Instruction {
     },
 
     /// `DC ZVA, Xt`: zero the `DCZID_EL0`-sized block containing `Xt`
-    DcZva {
-        rt: u8,
-    },
+    DcZva { rt: u8 },
 
     /// Data-Processing (1-Source): `RBIT`, `REV16`, `REV32`, `REV`, `CLZ`, `CLS`
     DataProc1 {
@@ -471,12 +425,7 @@ pub enum Instruction {
     },
 
     /// Multiply High: `UMULH` / `SMULH Xd, Xn, Xm` (upper 64 bits of the 128-bit product)
-    MultiplyHigh {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-        is_signed: bool,
-    },
+    MultiplyHigh { rd: u8, rn: u8, rm: u8, is_signed: bool },
 
     /// Multiply Long: `UMADDL`/`SMADDL`/`UMSUBL`/`SMSUBL Xd, Wn, Wm, Xa`
     MultiplyLong {
@@ -552,12 +501,7 @@ pub enum Instruction {
 
     /// AdvSIMD scalar two-register miscellaneous (`SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU Sd/Dd, Sn/Dn`): lane 0 only,
     /// the rest of `Vd` is zeroed
-    SimdScalarTwoMisc {
-        rd: u8,
-        rn: u8,
-        op: SimdOp2,
-        esize: u8,
-    },
+    SimdScalarTwoMisc { rd: u8, rn: u8, op: SimdOp2, esize: u8 },
 
     /// AdvSIMD shift-by-immediate float <-> fixed-point conversion, vector form: `SCVTF`/`UCVTF Vd.<T>, Vn.<T>, #fbits`
     /// (`op` Scvtf/Ucvtf: lanes are fixed-point integers divided by 2^`fbits`) and `FCVTZS`/`FCVTZU` (`op` Fcvtzs/Fcvtzu:
@@ -572,21 +516,11 @@ pub enum Instruction {
     },
 
     /// AdvSIMD scalar three same `FABD Sd/Dd, Sn/Dn, Sm/Dm`: `|n - m|` (NaN propagates), upper bits zeroed
-    FpAbd {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-        is_double: bool,
-    },
+    FpAbd { rd: u8, rn: u8, rm: u8, is_double: bool },
 
     /// AdvSIMD scalar three same `FMULX Sd/Dd, Sn/Dn, Sm/Dm`. `0 × ∞` is ±2.0 rather than a NaN.
     /// Lane 0 is written and the rest of `Vd` is zeroed.
-    FpMulx {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-        is_double: bool,
-    },
+    FpMulx { rd: u8, rn: u8, rm: u8, is_double: bool },
 
     /// Scalar `FRECPS` / `FRSQRTS Sd/Dd, Sn/Dn, Sm/Dm` (AdvSIMD scalar three same). Lane 0 is written, the rest zeroed.
     FpScalarThreeSame {
@@ -615,12 +549,7 @@ pub enum Instruction {
     },
 
     /// `UMOV Wd/Xd, Vn.<T>[index]` (`MOV` alias for 32/64-bit lanes)
-    SimdMovToGeneral {
-        rd: u8,
-        rn: u8,
-        esize: u8,
-        index: u8,
-    },
+    SimdMovToGeneral { rd: u8, rn: u8, esize: u8, index: u8 },
 
     /// `SMOV Wd/Xd, Vn.<T>[index]`: sign-extended lane to a 32-bit (`x` false) or 64-bit register
     SimdSmov {
@@ -686,13 +615,7 @@ pub enum Instruction {
     },
 
     /// FEAT_SHA3 bitwise operations; `ra` is used only by EOR3/BCAX.
-    Sha3 {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-        ra: u8,
-        op: Sha3Op,
-    },
+    Sha3 { rd: u8, rn: u8, rm: u8, ra: u8, op: Sha3Op },
 
     /// AdvSIMD three registers of the same type (integer and bitwise)
     SimdThreeSame {
@@ -727,7 +650,13 @@ pub enum Instruction {
         lanes: u8,
     },
     /// Half-precision `FMAXNM/FMINNM/FMAX/FMIN` and the pairwise forms on `.4H`/`.8H` (FEAT_FP16 three-same).
-    SimdFpThreeSameHalf { rd: u8, rn: u8, rm: u8, op: SimdFpOp3, q: bool },
+    SimdFpThreeSameHalf {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        op: SimdFpOp3,
+        q: bool,
+    },
     /// Scalar half-precision `FMAX/FMIN/FMAXNM/FMINNM Hd, Hn, Hm`.
     FpHalfMinMax { rd: u8, rn: u8, rm: u8, op: FpOp2 },
     SimdAcross {
@@ -789,9 +718,7 @@ pub enum Instruction {
     },
 
     /// `BRK #imm16`: software breakpoint; stops the guest with a clear message.
-    Brk {
-        imm: u16,
-    },
+    Brk { imm: u16 },
 
     /// AdvSIMD shift by immediate beyond `SshrUshrShlShrn`: accumulate, rounding, saturating and insert forms
     /// plus the saturating/rounding narrowing shifts. `esize` is the result lane size; `scalar` writes lane 0
@@ -829,20 +756,10 @@ pub enum Instruction {
 
     /// AdvSIMD modified immediate: `MOVI`/`MVNI`/`FMOV` (vector) and `ORR`/`BIC` (vector, immediate).
     /// `imm` is the expanded 64-bit pattern (already inverted for `MVNI`), repeated in both halves when `q`.
-    SimdModImm {
-        rd: u8,
-        imm: u64,
-        op: SimdImmOp,
-        q: bool,
-    },
+    SimdModImm { rd: u8, imm: u64, op: SimdImmOp, q: bool },
 
     /// `DUP Bd/Hd/Sd/Dd, Vn.<Ts>[index]` (scalar; `MOV Sd, Vn.S[i]` alias): lane `index` into lane 0, rest zero
-    SimdDupScalar {
-        rd: u8,
-        rn: u8,
-        esize: u8,
-        index: u8,
-    },
+    SimdDupScalar { rd: u8, rn: u8, esize: u8, index: u8 },
 
     /// `DUP Vd.<T>, Vn.<Ts>[index]`
     SimdDupElement {
@@ -854,12 +771,7 @@ pub enum Instruction {
     },
 
     /// `INS Vd.<Ts>[index], Rn` (`MOV` alias)
-    SimdInsGeneral {
-        rd: u8,
-        rn: u8,
-        esize: u8,
-        index: u8,
-    },
+    SimdInsGeneral { rd: u8, rn: u8, esize: u8, index: u8 },
 
     /// `INS Vd.<Ts>[dst], Vn.<Ts>[src]` (`MOV` alias)
     SimdInsElement {
@@ -929,13 +841,7 @@ pub enum Instruction {
     },
 
     /// `EXT Vd.<T>, Vn.<T>, Vm.<T>, #index`: bytes `index..` of `Vm:Vn`
-    SimdExt {
-        rd: u8,
-        rn: u8,
-        rm: u8,
-        index: u8,
-        q: bool,
-    },
+    SimdExt { rd: u8, rn: u8, rm: u8, index: u8, q: bool },
 
     /// `TBL`/`TBX Vd.<T>, {Vn.16B ..}, Vm.<T>`: byte table lookup over `regs` (1..=4) consecutive registers.
     /// Out-of-range indices give 0 (`TBL`) or leave the destination byte unchanged (`TBX`).
@@ -949,9 +855,7 @@ pub enum Instruction {
     },
 
     /// Unimplemented or Unknown instruction (preserves raw 32-bit opcode for debugging)
-    Unimplemented {
-        raw: u32,
-    },
+    Unimplemented { raw: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

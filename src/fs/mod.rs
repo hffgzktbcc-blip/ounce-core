@@ -2,4 +2,6 @@
 
 pub mod romfs;
 
-pub use romfs::{resolve_guest_path, RomFsArchive, RomFsEntry, VfsEntryKind, VfsError, VirtualFileSystem, MAX_FILE_SIZE};
+pub use romfs::{
+    MAX_FILE_SIZE, RomFsArchive, RomFsEntry, VfsEntryKind, VfsError, VirtualFileSystem, resolve_guest_path,
+};

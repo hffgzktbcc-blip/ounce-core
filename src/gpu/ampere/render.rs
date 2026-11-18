@@ -19,12 +19,12 @@ use super::depth::{self, Facing, Stencil};
 use super::engine::{Ampere3d, ClearRecord, Diagnostic, DrawRecord, GpuMemoryWriter, IndexBuffer, Topology};
 use super::methods as m;
 use super::shade::{self, ShaderInputs};
+use super::surface::{self, ColorFormat, ColorTarget, DepthFormat, DepthTarget, SurfaceLayout, addr40};
 use super::texture::{Sampler, TextureHeader, TextureType};
-use super::surface::{self, addr40, ColorFormat, ColorTarget, DepthFormat, DepthTarget, SurfaceLayout};
 use crate::gpu::sass::decode::{IpaFreq, TexHandle, TexOp};
-use crate::gpu::sass::ir::{self, attr_slot, AttrSlot, Function, Op};
+use crate::gpu::sass::ir::{self, AttrSlot, Function, Op, attr_slot};
 use crate::gpu::sass::sph::{PixelImap, Sph, SphType};
-use crate::gpu::sass::{maxwell, ShaderStage as SassStage, XlateError, AMPERE_SPH_SIZE, MAXWELL_SPH_SIZE};
+use crate::gpu::sass::{AMPERE_SPH_SIZE, MAXWELL_SPH_SIZE, ShaderStage as SassStage, XlateError, maxwell};
 use crate::gpu::tiling::{self, BlockLinear, Layout, Surface};
 
 #[cfg(feature = "gpu-present")]
@@ -82,24 +82,55 @@ fn tiling_format(bpp: u32) -> Option<tiling::Format> {
 }
 
 impl SurfaceView {
-    pub(crate) fn block_linear(gpu_va: u64, width: u32, height: u32, bpp: u32, height_log2: u8, depth_log2: u8) -> Option<Self> {
-        let s = Surface::new_2d(width, height, tiling_format(bpp)?, Layout::BlockLinear { height_log2, depth_log2 });
+    pub(crate) fn block_linear(
+        gpu_va: u64,
+        width: u32,
+        height: u32,
+        bpp: u32,
+        height_log2: u8,
+        depth_log2: u8,
+    ) -> Option<Self> {
+        let s = Surface::new_2d(
+            width,
+            height,
+            tiling_format(bpp)?,
+            Layout::BlockLinear {
+                height_log2,
+                depth_log2,
+            },
+        );
         let size = s.size_bytes().ok()?;
-        Some(Self { gpu_va, width, height, bpp, size, kind: ViewKind::Block(s.block_linear()?) })
+        Some(Self {
+            gpu_va,
+            width,
+            height,
+            bpp,
+            size,
+            kind: ViewKind::Block(s.block_linear()?),
+        })
     }
 
     pub(crate) fn pitch(gpu_va: u64, width: u32, height: u32, bpp: u32, stride: u32) -> Option<Self> {
         let s = Surface::new_2d(width, height, tiling_format(bpp)?, Layout::Pitch { stride });
         let size = s.size_bytes().ok()?;
-        Some(Self { gpu_va, width, height, bpp, size, kind: ViewKind::Pitch { stride } })
+        Some(Self {
+            gpu_va,
+            width,
+            height,
+            bpp,
+            size,
+            kind: ViewKind::Pitch { stride },
+        })
     }
 
     fn from_layout(gpu_va: u64, width: u32, height: u32, bpp: u32, layout: SurfaceLayout) -> Option<Self> {
         match layout {
             // Tiling has no block-width parameter; drivers always program one GOB.
-            SurfaceLayout::BlockLinear { block_width_log2: 0, block_height_log2, block_depth_log2 } => {
-                Self::block_linear(gpu_va, width, height, bpp, block_height_log2, block_depth_log2)
-            }
+            SurfaceLayout::BlockLinear {
+                block_width_log2: 0,
+                block_height_log2,
+                block_depth_log2,
+            } => Self::block_linear(gpu_va, width, height, bpp, block_height_log2, block_depth_log2),
             SurfaceLayout::BlockLinear { .. } => None,
             SurfaceLayout::Pitch { pitch_bytes } => Self::pitch(gpu_va, width, height, bpp, pitch_bytes),
         }
@@ -163,7 +194,12 @@ fn color_channels(format: ColorFormat) -> Option<[Chan; 4]> {
         ColorFormat::A2B10G10R10 => [u(0, 10), u(10, 10), u(20, 10), u(30, 2)],
         ColorFormat::R5G6B5 => [u(11, 5), u(5, 6), u(0, 5), None],
         ColorFormat::R16G16B16A16 => [u(0, 16), u(16, 16), u(32, 16), u(48, 16)],
-        ColorFormat::Rf32Gf32Bf32Af32 => [F32 { shift: 0 }, F32 { shift: 32 }, F32 { shift: 64 }, F32 { shift: 96 }],
+        ColorFormat::Rf32Gf32Bf32Af32 => [
+            F32 { shift: 0 },
+            F32 { shift: 32 },
+            F32 { shift: 64 },
+            F32 { shift: 96 },
+        ],
         ColorFormat::Disabled | ColorFormat::Other(_) => return Option::None,
     })
 }
@@ -197,7 +233,9 @@ fn read_color(format: ColorFormat, texel: &[u8]) -> Option<[f32; 4]> {
 
 /// Writes `color` into `texel` for the channels enabled in `mask`.
 fn write_color(format: ColorFormat, texel: &mut [u8], color: [f32; 4], mask: [bool; 4]) -> bool {
-    let Some(chans) = color_channels(format) else { return false };
+    let Some(chans) = color_channels(format) else {
+        return false;
+    };
     let mut buf = [0u8; 16];
     buf[..texel.len()].copy_from_slice(texel);
     let mut px = u128::from_le_bytes(buf);
@@ -308,11 +346,21 @@ struct Rect {
 
 impl Rect {
     fn new(w: u32, h: u32) -> Self {
-        Rect { x0: 0, y0: 0, x1: w, y1: h }
+        Rect {
+            x0: 0,
+            y0: 0,
+            x1: w,
+            y1: h,
+        }
     }
 
     fn clip(self, x0: u32, y0: u32, x1: u32, y1: u32) -> Self {
-        Rect { x0: self.x0.max(x0), y0: self.y0.max(y0), x1: self.x1.min(x1), y1: self.y1.min(y1) }
+        Rect {
+            x0: self.x0.max(x0),
+            y0: self.y0.max(y0),
+            x1: self.x1.min(x1),
+            y1: self.y1.min(y1),
+        }
     }
 }
 
@@ -327,7 +375,12 @@ const SHADER_READ_MAX: usize = 0x10000;
 
 /// Loads the shader at `va` with the front end for `class`: 64-bit Maxwell SASS behind a 0x50-byte
 /// header for MAXWELL_B, 128-bit Ampere SASS behind a 0x80-byte header otherwise.
-fn load_shader(class: u32, stage: SassStage, va: u64, mem: &mut dyn GpuMemoryWriter) -> Result<LoadedShader, &'static str> {
+fn load_shader(
+    class: u32,
+    stage: SassStage,
+    va: u64,
+    mem: &mut dyn GpuMemoryWriter,
+) -> Result<LoadedShader, &'static str> {
     let maxwell = class == m::MAXWELL_B;
     let header = if maxwell { MAXWELL_SPH_SIZE } else { AMPERE_SPH_SIZE };
     let mut size = SHADER_READ_START;
@@ -345,7 +398,11 @@ fn load_shader(class: u32, stage: SassStage, va: u64, mem: &mut dyn GpuMemoryWri
             return Err("shader header is for another stage");
         }
         let code = &bytes[header..];
-        let lowered = if maxwell { maxwell::lower(stage, code) } else { ir::lower(stage, code) };
+        let lowered = if maxwell {
+            maxwell::lower(stage, code)
+        } else {
+            ir::lower(stage, code)
+        };
         match lowered {
             Ok(func) => return Ok(LoadedShader { sph, func }),
             Err(XlateError::MissingExit) if size < SHADER_READ_MAX => size *= 2,
@@ -389,7 +446,9 @@ struct Snapshot<'a> {
 impl GpuMemoryWriter for Snapshot<'_> {
     fn write(&mut self, _: u64, _: &[u8]) {}
     fn read(&mut self, gpu_va: u64, buf: &mut [u8]) -> bool {
-        let Some(at) = gpu_va.checked_sub(self.base) else { return false };
+        let Some(at) = gpu_va.checked_sub(self.base) else {
+            return false;
+        };
         match self.bytes.get(at as usize..).and_then(|b| b.get(..buf.len())) {
             Some(src) => {
                 buf.copy_from_slice(src);
@@ -406,8 +465,13 @@ struct Textures(Vec<BoundTexture>);
 
 impl Textures {
     fn read(&self, op: TexOp, handle: TexHandle, lod: Option<u32>, layer: Option<u32>, x: u32, y: u32) -> [f32; 4] {
-        let Some(t) = self.0.iter().find(|t| t.handle == handle) else { return [0.0; 4] };
-        let mut mem = Snapshot { base: t.header.gpu_va, bytes: &t.bytes };
+        let Some(t) = self.0.iter().find(|t| t.handle == handle) else {
+            return [0.0; 4];
+        };
+        let mut mem = Snapshot {
+            base: t.header.gpu_va,
+            bytes: &t.bytes,
+        };
         // An array read addresses its layer as a texture of its own, the layer clamped to the array.
         let header = match layer {
             Some(l) => match t.header.layer(l.min(t.header.depth - 1)) {
@@ -508,7 +572,9 @@ impl ShaderInputs for FragmentIn<'_> {
         self.tex.read(op, handle, lod, layer, x, y)
     }
     fn interp(&self, addr: u16, freq: IpaFreq) -> f32 {
-        let lerp = |f: &dyn Fn(&WinVertex) -> f32| self.l[0] * f(self.v[0]) + self.l[1] * f(self.v[1]) + self.l[2] * f(self.v[2]);
+        let lerp = |f: &dyn Fn(&WinVertex) -> f32| {
+            self.l[0] * f(self.v[0]) + self.l[1] * f(self.v[1]) + self.l[2] * f(self.v[2])
+        };
         match attr_slot(addr) {
             Some(AttrSlot::Position(0)) => self.px as f32 + 0.5,
             Some(AttrSlot::Position(1)) => self.py as f32 + 0.5,
@@ -540,7 +606,13 @@ fn half_to_f32(h: u16) -> f32 {
     let frac = (h & 0x3ff) as f32;
     sign * match exp {
         0 => frac * 2f32.powi(-24),
-        31 => if frac == 0.0 { f32::INFINITY } else { f32::NAN },
+        31 => {
+            if frac == 0.0 {
+                f32::INFINITY
+            } else {
+                f32::NAN
+            }
+        }
         e => (1.0 + frac / 1024.0) * 2f32.powi(e - 15),
     }
 }
@@ -600,8 +672,13 @@ fn triangles(topology: Topology, count: usize) -> Option<Vec<[usize; 3]>> {
     let mut t = Vec::new();
     match topology {
         Topology::Triangles => (0..count / 3).for_each(|i| t.push([3 * i, 3 * i + 1, 3 * i + 2])),
-        Topology::TriangleStrip => (0..count.saturating_sub(2))
-            .for_each(|i| t.push(if i % 2 == 0 { [i, i + 1, i + 2] } else { [i + 1, i, i + 2] })),
+        Topology::TriangleStrip => (0..count.saturating_sub(2)).for_each(|i| {
+            t.push(if i % 2 == 0 {
+                [i, i + 1, i + 2]
+            } else {
+                [i + 1, i, i + 2]
+            })
+        }),
         Topology::TriangleFan | Topology::Polygon => (1..count.saturating_sub(1)).for_each(|i| t.push([0, i, i + 1])),
         Topology::Quads => (0..count / 4).for_each(|q| {
             t.push([4 * q, 4 * q + 1, 4 * q + 2]);
@@ -614,7 +691,11 @@ fn triangles(topology: Topology, count: usize) -> Option<Vec<[usize; 3]>> {
 
 /// Reads the indices of an indexed draw: the vertex index for every position (base vertex added)
 /// and the triangles, with primitive restart splitting the topology into independent runs.
-fn indexed(rec: &DrawRecord, ib: &IndexBuffer, mem: &mut dyn GpuMemoryWriter) -> Result<(Vec<u32>, Vec<[usize; 3]>), &'static str> {
+fn indexed(
+    rec: &DrawRecord,
+    ib: &IndexBuffer,
+    mem: &mut dyn GpuMemoryWriter,
+) -> Result<(Vec<u32>, Vec<[usize; 3]>), &'static str> {
     let n = ib.index_bytes as u64;
     let start = rec.first_vertex as u64 * n;
     let len = rec.vertex_count as u64 * n;
@@ -637,7 +718,8 @@ fn indexed(rec: &DrawRecord, ib: &IndexBuffer, mem: &mut dyn GpuMemoryWriter) ->
     let mut tris = Vec::new();
     let mut run_start = 0usize;
     let flush = |ids: &Vec<u32>, from: usize, tris: &mut Vec<[usize; 3]>| -> Result<(), &'static str> {
-        let run = triangles(rec.topology, ids.len() - from).ok_or("topology other than triangles, strips, fans and quads")?;
+        let run =
+            triangles(rec.topology, ids.len() - from).ok_or("topology other than triangles, strips, fans and quads")?;
         tris.extend(run.into_iter().map(|t| t.map(|i| i + from)));
         Ok(())
     };
@@ -682,11 +764,17 @@ fn write_mask(regs: &[u32], slot: u8) -> [bool; 4] {
     [0, 4, 8, 12].map(|b| (w >> b) & 1 == 1)
 }
 
-fn fetch_attributes(rec: &DrawRecord, index: u32, mem: &mut dyn GpuMemoryWriter,
-    stream_cache: &mut Vec<(u8, Vec<u8>)>) -> Result<[[u32; 4]; 32], &'static str> {
+fn fetch_attributes(
+    rec: &DrawRecord,
+    index: u32,
+    mem: &mut dyn GpuMemoryWriter,
+    stream_cache: &mut Vec<(u8, Vec<u8>)>,
+) -> Result<[[u32; 4]; 32], &'static str> {
     let mut attrs = [[0u32, 0, 0, 1.0f32.to_bits()]; 32];
     for a in &rec.vertex_attributes {
-        let Some(stream) = rec.vertex_streams.iter().find(|s| s.index == a.stream) else { continue };
+        let Some(stream) = rec.vertex_streams.iter().find(|s| s.index == a.stream) else {
+            continue;
+        };
         if !stream_cache.iter().any(|(s, _)| *s == stream.index) {
             let mut data = vec![0u8; stream.size.min(1 << 24) as usize];
             if !mem.read(stream.gpu_va, &mut data) {
@@ -704,14 +792,18 @@ fn fetch_attributes(rec: &DrawRecord, index: u32, mem: &mut dyn GpuMemoryWriter,
             index
         };
         let at = element as usize * stream.stride as usize + a.offset as usize;
-        let Some(bytes) = data.get(at..) else { return Err("vertex fetch past the stream size") };
+        let Some(bytes) = data.get(at..) else {
+            return Err("vertex fetch past the stream size");
+        };
         let Some(mut words) = decode_attribute(a.component_bit_widths, a.numerical_type, bytes) else {
             return Err("vertex attribute format");
         };
         if a.swap_r_and_b {
             words.swap(0, 2);
         }
-        *attrs.get_mut(a.index as usize).ok_or("vertex attribute index out of range")? = words;
+        *attrs
+            .get_mut(a.index as usize)
+            .ok_or("vertex attribute index out of range")? = words;
     }
     Ok(attrs)
 }
@@ -734,15 +826,24 @@ impl Ampere3d {
         let region = |w: u32, h: u32| {
             let mut r = Rect::new(w, h);
             if (ctrl >> 4) & 1 == 1 {
-                let (hz, vt) = (self.reg_at(m::SET_CLEAR_RECT_HORIZONTAL), self.reg_at(m::SET_CLEAR_RECT_VERTICAL));
+                let (hz, vt) = (
+                    self.reg_at(m::SET_CLEAR_RECT_HORIZONTAL),
+                    self.reg_at(m::SET_CLEAR_RECT_VERTICAL),
+                );
                 r = r.clip(hz & 0xffff, vt & 0xffff, hz >> 16, vt >> 16);
             }
             if (ctrl >> 8) & 1 == 1 && self.reg_at(m::SET_SCISSOR_ENABLE) & 1 == 1 {
-                let (hz, vt) = (self.reg_at(m::SET_SCISSOR_HORIZONTAL), self.reg_at(m::SET_SCISSOR_VERTICAL));
+                let (hz, vt) = (
+                    self.reg_at(m::SET_SCISSOR_HORIZONTAL),
+                    self.reg_at(m::SET_SCISSOR_VERTICAL),
+                );
                 r = r.clip(hz & 0xffff, vt & 0xffff, hz >> 16, vt >> 16);
             }
             if (ctrl >> 12) & 1 == 1 {
-                let (hz, vt) = (self.reg_at(m::SET_VIEWPORT_CLIP_HORIZONTAL), self.reg_at(m::SET_VIEWPORT_CLIP_VERTICAL));
+                let (hz, vt) = (
+                    self.reg_at(m::SET_VIEWPORT_CLIP_HORIZONTAL),
+                    self.reg_at(m::SET_VIEWPORT_CLIP_VERTICAL),
+                );
                 let (x, y) = (hz & 0xffff, vt & 0xffff);
                 r = r.clip(x, y, x + (hz >> 16), y + (vt >> 16));
             }
@@ -753,7 +854,9 @@ impl Ampere3d {
             if rec.layer != 0 || ct.layer != 0 {
                 return self.skip("layered clear");
             }
-            let Some(view) = color_view(&ct) else { return self.skip("color target format or layout") };
+            let Some(view) = color_view(&ct) else {
+                return self.skip("color target format or layout");
+            };
             let Some(mut t) = Staged::load(view, mem) else { return };
             let r = region(view.width, view.height);
             // Float and unorm targets take the clear value as floats.
@@ -767,7 +870,9 @@ impl Ampere3d {
             wrote = true;
         }
         if let Some(zt) = rec.depth_target {
-            let Some(view) = depth_view(&zt) else { return self.skip("depth target format or layout") };
+            let Some(view) = depth_view(&zt) else {
+                return self.skip("depth target format or layout");
+            };
             let Some(mut t) = Staged::load(view, mem) else { return };
             let r = region(view.width, view.height);
             let depth = rec.clear_depth.then_some(rec.depth);
@@ -779,7 +884,9 @@ impl Ampere3d {
                         if ctrl & 1 != 0 {
                             let mask = self.reg_at(m::SET_STENCIL_MASK) as u8;
                             (read_stencil(zt.format, texel).unwrap_or(0) & !mask) | (value & mask)
-                        } else { value }
+                        } else {
+                            value
+                        }
                     });
                     write_depth(zt.format, texel, depth, stencil);
                 }
@@ -796,15 +903,25 @@ impl Ampere3d {
         let mut out = Cbufs::default();
         for op in &f.values {
             let bank = match *op {
-                Op::Cbuf { bank, .. } | Op::CbufIndexed { bank, .. } | Op::Tex { handle: TexHandle::Cbuf { bank, .. }, .. } => Some(bank),
-                Op::Tex { handle: TexHandle::Bound { .. }, .. } => Some(self.bindless_bank()),
+                Op::Cbuf { bank, .. }
+                | Op::CbufIndexed { bank, .. }
+                | Op::Tex {
+                    handle: TexHandle::Cbuf { bank, .. },
+                    ..
+                } => Some(bank),
+                Op::Tex {
+                    handle: TexHandle::Bound { .. },
+                    ..
+                } => Some(self.bindless_bank()),
                 _ => None,
             };
             if let Some(bank) = bank {
                 if out.0.iter().any(|(b, _)| *b == bank) {
                     continue;
                 }
-                let Some(bind) = self.cbufs[group].get(bank as usize).copied().flatten() else { continue };
+                let Some(bind) = self.cbufs[group].get(bank as usize).copied().flatten() else {
+                    continue;
+                };
                 let mut data = vec![0u8; bind.size as usize];
                 if mem.read(bind.gpu_va, &mut data) {
                     out.0.push((bank, data));
@@ -820,22 +937,34 @@ impl Ampere3d {
 
     /// Resolves every texture handle `f` reads (handle word -> TIC/TSC) and copies each mip chain,
     /// up to the last accessible level, out of guest memory.
-    fn stage_textures(&self, f: &Function, cbufs: &Cbufs, mem: &mut dyn GpuMemoryWriter) -> Result<Textures, &'static str> {
+    fn stage_textures(
+        &self,
+        f: &Function,
+        cbufs: &Cbufs,
+        mem: &mut dyn GpuMemoryWriter,
+    ) -> Result<Textures, &'static str> {
         let mut out = Textures::default();
         for op in &f.values {
             let Op::Tex { op, handle, .. } = *op else { continue };
             if let Some(t) = out.0.iter_mut().find(|t| t.handle == handle) {
                 if op == TexOp::Sample && t.sampler.is_none() {
-                    t.sampler = Some(self.sampler(self.tsc_index(cbufs, handle), mem).ok_or("sampler is not readable")?);
+                    t.sampler = Some(
+                        self.sampler(self.tsc_index(cbufs, handle), mem)
+                            .ok_or("sampler is not readable")?,
+                    );
                 }
                 continue;
             }
             let word = self.handle_word(cbufs, handle);
-            let header = self.texture_header(word & 0xf_ffff, mem).ok_or("texture header is not readable")?;
+            let header = self
+                .texture_header(word & 0xf_ffff, mem)
+                .ok_or("texture header is not readable")?;
             header.view().ok_or("texture format or layout")?;
             let last = header.level_range().map_or(0, |(_, last)| last);
             let size = match header.texture_type {
-                TextureType::TwoDArray => header.layer_stride().ok_or("texture format or layout")? * header.depth as usize,
+                TextureType::TwoDArray => {
+                    header.layer_stride().ok_or("texture format or layout")? * header.depth as usize
+                }
                 _ => header.chain_bytes(last).ok_or("texture format or layout")?,
             };
             if size > TEXTURE_READ_MAX {
@@ -846,10 +975,18 @@ impl Ampere3d {
                 return Err("texture data is not readable");
             }
             let sampler = match op {
-                TexOp::Sample => Some(self.sampler(self.tsc_index(cbufs, handle), mem).ok_or("sampler is not readable")?),
+                TexOp::Sample => Some(
+                    self.sampler(self.tsc_index(cbufs, handle), mem)
+                        .ok_or("sampler is not readable")?,
+                ),
                 TexOp::Fetch => None,
             };
-            out.0.push(BoundTexture { handle, header, sampler, bytes });
+            out.0.push(BoundTexture {
+                handle,
+                header,
+                sampler,
+                bytes,
+            });
         }
         Ok(out)
     }
@@ -864,7 +1001,11 @@ impl Ampere3d {
 
     fn tsc_index(&self, cbufs: &Cbufs, handle: TexHandle) -> u32 {
         let word = self.handle_word(cbufs, handle);
-        if self.reg(m::SET_SAMPLER_BINDING) & 1 == 1 { word & 0xf_ffff } else { word >> 20 }
+        if self.reg(m::SET_SAMPLER_BINDING) & 1 == 1 {
+            word & 0xf_ffff
+        } else {
+            word >> 20
+        }
     }
 
     /// Runs one draw: vertex fetch, vertex shader, raster, pixel shader, depth, color write.
@@ -885,7 +1026,12 @@ impl Ampere3d {
                 let Some(tris) = triangles(rec.topology, rec.vertex_count as usize) else {
                     return self.skip("topology other than triangles, strips, fans and quads");
                 };
-                ((0..rec.vertex_count).map(|i| rec.first_vertex.wrapping_add(i)).collect::<Vec<u32>>(), tris)
+                (
+                    (0..rec.vertex_count)
+                        .map(|i| rec.first_vertex.wrapping_add(i))
+                        .collect::<Vec<u32>>(),
+                    tris,
+                )
             }
             Some(ib) => match indexed(rec, ib, mem) {
                 Ok(v) => v,
@@ -911,7 +1057,10 @@ impl Ampere3d {
         // Groups: vertex 0, pixel 4 (BIND_GROUP_CONSTANT_BUFFER(j) is per stage).
         let vs_cb = self.stage_cbufs(0, &vs.func, mem);
         let ps_cb = self.stage_cbufs(4, &ps.func, mem);
-        let (vs_tex, ps_tex) = match (self.stage_textures(&vs.func, &vs_cb, mem), self.stage_textures(&ps.func, &ps_cb, mem)) {
+        let (vs_tex, ps_tex) = match (
+            self.stage_textures(&vs.func, &vs_cb, mem),
+            self.stage_textures(&ps.func, &ps_cb, mem),
+        ) {
             (Ok(v), Ok(p)) => (v, p),
             (Err(reason), _) | (_, Err(reason)) => return self.skip(reason),
         };
@@ -919,7 +1068,7 @@ impl Ampere3d {
         #[cfg(feature = "gpu-present")]
         if self.host_gpu {
             match self.render_host(rec, &ids, &tris, &vs, &ps, &vs_cb, &ps_cb, mem) {
-                Ok(()) => {},
+                Ok(()) => {}
                 Err(reason) => {
                     eprintln!("[guest-gpu] rejected draw: {reason}");
                     self.skip("host GPU draw rejected; see guest-gpu diagnostic");
@@ -937,7 +1086,16 @@ impl Ampere3d {
                 Ok(attrs) => attrs,
                 Err(reason) => return self.skip(reason),
             };
-            let values = shade::run(&vs.func, &VertexIn { attrs: &attrs, instance: rec.instance, vertex: index, cbufs: &vs_cb, tex: &vs_tex });
+            let values = shade::run(
+                &vs.func,
+                &VertexIn {
+                    attrs: &attrs,
+                    instance: rec.instance,
+                    vertex: index,
+                    cbufs: &vs_cb,
+                    tex: &vs_tex,
+                },
+            );
             let mut pos = [0.0f32, 0.0, 0.0, 1.0];
             let mut varyings = [[0.0f32; 4]; 32];
             for (addr, bits) in shade::vertex_outputs(&vs.func, &values) {
@@ -959,8 +1117,12 @@ impl Ampere3d {
             match ct {
                 Some(ct) if ct.layer != 0 => return self.skip("layered render target"),
                 Some(ct) => {
-                    let Some(view) = color_view(ct) else { return self.skip("color target format or layout") };
-                    let Some(t) = Staged::load(view, mem) else { return self.skip("color target is not readable") };
+                    let Some(view) = color_view(ct) else {
+                        return self.skip("color target format or layout");
+                    };
+                    let Some(t) = Staged::load(view, mem) else {
+                        return self.skip("color target is not readable");
+                    };
                     let blend = match Blend::for_target(&self.regs, ct.index) {
                         Ok(b) => b,
                         Err(reason) => return self.skip(reason),
@@ -983,8 +1145,12 @@ impl Ampere3d {
         let fill_rect = self.reg_at(m::FILL_RECTANGLE) == m::FILL_RECTANGLE_ENABLE;
         let mut zbuf = match rec.depth_target {
             Some(zt) if depth_test || depth_write || stencil.is_some() || bounds_test.is_some() => {
-                let Some(view) = depth_view(&zt) else { return self.skip("depth target format or layout") };
-                let Some(t) = Staged::load(view, mem) else { return self.skip("depth target is not readable") };
+                let Some(view) = depth_view(&zt) else {
+                    return self.skip("depth target format or layout");
+                };
+                let Some(t) = Staged::load(view, mem) else {
+                    return self.skip("depth target is not readable");
+                };
                 Some((zt, t))
             }
             _ => None,
@@ -1006,7 +1172,10 @@ impl Ampere3d {
             let s = rec.scissor0;
             bounds = bounds.clip(s.xmin, s.ymin, s.xmax, s.ymax);
         }
-        let (sh, sv) = (self.reg_at(m::SET_SURFACE_CLIP_HORIZONTAL), self.reg_at(m::SET_SURFACE_CLIP_VERTICAL));
+        let (sh, sv) = (
+            self.reg_at(m::SET_SURFACE_CLIP_HORIZONTAL),
+            self.reg_at(m::SET_SURFACE_CLIP_VERTICAL),
+        );
         if sh >> 16 > 0 && sv >> 16 > 0 {
             let (x, y) = (sh & 0xffff, sv & 0xffff);
             bounds = bounds.clip(x, y, x + (sh >> 16), y + (sv >> 16));
@@ -1061,7 +1230,13 @@ impl Ampere3d {
                 let max_y = p.iter().map(|q| q.1).fold(f32::NEG_INFINITY, f32::max).ceil().max(0.0) as u32;
                 let r = bounds.clip(min_x, min_y, max_x.saturating_add(1), max_y.saturating_add(1));
                 let edges = [(1, 2), (2, 0), (0, 1)];
-                let tl = edges.map(|(i, j)| if sign > 0.0 { top_left(p[i], p[j]) } else { top_left(p[j], p[i]) });
+                let tl = edges.map(|(i, j)| {
+                    if sign > 0.0 {
+                        top_left(p[i], p[j])
+                    } else {
+                        top_left(p[j], p[i])
+                    }
+                });
                 // NV_fill_rectangle covers the bounding box (half-open); attributes extrapolate.
                 let bbox = fill_rect.then(|| {
                     let (xs, ys) = (p.map(|q| q.0), p.map(|q| q.1));
@@ -1089,7 +1264,17 @@ impl Ampere3d {
                         // update, so discarded fragments leave depth and stencil alone.
                         let early = match ps.func.discard {
                             Some(d) => {
-                                let input = FragmentIn { v: [v0, v1, v2], flat: &a.varyings, l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
+                                let input = FragmentIn {
+                                    v: [v0, v1, v2],
+                                    flat: &a.varyings,
+                                    l,
+                                    px,
+                                    py,
+                                    z,
+                                    sph: &ps.sph,
+                                    cbufs: &ps_cb,
+                                    tex: &ps_tex,
+                                };
                                 let values = shade::run(&ps.func, &input);
                                 if values[d.0 as usize] != 0 {
                                     self.stats.discarded_fragments += 1;
@@ -1102,7 +1287,9 @@ impl Ampere3d {
                         if let Some((zt, t)) = zbuf.as_mut() {
                             let texel = t.texel(px, py);
                             let stored_z = read_depth(zt.format, texel);
-                            if let Some((min, max)) = bounds_test && !(min..=max).contains(&stored_z) {
+                            if let Some((min, max)) = bounds_test
+                                && !(min..=max).contains(&stored_z)
+                            {
                                 continue;
                             }
                             let s = stencil.as_ref().map(|s| s.face(front));
@@ -1128,12 +1315,24 @@ impl Ampere3d {
                         let values = match early {
                             Some(v) => v,
                             None => {
-                                let input = FragmentIn { v: [v0, v1, v2], flat: &a.varyings, l, px, py, z, sph: &ps.sph, cbufs: &ps_cb, tex: &ps_tex };
+                                let input = FragmentIn {
+                                    v: [v0, v1, v2],
+                                    flat: &a.varyings,
+                                    l,
+                                    px,
+                                    py,
+                                    z,
+                                    sph: &ps.sph,
+                                    cbufs: &ps_cb,
+                                    tex: &ps_tex,
+                                };
                                 shade::run(&ps.func, &input)
                             }
                         };
                         for &(t, mask, first) in &outputs {
-                            let Some(Some((ct, st, blend))) = staged.get_mut(t) else { continue };
+                            let Some(Some((ct, st, blend))) = staged.get_mut(t) else {
+                                continue;
+                            };
                             let mut color = [0.0f32; 4];
                             let mut reg = first;
                             for (ch, slot) in color.iter_mut().enumerate() {
@@ -1144,7 +1343,9 @@ impl Ampere3d {
                             }
                             let wm = write_mask(&self.regs, ct.index);
                             let texel = st.texel(px, py);
-                            if let Some(b) = blend && let Some(dst) = read_color(ct.format, texel) {
+                            if let Some(b) = blend
+                                && let Some(dst) = read_color(ct.format, texel)
+                            {
                                 color = b.apply(color, dst, ct.format != ColorFormat::Rf32Gf32Bf32Af32);
                             }
                             write_color(ct.format, texel, color, wm);
@@ -1166,5 +1367,8 @@ impl Ampere3d {
 
 /// Address helper shared with the engine for `SET_CONSTANT_BUFFER_SELECTOR_B/C`.
 pub(crate) fn selector_va(regs: &[u32]) -> u64 {
-    addr40(regs[m::SET_CONSTANT_BUFFER_SELECTOR_B as usize / 4], regs[m::SET_CONSTANT_BUFFER_SELECTOR_C as usize / 4])
+    addr40(
+        regs[m::SET_CONSTANT_BUFFER_SELECTOR_B as usize / 4],
+        regs[m::SET_CONSTANT_BUFFER_SELECTOR_C as usize / 4],
+    )
 }

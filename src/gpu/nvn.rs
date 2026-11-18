@@ -1,14 +1,13 @@
 #![allow(dead_code)]
 
-use byteorder::{ByteOrder, LittleEndian};
 use super::nvgpu::{
-    NvgpuChannel, SubmissionMode, METHOD_BIND_SHADER_PROGRAM, METHOD_BIND_TEXTURE_2D,
-    METHOD_CLEAR_SURFACE, METHOD_DISPATCH_UPSCALE_2X, METHOD_DRAW_ARRAYS,
-    METHOD_DRAW_INDEXED, METHOD_DRAW_TEXTURED_ARRAYS, METHOD_SET_CLEAR_COLOR,
-    METHOD_SET_DEPTH_TEST_ENABLE, METHOD_SET_INDEX_ARRAY_ADDR,
-    METHOD_SET_RENDER_TARGET_ADDR, METHOD_SET_VERTEX_ARRAY_ADDR, METHOD_SET_VIEWPORT_DIMS,
+    METHOD_BIND_SHADER_PROGRAM, METHOD_BIND_TEXTURE_2D, METHOD_CLEAR_SURFACE, METHOD_DISPATCH_UPSCALE_2X,
+    METHOD_DRAW_ARRAYS, METHOD_DRAW_INDEXED, METHOD_DRAW_TEXTURED_ARRAYS, METHOD_SET_CLEAR_COLOR,
+    METHOD_SET_DEPTH_TEST_ENABLE, METHOD_SET_INDEX_ARRAY_ADDR, METHOD_SET_RENDER_TARGET_ADDR,
+    METHOD_SET_VERTEX_ARRAY_ADDR, METHOD_SET_VIEWPORT_DIMS, NvgpuChannel, SubmissionMode,
 };
 use crate::mmu::Memory;
+use byteorder::{ByteOrder, LittleEndian};
 
 /// Nintendo Switch 2 `NVN` API Device Property IDs (`nvnDeviceGetInteger`)
 pub const NVN_DEVICE_INFO_API_MAJOR_VERSION: u32 = 0x0000;
@@ -72,12 +71,7 @@ pub struct TextureDecompressor;
 
 impl TextureDecompressor {
     /// Decompresses an entire surface into a linear 32-bit RGBA8888 pixel buffer.
-    pub fn decompress_surface(
-        format: NvnTextureFormat,
-        src: &[u8],
-        width: usize,
-        height: usize,
-    ) -> Vec<u32> {
+    pub fn decompress_surface(format: NvnTextureFormat, src: &[u8], width: usize, height: usize) -> Vec<u32> {
         let mut dst = vec![0u32; width * height];
         let (bw, bh) = format.block_dims();
         let bsize = format.block_size();
@@ -158,9 +152,7 @@ impl TextureDecompressor {
         let (r0, g0, b0) = unpack_rgb565(c0_raw);
         let (r1, g1, b1) = unpack_rgb565(c1_raw);
 
-        let make_rgba = |r: u32, g: u32, b: u32, a: u32| -> u32 {
-            (a << 24) | (r << 16) | (g << 8) | b
-        };
+        let make_rgba = |r: u32, g: u32, b: u32, a: u32| -> u32 { (a << 24) | (r << 16) | (g << 8) | b };
 
         let colors = if c0_raw > c1_raw {
             [
@@ -402,19 +394,57 @@ impl NvnTexturePool {
 
 #[derive(Debug, Clone)]
 pub enum NvnCmd {
-    SetRenderTarget { addr: u32, width: u32, height: u32 },
-    ClearColor { r: f32, g: f32, b: f32, a: f32 },
-    SetDepthTest { enabled: bool },
-    BindProgram { shader_addr: u32 },
-    BindTexture { tex_addr: u32, width: u32, height: u32 },
-    BindTextureDescriptor { descriptor_id: u32 },
-    BindVertexBuffer { vb_addr: u32 },
-    DrawArrays { vertex_count: u32 },
-    DrawTextured { vertex_count: u32 },
-    Upscale2x { src_addr: u32, src_w: u32, src_h: u32, dst_addr: u32 },
-    BufferCycle { buffer_id: u32 },
-    BindIndexBuffer { ib_addr: u32, is_32bit: bool },
-    DrawElements { index_count: u32, textured: bool },
+    SetRenderTarget {
+        addr: u32,
+        width: u32,
+        height: u32,
+    },
+    ClearColor {
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    },
+    SetDepthTest {
+        enabled: bool,
+    },
+    BindProgram {
+        shader_addr: u32,
+    },
+    BindTexture {
+        tex_addr: u32,
+        width: u32,
+        height: u32,
+    },
+    BindTextureDescriptor {
+        descriptor_id: u32,
+    },
+    BindVertexBuffer {
+        vb_addr: u32,
+    },
+    DrawArrays {
+        vertex_count: u32,
+    },
+    DrawTextured {
+        vertex_count: u32,
+    },
+    Upscale2x {
+        src_addr: u32,
+        src_w: u32,
+        src_h: u32,
+        dst_addr: u32,
+    },
+    BufferCycle {
+        buffer_id: u32,
+    },
+    BindIndexBuffer {
+        ib_addr: u32,
+        is_32bit: bool,
+    },
+    DrawElements {
+        index_count: u32,
+        textured: bool,
+    },
 }
 
 /// High-Level `NVN` Command Buffer Builder (`NVNcommandBuffer`).
@@ -427,9 +457,7 @@ pub struct NvnCommandBuffer {
 
 impl NvnCommandBuffer {
     pub fn new() -> Self {
-        Self {
-            commands: Vec::new(),
-        }
+        Self { commands: Vec::new() }
     }
 
     pub fn set_render_target(&mut self, addr: u32, width: u32, height: u32) {
@@ -449,7 +477,11 @@ impl NvnCommandBuffer {
     }
 
     pub fn bind_texture(&mut self, tex_addr: u32, width: u32, height: u32) {
-        self.commands.push(NvnCmd::BindTexture { tex_addr, width, height });
+        self.commands.push(NvnCmd::BindTexture {
+            tex_addr,
+            width,
+            height,
+        });
     }
 
     pub fn bind_texture_descriptor(&mut self, descriptor_id: u32) {
@@ -498,13 +530,7 @@ impl NvnCommandBuffer {
                     out.extend_from_slice(&[NVN_CMD_SET_RENDER_TARGET, addr, width, height]);
                 }
                 NvnCmd::ClearColor { r, g, b, a } => {
-                    out.extend_from_slice(&[
-                        NVN_CMD_CLEAR_COLOR,
-                        r.to_bits(),
-                        g.to_bits(),
-                        b.to_bits(),
-                        a.to_bits(),
-                    ]);
+                    out.extend_from_slice(&[NVN_CMD_CLEAR_COLOR, r.to_bits(), g.to_bits(), b.to_bits(), a.to_bits()]);
                 }
                 NvnCmd::SetDepthTest { enabled } => {
                     out.extend_from_slice(&[NVN_CMD_SET_DEPTH_TEST, enabled as u32]);
@@ -512,7 +538,11 @@ impl NvnCommandBuffer {
                 NvnCmd::BindProgram { shader_addr } => {
                     out.extend_from_slice(&[NVN_CMD_BIND_PROGRAM, shader_addr]);
                 }
-                NvnCmd::BindTexture { tex_addr, width, height } => {
+                NvnCmd::BindTexture {
+                    tex_addr,
+                    width,
+                    height,
+                } => {
                     out.extend_from_slice(&[NVN_CMD_BIND_TEXTURE, tex_addr, width, height]);
                 }
                 NvnCmd::BindTextureDescriptor { descriptor_id } => {
@@ -533,13 +563,7 @@ impl NvnCommandBuffer {
                     src_h,
                     dst_addr,
                 } => {
-                    out.extend_from_slice(&[
-                        NVN_CMD_UPSCALE_2X,
-                        src_addr,
-                        src_w,
-                        src_h,
-                        dst_addr,
-                    ]);
+                    out.extend_from_slice(&[NVN_CMD_UPSCALE_2X, src_addr, src_w, src_h, dst_addr]);
                 }
                 NvnCmd::BufferCycle { buffer_id } => {
                     out.extend_from_slice(&[NVN_CMD_BUFFER_CYCLE, buffer_id]);
@@ -615,7 +639,11 @@ impl NvnCommandBuffer {
                     ));
                     pb.push(shader_addr);
                 }
-                NvnCmd::BindTexture { tex_addr, width, height } => {
+                NvnCmd::BindTexture {
+                    tex_addr,
+                    width,
+                    height,
+                } => {
                     pb.push(NvgpuChannel::encode_header(
                         SubmissionMode::Increasing,
                         2,
@@ -733,12 +761,12 @@ impl NvnDriver {
     /// Queries a Switch 2 `NVN` device property (`nvnDeviceGetInteger`).
     pub fn get_device_integer(pname: u32) -> i32 {
         match pname {
-            NVN_DEVICE_INFO_API_MAJOR_VERSION => 55,       // Switch 2 NVN API 55.15
+            NVN_DEVICE_INFO_API_MAJOR_VERSION => 55, // Switch 2 NVN API 55.15
             NVN_DEVICE_INFO_API_MINOR_VERSION => 15,
             NVN_DEVICE_INFO_UNIFORM_BUFFER_ALIGNMENT => 256,
             NVN_DEVICE_INFO_MAX_TEXTURE_ANISOTROPY => 16,
-            NVN_DEVICE_INFO_SUPPORTS_UPSCALE_2X => 1,       // 2x upscaler model (not DLSS)
-            NVN_DEVICE_INFO_T239_SM_VERSION => 0x0807,     // Ampere GA10B SM 8.7
+            NVN_DEVICE_INFO_SUPPORTS_UPSCALE_2X => 1, // 2x upscaler model (not DLSS)
+            NVN_DEVICE_INFO_T239_SM_VERSION => 0x0807, // Ampere GA10B SM 8.7
             _ => 1,
         }
     }
@@ -875,9 +903,7 @@ mod tests {
 
         // Upload a pure cyan triangle covering the center of an 8x8 surface
         let verts: [f32; 18] = [
-             0.0,  0.9, 0.5, 0.0, 1.0, 1.0,
-            -0.9, -0.9, 0.5, 0.0, 1.0, 1.0,
-             0.9, -0.9, 0.5, 0.0, 1.0, 1.0,
+            0.0, 0.9, 0.5, 0.0, 1.0, 1.0, -0.9, -0.9, 0.5, 0.0, 1.0, 1.0, 0.9, -0.9, 0.5, 0.0, 1.0, 1.0,
         ];
         for (i, &v) in verts.iter().enumerate() {
             mmu.write_u32(vb_addr as u64 + (i * 4) as u64, v.to_bits()).unwrap();
@@ -955,10 +981,10 @@ mod tests {
         // 3. Test ASTC 4x4 void-extent block (uniform cyan: R=0, G=255, B=255, A=255)
         let mut astc_data = [0u8; 16];
         LittleEndian::write_u16(&mut astc_data[0..2], 0x01FC); // Void-extent header
-        LittleEndian::write_u16(&mut astc_data[8..10], 0x0000);   // R = 0
-        LittleEndian::write_u16(&mut astc_data[10..12], 0xFF00);  // G = 255
-        LittleEndian::write_u16(&mut astc_data[12..14], 0xFF00);  // B = 255
-        LittleEndian::write_u16(&mut astc_data[14..16], 0xFF00);  // A = 255
+        LittleEndian::write_u16(&mut astc_data[8..10], 0x0000); // R = 0
+        LittleEndian::write_u16(&mut astc_data[10..12], 0xFF00); // G = 255
+        LittleEndian::write_u16(&mut astc_data[12..14], 0xFF00); // B = 255
+        LittleEndian::write_u16(&mut astc_data[14..16], 0xFF00); // A = 255
         let mut astc_pixels = [0u32; 16];
         TextureDecompressor::decompress_astc_4x4_block(&astc_data, &mut astc_pixels);
         assert_eq!(astc_pixels[0], 0xFF00FFFF); // Cyan (ARGB = 0xFF00FFFF)
@@ -1032,10 +1058,8 @@ mod tests {
 
         // Quad vertices (x, y, z, r, g, b) with Yellow color (1.0, 1.0, 0.0)
         let quad_verts: [f32; 24] = [
-            -0.8,  0.8, 0.5, 1.0, 1.0, 0.0,
-            -0.8, -0.8, 0.5, 1.0, 1.0, 0.0,
-             0.8, -0.8, 0.5, 1.0, 1.0, 0.0,
-             0.8,  0.8, 0.5, 1.0, 1.0, 0.0,
+            -0.8, 0.8, 0.5, 1.0, 1.0, 0.0, -0.8, -0.8, 0.5, 1.0, 1.0, 0.0, 0.8, -0.8, 0.5, 1.0, 1.0, 0.0, 0.8, 0.8,
+            0.5, 1.0, 1.0, 0.0,
         ];
         for (i, &val) in quad_verts.iter().enumerate() {
             mmu.write_u32(vb_addr as u64 + (i * 4) as u64, val.to_bits()).unwrap();

@@ -2,25 +2,38 @@
 //! The host deadline is cooperative between slices/SVCs; callers must also impose a process
 //! timeout because a blocking kernel call cannot be interrupted here.
 
-use crate::cpu::{Cpu, StepResult};
 use crate::cpu::tier2_jit::BlockExit;
 use crate::cpu::tier3_jit::Tier3JitEngine;
-use crate::kernel::{HorizonKernel, SvcResult};
+use crate::cpu::{Cpu, StepResult};
 use crate::kernel::hid::NpadInput;
+use crate::kernel::{HorizonKernel, SvcResult};
 use crate::mmu::{Memory, Permission};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Engine { Interpreter, Tier3, Native }
+enum Engine {
+    Interpreter,
+    Tier3,
+    Native,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Stop {
     ExitProcess,
-    Break { reason: u64, info1: u64, info2: u64, result: Option<u32> },
+    Break {
+        reason: u64,
+        info1: u64,
+        info2: u64,
+        result: Option<u32>,
+    },
     UnhandledSvc(u16),
     CpuHalt(String),
-    Fault { pc: u64, instruction: Option<u32>, error: String },
+    Fault {
+        pc: u64,
+        instruction: Option<u32>,
+        error: String,
+    },
     InstructionBudget,
     HostTimeout,
     FrameLimit,
@@ -29,27 +42,49 @@ enum Stop {
 }
 
 #[derive(Clone, Copy)]
-struct InputCheckpoint { at_instructions: usize, input: NpadInput }
+struct InputCheckpoint {
+    at_instructions: usize,
+    input: NpadInput,
+}
 
 #[derive(Debug, Clone, Copy)]
-struct FrameInput { after_queued_frame: u64, buttons: u64 }
+struct FrameInput {
+    after_queued_frame: u64,
+    buttons: u64,
+}
 
 fn parse_frame_inputs(value: &serde_json::Value, frames: u64) -> Result<Vec<FrameInput>, String> {
-    let entries = value.as_array().filter(|a| !a.is_empty()).ok_or("inputs must be non-empty")?;
+    let entries = value
+        .as_array()
+        .filter(|a| !a.is_empty())
+        .ok_or("inputs must be non-empty")?;
     let mut inputs = Vec::new();
     let mut previous = None;
     for entry in entries {
         let object = entry.as_object().ok_or("input must be an object")?;
-        if object.len() != 2 { return Err("input requires exactly after_queued_frame and buttons".into()); }
-        let frame = entry["after_queued_frame"].as_u64().filter(|n| *n < frames)
+        if object.len() != 2 {
+            return Err("input requires exactly after_queued_frame and buttons".into());
+        }
+        let frame = entry["after_queued_frame"]
+            .as_u64()
+            .filter(|n| *n < frames)
             .ok_or("input must precede the final queued frame")?;
         let buttons = entry["buttons"].as_u64().ok_or("buttons must be an unsigned integer")?;
-        if previous.is_some_and(|p| frame <= p) { return Err("inputs must strictly increase".into()); }
-        if previous.is_none() && (frame != 0 || buttons != 0) { return Err("input must start neutral at frame zero".into()); }
-        inputs.push(FrameInput { after_queued_frame: frame, buttons });
+        if previous.is_some_and(|p| frame <= p) {
+            return Err("inputs must strictly increase".into());
+        }
+        if previous.is_none() && (frame != 0 || buttons != 0) {
+            return Err("input must start neutral at frame zero".into());
+        }
+        inputs.push(FrameInput {
+            after_queued_frame: frame,
+            buttons,
+        });
         previous = Some(frame);
     }
-    if inputs.last().unwrap().buttons != 0 { return Err("input must end with release".into()); }
+    if inputs.last().unwrap().buttons != 0 {
+        return Err("input must end with release".into());
+    }
     Ok(inputs)
 }
 
@@ -64,19 +99,23 @@ fn frame_input_script_rejects_ambiguous_or_unreachable_transitions() {
         {"after_queued_frame": 5, "buttons": 0}
     ]);
     assert!(parse_frame_inputs(&script, 8).is_ok());
-    for invalid in [json!([]), json!([{"after_queued_frame": 1, "buttons": 0}]),
+    for invalid in [
+        json!([]),
+        json!([{"after_queued_frame": 1, "buttons": 0}]),
         json!([{"after_queued_frame": 0, "buttons": 0}, {"after_queued_frame": 0, "buttons": 1}]),
         json!([{"after_queued_frame": 0, "buttons": 0}, {"after_queued_frame": 8, "buttons": 0}]),
         json!([{"after_queued_frame": 0, "buttons": 0}, {"after_queued_frame": 2, "buttons": 1}]),
         json!([{"after_queued_frame": 0, "buttons": -1}]),
-        json!([{"after_queued_frame": 0, "buttons": 0, "butons": 1}])] {
+        json!([{"after_queued_frame": 0, "buttons": 0, "butons": 1}]),
+    ] {
         assert!(parse_frame_inputs(&invalid, 8).is_err(), "accepted {invalid}");
     }
 }
 
 #[test]
 fn registered_interactions_have_reachable_inputs_and_pixel_checks() {
-    let manifest: serde_json::Value = serde_json::from_str(include_str!("../../tests/corpus/interactions.json")).unwrap();
+    let manifest: serde_json::Value =
+        serde_json::from_str(include_str!("../../tests/corpus/interactions.json")).unwrap();
     for oracle in manifest["oracles"].as_array().unwrap() {
         validate_frame_oracle(oracle).unwrap();
         parse_frame_inputs(&oracle["inputs"], oracle["queued_frames"].as_u64().unwrap()).unwrap();
@@ -100,8 +139,17 @@ struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Self { instructions: crate::NRO_INSTRUCTION_BUDGET, host_time: Duration::from_secs(10),
-            frames: 16, trace_entries: 256, debug_bytes: 8192, queued_frames: 0, probes: Vec::new(), frame_inputs: Vec::new(), sample_every: 0 }
+        Self {
+            instructions: crate::NRO_INSTRUCTION_BUDGET,
+            host_time: Duration::from_secs(10),
+            frames: 16,
+            trace_entries: 256,
+            debug_bytes: 8192,
+            queued_frames: 0,
+            probes: Vec::new(),
+            frame_inputs: Vec::new(),
+            sample_every: 0,
+        }
     }
 }
 
@@ -153,14 +201,30 @@ struct SoakSample {
     host_rss_kib: Option<u64>,
 }
 
-fn soak_sample(queued: u64, instructions: usize, cpu: &Cpu, mmu: &Memory, tier3: Option<&Tier3JitEngine>) -> SoakSample {
+fn soak_sample(
+    queued: u64,
+    instructions: usize,
+    cpu: &Cpu,
+    mmu: &Memory,
+    tier3: Option<&Tier3JitEngine>,
+) -> SoakSample {
     let mut hash = 0xcbf29ce484222325u64;
-    let words = (0..31).map(|i| cpu.regs.read_x(i as u8)).chain([cpu.regs.sp, cpu.regs.pc]);
+    let words = (0..31)
+        .map(|i| cpu.regs.read_x(i as u8))
+        .chain([cpu.regs.sp, cpu.regs.pc]);
     for word in words {
-        for byte in word.to_le_bytes() { hash = (hash ^ byte as u64).wrapping_mul(0x100000001b3); }
+        for byte in word.to_le_bytes() {
+            hash = (hash ^ byte as u64).wrapping_mul(0x100000001b3);
+        }
     }
-    SoakSample { queued, instructions, regs_fnv1a64: hash, guest_pages: mmu.bucket_stats().total_pages,
-        jit_blocks: tier3.map_or(0, |jit| jit.super_blocks.len()), host_rss_kib: host_rss_kib() }
+    SoakSample {
+        queued,
+        instructions,
+        regs_fnv1a64: hash,
+        guest_pages: mmu.bucket_stats().total_pages,
+        jit_blocks: tier3.map_or(0, |jit| jit.super_blocks.len()),
+        host_rss_kib: host_rss_kib(),
+    }
 }
 
 /// Resident set size of this process. `/proc` on Linux, `ps` elsewhere (sampled sparsely).
@@ -169,7 +233,10 @@ fn host_rss_kib() -> Option<u64> {
         let pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
         return Some(pages * 4);
     }
-    let out = std::process::Command::new("ps").args(["-o", "rss=", "-p", &std::process::id().to_string()]).output().ok()?;
+    let out = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+        .output()
+        .ok()?;
     String::from_utf8_lossy(&out.stdout).trim().parse().ok()
 }
 
@@ -199,14 +266,42 @@ struct RawFrameEvidence {
 }
 
 fn report(engine: Engine, stop: Stop, cpu: &Cpu) -> Report {
-    Report { requested_engine: engine, actual_engine: engine, stop,
-        instructions: 0, pc: cpu.regs.pc, x0: cpu.regs.read_x(0), registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)), frames: 0,
-        preemptions: 0, svc_count: 0, svcs: Vec::new(), last_svcs: Default::default(), debug_output: String::new(),
-        input_applied_at: Vec::new(), frame_inputs_applied: Vec::new(), raw_frame: None, queued: Vec::new(), first_present_diagnostic: None, post_queue_diagnostic: None, samples: Vec::new(), last_queue_ms: 0, compatibility: "not-assessed" }
+    Report {
+        requested_engine: engine,
+        actual_engine: engine,
+        stop,
+        instructions: 0,
+        pc: cpu.regs.pc,
+        x0: cpu.regs.read_x(0),
+        registers: std::array::from_fn(|i| cpu.regs.read_x(i as u8)),
+        frames: 0,
+        preemptions: 0,
+        svc_count: 0,
+        svcs: Vec::new(),
+        last_svcs: Default::default(),
+        debug_output: String::new(),
+        input_applied_at: Vec::new(),
+        frame_inputs_applied: Vec::new(),
+        raw_frame: None,
+        queued: Vec::new(),
+        first_present_diagnostic: None,
+        post_queue_diagnostic: None,
+        samples: Vec::new(),
+        last_queue_ms: 0,
+        compatibility: "not-assessed",
+    }
 }
 
 fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64, probes: &[(usize, usize)]) -> QueuedFrame {
-    let mut out = QueuedFrame { index, width: 0, height: 0, rgba_fnv1a64: 0, uniform: None, probes: Vec::new(), error: None };
+    let mut out = QueuedFrame {
+        index,
+        width: 0,
+        height: 0,
+        rgba_fnv1a64: 0,
+        uniform: None,
+        probes: Vec::new(),
+        error: None,
+    };
     let Some(submitted) = kernel.ipc.submitted_vi_surface() else {
         out.error = Some("no resolvable VI submission".into());
         return out;
@@ -227,7 +322,10 @@ fn capture_queued(kernel: &HorizonKernel, mmu: &Memory, index: u64, probes: &[(u
             out.width = frame.width;
             out.height = frame.height;
             out.rgba_fnv1a64 = frame.content_hash();
-            out.probes = probes.iter().map(|&(x, y)| frame.pixel(x, y).map(|(r, g, b, a)| [r, g, b, a])).collect();
+            out.probes = probes
+                .iter()
+                .map(|&(x, y)| frame.pixel(x, y).map(|(r, g, b, a)| [r, g, b, a]))
+                .collect();
         }
         Err(error) => out.error = Some(format!("{error:?}")),
     }
@@ -254,19 +352,36 @@ fn native_engine(_mmu: &mut Memory, _kernel: &HorizonKernel) -> Result<NativeEng
 
 /// Runs the guest natively up to its next SVC.
 #[cfg(feature = "nce")]
-fn native_run(nce: &mut NativeEngine, cpu: &mut Cpu, mmu: &mut Memory, kernel: &HorizonKernel) -> Result<Option<u16>, Stop> {
+fn native_run(
+    nce: &mut NativeEngine,
+    cpu: &mut Cpu,
+    mmu: &mut Memory,
+    kernel: &HorizonKernel,
+) -> Result<Option<u16>, Stop> {
     use crate::cpu::nce::NceExit;
     match nce.run(cpu, mmu, &|| kernel.system_tick()) {
         NceExit::Svc(id) => Ok(Some(id)),
         NceExit::Preempted => Ok(None),
-        NceExit::Fault { pc, signal, addr } => Err(Stop::Fault { pc, instruction: mmu.read_u32(pc).ok(),
-            error: format!("native signal {signal} (fault address {addr:#x})") }),
-        NceExit::Error(error) => Err(Stop::Fault { pc: cpu.regs.pc, instruction: None, error: format!("native engine: {error}") }),
+        NceExit::Fault { pc, signal, addr } => Err(Stop::Fault {
+            pc,
+            instruction: mmu.read_u32(pc).ok(),
+            error: format!("native signal {signal} (fault address {addr:#x})"),
+        }),
+        NceExit::Error(error) => Err(Stop::Fault {
+            pc: cpu.regs.pc,
+            instruction: None,
+            error: format!("native engine: {error}"),
+        }),
     }
 }
 
 #[cfg(not(feature = "nce"))]
-fn native_run(nce: &mut NativeEngine, _cpu: &mut Cpu, _mmu: &mut Memory, _kernel: &HorizonKernel) -> Result<Option<u16>, Stop> {
+fn native_run(
+    nce: &mut NativeEngine,
+    _cpu: &mut Cpu,
+    _mmu: &mut Memory,
+    _kernel: &HorizonKernel,
+) -> Result<Option<u16>, Stop> {
     match *nce {}
 }
 
@@ -287,15 +402,27 @@ fn guest_memory(engine: Engine) -> Result<(Memory, u64, u64), String> {
 
 /// Run an already configured VM, retaining the real kernel dispatcher and scheduler.
 /// Tier-3 can overshoot a slice target by one super-block; report the actual instruction total.
-fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Engine,
-    limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
+fn execute(
+    mut cpu: Cpu,
+    mut mmu: Memory,
+    mut kernel: HorizonKernel,
+    engine: Engine,
+    limits: &Limits,
+    inputs: &[InputCheckpoint],
+) -> (Report, HorizonKernel) {
     let mut result = report(engine, Stop::InstructionBudget, &cpu);
     let started = Instant::now();
-    let mut tier3 = match engine { Engine::Tier3 => Some(Tier3JitEngine::new()), _ => None };
+    let mut tier3 = match engine {
+        Engine::Tier3 => Some(Tier3JitEngine::new()),
+        _ => None,
+    };
     let mut native = match engine {
         Engine::Native => match native_engine(&mut mmu, &kernel) {
             Ok(e) => Some(e),
-            Err(error) => { result.stop = Stop::LoadError(error); return (result, kernel); }
+            Err(error) => {
+                result.stop = Stop::LoadError(error);
+                return (result, kernel);
+            }
         },
         _ => None,
     };
@@ -315,13 +442,20 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
             result.stop = Stop::HostTimeout;
             break;
         }
-        if result.instructions >= limits.instructions { break; }
+        if result.instructions >= limits.instructions {
+            break;
+        }
         if let Some(input) = limits.frame_inputs.get(next_frame_input)
             && input.after_queued_frame <= kernel.ipc.vi_frames_queued()
         {
-            kernel.ipc.hid.input = NpadInput { buttons: input.buttons, ..Default::default() };
+            kernel.ipc.hid.input = NpadInput {
+                buttons: input.buttons,
+                ..Default::default()
+            };
             kernel.ipc.hid.sync(&mut mmu);
-            result.frame_inputs_applied.push((kernel.ipc.vi_frames_queued(), input.buttons, result.instructions));
+            result
+                .frame_inputs_applied
+                .push((kernel.ipc.vi_frames_queued(), input.buttons, result.instructions));
             next_frame_input += 1;
         }
         while next_input < inputs.len() && inputs[next_input].at_instructions <= result.instructions {
@@ -332,54 +466,79 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
         }
         let remaining = limits.instructions - result.instructions;
         let until_preemption = next_preemption.saturating_sub(result.instructions).max(1);
-        let until_input = inputs.get(next_input).map(|i| i.at_instructions.saturating_sub(result.instructions).max(1)).unwrap_or(usize::MAX);
+        let until_input = inputs
+            .get(next_input)
+            .map(|i| i.at_instructions.saturating_sub(result.instructions).max(1))
+            .unwrap_or(usize::MAX);
         let target = remaining.min(until_preemption).min(until_input).min(256);
         let mut svc = None;
         if let Some(nce) = native.as_mut() {
             match native_run(nce, &mut cpu, &mut mmu, &kernel) {
-                Ok(Some(id)) => { svc = Some(id); result.svc_count += 1; }
+                Ok(Some(id)) => {
+                    svc = Some(id);
+                    result.svc_count += 1;
+                }
                 // Time slice over: same as the instruction quantum of the other engines.
-                Ok(None) => { kernel.scheduler.preempt(&mut cpu); result.preemptions += 1; }
-                Err(stop) => { result.stop = stop; break; }
+                Ok(None) => {
+                    kernel.scheduler.preempt(&mut cpu);
+                    result.preemptions += 1;
+                }
+                Err(stop) => {
+                    result.stop = stop;
+                    break;
+                }
             }
         } else {
-        match tier3.as_mut() {
-            Some(jit) => {
-                let (count, exit) = jit.run_slice(&mut cpu, &mut mmu, target);
-                result.instructions = result.instructions.saturating_add(count);
-                match exit {
-                    BlockExit::Svc { svc_id } => svc = Some(svc_id),
-                    BlockExit::Fault { pc } => {
-                        result.stop = Stop::Fault { pc, instruction: mmu.read_u32(pc).ok(), error: "Tier-3 instruction or memory fault".into() };
-                        break;
-                    }
-                    BlockExit::Return { .. } | BlockExit::Branch { .. } |
-                    BlockExit::BranchCondTaken { .. } | BlockExit::BranchFallthrough { .. } |
-                    BlockExit::BudgetExceeded => {}
-                }
-            }
-            None => {
-                let pc = cpu.regs.pc;
-                match cpu.step(&mut mmu) {
-                    Ok(step) => {
-                        result.instructions += 1;
-                        steps_since_clock += 1;
-                        if steps_since_clock >= INTERP_CLOCK_STRIDE {
-                            steps_since_clock = 0;
+            match tier3.as_mut() {
+                Some(jit) => {
+                    let (count, exit) = jit.run_slice(&mut cpu, &mut mmu, target);
+                    result.instructions = result.instructions.saturating_add(count);
+                    match exit {
+                        BlockExit::Svc { svc_id } => svc = Some(svc_id),
+                        BlockExit::Fault { pc } => {
+                            result.stop = Stop::Fault {
+                                pc,
+                                instruction: mmu.read_u32(pc).ok(),
+                                error: "Tier-3 instruction or memory fault".into(),
+                            };
+                            break;
                         }
-                        match step {
-                            StepResult::Continue => {}
-                            StepResult::Svc(id) => svc = Some(id),
-                            StepResult::Halt(message) => { result.stop = Stop::CpuHalt(message); break; }
-                        }
-                    }
-                    Err(error) => {
-                        result.stop = Stop::Fault { pc, instruction: mmu.read_u32(pc).ok(), error: error.to_string() };
-                        break;
+                        BlockExit::Return { .. }
+                        | BlockExit::Branch { .. }
+                        | BlockExit::BranchCondTaken { .. }
+                        | BlockExit::BranchFallthrough { .. }
+                        | BlockExit::BudgetExceeded => {}
                     }
                 }
+                None => {
+                    let pc = cpu.regs.pc;
+                    match cpu.step(&mut mmu) {
+                        Ok(step) => {
+                            result.instructions += 1;
+                            steps_since_clock += 1;
+                            if steps_since_clock >= INTERP_CLOCK_STRIDE {
+                                steps_since_clock = 0;
+                            }
+                            match step {
+                                StepResult::Continue => {}
+                                StepResult::Svc(id) => svc = Some(id),
+                                StepResult::Halt(message) => {
+                                    result.stop = Stop::CpuHalt(message);
+                                    break;
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            result.stop = Stop::Fault {
+                                pc,
+                                instruction: mmu.read_u32(pc).ok(),
+                                error: error.to_string(),
+                            };
+                            break;
+                        }
+                    }
+                }
             }
-        }
         }
         if let Some(id) = svc {
             if result.svcs.len() < limits.trace_entries {
@@ -395,30 +554,47 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                 if mmu.read_bytes(cpu.regs.read_x(0), &mut bytes).is_ok() {
                     // Keep ASCII/UTF-8 text bounded even when replacement characters expand.
                     for ch in String::from_utf8_lossy(&bytes).chars() {
-                        if result.debug_output.len() + ch.len_utf8() > limits.debug_bytes { break; }
+                        if result.debug_output.len() + ch.len_utf8() > limits.debug_bytes {
+                            break;
+                        }
                         result.debug_output.push(ch);
                     }
                 }
             }
-                match kernel.dispatch_svc(id, &mut cpu, &mut mmu) {
+            match kernel.dispatch_svc(id, &mut cpu, &mut mmu) {
                 SvcResult::Success => {}
-                SvcResult::ExitProcess => { result.stop = Stop::ExitProcess; break; }
-                SvcResult::Break { reason, info1, info2 } => {
-                    result.stop = Stop::Break { reason, info1, info2,
-                        result: if info2 == 4 { mmu.read_u32(info1).ok() } else { None } };
+                SvcResult::ExitProcess => {
+                    result.stop = Stop::ExitProcess;
                     break;
                 }
-                SvcResult::Unhandled(id) => { result.stop = Stop::UnhandledSvc(id); break; }
+                SvcResult::Break { reason, info1, info2 } => {
+                    result.stop = Stop::Break {
+                        reason,
+                        info1,
+                        info2,
+                        result: if info2 == 4 { mmu.read_u32(info1).ok() } else { None },
+                    };
+                    break;
+                }
+                SvcResult::Unhandled(id) => {
+                    result.stop = Stop::UnhandledSvc(id);
+                    break;
+                }
                 SvcResult::PresentFrame => {
                     result.frames += 1;
                     if result.first_present_diagnostic.is_none() {
                         result.first_present_diagnostic = Some(match kernel.ipc.submitted_vi_surface() {
-                            None => format!("svc={id:#x}: no resolvable VI submission; {}",
-                                kernel.ipc.vi_submission_diagnostic()),
+                            None => format!(
+                                "svc={id:#x}: no resolvable VI submission; {}",
+                                kernel.ipc.vi_submission_diagnostic()
+                            ),
                             Some(submitted) => match submitted.tiling_surface() {
                                 None => format!("svc={id:#x}: unsupported or out-of-bounds descriptor: {submitted:?}"),
                                 Some(surface) => match crate::gpu::present::surface::frame_from_surface(
-                                    &mmu, submitted.guest_addr, &surface) {
+                                    &mmu,
+                                    submitted.guest_addr,
+                                    &surface,
+                                ) {
                                     Ok(_) => format!("svc={id:#x}: extracted {submitted:?}"),
                                     Err(error) => format!("svc={id:#x}: extraction failed: {error:?}; {submitted:?}"),
                                 },
@@ -427,29 +603,39 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
                     }
                     if let Some(submitted) = kernel.ipc.submitted_vi_surface()
                         && let Some(surface) = submitted.tiling_surface()
-                        && let Ok(frame) = crate::gpu::present::surface::frame_from_surface(
-                            &mmu, submitted.guest_addr, &surface)
+                        && let Ok(frame) =
+                            crate::gpu::present::surface::frame_from_surface(&mmu, submitted.guest_addr, &surface)
                     {
                         result.raw_frame = Some(RawFrameEvidence {
                             guest_addr: submitted.guest_addr,
                             width: frame.width,
                             height: frame.height,
                             rgba_fnv1a64: frame.content_hash(),
-                            non_black_pixels: frame.rgba.chunks_exact(4)
-                                .filter(|pixel| pixel[..3] != [0, 0, 0]).count(),
+                            non_black_pixels: frame
+                                .rgba
+                                .chunks_exact(4)
+                                .filter(|pixel| pixel[..3] != [0, 0, 0])
+                                .count(),
                             center_rgba: frame.pixel(frame.width / 2, frame.height / 2),
                         });
                     }
-                    if result.frames >= limits.frames { result.stop = Stop::FrameLimit; break 'run; }
+                    if result.frames >= limits.frames {
+                        result.stop = Stop::FrameLimit;
+                        break 'run;
+                    }
                 }
             }
         }
         let queued = kernel.ipc.vi_frames_queued();
         if queued > result.queued.len() as u64 {
-            result.queued.push(capture_queued(&kernel, &mmu, queued, &limits.probes));
+            result
+                .queued
+                .push(capture_queued(&kernel, &mmu, queued, &limits.probes));
             result.last_queue_ms = started.elapsed().as_millis() as u64;
             if limits.sample_every != 0 && queued.is_multiple_of(limits.sample_every) {
-                result.samples.push(soak_sample(queued, result.instructions, &cpu, &mmu, tier3.as_ref()));
+                result
+                    .samples
+                    .push(soak_sample(queued, result.instructions, &cpu, &mmu, tier3.as_ref()));
             }
             if limits.queued_frames != 0 && queued >= limits.queued_frames {
                 result.stop = Stop::FrameLimit;
@@ -461,29 +647,37 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
         {
             result.post_queue_diagnostic = Some(match submitted.tiling_surface() {
                 None => format!("unsupported or out-of-bounds descriptor: {submitted:?}"),
-                Some(surface) => match crate::gpu::present::surface::frame_from_surface(
-                    &mmu, submitted.guest_addr, &surface) {
-                    Ok(frame) => {
-                        result.raw_frame = Some(RawFrameEvidence {
-                            guest_addr: submitted.guest_addr,
-                            width: frame.width,
-                            height: frame.height,
-                            rgba_fnv1a64: frame.content_hash(),
-                            non_black_pixels: frame.rgba.chunks_exact(4)
-                                .filter(|pixel| pixel[..3] != [0, 0, 0]).count(),
-                            center_rgba: frame.pixel(frame.width / 2, frame.height / 2),
-                        });
-                        format!("post-queue extraction succeeded: {}x{} hash={:#x}; {submitted:?}",
-                            frame.width, frame.height, frame.content_hash())
-                    },
-                    Err(error) => format!("post-queue extraction failed: {error:?}; {submitted:?}"),
-                },
+                Some(surface) => {
+                    match crate::gpu::present::surface::frame_from_surface(&mmu, submitted.guest_addr, &surface) {
+                        Ok(frame) => {
+                            result.raw_frame = Some(RawFrameEvidence {
+                                guest_addr: submitted.guest_addr,
+                                width: frame.width,
+                                height: frame.height,
+                                rgba_fnv1a64: frame.content_hash(),
+                                non_black_pixels: frame
+                                    .rgba
+                                    .chunks_exact(4)
+                                    .filter(|pixel| pixel[..3] != [0, 0, 0])
+                                    .count(),
+                                center_rgba: frame.pixel(frame.width / 2, frame.height / 2),
+                            });
+                            format!(
+                                "post-queue extraction succeeded: {}x{} hash={:#x}; {submitted:?}",
+                                frame.width,
+                                frame.height,
+                                frame.content_hash()
+                            )
+                        }
+                        Err(error) => format!("post-queue extraction failed: {error:?}; {submitted:?}"),
+                    }
+                }
             });
         }
         // Dispatch may switch the guest thread: resume from the post-dispatch registers.
         // A block can cross a quantum without landing exactly on a modulo boundary.
         if result.instructions >= next_preemption {
-                kernel.scheduler.preempt(&mut cpu);
+            kernel.scheduler.preempt(&mut cpu);
             result.preemptions += 1;
             next_preemption = result.instructions.saturating_add(quantum);
         }
@@ -494,11 +688,20 @@ fn execute(mut cpu: Cpu, mut mmu: Memory, mut kernel: HorizonKernel, engine: Eng
     (result, kernel)
 }
 
-fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
-    limits: &Limits, inputs: &[InputCheckpoint]) -> (Report, HorizonKernel) {
+fn run_nro_state(
+    nro: &[u8],
+    path: &str,
+    args: &[&str],
+    engine: Engine,
+    limits: &Limits,
+    inputs: &[InputCheckpoint],
+) -> (Report, HorizonKernel) {
     let (memory, base, alias_size) = match guest_memory(engine) {
         Ok(m) => m,
-        Err(error) => { let (cpu, _, kernel) = crate::setup_vm(); return (report(engine, Stop::LoadError(error), &cpu), kernel); }
+        Err(error) => {
+            let (cpu, _, kernel) = crate::setup_vm();
+            return (report(engine, Stop::LoadError(error), &cpu), kernel);
+        }
     };
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm_in(memory, base, alias_size);
     kernel.set_deterministic_clock(HorizonKernel::DETERMINISTIC_UNIX_SECS);
@@ -508,7 +711,9 @@ fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
         Ok(_) => Some("external runner accepts NRO0 only".into()),
         Err(error) => Some(error.to_string()),
     };
-    if let Some(error) = error { return (report(engine, Stop::LoadError(error), &cpu), kernel); }
+    if let Some(error) = error {
+        return (report(engine, Stop::LoadError(error), &cpu), kernel);
+    }
     if let Err(error) = crate::setup_homebrew_nro(&mut cpu, &mut mmu, &mut kernel, path, nro, args) {
         return (report(engine, Stop::LoadError(error.to_string()), &cpu), kernel);
     }
@@ -516,15 +721,25 @@ fn run_nro_state(nro: &[u8], path: &str, args: &[&str], engine: Engine,
     execute(cpu, mmu, kernel, engine, limits, inputs)
 }
 
-fn run_nro(nro: &[u8], path: &str, args: &[&str], engine: Engine,
-    limits: &Limits, inputs: &[InputCheckpoint]) -> Report {
+fn run_nro(
+    nro: &[u8],
+    path: &str,
+    args: &[&str],
+    engine: Engine,
+    limits: &Limits,
+    inputs: &[InputCheckpoint],
+) -> Report {
     run_nro_state(nro, path, args, engine, limits, inputs).0
 }
 
 fn run_path(path: &Path, engine: Engine, limits: &Limits) -> Report {
     match std::fs::read(path) {
         Ok(nro) => run_nro(&nro, &path.to_string_lossy(), &[], engine, limits, &[]),
-        Err(error) => report(engine, Stop::MissingInput(format!("{}: {error}", path.display())), &Cpu::new()),
+        Err(error) => report(
+            engine,
+            Stop::MissingInput(format!("{}: {error}", path.display())),
+            &Cpu::new(),
+        ),
     }
 }
 
@@ -540,12 +755,23 @@ fn flight_record(report: &Report, kernel: &HorizonKernel) -> serde_json::Value {
         Stop::Fault { pc, instruction, error } => json!({"kind": "cpu_fault", "pc": hex(*pc),
             "opcode": instruction.map(|i| format!("{i:#010x}")), "error": error}),
         Stop::UnhandledSvc(id) => json!({"kind": "unhandled_svc", "svc": hex(*id as u64), "pc": hex(report.pc)}),
-        _ => match (ipc.unimplemented.first(), ipc.nvdrv.unhandled.first(), ipc.nvdrv.gpu_diagnostics.first()) {
+        _ => match (
+            ipc.unimplemented.first(),
+            ipc.nvdrv.unhandled.first(),
+            ipc.nvdrv.gpu_diagnostics.first(),
+        ) {
             (Some((service, cmd)), _, _) => json!({"kind": "ipc_unimplemented", "service": service, "command": cmd}),
-            (_, Some((device, ioctl)), _) => json!({"kind": "nvdrv_ioctl", "device": device, "ioctl": format!("{ioctl:#010x}")}),
+            (_, Some((device, ioctl)), _) => {
+                json!({"kind": "nvdrv_ioctl", "device": device, "ioctl": format!("{ioctl:#010x}")})
+            }
             (_, _, Some(d)) => json!({"kind": "gpu", "diagnostic": format!("{d:?}")}),
             _ => match &report.stop {
-                Stop::Break { reason, info1, info2, result } => json!({"kind": "guest_break", "reason": hex(*reason),
+                Stop::Break {
+                    reason,
+                    info1,
+                    info2,
+                    result,
+                } => json!({"kind": "guest_break", "reason": hex(*reason),
                     "info1": hex(*info1), "info2": hex(*info2), "result": result.map(|r| format!("{r:#x}")), "pc": hex(report.pc)}),
                 _ if report.queued.is_empty() && report.raw_frame.is_none() => json!({"kind": "no_vi_frame",
                     "vi": ipc.vi_submission_diagnostic(), "first_present": report.first_present_diagnostic}),
@@ -576,8 +802,12 @@ fn write_flight_record(out: &Path, nro_path: &Path, runs: &[serde_json::Value]) 
     use sha2::Digest;
     let nro = std::fs::read(nro_path).unwrap_or_default();
     let commit = std::env::var("GITHUB_SHA").ok().or_else(|| {
-        std::process::Command::new("git").args(["rev-parse", "HEAD"]).output().ok()
-            .filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
     });
     let doc = serde_json::json!({
         "commit": commit,
@@ -593,7 +823,9 @@ fn synthetic(words: &[u32], engine: Engine, limits: &Limits) -> Report {
     let (mut cpu, mut mmu, kernel) = crate::setup_vm();
     let base = crate::DEFAULT_BASE_ADDR;
     mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
-    for (index, word) in words.iter().enumerate() { mmu.write_u32(base + index as u64 * 4, *word).unwrap(); }
+    for (index, word) in words.iter().enumerate() {
+        mmu.write_u32(base + index as u64 * 4, *word).unwrap();
+    }
     cpu.regs.pc = base;
     execute(cpu, mmu, kernel, engine, limits, &[]).0
 }
@@ -605,7 +837,11 @@ mod corpus_soak;
 fn corpus_runner_returns_from_functions_but_exits_only_on_svc() {
     // BL callee; ExitProcess; MOV X0, #42; RET.
     for engine in [Engine::Interpreter, Engine::Tier3] {
-        let result = synthetic(&[0x94000002, 0xD40000E1, 0xD2800540, 0xD65F03C0], engine, &Limits::default());
+        let result = synthetic(
+            &[0x94000002, 0xD40000E1, 0xD2800540, 0xD65F03C0],
+            engine,
+            &Limits::default(),
+        );
         assert_eq!(result.stop, Stop::ExitProcess, "{result:?}");
         assert_eq!(result.x0, 42);
         assert_eq!(result.actual_engine, engine);
@@ -620,44 +856,72 @@ fn interpreter_deadline_stride_stops_and_keeps_the_instruction_budget() {
     // deadline still stops before any instruction, and a finite deadline overruns by less than
     // one stride of guest instructions (microseconds, not a missed budget).
     let branch = [0x1400_0000u32];
-    let exact = Limits { instructions: 10_000, host_time: Duration::from_secs(30), ..Limits::default() };
+    let exact = Limits {
+        instructions: 10_000,
+        host_time: Duration::from_secs(30),
+        ..Limits::default()
+    };
     let counted = synthetic(&branch, Engine::Interpreter, &exact);
     assert_eq!(counted.stop, Stop::InstructionBudget);
     assert_eq!(counted.instructions, exact.instructions);
-    let zero = Limits { host_time: Duration::ZERO, instructions: 1_000_000, ..Limits::default() };
+    let zero = Limits {
+        host_time: Duration::ZERO,
+        instructions: 1_000_000,
+        ..Limits::default()
+    };
     let timed = synthetic(&branch, Engine::Interpreter, &zero);
     assert_eq!((timed.stop, timed.instructions), (Stop::HostTimeout, 0));
-    let slice = Limits { host_time: Duration::from_millis(40), instructions: usize::MAX, ..Limits::default() };
+    let slice = Limits {
+        host_time: Duration::from_millis(40),
+        instructions: usize::MAX,
+        ..Limits::default()
+    };
     let started = std::time::Instant::now();
     let bounded = synthetic(&branch, Engine::Interpreter, &slice);
     let elapsed = started.elapsed();
     assert_eq!(bounded.stop, Stop::HostTimeout);
     assert!(bounded.instructions > 0, "{bounded:?}");
     // Setup sits outside the runner clock. The overrun after the deadline is one stride.
-    assert!(elapsed < Duration::from_millis(40) + Duration::from_millis(200), "{elapsed:?} {bounded:?}");
+    assert!(
+        elapsed < Duration::from_millis(40) + Duration::from_millis(200),
+        "{elapsed:?} {bounded:?}"
+    );
 }
 
 #[test]
 #[ignore = "local before/after timing for the interpreter host-clock stride"]
 fn interpreter_tight_loop_timing() {
     let budget = 2_000_000usize;
-    let limits = Limits { instructions: budget, host_time: Duration::from_secs(120), ..Limits::default() };
+    let limits = Limits {
+        instructions: budget,
+        host_time: Duration::from_secs(120),
+        ..Limits::default()
+    };
     let started = std::time::Instant::now();
     let result = synthetic(&[0x1400_0000], Engine::Interpreter, &limits);
     let elapsed = started.elapsed();
     assert_eq!(result.instructions, budget);
-    eprintln!("interp {budget} ins in {elapsed:?} ({:.0} ins/s)", budget as f64 / elapsed.as_secs_f64());
+    eprintln!(
+        "interp {budget} ins in {elapsed:?} ({:.0} ins/s)",
+        budget as f64 / elapsed.as_secs_f64()
+    );
 }
 
 #[test]
 fn corpus_runner_bounds_faults_and_cooperative_deadline() {
     for engine in [Engine::Interpreter, Engine::Tier3] {
-        let budget = Limits { instructions: 1000, ..Limits::default() };
+        let budget = Limits {
+            instructions: 1000,
+            ..Limits::default()
+        };
         let looping = synthetic(&[0x14000000], engine, &budget);
         assert_eq!(looping.stop, Stop::InstructionBudget);
         assert!(looping.instructions >= budget.instructions);
         assert!(looping.instructions < budget.instructions + 1024);
-        let deadline = Limits { host_time: Duration::ZERO, ..Limits::default() };
+        let deadline = Limits {
+            host_time: Duration::ZERO,
+            ..Limits::default()
+        };
         let timed = synthetic(&[0x14000000], engine, &deadline);
         assert_eq!(timed.stop, Stop::HostTimeout);
         assert_eq!(timed.instructions, 0);
@@ -672,7 +936,11 @@ fn corpus_runner_records_breaks_and_missing_input_without_success() {
         let broken = synthetic(&[0xD40004C1], engine, &Limits::default());
         assert!(matches!(broken.stop, Stop::Break { .. }));
         assert_eq!(broken.compatibility, "not-assessed");
-        let missing = run_path(Path::new("/ounce-deliberately-missing-corpus-input.nro"), engine, &Limits::default());
+        let missing = run_path(
+            Path::new("/ounce-deliberately-missing-corpus-input.nro"),
+            engine,
+            &Limits::default(),
+        );
         assert!(matches!(missing.stop, Stop::MissingInput(_)));
     }
 }
@@ -683,7 +951,9 @@ fn corpus_runner_existing_libnx_fixtures_match_both_engines() {
         ("hello/hello.nro", vec!["fixture"], "ounce-fixture result=0x00000EEE"),
         ("services/services.nro", vec![], "ounce-services result=0x00000EEE\n"),
     ] {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro").join(relative);
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/nro")
+            .join(relative);
         let nro = std::fs::read(&path).unwrap();
         for engine in [Engine::Interpreter, Engine::Tier3] {
             let result = run_nro(&nro, "fixture.nro", &args, engine, &Limits::default(), &[]);
@@ -695,7 +965,11 @@ fn corpus_runner_existing_libnx_fixtures_match_both_engines() {
 
 /// The same fixtures run natively on an AArch64 host (`--features nce`): rewritten SVCs, TLS
 /// reads and x18 uses reach the same kernel and print the same result.
-#[cfg(all(feature = "nce", target_arch = "aarch64", any(target_os = "macos", target_os = "linux")))]
+#[cfg(all(
+    feature = "nce",
+    target_arch = "aarch64",
+    any(target_os = "macos", target_os = "linux")
+))]
 #[test]
 fn corpus_runner_native_runs_libnx_fixtures() {
     for (relative, args, expected) in [
@@ -703,27 +977,44 @@ fn corpus_runner_native_runs_libnx_fixtures() {
         ("services/services.nro", vec![], "ounce-services result=0x00000EEE\n"),
         ("threads/threads.nro", vec![], ""),
     ] {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro").join(relative);
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/nro")
+            .join(relative);
         let nro = std::fs::read(&path).unwrap();
         let result = run_nro(&nro, "fixture.nro", &args, Engine::Native, &Limits::default(), &[]);
-        println!("{relative}: stop={:?} svcs={} out={:?}", result.stop, result.svc_count, result.debug_output);
+        println!(
+            "{relative}: stop={:?} svcs={} out={:?}",
+            result.stop, result.svc_count, result.debug_output
+        );
         assert_eq!(result.stop, Stop::ExitProcess, "{relative}: {result:?}");
         assert!(result.debug_output.ends_with(expected), "{relative}: {result:?}");
     }
 }
-
 
 #[test]
 fn corpus_runner_preempts_spinning_threads_and_preserves_kernel_switches() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro/threads/threads.nro");
     let nro = std::fs::read(path).unwrap();
     for engine in [Engine::Interpreter, Engine::Tier3] {
-        let limits = Limits { host_time: Duration::from_secs(20), trace_entries: 8192, ..Limits::default() };
+        let limits = Limits {
+            host_time: Duration::from_secs(20),
+            trace_entries: 8192,
+            ..Limits::default()
+        };
         let (result, kernel) = run_nro_state(&nro, "fixture.nro", &[], engine, &limits, &[]);
         assert_eq!(result.stop, Stop::ExitProcess, "{result:?}");
-        assert!(result.debug_output.contains("ounce-threads total=0x00000384"), "{result:?}");
-        assert!(result.debug_output.ends_with("ounce-threads result=0x00000EEE\n"), "{result:?}");
-        assert!(result.preemptions > 0, "spinner requires time-slice preemption: {result:?}");
+        assert!(
+            result.debug_output.contains("ounce-threads total=0x00000384"),
+            "{result:?}"
+        );
+        assert!(
+            result.debug_output.ends_with("ounce-threads result=0x00000EEE\n"),
+            "{result:?}"
+        );
+        assert!(
+            result.preemptions > 0,
+            "spinner requires time-slice preemption: {result:?}"
+        );
         assert!(kernel.scheduler.switches > 10);
         assert_eq!(kernel.scheduler.total_threads_completed, 3);
         assert!(result.svcs.iter().any(|s| s.1 == 0x1A), "workers contend on mutex");
@@ -737,9 +1028,18 @@ fn corpus_runner_scripted_input_reaches_libnx_shared_memory() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/nro/input/input.nro");
     let nro = std::fs::read(path).unwrap();
     let checkpoints = [
-        InputCheckpoint { at_instructions: 0, input: NpadInput::default() },
-        InputCheckpoint { at_instructions: 8, input: NpadInput {
-            buttons: 1 | 1 << 14, stick_l: (0x1234, -0x100), stick_r: (0, 0) } },
+        InputCheckpoint {
+            at_instructions: 0,
+            input: NpadInput::default(),
+        },
+        InputCheckpoint {
+            at_instructions: 8,
+            input: NpadInput {
+                buttons: 1 | 1 << 14,
+                stick_l: (0x1234, -0x100),
+                stick_r: (0, 0),
+            },
+        },
     ];
     for engine in [Engine::Interpreter, Engine::Tier3] {
         let result = run_nro(&nro, "fixture.nro", &[], engine, &Limits::default(), &checkpoints);
@@ -747,9 +1047,18 @@ fn corpus_runner_scripted_input_reaches_libnx_shared_memory() {
         assert_eq!(result.input_applied_at.len(), 2);
         assert_eq!(result.input_applied_at[0], 0);
         assert!(result.input_applied_at[1] >= 8, "Tier-3 may cross a slice target");
-        assert!(result.debug_output.contains("ounce-input buttons=0x00004001\n"), "{result:?}");
-        assert!(result.debug_output.contains("ounce-input stick_l=0x1234FF00\n"), "{result:?}");
-        assert!(result.debug_output.ends_with("ounce-input result=0x00000EEE\n"), "{result:?}");
+        assert!(
+            result.debug_output.contains("ounce-input buttons=0x00004001\n"),
+            "{result:?}"
+        );
+        assert!(
+            result.debug_output.contains("ounce-input stick_l=0x1234FF00\n"),
+            "{result:?}"
+        );
+        assert!(
+            result.debug_output.ends_with("ounce-input result=0x00000EEE\n"),
+            "{result:?}"
+        );
     }
 }
 
@@ -760,20 +1069,30 @@ fn frame_input_runner_applies_startup_once_and_does_not_apply_future_frames() {
         let base = crate::DEFAULT_BASE_ADDR;
         mmu.map_range(base, 4096, Permission::READ_WRITE_EXECUTE);
         // Several slices before ExitProcess; none queues a VI frame.
-        for i in 0..1024 { mmu.write_u32(base + i * 4, 0xD503201F).unwrap(); }
+        for i in 0..1024 {
+            mmu.write_u32(base + i * 4, 0xD503201F).unwrap();
+        }
         mmu.write_u32(base + 4092, 0xD40000E1).unwrap();
         cpu.regs.pc = base;
-        let limits = Limits { frame_inputs: vec![
-            FrameInput { after_queued_frame: 0, buttons: 1 },
-            FrameInput { after_queued_frame: 1, buttons: 0 },
-        ], ..Limits::default() };
+        let limits = Limits {
+            frame_inputs: vec![
+                FrameInput {
+                    after_queued_frame: 0,
+                    buttons: 1,
+                },
+                FrameInput {
+                    after_queued_frame: 1,
+                    buttons: 0,
+                },
+            ],
+            ..Limits::default()
+        };
         let (result, kernel) = execute(cpu, mmu, kernel, engine, &limits, &[]);
         assert_eq!(result.stop, Stop::ExitProcess);
         assert_eq!(result.frame_inputs_applied, vec![(0, 1, 0)]);
         assert_eq!(kernel.ipc.hid.input.buttons, 1);
     }
 }
-
 
 #[test]
 fn corpus_runner_hello_differential_slices() {
@@ -803,12 +1122,25 @@ fn corpus_runner_hello_differential_slices() {
             }
         }
         for reg in 0..31 {
-            assert_eq!(cpu.regs.read_x(reg), reference.regs.read_x(reg),
-                "X{reg} diverged entering {entry_pc:X}, count={count}, exit={exit:?}, trail={trail:X?}");
+            assert_eq!(
+                cpu.regs.read_x(reg),
+                reference.regs.read_x(reg),
+                "X{reg} diverged entering {entry_pc:X}, count={count}, exit={exit:?}, trail={trail:X?}"
+            );
         }
-        assert_eq!(cpu.regs.sp, reference.regs.sp, "SP entry={entry_pc:X}, trail={trail:X?}");
-        assert_eq!(cpu.regs.pc, reference.regs.pc, "PC entry={entry_pc:X}, trail={trail:X?}");
-        assert_eq!(format!("{:?}", cpu.regs.pstate), format!("{:?}", reference.regs.pstate), "flags entry={entry_pc:X}");
+        assert_eq!(
+            cpu.regs.sp, reference.regs.sp,
+            "SP entry={entry_pc:X}, trail={trail:X?}"
+        );
+        assert_eq!(
+            cpu.regs.pc, reference.regs.pc,
+            "PC entry={entry_pc:X}, trail={trail:X?}"
+        );
+        assert_eq!(
+            format!("{:?}", cpu.regs.pstate),
+            format!("{:?}", reference.regs.pstate),
+            "flags entry={entry_pc:X}"
+        );
         if let BlockExit::Svc { svc_id } = exit {
             assert_eq!(reference_svc, Some(svc_id));
             let ref_out = reference_kernel.dispatch_svc(svc_id, &mut reference, &mut reference_mmu);
@@ -817,7 +1149,9 @@ fn corpus_runner_hello_differential_slices() {
             // GetInfo entropy and clock results may differ between kernels. Use identical
             // syscall outputs so this test isolates CPU execution, not host timing.
             cpu.regs = reference.regs.clone();
-            if out == SvcResult::ExitProcess { return; }
+            if out == SvcResult::ExitProcess {
+                return;
+            }
         } else {
             assert!(reference_svc.is_none());
         }
@@ -843,7 +1177,10 @@ fn report_speed(times: &[(Engine, Duration)]) {
     }
     let of = |e: Engine| times.iter().find(|(x, _)| *x == e).map(|(_, t)| t.as_secs_f64());
     if let (Some(tier3), Some(native)) = (of(Engine::Tier3), of(Engine::Native)) {
-        println!("[speed] native speedup over Tier-3: {:.1}x ({tier3:.3} s -> {native:.3} s)", tier3 / native);
+        println!(
+            "[speed] native speedup over Tier-3: {:.1}x ({tier3:.3} s -> {native:.3} s)",
+            tier3 / native
+        );
     }
 }
 
@@ -863,19 +1200,32 @@ fn external_corpus_nro_probe_both_engines() {
                 runs.push(flight_record(&result, &kernel));
                 result
             }
-            Some((p, Err(error))) => report(engine, Stop::MissingInput(format!("{}: {error}", p.display())), &Cpu::new()),
-            None => report(engine, Stop::MissingInput("OUNCE_CORPUS_NRO is unset".into()), &Cpu::new()),
+            Some((p, Err(error))) => report(
+                engine,
+                Stop::MissingInput(format!("{}: {error}", p.display())),
+                &Cpu::new(),
+            ),
+            None => report(
+                engine,
+                Stop::MissingInput("OUNCE_CORPUS_NRO is unset".into()),
+                &Cpu::new(),
+            ),
         };
         if let (Some(out), Some(p)) = (&record, &path) {
             write_flight_record(out, p, &runs);
         }
         println!("{result:#?}");
-        assert!(!matches!(result.stop, Stop::MissingInput(_) | Stop::LoadError(_)), "{result:?}");
+        assert!(
+            !matches!(result.stop, Stop::MissingInput(_) | Stop::LoadError(_)),
+            "{result:?}"
+        );
         if engine == Engine::Interpreter {
             reference_frame = result.raw_frame.clone();
         } else {
-            assert_eq!(result.raw_frame, reference_frame,
-                "raw VI frame presence or content differs between engines");
+            assert_eq!(
+                result.raw_frame, reference_frame,
+                "raw VI frame presence or content differs between engines"
+            );
         }
     }
 }
@@ -890,20 +1240,39 @@ fn external_audout_padding_case() {
     let path = std::env::var_os("OUNCE_AUDIO_CHANNEL_NRO").expect("OUNCE_AUDIO_CHANNEL_NRO is unset");
     let nro = std::fs::read(&path).expect("read external audio channel test");
     let digest = format!("{:x}", sha2::Sha256::digest(&nro));
-    assert_eq!(digest, "69106c5c4b0485abdbce1ca9f17395822c7c7643d15f57b11b9bfc994d7f252c");
-    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(180),
-        frames: usize::MAX, queued_frames: 5,
-        frame_inputs: vec![FrameInput { after_queued_frame: 3, buttons: 1 }],
-        ..Limits::default() };
+    assert_eq!(
+        digest,
+        "69106c5c4b0485abdbce1ca9f17395822c7c7643d15f57b11b9bfc994d7f252c"
+    );
+    let limits = Limits {
+        instructions: 4_000_000_000,
+        host_time: Duration::from_secs(180),
+        frames: usize::MAX,
+        queued_frames: 5,
+        frame_inputs: vec![FrameInput {
+            after_queued_frame: 3,
+            buttons: 1,
+        }],
+        ..Limits::default()
+    };
     let mut runs = Vec::new();
     let mut failures = Vec::new();
     for engine in [Engine::Interpreter, Engine::Tier3] {
         let (result, kernel) = run_nro_state(&nro, "audout-channel-test.nro", &[], engine, &limits, &[]);
         let attempts = &kernel.ipc.audio_open_trace;
-        let upper: Vec<_> = attempts.iter().filter(|a| !a.input && a.raw_channels == 0x10000).collect();
-        let passed = result.stop == Stop::FrameLimit && result.queued.len() == 5 && upper.len() == 7
-            && upper.iter().all(|a| a.rate == 48000 && a.result == 0 && a.channels == Some(2));
-        if !passed { failures.push(format!("{engine:?}: upper-halfword negotiation failed: {attempts:?}")); }
+        let upper: Vec<_> = attempts
+            .iter()
+            .filter(|a| !a.input && a.raw_channels == 0x10000)
+            .collect();
+        let passed = result.stop == Stop::FrameLimit
+            && result.queued.len() == 5
+            && upper.len() == 7
+            && upper
+                .iter()
+                .all(|a| a.rate == 48000 && a.result == 0 && a.channels == Some(2));
+        if !passed {
+            failures.push(format!("{engine:?}: upper-halfword negotiation failed: {attempts:?}"));
+        }
         runs.push(json!({"engine": format!("{engine:?}"), "pass": passed,
             "flight_record": flight_record(&result, &kernel),
             "audio_open": attempts.iter().map(|a| json!({"input": a.input, "rate": a.rate,
@@ -914,7 +1283,9 @@ fn external_audout_padding_case() {
         "expected": {"requests": 7, "raw_channels": 65536, "result": 0, "channels": 2},
         "pass": failures.is_empty(), "runs": runs});
     let text = serde_json::to_string_pretty(&record).unwrap();
-    if let Some(out) = std::env::var_os("OUNCE_REPORT_JSON") { std::fs::write(out, &text).unwrap(); }
+    if let Some(out) = std::env::var_os("OUNCE_REPORT_JSON") {
+        std::fs::write(out, &text).unwrap();
+    }
     println!("{text}");
     assert!(failures.is_empty(), "external audio padding case: {failures:#?}");
 }
@@ -935,16 +1306,31 @@ fn simplegfx_first_frame_oracle() {
         super::super::BootLoader::load_any_package(&nro, crate::DEFAULT_BASE_ADDR, &mut memory).unwrap();
         crate::setup_homebrew_nro(&mut cpu, &mut memory, &mut kernel, "simplegfx.nro", &nro, &[]).unwrap();
         cpu.regs.pc = crate::DEFAULT_BASE_ADDR;
-        let mut display = crate::gpu::DisplayServer::new(crate::gpu::display::DEFAULT_FRAMEBUFFER_ADDR,
-            crate::gpu::DisplayConfig { backend: crate::gpu::BackendKind::Headless, ..Default::default() });
+        let mut display = crate::gpu::DisplayServer::new(
+            crate::gpu::display::DEFAULT_FRAMEBUFFER_ADDR,
+            crate::gpu::DisplayConfig {
+                backend: crate::gpu::BackendKind::Headless,
+                ..Default::default()
+            },
+        );
         let mut hid = crate::hid::HidServer::new(crate::HID_SHARED_MEM_ADDR);
         let result = crate::run_vm_internal(cpu, memory, kernel, Some(&mut display), Some(&mut hid), 100_000_000, 2);
-        assert_eq!(result.stop, crate::VmStop::FrameLimit, "ordinary GUI runner did not present the queued frames");
+        assert_eq!(
+            result.stop,
+            crate::VmStop::FrameLimit,
+            "ordinary GUI runner did not present the queued frames"
+        );
         assert_eq!(display.swapchain.vsync_count, 2);
-        assert_eq!(display.swapchain.front_buffer.content_hash(), 0x1dd22fb233d7a325,
-            "GUI runner must show the oracle's second guest frame without a telemetry overlay");
+        assert_eq!(
+            display.swapchain.front_buffer.content_hash(),
+            0x1dd22fb233d7a325,
+            "GUI runner must show the oracle's second guest frame without a telemetry overlay"
+        );
     }
-    let frames: u64 = std::env::var("OUNCE_SIMPLEGFX_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(61);
+    let frames: u64 = std::env::var("OUNCE_SIMPLEGFX_FRAMES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(61);
     // Hash with alpha forced to 0xFF, from the oracle table.
     let expected_hash = |i: u64| match i {
         1 => Some(0xd95ddf22e46ba325u64),
@@ -953,17 +1339,34 @@ fn simplegfx_first_frame_oracle() {
         61 => Some(0x52bda05e66a4a325),
         _ => None,
     };
-    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(900), frames: usize::MAX,
-        queued_frames: frames, ..Limits::default() };
+    let limits = Limits {
+        instructions: 4_000_000_000,
+        host_time: Duration::from_secs(900),
+        frames: usize::MAX,
+        queued_frames: frames,
+        ..Limits::default()
+    };
     let mut reference: Option<Vec<QueuedFrame>> = None;
     let mut times = Vec::new();
     for engine in oracle_engines() {
         let started = Instant::now();
         let result = run_path(Path::new(&path), engine, &limits);
         times.push((engine, started.elapsed()));
-        println!("{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.preemptions, result.queued.len(), result.pc);
+        println!(
+            "{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}",
+            result.stop,
+            result.instructions,
+            result.svc_count,
+            result.preemptions,
+            result.queued.len(),
+            result.pc
+        );
         // Criterion 6: stopped by the runner's frame limit, nothing else.
-        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        assert!(
+            matches!(result.stop, Stop::FrameLimit),
+            "{engine:?} stopped with {:?}",
+            result.stop
+        );
         assert_eq!(result.queued.len() as u64, frames);
         for f in &result.queued {
             // Criteria 3-4: 1280x720, every pixel 4 * (i mod 61) in R, G, B (alpha forced to FF).
@@ -1004,7 +1407,10 @@ fn canonical_nro_sha256(nro_bytes: &[u8]) -> Option<String> {
     let mut target = [0u8; 36];
     target[..16].copy_from_slice(&GNU_NOTE_HEADER);
     target[16..].copy_from_slice(&build_id);
-    if let Some(rel) = normalized[ro_start..ro_end].windows(target.len()).position(|w| w == target) {
+    if let Some(rel) = normalized[ro_start..ro_end]
+        .windows(target.len())
+        .position(|w| w == target)
+    {
         let note_id_start = ro_start + rel + 16;
         normalized[note_id_start..note_id_start + 20].fill(0);
     }
@@ -1067,25 +1473,50 @@ fn deko_basic_first_frame_oracle() {
         "unexpected deko_basic NRO SHA-256: {nro_sha256} (canonical: {canonical_sha256:?}, expected one of {KNOWN_VALID_SHA256:?} or canonical {KNOWN_CANONICAL_SHA256:?})"
     );
     println!("deko_basic NRO SHA-256 verified: {nro_sha256} (canonical: {canonical_sha256:?})");
-    let frames: u64 = std::env::var("OUNCE_DEKO_BASIC_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
+    let frames: u64 = std::env::var("OUNCE_DEKO_BASIC_FRAMES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5);
     // Every frame draws the triangle (frame 1 corrected in PLAN step 3, see docs/deko-basic-oracle.md).
     let expected_hash = |_: u64| 0x3a00ccf6b6f28ea1u64;
-    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(900), frames: usize::MAX,
-        queued_frames: frames, ..Limits::default() };
+    let limits = Limits {
+        instructions: 4_000_000_000,
+        host_time: Duration::from_secs(900),
+        frames: usize::MAX,
+        queued_frames: frames,
+        ..Limits::default()
+    };
     let mut reference: Option<Vec<QueuedFrame>> = None;
     let mut times = Vec::new();
     for engine in oracle_engines() {
         let started = Instant::now();
         let result = run_path(Path::new(&path), engine, &limits);
         times.push((engine, started.elapsed()));
-        println!("{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.preemptions, result.queued.len(), result.pc);
+        println!(
+            "{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}",
+            result.stop,
+            result.instructions,
+            result.svc_count,
+            result.preemptions,
+            result.queued.len(),
+            result.pc
+        );
         // Criterion 7: stopped by the runner's frame limit.
-        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        assert!(
+            matches!(result.stop, Stop::FrameLimit),
+            "{engine:?} stopped with {:?}",
+            result.stop
+        );
         assert_eq!(result.queued.len() as u64, frames);
         for f in &result.queued {
             assert_eq!(f.error, None, "frame {}", f.index);
             assert_eq!((f.width, f.height), (1280, 720), "frame {}", f.index);
-            assert_eq!(f.rgba_fnv1a64, expected_hash(f.index), "frame {} hash mismatch", f.index);
+            assert_eq!(
+                f.rgba_fnv1a64,
+                expected_hash(f.index),
+                "frame {} hash mismatch",
+                f.index
+            );
             assert_eq!(f.uniform, None, "rendered frames must contain non-uniform pixels");
         }
         // Criterion 6: both engines give identical frames.
@@ -1103,7 +1534,10 @@ fn deko_basic_first_frame_oracle() {
 #[ignore = "requires OUNCE_ROMFS_NRO pointing at romfs.nro built from the pinned source"]
 fn romfs_first_frame_oracle() {
     let path = std::env::var_os("OUNCE_ROMFS_NRO").expect("OUNCE_ROMFS_NRO is unset");
-    let frames: u64 = std::env::var("OUNCE_ROMFS_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
+    let frames: u64 = std::env::var("OUNCE_ROMFS_FRAMES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5);
     let limits = Limits {
         instructions: 4_000_000_000,
         host_time: Duration::from_secs(900),
@@ -1117,8 +1551,20 @@ fn romfs_first_frame_oracle() {
         let started = Instant::now();
         let result = run_path(Path::new(&path), engine, &limits);
         times.push((engine, started.elapsed()));
-        println!("{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.preemptions, result.queued.len(), result.pc);
-        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        println!(
+            "{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}",
+            result.stop,
+            result.instructions,
+            result.svc_count,
+            result.preemptions,
+            result.queued.len(),
+            result.pc
+        );
+        assert!(
+            matches!(result.stop, Stop::FrameLimit),
+            "{engine:?} stopped with {:?}",
+            result.stop
+        );
         assert_eq!(result.queued.len() as u64, frames);
         for f in &result.queued {
             assert_eq!(f.error, None, "frame {}", f.index);
@@ -1139,7 +1585,10 @@ fn romfs_first_frame_oracle() {
 #[ignore = "requires OUNCE_STARTUP_NRO pointing at application.nro built from the pinned source"]
 fn startup_first_frame_oracle() {
     let path = std::env::var_os("OUNCE_STARTUP_NRO").expect("OUNCE_STARTUP_NRO is unset");
-    let frames: u64 = std::env::var("OUNCE_STARTUP_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(5);
+    let frames: u64 = std::env::var("OUNCE_STARTUP_FRAMES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5);
     let limits = Limits {
         instructions: 4_000_000_000,
         host_time: Duration::from_secs(900),
@@ -1153,8 +1602,20 @@ fn startup_first_frame_oracle() {
         let started = Instant::now();
         let result = run_path(Path::new(&path), engine, &limits);
         times.push((engine, started.elapsed()));
-        println!("{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.preemptions, result.queued.len(), result.pc);
-        assert!(matches!(result.stop, Stop::FrameLimit), "{engine:?} stopped with {:?}", result.stop);
+        println!(
+            "{engine:?}: stop={:?} instructions={} svcs={} preemptions={} queued={} pc={:#x}",
+            result.stop,
+            result.instructions,
+            result.svc_count,
+            result.preemptions,
+            result.queued.len(),
+            result.pc
+        );
+        assert!(
+            matches!(result.stop, Stop::FrameLimit),
+            "{engine:?} stopped with {:?}",
+            result.stop
+        );
         assert_eq!(result.queued.len() as u64, frames);
         for f in &result.queued {
             assert_eq!(f.error, None, "frame {}", f.index);
@@ -1171,30 +1632,50 @@ fn startup_first_frame_oracle() {
 
 /// Reject vacuous and unreachable pixel assertions before executing a workload.
 fn validate_frame_oracle(oracle: &serde_json::Value) -> Result<(), String> {
-    let frames = oracle["queued_frames"].as_u64().filter(|n| *n > 0)
+    let frames = oracle["queued_frames"]
+        .as_u64()
+        .filter(|n| *n > 0)
         .ok_or("queued_frames must be positive")?;
-    let checks = oracle["checks"].as_array().filter(|v| !v.is_empty())
+    let checks = oracle["checks"]
+        .as_array()
+        .filter(|v| !v.is_empty())
         .ok_or("checks must be non-empty")?;
     for (number, check) in checks.iter().enumerate() {
         let validate = || -> Result<(), String> {
-            let indices = check["frames"].as_array().filter(|v| !v.is_empty())
+            let indices = check["frames"]
+                .as_array()
+                .filter(|v| !v.is_empty())
                 .ok_or("frames must be non-empty")?;
             let mut seen = std::collections::HashSet::new();
             for index in indices {
-                let index = index.as_u64().filter(|n| *n > 0 && *n <= frames)
+                let index = index
+                    .as_u64()
+                    .filter(|n| *n > 0 && *n <= frames)
                     .ok_or("checked frame must be within 1..=queued_frames")?;
-                if !seen.insert(index) { return Err("duplicate checked frame".into()); }
+                if !seen.insert(index) {
+                    return Err("duplicate checked frame".into());
+                }
             }
             let expect = &check["expect"];
-            let width = expect["width"].as_u64().or(check["width"].as_u64())
-                .filter(|n| *n > 0).ok_or("width must be positive")?;
-            let height = expect["height"].as_u64().or(check["height"].as_u64())
-                .filter(|n| *n > 0).ok_or("height must be positive")?;
+            let width = expect["width"]
+                .as_u64()
+                .or(check["width"].as_u64())
+                .filter(|n| *n > 0)
+                .ok_or("width must be positive")?;
+            let height = expect["height"]
+                .as_u64()
+                .or(check["height"].as_u64())
+                .filter(|n| *n > 0)
+                .ok_or("height must be positive")?;
             let hash = expect.get("rgba_fnv1a64");
             if let Some(hash) = hash {
                 let hash = hash.as_str().ok_or("frame hash must be a string")?;
-                if hash.len() != 18 || !hash.starts_with("0x")
-                    || !hash[2..].bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+                if hash.len() != 18
+                    || !hash.starts_with("0x")
+                    || !hash[2..]
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                {
                     return Err("frame hash must be 0x plus 16 lowercase hex digits".into());
                 }
             }
@@ -1207,7 +1688,8 @@ fn validate_frame_oracle(oracle: &serde_json::Value) -> Result<(), String> {
             }
             for probe in probes {
                 if probe["x"].as_u64().filter(|x| *x < width).is_none()
-                    || probe["y"].as_u64().filter(|y| *y < height).is_none() {
+                    || probe["y"].as_u64().filter(|y| *y < height).is_none()
+                {
                     return Err("probe must lie inside the expected frame".into());
                 }
                 let rgb = probe["rgb"].as_array().ok_or("probe rgb must be an array")?;
@@ -1237,10 +1719,14 @@ fn frame_oracles_reject_vacuous_and_unreachable_checks() {
         "expect": {"width": 2, "height": 1}, "probes": [{"x": 1, "y": 0, "rgb": [0, 128, 255]}]}]});
     assert!(validate_frame_oracle(&valid).is_ok());
     let mutations = [
-        ("/queued_frames", json!(0)), ("/checks", json!([])),
-        ("/checks/0/frames", json!([])), ("/checks/0/frames", json!([0])),
-        ("/checks/0/frames", json!([2])), ("/checks/0/frames", json!([1, 1])),
-        ("/checks/0/probes", json!([])), ("/checks/0/probes/0/x", json!(2)),
+        ("/queued_frames", json!(0)),
+        ("/checks", json!([])),
+        ("/checks/0/frames", json!([])),
+        ("/checks/0/frames", json!([0])),
+        ("/checks/0/frames", json!([2])),
+        ("/checks/0/frames", json!([1, 1])),
+        ("/checks/0/probes", json!([])),
+        ("/checks/0/probes/0/x", json!(2)),
         ("/checks/0/probes/0/rgb", json!([0, 0, 256])),
         ("/checks/0/expect/width", json!(0)),
     ];
@@ -1273,49 +1759,90 @@ fn corpus_interaction_oracle() {
 }
 
 fn registered_frame_oracle(manifest: &str, interaction: bool) {
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     let oracles: Value = serde_json::from_str(manifest).unwrap();
     let id = std::env::var("OUNCE_ORACLE_ID").expect("OUNCE_ORACLE_ID is unset");
     let root = std::env::var_os("OUNCE_CORPUS_ROOT").expect("OUNCE_CORPUS_ROOT is unset");
-    let oracle = oracles["oracles"].as_array().unwrap().iter().find(|o| o["id"] == id.as_str())
+    let oracle = oracles["oracles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["id"] == id.as_str())
         .unwrap_or_else(|| panic!("no oracle {id}"));
     validate_frame_oracle(oracle).unwrap_or_else(|error| panic!("invalid oracle {id}: {error}"));
-    let path = Path::new(&root).join(oracle["build"].as_str().unwrap()).join("build/source")
+    let path = Path::new(&root)
+        .join(oracle["build"].as_str().unwrap())
+        .join("build/source")
         .join(oracle["nro"].as_str().unwrap());
     let nro = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     use sha2::Digest;
     let nro_sha256 = format!("{:x}", sha2::Sha256::digest(&nro));
     let frames = oracle["queued_frames"].as_u64().unwrap();
     let checks = oracle["checks"].as_array().unwrap();
-    let probes: Vec<(usize, usize)> = checks.iter().flat_map(|c| c["probes"].as_array().cloned().unwrap_or_default())
-        .map(|p| (p["x"].as_u64().unwrap() as usize, p["y"].as_u64().unwrap() as usize)).collect();
-    let seconds = std::env::var("OUNCE_ORACLE_SECONDS").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
-    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(seconds), frames: usize::MAX,
-        queued_frames: frames, probes,
-        frame_inputs: if interaction { parse_frame_inputs(&oracle["inputs"], frames).expect("invalid interaction input") } else { Vec::new() },
-        ..Limits::default() };
+    let probes: Vec<(usize, usize)> = checks
+        .iter()
+        .flat_map(|c| c["probes"].as_array().cloned().unwrap_or_default())
+        .map(|p| (p["x"].as_u64().unwrap() as usize, p["y"].as_u64().unwrap() as usize))
+        .collect();
+    let seconds = std::env::var("OUNCE_ORACLE_SECONDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300);
+    let limits = Limits {
+        instructions: 4_000_000_000,
+        host_time: Duration::from_secs(seconds),
+        frames: usize::MAX,
+        queued_frames: frames,
+        probes,
+        frame_inputs: if interaction {
+            parse_frame_inputs(&oracle["inputs"], frames).expect("invalid interaction input")
+        } else {
+            Vec::new()
+        },
+        ..Limits::default()
+    };
     let mut failures = Vec::new();
     let mut runs = Vec::new();
     let mut reference: Option<Vec<QueuedFrame>> = None;
     let mut times = Vec::new();
     // Interaction qualification always uses the exact engine set, even if OUNCE_CPU is set.
-    let engines = if interaction { vec![Engine::Interpreter, Engine::Tier3] } else { oracle_engines() };
+    let engines = if interaction {
+        vec![Engine::Interpreter, Engine::Tier3]
+    } else {
+        oracle_engines()
+    };
     for engine in engines {
         let started = Instant::now();
         let (result, kernel) = run_nro_state(&nro, &path.to_string_lossy(), &[], engine, &limits, &[]);
         let seconds_taken = started.elapsed();
         times.push((engine, seconds_taken));
-        println!("{engine:?}: stop={:?} instructions={} svcs={} queued={} pc={:#x}", result.stop, result.instructions, result.svc_count, result.queued.len(), result.pc);
+        println!(
+            "{engine:?}: stop={:?} instructions={} svcs={} queued={} pc={:#x}",
+            result.stop,
+            result.instructions,
+            result.svc_count,
+            result.queued.len(),
+            result.pc
+        );
         let mut engine_failures = Vec::new();
         let mut fail = |message: String| engine_failures.push(message);
         if !matches!(result.stop, Stop::FrameLimit) || result.queued.len() as u64 != frames {
-            fail(format!("stopped with {:?} after {} of {frames} queued frames", result.stop, result.queued.len()));
+            fail(format!(
+                "stopped with {:?} after {} of {frames} queued frames",
+                result.stop,
+                result.queued.len()
+            ));
         }
         if interaction {
-            if result.actual_engine != engine { fail("requested CPU engine was not used".into()); }
+            if result.actual_engine != engine {
+                fail("requested CPU engine was not used".into());
+            }
             if result.frame_inputs_applied.len() != limits.frame_inputs.len()
-                || result.frame_inputs_applied.iter().zip(&limits.frame_inputs)
-                    .any(|(&(frame, buttons, _), expected)| frame != expected.after_queued_frame || buttons != expected.buttons)
+                || result.frame_inputs_applied.iter().zip(&limits.frame_inputs).any(
+                    |(&(frame, buttons, _), expected)| {
+                        frame != expected.after_queued_frame || buttons != expected.buttons
+                    },
+                )
             {
                 fail("input script did not complete at its registered frame boundaries".into());
             }
@@ -1340,8 +1867,10 @@ fn registered_frame_oracle(manifest: &str, interaction: bool) {
         for check in checks {
             let expect = &check["expect"];
             let check_probes = check["probes"].as_array().cloned().unwrap_or_default();
-            let size = (expect["width"].as_u64().or(check["width"].as_u64()).unwrap() as usize,
-                expect["height"].as_u64().or(check["height"].as_u64()).unwrap() as usize);
+            let size = (
+                expect["width"].as_u64().or(check["width"].as_u64()).unwrap() as usize,
+                expect["height"].as_u64().or(check["height"].as_u64()).unwrap() as usize,
+            );
             for index in check["frames"].as_array().unwrap().iter().map(|f| f.as_u64().unwrap()) {
                 let Some(f) = result.queued.get(index as usize - 1) else {
                     fail(format!("frame {index}: required frame was not captured"));
@@ -1352,18 +1881,31 @@ fn registered_frame_oracle(manifest: &str, interaction: bool) {
                     continue;
                 }
                 if (f.width, f.height) != size {
-                    fail(format!("frame {index}: {}x{}, expected {}x{}", f.width, f.height, size.0, size.1));
+                    fail(format!(
+                        "frame {index}: {}x{}, expected {}x{}",
+                        f.width, f.height, size.0, size.1
+                    ));
                     continue;
                 }
                 if let Some(hash) = expect["rgba_fnv1a64"].as_str() {
                     let actual = format!("{:#018x}", f.rgba_fnv1a64);
-                    if actual != hash { fail(format!("frame {index}: hash {actual}, expected {hash}")); }
+                    if actual != hash {
+                        fail(format!("frame {index}: hash {actual}, expected {hash}"));
+                    }
                 }
                 for (i, probe) in check_probes.iter().enumerate() {
-                    let want: Vec<u8> = probe["rgb"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap() as u8).collect();
+                    let want: Vec<u8> = probe["rgb"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|v| v.as_u64().unwrap() as u8)
+                        .collect();
                     let got = f.probes.get(probe_index + i).copied().flatten();
                     if got.map(|p| p[..3].to_vec()) != Some(want.clone()) {
-                        fail(format!("frame {index}: pixel ({}, {}) = {got:?}, expected {want:?}", probe["x"], probe["y"]));
+                        fail(format!(
+                            "frame {index}: pixel ({}, {}) = {got:?}, expected {want:?}",
+                            probe["x"], probe["y"]
+                        ));
                     }
                 }
             }
@@ -1414,47 +1956,76 @@ fn guest_gpu_deko_existing_oracle() {
     use sha2::Digest;
     println!("guest GPU NRO SHA-256: {:x}", sha2::Sha256::digest(&bytes));
     let oracles: serde_json::Value = serde_json::from_str(include_str!("../../tests/corpus/oracles.json")).unwrap();
-    let oracle = oracles["oracles"].as_array().unwrap().iter().find(|o| o["id"] == "deko-basic").unwrap();
+    let oracle = oracles["oracles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["id"] == "deko-basic")
+        .unwrap();
     validate_frame_oracle(oracle).unwrap();
     let frames = oracle["queued_frames"].as_u64().unwrap();
-    let limits = Limits { instructions: 4_000_000_000, host_time: Duration::from_secs(300),
-        frames: usize::MAX, queued_frames: frames, ..Limits::default() };
+    let limits = Limits {
+        instructions: 4_000_000_000,
+        host_time: Duration::from_secs(300),
+        frames: usize::MAX,
+        queued_frames: frames,
+        ..Limits::default()
+    };
     let mut failures = Vec::new();
     // Qualification always covers the exact required engine set, regardless of OUNCE_CPU.
     for engine in [Engine::Interpreter, Engine::Tier3] {
-        let (result,kernel) = run_nro_state(&bytes,&Path::new(&path).to_string_lossy(),&[],engine,&limits,&[]);
-        if result.actual_engine != engine { failures.push(format!("{engine:?}: actual engine {:?}",result.actual_engine)); }
+        let (result, kernel) = run_nro_state(&bytes, &Path::new(&path).to_string_lossy(), &[], engine, &limits, &[]);
+        if result.actual_engine != engine {
+            failures.push(format!("{engine:?}: actual engine {:?}", result.actual_engine));
+        }
         let stats: Vec<_> = kernel.ipc.nvdrv.engines.values().map(|g| g.render_stats()).collect();
         let host_draws: u64 = stats.iter().map(|s| s.host_draws as u64).sum();
         let hardware_draws: u64 = stats.iter().map(|s| s.hardware_draws as u64).sum();
         let readback_bytes: u64 = stats.iter().map(|s| s.host_readback_bytes).sum();
-        println!("{engine:?}: stop={:?} queued={} host_draws={host_draws} hardware_draws={hardware_draws} readback_bytes={readback_bytes}",result.stop,result.queued.len());
+        println!(
+            "{engine:?}: stop={:?} queued={} host_draws={host_draws} hardware_draws={hardware_draws} readback_bytes={readback_bytes}",
+            result.stop,
+            result.queued.len()
+        );
         if !matches!(result.stop, Stop::FrameLimit) || result.queued.len() as u64 != frames {
-            failures.push(format!("{engine:?}: incomplete guest execution: {:?}",result.stop));
+            failures.push(format!("{engine:?}: incomplete guest execution: {:?}", result.stop));
         }
-        if host_draws < frames || readback_bytes < frames*1280*720*4 {
+        if host_draws < frames || readback_bytes < frames * 1280 * 720 * 4 {
             failures.push(format!("{engine:?}: missing completed host draws/readbacks"));
         }
         if std::env::var("OUNCE_GPU_REQUIRE_HARDWARE").as_deref() == Ok("1") && hardware_draws < frames {
             failures.push(format!("{engine:?}: physical GPU coverage incomplete"));
         }
         if !kernel.ipc.nvdrv.gpu_diagnostics.is_empty() {
-            failures.push(format!("{engine:?}: GPU diagnostics: {:?}",kernel.ipc.nvdrv.gpu_diagnostics));
+            failures.push(format!(
+                "{engine:?}: GPU diagnostics: {:?}",
+                kernel.ipc.nvdrv.gpu_diagnostics
+            ));
         }
         for check in oracle["checks"].as_array().unwrap() {
             for index in check["frames"].as_array().unwrap() {
-                let index=index.as_u64().unwrap();
-                let Some(frame)=result.queued.iter().find(|f| f.index == index) else { continue };
-                let expected=&check["expect"];
-                let hash=format!("{:#018x}",frame.rgba_fnv1a64);
+                let index = index.as_u64().unwrap();
+                let Some(frame) = result.queued.iter().find(|f| f.index == index) else {
+                    continue;
+                };
+                let expected = &check["expect"];
+                let hash = format!("{:#018x}", frame.rgba_fnv1a64);
                 println!("{engine:?}: frame {index} hash={hash}");
-                if frame.error.is_some() || frame.width as u64 != expected["width"].as_u64().unwrap()
+                if frame.error.is_some()
+                    || frame.width as u64 != expected["width"].as_u64().unwrap()
                     || frame.height as u64 != expected["height"].as_u64().unwrap()
-                    || hash != expected["rgba_fnv1a64"].as_str().unwrap() {
-                    failures.push(format!("{engine:?}: frame {index}: hash {hash}, expected {}",expected["rgba_fnv1a64"]));
+                    || hash != expected["rgba_fnv1a64"].as_str().unwrap()
+                {
+                    failures.push(format!(
+                        "{engine:?}: frame {index}: hash {hash}, expected {}",
+                        expected["rgba_fnv1a64"]
+                    ));
                 }
             }
         }
     }
-    assert!(failures.is_empty(), "host GPU qualification failed (oracle unchanged): {failures:#?}");
+    assert!(
+        failures.is_empty(),
+        "host GPU qualification failed (oracle unchanged): {failures:#?}"
+    );
 }

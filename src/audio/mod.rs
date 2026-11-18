@@ -4,14 +4,12 @@ pub mod audout;
 pub mod audren;
 pub mod host;
 
-pub use audout::{AudioOutServer, AudoutServer, Waveform, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE};
+pub use audout::{AUDIO_CHANNELS, AUDIO_SAMPLE_RATE, AudioOutServer, AudoutServer, Waveform};
 pub use audren::{
-    AudioRenderer, AudioRendererConfig, AudioVoice, AudrenServer, PlaybackState, SampleFormat,
-    WaveBuffer, AUDREN_SAMPLE_RATE_32KHZ, AUDREN_SAMPLE_RATE_48KHZ,
+    AUDREN_SAMPLE_RATE_32KHZ, AUDREN_SAMPLE_RATE_48KHZ, AudioRenderer, AudioRendererConfig, AudioVoice, AudrenServer,
+    PlaybackState, SampleFormat, WaveBuffer,
 };
 pub mod tap;
 
-pub use tap::{combined_summary, AudioSummary, AudioTap};
-pub use host::{
-    AudioSinkMetrics, HostAudioSink, DEFAULT_CHANNELS, DEFAULT_MAX_CAPACITY, DEFAULT_SAMPLE_RATE,
-};
+pub use host::{AudioSinkMetrics, DEFAULT_CHANNELS, DEFAULT_MAX_CAPACITY, DEFAULT_SAMPLE_RATE, HostAudioSink};
+pub use tap::{AudioSummary, AudioTap, combined_summary};

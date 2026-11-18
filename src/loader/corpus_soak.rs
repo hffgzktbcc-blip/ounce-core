@@ -14,7 +14,7 @@
 //! interrupted from inside the runner.
 
 use super::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn env_u64(name: &str, default: u64) -> u64 {
     std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
@@ -24,13 +24,26 @@ fn env_u64(name: &str, default: u64) -> u64 {
 fn soak_inputs(seed: u64, frames: u64) -> Vec<FrameInput> {
     const BUTTONS: [u32; 14] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15];
     let mut state = seed | 1;
-    let mut next = move || { state ^= state << 13; state ^= state >> 7; state ^= state << 17; state };
-    let mut inputs = vec![FrameInput { after_queued_frame: 0, buttons: 0 }];
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let mut inputs = vec![FrameInput {
+        after_queued_frame: 0,
+        buttons: 0,
+    }];
     let mut frame = 30;
     while frame < frames {
         let mut buttons = 0u64;
-        for _ in 0..(next() % 3) { buttons |= 1 << BUTTONS[(next() % BUTTONS.len() as u64) as usize]; }
-        inputs.push(FrameInput { after_queued_frame: frame, buttons });
+        for _ in 0..(next() % 3) {
+            buttons |= 1 << BUTTONS[(next() % BUTTONS.len() as u64) as usize];
+        }
+        inputs.push(FrameInput {
+            after_queued_frame: frame,
+            buttons,
+        });
         frame += 30;
     }
     inputs
@@ -40,7 +53,11 @@ fn soak_inputs(seed: u64, frames: u64) -> Vec<FrameInput> {
 fn soak_inputs_never_press_exit_buttons_and_strictly_increase() {
     let inputs = soak_inputs(7, 600);
     assert_eq!(inputs[0].buttons, 0);
-    assert!(inputs.windows(2).all(|w| w[0].after_queued_frame < w[1].after_queued_frame));
+    assert!(
+        inputs
+            .windows(2)
+            .all(|w| w[0].after_queued_frame < w[1].after_queued_frame)
+    );
     assert!(inputs.iter().all(|i| i.buttons & (3 << 10) == 0));
     assert!(inputs.iter().any(|i| i.buttons != 0));
     assert_eq!(soak_inputs(7, 600).len(), inputs.len());
@@ -50,7 +67,9 @@ fn soak_inputs_never_press_exit_buttons_and_strictly_increase() {
 /// warm-up reading. Peaks rather than the last value, because `ps` on macOS leaves compressed pages out
 /// of RSS, so a series can fall and rise again without the program allocating anything.
 fn growth(values: &[u64]) -> i64 {
-    if values.len() < 4 { return 0; }
+    if values.len() < 4 {
+        return 0;
+    }
     let warmup = values.len() / 4 + 1;
     let peak = |v: &[u64]| v.iter().copied().max().unwrap_or(0) as i64;
     (peak(&values[warmup..]) - peak(&values[..warmup])).max(0)
@@ -76,24 +95,41 @@ fn engine_verdict(engine: Engine, frames: u64, seconds: u64, result: &Report, wa
         Stop::HostTimeout => {
             // Frames kept arriving until near the deadline: slow, not hung.
             let stalled_ms = (wall.as_millis() as u64).saturating_sub(result.last_queue_ms);
-            if reached == 0 || stalled_ms > (seconds * 1000 / 4).max(5_000) { "hang" } else { "slow" }
+            if reached == 0 || stalled_ms > (seconds * 1000 / 4).max(5_000) {
+                "hang"
+            } else {
+                "slow"
+            }
         }
         Stop::InstructionBudget => "budget",
         _ => "crash",
     };
     if matches!(outcome, "crash" | "hang") {
-        findings.push(format!("{engine:?}: {outcome} ({:?}) after {reached} of {frames} frames, pc={:#x}", result.stop, result.pc));
+        findings.push(format!(
+            "{engine:?}: {outcome} ({:?}) after {reached} of {frames} frames, pc={:#x}",
+            result.stop, result.pc
+        ));
     }
     if let Some(bad) = result.queued.iter().find(|f| f.error.is_some()) {
-        findings.push(format!("{engine:?}: frame {} unreadable: {}", bad.index, bad.error.as_deref().unwrap()));
+        findings.push(format!(
+            "{engine:?}: frame {} unreadable: {}",
+            bad.index,
+            bad.error.as_deref().unwrap()
+        ));
     }
     let rss: Vec<u64> = result.samples.iter().filter_map(|s| s.host_rss_kib).collect();
     let pages: Vec<u64> = result.samples.iter().map(|s| s.guest_pages as u64).collect();
     let jit: Vec<u64> = result.samples.iter().map(|s| s.jit_blocks as u64).collect();
     // Thresholds: 128 MiB host RSS, 8 MiB of guest pages or 2048 Tier-3 blocks after warm-up.
-    if growth(&rss) > 128 * 1024 { findings.push(format!("{engine:?}: host RSS grew {} KiB after warm-up", growth(&rss))); }
-    if growth(&pages) > 2048 { findings.push(format!("{engine:?}: guest pages grew {} after warm-up", growth(&pages))); }
-    if growth(&jit) > 2048 { findings.push(format!("{engine:?}: Tier-3 blocks grew {} after warm-up", growth(&jit))); }
+    if growth(&rss) > 128 * 1024 {
+        findings.push(format!("{engine:?}: host RSS grew {} KiB after warm-up", growth(&rss)));
+    }
+    if growth(&pages) > 2048 {
+        findings.push(format!("{engine:?}: guest pages grew {} after warm-up", growth(&pages)));
+    }
+    if growth(&jit) > 2048 {
+        findings.push(format!("{engine:?}: Tier-3 blocks grew {} after warm-up", growth(&jit)));
+    }
     let distinct: std::collections::HashSet<u64> = result.queued.iter().map(|f| f.rgba_fnv1a64).collect();
     let verdict = json!({
         "engine": format!("{engine:?}"), "outcome": outcome, "stop": format!("{:?}", result.stop),
@@ -116,7 +152,12 @@ fn engine_verdict(engine: Engine, frames: u64, seconds: u64, result: &Report, wa
 
 #[test]
 fn verdict_classifies_a_spinning_guest_as_hang_and_a_faulting_guest_as_crash() {
-    let limits = Limits { instructions: usize::MAX / 2, host_time: Duration::from_secs(1), sample_every: 1, ..Limits::default() };
+    let limits = Limits {
+        instructions: usize::MAX / 2,
+        host_time: Duration::from_secs(1),
+        sample_every: 1,
+        ..Limits::default()
+    };
     for engine in [Engine::Interpreter, Engine::Tier3] {
         let started = Instant::now();
         let spin = synthetic(&[0x1400_0000], engine, &limits); // B .
@@ -143,9 +184,15 @@ fn corpus_soak() {
     let id = std::env::var("OUNCE_ORACLE_ID").expect("OUNCE_ORACLE_ID is unset");
     let root = std::env::var_os("OUNCE_CORPUS_ROOT").expect("OUNCE_CORPUS_ROOT is unset");
     let manifest: Value = serde_json::from_str(include_str!("../../tests/corpus/oracles.json")).unwrap();
-    let oracle = manifest["oracles"].as_array().unwrap().iter().find(|o| o["id"] == id.as_str())
+    let oracle = manifest["oracles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["id"] == id.as_str())
         .unwrap_or_else(|| panic!("no registered oracle {id}"));
-    let path = Path::new(&root).join(oracle["build"].as_str().unwrap()).join("build/source")
+    let path = Path::new(&root)
+        .join(oracle["build"].as_str().unwrap())
+        .join("build/source")
         .join(oracle["nro"].as_str().unwrap());
     let nro = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     use sha2::Digest;
@@ -153,9 +200,19 @@ fn corpus_soak() {
     let frames = env_u64("OUNCE_SOAK_FRAMES", 2000);
     let seconds = env_u64("OUNCE_SOAK_SECONDS", 600);
     let seed = env_u64("OUNCE_SOAK_INPUT", 0);
-    let limits = Limits { instructions: usize::MAX / 2, host_time: Duration::from_secs(seconds), frames: usize::MAX,
-        queued_frames: frames, sample_every: env_u64("OUNCE_SOAK_SAMPLE", 100).max(1),
-        frame_inputs: if seed != 0 { soak_inputs(seed, frames) } else { Vec::new() }, ..Limits::default() };
+    let limits = Limits {
+        instructions: usize::MAX / 2,
+        host_time: Duration::from_secs(seconds),
+        frames: usize::MAX,
+        queued_frames: frames,
+        sample_every: env_u64("OUNCE_SOAK_SAMPLE", 100).max(1),
+        frame_inputs: if seed != 0 {
+            soak_inputs(seed, frames)
+        } else {
+            Vec::new()
+        },
+        ..Limits::default()
+    };
     let mut findings = Vec::new();
     let mut runs = Vec::new();
     let mut reports: Vec<(Engine, Report)> = Vec::new();
@@ -163,7 +220,13 @@ fn corpus_soak() {
         let started = Instant::now();
         let (result, _kernel) = run_nro_state(&nro, &path.to_string_lossy(), &[], engine, &limits, &[]);
         let wall = started.elapsed();
-        println!("{engine:?}: stop={:?} queued={} instructions={} wall={:.1}s", result.stop, result.queued.len(), result.instructions, wall.as_secs_f64());
+        println!(
+            "{engine:?}: stop={:?} queued={} instructions={} wall={:.1}s",
+            result.stop,
+            result.queued.len(),
+            result.instructions,
+            wall.as_secs_f64()
+        );
         let (verdict, engine_findings) = engine_verdict(engine, frames, seconds, &result, wall);
         findings.extend(engine_findings);
         runs.push(verdict);
@@ -180,12 +243,23 @@ fn corpus_soak() {
             "tier3": format!("{:016x}", b.queued[i].rgba_fnv1a64)});
         findings.push(format!("interpreter and Tier-3 first differ at frame {}", i + 1));
     }
-    let diverged_frames = (0..common).filter(|&i| a.queued[i].rgba_fnv1a64 != b.queued[i].rgba_fnv1a64).count();
-    let state_diffs: Vec<u64> = a.samples.iter().zip(&b.samples)
-        .filter(|(x, y)| x.queued == y.queued && x.regs_fnv1a64 != y.regs_fnv1a64).map(|(x, _)| x.queued).collect();
+    let diverged_frames = (0..common)
+        .filter(|&i| a.queued[i].rgba_fnv1a64 != b.queued[i].rgba_fnv1a64)
+        .count();
+    let state_diffs: Vec<u64> = a
+        .samples
+        .iter()
+        .zip(&b.samples)
+        .filter(|(x, y)| x.queued == y.queued && x.regs_fnv1a64 != y.regs_fnv1a64)
+        .map(|(x, _)| x.queued)
+        .collect();
     // Both engines stopping for a legitimate reason at different frames is also a disagreement.
     if matches!((&a.stop, &b.stop), (Stop::ExitProcess, Stop::ExitProcess)) && a.queued.len() != b.queued.len() {
-        findings.push(format!("engines exited after different frame counts: {} vs {}", a.queued.len(), b.queued.len()));
+        findings.push(format!(
+            "engines exited after different frame counts: {} vs {}",
+            a.queued.len(),
+            b.queued.len()
+        ));
     }
     let verdict = json!({"id": id, "pass": findings.is_empty(), "nro_sha256": nro_sha256,
         "frames_requested": frames, "seconds_per_engine": seconds, "input_seed": seed,

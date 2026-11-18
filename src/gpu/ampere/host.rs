@@ -14,13 +14,9 @@ static DEVICE: OnceLock<Result<Mutex<Device>, String>> = OnceLock::new();
 fn device() -> Result<&'static Mutex<Device>, String> {
     DEVICE
         .get_or_init(|| {
-            let instance = wgpu::Instance::new(
-                wgpu::InstanceDescriptor::new_without_display_handle_from_env(),
-            );
-            let adapter = pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(
-                &instance, None,
-            ))
-            .map_err(|e| format!("no host adapter: {e}"))?;
+            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+            let adapter = pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(&instance, None))
+                .map_err(|e| format!("no host adapter: {e}"))?;
             let info = adapter.get_info();
             let physical = matches!(
                 info.device_type,
@@ -30,12 +26,11 @@ fn device() -> Result<&'static Mutex<Device>, String> {
                 "[guest-gpu] adapter={:?} backend={:?} type={:?} physical={physical}",
                 info.name, info.backend, info.device_type
             );
-            let (device, queue) =
-                pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-                    label: Some("ounce-guest-sass"),
-                    ..Default::default()
-                }))
-                .map_err(|e| format!("open host device: {e}"))?;
+            let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+                label: Some("ounce-guest-sass"),
+                ..Default::default()
+            }))
+            .map_err(|e| format!("open host device: {e}"))?;
             Ok(Mutex::new(Device {
                 device,
                 queue,
@@ -76,10 +71,7 @@ impl Ampere3d {
         {
             return Err("host depth/stencil/blend/fill-rectangle state is unsupported".into());
         }
-        if rec.instance != 0
-            || rec.base_instance != 0
-            || rec.vertex_streams.iter().any(|s| s.instanced)
-        {
+        if rec.instance != 0 || rec.base_instance != 0 || rec.vertex_streams.iter().any(|s| s.instanced) {
             return Err("host instancing is unsupported".into());
         }
         if rec.shaders.iter().any(|s| {
@@ -108,17 +100,11 @@ impl Ampere3d {
                 .map(|(b, bytes)| (*b, bytes.len() as u32))
                 .collect::<Vec<_>>()
         };
-        let (mut vsrc, vi) =
-            crate::gpu::sass::wgsl::emit_with_cbuf_sizes(&vs.func, &vs.sph, &sizes(vs_cb))
-                .map_err(|e| e.to_string())?;
-        let (fsrc, fi) =
-            crate::gpu::sass::wgsl::emit_with_cbuf_sizes(&ps.func, &ps.sph, &sizes(ps_cb))
-                .map_err(|e| e.to_string())?;
-        if !vi.writes_position
-            || fi.color_targets != [0]
-            || !vi.textures.is_empty()
-            || !fi.textures.is_empty()
-        {
+        let (mut vsrc, vi) = crate::gpu::sass::wgsl::emit_with_cbuf_sizes(&vs.func, &vs.sph, &sizes(vs_cb))
+            .map_err(|e| e.to_string())?;
+        let (fsrc, fi) = crate::gpu::sass::wgsl::emit_with_cbuf_sizes(&ps.func, &ps.sph, &sizes(ps_cb))
+            .map_err(|e| e.to_string())?;
+        if !vi.writes_position || fi.color_targets != [0] || !vi.textures.is_empty() || !fi.textures.is_empty() {
             return Err("host shaders require position and color 0, without textures".into());
         }
         if !(0..4).all(|component| {
@@ -159,13 +145,7 @@ impl Ampere3d {
         if max_id > 1_048_575 || ids.len() > 1_048_576 || tris.len() > 1_048_576 {
             return Err("host draw exceeds vertex/index work limit".into());
         }
-        if rec
-            .vertex_streams
-            .iter()
-            .map(|s| s.size.min(1 << 24))
-            .sum::<u64>()
-            > 64 * 1024 * 1024
-        {
+        if rec.vertex_streams.iter().map(|s| s.size.min(1 << 24)).sum::<u64>() > 64 * 1024 * 1024 {
             return Err("host vertex stream cache exceeds 64 MiB".into());
         }
         let stride = (vi.vertex_inputs.len() * 16).max(4);
@@ -180,9 +160,7 @@ impl Ampere3d {
         for &id in ids {
             let attrs = fetch_attributes(rec, id, mem, &mut cache)?;
             for (i, &loc) in vi.vertex_inputs.iter().enumerate() {
-                let words = attrs
-                    .get(loc as usize)
-                    .ok_or("host attribute location out of range")?;
+                let words = attrs.get(loc as usize).ok_or("host attribute location out of range")?;
                 for (c, word) in words.iter().enumerate() {
                     let at = id as usize * stride + i * 16 + c * 4;
                     vertices[at..at + 4].copy_from_slice(&word.to_le_bytes());
@@ -256,9 +234,7 @@ impl Ampere3d {
         }
         let locked = device()?.lock().map_err(|_| "host GPU mutex poisoned")?;
         if std::env::var("OUNCE_GPU_REQUIRE_HARDWARE").is_ok_and(|s| s == "1") && !locked.physical {
-            return Err(
-                "physical GPU required; selected adapter is software or unclassified".into(),
-            );
+            return Err("physical GPU required; selected adapter is software or unclassified".into());
         }
         let device = &locked.device;
         let queue = &locked.queue;
@@ -300,16 +276,17 @@ impl Ampere3d {
                 label: Some("guest-fragment-sass"),
                 source: wgpu::ShaderSource::Wgsl(fsrc.into()),
             });
-            let mask = write_mask(&self.regs, ct.index).iter().enumerate().fold(
-                wgpu::ColorWrites::empty(),
-                |m, (i, &on)| {
-                    if on {
-                        m | wgpu::ColorWrites::from_bits_retain(1 << i)
-                    } else {
-                        m
-                    }
-                },
-            );
+            let mask =
+                write_mask(&self.regs, ct.index)
+                    .iter()
+                    .enumerate()
+                    .fold(wgpu::ColorWrites::empty(), |m, (i, &on)| {
+                        if on {
+                            m | wgpu::ColorWrites::from_bits_retain(1 << i)
+                        } else {
+                            m
+                        }
+                    });
             let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("guest-sass-draw"),
                 layout: None,
@@ -457,12 +434,7 @@ impl Ampere3d {
                     pass.set_vertex_buffer(0, vb.slice(..));
                 }
                 pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                pass.set_scissor_rect(
-                    bounds.x0,
-                    bounds.y0,
-                    bounds.x1 - bounds.x0,
-                    bounds.y1 - bounds.y0,
-                );
+                pass.set_scissor_rect(bounds.x0, bounds.y0, bounds.x1 - bounds.x0, bounds.y1 - bounds.y0);
                 pass.draw_indexed(0..(indices.len() / 4) as u32, 0, 0..1);
             }
             encoder.copy_texture_to_buffer(
@@ -496,15 +468,10 @@ impl Ampere3d {
             rx.recv_timeout(std::time::Duration::from_secs(1))
                 .map_err(|e| e.to_string())?
                 .map_err(|e| e.to_string())?;
-            let mapped = readback
-                .slice(..)
-                .get_mapped_range()
-                .map_err(|e| e.to_string())?;
+            let mapped = readback.slice(..).get_mapped_range().map_err(|e| e.to_string())?;
             let mut pixels = Vec::with_capacity(rgba.len());
             for y in 0..view.height as usize {
-                pixels.extend_from_slice(
-                    &mapped[y * row as usize..y * row as usize + view.width as usize * 4],
-                );
+                pixels.extend_from_slice(&mapped[y * row as usize..y * row as usize + view.width as usize * 4]);
             }
             Ok(pixels)
         })();
@@ -530,10 +497,7 @@ impl Ampere3d {
         self.stats.draws += 1;
         eprintln!(
             "[guest-gpu] completed class={:#x} host_draws={} hardware_draws={} readback_bytes={}",
-            rec.class,
-            self.stats.host_draws,
-            self.stats.hardware_draws,
-            self.stats.host_readback_bytes
+            rec.class, self.stats.host_draws, self.stats.hardware_draws, self.stats.host_readback_bytes
         );
         Ok(())
     }

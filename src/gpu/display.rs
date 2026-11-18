@@ -4,8 +4,7 @@ use crate::mmu::Memory;
 use std::time::Instant;
 
 use super::present::{
-    open_backend, BackendConfig, BackendKind, Frame, Gpu3DDrawOp, HostKey, PresentBackend,
-    PresentStatus, ScaleMode,
+    BackendConfig, BackendKind, Frame, Gpu3DDrawOp, HostKey, PresentBackend, PresentStatus, ScaleMode, open_backend,
 };
 
 pub const SCREEN_WIDTH: usize = 1280;
@@ -216,7 +215,9 @@ impl DisplayServer {
     pub fn present_frame_3d(&mut self, mmu: &Memory, draw_ops: &[Gpu3DDrawOp]) -> bool {
         let frame_start = Instant::now();
 
-        if self.backend.is_none() && let Err(e) = self.init_window() {
+        if self.backend.is_none()
+            && let Err(e) = self.init_window()
+        {
             eprintln!("[Display Error] {}", e);
             return false;
         }
@@ -271,11 +272,17 @@ impl DisplayServer {
 
     /// Present decoded VI pixels without the synthetic framebuffer or telemetry overlay.
     pub fn present_guest_frame(&mut self, frame: Frame) -> bool {
-        if self.backend.is_none() && self.init_window().is_err() { return false; }
+        if self.backend.is_none() && self.init_window().is_err() {
+            return false;
+        }
         self.last_frame_hash = Some(format_frame_hash(&frame));
         self.swapchain.back_buffer = frame;
         self.swapchain.flip(0);
-        self.backend.as_mut().expect("backend opened above").present(&self.swapchain.front_buffer) != PresentStatus::Closed
+        self.backend
+            .as_mut()
+            .expect("backend opened above")
+            .present(&self.swapchain.front_buffer)
+            != PresentStatus::Closed
     }
 
     /// Hash of the most recently presented guest frame before any overlay (see `format_frame_hash`), or `None`
@@ -300,7 +307,9 @@ impl DisplayServer {
     /// Pumps backend window events (keyboard presses, window close, focus) without
     /// waiting for a guest frame presentation.
     pub fn pump_events(&mut self) -> bool {
-        if self.backend.is_none() && let Err(e) = self.init_window() {
+        if self.backend.is_none()
+            && let Err(e) = self.init_window()
+        {
             eprintln!("[Display Error] {}", e);
             return false;
         }
@@ -429,7 +438,8 @@ mod tests {
         let (width, height) = (320, 64);
         let mut mmu = Memory::new();
         mmu.map_range(DEFAULT_FRAMEBUFFER_ADDR, width * height * 4, Permission::READ_WRITE);
-        mmu.write_bytes(DEFAULT_FRAMEBUFFER_ADDR, &vec![0x40u8; width * height * 4]).unwrap();
+        mmu.write_bytes(DEFAULT_FRAMEBUFFER_ADDR, &vec![0x40u8; width * height * 4])
+            .unwrap();
         let mut display = headless_server(width, height);
         assert_eq!(display.last_frame_hash(), None);
         display.composite(&mmu);
@@ -439,7 +449,8 @@ mod tests {
         assert_eq!(display.last_frame_hash(), Some(format_frame_hash(&expected).as_str()));
         // The overlay changed the presented pixels but not the hash.
         assert_ne!(display.swapchain.back_buffer, expected);
-        mmu.write_bytes(DEFAULT_FRAMEBUFFER_ADDR, &vec![0x41u8; width * height * 4]).unwrap();
+        mmu.write_bytes(DEFAULT_FRAMEBUFFER_ADDR, &vec![0x41u8; width * height * 4])
+            .unwrap();
         display.composite(&mmu);
         assert_ne!(display.last_frame_hash(), Some(format_frame_hash(&expected).as_str()));
     }
@@ -464,7 +475,13 @@ mod tests {
         let expected = frame.content_hash();
         assert!(display.present_guest_frame(frame));
         assert_eq!(display.swapchain.front_buffer.content_hash(), expected);
-        assert_eq!((display.swapchain.front_buffer.width, display.swapchain.front_buffer.height), (2, 2));
+        assert_eq!(
+            (
+                display.swapchain.front_buffer.width,
+                display.swapchain.front_buffer.height
+            ),
+            (2, 2)
+        );
         assert_eq!(display.backend.as_ref().unwrap().frames_presented(), 1);
     }
 
