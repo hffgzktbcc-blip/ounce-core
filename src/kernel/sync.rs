@@ -81,13 +81,7 @@ impl SyncManager {
 
     /// `svcArbitrateLock(wait_tag, mutex_addr, requesting_thread_tag)` (`0x1A`)
     /// Atomically acquires or arbitrates a 32-bit user-space Horizon mutex at `mutex_addr`.
-    pub fn arbitrate_lock(
-        &mut self,
-        mmu: &mut Memory,
-        wait_tag: u32,
-        mutex_addr: u64,
-        req_tag: u32,
-    ) -> u64 {
+    pub fn arbitrate_lock(&mut self, mmu: &mut Memory, wait_tag: u32, mutex_addr: u64, req_tag: u32) -> u64 {
         self.total_locks_arbitrated += 1;
         let current = mmu.read_u32(mutex_addr).unwrap_or(0);
         if current == 0 {
@@ -97,10 +91,7 @@ impl SyncManager {
         } else if current == wait_tag {
             // Mark waiter bit (0x4000_0000 in Horizon OS mutex word) and enqueue
             let _ = mmu.write_u32(mutex_addr, current | 0x4000_0000);
-            self.wait_queues
-                .entry(mutex_addr)
-                .or_default()
-                .push_back(req_tag);
+            self.wait_queues.entry(mutex_addr).or_default().push_back(req_tag);
             0
         } else {
             0
@@ -111,7 +102,9 @@ impl SyncManager {
     /// Releases the user-space Horizon mutex at `mutex_addr` or hands it to the next waiting thread.
     pub fn arbitrate_unlock(&mut self, mmu: &mut Memory, mutex_addr: u64) -> u64 {
         self.total_locks_arbitrated += 1;
-        if let Some(queue) = self.wait_queues.get_mut(&mutex_addr) && let Some(next_owner) = queue.pop_front() {
+        if let Some(queue) = self.wait_queues.get_mut(&mutex_addr)
+            && let Some(next_owner) = queue.pop_front()
+        {
             let has_more = if queue.is_empty() { 0 } else { 0x4000_0000 };
             let _ = mmu.write_u32(mutex_addr, next_owner | has_more);
             return 0;
@@ -132,10 +125,7 @@ impl SyncManager {
         // 1. Release user-space mutex
         self.arbitrate_unlock(mmu, mutex_addr);
         // 2. Enqueue waiter on condition variable key
-        self.wait_queues
-            .entry(condvar_addr)
-            .or_default()
-            .push_back(thread_tag);
+        self.wait_queues.entry(condvar_addr).or_default().push_back(thread_tag);
         // 3. Re-acquire mutex for single-stepped continuation
         let _ = mmu.write_u32(mutex_addr, thread_tag);
         0
@@ -143,12 +133,7 @@ impl SyncManager {
 
     /// `svcSignalProcessWideKey(condvar_addr, count)` (`0x1D`)
     /// Wakes up to `count` threads (or all if `count <= 0`) waiting on `condvar_addr`.
-    pub fn signal_process_wide_key(
-        &mut self,
-        mmu: &mut Memory,
-        condvar_addr: u64,
-        count: i32,
-    ) -> u64 {
+    pub fn signal_process_wide_key(&mut self, mmu: &mut Memory, condvar_addr: u64, count: i32) -> u64 {
         self.total_condvar_signals += 1;
         // Increment the user-space condvar counter word
         let val = mmu.read_u32(condvar_addr).unwrap_or(0);

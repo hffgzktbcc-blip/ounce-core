@@ -24,7 +24,7 @@ mod format;
 mod tests;
 
 pub use block_linear::{
-    clamp_block_log2, gob_offset, BlockLinear, GOB_BYTES, GOB_HEIGHT, GOB_WIDTH_BYTES, MAX_BLOCK_LOG2,
+    BlockLinear, GOB_BYTES, GOB_HEIGHT, GOB_WIDTH_BYTES, MAX_BLOCK_LOG2, clamp_block_log2, gob_offset,
 };
 pub use format::Format;
 
@@ -53,12 +53,21 @@ pub struct Surface {
 pub enum TilingError {
     ZeroExtent,
     /// Pitch stride shorter than one row of elements.
-    StrideTooSmall { stride: u32, row_bytes: u32 },
-    BlockLog2TooLarge { height_log2: u8, depth_log2: u8 },
+    StrideTooSmall {
+        stride: u32,
+        row_bytes: u32,
+    },
+    BlockLog2TooLarge {
+        height_log2: u8,
+        depth_log2: u8,
+    },
     /// Source and destination differ in extent or element size.
     Mismatch,
     /// A buffer is shorter than the surface needs.
-    BufferTooSmall { needed: usize, got: usize },
+    BufferTooSmall {
+        needed: usize,
+        got: usize,
+    },
     Overflow,
 }
 
@@ -69,7 +78,10 @@ impl fmt::Display for TilingError {
             TilingError::StrideTooSmall { stride, row_bytes } => {
                 write!(f, "pitch stride {stride} is below the row size {row_bytes}")
             }
-            TilingError::BlockLog2TooLarge { height_log2, depth_log2 } => write!(
+            TilingError::BlockLog2TooLarge {
+                height_log2,
+                depth_log2,
+            } => write!(
                 f,
                 "block height/depth log2 {height_log2}/{depth_log2} exceeds {MAX_BLOCK_LOG2}"
             ),
@@ -90,12 +102,24 @@ const RUN_BYTES: u32 = 16;
 
 impl Surface {
     pub fn new_2d(width: u32, height: u32, format: Format, layout: Layout) -> Self {
-        Self { width, height, depth: 1, format, layout }
+        Self {
+            width,
+            height,
+            depth: 1,
+            format,
+            layout,
+        }
     }
 
     /// Tightly packed pitch-linear surface (stride = one row of elements).
     pub fn packed(width: u32, height: u32, depth: u32, format: Format) -> Self {
-        let mut s = Self { width, height, depth, format, layout: Layout::Pitch { stride: 0 } };
+        let mut s = Self {
+            width,
+            height,
+            depth,
+            format,
+            layout: Layout::Pitch { stride: 0 },
+        };
         s.layout = Layout::Pitch { stride: s.row_bytes() };
         s
     }
@@ -120,7 +144,10 @@ impl Surface {
     /// Block-linear geometry, or `None` for pitch surfaces.
     pub fn block_linear(&self) -> Option<BlockLinear> {
         match self.layout {
-            Layout::BlockLinear { height_log2, depth_log2 } => {
+            Layout::BlockLinear {
+                height_log2,
+                depth_log2,
+            } => {
                 let (_, rows, depth) = self.extent_elements();
                 Some(BlockLinear::new(self.row_bytes(), rows, depth, height_log2, depth_log2))
             }
@@ -139,12 +166,21 @@ impl Surface {
                     return Err(TilingError::StrideTooSmall { stride, row_bytes });
                 }
             }
-            Layout::BlockLinear { height_log2, depth_log2 } => {
+            Layout::BlockLinear {
+                height_log2,
+                depth_log2,
+            } => {
                 if height_log2 > MAX_BLOCK_LOG2 || depth_log2 > MAX_BLOCK_LOG2 {
-                    return Err(TilingError::BlockLog2TooLarge { height_log2, depth_log2 });
+                    return Err(TilingError::BlockLog2TooLarge {
+                        height_log2,
+                        depth_log2,
+                    });
                 }
                 // The padded row (whole GOBs) must also fit, so `BlockLinear::stride` holds.
-                row_bytes.div_ceil(GOB_WIDTH_BYTES).checked_mul(GOB_WIDTH_BYTES).ok_or(TilingError::Overflow)?;
+                row_bytes
+                    .div_ceil(GOB_WIDTH_BYTES)
+                    .checked_mul(GOB_WIDTH_BYTES)
+                    .ok_or(TilingError::Overflow)?;
             }
         }
         Ok(())
@@ -193,10 +229,16 @@ pub fn convert(src: &Surface, src_bytes: &[u8], dst: &Surface, dst_bytes: &mut [
     let src_needed = src.size_bytes()?;
     let dst_needed = dst.size_bytes()?;
     if src_bytes.len() < src_needed {
-        return Err(TilingError::BufferTooSmall { needed: src_needed, got: src_bytes.len() });
+        return Err(TilingError::BufferTooSmall {
+            needed: src_needed,
+            got: src_bytes.len(),
+        });
     }
     if dst_bytes.len() < dst_needed {
-        return Err(TilingError::BufferTooSmall { needed: dst_needed, got: dst_bytes.len() });
+        return Err(TilingError::BufferTooSmall {
+            needed: dst_needed,
+            got: dst_bytes.len(),
+        });
     }
 
     let src_map = Mapper::new(src);
@@ -245,9 +287,10 @@ enum Mapper {
 impl Mapper {
     fn new(surface: &Surface) -> Self {
         match surface.layout {
-            Layout::Pitch { stride } => {
-                Mapper::Pitch { stride: stride as usize, rows: surface.extent_elements().1 as usize }
-            }
+            Layout::Pitch { stride } => Mapper::Pitch {
+                stride: stride as usize,
+                rows: surface.extent_elements().1 as usize,
+            },
             Layout::BlockLinear { .. } => Mapper::Block(surface.block_linear().expect("block linear")),
         }
     }

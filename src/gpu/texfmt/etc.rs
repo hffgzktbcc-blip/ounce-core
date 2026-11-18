@@ -15,7 +15,16 @@ fn column_major(i: usize) -> u32 {
     ((i % 4) * 4 + i / 4) as u32
 }
 
-const MODIFIERS: [[i32; 2]; 8] = [[2, 8], [5, 17], [9, 29], [13, 42], [18, 60], [24, 80], [33, 106], [47, 183]];
+const MODIFIERS: [[i32; 2]; 8] = [
+    [2, 8],
+    [5, 17],
+    [9, 29],
+    [13, 42],
+    [18, 60],
+    [24, 80],
+    [33, 106],
+    [47, 183],
+];
 const DISTANCES: [i32; 8] = [3, 6, 11, 16, 23, 32, 41, 64];
 
 fn ext4(c: u32) -> i32 {
@@ -79,7 +88,11 @@ pub(super) fn etc2_rgb(b: &[u8], i: usize, punch: bool) -> [f32; 4] {
 
     if !(0..32).contains(&(r + dr)) {
         // T mode.
-        let c0 = [ext4((field(w, 60, 59) << 2) | field(w, 57, 56)), ext4(field(w, 55, 52)), ext4(field(w, 51, 48))];
+        let c0 = [
+            ext4((field(w, 60, 59) << 2) | field(w, 57, 56)),
+            ext4(field(w, 55, 52)),
+            ext4(field(w, 51, 48)),
+        ];
         let c1 = [ext4(field(w, 47, 44)), ext4(field(w, 43, 40)), ext4(field(w, 39, 36))];
         let d = DISTANCES[((field(w, 35, 34) << 1) | field(w, 32, 32)) as usize];
         if transparent {
@@ -126,12 +139,20 @@ pub(super) fn etc2_rgb(b: &[u8], i: usize, punch: bool) -> [f32; 4] {
             e7((field(w, 56, 56) << 6) | field(w, 54, 49)),
             e6((field(w, 48, 48) << 5) | (field(w, 44, 43) << 3) | field(w, 41, 39)),
         ];
-        let h = [e6((field(w, 38, 34) << 1) | field(w, 32, 32)), e7(field(w, 31, 25)), e6(field(w, 24, 19))];
+        let h = [
+            e6((field(w, 38, 34) << 1) | field(w, 32, 32)),
+            e7(field(w, 31, 25)),
+            e6(field(w, 24, 19)),
+        ];
         let v = [e6(field(w, 18, 13)), e7(field(w, 12, 6)), e6(field(w, 5, 0))];
         let c = [0, 1, 2].map(|k| (x * (h[k] - o[k]) + y * (v[k] - o[k]) + 4 * o[k] + 2) >> 2);
         return rgb(c, 1.0);
     }
-    let base = if second { [ext5((r + dr) as u32), ext5((g + dg) as u32), ext5((bl + db) as u32)] } else { [ext5(r as u32), ext5(g as u32), ext5(bl as u32)] };
+    let base = if second {
+        [ext5((r + dr) as u32), ext5((g + dg) as u32), ext5((bl + db) as u32)]
+    } else {
+        [ext5(r as u32), ext5(g as u32), ext5(bl as u32)]
+    };
     let cw = if second { field(w, 36, 34) } else { field(w, 39, 37) };
     base_and_table(base, cw)
 }
@@ -159,7 +180,11 @@ fn eac_parts(b: &[u8], i: usize) -> (u32, i32, i32) {
     let w = word(b);
     let p = column_major(i);
     let sel = field(w, 47 - 3 * p, 45 - 3 * p);
-    (field(w, 63, 56), field(w, 55, 52) as i32, EAC_TABLES[field(w, 51, 48) as usize][sel as usize])
+    (
+        field(w, 63, 56),
+        field(w, 55, 52) as i32,
+        EAC_TABLES[field(w, 51, 48) as usize][sel as usize],
+    )
 }
 
 /// ETC2 alpha (the first half of an ETC2 RGBA block), 8-bit precision.

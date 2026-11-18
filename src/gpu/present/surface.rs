@@ -13,9 +13,15 @@ pub enum SurfaceError {
     UnsupportedFormat(Format),
     Tiling(TilingError),
     /// The surface bytes are not fully mapped in guest memory.
-    Unmapped { addr: u64, len: usize },
+    Unmapped {
+        addr: u64,
+        len: usize,
+    },
     /// Detiled bytes do not cover `width * height` RGBA8 pixels.
-    FrameSizeMismatch { expected: Option<usize>, got: usize },
+    FrameSizeMismatch {
+        expected: Option<usize>,
+        got: usize,
+    },
 }
 
 impl From<TilingError> for SurfaceError {
@@ -28,12 +34,17 @@ impl From<TilingError> for SurfaceError {
 /// opaque, since a swapchain image's alpha is not meant to blend with the desktop).
 pub fn frame_from_surface(mmu: &Memory, addr: u64, surface: &Surface) -> Result<Frame, SurfaceError> {
     match surface.format {
-        Format::R8G8B8A8Unorm | Format::R8G8B8A8Srgb | Format::B8G8R8A8Unorm | Format::B8G8R8A8Srgb | Format::R5G6B5Unorm => {}
+        Format::R8G8B8A8Unorm
+        | Format::R8G8B8A8Srgb
+        | Format::B8G8R8A8Unorm
+        | Format::B8G8R8A8Srgb
+        | Format::R5G6B5Unorm => {}
         other => return Err(SurfaceError::UnsupportedFormat(other)),
     }
     let size = surface.size_bytes()?;
     let mut raw = vec![0u8; size];
-    mmu.read_bytes(addr, &mut raw).map_err(|_| SurfaceError::Unmapped { addr, len: size })?;
+    mmu.read_bytes(addr, &mut raw)
+        .map_err(|_| SurfaceError::Unmapped { addr, len: size })?;
     let (width, height) = (surface.width as usize, surface.height as usize);
     let rgba = match surface.format {
         Format::R8G8B8A8Unorm | Format::R8G8B8A8Srgb => {
@@ -81,7 +92,10 @@ pub fn frame_from_surface(mmu: &Memory, addr: u64, surface: &Surface) -> Result<
     };
     let expected = width.checked_mul(height).and_then(|pixels| pixels.checked_mul(4));
     if expected != Some(rgba.len()) {
-        return Err(SurfaceError::FrameSizeMismatch { expected, got: rgba.len() });
+        return Err(SurfaceError::FrameSizeMismatch {
+            expected,
+            got: rgba.len(),
+        });
     }
     Ok(Frame { width, height, rgba })
 }
@@ -93,7 +107,13 @@ mod tests {
     use crate::mmu::Permission;
 
     fn surface(format: Format, layout: Layout) -> Surface {
-        Surface { width: 70, height: 45, depth: 1, format, layout }
+        Surface {
+            width: 70,
+            height: 45,
+            depth: 1,
+            format,
+            layout,
+        }
     }
 
     fn pattern(w: usize, h: usize) -> Vec<u8> {
@@ -113,7 +133,13 @@ mod tests {
 
     #[test]
     fn block_linear_rgba_round_trips_to_frame() {
-        let s = surface(Format::R8G8B8A8Unorm, Layout::BlockLinear { height_log2: 2, depth_log2: 0 });
+        let s = surface(
+            Format::R8G8B8A8Unorm,
+            Layout::BlockLinear {
+                height_log2: 2,
+                depth_log2: 0,
+            },
+        );
         let linear = pattern(70, 45);
         let tiled = tiling::tile(&s, &linear).unwrap();
         let mut mmu = Memory::new();
@@ -153,8 +179,14 @@ mod tests {
     fn rejects_unsupported_format_and_unmapped_memory() {
         let mmu = Memory::new();
         let s = surface(Format::R16Float, Layout::Pitch { stride: 140 });
-        assert_eq!(frame_from_surface(&mmu, 0, &s), Err(SurfaceError::UnsupportedFormat(Format::R16Float)));
+        assert_eq!(
+            frame_from_surface(&mmu, 0, &s),
+            Err(SurfaceError::UnsupportedFormat(Format::R16Float))
+        );
         let s = surface(Format::R8G8B8A8Unorm, Layout::Pitch { stride: 280 });
-        assert!(matches!(frame_from_surface(&mmu, 0x5000_0000, &s), Err(SurfaceError::Unmapped { .. })));
+        assert!(matches!(
+            frame_from_surface(&mmu, 0x5000_0000, &s),
+            Err(SurfaceError::Unmapped { .. })
+        ));
     }
 }

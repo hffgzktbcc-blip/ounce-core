@@ -18,14 +18,20 @@
 pub mod context;
 pub mod patch;
 
-#[cfg_attr(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")), allow(unsafe_code))]
+#[cfg_attr(
+    all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")),
+    allow(unsafe_code)
+)]
 mod arena;
-#[cfg_attr(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")), allow(unsafe_code))]
+#[cfg_attr(
+    all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")),
+    allow(unsafe_code)
+)]
 mod exec;
 
 pub use arena::Arena;
 pub use context::Context;
-pub use exec::{enter, set_preemption, Exit, MAX_NO_PREEMPT};
+pub use exec::{Exit, MAX_NO_PREEMPT, enter, set_preemption};
 
 use std::fmt;
 
@@ -55,4 +61,7 @@ impl fmt::Display for NceError {
 impl std::error::Error for NceError {}
 
 /// True on hosts where [`Arena::reserve`] and [`enter`] can work.
-pub const SUPPORTED: bool = cfg!(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux")));
+pub const SUPPORTED: bool = cfg!(all(
+    target_arch = "aarch64",
+    any(target_os = "macos", target_os = "linux")
+));

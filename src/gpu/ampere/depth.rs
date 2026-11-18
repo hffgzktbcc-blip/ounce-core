@@ -152,11 +152,7 @@ impl Stencil {
     }
 
     pub(crate) fn face(&self, front: bool) -> &StencilFace {
-        if front {
-            &self.front
-        } else {
-            &self.back
-        }
+        if front { &self.front } else { &self.back }
     }
 }
 
@@ -190,11 +186,7 @@ impl Facing {
     }
 
     pub(crate) fn culled(&self, front: bool) -> bool {
-        if front {
-            self.cull_front
-        } else {
-            self.cull_back
-        }
+        if front { self.cull_front } else { self.cull_back }
     }
 }
 
@@ -205,7 +197,10 @@ pub(crate) fn pixel_z_range(regs: &[u32]) -> (f32, f32, bool, bool) {
     let r = |method: u32| regs[(method / 4) as usize];
     let cc = r(m::SET_VIEWPORT_CLIP_CONTROL);
     let viewport = || {
-        let (a, b) = (f32::from_bits(r(m::SET_VIEWPORT_CLIP_MIN_Z)), f32::from_bits(r(m::SET_VIEWPORT_CLIP_MAX_Z)));
+        let (a, b) = (
+            f32::from_bits(r(m::SET_VIEWPORT_CLIP_MIN_Z)),
+            f32::from_bits(r(m::SET_VIEWPORT_CLIP_MAX_Z)),
+        );
         (a.min(b), a.max(b))
     };
     let (lo, hi) = match (cc >> 16) & 3 {
@@ -232,8 +227,12 @@ pub(crate) fn pixel_z(z: f32, range: (f32, f32, bool, bool)) -> Option<f32> {
 /// Depth bounds `[min, max]`, `None` when the test is off.
 pub(crate) fn depth_bounds(regs: &[u32]) -> Option<(f32, f32)> {
     let r = |method: u32| regs[(method / 4) as usize];
-    (r(m::SET_DEPTH_BOUNDS_TEST) & 1 == 1)
-        .then(|| (f32::from_bits(r(m::SET_DEPTH_BOUNDS_MIN)), f32::from_bits(r(m::SET_DEPTH_BOUNDS_MAX))))
+    (r(m::SET_DEPTH_BOUNDS_TEST) & 1 == 1).then(|| {
+        (
+            f32::from_bits(r(m::SET_DEPTH_BOUNDS_MIN)),
+            f32::from_bits(r(m::SET_DEPTH_BOUNDS_MAX)),
+        )
+    })
 }
 
 #[cfg(test)]

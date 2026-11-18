@@ -26,7 +26,10 @@ impl Default for AudioTap {
 
 impl AudioTap {
     pub const fn new() -> Self {
-        Self { samples: 0, state: FNV_OFFSET }
+        Self {
+            samples: 0,
+            state: FNV_OFFSET,
+        }
     }
 
     /// Records one interleaved sample: its two bytes, little-endian, in stream order.
@@ -83,7 +86,9 @@ mod tests {
 
     /// Reference FNV-1a 64 over bytes (the published algorithm), independent of `AudioTap`.
     fn fnv1a64(bytes: &[u8]) -> u64 {
-        bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3))
+        bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &b| {
+            (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3)
+        })
     }
 
     fn tap_of(samples: &[i16]) -> AudioTap {
@@ -113,8 +118,14 @@ mod tests {
     fn one_path_reports_its_own_digest_whichever_path_it_is() {
         let tap = tap_of(&[10, -10, 20, -20]);
         let expected = format!("fnv1a64:{:016x}", tap.digest().unwrap());
-        for summary in [combined_summary(&tap, &AudioTap::new()), combined_summary(&AudioTap::new(), &tap)] {
-            assert_eq!((summary.frames_mixed, summary.hash.as_deref()), (2, Some(expected.as_str())));
+        for summary in [
+            combined_summary(&tap, &AudioTap::new()),
+            combined_summary(&AudioTap::new(), &tap),
+        ] {
+            assert_eq!(
+                (summary.frames_mixed, summary.hash.as_deref()),
+                (2, Some(expected.as_str()))
+            );
         }
     }
 
@@ -126,12 +137,20 @@ mod tests {
         let mut bytes = renderer.digest().unwrap().to_le_bytes().to_vec();
         bytes.extend(out.digest().unwrap().to_le_bytes());
         assert_eq!(both.hash, Some(format!("fnv1a64:{:016x}", fnv1a64(&bytes))));
-        assert_ne!(both.hash, combined_summary(&out, &renderer).hash, "which path is which matters");
+        assert_ne!(
+            both.hash,
+            combined_summary(&out, &renderer).hash,
+            "which path is which matters"
+        );
     }
 
     #[test]
     fn different_audio_gives_a_different_hash() {
         assert_ne!(tap_of(&[0, 0, 100, 100]).digest(), tap_of(&[0, 0, 100, 101]).digest());
-        assert_ne!(tap_of(&[0, 0]).digest(), tap_of(&[0, 0, 0, 0]).digest(), "length is part of the stream");
+        assert_ne!(
+            tap_of(&[0, 0]).digest(),
+            tap_of(&[0, 0, 0, 0]).digest(),
+            "length is part of the stream"
+        );
     }
 }

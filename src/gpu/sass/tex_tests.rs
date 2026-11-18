@@ -1,7 +1,7 @@
 //! Texture instructions: decoding against real `nvdisasm` words (sm_86 for Ampere, sm_61 for
 //! Maxwell, from CuAssembler's instruction repositories), lowering, and WGSL that validates.
 
-use super::decode::{decode, DecodeError, Instr, Tex, TexHandle, TexLod, TexOp, RZ};
+use super::decode::{DecodeError, Instr, RZ, Tex, TexHandle, TexLod, TexOp, decode};
 use super::ir::{Lod, Op};
 use super::sph::{PixelImap, SphBuilder};
 use super::*;
@@ -28,7 +28,10 @@ fn cuasm_tex_bound_two_destinations() {
         d.instr,
         Instr::Tex(Tex {
             op: TexOp::Sample,
-            handle: TexHandle::Cbuf { bank: 0, offset: 0x63 * 4 },
+            handle: TexHandle::Cbuf {
+                bank: 0,
+                offset: 0x63 * 4
+            },
             lod: TexLod::Level(10),
             x: 8,
             y: 9,
@@ -47,13 +50,25 @@ fn cuasm_tex_bound_two_destinations() {
 #[test]
 fn cuasm_tex_rejects_what_is_not_modelled() {
     // TEX.SCR.LL RZ, R4, R4, R8, 0x0, 0x5e, ARRAY_2D, 0x1
-    assert_eq!(unsupported(decode(w(0xb000_5e08_0404_7b60, 0x0000_0000_019e_01ff))), "texture dimension other than 2D");
+    assert_eq!(
+        unsupported(decode(w(0xb000_5e08_0404_7b60, 0x0000_0000_019e_01ff))),
+        "texture dimension other than 2D"
+    );
     // TLD.SCR.LZ R12, R10, R4, 0x0, 0x5e, 1D
-    assert_eq!(unsupported(decode(w(0x1000_5eff_040a_7b66, 0x0000_0000_009e_0f0c))), "texture dimension other than 2D");
+    assert_eq!(
+        unsupported(decode(w(0x1000_5eff_040a_7b66, 0x0000_0000_009e_0f0c))),
+        "texture dimension other than 2D"
+    );
     // TEX.B.LL.DC R10, R26, R10, R28, 2D (bindless)
-    assert_eq!(unsupported(decode(w(0x2800_001c_0a1a_7361, 0x0000_0000_019e_4f0a))), "bindless texture handle");
+    assert_eq!(
+        unsupported(decode(w(0x2800_001c_0a1a_7361, 0x0000_0000_019e_4f0a))),
+        "bindless texture handle"
+    );
     // TLD.SCR.B.LZ R12, R10, R4, R25, 1D (bindless)
-    assert_eq!(unsupported(decode(w(0x1800_0019_040a_7367, 0x0000_0000_009e_0f0c))), "bindless texture handle");
+    assert_eq!(
+        unsupported(decode(w(0x1800_0019_040a_7367, 0x0000_0000_009e_0f0c))),
+        "bindless texture handle"
+    );
 }
 
 #[test]
@@ -64,7 +79,10 @@ fn cuasm_tld_fields_in_two_d_form() {
         d.instr,
         Instr::Tex(Tex {
             op: TexOp::Fetch,
-            handle: TexHandle::Cbuf { bank: 0, offset: 0x5e * 4 },
+            handle: TexHandle::Cbuf {
+                bank: 0,
+                offset: 0x5e * 4
+            },
             lod: TexLod::Zero,
             x: 4,
             y: 5,
@@ -96,10 +114,17 @@ fn maxwell_cuasm_texs_component_sets() {
         })
     );
     // TEXS.P RZ, R12, R9, R12, 0x52, 2D, RG
-    let Instr::Tex(t) = mx(0xd830_052f_f0c7_090c).unwrap().instr else { panic!() };
-    assert_eq!((t.x, t.y, t.dst, t.handle), (9, 12, [12, 13, RZ, RZ], TexHandle::Bound { index: 0x52 }));
+    let Instr::Tex(t) = mx(0xd830_052f_f0c7_090c).unwrap().instr else {
+        panic!()
+    };
+    assert_eq!(
+        (t.x, t.y, t.dst, t.handle),
+        (9, 12, [12, 13, RZ, RZ], TexHandle::Bound { index: 0x52 })
+    );
     // TEXS.P RZ, R3, R4, R5, 0x5a, 2D, R
-    let Instr::Tex(t) = mx(0xd820_05af_f057_0403).unwrap().instr else { panic!() };
+    let Instr::Tex(t) = mx(0xd820_05af_f057_0403).unwrap().instr else {
+        panic!()
+    };
     assert_eq!(t.dst, [3, RZ, RZ, RZ]);
 }
 
@@ -124,7 +149,12 @@ fn maxwell_cuasm_tlds_two_d_level_zero() {
 fn maxwell_texs_array_2d() {
     // deko_console's fragment shader: TEXS R3, RZ, R0, R2, 0x0, ARRAY_2D, R (layer in R0, coordinates
     // in R1 and R2; Ryujinx `EmitTexs`).
-    let Ok(decode::Decoded { instr: Instr::Tex(t), .. }) = mx(0xd8e0_1a4f_f027_0003) else { panic!() };
+    let Ok(decode::Decoded {
+        instr: Instr::Tex(t), ..
+    }) = mx(0xd8e0_1a4f_f027_0003)
+    else {
+        panic!()
+    };
     assert_eq!((t.layer, t.x, t.y, t.lod), (Some(0), 1, 2, TexLod::Auto));
     assert_eq!(t.dst, [3, RZ, RZ, RZ]);
 }
@@ -134,23 +164,36 @@ fn maxwell_cuasm_rejects_what_is_not_modelled() {
     // TEX.AOFFI.T R12, R4, R42, 0x50, 2D, 0xf
     assert_eq!(unsupported(mx(0xc078_0507_a2a7_040c)), "TEX .DC/.AOFFI");
     // TLD.LZ.AOFFI.T R20, R46, R50, 0x50, 1D, 0xf
-    assert_eq!(unsupported(mx(0xdc38_050f_8327_2e14)), "texture dimension other than 2D");
+    assert_eq!(
+        unsupported(mx(0xdc38_050f_8327_2e14)),
+        "texture dimension other than 2D"
+    );
     // TEXS.P RZ, R14, R14, R25, 0x54, CUBE, R
-    assert_eq!(unsupported(mx(0xd980_054f_f197_0e0e)), "texture target other than 2D / 2D array (.LZ for TLDS)");
+    assert_eq!(
+        unsupported(mx(0xd980_054f_f197_0e0e)),
+        "texture target other than 2D / 2D array (.LZ for TLDS)"
+    );
     // TLDS.LZ.P RZ, R8, R15, 0x5e, 1D, RG
-    assert_eq!(unsupported(mx(0xda10_05ef_fff7_0f08)), "texture target other than 2D / 2D array (.LZ for TLDS)");
+    assert_eq!(
+        unsupported(mx(0xda10_05ef_fff7_0f08)),
+        "texture target other than 2D / 2D array (.LZ for TLDS)"
+    );
     // TEX.B.LL.P R4, R6, R4, 0x0, 2D, 0xf
     assert_eq!(unsupported(mx(0xdeb8_0067_a047_0604)), "bindless texture handle");
     // TLD.B.LZ.T R4, R10, R4, 0x0, 1D, 0xf
     assert_eq!(unsupported(mx(0xdd38_0007_8047_0a04)), "bindless texture handle");
     // TEXS.P RZ, R3, R4, R5, 0x5a, 2D, R with bit 59 cleared (.F16 on SM60+).
-    assert_eq!(unsupported(mx(0xd820_05af_f057_0403 & !(1 << 59))), "16-bit texture result");
+    assert_eq!(
+        unsupported(mx(0xd820_05af_f057_0403 & !(1 << 59))),
+        "16-bit texture result"
+    );
 }
 
 #[test]
 fn maxwell_tex_full_form_writes_consecutive_registers() {
     // TEX.AOFFI.T R12, R4, R42, 0x50, 2D, 0xf without .AOFFI and its offset register, mask 0b1010.
-    let word = (0xc078_0507_a2a7_040c & !(1 << 54) & !(0xff << 20) & !(0xf << 31)) | ((RZ as u64) << 20) | (0b1010 << 31);
+    let word =
+        (0xc078_0507_a2a7_040c & !(1 << 54) & !(0xff << 20) & !(0xf << 31)) | ((RZ as u64) << 20) | (0b1010 << 31);
     assert_eq!(
         mx(word).unwrap().instr,
         Instr::Tex(Tex {
@@ -239,7 +282,12 @@ fn textured_fragment_lowers_and_validates() {
     assert!(t.wgsl.contains("textureSample(t0, s0, vec2<f32>("), "{}", t.wgsl);
     assert_eq!(
         t.interface.textures,
-        vec![TextureBinding { group: 1, binding: 32, sampler_binding: Some(33), handle: TexHandle::Cbuf { bank: 1, offset: 0 } }]
+        vec![TextureBinding {
+            group: 1,
+            binding: 32,
+            sampler_binding: Some(33),
+            handle: TexHandle::Cbuf { bank: 1, offset: 0 }
+        }]
     );
 }
 
@@ -247,15 +295,28 @@ fn textured_fragment_lowers_and_validates() {
 fn texture_results_survive_overlapping_destinations() {
     // TEX R4, R4 (coords in R4, R5; results R4..R7) then copy out: the coordinate reads happen
     // before the writes.
-    let h = SphBuilder::pixel().ps_target(0, 0xf).ps_imap(0, 0, PixelImap::Perspective).ps_imap(0, 1, PixelImap::Perspective);
-    let code = [asm::ipa(4, 0x80), asm::ipa(5, 0x84), asm::tex(false, 4, 6, 4, RZ, 0, 3, 0xf, 1), asm::exit()];
+    let h = SphBuilder::pixel()
+        .ps_target(0, 0xf)
+        .ps_imap(0, 0, PixelImap::Perspective)
+        .ps_imap(0, 1, PixelImap::Perspective);
+    let code = [
+        asm::ipa(4, 0x80),
+        asm::ipa(5, 0x84),
+        asm::tex(false, 4, 6, 4, RZ, 0, 3, 0xf, 1),
+        asm::exit(),
+    ];
     let f = ir::lower(ShaderStage::Fragment, &program(&h, &code)[AMPERE_SPH_SIZE..]).unwrap();
     let tex = f.values.iter().position(|op| matches!(op, Op::Tex { .. })).unwrap();
-    let Op::Tex { x, y, lod, .. } = f.values[tex] else { unreachable!() };
+    let Op::Tex { x, y, lod, .. } = f.values[tex] else {
+        unreachable!()
+    };
     assert!(matches!(f.op(x), Op::Interp { addr: 0x80, .. }) && matches!(f.op(y), Op::Interp { addr: 0x84, .. }));
     assert_eq!(lod, Lod::Zero);
     let comps: Vec<Op> = (0..4).map(|r| f.op(f.exit_regs[4 + r].unwrap())).collect();
-    assert_eq!(comps, (0..4).map(|c| Op::Comp(ir::Value(tex as u32), c)).collect::<Vec<_>>());
+    assert_eq!(
+        comps,
+        (0..4).map(|c| Op::Comp(ir::Value(tex as u32), c)).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -278,14 +339,24 @@ fn vertex_fetch_and_explicit_level_validate() {
     let t = translate(ShaderStage::Vertex, &program(&h, &code)).unwrap();
     validate_wgsl(&t.wgsl);
     assert!(t.wgsl.contains("textureLoad(t0, vec2<i32>(3i, 5i), 0i)"), "{}", t.wgsl);
-    assert!(t.wgsl.contains("textureSampleLevel(t1, s1, vec2<f32>(0.5f, 0.25f), 1.0f)"), "{}", t.wgsl);
+    assert!(
+        t.wgsl
+            .contains("textureSampleLevel(t1, s1, vec2<f32>(0.5f, 0.25f), 1.0f)"),
+        "{}",
+        t.wgsl
+    );
     let fetch_only = t.interface.textures[0];
     assert_eq!((fetch_only.binding, fetch_only.sampler_binding), (32, None));
     assert_eq!(t.interface.textures[1].sampler_binding, Some(35));
 }
 
 fn vertex_store(s: u8, addr: u16, comps: u8) -> u128 {
-    asm::op(0x322) | (0xff << 24) | ((s as u128) << 32) | ((addr as u128) << 40) | (0xff << 64) | (((comps - 1) as u128) << 74)
+    asm::op(0x322)
+        | (0xff << 24)
+        | ((s as u128) << 32)
+        | ((addr as u128) << 40)
+        | (0xff << 64)
+        | (((comps - 1) as u128) << 74)
 }
 
 #[test]
@@ -296,14 +367,29 @@ fn maxwell_texs_fragment_validates() {
     }
     const PT: u64 = 7 << 16;
     let ipa = |d: u8, addr: u16, freq: u64, mul: u8| {
-        (0xe000u64 << 48) | PT | (freq << 54) | (7 << 47) | ((RZ as u64) << 39) | ((addr as u64) << 28) | ((mul as u64) << 20) | ((RZ as u64) << 8) | d as u64
+        (0xe000u64 << 48)
+            | PT
+            | (freq << 54)
+            | (7 << 47)
+            | ((RZ as u64) << 39)
+            | ((addr as u64) << 28)
+            | ((mul as u64) << 20)
+            | ((RZ as u64) << 8)
+            | d as u64
     };
     let rcp = (0x5080u64 << 48) | PT | (4 << 20) | (8 << 8) | 8;
     // TEXS R0, R2 <- (R4, R5), handle 2, 2D, RGBA.
     let texs = (0xd8u64 << 56) | (1 << 53) | (4 << 50) | (2 << 36) | (2 << 28) | (5 << 20) | PT | (4 << 8);
     let exit = (0xe300u64 << 48) | PT | 0xf;
     let nop = (0x50b0u64 << 48) | PT | 0xf00;
-    let code = [ipa(8, 0x7c, 0, 0), rcp, ipa(4, 0x80, 1, 8), ipa(5, 0x84, 1, 8), texs, exit];
+    let code = [
+        ipa(8, 0x7c, 0, 0),
+        rcp,
+        ipa(4, 0x80, 1, 8),
+        ipa(5, 0x84, 1, 8),
+        texs,
+        exit,
+    ];
     let mut b = h.bytes(MAXWELL_SPH_SIZE);
     for chunk in code.chunks(3) {
         b.extend_from_slice(&0x001f_8000_fc00_07e0u64.to_le_bytes());
@@ -314,7 +400,13 @@ fn maxwell_texs_fragment_validates() {
     let t = translate_maxwell(ShaderStage::Fragment, &b).unwrap();
     validate_wgsl(&t.wgsl);
     assert_eq!(t.interface.textures[0].handle, TexHandle::Bound { index: 2 });
-    assert!(t.listing.iter().any(|l| l.starts_with("TEX.2D {R0, R1, R2, R3}, R4, R5, 0x2")), "{:?}", t.listing);
+    assert!(
+        t.listing
+            .iter()
+            .any(|l| l.starts_with("TEX.2D {R0, R1, R2, R3}, R4, R5, 0x2")),
+        "{:?}",
+        t.listing
+    );
 }
 
 fn validate_wgsl(src: &str) {

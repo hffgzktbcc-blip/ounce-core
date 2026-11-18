@@ -1,0 +1,3 @@
+# Commits that only reformat code. Enable with: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# cargo fmt --all with the new rustfmt.toml (no functional change)
+fcd0a86b4cf2017177bbd590ea6eb835dd94ce9f

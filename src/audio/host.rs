@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 pub const DEFAULT_SAMPLE_RATE: u32 = 48_000;
 pub const DEFAULT_CHANNELS: u16 = 2;

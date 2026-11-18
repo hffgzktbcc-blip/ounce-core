@@ -78,11 +78,26 @@ impl Default for PointerAuth {
     /// these are fixed so runs stay reproducible.
     fn default() -> Self {
         Self {
-            ia: Key128 { hi: 0x5A1E_7C3B_9D04_E62F, lo: 0x0F1E_2D3C_4B5A_6978 },
-            ib: Key128 { hi: 0xC3A5_1F87_2B6D_904E, lo: 0x8796_A5B4_C3D2_E1F0 },
-            da: Key128 { hi: 0x1B2C_3D4E_5F60_7182, lo: 0x2468_ACE0_1357_9BDF },
-            db: Key128 { hi: 0x9E37_79B9_7F4A_7C15, lo: 0xF39C_C060_5CED_C834 },
-            ga: Key128 { hi: 0x6A09_E667_F3BC_C908, lo: 0xBB67_AE85_84CA_A73B },
+            ia: Key128 {
+                hi: 0x5A1E_7C3B_9D04_E62F,
+                lo: 0x0F1E_2D3C_4B5A_6978,
+            },
+            ib: Key128 {
+                hi: 0xC3A5_1F87_2B6D_904E,
+                lo: 0x8796_A5B4_C3D2_E1F0,
+            },
+            da: Key128 {
+                hi: 0x1B2C_3D4E_5F60_7182,
+                lo: 0x2468_ACE0_1357_9BDF,
+            },
+            db: Key128 {
+                hi: 0x9E37_79B9_7F4A_7C15,
+                lo: 0xF39C_C060_5CED_C834,
+            },
+            ga: Key128 {
+                hi: 0x6A09_E667_F3BC_C908,
+                lo: 0xBB67_AE85_84CA_A73B,
+            },
             enabled: [true; 4],
             va_bits: 39,
             tbi: false,
@@ -104,11 +119,7 @@ impl PointerAuth {
     /// The bits that hold the PAC: 54:`va_bits`, plus 63:56 without top-byte-ignore.
     fn pac_mask(&self) -> u64 {
         let low = (1u64 << 55) - (1u64 << self.va_bits);
-        if self.tbi {
-            low
-        } else {
-            low | 0xFF00_0000_0000_0000
-        }
+        if self.tbi { low } else { low | 0xFF00_0000_0000_0000 }
     }
 
     /// `Strip`: the pointer with its PAC field replaced by copies of bit 55.
@@ -296,7 +307,11 @@ mod tests {
     fn sign_then_auth_round_trips_for_every_key() {
         let pa = PointerAuth::default();
         for key in [PacKey::IA, PacKey::IB, PacKey::DA, PacKey::DB] {
-            for ptr in [0x0000_0000_8000_1234u64, 0x0000_0040_0000_0000 - 8, 0xFFFF_FF80_0000_1000] {
+            for ptr in [
+                0x0000_0000_8000_1234u64,
+                0x0000_0040_0000_0000 - 8,
+                0xFFFF_FF80_0000_1000,
+            ] {
                 let signed = pa.sign(ptr, 0x7000, key);
                 assert_ne!(signed, ptr, "{key:?} left {ptr:#x} unsigned");
                 assert_eq!(signed & ((1 << 39) - 1), ptr & ((1 << 39) - 1), "address bits changed");
@@ -329,7 +344,10 @@ mod tests {
 
     #[test]
     fn disabled_key_is_identity_and_tbi_keeps_top_byte() {
-        let mut pa = PointerAuth { enabled: [false, true, true, true], ..Default::default() };
+        let mut pa = PointerAuth {
+            enabled: [false, true, true, true],
+            ..Default::default()
+        };
         assert_eq!(pa.sign(0x8000_0000, 0, PacKey::IA), 0x8000_0000);
         assert_eq!(pa.auth(0x1234_0000_8000_0000, 0, PacKey::IA), 0x1234_0000_8000_0000);
         pa.tbi = true;
@@ -432,7 +450,11 @@ mod tests {
         assert_eq!(cpu.regs.read_x(30), CODE + 4);
         run(&mut cpu, &mut mmu, 2).unwrap();
         assert_eq!(cpu.regs.read_x(3), 0x1122_3344);
-        assert_eq!(cpu.regs.read_x(2), STACK - 0x100 + 8, "writeback stores the authenticated address");
+        assert_eq!(
+            cpu.regs.read_x(2),
+            STACK - 0x100 + 8,
+            "writeback stores the authenticated address"
+        );
         assert_eq!(cpu.regs.pc, CODE + 0x40);
     }
 
@@ -450,7 +472,11 @@ mod tests {
         cpu.regs.write_x(2, 6);
         run(&mut cpu, &mut mmu, 3).unwrap();
         assert_eq!(cpu.regs.read_x(0), cpu.pauth.pacga(5, 6));
-        assert_eq!((cpu.regs.read_x(1) >> 8) & 0xF, 1, "API: IMPLEMENTATION DEFINED algorithm");
+        assert_eq!(
+            (cpu.regs.read_x(1) >> 8) & 0xF,
+            1,
+            "API: IMPLEMENTATION DEFINED algorithm"
+        );
         assert_eq!((cpu.regs.read_x(1) >> 28) & 0xF, 1, "GPI");
         assert_eq!(cpu.regs.read_x(2) & 0xF, 1, "BT");
     }
@@ -489,7 +515,10 @@ mod tests {
         assert!(ok(BTI_JC, BLR_X0, 0) && ok(BTI_JC, BR_X0, 0));
         assert!(ok(PACIASP, BLR_X0, 0) && ok(PACIBSP, BR_X0, 0));
         let brk = bti_case(0xD4200000, BR_X0, 0, true);
-        assert!(!matches!(brk, Err(CpuError::BranchTarget { .. })), "BRK is always a landing pad: {brk:?}");
+        assert!(
+            !matches!(brk, Err(CpuError::BranchTarget { .. })),
+            "BRK is always a landing pad: {brk:?}"
+        );
         // Unguarded target: anything goes.
         assert!(bti_case(NOP, BR_X0, 0, false).is_ok());
         // RET never needs a landing pad.
@@ -505,7 +534,10 @@ mod tests {
         cpu.pauth.bt0 = true;
         cpu.regs.write_x(0, CODE2);
         cpu.step(&mut mmu).unwrap();
-        assert!(matches!(cpu.step(&mut mmu), Err(CpuError::BranchTarget { btype: 0b11, .. })));
+        assert!(matches!(
+            cpu.step(&mut mmu),
+            Err(CpuError::BranchTarget { btype: 0b11, .. })
+        ));
     }
 
     #[test]

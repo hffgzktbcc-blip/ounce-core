@@ -3,11 +3,11 @@
 
 use super::hbx::HbxImage;
 use crate::{
-    cpu::{tier2_jit::BlockExit, tier3_jit::Tier3JitEngine, Cpu, StepResult},
+    cpu::{Cpu, StepResult, tier2_jit::BlockExit, tier3_jit::Tier3JitEngine},
     gpu::Frame,
     mmu::{Memory, Permission},
 };
-use ab_glyph::{point, Font, FontRef, ScaleFont};
+use ab_glyph::{Font, FontRef, ScaleFont, point};
 
 const WIDTH: usize = 1920;
 const HEIGHT: usize = 1080;
@@ -19,10 +19,7 @@ const STACK_SIZE: usize = 1024 * 1024;
 const HEAP_SIZE: usize = 4 * 1024 * 1024;
 const SVC_BASE: u16 = 0x100;
 
-pub(super) fn first_frame(
-    image: &HbxImage<'_>,
-    tier3: bool,
-) -> Result<Frame, Box<dyn std::error::Error>> {
+pub(super) fn first_frame(image: &HbxImage<'_>, tier3: bool) -> Result<Frame, Box<dyn std::error::Error>> {
     let mut mem = Memory::new();
     let mut cpu = Cpu::new();
     mem.map_range(CTX, 4096, Permission::READ_WRITE);
@@ -99,9 +96,7 @@ pub(super) fn first_frame(
             }
             Some(slot @ (1 | 2)) if drawing => {
                 let (x, y, w, h, radius) = (scalar(0), scalar(1), scalar(2), scalar(3), scalar(4));
-                if ![x, y, w, h, radius].iter().all(|v| v.is_finite())
-                    || (slot == 2 && !scalar(5).is_finite())
-                {
+                if ![x, y, w, h, radius].iter().all(|v| v.is_finite()) || (slot == 2 && !scalar(5).is_finite()) {
                     return Err("HBX rectangle has non-finite coordinates".into());
                 }
                 let thickness = if slot == 2 { scalar(5).max(0.0) } else { 0.0 };
@@ -111,8 +106,7 @@ pub(super) fn first_frame(
                     for col in (x.floor().max(0.0) as usize)..((x + w).ceil() as usize).min(WIDTH) {
                         let dx = (col as f32 + 0.5 - (x + w / 2.0)).abs() - (w / 2.0 - radius);
                         let dy = (row as f32 + 0.5 - (y + h / 2.0)).abs() - (h / 2.0 - radius);
-                        let distance =
-                            dx.max(0.0).hypot(dy.max(0.0)) + dx.max(dy).min(0.0) - radius;
+                        let distance = dx.max(0.0).hypot(dy.max(0.0)) + dx.max(dy).min(0.0) - radius;
                         if distance <= 0.0 && (slot == 1 || distance >= -thickness) {
                             blend(&mut frame, col, row, rgba, 1.0);
                         }
@@ -123,8 +117,7 @@ pub(super) fn first_frame(
                 let addr = cpu.regs.read_x(2);
                 let mut text = Vec::new();
                 for i in 0..=512 {
-                    let byte =
-                        mem.read_u8(addr.checked_add(i).ok_or("HBX text address overflow")?)?;
+                    let byte = mem.read_u8(addr.checked_add(i).ok_or("HBX text address overflow")?)?;
                     if byte == 0 {
                         break;
                     }
@@ -161,9 +154,7 @@ pub(super) fn first_frame(
                 cpu.regs.write_s(0, x - start);
             }
             Some(10) if drawing => return Ok(frame),
-            _ => {
-                return Err(format!("unsupported HBX callback or call order: SVC {svc:#x}").into())
-            }
+            _ => return Err(format!("unsupported HBX callback or call order: SVC {svc:#x}").into()),
         }
         cpu.regs.pc = cpu.regs.read_x(30);
     }
@@ -178,9 +169,8 @@ fn blend(frame: &mut Frame, x: usize, y: usize, rgba: [u8; 4], coverage: f32) {
     let out_alpha = alpha + dst_alpha * (1.0 - alpha);
     if out_alpha > 0.0 {
         for i in 0..3 {
-            dst[i] = ((f32::from(rgba[i]) * alpha + f32::from(dst[i]) * dst_alpha * (1.0 - alpha))
-                / out_alpha)
-                .round() as u8;
+            dst[i] = ((f32::from(rgba[i]) * alpha + f32::from(dst[i]) * dst_alpha * (1.0 - alpha)) / out_alpha).round()
+                as u8;
         }
         dst[3] = (out_alpha * 255.0).round() as u8;
     }
@@ -197,21 +187,25 @@ fn outside_hello_cpu_first_frame() -> Result<(), Box<dyn std::error::Error>> {
     let code = fs::read(root.join("code.bin"))?;
     let data = fs::read(root.join("data.bin"))?;
     let image = HbxImage::parse(&report, &code, &data)?;
-    let oracle: serde_json::Value = serde_json::from_str(include_str!(
-        "../../tests/corpus/switch2/hello-cpu-first-frame.json"
-    ))?;
+    let oracle: serde_json::Value =
+        serde_json::from_str(include_str!("../../tests/corpus/switch2/hello-cpu-first-frame.json"))?;
     let mut frames = Vec::new();
     let mut runs = Vec::new();
     for (engine, tier3) in [("interpreter", false), ("tier3", true)] {
         match first_frame(&image, tier3) {
             Ok(frame) => {
-                let pixels: Vec<_> = oracle["pixels"].as_array().expect("registered pixels").iter().map(|sample| {
-                    let x = sample["x"].as_u64().expect("x") as usize;
-                    let y = sample["y"].as_u64().expect("y") as usize;
-                    let observed = frame.pixel(x, y).map(|(r,g,b,a)| [r,g,b,a]);
-                    serde_json::json!({"x": x, "y": y, "expected": sample["rgba"],
+                let pixels: Vec<_> = oracle["pixels"]
+                    .as_array()
+                    .expect("registered pixels")
+                    .iter()
+                    .map(|sample| {
+                        let x = sample["x"].as_u64().expect("x") as usize;
+                        let y = sample["y"].as_u64().expect("y") as usize;
+                        let observed = frame.pixel(x, y).map(|(r, g, b, a)| [r, g, b, a]);
+                        serde_json::json!({"x": x, "y": y, "expected": sample["rgba"],
                         "observed": observed, "pass": serde_json::json!(observed) == sample["rgba"]})
-                }).collect();
+                    })
+                    .collect();
                 let pass = Some(frame.width as u64) == oracle["width"].as_u64()
                     && Some(frame.height as u64) == oracle["height"].as_u64()
                     && !pixels.is_empty()
@@ -221,9 +215,7 @@ fn outside_hello_cpu_first_frame() -> Result<(), Box<dyn std::error::Error>> {
                     "rgba_fnv1a64": format!("{:#018x}", frame.content_hash()), "pixels": pixels}));
                 frames.push(frame);
             }
-            Err(error) => runs.push(
-                serde_json::json!({"engine": engine, "pass": false, "error": error.to_string()}),
-            ),
+            Err(error) => runs.push(serde_json::json!({"engine": engine, "pass": false, "error": error.to_string()})),
         }
     }
     let agreement = frames.len() == 2 && frames[0] == frames[1];

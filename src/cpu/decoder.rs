@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    SimdAcrossOp, SimdLongOp, SimdNarrowOp, SimdSatLongOp,
-    SimdElemOp, BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp, ShiftType,
-    SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftExtOp, SimdOp3, SimdPermuteOp, SimdShiftOp,
+    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp,
+    ShiftType, SimdAcrossOp, SimdElemOp, SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdLongOp, SimdNarrowOp,
+    SimdOp2, SimdOp3, SimdPermuteOp, SimdSatLongOp, SimdShiftExtOp, SimdShiftOp,
 };
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
@@ -35,10 +35,7 @@ pub fn decode(raw: u32) -> Instruction {
     if let Some(inst) = decode_pauth(raw) {
         return inst;
     }
-    if (raw & 0xFFFF_F01F) == 0xD503_201F
-        || (raw & 0xFFFF_F000) == 0xD503_3000
-        || (raw & 0xFFF0_0000) == 0xD500_0000
-    {
+    if (raw & 0xFFFF_F01F) == 0xD503_201F || (raw & 0xFFFF_F000) == 0xD503_3000 || (raw & 0xFFF0_0000) == 0xD500_0000 {
         return Instruction::Nop;
     }
 
@@ -59,11 +56,7 @@ pub fn decode(raw: u32) -> Instruction {
         let signed_imm = sign_extend(raw_imm, 21);
         let rd = (raw & 0x1F) as u8;
 
-        let imm = if is_page {
-            signed_imm << 12
-        } else {
-            signed_imm
-        };
+        let imm = if is_page { signed_imm << 12 } else { signed_imm };
 
         return Instruction::Adr { rd, imm, is_page };
     }
@@ -260,13 +253,7 @@ pub fn decode(raw: u32) -> Instruction {
         let lsb = ((raw >> 10) & 0x3F) as u8;
         let rn = ((raw >> 5) & 0x1F) as u8;
         let rd = (raw & 0x1F) as u8;
-        return Instruction::Extract {
-            rd,
-            rn,
-            rm,
-            lsb,
-            is_64,
-        };
+        return Instruction::Extract { rd, rn, rm, lsb, is_64 };
     }
 
     // 7e. Conditional Select: CSEL, CSINC, CSINV, CSNEG
@@ -401,9 +388,9 @@ pub fn decode(raw: u32) -> Instruction {
         let mode = (raw >> 23) & 0x3;
         let (writeback, post_index) = match mode {
             0b00 => (false, false), // Non-temporal (LDNP/STNP): same access as signed offset
-            0b01 => (true, true),  // Post-index
+            0b01 => (true, true),   // Post-index
             0b10 => (false, false), // Signed offset
-            _ => (true, false),    // Pre-index
+            _ => (true, false),     // Pre-index
         };
 
         // V == 1: SIMD&FP register pair (S, D or Q), not general registers.
@@ -576,7 +563,12 @@ pub fn decode(raw: u32) -> Instruction {
         if ftype == 3 && (4..=7).contains(&((raw >> 12) & 0xF)) {
             // FMAX/FMIN/FMAXNM/FMINNM Hd, Hn, Hm (FEAT_FP16)
             let op = [FpOp2::Fmax, FpOp2::Fmin, FpOp2::Fmaxnm, FpOp2::Fminnm][(((raw >> 12) & 0xF) - 4) as usize];
-            return Instruction::FpHalfMinMax { rd: (raw & 0x1F) as u8, rn: ((raw >> 5) & 0x1F) as u8, rm: ((raw >> 16) & 0x1F) as u8, op };
+            return Instruction::FpHalfMinMax {
+                rd: (raw & 0x1F) as u8,
+                rn: ((raw >> 5) & 0x1F) as u8,
+                rm: ((raw >> 16) & 0x1F) as u8,
+                op,
+            };
         }
         if ftype == 0 || ftype == 1 {
             let is_double = ftype == 1;
@@ -733,11 +725,7 @@ pub fn decode(raw: u32) -> Instruction {
         let is_read = (raw & (1 << 21)) != 0;
         let sysreg = ((raw >> 5) & 0x7FFF) as u16;
         let rt = (raw & 0x1F) as u8;
-        return Instruction::SystemReg {
-            rt,
-            sysreg,
-            is_read,
-        };
+        return Instruction::SystemReg { rt, sysreg, is_read };
     }
 
     // 17. Integer Multiply-Add / Multiply-Subtract: MADD, MSUB, MUL
@@ -797,7 +785,13 @@ pub fn decode(raw: u32) -> Instruction {
             0b010000..=0b010111 => {
                 let size = (opcode & 0x3) as u8;
                 if is_64 == (size == 3) {
-                    return Instruction::Crc32 { rd, rn, rm, size, castagnoli: (opcode & 0x4) != 0 };
+                    return Instruction::Crc32 {
+                        rd,
+                        rn,
+                        rm,
+                        size,
+                        castagnoli: (opcode & 0x4) != 0,
+                    };
                 }
             }
             _ => {}
@@ -811,12 +805,7 @@ pub fn decode(raw: u32) -> Instruction {
         let to_fp = ((raw >> 16) & 1) != 0;
         let rn = ((raw >> 5) & 0x1F) as u8;
         let rd = (raw & 0x1F) as u8;
-        return Instruction::FpMovGen {
-            rd,
-            rn,
-            to_fp,
-            is_64,
-        };
+        return Instruction::FpMovGen { rd, rn, to_fp, is_64 };
     }
 
     // 20. Floating-Point Scalar & 128-bit NEON Q Load / Store (Immediate unsigned offset):
@@ -893,7 +882,9 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
-    decode_extra(raw).or_else(|| decode_intvec(raw)).unwrap_or(Instruction::Unimplemented { raw })
+    decode_extra(raw)
+        .or_else(|| decode_intvec(raw))
+        .unwrap_or(Instruction::Unimplemented { raw })
 }
 
 /// FEAT_PAuth: the HINT-space forms, the data-processing (1-source) forms, `PACGA`, the
@@ -909,16 +900,16 @@ fn decode_pauth(raw: u32) -> Option<Instruction> {
     // HINT #imm: 1101 0101 0000 0011 0010 CRm op2 11111
     if (raw & 0xFFFF_F01F) == 0xD503_201F {
         return match (raw >> 5) & 0x7F {
-            7 => pauth(30, Strip, IA, Zero), // XPACLRI
+            7 => pauth(30, Strip, IA, Zero),   // XPACLRI
             8 => pauth(17, Sign, IA, Reg(16)), // PACIA1716
             10 => pauth(17, Sign, IB, Reg(16)),
             12 => pauth(17, Auth, IA, Reg(16)), // AUTIA1716
             14 => pauth(17, Auth, IB, Reg(16)),
-            24 => pauth(30, Sign, IA, Zero), // PACIAZ
+            24 => pauth(30, Sign, IA, Zero),    // PACIAZ
             25 => pauth(30, Sign, IA, Reg(31)), // PACIASP
             26 => pauth(30, Sign, IB, Zero),
             27 => pauth(30, Sign, IB, Reg(31)),
-            28 => pauth(30, Auth, IA, Zero), // AUTIAZ
+            28 => pauth(30, Auth, IA, Zero),    // AUTIAZ
             29 => pauth(30, Auth, IA, Reg(31)), // AUTIASP
             30 => pauth(30, Auth, IB, Zero),
             31 => pauth(30, Auth, IB, Reg(31)),
@@ -940,7 +931,11 @@ fn decode_pauth(raw: u32) -> Option<Instruction> {
 
     // PACGA: 1 0 0 11010110 Rm 001100 Rn Rd
     if (raw & 0xFFE0_FC00) == 0x9AC0_3000 {
-        return Some(Instruction::Pacga { rd, rn, rm: ((raw >> 16) & 0x1F) as u8 });
+        return Some(Instruction::Pacga {
+            rd,
+            rn,
+            rm: ((raw >> 16) & 0x1F) as u8,
+        });
     }
 
     // Branch (register) with pointer authentication: 1101011 Z 0 op(2) 11111 00001 M Rn Rm
@@ -956,7 +951,14 @@ fn decode_pauth(raw: u32) -> Option<Instruction> {
             _ => return None,
         };
         let modifier = match (z, op) {
-            (0, BranchRegOp::Ret) if rn == 31 && rm == 31 => return Some(Instruction::BranchRegAuth { rn: 30, op, key, modifier: Reg(31) }),
+            (0, BranchRegOp::Ret) if rn == 31 && rm == 31 => {
+                return Some(Instruction::BranchRegAuth {
+                    rn: 30,
+                    op,
+                    key,
+                    modifier: Reg(31),
+                });
+            }
             (0, BranchRegOp::Br | BranchRegOp::Blr) if rm == 31 => Zero,
             (1, BranchRegOp::Br | BranchRegOp::Blr) => Reg(rm),
             _ => return None,
@@ -1003,7 +1005,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             1 => a << 63 | (b ^ 1) << 62 | (if b != 0 { 0xFF } else { 0 }) << 54 | cd << 52 | efgh << 48,
             _ => return None, // half precision is not modelled
         };
-        return Some(Instruction::SimdModImm { rd, imm, op: SimdImmOp::Mov, q: false });
+        return Some(Instruction::SimdModImm {
+            rd,
+            imm,
+            op: SimdImmOp::Mov,
+            q: false,
+        });
     }
 
     // 22. Data-Processing (1-Source): sf 1 0 11010110 00000 opcode Rn Rd
@@ -1032,7 +1039,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         let is_signed = (raw & (1 << 23)) == 0;
         let is_sub = (raw & (1 << 15)) != 0;
         let ra = ((raw >> 10) & 0x1F) as u8;
-        return Some(Instruction::MultiplyLong { rd, rn, rm, ra, is_signed, is_sub });
+        return Some(Instruction::MultiplyLong {
+            rd,
+            rn,
+            rm,
+            ra,
+            is_signed,
+            is_sub,
+        });
     }
 
     // 25. SIMD&FP Load/Store (unscaled / post-index / pre-index): size 111 1 00 opc 0 imm9 idx Rn Rt
@@ -1132,7 +1146,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             return None;
         }
         let low = imm5.trailing_zeros();
-        return Some(Instruction::SimdDupScalar { rd, rn, esize: 8u8 << low, index: (imm5 >> (low + 1)) as u8 });
+        return Some(Instruction::SimdDupScalar {
+            rd,
+            rn,
+            esize: 8u8 << low,
+            index: (imm5 >> (low + 1)) as u8,
+        });
     }
 
     // 27. AdvSIMD copy: 0 Q op 01110000 imm5 0 imm4 1 Rn Rd
@@ -1150,11 +1169,23 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 return None;
             }
             let src_index = (((raw >> 11) & 0xF) >> low) as u8;
-            return Some(Instruction::SimdInsElement { rd, rn, esize, dst_index: index, src_index });
+            return Some(Instruction::SimdInsElement {
+                rd,
+                rn,
+                esize,
+                dst_index: index,
+                src_index,
+            });
         }
         match (raw >> 11) & 0xF {
             0b0000 if !(esize == 64 && !q) => {
-                return Some(Instruction::SimdDupElement { rd, rn, esize, index, q });
+                return Some(Instruction::SimdDupElement {
+                    rd,
+                    rn,
+                    esize,
+                    index,
+                    q,
+                });
             }
             0b0011 if q => {
                 return Some(Instruction::SimdInsGeneral { rd, rn, esize, index });
@@ -1167,7 +1198,13 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 return Some(Instruction::SimdMovToGeneral { rd, rn, esize, index });
             }
             0b0101 if esize <= 32 && (q || esize <= 16) => {
-                return Some(Instruction::SimdSmov { rd, rn, esize, index, x: q });
+                return Some(Instruction::SimdSmov {
+                    rd,
+                    rn,
+                    esize,
+                    index,
+                    x: q,
+                });
             }
             _ => return None,
         }
@@ -1231,7 +1268,10 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q U 01111 1 sz L M Rm opcode H 0 Rn Rd
     //       (FMLA 0001, FMLS 0101, FMUL 1001, FMULX U=1 1001); other opcodes (SDOT, ...) fall through.
     //       Scalar form: 01 U 11111 1 sz L M Rm opcode H 0 Rn Rd (Sd/Dd, Sn/Dn, Vm.S/D[index]), sz 10 or 11 only.
-    for (mask, want, scalar) in [(0x9F80_0400u32, 0x0F80_0000u32, false), (0xDF80_0400, 0x5F80_0000, true)] {
+    for (mask, want, scalar) in [
+        (0x9F80_0400u32, 0x0F80_0000u32, false),
+        (0xDF80_0400, 0x5F80_0000, true),
+    ] {
         if (raw & mask) != want {
             continue;
         }
@@ -1253,7 +1293,16 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 return None;
             }
             let index = if double { h } else { (h << 1) | l } as u8;
-            return Some(Instruction::SimdFpByElement { rd, rn, rm, index, op, double, q: q || scalar && double, scalar });
+            return Some(Instruction::SimdFpByElement {
+                rd,
+                rn,
+                rm,
+                index,
+                op,
+                double,
+                q: q || scalar && double,
+                scalar,
+            });
         }
     }
 
@@ -1283,12 +1332,28 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b0111, false) => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlsl),
             (0b1110, _) if size == 2 => {
                 return Some(Instruction::SimdByElement {
-                    rd, rn, rm, index: ((h << 1) | l) as u8, op: SimdElemOp::Dot(!u), esize: 32, q, scalar: false,
+                    rd,
+                    rn,
+                    rm,
+                    index: ((h << 1) | l) as u8,
+                    op: SimdElemOp::Dot(!u),
+                    esize: 32,
+                    q,
+                    scalar: false,
                 });
             }
             _ => return None,
         };
-        return Some(Instruction::SimdByElement { rd, rn, rm, index, op, esize, q, scalar: false });
+        return Some(Instruction::SimdByElement {
+            rd,
+            rn,
+            rm,
+            index,
+            op,
+            esize,
+            q,
+            scalar: false,
+        });
     }
 
     // 26a'''. AdvSIMD scalar x indexed element, integer: 01 U 11111 size L M Rm opcode H 0 Rn Rd
@@ -1308,7 +1373,16 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             0b0111 => SimdElemOp::SatLong(SimdSatLongOp::Sqdmlsl),
             _ => return None,
         };
-        return Some(Instruction::SimdByElement { rd, rn, rm, index, op, esize: 8u8 << size, q: false, scalar: true });
+        return Some(Instruction::SimdByElement {
+            rd,
+            rn,
+            rm,
+            index,
+            op,
+            esize: 8u8 << size,
+            q: false,
+            scalar: true,
+        });
     }
 
     // 26a4c. FCADD (single/double): 0 Q 1 01110 size 0 Rm 1 11 rot 0 1 Rn Rd.
@@ -1337,13 +1411,29 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             _ => None,
         };
         if let Some(op) = op {
-            return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize: 8u8 << size, q });
+            return Some(Instruction::SimdThreeSame {
+                rd,
+                rn,
+                rm,
+                op,
+                esize: 8u8 << size,
+                q,
+            });
         }
     }
 
     // 26a4. AdvSIMD vector SDOT/UDOT: 0 Q U 01110 10 0 Rm 10010 1 Rn Rd
     if (raw & 0x9FE0_FC00) == 0x0E80_9400 {
-        return Some(Instruction::SimdByElement { rd, rn, rm, index: 0xFF, op: SimdElemOp::Dot(!u), esize: 32, q, scalar: false });
+        return Some(Instruction::SimdByElement {
+            rd,
+            rn,
+            rm,
+            index: 0xFF,
+            op: SimdElemOp::Dot(!u),
+            esize: 32,
+            q,
+            scalar: false,
+        });
     }
 
     // 26b'. AdvSIMD extract: 0 Q 101110 00 0 Rm 0 imm4 0 Rn Rd (EXT)
@@ -1358,7 +1448,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     // 26b2. AdvSIMD table lookup: 0 Q 001110 00 0 Rm 0 len op 00 Rn Rd (TBL/TBX)
     if (raw & 0xBFE0_8C00) == 0x0E00_0000 {
         let regs = (((raw >> 13) & 0x3) + 1) as u8;
-        return Some(Instruction::SimdTbl { rd, rn, rm, regs, is_tbx: (raw & (1 << 12)) != 0, q });
+        return Some(Instruction::SimdTbl {
+            rd,
+            rn,
+            rm,
+            regs,
+            is_tbx: (raw & (1 << 12)) != 0,
+            q,
+        });
     }
 
     // 26c. AdvSIMD permute: 0 Q 001110 size 0 Rm 0 opc 10 Rn Rd (UZP1/TRN1/ZIP1/UZP2/TRN2/ZIP2)
@@ -1375,7 +1472,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         if size == 3 && !q {
             return None;
         }
-        return Some(Instruction::SimdPermute { rd, rn, rm, op, esize: 8u8 << size, q });
+        return Some(Instruction::SimdPermute {
+            rd,
+            rn,
+            rm,
+            op,
+            esize: 8u8 << size,
+            q,
+        });
     }
 
     // 27b. AdvSIMD three different (widening multiply): 0 Q U 01110 size 1 Rm opcode 00 Rn Rd
@@ -1388,7 +1492,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 (0b0110, false) => SimdNarrowOp::Subhn,
                 _ => SimdNarrowOp::Rsubhn,
             };
-            return Some(Instruction::SimdNarrow { rd, rn, rm, op, esize: 8u8 << size, q });
+            return Some(Instruction::SimdNarrow {
+                rd,
+                rn,
+                rm,
+                op,
+                esize: 8u8 << size,
+                q,
+            });
         }
         if matches!(opcode, 0b1001 | 0b1011 | 0b1101) && !u && (size == 1 || size == 2) {
             let op = match opcode {
@@ -1396,14 +1507,27 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 0b1011 => SimdSatLongOp::Sqdmlsl,
                 _ => SimdSatLongOp::Sqdmull,
             };
-            return Some(Instruction::SimdSatLong { rd, rn, rm, op, esize: 8u8 << size, q });
+            return Some(Instruction::SimdSatLong {
+                rd,
+                rn,
+                rm,
+                op,
+                esize: 8u8 << size,
+                q,
+            });
         }
         // PMULL / PMULL2: opcode 1110, U == 0, size 0 (8H from 8B) or size 3 (1Q from 1D).
         if (raw >> 12) & 0xF == 0b1110 {
             if u || (size != 0 && size != 3) {
                 return None;
             }
-            return Some(Instruction::Pmull { rd, rn, rm, wide: size == 3, q });
+            return Some(Instruction::Pmull {
+                rd,
+                rn,
+                rm,
+                wide: size == 3,
+                q,
+            });
         }
         let op = match (raw >> 12) & 0xF {
             0b0000 => SimdLongOp::Addl,
@@ -1420,30 +1544,67 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         if size == 3 {
             return None; // PMULL / reserved
         }
-        return Some(Instruction::SimdLong { rd, rn, rm, op, signed: !u, esize: 8u8 << size, q });
+        return Some(Instruction::SimdLong {
+            rd,
+            rn,
+            rm,
+            op,
+            signed: !u,
+            esize: 8u8 << size,
+            q,
+        });
     }
 
     // 27b2. FABD (scalar): 01 1 11110 1 sz 1 Rm 11010 1 Rn Rd (bit 23 set, sz = bit 22)
     if (raw & 0xFFA0_FC00) == 0x7EA0_D400 {
-        return Some(Instruction::FpAbd { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
+        return Some(Instruction::FpAbd {
+            rd,
+            rn,
+            rm,
+            is_double: (raw >> 22) & 1 == 1,
+        });
     }
 
     // FMULX (scalar): 01 0 11110 0 sz 1 Rm 11011 1 Rn Rd.
     // Opcode 11011 is outside the scalar integer three-same decode below (opcode < 11000).
     if (raw & 0xFFA0_FC00) == 0x5E20_DC00 {
-        return Some(Instruction::FpMulx { rd, rn, rm, is_double: (raw >> 22) & 1 == 1 });
+        return Some(Instruction::FpMulx {
+            rd,
+            rn,
+            rm,
+            is_double: (raw >> 22) & 1 == 1,
+        });
     }
 
     // FRECPS / FRSQRTS (scalar): 01 0 11110 a sz 1 Rm 11111 1 Rn Rd (a = 0 FRECPS, a = 1 FRSQRTS)
     if (raw & 0xFF20_FC00) == 0x5E20_FC00 {
-        let op = if (raw >> 23) & 1 == 1 { SimdFpOp3::Frsqrts } else { SimdFpOp3::Frecps };
-        return Some(Instruction::FpScalarThreeSame { rd, rn, rm, op, is_double: (raw >> 22) & 1 == 1 });
+        let op = if (raw >> 23) & 1 == 1 {
+            SimdFpOp3::Frsqrts
+        } else {
+            SimdFpOp3::Frecps
+        };
+        return Some(Instruction::FpScalarThreeSame {
+            rd,
+            rn,
+            rm,
+            op,
+            is_double: (raw >> 22) & 1 == 1,
+        });
     }
 
     // FRECPE / FRSQRTE (scalar): 01 U 11110 1 sz 10000 11101 10 Rn Rd (U = 0 FRECPE, U = 1 FRSQRTE)
     if (raw & 0xDFBF_FC00) == 0x5EA1_D800 {
-        let op = if (raw >> 29) & 1 == 1 { SimdFpOp2::Frsqrte } else { SimdFpOp2::Frecpe };
-        return Some(Instruction::FpScalarTwoMisc { rd, rn, op, is_double: (raw >> 22) & 1 == 1 });
+        let op = if (raw >> 29) & 1 == 1 {
+            SimdFpOp2::Frsqrte
+        } else {
+            SimdFpOp2::Frecpe
+        };
+        return Some(Instruction::FpScalarTwoMisc {
+            rd,
+            rn,
+            op,
+            is_double: (raw >> 22) & 1 == 1,
+        });
     }
 
     // 27c. AdvSIMD scalar three same: 01 U 11110 size 1 Rm opcode 1 Rn Rd.
@@ -1477,14 +1638,32 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         // Only the saturating add/sub/shift forms have byte, half and word scalar sizes; SQDMULH has half and word.
         let sized = matches!(
             op,
-            SimdOp3::Sqadd | SimdOp3::Uqadd | SimdOp3::Sqsub | SimdOp3::Uqsub | SimdOp3::Sqshl | SimdOp3::Uqshl
-                | SimdOp3::Sqrshl | SimdOp3::Uqrshl
+            SimdOp3::Sqadd
+                | SimdOp3::Uqadd
+                | SimdOp3::Sqsub
+                | SimdOp3::Uqsub
+                | SimdOp3::Sqshl
+                | SimdOp3::Uqshl
+                | SimdOp3::Sqrshl
+                | SimdOp3::Uqrshl
         );
-        let ok = if sized { true } else if matches!(op, SimdOp3::Sqdmulh | SimdOp3::Sqrdmulh) { size == 1 || size == 2 } else { size == 3 };
+        let ok = if sized {
+            true
+        } else if matches!(op, SimdOp3::Sqdmulh | SimdOp3::Sqrdmulh) {
+            size == 1 || size == 2
+        } else {
+            size == 3
+        };
         if !ok {
             return None;
         }
-        return Some(Instruction::SimdScalarThreeSame { rd, rn, rm, op, esize: 8u8 << size });
+        return Some(Instruction::SimdScalarThreeSame {
+            rd,
+            rn,
+            rm,
+            op,
+            esize: 8u8 << size,
+        });
     }
 
     // 27c2. AdvSIMD three same, half precision (FEAT_FP16): 0 Q U 01110 a 10 Rm 00 opcode 1 Rn Rd.
@@ -1540,7 +1719,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         if double && !q {
             return None;
         }
-        return Some(Instruction::SimdFpThreeSame { rd, rn, rm, op, double, q });
+        return Some(Instruction::SimdFpThreeSame {
+            rd,
+            rn,
+            rm,
+            op,
+            double,
+            q,
+        });
     }
 
     // 28. AdvSIMD three same: 0 Q U 01110 size 1 Rm opcode 1 Rn Rd
@@ -1600,28 +1786,61 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         // 64-bit lanes need Q. Only the saturating add/sub and the shifts have a 64-bit lane form.
         let has64 = matches!(
             op,
-            SimdOp3::Add | SimdOp3::Addp | SimdOp3::Sub | SimdOp3::Cmeq | SimdOp3::Cmtst | SimdOp3::Cmhi | SimdOp3::Cmhs | SimdOp3::Cmgt
-                | SimdOp3::Cmge | SimdOp3::Sshl | SimdOp3::Ushl | SimdOp3::Sqadd | SimdOp3::Uqadd | SimdOp3::Sqsub
-                | SimdOp3::Uqsub | SimdOp3::Sqshl | SimdOp3::Uqshl | SimdOp3::Srshl | SimdOp3::Urshl | SimdOp3::Sqrshl
+            SimdOp3::Add
+                | SimdOp3::Addp
+                | SimdOp3::Sub
+                | SimdOp3::Cmeq
+                | SimdOp3::Cmtst
+                | SimdOp3::Cmhi
+                | SimdOp3::Cmhs
+                | SimdOp3::Cmgt
+                | SimdOp3::Cmge
+                | SimdOp3::Sshl
+                | SimdOp3::Ushl
+                | SimdOp3::Sqadd
+                | SimdOp3::Uqadd
+                | SimdOp3::Sqsub
+                | SimdOp3::Uqsub
+                | SimdOp3::Sqshl
+                | SimdOp3::Uqshl
+                | SimdOp3::Srshl
+                | SimdOp3::Urshl
+                | SimdOp3::Sqrshl
                 | SimdOp3::Uqrshl
         );
         if !bitwise && size == 3 && (!q || !has64) {
             return None;
         }
         let esize = if bitwise { 8 } else { 8u8 << size };
-        return Some(Instruction::SimdThreeSame { rd, rn, rm, op, esize, q });
+        return Some(Instruction::SimdThreeSame {
+            rd,
+            rn,
+            rm,
+            op,
+            esize,
+            q,
+        });
     }
 
     // 28a. FMAXNMV/FMINNMV/FMAXV/FMINV: 0 Q U 01110 o1 sz 11000 opcode 10 Rn Rd, opcode 01100 / 01111.
     //      U = 1: Sd, Vn.4S (Q = 1, sz = 0). U = 0: half precision, Hd, Vn.4H/8H (sz = 0).
     // 28a2. Scalar pairwise FMAXNMP/FMINNMP/FMAXP/FMINP: 01 U 11110 o1 sz 11000 opcode 10 Rn Rd
     //      U = 1: Sd, Vn.2S / Dd, Vn.2D. U = 0: Hd, Vn.2H.
-    for (mask, want, scalar) in [(0x9F7E_0C00u32, 0x0E30_0800u32, false), (0xDF3E_0C00, 0x5E30_0800, true)] {
+    for (mask, want, scalar) in [
+        (0x9F7E_0C00u32, 0x0E30_0800u32, false),
+        (0xDF3E_0C00, 0x5E30_0800, true),
+    ] {
         let opcode = (raw >> 12) & 0x1F;
         // Scalar FADDP Sd/Dd, Vn.2S/2D (opcode 01101, U = 1, bit 23 = 0): sum of the two lanes.
         if scalar && (raw & mask) == want && opcode == 0b01101 && u && (raw >> 23) & 1 == 0 {
             let esize = if (raw >> 22) & 1 == 1 { 64 } else { 32 };
-            return Some(Instruction::SimdFpReduce { rd, rn, op: SimdFpOp3::Faddp, esize, lanes: 2 });
+            return Some(Instruction::SimdFpReduce {
+                rd,
+                rn,
+                op: SimdFpOp3::Faddp,
+                esize,
+                lanes: 2,
+            });
         }
         if (raw & mask) == want && matches!(opcode, 0b01100 | 0b01111) {
             let min = (raw >> 23) & 1 == 1;
@@ -1639,7 +1858,13 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 (true, true) => (if sz { 64 } else { 32 }, 2),
                 _ => return None,
             };
-            return Some(Instruction::SimdFpReduce { rd, rn, op, esize, lanes });
+            return Some(Instruction::SimdFpReduce {
+                rd,
+                rn,
+                op,
+                esize,
+                lanes,
+            });
         }
     }
 
@@ -1659,7 +1884,13 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         if size == 3 || (size == 2 && !q) {
             return None;
         }
-        return Some(Instruction::SimdAcross { rd, rn, op, esize: 8u8 << size, q });
+        return Some(Instruction::SimdAcross {
+            rd,
+            rn,
+            op,
+            esize: 8u8 << size,
+            q,
+        });
     }
 
     // 29a2. AdvSIMD scalar two-register miscellaneous, saturating forms: SUQADD/USQADD/SQABS/SQNEG (all sizes)
@@ -1672,7 +1903,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             _ => None,
         };
         if let Some(op) = op {
-            return Some(Instruction::SimdScalarTwoMisc { rd, rn, op, esize: 8u8 << size });
+            return Some(Instruction::SimdScalarTwoMisc {
+                rd,
+                rn,
+                op,
+                esize: 8u8 << size,
+            });
         }
     }
 
@@ -1680,7 +1916,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     if (raw & 0xDF3E_0C00) == 0x5E20_0800 {
         // FCVTXN Sd, Dn: size = 01, U = 1, opcode = 10110. One single, rest of Vd zero.
         if (raw >> 12) & 0x1F == 0b10110 && u && size == 1 {
-            return Some(Instruction::SimdFpTwoMisc { rd, rn, op: SimdFpOp2::Fcvtxn, double: true, q: false, scalar: true });
+            return Some(Instruction::SimdFpTwoMisc {
+                rd,
+                rn,
+                op: SimdFpOp2::Fcvtxn,
+                double: true,
+                q: false,
+                scalar: true,
+            });
         }
         let op = match ((raw >> 12) & 0x1F, u, size >> 1) {
             (0b11101, false, 0) => SimdOp2::Scvtf,
@@ -1689,7 +1932,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11011, true, 1) => SimdOp2::Fcvtzu,
             _ => return None,
         };
-        return Some(Instruction::SimdScalarTwoMisc { rd, rn, op, esize: 32u8 << (size & 1) });
+        return Some(Instruction::SimdScalarTwoMisc {
+            rd,
+            rn,
+            op,
+            esize: 32u8 << (size & 1),
+        });
     }
 
     // 29b. AdvSIMD two-register miscellaneous, floating point: 0 Q U 01110 a sz 10000 opcode 10 Rn Rd
@@ -1731,7 +1979,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             if double && !q && !wide_q {
                 return None;
             }
-            return Some(Instruction::SimdFpTwoMisc { rd, rn, op, double, q, scalar: false });
+            return Some(Instruction::SimdFpTwoMisc {
+                rd,
+                rn,
+                op,
+                double,
+                q,
+                scalar: false,
+            });
         }
         // FCVT{N,M,A,P}{S,U} and URECPE/URSQRTE: integer results
         let int_op = match ((raw >> 12) & 0x1F, u, a) {
@@ -1760,7 +2015,13 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
                 return None;
             }
             let op = if u { SimdOp2::Fcvtzu } else { SimdOp2::Fcvtzs };
-            return Some(Instruction::SimdTwoMisc { rd, rn, op, esize: if double { 64 } else { 32 }, q });
+            return Some(Instruction::SimdTwoMisc {
+                rd,
+                rn,
+                op,
+                esize: if double { 64 } else { 32 },
+                q,
+            });
         }
     }
 
@@ -1768,11 +2029,25 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     if (raw & 0x9F3E_0C00) == 0x0E20_0800 {
         // XTN/XTN2 is SHRN/SHRN2 with a zero shift
         if (raw >> 12) & 0x1F == 0b10010 && !u && size < 3 {
-            return Some(Instruction::SimdShiftImm { rd, rn, op: SimdShiftOp::Shrn, esize: 8 << size, shift: 0, q });
+            return Some(Instruction::SimdShiftImm {
+                rd,
+                rn,
+                op: SimdShiftOp::Shrn,
+                esize: 8 << size,
+                shift: 0,
+                q,
+            });
         }
         // SHLL/SHLL2: USHLL by the source lane size
         if (raw >> 12) & 0x1F == 0b10011 && u && size < 3 {
-            return Some(Instruction::SimdShiftImm { rd, rn, op: SimdShiftOp::Ushll, esize: 8 << size, shift: 8 << size, q });
+            return Some(Instruction::SimdShiftImm {
+                rd,
+                rn,
+                op: SimdShiftOp::Ushll,
+                esize: 8 << size,
+                shift: 8 << size,
+                q,
+            });
         }
         let op = match ((raw >> 12) & 0x1F, u) {
             (0b01000, false) => SimdOp2::Cmgt0,
@@ -1820,7 +2095,12 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         let (a, b, cd, efgh) = (imm8 >> 7, (imm8 >> 6) & 1, (imm8 >> 4) & 3, imm8 & 0xF);
         let half = a << 15 | (b ^ 1) << 14 | (if b != 0 { 0x3 } else { 0 }) << 12 | cd << 10 | efgh << 6;
         let imm = half | half << 16 | half << 32 | half << 48;
-        return Some(Instruction::SimdModImm { rd, imm, op: SimdImmOp::Mov, q });
+        return Some(Instruction::SimdModImm {
+            rd,
+            imm,
+            op: SimdImmOp::Mov,
+            q,
+        });
     }
 
     // 31. AdvSIMD modified immediate: 0 Q op 0111100000 abc cmode o2 1 defgh Rd
@@ -1836,7 +2116,9 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             6 => rep32(imm8 << 16 | 0xFFFF),
             _ => match (cmode & 1, u) {
                 (0, false) => rep16(imm8 | imm8 << 8),
-                (0, true) => (0..8).fold(0u64, |acc, i| acc | if imm8 >> i & 1 != 0 { 0xFF << (8 * i) } else { 0 }),
+                (0, true) => (0..8).fold(0u64, |acc, i| {
+                    acc | if imm8 >> i & 1 != 0 { 0xFF << (8 * i) } else { 0 }
+                }),
                 (_, false) => {
                     // FMOV Vd.<2S|4S>, #imm
                     let (a, b, cd, efgh) = (imm8 >> 7, (imm8 >> 6) & 1, (imm8 >> 4) & 3, imm8 & 0xF);
@@ -1858,7 +2140,11 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         } else {
             SimdImmOp::Mov
         };
-        let imm = if op == SimdImmOp::Mov && u && cmode < 14 { !imm } else { imm };
+        let imm = if op == SimdImmOp::Mov && u && cmode < 14 {
+            !imm
+        } else {
+            imm
+        };
         return Some(Instruction::SimdModImm { rd, imm, op, q });
     }
 
@@ -1880,7 +2166,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (_, false) => SimdOp2::Fcvtzs,
             (_, true) => SimdOp2::Fcvtzu,
         };
-        return Some(Instruction::SimdFixedConv { rd, rn, op, esize: esize as u8, fbits: (2 * esize - imm) as u8, q });
+        return Some(Instruction::SimdFixedConv {
+            rd,
+            rn,
+            op,
+            esize: esize as u8,
+            fbits: (2 * esize - imm) as u8,
+            q,
+        });
     }
 
     // 30a. AdvSIMD scalar shift by immediate (D registers only): 01 U 111110 1xxx immb opcode 1 Rn Rd
@@ -1893,7 +2186,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b01010, false) => (SimdShiftOp::Shl, imm - 64),
             _ => return None,
         };
-        return Some(Instruction::SimdShiftImm { rd, rn, op, esize: 64, shift: shift as u8, q: false });
+        return Some(Instruction::SimdShiftImm {
+            rd,
+            rn,
+            op,
+            esize: 64,
+            shift: shift as u8,
+            q: false,
+        });
     }
 
     // 30. AdvSIMD shift by immediate: 0 Q U 011110 immh immb opcode 1 Rn Rd (immh != 0)
@@ -1916,7 +2216,14 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         if esize == 64 && !q && op != SimdShiftOp::Shrn {
             return None;
         }
-        return Some(Instruction::SimdShiftImm { rd, rn, op, esize: esize as u8, shift: shift as u8, q });
+        return Some(Instruction::SimdShiftImm {
+            rd,
+            rn,
+            op,
+            esize: esize as u8,
+            shift: shift as u8,
+            q,
+        });
     }
 
     None
@@ -1949,11 +2256,7 @@ fn decode_bit_mask(is_64: bool, n: u8, imms: u8, immr: u8) -> Option<u64> {
     if s == levels {
         return None;
     }
-    let welem: u64 = if s + 1 == 64 {
-        u64::MAX
-    } else {
-        (1u64 << (s + 1)) - 1
-    };
+    let welem: u64 = if s + 1 == 64 { u64::MAX } else { (1u64 << (s + 1)) - 1 };
     let rotated = if r == 0 {
         welem
     } else if esize == 64 {
@@ -1987,23 +2290,149 @@ mod tests {
         assert_eq!(decode(0xF8A06960), Instruction::Nop); // prfm pldl1keep, [x11, x0]
         assert_eq!(decode(0xF8800160), Instruction::Nop); // prfum pldl1keep, [x11]
         assert_eq!(decode(0xD8000000), Instruction::Nop); // prfm pldl1keep, <literal>
-        assert!(matches!(decode(0x4E201BFF), Instruction::SimdTwoMisc { op: SimdOp2::Rev16, esize: 8, q: true, .. })); // rev16 v31.16b, v31.16b
-        assert!(matches!(decode(0x6EB3479C), Instruction::SimdThreeSame { op: SimdOp3::Ushl, esize: 32, q: true, .. })); // ushl v28.4s, v28.4s, v19.4s
-        assert!(matches!(decode(0x4EB34780), Instruction::SimdThreeSame { op: SimdOp3::Sshl, esize: 32, q: true, .. })); // sshl v0.4s, v28.4s, v19.4s
-        assert!(matches!(decode(0x5EFE87FF), Instruction::SimdScalarThreeSame { op: SimdOp3::Add, esize: 64, .. })); // add d31, d31, d30
-        assert!(matches!(decode(0x7EE18420), Instruction::SimdScalarThreeSame { op: SimdOp3::Sub, esize: 64, .. })); // sub d0, d1, d1
-        assert!(matches!(decode(0x5E1C07EE), Instruction::SimdDupScalar { esize: 32, index: 3, .. })); // mov s14, v31.s[3]
-        assert!(matches!(decode(0x0E224020), Instruction::SimdNarrow { op: SimdNarrowOp::Addhn, esize: 8, q: false, .. })); // addhn v0.8b, v1.8h, v2.8h
-        assert!(matches!(decode(0x4E226020), Instruction::SimdNarrow { op: SimdNarrowOp::Subhn, esize: 8, q: true, .. })); // subhn2 v0.16b, v1.8h, v2.8h
-        assert!(matches!(decode(0x2E624020), Instruction::SimdNarrow { op: SimdNarrowOp::Raddhn, esize: 16, q: false, .. })); // raddhn v0.4h, v1.4s, v2.4s
-        assert!(matches!(decode(0x7E7F2FDF), Instruction::SimdScalarThreeSame { op: SimdOp3::Uqsub, esize: 16, .. })); // uqsub h31, h30, h31
-        assert!(matches!(decode(0x4E220C20), Instruction::SimdThreeSame { op: SimdOp3::Sqadd, esize: 8, q: true, .. })); // sqadd v0.16b, v1.16b, v2.16b
-        assert!(matches!(decode(0x4E012FE3), Instruction::SimdSmov { esize: 8, index: 0, x: true, .. })); // smov x3, v31.b[0]
-        assert!(matches!(decode(0x0E62D020), Instruction::SimdSatLong { op: SimdSatLongOp::Sqdmull, esize: 16, q: false, .. })); // sqdmull v0.4s, v1.4h, v2.4h
-        assert!(matches!(decode(0x4EA29020), Instruction::SimdSatLong { op: SimdSatLongOp::Sqdmlal, esize: 32, q: true, .. })); // sqdmlal2 v0.2d, v1.4s, v2.4s
+        assert!(matches!(
+            decode(0x4E201BFF),
+            Instruction::SimdTwoMisc {
+                op: SimdOp2::Rev16,
+                esize: 8,
+                q: true,
+                ..
+            }
+        )); // rev16 v31.16b, v31.16b
+        assert!(matches!(
+            decode(0x6EB3479C),
+            Instruction::SimdThreeSame {
+                op: SimdOp3::Ushl,
+                esize: 32,
+                q: true,
+                ..
+            }
+        )); // ushl v28.4s, v28.4s, v19.4s
+        assert!(matches!(
+            decode(0x4EB34780),
+            Instruction::SimdThreeSame {
+                op: SimdOp3::Sshl,
+                esize: 32,
+                q: true,
+                ..
+            }
+        )); // sshl v0.4s, v28.4s, v19.4s
+        assert!(matches!(
+            decode(0x5EFE87FF),
+            Instruction::SimdScalarThreeSame {
+                op: SimdOp3::Add,
+                esize: 64,
+                ..
+            }
+        )); // add d31, d31, d30
+        assert!(matches!(
+            decode(0x7EE18420),
+            Instruction::SimdScalarThreeSame {
+                op: SimdOp3::Sub,
+                esize: 64,
+                ..
+            }
+        )); // sub d0, d1, d1
+        assert!(matches!(
+            decode(0x5E1C07EE),
+            Instruction::SimdDupScalar {
+                esize: 32,
+                index: 3,
+                ..
+            }
+        )); // mov s14, v31.s[3]
+        assert!(matches!(
+            decode(0x0E224020),
+            Instruction::SimdNarrow {
+                op: SimdNarrowOp::Addhn,
+                esize: 8,
+                q: false,
+                ..
+            }
+        )); // addhn v0.8b, v1.8h, v2.8h
+        assert!(matches!(
+            decode(0x4E226020),
+            Instruction::SimdNarrow {
+                op: SimdNarrowOp::Subhn,
+                esize: 8,
+                q: true,
+                ..
+            }
+        )); // subhn2 v0.16b, v1.8h, v2.8h
+        assert!(matches!(
+            decode(0x2E624020),
+            Instruction::SimdNarrow {
+                op: SimdNarrowOp::Raddhn,
+                esize: 16,
+                q: false,
+                ..
+            }
+        )); // raddhn v0.4h, v1.4s, v2.4s
+        assert!(matches!(
+            decode(0x7E7F2FDF),
+            Instruction::SimdScalarThreeSame {
+                op: SimdOp3::Uqsub,
+                esize: 16,
+                ..
+            }
+        )); // uqsub h31, h30, h31
+        assert!(matches!(
+            decode(0x4E220C20),
+            Instruction::SimdThreeSame {
+                op: SimdOp3::Sqadd,
+                esize: 8,
+                q: true,
+                ..
+            }
+        )); // sqadd v0.16b, v1.16b, v2.16b
+        assert!(matches!(
+            decode(0x4E012FE3),
+            Instruction::SimdSmov {
+                esize: 8,
+                index: 0,
+                x: true,
+                ..
+            }
+        )); // smov x3, v31.b[0]
+        assert!(matches!(
+            decode(0x0E62D020),
+            Instruction::SimdSatLong {
+                op: SimdSatLongOp::Sqdmull,
+                esize: 16,
+                q: false,
+                ..
+            }
+        )); // sqdmull v0.4s, v1.4h, v2.4h
+        assert!(matches!(
+            decode(0x4EA29020),
+            Instruction::SimdSatLong {
+                op: SimdSatLongOp::Sqdmlal,
+                esize: 32,
+                q: true,
+                ..
+            }
+        )); // sqdmlal2 v0.2d, v1.4s, v2.4s
         // UMLAL/UMULL/SMLAL family (three different)
-        assert!(matches!(decode(0x2EBF837D), Instruction::SimdLong { op: SimdLongOp::Mlal, signed: false, esize: 32, q: false, .. })); // umlal v29.2d, v27.2s, v31.2s
-        assert!(matches!(decode(0x6EBF837E), Instruction::SimdLong { op: SimdLongOp::Mlal, signed: false, esize: 32, q: true, .. })); // umlal2 v30.2d, v27.4s, v31.4s
+        assert!(matches!(
+            decode(0x2EBF837D),
+            Instruction::SimdLong {
+                op: SimdLongOp::Mlal,
+                signed: false,
+                esize: 32,
+                q: false,
+                ..
+            }
+        )); // umlal v29.2d, v27.2s, v31.2s
+        assert!(matches!(
+            decode(0x6EBF837E),
+            Instruction::SimdLong {
+                op: SimdLongOp::Mlal,
+                signed: false,
+                esize: 32,
+                q: true,
+                ..
+            }
+        )); // umlal2 v30.2d, v27.4s, v31.4s
     }
 
     #[test]
@@ -2011,7 +2440,13 @@ mod tests {
         // fcsel s0, s0, s3, eq (seen in libdeko3d)
         assert_eq!(
             decode(0x1E230C00),
-            Instruction::FpCondSelect { rd: 0, rn: 0, rm: 3, cond: Condition::from_u8(0), is_double: false }
+            Instruction::FpCondSelect {
+                rd: 0,
+                rn: 0,
+                rm: 3,
+                cond: Condition::from_u8(0),
+                is_double: false
+            }
         );
     }
 
@@ -2020,16 +2455,18 @@ mod tests {
         use SimdFpOp3::*;
         // vector pairwise (three-same)
         for (raw, want, double, q) in [
-            (0x6E22_F420u32, Fmaxp, false, true),  // fmaxp v0.4s, v1.4s, v2.4s
-            (0x6EA2_F420, Fminp, false, true),     // fminp v0.4s, v1.4s, v2.4s
-            (0x6E22_C420, Fmaxnmp, false, true),   // fmaxnmp v0.4s, v1.4s, v2.4s
-            (0x6EA2_C420, Fminnmp, false, true),   // fminnmp v0.4s, v1.4s, v2.4s
-            (0x6E62_F420, Fmaxp, true, true),      // fmaxp v0.2d, v1.2d, v2.2d
-            (0x2E22_F420, Fmaxp, false, false),    // fmaxp v0.2s, v1.2s, v2.2s
-            (0x4E62_F420, Fmax, true, true),       // fmax v0.2d, v1.2d, v2.2d
+            (0x6E22_F420u32, Fmaxp, false, true), // fmaxp v0.4s, v1.4s, v2.4s
+            (0x6EA2_F420, Fminp, false, true),    // fminp v0.4s, v1.4s, v2.4s
+            (0x6E22_C420, Fmaxnmp, false, true),  // fmaxnmp v0.4s, v1.4s, v2.4s
+            (0x6EA2_C420, Fminnmp, false, true),  // fminnmp v0.4s, v1.4s, v2.4s
+            (0x6E62_F420, Fmaxp, true, true),     // fmaxp v0.2d, v1.2d, v2.2d
+            (0x2E22_F420, Fmaxp, false, false),   // fmaxp v0.2s, v1.2s, v2.2s
+            (0x4E62_F420, Fmax, true, true),      // fmax v0.2d, v1.2d, v2.2d
         ] {
             match decode(raw) {
-                Instruction::SimdFpThreeSame { op, double: d, q: qq, .. } => assert_eq!((op, d, qq), (want, double, q), "{raw:#010x}"),
+                Instruction::SimdFpThreeSame {
+                    op, double: d, q: qq, ..
+                } => assert_eq!((op, d, qq), (want, double, q), "{raw:#010x}"),
                 other => panic!("{raw:#010x}: {other:?}"),
             }
         }
@@ -2039,38 +2476,55 @@ mod tests {
             (0x6EB0_C820, Fminnm, false, 4),
             (0x6E30_F820, Fmax, false, 4),
             (0x6EB0_F820, Fmin, false, 4),
-            (0x7E30_F820, Fmax, false, 2), // fmaxp s0, v1.2s
-            (0x7E70_F820, Fmax, true, 2),  // fmaxp d0, v1.2d
+            (0x7E30_F820, Fmax, false, 2),  // fmaxp s0, v1.2s
+            (0x7E70_F820, Fmax, true, 2),   // fmaxp d0, v1.2d
             (0x7EF0_C820, Fminnm, true, 2), // fminnmp d0, v1.2d
             (0x7E30_D820, Faddp, false, 2), // faddp s0, v1.2s
             (0x7E70_D820, Faddp, true, 2),  // faddp d0, v1.2d
         ] {
             match decode(raw) {
-                Instruction::SimdFpReduce { op, esize, lanes: l, rd: 0, rn: 1 } => assert_eq!((op, esize == 64, l), (want, double, lanes), "{raw:#010x}"),
+                Instruction::SimdFpReduce {
+                    op,
+                    esize,
+                    lanes: l,
+                    rd: 0,
+                    rn: 1,
+                } => assert_eq!((op, esize == 64, l), (want, double, lanes), "{raw:#010x}"),
                 other => panic!("{raw:#010x}: {other:?}"),
             }
         }
         // reserved: .2D across lanes (sz = 1); scalar half pairwise with sz = 1; FP16 three-same with an undecoded opcode
         for raw in [0x6E70_F820u32, 0x5E70_F820, 0x4E42_1420, 0x4E42_3C20] {
             assert!(
-                !matches!(decode(raw), Instruction::SimdFpReduce { .. } | Instruction::SimdFpThreeSame { .. } | Instruction::SimdFpThreeSameHalf { .. }),
+                !matches!(
+                    decode(raw),
+                    Instruction::SimdFpReduce { .. }
+                        | Instruction::SimdFpThreeSame { .. }
+                        | Instruction::SimdFpThreeSameHalf { .. }
+                ),
                 "{raw:#010x}"
             );
         }
         // half precision three-same, across lanes, scalar pairwise and scalar min/max
         for (raw, want, q) in [
-            (0x4E42_3420u32, Fmax, true),    // fmax v0.8h, v1.8h, v2.8h
-            (0x4EC2_3420, Fmin, true),       // fmin v0.8h, v1.8h, v2.8h
-            (0x4E42_0420, Fmaxnm, true),     // fmaxnm v0.8h, v1.8h, v2.8h
-            (0x4EC2_0420, Fminnm, true),     // fminnm v0.8h, v1.8h, v2.8h
-            (0x6E42_3420, Fmaxp, true),      // fmaxp v0.8h, v1.8h, v2.8h
-            (0x6EC2_3420, Fminp, true),      // fminp v0.8h, v1.8h, v2.8h
-            (0x6E42_0420, Fmaxnmp, true),    // fmaxnmp v0.8h, v1.8h, v2.8h
-            (0x6EC2_0420, Fminnmp, true),    // fminnmp v0.8h, v1.8h, v2.8h
-            (0x0E42_3420, Fmax, false),      // fmax v0.4h, v1.4h, v2.4h
+            (0x4E42_3420u32, Fmax, true), // fmax v0.8h, v1.8h, v2.8h
+            (0x4EC2_3420, Fmin, true),    // fmin v0.8h, v1.8h, v2.8h
+            (0x4E42_0420, Fmaxnm, true),  // fmaxnm v0.8h, v1.8h, v2.8h
+            (0x4EC2_0420, Fminnm, true),  // fminnm v0.8h, v1.8h, v2.8h
+            (0x6E42_3420, Fmaxp, true),   // fmaxp v0.8h, v1.8h, v2.8h
+            (0x6EC2_3420, Fminp, true),   // fminp v0.8h, v1.8h, v2.8h
+            (0x6E42_0420, Fmaxnmp, true), // fmaxnmp v0.8h, v1.8h, v2.8h
+            (0x6EC2_0420, Fminnmp, true), // fminnmp v0.8h, v1.8h, v2.8h
+            (0x0E42_3420, Fmax, false),   // fmax v0.4h, v1.4h, v2.4h
         ] {
             match decode(raw) {
-                Instruction::SimdFpThreeSameHalf { op, q: qq, rd: 0, rn: 1, rm: 2 } => assert_eq!((op, qq), (want, q), "{raw:#010x}"),
+                Instruction::SimdFpThreeSameHalf {
+                    op,
+                    q: qq,
+                    rd: 0,
+                    rn: 1,
+                    rm: 2,
+                } => assert_eq!((op, qq), (want, q), "{raw:#010x}"),
                 other => panic!("{raw:#010x}: {other:?}"),
             }
         }
@@ -2083,13 +2537,29 @@ mod tests {
             (0x5EB0_C820, Fminnm, 2),      // fminnmp h0, v1.2h
         ] {
             match decode(raw) {
-                Instruction::SimdFpReduce { op, esize: 16, lanes: l, rd: 0, rn: 1 } => assert_eq!((op, l), (want, lanes), "{raw:#010x}"),
+                Instruction::SimdFpReduce {
+                    op,
+                    esize: 16,
+                    lanes: l,
+                    rd: 0,
+                    rn: 1,
+                } => assert_eq!((op, l), (want, lanes), "{raw:#010x}"),
                 other => panic!("{raw:#010x}: {other:?}"),
             }
         }
-        for (raw, want) in [(0x1EE2_4820u32, FpOp2::Fmax), (0x1EE2_5820, FpOp2::Fmin), (0x1EE2_6820, FpOp2::Fmaxnm), (0x1EE2_7820, FpOp2::Fminnm)] {
+        for (raw, want) in [
+            (0x1EE2_4820u32, FpOp2::Fmax),
+            (0x1EE2_5820, FpOp2::Fmin),
+            (0x1EE2_6820, FpOp2::Fmaxnm),
+            (0x1EE2_7820, FpOp2::Fminnm),
+        ] {
             match decode(raw) {
-                Instruction::FpHalfMinMax { op, rd: 0, rn: 1, rm: 2 } => assert_eq!(op, want, "{raw:#010x}"),
+                Instruction::FpHalfMinMax {
+                    op,
+                    rd: 0,
+                    rn: 1,
+                    rm: 2,
+                } => assert_eq!(op, want, "{raw:#010x}"),
                 other => panic!("{raw:#010x}: {other:?}"),
             }
         }
@@ -2097,22 +2567,73 @@ mod tests {
 
     #[test]
     fn test_decode_fp_scalar_forms_from_deko3d() {
-        assert!(matches!(decode(0x1E204050), Instruction::FpData1 { rd: 16, rn: 2, op: 0, is_double: false })); // fmov s16, s2
-        assert!(matches!(decode(0x1E3100A7), Instruction::FpIntConv { rd: 7, rn: 5, opcode: 1, rmode: 2, is_64: false, .. })); // fcvtmu w7, s5
-        assert!(matches!(decode(0x1E24C021), Instruction::FpRound { rd: 1, rn: 1, op: 1, is_double: false })); // frintp s1, s1
-        assert!(matches!(decode(0x1E2020F8), Instruction::FpCompare { rn: 7, is_zero: true, .. })); // fcmpe s7, #0.0
-        assert!(matches!(decode(0x0E31B800), Instruction::SimdAcross { op: SimdAcrossOp::Addv, esize: 8, q: false, .. })); // addv b0, v0.8b
+        assert!(matches!(
+            decode(0x1E204050),
+            Instruction::FpData1 {
+                rd: 16,
+                rn: 2,
+                op: 0,
+                is_double: false
+            }
+        )); // fmov s16, s2
+        assert!(matches!(
+            decode(0x1E3100A7),
+            Instruction::FpIntConv {
+                rd: 7,
+                rn: 5,
+                opcode: 1,
+                rmode: 2,
+                is_64: false,
+                ..
+            }
+        )); // fcvtmu w7, s5
+        assert!(matches!(
+            decode(0x1E24C021),
+            Instruction::FpRound {
+                rd: 1,
+                rn: 1,
+                op: 1,
+                is_double: false
+            }
+        )); // frintp s1, s1
+        assert!(matches!(
+            decode(0x1E2020F8),
+            Instruction::FpCompare {
+                rn: 7,
+                is_zero: true,
+                ..
+            }
+        )); // fcmpe s7, #0.0
+        assert!(matches!(
+            decode(0x0E31B800),
+            Instruction::SimdAcross {
+                op: SimdAcrossOp::Addv,
+                esize: 8,
+                q: false,
+                ..
+            }
+        )); // addv b0, v0.8b
     }
 
     #[test]
     fn test_decode_fabd_scalar() {
         assert_eq!(
             decode(0x7EFCD7DE),
-            Instruction::FpAbd { rd: 30, rn: 30, rm: 28, is_double: true }
+            Instruction::FpAbd {
+                rd: 30,
+                rn: 30,
+                rm: 28,
+                is_double: true
+            }
         ); // fabd d30, d30, d28 (from cJSON_Compare)
         assert_eq!(
             decode(0x7EA2D420),
-            Instruction::FpAbd { rd: 0, rn: 1, rm: 2, is_double: false }
+            Instruction::FpAbd {
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                is_double: false
+            }
         ); // fabd s0, s1, s2
     }
 
@@ -2120,12 +2641,18 @@ mod tests {
     fn test_decode_scalar_recip_and_frint3264() {
         use SimdFpOp2::*;
         use SimdFpOp3::*;
-        let three = |w| match decode(w) { Instruction::FpScalarThreeSame { op, is_double, .. } => Some((op, is_double)), _ => None };
+        let three = |w| match decode(w) {
+            Instruction::FpScalarThreeSame { op, is_double, .. } => Some((op, is_double)),
+            _ => None,
+        };
         assert_eq!(three(0x5E21_FC02), Some((Frecps, false)));
         assert_eq!(three(0x5E61_FC02), Some((Frecps, true)));
         assert_eq!(three(0x5EA1_FC02), Some((Frsqrts, false)));
         assert_eq!(three(0x5EE1_FC02), Some((Frsqrts, true)));
-        let two = |w| match decode(w) { Instruction::FpScalarTwoMisc { op, is_double, .. } => Some((op, is_double)), _ => None };
+        let two = |w| match decode(w) {
+            Instruction::FpScalarTwoMisc { op, is_double, .. } => Some((op, is_double)),
+            _ => None,
+        };
         assert_eq!(two(0x5EA1_D802), Some((Frecpe, false)));
         assert_eq!(two(0x5EE1_D802), Some((Frecpe, true)));
         assert_eq!(two(0x7EA1_D802), Some((Frsqrte, false)));
@@ -2138,18 +2665,31 @@ mod tests {
         // neighbours stay what they were: FMULX scalar, scalar FRINTP, vector FRECPE
         assert!(matches!(decode(0x5E21_DC03), Instruction::FpMulx { .. }));
         assert!(matches!(decode(0x1E24_C021), Instruction::FpRound { .. }));
-        assert!(matches!(decode(0x4EA1_D800), Instruction::SimdFpTwoMisc { op: Frecpe, .. }));
+        assert!(matches!(
+            decode(0x4EA1_D800),
+            Instruction::SimdFpTwoMisc { op: Frecpe, .. }
+        ));
     }
 
     #[test]
     fn test_decode_fmulx_scalar() {
         assert_eq!(
             decode(0x5E21DC03),
-            Instruction::FpMulx { rd: 3, rn: 0, rm: 1, is_double: false }
+            Instruction::FpMulx {
+                rd: 3,
+                rn: 0,
+                rm: 1,
+                is_double: false
+            }
         ); // fmulx s3, s0, s1
         assert_eq!(
             decode(0x5E61DC03),
-            Instruction::FpMulx { rd: 3, rn: 0, rm: 1, is_double: true }
+            Instruction::FpMulx {
+                rd: 3,
+                rn: 0,
+                rm: 1,
+                is_double: true
+            }
         ); // fmulx d3, d0, d1
     }
 
@@ -2172,7 +2712,13 @@ mod tests {
     #[test]
     fn test_decode_movz() {
         match decode(0xD2800540) {
-            Instruction::MoveWide { rd, imm, shift, op, is_64 } => {
+            Instruction::MoveWide {
+                rd,
+                imm,
+                shift,
+                op,
+                is_64,
+            } => {
                 assert_eq!(rd, 0);
                 assert_eq!(imm, 42);
                 assert_eq!(shift, 0);
@@ -2199,10 +2745,46 @@ mod tests {
 
     #[test]
     fn test_decode_pmull() {
-        assert_eq!(decode(0x0E22E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: false, q: false }); // pmull v0.8h, v1.8b, v2.8b
-        assert_eq!(decode(0x4E22E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: false, q: true }); // pmull2 v0.8h, v1.16b, v2.16b
-        assert_eq!(decode(0x0EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: false }); // pmull v0.1q, v1.1d, v2.1d
-        assert_eq!(decode(0x4EE2E020), Instruction::Pmull { rd: 0, rn: 1, rm: 2, wide: true, q: true }); // pmull2 v0.1q, v1.2d, v2.2d
+        assert_eq!(
+            decode(0x0E22E020),
+            Instruction::Pmull {
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                wide: false,
+                q: false
+            }
+        ); // pmull v0.8h, v1.8b, v2.8b
+        assert_eq!(
+            decode(0x4E22E020),
+            Instruction::Pmull {
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                wide: false,
+                q: true
+            }
+        ); // pmull2 v0.8h, v1.16b, v2.16b
+        assert_eq!(
+            decode(0x0EE2E020),
+            Instruction::Pmull {
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                wide: true,
+                q: false
+            }
+        ); // pmull v0.1q, v1.1d, v2.1d
+        assert_eq!(
+            decode(0x4EE2E020),
+            Instruction::Pmull {
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                wide: true,
+                q: true
+            }
+        ); // pmull2 v0.1q, v1.2d, v2.2d
         assert!(!matches!(decode(0x0E62E020), Instruction::Pmull { .. })); // size 1 reserved
         assert!(!matches!(decode(0x2E22E020), Instruction::Pmull { .. })); // U=1 is not PMULL
     }
@@ -2217,25 +2799,69 @@ mod tests {
         // fmov v29.8h, #-0.21093750 (imm8 = 0xCB -> 0xB2C0)
         assert_eq!(
             decode(0x4f06_fd7d),
-            Instruction::SimdModImm { rd: 29, imm: lane(0xCB), op: SimdImmOp::Mov, q: true }
+            Instruction::SimdModImm {
+                rd: 29,
+                imm: lane(0xCB),
+                op: SimdImmOp::Mov,
+                q: true
+            }
         );
         assert_eq!(lane(0xCB), 0xB2C0_B2C0_B2C0_B2C0);
         // fmov v17.4h, #11.0 (imm8 = 0x26 -> 0x4980); Q = 0 keeps the pattern in the low half
         assert_eq!(
             decode(0x0f01_fcd1),
-            Instruction::SimdModImm { rd: 17, imm: lane(0x26), op: SimdImmOp::Mov, q: false }
+            Instruction::SimdModImm {
+                rd: 17,
+                imm: lane(0x26),
+                op: SimdImmOp::Mov,
+                q: false
+            }
         );
         assert_eq!(lane(0x26), 0x4980_4980_4980_4980);
         // imm8 = 0x70 is 1.0h (0x3C00) in every lane: fmov v0.8h, #1.0 / fmov v1.4h, #1.0
         assert_eq!(lane(0x70), 0x3C00_3C00_3C00_3C00);
-        assert_eq!(decode(0x4f03_fe00), Instruction::SimdModImm { rd: 0, imm: lane(0x70), op: SimdImmOp::Mov, q: true });
-        assert_eq!(decode(0x0f03_fe01), Instruction::SimdModImm { rd: 1, imm: lane(0x70), op: SimdImmOp::Mov, q: false });
+        assert_eq!(
+            decode(0x4f03_fe00),
+            Instruction::SimdModImm {
+                rd: 0,
+                imm: lane(0x70),
+                op: SimdImmOp::Mov,
+                q: true
+            }
+        );
+        assert_eq!(
+            decode(0x0f03_fe01),
+            Instruction::SimdModImm {
+                rd: 1,
+                imm: lane(0x70),
+                op: SimdImmOp::Mov,
+                q: false
+            }
+        );
         // single and double forms are unchanged (o2 = 0)
-        assert!(matches!(decode(0x4f03_f607), Instruction::SimdModImm { q: true, op: SimdImmOp::Mov, .. })); // fmov v7.4s, #1.0
-        assert!(matches!(decode(0x6f04_f488), Instruction::SimdModImm { q: true, op: SimdImmOp::Mov, .. })); // fmov v8.2d, #-2.5
+        assert!(matches!(
+            decode(0x4f03_f607),
+            Instruction::SimdModImm {
+                q: true,
+                op: SimdImmOp::Mov,
+                ..
+            }
+        )); // fmov v7.4s, #1.0
+        assert!(matches!(
+            decode(0x6f04_f488),
+            Instruction::SimdModImm {
+                q: true,
+                op: SimdImmOp::Mov,
+                ..
+            }
+        )); // fmov v8.2d, #-2.5
         // o2 = 1 with op = 1, and o2 = 1 with cmode != 1111, stay undecoded
         for w in [0x2f03_fe00u32, 0x6f03_fe00, 0x0f00_0c00] {
-            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#010x} {:?}", decode(w));
+            assert!(
+                matches!(decode(w), Instruction::Unimplemented { .. }),
+                "{w:#010x} {:?}",
+                decode(w)
+            );
         }
     }
 
@@ -2243,17 +2869,51 @@ mod tests {
     fn decode_fcadd() {
         assert_eq!(
             decode(0x2e93_e7c7),
-            Instruction::Fcadd { rd: 7, rn: 30, rm: 19, esize: 32, q: false, rot90: true }
+            Instruction::Fcadd {
+                rd: 7,
+                rn: 30,
+                rm: 19,
+                esize: 32,
+                q: false,
+                rot90: true
+            }
         ); // fcadd v7.2s, v30.2s, v19.2s, #90
         assert_eq!(
             decode(0x2e8e_f54c),
-            Instruction::Fcadd { rd: 12, rn: 10, rm: 14, esize: 32, q: false, rot90: false }
+            Instruction::Fcadd {
+                rd: 12,
+                rn: 10,
+                rm: 14,
+                esize: 32,
+                q: false,
+                rot90: false
+            }
         ); // fcadd v12.2s, v10.2s, v14.2s, #270
-        assert!(matches!(decode(0x6e82_e420), Instruction::Fcadd { esize: 32, q: true, rot90: true, .. }));
-        assert!(matches!(decode(0x6ec2_f420), Instruction::Fcadd { esize: 64, q: true, rot90: false, .. }));
+        assert!(matches!(
+            decode(0x6e82_e420),
+            Instruction::Fcadd {
+                esize: 32,
+                q: true,
+                rot90: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            decode(0x6ec2_f420),
+            Instruction::Fcadd {
+                esize: 64,
+                q: true,
+                rot90: false,
+                ..
+            }
+        ));
         // half precision and double without Q stay undecoded
         for w in [0x2e42_e420u32, 0x2ec2_e420] {
-            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#x} {:?}", decode(w));
+            assert!(
+                matches!(decode(w), Instruction::Unimplemented { .. }),
+                "{w:#x} {:?}",
+                decode(w)
+            );
         }
     }
 
@@ -2261,14 +2921,55 @@ mod tests {
     fn decode_sqrdmlah() {
         assert_eq!(
             decode(0x2e87_8560),
-            Instruction::SimdThreeSame { rd: 0, rn: 11, rm: 7, op: SimdOp3::Sqrdmlah, esize: 32, q: false }
+            Instruction::SimdThreeSame {
+                rd: 0,
+                rn: 11,
+                rm: 7,
+                op: SimdOp3::Sqrdmlah,
+                esize: 32,
+                q: false
+            }
         ); // sqrdmlah v0.2s, v11.2s, v7.2s
-        assert!(matches!(decode(0x6e42_8420), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlah, esize: 16, q: true, .. }));
-        assert!(matches!(decode(0x2e42_8c20), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlsh, esize: 16, q: false, .. }));
-        assert!(matches!(decode(0x6e82_8c20), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlsh, esize: 32, q: true, .. }));
+        assert!(matches!(
+            decode(0x6e42_8420),
+            Instruction::SimdThreeSame {
+                op: SimdOp3::Sqrdmlah,
+                esize: 16,
+                q: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            decode(0x2e42_8c20),
+            Instruction::SimdThreeSame {
+                op: SimdOp3::Sqrdmlsh,
+                esize: 16,
+                q: false,
+                ..
+            }
+        ));
+        assert!(matches!(
+            decode(0x6e82_8c20),
+            Instruction::SimdThreeSame {
+                op: SimdOp3::Sqrdmlsh,
+                esize: 32,
+                q: true,
+                ..
+            }
+        ));
         // size 00 and size 11 are not these instructions
         for w in [0x2e02_8420u32, 0x6ec2_8420] {
-            assert!(!matches!(decode(w), Instruction::SimdThreeSame { op: SimdOp3::Sqrdmlah | SimdOp3::Sqrdmlsh, .. }), "{w:#x} {:?}", decode(w));
+            assert!(
+                !matches!(
+                    decode(w),
+                    Instruction::SimdThreeSame {
+                        op: SimdOp3::Sqrdmlah | SimdOp3::Sqrdmlsh,
+                        ..
+                    }
+                ),
+                "{w:#x} {:?}",
+                decode(w)
+            );
         }
     }
 
@@ -2276,20 +2977,55 @@ mod tests {
     fn decode_fcvtxn() {
         assert_eq!(
             decode(0x2e61_6b86),
-            Instruction::SimdFpTwoMisc { rd: 6, rn: 28, op: SimdFpOp2::Fcvtxn, double: true, q: false, scalar: false }
+            Instruction::SimdFpTwoMisc {
+                rd: 6,
+                rn: 28,
+                op: SimdFpOp2::Fcvtxn,
+                double: true,
+                q: false,
+                scalar: false
+            }
         ); // fcvtxn v6.2s, v28.2d
         assert_eq!(
             decode(0x6e61_6b10),
-            Instruction::SimdFpTwoMisc { rd: 16, rn: 24, op: SimdFpOp2::Fcvtxn, double: true, q: true, scalar: false }
+            Instruction::SimdFpTwoMisc {
+                rd: 16,
+                rn: 24,
+                op: SimdFpOp2::Fcvtxn,
+                double: true,
+                q: true,
+                scalar: false
+            }
         ); // fcvtxn2 v16.4s, v24.2d
         assert_eq!(
             decode(0x7e61_6b19),
-            Instruction::SimdFpTwoMisc { rd: 25, rn: 24, op: SimdFpOp2::Fcvtxn, double: true, q: false, scalar: true }
+            Instruction::SimdFpTwoMisc {
+                rd: 25,
+                rn: 24,
+                op: SimdFpOp2::Fcvtxn,
+                double: true,
+                q: false,
+                scalar: true
+            }
         ); // fcvtxn s25, d24
         // sz = 0 is not the double-to-single form; scalar size != 01 stays undecoded
-        assert!(matches!(decode(0x2e21_6820), Instruction::Unimplemented { .. }), "{:?}", decode(0x2e21_6820));
-        assert!(matches!(decode(0x7e21_6820), Instruction::Unimplemented { .. }), "{:?}", decode(0x7e21_6820));
-        assert!(matches!(decode(0x0e61_6820), Instruction::SimdFpTwoMisc { op: SimdFpOp2::Fcvtn, .. })); // fcvtn, U = 0
+        assert!(
+            matches!(decode(0x2e21_6820), Instruction::Unimplemented { .. }),
+            "{:?}",
+            decode(0x2e21_6820)
+        );
+        assert!(
+            matches!(decode(0x7e21_6820), Instruction::Unimplemented { .. }),
+            "{:?}",
+            decode(0x7e21_6820)
+        );
+        assert!(matches!(
+            decode(0x0e61_6820),
+            Instruction::SimdFpTwoMisc {
+                op: SimdFpOp2::Fcvtn,
+                ..
+            }
+        )); // fcvtn, U = 0
     }
 }
 
@@ -2304,23 +3040,41 @@ fn decode_intvec(raw: u32) -> Option<Instruction> {
 
     // BRK #imm16: 1101 0100 001 imm16 00000
     if (raw & 0xFFE0_001F) == 0xD420_0000 {
-        return Some(Instruction::Brk { imm: ((raw >> 5) & 0xFFFF) as u16 });
+        return Some(Instruction::Brk {
+            imm: ((raw >> 5) & 0xFFFF) as u16,
+        });
     }
 
     // ADDP Dd, Vn.2D (scalar pairwise add, what vaddvq_u64 compiles to): 01 0 11110 11 11000 11011 10 Rn Rd
     if (raw & 0xFFFF_FC00) == 0x5EF1_B800 {
-        return Some(Instruction::SimdAcross { rd, rn, op: SimdAcrossOp::Addv, esize: 64, q: true });
+        return Some(Instruction::SimdAcross {
+            rd,
+            rn,
+            op: SimdAcrossOp::Addv,
+            esize: 64,
+            q: true,
+        });
     }
 
     let size = (raw >> 22) & 3;
     // SADDLP/UADDLP/SADALP/UADALP: 0 Q U 01110 size 10000 00010/00110 10 Rn Rd (size < 3)
     if (raw & 0x9F3F_BC00) == 0x0E20_2800 && size < 3 {
         let acc = (raw >> 14) & 1 != 0;
-        return Some(Instruction::SimdPairwiseLong { rd, rn, signed: !u, acc, esize: 8u8 << size, q });
+        return Some(Instruction::SimdPairwiseLong {
+            rd,
+            rn,
+            signed: !u,
+            acc,
+            esize: 8u8 << size,
+            q,
+        });
     }
 
     // Two-register misc narrowing: [0 Q | 01] U 01110 size 10000 opcode 10 Rn Rd (vector / scalar)
-    for (mask, want, scalar) in [(0x9F3E_0C00u32, 0x0E20_0800u32, false), (0xDF3E_0C00, 0x5E20_0800, true)] {
+    for (mask, want, scalar) in [
+        (0x9F3E_0C00u32, 0x0E20_0800u32, false),
+        (0xDF3E_0C00, 0x5E20_0800, true),
+    ] {
         if (raw & mask) == want {
             let size = (raw >> 22) & 3;
             let op = match ((raw >> 12) & 0x1F, u) {
@@ -2332,12 +3086,22 @@ fn decode_intvec(raw: u32) -> Option<Instruction> {
             if size == 3 {
                 return None;
             }
-            return Some(Instruction::SimdQNarrow { rd, rn, op, esize: 8u8 << size, q: q && !scalar, scalar });
+            return Some(Instruction::SimdQNarrow {
+                rd,
+                rn,
+                op,
+                esize: 8u8 << size,
+                q: q && !scalar,
+                scalar,
+            });
         }
     }
 
     // Shift by immediate: [0 Q | 01] U 011110 / 111110 immh immb opcode 1 Rn Rd
-    for (mask, want, scalar) in [(0x9F80_0400u32, 0x0F00_0400u32, false), (0xDF80_0400, 0x5F00_0400, true)] {
+    for (mask, want, scalar) in [
+        (0x9F80_0400u32, 0x0F00_0400u32, false),
+        (0xDF80_0400, 0x5F00_0400, true),
+    ] {
         if (raw & mask) != want {
             continue;
         }
@@ -2376,19 +3140,36 @@ fn decode_intvec(raw: u32) -> Option<Instruction> {
         };
         let is_narrow = matches!(
             op,
-            SimdShiftExtOp::Rshrn | SimdShiftExtOp::Sqshrn | SimdShiftExtOp::Uqshrn | SimdShiftExtOp::Sqshrun
-                | SimdShiftExtOp::Sqrshrn | SimdShiftExtOp::Uqrshrn | SimdShiftExtOp::Sqrshrun
+            SimdShiftExtOp::Rshrn
+                | SimdShiftExtOp::Sqshrn
+                | SimdShiftExtOp::Uqshrn
+                | SimdShiftExtOp::Sqshrun
+                | SimdShiftExtOp::Sqrshrn
+                | SimdShiftExtOp::Uqrshrn
+                | SimdShiftExtOp::Sqrshrun
         );
         // Scalar forms: only SQSHL/UQSHL/SQSHLU and the narrowing shifts take B/H/S lanes; the rest are D only.
         // RSHRN has no scalar form. Vector 1D (esize 64 without Q) does not exist.
-        let any_size = is_narrow || matches!(op, SimdShiftExtOp::Sqshl | SimdShiftExtOp::Uqshl | SimdShiftExtOp::Sqshlu);
+        let any_size = is_narrow
+            || matches!(
+                op,
+                SimdShiftExtOp::Sqshl | SimdShiftExtOp::Uqshl | SimdShiftExtOp::Sqshlu
+            );
         if scalar && ((!any_size && esize != 64) || op == SimdShiftExtOp::Rshrn) {
             return None;
         }
         if !scalar && esize == 64 && !q && !is_narrow {
             return None;
         }
-        return Some(Instruction::SimdShiftExt { rd, rn, op, esize: esize as u8, shift: shift as u8, q: q && !scalar, scalar });
+        return Some(Instruction::SimdShiftExt {
+            rd,
+            rn,
+            op,
+            esize: esize as u8,
+            shift: shift as u8,
+            q: q && !scalar,
+            scalar,
+        });
     }
     None
 }
@@ -2410,13 +3191,29 @@ mod fuzz_half_precision {
             0x1ee4_c16a,    // fneg/fabs class, half
             0x1ef0_ef62,    // fcsel h2, h27, h16, al
         ] {
-            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#010x} {:?}", decode(w));
+            assert!(
+                matches!(decode(w), Instruction::Unimplemented { .. }),
+                "{w:#010x} {:?}",
+                decode(w)
+            );
         }
         // single and double still decode
-        assert!(matches!(decode(0x1e22_0c20), Instruction::FpCondSelect { is_double: false, .. })); // fcsel s0, s1, s2, eq
-        assert!(matches!(decode(0x1e62_0c20), Instruction::FpCondSelect { is_double: true, .. })); // fcsel d0, d1, d2, eq
-        assert!(matches!(decode(0x1e22_2020), Instruction::FpCompare { is_double: false, .. })); // fcmp s1, s2
-        assert!(matches!(decode(0x1e21_c020), Instruction::FpData1 { is_double: false, .. })); // fsqrt s0, s1
+        assert!(matches!(
+            decode(0x1e22_0c20),
+            Instruction::FpCondSelect { is_double: false, .. }
+        )); // fcsel s0, s1, s2, eq
+        assert!(matches!(
+            decode(0x1e62_0c20),
+            Instruction::FpCondSelect { is_double: true, .. }
+        )); // fcsel d0, d1, d2, eq
+        assert!(matches!(
+            decode(0x1e22_2020),
+            Instruction::FpCompare { is_double: false, .. }
+        )); // fcmp s1, s2
+        assert!(matches!(
+            decode(0x1e21_c020),
+            Instruction::FpData1 { is_double: false, .. }
+        )); // fsqrt s0, s1
     }
 }
 
@@ -2439,16 +3236,47 @@ mod fuzz_fixed_bits {
             0x9e26_0004,    // fmov x4, s0 (sf = 1 needs type 01)
             0x1e66_0004,    // fmov w4, d0 (type 01 needs sf = 1)
         ] {
-            assert!(matches!(decode(w), Instruction::Unimplemented { .. }), "{w:#010x} {:?}", decode(w));
+            assert!(
+                matches!(decode(w), Instruction::Unimplemented { .. }),
+                "{w:#010x} {:?}",
+                decode(w)
+            );
         }
-        assert!(matches!(decode(0x1e22_2820), Instruction::FpData2 { op: FpOp2::Fadd, .. })); // fadd s0, s1, s2
+        assert!(matches!(
+            decode(0x1e22_2820),
+            Instruction::FpData2 { op: FpOp2::Fadd, .. }
+        )); // fadd s0, s1, s2
         assert!(matches!(decode(0x1e22_2020), Instruction::FpCompare { .. })); // fcmp s1, s2
-        assert!(matches!(decode(0x1e22_2028), Instruction::FpCompare { is_zero: true, .. })); // fcmp s1, #0.0
+        assert!(matches!(
+            decode(0x1e22_2028),
+            Instruction::FpCompare { is_zero: true, .. }
+        )); // fcmp s1, #0.0
         assert!(matches!(decode(0x9e62_0020), Instruction::FpIntConv { opcode: 2, .. })); // scvtf d0, x1
         assert!(matches!(decode(0x9e64_0020), Instruction::FpIntConv { opcode: 4, .. })); // fcvtas x0, d1
         assert!(matches!(decode(0x1e79_0020), Instruction::FpIntConv { rmode: 3, .. })); // fcvtzs w0, d1
-        assert!(matches!(decode(0x9e66_0020), Instruction::FpMovGen { is_64: true, to_fp: false, .. })); // fmov x0, d1
-        assert!(matches!(decode(0x1e26_0020), Instruction::FpMovGen { is_64: false, to_fp: false, .. })); // fmov w0, s1
-        assert!(matches!(decode(0x9e67_0020), Instruction::FpMovGen { is_64: true, to_fp: true, .. })); // fmov d0, x1
+        assert!(matches!(
+            decode(0x9e66_0020),
+            Instruction::FpMovGen {
+                is_64: true,
+                to_fp: false,
+                ..
+            }
+        )); // fmov x0, d1
+        assert!(matches!(
+            decode(0x1e26_0020),
+            Instruction::FpMovGen {
+                is_64: false,
+                to_fp: false,
+                ..
+            }
+        )); // fmov w0, s1
+        assert!(matches!(
+            decode(0x9e67_0020),
+            Instruction::FpMovGen {
+                is_64: true,
+                to_fp: true,
+                ..
+            }
+        )); // fmov d0, x1
     }
 }

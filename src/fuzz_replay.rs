@@ -50,7 +50,9 @@ fn hex(t: &mut std::str::SplitWhitespace) -> Result<u128, String> {
 
 fn bounded_hex(t: &mut std::str::SplitWhitespace, bits: u32) -> Result<u128, String> {
     let value = hex(t)?;
-    if bits < 128 && value >> bits != 0 { return Err(format!("value exceeds {bits}-bit field")); }
+    if bits < 128 && value >> bits != 0 {
+        return Err(format!("value exceeds {bits}-bit field"));
+    }
     Ok(value)
 }
 
@@ -59,11 +61,17 @@ pub fn parse_line(line: &str) -> Result<Line, String> {
     match t.next() {
         Some("U") => {
             let word = bounded_hex(&mut t, 32)? as u32;
-            if t.next().is_some() { return Err("extra fields after U case".into()); }
+            if t.next().is_some() {
+                return Err("extra fields after U case".into());
+            }
             Ok(Line::Undefined(word))
-        },
+        }
         Some(tag @ ("T" | "TF")) => {
-            let fpcr = if tag == "TF" { bounded_hex(&mut t, 32)? as u32 } else { 0 };
+            let fpcr = if tag == "TF" {
+                bounded_hex(&mut t, 32)? as u32
+            } else {
+                0
+            };
             let word = bounded_hex(&mut t, 32)? as u32;
             let nzcv_in = bounded_hex(&mut t, 4)? as u32;
             let mut x_in = [0u64; 31];
@@ -87,8 +95,20 @@ pub fn parse_line(line: &str) -> Result<Line, String> {
             for v in v_out.iter_mut() {
                 *v = hex(&mut t)?;
             }
-            if t.next().is_some() { return Err("extra fields after T case".into()); }
-            Ok(Line::Test(Box::new(Case { fpcr, word, nzcv_in, x_in, v_in, nzcv_out, fpsr_out, x_out, v_out })))
+            if t.next().is_some() {
+                return Err("extra fields after T case".into());
+            }
+            Ok(Line::Test(Box::new(Case {
+                fpcr,
+                word,
+                nzcv_in,
+                x_in,
+                v_in,
+                nzcv_out,
+                fpsr_out,
+                x_out,
+                v_out,
+            })))
         }
         _ => Err(format!("bad line: {line:.40}")),
     }
@@ -264,7 +284,9 @@ fn exec(engine: Engine, word: u32, init: &Init) -> (Exec, u64) {
             if e.unavailable.is_some() {
                 return (Exec::Unavailable, 0);
             }
-            e.tier3.hot_pc_counters.insert(WORD_PC, Tier3JitEngine::HOT_THRESHOLD - 1);
+            e.tier3
+                .hot_pc_counters
+                .insert(WORD_PC, Tier3JitEngine::HOT_THRESHOLD - 1);
             let exit = drive(|c, m, n| e.run_slice(c, m, n), &mut cpu, &mut mmu);
             native = e.native_insns;
             exit
@@ -276,7 +298,11 @@ fn exec(engine: Engine, word: u32, init: &Init) -> (Exec, u64) {
 }
 
 /// Runs engine slices until `svc`, a fault or [`LIMIT`] instructions; `ret` exits are stepped over.
-fn drive(mut slice: impl FnMut(&mut Cpu, &mut Memory, usize) -> (usize, BlockExit), cpu: &mut Cpu, mmu: &mut Memory) -> String {
+fn drive(
+    mut slice: impl FnMut(&mut Cpu, &mut Memory, usize) -> (usize, BlockExit),
+    cpu: &mut Cpu,
+    mmu: &mut Memory,
+) -> String {
     let mut total = 0;
     while total < LIMIT {
         let (n, exit) = slice(cpu, mmu, LIMIT - total);
@@ -343,7 +369,14 @@ fn replay_on(c: &Case, engine: Engine) -> (Outcome, u64) {
 }
 
 fn replay_details(c: &Case, engine: Engine) -> (Outcome, u64, Option<Box<State>>) {
-    let init = Init { nzcv: c.nzcv_in, x: c.x_in, sp: DATA, v: c.v_in, fpcr: c.fpcr, data: Vec::new() };
+    let init = Init {
+        nzcv: c.nzcv_in,
+        x: c.x_in,
+        sp: DATA,
+        v: c.v_in,
+        fpcr: c.fpcr,
+        data: Vec::new(),
+    };
     if engine != Engine::Interp {
         match exec(Engine::Interp, c.word, &init).0 {
             Exec::Unimplemented => return (Outcome::Unimplemented, 0, None),
@@ -359,7 +392,11 @@ fn replay_details(c: &Case, engine: Engine) -> (Outcome, u64, Option<Box<State>>
         Exec::Other(e) => return (Outcome::OtherError(e), 0, None),
     };
     if st.exit != "svc 0" {
-        return (Outcome::OtherError(format!("exit {} pc {:#x}", st.exit, st.pc)), native, Some(st));
+        return (
+            Outcome::OtherError(format!("exit {} pc {:#x}", st.exit, st.pc)),
+            native,
+            Some(st),
+        );
     }
     let mut diffs = Vec::new();
     for i in 0..31 {
@@ -377,7 +414,11 @@ fn replay_details(c: &Case, engine: Engine) -> (Outcome, u64, Option<Box<State>>
         diffs.push(format!("nzcv: host {:#x} emu {:#x}", c.nzcv_out, st.nzcv));
     }
     if st.fpsr & QC != c.fpsr_out & QC {
-        diffs.push(format!("fpsr.QC: host {} emu {}", (c.fpsr_out & QC) >> 27, (st.fpsr & QC) >> 27));
+        diffs.push(format!(
+            "fpsr.QC: host {} emu {}",
+            (c.fpsr_out & QC) >> 27,
+            (st.fpsr & QC) >> 27
+        ));
     }
     (Outcome::Ran(diffs, st.fpsr), native, Some(st))
 }
@@ -392,14 +433,28 @@ fn register_json(x: &[u64], v: &[u128], nzcv: u32, fpsr: u32) -> serde_json::Val
 
 /// Retain a single compared instruction, not a trace of an arbitrary program.
 #[allow(clippy::too_many_arguments)]
-fn save_difference(dir: &std::path::Path, line: &str, line_number: usize, c: &Case, st: &State,
-                   engine: Engine, native: u64, differences: &[String]) -> Result<(), String> {
+fn save_difference(
+    dir: &std::path::Path,
+    line: &str,
+    line_number: usize,
+    c: &Case,
+    st: &State,
+    engine: Engine,
+    native: u64,
+    differences: &[String],
+) -> Result<(), String> {
     use sha2::{Digest, Sha256};
     let mut input = register_json(&c.x_in, &c.v_in, c.nzcv_in, 0);
     input["fpcr"] = c.fpcr.into();
     let trace = format!("{line}\n");
-    let engine_name = match engine { Engine::Interp => "interp", Engine::Tier3 => "tier3", Engine::Tier4 => "tier4" };
-    let runtime = std::env::current_exe().and_then(std::fs::read).map_err(|e| e.to_string())?;
+    let engine_name = match engine {
+        Engine::Interp => "interp",
+        Engine::Tier3 => "tier3",
+        Engine::Tier4 => "tier4",
+    };
+    let runtime = std::env::current_exe()
+        .and_then(std::fs::read)
+        .map_err(|e| e.to_string())?;
     let doc = serde_json::json!({
         "schema": "ounce-core/instruction-difference-v1",
         "scope": "first differing compared case in an independent-instruction trace; not an arbitrary program's first divergence",
@@ -431,8 +486,14 @@ fn save_difference(dir: &std::path::Path, line: &str, line_number: usize, c: &Ca
 /// Re-execute retained instruction bytes. Success means reproduction, not correctness.
 pub fn replay_bundle(args: &[String]) -> i32 {
     match replay_bundle_inner(args) {
-        Ok((report, reproduced)) => { println!("{report}"); if reproduced { 0 } else { 1 } }
-        Err(e) => { eprintln!("replay-instruction: {e}"); 2 }
+        Ok((report, reproduced)) => {
+            println!("{report}");
+            if reproduced { 0 } else { 1 }
+        }
+        Err(e) => {
+            eprintln!("replay-instruction: {e}");
+            2
+        }
     }
 }
 
@@ -450,7 +511,8 @@ fn replay_bundle_inner(args: &[String]) -> Result<(serde_json::Value, bool), Str
         std::fs::read(path).map_err(|e| format!("{name}: {e}"))
     };
     let manifest = read("diagnosis.json")?;
-    let doc: serde_json::Value = serde_json::from_slice(&manifest).map_err(|e| format!("invalid diagnosis.json: {e}"))?;
+    let doc: serde_json::Value =
+        serde_json::from_slice(&manifest).map_err(|e| format!("invalid diagnosis.json: {e}"))?;
     if doc["schema"] != "ounce-core/instruction-difference-v1" {
         return Err("unsupported dossier schema".into());
     }
@@ -461,38 +523,66 @@ fn replay_bundle_inner(args: &[String]) -> Result<(serde_json::Value, bool), Str
     }
     let text = std::str::from_utf8(&trace).map_err(|e| e.to_string())?;
     let lines = text.lines().collect::<Vec<_>>();
-    if lines.len() != 1 { return Err("dossier must contain exactly one case".into()); }
-    let Line::Test(c) = parse_line(lines[0])? else { return Err("dossier must contain a compared T case".into()); };
+    if lines.len() != 1 {
+        return Err("dossier must contain exactly one case".into());
+    }
+    let Line::Test(c) = parse_line(lines[0])? else {
+        return Err("dossier must contain a compared T case".into());
+    };
     let mut input = register_json(&c.x_in, &c.v_in, c.nzcv_in, 0);
     input["fpcr"] = c.fpcr.into();
-    if doc["word"] != format!("{:#010x}", c.word) || doc["input"] != input
-        || doc["reference"] != register_json(&c.x_out, &c.v_out, c.nzcv_out, c.fpsr_out) {
+    if doc["word"] != format!("{:#010x}", c.word)
+        || doc["input"] != input
+        || doc["reference"] != register_json(&c.x_out, &c.v_out, c.nzcv_out, c.fpsr_out)
+    {
         return Err("diagnosis state disagrees with retained case.trace".into());
     }
     if doc["comparison"]["excluded_x"] != serde_json::json!([18])
-        || doc["comparison"]["fpsr_mask"] != format!("{QC:#x}") || doc["comparison"]["fpcr"] != c.fpcr {
+        || doc["comparison"]["fpsr_mask"] != format!("{QC:#x}")
+        || doc["comparison"]["fpcr"] != c.fpcr
+    {
         return Err("unsupported comparison scope".into());
     }
     let actual = &doc["actual"];
     let valid_regs = |name: &str, count: usize, width: usize| {
-        actual[name].as_array().is_some_and(|values| values.len() == count && values.iter().all(|v| {
-            v.as_str().is_some_and(|s| s.len() == width && s.strip_prefix("0x")
-                .is_some_and(|n| u128::from_str_radix(n, 16).is_ok()))
-        }))
+        actual[name].as_array().is_some_and(|values| {
+            values.len() == count
+                && values.iter().all(|v| {
+                    v.as_str().is_some_and(|s| {
+                        s.len() == width
+                            && s.strip_prefix("0x")
+                                .is_some_and(|n| u128::from_str_radix(n, 16).is_ok())
+                    })
+                })
+        })
     };
-    if !actual.as_object().is_some_and(|o| o.len() == 4) || !valid_regs("x", 31, 18) || !valid_regs("v", 32, 34)
+    if !actual.as_object().is_some_and(|o| o.len() == 4)
+        || !valid_regs("x", 31, 18)
+        || !valid_regs("v", 32, 34)
         || !actual["nzcv"].as_u64().is_some_and(|n| n <= 15)
-        || !actual["fpsr"].as_u64().is_some_and(|n| n <= u32::MAX as u64) {
+        || !actual["fpsr"].as_u64().is_some_and(|n| n <= u32::MAX as u64)
+    {
         return Err("malformed recorded actual state".into());
     }
-    let recorded_engine = doc["engine"].as_str().and_then(Engine::parse).ok_or("invalid recorded engine")?;
-    let engine = if args.len() == 3 { Engine::parse(&args[2]).ok_or("unknown replay engine")? } else { recorded_engine };
-    if engine == Engine::Tier4 && !tier4_available() { return Err("Tier-4 unavailable; native-jit and a supported host are required".into()); }
+    let recorded_engine = doc["engine"]
+        .as_str()
+        .and_then(Engine::parse)
+        .ok_or("invalid recorded engine")?;
+    let engine = if args.len() == 3 {
+        Engine::parse(&args[2]).ok_or("unknown replay engine")?
+    } else {
+        recorded_engine
+    };
+    if engine == Engine::Tier4 && !tier4_available() {
+        return Err("Tier-4 unavailable; native-jit and a supported host are required".into());
+    }
     let (outcome, native, state) = replay_details(&c, engine);
     let actual = state.as_deref().map(|st| register_json(&st.x, &st.v, st.nzcv, st.fpsr));
     let (differences, reference_verdict, execution_outcome) = match outcome {
         Outcome::Ran(differences, _) => {
-            if actual.is_none() { return Err("missing replay execution state".into()); }
+            if actual.is_none() {
+                return Err("missing replay execution state".into());
+            }
             let verdict = if differences.is_empty() { "match" } else { "mismatch" };
             (differences, verdict, "completed".to_string())
         }
@@ -500,27 +590,39 @@ fn replay_bundle_inner(args: &[String]) -> Result<(serde_json::Value, bool), Str
         Outcome::OtherError(error) => (Vec::new(), "not-compared", format!("execution-error: {error}")),
     };
     let reproduced = execution_outcome == "completed" && actual.as_ref() == Some(&doc["actual"]);
-    let runtime = std::env::current_exe().and_then(std::fs::read).map_err(|e| e.to_string())?;
-    Ok((serde_json::json!({
-        "schema": "ounce-core/instruction-replay-v1",
-        "replay_verdict": if reproduced { "reproduced" } else { "changed" },
-        "reference_verdict": reference_verdict,
-        "execution_outcome": execution_outcome,
-        "scope": "retained single-instruction state only; hash checks do not establish reference provenance",
-        "case_sha256": trace_hash,
-        "diagnosis_sha256": format!("{:x}", Sha256::digest(&manifest)),
-        "runtime_sha256": format!("{:x}", Sha256::digest(&runtime)),
-        "recorded_runtime_sha256": doc["runtime_sha256"],
-        "engine": format!("{engine:?}"),
-        "tier4_native_instructions_including_wrapper": native,
-        "host": {"os": std::env::consts::OS, "arch": std::env::consts::ARCH},
-        "actual": actual, "differences": differences
-    }), reproduced))
+    let runtime = std::env::current_exe()
+        .and_then(std::fs::read)
+        .map_err(|e| e.to_string())?;
+    Ok((
+        serde_json::json!({
+            "schema": "ounce-core/instruction-replay-v1",
+            "replay_verdict": if reproduced { "reproduced" } else { "changed" },
+            "reference_verdict": reference_verdict,
+            "execution_outcome": execution_outcome,
+            "scope": "retained single-instruction state only; hash checks do not establish reference provenance",
+            "case_sha256": trace_hash,
+            "diagnosis_sha256": format!("{:x}", Sha256::digest(&manifest)),
+            "runtime_sha256": format!("{:x}", Sha256::digest(&runtime)),
+            "recorded_runtime_sha256": doc["runtime_sha256"],
+            "engine": format!("{engine:?}"),
+            "tier4_native_instructions_including_wrapper": native,
+            "host": {"os": std::env::consts::OS, "arch": std::env::consts::ARCH},
+            "actual": actual, "differences": differences
+        }),
+        reproduced,
+    ))
 }
 
 /// Does the interpreter run a word the host calls UNDEFINED?
 fn runs_undefined(word: u32) -> bool {
-    let init = Init { nzcv: 0, x: [0; 31], sp: DATA, v: [0; 32], fpcr: 0, data: Vec::new() };
+    let init = Init {
+        nzcv: 0,
+        x: [0; 31],
+        sp: DATA,
+        v: [0; 32],
+        fpcr: 0,
+        data: Vec::new(),
+    };
     matches!(exec(Engine::Interp, word, &init).0, Exec::Done(st) if st.exit == "svc 0")
 }
 
@@ -574,11 +676,17 @@ pub fn run(args: &[String]) -> i32 {
             }
             "--first-difference" => match it.next() {
                 Some(path) => dossier = Some(path.into()),
-                None => { eprintln!("--first-difference requires a new directory"); return 2; }
+                None => {
+                    eprintln!("--first-difference requires a new directory");
+                    return 2;
+                }
             },
             "--results" => match it.next() {
                 Some(path) => results_path = Some(path.into()),
-                None => { eprintln!("--results requires a new file name"); return 2; }
+                None => {
+                    eprintln!("--results requires a new file name");
+                    return 2;
+                }
             },
             "--list-unimplemented" => list_unimpl = true,
             "--top" => top = it.next().and_then(|v| v.parse().ok()).unwrap_or(60),
@@ -619,7 +727,9 @@ pub fn run(args: &[String]) -> i32 {
         return run_engines(seed, count, show);
     }
     let Some(input) = input else {
-        eprintln!("usage: fuzz-replay [--show N] [--top N] [--filter MASK:VALUE]... [--list-unimplemented] [--engine interp|tier3|tier4] [--first-difference NEW-DIR] [--results NEW-FILE] <trace-file|->");
+        eprintln!(
+            "usage: fuzz-replay [--show N] [--top N] [--filter MASK:VALUE]... [--list-unimplemented] [--engine interp|tier3|tier4] [--first-difference NEW-DIR] [--results NEW-FILE] <trace-file|->"
+        );
         eprintln!("       fuzz-replay --engine-vs-engine [--seed N] [--count N] [--show N]");
         return 2;
     };
@@ -641,7 +751,10 @@ pub fn run(args: &[String]) -> i32 {
     // One TSV row per reference case: line, fpcr, word, status, fpsr-exception-flags-differ, detail.
     let mut results = match results_path.as_ref().map(std::fs::File::create_new) {
         Some(Ok(f)) => Some(std::io::BufWriter::new(f)),
-        Some(Err(e)) => { eprintln!("--results: {e}"); return 2; }
+        Some(Err(e)) => {
+            eprintln!("--results: {e}");
+            return 2;
+        }
         None => None,
     };
     let mut record = |n: usize, fpcr: u32, word: u32, status: &str, exc: bool, detail: &str| {
@@ -688,74 +801,83 @@ pub fn run(args: &[String]) -> i32 {
                 let (outcome, native, state) = replay_details(&c, engine);
                 native_cases += u64::from(native > 0);
                 match outcome {
-                Outcome::Unimplemented => {
-                    record(n + 1, c.fpcr, c.word, "unsupported", false, "");
-                    t.unimplemented += 1;
-                    if list_unimpl {
-                        println!("UNIMPL {:08x}", c.word);
-                    }
-                    unimpl_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
-                }
-                Outcome::OtherError(e) => {
-                    record(n + 1, c.fpcr, c.word, "error", false, &e);
-                    t.other_errors += 1;
-                    if shown < show {
-                        shown += 1;
-                        println!("ERROR {:08x}: {e}", c.word);
-                    }
-                }
-                Outcome::Ran(diffs, fpsr) => {
-                    t.executed += 1;
-                    {
-                        let e = by_fpcr.entry(c.fpcr).or_insert((0, 0, 0));
-                        e.0 += 1;
-                        e.1 += !diffs.is_empty() as u64;
-                        e.2 += (diffs.is_empty() && fpsr & EXC != c.fpsr_out & EXC) as u64;
-                    }
-                    if filter.iter().any(|&(m, v)| c.word & m == v) {
-                        f_exec += 1;
-                        f_match += diffs.is_empty() as u64;
-                    }
-                    ran_classes.insert(class(c.word));
-                    let exc_differs = fpsr & EXC != c.fpsr_out & EXC;
-                    let detail = if diffs.is_empty() && exc_differs {
-                        format!("fpsr flags: host {:#x} emu {:#x}", c.fpsr_out & EXC, fpsr & EXC)
-                    } else {
-                        diffs.iter().take(4).cloned().collect::<Vec<_>>().join(" | ")
-                    };
-                    record(n + 1, c.fpcr, c.word, if diffs.is_empty() { "match" } else { "mismatch" }, exc_differs, &detail);
-                    if diffs.is_empty() {
-                        t.matched += 1;
-                        if exc_differs {
-                            t.fpsr_exc_only += 1;
-                            exc_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
+                    Outcome::Unimplemented => {
+                        record(n + 1, c.fpcr, c.word, "unsupported", false, "");
+                        t.unimplemented += 1;
+                        if list_unimpl {
+                            println!("UNIMPL {:08x}", c.word);
                         }
-                    } else {
-                        t.value_mismatch += 1;
-                        if let Some(dir) = dossier.as_ref().filter(|_| !dossier_saved) {
-                            let Some(st) = state.as_deref() else {
-                                eprintln!("dossier: missing execution state"); return 2;
-                            };
-                            if let Err(e) = save_difference(dir, &line, n + 1, &c, st, engine, native, &diffs) {
-                                eprintln!("dossier: {e}"); return 2;
-                            }
-                            dossier_saved = true;
-                        }
-                        if diffs.iter().any(|d| d.starts_with("fpsr.QC")) {
-                            t.qc_mismatch += 1;
-                        }
-                        mism_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
+                        unimpl_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
+                    }
+                    Outcome::OtherError(e) => {
+                        record(n + 1, c.fpcr, c.word, "error", false, &e);
+                        t.other_errors += 1;
                         if shown < show {
                             shown += 1;
-                            println!("MISMATCH {:08x} nzcv_in={:x} fpcr={:#x}", c.word, c.nzcv_in, c.fpcr);
-                            for d in diffs.iter().take(6) {
-                                println!("    {d}");
+                            println!("ERROR {:08x}: {e}", c.word);
+                        }
+                    }
+                    Outcome::Ran(diffs, fpsr) => {
+                        t.executed += 1;
+                        {
+                            let e = by_fpcr.entry(c.fpcr).or_insert((0, 0, 0));
+                            e.0 += 1;
+                            e.1 += !diffs.is_empty() as u64;
+                            e.2 += (diffs.is_empty() && fpsr & EXC != c.fpsr_out & EXC) as u64;
+                        }
+                        if filter.iter().any(|&(m, v)| c.word & m == v) {
+                            f_exec += 1;
+                            f_match += diffs.is_empty() as u64;
+                        }
+                        ran_classes.insert(class(c.word));
+                        let exc_differs = fpsr & EXC != c.fpsr_out & EXC;
+                        let detail = if diffs.is_empty() && exc_differs {
+                            format!("fpsr flags: host {:#x} emu {:#x}", c.fpsr_out & EXC, fpsr & EXC)
+                        } else {
+                            diffs.iter().take(4).cloned().collect::<Vec<_>>().join(" | ")
+                        };
+                        record(
+                            n + 1,
+                            c.fpcr,
+                            c.word,
+                            if diffs.is_empty() { "match" } else { "mismatch" },
+                            exc_differs,
+                            &detail,
+                        );
+                        if diffs.is_empty() {
+                            t.matched += 1;
+                            if exc_differs {
+                                t.fpsr_exc_only += 1;
+                                exc_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
+                            }
+                        } else {
+                            t.value_mismatch += 1;
+                            if let Some(dir) = dossier.as_ref().filter(|_| !dossier_saved) {
+                                let Some(st) = state.as_deref() else {
+                                    eprintln!("dossier: missing execution state");
+                                    return 2;
+                                };
+                                if let Err(e) = save_difference(dir, &line, n + 1, &c, st, engine, native, &diffs) {
+                                    eprintln!("dossier: {e}");
+                                    return 2;
+                                }
+                                dossier_saved = true;
+                            }
+                            if diffs.iter().any(|d| d.starts_with("fpsr.QC")) {
+                                t.qc_mismatch += 1;
+                            }
+                            mism_classes.entry(class(c.word)).or_insert((0, c.word)).0 += 1;
+                            if shown < show {
+                                shown += 1;
+                                println!("MISMATCH {:08x} nzcv_in={:x} fpcr={:#x}", c.word, c.nzcv_in, c.fpcr);
+                                for d in diffs.iter().take(6) {
+                                    println!("    {d}");
+                                }
                             }
                         }
                     }
                 }
-                }
-            },
+            }
         }
     }
     if t.host_undefined + t.executed + t.unimplemented + t.other_errors == 0 {
@@ -767,16 +889,32 @@ pub fn run(args: &[String]) -> i32 {
     if engine == Engine::Tier4 {
         println!("words with native Tier-4 insns: {native_cases}");
     }
-    println!("host executed (not SIGILL):     {}", t.executed + t.unimplemented + t.other_errors);
+    println!(
+        "host executed (not SIGILL):     {}",
+        t.executed + t.unimplemented + t.other_errors
+    );
     println!("host UNDEFINED (SIGILL):        {}", t.host_undefined);
-    println!("emulator unimplemented:         {} ({} classes)", t.unimplemented, unimpl_classes.len());
+    println!(
+        "emulator unimplemented:         {} ({} classes)",
+        t.unimplemented,
+        unimpl_classes.len()
+    );
     println!("emulator other errors:          {}", t.other_errors);
     println!("emulator executed:              {}", t.executed);
     println!("  distinct classes executed:    {}", ran_classes.len());
     println!("  exact match (X,V,NZCV,QC):    {}", t.matched);
-    println!("  MISMATCH:                     {} ({} with QC wrong)", t.value_mismatch, t.qc_mismatch);
-    println!("  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: {}", t.fpsr_exc_only);
-    println!("emulator runs a word the host calls UNDEFINED: {}", t.emu_runs_undefined);
+    println!(
+        "  MISMATCH:                     {} ({} with QC wrong)",
+        t.value_mismatch, t.qc_mismatch
+    );
+    println!(
+        "  FPSR exception flags (IOC DZC OFC UFC IXC IDC) differ on matching results: {}",
+        t.fpsr_exc_only
+    );
+    println!(
+        "emulator runs a word the host calls UNDEFINED: {}",
+        t.emu_runs_undefined
+    );
     if by_fpcr.len() > 1 {
         println!("by FPCR (value: executed, value mismatches, exception-flag-only differences):");
         for (k, (e, m, x)) in &by_fpcr {
@@ -784,7 +922,11 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
     if !filter.is_empty() {
-        println!("filter (any of {} masks): executed {f_exec}, exact match {f_match}, mismatch {}", filter.len(), f_exec - f_match);
+        println!(
+            "filter (any of {} masks): executed {f_exec}, exact match {f_match}, mismatch {}",
+            filter.len(),
+            f_exec - f_match
+        );
     }
     let dump = |title: &str, m: &BTreeMap<u32, (u64, u32)>| {
         if m.is_empty() {
@@ -798,7 +940,10 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
     dump("mismatching classes", &mism_classes);
-    dump("classes whose matching results differ only in FPSR exception flags", &exc_classes);
+    dump(
+        "classes whose matching results differ only in FPSR exception flags",
+        &exc_classes,
+    );
     dump("unimplemented classes", &unimpl_classes);
     dump("classes the emulator runs but the host rejects", &accepts);
     if t.value_mismatch + t.other_errors + t.emu_runs_undefined > 0 {
@@ -854,13 +999,32 @@ impl Rng {
 }
 
 const F32_SPECIAL: [u32; 12] = [
-    0, 0x8000_0000, 0x3f80_0000, 0xbf80_0000, 0x7f80_0000, 0xff80_0000, 0x7fc0_0000, 0x7f80_0001, 0x0000_0001,
-    0x7f7f_ffff, 0x0080_0000, 0x4b00_0000,
+    0,
+    0x8000_0000,
+    0x3f80_0000,
+    0xbf80_0000,
+    0x7f80_0000,
+    0xff80_0000,
+    0x7fc0_0000,
+    0x7f80_0001,
+    0x0000_0001,
+    0x7f7f_ffff,
+    0x0080_0000,
+    0x4b00_0000,
 ];
 const F64_SPECIAL: [u64; 12] = [
-    0, 0x8000_0000_0000_0000, 0x3ff0_0000_0000_0000, 0xbff0_0000_0000_0000, 0x7ff0_0000_0000_0000,
-    0xfff0_0000_0000_0000, 0x7ff8_0000_0000_0000, 0x7ff0_0000_0000_0001, 1, 0x7fef_ffff_ffff_ffff,
-    0x0010_0000_0000_0000, 0x4330_0000_0000_0000,
+    0,
+    0x8000_0000_0000_0000,
+    0x3ff0_0000_0000_0000,
+    0xbff0_0000_0000_0000,
+    0x7ff0_0000_0000_0000,
+    0xfff0_0000_0000_0000,
+    0x7ff8_0000_0000_0000,
+    0x7ff0_0000_0000_0001,
+    1,
+    0x7fef_ffff_ffff_ffff,
+    0x0010_0000_0000_0000,
+    0x4330_0000_0000_0000,
 ];
 
 fn rand_x(r: &mut Rng) -> u64 {
@@ -870,7 +1034,13 @@ fn rand_x(r: &mut Rng) -> u64 {
         2 => u64::MAX,
         3 => r.below(0x100),
         4 | 5 => (DATA + 0x400 + r.below(0x1000)) & if r.below(2) == 0 { !7 } else { !0 },
-        6 => [0x8000_0000, 0x7fff_ffff, 0xffff_ffff, 0x8000_0000_0000_0000, 0x7fff_ffff_ffff_ffff][r.below(5) as usize],
+        6 => [
+            0x8000_0000,
+            0x7fff_ffff,
+            0xffff_ffff,
+            0x8000_0000_0000_0000,
+            0x7fff_ffff_ffff_ffff,
+        ][r.below(5) as usize],
         _ => r.next(),
     }
 }
@@ -887,7 +1057,9 @@ fn rand_v(r: &mut Rng) -> u128 {
         0 => 0,
         1 => {
             let l = lane(r, 0);
-            (0..4).fold(0u128, |a, i| a | ((if r.below(2) == 0 { l } else { lane(r, 0) }) as u128) << (32 * i))
+            (0..4).fold(0u128, |a, i| {
+                a | ((if r.below(2) == 0 { l } else { lane(r, 0) }) as u128) << (32 * i)
+            })
         }
         2 => (lane(r, 1) as u128) | (lane(r, 1) as u128) << 64,
         3 => {
@@ -918,9 +1090,20 @@ fn rand_init(r: &mut Rng) -> Init {
     for ch in data.chunks_mut(8) {
         ch.copy_from_slice(&r.next().to_le_bytes());
     }
-    let sp = if r.below(2) == 0 { DATA + 0x1000 } else { (DATA + 0x400 + r.below(0x1000)) & !0xF };
+    let sp = if r.below(2) == 0 {
+        DATA + 0x1000
+    } else {
+        (DATA + 0x400 + r.below(0x1000)) & !0xF
+    };
     let fpcr = [0, 0, 0, 0x0040_0000, 0x0080_0000, 0x0100_0000, 0x0200_0000, 0x0300_0000][r.below(8) as usize];
-    Init { nzcv: r.below(16) as u32, x, sp, v, fpcr, data }
+    Init {
+        nzcv: r.below(16) as u32,
+        x,
+        sp,
+        v,
+        fpcr,
+        data,
+    }
 }
 
 /// A random word the decoder accepts (rejection sampling per top-level group, bits 28:25).
@@ -962,8 +1145,13 @@ pub fn run_engines(seed: u64, count: u64, show: usize) -> i32 {
         };
         compared += 1;
         classes.insert(class(word));
-        *exits.entry(reference.exit.split(' ').next().unwrap_or("").to_string()).or_default() += 1;
-        for (k, (eng, name)) in [(Engine::Tier3, "tier3"), (Engine::Tier4, "tier4")].into_iter().enumerate() {
+        *exits
+            .entry(reference.exit.split(' ').next().unwrap_or("").to_string())
+            .or_default() += 1;
+        for (k, (eng, name)) in [(Engine::Tier3, "tier3"), (Engine::Tier4, "tier4")]
+            .into_iter()
+            .enumerate()
+        {
             if eng == Engine::Tier4 && !tier4 {
                 continue;
             }
@@ -992,12 +1180,17 @@ pub fn run_engines(seed: u64, count: u64, show: usize) -> i32 {
     println!("--- fuzz-replay engine-vs-engine summary (seed {seed}) ---");
     println!("words generated:                {count}");
     println!("interpreter unimplemented/other (skipped): {unimpl}");
-    println!("compared:                       {compared} ({} distinct classes)", classes.len());
+    println!(
+        "compared:                       {compared} ({} distinct classes)",
+        classes.len()
+    );
     println!("  interpreter exits:            {exits:?}");
     println!("  tier3 vs interp MISMATCH:     {}", mism[0]);
     if tier4 {
         println!("  tier4 vs interp MISMATCH:     {}", mism[1]);
-        println!("  words Tier-4 ran natively:    {native_words} of {tier4_n} (the rest fell back to Tier-3/interpreter)");
+        println!(
+            "  words Tier-4 ran natively:    {native_words} of {tier4_n} (the rest fell back to Tier-3/interpreter)"
+        );
     }
     if !by_class.is_empty() {
         println!("mismatching classes (tier: 0=tier3 1=tier4; class = word & 0xFFE0FC00: count, example):");
@@ -1023,7 +1216,11 @@ mod tests {
         }
         let xs = vec!["0"; 31].join(" ");
         let f = |a: &[u128; 32]| a.iter().map(|x| format!("{x:032x}")).collect::<Vec<_>>().join(" ");
-        format!("T {word:08x} {nzcv_in:x} {xs} {} => {nzcv_out:x} {fpsr:x} {xs} {}", f(&vi), f(&vo))
+        format!(
+            "T {word:08x} {nzcv_in:x} {xs} {} => {nzcv_out:x} {fpsr:x} {xs} {}",
+            f(&vi),
+            f(&vo)
+        )
     }
 
     fn case(l: &str) -> Case {
@@ -1048,8 +1245,15 @@ mod tests {
         let tf = t.replacen("T ", "TF 1000000 ", 1);
         let c = case(&tf);
         assert_eq!(c.fpcr, 0x100_0000);
-        assert_eq!(replay(&c), Outcome::Ran(Vec::new(), 0x80), "FZ run must flush the denormal to +0 and raise IDC");
-        assert!(matches!(replay(&case(&t)), Outcome::Ran(d, _) if !d.is_empty()), "FPCR 0 keeps the denormal, so the FZ expectation differs");
+        assert_eq!(
+            replay(&c),
+            Outcome::Ran(Vec::new(), 0x80),
+            "FZ run must flush the denormal to +0 and raise IDC"
+        );
+        assert!(
+            matches!(replay(&case(&t)), Outcome::Ran(d, _) if !d.is_empty()),
+            "FPCR 0 keeps the denormal, so the FZ expectation differs"
+        );
         assert!(parse_line("TF 100000000 1e212803").is_err());
     }
 
@@ -1060,17 +1264,33 @@ mod tests {
         let good = line(0x1e22_2820, &[], &[], 0, 0, 0);
         assert!(parse_line(&good).is_ok());
         assert!(parse_line(&(good.clone() + " extra")).is_err());
-        for (index, value) in [(1, "100000000"), (2, "10"), (3, "10000000000000000"), (67, "10"), (68, "100000000")] {
+        for (index, value) in [
+            (1, "100000000"),
+            (2, "10"),
+            (3, "10000000000000000"),
+            (67, "10"),
+            (68, "100000000"),
+        ] {
             let mut tokens = good.split_whitespace().collect::<Vec<_>>();
             tokens[index] = value;
-            assert!(parse_line(&tokens.join(" ")).is_err(), "accepted overwide field {index}");
+            assert!(
+                parse_line(&tokens.join(" ")).is_err(),
+                "accepted overwide field {index}"
+            );
         }
     }
 
     #[test]
     fn replay_matches_a_known_good_case() {
         // fadd s0, s1, s2 : 1.0 + 2.0 = 3.0 (upper lanes cleared)
-        let l = line(0x1e22_2820, &[(1, 0x3f80_0000), (2, 0x4000_0000)], &[(0, 0x4040_0000), (1, 0x3f80_0000), (2, 0x4000_0000)], 0, 0, 0);
+        let l = line(
+            0x1e22_2820,
+            &[(1, 0x3f80_0000), (2, 0x4000_0000)],
+            &[(0, 0x4040_0000), (1, 0x3f80_0000), (2, 0x4000_0000)],
+            0,
+            0,
+            0,
+        );
         assert_eq!(replay(&case(&l)), Outcome::Ran(vec![], 0));
     }
 
@@ -1079,7 +1299,9 @@ mod tests {
         let trace = include_str!("../docs/verify/insn-fuzzer/default-nan-mul2d/hardware.trace");
         let c = case(trace);
         for engine in [Engine::Interp, Engine::Tier3, Engine::Tier4] {
-            if engine == Engine::Tier4 && !tier4_available() { continue; }
+            if engine == Engine::Tier4 && !tier4_available() {
+                continue;
+            }
             match replay_on(&c, engine).0 {
                 Outcome::Ran(differences, _) => assert!(differences.is_empty(), "{engine:?}: {differences:?}"),
                 outcome => panic!("{engine:?}: {outcome:?}"),
@@ -1089,7 +1311,14 @@ mod tests {
 
     #[test]
     fn replay_reports_a_wrong_host_result() {
-        let l = line(0x1e22_2820, &[(1, 0x3f80_0000), (2, 0x4000_0000)], &[(0, 0x4040_0001), (1, 0x3f80_0000), (2, 0x4000_0000)], 0, 0, 0);
+        let l = line(
+            0x1e22_2820,
+            &[(1, 0x3f80_0000), (2, 0x4000_0000)],
+            &[(0, 0x4040_0001), (1, 0x3f80_0000), (2, 0x4000_0000)],
+            0,
+            0,
+            0,
+        );
         match replay(&case(&l)) {
             Outcome::Ran(d, _) => assert!(d.len() == 1 && d[0].starts_with("v0:"), "{d:?}"),
             o => panic!("{o:?}"),
@@ -1098,7 +1327,14 @@ mod tests {
 
     #[test]
     fn tiers_agree_on_a_known_good_case() {
-        let l = line(0x1e22_2820, &[(1, 0x3f80_0000), (2, 0x4000_0000)], &[(0, 0x4040_0000), (1, 0x3f80_0000), (2, 0x4000_0000)], 0, 0, 0);
+        let l = line(
+            0x1e22_2820,
+            &[(1, 0x3f80_0000), (2, 0x4000_0000)],
+            &[(0, 0x4040_0000), (1, 0x3f80_0000), (2, 0x4000_0000)],
+            0,
+            0,
+            0,
+        );
         for e in [Engine::Tier3, Engine::Tier4] {
             if e == Engine::Tier4 && !tier4_available() {
                 continue;

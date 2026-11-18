@@ -49,7 +49,10 @@ pub struct Sph {
 impl Sph {
     pub fn parse(bytes: &[u8]) -> Result<Self, XlateError> {
         if bytes.len() < SPH_WORDS * 4 {
-            return Err(XlateError::Truncated { need: SPH_WORDS * 4, have: bytes.len() });
+            return Err(XlateError::Truncated {
+                need: SPH_WORDS * 4,
+                have: bytes.len(),
+            });
         }
         let mut words = [0u32; SPH_WORDS];
         for (i, w) in words.iter_mut().enumerate() {
