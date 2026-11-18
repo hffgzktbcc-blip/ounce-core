@@ -85,6 +85,11 @@ int workload_run(FILE *o) {
     for (size_t i = 0; i < big; i += 4093) nz += z[i] != 0;
     z[big - 1] = 0xAB;
     uint8_t *z2 = realloc(z, big * 2);
+    if (!z2) {
+        free(z);
+        fprintf(o, "realloc failed\n");
+        return fails + 1;
+    }
     fprintf(o, "calloc nonzero=%u kept=%02x\n", nz, z2[big - 1]);
     if (nz || z2[big - 1] != 0xAB) fails++;
     free(z2);
