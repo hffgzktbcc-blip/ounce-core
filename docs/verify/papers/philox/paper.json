@@ -2,19 +2,26 @@
   "schema": "ounce.paper-check.v0",
   "paper": {
     "title": "Parallel random numbers: as easy as 1, 2, 3",
-    "authors": ["John K. Salmon", "Mark A. Moraes", "Ron O. Dror", "David E. Shaw"],
+    "authors": [
+      "John K. Salmon",
+      "Mark A. Moraes",
+      "Ron O. Dror",
+      "David E. Shaw"
+    ],
     "venue": "SC'11 (International Conference for High Performance Computing, Networking, Storage and Analysis)",
     "year": 2011
   },
   "program": {
     "source": "philox4x32.c",
     "how": "written for ounce-core from the algorithm in the paper; no third-party code copied",
-    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`",
+    "also": "smoke.c: statistical smoke tests of the generator (frequency, runs, chi-square, serial correlation, cross-stream correlation, strict avalanche), written from textbook definitions"
   },
   "claims_checked": [
     "Philox4x32 with 10 rounds maps counter (0,0,0,0), key (0,0) to 6627e8d5 e169c58d bc57ac4c 9b00dbd8",
     "Philox4x32 with 10 rounds maps counter and key all ffffffff to 408f276d 41c83b0e a20bc7c6 6d5451fd",
-    "Philox4x32 with 10 rounds maps counter 243f6a88 85a308d3 13198a2e 03707344, key a4093822 299f31d0 (digits of pi) to d16cfe09 94fdcceb 5001e420 24126ea1"
+    "Philox4x32 with 10 rounds maps counter 243f6a88 85a308d3 13198a2e 03707344, key a4093822 299f31d0 (digits of pi) to d16cfe09 94fdcceb 5001e420 24126ea1",
+    "Statistical smoke tests (NOT the paper's BigCrush claim): on two streams of 2^20 words each (key (0,0) with sequential counters, and a second key), the frequency, runs, byte and 16-bit chi-square and lag-1 serial correlation z-scores are all within 4 sigma; two streams with keys differing in one bit are uncorrelated within 4 sigma; flipping any of 128 counter bits or 64 key bits flips each output bit with probability 1/2 within 5 sigma over 1024 random inputs (worst z 3.88). Thresholds were fixed before the first run."
   ],
   "expected_values_source": {
     "what": "the authors' published known-answer vectors, lines beginning `philox4x32 10` in tests/kat_vectors of the Random123 distribution",
@@ -23,10 +30,15 @@
     "note": "the vectors are data, copied as numbers; the file's code and text were not copied"
   },
   "not_checked": [
-    "statistical quality claims (BigCrush, Crush) and the period/space arguments in the paper",
-    "throughput and speed figures",
+    "the paper's statistical quality claim as such (Crush and BigCrush from TestU01, which is GPL and not vendored here); the smoke tests above are far weaker and only catch gross defects",
+    "throughput and speed figures (run time under emulation says nothing about the authors' hardware)",
     "Philox2x32, Philox2x64, Philox4x64 and the Threefry and ARS generators",
-    "reduced-round variants (no published vectors in the file used)"
+    "published known-answer vectors for reduced-round variants (none in the file used)",
+    "Tier-4 and native ARM64 execution (the native comparison here is x86-64)"
   ],
-  "what_a_pass_means": "this program, run on ounce-core, produces exactly the published outputs for these three inputs. It does not show the paper's wider claims are correct."
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the published outputs for these three inputs, and the generator passes a battery of simple statistical tests that a 6-round version fails. It does not show the paper's wider claims (BigCrush, speed) are correct.",
+  "observations": [
+    "Negative control for the smoke tests: the same tests applied to Philox with fewer rounds fail for 1 to 6 rounds (13, 13, 12, 5, 3 and 2 failing statistics) and pass at 7 rounds and above, so the battery can tell a weak generator from a strong one; this is an observation about this battery, not a statement about the paper's round-count analysis",
+    "Output of both programs on ounce-core Tier-3 is identical to a native x86-64 build"
+  ]
 }
