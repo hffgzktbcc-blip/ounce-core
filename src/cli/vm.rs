@@ -221,6 +221,12 @@ pub(crate) fn run_vm_internal(
     // `OUNCE_TRACE_SUMMARY=<file>` records the first retired instructions as an `ounce.trace.v1` step trace
     // (docs/OUNCE_TRACE_V1_SCHEMA.md); like `OUNCE_TRACE` it forces one-instruction slices on a block engine.
     let mut step_trace = trace_summary::Recorder::from_env();
+    if step_trace.is_some() && cpu::CpuTier::explicit() == Some(cpu::CpuTier::Tier4) {
+        // Native Tier-4 runs a whole translated block per slice, so it cannot retire exactly one instruction at a time
+        // and the recording would silently stop early (and under-count). Refuse instead of writing a misleading trace.
+        eprintln!("[Trace] OUNCE_TRACE_SUMMARY needs one-instruction slices, which --cpu=tier4 cannot give; use --cpu=interpreter or --cpu=tier3");
+        std::process::exit(2);
+    }
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {

@@ -149,3 +149,38 @@ fn trace_diff_reports_bad_input_with_exit_2() {
     assert_eq!(usage.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&usage.stderr).contains("usage: ounce-core trace-diff"));
 }
+
+#[test]
+fn tier4_is_refused_instead_of_recording_a_trace_that_silently_stops_early() {
+    let d = dir("tier4");
+    let out = d.join("t4.json");
+    let run = record(&out, Some("tier4"));
+    assert_eq!(run.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&run.stderr).contains("one-instruction slices"));
+    assert!(!out.exists(), "no trace may be written for an engine that cannot record one");
+}
+
+#[test]
+fn a_non_ascii_register_name_is_bad_input_not_a_crash() {
+    let d = dir("non-ascii");
+    let good = d.join("good.json");
+    assert!(record(&good, Some("interpreter")).status.success());
+    let mut doc = read(&good);
+    doc["steps"][0]["regs"] = serde_json::json!({"\u{e9}x": "0x1"});
+    let bad = d.join("bad.json");
+    std::fs::write(&bad, serde_json::to_vec(&doc).unwrap()).unwrap();
+    let out = diff(&bad, &bad, &d.join("o.json"));
+    assert_eq!(out.status.code(), Some(2), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("panicked"));
+}
+
+#[test]
+fn trace_diff_creates_the_directory_of_its_json_output() {
+    let d = dir("json-dir");
+    let t = d.join("t.json");
+    assert!(record(&t, Some("interpreter")).status.success());
+    let nested = d.join("a").join("b").join("summary.json");
+    let out = diff(&t, &t, &nested);
+    assert_eq!(out.status.code(), Some(0));
+    assert!(nested.exists());
+}

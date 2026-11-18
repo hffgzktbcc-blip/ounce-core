@@ -78,7 +78,9 @@ pub fn reg_rank(name: &str) -> Option<usize> {
         "fpcr" => return Some(RANK_FPCR),
         _ => {}
     }
-    let (prefix, digits) = name.split_at(name.len().min(1));
+    // `get` is None when the first character is multi-byte, so a hostile register name cannot panic here.
+    let prefix = name.get(..1)?;
+    let digits = &name[1..];
     if digits.is_empty() || digits.len() > 2 || !digits.bytes().all(|b| b.is_ascii_digit()) || (digits.len() == 2 && digits.starts_with('0')) {
         return None;
     }
@@ -107,6 +109,9 @@ fn parse_hex(v: &Value, what: &str, max_bits: u32) -> Result<u128, String> {
     let s = v.as_str().ok_or_else(|| format!("{what}: expected a hex string"))?;
     let digits = s.strip_prefix("0x").ok_or_else(|| format!("{what}: expected 0x-prefixed hex, got {s:?}"))?;
     if digits.is_empty() || digits.len() > 32 {
+        return Err(format!("{what}: bad hex {s:?}"));
+    }
+    if !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(format!("{what}: bad hex {s:?}"));
     }
     let n = u128::from_str_radix(digits, 16).map_err(|_| format!("{what}: bad hex {s:?}"))?;
@@ -218,12 +223,16 @@ impl Trace {
         if steps_executed < recorded {
             return Err("document: steps_executed is smaller than steps_recorded".into());
         }
+        let truncated = field(v, "truncated", "document")?.as_bool().ok_or("document: truncated must be a boolean")?;
+        if steps_executed > recorded && !truncated {
+            return Err(format!("document: truncated is false but steps_executed {steps_executed} exceeds steps_recorded {recorded}"));
+        }
         Ok(Trace {
             engine: string_field(v, "engine")?,
             engine_version: string_field(v, "engine_version")?,
             step_limit,
             steps_executed,
-            truncated: field(v, "truncated", "document")?.as_bool().ok_or("document: truncated must be a boolean")?,
+            truncated,
             steps: list.iter().enumerate().map(|(i, s)| Step::from_json(s, i)).collect::<Result<_, _>>()?,
         })
     }
@@ -545,6 +554,9 @@ fn cli(args: &[String]) -> Result<i32, String> {
     println!("{}", comparison.describe());
     if let Some(path) = json_out {
         let bytes = serde_json::to_vec_pretty(&comparison.to_json()).map_err(|e| e.to_string())?;
+        if let Some(dir) = std::path::Path::new(&path).parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+        }
         std::fs::write(&path, bytes).map_err(|e| format!("cannot write {path}: {e}"))?;
     }
     Ok(if comparison.divergence.is_some() { 1 } else { 0 })
@@ -689,6 +701,13 @@ mod tests {
         assert!(mutate(&|v| v["steps"][1]["i"] = json!(7)).contains("steps[1].i"));
         assert!(mutate(&|v| v["steps"][0]["regs"]["x0"] = json!(5)).contains("x0"));
         assert!(mutate(&|v| v["steps"][0]["opcode"] = json!("0x100000000")).contains("opcode"));
+        // A multi-byte first character in a register name is a malformed document, not a panic (found by review).
+        assert!(mutate(&|v| v["steps"][0]["regs"] = json!({"\u{e9}x": "0x1"})).contains("regs"));
+        // "0x+1f" is not canonical hex even though from_str_radix would take it.
+        assert!(mutate(&|v| v["steps"][0]["pc"] = json!("0x+1f")).contains("pc"));
+        // More steps retired than stored, yet `truncated` is false: the writer is inconsistent, and trusting it would
+        // report a false "length" divergence.
+        assert!(mutate(&|v| v["steps_executed"] = json!(99)).contains("truncated"));
     }
 
     #[test]
@@ -706,6 +725,9 @@ mod tests {
         assert_eq!(reg_rank("x31"), None);
         assert_eq!(reg_rank("v32"), None);
         assert_eq!(reg_rank("pc"), None);
+        assert_eq!(reg_rank("\u{e9}x"), None);
+        assert_eq!(reg_rank("x\u{e9}"), None);
+        assert_eq!(reg_rank(""), None);
     }
 
     // ---- comparison ----

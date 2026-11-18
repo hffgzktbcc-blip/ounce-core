@@ -19,7 +19,8 @@ Status: ounce-core writes traces and compares them. ounce-runtime and `ounce-hb 
 - Step index `i` counts from `0` in execution order from the start of the run (the first guest instruction at the entry point).
 - `regs` lists only registers whose value after the step **differs** from before it. A write of the same value is not listed.
 - The recorder stops storing at `step_limit` but keeps counting. `truncated` is `true` iff more steps retired than were stored (or recording could not continue); a trace that ends exactly at the limit is not truncated.
-- ounce-core runs one instruction at a time while recording, on every engine. Multi-instruction blocks are therefore not what is traced.
+- `trace-diff` rejects a trace that says `truncated: false` while `steps_executed` exceeds `steps_recorded` (exit 2), instead of reporting a false `length` divergence.
+- ounce-core runs one instruction at a time while recording, on the interpreter and Tier-3 (the default and `--cpu=interpreter|tier3`). `--cpu=tier4` is refused with exit 2: native Tier-4 runs a whole translated block per slice, so it cannot retire exactly one instruction and would record a trace that silently stops early. Multi-instruction blocks are therefore not what is traced.
 - ounce-core does not record memory writes (`mem`) yet. The field is optional so another engine may.
 
 ## Number formats
