@@ -76,6 +76,13 @@ def measure(binary, spec, tiers):
             if failure:
                 problems.append(f'{tier}: {failure}')
                 continue
+            status = report.get('guest_exit_status')
+            if status not in (None, 0):
+                # A run-elf program that fails its own checks still stops with clean_exit, often after fewer
+                # instructions: its count must not pass as an improvement or be recorded as a baseline.
+                problems.append(f'{tier}: the program exited with status {status}, so it did not do its work and its '
+                                'instruction count is not comparable')
+                continue
             results[tier] = (report['insns_executed'], report['stop_kind'])
     if len(set(results.values())) > 1:
         seen = ', '.join(f'{tier} {insns:,} ({stop})' for tier, (insns, stop) in results.items())

@@ -26,6 +26,16 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   fault, so a program that faulted early reported 0 (and the interpreter and Tier-3 could not be compared). A fault
   now counts the instructions that completed before it. A new test faults the fourth instruction of a minimal NRO and
   expects 3 on every tier.
+- Fixed: in `--deterministic` mode on `run` / `run-nro`, guest time advanced only inside system calls, so a thread
+  asleep on a timeout never woke while another thread spun on a shared flag without making any; the run ended on the
+  instruction budget. Each scheduler time slice (20,000 instructions) now also advances guest time by 1 ms, the same
+  on every run and host. Found by review of #479; the 14 instruction budgets did not change.
+- `run` / `run-nro` refuse an empty guest argument (exit 2, before the program starts). libnx drops an empty argv
+  token even inside quotes, so the program used to see a smaller `argc` without any message. The `--help` text no
+  longer says `--deterministic` leaves the homebrew clock alone.
+- CI scripts: `insn_budgets.py` rejects a run-elf program that exits non-zero even though it stopped cleanly (its
+  short run would pass as an improvement or be recorded as a baseline); the FP workload's `FP_WORKLOAD_OPS` rejects a
+  name `--list` does not know and an empty host reference, instead of reporting two empty files as identical.
 - `ounce.run.v1` gains `lr` and `sp` (#475, first part): the link register and stack pointer at the stop, set exactly
   when `pc` is, on `run`, `run-nro` and `run-elf`. With `pc` they locate a fault without a debugger: the `BL` that
   made the innermost call is at `lr - 4`. Additive. Symbolication (function names from DWARF/ELF) is not done: it

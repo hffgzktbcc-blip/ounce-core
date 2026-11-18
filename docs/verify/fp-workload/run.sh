@@ -23,8 +23,14 @@ clang --target=aarch64-linux-gnu -O1 -ffreestanding -fno-builtin -fno-stack-prot
 "${LD[@]}" -static -nostdlib -no-pie -z norelro --build-id=none -e _start -o "$out/fp_edge.elf" "$out/fp_edge.o"
 printf 'op\tcases\ttier3\ttier4\n' > "$out/summary.tsv"
 rc=0
-for op in ${FP_WORKLOAD_OPS:-$("$out/fp_edge_host" --list)}; do
+known="$("$out/fp_edge_host" --list)"
+# An unknown name would make both programs skip every op and "compare" two empty files, so a typo must fail.
+for op in ${FP_WORKLOAD_OPS:-}; do
+  case " ${known//$'\n'/ } " in *" $op "*) ;; *) echo "run.sh: unknown op '$op' in FP_WORKLOAD_OPS; --list names: ${known//$'\n'/ }" >&2; exit 2;; esac
+done
+for op in ${FP_WORKLOAD_OPS:-$known}; do
   "$out/fp_edge_host" "$op" > "$out/ops/$op.host"
+  [ -s "$out/ops/$op.host" ] || { echo "run.sh: the host reference produced no cases for '$op'" >&2; exit 2; }
   if [ "${FP_WORKLOAD_TAMPER:-}" = "$op" ]; then
     # Flip the last hex digit (the FPSR) of the first result.
     awk 'NR == 1 { d = substr($0, length($0)); $0 = substr($0, 1, length($0) - 1) (d == "0" ? "1" : "0") } { print }' \

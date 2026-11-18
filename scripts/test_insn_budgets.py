@@ -15,7 +15,8 @@ import insn_budgets  # noqa: E402
 
 FIXTURE = 'tests/linux-elf/bin/hello.elf'
 
-# Writes the report the FAKE_RESULTS entry for this tier describes: [insns, stop_kind], "crash" or "hang".
+# Writes the report the FAKE_RESULTS entry for this tier describes: [insns, stop_kind, optional guest exit status],
+# "crash" or "hang".
 FAKE_OUNCE = r'''#!/usr/bin/env python3
 import json, os, sys, time
 args = sys.argv[1:]
@@ -28,12 +29,14 @@ if result == 'crash':
     sys.exit(12)
 if result == 'hang':
     time.sleep(30)
-insns, stop = result
+insns, stop, *status = result
 with open(report, 'w') as f:
-    json.dump({'schema': 'ounce.run.v1', 'insns_executed': insns, 'stop_kind': stop}, f)
+    json.dump({'schema': 'ounce.run.v1', 'insns_executed': insns, 'stop_kind': stop,
+               'guest_exit_status': status[0] if status else None}, f)
 '''
 
 
+@unittest.skipIf(os.name == 'nt', 'the fake ounce-core is a shebang script, which native Windows cannot execute')
 class BudgetCheck(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -96,6 +99,23 @@ class BudgetCheck(unittest.TestCase):
             code, out = self.run_check({'interpreter': 'hang', 'tier3': [1000, 'clean_exit']})
         self.assertEqual(code, 1)
         self.assertIn('interpreter: did not stop within 1 s', out)
+
+    def test_a_guest_that_reports_failure_is_not_measured(self):
+        """A run-elf program that fails its own checks still stops cleanly; its short run must not pass as faster."""
+        code, out = self.run_check({'interpreter': [900, 'clean_exit', 1], 'tier3': [900, 'clean_exit', 1]})
+        self.assertEqual(code, 1)
+        self.assertIn('the program exited with status 1', out)
+        self.assertNotIn('below its baseline', out)
+
+    def test_a_guest_that_reports_failure_cannot_be_recorded_as_a_baseline(self):
+        before = self.budgets.read_text()
+        code, _ = self.run_check({'interpreter': [900, 'clean_exit', 1], 'tier3': [900, 'clean_exit', 1]}, '--update')
+        self.assertEqual(code, 1)
+        self.assertEqual(self.budgets.read_text(), before)
+
+    def test_a_guest_exit_status_of_zero_or_none_is_fine(self):
+        code, out = self.run_check({'interpreter': [1000, 'clean_exit', 0], 'tier3': [1000, 'clean_exit']})
+        self.assertEqual(code, 0, out)
 
     def test_a_rebuilt_fixture_needs_a_new_baseline(self):
         self.write_budgets(sha256='0' * 64)

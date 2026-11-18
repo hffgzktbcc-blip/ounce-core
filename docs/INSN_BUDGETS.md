@@ -30,7 +30,8 @@ fixtures.
 
 `--deterministic` runs the guest on a fixed clock on `run`, `run-nro` and `run-elf`:
 
-- guest time advances 20 us per system call;
+- guest time advances 20 us per system call, and 1 ms per 20,000 instructions of scheduler time slice, so a thread
+  asleep on a timeout wakes even while another thread spins without making system calls;
 - a sleeping guest skips ahead instead of waiting;
 - the date is fixed.
 
