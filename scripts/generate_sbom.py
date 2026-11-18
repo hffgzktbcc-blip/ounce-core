@@ -169,7 +169,7 @@ def main(argv=None):
     command = ['cargo', 'metadata', '--locked', '--format-version', '1']
     if args.target:
         command += ['--filter-platform', args.target]
-    metadata = json.loads(subprocess.run(command, cwd=ROOT, capture_output=True, text=True, check=True).stdout)
+    metadata = json.loads(subprocess.run(command, cwd=ROOT, capture_output=True, encoding='utf-8', check=True).stdout)
     doc = build_sbom(metadata, lock_checksums((ROOT / 'Cargo.lock').read_text(encoding='utf-8')),
                      args.created or commit_time(), args.target)
     found = problems(doc)

@@ -42,6 +42,19 @@ class ActionPins(unittest.TestCase):
     def test_text_that_only_mentions_uses_is_not_a_reference(self):
         self.assertEqual(run('# uses: actions/checkout@v4\n- run: echo "uses: x/y@v1"\n- name: uses checkout\n'), [])
 
+    def test_flow_mappings_and_values_on_the_next_line_are_checked(self):
+        self.assertEqual(len(run('steps:\n  - {uses: actions/checkout@v4}\n')), 1)
+        self.assertEqual(len(run('steps:\n  - { name: x, uses: actions/cache@v4 }\n')), 1)
+        self.assertEqual(len(run('steps:\n  - uses:\n      actions/setup-go@v5\n')), 1)
+        self.assertEqual(len(run('steps:\n  - uses: >-\n      actions/setup-go@v5\n')), 1)
+        self.assertEqual(run(f'steps:\n  - {{ name: x, uses: actions/cache@{SHA} }}\n'), [])
+        self.assertEqual(run(f'steps:\n  - uses:\n      actions/setup-go@{SHA}\n'), [])
+
+    def test_quoted_local_actions_and_digest_pinned_images_are_not_false_failures(self):
+        self.assertEqual(run('- uses: "./local"\n- uses: \'./other\'\n'), [])
+        self.assertEqual(run(f'- uses: docker://alpine@sha256:{"b" * 64}\n'), [])
+        self.assertEqual(len(run('- uses: docker://alpine:3.20\n')), 1)
+
     def test_a_pending_action_is_allowed_only_while_it_is_still_unpinned(self):
         pending = {'x/y@v1': 'its SHA could not be looked up'}
         self.assertEqual(run('- uses: x/y@v1\n', pending), [])

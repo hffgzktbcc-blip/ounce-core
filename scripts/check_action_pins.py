@@ -15,8 +15,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-USES = re.compile(r'^\s*(?:-\s*)?uses:\s*([^\s#]+)')
-PINNED = re.compile(r'^[^@\s]+@[0-9a-f]{40}$')
+# A block key (`uses:` or `- uses:` at the start of a line) or a key inside a flow mapping (`{ uses: x }`, `, uses: x`).
+# Text that merely contains "uses:" inside a quoted string or a comment is not a key.
+USES = re.compile(r'^\s*(?:-\s*)?uses:[ \t]*(.*)$|[{,]\s*uses:[ \t]*([^,}]*)')
+PINNED = re.compile(r'^[^@\s]+@[0-9a-f]{40}$|^docker://[^@\s]+@sha256:[0-9a-f]{64}$')
+BLOCK_SCALAR = re.compile(r'^[>|][+-]?\d*\s*(#.*)?$')
 
 # Refs still unpinned. The commit a tag resolves to has to be read from the action's own repository or from a CI log
 # that ran it; these are used only by workflows (release, pages, coverage) that have not run since #480, so neither
@@ -36,10 +39,24 @@ def references(root):
     root = Path(root)
     files = sorted([*(root / '.github' / 'workflows').glob('*.y*ml'), *(root / '.github' / 'actions').glob('**/*.y*ml')])
     for path in files:
-        for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
-            match = USES.match(line)
-            if match and not match.group(1).startswith('./'):
-                yield path.relative_to(root).as_posix(), number, match.group(1).strip('\'"')
+        lines = path.read_text(encoding='utf-8').splitlines()
+        for index, line in enumerate(lines):
+            if line.lstrip().startswith('#'):
+                continue
+            match = USES.search(line)
+            if not match:
+                continue
+            value = (match.group(1) if match.group(1) is not None else match.group(2)).strip()
+            number = index + 1
+            if not value or value.startswith('#') or BLOCK_SCALAR.match(value):
+                # The value is on a following line (plain multi-line scalar or `>-` / `|` block scalar).
+                following = next(((i, text.strip()) for i, text in enumerate(lines[index + 1:], index + 1) if text.strip()), None)
+                if following is None:
+                    continue
+                number, value = following[0] + 1, following[1]
+            ref = value.split(' #')[0].strip().strip('\'"').strip()
+            if ref and not ref.startswith('./'):
+                yield path.relative_to(root).as_posix(), number, ref
 
 
 def problems(root, pending=PENDING):
