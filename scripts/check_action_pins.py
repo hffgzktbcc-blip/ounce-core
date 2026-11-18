@@ -21,17 +21,10 @@ USES = re.compile(r'^\s*(?:-\s*)?uses:[ \t]*(.*)$|[{,]\s*uses:[ \t]*([^,}]*)')
 PINNED = re.compile(r'^[^@\s]+@[0-9a-f]{40}$|^docker://[^@\s]+@sha256:[0-9a-f]{64}$')
 BLOCK_SCALAR = re.compile(r'^[>|][+-]?\d*\s*(#.*)?$')
 
-# Refs still unpinned. The commit a tag resolves to has to be read from the action's own repository or from a CI log
-# that ran it; these are used only by workflows (release, pages, coverage) that have not run since #480, so neither
-# source was available when the other pins were made.
-PENDING = {
-    'actions/attest@v4': 'used only by release.yml, which has not run since the pins were made',
-    'softprops/action-gh-release@v3': 'used only by release.yml, which has not run since the pins were made',
-    'actions/configure-pages@v5': 'used only by pages.yml, which has not run since the pins were made',
-    'actions/upload-pages-artifact@v5': 'used only by pages.yml, which has not run since the pins were made',
-    'actions/deploy-pages@v5': 'used only by pages.yml, which has not run since the pins were made',
-    'taiki-e/install-action@cargo-llvm-cov': 'used only by rust-coverage.yml, which has not run since the pins were made',
-}
+# Refs that cannot be pinned yet, each with the reason. Empty: every ref is pinned. A tag resolves to a commit with
+# `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag> "refs/tags/<tag>^{}"` (the `^{}` line, when present,
+# is the commit an annotated tag points to).
+PENDING = {}
 
 
 def references(root):

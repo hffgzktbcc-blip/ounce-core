@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev
-      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@c2e5d2ce8920c881761c4cabb41434daa1f95687 # cargo-llvm-cov
       - name: Generate coverage from workspace tests
         run: cargo llvm-cov --workspace --locked --lcov --output-path coverage.lcov
       - name: Store local-only coverage report
