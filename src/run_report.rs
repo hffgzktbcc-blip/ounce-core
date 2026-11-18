@@ -42,6 +42,11 @@ pub struct RunReport {
     pub insns_executed: u64,
     pub frames_presented: u64,
     pub framebuffer_hash: Option<String>,
+    /// Stereo frames of audio the guest mixed (audout and audren), counted as they are mixed, so a headless run and a
+    /// run with a sound device agree (#478).
+    pub audio_frames_mixed: u64,
+    /// `fnv1a64:<16 hex digits>` over that audio, or `None` when none was mixed.
+    pub audio_hash: Option<String>,
     /// Status the guest passed to `exit`/`exit_group` (low 8 bits). `run-elf` only: homebrew has no exit status.
     pub guest_exit_status: Option<i32>,
     pub message: Option<String>,
@@ -82,6 +87,8 @@ pub fn to_json(report: &RunReport) -> serde_json::Value {
         "insns_executed": report.insns_executed,
         "frames_presented": report.frames_presented,
         "framebuffer_hash": report.framebuffer_hash,
+        "audio_frames_mixed": report.audio_frames_mixed,
+        "audio_hash": report.audio_hash,
         "guest_exit_status": report.guest_exit_status,
         "message": report.message,
     })
@@ -121,6 +128,8 @@ mod tests {
             insns_executed: 42,
             frames_presented: 3,
             framebuffer_hash: Some("fnv1a64:0123456789abcdef".to_string()),
+            audio_frames_mixed: 480,
+            audio_hash: Some("fnv1a64:fedcba9876543210".to_string()),
             guest_exit_status: None,
             message: Some("test stop".to_string()),
         }

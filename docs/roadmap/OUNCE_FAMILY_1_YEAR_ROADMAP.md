@@ -75,7 +75,7 @@
    - **`ounce-hb diff-trace` via `ounce.trace.v1`:** Define a bounded first-divergence summary contract (`OUNCE_TRACE_SUMMARY=<path>`) implemented independently by both `ounce-core` and `ounce-runtime`, preserving license isolation.
 
 3. **Audio & Assertion Parity (`ounce.run.v1` additive fields):**
-   - Add `audio_frames_mixed` / `audio_hash` for headless `audout` / SDL_mixer verification, plus a golden-output / `framebuffer_hash` assertion flag on `ounce-hb run`/`repro` for `Makefile` & CI test suites.
+   - Add `audio_frames_mixed` / `audio_hash` for headless `audout` / SDL_mixer verification, plus a golden-output / `framebuffer_hash` assertion flag on `ounce-hb run`/`repro` for `Makefile` & CI test suites. **Core side DONE (#478, unreleased) for `audout` and `audren`:** `ounce.run.v1` carries both fields on every `run` / `run-nro` stop (`run-elf` writes `0` / `null`), counted as audio is mixed, so `--present=headless` and a run with a sound device agree. Tested against the audren fixture's documented waveform on both tiers. Still open: the `ounce-hb` assertion flag, and SDL_mixer, which is a guest library on top of `audout` and has no separate core path.
 
 4. **Expand `run-elf` Bounded Envelope & `ounce.run.v1` Parity (Static musl AArch64):**
    - **DONE (#473, unreleased):** Wire `ounce.run.v1` (`--report-json` / `OUNCE_REPORT_JSON`) and `--dump-regs` (`X0`/`D0`/`NZCV` on stop) into `ounce-core`'s `run-elf` runner (`src/linux/runner.rs`) so ELF workloads share the same machine-readable contract as `.nro`. Adds the flat, additive `guest_exit_status` field.

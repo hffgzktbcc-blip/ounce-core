@@ -22,6 +22,11 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   headless run reports. Only a `gpu-present` GPU window outside deterministic mode still reports `null`; the schema
   doc says so. Fixed: a `gpu-present` build whose GPU window failed to open sent 3D draws to a GPU that was not
   there, so frames were presented without them; the backend is now opened before that choice is made.
+- `ounce.run.v1` gains `audio_frames_mixed` and `audio_hash` (#478): the stereo frames of audio the guest mixed through
+  `audout` or `audren`, and `fnv1a64:` of every sample. They are counted as audio is mixed, so `--present=headless`
+  (no sound device) and a playing run report the same values, and a fixed program gives the same hash on every run,
+  host and CPU tier. A program with no audio reports `0` and `null`. Additive; `run-elf` writes `0` and `null`.
+  Tested against the audren fixture's documented waveform (2,640 frames, and 96,000 in `long` mode).
 - CI: instruction budgets (#479). The Runtime job runs 14 committed NRO and ELF fixtures with `--deterministic` on the
   interpreter and Tier-3 and fails when `insns_executed` goes over its budget (baseline + 2%), the stop changes, the
   tiers disagree or a fixture was rebuilt; wall time is shown but never fails. Budgets live in

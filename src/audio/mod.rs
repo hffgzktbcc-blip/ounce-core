@@ -9,6 +9,9 @@ pub use audren::{
     AudioRenderer, AudioRendererConfig, AudioVoice, AudrenServer, PlaybackState, SampleFormat,
     WaveBuffer, AUDREN_SAMPLE_RATE_32KHZ, AUDREN_SAMPLE_RATE_48KHZ,
 };
+pub mod tap;
+
+pub use tap::{combined_summary, AudioSummary, AudioTap};
 pub use host::{
     AudioSinkMetrics, HostAudioSink, DEFAULT_CHANNELS, DEFAULT_MAX_CAPACITY, DEFAULT_SAMPLE_RATE,
 };
