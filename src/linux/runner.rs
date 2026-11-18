@@ -41,6 +41,9 @@ pub enum Stop {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StopRegs {
     pub pc: u64,
+    /// Link register (`x30`) and stack pointer.
+    pub lr: u64,
+    pub sp: u64,
     pub x0: u64,
     /// Raw bits of D0 (the low 64 bits of V0).
     pub d0: u64,
@@ -50,7 +53,7 @@ pub struct StopRegs {
 
 impl StopRegs {
     fn capture(cpu: &Cpu, pc: u64) -> Self {
-        Self { pc, x0: cpu.regs.read_x(0), d0: cpu.regs.read_q(0) as u64, nzcv: cpu.regs.pstate.to_bits() >> 28 }
+        Self { pc, lr: cpu.regs.read_x(30), sp: cpu.regs.sp, x0: cpu.regs.read_x(0), d0: cpu.regs.read_q(0) as u64, nzcv: cpu.regs.pstate.to_bits() >> 28 }
     }
 }
 
@@ -110,6 +113,8 @@ impl Report {
             stop_kind: self.detail.stop_kind,
             exit_code: run_report::exit_code_for(self.detail.stop_kind),
             pc: self.detail.pc,
+            lr: self.detail.regs.map(|r| r.lr),
+            sp: self.detail.regs.map(|r| r.sp),
             opcode: self.detail.opcode,
             fault_addr: self.detail.fault_addr,
             svc_id: self.detail.svc_id,

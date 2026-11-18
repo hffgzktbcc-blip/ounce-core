@@ -22,6 +22,10 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   headless run reports. Only a `gpu-present` GPU window outside deterministic mode still reports `null`; the schema
   doc says so. Fixed: a `gpu-present` build whose GPU window failed to open sent 3D draws to a GPU that was not
   there, so frames were presented without them; the backend is now opened before that choice is made.
+- `ounce.run.v1` gains `lr` and `sp` (#475, first part): the link register and stack pointer at the stop, set exactly
+  when `pc` is, on `run`, `run-nro` and `run-elf`. With `pc` they locate a fault without a debugger: the `BL` that
+  made the innermost call is at `lr - 4`. Additive. Symbolication (function names from DWARF/ELF) is not done: it
+  needs a new dependency, which is left for the owner to decide.
 - `ounce.run.v1` gains `audio_frames_mixed` and `audio_hash` (#478): the stereo frames of audio the guest mixed through
   `audout` or `audren`, and `fnv1a64:` of every sample. They are counted as audio is mixed, so `--present=headless`
   (no sound device) and a playing run report the same values, and a fixed program gives the same hash on every run,

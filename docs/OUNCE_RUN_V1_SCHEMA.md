@@ -22,6 +22,8 @@ Every field is a flat scalar or `null`. Nested objects and arrays wait for the r
 | `stop_kind` | `string` | Canonical stop reason (see table below) |
 | `exit_code` | `integer` | Stable `ounce-hb` exit code (`0`, `10`–`17`) |
 | `pc` | `u64 \| null` | Faulting or stopping program counter |
+| `lr` | `u64 \| null` | Link register (`x30`) when the program stopped: the return address of the innermost call, so the `BL` / `BLR` that made it is at `lr - 4`. Set exactly when `pc` is, `null` otherwise. `0` when nothing has made a call yet (on `run-elf` the three small fixtures `exitcode`, `badsyscall` and `hello` report `0`). Additive field (#475) |
+| `sp` | `u64 \| null` | Stack pointer when the program stopped. Set exactly when `pc` is, `null` otherwise. Additive field (#475) |
 | `opcode` | `u32 \| null` | Raw instruction word for `unimplemented_insn` |
 | `fault_addr` | `u64 \| null` | Virtual address for `memory_fault` |
 | `svc_id` | `u32 \| null` | Supervisor call number for `unhandled_svc`. `run-elf`: the Linux syscall number (`x8`) of an unimplemented syscall, or the immediate of a non-zero `SVC #imm` |
