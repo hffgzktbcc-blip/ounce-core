@@ -113,7 +113,7 @@ int workload_run(FILE *o) {
     volatile __int128 neg_src = (__int128)1 << 100;   /* opaque so the division is a runtime helper call */
     __int128 neg = -neg_src;
     __int128 nq = neg / 12345;
-    long long nr = (long long)(neg % 12345);
+    __int128 nr = neg % 12345;
     u128 nm = nq < 0 ? (u128)0 - (u128)nq : (u128)nq;
     char qdec[48];
     int qlen = 0;
@@ -122,9 +122,10 @@ int workload_run(FILE *o) {
     if (nq < 0) qdec[qlen++] = '-';
     for (int i = 0; i < qlen / 2; i++) { char c = qdec[i]; qdec[i] = qdec[qlen - 1 - i]; qdec[qlen - 1 - i] = c; }
     qdec[qlen] = 0;
-    fprintf(o, "-(2^100)/12345 = %s rem %lld\n", qdec, nr);
+    fprintf(o, "-(2^100)/12345 = %s rem %lld\n", qdec, (long long)nr);
     /* expected values computed independently (Python): truncation toward zero */
     if (strcmp(qdec, "-102685346312533770878631284") || nr != -4396) fails++;
+    if (nq * 12345 + nr != neg) fails++;   /* 128-bit multiply and add on the division result */
 
     fprintf(o, "isqrt: %llu %llu %llu %llu\n", (unsigned long long)isqrt(99), (unsigned long long)isqrt(1000000),
             (unsigned long long)isqrt(0xFFFFFFFFFFFFFFFFull), (unsigned long long)isqrt(4611686014132420609ull));
