@@ -4,6 +4,12 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+- Contract (#481, DRAFT, not a freeze): `docs/CONTRACT_V1.md` states the additive-only rule and lists what `ounce.run.v1`,
+  `ounce.trace.v1`, the exit codes and the flags `--max-frames`, `--sdmc`, `--timeout`, `--json` are today, with the
+  questions the owner must answer before anything is frozen. `tests/contract_v1.rs` and `tests/contract/*.json` pin the
+  exact report and trace keys and JSON types, the `exit_code` for every reachable `stop_kind`, the process exit
+  statuses, and the flags, by running the binary. Findings: `--timeout` and `--json` are not `run` flags in ounce-core,
+  ounce-core does not define the proposed infrastructure meanings for exit codes `2-5` (its own status 2 is the usage error) and has no `ounce.repro.v1`, and `cpu_halted` (15) cannot be produced.
 - CLI: `--max-frames N` and a repeatable `--press BUTTON@FRAME` (for example `PLUS@60`) let scripted runs
   exit cleanly and press buttons (#458).
 - Fuzzer: `--word-mask` / `--word-value` targeted generation, with hardware evidence for FCADD, SQRDMLAH/SQRDMLSH,
@@ -81,11 +87,24 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   host comparison has not been run locally (it runs in the `fp-workload` CI job, which gates only the original 48 ops); an informational Tier-3 versus qemu-user run
   on x86_64 found 147 of the 151 new ops (plus `fcvtzs.sw`, an original op) identical and 5 unimplemented
   (`FJCVTZS`, vector fixed-point `FCVTZS`/`SCVTF`) (#488).
+- New instructions (#469): `FJCVTZS` (FEAT_JSCVT; truncate toward zero, wrap modulo 2^32, writes NZCV `0 Z 0 0`) and the
+  vector fixed-point converts `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU Vd.<2S|4S|2D>, Vn, #fbits`, the five ops the informational
+  qemu run found stopping with exit 71. Unit tests use hand-derived expected values (saturation, NaN to 0, rounding,
+  FPSR flags, FZ/RMode), a per-lane cross-check against the existing scalar fixed-point converts, and an interpreter vs
+  Tier-3 vs Tier-4 agreement test. `run-elf --cpu=tier3` output for the five fp-workload ops is byte-identical to
+  `qemu-aarch64` (informational, not hardware); the native ARM64 comparison has not been run. The scalar-SIMD fixed forms
+  (`scvtf s0, s1, #n`) and half precision are still undecoded.
 - Trace: `ounce.trace.v1`, a bounded step trace and first-divergence summary ([schema](docs/OUNCE_TRACE_V1_SCHEMA.md), #477).
   `OUNCE_TRACE_SUMMARY=<file>` makes `run` / `run-nro` write the first `OUNCE_TRACE_STEPS` (default 1024, max 65536)
   retired instructions (pc, opcode, changed registers); `ounce-core trace-diff <expected> <actual> [--window N] [--json out]`
   reports the first differing step, both values and the steps before it (exit 0 / 1 / 2). Registers only; no memory deltas
   recorded yet, and ounce-runtime does not implement the contract yet.
+- Linux ARM64 ELF matrix: 17 new first-party, single-threaded, deterministic static musl workloads (`elf-*` harnesses
+  in `docs/verify/elf-workloads/`: strings, sorts, hashes, bignum, printf, 64/128-bit integer math, in-memory file
+  streams, allocator churn, floating point, word counts, codecs, a bytecode VM, puzzles, RNGs, calendar, control flow,
+  trees) take the matrix from 28 to 45 harnesses toward the 50+ goal (#474, in progress). Each is original MIT source with
+  a per-workload provenance entry; none is vendored or downloaded. Verified locally on x86-64 against host builds at
+  O1/O2/O3_M1 on Tier-3, Tier-4 and `diverge`; not yet run on the native ARM64 CI job.
 
 ## 0.9.0 — released 2026-11-16
 

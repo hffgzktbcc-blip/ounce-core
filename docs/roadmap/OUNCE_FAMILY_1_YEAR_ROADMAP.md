@@ -80,6 +80,7 @@
 4. **Expand `run-elf` Bounded Envelope & `ounce.run.v1` Parity (Static musl AArch64):**
    - **DONE (#473, unreleased):** Wire `ounce.run.v1` (`--report-json` / `OUNCE_REPORT_JSON`) and `--dump-regs` (`X0`/`D0`/`NZCV` on stop) into `ounce-core`'s `run-elf` runner (`src/linux/runner.rs`) so ELF workloads share the same machine-readable contract as `.nro`. Adds the flat, additive `guest_exit_status` field.
    - Expand `run-elf` & `linux-arm64-elf-matrix` toward 50+ single-threaded/bounded-file/deterministic static musl AArch64 workloads fetched/built cleanly in CI (no vendored unclear/GPL binaries), keeping scope strictly bounded to static musl `ET_EXEC`.
+     - **Status (18 Nov 2026, #474 in progress):** 45 of 50+ harnesses (28 at the v0.9.0 matrix run, +17 first-party `elf-*` workloads, see `docs/verify/elf-workloads/README.md`). The 17 new ones are verified locally on x86-64 (Tier-3, Tier-4 and `diverge`, O1/O2/O3_M1, against host builds) but have not run on the `ubuntu-24.04-arm` CI job yet. Not complete.
 
 5. **DeckStream `.nro` Subprocess & `ounce.run.v1` Integration (`deckstream`, MIT):**
    - Add `.nro`/`.NRO` dispatch in `deckstream/daemon/game-launcher.sh` **before** Proton/umu checks (`DECKSTREAM_NRO_RUNNER=hb` runs `ounce-hb run --json "$EXE"`; default runs user-installed `ounce-runtime run "$EXE" --present=gpu` — strictly external subprocess, never bundled or auto-fetched in `deckstream` releases).

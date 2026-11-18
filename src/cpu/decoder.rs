@@ -988,6 +988,11 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     let u = (raw & (1 << 29)) != 0;
     let size = (raw >> 22) & 0x3;
 
+    // 21a. FJCVTZS Wd, Dn (FEAT_JSCVT): 0 0 0 11110 01 1 11 110 000000 Rn Rd (sf = 0, ftype = double, rmode = 11, opcode = 110)
+    if (raw & 0xFFFF_FC00) == 0x1E7E_0000 {
+        return Some(Instruction::Fjcvtzs { rd, rn });
+    }
+
     // 21b. FMOV (scalar, immediate): 0 0 0 11110 ftype 1 imm8 100 00000 Rd. Writes the low 32/64 bits of
     //      Vd and zeroes the rest, which is SimdModImm without replication.
     if (raw & 0xFF20_1FE0) == 0x1E20_1000 {
@@ -1855,6 +1860,27 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         };
         let imm = if op == SimdImmOp::Mov && u && cmode < 14 { !imm } else { imm };
         return Some(Instruction::SimdModImm { rd, imm, op, q });
+    }
+
+    // 30b. AdvSIMD shift by immediate, float <-> fixed-point (vector): 0 Q U 011110 immh immb opcode 1 Rn Rd, opcode 11100 is
+    //      SCVTF (U = 0) / UCVTF (U = 1), 11111 is FCVTZS (U = 0) / FCVTZU (U = 1). immh = 01xx is 32-bit lanes and
+    //      1xxx is 64-bit lanes (Q required), fbits = 2 * esize - immh:immb. immh = 0001 is reserved and 001x is half
+    //      precision, which is not decoded.
+    if (raw & 0x9F80_0400) == 0x0F00_0400 && matches!((raw >> 11) & 0x1F, 0b11100 | 0b11111) {
+        let immh = (raw >> 19) & 0xF;
+        let imm = (raw >> 16) & 0x7F; // immh:immb
+        let esize = match immh {
+            0b0100..=0b0111 => 32u32,
+            0b1000..=0b1111 if q => 64,
+            _ => return None,
+        };
+        let op = match ((raw >> 11) & 0x1F, u) {
+            (0b11100, false) => SimdOp2::Scvtf,
+            (0b11100, true) => SimdOp2::Ucvtf,
+            (_, false) => SimdOp2::Fcvtzs,
+            (_, true) => SimdOp2::Fcvtzu,
+        };
+        return Some(Instruction::SimdFixedConv { rd, rn, op, esize: esize as u8, fbits: (2 * esize - imm) as u8, q });
     }
 
     // 30a. AdvSIMD scalar shift by immediate (D registers only): 01 U 111110 1xxx immb opcode 1 Rn Rd
