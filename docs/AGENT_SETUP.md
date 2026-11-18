@@ -49,10 +49,12 @@ prints `scripts/next.sh`). Python 3.9+ for tools; Rust edition 2024 (cargo >= 1.
 7. **Version and link drift is checked in CI.** `python3 scripts/check_pins.py` (Cargo.toml, CITATION.cff, CHANGELOG
    and `docs/releases/` must agree) and `python3 scripts/check_links.py` (no broken relative Markdown links) run as
    tests. When you cut a release or move a doc, run them first.
-8. **Warnings fail CI.** The `lint` job runs clippy with `-D warnings` on default, `native-jit,nce` and
-   `gpu-present` features, on a pinned toolchain (see `.github/workflows/ci.yml`); `scripts/gate.sh --check runtime`
-   runs the default-feature pass locally. The tree is not rustfmt-clean, so do not run `cargo fmt` on whole files you
-   did not otherwise change: it rewrites unrelated lines and causes merge conflicts.
+8. **Warnings and formatting fail CI.** The `lint` job runs `cargo fmt --all --check` (config in `rustfmt.toml`) and
+   clippy with `-D warnings` on default, `native-jit,nce` and `gpu-present` features, on a pinned toolchain (see
+   `.github/workflows/ci.yml`); `scripts/gate.sh --check runtime` runs the default-feature clippy pass locally. Run
+   `cargo fmt --all` before committing. The one-off reformat of the whole tree is listed in `.git-blame-ignore-revs`; run
+   `git config blame.ignoreRevsFile .git-blame-ignore-revs` once so `git blame` skips it. A branch started before that
+   commit conflicts on every reformatted line: merge `main`, then run `cargo fmt --all` and commit the result.
 9. **Every action is pinned to a commit SHA.** `python3 scripts/check_action_pins.py` (also a test) fails on a
    `uses: owner/repo@v4`. Write `uses: owner/repo@<40-hex sha> # v4`; the SHA is the commit the tag points to, which a
    CI log shows as `Download action repository 'owner/repo@v4' (SHA:...)`. `dtolnay/rust-toolchain` needs an explicit

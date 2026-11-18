@@ -197,7 +197,7 @@ jobs:
         uses: dtolnay/rust-toolchain@fa51344246423bb1896f389ae2a83b9784ddb363 # 1.97.0
         with:
           toolchain: 1.97.0
-          components: clippy
+          components: clippy, rustfmt
 
       - name: Install Linux system dependencies
         run: |
@@ -208,6 +208,9 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           key: lint
+
+      - name: Formatting (rustfmt.toml)
+        run: cargo fmt --all --check
 
       - name: Clippy (default features)
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
