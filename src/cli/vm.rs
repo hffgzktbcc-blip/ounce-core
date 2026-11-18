@@ -280,7 +280,9 @@ pub(crate) fn run_vm_internal(
                 if let (Some(t), Some((raw, pc, pre)), Ok(StepResult::Continue)) = (tracer.as_mut(), traced, &step_result) {
                     t.post(&cpu, raw, pc, pre);
                 }
-                (step_result.map_err(|e| e.to_string()), 1)
+                // A step that faults did not complete, so it is not counted (the block engine counts the same way).
+                let executed = usize::from(step_result.is_ok());
+                (step_result.map_err(|e| e.to_string()), executed)
             }
         };
         match stepped {
@@ -438,6 +440,8 @@ pub(crate) fn run_vm_internal(
                 break;
             }
             Err(e) => {
+                // The instructions that completed before the fault still ran.
+                instructions_executed += executed;
                 eprintln!("\n[VM Error] {}", e);
                 eprintln!("  Final PC: 0x{:016X}", cpu.regs.pc);
                 stop_pc = Some(cpu.regs.pc);

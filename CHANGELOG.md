@@ -22,6 +22,10 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   headless run reports. Only a `gpu-present` GPU window outside deterministic mode still reports `null`; the schema
   doc says so. Fixed: a `gpu-present` build whose GPU window failed to open sent 3D draws to a GPU that was not
   there, so frames were presented without them; the backend is now opened before that choice is made.
+- Fixed: `run` / `run-nro` reported `insns_executed` without the instructions that ran in the slice that ended in a
+  fault, so a program that faulted early reported 0 (and the interpreter and Tier-3 could not be compared). A fault
+  now counts the instructions that completed before it. A new test faults the fourth instruction of a minimal NRO and
+  expects 3 on every tier.
 - `ounce.run.v1` gains `lr` and `sp` (#475, first part): the link register and stack pointer at the stop, set exactly
   when `pc` is, on `run`, `run-nro` and `run-elf`. With `pc` they locate a fault without a debugger: the `BL` that
   made the innermost call is at `lr - 4`. Additive. Symbolication (function names from DWARF/ELF) is not done: it
