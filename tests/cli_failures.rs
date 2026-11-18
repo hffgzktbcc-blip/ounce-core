@@ -46,8 +46,6 @@ fn nro_only_command_rejects_raw_input_before_execution() {
     assert!(!String::from_utf8_lossy(&output.stdout).contains("Starting execution"));
 }
 
-/// The issue's minimal NRO: `mov w0, #0; svc #7` (svcExitProcess), 128 bytes.
-#[cfg(not(windows))]
 /// A minimal NRO whose header branches to 0x80, where `text` (code, then any data it uses) starts.
 fn nro_with_text(text: &[u8]) -> Vec<u8> {
     let total = 0x80 + text.len();
@@ -60,6 +58,8 @@ fn nro_with_text(text: &[u8]) -> Vec<u8> {
     b
 }
 
+/// The issue's minimal NRO: `mov w0, #0; svc #7` (svcExitProcess), 128 bytes.
+#[cfg(not(windows))]
 fn exit_nro_bytes() -> Vec<u8> {
     let text: Vec<u8> = [0x5280_0000u32, 0xD400_00E1].iter().flat_map(|w| w.to_le_bytes()).collect();
     nro_with_text(&text)
