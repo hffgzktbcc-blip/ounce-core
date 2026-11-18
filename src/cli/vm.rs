@@ -218,6 +218,9 @@ pub(crate) fn run_vm_internal(
     // selected (`--cpu=interpreter|tier3|tier4`) it runs one-instruction slices so each recorded instruction is
     // executed by that engine's own translation (single-instruction blocks, not multi-instruction fusion).
     let mut tracer = trace::Tracer::from_env();
+    // `OUNCE_TRACE_SUMMARY=<file>` records the first retired instructions as an `ounce.trace.v1` step trace
+    // (docs/OUNCE_TRACE_V1_SCHEMA.md); like `OUNCE_TRACE` it forces one-instruction slices on a block engine.
+    let mut step_trace = trace_summary::Recorder::from_env();
 
     loop {
         if max_instructions > 0 && instructions_executed >= max_instructions {
@@ -234,7 +237,7 @@ pub(crate) fn run_vm_internal(
                 if max_instructions > 0 {
                     slice = slice.min(max_instructions - before);
                 }
-                if tracer.is_some() {
+                if tracer.is_some() || step_trace.is_some() {
                     slice = 1;
                 }
                 let pc = cpu.regs.pc;
@@ -242,7 +245,15 @@ pub(crate) fn run_vm_internal(
                     Some(t) => mmu.read_u32(pc).ok().and_then(|raw| t.pre(&cpu, raw).map(|pre| (raw, pre))),
                     None => None,
                 };
+                let summary_pending = step_trace.as_mut().and_then(|t| t.pre(&cpu, &mmu));
                 let (count, exit) = e.run_slice(&mut cpu, &mut mmu, slice.max(1));
+                if let Some(t) = step_trace.as_mut() {
+                    match &exit {
+                        cpu::tier2_jit::BlockExit::Fault { .. } => {}
+                        _ if count == 1 => t.post(&cpu, summary_pending),
+                        _ => t.abandon(),
+                    }
+                }
                 if let (Some(t), Some((raw, pre))) = (tracer.as_mut(), traced) {
                     let stopped = matches!(exit, cpu::tier2_jit::BlockExit::Fault { .. } | cpu::tier2_jit::BlockExit::Svc { .. });
                     if count == 1 && !stopped {
@@ -276,7 +287,11 @@ pub(crate) fn run_vm_internal(
                     }
                     None => None,
                 };
+                let summary_pending = step_trace.as_mut().and_then(|t| t.pre(&cpu, &mmu));
                 let step_result = cpu.step(&mut mmu);
+                if let (Some(t), Ok(StepResult::Continue | StepResult::Svc(_))) = (step_trace.as_mut(), &step_result) {
+                    t.post(&cpu, summary_pending);
+                }
                 if let (Some(t), Some((raw, pc, pre)), Ok(StepResult::Continue)) = (tracer.as_mut(), traced, &step_result) {
                     t.post(&cpu, raw, pc, pre);
                 }
@@ -470,6 +485,9 @@ pub(crate) fn run_vm_internal(
         }
     }
     if let Some(t) = tracer.as_mut() {
+        t.finish();
+    }
+    if let Some(t) = step_trace.as_mut() {
         t.finish();
     }
 

@@ -24,6 +24,7 @@ mod loop_controls;
 mod mmu;
 mod run_report;
 mod trace;
+mod trace_summary;
 mod ui;
 
 use cli::*;
@@ -159,6 +160,9 @@ fn main() {
         }
         "diverge" => {
             std::process::exit(diverge::run_cli(&args[2..]));
+        }
+        "trace-diff" => {
+            std::process::exit(trace_summary::run_cli(&args[2..]));
         }
         "ui" | "lab" => {
             print_banner();
