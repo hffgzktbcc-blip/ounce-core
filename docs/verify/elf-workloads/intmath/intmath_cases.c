@@ -123,7 +123,8 @@ int workload_run(FILE *o) {
     for (int i = 0; i < qlen / 2; i++) { char c = qdec[i]; qdec[i] = qdec[qlen - 1 - i]; qdec[qlen - 1 - i] = c; }
     qdec[qlen] = 0;
     fprintf(o, "-(2^100)/12345 = %s rem %lld\n", qdec, nr);
-    if (nq * 12345 + nr != neg) fails++;
+    /* expected values computed independently (Python): truncation toward zero */
+    if (strcmp(qdec, "-102685346312533770878631284") || nr != -4396) fails++;
 
     fprintf(o, "isqrt: %llu %llu %llu %llu\n", (unsigned long long)isqrt(99), (unsigned long long)isqrt(1000000),
             (unsigned long long)isqrt(0xFFFFFFFFFFFFFFFFull), (unsigned long long)isqrt(4611686014132420609ull));
