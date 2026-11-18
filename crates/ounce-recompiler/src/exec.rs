@@ -172,21 +172,19 @@ extern "C" fn mem_read(ctx: *mut CallCtx<'_>, va: u64, size: u32, out: *mut u64)
     if !matches!(size, 1 | 2 | 4 | 8) { return MEM_FAULT; }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let offset = (va & 0xfff) as usize;
-        if offset + size as usize <= 4096 {
-            if let Some(mapping) = ctx.bus.query_page(va >> 12) {
-                // Cache metadata only. The page borrow, not an address in this table,
-                // establishes validity for this access.
-                ctx.tlb[((va >> 12) & TLB_MASK) as usize] = TlbEntry {
-                    page_tag: va >> 12,
-                    host_base: 0,
-                    flags: u32::from(mapping.read) | (u32::from(mapping.write && !mapping.holds_code) << 1),
-                    _pad: 0,
-                };
-                if mapping.read {
-                    let mut bytes = [0u8; 8];
-                    bytes[..size as usize].copy_from_slice(&mapping.data[offset..offset + size as usize]);
-                    return Ok(u64::from_le_bytes(bytes));
-                }
+        if offset + size as usize <= 4096 && let Some(mapping) = ctx.bus.query_page(va >> 12) {
+            // Cache metadata only. The page borrow, not an address in this table,
+            // establishes validity for this access.
+            ctx.tlb[((va >> 12) & TLB_MASK) as usize] = TlbEntry {
+                page_tag: va >> 12,
+                host_base: 0,
+                flags: u32::from(mapping.read) | (u32::from(mapping.write && !mapping.holds_code) << 1),
+                _pad: 0,
+            };
+            if mapping.read {
+                let mut bytes = [0u8; 8];
+                bytes[..size as usize].copy_from_slice(&mapping.data[offset..offset + size as usize]);
+                return Ok(u64::from_le_bytes(bytes));
             }
         }
         ctx.bus.read(va, size as u8)
@@ -208,21 +206,19 @@ extern "C" fn mem_write(ctx: *mut CallCtx<'_>, va: u64, size: u32, value: u64) -
     if !matches!(size, 1 | 2 | 4 | 8) { return MEM_FAULT; }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let offset = (va & 0xfff) as usize;
-        if offset + size as usize <= 4096 {
-            if let Some(mapping) = ctx.bus.query_page(va >> 12) {
-                // Cache metadata only. The page borrow, not an address in this table,
-                // establishes validity for this access.
-                ctx.tlb[((va >> 12) & TLB_MASK) as usize] = TlbEntry {
-                    page_tag: va >> 12,
-                    host_base: 0,
-                    flags: u32::from(mapping.read) | (u32::from(mapping.write && !mapping.holds_code) << 1),
-                    _pad: 0,
-                };
-                if mapping.write && !mapping.holds_code {
-                    mapping.data[offset..offset + size as usize]
-                        .copy_from_slice(&value.to_le_bytes()[..size as usize]);
-                    return Ok(WriteEffect::Done);
-                }
+        if offset + size as usize <= 4096 && let Some(mapping) = ctx.bus.query_page(va >> 12) {
+            // Cache metadata only. The page borrow, not an address in this table,
+            // establishes validity for this access.
+            ctx.tlb[((va >> 12) & TLB_MASK) as usize] = TlbEntry {
+                page_tag: va >> 12,
+                host_base: 0,
+                flags: u32::from(mapping.read) | (u32::from(mapping.write && !mapping.holds_code) << 1),
+                _pad: 0,
+            };
+            if mapping.write && !mapping.holds_code {
+                mapping.data[offset..offset + size as usize]
+                    .copy_from_slice(&value.to_le_bytes()[..size as usize]);
+                return Ok(WriteEffect::Done);
             }
         }
         ctx.bus.write(va, size as u8, value)

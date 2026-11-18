@@ -150,6 +150,22 @@ class DoneCommandTest(WorkflowTest):
         self.assertIn('Implement widget frobnication', self.run_done('401').stdout)
         self.assertIn('Implement widget frobnication', self.run_done('frobnication').stdout)
 
+    def test_lookup_does_not_depend_on_gnu_regex_extensions(self):
+        # Issue #484: macOS's regcomp reads `\b` in an extended pattern as a literal `b`, so a
+        # lookup that leaned on `git log -E --grep '#401\b'` found nothing there. Emulate that.
+        real_git = shutil.which('git')
+        self.write('fake-bin/git', '#!/usr/bin/env python3\nimport os, sys\n'
+                   'args = [a.replace("\\\\b", "b") for a in sys.argv[1:]]\n'
+                   f'os.execv({real_git!r}, ["git", *args])\n')
+        (self.bin / 'git').chmod(0o755)
+        self.write('x.txt', 'x')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'Implement widget frobnication (#401) (#449)')
+        result = subprocess.run(['bash', 'scripts/done.sh', '#401'], cwd=self.root, env=self.env,
+                                capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('Implement widget frobnication', result.stdout)
+
     def test_number_match_is_exact_and_absence_is_explained(self):
         self.write('x.txt', 'x')
         self.git('add', '.')

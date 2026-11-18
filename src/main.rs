@@ -2,6 +2,9 @@
 // Any future host-level exception (a native code emitter, a raw graphics driver) lives
 // in its own workspace crate, per AGENTS.md "Unsafe Boundary".
 #![forbid(unsafe_code)]
+// Explicit zero terms (`t * 3 + 0`, `0 << 5`, `ALL_ONES & MASK`) spell out register, lane and
+// bit-field layouts next to their non-zero neighbours; they are documentation, not mistakes.
+#![allow(clippy::identity_op)]
 
 mod audio;
 mod cli;
@@ -21,6 +24,7 @@ mod loop_controls;
 mod mmu;
 mod run_report;
 mod trace;
+mod trace_summary;
 mod ui;
 
 use cli::*;
@@ -53,10 +57,8 @@ static SDMC_WRITEBACK: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 static RUN_TARGET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 fn main() {
-    if let Ok(path) = std::env::var("OUNCE_REPORT_JSON") {
-        if !path.is_empty() {
-            run_report::set_report_path(std::path::PathBuf::from(path));
-        }
+    if let Ok(path) = std::env::var("OUNCE_REPORT_JSON") && !path.is_empty() {
+        run_report::set_report_path(std::path::PathBuf::from(path));
     }
     if std::env::var("OUNCE_AUDIO").as_deref() == Ok("null") {
         run_report::set_audio_null(true);
@@ -64,11 +66,11 @@ fn main() {
     if matches!(std::env::var("OUNCE_DETERMINISTIC").as_deref(), Ok("1" | "true")) {
         run_report::set_deterministic(true);
     }
-    if let Ok(backend) = std::env::var("OUNCE_GPU_BACKEND") {
-        if !matches!(backend.as_str(), "cpu" | "host") || (backend == "host" && !cfg!(feature = "gpu-present")) {
-            eprintln!("[guest-gpu] OUNCE_GPU_BACKEND expects cpu or host; host requires --features gpu-present");
-            std::process::exit(2);
-        }
+    if let Ok(backend) = std::env::var("OUNCE_GPU_BACKEND")
+        && (!matches!(backend.as_str(), "cpu" | "host") || (backend == "host" && !cfg!(feature = "gpu-present")))
+    {
+        eprintln!("[guest-gpu] OUNCE_GPU_BACKEND expects cpu or host; host requires --features gpu-present");
+        std::process::exit(2);
     }
     // `--present=<auto|gpu|minifb|headless>` and `--cpu=<interpreter|tier3|tier4|native>` may appear anywhere; strip them so the
     // positional arguments of every command stay where they were.
@@ -159,6 +161,9 @@ fn main() {
         "diverge" => {
             std::process::exit(diverge::run_cli(&args[2..]));
         }
+        "trace-diff" => {
+            std::process::exit(trace_summary::run_cli(&args[2..]));
+        }
         "ui" | "lab" => {
             print_banner();
             lab::run_cli(&args[2..]);
@@ -205,16 +210,24 @@ fn main() {
                 std::process::exit(2);
             }
             let file_path = &args[2];
+            if matches!(file_path.as_str(), "--help" | "-h") {
+                print_run_usage(&args[1]);
+                return;
+            }
+            let run_args = match parse_run_args(&args[1], file_path, &args[3..]) {
+                Ok(parsed) => parsed,
+                Err(message) => {
+                    eprintln!("{message}");
+                    std::process::exit(2);
+                }
+            };
             if !std::path::Path::new(file_path).exists() {
                 eprint!("{}", cli_flow::file_not_found(file_path));
                 std::process::exit(1);
             }
             let _ = RUN_TARGET.set(file_path.clone());
             print_banner();
-            let gui_mode = args.iter().any(|a| a == "--gui" || a == "--window" || a == "-g");
-            // Anything after the path that is not a flag is passed to homebrew as argv[1..].
-            let guest_args: Vec<&str> = args[3..].iter().filter(|a| !a.starts_with('-')).map(|a| a.as_str()).collect();
-            run_file(file_path, &guest_args, gui_mode, nro_only);
+            run_file(file_path, &run_args.guest, run_args.gui, nro_only);
         }
         "demo-dir" | "dir-demo" | "loose-demo" => {
             print_banner();

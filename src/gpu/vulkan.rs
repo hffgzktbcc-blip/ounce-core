@@ -171,8 +171,8 @@ mod tests {
         assert_eq!(backend.pipelines_created, 1);
         assert_eq!(backend.spirv_modules_loaded, 2);
 
-        let mut mmu = Memory::new();
-        assert!(backend.draw_arrays(&mut mmu, 0x8000_0000, 3).is_ok());
+        let mmu = Memory::new();
+        assert!(backend.draw_arrays(&mmu, 0x8000_0000, 3).is_ok());
         assert_eq!(backend.draw_calls_submitted, 1);
         backend.present_frame();
         assert_eq!(backend.hardware_frames_presented, 0);

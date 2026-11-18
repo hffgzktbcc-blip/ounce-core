@@ -522,7 +522,7 @@ fn fuzz_decoder_and_cpu_step() {
         cpu.regs.tpidrro_el0 = DATA_PAGE + 0x480;
         cpu.regs.fpcr = ((rng.below(4) as u32) << 22) | ((rng.below(2) as u32) << 24) | ((rng.below(2) as u32) << 25);
         cpu.regs.fpsr = (rng.next() as u32) & 0x0800_009F;
-        cpu.regs.pstate.from_bits((rng.next() as u32) & 0xF000_0000);
+        cpu.regs.pstate.set_bits((rng.next() as u32) & 0xF000_0000);
         cpu.regs.pstate.btype = rng.below(4) as u8;
         for i in 0..31 {
             cpu.regs.x[i] = match rng.below(4) {

@@ -76,10 +76,8 @@ impl DmaCopy {
             return;
         }
         self.regs[(method / 4) as usize] = data;
-        if method == LAUNCH_DMA {
-            if let Err(reason) = self.launch(data, mem) {
-                diagnostics.push(Diagnostic::DmaSkipped { reason });
-            }
+        if method == LAUNCH_DMA && let Err(reason) = self.launch(data, mem) {
+            diagnostics.push(Diagnostic::DmaSkipped { reason });
         }
     }
 
@@ -118,7 +116,10 @@ impl DmaCopy {
         if pitch {
             let va = base + y as u64 * pitch_bytes as u64;
             return match write {
-                true => Ok(mem.write(va, line)),
+                true => {
+                    mem.write(va, line);
+                    Ok(())
+                }
                 false => mem.read(va, line).then_some(()).ok_or("DMA source is not readable"),
             };
         }

@@ -1,12 +1,12 @@
+//! Tegra NVGPU Channel / Pushbuffer & 3D Rasterizer Engine.
+//!
+//! Models the Nvidia Tegra (Maxwell GM20B / Ampere T239) command submission interface
+//! used by Horizon OS to feed draw calls, surface clears, and vertex arrays to the GPU.
+
 #![allow(dead_code)]
 
 use crate::gpu::upscaler::UpscaleEngine;
 use crate::mmu::Memory;
-
-/// Tegra NVGPU Channel / Pushbuffer & 3D Rasterizer Engine.
-///
-/// Models the Nvidia Tegra (Maxwell GM20B / Ampere T239) command submission interface
-/// used by Horizon OS to feed draw calls, surface clears, and vertex arrays to the GPU.
 
 pub const NVGPU_IOCTL_CHANNEL_SUBMIT_GPFIFO: u32 = 0xC0104808;
 pub const NVHOST_IOCTL_CTRL_SYNCPT_INCR: u32 = 0x40040003;
@@ -89,7 +89,7 @@ impl Gpu3DVertex {
     }
 
     /// Endian-safe, pure safe Rust serialization (zero unsafe).
-    pub fn to_bytes(&self) -> [u8; 32] {
+    pub fn to_bytes(self) -> [u8; 32] {
         let mut b = [0u8; 32];
         b[0..4].copy_from_slice(&self.position[0].to_le_bytes());
         b[4..8].copy_from_slice(&self.position[1].to_le_bytes());
@@ -721,14 +721,12 @@ impl NvgpuChannel {
             }
             // 0x0900: Dispatch 2x upscaler model (bilinear + sharpen, not DLSS)
             // Args: [src_addr, src_w, src_h, dst_addr]
-            METHOD_DISPATCH_UPSCALE_2X => {
-                if cmd.args.len() >= 4 {
-                    let src_addr = cmd.args[0] as u64;
-                    let src_w = cmd.args[1];
-                    let src_h = cmd.args[2];
-                    let dst_addr = cmd.args[3] as u64;
-                    self.upscaler.upscale_2x(mmu, src_addr, src_w, src_h, dst_addr);
-                }
+            METHOD_DISPATCH_UPSCALE_2X if cmd.args.len() >= 4 => {
+                let src_addr = cmd.args[0] as u64;
+                let src_w = cmd.args[1];
+                let src_h = cmd.args[2];
+                let dst_addr = cmd.args[3] as u64;
+                self.upscaler.upscale_2x(mmu, src_addr, src_w, src_h, dst_addr);
             }
             _ => {}
         }

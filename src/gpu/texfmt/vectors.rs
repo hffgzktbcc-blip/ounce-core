@@ -4,7 +4,9 @@
 //! regenerate rather than hand-edit.
 
 /// (name, COMPONENTS_SIZES, block w, block h, snorm, [(block hex, RGBA8 texels hex)])
-pub(super) const SETS: &[(&str, u32, u32, u32, bool, &[(&str, &str)])] = &[
+pub(super) type VectorSet = (&'static str, u32, u32, u32, bool, &'static [(&'static str, &'static str)]);
+
+pub(super) const SETS: &[VectorSet] = &[
     ("BC1", 0x24, 4, 4, false, &[
         ("1e31d3b5266a1a6f", "736dc9ffb5ba9cff736dc9ff3120f7ff736dc9ff736dc9ff736dc9ffb5ba9cff736dc9ff736dc9ffb5ba9cff3120f7ff000000ff000000ff736dc9ffb5ba9cff"),
         ("0ffa5e6803dbbf48", "9c1bcdffff417bffff417bffff417bff9c1bcdffcd2ea4ff6b08f7ff9c1bcdff9c1bcdff9c1bcdff9c1bcdffcd2ea4ffff417bffcd2ea4ffff417bff6b08f7ff"),

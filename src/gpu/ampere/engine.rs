@@ -533,11 +533,9 @@ impl Ampere3d {
             if !self.continues_macro(call) {
                 self.run_macro(mem);
             }
-            if let Some(wait) = self.acquire_for(call) {
-                if wait.satisfied(mem) == Some(false) {
-                    self.blocked = Some(wait);
-                    return;
-                }
+            if let Some(wait) = self.acquire_for(call) && wait.satisfied(mem) == Some(false) {
+                self.blocked = Some(wait);
+                return;
             }
             self.pending.pop_front();
             self.execute(call, mem);

@@ -55,7 +55,7 @@ Build, run the hello fixture, and write an `ounce.run.v1` report: [docs/QUICKSTA
 
 **1. In your browser.** Step through ARM64 code one instruction at a time in the [playground](https://hffgzktbcc-blip.github.io/ounce-core/playground/). Nothing to install.
 
-**2. On your machine.** You need Rust 1.85 or newer. On Debian or Ubuntu, first run `sudo apt-get install -y libasound2-dev libudev-dev`.
+**2. On your machine.** You need Rust 1.89 or newer. On Debian or Ubuntu, first run `sudo apt-get install -y libasound2-dev libudev-dev`.
 
 ```bash
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git && cd ounce-core
@@ -63,7 +63,7 @@ cargo build --release
 cargo run --release -- run tests/fixtures/nro/hello/hello.nro fixture
 ```
 
-The last command runs a small test program and prints `result=0x00000EEE`. The default engine is Tier-3. Since v0.9.0 it can also write a machine-readable stop report: add `--present=headless --report-json=run.json` (or set `OUNCE_REPORT_JSON`). (`run` and `run-nro` only; not `run-elf`.) To check your own program against a host build, see [Add a program](docs/ADD_A_PROGRAM.md) or the [Community Verification Guide](docs/COMMUNITY_VERIFICATION_GUIDE.md). To find where a run first goes wrong, see the [diagnosis guide](docs/DIAGNOSIS_CLI.md).
+The last command runs a small test program and prints `result=0x00000EEE`. The default engine is Tier-3. Since v0.9.0 it can also write a machine-readable stop report: add `--present=headless --report-json=run.json` (or set `OUNCE_REPORT_JSON`). `run-elf` writes the same report (unreleased; on `main`). To check your own program against a host build, see [Add a program](docs/ADD_A_PROGRAM.md) or the [Community Verification Guide](docs/COMMUNITY_VERIFICATION_GUIDE.md). To find where a run first goes wrong, see the [diagnosis guide](docs/DIAGNOSIS_CLI.md).
 
 **3. Help out.** Have an ARM64 Mac, Raspberry Pi or Linux VM? Run `python3 scripts/verify_differential.py --json my-results.json` and report it in [issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248). No ARM64 machine? Pick a [no-code task](docs/community/TRY_THIS_WEEK.md) or a [good first issue](https://github.com/hffgzktbcc-blip/ounce-core/contribute). Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 

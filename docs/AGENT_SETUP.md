@@ -13,7 +13,7 @@ historical record only: do not take tasks or rules from it.
 
 ## Environment
 `scripts/setup_env.sh` (Linux: installs ALSA/udev dev headers, runs `cargo build --locked`,
-prints `scripts/next.sh`). Python 3.9+ for tools; Rust edition 2024 (cargo >= 1.85).
+prints `scripts/next.sh`). Python 3.9+ for tools; Rust edition 2024 (cargo >= 1.89; the `msrv` CI job checks it).
 
 ## Coordination
 - One agent per topic branch; stage only your own paths; never rewrite another agent's branch.
@@ -42,6 +42,19 @@ prints `scripts/next.sh`). Python 3.9+ for tools; Rust edition 2024 (cargo >= 1.
    backlog is `PLAN.md` plus open issues and PRs.
 6. **Reading CI.** `scripts/gate.sh` is the fast local equivalent. A hosted job that needs
    artifacts from another job fails as a cascade when that job fails; fix the first red job.
+   A run that fails only because hosted jobs were cancelled is re-run automatically
+   (`ci-rerun-infra.yml`: once, and a second time if those jobs never reached a runner). If it is
+   still red, re-run the cancelled job or use "Re-run failed jobs". Re-running only a `Test (...)`
+   summary re-reads the stored `cancelled` result and fails again.
 7. **Version and link drift is checked in CI.** `python3 scripts/check_pins.py` (Cargo.toml, CITATION.cff, CHANGELOG
    and `docs/releases/` must agree) and `python3 scripts/check_links.py` (no broken relative Markdown links) run as
    tests. When you cut a release or move a doc, run them first.
+8. **Warnings fail CI.** The `lint` job runs clippy with `-D warnings` on default, `native-jit,nce` and
+   `gpu-present` features, on a pinned toolchain (see `.github/workflows/ci.yml`); `scripts/gate.sh --check runtime`
+   runs the default-feature pass locally. The tree is not rustfmt-clean, so do not run `cargo fmt` on whole files you
+   did not otherwise change: it rewrites unrelated lines and causes merge conflicts.
+9. **Every action is pinned to a commit SHA.** `python3 scripts/check_action_pins.py` (also a test) fails on a
+   `uses: owner/repo@v4`. Write `uses: owner/repo@<40-hex sha> # v4`; the SHA is the commit the tag points to, which a
+   CI log shows as `Download action repository 'owner/repo@v4' (SHA:...)`. `dtolnay/rust-toolchain` needs an explicit
+   `with: toolchain:` once pinned, because it otherwise reads the toolchain from the ref name. Dependabot's
+   `github-actions` updates keep the pins current.

@@ -399,9 +399,9 @@ impl WarpFragments {
         let d = mma_f16_f32(self.shape, &a, &b, &c)?;
 
         let mut d_frags = [[0.0f32; CD_REGS]; WARP_LANES];
-        for lane in 0..WARP_LANES {
+        for (lane, frag) in d_frags.iter_mut().enumerate() {
             for (reg, (row, col)) in lane_cd_coords(lane).into_iter().enumerate() {
-                d_frags[lane][reg] = d[row * n + col];
+                frag[reg] = d[row * n + col];
             }
         }
         Ok(d_frags)
@@ -412,9 +412,9 @@ impl WarpFragments {
 pub fn collect_d(shape: HmmaShape, d_frags: &[[f32; CD_REGS]; WARP_LANES]) -> Vec<f32> {
     let n = shape.n();
     let mut d = vec![0.0f32; shape.m() * n];
-    for lane in 0..WARP_LANES {
+    for (lane, frag) in d_frags.iter().enumerate() {
         for (reg, (row, col)) in lane_cd_coords(lane).into_iter().enumerate() {
-            d[row * n + col] = d_frags[lane][reg];
+            d[row * n + col] = frag[reg];
         }
     }
     d
@@ -478,6 +478,8 @@ mod tests {
     use super::*;
 
     #[test]
+    // The literals are the exact decimal expansions of 2^-14 and 2^-24; clippy's shorter forms hide that.
+    #[allow(clippy::excessive_precision)]
     fn test_binary16_conversion_reference_vectors() {
         // Documented IEEE 754-2008 binary16 bit patterns.
         assert_eq!(f32_to_f16(0.0), 0x0000);
@@ -505,10 +507,10 @@ mod tests {
         assert_eq!(f32_to_f16(1.0 + 0.000_488_281_25), 0x3C00);
         // 1.0 + 3 * 2^-12 is three quarters of the way to the next half and
         // rounds up to 0x3C01.
-        assert_eq!(f32_to_f16(1.0 + 0.000_732_421_875), 0x3C01);
+        assert_eq!(f32_to_f16(1.0 + 0.000_732_421_9), 0x3C01);
         // 1.0 + 3 * 2^-11 is halfway between 0x3C01 and 0x3C02; the even
         // neighbour is 0x3C02.
-        assert_eq!(f32_to_f16(1.0 + 0.001_464_843_75), 0x3C02);
+        assert_eq!(f32_to_f16(1.0 + 0.001_464_843_8), 0x3C02);
 
         // Every representable half must survive a round trip.
         for bits in 0..=u16::MAX {

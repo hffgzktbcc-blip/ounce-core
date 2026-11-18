@@ -62,3 +62,7 @@ it checks end-to-end deterministic run equivalence across engines.
 - One run, one input. It is not a proof that the emulator is correct.
 
 The instruction checker itself is tested by corrupting a recorded result and confirming it is caught.
+
+## Related: first-divergence summary between two engines
+
+`ounce-core trace-diff` compares two bounded `ounce.trace.v1` step traces (recorded with `OUNCE_TRACE_SUMMARY=<file>`) and reports the first differing step. It needs no AArch64 host and does not replay on hardware. See [OUNCE_TRACE_V1_SCHEMA.md](OUNCE_TRACE_V1_SCHEMA.md).

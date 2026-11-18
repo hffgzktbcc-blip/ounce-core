@@ -41,7 +41,7 @@
 
 1. **Day-1 Homebrew Ergonomics & Doc/CLI Sync:**
    - **Loop-exit controls (`--max-frames <N>` and inline `--press PLUS@60` DONE, #458 merged 17 Nov; `OUNCE_INPUT_SCRIPT=<path>` was not built):** so standard `while (appletMainLoop())` `libnx` apps exit cleanly instead of hitting the 60s timeout.
-   - **Q1 `--sdmc` & RomFS support (IN FLIGHT: PR #459, not merged):** Support ephemeral/copy-on-write `--sdmc <dir>` staging and RomFS (`romfsInit()`) verification in Q1 rather than deferring to Q2.
+   - **Q1 `--sdmc` & RomFS support: DONE** (#459 merged 17 Nov: copy-on-write `--sdmc <dir>` overlay, `--sdmc-writeback` for write-through, `romfsInit()` verification). Do not redo.
    - **CLI & Doc parity:** Implement `--timeout <dur>` and `--json` on `ounce-hb run` (matching `HOMEBREW_DEVELOPER_GUIDE.md`), sync `ounce-hb/README.md` with `doctor`, `repro`, and `--auto`, and extend `ounce-hb doctor` to check `DEVKITPRO`/`devkitA64`/`cargo-nx` alongside engine binaries.
    - **Applet deadlock (`ounce-core` #387): DONE.** Issue closed, fixed by `0b4489b` (cancelled software-keyboard result); PR #459 adds a regression test. Do not redo.
 
@@ -49,7 +49,7 @@
    - **Prerequisites before comparing `framebuffer_hash`:**
      - Hash **pre-HUD** guest framebuffer pixels (disable `draw_hud_overlay` under `--present=headless` / `OUNCE_DETERMINISTIC=1`) in both `ounce-core` and `ounce-runtime` to prevent false-positive HUD divergences.
      - Wire `run_report::is_deterministic()` in `ounce-runtime` to match `ounce-core`'s deterministic clock/scheduler behavior.
-   - Emit `frames_presented` and `framebuffer_hash` (`fnv1a64:...`) from `ounce-core`'s `RunReport`.
+   - **DONE (#460):** Emit `frames_presented` and `framebuffer_hash` (`fnv1a64:...`) from `ounce-core`'s `RunReport`. **3D frames (#486, unreleased):** headless and `--deterministic` runs draw 3D with the software rasterizer and hash it; only a `gpu-present` GPU window outside deterministic mode reports `null`.
    - Extend `ounce.repro.v1` (`format_repro_bundle` & `ReproManifest`) with `framebuffer_hash`, `frames_presented`, and `input_script`, and teach `ounce-hb run --auto` and `ounce-hb repro` to compare `framebuffer_hash`.
 
 3. **Real-World Homebrew Validation (Metadata-Only Corpus):**
@@ -69,16 +69,16 @@
    - Replace `find_field_value()`'s flat substring scan in `ounce-hb/src/report_v1.rs` with a zero-dependency, `#![forbid(unsafe_code)]` recursive-descent JSON parser (and signed `i32` handling for `exit_code`) *before* adding nested arrays/objects to `ounce.run.v1`.
 
 2. **Zero-AI Diagnostic Tooling (`ounce-hb` + `ounce-core`):**
-   - **Symbolicated fault telemetry:** Pure safe Rust DWARF/ELF symbolication (`#![forbid(unsafe_code)]`, permissive crate only, no GPL/LGPL C bindings) emitting `pc`, `lr`, `sp`, and top stack frames in `ounce.run.v1`. Exit `11` prints PC + faulting VA + symbol; exit `14` names exact `sm` service + command ID.
-   - **Live hang visibility & guest args:** Add `--stream` (or flush-on-timeout) so hung `.nro` runs show stdout/stderr immediately, and lift the guest `-` argument restriction (`ounce-core #418`, DONE in #420; headless no-audio #419 DONE in #421) so homebrew test harnesses can pass flags like `--verbose` after `--`.
+   - **Symbolicated fault telemetry:** Pure safe Rust DWARF/ELF symbolication (`#![forbid(unsafe_code)]`, permissive crate only, no GPL/LGPL C bindings) emitting `pc`, `lr`, `sp`, and top stack frames in `ounce.run.v1`. Exit `11` prints PC + faulting VA + symbol; exit `14` names exact `sm` service + command ID. **Partly done (#475, unreleased): `lr` and `sp` are in the report on `run`, `run-nro` and `run-elf`.** Still open: symbolication and stack frames, which need a DWARF/ELF parsing crate (a new dependency, so an owner decision), and naming the `sm` service + command ID for exit `14`.
+   - **Live hang visibility & guest args:** Add `--stream` (or flush-on-timeout) so hung `.nro` runs show stdout/stderr immediately (**core side DONE** by #476, unreleased: `run`/`run-nro` flush guest debug output as it is written, so no flag is needed; `run-elf` already flushed each write), and lift the guest `-` argument restriction so homebrew test harnesses can pass flags like `--verbose` after `--` (**core side DONE** by the `ounce-core` #487 fix: `run`/`run-nro` pass everything after `--` through and refuse unknown options before it; #418/#420 fixed argv overflow, not this; `ounce-hb` still refuses dashed guest args until it drops that workaround; headless no-audio #419 DONE in #421).
    - **`ounce-hb bisect`:** Automated `git bisect run` wrapper around `ounce-hb repro`, mapping `ounce-hb` infrastructure exits (`2..5`) to `125` (skip untestable commit) and guest pass/fail to `0`/`1`.
-   - **`ounce-hb diff-trace` via `ounce.trace.v1`:** Define a bounded first-divergence summary contract (`OUNCE_TRACE_SUMMARY=<path>`) implemented independently by both `ounce-core` and `ounce-runtime`, preserving license isolation.
+   - **`ounce-hb diff-trace` via `ounce.trace.v1`:** Define a bounded first-divergence summary contract (`OUNCE_TRACE_SUMMARY=<path>`) implemented independently by both `ounce-core` and `ounce-runtime`, preserving license isolation. **Status (#477, 18 Nov 2026):** contract in [`docs/OUNCE_TRACE_V1_SCHEMA.md`](../OUNCE_TRACE_V1_SCHEMA.md); the `ounce-core` side (`OUNCE_TRACE_SUMMARY` writer, `ounce-core trace-diff`) is implemented and test-covered, not yet merged. `ounce-runtime` and `ounce-hb diff-trace` are NOT done, so nothing has been cross-checked between engines.
 
 3. **Audio & Assertion Parity (`ounce.run.v1` additive fields):**
-   - Add `audio_frames_mixed` / `audio_hash` for headless `audout` / SDL_mixer verification, plus a golden-output / `framebuffer_hash` assertion flag on `ounce-hb run`/`repro` for `Makefile` & CI test suites.
+   - Add `audio_frames_mixed` / `audio_hash` for headless `audout` / SDL_mixer verification, plus a golden-output / `framebuffer_hash` assertion flag on `ounce-hb run`/`repro` for `Makefile` & CI test suites. **Core side DONE (#478, unreleased) for `audout` and `audren`:** `ounce.run.v1` carries both fields on every `run` / `run-nro` stop (`run-elf` writes `0` / `null`), counted as audio is mixed, so `--present=headless` and a run with a sound device agree. Tested against the audren fixture's documented waveform on both tiers. Still open: the `ounce-hb` assertion flag, and SDL_mixer, which is a guest library on top of `audout` and has no separate core path.
 
 4. **Expand `run-elf` Bounded Envelope & `ounce.run.v1` Parity (Static musl AArch64):**
-   - Wire `ounce.run.v1` (`--report-json` / `OUNCE_REPORT_JSON`) and `--dump-regs` (`X0`/`D0`/`NZCV` on stop) into `ounce-core`'s `run-elf` runner (`src/linux/runner.rs`) so ELF workloads share the same machine-readable contract as `.nro`.
+   - **DONE (#473, unreleased):** Wire `ounce.run.v1` (`--report-json` / `OUNCE_REPORT_JSON`) and `--dump-regs` (`X0`/`D0`/`NZCV` on stop) into `ounce-core`'s `run-elf` runner (`src/linux/runner.rs`) so ELF workloads share the same machine-readable contract as `.nro`. Adds the flat, additive `guest_exit_status` field.
    - Expand `run-elf` & `linux-arm64-elf-matrix` toward 50+ single-threaded/bounded-file/deterministic static musl AArch64 workloads fetched/built cleanly in CI (no vendored unclear/GPL binaries), keeping scope strictly bounded to static musl `ET_EXEC`.
 
 5. **DeckStream `.nro` Subprocess & `ounce.run.v1` Integration (`deckstream`, MIT):**
@@ -100,11 +100,11 @@
 2. **One-Way JIT / NCE Hardening (`ounce-runtime` & `ounce-core`):**
    - Feed Q1–Q2 `ounce.repro.v1` bug reports into `ounce-runtime` Tier-3 / Tier-4 / NCE so fast execution matches `ounce-core` on FP/SIMD, NaN, and SVC edge cases.
    - **Strict One-Way Rule:** `ounce.repro.v1` JSON discoveries may inform GPL `ounce-runtime` fixes, **never** the reverse—no code or patterns from `ounce-runtime` may ever flow into MIT `ounce-core` or `ounce-hb`.
-   - Track CI performance regressions strictly via deterministic `insns_executed` budgets (keep wall-time tracking advisory on shared runners).
+   - Track CI performance regressions strictly via deterministic `insns_executed` budgets (keep wall-time tracking advisory on shared runners). **Core side DONE (#479):** `tests/insn-budgets.json`, checked by `scripts/insn_budgets.py` in the Runtime CI job on three hosts; see `docs/INSN_BUDGETS.md`.
    - **#400–#404 (instruction gaps): ALL CLOSED 16 Nov 2026** (#400 `32e69ac`, #401 #449, #402 #444, #403 #450, #404 #451). Do not restart them.
 
 3. **Quarterly Coordinated Releases & Supply-Chain Hardening:**
-   - Cut Q2/Q3 releases (`ounce-core` `v0.10.0` → `v0.11.0`, `ounce-hb` `v0.2.0` → `v0.3.0`, `ounce-runtime` `v0.7.0` → `v0.8.0`) with SPDX/SBOM generation, SHA-pinned GitHub Actions / Dependabot across all 3 repos, and `SHA256SUMS`.
+   - Cut Q2/Q3 releases (`ounce-core` `v0.10.0` → `v0.11.0`, `ounce-hb` `v0.2.0` → `v0.3.0`, `ounce-runtime` `v0.7.0` → `v0.8.0`) with SPDX/SBOM generation, SHA-pinned GitHub Actions / Dependabot across all 3 repos, and `SHA256SUMS`. **`ounce-core` side partly done (#480, unreleased):** `release.yml` generates an SPDX 2.3 SBOM per target (`scripts/generate_sbom.py`, also on a manual dry run) and `SHA256SUMS` covers it; every workflow `uses:` is pinned to a commit SHA except six listed in `scripts/check_action_pins.py` (their SHAs were not available), which a test keeps from growing. Not done: the six pins, a hosted release dry run, and the other two repositories.
 
 4. **DeckStream SteamOS Gaming Mode Verification & Mock CI:**
    - Verify end-to-end `.nro` launch over WebDAV/rclone in SteamOS Gaming Mode via `ounce-runtime --present=gpu` (Steam Deck `gilrs` gamepad input, `MESA_SHADER_CACHE_DIR`, `DECKSTREAM_FPS_CAP`), and profile cold/warm RomFS range reads in `startup_profile.py`.

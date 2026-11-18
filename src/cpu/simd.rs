@@ -322,17 +322,17 @@ fn fcvt_int(op: SimdOp2, bits: u64, esize: u32) -> u64 {
 fn recip_estimate(a: u32) -> u32 {
     let a = a * 2 + 1;
     let b = (1u32 << 19) / a;
-    (b + 1) / 2
+    b.div_ceil(2)
 }
 
 /// Arm `RecipSqrtEstimate`: `a` is in 128..=511; the result is in 256..=511.
 fn rsqrt_estimate(a: u32) -> u32 {
-    let a = if a < 256 { a * 2 + 1 } else { ((a >> 1) << 1 | 0) * 2 + 2 };
+    let a = if a < 256 { a * 2 + 1 } else { ((a >> 1) << 1) * 2 + 2 };
     let mut b = 512u64;
     while (a as u64) * (b + 1) * (b + 1) < (1u64 << 28) {
         b += 1;
     }
-    ((b + 1) / 2) as u32
+    b.div_ceil(2) as u32
 }
 
 fn urecpe(x: u32) -> u32 {
@@ -569,7 +569,7 @@ pub fn mul_long(op: SimdLongOp, d: u128, n: u128, m: u128, esize: u32, q: bool, 
         let b = ext(lane(hm, esize, i));
         let a = if matches!(op, SimdLongOp::Addw | SimdLongOp::Subw) { lane(n, wide, i) } else { ext(lane(hn, esize, i)) };
         let acc = lane(d, wide, i);
-        let abd = if signed { (a as i64).wrapping_sub(b as i64).unsigned_abs() } else if a >= b { a - b } else { b - a };
+        let abd = if signed { (a as i64).wrapping_sub(b as i64).unsigned_abs() } else { a.abs_diff(b) };
         let r = match op {
             SimdLongOp::Mull => a.wrapping_mul(b),
             SimdLongOp::Mlal => acc.wrapping_add(a.wrapping_mul(b)),
@@ -1138,13 +1138,12 @@ fn special_op2_flags(op: SimdFpOp2, f: super::softfp::Fmt, a: u64, cur: Rm, fz: 
 /// One `FCVTXN` lane: double to single, round to odd. `FPCR.RMode` is ignored; `FZ` and `DN` apply.
 pub fn fcvtxn_f32(bits: u64, fpcr: u32) -> u64 {
     use super::softfp::{self, Env, F32, F64, Round};
-    let base = Env::from_fpcr(fpcr);
-    softfp::convert(F64, F32, Env { round: Round::Odd, fz: base.fz, dn: base.dn }, bits)
+    softfp::convert(F64, F32, Env::from_fpcr(fpcr).with_round(Round::Odd), bits)
 }
 
 fn fcvtxn_pair(d: u128, n: u128, q: bool, env: super::softfp::Env) -> u128 {
-    use super::softfp::{self, Env, F32, F64, Round};
-    let env = Env { round: Round::Odd, fz: env.fz, dn: env.dn };
+    use super::softfp::{self, F32, F64, Round};
+    let env = env.with_round(Round::Odd);
     let lo = softfp::convert(F64, F32, env, lane(n, 64, 0)) as u128;
     let hi = softfp::convert(F64, F32, env, lane(n, 64, 1)) as u128;
     let pair = lo | hi << 32;
@@ -1263,6 +1262,7 @@ pub fn int_fp_convert_fpcr(op: SimdOp2, n: u128, esize: u32, q: bool, fpcr: u32)
 }
 
 /// `fp_by_element` under FPCR: the per-lane operation is the soft one when RMode, FZ or DN is set.
+#[allow(clippy::too_many_arguments)]
 pub fn fp_by_element_fpcr(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usize, double: bool, q: bool, fpcr: u32) -> u128 {
     let esize = if double { 64 } else { 32 };
     let op3 = match op {
@@ -1361,6 +1361,7 @@ pub fn fp_by_element(op: SimdFpElementOp, d: u128, n: u128, m: u128, index: usiz
 
 /// Integer by-element and dot-product forms. `m` is the whole `Vm`; `index` picks the element (`0xFF`: vector `SDOT`/`UDOT`,
 /// whose second operand is the full vector). Returns the result and whether it saturated (`FPSR.QC`).
+#[allow(clippy::too_many_arguments)]
 pub fn by_element(op: SimdElemOp, d: u128, n: u128, m: u128, index: u8, esize: u32, q: bool, scalar: bool) -> (u128, bool) {
     if let SimdElemOp::Dot(signed) = op {
         let mut out = 0u128;
