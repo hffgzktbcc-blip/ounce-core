@@ -559,6 +559,18 @@ fn guest_arguments_after_separator_reach_an_nro_unchanged() {
     }
 }
 
+/// libnx builds argv by splitting one string on spaces, and drops an empty token even inside quotes. A guest argument
+/// that is the empty string therefore cannot reach the guest: the program would see a smaller `argc` than it was run
+/// with. Refusing it before the program starts is better than that silent change (same rule as #487).
+#[test]
+fn an_empty_guest_argument_is_refused_instead_of_dropped() {
+    let output = run_hello(&["--", "fixture", ""]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "stderr: {stderr}");
+    assert!(stderr.contains("empty guest argument"), "stderr: {stderr}");
+    assert!(output.stdout.is_empty(), "the program must not start: {}", String::from_utf8_lossy(&output.stdout));
+}
+
 #[test]
 fn unknown_dashed_nro_argument_before_separator_is_refused_with_the_fix() {
     let output = run_hello(&["fixture", "-x"]);

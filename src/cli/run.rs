@@ -172,6 +172,15 @@ pub(crate) fn parse_run_args<'a>(command: &str, path: &str, words: &'a [String])
             arg => parsed.guest.push(arg),
         }
     }
+    // libnx splits argv on spaces and drops an empty token even inside quotes, so an empty argument would vanish and
+    // the guest would see a smaller argc than it was run with. Refuse it before anything starts.
+    if let Some(position) = parsed.guest.iter().position(|a| a.is_empty()) {
+        return Err(format!(
+            "{command}: empty guest argument (word {} of the program's arguments). libnx cannot receive an empty argv \
+             entry, so the program would see fewer arguments than you passed. Remove it.",
+            position + 1
+        ));
+    }
     Ok(parsed)
 }
 
@@ -183,7 +192,7 @@ pub(crate) fn print_run_usage(command: &str) {
     println!("Everything after `--` is passed to the program unchanged, including words that start with '-'.");
     println!("Any other word starting with '-' before `--` is an error (exit status 2), never silently dropped.\n");
     println!("  --gui, --window, -g   open a window");
-    println!("  --deterministic       accepted for parity with run-elf; it does not change the homebrew kernel clock");
+    println!("  --deterministic       fixed guest clock (time advances per system call) and software 3D, so a run repeats");
     println!("Global options such as --cpu=, --present=, --sdmc=, --report-json, --max-frames and --press may appear");
     println!("anywhere before `--`; see `ounce-core help`.\n");
     println!("examples:");
