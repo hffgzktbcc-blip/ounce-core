@@ -75,6 +75,12 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   Everything after `--` now reaches the program unchanged; an unknown option before `--` exits 2 with the corrected
   command; `--gui` after `--` is the guest's, not a window request. `ounce-core run-nro --help` documents this.
 - Fixed: `scripts/done.sh '#N'` found nothing on macOS, because `\b` in `git log -E --grep` is a GNU extension (#484).
+- FP workload (`docs/verify/fp-workload/`): 151 more ops (199 total), the same 18 operand patterns x 8 FPCR values, one
+  process per op: vector `.4s`/`.2d` arithmetic, FMLA/FMLS, compares, FRECPE/FRSQRTE, rounding, converts, FCVTN/FCVTL and
+  reductions, plus the remaining scalar `FCVT*` forms, fixed-point converts, FJCVTZS and FCVTXN. The native ARM64
+  host comparison has not been run locally (it runs in the `fp-workload` CI job, which gates only the original 48 ops); an informational Tier-3 versus qemu-user run
+  on x86_64 found 147 of the 151 new ops (plus `fcvtzs.sw`, an original op) identical and 5 unimplemented
+  (`FJCVTZS`, vector fixed-point `FCVTZS`/`SCVTF`) (#488).
 
 ## 0.9.0 — released 2026-11-16
 
