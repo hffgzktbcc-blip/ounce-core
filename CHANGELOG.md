@@ -81,6 +81,11 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   host comparison has not been run locally (it runs in the `fp-workload` CI job, which gates only the original 48 ops); an informational Tier-3 versus qemu-user run
   on x86_64 found 147 of the 151 new ops (plus `fcvtzs.sw`, an original op) identical and 5 unimplemented
   (`FJCVTZS`, vector fixed-point `FCVTZS`/`SCVTF`) (#488).
+- Trace: `ounce.trace.v1`, a bounded step trace and first-divergence summary ([schema](docs/OUNCE_TRACE_V1_SCHEMA.md), #477).
+  `OUNCE_TRACE_SUMMARY=<file>` makes `run` / `run-nro` write the first `OUNCE_TRACE_STEPS` (default 1024, max 65536)
+  retired instructions (pc, opcode, changed registers); `ounce-core trace-diff <expected> <actual> [--window N] [--json out]`
+  reports the first differing step, both values and the steps before it (exit 0 / 1 / 2). Registers only; no memory deltas
+  recorded yet, and ounce-runtime does not implement the contract yet.
 
 ## 0.9.0 — released 2026-11-16
 

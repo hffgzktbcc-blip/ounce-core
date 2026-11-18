@@ -17,7 +17,7 @@ changelog and release notes) so shipped work is not redone.
 
 ## Using and verifying (live)
 - Quick start: [QUICKSTART.md](QUICKSTART.md); reproduce results: [REPRODUCE.md](REPRODUCE.md); add a test program: [ADD_A_PROGRAM.md](ADD_A_PROGRAM.md); full reference: [DETAILS.md](DETAILS.md)
-- CLI: [DIAGNOSIS_CLI.md](DIAGNOSIS_CLI.md), [FAILURE_TO_REPRODUCTION.md](FAILURE_TO_REPRODUCTION.md), [INSTRUCTION_DIAGNOSIS.md](INSTRUCTION_DIAGNOSIS.md), [DIVERGE.md](DIVERGE.md), run report schema [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md), CI instruction budgets [INSN_BUDGETS.md](INSN_BUDGETS.md)
+- CLI: [DIAGNOSIS_CLI.md](DIAGNOSIS_CLI.md), [FAILURE_TO_REPRODUCTION.md](FAILURE_TO_REPRODUCTION.md), [INSTRUCTION_DIAGNOSIS.md](INSTRUCTION_DIAGNOSIS.md), [DIVERGE.md](DIVERGE.md), run report schema [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md), CI instruction budgets [INSN_BUDGETS.md](INSN_BUDGETS.md), step trace and first-divergence schema [OUNCE_TRACE_V1_SCHEMA.md](OUNCE_TRACE_V1_SCHEMA.md)
 - Apps: [PLAYGROUND.md](PLAYGROUND.md), [MAC_APP.md](MAC_APP.md), [INTERACTIVE_LAB.md](INTERACTIVE_LAB.md), [WORKBENCH_UI.md](WORKBENCH_UI.md)
 - Evidence and method: [verify/README.md](verify/README.md); dated results stay under `verify/` ([audio case](verify/AUDIO_CHANNEL_CASE.md), [census](verify/CENSUS_2026-11-08.md), [stress](verify/STRESS_2026-11-08.md), [issue shortlist](verify/ISSUE_SHORTLIST.md))
 - Research record (a dated preprint, not guidance): [research/OUNCE_CORE_AARCH64_VERIFICATION_2026.md](research/OUNCE_CORE_AARCH64_VERIFICATION_2026.md)

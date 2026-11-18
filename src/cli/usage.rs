@@ -117,6 +117,7 @@ pub(crate) fn print_usage() {
     println!("    {}run-nro{} <file> [args] [-- args]  Run a homebrew .nro; if it stops early, the output says why and what to do next (run-nro --help)", s.green, s.reset);
     println!("    {}run-elf{} <elf> [-- args]       Run a static AArch64 Linux ELF (--cpu=interpreter|tier3|tier4, --max-insns=N, --trace-syscalls, --deterministic, --dump-regs)", s.green, s.reset);
     println!("    {}diverge{} <prog.nro|prog.elf> [-- args]  Compare NRO (AArch64 hardware replay) or static ELF across interpreter/Tier-3/Tier-4", s.green, s.reset);
+    println!("    {}trace-diff{} <expected.json> <actual.json>  First step where two ounce.trace.v1 traces differ (record with OUNCE_TRACE_SUMMARY=<file>); [--window N] [--json out.json]", s.green, s.reset);
     println!("    {}run{} <file|dir> [args] [-- args]  Like run-nro, but also accepts .nso and loose folders (guest args: .nro only)", s.green, s.reset);
     println!();
     println!("  {}OPTIONS FOR RUNS:{}", s.bold, s.reset);
