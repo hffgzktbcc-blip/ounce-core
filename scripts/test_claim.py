@@ -79,6 +79,18 @@ class TestClaim(unittest.TestCase):
         self.assertIn("Self-assignment is available for issues labeled 'good first issue'", comment)
         self.assertTrue(all(ord(char) < 128 for char in comment))
 
+    def test_help_wanted_issue_is_assigned(self):
+        import io
+        from contextlib import redirect_stdout
+        from unittest import mock
+        import claim
+        argv = ['claim.py', '--repo', 'owner/repo', '--issue-number', '7', '--comment-body', '/claim',
+                '--comment-author', 'alice', '--issue-labels', '[{"name": "help wanted"}]', '--dry-run']
+        out = io.StringIO()
+        with mock.patch('sys.argv', argv), redirect_stdout(out):
+            self.assertEqual(claim.main(), 0)
+        self.assertIn('Would assign alice to owner/repo#7', out.getvalue())
+
     def test_dry_run_actions(self):
         self.assertTrue(assign_issue('owner/repo', 10, 'alice', dry_run=True))
         self.assertTrue(post_comment('owner/repo', 10, 'comment', dry_run=True))
