@@ -74,13 +74,20 @@ int workload_run(FILE *o) {
     atexit(at2);
     atexit(at3);
 
-    int v = setjmp(inner);
-    if (v == 0) {
+    switch (setjmp(inner)) { /* setjmp is only defined in a controlling expression */
+    case 0:
         fprintf(o, "setjmp first return\n");
         dive(200);
-    } else {
-        fprintf(o, "longjmp delivered %d after reaching depth %d\n", v, depth_reached);
-        if (v != 42 || depth_reached != 0) fails++;
+        fails++; /* dive() must longjmp and never return */
+        break;
+    case 42:
+        fprintf(o, "longjmp delivered %d after reaching depth %d\n", 42, depth_reached);
+        if (depth_reached != 0) fails++;
+        break;
+    default:
+        fprintf(o, "longjmp delivered an unexpected value\n");
+        fails++;
+        break;
     }
     volatile int hops = 0, count = 0;
     if (setjmp(outer) < 3) {

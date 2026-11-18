@@ -9,7 +9,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   questions the owner must answer before anything is frozen. `tests/contract_v1.rs` and `tests/contract/*.json` pin the
   exact report and trace keys and JSON types, the `exit_code` for every reachable `stop_kind`, the process exit
   statuses, and the flags, by running the binary. Findings: `--timeout` and `--json` are not `run` flags in ounce-core,
-  exit codes `2-5` and `ounce.repro.v1` are not in this repository, and `cpu_halted` (15) cannot be produced.
+  ounce-core does not define the proposed infrastructure meanings for exit codes `2-5` (its own status 2 is the usage error) and has no `ounce.repro.v1`, and `cpu_halted` (15) cannot be produced.
 - CLI: `--max-frames N` and a repeatable `--press BUTTON@FRAME` (for example `PLUS@60`) let scripted runs
   exit cleanly and press buttons (#458).
 - Fuzzer: `--word-mask` / `--word-value` targeted generation, with hardware evidence for FCADD, SQRDMLAH/SQRDMLSH,
