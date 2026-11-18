@@ -364,11 +364,12 @@ fn fjcvtzs_infinity_and_nan_give_zero_with_ioc() {
 
 #[test]
 fn fjcvtzs_flush_to_zero_flushes_denormal_input() {
-    // +denormal flushes to +0: result 0, Z = 1 (nothing inexact), IDC. -denormal flushes to -0: Z = 0, IDC.
-    assert_eq!(js(1, FZ), (0, true, IDC));
-    assert_eq!(js(0x000f_ffff_ffff_ffff, FZ), (0, true, IDC));
-    // (FPUnpack keeps the sign of a flushed denormal and FPToFixedJS clears Z for sign = 1 with value 0. qemu-aarch64 gives
-    // Z = 1 here; hardware has not been consulted, so this row pins the pseudocode as read, not silicon.)
+    // A denormal flushed to zero by FZ gives result 0, IDC and Z = 0, for either sign: the pseudocode tests the unpacked
+    // input, so the flushed value is not an exact zero. Measured on Apple M-series hardware (FJCVTZS at FPCR.FZ = 1:
+    // 0000000000000001, 8000000000000001 and 000fffffffffffff all give NZCV Z = 0, FPSR = 0x80). qemu-aarch64 gives
+    // Z = 1 for the negative one, which is wrong.
+    assert_eq!(js(1, FZ), (0, false, IDC));
+    assert_eq!(js(0x000f_ffff_ffff_ffff, FZ), (0, false, IDC));
     assert_eq!(js(0x8000_0000_0000_0001, FZ), (0, false, IDC));
 }
 
