@@ -589,6 +589,44 @@ pub fn raise_to_int(f: Fmt, a: u64, exact: f64, rounded: f64, signed: bool, is_6
     }
 }
 
+/// `FPToFixedJS` (`FJCVTZS`): a double truncated toward zero and wrapped modulo 2^32, as JavaScript `ToInt32` does.
+/// Returns the 32-bit result and the `Z` flag, which is set only when the conversion was exact (no NaN, no
+/// out-of-range value, nothing discarded, and the input was not a negative zero). FPCR.RMode is not used; FZ flushes a
+/// denormal input (IDC). A NaN or an out-of-range value, infinity included, is IOC; an in-range inexact one is IXC.
+pub fn double_to_int32_js(env: Env, a: u64) -> (u32, bool) {
+    let a = flush_input(F64, env, a);
+    if F64.is_nan(a) || F64.is_inf(a) {
+        raise(IOC);
+        return (0, false);
+    }
+    if F64.is_zero(a) {
+        // a negative zero converts exactly but leaves Z clear
+        return (0, !F64.sign(a));
+    }
+    // |value| = mant * 2^e with an integer mantissa (denormals have no implicit bit and the smallest exponent)
+    let field = F64.field(a) as i32;
+    let (mant, e) = if field == 0 { (F64.frac(a), -1074) } else { (F64.frac(a) | 1 << 52, field - 1075) };
+    let neg = F64.sign(a);
+    let (mag, inexact) = if e >= 64 {
+        (u128::MAX << 64, false) // at least 2^116: out of range, and a multiple of 2^32
+    } else if e >= 0 {
+        ((mant as u128) << e, false)
+    } else if -e >= 64 {
+        (0, true)
+    } else {
+        ((mant >> -e) as u128, mant & ((1 << -e) - 1) != 0)
+    };
+    let in_range = mag <= if neg { 1 << 31 } else { (1 << 31) - 1 };
+    let low = mag as u32;
+    let result = if neg { low.wrapping_neg() } else { low };
+    if !in_range {
+        raise(IOC);
+    } else if inexact {
+        raise(IXC);
+    }
+    (result, in_range && !inexact)
+}
+
 /// `FCMP`/`FCMPE`: a signalling NaN is always IOC; with `signalling` (FCMPE) a quiet NaN is too.
 pub fn raise_compare(f: Fmt, a: u64, b: u64, signalling: bool) {
     if f.is_snan(a) || f.is_snan(b) || (signalling && (f.is_nan(a) || f.is_nan(b))) {

@@ -2217,6 +2217,25 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdFixedConv { rd, rn, op, esize, fbits, q } => {
+                let r = simd::fixed_convert_fpcr(op, self.regs.read_q(rn), esize as u32, q, fbits as u32, self.regs.fpcr);
+                self.regs.write_q(rd, r);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Fjcvtzs { rd, rn } => {
+                let (res, z) = softfp::double_to_int32_js(self.fp_env(true).1, self.fp_bits(rn, true));
+                self.regs.write_x(rd, res as u64);
+                // NZCV = 0 Z 0 0
+                self.regs.pstate.n = false;
+                self.regs.pstate.z = z;
+                self.regs.pstate.c = false;
+                self.regs.pstate.v = false;
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::Unimplemented { raw } => {
                 Err(CpuError::UnimplementedInstruction { raw, pc })
             }
