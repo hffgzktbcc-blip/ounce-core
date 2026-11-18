@@ -129,6 +129,15 @@ jobs:
           verdicts=$(awk -F'\t' '$1 == "fadd.d" { print $3, $4 }' "$neg/summary.tsv")
           if [ "$verdicts" != "MISMATCH MISMATCH" ]; then echo "expected MISMATCH on both tiers, got: $verdicts"; exit 1; fi
           echo "tampered fadd.d reference flagged on both tiers"
+      # #469: FJCVTZS (result, NZCV, FPSR) for 31 inputs at FPCR.FZ 0 and 1, run natively and on Tier-3 and Tier-4. The
+      # runner must have FEAT_JSCVT: the script exits 77 without it, and that fails here, so the gate cannot go quiet.
+      - name: FJCVTZS native vs run-elf (Tier-3, Tier-4)
+        shell: bash
+        run: |
+          rc=0
+          bash docs/verify/fp-workload/fjcvtzs_gate.sh "$RUNNER_TEMP/fjcvtzs" target/release/ounce-core || rc=$?
+          if [ "$rc" -eq 77 ]; then echo "::error::this runner has no FEAT_JSCVT, so the FJCVTZS gate did not run"; fi
+          exit "$rc"
       - name: Job summary
         if: always()
         shell: bash
@@ -145,6 +154,9 @@ jobs:
             ${{ runner.temp }}/fp-workload/SHA256SUMS
             ${{ runner.temp }}/fp-workload/toolchain.txt
             ${{ runner.temp }}/fp-workload-negative/summary.tsv
+            ${{ runner.temp }}/fjcvtzs/native.txt
+            ${{ runner.temp }}/fjcvtzs/tier3.txt
+            ${{ runner.temp }}/fjcvtzs/tier4.txt
           if-no-files-found: warn
 
   # Berkeley TestFloat (SoftFloat 3e) as an independent software oracle for results and FPSR flags: add sub mul div sqrt
