@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Issue claim helper for contributor self-assignment on good first issues."""
+"""Issue claim helper for contributor self-assignment on good first issue / help wanted issues."""
 import argparse
 import json
 import os
@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 CLAIM_MARKER = '<!-- ounce-core-claim-v1 -->'
+CLAIMABLE_LABELS = {'good first issue', 'help wanted'}
 MAX_OUTPUT_CHARS = 4000
 
 # Exact phrases recognized as intent to work on an issue
@@ -111,12 +112,12 @@ def format_already_assigned_comment(assignee: str, repo: str, other_issue=None) 
             f"You can check other open issues with the 'good first issue' label, such as #{num} ({title}):",
             f'https://github.com/{repo}/issues/{num}',
             '',
-            f"Browse all unassigned starter tasks: https://github.com/{repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22+no%3Aassignee",
+            f"Browse all unassigned starter tasks: https://github.com/{repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22%2C%22help+wanted%22+no%3Aassignee",
         ])
     else:
         lines.extend([
             f"You can browse other available starter tasks with the 'good first issue' label here:",
-            f'https://github.com/{repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22+no%3Aassignee',
+            f'https://github.com/{repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22%2C%22help+wanted%22+no%3Aassignee',
         ])
 
     return '\n'.join(lines).strip()
@@ -125,9 +126,9 @@ def format_already_assigned_comment(assignee: str, repo: str, other_issue=None) 
 def format_not_good_first_issue_comment(repo: str) -> str:
     return (
         f'{CLAIM_MARKER}\n'
-        "Self-assignment is available for issues labeled 'good first issue'. For other issues, a maintainer will coordinate assignment.\n\n"
+        "Self-assignment is available for issues labeled 'good first issue' or 'help wanted'. For other issues, a maintainer will coordinate assignment.\n\n"
         f"You can browse open beginner tasks here:\n"
-        f'https://github.com/{repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22+no%3Aassignee'
+        f'https://github.com/{repo}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22%2C%22help+wanted%22+no%3Aassignee'
     )
 
 
@@ -228,7 +229,7 @@ def main() -> int:
         return 0
 
     # Case 2: Open and unassigned, check label
-    if 'good first issue' not in label_names:
+    if not label_names & CLAIMABLE_LABELS:
         reply = format_not_good_first_issue_comment(args.repo)
         post_comment(args.repo, args.issue_number, reply, dry_run=args.dry_run)
         return 0
