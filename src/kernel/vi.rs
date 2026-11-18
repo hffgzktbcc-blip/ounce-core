@@ -6,7 +6,7 @@
 //! transactions stay explicit and bounded; no queued buffer is presented until
 //! its nvmap backing can be resolved.
 
-use super::ipc::{IpcManager, ServiceType, RESULT_UNKNOWN_COMMAND};
+use super::ipc::{IpcManager, RESULT_UNKNOWN_COMMAND, ServiceType};
 use std::collections::BTreeMap;
 
 const MAX_PARCEL_SIZE: usize = 0x1000;
@@ -112,8 +112,7 @@ impl<'a> Parcel<'a> {
             return Err(INVALID_SIZE);
         }
         let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
-        let (payload_size, payload_off, objects_size, objects_off) =
-            (word(0), word(4), word(8), word(12));
+        let (payload_size, payload_off, objects_size, objects_off) = (word(0), word(4), word(8), word(12));
         if payload_size > MAX_PAYLOAD_SIZE || objects_size % 4 != 0 {
             return Err(INVALID_SIZE);
         }
@@ -129,11 +128,7 @@ impl<'a> Parcel<'a> {
         };
         let payload = region(payload_off, payload_size)?;
         let objects = region(objects_off, objects_size)?;
-        if !payload.is_empty()
-            && !objects.is_empty()
-            && payload.start < objects.end
-            && objects.start < payload.end
-        {
+        if !payload.is_empty() && !objects.is_empty() && payload.start < objects.end && objects.start < payload.end {
             return Err(INVALID_SIZE);
         }
         // Object-table entries are byte offsets in the payload. Their concrete
@@ -325,11 +320,7 @@ impl BinderObjects {
                     block_height_log2: word(0xE0)?,
                     size: u64_at(0xF4)?,
                 };
-                if buffer.nvmap_id == 0
-                    || buffer.width == 0
-                    || buffer.height == 0
-                    || buffer.size == 0
-                {
+                if buffer.nvmap_id == 0 || buffer.width == 0 || buffer.height == 0 || buffer.size == 0 {
                     return Err(INVALID_SIZE);
                 }
                 object.slots.insert(slot, buffer);
@@ -348,11 +339,7 @@ fn validate_producer_token(payload: &[u8]) -> Result<(), u32> {
     if word(0) != 0x100 || word(4) != PRODUCER_TOKEN.len() as u32 {
         return Err(INVALID_SIZE);
     }
-    for (i, expected) in PRODUCER_TOKEN
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .enumerate()
-    {
+    for (i, expected) in PRODUCER_TOKEN.encode_utf16().chain(std::iter::once(0)).enumerate() {
         let off = 8 + i * 2;
         if u16::from_le_bytes(payload[off..off + 2].try_into().unwrap()) != expected {
             return Err(INVALID_SIZE);
@@ -379,7 +366,10 @@ fn buffer_output_parcel(width: u32, height: u32) -> Vec<u8> {
 
 impl IpcManager {
     pub fn vi_submission_diagnostic(&self) -> String {
-        format!("slot={:?}; nvmap={:?}", self.vi_binder.last_submission, self.nvdrv.nvmap)
+        format!(
+            "slot={:?}; nvmap={:?}",
+            self.vi_binder.last_submission, self.nvdrv.nvmap
+        )
     }
 
     /// Number of `QUEUE_BUFFER` transactions accepted (frame i is the i-th queue).
@@ -436,14 +426,11 @@ impl IpcManager {
             // AdjustRefcount(object_id, signed delta, weak/strong selector).
             1 => {
                 let fields = mmu.read_u32(args).and_then(|id| {
-                    mmu.read_u32(args + 4).and_then(|delta| {
-                        mmu.read_u32(args + 8).map(|kind| (id, delta as i32, kind))
-                    })
+                    mmu.read_u32(args + 4)
+                        .and_then(|delta| mmu.read_u32(args + 8).map(|kind| (id, delta as i32, kind)))
                 });
                 match fields {
-                    Ok((id, delta, kind)) => {
-                        self.vi_binder.adjust(id, delta, kind).err().unwrap_or(0)
-                    }
+                    Ok((id, delta, kind)) => self.vi_binder.adjust(id, delta, kind).err().unwrap_or(0),
                     Err(_) => INVALID_ADDRESS,
                 }
             }
@@ -477,9 +464,7 @@ impl IpcManager {
                         match mmu.read_bytes(buffer.addr, &mut bytes) {
                             Ok(()) => match Parcel::parse(&bytes) {
                                 Ok(parcel) => match self.vi_binder.transact(id, code, &parcel) {
-                                    Ok(output)
-                                        if self.write_out_buffer(mmu, &output) == output.len() =>
-                                    {
+                                    Ok(output) if self.write_out_buffer(mmu, &output) == output.len() => {
                                         if code == 7 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
                                             eprintln!("[VI queue] result=0; {}", self.vi_submission_diagnostic());
                                         }
@@ -488,10 +473,13 @@ impl IpcManager {
                                     Ok(_) => INVALID_ADDRESS,
                                     Err(result) => {
                                         if code == 7 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
-                                            eprintln!("[VI queue] result={result:#x}; {}", self.vi_submission_diagnostic());
+                                            eprintln!(
+                                                "[VI queue] result={result:#x}; {}",
+                                                self.vi_submission_diagnostic()
+                                            );
                                         }
                                         result
-                                    },
+                                    }
                                 },
                                 Err(result) => result,
                             },
@@ -511,8 +499,7 @@ impl IpcManager {
                     .and_then(|id| mmu.read_u32(args + 4).map(|inval| (id, inval)));
                 match fields {
                     Ok((id, 0x0f)) if self.vi_binder.objects.contains_key(&id) => {
-                        let event =
-                            self.allocate_handle(ServiceType::ServiceEvent("ViBufferQueue"));
+                        let event = self.allocate_handle(ServiceType::ServiceEvent("ViBufferQueue"));
                         self.reply(tls, mmu, 0, &[], &[event], None);
                         return Some(0);
                     }
@@ -556,14 +543,7 @@ mod tests {
         assert_eq!(parsed.payload.len(), 16);
         assert_eq!(parsed.object_offsets.len(), 8);
         assert!(Parcel::parse(&good[..15]).is_err());
-        for (field, value) in [
-            (0, 0x401),
-            (4, u32::MAX),
-            (8, 3),
-            (12, u32::MAX),
-            (12, 16),
-            (4, 12),
-        ] {
+        for (field, value) in [(0, 0x401), (4, u32::MAX), (8, 3), (12, u32::MAX), (12, 16), (4, 12)] {
             let mut bad = good.clone();
             bad[field..field + 4].copy_from_slice(&value.to_le_bytes());
             assert!(Parcel::parse(&bad).is_err(), "field {field}, value {value}");
@@ -580,19 +560,14 @@ mod tests {
         let parsed = Parcel::parse(&bytes).unwrap();
         assert_eq!(parsed.payload.len(), 12);
         assert!(parsed.object_offsets.is_empty());
-        assert_eq!(
-            u32::from_le_bytes(parsed.payload[8..12].try_into().unwrap()),
-            0x1234
-        );
+        assert_eq!(u32::from_le_bytes(parsed.payload[8..12].try_into().unwrap()), 0x1234);
     }
 
     #[test]
     fn libnx_open_layer_and_native_handle_use_real_descriptors() {
-        use super::super::cmif::test_util::{Harness, Req, BUF};
+        use super::super::cmif::test_util::{BUF, Harness, Req};
         let mut h = Harness::new();
-        let display = h
-            .ipc
-            .allocate_handle(ServiceType::ApplicationDisplayService);
+        let display = h.ipc.allocate_handle(ServiceType::ApplicationDisplayService);
         let mut input = [0u8; 0x50];
         input[0x40..0x48].copy_from_slice(&1u64.to_le_bytes());
         let reply = h.call_out(
@@ -628,9 +603,7 @@ mod tests {
             0
         );
 
-        let relay = h
-            .ipc
-            .allocate_handle(ServiceType::Generic("vi:binder-relay".into()));
+        let relay = h.ipc.allocate_handle(ServiceType::Generic("vi:binder-relay".into()));
         let mut args = [0u8; 8];
         args[0..4].copy_from_slice(&object.to_le_bytes());
         args[4..8].copy_from_slice(&0x0fu32.to_le_bytes());
@@ -644,10 +617,7 @@ mod tests {
         );
         assert_eq!(reply.result, 0);
         assert_eq!(reply.copy_handles.len(), 1);
-        assert_eq!(
-            h.ipc.service_event_signaled(reply.copy_handles[0]),
-            Some(true)
-        );
+        assert_eq!(h.ipc.service_event_signaled(reply.copy_handles[0]), Some(true));
 
         assert_eq!(
             h.call(
@@ -674,11 +644,7 @@ mod tests {
         mmu.map_range(0x1000, 0x4000, Permission::READ_WRITE);
         let session = ipc.allocate_handle(ServiceType::Generic("vi:binder-relay".into()));
         let object = ipc.vi_binder.register().unwrap();
-        let (mut gpu, mut audio, mut vfs) = (
-            NvgpuChannel::new(),
-            AudioOutServer::new(),
-            VirtualFileSystem::new(),
-        );
+        let (mut gpu, mut audio, mut vfs) = (NvgpuChannel::new(), AudioOutServer::new(), VirtualFileSystem::new());
         // Real HIPC/CMIF reference-count request: no descriptors, 3 input words.
         let request = |mmu: &mut Memory, id: u32, delta: i32, kind: u32| {
             for offset in (0..0x80u64).step_by(4) {
@@ -686,8 +652,7 @@ mod tests {
             }
             mmu.write_u32(0x1000, 4).unwrap();
             mmu.write_u32(0x1004, 11).unwrap();
-            mmu.write_u32(0x1010, super::super::ipc::CMIF_IN_MAGIC)
-                .unwrap();
+            mmu.write_u32(0x1010, super::super::ipc::CMIF_IN_MAGIC).unwrap();
             mmu.write_u32(0x1018, 1).unwrap();
             mmu.write_u32(0x1020, id).unwrap();
             mmu.write_u32(0x1024, delta as u32).unwrap();
@@ -711,10 +676,7 @@ mod tests {
             addr: 0x2000,
             size: valid.len() as u64,
         }];
-        ipc.request.recv_buffers = vec![Buffer {
-            addr: 0x3000,
-            size: 64,
-        }];
+        ipc.request.recv_buffers = vec![Buffer { addr: 0x3000, size: 64 }];
         mmu.write_u32(0x1020, object).unwrap();
         mmu.write_u32(0x1024, 0x99).unwrap();
         mmu.write_u32(0x1028, 0).unwrap();
@@ -764,11 +726,7 @@ mod tests {
         let mut payload = vec![0; size.max(PRODUCER_TOKEN_SIZE)];
         payload[0..4].copy_from_slice(&0x100u32.to_le_bytes());
         payload[4..8].copy_from_slice(&(PRODUCER_TOKEN.len() as u32).to_le_bytes());
-        for (i, unit) in PRODUCER_TOKEN
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .enumerate()
-        {
+        for (i, unit) in PRODUCER_TOKEN.encode_utf16().chain(std::iter::once(0)).enumerate() {
             payload[8 + i * 2..10 + i * 2].copy_from_slice(&unit.to_le_bytes());
         }
         payload
@@ -829,10 +787,7 @@ mod tests {
         // The high word must survive; reading it as layout was the regression.
         assert_eq!(submitted.color_format, 0x0100532120);
         assert_eq!((submitted.layout, submitted.kind), (3, 0xFE));
-        assert_eq!(
-            (submitted.width, submitted.height, submitted.pitch),
-            (1280, 720, 5120)
-        );
+        assert_eq!((submitted.width, submitted.height, submitted.pitch), (1280, 720, 5120));
         assert_eq!((submitted.offset, submitted.block_height_log2), (0x2000, 4));
 
         let mut ipc = IpcManager::new();
@@ -848,10 +803,7 @@ mod tests {
         );
         let surface = ipc.submitted_vi_surface().unwrap();
         assert_eq!(surface.guest_addr, 0x9000_2000);
-        assert_eq!(
-            (surface.width, surface.height, surface.size),
-            (1280, 720, 0x3C0000)
-        );
+        assert_eq!((surface.width, surface.height, surface.size), (1280, 720, 0x3C0000));
         let tiled = surface.tiling_surface().unwrap();
         assert_eq!((tiled.width, tiled.height), (1280, 720));
         assert_eq!(
@@ -883,11 +835,15 @@ mod tests {
         invalid = surface.clone();
         invalid.allocation_size = required_size * 2;
         invalid.size = required_size - 1;
-        assert!(invalid.tiling_surface().is_none(),
-            "a large nvmap allocation must not permit reads beyond the submitted plane");
+        assert!(
+            invalid.tiling_surface().is_none(),
+            "a large nvmap allocation must not permit reads beyond the submitted plane"
+        );
         invalid.size = required_size;
-        assert!(invalid.tiling_surface().is_some(),
-            "an image fitting both the submitted plane and allocation is accepted");
+        assert!(
+            invalid.tiling_surface().is_some(),
+            "an image fitting both the submitted plane and allocation is accepted"
+        );
         ipc.nvdrv.nvmap.get_mut(&7).unwrap().size = 0x1000;
         assert!(
             ipc.submitted_vi_surface().is_none(),

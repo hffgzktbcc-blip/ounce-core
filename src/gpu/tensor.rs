@@ -259,12 +259,7 @@ pub fn lane_cd_coords(lane: usize) -> [(usize, usize); CD_REGS] {
     let group = (lane % WARP_LANES) / 4;
     let tig = (lane % WARP_LANES) % 4;
     let col = tig * 2;
-    [
-        (group, col),
-        (group, col + 1),
-        (group + 8, col),
-        (group + 8, col + 1),
-    ]
+    [(group, col), (group, col + 1), (group + 8, col), (group + 8, col + 1)]
 }
 
 // ---------------------------------------------------------------------------
@@ -276,12 +271,7 @@ pub fn lane_cd_coords(lane: usize) -> [(usize, usize); CD_REGS] {
 /// `a` is row-major `m x k` binary16, `b` is column-major `k x n` binary16
 /// (indexed `b[n * k + k_idx]`), and `c` is row-major `m x n` `f32`. The
 /// result is row-major `m x n` `f32`.
-pub fn mma_f16_f32(
-    shape: HmmaShape,
-    a: &[u16],
-    b: &[u16],
-    c: &[f32],
-) -> Result<Vec<f32>, MmaError> {
+pub fn mma_f16_f32(shape: HmmaShape, a: &[u16], b: &[u16], c: &[f32]) -> Result<Vec<f32>, MmaError> {
     let (m, n, k) = (shape.m(), shape.n(), shape.k());
     if a.len() != m * k {
         return Err(MmaError::BadA {
@@ -329,12 +319,7 @@ pub struct WarpFragments {
 impl WarpFragments {
     /// Distributes full matrices into per-lane fragments using the documented
     /// PTX layout. Registers a lane does not own for this shape stay zero.
-    pub fn distribute(
-        shape: HmmaShape,
-        a: &[u16],
-        b: &[u16],
-        c: &[f32],
-    ) -> Result<Self, MmaError> {
+    pub fn distribute(shape: HmmaShape, a: &[u16], b: &[u16], c: &[f32]) -> Result<Self, MmaError> {
         let (m, n, k) = (shape.m(), shape.n(), shape.k());
         if a.len() != m * k {
             return Err(MmaError::BadA {
@@ -434,13 +419,7 @@ impl TensorCoreUnit {
         Self::default()
     }
 
-    pub fn issue(
-        &mut self,
-        shape: HmmaShape,
-        a: &[u16],
-        b: &[u16],
-        c: &[f32],
-    ) -> Result<Vec<f32>, MmaError> {
+    pub fn issue(&mut self, shape: HmmaShape, a: &[u16], b: &[u16], c: &[f32]) -> Result<Vec<f32>, MmaError> {
         let d = mma_f16_f32(shape, a, b, c)?;
         self.issued_ops += 1;
         self.retired_macs += (shape.m() * shape.n() * shape.k()) as u64;
@@ -448,10 +427,7 @@ impl TensorCoreUnit {
     }
 
     /// Issues one warp-wide `HMMA` from per-lane fragments.
-    pub fn issue_warp(
-        &mut self,
-        frags: &WarpFragments,
-    ) -> Result<[[f32; CD_REGS]; WARP_LANES], MmaError> {
+    pub fn issue_warp(&mut self, frags: &WarpFragments) -> Result<[[f32; CD_REGS]; WARP_LANES], MmaError> {
         let d = frags.execute()?;
         self.issued_ops += 1;
         self.retired_macs += (frags.shape.m() * frags.shape.n() * frags.shape.k()) as u64;
@@ -557,9 +533,7 @@ mod tests {
             let (m, n, k) = (shape.m(), shape.n(), shape.k());
 
             // B = I: D must be the leading m x n block of A, plus C.
-            let a: Vec<u16> = (0..m * k)
-                .map(|i| f32_to_f16(((i % 7) as f32) - 3.0))
-                .collect();
+            let a: Vec<u16> = (0..m * k).map(|i| f32_to_f16(((i % 7) as f32) - 3.0)).collect();
             let c: Vec<f32> = (0..m * n).map(|i| (i % 5) as f32 * 0.25).collect();
             let d = mma_f16_f32(shape, &a, &identity_b(shape), &c).unwrap();
             for row in 0..m {
@@ -604,12 +578,8 @@ mod tests {
     fn test_warp_fragment_roundtrip_matches_reference() {
         for shape in [HmmaShape::M16N8K8, HmmaShape::M16N8K16] {
             let (m, n, k) = (shape.m(), shape.n(), shape.k());
-            let a: Vec<u16> = (0..m * k)
-                .map(|i| f32_to_f16((i as f32) * 0.125 - 4.0))
-                .collect();
-            let b: Vec<u16> = (0..k * n)
-                .map(|i| f32_to_f16(1.0 - (i as f32) * 0.0625))
-                .collect();
+            let a: Vec<u16> = (0..m * k).map(|i| f32_to_f16((i as f32) * 0.125 - 4.0)).collect();
+            let b: Vec<u16> = (0..k * n).map(|i| f32_to_f16(1.0 - (i as f32) * 0.0625)).collect();
             let c: Vec<f32> = (0..m * n).map(|i| (i as f32) * 0.5).collect();
 
             let reference = mma_f16_f32(shape, &a, &b, &c).unwrap();
@@ -629,12 +599,6 @@ mod tests {
     fn test_mma_rejects_wrong_operand_sizes() {
         let shape = HmmaShape::M16N8K16;
         let err = mma_f16_f32(shape, &[0u16; 8], &[0u16; 128], &[0.0f32; 128]).unwrap_err();
-        assert_eq!(
-            err,
-            MmaError::BadA {
-                expected: 256,
-                got: 8
-            }
-        );
+        assert_eq!(err, MmaError::BadA { expected: 256, got: 8 });
     }
 }

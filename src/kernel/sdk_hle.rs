@@ -157,11 +157,7 @@ impl StandardAllocator {
 
     /// Returns total allocatable free memory bytes.
     pub fn get_total_free_size(&self) -> usize {
-        self.blocks
-            .iter()
-            .filter(|b| !b.allocated)
-            .map(|b| b.size)
-            .sum()
+        self.blocks.iter().filter(|b| !b.allocated).map(|b| b.size).sum()
     }
 }
 
@@ -269,7 +265,9 @@ impl NnFsManager {
         vfs: &VirtualFileSystem,
         mmu: &mut Memory,
     ) -> (u32, usize) {
-        if let Some(file) = self.open_files.get_mut(&handle) && let Some(data) = vfs.get_file(&file.path) {
+        if let Some(file) = self.open_files.get_mut(&handle)
+            && let Some(data) = vfs.get_file(&file.path)
+        {
             let off = offset.max(0) as usize;
             if off >= data.len() {
                 return (RESULT_SUCCESS, 0);
@@ -284,7 +282,9 @@ impl NnFsManager {
     }
 
     pub fn get_file_size(&self, handle: u32, vfs: &VirtualFileSystem) -> (u32, i64) {
-        if let Some(file) = self.open_files.get(&handle) && let Some(data) = vfs.get_file(&file.path) {
+        if let Some(file) = self.open_files.get(&handle)
+            && let Some(data) = vfs.get_file(&file.path)
+        {
             return (RESULT_SUCCESS, data.len() as i64);
         }
         (RESULT_FS_PATH_NOT_FOUND, 0)
@@ -370,8 +370,16 @@ impl SdkHleRuntime {
     }
 
     /// Initializes core C++ runtime heap and mounts.
-    pub fn initialize_runtime(&mut self, heap_addr: u64, heap_size: usize, vfs: &mut VirtualFileSystem, mmu: &mut Memory) -> u32 {
-        self.allocator.initialize(heap_addr, heap_size, mmu).unwrap_or(RESULT_MEM_OUT_OF_MEMORY);
+    pub fn initialize_runtime(
+        &mut self,
+        heap_addr: u64,
+        heap_size: usize,
+        vfs: &mut VirtualFileSystem,
+        mmu: &mut Memory,
+    ) -> u32 {
+        self.allocator
+            .initialize(heap_addr, heap_size, mmu)
+            .unwrap_or(RESULT_MEM_OUT_OF_MEMORY);
         self.fs.mount_rom(vfs);
         self.fs.mount_save_data();
         self.initialized = true;
@@ -394,13 +402,20 @@ impl SdkHleRuntime {
         match function_id {
             // nn::init::InitializeAllocator(addr, size)
             0x1001 => {
-                let res = self.allocator.initialize(arg0, arg1 as usize, mmu).unwrap_or(RESULT_MEM_OUT_OF_MEMORY);
+                let res = self
+                    .allocator
+                    .initialize(arg0, arg1 as usize, mmu)
+                    .unwrap_or(RESULT_MEM_OUT_OF_MEMORY);
                 (res, 0)
             }
             // nn::mem::StandardAllocator::Allocate(size, alignment) -> addr
             0x2001 => {
                 let addr = self.allocator.allocate(arg0 as usize, arg1 as usize);
-                let res = if addr != 0 { RESULT_SUCCESS } else { RESULT_MEM_OUT_OF_MEMORY };
+                let res = if addr != 0 {
+                    RESULT_SUCCESS
+                } else {
+                    RESULT_MEM_OUT_OF_MEMORY
+                };
                 (res, addr)
             }
             // nn::mem::StandardAllocator::Free(addr)
@@ -414,9 +429,7 @@ impl SdkHleRuntime {
                 (RESULT_SUCCESS, 0)
             }
             // nn::os::GetSystemTick() -> tick
-            0x3002 => {
-                (RESULT_SUCCESS, self.os.system_tick_freq)
-            }
+            0x3002 => (RESULT_SUCCESS, self.os.system_tick_freq),
             // nn::fs::OpenFile(path_ptr, path_len, mode) -> (res, handle)
             0x4001 => {
                 let mut path_buf = vec![0u8; arg1 as usize];
@@ -430,7 +443,9 @@ impl SdkHleRuntime {
             }
             // nn::fs::ReadFile(handle, offset, dest_addr, size) -> (res, bytes_read)
             0x4002 => {
-                let (res, bytes_read) = self.fs.read_file(arg0 as u32, arg1 as i64, arg2, arg3 as usize, vfs, mmu);
+                let (res, bytes_read) = self
+                    .fs
+                    .read_file(arg0 as u32, arg1 as i64, arg2, arg3 as usize, vfs, mmu);
                 (res, bytes_read as u64)
             }
             // nn::fs::CloseFile(handle)
@@ -454,7 +469,10 @@ mod tests {
 
         let heap_addr = 0x8000_0000;
         let heap_size = 0x10_0000; // 1MB
-        assert_eq!(allocator.initialize(heap_addr, heap_size, &mut mmu).unwrap(), RESULT_SUCCESS);
+        assert_eq!(
+            allocator.initialize(heap_addr, heap_size, &mut mmu).unwrap(),
+            RESULT_SUCCESS
+        );
 
         let p1 = allocator.allocate(1024, 64);
         assert_ne!(p1, 0);
@@ -515,7 +533,10 @@ mod tests {
         let entries = fs_mgr.list_directory("sdmc:/switch/apps", &vfs).unwrap();
         assert_eq!(entries, vec!["hbmenu.nro".to_string()]);
 
-        assert_eq!(fs_mgr.delete_file("sdmc:/switch/apps/hbmenu.nro", &mut vfs), RESULT_SUCCESS);
+        assert_eq!(
+            fs_mgr.delete_file("sdmc:/switch/apps/hbmenu.nro", &mut vfs),
+            RESULT_SUCCESS
+        );
         assert_eq!(fs_mgr.delete_directory("sdmc:/switch", &mut vfs), RESULT_SUCCESS);
     }
 }

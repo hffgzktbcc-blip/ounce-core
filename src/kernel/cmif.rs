@@ -7,7 +7,7 @@
 //! takes the command tables in the per-service modules, which follow libnx's public command IDs.
 
 use super::hipc::{TYPE_REQUEST, TYPE_REQUEST_WITH_CONTEXT};
-use super::ipc::{IpcManager, ServiceType, RESULT_UNKNOWN_COMMAND};
+use super::ipc::{IpcManager, RESULT_UNKNOWN_COMMAND, ServiceType};
 use crate::mmu::Memory;
 
 impl IpcManager {
@@ -32,12 +32,19 @@ impl IpcManager {
         Some(match service {
             // Services the harness also drives inline: only libnx-shaped requests come here.
             S::AppletOE if libnx => self.handle_applet(A::OeRoot, cmd, args, tls, mmu, object),
-            S::ApplicationProxy if libnx => {
-                self.handle_applet(A::Proxy(super::applet::ProxyKind::Application), cmd, args, tls, mmu, object)
-            }
+            S::ApplicationProxy if libnx => self.handle_applet(
+                A::Proxy(super::applet::ProxyKind::Application),
+                cmd,
+                args,
+                tls,
+                mmu,
+                object,
+            ),
             S::CommonStateGetter if libnx => self.handle_applet(A::CommonStateGetter, cmd, args, tls, mmu, object),
             S::SelfController if libnx => self.handle_applet(A::SelfController, cmd, args, tls, mmu, object),
-            S::ApplicationFunctions if libnx => self.handle_applet(A::ApplicationFunctions, cmd, args, tls, mmu, object),
+            S::ApplicationFunctions if libnx => {
+                self.handle_applet(A::ApplicationFunctions, cmd, args, tls, mmu, object)
+            }
             S::SetSys if libnx => self.handle_setsys(cmd, args, tls, mmu),
             S::Time if libnx => self.handle_time(cmd, tls, mmu),
             S::Pl if libnx => self.handle_pl(cmd, args, tls, mmu),
@@ -213,7 +220,11 @@ pub(super) mod test_util {
         }
         /// The session this reply opened (move handle or domain object).
         pub fn object(&self) -> u32 {
-            *self.move_handles.first().or(self.objects.first()).expect("reply opened no object")
+            *self
+                .move_handles
+                .first()
+                .or(self.objects.first())
+                .expect("reply opened no object")
         }
     }
 
@@ -222,7 +233,13 @@ pub(super) mod test_util {
             let mut mmu = Memory::new();
             mmu.map_range(TLS, 0x1000, Permission::READ_WRITE);
             mmu.map_range(BUF, 0x10000, Permission::READ_WRITE);
-            Self { mmu, ipc: IpcManager::new(), nvgpu: NvgpuChannel::new(), audio: AudioOutServer::new(), vfs: VirtualFileSystem::new() }
+            Self {
+                mmu,
+                ipc: IpcManager::new(),
+                nvgpu: NvgpuChannel::new(),
+                audio: AudioOutServer::new(),
+                vfs: VirtualFileSystem::new(),
+            }
         }
 
         pub fn call(&mut self, session: u32, req: Req) -> Reply {
@@ -240,7 +257,8 @@ pub(super) mod test_util {
             let special = req.pid || !req.copy_handles.is_empty();
             let mut off = 8u64;
             if special {
-                mmu.write_u32(TLS + off, req.pid as u32 | (req.copy_handles.len() as u32) << 1).unwrap();
+                mmu.write_u32(TLS + off, req.pid as u32 | (req.copy_handles.len() as u32) << 1)
+                    .unwrap();
                 off += 4;
                 if req.pid {
                     mmu.write_u64(TLS + off, 0x51).unwrap();
@@ -252,7 +270,11 @@ pub(super) mod test_util {
                 }
             }
             if let Some((addr, size)) = req.send_static {
-                mmu.write_u32(TLS + off, ((addr >> 36) as u32 & 0x3F) << 6 | ((addr >> 32) as u32 & 0xF) << 12 | (size as u32) << 16).unwrap();
+                mmu.write_u32(
+                    TLS + off,
+                    ((addr >> 36) as u32 & 0x3F) << 6 | ((addr >> 32) as u32 & 0xF) << 12 | (size as u32) << 16,
+                )
+                .unwrap();
                 mmu.write_u32(TLS + off + 4, addr as u32).unwrap();
                 off += 8;
             }
@@ -277,16 +299,26 @@ pub(super) mod test_util {
             let num_words = ((end - off).div_ceil(4) + 4) as u32; // + padding words, as libnx reserves
             let recv_mode = if req.recv_list.is_some() { 2 } else { 0 };
             let num_statics = req.send_static.is_some() as u32;
-            mmu.write_u32(TLS, 4 | num_statics << 16 | num_send << 20 | num_recv << 24).unwrap();
-            mmu.write_u32(TLS + 4, num_words | recv_mode << 10 | (special as u32) << 31).unwrap();
+            mmu.write_u32(TLS, 4 | num_statics << 16 | num_send << 20 | num_recv << 24)
+                .unwrap();
+            mmu.write_u32(TLS + 4, num_words | recv_mode << 10 | (special as u32) << 31)
+                .unwrap();
             if let Some((addr, size)) = req.recv_list {
                 let roff = off + num_words as u64 * 4;
                 mmu.write_u32(TLS + roff, addr as u32).unwrap();
-                mmu.write_u32(TLS + roff + 4, (addr >> 32) as u32 & 0xFFFF | (size as u32) << 16).unwrap();
+                mmu.write_u32(TLS + roff + 4, (addr >> 32) as u32 & 0xFFFF | (size as u32) << 16)
+                    .unwrap();
             }
 
             let session_handle = session;
-            let rc = self.ipc.handle_sync_request(session_handle, TLS, &mut self.mmu, &mut self.nvgpu, &mut self.audio, &mut self.vfs);
+            let rc = self.ipc.handle_sync_request(
+                session_handle,
+                TLS,
+                &mut self.mmu,
+                &mut self.nvgpu,
+                &mut self.audio,
+                &mut self.vfs,
+            );
             assert_eq!(rc, 0, "transport error");
 
             let mmu = &self.mmu;
@@ -317,9 +349,16 @@ pub(super) mod test_util {
             let result = mmu.read_u32(TLS + cmif + 8).unwrap();
             let mut data = vec![0u8; out_len];
             mmu.read_bytes(TLS + cmif + 16, &mut data).unwrap();
-            let objects =
-                (0..num_objects).map(|i| mmu.read_u32(TLS + cmif + 16 + out_len as u64 + i as u64 * 4).unwrap()).collect();
-            Reply { result, data, copy_handles, move_handles, objects }
+            let objects = (0..num_objects)
+                .map(|i| mmu.read_u32(TLS + cmif + 16 + out_len as u64 + i as u64 * 4).unwrap())
+                .collect();
+            Reply {
+                result,
+                data,
+                copy_handles,
+                move_handles,
+                objects,
+            }
         }
 
         /// `sm:` GetServiceHandle(name) on a fresh `sm:` session.
@@ -327,7 +366,14 @@ pub(super) mod test_util {
             let sm = self.ipc.allocate_handle(ServiceType::Sm);
             let mut n = [0u8; 8];
             n[..name.len()].copy_from_slice(name.as_bytes());
-            let r = self.call(sm, Req { cmd: 1, data: &n, ..Default::default() });
+            let r = self.call(
+                sm,
+                Req {
+                    cmd: 1,
+                    data: &n,
+                    ..Default::default()
+                },
+            );
             assert_eq!(r.result, 0);
             r.object()
         }

@@ -2,16 +2,16 @@
 
 use super::ipc::{IpcManager, ServiceType};
 use super::scheduler::{
-    ThreadScheduler, ThreadState, WaitReason, YieldTo, CORE_COUNT, LOWEST_THREAD_PRIORITY, MUTEX_HAS_LISTENERS,
-    PROCESS_IDEAL_CORE, RESULT_CANCELLED, RESULT_INVALID_COMBINATION, RESULT_INVALID_CORE_ID, RESULT_INVALID_HANDLE,
-    RESULT_INVALID_PRIORITY, RESULT_INVALID_STATE, RESULT_TIMED_OUT, RESULT_OUT_OF_RESOURCE,
+    CORE_COUNT, LOWEST_THREAD_PRIORITY, MUTEX_HAS_LISTENERS, PROCESS_IDEAL_CORE, RESULT_CANCELLED,
+    RESULT_INVALID_COMBINATION, RESULT_INVALID_CORE_ID, RESULT_INVALID_HANDLE, RESULT_INVALID_PRIORITY,
+    RESULT_INVALID_STATE, RESULT_OUT_OF_RESOURCE, RESULT_TIMED_OUT, ThreadScheduler, ThreadState, WaitReason, YieldTo,
 };
 use super::sync::SyncManager;
 use crate::audio::AudioOutServer;
 use crate::cpu::Cpu;
 use crate::fs::VirtualFileSystem;
 use crate::gpu::nvgpu::NvgpuChannel;
-use crate::mmu::{Memory, Permission, PAGE_SIZE};
+use crate::mmu::{Memory, PAGE_SIZE, Permission};
 use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,7 +98,7 @@ impl HorizonKernel {
         Self {
             addr_base: 0,
             alias_size: 0x0000_0010_0000_0000, // 64 GB
-            heap_base: 0x100000000, // 4GB mark
+            heap_base: 0x100000000,            // 4GB mark
             heap_size: 0,
             start_time: Instant::now(),
             ipc: IpcManager::new(),
@@ -149,26 +149,28 @@ impl HorizonKernel {
     /// alias and stack regions sit inside it, and the stack region holds the main thread's stack.
     pub fn info(&self, info_type: u32, sub_type: u64) -> Option<u64> {
         Some(match info_type {
-            0 => 0xFF,                     // CoreMask: 8x ARM Cortex-A78C cores (bits 0..7)
-            1 => 0xFFF,                    // PriorityMask
+            0 => 0xFF,                                   // CoreMask: 8x ARM Cortex-A78C cores (bits 0..7)
+            1 => 0xFFF,                                  // PriorityMask
             2 => self.addr_base + 0x0000_0002_0000_0000, // AliasRegionAddress
-            3 => self.alias_size,          // AliasRegionSize (64 GB unless moved)
-            4 => self.heap_base,           // HeapRegionAddress (0x1_0000_0000)
-            5 => HEAP_REGION_SIZE,         // HeapRegionSize (4 GB)
-            6 => 12 * 1024 * 1024 * 1024,  // TotalMemorySize: 12 GB LPDDR5
-            7 => (self.heap_size as u64) + 0x10_0000, // UsedMemorySize
-            8 => 0,                        // DebuggerAttached
+            3 => self.alias_size,                        // AliasRegionSize (64 GB unless moved)
+            4 => self.heap_base,                         // HeapRegionAddress (0x1_0000_0000)
+            5 => HEAP_REGION_SIZE,                       // HeapRegionSize (4 GB)
+            6 => 12 * 1024 * 1024 * 1024,                // TotalMemorySize: 12 GB LPDDR5
+            7 => (self.heap_size as u64) + 0x10_0000,    // UsedMemorySize
+            8 => 0,                                      // DebuggerAttached
             11 if sub_type < 4 => {
                 #[cfg(test)]
-                if let Some(entropy) = self.test_entropy { return Some(entropy[sub_type as usize]); }
+                if let Some(entropy) = self.test_entropy {
+                    return Some(entropy[sub_type as usize]);
+                }
                 0x9E37_79B9_7F4A_7C15u64.rotate_left(sub_type as u32 * 16) ^ self.system_tick()
             }
             12 => self.addr_base + 0x0000_0000_0800_0000, // AslrRegionAddress
             13 => 0x0000_007F_F800_0000 - self.addr_base, // AslrRegionSize (to the top of the 39-bit space)
-            14 => 0x0000_007F_0000_0000,   // StackRegionAddress
-            15 => 0x0000_0000_FFFF_F000,   // StackRegionSize (ends at the top of the main stack)
-            16 | 17 => 0,                  // SystemResourceSizeTotal / Used: no system resource
-            18 => 0x0400_0000_0000_0000,   // ProgramId (synthetic value)
+            14 => 0x0000_007F_0000_0000,                  // StackRegionAddress
+            15 => 0x0000_0000_FFFF_F000,                  // StackRegionSize (ends at the top of the main stack)
+            16 | 17 => 0,                                 // SystemResourceSizeTotal / Used: no system resource
+            18 => 0x0400_0000_0000_0000,                  // ProgramId (synthetic value)
             21 => 12 * 1024 * 1024 * 1024, // TotalNonSystemMemorySize (no system resource, so = TotalMemorySize)
             22 => (self.heap_size as u64) + 0x10_0000, // UsedNonSystemMemorySize (= UsedMemorySize)
             23 => 1,                       // IsApplication
@@ -185,11 +187,16 @@ impl HorizonKernel {
             return None;
         }
         let ptr = cpu.regs.read_x(1);
-        let handles: Vec<u32> = (0..count).map(|i| mmu.read_u32(ptr + i * 4)).collect::<Result<_, _>>().ok()?;
+        let handles: Vec<u32> = (0..count)
+            .map(|i| mmu.read_u32(ptr + i * 4))
+            .collect::<Result<_, _>>()
+            .ok()?;
         handles
             .iter()
             .all(|h| {
-                self.scheduler.thread_signaled(*h).is_some() || self.sync.events.contains_key(h) || self.ipc.is_audio_renderer_event(*h)
+                self.scheduler.thread_signaled(*h).is_some()
+                    || self.sync.events.contains_key(h)
+                    || self.ipc.is_audio_renderer_event(*h)
                     || self.ipc.service_event_signaled(*h).is_some()
             })
             .then_some(handles)
@@ -208,12 +215,18 @@ impl HorizonKernel {
     fn deadlock(&mut self, cpu: &mut Cpu, svc: &str) -> SvcResult {
         eprintln!("[Scheduler] deadlock in {svc}: every thread is waiting and none can wake the others");
         cpu.regs.write_x(0, RESULT_INVALID_HANDLE);
-        SvcResult::Break { reason: 0xDEAD_10C4, info1: self.scheduler.current as u64, info2: 0 }
+        SvcResult::Break {
+            reason: 0xDEAD_10C4,
+            info1: self.scheduler.current as u64,
+            info2: 0,
+        }
     }
 
     /// Consumes a pending svcCancelSynchronization on the running thread.
     fn take_wait_cancelled(&mut self) -> bool {
-        let Some(key) = self.scheduler.resolve(super::scheduler::CURRENT_THREAD_HANDLE) else { return false };
+        let Some(key) = self.scheduler.resolve(super::scheduler::CURRENT_THREAD_HANDLE) else {
+            return false;
+        };
         std::mem::take(&mut self.scheduler.threads.get_mut(&key).unwrap().wait_cancelled)
     }
 
@@ -325,12 +338,11 @@ impl HorizonKernel {
                     cpu.regs.write_x(1, 0);
                     return SvcResult::Success;
                 }
-                let handle = self
-                    .scheduler
-                    .create_thread(entry_pc, arg, stack_top, prio, core_id);
+                let handle = self.scheduler.create_thread(entry_pc, arg, stack_top, prio, core_id);
                 let tls = self.scheduler.setup_thread_tls(handle, mmu);
                 if (self.scheduler.tls_image.is_some() && tls.is_none())
-                    || self.scheduler.prepare_thread(handle, mmu).is_none() {
+                    || self.scheduler.prepare_thread(handle, mmu).is_none()
+                {
                     self.scheduler.threads.remove(&handle);
                     self.scheduler.total_threads_spawned -= 1;
                     if let Some(area) = tls {
@@ -461,7 +473,10 @@ impl HorizonKernel {
 
             // 0x10: svcGetCurrentProcessorNumber(): the running thread's core.
             0x10 => {
-                let core = self.scheduler.resolve(super::scheduler::CURRENT_THREAD_HANDLE).map_or(0, |k| self.scheduler.threads[&k].core_id);
+                let core = self
+                    .scheduler
+                    .resolve(super::scheduler::CURRENT_THREAD_HANDLE)
+                    .map_or(0, |k| self.scheduler.threads[&k].core_id);
                 cpu.regs.write_x(0, core as u64);
                 SvcResult::Success
             }
@@ -571,7 +586,9 @@ impl HorizonKernel {
                     })
                 });
                 if let Some(i) = signaled {
-                    if let Some(e) = self.sync.events.get_mut(&handles[i]) && e.auto_clear {
+                    if let Some(e) = self.sync.events.get_mut(&handles[i])
+                        && e.auto_clear
+                    {
                         e.signaled = false;
                     }
                     cpu.regs.write_x(0, 0);
@@ -580,7 +597,15 @@ impl HorizonKernel {
                     cpu.regs.write_x(0, RESULT_TIMED_OUT);
                 } else if self.take_wait_cancelled() {
                     cpu.regs.write_x(0, RESULT_CANCELLED);
-                } else if !self.scheduler.block_for(cpu, mmu, WaitReason::Objects { handles, timed: timeout > 0 }, (timeout > 0).then_some(timeout as u64)) {
+                } else if !self.scheduler.block_for(
+                    cpu,
+                    mmu,
+                    WaitReason::Objects {
+                        handles,
+                        timed: timeout > 0,
+                    },
+                    (timeout > 0).then_some(timeout as u64),
+                ) {
                     if timeout > 0 {
                         cpu.regs.write_x(0, RESULT_TIMED_OUT);
                     } else {
@@ -663,14 +688,25 @@ impl HorizonKernel {
                         let _ = mmu.write_u32(mutex, word | MUTEX_HAS_LISTENERS);
                         let cur = self.scheduler.current;
                         self.scheduler.pending_relock.push(cur);
-                        if !self.scheduler.block_current(cpu, mmu, WaitReason::Mutex { addr: mutex, tag }) {
+                        if !self
+                            .scheduler
+                            .block_current(cpu, mmu, WaitReason::Mutex { addr: mutex, tag })
+                        {
                             return self.deadlock(cpu, "svcWaitProcessWideKeyAtomic");
                         }
                     }
                 } else {
                     cpu.regs.write_x(0, 0);
-                    let reason = WaitReason::CondVar { cvar, mutex, tag, timed: timeout > 0 };
-                    if !self.scheduler.block_for(cpu, mmu, reason, (timeout > 0).then_some(timeout as u64)) {
+                    let reason = WaitReason::CondVar {
+                        cvar,
+                        mutex,
+                        tag,
+                        timed: timeout > 0,
+                    };
+                    if !self
+                        .scheduler
+                        .block_for(cpu, mmu, reason, (timeout > 0).then_some(timeout as u64))
+                    {
                         if timeout > 0 {
                             cpu.regs.write_x(0, RESULT_TIMED_OUT);
                             let _ = mmu.write_u32(mutex, tag);
@@ -688,8 +724,14 @@ impl HorizonKernel {
                 let cvar = cpu.regs.read_x(0);
                 let count = cpu.regs.read_w(1) as i32;
                 self.sync.total_condvar_signals += 1;
-                let waiters = self.scheduler.waiters(|w| matches!(w, WaitReason::CondVar { cvar: c, .. } if *c == cvar));
-                let n = if count <= 0 { waiters.len() } else { (count as usize).min(waiters.len()) };
+                let waiters = self
+                    .scheduler
+                    .waiters(|w| matches!(w, WaitReason::CondVar { cvar: c, .. } if *c == cvar));
+                let n = if count <= 0 {
+                    waiters.len()
+                } else {
+                    (count as usize).min(waiters.len())
+                };
                 for &key in &waiters[..n] {
                     if let Some(WaitReason::CondVar { mutex, tag, .. }) = self.scheduler.threads[&key].wait.clone() {
                         self.scheduler.relock_after_wake(mmu, key, mutex, tag, 0);
@@ -760,7 +802,11 @@ impl HorizonKernel {
                     Some(key) if !self.scheduler.threads[&key].paused => RESULT_INVALID_STATE,
                     Some(key) => {
                         let ctx = thread_context3(&self.scheduler.threads[&key].cpu_context.regs);
-                        if mmu.write_bytes(out, &ctx).is_ok() { 0 } else { RESULT_INVALID_MEMORY_STATE }
+                        if mmu.write_bytes(out, &ctx).is_ok() {
+                            0
+                        } else {
+                            RESULT_INVALID_MEMORY_STATE
+                        }
                     }
                 };
                 cpu.regs.write_x(0, result);
@@ -798,8 +844,8 @@ impl HorizonKernel {
                     cpu.regs.write_x(1, 0);
                 } else {
                     // Step 2: Deliver the `0x524f0001` ("RO\0\x01") challenge request on session slot (index 2)
-                    let _ = mmu.write_u32(tls_addr, 4);               // HIPC Request Type 4
-                    let _ = mmu.write_u32(tls_addr + 4, 10);          // 10 raw words
+                    let _ = mmu.write_u32(tls_addr, 4); // HIPC Request Type 4
+                    let _ = mmu.write_u32(tls_addr + 4, 10); // 10 raw words
                     let _ = mmu.write_u32(tls_addr + 16, 0x4943_4653); // "SFCI"
                     let _ = mmu.write_u32(tls_addr + 20, 0);
                     let _ = mmu.write_u32(tls_addr + 24, 0x524F_0001); // Command 0x524f0001
@@ -908,7 +954,7 @@ impl HorizonKernel {
             // 0x24: svcGetProcessId(&out_process_id, process_handle)
             // Used with handle 0xFFFF8001 = SELF / CurrentProcess
             0x24 => {
-                cpu.regs.write_x(0, 0);    // ResultSuccess
+                cpu.regs.write_x(0, 0); // ResultSuccess
                 cpu.regs.write_x(1, 0x52); // Switch 2 Native FS Process ID
                 SvcResult::Success
             }
@@ -935,11 +981,7 @@ impl HorizonKernel {
                 let reason = cpu.regs.read_x(0);
                 let info1 = cpu.regs.read_x(1);
                 let info2 = cpu.regs.read_x(2);
-                SvcResult::Break {
-                    reason,
-                    info1,
-                    info2,
-                }
+                SvcResult::Break { reason, info1, info2 }
             }
 
             // 0x27: svcOutputDebugString(str_addr, str_len)
@@ -1029,10 +1071,7 @@ impl HorizonKernel {
                 let mut bytes_read = 0;
                 if mmu.read_bytes(path_ptr, &mut path_buf).is_ok() {
                     let path_str = String::from_utf8_lossy(&path_buf).to_string();
-                    if let Ok(n) = self
-                        .vfs
-                        .read_file_to_guest(&path_str, 0, dst_addr, max_len, mmu)
-                    {
+                    if let Ok(n) = self.vfs.read_file_to_guest(&path_str, 0, dst_addr, max_len, mmu) {
                         bytes_read = n;
                     }
                 }
@@ -1062,10 +1101,7 @@ impl HorizonKernel {
                 let mut bytes_written = 0;
                 if mmu.read_bytes(path_ptr, &mut path_buf).is_ok() {
                     let path_str = String::from_utf8_lossy(&path_buf).to_string();
-                    if let Ok(n) = self
-                        .vfs
-                        .write_file_from_guest(&path_str, src_addr, data_len, mmu)
-                    {
+                    if let Ok(n) = self.vfs.write_file_from_guest(&path_str, src_addr, data_len, mmu) {
                         bytes_written = n;
                     }
                 }
@@ -1078,12 +1114,9 @@ impl HorizonKernel {
             ext::NVN_SUBMIT_COMMAND_BUFFER => {
                 let cmd_stream_addr = cpu.regs.read_x(0);
                 let max_words = cpu.regs.read_x(1) as usize;
-                let count = self.nvn.submit_guest_command_stream(
-                    mmu,
-                    &mut self.nvgpu,
-                    cmd_stream_addr,
-                    max_words,
-                );
+                let count = self
+                    .nvn
+                    .submit_guest_command_stream(mmu, &mut self.nvgpu, cmd_stream_addr, max_words);
                 cpu.regs.write_x(0, 0);
                 cpu.regs.write_x(1, count as u64);
                 SvcResult::Success
@@ -1096,15 +1129,9 @@ impl HorizonKernel {
                 let arg1 = cpu.regs.read_x(2);
                 let arg2 = cpu.regs.read_x(3);
                 let arg3 = cpu.regs.read_x(4);
-                let (res, out_val) = self.sdk_hle.dispatch_call(
-                    func_id,
-                    arg0,
-                    arg1,
-                    arg2,
-                    arg3,
-                    &mut self.vfs,
-                    mmu,
-                );
+                let (res, out_val) = self
+                    .sdk_hle
+                    .dispatch_call(func_id, arg0, arg1, arg2, arg3, &mut self.vfs, mmu);
                 cpu.regs.write_x(0, res as u64);
                 cpu.regs.write_x(1, out_val);
                 SvcResult::Success
@@ -1148,7 +1175,10 @@ impl HorizonKernel {
                     Ok(true) => {
                         cpu.regs.write_x(0, 0);
                         let deadline = (timeout > 0).then_some(timeout as u64);
-                        if !self.scheduler.block_for(cpu, mmu, WaitReason::Address { addr }, deadline) {
+                        if !self
+                            .scheduler
+                            .block_for(cpu, mmu, WaitReason::Address { addr }, deadline)
+                        {
                             if timeout > 0 {
                                 cpu.regs.write_x(0, RESULT_TIMED_OUT);
                             } else {
@@ -1169,7 +1199,11 @@ impl HorizonKernel {
                 let value = cpu.regs.read_w(2);
                 let count = cpu.regs.read_w(3) as i32;
                 let waiters = self.scheduler.address_waiters(addr);
-                let woken = if count <= 0 { waiters.len() } else { (count as usize).min(waiters.len()) };
+                let woken = if count <= 0 {
+                    waiters.len()
+                } else {
+                    (count as usize).min(waiters.len())
+                };
                 let new_value = match signal_type {
                     0 => None,
                     1 => Some(value.wrapping_add(1)),
@@ -1301,7 +1335,7 @@ impl HorizonKernel {
                 let _ = mmu.write_u64(mem_info_ptr, aligned_base);
                 let _ = mmu.write_u64(mem_info_ptr.wrapping_add(8), 0x1000);
                 let _ = mmu.write_u32(mem_info_ptr.wrapping_add(16), 0x03); // MemoryType::CodeStatic (3)
-                let _ = mmu.write_u32(mem_info_ptr.wrapping_add(20), 0);    // attributes = 0
+                let _ = mmu.write_u32(mem_info_ptr.wrapping_add(20), 0); // attributes = 0
                 let _ = mmu.write_u32(mem_info_ptr.wrapping_add(24), 0x04); // permission = Execute-Only (4) on Switch 2 FS
                 cpu.regs.write_x(0, 0);
                 cpu.regs.write_x(1, 0);
@@ -1399,7 +1433,11 @@ fn checked_map_size(addr: u64, size: u64) -> Result<usize, u64> {
 }
 
 fn checked_map_or_unmap_size(map: bool, addr: u64, size: u64) -> Result<usize, u64> {
-    if map { checked_map_size(addr, size) } else { checked_guest_range(addr, size) }
+    if map {
+        checked_map_size(addr, size)
+    } else {
+        checked_guest_range(addr, size)
+    }
 }
 
 /// Size of a svcMapMemory-style move: both ends must stay inside the address space and the page
@@ -1435,7 +1473,10 @@ mod tests {
                     cpu.regs.write_x(0, addr);
                     cpu.regs.write_x(1, size);
                 } else {
-                    let handle = kernel.ipc.allocate_handle(ServiceType::TransferMemory { addr: 0x9000, size: 4096 });
+                    let handle = kernel.ipc.allocate_handle(ServiceType::TransferMemory {
+                        addr: 0x9000,
+                        size: 4096,
+                    });
                     cpu.regs.write_x(0, handle as u64);
                     cpu.regs.write_x(1, addr);
                     cpu.regs.write_x(2, size);
@@ -1454,7 +1495,10 @@ mod tests {
             let mut cpu = Cpu::new();
             let mut mmu = Memory::new();
             let mut kernel = HorizonKernel::new();
-            let handle = kernel.ipc.allocate_handle(ServiceType::TransferMemory { addr: 0x9000, size: 4096 });
+            let handle = kernel.ipc.allocate_handle(ServiceType::TransferMemory {
+                addr: 0x9000,
+                size: 4096,
+            });
             for svc in [map, unmap] {
                 if svc == 0x2c || svc == 0x2d {
                     cpu.regs.write_x(0, 0x9000);
@@ -1556,7 +1600,13 @@ mod tests {
         kernel.dispatch_svc(0x18, &mut cpu, &mut mmu);
         assert_eq!(cpu.regs.read_x(0), RESULT_TIMED_OUT);
         wait(&mut cpu, -1);
-        assert!(matches!(kernel.dispatch_svc(0x18, &mut cpu, &mut mmu), SvcResult::Break { reason: 0xDEAD_10C4, .. }));
+        assert!(matches!(
+            kernel.dispatch_svc(0x18, &mut cpu, &mut mmu),
+            SvcResult::Break {
+                reason: 0xDEAD_10C4,
+                ..
+            }
+        ));
 
         // Without handles, 0x18 is still the demos' VSync.
         cpu.regs.write_x(2, 0);
@@ -1595,17 +1645,32 @@ mod tests {
         cpu.regs.write_x(2, 0x10_0000);
         kernel.dispatch_svc(0x06, &mut cpu, &mut mmu);
         assert_eq!(mmu.read_u32(0x9000 + 16).unwrap(), 0);
-        assert_eq!((mmu.read_u64(0x9000).unwrap(), mmu.read_u64(0x9008).unwrap()), (0xA000, 0x20_0000 - 0xA000));
+        assert_eq!(
+            (mmu.read_u64(0x9000).unwrap(), mmu.read_u64(0x9008).unwrap()),
+            (0xA000, 0x20_0000 - 0xA000)
+        );
         cpu.regs.write_x(0, 0x9000);
         cpu.regs.write_x(2, 0x20_1234);
         kernel.dispatch_svc(0x06, &mut cpu, &mut mmu);
-        assert_eq!((mmu.read_u64(0x9000).unwrap(), mmu.read_u64(0x9008).unwrap()), (0x20_0000, 0x3000));
+        assert_eq!(
+            (mmu.read_u64(0x9000).unwrap(), mmu.read_u64(0x9008).unwrap()),
+            (0x20_0000, 0x3000)
+        );
 
         // The research SVCs live above Horizon's range.
         assert_eq!(ext::svc(ext::SUBMIT_GPU_PUSHBUFFER), 0xD400_2021);
         cpu.regs.write_x(0, 0);
-        assert_eq!(kernel.dispatch_svc(ext::SUBMIT_GPU_PUSHBUFFER, &mut cpu, &mut mmu), SvcResult::Success);
-        assert_eq!(kernel.dispatch_svc(ext::PRESENT_FRAME, &mut cpu, &mut mmu), SvcResult::PresentFrame);
-        assert!(matches!(kernel.dispatch_svc(0x28, &mut cpu, &mut mmu), SvcResult::Break { .. }));
+        assert_eq!(
+            kernel.dispatch_svc(ext::SUBMIT_GPU_PUSHBUFFER, &mut cpu, &mut mmu),
+            SvcResult::Success
+        );
+        assert_eq!(
+            kernel.dispatch_svc(ext::PRESENT_FRAME, &mut cpu, &mut mmu),
+            SvcResult::PresentFrame
+        );
+        assert!(matches!(
+            kernel.dispatch_svc(0x28, &mut cpu, &mut mmu),
+            SvcResult::Break { .. }
+        ));
     }
 }

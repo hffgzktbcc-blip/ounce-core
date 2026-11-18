@@ -21,7 +21,7 @@
 //! or `Origin` is not this server are refused (DNS rebinding, cross-site posts); uploads are capped; the program
 //! never runs in this process.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
@@ -75,8 +75,14 @@ impl Options {
                 "--port" => options.port = value("--port")?.parse().map_err(|_| "--port must be 0-65535")?,
                 "--dir" => options.dir = PathBuf::from(value("--dir")?),
                 "--budget" => options.budget = value("--budget")?.parse().map_err(|_| "--budget must be a number")?,
-                "--timeout" => options.timeout_secs = value("--timeout")?.parse().map_err(|_| "--timeout must be seconds")?,
-                other => return Err(format!("unknown option '{other}' (try --port N, --no-open, --dir DIR, --budget N, --timeout SECS, --verify-dir DIR, --parent-pipe)")),
+                "--timeout" => {
+                    options.timeout_secs = value("--timeout")?.parse().map_err(|_| "--timeout must be seconds")?
+                }
+                other => {
+                    return Err(format!(
+                        "unknown option '{other}' (try --port N, --no-open, --dir DIR, --budget N, --timeout SECS, --verify-dir DIR, --parent-pipe)"
+                    ));
+                }
             }
         }
         Ok(options)
@@ -84,7 +90,9 @@ impl Options {
 }
 
 fn default_verify_dir() -> Option<PathBuf> {
-    let dir = std::env::var_os("OUNCE_VERIFY_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("docs/verify"));
+    let dir = std::env::var_os("OUNCE_VERIFY_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("docs/verify"));
     dir.join("differential.json").is_file().then_some(dir)
 }
 
@@ -163,8 +171,11 @@ struct EngineRun {
 
 impl EngineRun {
     fn to_json(&self) -> Value {
-        let files: BTreeMap<&String, Value> =
-            self.files.iter().map(|(k, (sha, size))| (k, json!({"sha256": sha, "bytes": size}))).collect();
+        let files: BTreeMap<&String, Value> = self
+            .files
+            .iter()
+            .map(|(k, (sha, size))| (k, json!({"sha256": sha, "bytes": size})))
+            .collect();
         json!({
             "engine": self.engine, "status": self.status, "exit_code": self.exit_code,
             "seconds": (self.seconds * 10.0).round() / 10.0, "stop": {"kind": self.stop_kind, "line": self.stop_line},
@@ -175,7 +186,10 @@ impl EngineRun {
         self.stop_kind == "exited"
     }
     fn faulted(&self) -> bool {
-        matches!(self.stop_kind, "fault" | "unimplemented" | "unhandled-svc" | "break" | "halt" | "loader")
+        matches!(
+            self.stop_kind,
+            "fault" | "unimplemented" | "unhandled-svc" | "break" | "halt" | "loader"
+        )
     }
 }
 
@@ -225,16 +239,25 @@ fn classify(log: &str) -> (&'static str, String) {
 fn classify_elf(stderr: &str) -> (&'static str, String) {
     let Some(line) = stderr.lines().find_map(|l| l.strip_prefix("run-elf: DIAGNOSIS:")) else {
         let summary = stderr.lines().rev().find(|l| l.starts_with("[run-elf] engine="));
-        return if summary.is_some() { ("exited", String::new()) } else { ("unknown", String::new()) };
+        return if summary.is_some() {
+            ("exited", String::new())
+        } else {
+            ("unknown", String::new())
+        };
     };
     let line = line.trim();
     let kind = if line.starts_with("instruction budget") {
         "budget"
-    } else if line.starts_with("cannot load ELF") || line.starts_with("cannot build process stack") || line.contains("--cpu=native") {
+    } else if line.starts_with("cannot load ELF")
+        || line.starts_with("cannot build process stack")
+        || line.contains("--cpu=native")
+    {
         "loader"
     } else if line.contains("syscall") || line.contains("is not a Linux syscall") {
         "unhandled-svc"
-    } else if line.starts_with("fault at pc=") && (line.contains("nimplemented") || line.contains("not implemented") || line.contains("Unsupported")) {
+    } else if line.starts_with("fault at pc=")
+        && (line.contains("nimplemented") || line.contains("not implemented") || line.contains("Unsupported"))
+    {
         "unimplemented"
     } else {
         "fault"
@@ -250,7 +273,11 @@ fn guest_console(log: &str) -> String {
         if line.starts_with('[') || line.starts_with("  ") || line.starts_with('=') || line.trim().is_empty() {
             continue;
         }
-        let end = ["[VM]", "[NCE]", "[CPU]", "[HID]", "[Display"].iter().filter_map(|m| line.find(m)).min().unwrap_or(line.len());
+        let end = ["[VM]", "[NCE]", "[CPU]", "[HID]", "[Display"]
+            .iter()
+            .filter_map(|m| line.find(m))
+            .min()
+            .unwrap_or(line.len());
         let text = line[..end].trim_end();
         if !text.is_empty() {
             out.push_str(text);
@@ -291,7 +318,11 @@ fn collect_files(root: &Path, dir: &Path, run: &mut EngineRun) {
             if (&mut file).take(FILE_CAP as u64).read_to_end(&mut bytes).is_err() {
                 continue;
             }
-            let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
             run.files.insert(rel.clone(), (hex(&Sha256::digest(&bytes)), size));
             if let Ok(text) = String::from_utf8(bytes) {
                 run.texts.insert(rel, text);
@@ -304,12 +335,28 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn run_engine(exe: &Path, program: &Path, format: Format, work: &Path, engine: &str, budget: u64, timeout: u64) -> EngineRun {
+fn run_engine(
+    exe: &Path,
+    program: &Path,
+    format: Format,
+    work: &Path,
+    engine: &str,
+    budget: u64,
+    timeout: u64,
+) -> EngineRun {
     let sdmc = work.join(engine).join("sdmc");
     let _ = std::fs::remove_dir_all(&sdmc);
     let mut run = EngineRun {
-        engine: engine.to_string(), status: "error", exit_code: None, seconds: 0.0, stop_kind: "unknown",
-        stop_line: String::new(), log_tail: Vec::new(), files: BTreeMap::new(), texts: BTreeMap::new(), note: String::new(),
+        engine: engine.to_string(),
+        status: "error",
+        exit_code: None,
+        seconds: 0.0,
+        stop_kind: "unknown",
+        stop_line: String::new(),
+        log_tail: Vec::new(),
+        files: BTreeMap::new(),
+        texts: BTreeMap::new(),
+        note: String::new(),
     };
     if let Err(e) = std::fs::create_dir_all(&sdmc) {
         run.note = format!("could not create a work folder: {e}");
@@ -320,17 +367,27 @@ fn run_engine(exe: &Path, program: &Path, format: Format, work: &Path, engine: &
     match format {
         Format::Nro => {
             command
-                .arg("run-nro").arg(program).arg("--present=headless")
-                .arg(format!("--sdmc={}", sdmc.display())).arg(format!("--cpu={engine}"))
-                .env("OUNCE_NRO_BUDGET", budget.to_string()).env("OUNCE_NRO_TIMEOUT_SECS", timeout.to_string());
+                .arg("run-nro")
+                .arg(program)
+                .arg("--present=headless")
+                .arg(format!("--sdmc={}", sdmc.display()))
+                .arg(format!("--cpu={engine}"))
+                .env("OUNCE_NRO_BUDGET", budget.to_string())
+                .env("OUNCE_NRO_TIMEOUT_SECS", timeout.to_string());
         }
         Format::Elf => {
-            command.arg("run-elf").arg(program).arg(format!("--cpu={engine}")).arg(format!("--max-insns={budget}"));
+            command
+                .arg("run-elf")
+                .arg(program)
+                .arg(format!("--cpu={engine}"))
+                .arg(format!("--max-insns={budget}"));
         }
     }
     command
         .env_remove("OUNCE_CPU")
-        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(e) => {
@@ -339,7 +396,10 @@ fn run_engine(exe: &Path, program: &Path, format: Format, work: &Path, engine: &
         }
     };
     let (stdout, stderr) = (child.stdout.take(), child.stderr.take());
-    let readers = (thread::spawn(move || drain(stdout)), thread::spawn(move || drain(stderr)));
+    let readers = (
+        thread::spawn(move || drain(stdout)),
+        thread::spawn(move || drain(stderr)),
+    );
     let deadline = start + Duration::from_secs(timeout + 15);
     loop {
         match child.try_wait() {
@@ -363,15 +423,30 @@ fn run_engine(exe: &Path, program: &Path, format: Format, work: &Path, engine: &
     let err_text = String::from_utf8_lossy(&readers.1.join().unwrap_or_default()).into_owned();
     let mut log = out_text.clone();
     log.push_str(&err_text);
-    let (kind, line) = if format == Format::Elf { classify_elf(&err_text) } else { classify(&log) };
+    let (kind, line) = if format == Format::Elf {
+        classify_elf(&err_text)
+    } else {
+        classify(&log)
+    };
     run.stop_kind = if run.status == "timeout" { "timeout" } else { kind };
     run.stop_line = line;
     let lines: Vec<&str> = log.lines().filter(|l| !l.trim().is_empty()).collect();
-    run.log_tail = lines[lines.len().saturating_sub(30)..].iter().map(|l| l.chars().take(240).collect()).collect();
+    run.log_tail = lines[lines.len().saturating_sub(30)..]
+        .iter()
+        .map(|l| l.chars().take(240).collect())
+        .collect();
     // An ELF has no SD card: what it writes to stdout is its output, byte for byte.
-    let console = if format == Format::Elf { out_text } else { collect_files(&sdmc, &sdmc, &mut run); guest_console(&log) };
+    let console = if format == Format::Elf {
+        out_text
+    } else {
+        collect_files(&sdmc, &sdmc, &mut run);
+        guest_console(&log)
+    };
     if !console.is_empty() {
-        run.files.insert(CONSOLE.into(), (hex(&Sha256::digest(console.as_bytes())), console.len() as u64));
+        run.files.insert(
+            CONSOLE.into(),
+            (hex(&Sha256::digest(console.as_bytes())), console.len() as u64),
+        );
         run.texts.insert(CONSOLE.into(), console);
     }
     run
@@ -382,9 +457,18 @@ const CONSOLE: &str = "(guest console output)";
 /// Replays sampled register-only instructions on this CPU (`ounce-core diverge`). Null when it could not run.
 fn instruction_check(exe: &Path, nro: &Path, work: &Path) -> Value {
     let report = work.join("diverge.json");
-    let out = Command::new(exe).arg("diverge").arg(nro).arg("--json").arg(&report)
-        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
-    let parsed = std::fs::read_to_string(&report).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+    let out = Command::new(exe)
+        .arg("diverge")
+        .arg(nro)
+        .arg("--json")
+        .arg(&report)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let parsed = std::fs::read_to_string(&report)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok());
     match (out, parsed) {
         (Ok(_), Some(r)) => json!({
             "checked": r["checked"], "mismatched": r["mismatched"], "first": r["mismatches"].get(0).cloned().unwrap_or(Value::Null),
@@ -395,7 +479,11 @@ fn instruction_check(exe: &Path, nro: &Path, work: &Path) -> Value {
 
 /// What the person calls the machine the native reference runs on. The page uses the same words.
 fn computer() -> &'static str {
-    if cfg!(target_os = "macos") { "this Mac" } else { "this computer" }
+    if cfg!(target_os = "macos") {
+        "this Mac"
+    } else {
+        "this computer"
+    }
 }
 
 fn label(engine: &str) -> &'static str {
@@ -420,17 +508,28 @@ fn first_diff(a: &EngineRun, b: &EngineRun) -> Option<Value> {
                     let (la, lb): (Vec<&str>, Vec<&str>) = (ta.lines().collect(), tb.lines().collect());
                     let n = la.len().max(lb.len());
                     for i in 0..n {
-                        let (x, y) = (la.get(i).copied().unwrap_or("(no line)"), lb.get(i).copied().unwrap_or("(no line)"));
+                        let (x, y) = (
+                            la.get(i).copied().unwrap_or("(no line)"),
+                            lb.get(i).copied().unwrap_or("(no line)"),
+                        );
                         if x != y {
                             let cut = |s: &str| s.chars().take(200).collect::<String>();
-                            return Some(json!({"path": path, "line": i + 1, "a_label": label(&a.engine), "a": cut(x), "b_label": label(&b.engine), "b": cut(y)}));
+                            return Some(
+                                json!({"path": path, "line": i + 1, "a_label": label(&a.engine), "a": cut(x), "b_label": label(&b.engine), "b": cut(y)}),
+                            );
                         }
                     }
                 }
-                return Some(json!({"path": path, "note": "the files differ (binary or larger than the compare limit)"}));
+                return Some(
+                    json!({"path": path, "note": "the files differ (binary or larger than the compare limit)"}),
+                );
             }
-            (Some(_), None) => return Some(json!({"path": path, "note": format!("only {} wrote this file", label(&a.engine))})),
-            (None, _) => return Some(json!({"path": path, "note": format!("only {} wrote this file", label(&b.engine))})),
+            (Some(_), None) => {
+                return Some(json!({"path": path, "note": format!("only {} wrote this file", label(&a.engine))}));
+            }
+            (None, _) => {
+                return Some(json!({"path": path, "note": format!("only {} wrote this file", label(&b.engine))}));
+            }
         }
     }
     None
@@ -444,14 +543,27 @@ fn verdict(runs: &[EngineRun], format: Format) -> Value {
     let elf = format == Format::Elf;
     // Saved results and the app's results window show this text, so it uses the page's words (this Mac, results match).
     let verdict = |kind: &str, headline: String, detail: String, diff: Option<Value>| {
-        let (headline, detail) = (headline.replace("this computer", computer()), detail.replace("this computer", computer()));
+        let (headline, detail) = (
+            headline.replace("this computer", computer()),
+            detail.replace("this computer", computer()),
+        );
         json!({"kind": kind, "headline": headline, "detail": detail, "diff": diff,
                "reference": runs.iter().any(|r| r.engine == "native")})
     };
     let reference = runs.iter().find(|r| r.engine == "native");
     let tiers: Vec<&EngineRun> = runs.iter().filter(|r| r.engine != "native").collect();
     let unfinished = |r: &&EngineRun| !r.finished() && !r.faulted();
-    let describe = |r: &EngineRun| format!("{}: {}", label(&r.engine), if r.stop_line.is_empty() { r.stop_kind.to_string() } else { r.stop_line.clone() });
+    let describe = |r: &EngineRun| {
+        format!(
+            "{}: {}",
+            label(&r.engine),
+            if r.stop_line.is_empty() {
+                r.stop_kind.to_string()
+            } else {
+                r.stop_line.clone()
+            }
+        )
+    };
 
     if let Some(refr) = reference {
         if unfinished(&refr) {
@@ -480,21 +592,41 @@ fn verdict(runs: &[EngineRun], format: Format) -> Value {
                         ),
                         None,
                     ),
-                    _ => verdict("fails", "The program fails the same way on this computer".into(), describe(refr), None),
+                    _ => verdict(
+                        "fails",
+                        "The program fails the same way on this computer".into(),
+                        describe(refr),
+                        None,
+                    ),
                 }
             } else {
-                verdict("diverges", "The program fails on this computer but Ounce-Core behaves differently".into(),
-                    tiers.iter().map(|t| describe(t)).collect::<Vec<_>>().join(" | "), None)
+                verdict(
+                    "diverges",
+                    "The program fails on this computer but Ounce-Core behaves differently".into(),
+                    tiers.iter().map(|t| describe(t)).collect::<Vec<_>>().join(" | "),
+                    None,
+                )
             };
         }
         for t in &tiers {
             if t.faulted() {
-                return verdict("diverges", format!("{} stops where this computer keeps going", label(&t.engine)),
-                    format!("{} Run `ounce-core diverge <program.nro>` or report this gap with .github/ISSUE_TEMPLATE/emulation_bug.yml.", describe(t)), None);
+                return verdict(
+                    "diverges",
+                    format!("{} stops where this computer keeps going", label(&t.engine)),
+                    format!(
+                        "{} Run `ounce-core diverge <program.nro>` or report this gap with .github/ISSUE_TEMPLATE/emulation_bug.yml.",
+                        describe(t)
+                    ),
+                    None,
+                );
             }
             if unfinished(t) {
-                return verdict("unfinished", format!("{} hit its limit before the program finished", label(&t.engine)),
-                    format!("{} Raise --budget or --timeout and check again.", describe(t)), None);
+                return verdict(
+                    "unfinished",
+                    format!("{} hit its limit before the program finished", label(&t.engine)),
+                    format!("{} Raise --budget or --timeout and check again.", describe(t)),
+                    None,
+                );
             }
             if !same_outcome(t, refr) {
                 let diff = first_diff(t, refr);
@@ -503,8 +635,14 @@ fn verdict(runs: &[EngineRun], format: Format) -> Value {
             }
         }
         let files = refr.files.len();
-        return verdict("matches", "Same result as this computer on this run".into(),
-            format!("Tier-3 and Tier-4 ended the same way as the program on this computer and produced identical output ({files} compared: the files it wrote and its console text). This is one run, not a proof."), None);
+        return verdict(
+            "matches",
+            "Same result as this computer on this run".into(),
+            format!(
+                "Tier-3 and Tier-4 ended the same way as the program on this computer and produced identical output ({files} compared: the files it wrote and its console text). This is one run, not a proof."
+            ),
+            None,
+        );
     }
 
     if let Some(t) = tiers.iter().find(|t| t.faulted()) {
@@ -514,51 +652,84 @@ fn verdict(runs: &[EngineRun], format: Format) -> Value {
                 "unhandled-svc" if elf => verdict(
                     "fails",
                     "The program called a Linux system call Ounce-Core does not handle yet".into(),
-                    format!("{} Report the system call using .github/ISSUE_TEMPLATE/emulation_bug.yml.", describe(t)),
+                    format!(
+                        "{} Report the system call using .github/ISSUE_TEMPLATE/emulation_bug.yml.",
+                        describe(t)
+                    ),
                     None,
                 ),
                 "unhandled-svc" => verdict(
                     "fails",
                     "The program called a service Ounce-Core does not handle yet".into(),
-                    format!("{} This is a missing Horizon service in Ounce-Core; report the SVC line using .github/ISSUE_TEMPLATE/emulation_bug.yml.", describe(t)),
+                    format!(
+                        "{} This is a missing Horizon service in Ounce-Core; report the SVC line using .github/ISSUE_TEMPLATE/emulation_bug.yml.",
+                        describe(t)
+                    ),
                     None,
                 ),
                 "unimplemented" if elf => verdict(
                     "fails",
                     "The program used an instruction Ounce-Core could not decode".into(),
-                    format!("{} Report the instruction word using .github/ISSUE_TEMPLATE/emulation_bug.yml. Linux programs cannot be run on this computer's CPU by Ounce-Core, so there is no host run to compare with.", describe(t)),
+                    format!(
+                        "{} Report the instruction word using .github/ISSUE_TEMPLATE/emulation_bug.yml. Linux programs cannot be run on this computer's CPU by Ounce-Core, so there is no host run to compare with.",
+                        describe(t)
+                    ),
                     None,
                 ),
                 "unimplemented" => verdict(
                     "fails",
                     "The program used an instruction Ounce-Core could not decode".into(),
-                    format!("{} Turn on 'Compare with this computer' or run `ounce-core diverge <program.nro>` to check it against the host CPU, and report the instruction word using .github/ISSUE_TEMPLATE/emulation_bug.yml.", describe(t)),
+                    format!(
+                        "{} Turn on 'Compare with this computer' or run `ounce-core diverge <program.nro>` to check it against the host CPU, and report the instruction word using .github/ISSUE_TEMPLATE/emulation_bug.yml.",
+                        describe(t)
+                    ),
                     None,
                 ),
                 _ if elf => verdict(
                     "fails",
                     "The program stops with an error".into(),
-                    format!("{} Both engines stop the same way, so this can't say whether the program or Ounce-Core is at fault. If the program is one of the known test programs, 'Compare with the recorded reference' shows what it should write.", describe(t)),
+                    format!(
+                        "{} Both engines stop the same way, so this can't say whether the program or Ounce-Core is at fault. If the program is one of the known test programs, 'Compare with the recorded reference' shows what it should write.",
+                        describe(t)
+                    ),
                     None,
                 ),
                 _ => verdict(
                     "fails",
                     "The program stops with an error".into(),
-                    format!("{} No host reference was used, so this can't say whether the program or Ounce-Core is at fault. Turn on 'Compare with this computer' to check against the real CPU.", describe(t)),
+                    format!(
+                        "{} No host reference was used, so this can't say whether the program or Ounce-Core is at fault. Turn on 'Compare with this computer' to check against the real CPU.",
+                        describe(t)
+                    ),
                     None,
                 ),
             }
         } else {
-            verdict("diverges", "The two engines gave different results".into(),
+            verdict(
+                "diverges",
+                "The two engines gave different results".into(),
                 if elf {
-                    format!("{} | Report this with .github/ISSUE_TEMPLATE/emulation_bug.yml.", tiers.iter().map(|x| describe(x)).collect::<Vec<_>>().join(" | "))
+                    format!(
+                        "{} | Report this with .github/ISSUE_TEMPLATE/emulation_bug.yml.",
+                        tiers.iter().map(|x| describe(x)).collect::<Vec<_>>().join(" | ")
+                    )
                 } else {
-                    format!("{} | Run `ounce-core diverge <program.nro>` or report with .github/ISSUE_TEMPLATE/emulation_bug.yml.", tiers.iter().map(|x| describe(x)).collect::<Vec<_>>().join(" | "))
-                }, None)
+                    format!(
+                        "{} | Run `ounce-core diverge <program.nro>` or report with .github/ISSUE_TEMPLATE/emulation_bug.yml.",
+                        tiers.iter().map(|x| describe(x)).collect::<Vec<_>>().join(" | ")
+                    )
+                },
+                None,
+            )
         };
     }
     if let Some(t) = tiers.iter().find(|t| unfinished(t)) {
-        return verdict("unfinished", "The program didn't finish within the limit".into(), describe(t), None);
+        return verdict(
+            "unfinished",
+            "The program didn't finish within the limit".into(),
+            describe(t),
+            None,
+        );
     }
     if tiers.len() == 2 && !same_outcome(tiers[0], tiers[1]) {
         let detail = if elf {
@@ -566,14 +737,23 @@ fn verdict(runs: &[EngineRun], format: Format) -> Value {
         } else {
             "An emulator bug between engines. Compare with this computer to see which is right, or run `ounce-core diverge <program.nro>` and report with .github/ISSUE_TEMPLATE/emulation_bug.yml."
         };
-        return verdict("diverges", "The two engines gave different results".into(), detail.into(), first_diff(tiers[0], tiers[1]));
+        return verdict(
+            "diverges",
+            "The two engines gave different results".into(),
+            detail.into(),
+            first_diff(tiers[0], tiers[1]),
+        );
     }
     if elf {
         return verdict("agrees", "Both engines agreed; not compared with this computer".into(),
             "Linux programs run on Tier-3 and Tier-4 only, so there is no run on this computer to compare with. Turn on 'Compare with the recorded reference' to check a known test program's output.".into(), None);
     }
-    verdict("agrees", "Both engines agreed; not compared with this computer".into(),
-        "No host reference was used. Turn on 'Compare with this computer' to check against the real CPU.".into(), None)
+    verdict(
+        "agrees",
+        "Both engines agreed; not compared with this computer".into(),
+        "No host reference was used. Turn on 'Compare with this computer' to check against the real CPU.".into(),
+        None,
+    )
 }
 
 /// What one check should do. Defaults reproduce the original behaviour: both emulator tiers, the server's budget.
@@ -601,14 +781,22 @@ fn find_harness(verify_dir: &Path, name: &str, format: Format) -> Option<Harness
     let doc: Value = serde_json::from_slice(&std::fs::read(verify_dir.join("differential.json")).ok()?).ok()?;
     let lower = name.to_lowercase();
     let suffix = if format == Format::Elf { ".elf" } else { ".nro" };
-    let stem = norm(if lower.ends_with(suffix) { &name[..name.len() - suffix.len()] } else { name });
-    doc["harnesses"].as_array()?.iter().filter(|h| format == Format::Elf || h["linux_elf_only"] != true).find_map(|h| {
-        let (name, dir) = (norm(h["name"].as_str()?), norm(h["dir"].as_str()?));
-        (stem == name || stem == dir || stem == format!("{name}-harness")).then(|| Harness {
-            dir: h["dir"].as_str().unwrap_or_default().to_string(),
-            result_file: h["result_file"].as_str().unwrap_or("results.txt").to_string(),
+    let stem = norm(if lower.ends_with(suffix) {
+        &name[..name.len() - suffix.len()]
+    } else {
+        name
+    });
+    doc["harnesses"]
+        .as_array()?
+        .iter()
+        .filter(|h| format == Format::Elf || h["linux_elf_only"] != true)
+        .find_map(|h| {
+            let (name, dir) = (norm(h["name"].as_str()?), norm(h["dir"].as_str()?));
+            (stem == name || stem == dir || stem == format!("{name}-harness")).then(|| Harness {
+                dir: h["dir"].as_str().unwrap_or_default().to_string(),
+                result_file: h["result_file"].as_str().unwrap_or("results.txt").to_string(),
+            })
         })
-    })
 }
 
 /// Byte-for-byte comparison of a harness's output with the committed host reference.
@@ -637,9 +825,17 @@ fn host_reference(verify_dir: Option<&Path>, name: &str, runs: &[EngineRun], for
         return json!({"status": "not-run", "harness": harness.dir, "note": "The program did not finish, so there is no output to compare."});
     };
     // An ELF's output is what it printed; an NRO writes its result file to the SD card.
-    let result_file = if format == Format::Elf { CONSOLE } else { harness.result_file.as_str() };
+    let result_file = if format == Format::Elf {
+        CONSOLE
+    } else {
+        harness.result_file.as_str()
+    };
     let Some(actual) = run.texts.get(result_file) else {
-        let note = if format == Format::Elf { "The program finished but printed nothing.".to_string() } else { format!("The program finished but did not write {result_file}.") };
+        let note = if format == Format::Elf {
+            "The program finished but printed nothing.".to_string()
+        } else {
+            format!("The program finished but did not write {result_file}.")
+        };
         return json!({"status": "no-output", "harness": harness.dir, "note": note});
     };
     compare_reference(&harness.dir, &expected, actual)
@@ -649,17 +845,43 @@ fn host_reference(verify_dir: Option<&Path>, name: &str, runs: &[EngineRun], for
 /// a field the system does not answer is left empty, never guessed.
 fn host_info() -> Value {
     fn run(program: &str, args: &[&str]) -> String {
-        std::process::Command::new(program).args(args).output().ok().filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+        std::process::Command::new(program)
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default()
     }
     let (os, version, chip) = if cfg!(target_os = "macos") {
-        ("macOS".to_string(), run("sw_vers", &["-productVersion"]), run("sysctl", &["-n", "machdep.cpu.brand_string"]))
+        (
+            "macOS".to_string(),
+            run("sw_vers", &["-productVersion"]),
+            run("sysctl", &["-n", "machdep.cpu.brand_string"]),
+        )
     } else {
         let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
-        let pretty = release.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=")).map(|v| v.trim_matches('"').to_string()).unwrap_or_default();
+        let pretty = release
+            .lines()
+            .find_map(|l| l.strip_prefix("PRETTY_NAME="))
+            .map(|v| v.trim_matches('"').to_string())
+            .unwrap_or_default();
         let cpu = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
-        let chip = cpu.lines().find(|l| l.starts_with("model name")).and_then(|l| l.split_once(':')).map(|(_, v)| v.trim().to_string()).unwrap_or_default();
-        (if pretty.is_empty() { std::env::consts::OS.to_string() } else { pretty }, String::new(), chip)
+        let chip = cpu
+            .lines()
+            .find(|l| l.starts_with("model name"))
+            .and_then(|l| l.split_once(':'))
+            .map(|(_, v)| v.trim().to_string())
+            .unwrap_or_default();
+        (
+            if pretty.is_empty() {
+                std::env::consts::OS.to_string()
+            } else {
+                pretty
+            },
+            String::new(),
+            chip,
+        )
     };
     json!({"os": os, "os_version": version, "arch": std::env::consts::ARCH, "chip": chip})
 }
@@ -677,8 +899,18 @@ struct Lab {
 }
 
 impl Lab {
-    fn start_check(self: &Arc<Self>, name: &str, bytes: Vec<u8>, options: CheckOptions) -> Result<String, (u16, String)> {
-        let CheckOptions { native, engines, budget, reference } = options;
+    fn start_check(
+        self: &Arc<Self>,
+        name: &str,
+        bytes: Vec<u8>,
+        options: CheckOptions,
+    ) -> Result<String, (u16, String)> {
+        let CheckOptions {
+            native,
+            engines,
+            budget,
+            reference,
+        } = options;
         let budget = budget.unwrap_or(self.budget);
         let format = detect(&bytes).map_err(|message| (400, message))?;
         // `run-elf` has no native engine, so a Linux program is never run on this computer's CPU.
@@ -696,7 +928,10 @@ impl Lab {
         std::fs::write(&nro, &bytes).map_err(|e| (500, format!("could not save the program: {e}")))?;
         let name: String = name.chars().filter(|c| !c.is_control()).take(120).collect();
         let bytes_len = bytes.len();
-        let started = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let started = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         self.checks.lock().unwrap().push((id.clone(), json!({
             "schema_version": "ounce-core/workbench-check-v1",
             "id": id, "name": name, "sha256": sha, "bytes": bytes_len, "native": native, "budget": budget, "format": format.name(),
@@ -712,12 +947,17 @@ impl Lab {
                 names.push("native");
             }
             let runs: Vec<EngineRun> = thread::scope(|scope| {
-                let handles: Vec<_> = names.iter()
+                let handles: Vec<_> = names
+                    .iter()
                     .map(|n| scope.spawn(|| run_engine(&lab.exe, &nro, format, &work, n, budget, lab.timeout)))
                     .collect();
                 handles.into_iter().filter_map(|h| h.join().ok()).collect()
             });
-            let instructions = if native { instruction_check(&lab.exe, &nro, &work) } else { Value::Null };
+            let instructions = if native {
+                instruction_check(&lab.exe, &nro, &work)
+            } else {
+                Value::Null
+            };
             let result = json!({
                 "schema_version": "ounce-core/workbench-check-v1",
                 "id": check_id,
@@ -735,10 +975,20 @@ impl Lab {
                 "host_reference": if reference { host_reference(lab.verify_dir.as_deref(), &check_name, &runs, format) } else { Value::Null },
                 "status": "done"
             });
-            let _ = std::fs::write(work.join("result.json"), serde_json::to_vec_pretty(&result).unwrap_or_default());
+            let _ = std::fs::write(
+                work.join("result.json"),
+                serde_json::to_vec_pretty(&result).unwrap_or_default(),
+            );
             let mut checks = lab.checks.lock().unwrap();
             if let Some((_, value)) = checks.iter_mut().find(|(i, _)| *i == check_id) {
-                for key in ["engines", "verdict", "instructions", "host_reference", "native_note", "status"] {
+                for key in [
+                    "engines",
+                    "verdict",
+                    "instructions",
+                    "host_reference",
+                    "native_note",
+                    "status",
+                ] {
                     value[key] = result[key].clone();
                 }
             }
@@ -804,9 +1054,15 @@ fn read_request(stream: &mut TcpStream) -> Result<Req, (u16, &'static str)> {
     let head = String::from_utf8_lossy(&buf[..head_end]).into_owned();
     let mut lines = head.split("\r\n");
     let mut first = lines.next().unwrap_or("").split(' ');
-    let (method, target) = (first.next().unwrap_or("").to_string(), first.next().unwrap_or("").to_string());
+    let (method, target) = (
+        first.next().unwrap_or("").to_string(),
+        first.next().unwrap_or("").to_string(),
+    );
     let headers: HashMap<String, String> = lines
-        .filter_map(|l| l.split_once(':').map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string())))
+        .filter_map(|l| {
+            l.split_once(':')
+                .map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string()))
+        })
         .collect();
     if headers.contains_key("transfer-encoding") {
         return Err((411, "send a Content-Length"));
@@ -829,13 +1085,26 @@ fn read_request(stream: &mut TcpStream) -> Result<Req, (u16, &'static str)> {
         .split('&')
         .filter_map(|p| p.split_once('=').map(|(k, v)| (pct_decode(k), pct_decode(v))))
         .collect();
-    Ok(Req { method, path: path.to_string(), query, headers, body })
+    Ok(Req {
+        method,
+        path: path.to_string(),
+        query,
+        headers,
+        body,
+    })
 }
 
 fn respond(stream: &mut TcpStream, status: u16, content_type: &str, body: &[u8]) {
     let reason = match status {
-        200 => "OK", 202 => "Accepted", 400 => "Bad Request", 403 => "Forbidden", 404 => "Not Found",
-        408 => "Request Timeout", 411 => "Length Required", 413 => "Payload Too Large", 431 => "Request Header Fields Too Large",
+        200 => "OK",
+        202 => "Accepted",
+        400 => "Bad Request",
+        403 => "Forbidden",
+        404 => "Not Found",
+        408 => "Request Timeout",
+        411 => "Length Required",
+        413 => "Payload Too Large",
+        431 => "Request Header Fields Too Large",
         _ => "Internal Server Error",
     };
     let head = format!(
@@ -884,22 +1153,44 @@ fn check_options(query: &HashMap<String, String>) -> Result<CheckOptions, String
 }
 
 fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
-    let json_body = |status: u16, value: Value| (status, "application/json", serde_json::to_vec(&value).unwrap_or_default());
+    let json_body = |status: u16, value: Value| {
+        (
+            status,
+            "application/json",
+            serde_json::to_vec(&value).unwrap_or_default(),
+        )
+    };
     let error = |status: u16, message: &str| json_body(status, json!({"error": message}));
     let (own_host, own_local) = (format!("127.0.0.1:{}", lab.port), format!("localhost:{}", lab.port));
-    if !req.headers.get("host").is_some_and(|h| *h == own_host || *h == own_local) {
+    if !req
+        .headers
+        .get("host")
+        .is_some_and(|h| *h == own_host || *h == own_local)
+    {
         return error(403, "This server only answers requests addressed to it on localhost.");
     }
     if let Some(origin) = req.headers.get("origin")
-        && *origin != format!("http://{own_host}") && *origin != format!("http://{own_local}")
+        && *origin != format!("http://{own_host}")
+        && *origin != format!("http://{own_local}")
     {
         return error(403, "Cross-site requests are refused.");
     }
     if req.method == "GET" && req.path == "/" {
         if req.query.get("t") != Some(&lab.token) {
-            return (403, "text/plain; charset=utf-8", b"Open the address that `ounce-core ui` printed; it contains this session's key.".to_vec());
+            return (
+                403,
+                "text/plain; charset=utf-8",
+                b"Open the address that `ounce-core ui` printed; it contains this session's key.".to_vec(),
+            );
         }
-        let page = PAGE.replace("__OUNCE_TOKEN__", &lab.token).replace("__OUNCE_NATIVE__", if cfg!(all(feature = "nce", target_arch = "aarch64")) { "true" } else { "false" });
+        let page = PAGE.replace("__OUNCE_TOKEN__", &lab.token).replace(
+            "__OUNCE_NATIVE__",
+            if cfg!(all(feature = "nce", target_arch = "aarch64")) {
+                "true"
+            } else {
+                "false"
+            },
+        );
         return (200, "text/html; charset=utf-8", page.into_bytes());
     }
     if req.method == "GET" && req.path == "/app.js" {
@@ -920,7 +1211,10 @@ fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/api/checks") => {
             let checks = lab.checks.lock().unwrap();
-            json_body(200, json!({"checks": checks.iter().rev().map(|(_, v)| Lab::summary(v)).collect::<Vec<_>>()}))
+            json_body(
+                200,
+                json!({"checks": checks.iter().rev().map(|(_, v)| Lab::summary(v)).collect::<Vec<_>>()}),
+            )
         }
         ("POST", "/api/checks") => {
             let name = req.query.get("name").map(String::as_str).unwrap_or("program.nro");
@@ -933,16 +1227,19 @@ fn route(lab: &Arc<Lab>, req: &Req) -> (u16, &'static str, Vec<u8>) {
                 Err((status, message)) => error(status, &message),
             }
         }
-        ("GET", "/api/config") => json_body(200, json!({
-            "native": cfg!(all(feature = "nce", target_arch = "aarch64")),
-            "default_budget": lab.budget,
-            "timeout_seconds": lab.timeout,
-            "engines": ["tier3", "tier4"],
-            "reference_data": lab.verify_dir.is_some(),
-            "version": env!("CARGO_PKG_VERSION"),
-            "commit": option_env!("OUNCE_GIT_COMMIT").unwrap_or(""),
-            "host": host_info(),
-        })),
+        ("GET", "/api/config") => json_body(
+            200,
+            json!({
+                "native": cfg!(all(feature = "nce", target_arch = "aarch64")),
+                "default_budget": lab.budget,
+                "timeout_seconds": lab.timeout,
+                "engines": ["tier3", "tier4"],
+                "reference_data": lab.verify_dir.is_some(),
+                "version": env!("CARGO_PKG_VERSION"),
+                "commit": option_env!("OUNCE_GIT_COMMIT").unwrap_or(""),
+                "host": host_info(),
+            }),
+        ),
         ("GET", path) if path.starts_with("/api/checks/") && path.ends_with("/program") => {
             // The program a check was started with, so the page can check it again after the app uploaded it.
             let id = &path["/api/checks/".len()..path.len() - "/program".len()];
@@ -975,7 +1272,10 @@ fn token() -> String {
             seed.extend_from_slice(&b);
         }
     }
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     seed.extend_from_slice(&nanos.to_le_bytes());
     seed.extend_from_slice(&std::process::id().to_le_bytes());
     seed.extend_from_slice(format!("{:p}", &seed).as_bytes());
@@ -1000,20 +1300,40 @@ pub fn run_cli(args: &[String]) {
 /// state the machine cannot produce on demand (such as "Results differ") can be looked at in the real window.
 /// Fixtures are labelled by their own file names; nothing is run and nothing is saved.
 fn load_test_fixtures() -> Vec<(String, Value)> {
-    let Some(dir) = std::env::var_os("OUNCE_LAB_TEST_FIXTURES") else { return Vec::new() };
-    let mut files: Vec<_> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect();
+    let Some(dir) = std::env::var_os("OUNCE_LAB_TEST_FIXTURES") else {
+        return Vec::new();
+    };
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
     files.sort();
-    files.iter().filter_map(|p| serde_json::from_slice::<Value>(&std::fs::read(p).ok()?).ok()).filter_map(|v| Some((v["id"].as_str()?.to_string(), v))).collect()
+    files
+        .iter()
+        .filter_map(|p| serde_json::from_slice::<Value>(&std::fs::read(p).ok()?).ok())
+        .filter_map(|v| Some((v["id"].as_str()?.to_string(), v)))
+        .collect()
 }
 
 fn serve(options: Options) -> Result<(), String> {
-    let listener = TcpListener::bind(("127.0.0.1", options.port)).map_err(|e| format!("could not listen on 127.0.0.1:{}: {e}", options.port))?;
+    let listener = TcpListener::bind(("127.0.0.1", options.port))
+        .map_err(|e| format!("could not listen on 127.0.0.1:{}: {e}", options.port))?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
     std::fs::create_dir_all(&options.dir).map_err(|e| format!("could not create {}: {e}", options.dir.display()))?;
     let exe = std::env::current_exe().map_err(|e| format!("could not find this program: {e}"))?;
     let lab = Arc::new(Lab {
-        exe, dir: options.dir.clone(), token: token(), port, budget: options.budget, timeout: options.timeout_secs, verify_dir: options.verify_dir.clone(),
-        checks: Mutex::new(load_test_fixtures()), counter: Mutex::new(0),
+        exe,
+        dir: options.dir.clone(),
+        token: token(),
+        port,
+        budget: options.budget,
+        timeout: options.timeout_secs,
+        verify_dir: options.verify_dir.clone(),
+        checks: Mutex::new(load_test_fixtures()),
+        counter: Mutex::new(0),
     });
     let url = format!("http://127.0.0.1:{port}/?t={}", lab.token);
     // A caller may read only the first line and close the pipe (the test harness and the Mac app
@@ -1043,7 +1363,12 @@ fn serve(options: Options) -> Result<(), String> {
         } else {
             Command::new("xdg-open")
         };
-        let _ = opener.arg(&url).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+        let _ = opener
+            .arg(&url)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
     }
     for stream in listener.incoming().flatten() {
         let lab = Arc::clone(&lab);
@@ -1054,7 +1379,12 @@ fn serve(options: Options) -> Result<(), String> {
                     let (status, content_type, body) = route(&lab, &req);
                     respond(&mut stream, status, content_type, &body);
                 }
-                Err((status, message)) => respond(&mut stream, status, "application/json", json!({"error": message}).to_string().as_bytes()),
+                Err((status, message)) => respond(
+                    &mut stream,
+                    status,
+                    "application/json",
+                    json!({"error": message}).to_string().as_bytes(),
+                ),
             }
         });
     }
@@ -1067,12 +1397,26 @@ mod tests {
 
     fn run(engine: &str, kind: &'static str, files: &[(&str, &str)]) -> EngineRun {
         let mut r = EngineRun {
-            engine: engine.into(), status: "exited", exit_code: Some(0), seconds: 1.0, stop_kind: kind,
-            stop_line: if kind == "exited" { String::new() } else { format!("{kind} line") },
-            log_tail: vec![], files: BTreeMap::new(), texts: BTreeMap::new(), note: String::new(),
+            engine: engine.into(),
+            status: "exited",
+            exit_code: Some(0),
+            seconds: 1.0,
+            stop_kind: kind,
+            stop_line: if kind == "exited" {
+                String::new()
+            } else {
+                format!("{kind} line")
+            },
+            log_tail: vec![],
+            files: BTreeMap::new(),
+            texts: BTreeMap::new(),
+            note: String::new(),
         };
         for (path, text) in files {
-            r.files.insert((*path).into(), (hex(&Sha256::digest(text.as_bytes())), text.len() as u64));
+            r.files.insert(
+                (*path).into(),
+                (hex(&Sha256::digest(text.as_bytes())), text.len() as u64),
+            );
             r.texts.insert((*path).into(), (*text).into());
         }
         r
@@ -1080,7 +1424,10 @@ mod tests {
 
     #[test]
     fn classify_reads_stop_messages() {
-        assert_eq!(classify("a\n[VM] Process exited gracefully (svcExitProcess).").0, "exited");
+        assert_eq!(
+            classify("a\n[VM] Process exited gracefully (svcExitProcess).").0,
+            "exited"
+        );
         assert_eq!(classify("[VM] Execution budget reached (5 instructions).").0, "budget");
         let (kind, line) = classify("[VM Error] Unimplemented instruction 0xdeadbeef at PC: 0x80\n  Final PC: 0x80");
         assert_eq!(kind, "unimplemented");
@@ -1109,13 +1456,21 @@ mod tests {
 
     #[test]
     fn verdict_matches_when_everything_agrees() {
-        let runs = [run("tier3", "exited", &[("results.txt", "a\nb\n")]), run("tier4", "exited", &[("results.txt", "a\nb\n")]), run("native", "exited", &[("results.txt", "a\nb\n")])];
+        let runs = [
+            run("tier3", "exited", &[("results.txt", "a\nb\n")]),
+            run("tier4", "exited", &[("results.txt", "a\nb\n")]),
+            run("native", "exited", &[("results.txt", "a\nb\n")]),
+        ];
         assert_eq!(verdict(&runs, Format::Nro)["kind"], "matches");
     }
 
     #[test]
     fn verdict_names_the_first_differing_line_against_the_host() {
-        let runs = [run("tier3", "exited", &[("results.txt", "a\nWRONG\n")]), run("tier4", "exited", &[("results.txt", "a\nb\n")]), run("native", "exited", &[("results.txt", "a\nb\n")])];
+        let runs = [
+            run("tier3", "exited", &[("results.txt", "a\nWRONG\n")]),
+            run("tier4", "exited", &[("results.txt", "a\nb\n")]),
+            run("native", "exited", &[("results.txt", "a\nb\n")]),
+        ];
         let v = verdict(&runs, Format::Nro);
         assert_eq!(v["kind"], "diverges");
         assert_eq!(v["diff"]["line"], 2);
@@ -1133,7 +1488,11 @@ mod tests {
 
     #[test]
     fn verdict_flags_an_emulator_stop_where_the_mac_continues() {
-        let runs = [run("tier3", "unimplemented", &[]), run("tier4", "unimplemented", &[]), run("native", "exited", &[])];
+        let runs = [
+            run("tier3", "unimplemented", &[]),
+            run("tier4", "unimplemented", &[]),
+            run("native", "exited", &[]),
+        ];
         assert_eq!(verdict(&runs, Format::Nro)["kind"], "diverges");
     }
 
@@ -1142,7 +1501,12 @@ mod tests {
         let svc_runs = [run("tier3", "unhandled-svc", &[]), run("tier4", "unhandled-svc", &[])];
         let v = verdict(&svc_runs, Format::Nro);
         assert_eq!(v["kind"], "fails");
-        assert!(v["headline"].as_str().unwrap().contains("service Ounce-Core does not handle yet"));
+        assert!(
+            v["headline"]
+                .as_str()
+                .unwrap()
+                .contains("service Ounce-Core does not handle yet")
+        );
         assert!(v["detail"].as_str().unwrap().contains("emulation_bug.yml"));
 
         let svc_native = [
@@ -1152,17 +1516,31 @@ mod tests {
         ];
         let vn = verdict(&svc_native, Format::Nro);
         assert_eq!(vn["kind"], "fails");
-        assert!(vn["headline"].as_str().unwrap().contains("service Ounce-Core does not handle yet"));
+        assert!(
+            vn["headline"]
+                .as_str()
+                .unwrap()
+                .contains("service Ounce-Core does not handle yet")
+        );
 
         let unimpl_runs = [run("tier3", "unimplemented", &[]), run("tier4", "unimplemented", &[])];
         let vu = verdict(&unimpl_runs, Format::Nro);
         assert_eq!(vu["kind"], "fails");
-        assert!(vu["headline"].as_str().unwrap().contains("instruction Ounce-Core could not decode"));
+        assert!(
+            vu["headline"]
+                .as_str()
+                .unwrap()
+                .contains("instruction Ounce-Core could not decode")
+        );
     }
 
     #[test]
     fn unfinished_programs_are_not_called_divergent() {
-        let runs = [run("tier3", "budget", &[]), run("tier4", "budget", &[]), run("native", "timeout", &[])];
+        let runs = [
+            run("tier3", "budget", &[]),
+            run("tier4", "budget", &[]),
+            run("native", "timeout", &[]),
+        ];
         assert_eq!(verdict(&runs, Format::Nro)["kind"], "unfinished");
     }
 
@@ -1180,19 +1558,38 @@ mod tests {
         let dir = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/verify"));
         let h = find_harness(dir, "LZ4.nro", Format::Nro).expect("lz4 is a known harness");
         assert!(dir.join(&h.dir).join("expected-host.txt").is_file());
-        assert!(find_harness(dir, "integer_vector.nro", Format::Nro).is_some(), "underscores and hyphens are interchangeable");
+        assert!(
+            find_harness(dir, "integer_vector.nro", Format::Nro).is_some(),
+            "underscores and hyphens are interchangeable"
+        );
         assert!(find_harness(dir, "hello.nro", Format::Nro).is_none());
-        assert_eq!(host_reference(Some(dir), "hello.nro", &[], Format::Nro)["status"], "unknown-program");
-        assert_eq!(host_reference(None, "lz4.nro", &[], Format::Nro)["status"], "unavailable");
+        assert_eq!(
+            host_reference(Some(dir), "hello.nro", &[], Format::Nro)["status"],
+            "unknown-program"
+        );
+        assert_eq!(
+            host_reference(None, "lz4.nro", &[], Format::Nro)["status"],
+            "unavailable"
+        );
     }
 
     #[test]
     fn check_options_default_to_both_tiers_and_reject_bad_values() {
-        let q = |pairs: &[(&str, &str)]| pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<HashMap<_, _>>();
+        let q = |pairs: &[(&str, &str)]| {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect::<HashMap<_, _>>()
+        };
         let o = check_options(&q(&[])).unwrap();
         assert_eq!(o.engines, vec!["tier3", "tier4"]);
         assert!(o.budget.is_none() && !o.native && !o.reference);
-        assert_eq!(check_options(&q(&[("engines", "tier3"), ("budget", "5000")])).unwrap().budget, Some(5000));
+        assert_eq!(
+            check_options(&q(&[("engines", "tier3"), ("budget", "5000")]))
+                .unwrap()
+                .budget,
+            Some(5000)
+        );
         assert!(check_options(&q(&[("engines", "gpu")])).is_err());
         assert!(check_options(&q(&[("budget", "0")])).is_err());
         assert!(check_options(&q(&[("budget", "lots")])).is_err());
@@ -1208,29 +1605,92 @@ mod tests {
     #[test]
     fn rejects_foreign_hosts_origins_and_missing_tokens() {
         let lab = Arc::new(Lab {
-            exe: PathBuf::from("x"), dir: std::env::temp_dir(), token: "tok".into(), port: 4000, budget: 1, timeout: 1, verify_dir: None,
-            checks: Mutex::new(vec![]), counter: Mutex::new(0),
+            exe: PathBuf::from("x"),
+            dir: std::env::temp_dir(),
+            token: "tok".into(),
+            port: 4000,
+            budget: 1,
+            timeout: 1,
+            verify_dir: None,
+            checks: Mutex::new(vec![]),
+            counter: Mutex::new(0),
         });
         let req = |method: &str, path: &str, headers: &[(&str, &str)]| Req {
-            method: method.into(), path: path.into(), query: HashMap::new(),
-            headers: headers.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), body: vec![],
+            method: method.into(),
+            path: path.into(),
+            query: HashMap::new(),
+            headers: headers.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            body: vec![],
         };
-        assert_eq!(route(&lab, &req("GET", "/api/checks", &[("host", "evil.example"), ("x-ounce-token", "tok")])).0, 403);
-        assert_eq!(route(&lab, &req("GET", "/api/checks", &[("host", "127.0.0.1:4000"), ("origin", "http://evil.example")])).0, 403);
-        assert_eq!(route(&lab, &req("GET", "/api/checks", &[("host", "127.0.0.1:4000")])).0, 403);
-        assert_eq!(route(&lab, &req("GET", "/api/checks", &[("host", "127.0.0.1:4000"), ("x-ounce-token", "tok")])).0, 200);
+        assert_eq!(
+            route(
+                &lab,
+                &req(
+                    "GET",
+                    "/api/checks",
+                    &[("host", "evil.example"), ("x-ounce-token", "tok")]
+                )
+            )
+            .0,
+            403
+        );
+        assert_eq!(
+            route(
+                &lab,
+                &req(
+                    "GET",
+                    "/api/checks",
+                    &[("host", "127.0.0.1:4000"), ("origin", "http://evil.example")]
+                )
+            )
+            .0,
+            403
+        );
+        assert_eq!(
+            route(&lab, &req("GET", "/api/checks", &[("host", "127.0.0.1:4000")])).0,
+            403
+        );
+        assert_eq!(
+            route(
+                &lab,
+                &req(
+                    "GET",
+                    "/api/checks",
+                    &[("host", "127.0.0.1:4000"), ("x-ounce-token", "tok")]
+                )
+            )
+            .0,
+            200
+        );
         assert_eq!(route(&lab, &req("GET", "/", &[("host", "127.0.0.1:4000")])).0, 403);
     }
 
     #[test]
     fn uploads_must_be_nro_files() {
         let lab = Arc::new(Lab {
-            exe: PathBuf::from("x"), dir: std::env::temp_dir(), token: "t".into(), port: 1, budget: 1, timeout: 1, verify_dir: None,
-            checks: Mutex::new(vec![]), counter: Mutex::new(0),
+            exe: PathBuf::from("x"),
+            dir: std::env::temp_dir(),
+            token: "t".into(),
+            port: 1,
+            budget: 1,
+            timeout: 1,
+            verify_dir: None,
+            checks: Mutex::new(vec![]),
+            counter: Mutex::new(0),
         });
         // A truncated ELF header, an x86-64 ELF and plain bytes are all refused before anything runs.
-        assert_eq!(lab.start_check("a.elf", b"\x7fELF".to_vec(), check_options(&HashMap::new()).unwrap()).unwrap_err().0, 400);
-        assert_eq!(lab.start_check("a", vec![1, 2, 3], check_options(&HashMap::new()).unwrap()).unwrap_err().0, 400);
+        assert_eq!(
+            lab.start_check("a.elf", b"\x7fELF".to_vec(), check_options(&HashMap::new()).unwrap())
+                .unwrap_err()
+                .0,
+            400
+        );
+        assert_eq!(
+            lab.start_check("a", vec![1, 2, 3], check_options(&HashMap::new()).unwrap())
+                .unwrap_err()
+                .0,
+            400
+        );
     }
 
     fn elf_header(machine: u16, class: u8, data: u8) -> Vec<u8> {
@@ -1248,7 +1708,12 @@ mod tests {
         nro[0x10..0x14].copy_from_slice(b"NRO0");
         assert_eq!(detect(&nro), Ok(Format::Nro));
         assert_eq!(detect(&elf_header(0xB7, 2, 1)), Ok(Format::Elf));
-        assert!(detect(&elf_header(0x3E, 2, 1)).unwrap_err().contains("not for 64-bit ARM"), "x86-64 ELF");
+        assert!(
+            detect(&elf_header(0x3E, 2, 1))
+                .unwrap_err()
+                .contains("not for 64-bit ARM"),
+            "x86-64 ELF"
+        );
         assert!(detect(&elf_header(0xB7, 1, 1)).is_err(), "32-bit");
         assert!(detect(&elf_header(0xB7, 2, 2)).is_err(), "big-endian");
         assert!(detect(b"MZ\x90\0").unwrap_err().contains("isn't a program"));
@@ -1260,22 +1725,46 @@ mod tests {
         assert_eq!(classify_elf(ok).0, "exited");
         assert_eq!(classify_elf("").0, "unknown");
         let d = |text: &str| classify_elf(&format!("{ok}run-elf: DIAGNOSIS: {text}\n"));
-        assert_eq!(d("unimplemented syscall 278 (getrandom) at pc=0x400000").0, "unhandled-svc");
-        assert_eq!(d("instruction budget of 5 exhausted at pc=0x1 (raise with --max-insns=N)").0, "budget");
+        assert_eq!(
+            d("unimplemented syscall 278 (getrandom) at pc=0x400000").0,
+            "unhandled-svc"
+        );
+        assert_eq!(
+            d("instruction budget of 5 exhausted at pc=0x1 (raise with --max-insns=N)").0,
+            "budget"
+        );
         assert_eq!(d("cannot load ELF: not static").0, "loader");
         assert_eq!(d("fault at pc=0x10, instruction word 0x2e20dc00: Unimplemented instruction 0x2E20DC00 at PC: 0x0000000000000010").0, "unimplemented");
-        assert_eq!(d("fault at pc=0x10, instruction word 0x00000000: memory fault").0, "fault");
+        assert_eq!(
+            d("fault at pc=0x10, instruction word 0x00000000: memory fault").0,
+            "fault"
+        );
     }
 
     #[test]
     fn elf_verdicts_do_not_mention_the_nro_tools() {
-        let agree = verdict(&[run("tier3", "exited", &[(CONSOLE, "ok\n")]), run("tier4", "exited", &[(CONSOLE, "ok\n")])], Format::Elf);
+        let agree = verdict(
+            &[
+                run("tier3", "exited", &[(CONSOLE, "ok\n")]),
+                run("tier4", "exited", &[(CONSOLE, "ok\n")]),
+            ],
+            Format::Elf,
+        );
         assert_eq!(agree["kind"], "agrees");
         assert!(!agree["detail"].as_str().unwrap().contains("diverge"));
-        let gap = verdict(&[run("tier3", "unimplemented", &[]), run("tier4", "unimplemented", &[])], Format::Elf);
+        let gap = verdict(
+            &[run("tier3", "unimplemented", &[]), run("tier4", "unimplemented", &[])],
+            Format::Elf,
+        );
         assert_eq!(gap["kind"], "fails");
         assert!(!gap["detail"].as_str().unwrap().contains(".nro"), "{gap}");
-        let differ = verdict(&[run("tier3", "exited", &[(CONSOLE, "a\n")]), run("tier4", "exited", &[(CONSOLE, "b\n")])], Format::Elf);
+        let differ = verdict(
+            &[
+                run("tier3", "exited", &[(CONSOLE, "a\n")]),
+                run("tier4", "exited", &[(CONSOLE, "b\n")]),
+            ],
+            Format::Elf,
+        );
         assert_eq!(differ["kind"], "diverges");
         assert_eq!(differ["diff"]["line"], 1);
     }
@@ -1287,11 +1776,25 @@ mod tests {
         let same = [run("tier3", "exited", &[(CONSOLE, expected.as_str())])];
         let matched = host_reference(Some(&dir), "lz4.elf", &same, Format::Elf);
         assert_eq!(matched["status"], "matches");
-        assert_eq!(matched["expected_sha256"].as_str().map(str::len), Some(64), "the expected output has a fingerprint for reports");
-        assert_eq!(host_reference(Some(&dir), "LZ4", &same, Format::Elf)["status"], "matches", "extensionless names work too");
+        assert_eq!(
+            matched["expected_sha256"].as_str().map(str::len),
+            Some(64),
+            "the expected output has a fingerprint for reports"
+        );
+        assert_eq!(
+            host_reference(Some(&dir), "LZ4", &same, Format::Elf)["status"],
+            "matches",
+            "extensionless names work too"
+        );
         let other = [run("tier3", "exited", &[(CONSOLE, "case0 n=0\n")])];
-        assert_eq!(host_reference(Some(&dir), "lz4.elf", &other, Format::Elf)["status"], "differs");
-        assert_eq!(host_reference(Some(&dir), "hello.elf", &same, Format::Elf)["status"], "unknown-program");
+        assert_eq!(
+            host_reference(Some(&dir), "lz4.elf", &other, Format::Elf)["status"],
+            "differs"
+        );
+        assert_eq!(
+            host_reference(Some(&dir), "hello.elf", &same, Format::Elf)["status"],
+            "unknown-program"
+        );
     }
 
     #[test]
@@ -1301,15 +1804,38 @@ mod tests {
         std::fs::write(dir.join("0001-abc/program.nro"), b"bytes").unwrap();
         std::fs::write(dir.join("secret.txt"), b"no").unwrap();
         let lab = Arc::new(Lab {
-            exe: PathBuf::from("x"), dir: dir.clone(), token: "t".into(), port: 1, budget: 1, timeout: 1, verify_dir: None,
-            checks: Mutex::new(vec![("0001-abc".into(), json!({"id": "0001-abc"}))]), counter: Mutex::new(0),
+            exe: PathBuf::from("x"),
+            dir: dir.clone(),
+            token: "t".into(),
+            port: 1,
+            budget: 1,
+            timeout: 1,
+            verify_dir: None,
+            checks: Mutex::new(vec![("0001-abc".into(), json!({"id": "0001-abc"}))]),
+            counter: Mutex::new(0),
         });
-        let get = |path: &str| route(&lab, &Req {
-            method: "GET".into(), path: path.into(), query: HashMap::new(),
-            headers: [("host".to_string(), "127.0.0.1:1".to_string()), ("x-ounce-token".to_string(), "t".to_string())].into_iter().collect(), body: vec![],
-        });
+        let get = |path: &str| {
+            route(
+                &lab,
+                &Req {
+                    method: "GET".into(),
+                    path: path.into(),
+                    query: HashMap::new(),
+                    headers: [
+                        ("host".to_string(), "127.0.0.1:1".to_string()),
+                        ("x-ounce-token".to_string(), "t".to_string()),
+                    ]
+                    .into_iter()
+                    .collect(),
+                    body: vec![],
+                },
+            )
+        };
         let (status, kind, body) = get("/api/checks/0001-abc/program");
-        assert_eq!((status, kind, body.as_slice()), (200, "application/octet-stream", b"bytes".as_slice()));
+        assert_eq!(
+            (status, kind, body.as_slice()),
+            (200, "application/octet-stream", b"bytes".as_slice())
+        );
         assert_eq!(get("/api/checks/nope/program").0, 404);
         assert_eq!(get("/api/checks/../secret.txt/program").0, 404);
         let _ = std::fs::remove_dir_all(dir);

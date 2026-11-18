@@ -19,12 +19,7 @@ pub enum Waveform {
 }
 
 /// Generates mono 16-bit signed PCM samples for synthetic waveforms.
-pub fn generate_synth_pcm16(
-    waveform: Waveform,
-    frequency_hz: f32,
-    sample_rate: u32,
-    duration_ms: f32,
-) -> Vec<i16> {
+pub fn generate_synth_pcm16(waveform: Waveform, frequency_hz: f32, sample_rate: u32, duration_ms: f32) -> Vec<i16> {
     if sample_rate == 0 || duration_ms <= 0.0 || frequency_hz <= 0.0 {
         return Vec::new();
     }
@@ -115,13 +110,7 @@ impl AudioOutServer {
     }
 
     /// Synthesizes a waveform tone and queues interleaved stereo 48 kHz PCM samples.
-    pub fn generate_waveform(
-        &mut self,
-        waveform: Waveform,
-        frequency_hz: f32,
-        duration_ms: f32,
-        volume: f32,
-    ) -> usize {
+    pub fn generate_waveform(&mut self, waveform: Waveform, frequency_hz: f32, duration_ms: f32, volume: f32) -> usize {
         let mono = generate_synth_pcm16(waveform, frequency_hz, self.sample_rate, duration_ms);
         let vol = volume.clamp(0.0, 1.0);
         let mut peak = self.peak_amplitude;
@@ -146,22 +135,12 @@ impl AudioOutServer {
     }
 
     /// Helper for generating a sine wave tone for testing.
-    pub fn generate_sine_wave(
-        &mut self,
-        frequency_hz: f32,
-        duration_ms: f32,
-        volume: f32,
-    ) -> usize {
+    pub fn generate_sine_wave(&mut self, frequency_hz: f32, duration_ms: f32, volume: f32) -> usize {
         self.generate_waveform(Waveform::Sine, frequency_hz, duration_ms, volume)
     }
 
     /// Helper for generating a square wave tone for testing.
-    pub fn generate_square_wave(
-        &mut self,
-        frequency_hz: f32,
-        duration_ms: f32,
-        volume: f32,
-    ) -> usize {
+    pub fn generate_square_wave(&mut self, frequency_hz: f32, duration_ms: f32, volume: f32) -> usize {
         self.generate_waveform(Waveform::Square, frequency_hz, duration_ms, volume)
     }
 

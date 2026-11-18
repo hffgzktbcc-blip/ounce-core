@@ -4,7 +4,7 @@
 //! the header's data type for that channel, except depth/stencil, whose types are fixed (depth is
 //! unorm or float, stencil is uint).
 
-use super::{half_to_f32, FormatDesc, NumType};
+use super::{FormatDesc, NumType, half_to_f32};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Ch {
@@ -48,12 +48,12 @@ fn fields(components: u32) -> Option<&'static [(Ch, u8)]> {
 /// R and stencil in G.
 fn depth(components: u32) -> Option<(u32, bool, Option<u32>)> {
     Some(match components {
-        0x29 => (8, false, Some(0)),   // Z24S8: S in 7:0, Z in 31:8
-        0x2a => (0, false, None),      // X8Z24: Z in 23:0
-        0x2b => (0, false, Some(24)),  // S8Z24: Z in 23:0, S in 31:24
-        0x2f => (0, true, None),       // ZF32
-        0x30 => (0, true, Some(32)),   // ZF32_X24S8: S in 39:32
-        0x3a => (0, false, None),      // Z16
+        0x29 => (8, false, Some(0)),  // Z24S8: S in 7:0, Z in 31:8
+        0x2a => (0, false, None),     // X8Z24: Z in 23:0
+        0x2b => (0, false, Some(24)), // S8Z24: Z in 23:0, S in 31:24
+        0x2f => (0, true, None),      // ZF32
+        0x30 => (0, true, Some(32)),  // ZF32_X24S8: S in 39:32
+        0x3a => (0, false, None),     // Z16
         _ => return None,
     })
 }
@@ -86,7 +86,12 @@ pub(super) fn decode(desc: &FormatDesc, t: &[u8]) -> Option<[f32; 4]> {
         // BF10GF11RF11: unsigned 11/11/10-bit floats.
         0x21 => {
             let v = v32();
-            return Some([small_float(v & 0x7ff, 6), small_float((v >> 11) & 0x7ff, 6), small_float(v >> 22, 5), 1.0]);
+            return Some([
+                small_float(v & 0x7ff, 6),
+                small_float((v >> 11) & 0x7ff, 6),
+                small_float(v >> 22, 5),
+                1.0,
+            ]);
         }
         _ => {}
     }

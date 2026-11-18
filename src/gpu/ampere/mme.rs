@@ -56,7 +56,12 @@ pub struct Mme {
 
 impl Default for Mme {
     fn default() -> Self {
-        Mme { code: vec![0; CODE_WORDS], start: [0; MACRO_COUNT], code_ptr: 0, start_ptr: 0 }
+        Mme {
+            code: vec![0; CODE_WORDS],
+            start: [0; MACRO_COUNT],
+            code_ptr: 0,
+            start_ptr: 0,
+        }
     }
 }
 
@@ -64,7 +69,12 @@ impl Mme {
     /// A stand-in with no instruction RAM, held by the engine while a macro runs. Must not be
     /// loaded or run.
     pub(super) fn detached() -> Self {
-        Mme { code: Vec::new(), start: [0; MACRO_COUNT], code_ptr: 0, start_ptr: 0 }
+        Mme {
+            code: Vec::new(),
+            start: [0; MACRO_COUNT],
+            code_ptr: 0,
+            start_ptr: 0,
+        }
     }
 
     pub fn set_code_pointer(&mut self, v: u32) {
@@ -219,7 +229,11 @@ impl Mme {
             let normal_exit = op != 7 && is_exit;
 
             if exiting {
-                return if next_param > params.len() { Err("macro read past its parameters") } else { Ok(()) };
+                return if next_param > params.len() {
+                    Err("macro read past its parameters")
+                } else {
+                    Ok(())
+                };
             }
             exiting = normal_exit || branch_exit;
             pc = next;
@@ -278,17 +292,20 @@ mod tests {
     fn emits_parameters_to_consecutive_methods() {
         // maddr = r1 (method 0x100, increment 1); emit two fetched parameters.
         let code = [
-            alu(0, 2, 0, 1, 0),           // maddr = r1 + r0
-            alu(0, 3, 2, 0, 0),           // r2 = fetch; emit r0 + r0 = 0
-            alu(0, 4, 0, 2, 0) | EXIT,    // emit r2
-            0,                            // delay slot: dst = fetch into r0 (discarded)
+            alu(0, 2, 0, 1, 0),        // maddr = r1 + r0
+            alu(0, 3, 2, 0, 0),        // r2 = fetch; emit r0 + r0 = 0
+            alu(0, 4, 0, 2, 0) | EXIT, // emit r2
+            0,                         // delay slot: dst = fetch into r0 (discarded)
         ];
         let mut host = Host::default();
         load(&code).run(0, &[0x100 | (1 << 12), 7, 9], &mut host).unwrap();
         assert_eq!(host.writes, vec![(0x100, 0), (0x101, 7)]);
         // Without the third parameter the delay-slot LOAD reads past the end: reported, writes kept.
         let mut host = Host::default();
-        assert_eq!(load(&code).run(0, &[0x100 | (1 << 12), 7], &mut host), Err("macro read past its parameters"));
+        assert_eq!(
+            load(&code).run(0, &[0x100 | (1 << 12), 7], &mut host),
+            Err("macro read past its parameters")
+        );
         assert_eq!(host.writes, vec![(0x100, 0), (0x101, 7)]);
     }
 
@@ -296,14 +313,14 @@ mod tests {
     fn loop_counts_down_with_a_delay_slot() {
         // r2 = r1 (count); loop: r3 += 1; r2 -= 1; branch back while r2 != 0; then emit r3.
         let code = [
-            alu(0, 1, 2, 1, 0),                 // r2 = r1
-            addi(1, 3, 3, 1),                   // r3 += 1
-            addi(1, 2, 2, -1),                  // r2 -= 1
-            branch(true, false, 2, -2),         // if r2 != 0 goto 1 (after the delay slot)
-            addi(1, 4, 4, 1),                   // delay slot: r4 += 1 (runs every pass)
-            addi(2, 0, 0, 0x200),               // maddr = 0x200, increment 0
-            alu(0, 4, 0, 3, 0) | EXIT,          // emit r3
-            alu(0, 4, 0, 4, 0),                 // delay slot of exit: emit r4 to 0x200 again
+            alu(0, 1, 2, 1, 0),         // r2 = r1
+            addi(1, 3, 3, 1),           // r3 += 1
+            addi(1, 2, 2, -1),          // r2 -= 1
+            branch(true, false, 2, -2), // if r2 != 0 goto 1 (after the delay slot)
+            addi(1, 4, 4, 1),           // delay slot: r4 += 1 (runs every pass)
+            addi(2, 0, 0, 0x200),       // maddr = 0x200, increment 0
+            alu(0, 4, 0, 3, 0) | EXIT,  // emit r3
+            alu(0, 4, 0, 4, 0),         // delay slot of exit: emit r4 to 0x200 again
         ];
         let mut host = Host::default();
         load(&code).run(0, &[5], &mut host).unwrap();
@@ -312,15 +329,18 @@ mod tests {
 
     #[test]
     fn state_reads_and_bitfields() {
-        let mut host = Host { regs: vec![0; 0x1000], ..Default::default() };
+        let mut host = Host {
+            regs: vec![0; 0x1000],
+            ..Default::default()
+        };
         host.regs[0x123] = 0xabcd_1234;
         let code = [
-            state(1, 2, 0, 0x123),                                    // r2 = state[0x123]
+            state(1, 2, 0, 0x123), // r2 = state[0x123]
             // MERGE r3 = (r0 & ~(0xff << 8)) | (((r2 >> 16) & 0xff) << 8) = 0xcd00
             (8 << 27) | (8 << 22) | (16 << 17) | (2 << 14) | (3 << 8) | (1 << 4) | 2,
-            addi(2, 0, 0, 0x300),                                     // maddr = 0x300
-            alu(0, 4, 0, 3, 0) | EXIT,                                // emit r3
-            alu(10, 4, 0, 2, 2),                                      // emit r2 & r2
+            addi(2, 0, 0, 0x300),      // maddr = 0x300
+            alu(0, 4, 0, 3, 0) | EXIT, // emit r3
+            alu(10, 4, 0, 2, 2),       // emit r2 & r2
         ];
         load(&code).run(0, &[0], &mut host).unwrap();
         assert_eq!(host.writes, vec![(0x300, 0xcd00), (0x300, 0xabcd_1234)]);
@@ -330,13 +350,13 @@ mod tests {
     fn carry_chains_through_addc() {
         // r2 = 0xffffffff + 1 (carry out), r3 = 0 + 0 + carry = 1.
         let code = [
-            addi(1, 2, 0, -1),           // r2 = 0xffffffff
-            addi(1, 4, 0, 1),            // r4 = 1
-            alu(0, 1, 2, 2, 4),          // r2 = r2 + r4, carry = 1
-            alu(1, 1, 3, 0, 0),          // r3 = 0 + 0 + carry
-            addi(2, 0, 0, 0x10),         // maddr = 0x10
-            alu(0, 4, 0, 3, 0) | EXIT,   // emit r3
-            0x0000_0011,                 // delay slot: ADDI with every field zero (r0 = 0)
+            addi(1, 2, 0, -1),         // r2 = 0xffffffff
+            addi(1, 4, 0, 1),          // r4 = 1
+            alu(0, 1, 2, 2, 4),        // r2 = r2 + r4, carry = 1
+            alu(1, 1, 3, 0, 0),        // r3 = 0 + 0 + carry
+            addi(2, 0, 0, 0x10),       // maddr = 0x10
+            alu(0, 4, 0, 3, 0) | EXIT, // emit r3
+            0x0000_0011,               // delay slot: ADDI with every field zero (r0 = 0)
         ];
         let mut host = Host::default();
         load(&code).run(0, &[0], &mut host).unwrap();
@@ -350,7 +370,7 @@ mod tests {
             branch(false, false, 0, 2) | EXIT, // r0 == 0, branch to instruction 2
             addi(1, 4, 4, 5),                  // delay slot: r4 = 5
             addi(2, 0, 0, 0x200),              // target: maddr = 0x200
-            alu(0, 4, 0, 4, 0) | EXIT,          // emit r4
+            alu(0, 4, 0, 4, 0) | EXIT,         // emit r4
             addi(1, 0, 0, 0),                  // exit delay slot
         ];
         let mut host = Host::default();

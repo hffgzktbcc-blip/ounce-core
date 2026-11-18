@@ -34,11 +34,7 @@ fn rcpc2_decodes_all_variants_and_offsets() {
                     assert_eq!(decoder::decode(raw), expected, "{raw:08x}");
                     for reserved in [1 << 21, 1 << 10, 2 << 10, 3 << 10] {
                         let raw = raw | reserved;
-                        assert_eq!(
-                            decoder::decode(raw),
-                            Instruction::Unimplemented { raw },
-                            "{raw:08x}"
-                        );
+                        assert_eq!(decoder::decode(raw), Instruction::Unimplemented { raw }, "{raw:08x}");
                     }
                 }
             }
@@ -64,8 +60,7 @@ fn execute_case(raw: u32, value: u64, tier: u8) {
     let width = 1usize << size;
     let mut initial = vec![0xa5; 0x1000];
     if opc != 0 {
-        initial[(addr - DATA) as usize..(addr - DATA) as usize + width]
-            .copy_from_slice(&value.to_le_bytes()[..width]);
+        initial[(addr - DATA) as usize..(addr - DATA) as usize + width].copy_from_slice(&value.to_le_bytes()[..width]);
     }
     memory.write_bytes(DATA, &initial).unwrap();
     cpu.regs.x.fill(0x1234_5678_9abc_def0);
@@ -79,8 +74,7 @@ fn execute_case(raw: u32, value: u64, tier: u8) {
     let mut expected_regs = cpu.regs.x;
     if opc == 0 {
         let stored = if rt == 31 { 0 } else { value };
-        initial[(addr - DATA) as usize..(addr - DATA) as usize + width]
-            .copy_from_slice(&stored.to_le_bytes()[..width]);
+        initial[(addr - DATA) as usize..(addr - DATA) as usize + width].copy_from_slice(&stored.to_le_bytes()[..width]);
     } else if rt != 31 {
         let bits = width * 8;
         let unsigned = value & (u64::MAX >> (64 - bits));

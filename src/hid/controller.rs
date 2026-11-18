@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
+use crate::gpu::present::HostKey;
 use crate::mmu::{Memory, MemoryError, Permission};
 use gilrs::{Axis, Button, Event, Gilrs};
-use crate::gpu::present::HostKey;
 
 pub const HID_SHARED_MEM_ADDR: u64 = 0x10000000;
 pub const HID_SHARED_MEM_SIZE: usize = 0x40000; // 256 KB standard Horizon HID pool
@@ -93,11 +93,7 @@ impl HidServer {
 
     /// Initializes and maps the HID shared memory region in virtual memory.
     pub fn init_memory(&self, mmu: &mut Memory) {
-        mmu.map_range(
-            self.shared_mem_addr,
-            HID_SHARED_MEM_SIZE,
-            Permission::READ_WRITE,
-        );
+        mmu.map_range(self.shared_mem_addr, HID_SHARED_MEM_SIZE, Permission::READ_WRITE);
     }
 
     /// Translates host keyboard events into Nintendo Switch controller buttons.

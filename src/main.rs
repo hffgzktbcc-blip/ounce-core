@@ -7,8 +7,8 @@
 #![allow(clippy::identity_op)]
 
 mod audio;
-mod cli;
 mod census;
+mod cli;
 mod cli_flow;
 mod cpu;
 mod diverge;
@@ -27,20 +27,19 @@ mod trace;
 mod trace_summary;
 mod ui;
 
+use audio::HostAudioSink;
 use cli::*;
 use cpu::{Cpu, StepResult};
 use gpu::nvgpu::{
-    NvgpuChannel, SubmissionMode, METHOD_BIND_SHADER_PROGRAM, METHOD_BIND_TEXTURE_2D,
-    METHOD_CLEAR_SURFACE, METHOD_DISPATCH_UPSCALE_2X, METHOD_DRAW_ARRAYS,
-    METHOD_DRAW_TEXTURED_ARRAYS, METHOD_SET_CLEAR_COLOR, METHOD_SET_DEPTH_TEST_ENABLE,
-    METHOD_SET_MVP_MATRIX, METHOD_SET_RENDER_TARGET_ADDR, METHOD_SET_VERTEX_ARRAY_ADDR,
-    METHOD_SET_VIEWPORT_DIMS,
+    METHOD_BIND_SHADER_PROGRAM, METHOD_BIND_TEXTURE_2D, METHOD_CLEAR_SURFACE, METHOD_DISPATCH_UPSCALE_2X,
+    METHOD_DRAW_ARRAYS, METHOD_DRAW_TEXTURED_ARRAYS, METHOD_SET_CLEAR_COLOR, METHOD_SET_DEPTH_TEST_ENABLE,
+    METHOD_SET_MVP_MATRIX, METHOD_SET_RENDER_TARGET_ADDR, METHOD_SET_VERTEX_ARRAY_ADDR, METHOD_SET_VIEWPORT_DIMS,
+    NvgpuChannel, SubmissionMode,
 };
 use gpu::shader::SassOp;
-use audio::HostAudioSink;
-use gpu::{DisplayConfig, DisplayServer, DEFAULT_FRAMEBUFFER_ADDR, SCREEN_HEIGHT, SCREEN_WIDTH};
-use hid::{HidServer, HostGamepadManager, HID_SHARED_MEM_ADDR};
-use kernel::{HorizonKernel, ServiceType, SvcResult, CMIF_IN_MAGIC, DEFAULT_TLS_ADDR, TLS_SIZE};
+use gpu::{DEFAULT_FRAMEBUFFER_ADDR, DisplayConfig, DisplayServer, SCREEN_HEIGHT, SCREEN_WIDTH};
+use hid::{HID_SHARED_MEM_ADDR, HidServer, HostGamepadManager};
+use kernel::{CMIF_IN_MAGIC, DEFAULT_TLS_ADDR, HorizonKernel, ServiceType, SvcResult, TLS_SIZE};
 use loader::BootLoader;
 use mmu::{Memory, Permission};
 use std::env;
@@ -57,7 +56,9 @@ static SDMC_WRITEBACK: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 static RUN_TARGET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 fn main() {
-    if let Ok(path) = std::env::var("OUNCE_REPORT_JSON") && !path.is_empty() {
+    if let Ok(path) = std::env::var("OUNCE_REPORT_JSON")
+        && !path.is_empty()
+    {
         run_report::set_report_path(std::path::PathBuf::from(path));
     }
     if std::env::var("OUNCE_AUDIO").as_deref() == Ok("null") {
@@ -95,7 +96,8 @@ fn main() {
             }
             continue;
         }
-        if arg == "--max-frames" || arg == "--press" || arg.starts_with("--max-frames=") || arg.starts_with("--press=") {
+        if arg == "--max-frames" || arg == "--press" || arg.starts_with("--max-frames=") || arg.starts_with("--press=")
+        {
             let (flag, inline) = match arg.split_once('=') {
                 Some((f, v)) => (f.to_string(), Some(v.to_string())),
                 None => (arg.clone(), None),
@@ -132,14 +134,18 @@ fn main() {
         if let Some(value) = arg.strip_prefix("--cpu=") {
             match cpu::CpuTier::parse(value) {
                 Some(tier) => cpu::CpuTier::set_cli_override(tier),
-                None => eprintln!("[CPU] Unknown --cpu value '{value}' (expected interpreter, tier3, tier4 or native); ignoring."),
+                None => eprintln!(
+                    "[CPU] Unknown --cpu value '{value}' (expected interpreter, tier3, tier4 or native); ignoring."
+                ),
             }
             continue;
         }
         match arg.strip_prefix("--present=") {
             Some(value) => match gpu::BackendKind::parse(value) {
                 Some(kind) => gpu::BackendKind::set_cli_override(kind),
-                None => eprintln!("[Display] Unknown --present value '{value}' (expected auto, gpu, minifb or headless); ignoring."),
+                None => eprintln!(
+                    "[Display] Unknown --present value '{value}' (expected auto, gpu, minifb or headless); ignoring."
+                ),
             },
             None => args.push(arg),
         }
@@ -205,7 +211,11 @@ fn main() {
         "run" | "run-nro" => {
             let nro_only = args[1] == "run-nro";
             if args.len() < 3 {
-                let what = if nro_only { "the path of a homebrew .nro file" } else { "the path of a .nro, .nso or loose folder" };
+                let what = if nro_only {
+                    "the path of a homebrew .nro file"
+                } else {
+                    "the path of a .nro, .nso or loose folder"
+                };
                 eprint!("{}", cli_flow::missing_path(&args[1], what));
                 std::process::exit(2);
             }
@@ -247,7 +257,10 @@ fn main() {
         }
         "inspect" => {
             if args.len() < 3 {
-                eprint!("{}", cli_flow::missing_path("inspect", "the path of a .nro, .nso or loose folder"));
+                eprint!(
+                    "{}",
+                    cli_flow::missing_path("inspect", "the path of a .nro, .nso or loose folder")
+                );
                 std::process::exit(2);
             }
             print_banner();

@@ -14,11 +14,31 @@ pub struct Permission {
 }
 
 impl Permission {
-    pub const NONE: Self = Self { read: false, write: false, execute: false };
-    pub const READ_ONLY: Self = Self { read: true, write: false, execute: false };
-    pub const READ_WRITE: Self = Self { read: true, write: true, execute: false };
-    pub const READ_EXECUTE: Self = Self { read: true, write: false, execute: true };
-    pub const READ_WRITE_EXECUTE: Self = Self { read: true, write: true, execute: true };
+    pub const NONE: Self = Self {
+        read: false,
+        write: false,
+        execute: false,
+    };
+    pub const READ_ONLY: Self = Self {
+        read: true,
+        write: false,
+        execute: false,
+    };
+    pub const READ_WRITE: Self = Self {
+        read: true,
+        write: true,
+        execute: false,
+    };
+    pub const READ_EXECUTE: Self = Self {
+        read: true,
+        write: false,
+        execute: true,
+    };
+    pub const READ_WRITE_EXECUTE: Self = Self {
+        read: true,
+        write: true,
+        execute: true,
+    };
 }
 
 #[derive(Debug, Clone)]
@@ -118,7 +138,10 @@ impl Memory {
     /// Memory whose page bytes live in `arena` (see the `arena` field).
     #[cfg(feature = "nce")]
     pub fn with_arena(arena: ounce_nce::Arena) -> Self {
-        Self { arena: Some(arena), ..Self::new() }
+        Self {
+            arena: Some(arena),
+            ..Self::new()
+        }
     }
 
     #[cfg(feature = "nce")]
@@ -275,7 +298,9 @@ impl Memory {
     #[allow(clippy::needless_update)]
     pub(crate) fn fault_snapshot(&self) -> Option<Self> {
         #[cfg(feature = "nce")]
-        if self.arena.is_some() { return None; }
+        if self.arena.is_some() {
+            return None;
+        }
         Some(Self {
             pages: self.pages.clone(),
             guarded_pages: self.guarded_pages,
@@ -289,7 +314,9 @@ impl Memory {
     /// Commit missing pages and change permissions without discarding existing bytes.
     pub fn commit_range(&mut self, start: u64, size: usize, perm: Permission) {
         for addr in (start..start + size as u64).step_by(PAGE_SIZE) {
-            if !self.is_mapped(addr) { self.map_range(addr, PAGE_SIZE, perm); }
+            if !self.is_mapped(addr) {
+                self.map_range(addr, PAGE_SIZE, perm);
+            }
         }
         self.protect_range(start, size, perm);
     }
@@ -299,11 +326,16 @@ impl Memory {
         let end = start.saturating_add(size as u64);
         for (&idx, page) in &mut self.pages {
             if idx << 12 >= start && idx << 12 < end {
-                if page.holds_code { self.code_write_gen += 1; page.code_write_gen = self.code_write_gen; }
+                if page.holds_code {
+                    self.code_write_gen += 1;
+                    page.code_write_gen = self.code_write_gen;
+                }
                 page.perm = perm;
             }
         }
-        if perm.execute { self.exec_map_gen += 1; }
+        if perm.execute {
+            self.exec_map_gen += 1;
+        }
     }
 
     /// Checks if a virtual address is mapped.
@@ -321,7 +353,8 @@ impl Memory {
             {
                 let mut bytes = vec![0u8; PAGE_SIZE];
                 let (from, to) = (src_page_idx << 12, dst_page_idx << 12);
-                let moved = arena.read(from, &mut bytes)
+                let moved = arena
+                    .read(from, &mut bytes)
                     .and_then(|_| arena.commit(to, PAGE_SIZE as u64))
                     .and_then(|_| arena.write(to, &bytes));
                 if let Err(error) = moved {
@@ -376,7 +409,11 @@ impl Memory {
         let first = base_addr >> 12;
         // A range wider than the address space holds pages visits the mapped pages, not every index.
         let doomed: Vec<u64> = if last - first >= self.pages.len() as u64 {
-            self.pages.keys().copied().filter(|i| (first..=last).contains(i)).collect()
+            self.pages
+                .keys()
+                .copied()
+                .filter(|i| (first..=last).contains(i))
+                .collect()
         } else {
             (first..=last).collect()
         };
@@ -414,7 +451,12 @@ impl Memory {
             (lo << 12, hi << 12, true)
         } else {
             let below = self.pages.keys().filter(|&&p| p < page).max().map_or(0, |p| p + 1);
-            let above = self.pages.keys().filter(|&&p| p > page).min().map_or(1u64 << 36, |&p| p);
+            let above = self
+                .pages
+                .keys()
+                .filter(|&&p| p > page)
+                .min()
+                .map_or(1u64 << 36, |&p| p);
             (below << 12, above << 12, false)
         }
     }
@@ -460,7 +502,9 @@ impl Memory {
     /// the ordinary accessors: its Page::data is metadata storage, not the guest bytes.
     pub(crate) fn direct_page(&mut self, page_num: u64) -> Option<&mut Page> {
         #[cfg(feature = "nce")]
-        if self.arena.is_some() { return None; }
+        if self.arena.is_some() {
+            return None;
+        }
         self.pages.get_mut(&page_num)
     }
 
@@ -483,9 +527,10 @@ impl Memory {
             let page_offset = (curr_addr as usize) & (PAGE_SIZE - 1);
             let bytes_in_page = (PAGE_SIZE - page_offset).min(buf.len() - offset);
 
-            let page = self.pages.get(&page_idx).ok_or(MemoryError::Unmapped {
-                addr: curr_addr,
-            })?;
+            let page = self
+                .pages
+                .get(&page_idx)
+                .ok_or(MemoryError::Unmapped { addr: curr_addr })?;
 
             if !page.perm.read {
                 return Err(MemoryError::PermissionDenied {
@@ -502,7 +547,9 @@ impl Memory {
             }
 
             offset += bytes_in_page;
-            if offset < buf.len() { curr_addr += bytes_in_page as u64; }
+            if offset < buf.len() {
+                curr_addr += bytes_in_page as u64;
+            }
         }
 
         Ok(())
@@ -520,11 +567,20 @@ impl Memory {
             let mut next = addr;
             let end = addr + (data.len() - 1) as u64;
             loop {
-                let page = self.pages.get(&(next >> 12)).ok_or(MemoryError::Unmapped { addr: next })?;
+                let page = self
+                    .pages
+                    .get(&(next >> 12))
+                    .ok_or(MemoryError::Unmapped { addr: next })?;
                 if !page.perm.write {
-                    return Err(MemoryError::PermissionDenied { addr: next, required: "WRITE", actual: page.perm });
+                    return Err(MemoryError::PermissionDenied {
+                        addr: next,
+                        required: "WRITE",
+                        actual: page.perm,
+                    });
                 }
-                if next >> 12 == end >> 12 { break; }
+                if next >> 12 == end >> 12 {
+                    break;
+                }
                 next = (next | (PAGE_SIZE as u64 - 1)) + 1;
             }
         }
@@ -536,9 +592,10 @@ impl Memory {
             let page_offset = (curr_addr as usize) & (PAGE_SIZE - 1);
             let bytes_in_page = (PAGE_SIZE - page_offset).min(data.len() - offset);
 
-            let page = self.pages.get_mut(&page_idx).ok_or(MemoryError::Unmapped {
-                addr: curr_addr,
-            })?;
+            let page = self
+                .pages
+                .get_mut(&page_idx)
+                .ok_or(MemoryError::Unmapped { addr: curr_addr })?;
 
             if !page.perm.write {
                 return Err(MemoryError::PermissionDenied {
@@ -552,7 +609,8 @@ impl Memory {
             // code invalidation share one page-table lookup, including for ordinary RAM.
             #[cfg(feature = "nce")]
             if let Some(arena) = &mut self.arena {
-                arena.write(curr_addr, &data[offset..offset + bytes_in_page])
+                arena
+                    .write(curr_addr, &data[offset..offset + bytes_in_page])
                     .map_err(|_| MemoryError::Unmapped { addr: curr_addr })?;
             }
             #[cfg(feature = "nce")]
@@ -569,7 +627,9 @@ impl Memory {
             }
 
             offset += bytes_in_page;
-            if offset < data.len() { curr_addr += bytes_in_page as u64; }
+            if offset < data.len() {
+                curr_addr += bytes_in_page as u64;
+            }
         }
 
         Ok(())
@@ -793,10 +853,7 @@ mod tests {
         memory.map_range(0x1000, PAGE_SIZE, Permission::READ_WRITE);
         memory.write_u8(0x1000, 42).unwrap();
 
-        for (base_addr, size) in [
-            (u64::MAX, 2),
-            (u64::MAX - PAGE_SIZE as u64 + 1, PAGE_SIZE + 1),
-        ] {
+        for (base_addr, size) in [(u64::MAX, 2), (u64::MAX - PAGE_SIZE as u64 + 1, PAGE_SIZE + 1)] {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 memory.map_range(base_addr, size, Permission::READ_WRITE);
             }));
@@ -820,7 +877,9 @@ mod fault_atomicity_tests {
             mem.write_u64(0x1ff8, u64::MAX).unwrap();
             mem.mark_code_range(0x1000, 0x2000);
             let generation = mem.code_write_gen();
-            if let Some(perm) = perm { mem.map_range(0x2000, PAGE_SIZE, perm); }
+            if let Some(perm) = perm {
+                mem.map_range(0x2000, PAGE_SIZE, perm);
+            }
             assert!(mem.write_u64(0x1ffc, 0).is_err());
             assert_eq!(mem.read_u64(0x1ff8).unwrap(), u64::MAX);
             assert_eq!(mem.code_write_gen(), generation);

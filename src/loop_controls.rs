@@ -47,7 +47,9 @@ pub fn parse_press(spec: &str) -> Result<Press, String> {
         .find(|(n, _)| n.eq_ignore_ascii_case(name))
         .map(|(_, b)| *b)
         .ok_or_else(|| format!("unknown button '{name}' (valid: {})", button_list()))?;
-    let frame = frame.parse::<usize>().map_err(|_| format!("invalid frame '{frame}' in --press '{spec}'"))?;
+    let frame = frame
+        .parse::<usize>()
+        .map_err(|_| format!("invalid frame '{frame}' in --press '{spec}'"))?;
     Ok(Press { button, frame })
 }
 
@@ -97,7 +99,13 @@ mod tests {
 
     #[test]
     fn parses_press() {
-        assert_eq!(parse_press("PLUS@60"), Ok(Press { button: NpadButton::Plus, frame: 60 }));
+        assert_eq!(
+            parse_press("PLUS@60"),
+            Ok(Press {
+                button: NpadButton::Plus,
+                frame: 60
+            })
+        );
         assert_eq!(parse_press("dup@0").unwrap().button, NpadButton::DUp);
     }
 

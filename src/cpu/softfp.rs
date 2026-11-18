@@ -65,7 +65,11 @@ pub struct Env {
 }
 
 impl Env {
-    pub const DEFAULT: Env = Env { round: Round::Nearest, fz: false, dn: false };
+    pub const DEFAULT: Env = Env {
+        round: Round::Nearest,
+        fz: false,
+        dn: false,
+    };
 
     pub fn from_fpcr(fpcr: u32) -> Env {
         let round = match (fpcr >> FPCR_RMODE_SHIFT) & 3 {
@@ -74,7 +78,11 @@ impl Env {
             2 => Round::Down,
             _ => Round::Zero,
         };
-        Env { round, fz: fpcr & FPCR_FZ != 0, dn: fpcr & FPCR_DN != 0 }
+        Env {
+            round,
+            fz: fpcr & FPCR_FZ != 0,
+            dn: fpcr & FPCR_DN != 0,
+        }
     }
 
     pub fn with_round(self, round: Round) -> Env {
@@ -171,7 +179,11 @@ fn unpack(f: Fmt, x: u64) -> Fin {
         (frac | (1 << f.mbits), field as i32 - f.bias() - f.mbits as i32)
     };
     let lz = m.leading_zeros();
-    Fin { sign: f.sign(x), mant: m << lz, exp: e - lz as i32 }
+    Fin {
+        sign: f.sign(x),
+        mant: m << lz,
+        exp: e - lz as i32,
+    }
 }
 
 /// FPUnpack's flush: with FZ a denormal operand (single or double) reads as a zero of the same sign.
@@ -243,7 +255,11 @@ fn round_pack(f: Fmt, env: Env, sign: bool, e: i32, m: u128, sticky: bool) -> u6
 
 /// Round-to-odd forces the fraction LSB when the result is inexact and finite.
 fn odd_lsb(env: Env, bits: u64, inexact: bool) -> u64 {
-    if env.round == Round::Odd && inexact { bits | 1 } else { bits }
+    if env.round == Round::Odd && inexact {
+        bits | 1
+    } else {
+        bits
+    }
 }
 
 fn overflow(f: Fmt, env: Env, sign: bool) -> u64 {
@@ -274,14 +290,22 @@ fn nan_result(f: Fmt, env: Env, r: u64) -> u64 {
 
 /// Sign of an exact-zero sum of opposite-signed operands or of two zeros: +0, or -0 when rounding down.
 fn exact_zero_sum(f: Fmt, env: Env, sa: bool, sb: bool) -> u64 {
-    if sa == sb { f.zero(sa) } else { f.zero(env.round == Round::Down) }
+    if sa == sb {
+        f.zero(sa)
+    } else {
+        f.zero(env.round == Round::Down)
+    }
 }
 
 /// Exact sum of two non-zero magnitudes, both with their top bit at bit 126 (`value = m * 2^e`); rounds it.
 /// `sticky_b` marks that `b` is only a lower bound of the true addend (never used by callers today, kept for clarity).
 fn add_aligned(f: Fmt, env: Env, (sa, ma, ea): (bool, u128, i32), (sb, mb, eb): (bool, u128, i32)) -> u64 {
     // order by magnitude: x is the larger
-    let (x, y) = if ea > eb || (ea == eb && ma >= mb) { ((sa, ma, ea), (sb, mb, eb)) } else { ((sb, mb, eb), (sa, ma, ea)) };
+    let (x, y) = if ea > eb || (ea == eb && ma >= mb) {
+        ((sa, ma, ea), (sb, mb, eb))
+    } else {
+        ((sb, mb, eb), (sa, ma, ea))
+    };
     let d = (x.2 - y.2) as u32;
     let (small, sticky) = if d == 0 {
         (y.1, false)
@@ -474,12 +498,20 @@ pub fn rsqrt_step(f: Fmt, env: Env, n: u64, m: u64) -> u64 {
     }
     // halve `n` first so a product near the overflow edge still lands in range; exact unless `n` is tiny, where the
     // product cannot overflow and halving the fused result is exact (3 - n*m is never within 2^-22 of zero but non-zero)
-    let half_n = if f.field(n) > 1 && f.field(n) != f.max_field() { n - (1 << f.mbits) } else { n };
+    let half_n = if f.field(n) > 1 && f.field(n) != f.max_field() {
+        n - (1 << f.mbits)
+    } else {
+        n
+    };
     if half_n != n {
         return fma(f, env, half_n, m, f.one_and_half());
     }
     let r = fma(f, env, n, m, f.three());
-    if f.is_nan(r) || f.is_inf(r) || f.field(r) == 0 && !f.is_zero(r) { r } else { half_value(f, r) }
+    if f.is_nan(r) || f.is_inf(r) || f.field(r) == 0 && !f.is_zero(r) {
+        r
+    } else {
+        half_value(f, r)
+    }
 }
 
 /// Exact halving of a finite normal or zero value whose result stays normal; callers guarantee that.
@@ -555,7 +587,11 @@ pub fn convert(from: Fmt, to: Fmt, env: Env, a: u64) -> u64 {
             return to.default_nan();
         }
         let frac = from.frac(a) | from.quiet_bit();
-        let frac = if to.mbits >= from.mbits { frac << (to.mbits - from.mbits) } else { frac >> (from.mbits - to.mbits) };
+        let frac = if to.mbits >= from.mbits {
+            frac << (to.mbits - from.mbits)
+        } else {
+            frac >> (from.mbits - to.mbits)
+        };
         return (to.max_field() << to.mbits) | frac | to.zero(from.sign(a));
     }
     if from.is_inf(a) {
@@ -608,7 +644,11 @@ pub fn double_to_int32_js(env: Env, a: u64) -> (u32, bool) {
     }
     // |value| = mant * 2^e with an integer mantissa (denormals have no implicit bit and the smallest exponent)
     let field = F64.field(a) as i32;
-    let (mant, e) = if field == 0 { (F64.frac(a), -1074) } else { (F64.frac(a) | 1 << 52, field - 1075) };
+    let (mant, e) = if field == 0 {
+        (F64.frac(a), -1074)
+    } else {
+        (F64.frac(a) | 1 << 52, field - 1075)
+    };
     let neg = F64.sign(a);
     let (mag, inexact) = if e >= 64 {
         (u128::MAX << 64, false) // at least 2^116: out of range, and a multiple of 2^32
@@ -671,7 +711,7 @@ mod tests {
         fn f64_bits(&mut self) -> u64 {
             let r = self.next();
             match r % 8 {
-                0 => r & 0x800f_ffff_ffff_ffff,                  // denormal / zero
+                0 => r & 0x800f_ffff_ffff_ffff,                   // denormal / zero
                 1 => (r & 0x800f_ffff_ffff_ffff) | (0x3ff << 52), // near 1
                 2 => (r & 0x800f_ffff_ffff_ffff) | ((r >> 20 & 0x7ff) << 52),
                 3 => (r & 0x8000_0000_0000_0000) | (0x7fe << 52) | (r & 0xf_ffff_ffff_ffff), // huge
@@ -692,10 +732,18 @@ mod tests {
     }
 
     fn same_f64(a: f64, b: u64) -> bool {
-        if a.is_nan() { f64::from_bits(b).is_nan() } else { a.to_bits() == b }
+        if a.is_nan() {
+            f64::from_bits(b).is_nan()
+        } else {
+            a.to_bits() == b
+        }
     }
     fn same_f32(a: f32, b: u64) -> bool {
-        if a.is_nan() { f32::from_bits(b as u32).is_nan() } else { a.to_bits() == b as u32 }
+        if a.is_nan() {
+            f32::from_bits(b as u32).is_nan()
+        } else {
+            a.to_bits() == b as u32
+        }
     }
 
     /// Round-to-nearest soft results must equal the host FPU bit for bit (NaNs compared as NaNs).
@@ -706,11 +754,26 @@ mod tests {
         for _ in 0..400_000 {
             let (a, b, c) = (rng.f64_bits(), rng.f64_bits(), rng.f64_bits());
             let (fa, fb, fc) = (f64::from_bits(a), f64::from_bits(b), f64::from_bits(c));
-            assert!(same_f64(fa + fb, binop(F64, env, BinOp::Add, a, b)), "add {a:#x} {b:#x}");
-            assert!(same_f64(fa - fb, binop(F64, env, BinOp::Sub, a, b)), "sub {a:#x} {b:#x}");
-            assert!(same_f64(fa * fb, binop(F64, env, BinOp::Mul, a, b)), "mul {a:#x} {b:#x}");
-            assert!(same_f64(fa / fb, binop(F64, env, BinOp::Div, a, b)), "div {a:#x} {b:#x}");
-            assert!(same_f64(fa.mul_add(fb, fc), fma(F64, env, a, b, c)), "fma {a:#x} {b:#x} {c:#x}");
+            assert!(
+                same_f64(fa + fb, binop(F64, env, BinOp::Add, a, b)),
+                "add {a:#x} {b:#x}"
+            );
+            assert!(
+                same_f64(fa - fb, binop(F64, env, BinOp::Sub, a, b)),
+                "sub {a:#x} {b:#x}"
+            );
+            assert!(
+                same_f64(fa * fb, binop(F64, env, BinOp::Mul, a, b)),
+                "mul {a:#x} {b:#x}"
+            );
+            assert!(
+                same_f64(fa / fb, binop(F64, env, BinOp::Div, a, b)),
+                "div {a:#x} {b:#x}"
+            );
+            assert!(
+                same_f64(fa.mul_add(fb, fc), fma(F64, env, a, b, c)),
+                "fma {a:#x} {b:#x} {c:#x}"
+            );
             assert!(same_f64(fa.sqrt(), sqrt(F64, env, a)), "sqrt {a:#x}");
         }
     }
@@ -723,11 +786,26 @@ mod tests {
             let (a, b, c) = (rng.f32_bits(), rng.f32_bits(), rng.f32_bits());
             let (fa, fb, fc) = (f32::from_bits(a), f32::from_bits(b), f32::from_bits(c));
             let (a, b, c) = (a as u64, b as u64, c as u64);
-            assert!(same_f32(fa + fb, binop(F32, env, BinOp::Add, a, b)), "add {a:#x} {b:#x}");
-            assert!(same_f32(fa - fb, binop(F32, env, BinOp::Sub, a, b)), "sub {a:#x} {b:#x}");
-            assert!(same_f32(fa * fb, binop(F32, env, BinOp::Mul, a, b)), "mul {a:#x} {b:#x}");
-            assert!(same_f32(fa / fb, binop(F32, env, BinOp::Div, a, b)), "div {a:#x} {b:#x}");
-            assert!(same_f32(fa.mul_add(fb, fc), fma(F32, env, a, b, c)), "fma {a:#x} {b:#x} {c:#x}");
+            assert!(
+                same_f32(fa + fb, binop(F32, env, BinOp::Add, a, b)),
+                "add {a:#x} {b:#x}"
+            );
+            assert!(
+                same_f32(fa - fb, binop(F32, env, BinOp::Sub, a, b)),
+                "sub {a:#x} {b:#x}"
+            );
+            assert!(
+                same_f32(fa * fb, binop(F32, env, BinOp::Mul, a, b)),
+                "mul {a:#x} {b:#x}"
+            );
+            assert!(
+                same_f32(fa / fb, binop(F32, env, BinOp::Div, a, b)),
+                "div {a:#x} {b:#x}"
+            );
+            assert!(
+                same_f32(fa.mul_add(fb, fc), fma(F32, env, a, b, c)),
+                "fma {a:#x} {b:#x} {c:#x}"
+            );
             assert!(same_f32(fa.sqrt(), sqrt(F32, env, a)), "sqrt {a:#x}");
         }
     }
@@ -737,9 +815,15 @@ mod tests {
         let mut rng = Rng(0xdead_beef_cafe_f00d);
         for _ in 0..200_000 {
             let a = rng.f64_bits();
-            assert!(same_f32(f64::from_bits(a) as f32, convert(F64, F32, Env::DEFAULT, a)), "narrow {a:#x}");
+            assert!(
+                same_f32(f64::from_bits(a) as f32, convert(F64, F32, Env::DEFAULT, a)),
+                "narrow {a:#x}"
+            );
             let s = rng.f32_bits();
-            assert!(same_f64(f32::from_bits(s) as f64, convert(F32, F64, Env::DEFAULT, s as u64)), "widen {s:#x}");
+            assert!(
+                same_f64(f32::from_bits(s) as f64, convert(F32, F64, Env::DEFAULT, s as u64)),
+                "widen {s:#x}"
+            );
         }
     }
 
@@ -750,10 +834,18 @@ mod tests {
             let v = (rng.next() >> (rng.next() % 64)) as i64;
             let (neg, mag) = (v < 0, v.unsigned_abs());
             assert_eq!(int_to_fp(F64, Env::DEFAULT, neg, mag, 0), (v as f64).to_bits(), "{v}");
-            assert_eq!(int_to_fp(F32, Env::DEFAULT, neg, mag, 0), (v as f32).to_bits() as u64, "{v}");
+            assert_eq!(
+                int_to_fp(F32, Env::DEFAULT, neg, mag, 0),
+                (v as f32).to_bits() as u64,
+                "{v}"
+            );
             let u = v as u64;
             assert_eq!(int_to_fp(F64, Env::DEFAULT, false, u, 0), (u as f64).to_bits(), "{u}");
-            assert_eq!(int_to_fp(F32, Env::DEFAULT, false, u, 0), (u as f32).to_bits() as u64, "{u}");
+            assert_eq!(
+                int_to_fp(F32, Env::DEFAULT, false, u, 0),
+                (u as f32).to_bits() as u64,
+                "{u}"
+            );
         }
     }
 
@@ -762,7 +854,11 @@ mod tests {
     #[test]
     fn directed_modes_bracket_nearest() {
         let mut rng = Rng(0x0bad_5eed_1234_5678);
-        let mk = |round| Env { round, fz: false, dn: false };
+        let mk = |round| Env {
+            round,
+            fz: false,
+            dn: false,
+        };
         let ordered = |x: u64, y: u64| -> bool {
             // x <= y as f64 values (finite)
             f64::from_bits(x) <= f64::from_bits(y)
@@ -779,14 +875,22 @@ mod tests {
                     sqrt(F64, e, a),
                 ]
             };
-            let (rn, rp, rm, rz) = (results(Round::Nearest), results(Round::Up), results(Round::Down), results(Round::Zero));
+            let (rn, rp, rm, rz) = (
+                results(Round::Nearest),
+                results(Round::Up),
+                results(Round::Down),
+                results(Round::Zero),
+            );
             for i in 0..5 {
                 let (n, p, m, z) = (rn[i], rp[i], rm[i], rz[i]);
                 if f64::from_bits(n).is_nan() {
                     assert!(f64::from_bits(p).is_nan() && f64::from_bits(m).is_nan() && f64::from_bits(z).is_nan());
                     continue;
                 }
-                assert!(ordered(m, n) && ordered(n, p), "op {i} {a:#x} {b:#x} {c:#x}: {m:#x} {n:#x} {p:#x}");
+                assert!(
+                    ordered(m, n) && ordered(n, p),
+                    "op {i} {a:#x} {b:#x} {c:#x}: {m:#x} {n:#x} {p:#x}"
+                );
                 // a result strictly between would have RM < RP; adjacent doubles differ by one ulp
                 if m != p {
                     let (lo, hi) = (f64::from_bits(m), f64::from_bits(p));
@@ -814,7 +918,11 @@ mod tests {
     #[test]
     fn exception_flags() {
         let d = Env::DEFAULT;
-        let s = |op, a, b| flags_of(|| { binop(F32, d, op, a, b); });
+        let s = |op, a, b| {
+            flags_of(|| {
+                binop(F32, d, op, a, b);
+            })
+        };
         let (one, two, big, tiny, den) = (0x3f80_0000u64, 0x4000_0000u64, 0x7f7f_ffffu64, 0x0080_0000u64, 1u64);
         assert_eq!(s(BinOp::Add, one, one), 0, "exact");
         assert_eq!(s(BinOp::Add, one, 0x3380_0000), IXC, "1 + 2^-24 is inexact");
@@ -826,22 +934,90 @@ mod tests {
         assert_eq!(s(BinOp::Div, one, 0), DZC, "1 / 0");
         assert_eq!(s(BinOp::Div, 0x7f80_0000, 0), 0, "inf / 0 is exactly inf");
         assert_eq!(s(BinOp::Mul, big, two), OFC | IXC, "overflow is also inexact");
-        assert_eq!(s(BinOp::Mul, tiny, 0x3f00_0000), 0, "min normal / 2 is an exact denormal: no UFC");
+        assert_eq!(
+            s(BinOp::Mul, tiny, 0x3f00_0000),
+            0,
+            "min normal / 2 is an exact denormal: no UFC"
+        );
         assert_eq!(s(BinOp::Mul, tiny, 0x3eaa_aaab), UFC | IXC, "tiny and inexact");
         assert_eq!(s(BinOp::Add, 0x7fa0_0000, one), IOC, "signalling NaN operand");
         assert_eq!(s(BinOp::Add, 0x7fc0_0000, one), 0, "quiet NaN operand");
         let fz = Env { fz: true, ..d };
-        assert_eq!(flags_of(|| { binop(F32, fz, BinOp::Add, den, one); }), IDC, "FZ: denormal input is IDC, 1 + 0 exact");
-        assert_eq!(flags_of(|| { binop(F32, fz, BinOp::Mul, tiny, 0x3f00_0000); }), UFC, "FZ: tiny result flushed, UFC without IXC");
-        assert_eq!(flags_of(|| { sqrt(F32, d, 0xbf80_0000); }), IOC, "sqrt(-1)");
-        assert_eq!(flags_of(|| { sqrt(F32, d, 0x4000_0000); }), IXC, "sqrt(2)");
-        assert_eq!(flags_of(|| { sqrt(F32, d, 0x8000_0000); }), 0, "sqrt(-0)");
-        assert_eq!(flags_of(|| { fma(F32, d, 0, 0x7f80_0000, 0x7fc0_0000); }), IOC, "0 * inf + qNaN");
-        assert_eq!(flags_of(|| { convert(F64, F32, d, 0x47f0_0000_0000_0000); }), OFC | IXC, "double to single overflow");
-        assert_eq!(flags_of(|| { convert(F32, F64, d, 0x7fa0_0000); }), IOC, "widening an sNaN");
-        assert_eq!(flags_of(|| { convert(F32, F64, d, 0x7fc0_0000); }), 0);
-        assert_eq!(flags_of(|| { int_to_fp(F32, d, false, (1 << 24) + 1, 0); }), IXC, "2^24+1 is not a single");
-        assert_eq!(flags_of(|| { int_to_fp(F32, d, false, 1 << 24, 0); }), 0);
+        assert_eq!(
+            flags_of(|| {
+                binop(F32, fz, BinOp::Add, den, one);
+            }),
+            IDC,
+            "FZ: denormal input is IDC, 1 + 0 exact"
+        );
+        assert_eq!(
+            flags_of(|| {
+                binop(F32, fz, BinOp::Mul, tiny, 0x3f00_0000);
+            }),
+            UFC,
+            "FZ: tiny result flushed, UFC without IXC"
+        );
+        assert_eq!(
+            flags_of(|| {
+                sqrt(F32, d, 0xbf80_0000);
+            }),
+            IOC,
+            "sqrt(-1)"
+        );
+        assert_eq!(
+            flags_of(|| {
+                sqrt(F32, d, 0x4000_0000);
+            }),
+            IXC,
+            "sqrt(2)"
+        );
+        assert_eq!(
+            flags_of(|| {
+                sqrt(F32, d, 0x8000_0000);
+            }),
+            0,
+            "sqrt(-0)"
+        );
+        assert_eq!(
+            flags_of(|| {
+                fma(F32, d, 0, 0x7f80_0000, 0x7fc0_0000);
+            }),
+            IOC,
+            "0 * inf + qNaN"
+        );
+        assert_eq!(
+            flags_of(|| {
+                convert(F64, F32, d, 0x47f0_0000_0000_0000);
+            }),
+            OFC | IXC,
+            "double to single overflow"
+        );
+        assert_eq!(
+            flags_of(|| {
+                convert(F32, F64, d, 0x7fa0_0000);
+            }),
+            IOC,
+            "widening an sNaN"
+        );
+        assert_eq!(
+            flags_of(|| {
+                convert(F32, F64, d, 0x7fc0_0000);
+            }),
+            0
+        );
+        assert_eq!(
+            flags_of(|| {
+                int_to_fp(F32, d, false, (1 << 24) + 1, 0);
+            }),
+            IXC,
+            "2^24+1 is not a single"
+        );
+        assert_eq!(
+            flags_of(|| {
+                int_to_fp(F32, d, false, 1 << 24, 0);
+            }),
+            0
+        );
         // flags accumulate until taken
         take_flags();
         binop(F32, d, BinOp::Div, one, 0);
@@ -852,15 +1028,27 @@ mod tests {
 
     #[test]
     fn conversion_flags() {
-        let to_int = |v: f64, rounded: f64, signed, is64| flags_of(|| raise_to_int(F64, v.to_bits(), v, rounded, signed, is64));
+        let to_int =
+            |v: f64, rounded: f64, signed, is64| flags_of(|| raise_to_int(F64, v.to_bits(), v, rounded, signed, is64));
         assert_eq!(to_int(2.0, 2.0, true, false), 0);
         assert_eq!(to_int(1.5, 2.0, true, false), IXC);
         assert_eq!(to_int(2147483648.0, 2147483648.0, true, false), IOC, "out of i32 range");
-        assert_eq!(to_int(-2147483648.0, -2147483648.0, true, false), 0, "i32::MIN is in range");
-        assert_eq!(to_int(-0.5, -0.0, false, true), IXC, "rounds to zero: in range for unsigned, inexact");
+        assert_eq!(
+            to_int(-2147483648.0, -2147483648.0, true, false),
+            0,
+            "i32::MIN is in range"
+        );
+        assert_eq!(
+            to_int(-0.5, -0.0, false, true),
+            IXC,
+            "rounds to zero: in range for unsigned, inexact"
+        );
         assert_eq!(to_int(-1.0, -1.0, false, false), IOC, "negative to unsigned");
         assert_eq!(to_int(f64::INFINITY, f64::INFINITY, true, true), IOC);
-        assert_eq!(flags_of(|| raise_to_int(F64, f64::NAN.to_bits(), f64::NAN, f64::NAN, true, true)), IOC);
+        assert_eq!(
+            flags_of(|| raise_to_int(F64, f64::NAN.to_bits(), f64::NAN, f64::NAN, true, true)),
+            IOC
+        );
         // compares: FCMP only for signalling NaNs, FCMPE for any NaN
         let (snan, qnan) = (0x7ff0_0000_0000_0001u64, 0x7ff8_0000_0000_0000u64);
         assert_eq!(flags_of(|| raise_compare(F64, qnan, 0, false)), 0);
@@ -874,21 +1062,50 @@ mod tests {
 
     #[test]
     fn issue_363_repros() {
-        let fz = Env { round: Round::Nearest, fz: true, dn: false };
+        let fz = Env {
+            round: Round::Nearest,
+            fz: true,
+            dn: false,
+        };
         // FMUL S: 1.0 * denormal, FZ=1 -> +0 (and the denormal is flushed as an input)
         assert_eq!(binop(F32, fz, BinOp::Mul, 0x3f80_0000, 1), 0);
         // FADD S with DN=1: 0 + qNaN(payload) -> positive default NaN
-        let dn = Env { round: Round::Nearest, fz: false, dn: true };
+        let dn = Env {
+            round: Round::Nearest,
+            fz: false,
+            dn: true,
+        };
         assert_eq!(binop(F32, dn, BinOp::Add, 0, 0xffc0_0001), 0x7fc0_0000);
         // FADD S with RMode=RP: 1.0 + 2^-149 rounds up
-        let rp = Env { round: Round::Up, fz: false, dn: false };
+        let rp = Env {
+            round: Round::Up,
+            fz: false,
+            dn: false,
+        };
         assert_eq!(binop(F32, rp, BinOp::Add, 0x3f80_0000, 1), 0x3f80_0001);
         // overflow honours the mode
-        assert_eq!(binop(F32, Env { round: Round::Zero, fz: false, dn: false }, BinOp::Mul, 0x7f7f_ffff, 0x4000_0000), 0x7f7f_ffff);
+        assert_eq!(
+            binop(
+                F32,
+                Env {
+                    round: Round::Zero,
+                    fz: false,
+                    dn: false
+                },
+                BinOp::Mul,
+                0x7f7f_ffff,
+                0x4000_0000
+            ),
+            0x7f7f_ffff
+        );
         assert_eq!(binop(F32, rp, BinOp::Mul, 0xff7f_ffff, 0x4000_0000), 0xff7f_ffff);
         assert_eq!(binop(F32, rp, BinOp::Mul, 0x7f7f_ffff, 0x4000_0000), 0x7f80_0000);
         // exact cancellation is -0 only when rounding down
-        let rm = Env { round: Round::Down, fz: false, dn: false };
+        let rm = Env {
+            round: Round::Down,
+            fz: false,
+            dn: false,
+        };
         assert_eq!(binop(F32, rm, BinOp::Sub, 0x3f80_0000, 0x3f80_0000), 0x8000_0000);
         assert_eq!(binop(F32, rp, BinOp::Sub, 0x3f80_0000, 0x3f80_0000), 0);
     }

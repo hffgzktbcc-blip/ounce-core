@@ -70,9 +70,7 @@ impl IpcManager {
                         .find(|b| b.size > 0);
                     let size = buffer.map_or(u64::MAX, |b| b.size);
                     // Out of range, or the receive buffer took fewer bytes than it asked for.
-                    if offset
-                        .checked_add(size)
-                        .is_none_or(|end| end > data.len() as u64)
+                    if offset.checked_add(size).is_none_or(|end| end > data.len() as u64)
                         || self.write_out_buffer(mmu, &data[offset as usize..]) as u64 != size
                     {
                         self.reply_error(tls, mmu, INVALID_ARGUMENT)
@@ -86,12 +84,7 @@ impl IpcManager {
         })
     }
 
-    pub(super) fn pop_account_launch_parameter(
-        &mut self,
-        kind: u32,
-        tls: u64,
-        mmu: &mut Memory,
-    ) -> u64 {
+    pub(super) fn pop_account_launch_parameter(&mut self, kind: u32, tls: u64, mmu: &mut Memory) -> u64 {
         if kind != 2 || self.account_launch_consumed {
             return self.reply_error(tls, mmu, super::applet::RESULT_NO_DATA_IN_CHANNEL);
         }

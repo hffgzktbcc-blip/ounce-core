@@ -152,7 +152,9 @@ impl Tier3JitEngine {
         let counter = self.hot_pc_counters.entry(pc).or_insert(0);
         *counter += 1;
 
-        if *counter >= Self::HOT_THRESHOLD && let Some(sb) = SuperBlock::form_trace(pc, mmu, 4) {
+        if *counter >= Self::HOT_THRESHOLD
+            && let Some(sb) = SuperBlock::form_trace(pc, mmu, 4)
+        {
             for b in &sb.fused_blocks {
                 mmu.mark_code_range(b.start_pc, b.end_pc);
             }
@@ -302,7 +304,10 @@ mod tests {
 
         let mut engine = Tier3JitEngine::new();
         for _ in 0..=Tier3JitEngine::HOT_THRESHOLD {
-            assert_eq!(run_from(&mut engine, &mut cpu, &mut mmu, base), BlockExit::Svc { svc_id: 0 });
+            assert_eq!(
+                run_from(&mut engine, &mut cpu, &mut mmu, base),
+                BlockExit::Svc { svc_id: 0 }
+            );
         }
         assert!(engine.super_blocks.contains_key(&base));
 
@@ -343,7 +348,10 @@ mod tests {
         assert_eq!(cpu.regs.read_x(0), 1);
 
         mmu.write_u32(base, 0xD2800040).unwrap(); // movz x0, #2
-        assert_eq!(run_from(&mut engine, &mut cpu, &mut mmu, base), BlockExit::Svc { svc_id: 0 });
+        assert_eq!(
+            run_from(&mut engine, &mut cpu, &mut mmu, base),
+            BlockExit::Svc { svc_id: 0 }
+        );
         assert_eq!(cpu.regs.read_x(0), 2, "hot super-block ran stale code");
         assert_eq!(engine.super_blocks_invalidated, 1);
     }
@@ -369,7 +377,10 @@ mod tests {
         let mut engine = Tier3JitEngine::new();
         for _ in 0..Tier3JitEngine::HOT_THRESHOLD + 2 {
             cpu.regs.write_x(1, 0);
-            assert_eq!(run_from(&mut engine, &mut cpu, &mut mmu, base), BlockExit::Svc { svc_id: 0 });
+            assert_eq!(
+                run_from(&mut engine, &mut cpu, &mut mmu, base),
+                BlockExit::Svc { svc_id: 0 }
+            );
             assert_eq!(cpu.regs.read_x(1), 5, "callee skipped");
             assert_eq!(cpu.regs.read_x(0), 7);
         }

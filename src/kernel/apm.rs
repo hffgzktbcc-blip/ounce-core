@@ -24,7 +24,10 @@ pub struct ApmState {
 
 impl Default for ApmState {
     fn default() -> Self {
-        Self { configs: [CONFIG_NORMAL, CONFIG_BOOST], cpu_overclock: false }
+        Self {
+            configs: [CONFIG_NORMAL, CONFIG_BOOST],
+            cpu_overclock: false,
+        }
     }
 }
 
@@ -138,32 +141,187 @@ mod tests {
         let mut h = Harness::new();
         let apm = h.get_service("apm");
         assert_eq!(h.ipc.handles.get(&apm), Some(&ServiceType::Apm));
-        assert_eq!(h.call_out(apm, Req { cmd: 1, ..Default::default() }, 4).u32(0), 0);
-        assert_eq!(h.call_out(apm, Req { cmd: 6, ..Default::default() }, 1).u8(0), 0);
-        let s = h.call(apm, Req { cmd: 0, ..Default::default() }).object();
+        assert_eq!(
+            h.call_out(
+                apm,
+                Req {
+                    cmd: 1,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            0
+        );
+        assert_eq!(
+            h.call_out(
+                apm,
+                Req {
+                    cmd: 6,
+                    ..Default::default()
+                },
+                1
+            )
+            .u8(0),
+            0
+        );
+        let s = h
+            .call(
+                apm,
+                Req {
+                    cmd: 0,
+                    ..Default::default()
+                },
+            )
+            .object();
         assert_eq!(h.ipc.handles.get(&s), Some(&ServiceType::ApmSession));
 
         // Defaults, then libnx's appletInitialize apmSetPerformanceConfiguration(mode, cfg).
-        assert_eq!(h.call_out(s, Req { cmd: 1, data: &words(0, 0), ..Default::default() }, 4).u32(0), CONFIG_NORMAL);
-        assert_eq!(h.call_out(s, Req { cmd: 1, data: &words(1, 0), ..Default::default() }, 4).u32(0), CONFIG_BOOST);
-        assert_eq!(h.call(s, Req { cmd: 0, data: &words(1, 0x9222_0009), ..Default::default() }).result, 0);
-        assert_eq!(h.call_out(s, Req { cmd: 1, data: &words(1, 0), ..Default::default() }, 4).u32(0), 0x9222_0009);
+        assert_eq!(
+            h.call_out(
+                s,
+                Req {
+                    cmd: 1,
+                    data: &words(0, 0),
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            CONFIG_NORMAL
+        );
+        assert_eq!(
+            h.call_out(
+                s,
+                Req {
+                    cmd: 1,
+                    data: &words(1, 0),
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            CONFIG_BOOST
+        );
+        assert_eq!(
+            h.call(
+                s,
+                Req {
+                    cmd: 0,
+                    data: &words(1, 0x9222_0009),
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
+        assert_eq!(
+            h.call_out(
+                s,
+                Req {
+                    cmd: 1,
+                    data: &words(1, 0),
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            0x9222_0009
+        );
         // The same configuration shows through ICommonStateGetter after a mode switch.
         assert_eq!(h.ipc.apm.configuration(1), 0x9222_0009);
 
         // Bad mode: error, not success.
-        assert_eq!(h.call(s, Req { cmd: 0, data: &words(5, 1), ..Default::default() }).result, RESULT_INVALID_PERFORMANCE_MODE);
-        assert_eq!(h.call_out(s, Req { cmd: 1, data: &words(5, 0), ..Default::default() }, 4).result, RESULT_INVALID_PERFORMANCE_MODE);
+        assert_eq!(
+            h.call(
+                s,
+                Req {
+                    cmd: 0,
+                    data: &words(5, 1),
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_INVALID_PERFORMANCE_MODE
+        );
+        assert_eq!(
+            h.call_out(
+                s,
+                Req {
+                    cmd: 1,
+                    data: &words(5, 0),
+                    ..Default::default()
+                },
+                4
+            )
+            .result,
+            RESULT_INVALID_PERFORMANCE_MODE
+        );
 
-        assert_eq!(h.call(s, Req { cmd: 2, data: &words(1, 0), ..Default::default() }).result, 0);
+        assert_eq!(
+            h.call(
+                s,
+                Req {
+                    cmd: 2,
+                    data: &words(1, 0),
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
         assert!(h.ipc.apm.cpu_overclock);
-        assert_eq!(h.call_out(apm, Req { cmd: 6, ..Default::default() }, 1).u8(0), 1);
-        assert_eq!(h.call(s, Req { cmd: 77, ..Default::default() }).result, RESULT_UNKNOWN_COMMAND);
-        assert_eq!(h.call(apm, Req { cmd: 77, ..Default::default() }).result, RESULT_UNKNOWN_COMMAND);
+        assert_eq!(
+            h.call_out(
+                apm,
+                Req {
+                    cmd: 6,
+                    ..Default::default()
+                },
+                1
+            )
+            .u8(0),
+            1
+        );
+        assert_eq!(
+            h.call(
+                s,
+                Req {
+                    cmd: 77,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_UNKNOWN_COMMAND
+        );
+        assert_eq!(
+            h.call(
+                apm,
+                Req {
+                    cmd: 77,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_UNKNOWN_COMMAND
+        );
 
         // Boost mode reports mode 1.
-        h.ipc.applet.set_operation_mode(crate::kernel::applet::OPERATION_MODE_CONSOLE);
-        assert_eq!(h.call_out(apm, Req { cmd: 1, ..Default::default() }, 4).u32(0), 1);
+        h.ipc
+            .applet
+            .set_operation_mode(crate::kernel::applet::OPERATION_MODE_CONSOLE);
+        assert_eq!(
+            h.call_out(
+                apm,
+                Req {
+                    cmd: 1,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            1
+        );
     }
 
     #[test]
@@ -171,32 +329,180 @@ mod tests {
         let mut h = Harness::new();
         let psm = h.get_service("psm");
         assert_eq!(h.ipc.handles.get(&psm), Some(&ServiceType::Psm));
-        assert_eq!(h.call_out(psm, Req { cmd: 0, ..Default::default() }, 4).u32(0), 100);
-        assert_eq!(h.call_out(psm, Req { cmd: 1, ..Default::default() }, 4).u32(0), CHARGER_ENOUGH_POWER);
-        assert_eq!(h.call_out(psm, Req { cmd: 4, ..Default::default() }, 1).u8(0), 0);
-        assert_eq!(h.call_out(psm, Req { cmd: 12, ..Default::default() }, 4).u32(0), 2);
-        let raw = h.call_out(psm, Req { cmd: 13, ..Default::default() }, 8);
+        assert_eq!(
+            h.call_out(
+                psm,
+                Req {
+                    cmd: 0,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            100
+        );
+        assert_eq!(
+            h.call_out(
+                psm,
+                Req {
+                    cmd: 1,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            CHARGER_ENOUGH_POWER
+        );
+        assert_eq!(
+            h.call_out(
+                psm,
+                Req {
+                    cmd: 4,
+                    ..Default::default()
+                },
+                1
+            )
+            .u8(0),
+            0
+        );
+        assert_eq!(
+            h.call_out(
+                psm,
+                Req {
+                    cmd: 12,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            2
+        );
+        let raw = h.call_out(
+            psm,
+            Req {
+                cmd: 13,
+                ..Default::default()
+            },
+            8,
+        );
         assert_eq!(f64::from_le_bytes(raw.data[..8].try_into().unwrap()), 100.0);
-        let age = h.call_out(psm, Req { cmd: 15, ..Default::default() }, 8);
+        let age = h.call_out(
+            psm,
+            Req {
+                cmd: 15,
+                ..Default::default()
+            },
+            8,
+        );
         assert_eq!(f64::from_le_bytes(age.data[..8].try_into().unwrap()), 100.0);
-        assert_eq!(h.call_out(psm, Req { cmd: 14, ..Default::default() }, 1).u8(0), 1);
+        assert_eq!(
+            h.call_out(
+                psm,
+                Req {
+                    cmd: 14,
+                    ..Default::default()
+                },
+                1
+            )
+            .u8(0),
+            1
+        );
         for cmd in [2, 3, 5, 6, 8, 9, 10, 11] {
-            assert_eq!(h.call(psm, Req { cmd, ..Default::default() }).result, 0, "psm {cmd}");
+            assert_eq!(
+                h.call(
+                    psm,
+                    Req {
+                        cmd,
+                        ..Default::default()
+                    }
+                )
+                .result,
+                0,
+                "psm {cmd}"
+            );
         }
         for cmd in [16, 18] {
-            assert_eq!(h.call(psm, Req { cmd, ..Default::default() }).copy_handles.len(), 1);
+            assert_eq!(
+                h.call(
+                    psm,
+                    Req {
+                        cmd,
+                        ..Default::default()
+                    }
+                )
+                .copy_handles
+                .len(),
+                1
+            );
         }
-        assert_eq!(h.call(psm, Req { cmd: 99, ..Default::default() }).result, RESULT_UNKNOWN_COMMAND);
+        assert_eq!(
+            h.call(
+                psm,
+                Req {
+                    cmd: 99,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_UNKNOWN_COMMAND
+        );
 
         // psmBindStateChangeEvent: open a session, enable three notifications, bind, unbind.
-        let s = h.call(psm, Req { cmd: 7, ..Default::default() }).object();
+        let s = h
+            .call(
+                psm,
+                Req {
+                    cmd: 7,
+                    ..Default::default()
+                },
+            )
+            .object();
         assert_eq!(h.ipc.handles.get(&s), Some(&ServiceType::PsmSession));
         for cmd in [2, 3, 4] {
-            assert_eq!(h.call(s, Req { cmd, data: &[1, 0, 0, 0], ..Default::default() }).result, 0);
+            assert_eq!(
+                h.call(
+                    s,
+                    Req {
+                        cmd,
+                        data: &[1, 0, 0, 0],
+                        ..Default::default()
+                    }
+                )
+                .result,
+                0
+            );
         }
-        let ev = h.call(s, Req { cmd: 0, ..Default::default() }).copy_handles[0];
+        let ev = h
+            .call(
+                s,
+                Req {
+                    cmd: 0,
+                    ..Default::default()
+                },
+            )
+            .copy_handles[0];
         assert_eq!(h.ipc.service_event_signaled(ev), Some(false));
-        assert_eq!(h.call(s, Req { cmd: 1, ..Default::default() }).result, 0);
-        assert_eq!(h.call(s, Req { cmd: 9, ..Default::default() }).result, RESULT_UNKNOWN_COMMAND);
+        assert_eq!(
+            h.call(
+                s,
+                Req {
+                    cmd: 1,
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
+        assert_eq!(
+            h.call(
+                s,
+                Req {
+                    cmd: 9,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_UNKNOWN_COMMAND
+        );
     }
 }
