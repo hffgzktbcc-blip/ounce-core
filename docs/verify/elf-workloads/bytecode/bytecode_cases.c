@@ -75,6 +75,7 @@ int workload_run(FILE *o) {
     fprintf(o, "gcd(1071,462):\n");
     rc = run(&m, gcd, o);
     fprintf(o, "  rc=%d steps=%llu native=%lld\n", rc, (unsigned long long)m.steps, (long long)native_gcd(1071, 462));
+    if (rc != 0 || m.mem[0] != native_gcd(1071, 462)) fails++;
 
     /* recursive factorial through CALL/RET: fact(n) leaves n! on the stack */
     int64_t fact[] = {PUSH, 15, CALL, 6, PRINT, HALT,
