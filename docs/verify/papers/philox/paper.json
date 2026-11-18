@@ -1,0 +1,32 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Parallel random numbers: as easy as 1, 2, 3",
+    "authors": ["John K. Salmon", "Mark A. Moraes", "Ron O. Dror", "David E. Shaw"],
+    "venue": "SC'11 (International Conference for High Performance Computing, Networking, Storage and Analysis)",
+    "year": 2011
+  },
+  "program": {
+    "source": "philox4x32.c",
+    "how": "written for ounce-core from the algorithm in the paper; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Philox4x32 with 10 rounds maps counter (0,0,0,0), key (0,0) to 6627e8d5 e169c58d bc57ac4c 9b00dbd8",
+    "Philox4x32 with 10 rounds maps counter and key all ffffffff to 408f276d 41c83b0e a20bc7c6 6d5451fd",
+    "Philox4x32 with 10 rounds maps counter 243f6a88 85a308d3 13198a2e 03707344, key a4093822 299f31d0 (digits of pi) to d16cfe09 94fdcceb 5001e420 24126ea1"
+  ],
+  "expected_values_source": {
+    "what": "the authors' published known-answer vectors, lines beginning `philox4x32 10` in tests/kat_vectors of the Random123 distribution",
+    "url": "https://github.com/DEShawResearch/random123/blob/main/tests/kat_vectors",
+    "fetched": "2026-11-18",
+    "note": "the vectors are data, copied as numbers; the file's code and text were not copied"
+  },
+  "not_checked": [
+    "statistical quality claims (BigCrush, Crush) and the period/space arguments in the paper",
+    "throughput and speed figures",
+    "Philox2x32, Philox2x64, Philox4x64 and the Threefry and ARS generators",
+    "reduced-round variants (no published vectors in the file used)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the published outputs for these three inputs. It does not show the paper's wider claims are correct."
+}
