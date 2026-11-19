@@ -183,7 +183,7 @@ reject them in one pass. **Nothing here is frozen.** The freeze happens only whe
 
 | # | Proposed answer |
 |---|---|
-| 1 | Freeze `0`, `1` and `2` with the meanings the per-command table above gives (for `run` / `run-nro`: success, failure, usage error). `run-elf` is different: it exits with the program's own status, so `2` there is the program's choice, and `diverge` uses `2` for "could not run". Statuses `70`-`73` are an implementation detail and may change. The `2`-`5` infrastructure exits are frozen in `ounce-hb`, not here. |
+| 1 | Freeze `0`, `1` and `2` with the meanings the per-command table above gives (for `run` / `run-nro`: success, failure, usage error). `run-elf` is different: it exits with the program's own status, so `2` there is either a usage error or the program's own status (the number alone cannot tell them apart), and `diverge` uses `2` for "could not run". Statuses `70`-`73` are an implementation detail and may change. The `2`-`5` infrastructure exits are frozen in `ounce-hb`, not here. |
 | 2 | Freeze `--max-frames`, `--sdmc` and `--report-json` for ounce-core. `--timeout` and `--json` are frozen in `ounce-hb`. |
 | 3 | Freeze `frames_presented`, `audio_frames_mixed`, `audio_hash` and `guest_exit_status` now. Wait on `framebuffer_hash` (it ignores width and height and is `null` only when no frame was presented, or when a `gpu-present` build draws the frame on the host GPU with a window open outside deterministic mode), `lr` and `sp` (they only mean "at the stop") until real use settles them. |
 | 4 | Add a `loader_error` report for `run` / `run-nro` load failures (additive; the process status stays `1`), then freeze. |
