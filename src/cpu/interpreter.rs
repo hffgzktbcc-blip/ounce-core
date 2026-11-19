@@ -2729,6 +2729,24 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::ScalarFixedConv {
+                rd,
+                rn,
+                op,
+                esize,
+                fbits,
+            } => {
+                // One lane: convert it with the vector arithmetic (the other lane is zero and converts to zero with no flags)
+                // and keep only lane 0, as the scalar form zeroes the rest of Vd.
+                let e = esize as u32;
+                let mask = (1u128 << e) - 1;
+                let src = self.regs.read_q(rn) & mask;
+                let r = simd::fixed_convert_fpcr(op, src, e, e == 64, fbits as u32, self.regs.fpcr);
+                self.regs.write_q(rd, r & mask);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::Fjcvtzs { rd, rn } => {
                 let (res, z) = softfp::double_to_int32_js(self.fp_env(true).1, self.fp_bits(rn, true));
                 self.regs.write_x(rd, res as u64);

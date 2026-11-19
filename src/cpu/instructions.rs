@@ -515,6 +515,17 @@ pub enum Instruction {
         q: bool,
     },
 
+    /// AdvSIMD scalar shift-by-immediate float <-> fixed-point conversion: `SCVTF`/`UCVTF Sd/Dd, Sn/Dn, #fbits` and
+    /// `FCVTZS`/`FCVTZU Sd/Dd, Sn/Dn, #fbits`, one lane of `esize` (32 or 64) bits, the rest of Vd zeroed. The arithmetic
+    /// is that of `SimdFixedConv`.
+    ScalarFixedConv {
+        rd: u8,
+        rn: u8,
+        op: SimdOp2,
+        esize: u8,
+        fbits: u8,
+    },
+
     /// AdvSIMD scalar three same `FABD Sd/Dd, Sn/Dn, Sm/Dm`: `|n - m|` (NaN propagates), upper bits zeroed
     FpAbd { rd: u8, rn: u8, rm: u8, is_double: bool },
 
