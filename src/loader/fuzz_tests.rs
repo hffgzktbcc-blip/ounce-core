@@ -5,12 +5,12 @@
 //! Every test mutates valid seeds with a fixed-seed PRNG, so a failure names a case that reproduces.
 //! `OUNCE_FUZZ_CASES=<n>` runs more cases per target (default 400, enough for CI).
 
-use super::nro::{build_linked_nso, NroLoader};
+use super::nro::{NroLoader, build_linked_nso};
 use super::package::NpdmDescriptor;
 use crate::fs::RomFsArchive;
 use crate::mmu::Memory;
 use std::collections::HashMap;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::{Duration, Instant};
 
 /// SplitMix64: small, fast, and good enough to drive mutations.
@@ -37,8 +37,22 @@ impl Rng {
     /// Mostly boundary values (0, 1, sign bits, all ones, page sizes), sometimes fully random.
     pub(crate) fn interesting_u64(&mut self) -> u64 {
         const VALUES: [u64; 16] = [
-            0, 1, 2, 7, 8, 0x10, 0x18, 0x1000, 0x7FFF_FFFF, 0x8000_0000, 0xFFFF_FFFF,
-            0x1_0000_0000, 0x7FFF_FFFF_FFFF_FFFF, 0x8000_0000_0000_0000, u64::MAX - 7, u64::MAX,
+            0,
+            1,
+            2,
+            7,
+            8,
+            0x10,
+            0x18,
+            0x1000,
+            0x7FFF_FFFF,
+            0x8000_0000,
+            0xFFFF_FFFF,
+            0x1_0000_0000,
+            0x7FFF_FFFF_FFFF_FFFF,
+            0x8000_0000_0000_0000,
+            u64::MAX - 7,
+            u64::MAX,
         ];
         match self.below(4) {
             0 => self.next(),
@@ -50,7 +64,10 @@ impl Rng {
 
 /// Cases per target: `OUNCE_FUZZ_CASES` or 400.
 pub(crate) fn cases() -> u64 {
-    std::env::var("OUNCE_FUZZ_CASES").ok().and_then(|v| v.parse().ok()).unwrap_or(400)
+    std::env::var("OUNCE_FUZZ_CASES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(400)
 }
 
 /// A single case may take this long before it counts as a hang.
@@ -117,10 +134,17 @@ pub(crate) fn fuzz(name: &str, seed: u64, seeds: &[Vec<u8>], target: impl Fn(&[u
         }
         let start = Instant::now();
         if catch_unwind(AssertUnwindSafe(|| target(&input))).is_err() {
-            panic!("{name}: case {case} panicked (input {} bytes, fuzz seed {seed:#x})", input.len());
+            panic!(
+                "{name}: case {case} panicked (input {} bytes, fuzz seed {seed:#x})",
+                input.len()
+            );
         }
         let elapsed = start.elapsed();
-        assert!(elapsed < CASE_BUDGET, "{name}: case {case} took {elapsed:?} (input {} bytes)", input.len());
+        assert!(
+            elapsed < CASE_BUDGET,
+            "{name}: case {case} took {elapsed:?} (input {} bytes)",
+            input.len()
+        );
     }
 }
 
@@ -134,7 +158,12 @@ fn fixture(path: &str) -> Vec<u8> {
 /// A MOD0 module with exports, imports, RELATIVE/ABS64/GLOB_DAT/JUMP_SLOT relocations and a TLS symbol.
 fn linked_nso_seed() -> Vec<u8> {
     build_linked_nso(
-        &[("", 0, 0, 0), ("exported_fn", 1, 1, 0x40), ("imported_fn", 0, 1, 0), ("weak_fn", 0, 2, 0)],
+        &[
+            ("", 0, 0, 0),
+            ("exported_fn", 1, 1, 0x40),
+            ("imported_fn", 0, 1, 0),
+            ("weak_fn", 0, 2, 0),
+        ],
         &[(0x1800, 1027, 0, 0x100), (0x1808, 257, 1, 4), (0x1810, 1025, 2, 0)],
         &[(0x1818, 1026, 2, 0), (0x1820, 1026, 3, 0)],
     )
@@ -178,7 +207,10 @@ fn fuzz_nro_header_and_load() {
 
 #[test]
 fn fuzz_nso_load() {
-    let seeds = vec![linked_nso_seed(), NroLoader::build_synthetic_nso(&[0x1F, 0x20, 0x03, 0xD5])];
+    let seeds = vec![
+        linked_nso_seed(),
+        NroLoader::build_synthetic_nso(&[0x1F, 0x20, 0x03, 0xD5]),
+    ];
     fuzz("nso", 0x4E53_4F30, &seeds, |bytes| {
         let mut mmu = Memory::new();
         if NroLoader::load_nso_segments(bytes, BASE, &mut mmu).is_ok() {
@@ -192,7 +224,9 @@ fn fuzz_nso_load() {
 /// random tags from the set the loader reads, with boundary values (huge sizes, wrapping offsets).
 #[test]
 fn fuzz_dynamic_section_entries() {
-    const TAGS: [u64; 24] = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 17, 18, 19, 20, 23, 25, 26, 27, 28, 32, 33, 35];
+    const TAGS: [u64; 24] = [
+        1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 17, 18, 19, 20, 23, 25, 26, 27, 28, 32, 33, 35,
+    ];
     let seeds = [linked_nso_seed(), fixture("nro/hello/hello.nro")];
     let mut rng = Rng::new(0x0D17_A11C);
     for case in 0..cases() {
@@ -205,7 +239,9 @@ fn fuzz_dynamic_section_entries() {
         };
         assert!(loaded, "seed must load");
         let dynamic = dynamic_addr(&mmu).expect("seed has MOD0 and .dynamic");
-        let entries = (0..64).take_while(|i| mmu.read_u64(dynamic + i * 16).is_ok_and(|t| t != 0)).count() as u64;
+        let entries = (0..64)
+            .take_while(|i| mmu.read_u64(dynamic + i * 16).is_ok_and(|t| t != 0))
+            .count() as u64;
         for _ in 0..1 + rng.below(6) {
             let entry = dynamic + rng.below(entries + 1) * 16;
             match rng.below(3) {
@@ -226,7 +262,11 @@ fn fuzz_dynamic_section_entries() {
         if catch_unwind(AssertUnwindSafe(|| walk_dynamic(&mut mmu))).is_err() {
             panic!("dynamic: case {case} panicked");
         }
-        assert!(start.elapsed() < CASE_BUDGET, "dynamic: case {case} took {:?}", start.elapsed());
+        assert!(
+            start.elapsed() < CASE_BUDGET,
+            "dynamic: case {case} took {:?}",
+            start.elapsed()
+        );
     }
 }
 
@@ -327,10 +367,10 @@ fn fuzz_linux_elf_load() {
     let multi = build_synthetic_linux_elf(
         0x40_0100,
         &[
-            (1, 5, 0x100, 0x40_0100, 8, 16),          // RX unaligned start/size
-            (1, 6, 0x100, 0x40_0080, 8, 0x2080),      // overlapping RW spanning pages
-            (7, 4, 0x100, 0x40_0200, 4, 32),          // PT_TLS
-            (0x6474_e551, 6, 0, 0, 0, 0),             // PT_GNU_STACK
+            (1, 5, 0x100, 0x40_0100, 8, 16),     // RX unaligned start/size
+            (1, 6, 0x100, 0x40_0080, 8, 0x2080), // overlapping RW spanning pages
+            (7, 4, 0x100, 0x40_0200, 4, 32),     // PT_TLS
+            (0x6474_e551, 6, 0, 0, 0, 0),        // PT_GNU_STACK
         ],
         &[0x1F, 0x20, 0x03, 0xD5, 0xC0, 0x03, 0x5F, 0xD6],
     );
@@ -339,7 +379,10 @@ fn fuzz_linux_elf_load() {
         seeds.push(linux_elf_fixture(name));
     }
     for (idx, seed) in seeds.iter().enumerate() {
-        assert!(crate::linux::elf::load(seed, &mut Memory::new()).is_ok(), "seed {idx} must load");
+        assert!(
+            crate::linux::elf::load(seed, &mut Memory::new()).is_ok(),
+            "seed {idx} must load"
+        );
     }
     fuzz("linux-elf", 0x454C_4636, &seeds, verify_linux_elf_load);
 }
@@ -354,20 +397,29 @@ fn fuzz_linux_elf_adversarial_headers() {
     // Regression checks for overflow / O(1) oversized mapping / PT_DYNAMIC / PT_INTERP.
     let mut bad_phoff = base.clone();
     bad_phoff[32..40].copy_from_slice(&(u64::MAX - 2).to_le_bytes());
-    assert!(matches!(crate::linux::elf::load(&bad_phoff, &mut Memory::new()), Err(crate::linux::elf::ElfError::Malformed(_))));
+    assert!(matches!(
+        crate::linux::elf::load(&bad_phoff, &mut Memory::new()),
+        Err(crate::linux::elf::ElfError::Malformed(_))
+    ));
     let huge_mem = build_synthetic_linux_elf(
         0x40_0078,
         &[(1, 5, 0, 0x40_0000, 124, 1u64 << 40)],
         &0xD65F_03C0u32.to_le_bytes(),
     );
-    assert!(matches!(crate::linux::elf::load(&huge_mem, &mut Memory::new()), Err(crate::linux::elf::ElfError::Unsupported(_))));
+    assert!(matches!(
+        crate::linux::elf::load(&huge_mem, &mut Memory::new()),
+        Err(crate::linux::elf::ElfError::Unsupported(_))
+    ));
     for pt in [2u32, 3u32] {
         let dyn_elf = build_synthetic_linux_elf(
             0x40_0078,
             &[(pt, 4, 0, 0x40_0000, 0, 0), (1, 5, 0, 0x40_0000, 124, 124)],
             &0xD65F_03C0u32.to_le_bytes(),
         );
-        assert!(matches!(crate::linux::elf::load(&dyn_elf, &mut Memory::new()), Err(crate::linux::elf::ElfError::Unsupported(_))));
+        assert!(matches!(
+            crate::linux::elf::load(&dyn_elf, &mut Memory::new()),
+            Err(crate::linux::elf::ElfError::Unsupported(_))
+        ));
     }
     // All truncations up to base.len() and truncated real fixture.
     for cut in 0..=base.len() {
@@ -379,7 +431,17 @@ fn fuzz_linux_elf_adversarial_headers() {
     }
 
     let ph_types: [u32; 6] = [1, 2, 3, 7, 0x6474_e551, 0];
-    let huge_sizes: [u64; 9] = [0, 1, 0xFFF, 0x1000, (1 << 30) + 0x1000, 1 << 40, u64::MAX / 2, u64::MAX - 2, u64::MAX];
+    let huge_sizes: [u64; 9] = [
+        0,
+        1,
+        0xFFF,
+        0x1000,
+        (1 << 30) + 0x1000,
+        1 << 40,
+        u64::MAX / 2,
+        u64::MAX - 2,
+        u64::MAX,
+    ];
     let bad_phoffs: [u64; 6] = [0, 64, 65, 0xFFFF, u64::MAX - 56, u64::MAX - 2];
     let mut rng = Rng::new(0xBAD0_E1F6);
 
@@ -390,7 +452,11 @@ fn fuzz_linux_elf_adversarial_headers() {
         for _ in 0..ph_count {
             let p_type = ph_types[rng.below(ph_types.len() as u64) as usize];
             let p_flags = if rng.below(2) == 0 { 5 } else { rng.next() as u32 };
-            let p_offset = if rng.below(3) == 0 { rng.interesting_u64() } else { rng.below(256) };
+            let p_offset = if rng.below(3) == 0 {
+                rng.interesting_u64()
+            } else {
+                rng.below(256)
+            };
             let p_vaddr = match rng.below(4) {
                 0 => 0x40_0000 + rng.below(0x4000),
                 1 => 0x1000 + rng.below(0x1000), // unaligned near min window
@@ -424,7 +490,11 @@ fn fuzz_linux_elf_adversarial_headers() {
         if catch_unwind(AssertUnwindSafe(|| verify_linux_elf_load(&crafted))).is_err() {
             panic!("linux-elf adversarial case {case} panicked");
         }
-        assert!(start.elapsed() < CASE_BUDGET, "linux-elf adversarial case {case} took {:?}", start.elapsed());
+        assert!(
+            start.elapsed() < CASE_BUDGET,
+            "linux-elf adversarial case {case} took {:?}",
+            start.elapsed()
+        );
     }
 }
 
@@ -475,11 +545,34 @@ fn fuzz_decoder_and_cpu_step() {
 
     // 2. Structured encoding groups + near-edge perturbations of representative instructions.
     const SEEDS: [u32; 28] = [
-        0xD503_201F, 0xD503_245F, 0xD400_0001, 0xD420_0020, 0xD65F_03C0, 0x1400_0000,
-        0x8B02_0020, 0xEB02_003F, 0x9AC2_0820, 0x5304_1C20, 0x885F_7C20, 0xF940_03E0,
-        0xA9BF_7BFD, 0x1E20_0820, 0x1E22_2020, 0x1F02_0C20, 0x4E22_0C20, 0x4E62_CC20,
-        0x4E82_9420, 0xDAC1_0020, 0xDAC1_1020, 0xCE02_0C20, 0xCE82_1020, 0xD53B_D040,
-        0xD51B_4420, 0x0000_0000, 0xFFFF_FFFF, 0xD50B_7420,
+        0xD503_201F,
+        0xD503_245F,
+        0xD400_0001,
+        0xD420_0020,
+        0xD65F_03C0,
+        0x1400_0000,
+        0x8B02_0020,
+        0xEB02_003F,
+        0x9AC2_0820,
+        0x5304_1C20,
+        0x885F_7C20,
+        0xF940_03E0,
+        0xA9BF_7BFD,
+        0x1E20_0820,
+        0x1E22_2020,
+        0x1F02_0C20,
+        0x4E22_0C20,
+        0x4E62_CC20,
+        0x4E82_9420,
+        0xDAC1_0020,
+        0xDAC1_1020,
+        0xCE02_0C20,
+        0xCE82_1020,
+        0xD53B_D040,
+        0xD51B_4420,
+        0x0000_0000,
+        0xFFFF_FFFF,
+        0xD50B_7420,
     ];
     for step in 0..total * 32 {
         let word = structured_opcode(&mut rng, step);
@@ -522,7 +615,7 @@ fn fuzz_decoder_and_cpu_step() {
         cpu.regs.tpidrro_el0 = DATA_PAGE + 0x480;
         cpu.regs.fpcr = ((rng.below(4) as u32) << 22) | ((rng.below(2) as u32) << 24) | ((rng.below(2) as u32) << 25);
         cpu.regs.fpsr = (rng.next() as u32) & 0x0800_009F;
-        cpu.regs.pstate.from_bits((rng.next() as u32) & 0xF000_0000);
+        cpu.regs.pstate.set_bits((rng.next() as u32) & 0xF000_0000);
         cpu.regs.pstate.btype = rng.below(4) as u8;
         for i in 0..31 {
             cpu.regs.x[i] = match rng.below(4) {
@@ -545,7 +638,10 @@ fn fuzz_decoder_and_cpu_step() {
             // Bias toward decoded instructions so the interpreter exercises real execution paths.
             let mut word = structured_opcode(&mut rng, case * 4 + slot);
             for attempt in 0..8 {
-                if !matches!(crate::cpu::decoder::decode(word), crate::cpu::Instruction::Unimplemented { .. }) {
+                if !matches!(
+                    crate::cpu::decoder::decode(word),
+                    crate::cpu::Instruction::Unimplemented { .. }
+                ) {
                     break;
                 }
                 word = structured_opcode(&mut rng, case * 16 + attempt);
@@ -563,6 +659,10 @@ fn fuzz_decoder_and_cpu_step() {
         if res.is_err() {
             panic!("cpu::step panicked in isolated fuzz case {case}");
         }
-        assert!(start.elapsed() < CASE_BUDGET, "cpu::step case {case} took {:?}", start.elapsed());
+        assert!(
+            start.elapsed() < CASE_BUDGET,
+            "cpu::step case {case} took {:?}",
+            start.elapsed()
+        );
     }
 }

@@ -13,8 +13,8 @@ mod backend;
 mod exec;
 pub mod ir;
 
-pub use exec::{ExecError, LinkEntry, TlbEntry, LINK_MASK, LINK_SIZE, TLB_MASK, TLB_SIZE};
 use exec::run_return_constant;
+pub use exec::{ExecError, LINK_MASK, LINK_SIZE, LinkEntry, TLB_MASK, TLB_SIZE, TlbEntry};
 
 /// A live, exclusively borrowed 4096-byte guest page. The borrow ends after each access;
 /// generated code never retains a host address across bus calls or mapping changes.
@@ -188,7 +188,10 @@ impl Recompiler {
         if let Some(old) = self.linked_pc[id.0 as usize].take() {
             self.unlink(old, entry);
         }
-        self.links[((guest_pc >> 2) & LINK_MASK) as usize] = LinkEntry { guest_pc, host_entry: entry };
+        self.links[((guest_pc >> 2) & LINK_MASK) as usize] = LinkEntry {
+            guest_pc,
+            host_entry: entry,
+        };
         self.linked_pc[id.0 as usize] = Some(guest_pc);
     }
 
@@ -222,7 +225,9 @@ impl Recompiler {
     /// counts every block that ran; the exit is the last block's.
     pub fn run_linked(&mut self, id: BlockId, state: &mut GuestState, bus: &mut dyn MemoryBus, budget: u32) -> Exit {
         let code = self.blocks[id.0 as usize].as_ref().expect("block was removed");
-        let r = self.trampoline.run(code, state, bus, &mut self.tlb, &self.links, budget as u64);
+        let r = self
+            .trampoline
+            .run(code, state, bus, &mut self.tlb, &self.links, budget as u64);
         self.links_taken += r.links_taken;
         let word = r.word;
         // `chained_insns < budget <= u32::MAX`.
@@ -308,14 +313,26 @@ mod tests {
     }
 
     impl MemoryBus for BorrowedBus {
-        fn read(&mut self, _: u64, _: u8) -> Result<u64, MemFault> { Err(MemFault) }
+        fn read(&mut self, _: u64, _: u8) -> Result<u64, MemFault> {
+            Err(MemFault)
+        }
         fn write(&mut self, _: u64, _: u8, _: u64) -> Result<WriteEffect, MemFault> {
-            if self.holds_code { Ok(WriteEffect::CodeWritten) } else { Err(MemFault) }
+            if self.holds_code {
+                Ok(WriteEffect::CodeWritten)
+            } else {
+                Err(MemFault)
+            }
         }
         fn query_page(&mut self, page: u64) -> Option<PageMapping<'_>> {
-            if page != 1 { return None; }
-            Some(PageMapping { data: self.page.as_deref_mut()?, read: true,
-                write: self.writable, holds_code: self.holds_code })
+            if page != 1 {
+                return None;
+            }
+            Some(PageMapping {
+                data: self.page.as_deref_mut()?,
+                read: true,
+                write: self.writable,
+                holds_code: self.holds_code,
+            })
         }
     }
 
@@ -326,11 +343,20 @@ mod tests {
         let value = b.push(ir::Op::Load(1, addr, ir::FaultSite { pc: 0x80, insns: 0 }));
         b.set(ir::Reg::X(0), value);
         let pc = b.konst(0x84);
-        let block = b.finish(ir::Terminator::Exit(ir::ExitTo { code: 0, pc, insns: 1, link: false }));
+        let block = b.finish(ir::Terminator::Exit(ir::ExitTo {
+            code: 0,
+            pc,
+            insns: 1,
+            link: false,
+        }));
         let mut rec = Recompiler::new().unwrap();
         let id = rec.compile(&block).unwrap();
         let mut state = GuestState::default();
-        let mut bus = BorrowedBus { page: Some(Box::new([1; 4096])), writable: true, holds_code: false };
+        let mut bus = BorrowedBus {
+            page: Some(Box::new([1; 4096])),
+            writable: true,
+            holds_code: false,
+        };
         assert_eq!(rec.run(id, &mut state, &mut bus).kind, ExitKind::Code(0));
         assert_eq!(state.x[0], 1);
         bus.page = Some(Box::new([2; 4096]));
@@ -338,7 +364,11 @@ mod tests {
         assert_eq!(state.x[0], 2);
         bus.page = None;
         assert_eq!(rec.run(id, &mut state, &mut bus).kind, ExitKind::Fault);
-        let mut another = BorrowedBus { page: Some(Box::new([3; 4096])), writable: false, holds_code: false };
+        let mut another = BorrowedBus {
+            page: Some(Box::new([3; 4096])),
+            writable: false,
+            holds_code: false,
+        };
         rec.run(id, &mut state, &mut another);
         assert_eq!(state.x[0], 3);
 
@@ -346,9 +376,17 @@ mod tests {
         let addr = b.konst(0x1000);
         let value = b.konst(4);
         b.push(ir::Op::Store(1, addr, value, ir::FaultSite { pc: 0x80, insns: 0 }));
-        b.push(ir::Op::EndInsn { next_pc: 0x84, insns: 1 });
+        b.push(ir::Op::EndInsn {
+            next_pc: 0x84,
+            insns: 1,
+        });
         let pc = b.konst(0x84);
-        let block = b.finish(ir::Terminator::Exit(ir::ExitTo { code: 0, pc, insns: 1, link: false }));
+        let block = b.finish(ir::Terminator::Exit(ir::ExitTo {
+            code: 0,
+            pc,
+            insns: 1,
+            link: false,
+        }));
         let write = rec.compile(&block).unwrap();
         assert_eq!(rec.run(write, &mut state, &mut another).kind, ExitKind::Fault);
         assert_eq!(another.page.as_ref().unwrap()[0], 3);
@@ -416,13 +454,22 @@ mod tests {
             for i in 0..size as u64 {
                 self.bytes.insert(va + i, (value >> (8 * i)) as u8);
             }
-            Ok(if va >= 0x2000 { WriteEffect::CodeWritten } else { WriteEffect::Done })
+            Ok(if va >= 0x2000 {
+                WriteEffect::CodeWritten
+            } else {
+                WriteEffect::Done
+            })
         }
     }
 
     fn exit_to(b: &mut BlockBuilder, code: u32, pc: u64, insns: u32) -> ExitTo {
         let pc = b.konst(pc);
-        ExitTo { code, pc, insns, link: false }
+        ExitTo {
+            code,
+            pc,
+            insns,
+            link: false,
+        }
     }
 
     fn run(block: ir::Block, state: &mut GuestState, bus: &mut TestBus) -> Exit {
@@ -443,7 +490,11 @@ mod tests {
         let cs = b.push(Op::Cond(0x2, f)); // CS
         let taken = exit_to(&mut b, 1, 0x100, 3);
         let not_taken = exit_to(&mut b, 2, 0x200, 3);
-        let block = b.finish(Terminator::Branch { cond: cs, taken, not_taken });
+        let block = b.finish(Terminator::Branch {
+            cond: cs,
+            taken,
+            not_taken,
+        });
 
         let mut st = GuestState::default();
         st.x[0] = 0xFFFF_FFFF;
@@ -451,7 +502,13 @@ mod tests {
         let exit = run(block, &mut st, &mut TestBus::default());
         assert_eq!(st.x[2], 0);
         assert_eq!(st.nzcv, 0b0110 << 28, "Z and C set");
-        assert_eq!(exit, Exit { kind: ExitKind::Code(1), insns: 3 });
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Code(1),
+                insns: 3
+            }
+        );
         assert_eq!(st.pc, 0x100);
     }
 
@@ -494,7 +551,13 @@ mod tests {
         st.x[1] = 5;
         let mut bus = TestBus::default();
         let exit = run(b.finish(Terminator::Exit(e)), &mut st, &mut bus);
-        assert_eq!(exit, Exit { kind: ExitKind::Fault, insns: 2 });
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Fault,
+                insns: 2
+            }
+        );
         assert_eq!(st.pc, 0x48);
         assert_eq!(st.x[0], 0x7788);
         assert_eq!(st.x[1], 5, "faulting load must not write its register");
@@ -508,12 +571,21 @@ mod tests {
         let one = b.konst(1);
         b.push(Op::Store(4, addr, one, FaultSite { pc: 0x10, insns: 0 }));
         b.set(Reg::X(9), one); // writeback-like update in the same instruction
-        b.push(Op::EndInsn { next_pc: 0x14, insns: 1 });
+        b.push(Op::EndInsn {
+            next_pc: 0x14,
+            insns: 1,
+        });
         b.set(Reg::X(0), one);
         let e = exit_to(&mut b, 0, 0x18, 2);
         let mut st = GuestState::default();
         let exit = run(b.finish(Terminator::Exit(e)), &mut st, &mut TestBus::default());
-        assert_eq!(exit, Exit { kind: ExitKind::CodeWritten, insns: 1 });
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::CodeWritten,
+                insns: 1
+            }
+        );
         assert_eq!((st.pc, st.x[9], st.x[0]), (0x14, 1, 0));
     }
 
@@ -532,9 +604,17 @@ mod tests {
     fn invalid_ir_is_rejected() {
         let mut b = BlockBuilder::new();
         let v = b.konst(1);
-        let e = ExitTo { code: ir::RESERVED_CODES, pc: v, insns: 0, link: false };
+        let e = ExitTo {
+            code: ir::RESERVED_CODES,
+            pc: v,
+            insns: 0,
+            link: false,
+        };
         let mut rec = Recompiler::new().unwrap();
-        assert!(matches!(rec.compile(&b.finish(Terminator::Exit(e))), Err(CompileError::InvalidIr(_))));
+        assert!(matches!(
+            rec.compile(&b.finish(Terminator::Exit(e))),
+            Err(CompileError::InvalidIr(_))
+        ));
     }
 
     #[test]
@@ -558,7 +638,12 @@ mod tests {
         let x0 = b.bin_imm(BinOp::Add, Width::W64, x0, 1);
         b.set(Reg::X(0), x0);
         let pc = b.konst(next);
-        b.finish(Terminator::Exit(ExitTo { code: 7, pc, insns: 1, link: true }))
+        b.finish(Terminator::Exit(ExitTo {
+            code: 7,
+            pc,
+            insns: 1,
+            link: true,
+        }))
     }
 
     #[test]
@@ -571,13 +656,25 @@ mod tests {
         let mut st = GuestState::default();
         let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
         // Links are taken while `chained + 1 < 1000`, so 999 blocks link onward and the 1000th returns.
-        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 1_000 });
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Code(7),
+                insns: 1_000
+            }
+        );
         assert_eq!((st.x[0], st.pc), (1_000, 0x200));
         assert_eq!(rec.links_taken(), 999);
 
         // Budget 0 (`run`) never links.
         let exit = rec.run(a, &mut st, &mut TestBus::default());
-        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 1 });
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Code(7),
+                insns: 1
+            }
+        );
         assert_eq!(rec.links_taken(), 999);
     }
 
@@ -590,7 +687,13 @@ mod tests {
         rec.remove(b);
         let mut st = GuestState::default();
         let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
-        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 1 });
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Code(7),
+                insns: 1
+            }
+        );
         assert_eq!((st.x[0], st.pc, rec.links_taken()), (1, 0x200, 0));
 
         // A new block in the reused slot is not reachable until linked again.
@@ -612,21 +715,40 @@ mod tests {
         let x0 = b.bin_imm(BinOp::Add, Width::W64, x0, 1);
         b.set(Reg::X(0), x0);
         let pc = b.get(Reg::X(1));
-        let a = rec.compile(&b.finish(Terminator::Exit(ExitTo { code: 3, pc, insns: 1, link: true }))).unwrap();
+        let a = rec
+            .compile(&b.finish(Terminator::Exit(ExitTo {
+                code: 3,
+                pc,
+                insns: 1,
+                link: true,
+            })))
+            .unwrap();
         let target = rec.compile(&counting_block(0x5000)).unwrap();
         rec.link(target, 0x4000);
         let mut st = GuestState::default();
 
         st.x[1] = 0x4000;
         let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
-        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 2 });
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Code(7),
+                insns: 2
+            }
+        );
         assert_eq!((st.x[0], st.pc), (2, 0x5000));
 
         // Same slot, different pc (0x4000 + 4 * LINK_SIZE), and a misaligned pc: both miss.
         for miss in [0x4000 + 4 * LINK_SIZE as u64, 0x4002, u64::MAX] {
             st.x[1] = miss;
             let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
-            assert_eq!(exit, Exit { kind: ExitKind::Code(3), insns: 1 });
+            assert_eq!(
+                exit,
+                Exit {
+                    kind: ExitKind::Code(3),
+                    insns: 1
+                }
+            );
             assert_eq!(st.pc, miss);
         }
         assert_eq!(rec.links_taken(), 1);
@@ -641,7 +763,13 @@ mod tests {
         let id = rec.compile(&block).unwrap();
         let mut st = GuestState::default();
         let exit = rec.run_linked(id, &mut st, &mut TestBus::default(), 500);
-        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 500 });
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Code(7),
+                insns: 500
+            }
+        );
         assert_eq!((st.x[0], st.pc, rec.links_taken()), (500, 0x200, 499));
         // `run` (budget 0) never loops.
         assert_eq!(rec.run(id, &mut st, &mut TestBus::default()).insns, 1);
@@ -658,7 +786,12 @@ mod tests {
         let v = b.push(Op::Load(8, x1, FaultSite { pc: 0x204, insns: 1 }));
         b.set(Reg::X(0), v);
         let pc = b.konst(0x200);
-        let mut block = b.finish(Terminator::Exit(ExitTo { code: 0, pc, insns: 2, link: true }));
+        let mut block = b.finish(Terminator::Exit(ExitTo {
+            code: 0,
+            pc,
+            insns: 2,
+            link: true,
+        }));
         block.set_entry_pc(0x200);
         let mut rec = Recompiler::new().unwrap();
         let id = rec.compile(&block).unwrap();
@@ -666,8 +799,18 @@ mod tests {
         st.x[0] = 0x55;
         st.x[1] = 0x2FE8; // loads at 0x2FF0, 0x2FF8, then 0x3000 faults (bus ends at 0x3000)
         let exit = rec.run_linked(id, &mut st, &mut TestBus::default(), 1_000);
-        assert_eq!(exit, Exit { kind: ExitKind::Fault, insns: 5 });
-        assert_eq!((st.x[1], st.pc, st.x[0]), (0x3000, 0x204, 0), "x0 holds the last good load");
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Fault,
+                insns: 5
+            }
+        );
+        assert_eq!(
+            (st.x[1], st.pc, st.x[0]),
+            (0x3000, 0x204, 0),
+            "x0 holds the last good load"
+        );
     }
 
     #[test]
@@ -681,14 +824,30 @@ mod tests {
         let id = rec.compile_region(&[a.clone(), b.clone()]).unwrap();
         let mut st = GuestState::default();
         let exit = rec.run_linked(id, &mut st, &mut TestBus::default(), 301);
-        assert_eq!(exit, Exit { kind: ExitKind::Code(7), insns: 301 });
-        assert_eq!((st.x[0], st.pc, rec.links_taken()), (301, 0x200, 300), "ends after an a-block, heading to b");
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Code(7),
+                insns: 301
+            }
+        );
+        assert_eq!(
+            (st.x[0], st.pc, rec.links_taken()),
+            (301, 0x200, 300),
+            "ends after an a-block, heading to b"
+        );
 
         // Regions need an entry pc on every block, and distinct ones.
         let mut plain = counting_block(0x100);
-        assert!(matches!(rec.compile_region(&[a.clone(), plain.clone()]), Err(CompileError::InvalidIr(_))));
+        assert!(matches!(
+            rec.compile_region(&[a.clone(), plain.clone()]),
+            Err(CompileError::InvalidIr(_))
+        ));
         plain.set_entry_pc(0x100);
-        assert!(matches!(rec.compile_region(&[a, plain]), Err(CompileError::InvalidIr(_))));
+        assert!(matches!(
+            rec.compile_region(&[a, plain]),
+            Err(CompileError::InvalidIr(_))
+        ));
         assert!(matches!(rec.compile_region(&[]), Err(CompileError::InvalidIr(_))));
     }
 
@@ -701,11 +860,24 @@ mod tests {
         let v = b.push(Op::Load(8, bad, FaultSite { pc: 0x200, insns: 0 }));
         b.set(Reg::X(1), v);
         let pc = b.konst(0x204);
-        let faulting = rec.compile(&b.finish(Terminator::Exit(ExitTo { code: 0, pc, insns: 1, link: false }))).unwrap();
+        let faulting = rec
+            .compile(&b.finish(Terminator::Exit(ExitTo {
+                code: 0,
+                pc,
+                insns: 1,
+                link: false,
+            })))
+            .unwrap();
         rec.link(faulting, 0x200);
         let mut st = GuestState::default();
         let exit = rec.run_linked(a, &mut st, &mut TestBus::default(), 1_000);
-        assert_eq!(exit, Exit { kind: ExitKind::Fault, insns: 1 });
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Fault,
+                insns: 1
+            }
+        );
         assert_eq!((st.x[0], st.pc), (1, 0x200));
     }
 
@@ -736,7 +908,13 @@ mod tests {
         st.v[2] = 29.5f64.to_bits() as u128;
 
         let exit = run(block, &mut st, &mut TestBus::default());
-        assert_eq!(exit, Exit { kind: ExitKind::Code(0), insns: 2 });
+        assert_eq!(
+            exit,
+            Exit {
+                kind: ExitKind::Code(0),
+                insns: 2
+            }
+        );
         assert_eq!(f64::from_bits(st.v[0] as u64), 42.0);
         assert_eq!(st.v[0] >> 64, 0);
         assert_eq!(st.nzcv, 0x8000_0000);

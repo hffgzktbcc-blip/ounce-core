@@ -47,16 +47,36 @@ pub(crate) fn run(f: &Function, inputs: &dyn ShaderInputs) -> Vec<u32> {
                     None => raw.to_bits(),
                 }
             }
-            Op::Tex { op, handle, lod, x: tx, y: ty, layer } => {
+            Op::Tex {
+                op,
+                handle,
+                lod,
+                x: tx,
+                y: ty,
+                layer,
+            } => {
                 let lod = match lod {
                     Lod::Auto => None,
                     Lod::Zero => Some(0),
                     Lod::Level(l) => Some(v[l.0 as usize]),
                 };
-                texels.push((v.len() as u32, inputs.texture(op, handle, lod, layer.map(|l| v[l.0 as usize]), v[tx.0 as usize], v[ty.0 as usize])));
+                texels.push((
+                    v.len() as u32,
+                    inputs.texture(
+                        op,
+                        handle,
+                        lod,
+                        layer.map(|l| v[l.0 as usize]),
+                        v[tx.0 as usize],
+                        v[ty.0 as usize],
+                    ),
+                ));
                 0
             }
-            Op::Comp(t, c) => texels.iter().find(|(i, _)| *i == t.0).map_or(0, |(_, rgba)| rgba[c as usize].to_bits()),
+            Op::Comp(t, c) => texels
+                .iter()
+                .find(|(i, _)| *i == t.0)
+                .map_or(0, |(_, rgba)| rgba[c as usize].to_bits()),
             // Pure ops: one definition shared with the translator's tests.
             ref op => crate::gpu::sass::eval::op(op, &v).expect("every other IR op is pure"),
         };
@@ -80,5 +100,9 @@ pub(crate) fn vertex_outputs(f: &Function, values: &[u32]) -> Vec<(u16, u32)> {
 
 /// Register `reg` at `EXIT` as a float (0 if never written).
 pub(crate) fn exit_reg(f: &Function, values: &[u32], reg: usize) -> f32 {
-    f.exit_regs.get(reg).copied().flatten().map_or(0.0, |v| f32::from_bits(values[v.0 as usize]))
+    f.exit_regs
+        .get(reg)
+        .copied()
+        .flatten()
+        .map_or(0.0, |v| f32::from_bits(values[v.0 as usize]))
 }

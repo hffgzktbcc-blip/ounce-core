@@ -57,13 +57,16 @@ pub const ADPCM_FRAME_SAMPLES: usize = 14;
 const ADPCM_MAX_BYTES: u64 = 16 << 20;
 
 fn rd16(b: &[u8], off: usize) -> u16 {
-    b.get(off..off + 2).map_or(0, |s| u16::from_le_bytes(s.try_into().unwrap()))
+    b.get(off..off + 2)
+        .map_or(0, |s| u16::from_le_bytes(s.try_into().unwrap()))
 }
 fn rd32(b: &[u8], off: usize) -> u32 {
-    b.get(off..off + 4).map_or(0, |s| u32::from_le_bytes(s.try_into().unwrap()))
+    b.get(off..off + 4)
+        .map_or(0, |s| u32::from_le_bytes(s.try_into().unwrap()))
 }
 fn rd64(b: &[u8], off: usize) -> u64 {
-    b.get(off..off + 8).map_or(0, |s| u64::from_le_bytes(s.try_into().unwrap()))
+    b.get(off..off + 8)
+        .map_or(0, |s| u64::from_le_bytes(s.try_into().unwrap()))
 }
 fn rdf32(b: &[u8], off: usize) -> f32 {
     f32::from_bits(rd32(b, off))
@@ -85,20 +88,24 @@ fn wr64(b: &mut [u8], off: usize, v: u64) {
 pub fn decode_dsp_adpcm(data: &[u8], coefs: &[i16; 16], start: usize, end: usize, history: (i16, i16)) -> Vec<i16> {
     let (mut h0, mut h1) = (history.0 as i64, history.1 as i64);
     // Reserve only samples backed by complete encoded frames, not an arbitrary guest end.
-    let available = (data.len() / ADPCM_FRAME_BYTES).saturating_mul(ADPCM_FRAME_SAMPLES)
+    let available = (data.len() / ADPCM_FRAME_BYTES)
+        .saturating_mul(ADPCM_FRAME_SAMPLES)
         .saturating_add((data.len() % ADPCM_FRAME_BYTES).saturating_sub(1).saturating_mul(2));
     let end = end.min(available);
     let mut out = Vec::with_capacity(end.saturating_sub(start));
     for n in start..end {
         let frame = n / ADPCM_FRAME_SAMPLES * ADPCM_FRAME_BYTES;
         let pos = n % ADPCM_FRAME_SAMPLES;
-        let (Some(&header), Some(&byte)) = (data.get(frame), data.get(frame + 1 + pos / 2)) else { break };
+        let (Some(&header), Some(&byte)) = (data.get(frame), data.get(frame + 1 + pos / 2)) else {
+            break;
+        };
         let nibble = if pos.is_multiple_of(2) { byte >> 4 } else { byte & 0xF };
         let nibble = ((nibble as i8) << 4 >> 4) as i64;
         let scale = 1i64 << (header & 0xF);
         let pair = ((header >> 4) & 7) as usize * 2;
         let (c0, c1) = (coefs[pair] as i64, coefs[pair + 1] as i64);
-        let sample = ((((nibble * scale) << 11) + 1024 + c0 * h0 + c1 * h1) >> 11).clamp(i16::MIN as i64, i16::MAX as i64);
+        let sample =
+            ((((nibble * scale) << 11) + 1024 + c0 * h0 + c1 * h1) >> 11).clamp(i16::MIN as i64, i16::MAX as i64);
         out.push(sample as i16);
         h1 = h0;
         h0 = sample;
@@ -139,7 +146,9 @@ impl Biquad {
         }
         let q = |c: i16| c as f32 / 16384.0;
         let [x1, x2, y1, y2] = state.0;
-        let y = q(self.numerator[0]) * x + q(self.numerator[1]) * x1 + q(self.numerator[2]) * x2 - q(self.denominator[0]) * y1 - q(self.denominator[1]) * y2;
+        let y = q(self.numerator[0]) * x + q(self.numerator[1]) * x1 + q(self.numerator[2]) * x2
+            - q(self.denominator[0]) * y1
+            - q(self.denominator[1]) * y2;
         state.0 = [x, x1, y, y1];
         y
     }
@@ -184,7 +193,11 @@ impl Voice {
             PCM_INT16 => mmu.read_u16(wb.addr + (frame * ch + c as u64) * 2).unwrap_or(0) as i16 as f32,
             PCM_FLOAT => {
                 let x = f32::from_bits(mmu.read_u32(wb.addr + (frame * ch + c as u64) * 4).unwrap_or(0));
-                if x.is_nan() { 0.0 } else { (x * 32768.0).clamp(i16::MIN as f32, i16::MAX as f32) }
+                if x.is_nan() {
+                    0.0
+                } else {
+                    (x * 32768.0).clamp(i16::MIN as f32, i16::MAX as f32)
+                }
             }
             PCM_ADPCM => {
                 if self.adpcm_cache.as_ref().map(|(w, _)| w) != Some(wb) {
@@ -207,7 +220,10 @@ impl Voice {
         }
         let mut history = (0, 0);
         if wb.context_addr != 0 && wb.context_size >= 6 {
-            history = (mmu.read_u16(wb.context_addr + 2).unwrap_or(0) as i16, mmu.read_u16(wb.context_addr + 4).unwrap_or(0) as i16);
+            history = (
+                mmu.read_u16(wb.context_addr + 2).unwrap_or(0) as i16,
+                mmu.read_u16(wb.context_addr + 4).unwrap_or(0) as i16,
+            );
         }
         let mut data = vec![0u8; wb.size.min(ADPCM_MAX_BYTES) as usize];
         if mmu.read_bytes(wb.addr, &mut data).is_err() {
@@ -231,7 +247,14 @@ pub struct Mix {
 
 impl Mix {
     fn final_mix() -> Self {
-        Self { used: true, volume: 1.0, buffer_count: MIX_BUFFERS as u32, mix_id: FINAL_MIX_ID, dest_mix: 0x7FFF_FFFF, matrix: vec![0.0; MIX_BUFFERS * MIX_BUFFERS] }
+        Self {
+            used: true,
+            volume: 1.0,
+            buffer_count: MIX_BUFFERS as u32,
+            mix_id: FINAL_MIX_ID,
+            dest_mix: 0x7FFF_FFFF,
+            matrix: vec![0.0; MIX_BUFFERS * MIX_BUFFERS],
+        }
     }
 }
 
@@ -327,11 +350,11 @@ impl AudioRendererModel {
         let _ = perf_sz;
 
         for (i, c) in channels.chunks_exact(CHANNEL_IN_SIZE).enumerate() {
-            if let Some(dst) = self.channels.get_mut(i) {
-                if c[0x64] != 0 {
-                    for (b, m) in dst.iter_mut().enumerate() {
-                        *m = rdf32(c, 4 + b * 4);
-                    }
+            if let Some(dst) = self.channels.get_mut(i)
+                && c[0x64] != 0
+            {
+                for (b, m) in dst.iter_mut().enumerate() {
+                    *m = rdf32(c, 4 + b * 4);
                 }
             }
         }
@@ -340,7 +363,10 @@ impl AudioRendererModel {
             let Some(voice) = self.voices.get_mut(id) else { continue };
             if v[0x8] != 0 {
                 // is_new: a fresh voice starts at the wave buffer ring's head.
-                *voice = Voice { slot: (rd32(v, 0x40) as i16).max(0) as usize % 4, ..Default::default() };
+                *voice = Voice {
+                    slot: (rd32(v, 0x40) as i16).max(0) as usize % 4,
+                    ..Default::default()
+                };
             }
             voice.used = v[0x9] != 0;
             voice.started = v[0xA] == VOICE_STARTED;
@@ -405,7 +431,12 @@ impl AudioRendererModel {
         let n_mempools = mempools_sz / MEMPOOL_IN_SIZE;
         let n_voices = voices_sz / VOICE_IN_SIZE;
         let n_sinks = sinks_sz / SINK_IN_SIZE;
-        let total = HEADER_SIZE + n_mempools * MEMPOOL_OUT_SIZE + n_voices * VOICE_OUT_SIZE + n_sinks * SINK_OUT_SIZE + PERF_OUT_SIZE + BEHAVIOR_OUT_SIZE;
+        let total = HEADER_SIZE
+            + n_mempools * MEMPOOL_OUT_SIZE
+            + n_voices * VOICE_OUT_SIZE
+            + n_sinks * SINK_OUT_SIZE
+            + PERF_OUT_SIZE
+            + BEHAVIOR_OUT_SIZE;
         if out.len() < total {
             return 0x2A1;
         }
@@ -453,8 +484,9 @@ impl AudioRendererModel {
         let left = self.sink_inputs.first().copied().unwrap_or(0) as usize % MIX_BUFFERS;
         let right = self.sink_inputs.get(1).copied().unwrap_or(left as u8) as usize % MIX_BUFFERS;
         let clamp = |x: f32| (x * volume).round().clamp(i16::MIN as f32, i16::MAX as f32) as i16;
-        for i in 0..SAMPLES_PER_FRAME {
-            let (l, r) = final_mix.map_or((0.0, 0.0), |m| (buffers[m][left][i], buffers[m][right][i]));
+        let silent = [0f32; SAMPLES_PER_FRAME];
+        let (ls, rs) = final_mix.map_or((&silent, &silent), |m| (&buffers[m][left], &buffers[m][right]));
+        for (&l, &r) in ls.iter().zip(rs) {
             self.output.push(clamp(l));
             self.output.push(clamp(r));
         }
@@ -472,14 +504,16 @@ impl AudioRendererModel {
         order.sort_by(|a, b| b.cmp(a));
         for (_, i) in order {
             let mix = &self.mixes[i];
-            let Some(dest) = self.mix_index(mix.dest_mix) else { continue };
+            let Some(dest) = self.mix_index(mix.dest_mix) else {
+                continue;
+            };
             let dest_count = self.mixes[dest].buffer_count as usize;
             let src = std::mem::take(&mut buffers[i]);
             for (s, src_buf) in src.iter().enumerate().take(mix.buffer_count as usize) {
-                for d in 0..dest_count {
+                for (d, dst_buf) in buffers[dest].iter_mut().enumerate().take(dest_count) {
                     let gain = mix.volume * mix.matrix[s * MIX_BUFFERS + d];
                     if gain != 0.0 {
-                        for (o, x) in buffers[dest][d].iter_mut().zip(src_buf) {
+                        for (o, x) in dst_buf.iter_mut().zip(src_buf) {
                             *o += x * gain;
                         }
                     }
@@ -496,8 +530,14 @@ impl AudioRendererModel {
             return;
         }
         // DSP-ADPCM voices are mono.
-        let ch = if voice.format == PCM_ADPCM { 1 } else { voice.channel_count as usize };
+        let ch = if voice.format == PCM_ADPCM {
+            1
+        } else {
+            voice.channel_count as usize
+        };
         let step = voice.sample_rate as f64 * voice.pitch.max(0.0) as f64 / OUTPUT_RATE as f64;
+        // `i` is the sample position within every destination buffer, not an index into one slice.
+        #[allow(clippy::needless_range_loop)]
         for i in 0..SAMPLES_PER_FRAME {
             // The current slot plays unless it is empty or the client has not replaced the wave buffer
             // finished there (then nothing more is queued).
@@ -553,7 +593,16 @@ mod tests {
 
     /// Update data with one mempool, two channels, one voice, one final mix and one device sink.
     fn update_data(voice_new: bool, started: bool, pcm_addr: u64, samples: i32) -> Vec<u8> {
-        let sizes = [BEHAVIOR_IN_SIZE, MEMPOOL_IN_SIZE, VOICE_IN_SIZE, 2 * CHANNEL_IN_SIZE, 0, MIX_IN_SIZE, SINK_IN_SIZE, PERF_IN_SIZE];
+        let sizes = [
+            BEHAVIOR_IN_SIZE,
+            MEMPOOL_IN_SIZE,
+            VOICE_IN_SIZE,
+            2 * CHANNEL_IN_SIZE,
+            0,
+            MIX_IN_SIZE,
+            SINK_IN_SIZE,
+            PERF_IN_SIZE,
+        ];
         let total = HEADER_SIZE + sizes.iter().sum::<usize>();
         let mut b = vec![0u8; total];
         wr32(&mut b, 0, 0x3156_4552);
@@ -606,7 +655,13 @@ mod tests {
         for i in 0..480u64 {
             mmu.write_u16(0x5000_0000 + i * 2, 1000).unwrap();
         }
-        let mut r = AudioRendererModel::new(RendererParams { sample_rate: 48_000, sample_count: 240, mix_buffer_count: 2, voice_count: 4, sink_count: 1 });
+        let mut r = AudioRendererModel::new(RendererParams {
+            sample_rate: 48_000,
+            sample_count: 240,
+            mix_buffer_count: 2,
+            voice_count: 4,
+            sink_count: 1,
+        });
         r.started = true;
         let mut out = vec![0u8; 0x400];
         assert_eq!(r.update(&update_data(true, true, 0x5000_0000, 480), &mut out), 0);
@@ -628,7 +683,16 @@ mod tests {
     /// the final mix: volume 1, 2 buffers) and a device sink on final mix buffers 0 and 1. Returns the
     /// buffer and the offsets of the channel, voice and mix sections.
     fn layout(channels: usize, voices: usize, mixes: usize) -> (Vec<u8>, usize, usize, usize) {
-        let sizes = [BEHAVIOR_IN_SIZE, 0, voices * VOICE_IN_SIZE, channels * CHANNEL_IN_SIZE, 0, mixes * MIX_IN_SIZE, SINK_IN_SIZE, PERF_IN_SIZE];
+        let sizes = [
+            BEHAVIOR_IN_SIZE,
+            0,
+            voices * VOICE_IN_SIZE,
+            channels * CHANNEL_IN_SIZE,
+            0,
+            mixes * MIX_IN_SIZE,
+            SINK_IN_SIZE,
+            PERF_IN_SIZE,
+        ];
         let total = HEADER_SIZE + sizes.iter().sum::<usize>();
         let mut b = vec![0u8; total];
         wr32(&mut b, 0, 0x3656_4552);
@@ -669,7 +733,17 @@ mod tests {
     }
 
     /// A new, started voice at 48 kHz, pitch 1, volume 1, playing one wave buffer of `samples` frames.
-    fn set_voice(b: &mut [u8], at: usize, format: u8, channel_ids: &[u32], dest: u32, addr: u64, size: u64, samples: i32) {
+    #[allow(clippy::too_many_arguments)]
+    fn set_voice(
+        b: &mut [u8],
+        at: usize,
+        format: u8,
+        channel_ids: &[u32],
+        dest: u32,
+        addr: u64,
+        size: u64,
+        samples: i32,
+    ) {
         b[at + 0x8] = 1;
         b[at + 0x9] = 1;
         b[at + 0xA] = VOICE_STARTED;
@@ -688,7 +762,13 @@ mod tests {
     }
 
     fn renderer() -> AudioRendererModel {
-        let mut r = AudioRendererModel::new(RendererParams { sample_rate: 48_000, sample_count: 240, mix_buffer_count: 24, voice_count: 4, sink_count: 1 });
+        let mut r = AudioRendererModel::new(RendererParams {
+            sample_rate: 48_000,
+            sample_count: 240,
+            mix_buffer_count: 24,
+            voice_count: 4,
+            sink_count: 1,
+        });
         r.started = true;
         r
     }
@@ -757,7 +837,10 @@ mod tests {
         wr64(&mut b, vo + 0x60 + 0x28, 6);
         let mut r = renderer();
         let frame = render(&mut r, &mmu, &b);
-        assert_eq!(frame[..7], [(101, 51), (102, 51), (103, 52), (104, 52), (104, 52), (104, 52), (0, 0)]);
+        assert_eq!(
+            frame[..7],
+            [(101, 51), (102, 51), (103, 52), (104, 52), (104, 52), (104, 52), (0, 0)]
+        );
         assert!(frame[7..].iter().all(|&p| p == (0, 0)));
         assert_eq!((r.voices[0].played, r.voices[0].consumed), (6, 1));
     }

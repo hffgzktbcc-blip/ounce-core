@@ -267,10 +267,10 @@ pub fn open_backend(kind: BackendKind, config: &BackendConfig) -> Box<dyn Presen
         return Box::new(headless::HeadlessBackend::new(config));
     }
 
-    if matches!(kind, BackendKind::Auto | BackendKind::Gpu) {
-        if let Some(backend) = open_gpu_backend(kind, config) {
-            return backend;
-        }
+    if matches!(kind, BackendKind::Auto | BackendKind::Gpu)
+        && let Some(backend) = open_gpu_backend(kind, config)
+    {
+        return backend;
     }
 
     match minifb_window::MinifbBackend::new(config) {
@@ -292,7 +292,11 @@ fn open_gpu_backend(kind: BackendKind, config: &BackendConfig) -> Option<Box<dyn
         Ok(backend) => Some(Box::new(backend)),
         Err(e) => {
             // Auto falls back quietly-ish; an explicit request says why it was not honoured.
-            let prefix = if kind == BackendKind::Gpu { "GPU presentation requested but" } else { "GPU presentation" };
+            let prefix = if kind == BackendKind::Gpu {
+                "GPU presentation requested but"
+            } else {
+                "GPU presentation"
+            };
             eprintln!("[Display] {prefix} unavailable ({e}); falling back to the software window.");
             None
         }
@@ -302,7 +306,9 @@ fn open_gpu_backend(kind: BackendKind, config: &BackendConfig) -> Option<Box<dyn
 #[cfg(not(feature = "gpu-present"))]
 fn open_gpu_backend(kind: BackendKind, _config: &BackendConfig) -> Option<Box<dyn PresentBackend>> {
     if kind == BackendKind::Gpu {
-        eprintln!("[Display] GPU presentation is not compiled in (build with --features gpu-present); using the software window.");
+        eprintln!(
+            "[Display] GPU presentation is not compiled in (build with --features gpu-present); using the software window."
+        );
     }
     None
 }
@@ -313,11 +319,19 @@ mod tests {
 
     #[test]
     fn pixel_rejects_buffer_shorter_than_dimensions() {
-        let frame = Frame { width: 0x4000_0000, height: 2, rgba: vec![0; 8] };
+        let frame = Frame {
+            width: 0x4000_0000,
+            height: 2,
+            rgba: vec![0; 8],
+        };
         assert_eq!(frame.pixel(0x2000_0000, 1), None);
         assert_eq!(frame.pixel(1, 0), Some((0, 0, 0, 0)));
         assert_eq!(frame.pixel(2, 0), None);
-        let wide = Frame { width: usize::MAX, height: 2, rgba: vec![] };
+        let wide = Frame {
+            width: usize::MAX,
+            height: 2,
+            rgba: vec![],
+        };
         assert_eq!(wide.pixel(usize::MAX - 1, 1), None);
     }
 

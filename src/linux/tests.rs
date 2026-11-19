@@ -1,4 +1,4 @@
-use super::runner::{run, Options, Report, Stop};
+use super::runner::{Options, Report, Stop, describe_regs, run};
 use super::syscalls::Output;
 use crate::cpu::CpuTier;
 
@@ -23,7 +23,10 @@ impl Output for Capture {
 fn go(elf: &[u8], args: &[&str], tier: CpuTier) -> (Report, String) {
     let argv: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let mut cap = Capture::default();
-    let opts = Options { tier, ..Options::default() };
+    let opts = Options {
+        tier,
+        ..Options::default()
+    };
     let r = run(elf, &argv, &opts, &mut cap, &mut |_| {});
     (r, String::from_utf8_lossy(&cap.out).into_owned())
 }
@@ -83,7 +86,9 @@ fn unknown_syscall_is_diagnosed_by_number() {
     for t in TIERS {
         let (r, out) = go(BADSYS, &["badsyscall"], t);
         assert_eq!(out, "before\n");
-        let Stop::Failed { diagnosis, status } = r.stop else { panic!("expected failure: {r:?}") };
+        let Stop::Failed { diagnosis, status } = r.stop else {
+            panic!("expected failure: {r:?}")
+        };
         assert_eq!(status, 70);
         assert!(diagnosis.contains("syscall 278 (getrandom)"), "{diagnosis}");
         assert!(diagnosis.contains("pc=0x"), "{diagnosis}");
@@ -95,7 +100,9 @@ fn undecodable_instruction_is_diagnosed_by_word() {
     // Hand-built ELF whose entry is the permanently-undefined word 0x00000000 (UDF #0).
     let elf = tiny_elf(&[0x0000_0000]);
     let (r, _) = go(&elf, &["udf"], CpuTier::Tier3);
-    let Stop::Failed { diagnosis, status } = r.stop else { panic!("expected failure: {r:?}") };
+    let Stop::Failed { diagnosis, status } = r.stop else {
+        panic!("expected failure: {r:?}")
+    };
     assert_eq!(status, 71);
     assert!(diagnosis.contains("instruction word 0x00000000"), "{diagnosis}");
 }
@@ -105,7 +112,9 @@ fn non_linux_svc_is_rejected() {
     // svc #0x7
     let elf = tiny_elf(&[0xD400_00E1]);
     let (r, _) = go(&elf, &["svc7"], CpuTier::Tier3);
-    let Stop::Failed { diagnosis, .. } = r.stop else { panic!("{r:?}") };
+    let Stop::Failed { diagnosis, .. } = r.stop else {
+        panic!("{r:?}")
+    };
     assert!(diagnosis.contains("SVC #0x7"), "{diagnosis}");
 }
 
@@ -121,7 +130,10 @@ fn openat_and_readlinkat_are_enoent() {
 fn runaway_loop_hits_the_budget() {
     let elf = tiny_elf(&[0x1400_0000]); // b .
     let argv = vec!["spin".to_string()];
-    let opts = Options { max_instructions: 10_000, ..Options::default() };
+    let opts = Options {
+        max_instructions: 10_000,
+        ..Options::default()
+    };
     let r = run(&elf, &argv, &opts, &mut Capture::default(), &mut |_| {});
     assert!(matches!(r.stop, Stop::Failed { status: 73, .. }), "{r:?}");
 }
@@ -130,7 +142,9 @@ fn runaway_loop_hits_the_budget() {
 fn loader_rejects_bad_inputs() {
     let reject = |bytes: &[u8], needle: &str| {
         let (r, _) = go(bytes, &["x"], CpuTier::Tier3);
-        let Stop::Failed { diagnosis, status } = r.stop else { panic!("accepted") };
+        let Stop::Failed { diagnosis, status } = r.stop else {
+            panic!("accepted")
+        };
         assert_eq!(status, 72);
         assert!(diagnosis.contains(needle), "{diagnosis}");
     };
@@ -205,7 +219,11 @@ fn deterministic_clocks_replay_identically_across_engines() {
     for tier in TIERS {
         for _ in 0..2 {
             let mut cap = Capture::default();
-            let opts = Options { tier, deterministic: true, ..Options::default() };
+            let opts = Options {
+                tier,
+                deterministic: true,
+                ..Options::default()
+            };
             let r = run(elf, &["clock".into()], &opts, &mut cap, &mut |_| {});
             assert_eq!(r.stop, Stop::Exited(0), "{r:?}");
             assert_eq!(cap.out, expected);
@@ -215,16 +233,25 @@ fn deterministic_clocks_replay_identically_across_engines() {
 
 #[test]
 fn deterministic_clock_errors_do_not_consume_time_and_seconds_roll_over() {
-    use super::syscalls::{Process, Outcome, SYS_CLOCK_GETTIME, EINVAL, EFAULT};
+    use super::syscalls::{EFAULT, EINVAL, Outcome, Process, SYS_CLOCK_GETTIME};
     use crate::mmu::{Memory, Permission};
     let mut proc = Process::new_deterministic(0x1000);
     let mut mem = Memory::new();
     mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
     let mut out = Capture::default();
-    assert_eq!(proc.dispatch(SYS_CLOCK_GETTIME, [99, 0x1000, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EINVAL));
-    assert_eq!(proc.dispatch(SYS_CLOCK_GETTIME, [1, 0, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EFAULT));
+    assert_eq!(
+        proc.dispatch(SYS_CLOCK_GETTIME, [99, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-EINVAL)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_CLOCK_GETTIME, [1, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-EFAULT)
+    );
     for i in 0..1002u64 {
-        assert_eq!(proc.dispatch(SYS_CLOCK_GETTIME, [1, 0x1000, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+        assert_eq!(
+            proc.dispatch(SYS_CLOCK_GETTIME, [1, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
+            Outcome::Return(0)
+        );
         assert_eq!(mem.read_u64(0x1000).unwrap(), i / 1000);
         assert_eq!(mem.read_u64(0x1008).unwrap(), (i % 1000) * 1_000_000);
     }
@@ -232,14 +259,16 @@ fn deterministic_clock_errors_do_not_consume_time_and_seconds_roll_over() {
 
 #[test]
 fn sched_getaffinity_reports_one_cpu_and_validates_like_linux() {
-    use super::syscalls::{Process, Outcome, SYS_SCHED_GETAFFINITY, EINVAL, EFAULT, ESRCH, PID};
+    use super::syscalls::{EFAULT, EINVAL, ESRCH, Outcome, PID, Process, SYS_SCHED_GETAFFINITY};
     use crate::mmu::{Memory, Permission};
     let mut proc = Process::new(0x1000);
     let mut mem = Memory::new();
     mem.map_range(0x1000, 0x1000, Permission::READ_WRITE);
     mem.write_bytes(0x1000, &[0xff; 16]).unwrap();
     let mut out = Capture::default();
-    let mut call = |pid, len, mask, mem: &mut Memory| proc.dispatch(SYS_SCHED_GETAFFINITY, [pid, len, mask, 0, 0, 0], mem, &mut out);
+    let mut call = |pid, len, mask, mem: &mut Memory| {
+        proc.dispatch(SYS_SCHED_GETAFFINITY, [pid, len, mask, 0, 0, 0], mem, &mut out)
+    };
     // musl's sysconf passes a 128-byte buffer; only the first 8 bytes are written.
     assert_eq!(call(0, 0x80, 0x1000, &mut mem), Outcome::Return(8));
     assert_eq!(mem.read_u64(0x1000).unwrap(), 1);
@@ -253,20 +282,30 @@ fn sched_getaffinity_reports_one_cpu_and_validates_like_linux() {
 
 #[test]
 fn mremap_shrinks_in_place_and_grows_by_moving_with_contents() {
-    use super::syscalls::{Process, Outcome, SYS_MMAP, SYS_MREMAP, EINVAL, ENOMEM};
+    use super::syscalls::{EINVAL, ENOMEM, Outcome, Process, SYS_MMAP, SYS_MREMAP};
     use crate::mmu::Memory;
     let mut proc = Process::new(0x1000);
     let mut mem = Memory::new();
     let mut out = Capture::default();
-    let Outcome::Return(a) = proc.dispatch(SYS_MMAP, [0, 0x4000, 3, 0x22, u64::MAX, 0], &mut mem, &mut out) else { panic!() };
+    let Outcome::Return(a) = proc.dispatch(SYS_MMAP, [0, 0x4000, 3, 0x22, u64::MAX, 0], &mut mem, &mut out) else {
+        panic!()
+    };
     let a = a as u64;
     mem.write_u64(a, 0x1122_3344_5566_7788).unwrap();
     mem.write_u64(a + 0x3ff8, 42).unwrap();
     // without MAYMOVE growth is refused, bad flags are invalid
-    assert_eq!(proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-ENOMEM));
-    assert_eq!(proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 2, 0, 0], &mut mem, &mut out), Outcome::Return(-EINVAL));
+    assert_eq!(
+        proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOMEM)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 2, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-EINVAL)
+    );
     // grow with MAYMOVE: contents preserved at the new address, old range unmapped
-    let Outcome::Return(b) = proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 1, 0, 0], &mut mem, &mut out) else { panic!() };
+    let Outcome::Return(b) = proc.dispatch(SYS_MREMAP, [a, 0x4000, 0x8000, 1, 0, 0], &mut mem, &mut out) else {
+        panic!()
+    };
     let b = b as u64;
     assert_ne!(a, b);
     assert_eq!(mem.read_u64(b).unwrap(), 0x1122_3344_5566_7788);
@@ -274,7 +313,10 @@ fn mremap_shrinks_in_place_and_grows_by_moving_with_contents() {
     assert_eq!(mem.read_u64(b + 0x7ff8).unwrap(), 0);
     assert!(!mem.is_mapped(a));
     // shrink in place
-    assert_eq!(proc.dispatch(SYS_MREMAP, [b, 0x8000, 0x1000, 0, 0, 0], &mut mem, &mut out), Outcome::Return(b as i64));
+    assert_eq!(
+        proc.dispatch(SYS_MREMAP, [b, 0x8000, 0x1000, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(b as i64)
+    );
     assert!(mem.is_mapped(b) && !mem.is_mapped(b + 0x1000));
 }
 
@@ -290,36 +332,59 @@ fn guarded_virtual_memory_and_linux_signal_return() {
 
 #[test]
 fn reservations_are_sparse_bounded_and_preserve_holes() {
-    use super::syscalls::{Process, Outcome, SYS_MMAP, SYS_MUNMAP, SYS_MPROTECT, ENOMEM, EINVAL};
+    use super::syscalls::{EINVAL, ENOMEM, Outcome, Process, SYS_MMAP, SYS_MPROTECT, SYS_MUNMAP};
     use crate::mmu::Memory;
     let mut proc = Process::new(0x1000);
     let mut mem = Memory::new();
     let mut out = Capture::default();
     let n = 0x10000100000;
-    let Outcome::Return(base) = proc.dispatch(SYS_MMAP, [0, n, 0, 0x4022, u64::MAX, 0], &mut mem, &mut out) else { panic!() };
+    let Outcome::Return(base) = proc.dispatch(SYS_MMAP, [0, n, 0, 0x4022, u64::MAX, 0], &mut mem, &mut out) else {
+        panic!()
+    };
     assert!(base > 0);
     let base = base as u64;
     assert_eq!(mem.bucket_stats().total_pages, 0);
-    assert_eq!(proc.dispatch(SYS_MPROTECT, [base, n, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-ENOMEM));
-    assert_eq!(proc.dispatch(SYS_MPROTECT, [base + 4096, 1, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(
+        proc.dispatch(SYS_MPROTECT, [base, n, 3, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOMEM)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_MPROTECT, [base + 4096, 1, 3, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
     assert_eq!(mem.bucket_stats().total_pages, 1);
-    assert_eq!(proc.dispatch(SYS_MUNMAP, [base + 8192, 4096, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
-    assert_eq!(proc.dispatch(SYS_MPROTECT, [base + 4096, 8192, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-ENOMEM));
+    assert_eq!(
+        proc.dispatch(SYS_MUNMAP, [base + 8192, 4096, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_MPROTECT, [base + 4096, 8192, 3, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOMEM)
+    );
     assert_eq!(mem.bucket_stats().total_pages, 1);
-    assert_eq!(proc.dispatch(SYS_MMAP, [0, u64::MAX, 0, 0x4022, u64::MAX, 0], &mut mem, &mut out), Outcome::Return(-EINVAL));
-    assert_eq!(proc.dispatch(SYS_MUNMAP, [base, n, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
+    assert_eq!(
+        proc.dispatch(SYS_MMAP, [0, u64::MAX, 0, 0x4022, u64::MAX, 0], &mut mem, &mut out),
+        Outcome::Return(-EINVAL)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_MUNMAP, [base, n, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
     assert_eq!(mem.bucket_stats().total_pages, 0);
 }
 
 #[test]
 fn mmap_hints_do_not_overlap_reservations_and_fixed_maps_trim_them() {
-    use super::syscalls::{Process, Outcome, SYS_MMAP, SYS_MPROTECT, SYS_MUNMAP, ENOMEM};
+    use super::syscalls::{ENOMEM, Outcome, Process, SYS_MMAP, SYS_MPROTECT, SYS_MUNMAP};
     use crate::mmu::Memory;
     let mut proc = Process::new(0x1000);
     let mut mem = Memory::new();
     let mut out = Capture::default();
     let mut map = |hint, len, prot, flags, mem: &mut Memory| {
-        let Outcome::Return(addr) = proc.dispatch(SYS_MMAP, [hint, len, prot, flags, u64::MAX, 0], mem, &mut out) else { panic!() };
+        let Outcome::Return(addr) = proc.dispatch(SYS_MMAP, [hint, len, prot, flags, u64::MAX, 0], mem, &mut out)
+        else {
+            panic!()
+        };
         assert!(addr > 0);
         addr as u64
     };
@@ -328,7 +393,234 @@ fn mmap_hints_do_not_overlap_reservations_and_fixed_maps_trim_them() {
     assert!(b >= a + 0x100000000);
     assert_eq!(map(a + 8192, 4096, 3, 0x32, &mut mem), a + 8192);
     assert_eq!(mem.bucket_stats().total_pages, 2);
-    assert_eq!(proc.dispatch(SYS_MPROTECT, [a, 4096, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
-    assert_eq!(proc.dispatch(SYS_MUNMAP, [a + 4096, 4096, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(0));
-    assert_eq!(proc.dispatch(SYS_MPROTECT, [a, 12288, 3, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-ENOMEM));
+    assert_eq!(
+        proc.dispatch(SYS_MPROTECT, [a, 4096, 3, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_MUNMAP, [a + 4096, 4096, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_MPROTECT, [a, 12288, 3, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOMEM)
+    );
+}
+
+// ---- ounce.run.v1 stop details (#473) ----
+
+fn go_t3(elf: &[u8]) -> Report {
+    let opts = Options {
+        max_instructions: 10_000,
+        ..Options::default()
+    };
+    run(elf, &["t".to_string()], &opts, &mut Capture::default(), &mut |_| {})
+}
+
+#[test]
+fn clean_exit_reports_the_guest_status_separately_from_the_engine_exit_code() {
+    for t in TIERS {
+        let (r, _) = go(EXITCODE, &["exitcode"], t);
+        let report = r.to_run_report(t);
+        assert_eq!(
+            (report.stop_kind, report.exit_code, report.guest_exit_status),
+            ("clean_exit", 0, Some(42)),
+            "{t:?}"
+        );
+        assert_eq!(
+            r.detail.regs.map(|regs| regs.x0),
+            Some(42),
+            "x0 holds the exit status at the exit syscall"
+        );
+        assert!(report.message.is_none());
+    }
+}
+
+#[test]
+fn unimplemented_syscall_reports_its_number_as_svc_id() {
+    let (r, _) = go(BADSYS, &["badsyscall"], CpuTier::Tier3);
+    let report = r.to_run_report(CpuTier::Tier3);
+    assert_eq!(
+        (report.stop_kind, report.exit_code, report.svc_id),
+        ("unhandled_svc", 14, Some(278))
+    );
+    assert!(report.message.unwrap().contains("getrandom"));
+    assert_eq!(report.pc, r.detail.regs.map(|regs| regs.pc));
+}
+
+#[test]
+fn non_linux_svc_reports_its_immediate_as_svc_id() {
+    let r = go_t3(&tiny_elf(&[0xD400_00E1])); // svc #0x7
+    assert_eq!((r.detail.stop_kind, r.detail.svc_id), ("unhandled_svc", Some(7)));
+}
+
+#[test]
+fn undefined_instruction_reports_its_opcode() {
+    let r = go_t3(&tiny_elf(&[0x0000_0000])); // UDF #0
+    let report = r.to_run_report(CpuTier::Tier3);
+    assert_eq!(
+        (report.stop_kind, report.exit_code, report.opcode),
+        ("unimplemented_insn", 10, Some(0))
+    );
+    assert_eq!(report.pc, Some(r.detail.regs.unwrap().pc));
+}
+
+#[test]
+fn unmapped_load_reports_the_fault_address() {
+    // mov x1, #0x10; ldr x0, [x1]
+    let r = go_t3(&tiny_elf(&[0xD280_0201, 0xF940_0020]));
+    let report = r.to_run_report(CpuTier::Tier3);
+    assert_eq!(
+        (report.stop_kind, report.exit_code, report.fault_addr),
+        ("memory_fault", 11, Some(0x10)),
+        "{r:?}"
+    );
+}
+
+#[test]
+fn budget_and_loader_stops_map_to_their_stop_kinds() {
+    let spin = go_t3(&tiny_elf(&[0x1400_0000])); // b .
+    assert_eq!(spin.to_run_report(CpuTier::Tier3).exit_code, 16);
+    assert_eq!(spin.detail.stop_kind, "budget_exhausted");
+    let bad = go_t3(b"not an elf at all");
+    let report = bad.to_run_report(CpuTier::Tier3);
+    assert_eq!(
+        (report.stop_kind, report.exit_code, report.tier, report.silent_fallback),
+        ("loader_error", 17, "tier3", false)
+    );
+    assert!(bad.detail.regs.is_none());
+    assert_eq!(
+        describe_regs(bad.detail.regs),
+        "registers at stop: unavailable (the program did not start)"
+    );
+}
+
+#[test]
+fn dump_regs_line_has_pc_x0_d0_and_nzcv() {
+    let (r, _) = go(EXITCODE, &["exitcode"], CpuTier::Tier3);
+    let line = describe_regs(r.detail.regs);
+    assert!(line.starts_with("registers at stop: pc=0x"), "{line}");
+    assert!(line.contains(" x0=0x000000000000002a "), "{line}");
+    assert!(line.contains(" d0=0x") && line.contains(" nzcv="), "{line}");
+}
+
+#[test]
+fn identity_and_process_syscalls() {
+    use super::syscalls::{
+        EBADF, GID, Outcome, PID, Process, SYS_CLOSE, SYS_GETEGID, SYS_GETEUID, SYS_GETGID, SYS_GETPID, SYS_GETPPID,
+        SYS_GETTID, SYS_GETUID, SYS_SCHED_YIELD, UID,
+    };
+    use crate::mmu::Memory;
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    let mut out = Capture::default();
+
+    assert_eq!(
+        proc.dispatch(SYS_GETPID, [0; 6], &mut mem, &mut out),
+        Outcome::Return(PID as i64)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_GETTID, [0; 6], &mut mem, &mut out),
+        Outcome::Return(PID as i64)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_GETPPID, [0; 6], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_GETUID, [0; 6], &mut mem, &mut out),
+        Outcome::Return(UID as i64)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_GETEUID, [0; 6], &mut mem, &mut out),
+        Outcome::Return(UID as i64)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_GETGID, [0; 6], &mut mem, &mut out),
+        Outcome::Return(GID as i64)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_GETEGID, [0; 6], &mut mem, &mut out),
+        Outcome::Return(GID as i64)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_SCHED_YIELD, [0; 6], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_CLOSE, [0, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_CLOSE, [1, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_CLOSE, [2, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_CLOSE, [3, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-EBADF)
+    );
+}
+
+#[test]
+fn gettimeofday_writes_timeval_and_supports_deterministic_mode() {
+    use super::syscalls::{EFAULT, Outcome, Process, SYS_GETTIMEOFDAY};
+    use crate::mmu::Memory;
+    let mut proc = Process::new(0x1000);
+    let mut mem = Memory::new();
+    let mut out = Capture::default();
+
+    // Null pointer returns 0 without writing
+    assert_eq!(
+        proc.dispatch(SYS_GETTIMEOFDAY, [0, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+
+    // Unmapped pointer returns -EFAULT
+    assert_eq!(
+        proc.dispatch(SYS_GETTIMEOFDAY, [0x2000, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-EFAULT)
+    );
+
+    // Mapped buffer receives seconds and microseconds
+    mem.map_range(
+        0x2000,
+        4096,
+        crate::mmu::Permission {
+            read: true,
+            write: true,
+            execute: false,
+        },
+    );
+    assert_eq!(
+        proc.dispatch(SYS_GETTIMEOFDAY, [0x2000, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    let sec = mem.read_u64(0x2000).unwrap();
+    let usec = mem.read_u64(0x2008).unwrap();
+    assert!(sec > 0);
+    assert!(usec < 1_000_000);
+
+    // Deterministic mode produces reproducible progressive virtual time
+    let mut det_proc = Process::new_deterministic(0x1000);
+    assert_eq!(
+        det_proc.dispatch(SYS_GETTIMEOFDAY, [0x2000, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    let sec1 = mem.read_u64(0x2000).unwrap();
+    let usec1 = mem.read_u64(0x2008).unwrap();
+    assert_eq!(sec1, 1_700_000_000);
+    assert_eq!(usec1, 0);
+
+    assert_eq!(
+        det_proc.dispatch(SYS_GETTIMEOFDAY, [0x2000, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    let sec2 = mem.read_u64(0x2000).unwrap();
+    let usec2 = mem.read_u64(0x2008).unwrap();
+    assert_eq!(sec2, 1_700_000_000);
+    assert_eq!(usec2, 1_000); // 1 ms tick = 1000 microseconds
 }

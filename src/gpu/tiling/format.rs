@@ -121,20 +121,12 @@ impl Format {
     pub const fn is_depth_stencil(self) -> bool {
         matches!(
             self,
-            Format::S8Uint
-                | Format::Z16Unorm
-                | Format::Z24UnormS8Uint
-                | Format::Z32Float
-                | Format::Z32FloatS8X24Uint
+            Format::S8Uint | Format::Z16Unorm | Format::Z24UnormS8Uint | Format::Z32Float | Format::Z32FloatS8X24Uint
         )
     }
 
     /// Texels covered by one element, horizontally and vertically.
     pub const fn element_extent(self) -> (u32, u32) {
-        if self.is_compressed() {
-            (4, 4)
-        } else {
-            (1, 1)
-        }
+        if self.is_compressed() { (4, 4) } else { (1, 1) }
     }
 }

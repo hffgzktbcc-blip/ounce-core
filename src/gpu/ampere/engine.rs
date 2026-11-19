@@ -13,8 +13,8 @@ use super::methods as m;
 use super::mme::{Mme, MmeHost};
 use super::pushbuf::{self, MethodCall, PushbufError};
 use super::render::{self, RenderStats};
-use super::surface::{self, addr40, ColorTarget, DepthTarget};
-use super::texture::{self, Pool, Sampler, TextureHeader, TIC_ENTRY_BYTES, TSC_ENTRY_BYTES};
+use super::surface::{self, ColorTarget, DepthTarget, addr40};
+use super::texture::{self, Pool, Sampler, TIC_ENTRY_BYTES, TSC_ENTRY_BYTES, TextureHeader};
 
 /// `BEGIN.OP` / `DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_*.TOPOLOGY` values (same encoding).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,11 +40,26 @@ pub enum Topology {
 impl Topology {
     pub fn from_raw(v: u32) -> Self {
         use Topology::*;
-        [Points, Lines, LineLoop, LineStrip, Triangles, TriangleStrip, TriangleFan, Quads, QuadStrip, Polygon,
-         LineListAdjacency, LineStripAdjacency, TriangleListAdjacency, TriangleStripAdjacency, Patch]
-            .get(v as usize)
-            .copied()
-            .unwrap_or(Other(v))
+        [
+            Points,
+            Lines,
+            LineLoop,
+            LineStrip,
+            Triangles,
+            TriangleStrip,
+            TriangleFan,
+            Quads,
+            QuadStrip,
+            Polygon,
+            LineListAdjacency,
+            LineStripAdjacency,
+            TriangleListAdjacency,
+            TriangleStripAdjacency,
+            Patch,
+        ]
+        .get(v as usize)
+        .copied()
+        .unwrap_or(Other(v))
     }
 }
 
@@ -224,7 +239,10 @@ pub enum HostSemaphoreOp {
     /// Wait for `!(value | payload) != 0`.
     AcquireNor,
     /// Atomic reduction: `REDUCTION` op code (`MIN` 0 .. `DEC` 7) and signed/unsigned format.
-    Reduction { op: u32, unsigned: bool },
+    Reduction {
+        op: u32,
+        unsigned: bool,
+    },
     Other(u32),
 }
 
@@ -282,7 +300,11 @@ impl SemaphoreWait {
             HostSemaphoreOp::AcquireEqual => v == p,
             HostSemaphoreOp::AcquireStrictGeq => v >= p,
             HostSemaphoreOp::AcquireCircularGeq => {
-                if self.wide { (v.wrapping_sub(p) as i64) >= 0 } else { (v.wrapping_sub(p) as u32 as i32) >= 0 }
+                if self.wide {
+                    (v.wrapping_sub(p) as i64) >= 0
+                } else {
+                    (v.wrapping_sub(p) as u32 as i32) >= 0
+                }
             }
             HostSemaphoreOp::AcquireAnd => v & p != 0,
             HostSemaphoreOp::AcquireNor => !(v | p) & mask != 0,
@@ -303,7 +325,11 @@ pub struct ConstantBufferBinding {
 pub enum Diagnostic {
     /// A method on a subchannel whose bound class is neither AMPERE_B nor MAXWELL_B (or nothing is
     /// bound).
-    ForeignSubchannel { subchannel: u8, class: Option<u32>, method: u32 },
+    ForeignSubchannel {
+        subchannel: u8,
+        class: Option<u32>,
+        method: u32,
+    },
     /// `DRAW_VERTEX_ARRAY` or `END` outside `BEGIN`/`END`.
     DrawOutsideBegin { method: u32 },
     /// `BEGIN` while a previous `BEGIN` was still open.
@@ -355,11 +381,20 @@ impl MmeHost for MacroHost<'_> {
     fn emit(&mut self, index: u32, data: u32) {
         let method = index * 4;
         // A macro may not rewrite macro RAM or call macros while it runs.
-        if (m::LOAD_MME_INSTRUCTION_RAM_POINTER..=m::LOAD_MME_START_ADDRESS_RAM).contains(&method) || method >= m::CALL_MME_MACRO {
+        if (m::LOAD_MME_INSTRUCTION_RAM_POINTER..=m::LOAD_MME_START_ADDRESS_RAM).contains(&method)
+            || method >= m::CALL_MME_MACRO
+        {
             self.rejected.get_or_insert("macro emitted a macro method");
             return;
         }
-        self.engine.execute(MethodCall { subchannel: self.subchannel, method, data }, self.mem);
+        self.engine.execute(
+            MethodCall {
+                subchannel: self.subchannel,
+                method,
+                data,
+            },
+            self.mem,
+        );
     }
 }
 
@@ -448,7 +483,9 @@ impl Ampere3d {
     }
 
     #[cfg(feature = "gpu-present")]
-    pub fn set_host_gpu(&mut self, enabled: bool) { self.host_gpu = enabled; }
+    pub fn set_host_gpu(&mut self, enabled: bool) {
+        self.host_gpu = enabled;
+    }
 
     /// The semaphore the channel waits on, if a host or 3D acquire is not met yet.
     pub fn blocked_on(&self) -> Option<SemaphoreWait> {
@@ -533,11 +570,11 @@ impl Ampere3d {
             if !self.continues_macro(call) {
                 self.run_macro(mem);
             }
-            if let Some(wait) = self.acquire_for(call) {
-                if wait.satisfied(mem) == Some(false) {
-                    self.blocked = Some(wait);
-                    return;
-                }
+            if let Some(wait) = self.acquire_for(call)
+                && wait.satisfied(mem) == Some(false)
+            {
+                self.blocked = Some(wait);
+                return;
             }
             self.pending.pop_front();
             self.execute(call, mem);
@@ -556,12 +593,20 @@ impl Ampere3d {
     fn run_macro(&mut self, mem: &mut dyn GpuMemoryWriter) {
         let Some(call) = self.macro_call.take() else { return };
         let mme = std::mem::replace(&mut self.mme, Mme::detached());
-        let mut host = MacroHost { engine: self, mem, subchannel: call.subchannel, rejected: None };
+        let mut host = MacroHost {
+            engine: self,
+            mem,
+            subchannel: call.subchannel,
+            rejected: None,
+        };
         let result = mme.run(call.index as usize, &call.params, &mut host);
         let rejected = host.rejected;
         self.mme = mme;
         if let Some(reason) = result.err().or(rejected) {
-            self.diagnostics.push(Diagnostic::MacroFailed { index: call.index, reason });
+            self.diagnostics.push(Diagnostic::MacroFailed {
+                index: call.index,
+                reason,
+            });
         }
     }
 
@@ -601,7 +646,11 @@ impl Ampere3d {
                     gpu_va: addr40(self.reg(m::SET_REPORT_SEMAPHORE_A), self.reg(m::SET_REPORT_SEMAPHORE_B)),
                     payload: self.reg(m::SET_REPORT_SEMAPHORE_C) as u64,
                     wide: false,
-                    op: if (call.data >> 16) & 1 == 1 { HostSemaphoreOp::AcquireStrictGeq } else { HostSemaphoreOp::AcquireEqual },
+                    op: if (call.data >> 16) & 1 == 1 {
+                        HostSemaphoreOp::AcquireStrictGeq
+                    } else {
+                        HostSemaphoreOp::AcquireEqual
+                    },
                 })
             }
             _ => None,
@@ -630,9 +679,17 @@ impl Ampere3d {
         let base = ((self.reg(m::OFFSET_OUT_UPPER) as u64 & 0xff) << 32) | self.reg(m::OFFSET_OUT) as u64;
         let pitch = self.reg(m::LAUNCH_DMA) & 1 == 1;
         let size = self.reg(m::SET_DST_BLOCK_SIZE);
-        let geo = crate::gpu::tiling::BlockLinear::new(self.reg(m::SET_DST_WIDTH), self.reg(m::SET_DST_HEIGHT),
-            self.reg(m::SET_DST_DEPTH).max(1), ((size >> 4) & 0xf) as u8, ((size >> 8) & 0xf) as u8);
-        let (ox, oy) = (self.reg(m::SET_DST_ORIGIN_BYTES_X), self.reg(m::SET_DST_ORIGIN_SAMPLES_Y));
+        let geo = crate::gpu::tiling::BlockLinear::new(
+            self.reg(m::SET_DST_WIDTH),
+            self.reg(m::SET_DST_HEIGHT),
+            self.reg(m::SET_DST_DEPTH).max(1),
+            ((size >> 4) & 0xf) as u8,
+            ((size >> 8) & 0xf) as u8,
+        );
+        let (ox, oy) = (
+            self.reg(m::SET_DST_ORIGIN_BYTES_X),
+            self.reg(m::SET_DST_ORIGIN_SAMPLES_Y),
+        );
         for (y, line) in data.chunks(len.max(1)).take(lines).enumerate() {
             if pitch {
                 mem.write(base + y as u64 * self.reg(m::PITCH_OUT) as u64, line);
@@ -667,7 +724,11 @@ impl Ampere3d {
                 return self.dma.execute(call.method, call.data, mem, &mut self.diagnostics);
             }
             // Only the inline-to-memory window (`LINE_LENGTH_IN`..`LOAD_INLINE_DATA`) is shared with 3D.
-            Some(c @ (m::MAXWELL_COMPUTE_B | m::KEPLER_INLINE_TO_MEMORY_B)) if (m::LINE_LENGTH_IN..=m::LOAD_INLINE_DATA).contains(&call.method) => c,
+            Some(c @ (m::MAXWELL_COMPUTE_B | m::KEPLER_INLINE_TO_MEMORY_B))
+                if (m::LINE_LENGTH_IN..=m::LOAD_INLINE_DATA).contains(&call.method) =>
+            {
+                c
+            }
             Some(m::FERMI_TWOD_A) => {
                 // FERMI_TWOD_A (2D operations: clear/blit setup). Accept without foreign subchannel error.
                 return;
@@ -686,7 +747,10 @@ impl Ampere3d {
         let call = match self.regs[(m::MME_SHADOW_RAM_CONTROL / 4) as usize] {
             _ if method == m::MME_SHADOW_RAM_CONTROL => call,
             m::SHADOW_RAM_PASSTHROUGH => call,
-            m::SHADOW_RAM_REPLAY => MethodCall { data: self.shadow[(method / 4) as usize], ..call },
+            m::SHADOW_RAM_REPLAY => MethodCall {
+                data: self.shadow[(method / 4) as usize],
+                ..call
+            },
             _ => {
                 self.shadow[(method / 4) as usize] = call.data;
                 call
@@ -708,9 +772,16 @@ impl Ampere3d {
             m::CALL_MME_MACRO.. if (method - m::CALL_MME_MACRO).is_multiple_of(m::CALL_MME_STRIDE) => {
                 let index = (method - m::CALL_MME_MACRO) / m::CALL_MME_STRIDE;
                 if class == m::MAXWELL_B {
-                    self.macro_call = Some(MacroCall { subchannel: call.subchannel, index, params: vec![call.data] });
+                    self.macro_call = Some(MacroCall {
+                        subchannel: call.subchannel,
+                        index,
+                        params: vec![call.data],
+                    });
                 } else {
-                    self.diagnostics.push(Diagnostic::MacroFailed { index, reason: "AMPERE_B macro format not modelled" });
+                    self.diagnostics.push(Diagnostic::MacroFailed {
+                        index,
+                        reason: "AMPERE_B macro format not modelled",
+                    });
                 }
             }
             m::BEGIN => {
@@ -723,7 +794,10 @@ impl Ampere3d {
                     1 => self.instance += 1,
                     _ => {}
                 }
-                self.open = Some(OpenDraw { topology: Topology::from_raw(call.data & 0xffff), instance: self.instance });
+                self.open = Some(OpenDraw {
+                    topology: Topology::from_raw(call.data & 0xffff),
+                    instance: self.instance,
+                });
             }
             m::DRAW_VERTEX_ARRAY => match self.open.clone() {
                 Some(open) => {
@@ -755,7 +829,15 @@ impl Ampere3d {
                 let bytes = [4, 2, 1][(n % 3) as usize];
                 let ib = self.index_buffer(class, bytes);
                 let topology = Topology::from_raw(call.data >> 28);
-                self.draw(class, topology, call.data & 0xffff, (call.data >> 16) & 0xfff, self.instance, Some(ib), mem);
+                self.draw(
+                    class,
+                    topology,
+                    call.data & 0xffff,
+                    (call.data >> 16) & 0xfff,
+                    self.instance,
+                    Some(ib),
+                    mem,
+                );
             }
             m::END => {
                 if self.open.take().is_none() {
@@ -769,15 +851,27 @@ impl Ampere3d {
                     self.instance += 1;
                 }
                 let topology = Topology::from_raw(call.data >> 28);
-                self.draw(class, topology, call.data & 0xffff, (call.data >> 16) & 0xfff, self.instance, None, mem);
+                self.draw(
+                    class,
+                    topology,
+                    call.data & 0xffff,
+                    (call.data >> 16) & 0xfff,
+                    self.instance,
+                    None,
+                    mem,
+                );
             }
             m::SET_REPORT_SEMAPHORE_D => self.semaphore(call.data, mem),
             m::LOAD_CONSTANT_BUFFER..m::BIND_GROUP_CONSTANT_BUFFER => {
                 let offset = self.reg(m::LOAD_CONSTANT_BUFFER_OFFSET) & 0xffff;
-                mem.write(render::selector_va(&self.regs) + offset as u64, &call.data.to_le_bytes());
+                mem.write(
+                    render::selector_va(&self.regs) + offset as u64,
+                    &call.data.to_le_bytes(),
+                );
                 self.regs[(m::LOAD_CONSTANT_BUFFER_OFFSET / 4) as usize] = (offset + 4) & 0xffff;
             }
-            _ if (m::BIND_GROUP_CONSTANT_BUFFER..m::BIND_GROUP_CONSTANT_BUFFER + m::BIND_GROUP_COUNT as u32 * m::BIND_GROUP_STRIDE)
+            _ if (m::BIND_GROUP_CONSTANT_BUFFER
+                ..m::BIND_GROUP_CONSTANT_BUFFER + m::BIND_GROUP_COUNT as u32 * m::BIND_GROUP_STRIDE)
                 .contains(&method)
                 && (method - m::BIND_GROUP_CONSTANT_BUFFER).is_multiple_of(m::BIND_GROUP_STRIDE) =>
             {
@@ -802,7 +896,10 @@ impl Ampere3d {
                     2 => HostSemaphoreOp::Release,
                     4 => HostSemaphoreOp::AcquireCircularGeq,
                     8 => HostSemaphoreOp::AcquireAnd,
-                    0x10 => HostSemaphoreOp::Reduction { op: (call.data >> 27) & 0xf, unsigned: call.data >> 31 == 1 },
+                    0x10 => HostSemaphoreOp::Reduction {
+                        op: (call.data >> 27) & 0xf,
+                        unsigned: call.data >> 31 == 1,
+                    },
                     other => HostSemaphoreOp::Other(other),
                 };
                 HostSemaphoreRecord {
@@ -822,7 +919,10 @@ impl Ampere3d {
                     3 => HostSemaphoreOp::AcquireCircularGeq,
                     4 => HostSemaphoreOp::AcquireAnd,
                     5 => HostSemaphoreOp::AcquireNor,
-                    6 => HostSemaphoreOp::Reduction { op: (call.data >> 27) & 0xf, unsigned: call.data >> 31 == 1 },
+                    6 => HostSemaphoreOp::Reduction {
+                        op: (call.data >> 27) & 0xf,
+                        unsigned: call.data >> 31 == 1,
+                    },
                     other => HostSemaphoreOp::Other(other),
                 };
                 let w = self.sem_execute_wait(call.data, op);
@@ -835,7 +935,8 @@ impl Ampere3d {
                 }
             }
             m::HOST_NON_STALL_INTERRUPT => {
-                self.events.push(Event::Host(HostRecord::NonStallInterrupt { handle: call.data }));
+                self.events
+                    .push(Event::Host(HostRecord::NonStallInterrupt { handle: call.data }));
                 return;
             }
             m::HOST_SET_REFERENCE => {
@@ -887,15 +988,39 @@ impl Ampere3d {
         let sext = |x: u64| if rec.wide { x as i64 } else { x as u32 as i32 as i64 };
         let r = match op {
             0 if unsigned => v.min(p),
-            0 => if sext(v) < sext(p) { v } else { p },
+            0 => {
+                if sext(v) < sext(p) {
+                    v
+                } else {
+                    p
+                }
+            }
             1 if unsigned => v.max(p),
-            1 => if sext(v) > sext(p) { v } else { p },
+            1 => {
+                if sext(v) > sext(p) {
+                    v
+                } else {
+                    p
+                }
+            }
             2 => v ^ p,
             3 => v & p,
             4 => v | p,
             5 => v.wrapping_add(p),
-            6 => if v >= p { 0 } else { v + 1 },
-            7 => if v == 0 || v > p { p } else { v - 1 },
+            6 => {
+                if v >= p {
+                    0
+                } else {
+                    v + 1
+                }
+            }
+            7 => {
+                if v == 0 || v > p {
+                    p
+                } else {
+                    v - 1
+                }
+            }
             _ => return,
         } & mask;
         mem.write(rec.gpu_va, &r.to_le_bytes()[..n]);
@@ -922,7 +1047,11 @@ impl Ampere3d {
         let mrt = ((data >> 6) & 0xf) as usize;
         let color_target = (color_mask.iter().any(|&b| b) && mrt < m::COLOR_TARGET_COUNT)
             .then(|| surface::color_target(&self.regs, mrt));
-        let depth_target = if clear_depth || clear_stencil { self.depth_target(class) } else { None };
+        let depth_target = if clear_depth || clear_stencil {
+            self.depth_target(class)
+        } else {
+            None
+        };
         let record = ClearRecord {
             color: [0, 1, 2, 3].map(|i| self.reg(m::SET_COLOR_CLEAR_VALUE + 4 * i)),
             depth: f32::from_bits(self.reg(m::SET_Z_CLEAR_VALUE)),
@@ -945,10 +1074,16 @@ impl Ampere3d {
         let gpu_va = addr40(self.reg(m::SET_INDEX_BUFFER_A), self.reg(m::SET_INDEX_BUFFER_B));
         let size = if class == m::MAXWELL_B {
             // LIMIT_ADDRESS read as the last valid byte, as for the vertex stream limits.
-            let limit = addr40(self.reg(m::B197_SET_INDEX_BUFFER_C), self.reg(m::B197_SET_INDEX_BUFFER_D));
+            let limit = addr40(
+                self.reg(m::B197_SET_INDEX_BUFFER_C),
+                self.reg(m::B197_SET_INDEX_BUFFER_D),
+            );
             (limit >= gpu_va).then(|| limit - gpu_va + 1)
         } else {
-            let size = addr40(self.reg(m::SET_INDEX_BUFFER_SIZE_A), self.reg(m::SET_INDEX_BUFFER_SIZE_B));
+            let size = addr40(
+                self.reg(m::SET_INDEX_BUFFER_SIZE_A),
+                self.reg(m::SET_INDEX_BUFFER_SIZE_B),
+            );
             (size != 0).then_some(size)
         };
         IndexBuffer {
@@ -956,7 +1091,8 @@ impl Ampere3d {
             size,
             index_bytes,
             base_vertex: self.reg(m::SET_GLOBAL_BASE_VERTEX_INDEX) as i32,
-            restart: (self.reg(m::SET_DA_PRIMITIVE_RESTART) & 1 == 1).then(|| self.reg(m::SET_DA_PRIMITIVE_RESTART_INDEX)),
+            restart: (self.reg(m::SET_DA_PRIMITIVE_RESTART) & 1 == 1)
+                .then(|| self.reg(m::SET_DA_PRIMITIVE_RESTART_INDEX)),
         }
     }
 
@@ -1024,7 +1160,10 @@ impl Ampere3d {
                     pipeline: j as u8,
                     kind: ShaderType::from_raw((s >> 4) & 0xf),
                     program_va: if class == m::MAXWELL_B {
-                        let region = addr40(self.reg(m::B197_SET_PROGRAM_REGION_A), self.reg(m::B197_SET_PROGRAM_REGION_B));
+                        let region = addr40(
+                            self.reg(m::B197_SET_PROGRAM_REGION_A),
+                            self.reg(m::B197_SET_PROGRAM_REGION_B),
+                        );
                         region + self.reg(m::B197_SET_PIPELINE_PROGRAM + off) as u64
                     } else {
                         addr40(

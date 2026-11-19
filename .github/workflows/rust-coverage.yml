@@ -13,19 +13,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
+          toolchain: stable
           components: llvm-tools-preview
       - name: Linux native dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev
-      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@c2e5d2ce8920c881761c4cabb41434daa1f95687 # cargo-llvm-cov
       - name: Generate coverage from workspace tests
         run: cargo llvm-cov --workspace --locked --lcov --output-path coverage.lcov
       - name: Store local-only coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ounce-core-llvm-coverage
           path: coverage.lcov

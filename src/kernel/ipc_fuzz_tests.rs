@@ -4,11 +4,11 @@
 
 use super::applet::AppletInterface;
 use super::hipc::{self, Buffer};
-use super::ipc::{IpcManager, ServiceType, CMIF_IN_MAGIC};
+use super::ipc::{CMIF_IN_MAGIC, IpcManager, ServiceType};
 use crate::audio::AudioOutServer;
 use crate::fs::VirtualFileSystem;
 use crate::gpu::nvgpu::NvgpuChannel;
-use crate::loader::fuzz_tests::{fuzz, Rng};
+use crate::loader::fuzz_tests::{Rng, fuzz};
 use crate::mmu::{Memory, Permission};
 
 const TLS: u64 = 0x8000_0000;
@@ -18,18 +18,63 @@ const BUF: u64 = 0x9000_0000;
 fn services() -> Vec<ServiceType> {
     use ServiceType::*;
     vec![
-        Sm, Nvdrv, Vi, ApplicationDisplayService, Hid, AppletResource, FspSrv, Storage,
+        Sm,
+        Nvdrv,
+        Vi,
+        ApplicationDisplayService,
+        Hid,
+        AppletResource,
+        FspSrv,
+        Storage,
         FileSystem("sdmc:/".into()),
-        Directory { path: "romfs:/".into(), entries: vec!["a".into()], index: 0 },
-        File(1), AudOut, AudRen, AppletOE, ApplicationProxy, CommonStateGetter, SelfController,
-        ApplicationFunctions, SetSys, Ro, Pl, Time, SystemClock, SteadyClock, Prepo, Bcat,
-        Generic("fuzz:".into()), SharedMemory { size: 0x1000 }, TransferMemory { addr: BUF, size: 0x1000 },
-        NvEvent { fd: 1, event_id: 0 }, AudioRenderer, AudioRendererEvent,
-        AppletAE, Applet(AppletInterface::OeRoot), Applet(AppletInterface::AeRoot), Applet(AppletInterface::CommonStateGetter),
-        Applet(AppletInterface::SelfController), Applet(AppletInterface::WindowController), Applet(AppletInterface::AudioController),
-        Applet(AppletInterface::DisplayController), Applet(AppletInterface::ApplicationFunctions),
-        Applet(AppletInterface::LibraryAppletSelfAccessor), Applet(AppletInterface::Other("fuzz")),
-        Set, TimeZoneService, Psm, PsmSession, Apm, ApmSession, ServiceEvent("fuzz"),
+        Directory {
+            path: "romfs:/".into(),
+            entries: vec!["a".into()],
+            index: 0,
+        },
+        File(1),
+        AudOut,
+        AudRen,
+        AppletOE,
+        ApplicationProxy,
+        CommonStateGetter,
+        SelfController,
+        ApplicationFunctions,
+        SetSys,
+        Ro,
+        Pl,
+        Time,
+        SystemClock,
+        SteadyClock,
+        Prepo,
+        Bcat,
+        Generic("fuzz:".into()),
+        SharedMemory { size: 0x1000 },
+        TransferMemory {
+            addr: BUF,
+            size: 0x1000,
+        },
+        NvEvent { fd: 1, event_id: 0 },
+        AudioRenderer,
+        AudioRendererEvent,
+        AppletAE,
+        Applet(AppletInterface::OeRoot),
+        Applet(AppletInterface::AeRoot),
+        Applet(AppletInterface::CommonStateGetter),
+        Applet(AppletInterface::SelfController),
+        Applet(AppletInterface::WindowController),
+        Applet(AppletInterface::AudioController),
+        Applet(AppletInterface::DisplayController),
+        Applet(AppletInterface::ApplicationFunctions),
+        Applet(AppletInterface::LibraryAppletSelfAccessor),
+        Applet(AppletInterface::Other("fuzz")),
+        Set,
+        TimeZoneService,
+        Psm,
+        PsmSession,
+        Apm,
+        ApmSession,
+        ServiceEvent("fuzz"),
     ]
 }
 
@@ -47,10 +92,14 @@ fn memory(message: &[u8]) -> Memory {
 /// A request header with one send and one receive buffer, then a CMIF command with `args` words.
 fn seed(cmd: u32, kind: u16, args: &[u32]) -> Vec<u8> {
     let mut w = vec![
-        kind as u32 | 1 << 20 | 1 << 24, // one A buffer, one B buffer
+        kind as u32 | 1 << 20 | 1 << 24,         // one A buffer, one B buffer
         (6 + args.len() as u32 + 4) | 0x2 << 10, // data words, one receive-list entry
-        0x100, BUF as u32, 0, // send buffer: size, addr, flags
-        0x100, (BUF + 0x1000) as u32, 0, // receive buffer
+        0x100,
+        BUF as u32,
+        0, // send buffer: size, addr, flags
+        0x100,
+        (BUF + 0x1000) as u32,
+        0, // receive buffer
     ];
     while w.len() % 4 != 0 {
         w.insert(8, 0); // pad so the CMIF payload sits where the parser aligns it
@@ -83,7 +132,12 @@ fn fuzz_hipc_parse_request() {
 fn fuzz_cmif_dispatch_all_services() {
     let mut seeds = Vec::new();
     for cmd in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 100, 101, 1000] {
-        for kind in [hipc::TYPE_REQUEST, hipc::TYPE_CONTROL, hipc::TYPE_REQUEST_WITH_CONTEXT, hipc::TYPE_CLOSE] {
+        for kind in [
+            hipc::TYPE_REQUEST,
+            hipc::TYPE_CONTROL,
+            hipc::TYPE_REQUEST_WITH_CONTEXT,
+            hipc::TYPE_CLOSE,
+        ] {
             seeds.push(seed(cmd, kind, &[0x10, BUF as u32, 0x100, 0xFFFF_FFFF]));
         }
     }

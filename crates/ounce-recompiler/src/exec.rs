@@ -126,7 +126,10 @@ pub struct LinkEntry {
 
 impl Default for LinkEntry {
     fn default() -> Self {
-        Self { guest_pc: u64::MAX, host_entry: 0 }
+        Self {
+            guest_pc: u64::MAX,
+            host_entry: 0,
+        }
     }
 }
 
@@ -169,32 +172,40 @@ extern "C" fn mem_read(ctx: *mut CallCtx<'_>, va: u64, size: u32, out: *mut u64)
     if ctx.panic.is_some() {
         return MEM_FAULT;
     }
-    if !matches!(size, 1 | 2 | 4 | 8) { return MEM_FAULT; }
+    if !matches!(size, 1 | 2 | 4 | 8) {
+        return MEM_FAULT;
+    }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let offset = (va & 0xfff) as usize;
-        if offset + size as usize <= 4096 {
-            if let Some(mapping) = ctx.bus.query_page(va >> 12) {
-                // Cache metadata only. The page borrow, not an address in this table,
-                // establishes validity for this access.
-                ctx.tlb[((va >> 12) & TLB_MASK) as usize] = TlbEntry {
-                    page_tag: va >> 12,
-                    host_base: 0,
-                    flags: u32::from(mapping.read) | (u32::from(mapping.write && !mapping.holds_code) << 1),
-                    _pad: 0,
-                };
-                if mapping.read {
-                    let mut bytes = [0u8; 8];
-                    bytes[..size as usize].copy_from_slice(&mapping.data[offset..offset + size as usize]);
-                    return Ok(u64::from_le_bytes(bytes));
-                }
+        if offset + size as usize <= 4096
+            && let Some(mapping) = ctx.bus.query_page(va >> 12)
+        {
+            // Cache metadata only. The page borrow, not an address in this table,
+            // establishes validity for this access.
+            ctx.tlb[((va >> 12) & TLB_MASK) as usize] = TlbEntry {
+                page_tag: va >> 12,
+                host_base: 0,
+                flags: u32::from(mapping.read) | (u32::from(mapping.write && !mapping.holds_code) << 1),
+                _pad: 0,
+            };
+            if mapping.read {
+                let mut bytes = [0u8; 8];
+                bytes[..size as usize].copy_from_slice(&mapping.data[offset..offset + size as usize]);
+                return Ok(u64::from_le_bytes(bytes));
             }
         }
         ctx.bus.read(va, size as u8)
     }));
     match result {
-        Ok(Ok(value)) => { *out = value; MEM_OK }
+        Ok(Ok(value)) => {
+            *out = value;
+            MEM_OK
+        }
         Ok(Err(MemFault)) => MEM_FAULT,
-        Err(payload) => { ctx.panic = Some(payload); MEM_FAULT }
+        Err(payload) => {
+            ctx.panic = Some(payload);
+            MEM_FAULT
+        }
     }
 }
 
@@ -205,24 +216,25 @@ extern "C" fn mem_write(ctx: *mut CallCtx<'_>, va: u64, size: u32, value: u64) -
     if ctx.panic.is_some() {
         return MEM_FAULT;
     }
-    if !matches!(size, 1 | 2 | 4 | 8) { return MEM_FAULT; }
+    if !matches!(size, 1 | 2 | 4 | 8) {
+        return MEM_FAULT;
+    }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let offset = (va & 0xfff) as usize;
-        if offset + size as usize <= 4096 {
-            if let Some(mapping) = ctx.bus.query_page(va >> 12) {
-                // Cache metadata only. The page borrow, not an address in this table,
-                // establishes validity for this access.
-                ctx.tlb[((va >> 12) & TLB_MASK) as usize] = TlbEntry {
-                    page_tag: va >> 12,
-                    host_base: 0,
-                    flags: u32::from(mapping.read) | (u32::from(mapping.write && !mapping.holds_code) << 1),
-                    _pad: 0,
-                };
-                if mapping.write && !mapping.holds_code {
-                    mapping.data[offset..offset + size as usize]
-                        .copy_from_slice(&value.to_le_bytes()[..size as usize]);
-                    return Ok(WriteEffect::Done);
-                }
+        if offset + size as usize <= 4096
+            && let Some(mapping) = ctx.bus.query_page(va >> 12)
+        {
+            // Cache metadata only. The page borrow, not an address in this table,
+            // establishes validity for this access.
+            ctx.tlb[((va >> 12) & TLB_MASK) as usize] = TlbEntry {
+                page_tag: va >> 12,
+                host_base: 0,
+                flags: u32::from(mapping.read) | (u32::from(mapping.write && !mapping.holds_code) << 1),
+                _pad: 0,
+            };
+            if mapping.write && !mapping.holds_code {
+                mapping.data[offset..offset + size as usize].copy_from_slice(&value.to_le_bytes()[..size as usize]);
+                return Ok(WriteEffect::Done);
             }
         }
         ctx.bus.write(va, size as u8, value)
@@ -231,7 +243,10 @@ extern "C" fn mem_write(ctx: *mut CallCtx<'_>, va: u64, size: u32, value: u64) -
         Ok(Ok(WriteEffect::Done)) => MEM_OK,
         Ok(Ok(WriteEffect::CodeWritten)) => MEM_CODE_WRITTEN,
         Ok(Err(MemFault)) => MEM_FAULT,
-        Err(payload) => { ctx.panic = Some(payload); MEM_FAULT }
+        Err(payload) => {
+            ctx.panic = Some(payload);
+            MEM_FAULT
+        }
     }
 }
 
@@ -258,7 +273,9 @@ impl BlockCode {
     /// `host_entry` of a matching link-table entry with the same two arguments.
     /// `backend::compile` is the only caller and emits exactly that.
     pub(crate) fn new(code: &[u8]) -> Result<Self, ExecError> {
-        Ok(BlockCode { buffer: ExecBuffer::seal(code)? })
+        Ok(BlockCode {
+            buffer: ExecBuffer::seal(code)?,
+        })
     }
 
     /// Host address of the block's entry, for the link table.
@@ -275,7 +292,9 @@ pub(crate) struct Trampoline {
 
 impl Trampoline {
     pub(crate) fn new(code: &[u8]) -> Result<Self, ExecError> {
-        Ok(Trampoline { buffer: ExecBuffer::seal(code)? })
+        Ok(Trampoline {
+            buffer: ExecBuffer::seal(code)?,
+        })
     }
 
     /// Runs `block` on `state` with `bus`. Linked blocks may run after it, while `budget` allows.
@@ -291,7 +310,15 @@ impl Trampoline {
         links: &[LinkEntry; LINK_SIZE],
         budget: u64,
     ) -> RunResult {
-        let mut ctx = CallCtx { bus, panic: None, tlb, links: links.as_ptr(), chained_insns: 0, budget, links_taken: 0 };
+        let mut ctx = CallCtx {
+            bus,
+            panic: None,
+            tlb,
+            links: links.as_ptr(),
+            chained_insns: 0,
+            budget,
+            links_taken: 0,
+        };
         // SAFETY: `Trampoline::new` and `BlockCode::new` document the functions these buffers
         // hold. `block` is live for the call; every block reachable through `links` is live
         // (caller contract above) and `links` is borrowed, so no entry changes during the run.
@@ -304,7 +331,11 @@ impl Trampoline {
         if let Some(payload) = ctx.panic {
             std::panic::resume_unwind(payload);
         }
-        RunResult { word, chained_insns: ctx.chained_insns, links_taken: ctx.links_taken }
+        RunResult {
+            word,
+            chained_insns: ctx.chained_insns,
+            links_taken: ctx.links_taken,
+        }
     }
 }
 
@@ -337,12 +368,19 @@ pub(crate) fn run_return_constant(value: u16, pad_nops: usize) -> Result<u64, cr
     // SAFETY: `code` is a complete `extern "C" fn() -> u64` for this host built just above: optional
     // NOPs, a move of a constant into the return register, and a return. It touches nothing else.
     let got = unsafe { buffer.call_u64() };
-    if got == value as u64 { Ok(got) } else { Err(crate::SelfTestError::WrongResult { expected: value as u64, got }) }
+    if got == value as u64 {
+        Ok(got)
+    } else {
+        Err(crate::SelfTestError::WrongResult {
+            expected: value as u64,
+            got,
+        })
+    }
 }
 
 #[cfg(unix)]
 mod os {
-    use super::{last_os_error, ExecError};
+    use super::{ExecError, last_os_error};
 
     pub fn page_size() -> usize {
         // SAFETY: sysconf has no preconditions.
@@ -363,7 +401,11 @@ mod os {
                 0,
             )
         };
-        if ptr == libc::MAP_FAILED { Err(last_os_error("mmap(MAP_JIT)")) } else { Ok(ptr as *mut u8) }
+        if ptr == libc::MAP_FAILED {
+            Err(last_os_error("mmap(MAP_JIT)"))
+        } else {
+            Ok(ptr as *mut u8)
+        }
     }
 
     #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
@@ -379,7 +421,11 @@ mod os {
                 0,
             )
         };
-        if ptr == libc::MAP_FAILED { Err(last_os_error("mmap")) } else { Ok(ptr as *mut u8) }
+        if ptr == libc::MAP_FAILED {
+            Err(last_os_error("mmap"))
+        } else {
+            Ok(ptr as *mut u8)
+        }
     }
 
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -458,11 +504,11 @@ mod os {
 
 #[cfg(windows)]
 mod os {
-    use super::{last_os_error, ExecError};
+    use super::{ExecError, last_os_error};
     use windows_sys::Win32::System::Diagnostics::Debug::FlushInstructionCache;
     use windows_sys::Win32::System::Memory::{
-        VirtualAlloc, VirtualFree, VirtualProtect, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE_READ,
-        PAGE_READWRITE,
+        MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE_READ, PAGE_READWRITE, VirtualAlloc, VirtualFree,
+        VirtualProtect,
     };
     use windows_sys::Win32::System::SystemInformation::{GetSystemInfo, SYSTEM_INFO};
     use windows_sys::Win32::System::Threading::GetCurrentProcess;
@@ -474,13 +520,21 @@ mod os {
             GetSystemInfo(&mut info);
             info
         };
-        if info.dwPageSize > 0 { info.dwPageSize as usize } else { 4096 }
+        if info.dwPageSize > 0 {
+            info.dwPageSize as usize
+        } else {
+            4096
+        }
     }
 
     pub fn map(len: usize) -> Result<*mut u8, ExecError> {
         // SAFETY: reserves and commits fresh pages at a system-chosen address.
         let ptr = unsafe { VirtualAlloc(std::ptr::null(), len, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) };
-        if ptr.is_null() { Err(last_os_error("VirtualAlloc")) } else { Ok(ptr as *mut u8) }
+        if ptr.is_null() {
+            Err(last_os_error("VirtualAlloc"))
+        } else {
+            Ok(ptr as *mut u8)
+        }
     }
 
     pub fn write_and_seal(ptr: *mut u8, mapped: usize, code: &[u8]) -> Result<(), ExecError> {

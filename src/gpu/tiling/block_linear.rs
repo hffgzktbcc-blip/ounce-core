@@ -109,8 +109,7 @@ impl BlockLinear {
         let block_z = (z >> self.depth_log2) as usize;
         let gob_z_in_block = (z & ((1 << self.depth_log2) - 1)) as usize;
 
-        let block_index =
-            (block_z * self.blocks_high as usize + block_y) * self.gobs_wide as usize + gob_x;
+        let block_index = (block_z * self.blocks_high as usize + block_y) * self.gobs_wide as usize + gob_x;
         let gob_in_block = (gob_z_in_block << self.height_log2) + gob_y_in_block;
         block_index * self.block_bytes()
             + gob_in_block * GOB_BYTES as usize

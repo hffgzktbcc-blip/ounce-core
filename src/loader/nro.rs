@@ -165,8 +165,15 @@ pub enum LoadError {
     #[error("Image segment layout is out of range (offset {offset:#x}, size {size:#x})")]
     SegmentOutOfRange { offset: u64, size: u64 },
 
-    #[error("Image {segment} segment exceeds file bounds (offset {offset:#x}, size {size:#x}, available {file_size:#x} bytes)")]
-    SegmentPastEof { segment: &'static str, offset: usize, size: usize, file_size: usize },
+    #[error(
+        "Image {segment} segment exceeds file bounds (offset {offset:#x}, size {size:#x}, available {file_size:#x} bytes)"
+    )]
+    SegmentPastEof {
+        segment: &'static str,
+        offset: usize,
+        size: usize,
+        file_size: usize,
+    },
 
     #[error("Memory mapping error: {0}")]
     Memory(#[from] MemoryError),
@@ -228,15 +235,15 @@ impl NroLoader {
     }
 
     /// Loads an NRO executable into virtual memory, configures segments, and applies MOD0 relocations.
-    pub fn load_into_memory(
-        bytes: &[u8],
-        base_addr: u64,
-        mmu: &mut Memory,
-    ) -> Result<NroHeader, LoadError> {
+    pub fn load_into_memory(bytes: &[u8], base_addr: u64, mmu: &mut Memory) -> Result<NroHeader, LoadError> {
         let mut header = Self::parse_header(bytes)?;
         Self::check_segment(base_addr, header.text_offset as u64, header.text_size as u64)?;
         Self::check_segment(base_addr, header.rodata_offset as u64, header.rodata_size as u64)?;
-        Self::check_segment(base_addr, header.data_offset as u64, header.data_size as u64 + header.bss_size as u64)?;
+        Self::check_segment(
+            base_addr,
+            header.data_offset as u64,
+            header.data_size as u64 + header.bss_size as u64,
+        )?;
 
         // Validate every file-backed extent before installing any mappings. Assets appended
         // after the NRO image cannot make a truncated program segment valid.
@@ -245,8 +252,10 @@ impl NroLoader {
             ("rodata", header.rodata_offset, header.rodata_size),
             ("data", header.data_offset, header.data_size),
         ] {
-            if size != 0 && (offset as u64 + size as u64 > header.size as u64
-                || offset as u64 + size as u64 > bytes.len() as u64) {
+            if size != 0
+                && (offset as u64 + size as u64 > header.size as u64
+                    || offset as u64 + size as u64 > bytes.len() as u64)
+            {
                 return Err(LoadError::SegmentPastEof {
                     segment,
                     offset: offset as usize,
@@ -260,11 +269,7 @@ impl NroLoader {
         let text_start = header.text_offset as usize;
         let text_end = text_start + header.text_size as usize;
         if text_end <= bytes.len() && header.text_size > 0 {
-            mmu.map_range(
-                base_addr,
-                header.text_size as usize,
-                Permission::READ_WRITE_EXECUTE,
-            );
+            mmu.map_range(base_addr, header.text_size as usize, Permission::READ_WRITE_EXECUTE);
             mmu.write_bytes(base_addr, &bytes[text_start..text_end])?;
         }
 
@@ -273,11 +278,7 @@ impl NroLoader {
         let ro_start = header.rodata_offset as usize;
         let ro_end = ro_start + header.rodata_size as usize;
         if ro_end <= bytes.len() && header.rodata_size > 0 {
-            mmu.map_range(
-                rodata_addr,
-                header.rodata_size as usize,
-                Permission::READ_WRITE,
-            );
+            mmu.map_range(rodata_addr, header.rodata_size as usize, Permission::READ_WRITE);
             mmu.write_bytes(rodata_addr, &bytes[ro_start..ro_end])?;
         }
 
@@ -302,22 +303,14 @@ impl NroLoader {
     /// (such as Switch 2 `RO` / `FS` system modules and ExeFS `main` binaries) and applies
     /// its relocations against its own symbols only. Modules that import from other modules should
     /// use `load_nso_segments` and then `apply_relocations` with a combined export table.
-    pub fn load_nso_into_memory(
-        bytes: &[u8],
-        base_addr: u64,
-        mmu: &mut Memory,
-    ) -> Result<NroHeader, LoadError> {
+    pub fn load_nso_into_memory(bytes: &[u8], base_addr: u64, mmu: &mut Memory) -> Result<NroHeader, LoadError> {
         let mut header = Self::load_nso_segments(bytes, base_addr, mmu)?;
         header.relocations_applied = Self::apply_mod0_relocations(base_addr, mmu);
         Ok(header)
     }
 
     /// Maps an NSO0 image's segments into memory without applying any relocations.
-    pub fn load_nso_segments(
-        bytes: &[u8],
-        base_addr: u64,
-        mmu: &mut Memory,
-    ) -> Result<NroHeader, LoadError> {
+    pub fn load_nso_segments(bytes: &[u8], base_addr: u64, mmu: &mut Memory) -> Result<NroHeader, LoadError> {
         if bytes.len() < 0x100 {
             return Err(LoadError::TooSmall);
         }
@@ -351,16 +344,17 @@ impl NroLoader {
             ("data", data_file_off, data_size),
         ] {
             if size > 0 && !offset.checked_add(size).is_some_and(|end| end <= bytes.len()) {
-                return Err(LoadError::SegmentPastEof { segment, offset, size, file_size: bytes.len() });
+                return Err(LoadError::SegmentPastEof {
+                    segment,
+                    offset,
+                    size,
+                    file_size: bytes.len(),
+                });
             }
         }
 
         if text_size > 0 {
-            mmu.map_range(
-                base_addr + text_mem_off,
-                text_size,
-                Permission::READ_WRITE_EXECUTE,
-            );
+            mmu.map_range(base_addr + text_mem_off, text_size, Permission::READ_WRITE_EXECUTE);
             mmu.write_bytes(
                 base_addr + text_mem_off,
                 &bytes[text_file_off..text_file_off + text_size],
@@ -369,10 +363,7 @@ impl NroLoader {
 
         if ro_size > 0 {
             mmu.map_range(base_addr + ro_mem_off, ro_size, Permission::READ_WRITE);
-            mmu.write_bytes(
-                base_addr + ro_mem_off,
-                &bytes[ro_file_off..ro_file_off + ro_size],
-            )?;
+            mmu.write_bytes(base_addr + ro_mem_off, &bytes[ro_file_off..ro_file_off + ro_size])?;
         }
 
         let total_data = data_size + bss_size;
@@ -549,7 +540,9 @@ impl NroLoader {
         };
         let stride = Self::sym_stride(&info);
         for idx in 1..Self::symbol_count(base_addr, mmu, &info) {
-            let Some(sym) = Self::read_symbol(mmu, symtab.wrapping_add(idx.wrapping_mul(stride))) else { break };
+            let Some(sym) = Self::read_symbol(mmu, symtab.wrapping_add(idx.wrapping_mul(stride))) else {
+                break;
+            };
             if sym.shndx == SHN_UNDEF || sym.bind == STB_LOCAL || sym.kind == STT_TLS {
                 continue;
             }
@@ -564,11 +557,17 @@ impl NroLoader {
     /// Reads the module's defined `STT_TLS` symbols as `(name, offset in block, size, bind)`.
     fn tls_symbols(base_addr: u64, mmu: &Memory) -> Vec<(String, u64, u64, u8)> {
         let mut out = Vec::new();
-        let Some(info) = Self::parse_dynamic(base_addr, mmu) else { return out };
-        let Some(symtab) = info.symtab.map(|s| base_addr.wrapping_add(s)) else { return out };
+        let Some(info) = Self::parse_dynamic(base_addr, mmu) else {
+            return out;
+        };
+        let Some(symtab) = info.symtab.map(|s| base_addr.wrapping_add(s)) else {
+            return out;
+        };
         let stride = Self::sym_stride(&info);
         for idx in 1..Self::symbol_count(base_addr, mmu, &info) {
-            let Some(sym) = Self::read_symbol(mmu, symtab.wrapping_add(idx.wrapping_mul(stride))) else { break };
+            let Some(sym) = Self::read_symbol(mmu, symtab.wrapping_add(idx.wrapping_mul(stride))) else {
+                break;
+            };
             if sym.shndx == SHN_UNDEF || sym.kind != STT_TLS {
                 continue;
             }
@@ -594,11 +593,18 @@ impl NroLoader {
         mmu: &Memory,
         templates: &HashMap<u64, TlsTemplate>,
     ) -> TlsLayout {
-        let mut layout = TlsLayout { align: TLS_BLOCK_ALIGN, ..Default::default() };
+        let mut layout = TlsLayout {
+            align: TLS_BLOCK_ALIGN,
+            ..Default::default()
+        };
         let mut cursor = TLS_TCB_SIZE;
         for &base in module_bases {
             let symbols = Self::tls_symbols(base, mmu);
-            let symbol_size = symbols.iter().map(|(_, off, sz, _)| off.saturating_add(*sz)).max().unwrap_or(0);
+            let symbol_size = symbols
+                .iter()
+                .map(|(_, off, sz, _)| off.saturating_add(*sz))
+                .max()
+                .unwrap_or(0);
             let template = templates.get(&base);
             let size = template.map_or(symbol_size, |t| t.memsz.max(symbol_size));
             if size == 0 {
@@ -624,13 +630,17 @@ impl NroLoader {
                     // libnx: its crt0 path (`newlibSetup`, `threadCreate`) copies `.tdata` itself and
                     // keeps its own thread pointer at `TPIDRRO_EL0 + 0x1F8`, not in `TPIDR_EL0`.
                     let exports = Self::collect_exports(base, mmu);
-                    if let (Some(&lma_start), Some(&lma_end)) = (exports.get("__tdata_lma"), exports.get("__tdata_lma_end")) {
+                    if let (Some(&lma_start), Some(&lma_end)) =
+                        (exports.get("__tdata_lma"), exports.get("__tdata_lma_end"))
+                    {
                         if lma_end >= lma_start {
                             (lma_start, (lma_end - lma_start).min(size))
                         } else {
                             (0, 0)
                         }
-                    } else if let (Some(&start), Some(&end)) = (exports.get("__tdata_start"), exports.get("__tdata_end")) {
+                    } else if let (Some(&start), Some(&end)) =
+                        (exports.get("__tdata_start"), exports.get("__tdata_end"))
+                    {
                         if end >= start {
                             (start, (end - start).min(size))
                         } else {
@@ -641,7 +651,17 @@ impl NroLoader {
                     }
                 }
             };
-            layout.blocks.insert(base, TlsBlock { module_id, tp_offset: cursor, size, align, init_addr, init_size });
+            layout.blocks.insert(
+                base,
+                TlsBlock {
+                    module_id,
+                    tp_offset: cursor,
+                    size,
+                    align,
+                    init_addr,
+                    init_size,
+                },
+            );
             layout.align = layout.align.max(align);
             cursor += size;
             for (name, off, _, bind) in symbols {
@@ -688,7 +708,10 @@ impl NroLoader {
                 let _ = mmu.read_bytes(block.init_addr, &mut bytes[start..start + block.init_size as usize]);
             }
         }
-        crate::kernel::ThreadTlsImage { bytes, align: layout.align.max(1) }
+        crate::kernel::ThreadTlsImage {
+            bytes,
+            align: layout.align.max(1),
+        }
     }
 
     /// Writes the static TLSDESC resolver stub at `addr` (mapped read/execute by the caller or here).
@@ -726,19 +749,33 @@ impl NroLoader {
     /// Initialisers in ELF order: `DT_PREINIT_ARRAY` (main executable only), `DT_INIT`, `DT_INIT_ARRAY`.
     /// Call after relocation.
     pub fn init_functions(base_addr: u64, mmu: &Memory, is_main: bool) -> Vec<u64> {
-        let Some(info) = Self::parse_dynamic(base_addr, mmu) else { return Vec::new() };
+        let Some(info) = Self::parse_dynamic(base_addr, mmu) else {
+            return Vec::new();
+        };
         let mut out = Vec::new();
         if is_main {
-            out.extend(Self::read_function_array(mmu, base_addr, info.preinit_array, info.preinit_array_size));
+            out.extend(Self::read_function_array(
+                mmu,
+                base_addr,
+                info.preinit_array,
+                info.preinit_array_size,
+            ));
         }
         out.extend(info.init.map(|i| base_addr.wrapping_add(i)));
-        out.extend(Self::read_function_array(mmu, base_addr, info.init_array, info.init_array_size));
+        out.extend(Self::read_function_array(
+            mmu,
+            base_addr,
+            info.init_array,
+            info.init_array_size,
+        ));
         out
     }
 
     /// Finalisers in ELF order: `DT_FINI_ARRAY` in reverse, then `DT_FINI`. Call after relocation.
     pub fn fini_functions(base_addr: u64, mmu: &Memory) -> Vec<u64> {
-        let Some(info) = Self::parse_dynamic(base_addr, mmu) else { return Vec::new() };
+        let Some(info) = Self::parse_dynamic(base_addr, mmu) else {
+            return Vec::new();
+        };
         let mut out = Self::read_function_array(mmu, base_addr, info.fini_array, info.fini_array_size);
         out.reverse();
         out.extend(info.fini.map(|f| base_addr.wrapping_add(f)));
@@ -759,7 +796,8 @@ impl NroLoader {
         }
         let unnamed = || format!("<symbol #{}>", sym_index);
         let symtab = info.symtab.map(|s| base_addr.wrapping_add(s)).ok_or_else(unnamed)?;
-        let sym = Self::read_symbol(mmu, symtab.wrapping_add(sym_index.wrapping_mul(Self::sym_stride(info)))).ok_or_else(unnamed)?;
+        let sym = Self::read_symbol(mmu, symtab.wrapping_add(sym_index.wrapping_mul(Self::sym_stride(info))))
+            .ok_or_else(unnamed)?;
         if sym.shndx != SHN_UNDEF {
             return Ok(base_addr.wrapping_add(sym.value));
         }
@@ -788,7 +826,8 @@ impl NroLoader {
         }
         let unnamed = || format!("<symbol #{}>", sym_index);
         let symtab = info.symtab.map(|s| base_addr.wrapping_add(s)).ok_or_else(unnamed)?;
-        let sym = Self::read_symbol(mmu, symtab.wrapping_add(sym_index.wrapping_mul(Self::sym_stride(info)))).ok_or_else(unnamed)?;
+        let sym = Self::read_symbol(mmu, symtab.wrapping_add(sym_index.wrapping_mul(Self::sym_stride(info))))
+            .ok_or_else(unnamed)?;
         if sym.shndx != SHN_UNDEF {
             return Ok(Some((base_addr, sym.value)));
         }
@@ -804,11 +843,7 @@ impl NroLoader {
 
     /// Applies the module's `.rela.dyn` and `.rela.plt` tables. Imports are looked up in `imports`.
     /// TLS relocations are reported as unsupported; use `apply_relocations_with_tls` for them.
-    pub fn apply_relocations(
-        base_addr: u64,
-        mmu: &mut Memory,
-        imports: &HashMap<String, u64>,
-    ) -> RelocationReport {
+    pub fn apply_relocations(base_addr: u64, mmu: &mut Memory, imports: &HashMap<String, u64>) -> RelocationReport {
         Self::apply_relocations_with_tls(base_addr, mmu, imports, &TlsLayout::default())
     }
 
@@ -824,8 +859,16 @@ impl NroLoader {
             Some(i) => i,
             None => return report,
         };
-        let rela_entry = if info.rela_entry_size == 0 { RELA_ENTRY_SIZE } else { info.rela_entry_size };
-        let rel_entry = if info.rel_entry_size == 0 { REL_ENTRY_SIZE } else { info.rel_entry_size };
+        let rela_entry = if info.rela_entry_size == 0 {
+            RELA_ENTRY_SIZE
+        } else {
+            info.rela_entry_size
+        };
+        let rel_entry = if info.rel_entry_size == 0 {
+            REL_ENTRY_SIZE
+        } else {
+            info.rel_entry_size
+        };
 
         // (table, size in bytes, entry size, has explicit addend)
         let mut tables = Vec::new();
@@ -919,9 +962,9 @@ impl NroLoader {
                             R_AARCH64_TLS_DTPREL64 => mmu.write_u64(target_va, dtp_offset.wrapping_add(r_addend)),
                             R_AARCH64_TLS_TPREL64 => mmu.write_u64(target_va, tp_offset.wrapping_add(r_addend)),
                             // Static TLSDESC: the resolver returns the descriptor's second word, the TP offset.
-                            _ => mmu
-                                .write_u64(target_va, resolver.unwrap_or(0))
-                                .and_then(|_| mmu.write_u64(target_va.wrapping_add(8), tp_offset.wrapping_add(r_addend))),
+                            _ => mmu.write_u64(target_va, resolver.unwrap_or(0)).and_then(|_| {
+                                mmu.write_u64(target_va.wrapping_add(8), tp_offset.wrapping_add(r_addend))
+                            }),
                         };
                         if written.is_ok() {
                             report.applied += 1;
@@ -956,10 +999,10 @@ impl NroLoader {
         };
         let mut applied = 0;
         let mut add_base = |mmu: &mut Memory, addr: u64| {
-            if let Ok(v) = mmu.read_u64(addr) {
-                if mmu.write_u64(addr, v.wrapping_add(base_addr)).is_ok() {
-                    applied += 1;
-                }
+            if let Ok(v) = mmu.read_u64(addr)
+                && mmu.write_u64(addr, v.wrapping_add(base_addr)).is_ok()
+            {
+                applied += 1;
             }
         };
         let mut next = 0u64;
@@ -1089,12 +1132,7 @@ pub struct HomebrewEnvironment;
 impl HomebrewEnvironment {
     /// Formats and initializes the standard `ARGV` block in guest memory at `env_addr` (e.g., 0x7FFF_FE00)
     /// and configures guest CPU registers (`X0` = argv pointer, `X1` = main thread handle).
-    pub fn setup(
-        cpu: &mut crate::cpu::Cpu,
-        mmu: &mut Memory,
-        env_addr: u64,
-        argv: &[&str],
-    ) -> Result<(), MemoryError> {
+    pub fn setup(cpu: &mut crate::cpu::Cpu, mmu: &mut Memory, env_addr: u64, argv: &[&str]) -> Result<(), MemoryError> {
         mmu.map_range(env_addr, 0x1000, Permission::READ_WRITE);
 
         // Header: "ARGV" (0x56475241) at offset 0x00
@@ -1136,7 +1174,14 @@ fn write_test_module(
 ) {
     let full: Vec<TestSymbol> = symbols
         .iter()
-        .map(|&(name, shndx, bind, value)| TestSymbol { name, shndx, bind, kind: 2, value, size: 0 })
+        .map(|&(name, shndx, bind, value)| TestSymbol {
+            name,
+            shndx,
+            bind,
+            kind: 2,
+            value,
+            size: 0,
+        })
         .collect();
     write_test_module_with(mmu, base, &full, rela, jmprel, &[], false);
 }
@@ -1193,10 +1238,12 @@ pub(crate) fn write_test_module_with(
         mmu.write_u32(base + 0x884, 1).unwrap(); // symoffset
         mmu.write_u32(base + 0x888, 1).unwrap(); // bloom_size
         mmu.write_u64(base + 0x890, u64::MAX).unwrap(); // bloom
-        mmu.write_u32(base + 0x898, if symbols.is_empty() { 0 } else { 1 }).unwrap(); // bucket[0]
+        mmu.write_u32(base + 0x898, if symbols.is_empty() { 0 } else { 1 })
+            .unwrap(); // bucket[0]
         for i in 0..symbols.len() {
             let last = i + 1 == symbols.len();
-            mmu.write_u32(base + 0x89C + i as u64 * 4, (i as u32) << 1 | last as u32).unwrap();
+            mmu.write_u32(base + 0x89C + i as u64 * 4, (i as u32) << 1 | last as u32)
+                .unwrap();
         }
     } else {
         // DT_HASH: only `nchain` (the symbol count, including the null symbol) matters here.
@@ -1212,8 +1259,10 @@ pub(crate) fn write_test_module_with(
         mmu.write_bytes(entry + 6, &sym.shndx.to_le_bytes()).unwrap();
         mmu.write_u64(entry + 8, sym.value).unwrap();
         mmu.write_u64(entry + 16, sym.size).unwrap();
-        mmu.write_bytes(base + 0x900 + strtab_off as u64, sym.name.as_bytes()).unwrap();
-        mmu.write_bytes(base + 0x900 + strtab_off as u64 + sym.name.len() as u64, &[0]).unwrap();
+        mmu.write_bytes(base + 0x900 + strtab_off as u64, sym.name.as_bytes())
+            .unwrap();
+        mmu.write_bytes(base + 0x900 + strtab_off as u64 + sym.name.len() as u64, &[0])
+            .unwrap();
         strtab_off += sym.name.len() as u32 + 1;
     }
 
@@ -1237,7 +1286,14 @@ pub(crate) fn build_linked_nso(
 ) -> Vec<u8> {
     let full: Vec<TestSymbol> = symbols
         .iter()
-        .map(|&(name, shndx, bind, value)| TestSymbol { name, shndx, bind, kind: 2, value, size: 0 })
+        .map(|&(name, shndx, bind, value)| TestSymbol {
+            name,
+            shndx,
+            bind,
+            kind: 2,
+            value,
+            size: 0,
+        })
         .collect();
     build_linked_nso_with(&full, rela, jmprel)
 }
@@ -1337,8 +1393,10 @@ mod tests {
     fn guest_input_nso_address_validation_precedes_mapping() {
         let bytes = NroLoader::build_synthetic_nso(&0xd40000e1u32.to_le_bytes());
         let mut mmu = Memory::new();
-        assert!(matches!(NroLoader::load_nso_segments(&bytes, u64::MAX - 1, &mut mmu),
-            Err(LoadError::SegmentOutOfRange { .. })));
+        assert!(matches!(
+            NroLoader::load_nso_segments(&bytes, u64::MAX - 1, &mut mmu),
+            Err(LoadError::SegmentOutOfRange { .. })
+        ));
         assert!(mmu.read_u8(u64::MAX - 1).is_err());
     }
 
@@ -1354,7 +1412,14 @@ mod tests {
     }
 
     fn tls_sym(name: &str, shndx: u16, value: u64, size: u64) -> TestSymbol<'_> {
-        TestSymbol { name, shndx, bind: 1, kind: STT_TLS, value, size }
+        TestSymbol {
+            name,
+            shndx,
+            bind: 1,
+            kind: STT_TLS,
+            value,
+            size,
+        }
     }
 
     #[test]
@@ -1362,9 +1427,30 @@ mod tests {
         let mut mmu = Memory::new();
         let base = 0x8000_0000u64;
         let syms = [
-            TestSymbol { name: "alpha", shndx: 1, bind: 1, kind: 2, value: 0x500, size: 0 },
-            TestSymbol { name: "beta", shndx: 1, bind: 1, kind: 2, value: 0x600, size: 0 },
-            TestSymbol { name: "gamma", shndx: 1, bind: 2, kind: 1, value: 0x700, size: 8 },
+            TestSymbol {
+                name: "alpha",
+                shndx: 1,
+                bind: 1,
+                kind: 2,
+                value: 0x500,
+                size: 0,
+            },
+            TestSymbol {
+                name: "beta",
+                shndx: 1,
+                bind: 1,
+                kind: 2,
+                value: 0x600,
+                size: 0,
+            },
+            TestSymbol {
+                name: "gamma",
+                shndx: 1,
+                bind: 2,
+                kind: 1,
+                value: 0x700,
+                size: 8,
+            },
         ];
         write_test_module_with(&mut mmu, base, &syms, &[], &[], &[], true);
 
@@ -1433,7 +1519,14 @@ mod tests {
         assert!(report.unsupported.contains(&R_AARCH64_TLSDESC));
 
         let mut layout = NroLoader::build_tls_layout(&[provider, consumer], &mmu);
-        let fallback = |module_id, tp_offset, size| TlsBlock { module_id, tp_offset, size, align: 16, init_addr: 0, init_size: 0 };
+        let fallback = |module_id, tp_offset, size| TlsBlock {
+            module_id,
+            tp_offset,
+            size,
+            align: 16,
+            init_addr: 0,
+            init_size: 0,
+        };
         assert_eq!(layout.blocks[&provider], fallback(1, 16, 12));
         // 16 + 12 = 28, aligned up to 32.
         assert_eq!(layout.blocks[&consumer], fallback(2, 32, 0x20));
@@ -1459,7 +1552,8 @@ mod tests {
         // The guest resolver returns the TP offset from the descriptor.
         let mut cpu = crate::cpu::Cpu::new();
         cpu.regs.write_x(0, consumer + 0x320);
-        let tp_offset = crate::loader::init::call_guest_function(&mut cpu, &mut mmu, resolver, 0x9000_0000, 16).unwrap();
+        let tp_offset =
+            crate::loader::init::call_guest_function(&mut cpu, &mut mmu, resolver, 0x9000_0000, 16).unwrap();
         assert_eq!(tp_offset, 24);
     }
 
@@ -1467,12 +1561,22 @@ mod tests {
     fn test_tls_unresolved_and_weak_imports() {
         let mut mmu = Memory::new();
         let base = 0x8000_0000u64;
-        let weak = TestSymbol { name: "tls_weak", shndx: 0, bind: 2, kind: STT_TLS, value: 0, size: 0 };
+        let weak = TestSymbol {
+            name: "tls_weak",
+            shndx: 0,
+            bind: 2,
+            kind: STT_TLS,
+            value: 0,
+            size: 0,
+        };
         write_test_module_with(
             &mut mmu,
             base,
             &[tls_sym("own", 1, 0, 8), tls_sym("tls_missing", 0, 0, 0), weak],
-            &[(0x300, R_AARCH64_TLS_TPREL64, 2, 0), (0x308, R_AARCH64_TLS_DTPMOD64, 3, 0)],
+            &[
+                (0x300, R_AARCH64_TLS_TPREL64, 2, 0),
+                (0x308, R_AARCH64_TLS_DTPMOD64, 3, 0),
+            ],
             &[],
             &[],
             false,
@@ -1489,9 +1593,17 @@ mod tests {
 
     #[test]
     fn test_parse_pt_tls() {
-        let tls = TlsTemplate { vaddr: 0x1800, filesz: 8, memsz: 0x30, align: 64 };
+        let tls = TlsTemplate {
+            vaddr: 0x1800,
+            filesz: 8,
+            memsz: 0x30,
+            align: 64,
+        };
         assert_eq!(NroLoader::parse_pt_tls(&elf_with_pt_tls(tls)), Some(tls));
-        assert_eq!(NroLoader::parse_pt_tls(b"NSO0 not an elf file, padded out to sixty-four bytes........"), None);
+        assert_eq!(
+            NroLoader::parse_pt_tls(b"NSO0 not an elf file, padded out to sixty-four bytes........"),
+            None
+        );
         let mut no_tls = elf_with_pt_tls(tls);
         no_tls[0x78] = 1; // second header becomes PT_LOAD
         assert_eq!(NroLoader::parse_pt_tls(&no_tls), None);
@@ -1507,7 +1619,13 @@ mod tests {
         mmu.write_u64(base + 0x1800, 0x1122_3344_5566_7788).unwrap();
         mmu.write_u64(base + 0x1808, 0xFFFF_FFFF_FFFF_FFFF).unwrap();
 
-        let tls = NroLoader::parse_pt_tls(&elf_with_pt_tls(TlsTemplate { vaddr: 0x1800, filesz: 8, memsz: 0x30, align: 64 })).unwrap();
+        let tls = NroLoader::parse_pt_tls(&elf_with_pt_tls(TlsTemplate {
+            vaddr: 0x1800,
+            filesz: 8,
+            memsz: 0x30,
+            align: 64,
+        }))
+        .unwrap();
         let layout = NroLoader::build_tls_layout_with_templates(&[base], &mmu, &HashMap::from([(base, tls)]));
         let block = layout.blocks[&base];
         assert_eq!(block.tp_offset, 64); // TCB (16) rounded up to p_align
@@ -1534,7 +1652,14 @@ mod tests {
         write_test_module_with(
             &mut mmu,
             base,
-            &[TestSymbol { name: "target", shndx: 1, bind: 1, kind: 2, value: 0x500, size: 0 }],
+            &[TestSymbol {
+                name: "target",
+                shndx: 1,
+                bind: 1,
+                kind: 2,
+                value: 0x500,
+                size: 0,
+            }],
             &[],
             &[],
             &[(DT_REL, 0xC00), (DT_RELSZ, 32), (DT_RELENT, 16)],
@@ -1544,7 +1669,8 @@ mod tests {
         mmu.write_u64(base + 0xC00, 0x300).unwrap();
         mmu.write_u64(base + 0xC08, R_AARCH64_RELATIVE as u64).unwrap();
         mmu.write_u64(base + 0xC10, 0x308).unwrap();
-        mmu.write_u64(base + 0xC18, (1u64 << 32) | R_AARCH64_ABS64 as u64).unwrap();
+        mmu.write_u64(base + 0xC18, (1u64 << 32) | R_AARCH64_ABS64 as u64)
+            .unwrap();
         mmu.write_u64(base + 0x300, 0x450).unwrap();
         mmu.write_u64(base + 0x308, 0x10).unwrap();
 
@@ -1635,7 +1761,11 @@ mod tests {
         write_test_module(
             &mut mmu,
             consumer,
-            &[("ounce_add", 0, 1, 0), ("weak_missing", 0, 2, 0), ("missing_fn", 0, 1, 0)],
+            &[
+                ("ounce_add", 0, 1, 0),
+                ("weak_missing", 0, 2, 0),
+                ("missing_fn", 0, 1, 0),
+            ],
             &[
                 (0x300, R_AARCH64_GLOB_DAT, 1, 0),
                 (0x310, R_AARCH64_ABS64, 1, 0x10),
@@ -1703,7 +1833,15 @@ mod tests {
     fn relr_address_and_bitmap_entries() {
         let mut mmu = Memory::new();
         let base = 0x8000_0000u64;
-        write_test_module_with(&mut mmu, base, &[], &[], &[], &[(DT_RELR, 0xC00), (DT_RELRSZ, 16)], false);
+        write_test_module_with(
+            &mut mmu,
+            base,
+            &[],
+            &[],
+            &[],
+            &[(DT_RELR, 0xC00), (DT_RELRSZ, 16)],
+            false,
+        );
         // Address entry for +0x1000, then a bitmap over the following words: words 0 and 2 (+0x1008, +0x1018).
         mmu.write_u64(base + 0xC00, 0x1000).unwrap();
         mmu.write_u64(base + 0xC08, 1 | 1 << 1 | 1 << 3).unwrap();

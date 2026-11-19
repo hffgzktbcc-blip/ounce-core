@@ -12,25 +12,31 @@
 //! block's own `entry_pc` loops inside the function and keeps the registers in host registers.
 //! The return value is `code | insns << 32`; the exit `pc` is stored in `state.pc`.
 
-use crate::exec::{self, BlockCode, CallCtx, LinkEntry, Trampoline, LINK_MASK, MEM_CODE_WRITTEN, MEM_FAULT};
+use crate::exec::{self, BlockCode, CallCtx, LINK_MASK, LinkEntry, MEM_CODE_WRITTEN, MEM_FAULT, Trampoline};
 use crate::ir::{BinOp, Block, ExitTo, FaultSite, FpBinOp, FpWidth, Op, Reg, Terminator, Value, Width};
-use crate::{CompileError, GuestState, EXIT_CODE_WRITTEN, EXIT_FAULT};
+use crate::{CompileError, EXIT_CODE_WRITTEN, EXIT_FAULT, GuestState};
+use cranelift_codegen::Context;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
-use cranelift_codegen::ir::{self as clif, types, AbiParam, Endianness, InstBuilder, MemFlagsData, StackSlotData, StackSlotKind};
+use cranelift_codegen::ir::{
+    self as clif, AbiParam, Endianness, InstBuilder, MemFlagsData, StackSlotData, StackSlotKind, types,
+};
 use cranelift_codegen::isa::{CallConv, OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
-use cranelift_codegen::Context;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use std::collections::{BTreeMap, BTreeSet};
 use std::mem::offset_of;
 
 pub(crate) fn host_isa() -> Result<OwnedTargetIsa, CompileError> {
     let mut flags = settings::builder();
-    flags.set("opt_level", "speed").map_err(|e| CompileError::Backend(e.to_string()))?;
+    flags
+        .set("opt_level", "speed")
+        .map_err(|e| CompileError::Backend(e.to_string()))?;
     // Cranelift's x86_64 `return_call_indirect` needs frame pointers (it panics while emitting
     // otherwise); linked exits use it.
-    flags.set("preserve_frame_pointers", "true").map_err(|e| CompileError::Backend(e.to_string()))?;
+    flags
+        .set("preserve_frame_pointers", "true")
+        .map_err(|e| CompileError::Backend(e.to_string()))?;
     let isa = cranelift_native::builder().map_err(|e| CompileError::Backend(e.to_string()))?;
     let isa = isa
         .finish(settings::Flags::new(flags))
@@ -116,12 +122,16 @@ pub(crate) fn compile(
     for block in blocks {
         block.validate().map_err(CompileError::InvalidIr)?;
         if blocks.len() > 1 && block.entry_pc.is_none() {
-            return Err(CompileError::InvalidIr("every block of a region needs an entry pc".into()));
+            return Err(CompileError::InvalidIr(
+                "every block of a region needs an entry pc".into(),
+            ));
         }
     }
     let pcs: BTreeSet<u64> = blocks.iter().filter_map(|bl| bl.entry_pc).collect();
     if blocks.len() > 1 && pcs.len() != blocks.len() {
-        return Err(CompileError::InvalidIr("two blocks of a region share an entry pc".into()));
+        return Err(CompileError::InvalidIr(
+            "two blocks of a region share an entry pc".into(),
+        ));
     }
 
     // The memory trampolines are plain `extern "C"` functions.
@@ -154,7 +164,9 @@ pub(crate) fn compile(
         let mut regs = BTreeMap::new();
         let mut written = BTreeSet::new();
         for op in blocks.iter().flat_map(|bl| &bl.ops) {
-            let (Op::GetReg(r) | Op::SetReg(r, _)) = *op else { continue };
+            let (Op::GetReg(r) | Op::SetReg(r, _)) = *op else {
+                continue;
+            };
             let off = reg_offset(r);
             if matches!(op, Op::SetReg(..)) {
                 written.insert(off);
@@ -169,18 +181,35 @@ pub(crate) fn compile(
         // Link accounting lives in variables while the function runs and goes back to `ctx` at
         // every exit, so loops inside the function touch no memory for it.
         let chained = b.declare_var(types::I64);
-        let v = b.ins().load(types::I64, MemFlagsData::trusted(), call_ctx, offset_of!(CallCtx, chained_insns) as i32);
+        let v = b.ins().load(
+            types::I64,
+            MemFlagsData::trusted(),
+            call_ctx,
+            offset_of!(CallCtx, chained_insns) as i32,
+        );
         b.def_var(chained, v);
         let links = b.declare_var(types::I64);
-        let v = b.ins().load(types::I64, MemFlagsData::trusted(), call_ctx, offset_of!(CallCtx, links_taken) as i32);
+        let v = b.ins().load(
+            types::I64,
+            MemFlagsData::trusted(),
+            call_ctx,
+            offset_of!(CallCtx, links_taken) as i32,
+        );
         b.def_var(links, v);
-        let budget = b.ins().load(types::I64, MemFlagsData::trusted(), call_ctx, offset_of!(CallCtx, budget) as i32);
+        let budget = b.ins().load(
+            types::I64,
+            MemFlagsData::trusted(),
+            call_ctx,
+            offset_of!(CallCtx, budget) as i32,
+        );
 
         // One Cranelift block per guest block with a known pc: linked exits to it jump there.
         let mut heads = BTreeMap::new();
         let mut order = Vec::with_capacity(blocks.len());
         for bl in blocks {
-            let head = bl.entry_pc.map(|pc| *heads.entry(pc).or_insert_with(|| b.create_block()));
+            let head = bl
+                .entry_pc
+                .map(|pc| *heads.entry(pc).or_insert_with(|| b.create_block()));
             order.push(head);
         }
         if let Some(first) = order[0] {
@@ -275,11 +304,23 @@ struct Lowering<'a> {
 /// Arm `FPProcessNaNs` / `FPDefaultNaN` on the integer bit patterns `a`, `b` of the operands and the host result `r`:
 /// a signalling NaN operand wins (quieted), then a quiet NaN operand (`a` first); with no NaN operand an invalid
 /// operation gives the positive default NaN.
-fn arm_nan(builder: &mut FunctionBuilder<'_>, a: cranelift_codegen::ir::Value, b: cranelift_codegen::ir::Value, r: cranelift_codegen::ir::Value, ty: types::Type, quiet: u64, default_nan: u64) -> cranelift_codegen::ir::Value {
+fn arm_nan(
+    builder: &mut FunctionBuilder<'_>,
+    a: cranelift_codegen::ir::Value,
+    b: cranelift_codegen::ir::Value,
+    r: cranelift_codegen::ir::Value,
+    ty: types::Type,
+    quiet: u64,
+    default_nan: u64,
+) -> cranelift_codegen::ir::Value {
     let q = builder.ins().iconst(ty, quiet as i64);
     let is_nan = |builder: &mut FunctionBuilder<'_>, x: cranelift_codegen::ir::Value| {
         // exponent all ones and a non-zero fraction: |x| > inf in unsigned compare once the sign is dropped
-        let (abs_mask, inf) = if ty == types::I32 { (0x7fff_ffffi64, 0x7f80_0000i64) } else { (0x7fff_ffff_ffff_ffffi64, 0x7ff0_0000_0000_0000i64) };
+        let (abs_mask, inf) = if ty == types::I32 {
+            (0x7fff_ffffi64, 0x7f80_0000i64)
+        } else {
+            (0x7fff_ffff_ffff_ffffi64, 0x7ff0_0000_0000_0000i64)
+        };
         let m = builder.ins().iconst(ty, abs_mask);
         let ax = builder.ins().band(x, m);
         let ic = builder.ins().iconst(ty, inf);
@@ -301,7 +342,11 @@ fn arm_nan(builder: &mut FunctionBuilder<'_>, a: cranelift_codegen::ir::Value, b
     // priority from lowest to highest: invalid-op default, b quiet, a quiet, b signalling, a signalling
     let dn = builder.ins().iconst(ty, default_nan as i64);
     let r_nan = {
-        let (abs_mask, inf) = if ty == types::I32 { (0x7fff_ffffi64, 0x7f80_0000i64) } else { (0x7fff_ffff_ffff_ffffi64, 0x7ff0_0000_0000_0000i64) };
+        let (abs_mask, inf) = if ty == types::I32 {
+            (0x7fff_ffffi64, 0x7f80_0000i64)
+        } else {
+            (0x7fff_ffff_ffff_ffffi64, 0x7ff0_0000_0000_0000i64)
+        };
         let m = builder.ins().iconst(ty, abs_mask);
         let ar = builder.ins().band(r, m);
         let ic = builder.ins().iconst(ty, inf);
@@ -316,7 +361,6 @@ fn arm_nan(builder: &mut FunctionBuilder<'_>, a: cranelift_codegen::ir::Value, b
     v = builder.ins().select(sb, bq, v);
     builder.ins().select(sa, aq, v)
 }
-
 
 impl Lowering<'_> {
     fn v(&self, v: Value) -> clif::Value {
@@ -379,9 +423,13 @@ impl Lowering<'_> {
     fn flush_regs(&mut self) {
         let ctx = self.call_ctx;
         let chained = self.b.use_var(self.chained);
-        self.b.ins().store(Self::flags(), chained, ctx, offset_of!(CallCtx, chained_insns) as i32);
+        self.b
+            .ins()
+            .store(Self::flags(), chained, ctx, offset_of!(CallCtx, chained_insns) as i32);
         let links = self.b.use_var(self.links);
-        self.b.ins().store(Self::flags(), links, ctx, offset_of!(CallCtx, links_taken) as i32);
+        self.b
+            .ins()
+            .store(Self::flags(), links, ctx, offset_of!(CallCtx, links_taken) as i32);
         for off in self.written.clone() {
             let v = self.b.use_var(self.regs[&off]);
             self.b.ins().store(Self::flags(), v, self.state, off);
@@ -390,7 +438,10 @@ impl Lowering<'_> {
 
     fn ret(&mut self, code: u32, insns: u32) {
         self.flush_regs();
-        let word = self.b.ins().iconst(types::I64, (code as u64 | (insns as u64) << 32) as i64);
+        let word = self
+            .b
+            .ins()
+            .iconst(types::I64, (code as u64 | (insns as u64) << 32) as i64);
         self.b.ins().return_(&[word]);
     }
 
@@ -449,7 +500,10 @@ impl Lowering<'_> {
                 self.b.switch_to_block(next);
             }
         }
-        let table = self.b.ins().load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, links) as i32);
+        let table = self
+            .b
+            .ins()
+            .load(types::I64, Self::flags(), ctx, offset_of!(CallCtx, links) as i32);
         let (table, slot) = match target {
             LinkTarget::Const(t) => (table, (((t >> 2) & LINK_MASK) as usize * size_of::<LinkEntry>()) as i32),
             LinkTarget::Dynamic => {
@@ -461,8 +515,18 @@ impl Lowering<'_> {
                 (self.b.ins().iadd(table, off), 0)
             }
         };
-        let entry_pc = self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, guest_pc) as i32);
-        let entry = self.b.ins().load(types::I64, Self::flags(), table, slot + offset_of!(LinkEntry, host_entry) as i32);
+        let entry_pc = self.b.ins().load(
+            types::I64,
+            Self::flags(),
+            table,
+            slot + offset_of!(LinkEntry, guest_pc) as i32,
+        );
+        let entry = self.b.ins().load(
+            types::I64,
+            Self::flags(),
+            table,
+            slot + offset_of!(LinkEntry, host_entry) as i32,
+        );
         let hit = self.b.ins().icmp(IntCC::Equal, entry_pc, pc);
         // u64::MAX is both a possible guest branch target and the empty-slot tag.
         // A matching tag alone must never turn an empty entry into a null host call.
@@ -473,7 +537,9 @@ impl Lowering<'_> {
         self.b.switch_to_block(go);
         self.count_link(chained);
         self.flush_regs();
-        self.b.ins().return_call_indirect(self.tail_sig, entry, &[self.state, ctx]);
+        self.b
+            .ins()
+            .return_call_indirect(self.tail_sig, entry, &[self.state, ctx]);
 
         self.b.switch_to_block(ret);
     }
@@ -504,7 +570,10 @@ impl Lowering<'_> {
     fn mem_call(&mut self, target: u64, va: clif::Value, size: u8, last: clif::Value) -> clif::Value {
         let callee = self.b.ins().iconst(types::I64, target as i64);
         let size = self.b.ins().iconst(types::I32, size as i64);
-        let call = self.b.ins().call_indirect(self.mem_sig, callee, &[self.call_ctx, va, size, last]);
+        let call = self
+            .b
+            .ins()
+            .call_indirect(self.mem_sig, callee, &[self.call_ctx, va, size, last]);
         self.b.inst_results(call)[0]
     }
 
@@ -558,10 +627,10 @@ impl Lowering<'_> {
         };
         let not = |l: &mut Self, v: clif::Value| l.b.ins().bxor_imm_u(v, 1);
         let r = match cc >> 1 {
-            0 => bit(self, 30),                // EQ: Z
-            1 => bit(self, 29),                // CS: C
-            2 => bit(self, 31),                // MI: N
-            3 => bit(self, 28),                // VS: V
+            0 => bit(self, 30), // EQ: Z
+            1 => bit(self, 29), // CS: C
+            2 => bit(self, 31), // MI: N
+            3 => bit(self, 28), // VS: V
             4 => {
                 // HI: C && !Z
                 let c = bit(self, 29);
@@ -692,7 +761,11 @@ impl Lowering<'_> {
                             FpBinOp::Fmin => self.b.ins().fmin(fa, fb),
                         };
                         let ires32 = self.b.ins().bitcast(types::I32, Self::bitcast_flags(), fres);
-                        let ires32 = if Self::host_nan_needs_fixup(op) { arm_nan(&mut self.b, a32, b32, ires32, types::I32, 1 << 22, 0x7fc0_0000) } else { ires32 };
+                        let ires32 = if Self::host_nan_needs_fixup(op) {
+                            arm_nan(&mut self.b, a32, b32, ires32, types::I32, 1 << 22, 0x7fc0_0000)
+                        } else {
+                            ires32
+                        };
                         self.b.ins().uextend(types::I64, ires32)
                     }
                     FpWidth::F64 => {
@@ -707,7 +780,11 @@ impl Lowering<'_> {
                             FpBinOp::Fmin => self.b.ins().fmin(fa, fb),
                         };
                         let ires = self.b.ins().bitcast(types::I64, Self::bitcast_flags(), fres);
-                        if Self::host_nan_needs_fixup(op) { arm_nan(&mut self.b, va, vb, ires, types::I64, 1 << 51, 0x7ff8_0000_0000_0000) } else { ires }
+                        if Self::host_nan_needs_fixup(op) {
+                            arm_nan(&mut self.b, va, vb, ires, types::I64, 1 << 51, 0x7ff8_0000_0000_0000)
+                        } else {
+                            ires
+                        }
                     }
                 }
             }
@@ -783,13 +860,17 @@ impl Lowering<'_> {
 #[cfg(test)]
 mod nan_tests {
     use super::*;
+    use crate::exec::{LINK_SIZE, LinkEntry, TLB_SIZE, TlbEntry};
     use crate::{GuestState, MemFault, MemoryBus, WriteEffect};
-    use crate::exec::{LinkEntry, TlbEntry, LINK_SIZE, TLB_SIZE};
 
     struct NoMemory;
     impl MemoryBus for NoMemory {
-        fn read(&mut self, _: u64, _: u8) -> Result<u64, MemFault> { Err(MemFault) }
-        fn write(&mut self, _: u64, _: u8, _: u64) -> Result<WriteEffect, MemFault> { Err(MemFault) }
+        fn read(&mut self, _: u64, _: u8) -> Result<u64, MemFault> {
+            Err(MemFault)
+        }
+        fn write(&mut self, _: u64, _: u8, _: u64) -> Result<WriteEffect, MemFault> {
+            Err(MemFault)
+        }
     }
 
     // Execute the actual portable lowering even on Arm, supplying the negative NaN an x86
@@ -799,7 +880,13 @@ mod nan_tests {
         let isa = host_isa().unwrap();
         for (ty, quiet, dn, sign, one) in [
             (types::I32, 1u64 << 22, 0x7fc0_0000u64, 1u64 << 31, 0x3f80_0000u64),
-            (types::I64, 1u64 << 51, 0x7ff8_0000_0000_0000, 1u64 << 63, 0x3ff0_0000_0000_0000),
+            (
+                types::I64,
+                1u64 << 51,
+                0x7ff8_0000_0000_0000,
+                1u64 << 63,
+                0x3ff0_0000_0000_0000,
+            ),
         ] {
             let mut ctx = Context::new();
             let mut fctx = FunctionBuilderContext::new();
@@ -816,7 +903,11 @@ mod nan_tests {
                 let bv = b.ins().load(ty, MemFlagsData::trusted(), state, reg_offset(Reg::X(1)));
                 let r = b.ins().load(ty, MemFlagsData::trusted(), state, reg_offset(Reg::X(2)));
                 let v = arm_nan(&mut b, a, bv, r, ty, quiet, dn);
-                let v = if ty == types::I32 { b.ins().uextend(types::I64, v) } else { v };
+                let v = if ty == types::I32 {
+                    b.ins().uextend(types::I64, v)
+                } else {
+                    v
+                };
                 b.ins().store(MemFlagsData::trusted(), v, state, reg_offset(Reg::X(3)));
                 let zero = b.ins().iconst(types::I64, 0);
                 b.ins().return_(&[zero]);
@@ -835,8 +926,14 @@ mod nan_tests {
             ] {
                 let mut st = GuestState::default();
                 st.x[..3].copy_from_slice(&[a, bv, r]);
-                trampoline.run(&code, &mut st, &mut NoMemory,
-                    &mut [TlbEntry::default(); TLB_SIZE], &[LinkEntry::default(); LINK_SIZE], 1);
+                trampoline.run(
+                    &code,
+                    &mut st,
+                    &mut NoMemory,
+                    &mut [TlbEntry::default(); TLB_SIZE],
+                    &[LinkEntry::default(); LINK_SIZE],
+                    1,
+                );
                 assert_eq!(st.x[3], expected, "{ty}: {a:x}, {bv:x}, host {r:x}");
             }
         }

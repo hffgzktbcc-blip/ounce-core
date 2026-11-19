@@ -31,15 +31,12 @@ impl Pstate {
     }
 
     /// Read raw NZCV bit representation
-    pub fn to_bits(&self) -> u32 {
-        ((self.n as u32) << 31)
-            | ((self.z as u32) << 30)
-            | ((self.c as u32) << 29)
-            | ((self.v as u32) << 28)
+    pub fn to_bits(self) -> u32 {
+        ((self.n as u32) << 31) | ((self.z as u32) << 30) | ((self.c as u32) << 29) | ((self.v as u32) << 28)
     }
 
     /// Set from raw NZCV bit representation
-    pub fn from_bits(&mut self, val: u32) {
+    pub fn set_bits(&mut self, val: u32) {
         self.n = (val & (1 << 31)) != 0;
         self.z = (val & (1 << 30)) != 0;
         self.c = (val & (1 << 29)) != 0;
@@ -104,11 +101,7 @@ impl CpuRegisters {
     /// Index 31 is the zero register (XZR), which returns 0.
     #[inline(always)]
     pub fn read_x(&self, reg: u8) -> u64 {
-        if reg < 31 {
-            self.x[reg as usize]
-        } else {
-            0
-        }
+        if reg < 31 { self.x[reg as usize] } else { 0 }
     }
 
     /// Write a 64-bit general-purpose register.
@@ -135,11 +128,7 @@ impl CpuRegisters {
     /// Read register with SP support (if reg == 31, returns SP; otherwise returns X[reg]).
     #[inline(always)]
     pub fn read_x_or_sp(&self, reg: u8) -> u64 {
-        if reg == 31 {
-            self.sp
-        } else {
-            self.x[reg as usize]
-        }
+        if reg == 31 { self.sp } else { self.x[reg as usize] }
     }
 
     /// Write register with SP support (if reg == 31, updates SP; otherwise updates X[reg]).

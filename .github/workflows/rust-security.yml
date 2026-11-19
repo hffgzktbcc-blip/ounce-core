@@ -35,20 +35,25 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: codeql-rust
       - name: Linux native dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libudev-dev
       - name: Initialize CodeQL Rust analysis
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           languages: rust
       - name: Build Rust code for extraction
         run: cargo build --locked --release
       - name: Analyze code
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           category: /language:rust
 
@@ -57,8 +62,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      # Restores ~/.cargo/bin too, so cargo-audit is compiled once instead of on every run.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: rustsec
       - name: Install cargo-audit
         run: cargo install --locked cargo-audit
       - name: Audit locked dependencies
@@ -69,8 +80,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2
         with:
           command: check
           arguments: --locked

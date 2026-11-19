@@ -1,0 +1,47 @@
+{
+  "_comment": "DRAFT contract baseline for ounce.trace.v1 (issue #481), same rules as run-v1-keys.json. Keys are matched exactly for each document kind; each value must be one of the listed JSON types.",
+  "schema": "ounce.trace.v1",
+  "trace": {
+    "schema": ["string"],
+    "kind": ["string"],
+    "engine": ["string"],
+    "engine_version": ["string"],
+    "step_limit": ["number"],
+    "steps_executed": ["number"],
+    "steps_recorded": ["number"],
+    "truncated": ["bool"],
+    "steps": ["array"]
+  },
+  "step": {
+    "i": ["number"],
+    "pc": ["string"],
+    "opcode": ["string"],
+    "regs": ["object"]
+  },
+  "divergence": {
+    "schema": ["string"],
+    "kind": ["string"],
+    "engine": ["string"],
+    "engine_version": ["string"],
+    "expected_engine": ["string"],
+    "actual_engine": ["string"],
+    "match": ["bool"],
+    "compared_steps": ["number"],
+    "truncated": ["bool"],
+    "step": ["null", "number"],
+    "field": ["null", "string"],
+    "name": ["null", "string"],
+    "expected": ["null", "string"],
+    "actual": ["null", "string"],
+    "pc_expected": ["null", "string"],
+    "pc_actual": ["null", "string"],
+    "opcode_expected": ["null", "string"],
+    "opcode_actual": ["null", "string"],
+    "window": ["array"]
+  },
+  "window_entry": {
+    "i": ["number"],
+    "pc": ["string"],
+    "opcode": ["string"]
+  }
+}

@@ -39,7 +39,18 @@ fn bind_class(pb: &mut Vec<u32>, class: u32) {
 /// with 16-GOB-tall blocks.
 fn bind_render_target(pb: &mut Vec<u32>, pitch: bool) {
     let (width_field, memory) = if pitch { (1024, 1 << 12) } else { (256, 4 << 4) };
-    pb.extend([inc_header(SC, m::SET_COLOR_TARGET_A, 9), hi(RT_VA), lo(RT_VA), width_field, 256, 0xd5, memory, 1, 0, 0]);
+    pb.extend([
+        inc_header(SC, m::SET_COLOR_TARGET_A, 9),
+        hi(RT_VA),
+        lo(RT_VA),
+        width_field,
+        256,
+        0xd5,
+        memory,
+        1,
+        0,
+        0,
+    ]);
     // TARGET_COUNT = 1, TARGET0 = slot 0.
     pb.extend([immd_header(SC, m::SET_CT_SELECT, 1)]);
     pb.extend([inc_header(SC, m::SET_SURFACE_CLIP_HORIZONTAL, 2), 256 << 16, 256 << 16]);
@@ -60,27 +71,53 @@ fn setup_triangle(pb: &mut Vec<u32>, class: u32) {
     pb.extend([inc_header(SC, m::SET_VIEWPORT_CLIP_HORIZONTAL, 2), 256 << 16, 256 << 16]);
     pb.extend([inc_header(SC, m::SET_SCISSOR_ENABLE, 3), 1, 256 << 16, 256 << 16]);
     // Stream 0: 3 vertices of vec3 position + vec4 color = 28 bytes each.
-    pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_A_FORMAT, 4), (1 << 12) | 28, hi(VB_VA), lo(VB_VA), 0]);
+    pb.extend([
+        inc_header(SC, m::SET_VERTEX_STREAM_A_FORMAT, 4),
+        (1 << 12) | 28,
+        hi(VB_VA),
+        lo(VB_VA),
+        0,
+    ]);
     if class == m::MAXWELL_B {
         let limit = VB_VA + 84 - 1;
-        pb.extend([inc_header(SC, m::B197_SET_VERTEX_STREAM_LIMIT_A_A, 2), hi(limit), lo(limit)]);
+        pb.extend([
+            inc_header(SC, m::B197_SET_VERTEX_STREAM_LIMIT_A_A, 2),
+            hi(limit),
+            lo(limit),
+        ]);
         // Shader code lives at region + per-pipeline offset.
-        pb.extend([inc_header(SC, m::B197_SET_PROGRAM_REGION_A, 2), hi(SHADER_REGION), lo(SHADER_REGION)]);
+        pb.extend([
+            inc_header(SC, m::B197_SET_PROGRAM_REGION_A, 2),
+            hi(SHADER_REGION),
+            lo(SHADER_REGION),
+        ]);
     } else {
         pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_SIZE_A, 2), 0, 84]);
     }
     // Attribute 0: stream 0, offset 0, R32_G32_B32 float. Attribute 1: offset 12, R32_G32_B32_A32.
     let attr = |offset: u32, widths: u32| (7 << 27) | (widths << 21) | (offset << 7);
-    pb.extend([inc_header(SC, m::SET_VERTEX_ATTRIBUTE_A, 3), attr(0, 0x02), attr(12, 0x01), 1 << 6]);
+    pb.extend([
+        inc_header(SC, m::SET_VERTEX_ATTRIBUTE_A, 3),
+        attr(0, 0x02),
+        attr(12, 0x01),
+        1 << 6,
+    ]);
     // Vertex shader in pipeline 1, pixel shader in pipeline 5.
     for (pipe, kind, va, regs) in [(1u32, 1u32, VS_VA, 8u32), (5, 5, PS_VA, 4)] {
         let base = pipe * m::PIPELINE_STRIDE;
         pb.extend([inc_header(SC, m::SET_PIPELINE_SHADER + base, 1), (kind << 4) | 1]);
         pb.extend([inc_header(SC, m::SET_PIPELINE_REGISTER_COUNT + base, 1), regs]);
         if class == m::MAXWELL_B {
-            pb.extend([inc_header(SC, m::B197_SET_PIPELINE_PROGRAM + base, 1), (va - SHADER_REGION) as u32]);
+            pb.extend([
+                inc_header(SC, m::B197_SET_PIPELINE_PROGRAM + base, 1),
+                (va - SHADER_REGION) as u32,
+            ]);
         } else {
-            pb.extend([inc_header(SC, m::SET_PIPELINE_PROGRAM_ADDRESS_A + base, 2), hi(va), lo(va)]);
+            pb.extend([
+                inc_header(SC, m::SET_PIPELINE_PROGRAM_ADDRESS_A + base, 2),
+                hi(va),
+                lo(va),
+            ]);
         }
     }
 }
@@ -93,7 +130,13 @@ fn draw_triangle(pb: &mut Vec<u32>) {
 
 fn release_semaphore(pb: &mut Vec<u32>, payload: u32, one_word: bool) {
     let d = if one_word { 1 << 28 } else { 0 };
-    pb.extend([inc_header(SC, m::SET_REPORT_SEMAPHORE_A, 4), hi(SEM_VA), lo(SEM_VA), payload, d]);
+    pb.extend([
+        inc_header(SC, m::SET_REPORT_SEMAPHORE_A, 4),
+        hi(SEM_VA),
+        lo(SEM_VA),
+        payload,
+        d,
+    ]);
 }
 
 fn run(pb: &[u32]) -> (Ampere3d, Writes) {
@@ -142,40 +185,89 @@ fn clear_then_one_triangle_on(class: u32) {
     let events = gpu.events();
     assert_eq!(events.len(), 3);
 
-    let Event::Clear(clear) = &events[0] else { panic!("expected clear, got {:?}", events[0]) };
+    let Event::Clear(clear) = &events[0] else {
+        panic!("expected clear, got {:?}", events[0])
+    };
     assert_eq!(clear.color_f32(), [0.0, 0.0, 0.25, 1.0]);
     assert_eq!(clear.color_mask, [true; 4]);
     assert!(!clear.clear_depth && !clear.clear_stencil);
     assert_eq!(clear.color_target, Some(pitch_target()));
     assert_eq!(clear.color_target.unwrap().width_texels(), Some(256));
 
-    let Event::Draw(draw) = &events[1] else { panic!("expected draw, got {:?}", events[1]) };
+    let Event::Draw(draw) = &events[1] else {
+        panic!("expected draw, got {:?}", events[1])
+    };
     assert_eq!(draw.class, class);
     assert_eq!(draw.topology, Topology::Triangles);
     assert_eq!((draw.first_vertex, draw.vertex_count, draw.instance), (0, 3, 0));
     assert_eq!(draw.color_targets, vec![pitch_target()]);
     assert_eq!(draw.depth_target, None);
-    assert_eq!(draw.vertex_streams, vec![VertexStream { index: 0, gpu_va: VB_VA, stride: 28, size: 84, frequency: 0, instanced: false }]);
+    assert_eq!(
+        draw.vertex_streams,
+        vec![VertexStream {
+            index: 0,
+            gpu_va: VB_VA,
+            stride: 28,
+            size: 84,
+            frequency: 0,
+            instanced: false
+        }]
+    );
     assert_eq!(
         draw.vertex_attributes,
         vec![
-            VertexAttribute { index: 0, stream: 0, offset: 0, component_bit_widths: 0x02, numerical_type: 7, swap_r_and_b: false },
-            VertexAttribute { index: 1, stream: 0, offset: 12, component_bit_widths: 0x01, numerical_type: 7, swap_r_and_b: false },
+            VertexAttribute {
+                index: 0,
+                stream: 0,
+                offset: 0,
+                component_bit_widths: 0x02,
+                numerical_type: 7,
+                swap_r_and_b: false
+            },
+            VertexAttribute {
+                index: 1,
+                stream: 0,
+                offset: 12,
+                component_bit_widths: 0x01,
+                numerical_type: 7,
+                swap_r_and_b: false
+            },
         ]
     );
     assert_eq!(
         draw.shaders,
         vec![
-            ShaderStage { pipeline: 1, kind: ShaderType::Vertex, program_va: VS_VA, register_count: 8 },
-            ShaderStage { pipeline: 5, kind: ShaderType::Pixel, program_va: PS_VA, register_count: 4 },
+            ShaderStage {
+                pipeline: 1,
+                kind: ShaderType::Vertex,
+                program_va: VS_VA,
+                register_count: 8
+            },
+            ShaderStage {
+                pipeline: 5,
+                kind: ShaderType::Pixel,
+                program_va: PS_VA,
+                register_count: 4
+            },
         ]
     );
     assert_eq!(draw.viewport0.scale, [128.0, 128.0, 1.0]);
     assert_eq!(draw.viewport0.offset, [128.0, 128.0, 0.0]);
     assert_eq!(draw.viewport0.clip, [0, 0, 256, 256]);
-    assert_eq!(draw.scissor0, Scissor { enabled: true, xmin: 0, xmax: 256, ymin: 0, ymax: 256 });
+    assert_eq!(
+        draw.scissor0,
+        Scissor {
+            enabled: true,
+            xmin: 0,
+            xmax: 256,
+            ymin: 0,
+            ymax: 256
+        }
+    );
 
-    let Event::Semaphore(sem) = &events[2] else { panic!("expected semaphore, got {:?}", events[2]) };
+    let Event::Semaphore(sem) = &events[2] else {
+        panic!("expected semaphore, got {:?}", events[2])
+    };
     assert_eq!(sem.op, SemaphoreOp::Release);
     assert_eq!((sem.gpu_va, sem.payload, sem.one_word), (SEM_VA, 0x1234, true));
     assert_eq!(mem.0, vec![(SEM_VA, 0x1234u32.to_le_bytes().to_vec())]);
@@ -195,9 +287,18 @@ fn block_linear_target_and_depth_are_described_raw() {
     pb.extend([immd_header(SC, m::CLEAR_SURFACE, 0x3f)]); // depth, stencil and RGBA
 
     let (gpu, _) = run(&pb);
-    let Event::Clear(clear) = &gpu.events()[0] else { panic!() };
+    let Event::Clear(clear) = &gpu.events()[0] else {
+        panic!()
+    };
     let rt = clear.color_target.unwrap();
-    assert_eq!(rt.layout, SurfaceLayout::BlockLinear { block_width_log2: 0, block_height_log2: 4, block_depth_log2: 0 });
+    assert_eq!(
+        rt.layout,
+        SurfaceLayout::BlockLinear {
+            block_width_log2: 0,
+            block_height_log2: 4,
+            block_depth_log2: 0
+        }
+    );
     assert_eq!((rt.gpu_va, rt.width_texels(), rt.height), (RT_VA, Some(256), 256));
     assert!(clear.clear_depth && clear.clear_stencil);
     assert_eq!(clear.depth, 1.0);
@@ -208,7 +309,11 @@ fn block_linear_target_and_depth_are_described_raw() {
             width: 256,
             height: 256,
             format: DepthFormat::Z24S8,
-            layout: SurfaceLayout::BlockLinear { block_width_log2: 0, block_height_log2: 3, block_depth_log2: 0 },
+            layout: SurfaceLayout::BlockLinear {
+                block_width_log2: 0,
+                block_height_log2: 3,
+                block_depth_log2: 0
+            },
             array_pitch: 0,
             layer: 0,
         })
@@ -235,9 +340,19 @@ fn one_shot_draw_and_instances() {
     bind_render_target(&mut pb, true);
     // TRIANGLE_STRIP (5), count 4, start 2; then the same for the next instance.
     let one_shot = (5 << 28) | (4 << 16) | 2;
-    pb.extend([inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_FIRST, 2), one_shot, one_shot]);
+    pb.extend([
+        inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_FIRST, 2),
+        one_shot,
+        one_shot,
+    ]);
     // BEGIN with INSTANCE_ID SUBSEQUENT continues counting (too wide for an immediate header).
-    pb.extend([inc_header(SC, m::BEGIN, 1), (1 << 26) | 4, inc_header(SC, m::SET_VERTEX_ARRAY_START, 2), 9, 3]);
+    pb.extend([
+        inc_header(SC, m::BEGIN, 1),
+        (1 << 26) | 4,
+        inc_header(SC, m::SET_VERTEX_ARRAY_START, 2),
+        9,
+        3,
+    ]);
     pb.extend([immd_header(SC, m::END, 0)]);
 
     let (gpu, _) = run(&pb);
@@ -251,7 +366,11 @@ fn one_shot_draw_and_instances() {
         .collect();
     assert_eq!(
         draws,
-        vec![(Topology::TriangleStrip, 2, 4, 0), (Topology::TriangleStrip, 2, 4, 1), (Topology::Triangles, 9, 3, 2)]
+        vec![
+            (Topology::TriangleStrip, 2, 4, 0),
+            (Topology::TriangleStrip, 2, 4, 1),
+            (Topology::Triangles, 9, 3, 2)
+        ]
     );
 }
 
@@ -259,12 +378,20 @@ fn one_shot_draw_and_instances() {
 fn several_draws_in_one_begin_use_non_incrementing_counts() {
     let mut pb = Vec::new();
     bind_class(&mut pb, m::AMPERE_B);
-    pb.extend([immd_header(SC, m::BEGIN, 4), inc_header(SC, m::SET_VERTEX_ARRAY_START, 1), 6]);
+    pb.extend([
+        immd_header(SC, m::BEGIN, 4),
+        inc_header(SC, m::SET_VERTEX_ARRAY_START, 1),
+        6,
+    ]);
     pb.extend([non_inc_header(SC, m::DRAW_VERTEX_ARRAY, 2), 3, 3]);
     pb.extend([immd_header(SC, m::END, 0)]);
     let (gpu, _) = run(&pb);
     assert_eq!(gpu.events().len(), 2);
-    assert!(gpu.events().iter().all(|e| matches!(e, Event::Draw(d) if d.first_vertex == 6 && d.vertex_count == 3)));
+    assert!(
+        gpu.events()
+            .iter()
+            .all(|e| matches!(e, Event::Draw(d) if d.first_vertex == 6 && d.vertex_count == 3))
+    );
 }
 
 #[test]
@@ -276,7 +403,11 @@ fn other_classes_and_stray_draws_are_reported_not_decoded() {
     assert!(gpu.events().is_empty());
     assert_eq!(
         gpu.diagnostics(),
-        &[Diagnostic::ForeignSubchannel { subchannel: SC, class: Some(0xc7c0), method: m::CLEAR_SURFACE }]
+        &[Diagnostic::ForeignSubchannel {
+            subchannel: SC,
+            class: Some(0xc7c0),
+            method: m::CLEAR_SURFACE
+        }]
     );
 
     let mut pb = Vec::new();
@@ -288,7 +419,9 @@ fn other_classes_and_stray_draws_are_reported_not_decoded() {
     assert_eq!(
         gpu.diagnostics(),
         &[
-            Diagnostic::DrawOutsideBegin { method: m::DRAW_VERTEX_ARRAY },
+            Diagnostic::DrawOutsideBegin {
+                method: m::DRAW_VERTEX_ARRAY
+            },
             Diagnostic::DrawOutsideBegin { method: m::END },
             Diagnostic::NestedBegin,
         ]
@@ -328,7 +461,11 @@ fn upload_clear_macro(pb: &mut Vec<u32>) {
 }
 
 fn call_clear_macro(pb: &mut Vec<u32>, words: &[u32]) {
-    pb.push(one_inc_header(SC, m::CALL_MME_MACRO + 3 * m::CALL_MME_STRIDE, words.len() as u32));
+    pb.push(one_inc_header(
+        SC,
+        m::CALL_MME_MACRO + 3 * m::CALL_MME_STRIDE,
+        words.len() as u32,
+    ));
     pb.extend(words);
 }
 
@@ -347,7 +484,9 @@ fn maxwell_macro_expands_into_a_clear() {
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     let events = gpu.events();
     assert_eq!(events.len(), 2);
-    let Event::Clear(clear) = &events[0] else { panic!("expected clear, got {:?}", events[0]) };
+    let Event::Clear(clear) = &events[0] else {
+        panic!("expected clear, got {:?}", events[0])
+    };
     assert_eq!(clear.color_f32(), [0.0, 0.0, 0.25, 1.0]);
     assert_eq!(clear.color_mask, [true; 4]);
     assert_eq!(clear.color_target, Some(pitch_target()));
@@ -364,13 +503,25 @@ fn macro_failures_are_reported() {
     upload_clear_macro(&mut pb);
     call_clear_macro(&mut pb, &[1, 2, 3, 4]);
     let (gpu, _) = run(&pb);
-    assert_eq!(gpu.diagnostics(), [Diagnostic::MacroFailed { index: 3, reason: "macro read past its parameters" }]);
+    assert_eq!(
+        gpu.diagnostics(),
+        [Diagnostic::MacroFailed {
+            index: 3,
+            reason: "macro read past its parameters"
+        }]
+    );
 
     // AMPERE_B macros use another instruction format.
     let mut pb = Vec::new();
     bind_class(&mut pb, m::AMPERE_B);
     call_clear_macro(&mut pb, &[0]);
     let (gpu, _) = run(&pb);
-    assert_eq!(gpu.diagnostics(), [Diagnostic::MacroFailed { index: 3, reason: "AMPERE_B macro format not modelled" }]);
+    assert_eq!(
+        gpu.diagnostics(),
+        [Diagnostic::MacroFailed {
+            index: 3,
+            reason: "AMPERE_B macro format not modelled"
+        }]
+    );
     assert!(gpu.events().is_empty());
 }

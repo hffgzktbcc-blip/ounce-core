@@ -34,7 +34,13 @@ fn integer_three_same_classes() {
     assert_eq!(c.regs.v[3], 0x00ff_0000);
     assert_ne!(c.regs.fpsr & FPSR_QC, 0);
     // sqrdmulh v6.4s: min*min saturates to 0x7fffffff, 0x40000000^2 -> 0x20000000
-    let c = run1(0x6ea8_b4e6, &[(7, 0x8000_0000 | 0x4000_0000 << 32), (8, 0x8000_0000 | 0x4000_0000 << 32)]);
+    let c = run1(
+        0x6ea8_b4e6,
+        &[
+            (7, 0x8000_0000 | 0x4000_0000 << 32),
+            (8, 0x8000_0000 | 0x4000_0000 << 32),
+        ],
+    );
     assert_eq!(c.regs.v[6], 0x7fff_ffff | 0x2000_0000 << 32);
     assert_ne!(c.regs.fpsr & FPSR_QC, 0);
     // srshl v9.2d: 5 shifted by -1 rounds to 3; 3 shifted left by 4 is 48
@@ -75,7 +81,10 @@ fn integer_two_reg_misc_classes() {
     let c = run1(0x6e60_5928, &[(9, 0x0f01)]);
     assert_eq!(c.regs.v[8], 0xf080);
     // sqabs v10.2d: i64::MIN saturates (QC), -5 -> 5
-    let c = run1(0x4ee0_796a, &[(11, 0x8000_0000_0000_0000 | (-5i64 as u64 as u128) << 64)]);
+    let c = run1(
+        0x4ee0_796a,
+        &[(11, 0x8000_0000_0000_0000 | (-5i64 as u64 as u128) << 64)],
+    );
     assert_eq!(c.regs.v[10], 0x7fff_ffff_ffff_ffff | 5u128 << 64);
     assert_ne!(c.regs.fpsr & FPSR_QC, 0);
     // sqneg v12.4s: 5 -> -5, no saturation
@@ -93,7 +102,10 @@ fn integer_two_reg_misc_classes() {
 #[test]
 fn by_element_dot_and_fmulx_classes() {
     // mul v0.4s, v1.4s, v2.s[3]
-    let c = run1(0x4fa2_8820, &[(1, 1 | 2 << 32 | 3u128 << 64 | 4u128 << 96), (2, 5u128 << 96)]);
+    let c = run1(
+        0x4fa2_8820,
+        &[(1, 1 | 2 << 32 | 3u128 << 64 | 4u128 << 96), (2, 5u128 << 96)],
+    );
     assert_eq!(c.regs.v[0], 5 | 10 << 32 | 15u128 << 64 | 20u128 << 96);
     // mla v3.8h, v4.8h, v5.h[7]: 1 + 2*3
     let c = run1(0x6f75_0883, &[(3, 1), (4, 2), (5, 3u128 << 112)]);
@@ -106,14 +118,20 @@ fn by_element_dot_and_fmulx_classes() {
     let c = run1(0x0f6b_a149, &[(10, 0xfffe | 3 << 16), (11, 5u128 << 32)]);
     assert_eq!(c.regs.v[9], 0xffff_fff6 | 15 << 32);
     // umull2 v12.2d, v13.4s, v14.s[1]: upper half of v13 only
-    let c = run1(0x6fae_a1ac, &[(13, 0x8000_0000u128 << 64 | 2u128 << 96), (14, 0x10u128 << 32)]);
+    let c = run1(
+        0x6fae_a1ac,
+        &[(13, 0x8000_0000u128 << 64 | 2u128 << 96), (14, 0x10u128 << 32)],
+    );
     assert_eq!(c.regs.v[12], 0x8_0000_0000 | 0x20u128 << 64);
     // sqdmull s15, h16, v7.h[1]: 0x8000 * 0x8000 * 2 saturates (QC)
     let c = run1(0x5f57_b20f, &[(16, 0x8000), (7, 0x8000u128 << 16), (15, u128::MAX)]);
     assert_eq!(c.regs.v[15], 0x7fff_ffff);
     assert_ne!(c.regs.fpsr & FPSR_QC, 0);
     // sdot v18.4s, v19.16b, v20.4b[1]: 5 + (1+2+3+4); lane1 = -1
-    let c = run1(0x4fb4_e272, &[(18, 5), (19, 0x0101_0101 | 0xffu128 << 32), (20, 0x0403_0201u128 << 32)]);
+    let c = run1(
+        0x4fb4_e272,
+        &[(18, 5), (19, 0x0101_0101 | 0xffu128 << 32), (20, 0x0403_0201u128 << 32)],
+    );
     assert_eq!(c.regs.v[18], 15 | 0xffff_ffffu128 << 32);
     // udot v21.2s, v22.8b, v23.4b[0]: 255*1, 4 bytes of 1 against 1,2,3,4 = 10
     let c = run1(0x2f97_e2d5, &[(22, 0xff | 0x0101_0101u128 << 32), (23, 0x0403_0201)]);
@@ -122,10 +140,16 @@ fn by_element_dot_and_fmulx_classes() {
     let c = run1(0x4e9a_9738, &[(25, 2), (26, 3)]);
     assert_eq!(c.regs.v[24], 6);
     // fmulx v27.4s: 0 * inf = +2.0, -0 * inf = -2.0
-    let c = run1(0x4e3d_df9b, &[(28, 0x8000_0000u128 << 32), (29, 0x7f80_0000 | 0x7f80_0000u128 << 32)]);
+    let c = run1(
+        0x4e3d_df9b,
+        &[(28, 0x8000_0000u128 << 32), (29, 0x7f80_0000 | 0x7f80_0000u128 << 32)],
+    );
     assert_eq!(c.regs.v[27], 0x4000_0000 | 0xc000_0000u128 << 32);
     // fmulx v30.2d, v31.2d, v1.d[1]: 1.5 * inf = inf, 0 * inf = 2.0
-    let c = run1(0x6fc1_9bfe, &[(31, 0x3ff8_0000_0000_0000), (1, 0x7ff0_0000_0000_0000u128 << 64)]);
+    let c = run1(
+        0x6fc1_9bfe,
+        &[(31, 0x3ff8_0000_0000_0000), (1, 0x7ff0_0000_0000_0000u128 << 64)],
+    );
     assert_eq!(c.regs.v[30], 0x7ff0_0000_0000_0000 | 0x4000_0000_0000_0000u128 << 64);
 }
 
@@ -160,7 +184,10 @@ fn fcvtxn_round_to_odd() {
     // fcvtxn2 keeps the low half of Vd. Round-to-odd overflow is the largest finite single,
     // for 2^128 and for the double just below it. A negative overflow keeps the sign.
     let keep = 0x1111_2222_3333_4444u128;
-    let c = run1(0x6e61_6820, &[(0, keep), (1, d2(0x47F0_0000_0000_0000, 0x47EF_FFFF_FFFF_FFFF))]);
+    let c = run1(
+        0x6e61_6820,
+        &[(0, keep), (1, d2(0x47F0_0000_0000_0000, 0x47EF_FFFF_FFFF_FFFF))],
+    );
     assert_eq!(c.regs.v[0], keep | (0x7f7f_ffffu128 | 0x7f7f_ffffu128 << 32) << 64);
     assert_eq!(c.regs.fpsr & (OFC | IXC), OFC | IXC);
     let c = run1(0x2e61_6820, &[(1, d2(0xC7F0_0000_0000_0000, 0x47F0_0000_0000_0001))]);
@@ -281,13 +308,23 @@ fn scalar_fmulx_zero_times_infinity_and_lane0_only() {
     let c = run1(0x5e21_dc03, &[(3, u128::MAX), (0, 0x8000_0000), (1, 0x7f80_0000)]);
     assert_eq!(c.regs.v[3], 0xc000_0000);
     // fmulx s3, s0, s1: 1.5 * 2 = 3. Upper bits of the sources must not leak into v3.
-    let c = run1(0x5e21_dc03, &[(3, u128::MAX), (0, 0x3fc0_0000 | 0x7f80_0000u128 << 32), (1, 0x4000_0000 | 0x7fc0_0000u128 << 32)]);
+    let c = run1(
+        0x5e21_dc03,
+        &[
+            (3, u128::MAX),
+            (0, 0x3fc0_0000 | 0x7f80_0000u128 << 32),
+            (1, 0x4000_0000 | 0x7fc0_0000u128 << 32),
+        ],
+    );
     assert_eq!(c.regs.v[3], 0x4040_0000);
     // fmulx d3, d0, d1: +0 * +inf = +2.0, upper 64 bits cleared
     let c = run1(0x5e61_dc03, &[(3, u128::MAX), (0, 0), (1, 0x7ff0_0000_0000_0000)]);
     assert_eq!(c.regs.v[3], 0x4000_0000_0000_0000);
     // fmulx d3, d0, d1: -0 * +inf = -2.0
-    let c = run1(0x5e61_dc03, &[(3, u128::MAX), (0, 1u128 << 63), (1, 0x7ff0_0000_0000_0000)]);
+    let c = run1(
+        0x5e61_dc03,
+        &[(3, u128::MAX), (0, 1u128 << 63), (1, 0x7ff0_0000_0000_0000)],
+    );
     assert_eq!(c.regs.v[3], 0xc000_0000_0000_0000);
     // fmulx d3, d0, d1: 1.5 * 4 = 6
     let c = run1(0x5e61_dc03, &[(0, 0x3ff8_0000_0000_0000), (1, 0x4010_0000_0000_0000)]);
@@ -301,22 +338,40 @@ fn v4(l: [u32; 4]) -> u128 {
 #[test]
 fn fp_round_convert_estimate_classes() {
     // frintn v0.4s: ties to even (2.5 -> 2, -2.5 -> -2, 0.5 -> 0, 1.5 -> 2)
-    let c = run1(0x4e21_8820, &[(1, v4([0x4020_0000, 0xc020_0000, 0x3f00_0000, 0x3fc0_0000]))]);
+    let c = run1(
+        0x4e21_8820,
+        &[(1, v4([0x4020_0000, 0xc020_0000, 0x3f00_0000, 0x3fc0_0000]))],
+    );
     assert_eq!(c.regs.v[0], v4([0x4000_0000, 0xc000_0000, 0, 0x4000_0000]));
     // frinta v4.4s: ties away from zero (3, -3, 1, 2)
-    let c = run1(0x6e21_88a4, &[(5, v4([0x4020_0000, 0xc020_0000, 0x3f00_0000, 0x3fc0_0000]))]);
+    let c = run1(
+        0x6e21_88a4,
+        &[(5, v4([0x4020_0000, 0xc020_0000, 0x3f00_0000, 0x3fc0_0000]))],
+    );
     assert_eq!(c.regs.v[4], v4([0x4040_0000, 0xc040_0000, 0x3f80_0000, 0x4000_0000]));
     // frintp v2.2d: -0.5 -> -0.0, 1.2 -> 2.0
-    let c = run1(0x4ee1_8862, &[(3, 0xbfe0_0000_0000_0000 | 0x3ff3_3333_3333_3333u128 << 64)]);
+    let c = run1(
+        0x4ee1_8862,
+        &[(3, 0xbfe0_0000_0000_0000 | 0x3ff3_3333_3333_3333u128 << 64)],
+    );
     assert_eq!(c.regs.v[2], 0x8000_0000_0000_0000 | 0x4000_0000_0000_0000u128 << 64);
     // frint32z v6.4s: 2.7 -> 2.0, 2^32 and NaN -> -2^31, -1.5 -> -1.0
-    let c = run1(0x4e21_e8e6, &[(7, v4([0x402c_cccd, 0x4f80_0000, 0xbfc0_0000, 0x7fc0_0000]))]);
+    let c = run1(
+        0x4e21_e8e6,
+        &[(7, v4([0x402c_cccd, 0x4f80_0000, 0xbfc0_0000, 0x7fc0_0000]))],
+    );
     assert_eq!(c.regs.v[6], v4([0x4000_0000, 0xcf00_0000, 0xbf80_0000, 0xcf00_0000]));
     // fcvtns v8.4s: 2.5 -> 2, 3.5 -> 4, -2.5 -> -2, 1e10 saturates
-    let c = run1(0x4e21_a928, &[(9, v4([0x4020_0000, 0x4060_0000, 0xc020_0000, 0x5015_02f9]))]);
+    let c = run1(
+        0x4e21_a928,
+        &[(9, v4([0x4020_0000, 0x4060_0000, 0xc020_0000, 0x5015_02f9]))],
+    );
     assert_eq!(c.regs.v[8], v4([2, 4, 0xffff_fffe, 0x7fff_ffff]));
     // fcvtau v10.2d: 2.5 -> 3, -1.0 -> 0
-    let c = run1(0x6e61_c96a, &[(11, 0x4004_0000_0000_0000 | 0xbff0_0000_0000_0000u128 << 64)]);
+    let c = run1(
+        0x6e61_c96a,
+        &[(11, 0x4004_0000_0000_0000 | 0xbff0_0000_0000_0000u128 << 64)],
+    );
     assert_eq!(c.regs.v[10], 3);
     // fcvtps v12.4s: 1.1 -> 2, -1.1 -> -1, 0 -> 0, NaN -> 0
     let c = run1(0x4ea1_a9ac, &[(13, v4([0x3f8c_cccd, 0xbf8c_cccd, 0, 0x7fc0_0000]))]);
@@ -326,13 +381,22 @@ fn fp_round_convert_estimate_classes() {
     let c = run1(0x4ea1_d9ee, &[(15, v4([0x3f80_0000, 0x4040_0000, 0, 0xc000_0000]))]);
     assert_eq!(c.regs.v[14], v4([0x3f7f_8000, 0x3eaa_8000, 0x7f80_0000, 0xbeff_8000]));
     // frsqrte v16.4s: 1.0, 3.0, 4.0, 0.25
-    let c = run1(0x6ea1_da30, &[(17, v4([0x3f80_0000, 0x4040_0000, 0x4080_0000, 0x3e80_0000]))]);
+    let c = run1(
+        0x6ea1_da30,
+        &[(17, v4([0x3f80_0000, 0x4040_0000, 0x4080_0000, 0x3e80_0000]))],
+    );
     assert_eq!(c.regs.v[16], v4([0x3f7f_8000, 0x3f13_8000, 0x3eff_8000, 0x3fff_8000]));
     // urecpe v18.4s
-    let c = run1(0x4ea1_ca72, &[(19, v4([0x8000_0000, 0xc000_0000, 0x4000_0000, 0x00ff_ffff]))]);
+    let c = run1(
+        0x4ea1_ca72,
+        &[(19, v4([0x8000_0000, 0xc000_0000, 0x4000_0000, 0x00ff_ffff]))],
+    );
     assert_eq!(c.regs.v[18], v4([0xff80_0000, 0xaa80_0000, 0xffff_ffff, 0xffff_ffff]));
     // ursqrte v20.4s
-    let c = run1(0x6ea1_cab4, &[(21, v4([0x8000_0000, 0xc000_0000, 0x4000_0000, 0x00ff_ffff]))]);
+    let c = run1(
+        0x6ea1_cab4,
+        &[(21, v4([0x8000_0000, 0xc000_0000, 0x4000_0000, 0x00ff_ffff]))],
+    );
     assert_eq!(c.regs.v[20], v4([0xb480_0000, 0x9380_0000, 0xff80_0000, 0xffff_ffff]));
 }
 
@@ -391,4 +455,63 @@ fn frint32z_raises_inexact() {
     let c = run1_fpcr(0x4e21_e8e6, 0, &[(7, v4([0x3fc0_0000, 0, 0, 0]))]);
     assert_eq!(c.regs.v[6] as u32, 0x3f80_0000);
     assert_eq!(c.regs.fpsr & 0x9f, IXC);
+}
+
+// Scalar FRECPE/FRSQRTE/FRECPS/FRSQRTS and FRINT32*/FRINT64* (#359). Expected values and flags are what an
+// Apple M3 returned at FPCR 0 for the same inputs (docs/verify/fp-workload). Each writes lane 0 and zeroes the rest.
+#[test]
+fn scalar_recip_estimate_flags_come_from_lane_zero_only() {
+    // frecpe s4, s5: 1.0 -> 0x3f7f8000 with no flags (an unread zero lane would raise DZC)
+    let c = run1_fpcr(
+        0x5ea1_d8a4,
+        0,
+        &[(4, u128::MAX), (5, 0x3f80_0000 | 0xffff_ffffu128 << 32)],
+    );
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x3f7f_8000, 0));
+    // frecpe s4, s5: +0 -> +inf, DZC; a signalling NaN -> quiet NaN, IOC
+    let c = run1_fpcr(0x5ea1_d8a4, 0, &[(5, 0)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x7f80_0000, 0x02));
+    let c = run1_fpcr(0x5ea1_d8a4, 0, &[(5, 0x7f80_0001)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x7fc0_0001, 0x01));
+    // frsqrte d4, d5: 1.0 -> 0x3feff00000000000; -1.0 -> default NaN, IOC
+    let c = run1_fpcr(0x7ee1_d8a4, 0, &[(5, 0x3ff0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x3fef_f000_0000_0000, 0));
+    let c = run1_fpcr(0x7ee1_d8a4, 0, &[(5, 0xbff0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x7ff8_0000_0000_0000, 0x01));
+}
+
+#[test]
+fn scalar_recip_and_rsqrt_steps() {
+    // frecps d4, d5, d6: 2 - 0*inf = 2.0, 2 - 1*inf = -inf, no flags (fused, 0*inf is special-cased)
+    let c = run1_fpcr(0x5e66_fca4, 0, &[(5, 0), (6, 0x7ff0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x4000_0000_0000_0000, 0));
+    let c = run1_fpcr(
+        0x5e66_fca4,
+        0,
+        &[(5, 0x3ff0_0000_0000_0000), (6, 0x7ff0_0000_0000_0000)],
+    );
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0xfff0_0000_0000_0000, 0));
+    // frsqrts d4, d5, d6: (3 - 0*inf)/2 = 1.5, (3 - 1*1)/2 = 1.0
+    let c = run1_fpcr(0x5ee6_fca4, 0, &[(5, 0), (6, 0x7ff0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x3ff8_0000_0000_0000, 0));
+    let c = run1_fpcr(
+        0x5ee6_fca4,
+        0,
+        &[(5, 0x3ff0_0000_0000_0000), (6, 0x3ff0_0000_0000_0000)],
+    );
+    assert_eq!(c.regs.v[4], 0x3ff0_0000_0000_0000);
+}
+
+#[test]
+fn scalar_frint32z_and_frint64x() {
+    // frint32z d4, d5: 1.5 -> 1.0 (IXC); 2^63 is out of int32 range -> -2^31 as a double, IOC
+    let c = run1_fpcr(0x1e68_40a4, 0, &[(5, 0x3ff8_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x3ff0_0000_0000_0000, IXC));
+    let c = run1_fpcr(0x1e68_40a4, 0, &[(5, 0x43e0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0xc1e0_0000_0000_0000, 0x01));
+    // frint64x d4, d5: 1.5 -> 2.0 (ties to even, IXC); 2^63 is out of int64 range -> -2^63, IOC
+    let c = run1_fpcr(0x1e69_c0a4, 0, &[(5, 0x3ff8_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0x4000_0000_0000_0000, IXC));
+    let c = run1_fpcr(0x1e69_c0a4, 0, &[(5, 0x43e0_0000_0000_0000)]);
+    assert_eq!((c.regs.v[4], c.regs.fpsr & 0x9f), (0xc3e0_0000_0000_0000, 0x01));
 }

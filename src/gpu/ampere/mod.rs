@@ -37,11 +37,11 @@ mod tests;
 
 pub use engine::{
     Ampere3d, ClearRecord, ConstantBufferBinding, Diagnostic, DrawRecord, Event, GpuMemoryWriter, HostRecord,
-    HostSemaphoreOp, HostSemaphoreRecord, Scissor, SemaphoreOp, SemaphoreRecord, SemaphoreWait, ShaderStage, ShaderType,
-    Topology, VertexAttribute, VertexStream, Viewport,
+    HostSemaphoreOp, HostSemaphoreRecord, Scissor, SemaphoreOp, SemaphoreRecord, SemaphoreWait, ShaderStage,
+    ShaderType, Topology, VertexAttribute, VertexStream, Viewport,
 };
-pub use render::RenderStats;
-pub use texture::{Sampler, TextureHeader};
 pub use methods::{AMPERE_B, MAXWELL_B};
 pub use pushbuf::{MethodCall, PushbufError};
+pub use render::RenderStats;
 pub use surface::{ColorFormat, ColorTarget, DepthFormat, DepthTarget, SurfaceLayout};
+pub use texture::{Sampler, TextureHeader};

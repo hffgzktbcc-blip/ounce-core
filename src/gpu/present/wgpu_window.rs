@@ -28,8 +28,8 @@ use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
 use winit::window::{Window, WindowId};
 
 use super::{
-    BackendConfig, Frame, Gpu3DDrawOp, Gpu3DTextureData, Gpu3DVertex, GpuPrimitiveTopology,
-    HostKey, PresentBackend, PresentError, PresentStatus, ScaleMode,
+    BackendConfig, Frame, Gpu3DDrawOp, Gpu3DTextureData, Gpu3DVertex, GpuPrimitiveTopology, HostKey, PresentBackend,
+    PresentError, PresentStatus, ScaleMode,
 };
 
 /// Clean-room WGSL vertex and fragment shader implementing Tegra Maxwell 3D pipeline.
@@ -135,7 +135,13 @@ pub fn host_key_from_winit(code: KeyCode) -> Option<HostKey> {
 /// Where the guest frame lands inside a target of `target_w` x `target_h` pixels.
 ///
 /// Returns `(x, y, width, height)` in target pixels. Pure, so it is tested without a GPU.
-pub fn viewport_rect(frame_w: u32, frame_h: u32, target_w: u32, target_h: u32, mode: ScaleMode) -> (u32, u32, u32, u32) {
+pub fn viewport_rect(
+    frame_w: u32,
+    frame_h: u32,
+    target_w: u32,
+    target_h: u32,
+    mode: ScaleMode,
+) -> (u32, u32, u32, u32) {
     if frame_w == 0 || frame_h == 0 || target_w == 0 || target_h == 0 {
         return (0, 0, target_w, target_h);
     }
@@ -175,7 +181,13 @@ pub struct FrameBlitter {
 }
 
 impl FrameBlitter {
-    pub fn new(device: &wgpu::Device, target_format: wgpu::TextureFormat, width: u32, height: u32, scale: ScaleMode) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        target_format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+        scale: ScaleMode,
+    ) -> Self {
         // Guest pixels are already display-encoded. With an sRGB target, sample them
         // through an sRGB view so the hardware decode and re-encode cancel out.
         let texture_format = if target_format.is_srgb() {
@@ -404,7 +416,14 @@ impl FrameBlitter {
     }
 
     /// Records a pass that clears the target to black and draws the frame into its viewport.
-    pub fn draw(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::TextureView, target_w: u32, target_h: u32, mode: ScaleMode) {
+    pub fn draw(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        target_w: u32,
+        target_h: u32,
+        mode: ScaleMode,
+    ) {
         self.draw_with_bind_group(encoder, &self.bind_group, target, target_w, target_h, mode);
     }
 }
@@ -505,9 +524,21 @@ impl Wgpu3DRenderer {
             array_stride: 32,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
-                wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 0, shader_location: 0 },
-                wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 12, shader_location: 1 },
-                wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 24, shader_location: 2 },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 0,
+                    shader_location: 0,
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x3,
+                    offset: 12,
+                    shader_location: 1,
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x2,
+                    offset: 24,
+                    shader_location: 2,
+                },
             ],
         };
 
@@ -610,10 +641,8 @@ impl Wgpu3DRenderer {
         });
 
         // 6. Offscreen Color & Depth Textures
-        let (offscreen_color_texture, offscreen_color_view) =
-            Self::create_color_attachment(device, width, height);
-        let (offscreen_depth_texture, offscreen_depth_view) =
-            Self::create_depth_attachment(device, width, height);
+        let (offscreen_color_texture, offscreen_color_view) = Self::create_color_attachment(device, width, height);
+        let (offscreen_depth_texture, offscreen_depth_view) = Self::create_depth_attachment(device, width, height);
 
         // 7. Default 1x1 White Texture & Sampler
         let default_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -625,7 +654,11 @@ impl Wgpu3DRenderer {
 
         let default_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("ounce-3d-default-white-tex"),
-            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -646,7 +679,11 @@ impl Wgpu3DRenderer {
                 bytes_per_row: Some(4),
                 rows_per_image: Some(1),
             },
-            wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
         );
         let def_view = default_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -654,8 +691,14 @@ impl Wgpu3DRenderer {
             label: Some("ounce-3d-default-tex-bg"),
             layout: &bgl_tex,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&def_view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&default_sampler) },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&def_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&default_sampler),
+                },
             ],
         });
 
@@ -671,10 +714,7 @@ impl Wgpu3DRenderer {
             uniform_buffer_capacity: initial_ubo_cap,
             ubo_bind_group,
             current_mvp: [
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
             ],
             depth_test_active: false,
             has_texture_active: false,
@@ -699,12 +739,18 @@ impl Wgpu3DRenderer {
     fn create_color_attachment(device: &wgpu::Device, w: u32, h: u32) -> (wgpu::Texture, wgpu::TextureView) {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("ounce-3d-offscreen-color"),
-            size: wgpu::Extent3d { width: w.max(1), height: h.max(1), depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: w.max(1),
+                height: h.max(1),
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: Self::COLOR_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -714,7 +760,11 @@ impl Wgpu3DRenderer {
     fn create_depth_attachment(device: &wgpu::Device, w: u32, h: u32) -> (wgpu::Texture, wgpu::TextureView) {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("ounce-3d-offscreen-depth"),
-            size: wgpu::Extent3d { width: w.max(1), height: h.max(1), depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: w.max(1),
+                height: h.max(1),
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -866,18 +916,16 @@ impl Wgpu3DRenderer {
                         draw_op_slots.insert(op_idx, slot);
                     }
                 }
-                Gpu3DDrawOp::DrawIndexed { vertices, indices, .. } => {
-                    if !vertices.is_empty() && !indices.is_empty() {
-                        let slot = emit_uniform_slot(
-                            &mut uniform_bytes,
-                            &mut last_slot_state,
-                            &mut current_slot_idx,
-                            &active_mvp,
-                            active_has_tex,
-                            active_depth_test,
-                        );
-                        draw_op_slots.insert(op_idx, slot);
-                    }
+                Gpu3DDrawOp::DrawIndexed { vertices, indices, .. } if !vertices.is_empty() && !indices.is_empty() => {
+                    let slot = emit_uniform_slot(
+                        &mut uniform_bytes,
+                        &mut last_slot_state,
+                        &mut current_slot_idx,
+                        &active_mvp,
+                        active_has_tex,
+                        active_depth_test,
+                    );
+                    draw_op_slots.insert(op_idx, slot);
                 }
                 _ => {}
             }
@@ -919,11 +967,14 @@ impl Wgpu3DRenderer {
         queue.write_buffer(&self.uniform_buffer, 0, &uniform_bytes);
 
         // Dynamic resize of Vertex Buffer
-        let total_v_bytes: usize = ops.iter().map(|op| match op {
-            Gpu3DDrawOp::DrawArrays { vertices, .. } => vertices.len() * 32,
-            Gpu3DDrawOp::DrawIndexed { vertices, .. } => vertices.len() * 32,
-            _ => 0,
-        }).sum();
+        let total_v_bytes: usize = ops
+            .iter()
+            .map(|op| match op {
+                Gpu3DDrawOp::DrawArrays { vertices, .. } => vertices.len() * 32,
+                Gpu3DDrawOp::DrawIndexed { vertices, .. } => vertices.len() * 32,
+                _ => 0,
+            })
+            .sum();
 
         if total_v_bytes > self.vertex_buffer_capacity {
             self.vertex_buffer_capacity = total_v_bytes.max(self.vertex_buffer_capacity * 2);
@@ -936,10 +987,13 @@ impl Wgpu3DRenderer {
         }
 
         // Dynamic resize of Index Buffer
-        let total_i_bytes: usize = ops.iter().map(|op| match op {
-            Gpu3DDrawOp::DrawIndexed { indices, .. } => indices.len() * 4,
-            _ => 0,
-        }).sum();
+        let total_i_bytes: usize = ops
+            .iter()
+            .map(|op| match op {
+                Gpu3DDrawOp::DrawIndexed { indices, .. } => indices.len() * 4,
+                _ => 0,
+            })
+            .sum();
 
         if total_i_bytes > self.index_buffer_capacity {
             self.index_buffer_capacity = total_i_bytes.max(self.index_buffer_capacity * 2);
@@ -996,8 +1050,10 @@ impl Wgpu3DRenderer {
             let (color_load, depth_load) = match &ops[start] {
                 Gpu3DDrawOp::ClearSurface { color, depth } => (
                     wgpu::LoadOp::Clear(wgpu::Color {
-                        r: color[0] as f64, g: color[1] as f64,
-                        b: color[2] as f64, a: color[3] as f64,
+                        r: color[0] as f64,
+                        g: color[1] as f64,
+                        b: color[2] as f64,
+                        a: color[3] as f64,
                     }),
                     wgpu::LoadOp::Clear(*depth),
                 ),
@@ -1027,16 +1083,16 @@ impl Wgpu3DRenderer {
                 multiview_mask: None,
             });
 
-            let [x, y, width, height] = current_viewport
-                .unwrap_or([0.0, 0.0, self.width as f32, self.height as f32]);
+            let [x, y, width, height] = current_viewport.unwrap_or([0.0, 0.0, self.width as f32, self.height as f32]);
             pass.set_viewport(x, y, width, height, 0.0, 1.0);
-            let texture_bg = current_texture.and_then(|h| self.tex_cache.get(&h))
-                .map(|(_, bg)| bg).unwrap_or(&self.default_tex_bind_group);
+            let texture_bg = current_texture
+                .and_then(|h| self.tex_cache.get(&h))
+                .map(|(_, bg)| bg)
+                .unwrap_or(&self.default_tex_bind_group);
             pass.set_bind_group(1, texture_bg, &[]);
             let mut last_bound_slot: Option<usize> = None;
 
-            for op_idx in start..end {
-                let op = &ops[op_idx];
+            for (op_idx, op) in (start..end).zip(&ops[start..end]) {
                 match op {
                     Gpu3DDrawOp::SetViewport { x, y, width, height } => {
                         if *width > 0.0 && *height > 0.0 {
@@ -1050,7 +1106,11 @@ impl Wgpu3DRenderer {
                     Gpu3DDrawOp::BindTexture { .. } => {
                         current_texture = op_tex_map.get(&op_idx).copied().flatten();
                         let current_tex_bg = match current_texture {
-                            Some(h) => self.tex_cache.get(&h).map(|(_, bg)| bg).unwrap_or(&self.default_tex_bind_group),
+                            Some(h) => self
+                                .tex_cache
+                                .get(&h)
+                                .map(|(_, bg)| bg)
+                                .unwrap_or(&self.default_tex_bind_group),
                             None => &self.default_tex_bind_group,
                         };
                         pass.set_bind_group(1, current_tex_bg, &[]);
@@ -1075,12 +1135,17 @@ impl Wgpu3DRenderer {
 
                         pass.set_vertex_buffer(
                             0,
-                            self.vertex_buffer.slice(cur_v_byte_offset..cur_v_byte_offset + byte_len),
+                            self.vertex_buffer
+                                .slice(cur_v_byte_offset..cur_v_byte_offset + byte_len),
                         );
                         pass.draw(0..vertices.len() as u32, 0..1);
                         cur_v_byte_offset += byte_len;
                     }
-                    Gpu3DDrawOp::DrawIndexed { vertices, indices, topology } => {
+                    Gpu3DDrawOp::DrawIndexed {
+                        vertices,
+                        indices,
+                        topology,
+                    } => {
                         if vertices.is_empty() || indices.is_empty() {
                             continue;
                         }
@@ -1101,10 +1166,12 @@ impl Wgpu3DRenderer {
 
                         pass.set_vertex_buffer(
                             0,
-                            self.vertex_buffer.slice(cur_v_byte_offset..cur_v_byte_offset + v_byte_len),
+                            self.vertex_buffer
+                                .slice(cur_v_byte_offset..cur_v_byte_offset + v_byte_len),
                         );
                         pass.set_index_buffer(
-                            self.index_buffer.slice(cur_i_byte_offset..cur_i_byte_offset + i_byte_len),
+                            self.index_buffer
+                                .slice(cur_i_byte_offset..cur_i_byte_offset + i_byte_len),
                             wgpu::IndexFormat::Uint32,
                         );
                         pass.draw_indexed(0..indices.len() as u32, 0, 0..1);
@@ -1145,10 +1212,13 @@ fn emit_uniform_slot(
     has_tex: bool,
     depth_test: bool,
 ) -> usize {
-    if let Some((last_mvp, last_has_tex, last_depth)) = *last_slot_state {
-        if last_mvp == *mvp && last_has_tex == has_tex && last_depth == depth_test && !uniform_bytes.is_empty() {
-            return *current_slot_idx;
-        }
+    if let Some((last_mvp, last_has_tex, last_depth)) = *last_slot_state
+        && last_mvp == *mvp
+        && last_has_tex == has_tex
+        && last_depth == depth_test
+        && !uniform_bytes.is_empty()
+    {
+        return *current_slot_idx;
     }
 
     if !uniform_bytes.is_empty() {
@@ -1191,10 +1261,16 @@ impl SurfaceState {
             .create_surface(window)
             .map_err(|e| format!("cannot create a GPU surface: {e}"))?;
 
-        let adapter = pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(instance, Some(&surface)))
-            .map_err(|e| format!("no usable GPU adapter: {e}"))?;
+        let adapter = pollster::block_on(wgpu::util::initialize_adapter_from_env_or_default(
+            instance,
+            Some(&surface),
+        ))
+        .map_err(|e| format!("no usable GPU adapter: {e}"))?;
         let info = adapter.get_info();
-        println!("[Display] GPU adapter: {} ({:?}, {:?})", info.name, info.backend, info.device_type);
+        println!(
+            "[Display] GPU adapter: {} ({:?}, {:?})",
+            info.name, info.backend, info.device_type
+        );
 
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("ounce-present-device"),
@@ -1211,7 +1287,7 @@ impl SurfaceState {
         if let Some(format) = caps.formats.iter().copied().find(|f| !f.is_srgb()) {
             config.format = format;
         }
-        let vsync_off = std::env::var("OUNCE_VSYNC").map_or(false, |v| v == "0");
+        let vsync_off = std::env::var("OUNCE_VSYNC").is_ok_and(|v| v == "0");
         config.present_mode = if vsync_off {
             wgpu::PresentMode::AutoNoVsync
         } else {
@@ -1266,7 +1342,9 @@ impl SurfaceState {
     }
 
     fn draw_and_present(&mut self, surface_texture: wgpu::SurfaceTexture) {
-        let view = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("ounce-present-encoder"),
         });
@@ -1280,7 +1358,8 @@ impl SurfaceState {
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("ounce-3d-offscreen-encoder"),
         });
-        self.renderer_3d.render_ops(&self.device, &self.queue, &mut encoder, ops);
+        self.renderer_3d
+            .render_ops(&self.device, &self.queue, &mut encoder, ops);
         self.queue.submit(Some(encoder.finish()));
     }
 
@@ -1302,7 +1381,9 @@ impl SurfaceState {
     }
 
     fn draw_and_present_offscreen(&mut self, surface_texture: wgpu::SurfaceTexture) {
-        let view = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("ounce-present-3d-blit-encoder"),
         });
@@ -1518,10 +1599,7 @@ mod tests {
     #[test]
     fn projective_row_major_uniform_preserves_the_cpu_transform() {
         let matrix = [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.5, 0.0, 0.0, 1.0,
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.5, 0.0, 0.0, 1.0,
         ];
         let mut bytes = Vec::new();
         emit_uniform_slot(&mut bytes, &mut None, &mut 0, &matrix, false, false);
@@ -1569,13 +1647,25 @@ mod tests {
     #[test]
     fn test_viewport_letterboxing() {
         // Same aspect: fills the target.
-        assert_eq!(viewport_rect(1280, 720, 1920, 1080, ScaleMode::FitAspect), (0, 0, 1920, 1080));
+        assert_eq!(
+            viewport_rect(1280, 720, 1920, 1080, ScaleMode::FitAspect),
+            (0, 0, 1920, 1080)
+        );
         // Wider target: pillarbox.
-        assert_eq!(viewport_rect(1280, 720, 2000, 720, ScaleMode::FitAspect), (360, 0, 1280, 720));
+        assert_eq!(
+            viewport_rect(1280, 720, 2000, 720, ScaleMode::FitAspect),
+            (360, 0, 1280, 720)
+        );
         // Taller target: letterbox.
-        assert_eq!(viewport_rect(1280, 720, 1280, 1000, ScaleMode::FitAspect), (0, 140, 1280, 720));
+        assert_eq!(
+            viewport_rect(1280, 720, 1280, 1000, ScaleMode::FitAspect),
+            (0, 140, 1280, 720)
+        );
         // Integer scaling picks the largest whole multiple that fits.
-        assert_eq!(viewport_rect(1280, 720, 2600, 1500, ScaleMode::Integer), (20, 30, 2560, 1440));
+        assert_eq!(
+            viewport_rect(1280, 720, 2600, 1500, ScaleMode::Integer),
+            (20, 30, 2560, 1440)
+        );
         // Integer scaling never goes below 1x, even if the window is smaller.
         assert_eq!(viewport_rect(1280, 720, 640, 360, ScaleMode::Integer), (0, 0, 640, 360));
         // Native is centred and unscaled.
@@ -1670,7 +1760,9 @@ mod tests {
 
         let slice = readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |result| result.expect("readback map failed"));
-        device.poll(wgpu::PollType::wait_indefinitely()).expect("GPU poll failed");
+        device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("GPU poll failed");
         let pixels = slice.get_mapped_range().expect("readback not mapped").to_vec();
 
         assert_eq!(pixels.len(), frame.rgba.len());
@@ -1699,19 +1791,36 @@ mod tests {
         let mut renderer = Wgpu3DRenderer::new(&device, &queue, w, h);
 
         let clear_color = [0.1f32, 0.2f32, 0.3f32, 1.0f32];
-        let v0 = Gpu3DVertex { position: [-0.5, -0.5, 0.5], color: [1.0, 0.0, 0.0], uv: [0.0, 0.0] };
-        let v1 = Gpu3DVertex { position: [0.5, -0.5, 0.5], color: [1.0, 0.0, 0.0], uv: [0.0, 0.0] };
-        let v2 = Gpu3DVertex { position: [0.0, 0.5, 0.5], color: [1.0, 0.0, 0.0], uv: [0.0, 0.0] };
+        let v0 = Gpu3DVertex {
+            position: [-0.5, -0.5, 0.5],
+            color: [1.0, 0.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let v1 = Gpu3DVertex {
+            position: [0.5, -0.5, 0.5],
+            color: [1.0, 0.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let v2 = Gpu3DVertex {
+            position: [0.0, 0.5, 0.5],
+            color: [1.0, 0.0, 0.0],
+            uv: [0.0, 0.0],
+        };
 
         let ops = vec![
-            Gpu3DDrawOp::ClearSurface { color: clear_color, depth: 1.0 },
-            Gpu3DDrawOp::SetViewport { x: 0.0, y: 0.0, width: w as f32, height: h as f32 },
+            Gpu3DDrawOp::ClearSurface {
+                color: clear_color,
+                depth: 1.0,
+            },
+            Gpu3DDrawOp::SetViewport {
+                x: 0.0,
+                y: 0.0,
+                width: w as f32,
+                height: h as f32,
+            },
             Gpu3DDrawOp::SetMvpMatrix {
                 matrix: [
-                    1.0, 0.0, 0.0, 0.0,
-                    0.0, 1.0, 0.0, 0.0,
-                    0.0, 0.0, 1.0, 0.0,
-                    0.0, 0.0, 0.0, 1.0,
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 ],
             },
             Gpu3DDrawOp::SetDepthTest { enabled: true },
@@ -1759,7 +1868,9 @@ mod tests {
 
         let slice = readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |result| result.expect("readback map failed"));
-        device.poll(wgpu::PollType::wait_indefinitely()).expect("GPU poll failed");
+        device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("GPU poll failed");
         let pixels = slice.get_mapped_range().expect("readback not mapped").to_vec();
 
         assert_eq!(pixels.len(), (w * h * 4) as usize);
@@ -1769,7 +1880,14 @@ mod tests {
         let r = pixels[center_idx];
         let g = pixels[center_idx + 1];
         let b = pixels[center_idx + 2];
-        assert!(r > 200 && g < 50 && b < 50, "Center pixel should be red, got rgba=({},{},{},{})", r, g, b, pixels[center_idx+3]);
+        assert!(
+            r > 200 && g < 50 && b < 50,
+            "Center pixel should be red, got rgba=({},{},{},{})",
+            r,
+            g,
+            b,
+            pixels[center_idx + 3]
+        );
 
         // Top-left pixel (x = 2, y = 2) is outside the triangle and should retain clear color
         let corner_idx = (2 * w + 2) as usize * 4;
@@ -1803,21 +1921,42 @@ mod tests {
         let mut renderer = Wgpu3DRenderer::new(&device, &queue, w, h);
 
         // Quad covering center (-0.5 to 0.5) rendered using indexed draw
-        let v0 = Gpu3DVertex { position: [-0.5, -0.5, 0.3], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
-        let v1 = Gpu3DVertex { position: [0.5, -0.5, 0.3], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
-        let v2 = Gpu3DVertex { position: [0.5, 0.5, 0.3], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
-        let v3 = Gpu3DVertex { position: [-0.5, 0.5, 0.3], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
+        let v0 = Gpu3DVertex {
+            position: [-0.5, -0.5, 0.3],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let v1 = Gpu3DVertex {
+            position: [0.5, -0.5, 0.3],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let v2 = Gpu3DVertex {
+            position: [0.5, 0.5, 0.3],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let v3 = Gpu3DVertex {
+            position: [-0.5, 0.5, 0.3],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
         let indices = vec![0, 1, 2, 0, 2, 3];
 
         let ops = vec![
-            Gpu3DDrawOp::ClearSurface { color: [0.0, 0.0, 0.0, 1.0], depth: 1.0 },
-            Gpu3DDrawOp::SetViewport { x: 0.0, y: 0.0, width: w as f32, height: h as f32 },
+            Gpu3DDrawOp::ClearSurface {
+                color: [0.0, 0.0, 0.0, 1.0],
+                depth: 1.0,
+            },
+            Gpu3DDrawOp::SetViewport {
+                x: 0.0,
+                y: 0.0,
+                width: w as f32,
+                height: h as f32,
+            },
             Gpu3DDrawOp::SetMvpMatrix {
                 matrix: [
-                    1.0, 0.0, 0.0, 0.0,
-                    0.0, 1.0, 0.0, 0.0,
-                    0.0, 0.0, 1.0, 0.0,
-                    0.0, 0.0, 0.0, 1.0,
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 ],
             },
             Gpu3DDrawOp::SetDepthTest { enabled: true },
@@ -1865,7 +2004,9 @@ mod tests {
 
         let slice = readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |result| result.expect("readback map failed"));
-        device.poll(wgpu::PollType::wait_indefinitely()).expect("GPU poll failed");
+        device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("GPU poll failed");
         let pixels = slice.get_mapped_range().expect("readback not mapped").to_vec();
 
         // Center pixel should be green
@@ -1873,7 +2014,14 @@ mod tests {
         let r = pixels[center_idx];
         let g = pixels[center_idx + 1];
         let b = pixels[center_idx + 2];
-        assert!(g > 200 && r < 50 && b < 50, "Center pixel should be green, got rgba=({},{},{},{})", r, g, b, pixels[center_idx+3]);
+        assert!(
+            g > 200 && r < 50 && b < 50,
+            "Center pixel should be green, got rgba=({},{},{},{})",
+            r,
+            g,
+            b,
+            pixels[center_idx + 3]
+        );
     }
 
     #[test]
@@ -1901,45 +2049,76 @@ mod tests {
         let tex_a = Gpu3DTextureData {
             width: 2,
             height: 2,
-            rgba_bytes: vec![
-                255, 0, 0, 255,  255, 0, 0, 255,
-                255, 0, 0, 255,  255, 0, 0, 255,
-            ],
+            rgba_bytes: vec![255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255],
         };
         // Texture B: Pure Blue 2x2 RGBA
         let tex_b = Gpu3DTextureData {
             width: 2,
             height: 2,
-            rgba_bytes: vec![
-                0, 0, 255, 255,  0, 0, 255, 255,
-                0, 0, 255, 255,  0, 0, 255, 255,
-            ],
+            rgba_bytes: vec![0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255],
         };
 
         // Left triangle: X in [-1.0, 0.0], Y in [-1.0, 1.0], UV in [0, 1]
-        let vl0 = Gpu3DVertex { position: [-1.0, -1.0, 0.5], color: [1.0, 1.0, 1.0], uv: [0.0, 0.0] };
-        let vl1 = Gpu3DVertex { position: [ 0.0, -1.0, 0.5], color: [1.0, 1.0, 1.0], uv: [1.0, 0.0] };
-        let vl2 = Gpu3DVertex { position: [-0.5,  1.0, 0.5], color: [1.0, 1.0, 1.0], uv: [0.5, 1.0] };
+        let vl0 = Gpu3DVertex {
+            position: [-1.0, -1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+            uv: [0.0, 0.0],
+        };
+        let vl1 = Gpu3DVertex {
+            position: [0.0, -1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+            uv: [1.0, 0.0],
+        };
+        let vl2 = Gpu3DVertex {
+            position: [-0.5, 1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+            uv: [0.5, 1.0],
+        };
 
         // Right triangle: X in [0.0, 1.0], Y in [-1.0, 1.0], UV in [0, 1]
-        let vr0 = Gpu3DVertex { position: [ 0.0, -1.0, 0.5], color: [1.0, 1.0, 1.0], uv: [0.0, 0.0] };
-        let vr1 = Gpu3DVertex { position: [ 1.0, -1.0, 0.5], color: [1.0, 1.0, 1.0], uv: [1.0, 0.0] };
-        let vr2 = Gpu3DVertex { position: [ 0.5,  1.0, 0.5], color: [1.0, 1.0, 1.0], uv: [0.5, 1.0] };
+        let vr0 = Gpu3DVertex {
+            position: [0.0, -1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+            uv: [0.0, 0.0],
+        };
+        let vr1 = Gpu3DVertex {
+            position: [1.0, -1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+            uv: [1.0, 0.0],
+        };
+        let vr2 = Gpu3DVertex {
+            position: [0.5, 1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+            uv: [0.5, 1.0],
+        };
 
         let ops = vec![
-            Gpu3DDrawOp::ClearSurface { color: [0.0, 0.0, 0.0, 1.0], depth: 1.0 },
-            Gpu3DDrawOp::SetViewport { x: 0.0, y: 0.0, width: w as f32, height: h as f32 },
-            Gpu3DDrawOp::SetMvpMatrix { matrix: [
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
-            ]},
+            Gpu3DDrawOp::ClearSurface {
+                color: [0.0, 0.0, 0.0, 1.0],
+                depth: 1.0,
+            },
+            Gpu3DDrawOp::SetViewport {
+                x: 0.0,
+                y: 0.0,
+                width: w as f32,
+                height: h as f32,
+            },
+            Gpu3DDrawOp::SetMvpMatrix {
+                matrix: [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ],
+            },
             Gpu3DDrawOp::SetDepthTest { enabled: false },
             Gpu3DDrawOp::BindTexture { texture: Some(tex_a) },
-            Gpu3DDrawOp::DrawArrays { vertices: vec![vl0, vl1, vl2], topology: GpuPrimitiveTopology::TriangleList },
+            Gpu3DDrawOp::DrawArrays {
+                vertices: vec![vl0, vl1, vl2],
+                topology: GpuPrimitiveTopology::TriangleList,
+            },
             Gpu3DDrawOp::BindTexture { texture: Some(tex_b) },
-            Gpu3DDrawOp::DrawArrays { vertices: vec![vr0, vr1, vr2], topology: GpuPrimitiveTopology::TriangleList },
+            Gpu3DDrawOp::DrawArrays {
+                vertices: vec![vr0, vr1, vr2],
+                topology: GpuPrimitiveTopology::TriangleList,
+            },
         ];
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -1979,7 +2158,9 @@ mod tests {
 
         let slice = readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |res| res.expect("readback map failed"));
-        device.poll(wgpu::PollType::wait_indefinitely()).expect("GPU poll failed");
+        device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("GPU poll failed");
         let pixels = slice.get_mapped_range().expect("readback not mapped").to_vec();
 
         // Sample Left triangle center: x = 16, y = 32
@@ -1987,14 +2168,28 @@ mod tests {
         let r_l = pixels[left_idx];
         let g_l = pixels[left_idx + 1];
         let b_l = pixels[left_idx + 2];
-        assert!(r_l > 200 && b_l < 50, "Left triangle should be RED from Texture A, got rgba=({},{},{},{})", r_l, g_l, b_l, pixels[left_idx+3]);
+        assert!(
+            r_l > 200 && b_l < 50,
+            "Left triangle should be RED from Texture A, got rgba=({},{},{},{})",
+            r_l,
+            g_l,
+            b_l,
+            pixels[left_idx + 3]
+        );
 
         // Sample Right triangle center: x = 48, y = 32
         let right_idx = (32 * w + 48) as usize * 4;
         let r_r = pixels[right_idx];
         let g_r = pixels[right_idx + 1];
         let b_r = pixels[right_idx + 2];
-        assert!(b_r > 200 && r_r < 50, "Right triangle should be BLUE from Texture B, got rgba=({},{},{},{})", r_r, g_r, b_r, pixels[right_idx+3]);
+        assert!(
+            b_r > 200 && r_r < 50,
+            "Right triangle should be BLUE from Texture B, got rgba=({},{},{},{})",
+            r_r,
+            g_r,
+            b_r,
+            pixels[right_idx + 3]
+        );
     }
 
     #[test]
@@ -2020,40 +2215,90 @@ mod tests {
 
         // Matrix Left: translates by X = -0.5 (SetMvpMatrix is row-major).
         let mut matrix_left = [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ];
         matrix_left[3] = -0.5;
 
         // Matrix Right: translates by X = +0.5 (row-major).
         let mut matrix_right = [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ];
         matrix_right[3] = 0.5;
 
         // Quad centered at (0, 0)
-        let red_v0 = Gpu3DVertex { position: [-0.2, -0.2, 0.5], color: [1.0, 0.0, 0.0], uv: [0.0, 0.0] };
-        let red_v1 = Gpu3DVertex { position: [ 0.2, -0.2, 0.5], color: [1.0, 0.0, 0.0], uv: [0.0, 0.0] };
-        let red_v2 = Gpu3DVertex { position: [ 0.2,  0.2, 0.5], color: [1.0, 0.0, 0.0], uv: [0.0, 0.0] };
-        let red_v3 = Gpu3DVertex { position: [-0.2, -0.2, 0.5], color: [1.0, 0.0, 0.0], uv: [0.0, 0.0] };
-        let red_v4 = Gpu3DVertex { position: [ 0.2,  0.2, 0.5], color: [1.0, 0.0, 0.0], uv: [0.0, 0.0] };
-        let red_v5 = Gpu3DVertex { position: [-0.2,  0.2, 0.5], color: [1.0, 0.0, 0.0], uv: [0.0, 0.0] };
+        let red_v0 = Gpu3DVertex {
+            position: [-0.2, -0.2, 0.5],
+            color: [1.0, 0.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let red_v1 = Gpu3DVertex {
+            position: [0.2, -0.2, 0.5],
+            color: [1.0, 0.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let red_v2 = Gpu3DVertex {
+            position: [0.2, 0.2, 0.5],
+            color: [1.0, 0.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let red_v3 = Gpu3DVertex {
+            position: [-0.2, -0.2, 0.5],
+            color: [1.0, 0.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let red_v4 = Gpu3DVertex {
+            position: [0.2, 0.2, 0.5],
+            color: [1.0, 0.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let red_v5 = Gpu3DVertex {
+            position: [-0.2, 0.2, 0.5],
+            color: [1.0, 0.0, 0.0],
+            uv: [0.0, 0.0],
+        };
 
-        let green_v0 = Gpu3DVertex { position: [-0.2, -0.2, 0.5], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
-        let green_v1 = Gpu3DVertex { position: [ 0.2, -0.2, 0.5], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
-        let green_v2 = Gpu3DVertex { position: [ 0.2,  0.2, 0.5], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
-        let green_v3 = Gpu3DVertex { position: [-0.2, -0.2, 0.5], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
-        let green_v4 = Gpu3DVertex { position: [ 0.2,  0.2, 0.5], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
-        let green_v5 = Gpu3DVertex { position: [-0.2,  0.2, 0.5], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
+        let green_v0 = Gpu3DVertex {
+            position: [-0.2, -0.2, 0.5],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let green_v1 = Gpu3DVertex {
+            position: [0.2, -0.2, 0.5],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let green_v2 = Gpu3DVertex {
+            position: [0.2, 0.2, 0.5],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let green_v3 = Gpu3DVertex {
+            position: [-0.2, -0.2, 0.5],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let green_v4 = Gpu3DVertex {
+            position: [0.2, 0.2, 0.5],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let green_v5 = Gpu3DVertex {
+            position: [-0.2, 0.2, 0.5],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
 
         let ops = vec![
-            Gpu3DDrawOp::ClearSurface { color: [0.0, 0.0, 0.0, 1.0], depth: 1.0 },
-            Gpu3DDrawOp::SetViewport { x: 0.0, y: 0.0, width: w as f32, height: h as f32 },
+            Gpu3DDrawOp::ClearSurface {
+                color: [0.0, 0.0, 0.0, 1.0],
+                depth: 1.0,
+            },
+            Gpu3DDrawOp::SetViewport {
+                x: 0.0,
+                y: 0.0,
+                width: w as f32,
+                height: h as f32,
+            },
             Gpu3DDrawOp::SetDepthTest { enabled: false },
             Gpu3DDrawOp::BindTexture { texture: None },
             // Object 1: Left (Red)
@@ -2107,7 +2352,9 @@ mod tests {
 
         let slice = readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |res| res.expect("readback map failed"));
-        device.poll(wgpu::PollType::wait_indefinitely()).expect("GPU poll failed");
+        device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("GPU poll failed");
         let pixels = slice.get_mapped_range().expect("readback not mapped").to_vec();
 
         // Left object pixel: x = 16 (X = -0.5), y = 32 (Y = 0.0) -> MUST be RED
@@ -2115,20 +2362,33 @@ mod tests {
         let r_l = pixels[left_idx];
         let g_l = pixels[left_idx + 1];
         let b_l = pixels[left_idx + 2];
-        assert!(r_l > 200 && g_l < 50 && b_l < 50, "Left object MUST be drawn at X = -0.5 with matrix_left, but red was {}", r_l);
+        assert!(
+            r_l > 200 && g_l < 50 && b_l < 50,
+            "Left object MUST be drawn at X = -0.5 with matrix_left, but red was {}",
+            r_l
+        );
 
         // Right object pixel: x = 48 (X = +0.5), y = 32 (Y = 0.0) -> MUST be GREEN
         let right_idx = (32 * w + 48) as usize * 4;
         let r_r = pixels[right_idx];
         let g_r = pixels[right_idx + 1];
         let b_r = pixels[right_idx + 2];
-        assert!(g_r > 200 && r_r < 50 && b_r < 50, "Right object MUST be drawn at X = +0.5 with matrix_right, but green was {}", g_r);
+        assert!(
+            g_r > 200 && r_r < 50 && b_r < 50,
+            "Right object MUST be drawn at X = +0.5 with matrix_right, but green was {}",
+            g_r
+        );
 
         // Center pixel: x = 32 (X = 0.0), y = 32 (Y = 0.0) -> MUST be clear color (black)
         let center_idx = (32 * w + 32) as usize * 4;
         let r_c = pixels[center_idx];
         let g_c = pixels[center_idx + 1];
-        assert!(r_c < 50 && g_c < 50, "Center pixel should be empty clear color, got ({}, {})", r_c, g_c);
+        assert!(
+            r_c < 50 && g_c < 50,
+            "Center pixel should be empty clear color, got ({}, {})",
+            r_c,
+            g_c
+        );
     }
 
     #[test]
@@ -2155,68 +2415,112 @@ mod tests {
 
         let quad_v = |z: f32, color: [f32; 3]| -> Vec<Gpu3DVertex> {
             vec![
-                Gpu3DVertex { position: [-1.0, -1.0, z], color, uv: [0.0, 0.0] },
-                Gpu3DVertex { position: [ 1.0, -1.0, z], color, uv: [1.0, 0.0] },
-                Gpu3DVertex { position: [ 1.0,  1.0, z], color, uv: [1.0, 1.0] },
-                Gpu3DVertex { position: [-1.0, -1.0, z], color, uv: [0.0, 0.0] },
-                Gpu3DVertex { position: [ 1.0,  1.0, z], color, uv: [1.0, 1.0] },
-                Gpu3DVertex { position: [-1.0,  1.0, z], color, uv: [0.0, 1.0] },
+                Gpu3DVertex {
+                    position: [-1.0, -1.0, z],
+                    color,
+                    uv: [0.0, 0.0],
+                },
+                Gpu3DVertex {
+                    position: [1.0, -1.0, z],
+                    color,
+                    uv: [1.0, 0.0],
+                },
+                Gpu3DVertex {
+                    position: [1.0, 1.0, z],
+                    color,
+                    uv: [1.0, 1.0],
+                },
+                Gpu3DVertex {
+                    position: [-1.0, -1.0, z],
+                    color,
+                    uv: [0.0, 0.0],
+                },
+                Gpu3DVertex {
+                    position: [1.0, 1.0, z],
+                    color,
+                    uv: [1.0, 1.0],
+                },
+                Gpu3DVertex {
+                    position: [-1.0, 1.0, z],
+                    color,
+                    uv: [0.0, 1.0],
+                },
             ]
         };
 
         let read_pixels = |renderer: &Wgpu3DRenderer, mut encoder: wgpu::CommandEncoder| {
-        let readback = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ounce-3d-depth-overlay-readback"),
-            size: (w * h * 4) as u64,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+            let readback = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("ounce-3d-depth-overlay-readback"),
+                size: (w * h * 4) as u64,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
 
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: &renderer.offscreen_color_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &readback,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(4 * w),
-                    rows_per_image: Some(h),
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &renderer.offscreen_color_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
                 },
-            },
-            wgpu::Extent3d {
-                width: w,
-                height: h,
-                depth_or_array_layers: 1,
-            },
-        );
-        queue.submit(Some(encoder.finish()));
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &readback,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * w),
+                        rows_per_image: Some(h),
+                    },
+                },
+                wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
+            );
+            queue.submit(Some(encoder.finish()));
 
-        let slice = readback.slice(..);
-        slice.map_async(wgpu::MapMode::Read, |res| res.expect("readback map failed"));
-        device.poll(wgpu::PollType::wait_indefinitely()).expect("GPU poll failed");
-        let pixels = slice.get_mapped_range().expect("readback not mapped").to_vec();
-
-            pixels
+            let slice = readback.slice(..);
+            slice.map_async(wgpu::MapMode::Read, |res| res.expect("readback map failed"));
+            device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .expect("GPU poll failed");
+            slice.get_mapped_range().expect("readback not mapped").to_vec()
         };
         let draw = || Gpu3DDrawOp::DrawArrays {
             vertices: quad_v(0.5, [1.0, 1.0, 1.0]),
             topology: GpuPrimitiveTopology::TriangleList,
         };
-        let clear = Gpu3DDrawOp::ClearSurface { color: [0.0, 0.0, 1.0, 1.0], depth: 1.0 };
-        let texture = |r| Gpu3DDrawOp::BindTexture { texture: Some(Gpu3DTextureData {
-            width: 1, height: 1, rgba_bytes: vec![r, 0, 0, 255],
-        }) };
+        let clear = Gpu3DDrawOp::ClearSurface {
+            color: [0.0, 0.0, 1.0, 1.0],
+            depth: 1.0,
+        };
+        let texture = |r| Gpu3DDrawOp::BindTexture {
+            texture: Some(Gpu3DTextureData {
+                width: 1,
+                height: 1,
+                rgba_bytes: vec![r, 0, 0, 255],
+            }),
+        };
         let encoder = || device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let mut enc = encoder();
-        renderer.render_ops(&device, &queue, &mut enc, &[
-            clear.clone(), texture(255),
-            Gpu3DDrawOp::SetViewport { x: 0.0, y: 0.0, width: 32.0, height: 64.0 },
-            draw(), clear.clone(), draw(),
-        ]);
+        renderer.render_ops(
+            &device,
+            &queue,
+            &mut enc,
+            &[
+                clear.clone(),
+                texture(255),
+                Gpu3DDrawOp::SetViewport {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 32.0,
+                    height: 64.0,
+                },
+                draw(),
+                clear.clone(),
+                draw(),
+            ],
+        );
         let pixels = read_pixels(&renderer, enc);
         let pixel = |pixels: &[u8], x: usize| pixels[(32 * 64 + x) * 4..(32 * 64 + x) * 4 + 4].to_vec();
         assert_eq!(pixel(&pixels, 16), vec![255, 0, 0, 255]);
@@ -2238,7 +2542,9 @@ mod tests {
         // Cross the cache threshold within one batch: its first texture is still
         // required at dispatch time even though many later bindings are uploaded.
         let mut ops = vec![clear, texture(255), draw()];
-        for r in 0..65 { ops.push(texture(r)); }
+        for r in 0..65 {
+            ops.push(texture(r));
+        }
         let mut enc = encoder();
         renderer.render_ops(&device, &queue, &mut enc, &ops);
         let pixels = read_pixels(&renderer, enc);
@@ -2273,12 +2579,36 @@ mod tests {
 
         let quad_v = |z: f32, color: [f32; 3]| -> Vec<Gpu3DVertex> {
             vec![
-                Gpu3DVertex { position: [-1.0, -1.0, z], color, uv: [0.0, 0.0] },
-                Gpu3DVertex { position: [ 1.0, -1.0, z], color, uv: [1.0, 0.0] },
-                Gpu3DVertex { position: [ 1.0,  1.0, z], color, uv: [1.0, 1.0] },
-                Gpu3DVertex { position: [-1.0, -1.0, z], color, uv: [0.0, 0.0] },
-                Gpu3DVertex { position: [ 1.0,  1.0, z], color, uv: [1.0, 1.0] },
-                Gpu3DVertex { position: [-1.0,  1.0, z], color, uv: [0.0, 1.0] },
+                Gpu3DVertex {
+                    position: [-1.0, -1.0, z],
+                    color,
+                    uv: [0.0, 0.0],
+                },
+                Gpu3DVertex {
+                    position: [1.0, -1.0, z],
+                    color,
+                    uv: [1.0, 0.0],
+                },
+                Gpu3DVertex {
+                    position: [1.0, 1.0, z],
+                    color,
+                    uv: [1.0, 1.0],
+                },
+                Gpu3DVertex {
+                    position: [-1.0, -1.0, z],
+                    color,
+                    uv: [0.0, 0.0],
+                },
+                Gpu3DVertex {
+                    position: [1.0, 1.0, z],
+                    color,
+                    uv: [1.0, 1.0],
+                },
+                Gpu3DVertex {
+                    position: [-1.0, 1.0, z],
+                    color,
+                    uv: [0.0, 1.0],
+                },
             ]
         };
 
@@ -2286,14 +2616,21 @@ mod tests {
         // Draw 2: Near quad (Z = 0.2), Red. Depth test = true. Should occlude far quad.
         // Draw 3: Overlay (Z = 0.9), Green. Depth test = false! Should draw on top of everything.
         let ops = vec![
-            Gpu3DDrawOp::ClearSurface { color: [0.0, 0.0, 0.0, 1.0], depth: 1.0 },
-            Gpu3DDrawOp::SetViewport { x: 0.0, y: 0.0, width: w as f32, height: h as f32 },
-            Gpu3DDrawOp::SetMvpMatrix { matrix: [
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
-            ]},
+            Gpu3DDrawOp::ClearSurface {
+                color: [0.0, 0.0, 0.0, 1.0],
+                depth: 1.0,
+            },
+            Gpu3DDrawOp::SetViewport {
+                x: 0.0,
+                y: 0.0,
+                width: w as f32,
+                height: h as f32,
+            },
+            Gpu3DDrawOp::SetMvpMatrix {
+                matrix: [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ],
+            },
             Gpu3DDrawOp::BindTexture { texture: None },
             // 1. Far quad (Blue)
             Gpu3DDrawOp::SetDepthTest { enabled: true },
@@ -2352,7 +2689,9 @@ mod tests {
 
         let slice = readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |res| res.expect("readback map failed"));
-        device.poll(wgpu::PollType::wait_indefinitely()).expect("GPU poll failed");
+        device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("GPU poll failed");
         let pixels = slice.get_mapped_range().expect("readback not mapped").to_vec();
 
         // Center pixel MUST be GREEN because overlay had depth_test = false!
@@ -2360,7 +2699,14 @@ mod tests {
         let r = pixels[center_idx];
         let g = pixels[center_idx + 1];
         let b = pixels[center_idx + 2];
-        assert!(g > 200 && r < 50 && b < 50, "Overlay must be GREEN, got rgba=({}, {}, {}, {})", r, g, b, pixels[center_idx + 3]);
+        assert!(
+            g > 200 && r < 50 && b < 50,
+            "Overlay must be GREEN, got rgba=({}, {}, {}, {})",
+            r,
+            g,
+            b,
+            pixels[center_idx + 3]
+        );
     }
 
     #[test]
@@ -2387,38 +2733,72 @@ mod tests {
         let tex = Gpu3DTextureData {
             width: 2,
             height: 2,
-            rgba_bytes: vec![
-                255, 0, 0, 255,  255, 0, 0, 255,
-                255, 0, 0, 255,  255, 0, 0, 255,
-            ],
+            rgba_bytes: vec![255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255],
         };
 
         // Left triangle: textured with tex (Red)
-        let vl0 = Gpu3DVertex { position: [-1.0, -1.0, 0.5], color: [1.0, 1.0, 1.0], uv: [0.0, 0.0] };
-        let vl1 = Gpu3DVertex { position: [ 0.0, -1.0, 0.5], color: [1.0, 1.0, 1.0], uv: [1.0, 0.0] };
-        let vl2 = Gpu3DVertex { position: [-0.5,  1.0, 0.5], color: [1.0, 1.0, 1.0], uv: [0.5, 1.0] };
+        let vl0 = Gpu3DVertex {
+            position: [-1.0, -1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+            uv: [0.0, 0.0],
+        };
+        let vl1 = Gpu3DVertex {
+            position: [0.0, -1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+            uv: [1.0, 0.0],
+        };
+        let vl2 = Gpu3DVertex {
+            position: [-0.5, 1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+            uv: [0.5, 1.0],
+        };
 
         // Right triangle: untextured, vertex color Green
-        let vr0 = Gpu3DVertex { position: [ 0.0, -1.0, 0.5], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
-        let vr1 = Gpu3DVertex { position: [ 1.0, -1.0, 0.5], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
-        let vr2 = Gpu3DVertex { position: [ 0.5,  1.0, 0.5], color: [0.0, 1.0, 0.0], uv: [0.0, 0.0] };
+        let vr0 = Gpu3DVertex {
+            position: [0.0, -1.0, 0.5],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let vr1 = Gpu3DVertex {
+            position: [1.0, -1.0, 0.5],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
+        let vr2 = Gpu3DVertex {
+            position: [0.5, 1.0, 0.5],
+            color: [0.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
+        };
 
         let ops = vec![
-            Gpu3DDrawOp::ClearSurface { color: [0.0, 0.0, 0.0, 1.0], depth: 1.0 },
-            Gpu3DDrawOp::SetViewport { x: 0.0, y: 0.0, width: w as f32, height: h as f32 },
-            Gpu3DDrawOp::SetMvpMatrix { matrix: [
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
-            ]},
+            Gpu3DDrawOp::ClearSurface {
+                color: [0.0, 0.0, 0.0, 1.0],
+                depth: 1.0,
+            },
+            Gpu3DDrawOp::SetViewport {
+                x: 0.0,
+                y: 0.0,
+                width: w as f32,
+                height: h as f32,
+            },
+            Gpu3DDrawOp::SetMvpMatrix {
+                matrix: [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ],
+            },
             Gpu3DDrawOp::SetDepthTest { enabled: false },
             // 1. Textured Draw (Red)
             Gpu3DDrawOp::BindTexture { texture: Some(tex) },
-            Gpu3DDrawOp::DrawArrays { vertices: vec![vl0, vl1, vl2], topology: GpuPrimitiveTopology::TriangleList },
+            Gpu3DDrawOp::DrawArrays {
+                vertices: vec![vl0, vl1, vl2],
+                topology: GpuPrimitiveTopology::TriangleList,
+            },
             // 2. Unbind Texture (Green vertex color)
             Gpu3DDrawOp::BindTexture { texture: None },
-            Gpu3DDrawOp::DrawArrays { vertices: vec![vr0, vr1, vr2], topology: GpuPrimitiveTopology::TriangleList },
+            Gpu3DDrawOp::DrawArrays {
+                vertices: vec![vr0, vr1, vr2],
+                topology: GpuPrimitiveTopology::TriangleList,
+            },
         ];
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -2458,25 +2838,35 @@ mod tests {
 
         let slice = readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |res| res.expect("readback map failed"));
-        device.poll(wgpu::PollType::wait_indefinitely()).expect("GPU poll failed");
+        device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("GPU poll failed");
         let pixels = slice.get_mapped_range().expect("readback not mapped").to_vec();
 
         // Left triangle must be RED
         let left_idx = (32 * w + 16) as usize * 4;
         let r_l = pixels[left_idx];
         let g_l = pixels[left_idx + 1];
-        assert!(r_l > 200 && g_l < 50, "Left triangle must be RED, got rgba=({}, {}, {}, {})", r_l, g_l, pixels[left_idx + 2], pixels[left_idx + 3]);
+        assert!(
+            r_l > 200 && g_l < 50,
+            "Left triangle must be RED, got rgba=({}, {}, {}, {})",
+            r_l,
+            g_l,
+            pixels[left_idx + 2],
+            pixels[left_idx + 3]
+        );
 
         // Right triangle must be GREEN (untextured vertex color)
         let right_idx = (32 * w + 48) as usize * 4;
         let r_r = pixels[right_idx];
         let g_r = pixels[right_idx + 1];
-        assert!(g_r > 200 && r_r < 50, "Right triangle must be GREEN, got rgba=({}, {}, {}, {})", r_r, g_r, pixels[right_idx + 2], pixels[right_idx + 3]);
+        assert!(
+            g_r > 200 && r_r < 50,
+            "Right triangle must be GREEN, got rgba=({}, {}, {}, {})",
+            r_r,
+            g_r,
+            pixels[right_idx + 2],
+            pixels[right_idx + 3]
+        );
     }
 }
-
-
-
-
-
-

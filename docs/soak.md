@@ -40,7 +40,7 @@ with their issue; only an unlisted finding fails the script.
 ## CI-sized variant
 
 `--smoke` soaks four programs (`printing-hello-world`, `sdl2-simple`, `user-timers`, `deko-basic`) for up to 300
-frames or 90 s per engine. The `corpus-soak-smoke` job in `external-corpus.yml` runs it on the corpus NROs the first-frame job
+frames or 90 s per engine. The `corpus-soak-smoke` job in `external-corpus.yml` runs it, one program per runner in parallel, on the corpus NROs the first-frame job
 built. Locally (macOS arm64, 4 shards) it took 3 minutes; it was not run in CI before this change.
 
 ## What the first runs showed (macOS arm64, 2026-11-11)

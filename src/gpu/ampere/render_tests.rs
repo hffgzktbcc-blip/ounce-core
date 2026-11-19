@@ -111,7 +111,12 @@ mod asm {
         op(0x308) | rd(d) | ((s as u128) << 32) | (4 << 74)
     }
     pub fn ald(d: u8, addr: u16, comps: u8) -> u128 {
-        op(0x321) | rd(d) | ((RZ as u128) << 24) | ((RZ as u128) << 32) | ((addr as u128) << 40) | (((comps - 1) as u128) << 74)
+        op(0x321)
+            | rd(d)
+            | ((RZ as u128) << 24)
+            | ((RZ as u128) << 32)
+            | ((addr as u128) << 40)
+            | (((comps - 1) as u128) << 74)
     }
     pub fn ast(s: u8, addr: u16, comps: u8) -> u128 {
         op(0x322)
@@ -169,7 +174,16 @@ fn vertex_shader() -> Vec<u8> {
     for a in (0x70..0x90).step_by(4) {
         h = h.omap(a);
     }
-    program(&h, &[asm::ald(0, 0x80, 4), asm::ald(4, 0x90, 4), asm::ast(0, 0x70, 4), asm::ast(4, 0x80, 4), asm::exit()])
+    program(
+        &h,
+        &[
+            asm::ald(0, 0x80, 4),
+            asm::ald(4, 0x90, 4),
+            asm::ast(0, 0x70, 4),
+            asm::ast(4, 0x80, 4),
+            asm::exit(),
+        ],
+    )
 }
 
 /// Perspective-correct varying 0 to target 0: `IPA w; MUFU.RCP; (IPA; FMUL)` x4 (SM70+ has no
@@ -188,7 +202,16 @@ fn varying_pixel_shader() -> Vec<u8> {
 /// Target 0 color from `c[1][0..16]`.
 fn cbuf_pixel_shader() -> Vec<u8> {
     let h = SphBuilder::pixel().ps_target(0, 0xf);
-    program(&h, &[asm::mov_cb(0, 1, 0), asm::mov_cb(1, 1, 4), asm::mov_cb(2, 1, 8), asm::mov_cb(3, 1, 12), asm::exit()])
+    program(
+        &h,
+        &[
+            asm::mov_cb(0, 1, 0),
+            asm::mov_cb(1, 1, 4),
+            asm::mov_cb(2, 1, 8),
+            asm::mov_cb(3, 1, 12),
+            asm::exit(),
+        ],
+    )
 }
 
 fn hi(va: u64) -> u32 {
@@ -207,11 +230,36 @@ fn f(v: f32) -> u32 {
 fn setup(pb: &mut Vec<u32>, class: u32, pitch: bool) {
     pb.extend([inc_header(SC, m::SET_OBJECT, 1), class]);
     let (width_field, memory) = if pitch { (W * 4, 1 << 12) } else { (W, 4 << 4) };
-    pb.extend([inc_header(SC, m::SET_COLOR_TARGET_A, 9), hi(RT_VA), lo(RT_VA), width_field, W, 0xd5, memory, 1, 0, 0]);
+    pb.extend([
+        inc_header(SC, m::SET_COLOR_TARGET_A, 9),
+        hi(RT_VA),
+        lo(RT_VA),
+        width_field,
+        W,
+        0xd5,
+        memory,
+        1,
+        0,
+        0,
+    ]);
     pb.push(immd_header(SC, m::SET_CT_SELECT, 1));
-    pb.extend([inc_header(SC, m::SET_VIEWPORT_SCALE_X, 6), f(128.0), f(128.0), f(1.0), f(128.0), f(128.0), f(0.0)]);
+    pb.extend([
+        inc_header(SC, m::SET_VIEWPORT_SCALE_X, 6),
+        f(128.0),
+        f(128.0),
+        f(1.0),
+        f(128.0),
+        f(128.0),
+        f(0.0),
+    ]);
     // Clip rect, then the pixel depth range [0, 1] as GL and Vulkan drivers program it.
-    pb.extend([inc_header(SC, m::SET_VIEWPORT_CLIP_HORIZONTAL, 4), W << 16, W << 16, f(0.0), f(1.0)]);
+    pb.extend([
+        inc_header(SC, m::SET_VIEWPORT_CLIP_HORIZONTAL, 4),
+        W << 16,
+        W << 16,
+        f(0.0),
+        f(1.0),
+    ]);
 }
 
 fn clear_color(pb: &mut Vec<u32>, rgba: [f32; 4]) {
@@ -226,20 +274,33 @@ fn geometry(pb: &mut Vec<u32>, mem: &mut Mem, verts: &[[f32; 8]], ps: &[u8]) {
     mem.put(VB_VA, &bytes);
     mem.put(VS_VA, &vertex_shader());
     mem.put(PS_VA, ps);
-    pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_A_FORMAT, 4), (1 << 12) | 32, hi(VB_VA), lo(VB_VA), 0]);
+    pb.extend([
+        inc_header(SC, m::SET_VERTEX_STREAM_A_FORMAT, 4),
+        (1 << 12) | 32,
+        hi(VB_VA),
+        lo(VB_VA),
+        0,
+    ]);
     pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_SIZE_A, 2), 0, bytes.len() as u32]);
     let attr = |offset: u32| (7 << 27) | (0x01 << 21) | (offset << 7);
     pb.extend([inc_header(SC, m::SET_VERTEX_ATTRIBUTE_A, 2), attr(0), attr(16)]);
     for (pipe, kind, va) in [(1u32, 1u32, VS_VA), (5, 5, PS_VA)] {
         let base = pipe * m::PIPELINE_STRIDE;
         pb.extend([inc_header(SC, m::SET_PIPELINE_SHADER + base, 1), (kind << 4) | 1]);
-        pb.extend([inc_header(SC, m::SET_PIPELINE_PROGRAM_ADDRESS_A + base, 2), hi(va), lo(va)]);
+        pb.extend([
+            inc_header(SC, m::SET_PIPELINE_PROGRAM_ADDRESS_A + base, 2),
+            hi(va),
+            lo(va),
+        ]);
     }
 }
 
 /// `DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_FIRST`: start, count, topology.
 fn draw(pb: &mut Vec<u32>, start: u32, count: u32, topology: u32) {
-    pb.extend([inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_FIRST, 1), start | (count << 16) | (topology << 28)]);
+    pb.extend([
+        inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_FIRST, 1),
+        start | (count << 16) | (topology << 28),
+    ]);
 }
 
 fn vtx(x: f32, y: f32, z: f32, rgba: [f32; 4]) -> [f32; 8] {
@@ -251,7 +312,15 @@ const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
 const BLUE: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
 
 fn rt_surface() -> Surface {
-    Surface::new_2d(W, W, Format::R8G8B8A8Unorm, Layout::BlockLinear { height_log2: 4, depth_log2: 0 })
+    Surface::new_2d(
+        W,
+        W,
+        Format::R8G8B8A8Unorm,
+        Layout::BlockLinear {
+            height_log2: 4,
+            depth_log2: 0,
+        },
+    )
 }
 
 /// Detiles the block-linear render target the way the present side does.
@@ -291,16 +360,30 @@ fn oversized_draws_are_rejected_before_index_or_vertex_allocation() {
     setup(&mut pb, m::AMPERE_B, false);
     draw(&mut pb, 0, 3, 4);
     let mut gpu = run(&pb, &mut memory);
-    let mut record = gpu.events().iter().find_map(|e| match e {
-        Event::Draw(record) => Some(record.clone()), _ => None,
-    }).unwrap();
+    let mut record = gpu
+        .events()
+        .iter()
+        .find_map(|e| match e {
+            Event::Draw(record) => Some(record.clone()),
+            _ => None,
+        })
+        .unwrap();
     record.vertex_count = u32::MAX;
     for indexed in [false, true] {
         record.indices = indexed.then_some(IndexBuffer {
-            gpu_va: 0, size: None, index_bytes: 4, base_vertex: 0, restart: None });
+            gpu_va: 0,
+            size: None,
+            index_bytes: 4,
+            base_vertex: 0,
+            restart: None,
+        });
         gpu.render_draw(&record, &mut memory);
-        assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped {
-            reason: "draw exceeds host vertex work limit" })));
+        assert!(matches!(
+            gpu.diagnostics().last(),
+            Some(Diagnostic::RenderSkipped {
+                reason: "draw exceeds host vertex work limit"
+            })
+        ));
     }
 }
 
@@ -309,7 +392,12 @@ fn clear_respects_scissor_when_asked() {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
     setup(&mut pb, m::AMPERE_B, true);
-    pb.extend([inc_header(SC, m::SET_SCISSOR_ENABLE, 3), 1, (20 << 16) | 10, (8 << 16) | 4]);
+    pb.extend([
+        inc_header(SC, m::SET_SCISSOR_ENABLE, 3),
+        1,
+        (20 << 16) | 10,
+        (8 << 16) | 4,
+    ]);
     pb.push(immd_header(SC, m::SET_CLEAR_SURFACE_CONTROL, 1 << 8));
     clear_color(&mut pb, [1.0, 1.0, 1.0, 1.0]);
     run(&pb, &mut mem);
@@ -329,12 +417,33 @@ fn triangle_draw_produces_raw_block_linear_surface() {
     setup(&mut pb, m::AMPERE_B, false);
     clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
     // Upper-left half of the target: window (0,0), (256,0), (0,256).
-    geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.5, RED), vtx(1.0, -1.0, 0.5, RED), vtx(-1.0, 1.0, 0.5, RED)], &varying_pixel_shader());
+    geometry(
+        &mut pb,
+        &mut mem,
+        &[
+            vtx(-1.0, -1.0, 0.5, RED),
+            vtx(1.0, -1.0, 0.5, RED),
+            vtx(-1.0, 1.0, 0.5, RED),
+        ],
+        &varying_pixel_shader(),
+    );
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     // 255 * 256 / 2: the hypotenuse is a right edge, so pixels centred on it stay out (top-left rule).
-    assert_eq!(gpu.render_stats(), RenderStats { clears: 1, draws: 1, triangles: 1, dropped_triangles: 0, culled_triangles: 0, fragments: 32640, discarded_fragments: 0, ..RenderStats::default() });
+    assert_eq!(
+        gpu.render_stats(),
+        RenderStats {
+            clears: 1,
+            draws: 1,
+            triangles: 1,
+            dropped_triangles: 0,
+            culled_triangles: 0,
+            fragments: 32640,
+            discarded_fragments: 0,
+            ..RenderStats::default()
+        }
+    );
 
     let linear = rt_pixels(&mut mem);
     assert_eq!(px(&linear, 10, 10), [255, 0, 0, 255]);
@@ -354,7 +463,16 @@ fn varyings_interpolate_across_the_triangle() {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
     setup(&mut pb, m::AMPERE_B, false);
-    geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, 0.0, BLUE)], &varying_pixel_shader());
+    geometry(
+        &mut pb,
+        &mut mem,
+        &[
+            vtx(-1.0, -1.0, 0.0, RED),
+            vtx(1.0, -1.0, 0.0, GREEN),
+            vtx(-1.0, 1.0, 0.0, BLUE),
+        ],
+        &varying_pixel_shader(),
+    );
     draw(&mut pb, 0, 3, 4);
     run(&pb, &mut mem);
     let linear = rt_pixels(&mut mem);
@@ -363,7 +481,11 @@ fn varyings_interpolate_across_the_triangle() {
     assert!(near(px(&linear, 254, 0), [0, 255, 0, 255]), "{:?}", px(&linear, 254, 0));
     assert!(near(px(&linear, 0, 254), [0, 0, 255, 255]), "{:?}", px(&linear, 0, 254));
     // Pixel (64, 64) has center (64.5, 64.5): barycentrics 0.496 / 0.252 / 0.252.
-    assert!(near(px(&linear, 64, 64), [127, 64, 64, 255]), "{:?}", px(&linear, 64, 64));
+    assert!(
+        near(px(&linear, 64, 64), [127, 64, 64, 255]),
+        "{:?}",
+        px(&linear, 64, 64)
+    );
 }
 
 #[test]
@@ -380,7 +502,14 @@ fn depth_test_keeps_the_nearest_quad() {
     pb.push(immd_header(SC, m::SET_DEPTH_TEST, 1));
     pb.push(immd_header(SC, m::SET_DEPTH_WRITE, 1));
     pb.extend([inc_header(SC, m::SET_DEPTH_FUNC, 1), 0x201]); // OGL_LESS
-    let quad = |z: f32, c: [f32; 4]| [vtx(-1.0, -1.0, z, c), vtx(1.0, -1.0, z, c), vtx(1.0, 1.0, z, c), vtx(-1.0, 1.0, z, c)];
+    let quad = |z: f32, c: [f32; 4]| {
+        [
+            vtx(-1.0, -1.0, z, c),
+            vtx(1.0, -1.0, z, c),
+            vtx(1.0, 1.0, z, c),
+            vtx(-1.0, 1.0, z, c),
+        ]
+    };
     let verts: Vec<[f32; 8]> = [quad(0.5, GREEN), quad(0.8, RED), quad(0.2, BLUE), quad(0.3, RED)].concat();
     geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
     for i in 0..4 {
@@ -393,7 +522,15 @@ fn depth_test_keeps_the_nearest_quad() {
     assert_eq!(px(&linear, 255, 255), [0, 0, 255, 255]);
     assert_eq!(px(&linear, 128, 77), [0, 0, 255, 255]);
     let depth = tiling::detile(
-        &Surface::new_2d(W, W, Format::Z32Float, Layout::BlockLinear { height_log2: 4, depth_log2: 0 }),
+        &Surface::new_2d(
+            W,
+            W,
+            Format::Z32Float,
+            Layout::BlockLinear {
+                height_log2: 4,
+                depth_log2: 0,
+            },
+        ),
         &mem.get(ZT_VA, RT_BYTES),
     )
     .unwrap();
@@ -405,17 +542,40 @@ fn pixel_shader_reads_constant_buffer_loaded_inline() {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
     setup(&mut pb, m::AMPERE_B, false);
-    geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, RED), vtx(-1.0, 1.0, 0.0, RED)], &cbuf_pixel_shader());
-    pb.extend([inc_header(SC, m::SET_CONSTANT_BUFFER_SELECTOR_A, 3), 256, hi(CB_VA), lo(CB_VA)]);
+    geometry(
+        &mut pb,
+        &mut mem,
+        &[
+            vtx(-1.0, -1.0, 0.0, RED),
+            vtx(1.0, -1.0, 0.0, RED),
+            vtx(-1.0, 1.0, 0.0, RED),
+        ],
+        &cbuf_pixel_shader(),
+    );
+    pb.extend([
+        inc_header(SC, m::SET_CONSTANT_BUFFER_SELECTOR_A, 3),
+        256,
+        hi(CB_VA),
+        lo(CB_VA),
+    ]);
     pb.extend([inc_header(SC, m::LOAD_CONSTANT_BUFFER_OFFSET, 1), 0]);
     pb.push(non_inc_header(SC, m::LOAD_CONSTANT_BUFFER, 4));
     pb.extend([0.25f32, 0.5, 0.75, 1.0].map(f));
     // Pixel group (4), slot 1, valid.
-    pb.extend([inc_header(SC, m::BIND_GROUP_CONSTANT_BUFFER + 4 * m::BIND_GROUP_STRIDE, 1), (1 << 4) | 1]);
+    pb.extend([
+        inc_header(SC, m::BIND_GROUP_CONSTANT_BUFFER + 4 * m::BIND_GROUP_STRIDE, 1),
+        (1 << 4) | 1,
+    ]);
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
-    assert_eq!(gpu.constant_buffer(4, 1), Some(ConstantBufferBinding { gpu_va: CB_VA, size: 256 }));
+    assert_eq!(
+        gpu.constant_buffer(4, 1),
+        Some(ConstantBufferBinding {
+            gpu_va: CB_VA,
+            size: 256
+        })
+    );
     assert_eq!(gpu.reg(m::LOAD_CONSTANT_BUFFER_OFFSET), 16);
     assert_eq!(mem.get(CB_VA, 4), 0.25f32.to_le_bytes());
     assert_eq!(px(&rt_pixels(&mut mem), 5, 5), [64, 128, 191, 255]);
@@ -428,7 +588,16 @@ fn color_write_mask_limits_channels() {
     setup(&mut pb, m::AMPERE_B, false);
     clear_color(&mut pb, [0.0, 0.0, 0.0, 0.0]);
     pb.extend([inc_header(SC, m::SET_CT_WRITE, 1), 0x0101]); // R and B only
-    geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.0, [1.0; 4]), vtx(1.0, -1.0, 0.0, [1.0; 4]), vtx(-1.0, 1.0, 0.0, [1.0; 4])], &varying_pixel_shader());
+    geometry(
+        &mut pb,
+        &mut mem,
+        &[
+            vtx(-1.0, -1.0, 0.0, [1.0; 4]),
+            vtx(1.0, -1.0, 0.0, [1.0; 4]),
+            vtx(-1.0, 1.0, 0.0, [1.0; 4]),
+        ],
+        &varying_pixel_shader(),
+    );
     draw(&mut pb, 0, 3, 4);
     run(&pb, &mut mem);
     assert_eq!(px(&rt_pixels(&mut mem), 3, 3), [255, 0, 255, 0]);
@@ -450,7 +619,12 @@ mod mx {
         op(0x50b0) | 0xf00
     }
     fn amem(op_: u64, r: u8, addr: u16, comps: u8) -> u64 {
-        op(op_) | (((comps - 1) as u64) << 47) | ((RZ as u64) << 39) | ((addr as u64) << 20) | ((RZ as u64) << 8) | r as u64
+        op(op_)
+            | (((comps - 1) as u64) << 47)
+            | ((RZ as u64) << 39)
+            | ((addr as u64) << 20)
+            | ((RZ as u64) << 8)
+            | r as u64
     }
     pub fn ald(d: u8, addr: u16, comps: u8) -> u64 {
         amem(0xefd8, d, addr, comps)
@@ -460,7 +634,14 @@ mod mx {
     }
     /// `freq`: 0 PASS, 1 multiply, 2 CONSTANT.
     pub fn ipa(d: u8, addr: u16, freq: u8, mul: u8) -> u64 {
-        op(0xe000) | ((freq as u64) << 54) | (7 << 47) | ((RZ as u64) << 39) | ((addr as u64) << 28) | ((mul as u64) << 20) | ((RZ as u64) << 8) | d as u64
+        op(0xe000)
+            | ((freq as u64) << 54)
+            | (7 << 47)
+            | ((RZ as u64) << 39)
+            | ((addr as u64) << 28)
+            | ((mul as u64) << 20)
+            | ((RZ as u64) << 8)
+            | d as u64
     }
     pub fn mufu_rcp(d: u8, s: u8) -> u64 {
         op(0x5080) | (4 << 20) | ((s as u64) << 8) | d as u64
@@ -468,7 +649,15 @@ mod mx {
     /// `TEXS` 2D RGBA: R `d`, G `d + 1`, B `d2`, A `d2 + 1`, coordinates (`ra`, `rb`), bound
     /// handle `idx`.
     pub fn texs(d: u8, d2: u8, ra: u8, rb: u8, idx: u16) -> u64 {
-        (0xd8 << 56) | (1 << 53) | (4 << 50) | ((idx as u64) << 36) | ((d2 as u64) << 28) | ((rb as u64) << 20) | PT | ((ra as u64) << 8) | d as u64
+        (0xd8 << 56)
+            | (1 << 53)
+            | (4 << 50)
+            | ((idx as u64) << 36)
+            | ((d2 as u64) << 28)
+            | ((rb as u64) << 20)
+            | PT
+            | ((ra as u64) << 8)
+            | d as u64
     }
 }
 
@@ -496,16 +685,35 @@ fn maxwell_geometry(pb: &mut Vec<u32>, mem: &mut Mem, verts: &[[f32; 8]], ps_cod
     for a in (0x70..0x90).step_by(4) {
         vs_h = vs_h.omap(a);
     }
-    let vs = program_mx(&vs_h, &[mx::ald(0, 0x80, 4), mx::ald(4, 0x90, 4), mx::ast(0, 0x70, 4), mx::ast(4, 0x80, 4), mx::exit()]);
+    let vs = program_mx(
+        &vs_h,
+        &[
+            mx::ald(0, 0x80, 4),
+            mx::ald(4, 0x90, 4),
+            mx::ast(0, 0x70, 4),
+            mx::ast(4, 0x80, 4),
+            mx::exit(),
+        ],
+    );
     let mut ps_h = SphBuilder::pixel().ps_target(0, 0xf);
     for c in 0..4 {
         ps_h = ps_h.ps_imap(0, c, PixelImap::Perspective);
     }
     mem.put(VS_VA, &vs);
     mem.put(PS_VA, &program_mx(&ps_h, ps_code));
-    pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_A_FORMAT, 4), (1 << 12) | 32, hi(VB_VA), lo(VB_VA), 0]);
+    pb.extend([
+        inc_header(SC, m::SET_VERTEX_STREAM_A_FORMAT, 4),
+        (1 << 12) | 32,
+        hi(VB_VA),
+        lo(VB_VA),
+        0,
+    ]);
     let limit = VB_VA + bytes.len() as u64 - 1;
-    pb.extend([inc_header(SC, m::B197_SET_VERTEX_STREAM_LIMIT_A_A, 2), hi(limit), lo(limit)]);
+    pb.extend([
+        inc_header(SC, m::B197_SET_VERTEX_STREAM_LIMIT_A_A, 2),
+        hi(limit),
+        lo(limit),
+    ]);
     let attr = |offset: u32| (7 << 27) | (0x01 << 21) | (offset << 7);
     pb.extend([inc_header(SC, m::SET_VERTEX_ATTRIBUTE_A, 2), attr(0), attr(16)]);
     pb.extend([inc_header(SC, m::B197_SET_PROGRAM_REGION_A, 2), hi(VS_VA), lo(VS_VA)]);
@@ -522,7 +730,11 @@ fn maxwell_draw_renders_through_the_maxwell_front_end() {
     let mut pb = Vec::new();
     setup(&mut pb, m::MAXWELL_B, false);
     clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
-    let verts = [vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, 0.0, BLUE)];
+    let verts = [
+        vtx(-1.0, -1.0, 0.0, RED),
+        vtx(1.0, -1.0, 0.0, GREEN),
+        vtx(-1.0, 1.0, 0.0, BLUE),
+    ];
     let mut code = vec![mx::ipa(8, 0x7c, 0, 0), mx::mufu_rcp(9, 8)];
     code.extend((0..4).map(|c| mx::ipa(c as u8, 0x80 + 4 * c, 1, 9)));
     code.push(mx::exit());
@@ -534,7 +746,11 @@ fn maxwell_draw_renders_through_the_maxwell_front_end() {
     let linear = rt_pixels(&mut mem);
     let near = |p: [u8; 4], want: [u8; 4]| p.iter().zip(want).all(|(&a, b)| (a as i32 - b as i32).abs() <= 2);
     assert!(near(px(&linear, 0, 0), [255, 0, 0, 255]), "{:?}", px(&linear, 0, 0));
-    assert!(near(px(&linear, 64, 64), [127, 64, 64, 255]), "{:?}", px(&linear, 64, 64));
+    assert!(
+        near(px(&linear, 64, 64), [127, 64, 64, 255]),
+        "{:?}",
+        px(&linear, 64, 64)
+    );
     assert_eq!(px(&linear, 250, 250), [0, 0, 0, 255]);
 }
 
@@ -544,7 +760,11 @@ fn maxwell_kil_discards_before_depth_and_colour() {
     let mut pb = Vec::new();
     setup(&mut pb, m::MAXWELL_B, false);
     clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
-    let verts = [vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, 0.0, BLUE)];
+    let verts = [
+        vtx(-1.0, -1.0, 0.0, RED),
+        vtx(1.0, -1.0, 0.0, GREEN),
+        vtx(-1.0, 1.0, 0.0, BLUE),
+    ];
     let mut code = vec![mx::ipa(8, 0x7c, 0, 0), mx::mufu_rcp(9, 8)];
     code.extend((0..4).map(|c| mx::ipa(c as u8, 0x80 + 4 * c, 1, 9)));
     // FSETP.LT.AND P0, PT, R0, 0.5, PT; @P0 KIL: alpha-test style discard on red < 0.5.
@@ -571,12 +791,25 @@ fn unsupported_shader_skips_the_draw() {
     let mut pb = Vec::new();
     setup(&mut pb, m::AMPERE_B, false);
     // A vertex shader without EXIT inside the readable range.
-    geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, RED), vtx(-1.0, 1.0, 0.0, RED)], &varying_pixel_shader());
+    geometry(
+        &mut pb,
+        &mut mem,
+        &[
+            vtx(-1.0, -1.0, 0.0, RED),
+            vtx(1.0, -1.0, 0.0, RED),
+            vtx(-1.0, 1.0, 0.0, RED),
+        ],
+        &varying_pixel_shader(),
+    );
     mem.put(VS_VA + AMPERE_SPH_SIZE as u64, &[0xff; 16]);
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
     assert_eq!(gpu.render_stats().draws, 0);
-    assert!(matches!(gpu.diagnostics(), [Diagnostic::RenderSkipped { .. }]), "{:?}", gpu.diagnostics());
+    assert!(
+        matches!(gpu.diagnostics(), [Diagnostic::RenderSkipped { .. }]),
+        "{:?}",
+        gpu.diagnostics()
+    );
 }
 
 // --- Blending --------------------------------------------------------------------------------
@@ -589,13 +822,25 @@ fn blended(clear: [f32; 4], src: [f32; 4], state: &[u32]) -> (Ampere3d, Vec<u8>)
     setup(&mut pb, m::AMPERE_B, false);
     clear_color(&mut pb, clear);
     pb.extend_from_slice(state);
-    let tri = [vtx(-1.0, -1.0, 0.0, RED), vtx(3.0, -1.0, 0.0, RED), vtx(-1.0, 3.0, 0.0, RED)];
+    let tri = [
+        vtx(-1.0, -1.0, 0.0, RED),
+        vtx(3.0, -1.0, 0.0, RED),
+        vtx(-1.0, 3.0, 0.0, RED),
+    ];
     geometry(&mut pb, &mut mem, &tri, &cbuf_pixel_shader());
-    pb.extend([inc_header(SC, m::SET_CONSTANT_BUFFER_SELECTOR_A, 3), 256, hi(CB_VA), lo(CB_VA)]);
+    pb.extend([
+        inc_header(SC, m::SET_CONSTANT_BUFFER_SELECTOR_A, 3),
+        256,
+        hi(CB_VA),
+        lo(CB_VA),
+    ]);
     pb.extend([inc_header(SC, m::LOAD_CONSTANT_BUFFER_OFFSET, 1), 0]);
     pb.push(non_inc_header(SC, m::LOAD_CONSTANT_BUFFER, 4));
     pb.extend(src.map(f));
-    pb.extend([inc_header(SC, m::BIND_GROUP_CONSTANT_BUFFER + 4 * m::BIND_GROUP_STRIDE, 1), (1 << 4) | 1]);
+    pb.extend([
+        inc_header(SC, m::BIND_GROUP_CONSTANT_BUFFER + 4 * m::BIND_GROUP_STRIDE, 1),
+        (1 << 4) | 1,
+    ]);
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
     let linear = rt_pixels(&mut mem);
@@ -604,7 +849,10 @@ fn blended(clear: [f32; 4], src: [f32; 4], state: &[u32]) -> (Ampere3d, Vec<u8>)
 
 /// Shared blend registers: separate-alpha, color op/src/dst, alpha op/src/dst.
 fn shared_blend(regs: [u32; 7]) -> Vec<u32> {
-    let mut pb = vec![immd_header(SC, m::SET_BLEND, 1), inc_header(SC, m::SET_BLEND_SEPARATE_FOR_ALPHA, 7)];
+    let mut pb = vec![
+        immd_header(SC, m::SET_BLEND, 1),
+        inc_header(SC, m::SET_BLEND_SEPARATE_FOR_ALPHA, 7),
+    ];
     pb.extend(regs);
     // 0x1354 sits between ALPHA_SOURCE_COEFF and ALPHA_DEST_COEFF; rewrite the last one alone.
     pb.extend([inc_header(SC, m::SET_BLEND_ALPHA_DEST_COEFF, 1), regs[6]]);
@@ -625,7 +873,10 @@ fn alpha_blending_mixes_with_the_target() {
 #[test]
 fn per_target_d3d_blend_with_separate_alpha() {
     // Per-target block for target 0: D3D REVSUBTRACT ONE ONE for color, MAX for alpha.
-    let mut state = vec![immd_header(SC, m::SET_BLEND, 1), immd_header(SC, m::SET_BLEND_STATE_PER_TARGET, 1)];
+    let mut state = vec![
+        immd_header(SC, m::SET_BLEND, 1),
+        immd_header(SC, m::SET_BLEND_STATE_PER_TARGET, 1),
+    ];
     state.push(inc_header(SC, m::SET_BLEND_PER_TARGET, 7));
     state.extend([1, 3, 2, 2, 5, 2, 2]);
     // The shared registers hold something unsupported; per-target mode must ignore them.
@@ -651,7 +902,12 @@ fn constant_color_blend_factor() {
 fn dual_source_blending_skips_the_draw() {
     let state = shared_blend([0, 0x8006, 0xc900, 0x4000, 0, 0, 0]);
     let (gpu, linear) = blended([0.0, 1.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], &state);
-    assert_eq!(gpu.diagnostics(), &[Diagnostic::RenderSkipped { reason: "dual-source blending" }]);
+    assert_eq!(
+        gpu.diagnostics(),
+        &[Diagnostic::RenderSkipped {
+            reason: "dual-source blending"
+        }]
+    );
     assert_eq!(gpu.render_stats().draws, 0);
     assert_eq!(px(&linear, 10, 10), [0, 255, 0, 255]);
 }
@@ -668,7 +924,12 @@ fn index_buffer(pb: &mut Vec<u32>, mem: &mut Mem, va: u64, bytes: &[u8]) {
 }
 
 fn red_quad_vertices() -> Vec<[f32; 8]> {
-    vec![vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, RED), vtx(-1.0, 1.0, 0.0, RED), vtx(1.0, 1.0, 0.0, RED)]
+    vec![
+        vtx(-1.0, -1.0, 0.0, RED),
+        vtx(1.0, -1.0, 0.0, RED),
+        vtx(-1.0, 1.0, 0.0, RED),
+        vtx(1.0, 1.0, 0.0, RED),
+    ]
 }
 
 #[test]
@@ -682,7 +943,10 @@ fn indexed_triangles_from_a_16_bit_buffer() {
     index_buffer(&mut pb, &mut mem, IB_VA, &idx);
     // FIRST 0, COUNT 6, TRIANGLES. Read sequentially, positions 4 and 5 would fetch past the
     // four-vertex stream and skip the draw.
-    pb.extend([inc_header(SC, m::DRAW_INDEX_BUFFER16_BEGIN_END_INSTANCE_FIRST, 1), (6 << 16) | (4 << 28)]);
+    pb.extend([
+        inc_header(SC, m::DRAW_INDEX_BUFFER16_BEGIN_END_INSTANCE_FIRST, 1),
+        (6 << 16) | (4 << 28),
+    ]);
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     assert_eq!((gpu.render_stats().draws, gpu.render_stats().triangles), (1, 2));
@@ -707,7 +971,10 @@ fn indexed_strip_with_first_base_vertex_and_restart() {
     geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
     // 32-bit indices from FIRST 1: [0, 1, 2], restart, [2, 1, 3] as two triangle strips.
     let restart = u32::MAX;
-    let idx: Vec<u8> = [7u32, 0, 1, 2, restart, 2, 1, 3].iter().flat_map(|i| i.to_le_bytes()).collect();
+    let idx: Vec<u8> = [7u32, 0, 1, 2, restart, 2, 1, 3]
+        .iter()
+        .flat_map(|i| i.to_le_bytes())
+        .collect();
     index_buffer(&mut pb, &mut mem, IB_VA, &idx);
     pb.extend([inc_header(SC, m::SET_INDEX_BUFFER_E, 2), 2, 1]);
     pb.extend([inc_header(SC, m::SET_GLOBAL_BASE_VERTEX_INDEX, 1), 1]);
@@ -737,15 +1004,28 @@ fn index_buffer_bounds_and_mapping_are_checked() {
         }
         index_buffer(&mut pb, &mut mem, va, &[]);
         pb.extend([inc_header(SC, m::SET_INDEX_BUFFER_SIZE_A, 2), 0, size]);
-        pb.extend([inc_header(SC, m::DRAW_INDEX_BUFFER8_BEGIN_END_INSTANCE_FIRST, 1), (3 << 16) | (4 << 28)]);
+        pb.extend([
+            inc_header(SC, m::DRAW_INDEX_BUFFER8_BEGIN_END_INSTANCE_FIRST, 1),
+            (3 << 16) | (4 << 28),
+        ]);
         run(&pb, &mut mem)
     };
     let ok = draw_with(IB_VA, 3);
     assert!(ok.diagnostics().is_empty(), "{:?}", ok.diagnostics());
     let short = draw_with(IB_VA, 2);
-    assert_eq!(short.diagnostics(), &[Diagnostic::RenderSkipped { reason: "index fetch past the index buffer size" }]);
+    assert_eq!(
+        short.diagnostics(),
+        &[Diagnostic::RenderSkipped {
+            reason: "index fetch past the index buffer size"
+        }]
+    );
     let unmapped = draw_with(0x02_0000_0000, 0);
-    assert_eq!(unmapped.diagnostics(), &[Diagnostic::RenderSkipped { reason: "index buffer is not readable" }]);
+    assert_eq!(
+        unmapped.diagnostics(),
+        &[Diagnostic::RenderSkipped {
+            reason: "index buffer is not readable"
+        }]
+    );
 }
 
 // --- Textures --------------------------------------------------------------------------------
@@ -754,7 +1034,15 @@ fn index_buffer_bounds_and_mapping_are_checked() {
 fn tic_block_linear(va: u64) -> [u32; 8] {
     let mut w = [0u32; 8];
     let unorm = 2;
-    w[0] = 0x08 | (unorm << 7) | (unorm << 10) | (unorm << 13) | (unorm << 16) | (2 << 19) | (3 << 22) | (4 << 25) | (5 << 28);
+    w[0] = 0x08
+        | (unorm << 7)
+        | (unorm << 10)
+        | (unorm << 13)
+        | (unorm << 16)
+        | (2 << 19)
+        | (3 << 22)
+        | (4 << 25)
+        | (5 << 28);
     w[1] = va as u32 & !0x1ff;
     w[2] = ((va >> 32) as u32 & 0x1ffff) | (3 << 21);
     w[3] = 1 << 3; // GOBS_PER_BLOCK_HEIGHT = 2 GOBs
@@ -769,8 +1057,18 @@ fn words_to_bytes(w: &[u32; 8]) -> Vec<u8> {
 
 fn texture_memory() -> (Mem, Ampere3d) {
     let mut mem = Mem::standard();
-    let linear: Vec<u8> = (0..16u32).flat_map(|y| (0..16u32).flat_map(move |x| [(x * 16) as u8, (y * 16) as u8, 0, 255])).collect();
-    let surf = Surface::new_2d(16, 16, Format::R8G8B8A8Unorm, Layout::BlockLinear { height_log2: 1, depth_log2: 0 });
+    let linear: Vec<u8> = (0..16u32)
+        .flat_map(|y| (0..16u32).flat_map(move |x| [(x * 16) as u8, (y * 16) as u8, 0, 255]))
+        .collect();
+    let surf = Surface::new_2d(
+        16,
+        16,
+        Format::R8G8B8A8Unorm,
+        Layout::BlockLinear {
+            height_log2: 1,
+            depth_log2: 0,
+        },
+    );
     mem.put(TEX_VA, &tiling::tile(&surf, &linear).unwrap());
     mem.put(TIC_VA + 2 * 32, &words_to_bytes(&tic_block_linear(TEX_VA)));
     // Pitch view of the same bytes would be wrong; this one points at a separate pitch copy.
@@ -805,7 +1103,13 @@ fn texture_header_decodes_from_pool() {
     assert_eq!(h.gpu_va, TEX_VA);
     assert_eq!((h.width, h.height, h.depth), (16, 16, 1));
     assert_eq!(h.texture_type, TextureType::TwoD);
-    assert_eq!(h.layout, TextureLayout::BlockLinear { block_height_log2: 1, block_depth_log2: 0 });
+    assert_eq!(
+        h.layout,
+        TextureLayout::BlockLinear {
+            block_height_log2: 1,
+            block_depth_log2: 0
+        }
+    );
     assert_eq!(h.data_types, [DataType::Unorm; 4]);
     assert_eq!(h.swizzle, [Swizzle::R, Swizzle::G, Swizzle::B, Swizzle::A]);
     assert!(h.normalized_coords);
@@ -835,7 +1139,10 @@ fn texel_fetch_and_sampling_read_tiled_and_pitch_textures() {
     assert_eq!(bl.sample(&point, 3.5 / 16.0, 5.5 / 16.0, &mut mem), Some(want));
     // Halfway between texels 3 and 4 in x: red 48 and 64 average to 56.
     let s = bl.sample(&linear, 4.0 / 16.0, 5.5 / 16.0, &mut mem).unwrap();
-    assert!((s[0] - 56.0 / 255.0).abs() < 1e-6 && (s[1] - 80.0 / 255.0).abs() < 1e-6, "{s:?}");
+    assert!(
+        (s[0] - 56.0 / 255.0).abs() < 1e-6 && (s[1] - 80.0 / 255.0).abs() < 1e-6,
+        "{s:?}"
+    );
     // Clamp to edge past the right border.
     assert_eq!(bl.sample(&point, 1.5, 0.0, &mut mem).unwrap()[0], 240.0 / 255.0);
 }
@@ -845,11 +1152,19 @@ fn texel_fetch_and_sampling_read_tiled_and_pitch_textures() {
 fn texture_state(pb: &mut Vec<u32>, words: &[u32]) {
     pb.extend([inc_header(SC, m::SET_TEX_HEADER_POOL_A, 3), hi(TIC_VA), lo(TIC_VA), 7]);
     pb.extend([inc_header(SC, m::SET_TEX_SAMPLER_POOL_A, 3), hi(TSC_VA), lo(TSC_VA), 1]);
-    pb.extend([inc_header(SC, m::SET_CONSTANT_BUFFER_SELECTOR_A, 3), 256, hi(CB_VA), lo(CB_VA)]);
+    pb.extend([
+        inc_header(SC, m::SET_CONSTANT_BUFFER_SELECTOR_A, 3),
+        256,
+        hi(CB_VA),
+        lo(CB_VA),
+    ]);
     pb.extend([inc_header(SC, m::LOAD_CONSTANT_BUFFER_OFFSET, 1), 0]);
     pb.push(non_inc_header(SC, m::LOAD_CONSTANT_BUFFER, words.len() as u32));
     pb.extend(words);
-    pb.extend([inc_header(SC, m::BIND_GROUP_CONSTANT_BUFFER + 4 * m::BIND_GROUP_STRIDE, 1), (1 << 4) | 1]);
+    pb.extend([
+        inc_header(SC, m::BIND_GROUP_CONSTANT_BUFFER + 4 * m::BIND_GROUP_STRIDE, 1),
+        (1 << 4) | 1,
+    ]);
 }
 
 /// Texel colour of [`texture_memory`]'s 16x16 texture: red = 16 x, green = 16 y.
@@ -859,7 +1174,11 @@ fn texel(x: u32, y: u32) -> [u8; 4] {
 
 /// (u, v) in the colour slot: (0, 0) at the window origin, (1, 1) at the far corner.
 fn uv_triangle() -> [[f32; 8]; 3] {
-    [vtx(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0, 1.0]), vtx(1.0, -1.0, 0.0, [1.0, 0.0, 0.0, 1.0]), vtx(-1.0, 1.0, 0.0, [0.0, 1.0, 0.0, 1.0])]
+    [
+        vtx(-1.0, -1.0, 0.0, [0.0, 0.0, 0.0, 1.0]),
+        vtx(1.0, -1.0, 0.0, [1.0, 0.0, 0.0, 1.0]),
+        vtx(-1.0, 1.0, 0.0, [0.0, 1.0, 0.0, 1.0]),
+    ]
 }
 
 #[test]
@@ -903,7 +1222,12 @@ fn ampere_pixel_shader_fetches_a_texel() {
     // TIC 3 is the pitch copy; TLD needs no sampler.
     texture_state(&mut pb, &[0, 3]);
     let h = SphBuilder::pixel().ps_target(0, 0xf);
-    let code = [asm::mov_imm(4, 3), asm::mov_imm(5, 5), asm::tex(true, 0, 2, 4, 1, 1, 1), asm::exit()];
+    let code = [
+        asm::mov_imm(4, 3),
+        asm::mov_imm(5, 5),
+        asm::tex(true, 0, 2, 4, 1, 1, 1),
+        asm::exit(),
+    ];
     geometry(&mut pb, &mut mem, &uv_triangle(), &program(&h, &code));
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
@@ -921,7 +1245,14 @@ fn maxwell_texs_reads_the_handle_through_set_bindless_texture() {
     // Bound handle index 2 -> c[1][8] once SET_BINDLESS_TEXTURE selects slot 1: TIC 2, TSC 0.
     texture_state(&mut pb, &[0, 0, 2]);
     pb.extend([inc_header(SC, m::SET_BINDLESS_TEXTURE, 1), 1]);
-    let code = [mx::ipa(8, 0x7c, 0, 0), mx::mufu_rcp(9, 8), mx::ipa(4, 0x80, 1, 9), mx::ipa(5, 0x84, 1, 9), mx::texs(0, 2, 4, 5, 2), mx::exit()];
+    let code = [
+        mx::ipa(8, 0x7c, 0, 0),
+        mx::mufu_rcp(9, 8),
+        mx::ipa(4, 0x80, 1, 9),
+        mx::ipa(5, 0x84, 1, 9),
+        mx::texs(0, 2, 4, 5, 2),
+        mx::exit(),
+    ];
     maxwell_geometry(&mut pb, &mut mem, &uv_triangle(), &code);
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
@@ -936,7 +1267,12 @@ fn maxwell_texs_reads_the_handle_through_set_bindless_texture() {
     draw(&mut pb, 0, 3, 4);
     let gpu = run(&pb, &mut mem);
     assert_eq!(gpu.render_stats().draws, 1);
-    assert_eq!(gpu.diagnostics(), &[Diagnostic::RenderSkipped { reason: "sampler is not readable" }]);
+    assert_eq!(
+        gpu.diagnostics(),
+        &[Diagnostic::RenderSkipped {
+            reason: "sampler is not readable"
+        }]
+    );
 }
 
 // --- Mip levels ------------------------------------------------------------------------------
@@ -958,8 +1294,18 @@ fn mip_memory(view_min: u32, view_max: u32) -> (Mem, Ampere3d) {
     for (l, off) in MIP_OFFSETS.iter().enumerate() {
         let n = 16u32 >> l;
         let lh = if l == 0 { 1 } else { 0 };
-        let linear: Vec<u8> = (0..n).flat_map(|y| (0..n).flat_map(move |x| mip_texel(x, y, l as u32))).collect();
-        let surf = Surface::new_2d(n, n, Format::R8G8B8A8Unorm, Layout::BlockLinear { height_log2: lh, depth_log2: 0 });
+        let linear: Vec<u8> = (0..n)
+            .flat_map(|y| (0..n).flat_map(move |x| mip_texel(x, y, l as u32)))
+            .collect();
+        let surf = Surface::new_2d(
+            n,
+            n,
+            Format::R8G8B8A8Unorm,
+            Layout::BlockLinear {
+                height_log2: lh,
+                depth_log2: 0,
+            },
+        );
         mem.put(TEX_VA + off, &tiling::tile(&surf, &linear).unwrap());
     }
     let mut tic = tic_block_linear(TEX_VA);
@@ -998,7 +1344,11 @@ fn mip_chain_levels_are_packed_with_clamped_blocks() {
     for l in 0..5 {
         let n = 16 >> l;
         for (x, y) in [(0, 0), (n - 1, 0), (n / 2, n - 1)] {
-            assert_eq!(h.fetch_level(l, x, y, &mut mem), Some(unorm(mip_texel(x, y, l))), "level {l} ({x}, {y})");
+            assert_eq!(
+                h.fetch_level(l, x, y, &mut mem),
+                Some(unorm(mip_texel(x, y, l))),
+                "level {l} ({x}, {y})"
+            );
         }
         assert_eq!(h.fetch_level(l, n, 0, &mut mem), None);
     }
@@ -1038,7 +1388,16 @@ fn tex_ll_picks_levels_by_mip_filter_bias_and_clamp() {
         let n = 16 >> l;
         unorm(mip_texel((u * n as f32) as u32, (v * n as f32) as u32, l))
     };
-    for (lod, level) in [(0.0, 0), (1.0, 1), (1.4, 1), (1.6, 2), (2.0, 2), (3.9, 4), (9.0, 4), (-2.0, 0)] {
+    for (lod, level) in [
+        (0.0, 0),
+        (1.0, 1),
+        (1.4, 1),
+        (1.6, 2),
+        (2.0, 2),
+        (3.9, 4),
+        (9.0, 4),
+        (-2.0, 0),
+    ] {
         assert_eq!(h.sample_lod(&point, lod, u, v, &mut mem), Some(at(level)), "lod {lod}");
     }
     // Linear mip filter blends the two nearest levels (bilinear inside each).
@@ -1046,7 +1405,10 @@ fn tex_ll_picks_levels_by_mip_filter_bias_and_clamp() {
     let l1 = h.sample_lod(&linear, 1.0, 0.5, 0.5, &mut mem).unwrap();
     let l2 = h.sample_lod(&linear, 2.0, 0.5, 0.5, &mut mem).unwrap();
     for i in 0..4 {
-        assert!((blend[i] - (l1[i] + l2[i]) / 2.0).abs() < 1e-6, "{blend:?} {l1:?} {l2:?}");
+        assert!(
+            (blend[i] - (l1[i] + l2[i]) / 2.0).abs() < 1e-6,
+            "{blend:?} {l1:?} {l2:?}"
+        );
     }
     assert!((l1[2] - 40.0 / 255.0).abs() < 1e-6 && (l2[2] - 80.0 / 255.0).abs() < 1e-6);
 
@@ -1102,7 +1464,13 @@ fn pixel_shader_tex_ll_and_tld_ll_read_mip_levels() {
     assert_eq!(px(&px_ll, 10, 10), mip_texel(1, 1, 2));
     assert_eq!(px(&px_ll, 200, 20), mip_texel(1, 1, 2));
     // TLD.LL texel (3, 2) of level 1.
-    let fetch = [asm::mov_imm(4, 3), asm::mov_imm(5, 2), asm::mov_imm(6, 1), asm::tex_rb(true, 0, 2, 4, 6, 1, 0, 3), asm::exit()];
+    let fetch = [
+        asm::mov_imm(4, 3),
+        asm::mov_imm(5, 2),
+        asm::mov_imm(6, 1),
+        asm::tex_rb(true, 0, 2, 4, 6, 1, 0, 3),
+        asm::exit(),
+    ];
     let px_tld = draw_with(&fetch, 4);
     assert_eq!(px(&px_tld, 10, 10), mip_texel(3, 2, 1));
 }
@@ -1121,10 +1489,14 @@ fn host_acquire_blocks_until_released() {
     pb.extend([inc_header(SC, m::HOST_SET_REFERENCE, 1), 77]);
     let mut gpu = run(&pb, &mut mem);
     let wait = gpu.blocked_on().expect("blocked");
-    assert_eq!((wait.gpu_va, wait.payload, wait.op), (SEM_VA, 5, HostSemaphoreOp::AcquireEqual));
+    assert_eq!(
+        (wait.gpu_va, wait.payload, wait.op),
+        (SEM_VA, 5, HostSemaphoreOp::AcquireEqual)
+    );
     assert_eq!(gpu.reference(), 0);
     // Later segments queue behind the wait.
-    gpu.submit(&[inc_header(SC, m::HOST_SET_REFERENCE, 1), 78], &mut mem).unwrap();
+    gpu.submit(&[inc_header(SC, m::HOST_SET_REFERENCE, 1), 78], &mut mem)
+        .unwrap();
     assert!(!gpu.resume(&mut mem));
     mem.put(SEM_VA, &5u32.to_le_bytes());
     assert!(gpu.resume(&mut mem));
@@ -1143,7 +1515,10 @@ fn host_release_sizes_and_reduction() {
     let gpu = run(&pb, &mut mem);
     assert!(gpu.blocked_on().is_none());
     assert_eq!(mem.get(SEM_VA, 8), [0xcd, 0xab, 0, 0, 0, 0, 0, 0]);
-    assert_eq!(mem.get(SEM_VA + 0x10, 16), [[0x34, 0x12, 0, 0, 0, 0, 0, 0], 1u64.to_le_bytes()].concat());
+    assert_eq!(
+        mem.get(SEM_VA + 0x10, 16),
+        [[0x34, 0x12, 0, 0, 0, 0, 0, 0], 1u64.to_le_bytes()].concat()
+    );
     assert_eq!(mem.u32_at(SEM_VA + 0x40), 15);
 }
 
@@ -1151,7 +1526,14 @@ fn host_release_sizes_and_reduction() {
 fn sem_execute_wide_release_and_wrapping_acquire() {
     let mut mem = Mem::standard();
     let sem = |pb: &mut Vec<u32>, payload: u64, exec: u32| {
-        pb.extend([inc_header(SC, m::HOST_SEM_ADDR_LO, 5), lo(SEM_VA), hi(SEM_VA), payload as u32, (payload >> 32) as u32, exec]);
+        pb.extend([
+            inc_header(SC, m::HOST_SEM_ADDR_LO, 5),
+            lo(SEM_VA),
+            hi(SEM_VA),
+            payload as u32,
+            (payload >> 32) as u32,
+            exec,
+        ]);
     };
     let mut pb = Vec::new();
     sem(&mut pb, 0x1_0000_0002, 1 | (1 << 24)); // RELEASE, 64-bit payload
@@ -1166,7 +1548,10 @@ fn sem_execute_wide_release_and_wrapping_acquire() {
     assert!(run(&pb, &mut mem).blocked_on().is_none());
     let mut pb = Vec::new();
     sem(&mut pb, 0xffff_fffe, 2); // ACQ_STRICT_GEQ
-    assert_eq!(run(&pb, &mut mem).blocked_on().map(|w| w.op), Some(HostSemaphoreOp::AcquireStrictGeq));
+    assert_eq!(
+        run(&pb, &mut mem).blocked_on().map(|w| w.op),
+        Some(HostSemaphoreOp::AcquireStrictGeq)
+    );
 }
 
 #[test]
@@ -1175,8 +1560,20 @@ fn report_semaphore_acquire_waits_for_greater_or_equal() {
     mem.put(SEM_VA, &3u32.to_le_bytes());
     let mut pb = vec![inc_header(SC, m::SET_OBJECT, 1), m::AMPERE_B];
     // ACQUIRE, COMPARISON GE, ONE_WORD.
-    pb.extend([inc_header(SC, m::SET_REPORT_SEMAPHORE_A, 4), hi(SEM_VA), lo(SEM_VA), 4, 1 | (1 << 16) | (1 << 28)]);
-    pb.extend([inc_header(SC, m::SET_REPORT_SEMAPHORE_A, 4), hi(SEM_VA + 8), lo(SEM_VA + 8), 9, 1 << 28]);
+    pb.extend([
+        inc_header(SC, m::SET_REPORT_SEMAPHORE_A, 4),
+        hi(SEM_VA),
+        lo(SEM_VA),
+        4,
+        1 | (1 << 16) | (1 << 28),
+    ]);
+    pb.extend([
+        inc_header(SC, m::SET_REPORT_SEMAPHORE_A, 4),
+        hi(SEM_VA + 8),
+        lo(SEM_VA + 8),
+        9,
+        1 << 28,
+    ]);
     let mut gpu = run(&pb, &mut mem);
     assert!(gpu.blocked_on().is_some());
     assert_eq!(mem.u32_at(SEM_VA + 8), 0);
@@ -1198,7 +1595,16 @@ fn write_only_memory_keeps_records_only() {
     let mut pb = Vec::new();
     setup(&mut pb, m::AMPERE_B, false);
     clear_color(&mut pb, RED);
-    geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.0, RED), vtx(1.0, -1.0, 0.0, RED), vtx(-1.0, 1.0, 0.0, RED)], &varying_pixel_shader());
+    geometry(
+        &mut pb,
+        &mut mem,
+        &[
+            vtx(-1.0, -1.0, 0.0, RED),
+            vtx(1.0, -1.0, 0.0, RED),
+            vtx(-1.0, 1.0, 0.0, RED),
+        ],
+        &varying_pixel_shader(),
+    );
     draw(&mut pb, 0, 3, 4);
     host_semaphore(&mut pb, SEM_VA, 5, 1);
     let mut wo = WriteOnly(0);
@@ -1247,11 +1653,21 @@ fn unsupported_depth_layer_clear_preserves_base_layer() {
     z24s8_target(&mut pb);
     let mut gpu = run(&pb, &mut memory);
     let before = memory.get(ZT_VA, RT_BYTES);
-    let pb = [inc_header(SC, m::SET_ZT_LAYER, 1), 1,
-        inc_header(SC, m::SET_Z_CLEAR_VALUE, 1), f(0.0), immd_header(SC, m::CLEAR_SURFACE, 1)];
+    let pb = [
+        inc_header(SC, m::SET_ZT_LAYER, 1),
+        1,
+        inc_header(SC, m::SET_Z_CLEAR_VALUE, 1),
+        f(0.0),
+        immd_header(SC, m::CLEAR_SURFACE, 1),
+    ];
     gpu.submit(&pb, &mut memory).unwrap();
     assert_eq!(memory.get(ZT_VA, RT_BYTES), before);
-    assert!(gpu.diagnostics().iter().any(|d| matches!(d, Diagnostic::RenderSkipped { reason: "layered clear" })));
+    assert!(gpu.diagnostics().iter().any(|d| matches!(
+        d,
+        Diagnostic::RenderSkipped {
+            reason: "layered clear"
+        }
+    )));
 }
 
 /// `SET_STENCIL_TEST` .. `SET_STENCIL_MASK`: enable, fail, zfail, zpass, func, ref, func mask, mask.
@@ -1267,7 +1683,14 @@ fn stencil_masks_the_second_draw_to_the_first() {
     setup(&mut pb, m::AMPERE_B, false);
     clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
     z24s8_target(&mut pb);
-    let quad = |x0: f32, x1: f32, c: [f32; 4]| [vtx(x0, -1.0, 0.5, c), vtx(x1, -1.0, 0.5, c), vtx(x1, 1.0, 0.5, c), vtx(x0, 1.0, 0.5, c)];
+    let quad = |x0: f32, x1: f32, c: [f32; 4]| {
+        [
+            vtx(x0, -1.0, 0.5, c),
+            vtx(x1, -1.0, 0.5, c),
+            vtx(x1, 1.0, 0.5, c),
+            vtx(x0, 1.0, 0.5, c),
+        ]
+    };
     let verts: Vec<[f32; 8]> = [quad(-1.0, 0.0, GREEN), quad(-1.0, 1.0, RED)].concat();
     geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
     // Left half: ALWAYS, REPLACE with 1 (OGL encodings).
@@ -1285,7 +1708,15 @@ fn stencil_masks_the_second_draw_to_the_first() {
     assert_eq!(px(&linear, 250, 250), [0, 0, 0, 255]);
     // Stencil lives in byte 0 of each Z24S8 texel; depth was not written (SET_DEPTH_WRITE off).
     let zs = tiling::detile(
-        &Surface::new_2d(W, W, Format::Z32Float, Layout::BlockLinear { height_log2: 4, depth_log2: 0 }),
+        &Surface::new_2d(
+            W,
+            W,
+            Format::Z32Float,
+            Layout::BlockLinear {
+                height_log2: 4,
+                depth_log2: 0,
+            },
+        ),
         &mem.get(ZT_VA, RT_BYTES),
     )
     .unwrap();
@@ -1348,7 +1779,11 @@ fn frustum_z_clip_cuts_at_the_near_plane() {
     setup(&mut pb, m::AMPERE_B, false);
     clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
     // z/w runs from 0 at the bottom row to -3 at the top; z = -w is a third of the way up.
-    let verts = [vtx(-1.0, -1.0, 0.0, GREEN), vtx(1.0, -1.0, 0.0, GREEN), vtx(-1.0, 1.0, -3.0, GREEN)];
+    let verts = [
+        vtx(-1.0, -1.0, 0.0, GREEN),
+        vtx(1.0, -1.0, 0.0, GREEN),
+        vtx(-1.0, 1.0, -3.0, GREEN),
+    ];
     geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
     pb.extend([inc_header(SC, m::SET_VIEWPORT_CLIP_CONTROL, 1), 3 << 11]); // FRUSTUM_XYZ_CLIP
     // GL depth mapping z_w = 0.5 z/w + 0.5, so the near plane lands on the pixel range's 0.
@@ -1370,21 +1805,51 @@ fn instanced_halves(frequency: u32, base_instance: u32) -> Vec<u8> {
     let mut mem = Mem::standard();
     let mut pb = Vec::new();
     setup(&mut pb, m::AMPERE_B, false);
-    let quad = |x0: f32, x1: f32| [vtx(x0, -1.0, 0.5, RED), vtx(x1, -1.0, 0.5, RED), vtx(x1, 1.0, 0.5, RED), vtx(x0, 1.0, 0.5, RED)];
+    let quad = |x0: f32, x1: f32| {
+        [
+            vtx(x0, -1.0, 0.5, RED),
+            vtx(x1, -1.0, 0.5, RED),
+            vtx(x1, 1.0, 0.5, RED),
+            vtx(x0, 1.0, 0.5, RED),
+        ]
+    };
     let verts: Vec<[f32; 8]> = [quad(-1.0, 0.0), quad(0.0, 1.0)].concat();
     geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
-    let colors: Vec<u8> = [GREEN, BLUE, RED].iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
+    let colors: Vec<u8> = [GREEN, BLUE, RED]
+        .iter()
+        .flatten()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
     const IB_VA: u64 = VB_VA + 0x800;
     mem.put(IB_VA, &colors);
     let stream1 = m::SET_VERTEX_STREAM_A_FORMAT + m::VERTEX_STREAM_A_STRIDE;
-    pb.extend([inc_header(SC, stream1, 4), (1 << 12) | 16, hi(IB_VA), lo(IB_VA), frequency]);
-    pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_SIZE_A + m::VERTEX_STREAM_SIZE_STRIDE, 2), 0, colors.len() as u32]);
+    pb.extend([
+        inc_header(SC, stream1, 4),
+        (1 << 12) | 16,
+        hi(IB_VA),
+        lo(IB_VA),
+        frequency,
+    ]);
+    pb.extend([
+        inc_header(SC, m::SET_VERTEX_STREAM_SIZE_A + m::VERTEX_STREAM_SIZE_STRIDE, 2),
+        0,
+        colors.len() as u32,
+    ]);
     pb.extend([inc_header(SC, m::SET_VERTEX_STREAM_INSTANCE_A + 4, 1), 1]);
     pb.extend([inc_header(SC, m::SET_GLOBAL_BASE_INSTANCE_INDEX, 1), base_instance]);
     // Attribute 1 now reads stream 1 at offset 0.
-    pb.extend([inc_header(SC, m::SET_VERTEX_ATTRIBUTE_A + 4, 1), (7 << 27) | (0x01 << 21) | 1]);
-    pb.extend([inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_FIRST, 1), (4 << 16) | (7 << 28)]);
-    pb.extend([inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_SUBSEQUENT, 1), 4 | (4 << 16) | (7 << 28)]);
+    pb.extend([
+        inc_header(SC, m::SET_VERTEX_ATTRIBUTE_A + 4, 1),
+        (7 << 27) | (0x01 << 21) | 1,
+    ]);
+    pb.extend([
+        inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_FIRST, 1),
+        (4 << 16) | (7 << 28),
+    ]);
+    pb.extend([
+        inc_header(SC, m::DRAW_VERTEX_ARRAY_BEGIN_END_INSTANCE_SUBSEQUENT, 1),
+        4 | (4 << 16) | (7 << 28),
+    ]);
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     assert_eq!(gpu.render_stats().draws, 2);
@@ -1419,13 +1884,26 @@ fn far_quad(clip_control: u32) -> (Vec<u8>, f32) {
     pb.push(immd_header(SC, m::CLEAR_SURFACE, 0x1));
     pb.push(immd_header(SC, m::SET_DEPTH_WRITE, 1));
     pb.extend([inc_header(SC, m::SET_VIEWPORT_CLIP_CONTROL, 1), clip_control]);
-    let verts = [vtx(-1.0, -1.0, 2.0, GREEN), vtx(1.0, -1.0, 2.0, GREEN), vtx(1.0, 1.0, 2.0, GREEN), vtx(-1.0, 1.0, 2.0, GREEN)];
+    let verts = [
+        vtx(-1.0, -1.0, 2.0, GREEN),
+        vtx(1.0, -1.0, 2.0, GREEN),
+        vtx(1.0, 1.0, 2.0, GREEN),
+        vtx(-1.0, 1.0, 2.0, GREEN),
+    ];
     geometry(&mut pb, &mut mem, &verts, &varying_pixel_shader());
     draw(&mut pb, 0, 4, 7);
     let gpu = run(&pb, &mut mem);
     assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
     let depth = tiling::detile(
-        &Surface::new_2d(W, W, Format::Z32Float, Layout::BlockLinear { height_log2: 4, depth_log2: 0 }),
+        &Surface::new_2d(
+            W,
+            W,
+            Format::Z32Float,
+            Layout::BlockLinear {
+                height_log2: 4,
+                depth_log2: 0,
+            },
+        ),
         &mem.get(ZT_VA, RT_BYTES),
     )
     .unwrap();
@@ -1453,7 +1931,16 @@ fn host_sass_draw_writes_original_guest_surface() {
         let mut pb = Vec::new();
         setup(&mut pb, m::AMPERE_B, pitch);
         clear_color(&mut pb, [0.0, 0.0, 0.0, 1.0]);
-        geometry(&mut pb, &mut mem, &[vtx(-1.0, -1.0, 0.5, RED), vtx(1.0, -1.0, 0.5, RED), vtx(-1.0, 1.0, 0.5, RED)], &varying_pixel_shader());
+        geometry(
+            &mut pb,
+            &mut mem,
+            &[
+                vtx(-1.0, -1.0, 0.5, RED),
+                vtx(1.0, -1.0, 0.5, RED),
+                vtx(-1.0, 1.0, 0.5, RED),
+            ],
+            &varying_pixel_shader(),
+        );
         draw(&mut pb, 0, 3, 4);
         let mut gpu = Ampere3d::new();
         gpu.set_host_gpu(true);
@@ -1461,7 +1948,11 @@ fn host_sass_draw_writes_original_guest_surface() {
         assert!(gpu.diagnostics().is_empty(), "{:?}", gpu.diagnostics());
         assert_eq!(gpu.render_stats().host_draws, 1);
         assert_eq!(gpu.render_stats().host_readback_bytes, RT_BYTES as u64);
-        let pixels = if pitch { mem.get(RT_VA, RT_BYTES) } else { rt_pixels(&mut mem) };
+        let pixels = if pitch {
+            mem.get(RT_VA, RT_BYTES)
+        } else {
+            rt_pixels(&mut mem)
+        };
         assert_eq!(px(&pixels, 10, 10), [255, 0, 0, 255]);
         assert_eq!(px(&pixels, 250, 250), [0, 0, 0, 255]);
 
@@ -1471,7 +1962,10 @@ fn host_sass_draw_writes_original_guest_surface() {
         draw(&mut unsupported, 0, 3, 4);
         gpu.submit(&unsupported, &mut mem).unwrap();
         assert_eq!(gpu.render_stats().host_draws, 1);
-        assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped { .. })));
+        assert!(matches!(
+            gpu.diagnostics().last(),
+            Some(Diagnostic::RenderSkipped { .. })
+        ));
         assert_eq!(mem.get(RT_VA, RT_BYTES), before);
 
         // Partial position writes have different undefined/default behavior across APIs.
@@ -1485,7 +1979,10 @@ fn host_sass_draw_writes_original_guest_surface() {
         draw(&mut unsupported, 0, 3, 4);
         gpu.submit(&unsupported, &mut mem).unwrap();
         assert_eq!(gpu.render_stats().host_draws, 1);
-        assert!(matches!(gpu.diagnostics().last(), Some(Diagnostic::RenderSkipped { .. })));
+        assert!(matches!(
+            gpu.diagnostics().last(),
+            Some(Diagnostic::RenderSkipped { .. })
+        ));
         assert_eq!(mem.get(RT_VA, RT_BYTES), before);
     }
 }

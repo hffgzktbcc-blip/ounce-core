@@ -35,7 +35,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use super::decode::{FCmp, ICmp, IpaFreq, MufuOp, Round, TexHandle, TexOp};
-use super::ir::{attr_slot, AttrSlot, Function, Lod, Op, Ty, Value};
+use super::ir::{AttrSlot, Function, Lod, Op, Ty, Value, attr_slot};
 use super::sph::{PixelImap, Sph};
 use super::{ConstantBuffer, Interpolation, ShaderInterface, ShaderStage, TextureBinding, Varying, XlateError};
 
@@ -116,7 +116,11 @@ impl Ctx<'_> {
     }
 
     fn icmp(&self, cmp: ICmp, signed: bool, a: Value, b: Value) -> String {
-        let (x, y) = if signed { (self.as_i32(a), self.as_i32(b)) } else { (self.as_u32(a), self.as_u32(b)) };
+        let (x, y) = if signed {
+            (self.as_i32(a), self.as_i32(b))
+        } else {
+            (self.as_u32(a), self.as_u32(b))
+        };
         let o = match cmp {
             ICmp::F => return "false".into(),
             ICmp::T => return "true".into(),
@@ -135,19 +139,32 @@ impl Ctx<'_> {
         let mut terms = Vec::new();
         for i in 0..8u8 {
             if lut & (1 << i) != 0 {
-                let t: Vec<String> =
-                    (0..3).map(|k| if i & (4 >> k) != 0 { ins[k].clone() } else { format!("~{}", ins[k]) }).collect();
+                let t: Vec<String> = (0..3)
+                    .map(|k| {
+                        if i & (4 >> k) != 0 {
+                            ins[k].clone()
+                        } else {
+                            format!("~{}", ins[k])
+                        }
+                    })
+                    .collect();
                 terms.push(format!("({})", t.join(" & ")));
             }
         }
-        if terms.is_empty() { "0u".into() } else { terms.join(" | ") }
+        if terms.is_empty() {
+            "0u".into()
+        } else {
+            terms.join(" | ")
+        }
     }
 
     fn expr(&self, op: Op) -> String {
         match op {
             Op::Const(bits) => format!("{bits:#010x}u"),
             Op::Cbuf { bank, offset } => format!("cb{bank}[{}u][{}u]", offset / 16, (offset / 4) % 4),
-            Op::CbufIndexed { bank, offset, reg } => format!("cb{bank}_load(({} + {offset}u) & 65535u)", self.as_u32(reg)),
+            Op::CbufIndexed { bank, offset, reg } => {
+                format!("cb{bank}_load(({} + {offset}u) & 65535u)", self.as_u32(reg))
+            }
             Op::Attr { addr } => match attr_slot(addr) {
                 Some(AttrSlot::Generic { loc, comp }) => format!("vin.a{loc}.{}", COMP[comp as usize]),
                 None if addr == 0x2f8 => "bitcast<f32>(vin.instance_index)".into(),
@@ -192,13 +209,17 @@ impl Ctx<'_> {
                     MufuOp::Tanh => format!("tanh({x})"),
                 }
             }
-            Op::Tex { op, handle, lod, x, y, .. } => {
+            Op::Tex {
+                op, handle, lod, x, y, ..
+            } => {
                 let k = self.textures[&handle];
                 match op {
                     TexOp::Sample => {
                         let c = format!("vec2<f32>({}, {})", self.as_f32(x), self.as_f32(y));
                         match lod {
-                            Lod::Auto if self.f.stage == ShaderStage::Fragment => format!("textureSample(t{k}, s{k}, {c})"),
+                            Lod::Auto if self.f.stage == ShaderStage::Fragment => {
+                                format!("textureSample(t{k}, s{k}, {c})")
+                            }
                             Lod::Auto | Lod::Zero => format!("textureSampleLevel(t{k}, s{k}, {c}, 0.0f)"),
                             Lod::Level(l) => format!("textureSampleLevel(t{k}, s{k}, {c}, {})", self.as_f32(l)),
                         }
@@ -208,7 +229,11 @@ impl Ctx<'_> {
                             Lod::Level(l) => self.as_i32(l),
                             _ => "0i".into(),
                         };
-                        format!("textureLoad(t{k}, vec2<i32>({}, {}), {level})", self.as_i32(x), self.as_i32(y))
+                        format!(
+                            "textureLoad(t{k}, vec2<i32>({}, {}), {level})",
+                            self.as_i32(x),
+                            self.as_i32(y)
+                        )
                     }
                 }
             }
@@ -266,7 +291,10 @@ fn pixel_interp(sph: &Sph, loc: u32) -> Result<Interpolation, XlateError> {
             PixelImap::ScreenLinear => Interpolation::Linear,
         };
         if mode.is_some_and(|p| p != m) {
-            return Err(XlateError::Unsupported { at: 0, what: "mixed interpolation within one varying" });
+            return Err(XlateError::Unsupported {
+                at: 0,
+                what: "mixed interpolation within one varying",
+            });
         }
         mode = Some(m);
     }
@@ -289,8 +317,11 @@ pub fn emit(f: &Function, sph: &Sph) -> Result<(String, ShaderInterface), XlateE
 /// Explicit guest binding sizes allow bounded indexed constant-buffer access.
 /// The size is in bytes, a multiple of 16, at most the 64 KiB addressable bank.
 /// Callers must bind that many actual guest bytes; the contract supplies no data.
-pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
-    -> Result<(String, ShaderInterface), XlateError> {
+pub fn emit_with_cbuf_sizes(
+    f: &Function,
+    sph: &Sph,
+    sizes: &[(u8, u32)],
+) -> Result<(String, ShaderInterface), XlateError> {
     let mut indexed_banks = std::collections::BTreeSet::new();
     let group = match f.stage {
         ShaderStage::Vertex => 0,
@@ -308,7 +339,10 @@ pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
     for op in &f.values {
         match *op {
             Op::Tex { layer: Some(_), .. } => {
-                return Err(XlateError::Unsupported { at: 0, what: "2D array texture in WGSL" });
+                return Err(XlateError::Unsupported {
+                    at: 0,
+                    what: "2D array texture in WGSL",
+                });
             }
             Op::Tex { op, handle, .. } => *textures.entry(handle).or_insert(false) |= op == TexOp::Sample,
             Op::Cbuf { bank, offset } => {
@@ -316,15 +350,26 @@ pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
                 *e = (*e).max(offset as u32 / 16 + 1);
             }
             Op::CbufIndexed { bank, .. } => {
-                let size = sizes.iter().find(|(b, _)| *b == bank).map(|(_, n)| *n)
-                    .ok_or(XlateError::Unsupported { at: 0,
-                        what: "dynamic constant buffer requires an explicit binding-size contract" })?;
+                let size = sizes
+                    .iter()
+                    .find(|(b, _)| *b == bank)
+                    .map(|(_, n)| *n)
+                    .ok_or(XlateError::Unsupported {
+                        at: 0,
+                        what: "dynamic constant buffer requires an explicit binding-size contract",
+                    })?;
                 if size == 0 || size > 65536 || size % 16 != 0 {
-                    return Err(XlateError::Unsupported { at: 0, what: "invalid constant buffer binding-size contract" });
+                    return Err(XlateError::Unsupported {
+                        at: 0,
+                        what: "invalid constant buffer binding-size contract",
+                    });
                 }
-                cbufs.entry(bank).and_modify(|n| *n = (*n).max(size / 16)).or_insert(size / 16);
+                cbufs
+                    .entry(bank)
+                    .and_modify(|n| *n = (*n).max(size / 16))
+                    .or_insert(size / 16);
                 indexed_banks.insert(bank);
-            },
+            }
             Op::Attr { addr } | Op::Interp { addr, .. } => {
                 if let Some(AttrSlot::Generic { loc, .. }) = attr_slot(addr) {
                     inputs.insert(loc, ());
@@ -341,7 +386,12 @@ pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
         }
     }
     let slots = textures.keys().enumerate().map(|(k, &h)| (h, k as u32)).collect();
-    let ctx = Ctx { f, sph, interp, textures: slots };
+    let ctx = Ctx {
+        f,
+        sph,
+        interp,
+        textures: slots,
+    };
 
     let mut out = String::new();
     let stage_name = match f.stage {
@@ -349,15 +399,27 @@ pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
         ShaderStage::Fragment => "fragment",
     };
     writeln!(out, "// ounce-core SASS -> WGSL, step 1 ({stage_name}).").unwrap();
-    writeln!(out, "// Community-sourced decoding, not a hardware-accurate translation.").unwrap();
+    writeln!(
+        out,
+        "// Community-sourced decoding, not a hardware-accurate translation."
+    )
+    .unwrap();
     for line in &f.listing {
         writeln!(out, "//   {line}").unwrap();
     }
     out.push('\n');
 
     for (&bank, &len) in &cbufs {
-        writeln!(out, "@group({group}) @binding({bank}) var<uniform> cb{bank}: array<vec4<u32>, {len}>;").unwrap();
-        iface.constant_buffers.push(ConstantBuffer { group, binding: bank as u32, size_bytes: len * 16 });
+        writeln!(
+            out,
+            "@group({group}) @binding({bank}) var<uniform> cb{bank}: array<vec4<u32>, {len}>;"
+        )
+        .unwrap();
+        iface.constant_buffers.push(ConstantBuffer {
+            group,
+            binding: bank as u32,
+            size_bytes: len * 16,
+        });
     }
     for bank in indexed_banks {
         let size = cbufs[&bank] * 16;
@@ -368,7 +430,11 @@ pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
         writeln!(out, "    let lo = cb{bank}[i / 4u][i % 4u] >> shift;").unwrap();
         writeln!(out, "    if (shift == 0u) {{ return lo; }}").unwrap();
         writeln!(out, "    let j = i + 1u;").unwrap();
-        writeln!(out, "    return lo | (cb{bank}[j / 4u][j % 4u] << (32u - shift));\n}}\n").unwrap();
+        writeln!(
+            out,
+            "    return lo | (cb{bank}[j / 4u][j % 4u] << (32u - shift));\n}}\n"
+        )
+        .unwrap();
     }
     for (k, (&handle, &sampled)) in textures.iter().enumerate() {
         let binding = 32 + 2 * k as u32;
@@ -376,7 +442,12 @@ pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
         if sampled {
             writeln!(out, "@group({group}) @binding({}) var s{k}: sampler;", binding + 1).unwrap();
         }
-        iface.textures.push(TextureBinding { group, binding, sampler_binding: sampled.then_some(binding + 1), handle });
+        iface.textures.push(TextureBinding {
+            group,
+            binding,
+            sampler_binding: sampled.then_some(binding + 1),
+            handle,
+        });
     }
     if !cbufs.is_empty() || !textures.is_empty() {
         out.push('\n');
@@ -415,8 +486,12 @@ pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
             let has_inputs = !inputs.is_empty() || instance_index || vertex_index;
             if has_inputs {
                 writeln!(out, "struct VsIn {{").unwrap();
-                if instance_index { writeln!(out, "    @builtin(instance_index) instance_index: u32,").unwrap(); }
-                if vertex_index { writeln!(out, "    @builtin(vertex_index) vertex_index: u32,").unwrap(); }
+                if instance_index {
+                    writeln!(out, "    @builtin(instance_index) instance_index: u32,").unwrap();
+                }
+                if vertex_index {
+                    writeln!(out, "    @builtin(vertex_index) vertex_index: u32,").unwrap();
+                }
                 for &loc in inputs.keys() {
                     writeln!(out, "    @location({loc}) a{loc}: vec4<f32>,").unwrap();
                     iface.vertex_inputs.push(loc);
@@ -427,7 +502,10 @@ pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
             writeln!(out, "    @builtin(position) position: vec4<f32>,").unwrap();
             for &loc in outs.keys() {
                 writeln!(out, "    @location({loc}) o{loc}: vec4<f32>,").unwrap();
-                iface.varyings.push(Varying { location: loc, interpolation: Interpolation::Perspective });
+                iface.varyings.push(Varying {
+                    location: loc,
+                    interpolation: Interpolation::Perspective,
+                });
             }
             writeln!(out, "}};\n").unwrap();
             let param = if has_inputs { "vin: VsIn" } else { "" };
@@ -446,16 +524,25 @@ pub fn emit_with_cbuf_sizes(f: &Function, sph: &Sph, sizes: &[(u8, u32)])
         }
         ShaderStage::Fragment => {
             if sph.ps_omap_depth() || sph.ps_omap_sample_mask() {
-                return Err(XlateError::Unsupported { at: 0, what: "depth or sample-mask output" });
+                return Err(XlateError::Unsupported {
+                    at: 0,
+                    what: "depth or sample-mask output",
+                });
             }
             writeln!(out, "struct FsIn {{").unwrap();
             writeln!(out, "    @builtin(position) frag_pos: vec4<f32>,").unwrap();
             for (&loc, &mode) in &ctx.interp {
                 writeln!(out, "    @location({loc}) {} l{loc}: vec4<f32>,", interp_attr(mode)).unwrap();
-                iface.varyings.push(Varying { location: loc, interpolation: mode });
+                iface.varyings.push(Varying {
+                    location: loc,
+                    interpolation: mode,
+                });
             }
             writeln!(out, "}};\n").unwrap();
-            let targets: Vec<(u32, u8)> = (0..8).map(|t| (t, sph.ps_omap_target(t))).filter(|&(_, m)| m != 0).collect();
+            let targets: Vec<(u32, u8)> = (0..8)
+                .map(|t| (t, sph.ps_omap_target(t)))
+                .filter(|&(_, m)| m != 0)
+                .collect();
             if !targets.is_empty() {
                 writeln!(out, "struct FsOut {{").unwrap();
                 for &(t, _) in &targets {

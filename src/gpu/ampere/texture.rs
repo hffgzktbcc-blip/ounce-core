@@ -23,10 +23,10 @@
 //! `MIP_FILTER` (none, point, linear). Implicit LOD (`TEX` without `.LZ`/`.LL`) needs screen-space
 //! derivatives, which the per-pixel CPU path does not have: it reads the base level.
 
+use super::GpuMemoryWriter;
 use super::methods as m;
 use super::render::SurfaceView;
 use super::surface::addr40;
-use super::GpuMemoryWriter;
 use crate::gpu::texfmt::{self, NumType};
 use crate::gpu::tiling;
 
@@ -93,10 +93,20 @@ pub enum TextureType {
 impl TextureType {
     fn from_raw(v: u32) -> Self {
         use TextureType::*;
-        [OneD, TwoD, ThreeD, Cubemap, OneDArray, TwoDArray, OneDBuffer, TwoDNoMipmap, CubemapArray]
-            .get(v as usize)
-            .copied()
-            .unwrap_or(Other(v))
+        [
+            OneD,
+            TwoD,
+            ThreeD,
+            Cubemap,
+            OneDArray,
+            TwoDArray,
+            OneDBuffer,
+            TwoDNoMipmap,
+            CubemapArray,
+        ]
+        .get(v as usize)
+        .copied()
+        .unwrap_or(Other(v))
     }
 }
 
@@ -154,8 +164,13 @@ impl Swizzle {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureLayout {
     /// `GOBS_PER_BLOCK_HEIGHT` / `_DEPTH` as log2 counts.
-    BlockLinear { block_height_log2: u8, block_depth_log2: u8 },
-    Pitch { pitch_bytes: u32 },
+    BlockLinear {
+        block_height_log2: u8,
+        block_depth_log2: u8,
+    },
+    Pitch {
+        pitch_bytes: u32,
+    },
 }
 
 /// One decoded texture header.
@@ -216,10 +231,16 @@ impl TextureHeader {
         // ADDRESS_BITS48TO32 MW(80:64) in both layouts; the low part is BITS31TO9 MW(63:41) for
         // block linear and BITS31TO5 MW(63:37) for pitch.
         let upper = (bits(&w, 80, 64) as u64) << 32;
-        let gpu_va = if pitch { upper | (w[1] & !0x1f) as u64 } else { upper | (w[1] & !0x1ff) as u64 };
+        let gpu_va = if pitch {
+            upper | (w[1] & !0x1f) as u64
+        } else {
+            upper | (w[1] & !0x1ff) as u64
+        };
         let layout = if pitch {
             // PITCH_BITS20TO5 MW(111:96), PITCH_BIT21 MW(145:145).
-            TextureLayout::Pitch { pitch_bytes: (bits(&w, 111, 96) << 5) | (bits(&w, 145, 145) << 21) }
+            TextureLayout::Pitch {
+                pitch_bytes: (bits(&w, 111, 96) << 5) | (bits(&w, 145, 145) << 21),
+            }
         } else {
             TextureLayout::BlockLinear {
                 block_height_log2: bits(&w, 101, 99) as u8,
@@ -268,7 +289,11 @@ impl TextureHeader {
             DataType::Float => Some(NumType::Float),
             DataType::Other(_) => None,
         };
-        texfmt::FormatDesc { components: self.components, types: self.data_types.map(ty), srgb: self.srgb }
+        texfmt::FormatDesc {
+            components: self.components,
+            types: self.data_types.map(ty),
+            srgb: self.srgb,
+        }
     }
 
     /// Levels laid out in memory: `MAX_MIP_LEVEL + 1` for block linear, one for pitch and the
@@ -305,7 +330,10 @@ impl TextureHeader {
             let (lw, lh) = self.level_size(l);
             let (w, h) = (lw.div_ceil(e.block_w), lh.div_ceil(e.block_h));
             let view = match self.layout {
-                TextureLayout::BlockLinear { block_height_log2, block_depth_log2 } => {
+                TextureLayout::BlockLinear {
+                    block_height_log2,
+                    block_depth_log2,
+                } => {
                     // Level 0 keeps the header's block size; smaller levels shrink it to fit.
                     let (bh, bd) = if l == 0 {
                         (block_height_log2, block_depth_log2)
@@ -329,9 +357,10 @@ impl TextureHeader {
     pub(crate) fn layer_stride(&self) -> Option<usize> {
         let chain = self.chain_bytes(self.chain_levels() - 1)?;
         Some(match self.layout {
-            TextureLayout::BlockLinear { block_height_log2, block_depth_log2 } => {
-                chain.next_multiple_of((tiling::GOB_BYTES as usize) << (block_height_log2 + block_depth_log2))
-            }
+            TextureLayout::BlockLinear {
+                block_height_log2,
+                block_depth_log2,
+            } => chain.next_multiple_of((tiling::GOB_BYTES as usize) << (block_height_log2 + block_depth_log2)),
             TextureLayout::Pitch { .. } => chain,
         })
     }
@@ -406,7 +435,14 @@ impl TextureHeader {
     /// Samples with an explicit LOD (`TEX.LL`, `TEX.LZ` = 0): the header and sampler biases are
     /// added, the result is clamped to the sampler's LOD range, then `MIP_FILTER` picks one level
     /// (none: base, point: nearest) or blends two (linear). LOD <= 0 magnifies.
-    pub fn sample_lod(&self, sampler: &Sampler, lod: f32, u: f32, v: f32, mem: &mut dyn GpuMemoryWriter) -> Option<[f32; 4]> {
+    pub fn sample_lod(
+        &self,
+        sampler: &Sampler,
+        lod: f32,
+        u: f32,
+        v: f32,
+        mem: &mut dyn GpuMemoryWriter,
+    ) -> Option<[f32; 4]> {
         let (base, last) = self.level_range()?;
         // Unnormalized coordinates address level 0 texels only (as in Vulkan).
         if !self.normalized_coords {
@@ -417,7 +453,11 @@ impl TextureHeader {
         if lambda.is_nan() {
             lambda = 0.0;
         }
-        let filter = if lambda <= 0.0 { sampler.mag_filter } else { sampler.min_filter };
+        let filter = if lambda <= 0.0 {
+            sampler.mag_filter
+        } else {
+            sampler.min_filter
+        };
         let span = (last - base) as f32;
         match sampler.mip_filter {
             MIP_FILTER_POINT => {
@@ -440,9 +480,21 @@ impl TextureHeader {
         }
     }
 
-    fn sample_level(&self, sampler: &Sampler, level: u32, filter: Filter, u: f32, v: f32, mem: &mut dyn GpuMemoryWriter) -> Option<[f32; 4]> {
+    fn sample_level(
+        &self,
+        sampler: &Sampler,
+        level: u32,
+        filter: Filter,
+        u: f32,
+        v: f32,
+        mem: &mut dyn GpuMemoryWriter,
+    ) -> Option<[f32; 4]> {
         let (lw, lh) = self.level_size(level);
-        let (x, y) = if self.normalized_coords { (u * lw as f32, v * lh as f32) } else { (u, v) };
+        let (x, y) = if self.normalized_coords {
+            (u * lw as f32, v * lh as f32)
+        } else {
+            (u, v)
+        };
         let mut texel = |tx: i64, ty: i64| -> Option<[f32; 4]> {
             match (wrap(sampler.address[0], tx, lw), wrap(sampler.address[1], ty, lh)) {
                 (Some(cx), Some(cy)) => self.fetch_level(level, cx, cy, mem),
@@ -454,7 +506,12 @@ impl TextureHeader {
             let (x0, y0) = (fx.floor(), fy.floor());
             let (ax, ay) = (fx - x0, fy - y0);
             let (x0, y0) = (x0 as i64, y0 as i64);
-            let (c00, c10, c01, c11) = (texel(x0, y0)?, texel(x0 + 1, y0)?, texel(x0, y0 + 1)?, texel(x0 + 1, y0 + 1)?);
+            let (c00, c10, c01, c11) = (
+                texel(x0, y0)?,
+                texel(x0 + 1, y0)?,
+                texel(x0, y0 + 1)?,
+                texel(x0 + 1, y0 + 1)?,
+            );
             Some([0, 1, 2, 3].map(|i| {
                 let top = c00[i] + (c10[i] - c00[i]) * ax;
                 let bottom = c01[i] + (c11[i] - c01[i]) * ax;
@@ -519,8 +576,16 @@ impl Sampler {
         }
         let addr = |v: u32| {
             use AddressMode::*;
-            [Wrap, Mirror, ClampToEdge, Border, ClampOgl, MirrorOnceClampToEdge, MirrorOnceBorder, MirrorOnceClampOgl]
-                [(v & 7) as usize]
+            [
+                Wrap,
+                Mirror,
+                ClampToEdge,
+                Border,
+                ClampOgl,
+                MirrorOnceClampToEdge,
+                MirrorOnceBorder,
+                MirrorOnceClampOgl,
+            ][(v & 7) as usize]
         };
         let filter = |v: u32| match v {
             1 => Filter::Point,
@@ -538,7 +603,12 @@ impl Sampler {
             lod_bias: sext((w[1] >> 12) & 0x1fff, 13) as f32 / 256.0,
             min_lod: (w[2] & 0xfff) as f32 / 256.0,
             max_lod: ((w[2] >> 12) & 0xfff) as f32 / 256.0,
-            border: [f32::from_bits(w[4]), f32::from_bits(w[5]), f32::from_bits(w[6]), f32::from_bits(w[7])],
+            border: [
+                f32::from_bits(w[4]),
+                f32::from_bits(w[5]),
+                f32::from_bits(w[6]),
+                f32::from_bits(w[7]),
+            ],
         }
     }
 }

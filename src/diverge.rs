@@ -96,7 +96,11 @@ fn parse_engines(list: &str) -> Result<Vec<Engine>, String> {
                 out.extend([Engine::Interpreter, Engine::Tier3, Engine::Tier4]);
                 continue;
             }
-            other => return Err(format!("unknown engine '{other}' (expected interpreter, tier3, tier4 or all)")),
+            other => {
+                return Err(format!(
+                    "unknown engine '{other}' (expected interpreter, tier3, tier4 or all)"
+                ));
+            }
         };
         out.push(engine);
     }
@@ -120,7 +124,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 program_args.extend(it.cloned());
                 break;
             }
-            "--budget" => budget = it.next().and_then(|v| v.parse().ok()).filter(|n| *n > 0).ok_or("--budget needs a positive number")?,
+            "--budget" => {
+                budget = it
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .filter(|n| *n > 0)
+                    .ok_or("--budget needs a positive number")?
+            }
             "--engine" => engines = parse_engines(it.next().ok_or("--engine needs a value")?)?,
             "--json" => json = Some(PathBuf::from(it.next().ok_or("--json needs a path")?)),
             other if other.starts_with("--") => return Err(format!("unknown option {other}")),
@@ -146,10 +156,18 @@ fn detect_program_kind(path: &Path, header: &[u8]) -> Result<ProgramKind, String
     if header.get(0x10..0x14) == Some(b"NRO0".as_slice()) {
         return Ok(ProgramKind::Nro);
     }
-    match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("elf") => Ok(ProgramKind::Elf),
         Some("nro") => Ok(ProgramKind::Nro),
-        _ => Err(format!("unrecognised program format for {} (expected .nro or static AArch64 Linux ELF)", path.display())),
+        _ => Err(format!(
+            "unrecognised program format for {} (expected .nro or static AArch64 Linux ELF)",
+            path.display()
+        )),
     }
 }
 
@@ -158,7 +176,9 @@ fn detect_program(path: &Path) -> Result<ProgramKind, String> {
     let mut header = [0u8; 64];
     let mut read = 0;
     while read < header.len() {
-        let n = file.read(&mut header[read..]).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        let n = file
+            .read(&mut header[read..])
+            .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
         if n == 0 {
             break;
         }
@@ -176,11 +196,22 @@ pub(crate) fn build_helper(dir: &Path) -> Result<PathBuf, String> {
     let binary = dir.join("hwcheck");
     std::fs::write(&source, HWCHECK_SOURCE).map_err(|e| format!("could not write the helper source: {e}"))?;
     let status = Command::new("cc")
-        .arg("-O1").arg("-o").arg(&binary).arg(&source)
-        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::inherit())
+        .arg("-O1")
+        .arg("-o")
+        .arg(&binary)
+        .arg(&source)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
         .status()
-        .map_err(|e| format!("no C compiler found to build the replay helper ({e}); install Xcode command line tools or gcc"))?;
-    if status.success() { Ok(binary) } else { Err("the replay helper did not compile".into()) }
+        .map_err(|e| {
+            format!("no C compiler found to build the replay helper ({e}); install Xcode command line tools or gcc")
+        })?;
+    if status.success() {
+        Ok(binary)
+    } else {
+        Err("the replay helper did not compile".into())
+    }
 }
 
 fn hex(value: &Value) -> &str {
@@ -270,31 +301,60 @@ fn engine_fallback(engine: Engine, stdout: &str) -> Option<String> {
 fn trace_engine(options: &Options, dir: &Path, helper: &Path, exe: &Path, engine: Engine) -> Result<Outcome, String> {
     let tag = engine.label().to_ascii_lowercase().replace('-', "");
     let trace = dir.join(format!("trace-{tag}.bin"));
-    println!("Running {} on the {} and recording instructions (budget {} instructions)...", options.program.display(), engine.label(), options.budget);
+    println!(
+        "Running {} on the {} and recording instructions (budget {} instructions)...",
+        options.program.display(),
+        engine.label(),
+        options.budget
+    );
     let mut cmd = Command::new(exe);
-    cmd.arg("run-nro").arg(&options.program).arg("--present=headless").arg(format!("--sdmc={}", dir.join(format!("sdmc-{tag}")).display()));
+    cmd.arg("run-nro")
+        .arg(&options.program)
+        .arg("--present=headless")
+        .arg(format!("--sdmc={}", dir.join(format!("sdmc-{tag}")).display()));
     if let Some(flag) = engine.nro_cpu_flag() {
         cmd.arg(format!("--cpu={flag}"));
     }
     let run = cmd
-        .env("OUNCE_TRACE", &trace).env("OUNCE_NRO_BUDGET", options.budget.to_string())
+        .env("OUNCE_TRACE", &trace)
+        .env("OUNCE_NRO_BUDGET", options.budget.to_string())
         .env_remove("OUNCE_CPU")
-        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .output()
         .map_err(|e| format!("could not start the {} run: {e}", engine.label()))?;
     if let Some(why) = engine_fallback(engine, &String::from_utf8_lossy(&run.stdout)) {
-        return Err(format!("{} could not be traced: {why}. Not counted as checked.", engine.label()));
+        return Err(format!(
+            "{} could not be traced: {why}. Not counted as checked.",
+            engine.label()
+        ));
     }
-    for line in String::from_utf8_lossy(&run.stderr).lines().filter(|l| l.starts_with("[Trace]")) {
+    for line in String::from_utf8_lossy(&run.stderr)
+        .lines()
+        .filter(|l| l.starts_with("[Trace]"))
+    {
         println!("  {line}");
     }
     if !trace.is_file() {
-        return Err(format!("the {} run recorded no trace (exit {:?}); is this a homebrew .nro?", engine.label(), run.status.code()));
+        return Err(format!(
+            "the {} run recorded no trace (exit {:?}); is this a homebrew .nro?",
+            engine.label(),
+            run.status.code()
+        ));
     }
     let report = dir.join(format!("report-{tag}.json"));
-    println!("Replaying the {}'s recorded instructions on this machine's CPU...", engine.label());
-    Command::new(helper).arg(&trace).arg("--json").arg(&report)
-        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+    println!(
+        "Replaying the {}'s recorded instructions on this machine's CPU...",
+        engine.label()
+    );
+    Command::new(helper)
+        .arg(&trace)
+        .arg("--json")
+        .arg(&report)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .map_err(|e| format!("could not run the replay helper: {e}"))?;
     let text = std::fs::read_to_string(&report).map_err(|e| format!("the replay helper wrote no report: {e}"))?;
@@ -317,23 +377,45 @@ fn diverge_nro(options: &Options, dir: &Path, exe: &Path) -> Result<i32, String>
             Ok(o) => outcomes.push(o),
             // The default set tolerates a Tier-4 that this build or host cannot run, and says so; a tier the
             // user asked for by name must run, otherwise the answer would be a silent pass.
-            Err(e) if !explicit && engine == Engine::Tier4 && e.contains("could not be traced") => skipped.push((engine, e)),
+            Err(e) if !explicit && engine == Engine::Tier4 && e.contains("could not be traced") => {
+                skipped.push((engine, e))
+            }
             Err(e) => return Err(e),
         }
     }
     let mut total_mismatched = 0;
     for o in &outcomes {
-        println!("\n{}: {} sampled instructions replayed on this CPU, {} disagreed.", o.engine.label(), o.checked, o.mismatched);
+        println!(
+            "\n{}: {} sampled instructions replayed on this CPU, {} disagreed.",
+            o.engine.label(),
+            o.checked,
+            o.mismatched
+        );
         total_mismatched += o.mismatched;
         if let Some(first) = o.mismatches.first() {
-            println!("First {} disagreement: record {} at pc {}, opcode {}", o.engine.label(), first["record"], hex(&first["pc"]), hex(&first["opcode"]));
+            println!(
+                "First {} disagreement: record {} at pc {}, opcode {}",
+                o.engine.label(),
+                first["record"],
+                hex(&first["pc"]),
+                hex(&first["opcode"])
+            );
             for diff in first["diffs"].as_array().into_iter().flatten() {
-                println!("  {}: this CPU gives {}, {} gives {}", diff["reg"].as_str().unwrap_or("?"), hex(&diff["expected"]), o.engine.label(), hex(&diff["observed"]));
+                println!(
+                    "  {}: this CPU gives {}, {} gives {}",
+                    diff["reg"].as_str().unwrap_or("?"),
+                    hex(&diff["expected"]),
+                    o.engine.label(),
+                    hex(&diff["observed"])
+                );
             }
         }
     }
     for (engine, why) in &skipped {
-        println!("\n{}: NOT CHECKED. {why} Rebuild with `--features native-jit` on a host that can run Tier-4, or pass --engine to require it.", engine.label());
+        println!(
+            "\n{}: NOT CHECKED. {why} Rebuild with `--features native-jit` on a host that can run Tier-4, or pass --engine to require it.",
+            engine.label()
+        );
     }
     let engines: Vec<Value> = outcomes
         .iter()
@@ -349,7 +431,9 @@ fn diverge_nro(options: &Options, dir: &Path, exe: &Path) -> Result<i32, String>
     });
     write_json_report(options.json.as_deref(), &report)?;
     if total_mismatched == 0 {
-        println!("\nNo disagreement in what was checked. This covers sampled register-only instructions on this one run, executed one at a time by each engine; not memory, branches, or multi-instruction block fusion, and it is not a proof.");
+        println!(
+            "\nNo disagreement in what was checked. This covers sampled register-only instructions on this one run, executed one at a time by each engine; not memory, branches, or multi-instruction block fusion, and it is not a proof."
+        );
         Ok(0)
     } else {
         Ok(1)
@@ -384,7 +468,10 @@ struct ElfSummary {
 
 fn parse_run_elf_stderr(stderr: &[u8]) -> ElfSummary {
     let text = String::from_utf8_lossy(stderr);
-    let mut out = ElfSummary { stop_kind: "unknown", ..Default::default() };
+    let mut out = ElfSummary {
+        stop_kind: "unknown",
+        ..Default::default()
+    };
     let mut guest = String::new();
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("[run-elf] engine=") {
@@ -466,7 +553,11 @@ struct ElfReport {
 }
 
 fn byte_diff_preview(expected: &[u8], observed: &[u8]) -> (usize, Value) {
-    let idx = expected.iter().zip(observed.iter()).position(|(a, b)| a != b).unwrap_or_else(|| expected.len().min(observed.len()));
+    let idx = expected
+        .iter()
+        .zip(observed.iter())
+        .position(|(a, b)| a != b)
+        .unwrap_or_else(|| expected.len().min(observed.len()));
     let slice = |bytes: &[u8]| {
         let start = idx.saturating_sub(16);
         let end = (idx + 32).min(bytes.len());
@@ -521,7 +612,11 @@ fn compare_pair(obs: &ObservedRun<'_>, exp: &ObservedRun<'_>) -> Vec<ElfMismatch
             engine: obs.label.into(),
             reference: exp.label.into(),
             kind: "stdout",
-            detail: format!("stdout differs at byte {idx} ({} vs {} bytes)", exp.stdout.len(), obs.stdout.len()),
+            detail: format!(
+                "stdout differs at byte {idx} ({} vs {} bytes)",
+                exp.stdout.len(),
+                obs.stdout.len()
+            ),
             json: serde_json::json!({
                 "engine": obs.label, "reference": exp.label, "kind": "stdout",
                 "first_diff_byte": info["first_diff_byte"],
@@ -536,7 +631,11 @@ fn compare_pair(obs: &ObservedRun<'_>, exp: &ObservedRun<'_>) -> Vec<ElfMismatch
             engine: obs.label.into(),
             reference: exp.label.into(),
             kind: "stderr",
-            detail: format!("guest stderr differs at byte {idx} ({} vs {} bytes)", exp.stderr.len(), obs.stderr.len()),
+            detail: format!(
+                "guest stderr differs at byte {idx} ({} vs {} bytes)",
+                exp.stderr.len(),
+                obs.stderr.len()
+            ),
             json: serde_json::json!({
                 "engine": obs.label, "reference": exp.label, "kind": "stderr",
                 "first_diff_byte": info["first_diff_byte"],
@@ -601,7 +700,9 @@ fn compare_elf_runs(runs: &[ElfRun], native: Option<&NativeRun>) -> ElfReport {
         }
         "host (Linux AArch64)".to_string()
     } else {
-        runs.first().map(|r| r.engine.label().to_string()).unwrap_or_else(|| "none".to_string())
+        runs.first()
+            .map(|r| r.engine.label().to_string())
+            .unwrap_or_else(|| "none".to_string())
     };
 
     ElfReport {
@@ -615,16 +716,26 @@ fn compare_elf_runs(runs: &[ElfRun], native: Option<&NativeRun>) -> ElfReport {
 
 fn run_elf_engine(options: &Options, exe: &Path, engine: Engine) -> Result<ElfRun, String> {
     let args = build_elf_command_args(options, engine);
-    println!("Running {} on {} (--cpu={} --deterministic, budget {} instructions)...", options.program.display(), engine.label(), engine.elf_cpu_flag(), options.budget);
+    println!(
+        "Running {} on {} (--cpu={} --deterministic, budget {} instructions)...",
+        options.program.display(),
+        engine.label(),
+        engine.elf_cpu_flag(),
+        options.budget
+    );
     let out = Command::new(exe)
         .args(&args)
         .env_remove("OUNCE_CPU")
-        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .output()
         .map_err(|e| format!("could not start the {} run: {e}", engine.label()))?;
     let summary = parse_run_elf_stderr(&out.stderr);
     if summary.engine.as_deref() == Some("none") {
-        let diag = summary.diagnosis.unwrap_or_else(|| format!("load failed with status {:?}", out.status.code()));
+        let diag = summary
+            .diagnosis
+            .unwrap_or_else(|| format!("load failed with status {:?}", out.status.code()));
         return Err(diag);
     }
     if let Some(why) = elf_engine_fallback(engine, &summary) {
@@ -657,7 +768,9 @@ fn try_run_native_elf(options: &Options) -> Result<NativeRun, String> {
     };
     let out = Command::new(&exec_path)
         .args(&options.program_args)
-        .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .output()
         .map_err(|e| format!("native Linux host could not execute {}: {e}", options.program.display()))?;
     Ok(NativeRun {
@@ -708,10 +821,17 @@ fn diverge_elf(options: &Options, exe: &Path) -> Result<i32, String> {
         );
     }
     if let Some(nat) = &native {
-        println!("host (Linux AArch64): exit {:?}, stdout {} bytes", nat.exit_code, nat.stdout.len());
+        println!(
+            "host (Linux AArch64): exit {:?}, stdout {} bytes",
+            nat.exit_code,
+            nat.stdout.len()
+        );
     }
     if let Some(first) = report.mismatches.first() {
-        println!("\nFirst disagreement ({} vs {}, {}): {}", first.engine, first.reference, first.kind, first.detail);
+        println!(
+            "\nFirst disagreement ({} vs {}, {}): {}",
+            first.engine, first.reference, first.kind, first.detail
+        );
     }
     for (name, why) in &skipped {
         println!("\n{name}: NOT CHECKED. {why}");
@@ -776,8 +896,14 @@ mod tests {
         assert!(parse(&a(&[])).is_err());
         assert!(parse(&a(&["x.nro", "--budget", "0"])).is_err());
         assert!(parse(&a(&["x.nro", "--nope"])).is_err());
-        assert_eq!(parse(&a(&["x.nro"])).unwrap().engines, [Engine::Interpreter, Engine::Tier3, Engine::Tier4]);
-        assert_eq!(parse(&a(&["x.nro", "--engine", "tier4,3"])).unwrap().engines, [Engine::Tier4, Engine::Tier3]);
+        assert_eq!(
+            parse(&a(&["x.nro"])).unwrap().engines,
+            [Engine::Interpreter, Engine::Tier3, Engine::Tier4]
+        );
+        assert_eq!(
+            parse(&a(&["x.nro", "--engine", "tier4,3"])).unwrap().engines,
+            [Engine::Tier4, Engine::Tier3]
+        );
         assert!(parse(&a(&["x.nro", "--engine", "tier9"])).is_err());
 
         let elf = parse(&a(&["prog.elf", "--engine", "interp,tier3", "--", "--flag", "val"])).unwrap();
@@ -793,28 +919,66 @@ mod tests {
     fn detects_nro_elf_and_unknown_formats() {
         let mut elf = [0u8; 64];
         elf[..4].copy_from_slice(b"\x7fELF");
-        assert_eq!(detect_program_kind(Path::new("bin/no_ext"), &elf).unwrap(), ProgramKind::Elf);
+        assert_eq!(
+            detect_program_kind(Path::new("bin/no_ext"), &elf).unwrap(),
+            ProgramKind::Elf
+        );
 
         let mut nro = [0u8; 32];
         nro[0x10..0x14].copy_from_slice(b"NRO0");
-        assert_eq!(detect_program_kind(Path::new("bin/no_ext"), &nro).unwrap(), ProgramKind::Nro);
+        assert_eq!(
+            detect_program_kind(Path::new("bin/no_ext"), &nro).unwrap(),
+            ProgramKind::Nro
+        );
 
-        assert_eq!(detect_program_kind(Path::new("fallback.ELF"), &[]).unwrap(), ProgramKind::Elf);
-        assert_eq!(detect_program_kind(Path::new("fallback.nro"), &[]).unwrap(), ProgramKind::Nro);
+        assert_eq!(
+            detect_program_kind(Path::new("fallback.ELF"), &[]).unwrap(),
+            ProgramKind::Elf
+        );
+        assert_eq!(
+            detect_program_kind(Path::new("fallback.nro"), &[]).unwrap(),
+            ProgramKind::Nro
+        );
         assert!(detect_program_kind(Path::new("unknown.bin"), b"NSO0").is_err());
     }
 
     #[test]
     fn builds_elf_cli_args_with_deterministic_and_guest_args() {
         let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        let opts = parse(&a(&["tests/linux-elf/bin/args.elf", "--budget", "50000", "--", "one", "--cpu=ignored"])).unwrap();
+        let opts = parse(&a(&[
+            "tests/linux-elf/bin/args.elf",
+            "--budget",
+            "50000",
+            "--",
+            "one",
+            "--cpu=ignored",
+        ]))
+        .unwrap();
         assert_eq!(
             build_elf_command_args(&opts, Engine::Interpreter),
-            ["run-elf", "tests/linux-elf/bin/args.elf", "--cpu=interpreter", "--deterministic", "--max-insns=50000", "--", "one", "--cpu=ignored"]
+            [
+                "run-elf",
+                "tests/linux-elf/bin/args.elf",
+                "--cpu=interpreter",
+                "--deterministic",
+                "--max-insns=50000",
+                "--",
+                "one",
+                "--cpu=ignored"
+            ]
         );
         assert_eq!(
             build_elf_command_args(&opts, Engine::Tier3),
-            ["run-elf", "tests/linux-elf/bin/args.elf", "--cpu=tier3", "--deterministic", "--max-insns=50000", "--", "one", "--cpu=ignored"]
+            [
+                "run-elf",
+                "tests/linux-elf/bin/args.elf",
+                "--cpu=tier3",
+                "--deterministic",
+                "--max-insns=50000",
+                "--",
+                "one",
+                "--cpu=ignored"
+            ]
         );
     }
 
@@ -825,9 +989,15 @@ mod tests {
         assert_eq!((s.instructions, s.syscalls, s.stop_kind), (42, 3, "exited"));
         assert_eq!(s.guest_stderr, b"guest err\n");
         assert!(elf_engine_fallback(Engine::Tier3, &s).is_none());
-        assert!(elf_engine_fallback(Engine::Tier4, &s).unwrap().contains("Tier-3 instead"));
+        assert!(
+            elf_engine_fallback(Engine::Tier4, &s)
+                .unwrap()
+                .contains("Tier-3 instead")
+        );
 
-        let load_err = parse_run_elf_stderr(b"[run-elf] engine=none instructions=0 syscalls=0\nrun-elf: DIAGNOSIS: cannot load ELF: malformed\n");
+        let load_err = parse_run_elf_stderr(
+            b"[run-elf] engine=none instructions=0 syscalls=0\nrun-elf: DIAGNOSIS: cannot load ELF: malformed\n",
+        );
         assert_eq!(load_err.stop_kind, "loader");
         assert!(elf_engine_fallback(Engine::Interpreter, &load_err).is_none());
     }
@@ -858,9 +1028,17 @@ mod tests {
         let diff_out = compare_elf_runs(&[r0.clone(), r1, bad_out], None);
         assert_eq!(diff_out.mismatched, 1);
         assert_eq!(diff_out.mismatches[0].kind, "stdout");
-        assert!(diff_out.mismatches[0].detail.contains("byte 6"), "{}", diff_out.mismatches[0].detail);
+        assert!(
+            diff_out.mismatches[0].detail.contains("byte 6"),
+            "{}",
+            diff_out.mismatches[0].detail
+        );
 
-        let nat = NativeRun { exit_code: Some(42), stdout: b"hello 43\n".to_vec(), stderr: Vec::new() };
+        let nat = NativeRun {
+            exit_code: Some(42),
+            stdout: b"hello 43\n".to_vec(),
+            stderr: Vec::new(),
+        };
         let diff_nat = compare_elf_runs(&[r0], Some(&nat));
         assert_eq!((diff_nat.checked, diff_nat.mismatched), (1, 1));
         assert_eq!(diff_nat.mismatches[0].reference, "host (Linux AArch64)");
@@ -869,7 +1047,11 @@ mod tests {
     #[test]
     fn a_silent_tier_fallback_is_detected() {
         assert_eq!(engine_fallback(Engine::Tier3, "x\n[CPU] Block engine: Tier-3\n"), None);
-        assert!(engine_fallback(Engine::Tier4, "[CPU] Block engine: Tier-3\n").unwrap().contains("Tier-3 instead"));
+        assert!(
+            engine_fallback(Engine::Tier4, "[CPU] Block engine: Tier-3\n")
+                .unwrap()
+                .contains("Tier-3 instead")
+        );
         assert!(engine_fallback(Engine::Tier4, "nothing").is_some());
         assert_eq!(engine_fallback(Engine::Interpreter, "nothing"), None);
     }
