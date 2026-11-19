@@ -1,7 +1,7 @@
 # Paper checks
 
 A paper check takes a published result, rebuilds it as a small ARM64 program, runs it on ounce-core and compares the output
-with the numbers the paper itself prints. It shows that a paper's numbers come out of its method, to the precision each check states: exactly for known-answer vectors,
+with the numbers the paper or its published test data give. It shows that a paper's numbers come out of its method, to the precision each check states: exactly for known-answer vectors,
 within a declared tolerance for a results table, and the same on every run.
 It does **not** show that the paper's wider claims are right: a wrong method reproduces wrong numbers just as exactly.
 
@@ -27,7 +27,8 @@ The output folder (`/tmp/philox-check` here) must not exist yet: `check.sh` refu
 
 `check.sh` needs `clang` and `ld.lld` (or a Rust toolchain, which has `rust-lld`). If a host C compiler is present it also
 tries to build the same source natively and requires identical output, so ounce-core's arithmetic is compared with the machine
-it runs on. If that native build fails, the check prints "not compared" and can still pass, so read the last line: only
+it runs on. For Philox, only the statistical smoke program (`smoke.c`) is compared this way; the known-answer program
+(`philox4x32.c`) is checked against the published vectors only. If that native build fails, the check prints "not compared" and can still pass, so read the last line: only
 "identical to a native ... build" means the comparison happened. Both checks were run on x86-64 and Tier-3 only; Tier-4 and native ARM64 runs are not done yet.
 
 ## How to add one
