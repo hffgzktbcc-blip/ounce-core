@@ -95,7 +95,8 @@ impl IpcManager {
     }
 
     /// A command of a known interface this model does not implement: report it, don't fake success.
-    pub(super) fn reply_unimplemented(&self, iface: &str, cmd: u32, tls: u64, mmu: &mut Memory) -> u64 {
+    pub(super) fn reply_unimplemented(&mut self, iface: &str, cmd: u32, tls: u64, mmu: &mut Memory) -> u64 {
+        self.note_unimplemented(iface, cmd);
         eprintln!("[HIPC] {iface} command {cmd} not implemented");
         self.reply_error(tls, mmu, RESULT_UNKNOWN_COMMAND)
     }
@@ -155,6 +156,26 @@ mod tests {
         assert_eq!(ipc.write_out_buffer(&mut mmu, &[1, 2, 3, 4, 5]), 4);
         assert_eq!(mmu.read_u32(b_addr).unwrap(), 0x0403_0201);
         assert_eq!(mmu.read_u32(c_addr).unwrap(), 0);
+    }
+
+    #[test]
+    fn service_telemetry_tracks_sm_get_service_and_unimplemented_hipc_commands() {
+        let mut h = test_util::Harness::new();
+        assert_eq!(h.ipc.last_service_telemetry(), (None, None));
+
+        let apm = h.get_service("apm");
+        assert_eq!(h.ipc.last_service_telemetry(), (Some("apm".to_string()), Some(1)));
+
+        // Calling an unimplemented command on `apm` records it as the preferred telemetry.
+        let reply = h.call(
+            apm,
+            test_util::Req {
+                cmd: 999,
+                ..Default::default()
+            },
+        );
+        assert_eq!(reply.result, RESULT_UNKNOWN_COMMAND);
+        assert_eq!(h.ipc.last_service_telemetry(), (Some("apm".to_string()), Some(999)));
     }
 }
 

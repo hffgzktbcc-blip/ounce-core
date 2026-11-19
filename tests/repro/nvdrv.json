@@ -1,0 +1,29 @@
+{
+  "schema": "ounce.repro.v1",
+  "name": "nvdrv",
+  "source_repo": "https://github.com/hffgzktbcc-blip/ounce-core",
+  "source_path": "tests/fixtures/nro/nvdrv",
+  "source_commit": "9e813b984930f6280b1a23ac2d3a8ed9d9f5d2e7",
+  "toolchain": {
+    "devkitA64": "r30-1",
+    "gcc": "16.1.0-1",
+    "newlib": "4.6.0.20260123-4",
+    "libnx": "4.12.0-1",
+    "switch_tools": "1.13.1-1"
+  },
+  "fixture_path": "tests/fixtures/nro/nvdrv/nvdrv.nro",
+  "nro_sha256": "356f59517e2f610a42d153564fba85ca52f07b6cfa956ff0f6d2895fcbf63dc8",
+  "run_args": [
+    "--present=headless",
+    "--deterministic"
+  ],
+  "expected": {
+    "stop_kind": "clean_exit",
+    "exit_code": 0,
+    "insns_executed": 533872,
+    "frames_presented": 0,
+    "framebuffer_hash": null,
+    "audio_frames_mixed": 0,
+    "audio_hash": null
+  }
+}

@@ -141,6 +141,8 @@ impl Report {
             opcode: self.detail.opcode,
             fault_addr: self.detail.fault_addr,
             svc_id: self.detail.svc_id,
+            sm_service: None,
+            cmif_cmd_id: None,
             break_result: None,
             insns_executed: self.instructions,
             frames_presented: 0,

@@ -220,6 +220,8 @@ pub(crate) fn run_vm_internal(
     let mut stop_opcode: Option<u32> = None;
     let mut stop_fault_addr: Option<u64> = None;
     let mut stop_svc_id: Option<u32> = None;
+    let mut stop_sm_service: Option<String> = None;
+    let mut stop_cmif_cmd_id: Option<u32> = None;
     let mut stop_break_result: Option<u32> = None;
     let mut stop_message: Option<String> = None;
     let mut last_input_poll = Instant::now();
@@ -489,7 +491,31 @@ pub(crate) fn run_vm_internal(
                         break;
                     }
                     SvcResult::Unhandled(id) => {
-                        println!("\n[VM] Stopping on unhandled SVC #0x{:02X}.", id);
+                        let (sm_service, cmif_cmd_id) = kernel.ipc.last_service_telemetry();
+                        match (&sm_service, cmif_cmd_id) {
+                            (Some(svc), Some(cmd)) => {
+                                println!(
+                                    "\n[VM] Stopping on unhandled SVC #0x{:02X} (last sm service: {}, cmd {}).",
+                                    id, svc, cmd
+                                );
+                                stop_message = Some(format!(
+                                    "unhandled SVC #0x{:02X} (sm service: {}, cmif cmd {})",
+                                    id, svc, cmd
+                                ));
+                            }
+                            (Some(svc), None) => {
+                                println!(
+                                    "\n[VM] Stopping on unhandled SVC #0x{:02X} (last sm service: {}).",
+                                    id, svc
+                                );
+                                stop_message = Some(format!("unhandled SVC #0x{:02X} (sm service: {})", id, svc));
+                            }
+                            _ => {
+                                println!("\n[VM] Stopping on unhandled SVC #0x{:02X}.", id);
+                            }
+                        }
+                        stop_sm_service = sm_service;
+                        stop_cmif_cmd_id = cmif_cmd_id;
                         stop_svc_id = Some(id as u32);
                         stop_pc = Some(cpu.regs.pc);
                         stop = VmStop::UnhandledSvc;
@@ -656,6 +682,8 @@ pub(crate) fn run_vm_internal(
         opcode: stop_opcode,
         fault_addr: stop_fault_addr,
         svc_id: stop_svc_id,
+        sm_service: stop_sm_service,
+        cmif_cmd_id: stop_cmif_cmd_id,
         break_result: stop_break_result,
         insns_executed: instructions_executed as u64,
         frames_presented: frames_presented as u64,
@@ -876,6 +904,8 @@ mod harness_gate_tests {
                 opcode: None,
                 fault_addr: None,
                 svc_id: None,
+                sm_service: None,
+                cmif_cmd_id: None,
                 break_result: None,
                 insns_executed: 0,
                 frames_presented: 0,
