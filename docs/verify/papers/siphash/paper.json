@@ -1,0 +1,32 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "SipHash: a fast short-input PRF",
+    "authors": ["Jean-Philippe Aumasson", "Daniel J. Bernstein"],
+    "venue": "INDOCRYPT 2012",
+    "year": 2012
+  },
+  "program": {
+    "source": "siphash.c",
+    "how": "written for ounce-core from the algorithm in the paper; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "SipHash-2-4 with key 00 01 .. 0f and the 15-byte message 00 01 .. 0e outputs a129ca6149be45e5 (the paper's worked example)",
+    "SipHash-2-4 with the same key and the messages of length 0 to 63 (bytes 00 01 02 ...) outputs the 64 published reference values"
+  ],
+  "expected_values_source": {
+    "what": "the 64 SipHash-2-4 (64-bit) known-answer outputs in vectors.h of the authors' reference repository; the 15-byte value is from the paper",
+    "url": "https://github.com/veorq/SipHash/blob/master/vectors.h",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers; the file's code was not copied"
+  },
+  "negative_control": "built with SIP_C=1 (one compression round instead of two), 0 of 64 vectors match and the program exits 1",
+  "not_checked": [
+    "the paper's security claims (PRF strength, resistance to hash flooding)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "SipHash variants other than 2-4 and the 128-bit output version",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the published SipHash-2-4 outputs for 65 inputs. It does not show the security claims hold."
+}
