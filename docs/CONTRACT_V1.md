@@ -183,9 +183,9 @@ reject them in one pass. **Nothing here is frozen.** The freeze happens only whe
 
 | # | Proposed answer |
 |---|---|
-| 1 | Freeze only `0` (success), `1` (failure) and `2` (usage error) as ounce-core statuses. Statuses `70`-`73` are an implementation detail and may change. The `2`-`5` infrastructure exits are frozen in `ounce-hb`, not here. |
+| 1 | Freeze `0`, `1` and `2` with the meanings the per-command table above gives (for `run` / `run-nro`: success, failure, usage error). `run-elf` is different: it exits with the program's own status, so `2` there is the program's choice, and `diverge` uses `2` for "could not run". Statuses `70`-`73` are an implementation detail and may change. The `2`-`5` infrastructure exits are frozen in `ounce-hb`, not here. |
 | 2 | Freeze `--max-frames`, `--sdmc` and `--report-json` for ounce-core. `--timeout` and `--json` are frozen in `ounce-hb`. |
-| 3 | Freeze `frames_presented`, `audio_frames_mixed`, `audio_hash` and `guest_exit_status` now. Wait on `framebuffer_hash` (it ignores width and height and is `null` outside deterministic mode), `lr` and `sp` (they only mean "at the stop") until real use settles them. |
+| 3 | Freeze `frames_presented`, `audio_frames_mixed`, `audio_hash` and `guest_exit_status` now. Wait on `framebuffer_hash` (it ignores width and height and is `null` only when no frame was presented, or when a `gpu-present` build draws the frame on the host GPU with a window open outside deterministic mode), `lr` and `sp` (they only mean "at the stop") until real use settles them. |
 | 4 | Add a `loader_error` report for `run` / `run-nro` load failures (additive; the process status stays `1`), then freeze. |
 | 5 | Drop `cpu_halted` / `15` from the table: nothing can produce it. |
 | 6 | `ounce-hb` owns `ounce.repro.v1` and freezes it there. ounce-core links to that contract instead of keeping a copy. |
@@ -196,5 +196,5 @@ reject them in one pass. **Nothing here is frozen.** The freeze happens only whe
 
 **Status of the sibling check (2026-11-19).** `ounce-runtime` now writes `lr`, `sp` and `guest_exit_status` (its PR #25) and
 `audio_frames_mixed` and `audio_hash` (its PR #26). Running both tools on the 11 shared programs, every program agrees on
-the five agreed keys and no advisory key is missing from either tool. `insns_executed` still differs: ounce-core counts 15
+the five agreed keys (`schema`, `stop_kind`, `exit_code`, `frames_presented`, `framebuffer_hash`) and no advisory key is missing from either tool. `insns_executed` still differs: ounce-core counts 15
 more on 10 programs and 1 fewer on `threads`. Until that is explained it stays advisory, and nothing here is frozen.
