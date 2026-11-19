@@ -30,6 +30,10 @@ guest exit, synthetic host frame, or agreement between Ounce-Core engines is ins
 
 Outside readers: [REPRODUCE.md](../REPRODUCE.md) is a 10-minute path to rerun the differential results on an ARM64 machine, and [LIMITS.md](../LIMITS.md) lists what each claim does not prove.
 
+## Paper checks
+
+[`papers/`](papers/README.md) reproduces published results (known-answer vectors, error bounds, a results table) as small ARM64 programs run with `run-elf`, with a manifest of what is and is not checked. Two are in the repository.
+
 ## Evidence integrity gate
 
 CI invokes the validator with `--artifact-root` set to the run’s builds directory.
