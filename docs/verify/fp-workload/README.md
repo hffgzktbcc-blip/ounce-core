@@ -10,7 +10,7 @@ stops on one op cannot hide the others.
 Cases: 18 fixed bit patterns per precision (signed zeros, smallest/largest subnormal, smallest normal, max finite,
 infinities, quiet/signalling/negative-payload NaNs, 0.1, 2^63, 2^53) x 8 FPCR values (default, FZ, DN, FZ+DN, RMode
 RP/RM/RZ, FZ+DN+RZ) x all operand pairs (2,592 cases per binary op, 144 per unary op). FPSR is cleared before each case
-and printed masked to `0x9f` (IOC, DZC, OFC, UFC, IXC, IDC, QC). 199 ops (`fp_edge_host --list`):
+and printed masked to `0x9f` (IOC, DZC, OFC, UFC, IXC, IDC, QC). 211 ops (`fp_edge_host --list`):
 
 - the original 48 (#359; the text and tables below that say 47 are the historical wording, the committed `summary.tsv` files
   have 48 rows): scalar arithmetic, min/max(NM), fused multiply-add, square root, rounding, converts to and from integer and
@@ -91,7 +91,7 @@ was fixed; qemu gives Z = 1 for the negative one, so qemu is not a reference for
 the CI runner is the second.
 
 Also checked: the file compiles without warnings for both targets with `-Wall -Wextra` (plus `-Wno-missing-field-initializers`,
-since the older table rows leave the new `vfn` field null on purpose), links, and `fp_edge.elf --list` prints 199 names.
+since the older table rows leave the new `vfn` field null on purpose), links, and `fp_edge.elf --list` prints 211 names.
 
 ## Checks on the harness itself
 
@@ -106,10 +106,12 @@ since the older table rows leave the new `vfn` field null on purpose), links, an
 - The reference is the native instruction; "agree" means identical bits and FPSR for these inputs only, not general
   correctness, and not FP16/FZ16, trap enables, FPCR bits other than FZ/DN/RMode, or the interpreter engine
   (`run-elf` offers Tier-3 and Tier-4 only; interpreter coverage is the fuzzer's).
-- The 151 ops added for #488 have no host run at all yet (see the status section above).
+- The 151 ops added for #488, and the 12 added for #469 (the scalar-SIMD fixed-point converts `scvtf`/`ucvtf`/`fcvtzs`/`fcvtzu`
+  `s2, s0, #7` and `d2, d0, #20`, and the unsigned vector `ucvtf`/`fcvtzu` `.4s`/`.2d` with `#7`/`#20`), have no host run at all yet
+  (see the status section above). On Tier-3 and Tier-4 the 12 new ones run all 144 cases and agree with each other.
 - Vector coverage is the `.4s` and `.2d` arrangements only. Not covered: `.2s` and other 64-bit forms, FP16 (`.4h`/`.8h`,
   `FCVT` to and from half, `FZ16`), by-element forms (`FMLA`/`FMUL`/`FMULX ... v.s[i]`), scalar-SIMD forms of the vector
-  instructions (scalar `FADDP`/`FMAXP`, `FCVTZS d2, d0`, scalar `FMULX`/`FRECPS`/`FRSQRTS`), `FCADD`, `FCMLA`, `FMLAL`, `FRECPX`,
+  instructions (scalar `FADDP`/`FMAXP`, scalar `FMULX`/`FRECPS`/`FRSQRTS`; the scalar fixed-point converts are now covered), `FCADD`, `FCMLA`, `FMLAL`, `FRECPX`,
   `BFCVT`/`BFMLAL`, and scalar `FCVT` between half and single/double.
 - Lane patterns are the rotation described above, not all 18^lanes combinations, so a bug that needs a lane-pair that the
   rotation never produces can be missed. Each fixed-point op uses one `#fbits` value (scalar 16, 5, 33, 7; vector `.4s` 7,
