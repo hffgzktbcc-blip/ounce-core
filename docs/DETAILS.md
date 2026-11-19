@@ -330,7 +330,7 @@ Read [the provenance register](PROVENANCE.md), [sources and legal guardrails](CL
 **What this repository does not contain**
 
 - No firmware, system archives, or code or data derived from them.
-- No encryption keys and no key handling or decryption code. The loader accepts only unencrypted homebrew formats (NRO, NSO, loose directories). The `.gitignore` excludes key files and a CI check fails if key-parsing or container-decryption code is added.
+- No encryption keys and no key handling or decryption code. The homebrew loader accepts only unencrypted homebrew formats (NRO, NSO, loose directories); static Linux ARM64 programs go through the separate `run-elf` ELF loader, which does not check where a program came from. The `.gitignore` excludes key files and a CI check fails if key-parsing or container-decryption code is added.
 - No retail game content, ROMs, or dumps. Tests include generated synthetic programs and checked-in homebrew NRO fixtures. The `hello` fixture build links libnx and uses the devkitA64/newlib toolchain; see [`tests/fixtures/nro/hello/README.md`](../tests/fixtures/nro/hello/README.md). Fixture identities, rebuilds and selected linked inputs are recorded; source/component permission review remains separate; see [`docs/PROVENANCE.md`](PROVENANCE.md) and [`THIRD_PARTY.md`](../THIRD_PARTY.md).
 - Earlier revisions contained firmware-derived and third-party-derived byte sequences; they were removed from the current tree but remain in git history. See *Known Issues*.
 

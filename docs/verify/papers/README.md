@@ -1,7 +1,8 @@
 # Paper checks
 
 A paper check takes a published result, rebuilds it as a small ARM64 program, runs it on ounce-core and compares the output
-with the numbers the paper itself prints. It shows that a paper's numbers come out of its method, exactly and on every run.
+with the numbers the paper itself prints. It shows that a paper's numbers come out of its method, to the precision each check states: exactly for known-answer vectors,
+within a declared tolerance for a results table, and the same on every run.
 It does **not** show that the paper's wider claims are right: a wrong method reproduces wrong numbers just as exactly.
 
 This is one way ounce-core is used beyond homebrew. The programs are plain static Linux ARM64 ELF files, run with
@@ -19,12 +20,15 @@ a `check.sh` that builds and runs it, and the expected output. Run one from the 
 
 ```sh
 cargo build --release --locked
-docs/verify/papers/philox/check.sh <new empty folder> target/release/ounce-core
+docs/verify/papers/philox/check.sh /tmp/philox-check target/release/ounce-core
 ```
 
+The output folder (`/tmp/philox-check` here) must not exist yet: `check.sh` refuses any path that does.
+
 `check.sh` needs `clang` and `ld.lld` (or a Rust toolchain, which has `rust-lld`). If a host C compiler is present it also
-builds the same source natively and requires identical output, so ounce-core's arithmetic is compared with the machine it
-runs on. Both checks were run on x86-64 and Tier-3 only; Tier-4 and native ARM64 runs are not done yet.
+tries to build the same source natively and requires identical output, so ounce-core's arithmetic is compared with the machine
+it runs on. If that native build fails, the check prints "not compared" and can still pass, so read the last line: only
+"identical to a native ... build" means the comparison happened. Both checks were run on x86-64 and Tier-3 only; Tier-4 and native ARM64 runs are not done yet.
 
 ## How to add one
 
