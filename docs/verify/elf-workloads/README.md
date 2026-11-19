@@ -36,13 +36,19 @@ are listed. The `provenance` field of each `differential.json` entry points here
 | `elf-calendar` | `calendar/calendar_cases.c` | civil-date arithmetic, ISO weeks, `timegm`/`gmtime_r`/`strftime` in UTC, month grid | 1900..2200 day-by-day agreement with libc, 688 Friday-13ths per 400 years |
 | `elf-control` | `control/control_cases.c` | setjmp/longjmp, atexit order, varargs, Ackermann, struct by value, bit-fields, switch tables, 48 KiB stack frame | ack(3,5)=253 |
 | `elf-trees` | `trees/trees_cases.c` | AVL insert/delete, binary heap, Dijkstra, union-find, trie | none (ordering and bound checks) |
+| `elf-graphs` | `graphs/graphs_cases.c` | Tarjan SCC, Kahn topological sort, Bellman-Ford (and negative-cycle check), Floyd-Warshall, Kruskal MST vs Prim | none (cross-checked against Prim/FW) |
+| `elf-dp` | `dp/dp_cases.c` | matrix chain multiplication, edit distance (2D vs 1D), LIS O(n log n) vs O(n^2), subset sum, Catalan numbers | CLRS chain = 15125, kitten/sitting = 3, C(10)=16796, C(15)=9694845, C(19)=1767263190 |
+| `elf-geometry` | `geometry/geometry_cases.c` | integer 2D cross products, monotone-chain convex hull, shoelace area, segment intersection, point-in-polygon | none (geometric invariants) |
+| `elf-compress` | `compress/compress_cases.c` | canonical Huffman coding, BWT + Move-To-Front round-trip, Elias gamma coding | none (Kraft sum and round-trip checks) |
+| `elf-automata` | `automata/automata_cases.c` | KMP, Boyer-Moore-Horspool, Aho-Corasick multi-pattern search, DFA lexer | none (cross-checked against brute-force scan) |
+| `elf-linalg` | `linalg/linalg_cases.c` | modular matrix multiply/power over GF(p), Gauss-Jordan inversion over GF(p), Bareiss integer determinant vs Laplace | Fib(50) mod 10^9+7 = 586268941, Vandermonde(1..5) = 288 |
 
 ## What was run, and what it means
 
-Each harness was built with `python3 -m ziglang cc -target aarch64-linux-musl` (Zig 0.17.1) and the host
+The initial 17 harnesses (`elf-strops` through `elf-trees`) were built with `python3 -m ziglang cc -target aarch64-linux-musl` (Zig 0.17.1) and the host
 `cc` (gcc) at `O1`, `O2` and `O3_M1`, and run through `scripts/run_linux_arm64_matrix.py --only ...` on an
 x86-64 Linux host: host stdout equals the `run-elf` stdout byte for byte on `--cpu=tier3` and `--cpu=tier4`,
-and `diverge` reports interpreter, Tier-3 and Tier-4 identical. The host reference is glibc, so a case where
+and `diverge` reports interpreter, Tier-3 and Tier-4 identical. The 6 newer harnesses (`elf-graphs` through `elf-linalg`, bringing the Linux ARM64 ELF matrix to 51 harnesses) were compiled and run locally on Darwin ARM64 with `clang -Wall -Wextra -Werror` (`-O1` and `-O2 -fsanitize=undefined,address`) with `fails=0`, and await the Linux ARM64 CI matrix run on `ubuntu-24.04-arm`. The host reference is glibc on Linux (and Apple libc on Darwin), so a case where
 glibc and musl legitimately differ would show up as a difference; two such cases (musl's `strtoll` end pointer
 after overflow, glibc's `open_memstream` seek-to-end size) were removed from the workloads rather than hidden.
 This is internal differential evidence for a bounded envelope. It is not an independent reproduction, did not

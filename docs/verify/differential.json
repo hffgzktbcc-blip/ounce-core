@@ -983,6 +983,66 @@
     "host_main": "../host_main.c",
     "linux_elf_only": true,
     "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-graphs",
+    "dir": "elf-workloads/graphs",
+    "files": [
+     "graphs_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-dp",
+    "dir": "elf-workloads/dp",
+    "files": [
+     "dp_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-geometry",
+    "dir": "elf-workloads/geometry",
+    "files": [
+     "geometry_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-compress",
+    "dir": "elf-workloads/compress",
+    "files": [
+     "compress_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-automata",
+    "dir": "elf-workloads/automata",
+    "files": [
+     "automata_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
+   },
+   {
+    "name": "elf-linalg",
+    "dir": "elf-workloads/linalg",
+    "files": [
+     "linalg_cases.c"
+    ],
+    "host_main": "../host_main.c",
+    "linux_elf_only": true,
+    "provenance": "original: written for ounce-core, MIT, no third-party source; see docs/verify/elf-workloads/README.md"
    }
  ]
 }
