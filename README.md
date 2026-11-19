@@ -22,13 +22,16 @@ You ship a library built on x86. Will it give the same answer on ARM64? You may 
 
 Ounce-Core runs the program and diffs its output byte for byte against a reference recorded on real ARM64 hardware. When the two differ, it helps you find where they split. It is open source and written in Rust. The [vision](docs/VISION.md) explains the aim.
 
+**It is not only for homebrew.** The same engines run static Linux ARM64 programs (`ounce-core run-elf`): open-source C programs such as LZ4, xxHash, SQLite and Lua, and first-party workloads for sorting, hashing, big-number maths and floating point. Switch-style homebrew (`run-nro`) is one way in, not the only one. You can also use it to check published results: a [paper check](docs/verify/papers/README.md) rebuilds a paper's algorithm as an ARM64 program, runs it and compares the output with the numbers the paper prints.
+
 ## What it has done
 
 - **It found real bugs.** In one week of running unmodified open-source programs (LZ4, xxHash, SQLite, Lua) against an Apple Silicon Mac, it found a prefetch instruction that corrupted registers, two floating-point instructions with the wrong sign (so `sin`, `cos` and `pow` returned wrong values), and many missing vector instructions. All were fixed, each with a test.
-- **It agrees with the hardware on real programs.** LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and heavily starred upstream C libraries (ibireme/yyjson, nothings/stb stb_truetype, facebook/zstd) give byte-identical output across Tier-3, Tier-4, and native execution. **28 Linux ARM64 harnesses across 76 multi-optimization-level matrix rows (`-O1`, `-O2`, `-O3`, `-O3 -mcpu=apple_m1`)** (hosted gate, [v0.9.0 evidence](docs/releases/v0.9.0.md)) pass with zero divergences ([matrix report](docs/verify/linux-elf/HIGH-STAR-OPT-MATRIX.md)). The first-frame corpus of <!-- corpus-headline -->50/50<!-- /corpus-headline --> outside programs passes its pixel checks, on the inputs those checks cover.
+- **It agrees with the hardware on real programs.** LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7, and heavily starred upstream C libraries (ibireme/yyjson, nothings/stb stb_truetype, facebook/zstd) give byte-identical output across Tier-3, Tier-4, and native execution. **28 Linux ARM64 harnesses across 76 multi-optimization-level matrix rows (`-O1`, `-O2`, `-O3`, `-O3 -mcpu=apple_m1`)** (hosted gate, [v0.9.0 evidence](docs/releases/v0.9.0.md); the matrix has since grown to 45 harnesses on `main`) pass with zero divergences ([matrix report](docs/verify/linux-elf/HIGH-STAR-OPT-MATRIX.md)). The first-frame corpus of <!-- corpus-headline -->50/50<!-- /corpus-headline --> outside programs passes its pixel checks, on the inputs those checks cover.
+- **It reproduces published results.** Two [paper checks](docs/verify/papers/README.md) are in the repository: the Philox random number generator (the authors' known-answer vectors) and the Ogita-Rump-Oishi accurate summation paper (its error bounds and its Table 6.2, with the output identical to a native build). They show the numbers match, not that the papers' wider claims hold.
 - **It is safe Rust.** The runtime in `src/` forbids `unsafe` code, and the compiler enforces it. The two small crates that need `unsafe` are kept apart, and CI checks the boundary.
 
-**Limit:** this is a testing tool, not a fast emulator. It does not run arbitrary programs, instruction coverage is partial, and a match is evidence for the inputs tested, not proof ([limits](docs/LIMITS.md)).
+**Limit:** this is a testing tool, not a fast emulator. It runs static Linux ARM64 programs and unencrypted homebrew; running arbitrary or dynamically linked Linux applications is not established. Instruction coverage is partial, and a match is evidence for the inputs tested, not proof ([limits](docs/LIMITS.md)).
 
 ## The Growing Family
 
@@ -77,4 +80,4 @@ The last command runs a small test program and prints `result=0x00000EEE`. The d
 - [Sources, provenance and legal notice](docs/DETAILS.md#responsible-research-and-legal)
 - Came here for the Switch emulator? [What changed and why](https://github.com/hffgzktbcc-blip/ounce-core/discussions/330)
 
-Ounce-Core is not affiliated with Nintendo or NVIDIA. It loads homebrew and synthetic programs only. The only source of this project is this repository, so build from source. Licensed under [MIT](LICENSE).
+Ounce-Core is not affiliated with Nintendo or NVIDIA. It runs open-source, homebrew and synthetic programs you provide; it does not load commercial games, firmware or keys. The only source of this project is this repository, so build from source. Licensed under [MIT](LICENSE).

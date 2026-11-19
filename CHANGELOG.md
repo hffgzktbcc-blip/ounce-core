@@ -4,6 +4,17 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+- Paper checks (#503): `docs/verify/papers/` reproduces published results as freestanding ARM64 programs run with `run-elf`.
+  `philox/` (Salmon et al., SC'11) matches the authors' three known-answer vectors for Philox4x32-10 and passes a statistical
+  smoke battery that fails Philox with 1 to 6 rounds (not the paper's BigCrush claim). `accurate-sum/` (Ogita, Rump, Oishi,
+  2005) checks Theorem 3.4 and Propositions 4.5, 4.10 and 5.5 on 240 generated cases with an exact long-integer reference
+  and reproduces Table 6.2 within 1.0 digit; its output is identical to a native x86-64 build, fused multiply-add included.
+  Each has a manifest listing what is not checked. Run on x86-64 and Tier-3 only; not in CI. A guide for adding more is in
+  `docs/verify/papers/README.md`.
+- Docs: the crate description, README, `docs/DETAILS.md` and the site footer no longer say ounce-core loads only homebrew. It
+  also runs static Linux ARM64 programs and open-source C programs, as the README results already showed. The roadmap line for
+  the action pins (done in #501) was brought up to date.
+
 - Added: `docs/verify/fp-workload/fjcvtzs_gate.sh` builds `fjcvtzs_nzcv.c`, runs it natively and requires `run-elf` on Tier-3 and
   Tier-4 to print the same 62 lines (result, NZCV, FPSR for 31 inputs at FZ 0 and 1), with a negative control; the `fp-workload`
   job runs it on the ARM64 runner, so FJCVTZS is now compared against silicon in CI as well as by hand. Run by hand on an Apple
