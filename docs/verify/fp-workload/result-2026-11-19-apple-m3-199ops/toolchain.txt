@@ -1,0 +1,4 @@
+Apple clang version 21.0.0 (clang-2100.4.1.1)
+Darwin arm64
+Apple M3
+1553f9d1754ca97fa84b64f5ac5911a6b2692482

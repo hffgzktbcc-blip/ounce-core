@@ -37,8 +37,9 @@ reference after it is written; that op must then come out `MISMATCH` on both tie
 
 **CI (#485):** the `fp-workload` job in [`fp-edge.yml`](../../../.github/workflows/fp-edge.yml) runs this on a Linux ARM64
 runner (`ubuntu-24.04-arm`) for pull requests that touch the CPU engines, the ELF runner or this folder. It fails unless
-the 48 ops listed in [`gated-ops.txt`](gated-ops.txt) are `identical` on both tiers (so `UNSUPPORTED` fails too) and no op is `OTHER-FAIL`. The 151 ops added for #488 are printed with their verdicts but do not gate, so a real `MISMATCH` or an engine gap is a recorded result instead of a red job. It runs the negative control with
-`FP_WORKLOAD_TAMPER=fadd.d`. That runner is not Apple silicon, and its runs are the project's own, not independent.
+every op listed in [`gated-ops.txt`](gated-ops.txt) (all 199 ops, expanded from the original 48 once verified on Apple M3)
+is `identical` on both tiers (so `UNSUPPORTED` fails too) and no op is `OTHER-FAIL`. It runs the negative control with
+`FP_WORKLOAD_TAMPER=fadd.d`, and runs [`fjcvtzs_gate.sh`](fjcvtzs_gate.sh) on the same ARM64 runner. That runner is not Apple silicon, and its runs are the project's own, not independent.
 
 Exit status is 1 if any op is `MISMATCH` or `OTHER-FAIL`; `UNSUPPORTED` alone does not fail the run.
 
@@ -57,48 +58,33 @@ rerun. The instruction fuzzer agrees (host vs interpreter, 8 seeds x 400,000 wor
 FRECPE/FRSQRTE 3,200,000 executed, scalar FRECPS/FRSQRTS 3,200,000, scalar FRINT32Z/32X/64Z/64X 1,801,223 (the host
 rejects the other words); 0 value mismatches, 0 flag-only differences, 0 unimplemented.
 
-### #488 extension (151 new ops): status
+### All 199 ops and `fjcvtzs_nzcv` (2026-11-19, base 1553f9d)
 
-**The native comparison for the 151 new ops has not been run.** The session that wrote them had only an x86_64 Linux
-container, and `run.sh` needs an ARM64 host for the reference. So there is no `identical / UNSUPPORTED / MISMATCH` table from
-`run.sh` for these ops yet. It needs one run on the Apple M3 (or an ARM64 Linux host), with the resulting `summary.tsv`
-committed next to the others and this section replaced by it.
+**All 199 ops on Apple M3** ([summary.tsv](result-2026-11-19-apple-m3-199ops/summary.tsv),
+[toolchain.txt](result-2026-11-19-apple-m3-199ops/toolchain.txt),
+[SHA256SUMS](result-2026-11-19-apple-m3-199ops/SHA256SUMS)): `run.sh` ran across all 199 ops (64 two/three-operand ops x
+2,592 cases + 135 one-operand ops x 144 cases = 185,328 total cases) on Apple M3 (`Darwin arm64`, Apple clang 21.0.0)
+against `ounce-core run-elf` on `--cpu=tier3` and `--cpu=tier4`. **All 199 ops are `identical`** to the native Apple M3
+host (every case, value and FPSR) on both Tier-3 and Tier-4: **199 identical, 0 UNSUPPORTED, 0 MISMATCH, 0 OTHER-FAIL.**
+All 199 ops are now listed in [`gated-ops.txt`](gated-ops.txt). (This supersedes the earlier x86_64 `qemu-aarch64`
+informational check in [result-2026-11-18-488-qemu-informational/summary.tsv](result-2026-11-18-488-qemu-informational/summary.tsv),
+which had flagged 5 unimplemented ops fixed in #469.)
 
-What was done instead, and what it is worth (informational, **not** the host reference):
-[result-2026-11-18-488-qemu-informational/summary.tsv](result-2026-11-18-488-qemu-informational/summary.tsv). The same freestanding
-ELF was run under `qemu-aarch64` 8.2.2 (user-mode emulation, a software model of AArch64, not hardware) and under `ounce-core
-run-elf --cpu=tier3` from an x86_64 build of this branch, and the outputs were compared byte for byte per op. Tier-4 was not run
-(it needs an ARM64 host). The summary has 152 rows: the 151 new ops plus `fcvtzs.sw`, an original op that the list order puts
-first in that range. Result: 147 identical to qemu, 5 UNSUPPORTED, 0 differences, 0 OTHER-FAIL. The five unsupported ops stop with
-exit 71 `Unimplemented instruction` on these words: `FJCVTZS` (`fjcvtzs.dw`, `0x1e7e0008`) and the vector fixed-point converts
-`fcvtzs_fx.4s` (`0x4f39fc02`), `fcvtzs_fx.2d` (`0x4f6cfc02`), `scvtf_fx.4s` (`0x4f39e402`), `scvtf_fx.2d` (`0x4f6ce402`). Those
-five are engine gaps this run found, independent of which reference is used. "Identical to qemu" says the engine and qemu's
-softfloat agree on these inputs. It does not say either matches silicon, and a qemu-versus-hardware difference would show up as
-a `MISMATCH` on the real run. Do not read the 147 as host-verified.
-
-**Update (#469): the five engine gaps are filled.** `FJCVTZS` and the vector fixed-point `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU`
-(`.2s`, `.4s`, `.2d`) are now decoded and executed (interpreter, Tier-3; Tier-4 runs them through its interpreter fallback).
-The same five ops were rerun the same informal way (x86_64 `run-elf --cpu=tier3` against `qemu-aarch64` 8.2.2): all five exit 0
-and are byte-identical to qemu over their 144 cases each. That is again a software-model comparison, not hardware: the native
-run of these five ops still has not happened, and a hardware difference would show up as a `MISMATCH` in the `fp-workload` job.
-The workload does not print NZCV, which `FJCVTZS` writes (`0 Z 0 0`). [fjcvtzs_nzcv.c](fjcvtzs_nzcv.c) prints result, NZCV and
-FPSR for 31 doubles at FPCR 0 and FZ. [fjcvtzs_gate.sh](fjcvtzs_gate.sh) builds it like `fp_edge.c`, runs it natively and requires
-`run-elf` on Tier-3 and Tier-4 to print the same 62 lines; the `fp-workload` job runs it on the ARM64 runner (it needs FEAT_JSCVT
-and fails without it), with a negative control. Measured once by hand on an Apple M-series Mac, all 62 rows now agree with the engine
-on Tier-2, Tier-3, Tier-4 and the interpreter. The one earlier difference, a denormal under FZ, is settled by that run: silicon
-gives Z = 0 for either sign (FPSR 0x80), as the `FPToFixedJS` pseudocode reads. The engine had Z = 1 for the positive denormals and
-was fixed; qemu gives Z = 1 for the negative one, so qemu is not a reference for this case. One CPU generation was checked by hand;
-the CI runner is the second.
-
-Also checked: the file compiles without warnings for both targets with `-Wall -Wextra` (plus `-Wno-missing-field-initializers`,
-since the older table rows leave the new `vfn` field null on purpose), links, and `fp_edge.elf --list` prints 211 names.
+**`FJCVTZS` NZCV and FPSR after #499** ([fjcvtzs_nzcv.c](fjcvtzs_nzcv.c), [fjcvtzs_gate.sh](fjcvtzs_gate.sh)): the workload
+does not print NZCV, which `FJCVTZS` writes (`0 Z 0 0`). `fjcvtzs_nzcv.c` prints result, NZCV and FPSR for 31 doubles at
+FPCR `0` and FPCR.FZ (`1 << 24`, 62 rows). Compiled natively on Apple M3 (`clang -O1 -march=armv8.5-a` with a Darwin
+`write`/`main` wrapper for stdout/exit) and as a freestanding static AArch64 Linux ELF run through
+`target/release/ounce-core run-elf` on `--cpu=tier3` and `--cpu=tier4`, **all 62/62 rows agree byte-for-byte** across
+native Apple M3, Tier-3 and Tier-4 (including denormals flushed under FZ giving `Z = 0` and FPSR `0x80` for either sign).
+Running `fjcvtzs_gate.sh` with `FJCVTZS_NATIVE_REF` set to that native output passes on both tiers and flags the tampered
+reference negative control.
 
 ## Checks on the harness itself
 
-- Negative control: a host reference with one result edited is flagged by the comparison (`cmp`), and the reported line is the edited one. CI repeats this on every run (`FP_WORKLOAD_TAMPER`).
+- Negative control: a host reference with one result edited is flagged by the comparison (`cmp`), and the reported line is the edited one (`FP_WORKLOAD_OPS=fadd.d FP_WORKLOAD_TAMPER=fadd.d` produces `MISMATCH` on both tiers on Apple M3, and CI repeats this on every run).
 - The FPCR modes change the observable result, so they are exercised: `fadd.d` of the smallest subnormal and 1.0 gives
   FPSR `0x10` (inexact) at default FPCR and `0x80` (input denormal) under FZ, on host and both tiers.
-- FPSR values seen on the host across all ops: 00, 01, 10, 80, 81, 18, 14, 02 and others.
+- FPSR values seen on the host across all 199 ops (33 distinct byte values masked to `0x9f`): `00 01 02 03 08 09 0a 10 11 12 14 15 18 19 1a 1c 80 81 82 83 88 89 8a 8b 90 91 92 93 94 95 96 97 9c`.
 
 ## Limits (not claimed)
 
@@ -106,9 +92,9 @@ since the older table rows leave the new `vfn` field null on purpose), links, an
 - The reference is the native instruction; "agree" means identical bits and FPSR for these inputs only, not general
   correctness, and not FP16/FZ16, trap enables, FPCR bits other than FZ/DN/RMode, or the interpreter engine
   (`run-elf` offers Tier-3 and Tier-4 only; interpreter coverage is the fuzzer's).
-- The 151 ops added for #488, and the 12 added for #469 (the scalar-SIMD fixed-point converts `scvtf`/`ucvtf`/`fcvtzs`/`fcvtzu`
-  `s2, s0, #7` and `d2, d0, #20`, and the unsigned vector `ucvtf`/`fcvtzu` `.4s`/`.2d` with `#7`/`#20`), have no host run at all yet
-  (see the status section above). On Tier-3 and Tier-4 the 12 new ones run all 144 cases and agree with each other.
+- The 12 ops added after the 199-op Apple M3 run (#469/#507: scalar-SIMD fixed-point `scvtf`/`ucvtf`/`fcvtzs`/`fcvtzu`
+  `s2, s0, #7` and `d2, d0, #20`, and unsigned vector `ucvtf`/`fcvtzu` `.4s`/`.2d` with `#7`/`#20`) run all 144 cases on
+  Tier-3 and Tier-4 and are reported outside the 199 gated ops in [`gated-ops.txt`](gated-ops.txt).
 - Vector coverage is the `.4s` and `.2d` arrangements only. Not covered: `.2s` and other 64-bit forms, FP16 (`.4h`/`.8h`,
   `FCVT` to and from half, `FZ16`), by-element forms (`FMLA`/`FMUL`/`FMULX ... v.s[i]`), scalar-SIMD forms of the vector
   instructions (scalar `FADDP`/`FMAXP`, scalar `FMULX`/`FRECPS`/`FRSQRTS`; the scalar fixed-point converts are now covered), `FCADD`, `FCMLA`, `FMLAL`, `FRECPX`,
@@ -116,6 +102,6 @@ since the older table rows leave the new `vfn` field null on purpose), links, an
 - Lane patterns are the rotation described above, not all 18^lanes combinations, so a bug that needs a lane-pair that the
   rotation never produces can be missed. Each fixed-point op uses one `#fbits` value (scalar 16, 5, 33, 7; vector `.4s` 7,
   `.2d` 20), not every shift amount. `FJCVTZS` also writes NZCV, which only the separate fjcvtzs gate prints.
-- The qemu figures above use a different reference with a different failure profile; they are a smoke check only.
-- Per-op outputs (about 3 MB) are not committed; `SHA256SUMS` in the result folder pins the ELF, the host binary and every
+- The earlier informational `qemu-aarch64` file uses a software model reference with a different failure profile; it is retained for history only.
+- Per-op outputs (about 3 MB) are not committed; `SHA256SUMS` in the result folder pins `fp_edge.c`, the ELF, the host binary and every
   per-op host output so a rerun can be checked against them. Rebuilt binaries are not bit-for-bit pinned across toolchains.
