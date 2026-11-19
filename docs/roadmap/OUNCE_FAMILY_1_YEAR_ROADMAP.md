@@ -105,7 +105,7 @@
    - **#400–#404 (instruction gaps): ALL CLOSED 16 Nov 2026** (#400 `32e69ac`, #401 #449, #402 #444, #403 #450, #404 #451). Do not restart them.
 
 3. **Quarterly Coordinated Releases & Supply-Chain Hardening:**
-   - Cut Q2/Q3 releases (`ounce-core` `v0.10.0` → `v0.11.0`, `ounce-hb` `v0.2.0` → `v0.3.0`, `ounce-runtime` `v0.7.0` → `v0.8.0`) with SPDX/SBOM generation, SHA-pinned GitHub Actions / Dependabot across all 3 repos, and `SHA256SUMS`. **`ounce-core` side partly done (#480, unreleased):** `release.yml` generates an SPDX 2.3 SBOM per target (`scripts/generate_sbom.py`, also on a manual dry run) and `SHA256SUMS` covers it; every workflow `uses:` is pinned to a commit SHA except six listed in `scripts/check_action_pins.py` (their SHAs were not available), which a test keeps from growing. Not done: the six pins, a hosted release dry run, and the other two repositories.
+   - Cut Q2/Q3 releases (`ounce-core` `v0.10.0` → `v0.11.0`, `ounce-hb` `v0.2.0` → `v0.3.0`, `ounce-runtime` `v0.7.0` → `v0.8.0`) with SPDX/SBOM generation, SHA-pinned GitHub Actions / Dependabot across all 3 repos, and `SHA256SUMS`. **`ounce-core` side partly done (#480, unreleased):** `release.yml` generates an SPDX 2.3 SBOM per target (`scripts/generate_sbom.py`, also on a manual dry run) and `SHA256SUMS` covers it; every workflow `uses:` is pinned to a commit SHA (the six former exceptions were pinned in #501, and the pending list in `scripts/check_action_pins.py` is empty). A hosted release dry run passed on #501's branch. Not done: the other two repositories.
 
 4. **DeckStream SteamOS Gaming Mode Verification & Mock CI:**
    - Verify end-to-end `.nro` launch over WebDAV/rclone in SteamOS Gaming Mode via `ounce-runtime --present=gpu` (Steam Deck `gilrs` gamepad input, `MESA_SHADER_CACHE_DIR`, `DECKSTREAM_FPS_CAP`), and profile cold/warm RomFS range reads in `startup_profile.py`.
@@ -122,7 +122,7 @@
    - Lock `deckstream`'s `.nro` launcher and `doctor.py` integration against the frozen `ounce.run.v1` schema, exit codes, and `--present=gpu` / `--json` flags.
    - Guarantee C/C++ `devkitA64` users can install and run `ounce-hb` + `ounce-core` from prebuilt archives/Homebrew with zero Rust toolchain required.
 
-2. **2027 Independent Reproduction & Benchmark Dossier:**
+2. **2027 Independent Reproduction & Benchmark Dossier:** (first two paper checks are in `docs/verify/papers/`, #503: Philox known-answer vectors and the Ogita-Rump-Oishi accurate-sum bounds and Table 6.2; both Tier-3 on x86-64 only)
    - Publish a reproducible report covering Apple Silicon hardware-replay fuzzer results, `ubuntu-24.04-arm` multi-opt ELF matrix results, and headless graphical + audio + `libnx` parity results (with nominative-use disclaimer; opt-in external verification only, never unsolicited PRs).
 
 3. **Provenance & Security Closure Gate for `v1.0.0`:**

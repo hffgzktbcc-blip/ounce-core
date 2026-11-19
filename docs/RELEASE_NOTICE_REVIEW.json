@@ -1362,7 +1362,7 @@
     }
   ],
   "serialization": "Aggregate normalizes line endings and trailing whitespace. Per-source hashes identify original notice bytes.",
-  "cargo_manifest_sha256": "19abecd6d4db9c97735c8e7e064e346f8a8a8c753ca02fc6f040432f2c748518",
+  "cargo_manifest_sha256": "3d6d440cb878f3d9580dbf916db6d280204397551286426b8045cf305634fe55",
   "notice_supplements": [
     {
       "path": "licenses/objc2-MIT.txt",

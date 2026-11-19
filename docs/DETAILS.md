@@ -315,7 +315,7 @@ ounce-core is **not a clean-room project**. Besides public specifications (Arm A
 > [!IMPORTANT]
 > Ounce-Core is **unaffiliated** with Nintendo, NVIDIA or their affiliates. Nintendo Switch, Switch 2, NVIDIA, Tegra, Horizon and related names are used descriptively and remain the respective owners' trademarks. This project runs open-source homebrew; it is not a commercial-game product.
 
-- **Homebrew and synthetic material only.** The runtime loads unencrypted homebrew formats; it has no key handling and no encrypted-container support.
+- **Open-source, homebrew and synthetic material only.** The runtime loads unencrypted homebrew formats and static Linux ARM64 programs; it has no key handling and no encrypted-container support.
 - **Distribution scope:** runtime archives exclude NRO fixtures and SDK files; the standalone Python toolkit uses its own reviewed source snapshot. [Current licensing disposition](LICENSE_DISPOSITION.md) records the exact notice, fixture and historical boundaries.
 - **Test fixtures:** all eleven committed NROs have byte-identical rebuild evidence and registered inputs. Source/component permission review is separate from build identity.
 - **Licensing:** project source is [MIT-licensed](../LICENSE), with [third-party notices](../THIRD_PARTY.md). This does not certify the status of every historical or binary component.
