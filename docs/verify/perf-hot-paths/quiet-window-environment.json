@@ -30,7 +30,7 @@
     "--executable",
     "/tmp/ounce-perf-quiet-20261111/candidate-tests",
     "--builds",
-    "/Users/nathanaelgovender/Projects/ounce-corpus-run/corpus/builds",
+    "/Users/<user>/Projects/ounce-corpus-run/corpus/builds",
     "--output",
     "/tmp/ounce-perf-quiet-20261111/measurements",
     "--only",
