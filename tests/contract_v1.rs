@@ -102,6 +102,26 @@ const PRESENT_LOOP: [u32; 6] = [
     SVC_PRESENT,
     0x17FF_FFFE,
 ];
+/// Connects to `sm:`, calls `GetService("apm")` (CMIF cmd 1), then triggers an unhandled `svc #0xff` so exit-14
+/// reports `sm_service: "apm"` and `cmif_cmd_id: 1` (#475).
+const SM_THEN_BAD_SVC: [u32; 16] = [
+    0xD280_1781, // movz x1, #0xbc  ("sm:\0" at 0x8000_00bc)
+    0xF2B0_0001, // movk x1, #0x8000, lsl #16
+    0xD400_03E1, // svc #0x1f (svcConnectToNamedPort) -> x1 = sm handle
+    0xD53B_D069, // mrs x9, tpidrro_el0 (TLS)
+    0x5288_CA6A, // movz w10, #0x4653 ("SF")
+    0x72A9_286A, // movk w10, #0x4943, lsl #16 ("CI")
+    0xB900_112A, // str w10, [x9, #0x10] (CMIF_IN_MAGIC)
+    0x5280_002A, // movz w10, #1 (GetService)
+    0xB900_192A, // str w10, [x9, #0x18] (cmd_id)
+    0x528E_0C2A, // movz w10, #0x7061 ("ap")
+    0x72A0_0DAA, // movk w10, #0x006d, lsl #16 ("m\0")
+    0xB900_212A, // str w10, [x9, #0x20] ("apm\0")
+    0xAA01_03E0, // mov x0, x1
+    0xD400_0421, // svc #0x21 (svcSendSyncRequest)
+    SVC_UNKNOWN, // svc #0xff (unhandled_svc -> exit 14)
+    0x003A_6D73, // "sm:\0"
+];
 
 // ---------------------------------------------------------------------------------------------------------------
 // Running the binary
@@ -244,6 +264,12 @@ fn cases() -> &'static [Case] {
             1,
             ("unhandled_svc", 14),
             run_nro_bytes("badsvc", &[SVC_UNKNOWN], &[], &[]),
+        );
+        add(
+            "run-nro unknown svc after sm",
+            1,
+            ("unhandled_svc", 14),
+            run_nro_bytes("smbadsvc", &SM_THEN_BAD_SVC, &[], &[]),
         );
         add(
             "run-nro budget",
@@ -472,6 +498,21 @@ fn run_v1_stop_details_follow_the_stop() {
     assert_eq!(by_name("run-nro svcBreak with result")["break_result"], 0x2A);
     assert!(by_name("run-nro svcBreak")["break_result"].is_null());
     assert!(by_name("run-nro unknown svc")["pc"].is_number());
+    assert!(by_name("run-nro unknown svc")["sm_service"].is_null());
+    assert!(by_name("run-nro unknown svc")["cmif_cmd_id"].is_null());
+    let sm_bad = by_name("run-nro unknown svc after sm");
+    assert_eq!(sm_bad["svc_id"], 0xFF);
+    assert_eq!(sm_bad["sm_service"], "apm");
+    assert_eq!(sm_bad["cmif_cmd_id"], 1);
+    assert!(
+        sm_bad["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("apm") && m.contains("cmif cmd 1")),
+        "expected sm service and cmd in stop message, got {:?}",
+        sm_bad["message"]
+    );
+    assert!(by_name("run-nro clean exit")["sm_service"].is_null());
+    assert!(by_name("run-nro clean exit")["cmif_cmd_id"].is_null());
     assert_eq!(by_name("run-elf exit 42")["guest_exit_status"], 42);
     assert_eq!(
         by_name("run-elf exit 42")["exit_code"],

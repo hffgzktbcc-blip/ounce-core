@@ -129,6 +129,67 @@ pub enum ServiceType {
     AudioRendererEvent,
 }
 
+impl ServiceType {
+    /// Human-readable Horizon service or interface name for diagnostics (`ounce.run.v1` #475).
+    pub fn canonical_name(&self) -> String {
+        match self {
+            ServiceType::Sm => "sm:".to_string(),
+            ServiceType::Bsd => "bsd:u".to_string(),
+            ServiceType::Nifm => "nifm:u".to_string(),
+            ServiceType::Ts => "ts".to_string(),
+            ServiceType::TsSession => "ts::ISession".to_string(),
+            ServiceType::NifmGeneral => "nifm::IGeneralService".to_string(),
+            ServiceType::Nvdrv => "nvdrv".to_string(),
+            ServiceType::Vi => "vi:u".to_string(),
+            ServiceType::ApplicationDisplayService => "IApplicationDisplayService".to_string(),
+            ServiceType::Hid => "hid".to_string(),
+            ServiceType::AppletResource => "IAppletResource".to_string(),
+            ServiceType::FspSrv => "fsp-srv".to_string(),
+            ServiceType::Storage => "IStorage".to_string(),
+            ServiceType::FileSystem(_) => "IFileSystem".to_string(),
+            ServiceType::Directory { .. } => "IDirectory".to_string(),
+            ServiceType::File(_) => "IFile".to_string(),
+            ServiceType::AudOut => "audout:u".to_string(),
+            ServiceType::AudIn => "audin:u".to_string(),
+            ServiceType::AudioDevice(_) => "IAudioDevice".to_string(),
+            ServiceType::AudioDeviceEvent(_) => "IAudioDeviceEvent".to_string(),
+            ServiceType::Account => "acc:u0".to_string(),
+            ServiceType::AccountProfile => "IProfile".to_string(),
+            ServiceType::AccountLaunchStorage => "IStorage".to_string(),
+            ServiceType::AccountLaunchAccessor => "IStorageAccessor".to_string(),
+            ServiceType::AudRen => "audren:u".to_string(),
+            ServiceType::AppletOE => "appletOE".to_string(),
+            ServiceType::ApplicationProxy => "IApplicationProxy".to_string(),
+            ServiceType::CommonStateGetter => "ICommonStateGetter".to_string(),
+            ServiceType::SelfController => "ISelfController".to_string(),
+            ServiceType::ApplicationFunctions => "IApplicationFunctions".to_string(),
+            ServiceType::SetSys => "set:sys".to_string(),
+            ServiceType::Ro => "ro:1".to_string(),
+            ServiceType::Pl => "pl:u".to_string(),
+            ServiceType::Time => "time:u".to_string(),
+            ServiceType::SystemClock => "ISystemClock".to_string(),
+            ServiceType::SteadyClock => "ISteadyClock".to_string(),
+            ServiceType::Prepo => "prepo:u".to_string(),
+            ServiceType::Bcat => "bcat:u".to_string(),
+            ServiceType::AppletAE => "appletAE".to_string(),
+            ServiceType::Applet(iface) => format!("{iface:?}"),
+            ServiceType::Set => "set".to_string(),
+            ServiceType::TimeZoneService => "ITimeZoneService".to_string(),
+            ServiceType::Psm => "psm".to_string(),
+            ServiceType::PsmSession => "IPsmSession".to_string(),
+            ServiceType::Apm => "apm".to_string(),
+            ServiceType::ApmSession => "apm::ISession".to_string(),
+            ServiceType::ServiceEvent(name) => (*name).to_string(),
+            ServiceType::Generic(name) => name.clone(),
+            ServiceType::SharedMemory { .. } => "SharedMemory".to_string(),
+            ServiceType::TransferMemory { .. } => "TransferMemory".to_string(),
+            ServiceType::NvEvent { .. } => "NvEvent".to_string(),
+            ServiceType::AudioRenderer => "IAudioRenderer".to_string(),
+            ServiceType::AudioRendererEvent => "IAudioRendererEvent".to_string(),
+        }
+    }
+}
+
 /// Size of the HID shared memory block libnx maps (`0x40000`).
 pub const HID_SHARED_MEMORY_SIZE: u64 = 0x40000;
 /// `sf::cmif::ResultUnknownCommandId` (module 10, description 221): the reply for commands of services
@@ -177,6 +238,14 @@ pub struct IpcManager {
     pub nvdrv: super::nvdrv::NvDrv,
     /// IPC commands answered with "not implemented", in first-seen order (deduped, capped at 64).
     pub unimplemented: Vec<(String, u32)>,
+    /// Exact `sm:` service name associated with each handle opened via `GetService` / `RegisterService`.
+    handle_service_names: HashMap<u32, String>,
+    /// Most recent `sm:` service name requested or dispatched via CMIF (#475).
+    pub last_sm_service: Option<String>,
+    /// Most recent CMIF command ID dispatched (#475).
+    pub last_cmif_cmd_id: Option<u32>,
+    /// Most recent unimplemented HIPC/CMIF `(service, cmd_id)` (#475).
+    last_unimplemented: Option<(String, u32)>,
     /// HID shared memory in libnx's layout; the host's controller input goes here.
     pub hid: super::hid::HidSharedMemory,
     /// The `IAudioRenderer` opened through `audren:u`, if any.
@@ -205,12 +274,23 @@ impl Default for IpcManager {
 }
 
 impl IpcManager {
-    /// Records a command answered with "not implemented" (for the corpus flight recorder).
+    /// Records a command answered with "not implemented" (for the corpus flight recorder and exit-14 telemetry).
     pub fn note_unimplemented(&mut self, service: &str, cmd_id: u32) {
         let entry = (service.to_string(), cmd_id);
+        self.last_unimplemented = Some(entry.clone());
         if self.unimplemented.len() < 64 && !self.unimplemented.contains(&entry) {
             self.unimplemented.push(entry);
         }
+    }
+
+    /// Returns `(sm_service, cmif_cmd_id)` for exit-14 (`unhandled_svc`) diagnostics (#475).
+    /// Prefers the most recent unimplemented HIPC/CMIF command if one occurred; otherwise returns
+    /// the last requested `sm` service name and CMIF command ID.
+    pub fn last_service_telemetry(&self) -> (Option<String>, Option<u32>) {
+        if let Some((ref svc, cmd)) = self.last_unimplemented {
+            return (Some(svc.clone()), Some(cmd));
+        }
+        (self.last_sm_service.clone(), self.last_cmif_cmd_id)
     }
 
     pub fn new() -> Self {
@@ -222,6 +302,10 @@ impl IpcManager {
             domain_reply: false,
             nvdrv: super::nvdrv::NvDrv::new(),
             unimplemented: Vec::new(),
+            handle_service_names: HashMap::new(),
+            last_sm_service: None,
+            last_cmif_cmd_id: None,
+            last_unimplemented: None,
             hid: Default::default(),
             audio_renderer: None,
             applet: Default::default(),
@@ -248,6 +332,7 @@ impl IpcManager {
 
     pub fn close_handle(&mut self, handle: u32) -> bool {
         let removed = self.handles.remove(&handle);
+        self.handle_service_names.remove(&handle);
         self.applet.storages.remove(&handle);
         self.applet.storage_accessors.remove(&handle);
         self.applet.storage_accessors.retain(|_, storage| *storage != handle);
@@ -293,7 +378,10 @@ impl IpcManager {
                 let _ = mmu.read_bytes(tls_addr + 12, &mut name_bytes);
                 let len = name_bytes.iter().position(|&b| b == 0).unwrap_or(8);
                 let srv_name = String::from_utf8_lossy(&name_bytes[..len]).to_string();
-                let port_handle = self.allocate_handle(ServiceType::Generic(srv_name));
+                self.last_sm_service = Some(srv_name.clone());
+                self.last_cmif_cmd_id = Some(0x12);
+                let port_handle = self.allocate_handle(ServiceType::Generic(srv_name.clone()));
+                self.handle_service_names.insert(port_handle, srv_name);
 
                 let _ = mmu.write_u32(tls_addr, 0x12);
                 let _ = mmu.write_u32(tls_addr + 4, 0x8000_0001);
@@ -353,6 +441,15 @@ impl IpcManager {
 
         let cmd_id = mmu.read_u32(cmif_base + 8).unwrap_or(0);
         let args_base = cmif_base + 0x10;
+        self.last_cmif_cmd_id = Some(cmd_id);
+        if !(service == ServiceType::Sm && cmd_id == 1) {
+            let resolved = self
+                .handle_service_names
+                .get(&object_handle)
+                .cloned()
+                .unwrap_or_else(|| service.canonical_name());
+            self.last_sm_service = Some(resolved);
+        }
         // Explicit diagnostic opt-in; cap output even for a looping guest.
         if self.total_ipc_requests <= 100000 && std::env::var_os("OUNCE_TRACE_IPC").is_some() {
             eprintln!(
@@ -427,6 +524,8 @@ impl IpcManager {
                     };
 
                     let srv_handle = self.allocate_handle(target_service);
+                    self.last_sm_service = Some(srv_name.clone());
+                    self.handle_service_names.insert(srv_handle, srv_name);
                     self.write_cmif_response(tls_addr, mmu, 0, &[srv_handle], Some(srv_handle));
                     0
                 }

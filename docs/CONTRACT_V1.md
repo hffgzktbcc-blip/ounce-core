@@ -40,7 +40,7 @@ Once a contract item is frozen:
 Schema doc: [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md). Written by `run`, `run-nro` and `run-elf` with
 `--report-json=<path>`. Pinned by `run_v1_keys_and_json_types_are_pinned` against
 [`tests/contract/run-v1-keys.json`](../tests/contract/run-v1-keys.json): the key set is exact, each value has one of
-the listed types, and each listed type occurs in at least one of 16 representative runs (10 `run-nro`, 6 `run-elf`).
+the listed types, and each listed type occurs in at least one of 17 representative runs (11 `run-nro`, 6 `run-elf`).
 
 | Key | JSON type | First released |
 |---|---|---|
@@ -51,11 +51,13 @@ the listed types, and each listed type occurs in at least one of 16 representati
 | `frames_presented` | number | **unreleased** (#460) |
 | `framebuffer_hash` | string `fnv1a64:<16 hex>` or null | **unreleased** (#460, #486) |
 | `lr`, `sp` | number or null (set exactly when `pc` is) | **unreleased** (#475) |
+| `sm_service` | string or null (`unhandled_svc` / exit 14 after `sm:` / HIPC activity) | **unreleased** (#475) |
+| `cmif_cmd_id` | number or null (`unhandled_svc` / exit 14 after CMIF dispatch) | **unreleased** (#475) |
 | `audio_frames_mixed` | number | **unreleased** (#478) |
 | `audio_hash` | string `fnv1a64:<16 hex>` or null | **unreleased** (#478) |
 | `guest_exit_status` | number or null (`run-elf` clean exit only) | **unreleased** (#473) |
 
-v0.9.0 (`4b63f7a`) had 14 keys; the 7 marked unreleased were added on `main` afterwards and have not shipped, so the
+v0.9.0 (`4b63f7a`) had 14 keys; the 9 marked unreleased were added on `main` afterwards and have not shipped, so the
 owner can still change their names or types before freezing. `tier` is `interpreter`, `tier3`, `tier4` or `nce`
 (`CpuTier::report_label`); only `interpreter` and `tier3` are exercised by the tests, because `tier4` and `nce` need
 cargo features. Details pinned beyond the key set (`run_v1_stop_details_follow_the_stop`): a fault's `fault_addr`
