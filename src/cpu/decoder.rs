@@ -2176,6 +2176,33 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
+    // 30c. AdvSIMD scalar shift by immediate, float <-> fixed-point: 01 U 111110 immh immb opcode 1 Rn Rd, opcode 11100 is
+    //      SCVTF (U = 0) / UCVTF (U = 1), 11111 is FCVTZS (U = 0) / FCVTZU (U = 1). immh = 01xx is a single (Sd, Sn) and
+    //      1xxx a double (Dd, Dn), fbits = 2 * esize - immh:immb. immh = 0001 is reserved and 001x is half precision,
+    //      which is not decoded.
+    if (raw & 0xDF80_0400) == 0x5F00_0400 && matches!((raw >> 11) & 0x1F, 0b11100 | 0b11111) {
+        let immh = (raw >> 19) & 0xF;
+        let imm = (raw >> 16) & 0x7F; // immh:immb
+        let esize = match immh {
+            0b0100..=0b0111 => 32u32,
+            0b1000..=0b1111 => 64,
+            _ => return None,
+        };
+        let op = match ((raw >> 11) & 0x1F, u) {
+            (0b11100, false) => SimdOp2::Scvtf,
+            (0b11100, true) => SimdOp2::Ucvtf,
+            (_, false) => SimdOp2::Fcvtzs,
+            (_, true) => SimdOp2::Fcvtzu,
+        };
+        return Some(Instruction::ScalarFixedConv {
+            rd,
+            rn,
+            op,
+            esize: esize as u8,
+            fbits: (2 * esize - imm) as u8,
+        });
+    }
+
     // 30a. AdvSIMD scalar shift by immediate (D registers only): 01 U 111110 1xxx immb opcode 1 Rn Rd
     //      (SSHR/USHR/SHL Dd, Dn, #shift). One 64-bit lane, the rest of Vd zeroed.
     if (raw & 0xDF80_0400) == 0x5F00_0400 && (raw >> 19) & 0xF >= 8 {

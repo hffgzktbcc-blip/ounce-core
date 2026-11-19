@@ -4,6 +4,10 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+- Added: scalar-SIMD fixed-point converts `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU` `Sd, Sn, #fbits` and `Dd, Dn, #fbits` (#469). They share the
+  vector arithmetic (one lane converted, the rest of Vd zeroed), run in the interpreter (Tier-3 and Tier-4 fall back to it), and
+  are covered by decode, behaviour and engine-agreement tests. The FP workload gains 12 ops for them and for the unsigned vector
+  forms; they are reported, not gated, and have not been compared with hardware yet. Half-precision forms are still undecoded.
 - Added: `docs/verify/fp-workload/fjcvtzs_gate.sh` builds `fjcvtzs_nzcv.c`, runs it natively and requires `run-elf` on Tier-3 and
   Tier-4 to print the same 62 lines (result, NZCV, FPSR for 31 inputs at FZ 0 and 1), with a negative control; the `fp-workload`
   job runs it on the ARM64 runner, so FJCVTZS is now compared against silicon in CI as well as by hand. Run by hand on an Apple

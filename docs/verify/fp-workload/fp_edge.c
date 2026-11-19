@@ -212,6 +212,12 @@ VU(scvtf) VU(ucvtf)
 V1(fcmeq0_4s, "fcmeq v2.4s, v0.4s, #0.0") V1(fcmeq0_2d, "fcmeq v2.2d, v0.2d, #0.0")
 V1(fcvtzs_fx_4s, "fcvtzs v2.4s, v0.4s, #7") V1(fcvtzs_fx_2d, "fcvtzs v2.2d, v0.2d, #20")
 V1(scvtf_fx_4s, "scvtf v2.4s, v0.4s, #7") V1(scvtf_fx_2d, "scvtf v2.2d, v0.2d, #20")
+V1(ucvtf_fx_4s, "ucvtf v2.4s, v0.4s, #7") V1(ucvtf_fx_2d, "ucvtf v2.2d, v0.2d, #20")
+V1(fcvtzu_fx_4s, "fcvtzu v2.4s, v0.4s, #7") V1(fcvtzu_fx_2d, "fcvtzu v2.2d, v0.2d, #20")
+/* scalar-SIMD fixed-point converts (#469): one lane of v0, the rest of v2 zeroed */
+V1(scvtf_fx_ss, "scvtf s2, s0, #7") V1(scvtf_fx_sd, "scvtf d2, d0, #20") V1(ucvtf_fx_ss, "ucvtf s2, s0, #7")
+V1(ucvtf_fx_sd, "ucvtf d2, d0, #20") V1(fcvtzs_fx_ss, "fcvtzs s2, s0, #7") V1(fcvtzs_fx_sd, "fcvtzs d2, d0, #20")
+V1(fcvtzu_fx_ss, "fcvtzu s2, s0, #7") V1(fcvtzu_fx_sd, "fcvtzu d2, d0, #20")
 /* narrowing / widening converts: fcvtn/fcvtxn read two doubles, fcvtl two singles (low half; fcvtl2 the high half) */
 V1(fcvtn_2d, "fcvtn v2.2s, v0.2d") V1(fcvtn2_2d, "movi v2.2d, #0\n fcvtn2 v2.4s, v0.2d")
 V1(fcvtxn_2d, "fcvtxn v2.2s, v0.2d") V1(fcvtxn2_2d, "movi v2.2d, #0\n fcvtxn2 v2.4s, v0.2d")
@@ -288,6 +294,10 @@ static const struct op OPS[] = {
     {"ucvtf.2d", 0, 1, 0, ucvtf_2d}, {"fcmeq0.4s", 0, 1, 1, fcmeq0_4s}, {"fcmeq0.2d", 0, 1, 0, fcmeq0_2d},
     {"fcvtzs_fx.4s", 0, 1, 1, fcvtzs_fx_4s}, {"fcvtzs_fx.2d", 0, 1, 0, fcvtzs_fx_2d},
     {"scvtf_fx.4s", 0, 1, 1, scvtf_fx_4s}, {"scvtf_fx.2d", 0, 1, 0, scvtf_fx_2d}, {"fcvtn.2d", 0, 1, 0, fcvtn_2d},
+    {"ucvtf_fx.4s", 0, 1, 1, ucvtf_fx_4s}, {"ucvtf_fx.2d", 0, 1, 0, ucvtf_fx_2d}, {"fcvtzu_fx.4s", 0, 1, 1, fcvtzu_fx_4s},
+    {"fcvtzu_fx.2d", 0, 1, 0, fcvtzu_fx_2d}, {"scvtf_fx.ss", 0, 1, 1, scvtf_fx_ss}, {"scvtf_fx.sd", 0, 1, 0, scvtf_fx_sd},
+    {"ucvtf_fx.ss", 0, 1, 1, ucvtf_fx_ss}, {"ucvtf_fx.sd", 0, 1, 0, ucvtf_fx_sd}, {"fcvtzs_fx.ss", 0, 1, 1, fcvtzs_fx_ss},
+    {"fcvtzs_fx.sd", 0, 1, 0, fcvtzs_fx_sd}, {"fcvtzu_fx.ss", 0, 1, 1, fcvtzu_fx_ss}, {"fcvtzu_fx.sd", 0, 1, 0, fcvtzu_fx_sd},
     {"fcvtn2.2d", 0, 1, 0, fcvtn2_2d}, {"fcvtxn.2d", 0, 1, 0, fcvtxn_2d}, {"fcvtxn2.2d", 0, 1, 0, fcvtxn2_2d},
     {"fcvtl.2s", 0, 1, 1, fcvtl_2s}, {"fcvtl2.4s", 0, 1, 1, fcvtl2_4s}, {"fmaxv.4s", 0, 1, 1, fmaxv_4s},
     {"fminv.4s", 0, 1, 1, fminv_4s}, {"fmaxnmv.4s", 0, 1, 1, fmaxnmv_4s}, {"fminnmv.4s", 0, 1, 1, fminnmv_4s},

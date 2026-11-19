@@ -284,6 +284,102 @@ fn fcvtz_vector_fixed_flushes_denormal_input_under_fz() {
 /// `fjcvtzs w8, d0`
 const FJCVTZS: u32 = 0x1e7e_0008;
 
+// scalar scvtf/ucvtf/fcvtzs/fcvtzu s2, s0, #7 and d2, d0, #20
+const SCVTF_S_7: u32 = 0x5f39_e402;
+const UCVTF_S_7: u32 = 0x7f39_e402;
+const FCVTZS_S_7: u32 = 0x5f39_fc02;
+const FCVTZU_S_7: u32 = 0x7f39_fc02;
+const SCVTF_D_20: u32 = 0x5f6c_e402;
+const UCVTF_D_20: u32 = 0x7f6c_e402;
+const FCVTZS_D_20: u32 = 0x5f6c_fc02;
+const FCVTZU_D_20: u32 = 0x7f6c_fc02;
+
+#[test]
+fn decode_fixed_point_scalar_converts() {
+    use instructions::SimdOp2::*;
+    let want = |op, esize, fbits| Instruction::ScalarFixedConv {
+        rd: 2,
+        rn: 0,
+        op,
+        esize,
+        fbits,
+    };
+    assert_eq!(decoder::decode(SCVTF_S_7), want(Scvtf, 32, 7));
+    assert_eq!(decoder::decode(UCVTF_S_7), want(Ucvtf, 32, 7));
+    assert_eq!(decoder::decode(FCVTZS_S_7), want(Fcvtzs, 32, 7));
+    assert_eq!(decoder::decode(FCVTZU_S_7), want(Fcvtzu, 32, 7));
+    assert_eq!(decoder::decode(SCVTF_D_20), want(Scvtf, 64, 20));
+    assert_eq!(decoder::decode(UCVTF_D_20), want(Ucvtf, 64, 20));
+    assert_eq!(decoder::decode(FCVTZS_D_20), want(Fcvtzs, 64, 20));
+    assert_eq!(decoder::decode(FCVTZU_D_20), want(Fcvtzu, 64, 20));
+    // extremes: immh:immb = 0100000 is fbits 32, 0111111 is fbits 1, 1000000 is fbits 64, 1111111 is fbits 1
+    assert_eq!(decoder::decode(0x5f20_e402), want(Scvtf, 32, 32));
+    assert_eq!(decoder::decode(0x5f3f_e402), want(Scvtf, 32, 1));
+    assert_eq!(decoder::decode(0x5f40_e402), want(Scvtf, 64, 64));
+    assert_eq!(decoder::decode(0x5f7f_e402), want(Scvtf, 64, 1));
+    // reserved or not decoded: immh = 0001 is reserved, immh = 001x is half precision
+    for w in [0x5f09_e402u32, 0x5f19_e402, 0x5f11_e402, 0x5f19_fc02, 0x7f11_fc02] {
+        assert!(
+            matches!(decoder::decode(w), Instruction::Unimplemented { .. }),
+            "{w:#010x} {:?}",
+            decoder::decode(w)
+        );
+    }
+    // the neighbouring scalar shifts still decode as shifts (SSHR d2, d0, #3 = 0x5f7d0402)
+    assert!(!matches!(
+        decoder::decode(0x5f7d_0402),
+        Instruction::ScalarFixedConv { .. } | Instruction::Unimplemented { .. }
+    ));
+}
+
+#[test]
+fn scalar_fixed_single_converts_one_lane_and_zeroes_the_rest() {
+    // the other lanes of v0 are dirty and v2 is all ones: only lane 0 is converted and the rest of v2 is cleared
+    let dirty = |lane0: u32| s4([lane0, 0xdead_beef, 0x1234_5678, 0xffff_ffff]);
+    // fbits 7: 128 -> 1.0, -128 -> -1.0
+    assert_eq!(vec_op(SCVTF_S_7, dirty(128), 0), (0x3f80_0000, 0));
+    assert_eq!(vec_op(SCVTF_S_7, dirty((-128i32) as u32), 0), (0xbf80_0000, 0));
+    // unsigned: 0xffffff80 / 128 = 2^25 - 1, a tie that rounds to even, 2^25, inexact
+    assert_eq!(vec_op(UCVTF_S_7, dirty(0xffff_ff80), 0), (0x4c00_0000, IXC));
+    // 1.5 * 2^7 = 192; 1.0 * 2^7 = 128; truncation toward zero for both signs
+    assert_eq!(vec_op(FCVTZS_S_7, dirty(0x3fc0_0000), 0), (192, 0));
+    assert_eq!(vec_op(FCVTZS_S_7, dirty(0xbfc0_0000), 0), (0xffff_ff40, 0));
+    assert_eq!(vec_op(FCVTZU_S_7, dirty(0x3f80_0000), 0), (128, 0));
+    // saturation raises IOC: 2^31 * 2^7 for the signed form, a negative value for the unsigned one
+    assert_eq!(vec_op(FCVTZS_S_7, dirty(0x4f00_0000), 0), (0x7fff_ffff, IOC));
+    assert_eq!(vec_op(FCVTZU_S_7, dirty(0xbf80_0000), 0), (0, IOC));
+}
+
+#[test]
+fn scalar_fixed_double_converts_one_lane_and_zeroes_the_rest() {
+    let dirty = |lane0: u64| d2([lane0, 0xdead_beef_dead_beef]);
+    // fbits 20: 2^20 -> 1.0, -2^20 -> -1.0, 3 * 2^19 -> 1.5
+    assert_eq!(vec_op(SCVTF_D_20, dirty(1 << 20), 0), (0x3ff0_0000_0000_0000, 0));
+    assert_eq!(
+        vec_op(SCVTF_D_20, dirty((-(1i64 << 20)) as u64), 0),
+        (0xbff0_0000_0000_0000, 0)
+    );
+    assert_eq!(vec_op(UCVTF_D_20, dirty(3 << 19), 0), (0x3ff8_0000_0000_0000, 0));
+    // 1.5 * 2^20 = 0x180000; saturation: 2^44 * 2^20 = 2^64 overflows the unsigned form
+    assert_eq!(vec_op(FCVTZS_D_20, dirty(0x3ff8_0000_0000_0000), 0), (0x18_0000, 0));
+    assert_eq!(
+        vec_op(FCVTZU_D_20, dirty(0x42b0_0000_0000_0000), 0),
+        (u64::MAX as u128, IOC)
+    );
+    assert_eq!(
+        vec_op(FCVTZS_D_20, dirty(0xc3e0_0000_0000_0000), 0),
+        (0x8000_0000_0000_0000, IOC)
+    );
+}
+
+#[test]
+fn scalar_fixed_converts_follow_rmode_and_fz() {
+    // SCVTF rounds under FPCR.RMode: 1 / 2^7 is exact, 0x7fffffff / 2^7 is not, and RP rounds it up to 2^24 + ... = 2^24
+    assert_eq!(vec_op(SCVTF_S_7, s4([0x7fff_ffff, 0, 0, 0]), RP), (0x4b80_0000, IXC));
+    // a denormal input under FZ is flushed and raises IDC; FCVTZS of +0 gives 0
+    assert_eq!(vec_op(FCVTZS_S_7, s4([1, 0, 0, 0]), FZ), (0, IDC));
+}
+
 /// Runs FJCVTZS with d0 = `bits`, NZCV all set beforehand (so every flag must be written) and the given FPCR.
 fn js(bits: u64, fpcr: u32) -> (u32, bool, u32) {
     let (mut cpu, mut mmu) = machine(&[FJCVTZS]);
@@ -425,6 +521,10 @@ fn new_converts_agree_between_interpreter_and_tier3() {
         0x6f6c_e403, // ucvtf v3.2d, v0.2d, #20
         0x4f39_fc04, // fcvtzs v4.4s, v0.4s, #7
         0x6f6c_fc05, // fcvtzu v5.2d, v0.2d, #20
+        0x5f39_e406, // scvtf s6, s0, #7
+        0x7f6c_e407, // ucvtf d7, d0, #20
+        0x5f39_fc09, // fcvtzs s9, s0, #7
+        0x7f6c_fc0a, // fcvtzu d10, d0, #20
         0x1e7e_0008, // fjcvtzs w8, d0
         0xd400_0001, // svc #0
     ];
