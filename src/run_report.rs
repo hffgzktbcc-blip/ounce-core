@@ -41,6 +41,10 @@ pub struct RunReport {
     pub opcode: Option<u32>,
     pub fault_addr: Option<u64>,
     pub svc_id: Option<u32>,
+    /// Last requested `sm` service name (or unimplemented HIPC interface) on `unhandled_svc` (exit 14) (#475).
+    pub sm_service: Option<String>,
+    /// Last dispatched CMIF command ID (or unimplemented HIPC command ID) on `unhandled_svc` (exit 14) (#475).
+    pub cmif_cmd_id: Option<u32>,
     pub break_result: Option<u32>,
     pub insns_executed: u64,
     pub frames_presented: u64,
@@ -88,6 +92,8 @@ pub fn to_json(report: &RunReport) -> serde_json::Value {
         "opcode": report.opcode,
         "fault_addr": report.fault_addr,
         "svc_id": report.svc_id,
+        "sm_service": report.sm_service,
+        "cmif_cmd_id": report.cmif_cmd_id,
         "break_result": report.break_result,
         "insns_executed": report.insns_executed,
         "frames_presented": report.frames_presented,
@@ -135,6 +141,8 @@ mod tests {
             opcode: Some(0xDEAD_BEEF),
             fault_addr: None,
             svc_id: None,
+            sm_service: None,
+            cmif_cmd_id: None,
             break_result: None,
             insns_executed: 42,
             frames_presented: 3,
