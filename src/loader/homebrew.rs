@@ -22,7 +22,9 @@ pub const MAX_ARGV_LEN: usize = 62_855;
 /// Why the homebrew config block could not be written.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("argument string is {len} bytes, over the {max}-byte limit (the program path and the guest arguments, joined by spaces)")]
+    #[error(
+        "argument string is {len} bytes, over the {max}-byte limit (the program path and the guest arguments, joined by spaces)"
+    )]
     ArgvTooLong { len: usize, max: usize },
     #[error(transparent)]
     Memory(#[from] MemoryError),
@@ -74,24 +76,52 @@ impl HomebrewConfig {
     pub fn entries(&self, argv_addr: u64) -> Vec<ConfigEntry> {
         let mut out = Vec::new();
         if let Some(handle) = self.main_thread_handle {
-            out.push(ConfigEntry { key: ENTRY_MAIN_THREAD_HANDLE, flags: 0, value: [handle as u64, 0] });
+            out.push(ConfigEntry {
+                key: ENTRY_MAIN_THREAD_HANDLE,
+                flags: 0,
+                value: [handle as u64, 0],
+            });
         }
         if let Some((addr, size)) = self.heap {
-            out.push(ConfigEntry { key: ENTRY_OVERRIDE_HEAP, flags: 0, value: [addr, size] });
+            out.push(ConfigEntry {
+                key: ENTRY_OVERRIDE_HEAP,
+                flags: 0,
+                value: [addr, size],
+            });
         }
         if self.argv.is_some() {
-            out.push(ConfigEntry { key: ENTRY_ARGV, flags: 0, value: [0, argv_addr] });
+            out.push(ConfigEntry {
+                key: ENTRY_ARGV,
+                flags: 0,
+                value: [0, argv_addr],
+            });
         }
         if let Some(kind) = self.applet_type {
-            out.push(ConfigEntry { key: ENTRY_APPLET_TYPE, flags: 0, value: [kind, 0] });
+            out.push(ConfigEntry {
+                key: ENTRY_APPLET_TYPE,
+                flags: 0,
+                value: [kind, 0],
+            });
         }
         if let Some(seed) = self.random_seed {
-            out.push(ConfigEntry { key: ENTRY_RANDOM_SEED, flags: 0, value: seed });
+            out.push(ConfigEntry {
+                key: ENTRY_RANDOM_SEED,
+                flags: 0,
+                value: seed,
+            });
         }
         if self.next_load {
-            out.push(ConfigEntry { key: ENTRY_NEXT_LOAD_PATH, flags: 0, value: [0, 0] });
+            out.push(ConfigEntry {
+                key: ENTRY_NEXT_LOAD_PATH,
+                flags: 0,
+                value: [0, 0],
+            });
         }
-        out.push(ConfigEntry { key: ENTRY_END_OF_LIST, flags: 0, value: [0, 0] });
+        out.push(ConfigEntry {
+            key: ENTRY_END_OF_LIST,
+            flags: 0,
+            value: [0, 0],
+        });
         out
     }
 
@@ -110,14 +140,25 @@ impl HomebrewConfig {
         for e in entries.iter_mut().filter(|e| e.key == ENTRY_NEXT_LOAD_PATH) {
             e.value = [next_path_addr, next_argv_addr];
         }
-        let end = if self.next_load { next_argv_addr + NEXT_LOAD_ARGV_SIZE } else { argv_addr + argv_len };
+        let end = if self.next_load {
+            next_argv_addr + NEXT_LOAD_ARGV_SIZE
+        } else {
+            argv_addr + argv_len
+        };
         let total = end - addr;
         // Refuse before mapping anything: a block past the window would map and overwrite the NRO's first page.
         if total > CONFIG_WINDOW {
-            return Err(ConfigError::ArgvTooLong { len: self.argv.as_ref().map_or(0, |a| a.len()), max: MAX_ARGV_LEN });
+            return Err(ConfigError::ArgvTooLong {
+                len: self.argv.as_ref().map_or(0, |a| a.len()),
+                max: MAX_ARGV_LEN,
+            });
         }
         // Map as many pages as the list and the string need (a long command line spills past one page).
-        mmu.map_range(addr, total.max(1).div_ceil(0x1000) as usize * 0x1000, Permission::READ_WRITE);
+        mmu.map_range(
+            addr,
+            total.max(1).div_ceil(0x1000) as usize * 0x1000,
+            Permission::READ_WRITE,
+        );
         for (i, e) in entries.iter().enumerate() {
             let at = addr + i as u64 * ENTRY_SIZE;
             mmu.write_u32(at, e.key)?;
@@ -186,7 +227,10 @@ mod tests {
     fn long_argv_spills_into_more_pages() {
         let mut mmu = Memory::new();
         let argv: String = "x".repeat(0x1800);
-        let cfg = HomebrewConfig { argv: Some(argv.clone()), ..Default::default() };
+        let cfg = HomebrewConfig {
+            argv: Some(argv.clone()),
+            ..Default::default()
+        };
         cfg.write(&mut mmu, 0x7000_0000).unwrap();
         let ptr = mmu.read_u64(0x7000_0000 + 16).unwrap();
         assert_eq!(mmu.read_u8(ptr + argv.len() as u64).unwrap(), 0);
@@ -230,7 +274,9 @@ mod tests {
     fn argv_one_byte_over_the_limit_is_refused_before_anything_is_mapped() {
         let mut mmu = Memory::new();
         let addr = map_nro_page_with_sentinel(&mut mmu);
-        let err = run_nro_config("x".repeat(MAX_ARGV_LEN + 1)).write(&mut mmu, addr).unwrap_err();
+        let err = run_nro_config("x".repeat(MAX_ARGV_LEN + 1))
+            .write(&mut mmu, addr)
+            .unwrap_err();
         assert!(matches!(err, ConfigError::ArgvTooLong { len, max } if len == MAX_ARGV_LEN + 1 && max == MAX_ARGV_LEN));
         assert_eq!(mmu.read_u32(0x8000_0000).unwrap(), 0xD400_00E1);
         assert!(mmu.read_u32(addr).is_err(), "nothing was mapped for the refused block");

@@ -50,7 +50,7 @@ scripts/gate.sh --checkpoint "what/why"    # local signed-off commit; no tests/p
 scripts/gate.sh --checkpoint "what/why" --push  # save and push explicitly
 scripts/gate.sh                            # relevant local checks by changed paths
 scripts/gate.sh --check quick               # shell/Python/policy checks; no Rust
-scripts/gate.sh --check runtime             # quick + default release tests/harness
+scripts/gate.sh --check runtime             # quick + clippy + default release tests/harness
 scripts/gate.sh --check full                # runtime + optional feature tests
 scripts/gate.sh --submit                    # push and open/update a PR; no merge
 ```
@@ -69,6 +69,11 @@ runtime and feature checks; failed or cancelled applicable checks fail the summa
 Docs/metadata/Python-only changes avoid Rust rebuilds. Runtime/build/oracle changes
 run the supported platform/feature matrices and canonical corpus. Full release
 qualification remains separate. See the workflow files for exact triggers.
+Rust changes must build without warnings: the `lint` job runs
+`cargo clippy --locked --workspace --all-targets -- -D warnings` (also with
+`--features native-jit,nce` and `--features gpu-present`) on a pinned toolchain, and the
+`msrv` job builds default features with Rust 1.89. Fix a lint rather than silencing it;
+when a lint is wrong for a site, use a scoped `#[allow(clippy::...)]` with a one-line reason.
 README prose edits stay cheap; changing certified headline/badge values requires
 fresh canonical corpus validation. Embedded fonts count as runtime inputs.
 
@@ -88,7 +93,7 @@ The repository uses automated GitHub Actions workflows and scripts to streamline
 - **Issue triage** (`.github/workflows/issue-triage.yml`): Runs on newly opened issues. It verifies required reproduction fields (`program`, `version`, `command`, `output`), asks politely for any missing information, suggests existing repository labels, searches for potential duplicate open issues, and summarizes crash or problem reports with their likely code area.
 - **CI explainer** (`.github/workflows/ci-explainer.yml`): Runs when a pull request CI workflow run completes with failure. It posts or updates a single comment identifying the failing job and step, extracts relevant trailing log lines, explains the root cause using GitHub Models, and provides the local `scripts/gate.sh` command to reproduce the failure.
 - **Welcome** (`.github/workflows/welcome.yml`): Welcomes first-time contributors with a single comment on their first issue or pull request, explaining next steps, local test commands (`scripts/gate.sh --check quick`), links to `CONTRIBUTING.md` and `docs/community/TRY_THIS_WEEK.md`, and AI-assistance disclosure expectations for pull requests.
-- **Issue claim** (`.github/workflows/claim.yml`): Automatically self-assigns contributors when they comment phrases like "I'll take this", "can I work on this", or "claim" on open, unassigned issues with the `good first issue` label. If an issue is already assigned, it politely explains so and points to other available starter issues.
+- **Issue claim** (`.github/workflows/claim.yml`): Automatically self-assigns contributors when they comment phrases like "I'll take this", "can I work on this", or "claim" on open, unassigned issues with the `good first issue` or `help wanted` label. If an issue is already assigned, it politely explains so and points to other available starter issues.
 - **Inactivity nudge** (`.github/workflows/nudge.yml`): Weekly check that posts a single gentle check-in on open assigned issues if the assignee has had no comment, commit, or PR activity in 14 days. If silence persists for another 14 days, it unassigns the issue with a thank-you to keep tasks open for others. Maintainer assignments are skipped.
 - **Outside activity helper** (`scripts/outside_activity.py`): Read-only maintainer CLI tool using `gh` that lists new issues, pull requests, and comments from outside contributors since a timestamp cached in `~/.cache/ounce-outside-activity.json`.
 - **Shiftbot** (`.github/workflows/shiftbot.yml`): Provides status summaries of open pull request review states and checks.

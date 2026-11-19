@@ -37,7 +37,7 @@ mod tests;
 mod tex_tests;
 
 pub use maxwell::MAXWELL_SPH_SIZE;
-pub use sph::{Sph, SphType, AMPERE_SPH_SIZE};
+pub use sph::{AMPERE_SPH_SIZE, Sph, SphType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShaderStage {
@@ -126,7 +126,11 @@ pub enum XlateError {
     #[error("no EXIT before the end of the shader")]
     MissingExit,
     #[error("code offset {at:#x}: cannot decode {word:#034x}: {err}")]
-    Decode { at: usize, word: u128, err: decode::DecodeError },
+    Decode {
+        at: usize,
+        word: u128,
+        err: decode::DecodeError,
+    },
     #[error("code offset {at:#x}: unsupported: {what}")]
     Unsupported { at: usize, what: &'static str },
 }
@@ -138,7 +142,11 @@ pub fn translate(stage: ShaderStage, bytes: &[u8]) -> Result<TranslatedShader, X
 }
 
 /// As [`translate`], with an explicit header size (bytes from header start to code).
-pub fn translate_with_header(stage: ShaderStage, bytes: &[u8], header_size: usize) -> Result<TranslatedShader, XlateError> {
+pub fn translate_with_header(
+    stage: ShaderStage,
+    bytes: &[u8],
+    header_size: usize,
+) -> Result<TranslatedShader, XlateError> {
     let (sph, code) = split_header(stage, bytes, header_size)?;
     finish(stage, ir::lower(stage, code)?, &sph)
 }
@@ -152,12 +160,21 @@ pub fn translate_maxwell(stage: ShaderStage, bytes: &[u8]) -> Result<TranslatedS
 /// Picks the front end from the 3D class the draw was issued on (`DrawRecord.class`):
 /// Maxwell SASS for `MAXWELL_B`, Ampere SASS otherwise.
 pub fn translate_for_class(class: u32, stage: ShaderStage, bytes: &[u8]) -> Result<TranslatedShader, XlateError> {
-    if class == crate::gpu::ampere::methods::MAXWELL_B { translate_maxwell(stage, bytes) } else { translate(stage, bytes) }
+    if class == crate::gpu::ampere::methods::MAXWELL_B {
+        translate_maxwell(stage, bytes)
+    } else {
+        translate(stage, bytes)
+    }
 }
 
 fn finish(stage: ShaderStage, f: ir::Function, sph: &Sph) -> Result<TranslatedShader, XlateError> {
     let (wgsl, interface) = wgsl::emit(&f, sph)?;
-    Ok(TranslatedShader { stage, wgsl, interface, listing: f.listing })
+    Ok(TranslatedShader {
+        stage,
+        wgsl,
+        interface,
+        listing: f.listing,
+    })
 }
 
 fn split_header(stage: ShaderStage, bytes: &[u8], header_size: usize) -> Result<(Sph, &[u8]), XlateError> {
@@ -170,7 +187,10 @@ fn split_header(stage: ShaderStage, bytes: &[u8], header_size: usize) -> Result<
         return Err(XlateError::StageMismatch(stage));
     }
     if bytes.len() < header_size {
-        return Err(XlateError::Truncated { need: header_size, have: bytes.len() });
+        return Err(XlateError::Truncated {
+            need: header_size,
+            have: bytes.len(),
+        });
     }
     Ok((sph, &bytes[header_size..]))
 }

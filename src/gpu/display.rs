@@ -4,8 +4,7 @@ use crate::mmu::Memory;
 use std::time::Instant;
 
 use super::present::{
-    open_backend, BackendConfig, BackendKind, Frame, Gpu3DDrawOp, HostKey, PresentBackend,
-    PresentStatus, ScaleMode,
+    BackendConfig, BackendKind, Frame, Gpu3DDrawOp, HostKey, PresentBackend, PresentStatus, ScaleMode, open_backend,
 };
 
 pub const SCREEN_WIDTH: usize = 1280;
@@ -44,6 +43,9 @@ pub struct DisplayConfig {
     pub mode: PresentationMode,
     /// Which host presentation backend to open.
     pub backend: BackendKind,
+    /// Deterministic run (`--deterministic` / `OUNCE_DETERMINISTIC=1`): 3D is drawn by the software rasterizer,
+    /// even with a GPU backend, so every presented frame can be hashed.
+    pub deterministic: bool,
 }
 
 impl Default for DisplayConfig {
@@ -56,6 +58,7 @@ impl Default for DisplayConfig {
             target_fps: 60,
             mode: PresentationMode::Handheld720p,
             backend: BackendKind::from_env(),
+            deterministic: crate::run_report::is_deterministic(),
         }
     }
 }
@@ -200,16 +203,23 @@ impl DisplayServer {
         )
     }
 
+    /// Whether guest 3D draws should go to the host GPU. Otherwise the software rasterizer draws them into guest
+    /// memory, where the frame can be hashed: always so for deterministic runs, which therefore report the same
+    /// `framebuffer_hash` as a headless run (#486). Open the backend first; before that this is only a guess.
+    pub fn draws_3d_on_host(&self) -> bool {
+        self.is_gpu_accelerated() && !self.config.deterministic
+    }
+
     /// Presents a frame to the host, executing hardware 3D draw calls when GPU accelerated,
     /// or falling back to CPU software rasterization composite.
     pub fn present_frame_3d(&mut self, mmu: &Memory, draw_ops: &[Gpu3DDrawOp]) -> bool {
         let frame_start = Instant::now();
 
-        if self.backend.is_none() {
-            if let Err(e) = self.init_window() {
-                eprintln!("[Display Error] {}", e);
-                return false;
-            }
+        if self.backend.is_none()
+            && let Err(e) = self.init_window()
+        {
+            eprintln!("[Display Error] {}", e);
+            return false;
         }
 
         let is_gpu = self.is_gpu_accelerated();
@@ -218,7 +228,8 @@ impl DisplayServer {
             if let Err(e) = backend.render_3d(draw_ops) {
                 eprintln!("[Display Error] 3D render failed: {}", e);
             }
-            // Hardware-rendered frames have no CPU-side pixels to hash.
+            // The host GPU drew this frame and guest memory never held it, so there is nothing to hash. Runs that
+            // need the hash draw 3D on the CPU instead: headless or deterministic (see `run_vm_internal`, #486).
             self.last_frame_hash = None;
         } else {
             self.composite(mmu);
@@ -261,17 +272,32 @@ impl DisplayServer {
 
     /// Present decoded VI pixels without the synthetic framebuffer or telemetry overlay.
     pub fn present_guest_frame(&mut self, frame: Frame) -> bool {
-        if self.backend.is_none() && self.init_window().is_err() { return false; }
+        if self.backend.is_none() && self.init_window().is_err() {
+            return false;
+        }
         self.last_frame_hash = Some(format_frame_hash(&frame));
         self.swapchain.back_buffer = frame;
         self.swapchain.flip(0);
-        self.backend.as_mut().expect("backend opened above").present(&self.swapchain.front_buffer) != PresentStatus::Closed
+        self.backend
+            .as_mut()
+            .expect("backend opened above")
+            .present(&self.swapchain.front_buffer)
+            != PresentStatus::Closed
     }
 
-    /// Hash of the most recently presented guest frame before any overlay, or `None` if nothing was
-    /// presented or the frame was drawn on the host GPU (see `format_frame_hash`).
+    /// Hash of the most recently presented guest frame before any overlay (see `format_frame_hash`), or `None`
+    /// if nothing was presented or the host GPU drew the frame's 3D draws (a GPU backend, outside deterministic
+    /// mode).
     pub fn last_frame_hash(&self) -> Option<&str> {
         self.last_frame_hash.as_deref()
+    }
+
+    /// A display with a given backend already open, for tests that need a host GPU without one.
+    #[cfg(test)]
+    pub(crate) fn with_backend(fb_addr: u64, config: DisplayConfig, backend: Box<dyn PresentBackend>) -> Self {
+        let mut display = Self::new(fb_addr, config);
+        display.backend = Some(backend);
+        display
     }
 
     pub fn is_window_active(&self) -> bool {
@@ -281,11 +307,11 @@ impl DisplayServer {
     /// Pumps backend window events (keyboard presses, window close, focus) without
     /// waiting for a guest frame presentation.
     pub fn pump_events(&mut self) -> bool {
-        if self.backend.is_none() {
-            if let Err(e) = self.init_window() {
-                eprintln!("[Display Error] {}", e);
-                return false;
-            }
+        if self.backend.is_none()
+            && let Err(e) = self.init_window()
+        {
+            eprintln!("[Display Error] {}", e);
+            return false;
         }
         let backend = self.backend.as_mut().expect("backend opened above");
         backend.pump_events() != PresentStatus::Closed
@@ -338,6 +364,35 @@ impl DisplayServer {
     }
 }
 
+/// Stands in for the wgpu window in tests: reports GPU acceleration and counts the 3D batches it is given.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct FakeGpuBackend {
+    pub(crate) batches_3d: std::rc::Rc<std::cell::Cell<usize>>,
+    presented: u64,
+}
+
+#[cfg(test)]
+impl PresentBackend for FakeGpuBackend {
+    fn name(&self) -> &'static str {
+        "fake-gpu"
+    }
+    fn present(&mut self, _frame: &Frame) -> PresentStatus {
+        self.presented += 1;
+        PresentStatus::Continue
+    }
+    fn render_3d(&mut self, _ops: &[Gpu3DDrawOp]) -> Result<(), super::present::PresentError> {
+        self.batches_3d.set(self.batches_3d.get() + 1);
+        Ok(())
+    }
+    fn is_gpu_accelerated(&self) -> bool {
+        true
+    }
+    fn frames_presented(&self) -> u64 {
+        self.presented
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,7 +438,8 @@ mod tests {
         let (width, height) = (320, 64);
         let mut mmu = Memory::new();
         mmu.map_range(DEFAULT_FRAMEBUFFER_ADDR, width * height * 4, Permission::READ_WRITE);
-        mmu.write_bytes(DEFAULT_FRAMEBUFFER_ADDR, &vec![0x40u8; width * height * 4]).unwrap();
+        mmu.write_bytes(DEFAULT_FRAMEBUFFER_ADDR, &vec![0x40u8; width * height * 4])
+            .unwrap();
         let mut display = headless_server(width, height);
         assert_eq!(display.last_frame_hash(), None);
         display.composite(&mmu);
@@ -393,7 +449,8 @@ mod tests {
         assert_eq!(display.last_frame_hash(), Some(format_frame_hash(&expected).as_str()));
         // The overlay changed the presented pixels but not the hash.
         assert_ne!(display.swapchain.back_buffer, expected);
-        mmu.write_bytes(DEFAULT_FRAMEBUFFER_ADDR, &vec![0x41u8; width * height * 4]).unwrap();
+        mmu.write_bytes(DEFAULT_FRAMEBUFFER_ADDR, &vec![0x41u8; width * height * 4])
+            .unwrap();
         display.composite(&mmu);
         assert_ne!(display.last_frame_hash(), Some(format_frame_hash(&expected).as_str()));
     }
@@ -418,7 +475,13 @@ mod tests {
         let expected = frame.content_hash();
         assert!(display.present_guest_frame(frame));
         assert_eq!(display.swapchain.front_buffer.content_hash(), expected);
-        assert_eq!((display.swapchain.front_buffer.width, display.swapchain.front_buffer.height), (2, 2));
+        assert_eq!(
+            (
+                display.swapchain.front_buffer.width,
+                display.swapchain.front_buffer.height
+            ),
+            (2, 2)
+        );
         assert_eq!(display.backend.as_ref().unwrap().frames_presented(), 1);
     }
 

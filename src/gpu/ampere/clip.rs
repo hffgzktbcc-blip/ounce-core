@@ -111,22 +111,36 @@ mod tests {
     fn v(x: f32, y: f32, z: f32, w: f32, tag: f32) -> ClipVertex {
         let mut varyings = [[0.0; 4]; 32];
         varyings[0][0] = tag;
-        ClipVertex { pos: [x, y, z, w], varyings }
+        ClipVertex {
+            pos: [x, y, z, w],
+            varyings,
+        }
     }
 
     #[test]
     fn triangle_inside_is_returned_unchanged() {
-        let t = [v(0.0, 0.0, 0.0, 1.0, 1.0), v(1.0, 0.0, 0.0, 1.0, 2.0), v(0.0, 1.0, 0.0, 1.0, 3.0)];
+        let t = [
+            v(0.0, 0.0, 0.0, 1.0, 1.0),
+            v(1.0, 0.0, 0.0, 1.0, 2.0),
+            v(0.0, 1.0, 0.0, 1.0, 3.0),
+        ];
         let out = clip_triangle([&t[0], &t[1], &t[2]], ZClip::MinusOne);
         assert_eq!(out.len(), 3);
-        assert_eq!(out.iter().map(|v| v.varyings[0][0]).collect::<Vec<_>>(), [1.0, 2.0, 3.0]);
+        assert_eq!(
+            out.iter().map(|v| v.varyings[0][0]).collect::<Vec<_>>(),
+            [1.0, 2.0, 3.0]
+        );
     }
 
     #[test]
     fn vertex_behind_the_eye_is_clipped_to_w_and_the_guard_band() {
         // Vertex 2 has w = -1: the w = eps plane cuts edges 1-2 and 2-0, then the guard band
         // trims the slivers that run off towards infinity.
-        let t = [v(0.0, 0.0, 0.0, 1.0, 0.0), v(1.0, 0.0, 0.0, 1.0, 0.0), v(0.0, 1.0, 0.0, -1.0, 4.0)];
+        let t = [
+            v(0.0, 0.0, 0.0, 1.0, 0.0),
+            v(1.0, 0.0, 0.0, 1.0, 0.0),
+            v(0.0, 1.0, 0.0, -1.0, 4.0),
+        ];
         let out = clip_triangle([&t[0], &t[1], &t[2]], ZClip::Off);
         assert!(out.len() >= 3);
         for v in &out {
@@ -143,7 +157,11 @@ mod tests {
     #[test]
     fn near_plane_follows_the_z_range() {
         // z/w = -0.5 everywhere: inside -w..w, outside 0..w.
-        let t = [v(0.0, 0.0, -0.5, 1.0, 0.0), v(1.0, 0.0, -0.5, 1.0, 0.0), v(0.0, 1.0, -0.5, 1.0, 0.0)];
+        let t = [
+            v(0.0, 0.0, -0.5, 1.0, 0.0),
+            v(1.0, 0.0, -0.5, 1.0, 0.0),
+            v(0.0, 1.0, -0.5, 1.0, 0.0),
+        ];
         assert_eq!(clip_triangle([&t[0], &t[1], &t[2]], ZClip::MinusOne).len(), 3);
         assert!(clip_triangle([&t[0], &t[1], &t[2]], ZClip::Zero).is_empty());
         assert_eq!(clip_triangle([&t[0], &t[1], &t[2]], ZClip::Off).len(), 3);

@@ -21,8 +21,8 @@
 use std::collections::BTreeMap;
 
 use super::decode::{
-    decode, word_at, BoolOp, Compare, Decoded, FCmp, FSrc, ICmp, Instr, IpaFreq, MufuOp, PSrc, Round, Src, TexHandle, TexLod,
-    TexOp, XmadMode, LUT_A, LUT_B, LUT_C, PT, RZ,
+    BoolOp, Compare, Decoded, FCmp, FSrc, ICmp, Instr, IpaFreq, LUT_A, LUT_B, LUT_C, MufuOp, PSrc, PT, RZ, Round, Src,
+    TexHandle, TexLod, TexOp, XmadMode, decode, word_at,
 };
 use super::{ShaderStage, XlateError};
 
@@ -54,13 +54,26 @@ pub enum Lod {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Op {
     Const(u32),
-    Cbuf { bank: u8, offset: u16 },
+    Cbuf {
+        bank: u8,
+        offset: u16,
+    },
     /// Constant buffer read with register offset: `c[bank][offset + reg]`
-    CbufIndexed { bank: u8, offset: u16, reg: Value },
+    CbufIndexed {
+        bank: u8,
+        offset: u16,
+        reg: Value,
+    },
     /// Vertex input word.
-    Attr { addr: u16 },
+    Attr {
+        addr: u16,
+    },
     /// Fragment input word; `mul` is the `PassMulW` multiplier.
-    Interp { addr: u16, freq: IpaFreq, mul: Option<Value> },
+    Interp {
+        addr: u16,
+        freq: IpaFreq,
+        mul: Option<Value>,
+    },
     FNeg(Value),
     FAbs(Value),
     FSat(Value),
@@ -71,7 +84,14 @@ pub enum Op {
     /// 2D texture read at (`x`, `y`): floats for [`TexOp::Sample`], integer texel coordinates
     /// for [`TexOp::Fetch`].
     /// `layer`: the integer array layer of a 2D array read.
-    Tex { op: TexOp, handle: TexHandle, lod: Lod, x: Value, y: Value, layer: Option<Value> },
+    Tex {
+        op: TexOp,
+        handle: TexHandle,
+        lod: Lod,
+        x: Value,
+        y: Value,
+        layer: Option<Value>,
+    },
     /// Component `.1` (0..4) of a [`Op::Tex`] result.
     Comp(Value, u8),
     Bool(bool),
@@ -162,7 +182,10 @@ pub fn attr_slot(addr: u16) -> Option<AttrSlot> {
     }
     match addr {
         0x70..=0x7c => Some(AttrSlot::Position(((addr - 0x70) / 4) as u8)),
-        0x80..=0x27c => Some(AttrSlot::Generic { loc: ((addr - 0x80) / 16) as u32, comp: ((addr / 4) % 4) as u8 }),
+        0x80..=0x27c => Some(AttrSlot::Generic {
+            loc: ((addr - 0x80) / 16) as u32,
+            comp: ((addr / 4) % 4) as u8,
+        }),
         _ => None,
     }
 }
@@ -222,7 +245,11 @@ impl Builder {
     }
 
     fn konst(&mut self, bits: u32) -> Value {
-        if bits == 0 { self.zero() } else { self.push(Op::Const(bits)) }
+        if bits == 0 {
+            self.zero()
+        } else {
+            self.push(Op::Const(bits))
+        }
     }
 
     fn boolean(&mut self, b: bool) -> Value {
@@ -547,7 +574,10 @@ pub fn lower_with(
         listing.push(d.to_string());
         let unsup = |what: &'static str| XlateError::Unsupported { at, what };
         flow = Some(path);
-        let p = PSrc { p: d.pred, neg: d.pred_neg };
+        let p = PSrc {
+            p: d.pred,
+            neg: d.pred_neg,
+        };
         if p.p == PT && p.neg {
             // `@!PT`: never runs.
             continue;
@@ -565,7 +595,10 @@ pub fn lower_with(
         };
         let target = |rel: i32| -> Result<usize, XlateError> {
             let t = at as i64 + rel as i64;
-            let t = usize::try_from(t).ok().and_then(&pc_of).ok_or(unsup("branch target is not an instruction"))?;
+            let t = usize::try_from(t)
+                .ok()
+                .and_then(&pc_of)
+                .ok_or(unsup("branch target is not an instruction"))?;
             if t <= pc {
                 return Err(unsup("backward branch (loop)"));
             }
@@ -615,7 +648,9 @@ pub fn lower_with(
                 let v = b.sat(v, sat);
                 b.write(dst, v, g);
             }
-            Instr::FFma { dst, a, b: bb, c, sat, .. } => {
+            Instr::FFma {
+                dst, a, b: bb, c, sat, ..
+            } => {
                 let (x, y, z) = (b.fsrc(a), b.fsrc(bb), b.fsrc(c));
                 let v = b.push(Op::FFma(x, y, z));
                 let v = b.sat(v, sat);
@@ -688,7 +723,11 @@ pub fn lower_with(
                 if attr_slot(addr).is_none() {
                     return Err(unsup("IPA from an attribute other than position/generic"));
                 }
-                let m = if freq == IpaFreq::PassMulW { Some(b.read(mul)) } else { None };
+                let m = if freq == IpaFreq::PassMulW {
+                    Some(b.read(mul))
+                } else {
+                    None
+                };
                 let v = b.push(Op::Interp { addr, freq, mul: m });
                 b.write(dst, v, g);
             }
@@ -700,7 +739,14 @@ pub fn lower_with(
                     TexLod::Level(r) => Lod::Level(b.read(r)),
                 };
                 let layer = t.layer.map(|r| b.read(r));
-                let tex = b.push(Op::Tex { op: t.op, handle: t.handle, lod, x, y, layer });
+                let tex = b.push(Op::Tex {
+                    op: t.op,
+                    handle: t.handle,
+                    lod,
+                    x,
+                    y,
+                    layer,
+                });
                 // Read every source before writing: destinations may overlap the coordinates.
                 for (c, &r) in t.dst.iter().enumerate() {
                     if r != RZ {
@@ -763,7 +809,13 @@ pub fn lower_with(
                 };
                 b.write(dst, v, g);
             }
-            Instr::IMnmx { dst, a, b: bb, signed, c } => {
+            Instr::IMnmx {
+                dst,
+                a,
+                b: bb,
+                signed,
+                c,
+            } => {
                 let (x, y) = (b.src(a), b.src(bb));
                 let cv = b.pred(c);
                 let v = match b.bool_const(cv) {
@@ -778,8 +830,16 @@ pub fn lower_with(
             }
             Instr::FCmpSel { dst, cmp, a, b: bb, c } => {
                 let (x, y) = (b.src(a), b.src(bb));
-                let z = FSrc { src: c, neg: false, abs: false };
-                let zero = FSrc { src: Src::Imm(0), neg: false, abs: false };
+                let z = FSrc {
+                    src: c,
+                    neg: false,
+                    abs: false,
+                };
+                let zero = FSrc {
+                    src: Src::Imm(0),
+                    neg: false,
+                    abs: false,
+                };
                 let r = b.compare(Compare::F { cmp, a: z, b: zero });
                 let v = b.sel(r, x, y);
                 b.write(dst, v, g);
@@ -793,7 +853,13 @@ pub fn lower_with(
                 }
                 b.write(dst, sum, g);
             }
-            Instr::IScAdd { dst, a, b: bb, shift, neg } => {
+            Instr::IScAdd {
+                dst,
+                a,
+                b: bb,
+                shift,
+                neg,
+            } => {
                 let (x, y) = (b.src(a), b.src(bb));
                 let x = b.ineg(x, neg[0]);
                 let y = b.ineg(y, neg[1]);
@@ -812,7 +878,19 @@ pub fn lower_with(
                 let v = b.iadd(m, z);
                 b.write(dst, v, g);
             }
-            Instr::Xmad { dst, a, b: bb, c, a_signed, b_signed, a_hi, b_hi, psl, mrg, mode } => {
+            Instr::Xmad {
+                dst,
+                a,
+                b: bb,
+                c,
+                a_signed,
+                b_signed,
+                a_hi,
+                b_hi,
+                psl,
+                mrg,
+                mode,
+            } => {
                 let (x, y, z) = (b.src(a), b.src(bb), b.src(c));
                 let half = |b: &mut Builder, v: Value, hi: bool, signed: bool| {
                     if hi {
@@ -879,11 +957,21 @@ pub fn lower_with(
                 };
                 b.write(dst, v, g);
             }
-            Instr::Shr { dst, a, b: bb, signed, wrap } => {
+            Instr::Shr {
+                dst,
+                a,
+                b: bb,
+                signed,
+                wrap,
+            } => {
                 let (x, y) = (b.src(a), b.src(bb));
                 let v = match b.int_const(y) {
                     Some(k) if wrap || k < 32 => {
-                        if k & 31 == 0 { x } else { b.shr_k(x, k & 31, signed) }
+                        if k & 31 == 0 {
+                            x
+                        } else {
+                            b.shr_k(x, k & 31, signed)
+                        }
                     }
                     Some(_) if signed => b.shr_k(x, 31, true),
                     Some(_) => b.zero(),
@@ -908,7 +996,13 @@ pub fn lower_with(
                 let v = b.push(Op::I2F(signed, x));
                 b.write(dst, v, g);
             }
-            Instr::F2I { dst, src, signed, round, u16 } => {
+            Instr::F2I {
+                dst,
+                src,
+                signed,
+                round,
+                u16,
+            } => {
                 let mut x = b.fsrc(src);
                 if round != Round::Trunc {
                     x = b.push(Op::FRound(round, x));

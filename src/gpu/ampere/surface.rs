@@ -10,7 +10,11 @@ use super::methods as m;
 pub enum SurfaceLayout {
     /// Block linear. Block dimensions are log2 counts of GOBs, exactly as the class fields hold them
     /// (`BLOCK_WIDTH` 3:0, `BLOCK_HEIGHT` 7:4, `BLOCK_DEPTH` 11:8; `0` = one GOB).
-    BlockLinear { block_width_log2: u8, block_height_log2: u8, block_depth_log2: u8 },
+    BlockLinear {
+        block_width_log2: u8,
+        block_height_log2: u8,
+        block_depth_log2: u8,
+    },
     /// Pitch linear. `pitch_bytes` is the `WIDTH` field: for pitch color targets the driver programs
     /// the row stride in bytes there (the convention Mesa NVK and nouveau use).
     Pitch { pitch_bytes: u32 },
@@ -136,7 +140,9 @@ pub(crate) fn color_target(regs: &[u32], index: usize) -> ColorTarget {
     let memory = r(m::SET_COLOR_TARGET_MEMORY);
     let width_field = r(m::SET_COLOR_TARGET_WIDTH) & 0x0fff_ffff;
     let layout = if (memory >> 12) & 1 == 1 {
-        SurfaceLayout::Pitch { pitch_bytes: width_field }
+        SurfaceLayout::Pitch {
+            pitch_bytes: width_field,
+        }
     } else {
         block_linear(memory)
     };

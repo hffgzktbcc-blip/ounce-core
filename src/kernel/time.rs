@@ -31,7 +31,12 @@ pub struct TimeState {
 
 impl TimeState {
     pub fn unix_secs(&self) -> u64 {
-        self.fixed_unix_secs.unwrap_or_else(|| SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs())
+        self.fixed_unix_secs.unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::ZERO)
+                .as_secs()
+        })
     }
 }
 
@@ -113,7 +118,12 @@ impl IpcManager {
     fn system_clock_context(&self) -> Vec<u8> {
         let steady = self.steady_secs();
         let offset = self.time.unix_secs() as i64 - steady;
-        [offset.to_le_bytes().as_slice(), &steady.to_le_bytes(), &STEADY_CLOCK_SOURCE_ID].concat()
+        [
+            offset.to_le_bytes().as_slice(),
+            &steady.to_le_bytes(),
+            &STEADY_CLOCK_SOURCE_ID,
+        ]
+        .concat()
     }
 
     /// `time:u` / `time:s` root.
@@ -130,7 +140,9 @@ impl IpcManager {
                 let h = match self.time.shm_handle {
                     Some(h) => h,
                     None => {
-                        let h = self.allocate_handle(ServiceType::SharedMemory { size: SHARED_MEMORY_SIZE });
+                        let h = self.allocate_handle(ServiceType::SharedMemory {
+                            size: SHARED_MEMORY_SIZE,
+                        });
                         self.time.shm_handle = Some(h);
                         h
                     }
@@ -194,7 +206,11 @@ impl IpcManager {
                 let mut name = [0u8; 0x24];
                 name[..LOCATION_NAME.len()].copy_from_slice(LOCATION_NAME);
                 let index = mmu.read_u32(args).unwrap_or(0);
-                let n = if index == 0 { self.write_out_buffer(mmu, &name) / 0x24 } else { 0 };
+                let n = if index == 0 {
+                    self.write_out_buffer(mmu, &name) / 0x24
+                } else {
+                    0
+                };
                 self.reply_data(tls, mmu, &(n as u32).to_le_bytes())
             }
             // LoadTimeZoneRule(name) -> TimeZoneRule in the buffer
@@ -225,7 +241,7 @@ pub const RESULT_TIME_NOT_FOUND: u32 = 200 << 9 | 116;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kernel::cmif::test_util::{Harness, Req, BUF};
+    use crate::kernel::cmif::test_util::{BUF, Harness, Req};
     use crate::kernel::ipc::RESULT_UNKNOWN_COMMAND;
     use crate::mmu::Permission;
 
@@ -252,7 +268,10 @@ mod tests {
         assert_eq!(&calendar_time(0)[2..4], &[1, 1]);
         assert_eq!(&calendar_time(951_782_400)[2..4], &[2, 29]); // 2000-02-29
         assert_eq!(posix_time(&calendar_time(951_782_400)), 951_782_400);
-        assert_eq!(u32::from_le_bytes(calendar_time(1_735_603_199)[12..16].try_into().unwrap()), 364); // 2024-12-30
+        assert_eq!(
+            u32::from_le_bytes(calendar_time(1_735_603_199)[12..16].try_into().unwrap()),
+            364
+        ); // 2024-12-30
     }
 
     #[test]
@@ -265,41 +284,174 @@ mod tests {
             (3, ServiceType::TimeZoneService),
             (4, ServiceType::SystemClock),
         ] {
-            let obj = h.call(time, Req { cmd, ..Default::default() }).object();
+            let obj = h
+                .call(
+                    time,
+                    Req {
+                        cmd,
+                        ..Default::default()
+                    },
+                )
+                .object();
             assert_eq!(h.ipc.handles.get(&obj), Some(&svc), "cmd {cmd}");
         }
-        assert_eq!(h.call(time, Req { cmd: 77, ..Default::default() }).result, RESULT_UNKNOWN_COMMAND);
+        assert_eq!(
+            h.call(
+                time,
+                Req {
+                    cmd: 77,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_UNKNOWN_COMMAND
+        );
     }
 
     #[test]
     fn system_and_steady_clock_commands() {
         let (mut h, time) = harness();
-        let clock = h.call(time, Req { cmd: 0, ..Default::default() }).object();
-        assert_eq!(h.call_out(clock, Req { cmd: 0, ..Default::default() }, 8).u64(0), NOW);
-        assert_eq!(h.call(clock, Req { cmd: 1, data: &5u64.to_le_bytes(), ..Default::default() }).result, 0);
-        assert_eq!(h.call_out(clock, Req { cmd: 0, ..Default::default() }, 8).u64(0), NOW); // not moved
-        let ctx = h.call_out(clock, Req { cmd: 2, ..Default::default() }, 32);
+        let clock = h
+            .call(
+                time,
+                Req {
+                    cmd: 0,
+                    ..Default::default()
+                },
+            )
+            .object();
+        assert_eq!(
+            h.call_out(
+                clock,
+                Req {
+                    cmd: 0,
+                    ..Default::default()
+                },
+                8
+            )
+            .u64(0),
+            NOW
+        );
+        assert_eq!(
+            h.call(
+                clock,
+                Req {
+                    cmd: 1,
+                    data: &5u64.to_le_bytes(),
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
+        assert_eq!(
+            h.call_out(
+                clock,
+                Req {
+                    cmd: 0,
+                    ..Default::default()
+                },
+                8
+            )
+            .u64(0),
+            NOW
+        ); // not moved
+        let ctx = h.call_out(
+            clock,
+            Req {
+                cmd: 2,
+                ..Default::default()
+            },
+            32,
+        );
         assert_eq!(&ctx.data[16..], &STEADY_CLOCK_SOURCE_ID);
         let offset = ctx.u64(0) as i64;
         let steady = ctx.u64(8) as i64;
         assert_eq!(offset + steady, NOW as i64);
-        assert_eq!(h.call(clock, Req { cmd: 9, ..Default::default() }).result, RESULT_UNKNOWN_COMMAND);
+        assert_eq!(
+            h.call(
+                clock,
+                Req {
+                    cmd: 9,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_UNKNOWN_COMMAND
+        );
 
-        let steady_clock = h.call(time, Req { cmd: 2, ..Default::default() }).object();
-        let tp = h.call_out(steady_clock, Req { cmd: 0, ..Default::default() }, 24);
+        let steady_clock = h
+            .call(
+                time,
+                Req {
+                    cmd: 2,
+                    ..Default::default()
+                },
+            )
+            .object();
+        let tp = h.call_out(
+            steady_clock,
+            Req {
+                cmd: 0,
+                ..Default::default()
+            },
+            24,
+        );
         assert!(tp.u64(0) < 5);
         assert_eq!(&tp.data[8..], &STEADY_CLOCK_SOURCE_ID);
-        assert_eq!(h.call_out(steady_clock, Req { cmd: 200, ..Default::default() }, 8).u64(0), 0);
-        assert_eq!(h.call(steady_clock, Req { cmd: 9, ..Default::default() }).result, RESULT_UNKNOWN_COMMAND);
+        assert_eq!(
+            h.call_out(
+                steady_clock,
+                Req {
+                    cmd: 200,
+                    ..Default::default()
+                },
+                8
+            )
+            .u64(0),
+            0
+        );
+        assert_eq!(
+            h.call(
+                steady_clock,
+                Req {
+                    cmd: 9,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_UNKNOWN_COMMAND
+        );
     }
 
     #[test]
     fn shared_memory_gives_libnx_a_consistent_clock() {
         let (mut h, time) = harness();
-        let r = h.call(time, Req { cmd: 20, ..Default::default() });
+        let r = h.call(
+            time,
+            Req {
+                cmd: 20,
+                ..Default::default()
+            },
+        );
         let shm = r.copy_handles[0];
-        assert_eq!(h.ipc.handles.get(&shm), Some(&ServiceType::SharedMemory { size: SHARED_MEMORY_SIZE }));
-        assert_eq!(h.call(time, Req { cmd: 20, ..Default::default() }).copy_handles[0], shm);
+        assert_eq!(
+            h.ipc.handles.get(&shm),
+            Some(&ServiceType::SharedMemory {
+                size: SHARED_MEMORY_SIZE
+            })
+        );
+        assert_eq!(
+            h.call(
+                time,
+                Req {
+                    cmd: 20,
+                    ..Default::default()
+                }
+            )
+            .copy_handles[0],
+            shm
+        );
 
         // svcMapSharedMemory
         let map = 0x9000_0000u64;
@@ -311,10 +463,17 @@ mod tests {
         let base = i64::from_le_bytes(steady[..8].try_into().unwrap());
         for off in [0x38u64, 0x80] {
             let ctx = h.read_buf(map + off + 8, 32);
-            assert_eq!(&ctx[16..], &steady[8..], "source ids must match or libnx returns 0x7456 2");
+            assert_eq!(
+                &ctx[16..],
+                &steady[8..],
+                "source ids must match or libnx returns 0x7456 2"
+            );
             let offset = i64::from_le_bytes(ctx[..8].try_into().unwrap());
             // timeGetCurrentTime = offset + (base_time + ticks_ns) / 1e9; a few ticks in.
-            assert_eq!(offset + base, NOW as i64 - i64::from_le_bytes(ctx[8..16].try_into().unwrap()));
+            assert_eq!(
+                offset + base,
+                NOW as i64 - i64::from_le_bytes(ctx[8..16].try_into().unwrap())
+            );
         }
         assert_eq!(h.read_buf(map, 4), [0; 4]); // sequence counter: slot 0
     }
@@ -322,43 +481,161 @@ mod tests {
     #[test]
     fn time_zone_service_is_utc() {
         let (mut h, time) = harness();
-        let tz = h.call(time, Req { cmd: 3, ..Default::default() }).object();
-        let name = h.call_out(tz, Req { cmd: 0, ..Default::default() }, 0x24);
+        let tz = h
+            .call(
+                time,
+                Req {
+                    cmd: 3,
+                    ..Default::default()
+                },
+            )
+            .object();
+        let name = h.call_out(
+            tz,
+            Req {
+                cmd: 0,
+                ..Default::default()
+            },
+            0x24,
+        );
         assert_eq!(&name.data[..4], b"UTC\0");
-        assert_eq!(h.call_out(tz, Req { cmd: 2, ..Default::default() }, 4).u32(0), 1);
+        assert_eq!(
+            h.call_out(
+                tz,
+                Req {
+                    cmd: 2,
+                    ..Default::default()
+                },
+                4
+            )
+            .u32(0),
+            1
+        );
 
         let mut utc = [0u8; 0x24];
         utc[..3].copy_from_slice(b"UTC");
-        assert_eq!(h.call(tz, Req { cmd: 1, data: &utc, ..Default::default() }).result, 0);
+        assert_eq!(
+            h.call(
+                tz,
+                Req {
+                    cmd: 1,
+                    data: &utc,
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
         let mut other = [0u8; 0x24];
         other[..16].copy_from_slice(b"Europe/Amsterdam");
-        assert_eq!(h.call(tz, Req { cmd: 1, data: &other, ..Default::default() }).result, RESULT_TIME_NOT_FOUND);
+        assert_eq!(
+            h.call(
+                tz,
+                Req {
+                    cmd: 1,
+                    data: &other,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_TIME_NOT_FOUND
+        );
 
         // LoadLocationNameList(0) -> 1 name; index 1 -> none.
-        let r = h.call_out(tz, Req { cmd: 3, data: &0u32.to_le_bytes(), recv: Some((BUF, 0x24 * 4)), ..Default::default() }, 4);
+        let r = h.call_out(
+            tz,
+            Req {
+                cmd: 3,
+                data: &0u32.to_le_bytes(),
+                recv: Some((BUF, 0x24 * 4)),
+                ..Default::default()
+            },
+            4,
+        );
         assert_eq!(r.u32(0), 1);
         assert_eq!(&h.read_buf(BUF, 4), b"UTC\0");
-        let r = h.call_out(tz, Req { cmd: 3, data: &1u32.to_le_bytes(), recv: Some((BUF, 0x24 * 4)), ..Default::default() }, 4);
+        let r = h.call_out(
+            tz,
+            Req {
+                cmd: 3,
+                data: &1u32.to_le_bytes(),
+                recv: Some((BUF, 0x24 * 4)),
+                ..Default::default()
+            },
+            4,
+        );
         assert_eq!(r.u32(0), 0);
 
         // LoadTimeZoneRule fills the buffer.
         h.mmu.write_bytes(BUF + 0x100, &[0xFF; 16]).unwrap();
-        assert_eq!(h.call(tz, Req { cmd: 4, data: &utc, recv: Some((BUF + 0x100, 0x4000)), ..Default::default() }).result, 0);
+        assert_eq!(
+            h.call(
+                tz,
+                Req {
+                    cmd: 4,
+                    data: &utc,
+                    recv: Some((BUF + 0x100, 0x4000)),
+                    ..Default::default()
+                }
+            )
+            .result,
+            0
+        );
         assert_eq!(h.read_buf(BUF + 0x100, 16), [0; 16]);
 
         // __libnx_init_time: ToCalendarTimeWithMyRule(boottime) -> caltime + info
-        let r = h.call_out(tz, Req { cmd: 101, data: &NOW.to_le_bytes(), ..Default::default() }, 32);
+        let r = h.call_out(
+            tz,
+            Req {
+                cmd: 101,
+                data: &NOW.to_le_bytes(),
+                ..Default::default()
+            },
+            32,
+        );
         assert_eq!(r.data, calendar_time(NOW));
         assert_eq!(&r.data[16..20], b"UTC\0");
-        assert_eq!(h.call_out(tz, Req { cmd: 100, data: &NOW.to_le_bytes(), send: Some((BUF, 0x4000)), ..Default::default() }, 32).data, calendar_time(NOW));
+        assert_eq!(
+            h.call_out(
+                tz,
+                Req {
+                    cmd: 100,
+                    data: &NOW.to_le_bytes(),
+                    send: Some((BUF, 0x4000)),
+                    ..Default::default()
+                },
+                32
+            )
+            .data,
+            calendar_time(NOW)
+        );
 
         // ToPosixTime(WithMyRule): calendar time in, one timestamp out via the receive list.
         let cal = calendar_time(NOW);
         for cmd in [201, 202] {
-            let r = h.call_out(tz, Req { cmd, data: &cal[..8], recv_list: Some((BUF + 0x800, 64)), ..Default::default() }, 4);
+            let r = h.call_out(
+                tz,
+                Req {
+                    cmd,
+                    data: &cal[..8],
+                    recv_list: Some((BUF + 0x800, 64)),
+                    ..Default::default()
+                },
+                4,
+            );
             assert_eq!(r.u32(0), 1);
             assert_eq!(u64::from_le_bytes(h.read_buf(BUF + 0x800, 8).try_into().unwrap()), NOW);
         }
-        assert_eq!(h.call(tz, Req { cmd: 300, ..Default::default() }).result, RESULT_UNKNOWN_COMMAND);
+        assert_eq!(
+            h.call(
+                tz,
+                Req {
+                    cmd: 300,
+                    ..Default::default()
+                }
+            )
+            .result,
+            RESULT_UNKNOWN_COMMAND
+        );
     }
 }

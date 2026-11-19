@@ -27,11 +27,17 @@ class ScopeTest(unittest.TestCase):
 
     def test_runtime_and_policy_changes_keep_full_regression(self):
         for path in ['src/cpu/decoder.rs', 'crates/ounce-nce/src/exec.rs', 'Cargo.lock',
-                     'tests/corpus/oracles.json', '.github/workflows/ci.yml', 'scripts/ci_scope.py']:
+                     'tests/corpus/oracles.json', '.github/workflows/ci.yml', 'scripts/ci_scope.py',
+                     'clippy.toml']:
             with self.subTest(path=path):
                 result = classify([path])
                 self.assertTrue(result['runtime'])
                 self.assertTrue(result['corpus'])
+
+    def test_instruction_budget_and_linux_elf_changes_run_the_runtime_job_only(self):
+        for path in ['tests/insn-budgets.json', 'scripts/insn_budgets.py', 'tests/linux-elf/bin/memory.elf']:
+            with self.subTest(path=path):
+                self.assertEqual(classify([path]), {'runtime': True, 'corpus': False})
 
     def test_workflow_tools_and_demo_changes_run_relevant_checks(self):
         self.assertFalse(classify(['scripts/agent_workflow.py'])['runtime'])
@@ -54,7 +60,8 @@ class ScopeTest(unittest.TestCase):
         workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/ci.yml').read_text()
         script = textwrap.dedent(workflow.split("python3 - <<'PYTHON'\n", 1)[1].split('          PYTHON', 1)[0])
         results = {name: {'result': 'skipped'} for name in
-                   ('changes', 'legal-guardrails', 'tooling', 'release-notice-packaging', 'test', 'gpu-present', 'native-jit', 'nce', 'corpus')}
+                   ('changes', 'legal-guardrails', 'tooling', 'release-notice-packaging', 'lint', 'msrv', 'test',
+                    'gpu-present', 'native-jit', 'nce', 'corpus')}
         for name in ('changes', 'legal-guardrails', 'tooling', 'release-notice-packaging'):
             results[name]['result'] = 'success'
         results['changes']['outputs'] = {'runtime': 'false', 'corpus': 'false'}
@@ -75,6 +82,10 @@ class ScopeTest(unittest.TestCase):
         for job in results:
             results[job]['result'] = 'success'
         self.assertEqual(run(), 0)
+        for job in ('lint', 'msrv'):  # warnings and the stated minimum Rust are enforced, not advisory
+            results[job]['result'] = 'failure'
+            self.assertNotEqual(run(), 0)
+            results[job]['result'] = 'success'
         results['corpus']['result'] = 'cancelled'
         self.assertNotEqual(run(), 0)
 

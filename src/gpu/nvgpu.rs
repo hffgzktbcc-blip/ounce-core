@@ -1,12 +1,12 @@
+//! Tegra NVGPU Channel / Pushbuffer & 3D Rasterizer Engine.
+//!
+//! Models the Nvidia Tegra (Maxwell GM20B / Ampere T239) command submission interface
+//! used by Horizon OS to feed draw calls, surface clears, and vertex arrays to the GPU.
+
 #![allow(dead_code)]
 
 use crate::gpu::upscaler::UpscaleEngine;
 use crate::mmu::Memory;
-
-/// Tegra NVGPU Channel / Pushbuffer & 3D Rasterizer Engine.
-///
-/// Models the Nvidia Tegra (Maxwell GM20B / Ampere T239) command submission interface
-/// used by Horizon OS to feed draw calls, surface clears, and vertex arrays to the GPU.
 
 pub const NVGPU_IOCTL_CHANNEL_SUBMIT_GPFIFO: u32 = 0xC0104808;
 pub const NVHOST_IOCTL_CTRL_SYNCPT_INCR: u32 = 0x40040003;
@@ -89,7 +89,7 @@ impl Gpu3DVertex {
     }
 
     /// Endian-safe, pure safe Rust serialization (zero unsafe).
-    pub fn to_bytes(&self) -> [u8; 32] {
+    pub fn to_bytes(self) -> [u8; 32] {
         let mut b = [0u8; 32];
         b[0..4].copy_from_slice(&self.position[0].to_le_bytes());
         b[4..8].copy_from_slice(&self.position[1].to_le_bytes());
@@ -156,10 +156,7 @@ pub enum Gpu3DDrawOp {
 #[inline]
 pub fn transpose_row_to_col_major(m: &[f32; 16]) -> [f32; 16] {
     [
-        m[0], m[4], m[8],  m[12],
-        m[1], m[5], m[9],  m[13],
-        m[2], m[6], m[10], m[14],
-        m[3], m[7], m[11], m[15],
+        m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14], m[3], m[7], m[11], m[15],
     ]
 }
 
@@ -204,10 +201,7 @@ impl Default for Gpu3DState {
             clear_color: [0.05, 0.05, 0.10, 1.0],
             // 4x4 Identity Matrix (Column-Major / Row-Major neutral for identity)
             mvp_matrix: [
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
             ],
             depth_test_enabled: false,
             depth_buffer: Vec::new(),
@@ -388,8 +382,7 @@ impl NvgpuChannel {
             // 0x0200: Set Render Target Address
             METHOD_SET_RENDER_TARGET_ADDR => {
                 if cmd.args.len() >= 2 {
-                    self.state.render_target_addr =
-                        ((cmd.args[1] as u64) << 32) | (cmd.args[0] as u64);
+                    self.state.render_target_addr = ((cmd.args[1] as u64) << 32) | (cmd.args[0] as u64);
                 } else if !cmd.args.is_empty() {
                     self.state.render_target_addr = cmd.args[0] as u64;
                 }
@@ -466,9 +459,7 @@ impl NvgpuChannel {
                     }
                 }
                 if self.hardware_acceleration_enabled {
-                    self.draw_queue.push(Gpu3DDrawOp::SetDepthTest {
-                        enabled: enable,
-                    });
+                    self.draw_queue.push(Gpu3DDrawOp::SetDepthTest { enabled: enable });
                 }
             }
             // 0x0674: Clear Render Target Surface in VRAM (and Z-Buffer to 1.0)
@@ -485,8 +476,7 @@ impl NvgpuChannel {
             // 0x0700: Set Vertex Array Address in Guest Memory
             METHOD_SET_VERTEX_ARRAY_ADDR => {
                 if cmd.args.len() >= 2 {
-                    self.state.vertex_array_addr =
-                        ((cmd.args[1] as u64) << 32) | (cmd.args[0] as u64);
+                    self.state.vertex_array_addr = ((cmd.args[1] as u64) << 32) | (cmd.args[0] as u64);
                 } else if !cmd.args.is_empty() {
                     self.state.vertex_array_addr = cmd.args[0] as u64;
                 }
@@ -674,10 +664,7 @@ impl NvgpuChannel {
                             }
 
                             // Check unique vertex capacity before inserting
-                            let new_verts_needed = tri_raw
-                                .iter()
-                                .filter(|idx| !index_remap.contains_key(idx))
-                                .count();
+                            let new_verts_needed = tri_raw.iter().filter(|idx| !index_remap.contains_key(idx)).count();
 
                             if unique_vertices.len() + new_verts_needed > MAX_UNIQUE_VERTICES_PER_DRAW {
                                 // Hit safe limit: truncate triangle stream for this draw call
@@ -721,14 +708,12 @@ impl NvgpuChannel {
             }
             // 0x0900: Dispatch 2x upscaler model (bilinear + sharpen, not DLSS)
             // Args: [src_addr, src_w, src_h, dst_addr]
-            METHOD_DISPATCH_UPSCALE_2X => {
-                if cmd.args.len() >= 4 {
-                    let src_addr = cmd.args[0] as u64;
-                    let src_w = cmd.args[1];
-                    let src_h = cmd.args[2];
-                    let dst_addr = cmd.args[3] as u64;
-                    self.upscaler.upscale_2x(mmu, src_addr, src_w, src_h, dst_addr);
-                }
+            METHOD_DISPATCH_UPSCALE_2X if cmd.args.len() >= 4 => {
+                let src_addr = cmd.args[0] as u64;
+                let src_w = cmd.args[1];
+                let src_h = cmd.args[2];
+                let dst_addr = cmd.args[3] as u64;
+                self.upscaler.upscale_2x(mmu, src_addr, src_w, src_h, dst_addr);
             }
             _ => {}
         }
@@ -864,14 +849,7 @@ impl NvgpuChannel {
     }
 
     /// Barycentric 2D/3D triangle rasterizer with smooth RGB vertex color and 2D texture UV sampling.
-    fn draw_single_triangle(
-        &mut self,
-        mmu: &mut Memory,
-        v0: &Vertex,
-        v1: &Vertex,
-        v2: &Vertex,
-        textured: bool,
-    ) {
+    fn draw_single_triangle(&mut self, mmu: &mut Memory, v0: &Vertex, v1: &Vertex, v2: &Vertex, textured: bool) {
         let w = self.state.viewport_width as i32;
         let h = self.state.viewport_height as i32;
         let wf = w as f32;
@@ -897,10 +875,8 @@ impl NvgpuChannel {
         }
         let inv_area = 1.0 / area;
 
-        let has_tex = textured
-            && self.state.texture_addr != 0
-            && self.state.texture_width > 0
-            && self.state.texture_height > 0;
+        let has_tex =
+            textured && self.state.texture_addr != 0 && self.state.texture_width > 0 && self.state.texture_height > 0;
 
         for py in min_y..=max_y {
             let fy = py as f32 + 0.5;
@@ -939,8 +915,7 @@ impl NvgpuChannel {
                             .min(self.state.texture_width - 1);
                         let ty = ((v * (self.state.texture_height as f32 - 1.0)).round() as u32)
                             .min(self.state.texture_height - 1);
-                        let texel_addr = self.state.texture_addr
-                            + ((ty * self.state.texture_width + tx) as u64) * 4;
+                        let texel_addr = self.state.texture_addr + ((ty * self.state.texture_width + tx) as u64) * 4;
                         if let Ok(texel) = mmu.read_u32(texel_addr) {
                             let tr = (texel & 0xFF) as f32 / 255.0;
                             let tg = ((texel >> 8) & 0xFF) as f32 / 255.0;
@@ -957,8 +932,7 @@ impl NvgpuChannel {
                     let b = (b_f * 255.0).round() as u32;
                     let rgba = r | (g << 8) | (b << 16) | 0xFF000000;
 
-                    let pixel_addr =
-                        self.state.render_target_addr + ((py * w + px) as u64) * 4;
+                    let pixel_addr = self.state.render_target_addr + ((py * w + px) as u64) * 4;
                     let _ = mmu.write_u32(pixel_addr, rgba);
                 }
             }
@@ -991,8 +965,8 @@ mod tests {
 
         // Write 3 vertices at vb_addr covering the center of the 16x16 viewport
         let verts: [f32; 18] = [
-            0.0,  0.8, 0.0, 1.0, 0.0, 0.0, // Top (Red)
-           -0.8, -0.8, 0.0, 0.0, 1.0, 0.0, // Bottom-Left (Green)
+            0.0, 0.8, 0.0, 1.0, 0.0, 0.0, // Top (Red)
+            -0.8, -0.8, 0.0, 0.0, 1.0, 0.0, // Bottom-Left (Green)
             0.8, -0.8, 0.0, 0.0, 0.0, 1.0, // Bottom-Right (Blue)
         ];
         for (i, &val) in verts.iter().enumerate() {
@@ -1004,7 +978,8 @@ mod tests {
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_RENDER_TARGET_ADDR, 1),
             rt_addr as u32,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
-            16, 16,
+            16,
+            16,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_CLEAR_SURFACE, 1),
             1,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VERTEX_ARRAY_ADDR, 1),
@@ -1048,9 +1023,8 @@ mod tests {
 
         // Write 3 textured vertices (8 floats each: x, y, z, r, g, b, u, v)
         let verts: [f32; 24] = [
-             0.0,  0.8, 0.0, 1.0, 1.0, 1.0, 0.5, 0.0,
-            -0.8, -0.8, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0,
-             0.8, -0.8, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            0.0, 0.8, 0.0, 1.0, 1.0, 1.0, 0.5, 0.0, -0.8, -0.8, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.8, -0.8, 0.0, 1.0, 1.0,
+            1.0, 1.0, 1.0,
         ];
         for (i, &val) in verts.iter().enumerate() {
             mmu.write_u32(vb_addr + (i * 4) as u64, val.to_bits()).unwrap();
@@ -1060,9 +1034,12 @@ mod tests {
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_RENDER_TARGET_ADDR, 1),
             rt_addr as u32,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
-            16, 16,
+            16,
+            16,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_BIND_TEXTURE_2D, 3),
-            tex_addr as u32, 2, 2,
+            tex_addr as u32,
+            2,
+            2,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VERTEX_ARRAY_ADDR, 1),
             vb_addr as u32,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_DRAW_TEXTURED_ARRAYS, 1),
@@ -1095,13 +1072,9 @@ mod tests {
         // Triangle 1 (Far,  z = 0.8): Pure Red   (r=1, g=0, b=0) — drawn SECOND!
         let verts: [f32; 36] = [
             // Near Green Triangle (z = 0.2)
-             0.0,  0.8, 0.2, 0.0, 1.0, 0.0,
-            -0.8, -0.8, 0.2, 0.0, 1.0, 0.0,
-             0.8, -0.8, 0.2, 0.0, 1.0, 0.0,
+            0.0, 0.8, 0.2, 0.0, 1.0, 0.0, -0.8, -0.8, 0.2, 0.0, 1.0, 0.0, 0.8, -0.8, 0.2, 0.0, 1.0, 0.0,
             // Far Red Triangle (z = 0.8)
-             0.0,  0.8, 0.8, 1.0, 0.0, 0.0,
-            -0.8, -0.8, 0.8, 1.0, 0.0, 0.0,
-             0.8, -0.8, 0.8, 1.0, 0.0, 0.0,
+            0.0, 0.8, 0.8, 1.0, 0.0, 0.0, -0.8, -0.8, 0.8, 1.0, 0.0, 0.0, 0.8, -0.8, 0.8, 1.0, 0.0, 0.0,
         ];
         for (i, &val) in verts.iter().enumerate() {
             mmu.write_u32(vb_addr + (i * 4) as u64, val.to_bits()).unwrap();
@@ -1111,7 +1084,8 @@ mod tests {
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_RENDER_TARGET_ADDR, 1),
             rt_addr as u32,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
-            16, 16,
+            16,
+            16,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_DEPTH_TEST_ENABLE, 1),
             1,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_CLEAR_SURFACE, 1),
@@ -1156,10 +1130,8 @@ mod tests {
         // 2: bottom-right (0.8, -0.8, 0.5) cyan
         // 3: top-right (0.8, 0.8, 0.5) cyan
         let quad_verts: [f32; 24] = [
-            -0.8,  0.8, 0.5, 0.0, 1.0, 1.0,
-            -0.8, -0.8, 0.5, 0.0, 1.0, 1.0,
-             0.8, -0.8, 0.5, 0.0, 1.0, 1.0,
-             0.8,  0.8, 0.5, 0.0, 1.0, 1.0,
+            -0.8, 0.8, 0.5, 0.0, 1.0, 1.0, -0.8, -0.8, 0.5, 0.0, 1.0, 1.0, 0.8, -0.8, 0.5, 0.0, 1.0, 1.0, 0.8, 0.8,
+            0.5, 0.0, 1.0, 1.0,
         ];
         for (i, &val) in quad_verts.iter().enumerate() {
             mmu.write_u32(vb_addr + (i * 4) as u64, val.to_bits()).unwrap();
@@ -1177,15 +1149,18 @@ mod tests {
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_RENDER_TARGET_ADDR, 1),
             rt_addr as u32,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
-            16, 16,
+            16,
+            16,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_CLEAR_SURFACE, 1),
             1,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VERTEX_ARRAY_ADDR, 1),
             vb_addr as u32,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_INDEX_ARRAY_ADDR, 2),
-            ib_addr as u32, 0, // 0 = 16-bit indices
+            ib_addr as u32,
+            0, // 0 = 16-bit indices
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_DRAW_INDEXED, 2),
-            6, 0, // 6 indices, textured = false
+            6,
+            0, // 6 indices, textured = false
         ];
         for (i, &w) in pb_words.iter().enumerate() {
             mmu.write_u32(pb_addr + (i * 4) as u64, w).unwrap();
@@ -1215,9 +1190,7 @@ mod tests {
         mmu.map_range(pb_addr, 4096, Permission::READ_WRITE);
 
         let triangle_verts: [f32; 18] = [
-            -0.5,  0.5, 0.0, 1.0, 0.0, 0.0,
-            -0.5, -0.5, 0.0, 0.0, 1.0, 0.0,
-             0.5, -0.5, 0.0, 0.0, 0.0, 1.0,
+            -0.5, 0.5, 0.0, 1.0, 0.0, 0.0, -0.5, -0.5, 0.0, 0.0, 1.0, 0.0, 0.5, -0.5, 0.0, 0.0, 0.0, 1.0,
         ];
         for (i, &v) in triangle_verts.iter().enumerate() {
             mmu.write_u32(vb_addr + (i * 4) as u64, v.to_bits()).unwrap();
@@ -1225,14 +1198,30 @@ mod tests {
 
         let pb_words: Vec<u32> = vec![
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
-            1280, 720,
+            1280,
+            720,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_CLEAR_COLOR, 4),
-            (0.1f32).to_bits(), (0.2f32).to_bits(), (0.3f32).to_bits(), (1.0f32).to_bits(),
+            (0.1f32).to_bits(),
+            (0.2f32).to_bits(),
+            (0.3f32).to_bits(),
+            (1.0f32).to_bits(),
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_MVP_MATRIX, 16),
-            (2.0f32).to_bits(), 0, 0, 0,
-            0, (2.0f32).to_bits(), 0, 0,
-            0, 0, (1.0f32).to_bits(), 0,
-            0, 0, 0, (1.0f32).to_bits(),
+            (2.0f32).to_bits(),
+            0,
+            0,
+            0,
+            0,
+            (2.0f32).to_bits(),
+            0,
+            0,
+            0,
+            0,
+            (1.0f32).to_bits(),
+            0,
+            0,
+            0,
+            0,
+            (1.0f32).to_bits(),
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_DEPTH_TEST_ENABLE, 1),
             1,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_CLEAR_SURFACE, 1),
@@ -1298,10 +1287,7 @@ mod tests {
     #[test]
     fn test_row_major_to_column_major_matrix_transposition() {
         let row_major: [f32; 16] = [
-            1.0,  2.0,  3.0,  4.0,
-            5.0,  6.0,  7.0,  8.0,
-            9.0, 10.0, 11.0, 12.0,
-           13.0, 14.0, 15.0, 16.0,
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
         ];
         let col_major = transpose_row_to_col_major(&row_major);
         for row in 0..4 {
@@ -1331,9 +1317,13 @@ mod tests {
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_RENDER_TARGET_ADDR, 1),
             rt_addr as u32,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
-            16, 16,
+            16,
+            16,
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_CLEAR_COLOR, 4),
-            (1.0f32).to_bits(), (0.0f32).to_bits(), (0.0f32).to_bits(), (1.0f32).to_bits(),
+            (1.0f32).to_bits(),
+            (0.0f32).to_bits(),
+            (0.0f32).to_bits(),
+            (1.0f32).to_bits(),
             NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_CLEAR_SURFACE, 1),
             1,
         ];
@@ -1359,10 +1349,10 @@ mod tests {
         let px = f32::from_le_bytes(bytes[0..4].try_into().unwrap());
         let py = f32::from_le_bytes(bytes[4..8].try_into().unwrap());
         let pz = f32::from_le_bytes(bytes[8..12].try_into().unwrap());
-        let r  = f32::from_le_bytes(bytes[12..16].try_into().unwrap());
-        let g  = f32::from_le_bytes(bytes[16..20].try_into().unwrap());
-        let b  = f32::from_le_bytes(bytes[20..24].try_into().unwrap());
-        let u  = f32::from_le_bytes(bytes[24..28].try_into().unwrap());
+        let r = f32::from_le_bytes(bytes[12..16].try_into().unwrap());
+        let g = f32::from_le_bytes(bytes[16..20].try_into().unwrap());
+        let b = f32::from_le_bytes(bytes[20..24].try_into().unwrap());
+        let u = f32::from_le_bytes(bytes[24..28].try_into().unwrap());
         let v_coord = f32::from_le_bytes(bytes[28..32].try_into().unwrap());
 
         assert_eq!(px, 1.5);
@@ -1413,7 +1403,11 @@ mod tests {
         let ops = gpu.drain_draw_ops();
         for op in ops {
             if let Gpu3DDrawOp::DrawIndexed { vertices, .. } = op {
-                assert!(vertices.len() <= 3, "Vertices vector must be bounded, got {}", vertices.len());
+                assert!(
+                    vertices.len() <= 3,
+                    "Vertices vector must be bounded, got {}",
+                    vertices.len()
+                );
             }
         }
     }
@@ -1513,4 +1507,3 @@ mod tests {
         }
     }
 }
-

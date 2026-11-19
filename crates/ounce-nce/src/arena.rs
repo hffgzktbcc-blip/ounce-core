@@ -75,8 +75,14 @@ mod imp {
 
     impl std::fmt::Debug for Arena {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "Arena({:#x}+{:#x}, {} committed host pages, {} sealed)", self.base, self.size,
-                self.committed.len(), self.sealed.len())
+            write!(
+                f,
+                "Arena({:#x}+{:#x}, {} committed host pages, {} sealed)",
+                self.base,
+                self.size,
+                self.committed.len(),
+                self.sealed.len()
+            )
         }
     }
 
@@ -96,8 +102,14 @@ mod imp {
             let hint = 0x1000_0000_0000u64;
             // SAFETY: a fresh anonymous PROT_NONE mapping; no existing memory is touched (no MAP_FIXED).
             let raw = unsafe {
-                libc::mmap(hint as *mut libc::c_void, span as libc::size_t, libc::PROT_NONE,
-                    libc::MAP_PRIVATE | libc::MAP_ANON | libc::MAP_NORESERVE, -1, 0)
+                libc::mmap(
+                    hint as *mut libc::c_void,
+                    span as libc::size_t,
+                    libc::PROT_NONE,
+                    libc::MAP_PRIVATE | libc::MAP_ANON | libc::MAP_NORESERVE,
+                    -1,
+                    0,
+                )
             };
             if raw == libc::MAP_FAILED {
                 return Err(os_error("mmap(reserve)"));
@@ -114,7 +126,13 @@ mod imp {
                     libc::munmap((base + size) as *mut libc::c_void, tail as libc::size_t);
                 }
             }
-            Ok(Self { base, size, page, committed: HashSet::new(), sealed: HashSet::new() })
+            Ok(Self {
+                base,
+                size,
+                page,
+                committed: HashSet::new(),
+                sealed: HashSet::new(),
+            })
         }
 
         /// Reserves exactly `[base, base + size)` (host-page aligned), or fails if any of it is taken.
@@ -126,8 +144,14 @@ mod imp {
             }
             // SAFETY: a fresh anonymous PROT_NONE mapping at a hint; no MAP_FIXED, so nothing is replaced.
             let raw = unsafe {
-                libc::mmap(base as *mut libc::c_void, size as libc::size_t, libc::PROT_NONE,
-                    libc::MAP_PRIVATE | libc::MAP_ANON | libc::MAP_NORESERVE, -1, 0)
+                libc::mmap(
+                    base as *mut libc::c_void,
+                    size as libc::size_t,
+                    libc::PROT_NONE,
+                    libc::MAP_PRIVATE | libc::MAP_ANON | libc::MAP_NORESERVE,
+                    -1,
+                    0,
+                )
             };
             if raw == libc::MAP_FAILED {
                 return Err(os_error("mmap(reserve)"));
@@ -137,12 +161,24 @@ mod imp {
                 unsafe { libc::munmap(raw, size as libc::size_t) };
                 return Err(NceError::Range { va: base, len: size });
             }
-            Ok(Self { base, size, page, committed: HashSet::new(), sealed: HashSet::new() })
+            Ok(Self {
+                base,
+                size,
+                page,
+                committed: HashSet::new(),
+                sealed: HashSet::new(),
+            })
         }
 
-        pub fn base(&self) -> u64 { self.base }
-        pub fn size(&self) -> u64 { self.size }
-        pub fn host_page_size(&self) -> u64 { self.page }
+        pub fn base(&self) -> u64 {
+            self.base
+        }
+        pub fn size(&self) -> u64 {
+            self.size
+        }
+        pub fn host_page_size(&self) -> u64 {
+            self.page
+        }
 
         fn check(&self, va: u64, len: u64) -> Result<(), NceError> {
             match va.checked_add(len) {
@@ -169,11 +205,26 @@ mod imp {
 
         /// Fresh zero pages at `[start, end)` (host-page aligned, inside the arena).
         fn fresh(&mut self, start: u64, end: u64, prot: libc::c_int) -> Result<(), NceError> {
-            let flags = libc::MAP_PRIVATE | libc::MAP_ANON | libc::MAP_FIXED
-                | if prot == libc::PROT_NONE { libc::MAP_NORESERVE } else { 0 };
+            let flags = libc::MAP_PRIVATE
+                | libc::MAP_ANON
+                | libc::MAP_FIXED
+                | if prot == libc::PROT_NONE {
+                    libc::MAP_NORESERVE
+                } else {
+                    0
+                };
             // SAFETY: `[start, end)` lies inside this arena's reservation (checked by callers), so
             // MAP_FIXED replaces only memory this arena owns.
-            let p = unsafe { libc::mmap(start as *mut libc::c_void, (end - start) as libc::size_t, prot, flags, -1, 0) };
+            let p = unsafe {
+                libc::mmap(
+                    start as *mut libc::c_void,
+                    (end - start) as libc::size_t,
+                    prot,
+                    flags,
+                    -1,
+                    0,
+                )
+            };
             if p == libc::MAP_FAILED || p as u64 != start {
                 return Err(os_error("mmap(fixed)"));
             }
@@ -201,7 +252,10 @@ mod imp {
                 if whole || !self.committed.contains(&p) {
                     run = match run {
                         Some((s, e)) if e == ps => Some((s, pe)),
-                        Some((s, e)) => { self.fresh(s, e, libc::PROT_READ | libc::PROT_WRITE)?; Some((ps, pe)) }
+                        Some((s, e)) => {
+                            self.fresh(s, e, libc::PROT_READ | libc::PROT_WRITE)?;
+                            Some((ps, pe))
+                        }
                         None => Some((ps, pe)),
                     };
                     self.committed.insert(p);
@@ -308,18 +362,48 @@ mod imp {
     pub struct Arena(());
 
     impl Arena {
-        pub fn reserve(_size: u64) -> Result<Self, NceError> { Err(NceError::Unsupported) }
-        pub fn reserve_at(_base: u64, _size: u64) -> Result<Self, NceError> { Err(NceError::Unsupported) }
-        pub fn base(&self) -> u64 { 0 }
-        pub fn size(&self) -> u64 { 0 }
-        pub fn host_page_size(&self) -> u64 { 0x1000 }
-        pub fn commit(&mut self, va: u64, len: u64) -> Result<(), NceError> { Err(NceError::Range { va, len }) }
-        pub fn decommit(&mut self, _va: u64, _len: u64) -> Result<(), NceError> { Ok(()) }
-        pub fn read(&self, va: u64, buf: &mut [u8]) -> Result<(), NceError> { Err(NceError::Range { va, len: buf.len() as u64 }) }
-        pub fn write(&mut self, va: u64, data: &[u8]) -> Result<(), NceError> { Err(NceError::Range { va, len: data.len() as u64 }) }
-        pub fn seal_exec(&mut self, va: u64, len: u64) -> Result<(), NceError> { Err(NceError::Range { va, len }) }
-        pub fn is_sealed(&self, _va: u64) -> bool { false }
-        pub fn context_mut(&mut self, va: u64) -> Result<&mut crate::Context, NceError> { Err(NceError::Range { va, len: 0 }) }
+        pub fn reserve(_size: u64) -> Result<Self, NceError> {
+            Err(NceError::Unsupported)
+        }
+        pub fn reserve_at(_base: u64, _size: u64) -> Result<Self, NceError> {
+            Err(NceError::Unsupported)
+        }
+        pub fn base(&self) -> u64 {
+            0
+        }
+        pub fn size(&self) -> u64 {
+            0
+        }
+        pub fn host_page_size(&self) -> u64 {
+            0x1000
+        }
+        pub fn commit(&mut self, va: u64, len: u64) -> Result<(), NceError> {
+            Err(NceError::Range { va, len })
+        }
+        pub fn decommit(&mut self, _va: u64, _len: u64) -> Result<(), NceError> {
+            Ok(())
+        }
+        pub fn read(&self, va: u64, buf: &mut [u8]) -> Result<(), NceError> {
+            Err(NceError::Range {
+                va,
+                len: buf.len() as u64,
+            })
+        }
+        pub fn write(&mut self, va: u64, data: &[u8]) -> Result<(), NceError> {
+            Err(NceError::Range {
+                va,
+                len: data.len() as u64,
+            })
+        }
+        pub fn seal_exec(&mut self, va: u64, len: u64) -> Result<(), NceError> {
+            Err(NceError::Range { va, len })
+        }
+        pub fn is_sealed(&self, _va: u64) -> bool {
+            false
+        }
+        pub fn context_mut(&mut self, va: u64) -> Result<&mut crate::Context, NceError> {
+            Err(NceError::Range { va, len: 0 })
+        }
     }
 }
 

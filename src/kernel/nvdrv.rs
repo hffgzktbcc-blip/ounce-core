@@ -166,7 +166,8 @@ pub struct IoctlExtra<'a> {
 }
 
 fn rd32(b: &[u8], off: usize) -> u32 {
-    b.get(off..off + 4).map_or(0, |s| u32::from_le_bytes(s.try_into().unwrap()))
+    b.get(off..off + 4)
+        .map_or(0, |s| u32::from_le_bytes(s.try_into().unwrap()))
 }
 
 fn wr32(b: &mut [u8], off: usize, v: u32) {
@@ -230,7 +231,11 @@ impl NvDrv {
             .chunks_exact(4)
             .map(|c| u32::from_le_bytes(c.try_into().unwrap()))
             .collect();
-        if let Some(entry) = self.channels.get_mut(&fd).and_then(|c| c.fences.iter_mut().find(|f| f.0 > 0)) {
+        if let Some(entry) = self
+            .channels
+            .get_mut(&fd)
+            .and_then(|c| c.fences.iter_mut().find(|f| f.0 > 0))
+        {
             entry.0 -= 1;
         }
         let engine = self.engines.entry(fd).or_default();
@@ -276,11 +281,19 @@ impl NvDrv {
     pub fn poll_3d(&mut self, mmu: &mut Memory) {
         loop {
             let mut progressed = false;
-            let mut fds: Vec<u32> = self.engines.iter().filter(|(_, e)| e.blocked_on().is_some()).map(|(&fd, _)| fd).collect();
+            let mut fds: Vec<u32> = self
+                .engines
+                .iter()
+                .filter(|(_, e)| e.blocked_on().is_some())
+                .map(|(&fd, _)| fd)
+                .collect();
             fds.sort_unstable();
             for fd in fds {
                 let engine = self.engines.get_mut(&fd).unwrap();
-                let mut mem = GuestGpuMemory { mmu, mappings: &self.gpu_mappings };
+                let mut mem = GuestGpuMemory {
+                    mmu,
+                    mappings: &self.gpu_mappings,
+                };
                 if engine.resume(&mut mem) {
                     progressed = true;
                 }
@@ -309,13 +322,20 @@ impl NvDrv {
     }
 
     fn set_mapping_kind(&mut self, start: u64, end: u64, kind: u32) {
-        let overlaps: Vec<_> = self.gpu_mapping_kinds.range(..end)
+        let overlaps: Vec<_> = self
+            .gpu_mapping_kinds
+            .range(..end)
             .filter(|(_, (prior_end, _))| *prior_end > start)
-            .map(|(&prior_start, &(prior_end, prior_kind))| (prior_start, prior_end, prior_kind)).collect();
+            .map(|(&prior_start, &(prior_end, prior_kind))| (prior_start, prior_end, prior_kind))
+            .collect();
         for (prior_start, prior_end, prior_kind) in overlaps {
             self.gpu_mapping_kinds.remove(&prior_start);
-            if prior_start < start { self.gpu_mapping_kinds.insert(prior_start, (start, prior_kind)); }
-            if prior_end > end { self.gpu_mapping_kinds.insert(end, (prior_end, prior_kind)); }
+            if prior_start < start {
+                self.gpu_mapping_kinds.insert(prior_start, (start, prior_kind));
+            }
+            if prior_end > end {
+                self.gpu_mapping_kinds.insert(end, (prior_end, prior_kind));
+            }
         }
         self.gpu_mapping_kinds.insert(start, (end, kind));
     }
@@ -340,7 +360,11 @@ impl NvDrv {
 
     pub fn close(&mut self, fd: u32) -> u32 {
         self.channels.remove(&fd);
-        if self.fds.remove(&fd).is_some() { NV_OK } else { NV_BAD_PARAMETER }
+        if self.fds.remove(&fd).is_some() {
+            NV_OK
+        } else {
+            NV_BAD_PARAMETER
+        }
     }
 
     /// Runs an ioctl on `fd`. `data` is the argument block, updated in place.
@@ -381,7 +405,14 @@ impl NvDrv {
                 self.next_handle += 1;
                 let id = self.next_id;
                 self.next_id += 1;
-                self.nvmap.insert(handle, NvMapObject { id, size, ..Default::default() });
+                self.nvmap.insert(
+                    handle,
+                    NvMapObject {
+                        id,
+                        size,
+                        ..Default::default()
+                    },
+                );
                 wr32(data, 4, handle);
                 NV_OK
             }
@@ -506,7 +537,10 @@ impl NvDrv {
             }
             // ZCULL_GET_INFO: ten u32 fields
             0x02 => {
-                for (i, v) in [0x20, 0x20, 0x400, 0x800, 0x20, 0x20, 0xC0, 0x20, 0x40, 0x10].iter().enumerate() {
+                for (i, v) in [0x20, 0x20, 0x400, 0x800, 0x20, 0x20, 0xC0, 0x20, 0x40, 0x10]
+                    .iter()
+                    .enumerate()
+                {
                     wr32(data, i * 4, *v);
                 }
                 NV_OK
@@ -530,10 +564,10 @@ impl NvDrv {
             // The mask goes to the guest buffer `mask_buf_addr` names, which the IPC layer writes
             // (see `TPC_MASKS`); an Ioctl3 output buffer gets it too.
             0x06 => {
-                if let Some(out) = extra.outbuf {
-                    if out.len() >= 4 {
-                        out[..4].copy_from_slice(&TPC_MASKS.to_le_bytes());
-                    }
+                if let Some(out) = extra.outbuf
+                    && out.len() >= 4
+                {
+                    out[..4].copy_from_slice(&TPC_MASKS.to_le_bytes());
                 }
                 NV_OK
             }
@@ -558,14 +592,21 @@ impl NvDrv {
         if (request >> 8) & 0xFF != 0x41 {
             return None;
         }
-        let rd64 = |b: &[u8], off: usize| b.get(off..off + 8).map_or(0, |s| u64::from_le_bytes(s.try_into().unwrap()));
+        let rd64 = |b: &[u8], off: usize| {
+            b.get(off..off + 8)
+                .map_or(0, |s| u64::from_le_bytes(s.try_into().unwrap()))
+        };
         Some(match request & 0xFF {
             // BIND_CHANNEL { u32 channel_fd; } / INITIALIZE_EX: one shared address space here
             0x01 | 0x09 => NV_OK,
             // ALLOC_SPACE { u32 pages; u32 page_size; u32 flags; u32 pad; u64 align_or_offset (inout); }
             0x02 => {
                 let size = rd32(data, 0) as u64 * rd32(data, 4) as u64;
-                let va = if rd32(data, 8) & 1 != 0 { rd64(data, 16) } else { self.alloc_gpu_va(size, rd64(data, 16)) };
+                let va = if rd32(data, 8) & 1 != 0 {
+                    rd64(data, 16)
+                } else {
+                    self.alloc_gpu_va(size, rd64(data, 16))
+                };
                 self.gpu_mappings.insert(va, GpuMapping { size, cpu_addr: 0 });
                 wr64(data, 16, va);
                 NV_OK
@@ -575,7 +616,8 @@ impl NvDrv {
                 let base = rd64(data, 0);
                 if let Some(mapping) = self.gpu_mappings.remove(&base) {
                     let end = base.saturating_add(mapping.size);
-                    self.gpu_mapping_kinds.retain(|&start, (prior_end, _)| start >= end || *prior_end <= base);
+                    self.gpu_mapping_kinds
+                        .retain(|&start, (prior_end, _)| start >= end || *prior_end <= base);
                 }
                 NV_OK
             }
@@ -587,12 +629,18 @@ impl NvDrv {
                     let base = rd64(data, 32);
                     let offset = rd64(data, 16);
                     let size = rd64(data, 24);
-                    let Some(start) = base.checked_add(offset) else { return Some(NV_BAD_PARAMETER) };
-                    let Some(end) = start.checked_add(size) else { return Some(NV_BAD_PARAMETER) };
+                    let Some(start) = base.checked_add(offset) else {
+                        return Some(NV_BAD_PARAMETER);
+                    };
+                    let Some(end) = start.checked_add(size) else {
+                        return Some(NV_BAD_PARAMETER);
+                    };
                     let Some((&map_base, mapping)) = self.gpu_mappings.range(..=base).next_back() else {
                         return Some(NV_BAD_PARAMETER);
                     };
-                    let Some(map_end) = map_base.checked_add(mapping.size) else { return Some(NV_BAD_PARAMETER) };
+                    let Some(map_end) = map_base.checked_add(mapping.size) else {
+                        return Some(NV_BAD_PARAMETER);
+                    };
                     if size == 0 || mapping.cpu_addr == 0 || base >= map_end || end > map_end {
                         return Some(NV_BAD_PARAMETER);
                     }
@@ -610,9 +658,17 @@ impl NvDrv {
                 if buffer_offset > obj.size as u64 || size == 0 || size > obj.size as u64 - buffer_offset {
                     return Some(NV_BAD_PARAMETER);
                 }
-                let Some(cpu_addr) = obj.addr.checked_add(buffer_offset) else { return Some(NV_BAD_PARAMETER) };
-                let va = if flags & 1 != 0 { rd64(data, 32) } else { self.alloc_gpu_va(size, rd32(data, 12) as u64) };
-                let Some(end) = va.checked_add(size) else { return Some(NV_BAD_PARAMETER) };
+                let Some(cpu_addr) = obj.addr.checked_add(buffer_offset) else {
+                    return Some(NV_BAD_PARAMETER);
+                };
+                let va = if flags & 1 != 0 {
+                    rd64(data, 32)
+                } else {
+                    self.alloc_gpu_va(size, rd32(data, 12) as u64)
+                };
+                let Some(end) = va.checked_add(size) else {
+                    return Some(NV_BAD_PARAMETER);
+                };
                 self.gpu_mappings.insert(va, GpuMapping { size, cpu_addr });
                 self.set_mapping_kind(va, end, rd32(data, 4));
                 wr64(data, 32, va);
@@ -622,7 +678,13 @@ impl NvDrv {
             0x08 => {
                 wr32(data, 8, 0x30);
                 // Small pages (4 KiB) and big pages (128 KiB), each { u64 offset; u32 page_size; u32 pad; u64 pages; }
-                for (i, (offset, page, pages)) in [(GPU_VA_BASE, 0x1000u32, 0x3FFF_Fu64), (0x10_0000_0000, 0x2_0000, 0x7_FFFF)].iter().enumerate() {
+                for (i, (offset, page, pages)) in [
+                    (GPU_VA_BASE, 0x1000u32, 0x3_FFFF_u64),
+                    (0x10_0000_0000, 0x2_0000, 0x7_FFFF),
+                ]
+                .iter()
+                .enumerate()
+                {
                     let at = 16 + i * 24;
                     wr64(data, at, *offset);
                     wr32(data, at + 8, *page);
@@ -641,10 +703,17 @@ impl NvDrv {
         }
         if !self.channels.contains_key(&fd) {
             let Some(syncpt) = (FIRST_CHANNEL_SYNCPT..NUM_SYNCPTS as u32)
-                .find(|id| self.channels.values().all(|channel| channel.syncpt != *id)) else {
+                .find(|id| self.channels.values().all(|channel| channel.syncpt != *id))
+            else {
                 return Some(NV_BAD_PARAMETER);
             };
-            self.channels.insert(fd, GpuChannel { syncpt, ..Default::default() });
+            self.channels.insert(
+                fd,
+                GpuChannel {
+                    syncpt,
+                    ..Default::default()
+                },
+            );
         }
         let ch = self.channels.get_mut(&fd).unwrap();
         let syncpt = ch.syncpt;
@@ -659,7 +728,11 @@ impl NvDrv {
                 // additional input buffer rather than appended to the header.
                 let num = rd32(data, 8) as usize;
                 let inline = data.get(0x18..).unwrap_or(&[]);
-                let entries = if extra.inbuf.len() >= num * 8 { extra.inbuf } else { inline };
+                let entries = if extra.inbuf.len() >= num * 8 {
+                    extra.inbuf
+                } else {
+                    inline
+                };
                 let mut segments: Vec<(u32, u64, usize)> = Vec::new();
                 for i in 0..num {
                     let Some(e) = entries.get(i * 8..i * 8 + 8) else { break };
@@ -740,11 +813,15 @@ pub fn gpu_characteristics() -> Vec<u8> {
     }
     w64(&mut b, 0x40000); // L2 cache size
     w64(&mut b, 0); // on-board video memory
-    for v in [0x2, 0x20, 0x20000, 0x20000, 0x1B, 0x30000, 0x1, 0x503, 0x503, 0x80, 0x28, 0] {
+    for v in [
+        0x2, 0x20, 0x20000, 0x20000, 0x1B, 0x30000, 0x1, 0x503, 0x503, 0x80, 0x28, 0,
+    ] {
         w32(&mut b, v); // num_tpc_per_gpc .. reserved
     }
     w64(&mut b, 0x55); // flags
-    for v in [0x902D, 0xB197, 0xB1C0, 0xB06F, 0xA140, 0xB0B5, 0x1, 0x0, 0x2, 0x1, 0x0, 0x1, 0x21D70, 0x0] {
+    for v in [
+        0x902D, 0xB197, 0xB1C0, 0xB06F, 0xA140, 0xB0B5, 0x1, 0x0, 0x2, 0x1, 0x0, 0x1, 0x21D70, 0x0,
+    ] {
         w32(&mut b, v); // classes .. rop_l2_en_mask_1
     }
     w64(&mut b, 0x62_3032_6D67); // chipname "gm20b"
@@ -885,8 +962,18 @@ mod tests {
         let entries = (va | (2u64 << 42)).to_le_bytes();
         let mut header = [0u8; 24];
         wr32(&mut header, 8, 1);
-        assert_eq!(nv.ioctl_ex(channel_fd, 0xC018_481B, &mut header,
-            IoctlExtra { inbuf: &entries, outbuf: None }), NV_OK);
+        assert_eq!(
+            nv.ioctl_ex(
+                channel_fd,
+                0xC018_481B,
+                &mut header,
+                IoctlExtra {
+                    inbuf: &entries,
+                    outbuf: None
+                }
+            ),
+            NV_OK
+        );
         assert_eq!(nv.take_channel_submissions(), [(channel_fd, 0x6000_0000, 2)]);
         assert_eq!(nv.channels[&channel_fd].submits, 1);
         assert_eq!(rd32(&header, 20), 1);

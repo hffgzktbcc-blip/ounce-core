@@ -113,10 +113,27 @@ impl Blend {
             ]
             .map(r)
         };
-        let color = Equation { op: op(raw[1])?, src: factor(raw[2])?, dst: factor(raw[3])? };
-        let alpha = if raw[0] & 1 == 1 { Equation { op: op(raw[4])?, src: factor(raw[5])?, dst: factor(raw[6])? } } else { color };
-        let constant = [m::SET_BLEND_CONST_RED, m::SET_BLEND_CONST_GREEN, m::SET_BLEND_CONST_BLUE, m::SET_BLEND_CONST_ALPHA]
-            .map(|c| f32::from_bits(r(c)));
+        let color = Equation {
+            op: op(raw[1])?,
+            src: factor(raw[2])?,
+            dst: factor(raw[3])?,
+        };
+        let alpha = if raw[0] & 1 == 1 {
+            Equation {
+                op: op(raw[4])?,
+                src: factor(raw[5])?,
+                dst: factor(raw[6])?,
+            }
+        } else {
+            color
+        };
+        let constant = [
+            m::SET_BLEND_CONST_RED,
+            m::SET_BLEND_CONST_GREEN,
+            m::SET_BLEND_CONST_BLUE,
+            m::SET_BLEND_CONST_ALPHA,
+        ]
+        .map(|c| f32::from_bits(r(c)));
         Ok(Some(Blend { color, alpha, constant }))
     }
 

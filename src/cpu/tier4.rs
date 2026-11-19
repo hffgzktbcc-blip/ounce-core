@@ -68,7 +68,11 @@ impl MemoryBus for MmuBus<'_> {
             _ => self.mmu.write_u64(va, value),
         };
         r.map_err(|_| MemFault)?;
-        Ok(if self.mmu.code_write_gen() != gen_before { WriteEffect::CodeWritten } else { WriteEffect::Done })
+        Ok(if self.mmu.code_write_gen() != gen_before {
+            WriteEffect::CodeWritten
+        } else {
+            WriteEffect::Done
+        })
     }
 
     fn query_page(&mut self, page_num: u64) -> Option<PageMapping<'_>> {
@@ -106,7 +110,11 @@ impl Lowerer {
 
     /// `read_x_or_sp`.
     fn x_or_sp(&mut self, r: u8) -> Value {
-        if r < 31 { self.b.get(Reg::X(r)) } else { self.b.get(Reg::Sp) }
+        if r < 31 {
+            self.b.get(Reg::X(r))
+        } else {
+            self.b.get(Reg::Sp)
+        }
     }
 
     /// `write_x`: writes to register 31 are dropped.
@@ -118,7 +126,11 @@ impl Lowerer {
 
     /// `write_x_or_sp`.
     fn set_x_or_sp(&mut self, r: u8, v: Value) {
-        if r < 31 { self.b.set(Reg::X(r), v) } else { self.b.set(Reg::Sp, v) }
+        if r < 31 {
+            self.b.set(Reg::X(r), v)
+        } else {
+            self.b.set(Reg::Sp, v)
+        }
     }
 
     /// `write_w`: zero-extends.
@@ -164,7 +176,11 @@ impl Lowerer {
         let w = Self::width(is_64);
         let res = self.b.bin(if is_sub { BinOp::Sub } else { BinOp::Add }, w, a, b);
         if set_flags {
-            let f = self.b.push(if is_sub { Op::SubFlags(w, a, b) } else { Op::AddFlags(w, a, b) });
+            let f = self.b.push(if is_sub {
+                Op::SubFlags(w, a, b)
+            } else {
+                Op::AddFlags(w, a, b)
+            });
             self.b.set(Reg::Nzcv, f);
         }
         res
@@ -218,7 +234,13 @@ impl Lowerer {
                 self.set_x(rd, v);
             }
 
-            Instruction::MoveWide { rd, imm, shift, op, is_64 } => {
+            Instruction::MoveWide {
+                rd,
+                imm,
+                shift,
+                op,
+                is_64,
+            } => {
                 let shifted = (imm as u64) << shift;
                 let v = match op {
                     MoveWideOp::Movz => self.k(if is_64 { shifted } else { shifted as u32 as u64 }),
@@ -237,17 +259,41 @@ impl Lowerer {
                 self.set_x(rd, v);
             }
 
-            Instruction::AddSubImm { rd, rn, imm, is_sub, set_flags, is_64 } => {
+            Instruction::AddSubImm {
+                rd,
+                rn,
+                imm,
+                is_sub,
+                set_flags,
+                is_64,
+            } => {
                 let a = if rn == 31 { self.b.get(Reg::Sp) } else { self.x(rn) };
                 let b = self.k(imm);
                 let res = self.add_sub(a, b, is_sub, set_flags, is_64);
-                if set_flags { self.set_x(rd, res) } else { self.set_x_or_sp(rd, res) }
+                if set_flags {
+                    self.set_x(rd, res)
+                } else {
+                    self.set_x_or_sp(rd, res)
+                }
             }
 
             Instruction::AddSubReg {
-                rd, rn, rm, shift_type, shift_amount, is_extended, extend_option, is_sub, set_flags, is_64,
+                rd,
+                rn,
+                rm,
+                shift_type,
+                shift_amount,
+                is_extended,
+                extend_option,
+                is_sub,
+                set_flags,
+                is_64,
             } => {
-                let a = if is_extended && rn == 31 { self.b.get(Reg::Sp) } else { self.x(rn) };
+                let a = if is_extended && rn == 31 {
+                    self.b.get(Reg::Sp)
+                } else {
+                    self.x(rn)
+                };
                 let raw = self.x(rm);
                 let b = if is_extended {
                     let ext = match extend_option {
@@ -269,14 +315,32 @@ impl Lowerer {
                 let res = self.add_sub(a, b, is_sub, set_flags, is_64);
                 // Extended-register ADD/SUB (not ADDS/SUBS) writes SP for Rd = 31, e.g. `sub sp, sp, x12`.
                 // W32 results are already zero-extended.
-                if is_extended && !set_flags { self.set_x_or_sp(rd, res) } else { self.set_x(rd, res) }
+                if is_extended && !set_flags {
+                    self.set_x_or_sp(rd, res)
+                } else {
+                    self.set_x(rd, res)
+                }
             }
 
-            Instruction::LogicalReg { rd, rn, rm, shift_type, shift_amount, invert_rm, op, set_flags, is_64 } => {
+            Instruction::LogicalReg {
+                rd,
+                rn,
+                rm,
+                shift_type,
+                shift_amount,
+                invert_rm,
+                op,
+                set_flags,
+                is_64,
+            } => {
                 let a = self.x(rn);
                 let raw = self.x(rm);
                 let sh = self.shifted(raw, shift_type, shift_amount, is_64);
-                let b = if invert_rm { self.b.push(Op::Not(Width::W64, sh)) } else { sh };
+                let b = if invert_rm {
+                    self.b.push(Op::Not(Width::W64, sh))
+                } else {
+                    sh
+                };
                 let res = self.logic(op, a, b);
                 let res = if is_64 { res } else { self.zext32(res) };
                 self.set_x(rd, res);
@@ -285,7 +349,14 @@ impl Lowerer {
                 }
             }
 
-            Instruction::LogicalImm { rd, rn, imm, op, set_flags, is_64 } => {
+            Instruction::LogicalImm {
+                rd,
+                rn,
+                imm,
+                op,
+                set_flags,
+                is_64,
+            } => {
                 let a = self.x(rn);
                 let b = self.k(imm);
                 let res = self.logic(op, a, b);
@@ -298,7 +369,14 @@ impl Lowerer {
                 }
             }
 
-            Instruction::Bitfield { rd, rn, immr, imms, opc, is_64 } => {
+            Instruction::Bitfield {
+                rd,
+                rn,
+                immr,
+                imms,
+                opc,
+                is_64,
+            } => {
                 let w64 = Width::W64;
                 let src = self.x(rn);
                 let src = if is_64 { src } else { self.zext32(src) };
@@ -348,7 +426,11 @@ impl Lowerer {
                         _ => positioned,
                     }
                 };
-                if is_64 { self.set_x(rd, res) } else { self.set_w(rd, res) }
+                if is_64 {
+                    self.set_x(rd, res)
+                } else {
+                    self.set_w(rd, res)
+                }
             }
 
             Instruction::Extract { rd, rn, rm, lsb, is_64 } => {
@@ -376,7 +458,14 @@ impl Lowerer {
                 }
             }
 
-            Instruction::CondSelect { rd, rn, rm, cond, op, is_64 } => {
+            Instruction::CondSelect {
+                rd,
+                rn,
+                rm,
+                cond,
+                op,
+                is_64,
+            } => {
                 let c = self.cond(cond);
                 let n = self.x(rn);
                 let m = self.x(rm);
@@ -390,21 +479,48 @@ impl Lowerer {
                     }
                 };
                 let res = self.b.push(Op::Select(c, n, alt));
-                if is_64 { self.set_x(rd, res) } else { self.set_w(rd, res) }
+                if is_64 {
+                    self.set_x(rd, res)
+                } else {
+                    self.set_w(rd, res)
+                }
             }
 
-            Instruction::CondCompare { rn, rm_or_imm, nzcv, cond, is_imm, is_sub, is_64 } => {
+            Instruction::CondCompare {
+                rn,
+                rm_or_imm,
+                nzcv,
+                cond,
+                is_imm,
+                is_sub,
+                is_64,
+            } => {
                 let c = self.cond(cond);
                 let a = self.x(rn);
-                let b = if is_imm { self.k(rm_or_imm as u64) } else { self.x(rm_or_imm) };
+                let b = if is_imm {
+                    self.k(rm_or_imm as u64)
+                } else {
+                    self.x(rm_or_imm)
+                };
                 let w = Self::width(is_64);
-                let f = self.b.push(if is_sub { Op::SubFlags(w, a, b) } else { Op::AddFlags(w, a, b) });
+                let f = self.b.push(if is_sub {
+                    Op::SubFlags(w, a, b)
+                } else {
+                    Op::AddFlags(w, a, b)
+                });
                 let alt = self.k(((nzcv & 0xF) as u64) << 28);
                 let res = self.b.push(Op::Select(c, f, alt));
                 self.b.set(Reg::Nzcv, res);
             }
 
-            Instruction::MultiplyAddSub { rd, rn, rm, ra, is_sub, is_64 } => {
+            Instruction::MultiplyAddSub {
+                rd,
+                rn,
+                rm,
+                ra,
+                is_sub,
+                is_64,
+            } => {
                 let w = Self::width(is_64);
                 let n = self.x(rn);
                 let m = self.x(rm);
@@ -414,14 +530,31 @@ impl Lowerer {
                 self.set_x(rd, res);
             }
 
-            Instruction::Divide { rd, rn, rm, is_signed, is_64 } => {
+            Instruction::Divide {
+                rd,
+                rn,
+                rm,
+                is_signed,
+                is_64,
+            } => {
                 let n = self.x(rn);
                 let m = self.x(rm);
-                let res = self.b.bin(if is_signed { BinOp::Sdiv } else { BinOp::Udiv }, Self::width(is_64), n, m);
+                let res = self.b.bin(
+                    if is_signed { BinOp::Sdiv } else { BinOp::Udiv },
+                    Self::width(is_64),
+                    n,
+                    m,
+                );
                 self.set_x(rd, res);
             }
 
-            Instruction::ShiftReg { rd, rn, rm, shift_type, is_64 } => {
+            Instruction::ShiftReg {
+                rd,
+                rn,
+                rm,
+                shift_type,
+                is_64,
+            } => {
                 let op = match shift_type {
                     ShiftType::Lsl => BinOp::Shl,
                     ShiftType::Lsr => BinOp::Lshr,
@@ -434,7 +567,17 @@ impl Lowerer {
                 self.set_x(rd, res);
             }
 
-            Instruction::LoadStoreReg { rt, rn, rm, option, shift, size_bytes, is_load, is_signed, is_64_target } => {
+            Instruction::LoadStoreReg {
+                rt,
+                rn,
+                rm,
+                option,
+                shift,
+                size_bytes,
+                is_load,
+                is_signed,
+                is_64_target,
+            } => {
                 if !matches!(size_bytes, 1 | 2 | 4 | 8) {
                     return Err(());
                 }
@@ -449,16 +592,37 @@ impl Lowerer {
                 let addr = self.b.bin(BinOp::Add, Width::W64, base, index);
                 if is_load {
                     let v = self.load(size_bytes, addr, site);
-                    let v = if is_signed && size_bytes < 8 { self.b.push(Op::Sext(size_bytes * 8, v)) } else { v };
-                    if is_64_target || size_bytes == 8 { self.set_x(rt, v) } else { self.set_w(rt, v) }
+                    let v = if is_signed && size_bytes < 8 {
+                        self.b.push(Op::Sext(size_bytes * 8, v))
+                    } else {
+                        v
+                    };
+                    if is_64_target || size_bytes == 8 {
+                        self.set_x(rt, v)
+                    } else {
+                        self.set_w(rt, v)
+                    }
                 } else {
                     let v = self.x(rt);
                     self.store(size_bytes, addr, v, site);
-                    self.b.push(Op::EndInsn { next_pc: pc.wrapping_add(4), insns: done });
+                    self.b.push(Op::EndInsn {
+                        next_pc: pc.wrapping_add(4),
+                        insns: done,
+                    });
                 }
             }
 
-            Instruction::LoadStoreImm { rt, rn, offset, size_bytes, is_load, is_signed, is_64_target, writeback, post_index } => {
+            Instruction::LoadStoreImm {
+                rt,
+                rn,
+                offset,
+                size_bytes,
+                is_load,
+                is_signed,
+                is_64_target,
+                writeback,
+                post_index,
+            } => {
                 if !matches!(size_bytes, 1 | 2 | 4 | 8) {
                     return Err(());
                 }
@@ -467,8 +631,16 @@ impl Lowerer {
                 let addr = if post_index { base } else { updated };
                 if is_load {
                     let v = self.load(size_bytes, addr, site);
-                    let v = if is_signed && size_bytes < 8 { self.b.push(Op::Sext(size_bytes * 8, v)) } else { v };
-                    if is_64_target { self.set_x(rt, v) } else { self.set_w(rt, v) }
+                    let v = if is_signed && size_bytes < 8 {
+                        self.b.push(Op::Sext(size_bytes * 8, v))
+                    } else {
+                        v
+                    };
+                    if is_64_target {
+                        self.set_x(rt, v)
+                    } else {
+                        self.set_w(rt, v)
+                    }
                 } else {
                     let v = self.x(rt);
                     self.store(size_bytes, addr, v, site);
@@ -477,11 +649,24 @@ impl Lowerer {
                     self.set_x_or_sp(rn, updated);
                 }
                 if !is_load {
-                    self.b.push(Op::EndInsn { next_pc: pc.wrapping_add(4), insns: done });
+                    self.b.push(Op::EndInsn {
+                        next_pc: pc.wrapping_add(4),
+                        insns: done,
+                    });
                 }
             }
 
-            Instruction::LoadStorePair { rt1, rt2, rn, offset, is_load, is_64, signed_word, writeback, post_index } => {
+            Instruction::LoadStorePair {
+                rt1,
+                rt2,
+                rn,
+                offset,
+                is_load,
+                is_64,
+                signed_word,
+                writeback,
+                post_index,
+            } => {
                 let base = self.x_or_sp(rn);
                 let size: u8 = if is_64 { 8 } else { 4 };
                 let updated = self.b.bin_imm(BinOp::Add, Width::W64, base, offset as u64);
@@ -506,7 +691,10 @@ impl Lowerer {
                     self.set_x_or_sp(rn, updated);
                 }
                 if !is_load {
-                    self.b.push(Op::EndInsn { next_pc: pc.wrapping_add(4), insns: done });
+                    self.b.push(Op::EndInsn {
+                        next_pc: pc.wrapping_add(4),
+                        insns: done,
+                    });
                 }
             }
 
@@ -525,18 +713,36 @@ impl Lowerer {
                 return Ok(Some(self.two_way(c, pc, offset, done)));
             }
 
-            Instruction::CompareBranch { rt, offset, is_cbnz, is_64 } => {
+            Instruction::CompareBranch {
+                rt,
+                offset,
+                is_cbnz,
+                is_64,
+            } => {
                 let v = self.x(rt);
                 let z = self.b.push(Op::IsZero(Self::width(is_64), v));
-                let c = if is_cbnz { self.b.bin_imm(BinOp::Xor, Width::W64, z, 1) } else { z };
+                let c = if is_cbnz {
+                    self.b.bin_imm(BinOp::Xor, Width::W64, z, 1)
+                } else {
+                    z
+                };
                 return Ok(Some(self.two_way(c, pc, offset, done)));
             }
 
-            Instruction::TestBranch { rt, bit, offset, is_tbnz } => {
+            Instruction::TestBranch {
+                rt,
+                bit,
+                offset,
+                is_tbnz,
+            } => {
                 let v = self.x(rt);
                 let sh = self.b.bin_imm(BinOp::Lshr, Width::W64, v, (bit & 63) as u64);
                 let set = self.b.bin_imm(BinOp::And, Width::W64, sh, 1);
-                let c = if is_tbnz { set } else { self.b.bin_imm(BinOp::Xor, Width::W64, set, 1) };
+                let c = if is_tbnz {
+                    set
+                } else {
+                    self.b.bin_imm(BinOp::Xor, Width::W64, set, 1)
+                };
                 return Ok(Some(self.two_way(c, pc, offset, done)));
             }
 
@@ -547,11 +753,20 @@ impl Lowerer {
                     self.set_x(30, ret);
                     self.return_site = Some(pc.wrapping_add(4));
                 }
-                let code = if op == BranchRegOp::Ret { EXIT_RETURN } else { EXIT_BRANCH };
+                let code = if op == BranchRegOp::Ret {
+                    EXIT_RETURN
+                } else {
+                    EXIT_BRANCH
+                };
                 // Looked up at run time in the link table (indirect-target cache). A miss returns
                 // to Rust as before; a `RET` miss still ends the slice with `BlockExit::Return`.
                 let link = self.indirect_links;
-                return Ok(Some(Terminator::Exit(ExitTo { code, pc: target, insns: done, link })));
+                return Ok(Some(Terminator::Exit(ExitTo {
+                    code,
+                    pc: target,
+                    insns: done,
+                    link,
+                })));
             }
 
             Instruction::FpMovGen { rd, rn, to_fp, is_64 } => {
@@ -608,7 +823,10 @@ impl Lowerer {
                     } else {
                         self.b.push(Op::Store(4, addr, val, fault));
                     }
-                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done });
+                    self.b.push(Op::EndInsn {
+                        next_pc: pc + 4,
+                        insns: done,
+                    });
                 }
             }
 
@@ -637,7 +855,10 @@ impl Lowerer {
                     self.b.push(Op::Store(8, addr, lo, fault));
                     let addr_hi = self.b.bin_imm(BinOp::Add, Width::W64, addr, 8);
                     self.b.push(Op::Store(8, addr_hi, hi, fault));
-                    self.b.push(Op::EndInsn { next_pc: pc + 4, insns: done });
+                    self.b.push(Op::EndInsn {
+                        next_pc: pc + 4,
+                        insns: done,
+                    });
                 }
             }
 
@@ -664,8 +885,11 @@ impl Lowerer {
                 let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
                 let res = self.b.push(Op::FpBin(fop, w, a, b));
                 let res = if op == FpOp2::Fnmul {
-                    self.b.bin_imm(BinOp::Xor, Width::W64, res, if is_double { 1 << 63 } else { 1 << 31 })
-                } else { res };
+                    self.b
+                        .bin_imm(BinOp::Xor, Width::W64, res, if is_double { 1 << 63 } else { 1 << 31 })
+                } else {
+                    res
+                };
                 let zero = self.k(0);
                 self.b.set(Reg::VLo(rd), res);
                 self.b.set(Reg::VHi(rd), zero);
@@ -689,7 +913,11 @@ impl Lowerer {
             }
 
             Instruction::SimdModImm { rd, imm, op, q } => {
-                let pattern = if q { imm as u128 | ((imm as u128) << 64) } else { imm as u128 };
+                let pattern = if q {
+                    imm as u128 | ((imm as u128) << 64)
+                } else {
+                    imm as u128
+                };
                 let pat_lo = pattern as u64;
                 let pat_hi = (pattern >> 64) as u64;
                 let (res_lo, res_hi) = match op {
@@ -756,16 +984,32 @@ impl Lowerer {
             Instruction::SimdMovToGeneral { rd, rn, esize, index } => {
                 let (reg, lane_idx) = match esize {
                     8 => {
-                        if index < 8 { (Reg::VLo(rn), index) } else { (Reg::VHi(rn), index - 8) }
+                        if index < 8 {
+                            (Reg::VLo(rn), index)
+                        } else {
+                            (Reg::VHi(rn), index - 8)
+                        }
                     }
                     16 => {
-                        if index < 4 { (Reg::VLo(rn), index) } else { (Reg::VHi(rn), index - 4) }
+                        if index < 4 {
+                            (Reg::VLo(rn), index)
+                        } else {
+                            (Reg::VHi(rn), index - 4)
+                        }
                     }
                     32 => {
-                        if index < 2 { (Reg::VLo(rn), index) } else { (Reg::VHi(rn), index - 2) }
+                        if index < 2 {
+                            (Reg::VLo(rn), index)
+                        } else {
+                            (Reg::VHi(rn), index - 2)
+                        }
                     }
                     64 => {
-                        if index == 0 { (Reg::VLo(rn), 0) } else { (Reg::VHi(rn), 0) }
+                        if index == 0 {
+                            (Reg::VLo(rn), 0)
+                        } else {
+                            (Reg::VHi(rn), 0)
+                        }
                     }
                     _ => return Err(()),
                 };
@@ -785,63 +1029,93 @@ impl Lowerer {
                 }
             }
 
-            Instruction::SimdThreeSame { rd, rn, rm, op, esize: _, q } => {
-                match op {
-                    SimdOp3::And | SimdOp3::Orr | SimdOp3::Eor | SimdOp3::Bic | SimdOp3::Orn => {
-                        let n_lo = self.b.get(Reg::VLo(rn));
-                        let n_hi = self.b.get(Reg::VHi(rn));
-                        let m_lo = self.b.get(Reg::VLo(rm));
-                        let m_hi = self.b.get(Reg::VHi(rm));
-                        let (lo, hi) = match op {
-                            SimdOp3::And => (
-                                self.b.bin(BinOp::And, Width::W64, n_lo, m_lo),
-                                if q { self.b.bin(BinOp::And, Width::W64, n_hi, m_hi) } else { self.k(0) },
-                            ),
-                            SimdOp3::Orr => (
-                                self.b.bin(BinOp::Or, Width::W64, n_lo, m_lo),
-                                if q { self.b.bin(BinOp::Or, Width::W64, n_hi, m_hi) } else { self.k(0) },
-                            ),
-                            SimdOp3::Eor => (
-                                self.b.bin(BinOp::Xor, Width::W64, n_lo, m_lo),
-                                if q { self.b.bin(BinOp::Xor, Width::W64, n_hi, m_hi) } else { self.k(0) },
-                            ),
-                            SimdOp3::Bic => {
-                                let not_m_lo = self.b.push(Op::Not(Width::W64, m_lo));
-                                let not_m_hi = self.b.push(Op::Not(Width::W64, m_hi));
-                                (
-                                    self.b.bin(BinOp::And, Width::W64, n_lo, not_m_lo),
-                                    if q { self.b.bin(BinOp::And, Width::W64, n_hi, not_m_hi) } else { self.k(0) },
-                                )
-                            }
-                            SimdOp3::Orn => {
-                                let not_m_lo = self.b.push(Op::Not(Width::W64, m_lo));
-                                let not_m_hi = self.b.push(Op::Not(Width::W64, m_hi));
-                                (
-                                    self.b.bin(BinOp::Or, Width::W64, n_lo, not_m_lo),
-                                    if q { self.b.bin(BinOp::Or, Width::W64, n_hi, not_m_hi) } else { self.k(0) },
-                                )
-                            }
-                            _ => return Err(()),
-                        };
-                        self.b.set(Reg::VLo(rd), lo);
-                        self.b.set(Reg::VHi(rd), hi);
-                    }
-                    _ => return Err(()),
+            Instruction::SimdThreeSame {
+                rd,
+                rn,
+                rm,
+                op,
+                esize: _,
+                q,
+            } => match op {
+                SimdOp3::And | SimdOp3::Orr | SimdOp3::Eor | SimdOp3::Bic | SimdOp3::Orn => {
+                    let n_lo = self.b.get(Reg::VLo(rn));
+                    let n_hi = self.b.get(Reg::VHi(rn));
+                    let m_lo = self.b.get(Reg::VLo(rm));
+                    let m_hi = self.b.get(Reg::VHi(rm));
+                    let (lo, hi) = match op {
+                        SimdOp3::And => (
+                            self.b.bin(BinOp::And, Width::W64, n_lo, m_lo),
+                            if q {
+                                self.b.bin(BinOp::And, Width::W64, n_hi, m_hi)
+                            } else {
+                                self.k(0)
+                            },
+                        ),
+                        SimdOp3::Orr => (
+                            self.b.bin(BinOp::Or, Width::W64, n_lo, m_lo),
+                            if q {
+                                self.b.bin(BinOp::Or, Width::W64, n_hi, m_hi)
+                            } else {
+                                self.k(0)
+                            },
+                        ),
+                        SimdOp3::Eor => (
+                            self.b.bin(BinOp::Xor, Width::W64, n_lo, m_lo),
+                            if q {
+                                self.b.bin(BinOp::Xor, Width::W64, n_hi, m_hi)
+                            } else {
+                                self.k(0)
+                            },
+                        ),
+                        SimdOp3::Bic => {
+                            let not_m_lo = self.b.push(Op::Not(Width::W64, m_lo));
+                            let not_m_hi = self.b.push(Op::Not(Width::W64, m_hi));
+                            (
+                                self.b.bin(BinOp::And, Width::W64, n_lo, not_m_lo),
+                                if q {
+                                    self.b.bin(BinOp::And, Width::W64, n_hi, not_m_hi)
+                                } else {
+                                    self.k(0)
+                                },
+                            )
+                        }
+                        SimdOp3::Orn => {
+                            let not_m_lo = self.b.push(Op::Not(Width::W64, m_lo));
+                            let not_m_hi = self.b.push(Op::Not(Width::W64, m_hi));
+                            (
+                                self.b.bin(BinOp::Or, Width::W64, n_lo, not_m_lo),
+                                if q {
+                                    self.b.bin(BinOp::Or, Width::W64, n_hi, not_m_hi)
+                                } else {
+                                    self.k(0)
+                                },
+                            )
+                        }
+                        _ => return Err(()),
+                    };
+                    self.b.set(Reg::VLo(rd), lo);
+                    self.b.set(Reg::VHi(rd), hi);
                 }
-            }
+                _ => return Err(()),
+            },
 
-            Instruction::SimdTwoMisc { rd, rn, op, esize: _, q } => {
-                match op {
-                    SimdOp2::Not => {
-                        let n_lo = self.b.get(Reg::VLo(rn));
-                        let n_hi = self.b.get(Reg::VHi(rn));
-                        let lo = self.b.push(Op::Not(Width::W64, n_lo));
-                        let hi = if q { self.b.push(Op::Not(Width::W64, n_hi)) } else { self.k(0) };
-                        self.b.set(Reg::VLo(rd), lo);
-                        self.b.set(Reg::VHi(rd), hi);
-                    }
-                    _ => return Err(()),
-                }
+            Instruction::SimdTwoMisc {
+                rd,
+                rn,
+                op: SimdOp2::Not,
+                esize: _,
+                q,
+            } => {
+                let n_lo = self.b.get(Reg::VLo(rn));
+                let n_hi = self.b.get(Reg::VHi(rn));
+                let lo = self.b.push(Op::Not(Width::W64, n_lo));
+                let hi = if q {
+                    self.b.push(Op::Not(Width::W64, n_hi))
+                } else {
+                    self.k(0)
+                };
+                self.b.set(Reg::VLo(rd), lo);
+                self.b.set(Reg::VHi(rd), hi);
             }
 
             // FEAT_SHA3 uses the decoded Tier-3 implementation on every host. Returning
@@ -881,7 +1155,12 @@ pub fn lower_block(pc: u64, mmu: &Memory) -> Option<LoweredBlock> {
 
 /// [`lower_block`], choosing whether indirect branches and returns are linkable.
 fn lower_block_with(pc: u64, mmu: &Memory, indirect_links: bool, exact_fp: bool) -> Option<LoweredBlock> {
-    let mut l = Lowerer { b: BlockBuilder::new(), indirect_links, exact_fp, return_site: None };
+    let mut l = Lowerer {
+        b: BlockBuilder::new(),
+        indirect_links,
+        exact_fp,
+        return_site: None,
+    };
     let mut cur = pc;
     let mut count = 0u32;
     let term = loop {
@@ -914,7 +1193,13 @@ fn lower_block_with(pc: u64, mmu: &Memory, indirect_links: bool, exact_fp: bool)
             }
         }
     };
-    Some(LoweredBlock { ir: l.b.finish(term), start: pc, end: cur, insns: count as usize, return_site: l.return_site })
+    Some(LoweredBlock {
+        ir: l.b.finish(term),
+        start: pc,
+        end: cur,
+        insns: count as usize,
+        return_site: l.return_site,
+    })
 }
 
 /// Guest PCs are well-distributed 4-byte-aligned keys; a multiply hash beats SipHash on the
@@ -1060,7 +1345,11 @@ impl Tier4JitEngine {
         let stale: Vec<u64> = self
             .blocks
             .iter()
-            .filter(|(_, t)| t.ranges.iter().any(|&(start, end)| mmu.code_written_since(start, end, since)))
+            .filter(|(_, t)| {
+                t.ranges
+                    .iter()
+                    .any(|&(start, end)| mmu.code_written_since(start, end, since))
+            })
             .map(|(&pc, _)| pc)
             .collect();
         for pc in stale {
@@ -1179,10 +1468,21 @@ impl Tier4JitEngine {
     /// exits with anything but a plain branch, the next `pc` has no translation, or `budget` is
     /// used up. `None` if `cpu.regs.pc` has no translation (yet).
     /// Returns (instructions, exit to report, continue on Tier-3).
-    fn run_native(&mut self, cpu: &mut Cpu, mmu: &mut Memory, budget: usize) -> Option<(usize, Option<BlockExit>, bool)> {
+    fn run_native(
+        &mut self,
+        cpu: &mut Cpu,
+        mmu: &mut Memory,
+        budget: usize,
+    ) -> Option<(usize, Option<BlockExit>, bool)> {
         let mut id = self.lookup_or_compile_fast(cpu.regs.pc, mmu)?;
         let r = &mut cpu.regs;
-        let mut state = GuestState { x: r.x, sp: r.sp, pc: r.pc, nzcv: r.pstate.to_bits() as u64, v: r.v };
+        let mut state = GuestState {
+            x: r.x,
+            sp: r.sp,
+            pc: r.pc,
+            nzcv: r.pstate.to_bits() as u64,
+            v: r.v,
+        };
         let mut executed = 0usize;
         let outcome = loop {
             let rec = self.rec.as_mut()?;
@@ -1204,7 +1504,14 @@ impl Tier4JitEngine {
                 ExitKind::CodeWritten => break (None, false),
                 ExitKind::Code(code) => match code & 0xFFFF {
                     EXIT_RETURN => break (Some(BlockExit::Return { target: pc }), false),
-                    EXIT_SVC => break (Some(BlockExit::Svc { svc_id: (code >> 16) as u16 }), false),
+                    EXIT_SVC => {
+                        break (
+                            Some(BlockExit::Svc {
+                                svc_id: (code >> 16) as u16,
+                            }),
+                            false,
+                        );
+                    }
                     EXIT_UNSUPPORTED => break (None, true),
                     _ => {
                         self.chained_jumps += 1;
@@ -1225,7 +1532,7 @@ impl Tier4JitEngine {
         r.x = state.x;
         r.sp = state.sp;
         r.pc = state.pc;
-        r.pstate.from_bits(state.nzcv as u32);
+        r.pstate.set_bits(state.nzcv as u32);
         r.v = state.v;
         Some((executed, outcome.0, outcome.1))
     }
@@ -1234,7 +1541,14 @@ impl Tier4JitEngine {
     fn run_fallback(&mut self, cpu: &mut Cpu, mmu: &mut Memory) -> (usize, Option<BlockExit>) {
         let (n, exit) = self.tier3.run_slice(cpu, mmu, 1);
         self.fallback_insns += n as u64;
-        (n, if exit == BlockExit::BudgetExceeded { None } else { Some(exit) })
+        (
+            n,
+            if exit == BlockExit::BudgetExceeded {
+                None
+            } else {
+                Some(exit)
+            },
+        )
     }
 
     /// Same contract as [`Tier3JitEngine::run_slice`]: runs until `max_instructions`, or returns
@@ -1363,7 +1677,12 @@ mod tests {
     }
 
     /// Runs slices until `SVC`, a fault or `limit`; `RET` exits are stepped over like the harness.
-    fn run_engine(mut slice: impl FnMut(&mut Cpu, &mut Memory, usize) -> (usize, BlockExit), mut cpu: Cpu, mut mmu: Memory, limit: usize) -> Outcome {
+    fn run_engine(
+        mut slice: impl FnMut(&mut Cpu, &mut Memory, usize) -> (usize, BlockExit),
+        mut cpu: Cpu,
+        mut mmu: Memory,
+        limit: usize,
+    ) -> Outcome {
         let mut total = 0;
         while total < limit {
             let (n, exit) = slice(&mut cpu, &mut mmu, limit - total);
@@ -1407,7 +1726,10 @@ mod tests {
 
         let (outcome, engine) = run_tier4(cpu, mmu, 8);
         assert_eq!(outcome.exit, BlockExit::Fault { pc: target });
-        assert!(engine.fallback_insns > 0, "guarded targets require Tier-3 branch handling");
+        assert!(
+            engine.fallback_insns > 0,
+            "guarded targets require Tier-3 branch handling"
+        );
     }
 
     #[test]
@@ -1565,9 +1887,17 @@ mod tests {
         init(&mut cpu);
         let (c, m) = clone(&cpu, &mmu);
         let reference = run_interp(c, m, 100_000);
-        assert!(matches!(reference.exit, BlockExit::Svc { .. }), "guest did not reach SVC: {:?}", reference.exit);
+        assert!(
+            matches!(reference.exit, BlockExit::Svc { .. }),
+            "guest did not reach SVC: {:?}",
+            reference.exit
+        );
         let (c, m) = clone(&cpu, &mmu);
-        assert_eq!(run_tier3(c, m, 100_000), reference, "Tier-3 differs from the interpreter");
+        assert_eq!(
+            run_tier3(c, m, 100_000),
+            reference,
+            "Tier-3 differs from the interpreter"
+        );
         let (t4, engine) = run_tier4(cpu, mmu, 100_000);
         assert_eq!(t4, reference, "Tier-4 differs from the interpreter");
         assert!(engine.native_insns > 0, "nothing ran natively");
@@ -1589,7 +1919,9 @@ mod tests {
             let reference = run_interp(c, m, 16);
             assert_eq!(reference.exit, BlockExit::Fault { pc: u64::MAX });
             assert_eq!(reference.x[rn], u64::MAX);
-            if word == 0xd63f_0000 { assert_eq!(reference.x[30], CODE + 4); }
+            if word == 0xd63f_0000 {
+                assert_eq!(reference.x[30], CODE + 4);
+            }
             let (c, m) = clone(&cpu, &mmu);
             assert_eq!(run_tier3(c, m, 16), reference, "tier3 {word:08x}");
             let (result, engine) = run_tier4(cpu, mmu, 16);
@@ -1602,10 +1934,26 @@ mod tests {
     #[test]
     fn scalar_arithmetic_nan_bits_all_tiers() {
         for (double, one, two, three, inf, dn, sign, quiet) in [
-            (false, 0x3f80_0000u64, 0x4000_0000u64, 0x4040_0000u64, 0x7f80_0000u64,
-                0x7fc0_0000u64, 1u64 << 31, 1u64 << 22),
-            (true, 0x3ff0_0000_0000_0000, 0x4000_0000_0000_0000, 0x4008_0000_0000_0000,
-                0x7ff0_0000_0000_0000, 0x7ff8_0000_0000_0000, 1u64 << 63, 1u64 << 51),
+            (
+                false,
+                0x3f80_0000u64,
+                0x4000_0000u64,
+                0x4040_0000u64,
+                0x7f80_0000u64,
+                0x7fc0_0000u64,
+                1u64 << 31,
+                1u64 << 22,
+            ),
+            (
+                true,
+                0x3ff0_0000_0000_0000,
+                0x4000_0000_0000_0000,
+                0x4008_0000_0000_0000,
+                0x7ff0_0000_0000_0000,
+                0x7ff8_0000_0000_0000,
+                1u64 << 63,
+                1u64 << 51,
+            ),
         ] {
             // Rd=3, Rn=0, Rm=1; FNMUL negates after processing NaNs.
             for (base, finite, invalids, negate) in [
@@ -1684,7 +2032,11 @@ mod tests {
         assert_eq!(exit, BlockExit::Svc { svc_id: 7 });
         assert_eq!(cpu.regs.read_x(0), 55);
         assert!(e.native_insns >= 50);
-        assert!(e.chained_jumps >= 9, "loop must chain consecutive blocks directly (got {})", e.chained_jumps);
+        assert!(
+            e.chained_jumps >= 9,
+            "loop must chain consecutive blocks directly (got {})",
+            e.chained_jumps
+        );
     }
 
     #[test]
@@ -1749,7 +2101,11 @@ mod tests {
                     let t = std::time::Instant::now();
                     let (n, exit) = e.run_slice(&mut c, &mut m, LIMIT);
                     cold.push(mips(n, t.elapsed().as_secs_f64()));
-                    assert_eq!(outcome(&c, &m, exit), reference, "Tier-4 cold differs (linking {linking})");
+                    assert_eq!(
+                        outcome(&c, &m, exit),
+                        reference,
+                        "Tier-4 cold differs (linking {linking})"
+                    );
 
                     // Warm: same engine and memory (the guest stores nothing), fresh registers.
                     let mut c = Cpu::new();
@@ -1757,7 +2113,11 @@ mod tests {
                     let t = std::time::Instant::now();
                     let (n, exit) = e.run_slice(&mut c, &mut m, LIMIT);
                     warm.push(mips(n, t.elapsed().as_secs_f64()));
-                    assert_eq!(outcome(&c, &m, exit), reference, "Tier-4 warm differs (linking {linking})");
+                    assert_eq!(
+                        outcome(&c, &m, exit),
+                        reference,
+                        "Tier-4 warm differs (linking {linking})"
+                    );
                     assert_eq!(e.fallback_insns, 0, "Tier-4 fell back (linking {linking})");
                     if linking {
                         assert!(e.chained_jumps > 0 && e.native_block_runs > 0);
@@ -1839,7 +2199,8 @@ mod tests {
 
     #[test]
     fn fp_memory_exits_count_only_completed_instructions() {
-        for word in [0xFD40_0000, 0x3DC0_0000] { // ldr d0/q0, [x0]
+        for word in [0xFD40_0000, 0x3DC0_0000] {
+            // ldr d0/q0, [x0]
             let (mut cpu, mut memory) = setup(&[word, 0xD400_0001]);
             cpu.regs.write_x(0, 0xdead_0000);
             let mut engine = Tier4JitEngine::with_threshold(1);
@@ -1847,7 +2208,8 @@ mod tests {
             assert_eq!(exit, BlockExit::Fault { pc: CODE });
             assert_eq!(count, 0);
         }
-        for word in [0xFD00_0000, 0x3D80_0000] { // str d0/q0, [x0]
+        for word in [0xFD00_0000, 0x3D80_0000] {
+            // str d0/q0, [x0]
             let (mut cpu, mut memory) = setup(&[word, 0xD400_0001]);
             cpu.regs.write_x(0, CODE + 0x100);
             let mut engine = Tier4JitEngine::with_threshold(1);
@@ -1918,23 +2280,39 @@ mod tests {
         let (mut tier3_cpu, mut tier3_mmu) = setup(&original);
         let mut tier3 = Tier3JitEngine::new();
         for _ in 0..=Tier3JitEngine::HOT_THRESHOLD {
-            assert_eq!(tier3.run_slice(&mut tier3_cpu, &mut tier3_mmu, 100).1, BlockExit::Svc { svc_id: 0 });
+            assert_eq!(
+                tier3.run_slice(&mut tier3_cpu, &mut tier3_mmu, 100).1,
+                BlockExit::Svc { svc_id: 0 }
+            );
             tier3_cpu.regs.pc = CODE;
         }
         assert!(tier3.super_blocks.contains_key(&CODE));
         replace_code(&mut tier3_mmu);
         tier3_cpu.regs.pc = CODE;
-        assert_eq!(tier3.run_slice(&mut tier3_cpu, &mut tier3_mmu, 100).1, BlockExit::Svc { svc_id: 0 });
+        assert_eq!(
+            tier3.run_slice(&mut tier3_cpu, &mut tier3_mmu, 100).1,
+            BlockExit::Svc { svc_id: 0 }
+        );
         assert_eq!(tier3_cpu.regs.read_x(0), 2, "Tier-3 ran stale code after unmap/remap");
         assert!(tier3.super_blocks_invalidated >= 1);
 
         let (mut tier4_cpu, mut tier4_mmu) = setup(&original);
         let mut tier4 = Tier4JitEngine::with_threshold(1);
-        assert_eq!(tier4.run_slice(&mut tier4_cpu, &mut tier4_mmu, 100).1, BlockExit::Svc { svc_id: 0 });
+        assert_eq!(
+            tier4.run_slice(&mut tier4_cpu, &mut tier4_mmu, 100).1,
+            BlockExit::Svc { svc_id: 0 }
+        );
         replace_code(&mut tier4_mmu);
         tier4_cpu.regs.pc = CODE;
-        assert_eq!(tier4.run_slice(&mut tier4_cpu, &mut tier4_mmu, 100).1, BlockExit::Svc { svc_id: 0 });
-        assert_eq!(tier4_cpu.regs.read_x(0), 2, "Tier-4 ran stale translation after unmap/remap");
+        assert_eq!(
+            tier4.run_slice(&mut tier4_cpu, &mut tier4_mmu, 100).1,
+            BlockExit::Svc { svc_id: 0 }
+        );
+        assert_eq!(
+            tier4_cpu.regs.read_x(0),
+            2,
+            "Tier-4 ran stale translation after unmap/remap"
+        );
         assert!(tier4.blocks_invalidated >= 1);
     }
 
@@ -2054,20 +2432,45 @@ mod tests {
 
     #[test]
     fn sha3_fallback_between_native_blocks() {
-        let e = check_all_tiers(&[
-            0xd2800020, // mov x0, #1 (native prefix)
-            0xce000e10, // Issue #414 EOR3
-            0xce220c24, // bcax v4.16b, v1.16b, v2.16b, v3.16b
-            0xce628c25, // rax1 v5.2d, v1.2d, v2.2d
-            0xce82fc26, // xar v6.2d, v1.2d, v2.2d, #63
-            0x91000400, // add x0, x0, #1
-            0xd4000001,
-        ], |cpu| {
-            for (i, v) in cpu.regs.v.iter_mut().enumerate() {
-                *v = 0x8001020304050607fedcba9876543210u128.rotate_left(i as u32);
-            }
-        });
+        let e = check_all_tiers(
+            &[
+                0xd2800020, // mov x0, #1 (native prefix)
+                0xce000e10, // Issue #414 EOR3
+                0xce220c24, // bcax v4.16b, v1.16b, v2.16b, v3.16b
+                0xce628c25, // rax1 v5.2d, v1.2d, v2.2d
+                0xce82fc26, // xar v6.2d, v1.2d, v2.2d, #63
+                0x91000400, // add x0, x0, #1
+                0xd4000001,
+            ],
+            |cpu| {
+                for (i, v) in cpu.regs.v.iter_mut().enumerate() {
+                    *v = 0x8001020304050607fedcba9876543210u128.rotate_left(i as u32);
+                }
+            },
+        );
         assert!(e.fallback_insns >= 4);
+    }
+
+    /// FJCVTZS and the vector fixed-point converts are interpreter-only (#469): Tier-4 falls back for them and the
+    /// results, NZCV and FPSR must equal the interpreter's.
+    #[test]
+    fn fjcvtzs_and_vector_fixed_converts_fall_back_in_all_tiers() {
+        let e = check_all_tiers(
+            &[
+                0xd2800020, // mov x0, #1 (native prefix)
+                0x4f39e402, // scvtf v2.4s, v0.4s, #7
+                0x6f6ce403, // ucvtf v3.2d, v0.2d, #20
+                0x4f39fc04, // fcvtzs v4.4s, v0.4s, #7
+                0x6f6cfc05, // fcvtzu v5.2d, v0.2d, #20
+                0x1e7e0008, // fjcvtzs w8, d0
+                0x91000400, // add x0, x0, #1 (native suffix)
+                0xd4000001,
+            ],
+            |cpu| {
+                cpu.regs.v[0] = 0x4b80_0001_c020_0000_41f7_ffff_fff0_0000u128;
+            },
+        );
+        assert!(e.fallback_insns >= 5);
     }
 
     #[test]
@@ -2131,7 +2534,7 @@ mod tests {
                     1 => rng.next() % 64,
                     2 => DATA + 0xFF8 + (rng.next() % 16), // near page boundary
                     3 => DATA + 0x1000 + (rng.next() % 0x100), // unmapped page
-                    _ => DATA + (rng.next() % 0x800) & !7,
+                    _ => (DATA + (rng.next() % 0x800)) & !7,
                 };
                 cpu.regs.write_x(r, v);
             }
@@ -2140,17 +2543,30 @@ mod tests {
                 let hi = (rng.next() as u128) << 64;
                 cpu.regs.write_q(v, lo | hi);
             }
-            cpu.regs.pstate.from_bits((rng.next() as u32) & 0xF000_0000);
+            cpu.regs.pstate.set_bits((rng.next() as u32) & 0xF000_0000);
             let (c, m) = clone(&cpu, &mmu);
             let reference = run_interp(c, m, 1_000);
             let (c, m) = clone(&cpu, &mmu);
             assert_eq!(run_tier3(c, m, 1_000), reference, "Tier-3, case {cases}: {words:08X?}");
             let (t4, e) = run_tier4(cpu, mmu, 1_000);
-            assert_eq!(t4, reference, "case {cases}: {words:08X?}; decoded: {:?}; x diff: {:?}; v diff: {:?}; pc/nzcv/exit: {:?} vs {:?}",
+            assert_eq!(
+                t4,
+                reference,
+                "case {cases}: {words:08X?}; decoded: {:?}; x diff: {:?}; v diff: {:?}; pc/nzcv/exit: {:?} vs {:?}",
                 words.iter().map(|&w| decode(w)).collect::<Vec<_>>(),
-                t4.x.iter().zip(reference.x.iter()).enumerate().filter(|(_, (a, b))| a != b).collect::<Vec<_>>(),
-                t4.v.iter().zip(reference.v.iter()).enumerate().filter(|(_, (a, b))| a != b).collect::<Vec<_>>(),
-                (t4.pc, t4.nzcv, &t4.exit), (reference.pc, reference.nzcv, &reference.exit));
+                t4.x.iter()
+                    .zip(reference.x.iter())
+                    .enumerate()
+                    .filter(|(_, (a, b))| a != b)
+                    .collect::<Vec<_>>(),
+                t4.v.iter()
+                    .zip(reference.v.iter())
+                    .enumerate()
+                    .filter(|(_, (a, b))| a != b)
+                    .collect::<Vec<_>>(),
+                (t4.pc, t4.nzcv, &t4.exit),
+                (reference.pc, reference.nzcv, &reference.exit)
+            );
             native += e.native_insns;
             faults += matches!(reference.exit, BlockExit::Fault { .. }) as u32;
             for w in &words {
@@ -2158,7 +2574,10 @@ mod tests {
             }
             cases += 1;
         }
-        eprintln!("random: {native} native insns, {faults}/10000 faulted, {} instruction kinds", kinds.len());
+        eprintln!(
+            "random: {native} native insns, {faults}/10000 faulted, {} instruction kinds",
+            kinds.len()
+        );
         assert!(native > 25_000 && faults < 7_500 && kinds.len() >= 14);
     }
 
@@ -2215,12 +2634,12 @@ mod tests {
                     0 => rng.next(),
                     1 => rng.next() % 64,
                     2 => DATA + 0xFF8 + (rng.next() % 16),
-                    _ => DATA + (rng.next() % 0x800) & !7,
+                    _ => (DATA + (rng.next() % 0x800)) & !7,
                 };
                 cpu.regs.write_x(r, v);
             }
             cpu.regs.write_x(28, 3);
-            cpu.regs.pstate.from_bits((rng.next() as u32) & 0xF000_0000);
+            cpu.regs.pstate.set_bits((rng.next() as u32) & 0xF000_0000);
             let (c, m) = clone(&cpu, &mmu);
             let reference = run_interp(c, m, 1_000);
             let (c, m) = clone(&cpu, &mmu);
@@ -2292,7 +2711,10 @@ mod tests {
         // (indirect links, regions): old main, #68, regions with return sites.
         let mut results = [Vec::new(), Vec::new(), Vec::new()];
         for _ in 0..5 {
-            for ((indirect, regions), warm) in [(false, false), (true, false), (true, true)].into_iter().zip(results.iter_mut()) {
+            for ((indirect, regions), warm) in [(false, false), (true, false), (true, true)]
+                .into_iter()
+                .zip(results.iter_mut())
+            {
                 let (c, m) = clone(&cpu, &mmu);
                 let mut e = Tier4JitEngine::with_threshold(1);
                 e.indirect_links = indirect;
@@ -2359,7 +2781,11 @@ mod tests {
                 let (c, m) = clone(&cpu, &mmu);
                 let mut e = Tier4JitEngine::with_threshold(1);
                 e.regions = regions;
-                assert_eq!(run_engine(|c, m, n| e.run_slice(c, m, n), c, m, LIMIT), reference, "cold differs (regions {regions})");
+                assert_eq!(
+                    run_engine(|c, m, n| e.run_slice(c, m, n), c, m, LIMIT),
+                    reference,
+                    "cold differs (regions {regions})"
+                );
                 let (c, m) = clone(&cpu, &mmu);
                 let t = std::time::Instant::now();
                 let mut total = 0usize;

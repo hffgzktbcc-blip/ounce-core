@@ -1,0 +1,22 @@
+Philox4x32-10 generator matches the published vector for the all-zero input: ok
+Theorem 3.4, 3000 random pairs
+  TwoSum: a+b = x+y exactly, x = fl(a+b), |y| <= eps|x|: ok
+  TwoProduct (Split): a*b = x+y exactly, x = fl(a*b), |y| <= eps|x|: ok
+  TwoProductFMA: a*b = x+y exactly, x = fl(a*b), |y| <= eps|x|: ok
+  TwoProduct (Split) and TwoProductFMA give the same x and y: ok
+GenDot (Algorithm 6.1) sums, 240 cases, lengths 100..1000, cond 1e7..1e28
+  generated sum equals the exact dot product (TwoProduct is exact): ok
+  Proposition 4.5, Sum2: |res - s| <= eps|s| + gamma_{n-1}^2 S: ok
+    error beyond the unavoidable eps|s| term, as a share of the gamma^2 term, at worst: about 2^-12
+  Proposition 4.10, SumK K=3: |res - s| <= (eps + 3 gamma_{n-1}^2)|s| + gamma_{2n-2}^3 S: ok
+    error beyond the unavoidable eps|s| term, as a share of the gamma^2 term, at worst: none (the error never exceeded eps|s|)
+  Proposition 5.5, Dot2: |res - x'y| <= eps|x'y| + gamma_n^2 |x|'|y|: ok
+    error beyond the unavoidable eps|s| term, as a share of the gamma^2 term, at worst: about 2^-11
+  Dot2 gives the same result with Split-TwoProduct and FMA-TwoProduct: ok
+Table 6.2, median correct digits (median absolute deviation); paper's median in [ ]; tolerance 1.0 digit
+  cond   DSum                    Sum2                    Sum3
+  1e7   8.2 (0.4) [8.9] ok    16.0 (0.0) [16.0] ok    16.0 (0.0) [16.0] ok    
+  1e14  1.5 (0.5) [2.0] ok    16.0 (0.0) [16.0] ok    16.0 (0.0) [16.0] ok    
+  1e21  0.0 (0.0) [0.0] ok    9.9 (0.5) [10.3] ok    16.0 (0.0) [16.0] ok    
+  1e28  0.0 (0.0) [0.0] ok    3.1 (0.6) [3.8] ok    16.0 (0.0) [16.0] ok    
+PASS

@@ -128,7 +128,12 @@ impl VulkanGpuBackend {
     }
 
     /// Records a fixture draw; submits no hardware commands.
-    pub fn draw_arrays(&mut self, _mmu: &Memory, _vertex_buffer_gpu_addr: u64, _vertex_count: u32) -> Result<(), &'static str> {
+    pub fn draw_arrays(
+        &mut self,
+        _mmu: &Memory,
+        _vertex_buffer_gpu_addr: u64,
+        _vertex_count: u32,
+    ) -> Result<(), &'static str> {
         if self.active_pipeline.is_none() {
             return Err("No active Vulkan pipeline bound for draw_arrays");
         }
@@ -159,20 +164,14 @@ mod tests {
         let decompiled = SassShaderDecompiler::decompile(&program);
 
         let mut backend = VulkanGpuBackend::new();
-        let res = backend.create_graphics_pipeline(
-            &decompiled.spirv_words,
-            &decompiled.spirv_words,
-            1280,
-            720,
-            true,
-        );
+        let res = backend.create_graphics_pipeline(&decompiled.spirv_words, &decompiled.spirv_words, 1280, 720, true);
 
         assert!(res.is_ok());
         assert_eq!(backend.pipelines_created, 1);
         assert_eq!(backend.spirv_modules_loaded, 2);
 
-        let mut mmu = Memory::new();
-        assert!(backend.draw_arrays(&mut mmu, 0x8000_0000, 3).is_ok());
+        let mmu = Memory::new();
+        assert!(backend.draw_arrays(&mmu, 0x8000_0000, 3).is_ok());
         assert_eq!(backend.draw_calls_submitted, 1);
         backend.present_frame();
         assert_eq!(backend.hardware_frames_presented, 0);

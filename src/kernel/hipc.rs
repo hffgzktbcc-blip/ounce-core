@@ -84,7 +84,13 @@ pub fn parse_request(mmu: &Memory, base: u64) -> Request {
     for _ in 0..num_statics {
         let (a, b) = (rd(off), rd(off + 4));
         let addr = b as u64 | (((a >> 12) & 0xF) as u64) << 32 | (((a >> 6) & 0x3F) as u64) << 36;
-        req.send_statics.push(((a & 0x3F) as u8, Buffer { addr, size: (a >> 16) as u64 }));
+        req.send_statics.push((
+            (a & 0x3F) as u8,
+            Buffer {
+                addr,
+                size: (a >> 16) as u64,
+            },
+        ));
         off += 8;
     }
     let buffers = |n: u32, off: &mut u64| {
@@ -110,10 +116,17 @@ pub fn parse_request(mmu: &Memory, base: u64) -> Request {
         2 => 1,
         n => n - 2,
     };
-    let mut roff = if recv_list_offset != 0 { recv_list_offset * 4 } else { off + req.num_data_words as u64 * 4 };
+    let mut roff = if recv_list_offset != 0 {
+        recv_list_offset * 4
+    } else {
+        off + req.num_data_words as u64 * 4
+    };
     for _ in 0..num_recv_list {
         let (lo, hi) = (rd(roff), rd(roff + 4));
-        req.recv_list.push(Buffer { addr: lo as u64 | ((hi & 0xFFFF) as u64) << 32, size: (hi >> 16) as u64 });
+        req.recv_list.push(Buffer {
+            addr: lo as u64 | ((hi & 0xFFFF) as u64) << 32,
+            size: (hi >> 16) as u64,
+        });
         roff += 8;
     }
     req
@@ -240,10 +253,34 @@ mod tests {
         let req = parse_request(&mmu, TLS);
         assert_eq!(req.kind, TYPE_REQUEST);
         assert_eq!(req.pid, Some(0x52));
-        assert_eq!((req.copy_handles.as_slice(), req.move_handles.as_slice()), (&[0xC0][..], &[0xD0][..]));
-        assert_eq!(req.send_statics, vec![(3, Buffer { addr: 0x12_3456_7000, size: 0x40 })]);
-        assert_eq!(req.send_buffers, vec![Buffer { addr: 0x5_8000_0000, size: 0x1_0000_0100 }]);
-        assert_eq!(req.recv_buffers, vec![Buffer { addr: 0x9000, size: 0x20 }]);
+        assert_eq!(
+            (req.copy_handles.as_slice(), req.move_handles.as_slice()),
+            (&[0xC0][..], &[0xD0][..])
+        );
+        assert_eq!(
+            req.send_statics,
+            vec![(
+                3,
+                Buffer {
+                    addr: 0x12_3456_7000,
+                    size: 0x40
+                }
+            )]
+        );
+        assert_eq!(
+            req.send_buffers,
+            vec![Buffer {
+                addr: 0x5_8000_0000,
+                size: 0x1_0000_0100
+            }]
+        );
+        assert_eq!(
+            req.recv_buffers,
+            vec![Buffer {
+                addr: 0x9000,
+                size: 0x20
+            }]
+        );
         assert_eq!(req.data_offset, 60);
         assert_eq!(req.cmif_offset, 64);
     }
@@ -254,7 +291,13 @@ mod tests {
         let cmif = write_response(
             &mut mmu,
             TLS,
-            &Response { result: 0, data: &7u32.to_le_bytes(), copy_handles: &[0x11], move_handles: &[0x22], ..Default::default() },
+            &Response {
+                result: 0,
+                data: &7u32.to_le_bytes(),
+                copy_handles: &[0x11],
+                move_handles: &[0x22],
+                ..Default::default()
+            },
         );
         assert_eq!(cmif, 0x20); // 8 header + 4 special + 8 handles = 20 -> 32
         assert_eq!(mmu.read_u32(TLS + 4).unwrap() >> 31, 1);
@@ -264,7 +307,14 @@ mod tests {
         assert_eq!(mmu.read_u32(TLS + 0x20).unwrap(), CMIF_OUT_MAGIC);
         assert_eq!(mmu.read_u32(TLS + 0x30).unwrap(), 7);
         // A plain response keeps the old fixed layout: SFCO at 0x10, data at 0x20.
-        let cmif = write_response(&mut mmu, TLS, &Response { move_handles: &[0x33], ..Default::default() });
+        let cmif = write_response(
+            &mut mmu,
+            TLS,
+            &Response {
+                move_handles: &[0x33],
+                ..Default::default()
+            },
+        );
         assert_eq!(cmif, 0x10);
     }
 
@@ -274,7 +324,11 @@ mod tests {
         let cmif = write_response(
             &mut mmu,
             TLS,
-            &Response { data: &[1, 0, 0, 0], domain_objects: Some(&[0x55]), ..Default::default() },
+            &Response {
+                data: &[1, 0, 0, 0],
+                domain_objects: Some(&[0x55]),
+                ..Default::default()
+            },
         );
         assert_eq!(cmif, 0x20); // domain out header at 0x10, SFCO at 0x20
         assert_eq!(mmu.read_u32(TLS + 0x10).unwrap(), 1);

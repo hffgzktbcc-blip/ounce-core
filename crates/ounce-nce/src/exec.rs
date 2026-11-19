@@ -19,7 +19,8 @@
 //! Guest code shares the host's address space and privileges: native execution is for homebrew the
 //! user would run natively anyway, not a sandbox.
 
-#[cfg_attr(not(target_arch = "aarch64"), allow(unused_imports))] // `Context` is used by the aarch64 signal handlers
+#[cfg_attr(not(target_arch = "aarch64"), allow(unused_imports))]
+// `Context` is used by the aarch64 signal handlers
 use crate::{Arena, Context, NceError};
 
 /// Why [`enter`] returned.
@@ -77,7 +78,12 @@ mod imp {
         let mut seen: Vec<(usize, u64)> = Vec::new();
         loop {
             let slots: Vec<&'static Slot> = SLOTS.lock().unwrap().clone();
-            let slice = slots.iter().map(|s| s.slice_us.load(Ordering::Relaxed)).filter(|&v| v > 0).min().unwrap_or(1000);
+            let slice = slots
+                .iter()
+                .map(|s| s.slice_us.load(Ordering::Relaxed))
+                .filter(|&v| v > 0)
+                .min()
+                .unwrap_or(1000);
             std::thread::sleep(std::time::Duration::from_micros(slice));
             for (i, slot) in slots.iter().enumerate() {
                 let generation = slot.generation.load(Ordering::Acquire);
@@ -101,18 +107,32 @@ mod imp {
             return slot;
         }
         // SAFETY: pthread_self has no preconditions.
-        let slot: &'static Slot = Box::leak(Box::new(Slot { thread: unsafe { libc::pthread_self() },
-            generation: AtomicU64::new(0), active: AtomicBool::new(false), slice_us: AtomicU64::new(0) }));
+        let slot: &'static Slot = Box::leak(Box::new(Slot {
+            thread: unsafe { libc::pthread_self() },
+            generation: AtomicU64::new(0),
+            active: AtomicBool::new(false),
+            slice_us: AtomicU64::new(0),
+        }));
         let mut slots = SLOTS.lock().unwrap();
         if slots.is_empty() {
-            std::thread::Builder::new().name("ounce-nce-watchdog".into()).spawn(watchdog).expect("spawn watchdog");
+            std::thread::Builder::new()
+                .name("ounce-nce-watchdog".into())
+                .spawn(watchdog)
+                .expect("spawn watchdog");
         }
         slots.push(slot);
         SLOT.with(|s| s.set(Some(slot)));
         slot
     }
 
-    const SIGNALS: [libc::c_int; 6] = [libc::SIGSEGV, libc::SIGBUS, libc::SIGILL, libc::SIGTRAP, libc::SIGFPE, libc::SIGUSR2];
+    const SIGNALS: [libc::c_int; 6] = [
+        libc::SIGSEGV,
+        libc::SIGBUS,
+        libc::SIGILL,
+        libc::SIGTRAP,
+        libc::SIGFPE,
+        libc::SIGUSR2,
+    ];
     static PREVIOUS: OnceLock<Vec<(libc::c_int, libc::sigaction)>> = OnceLock::new();
 
     /// Host frame: x19-x30, d8-d15 and FPCR/FPSR, 176 bytes, kept 16-byte aligned.
@@ -239,13 +259,38 @@ mod imp {
     mod uctx {
         //! Darwin arm64 `ucontext_t` / `mcontext64` (`<sys/_types/_ucontext.h>`, `<mach/arm/_structs.h>`).
         #[repr(C)]
-        pub struct ThreadState { pub x: [u64; 29], pub fp: u64, pub lr: u64, pub sp: u64, pub pc: u64, pub cpsr: u32, pub pad: u32 }
+        pub struct ThreadState {
+            pub x: [u64; 29],
+            pub fp: u64,
+            pub lr: u64,
+            pub sp: u64,
+            pub pc: u64,
+            pub cpsr: u32,
+            pub pad: u32,
+        }
         #[repr(C)]
-        pub struct NeonState { pub v: [u128; 32], pub fpsr: u32, pub fpcr: u32 }
+        pub struct NeonState {
+            pub v: [u128; 32],
+            pub fpsr: u32,
+            pub fpcr: u32,
+        }
         #[repr(C)]
-        pub struct MContext { pub far: u64, pub esr: u32, pub exception: u32, pub ss: ThreadState, pub ns: NeonState }
+        pub struct MContext {
+            pub far: u64,
+            pub esr: u32,
+            pub exception: u32,
+            pub ss: ThreadState,
+            pub ns: NeonState,
+        }
         #[repr(C)]
-        pub struct UContext { pub onstack: i32, pub sigmask: u32, pub stack: libc::stack_t, pub link: *mut UContext, pub mcsize: usize, pub mcontext: *mut MContext }
+        pub struct UContext {
+            pub onstack: i32,
+            pub sigmask: u32,
+            pub stack: libc::stack_t,
+            pub link: *mut UContext,
+            pub mcsize: usize,
+            pub mcontext: *mut MContext,
+        }
 
         /// (x0..x28, fp, lr, sp, pc, pstate) of the interrupted code.
         pub unsafe fn regs<'a>(uc: *mut libc::c_void) -> &'a mut ThreadState {
@@ -361,11 +406,18 @@ mod imp {
 
     /// Hands a signal that is not a guest fault to the handler installed before ours.
     unsafe fn chain(sig: libc::c_int, info: *mut libc::siginfo_t, uc: *mut libc::c_void) {
-        let Some(old) = PREVIOUS.get().and_then(|v| v.iter().find(|(s, _)| *s == sig)).map(|(_, a)| *a) else { return };
+        let Some(old) = PREVIOUS
+            .get()
+            .and_then(|v| v.iter().find(|(s, _)| *s == sig))
+            .map(|(_, a)| *a)
+        else {
+            return;
+        };
         let h = old.sa_sigaction;
         if old.sa_flags & libc::SA_SIGINFO != 0 && h != libc::SIG_DFL && h != libc::SIG_IGN {
             // SAFETY: the previous owner registered this as an SA_SIGINFO handler.
-            let f: extern "C" fn(libc::c_int, *mut libc::siginfo_t, *mut libc::c_void) = unsafe { std::mem::transmute(h) };
+            let f: extern "C" fn(libc::c_int, *mut libc::siginfo_t, *mut libc::c_void) =
+                unsafe { std::mem::transmute(h) };
             f(sig, info, uc);
         } else if h != libc::SIG_DFL && h != libc::SIG_IGN {
             // SAFETY: a plain handler registered by the previous owner.
@@ -394,7 +446,10 @@ mod imp {
                 let mut old: libc::sigaction = unsafe { std::mem::zeroed() };
                 // SAFETY: installing a handler with valid structs.
                 if unsafe { libc::sigaction(sig, &sa, &mut old) } != 0 {
-                    err = Some(NceError::Os("sigaction", std::io::Error::last_os_error().raw_os_error().unwrap_or(0)));
+                    err = Some(NceError::Os(
+                        "sigaction",
+                        std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
+                    ));
                 }
                 saved.push((sig, old));
             }
@@ -405,10 +460,17 @@ mod imp {
         if !ALT_STACK.with(|a| a.get()) {
             const SIZE: usize = 128 * 1024;
             let stack: &'static mut [u8] = Box::leak(vec![0u8; SIZE].into_boxed_slice());
-            let ss = libc::stack_t { ss_sp: stack.as_mut_ptr() as *mut libc::c_void, ss_flags: 0, ss_size: SIZE };
+            let ss = libc::stack_t {
+                ss_sp: stack.as_mut_ptr() as *mut libc::c_void,
+                ss_flags: 0,
+                ss_size: SIZE,
+            };
             // SAFETY: the stack is leaked, so it outlives the thread.
             if unsafe { libc::sigaltstack(&ss, std::ptr::null_mut()) } != 0 {
-                return Err(NceError::Os("sigaltstack", std::io::Error::last_os_error().raw_os_error().unwrap_or(0)));
+                return Err(NceError::Os(
+                    "sigaltstack",
+                    std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
+                ));
             }
             ALT_STACK.with(|a| a.set(true));
         }
@@ -417,7 +479,8 @@ mod imp {
 
     pub fn set_preemption(slice: Option<std::time::Duration>, no_preempt: &[(u64, u64)]) {
         let slot = slot();
-        slot.slice_us.store(slice.map_or(0, |d| (d.as_micros() as u64).max(100)), Ordering::Relaxed);
+        slot.slice_us
+            .store(slice.map_or(0, |d| (d.as_micros() as u64).max(100)), Ordering::Relaxed);
         let mut ranges = [(0, 0); MAX_NO_PREEMPT];
         for (r, &n) in ranges.iter_mut().zip(no_preempt) {
             *r = n;
@@ -450,7 +513,11 @@ mod imp {
         Ok(if faulted != 0 && ctx.fault_signal == PREEMPT_SIGNAL as u64 {
             Exit::Preempted { pc: ctx.pc }
         } else if faulted != 0 {
-            Exit::Fault { signal: ctx.fault_signal as i32, pc: ctx.fault_pc, addr: ctx.fault_addr }
+            Exit::Fault {
+                signal: ctx.fault_signal as i32,
+                pc: ctx.fault_pc,
+                addr: ctx.fault_addr,
+            }
         } else {
             Exit::Trampoline(ctx.exit_id)
         })
@@ -463,7 +530,9 @@ mod imp {
         fn fp_state() -> (u64, u64) {
             let (fpcr, fpsr);
             // SAFETY: reading the current thread's user-accessible FP registers.
-            unsafe { core::arch::asm!("mrs {0}, fpcr", "mrs {1}, fpsr", out(reg) fpcr, out(reg) fpsr, options(nostack)); }
+            unsafe {
+                core::arch::asm!("mrs {0}, fpcr", "mrs {1}, fpsr", out(reg) fpcr, out(reg) fpsr, options(nostack));
+            }
             (fpcr, fpsr)
         }
 
@@ -471,7 +540,9 @@ mod imp {
         impl Drop for RestoreFp {
             fn drop(&mut self) {
                 // SAFETY: restoring values read from this thread, including on test failure.
-                unsafe { core::arch::asm!("msr fpcr, {0}", "msr fpsr, {1}", in(reg) self.0, in(reg) self.1, options(nostack)); }
+                unsafe {
+                    core::arch::asm!("msr fpcr, {0}", "msr fpsr, {1}", in(reg) self.0, in(reg) self.1, options(nostack));
+                }
             }
         }
 
@@ -490,8 +561,12 @@ mod imp {
                 let bytes = |w: &[u32]| w.iter().flat_map(|w| w.to_le_bytes()).collect::<Vec<_>>();
                 arena.write(code, &bytes(&words)).unwrap();
                 let slot = patcher.launch_slot(code).unwrap();
-                arena.write(patcher.code_base(), &bytes(&patcher.areas()[0].code)).unwrap();
-                arena.write(slot, &bytes(&Patcher::launch_words(slot, code).unwrap())).unwrap();
+                arena
+                    .write(patcher.code_base(), &bytes(&patcher.areas()[0].code))
+                    .unwrap();
+                arena
+                    .write(slot, &bytes(&Patcher::launch_words(slot, code).unwrap()))
+                    .unwrap();
                 arena.seal_exec(code, 0x1_0000).unwrap();
                 arena.seal_exec(patcher.code_base(), 0x1_0000).unwrap();
                 let host = fp_state();
@@ -510,7 +585,6 @@ mod imp {
             }
         }
     }
-
 }
 
 #[cfg(not(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux"))))]

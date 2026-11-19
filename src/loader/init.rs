@@ -132,7 +132,9 @@ pub fn run_finalizers(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loader::nro::{write_test_module_with, DT_FINI, DT_FINI_ARRAY, DT_FINI_ARRAYSZ, DT_INIT, DT_INIT_ARRAY, DT_INIT_ARRAYSZ};
+    use crate::loader::nro::{
+        DT_FINI, DT_FINI_ARRAY, DT_FINI_ARRAYSZ, DT_INIT, DT_INIT_ARRAY, DT_INIT_ARRAYSZ, write_test_module_with,
+    };
     use crate::mmu::Permission;
 
     const STACK_TOP: u64 = 0x9000_0000;
@@ -141,12 +143,12 @@ mod tests {
     /// Guest function: `[x19] = [x19] * 10 + digit`, so the log records call order as decimal digits.
     fn log_digit(mmu: &mut Memory, addr: u64, digit: u32) {
         let code = [
-            0xF940_0269,                // ldr  x9, [x19]
-            0xD280_014A,                // movz x10, #10
-            0x9B0A_7D29,                // mul  x9, x9, x10
+            0xF940_0269,                 // ldr  x9, [x19]
+            0xD280_014A,                 // movz x10, #10
+            0x9B0A_7D29,                 // mul  x9, x9, x10
             0x9100_0129 | (digit << 10), // add  x9, x9, #digit
-            0xF900_0269,                // str  x9, [x19]
-            0xD65F_03C0,                // ret
+            0xF900_0269,                 // str  x9, [x19]
+            0xD65F_03C0,                 // ret
         ];
         for (i, insn) in code.iter().enumerate() {
             mmu.write_u32(addr + i as u64 * 4, *insn).unwrap();
@@ -194,7 +196,15 @@ mod tests {
         mmu.write_u64(main + 0xC88, main + 0x1080).unwrap();
 
         // sdk: DT_INIT=7, DT_FINI=8.
-        write_test_module_with(&mut mmu, sdk, &[], &[], &[], &[(DT_INIT, 0x1000), (DT_FINI, 0x1020)], false);
+        write_test_module_with(
+            &mut mmu,
+            sdk,
+            &[],
+            &[],
+            &[],
+            &[(DT_INIT, 0x1000), (DT_FINI, 0x1020)],
+            false,
+        );
         log_digit(&mut mmu, sdk + 0x1000, 7);
         log_digit(&mut mmu, sdk + 0x1020, 8);
 
@@ -202,7 +212,13 @@ mod tests {
         let saved_pc = cpu.regs.pc;
 
         let report = run_initializers(&mut cpu, &mut mmu, &modules, STACK_TOP, 100);
-        assert_eq!(report, InitReport { completed: 4, failed: vec![] });
+        assert_eq!(
+            report,
+            InitReport {
+                completed: 4,
+                failed: vec![]
+            }
+        );
         assert_eq!(mmu.read_u64(LOG).unwrap(), 7123);
         assert_eq!(cpu.regs.pc, saved_pc);
 

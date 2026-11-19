@@ -3,8 +3,27 @@
 
 /// Every command word `main` dispatches on, used to suggest a correction for a typo.
 pub const COMMANDS: &[&str] = &[
-    "run", "run-nro", "run-elf", "ui", "lab", "diverge", "census", "inspect", "info", "help", "test", "demo", "play",
-    "gfx", "3d", "gpu3d", "package", "demo-dir", "jit-selftest", "replay-instruction", "fuzz-replay",
+    "run",
+    "run-nro",
+    "run-elf",
+    "ui",
+    "lab",
+    "diverge",
+    "census",
+    "inspect",
+    "info",
+    "help",
+    "test",
+    "demo",
+    "play",
+    "gfx",
+    "3d",
+    "gpu3d",
+    "package",
+    "demo-dir",
+    "jit-selftest",
+    "replay-instruction",
+    "fuzz-replay",
 ];
 
 pub const ISSUE_FORM: &str = "https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=emulation_bug.yml";
@@ -44,7 +63,9 @@ pub fn unknown_command(word: &str) -> String {
 
 /// Message for a command that needs a file and did not get one.
 pub fn missing_path(command: &str, what: &str) -> String {
-    format!("error: '{command}' needs {what}.\nExample: ounce-core {command} path/to/program\nRun 'ounce-core help' for all options.\n")
+    format!(
+        "error: '{command}' needs {what}.\nExample: ounce-core {command} path/to/program\nRun 'ounce-core help' for all options.\n"
+    )
 }
 
 /// Message for an input path that does not exist.
@@ -86,17 +107,28 @@ fn distance(a: &str, b: &str) -> usize {
 pub fn next_steps(stop: Stop, program: &str, engine: &str) -> String {
     let headline = match stop {
         Stop::Break => "The program stopped itself with svcBreak, which programs use to report a fatal error.",
-        Stop::UnhandledSvc => "The program asked for a system service Ounce Core does not provide (see docs/svc-coverage.md).",
+        Stop::UnhandledSvc => {
+            "The program asked for a system service Ounce Core does not provide (see docs/svc-coverage.md)."
+        }
         Stop::Halt => "The CPU met an instruction Ounce Core does not implement. This is a gap in Ounce Core.",
-        Stop::Fault => "The CPU stopped on an error. The [VM Error] line above names the address; 'Unimplemented instruction' means a gap in Ounce Core.",
+        Stop::Fault => {
+            "The CPU stopped on an error. The [VM Error] line above names the address; 'Unimplemented instruction' means a gap in Ounce Core."
+        }
         Stop::Budget => "The instruction budget ran out before the program exited.",
     };
     let try_next = match stop {
         Stop::Budget => format!("  Raise the limit:  OUNCE_NRO_BUDGET=500000000 ounce-core run-nro {program}"),
-        Stop::Break => "  Read the lines above the break for the last service request, then compare engines:  ounce-core ui".to_string(),
-        Stop::UnhandledSvc => "  Look up the call number in docs/svc-coverage.md; a missing service is a gap in Ounce Core.".to_string(),
+        Stop::Break => {
+            "  Read the lines above the break for the last service request, then compare engines:  ounce-core ui"
+                .to_string()
+        }
+        Stop::UnhandledSvc => {
+            "  Look up the call number in docs/svc-coverage.md; a missing service is a gap in Ounce Core.".to_string()
+        }
         Stop::Halt | Stop::Fault => {
-            format!("  Compare with the host CPU:  ounce-core diverge {program}   (Apple Silicon and other AArch64 hosts)")
+            format!(
+                "  Compare with the host CPU:  ounce-core diverge {program}   (Apple Silicon and other AArch64 hosts)"
+            )
         }
     };
     let report = match stop {
@@ -144,7 +176,10 @@ mod tests {
         assert!(next_steps(Stop::Halt, "a.nro", "tier4").contains("--cpu=tier4"));
         assert!(next_steps(Stop::Halt, "a.nro", "tier4").contains(ISSUE_FORM));
         assert!(next_steps(Stop::Budget, "a.nro", "tier3").contains("OUNCE_NRO_BUDGET"));
-        assert!(!next_steps(Stop::Budget, "a.nro", "tier3").contains(ISSUE_FORM), "a budget stop is not a bug");
+        assert!(
+            !next_steps(Stop::Budget, "a.nro", "tier3").contains(ISSUE_FORM),
+            "a budget stop is not a bug"
+        );
     }
 
     #[test]

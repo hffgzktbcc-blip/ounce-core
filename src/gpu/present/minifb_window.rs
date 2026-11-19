@@ -59,9 +59,11 @@ pub struct MinifbBackend {
 
 impl MinifbBackend {
     pub fn new(config: &BackendConfig) -> Result<Self, String> {
-        let mut opts = WindowOptions::default();
-        opts.scale = minifb_scale(config.scale);
-        opts.resize = true;
+        let opts = WindowOptions {
+            scale: minifb_scale(config.scale),
+            resize: true,
+            ..WindowOptions::default()
+        };
 
         let mut window = Window::new(
             &format!("{} [{} FPS Target]", config.title, config.target_fps),
@@ -123,7 +125,11 @@ impl PresentBackend for MinifbBackend {
     }
 
     fn pressed_keys(&mut self) -> Vec<HostKey> {
-        self.window.get_keys().into_iter().filter_map(host_key_from_minifb).collect()
+        self.window
+            .get_keys()
+            .into_iter()
+            .filter_map(host_key_from_minifb)
+            .collect()
     }
 
     fn is_open(&self) -> bool {

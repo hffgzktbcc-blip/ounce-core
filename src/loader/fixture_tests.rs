@@ -61,7 +61,12 @@ impl Shim {
             // svcExitProcess()
             0x07 => return Some(Outcome::ExitProcess),
             // svcBreak(reason, arg, size)
-            0x26 => return Some(Outcome::Break { reason: x(cpu, 0), pc: cpu.regs.pc }),
+            0x26 => {
+                return Some(Outcome::Break {
+                    reason: x(cpu, 0),
+                    pc: cpu.regs.pc,
+                });
+            }
             // svcOutputDebugString(str, len)
             0x27 => {
                 let mut buf = vec![0u8; x(cpu, 1).min(0x1000) as usize];
@@ -72,17 +77,17 @@ impl Shim {
             // svcGetInfo(out, type, handle, subtype)
             0x29 => {
                 let value = match x(cpu, 1) as u32 {
-                    2 => 0x10_0000_0000,  // alias region address
-                    3 => 0x10_0000_0000,  // alias region size
-                    4 => HEAP_BASE,       // heap region address
-                    5 => 0x1_0000_0000,   // heap region size
-                    6 => 0x1_0000_0000,   // total memory
-                    7 => HEAP_SIZE,       // used memory
+                    2 => 0x10_0000_0000,                     // alias region address
+                    3 => 0x10_0000_0000,                     // alias region size
+                    4 => HEAP_BASE,                          // heap region address
+                    5 => 0x1_0000_0000,                      // heap region size
+                    6 => 0x1_0000_0000,                      // total memory
+                    7 => HEAP_SIZE,                          // used memory
                     11 => 0x0123_4567_89AB_CDEF ^ x(cpu, 3), // random entropy
-                    12 => 0x0800_0000,    // ASLR region address
-                    13 => 0x7F_F800_0000, // ASLR region size
-                    14 => STACK_REGION,   // stack region address
-                    15 => 0x1_0000_0000,  // stack region size
+                    12 => 0x0800_0000,                       // ASLR region address
+                    13 => 0x7F_F800_0000,                    // ASLR region size
+                    14 => STACK_REGION,                      // stack region address
+                    15 => 0x1_0000_0000,                     // stack region size
                     _ => 0,
                 };
                 cpu.regs.write_x(0, 0);
@@ -91,7 +96,12 @@ impl Shim {
             // svcSetMemoryPermission / svcSetMemoryAttribute: accepted, nothing to model here.
             0x02 | 0x03 => cpu.regs.write_x(0, 0),
             // Anything else is a gap in this shim, not a success: stop so the test names it.
-            other => return Some(Outcome::UnhandledSvc { svc: other, pc: cpu.regs.pc }),
+            other => {
+                return Some(Outcome::UnhandledSvc {
+                    svc: other,
+                    pc: cpu.regs.pc,
+                });
+            }
         }
         None
     }
@@ -139,7 +149,15 @@ fn boot(nro: &[u8], argv: &str) -> (Outcome, Shim) {
                 }
             }
             Ok(StepResult::Halt(reason)) => return (Outcome::Fault { error: reason, pc }, shim),
-            Err(e) => return (Outcome::Fault { error: e.to_string(), pc }, shim),
+            Err(e) => {
+                return (
+                    Outcome::Fault {
+                        error: e.to_string(),
+                        pc,
+                    },
+                    shim,
+                );
+            }
         }
     }
     (Outcome::StepLimit, shim)
@@ -164,8 +182,14 @@ fn libnx_nro_header_parses() {
         NroLoader::parse_dynamic(NRO_BASE, &mmu)
     };
     let dynamic = dynamic.expect("MOD0 points at a .dynamic section");
-    assert!(dynamic.relr.is_some() && dynamic.relr_size > 0, "devkitA64 links libnx PIE with DT_RELR");
-    assert!(dynamic.init_array.is_some(), "the fixture's constructor is in DT_INIT_ARRAY");
+    assert!(
+        dynamic.relr.is_some() && dynamic.relr_size > 0,
+        "devkitA64 links libnx PIE with DT_RELR"
+    );
+    assert!(
+        dynamic.init_array.is_some(),
+        "the fixture's constructor is in DT_INIT_ARRAY"
+    );
 }
 
 #[test]
@@ -231,7 +255,9 @@ fn boot_with_kernel_input(
 }
 
 fn boot_with_kernel_hid(
-    nro: &[u8], args: &[&str], input: crate::kernel::hid::NpadInput,
+    nro: &[u8],
+    args: &[&str],
+    input: crate::kernel::hid::NpadInput,
     configure: impl FnOnce(&mut crate::kernel::hid::HidSharedMemory),
 ) -> (String, Vec<u16>, crate::kernel::HorizonKernel) {
     boot_with_kernel_hid_sdmc(nro, args, input, None, configure)
@@ -268,7 +294,9 @@ struct FixtureRun {
 }
 
 fn boot_with_kernel_tier(
-    nro: &[u8], args: &[&str], input: crate::kernel::hid::NpadInput,
+    nro: &[u8],
+    args: &[&str],
+    input: crate::kernel::hid::NpadInput,
     sdmc: Option<&std::path::Path>,
     configure: impl FnOnce(&mut crate::kernel::hid::HidSharedMemory),
     use_tier3: bool,
@@ -276,7 +304,12 @@ fn boot_with_kernel_tier(
     let (mut cpu, mut mmu, mut kernel) = crate::setup_vm();
     // The engines must receive identical guest inputs. libnx uses process entropy for randomized
     // virtual-memory probes; host-clock-derived entropy otherwise changes the SVC sequence.
-    kernel.test_entropy = Some([0x1234_5678_9ABC_DEF0, 0xCAFE_BABE_1122_3344, 0xDEAD_BEEF_5566_7788, 0x8877_6655_4433_2211]);
+    kernel.test_entropy = Some([
+        0x1234_5678_9ABC_DEF0,
+        0xCAFE_BABE_1122_3344,
+        0xDEAD_BEEF_5566_7788,
+        0x8877_6655_4433_2211,
+    ]);
     kernel.ipc.hid.input = input;
     configure(&mut kernel.ipc.hid);
     let info = super::BootLoader::load_any_package(nro, crate::DEFAULT_BASE_ADDR, &mut mmu).expect("NRO loads");
@@ -344,7 +377,10 @@ fn boot_with_kernel_tier(
                     // Headless fixture execution has no host surface; the guest-visible return is
                     // already successful, so a no-handle VSync can continue without presentation.
                     crate::kernel::SvcResult::Success | crate::kernel::SvcResult::PresentFrame => {}
-                    other => panic!("SVC 0x{svc:X} -> {other:?}; result at X1: {:x?}; SVCs so far {svcs:x?}", mmu.read_u32(cpu.regs.read_x(1))),
+                    other => panic!(
+                        "SVC 0x{svc:X} -> {other:?}; result at X1: {:x?}; SVCs so far {svcs:x?}",
+                        mmu.read_u32(cpu.regs.read_x(1))
+                    ),
                 }
             }
             other => panic!("guest stopped: {other:?} at 0x{:X}; SVCs {svcs:x?}", cpu.regs.pc),
@@ -357,7 +393,10 @@ fn boot_with_kernel_tier(
         cpu.regs.pc
     );
     FixtureRun {
-        output, svcs, kernel, instructions: executed,
+        output,
+        svcs,
+        kernel,
+        instructions: executed,
         tier3_runs: engine.as_ref().map_or(0, |e| e.total_super_block_executions),
     }
 }
@@ -377,8 +416,14 @@ fn libnx_services_fixture_opens_sm_and_hid() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/services/services.nro");
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, svcs) = boot_with_kernel(&nro, &[]);
-    assert!(output.ends_with("ounce-services result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
-    assert!(svcs.contains(&0x1F) && svcs.contains(&0x21), "connects to sm: and sends requests");
+    assert!(
+        output.ends_with("ounce-services result=0x00000EEE\n"),
+        "output: {output:?}\nSVCs: {svcs:x?}"
+    );
+    assert!(
+        svcs.contains(&0x1F) && svcs.contains(&0x21),
+        "connects to sm: and sends requests"
+    );
     assert!(svcs.contains(&0x13), "maps the HID shared memory");
 }
 
@@ -389,7 +434,10 @@ fn libnx_romfs_fixture_reads_its_romfs() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/romfs/romfs.nro");
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, svcs) = boot_with_kernel(&nro, &[]);
-    assert!(output.ends_with("ounce-romfs result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+    assert!(
+        output.ends_with("ounce-romfs result=0x00000EEE\n"),
+        "output: {output:?}\nSVCs: {svcs:x?}"
+    );
 }
 
 /// The same fixture with a host folder behind `sdmc:/` (`run --sdmc=<dir>`): the NRO stays an in-memory
@@ -403,9 +451,19 @@ fn libnx_romfs_fixture_with_host_sdmc_folder() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("other.txt"), b"host file").unwrap();
     let (output, svcs, kernel) = boot_with_kernel_sdmc(&nro, &[], Default::default(), Some(&dir));
-    assert!(output.ends_with("ounce-romfs result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
-    assert_eq!(kernel.vfs.entry_kind("sdmc:/other.txt"), Some(crate::fs::VfsEntryKind::File(9)));
-    let names: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert!(
+        output.ends_with("ounce-romfs result=0x00000EEE\n"),
+        "output: {output:?}\nSVCs: {svcs:x?}"
+    );
+    assert_eq!(
+        kernel.vfs.entry_kind("sdmc:/other.txt"),
+        Some(crate::fs::VfsEntryKind::File(9))
+    );
+    let names: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name())
+        .collect();
     assert_eq!(names, ["other.txt"]);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -418,9 +476,15 @@ fn libnx_sdmc_fixture_performs_host_file_operations() {
     std::fs::create_dir(&dir).unwrap();
     std::fs::write(dir.join("host.txt"), b"from host\n").unwrap();
     let (output, svcs, _) = boot_with_kernel_sdmc(&nro, &[], Default::default(), Some(&dir));
-    assert!(output.ends_with("ounce-sdmc result=0x00000EEE\n"), "output: {output:?}; SVCs: {svcs:x?}");
+    assert!(
+        output.ends_with("ounce-sdmc result=0x00000EEE\n"),
+        "output: {output:?}; SVCs: {svcs:x?}"
+    );
     assert_eq!(std::fs::read(dir.join("host.txt")).unwrap(), b"from host\n");
-    let names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+    let names: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
     assert_eq!(names, ["host.txt"]);
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -437,19 +501,31 @@ fn libnx_sdmc_copy_on_write_overlay_never_modifies_host_folder() {
     std::fs::write(dir.join("readonly_seed.bin"), b"seed data 1234").unwrap();
 
     let (output, svcs, mut kernel) = boot_with_kernel_sdmc(&nro, &[], Default::default(), Some(&dir));
-    assert!(output.ends_with("ounce-sdmc result=0x00000EEE\n"), "output: {output:?}; SVCs: {svcs:x?}");
+    assert!(
+        output.ends_with("ounce-sdmc result=0x00000EEE\n"),
+        "output: {output:?}; SVCs: {svcs:x?}"
+    );
 
     // The host folder remains byte-for-byte identical to its initial state.
     assert_eq!(std::fs::read(dir.join("host.txt")).unwrap(), b"from host\n");
     assert_eq!(std::fs::read(dir.join("readonly_seed.bin")).unwrap(), b"seed data 1234");
-    let mut names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
+    let mut names: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .collect();
     names.sort();
     assert_eq!(names, ["host.txt", "readonly_seed.bin"]);
 
     // Further guest writes to host-backed files and newly created files remain isolated to the overlay.
-    kernel.vfs.write_file_at("sdmc:/readonly_seed.bin", 0, b"OVERWRITTEN!").unwrap();
+    kernel
+        .vfs
+        .write_file_at("sdmc:/readonly_seed.bin", 0, b"OVERWRITTEN!")
+        .unwrap();
     kernel.vfs.create_file("sdmc:/overlay_only.txt", 16).unwrap();
-    assert_eq!(kernel.vfs.get_file("sdmc:/readonly_seed.bin"), Some(&b"OVERWRITTEN!34"[..]));
+    assert_eq!(
+        kernel.vfs.get_file("sdmc:/readonly_seed.bin"),
+        Some(&b"OVERWRITTEN!34"[..])
+    );
     assert_eq!(std::fs::read(dir.join("readonly_seed.bin")).unwrap(), b"seed data 1234");
     assert!(!dir.join("overlay_only.txt").exists());
 
@@ -463,7 +539,10 @@ fn libnx_nvdrv_fixture_creates_an_nvmap_object() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/nvdrv/nvdrv.nro");
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, svcs) = boot_with_kernel(&nro, &[]);
-    assert!(output.ends_with("ounce-nvdrv result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+    assert!(
+        output.ends_with("ounce-nvdrv result=0x00000EEE\n"),
+        "output: {output:?}\nSVCs: {svcs:x?}"
+    );
 }
 
 /// `tests/fixtures/nro/gpu`: libnx GPU bring-up (nvhost-ctrl, nvhost-ctrl-gpu, address space, GPFIFO
@@ -473,7 +552,10 @@ fn libnx_gpu_fixture_submits_a_command_buffer() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/gpu/gpu.nro");
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, svcs, kernel) = boot_with_kernel_state(&nro, &[]);
-    assert!(output.ends_with("ounce-gpu result=0x00000EEE\n"), "output: {output:?}\nSVCs: {svcs:x?}");
+    assert!(
+        output.ends_with("ounce-gpu result=0x00000EEE\n"),
+        "output: {output:?}\nSVCs: {svcs:x?}"
+    );
     // libnx's channel allocates the 3D class, so the fixture's one GPFIFO entry reaches that
     // channel's 3D engine (not the older synthetic-method model). Its header writes two words at
     // dword 0x40 (NO_OPERATION, 0x100) on subchannel 0 with no SET_OBJECT, which the engine skips
@@ -489,7 +571,11 @@ fn libnx_gpu_fixture_submits_a_command_buffer() {
             method
         })
     );
-    assert!(kernel.ipc.nvdrv.unhandled.is_empty(), "unhandled ioctls: {:x?}", kernel.ipc.nvdrv.unhandled);
+    assert!(
+        kernel.ipc.nvdrv.unhandled.is_empty(),
+        "unhandled ioctls: {:x?}",
+        kernel.ipc.nvdrv.unhandled
+    );
 }
 
 /// `tests/fixtures/nro/input`: libnx `padConfigureInput` / `padInitializeDefault` / `padUpdate` read
@@ -499,14 +585,24 @@ fn libnx_input_fixture_reads_host_controller() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/input/input.nro");
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     // A + D-pad right held, left stick right and down.
-    let input = crate::kernel::hid::NpadInput { buttons: 1 << 0 | 1 << 14, stick_l: (0x1234, -0x100), stick_r: (0, 0) };
+    let input = crate::kernel::hid::NpadInput {
+        buttons: 1 << 0 | 1 << 14,
+        stick_l: (0x1234, -0x100),
+        stick_r: (0, 0),
+    };
     let (output, svcs, _) = boot_with_kernel_input(&nro, &[], input);
     assert!(
         output.contains("ounce-input buttons=0x00004001\n"),
         "output: {output:?}\nSVCs: {svcs:x?}"
     );
-    assert!(output.contains("ounce-input stick_l=0x1234FF00\n"), "output: {output:?}");
-    assert!(output.ends_with("ounce-input result=0x00000EEE\n"), "output: {output:?}");
+    assert!(
+        output.contains("ounce-input stick_l=0x1234FF00\n"),
+        "output: {output:?}"
+    );
+    assert!(
+        output.ends_with("ounce-input result=0x00000EEE\n"),
+        "output: {output:?}"
+    );
 }
 
 /// `tests/fixtures/nro/threads`: two libnx worker threads share a total under a `Mutex`, yield while
@@ -518,12 +614,22 @@ fn libnx_threads_fixture_synchronizes_two_workers() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/threads/threads.nro");
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, svcs, kernel) = boot_with_kernel_state(&nro, &[]);
-    assert!(output.contains("ounce-threads total=0x00000384\n"), "output: {output:?}\nSVCs: {svcs:x?}");
-    assert!(output.ends_with("ounce-threads result=0x00000EEE\n"), "output: {output:?}");
+    assert!(
+        output.contains("ounce-threads total=0x00000384\n"),
+        "output: {output:?}\nSVCs: {svcs:x?}"
+    );
+    assert!(
+        output.ends_with("ounce-threads result=0x00000EEE\n"),
+        "output: {output:?}"
+    );
     // The workers really contended: some lock requests blocked and were handed over.
     assert!(svcs.iter().filter(|&&s| s == 0x1A).count() > 0, "no svcArbitrateLock");
     assert!(svcs.contains(&0x1C) && svcs.contains(&0x1D), "condvar wait and signal");
-    assert!(kernel.scheduler.switches > 10, "switches: {}", kernel.scheduler.switches);
+    assert!(
+        kernel.scheduler.switches > 10,
+        "switches: {}",
+        kernel.scheduler.switches
+    );
     assert_eq!(kernel.scheduler.total_threads_completed, 3); // two workers and the spinner
 }
 
@@ -534,8 +640,14 @@ fn libnx_audren_fixture_plays_a_tone() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/audren/audren.nro");
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, svcs, kernel) = boot_with_kernel_state(&nro, &[]);
-    assert!(output.contains("ounce-audren played=0x00000960\n"), "output: {output:?}\nSVCs: {svcs:x?}");
-    assert!(output.ends_with("ounce-audren result=0x00000EEE\n"), "output: {output:?}");
+    assert!(
+        output.contains("ounce-audren played=0x00000960\n"),
+        "output: {output:?}\nSVCs: {svcs:x?}"
+    );
+    assert!(
+        output.ends_with("ounce-audren result=0x00000EEE\n"),
+        "output: {output:?}"
+    );
     // The mixed 48 kHz stereo output holds the tone, identical on both sides, then silence.
     let pcm = &kernel.audren.output_ring_buffer;
     let frames: Vec<(i16, i16)> = pcm.chunks_exact(2).map(|f| (f[0], f[1])).collect();
@@ -555,7 +667,10 @@ fn libnx_audren_fixture_loops_for_two_seconds() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/audren/audren.nro");
     let nro = std::fs::read(path).unwrap_or_else(|e| panic!("{path}: {e}"));
     let (output, _, kernel) = boot_with_kernel_state(&nro, &["long"]);
-    assert!(output.ends_with("ounce-audren result=0x00000EEE\n"), "output: {output:?}");
+    assert!(
+        output.ends_with("ounce-audren result=0x00000EEE\n"),
+        "output: {output:?}"
+    );
     // 400 frames of 240 stereo samples were mixed, with the tone at 20% volume all the way through.
     let pcm = &kernel.audren.output_ring_buffer;
     assert!(pcm.len() >= 400 * 240 * 2, "{} samples", pcm.len());
@@ -569,8 +684,15 @@ fn deko3d_fixture_runs_to_completion() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/deko3d/deko3d.nro");
     let nro = std::fs::read(path).unwrap();
     let (output, _, kernel) = boot_with_kernel_state(&nro, &[]);
-    assert!(output.contains("ounce-deko3d result="), "fixture did not report: {output:?}");
-    assert!(kernel.ipc.nvdrv.unhandled.is_empty(), "unhandled ioctls: {:?}", kernel.ipc.nvdrv.unhandled);
+    assert!(
+        output.contains("ounce-deko3d result="),
+        "fixture did not report: {output:?}"
+    );
+    assert!(
+        kernel.ipc.nvdrv.unhandled.is_empty(),
+        "unhandled ioctls: {:?}",
+        kernel.ipc.nvdrv.unhandled
+    );
 }
 
 /// The real libnx + deko3d fixture clears a pitch-linear target, draws a triangle, and checks both
@@ -586,7 +708,11 @@ fn deko3d_fixture_draws_triangle() {
 #[test]
 fn libnx_multi_input_fixture_reads_styles_and_touch() {
     use crate::kernel::hid::{NpadInput, NpadStyle, TouchPoint};
-    let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/input_multi/input_multi.nro")).unwrap();
+    let nro = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/nro/input_multi/input_multi.nro"
+    ))
+    .unwrap();
     let (output, _, _) = boot_with_kernel_hid(&nro, &[], Default::default(), |hid| {
         for (id, style, buttons, stick_l) in [
             (0, NpadStyle::FullKey, 1, (123, -456)),
@@ -595,9 +721,25 @@ fn libnx_multi_input_fixture_reads_styles_and_touch() {
             (3, NpadStyle::JoyRight, 4, (456, -789)),
         ] {
             hid.feed.connect(id, style).unwrap();
-            hid.feed.set_npad(id, NpadInput { buttons, stick_l, ..Default::default() }).unwrap();
+            hid.feed
+                .set_npad(
+                    id,
+                    NpadInput {
+                        buttons,
+                        stick_l,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
         }
-        hid.feed.set_touches(&[TouchPoint { finger_id: 7, x: 321, y: 123, diameter_x: 10, diameter_y: 12, rotation_angle: 0 }]);
+        hid.feed.set_touches(&[TouchPoint {
+            finger_id: 7,
+            x: 321,
+            y: 123,
+            diameter_x: 10,
+            diameter_y: 12,
+            rotation_angle: 0,
+        }]);
     });
     assert!(output.ends_with("ounce-input result=0x00000EEE\n"), "{output:?}");
 }
@@ -609,7 +751,11 @@ mod corpus_runner;
 /// These project-authored fixtures are integration regressions, not corpus evidence.
 #[test]
 fn thread_fixture_repeats_with_identical_engine_inputs() {
-    let nro = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/nro/threads/threads.nro")).unwrap();
+    let nro = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/nro/threads/threads.nro"
+    ))
+    .unwrap();
     let mut baseline: Option<(Vec<u16>, usize)> = None;
     for repetition in 0..30 {
         for tier in [false, true] {
@@ -617,9 +763,17 @@ fn thread_fixture_repeats_with_identical_engine_inputs() {
             if let Some((svcs, instructions)) = baseline.as_ref() {
                 if &run.svcs != svcs {
                     let first = run.svcs.iter().zip(svcs).position(|(a, b)| a != b);
-                    panic!("repeat={repetition} tier3={tier} first={first:?} svc lengths {} vs {} insns {} vs {}", run.svcs.len(), svcs.len(), run.instructions, instructions);
+                    panic!(
+                        "repeat={repetition} tier3={tier} first={first:?} svc lengths {} vs {} insns {} vs {}",
+                        run.svcs.len(),
+                        svcs.len(),
+                        run.instructions,
+                        instructions
+                    );
                 }
-            } else { baseline = Some((run.svcs, run.instructions)); }
+            } else {
+                baseline = Some((run.svcs, run.instructions));
+            }
         }
     }
 }
@@ -633,12 +787,18 @@ fn fixture_runner_matches_interpreter_and_tier3() {
         let run = |tier3| boot_with_kernel_tier(&nro, args, Default::default(), None, |_| {}, tier3);
         let interpreted = run(false);
         let tier3 = run(true);
-        assert!(interpreted.output.contains("result=0x00000EEE"), "{name}: {:?}", interpreted.output);
+        assert!(
+            interpreted.output.contains("result=0x00000EEE"),
+            "{name}: {:?}",
+            interpreted.output
+        );
         assert_eq!(tier3.output, interpreted.output, "{name}: guest output differs");
         assert_eq!(tier3.svcs, interpreted.svcs, "{name}: SVC sequence differs");
         assert!(tier3.tier3_runs > 0, "{name}: must exercise compiled Tier-3 blocks");
-        eprintln!("fixture={name} interpreter_insns={} tier3_insns={} tier3_compiled_runs={}",
-            interpreted.instructions, tier3.instructions, tier3.tier3_runs);
+        eprintln!(
+            "fixture={name} interpreter_insns={} tier3_insns={} tier3_compiled_runs={}",
+            interpreted.instructions, tier3.instructions, tier3.tier3_runs
+        );
     }
 }
 
@@ -647,8 +807,14 @@ fn fixture_runner_matches_interpreter_and_tier3() {
 fn external_nro_probe() {
     let path = std::env::var("OUNCE_CORPUS_PROBE_NRO_PATH").expect("set the source-built NRO path");
     let nro = std::fs::read(path).unwrap();
-    let input = crate::kernel::hid::NpadInput { buttons: 1 << 10, ..Default::default() };
+    let input = crate::kernel::hid::NpadInput {
+        buttons: 1 << 10,
+        ..Default::default()
+    };
     let run = boot_with_kernel_tier(&nro, &[], input, None, |_| {}, false);
-    eprintln!("upstream output: {:?}; SVCs: {:x?}; instructions={}", run.output, run.svcs, run.instructions);
+    eprintln!(
+        "upstream output: {:?}; SVCs: {:x?}; instructions={}",
+        run.output, run.svcs, run.instructions
+    );
     assert_eq!(run.svcs.last(), Some(&0x07));
 }

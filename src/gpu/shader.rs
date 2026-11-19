@@ -1,7 +1,7 @@
-#![allow(dead_code)]
+//! Nvidia Ampere (`SM86` / Tegra T239 "Drake") SASS Shader Decompiler,
+//! GLSL 450 Transpiler, & Binary Vulkan SPIR-V 1.5 (`0x07230203`) Bytecode Emitter.
 
-/// Nvidia Ampere (`SM86` / Tegra T239 "Drake") SASS Shader Decompiler,
-/// GLSL 450 Transpiler, & Binary Vulkan SPIR-V 1.5 (`0x07230203`) Bytecode Emitter.
+#![allow(dead_code)]
 
 use crate::gpu::tensor::HmmaShape;
 
@@ -32,7 +32,7 @@ impl CmpOp {
         }
     }
 
-    pub fn to_glsl_symbol(&self) -> &'static str {
+    pub fn to_glsl_symbol(self) -> &'static str {
         match self {
             CmpOp::Eq => "==",
             CmpOp::Ne => "!=",
@@ -68,7 +68,7 @@ impl MufuFunc {
         }
     }
 
-    pub fn to_glsl_func(&self) -> &'static str {
+    pub fn to_glsl_func(self) -> &'static str {
         match self {
             MufuFunc::Cos => "cos",
             MufuFunc::Sin => "sin",
@@ -113,7 +113,13 @@ pub enum SassOp {
     /// `FSETP.cmp P0, P1, Rn, Rm` — Floating point compare and set predicate registers
     FSetp { p0: u8, p1: u8, rn: u8, rm: u8, op: CmpOp },
     /// `SEL Rd, Rn, Rm, Pred` — Select register based on predicate
-    Sel { rd: u8, rn: u8, rm: u8, pred: u8, pred_inv: bool },
+    Sel {
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        pred: u8,
+        pred_inv: bool,
+    },
     /// `MUFU Rd, Rn, Func` — Multi-Function Unit: `Rcp`, `Rsq`, `Sin`, `Cos`, `Exp2`, `Log2`
     Mufu { rd: u8, rn: u8, func: MufuFunc },
     /// `HADD2 Rd, Rn, Rm` — FP16x2 Half-Precision Vector Addition: `R[rd] = R[rn] + R[rm]`
@@ -190,27 +196,15 @@ impl Sm86PredicatedInsn {
 impl SassOp {
     pub fn encode(&self) -> u64 {
         match *self {
-            SassOp::FMovImm { rd, imm } => {
-                (0x01u64 << 56) | ((rd as u64) << 48) | (imm.to_bits() as u64)
-            }
+            SassOp::FMovImm { rd, imm } => (0x01u64 << 56) | ((rd as u64) << 48) | (imm.to_bits() as u64),
             SassOp::FAdd { rd, rn, rm } => {
-                (0x02u64 << 56)
-                    | ((rd as u64) << 48)
-                    | ((rn as u64) << 40)
-                    | ((rm as u64) << 32)
+                (0x02u64 << 56) | ((rd as u64) << 48) | ((rn as u64) << 40) | ((rm as u64) << 32)
             }
             SassOp::FMul { rd, rn, rm } => {
-                (0x03u64 << 56)
-                    | ((rd as u64) << 48)
-                    | ((rn as u64) << 40)
-                    | ((rm as u64) << 32)
+                (0x03u64 << 56) | ((rd as u64) << 48) | ((rn as u64) << 40) | ((rm as u64) << 32)
             }
             SassOp::FFma { rd, rn, rm, ra } => {
-                (0x04u64 << 56)
-                    | ((rd as u64) << 48)
-                    | ((rn as u64) << 40)
-                    | ((rm as u64) << 32)
-                    | ((ra as u64) << 24)
+                (0x04u64 << 56) | ((rd as u64) << 48) | ((rn as u64) << 40) | ((rm as u64) << 32) | ((ra as u64) << 24)
             }
             SassOp::Texs2D { rd, ru, rv, tex_id } => {
                 (0x05u64 << 56)
@@ -243,7 +237,13 @@ impl SassOp {
                     | ((rm as u64) << 28)
                     | (op as u8 as u64)
             }
-            SassOp::Sel { rd, rn, rm, pred, pred_inv } => {
+            SassOp::Sel {
+                rd,
+                rn,
+                rm,
+                pred,
+                pred_inv,
+            } => {
                 (0x09u64 << 56)
                     | ((rd as u64) << 48)
                     | ((rn as u64) << 40)
@@ -252,43 +252,22 @@ impl SassOp {
                     | ((pred_inv as u64) << 16)
             }
             SassOp::Mufu { rd, rn, func } => {
-                (0x0Au64 << 56)
-                    | ((rd as u64) << 48)
-                    | ((rn as u64) << 40)
-                    | (func as u8 as u64)
+                (0x0Au64 << 56) | ((rd as u64) << 48) | ((rn as u64) << 40) | (func as u8 as u64)
             }
             SassOp::HAdd2 { rd, rn, rm } => {
-                (0x0Bu64 << 56)
-                    | ((rd as u64) << 48)
-                    | ((rn as u64) << 40)
-                    | ((rm as u64) << 32)
+                (0x0Bu64 << 56) | ((rd as u64) << 48) | ((rn as u64) << 40) | ((rm as u64) << 32)
             }
             SassOp::HMul2 { rd, rn, rm } => {
-                (0x0Cu64 << 56)
-                    | ((rd as u64) << 48)
-                    | ((rn as u64) << 40)
-                    | ((rm as u64) << 32)
+                (0x0Cu64 << 56) | ((rd as u64) << 48) | ((rn as u64) << 40) | ((rm as u64) << 32)
             }
             SassOp::HFma2 { rd, rn, rm, ra } => {
-                (0x0Du64 << 56)
-                    | ((rd as u64) << 48)
-                    | ((rn as u64) << 40)
-                    | ((rm as u64) << 32)
-                    | ((ra as u64) << 24)
+                (0x0Du64 << 56) | ((rd as u64) << 48) | ((rn as u64) << 40) | ((rm as u64) << 32) | ((ra as u64) << 24)
             }
             SassOp::Hmma1688 { rd, rn, rm, ra } => {
-                (0x0Eu64 << 56)
-                    | ((rd as u64) << 48)
-                    | ((rn as u64) << 40)
-                    | ((rm as u64) << 32)
-                    | ((ra as u64) << 24)
+                (0x0Eu64 << 56) | ((rd as u64) << 48) | ((rn as u64) << 40) | ((rm as u64) << 32) | ((ra as u64) << 24)
             }
             SassOp::Hmma16816 { rd, rn, rm, ra } => {
-                (0x0Fu64 << 56)
-                    | ((rd as u64) << 48)
-                    | ((rn as u64) << 40)
-                    | ((rm as u64) << 32)
-                    | ((ra as u64) << 24)
+                (0x0Fu64 << 56) | ((rd as u64) << 48) | ((rn as u64) << 40) | ((rm as u64) << 32) | ((ra as u64) << 24)
             }
             SassOp::Exit => 0xFFu64 << 56,
         }
@@ -393,12 +372,12 @@ impl SpirvBinaryBuilder {
     }
 
     fn emit_header(&mut self) {
-        self.words.push(SPIRV_MAGIC);       // 0x07230203
+        self.words.push(SPIRV_MAGIC); // 0x07230203
         self.words.push(SPIRV_VERSION_1_5); // SPIR-V 1.5 (0x00010500)
-        self.words.push(0x4F55_4E43);       // Generator magic ("OUNC")
+        self.words.push(0x4F55_4E43); // Generator magic ("OUNC")
         self.bound_idx = self.words.len();
-        self.words.push(0);                 // ID bound (patched in finalize())
-        self.words.push(0);                 // Reserved instruction schema
+        self.words.push(0); // ID bound (patched in finalize())
+        self.words.push(0); // Reserved instruction schema
     }
 
     pub fn emit_capability_shader(&mut self) {
@@ -503,7 +482,7 @@ impl SpirvBinaryBuilder {
 
     pub fn emit_function_end(&mut self) {
         self.emit_inst(253, &[]); // OpReturn
-        self.emit_inst(56, &[]);  // OpFunctionEnd
+        self.emit_inst(56, &[]); // OpFunctionEnd
     }
 
     pub fn finalize(mut self) -> Vec<u32> {
@@ -606,8 +585,20 @@ impl SassShaderDecompiler {
                     let ab = spv.emit_fmul(f32_ty, a, b);
                     reg_ids[(rd & 0xF) as usize] = spv.emit_fadd(f32_ty, ab, c);
                 }
-                SassOp::ISetp { p0, p1, rn, rm, op: cmp_op }
-                | SassOp::FSetp { p0, p1, rn, rm, op: cmp_op } => {
+                SassOp::ISetp {
+                    p0,
+                    p1,
+                    rn,
+                    rm,
+                    op: cmp_op,
+                }
+                | SassOp::FSetp {
+                    p0,
+                    p1,
+                    rn,
+                    rm,
+                    op: cmp_op,
+                } => {
                     let a = reg_ids[(rn & 0xF) as usize];
                     let b = reg_ids[(rm & 0xF) as usize];
                     let res = spv.emit_fcmp(bool_ty, cmp_op, a, b);
@@ -619,7 +610,13 @@ impl SassShaderDecompiler {
                         pred_ids[p1 as usize] = not_res;
                     }
                 }
-                SassOp::Sel { rd, rn, rm, pred, pred_inv } => {
+                SassOp::Sel {
+                    rd,
+                    rn,
+                    rm,
+                    pred,
+                    pred_inv,
+                } => {
                     let mut cond = pred_ids[(pred & 0x7) as usize];
                     if pred_inv {
                         cond = spv.emit_logical_not(bool_ty, cond);
@@ -667,8 +664,7 @@ impl SassShaderDecompiler {
                     let prod = spv.emit_fmul(f32_ty, a, b);
                     for i in 0..4u8 {
                         let c = reg_ids[(ra.wrapping_add(i) & 0xF) as usize];
-                        reg_ids[(rd.wrapping_add(i) & 0xF) as usize] =
-                            spv.emit_fadd(f32_ty, prod, c);
+                        reg_ids[(rd.wrapping_add(i) & 0xF) as usize] = spv.emit_fadd(f32_ty, prod, c);
                     }
                 }
                 SassOp::Exit => break,
@@ -704,10 +700,7 @@ impl SassShaderDecompiler {
                     out.push_str(&format!("    R[{}] = R[{}] * R[{}];\n", rd, rn, rm));
                 }
                 SassOp::FFma { rd, rn, rm, ra } => {
-                    out.push_str(&format!(
-                        "    R[{}] = fma(R[{}], R[{}], R[{}]);\n",
-                        rd, rn, rm, ra
-                    ));
+                    out.push_str(&format!("    R[{}] = fma(R[{}], R[{}], R[{}]);\n", rd, rn, rm, ra));
                 }
                 SassOp::Texs2D { rd, ru, rv, tex_id } => {
                     out.push_str(&format!(
@@ -716,7 +709,14 @@ impl SassShaderDecompiler {
                     ));
                     out.push_str(&format!(
                         "    R[{}] = tex_{}.r; R[{}] = tex_{}.g; R[{}] = tex_{}.b; R[{}] = tex_{}.a;\n",
-                        rd, rd, rd + 1, rd, rd + 2, rd, rd + 3, rd
+                        rd,
+                        rd,
+                        rd + 1,
+                        rd,
+                        rd + 2,
+                        rd,
+                        rd + 3,
+                        rd
                     ));
                 }
                 SassOp::Lop3Lut { rd, rn, rm, ra, lut } => {
@@ -725,28 +725,53 @@ impl SassShaderDecompiler {
                         rn, rm, ra, lut, rd
                     ));
                 }
-                SassOp::ISetp { p0, p1, rn, rm, op: cmp_op } => {
+                SassOp::ISetp {
+                    p0,
+                    p1,
+                    rn,
+                    rm,
+                    op: cmp_op,
+                } => {
                     out.push_str(&format!(
                         "    P[{}] = (int(R[{}]) {} int(R[{}])); P[{}] = !P[{}];\n",
-                        p0, rn, cmp_op.to_glsl_symbol(), rm, p1, p0
+                        p0,
+                        rn,
+                        cmp_op.to_glsl_symbol(),
+                        rm,
+                        p1,
+                        p0
                     ));
                 }
-                SassOp::FSetp { p0, p1, rn, rm, op: cmp_op } => {
+                SassOp::FSetp {
+                    p0,
+                    p1,
+                    rn,
+                    rm,
+                    op: cmp_op,
+                } => {
                     out.push_str(&format!(
                         "    P[{}] = (R[{}] {} R[{}]); P[{}] = !P[{}];\n",
-                        p0, rn, cmp_op.to_glsl_symbol(), rm, p1, p0
+                        p0,
+                        rn,
+                        cmp_op.to_glsl_symbol(),
+                        rm,
+                        p1,
+                        p0
                     ));
                 }
-                SassOp::Sel { rd, rn, rm, pred, pred_inv } => {
+                SassOp::Sel {
+                    rd,
+                    rn,
+                    rm,
+                    pred,
+                    pred_inv,
+                } => {
                     let cond_str = if pred_inv {
                         format!("!P[{}]", pred)
                     } else {
                         format!("P[{}]", pred)
                     };
-                    out.push_str(&format!(
-                        "    R[{}] = ({}) ? R[{}] : R[{}];\n",
-                        rd, cond_str, rn, rm
-                    ));
+                    out.push_str(&format!("    R[{}] = ({}) ? R[{}] : R[{}];\n", rd, cond_str, rn, rm));
                 }
                 SassOp::Mufu { rd, rn, func } => {
                     if func == MufuFunc::Rcp {
@@ -770,11 +795,7 @@ impl SassShaderDecompiler {
                 SassOp::Hmma1688 { rd, rn, rm, ra } | SassOp::Hmma16816 { rd, rn, rm, ra } => {
                     // `unwrap_or` is unreachable: both arms carry a shape.
                     let shape = op.hmma_shape().unwrap_or(HmmaShape::M16N8K8);
-                    out.push_str(&format!(
-                        "    // {} ({})\n",
-                        shape.mnemonic(),
-                        shape.ptx_mnemonic()
-                    ));
+                    out.push_str(&format!("    // {} ({})\n", shape.mnemonic(), shape.ptx_mnemonic()));
                     out.push_str(&format!(
                         "    // Warp-level MMA: A frag R[{}..{}], B frag R[{}..{}], C frag R[{}..{}] -> D frag R[{}..{}]\n",
                         rn,
@@ -818,7 +839,13 @@ mod tests {
     fn test_ampere_sass_to_glsl_and_binary_spirv() {
         let program = vec![
             // Sample 2D texture 0 at UV (R4, R5) into R8..R11
-            SassOp::Texs2D { rd: 8, ru: 4, rv: 5, tex_id: 0 }.encode(),
+            SassOp::Texs2D {
+                rd: 8,
+                ru: 4,
+                rv: 5,
+                tex_id: 0,
+            }
+            .encode(),
             // Modulate vertex color R0..R2 by sampled texture color R8..R10
             SassOp::FMul { rd: 0, rn: 0, rm: 8 }.encode(),
             SassOp::FMul { rd: 1, rn: 1, rm: 9 }.encode(),
@@ -841,7 +868,12 @@ mod tests {
         let sm86 = Sm86PredicatedInsn {
             pred_reg: 2,
             pred_invert: true,
-            op: SassOp::FFma { rd: 0, rn: 1, rm: 2, ra: 3 },
+            op: SassOp::FFma {
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                ra: 3,
+            },
         };
         let encoded128 = sm86.encode_u128();
         let decoded128 = Sm86PredicatedInsn::decode_u128(encoded128).unwrap();
@@ -860,13 +892,39 @@ mod tests {
             SassOp::FMovImm { rd: 0, imm: 4.0 }.encode(),
             SassOp::FMovImm { rd: 1, imm: 2.0 }.encode(),
             // FSETP.Gt P0, P1, R0, R1
-            SassOp::FSetp { p0: 0, p1: 1, rn: 0, rm: 1, op: CmpOp::Gt }.encode(),
+            SassOp::FSetp {
+                p0: 0,
+                p1: 1,
+                rn: 0,
+                rm: 1,
+                op: CmpOp::Gt,
+            }
+            .encode(),
             // SEL R2, R0, R1, P0 (true => R0 = 4.0)
-            SassOp::Sel { rd: 2, rn: 0, rm: 1, pred: 0, pred_inv: false }.encode(),
+            SassOp::Sel {
+                rd: 2,
+                rn: 0,
+                rm: 1,
+                pred: 0,
+                pred_inv: false,
+            }
+            .encode(),
             // MUFU R3, R2, Rsq (inversesqrt(4.0) = 0.5)
-            SassOp::Mufu { rd: 3, rn: 2, func: MufuFunc::Rsq }.encode(),
+            SassOp::Mufu {
+                rd: 3,
+                rn: 2,
+                func: MufuFunc::Rsq,
+            }
+            .encode(),
             // LOP3.LUT R4, R0, R1, R2, 0xFE (bitwise OR)
-            SassOp::Lop3Lut { rd: 4, rn: 0, rm: 1, ra: 2, lut: 0xFE }.encode(),
+            SassOp::Lop3Lut {
+                rd: 4,
+                rn: 0,
+                rm: 1,
+                ra: 2,
+                lut: 0xFE,
+            }
+            .encode(),
             SassOp::Exit.encode(),
         ];
 
@@ -894,7 +952,13 @@ mod tests {
             // HMul2: R4 = R0 * R1
             SassOp::HMul2 { rd: 4, rn: 0, rm: 1 }.encode(),
             // HFma2: R5 = R0 * R1 + R2
-            SassOp::HFma2 { rd: 5, rn: 0, rm: 1, ra: 2 }.encode(),
+            SassOp::HFma2 {
+                rd: 5,
+                rn: 0,
+                rm: 1,
+                ra: 2,
+            }
+            .encode(),
             SassOp::Exit.encode(),
         ];
 
@@ -902,7 +966,11 @@ mod tests {
         assert_eq!(decompiled.ops.len(), 7);
         assert!(decompiled.glsl_source.contains("R[3] = R[0] + R[1]; // HADD2 FP16x2"));
         assert!(decompiled.glsl_source.contains("R[4] = R[0] * R[1]; // HMUL2 FP16x2"));
-        assert!(decompiled.glsl_source.contains("R[5] = fma(R[0], R[1], R[2]); // HFMA2 FP16x2"));
+        assert!(
+            decompiled
+                .glsl_source
+                .contains("R[5] = fma(R[0], R[1], R[2]); // HFMA2 FP16x2")
+        );
 
         assert_eq!(decompiled.spirv_words[0], SPIRV_MAGIC);
         assert_eq!(decompiled.spirv_words[1], SPIRV_VERSION_1_5);
@@ -913,9 +981,21 @@ mod tests {
     fn test_ampere_hmma_tensor_core_opcodes() {
         let program = vec![
             // HMMA.1688.F32.F16 R8, R0, R4, R8 (A frag R0..R3, B frag R4..R5)
-            SassOp::Hmma1688 { rd: 8, rn: 0, rm: 4, ra: 8 }.encode(),
+            SassOp::Hmma1688 {
+                rd: 8,
+                rn: 0,
+                rm: 4,
+                ra: 8,
+            }
+            .encode(),
             // HMMA.16816.F32.F16 R12, R0, R8, R12 (A frag R0..R7, B frag R8..R11)
-            SassOp::Hmma16816 { rd: 12, rn: 0, rm: 8, ra: 12 }.encode(),
+            SassOp::Hmma16816 {
+                rd: 12,
+                rn: 0,
+                rm: 8,
+                ra: 12,
+            }
+            .encode(),
             SassOp::Exit.encode(),
         ];
 
@@ -924,11 +1004,21 @@ mod tests {
         assert_eq!(decompiled.ops.len(), 3);
         assert_eq!(
             decompiled.ops[0],
-            SassOp::Hmma1688 { rd: 8, rn: 0, rm: 4, ra: 8 }
+            SassOp::Hmma1688 {
+                rd: 8,
+                rn: 0,
+                rm: 4,
+                ra: 8
+            }
         );
         assert_eq!(
             decompiled.ops[1],
-            SassOp::Hmma16816 { rd: 12, rn: 0, rm: 8, ra: 12 }
+            SassOp::Hmma16816 {
+                rd: 12,
+                rn: 0,
+                rm: 8,
+                ra: 12
+            }
         );
         assert_eq!(decompiled.ops[0].hmma_shape(), Some(HmmaShape::M16N8K8));
         assert_eq!(decompiled.ops[1].hmma_shape(), Some(HmmaShape::M16N8K16));
@@ -938,7 +1028,12 @@ mod tests {
         let sm86 = Sm86PredicatedInsn {
             pred_reg: 1,
             pred_invert: false,
-            op: SassOp::Hmma16816 { rd: 12, rn: 0, rm: 8, ra: 12 },
+            op: SassOp::Hmma16816 {
+                rd: 12,
+                rn: 0,
+                rm: 8,
+                ra: 12,
+            },
         };
         assert_eq!(Sm86PredicatedInsn::decode_u128(sm86.encode_u128()).unwrap(), sm86);
 

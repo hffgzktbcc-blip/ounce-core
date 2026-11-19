@@ -178,5 +178,30 @@ class MatrixAggregationTests(unittest.TestCase):
             self.assertEqual(report['failed_rows'], 3)
 
 
+class OriginalWorkloadManifestTests(unittest.TestCase):
+    """The first-party `elf-*` workloads (#474) must stay self-contained and carry provenance."""
+
+    def setUp(self):
+        manifest = json.loads((VERIFY / 'differential.json').read_text(encoding='utf-8'))
+        self.original = [h for h in matrix.select_harnesses(manifest) if h['name'].startswith('elf-')]
+
+    def test_original_workloads_have_provenance_and_sources(self):
+        self.assertGreaterEqual(len(self.original), 17)
+        readme = (VERIFY / 'elf-workloads' / 'README.md').read_text(encoding='utf-8')
+        for h in self.original:
+            name = h['name']
+            self.assertNotIn('upstream', h, name)
+            self.assertTrue(h.get('linux_elf_only'), name)
+            self.assertIn('MIT', h.get('provenance', ''), name)
+            self.assertIn('`%s`' % name, readme, name)
+            for f in h['files'] + [h['host_main']]:
+                self.assertTrue((VERIFY / h['dir'] / f).is_file(), '%s: %s' % (name, f))
+            self.assertIn('workload_run', (VERIFY / h['dir'] / h['files'][0]).read_text(encoding='utf-8'), name)
+
+    def test_selected_harness_total_does_not_shrink(self):
+        manifest = json.loads((VERIFY / 'differential.json').read_text(encoding='utf-8'))
+        self.assertGreaterEqual(len(matrix.select_harnesses(manifest)), 45)
+
+
 if __name__ == '__main__':
     unittest.main()

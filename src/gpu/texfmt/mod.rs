@@ -61,11 +61,19 @@ pub struct Element {
 
 impl Element {
     const fn texel(bytes: u32) -> Self {
-        Element { block_w: 1, block_h: 1, bytes }
+        Element {
+            block_w: 1,
+            block_h: 1,
+            bytes,
+        }
     }
 
     const fn block(block_w: u32, block_h: u32, bytes: u32) -> Self {
-        Element { block_w, block_h, bytes }
+        Element {
+            block_w,
+            block_h,
+            bytes,
+        }
     }
 
     pub fn is_block(&self) -> bool {

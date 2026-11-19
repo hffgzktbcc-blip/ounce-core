@@ -108,7 +108,7 @@ pub(crate) fn run_built_in_demo() {
     // Prepare CMIF GetService("nvdrv") packet in Thread-Local Storage (DEFAULT_TLS_ADDR + 0x10)
     let cmif_base = DEFAULT_TLS_ADDR + 0x10;
     mmu.write_u32(cmif_base, CMIF_IN_MAGIC).unwrap(); // "SFCI"
-    mmu.write_u32(cmif_base + 8, 1).unwrap();         // Command 1: GetService
+    mmu.write_u32(cmif_base + 8, 1).unwrap(); // Command 1: GetService
     mmu.write_bytes(cmif_base + 16, b"nvdrv\0\0\0").unwrap();
 
     // Guest AArch64 Code:
@@ -249,10 +249,22 @@ pub(crate) fn run_built_in_demo() {
 
     // 6b. Write 64-bit Ampere SASS shader program into guest VRAM at 0x80030000
     let sass_program = [
-        SassOp::Texs2D { rd: 8, ru: 4, rv: 5, tex_id: 0 }.encode(),
+        SassOp::Texs2D {
+            rd: 8,
+            ru: 4,
+            rv: 5,
+            tex_id: 0,
+        }
+        .encode(),
         SassOp::FMul { rd: 0, rn: 0, rm: 8 }.encode(),
         SassOp::FMul { rd: 1, rn: 1, rm: 9 }.encode(),
-        SassOp::FFma { rd: 2, rn: 2, rm: 10, ra: 3 }.encode(),
+        SassOp::FFma {
+            rd: 2,
+            rn: 2,
+            rm: 10,
+            ra: 3,
+        }
+        .encode(),
         SassOp::Exit.encode(),
     ];
     for (i, &w) in sass_program.iter().enumerate() {
@@ -309,8 +321,7 @@ pub(crate) fn run_built_in_demo() {
     mmu.write_bytes(DEFAULT_BASE_ADDR, &main_bytes).unwrap();
 
     // Run VM and inspect shader + scheduler state
-    let mut display_none: Option<&mut DisplayServer> = None;
-    let outcome = run_vm_internal(cpu, mmu, kernel, display_none.as_mut().map(|x| &mut **x), None, 10_000, 0);
+    let outcome = run_vm_internal(cpu, mmu, kernel, None, None, 10_000, 0);
     gate.expect_exit(6, &outcome, 0x1E61);
     println!();
 
@@ -341,9 +352,8 @@ pub(crate) fn run_built_in_demo() {
 
     // Upload 3 textured 3D vertices (8 floats each: x, y, z, r, g, b, u, v)
     let textured_verts: [f32; 24] = [
-         0.0,  0.8, 0.0, 1.0, 1.0, 1.0, 0.5, 0.0,
-        -0.8, -0.8, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0,
-         0.8, -0.8, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        0.0, 0.8, 0.0, 1.0, 1.0, 1.0, 0.5, 0.0, -0.8, -0.8, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.8, -0.8, 0.0, 1.0, 1.0,
+        1.0, 1.0, 1.0,
     ];
     for (i, &val) in textured_verts.iter().enumerate() {
         mmu.write_u32(vb_addr + (i * 4) as u64, val.to_bits()).unwrap();
@@ -354,9 +364,12 @@ pub(crate) fn run_built_in_demo() {
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_RENDER_TARGET_ADDR, 1),
         rt_addr as u32,
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
-        16, 16,
+        16,
+        16,
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_BIND_TEXTURE_2D, 3),
-        tex_addr as u32, 2, 2,
+        tex_addr as u32,
+        2,
+        2,
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VERTEX_ARRAY_ADDR, 1),
         vb_addr as u32,
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_DRAW_TEXTURED_ARRAYS, 1),
@@ -436,12 +449,8 @@ pub(crate) fn run_built_in_demo() {
     //  Triangle 0 (Near, z = 0.2): Pure Green (0xFF00FF00)
     //  Triangle 1 (Far,  z = 0.8): Pure Red   (0xFF0000FF) — drawn SECOND!
     let z_verts: [f32; 36] = [
-         0.0,  0.8, 0.2, 0.0, 1.0, 0.0,
-        -0.8, -0.8, 0.2, 0.0, 1.0, 0.0,
-         0.8, -0.8, 0.2, 0.0, 1.0, 0.0,
-         0.0,  0.8, 0.8, 1.0, 0.0, 0.0,
-        -0.8, -0.8, 0.8, 1.0, 0.0, 0.0,
-         0.8, -0.8, 0.8, 1.0, 0.0, 0.0,
+        0.0, 0.8, 0.2, 0.0, 1.0, 0.0, -0.8, -0.8, 0.2, 0.0, 1.0, 0.0, 0.8, -0.8, 0.2, 0.0, 1.0, 0.0, 0.0, 0.8, 0.8,
+        1.0, 0.0, 0.0, -0.8, -0.8, 0.8, 1.0, 0.0, 0.0, 0.8, -0.8, 0.8, 1.0, 0.0, 0.0,
     ];
     for (i, &val) in z_verts.iter().enumerate() {
         mmu.write_u32(vb_addr8 + (i * 4) as u64, val.to_bits()).unwrap();
@@ -451,7 +460,8 @@ pub(crate) fn run_built_in_demo() {
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_RENDER_TARGET_ADDR, 1),
         rt_addr8 as u32,
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VIEWPORT_DIMS, 2),
-        16, 16,
+        16,
+        16,
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_DEPTH_TEST_ENABLE, 1),
         1,
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_CLEAR_SURFACE, 1),
@@ -526,7 +536,8 @@ pub(crate) fn run_built_in_demo() {
     let vec_b: [f32; 4] = [2.0, 3.0, 4.0, 5.0];
     for i in 0..4 {
         mmu.write_u32(simd_addr + (i * 4) as u64, vec_a[i].to_bits()).unwrap();
-        mmu.write_u32(simd_addr + 16 + (i * 4) as u64, vec_b[i].to_bits()).unwrap();
+        mmu.write_u32(simd_addr + 16 + (i * 4) as u64, vec_b[i].to_bits())
+            .unwrap();
     }
 
     // 2. Write "save:/profile.sav" path string at 0x80030000
@@ -729,7 +740,11 @@ pub(crate) fn run_built_in_demo() {
         //   2. `nn::os::TryWaitEvent(data13)` at `code13 + 0x200` -> W0 = 1
         //   3. `get_freq13` (GetSystemTickFrequency stand-in) at `code13 + 0x300` -> X0 = 19,200,000
         //   4. Combines `(freq + try_wait) = 19,200,001` into X0 and calls `svcExitProcess`!
-        for (base, routine) in [(0x100u64, &event_init13[..]), (0x200, &event_try_wait13[..]), (0x300, &get_freq13[..])] {
+        for (base, routine) in [
+            (0x100u64, &event_init13[..]),
+            (0x200, &event_try_wait13[..]),
+            (0x300, &get_freq13[..]),
+        ] {
             for (i, &w) in routine.iter().enumerate() {
                 mmu13.write_u32(code13 + base + (i * 4) as u64, w).unwrap();
             }
@@ -787,9 +802,18 @@ pub(crate) fn run_built_in_demo() {
         let (mut cpu15, mut mmu15, mut kernel15) = setup_vm();
         // 1. Build RomFS Section 1 assets (Ampere shader, textures, manifest)
         let romfs_bytes = fs::RomFsArchive::build(&[
-            ("/shaders/t239_ampere.glsl", b"#version 450\nlayout(location=0) out vec4 color;\nvoid main() { color = vec4(1.0, 0.5, 0.2, 1.0); }"),
-            ("/textures/switch2_logo.bin", &[0xFF, 0x33, 0x11, 0xFF, 0x22, 0x88, 0xEE, 0xFF]),
-            ("/manifest.json", b"{\"app_name\":\"NVN 3D Benchmark\",\"target\":\"T239 Drake\"}"),
+            (
+                "/shaders/t239_ampere.glsl",
+                b"#version 450\nlayout(location=0) out vec4 color;\nvoid main() { color = vec4(1.0, 0.5, 0.2, 1.0); }",
+            ),
+            (
+                "/textures/switch2_logo.bin",
+                &[0xFF, 0x33, 0x11, 0xFF, 0x22, 0x88, 0xEE, 0xFF],
+            ),
+            (
+                "/manifest.json",
+                b"{\"app_name\":\"NVN 3D Benchmark\",\"target\":\"T239 Drake\"}",
+            ),
         ]);
 
         // 2. Map Framebuffer VRAM (0x9000_0000) and Command Stream Buffer (0x8100_0000)
@@ -843,15 +867,30 @@ pub(crate) fn run_built_in_demo() {
         println!("  [BootLoader] Loaded raw AArch64 image: Format='{}'", boot_info.format);
 
         // Verify the RomFS Level 3 archive is mounted in the kernel VFS:
-        let manifest = kernel15.vfs.get_file("romfs:/manifest.json").expect("RomFS asset mounted");
-        println!("  [RomFS] Mounted asset 'romfs:/manifest.json': {}", String::from_utf8_lossy(manifest));
-        let shader = kernel15.vfs.get_file("romfs:/shaders/t239_ampere.glsl").expect("RomFS shader mounted");
-        println!("  [RomFS] Mounted asset 'romfs:/shaders/t239_ampere.glsl' ({} bytes)", shader.len());
+        let manifest = kernel15
+            .vfs
+            .get_file("romfs:/manifest.json")
+            .expect("RomFS asset mounted");
+        println!(
+            "  [RomFS] Mounted asset 'romfs:/manifest.json': {}",
+            String::from_utf8_lossy(manifest)
+        );
+        let shader = kernel15
+            .vfs
+            .get_file("romfs:/shaders/t239_ampere.glsl")
+            .expect("RomFS shader mounted");
+        println!(
+            "  [RomFS] Mounted asset 'romfs:/shaders/t239_ampere.glsl' ({} bytes)",
+            shader.len()
+        );
 
         cpu15.regs.pc = DEFAULT_BASE_ADDR;
         let outcome = run_vm(cpu15, mmu15, kernel15, 10_000);
         if gate.expect_exit(15, &outcome, 0x239) {
-            println!("  [NVN Driver] Fast-path command buffer executed via SVC #0x105 & rendered into VRAM 0x{:08X}", fb_addr);
+            println!(
+                "  [NVN Driver] Fast-path command buffer executed via SVC #0x105 & rendered into VRAM 0x{:08X}",
+                fb_addr
+            );
         }
     }
     println!();
@@ -917,12 +956,21 @@ pub(crate) fn run_built_in_demo() {
         let sass_ops = vec![
             SassOp::FMovImm { rd: 0, imm: 1.0 }.encode(),
             SassOp::FMovImm { rd: 1, imm: 0.5 }.encode(),
-            SassOp::FSetp { p0: 0, p1: 1, rn: 0, rm: 1, op: gpu::shader::CmpOp::Gt }.encode(),
+            SassOp::FSetp {
+                p0: 0,
+                p1: 1,
+                rn: 0,
+                rm: 1,
+                op: gpu::shader::CmpOp::Gt,
+            }
+            .encode(),
             SassOp::Exit.encode(),
         ];
         let decompiled = gpu::SassShaderDecompiler::decompile(&sass_ops);
         let mut vulkan = gpu::VulkanGpuBackend::new();
-        vulkan.create_graphics_pipeline(&decompiled.spirv_words, &decompiled.spirv_words, 1280, 720, true).unwrap();
+        vulkan
+            .create_graphics_pipeline(&decompiled.spirv_words, &decompiled.spirv_words, 1280, 720, true)
+            .unwrap();
         vulkan.draw_arrays(&mmu16, vbo.gpu_address, 3).unwrap();
         vulkan.present_frame();
         println!(
@@ -954,7 +1002,9 @@ pub(crate) fn run_built_in_demo() {
         let mixed_samples = kernel16.audren.render_dsp_tick(&mmu16);
         println!(
             "  [audren:u DSP] Rendered tick: {} stereo samples mixed | Peak Amp: {} | RingBuffer: {} samples",
-            mixed_samples, kernel16.audren.peak_amplitude, kernel16.audren.output_ring_buffer.len()
+            mixed_samples,
+            kernel16.audren.peak_amplitude,
+            kernel16.audren.output_ring_buffer.len()
         );
 
         // 5. Persistent SaveData:
@@ -962,7 +1012,10 @@ pub(crate) fn run_built_in_demo() {
         kernel16.vfs.set_save_directory(&save_temp);
         mmu16.map_range(0x8300_0000, 4096, Permission::READ_WRITE);
         mmu16.write_bytes(0x8300_0000, b"SWITCH2_SAVE_STAGE16").unwrap();
-        let saved_bytes = kernel16.vfs.write_file_from_guest("save:/slot0.sav", 0x8300_0000, 20, &mmu16).unwrap();
+        let saved_bytes = kernel16
+            .vfs
+            .write_file_from_guest("save:/slot0.sav", 0x8300_0000, 20, &mmu16)
+            .unwrap();
         println!(
             "  [SaveData Persistence] Synchronized {} bytes to 'save:/slot0.sav'",
             saved_bytes
@@ -972,8 +1025,8 @@ pub(crate) fn run_built_in_demo() {
         // Stage 16 has no guest exit code; gate on the Tier-2 guest's Fibonacci
         // result (Fib(10) = 55 in X2, reached through svcExitProcess) and the
         // SaveData write size.
-        let tier2_ok = matches!(exit_reason, cpu::tier2_jit::BlockExit::Svc { svc_id: 7 })
-            && cpu16.regs.read_x(2) == 55;
+        let tier2_ok =
+            matches!(exit_reason, cpu::tier2_jit::BlockExit::Svc { svc_id: 7 }) && cpu16.regs.read_x(2) == 55;
         gate.expect(16, "Tier-2 guest Fib(10) = 55 via svcExitProcess", tier2_ok);
         gate.expect(16, "SaveData wrote 20 bytes", saved_bytes == 20);
     }
@@ -1167,13 +1220,25 @@ pub(crate) fn run_built_in_demo() {
             &mut kernel17.vfs,
         );
         let storage_size = mmu17.read_u64(tls_addr + 0x20).unwrap();
-        let subsystem_ok = gate.expect(17, "firmware, applet, display, HID and storage responses",
-            res_set == 0 && (fw_maj, fw_min, fw_micro) == (23, 0, 1) && focus_state == 1
-            && disp_id == 0 && layer_id == 1 && producer_h != 0 && shm_h != 0
-            && btns == 0x403 && (lx, ly) == (24575, -16383) && storage_size == 0x40000);
+        let subsystem_ok = gate.expect(
+            17,
+            "firmware, applet, display, HID and storage responses",
+            res_set == 0
+                && (fw_maj, fw_min, fw_micro) == (23, 0, 1)
+                && focus_state == 1
+                && disp_id == 0
+                && layer_id == 1
+                && producer_h != 0
+                && shm_h != 0
+                && btns == 0x403
+                && (lx, ly) == (24575, -16383)
+                && storage_size == 0x40000,
+        );
         println!(
             "  [fsp-srv] Storage #{} -> RomFS Level 3 Data Size: 0x{:X} ({} KB)",
-            storage_h, storage_size, storage_size / 1024
+            storage_h,
+            storage_size,
+            storage_size / 1024
         );
 
         // 6. Guest AArch64 synthetic bootstrap execution:
@@ -1211,7 +1276,9 @@ pub(crate) fn run_built_in_demo() {
         cpu17.regs.pc = code_va;
         let outcome = run_vm(cpu17, mmu17, kernel17, 10_000);
         if gate.expect_exit(17, &outcome, 0x777) && subsystem_ok {
-            println!("  [Synthetic Bootstrap] Handshake completed successfully across all Big 5 services (Exit code: 0x777)");
+            println!(
+                "  [Synthetic Bootstrap] Handshake completed successfully across all Big 5 services (Exit code: 0x777)"
+            );
         }
     }
     println!();
@@ -1262,9 +1329,9 @@ pub(crate) fn run_built_in_demo() {
         // 3. Call `ro:1` -> `LoadNro` (Cmd 0)
         mmu18.write_u32(tls_addr + 0x10, CMIF_IN_MAGIC).unwrap();
         mmu18.write_u32(tls_addr + 0x18, 0).unwrap();
-        mmu18.write_u64(tls_addr + 0x20, 0x52).unwrap();      // pid
+        mmu18.write_u64(tls_addr + 0x20, 0x52).unwrap(); // pid
         mmu18.write_u64(tls_addr + 0x28, nro_dyn_va).unwrap(); // nro_addr
-        mmu18.write_u64(tls_addr + 0x30, 0x1000).unwrap();     // nro_size
+        mmu18.write_u64(tls_addr + 0x30, 0x1000).unwrap(); // nro_size
         let res_load = kernel18.ipc.handle_sync_request(
             ro_h,
             tls_addr,
@@ -1283,13 +1350,9 @@ pub(crate) fn run_built_in_demo() {
 
         // 4. Register Texture Descriptors in NVN Texture Pool
         let mut nvn = gpu::nvn::NvnDriver::new();
-        let tex_id = nvn.texture_pool.register_texture(
-            gpu::nvn::NvnTextureFormat::Bc7,
-            1024,
-            1024,
-            11,
-            tex_vram_va,
-        );
+        let tex_id = nvn
+            .texture_pool
+            .register_texture(gpu::nvn::NvnTextureFormat::Bc7, 1024, 1024, 11, tex_vram_va);
         let desc = nvn.texture_pool.get_descriptor(tex_id).unwrap();
         println!(
             "  [NVN TexturePool] Registered Descriptor #{}: Format={:?} ({}x{}, {} mips) @ VRAM 0x{:08X}",
@@ -1304,16 +1367,17 @@ pub(crate) fn run_built_in_demo() {
         for (i, &w) in stream_words.iter().enumerate() {
             mmu18.write_u32(stream_va + (i * 4) as u64, w).unwrap();
         }
-        let cmds_exec = nvn.submit_guest_command_stream(
-            &mut mmu18,
-            &mut kernel18.nvgpu,
-            stream_va,
-            stream_words.len(),
+        let cmds_exec = nvn.submit_guest_command_stream(&mut mmu18, &mut kernel18.nvgpu, stream_va, stream_words.len());
+        let subsystem_ok = gate.expect(
+            18,
+            "loaded module address and texture command execution",
+            res_load == 0
+                && loaded_base == nro_dyn_va
+                && cmds_exec == 2
+                && nvn.texture_pool.get_descriptor(tex_id).is_some_and(|d| {
+                    d.width == 1024 && d.height == 1024 && d.levels == 11 && d.gpu_address == tex_vram_va
+                }),
         );
-        let subsystem_ok = gate.expect(18, "loaded module address and texture command execution",
-            res_load == 0 && loaded_base == nro_dyn_va && cmds_exec == 2
-            && nvn.texture_pool.get_descriptor(tex_id).is_some_and(|d|
-                d.width == 1024 && d.height == 1024 && d.levels == 11 && d.gpu_address == tex_vram_va));
         println!(
             "  [NVN Driver] Executed {} commands binding Texture Descriptor #{}",
             cmds_exec, tex_id
@@ -1375,10 +1439,13 @@ pub(crate) fn run_built_in_demo() {
         let heap_size = 0x100_0000usize; // 16 MB
 
         // 1. Initialize SDK HLE runtime
-        kernel19.sdk_hle.initialize_runtime(heap_base, heap_size, &mut kernel19.vfs, &mut mmu19);
+        kernel19
+            .sdk_hle
+            .initialize_runtime(heap_base, heap_size, &mut kernel19.vfs, &mut mmu19);
         println!(
             "  [nn::init] Initialized StandardAllocator arena at 0x{:08X} ({} MB)",
-            heap_base, heap_size / 0x10_0000
+            heap_base,
+            heap_size / 0x10_0000
         );
 
         // 2. Setup path string in guest memory
@@ -1458,7 +1525,9 @@ pub(crate) fn run_built_in_demo() {
         cpu19.regs.pc = code_va;
         let outcome = run_vm(cpu19, mmu19, kernel19, 10_000);
         if gate.expect_exit(19, &outcome, 0x999) {
-            println!("  [SDK HLE Verification] StandardAllocator & nn::fs validated in guest AArch64 (Exit code: 0x999)");
+            println!(
+                "  [SDK HLE Verification] StandardAllocator & nn::fs validated in guest AArch64 (Exit code: 0x999)"
+            );
         }
     }
 
@@ -1506,12 +1575,21 @@ pub(crate) fn run_built_in_demo() {
 
         println!(
             "  [{tier} JIT Engine] Executed {} insns ({}) | Exit: {:?}",
-            insns_exec, engine20.stats(), exit
+            insns_exec,
+            engine20.stats(),
+            exit
         );
-        println!("  [{tier} Throughput] Measured execution performance: {:.2} MIPS", engine20.mips_rate());
-        if gate.expect(20, "guest SVC exit and loop checksum",
+        println!(
+            "  [{tier} Throughput] Measured execution performance: {:.2} MIPS",
+            engine20.mips_rate()
+        );
+        if gate.expect(
+            20,
+            "guest SVC exit and loop checksum",
             matches!(exit, cpu::tier2_jit::BlockExit::Svc { svc_id: 7 })
-                && cpu20.regs.read_x(0) == 0xAAA && cpu20.regs.read_x(2) == 127_500) {
+                && cpu20.regs.read_x(0) == 0xAAA
+                && cpu20.regs.read_x(2) == 127_500,
+        ) {
             println!("  [{tier}] Guest loop checksum and SVC exit checks passed (Exit code: 0xAAA)");
         }
     }
@@ -1546,7 +1624,16 @@ pub(crate) fn run_built_in_demo() {
             0x0100023900002026,
             44,
             0,
-            &["sm:", "set:sys", "am:appletOE", "vi:m", "hid", "fsp-srv", "ro:1", "nvdrv"],
+            &[
+                "sm:",
+                "set:sys",
+                "am:appletOE",
+                "vi:m",
+                "hid",
+                "fsp-srv",
+                "ro:1",
+                "nvdrv",
+            ],
         );
         std::fs::write(exefs.join("main.npdm"), &npdm_bytes).unwrap();
 
@@ -1596,40 +1683,34 @@ pub(crate) fn run_built_in_demo() {
         )
         .unwrap();
         std::fs::create_dir_all(romfs.join("textures")).unwrap();
-        std::fs::write(
-            romfs.join("textures/icon.bin"),
-            b"\xFF\xD8\xFF\xE0\x00\x10JFIF",
-        )
-        .unwrap();
+        std::fs::write(romfs.join("textures/icon.bin"), b"\xFF\xD8\xFF\xE0\x00\x10JFIF").unwrap();
 
         // 5. Discover and load through LoosePackageLoader
-        let pkg = loader::LoosePackageLoader::discover(&temp_dir)
-            .expect("Failed to discover loose package");
+        let pkg = loader::LoosePackageLoader::discover(&temp_dir).expect("Failed to discover loose package");
         let (mut cpu21, mut mmu21, mut kernel21) = setup_vm();
         let base_va = 0x8004_0000u64;
 
-        let boot_info = loader::LoosePackageLoader::load_into_kernel(
-            &pkg,
-            base_va,
-            &mut mmu21,
-            &mut kernel21,
-        )
-        .expect("Failed to load loose package into kernel");
+        let boot_info = loader::LoosePackageLoader::load_into_kernel(&pkg, base_va, &mut mmu21, &mut kernel21)
+            .expect("Failed to load loose package into kernel");
 
         println!(
             "  [Loose Package Bootstrap] Loaded Title: '{}' (ID: 0x{:016X}) | Modules: {} | RomFS Assets: {}",
-            boot_info.process_name, boot_info.title_id, boot_info.modules_loaded.len(), boot_info.romfs_files_mounted
+            boot_info.process_name,
+            boot_info.title_id,
+            boot_info.modules_loaded.len(),
+            boot_info.romfs_files_mounted
         );
         for (m_name, m_addr, m_sz) in &boot_info.modules_loaded {
-            println!(
-                "    -> Module '{}': VMA 0x{:08X} ({} bytes)",
-                m_name, m_addr, m_sz
-            );
+            println!("    -> Module '{}': VMA 0x{:08X} ({} bytes)", m_name, m_addr, m_sz);
         }
         println!(
             "    -> Relocations: {} applied | Unresolved imports: {}",
             boot_info.relocations_applied,
-            if boot_info.unresolved_imports.is_empty() { "none".to_string() } else { boot_info.unresolved_imports.join(", ") }
+            if boot_info.unresolved_imports.is_empty() {
+                "none".to_string()
+            } else {
+                boot_info.unresolved_imports.join(", ")
+            }
         );
 
         let asset = kernel21
@@ -1694,8 +1775,11 @@ pub(crate) fn run_built_in_demo() {
         let font_addr_hi = mmu22.read_u32(tls_addr + 0x24).unwrap();
         let font_addr = ((font_addr_hi as u64) << 32) | (font_addr_lo as u64);
         let mut font_header = [0; 12];
-        let font_ok = gate.expect(22, "shared-font placeholder header mapped",
-            mmu22.read_bytes(font_addr, &mut font_header).is_ok() && &font_header == b"OUNCEFNT\x00\x01\x00\x00");
+        let font_ok = gate.expect(
+            22,
+            "shared-font placeholder header mapped",
+            mmu22.read_bytes(font_addr, &mut font_header).is_ok() && &font_header == b"OUNCEFNT\x00\x01\x00\x00",
+        );
         println!(
             "  [pl:u Shared Font] Mapped shared font placeholder at guest VMA 0x{:08X} (1 MB)",
             font_addr
@@ -1740,9 +1824,15 @@ pub(crate) fn run_built_in_demo() {
         let time_lo = mmu22.read_u32(tls_addr + 0x20).unwrap();
         let time_hi = mmu22.read_u32(tls_addr + 0x24).unwrap();
         let now_epoch = ((time_hi as u64) << 32) | (time_lo as u64);
-        let host_epoch = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-        let clock_ok = gate.expect(22, "system clock is near host UTC",
-            now_epoch.abs_diff(host_epoch) <= 60);
+        let host_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let clock_ok = gate.expect(
+            22,
+            "system clock is near host UTC",
+            now_epoch.abs_diff(host_epoch) <= 60,
+        );
         println!(
             "  [time:u System Clock] Current Horizon OS epoch timestamp: {}",
             now_epoch
@@ -1755,12 +1845,8 @@ pub(crate) fn run_built_in_demo() {
         astc_block[10..12].copy_from_slice(&0x8800u16.to_le_bytes()); // G = 136
         astc_block[12..14].copy_from_slice(&0xFF00u16.to_le_bytes()); // B = 255
         astc_block[14..16].copy_from_slice(&0xFF00u16.to_le_bytes()); // A = 255
-        let decoded = gpu::nvn::TextureDecompressor::decompress_surface(
-            gpu::nvn::NvnTextureFormat::Astc4x4,
-            &astc_block,
-            4,
-            4,
-        );
+        let decoded =
+            gpu::nvn::TextureDecompressor::decompress_surface(gpu::nvn::NvnTextureFormat::Astc4x4, &astc_block, 4, 4);
         let texture_ok = gate.expect_surface(22, &decoded, 16, 0xFF00_88FF);
         println!(
             "  [Texture HAL] Decompressed ASTC 4x4 void-extent block (16 texels decoded, sample: 0x{:08X})",
@@ -1906,11 +1992,17 @@ pub(crate) fn run_built_in_demo() {
         let arch = mmu23.read_u32(scratch_va).unwrap();
         let num_sm = mmu23.read_u32(scratch_va + 12).unwrap();
         let sm_ver = mmu23.read_u32(scratch_va + 16).unwrap();
-        let service_ok = gate.expect(23, "applet and GPU characteristic values",
-            desired_lang == 0 && layer_id != 0 && (arch, num_sm, sm_ver) == (0x170, 12, 0x807));
+        let service_ok = gate.expect(
+            23,
+            "applet and GPU characteristic values",
+            desired_lang == 0 && layer_id != 0 && (arch, num_sm, sm_ver) == (0x170, 12, 0x807),
+        );
         println!(
             "  [NVIDIA Tegra T239] nvdrv characteristics: Arch 0x{:04X} (Ampere GA10B) | SMs: {} | Feature: SM {:X}.{:X}",
-            arch, num_sm, sm_ver >> 8, sm_ver & 0xFF
+            arch,
+            num_sm,
+            sm_ver >> 8,
+            sm_ver & 0xFF
         );
 
         // 4. Hardware ASTC 8x8 block decompression
@@ -1920,12 +2012,8 @@ pub(crate) fn run_built_in_demo() {
         astc8_block[10..12].copy_from_slice(&0x4400u16.to_le_bytes()); // G = 68
         astc8_block[12..14].copy_from_slice(&0xCC00u16.to_le_bytes()); // B = 204
         astc8_block[14..16].copy_from_slice(&0xFF00u16.to_le_bytes()); // A = 255
-        let decoded8 = gpu::nvn::TextureDecompressor::decompress_surface(
-            gpu::nvn::NvnTextureFormat::Astc8x8,
-            &astc8_block,
-            8,
-            8,
-        );
+        let decoded8 =
+            gpu::nvn::TextureDecompressor::decompress_surface(gpu::nvn::NvnTextureFormat::Astc8x8, &astc8_block, 8, 8);
         let texture_ok = gate.expect_surface(23, &decoded8, 64, 0xFFFF_44CC);
         println!(
             "  [Texture HAL] Decompressed ASTC 8x8 void-extent block (64 texels decoded, sample: 0x{:08X})",
@@ -1972,20 +2060,37 @@ pub(crate) fn run_built_in_demo() {
             gpu::shader::SassOp::FMovImm { rd: 2, imm: 0.5 }.encode(),
             gpu::shader::SassOp::HAdd2 { rd: 3, rn: 0, rm: 1 }.encode(),
             gpu::shader::SassOp::HMul2 { rd: 4, rn: 0, rm: 1 }.encode(),
-            gpu::shader::SassOp::HFma2 { rd: 5, rn: 0, rm: 1, ra: 2 }.encode(),
+            gpu::shader::SassOp::HFma2 {
+                rd: 5,
+                rn: 0,
+                rm: 1,
+                ra: 2,
+            }
+            .encode(),
             gpu::shader::SassOp::Exit.encode(),
         ];
         let decompiled = gpu::shader::SassShaderDecompiler::decompile(&sass_program);
-        let shader_ok = gate.expect(24, "synthetic FP16 opcode decoding and translation structure",
+        let shader_ok = gate.expect(
+            24,
+            "synthetic FP16 opcode decoding and translation structure",
             decompiled.ops.len() == 7
                 && matches!(decompiled.ops[3], gpu::shader::SassOp::HAdd2 { rd: 3, rn: 0, rm: 1 })
                 && matches!(decompiled.ops[4], gpu::shader::SassOp::HMul2 { rd: 4, rn: 0, rm: 1 })
-                && matches!(decompiled.ops[5], gpu::shader::SassOp::HFma2 { rd: 5, rn: 0, rm: 1, ra: 2 })
+                && matches!(
+                    decompiled.ops[5],
+                    gpu::shader::SassOp::HFma2 {
+                        rd: 5,
+                        rn: 0,
+                        rm: 1,
+                        ra: 2
+                    }
+                )
                 && decompiled.glsl_source.contains("R[3] = R[0] + R[1];")
                 && decompiled.glsl_source.contains("R[4] = R[0] * R[1];")
                 && decompiled.glsl_source.contains("R[5] = fma(R[0], R[1], R[2]);")
                 && decompiled.spirv_words.first() == Some(&0x0723_0203)
-                && decompiled.spirv_words.get(1) == Some(&0x0001_0500));
+                && decompiled.spirv_words.get(1) == Some(&0x0001_0500),
+        );
         println!(
             "  [Ampere SASS Transpiler] Decompiled 7 instructions: {} GLSL lines | {} SPIR-V words (Magic: 0x{:08X})",
             decompiled.glsl_source.lines().count(),
@@ -2007,8 +2112,11 @@ pub(crate) fn run_built_in_demo() {
 
         let mut nvn = gpu::nvn::NvnDriver::new();
         let executed = nvn.submit_guest_command_stream(&mut mmu24, &mut kernel24.nvgpu, stream_addr, stream.len());
-        let buffers_ok = gate.expect(24, "NVN command count, buffer index and cycle count",
-            executed == 5 && nvn.current_buffer_index == 2 && nvn.total_buffer_cycles == 3);
+        let buffers_ok = gate.expect(
+            24,
+            "NVN command count, buffer index and cycle count",
+            executed == 5 && nvn.current_buffer_index == 2 && nvn.total_buffer_cycles == 3,
+        );
         println!(
             "  [NVN Driver] Executed {} stream commands | Active Backbuffer: #{} | Total Cycles: {}",
             executed, nvn.current_buffer_index, nvn.total_buffer_cycles
@@ -2058,8 +2166,20 @@ pub(crate) fn run_built_in_demo() {
 
         // 1. Decode the tensor core SASS program through the Ampere decompiler.
         let sass_program = vec![
-            gpu::shader::SassOp::Hmma1688 { rd: 8, rn: 0, rm: 4, ra: 8 }.encode(),
-            gpu::shader::SassOp::Hmma16816 { rd: 12, rn: 0, rm: 8, ra: 12 }.encode(),
+            gpu::shader::SassOp::Hmma1688 {
+                rd: 8,
+                rn: 0,
+                rm: 4,
+                ra: 8,
+            }
+            .encode(),
+            gpu::shader::SassOp::Hmma16816 {
+                rd: 12,
+                rn: 0,
+                rm: 8,
+                ra: 12,
+            }
+            .encode(),
             gpu::shader::SassOp::Exit.encode(),
         ];
         let decompiled = gpu::shader::SassShaderDecompiler::decompile(&sass_program);
@@ -2086,12 +2206,9 @@ pub(crate) fn run_built_in_demo() {
         let ones_a = vec![0x3C00u16; shape_k8.m() * shape_k8.k()];
         let ones_b = vec![0x3C00u16; shape_k8.k() * shape_k8.n()];
         let zero_c = vec![0.0f32; shape_k8.m() * shape_k8.n()];
-        let frags_k8 = WarpFragments::distribute(shape_k8, &ones_a, &ones_b, &zero_c)
-            .expect("m16n8k8 fragment distribution");
-        let d_k8 = tensor::collect_d(
-            shape_k8,
-            &tensor_unit.issue_warp(&frags_k8).expect("m16n8k8 issue"),
-        );
+        let frags_k8 =
+            WarpFragments::distribute(shape_k8, &ones_a, &ones_b, &zero_c).expect("m16n8k8 fragment distribution");
+        let d_k8 = tensor::collect_d(shape_k8, &tensor_unit.issue_warp(&frags_k8).expect("m16n8k8 issue"));
 
         // 2b. m16n8k16 with A = B = 1.0h and C = 0.5: every element of D is 16.5.
         let shape_k16 = HmmaShape::M16N8K16;
@@ -2100,10 +2217,7 @@ pub(crate) fn run_built_in_demo() {
         let half_c16 = vec![0.5f32; shape_k16.m() * shape_k16.n()];
         let frags_k16 = WarpFragments::distribute(shape_k16, &ones_a16, &ones_b16, &half_c16)
             .expect("m16n8k16 fragment distribution");
-        let d_k16 = tensor::collect_d(
-            shape_k16,
-            &tensor_unit.issue_warp(&frags_k16).expect("m16n8k16 issue"),
-        );
+        let d_k16 = tensor::collect_d(shape_k16, &tensor_unit.issue_warp(&frags_k16).expect("m16n8k16 issue"));
 
         // 2c. FP32 accumulate check: 2048.0h * 1.0h + 1.0 = 2049.0, a value that
         //     binary16 cannot represent but the FP32 accumulator holds exactly.
@@ -2390,9 +2504,25 @@ pub(crate) fn run_gpu3d_demo(max_frames: usize) {
     println!("============================================================");
     println!("  🔺 SWITCH 2 NVGPU 3D ENGINE DEMO: GPFIFO RASTERIZER");
     println!("============================================================");
-    println!("  Resolution: {}x{} | Engine: Tegra 3D Subchannel", SCREEN_WIDTH, SCREEN_HEIGHT);
+    println!(
+        "  Resolution: {}x{} | Engine: Tegra 3D Subchannel",
+        SCREEN_WIDTH, SCREEN_HEIGHT
+    );
     println!("  Pipeline: Guest Float32 Math -> GPFIFO Pushbuffer -> Barycentric 3D Rasterizer\n");
 
+    let mut display = DisplayServer::new(DEFAULT_FRAMEBUFFER_ADDR, DisplayConfig::default());
+    if let Err(e) = display.init_window() {
+        eprintln!("Failed to initialize display window: {}", e);
+        return;
+    }
+    let (cpu, mmu, kernel) = gpu3d_demo_machine();
+    run_vm_internal(cpu, mmu, kernel, Some(&mut display), None, 0, max_frames);
+}
+
+/// The `gpu3d` demo's guest: each frame it moves one vertex, submits a GPFIFO pushbuffer that clears the
+/// framebuffer and draws a shaded triangle (`svc 0x101`), then presents (`svc 0x18`). Shared with the
+/// `framebuffer_hash` tests, which run it without a window.
+pub(crate) fn gpu3d_demo_machine() -> (Cpu, Memory, HorizonKernel) {
     let (mut cpu, mut mmu, kernel) = setup_vm();
 
     // 1. Map Framebuffer VRAM (1280x720x4)
@@ -2405,17 +2535,11 @@ pub(crate) fn run_gpu3d_demo(max_frames: usize) {
     mmu.map_range(pb_addr, 4096, Permission::READ_WRITE);
     mmu.map_range(vb_addr, 4096, Permission::READ_WRITE);
 
-    let mut display = DisplayServer::new(DEFAULT_FRAMEBUFFER_ADDR, DisplayConfig::default());
-    if let Err(e) = display.init_window() {
-        eprintln!("Failed to initialize display window: {}", e);
-        return;
-    }
-
     // Write initial 3D Triangle Vertex Buffer (3 vertices x 6 floats [x, y, z, r, g, b]):
     let vertices: [f32; 18] = [
-        -0.30,  0.65, 0.0, 1.00, 0.20, 0.35, // Top Vertex (Coral Red)
+        -0.30, 0.65, 0.0, 1.00, 0.20, 0.35, // Top Vertex (Coral Red)
         -0.65, -0.60, 0.0, 0.15, 0.95, 0.45, // Bottom-Left Vertex (Emerald Green)
-         0.65, -0.60, 0.0, 0.20, 0.50, 1.00, // Bottom-Right Vertex (Electric Blue)
+        0.65, -0.60, 0.0, 0.20, 0.50, 1.00, // Bottom-Right Vertex (Electric Blue)
     ];
     for (i, &val) in vertices.iter().enumerate() {
         mmu.write_u32(vb_addr + (i * 4) as u64, val.to_bits()).unwrap();
@@ -2434,10 +2558,22 @@ pub(crate) fn run_gpu3d_demo(max_frames: usize) {
         (0.12f32).to_bits(),
         (1.00f32).to_bits(),
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_MVP_MATRIX, 16),
-        (1.00f32).to_bits(), (0.00f32).to_bits(), (0.00f32).to_bits(), (0.00f32).to_bits(),
-        (0.00f32).to_bits(), (1.00f32).to_bits(), (0.00f32).to_bits(), (0.00f32).to_bits(),
-        (0.00f32).to_bits(), (0.00f32).to_bits(), (1.00f32).to_bits(), (0.00f32).to_bits(),
-        (0.00f32).to_bits(), (0.00f32).to_bits(), (0.00f32).to_bits(), (1.00f32).to_bits(),
+        (1.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (1.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (1.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (0.00f32).to_bits(),
+        (1.00f32).to_bits(),
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_CLEAR_SURFACE, 1),
         1,
         NvgpuChannel::encode_header(SubmissionMode::Increasing, 2, METHOD_SET_VERTEX_ARRAY_ADDR, 1),
@@ -2489,7 +2625,7 @@ pub(crate) fn run_gpu3d_demo(max_frames: usize) {
     mmu.map_range(DEFAULT_BASE_ADDR, 4096, Permission::READ_WRITE_EXECUTE);
     mmu.write_bytes(DEFAULT_BASE_ADDR, &code_bytes).unwrap();
 
-    run_vm_internal(cpu, mmu, kernel, Some(&mut display), None, 0, max_frames);
+    (cpu, mmu, kernel)
 }
 
 /// Checks that this host can run natively generated code (Tier-4, feature `native-jit`).

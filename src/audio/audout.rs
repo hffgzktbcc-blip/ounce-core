@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::audio::host::HostAudioSink;
+use crate::audio::tap::AudioTap;
 use crate::mmu::Memory;
 
 pub const AUDIO_SAMPLE_RATE: u32 = 48_000;
@@ -18,12 +19,7 @@ pub enum Waveform {
 }
 
 /// Generates mono 16-bit signed PCM samples for synthetic waveforms.
-pub fn generate_synth_pcm16(
-    waveform: Waveform,
-    frequency_hz: f32,
-    sample_rate: u32,
-    duration_ms: f32,
-) -> Vec<i16> {
+pub fn generate_synth_pcm16(waveform: Waveform, frequency_hz: f32, sample_rate: u32, duration_ms: f32) -> Vec<i16> {
     if sample_rate == 0 || duration_ms <= 0.0 || frequency_hz <= 0.0 {
         return Vec::new();
     }
@@ -60,6 +56,8 @@ pub struct AudioOutServer {
     pub buffers_queued: u64,
     pub total_samples_processed: u64,
     pub peak_amplitude: i16,
+    /// Count and hash of everything queued, however the host drains it (`audio_hash` in the run report).
+    pub tap: AudioTap,
     ring_buffer: Vec<i16>,
 }
 
@@ -78,6 +76,7 @@ impl AudioOutServer {
             buffers_queued: 0,
             total_samples_processed: 0,
             peak_amplitude: 0,
+            tap: AudioTap::new(),
             ring_buffer: Vec::with_capacity(48_000),
         }
     }
@@ -100,6 +99,7 @@ impl AudioOutServer {
                 }
                 if self.ring_buffer.len() < 192_000 {
                     self.ring_buffer.push(sample);
+                    self.tap.push(sample);
                 }
             }
         }
@@ -110,13 +110,7 @@ impl AudioOutServer {
     }
 
     /// Synthesizes a waveform tone and queues interleaved stereo 48 kHz PCM samples.
-    pub fn generate_waveform(
-        &mut self,
-        waveform: Waveform,
-        frequency_hz: f32,
-        duration_ms: f32,
-        volume: f32,
-    ) -> usize {
+    pub fn generate_waveform(&mut self, waveform: Waveform, frequency_hz: f32, duration_ms: f32, volume: f32) -> usize {
         let mono = generate_synth_pcm16(waveform, frequency_hz, self.sample_rate, duration_ms);
         let vol = volume.clamp(0.0, 1.0);
         let mut peak = self.peak_amplitude;
@@ -130,6 +124,8 @@ impl AudioOutServer {
             if self.ring_buffer.len() < 192_000 {
                 self.ring_buffer.push(scaled); // Left
                 self.ring_buffer.push(scaled); // Right
+                self.tap.push(scaled);
+                self.tap.push(scaled);
             }
         }
         self.peak_amplitude = peak;
@@ -139,22 +135,12 @@ impl AudioOutServer {
     }
 
     /// Helper for generating a sine wave tone for testing.
-    pub fn generate_sine_wave(
-        &mut self,
-        frequency_hz: f32,
-        duration_ms: f32,
-        volume: f32,
-    ) -> usize {
+    pub fn generate_sine_wave(&mut self, frequency_hz: f32, duration_ms: f32, volume: f32) -> usize {
         self.generate_waveform(Waveform::Sine, frequency_hz, duration_ms, volume)
     }
 
     /// Helper for generating a square wave tone for testing.
-    pub fn generate_square_wave(
-        &mut self,
-        frequency_hz: f32,
-        duration_ms: f32,
-        volume: f32,
-    ) -> usize {
+    pub fn generate_square_wave(&mut self, frequency_hz: f32, duration_ms: f32, volume: f32) -> usize {
         self.generate_waveform(Waveform::Square, frequency_hz, duration_ms, volume)
     }
 
@@ -227,6 +213,30 @@ mod tests {
         assert_eq!(audio.buffers_queued, 1);
         assert_eq!(audio.total_samples_processed, 8);
         assert_eq!(audio.peak_amplitude, 12000);
+    }
+
+    /// #478: the run report's audio count and hash follow what the guest queued, not what the host drained.
+    #[test]
+    fn the_audio_tap_records_queued_samples_even_after_the_host_drains_them() {
+        let mut mmu = Memory::new();
+        let mut audio = AudioOutServer::new();
+        let pcm_addr = 0x80060000u64;
+        mmu.map_range(pcm_addr, 4096, Permission::READ_WRITE);
+        let samples: [i16; 4] = [100, -100, 200, -200];
+        for (i, &s) in samples.iter().enumerate() {
+            mmu.write_u16(pcm_addr + (i * 2) as u64, s as u16).unwrap();
+        }
+        audio.append_pcm_buffer(&mmu, pcm_addr, samples.len());
+        let undrained = audio.tap;
+        assert_eq!(audio.drain_samples(), samples);
+        assert_eq!(audio.tap, undrained, "draining does not change the count or the hash");
+        assert_eq!(audio.tap.frames(), 2);
+        let mut expected = AudioTap::new();
+        samples.iter().for_each(|&s| expected.push(s));
+        assert_eq!(audio.tap, expected);
+        // Synthesized tones (stereo, both sides equal) are recorded too.
+        let queued = audio.generate_waveform(Waveform::Square, 440.0, 10.0, 1.0);
+        assert_eq!(audio.tap.frames(), 2 + (queued / 2) as u64);
     }
 
     #[test]

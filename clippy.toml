@@ -1,0 +1,4 @@
+# Lints follow the minimum supported Rust version of the default-feature CLI
+# (`cargo +1.89 build --locked`; checked by the `msrv` CI job). Optional features
+# need newer toolchains: gpu-present 1.90, native-jit 1.97.
+msrv = "1.89"

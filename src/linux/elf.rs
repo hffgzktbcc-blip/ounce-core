@@ -98,14 +98,16 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
     let e_type = rd16(bytes, 16)?;
     let e_machine = rd16(bytes, 18)?;
     if e_machine != EM_AARCH64 {
-        return Err(ElfError::Unsupported(format!("e_machine {e_machine} is not AArch64 (183)")));
+        return Err(ElfError::Unsupported(format!(
+            "e_machine {e_machine} is not AArch64 (183)"
+        )));
     }
     match e_type {
         ET_EXEC => {}
         ET_DYN => {
             return Err(ElfError::Unsupported(
                 "ET_DYN (dynamic executable, shared object or static-PIE); link with -static -no-pie".into(),
-            ))
+            ));
         }
         t => return Err(ElfError::Unsupported(format!("e_type {t} is not ET_EXEC"))),
     }
@@ -130,7 +132,10 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
     for i in 0..phnum {
         let o = phoff
             .checked_add(i * 56)
-            .and_then(|v| v.checked_add(56).and_then(|end| usize::try_from(end).ok().map(|_| v as usize)))
+            .and_then(|v| {
+                v.checked_add(56)
+                    .and_then(|end| usize::try_from(end).ok().map(|_| v as usize))
+            })
             .ok_or_else(|| ElfError::Malformed("program header offset overflow".into()))?;
         let p_type = rd32(bytes, o)?;
         let flags = rd32(bytes, o + 4)?;
@@ -140,23 +145,39 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
         let memsz = rd64(bytes, o + 40)?;
         match p_type {
             PT_INTERP => return Err(ElfError::Unsupported("PT_INTERP: dynamically linked executable".into())),
-            PT_DYNAMIC => return Err(ElfError::Unsupported("PT_DYNAMIC: dynamically linked executable".into())),
+            PT_DYNAMIC => {
+                return Err(ElfError::Unsupported(
+                    "PT_DYNAMIC: dynamically linked executable".into(),
+                ));
+            }
             PT_LOAD => {
                 if filesz > memsz {
                     return Err(ElfError::Malformed("PT_LOAD p_filesz > p_memsz".into()));
                 }
-                let end_file = offset.checked_add(filesz).ok_or_else(|| ElfError::Malformed("p_offset+p_filesz overflow".into()))?;
+                let end_file = offset
+                    .checked_add(filesz)
+                    .ok_or_else(|| ElfError::Malformed("p_offset+p_filesz overflow".into()))?;
                 if end_file > bytes.len() as u64 {
                     return Err(ElfError::Malformed("PT_LOAD file range past end of file".into()));
                 }
-                let end = vaddr.checked_add(memsz).ok_or_else(|| ElfError::Malformed("p_vaddr+p_memsz overflow".into()))?;
+                let end = vaddr
+                    .checked_add(memsz)
+                    .ok_or_else(|| ElfError::Malformed("p_vaddr+p_memsz overflow".into()))?;
                 if memsz == 0 {
                     continue;
                 }
                 if vaddr < PAGE || end > MMAP_BASE {
-                    return Err(ElfError::Unsupported(format!("segment {vaddr:#x}..{end:#x} outside the loadable window {PAGE:#x}..{MMAP_BASE:#x}")));
+                    return Err(ElfError::Unsupported(format!(
+                        "segment {vaddr:#x}..{end:#x} outside the loadable window {PAGE:#x}..{MMAP_BASE:#x}"
+                    )));
                 }
-                segs.push(Seg { offset, vaddr, filesz, memsz, exec: flags & PF_X != 0 });
+                segs.push(Seg {
+                    offset,
+                    vaddr,
+                    filesz,
+                    memsz,
+                    exec: flags & PF_X != 0,
+                });
             }
             _ => {}
         }
@@ -171,13 +192,17 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
         let last = align_up(s.vaddr + s.memsz);
         let seg_bytes = last - first;
         if seg_bytes > MAX_LOAD_BYTES {
-            return Err(ElfError::Unsupported(format!("{seg_bytes} bytes to map exceeds the {MAX_LOAD_BYTES} byte limit")));
+            return Err(ElfError::Unsupported(format!(
+                "{seg_bytes} bytes to map exceeds the {MAX_LOAD_BYTES} byte limit"
+            )));
         }
         let mut p = first;
         while p < last {
             if !pages.contains_key(&p) && pages.len() >= max_pages {
                 let loaded_bytes = (pages.len() as u64 + 1) * PAGE;
-                return Err(ElfError::Unsupported(format!("{loaded_bytes} bytes to map exceeds the {MAX_LOAD_BYTES} byte limit")));
+                return Err(ElfError::Unsupported(format!(
+                    "{loaded_bytes} bytes to map exceeds the {MAX_LOAD_BYTES} byte limit"
+                )));
             }
             let e = pages.entry(p).or_insert(false);
             *e |= s.exec;
@@ -186,17 +211,33 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
     }
     let loaded_bytes = pages.len() as u64 * PAGE;
     if loaded_bytes > MAX_LOAD_BYTES {
-        return Err(ElfError::Unsupported(format!("{loaded_bytes} bytes to map exceeds the {MAX_LOAD_BYTES} byte limit")));
+        return Err(ElfError::Unsupported(format!(
+            "{loaded_bytes} bytes to map exceeds the {MAX_LOAD_BYTES} byte limit"
+        )));
     }
-    if !segs.iter().any(|s| s.exec && entry >= s.vaddr && entry < s.vaddr + s.memsz) {
-        return Err(ElfError::Malformed(format!("entry point {entry:#x} is not inside an executable segment")));
+    if !segs
+        .iter()
+        .any(|s| s.exec && entry >= s.vaddr && entry < s.vaddr + s.memsz)
+    {
+        return Err(ElfError::Malformed(format!(
+            "entry point {entry:#x} is not inside an executable segment"
+        )));
     }
     for (&p, &exec) in &pages {
-        mmu.map_range(p, PAGE as usize, if exec { Permission::READ_WRITE_EXECUTE } else { Permission::READ_WRITE });
+        mmu.map_range(
+            p,
+            PAGE as usize,
+            if exec {
+                Permission::READ_WRITE_EXECUTE
+            } else {
+                Permission::READ_WRITE
+            },
+        );
     }
     for s in &segs {
         let data = &bytes[s.offset as usize..(s.offset + s.filesz) as usize];
-        mmu.write_bytes(s.vaddr, data).map_err(|e| ElfError::Malformed(format!("mapping segment: {e}")))?;
+        mmu.write_bytes(s.vaddr, data)
+            .map_err(|e| ElfError::Malformed(format!("mapping segment: {e}")))?;
     }
     let brk_start = pages.keys().next_back().map(|p| p + PAGE).unwrap();
     // AT_PHDR: address where the program headers are visible in memory, if a segment covers them.
@@ -208,16 +249,30 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
                 .map(|s| s.vaddr + (phoff - s.offset))
         })
         .unwrap_or(0);
-    Ok(Image { entry, brk_start, phdr_addr, phnum, phentsize, loaded_bytes })
+    Ok(Image {
+        entry,
+        brk_start,
+        phdr_addr,
+        phnum,
+        phentsize,
+        loaded_bytes,
+    })
 }
 
 /// Maps the stack and builds argc/argv/envp/auxv. Returns the initial `sp` (16-byte aligned).
-pub fn build_stack(mmu: &mut Memory, image: &Image, argv: &[String], envp: &[String], execfn: &str) -> Result<u64, ElfError> {
+pub fn build_stack(
+    mmu: &mut Memory,
+    image: &Image,
+    argv: &[String],
+    envp: &[String],
+    execfn: &str,
+) -> Result<u64, ElfError> {
     mmu.map_range(STACK_TOP - STACK_SIZE, STACK_SIZE as usize, Permission::READ_WRITE);
     let mut sp = STACK_TOP - 16;
     let push_bytes = |mmu: &mut Memory, sp: &mut u64, data: &[u8]| -> Result<u64, ElfError> {
         *sp -= data.len() as u64;
-        mmu.write_bytes(*sp, data).map_err(|e| ElfError::Malformed(format!("stack write: {e}")))?;
+        mmu.write_bytes(*sp, data)
+            .map_err(|e| ElfError::Malformed(format!("stack write: {e}")))?;
         Ok(*sp)
     };
     let strings_size: usize = argv.iter().chain(envp).map(|s| s.len() + 1).sum::<usize>() + execfn.len() + 1 + 64;
@@ -269,7 +324,8 @@ pub fn build_stack(mmu: &mut Memory, image: &Image, argv: &[String], envp: &[Str
     let total = words.len() as u64 * 8;
     let new_sp = (sp - total) & !15;
     for (i, w) in words.iter().enumerate() {
-        mmu.write_u64(new_sp + i as u64 * 8, *w).map_err(|e| ElfError::Malformed(format!("stack write: {e}")))?;
+        mmu.write_u64(new_sp + i as u64 * 8, *w)
+            .map_err(|e| ElfError::Malformed(format!("stack write: {e}")))?;
     }
     Ok(new_sp)
 }

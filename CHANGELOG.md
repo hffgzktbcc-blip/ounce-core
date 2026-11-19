@@ -4,11 +4,127 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+- Added: scalar-SIMD fixed-point converts `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU` `Sd, Sn, #fbits` and `Dd, Dn, #fbits` (#469). They share the
+  vector arithmetic (one lane converted, the rest of Vd zeroed), run in the interpreter (Tier-3 and Tier-4 fall back to it), and
+  are covered by decode, behaviour and engine-agreement tests. The FP workload gains 12 ops for them and for the unsigned vector
+  forms; they are reported, not gated, and have not been compared with hardware yet. Half-precision forms are still undecoded.
+- Added: `docs/verify/fp-workload/fjcvtzs_gate.sh` builds `fjcvtzs_nzcv.c`, runs it natively and requires `run-elf` on Tier-3 and
+  Tier-4 to print the same 62 lines (result, NZCV, FPSR for 31 inputs at FZ 0 and 1), with a negative control; the `fp-workload`
+  job runs it on the ARM64 runner, so FJCVTZS is now compared against silicon in CI as well as by hand. Run by hand on an Apple
+  M-series Mac, it settled the Z flag of a denormal flushed by FZ.
+- Changed: the six action refs that were unpinned (`actions/attest`, `softprops/action-gh-release`, `actions/configure-pages`,
+  `actions/upload-pages-artifact`, `actions/deploy-pages`, `taiki-e/install-action`) are now pinned to the commit their tag
+  points to, read with `git ls-remote`, and `PENDING` in `scripts/check_action_pins.py` is empty. Only the pins changed:
+  release, pages and coverage workflows have still not run with them.
+- Family check: `scripts/family_check.py` runs the same programs (default `tests/fixtures/nro`) through two or more Ounce
+  tools and compares their `ounce.run.v1` reports. Five keys (`schema`, `stop_kind`, `exit_code`, `frames_presented`,
+  `framebuffer_hash`) must agree or the check fails; other keys (`insns_executed`, the audio keys, `lr`, `sp`,
+  `guest_exit_status`) are only reported. Run on 2026-11-19 with ounce-core and ounce-runtime both built from `main`, 11 of 11
+  programs agree on every strict key and neither tool is missing an advisory key. `insns_executed` still differs: ounce-core
+  counts 15 more on 10 programs and 1 fewer on `threads`; that is unexplained. The first run (2026-11-18, before
+  ounce-runtime wrote `lr`, `sp`, `guest_exit_status` and the audio keys) showed the same 11 of 11 on the strict keys. Data and
+  CLI only; no code is shared between the tools.
+- Contract (#481, DRAFT, not a freeze): `docs/CONTRACT_V1.md` states the additive-only rule and lists what `ounce.run.v1`,
+  `ounce.trace.v1`, the exit codes and the flags `--max-frames`, `--sdmc`, `--timeout`, `--json` are today, with the
+  questions the owner must answer before anything is frozen. `tests/contract_v1.rs` and `tests/contract/*.json` pin the
+  exact report and trace keys and JSON types, the `exit_code` for every reachable `stop_kind`, the process exit
+  statuses, and the flags, by running the binary. Findings: `--timeout` and `--json` are not `run` flags in ounce-core,
+  ounce-core does not define the proposed infrastructure meanings for exit codes `2-5` (its own status 2 is the usage error) and has no `ounce.repro.v1`, and `cpu_halted` (15) cannot be produced.
 - CLI: `--max-frames N` and a repeatable `--press BUTTON@FRAME` (for example `PLUS@60`) let scripted runs
   exit cleanly and press buttons (#458).
 - Fuzzer: `--word-mask` / `--word-value` targeted generation, with hardware evidence for FCADD, SQRDMLAH/SQRDMLSH,
   FCVTXN and half-precision FMOV (#457).
 - Docs: one roadmap entry point for agents (#461); past handoffs moved under `docs/history/`.
+- CI: a `lint` job fails on any rustc or clippy warning (default, `native-jit,nce` and `gpu-present` features, pinned
+  toolchain), and an `msrv` job builds default features with Rust 1.89. The tree now has zero warnings.
+- Fixed: guest debug output (`svcOutputDebugString`) on `run` / `run-nro` waited in stdout's buffer until the next
+  newline, so a hung program's last partial line was lost when an outer timeout killed the run (#476). It is now
+  flushed as it is written; `run-elf` already did this.
+- CI: the whole-program FP workload (`docs/verify/fp-workload`, 48 ops x 8 FPCR modes, native vs `run-elf` Tier-3
+  and Tier-4) runs on a Linux ARM64 runner for pull requests that touch the engines (#485). Any op that is not
+  identical on both tiers fails it, and a deliberately edited reference must fail it too.
+- `framebuffer_hash` for 3D frames (#486): `--deterministic` / `OUNCE_DETERMINISTIC=1` on `run` / `run-nro` now draws
+  3D with the software rasterizer even in a GPU window, so every presented frame is hashed, with the same value a
+  headless run reports. Only a `gpu-present` GPU window outside deterministic mode still reports `null`; the schema
+  doc says so. Fixed: a `gpu-present` build whose GPU window failed to open sent 3D draws to a GPU that was not
+  there, so frames were presented without them; the backend is now opened before that choice is made.
+- Fixed: `run` / `run-nro` reported `insns_executed` without the instructions that ran in the slice that ended in a
+  fault, so a program that faulted early reported 0 (and the interpreter and Tier-3 could not be compared). A fault
+  now counts the instructions that completed before it. A new test faults the fourth instruction of a minimal NRO and
+  expects 3 on every tier.
+- Supply chain (#480): `release.yml` writes an SPDX 2.3 SBOM for each release target (`scripts/generate_sbom.py`: the
+  crates reachable through normal and build dependencies for that target, with declared licenses, crates.io download
+  locations and lockfile SHA-256 checksums). It also runs on a manual dry run, is uploaded with the archives and is
+  listed in `SHA256SUMS`. Every workflow `uses:` is now pinned to a commit SHA, with `# version` comments for
+  Dependabot, and `scripts/check_action_pins.py` fails on a tag or branch; six refs used only by release, pages and
+  coverage workflows could not be pinned yet and are listed there by name. `dtolnay/rust-toolchain` steps now say
+  `toolchain:` explicitly, which the action requires once pinned.
+- Fixed: in `--deterministic` mode on `run` / `run-nro`, guest time advanced only inside system calls, so a thread
+  asleep on a timeout never woke while another thread spun on a shared flag without making any; the run ended on the
+  instruction budget. Each scheduler time slice (20,000 instructions) now also advances guest time by 1 ms, the same
+  on every run and host. Found by review of #479; the 14 instruction budgets did not change.
+- `run` / `run-nro` refuse an empty guest argument (exit 2, before the program starts). libnx drops an empty argv
+  token even inside quotes, so the program used to see a smaller `argc` without any message. The `--help` text no
+  longer says `--deterministic` leaves the homebrew clock alone.
+- CI scripts: `insn_budgets.py` rejects a run-elf program that exits non-zero even though it stopped cleanly (its
+  short run would pass as an improvement or be recorded as a baseline); the FP workload's `FP_WORKLOAD_OPS` rejects a
+  name `--list` does not know and an empty host reference, instead of reporting two empty files as identical.
+- `ounce.run.v1` gains `lr` and `sp` (#475, first part): the link register and stack pointer at the stop, set exactly
+  when `pc` is, on `run`, `run-nro` and `run-elf`. With `pc` they locate a fault without a debugger: the `BL` that
+  made the innermost call is at `lr - 4`. Additive. Symbolication (function names from DWARF/ELF) is not done: it
+  needs a new dependency, which is left for the owner to decide.
+- `ounce.run.v1` gains `audio_frames_mixed` and `audio_hash` (#478): the stereo frames of audio the guest mixed through
+  `audout` or `audren`, and `fnv1a64:` of every sample. They are counted as audio is mixed, so `--present=headless`
+  (no sound device) and a playing run report the same values, and a fixed program gives the same hash on every run,
+  host and CPU tier. A program with no audio reports `0` and `null`. Additive; `run-elf` writes `0` and `null`.
+  Tested against the audren fixture's documented waveform (2,640 frames, and 96,000 in `long` mode).
+- CI: instruction budgets (#479). The Runtime job runs 14 committed NRO and ELF fixtures with `--deterministic` on the
+  interpreter and Tier-3 and fails when `insns_executed` goes over its budget (baseline + 2%), the stop changes, the
+  tiers disagree or a fixture was rebuilt; wall time is shown but never fails. Budgets live in
+  `tests/insn-budgets.json` (`scripts/insn_budgets.py --update` records new ones); see `docs/INSN_BUDGETS.md`.
+- Fixed: `--deterministic` / `OUNCE_DETERMINISTIC=1` on `run` / `run-nro` left the homebrew kernel on the host clock,
+  so a guest that waited on time executed a different number of instructions from run to run (`input.nro` gave
+  7,602 or 8,207). The kernel now uses the same fixed clock as the corpus runner: guest time advances per SVC and the
+  date is fixed. Tested by `deterministic_runs_execute_the_same_instructions_while_waiting_on_time` (#479).
+- CI: `ci-rerun-infra.yml` re-runs a second time when every job that failed the run was cancelled without ever
+  reaching a runner, as macOS jobs were on two attempts of run 44144034971. At most two automatic re-runs. A real
+  failure is never re-run, and after the first attempt neither is a job that started and was then cancelled.
+  Tested by `scripts/test_ci_rerun_infra.py`.
+- Docs: the stated minimum Rust version was wrong. The committed lockfile and code need Rust 1.89 for the default
+  build (not 1.85); `gpu-present` needs 1.90 and `native-jit` 1.97.
+- `run-elf` writes the `ounce.run.v1` report (`--report-json` / `OUNCE_REPORT_JSON`), with `stop_kind`, `pc`, `opcode`,
+  `fault_addr` and `svc_id` (the Linux syscall number) filled in, and `silent_fallback` true when Tier-4 fell back. New
+  additive field `guest_exit_status` carries the program's own exit status; `exit_code` stays the engine's. `--dump-regs`
+  prints PC, X0, D0 and NZCV at the stop (#473). Tests now check the emitted fields and exit-code mapping against
+  `docs/OUNCE_RUN_V1_SCHEMA.md`.
+- Fixed: `run` / `run-nro` silently dropped every guest argument starting with `-`, including after `--` (#487).
+  Everything after `--` now reaches the program unchanged; an unknown option before `--` exits 2 with the corrected
+  command; `--gui` after `--` is the guest's, not a window request. `ounce-core run-nro --help` documents this.
+- Fixed: `scripts/done.sh '#N'` found nothing on macOS, because `\b` in `git log -E --grep` is a GNU extension (#484).
+- FP workload (`docs/verify/fp-workload/`): 151 more ops (199 total), the same 18 operand patterns x 8 FPCR values, one
+  process per op: vector `.4s`/`.2d` arithmetic, FMLA/FMLS, compares, FRECPE/FRSQRTE, rounding, converts, FCVTN/FCVTL and
+  reductions, plus the remaining scalar `FCVT*` forms, fixed-point converts, FJCVTZS and FCVTXN. The native ARM64
+  host comparison has not been run locally (it runs in the `fp-workload` CI job, which gates only the original 48 ops); an informational Tier-3 versus qemu-user run
+  on x86_64 found 147 of the 151 new ops (plus `fcvtzs.sw`, an original op) identical and 5 unimplemented
+  (`FJCVTZS`, vector fixed-point `FCVTZS`/`SCVTF`) (#488).
+- New instructions (#469): `FJCVTZS` (FEAT_JSCVT; truncate toward zero, wrap modulo 2^32, writes NZCV `0 Z 0 0`) and the
+  vector fixed-point converts `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU Vd.<2S|4S|2D>, Vn, #fbits`, the five ops the informational
+  qemu run found stopping with exit 71. Unit tests use hand-derived expected values (saturation, NaN to 0, rounding,
+  FPSR flags, FZ/RMode), a per-lane cross-check against the existing scalar fixed-point converts, and an interpreter vs
+  Tier-3 vs Tier-4 agreement test. `run-elf --cpu=tier3` output for the five fp-workload ops is byte-identical to
+  `qemu-aarch64` (informational, not hardware); the native ARM64 comparison has not been run. The scalar-SIMD fixed forms
+  (`scvtf s0, s1, #n`) and half precision are still undecoded.
+- Trace: `ounce.trace.v1`, a bounded step trace and first-divergence summary ([schema](docs/OUNCE_TRACE_V1_SCHEMA.md), #477).
+  `OUNCE_TRACE_SUMMARY=<file>` makes `run` / `run-nro` write the first `OUNCE_TRACE_STEPS` (default 1024, max 65536)
+  retired instructions (pc, opcode, changed registers); `ounce-core trace-diff <expected> <actual> [--window N] [--json out]`
+  reports the first differing step, both values and the steps before it (exit 0 / 1 / 2). Registers only; no memory deltas
+  recorded yet, and ounce-runtime does not implement the contract yet.
+- Linux ARM64 ELF matrix: 17 new first-party, single-threaded, deterministic static musl workloads (`elf-*` harnesses
+  in `docs/verify/elf-workloads/`: strings, sorts, hashes, bignum, printf, 64/128-bit integer math, in-memory file
+  streams, allocator churn, floating point, word counts, codecs, a bytecode VM, puzzles, RNGs, calendar, control flow,
+  trees) take the matrix from 28 to 45 harnesses toward the 50+ goal (#474, in progress). Each is original MIT source with
+  a per-workload provenance entry; none is vendored or downloaded. Verified locally on x86-64 against host builds at
+  O1/O2/O3_M1 on Tier-3, Tier-4 and `diverge`; not yet run on the native ARM64 CI job.
 
 ## 0.9.0 — released 2026-11-16
 

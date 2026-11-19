@@ -42,7 +42,9 @@ pub struct DmaCopy {
 
 impl Default for DmaCopy {
     fn default() -> Self {
-        Self { regs: vec![0; (METHOD_SPACE / 4) as usize] }
+        Self {
+            regs: vec![0; (METHOD_SPACE / 4) as usize],
+        }
     }
 }
 
@@ -71,15 +73,21 @@ impl DmaCopy {
     }
 
     /// Writes a method; `LAUNCH_DMA` runs the copy.
-    pub fn execute(&mut self, method: u32, data: u32, mem: &mut dyn GpuMemoryWriter, diagnostics: &mut Vec<Diagnostic>) {
+    pub fn execute(
+        &mut self,
+        method: u32,
+        data: u32,
+        mem: &mut dyn GpuMemoryWriter,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) {
         if method >= METHOD_SPACE {
             return;
         }
         self.regs[(method / 4) as usize] = data;
-        if method == LAUNCH_DMA {
-            if let Err(reason) = self.launch(data, mem) {
-                diagnostics.push(Diagnostic::DmaSkipped { reason });
-            }
+        if method == LAUNCH_DMA
+            && let Err(reason) = self.launch(data, mem)
+        {
+            diagnostics.push(Diagnostic::DmaSkipped { reason });
         }
     }
 
@@ -93,7 +101,11 @@ impl DmaCopy {
         }
         let src_pitch = launch & (1 << 7) != 0;
         let dst_pitch = launch & (1 << 8) != 0;
-        let lines = if launch & (1 << 9) != 0 { self.reg(LINE_COUNT) } else { 1 };
+        let lines = if launch & (1 << 9) != 0 {
+            self.reg(LINE_COUNT)
+        } else {
+            1
+        };
         let len = self.reg(LINE_LENGTH_IN) as usize;
         // Bound both allocation and total copy work before touching guest buffers.
         if len as u64 * lines as u64 > 64 * 1024 * 1024 || lines > 1024 * 1024 {
@@ -113,12 +125,24 @@ impl DmaCopy {
     /// Reads (or with `write`, writes) line `y` of a surface, byte by byte through the tiling for
     /// block-linear surfaces (a line may cross GOBs).
     #[allow(clippy::too_many_arguments)]
-    fn line(&self, base: u64, pitch: bool, pitch_bytes: u32, bl: &BlockSurface, y: u32, line: &mut [u8],
-        mem: &mut dyn GpuMemoryWriter, write: bool) -> Result<(), &'static str> {
+    fn line(
+        &self,
+        base: u64,
+        pitch: bool,
+        pitch_bytes: u32,
+        bl: &BlockSurface,
+        y: u32,
+        line: &mut [u8],
+        mem: &mut dyn GpuMemoryWriter,
+        write: bool,
+    ) -> Result<(), &'static str> {
         if pitch {
             let va = base + y as u64 * pitch_bytes as u64;
             return match write {
-                true => Ok(mem.write(va, line)),
+                true => {
+                    mem.write(va, line);
+                    Ok(())
+                }
                 false => mem.read(va, line).then_some(()).ok_or("DMA source is not readable"),
             };
         }
@@ -149,7 +173,12 @@ mod tests {
         dma.execute(LINE_LENGTH_IN, u32::MAX, &mut memory, &mut diagnostics);
         dma.execute(LAUNCH_DMA, (1 << 7) | (1 << 8), &mut memory, &mut diagnostics);
         assert!(memory.0.is_empty());
-        assert!(matches!(diagnostics.as_slice(), [Diagnostic::DmaSkipped { reason: "DMA transfer exceeds host work limit" }]));
+        assert!(matches!(
+            diagnostics.as_slice(),
+            [Diagnostic::DmaSkipped {
+                reason: "DMA transfer exceeds host work limit"
+            }]
+        ));
     }
 
     #[derive(Default)]
@@ -177,9 +206,22 @@ mod tests {
         mem.write(0x5_0181_0000, &src);
         let mut dma = DmaCopy::default();
         let mut diags = Vec::new();
-        for (m, d) in [(PITCH_IN, 0x40), (0x70c, 0x1010), (0x710, 0x40), (0x714, 0x10), (0x718, 1), (0x71c, 0),
-            (0x720, 0), (OFFSET_IN_UPPER, 5), (OFFSET_IN_LOWER, 0x0181_0000), (OFFSET_OUT_UPPER, 5),
-            (OFFSET_OUT_LOWER, 0x00ff_0000), (LINE_LENGTH_IN, 0x40), (LINE_COUNT, 0x10), (LAUNCH_DMA, 0x286)] {
+        for (m, d) in [
+            (PITCH_IN, 0x40),
+            (0x70c, 0x1010),
+            (0x710, 0x40),
+            (0x714, 0x10),
+            (0x718, 1),
+            (0x71c, 0),
+            (0x720, 0),
+            (OFFSET_IN_UPPER, 5),
+            (OFFSET_IN_LOWER, 0x0181_0000),
+            (OFFSET_OUT_UPPER, 5),
+            (OFFSET_OUT_LOWER, 0x00ff_0000),
+            (LINE_LENGTH_IN, 0x40),
+            (LINE_COUNT, 0x10),
+            (LAUNCH_DMA, 0x286),
+        ] {
             dma.execute(m, d, &mut mem, &mut diags);
         }
         assert!(diags.is_empty(), "{diags:?}");
@@ -192,6 +234,11 @@ mod tests {
             }
         }
         dma.execute(LAUNCH_DMA, 0x286 | 1 << 3, &mut mem, &mut diags);
-        assert_eq!(diags, [Diagnostic::DmaSkipped { reason: "DMA semaphore or interrupt request" }]);
+        assert_eq!(
+            diags,
+            [Diagnostic::DmaSkipped {
+                reason: "DMA semaphore or interrupt request"
+            }]
+        );
     }
 }

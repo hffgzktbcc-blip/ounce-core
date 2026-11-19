@@ -77,8 +77,15 @@ pub struct Tracer {
 impl Tracer {
     pub fn from_env() -> Option<Tracer> {
         let path = std::env::var("OUNCE_TRACE").ok().filter(|p| !p.is_empty())?;
-        let file = std::fs::File::create(&path).map_err(|e| eprintln!("[Trace] cannot create {path}: {e}")).ok()?;
-        Some(Tracer { out: std::io::BufWriter::new(file), seen: HashMap::new(), records: 0, skipped: 0 })
+        let file = std::fs::File::create(&path)
+            .map_err(|e| eprintln!("[Trace] cannot create {path}: {e}"))
+            .ok()?;
+        Some(Tracer {
+            out: std::io::BufWriter::new(file),
+            seen: HashMap::new(),
+            records: 0,
+            skipped: 0,
+        })
     }
 
     /// Call before stepping: returns the pre-state when this execution is to be recorded.
@@ -106,7 +113,11 @@ impl Tracer {
         let mut head = [0u8; 16];
         head[..4].copy_from_slice(&raw.to_le_bytes());
         head[8..].copy_from_slice(&pc.to_le_bytes());
-        let _ = self.out.write_all(&head).and_then(|_| self.out.write_all(&pre.0)).and_then(|_| self.out.write_all(&post.0));
+        let _ = self
+            .out
+            .write_all(&head)
+            .and_then(|_| self.out.write_all(&pre.0))
+            .and_then(|_| self.out.write_all(&post.0));
         self.records += 1;
     }
 
@@ -114,7 +125,10 @@ impl Tracer {
         let _ = self.out.flush();
         eprintln!("[Trace] {} records written", self.records);
         if self.skipped > 0 {
-            eprintln!("[Trace] {} sampled instructions skipped: the engine ran several instructions in one slice", self.skipped);
+            eprintln!(
+                "[Trace] {} sampled instructions skipped: the engine ran several instructions in one slice",
+                self.skipped
+            );
         }
     }
 }
@@ -134,11 +148,31 @@ mod tests {
         }
         const CODE: u64 = 0x8000_0000;
         let ops: [u32; 12] = [
-            0x1E20_4820, 0x1E20_5820, 0x1E20_6820, 0x1E20_7820, // FMAX FMIN FMAXNM FMINNM (S): v0 = op(v1, v0)
-            0x1E60_4820, 0x1E60_5820, 0x1E60_6820, 0x1E60_7820, // (D)
-            0x4E20_F420, 0x4EA0_F420, 0x4E20_C420, 0x4EA0_C420, // vector .4S
+            0x1E20_4820,
+            0x1E20_5820,
+            0x1E20_6820,
+            0x1E20_7820, // FMAX FMIN FMAXNM FMINNM (S): v0 = op(v1, v0)
+            0x1E60_4820,
+            0x1E60_5820,
+            0x1E60_6820,
+            0x1E60_7820, // (D)
+            0x4E20_F420,
+            0x4EA0_F420,
+            0x4E20_C420,
+            0x4EA0_C420, // vector .4S
         ];
-        let f32s: [u32; 10] = [0, 0x8000_0000, 0x3F80_0000, 0xBF80_0000, 0x7F80_0000, 0xFF80_0000, 0x7FC0_0000, 0x7FA0_0000, 0xFFC0_0001, 1];
+        let f32s: [u32; 10] = [
+            0,
+            0x8000_0000,
+            0x3F80_0000,
+            0xBF80_0000,
+            0x7F80_0000,
+            0xFF80_0000,
+            0x7FC0_0000,
+            0x7FA0_0000,
+            0xFFC0_0001,
+            1,
+        ];
         let dir = std::env::temp_dir().join(format!("ounce-minmax-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let mut file = Vec::new();
@@ -180,7 +214,12 @@ mod tests {
         std::fs::write(&trace, &file).unwrap();
         let helper = crate::diverge::build_helper(&dir).unwrap();
         let report = dir.join("r.json");
-        std::process::Command::new(helper).arg(&trace).arg("--json").arg(&report).status().unwrap();
+        std::process::Command::new(helper)
+            .arg(&trace)
+            .arg("--json")
+            .arg(&report)
+            .status()
+            .unwrap();
         let json: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&report).unwrap()).unwrap();
         let first = json["mismatches"].get(0).map(|m| m.to_string());
         let _ = std::fs::remove_dir_all(&dir);

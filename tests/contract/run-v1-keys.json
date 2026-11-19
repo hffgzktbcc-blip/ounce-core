@@ -1,0 +1,45 @@
+{
+  "_comment": "DRAFT contract baseline for ounce.run.v1 (issue #481). tests/contract_v1.rs requires every report to have exactly these keys, each with a value of one of the listed JSON types, and every listed type to occur in at least one representative run. Removing, renaming or retyping a key fails the test. Adding a key fails it too, on purpose: add the key here (and to docs/OUNCE_RUN_V1_SCHEMA.md and docs/CONTRACT_V1.md) in the same change, so the addition is a conscious, reviewed one.",
+  "schema": "ounce.run.v1",
+  "keys": {
+    "schema": ["string"],
+    "engine": ["string"],
+    "engine_version": ["string"],
+    "tier": ["string"],
+    "silent_fallback": ["bool"],
+    "stop_kind": ["string"],
+    "exit_code": ["number"],
+    "pc": ["null", "number"],
+    "lr": ["null", "number"],
+    "sp": ["null", "number"],
+    "opcode": ["null", "number"],
+    "fault_addr": ["null", "number"],
+    "svc_id": ["null", "number"],
+    "break_result": ["null", "number"],
+    "insns_executed": ["number"],
+    "frames_presented": ["number"],
+    "framebuffer_hash": ["null", "string"],
+    "audio_frames_mixed": ["number"],
+    "audio_hash": ["null", "string"],
+    "guest_exit_status": ["null", "number"],
+    "message": ["null", "string"]
+  },
+  "stop_kinds": {
+    "clean_exit": 0,
+    "window_closed": 0,
+    "frame_limit": 0,
+    "unimplemented_insn": 10,
+    "memory_fault": 11,
+    "cpu_error": 12,
+    "svc_break": 13,
+    "unhandled_svc": 14,
+    "cpu_halted": 15,
+    "budget_exhausted": 16,
+    "loader_error": 17
+  },
+  "stop_kinds_not_reachable_in_tests": {
+    "window_closed": "needs a host window (--gui) that a test runner does not have",
+    "cpu_halted": "nothing constructs StepResult::Halt in this tree, so no program can produce it"
+  },
+  "added_after_v0_9_0": ["frames_presented", "framebuffer_hash", "lr", "sp", "audio_frames_mixed", "audio_hash", "guest_exit_status"]
+}
