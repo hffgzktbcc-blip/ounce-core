@@ -12,7 +12,7 @@ Ounce-Core runs supported ARM64 programs through three CPU engines, compares the
 
 <sub>[Watch the full 90-second video](docs/media/ounce-core-main.mp4)</sub>
 
-**[Try it in your browser](https://hffgzktbcc-blip.github.io/ounce-core/playground/)**
+**[Try it in your browser](https://hffgzktbcc-blip.github.io/ounce-core/playground/)** · **[Latest published release](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest)**
 
 </div>
 
@@ -49,14 +49,14 @@ Ounce-Core's floating-point checks isolated the bug to two instructions. The mai
 
 Four independent, open-source projects sharing a development philosophy, an evidence-first discipline, and an active community:
 
-| Project | What it is for | When to choose it | Licence | Link |
-| :--- | :--- | :--- | :--- | :--- |
-| **ounce-core** (this repo) | Runs supported ARM64 programs across three CPU engines and compares their outputs with real-hardware references. | You want to investigate a difference, compare engine results or inspect the safe-Rust core. | MIT | You are here |
-| **ounce-hb** | Simplified homebrew runner built around Ounce-Core with diagnostics and exit codes. | You want a turn-key CLI to run and diagnose homebrew with stable exit codes and plain-language failure explanations. | MIT | [ounce-hb](https://github.com/hffgzktbcc-blip/ounce-hb) |
-| **ounce-runtime** | Experimental performance runtime with native JIT and GPU development. | You want high performance, visual presentation via Metal/Vulkan/DX12, or controller input under GPL-3.0 terms. | GPL-3.0-or-later | [ounce-runtime](https://github.com/hffgzktbcc-blip/ounce-runtime) |
-| **deckstream** | Steam Deck NAS/WebDAV game launcher and streaming experimentation. | You want an on-demand virtual filesystem for handheld Linux gaming PCs (SteamOS) with Gaming Mode integration. | MIT | [deckstream](https://github.com/hffgzktbcc-blip/deckstream) |
+**Four independent projects. Choose the job you need done:**
 
-**Independent siblings, clean boundaries.** Each project solves a distinct problem with its own repository, tests, and releases. DeckStream is an independent sibling, not an Ounce-Core derivative; no code flows inappropriately across licensing boundaries (`ounce-core`, `ounce-hb`, and `deckstream` are MIT; `ounce-runtime` is GPL-3.0-or-later).
+- **[Ounce-Core](https://github.com/hffgzktbcc-blip/ounce-core)** checks supported ARM64 programs against recorded hardware references.
+- **[Ounce-HB](https://github.com/hffgzktbcc-blip/ounce-hb)** runs your own open-source homebrew through an engine and explains why it stopped.
+- **[Ounce-Runtime](https://github.com/hffgzktbcc-blip/ounce-runtime)** experiments with faster ARM64 execution, graphics and controller input.
+- **[DeckStream](https://github.com/hffgzktbcc-blip/deckstream)** aims to launch PC games from your NAS/WebDAV storage on Steam Deck; an independent device run is still outstanding.
+
+**[Choose the right Ounce project in one minute](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/FAMILY.md)** for the first task, limitations, licences and current-release links. These projects have separate evidence and release decisions. DeckStream is not an ARM64 engine, and GPL code is not copied into MIT siblings.
 
 ## Try it
 

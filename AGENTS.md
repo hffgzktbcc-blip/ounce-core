@@ -8,7 +8,7 @@ Before selecting work, reconcile **current `main`, merged PRs, open issues/PRs, 
 
 Build useful end-to-end results. The current request sets scope; `PLAN.md` is the
 prioritized backlog, not a permission system. Historical notes do not add rules.
-When editing public documentation, follow [the clarity and freshness checklist](docs/README.md#keep-live-documentation-clear-and-current): name the actor, use active verbs, separate shipped from planned work, and link dated test evidence.
+When editing public documentation, follow [the clarity and freshness checklist](docs/README.md#keep-live-documentation-clear-and-current) and [the family public documentation contract](docs/PUBLIC_DOCS_CONTRACT.md): name the actor, use active verbs, separate shipped from planned work, and link dated test evidence. **A user-visible feature is not finished until the same PR updates its affected README/Quick Start/limits and Unreleased changelog.** If no public docs change is necessary, explain why in the PR (`Docs: none — <reason>`). CI checks for that decision; current release links should point to GitHub `/releases/latest`, not a frozen version number.
 
 - Inspect relevant code and existing work, then act. Use the provided checkout on a
   topic branch; preserve unrelated changes and stage only your own paths.

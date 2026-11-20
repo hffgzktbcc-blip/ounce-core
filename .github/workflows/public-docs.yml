@@ -1,0 +1,24 @@
+name: Public documentation impact
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  docs-impact:
+    name: Public docs updated or explained
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Check public documentation impact
+        env:
+          DOCS_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DOCS_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 scripts/check_public_docs.py
