@@ -42,16 +42,22 @@ guest writes it, so a hung program's output shows before a timeout stops it. The
 given as `OUNCE_REPORT_JSON`. `run`, `run-nro` and `run-elf` write the file.
 
 `--audio=null` (or `OUNCE_AUDIO=null`) does not open a host audio device.
-`--present=headless` already skips that device. `--deterministic` runs the
-guest on a fixed clock on `run`, `run-nro` and `run-elf`: guest time advances
-with each system call instead of with the host clock, and a guest that sleeps
-skips ahead instead of waiting, so a run executes the same instructions every
-time and on every host. On `run` and `run-nro` it also draws 3D with the
-software rasterizer even in a GPU window, so every presented frame has a
-`framebuffer_hash`.
+`--present=headless` already skips that device. `--deterministic` fixes the
+guest clock for supported `run`, `run-nro` and `run-elf` workloads rather than
+reading host wall-clock time. It makes tested fixture runs repeatable, but it
+does **not** guarantee that every program follows the same instruction path on
+every host. On `run` and `run-nro`, supported 3D frames use the software
+rasterizer in deterministic mode so they can be hashed. Outside that mode, a
+`gpu-present` window may not produce a `framebuffer_hash`.
 
 Field list, stop kinds, and the limits of this report:
 [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md).
+
+## See a real wrong-answer bug
+
+The [Lua floating-point case study](community/LUA_FP_BUG_WALKTHROUGH.md) explains how a
+program returned an incorrect answer even though Ounce-Core's engines initially
+agreed. It shows the dated evidence and a correctly flagged optional rerun.
 
 ## A static Linux ELF
 
@@ -68,7 +74,7 @@ They are separate repositories. ounce-core does not build or download them.
 
 | Tool | What to run | Where |
 | --- | --- | --- |
-| ounce-hb `doctor` | `ounce-hb doctor` or `ounce-hb doctor --json` | [ounce-hb](https://github.com/hffgzktbcc-blip/ounce-hb) `main` (not in the v0.0.2 archive) |
+| ounce-hb `doctor` | `ounce-hb doctor` or `ounce-hb doctor --json` | [ounce-hb](https://github.com/hffgzktbcc-blip/ounce-hb) (see the published [v0.2.0 release](https://github.com/hffgzktbcc-blip/ounce-hb/releases/tag/v0.2.0) and installed CLI version) |
 | ounce-hb `repro` / `run --auto` | see that repo's quick start | same |
 | `setup-ounce` | GitHub Action `hffgzktbcc-blip/ounce-hb/.github/actions/setup-ounce` | same repo; its `doctor` step needs a build that contains `doctor` |
 
