@@ -5,6 +5,8 @@ today. **History** files record what was true on a past date; they are not tasks
 Before starting any work run `scripts/done.sh <issue number or keyword>` (searches merged history,
 changelog and release notes) so shipped work is not redone.
 
+For every user-visible change, follow the [family public documentation contract](PUBLIC_DOCS_CONTRACT.md): update the affected public docs in the same PR; the lightweight [docs impact check](../scripts/check_public_docs.py) will ask for an explanation if none change.
+
 ## For agents (live)
 | Need | File |
 |---|---|
@@ -13,7 +15,7 @@ changelog and release notes) so shipped work is not redone.
 | Backlog: what is ready, blocked, done | [../PLAN.md](../PLAN.md) (finished-task evidence: [history/PLAN-COMPLETED.md](history/PLAN-COMPLETED.md)) |
 | Direction for the Ounce family | [roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md](roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) (committed); [roadmap/OUNCE_EDUCATION_ROADMAP.md](roadmap/OUNCE_EDUCATION_ROADMAP.md) is a proposal only |
 | What the project does **not** prove | [LIMITS.md](LIMITS.md), [CAPABILITY_SCOPE.md](CAPABILITY_SCOPE.md) |
-| What shipped, by release | [../CHANGELOG.md](../CHANGELOG.md), [releases/](releases/) (latest: [v0.10.0](releases/v0.10.0.md), published 2026-11-20; [GitHub Release](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.10.0)) |
+| What shipped, by release | [Latest published GitHub release](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest); [../CHANGELOG.md](../CHANGELOG.md) for releases and unreleased changes; [releases/](releases/) for historical notes |
 
 ## For readers: start with a task
 
@@ -21,7 +23,7 @@ changelog and release notes) so shipped work is not redone.
 - **Run a supported program:** follow the [Quick Start](QUICKSTART.md), then use [Add a Program](ADD_A_PROGRAM.md) for your own test.
 - **Investigate a mismatch:** start with the [diagnosis guide](DIAGNOSIS_CLI.md) and the [run report schema](OUNCE_RUN_V1_SCHEMA.md).
 - **Check a published result:** use the [reproduction guide](REPRODUCE.md), read the [limits](LIMITS.md), and share outside results through [issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248).
-- **Understand the current release:** read [v0.10.0 highlights and evidence](releases/v0.10.0.md) before relying on older, dated results.
+- **Understand what is shipped:** open the [latest published release](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest) for the current tag and evidence; dated notes such as [v0.10.0](releases/v0.10.0.md) remain historical.
 
 ## Using and verifying (live)
 - Quick start: [QUICKSTART.md](QUICKSTART.md); reproduce results: [REPRODUCE.md](REPRODUCE.md); add a test program: [ADD_A_PROGRAM.md](ADD_A_PROGRAM.md); full reference: [DETAILS.md](DETAILS.md)
