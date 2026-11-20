@@ -70,6 +70,12 @@
       <p>Ounce-Core runs supported programs and compares their results with references recorded on real ARM64 hardware. When the outputs differ, its reports and bounded traces help you investigate where the runs split. The project is open source and written in Rust.</p>
     </section>
 
+    <section aria-labelledby="case-study">
+      <h2 id="case-study">A real bug: Lua ran, but its maths was wrong</h2>
+      <p>In a recorded test, Lua's <code>math.sin(1)</code> returned about <strong>1.1585</strong>, even though the correct value is about <strong>0.84147</strong>. Multiple Ounce-Core execution paths agreed with each other. A separately built Apple Silicon reference revealed that they shared a floating-point mistake.</p>
+      <p>The maintainers narrowed the failure to two instructions, fixed them and saved the matching results. <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/community/LUA_FP_BUG_WALKTHROUGH.md">Follow the bug, the fix and the evidence</a>—no installation needed to read the case.</p>
+    </section>
+
     <section aria-labelledby="results">
       <h2 id="results">What it has done</h2>
       <ul class="results">
