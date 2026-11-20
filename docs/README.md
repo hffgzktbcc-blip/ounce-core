@@ -19,6 +19,8 @@ For every user-visible change, follow the [family public documentation contract]
 
 ## For readers: start with a task
 
+- **Choose the right family project:** [four projects, four jobs](FAMILY.md), with plain-language entry points, tested limits and always-current release links.
+
 - **See why verification matters (no installation):** read the [Lua wrong-answer case study](community/LUA_FP_BUG_WALKTHROUGH.md). It links the original mismatch, the fix and the exact recorded evidence.
 - **Run a supported program:** follow the [Quick Start](QUICKSTART.md), then use [Add a Program](ADD_A_PROGRAM.md) for your own test.
 - **Investigate a mismatch:** start with the [diagnosis guide](DIAGNOSIS_CLI.md) and the [run report schema](OUNCE_RUN_V1_SCHEMA.md).
