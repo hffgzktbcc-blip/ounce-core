@@ -12,15 +12,24 @@
 | **Done** | Release infrastructure merged: `ounce-core` #442, `ounce-hb` #40, `ounce-runtime` #13. Linux ARM64 ELF matrix passed on core `main` at `6a4ccb8` ([job](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/43803024996/job/133087400644)): 28 harnesses / 76 rows. |
 | **Done** | The Q1 release tags v0.9.0 / v0.1.0 / v0.6.0 are published (links above). Preserve the candidate notes as historical qualification evidence. |
 
-**Source of truth:** This document supersedes `docs/roadmap/milestones.json` and the `ounce-hb` wiki roadmap. The education roadmap (`OUNCE_EDUCATION_ROADMAP.md`) was deferred until the Q1 tags existed; they now do (see the verified release update above), so scheduling it is an owner decision.
+**How to use this plan:** This page sets the **family's strategic direction**, not a live checklist of completed PRs. The Core-specific [milestone registry](milestones.json) feeds the generated [technical-status table](../DETAILS.md#the-road-ahead); live releases, CI, and issues establish which work actually shipped. The old pre-tag checklist below records acceptance criteria, **not instructions to cut already-published tags again**. The education roadmap (`OUNCE_EDUCATION_ROADMAP.md`) remains a proposal pending an owner scheduling decision.
 
-**North Star:** Make **`ounce-core`** (MIT), **`ounce-hb`** (MIT), **`ounce-runtime`** (GPL-3.0-or-later), and **`deckstream`** (MIT, SteamOS WebDAV launcher & Decky UI) the self-diagnosing, zero-AI-needed standard for **building, testing, running, and debugging open-source AArch64 homebrew (`.nro` / `.nso`) and static musl Linux AArch64 ELFs**, with strict license isolation (subprocess + CLI/JSON contracts only) and **zero retail/key/SDK material** (`ounce-hb`: strict clean-room per `docs/CLEAN_ROOM.md`; `ounce-core`: public specs + attributed MIT ports per `docs/CLEAN_ROOM.md`; `ounce-runtime`: GPL-3.0-or-later; `deckstream`: MIT).
+**North Star:** Help developers understand **what a supported program did, why it failed, and how another person can reproduce the result**, without requiring an AI agent to interpret the evidence. The family has **separate products**, not one universal emulator:
+
+- **[ounce-core](https://github.com/hffgzktbcc-blip/ounce-core)** runs bounded ARM64 workloads on multiple CPU engines, compares results with hardware references, and records what matched or differed.
+- **[ounce-hb](https://github.com/hffgzktbcc-blip/ounce-hb)** provides a more approachable command-line path for running and diagnosing supported open-source homebrew.
+- **[ounce-runtime](https://github.com/hffgzktbcc-blip/ounce-runtime)** experiments with a separate GPL-licensed runtime and advanced execution/presentation paths; its results require their own verification.
+- **[deckstream](https://github.com/hffgzktbcc-blip/deckstream)** independently helps Steam Deck users launch content from their own NAS/WebDAV storage. **It is not an ARM64 execution engine or a dependency of the Ounce-Core verifier.**
+
+Each repository owns its scope, licence obligations, evidence and release readiness. Keep GPL and MIT code boundaries explicit; avoid retail games, keys, firmware, proprietary SDK material or unsupported universal-compatibility claims. The shared goal is understandable, reproducible developer outcomes—not a claim that the family is already an industry standard.
 
 ---
 
 ## Q1 (Months 1–3 | Nov 2026 – Feb 2027): Release Alignment, Day-1 Homebrew DX & Visual Parity
 
 **Theme:** Unify release/CI pipelines, ship `linux-arm64` binaries, and make real `appletMainLoop()` + RomFS/SDMC homebrew work on day 1.
+
+**Historical release-gate checklist (do not re-execute):** The following pre-v0.9.0 / v0.1.0 / v0.6.0 instructions record what the team intended to verify before those tags. The tags are published, and the successor v0.10.0 / v0.2.0 / v0.7.0 tags also exist. Individual bullets are not proof that every action was completed exactly as drafted. Check the actual release artifacts and corresponding repositories before making a present-tense claim.
 
 1. **Pre-Release Legal & CI Infrastructure Alignment (single hard gate for synchronized `ounce-core` `v0.9.0` / `ounce-hb` `v0.1.0` / `ounce-runtime` `v0.6.0`):**
    - **Metadata & `cargo-deny`:** Add `license = "MIT"` to `ounce-core/Cargo.toml`; add `deny.toml` and PR `cargo-deny` checks to `ounce-core` and `ounce-runtime`.
@@ -35,9 +44,9 @@
    - **Fix `setup-ounce` & tag collision:** Update `ounce-hb/release.yml` trigger from `'v*'` to `'v[0-9]+.[0-9]+.[0-9]+*'` so floating action tags (`setup-ounce@v1`) never trigger binary releases; update `.github/actions/setup-ounce/action.yml` to detect `RUNNER_ARCH` (`linux-arm64`), fix Windows `.exe` / `pwsh` extraction + CI verification, enable `verify_sha="true"` for `ounce-runtime`, and support `install-hb: 'false'` for dogfooding.
    - **Cut Synchronized Releases:** Verify a passing `linux-arm64-elf-matrix` run on `main`, then tag **`ounce-core` `v0.9.0`**, **`ounce-hb` `v0.1.0`**, and **`ounce-runtime` `v0.6.0`** (including `linux-arm64` assets). Nothing else in this quarter blocks these tags.
 
-**November product goal (not a tag blocker):** The `ounce-core` #357 community sprint outcome — a second independent rerun of #191, or a first #248 report.
+**Current outside-validation gates (verified open 20 Nov 2026; not tag blockers):** Seek a genuine second outside rerun of [Ounce-Core #191](https://github.com/hffgzktbcc-blip/ounce-core/issues/191) or an independent [#248 report](https://github.com/hffgzktbcc-blip/ounce-core/issues/248). Independently, [DeckStream #9](https://github.com/hffgzktbcc-blip/deckstream/issues/9) seeks a real Steam Deck and NAS/WebDAV setup report. **No successful outside reproduction or production-ready DeckStream deployment is inferred from these open issues.**
 
-**After the tag** (one theme at a time):
+**Post-release workstreams (check live sibling PRs/issues before starting):**
 
 1. **Day-1 Homebrew Ergonomics & Doc/CLI Sync:**
    - **Loop-exit controls (`--max-frames <N>` and inline `--press PLUS@60` DONE, #458 merged 17 Nov; `OUNCE_INPUT_SCRIPT=<path>` was not built):** so standard `while (appletMainLoop())` `libnx` apps exit cleanly instead of hitting the 60s timeout.
