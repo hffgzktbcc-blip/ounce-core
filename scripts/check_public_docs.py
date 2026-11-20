@@ -9,13 +9,18 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import PurePosixPath
 
 PUBLIC_PREFIXES = {
     "ounce-core": ("src/", "crates/", "tools/", "site/"),
     "ounce-hb": ("src/",),
     "ounce-runtime": ("src/", "crates/"),
     "deckstream": ("daemon/", "api/", "decky/", "site/"),
+}
+PUBLIC_ROOT_FILES = {
+    "ounce-core": {"Cargo.toml"},
+    "ounce-hb": {"Cargo.toml"},
+    "ounce-runtime": {"Cargo.toml"},
+    "deckstream": {"package.json"},
 }
 DOCS_PREFIXES = ("docs/",)
 DOCS_FILES = {"README.md", "CHANGELOG.md", "CONTRIBUTING.md"}
@@ -26,7 +31,9 @@ def is_public_code(path, repo):
         return False
     if path.endswith(("_test.rs", "_tests.rs", ".test.js", ".spec.js")):
         return False
-    return path.startswith(PUBLIC_PREFIXES.get(repo, ()))
+    return path in PUBLIC_ROOT_FILES.get(repo, set()) or path.startswith(
+        PUBLIC_PREFIXES.get(repo, ())
+    )
 
 
 def has_doc_change(paths):
