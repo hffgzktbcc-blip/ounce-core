@@ -17,6 +17,7 @@ changelog and release notes) so shipped work is not redone.
 
 ## For readers: start with a task
 
+- **See why verification matters (no installation):** read the [Lua wrong-answer case study](community/LUA_FP_BUG_WALKTHROUGH.md). It links the original mismatch, the fix and the exact recorded evidence.
 - **Run a supported program:** follow the [Quick Start](QUICKSTART.md), then use [Add a Program](ADD_A_PROGRAM.md) for your own test.
 - **Investigate a mismatch:** start with the [diagnosis guide](DIAGNOSIS_CLI.md) and the [run report schema](OUNCE_RUN_V1_SCHEMA.md).
 - **Check a published result:** use the [reproduction guide](REPRODUCE.md), read the [limits](LIMITS.md), and share outside results through [issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248).
