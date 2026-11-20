@@ -34,6 +34,7 @@ pub fn take_flags() -> u32 {
 }
 
 /// FPCR bits used here.
+pub const FPCR_FZ16: u32 = 1 << 19;
 pub const FPCR_FZ: u32 = 1 << 24;
 pub const FPCR_DN: u32 = 1 << 25;
 pub const FPCR_RMODE_SHIFT: u32 = 22;
@@ -85,18 +86,27 @@ impl Env {
         }
     }
 
+    /// Half-precision environment: ARM64 FP16 uses `FPCR.FZ16` (bit 19) instead of `FPCR.FZ` (bit 24).
+    pub fn from_fpcr_f16(fpcr: u32) -> Env {
+        Env {
+            fz: fpcr & FPCR_FZ16 != 0,
+            ..Self::from_fpcr(fpcr)
+        }
+    }
+
     pub fn with_round(self, round: Round) -> Env {
         Env { round, ..self }
     }
 }
 
-/// An IEEE binary format: 32 or 64 bit here.
+/// An IEEE binary format: 16, 32 or 64 bit.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Fmt {
     ebits: u32,
     mbits: u32,
 }
 
+pub const F16: Fmt = Fmt { ebits: 5, mbits: 10 };
 pub const F32: Fmt = Fmt { ebits: 8, mbits: 23 };
 pub const F64: Fmt = Fmt { ebits: 11, mbits: 52 };
 
@@ -602,6 +612,16 @@ pub fn convert(from: Fmt, to: Fmt, env: Env, a: u64) -> u64 {
     }
     let x = unpack(from, a);
     round_pack(to, env, x.sign, x.exp, x.mant as u128, false)
+}
+
+/// Widens an `F16` value to `F32` for `FMLAL`/`FMLSL` (FEAT_FHM), preserving a signalling NaN's quiet bit
+/// so `fma`'s `FPProcessNaNs` lets a half-precision sNaN take priority over a single-precision qNaN addend.
+pub fn widen_f16_preserve_snan(env: Env, a: u64) -> u64 {
+    if F16.is_nan(a) {
+        let frac = F16.frac(a) << (F32.mbits - F16.mbits);
+        return (F32.max_field() << F32.mbits) | frac | F32.zero(F16.sign(a));
+    }
+    convert(F16, F32, Env { fz: false, ..env }, a)
 }
 
 /// Flags of a float-to-integer conversion (`FPToFixed`). `exact` is the operand (times `2^fbits`) as an exact `f64`
