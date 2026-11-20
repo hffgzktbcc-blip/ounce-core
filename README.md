@@ -12,7 +12,7 @@ Ounce-Core runs supported ARM64 programs through three CPU engines, compares the
 
 <sub>[Watch the full 90-second video](docs/media/ounce-core-main.mp4)</sub>
 
-**[Try it in your browser](https://hffgzktbcc-blip.github.io/ounce-core/playground/)**
+**[Try it in your browser](https://hffgzktbcc-blip.github.io/ounce-core/playground/)** · **[Latest published release](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest)**
 
 </div>
 
