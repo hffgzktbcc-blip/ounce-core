@@ -398,7 +398,7 @@ int main(int argc, char **argv) {
     const char *case_name = NULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--list-words")) { list_words = 1; continue; }
-        // --fpcr-mix: run each random case under one of 8 FPCR values (default, FZ, DN, FZ+DN, RP, RM, RZ, FZ+DN+RZ)
+        // --fpcr-mix: run each random case under one of 10 FPCR values (default, FZ, DN, FZ+DN, RP, RM, RZ, FZ+DN+RZ, FZ16, FZ+DN+FZ16+RZ)
         if (!strcmp(argv[i], "--fpcr-mix")) { fpcr_mix = 1; continue; }
         if (i + 1 >= argc) { fprintf(stderr, "options require values\n"); return 2; }
         // --word-mask M --word-value V: force the bits in M to V in every generated word (target one encoding class)
@@ -459,8 +459,11 @@ int main(int argc, char **argv) {
                 int a = rnd() % 32, b = rnd() % 32; c.v[2 * a] = c.v[2 * b]; c.v[2 * a + 1] = c.v[2 * b + 1];
             }
         }
-        static const uint64_t mixes[8] = {0, 1u << 24, 1u << 25, 3u << 24, 1u << 22, 2u << 22, 3u << 22, (3u << 24) | (3u << 22)};
-        run_case(w, fpcr_mix ? mixes[rnd() & 7] : 0);
+        static const uint64_t mixes[10] = {
+            0, 1u << 24, 1u << 25, 3u << 24, 1u << 22, 2u << 22, 3u << 22,
+            (3u << 24) | (3u << 22), 1u << 19, (3u << 24) | (3u << 22) | (1u << 19)
+        };
+        run_case(w, fpcr_mix ? mixes[rnd() % 10] : 0);
     }
     fprintf(stderr, "fuzz_host seed=%llu words=%llu executed=%llu undefined(SIGILL)=%llu\n",
             (unsigned long long)sd, (unsigned long long)count, (unsigned long long)nt, (unsigned long long)nu);
