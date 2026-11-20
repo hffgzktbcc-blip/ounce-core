@@ -52,3 +52,16 @@ Shipped or dropped (banner at the top of each; code is the truth): [design/m4-na
 - [history/E2_DECISION_MEMO.md](history/E2_DECISION_MEMO.md): one-day owner memo; decisions are recorded in LICENSE_DISPOSITION.md
 - [history/outreach/](history/outreach/), [history/community/](history/community/): marketing drafts, naming research, recruitment lead lists. These are **owner/marketing material, not agent tasks**.
 - [history/OUR_JOURNEY.md](history/OUR_JOURNEY.md): founder narrative; [history/](history/): provenance remediation drafts and reports
+
+## Keep live documentation clear and current
+
+Use this checklist when changing the README, website, quick starts, status pages, releases or contributor guides. Historic releases and dated experiment records remain unchanged unless you are correcting a factual error in their stated historical context.
+
+1. **Name the actor and use a verb.** Write "Ounce-Core runs supported ARM64 programs and compares their outputs" instead of "ARM64 multi-engine differential execution verification". Say what a developer can do next.
+2. **Lead with the outcome.** Give readers a short task or reason to care before introducing terms such as `FPCR`, `NRO`, `Tier-4` or `CMIF`. Link the [glossary](community/GLOSSARY.md) when a term matters.
+3. **Keep claims bounded.** State the tested input, engine, hardware or CI job. "Passed on these 51 workloads" is evidence; "runs any ARM64 application" is not. A green CI badge does not mean an outside developer reproduced a result.
+4. **Separate shipped from planned.** Check live tags, merged PRs, CI and [the latest release notes](releases/v0.10.0.md) before saying "unreleased", "not yet merged" or "coming soon". Keep genuinely draft contracts clearly marked draft.
+5. **Update the source, not just the rendered copy.** The roadmap table in [DETAILS.md](DETAILS.md) is generated from [roadmap/milestones.json](roadmap/milestones.json). Change both consistently through `scripts/render_roadmap.py` or its source; do not hand-edit a generated claim alone.
+6. **Preserve evidence and limitations.** Simplify sentences, not test results. Keep legal notices, licence attribution, source links, dates, unsupported features and failure reports intact.
+
+Before proposing a documentation-only PR, run `python3 scripts/check_links.py`, `python3 scripts/check_pins.py`, and inspect the diff for outdated counts or commands that no longer match their scripts. These checks catch link and version mistakes, not every inaccurate claim.
