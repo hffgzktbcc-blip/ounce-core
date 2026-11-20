@@ -1,6 +1,11 @@
 ## Summary
 <!-- One or two sentences explaining what changed and why. Link any related issue. -->
 
+## Public documentation impact
+<!-- Update affected README, Quick Start, limits and Unreleased changelog alongside a user-visible behaviour change. -->
+- Docs updated: <!-- name affected files and the user-facing outcome -->
+<!-- If not needed instead put one complete line: Docs: none — internal-only change because ... -->
+
 ## How tested
 <!-- Exact commands run and observed output. -->
 
