@@ -4,7 +4,7 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
-## 0.10.0 — 2026-11-20 (release prep; tag pending owner decision)
+## 0.10.0 — 2026-11-20 (released)
 
 - Added: half-precision FP3-source (`FMADD`/`FMSUB`/`FNMADD`/`FNMSUB H`), vector `FMLAL`/`FMLSL`/`FMLAL2`/`FMLSL2`
   (FEAT_FHM), and vector `FCVTN`/`FCVTN2`/`FCVTL`/`FCVTL2` (`4H <-> 4S`) with `softfp::F16` and `FPCR.FZ16` (#469, #515).
