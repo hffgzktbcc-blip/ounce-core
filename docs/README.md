@@ -29,6 +29,7 @@ changelog and release notes) so shipped work is not redone.
 - Apps: [PLAYGROUND.md](PLAYGROUND.md), [MAC_APP.md](MAC_APP.md), [INTERACTIVE_LAB.md](INTERACTIVE_LAB.md), [WORKBENCH_UI.md](WORKBENCH_UI.md)
 - Evidence and method: [verify/README.md](verify/README.md); dated results stay under `verify/` ([audio case](verify/AUDIO_CHANNEL_CASE.md), [census](verify/CENSUS_2026-11-08.md), [stress](verify/STRESS_2026-11-08.md), [issue shortlist](verify/ISSUE_SHORTLIST.md))
 - Research record (a dated preprint, not guidance): [research/OUNCE_CORE_AARCH64_VERIFICATION_2026.md](research/OUNCE_CORE_AARCH64_VERIFICATION_2026.md)
+- Repository review (dated coverage, findings and **unverified security/code gaps**): [20 November 2026 audit](audits/2026-11-20-repository-review.md)
 
 ## Corpus and oracles (live reference)
 Oracles were written **before** execution and are referenced by path from code and tests, so they never move.
