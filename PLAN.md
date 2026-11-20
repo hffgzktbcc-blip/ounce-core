@@ -1,6 +1,6 @@
 # ounce-core: useful results, not component counts
 
-> **Agent orientation (17 Nov 2026):** For the four-repository strategy and upcoming-quarter priorities, consult the [Ounce Family one-year roadmap](docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) **first**. This 8 November file retains historical task evidence and the Core-local backlog; its old `Next:` notes and release references may describe work now shipped. Before beginning a task, verify the current repo state, closed PRs/issues, releases, and CI, then choose only genuinely unfinished work. Never treat a historical handoff as an open assignment.
+> **Agent orientation (updated 20 Nov 2026):** Consult the [Ounce Family one-year roadmap](docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) for strategic direction, but use live releases, CI and issues for shipped state. The family has distinct purposes: Core verifies bounded ARM64 execution; HB simplifies homebrew diagnostics; Runtime is a separate experimental engine; DeckStream launches content from Steam Deck NAS/WebDAV storage. This 8 November Core-local backlog retains dated history; old `Next:` notes and pre-tag tasks may describe work now shipped. Verify open work before starting; never treat a historical handoff as an assignment.
 
 Compacted 2026-11-17 (done tasks are one-liners; evidence in docs/history/PLAN-COMPLETED.md). Originally updated 2026-11-08 to reconcile vision progress with current main and continue
 the owner's direction: remove agent friction and deliver community value beyond
