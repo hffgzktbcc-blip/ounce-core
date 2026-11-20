@@ -196,11 +196,13 @@ fn unpack(f: Fmt, x: u64) -> Fin {
     }
 }
 
-/// FPUnpack's flush: with FZ a denormal operand (single or double) reads as a zero of the same sign.
-/// A flushed denormal raises IDC.
+/// FPUnpack's flush: with FZ (single/double) or FZ16 (half) a denormal operand reads as a zero of the same sign.
+/// Single/double flush raises IDC; per Arm ARM `FPUnpackBase`, half-precision `FZ16` flush does not raise IDC.
 pub fn flush_input(f: Fmt, env: Env, x: u64) -> u64 {
     if env.fz && f.is_denormal(x) {
-        raise(IDC);
+        if f != F16 {
+            raise(IDC);
+        }
         x & f.sign_bit()
     } else {
         x
@@ -1128,5 +1130,18 @@ mod tests {
         };
         assert_eq!(binop(F32, rm, BinOp::Sub, 0x3f80_0000, 0x3f80_0000), 0x8000_0000);
         assert_eq!(binop(F32, rp, BinOp::Sub, 0x3f80_0000, 0x3f80_0000), 0);
+    }
+
+    #[test]
+    fn fz16_flushes_denormal_input_without_raising_idc() {
+        let fz = Env::from_fpcr(FPCR_FZ);
+        let _ = take_flags();
+        assert_eq!(flush_input(F32, fz, 0x0000_0001), 0);
+        assert_eq!(take_flags(), IDC, "FPCR.FZ on F32 raises IDC");
+
+        let fz16 = Env::from_fpcr_f16(FPCR_FZ16);
+        assert_eq!(flush_input(F16, fz16, 0x0001), 0);
+        assert_eq!(flush_input(F16, fz16, 0x8001), 0x8000);
+        assert_eq!(take_flags(), 0, "FPCR.FZ16 on F16 does not raise IDC");
     }
 }
