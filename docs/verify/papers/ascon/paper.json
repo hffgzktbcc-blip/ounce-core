@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Ascon v1.2: Lightweight Authenticated Encryption and Hashing",
+    "authors": ["Christoph Dobraunig", "Maria Eichlseder", "Florian Mendel", "Martin Schlaeffer"],
+    "venue": "Journal of Cryptology 34, article 33",
+    "year": 2021
+  },
+  "program": {
+    "source": "ascon.c",
+    "how": "written for ounce-core from the algorithm in the paper (320-bit state, round constants, bitsliced S-box, linear layer, duplex AEAD modes and sponge hash modes); no third-party code copied. The generated known-answer strings make the source about 500 KB",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Ascon-128, Ascon-128a and Ascon-80pq: for each, all 1089 known-answer vectors (plaintext 0..32 bytes x associated data 0..32 bytes, key 00 01 02 .., nonce 00 .. 0f) produce the published ciphertext||tag (3 x 1089 of 3 x 1089), and each published ciphertext decrypts back to the plaintext with a valid tag (3 x 1089 of 3 x 1089)",
+    "Ascon-Hash, Ascon-Hasha, Ascon-Xof (32-byte output) and Ascon-Xofa (32-byte output): for each, all 1025 messages of 0..1024 bytes (00 01 02 ..) produce the published 32-byte digest (4 x 1025 of 4 x 1025)",
+    "program sanity check, not a published value: a ciphertext with one flipped tag bit is rejected by the decryption routine for every vector"
+  ],
+  "expected_values_source": {
+    "what": "the LWC_AEAD_KAT_* and LWC_HASH_KAT_256.txt files of the authors' ascon-c repository, directories ascon128v12, ascon128av12, ascon80pqv12, asconhashv12, asconhashav12, asconxofv12, asconxofav12, tag v1.2.7; parsed mechanically (the parser also checked that every key, nonce, plaintext, associated-data and message is the expected 00 01 02 .. pattern)",
+    "url": "https://raw.githubusercontent.com/ascon/ascon-c/v1.2.7/crypto_aead/ascon128v12/LWC_AEAD_KAT_128_128.txt (and the six sibling files named above)",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers; the repository's code was not copied. The newer SP 800-232 Ascon-AEAD128/Ascon-Hash256 variants (different IVs) are not checked"
+  },
+  "negative_control": "built with -DASCON_PB_A=11 (eleven rounds instead of twelve for initialisation, finalisation and hashing), 0 of 3 x 1089 encryptions, 0 of 3 x 1089 decryptions and 0 of 4 x 1025 digests match and the program exits 1; check.sh reports NOT REPRODUCED",
+  "not_checked": [
+    "the paper's security claims, or any cryptanalysis of Ascon",
+    "the NIST SP 800-232 final standard variants (Ascon-AEAD128, Ascon-Hash256, Ascon-XOF128, Ascon-CXOF128), which use different IVs and parameters",
+    "XOF outputs longer than 32 bytes; plaintext, associated-data and message patterns other than 00 01 02 ..; keys and nonces other than the KAT's",
+    "speed or hardware-area figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the authors' published known-answer values for the inputs listed. It does not show Ascon is secure."
+}

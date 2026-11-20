@@ -1,0 +1,10 @@
+PASS hashlittle2 "", c=0 b=0                 : deadbeef deadbeef
+PASS hashlittle2 "", c=0 b=0xdeadbeef        : bd5b7dde deadbeef
+PASS hashlittle2 "", c=0xdeadbeef b=0xdeadbeef: 9c093ccd bd5b7dde
+PASS hashlittle2 "Four score...", c=0 b=0     : 17770551 ce7226e6
+PASS hashlittle2 "Four score...", c=0 b=1     : e3607cae bd371de4
+PASS hashlittle2 "Four score...", c=1 b=0     : cd628161 6cbea4b3
+PASS hashlittle  "Four score...", initval 0: 17770551
+PASS hashlittle  "Four score...", initval 1: cd628161
+PASS SMHasher verification value for lookup3  : 3d83917a
+PASS

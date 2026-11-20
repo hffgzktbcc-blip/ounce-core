@@ -1,0 +1,3 @@
+key 00..1f, lengths 0..64: 65 of 65 match
+PASS key {1,2,3,4}, 33 bytes 0x80..0xa0: 53c516cce478cad7
+PASS

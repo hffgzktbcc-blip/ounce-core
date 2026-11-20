@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Rabbit: A New High-Performance Stream Cipher",
+    "authors": ["Martin Boesgaard", "Mette Vesterager", "Thomas Pedersen", "Jesper Christiansen", "Ove Scavenius"],
+    "venue": "FSE 2003 (Fast Software Encryption), LNCS 2887",
+    "year": 2003
+  },
+  "program": {
+    "source": "rabbit.c",
+    "how": "written for ounce-core from the algorithm as specified in RFC 4503 (the designers' IETF specification of Rabbit); no third-party code copied. The FSE 2003 paper text itself was not fetched, so its own printed values are not what is compared",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "RFC 4503 Appendix A: 18 of 18 output blocks (3 keys without IV, 3 IVs under the zero master key, 3 blocks of 16 bytes each) match",
+    "RFC 4503 Appendix B: 8 of 8 printed inner-state snapshots (carry bit, X0..X7, C0..C7) match during key setup (after expansion, first and fourth iteration, final xor), after 48 output bytes, and during IV setup (after expansion, first and fourth iteration)",
+    "the program also reports (not counted as a match) that the key line printed in Appendix B (octet 6 'ED') does not reproduce the printed states, whereas the Appendix A key (octet 6 '3D') does: a typo in the RFC's debugging section"
+  ],
+  "expected_values_source": {
+    "what": "the test vectors (Appendix A) and debugging vectors (Appendix B) of RFC 4503, parsed mechanically from the fetched RFC text",
+    "url": "https://www.rfc-editor.org/rfc/rfc4503.txt",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers"
+  },
+  "negative_control": "built with -DRAB_ITER=3 (three instead of four setup iterations), 0 of 18 output blocks and 2 of 8 state snapshots match and the program exits 1; check.sh reports NOT REPRODUCED",
+  "not_checked": [
+    "Rabbit's security claims or any cryptanalysis (the FSE paper's and later analyses)",
+    "values printed in the FSE 2003 paper itself (only RFC 4503's vectors were fetched)",
+    "encryption of non-zero data with partial final blocks (the vectors are raw keystream)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the keystream and inner states printed in RFC 4503's appendices. It does not show the cipher is secure."
+}

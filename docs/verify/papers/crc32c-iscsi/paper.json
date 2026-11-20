@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Internet Small Computer Systems Interface (iSCSI), RFC 3720: CRC32C digest (section 12.1) and CRC examples (Appendix B.4)",
+    "authors": ["J. Satran", "K. Meth", "C. Sapuntzakis", "M. Chadalapaka", "E. Zeidner"],
+    "venue": "IETF RFC 3720 (Standards Track)",
+    "year": 2004
+  },
+  "program": {
+    "source": "crc32c.c",
+    "how": "written for ounce-core from the RFC's description of the CRC process: a bit-by-bit polynomial division and an independent table-driven reflected CRC (table built at run time), required to agree; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "CRC32C with generator 0x11edc6f41 of 32 bytes of zeroes, 32 bytes of 0xff, the bytes 00..1f, the bytes 1f..00 and the 48-byte SCSI Read(10) command PDU gives the five CRC byte strings of Appendix B.4 (aa 36 91 8a, 43 ab a8 62, 4e 79 dd 46, 5c db 3f 11, 56 3a 96 d9)",
+    "for each of the five inputs, computing the remainder over the segment extended with its own CRC gives the residue 0x1c2d19ed stated in section 12.1 (5 checks)",
+    "the bitwise polynomial division and the table-driven CRC agree on all five inputs"
+  ],
+  "expected_values_source": {
+    "what": "Appendix B.4 (CRC Examples) and the last paragraph of the CRC description in section 12.1 of RFC 3720",
+    "url": "https://www.rfc-editor.org/rfc/rfc3720.txt",
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers; the 48 PDU bytes were extracted from the RFC text by a script"
+  },
+  "negative_control": "built with CRC32C_POLY=0x11edc6f40 (generator with its x^0 term removed), the zeroes example gives 887f57fd instead of aa36918a, all ten published values fail and the program exits 1",
+  "not_checked": [
+    "the RFC's prose bit order: read literally (bit 7 of each byte first, x^31 in bit 7 of the first digest byte) it gives 55 6c 89 51 for the zeroes example, not the published aa 36 91 8a; the examples and the residue reproduce with the least-significant-bit-first order that deployed iSCSI/CRC32C implementations use, which is what this program uses. Whether this is a known erratum was not looked up",
+    "the other CRC32C-related RFC text (header and data digest placement, padding rules) and the error-detection properties of the polynomial",
+    "speed figures (emulator run time says nothing about real hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the five CRC byte strings and the residue that RFC 3720 prints, with two independent CRC implementations agreeing. It does not show the polynomial's error-detection claims."
+}

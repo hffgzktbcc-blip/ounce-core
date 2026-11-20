@@ -1,0 +1,32 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "ZLIB Compressed Data Format Specification version 3.3 (RFC 1950): the Adler-32 checksum",
+    "authors": ["L. Peter Deutsch", "Jean-Loup Gailly"],
+    "venue": "IETF RFC 1950 (Informational)",
+    "year": 1996
+  },
+  "program": {
+    "source": "adler32.c",
+    "how": "written for ounce-core from the RFC's definition of Adler-32, in two forms that must agree (reduction after every byte, and deferred reduction every NMAX bytes with NMAX derived in the program); no third-party code copied. The golden values are in vectors.inc (numbers and input descriptions only)",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Adler-32 (modulus 65521, s1 initial 1, s2 initial 0) of 43 inputs, from the empty string to 260000 bytes, equals the 43 golden values of the Go standard library test table, in both the plain and the deferred-reduction form",
+    "the inputs include runs of 0xff bytes of length 5549..5556 whose lengths straddle the derived NMAX of 5552, where a deferred-reduction implementation with the wrong block length would overflow"
+  ],
+  "expected_values_source": {
+    "what": "the `golden` table (expected 32-bit value, input) of the Go project's hash/adler32 test file. RFC 1950 prints the algorithm but no test values, so these values are a third-party test table, not the RFC authors' own",
+    "url": "https://raw.githubusercontent.com/golang/go/master/src/hash/adler32/adler32_test.go (algorithm from https://www.rfc-editor.org/rfc/rfc1950.txt)",
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied by a script that parsed all 43 entries; no code was copied. The Go table's own provenance (how its values were first produced) was not checked"
+  },
+  "negative_control": "built with ADLER_BASE=65519 (modulus 65519 instead of the prime 65521), only 14 of the 43 values still match in each form (the shortest inputs, whose sums stay below the modulus; for example vector 11 gives 3f0b0f02 instead of 3f090f02), the program prints FAIL and exits 1",
+  "not_checked": [
+    "values printed in RFC 1950 itself (it prints none), Adler-32 as used inside zlib streams, and the combine function",
+    "the Go table's values against an independent implementation such as zlib: they are taken as the published reference",
+    "Adler-32's weakness on short messages and any other error-detection claim",
+    "speed figures (emulator run time says nothing about real hardware), Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces 43 Adler-32 golden values from the Go project's test table with two implementations that agree. It does not show anything about Adler-32's error-detection quality."
+}

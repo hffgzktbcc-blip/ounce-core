@@ -1,0 +1,18 @@
+PASS Appendix A.1 vector 1 (3 blocks)
+PASS Appendix A.1 vector 2 (3 blocks)
+PASS Appendix A.1 vector 3 (3 blocks)
+PASS Appendix A.2 vector 1 (3 blocks)
+PASS Appendix A.2 vector 2 (3 blocks)
+PASS Appendix A.2 vector 3 (3 blocks)
+PASS B.1 state after key expansion
+PASS B.1 state after first key setup iteration
+PASS B.1 state after fourth key setup iteration
+PASS B.1 state after final key setup xor
+PASS B.1 state after generation of 48 bytes
+PASS B.2 state after IV expansion
+PASS B.2 state after first IV setup iteration
+PASS B.2 state after fourth IV setup iteration
+NOTE Appendix B key line as printed (..2E ED 36..) reproduces the printed initial state: no (printed key has a typo; Appendix A and the states use 3D)
+Appendix A: 18 of 18 output blocks match
+Appendix B: 8 of 8 state snapshots match
+PASS

@@ -1,0 +1,31 @@
+PASS RFC1071 byte-by-byte Sum1, high column: 2dc
+PASS RFC1071 byte-by-byte Sum1, low column: 1f0
+PASS RFC1071 byte-by-byte Sum2, high byte: dd
+PASS RFC1071 byte-by-byte Sum2, low byte: f2
+PASS RFC1071 16-bit words, normal order Sum1: 2ddf0
+PASS RFC1071 16-bit words, normal order Sum2: ddf2
+PASS RFC1071 16-bit words, swapped order Sum1: 1f2dc
+PASS RFC1071 16-bit words, swapped order Sum2: f2dd
+PASS RFC1071 16-bit words, swapped order Final Swap: ddf2
+PASS RFC1071 32-bit normal Sum1: f4f7e8fa
+PASS RFC1071 32-bit normal Sum2 (halves added): 1ddf1
+PASS RFC1071 32-bit normal Sum3: ddf2
+PASS RFC1071 32-bit swapped Sum1: f6f4fbe8
+PASS RFC1071 32-bit swapped Sum2 (halves added): 1f2dc
+PASS RFC1071 32-bit swapped Sum3: f2dd
+PASS RFC1071 32-bit reversed Sum1: fbe8f6f4
+PASS RFC1071 32-bit reversed Sum2 (halves added): 1f2dc
+PASS RFC1071 32-bit reversed Sum3: f2dd
+PASS RFC1071 odd boundary Sum1: f201
+PASS RFC1071 odd boundary Sum2: 1f0ea
+PASS RFC1071 odd boundary Sum3: f0eb
+PASS RFC1071 odd boundary Sum4: 1ddf1
+PASS RFC1071 odd boundary Sum5: ddf2
+PASS RFC1624 HC = ~(0xCD7A + 0x5555): dd2f
+PASS RFC1624 HC' by recomputation: 0000
+PASS RFC1624 Eqn.2 (RFC 1141) result, the wrong value: ffff
+PASS RFC1624 Eqn.3 HC' = ~(~HC + ~m + m'): 0000
+PASS RFC1624 Eqn.4 HC' = HC - ~m - m': 0000
+PASS RFC1624 verification 0xCD7A + 0x3285 + 0xFFFF: ffff
+PASS RFC1624 verification 0xCD7A + 0x3285 + 0x0000: ffff
+PASS

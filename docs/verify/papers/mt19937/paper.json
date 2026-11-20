@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Mersenne Twister: a 623-dimensionally equidistributed uniform pseudo-random number generator",
+    "authors": ["Makoto Matsumoto", "Takuji Nishimura"],
+    "venue": "ACM Transactions on Modeling and Computer Simulation 8(1)",
+    "year": 1998
+  },
+  "program": {
+    "source": "mt19937.c",
+    "how": "written for ounce-core from the paper's recurrence (n=624, m=397, r=31, twist constant 9908b0df) and tempering; the 2002 seeding routines (init_genrand, init_by_array) were re-implemented from the authors' reference source, which is where their multipliers are defined; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "after init_by_array({0x123, 0x234, 0x345, 0x456}) the first 1000 outputs of the 32-bit generator equal the 1000 values the authors published",
+    "a default-seeded (5489) mt19937 produces 4123659995 as its 10000th output, the value the C++ standard requires"
+  ],
+  "expected_values_source": {
+    "what": "the 1000 genrand_int32() outputs in the authors' mt19937ar.out; the 10000th-output value from the C++ standard draft ([rand.predef], mt19937)",
+    "url": "https://www.math.sci.hiroshima-u.ac.jp/m-mat/MT/MT2002/CODES/mt19937ar.out",
+    "also": ["https://raw.githubusercontent.com/cplusplus/draft/main/source/numerics.tex"],
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers; the authors' code was read only to confirm the seeding constants and was not copied. The 10000th-output value is from the C++ standard, not from the 1998 paper."
+  },
+  "negative_control": "built with -DMT_M=396 (middle offset 396 instead of 397), 0 of 1000 published outputs match, the 10000th-output check fails and the program exits 1 (checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the paper's equidistribution (623-dimensional) and period 2^19937-1 claims",
+    "the real-valued outputs (genrand_real*), which the authors' .out file also lists",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "the original 1998 seeding routine (the published outputs use the 2002 init_by_array)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 1000 published MT19937 outputs and the standard's 10000th value. It does not show the statistical claims hold."
+}

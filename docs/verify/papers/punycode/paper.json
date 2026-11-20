@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "RFC 3492: Punycode: A Bootstring encoding of Unicode for Internationalized Domain Names in Applications (IDNA)",
+    "authors": ["Adam M. Costello"],
+    "venue": "IETF RFC 3492 (Standards Track)",
+    "year": 2003
+  },
+  "program": {
+    "source": "punycode.c",
+    "how": "written for ounce-core from the encoding, decoding and bias-adaptation procedures of RFC 3492 sections 6.1 to 6.3 with the parameter values of section 5; no third-party code copied (the RFC's C implementation in appendix C was not used)",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "The 19 sample strings (A) to (S) of section 7.1 (Arabic, Chinese, Czech, Hebrew, Hindi, Japanese, Korean, Russian, Spanish, Vietnamese and the Japanese artist/title examples, and an ASCII string) encode to the published Punycode, including the RFC's upper-case marking (U+) of the last digit of a code point (19 of 19), and decode back to the published code points (19 of 19)",
+    "The decoding traces of section 7.2 and the encoding traces of section 7.3 for samples B and L: for each of the 15 steps the program's encoder reproduces the published code point, delta, digit string and bias, and its decoder reproduces the published digit string, delta, bias and intermediate string (30 of 30 step checks)"
+  ],
+  "expected_values_source": {
+    "what": "RFC 3492 sections 5, 7.1, 7.2 and 7.3; samples.inc is generated from the fetched RFC text by a script (code points with their u+/U+ flag, expected strings, trace values)",
+    "url": "https://www.rfc-editor.org/rfc/rfc3492.txt",
+    "fetched": "2026-11-19",
+    "note": "values are data copied as numbers; none of the RFC's code was copied"
+  },
+  "negative_control": "built with -DNEG=1 (the first call of adapt() divides by 70 instead of 700) only 8 of 19 samples encode and 8 of 19 decode correctly, 11 of 30 trace steps match, and the program exits 1",
+  "not_checked": [
+    "overflow handling (section 6.4) and the error cases of the decoder (non-basic code points before the delimiter, bad digits)",
+    "IDNA itself: the xn-- prefix, Nameprep, label length limits",
+    "case-flag annotation beyond the examples (decoding does not report the flags)",
+    "speed (emulator run time says nothing about real hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the Punycode strings and the step-by-step traces that RFC 3492 publishes. It does not show the codec handles every Unicode input."
+}

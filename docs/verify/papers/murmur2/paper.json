@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "MurmurHash2, MurmurHash2A, MurmurHash64A and MurmurHash64B and their SMHasher verification values",
+    "authors": ["Austin Appleby"],
+    "venue": "SMHasher reference repository (public domain; there is no peer-reviewed paper)",
+    "year": 2008
+  },
+  "program": {
+    "source": "murmur2.c",
+    "how": "written for ounce-core from the algorithms in the author's published reference source; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "MurmurHash2 (32-bit) passes the author's SMHasher verification value 0x27864C1E",
+    "MurmurHash2A passes the author's SMHasher verification value 0x7FBD4396",
+    "MurmurHash64A passes the author's SMHasher verification value 0x1F0D3804",
+    "MurmurHash64B passes the author's SMHasher verification value 0xDD537C05",
+    "each verification value is computed with the SMHasher procedure (256 hashes of the keys {0}, {0,1}, ... of length 0..255 with seed 256-length, then one hash of the concatenated outputs with seed 0, first 4 bytes little-endian), so it exercises every tail length and the block loop of its variant"
+  ],
+  "expected_values_source": {
+    "what": "the four verification values in the hash table of main.cpp, and the verification procedure in VerificationTest of KeysetTest.cpp; the algorithms are from MurmurHash2.cpp",
+    "url": "https://raw.githubusercontent.com/aappleby/smhasher/master/src/main.cpp (also KeysetTest.cpp, MurmurHash2.cpp and Hashes.h, which fixes how the 64-bit variants take a 32-bit seed, in the same directory)",
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers; the repository's code was not copied"
+  },
+  "negative_control": "built with M2_R=23 (shift of the 32-bit block mix 23 instead of 24), MurmurHash2, 2A and 64B print FAIL (for example 4c47374c instead of 27864c1e) and the program exits 1; 64A does not use that constant and still passes",
+  "not_checked": [
+    "any statistical or avalanche quality claim made for MurmurHash2 (SMHasher's other tests)",
+    "speed figures (emulator run time says nothing about real hardware)",
+    "big-endian behaviour, unaligned reads, the aligned and incremental variants (MurmurHashAligned2, CMurmurHash2A), MurmurHashNeutral2 and MurmurHash1",
+    "64-bit seeds (the verification procedure uses 32-bit seeds, so the upper seed half of MurmurHash64B is always 0)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the four verification values the MurmurHash2 author publishes, each over 256 hashes (1024 hashes in all). It does not show any quality claim about the hash."
+}

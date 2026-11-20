@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Salsa20 specification",
+    "authors": ["Daniel J. Bernstein"],
+    "venue": "eSTREAM (ECRYPT stream cipher project) submission document, cr.yp.to/snuffle/spec.pdf",
+    "year": 2005
+  },
+  "program": {
+    "source": "salsa20.c",
+    "how": "written for ounce-core from the definitions in the specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "the specification's worked examples for quarterround (7 of 7), rowround (2 of 2), columnround (2 of 2), doubleround (2 of 2) and littleendian (3 values) reproduce exactly",
+    "the four Salsa20 hash examples reproduce exactly, including the example that iterates the hash one million times (Salsa20^1000000)",
+    "the two expansion-function examples reproduce exactly (32-byte key Salsa20_{k0,k1}(n) and 16-byte key Salsa20_k(n))"
+  ],
+  "expected_values_source": {
+    "what": "the numeric examples printed in sections 3 to 9 of the specification, parsed mechanically from the text of the fetched PDF (pdftotext) into the C source, not typed by hand",
+    "url": "https://cr.yp.to/snuffle/spec.pdf",
+    "fetched": "2026-11-19",
+    "note": "the examples are data, copied as numbers; the specification contains no code and none was copied from elsewhere"
+  },
+  "negative_control": "built with -DS_ROUNDS=9 (nine double rounds instead of ten), 15 of 20 example groups match (the all-zero hash example and the round-function examples are unaffected), the program prints FAIL and exits 1; check.sh would report NOT REPRODUCED",
+  "not_checked": [
+    "the specification's security claims or any cryptanalysis",
+    "the stream-encryption function of section 10 (the specification gives no test vector for it; this check does not run it)",
+    "other round counts (Salsa20/8, Salsa20/12) and the eSTREAM test-vector files",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the values the specification prints for its 20 example groups. It does not show the cipher is secure."
+}

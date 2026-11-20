@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "RFC 1951: DEFLATE Compressed Data Format Specification version 1.3",
+    "authors": ["Peter Deutsch"],
+    "venue": "IETF RFC 1951 (Informational)",
+    "year": 1996
+  },
+  "program": {
+    "source": "deflate_huffman.c",
+    "how": "written for ounce-core from the RFC's description of canonical code assignment (section 3.2.2) and the fixed code and length/distance tables (3.2.5, 3.2.6); no third-party code copied (not the RFC's code, not zlib)",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "The section 3.2.2 worked example (alphabet ABCDEFGH, lengths 3,3,3,3,3,2,4,4): the three bl_count values and four next_code values (7 of 7) and the 8 published codes 010 011 100 101 110 00 1110 1111 (8 of 8)",
+    "The (2,1,3,3) example for alphabet ABCD gives A=10 B=0 C=110 D=111 (4 of 4)",
+    "The fixed literal/length code of 3.2.6: first and last code of each of the four published ranges, with consecutive codes inside each range (4 of 4), and the code is complete (Kraft sum exactly 1)",
+    "All 288 fixed codes decode back to their symbol bit by bit (288 of 288; a self-consistency check, not a published number)",
+    "The 29 length codes (extra bits, smallest and largest length) and the 30 distance codes of 3.2.5, built here by rule, equal the RFC tables (29 of 29 and 30 of 30)"
+  ],
+  "expected_values_source": {
+    "what": "the worked examples of section 3.2.2, the fixed-code ranges of 3.2.6 and the two tables of 3.2.5 in RFC 1951; tables.inc is generated from the fetched RFC text by a script, the example values and the four range endpoints were copied from the fetched text",
+    "url": "https://www.rfc-editor.org/rfc/rfc1951.txt",
+    "fetched": "2026-11-19",
+    "note": "values are data copied as numbers; none of the RFC's code was copied"
+  },
+  "negative_control": "built with -DNEG=1 (step 2 of the code assignment omits the left shift), the bl_count/next_code values match only 5 of 7, the codes 1 of 8 and 1 of 4, the fixed-code ranges 1 of 4, the round trip 152 of 288, and the program exits 1",
+  "not_checked": [
+    "Huffman's 1952 algorithm for building optimal code lengths from frequencies (the RFC takes lengths as given)",
+    "the DEFLATE bitstream itself: block headers, dynamic Huffman header decoding, LZ77 matching and the 32 KiB window (no complete compressed stream is published in the RFC)",
+    "compression ratio or speed",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the canonical Huffman codes and the length/distance tables that RFC 1951 publishes. It does not show that a full DEFLATE codec interoperates."
+}

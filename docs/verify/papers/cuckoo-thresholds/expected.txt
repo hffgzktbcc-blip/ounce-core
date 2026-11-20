@@ -1,0 +1,46 @@
+table of c_{k,l} recomputed (computed / published, tolerance 5.1e-11):
+  l=2 k=3: 0.9179352767 ok
+  l=2 k=4: 0.9767701649 ok
+  l=2 k=5: 0.9924383913 ok
+  l=2 k=6: 0.9973795528 ok
+  l=2 k=7: 0.9990637588 ok
+  l=3 k=2: 1.7940237365 ok
+  l=3 k=3: 1.9764028279 ok
+  l=3 k=4: 1.9964829679 ok
+  l=3 k=5: 1.9994487201 ok
+  l=3 k=6: 1.9999137473 ok
+  l=3 k=7: 1.9999866878 ok
+  l=4 k=2: 2.8774628058 ok
+  l=4 k=3: 2.9918572178 ok
+  l=4 k=4: 2.9993854302 ok
+  l=4 k=5: 2.9999554360 ok
+  l=4 k=6: 2.9999969384 ok
+  l=4 k=7: 2.9999997987 ok
+  l=5 k=2: 3.9214790971 ok
+  l=5 k=3: 3.9970126256 ok
+  l=5 k=4: 3.9998882644 ok
+  l=5 k=5: 3.9999962949 ok
+  l=5 k=6: 3.9999998884 ok
+  l=5 k=7: 3.9999999969 ok
+  l=6 k=2: 4.9477568093 ok
+  l=6 k=3: 4.9988732941 ok
+  l=6 k=4: 4.9999793407 ok
+  l=6 k=5: 4.9999996871 ok
+  l=6 k=6: 4.9999999959 ok
+  l=6 k=7: 5.0000000000 ok
+  l=7 k=2: 5.9644362395 ok
+  l=7 k=3: 5.9995688805 ok
+  l=7 k=4: 5.9999961417 ok
+  l=7 k=5: 5.9999999733 ok
+  l=7 k=6: 5.9999999998 ok
+  l=7 k=7: 6.0000000000 ok
+published c_{k,l} values reproduced: 35 of 35
+c=0.70: 2-core edges 0
+c=0.78: 2-core edges 0
+loads below the 2-core threshold min g (computed 8185 /10000) with an empty 2-core: 2 of 2
+c=0.88: 2-core vertices 26122 (Prop. 2 predicts 26095), edges 25101 (predicts 24960) within 3%; core has fewer edges than vertices (placeable)
+c=0.96: 2-core vertices 28437 (Prop. 2 predicts 28481), edges 29681 (predicts 29739) within 3%; core has more edges than vertices (no placement exists)
+c=1.00: 2-core vertices 29024 (Prop. 2 predicts 28910), edges 31423 (predicts 31340) within 3%; core has more edges than vertices (no placement exists)
+loads with 2-core size within 3% of Proposition 2: 3 of 3
+loads on the side of c_{3,2} the paper predicts (edges < vertices below, edges > vertices above): 3 of 3
+PASS

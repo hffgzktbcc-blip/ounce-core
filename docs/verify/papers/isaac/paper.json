@@ -1,0 +1,42 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "ISAAC and RC4 (the ISAAC pseudorandom number generator)",
+    "authors": [
+      "Robert J. Jenkins Jr."
+    ],
+    "venue": "web-published paper, 1993-1996 (https://burtleburtle.net/bob/rand/isaac.html)",
+    "year": 1996
+  },
+  "program": {
+    "source": "isaac.c",
+    "how": "written for ounce-core from the paper's description of ISAAC (256-word state, indirection / shift / accumulate / add / count step with shifts 13, 6, 2, 16); the golden-ratio initialisation mixing and the order in which the author's rand() macro consumes a block were taken from the author's public-domain reference source rand.c / rand.h and re-implemented in a different form (table-driven loop); no code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "with an all-zero seed array (the author's -DNEVER test), the two output blocks of 256 words (512 words) equal the author's published randvect.txt",
+    "with the seed text \"This is <i>not</i> the right mytext.\" (the author's randtest.c), the 2560 values drawn with the reference rand() semantics equal the author's published randseed.txt"
+  ],
+  "expected_values_source": {
+    "what": "the author's randvect.txt (512 words) and randseed.txt (2560 words), the published outputs of his reference code",
+    "url": "https://burtleburtle.net/bob/rand/randvect.txt",
+    "also": [
+      "https://burtleburtle.net/bob/rand/randseed.txt",
+      "https://burtleburtle.net/bob/c/rand.c",
+      "https://burtleburtle.net/bob/c/rand.h",
+      "https://burtleburtle.net/bob/c/randtest.c",
+      "https://burtleburtle.net/bob/rand/isaac.html"
+    ],
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers; the author's code was read for the initialisation and test setup. The page calls itself a paper and gives 1993-1996 as its dates; the venue string above is the page itself, no journal or proceedings reference was verified from the fetched sources"
+  },
+  "negative_control": "built with -DISAAC_S0=12 (first shift 12 instead of 13), 0 of 512 randvect words match, 6 of 2560 randseed words still match (the first words of the first block, which are computed before the changed shift has acted on the state, plus indices that were not individually investigated) and the program exits 1 (checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the paper's security, cycle-length and bias claims, and the IA and IBAA generators and RC4 comparison",
+    "ISAAC-64",
+    "any seed other than the two the author publishes",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 3072 published ISAAC output words for the two seeds. It does not show the security or cycle-length claims hold."
+}

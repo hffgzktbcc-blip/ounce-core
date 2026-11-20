@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "lookup3.c: hashlittle() and hashlittle2(), 32-bit hashes for hash table lookup",
+    "authors": ["Bob Jenkins"],
+    "venue": "burtleburtle.net/bob/c/lookup3.c, May 2006, public domain (a web publication, not peer reviewed)",
+    "year": 2006
+  },
+  "program": {
+    "source": "lookup3.c",
+    "how": "written for ounce-core from the algorithm in the author's published lookup3.c (mix, final and the 12-byte block structure, read byte by byte so alignment plays no role); no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "hashlittle2 of the empty key with initial values (c,b) = (0,0), (0,0xdeadbeef) and (0xdeadbeef,0xdeadbeef) gives the author's values deadbeef deadbeef, bd5b7dde deadbeef and 9c093ccd bd5b7dde (c then b)",
+    "hashlittle2 of \"Four score and seven years ago\" (30 bytes) with (c,b) = (0,0), (0,1) and (1,0) gives 17770551 ce7226e6, e3607cae bd371de4 and cd628161 6cbea4b3",
+    "hashlittle of the same 30-byte key with initval 0 and 1 gives 17770551 and cd628161",
+    "the SMHasher verification value for lookup3 is 0x3D83917A (256 hashes of keys of length 0..255 with seed 256-length, one hash of the concatenated outputs with seed 0); this covers every tail length 0..12 and the multi-block loop"
+  ],
+  "expected_values_source": {
+    "what": "the comments beside each call in driver5() of the author's lookup3.c, and the lookup3 entry (0x3D83917A) in the hash table of SMHasher's main.cpp with the procedure from KeysetTest.cpp and the seeding wrapper in lookup3.cpp",
+    "url": "https://www.burtleburtle.net/bob/c/lookup3.c ; https://raw.githubusercontent.com/aappleby/smhasher/master/src/main.cpp (also KeysetTest.cpp and lookup3.cpp in the same directory)",
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers; the authors' code was not copied"
+  },
+  "negative_control": "built with L3_ROT1=5 (first rotation of mix() 5 instead of 4), the three empty-key values still pass (they involve no mixing) but the 30-byte values fail (for example 0f22a5f2 07fc1b43 instead of 17770551 ce7226e6), the verification value fails, and the program exits 1",
+  "not_checked": [
+    "hashword() (the 32-bit-word variant) and hashbig() (the big-endian variant): the author's driver prints no expected values for them",
+    "the author's other drivers (avalanche, alignment, timing) and any claim about distribution or speed (emulator run time says nothing about real hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the 14 hash values the lookup3 author records in his own driver and the SMHasher verification value (itself a digest of 256 hashes). It does not show any quality claim about the hash."
+}

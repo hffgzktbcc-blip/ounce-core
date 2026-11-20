@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Tight Thresholds for Cuckoo Hashing via XORSAT",
+    "authors": ["Martin Dietzfelbinger", "Andreas Goerdt", "Michael Mitzenmacher", "Andrea Montanari", "Rasmus Pagh", "Michael Rink"],
+    "venue": "ICALP 2010 (arXiv:0912.0287v3)",
+    "year": 2010
+  },
+  "program": {
+    "source": "cuckoo.c",
+    "how": "written for ounce-core from the paper's definitions (equations (2) to (4), Propositions 1 to 3): own exp() from + - * /, bisection for the roots, a random 3-uniform hypergraph generator with a fixed LCG seed and a peeling procedure for the 2-core; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf` (double arithmetic only, no libm, built with -ffp-contract=off)"
+  },
+  "claims_checked": [
+    "The paper's table of c_{k,l} (l = 2..7, k = 2..7; 35 values, the k=2,l=2 entry is '-') is recomputed from equations (3) and (4) and every value agrees with the published 10-decimal number to within 5.1e-11 (35 of 35); the tolerance was fixed before the first run",
+    "Random 3-uniform hypergraphs with n = 40000 edges, fixed seed: the 2-core is empty at loads 0.70 and 0.78, below min g (computed 0.8185, Proposition 1; this number is not in the paper's table and is not compared with a published value) (2 of 2)",
+    "At loads 0.88, 0.96 and 1.00 the measured 2-core has a vertex count and an edge count within 3% of the Proposition 2 values m*Pr[Po(beta(c))>=2] and n*Pr[Po(beta(c))>=1]^3 (3 of 3; tolerance fixed in advance)",
+    "The core has fewer edges than vertices at load 0.88 (below c_{3,2} = 0.9179352767) and more edges than vertices at 0.96 and 1.00 (above it), so no key placement exists there (3 of 3)"
+  ],
+  "expected_values_source": {
+    "what": "the table of c_{k,l} in Section 2 of the paper, and Propositions 1 to 3; table.inc is generated from the fetched arXiv text by a script",
+    "url": "https://arxiv.org/pdf/0912.0287",
+    "fetched": "2026-11-19",
+    "note": "an earlier version of the experiment expected an empty 2-core at load 0.88; that was a misreading on my side (the paper's c_{3,2} = 0.9179 is where the core's edge density reaches 1, the core itself appears at min g = 0.8185), so the experiment was rewritten to test what the paper states. The 3% tolerance and the table tolerance were not changed. The program uses plain double arithmetic with its own exp(), so output is the same on ounce-core and natively."
+  },
+  "negative_control": "built with -DNEG=1 (the Poisson tail in equation (3) uses l instead of l-1) 0 of 35 table values match, 0 of 3 core sizes are within 3% of Proposition 2, and the program exits 1",
+  "not_checked": [
+    "the paper's proof that the cuckoo hashing threshold equals the k-XORSAT threshold, and the conjecture for buckets holding several keys (l > 2 columns are only checked as the numbers c_{k,l} defined by equation (4))",
+    "actual cuckoo insertion (random walk or matching) on generated data; only the 2-core counting argument is run, and only for k = 3",
+    "finite-size behaviour near the threshold; one graph of 40000 keys per load",
+    "speed (emulator run time says nothing about real hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces all 35 numbers of the paper's threshold table from its own formulas and agrees with Proposition 2 on three generated graphs. It does not verify the paper's theorems."
+}

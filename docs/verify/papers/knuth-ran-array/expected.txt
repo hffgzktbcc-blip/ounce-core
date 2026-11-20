@@ -1,0 +1,3 @@
+PASS ran_start(310952), 2009 x ran_array(a,1009), ran_x[0]: 3b5215c1
+PASS ran_start(310952), 1009 x ran_array(a,2009), ran_x[0]: 3b5215c1
+PASS

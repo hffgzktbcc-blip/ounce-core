@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "RFC 8949: Concise Binary Object Representation (CBOR), Appendix A (Examples of Encoded CBOR Data Items)",
+    "authors": ["Carsten Bormann", "Paul Hoffman"],
+    "venue": "IETF RFC 8949 (Internet Standard 94)",
+    "year": 2020
+  },
+  "program": {
+    "source": "cbor.c",
+    "how": "written for ounce-core from the RFC's description of the initial byte, argument sizes, preferred (shortest) float serialization and indefinite-length items; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "All 81 examples of Appendix A Table 6 are built by the program's own encoder from their diagnostic notation (integers up to 2^64 and bignums, negative integers, 13 finite floats in half, single and double width, infinities and NaN in all three widths, false/true/null/undefined and simple values, tags, byte and text strings including U+00FC, U+6C34 and U+10151, nested arrays and maps, indefinite-length strings, arrays and maps) and give exactly the published bytes (81 of 81)",
+    "Each of the 81 published encodings is walked by a well-formedness decoder that consumes exactly its bytes and no more (81 of 81)",
+    "The 22 float examples decode from their published bytes back to the value written in diagnostic notation (22 of 22; the decimal literals such as 1.1 are parsed by the compiler)"
+  ],
+  "expected_values_source": {
+    "what": "the encoded column of RFC 8949 Appendix A Table 6; examples.inc is generated from the fetched RFC text by a script, and the diagnostic values were entered by hand as encoder calls in table order (a wrong entry makes the byte comparison fail, it cannot make it pass)",
+    "url": "https://www.rfc-editor.org/rfc/rfc8949.txt",
+    "fetched": "2026-11-19",
+    "note": "the simple-value numbers (false=20, true=21, null=22, undefined=23) are from RFC 8949 Table 4 in the same fetched text"
+  },
+  "negative_control": "built with -DNEG=1 (negative integers encoded as -n instead of -1-n) 5 of 81 examples fail (-1, -10, -100, -1000 and the map containing -2; -1 encodes as 0x21 instead of 0x20) and the program exits 1; with -DNEG=2 (floats never shortened) 12 of 81 fail",
+  "not_checked": [
+    "the full decoding rules: this program only checks well-formedness and the float values, not a complete decoder to diagnostic notation, duplicate map keys, UTF-8 validity or tag semantics",
+    "deterministic encoding (section 4.2) beyond the preferred float and integer forms: map key sorting is not tested",
+    "the appendix examples of other RFCs (CDDL, COSE) and CBOR sequences",
+    "speed (emulator run time says nothing about real hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the byte strings that RFC 8949 Appendix A publishes for its 81 examples. It does not show that the encoder is a complete CBOR implementation."
+}

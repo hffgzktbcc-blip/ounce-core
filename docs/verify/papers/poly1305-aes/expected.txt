@@ -1,0 +1,16 @@
+PASS example 0 AES_k(n): 580b3b0f9447bb1e69d095b5928b6dbc
+PASS example 0 authenticator: f4c633c3044fc145f84f335cb81953de
+PASS example 0 m(r) mod 2^130-5: 321e58e25a69d7f8f27060770b3f8bb9c
+PASS example 1 AES_k(n): dd3fab2251f11ac759f0887129cc2ee7
+PASS example 1 authenticator: dd3fab2251f11ac759f0887129cc2ee7
+PASS example 1 m(r) mod 2^130-5: 000000000000000000000000000000000
+PASS example 2 AES_k(n): 83149c69b561dd88298a1798b10716ef
+PASS example 2 authenticator: 0ee1c16bb73f0f4fd19881753c01cdbe
+PASS example 2 m(r) mod 2^130-5: 1cfb6f98add6a0ea7c631de020225cc8b
+PASS example 3 AES_k(n): 80f8c20aa71202d1e29179cbcb555a57
+PASS example 3 authenticator: 5154ad0d2cb26e01274fc51148491f1b
+PASS example 3 m(r) mod 2^130-5: 0c3c4f37c464bbd44306c9f8502ea5bd1
+paper Appendix B examples: 12 of 12 values match
+AES-128 known answers: 400 of 400 match
+authenticator chain: computed 10010, compared 1001 of 1001 published values (every tenth)
+PASS

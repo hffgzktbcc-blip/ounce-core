@@ -1,0 +1,32 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "An extended theory of Lucas' functions (the Lucas-Lehmer test for Mersenne numbers)",
+    "authors": ["D. H. Lehmer"],
+    "venue": "Annals of Mathematics 31(3), 419-448",
+    "year": 1930
+  },
+  "program": {
+    "source": "lucas-lehmer.c",
+    "how": "written for ounce-core from the Lucas-Lehmer criterion (s_0 = 4, s_(i+1) = s_i^2 - 2 mod 2^p - 1); own multi-word arithmetic on 64-bit limbs, no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "the Lucas-Lehmer test is applied to all 210 odd primes p <= 1300; exactly the exponents 3, 5, 7, 13, 17, 19, 31, 61, 89, 107, 127, 521, 607, 1279 give a zero residue, which with the base case p = 2 (M_2 = 3) is the published list of 15 Mersenne prime exponents up to 1300; no other exponent in the range passes and none is missed"
+  ],
+  "expected_values_source": {
+    "what": "the list of Mersenne prime exponents (sequence A000043), terms 1 to 15 (2 ... 1279); the data is the published list of exponents, copied as numbers. The 1930 paper itself was not fetched.",
+    "url": "https://oeis.org/A000043/b000043.txt",
+    "fetched": "2026-11-19",
+    "note": "the sequence entry lists the exponents found by Lucas, Lehmer, Robinson and later searchers; this check reproduces the list for p <= 1300 only"
+  },
+  "negative_control": "built with -DLL_START=3 (starting value 3 instead of 4), only 9 of the 15 exponents are found (2 3 7 19 31 107 127 607 1279) and the program exits 1",
+  "not_checked": [
+    "Mersenne exponents above 1300 (2203, 2281, ... up to 82589933): too slow for the 2 billion instruction default budget of ounce-core",
+    "the proof that the criterion is correct (only its outcome for primes up to 1300)",
+    "the p = 2 case is taken as given (M_2 = 3), the Lucas-Lehmer test is stated for odd p",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, finds exactly the 15 published Mersenne prime exponents up to 1300 by the Lucas-Lehmer test. It does not show that the test works for larger p."
+}

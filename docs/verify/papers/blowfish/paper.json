@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Description of a New Variable-Length Key, 64-Bit Block Cipher (Blowfish)",
+    "authors": [
+      "Bruce Schneier"
+    ],
+    "venue": "Fast Software Encryption (FSE) 1993, LNCS 809",
+    "year": 1993
+  },
+  "program": {
+    "source": "blowfish.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Blowfish with 16 rounds, with the initial P-array and S-boxes computed as the hex digits of pi (Machin's formula in big-integer fixed point inside the program), reproduces the 34 published ECB known-answer vectors (Eric Young's set)",
+    "The 24 published variable-key-length ciphertexts (keys of 1 to 24 bytes, prefixes of F0E1D2C3B4A5968778695A4B3C2D1E0F0011223344556677)",
+    "The published 32-byte CBC, 29-byte CFB64 and 29-byte OFB64 ciphertexts"
+  ],
+  "expected_values_source": {
+    "what": "'Test vectors by Eric Young' for Blowfish, hosted by the cipher's author",
+    "url": "https://www.schneier.com/wp-content/uploads/2015/12/vectors-2.txt",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as strings by script from the fetched file; no code was copied"
+  },
+  "negative_control": "built with -DBF_ROUNDS=15 (one Feistel round fewer), 0 of 34 ECB and 0 of 24 variable-key vectors match, CBC/CFB64/OFB64 fail, and the program exits 1",
+  "not_checked": [
+    "the paper's security claims (resistance to cryptanalysis, weak keys, the key-schedule cost argument)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "keys longer than 24 bytes (up to 56 bytes allowed by the paper) and other round counts",
+    "each P/S-box word individually against a published table: pi is computed, and only the vectors (which use a large share, not necessarily all, of the 1042 words) check it",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the published Blowfish ciphertexts for 61 single-block cases and 3 chaining-mode cases, with the tables generated from pi. It does not show the security claims hold."
+}
