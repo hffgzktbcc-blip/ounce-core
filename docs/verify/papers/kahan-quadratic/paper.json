@@ -1,0 +1,41 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "On the Cost of Floating-Point Computation Without Extra-Precise Arithmetic",
+    "authors": ["William Kahan"],
+    "venue": "unrefereed work-in-progress note, University of California, Berkeley (version of 20 November 2004)",
+    "year": 2004,
+    "text_read": "https://people.eecs.berkeley.edu/~wkahan/Qdrtcs.pdf (fetched 2026-11-19; tables, test cases and the MATLAB programs dscrmt, qdrtc, qdrtc0, break2 taken from the text)"
+  },
+  "program": {
+    "source": "qdrtc.c",
+    "how": "written for ounce-core from the formulas and MATLAB listings in the paper; a 4-digit decimal arithmetic emulator and 128-bit integer helpers are written in the same file; no third-party code",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "Table 1 (4 significant decimals, 2 rows): computed D = 0.1000 and 0, computed roots 2.914 2.852 and 2.881 2.881, computed changes -0.033 and +0.029, true D = 0.0022 and 0.0492 (exact integers), true roots 2.88772, 2.87859 and 2.90290",
+    "Table 2 (IEEE double, 2 rows): the naive discriminant B*B-A*C is 0.0 and 2.0, the naive roots equal the printed 16-digit values (1.000000014487979 twice; 1.000000025437873 and 0.999999995635551), the computed changes +0.000000010949894 and -0.000000018852428, the true D = 121/64 and 1, the true larger roots 1.000000028975958 and 1.000000021073424 and the true change -0.000000007902534 (from exact integer fractions)",
+    "Kahan's discriminant D = (P-Q)+(dP-dQ), with the Veltkamp/Dekker split (break2) and with a fused multiply-add, returns the exact D on both Table 2 rows, and qdrtc then returns the correctly rounded true roots",
+    "The integer test A = 2017810*8264001469, B = 39213*229699315399, C = 45077*107932908389: all three are exact doubles, B*B-A*C = -1 exactly (128-bit integers), the naive double formula does not give -1, both versions of Kahan's discriminant return -1, and the roots 0.54015588795707844... +- i*5.9969350369679512.../10^17 equal exact B/A and 1/A to the printed 17 digits",
+    "Fibonacci battery (n = 2..78, M chosen by a fixed generator; the paper's M are Matlab random numbers): qdrtc roots (real and imaginary parts, Dekker and FMA discriminants) are accurate to more than 52 bits in all 77 cases (worst case measured: 53 bits, measured against exact rational roots with 128-bit integers); the naive qdrtc0 real roots (even n) are within 12 bits of the paper's rough law 27+0.7|n-41| in all 39 cases and its imaginary parts (odd n) within 12 bits of max(0, 1.38(41-n)) in all 38 cases"
+  ],
+  "expected_values_source": {
+    "what": "tables, test data and accuracy statements as printed in the paper",
+    "url": "https://people.eecs.berkeley.edu/~wkahan/Qdrtcs.pdf",
+    "fetched": "2026-11-19",
+    "tolerance": "tables and test cases are compared exactly (printed digits; printed 5-decimal true roots as rounded). For the battery, the 12-bit tolerance on the paper's 'roughly' laws and the 52-bit claim were written down before the first run. The law 27+0.7|n-41| was first applied to the real part of the complex roots (odd n) as well, which is exact there (a single division), so the first run reported 20 deviations; after that it was applied to even n only (the real roots), which is how the text is read here: this restriction was made after seeing the result."
+  },
+  "observations": [
+    "Table 1 of the paper prints the smaller true root of the second row as 2.86075; the exact value is 2.85975 (rounded to 5 decimals), so the printed digit is a typo. The exact value satisfies the sum (2B/A) and product (C/A) of the roots, the printed one does not. The printed change in that root, -0.01784, therefore should be -0.01884. The check asserts exactly this discrepancy (and fails if it changes); all other Table 1 digits agree.",
+    "the paper's accuracy figures are read from plots and use Matlab's random M, so the battery checks the stated laws with a declared tolerance, not the plotted values",
+    "the paper's timing comparison (qdrtc versus qdrtc0) is not reproduced"
+  ],
+  "negative_control": "built with -DNEG_NODSCRMT (Kahan's discriminant replaced by the naive B*B-A*C), the integer test, Table 2 exactness checks and the 52-bit claim all fail (11 FAIL lines) and the program exits 1",
+  "not_checked": [
+    "the paper's timing claims, and the style-2 arithmetic (64-bit accumulation) variant of dscrmt, which needs x87 extended precision",
+    "overflow/underflow handling, NaN and infinite coefficients, A = 0 (the paper omits them)",
+    "Matlab-specific behaviour, the particular random M used in the paper, and the plotted accuracy values",
+    "Tier-4 and native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "ounce-core's double arithmetic and fused multiply-add reproduce Kahan's Table 2 and integer test exactly and the accuracy statements within the stated tolerance; his Table 1 agrees except for one printed digit that is inconsistent with exact arithmetic. It does not show the paper's wider cost argument."
+}

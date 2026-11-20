@@ -1,0 +1,6 @@
+Xor 8: built after 1 attempt(s), false negatives 0, false positives 3846 of 1000000 = 0.3846 %, bits per key 9.84 in range
+Xor 16: built after 1 attempt(s), false negatives 0, false positives 14 of 1000000 = 0.0014 %, bits per key 19.68 in range
+Bloom 8 (6 probes): false negatives 0, false positives 21379 of 1000000 = 2.1379 % in range
+Bloom 12 (8 probes): false negatives 0, false positives 3121 of 1000000 = 0.3121 % in range
+Bloom 16 (11 probes): false negatives 0, false positives 429 of 1000000 = 0.0429 % in range
+PASS
