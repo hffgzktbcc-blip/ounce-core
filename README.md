@@ -5,7 +5,7 @@
 Ounce-Core runs supported ARM64 programs through three CPU engines, compares their results with references recorded on real ARM64 hardware, and helps developers investigate differences.
 
 [![CI](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml/badge.svg)](https://github.com/hffgzktbcc-blip/ounce-core/actions/workflows/ci.yml)
-[![Bounded verification evidence](https://img.shields.io/badge/verification-bounded_evidence-84b89e?style=flat-square)](docs/DETAILS.md#legacy-switch-regression-corpus)
+[![First-frame oracles](https://img.shields.io/badge/first--frame_oracles-50%2F50_pass-84b89e?style=flat-square)](docs/DETAILS.md#legacy-switch-regression-corpus)
 [![MIT](https://img.shields.io/badge/License-MIT-84b89e?style=flat-square)](LICENSE)
 
 [![Ounce-Core in 90 seconds: one program, three engines, one hardware reference. Click to watch the full video.](docs/media/ounce-core-hero.gif)](docs/media/ounce-core-main.mp4)
