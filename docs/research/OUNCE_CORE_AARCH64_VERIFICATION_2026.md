@@ -5,7 +5,7 @@
 **Status:** Public project research report; not peer reviewed or independently replicated.  
 **Source snapshot:** [`c7a0ed9d8b83f73d0c090d129f2d9b06e0453108`](https://github.com/hffgzktbcc-blip/ounce-core/tree/c7a0ed9d8b83f73d0c090d129f2d9b06e0453108). Results cited below were generated at multiple earlier commits; the snapshot is a documentation anchor, not a claim that every experiment ran at this exact commit.
 
-> **Reading note (20 November 2026):** This is the unchanged 9 November research snapshot, not an up-to-date capability checklist. The subsequent [Ounce-Core v0.10.0 release](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.10.0) documents newer bounded results. The findings and numeric measurements below remain attributed to their original dates; no independent outside reproduction is claimed.
+> **Reading note (20 November 2026):** This reports the 9 November research snapshot, not an up-to-date capability checklist. The subsequent [Ounce-Core v0.10.0 release](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.10.0) documents newer bounded results. The findings and numeric measurements below remain attributed to their original dates; no independent outside reproduction is claimed.
 
 ## Abstract
 
