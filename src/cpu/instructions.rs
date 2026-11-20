@@ -273,7 +273,7 @@ pub enum Instruction {
     FpData1 { rd: u8, rn: u8, op: u8, is_double: bool },
 
     /// Floating-Point 3-Source: `FMADD` (o1 0, o0 0), `FMSUB` (0, 1), `FNMADD` (1, 0), `FNMSUB` (1, 1),
-    /// fused (one rounding): `Dd = (o1 ? -Da : Da) + (o0 ? -Dn : Dn) * Dm`
+    /// fused (one rounding): `Dd = (o1 ? -Da : Da) + (o0 ? -Dn : Dn) * Dm` (`esize` is 16, 32, or 64).
     FpData3 {
         rd: u8,
         rn: u8,
@@ -281,7 +281,7 @@ pub enum Instruction {
         ra: u8,
         o1: bool,
         o0: bool,
-        is_double: bool,
+        esize: u8,
     },
 
     /// Floating-Point round to integral: `FRINT{N,P,M,Z,A,X,I}` (op = bits 17..15 of the encoding)
@@ -1049,6 +1049,11 @@ pub enum SimdFpOp3 {
     /// `FRECPS` (`2 - n*m`) and `FRSQRTS` (`(3 - n*m) / 2`), fused
     Frecps,
     Frsqrts,
+    /// `FMLAL`/`FMLSL`/`FMLAL2`/`FMLSL2` (FEAT_FHM): FP16 -> FP32 widening fused multiply-add/sub.
+    Fmlal,
+    Fmlsl,
+    Fmlal2,
+    Fmlsl2,
 }
 
 /// AdvSIMD floating-point two-register operations: zero compares, `FABS`/`FNEG`/`FSQRT`, and the

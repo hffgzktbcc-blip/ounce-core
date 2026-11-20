@@ -1195,17 +1195,29 @@ impl Cpu {
                 ra,
                 o1,
                 o0,
-                is_double,
+                esize,
             } => {
-                let (f, env) = self.fp_env(is_double);
-                let (n, m, a) = (
-                    self.fp_bits(rn, is_double),
-                    self.fp_bits(rm, is_double),
-                    self.fp_bits(ra, is_double),
-                );
-                let n = if o0 != o1 { f.neg(n) } else { n };
-                let a = if o1 { f.neg(a) } else { a };
-                self.set_fp_bits(rd, is_double, softfp::fma(f, env, n, m, a));
+                if esize == 16 {
+                    let f = softfp::F16;
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let n = (self.regs.v[rn as usize] & 0xFFFF) as u64;
+                    let m = (self.regs.v[rm as usize] & 0xFFFF) as u64;
+                    let a = (self.regs.v[ra as usize] & 0xFFFF) as u64;
+                    let n = if o0 != o1 { f.neg(n) } else { n };
+                    let a = if o1 { f.neg(a) } else { a };
+                    self.regs.v[rd as usize] = softfp::fma(f, env, n, m, a) as u128;
+                } else {
+                    let is_double = esize == 64;
+                    let (f, env) = self.fp_env(is_double);
+                    let (n, m, a) = (
+                        self.fp_bits(rn, is_double),
+                        self.fp_bits(rm, is_double),
+                        self.fp_bits(ra, is_double),
+                    );
+                    let n = if o0 != o1 { f.neg(n) } else { n };
+                    let a = if o1 { f.neg(a) } else { a };
+                    self.set_fp_bits(rd, is_double, softfp::fma(f, env, n, m, a));
+                }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
