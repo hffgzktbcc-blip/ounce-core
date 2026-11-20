@@ -210,6 +210,32 @@ jobs:
         run: |
           cd dist
           sha256sum *.tar.gz *.zip *.spdx.json > SHA256SUMS
+      - name: Refuse draft or pre-tag release notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          notes = Path('docs/releases') / (os.environ['RELEASE_TAG'] + '.md')
+          if not notes.is_file():
+              raise SystemExit(f'Missing release notes: {notes}')
+          body = notes.read_text(encoding='utf-8')
+          bad = re.search(
+              r'(?mi)^# .*\b(draft|not published)\b'
+              r'|^\*\*Status:.*\b(draft|release prep|not yet tagged|not yet published)\b'
+              r'|^## Before tagging\b'
+              r'|tag pending owner decision',
+              body,
+          )
+          if bad:
+              raise SystemExit(f'Release notes still contain pre-publication language: {bad.group(0)!r}')
+          print(f'Publication-ready release notes: {notes}')
+          PY
+
       - name: Publish complete release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3
         with:
