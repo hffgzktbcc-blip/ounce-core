@@ -8,6 +8,7 @@ Before selecting work, reconcile **current `main`, merged PRs, open issues/PRs, 
 
 Build useful end-to-end results. The current request sets scope; `PLAN.md` is the
 prioritized backlog, not a permission system. Historical notes do not add rules.
+When editing public documentation, follow [the clarity and freshness checklist](docs/README.md#keep-live-documentation-clear-and-current): name the actor, use active verbs, separate shipped from planned work, and link dated test evidence.
 
 - Inspect relevant code and existing work, then act. Use the provided checkout on a
   topic branch; preserve unrelated changes and stage only your own paths.

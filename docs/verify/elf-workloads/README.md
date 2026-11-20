@@ -1,8 +1,6 @@
 # Original ELF workloads (`elf-*` harnesses)
 
-Project-written C programs that grow the Linux ARM64 ELF matrix (`scripts/run_linux_arm64_matrix.py`, CI job
-`linux-arm64-elf-matrix`) toward the 50+ workload target of issue #474. They are first-party: no vendored
-binaries, no third-party source, no downloads. CI builds each one from the `.c` file in this directory with the
+Ounce-Core builds these original C workloads and runs them as part of its Linux ARM64 ELF matrix (`scripts/run_linux_arm64_matrix.py`, CI job `linux-arm64-elf-matrix`). The matrix reached **51 harnesses**, including these **23 first-party workloads**, in v0.10.0 (#474, #510). The [full matrix passed on the tagged release commit](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/44746386566/job/136322674982). These are internal, bounded checks—not independent reproduction. There are no vendored binaries, third-party source files, or downloads in this workload directory. CI builds each one from the `.c` file in this directory with the
 same Zig `aarch64-linux-musl` toolchain as the other harnesses (`-static -no-pie`, so the result is a static musl
 `ET_EXEC`), and builds the same source for the host as the reference.
 
@@ -48,12 +46,11 @@ are listed. The `provenance` field of each `differential.json` entry points here
 The initial 17 harnesses (`elf-strops` through `elf-trees`) were built with `python3 -m ziglang cc -target aarch64-linux-musl` (Zig 0.17.1) and the host
 `cc` (gcc) at `O1`, `O2` and `O3_M1`, and run through `scripts/run_linux_arm64_matrix.py --only ...` on an
 x86-64 Linux host: host stdout equals the `run-elf` stdout byte for byte on `--cpu=tier3` and `--cpu=tier4`,
-and `diverge` reports interpreter, Tier-3 and Tier-4 identical. The 6 newer harnesses (`elf-graphs` through `elf-linalg`, bringing the Linux ARM64 ELF matrix to 51 harnesses) were compiled and run locally on Darwin ARM64 with `clang -Wall -Wextra -Werror` (`-O1` and `-O2 -fsanitize=undefined,address`) with `fails=0`, and await the Linux ARM64 CI matrix run on `ubuntu-24.04-arm`. The host reference is glibc on Linux (and Apple libc on Darwin), so a case where
+and `diverge` reports interpreter, Tier-3 and Tier-4 identical. The 6 newer harnesses (`elf-graphs` through `elf-linalg`, bringing the Linux ARM64 ELF matrix to 51 harnesses) were compiled and run locally on Darwin ARM64 with `clang -Wall -Wextra -Werror` (`-O1` and `-O2 -fsanitize=undefined,address`) with `fails=0`, and subsequently passed the full Linux ARM64 CI matrix on `ubuntu-24.04-arm` at the [v0.10.0 tagged commit](https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/44746386566/job/136322674982). The host reference is glibc on Linux (and Apple libc on Darwin), so a case where
 glibc and musl legitimately differ would show up as a difference; two such cases (musl's `strtoll` end pointer
 after overflow, glibc's `open_memstream` seek-to-end size) were removed from the workloads rather than hidden.
 This is internal differential evidence for a bounded envelope. It is not an independent reproduction, did not
-use `qemu-user` (not installed in the authoring sandbox), and has not yet run on the native `ubuntu-24.04-arm`
-CI job.
+use `qemu-user` (not installed in the authoring sandbox), and the tagged release's Linux ARM64 CI job passed the 51-harness matrix. This does not establish compatibility with arbitrary ELF files.
 
 Reproduce one: `python3 scripts/run_linux_arm64_matrix.py --work /tmp/new-dir --only elf-sorts` after
 `cargo build --release --locked --features "nce native-jit"` and `pip install ziglang==0.17.1`.
