@@ -42,19 +42,20 @@ Ounce-Core's floating-point checks isolated the bug to two instructions. The mai
 ## The Growing Family
 
 <p align="center">
-  <img src="docs/assets/family-banner.jpg" alt="The Ounce Project Family: Ounce-Core, Ounce-HB, Ounce-Runtime, and DeckStream" width="100%">
+  <img src="docs/assets/family-banner.jpg" alt="The Ounce Project Family: Ounce-Core, Ounce-HB, Ounce-Runtime, and DeckStream; Ounce-Spark is an emerging fifth project" width="100%">
 </p>
 
 > *Built by curiosity. Tested by evidence. Powered by community.*
 
-Four independent, open-source projects sharing a development philosophy, an evidence-first discipline, and an active community:
+The family now includes four established project entries and a fifth, emerging research project. Each has its own scope, evidence and release decisions:
 
-**Four independent projects. Choose the job you need done:**
+**Choose the project for your task:**
 
 - **[Ounce-Core](https://github.com/hffgzktbcc-blip/ounce-core)** checks supported ARM64 programs against recorded hardware references.
 - **[Ounce-HB](https://github.com/hffgzktbcc-blip/ounce-hb)** runs your own open-source homebrew through an engine and explains why it stopped.
 - **[Ounce-Runtime](https://github.com/hffgzktbcc-blip/ounce-runtime)** experiments with faster ARM64 execution, graphics and controller input.
 - **[DeckStream](https://github.com/hffgzktbcc-blip/deckstream)** aims to launch PC games from your NAS/WebDAV storage on Steam Deck; an independent device run is still outstanding.
+- **[Ounce-Spark](https://github.com/hffgzktbcc-blip/Ounce-Spark)** is an early-stage CPU-based PTX kernel emulator and speculative NVIDIA DGX Spark performance-model research project. It does not supply GPU capability or hardware-validated Blackwell performance.
 
 **[Choose the right Ounce project in one minute](https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/FAMILY.md)** for the first task, limitations, licences and current-release links. These projects have separate evidence and release decisions. DeckStream is not an ARM64 engine, and GPL code is not copied into MIT siblings.
 
