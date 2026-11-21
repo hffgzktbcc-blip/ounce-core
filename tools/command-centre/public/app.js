@@ -198,7 +198,7 @@
   function sourceStatus(source, fallbackLabel) {
     if (!source) return `<div class="source-status unavailable"><strong>${esc(fallbackLabel)}</strong><span>Unavailable · use Refresh to retry</span></div>`;
     const stamp = source.updatedAt || source.checkedAt;
-    const detail = source.error || (source.stale ? `Stale · last changed ${age(stamp)}` : `Checked ${age(source.checkedAt || stamp)}`);
+    const detail = source.error || (source.stale ? (source.updatedAt ? `Stale · last changed ${age(source.updatedAt)}` : 'Never updated') : `Checked ${age(source.checkedAt || stamp)}`);
     return `<div class="source-status ${source.error?'error':source.stale?'stale':'fresh'}"><strong>${esc(source.label || fallbackLabel)}</strong><span>${esc(detail)}</span></div>`;
   }
   function setTab(tab) {
