@@ -378,10 +378,14 @@ async function buildGitHubSummary(force = false) {
         fetchHttpsJson(`https://api.github.com/repos/hffgzktbcc-blip/${repo.slug}/pulls?state=open&per_page=10`),
         fetchHttpsJson(`https://api.github.com/repos/hffgzktbcc-blip/${repo.slug}/releases/latest`),
       ]);
-      const failed = [repoRes, issuesRes, pullsRes].find(r => r.status !== 200);
-      if (failed) throw new Error(`GitHub data unavailable (HTTP ${failed.status}). Refresh to retry.`);
-      const rawIssues = Array.isArray(issuesRes.data) ? issuesRes.data.filter(i => !i.pull_request) : [];
-      const pulls = Array.isArray(pullsRes.data) ? pullsRes.data : [];
+      const failed = [repoRes, issuesRes, pullsRes].find(response => response.status !== 200 || response.error);
+      if (failed) throw new Error(failed.error || `GitHub data unavailable (HTTP ${failed.status}). Refresh to retry.`);
+      if (!repoRes.data || typeof repoRes.data !== 'object' || Array.isArray(repoRes.data)
+          || !Array.isArray(issuesRes.data) || !Array.isArray(pullsRes.data)) {
+        throw new Error('GitHub returned an unexpected response shape. Refresh to retry.');
+      }
+      const rawIssues = issuesRes.data.filter(issue => !issue.pull_request);
+      const pulls = pullsRes.data;
       let latestRelease = 'Release status unavailable';
       let releaseStatus = 'unavailable';
       let releaseError = null;
