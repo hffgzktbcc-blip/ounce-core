@@ -1,0 +1,17 @@
+{
+  "name": "Ounce Family Command Centre",
+  "short_name": "Ounce CC",
+  "description": "Mobile Command Centre for Ounce Family repos, Grok Bots, Oracle VM, and Orca Runtime.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1714",
+  "theme_color": "#142a25",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
