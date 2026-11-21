@@ -3,7 +3,7 @@
   "private": true,
   "version": "2.1.0",
   "scripts": {
-    "test": "node --test dispatcher.test.cjs regression.test.cjs",
+    "test": "node --test dispatcher.test.cjs patrol.test.cjs regression.test.cjs",
     "check": "node --check server.js && node --check patrol.js && node --check public/app.js"
   },
   "devDependencies": {

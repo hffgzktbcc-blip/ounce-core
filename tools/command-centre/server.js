@@ -14,6 +14,7 @@ const BASE_DIR = __dirname;
 const PUBLIC_DIR = path.join(BASE_DIR, 'public');
 const DATA_DIR = path.join(BASE_DIR, 'data');
 const STORE_PATH = path.join(DATA_DIR, 'store.json');
+const STORE_BACKUP_PATH = path.join(DATA_DIR, 'store.json.last-good');
 const SEED_PATH = path.join(DATA_DIR, 'seed_data.json');
 const ROADMAP_PATH = path.join(DATA_DIR, 'roadmap.json');
 const ENV_PATH = path.join(BASE_DIR, '.env');
@@ -131,15 +132,31 @@ function loadStore() {
       chatHistory: [],
       jobs: [],
     };
-    fs.writeFileSync(STORE_PATH, JSON.stringify(initial, null, 2));
+    writeJsonAtomic(STORE_PATH, initial);
     return initial;
   }
-  return JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
+  try {
+    return JSON.parse(fs.readFileSync(STORE_PATH, 'utf8'));
+  } catch (error) {
+    if (!fs.existsSync(STORE_BACKUP_PATH)) throw error;
+    const recovered = JSON.parse(fs.readFileSync(STORE_BACKUP_PATH, 'utf8'));
+    fs.copyFileSync(STORE_BACKUP_PATH, STORE_PATH);
+    return recovered;
+  }
+}
+
+function writeJsonAtomic(target, value, backupPath = null) {
+  const temporary = `${target}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(value, null, 2));
+  const descriptor = fs.openSync(temporary, 'r');
+  try { fs.fsyncSync(descriptor); } finally { fs.closeSync(descriptor); }
+  if (backupPath && fs.existsSync(target)) fs.copyFileSync(target, backupPath);
+  fs.renameSync(temporary, target);
 }
 
 let store = loadStore();
 function saveStore() {
-  fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2));
+  writeJsonAtomic(STORE_PATH, store, STORE_BACKUP_PATH);
 }
 
 // Active async jobs in memory
@@ -321,8 +338,8 @@ function fetchHttpsJson(url) {
       let body = '';
       res.on('data', c => body += c);
       res.on('end', () => {
-        try { resolve({ status: res.statusCode, data: JSON.parse(body) }); }
-        catch { resolve({ status: res.statusCode, data: null }); }
+        try { resolve({ status: res.statusCode, data: JSON.parse(body), error: null }); }
+        catch { resolve({ status: res.statusCode, data: null, error: 'GitHub returned unreadable JSON.' }); }
       });
     });
     req.on('error', reject);
@@ -332,9 +349,20 @@ function fetchHttpsJson(url) {
 
 let githubCache = { fetchedAt: 0, data: null };
 let githubPending;
+let githubForceQueued = false;
 function getGitHubSummary(force = false) {
-  if (githubPending) return githubPending;
-  githubPending = buildGitHubSummary(force).finally(() => { githubPending = null; });
+  if (githubPending) {
+    if (force) githubForceQueued = true;
+    return githubPending;
+  }
+  githubPending = (async () => {
+    let result = await buildGitHubSummary(force);
+    while (githubForceQueued) {
+      githubForceQueued = false;
+      result = await buildGitHubSummary(true);
+    }
+    return result;
+  })().finally(() => { githubPending = null; });
   return githubPending;
 }
 async function buildGitHubSummary(force = false) {
@@ -342,6 +370,7 @@ async function buildGitHubSummary(force = false) {
     return githubCache.data;
   }
   const results = await Promise.all(REPOS.map(async repo => {
+    const lastAttemptAt = new Date().toISOString();
     try {
       const [repoRes, issuesRes, pullsRes, relRes] = await Promise.all([
         fetchHttpsJson(`https://api.github.com/repos/hffgzktbcc-blip/${repo.slug}`),
@@ -353,6 +382,18 @@ async function buildGitHubSummary(force = false) {
       if (failed) throw new Error(`GitHub data unavailable (HTTP ${failed.status}). Refresh to retry.`);
       const rawIssues = Array.isArray(issuesRes.data) ? issuesRes.data.filter(i => !i.pull_request) : [];
       const pulls = Array.isArray(pullsRes.data) ? pullsRes.data : [];
+      let latestRelease = 'Release status unavailable';
+      let releaseStatus = 'unavailable';
+      let releaseError = null;
+      if (relRes.status === 200 && relRes.data?.tag_name && !relRes.error) {
+        latestRelease = relRes.data.tag_name;
+        releaseStatus = 'published';
+      } else if (relRes.status === 404 && !relRes.error) {
+        latestRelease = 'No release published';
+        releaseStatus = 'unpublished';
+      } else {
+        releaseError = relRes.error || `GitHub release data unavailable (HTTP ${relRes.status}).`;
+      }
       return {
         project: repo.key,
         slug: repo.slug,
@@ -360,12 +401,14 @@ async function buildGitHubSummary(force = false) {
         maturity: repo.maturity,
         scopeNote: repo.scopeNote || '',
         url: `https://github.com/hffgzktbcc-blip/${repo.slug}`,
-        checkedAt: new Date().toISOString(),
+        checkedAt: lastAttemptAt,
+        lastAttemptAt,
         stars: repoRes.data?.stargazers_count ?? 0,
         openIssuesCount: rawIssues.length,
         openPullsCount: pulls.length,
-        latestRelease: relRes.status === 200 && relRes.data?.tag_name ? relRes.data.tag_name : 'No release published',
-        releaseStatus: relRes.status === 200 && relRes.data?.tag_name ? 'published' : 'unpublished',
+        latestRelease,
+        releaseStatus,
+        releaseError,
         issues: rawIssues.slice(0, 10).map(i => ({
           number: i.number,
           title: i.title,
@@ -382,17 +425,20 @@ async function buildGitHubSummary(force = false) {
         })),
       };
     } catch (e) {
-      return { project: repo.key, slug: repo.slug, maturity: repo.maturity, scopeNote: repo.scopeNote || '', checkedAt: new Date().toISOString(), error: e.message, issues: [], pulls: [] };
+      return { project: repo.key, slug: repo.slug, maturity: repo.maturity, scopeNote: repo.scopeNote || '', checkedAt: null, lastAttemptAt, error: e.message, issues: [], pulls: [] };
     }
   }));
   const checkedAt = new Date().toISOString();
   const previous = new Map((githubCache.data?.repos || []).map(repo => [repo.project, repo]));
-  const repos = results.map(repo => repo.error && previous.has(repo.project)
-    ? { ...previous.get(repo.project), checkedAt: repo.checkedAt, stale: true, error: repo.error }
-    : { ...repo, stale: Boolean(repo.error) });
-  const failed = repos.filter(repo => repo.error).length;
+  const repos = results.map(repo => {
+    const prior = previous.get(repo.project);
+    if (repo.error && prior) return { ...prior, lastAttemptAt: repo.lastAttemptAt, stale: true, error: repo.error };
+    if (repo.releaseError && prior) return { ...repo, latestRelease: prior.latestRelease, releaseStatus: prior.releaseStatus, stale: true };
+    return { ...repo, stale: Boolean(repo.error || repo.releaseError) };
+  });
+  const failed = repos.filter(repo => repo.error || repo.releaseError).length;
   const source = {
-    kind: 'github', label: 'GitHub live', checkedAt, stale: failed > 0, staleAfterMinutes: 10,
+    kind: 'github', label: 'GitHub live', checkedAt: failed === 0 ? checkedAt : githubCache.data?.source?.checkedAt || null, lastAttemptAt: checkedAt, stale: failed > 0, staleAfterMinutes: 10,
     lastSuccessfulAt: failed === 0 ? checkedAt : githubCache.data?.source?.lastSuccessfulAt || null,
     error: failed ? `${failed} of ${repos.length} projects could not be refreshed.` : null,
   };

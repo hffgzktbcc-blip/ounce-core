@@ -423,7 +423,7 @@
       <section class="card"><div class="card-head"><h3 class="card-title">Recent runs</h3><button class="btn btn-sm" data-home-tab="bots">Open agents</button></div>
       ${jobs.length ? jobs.slice(0,3).map(j => `<button type="button" class="run-row" data-home-run="${esc(j.id)}"><span><strong>${esc(j.worktree.replace('ounce-family/',''))}</strong><small>${esc(j.agent)} · ${age(j.startedAt)}</small></span>${statusPill(j.status)}</button>`).join('') : `<p class="muted">${state.dispatchLoaded?'No command runs yet. Open Agents to run a check on a worktree.':'Run history has not loaded. Use Refresh to retry.'}</p>`}</section>
       <section class="card"><div class="card-head"><h3 class="card-title">Projects</h3><button class="btn btn-sm" data-home-tab="github">GitHub details</button></div>
-      ${(state.github?.repos || []).map(r => `<a class="project-row" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer"><strong>${esc(r.project)}</strong><span>${r.error ? 'Status unavailable' : `${esc(r.latestRelease)} · ${r.openPullsCount} PRs listed`}</span><span aria-hidden="true">↗</span></a>`).join('') || '<p class="muted">GitHub data has not loaded. Use Refresh to retry.</p>'}</section>`;
+      ${(state.github?.repos || []).map(r => `<a class="project-row" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer"><strong>${esc(r.project)}</strong><span>${r.error ? 'Status unavailable' : r.releaseError ? `${esc(r.latestRelease)} last known · release check failed` : `${esc(r.latestRelease)} · ${r.openPullsCount} PRs listed`}</span><span aria-hidden="true">↗</span></a>`).join('') || '<p class="muted">GitHub data has not loaded. Use Refresh to retry.</p>'}</section>`;
     el.querySelectorAll('[data-home-tab]').forEach(button => { button.onclick = () => { if (button.dataset.blocked) state.queueFilterStatus = 'blocked'; setTab(button.dataset.homeTab); }; });
     el.querySelectorAll('[data-home-run]').forEach(button => { button.onclick = () => { state.selectedRunId=button.dataset.homeRun; setTab('bots'); const panel=document.querySelector('.dispatch-card'); panel?.setAttribute('open',''); $('dispatchOutput')?.scrollIntoView?.({block:'nearest'}); }; });
     el.querySelectorAll('[data-open-item]').forEach(button => { button.onclick = () => openRecordModal(state.records.find(r => r.id === button.dataset.openItem)); });
@@ -562,11 +562,12 @@
       ${repos.map(r => `
         <article class="card github-project">
           <div class="card-head">
-            <div><h3 class="card-title">${esc(r.project)}</h3><span class="muted">Checked ${age(r.checkedAt)}</span></div>
+            <div><h3 class="card-title">${esc(r.project)}</h3><span class="muted">${r.checkedAt?`Data checked ${age(r.checkedAt)}`:'Data has not loaded successfully'}${r.stale&&r.lastAttemptAt?` · last attempt ${age(r.lastAttemptAt)}`:''}</span></div>
             <span class="pill info">${r.error ? 'Unavailable' : `${r.openPullsCount} PRs listed · ${r.openIssuesCount} issues listed`}</span>
           </div>
           ${r.maturity==='experimental'?`<div class="scope-note"><span class="pill warn">Experimental</span><p>${esc(r.scopeNote)}</p></div>`:''}
           ${r.error ? `<p class="error-text">${esc(r.error)}</p>` : ''}
+          ${r.releaseError ? `<p class="error-text">Release check: ${esc(r.releaseError)}</p>` : ''}
           ${(r.pulls || []).map(p => `
             <div style="padding:7px 9px;background:var(--bg);border-radius:10px;margin-bottom:6px;font-size:0.84rem;">
               <span class="pill ok">PR #${p.number}</span> <a href="${esc(p.url)}" target="_blank" style="color:var(--text);">${esc(p.title)}</a>
