@@ -2,8 +2,13 @@
 name = "ounce-core"
 version = "0.10.0"
 edition = "2024"
+rust-version = "1.89"
 license = "MIT"
 description = "ARM64 execution and verification lab: run programs on three CPU engines and compare the output with real hardware"
+repository = "https://github.com/hffgzktbcc-blip/ounce-core"
+homepage = "https://hffgzktbcc-blip.github.io/ounce-core/"
+readme = "README.md"
+publish = false
 
 [workspace]
 members = [".", "crates/ounce-recompiler", "crates/ounce-nce"]

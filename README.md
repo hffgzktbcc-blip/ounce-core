@@ -87,4 +87,4 @@ The last command runs a small test program and prints `result=0x00000EEE`. The d
 - [Sources, provenance and legal notice](docs/DETAILS.md#responsible-research-and-legal)
 - Came here for the Switch emulator? [What changed and why](https://github.com/hffgzktbcc-blip/ounce-core/discussions/330)
 
-Ounce-Core is not affiliated with Nintendo or NVIDIA. It runs open-source, homebrew and synthetic programs you provide; it is not designed to load commercial games, firmware or keys. The only source of this project is this repository, so build from source. Licensed under [MIT](LICENSE).
+Ounce-Core is not affiliated with Nintendo or NVIDIA. It runs open-source, homebrew and synthetic programs you provide; it is not designed to load commercial games, firmware or keys. Source and packaged downloads are published only through this repository and its [Releases](https://github.com/hffgzktbcc-blip/ounce-core/releases) page. Licensed under [MIT](LICENSE).
