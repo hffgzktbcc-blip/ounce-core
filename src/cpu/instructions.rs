@@ -1072,8 +1072,6 @@ pub enum SimdFpOp2 {
     Fcvtl,
     /// `FCVTXN`/`FCVTXN2`: double to single, round to odd. `q` selects the half, as `FCVTN`.
     Fcvtxn,
-    /// `BFCVTN`/`BFCVTN2` (FEAT_BF16): single to bfloat16, round to nearest even.
-    Bfcvtn,
     /// Round to integral in FP format: N = nearest even, P = +inf, M = -inf, Z = zero, A = nearest away,
     /// X/I = current FPCR rounding mode (X also signals inexact)
     Frintn,

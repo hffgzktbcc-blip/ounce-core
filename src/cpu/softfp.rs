@@ -106,7 +106,6 @@ pub struct Fmt {
     mbits: u32,
 }
 
-pub const BF16: Fmt = Fmt { ebits: 8, mbits: 7 };
 pub const F16: Fmt = Fmt { ebits: 5, mbits: 10 };
 pub const F32: Fmt = Fmt { ebits: 8, mbits: 23 };
 pub const F64: Fmt = Fmt { ebits: 11, mbits: 52 };

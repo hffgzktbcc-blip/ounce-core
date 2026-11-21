@@ -2003,17 +2003,13 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11111, false, false) => Some(SimdFpOp2::Frint64z),
             (0b11111, true, false) => Some(SimdFpOp2::Frint64x),
             (0b10110, false, false) => Some(SimdFpOp2::Fcvtn),
-            (0b10110, false, true) if !double => Some(SimdFpOp2::Bfcvtn),
             (0b10110, true, false) if double => Some(SimdFpOp2::Fcvtxn),
             (0b10111, false, false) => Some(SimdFpOp2::Fcvtl),
             _ => None,
         };
         if let Some(op) = fp {
-            // FCVTN/FCVTL/BFCVTN use Q to pick the half of the wide/narrow register, not the lane count
-            let wide_q = matches!(
-                op,
-                SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl | SimdFpOp2::Fcvtxn | SimdFpOp2::Bfcvtn
-            );
+            // FCVTN/FCVTL use Q to pick the half of the wide/narrow register, not the lane count
+            let wide_q = matches!(op, SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl | SimdFpOp2::Fcvtxn);
             if double && !q && !wide_q {
                 return None;
             }
