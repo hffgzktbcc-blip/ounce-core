@@ -78,6 +78,71 @@ fn elf(code: &[u32]) -> Vec<u8> {
     b
 }
 
+/// Static AArch64 Linux ELF with an unstripped `.symtab` + `.strtab` for fault symbolication tests (#475).
+fn elf_with_symtab(code: &[u32], syms: &[(&str, u64, u64)]) -> Vec<u8> {
+    let mut b = elf(code);
+    // Align to 8 bytes before appending .strtab, .symtab, and 3 section headers (NULL, SYMTAB, STRTAB).
+    while !b.len().is_multiple_of(8) {
+        b.push(0);
+    }
+    let strtab_off = b.len() as u64;
+    b.push(0); // empty string at index 0
+    let mut name_offsets = Vec::with_capacity(syms.len());
+    for &(name, _, _) in syms {
+        name_offsets.push((b.len() as u64 - strtab_off) as u32);
+        b.extend_from_slice(name.as_bytes());
+        b.push(0);
+    }
+    let strtab_size = b.len() as u64 - strtab_off;
+    while !b.len().is_multiple_of(8) {
+        b.push(0);
+    }
+    let symtab_off = b.len() as u64;
+    b.extend_from_slice(&[0u8; 24]); // STN_UNDEF
+    for (&(_, addr, size), &name_off) in syms.iter().zip(&name_offsets) {
+        b.extend_from_slice(&name_off.to_le_bytes()); // st_name
+        b.push((1 << 4) | 2); // STB_GLOBAL | STT_FUNC
+        b.push(0); // st_other
+        b.extend_from_slice(&1u16.to_le_bytes()); // st_shndx (non-zero)
+        b.extend_from_slice(&addr.to_le_bytes()); // st_value
+        b.extend_from_slice(&size.to_le_bytes()); // st_size
+    }
+    let symtab_size = b.len() as u64 - symtab_off;
+    let shoff = b.len() as u64;
+    let push_sh = |buf: &mut Vec<u8>, sh_type: u32, offset: u64, size: u64, link: u32, entsize: u64| {
+        buf.extend_from_slice(&0u32.to_le_bytes()); // sh_name
+        buf.extend_from_slice(&sh_type.to_le_bytes());
+        buf.extend_from_slice(&0u64.to_le_bytes()); // sh_flags
+        buf.extend_from_slice(&0u64.to_le_bytes()); // sh_addr
+        buf.extend_from_slice(&offset.to_le_bytes());
+        buf.extend_from_slice(&size.to_le_bytes());
+        buf.extend_from_slice(&link.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes()); // sh_info
+        buf.extend_from_slice(&8u64.to_le_bytes()); // sh_addralign
+        buf.extend_from_slice(&entsize.to_le_bytes());
+    };
+    push_sh(&mut b, 0, 0, 0, 0, 0); // [0] SHT_NULL
+    push_sh(&mut b, 2, symtab_off, symtab_size, 2, 24); // [1] SHT_SYMTAB -> link 2 (.strtab)
+    push_sh(&mut b, 3, strtab_off, strtab_size, 0, 0); // [2] SHT_STRTAB
+    // Patch e_shoff (offset 40), e_shentsize (58), e_shnum (60).
+    b[40..48].copy_from_slice(&shoff.to_le_bytes());
+    b[58..60].copy_from_slice(&64u16.to_le_bytes());
+    b[60..62].copy_from_slice(&3u16.to_le_bytes());
+    b
+}
+
+/// `_start` pushes an AAPCS64 frame record and calls `crash_fn`, which pushes a frame record and loads `0x10` (#475).
+const SYMBOLICATED_FAULT_CODE: [u32; 8] = [
+    0xA9BF_7BFD, // _start+0x0:   stp x29, x30, [sp, #-16]!
+    0x9100_03FD, // _start+0x4:   mov x29, sp
+    0x9400_0002, // _start+0x8:   bl crash_fn (+8 bytes -> 0x400088)
+    0xD503_201F, // _start+0xc:   nop
+    0xA9BF_7BFD, // crash_fn+0x0: stp x29, x30, [sp, #-16]!
+    0x9100_03FD, // crash_fn+0x4: mov x29, sp
+    0xD280_0201, // crash_fn+0x8: movz x1, #0x10
+    0xF940_0020, // crash_fn+0xc: ldr x0, [x1] -> memory_fault at 0x400094
+];
+
 // Hand-assembled A64 words (the encodings are listed in docs/CONTRACT_V1.md).
 const MOVZ_W0_0: u32 = 0x5280_0000;
 const SVC_EXIT_PROCESS: u32 = 0xD400_00E1; // svc #7
@@ -312,6 +377,21 @@ fn cases() -> &'static [Case] {
             run_bytes("e71a", "run-elf", &elf(&LOAD_UNMAPPED), &elf_args, &[]),
         );
         add(
+            "run-elf symbolicated fault",
+            71,
+            ("memory_fault", 11),
+            run_bytes(
+                "e71sym",
+                "run-elf",
+                &elf_with_symtab(
+                    &SYMBOLICATED_FAULT_CODE,
+                    &[("_start", 0x40_0078, 16), ("crash_fn", 0x40_0088, 16)],
+                ),
+                &elf_args,
+                &[],
+            ),
+        );
+        add(
             "run-elf udf",
             71,
             ("unimplemented_insn", 10),
@@ -522,6 +602,23 @@ fn run_v1_stop_details_follow_the_stop() {
     assert_eq!(by_name("run-elf unknown syscall")["svc_id"], 278);
     assert!(by_name("run-elf unknown syscall")["guest_exit_status"].is_null());
     assert!(by_name("run-elf not an ELF")["message"].is_string());
+    let sym = by_name("run-elf symbolicated fault");
+    assert_eq!(sym["fault_addr"], 0x10);
+    assert_eq!(sym["fault_symbol"], "crash_fn+0xc");
+    assert!(
+        sym["backtrace"]
+            .as_str()
+            .is_some_and(|bt| bt.contains("crash_fn+0xc") && bt.contains("_start+0x8")),
+        "expected symbolicated FP backtrace, got {:?}",
+        sym["backtrace"]
+    );
+    assert!(
+        sym["message"].as_str().is_some_and(|m| m.contains("crash_fn+0xc")),
+        "expected symbol in fault message, got {:?}",
+        sym["message"]
+    );
+    assert!(by_name("run-elf exit 42")["fault_symbol"].is_null());
+    assert!(by_name("run-elf exit 42")["backtrace"].is_null());
     let frames = by_name("run-nro frame limit");
     assert_eq!(frames["frames_presented"], 2);
     assert!(
