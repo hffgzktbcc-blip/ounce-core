@@ -82,7 +82,7 @@ fn elf(code: &[u32]) -> Vec<u8> {
 fn elf_with_symtab(code: &[u32], syms: &[(&str, u64, u64)]) -> Vec<u8> {
     let mut b = elf(code);
     // Align to 8 bytes before appending .strtab, .symtab, and 3 section headers (NULL, SYMTAB, STRTAB).
-    while b.len() % 8 != 0 {
+    while !b.len().is_multiple_of(8) {
         b.push(0);
     }
     let strtab_off = b.len() as u64;
@@ -94,7 +94,7 @@ fn elf_with_symtab(code: &[u32], syms: &[(&str, u64, u64)]) -> Vec<u8> {
         b.push(0);
     }
     let strtab_size = b.len() as u64 - strtab_off;
-    while b.len() % 8 != 0 {
+    while !b.len().is_multiple_of(8) {
         b.push(0);
     }
     let symtab_off = b.len() as u64;
