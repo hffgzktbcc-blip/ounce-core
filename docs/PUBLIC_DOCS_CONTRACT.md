@@ -1,6 +1,6 @@
 # Public documentation contract — the Ounce family
 
-**The reader should understand each project in a minute, and a merged change must not leave the live explanation behind.** This contract covers [Ounce-Core](https://github.com/hffgzktbcc-blip/ounce-core), [Ounce-HB](https://github.com/hffgzktbcc-blip/ounce-hb), [Ounce-Runtime](https://github.com/hffgzktbcc-blip/ounce-runtime) and the independently scoped [DeckStream](https://github.com/hffgzktbcc-blip/deckstream).
+**The reader should understand each project in a minute, and a merged change must not leave the live explanation behind.** This contract covers [Ounce-Core](https://github.com/hffgzktbcc-blip/ounce-core), [Ounce-HB](https://github.com/hffgzktbcc-blip/ounce-hb), [Ounce-Runtime](https://github.com/hffgzktbcc-blip/ounce-runtime) the independently scoped [DeckStream](https://github.com/hffgzktbcc-blip/deckstream), and the emerging [Ounce-Spark](https://github.com/hffgzktbcc-blip/Ounce-Spark) research project.
 
 ## Say what it does
 
@@ -8,6 +8,7 @@
 - Answer four questions first: **What problem does this solve? What can I do? How do I try it? What is still unverified?**
 - Explain acronyms once; give a concrete command or before/after where possible; prefer one useful task over a giant capability list.
 - Distinguish **implemented**, **tested by maintainers/CI**, **tested on named hardware**, **published in a release**, and **reproduced independently**. Do not treat them as synonyms.
+- **Ounce-Spark is early research**, not a GPU or a Blackwell performance benchmark; check for real hardware evidence before any stronger claims.
 - **DeckStream is a separate Steam Deck NAS/WebDAV launcher**, not an ARM64 execution engine. Keep licence/source boundaries and homebrew-only scope explicit.
 
 ## Keep live information live
