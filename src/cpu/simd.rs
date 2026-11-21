@@ -1439,7 +1439,7 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
     if fpcr & softfp::FPCR_ARITH_MASK == 0
         && !matches!(
             op,
-            SimdFpOp2::Fsqrt | SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl | SimdFpOp2::Fcvtxn
+            SimdFpOp2::Fsqrt | SimdFpOp2::Fcvtn | SimdFpOp2::Fcvtl | SimdFpOp2::Fcvtxn | SimdFpOp2::Bfcvtn
         )
     {
         if !matches!(op, SimdFpOp2::Fabs | SimdFpOp2::Fneg) {
@@ -1468,6 +1468,18 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
             }
         }
         SimdFpOp2::Fcvtxn => fcvtxn_pair(d, n, q, env),
+        SimdFpOp2::Bfcvtn => {
+            let mut half = 0u64;
+            for i in 0..4 {
+                let bf = softfp::convert(F32, softfp::BF16, env, lane(n, 32, i)) & 0xFFFF;
+                half |= bf << (i * 16);
+            }
+            if q {
+                (d & u64::MAX as u128) | (half as u128) << 64
+            } else {
+                half as u128
+            }
+        }
         SimdFpOp2::Fcvtl if double => {
             let base = if q { 2 } else { 0 };
             let a = softfp::convert(F32, F64, env, lane(n, 32, base));
@@ -2716,6 +2728,19 @@ mod fp_vector_tests {
         assert_eq!(h8, (0x7BFF_3800_C080_3E00u128 << 64) | 0x1111_2222_3333_4444u128);
         assert_eq!(fp_two_misc_fpcr(SimdFpOp2::Fcvtl, 0, h4, false, false, 0), s4);
         assert_eq!(fp_two_misc_fpcr(SimdFpOp2::Fcvtl, 0, h8, false, true, 0), s4);
+        // BFCVTN/BFCVTN2 single -> bfloat16 (#469)
+        let bf4 = fp_two_misc_fpcr(SimdFpOp2::Bfcvtn, 0, f4([1.5, -2.25, 0.5, 3.0]), false, false, 0);
+        // 1.5 = 0x3FC0, -2.25 = 0xC010, 0.5 = 0x3F00, 3.0 = 0x4040
+        assert_eq!(bf4, 0x4040_3F00_C010_3FC0u128);
+        let bf8 = fp_two_misc_fpcr(
+            SimdFpOp2::Bfcvtn,
+            0x1111_2222_3333_4444u128,
+            f4([1.5, -2.25, 0.5, 3.0]),
+            false,
+            true,
+            0,
+        );
+        assert_eq!(bf8, (0x4040_3F00_C010_3FC0u128 << 64) | 0x1111_2222_3333_4444u128);
     }
 
     #[test]

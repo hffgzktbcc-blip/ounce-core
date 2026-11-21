@@ -313,21 +313,21 @@ pub enum Instruction {
     /// toward zero, wrap modulo 2^32). Writes `NZCV` = `0 Z 0 0`: Z is set only when the conversion was exact.
     Fjcvtzs { rd: u8, rn: u8 },
 
-    /// Floating-Point Conditional Select: `FCSEL Dd/Sd, Dn/Sn, Dm/Sm, cond`
+    /// Floating-Point Conditional Select: `FCSEL Dd/Sd/Hd, Dn/Sn/Hn, Dm/Sm/Hm, cond` (`esize` is 16, 32, or 64)
     FpCondSelect {
         rd: u8,
         rn: u8,
         rm: u8,
         cond: Condition,
-        is_double: bool,
+        esize: u8,
     },
 
-    /// Floating-Point Compare: `FCMP Dn/Sn, Dm/Sm` or `FCMP Dn/Sn, #0.0`
+    /// Floating-Point Compare: `FCMP Dn/Sn/Hn, Dm/Sm/Hm` or `FCMP Dn/Sn/Hn, #0.0` (`esize` is 16, 32, or 64)
     FpCompare {
         rn: u8,
         rm: u8,
         is_zero: bool,
-        is_double: bool,
+        esize: u8,
         /// `FCMPE`: a quiet NaN also raises `FPSR.IOC`.
         signalling: bool,
     },
@@ -830,13 +830,13 @@ pub enum Instruction {
         scalar: bool,
     },
 
-    /// `FCCMP/FCCMPE Sn/Dn, Sm/Dm, #nzcv, cond`: compare when `cond` holds, else set the flags to `nzcv`
+    /// `FCCMP/FCCMPE Hn/Sn/Dn, Hm/Sm/Dm, #nzcv, cond`: compare when `cond` holds, else set the flags to `nzcv`
     FpCondCompare {
         rn: u8,
         rm: u8,
         nzcv: u8,
         cond: Condition,
-        is_double: bool,
+        esize: u8,
         /// `FCCMPE`: a quiet NaN also raises `FPSR.IOC`.
         signalling: bool,
     },
@@ -1072,6 +1072,8 @@ pub enum SimdFpOp2 {
     Fcvtl,
     /// `FCVTXN`/`FCVTXN2`: double to single, round to odd. `q` selects the half, as `FCVTN`.
     Fcvtxn,
+    /// `BFCVTN`/`BFCVTN2` (FEAT_BF16): single to bfloat16, round to nearest even.
+    Bfcvtn,
     /// Round to integral in FP format: N = nearest even, P = +inf, M = -inf, Z = zero, A = nearest away,
     /// X/I = current FPCR rounding mode (X also signals inexact)
     Frintn,

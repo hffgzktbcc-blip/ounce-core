@@ -681,6 +681,14 @@ pub(crate) fn run_vm_internal(
         sp: stop_pc.map(|_| cpu.regs.sp),
         opcode: stop_opcode,
         fault_addr: stop_fault_addr,
+        fault_symbol: None,
+        backtrace: if matches!(stop, VmStop::Fault | VmStop::Break) {
+            stop_pc.and_then(|pc| {
+                run_report::format_backtrace(pc, cpu.regs.read_x(30), cpu.regs.read_x(29), &mmu, |_| None)
+            })
+        } else {
+            None
+        },
         svc_id: stop_svc_id,
         sm_service: stop_sm_service,
         cmif_cmd_id: stop_cmif_cmd_id,
@@ -903,6 +911,8 @@ mod harness_gate_tests {
                 sp: None,
                 opcode: None,
                 fault_addr: None,
+                fault_symbol: None,
+                backtrace: None,
                 svc_id: None,
                 sm_service: None,
                 cmif_cmd_id: None,

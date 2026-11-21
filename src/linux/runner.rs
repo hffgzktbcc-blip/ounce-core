@@ -73,13 +73,17 @@ impl StopRegs {
 }
 
 /// Structured facts about how the program stopped: the `ounce.run.v1` fields and `--dump-regs`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StopDetail {
     /// `ounce.run.v1` `stop_kind` (docs/OUNCE_RUN_V1_SCHEMA.md).
     pub stop_kind: &'static str,
     pub pc: Option<u64>,
     pub opcode: Option<u32>,
     pub fault_addr: Option<u64>,
+    /// Resolved ELF `.symtab` symbol for `pc` on fault stops (#475).
+    pub fault_symbol: Option<String>,
+    /// Bounded AArch64 `X29`/`LR` frame-pointer chain on fault stops (#475).
+    pub backtrace: Option<String>,
     /// The Linux syscall number (`x8`) of an unimplemented syscall, or the immediate of a non-zero `SVC #imm`.
     pub svc_id: Option<u32>,
     /// `None` when the program never started.
@@ -140,6 +144,8 @@ impl Report {
             sp: self.detail.regs.map(|r| r.sp),
             opcode: self.detail.opcode,
             fault_addr: self.detail.fault_addr,
+            fault_symbol: self.detail.fault_symbol.clone(),
+            backtrace: self.detail.backtrace.clone(),
             svc_id: self.detail.svc_id,
             sm_service: None,
             cmif_cmd_id: None,
@@ -332,7 +338,7 @@ pub fn run(
                 if proc.deliver_segv(&mut cpu, &mut mmu, pc) {
                     continue;
                 }
-                let (diagnosis, detail) = diagnose_fault(&mut cpu, &mut mmu, pc);
+                let (diagnosis, detail) = diagnose_fault(&mut cpu, &mut mmu, pc, &image.symbols);
                 return fail(diagnosis, EXIT_FAULT, detail, engine_name, insns, syscalls);
             }
             _ => {}
@@ -342,8 +348,12 @@ pub fn run(
 
 /// Re-steps the faulting instruction on the interpreter to learn why it failed. Registers are captured
 /// first; the program is being stopped anyway, so the state the re-step disturbs does not matter.
-fn diagnose_fault(cpu: &mut Cpu, mmu: &mut Memory, pc: u64) -> (String, StopDetail) {
+fn diagnose_fault(cpu: &mut Cpu, mmu: &mut Memory, pc: u64, symbols: &elf::SymbolTable) -> (String, StopDetail) {
     let mut detail = StopDetail::at("cpu_error", cpu, pc);
+    let lr = cpu.regs.read_x(30);
+    let fp = cpu.regs.read_x(29);
+    detail.fault_symbol = symbols.resolve(pc);
+    detail.backtrace = run_report::format_backtrace(pc, lr, fp, mmu, |addr| symbols.resolve(addr));
     let word = mmu.read_u32(pc).ok();
     let word_text = match word {
         Some(w) => format!("instruction word {w:#010x}"),
@@ -371,7 +381,11 @@ fn diagnose_fault(cpu: &mut Cpu, mmu: &mut Memory, pc: u64) -> (String, StopDeta
         }
         Ok(_) => "engine faulted but the interpreter executes it (engine disagreement; try --cpu=tier3)".to_string(),
     };
-    (format!("fault at pc={pc:#x}, {word_text}: {reason}"), detail)
+    let loc = match &detail.fault_symbol {
+        Some(sym) => format!("pc={pc:#x} ({sym})"),
+        None => format!("pc={pc:#x}"),
+    };
+    (format!("fault at {loc}, {word_text}: {reason}"), detail)
 }
 
 /// Writes guest fd 1 and 2 to the host's stdout and stderr.

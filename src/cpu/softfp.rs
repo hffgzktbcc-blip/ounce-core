@@ -106,6 +106,7 @@ pub struct Fmt {
     mbits: u32,
 }
 
+pub const BF16: Fmt = Fmt { ebits: 8, mbits: 7 };
 pub const F16: Fmt = Fmt { ebits: 5, mbits: 10 };
 pub const F32: Fmt = Fmt { ebits: 8, mbits: 23 };
 pub const F64: Fmt = Fmt { ebits: 11, mbits: 52 };
@@ -696,6 +697,30 @@ pub fn double_to_int32_js(env: Env, a: u64) -> (u32, bool) {
 pub fn raise_compare(f: Fmt, a: u64, b: u64, signalling: bool) {
     if f.is_snan(a) || f.is_snan(b) || (signalling && (f.is_nan(a) || f.is_nan(b))) {
         raise(IOC);
+    }
+}
+
+/// Ordered/unordered comparison of two flushed `F16` bit patterns returning ARM64 `(N, Z, C, V)`.
+pub fn compare_f16_nzcv(a: u64, b: u64) -> (bool, bool, bool, bool) {
+    if F16.is_nan(a) || F16.is_nan(b) {
+        return (false, false, true, true);
+    }
+    if F16.is_zero(a) && F16.is_zero(b) {
+        return (false, true, true, false);
+    }
+    let (sa, sb) = (F16.sign(a), F16.sign(b));
+    let lt = match (sa, sb) {
+        (true, false) => true,
+        (false, true) => false,
+        (false, false) => (a & 0x7FFF) < (b & 0x7FFF),
+        (true, true) => (a & 0x7FFF) > (b & 0x7FFF),
+    };
+    if !lt && a == b {
+        (false, true, true, false)
+    } else if lt {
+        (true, false, false, false)
+    } else {
+        (false, false, true, false)
     }
 }
 
