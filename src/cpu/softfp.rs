@@ -699,6 +699,30 @@ pub fn raise_compare(f: Fmt, a: u64, b: u64, signalling: bool) {
     }
 }
 
+/// Ordered/unordered comparison of two flushed `F16` bit patterns returning ARM64 `(N, Z, C, V)`.
+pub fn compare_f16_nzcv(a: u64, b: u64) -> (bool, bool, bool, bool) {
+    if F16.is_nan(a) || F16.is_nan(b) {
+        return (false, false, true, true);
+    }
+    if F16.is_zero(a) && F16.is_zero(b) {
+        return (false, true, true, false);
+    }
+    let (sa, sb) = (F16.sign(a), F16.sign(b));
+    let lt = match (sa, sb) {
+        (true, false) => true,
+        (false, true) => false,
+        (false, false) => (a & 0x7FFF) < (b & 0x7FFF),
+        (true, true) => (a & 0x7FFF) > (b & 0x7FFF),
+    };
+    if !lt && a == b {
+        (false, true, true, false)
+    } else if lt {
+        (true, false, false, false)
+    } else {
+        (false, false, true, false)
+    }
+}
+
 /// FMAX/FMIN/FMAXNM/FMINNM: IOC for a signalling NaN operand (quiet NaNs raise nothing), IDC for a flushed denormal.
 pub fn raise_minmax(f: Fmt, env: Env, a: u64, b: u64) {
     if f.is_snan(a) || f.is_snan(b) {

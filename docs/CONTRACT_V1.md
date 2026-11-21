@@ -40,7 +40,7 @@ Once a contract item is frozen:
 Schema doc: [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md). Written by `run`, `run-nro` and `run-elf` with
 `--report-json=<path>`. Pinned by `run_v1_keys_and_json_types_are_pinned` against
 [`tests/contract/run-v1-keys.json`](../tests/contract/run-v1-keys.json): the key set is exact, each value has one of
-the listed types, and each listed type occurs in at least one of 17 representative runs (11 `run-nro`, 6 `run-elf`).
+the listed types, and each listed type occurs in at least one of 18 representative runs (11 `run-nro`, 7 `run-elf`).
 
 | Key | JSON type | First released |
 |---|---|---|
@@ -51,13 +51,15 @@ the listed types, and each listed type occurs in at least one of 17 representati
 | `frames_presented` | number | v0.10.0 (#460) |
 | `framebuffer_hash` | string `fnv1a64:<16 hex>` or null | v0.10.0 (#460, #486) |
 | `lr`, `sp` | number or null (set exactly when `pc` is) | v0.10.0 (#475, #513) |
+| `fault_symbol` | string or null (resolved ELF `.symtab` symbol at `pc` on faults) | **unreleased** (#475) |
+| `backtrace` | string or null (bounded `X29`/`LR` frame chain on faults/`svc_break`) | **unreleased** (#475) |
 | `sm_service` | string or null (`unhandled_svc` / exit 14 after `sm:` / HIPC activity) | v0.10.0 (#475, #513) |
 | `cmif_cmd_id` | number or null (`unhandled_svc` / exit 14 after CMIF dispatch) | v0.10.0 (#475, #513) |
 | `audio_frames_mixed` | number | v0.10.0 (#478) |
 | `audio_hash` | string `fnv1a64:<16 hex>` or null | v0.10.0 (#478) |
 | `guest_exit_status` | number or null (`run-elf` clean exit only) | v0.10.0 (#473) |
 
-v0.9.0 (`4b63f7a`) had 14 keys; the nine additional fields shipped in v0.10.0 (`f94db69`). Shipping those fields does **not** freeze this proposed v1.0 contract. Changes to published fields should be deliberate, documented and tested; see the owner decisions below. `tier` is `interpreter`, `tier3`, `tier4` or `nce`
+v0.9.0 (`4b63f7a`) had 14 keys; nine additional fields shipped in v0.10.0 (`f94db69`) and two (`fault_symbol`, `backtrace`) were added afterwards on `main`. Shipping those fields does **not** freeze this proposed v1.0 contract. Changes to published fields should be deliberate, documented and tested; see the owner decisions below. `tier` is `interpreter`, `tier3`, `tier4` or `nce`
 (`CpuTier::report_label`); only `interpreter` and `tier3` are exercised by the tests, because `tier4` and `nce` need
 cargo features. Details pinned beyond the key set (`run_v1_stop_details_follow_the_stop`): a fault's `fault_addr`
 or `opcode`, `break_result` read from `info1` when `info2` is 4 (else null), `guest_exit_status` 42 with `exit_code` 0

@@ -896,18 +896,14 @@ impl Lowerer {
             }
 
             Instruction::FpCompare {
-                rn,
-                rm,
-                is_zero,
-                is_double,
-                ..
+                rn, rm, is_zero, esize, ..
             } => {
-                if self.exact_fp {
+                if self.exact_fp || esize == 16 {
                     return Err(());
                 }
                 let a = self.b.get(Reg::VLo(rn));
                 let b = if is_zero { self.k(0) } else { self.b.get(Reg::VLo(rm)) };
-                let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
+                let w = if esize == 64 { FpWidth::F64 } else { FpWidth::F32 };
                 let flags = self.b.push(Op::FpCompare(w, a, b));
                 self.b.set(Reg::Nzcv, flags);
             }
