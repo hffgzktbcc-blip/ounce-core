@@ -58,3 +58,8 @@ Usage can run out at any moment, so make your state recoverable before you need 
 Proceed autonomously on routine, reversible work. Escalate new scope with material
 tradeoffs, disputed redistribution, destructive history/data changes, credentials,
 or spending. A blocker applies to the affected action, not the whole project.
+
+## Anti-Bloat Rules
+- Do NOT add new GitHub workflows, bots, scripts, top-level docs, or process trackers unless explicitly asked.
+- Keep PRs small and single-purpose; prefer deleting or simplifying over adding wrappers.
+- Never add AI `Co-authored-by:` commit trailers.
