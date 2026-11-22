@@ -1,0 +1,39 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Twofish: A 128-Bit Block Cipher",
+    "authors": [
+      "Bruce Schneier",
+      "John Kelsey",
+      "Doug Whiting",
+      "David Wagner",
+      "Chris Hall",
+      "Niels Ferguson"
+    ],
+    "venue": "AES submission to NIST, June 15, 1998",
+    "year": 1998
+  },
+  "program": {
+    "source": "twofish.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Twofish with 128-, 192- and 256-bit keys (q0/q1 built from the paper's 4-bit permutations, h and g, MDS and RS matrices over their two GF(2^8) polynomials, the 40-word key schedule with the 32-bit PHT, 16 rounds with in-place half updates, whitening) written from the paper's section 4 reproduces the authors' intermediate-value test (ecb_ival) for each key size: the key-dependent S-box key words (2, 3 and 4 words), all 40 expanded-key words, all 19 round states R[-1]..R[17] (4 words each), the t0/t1 values of the 16 rounds, and the ciphertext: 151 + 152 + 153 = 456 published values",
+    "The 12 listed entries (I = 1..10, 48, 49) of the authors' ecb_tbl chained known-answer test for each key size, 36 ciphertexts in all"
+  ],
+  "expected_values_source": {
+    "what": "the 4-bit permutations t0-t3 of section 4.3.5 of the paper, and the authors' test file ecb_ival.txt (intermediate-value test plus excerpted ecb_tbl chain) on the Twofish page of Bruce Schneier's site",
+    "url": "https://www.schneier.com/wp-content/uploads/2016/02/paper-twofish-paper.pdf and https://www.schneier.com/wp-content/uploads/2015/12/ecb_ival.txt",
+    "fetched": "2026-11-20",
+    "note": "the file is the paper's test-vector appendix; the vectors were copied as data by script, the 4-bit tables were extracted from the PDF text, and the program was written from the paper's section 4. The matrices, polynomials and key-schedule formulas were typed from the paper's text. Only 12 of the 49 chain entries per key size appear in the file (it elides entries 11-47)"
+  },
+  "negative_control": "built with -DTF_KROT=8 (the 9-bit rotation of the odd expanded-key words changed to 8), 399 of 492 compared values mismatch, none of the 36 ecb_tbl ciphertexts match and the program exits 1",
+  "not_checked": [
+    "the full 49-entry ecb_tbl chain and the authors' larger known-answer and Monte Carlo sets (not in the fetched file)",
+    "decryption (the file lists a decrypt trace that mirrors the encryption; the program does not implement a separate decryption), key lengths other than 128, 192 and 256 bits, and modes of operation",
+    "the paper's security analysis and its speed figures (cycle counts); this implementation recomputes g from h each time rather than with the paper's precomputed tables",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 492 values the Twofish authors' test file publishes. It does not show the security claims hold."
+}

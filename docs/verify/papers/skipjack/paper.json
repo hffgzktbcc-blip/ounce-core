@@ -1,0 +1,39 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "SKIPJACK and KEA Algorithm Specifications (version 2.0), with the SP 800-17 known-answer tables",
+    "authors": [
+      "NIST (specification, 29 May 1998)"
+    ],
+    "venue": "NIST, 1998 (not a journal paper; a government specification)",
+    "year": 1998
+  },
+  "program": {
+    "source": "skipjack.c",
+    "how": "written for ounce-core from the algorithm description; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "SKIPJACK encrypts the all-zero block under each of the 80 single-bit keys to the 80 ciphertexts of SP 800-17 Appendix B Table 6 (80 of 80), and decrypting them returns the plaintext (80 of 80)",
+    "the F-table (transcribed from the specification's scanned page) is a permutation of 0..255 and F(0x7a) = 0xd6 as the specification's example states"
+  ],
+  "expected_values_source": {
+    "what": "the 80 ciphertexts of Table 6 (variable key known-answer test) as transcribed in the Crypto++ test-vector file skipjack.txt (which cites SP 800-17 Table 6), cross-read against the SP 800-17 PDF text (OCR): 78 of the 78 rows whose OCR text was legible agree after mapping OCR confusions (O to 0, I and l to 1); 2 rows were not legible. The F-table and the stepping rules were read from the scanned specification PDF",
+    "url": "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/skipjack.txt",
+    "additional_sources": [
+      "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/skipjack/skipjack.pdf",
+      "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-17.pdf"
+    ],
+    "fetched": "2026-11-19 (Crypto++ file); 2026-11-20 (NIST PDFs)",
+    "note": "the specification is a scanned image, so the 256 F-table bytes were transcribed by eye from the rendered page and validated by the permutation property, the spec's F(7a) example and the 80 vectors. SP 800-17 prints keys and blocks as numbers, most significant byte first, while the specification labels bytes from 0; the byte reversal was fixed by the first vector and applied unchanged to all 80. Data copied as numbers; no code was copied"
+  },
+  "negative_control": "built with SKIPJACK_COUNTER0=0 (step counter starts at 0 instead of 1), 0 of 80 vectors match and the program exits 1",
+  "not_checked": [
+    "SP 800-17 Table 5 (variable plaintext) and the CBC vectors",
+    "the KEA key-exchange algorithm",
+    "security claims (SKIPJACK is withdrawn)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "speed figures (emulator run time says nothing about the authors' hardware)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the 80 published SP 800-17 SKIPJACK ciphertexts. It does not show anything about SKIPJACK's security. This is a NIST specification, not a refereed paper."
+}

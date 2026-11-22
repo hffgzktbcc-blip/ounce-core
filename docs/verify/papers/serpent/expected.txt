@@ -1,0 +1,8 @@
+printed inverse S-boxes invert the printed S-boxes: 128 of 128 entries
+Serpent-128: encryption vectors 514 of 514, decryption vectors 514 of 514
+Serpent-192: encryption vectors 578 of 578, decryption vectors 578 of 578
+Serpent-256: encryption vectors 642 of 642, decryption vectors 642 of 642
+encryption vectors: 1734 of 1734 match
+decryption vectors: 1734 of 1734 match
+iterated 100 and 1000 times (set 4): 12 of 12 match
+PASS

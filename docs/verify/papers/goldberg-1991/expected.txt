@@ -1,0 +1,75 @@
+Guard digits, beta = 10, p = 3
+  10.1 - 9.93 without a guard digit = 0.200
+  10.1 - 9.93 with one guard digit = 0.170
+  10.1 - 9.93 exactly rounded = 0.170
+  ok: without a guard digit the result is .2 (the paper: x - y = .02 x 10^1)
+  ok: with a guard digit the result is .17, the exact answer
+  ok: 2.15e12 - 1.25e-5 = 2.15e12 both without a guard digit and exactly rounded
+  110 - 8.59 with one guard digit = 102
+  110 - 8.59 exactly rounded = 101
+  ok: one guard digit gives 102 (the paper), the exactly rounded result is 101 (exact answer 101.41)
+  ok: its relative error 0.59/101.41 = .0058 exceeds epsilon = .005 (integer arithmetic)
+  b*b = 11.2
+  4ac = 11.1
+  b*b - 4ac = 0.100
+  ok: b^2 rounds to 11.2, 4ac rounds to 11.1, the difference is .1 (paper)
+  ok: exact b^2 - 4ac = .0292 (integers)
+  error in ulps of .0292 = 708 (the text says 70; the editor's footnote says 708)
+  ok: the error is 708 ulps as the paper's footnote states (the text's 70 is a typo)
+  s = ((b+c)+a)/2 = 9.05
+  area from formula (6) = 3.04
+  ok: computed s = 9.05 (true 9.03) and the area from (6) is 3.04 (paper)
+  area from formula (7) = 2.35
+  ok: formula (7) gives 2.35 (paper)
+  true area = 234216 (x 1e-5)
+  ok: true area is 2.34216 as the paper says
+  error of (6) in ulps (x100): 6978, of (7): 78, relative error of (7) in epsilon (x100): 67
+  ok: error of (6) is 70 ulps, of (7) about 1 ulp, relative error 0.7 epsilon (paper)
+  12.35 rounded to 3 digits = 12.4
+  ok: 12.35 is 1.24 x 10^1 (ties to even)
+  8 * 12.4 = 99.2
+  ok: 8 x 1.24e1 = 9.92e1
+  ok: the errors are 0.5 and 4.0 ulps, with the same relative error (integers: 5/1235 = 40/9880)
+  3.5 * 4.2 = 14.7
+  3.5 * 4.3 = 15.0
+  ok: 3.5 x 4.2 = 14.7 exactly; 3.5 x 4.3 = 15.05 rounds to 15.0 (inexact)
+  round to even: x_n over n = 1..1000: always 1.00
+  ok: under round to even x_n = 1.00 for all n tested (Theorem 5)
+  round half up: x_1, x_2, x_3 = 1.01, 1.02, 1.03; x_n first reaches 9.45 at n = 845; x_845 = 9.45; x_1000 = 9.45
+  ok: round up: x_1 = 1.01, x_n rises by .01 per step (paper: 1.56, 1.01, 1.57, ...) until x_n = 9.45 at n = 845 and stays there
+  ok: footnote: 9.45 + .555 = 10.0 and 10.0 - .555 = 9.45
+Theorem 6 example, beta = 10, p = 4
+  b*b = 12.08
+  a*c = 12.05
+  b*b - a*c = 0.03000
+  ok: computed b*b = 12.08, a*c = 12.05, difference .03 (paper); the exactly rounded b^2 - ac is .03480
+  ok: error 480 ulps: (3480 - 3000)/1 in units of 1e-5
+  split 3.476 = 3.500 + (-0.02400)
+  split 3.463 = 3.500 + (-0.03700)
+  split 3.479 = 3.500 + (-0.02100)
+  ok: Theorem 6 splits b = 3.5 - .024, a = 3.5 - .037, c = 3.5 - .021 (paper)
+  3.5^2 = 12.25
+  2*3.5*.024 = 0.1680
+  .024^2 = 0.0005760
+  3.5*.037 + 3.5*.021 = 0.2030
+  .037*.021 = 0.0007770
+  ok: the pieces are 12.25 - .168 + .000576 and 12.25 - .2030 + .000777 as printed
+  term 1 = 0
+  term 2 = 0.03500
+  term 3 = -0.0002010
+  sum = 0.03480
+  ok: term by term the estimate of b^2 - ac is 0 + .0350 - .000201 = .03480, the exactly rounded result (paper)
+Denormals, beta = 10, p = 3, emin = -98
+  x - y = 6.00 x 10^-99 (emin = -98, smallest normalized number 1.00 x 10^-98)
+  ok: x - y = 6.0e-99 is below the smallest normalized number 1.00e-98, so flush-to-zero gives 0 although x != y; gradual underflow keeps .6e-98 (paper)
+Compound interest, i = .06, n = 365, binary32 (beta = 2, p = 24)
+  (1 + i/n)^n formula = 37615.4531
+  ln(1+x) ~ x = 37617.2656
+  Theorem 4 formula = 37614.0742
+  exact (double) = 37614.0473
+  ok: formula with 1 + i/n: $37615.45 (paper)
+  ok: exact answer $37614.05 (paper; to cents, rounded)
+  ok: ln(1+x) ~ x gives $37617.26 (paper; our value is 37617.2656, printed truncated)
+  ok: Theorem 4 formula gives $37614.07 (paper)
+  ok: discrepancies $1.40 and $3.21 as stated
+PASS

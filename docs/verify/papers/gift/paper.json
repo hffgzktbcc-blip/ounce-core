@@ -1,0 +1,42 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "GIFT: A Small Present",
+    "authors": [
+      "Subhadeep Banik",
+      "Sumit Kumar Pandey",
+      "Thomas Peyrin",
+      "Yu Sasaki",
+      "Siang Meng Sim",
+      "Yosuke Todo"
+    ],
+    "venue": "CHES 2017",
+    "year": 2017
+  },
+  "program": {
+    "source": "gift.c",
+    "how": "written for ounce-core from the algorithm description; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "GIFT-128 encrypts the two plaintexts printed in the GIFT-COFB specification to the two printed ciphertexts (2 of 2)",
+    "the 40 round constants produced by the 6-bit LFSR equal the specification's table (40 of 40)",
+    "the four PermBits rows parsed from the specification are bijections (4 of 4)"
+  ],
+  "expected_values_source": {
+    "what": "the \"Test Vectors\" block, Table 2.2 (bit permutation) and the round-constant table of the GIFT-COFB specification (NIST Lightweight Cryptography final-round document by the GIFT designers and co-authors), parsed from the PDF text by a script",
+    "url": "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/finalist-round/updated-spec-doc/gift-cofb-spec-final.pdf",
+    "fetched": "2026-11-20",
+    "note": "the algorithm is the bitsliced description in that specification, not the CHES 2017 paper (not fetched). The specification says each Table 2.2 row gives the source bit for each index (the spec's own worked example); this reading was confirmed by the vectors. Data copied as numbers; no code was copied"
+  },
+  "negative_control": "built with GIFT_ROUNDS=39 (one round fewer), 0 of 2 vectors match and the program exits 1",
+  "not_checked": [
+    "GIFT-64",
+    "decryption (not implemented; GIFT-COFB does not need it)",
+    "the GIFT-COFB authenticated-encryption mode",
+    "security claims, performance figures",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "speed figures (emulator run time says nothing about the authors' hardware)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the two GIFT-128 ciphertexts published in the GIFT-COFB specification. Two vectors are a thin test; it does not show GIFT is secure."
+}

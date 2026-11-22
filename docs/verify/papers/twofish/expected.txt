@@ -1,0 +1,8 @@
+Twofish-128 intermediate-value test: ciphertext 9f589f5cf6122c32b6bfec2f2ae8c35a, 151 published values compared, 0 mismatches
+Twofish-192 intermediate-value test: ciphertext cfd1d2e5a9be9cdf501f13b892bd2248, 152 published values compared, 0 mismatches
+Twofish-256 intermediate-value test: ciphertext 37527be0052334b89f0cfccae87cfa20, 153 published values compared, 0 mismatches
+Twofish-128 ecb_tbl entries: 12 of 12 match
+Twofish-192 ecb_tbl entries: 12 of 12 match
+Twofish-256 ecb_tbl entries: 12 of 12 match
+published values compared: 492, mismatches 0
+PASS

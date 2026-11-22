@@ -1,0 +1,48 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "HIGHT: A New Block Cipher Suitable for Low-Resource Device",
+    "authors": [
+      "Deukjo Hong",
+      "Jaechul Sung",
+      "Seokhie Hong",
+      "Jongin Lim",
+      "Sangjin Lee",
+      "Bon-Seok Koo",
+      "Changhoon Lee",
+      "Donghoon Chang",
+      "Jaesang Lee",
+      "Kitae Jeong",
+      "Hyun Kim",
+      "Jongsung Kim",
+      "Seongtaek Chee"
+    ],
+    "venue": "CHES 2006",
+    "year": 2006
+  },
+  "program": {
+    "source": "hight.c",
+    "how": "written for ounce-core from the algorithm description; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "9 distinct single-block ECB known-answer vectors match (9 of 9)",
+    "8 CBC vectors match (8 of 8; one or two blocks)",
+    "44 CTR vectors match (44 of 44; these are successive prefixes of one keystream, so they are not 44 independent tests)"
+  ],
+  "expected_values_source": {
+    "what": "the Crypto++ test-vector file hight.txt, whose three sections cite the KISA HIGHT reference code files KISA_HIGHT_ECB.c, KISA_HIGHT_CBC.c and KISA_HIGHT_CTR.c (exact duplicates inside the file were removed: 15 ECB entries hold 9 distinct vectors). Byte order: key[i] = MK_i, plaintext[i] = P_i, ciphertext[i] = C_i, the array order of those files, fixed by the first vector and then applied unchanged",
+    "url": "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/hight.txt",
+    "fetched": "2026-11-19",
+    "note": "the HIGHT paper's own printed test vector was not fetched and is not checked here; the vectors are the KISA reference outputs as relayed by Crypto++. Data copied as numbers; no code was copied"
+  },
+  "negative_control": "built with HIGHT_DELTA0=0x5b (first LFSR constant 0x5b instead of 0x5a), 0 of 9 ECB, 0 of 8 CBC and 0 of 44 CTR vectors match, program exits 1",
+  "not_checked": [
+    "the paper's own test vector",
+    "security claims, hardware gate counts or throughput figures",
+    "decryption (not implemented)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "speed figures (emulator run time says nothing about the authors' hardware)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the KISA reference HIGHT ciphertexts for 61 inputs. It does not show the cipher is secure."
+}
