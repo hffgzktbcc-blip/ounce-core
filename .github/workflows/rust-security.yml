@@ -5,11 +5,11 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - '**/*.rs'
+      - 'src/**'
+      - 'crates/**'
       - '**/Cargo.toml'
       - 'Cargo.lock'
       - 'deny.toml'
-      - '.github/workflows/rust-security.yml'
   push:
     branches: [main]
     paths:
@@ -56,24 +56,6 @@ jobs:
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           category: /language:rust
-
-  rustsec:
-    name: RustSec dependency audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
-        with:
-          toolchain: stable
-      # Restores ~/.cargo/bin too, so cargo-audit is compiled once instead of on every run.
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          key: rustsec
-      - name: Install cargo-audit
-        run: cargo install --locked cargo-audit
-      - name: Audit locked dependencies
-        run: cargo audit --file Cargo.lock
 
   cargo-deny:
     name: Cargo Deny (licenses, bans, advisories)

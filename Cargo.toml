@@ -2,6 +2,7 @@
 name = "ounce-core"
 version = "0.10.0"
 edition = "2024"
+# Default features support Rust 1.89+; --workspace / --features native-jit requires current stable Rust.
 rust-version = "1.89"
 license = "MIT"
 description = "ARM64 execution and verification lab: run programs on three CPU engines and compare the output with real hardware"
