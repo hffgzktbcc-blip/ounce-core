@@ -1,10 +1,10 @@
-name: Switch 2 homebrew oracle
+name: Homebrew oracle
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - '.github/workflows/switch2-homebrew.yml'
+      - '.github/workflows/homebrew-oracle.yml'
       - 'Cargo.*'
       - 'assets/fonts/**'
       - 'src/**'
@@ -67,7 +67,7 @@ jobs:
             --hbx-oracle tests/corpus/switch2/hello-cpu-first-frame.json \
             --artifact-root "$RUNNER_TEMP/hbx/package" \
             --output "$RUNNER_TEMP/switch2-canonical-report.json"
-      - name: Retain Switch 2 SDK-path evidence
+      - name: Retain homebrew SDK-path evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

@@ -76,7 +76,7 @@ def render(data, corpus):
         "**Live navigation:** [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls?q=is%3Apr+is%3Aopen)"
         " · [open issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen)"
         " · [Actions](https://github.com/hffgzktbcc-blip/ounce-core/actions)"
-        " · [verification method](docs/verify/README.md) · [PLAN.md](PLAN.md).",
+        " · [verification method](docs/verify/README.md) · [docs/PLAN.md](docs/PLAN.md).",
         "",
         "No general homebrew, commercial-game or Switch 2 compatibility claim is implied. "
         "The corpus count is independently guarded by [the canonical headline checker](scripts/corpus_verify.py).",

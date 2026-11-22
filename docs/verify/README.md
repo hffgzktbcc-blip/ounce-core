@@ -2,7 +2,7 @@
 
 **Ounce-Verify validates existing JSON evidence against registered expectations.** It does not run programs, download guest inputs, or turn a successful host process into proof of compatibility.
 
-The project aims to connect these tools into a failure-to-reproduction workflow. Today's adapters cover specific runtime and corpus inputs; a general-purpose debugger is not delivered. See [the outcome plan](../../PLAN.md). Choose evidence for the claim being tested: a pixel oracle checks its registered graphics scenario, not every runtime change.
+The project aims to connect these tools into a failure-to-reproduction workflow. Today's adapters cover specific runtime and corpus inputs; a general-purpose debugger is not delivered. See [the outcome plan](../PLAN.md). Choose evidence for the claim being tested: a pixel oracle checks its registered graphics scenario, not every runtime change.
 
 Use `tools/ounce_verify.py` to validate an already-collected record:
 
