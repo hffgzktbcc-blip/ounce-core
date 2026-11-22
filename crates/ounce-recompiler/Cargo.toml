@@ -2,6 +2,7 @@
 name = "ounce-recompiler"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.97"
 description = "Tier-4 native recompiler for ounce-core. All unsafe code of the project lives in this crate's exec module."
 license = "MIT"
 publish = false
