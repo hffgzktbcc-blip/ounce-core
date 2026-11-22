@@ -1,0 +1,38 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The SM4 Blockcipher Algorithm And Its Modes Of Operations (draft-ribose-cfrg-sm4), specifying GB/T 32907-2016",
+    "authors": [
+      "Ronald Tse",
+      "Wai Kit Wong",
+      "Russ Housley",
+      "Antoine Salon"
+    ],
+    "venue": "IETF Internet-Draft draft-ribose-cfrg-sm4-10, April 2018 (the cipher itself is the Chinese national standard GB/T 32907-2016, first published as SMS4 in 2006)",
+    "year": 2018
+  },
+  "program": {
+    "source": "sm4.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "SM4 (32 rounds, S-box tau, linear transformations L and L', key schedule with FK and CK) written from the draft's description reproduces the draft's four traced examples taken from GB/T 32907-2016 (encryption and decryption of two key/block pairs): all 32 round keys and all 32 round words of each (256 values) plus the 4 output blocks",
+    "The two 1,000,000-fold repeated encryptions of GB/T 32907-2016 (examples 3 and 6 of the draft's Appendix A.1) give the published ciphertexts",
+    "The ten Appendix A.2 mode-of-operation examples (ECB, CBC, OFB, CFB, CTR; two keys each) built on this block function",
+    "The draft's CK constants equal the formula ck(i,j) = (4i + j) * 7 mod 256 (32 constants) and its worked example S(EF) = 84"
+  ],
+  "expected_values_source": {
+    "what": "draft-ribose-cfrg-sm4-10, sections 6.2.3 and 7.3 (S-box, FK, CK) and Appendix A (examples, including intermediate values)",
+    "url": "https://www.ietf.org/archive/id/draft-ribose-cfrg-sm4-10.txt",
+    "fetched": "2026-11-20",
+    "note": "tables and values were copied as data by script from the fetched text; the program was written from the draft's description (its sample C code in Appendix B was not used). The Chinese standard text itself was not fetched, and the examples are as reproduced in the draft"
+  },
+  "negative_control": "built with -DSM4_L2=3 (the first rotation of L changed from 2 to 3), 144 of 305 compared values mismatch, 0 of 10 mode examples and neither million-fold iteration match, and the program exits 1",
+  "not_checked": [
+    "the S-box's algebraic expression and the standard's security claims (the draft's section 10), and speed",
+    "mode-of-operation parts beyond the ten examples (GCM, CCM, XTS and other modes of the draft are not implemented); the CTR example assumes a plain 128-bit big-endian counter increment, which these two examples do not distinguish from other counter layouts",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64); the Tier-3 run takes about 43 s (1.1e9 guest instructions, nearly all in the two million-fold iterations) on a shared machine"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 305 values the SM4 draft publishes from GB/T 32907-2016 and its mode examples. It does not show the security claims hold."
+}
