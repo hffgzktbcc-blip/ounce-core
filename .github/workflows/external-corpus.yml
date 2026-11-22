@@ -149,7 +149,7 @@ jobs:
 
 
       - name: Prebuild two-engine diagnostic test
-        run: cargo test --release --locked external_corpus_nro_probe_both_engines --no-run --message-format=json > "$RUNNER_TEMP/ounce-corpus-test-build.jsonl"
+        run: cargo test --release --locked --lib external_corpus_nro_probe_both_engines --no-run --message-format=json > "$RUNNER_TEMP/ounce-corpus-test-build.jsonl"
 
       - name: Probe all samples under interpreter and Tier-3
         env:
@@ -175,7 +175,7 @@ jobs:
           executables = {m["executable"] for m in messages
               if m.get("reason") == "compiler-artifact"
               and m.get("profile", {}).get("test")
-              and m.get("target", {}).get("name") == "ounce-core"
+              and m.get("target", {}).get("name") in ("ounce-core", "ounce_core")
               and m.get("executable")}
           if len(executables) != 1:
               raise SystemExit("Expected one compiled ounce-core test executable")
@@ -500,7 +500,7 @@ jobs:
           path: ${{ runner.temp }}/ounce-oracle-builds
 
       - name: Build oracle tests with nce
-        run: cargo test --release --locked --features nce corpus_first_frame_oracle --no-run --message-format=json > "$RUNNER_TEMP/build.jsonl"
+        run: cargo test --release --locked --lib --features nce corpus_first_frame_oracle --no-run --message-format=json > "$RUNNER_TEMP/build.jsonl"
 
       - name: Corpus oracles under --cpu=native
         run: |
@@ -509,7 +509,7 @@ jobs:
           import json, sys
           paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
                    if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
-                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
+                   and m.get("target", {}).get("name") in ("ounce-core", "ounce_core") and m.get("executable")}
           assert len(paths) == 1, paths
           print(paths.pop())' "$RUNNER_TEMP/build.jsonl")
           sysctl -n machdep.cpu.brand_string
@@ -565,7 +565,7 @@ jobs:
           name: corpus-nros
           path: ${{ runner.temp }}/soak-nros
       - name: Build the soak test
-        run: cargo test --release --locked corpus_soak --no-run --message-format=json > "$RUNNER_TEMP/soak-build.jsonl"
+        run: cargo test --release --locked --lib corpus_soak --no-run --message-format=json > "$RUNNER_TEMP/soak-build.jsonl"
       - name: Soak smoke
         run: |
           set -euo pipefail
@@ -573,7 +573,7 @@ jobs:
           import json, sys
           paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
                    if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
-                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
+                   and m.get("target", {}).get("name") in ("ounce-core", "ounce_core") and m.get("executable")}
           assert len(paths) == 1, paths
           print(paths.pop())' "$RUNNER_TEMP/soak-build.jsonl")
           python3 scripts/soak_corpus.py --smoke --ids "${{ matrix.id }}" --executable "$executable" \
@@ -622,7 +622,7 @@ jobs:
           name: corpus-nros
           path: ${{ runner.temp }}/interaction-nros
       - name: Compile the interaction adapter
-        run: cargo test --release --locked --features gpu-present --no-run --message-format=json > "$RUNNER_TEMP/interaction-build.jsonl"
+        run: cargo test --release --locked --lib --features gpu-present --no-run --message-format=json > "$RUNNER_TEMP/interaction-build.jsonl"
       - name: Drive the unchanged menu into Triangle with bounded execution
         shell: bash
         env:
@@ -638,7 +638,7 @@ jobs:
           executables = {m["executable"] for m in messages
               if m.get("reason") == "compiler-artifact"
               and m.get("profile", {}).get("test")
-              and m.get("target", {}).get("name") == "ounce-core"
+              and m.get("target", {}).get("name") in ("ounce-core", "ounce_core")
               and m.get("executable")}
           if len(executables) != 1:
               raise SystemExit("Expected one compiled ounce-core test executable")

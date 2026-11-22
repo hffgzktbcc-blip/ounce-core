@@ -244,13 +244,13 @@ def run(args):
             save_manifest()
 
     messages = evidence / ("cargo-artifacts.jsonl" if attempt == 1 else f"cargo-artifacts-{attempt}.jsonl")
-    require("compile", ["cargo", "test", "--release", "--locked", "corpus_first_frame_oracle",
+    require("compile", ["cargo", "test", "--release", "--locked", "--lib", "corpus_first_frame_oracle",
                         "--no-run", "--message-format=json"], args.compile_seconds, messages)
     paths = set()
     for line in messages.read_text().splitlines():
         item = json.loads(line)
         if (item.get("reason") == "compiler-artifact" and item.get("profile", {}).get("test")
-                and item.get("target", {}).get("name") == "ounce-core" and item.get("executable")):
+                and item.get("target", {}).get("name") in ("ounce-core", "ounce_core") and item.get("executable")):
             paths.add(item["executable"])
     if len(paths) != 1:
         raise ValueError(f"expected one oracle executable, found {sorted(paths)}")
