@@ -4,6 +4,9 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+- Security: documented the best-effort support policy for `main` and the latest `0.10.x` patch, and recorded the evidence-based review of ten CodeQL cleartext-logging alerts. The alerts are false positives caused by a synthetic offline account response sharing a generic IPC result path with numeric guest/test diagnostics; none of the sinks logs account payloads, host credentials or network identities.
+- Repository metadata: declared Rust 1.89 as the package MSRV, added canonical repository/homepage/readme metadata, explicitly disabled crates.io publication, and corrected the README footer to point packaged downloads at GitHub Releases.
+
 ## 0.10.0 — 2026-11-20 (released)
 
 - Added: half-precision FP3-source (`FMADD`/`FMSUB`/`FNMADD`/`FNMSUB H`), vector `FMLAL`/`FMLSL`/`FMLAL2`/`FMLSL2`
