@@ -2,6 +2,16 @@
 
 use crate::*;
 
+macro_rules! diagln {
+    ($($arg:tt)*) => {
+        if crate::run_report::is_stdout_report() {
+            eprintln!($($arg)*);
+        } else {
+            println!($($arg)*);
+        }
+    };
+}
+
 pub(crate) fn inspect_directory_package(dir_path: &str) {
     println!("============================================================");
     println!("  🔍 LOOSE PACKAGE INSPECTOR (OUNCECAKE FORMAT)");
@@ -245,7 +255,7 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
         run_directory_package(path, gui_mode);
         return;
     }
-    println!("[Loader] Reading package/executable: {}", path);
+    diagln!("[Loader] Reading package/executable: {}", path);
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -261,7 +271,7 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
         #[cfg(feature = "nce")]
         {
             if gui_mode {
-                println!("[NCE] Native execution runs headless for now.");
+                diagln!("[NCE] Native execution runs headless for now.");
             }
             if !run_native_nro(path, &bytes, guest_args) {
                 std::process::exit(1);
@@ -281,11 +291,11 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
     match package {
         Ok(info) => {
             let is_nro = info.format == "NRO0";
-            println!("[BootLoader] Successfully loaded package:");
-            println!("  Format      : {}", info.format);
-            println!("  Title ID    : 0x{:016X}", info.title_id);
-            println!("  Code size   : 0x{:08X} ({} bytes)", info.code_size, info.code_size);
-            println!("  MOD0 relocs : {}", info.relocations_applied);
+            diagln!("[BootLoader] Successfully loaded package:");
+            diagln!("  Format      : {}", info.format);
+            diagln!("  Title ID    : 0x{:016X}", info.title_id);
+            diagln!("  Code size   : 0x{:08X} ({} bytes)", info.code_size, info.code_size);
+            diagln!("  MOD0 relocs : {}", info.relocations_applied);
 
             // Homebrew ABI for NRO0: ConfigEntry list in X0 (X1 = -1), a heap handed over so libnx skips
             // svcSetHeapSize, and X30 at a svcExitProcess stub, which is where libnx's exit returns.
@@ -297,7 +307,7 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
             if let Some(dir) = SDMC_HOST_DIR.get() {
                 kernel.vfs.set_sdmc_directory(dir);
                 kernel.vfs.sdmc_write_through = SDMC_WRITEBACK.load(std::sync::atomic::Ordering::Relaxed);
-                println!("  sdmc:/      : {} (sandboxed copy-on-write overlay)", dir.display());
+                diagln!("  sdmc:/      : {} (sandboxed copy-on-write overlay)", dir.display());
             }
 
             let fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
@@ -305,7 +315,7 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
             mmu.map_range(HID_SHARED_MEM_ADDR, 0x1000, Permission::READ_WRITE);
 
             if gui_mode {
-                println!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");
+                diagln!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");
                 let title = if is_nro {
                     let name = std::path::Path::new(path)
                         .file_stem()

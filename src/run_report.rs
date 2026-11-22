@@ -11,6 +11,12 @@ pub fn set_report_path(path: PathBuf) {
     let _ = REPORT_JSON_PATH.set(path);
 }
 
+/// Returns `true` when `--report-json=-` is configured so callers route diagnostics to `stderr`
+/// and keep `stdout` pure JSON.
+pub fn is_stdout_report() -> bool {
+    REPORT_JSON_PATH.get().is_some_and(|p| p == std::path::Path::new("-"))
+}
+
 pub fn set_audio_null(enabled: bool) {
     let _ = AUDIO_NULL.set(enabled);
 }
@@ -155,12 +161,22 @@ where
     Some(frames.join(" <- "))
 }
 
-/// Write `ounce.run.v1` JSON to the `--report-json` path if configured.
+/// Write `ounce.run.v1` JSON to the `--report-json` path (or `stdout` when `-`) if configured.
 pub fn write_if_configured(report: &RunReport) {
     let Some(path) = REPORT_JSON_PATH.get() else {
         return;
     };
     let payload = to_json(report);
+    if path == std::path::Path::new("-") {
+        use std::io::Write;
+        if let Ok(bytes) = serde_json::to_vec_pretty(&payload) {
+            let mut out = std::io::stdout().lock();
+            if let Err(err) = out.write_all(&bytes).and_then(|()| out.write_all(b"\n")) {
+                eprintln!("[Report] Failed to write stdout: {err}");
+            }
+        }
+        return;
+    }
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
     {
