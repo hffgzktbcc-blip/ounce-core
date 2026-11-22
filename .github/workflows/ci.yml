@@ -69,7 +69,7 @@ jobs:
   corpus:
     name: Canonical regression evidence
     needs: changes
-    if: needs.changes.outputs.corpus == 'true'
+    if: needs.changes.outputs.corpus == 'true' && github.event_name != 'pull_request'
     uses: ./.github/workflows/external-corpus.yml
   release-notice-packaging:
     name: Release notice packaging (${{ matrix.os }})
@@ -78,7 +78,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
@@ -129,7 +129,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -261,7 +261,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -335,7 +335,7 @@ jobs:
       matrix:
         # ubuntu/windows are x86_64, macos-latest is Apple Silicon (MAP_JIT path) and
         # ubuntu-24.04-arm is AArch64 Linux, where Tier-4 output can be replayed on the host CPU.
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-24.04-arm"]') || fromJSON('["ubuntu-latest", "ubuntu-24.04-arm", "macos-latest", "windows-latest"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -396,7 +396,7 @@ jobs:
       matrix:
         # macos-latest is Apple Silicon and ubuntu-24.04-arm is AArch64 Linux: guest code runs on the
         # host CPU there. ubuntu-latest (x86_64) builds the stubs and skips the native tests.
-        os: [macos-latest, ubuntu-24.04-arm, ubuntu-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-24.04-arm"]') || fromJSON('["macos-latest", "ubuntu-24.04-arm", "ubuntu-latest"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -509,6 +509,7 @@ jobs:
       - name: Check applicable results
         env:
           RESULTS: ${{ toJSON(needs) }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PYTHON'
           import json, os
@@ -517,7 +518,7 @@ jobs:
           scope = needs['changes'].get('outputs', {})
           if scope.get('runtime') == 'true':
               required += ['lint', 'msrv', 'test', 'gpu-present', 'native-jit', 'nce']
-          if scope.get('corpus') == 'true':
+          if scope.get('corpus') == 'true' and os.environ.get('GITHUB_EVENT_NAME') != 'pull_request':
               required += ['corpus']
           bad = {job: needs[job]['result'] for job in required if needs[job]['result'] != 'success'}
           print('Applicable checks:', ', '.join(required))

@@ -6,7 +6,7 @@ name: FP edge-case experiment
 # The fp-workload job (#485) runs the whole-program FP workload from docs/verify/fp-workload the same way.
 
 on:
-  pull_request:
+  push:
     branches: [main]
     paths:
       - 'docs/verify/fp-edge/**'
@@ -18,6 +18,8 @@ on:
       - 'src/cpu/**'
       - 'crates/ounce-recompiler/**'
       - '.github/workflows/fp-edge.yml'
+  schedule:
+    - cron: '41 4 * * 1'
   workflow_dispatch:
 
 concurrency:
