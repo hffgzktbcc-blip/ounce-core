@@ -2,6 +2,16 @@
 
 use crate::*;
 
+macro_rules! diagln {
+    ($($arg:tt)*) => {
+        if crate::run_report::is_stdout_report() {
+            eprintln!($($arg)*);
+        } else {
+            println!($($arg)*);
+        }
+    };
+}
+
 pub(crate) fn inspect_directory_package(dir_path: &str) {
     println!("============================================================");
     println!("  🔍 LOOSE PACKAGE INSPECTOR (OUNCECAKE FORMAT)");
@@ -245,7 +255,7 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
         run_directory_package(path, gui_mode);
         return;
     }
-    println!("[Loader] Reading package/executable: {}", path);
+    diagln!("[Loader] Reading package/executable: {}", path);
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) => {
@@ -261,7 +271,7 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
         #[cfg(feature = "nce")]
         {
             if gui_mode {
-                println!("[NCE] Native execution runs headless for now.");
+                diagln!("[NCE] Native execution runs headless for now.");
             }
             if !run_native_nro(path, &bytes, guest_args) {
                 std::process::exit(1);
@@ -281,11 +291,11 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
     match package {
         Ok(info) => {
             let is_nro = info.format == "NRO0";
-            println!("[BootLoader] Successfully loaded package:");
-            println!("  Format      : {}", info.format);
-            println!("  Title ID    : 0x{:016X}", info.title_id);
-            println!("  Code size   : 0x{:08X} ({} bytes)", info.code_size, info.code_size);
-            println!("  MOD0 relocs : {}", info.relocations_applied);
+            diagln!("[BootLoader] Successfully loaded package:");
+            diagln!("  Format      : {}", info.format);
+            diagln!("  Title ID    : 0x{:016X}", info.title_id);
+            diagln!("  Code size   : 0x{:08X} ({} bytes)", info.code_size, info.code_size);
+            diagln!("  MOD0 relocs : {}", info.relocations_applied);
 
             // Homebrew ABI for NRO0: ConfigEntry list in X0 (X1 = -1), a heap handed over so libnx skips
             // svcSetHeapSize, and X30 at a svcExitProcess stub, which is where libnx's exit returns.
@@ -297,7 +307,7 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
             if let Some(dir) = SDMC_HOST_DIR.get() {
                 kernel.vfs.set_sdmc_directory(dir);
                 kernel.vfs.sdmc_write_through = SDMC_WRITEBACK.load(std::sync::atomic::Ordering::Relaxed);
-                println!("  sdmc:/      : {} (sandboxed copy-on-write overlay)", dir.display());
+                diagln!("  sdmc:/      : {} (sandboxed copy-on-write overlay)", dir.display());
             }
 
             let fb_size = SCREEN_WIDTH * SCREEN_HEIGHT * 4;
@@ -305,7 +315,7 @@ pub(crate) fn run_file(path: &str, guest_args: &[&str], gui_mode: bool, nro_only
             mmu.map_range(HID_SHARED_MEM_ADDR, 0x1000, Permission::READ_WRITE);
 
             if gui_mode {
-                println!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");
+                diagln!("  [Display Server] Launching native window (1280x720 60 FPS) with Joy-Con 2 controls...");
                 let title = if is_nro {
                     let name = std::path::Path::new(path)
                         .file_stem()
@@ -438,14 +448,14 @@ pub(crate) fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> b
             };
         }
     };
-    println!("[NCE] Running natively at 0x{code:016X} (guest window 0x{base:X})");
+    diagln!("[NCE] Running natively at 0x{code:016X} (guest window 0x{base:X})");
     let start = Instant::now();
     let (mut svcs, mut frames) = (0u64, 0u64);
     let mut completed = false;
     let time_limit = nro_time_limit();
     loop {
         if time_limit.is_some_and(|limit| start.elapsed() >= limit) {
-            println!(
+            diagln!(
                 "[NCE] Time limit reached ({:.1} s, OUNCE_NRO_TIMEOUT_SECS); stopping the guest.",
                 start.elapsed().as_secs_f64()
             );
@@ -458,30 +468,30 @@ pub(crate) fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> b
                     SvcResult::Success => {}
                     SvcResult::PresentFrame => {
                         frames += 1;
-                        println!("[VM] VSync / Frame {frames} presented.");
+                        diagln!("[VM] VSync / Frame {frames} presented.");
                     }
                     SvcResult::ExitProcess => {
                         completed = true;
-                        println!("[VM] Guest exited (svcExitProcess).");
+                        diagln!("[VM] Guest exited (svcExitProcess).");
                         break;
                     }
                     SvcResult::Break { reason, info1, info2 } => {
-                        println!("[VM] Hit svcBreak: reason=0x{reason:X}, info1=0x{info1:X}, info2=0x{info2:X}");
-                        println!("[VM] Break PC: 0x{:016X}", cpu.regs.pc);
+                        diagln!("[VM] Hit svcBreak: reason=0x{reason:X}, info1=0x{info1:X}, info2=0x{info2:X}");
+                        diagln!("[VM] Break PC: 0x{:016X}", cpu.regs.pc);
                         if info2 == 4 {
                             match mmu.read_u32(info1) {
-                                Ok(result) => println!(
+                                Ok(result) => diagln!(
                                     "[VM] Break result: 0x{result:08X} (module={}, description={})",
                                     result & 0x1FF,
                                     (result >> 9) & 0x1FFF
                                 ),
-                                Err(error) => println!("[VM] Break result unreadable: {error}"),
+                                Err(error) => diagln!("[VM] Break result unreadable: {error}"),
                             }
                         }
                         break;
                     }
                     SvcResult::Unhandled(id) => {
-                        println!("[VM] Stopping on unhandled SVC #0x{id:02X}.");
+                        diagln!("[VM] Stopping on unhandled SVC #0x{id:02X}.");
                         break;
                     }
                 }
@@ -489,10 +499,10 @@ pub(crate) fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> b
             NceExit::Preempted => kernel.scheduler.preempt(&mut cpu),
             NceExit::Fault { pc, signal, addr } => {
                 if let Some(reason) = cpu.last_error.take().filter(|_| signal == 0) {
-                    println!("[VM Error] {reason}");
-                    println!("  Final PC: 0x{pc:016X}");
+                    diagln!("[VM Error] {reason}");
+                    diagln!("  Final PC: 0x{pc:016X}");
                 } else {
-                    println!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
+                    diagln!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
                 }
                 break;
             }
@@ -502,7 +512,7 @@ pub(crate) fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> b
             }
         }
     }
-    println!(
+    diagln!(
         "[NCE] {svcs} SVCs, {frames} frames in {:.3} s; rewrote {:?}; {} instructions interpreted",
         start.elapsed().as_secs_f64(),
         engine.stats,
