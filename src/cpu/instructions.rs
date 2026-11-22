@@ -793,7 +793,8 @@ pub enum Instruction {
         src_index: u8,
     },
 
-    /// `LD1`/`ST1` single structure (one lane) and `LD1R` (load one element into every lane)
+    /// `LD1`-`LD4`/`ST1`-`ST4` single structure (one lane of `nregs` consecutive registers) and `LD1R`-`LD4R`
+    /// (load one element into every lane of each register)
     SimdLoadStoreSingle {
         rt: u8,
         rn: u8,
@@ -805,6 +806,8 @@ pub enum Instruction {
         q: bool,
         is_load: bool,
         post_index: bool,
+        /// Number of registers in the structure, 1 to 4. The immediate post-index is `nregs * esize / 8`.
+        nregs: u8,
     },
 
     /// `UZP1/UZP2/TRN1/TRN2/ZIP1/ZIP2`

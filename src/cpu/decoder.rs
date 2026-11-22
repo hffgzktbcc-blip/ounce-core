@@ -1232,23 +1232,24 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         }
     }
 
-    // 26b. LD1/ST1 (single structure) and LD1R: 0 Q 0011010 L 0 00000 opcode S size Rn Rt,
-    //      post-index 0 Q 0011011 L 0 Rm opcode S size Rn Rt
-    let single = (raw & 0xBFBF_0000) == 0x0D00_0000;
-    let single_post = (raw & 0xBFA0_0000) == 0x0D80_0000;
+    // 26b. LD1-LD4/ST1-ST4 (single structure) and LD1R-LD4R: 0 Q 0011010 L R 00000 opcode S size Rn Rt,
+    //      post-index 0 Q 0011011 L R Rm opcode S size Rn Rt. The register count is ((opcode<0> << 1) | R) + 1.
+    let single = (raw & 0xBF9F_0000) == 0x0D00_0000;
+    let single_post = (raw & 0xBF80_0000) == 0x0D80_0000;
     if single || single_post {
         let is_load = (raw & (1 << 22)) != 0;
         let opcode = (raw >> 13) & 0x7;
         let s_bit = (raw >> 12) & 1;
         let sz = (raw >> 10) & 0x3;
         let qb = (raw >> 30) & 1;
-        let (esize, index, replicate) = match opcode {
-            0b000 => (8u8, (qb << 3 | s_bit << 2 | sz) as u8, false),
-            0b010 if sz & 1 == 0 => (16, (qb << 2 | s_bit << 1 | sz >> 1) as u8, false),
-            0b100 if sz == 0 => (32, (qb << 1 | s_bit) as u8, false),
-            0b100 if sz == 1 && s_bit == 0 => (64, qb as u8, false),
-            0b110 if is_load && s_bit == 0 => (8u8 << sz, 0, true),
-            _ => return None, // LD2/LD3/LD4 single structure not implemented
+        let nregs = ((((opcode & 1) << 1) | ((raw >> 21) & 1)) + 1) as u8;
+        let (esize, index, replicate) = match opcode >> 1 {
+            0b00 => (8u8, (qb << 3 | s_bit << 2 | sz) as u8, false),
+            0b01 if sz & 1 == 0 => (16, (qb << 2 | s_bit << 1 | sz >> 1) as u8, false),
+            0b10 if sz == 0 => (32, (qb << 1 | s_bit) as u8, false),
+            0b10 if sz == 1 && s_bit == 0 => (64, qb as u8, false),
+            0b11 if is_load && s_bit == 0 => (8u8 << sz, 0, true),
+            _ => return None,
         };
         return Some(Instruction::SimdLoadStoreSingle {
             rt: rd,
@@ -1260,6 +1261,7 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             q,
             is_load,
             post_index: single_post,
+            nregs,
         });
     }
 
