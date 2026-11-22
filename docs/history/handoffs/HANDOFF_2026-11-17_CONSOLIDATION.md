@@ -1,7 +1,7 @@
 # Handoff: repo consolidation, 17 Nov 2026
 
 **Historical record, not an assignment.** Live state is `scripts/next.sh`, `scripts/done.sh <issue or keyword>`,
-[PLAN.md](../../../PLAN.md) and GitHub. Written because `scripts/handoff.sh log` could not publish to
+[PLAN.md](../../PLAN.md) and GitHub. Written because `scripts/handoff.sh log` could not publish to
 `refs/handoff/journal` in this session (the push to a shared ref was denied); re-log the lines under
 "Journal lines" when that is allowed.
 

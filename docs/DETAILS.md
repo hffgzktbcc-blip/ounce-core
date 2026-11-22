@@ -297,7 +297,7 @@ This section is rendered from [the milestone registry](roadmap/milestones.json).
 | Switch regression corpus (legacy) | measured | [Canonical first-frame oracle corpus](verify/README.md) — **<!-- corpus-headline -->50/50<!-- /corpus-headline --> passes** (CI-certified) | Keep passing in CI; no expansion unless a program reproduces a concrete CPU bug |
 | Switch 2 research (archived) | experimental | [Limited SDK-path observation](verify/README.md) | No further work; kept as a record. Not part of the product direction (see docs/VISION.md) |
 
-**Live navigation:** [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls?q=is%3Apr+is%3Aopen) · [open issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen) · [Actions](https://github.com/hffgzktbcc-blip/ounce-core/actions) · [verification method](verify/README.md) · [PLAN.md](../PLAN.md).
+**Live navigation:** [open PRs](https://github.com/hffgzktbcc-blip/ounce-core/pulls?q=is%3Apr+is%3Aopen) · [open issues](https://github.com/hffgzktbcc-blip/ounce-core/issues?q=is%3Aissue+is%3Aopen) · [Actions](https://github.com/hffgzktbcc-blip/ounce-core/actions) · [verification method](verify/README.md) · [docs/PLAN.md](PLAN.md).
 
 No general homebrew, commercial-game or Switch 2 compatibility claim is implied. The corpus count is independently guarded by [the canonical headline checker](../scripts/corpus_verify.py).
 <!-- END GENERATED ROADMAP -->

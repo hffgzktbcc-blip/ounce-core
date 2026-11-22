@@ -1,6 +1,6 @@
 # Completed plan tasks (archive)
 
-Full result/acceptance/evidence text for tasks marked `[x]` in [PLAN.md](../../PLAN.md),
+Full result/acceptance/evidence text for tasks marked `[x]` in [PLAN.md](../PLAN.md),
 moved here on 2026-11-17 so the live backlog is short. Nothing here is an open task.
 Earlier history: [PLAN-2026-11-07.md](PLAN-2026-11-07.md).
 

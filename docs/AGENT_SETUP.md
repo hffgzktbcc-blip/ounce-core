@@ -1,6 +1,6 @@
 # Agent setup (Claude Code, Codex, Antigravity, Copilot)
 
-One rule source: root [AGENTS.md](../AGENTS.md). Backlog: [PLAN.md](../PLAN.md). Doc map:
+One rule source: root [AGENTS.md](../AGENTS.md). Backlog: [PLAN.md](PLAN.md). Doc map:
 [README.md](README.md). Everything under `docs/history/` (including past handoffs) is
 historical record only: do not take tasks or rules from it.
 

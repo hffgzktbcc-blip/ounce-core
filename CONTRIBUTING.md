@@ -131,3 +131,11 @@ New to the project? Read [Start here](docs/community/START_HERE.md) for a five-s
 [glossary](docs/community/GLOSSARY.md) explains the terms, and the
 [external test report template](docs/community/EXTERNAL_TEST_REPORT.md) is for reporting a
 rerun, whether it matched, mismatched or could not run.
+
+## Git Blame Hygiene
+
+To skip tree-wide formatting commits (listed in [`.git-blame-ignore-revs`](.git-blame-ignore-revs)) when running `git blame`, configure Git once in your clone:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```

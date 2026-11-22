@@ -12,7 +12,7 @@ For every user-visible change, follow the [family public documentation contract]
 |---|---|
 | Working rules (single source) | [../AGENTS.md](../AGENTS.md) (`CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md` only point to it) |
 | Setup, branch names, claims, **known traps** | [AGENT_SETUP.md](AGENT_SETUP.md); phone/hub workflow [AGENT_HUB.md](AGENT_HUB.md) |
-| Backlog: what is ready, blocked, done | [../PLAN.md](../PLAN.md) (finished-task evidence: [history/PLAN-COMPLETED.md](history/PLAN-COMPLETED.md)) |
+| Backlog: what is ready, blocked, done | [PLAN.md](PLAN.md) (finished-task evidence: [history/PLAN-COMPLETED.md](history/PLAN-COMPLETED.md)) |
 | Direction for the Ounce family | [roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md](roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) (committed); [roadmap/OUNCE_EDUCATION_ROADMAP.md](roadmap/OUNCE_EDUCATION_ROADMAP.md) is a proposal only |
 | What the project does **not** prove | [LIMITS.md](LIMITS.md), [CAPABILITY_SCOPE.md](CAPABILITY_SCOPE.md) |
 | What shipped, by release | [Latest published GitHub release](https://github.com/hffgzktbcc-blip/ounce-core/releases/latest); [../CHANGELOG.md](../CHANGELOG.md) for releases and unreleased changes; [releases/](releases/) for historical notes |
@@ -50,7 +50,7 @@ Shipped or dropped (banner at the top of each; code is the truth): [design/m4-na
 [PROVENANCE.md](PROVENANCE.md), [CLEAN_ROOM.md](CLEAN_ROOM.md), [LICENSE_DISPOSITION.md](LICENSE_DISPOSITION.md) (the current disposition), [DEPENDENCY_LICENSE_AUDIT.md](DEPENDENCY_LICENSE_AUDIT.md) (dated snapshot). The release notice review is `RELEASE_NOTICE_REVIEW.json`; if CI says its hashes are stale, see trap 1 in [AGENT_SETUP.md](AGENT_SETUP.md). Provenance is audited; do not re-inventory.
 
 ## Community (live engineering docs)
-[INDEPENDENT_TESTER_CHALLENGE.md](INDEPENDENT_TESTER_CHALLENGE.md), [COMMUNITY_VERIFICATION_GUIDE.md](COMMUNITY_VERIFICATION_GUIDE.md), [community/START_HERE.md](community/START_HERE.md), [community/GLOSSARY.md](community/GLOSSARY.md), [community/EXTERNAL_TEST_REPORT.md](community/EXTERNAL_TEST_REPORT.md), [community/TRY_THIS_WEEK.md](community/TRY_THIS_WEEK.md) (time-boxed; check the issues it names are still open), [community/OUTSIDE_REPRODUCTION_2026.md](community/OUTSIDE_REPRODUCTION_2026.md) (dated snapshot; live status is PLAN.md E1), [GITHUB_FREE_TOOLING.md](GITHUB_FREE_TOOLING.md), [IMPROVEMENT_IDEAS.md](IMPROVEMENT_IDEAS.md) (ideas list, not a backlog). Drafts for a macOS app release: [releases/app-next-draft.md](releases/app-next-draft.md).
+[INDEPENDENT_TESTER_CHALLENGE.md](INDEPENDENT_TESTER_CHALLENGE.md), [COMMUNITY_VERIFICATION_GUIDE.md](COMMUNITY_VERIFICATION_GUIDE.md), [community/START_HERE.md](community/START_HERE.md), [community/GLOSSARY.md](community/GLOSSARY.md), [community/EXTERNAL_TEST_REPORT.md](community/EXTERNAL_TEST_REPORT.md), [community/TRY_THIS_WEEK.md](community/TRY_THIS_WEEK.md) (time-boxed; check the issues it names are still open), [community/OUTSIDE_REPRODUCTION_2026.md](community/OUTSIDE_REPRODUCTION_2026.md) (dated snapshot; live status is docs/PLAN.md E1), [GITHUB_FREE_TOOLING.md](GITHUB_FREE_TOOLING.md), [IMPROVEMENT_IDEAS.md](IMPROVEMENT_IDEAS.md) (ideas list, not a backlog). Drafts for a macOS app release: [releases/app-next-draft.md](releases/app-next-draft.md).
 
 ## History (never take work or rules from here)
 - [history/handoffs/](history/handoffs/): every past agent handoff note
