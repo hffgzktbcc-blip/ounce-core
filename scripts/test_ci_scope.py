@@ -11,7 +11,7 @@ from ci_scope import classify
 
 class ScopeTest(unittest.TestCase):
     def test_metadata_does_not_need_rust_or_corpus(self):
-        result = classify(['PLAN.md', 'AGENTS.md', 'README.md', 'docs/guide.md'])
+        result = classify(['docs/PLAN.md', 'AGENTS.md', 'README.md', 'docs/guide.md'])
         self.assertFalse(result['runtime'])
         self.assertFalse(result['corpus'])
 
