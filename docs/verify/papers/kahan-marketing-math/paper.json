@@ -1,0 +1,38 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Marketing versus Mathematics",
+    "authors": ["William Kahan"],
+    "venue": "lecture notes / talk, University of California, Berkeley (version of 27 August 2000; not refereed)",
+    "year": 2000,
+    "text_read": "https://people.eecs.berkeley.edu/~wkahan/MktgMath.pdf (fetched 2026-11-19; the statements about 25.4, the 17-digit displays and the doubles around 1024 taken from the text)"
+  },
+  "program": {
+    "source": "marketmath.c",
+    "how": "written for ounce-core from the statements in the paper: an unsigned big-number type written in the same file rounds 254/10 to p bits (ties to even) and prints the exact decimal expansion (digits of N*5^s); doubles are expanded exactly with 128-bit integers; no third-party code",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "25.4 as a 4-byte float is 25.399999619..., as a double 25.39999999999999858..., as a 64-bit-significand long double 25.399999999999999999653... (the paper's digits equal the exact expansions, rounded at the printed length); the 24- and 53-bit significands also equal the hardware conversion of the literal",
+    "\"0.8\" displayed to 17 significant decimals is 0.80000000000000004 and 32200/32.2 in double is 999.99999999999989",
+    "1024 - 4/2^43 = 1023.9999 9999 9999 5453... and 1024 + 4/2^43 = 1024.0000 0000 0000 4547...: exactly seven consecutive doubles lie from the first to the second, all display as 1024.000000000000 with 16 significant decimals (their neighbours display differently) and are distinguished by 17"
+  ],
+  "expected_values_source": {
+    "what": "digits printed in the paper",
+    "url": "https://people.eecs.berkeley.edu/~wkahan/MktgMath.pdf",
+    "fetched": "2026-11-19",
+    "tolerance": "a printed expansion is accepted when it equals the exact expansion cut after the same number of digits, truncated or rounded to nearest (the paper rounds: 25.399999619 is the rounding of 25.3999996185...), a rule fixed before the first run"
+  },
+  "observations": [
+    "two printed strings contradict exact arithmetic and are asserted as discrepancies, not matches: the quadruple value 25.3999999999999999999999999999999877 has 30 nines after the 3 while the exact expansion 25.39999999999999999999999999999999876740... has 31 (with 31 it matches); and \"0.0009875\" is printed 0.00098750000000000001 'to 16 sig. dec.', but the exact double 0.00098750000000000009645... displays as 0.0009875000000000001 with 16 digits (one zero fewer) and as ...0010 with 17",
+    "not reproduced: the Quattro Pro @INT((A1 + 0.005)*100)/100 malfunction for five numbers just below 31.875: in strict double arithmetic no double below 31.875 gives 31.88 (the spreadsheet presumably used extended intermediates); and the claim that 29 numbers from 31.874999999999947 to 31.875000000000046 display as 31.8750000000000 with 15 decimals, 15 of them below 31.875: with correctly rounded 15-digit display the 29 numbers are the 14 below and 14 above 31.875 plus 31.875 itself (symmetric), which is a different set, so the spreadsheet's display rounding differs from ours",
+    "the 128-bit expansion uses a 113-bit significand (IEEE binary128) and the 80-bit one a 64-bit significand, converted by the same routine; there is no hardware comparison for them"
+  ],
+  "negative_control": "built with -DNEG_BITS (the double converted with a 52-bit instead of 53-bit significand), the check against the hardware double fails and the program exits 1",
+  "not_checked": [
+    "the paper's other examples (the spreadsheet @ROUND and @INT bugs, the Excel displays, the other nationality of 2.54D0 cases) and its marketing and language arguments",
+    "decimal-to-binary conversion in any compiler other than the ones this was built with; the literals here are converted by the build's compiler for the float and double comparisons",
+    "Tier-4 and native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "ounce-core's integer unit and IEEE double arithmetic reproduce the exact decimal values Kahan prints for 25.4 in four binary formats, for the 17-digit displays of 0.8 and 32200/32.2 and for the seven doubles around 1024, with two printed strings shown to contain typos. It does not show the paper's wider argument."
+}

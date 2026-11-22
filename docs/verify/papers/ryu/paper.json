@@ -1,0 +1,37 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Ryu: fast float-to-string conversion",
+    "authors": ["Ulf Adams"],
+    "venue": "Proc. 39th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI 2018), pp. 270-282",
+    "year": 2018
+  },
+  "program": {
+    "source": "ryu.c",
+    "how": "written for ounce-core from the algorithm of the paper (decode, the e2 >= 0 and e2 < 0 branches with the 5^q reciprocal and 5^i tables, trailing-zero tracking, digit removal with round to even); the 125-bit (double) and 59/61-bit (float) table entries are computed at run time with a small big-number type instead of being stored; no Ryu source code was used. The paper's own text was not fetched in this session: the implementation follows the published algorithm as the author knows it and is validated only against the authors' test vectors",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "132 expected strings of the authors' double-precision test file (d2s_test.cc) are produced exactly: zero and negative zero, NaN, infinities, minimum and maximum doubles, 2.2250738585072014E-308 (smallest normal), the 'looks like 5^q' corner cases, the shift-range cases, 'lots of trailing zeros' (2.9802322387695312E-8, round to even), output lengths 1..17 digits, small integers, 10^i, 10^15+10^i, powers of two and 1000 times powers of two",
+    "60 expected strings of the authors' single-precision test file (f2s_test.cc): boundary and round-to-even cases (3.355445E7, 3.0540412E5, 8.0990312E3, 2.4414062E-4 ...), subnormals (1E-45, 1.1754944E-38), 3.4028235E38, the regression list and the 'looks like 5^q' cases"
+  ],
+  "expected_values_source": {
+    "what": "the ASSERT_D2S and ASSERT_F2S expected strings in the authors' repository test files",
+    "url": "https://raw.githubusercontent.com/ulfjack/ryu/master/ryu/tests/d2s_test.cc and https://raw.githubusercontent.com/ulfjack/ryu/master/ryu/tests/f2s_test.cc",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data copied as numbers; the file's code was not copied. Inputs given there as decimal literals (for example 1.234567895E0, 3.0540412E5f) were converted to IEEE bit patterns outside the program with Python's correctly rounded float() (double) and an exact-fraction round-to-nearest-even routine (float); the Windows-only duplicate of the 7.038531E-26 float vector was dropped. The test files are the authors' tests of their own code, not an independent oracle.",
+    "tolerance": "exact string comparison"
+  },
+  "observations": [
+    "the check shows only that the output matches the authors' published strings on these inputs; it does not itself verify that the output is the shortest string that reads back, or that it is correctly rounded (the program contains no decimal-to-binary conversion)",
+    "the authors' 'small integer' fast path (d2s_small_int) was not implemented; the general path gives the same strings on all published vectors"
+  ],
+  "negative_control": "built with -DNEG_NOEVEN (the round-to-even correction of the last removed digit removed), 131 of 132 double vectors and 54 of 60 float vectors match, the program exits 1",
+  "not_checked": [
+    "the paper's speed results and benchmarks (an emulator's run time says nothing about the authors' hardware), and its proof of correctness",
+    "exhaustive verification (the paper's authors tested all floats); only 132 + 60 published inputs are run",
+    "the Ryu printf/%e variants and formats other than the shortest 'dEe' form, and other implementations (Grisu, Schubfach, Dragonbox)",
+    "Tier-4 and native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the authors' published Ryu output for 192 inputs (132 doubles and 60 floats). It does not show Ryu is correct for all inputs or that the paper's claims hold."
+}
