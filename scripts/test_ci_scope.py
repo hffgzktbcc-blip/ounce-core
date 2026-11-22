@@ -68,7 +68,7 @@ class ScopeTest(unittest.TestCase):
 
         def run():
             return subprocess.run([sys.executable, '-c', script], capture_output=True, text=True,
-                                  env=dict(os.environ, RESULTS=json.dumps(results))).returncode
+                                  env=dict(os.environ, RESULTS=json.dumps(results), GITHUB_EVENT_NAME='push')).returncode
 
         self.assertEqual(run(), 0)  # docs: heavy jobs intentionally skipped
         results['release-notice-packaging']['result'] = 'failure'
