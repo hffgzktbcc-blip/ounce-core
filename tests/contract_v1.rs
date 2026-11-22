@@ -1021,3 +1021,27 @@ fn trace_v1_numbers_are_hex_strings_and_counts_are_integers() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn report_json_dash_emits_pure_json_to_stdout() {
+    let bin = fixture("tests/linux-elf/bin/exitcode.elf");
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args([
+            "run-elf",
+            bin.to_str().unwrap(),
+            "--deterministic",
+            "--report-json=-",
+            "--",
+            "--guest-flag",
+            "-v",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(42));
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let parsed: Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("expected pure JSON on stdout, got error {e}: {stdout:?}"));
+    assert_eq!(parsed["schema"], "ounce.run.v1");
+    assert_eq!(parsed["stop_kind"], "clean_exit");
+    assert_eq!(parsed["guest_exit_status"], 42);
+}
