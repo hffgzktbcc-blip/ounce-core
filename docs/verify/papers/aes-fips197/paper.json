@@ -24,7 +24,7 @@
     "fetched": "2026-11-19",
     "note": "values extracted from the PDF text by script and compiled in as data; the program was written from the algorithm description. The Rijndael proposal paper itself (which also defines 192- and 256-bit blocks) was not fetched, and none of its block sizes other than 128 bits are checked"
   },
-  "negative_control": "built with -DAES_AFFINE_C=0x62 (one bit of the S-box affine constant changed), 520 of 558 published values mismatch (the plaintext-independent states do too) and the program exits 1",
+  "negative_control": "built with -DAES_AFFINE_C=0x62 (one bit of the S-box affine constant changed), 520 of 558 published values mismatch and the program exits 1",
   "not_checked": [
     "the Rijndael proposal's 192-bit and 256-bit block sizes (only the 128-bit-block AES subset is in FIPS 197)",
     "other key/plaintext pairs: only the single Appendix C key and plaintext per key size are used, no other known-answer sets and no modes of operation",

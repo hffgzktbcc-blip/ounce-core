@@ -24,7 +24,7 @@
     "fetched": "2026-11-20",
     "note": "tables and test values were extracted from the PDF text by script and compiled in as data; the program was written from the specification text. Only the KASUMI block cipher is checked, not the f8/f9 modes in TS 35.203 sections 4 and 5, and not the S-box gate-logic equations"
   },
-  "negative_control": "built with -DKAS_CFLIP=1 (the low bit of every key-schedule constant flipped), 1,262 of 1,426 compared values mismatch, test set 4 fails and the program exits 1",
+  "negative_control": "built with -DKAS_CFLIP=1 (the low bit of every key-schedule constant flipped), 1,262 of 1,425 compared values mismatch, test set 4 fails and the program exits 1",
   "not_checked": [
     "the f8 (confidentiality) and f9 (integrity) algorithms and their test data, which use KASUMI as a building block",
     "the S-box tables against the gate-logic formulas given beside them (only the two worked examples)",
