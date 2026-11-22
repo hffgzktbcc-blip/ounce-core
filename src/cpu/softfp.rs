@@ -34,6 +34,7 @@ pub fn take_flags() -> u32 {
 }
 
 /// FPCR bits used here.
+pub const FPCR_FZ16: u32 = 1 << 19;
 pub const FPCR_FZ: u32 = 1 << 24;
 pub const FPCR_DN: u32 = 1 << 25;
 pub const FPCR_RMODE_SHIFT: u32 = 22;
@@ -85,18 +86,27 @@ impl Env {
         }
     }
 
+    /// Half-precision environment: ARM64 FP16 uses `FPCR.FZ16` (bit 19) instead of `FPCR.FZ` (bit 24).
+    pub fn from_fpcr_f16(fpcr: u32) -> Env {
+        Env {
+            fz: fpcr & FPCR_FZ16 != 0,
+            ..Self::from_fpcr(fpcr)
+        }
+    }
+
     pub fn with_round(self, round: Round) -> Env {
         Env { round, ..self }
     }
 }
 
-/// An IEEE binary format: 32 or 64 bit here.
+/// An IEEE binary format: 16, 32 or 64 bit.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Fmt {
     ebits: u32,
     mbits: u32,
 }
 
+pub const F16: Fmt = Fmt { ebits: 5, mbits: 10 };
 pub const F32: Fmt = Fmt { ebits: 8, mbits: 23 };
 pub const F64: Fmt = Fmt { ebits: 11, mbits: 52 };
 
@@ -186,11 +196,13 @@ fn unpack(f: Fmt, x: u64) -> Fin {
     }
 }
 
-/// FPUnpack's flush: with FZ a denormal operand (single or double) reads as a zero of the same sign.
-/// A flushed denormal raises IDC.
+/// FPUnpack's flush: with FZ (single/double) or FZ16 (half) a denormal operand reads as a zero of the same sign.
+/// Single/double flush raises IDC; per Arm ARM `FPUnpackBase`, half-precision `FZ16` flush does not raise IDC.
 pub fn flush_input(f: Fmt, env: Env, x: u64) -> u64 {
     if env.fz && f.is_denormal(x) {
-        raise(IDC);
+        if f != F16 {
+            raise(IDC);
+        }
         x & f.sign_bit()
     } else {
         x
@@ -604,6 +616,16 @@ pub fn convert(from: Fmt, to: Fmt, env: Env, a: u64) -> u64 {
     round_pack(to, env, x.sign, x.exp, x.mant as u128, false)
 }
 
+/// Widens an `F16` value to `F32` for `FMLAL`/`FMLSL` (FEAT_FHM), preserving a signalling NaN's quiet bit
+/// so `fma`'s `FPProcessNaNs` lets a half-precision sNaN take priority over a single-precision qNaN addend.
+pub fn widen_f16_preserve_snan(env: Env, a: u64) -> u64 {
+    if F16.is_nan(a) {
+        let frac = F16.frac(a) << (F32.mbits - F16.mbits);
+        return (F32.max_field() << F32.mbits) | frac | F32.zero(F16.sign(a));
+    }
+    convert(F16, F32, Env { fz: false, ..env }, a)
+}
+
 /// Flags of a float-to-integer conversion (`FPToFixed`). `exact` is the operand (times `2^fbits`) as an exact `f64`
 /// and `rounded` that value rounded to an integer by the instruction's rounding mode. A NaN or an out-of-range
 /// result is IOC (the result saturates); an in-range result that differs from `exact` is IXC.
@@ -674,6 +696,30 @@ pub fn double_to_int32_js(env: Env, a: u64) -> (u32, bool) {
 pub fn raise_compare(f: Fmt, a: u64, b: u64, signalling: bool) {
     if f.is_snan(a) || f.is_snan(b) || (signalling && (f.is_nan(a) || f.is_nan(b))) {
         raise(IOC);
+    }
+}
+
+/// Ordered/unordered comparison of two flushed `F16` bit patterns returning ARM64 `(N, Z, C, V)`.
+pub fn compare_f16_nzcv(a: u64, b: u64) -> (bool, bool, bool, bool) {
+    if F16.is_nan(a) || F16.is_nan(b) {
+        return (false, false, true, true);
+    }
+    if F16.is_zero(a) && F16.is_zero(b) {
+        return (false, true, true, false);
+    }
+    let (sa, sb) = (F16.sign(a), F16.sign(b));
+    let lt = match (sa, sb) {
+        (true, false) => true,
+        (false, true) => false,
+        (false, false) => (a & 0x7FFF) < (b & 0x7FFF),
+        (true, true) => (a & 0x7FFF) > (b & 0x7FFF),
+    };
+    if !lt && a == b {
+        (false, true, true, false)
+    } else if lt {
+        (true, false, false, false)
+    } else {
+        (false, false, true, false)
     }
 }
 
@@ -1108,5 +1154,18 @@ mod tests {
         };
         assert_eq!(binop(F32, rm, BinOp::Sub, 0x3f80_0000, 0x3f80_0000), 0x8000_0000);
         assert_eq!(binop(F32, rp, BinOp::Sub, 0x3f80_0000, 0x3f80_0000), 0);
+    }
+
+    #[test]
+    fn fz16_flushes_denormal_input_without_raising_idc() {
+        let fz = Env::from_fpcr(FPCR_FZ);
+        let _ = take_flags();
+        assert_eq!(flush_input(F32, fz, 0x0000_0001), 0);
+        assert_eq!(take_flags(), IDC, "FPCR.FZ on F32 raises IDC");
+
+        let fz16 = Env::from_fpcr_f16(FPCR_FZ16);
+        assert_eq!(flush_input(F16, fz16, 0x0001), 0);
+        assert_eq!(flush_input(F16, fz16, 0x8001), 0x8000);
+        assert_eq!(take_flags(), 0, "FPCR.FZ16 on F16 does not raise IDC");
     }
 }

@@ -48,7 +48,7 @@ Every claim carries one of four labels:
 | Bounded replay of a historical failure | bounded-verified (SDL2 case); [instruction dossier replay](INSTRUCTION_DIAGNOSIS.md) now also exists |
 | First differing compared instruction case with register snapshots | bounded-verified on one real vector-FP discrepancy; not arbitrary-program tracing |
 | Instruction-level checking against hardware | bounded-verified on recorded single-instruction inputs; [fuzzer scope and results](verify/insn-fuzzer/README.md) |
-| Run static Linux ARM64 programs | bounded-verified runner for static musl ELFs; six freestanding fixtures plus the pinned real-program suite (28 harnesses pass on the hosted gate), [run-elf evidence](verify/linux-elf/README.md) |
+| Run static Linux ARM64 programs | bounded-verified runner for static musl ELFs; 51 harnesses passed on the v0.10.0 tagged CI commit, [release evidence](releases/v0.10.0.md) |
 | Run arbitrary ARM64 or Linux applications | not established |
 | Automatically find any bug's root cause | not established |
 | Independent reproduction by an outside developer | none yet ([issue #248](https://github.com/hffgzktbcc-blip/ounce-core/issues/248)) |
@@ -56,7 +56,7 @@ Every claim carries one of four labels:
 ## Known limits and what we do about them
 
 - **Coverage is partial.** Many vector, floating-point and system instructions are undecoded or untested. A [decoder census](verify/CENSUS_2026-11-08.md) and [single-instruction fuzzer](verify/insn-fuzzer/README.md) now exist. The recorded census is a revision-specific snapshot, not current coverage. Next: retain CI fuzz results and close observed gaps.
-- **QC is modelled for implemented saturating instructions.** [Hardware comparisons](verify/qc-flag/README.md) cover bounded inputs; FPCR rounding, flush-to-zero and default-NaN, and the FPSR exception flags, are modelled for common scalar and vector FP forms on the interpreter and Tier-3. Tier-4 compiled FP cannot raise the flags, and FPCR trap enables and half-precision arithmetic remain unmodelled. [Cross-host differences](verify/README.md#hardware-differences) remain explicit.
+- **QC is modelled for implemented saturating instructions.** [Hardware comparisons](verify/qc-flag/README.md) cover bounded inputs; FPCR rounding, flush-to-zero and default-NaN, and the FPSR exception flags, are modelled for common scalar and vector FP forms on the interpreter and Tier-3. Tier-4 compiled FP cannot raise the flags, and FPCR trap enables and some half-precision forms remain unsupported; v0.10.0 includes tested FP16 instructions, but the coverage is not comprehensive. [Cross-host differences](verify/README.md#hardware-differences) remain explicit.
 - **It is not fast.** The interpreter runs at roughly 20 million instructions per second, which is fine for tests. *Plan:* measure first. The bar is that the whole verified-program suite runs in CI in a few minutes. Speed is not what we compete on; beyond that bar it does not drive the roadmap.
 - **Native execution runs on the host CPU.** On an ARM64 host it checks the harness and the toolchain, not the emulator, so Tier-3 and Tier-4 are the real evidence.
 

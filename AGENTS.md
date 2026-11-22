@@ -2,12 +2,13 @@
 
 ## Source of truth before starting work
 
-**Read [the Ounce Family one-year roadmap](docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) before planning any multi-repository, release, or roadmap task.** It governs the Nov 2026–Nov 2027 family direction across `ounce-core`, `ounce-hb`, `ounce-runtime`, and `deckstream`. This repository's `PLAN.md` is a dated, local backlog and implementation/evidence record; use it for scoped Core tasks, not to override newer family priorities.
+**Read [the Ounce Family one-year roadmap](docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) before planning any multi-repository, release, or roadmap task.** It sets Nov 2026–Nov 2027 strategy across `ounce-core`, `ounce-hb`, `ounce-runtime` and the independent Steam Deck NAS/WebDAV project `deckstream`; the family is not one runtime. The roadmap's old Q1 pre-release gate is historical: **do not re-tag published versions or treat retired criteria as active assignments**. This repository's `PLAN.md` is a dated, local backlog and implementation/evidence record; use it for scoped Core tasks, not to override newer family priorities.
 
 Before selecting work, reconcile **current `main`, merged PRs, open issues/PRs, published releases and CI** against the roadmap and `PLAN.md`; mark anything already delivered as completed in the relevant active document before proposing a duplicate. A green CI run or merged PR is not proof of independent testing or product readiness. Check the corresponding sibling repository when a family task spans repos. Everything under `docs/history/` (past handoffs, old plans), handoff journals, and archived plans are historical context, **never active assignments**. If sources disagree, prefer verified live GitHub evidence for present state, the family roadmap for strategic direction, and the current user's instruction for authorized scope; report unresolved ambiguity instead of blindly following stale text.
 
 Build useful end-to-end results. The current request sets scope; `PLAN.md` is the
 prioritized backlog, not a permission system. Historical notes do not add rules.
+When editing public documentation, follow [the clarity and freshness checklist](docs/README.md#keep-live-documentation-clear-and-current) and [the family public documentation contract](docs/PUBLIC_DOCS_CONTRACT.md): name the actor, use active verbs, separate shipped from planned work, and link dated test evidence. **A user-visible feature is not finished until the same PR updates its affected README/Quick Start/limits and Unreleased changelog.** If no public docs change is necessary, explain why in the PR (`Docs: none — <reason>`). CI checks for that decision; current release links should point to GitHub `/releases/latest`, not a frozen version number.
 
 - Inspect relevant code and existing work, then act. Use the provided checkout on a
   topic branch; preserve unrelated changes and stage only your own paths.

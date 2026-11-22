@@ -896,18 +896,14 @@ impl Lowerer {
             }
 
             Instruction::FpCompare {
-                rn,
-                rm,
-                is_zero,
-                is_double,
-                ..
+                rn, rm, is_zero, esize, ..
             } => {
-                if self.exact_fp {
+                if self.exact_fp || esize == 16 {
                     return Err(());
                 }
                 let a = self.b.get(Reg::VLo(rn));
                 let b = if is_zero { self.k(0) } else { self.b.get(Reg::VLo(rm)) };
-                let w = if is_double { FpWidth::F64 } else { FpWidth::F32 };
+                let w = if esize == 64 { FpWidth::F64 } else { FpWidth::F32 };
                 let flags = self.b.push(Op::FpCompare(w, a, b));
                 self.b.set(Reg::Nzcv, flags);
             }
@@ -2451,8 +2447,8 @@ mod tests {
         assert!(e.fallback_insns >= 4);
     }
 
-    /// FJCVTZS and the vector fixed-point converts are interpreter-only (#469): Tier-4 falls back for them and the
-    /// results, NZCV and FPSR must equal the interpreter's.
+    /// FJCVTZS, vector fixed-point converts, and scalar-SIMD fixed-point converts are interpreter-only (#469):
+    /// Tier-4 falls back for them and the results, NZCV and FPSR must equal the interpreter's.
     #[test]
     fn fjcvtzs_and_vector_fixed_converts_fall_back_in_all_tiers() {
         let e = check_all_tiers(
@@ -2462,6 +2458,10 @@ mod tests {
                 0x6f6ce403, // ucvtf v3.2d, v0.2d, #20
                 0x4f39fc04, // fcvtzs v4.4s, v0.4s, #7
                 0x6f6cfc05, // fcvtzu v5.2d, v0.2d, #20
+                0x5f39e406, // scvtf s6, s0, #7
+                0x7f6ce407, // ucvtf d7, d0, #20
+                0x5f39fc08, // fcvtzs s8, s0, #7
+                0x7f6cfc09, // fcvtzu d9, d0, #20
                 0x1e7e0008, // fjcvtzs w8, d0
                 0x91000400, // add x0, x0, #1 (native suffix)
                 0xd4000001,
@@ -2470,7 +2470,7 @@ mod tests {
                 cpu.regs.v[0] = 0x4b80_0001_c020_0000_41f7_ffff_fff0_0000u128;
             },
         );
-        assert!(e.fallback_insns >= 5);
+        assert!(e.fallback_insns >= 9);
     }
 
     #[test]

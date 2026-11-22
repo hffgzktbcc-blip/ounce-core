@@ -1,0 +1,30 @@
+{
+  "schema": "ounce.repro.v1",
+  "name": "deko3d",
+  "source_repo": "https://github.com/hffgzktbcc-blip/ounce-core",
+  "source_path": "tests/fixtures/nro/deko3d",
+  "source_commit": "9e813b984930f6280b1a23ac2d3a8ed9d9f5d2e7",
+  "toolchain": {
+    "devkitA64": "r30-1",
+    "gcc": "16.1.0-1",
+    "newlib": "4.6.0.20260123-4",
+    "libnx": "4.12.0-1",
+    "switch_tools": "1.13.1-1",
+    "deko3d": "0.5.0-1"
+  },
+  "fixture_path": "tests/fixtures/nro/deko3d/deko3d.nro",
+  "nro_sha256": "9e555711561ce16f846170a97545245422961b3991bb6526d16ef62833798af6",
+  "run_args": [
+    "--present=headless",
+    "--deterministic"
+  ],
+  "expected": {
+    "stop_kind": "clean_exit",
+    "exit_code": 0,
+    "insns_executed": 1619330,
+    "frames_presented": 0,
+    "framebuffer_hash": null,
+    "audio_frames_mixed": 0,
+    "audio_hash": null
+  }
+}

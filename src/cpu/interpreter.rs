@@ -1195,17 +1195,29 @@ impl Cpu {
                 ra,
                 o1,
                 o0,
-                is_double,
+                esize,
             } => {
-                let (f, env) = self.fp_env(is_double);
-                let (n, m, a) = (
-                    self.fp_bits(rn, is_double),
-                    self.fp_bits(rm, is_double),
-                    self.fp_bits(ra, is_double),
-                );
-                let n = if o0 != o1 { f.neg(n) } else { n };
-                let a = if o1 { f.neg(a) } else { a };
-                self.set_fp_bits(rd, is_double, softfp::fma(f, env, n, m, a));
+                if esize == 16 {
+                    let f = softfp::F16;
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let n = (self.regs.v[rn as usize] & 0xFFFF) as u64;
+                    let m = (self.regs.v[rm as usize] & 0xFFFF) as u64;
+                    let a = (self.regs.v[ra as usize] & 0xFFFF) as u64;
+                    let n = if o0 != o1 { f.neg(n) } else { n };
+                    let a = if o1 { f.neg(a) } else { a };
+                    self.regs.v[rd as usize] = softfp::fma(f, env, n, m, a) as u128;
+                } else {
+                    let is_double = esize == 64;
+                    let (f, env) = self.fp_env(is_double);
+                    let (n, m, a) = (
+                        self.fp_bits(rn, is_double),
+                        self.fp_bits(rm, is_double),
+                        self.fp_bits(ra, is_double),
+                    );
+                    let n = if o0 != o1 { f.neg(n) } else { n };
+                    let a = if o1 { f.neg(a) } else { a };
+                    self.set_fp_bits(rd, is_double, softfp::fma(f, env, n, m, a));
+                }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -1384,10 +1396,14 @@ impl Cpu {
                 rn,
                 rm,
                 cond,
-                is_double,
+                esize,
             } => {
                 let src = if self.check_condition(cond) { rn } else { rm };
-                let mask: u128 = if is_double { u64::MAX as u128 } else { u32::MAX as u128 };
+                let mask: u128 = match esize {
+                    16 => u16::MAX as u128,
+                    32 => u32::MAX as u128,
+                    _ => u64::MAX as u128,
+                };
                 self.regs.write_q(rd, self.regs.read_q(src) & mask);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -1397,42 +1413,43 @@ impl Cpu {
                 rn,
                 rm,
                 is_zero,
-                is_double,
+                esize,
                 signalling,
             } => {
-                {
+                let (n_f, z_f, c_f, v_f) = if esize == 16 {
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let a = softfp::flush_input(softfp::F16, env, (self.regs.v[rn as usize] & 0xFFFF) as u64);
+                    let b = if is_zero {
+                        0
+                    } else {
+                        softfp::flush_input(softfp::F16, env, (self.regs.v[rm as usize] & 0xFFFF) as u64)
+                    };
+                    softfp::raise_compare(softfp::F16, a, b, signalling);
+                    softfp::compare_f16_nzcv(a, b)
+                } else {
+                    let is_double = esize == 64;
                     let (f, _) = self.fp_env(is_double);
-                    let b = if is_zero { 0 } else { self.fp_bits(rm, is_double) };
-                    softfp::raise_compare(f, self.fp_bits(rn, is_double), b, signalling);
-                }
-                let (n, m) = if is_zero {
-                    (self.fp_cmp_operand(rn, is_double), 0.0)
-                } else {
-                    (self.fp_cmp_operand(rn, is_double), self.fp_cmp_operand(rm, is_double))
+                    let b_bits = if is_zero { 0 } else { self.fp_bits(rm, is_double) };
+                    softfp::raise_compare(f, self.fp_bits(rn, is_double), b_bits, signalling);
+                    let (n, m) = if is_zero {
+                        (self.fp_cmp_operand(rn, is_double), 0.0)
+                    } else {
+                        (self.fp_cmp_operand(rn, is_double), self.fp_cmp_operand(rm, is_double))
+                    };
+                    if n.is_nan() || m.is_nan() {
+                        (false, false, true, true)
+                    } else if n == m {
+                        (false, true, true, false)
+                    } else if n < m {
+                        (true, false, false, false)
+                    } else {
+                        (false, false, true, false)
+                    }
                 };
-
-                if n.is_nan() || m.is_nan() {
-                    self.regs.pstate.n = false;
-                    self.regs.pstate.z = false;
-                    self.regs.pstate.c = true;
-                    self.regs.pstate.v = true;
-                } else if n == m {
-                    self.regs.pstate.n = false;
-                    self.regs.pstate.z = true;
-                    self.regs.pstate.c = true;
-                    self.regs.pstate.v = false;
-                } else if n < m {
-                    self.regs.pstate.n = true;
-                    self.regs.pstate.z = false;
-                    self.regs.pstate.c = false;
-                    self.regs.pstate.v = false;
-                } else {
-                    // n > m
-                    self.regs.pstate.n = false;
-                    self.regs.pstate.z = false;
-                    self.regs.pstate.c = true;
-                    self.regs.pstate.v = false;
-                }
+                self.regs.pstate.n = n_f;
+                self.regs.pstate.z = z_f;
+                self.regs.pstate.c = c_f;
+                self.regs.pstate.v = v_f;
 
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -1471,21 +1488,30 @@ impl Cpu {
                 rm,
                 nzcv,
                 cond,
-                is_double,
+                esize,
                 signalling,
             } => {
                 let (n, z, c, v) = if self.check_condition(cond) {
-                    let (f, _) = self.fp_env(is_double);
-                    softfp::raise_compare(f, self.fp_bits(rn, is_double), self.fp_bits(rm, is_double), signalling);
-                    let (a, b) = (self.fp_cmp_operand(rn, is_double), self.fp_cmp_operand(rm, is_double));
-                    if a.is_nan() || b.is_nan() {
-                        (false, false, true, true)
-                    } else if a == b {
-                        (false, true, true, false)
-                    } else if a < b {
-                        (true, false, false, false)
+                    if esize == 16 {
+                        let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                        let a = softfp::flush_input(softfp::F16, env, (self.regs.v[rn as usize] & 0xFFFF) as u64);
+                        let b = softfp::flush_input(softfp::F16, env, (self.regs.v[rm as usize] & 0xFFFF) as u64);
+                        softfp::raise_compare(softfp::F16, a, b, signalling);
+                        softfp::compare_f16_nzcv(a, b)
                     } else {
-                        (false, false, true, false)
+                        let is_double = esize == 64;
+                        let (f, _) = self.fp_env(is_double);
+                        softfp::raise_compare(f, self.fp_bits(rn, is_double), self.fp_bits(rm, is_double), signalling);
+                        let (a, b) = (self.fp_cmp_operand(rn, is_double), self.fp_cmp_operand(rm, is_double));
+                        if a.is_nan() || b.is_nan() {
+                            (false, false, true, true)
+                        } else if a == b {
+                            (false, true, true, false)
+                        } else if a < b {
+                            (true, false, false, false)
+                        } else {
+                            (false, false, true, false)
+                        }
                     }
                 } else {
                     (nzcv & 8 != 0, nzcv & 4 != 0, nzcv & 2 != 0, nzcv & 1 != 0)

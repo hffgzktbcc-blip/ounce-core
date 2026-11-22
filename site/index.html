@@ -3,20 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Does your code behave the same on ARM64? Ounce-Core runs a program on three CPU engines and compares the output with real ARM64 hardware. Open source, written in Rust.">
+  <meta name="description" content="Ounce-Core runs supported ARM64 programs on three CPU engines, compares their results with real-hardware references, and helps developers investigate differences.">
   <meta name="robots" content="index,follow">
   <link rel="canonical" href="https://hffgzktbcc-blip.github.io/ounce-core/">
   <meta property="og:url" content="https://hffgzktbcc-blip.github.io/ounce-core/">
   <meta property="og:image" content="https://hffgzktbcc-blip.github.io/ounce-core/assets/ounce-core-vista.png">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Ounce-Core | Does your code behave the same on ARM64?">
-  <meta property="og:description" content="Run a program on three CPU engines and compare the output with real ARM64 hardware.">
+  <meta property="og:title" content="Ounce-Core | Check how ARM64 programs behave">
+  <meta property="og:description" content="Ounce-Core runs supported ARM64 programs on three CPU engines and compares their results with real-hardware references.">
   <meta name="theme-color" content="#fafaf8">
-  <title>Ounce-Core | Does your code behave the same on ARM64?</title>
+  <title>Ounce-Core | Check how ARM64 programs behave</title>
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Ounce-Core: does your code behave the same on ARM64?">
-  <meta name="twitter:description" content="Compare program output with real ARM64 hardware.">
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"Ounce-Core","alternateName":"Ounce Core","codeRepository":"https://github.com/hffgzktbcc-blip/ounce-core","url":"https://github.com/hffgzktbcc-blip/ounce-core","programmingLanguage":"Rust","license":"https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE","isAccessibleForFree":true,"description":"Runs programs on three CPU engines and compares the output with real ARM64 hardware.","keywords":["Ounce-Core","AArch64","ARM64","Rust","differential testing"]}</script>
+  <meta name="twitter:title" content="Ounce-Core checks how ARM64 programs behave">
+  <meta name="twitter:description" content="Ounce-Core compares supported ARM64 program results with real-hardware references.">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"Ounce-Core","alternateName":"Ounce Core","codeRepository":"https://github.com/hffgzktbcc-blip/ounce-core","url":"https://github.com/hffgzktbcc-blip/ounce-core","programmingLanguage":"Rust","license":"https://github.com/hffgzktbcc-blip/ounce-core/blob/main/LICENSE","isAccessibleForFree":true,"description":"Ounce-Core runs supported ARM64 programs on three CPU engines and compares their results with real-hardware references.","keywords":["Ounce-Core","AArch64","ARM64","Rust","differential testing"]}</script>
   <style>
     :root{color-scheme:light dark;--bg:#fafaf8;--fg:#1a2420;--muted:#4d5b54;--accent:#1f6b47;--accent-fg:#fff;--edge:#d9dfda;--code:#eef1ee}
     @media(prefers-color-scheme:dark){:root{--bg:#0f1a15;--fg:#eef3ee;--muted:#aebdb4;--accent:#8fd1a8;--accent-fg:#0f1a15;--edge:#2d4036;--code:#16251e}}
@@ -50,8 +50,8 @@
   <header><nav aria-label="Primary navigation"><strong>Ounce-Core</strong><div><a href="playground/">Playground</a><a href="results.html">Results</a><a href="contribute.html">Contribute</a><a href="https://github.com/hffgzktbcc-blip/ounce-core">GitHub</a></div></nav></header>
   <main>
     <section style="padding-top:0">
-      <h1>Does your code behave the same on ARM64?</h1>
-      <p class="lead">Ounce-Core runs a program on three CPU engines and compares the output with real ARM64 hardware.</p>
+      <h1>Ounce-Core checks how ARM64 programs behave</h1>
+      <p class="lead">Ounce-Core runs supported ARM64 programs through three CPU engines, compares their outputs with results recorded on real hardware, and helps you investigate differences.</p>
       <p><a class="button" href="playground/">Try it in your browser</a></p>
       <video class="demo" id="hero-video" muted loop playsinline autoplay preload="metadata" poster="../docs/media/ounce-core-poster.jpg" aria-label="A 90-second silent overview: one program, three engines, one hardware reference, and the bugs it found.">
         <source src="../docs/media/ounce-core-main.mp4" type="video/mp4">
@@ -67,14 +67,20 @@
     <section aria-labelledby="problem">
       <h2 id="problem">The problem</h2>
       <p>You ship a library built on x86. Will it give the same answer on ARM64? You may not own an ARM64 machine to find out.</p>
-      <p>Ounce-Core runs the program and diffs its output byte for byte against a reference recorded on real ARM64 hardware. When the two differ, it helps you find where they split. It is open source and written in Rust.</p>
+      <p>Ounce-Core runs supported programs and compares their results with references recorded on real ARM64 hardware. When the outputs differ, its reports and bounded traces help you investigate where the runs split. The project is open source and written in Rust.</p>
+    </section>
+
+    <section aria-labelledby="case-study">
+      <h2 id="case-study">A real bug: Lua ran, but its maths was wrong</h2>
+      <p>In a recorded test, Lua's <code>math.sin(1)</code> returned about <strong>1.1585</strong>, even though the correct value is about <strong>0.84147</strong>. Multiple Ounce-Core execution paths agreed with each other. A separately built Apple Silicon reference revealed that they shared a floating-point mistake.</p>
+      <p>The maintainers narrowed the failure to two instructions, fixed them and saved the matching results. <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/community/LUA_FP_BUG_WALKTHROUGH.md">Follow the bug, the fix and the evidence</a>—no installation needed to read the case.</p>
     </section>
 
     <section aria-labelledby="results">
       <h2 id="results">What it has done</h2>
       <ul class="results">
         <li><strong>It found real bugs.</strong> In one week of running unmodified open-source programs (LZ4, xxHash, SQLite, Lua) against an Apple Silicon Mac, it found a prefetch instruction that corrupted registers, two floating-point instructions with the wrong sign, and many missing vector instructions. All were fixed, each with a test.</li>
-        <li><strong>It agrees with the hardware on real programs.</strong> LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7 and a 5,964-line floating-point test give byte-identical output on Tier-3, Tier-4 and native. 28 Linux ARM64 harnesses also run as static programs and match the native ARM64 host on the hosted Linux ARM64 gate (an earlier 18-program set also matched qemu-user). The older corpus of 50/50 outside homebrew programs passes its pixel checks, on the inputs those checks cover.</li>
+        <li><strong>It checks real programs against hardware references.</strong> Recorded tests of LZ4, xxHash, SQLite 3.50.4, Lua 5.4.7 and floating-point workloads produced matching output on the tested engines and native execution. The <a href="https://github.com/hffgzktbcc-blip/ounce-core/actions/runs/44746386566/job/136322674982">51-harness Linux ARM64 matrix passed on the v0.10.0 tagged commit</a>. The first-frame corpus of 50/50 outside homebrew programs passes its pixel checks on the inputs those checks cover. These tests do not establish general ARM64 app compatibility.</li>
         <li><strong>It is safe Rust.</strong> The runtime forbids <code>unsafe</code> code, and the compiler enforces it. The two small crates that need it are kept apart, and CI checks the boundary.</li>
       </ul>
       <p class="limit"><strong>Limit:</strong> this is a testing tool, not a fast emulator. It does not run arbitrary programs, instruction coverage is partial, and a match is evidence for the inputs tested, not proof. <a href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/LIMITS.md">Read the limits</a>.</p>

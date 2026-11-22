@@ -78,6 +78,71 @@ fn elf(code: &[u32]) -> Vec<u8> {
     b
 }
 
+/// Static AArch64 Linux ELF with an unstripped `.symtab` + `.strtab` for fault symbolication tests (#475).
+fn elf_with_symtab(code: &[u32], syms: &[(&str, u64, u64)]) -> Vec<u8> {
+    let mut b = elf(code);
+    // Align to 8 bytes before appending .strtab, .symtab, and 3 section headers (NULL, SYMTAB, STRTAB).
+    while !b.len().is_multiple_of(8) {
+        b.push(0);
+    }
+    let strtab_off = b.len() as u64;
+    b.push(0); // empty string at index 0
+    let mut name_offsets = Vec::with_capacity(syms.len());
+    for &(name, _, _) in syms {
+        name_offsets.push((b.len() as u64 - strtab_off) as u32);
+        b.extend_from_slice(name.as_bytes());
+        b.push(0);
+    }
+    let strtab_size = b.len() as u64 - strtab_off;
+    while !b.len().is_multiple_of(8) {
+        b.push(0);
+    }
+    let symtab_off = b.len() as u64;
+    b.extend_from_slice(&[0u8; 24]); // STN_UNDEF
+    for (&(_, addr, size), &name_off) in syms.iter().zip(&name_offsets) {
+        b.extend_from_slice(&name_off.to_le_bytes()); // st_name
+        b.push((1 << 4) | 2); // STB_GLOBAL | STT_FUNC
+        b.push(0); // st_other
+        b.extend_from_slice(&1u16.to_le_bytes()); // st_shndx (non-zero)
+        b.extend_from_slice(&addr.to_le_bytes()); // st_value
+        b.extend_from_slice(&size.to_le_bytes()); // st_size
+    }
+    let symtab_size = b.len() as u64 - symtab_off;
+    let shoff = b.len() as u64;
+    let push_sh = |buf: &mut Vec<u8>, sh_type: u32, offset: u64, size: u64, link: u32, entsize: u64| {
+        buf.extend_from_slice(&0u32.to_le_bytes()); // sh_name
+        buf.extend_from_slice(&sh_type.to_le_bytes());
+        buf.extend_from_slice(&0u64.to_le_bytes()); // sh_flags
+        buf.extend_from_slice(&0u64.to_le_bytes()); // sh_addr
+        buf.extend_from_slice(&offset.to_le_bytes());
+        buf.extend_from_slice(&size.to_le_bytes());
+        buf.extend_from_slice(&link.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes()); // sh_info
+        buf.extend_from_slice(&8u64.to_le_bytes()); // sh_addralign
+        buf.extend_from_slice(&entsize.to_le_bytes());
+    };
+    push_sh(&mut b, 0, 0, 0, 0, 0); // [0] SHT_NULL
+    push_sh(&mut b, 2, symtab_off, symtab_size, 2, 24); // [1] SHT_SYMTAB -> link 2 (.strtab)
+    push_sh(&mut b, 3, strtab_off, strtab_size, 0, 0); // [2] SHT_STRTAB
+    // Patch e_shoff (offset 40), e_shentsize (58), e_shnum (60).
+    b[40..48].copy_from_slice(&shoff.to_le_bytes());
+    b[58..60].copy_from_slice(&64u16.to_le_bytes());
+    b[60..62].copy_from_slice(&3u16.to_le_bytes());
+    b
+}
+
+/// `_start` pushes an AAPCS64 frame record and calls `crash_fn`, which pushes a frame record and loads `0x10` (#475).
+const SYMBOLICATED_FAULT_CODE: [u32; 8] = [
+    0xA9BF_7BFD, // _start+0x0:   stp x29, x30, [sp, #-16]!
+    0x9100_03FD, // _start+0x4:   mov x29, sp
+    0x9400_0002, // _start+0x8:   bl crash_fn (+8 bytes -> 0x400088)
+    0xD503_201F, // _start+0xc:   nop
+    0xA9BF_7BFD, // crash_fn+0x0: stp x29, x30, [sp, #-16]!
+    0x9100_03FD, // crash_fn+0x4: mov x29, sp
+    0xD280_0201, // crash_fn+0x8: movz x1, #0x10
+    0xF940_0020, // crash_fn+0xc: ldr x0, [x1] -> memory_fault at 0x400094
+];
+
 // Hand-assembled A64 words (the encodings are listed in docs/CONTRACT_V1.md).
 const MOVZ_W0_0: u32 = 0x5280_0000;
 const SVC_EXIT_PROCESS: u32 = 0xD400_00E1; // svc #7
@@ -101,6 +166,26 @@ const PRESENT_LOOP: [u32; 6] = [
     0xB900_0082,
     SVC_PRESENT,
     0x17FF_FFFE,
+];
+/// Connects to `sm:`, calls `GetService("apm")` (CMIF cmd 1), then triggers an unhandled `svc #0xff` so exit-14
+/// reports `sm_service: "apm"` and `cmif_cmd_id: 1` (#475).
+const SM_THEN_BAD_SVC: [u32; 16] = [
+    0xD280_1781, // movz x1, #0xbc  ("sm:\0" at 0x8000_00bc)
+    0xF2B0_0001, // movk x1, #0x8000, lsl #16
+    0xD400_03E1, // svc #0x1f (svcConnectToNamedPort) -> x1 = sm handle
+    0xD53B_D069, // mrs x9, tpidrro_el0 (TLS)
+    0x5288_CA6A, // movz w10, #0x4653 ("SF")
+    0x72A9_286A, // movk w10, #0x4943, lsl #16 ("CI")
+    0xB900_112A, // str w10, [x9, #0x10] (CMIF_IN_MAGIC)
+    0x5280_002A, // movz w10, #1 (GetService)
+    0xB900_192A, // str w10, [x9, #0x18] (cmd_id)
+    0x528E_0C2A, // movz w10, #0x7061 ("ap")
+    0x72A0_0DAA, // movk w10, #0x006d, lsl #16 ("m\0")
+    0xB900_212A, // str w10, [x9, #0x20] ("apm\0")
+    0xAA01_03E0, // mov x0, x1
+    0xD400_0421, // svc #0x21 (svcSendSyncRequest)
+    SVC_UNKNOWN, // svc #0xff (unhandled_svc -> exit 14)
+    0x003A_6D73, // "sm:\0"
 ];
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -246,6 +331,12 @@ fn cases() -> &'static [Case] {
             run_nro_bytes("badsvc", &[SVC_UNKNOWN], &[], &[]),
         );
         add(
+            "run-nro unknown svc after sm",
+            1,
+            ("unhandled_svc", 14),
+            run_nro_bytes("smbadsvc", &SM_THEN_BAD_SVC, &[], &[]),
+        );
+        add(
             "run-nro budget",
             1,
             ("budget_exhausted", 16),
@@ -284,6 +375,21 @@ fn cases() -> &'static [Case] {
             71,
             ("memory_fault", 11),
             run_bytes("e71a", "run-elf", &elf(&LOAD_UNMAPPED), &elf_args, &[]),
+        );
+        add(
+            "run-elf symbolicated fault",
+            71,
+            ("memory_fault", 11),
+            run_bytes(
+                "e71sym",
+                "run-elf",
+                &elf_with_symtab(
+                    &SYMBOLICATED_FAULT_CODE,
+                    &[("_start", 0x40_0078, 16), ("crash_fn", 0x40_0088, 16)],
+                ),
+                &elf_args,
+                &[],
+            ),
         );
         add(
             "run-elf udf",
@@ -472,6 +578,21 @@ fn run_v1_stop_details_follow_the_stop() {
     assert_eq!(by_name("run-nro svcBreak with result")["break_result"], 0x2A);
     assert!(by_name("run-nro svcBreak")["break_result"].is_null());
     assert!(by_name("run-nro unknown svc")["pc"].is_number());
+    assert!(by_name("run-nro unknown svc")["sm_service"].is_null());
+    assert!(by_name("run-nro unknown svc")["cmif_cmd_id"].is_null());
+    let sm_bad = by_name("run-nro unknown svc after sm");
+    assert_eq!(sm_bad["svc_id"], 0xFF);
+    assert_eq!(sm_bad["sm_service"], "apm");
+    assert_eq!(sm_bad["cmif_cmd_id"], 1);
+    assert!(
+        sm_bad["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("apm") && m.contains("cmif cmd 1")),
+        "expected sm service and cmd in stop message, got {:?}",
+        sm_bad["message"]
+    );
+    assert!(by_name("run-nro clean exit")["sm_service"].is_null());
+    assert!(by_name("run-nro clean exit")["cmif_cmd_id"].is_null());
     assert_eq!(by_name("run-elf exit 42")["guest_exit_status"], 42);
     assert_eq!(
         by_name("run-elf exit 42")["exit_code"],
@@ -481,6 +602,23 @@ fn run_v1_stop_details_follow_the_stop() {
     assert_eq!(by_name("run-elf unknown syscall")["svc_id"], 278);
     assert!(by_name("run-elf unknown syscall")["guest_exit_status"].is_null());
     assert!(by_name("run-elf not an ELF")["message"].is_string());
+    let sym = by_name("run-elf symbolicated fault");
+    assert_eq!(sym["fault_addr"], 0x10);
+    assert_eq!(sym["fault_symbol"], "crash_fn+0xc");
+    assert!(
+        sym["backtrace"]
+            .as_str()
+            .is_some_and(|bt| bt.contains("crash_fn+0xc") && bt.contains("_start+0x8")),
+        "expected symbolicated FP backtrace, got {:?}",
+        sym["backtrace"]
+    );
+    assert!(
+        sym["message"].as_str().is_some_and(|m| m.contains("crash_fn+0xc")),
+        "expected symbol in fault message, got {:?}",
+        sym["message"]
+    );
+    assert!(by_name("run-elf exit 42")["fault_symbol"].is_null());
+    assert!(by_name("run-elf exit 42")["backtrace"].is_null());
     let frames = by_name("run-nro frame limit");
     assert_eq!(frames["frames_presented"], 2);
     assert!(

@@ -31,24 +31,50 @@ def verdict(stdout, returncode):
     return passed, counts, 'pass' if passed else 'adapter reported a nonpass'
 
 
-def validate_trace(raw, word):
-    """The published suites contain exactly one FPCR=0 register-state input."""
+def validate_trace(raw, word, expected_fpcr=None):
+    """Validate a single-instruction register-state trace (`T` for FPCR=0, `TF <fpcr>` for non-default FPCR)."""
     fields = raw.decode('ascii').split()
-    if len(fields) != 132 or fields[0] != 'T' or fields[66] != '=>':
-        raise ValueError('expected one T register-state instruction')
-    if not re.fullmatch(r'[0-9a-f]{8}', word) or fields[1].lower() != word:
+    if not fields:
+        raise ValueError('expected one T or TF register-state instruction')
+    if fields[0] == 'T':
+        if len(fields) != 132 or fields[66] != '=>':
+            raise ValueError('expected one T register-state instruction')
+        trace_fpcr = 0
+        trace_word = fields[1].lower()
+        values = fields[2:66] + fields[67:]
+    elif fields[0] == 'TF':
+        if len(fields) != 133 or fields[67] != '=>':
+            raise ValueError('expected one TF register-state instruction')
+        if not re.fullmatch(r'[0-9a-fA-F]{1,8}', fields[1]):
+            raise ValueError('invalid FPCR field')
+        trace_fpcr = int(fields[1], 16)
+        if trace_fpcr == 0:
+            raise ValueError('TF trace must have non-zero FPCR')
+        trace_word = fields[2].lower()
+        values = fields[3:67] + fields[68:]
+    else:
+        raise ValueError('expected one T or TF register-state instruction')
+    if not re.fullmatch(r'[0-9a-f]{8}', word) or trace_word != word:
         raise ValueError('trace word differs from manifest')
-    values = fields[2:66] + fields[67:]
+    if expected_fpcr is None:
+        if trace_fpcr != 0:
+            raise ValueError('non-zero FPCR trace requires manifest fpcr field')
+    else:
+        if not isinstance(expected_fpcr, str) or not re.fullmatch(r'[0-9a-f]{8}', expected_fpcr):
+            raise ValueError('invalid manifest fpcr field')
+        if trace_fpcr != int(expected_fpcr, 16):
+            raise ValueError('trace FPCR differs from manifest')
     widths = [4] + [64] * 31 + [128] * 32 + [4, 32] + [64] * 31 + [128] * 32
     for value, width in zip(values, widths):
         if not re.fullmatch(r'[0-9a-fA-F]+', value) or int(value, 16) >= 1 << width:
             raise ValueError('invalid register-state field')
+    return f'{trace_fpcr:08x}'
 
 
 def run(suite, command):
     raw = (suite / 'suite.json').read_bytes()
     manifest = json.loads(raw)
-    if manifest['schema'] != 'ounce-core/conformance-v1' or not manifest['cases']:
+    if manifest['schema'] not in ('ounce-core/conformance-v1', 'ounce-core/conformance-v2') or not manifest['cases']:
         raise ValueError('unsupported or empty suite')
     validated = []
     ids = set()
@@ -62,13 +88,14 @@ def run(suite, command):
         trace = path.read_bytes()
         if hashlib.sha256(trace).hexdigest() != case['sha256']:
             raise ValueError('case hash mismatch: ' + case['id'])
-        validate_trace(trace, case['word'])
-        validated.append((case, path))
+        fpcr_hex = validate_trace(trace, case['word'], case.get('fpcr'))
+        validated.append((case, path, fpcr_hex))
     observations = []
-    for case, path in validated:
+    for case, path, fpcr_hex in validated:
         result = subprocess.run([*command, str(path)], capture_output=True, text=True, timeout=60)
         passed, counts, reason = verdict(result.stdout, result.returncode)
         observations.append({'id': case['id'], 'trace_sha256': case['sha256'],
+                             'fpcr': fpcr_hex,
                              'passed': passed, 'reason': reason, 'counts': counts,
                              'returncode': result.returncode, 'stdout': result.stdout,
                              'stderr': result.stderr})

@@ -1,8 +1,8 @@
-# Reproduce the differential results in 10 minutes
+# Independently rerun Ounce-Core's differential tests
 
-This is the path for someone outside the project, on an ARM64 Mac or an ARM64 Linux box, to
-rerun the differential checks and see whether they match. Read [LIMITS.md](LIMITS.md) first so you know what a
-match does and does not mean.
+**Use your own ARM64 Mac or Linux machine to check whether a recorded result reproduces.** This guide runs the original NRO-based differential tests and captures your results for comparison. Installing Rust, devkitA64 and build dependencies may take longer than the test itself; there is no guaranteed ten-minute setup.
+
+To test a **static ARM64 Linux ELF** without devkitPro, start with the [community verification guide](COMMUNITY_VERIFICATION_GUIDE.md). For the NRO test suite below, read [the limits](LIMITS.md) first: a match only applies to the specific inputs and checks performed.
 
 ## What you are reproducing
 

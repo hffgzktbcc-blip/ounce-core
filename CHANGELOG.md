@@ -11,6 +11,29 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
   `paper.json` listing its source, a negative control and what is not checked. Output is identical to a native x86-64 build;
   Tier-3 only, not in CI. Sources differ in strength, and some compare only a few values: see
   `docs/verify/papers/README.md`.
+- Security: documented the best-effort support policy for `main` and the latest `0.10.x` patch, and recorded the evidence-based review of ten CodeQL cleartext-logging alerts. The alerts are false positives caused by a synthetic offline account response sharing a generic IPC result path with numeric guest/test diagnostics; none of the sinks logs account payloads, host credentials or network identities.
+- Repository metadata: declared Rust 1.89 as the package MSRV, added canonical repository/homepage/readme metadata, explicitly disabled crates.io publication, and corrected the README footer to point packaged downloads at GitHub Releases.
+
+## 0.10.0 — 2026-11-20 (released)
+
+- Added: half-precision FP3-source (`FMADD`/`FMSUB`/`FNMADD`/`FNMSUB H`), vector `FMLAL`/`FMLSL`/`FMLAL2`/`FMLSL2`
+  (FEAT_FHM), and vector `FCVTN`/`FCVTN2`/`FCVTL`/`FCVTL2` (`4H <-> 4S`) with `softfp::F16` and `FPCR.FZ16` (#469, #515).
+  On native Apple M3 silicon (100,000 random fuzzer words, seed 1), executed words increased from 36,345 to 37,909
+  (+1,564 words) with 0 mismatches and 0 FPSR flag differences across Interpreter, Tier-3, and Tier-4; `docs/verify/fp-edge/run.sh`
+  passes 359,136/359,136 cases with 0 value or FPSR flag mismatches across all 9 FPCR modes (including `FZ16` not raising `IDC`).
+- Added: `ounce.run.v1` exit-14 (`unhandled_svc`) telemetry fields `sm_service` and `cmif_cmd_id` (#475, #513), tracking
+  the last requested `sm:` service name / CMIF command ID and unimplemented HIPC `(iface, cmd)` in `IpcManager` and
+  surfacing them in `ounce.run.v1` and stop diagnostics, pinned by `tests/contract/run-v1-keys.json` and `tests/contract_v1.rs`.
+- Added: metadata-only `ounce.repro.v1` regression corpus (#472, #513): 10 JSON manifests in `tests/repro/` (zero binaries)
+  covering `audren`, `deko3d`, `gpu`, `hello`, `input`, `input_multi`, `nvdrv`, `romfs`, `services`, and `threads`, verified
+  deterministically in CI by `tests/repro_corpus.rs`.
+- Added: 6 additional first-party deterministic static C workloads (`elf-graphs`, `elf-dp`, `elf-geometry`, `elf-compress`,
+  `elf-automata`, `elf-linalg`) bringing the Linux ARM64 ELF matrix from 45 to 51 harnesses (23 `elf-*`, achieving the 50+
+  workload goal, #474, #510), plus a Tier-4 fallback test for scalar-SIMD fixed-point converts.
+- Verified: native Apple M3 hardware agreement across all 199 FP workload ops (185,328 cases, 199/199 `identical` on Tier-3
+  and Tier-4; `docs/verify/fp-workload/result-2026-11-19-apple-m3-199ops/summary.tsv`) and `fjcvtzs_nzcv.c` (62/62 rows across
+  FPCR `0` and `FZ`); all 199 ops now gate CI in `docs/verify/fp-workload/gated-ops.txt` (#488, #509).
+
 - Added: scalar-SIMD fixed-point converts `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU` `Sd, Sn, #fbits` and `Dd, Dn, #fbits` (#469). They share the
   vector arithmetic (one lane converted, the rest of Vd zeroed), run in the interpreter (Tier-3 and Tier-4 fall back to it), and
   are covered by decode, behaviour and engine-agreement tests. The FP workload gains 12 ops for them and for the unsigned vector

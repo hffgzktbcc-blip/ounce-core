@@ -22,7 +22,7 @@ New to the project? Visit our [contributor landing page](https://hffgzktbcc-blip
 
 Start with [Vision](docs/VISION.md), [Limits](docs/LIMITS.md) and [Reproduction guide](docs/REPRODUCE.md). The current supported envelope is narrower than arbitrary ARM64/Linux applications. Ask in [Discussions](https://github.com/hffgzktbcc-blip/ounce-core/discussions) if stuck.
 
-Preserve independent expectations, source provenance and honest failure reports. Do not submit retail firmware, keys or protected assets. See [Code of conduct](CODE_OF_CONDUCT.md) and [Security](SECURITY.md).
+Preserve independent expectations, source provenance and honest failure reports. Do not submit retail firmware, keys or protected assets. When editing documentation, use [the plain-language and freshness checklist](docs/README.md#keep-live-documentation-clear-and-current). See [Code of conduct](CODE_OF_CONDUCT.md) and [Security](SECURITY.md).
 
 ---
 

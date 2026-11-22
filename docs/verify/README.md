@@ -1,13 +1,10 @@
-# Ounce-Verify v0
+# Ounce-Verify: check recorded results
 
-Current direction: turn these existing interfaces into one failure-to-reproduction
-workflow for developers. The current adapters still describe specific runtime and
-corpus inputs; a general-purpose debugging product is not yet delivered. See
-[the outcome plan](../../PLAN.md). Use evidence appropriate to each claim; pixel
-oracles certify their registered graphics scenarios, not every tooling change.
+**Ounce-Verify validates existing JSON evidence against registered expectations.** It does not run programs, download guest inputs, or turn a successful host process into proof of compatibility.
 
-`tools/ounce_verify.py` validates already-collected JSON evidence. It never executes a guest,
-downloads inputs, or turns a successful host process into a compatibility result.
+The project aims to connect these tools into a failure-to-reproduction workflow. Today's adapters cover specific runtime and corpus inputs; a general-purpose debugger is not delivered. See [the outcome plan](../../PLAN.md). Choose evidence for the claim being tested: a pixel oracle checks its registered graphics scenario, not every runtime change.
+
+Use `tools/ounce_verify.py` to validate an already-collected record:
 
 ```sh
 python3 tools/ounce_verify.py evidence.json
@@ -28,7 +25,7 @@ homebrew evidence. Rendering requires an explicit raw guest-frame oracle; a pres
 guest exit, synthetic host frame, or agreement between Ounce-Core engines is insufficient.
 
 
-Outside readers: [REPRODUCE.md](../REPRODUCE.md) is a 10-minute path to rerun the differential results on an ARM64 machine, and [LIMITS.md](../LIMITS.md) lists what each claim does not prove.
+Outside readers: [REPRODUCE.md](../REPRODUCE.md) describes the NRO test prerequisites and rerun procedure on an ARM64 machine; installation and builds are not guaranteed to fit a fixed time. [This Lua failure walkthrough](../community/LUA_FP_BUG_WALKTHROUGH.md) is a browser-first example, and [LIMITS.md](../LIMITS.md) explains what a match does not prove.
 
 ## Paper checks
 

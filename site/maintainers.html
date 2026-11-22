@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>For library maintainers | Ounce-Core</title>
-  <meta name="description" content="Check whether your C or C++ library behaves the same on ARM64 as on x86, without owning ARM hardware, and keep the evidence.">
+  <meta name="description" content="Ounce-Core compares supported ARM64 library tests with a host reference and records differences. Native ARM64 confirmation needs an ARM64 host.">
   <link rel="canonical" href="https://hffgzktbcc-blip.github.io/ounce-core/maintainers.html">
   <meta property="og:type" content="website">
   <meta property="og:title" content="For library maintainers | Ounce-Core">
-  <meta property="og:description" content="Check whether your C or C++ library behaves the same on ARM64 as on x86, without owning ARM hardware, and keep the evidence.">
+  <meta property="og:description" content="Compare supported ARM64 tests across CPU engines, retain evidence, and reproduce mismatches without claiming universal compatibility.">
   <meta property="og:url" content="https://hffgzktbcc-blip.github.io/ounce-core/maintainers.html">
   <meta property="og:image" content="https://hffgzktbcc-blip.github.io/ounce-core/assets/ounce-core-vista.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -32,18 +32,18 @@
     <section class="hero">
       <div class="tag">For library maintainers</div>
       <h1>Does your library behave the same on ARM64 as on x86?</h1>
-      <p>Build your tests twice, run both, and diff the output. Ounce-Core runs the ARM64 build on three engines and shows the first line that differs, so you can reproduce and report an ARM64 problem without owning ARM hardware. It has found real bugs this way, in the emulator itself, using libraries like yours.</p>
-      <a class="button" href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/ADD_A_PROGRAM.md">Follow the guide</a>
+      <p>Build a small deterministic test for your library, then compile it for your host and for static ARM64 Linux. Ounce-Core runs supported ARM64 tests on its execution engines and compares the recorded results. If they differ, you can narrow down the failure and share a reproduction. A real ARM64 host is needed to claim direct hardware agreement, and some programs cannot run yet.</p>
+      <a class="button" href="https://github.com/hffgzktbcc-blip/ounce-core/blob/main/docs/COMMUNITY_VERIFICATION_GUIDE.md">Test a supported ARM64 library</a>
       <a class="button secondary" href="https://github.com/hffgzktbcc-blip/ounce-core/issues/new?template=program_request.yml">Suggest your library</a>
     </section>
     <section class="grid">
       <div class="card"><h3>1. Write one test</h3><p>A small C file that exercises your library and prints deterministic text. The same file builds for your computer and for ARM64.</p></div>
-      <div class="card"><h3>2. Run both</h3><p>The host build is the reference. The ARM64 build runs in Ounce-Core on the interpreter, the JIT and native execution.</p></div>
-      <div class="card"><h3>3. Diff</h3><p>Identical output is retained as evidence. A difference points at an instruction or a line, with a small reproduction to share.</p></div>
+      <div class="card"><h3>2. Run the test</h3><p>Ounce-Core runs supported ARM64 binaries through the interpreter and selected faster engines. Native hardware comparison runs only on an appropriate ARM64 host.</p></div>
+      <div class="card"><h3>3. Compare the evidence</h3><p>Compare exit status and output with the reference. A mismatch identifies a difference; use the reports or bounded trace tools to investigate where execution split.</p></div>
     </section>
     <section class="card" style="margin:25px 0">
       <h2>What it can and cannot tell you</h2>
-      <p><strong>It can</strong> show that your tests behave identically on the engines for the inputs you wrote, and help you reproduce a failure someone reports on ARM64.</p>
+      <p><strong>It can</strong> show where supported program outputs or stop reasons agree or disagree on the inputs tested. On a Linux ARM64 host, the static ELF comparison can also check native execution; on other hosts it cannot claim that direct hardware check.</p>
       <p><strong>It cannot</strong> run your whole application, replace testing on real ARM64 hardware, or prove your library correct. It is not fast, and many instructions are still undecoded; an unsupported instruction stops the run with its opcode so the gap is visible, not silent. Running arbitrary Linux applications is not established.</p>
       <p>Not sure it fits? Look at the <a href="results.html">results</a> for LZ4, xxHash, SQLite, Lua and others, then ask in <a href="https://github.com/hffgzktbcc-blip/ounce-core/discussions">Discussions</a>.</p>
     </section>

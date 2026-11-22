@@ -80,6 +80,60 @@ class ConformanceTests(unittest.TestCase):
                 self.assertIn('word differs' if rehash else 'hash mismatch', result.stderr)
                 self.assertFalse(report.exists())
 
+    def test_v030_validates_all_twelve_non_default_fpcr_inputs(self):
+        result = run(ROOT / 'conformance/arm64-v0.3.0',
+                     [sys.executable, '-c', 'print(' + repr(self.summary()) + ')'])
+        self.assertTrue(result['passed'])
+        self.assertEqual(result['suite_version'], '0.3.0')
+        self.assertEqual(len(result['cases']), 12)
+        fpcrs = {c['fpcr'] for c in result['cases']}
+        # Covers RMode (RP/RM/RZ), FZ, DN, FZ+DN, FZ+DN+RZ, FZ16, and FZ+DN+FZ16+RZ
+        for required in ('00400000', '00800000', '00c00000', '01000000', '02000000',
+                         '03000000', '03c00000', '00080000', '03c80000'):
+            self.assertIn(required, fpcrs)
+
+    def test_tf_fpcr_validation_and_mismatch_rejection(self):
+        manifest = json.loads((ROOT / 'conformance/arm64-v0.3.0/suite.json').read_text())
+        case = manifest['cases'][0]
+        trace = (ROOT / 'conformance/arm64-v0.3.0' / case['path']).read_bytes()
+        self.assertEqual(validate_trace(trace, case['word'], case['fpcr']), case['fpcr'])
+        # Missing manifest fpcr on a TF trace is rejected
+        with self.assertRaisesRegex(ValueError, 'requires manifest fpcr'):
+            validate_trace(trace, case['word'])
+        # Mismatched manifest fpcr is rejected
+        with self.assertRaisesRegex(ValueError, 'FPCR differs'):
+            validate_trace(trace, case['word'], '00000001')
+        # Zero FPCR in a TF trace is rejected
+        fields = trace.decode().split()
+        fields[1] = '0'
+        with self.assertRaisesRegex(ValueError, 'non-zero FPCR'):
+            validate_trace(' '.join(fields).encode(), case['word'], '00000000')
+        # Out-of-range FPCR (>32-bit) is rejected
+        fields[1] = '100000000'
+        with self.assertRaisesRegex(ValueError, 'invalid FPCR'):
+            validate_trace(' '.join(fields).encode(), case['word'], case['fpcr'])
+
+    def test_v030_cli_rejects_fpcr_tampering_even_after_rehash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            suite = Path(tmp) / 'suite'
+            shutil.copytree(ROOT / 'conformance/arm64-v0.3.0', suite)
+            manifest = json.loads((suite / 'suite.json').read_text())
+            case = manifest['cases'][0]
+            trace = suite / case['path']
+            fields = trace.read_text().split()
+            fields[1] = '1'
+            trace.write_text(' '.join(fields) + '\n')
+            case['sha256'] = hashlib.sha256(trace.read_bytes()).hexdigest()
+            (suite / 'suite.json').write_text(json.dumps(manifest))
+            report = Path(tmp) / 'report.json'
+            result = subprocess.run(
+                [sys.executable, str(ROOT / 'scripts/run_conformance.py'),
+                 '--suite', str(suite), '--report', str(report), '--', 'nonexistent-adapter'],
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn('FPCR differs', result.stderr)
+            self.assertFalse(report.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

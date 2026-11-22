@@ -6,7 +6,7 @@
       "id": "linux-elf",
       "name": "Static Linux ARM64 programs",
       "stage": "experimental",
-      "evidence": "Six freestanding fixtures plus the pinned real programs run as static musl ELFs (28 harnesses / 76 optimization rows pass on the hosted Linux ARM64 gate; LZ4, xxHash, cJSON and zlib also on macOS and Windows); wasm3 runs as a static ELF (#366 closed by #429)",
+      "evidence": "The 51-harness static Linux ARM64 ELF matrix passed in CI at the v0.10.0 tag; it checks bounded static musl programs and does not establish arbitrary Linux application support or independent reproduction",
       "evidence_url": "docs/verify/linux-elf/README.md",
       "next": "Expand Linux library coverage from observed needs; qualify portable execution recording"
     },
