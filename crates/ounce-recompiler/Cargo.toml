@@ -6,6 +6,9 @@ description = "Tier-4 native recompiler for ounce-core. All unsafe code of the p
 license = "MIT"
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 # Pinned exactly: Cranelift's API changes between minor releases (design section 4).
 cranelift-codegen = "=0.137.1"

@@ -106,8 +106,8 @@ mod imp {
         if let Some(slot) = SLOT.with(|s| s.get()) {
             return slot;
         }
-        // SAFETY: pthread_self has no preconditions.
         let slot: &'static Slot = Box::leak(Box::new(Slot {
+            // SAFETY: pthread_self has no preconditions.
             thread: unsafe { libc::pthread_self() },
             generation: AtomicU64::new(0),
             active: AtomicBool::new(false),

@@ -13,8 +13,17 @@ publish = false
 
 [workspace]
 members = [".", "crates/ounce-recompiler", "crates/ounce-nce"]
-# `cargo test` / `cargo run` at the root keep targeting ounce-core only.
-default-members = ["."]
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
+missing_safety_doc = "deny"
+chunks_exact_to_as_chunks = "allow"
+
+[lints]
+workspace = true
 
 [features]
 default = []
