@@ -1,0 +1,8 @@
+PASS CAST5-128 key: 238b4fe5847e44b2
+PASS decrypt inverts encrypt
+PASS CAST5-080 key: eb6a711a2c02271b
+PASS decrypt inverts encrypt
+PASS CAST5-040 key: 7ac816d16e9b302e
+PASS decrypt inverts encrypt
+RFC 2144 B.1 vectors: 3 of 3 match (encrypt, and decrypt returns the plaintext)
+PASS

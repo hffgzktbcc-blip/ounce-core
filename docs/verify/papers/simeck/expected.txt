@@ -1,0 +1,24 @@
+PASS Simeck32/64 paper vector: 770d2c76
+PASS Simeck32/64 reference impl #1: 65359de9
+PASS Simeck32/64 reference impl #2: 0ab073ca
+PASS Simeck32/64 reference impl #3: 6ed0bc2e
+PASS Simeck32/64 reference impl #4: 76374119
+PASS Simeck32/64 reference impl #5: 8252aa91
+PASS Simeck32/64 reference impl #6: e288e7ea
+PASS Simeck32/64 reference impl #7: b73099ae
+PASS Simeck32/64 reference impl #8: 058a62df
+PASS Simeck32/64 reference impl #9: 60c443f2
+PASS Simeck64/128 paper vector: 45ce69025f7ab7ed
+PASS Simeck64/128 reference impl #1: 4d11c6b9da2f7e28
+PASS Simeck64/128 reference impl #2: 1e6a0792f5a717c5
+PASS Simeck64/128 reference impl #3: fca0fa8194bda9c7
+PASS Simeck64/128 reference impl #4: 562b1caa75266241
+PASS Simeck64/128 reference impl #5: d946fa4941516d8e
+PASS Simeck64/128 reference impl #6: ca3e5050126fa61b
+PASS Simeck64/128 reference impl #7: a307ab5aa10f5c29
+PASS Simeck64/128 reference impl #8: 5e47b40d9854418a
+PASS Simeck64/128 reference impl #9: c5fd5a6c32056800
+paper's own vectors: 2 of 2 match
+all vectors: 20 of 20 match
+decrypt round trips: 20 of 20
+PASS

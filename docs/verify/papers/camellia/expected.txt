@@ -1,0 +1,10 @@
+PASS RFC 3713 SBOX1[0x3d] is 86 = 0x: 56
+PASS RFC 3713 128-bit key: 67673138549669730857065648eabe43
+PASS RFC 3713 192-bit key: b4993401b3e996f84ee5cee7d79b09b9
+PASS RFC 3713 256-bit key: 9acc237dff16d76c20ef7c919e3a7509
+RFC 3713 Appendix A vectors: 3 of 3 match (and decrypt inverts)
+NTT 128-bit key vectors: 1280 of 1280 match
+NTT 192-bit key vectors: 1280 of 1280 match
+NTT 256-bit key vectors: 1280 of 1280 match
+decrypt returns the plaintext: 3840 of 3840
+PASS

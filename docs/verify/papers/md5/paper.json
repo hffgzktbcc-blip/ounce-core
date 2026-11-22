@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The MD5 Message-Digest Algorithm",
+    "authors": [
+      "Ronald L. Rivest"
+    ],
+    "venue": "IETF RFC 1321 (Network Working Group)",
+    "year": 1992
+  },
+  "program": {
+    "source": "md5.c",
+    "how": "written for ounce-core from the algorithm in the paper or standard; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "MD5 of the 7 strings in the RFC 1321 test suite gives the 7 published 128-bit digests"
+  ],
+  "expected_values_source": {
+    "what": "the 7 digests of the test suite in RFC 1321 section A.5, and the 64 constants T[i] of the RFC's appendix (checked on the host to equal the integer part of 2^32*abs(sin(i)) that the RFC defines)",
+    "url": "https://www.rfc-editor.org/rfc/rfc1321.txt",
+    "fetched": "2026-11-19",
+    "note": "the digests and constants are data, copied as numbers; the RFC's reference code was not copied"
+  },
+  "negative_control": "built with -DMD5_ROUNDS=3 (the fourth round dropped), 0 of 7 digests match and the program exits 1",
+  "not_checked": [
+    "security claims: MD5 is broken (collisions are practical); this only shows the algorithm as published gives the published digests",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "inputs other than those listed in the RFC test suite (no multi-block streaming or long-message tests)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 7 MD5 digests published in RFC 1321. It does not show MD5 is secure (it is not)."
+}

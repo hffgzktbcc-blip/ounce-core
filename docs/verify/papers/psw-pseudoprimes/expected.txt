@@ -1,0 +1,16 @@
+Table I rows (base 2): P2, E2, E2-S2, S2, C   [paper in brackets]
+10^3: 3 [3] 1 [1] 1 [1] 0 [0] 1 [1]  ok
+10^4: 22 [22] 12 [12] 7 [7] 5 [5] 7 [7]  ok
+10^5: 78 [78] 36 [36] 20 [20] 16 [16] 16 [16]  ok
+10^6: 245 [245] 114 [114] 68 [68] 46 [46] 43 [43]  ok
+10^7: 750 [750] 375 [375] 213 [213] 162 [162] 105 [105]  ok
+Table I entries matching: 25 of 25
+Figure 1 least element, psp(2), not Euler, not Carmichael: 341 [paper 341]
+Figure 1 least element, psp(2), not Euler, Carmichael: 2821 [paper 2821]
+Figure 1 least element, Euler psp, not strong, not Carmichael: 1905 [paper 1905]
+Figure 1 least element, Euler psp, not strong, Carmichael: 561 [paper 561]
+Figure 1 least element, strong psp, not Carmichael: 2047 [paper 2047]
+Figure 1 least element, strong psp, Carmichael: 15841 [paper 15841]
+Figure 1 regions matching: 6 of 6
+text example n = 2284453: product ok, 2^e = 7^e = -1 ok, 14^e = 1 and 14^(e/2) = 4275 ok
+PASS

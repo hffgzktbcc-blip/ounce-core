@@ -1,0 +1,25 @@
+Longley: n = 16, parameters = 7
+  worst LRE of the estimates 12.8 (required 9.0)
+  worst LRE of their standard deviations 14.1 (required 8.0)
+  LRE of the residual standard deviation 14.3, of R-squared 15.0 (required 9.0)
+  ok
+Wampler1: n = 21, parameters = 6
+  worst LRE of the estimates 9.6 (required 7.0)
+  certified residual standard deviation is 0 (computed 3de6f3ff8aea3c33 as a bit pattern, relative LRE undefined)
+  ok
+Wampler4: n = 21, parameters = 6
+  worst LRE of the estimates 7.7 (required 5.0)
+  worst LRE of their standard deviations 13.9 (required 5.0)
+  LRE of the residual standard deviation 14.8, of R-squared 15.0 (required 6.0)
+  ok
+Wampler5: n = 21, parameters = 6
+  worst LRE of the estimates 5.7 (required 5.0)
+  worst LRE of their standard deviations 13.9 (required 5.0)
+  LRE of the residual standard deviation 14.8, of R-squared 13.7 (required 6.0)
+  ok
+Filip: n = 82, parameters = 11
+  worst LRE of the estimates 7.9 (required 5.0)
+  worst LRE of their standard deviations 8.1 (required 4.0)
+  LRE of the residual standard deviation 9.0, of R-squared 11.1 (required 5.0)
+  ok
+PASS

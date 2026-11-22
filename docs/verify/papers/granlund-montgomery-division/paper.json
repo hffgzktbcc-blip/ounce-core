@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Division by invariant integers using multiplication",
+    "authors": ["Torbjorn Granlund", "Peter L. Montgomery"],
+    "venue": "ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI) 1994; SIGPLAN Notices 29(6), 61-72",
+    "year": 1994
+  },
+  "program": {
+    "source": "granlund-montgomery-division.c",
+    "how": "written for ounce-core from the paper's CHOOSE_MULTIPLIER (Figure 6.2), its unsigned division sequences (Figures 4.1 and 4.2, N = 32) and the divisibility test of Section 9; the quotient is computed with a multiply-high, shifts and adds only and compared with the CPU's own division; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "the constants the paper states in its worked examples are produced: d = 10 gives m = (2^34+1)/5 = 3435973837, post-shift 3, l = 4; d = 7 gives m = (2^35+3)/7 which exceeds 2^32; d = 14 gives pre-shift 1, m = (2^34+5)/7, post-shift 2; d = 641 has final shift zero (the text's example of the rare case); CHOOSE_MULTIPLIER(3, 31) gives post-shift 0 and m = (2^32+2)/3; for divisibility by 100, the inverse of 25 mod 2^32 is (19*2^32+1)/25 = 3264175145 and qmax = (2^31-48)/25 = 85899344",
+    "the multiply-and-shift sequences of Figure 4.2 return floor(n/d) exactly, compared with the CPU division, for 65598 divisors (every d = 1..65536 plus 62 further divisors up to 2^31-1) with 100 dividends each (6559800 quotients, 0 wrong)",
+    "the Section 9 divisibility test for signed d = 100 (q0 = MULL(dinv, i) is a multiple of 4 inside [-qmax, qmax]) agrees with i mod 100 = 0 on 4286632 32-bit values (every 1021st value plus all values within 20000 of -2^31, 0 and 2^31-1), 0 wrong"
+  ],
+  "expected_values_source": {
+    "what": "the worked-example constants and the divisibility-by-100 example printed in the paper (Sections 4, 5, 9 and Figure 6.2), copied as numbers; the reference quotients come from the CPU's integer division",
+    "url": "https://gmplib.org/~tege/divcnst-pldi94.pdf",
+    "fetched": "2026-11-19",
+    "note": "the text was extracted from the authors' PDF; the paper gives its example constants as expressions such as (2^34+1)/5, which the program compares exactly. The division results are not published numbers, they are checked against the arithmetic of the machine the program runs on, ounce-core's UDIV on the aarch64 side and the host CPU in the native comparison."
+  },
+  "negative_control": "built with -DGM_ADD=0 (the 2^(N+l-prec) term is left out of m_high in CHOOSE_MULTIPLIER, so the multiplier is rounded down), the example constants no longer match (d = 10 gives post-shift 4, d = 641 gives final shift 10), 3473111 of 6559800 quotients are wrong and the program exits 1",
+  "not_checked": [
+    "the signed and floor-division sequences (Figures 5.2, 6.1), the double-word divisions of Section 8 and the floating-point variant of Section 7",
+    "divisors above 2^31 and word sizes other than 32 bits (the 64-bit constants such as d = 274177 are not computed)",
+    "exhaustive checking over all 2^32 dividends: about 100 dividends per divisor are used, concentrated near multiples of d and the ends of the range, so the check is evidence, not a proof (the paper proves it as Theorem 4.2)",
+    "the paper's timing tables (Tables 1.1 and 11.2) and the GCC implementation",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the paper's stated example constants and shows the generated multiply-shift code agrees with real division on 6.56 million tested (divisor, dividend) pairs. It does not prove Theorem 4.2 for all inputs."
+}

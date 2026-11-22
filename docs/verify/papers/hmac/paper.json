@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Keying Hash Functions for Message Authentication (HMAC); test vectors from RFC 4231",
+    "authors": ["Mihir Bellare", "Ran Canetti", "Hugo Krawczyk"],
+    "venue": "CRYPTO 1996 (specified as RFC 2104; test vectors in RFC 4231 by M. Nystrom)",
+    "year": 1996
+  },
+  "program": {
+    "source": "hmac.c",
+    "how": "written for ounce-core from the HMAC definition (RFC 2104) and the SHA-224/256/384/512 descriptions of FIPS 180-4; the SHA-2 round constants and initial values are computed in the program from their mathematical definition (fractional bits of cube and square roots of primes, integer big-number arithmetic) rather than typed in. No third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "RFC 4231 test cases 1 to 7 (keys of 4, 20, 25 and 131 bytes, data of 8 to 152 bytes, including keys longer than the block size and one truncated-to-128-bit case) for HMAC-SHA-224, HMAC-SHA-256, HMAC-SHA-384 and HMAC-SHA-512: 28 of 28 values match",
+    "as a by-product the derived SHA-2 constants are right, since any wrong constant would change every HMAC value"
+  ],
+  "expected_values_source": {
+    "what": "the HMAC-SHA-2 test vectors of RFC 4231 section 4, parsed mechanically from the fetched RFC text (key and data lengths cross-checked against the RFC's own '(N bytes)' annotations)",
+    "url": "https://www.rfc-editor.org/rfc/rfc4231.txt",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers. The 1996 paper itself and the HMAC-MD5 / HMAC-SHA-1 vectors of RFC 2202 were not used"
+  },
+  "negative_control": "built with -DHMAC_IPAD=0x37 (inner pad byte 0x37 instead of 0x36), 0 of 28 values match and the program exits 1; check.sh reports NOT REPRODUCED",
+  "not_checked": [
+    "the paper's security proof (HMAC as a PRF / MAC given the compression function's properties)",
+    "HMAC-MD5 and HMAC-SHA-1, SHA-3 based HMAC, and SHA-2 hashes on their own (only HMAC outputs are compared; the NIST SHA known-answer files were not fetched)",
+    "truncation other than test case 5's 128 bits, and messages longer than 152 bytes",
+    "speed figures (emulator run time says nothing about any hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly RFC 4231's HMAC-SHA-2 values for its seven test cases. It does not show HMAC is secure."
+}

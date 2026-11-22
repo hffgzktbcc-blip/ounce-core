@@ -1,0 +1,3 @@
+published d2s test vectors (double): 132 of 132 reproduced
+published f2s test vectors (float): 60 of 60 reproduced
+PASS

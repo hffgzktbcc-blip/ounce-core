@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "US Secure Hash Algorithm 1 (SHA1)",
+    "authors": [
+      "D. Eastlake 3rd",
+      "P. Jones"
+    ],
+    "venue": "IETF RFC 3174 (algorithm of NIST FIPS PUB 180-1); test values also from RFC 6234 (Eastlake, Hansen, 2011) section 8.5",
+    "year": 2001
+  },
+  "program": {
+    "source": "sha1.c",
+    "how": "written for ounce-core from the algorithm in the paper or standard; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "SHA-1 of the 4 test messages of RFC 3174 ('abc', the 56-byte message, one million 'a', and the 64-byte string repeated 10 times) gives the 4 published digests",
+    "SHA-1 of the 6 further messages in the RFC 6234 test driver (a 5-bit message, a 1-byte message, and 15-, 16-, 76- and 163-byte messages, two of them with 3 extra bits) gives the 6 published digests",
+    "the RFC 6234 chained 'random test' (1000 rounds of hashing the previous three digests, 4 outputs from the published seed) gives the 4 published digests"
+  ],
+  "expected_values_source": {
+    "what": "the 4 digests in RFC 3174's test program, and the 10 known-answer digests, the seed and the 4 chained digests for SHA-1 in the RFC 6234 section 8.5 driver (the first 4 of RFC 6234 equal those of RFC 3174; the generator checked that)",
+    "url": "https://www.rfc-editor.org/rfc/rfc3174.txt and https://www.rfc-editor.org/rfc/rfc6234.txt",
+    "fetched": "2026-11-19",
+    "note": "digests, messages and seed are data, copied as numbers; the RFCs' code was not copied"
+  },
+  "negative_control": "built with -DSHA1_K3=0x8F1BBCDDu (one bit of the round constant for rounds 40 to 59 changed), 0 of 14 values match and the program exits 1",
+  "not_checked": [
+    "security claims (collision/preimage resistance); SHA-1 in particular is broken for collisions",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "message lengths and bit patterns beyond the RFC's tests; the program does not test streaming in different chunk sizes",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 14 SHA-1 values published in RFC 3174 and RFC 6234 (10 known-answer digests, 4 chained digests). It does not show SHA-1 is secure (it is not)."
+}

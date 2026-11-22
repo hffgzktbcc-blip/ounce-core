@@ -1,0 +1,23 @@
+PASS constants CON_128: 60 of 60 match Table 7
+PASS constants CON_192: 84 of 84 match Table 8
+PASS constants CON_256: 92 of 92 match Table 9
+PASS CLEFIA-128 L (LL | LR): 4 of 4 words match
+PASS CLEFIA-128 whitening keys: 4 of 4 words match
+PASS CLEFIA-128 round keys: 36 of 36 words match
+PASS CLEFIA-128 round-start states: 18 of 18 match
+PASS CLEFIA-128 ciphertext: de2bf2fd9b74aacdf1298555459494fd
+PASS CLEFIA-128 decrypt round trip
+PASS CLEFIA-192 L (LL | LR): 8 of 8 words match
+PASS CLEFIA-192 whitening keys: 4 of 4 words match
+PASS CLEFIA-192 round keys: 44 of 44 words match
+PASS CLEFIA-192 round-start states: 22 of 22 match
+PASS CLEFIA-192 ciphertext: e2482f649f028dc480dda184fde181ad
+PASS CLEFIA-192 decrypt round trip
+PASS CLEFIA-256 L (LL | LR): 8 of 8 words match
+PASS CLEFIA-256 whitening keys: 4 of 4 words match
+PASS CLEFIA-256 round keys: 52 of 52 words match
+PASS CLEFIA-256 round-start states: 26 of 26 match
+PASS CLEFIA-256 ciphertext: a1397814289de80c10da46d1fa48b38a
+PASS CLEFIA-256 decrypt round trip
+key sizes fully matching: 3 of 3
+PASS

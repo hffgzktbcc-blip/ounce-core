@@ -1,0 +1,18 @@
+(1) Taylor series of f(1+z) = atan(log(1+z))/acosh(1+z)^2 derived with exact rationals
+  z^0: 1/2  matches
+  z^1: -1/6  matches
+  z^2: -1/20  matches
+  z^3: 124/945  matches
+  z^4: -8221/113400  matches
+  z^5: -46969/1247400  matches
+  z^6: 948249251/10216206000  matches
+  z^7: -208838923/3831077250  matches
+  z^8: -14025530287/521026506000  matches
+  ok: all nine Taylor coefficients equal the paper's
+  ok: f(1) = 1/2 (paper)
+(2) correct values (eps = 2^-52)
+  acos(1-eps/2) = 1.4901161193847656387e-8
+  ok: acos(1 - eps/2) = 1.49011611938476564e-8 (paper, correct value)
+  acosh(1+eps) = 2.1073424255447015503e-8
+  ok: acosh(1 + eps) = 2.10734242554470155e-8 (paper, correct value)
+PASS

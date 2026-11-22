@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The RC5 Encryption Algorithm",
+    "authors": [
+      "Ronald L. Rivest"
+    ],
+    "venue": "Fast Software Encryption (FSE) 1994",
+    "year": 1994
+  },
+  "program": {
+    "source": "rc5.c",
+    "how": "written for ounce-core from the algorithm description; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "RC5-32/r/b (r = 0 to 16 rounds, keys of 1 to 16 bytes) in CBC mode: 29 of 29 ciphertexts of the RFC 2040 test vectors match, including 2 of 2 with RC5-CBC-Pad padding"
+  ],
+  "expected_values_source": {
+    "what": "section 9.3 \"Test results\" of RFC 2040 (R. Baldwin and R. Rivest, \"The RC5, RC5-CBC, RC5-CBC-Pad, and RC5-CTS Algorithms\", 1996), 29 test results; the constants P32 and Q32 are from its section on magic constants",
+    "url": "https://www.rfc-editor.org/rfc/rfc2040.txt",
+    "fetched": "2026-11-19",
+    "note": "the vectors come from the RFC, not from Rivest's 1994 paper (whose own five printed vectors were not fetched). Data copied as numbers; the RFC's test program was not copied"
+  },
+  "negative_control": "built with RC5_P32=0xb7e15162 (last bit of P32 changed), 0 of 29 vectors match and the program exits 1",
+  "not_checked": [
+    "Rivest's own printed vectors",
+    "word sizes other than 32 bits (the RFC vectors use 32 only)",
+    "RC5-CTS mode",
+    "security claims",
+    "decryption (not implemented)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "speed figures (emulator run time says nothing about the authors' hardware)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the RFC 2040 RC5 ciphertexts for 29 inputs. It does not show RC5 is secure."
+}

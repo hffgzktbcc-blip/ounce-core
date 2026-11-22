@@ -1,0 +1,38 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Linear least squares test problems: J. W. Longley, 'An Appraisal of Least Squares Programs for the Electronic Computer from the Viewpoint of the User' (JASA 62, 1967) and R. H. Wampler, 'A Report on the Accuracy of Some Widely-Used Least Squares Computer Programs' (JASA 65, 1970); Filip data from NIST",
+    "authors": ["James W. Longley", "Roy H. Wampler", "NIST StRD authors (Rogers, Filliben, Gill, Guthrie, Lagergren, Vangel)"],
+    "venue": "JASA 62(319) 819-841 (1967) and JASA 65(330) 549-565 (1970); the certified values are NIST/ITL Statistical Reference Datasets, linear regression suite (1998)",
+    "year": 1967,
+    "text_read": "the two JASA papers were NOT fetched; the datasets and certified values are the NIST files below"
+  },
+  "program": {
+    "source": "lls.c",
+    "how": "written for ounce-core: a plain Householder QR least-squares solver (no pivoting, no iterative refinement) with R-inverse for the standard deviations; accuracy measured as LRE = -log10(relative error), capped at 15; no third-party code",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "Longley (16 observations, 7 parameters): estimates, their standard deviations, the residual standard deviation and R-squared agree with the NIST certified values to LRE 12.8, 14.1, 14.3 and 15.0 (the worst case of each group; thresholds 9, 8, 9)",
+    "Wampler1 (y = 1 + x + ... + x^5, x = 0..20): the six estimates agree with the certified value 1 to LRE 9.6 (threshold 7); the certified standard deviations and residual standard deviation are 0 and are not compared as relative errors",
+    "Wampler4 and Wampler5 (the same polynomial with added noise of growing size): estimates LRE 7.7 and 5.7 (threshold 5), standard deviations 13.9 (threshold 5), residual standard deviation 14.8 and R-squared 15.0 / 13.7 (threshold 6)",
+    "Filip (82 observations, degree 10 polynomial, a problem on which many packages fail): estimates LRE 7.9, standard deviations 8.1, residual standard deviation 9.0, R-squared 11.1 (thresholds 5, 4, 5)"
+  ],
+  "expected_values_source": {
+    "what": "the certified values and data in the NIST/ITL StRD linear regression files Longley.dat, Wampler1.dat, Wampler4.dat, Wampler5.dat, Filip.dat; these were derived by NIST with 500-digit arithmetic. They are NIST's certification of the problems that Longley (1967) and Wampler (1970) introduced, not numbers printed in those two papers",
+    "url": "https://www.itl.nist.gov/div898/strd/lls/data/LINKS/DATA/Longley.dat (and Wampler1.dat, Wampler4.dat, Wampler5.dat, Filip.dat in the same directory)",
+    "fetched": "2026-11-19",
+    "tolerance": "LRE thresholds per dataset (see claims) were fixed before the first run and chosen conservatively; every measured LRE exceeded its threshold, none was changed afterwards. Decimal data and certified values are converted by the compiler (correctly rounded)."
+  },
+  "observations": [
+    "Longley's 1967 finding was that the programs of the day gave as few as 0 to 5 correct digits; Householder QR in double gives 12-13 here. That comparison with the 1967 programs is not made: only this solver's accuracy against the certified values is checked",
+    "Filip is built from raw powers x^k in double; the data matrix is therefore perturbed by about 1e-16 relative before solving, and the 7.9 digits are what survives"
+  ],
+  "negative_control": "built with -DNEG_NORMAL (normal equations solved by Cholesky instead of QR), Longley falls to LRE 8.5 (threshold 9), Wampler1 to 6.6 (7) and Filip fails completely (LRE below 0), the check fails and the program exits 1",
+  "not_checked": [
+    "the ANOVA table (regression and residual sums of squares, F statistics) and other NIST regression problems (Pontius, Norris, NoInt1, NoInt2, Wampler2, Wampler3)",
+    "other solvers (SVD, pivoted QR), iterative refinement, and the rank-deficiency checks that real packages perform",
+    "the speed of the solver, and Tier-4 or native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "ounce-core's double arithmetic runs a Householder QR solver to the certified NIST values for the Longley, Wampler 1, 4, 5 and Filip problems at least to the stated number of digits, identically to a native build. It is not a reproduction of the numbers printed in the two JASA papers."
+}

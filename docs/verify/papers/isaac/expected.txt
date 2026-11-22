@@ -1,0 +1,3 @@
+zero seed (randvect.txt): 512 of 512 words match
+text seed (randseed.txt): 2560 of 2560 words match
+PASS

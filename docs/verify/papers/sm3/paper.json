@@ -1,0 +1,38 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The SM3 Cryptographic Hash Function (GB/T 32905-2016)",
+    "authors": [
+      "S. Shen",
+      "X. Lee",
+      "R. Tse",
+      "W. Wong",
+      "Y. Yang (authors of the CFRG draft); algorithm published by the State Cryptography Administration of China"
+    ],
+    "venue": "IETF Internet-Draft draft-sca-cfrg-sm3-02 (CFRG), restating GB/T 32905-2016",
+    "year": 2018
+  },
+  "program": {
+    "source": "sm3.c",
+    "how": "written for ounce-core from Sections 4 and 5 of the draft (IV, T_j, FF/GG, P0/P1, message expansion, compression, padding); no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "SM3 of \"abc\" (1 block) and of \"abcd\" repeated 16 times (2 blocks) gives the draft's two published 256-bit digests",
+    "for each of the three compressed blocks: the 68 expanded words W, the 64 words W', and the 8 registers after each of the 64 rounds equal the draft's Appendix A tables, and the chaining value V_1 of example 2 matches (591 published values in all)"
+  ],
+  "expected_values_source": {
+    "what": "the worked examples of Appendix A of the draft (examples 1 and 2 of GB/T 32905-2016): expanded message words, per-round register values, chaining value and digests",
+    "url": "https://www.ietf.org/archive/id/draft-sca-cfrg-sm3-02.txt",
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers (extracted from the draft text by a script); the draft's sample C implementation was not copied. The source is an expired Internet-Draft, not the Chinese standard itself, which was not fetched"
+  },
+  "negative_control": "built with -DSM3_T2=0x7a879d8bU (one bit of the round constant T_j for rounds 16..63 changed), 428 of 591 values match (the 16 early rounds still agree), and the program exits 1",
+  "not_checked": [
+    "security claims and the draft's design rationale or cryptanalysis sections",
+    "messages other than the two worked examples (no long-message or multi-length vectors)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 591 published SM3 intermediate values and digests of the draft's two examples. It does not show the security claims hold."
+}

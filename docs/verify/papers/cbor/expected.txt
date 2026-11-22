@@ -1,0 +1,4 @@
+Appendix A examples built and matching: 81 of 81
+published encodings that decode as exactly one well-formed item: 81 of 81
+float examples whose published bytes decode to the diagnostic value: 22 of 22
+PASS

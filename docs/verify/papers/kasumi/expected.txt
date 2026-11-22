@@ -1,0 +1,6 @@
+TS 35.203 test set 1: output df1f9b251c0bf45f, 474 published values compared, 0 mismatches
+TS 35.203 test set 2: output de551988ceb2f9b7, 474 published values compared, 0 mismatches
+TS 35.203 test set 3: output 4592b0e78690f71b, 474 published values compared, 0 mismatches
+PASS test set 4, 50 chained encryptions: 738bad4c4a690802
+published values compared: 1425, mismatches 0
+PASS

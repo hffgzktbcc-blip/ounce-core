@@ -1,0 +1,16 @@
+(1) A(x) = (x-1)/(exp(x-1)-1) in binary32, x within 20000 ulps of 1
+  worst error in ulps = 2895.83 at x - 1 = 0.000345230
+  ok: worst error is within 2500..3300 ulps (paper: about 2900 = 2^11.5)
+  ok: worst error is below 2^12 ulps: less than half of the 24 bits are lost
+(2) nearest point on a line, data p = [38006 23489 14517], pi = 8972, b = [23489 14517 8972], beta = 5545, y = [1 -1 1]
+  all float: z1 = [1 1 -1]
+  ok: float formula 1 gives z1 = [1, 1, -1] (paper)
+  ok: subexpressions in double, rounded to float at the end: z = [1/3, 2/3, -4/3] correctly rounded (paper)
+  ok: the float and the double-then-float results differ
+(3) f(x) = (tan(sin x) - sin(tan x))/x^7 at x = 0.02
+  double-double: f = 0.0333486813 (9 digits, rounded)
+  plain double:  f = 0.0333446378
+  ok: f(0.02) = 0.0333486813 to the printed 9 significant digits (paper)
+  relative error of the plain double result = 1.2e-4
+  ok: plain double arithmetic does not deliver 9 correct digits (relative error above 1e-9; paper: more than double precision is needed)
+PASS

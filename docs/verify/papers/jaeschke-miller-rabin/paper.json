@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "On strong pseudoprimes to several bases",
+    "authors": ["Gerhard Jaeschke"],
+    "venue": "Mathematics of Computation 61(204), 915-926",
+    "year": 1993
+  },
+  "program": {
+    "source": "jaeschke-miller-rabin.c",
+    "how": "written for ounce-core from the definition of a strong pseudoprime (Miller-Rabin test); own 64-bit Montgomery multiplication (modulus below 2^63) for the large numbers, plain modular arithmetic for the exhaustive search and as a cross-check for numbers below 2^32; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "an exhaustive search over all odd n up to 1373653 finds the least odd composite strong pseudoprime to base 2 to be 2047 and the least to bases 2 and 3 to be 1373653 (psi_1 and psi_2)",
+    "the published numbers psi_1..psi_11 (2047, 1373653, 25326001, 3215031751, 2152302898747, 3474749660383, 341550071728321 twice, 3825123056546413051 three times) are each a strong pseudoprime to the first k primes as bases; each is rejected by the first further prime base that the sequence implies (base 3, 5, 7, 11, 13, 17 for psi_1..psi_6, base 23 for psi_7 and psi_8, base 37 for psi_9..psi_11), which also proves them composite and shows that psi_7 is not a pseudoprime to the base 23"
+  ],
+  "expected_values_source": {
+    "what": "the sequence A014233 of the smallest odd composites that are strong pseudoprimes to the first k prime bases (Jaeschke's psi_k), terms 1 to 11, copied as numbers; Jaeschke's article itself was not fetched",
+    "url": "https://oeis.org/A014233/b014233.txt",
+    "fetched": "2026-11-19",
+    "note": "terms 12 and 13 (318665857834031151167461, 3317044064679887385961981) exceed 64 bits and are not used"
+  },
+  "negative_control": "built with -DMR_ACCEPT_MINUS_ONE=0 (the strong test drops the 'minus one' branch), the search for psi_2 finds nothing below 1373653, psi_2..psi_11 are no longer strong pseudoprimes to the bases and the program exits 1",
+  "not_checked": [
+    "minimality of psi_3 to psi_11: only psi_1 and psi_2 are confirmed by exhaustive search; for the others the program verifies that the published number is a strong pseudoprime to the first k primes, not that no smaller one exists (an exhaustive search to 3.8*10^18 is far out of reach)",
+    "Jaeschke's deterministic primality claims (that no composite below psi_k passes) and the other bases sets in the paper",
+    "psi_12 and psi_13 (beyond 64 bits)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, confirms by search the first two of Jaeschke's numbers and that all eleven published values are strong pseudoprimes to the stated bases. It does not show minimality for the large ones."
+}

@@ -1,0 +1,5 @@
+PASS MurmurHash2   verification value: 27864c1e
+PASS MurmurHash2A  verification value: 7fbd4396
+PASS MurmurHash64A verification value: 1f0d3804
+PASS MurmurHash64B verification value: dd537c05
+PASS

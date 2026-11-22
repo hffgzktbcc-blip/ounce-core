@@ -1,0 +1,5 @@
+AES-128: ciphertext 69c4e0d86a7b0430d8cdb78070b4c55a, 156 Appendix C values checked, 0 mismatches, both inverses return the plaintext
+AES-192: ciphertext dda97ca4864cdfe06eaf70a0ec0d7191, 186 Appendix C values checked, 0 mismatches, both inverses return the plaintext
+AES-256: ciphertext 8ea2b7ca516745bfeafc49904b496089, 216 Appendix C values checked, 0 mismatches, both inverses return the plaintext
+published values compared: 558 of 558, mismatches 0, values not compared exactly once 0
+PASS

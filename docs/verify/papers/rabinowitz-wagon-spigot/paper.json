@@ -1,0 +1,30 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "A spigot algorithm for the digits of pi",
+    "authors": ["Stanley Rabinowitz", "Stan Wagon"],
+    "venue": "The American Mathematical Monthly 102(3), 195-203",
+    "year": 1995
+  },
+  "program": {
+    "source": "rabinowitz-wagon-spigot.c",
+    "how": "written for ounce-core from the algorithm (array of floor(10n/3)+1 mixed-radix digits all 2, multiply by 10, carry from the right with divisors 2i-1, predigit and run-of-nines handling); small-integer arithmetic only; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "with n = 2000 and an array of 6667 digits the spigot emits 2000 digits of pi (the 3 and 1999 decimals), all equal to the digits listed in OEIS A000796"
+  ],
+  "expected_values_source": {
+    "what": "the decimal digits of pi (sequence A000796), first 2000 digits, copied as data. The 1995 article itself was not fetched.",
+    "url": "https://oeis.org/A000796/b000796.txt",
+    "fetched": "2026-11-19",
+    "note": "the digit list and the program are independent of each other"
+  },
+  "negative_control": "built with -DRW_MOD_OFFSET=2 (divisor 2i-2 instead of 2i-1 at each position), the output is 3999999.. and differs at digit 2 and the program exits 1",
+  "not_checked": [
+    "more than 2000 digits, the paper's bound on the array length for larger n, and its remarks on the digit stream's finite look-ahead",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the first 2000 digits of pi with the Rabinowitz-Wagon spigot. It does not show anything about other n."
+}

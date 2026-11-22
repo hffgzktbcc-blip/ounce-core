@@ -1,0 +1,38 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Serpent: A Proposal for the Advanced Encryption Standard",
+    "authors": [
+      "Ross Anderson",
+      "Eli Biham",
+      "Lars Knudsen"
+    ],
+    "venue": "AES submission to NIST, 1998",
+    "year": 1998
+  },
+  "program": {
+    "source": "serpent.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Serpent-1 (32 rounds, 8 S-boxes used in bitslice mode, linear transformation, 132-word prekey recurrence with the golden-ratio constant, key padding, round keys through the S-boxes in the order S3, S2, S1, S0, S7, ...) written from the paper's description reproduces the authors' encryption vectors, sets 1-4: 514 (128-bit keys) + 578 (192-bit) + 642 (256-bit) = 1,734 ciphertexts",
+    "Decryption (inverse S-boxes from the paper, inverse linear transformation obtained by undoing each step) reproduces the authors' decryption vectors, sets 5-8: 1,734 plaintexts",
+    "The 'iterated 100 times' and 'iterated 1000 times' values of set 4 (2 vectors per key size, 12 values in all)",
+    "The inverse S-boxes printed in the paper invert the printed S-boxes (128 entries)"
+  ],
+  "expected_values_source": {
+    "what": "the S-boxes and inverse S-boxes from appendix A.5 of the paper, and the authors' test vectors in the NESSIE printout format on Eli Biham's Serpent page ('NESSIE's test vectors for Serpent' with 128-, 192- and 256-bit keys, which the files label 'verified')",
+    "url": "https://www.cl.cam.ac.uk/~rja14/Papers/serpent.pdf and https://www.cs.technion.ac.il/~biham/Reports/Serpent/Serpent-128-128.verified.test-vectors (also -192- and -256-)",
+    "fetched": "2026-11-20",
+    "note": "S-boxes extracted from the PDF text and vectors copied as data by script; the program was written from the paper. Bytes of keys and blocks are used in the printed order as little-endian 32-bit words, which a single-vector trial confirmed (reversed order gives different output). The iterated tests were run on Tier-3 as well"
+  },
+  "negative_control": "built with -DSERPENT_R13=12 (first rotation of the linear transformation changed from 13 to 12), 0 of 1,734 encryption vectors match, decryption and iterated checks fail and the program exits 1",
+  "not_checked": [
+    "the paper's security analysis (differential/linear bounds), its speed figures, and the earlier Serpent-0 variant with the DES S-boxes",
+    "the paper's non-bitslice description (initial and final permutations IP/FP and the tabulated linear transformation): only the equivalent bitslice form is implemented",
+    "key lengths other than 128, 192 and 256 bits, and modes of operation",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 3,468 ciphertexts or plaintexts and 12 iterated values the Serpent authors published, using the paper's S-boxes. It does not show the security claims hold."
+}

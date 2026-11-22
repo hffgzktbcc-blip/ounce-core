@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "GOST R 34.11-2012: Hash Function",
+    "authors": [
+      "V. Dolmatov (ed.)",
+      "A. Degtyarev"
+    ],
+    "venue": "IETF RFC 6986 (Independent Submission), translating GOST R 34.11-2012",
+    "year": 2013
+  },
+  "program": {
+    "source": "streebog.c",
+    "how": "written for ounce-core from Sections 6-9 of the RFC (S, P, L, X, g_N, hashing procedure); no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Streebog-512 and Streebog-256 of the RFC's two example messages (M1: 63 bytes; M2: 72 bytes) give the four published hash codes",
+    "for each of the four hash computations: the 13 round keys K[i] and the 13 intermediate values LPSX[K[i]]...(m) of the first g_N call, the 512-bit result of every g call, and the counters N and EPSILON after each message block match the RFC's Section 10 listings",
+    "134 published values in all (32 + 32 + 35 + 35)"
+  ],
+  "expected_values_source": {
+    "what": "the example values of Section 10 of RFC 6986; the substitution Pi', permutation Tau, matrix A and constants C[1..12] are the tables of Sections 6.2-6.5 of the same RFC",
+    "url": "https://www.rfc-editor.org/rfc/rfc6986.txt",
+    "fetched": "2026-11-19",
+    "note": "values and tables are data, copied as numbers (extracted by script); no implementation code was copied"
+  },
+  "negative_control": "built with -DSTRB_PI0=253 (first entry of the substitution Pi' changed from 252 to 253), 16 of 134 values match (only values computed before any use of Pi' with that entry) and the program exits 1",
+  "not_checked": [
+    "security claims, and the RFC's note that the algorithm is a national standard",
+    "messages other than the RFC's two examples (no multi-length or long-message vectors; the RFC gives only these)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 134 published Streebog values for the RFC 6986 examples. It does not show the security claims hold."
+}

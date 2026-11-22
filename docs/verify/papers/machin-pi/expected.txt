@@ -1,0 +1,5 @@
+Machin first 50 digits: 31415926535897932384626433832795028841971693993751
+PASS Machin 1706 pi/4 = 4 atan(1/5) - atan(1/239): all 10000 digits equal the OEIS A000796 digits
+PASS Stormer 1896 pi/4 = 44 atan(1/57) + 7 atan(1/239) - 12 atan(1/682) + 24 atan(1/12943): all 10000 digits equal the OEIS A000796 digits
+last 10 digits compared (digits 9991-10000): 5525637567
+PASS

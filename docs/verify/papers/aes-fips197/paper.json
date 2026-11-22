@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "AES Proposal: Rijndael (as standardised in FIPS 197, Advanced Encryption Standard)",
+    "authors": [
+      "Joan Daemen",
+      "Vincent Rijmen"
+    ],
+    "venue": "AES submission to NIST, 1998 (document version 2, 1999); standard: FIPS 197, NIST, 2001",
+    "year": 1998
+  },
+  "program": {
+    "source": "aes.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "AES-128, AES-192 and AES-256 with a 128-bit block, written from the algorithm (S-box computed as the GF(2^8) inverse plus the affine map, key expansion, ShiftRows, MixColumns), reproduces all 558 published intermediate states of FIPS 197 Appendix C: 156 + 186 + 216 values for the Cipher, the Inverse Cipher and the Equivalent Inverse Cipher, for key 000102...  and plaintext 00112233...ff",
+    "Final ciphertexts 69c4e0d86a7b0430d8cdb78070b4c55a (AES-128), dda97ca4864cdfe06eaf70a0ec0d7191 (AES-192), 8ea2b7ca516745bfeafc49904b496089 (AES-256), and decryption by both inverse ciphers returns the plaintext"
+  ],
+  "expected_values_source": {
+    "what": "FIPS 197 Appendix C (example vectors with every round's intermediate state), which standardises the Rijndael proposal for 128-bit blocks",
+    "url": "https://csrc.nist.gov/files/pubs/fips/197/final/docs/fips-197.pdf",
+    "fetched": "2026-11-19",
+    "note": "values extracted from the PDF text by script and compiled in as data; the program was written from the algorithm description. The Rijndael proposal paper itself (which also defines 192- and 256-bit blocks) was not fetched, and none of its block sizes other than 128 bits are checked"
+  },
+  "negative_control": "built with -DAES_AFFINE_C=0x62 (one bit of the S-box affine constant changed), 520 of 558 published values mismatch and the program exits 1",
+  "not_checked": [
+    "the Rijndael proposal's 192-bit and 256-bit block sizes (only the 128-bit-block AES subset is in FIPS 197)",
+    "other key/plaintext pairs: only the single Appendix C key and plaintext per key size are used, no other known-answer sets and no modes of operation",
+    "security claims (resistance to differential, linear or other attacks), side-channel behaviour of this table-free but not constant-time code",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 558 intermediate values FIPS 197 publishes for its three example encryptions and both decryption paths. It does not show the security claims hold."
+}

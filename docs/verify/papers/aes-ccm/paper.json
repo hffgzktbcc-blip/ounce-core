@@ -1,0 +1,32 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Counter with CBC-MAC (CCM), RFC 3610; origin: AES Encryption & Authentication Using CTR Mode & CBC-MAC (IEEE 802.11 submission 02/001r2)",
+    "authors": ["Doug Whiting", "Russ Housley", "Niels Ferguson"],
+    "venue": "IETF RFC 3610",
+    "year": 2003
+  },
+  "program": {
+    "source": "aes_ccm.c",
+    "how": "written for ounce-core from the RFC 3610 description (B_0 flags byte, 2-byte length-prefixed header, CBC-MAC, CTR blocks A_i, tag masked with A_0) and FIPS 197 AES-128 (S-box computed); no third-party code copied. Encryption direction only",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "all 24 packet vectors of RFC 3610 section 8 (8 or 12 header octets; 31, 32 or 33-byte packets; tag length 8 and 10; 13-byte nonces, so L = 2): for each, the printed B_0 ('CBC IV in'), the CBC-MAC, the encrypted MAC mask CTR[MAC] and the complete authenticated and encrypted output packet match: 96 of 96 values, 24 of 24 vectors"
+  ],
+  "expected_values_source": {
+    "what": "RFC 3610 section 8 packet vectors, parsed mechanically from the fetched RFC text (the tag length M is derived as output length minus input length; packet and output lengths cross-checked against the RFC's own 'Total packet length' lines)",
+    "url": "https://www.rfc-editor.org/rfc/rfc3610.txt",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers. The RFC's other intermediate lines (CBC IV out, After xor/AES, CTR[0001..]) are not compared one by one, only through the final packet"
+  },
+  "negative_control": "built with -DCCM_ADATA_BIT=32 (Adata flag bit 32 instead of 64 in B_0), 24 of 96 values match (the CTR-derived mask values) and 0 of 24 vectors match completely; the program exits 1 and check.sh reports NOT REPRODUCED",
+  "not_checked": [
+    "CCM's security or any cryptanalysis, including the nonce-reuse and length-field caveats of the RFC",
+    "CCM decryption and tag-failure handling (not implemented)",
+    "nonce lengths other than 13 bytes, header lengths beyond 12 or at least 65280 bytes (the 6-byte length encoding), no-header packets, message lengths beyond 33 bytes, other ciphers",
+    "speed figures (emulator run time says nothing about any hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the values printed in RFC 3610's 24 packet vectors. It does not show CCM is secure."
+}

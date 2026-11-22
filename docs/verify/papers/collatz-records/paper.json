@@ -1,0 +1,31 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Delay records of the 3x+1 (Collatz) problem: the published list of record holders and their step counts (table of E. Roosendaal, as listed in OEIS A006877 and A006878)",
+    "authors": ["Eric Roosendaal (table)"],
+    "venue": "published table at www.ericr.nl/wondrous (record data also given in OEIS A006877, A006878)",
+    "year": 2024
+  },
+  "program": {
+    "source": "collatz-records.c",
+    "how": "written for ounce-core from the definition of the 3x+1 map; step counts for all n below 10^7 using a table of earlier counts (a trajectory is stopped once it falls below its start); records are the n whose step count exceeds all smaller n; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "the 54 delay records below 10^7 found by the program (1, 2, 3, 6, 7, 9, 18, 25, 27, 54, 73, 97, ... 5649499, 6649279, 8400511) are exactly the published record holders in the same order, with the same step counts (0, 1, 7, 8, 16, 19, 20, 23, 111, ... 612, 664, 685; e.g. 837799 needs 524 steps, 8400511 needs 685), and there are no further records below 10^7"
+  ],
+  "expected_values_source": {
+    "what": "record holders (delays.txt of the Roosendaal table, checked to equal OEIS A006877 for the 54 terms below 10^7) and their step counts (OEIS A006878, whose header says it uses data from the same table); copied as numbers",
+    "url": "http://www.ericr.nl/wondrous/delays.txt ; https://oeis.org/A006877/b006877.txt ; https://oeis.org/A006878/b006878.txt",
+    "fetched": "2026-11-19",
+    "note": "the table's page computes the delay in the browser from the record holders, so the step counts were taken from the OEIS entry. The program is not claimed to reproduce the original papers (for example Leavens and Vermeulen 1992, Oliveira e Silva 2010), which were not fetched."
+  },
+  "negative_control": "built with -DCOLLATZ_ODD_COST=1 (an odd step counted as one step instead of two), the step counts are wrong (e.g. 8400511 gives 429 instead of 685), only 2 of the 54 records match in position and step count and the program exits 1",
+  "not_checked": [
+    "records above 10^7 (the published list goes to 14727207461063895711) and the 3x+1 conjecture itself, which this does not test beyond the range",
+    "the 'path records' (highest value reached) and the other record types in the literature",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, finds exactly the 54 published delay records below 10^7 with their step counts. It does not show anything about larger n."
+}

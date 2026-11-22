@@ -1,0 +1,21 @@
+PASS RFC 4493 AES-128(K,0): 7df76b0c1ab899b33e42f047b91b546f
+PASS RFC 4493 K1: fbeed618357133667c85e08f7236a8de
+PASS RFC 4493 K2: f7ddac306ae266ccf90bc11ee46d513b
+PASS RFC 4493 example 1 tag: bb1d6929e95937287fa37d129b756746
+PASS RFC 4493 example 2 tag: 070a16b46b4d4144f79bdd9dd04a287c
+PASS RFC 4493 example 3 tag: dfa66747de9ae63030ca32611497c827
+PASS RFC 4493 example 4 tag: 51f0bebf7e3b9d92fc49741779363cfe
+PASS NIST CMAC-AES128 example, message 0 bytes: tag bb1d6929e95937287fa37d129b756746
+PASS NIST CMAC-AES128 example, message 16 bytes: tag 070a16b46b4d4144f79bdd9dd04a287c
+PASS NIST CMAC-AES128 example, message 20 bytes: tag 7d85449ea6ea19c823a7bf78837dfade
+PASS NIST CMAC-AES128 example, message 64 bytes: tag 51f0bebf7e3b9d92fc49741779363cfe
+PASS NIST CMAC-AES192 example, message 0 bytes: tag d17ddf46adaacde531cac483de7a9367
+PASS NIST CMAC-AES192 example, message 16 bytes: tag 9e99a7bf31e710900662f65e617c5184
+PASS NIST CMAC-AES192 example, message 20 bytes: tag 3d75c194ed96070444a9fa7ec740ecf8
+PASS NIST CMAC-AES192 example, message 64 bytes: tag a1d5df0eed790f794d77589659f39a11
+PASS NIST CMAC-AES256 example, message 0 bytes: tag 028962f61b7bf89efc6b551f4667d983
+PASS NIST CMAC-AES256 example, message 16 bytes: tag 28a7023f452e8f82bd4bf28d8c37c35c
+PASS NIST CMAC-AES256 example, message 20 bytes: tag 156727dc0878944a023c1fe03bad6d93
+PASS NIST CMAC-AES256 example, message 64 bytes: tag e1992190549f6ed5696a2c056c315410
+values matched: 43 of 43
+PASS

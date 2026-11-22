@@ -1,0 +1,8 @@
+Ascon-128: encryption 1089 of 1089, decryption 1089 of 1089, modified tag rejected (program sanity check) 1089 of 1089
+Ascon-128a: encryption 1089 of 1089, decryption 1089 of 1089, modified tag rejected (program sanity check) 1089 of 1089
+Ascon-80pq: encryption 1089 of 1089, decryption 1089 of 1089, modified tag rejected (program sanity check) 1089 of 1089
+Ascon-Hash: 1025 of 1025 digests match
+Ascon-Hasha: 1025 of 1025 digests match
+Ascon-Xof (32 bytes): 1025 of 1025 digests match
+Ascon-Xofa (32 bytes): 1025 of 1025 digests match
+PASS

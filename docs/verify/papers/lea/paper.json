@@ -1,0 +1,39 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "LEA: A 128-Bit Block Cipher for Fast Encryption on Common Processors",
+    "authors": [
+      "Deukjo Hong",
+      "Jung-Keun Lee",
+      "Dong-Chan Kim",
+      "Daesung Kwon",
+      "Kwon Ho Ryu",
+      "Dong-Geon Lee"
+    ],
+    "venue": "WISA 2013",
+    "year": 2013
+  },
+  "program": {
+    "source": "lea.c",
+    "how": "written for ounce-core from the algorithm description; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "LEA with 128-, 192- and 256-bit keys: 30 of 30 ECB, 30 of 30 CBC and 30 of 30 CTR known-answer messages match (90 of 90; 10 per mode and key length, up to 400 bytes)"
+  ],
+  "expected_values_source": {
+    "what": "the Crypto++ test-vector file lea.txt, whose entries cite \"LEA reference test vectors, file lea_vs.c\" (the designers' reference vector file). The eight key-schedule constants are the fractional hexadecimal digits of sqrt(766965), recomputed during development with integer arithmetic",
+    "url": "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/lea.txt",
+    "fetched": "2026-11-19",
+    "note": "the vectors are relayed by Crypto++, not fetched from KISA; the paper PDF was not fetched. Data copied as numbers; no code was copied"
+  },
+  "negative_control": "built with LEA_ROT_A=8 (rotation 8 instead of 9 in the first output word), 0 of 30 ECB, 0 of 30 CBC and 0 of 30 CTR vectors match, program exits 1",
+  "not_checked": [
+    "security claims, speed figures (the paper's main claim is fast software encryption)",
+    "decryption (not implemented)",
+    "the 192-bit-block and other variants",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "speed figures (emulator run time says nothing about the authors' hardware)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the 90 reference LEA ciphertexts for their inputs. It does not show the cipher is secure."
+}

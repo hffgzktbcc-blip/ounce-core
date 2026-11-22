@@ -1,0 +1,19 @@
+table rows of the paper: sin(x) to the printed digits
+  sin(0.100167) = 0.09999958095 ; paper 0.09999958095 ok
+  sin(0.100168) = 0.1000005759 ; paper 0.1000005759 ok
+  sin(0.0100000) = 0.009999833334 ; paper 0.009999833334 ok
+  sin(0.0100010) = 0.01000083328 ; paper 0.01000083328 ok
+p = 6
+  exceptions found for x in [0.001, 1): 1
+    x = 0.10016700 -> 0.10016800: F = 0.000167400 -> 0.000167000
+  ok: p = 6: the sole exception is at x = 0.100167 (F = 0.0001674 then 0.0001670, as in the paper's table)
+p = 5
+  exceptions found for x in [0.001, 1): 1
+    x = 0.0100000 -> 0.0100010: F = 0.00000020 -> 0.00000000
+  ok: p = 5: the sole exception is at x = 0.010000 (F = 0.0000002 then 0, as in the paper's table)
+p = 4
+  exceptions found for x in [0.001, 1): 0
+  ok: p = 4: no exception (paper: nowhere)
+values of sin(x) within 1e-8 of a rounding tie (would make the rounding ambiguous): 0
+  ok: no ambiguous roundings
+PASS

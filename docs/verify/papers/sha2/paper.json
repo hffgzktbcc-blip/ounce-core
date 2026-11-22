@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Secure Hash Standard (SHS), SHA-224/256/384/512",
+    "authors": [
+      "National Institute of Standards and Technology"
+    ],
+    "venue": "FIPS PUB 180-3 / 180-4; test values from IETF RFC 6234 (D. Eastlake 3rd, T. Hansen) section 8.5",
+    "year": 2011
+  },
+  "program": {
+    "source": "sha2.c",
+    "how": "written for ounce-core from the algorithm in the paper or standard; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "for each of SHA-224, SHA-256, SHA-384 and SHA-512: the 10 known-answer digests of the RFC 6234 driver (3-byte, 56/112-byte, one million 'a', the 64-byte string repeated 10 times, a 5-bit message, a 1-byte message, and messages of 15, 16, 76/140 and 163/227 bytes, two of them with 3 extra bits) match",
+    "for each of the four: the chained 'random test' (1000 rounds, 4 outputs from the published seed) matches the 4 published digests",
+    "56 published values in all (4 hashes x (10 + 4))"
+  ],
+  "expected_values_source": {
+    "what": "the known-answer digests, seeds and chained digests for SHA-224, -256, -384 and -512 in the test driver of RFC 6234 section 8.5; the round constants and initial hash values are taken from the tables of the same RFC",
+    "url": "https://www.rfc-editor.org/rfc/rfc6234.txt",
+    "fetched": "2026-11-19",
+    "note": "digests, messages, seeds and constants are data, copied as numbers; the RFC's code was not copied"
+  },
+  "negative_control": "built with -DSHA256_K0=0x428a2f99u (one bit of one SHA-256 round constant), SHA-224 and SHA-256 match 0 of 14 and the program exits 1; built with -DSHA512_ROT_S0=29 (one SHA-512 rotation count 28 -> 29), SHA-384 and SHA-512 match 0 of 14 and the program exits 1",
+  "not_checked": [
+    "security claims (collision/preimage resistance); SHA-1 in particular is broken for collisions",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "message lengths and bit patterns beyond the RFC's tests; the program does not test streaming in different chunk sizes",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "SHA-512/224 and SHA-512/256 (not in the RFC test driver)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 56 SHA-2 values published in RFC 6234 (4 hashes, 14 each). It does not show the security claims hold."
+}

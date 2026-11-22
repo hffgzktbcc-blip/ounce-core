@@ -1,0 +1,10 @@
+BIP-173 valid Bech32 strings: accepted as the right variant and rebuilt by the encoder 7 of 7
+BIP-173 invalid Bech32 strings: rejected 12 of 12, with the published reason class 12 of 12
+BIP-173 valid segwit addresses: scriptPubKey equal to the published hex 6 of 6
+BIP-173 invalid segwit addresses: rejected 10 of 10, with the published reason class 10 of 10
+BIP-350 valid Bech32m strings: accepted as the right variant and rebuilt by the encoder 7 of 7
+BIP-350 invalid Bech32m strings: rejected 14 of 14, with the published reason class 14 of 14
+BIP-350 valid segwit addresses: scriptPubKey equal to the published hex 8 of 8
+BIP-350 invalid segwit addresses: rejected 15 of 15, with the published reason class 15 of 15
+valid strings identified as exactly one variant (Bech32 7 of 7, Bech32m 7 of 7)
+PASS

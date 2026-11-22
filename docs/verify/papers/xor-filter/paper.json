@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Xor Filters: Faster and Smaller Than Bloom and Cuckoo Filters",
+    "authors": ["Thomas Mueller Graf", "Daniel Lemire"],
+    "venue": "ACM Journal of Experimental Algorithmics 25 (2020), arXiv:1912.08258",
+    "year": 2020
+  },
+  "program": {
+    "source": "xorfilter.c",
+    "how": "written for ounce-core from the paper's Algorithms 1 to 4 (membership test, mapping step by peeling with counters and key masks, assignment in reverse order, capacity floor(1.23 n) + 32) and from the textbook Bloom filter with double hashing; own splitmix-style hash; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf` (integer code only)"
+  },
+  "claims_checked": [
+    "On 100000 generated keys the xor filter is built (first attempt) and has no false negatives, for 8-bit and 16-bit fingerprints (2 of 2)",
+    "False-positive percentage on 1000000 generated non-member keys lies in a range fixed before the first run around the values of Table 3: Xor 8 in [0.35, 0.43] % (Table 3: 0.389 and 0.391; measured 0.3846), Xor 16 in [0.0005, 0.0025] % (Table 3: 0.002 and 0.001; measured 0.0014)",
+    "Bits per key of the xor filter: Xor 8 in [9.80, 9.90] (Table 3: 9.8; measured 9.84) and Xor 16 in [19.60, 19.80] (Table 3: 19.7; measured 19.68)",
+    "Standard Bloom filters with 8, 12 and 16 bits per key and 6, 8, 11 probes have no false negatives and false-positive percentages in [2.10, 2.27] % (Table 3: 2.161 and 2.205; measured 2.1379), [0.29, 0.36] % (0.313 and 0.339; measured 0.3121) and [0.040, 0.060] % (0.046 and 0.053; measured 0.0429) (3 of 3)"
+  ],
+  "expected_values_source": {
+    "what": "Table 3 (membership-test benchmark results, 10M and 100M keys) and the text of Section 3 (capacity 1.23 n + 32) of the paper",
+    "url": "https://arxiv.org/pdf/1912.08258",
+    "fetched": "2026-11-19",
+    "note": "the paper's numbers are for 10 million and 100 million keys and its own Bloom implementation; this program uses 100000 keys, so the ranges are wide enough to cover sampling noise (several standard errors at 1000000 queries) and the difference between the two published scales, and were fixed before the first run. The measured Bloom 16 value (0.0429 %) is inside the range but below both published values (0.046 and 0.053), which come from a different Bloom implementation. The probe counts (6, 8, 11) are my choice of the optimum round(bits * ln 2); the paper's text says only that it uses the number of hash functions that gives the lowest false-positive probability."
+  },
+  "negative_control": "built with -DNEG=1 (Xor 8 keeps 7 fingerprint bits) its false-positive rate is 0.7783 %, outside the range, and the program exits 1; with -DNEG=2 (Bloom filters use half the optimal number of probes) Bloom 8, 12 and 16 give 3.03 %, 0.66 % and 0.14 %, all out of range",
+  "not_checked": [
+    "construction time, query time and memory-access counts (the paper's speed claims; emulator run time says nothing about real hardware)",
+    "the 8.8 bits/key xor+ variant, cuckoo filters, blocked Bloom filters, GCS and the paper's other tables and figures",
+    "the construction success probability of Figure 1 (only the single set of 100000 keys is built, and it succeeded on the first attempt)",
+    "false-positive rates at 10 million and 100 million keys",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, builds xor filters and Bloom filters whose measured false-positive rates and sizes fall in ranges around the numbers of the paper's Table 3. It does not reproduce the paper's timing results."
+}

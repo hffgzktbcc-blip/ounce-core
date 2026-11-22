@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "SHA-3 Standard: Permutation-Based Hash and Extendable-Output Functions",
+    "authors": [
+      "National Institute of Standards and Technology (Keccak designers: Bertoni, Daemen, Peeters, Van Assche)"
+    ],
+    "venue": "FIPS PUB 202",
+    "year": 2015
+  },
+  "program": {
+    "source": "sha3.c",
+    "how": "written for ounce-core from the FIPS 202 description (Keccak-f[1600], sponge, pad10*1, domain suffixes); no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "SHA3-224, SHA3-256, SHA3-384 and SHA3-512 reproduce 46, 46, 51 and 56 published digests; SHAKE128 and SHAKE256 reproduce 46 and 46 published 512-byte outputs (291 values in all)",
+    "the selected message bit lengths are 0..32, k*rate+{-8,-1,0,1,8} around each rate-block boundary, and 2040..2047, so non-byte-aligned messages, messages ending at or crossing a block boundary and multi-block squeezing are all covered"
+  ],
+  "expected_values_source": {
+    "what": "291 of the 12288 known-answer vectors (bit lengths 0..2047 for each of the six functions) in the ShortMsgKAT files of the Keccak team's XKCP repository, marked there as 'SHA3-xxx / SHAKExxx as in FIPS 202 standard'; the round constants and rho offsets are from the same team's KeccakF-1600-IntermediateValues.txt. The subset rule was fixed before running",
+    "url": "https://raw.githubusercontent.com/XKCP/XKCP/master/tests/TestVectors/ShortMsgKAT_SHA3-256.txt (and the -224, -384, -512, SHAKE128, SHAKE256 files in the same directory; also .../KeccakF-1600-IntermediateValues.txt)",
+    "fetched": "2026-11-19",
+    "note": "vectors are data, copied as numbers; the XKCP code was not copied. The files are the Keccak team's, not read from the NIST standard's own example PDFs; they state they follow FIPS 202"
+  },
+  "negative_control": "built with -DSHA3_SUFFIX_BAD=1 (the SHA-3 domain suffix bits 01 changed to 00), the four SHA-3 functions match 0 of 199 and the program exits 1 (92 of 291 values still match, the SHAKE ones)",
+  "not_checked": [
+    "security claims (collision, preimage and second-preimage resistance)",
+    "the other 11997 vectors of the six KAT files (only the 291 selected by the stated rule were run) and the Long/Monte Carlo test sets",
+    "messages longer than 255 bytes, SHAKE output lengths other than 512 bytes, and incremental absorb/squeeze",
+    "cSHAKE, KMAC, TupleHash, ParallelHash (SP 800-185)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly 291 published SHA-3 and SHAKE outputs selected from the Keccak team's FIPS 202 known-answer files. It does not show the security claims hold."
+}

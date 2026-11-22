@@ -1,0 +1,40 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "A portable high-quality random number generator for lattice field theory simulations (RANLUX)",
+    "authors": [
+      "Martin Luscher"
+    ],
+    "venue": "Computer Physics Communications 79, 100 (1994); builds on Marsaglia and Zaman, Annals of Applied Probability 1(3), 1991",
+    "year": 1994
+  },
+  "program": {
+    "source": "ranlux.c",
+    "how": "written for ounce-core from the subtract-with-carry recurrence and the block-decimation rule as specified in the C++ standard's engine definitions (the parameters and seeding procedure were taken from the standard's text); no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "default-seeded ranlux24_base (w=24, s=10, r=24), 10000th output 7937952",
+    "ranlux48_base (w=48, s=5, r=12), 10000th output 61839128582725",
+    "ranlux24 (ranlux24_base keeping 23 of every 223 values), 10000th output 9901578",
+    "ranlux48 (ranlux48_base keeping 11 of every 389 values), 10000th output 249142670248501"
+  ],
+  "expected_values_source": {
+    "what": "the 10000th-invocation values required by the C++ standard draft ([rand.predef]) for ranlux24_base, ranlux48_base, ranlux24 and ranlux48; the engine and seeding definitions are from the same document ([rand.eng.sub], [rand.adapt.disc])",
+    "url": "https://raw.githubusercontent.com/cplusplus/draft/main/source/numerics.tex",
+    "also": [
+      "https://luscher.web.cern.ch/luscher/ranlux/index.html"
+    ],
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers. They are published by the C++ standard, which defines these engines after Marsaglia-Zaman and Luscher; they are NOT numbers printed in Luscher's 1994 paper or in his own ranlux distribution (that tarball was not fetched). The author's page confirms the paper reference and that the C++ library contains the generator. Only the luxury parameters the standard fixes (p=223 and p=389) are run"
+  },
+  "negative_control": "built with -DRANLUX_S24=11 (short lag 11 instead of 10 for the 24-bit generators), ranlux24_base prints 6dc569 instead of 791fa0 and ranlux24 prints 964018 instead of 97160a (two FAIL), the 48-bit generators still pass, and the program exits 1 (checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the chaos / Lyapunov-exponent analysis and the statistical claims of the paper (that decimation removes the correlations of plain subtract-with-carry)",
+    "the other luxury levels of Luscher's ranlux (0 to 4, p = 24, 48, 97, 223, 389) and the single/double-precision float versions of his C implementation",
+    "exactly the 10000th value only: no longer output sequence is compared",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the four values the C++ standard requires for the RANLUX-derived engines. It does not show the statistical claims hold."
+}

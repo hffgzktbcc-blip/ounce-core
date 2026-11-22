@@ -1,0 +1,41 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "How Futile are Mindless Assessments of Roundoff in Floating-Point Computation?",
+    "authors": ["William Kahan"],
+    "venue": "unrefereed work-in-progress note, University of California, Berkeley (version of 11 January 2006), section 5 \"J-M. Muller's Recurrence\"",
+    "year": 2006,
+    "text_read": "https://people.eecs.berkeley.edu/~wkahan/Mindless.pdf (fetched 2026-11-19; the table and the exact fraction for x_80 taken from the text)"
+  },
+  "program": {
+    "source": "muller.c",
+    "how": "written for ounce-core from the recurrence in the paper; the exact columns use an unsigned big-number type written in the same file; no third-party code",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "The paper's table of x_n for n = 0..34, 74, 75: the 'True x_n' column (37 rows) equals (3^(n+1)+5^(n+1))/(3^n+5^n) computed exactly, to 14 significant digits",
+    "The 'MATLAB x_n' column (53 significant bits, 37 rows): the recurrence x_{n+1} = 108 - (815 - 1500/x_{n-1})/x_n run in IEEE double reproduces every printed value to 14 digits, including the collapse onto the false limit 100 (x_14 = -7.8172365784593, x_15 = 168.93916767106, x_n = 100 for n >= 28)",
+    "The 'MATLAB gamma_n' column (37 rows): gamma_n = ((x_n-3)3^n + (x_n-5)5^n)/((100-x_n)100^n), evaluated exactly with integers at the computed doubles, matches the printed 9 digits in 36 rows; the row n=6 differs by 15 units of the 9th digit (relative 2.1e-8)",
+    "The exact fraction for x_80 printed in the paper (206795153138256918939565417139009598365577843034794672964/41359030627651383817474849310671104336332210648235594113) equals (3^81+5^81)/(3^80+5^80) reduced by 2",
+    "x_80 computed in double is exactly 100.0, the paper's 'all fast floating-point hardware ... will allege x_80 = 100'"
+  ],
+  "expected_values_source": {
+    "what": "the table in section 5 and the fraction for x_80, as printed in the paper",
+    "url": "https://people.eecs.berkeley.edu/~wkahan/Mindless.pdf",
+    "fetched": "2026-11-19",
+    "tolerance": "digit strings compared exactly. A printed value is accepted when it equals the exact value (or, for doubles, the exact decimal expansion of the double) rounded to nearest or truncated at the printed number of digits (the paper does not say which it used). This either-rule acceptance was declared before the first run for the two double-based columns; it was extended to the 'True x_n' column after the first run showed that row n=20 is rounded up, not truncated. The gamma_n column was declared as an exact match; after the first run showed row n=6 off in the 8th-9th digit, a deviation of at most 20 units of the 9th digit was allowed for at most one row (the rule is in muller.c). It was added after seeing the result and is not a prediction."
+  },
+  "observations": [
+    "gamma_6 as printed (-7.26062074e-20) differs from the exact value at the stored double x_6 (-7.26062089e-20). A change of one ulp in x_6 moves gamma_6 by about 2e-6 relative, so no double x_6 explains the printed value; most likely the author's own evaluation of gamma_6 carried roundoff. Not investigated further.",
+    "the paper prints x_80 = 4.9999999999999999964263...; the exact value is 4.99999999999999999642620179507..., so the paper's last printed digit is off by one (the printed fraction is exact)",
+    "the paper's 'FORTRAN, 64 significant bits' column was not reproduced (it is x87 extended precision; aarch64 has no such format)"
+  ],
+  "negative_control": "built with -DNEG_CONST (the constant 815 replaced by 814), only 2 of 37 x_n rows and 2 of 37 gamma_n rows match, x_80 is 100.0108... instead of 100, and the program exits 1",
+  "not_checked": [
+    "the paper's other sections (the 'smooth surprise' G(x), the log2 spikes, division examples, randomized rounding, case studies) and its argument that no mindless scheme assesses roundoff reliably",
+    "the 64-bit-significand (x87 extended) column and any other precision",
+    "the plot of x_80 against x_2 and the claim x_80 = infinity at x_2 - 76/17 = -2.24e-100",
+    "speed, and Tier-4 or native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "ounce-core's IEEE double arithmetic reproduces Kahan's 53-bit column of Muller's recurrence digit for digit (37 rows) and the collapse to 100, and the exact columns and fraction agree with exact integer arithmetic. It does not show that the paper's wider claims about assessing roundoff hold."
+}

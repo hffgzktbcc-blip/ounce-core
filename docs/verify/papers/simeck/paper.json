@@ -1,0 +1,43 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The Simeck Family of Lightweight Block Ciphers",
+    "authors": [
+      "Gangqiang Yang",
+      "Bo Zhu",
+      "Valentin Suder",
+      "Mark D. Aagaard",
+      "Guang Gong"
+    ],
+    "venue": "CHES 2015",
+    "year": 2015
+  },
+  "program": {
+    "source": "simeck.c",
+    "how": "written for ounce-core from the algorithm description; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Simeck32/64 and Simeck64/128 encrypt the paper's own test vectors to the published ciphertexts (2 of 2)",
+    "18 further vectors (9 per variant) that the Crypto++ file labels \"SIMECK reference implementation\" match (18 of 18, 20 of 20 in all)",
+    "decrypting each of the 20 ciphertexts returns the plaintext (20 of 20 round trips)"
+  ],
+  "expected_values_source": {
+    "what": "the Crypto++ test-vector file simeck.txt: 2 entries labelled \"SIMECK test vector\" (the paper's vectors; in the paper's word notation) and 18 labelled \"SIMECK reference implementation\"; the round-constant bit sequences (32 bits for Simeck32/64, 44 bits for Simeck64/128) come from the Crypto++ source file simeck.cpp",
+    "url": "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/simeck.txt",
+    "additional_sources": [
+      "https://raw.githubusercontent.com/weidai11/cryptopp/master/simeck.cpp"
+    ],
+    "fetched": "2026-11-19",
+    "note": "the paper PDF itself was not fetched (eprint 403); the 18 reference-implementation vectors are as labelled by Crypto++ and were not checked against the authors' repository. Data copied as numbers; no code was copied"
+  },
+  "negative_control": "built with SIMECK_ROT5=4 (rotation by 4 instead of 5 in f), 0 of 2 paper vectors and 0 of 20 vectors match, program exits 1",
+  "not_checked": [
+    "Simeck48/96 (no vectors fetched)",
+    "security claims, hardware area or power figures",
+    "whether the 18 reference-implementation vectors are the authors' own outputs (taken as labelled)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "speed figures (emulator run time says nothing about the authors' hardware)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the published Simeck32/64 and Simeck64/128 test vectors and 18 more labelled reference vectors. It does not show the cipher is secure."
+}

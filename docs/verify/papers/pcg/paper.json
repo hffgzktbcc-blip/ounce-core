@@ -1,0 +1,42 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "PCG: A Family of Simple Fast Space-Efficient Statistically Good Algorithms for Random Number Generation",
+    "authors": [
+      "Melissa E. O'Neill"
+    ],
+    "venue": "Harvey Mudd College Computer Science Department technical report HMC-CS-2014-0905",
+    "year": 2014
+  },
+  "program": {
+    "source": "pcg.c",
+    "how": "written for ounce-core from the paper's construction: a 64-bit (pcg32, XSH-RR output) and a 128-bit (pcg64, XSL-RR output) linear congruential state with the sequence selector as increment, rejection-based bounded numbers and Brown-style LCG jump-ahead; the seeding order and the multiplier/increment constants were taken from the authors' reference C source; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "pcg32 (XSH-RR 64/32), seeded (42, 54): in the authors' 5-round test output, all 25 lines match (6 raw values, the same 6 again after advancing the state by -6, 65 coin tosses, 33 dice rolls and a 52-card shuffle per round; 810 values)",
+    "pcg64 (XSL-RR 128/64), seeded (42, 54): the same 25 lines of the authors' test output match (810 values)"
+  ],
+  "expected_values_source": {
+    "what": "the authors' test-high/expected/check-pcg32.out and check-pcg64.out in the pcg-c reference repository (output of check-base.c with seed 42, 54)",
+    "url": "https://raw.githubusercontent.com/imneme/pcg-c/master/test-high/expected/check-pcg32.out",
+    "also": [
+      "https://raw.githubusercontent.com/imneme/pcg-c/master/test-high/expected/check-pcg64.out",
+      "https://raw.githubusercontent.com/imneme/pcg-c/master/test-high/check-base.c",
+      "https://raw.githubusercontent.com/imneme/pcg-c/master/include/pcg_variants.h",
+      "https://raw.githubusercontent.com/imneme/pcg-c-basic/master/pcg_basic.c",
+      "https://www.pcg-random.org/paper.html"
+    ],
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as text; the authors' code (pcg_basic.c, pcg_variants.h, check-base.c) was read to confirm constants, seeding order and the test program's structure and was not copied. The published numbers are in the reference repository's expected outputs, not in the technical report itself"
+  },
+  "negative_control": "built with -DPCG32_XS=17 (xorshift by 17 instead of 18), 0 of 25 pcg32 lines match and the program exits 1; built with -DPCG64_ROT=121 (rotation taken from bit 121 instead of 122), 0 of 25 pcg64 lines match and the program exits 1 (checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the paper's statistical claims (TestU01 results, period and equidistribution, predictability analysis)",
+    "PCG variants other than XSH-RR 64/32 and XSL-RR 128/64 (RXS-M-XS, DXSM, the 'oneseq', 'unique' and MCG families, 8/16-bit versions)",
+    "streams selected by other sequence selectors",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the authors' reference test output (1620 values) for pcg32 and pcg64 with seed (42, 54). It does not show the statistical claims hold."
+}

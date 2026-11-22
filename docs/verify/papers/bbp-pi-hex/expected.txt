@@ -1,0 +1,8 @@
+PASS d=1000000 {16^d S1} = 0.1810395338 (paper 0.1810395338, tolerance 1e-9)
+PASS d=1000000 {16^d S4} = 0.7760655498 (paper 0.7760655498, tolerance 1e-9)
+PASS d=1000000 {16^d S5} = 0.3624585640 (paper 0.3624585640, tolerance 1e-9)
+PASS d=1000000 {16^d S6} = 0.3861386739 (paper 0.3861386739, tolerance 1e-9)
+PASS d=1000000 {16^d pi} = 0.4234297975 (paper 0.4234297975, tolerance 1e-9)
+PASS hex digits at position 1,000,001: 6C65E52C (paper 6C65E52C)
+positions matching OEIS A062964 (8 hex digits each): 10 of 10
+PASS

@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Machin's arctangent formula for pi (1706) and Stormer's four-term formula (1896), as used for hand and machine computation of pi digits",
+    "authors": ["John Machin", "Carl Stormer"],
+    "venue": "Machin: in W. Jones, Synopsis Palmariorum Matheseos (1706); Stormer: Archiv for Mathematik og Naturvidenskab 19 (1896)",
+    "year": 1706
+  },
+  "program": {
+    "source": "machin-pi.c",
+    "how": "written for ounce-core from the two arctangent identities and the Gregory series atan(1/x) = sum (-1)^k / ((2k+1) x^(2k+1)); own fixed-point decimal arithmetic (base 10^9 limbs, small-integer division, add, subtract); no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Machin's formula pi/4 = 4 atan(1/5) - atan(1/239) yields 10000 digits of pi (the 3 and 9999 decimals), all equal to the digits listed in OEIS A000796",
+    "Stormer's formula pi/4 = 44 atan(1/57) + 7 atan(1/239) - 12 atan(1/682) + 24 atan(1/12943) yields the same 10000 digits"
+  ],
+  "expected_values_source": {
+    "what": "the decimal digits of pi (sequence A000796), first 10000 digits, copied as data. The two original publications were not fetched; the formulas are classical identities, the check shows that they give these digits.",
+    "url": "https://oeis.org/A000796/b000796.txt",
+    "fetched": "2026-11-19",
+    "note": "the digit list and the program are independent of each other, so agreement over 10000 digits for two different formulas confirms both"
+  },
+  "negative_control": "built with -DMACHIN_C5=3 (3 instead of 4 as the coefficient of atan(1/5)), Machin's formula yields 2352010414.. and differs at digit 1 and the program exits 1",
+  "not_checked": [
+    "digits beyond 10000, and Shanks' 1873 computation (707 places, of which only the first 527 are correct) which was not fetched",
+    "that the identities hold as identities (only that they give these 10000 digits)",
+    "other Machin-like formulas (Takano, Gauss, Euler's atan form) and FFT-based or Chudnovsky methods",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the first 10000 digits of pi from two arctangent formulas. It does not show anything about larger digit counts."
+}

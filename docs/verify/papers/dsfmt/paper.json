@@ -1,0 +1,41 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "A PRNG specialized in double precision floating point numbers using an affine transition (dSFMT)",
+    "authors": [
+      "Mutsuo Saito",
+      "Makoto Matsumoto"
+    ],
+    "venue": "Monte Carlo and Quasi-Monte Carlo Methods 2008 (Springer)",
+    "year": 2009
+  },
+  "program": {
+    "source": "dsfmt.c",
+    "how": "written for ounce-core as plain integer C from the dSFMT recurrence on 128-bit words with a lung word (N=191, POS1=117, SL1=19, SR=12, the two masks of the 19937 parameter set); the fixed-exponent mantissa trick and the range conversions use bit patterns and exact integer fractions, so no floating-point arithmetic is run; the init_gen_rand / init_by_array seeding, exponent mask and period certification were re-implemented from the authors' reference source; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "all 22 sections of the authors' published test output for dSFMT2-19937:117-19 match, 2240 values compared as 15-decimal strings: seed 0 in [1,2) (1000 values); seeds 0 to 19 with the ranges [0,1), (0,1], (0,1), [1,2) in turn (12 values each, 240); init_by_array {1, 2, 3, 4} in [1,2) (1000 values)"
+  ],
+  "expected_values_source": {
+    "what": "the authors' dSFMT.19937.out.txt, the output of their test program test.c (default build)",
+    "url": "https://raw.githubusercontent.com/MersenneTwister-Lab/dSFMT/master/dSFMT.19937.out.txt",
+    "also": [
+      "https://raw.githubusercontent.com/MersenneTwister-Lab/dSFMT/master/test.c",
+      "https://raw.githubusercontent.com/MersenneTwister-Lab/dSFMT/master/dSFMT.c",
+      "https://raw.githubusercontent.com/MersenneTwister-Lab/dSFMT/master/dSFMT-common.h",
+      "https://raw.githubusercontent.com/MersenneTwister-Lab/dSFMT/master/dSFMT-params19937.h"
+    ],
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as text; the authors' code (dSFMT.c, dSFMT-common.h, params, test.c) was read for constants, seeding and conversions and was not copied. The published file lists only the first 12 values (1000 for two sections) per seed; later outputs are not compared"
+  },
+  "negative_control": "built with -DDSFMT_POS1=116 (POS1 = 116 instead of 117), 0 of 2240 published values match, 0 of 22 sections match, and the program exits 1 (checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the paper's period (2^19937-1), equidistribution and speed claims, and the other Mersenne exponents",
+    "dSFMT's array-fill interface and the 'conversion on the fly' versus bulk-conversion differences (identical sequences, not exercised here)",
+    "an actual floating-point (double) execution of the conversions: the check computes the exact decimal value of each double's bit pattern with integers, which is what a correct IEEE implementation prints",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 2240 doubles the authors publish for dSFMT-19937. It does not show the statistical claims hold."
+}

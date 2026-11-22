@@ -1,0 +1,63 @@
+Table 1: 4-significant-decimal arithmetic, roots from (B +- sqrt(D))/A, D = B*B - A*C
+  A, B, C = 10.27, 29.61,   computed D = 0.1000  roots 2.914 2.852
+  ok: computed D equals the paper's
+  ok: computed roots equal the paper's
+  ok: true D (exact integers) equals the paper's
+  true roots (5 decimals, rounded) 288772 287859 (x 1e-5)
+  ok: true roots equal the paper's to the printed digits
+  A, B, C = 10.28, 29.62,   computed D = 0  roots 2.881 2.881
+  ok: computed D equals the paper's
+  ok: computed roots equal the paper's
+  ok: true D (exact integers) equals the paper's
+  true roots (5 decimals, rounded) 290290 285975 (x 1e-5)
+  ok: larger true root equals the paper's 2.90290
+  paper prints 2.86075 for the smaller root, exact value is 285975 (x 1e-5): differs by 100 (x 1e-5)
+  ok: documented discrepancy: the printed 2.86075 violates the sum and product of roots, the exact 2.85975 satisfies them
+  true changes in the roots (x 1e-5) 1518 -1884; paper +0.01518..., -0.01784...
+  ok: true change of the larger root equals the paper's +0.01518
+  ok: documented discrepancy: change of the smaller root is -0.01884 (exact), the paper prints -0.01784 (follows from its 2.86075)
+  computed changes -0.03300 0.02900
+  ok: computed changes equal the paper's -0.033 and +0.029
+Table 2: IEEE double, A z^2 - 2 B z + C = 0 (published: computed D = 0.0 and 2.0; true D = 121/64 and 1)
+  ok: coefficients are the paper's (exact eighths)
+  ok: exact D = 121/64
+  naive D = B*B - A*C = 0
+  ok: naive D equals the paper's computed D
+  naive roots 1.000000014487979 1.000000014487979
+  ok: naive roots equal the paper's computed roots
+  ok: Kahan's discriminant (Dekker split) is exact
+  ok: Kahan's discriminant (fused multiply-add) is exact
+  ok: accurate roots are the correctly rounded true roots
+  ok: true larger root equals the paper's digits (exact integer division)
+  ok: coefficients are the paper's (exact eighths)
+  ok: exact D = 1
+  naive D = B*B - A*C = 2.00
+  ok: naive D equals the paper's computed D
+  naive roots 1.000000025437873 0.9999999956355509
+  ok: naive roots equal the paper's computed roots
+  ok: Kahan's discriminant (Dekker split) is exact
+  ok: Kahan's discriminant (fused multiply-add) is exact
+  ok: accurate roots are the correctly rounded true roots
+  ok: true larger root equals the paper's digits (exact integer division)
+  computed changes 0.000000010949894 -0.000000018852428
+  ok: computed changes equal the paper's +0.000000010949894 and -0.000000018852428
+  ok: true change of the larger root equals the paper's 0.000000007902534...
+Integer coefficients A = 2017810*8264001469, B = 39213*229699315399, C = 45077*107932908389 (published: D = -1)
+  ok: A, B, C are exact doubles
+  ok: B*B - A*C = -1 exactly (128-bit integers)
+  naive D = 0000000000000000 (not negative)
+  ok: Kahan's discriminant (Dekker split) returns -1
+  ok: Kahan's discriminant (fused multiply-add) returns -1
+  ok: real part: exact B/A = 0.54015588795707844... as published
+  ok: imaginary part: exact 1/A = 5.9969350369679512...e-17 as published
+  ok: computed real part is the correctly rounded B/A
+  ok: computed imaginary part is the correctly rounded 1/A
+  ok: naive formula loses the imaginary part (computes a different D)
+Fibonacci battery: F_n z^2 - 2 F_{n-1} z + F_{n-2} = 0, coefficients scaled by an integer M with M*F_n < 2^53, n = 2..78
+  qdrtc (Kahan's discriminant), both implementations: worst case of 77 x 2 runs = 53 correct bits (floor); the paper: always more than 52 bits
+  ok: qdrtc roots (real and imaginary parts) are accurate to more than 52 bits in all 77 cases, both Dekker and FMA discriminants
+  qdrtc0 (naive discriminant): real roots (even n) more than 12 bits away from 27+0.7|n-41|: 0 of 39 even n
+  ok: naive real roots (even n) follow the paper's rough law 27+0.7|n-41| within 12 bits (tolerance fixed before the first run; applied to even n only, see paper.json)
+  naive imaginary parts more than 12 bits away from max(0, 1.38(41-n)): 0 of 38 odd n
+  ok: naive imaginary parts follow max(0,1.38(41-n)) within 12 bits (tolerance fixed before the first run)
+PASS

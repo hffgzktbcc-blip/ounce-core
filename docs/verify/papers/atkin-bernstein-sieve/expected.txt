@@ -1,0 +1,9 @@
+PASS pi(10^1) = 4 (published 4)
+PASS pi(10^2) = 25 (published 25)
+PASS pi(10^3) = 168 (published 168)
+PASS pi(10^4) = 1229 (published 1229)
+PASS pi(10^5) = 9592 (published 9592)
+PASS pi(10^6) = 78498 (published 78498)
+PASS pi(10^7) = 664579 (published 664579)
+counts matching: 7 of 7
+PASS

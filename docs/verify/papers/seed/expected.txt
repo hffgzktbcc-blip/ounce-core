@@ -1,0 +1,8 @@
+SS-box entries derived from S0/S1: 1024 of 1024 equal RFC 4269 Appendix A.2
+KC table: 15 of 15 constants are the previous one rotated left by 1
+PASS RFC 4269 B.1 ciphertext: 5ebac6e0054e166819aff1cc6d346cdb
+PASS RFC 4269 B.2 ciphertext: c11f22f20140505084483597e4370f43
+PASS RFC 4269 B.3 ciphertext: ee54d13ebcae706d226bc3142cd40d4a
+PASS RFC 4269 B.4 ciphertext: 9b9b7bfcd1813cb95d0b3618f40f5122
+RFC 4269 Appendix B: 4 of 4 vectors match in every round subkey, every round state and the ciphertext (384 intermediate words compared)
+PASS
