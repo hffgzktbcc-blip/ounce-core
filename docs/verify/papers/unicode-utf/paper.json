@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "RFC 3629: UTF-8, a transformation format of ISO 10646 (section 7 examples); RFC 2781: UTF-16, an encoding of ISO 10646 (section 5 examples); RFC 2152: UTF-7, a mail-safe transformation format of Unicode (section 3 examples)",
+    "authors": ["Francois Yergeau", "Paul Hoffman and Francois Yergeau", "David Goldsmith and Mark Davis"],
+    "venue": "IETF RFC 3629 (Internet Standard 63), RFC 2781 (Informational), RFC 2152 (Informational)",
+    "year": 2003
+  },
+  "program": {
+    "source": "utf.c",
+    "how": "written for ounce-core from the RFCs' descriptions of the bit layouts (UTF-8 lead and continuation bytes, UTF-16 surrogate pairs and BOM handling, UTF-7 direct sets, modified base64 of UTF-16BE and the shift/terminator rules); no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "The 4 UTF-8 examples of RFC 3629 section 7 (U+0041 U+2262 U+0391 U+002E; U+D55C U+AD6D U+C5B4; U+65E5 U+672C U+8A9E; BOM + U+233B4) encode to the published bytes (4 of 4) and decode back, with a strict decoder (4 of 4)",
+    "The 4 forms of the RFC 2781 section 5 example (UTF-16BE, UTF-16LE, big-endian with BOM, little-endian with BOM) encode the 4 code points U+12345 U+003D U+0052 U+0061 to the published octets (4 of 4) and decode back, with the BOM selecting the byte order (4 of 4)",
+    "The 3 UTF-7 examples of RFC 2152 section 3 (A+ImIDkQ. ; Hi Mom -+Jjo--! ; +ZeVnLIqe-) are produced by the encoder (3 of 3) and decode back (3 of 3)",
+    "Total: 22 of 22 comparisons over 11 published examples"
+  ],
+  "expected_values_source": {
+    "what": "the example sections of RFC 3629 (section 7), RFC 2781 (section 5) and RFC 2152 (section 3), typed into utf.c from the fetched RFC texts",
+    "url": "https://www.rfc-editor.org/rfc/rfc3629.txt, https://www.rfc-editor.org/rfc/rfc2781.txt, https://www.rfc-editor.org/rfc/rfc2152.txt",
+    "fetched": "2026-11-19",
+    "note": "this check is small: only 11 published examples exist. My first UTF-7 encoder omitted RFC 2152's Set O (optional direct characters) and therefore shifted the '!' in 'Hi Mom -+Jjo--!'; that was a bug in the encoder, found by the published example, and fixed by adding Set O from the RFC text (the expected value was not touched). The UTF-7 encoder also writes the terminating '-' at the end of the text, which RFC 2152 allows and its last example shows."
+  },
+  "negative_control": "built with -DNEG=1 (UTF-8 continuation bytes use 0xC0 instead of 0x80) only 18 of 22 comparisons match and the program exits 1; with -DNEG=2 (UTF-16 high surrogates start at 0xD900) 18 of 22 match and the program exits 1",
+  "not_checked": [
+    "the full UTF-8 syntax tables and ranges of RFC 3629 section 4 (only the 4 published examples, not all 1,112,064 scalar values), overlong and malformed sequences beyond what the strict decoder rejects",
+    "UTF-7 rules for unusual characters, the longer MIME examples and Appendix A of RFC 2152",
+    "UTF-16 without BOM defaults and unpaired surrogates",
+    "speed (emulator run time says nothing about real hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the byte strings that the three RFCs publish for their worked examples. It does not show the codecs are complete or conformant for all input."
+}
