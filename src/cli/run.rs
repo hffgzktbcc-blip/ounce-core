@@ -448,14 +448,14 @@ pub(crate) fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> b
             };
         }
     };
-    diagln!("[NCE] Running natively at 0x{code:016X} (guest window 0x{base:X})");
+    println!("[NCE] Running natively at 0x{code:016X} (guest window 0x{base:X})");
     let start = Instant::now();
     let (mut svcs, mut frames) = (0u64, 0u64);
     let mut completed = false;
     let time_limit = nro_time_limit();
     loop {
         if time_limit.is_some_and(|limit| start.elapsed() >= limit) {
-            diagln!(
+            println!(
                 "[NCE] Time limit reached ({:.1} s, OUNCE_NRO_TIMEOUT_SECS); stopping the guest.",
                 start.elapsed().as_secs_f64()
             );
@@ -468,30 +468,30 @@ pub(crate) fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> b
                     SvcResult::Success => {}
                     SvcResult::PresentFrame => {
                         frames += 1;
-                        diagln!("[VM] VSync / Frame {frames} presented.");
+                        println!("[VM] VSync / Frame {frames} presented.");
                     }
                     SvcResult::ExitProcess => {
                         completed = true;
-                        diagln!("[VM] Guest exited (svcExitProcess).");
+                        println!("[VM] Guest exited (svcExitProcess).");
                         break;
                     }
                     SvcResult::Break { reason, info1, info2 } => {
-                        diagln!("[VM] Hit svcBreak: reason=0x{reason:X}, info1=0x{info1:X}, info2=0x{info2:X}");
-                        diagln!("[VM] Break PC: 0x{:016X}", cpu.regs.pc);
+                        println!("[VM] Hit svcBreak: reason=0x{reason:X}, info1=0x{info1:X}, info2=0x{info2:X}");
+                        println!("[VM] Break PC: 0x{:016X}", cpu.regs.pc);
                         if info2 == 4 {
                             match mmu.read_u32(info1) {
-                                Ok(result) => diagln!(
+                                Ok(result) => println!(
                                     "[VM] Break result: 0x{result:08X} (module={}, description={})",
                                     result & 0x1FF,
                                     (result >> 9) & 0x1FFF
                                 ),
-                                Err(error) => diagln!("[VM] Break result unreadable: {error}"),
+                                Err(error) => println!("[VM] Break result unreadable: {error}"),
                             }
                         }
                         break;
                     }
                     SvcResult::Unhandled(id) => {
-                        diagln!("[VM] Stopping on unhandled SVC #0x{id:02X}.");
+                        println!("[VM] Stopping on unhandled SVC #0x{id:02X}.");
                         break;
                     }
                 }
@@ -499,10 +499,10 @@ pub(crate) fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> b
             NceExit::Preempted => kernel.scheduler.preempt(&mut cpu),
             NceExit::Fault { pc, signal, addr } => {
                 if let Some(reason) = cpu.last_error.take().filter(|_| signal == 0) {
-                    diagln!("[VM Error] {reason}");
-                    diagln!("  Final PC: 0x{pc:016X}");
+                    println!("[VM Error] {reason}");
+                    println!("  Final PC: 0x{pc:016X}");
                 } else {
-                    diagln!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
+                    println!("[VM] CPU fault (native signal {signal}) at 0x{pc:016X}, address 0x{addr:X}");
                 }
                 break;
             }
@@ -512,7 +512,7 @@ pub(crate) fn run_native_nro(path: &str, bytes: &[u8], guest_args: &[&str]) -> b
             }
         }
     }
-    diagln!(
+    println!(
         "[NCE] {svcs} SVCs, {frames} frames in {:.3} s; rewrote {:?}; {} instructions interpreted",
         start.elapsed().as_secs_f64(),
         engine.stats,
