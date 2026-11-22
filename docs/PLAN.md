@@ -1,13 +1,13 @@
 # ounce-core: useful results, not component counts
 
-> **Agent orientation (updated 20 Nov 2026):** Consult the [Ounce Family one-year roadmap](docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) for strategic direction, but use live releases, CI and issues for shipped state. The family has distinct purposes: Core verifies bounded ARM64 execution; HB simplifies homebrew diagnostics; Runtime is a separate experimental engine; DeckStream launches content from Steam Deck NAS/WebDAV storage. This 8 November Core-local backlog retains dated history; old `Next:` notes and pre-tag tasks may describe work now shipped. Verify open work before starting; never treat a historical handoff as an assignment.
+> **Agent orientation (updated 20 Nov 2026):** Consult the [Ounce Family one-year roadmap](roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md) for strategic direction, but use live releases, CI and issues for shipped state. The family has distinct purposes: Core verifies bounded ARM64 execution; HB simplifies homebrew diagnostics; Runtime is a separate experimental engine; DeckStream launches content from Steam Deck NAS/WebDAV storage. This 8 November Core-local backlog retains dated history; old `Next:` notes and pre-tag tasks may describe work now shipped. Verify open work before starting; never treat a historical handoff as an assignment.
 
 Compacted 2026-11-17 (done tasks are one-liners; evidence in docs/history/PLAN-COMPLETED.md). Originally updated 2026-11-08 to reconcile vision progress with current main and continue
 the owner's direction: remove agent friction and deliver community value beyond
 Switch/Switch 2 coverage. This file replaces the previous
-milestone order. [Previous plan and evidence](docs/history/PLAN-2026-11-07.md) remain
+milestone order. [Previous plan and evidence](history/PLAN-2026-11-07.md) remain
 historical records; unfinished historical items are not implicit blockers.
-[AGENTS.md](AGENTS.md) contains the active working rules.
+[AGENTS.md](../AGENTS.md) contains the active working rules.
 
 ## Direction
 
@@ -45,32 +45,32 @@ closes them. Checkpoints live in commit messages, not automatic edits to this fi
 
 ## Ready work, in order
 
-Done tasks are one-liners; full evidence is in [docs/history/PLAN-COMPLETED.md](docs/history/PLAN-COMPLETED.md). Doc map: [docs/README.md](docs/README.md).
+Done tasks are one-liners; full evidence is in [docs/history/PLAN-COMPLETED.md](history/PLAN-COMPLETED.md). Doc map: [docs/README.md](README.md).
 
-- [x] **W1. Remove workflow loops and preserve useful checks.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#w1).
-- [x] **R1. Ship one failure-to-reproduction walkthrough.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#r1).
-- [x] **R2. Solve one externally grounded developer issue.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#r2).
-- [x] **R3. Make the proven workflow installable and predictable.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#r3).
-- [x] **R4. Turn one lagging component into an observed user result.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#r4).
-- [x] **R5. Publish the smallest useful community release and reassess.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#r5).
+- [x] **W1. Remove workflow loops and preserve useful checks.** Evidence: [archive](history/PLAN-COMPLETED.md#w1).
+- [x] **R1. Ship one failure-to-reproduction walkthrough.** Evidence: [archive](history/PLAN-COMPLETED.md#r1).
+- [x] **R2. Solve one externally grounded developer issue.** Evidence: [archive](history/PLAN-COMPLETED.md#r2).
+- [x] **R3. Make the proven workflow installable and predictable.** Evidence: [archive](history/PLAN-COMPLETED.md#r3).
+- [x] **R4. Turn one lagging component into an observed user result.** Evidence: [archive](history/PLAN-COMPLETED.md#r4).
+- [x] **R5. Publish the smallest useful community release and reassess.** Evidence: [archive](history/PLAN-COMPLETED.md#r5).
 
 ## Vision continuation (owner requested 2026-11-08)
 
-- [x] **V1. Qualify the existing instruction fuzzer in ARM64 CI.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#v1).
-- [x] **V2. Run one existing library harness as a static Linux ELF.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#v2).
+- [x] **V1. Qualify the existing instruction fuzzer in ARM64 CI.** Evidence: [archive](history/PLAN-COMPLETED.md#v1).
+- [x] **V2. Run one existing library harness as a static Linux ELF.** Evidence: [archive](history/PLAN-COMPLETED.md#v2).
 
-- [x] **V3. Make the bounded Linux ELF workflow repeatable.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#v3).
-- [x] **V4. Qualify the same Linux ELF workflow on Linux, macOS and Windows.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#v4).
-- [x] **V5. Locate one instruction-level first divergence.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#v5).
-- [x] **V6. Replay one recorded execution on another host.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#v6).
-- [x] **V9. Repair the measured host-dependent vector multiply result.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#v9).
-- [x] **V7. Replace the scripted browser teaching path with real runtime execution.** Evidence: [archive](docs/history/PLAN-COMPLETED.md#v7).
+- [x] **V3. Make the bounded Linux ELF workflow repeatable.** Evidence: [archive](history/PLAN-COMPLETED.md#v3).
+- [x] **V4. Qualify the same Linux ELF workflow on Linux, macOS and Windows.** Evidence: [archive](history/PLAN-COMPLETED.md#v4).
+- [x] **V5. Locate one instruction-level first divergence.** Evidence: [archive](history/PLAN-COMPLETED.md#v5).
+- [x] **V6. Replay one recorded execution on another host.** Evidence: [archive](history/PLAN-COMPLETED.md#v6).
+- [x] **V9. Repair the measured host-dependent vector multiply result.** Evidence: [archive](history/PLAN-COMPLETED.md#v9).
+- [x] **V7. Replace the scripted browser teaching path with real runtime execution.** Evidence: [archive](history/PLAN-COMPLETED.md#v7).
 - [ ] **V8. Publish a reusable conformance suite and obtain an outside result.**
       Status: blocked
       Blocked by: an actual outside-project execution and result.
       Result: another emulator project runs a versioned suite and reports a result with exact inputs and reference scope.
-      Progress: [version 0.1.0 seed](conformance/arm64-v0.1.0/README.md) packages the unchanged hardware FMUL trace, hashes, provenance, comparison scope and adapter contract. A runner rejects unsupported, missing/duplicate counts and tampered input. All three local runtime engines pass. PR #270 passed all 21 hosted checks, including each engine on Linux, macOS and Windows, and merged at `2e55a5e`; these remain internal observations.
-      Update: [version 0.2.0](conformance/arm64-v0.2.0) (twelve measured cases) is also published (#427).
+      Progress: [version 0.1.0 seed](../conformance/arm64-v0.1.0/README.md) packages the unchanged hardware FMUL trace, hashes, provenance, comparison scope and adapter contract. A runner rejects unsupported, missing/duplicate counts and tampered input. All three local runtime engines pass. PR #270 passed all 21 hosted checks, including each engine on Linux, macOS and Windows, and merged at `2e55a5e`; these remain internal observations.
+      Update: [version 0.2.0](../conformance/arm64-v0.2.0) (twelve measured cases) is also published (#427).
       Next: obtain an actual outside-project result; expanding the suite is no longer the blocker. Outside adoption remains external acceptance and is not inferred from internal runs.
 
 ## External acceptance and publication dependencies
@@ -79,11 +79,11 @@ Done tasks are one-liners; full evidence is in [docs/history/PLAN-COMPLETED.md](
       Status: blocked
       Blocked by: unaffiliated tester evidence through issue #190. Existing internal/CI RomFS results remain useful, but do not establish independence.
       Next: retain the recipe and accept outside evidence when available; no repeated internal reruns as a substitute.
-      Evidence: [issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190) has two comments, both by one outside tester (@cyzcz, 2026-11-07; reports #191 and follow-ups). Reviewed 2026-11-11: that is one self-reported outside run, not an independent rerun, so it stays `self-reported, awaiting independent rerun`. It deviates from the pinned recipe and lacks the byte-checked canonical records. See [E2_DECISION_MEMO.md](docs/history/E2_DECISION_MEMO.md#issue-190-is-either-comment-an-independent-rerun-e1). E1 is not complete.
+      Evidence: [issue #190](https://github.com/hffgzktbcc-blip/ounce-core/issues/190) has two comments, both by one outside tester (@cyzcz, 2026-11-07; reports #191 and follow-ups). Reviewed 2026-11-11: that is one self-reported outside run, not an independent rerun, so it stays `self-reported, awaiting independent rerun`. It deviates from the pinned recipe and lacks the byte-checked canonical records. See [E2_DECISION_MEMO.md](history/E2_DECISION_MEMO.md#issue-190-is-either-comment-an-independent-rerun-e1). E1 is not complete.
 - [ ] **E2. Disposition historical provenance for affected distribution artifacts.**
       Status: blocked
       Blocked by: native-app/optional-feature distribution decisions and actual bundle notice coverage, the historical 72-byte program permission question, and separately approved historical/ref actions. The default CLI v0.6.0 decision and its actual three-platform notice coverage are complete. PR #203 is merged; its technical controls do not establish legal clearance.
-      Next: use docs/LICENSE_DISPOSITION.md as the current disposition; earlier broad audit/checklist warnings are superseded. Objective-C full-text notices and binary-bound Rust toolchain notice collection are implemented; preserve the actual upstream SDK/contributor qualifications and specific historical permission case. The normal default-feature CLI was published as [v0.6.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.6.0) after the documented owner-directed distribution decision, three-platform qualification and strict reviewed packaging. [Downloaded-asset proof](docs/releases/v0.6.0-publication-proof.json) verifies checksums/notices and a Linux smoke run. Optional/native-app distribution and historical permission questions remain separate; no specialist legal review or new third-party grant is claimed. The standalone Python toolkit is separately distributable. Do not repeat completed inventories or treat E2 as a blocker to ordinary development. The four open questions (#308 to #311) have recorded outcomes in [docs/LICENSE_DISPOSITION.md](docs/LICENSE_DISPOSITION.md#open-e2-items-recorded-outcomes--10-november-2026) and are closed.
+      Next: use docs/LICENSE_DISPOSITION.md as the current disposition; earlier broad audit/checklist warnings are superseded. Objective-C full-text notices and binary-bound Rust toolchain notice collection are implemented; preserve the actual upstream SDK/contributor qualifications and specific historical permission case. The normal default-feature CLI was published as [v0.6.0](https://github.com/hffgzktbcc-blip/ounce-core/releases/tag/v0.6.0) after the documented owner-directed distribution decision, three-platform qualification and strict reviewed packaging. [Downloaded-asset proof](releases/v0.6.0-publication-proof.json) verifies checksums/notices and a Linux smoke run. Optional/native-app distribution and historical permission questions remain separate; no specialist legal review or new third-party grant is claimed. The standalone Python toolkit is separately distributable. Do not repeat completed inventories or treat E2 as a blocker to ordinary development. The four open questions (#308 to #311) have recorded outcomes in [docs/LICENSE_DISPOSITION.md](LICENSE_DISPOSITION.md#open-e2-items-recorded-outcomes--10-november-2026) and are closed.
 
 ## Delivery cadence and stop conditions
 
