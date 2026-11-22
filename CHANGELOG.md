@@ -4,6 +4,13 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+- Added: 100 more paper checks (102 in all) under `docs/verify/papers/`, with a shared harness (`common/ounce_paper.h`,
+  `common/lib.sh`) and `run_all.sh`. They cover ciphers (Speck, Simon, AES, Serpent, Twofish, ChaCha, Ascon and others),
+  hashes (SHA-1/2/3, BLAKE2, RIPEMD-160, Skein, xxHash, SipHash and others), random number generators (Mersenne Twister,
+  PCG, Threefry and others), number theory, floating-point notes of Kahan and Goldberg, and data formats. Each has a
+  `paper.json` listing its source, a negative control and what is not checked. Output is identical to a native x86-64 build;
+  Tier-3 only, not in CI. Sources differ in strength, and some compare only a few values: see
+  `docs/verify/papers/README.md`.
 - Added: scalar-SIMD fixed-point converts `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU` `Sd, Sn, #fbits` and `Dd, Dn, #fbits` (#469). They share the
   vector arithmetic (one lane converted, the rest of Vd zeroed), run in the interpreter (Tier-3 and Tier-4 fall back to it), and
   are covered by decode, behaviour and engine-agreement tests. The FP workload gains 12 ops for them and for the unsigned vector
