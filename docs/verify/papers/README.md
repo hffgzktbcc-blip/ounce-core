@@ -10,7 +10,7 @@ This is one way ounce-core is used beyond homebrew. The programs are plain stati
 
 ## What is here
 
-102 checks, one folder each. Run them all with `docs/verify/papers/run_all.sh <new out dir> target/release/ounce-core` (about 10 minutes).
+102 checks, one folder each. Run them all with `docs/verify/papers/run_all.sh <new out dir> target/release/ounce-core` (it took about 25 minutes on a loaded machine; the slowest single check is about 45 s).
 
 | Check | Paper or specification | Authors | Year |
 |---|---|---|---|
