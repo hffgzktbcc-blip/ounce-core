@@ -1,0 +1,44 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The Skein Hash Function Family",
+    "authors": [
+      "Niels Ferguson",
+      "Stefan Lucks",
+      "Bruce Schneier",
+      "Doug Whiting",
+      "Mihir Bellare",
+      "Tadayoshi Kohno",
+      "Jon Callas",
+      "Jesse Walker"
+    ],
+    "venue": "NIST SHA-3 competition submission, specification version 1.3 (1 October 2010)",
+    "year": 2010
+  },
+  "program": {
+    "source": "skein.c",
+    "how": "written for ounce-core from Section 3 of the specification (Threefish, UBI, configuration block, output function); no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "the 13 precomputed initial chaining values of Appendix B (Skein-256 with 128/160/224/256-bit output, Skein-512 with 128/160/224/256/384/512, Skein-1024 with 384/512/1024) equal the state computed from the configuration block with Threefish and UBI",
+    "the 9 test vectors of Appendix C (Skein-256-256, Skein-512-512 and Skein-1024-1024, each on three messages FF, FF FE FD .. of 1, Nb and 2 Nb bytes) are reproduced",
+    "22 published values in all; the Round-2 rotation constants of the version 1.3 specification are used"
+  ],
+  "expected_values_source": {
+    "what": "Appendix B (initial chaining values), Appendix C (test vectors) and Tables 3-4 (word permutation, rotation constants) and the constant C240 of the Skein specification v1.3",
+    "url": "https://www.schneier.com/wp-content/uploads/2015/01/skein.pdf",
+    "fetched": "2026-11-19",
+    "note": "values and tables are data, copied as numbers (extracted from the PDF text by a script); the submission package's reference code was not copied"
+  },
+  "negative_control": "built with -DSKEIN_ROT0=15 (the first Threefish-256 rotation constant changed from 14 to 15), 15 of 22 values match (the Threefish-256 based ones fail) and the program exits 1",
+  "not_checked": [
+    "security claims and the paper's analysis",
+    "tree hashing, MAC, key, personalization, nonce and other optional inputs (only simple hashing)",
+    "bit-granular messages (all vectors are whole bytes) and output lengths not listed in Appendix B / C",
+    "the NIST submission package's much longer known-answer files",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 22 published Skein initial chaining values and test vectors of the v1.3 specification. It does not show the security claims hold."
+}

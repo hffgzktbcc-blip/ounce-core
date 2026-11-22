@@ -1,0 +1,11 @@
+monotonicity: 0 violations in 4000000 (key, n) steps
+10 -> 12 buckets: moved 33325 of 200000 = 0.1666 (paper: 1/6 = 0.1667)
+1000 -> 1001 buckets: moved 486 of 500000 (expected about 500; range 400 to 600), all to the new bucket: yes
+n=2: mean iterations 1.5004, H_n 1.5000, ln(n)+1 1.6931 ok
+n=3: mean iterations 1.8339, H_n 1.8333, ln(n)+1 2.0986 ok
+n=10: mean iterations 2.9310, H_n 2.9290, ln(n)+1 3.3026 ok
+n=100: mean iterations 5.1880, H_n 5.1874, ln(n)+1 5.6052 ok
+n=1000: mean iterations 7.4874, H_n 7.4855, ln(n)+1 7.9078 ok
+n=100000: mean iterations 12.1016, H_n 12.0901, ln(n)+1 12.5129 ok
+iteration counts agreeing with the paper's analysis: 6 of 6
+PASS

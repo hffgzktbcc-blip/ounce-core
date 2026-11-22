@@ -1,0 +1,13 @@
+UTF-8 A<NOT IDENTICAL TO><ALPHA>.: encode match, decode match
+UTF-8 hangugeo: encode match, decode match
+UTF-8 nihongo: encode match, decode match
+UTF-8 BOM + U+233B4: encode match, decode match
+UTF-16BE without BOM: encode match, decode match
+UTF-16LE without BOM: encode match, decode match
+UTF-16 big-endian with BOM: encode match, decode match
+UTF-16 little-endian with BOM: encode match, decode match
+UTF-7 A+ImIDkQ.: encode match, decode match
+UTF-7 Hi Mom -+Jjo--!: encode match, decode match
+UTF-7 +ZeVnLIqe-: encode match, decode match
+published examples reproduced (encode and decode counted separately): 22 of 22
+PASS

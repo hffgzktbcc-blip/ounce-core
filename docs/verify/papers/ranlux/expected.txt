@@ -1,0 +1,5 @@
+PASS ranlux24_base, 10000th output: 791fa0
+PASS ranlux48_base, 10000th output: 383e0b4ada45
+PASS ranlux24 (p=223, r=23), 10000th output: 97160a
+PASS ranlux48 (p=389, r=11), 10000th output: e2980c5bca35
+PASS

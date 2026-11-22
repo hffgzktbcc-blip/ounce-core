@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Random number generators: good ones are hard to find (the minimal standard generator)",
+    "authors": [
+      "Stephen K. Park",
+      "Keith W. Miller"
+    ],
+    "venue": "Communications of the ACM 31(10), 1192-1201",
+    "year": 1988
+  },
+  "program": {
+    "source": "minstd.c",
+    "how": "written for ounce-core from the Lehmer recurrence x[n+1] = a x[n] mod (2^31-1) with the two multipliers; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "with seed 1, 16807 x[n] mod (2^31-1) gives 1043618065 as the 10000th value (the 1988 paper's multiplier)",
+    "with seed 1, 48271 x[n] mod (2^31-1) gives 399268537 as the 10000th value"
+  ],
+  "expected_values_source": {
+    "what": "the 10000th-invocation values required by the C++ standard draft ([rand.predef]) for minstd_rand0 (a=16807) and minstd_rand (a=48271)",
+    "url": "https://raw.githubusercontent.com/cplusplus/draft/main/source/numerics.tex",
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers. They come from the C++ standard, not from the CACM paper, which was not fetched; the 1043618065 check is the one the 1988 paper is known for, but this folder cannot show that from its own sources. The 48271 multiplier is not from the 1988 paper (it is a later proposed improvement for the same generator) and its attribution was not verified from fetched sources. Two published numbers only: the thinnest check in this series"
+  },
+  "negative_control": "built with -DMINSTD_A0=16806ULL (multiplier 16806 instead of 16807), the first value prints 35194e40 instead of 3e345911 and the program exits 1 (checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the paper's claims about the generator's full period 2^31-2, its choice of multiplier, and its portable implementations without 64-bit arithmetic (Schrage's method)",
+    "any seed other than 1 and any value other than the 10000th",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the two values the C++ standard requires for the minimal-standard engines. It does not show the paper's claims about the multiplier hold."
+}

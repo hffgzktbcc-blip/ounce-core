@@ -1,0 +1,37 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The RC6 Block Cipher",
+    "authors": [
+      "Ronald L. Rivest",
+      "Matthew J. B. Robshaw",
+      "Ray Sidney",
+      "Yiqun Lisa Yin"
+    ],
+    "venue": "AES submission to NIST, version 1.1, August 20, 1998",
+    "year": 1998
+  },
+  "program": {
+    "source": "rc6.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "RC6-32/20/b (key schedule with P32/Q32, quadratic function B*(2B+1), data-dependent rotations) written from the paper's pseudocode reproduces all 6 published encryption test vectors of the paper's Appendix: 16-, 24- and 32-byte keys, each with an all-zero and a patterned key/plaintext",
+    "Decryption (the paper's inverse procedure) returns the plaintext for all 6"
+  ],
+  "expected_values_source": {
+    "what": "the paper's Appendix 'Test vectors for encryption with RC6' (6 vectors)",
+    "url": "https://people.csail.mit.edu/rivest/pubs/RRSY98.pdf",
+    "fetched": "2026-11-20",
+    "note": "vectors extracted from the PDF text by script and compiled in as data; the program was written from the paper's pseudocode"
+  },
+  "negative_control": "built with -DRC6_ROUNDS=19 (one round fewer than the paper's 20), 0 of 6 vectors match and the program exits 1",
+  "not_checked": [
+    "the paper's security analysis and its speed figures (cycles per block)",
+    "other word sizes or round counts than RC6-32/20, and key lengths other than 16, 24 and 32 bytes",
+    "only six vectors exist in the paper: no larger known-answer set was used",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the six ciphertexts the RC6 paper publishes and inverts them. It does not show the security claims hold."
+}

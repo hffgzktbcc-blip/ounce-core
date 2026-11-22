@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "RFC 7541: HPACK: Header Compression for HTTP/2, Appendix C (Examples)",
+    "authors": ["Roberto Peon", "Herve Ruellan"],
+    "venue": "IETF RFC 7541 (Standards Track)",
+    "year": 2015
+  },
+  "program": {
+    "source": "hpack.c",
+    "how": "written for ounce-core from the RFC's description of prefix integers, string literals, Huffman coding, the indexed and literal representations and the dynamic table with eviction; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "For all 16 examples of Appendix C (C.2.1 to C.2.4, C.3.1 to C.3.3, C.4.1 to C.4.3, C.5.1 to C.5.3, C.6.1 to C.6.3) the encoder produces exactly the published hex bytes (16 of 16)",
+    "The decoder turns the published bytes of each example into the published header list (16 of 16)",
+    "After each example the dynamic table (entries, each entry's size, and the total size) equals the published table, in the encoder and in the decoder; this includes the evictions of C.5 and C.6 with a 256-octet table (16 of 16)",
+    "The Huffman code of Appendix B (257 symbols including EOS) is complete (Kraft sum exactly 1), has no code that is a prefix of another, and each of the 256 byte values encodes and decodes back (self-consistency of the table)"
+  ],
+  "expected_values_source": {
+    "what": "RFC 7541 Appendix A (static table, 61 entries), Appendix B (Huffman code, 257 rows) and Appendix C (header lists, hex dumps, dynamic tables); tables.inc is generated from the fetched RFC text by a script",
+    "url": "https://www.rfc-editor.org/rfc/rfc7541.txt",
+    "fetched": "2026-11-19",
+    "note": "the Huffman code and static table are data copied as numbers, not derived. The C.2 examples fix the representation type per example (literal with indexing, without indexing, never indexed, indexed); the program's encoder is told which, and for C.3 to C.6 it uses the policy 'indexed if the whole field is in a table, else literal with incremental indexing', with Huffman coding in C.4 and C.6 only. The generator joins the one dynamic-table entry that the RFC text wraps over two lines (set-cookie in C.5.3 and C.6.3); a first version that did not made those two table comparisons fail, which was a parsing error in the generator, not in the encoder."
+  },
+  "negative_control": "built with -DNEG=1 (entry size overhead 31 octets instead of 32) the dynamic table comparison fails in 13 of 16 examples (only the three tables that are empty or unaffected still match: 3 of 16) and the program exits 1; with -DNEG=2 (Huffman padding with zero bits instead of ones) 6 of the 16 encodings differ (10 of 16 match)",
+  "not_checked": [
+    "dynamic table size updates (representation 001...), table sizes changed by SETTINGS, and the decoder's error handling (invalid index, over-long integers, EOS in a string, bad padding other than as a check of the examples)",
+    "the compression ratio on real header traffic or the Huffman code's statistics",
+    "HTTP/2 itself and the other appendices of the RFC",
+    "speed (emulator run time says nothing about real hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the byte strings, header lists and dynamic-table states that RFC 7541 Appendix C publishes. It does not show that the codec is a complete, interoperable HPACK implementation."
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Computing the Internet Checksum (RFC 1071), with the incremental update of RFC 1624",
+    "authors": ["Robert Braden", "David Borman", "Craig Partridge", "Anil Rijsinghani (RFC 1624)"],
+    "venue": "IETF RFC 1071 (September 1988) and RFC 1624 (May 1994)",
+    "year": 1988
+  },
+  "program": {
+    "source": "internet_checksum.c",
+    "how": "written for ounce-core from the RFCs' definitions of the 16-bit one's complement sum, its byte-order independence and the incremental update equations; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "the RFC 1071 section 3 worked example on the 8 bytes 00 01 f2 03 f4 f5 f6 f7: byte-by-byte, 16-bit normal and swapped, 32-bit in three orders and the two-group odd-boundary sums all reproduce the intermediate values and the final one's complement sum 0xddf2 as printed (23 values)",
+    "the RFC 1624 section 4 example: HC = 0xDD2F, recomputed HC' = 0x0000, RFC 1141's equation giving the incorrect 0xFFFF, Eqn. 3 and Eqn. 4 giving 0x0000, and the two verification sums giving 0xFFFF (7 values)",
+    "dropping the end-around carry changes the results, so the checks do depend on one's complement arithmetic"
+  ],
+  "expected_values_source": {
+    "what": "the table of numerical examples in section 3 of RFC 1071 and the example in section 4 (and 5) of RFC 1624",
+    "url": "https://www.rfc-editor.org/rfc/rfc1071.txt ; https://www.rfc-editor.org/rfc/rfc1624.txt",
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers; no code from the RFCs was copied. Eqn. 4's subtraction 'with borrow' is implemented as end-around borrow, the program's reading of that phrase"
+  },
+  "negative_control": "built with IC_CARRY=0 (end-around carry removed from the one's complement sums), the folded sums fail (for example the 16-bit normal-order sum prints ddf0 instead of ddf2) and the program prints FAIL and exits 1",
+  "not_checked": [
+    "RFC 1071's implementation techniques (loop unrolling, deferred carries over long buffers) and its other sections; only the numerical examples are reproduced",
+    "RFC 1141 itself, the TCP/UDP/IP pseudo-header rules and any error-detection claim about the checksum",
+    "speed figures (emulator run time says nothing about real hardware), Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the 30 numbers of the worked examples printed in RFC 1071 and RFC 1624. It does not show any error-detection claim."
+}

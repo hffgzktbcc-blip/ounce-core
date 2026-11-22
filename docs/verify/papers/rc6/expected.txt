@@ -1,0 +1,8 @@
+PASS RC6-32/20/16 key: 8fc3a53656b1f778c129df4e9848a41e
+PASS RC6-32/20/16 key: 524e192f4715c6231f51f6367ea43f18
+PASS RC6-32/20/24 key: 6cd61bcb190b30384e8a3f168690ae82
+PASS RC6-32/20/24 key: 688329d019e505041e52e92af95291d4
+PASS RC6-32/20/32 key: 8f5fbd0510d15fa893fa3fda6e857ec2
+PASS RC6-32/20/32 key: c8241816f0d7e48920ad16a1674e5d48
+published encryption vectors: 6 of 6 match; decryption returns the plaintext for 6 of 6
+PASS

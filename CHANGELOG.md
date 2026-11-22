@@ -4,6 +4,13 @@ Notable changes to ounce-core. Evidence for each release lives under `docs/relea
 
 ## Unreleased
 
+- Added: 100 more paper checks (102 in all) under `docs/verify/papers/`, with a shared harness (`common/ounce_paper.h`,
+  `common/lib.sh`) and `run_all.sh`. They cover ciphers (Speck, Simon, AES, Serpent, Twofish, ChaCha, Ascon and others),
+  hashes (SHA-1/2/3, BLAKE2, RIPEMD-160, Skein, xxHash, SipHash and others), random number generators (Mersenne Twister,
+  PCG, Threefry and others), number theory, floating-point notes of Kahan and Goldberg, and data formats. Each has a
+  `paper.json` listing its source, a negative control and what is not checked. Output is identical to a native x86-64 build;
+  Tier-3 only, not in CI. Sources differ in strength, and some compare only a few values: see
+  `docs/verify/papers/README.md`.
 - Security: documented the best-effort support policy for `main` and the latest `0.10.x` patch, and recorded the evidence-based review of ten CodeQL cleartext-logging alerts. The alerts are false positives caused by a synthetic offline account response sharing a generic IPC result path with numeric guest/test diagnostics; none of the sinks logs account payloads, host credentials or network identities.
 - Repository metadata: declared Rust 1.89 as the package MSRV, added canonical repository/homepage/readme metadata, explicitly disabled crates.io publication, and corrected the README footer to point packaged downloads at GitHub Releases.
 

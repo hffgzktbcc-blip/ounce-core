@@ -1,0 +1,40 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The Keccak reference (version 3.0) / Keccak sponge function family main document",
+    "authors": [
+      "Guido Bertoni",
+      "Joan Daemen",
+      "Michaël Peeters",
+      "Gilles Van Assche"
+    ],
+    "venue": "NIST SHA-3 competition submission documents (January 2011); intermediate values file published by the Keccak team",
+    "year": 2011
+  },
+  "program": {
+    "source": "keccak-f1600.c",
+    "how": "written for ounce-core from the step definitions of Keccak-f in the reference documents; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "the 24 Keccak-f[1600] round constants, computed from the specification's LFSR, equal the published table",
+    "the 25 rho offsets, computed from the specification's triangular-number rule, equal the published table",
+    "for two permutation calls (all-zero input, then the previous output as input) the 25-lane state after each of theta, rho, pi, chi and iota in each of the 24 rounds equals the published value: 240 states",
+    "the two published 200-byte permutation outputs match (291 published values in all)"
+  ],
+  "expected_values_source": {
+    "what": "the round constants, rho offsets, per-step intermediate states and outputs in KeccakF-1600-IntermediateValues.txt (the Keccak team's file, distributed in the XKCP repository)",
+    "url": "https://raw.githubusercontent.com/XKCP/XKCP/master/tests/TestVectors/KeccakF-1600-IntermediateValues.txt",
+    "fetched": "2026-11-19",
+    "note": "values are data, copied as numbers; the XKCP code was not copied"
+  },
+  "negative_control": "built with -DKF_RHO_BAD=1 (the rho offset of lane (1,0) changed from 1 to 2), 24 of 25 offsets and 55 of 291 values match and the program exits 1",
+  "not_checked": [
+    "security claims and the design rationale of Keccak",
+    "sponge construction, padding and the SHA-3 / SHAKE functions (see the sha3 check)",
+    "other Keccak-f widths (25 to 800 bits) and round counts",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 291 published Keccak-f[1600] constants, offsets, intermediate states and outputs. It does not show the security claims hold."
+}

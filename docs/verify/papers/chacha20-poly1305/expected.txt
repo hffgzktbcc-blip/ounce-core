@@ -1,0 +1,29 @@
+PASS RFC 8439 A.1 block function vector 1
+PASS RFC 8439 A.1 block function vector 2
+PASS RFC 8439 A.1 block function vector 3
+PASS RFC 8439 A.1 block function vector 4
+PASS RFC 8439 A.1 block function vector 5
+PASS RFC 8439 A.2 encryption vector 1
+PASS RFC 8439 A.2 encryption vector 2
+PASS RFC 8439 A.2 encryption vector 3
+PASS RFC 8439 A.3 Poly1305 vector 1
+PASS RFC 8439 A.3 Poly1305 vector 2
+PASS RFC 8439 A.3 Poly1305 vector 3
+PASS RFC 8439 A.3 Poly1305 vector 4
+PASS RFC 8439 A.3 Poly1305 vector 5
+PASS RFC 8439 A.3 Poly1305 vector 6
+PASS RFC 8439 A.3 Poly1305 vector 7
+PASS RFC 8439 A.3 Poly1305 vector 8
+PASS RFC 8439 A.3 Poly1305 vector 9
+PASS RFC 8439 A.3 Poly1305 vector 10
+PASS RFC 8439 A.3 Poly1305 vector 11
+PASS RFC 8439 A.4 Poly1305 key generation vector 1
+PASS RFC 8439 A.4 Poly1305 key generation vector 2
+PASS RFC 8439 A.4 Poly1305 key generation vector 3
+PASS RFC 8439 A.5 received tag verifies, vector 1
+PASS RFC 8439 A.5 decrypted plaintext, vector 1
+PASS RFC 8439 2.8.2 Poly1305 one-time key, vector 1
+PASS RFC 8439 2.8.2 ciphertext, vector 1
+PASS RFC 8439 2.8.2 tag, vector 1
+values matched: 27 of 27
+PASS

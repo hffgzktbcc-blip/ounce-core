@@ -1,0 +1,42 @@
+PASS RFC 7253 A tuple 1: A 0 bytes, P 0 bytes: C 785407bfffc8ad9edcc5520ac9111ee6
+PASS RFC 7253 A tuple 2: A 8 bytes, P 8 bytes: C 6820b3657b6f615a5725bda0d3b4eb3a257c9af1f8f03009
+PASS RFC 7253 A tuple 3: A 8 bytes, P 0 bytes: C 81017f8203f081277152fade694a0a00
+PASS RFC 7253 A tuple 4: A 0 bytes, P 8 bytes: C 45dd69f8f5aae72414054cd1f35d82760b2cd00d2f99bfa9
+PASS RFC 7253 A tuple 5: A 16 bytes, P 16 bytes: C 571d535b60b277188be5147170a9a22c3ad7a4ff3835b8c5701c1ccec8fc3358
+PASS RFC 7253 A tuple 6: A 16 bytes, P 0 bytes: C 8cf761b6902ef764462ad86498ca6b97
+PASS RFC 7253 A tuple 7: A 0 bytes, P 16 bytes: C 5ce88ec2e0692706a915c00aeb8b2396f40e1c743f52436bdf06d8fa1eca343d
+PASS RFC 7253 A tuple 8: A 24 bytes, P 24 bytes: C 1ca2207308c87c010756104d8840ce1952f09673a448a122c92c62241051f57356d7f3c90bb0e07f
+PASS RFC 7253 A tuple 9: A 24 bytes, P 0 bytes: C 6dc225a071fc1b9f7c69f93b0f1e10de
+PASS RFC 7253 A tuple 10: A 0 bytes, P 24 bytes: C 221bd0de7fa6fe993eccd769460a0af2d6cded0c395b1c3ce725f32494b9f914d85c0b1eb38357ff
+PASS RFC 7253 A tuple 11: A 32 bytes, P 32 bytes: C bd6f6c496201c69296c11efd138a467abd3c707924b964deaffc40319af5a48540fbba186c5553c68ad9f592a79a4240
+PASS RFC 7253 A tuple 12: A 32 bytes, P 0 bytes: C fe80690bee8a485d11f32965bc9d2a32
+PASS RFC 7253 A tuple 13: A 0 bytes, P 32 bytes: C 2942bfc773bda23cabc6acfd9bfd5835bd300f0973792ef46040c53f1432bcdfb5e1dde3bc18a5f840b52e653444d5df
+PASS RFC 7253 A tuple 14: A 40 bytes, P 40 bytes: C d5ca91748410c1751ff8a2f618255b68a0a12e093ff454606e59f9c1d0ddc54b65e8628e568bad7aed07ba06a4a69483a7035490c5769e60
+PASS RFC 7253 A tuple 15: A 40 bytes, P 0 bytes: C c5cd9d1850c141e358649994ee701b68
+PASS RFC 7253 A tuple 16: A 0 bytes, P 40 bytes: C 4412923493c57d5de0d700f753cce0d1d2d95060122e9f15a5ddbfc5787e50b5cc55ee507bcb084e479ad363ac366b95a98ca5f3000b1479
+PASS internal value L_*
+PASS internal value L_$
+PASS internal value L_0
+PASS internal value L_1
+PASS internal value bottom
+PASS internal value Ktop
+PASS internal value Stretch
+PASS internal value Offset_0
+PASS internal value Offset_1
+PASS internal value Offset_2
+PASS internal value Offset_*
+PASS internal value Checksum_1
+PASS internal value Checksum_2
+PASS internal value Checksum_*
+PASS RFC 7253 A 96-bit-tag tuple: C 1792a4e31e0755fb03e31b22116e6c2ddf9efd6e33d536f1a0124b0a55bae884ed93481529c76b6ad0c515f4d1cdd4fdac4f02aa
+PASS RFC 7253 A long loop AES-128 tag 128 bits (22400 bytes authenticated): 67e944d23256c5e0b6c61fa22fdf1ea2
+PASS RFC 7253 A long loop AES-192 tag 128 bits (22400 bytes authenticated): f673f2c3e7174aae7bae986ca9f29e17
+PASS RFC 7253 A long loop AES-256 tag 128 bits (22400 bytes authenticated): d90eb8e9c977c88b79dd793d7ffa161c
+PASS RFC 7253 A long loop AES-128 tag 96 bits (20864 bytes authenticated): 77a3d8e73589158d25d01209
+PASS RFC 7253 A long loop AES-192 tag 96 bits (20864 bytes authenticated): 05d56ead2752c86be6932c5e
+PASS RFC 7253 A long loop AES-256 tag 96 bits (20864 bytes authenticated): 5458359ac23b0cba9e6330dd
+PASS RFC 7253 A long loop AES-128 tag 64 bits (19328 bytes authenticated): 192c9b7bd90ba06a
+PASS RFC 7253 A long loop AES-192 tag 64 bits (19328 bytes authenticated): 0066bc6e0ef34e24
+PASS RFC 7253 A long loop AES-256 tag 64 bits (19328 bytes authenticated): 7d4ea5d445501cbe
+values matched: 40 of 40
+PASS

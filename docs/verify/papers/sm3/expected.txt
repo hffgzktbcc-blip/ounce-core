@@ -1,0 +1,8 @@
+PASS example 1 (abc) block 1: W 68/68, W' 64/64, round states 64/64
+PASS example 1 (abc) digest: 66c7f0f4 62eeedd9 d1f2d46b dc10e4e2 4167c487 5cf2f7a2 297da02b 8f4ba8e0
+PASS example 2 (abcd x16) block 1: W 68/68, W' 64/64, round states 64/64
+PASS example 2 (abcd x16) chaining value V_1
+PASS example 2 (abcd x16) block 2: W 68/68, W' 64/64, round states 64/64
+PASS example 2 (abcd x16) digest: debe9ff9 2275b8a1 38604889 c18e5a4d 6fdb70e5 387e5765 293dcba3 9c0c5732
+total: 591 of 591 match
+PASS

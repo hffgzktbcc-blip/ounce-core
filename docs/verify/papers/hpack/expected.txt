@@ -1,0 +1,19 @@
+Appendix B Huffman code: Kraft sum 1073741824 of 1073741824, prefix clashes 0, single-byte round trips 256 of 256
+C.2.1: encoded 26 bytes (match), decoded list match, dynamic table 1 entries, size 55 (match)
+C.2.2: encoded 14 bytes (match), decoded list match, dynamic table 0 entries, size 0 (match)
+C.2.3: encoded 17 bytes (match), decoded list match, dynamic table 0 entries, size 0 (match)
+C.2.4: encoded 1 bytes (match), decoded list match, dynamic table 0 entries, size 0 (match)
+C.3.1: encoded 20 bytes (match), decoded list match, dynamic table 1 entries, size 57 (match)
+C.3.2: encoded 14 bytes (match), decoded list match, dynamic table 2 entries, size 110 (match)
+C.3.3: encoded 29 bytes (match), decoded list match, dynamic table 3 entries, size 164 (match)
+C.4.1: encoded 17 bytes (match), decoded list match, dynamic table 1 entries, size 57 (match)
+C.4.2: encoded 12 bytes (match), decoded list match, dynamic table 2 entries, size 110 (match)
+C.4.3: encoded 24 bytes (match), decoded list match, dynamic table 3 entries, size 164 (match)
+C.5.1: encoded 70 bytes (match), decoded list match, dynamic table 4 entries, size 222 (match)
+C.5.2: encoded 8 bytes (match), decoded list match, dynamic table 4 entries, size 222 (match)
+C.5.3: encoded 98 bytes (match), decoded list match, dynamic table 3 entries, size 215 (match)
+C.6.1: encoded 54 bytes (match), decoded list match, dynamic table 4 entries, size 222 (match)
+C.6.2: encoded 8 bytes (match), decoded list match, dynamic table 4 entries, size 222 (match)
+C.6.3: encoded 79 bytes (match), decoded list match, dynamic table 3 entries, size 215 (match)
+Appendix C examples: encoded bytes match 16/16, decoded header lists match 16/16, dynamic tables match 16/16
+PASS

@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Constructing Symmetric Ciphers Using the CAST Design Procedure (specified as CAST-128 in RFC 2144)",
+    "authors": [
+      "Carlisle M. Adams"
+    ],
+    "venue": "Designs, Codes and Cryptography 12(3), 1997; algorithm as in RFC 2144 (May 1997)",
+    "year": 1997
+  },
+  "program": {
+    "source": "cast128.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "CAST-128 as specified in RFC 2144 (three round-function types, 32 subkeys from the key schedule, eight 8x32 S-boxes) reproduces the three Appendix B.1 single-block vectors: 128-bit key (16 rounds), 80-bit key and 40-bit key (12 rounds, zero-padded keys)",
+    "Decryption (rounds in reverse order) returns the plaintext for each of those 3 vectors"
+  ],
+  "expected_values_source": {
+    "what": "RFC 2144 Appendix A (S-boxes, data) and Appendix B.1 (test vectors)",
+    "url": "https://www.rfc-editor.org/rfc/rfc2144.txt",
+    "fetched": "2026-11-19",
+    "note": "S-box words and vectors were copied as data by script from the fetched text; the program was written from the RFC's prose and formulas"
+  },
+  "negative_control": "built with -DCAST_ROT_MASK=15 (rotate amounts masked to 4 bits instead of 5), 0 of 3 vectors match (decrypt still inverts encrypt, since it shares the round function) and the program exits 1",
+  "not_checked": [
+    "the RFC's Appendix B.2 'full maintenance test' (1,000,000 iterations of four key schedules and encryptions) is not part of check.sh: it needs about 1.0e10 guest instructions (about 7 minutes) against the 2e9-instruction default budget of `ounce-core run-elf`. It is in the source behind -DCAST_MAINTENANCE; built that way, a native build and a one-off Tier-3 run with --max-insns=20000000000 both printed the published a = EEA9D0A249FD3BA6B3436FB89D6DCA92 and b = B2C95EB00C31AD7180AC05B8E83D696E (run once by hand, not reproducible via check.sh)",
+    "the cipher's security claims (nonlinearity, difference-distribution figures quoted in the RFC) and the CAST design procedure itself",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "key sizes other than 40, 80 and 128 bits, and modes of operation",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the three published CAST-128 ciphertexts of RFC 2144 B.1 and inverts them. It does not show the security claims hold."
+}

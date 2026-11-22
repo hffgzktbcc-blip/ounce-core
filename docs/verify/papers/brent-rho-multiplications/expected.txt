@@ -1,0 +1,6 @@
+PASS Floyd-based M_p/sqrt(p) at p = 99398833: 20.3613 (paper 20.3613)
+PASS Brent M_p/sqrt(p) at p = 48569393: 18.9972 (paper 18.9972)
+odd primes below 300000: 25996
+PASS maxima over the scan: Floyd-based 16.5158, Brent 13.6974 (not above 20.3613 and 18.9972)
+PASS means over the scan: Floyd-based 4.1334, Brent 3.1308 (paper, p < 10^8: 4.122795 and 3.122533; tolerance 1%)
+PASS

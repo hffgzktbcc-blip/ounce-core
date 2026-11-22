@@ -1,0 +1,32 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "A Provable-Security Treatment of the Key-Wrap Problem (introduces SIV); AES instantiation specified in RFC 5297 'Synthetic Initialization Vector (SIV) Authenticated Encryption Using the Advanced Encryption Standard (AES)'",
+    "authors": ["Phillip Rogaway", "Thomas Shrimpton", "Dan Harkins (RFC 5297)"],
+    "venue": "EUROCRYPT 2006 (SIV); IETF RFC 5297 (AES-SIV), October 2008",
+    "year": 2008
+  },
+  "program": {
+    "source": "aes_siv.c",
+    "how": "written for ounce-core from the RFC 5297 description (S2V over AES-CMAC, AES-CTR with bits 31 and 63 of the IV cleared) and FIPS 197 AES (S-box computed); no third-party code copied. Encryption direction only. The Rogaway-Shrimpton paper's own text was not fetched",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "RFC 5297 Appendix A.1 (deterministic AEAD, AES-SIV with a 256-bit key, one AD string, 14-byte plaintext) and A.2 (nonce-based, two AD strings plus a nonce, 47-byte plaintext): for each, CMAC(zero), the S2V result (the IV), the CTR start value, the ciphertext and the full IV||C output match (10 of 10 values)"
+  ],
+  "expected_values_source": {
+    "what": "RFC 5297 Appendix A test vectors, parsed mechanically from the fetched RFC text",
+    "url": "https://www.rfc-editor.org/rfc/rfc5297.txt",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers"
+  },
+  "negative_control": "built with -DSIV_RB=0x86 (doubling constant 0x86 instead of 0x87), 1 of 10 values matches (CMAC(zero), which does not use the doubled subkeys) and the program exits 1; check.sh reports NOT REPRODUCED",
+  "not_checked": [
+    "SIV's security (nonce-misuse resistance, PRF/PRP security of the construction) or any cryptanalysis",
+    "SIV decryption and authentication failure handling; AES-SIV with 384/512-bit keys (RFC 5297 gives only the 256-bit vectors); the later AES-GCM-SIV (RFC 8452), which is a different construction",
+    "inputs other than the two printed vectors (only two vectors exist in the RFC)",
+    "speed figures (emulator run time says nothing about any hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the values printed in RFC 5297's two test vectors. It does not show AES-SIV is secure."
+}

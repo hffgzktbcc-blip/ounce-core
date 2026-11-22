@@ -1,0 +1,46 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Improving the accuracy of the fast inverse square root algorithm",
+    "authors": [
+      "Cezary J. Walczyk",
+      "Leonid V. Moroz",
+      "Jan L. Cieslinski"
+    ],
+    "venue": "arXiv:1802.06302v1 [cs.NA], 17 February 2018 (preprint)",
+    "year": 2018,
+    "text_read": "https://arxiv.org/pdf/1802.06302 (fetched 2026-11-19; magic constants, code listings and the error ranges of sections 2, 5, 6 and 7 taken from the text)"
+  },
+  "program": {
+    "source": "invsqrt.c",
+    "how": "written for ounce-core from the listings InvSqrt, InvSqrt1, InvSqrt2 in the paper; the relative error sqrt(x)*y - 1 uses sqrt in double; no third-party code",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "InvSqrt with R = 0x5F37642F, zeroth approximation: maximum |relative error| 0.03421281 (paper (2.22)), matched to 1e-5 relative",
+    "InvSqrt with R = 0x5F375A86: maximum |relative error| 1.75118e-3 after one iteration (within 0.5%) and 4.60e-6 after two (within 3%) (paper (2.26))",
+    "InvSqrt1 (R = 0x5F375A86, constants 0.50043818, 1.5013145, 1.5000008, 0.99912498): error range after two iterations -6.62e-7 .. 6.35e-7 (paper (7.1)), measured -6.61e-7 .. 6.34e-7; after one iteration +-8.76e-4 (measured 8.764e-4)",
+    "InvSqrt2 (R = 0x5F376908, constants 1.5008789, 1.5000006): error range after two iterations -6.21e-7 .. 6.53e-7 (paper (7.5)), measured -6.19e-7 .. 6.53e-7; after one iteration +-8.79e-4 (measured 8.792e-4)",
+    "InvSqrt2 is about 7 times more accurate than InvSqrt after two iterations (measured ratio 7.1)",
+    "the paper's remark that a 64-bit build has error oscillations larger by about 1e-7 than its 32-bit build: with strict binary32 arithmetic the error range of InvSqrt1 and InvSqrt2 is wider by 1.5e-7 and 1.6e-7 than with extended-precision intermediates"
+  ],
+  "expected_values_source": {
+    "what": "the numbers printed in the paper",
+    "url": "https://arxiv.org/pdf/1802.06302",
+    "fetched": "2026-11-19",
+    "tolerance": "relative: 1e-5 for the noise-free zeroth approximation, 0.5% for one-iteration extrema, 3% for two-iteration extrema (which carry float rounding noise); fixed before the first run. The paper's numbers come from a 32-bit x87 build (TDM-GCC 4.9.2, extended intermediates). The first run with strict binary32 arithmetic gave two-iteration ranges about 10% wider (e.g. 7.27e-7 against 6.62e-7), outside the tolerance, which is what the paper's remark about 64-bit builds predicts; the pass criterion therefore uses a second implementation that keeps every expression in double and rounds to float on assignment (an emulation of extended intermediates), written after seeing that result. Both sets of numbers are printed, and the strict-float widening is checked against the paper's remark (declared band 3e-8 .. 3e-7)."
+  },
+  "observations": [
+    "only every 16th float of [1, 4) is tested (1048576 of the 2^24 = 16777216 floats of that interval) to fit the time budget; a full scan was not run, so the extrema may be slightly lower than a full scan would give, within the stated tolerances",
+    "the paper's ex = -126 (denormal-adjacent) intervals and the analytic derivations (values of t, d1, d2) are not checked"
+  ],
+  "negative_control": "built with -DNEG_CONST (the constant 1.5008789 of InvSqrt2 changed to 1.5018789), the InvSqrt2 one- and two-iteration errors become 1.879e-3 and about 4.8e-6 instead of 8.79e-4 and 6.2e-7, the check fails and the program exits 1",
+  "not_checked": [
+    "the analytic derivation of the magic constants and of d1, d2, t, and the optimality of the constants (only the resulting maximum errors are checked)",
+    "all floats outside [1, 4) (the paper says the error range is the same for every binade except ex = -126), and a full scan of [1, 4)",
+    "speed (the paper's motivation) and the SSE reciprocal square root instruction",
+    "behaviour with a different compiler, FMA contraction (built with -ffp-contract=off), or double inputs",
+    "Tier-4 and native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "with extended-precision intermediates emulated in double, ounce-core reproduces the paper's maximum relative errors for InvSqrt, InvSqrt1 and InvSqrt2 to the stated tolerances, and the strict-binary32 build shows the widening the paper reports for 64-bit builds. It is evidence for the tested grid of inputs, not an independent confirmation of the paper's analysis."
+}

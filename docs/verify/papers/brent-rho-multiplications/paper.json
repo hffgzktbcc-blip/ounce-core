@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "An improved Monte Carlo factorization algorithm",
+    "authors": ["Richard P. Brent"],
+    "venue": "BIT 20(2), 176-184",
+    "year": 1980
+  },
+  "program": {
+    "source": "brent-rho-multiplications.c",
+    "how": "written for ounce-core from the paper's two algorithms (Pollard's rho with Floyd's cycle finding and the product-of-differences trick, and Brent's cycle-finding variant of Section 7 with m = 1), counting multiplications mod N as the paper does; the sequence x0 = 0, f(x) = x^2 + 3 is run modulo the least prime factor p, since a factor p is detected exactly when a term divisible by p enters the product; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Section 8: for the Floyd-based algorithm the count M_p / sqrt(p) at p = 99,398,833 (the published location of the maximum over odd primes p < 10^8) is 20.3613 to the 4 published decimals",
+    "Section 8: for Brent's algorithm the count M_p / sqrt(p) at p = 48,569,393 (the published location of its maximum) is 18.9972 to the 4 published decimals",
+    "for all 25996 odd primes p < 300000 neither algorithm's M_p / sqrt(p) exceeds those published maxima, and the means over this smaller sample (4.1334 and 3.1308) are within 1% of the published means 4.122795 and 3.122533 for p < 10^8 (a consistency check only)"
+  ],
+  "expected_values_source": {
+    "what": "Table 8.1 and the accompanying text of the paper (maxima 20.3613 and 18.9972 at p = 99,398,833 and 48,569,393; actual means 4.122795 and 3.122533), copied as numbers; the text was extracted from the author's PDF",
+    "url": "https://maths-people.anu.edu.au/~brent/pd/rpb051i.pdf",
+    "fetched": "2026-11-19",
+    "note": "the extracted text reads the two algorithm columns of Table 8.1 as P_F' and P_2' (OCR garbled); the exact match of both maxima to 4 decimals with the listings as implemented confirms the reading. The checks at the two primes are exact matches; the scan is only a consistency check"
+  },
+  "negative_control": "built with -DBRENT_C=4 (f(x) = x^2 + 4 instead of x^2 + 3), M_p / sqrt(p) at the two primes is 6.5734 and 2.3660 instead of 20.3613 and 18.9972, and the program exits 1",
+  "not_checked": [
+    "the means and maxima over all 5,761,454 odd primes below 10^8 (about 10^11 multiplications; too slow for the 2 billion instruction default budget): only the two maximum locations and a sample of 25996 primes",
+    "factoring an actual composite N with GCDs and multi-word arithmetic: the counts are obtained modulo p",
+    "Section 7's variant that omits product terms for k < 3r/2 and the theoretical expectations (7.1)",
+    "the period/tail table (Table 2.1) of the calculator generator, whose recurrence is not given",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the two maxima in the paper's Table 8.1 to the published 4 decimals by counting multiplications of the two rho variants. It does not show the paper's averages over 10^8 primes."
+}

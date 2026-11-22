@@ -1,0 +1,32 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Prime sieves using binary quadratic forms",
+    "authors": ["A. O. L. Atkin", "D. J. Bernstein"],
+    "venue": "Mathematics of Computation 73(246), 1023-1030",
+    "year": 2004
+  },
+  "program": {
+    "source": "atkin-bernstein-sieve.c",
+    "how": "written for ounce-core from the characterization in Section 1 of the paper (parity of the number of solutions of 4x^2+y^2, 3x^2+y^2, 3x^2-y^2 with x>y, for squarefree numbers in the residue classes 1 mod 4, 7 mod 12 and 11 mod 12) plus removal of numbers divisible by a prime square; a plain bit array, no segmentation or the paper's wheel optimizations; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "the sieve up to 10^7 leaves exactly the primes: the counts of primes not exceeding 10, 10^2, ..., 10^7 are 4, 25, 168, 1229, 9592, 78498 and 664579, equal to the published values of pi(10^k) (7 of 7)"
+  ],
+  "expected_values_source": {
+    "what": "the published prime counting values pi(10^k) (sequence A006880), k = 1..7, copied as numbers. The paper presents the algorithm and timings, not a table of prime counts, so these are reference values for the output of the algorithm. The algorithm's characterization was read in the paper's PDF (Section 1).",
+    "url": "https://oeis.org/A006880/b006880.txt ; https://cr.yp.to/papers/primesieves.pdf",
+    "fetched": "2026-11-19",
+    "note": "the PDF is typeset with fonts the text extractor cannot decode, so Section 1 was read from the rendered page"
+  },
+  "negative_control": "built with -DAB_SQFREE=0 (the step that removes numbers divisible by a prime square is skipped), the counts come out as 26, 189, 1427, 11162, 90630, 760334 above pi(10^1) = 4, only 1 of the 7 counts matches and the program exits 1",
+  "not_checked": [
+    "pi(10^8) and larger (the plain-array sieve needs more than the 2 billion instruction default budget at 10^8)",
+    "the paper's asymptotic claims (operation count N/log log N, memory N^(1/2+o(1)), the segmented and wheel versions) and its timing comparison with the sieve of Eratosthenes",
+    "that every number below 10^7 is classified correctly beyond the 7 counts (a compensating error would not show in the counts; only the counts are compared)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces pi(10^k) for k = 1..7 from the Atkin-Bernstein quadratic-form sieve. It does not show the sieve's asymptotic or speed claims."
+}

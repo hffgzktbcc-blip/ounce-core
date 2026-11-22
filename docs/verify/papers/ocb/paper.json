@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The OCB Authenticated-Encryption Algorithm (RFC 7253); OCB3 from Krovetz and Rogaway, 'The Software Performance of Authenticated-Encryption Modes', FSE 2011",
+    "authors": ["Ted Krovetz", "Phillip Rogaway"],
+    "venue": "IETF RFC 7253",
+    "year": 2014
+  },
+  "program": {
+    "source": "ocb.c",
+    "how": "written for ounce-core from the RFC 7253 section 4 pseudocode (HASH, OCB-ENCRYPT) and FIPS 197 AES (S-box computed by GF(2^8) inversion; AES-128/192/256); no third-party code copied. Encryption direction only",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "RFC 7253 Appendix A: the 16 (N,A,P,C) tuples under AES-128 key 000102..0f with 128-bit tags, all 16 ciphertext||tag values match",
+    "the 14 internal values the RFC prints for the last tuple (L_*, L_$, L_0, L_1, bottom, Ktop, Stretch, Offset_0, Offset_1, Offset_2, Offset_*, Checksum_1, Checksum_2, Checksum_*) match (14 of 14)",
+    "the 96-bit-tag tuple with key 0f0e..00 matches (1 of 1)",
+    "the long-loop test for all nine parameter sets (AES-128/192/256 x tag 128/96/64 bits): each of 384 encryptions builds a 22400/20864/19328-byte string that a final OCB-ENCRYPT authenticates, and the 9 outputs match (9 of 9)"
+  ],
+  "expected_values_source": {
+    "what": "RFC 7253 Appendix A sample results, parsed mechanically from the fetched RFC text",
+    "url": "https://www.rfc-editor.org/rfc/rfc7253.txt",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers. Values from the original CCS 2001 OCB paper (an earlier OCB version with different offsets) are not checked"
+  },
+  "negative_control": "built with -DOCB_RB=0x86 (doubling constant 0x86 instead of 0x87), 8 of 40 values match and the program exits 1; check.sh reports NOT REPRODUCED",
+  "not_checked": [
+    "OCB's security proofs, the patent/licence status, or any cryptanalysis",
+    "OCB-DECRYPT (not implemented; tag verification and the INVALID path are not exercised)",
+    "nonce lengths other than 96 bits, tag lengths that are not whole bytes, ciphers other than AES",
+    "OCB1 and OCB2 (the earlier algorithms of the 2001 and 2003 papers)",
+    "speed figures (emulator run time says nothing about any hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the sample values printed in RFC 7253 Appendix A for the inputs listed. It does not show OCB is secure."
+}

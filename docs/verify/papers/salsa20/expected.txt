@@ -1,0 +1,22 @@
+PASS quarterround example 1
+PASS quarterround example 2
+PASS quarterround example 3
+PASS quarterround example 4
+PASS quarterround example 5
+PASS quarterround example 6
+PASS quarterround example 7
+PASS rowround example 1
+PASS rowround example 2
+PASS columnround example 1
+PASS columnround example 2
+PASS doubleround example 1
+PASS doubleround example 2
+PASS littleendian examples (3 values)
+PASS Salsa20 hash example 1
+PASS Salsa20 hash example 2
+PASS Salsa20 hash example 3
+PASS Salsa20^1000000 hash example 1
+PASS expansion (32-byte key) example 1
+PASS expansion (16-byte key) example 1
+spec examples: 20 of 20 match
+PASS

@@ -1,0 +1,42 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Tiny Mersenne Twister (TinyMT) 1.1.2: reference implementation and documentation (no peer-reviewed paper fetched)",
+    "authors": [
+      "Mutsuo Saito",
+      "Makoto Matsumoto"
+    ],
+    "venue": "software release, MersenneTwister-Lab/TinyMT (the related journal paper arXiv:1005.4973 is about MTGP, not TinyMT)",
+    "year": 2011
+  },
+  "program": {
+    "source": "tinymt.c",
+    "how": "written for ounce-core from the 127-bit state recurrences of TinyMT32 and TinyMT64 (shifts 1/10/8 and 12/11/8) as given in the authors' reference source and documentation; the init / init_by_array seeding was re-implemented from the same source; floating-point conversions are done with exact integer fractions; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "TinyMT32 (mat1 8f7011ee, mat2 fc78ff1f, tmat 3793fdff), seed 1: the 50 published 32-bit integers, and after init_by_array({1}) the 250 published numbers (50 each for the [0,1), [1,2), (0,1], (0,1) float conversions and the 32-bit precision double conversion), compared as the exact 7-decimal strings the authors' check program prints",
+    "TinyMT64 (mat1 fa051f40, mat2 ffd0fff4, tmat 58d02ffeffbfffbc), seed 1: the 30 published 64-bit integers, and after init_by_array({1}) the 192 published doubles (48 each for the [0,1), [1,2), (0,1], (0,1) conversions), compared as 15-decimal strings"
+  ],
+  "expected_values_source": {
+    "what": "the authors' check32.out.txt and check64.out.txt (output of their check programs for the parameter sets named above)",
+    "url": "https://raw.githubusercontent.com/MersenneTwister-Lab/TinyMT/master/tinymt/check32.out.txt",
+    "also": [
+      "https://raw.githubusercontent.com/MersenneTwister-Lab/TinyMT/master/tinymt/check64.out.txt",
+      "https://raw.githubusercontent.com/MersenneTwister-Lab/TinyMT/master/tinymt/check32.c",
+      "https://raw.githubusercontent.com/MersenneTwister-Lab/TinyMT/master/tinymt/tinymt32.c",
+      "https://raw.githubusercontent.com/MersenneTwister-Lab/TinyMT/master/tinymt/tinymt64.c"
+    ],
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers or strings; the authors' code (tinymt32.h/c, tinymt64.h/c, check32.c, check64.c) was read to learn the recurrence, seeding and conversions and was not copied. TinyMT has no peer-reviewed paper of its own among the sources fetched; this folder is the weakest on 'published paper' and the lead may drop it"
+  },
+  "negative_control": "built with -DTMT32_SH1=11 (TinyMT32 shift 11 instead of 10): 0 of 300 TinyMT32 published values match, the 222 TinyMT64 values still match, and the program exits 1; built with -DTMT64_SH0=13: 0 of 222 TinyMT64 values match, TinyMT32 unaffected, exit 1 (both checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the period (2^127-1) and equidistribution claims, and any parameter set other than the two printed in the check files",
+    "the tinymt*_generate_float01 / double01 conversions, which the authors' check files do not print",
+    "TinyMT's parameter generator (tinymtdc)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 522 values in the authors' check files for TinyMT32 and TinyMT64 with seed 1. It does not show the statistical claims hold."
+}

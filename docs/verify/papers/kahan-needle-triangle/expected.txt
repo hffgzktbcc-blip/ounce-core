@@ -1,0 +1,18 @@
+Table 1 of the paper, 10 significant decimals
+row  Heron's area (computed | published)   accurate area   accurate angle C in degrees
+1  43.30127019 | 43.30127019 ok   43.30127020 | 43.30127020 ok   6.00000000E1 | 60 ok
+2  2.904737510 | 2.905 ok   Error | Error ok   Error | Error ok
+3  17.60681685 | 17.6 ok   9.999999990 | 9.999999990 ok   1.14591559E-7 | 1.145915591E-7 ok
+4  50010.00004 | 50010.0 ok   50002.50003 | 50002.50003 ok   5.72986443E-4 | 5.72986443E-4 ok
+5  Error | Error ok   1.118033988 | 1.118033988 ok   1.28117258E-8 | 1.281172578E-8 ok
+6  Error | Error ok   1.118033988 | 1.118033988 ok   4.81896851E1 | 48.18968510 ok
+7  0 | 0 ok   612.3724358 | 612.3724358 ok   1.79998597E2 | 179.9985965 ok
+8  0 | 0 ok   Error | Error ok   Error | Error ok
+9  Error | Error ok   0 | 0 ok   1.80000000E2 | 180 ok
+10  0 | 0 ok   0 | 0 ok   1.80000000E2 | 180 ok
+11  4.472135957E-1 | 0.447 ok   3.274904580E-1 | 0.327490458 ok   6.42285382E1 | 64.22853824 ok
+12  246.1832652 | 246.18 ok   245.9540000 | 245.9540000 ok   8.99631528E1 | 89.96315276 ok
+Heron's area column: 12 of 12 rows equal the printed digits
+accurate area column: 12 of 12 rows equal the printed digits, 12 within relative 2e-9
+accurate angle column: 12 of 12 rows within relative 2e-9 (or Error where the paper says Error)
+PASS

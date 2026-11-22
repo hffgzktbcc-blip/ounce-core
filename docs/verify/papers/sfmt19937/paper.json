@@ -1,0 +1,40 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "SIMD-oriented Fast Mersenne Twister: a 128-bit Pseudorandom Number Generator",
+    "authors": [
+      "Mutsuo Saito",
+      "Makoto Matsumoto"
+    ],
+    "venue": "Monte Carlo and Quasi-Monte Carlo Methods 2006 (Springer)",
+    "year": 2008
+  },
+  "program": {
+    "source": "sfmt19937.c",
+    "how": "written for ounce-core as plain integer C from the paper's recurrence on 128-bit words (N=156, POS1=122, SL1=18, SL2=1 byte, SR1=11, SR2=1 byte, the four masks of the 19937 parameter set, no SIMD); the init_gen_rand / init_by_array seeding and period certification were re-implemented from the authors' reference source, which defines them; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "after init_gen_rand(1234) the first 1000 32-bit outputs of SFMT-19937 equal the 1000 values the authors published",
+    "after init_by_array({0x1234, 0x5678, 0x9abc, 0xdef0}) the first 1000 outputs equal the 1000 values the authors published"
+  ],
+  "expected_values_source": {
+    "what": "the two blocks of 1000 32-bit outputs in the authors' SFMT.19937.out.txt (id string SFMT-19937:122-18-1-11-1:dfffffef-ddfecb7f-bffaffff-bffffff6); the seeds come from the authors' test.c",
+    "url": "https://raw.githubusercontent.com/MersenneTwister-Lab/SFMT/master/SFMT.19937.out.txt",
+    "also": [
+      "https://raw.githubusercontent.com/MersenneTwister-Lab/SFMT/master/test.c",
+      "https://raw.githubusercontent.com/MersenneTwister-Lab/SFMT/master/SFMT-params19937.h"
+    ],
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers; the authors' code (SFMT.c, SFMT-common.h, test.c) was read only to confirm seeding details, parameters and the test seeds, and was not copied"
+  },
+  "negative_control": "built with -DSFMT_POS1=121 (M = 121 instead of 122), 0 of 2000 published outputs match and the program exits 1 (checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the paper's period (2^19937-1) and equidistribution claims, and the other Mersenne exponents (607 to 216091) it tabulates; only the 19937 parameter set is run",
+    "the 64-bit output interface and the real-number conversions",
+    "the SIMD (SSE2 / AltiVec / NEON) implementations, which this plain C program does not use",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 2000 published SFMT-19937 outputs for the two seedings. It does not show the statistical claims hold."
+}

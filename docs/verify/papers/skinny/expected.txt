@@ -1,0 +1,6 @@
+PASS 256 of 256 S-box entries match the Appendix A table
+PASS SKINNY-128-256 (SKINNY-AEAD spec, App. B): b731d98a4bde147a7ed4a6f16b9b587f
+PASS SKINNY-128-384 (SKINNY-AEAD spec, App. B): 94ecf589e2017c601b38c6346a10dcfa
+PASS SKINNY-128-384+, 40 rounds (Romulus spec): ff38d1d24c864c4352a853690fe36e5e
+test vectors: 3 of 3 match
+PASS

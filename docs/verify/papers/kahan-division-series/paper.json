@@ -1,0 +1,37 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "How Futile are Mindless Assessments of Roundoff in Floating-Point Computation?",
+    "authors": ["William Kahan"],
+    "venue": "unrefereed work-in-progress note, University of California, Berkeley (version of 11 January 2006), section 8 'An Old Hand Accuses Division', pages 29-30",
+    "year": 2006,
+    "text_read": "https://people.eecs.berkeley.edu/~wkahan/Mindless.pdf (fetched 2026-11-19; the nine Taylor coefficients were read from the rendered page 29 because the text layer is garbled, and the two correct values are in the text of page 30)"
+  },
+  "program": {
+    "source": "series.c",
+    "how": "written for ounce-core from the definition of f(x) in the paper: the Taylor series is derived from first principles with exact rational arithmetic in 128-bit integers (log(1+z) and atan as power series and composed; acosh(1+z)^2 from its differential equation (z^2+2z)y''+(1+z)y'=2, giving the recurrence a(m+1) = -m^2 a(m)/((m+1)(2m+1)); then series division), and the two correct values from acos(1-d) = sqrt(2d)(1 + d/12 + ...) and acosh(1+z) = sqrt(2z)(1 - z/12 + ...) with a big-number type; no third-party code",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "the nine Taylor coefficients of f(1+z) = atan(log(1+z))/acosh(1+z)^2 printed in the paper, 'computed by MAPLE': 1/2, -1/6, -1/20, 124/945, -8221/113400, -46969/1247400, 948249251/10216206000, -208838923/3831077250, -14025530287/521026506000 (all nine, with signs, equal to the exact rationals derived here)",
+    "f(1) = 1/2",
+    "the 'correct values' acos(1 - eps/2) = 1.49011611938476564e-8 and acosh(1 + eps) = 2.10734242554470155e-8 with eps = 2^-52: the paper's digits equal the exact expansions (1.4901161193847656387e-8 rounded; 2.1073424255447015503e-8 truncated)"
+  ],
+  "expected_values_source": {
+    "what": "the series and the two correct values as printed in the paper",
+    "url": "https://people.eecs.berkeley.edu/~wkahan/Mindless.pdf",
+    "fetched": "2026-11-19",
+    "tolerance": "exact: coefficients as reduced fractions; the two decimal values as printed digits, accepted when equal to the exact expansion truncated or rounded at the printed length (declared before the first run)"
+  },
+  "observations": [
+    "the unexpected agreement is complete: no printed digit disagrees. The check says nothing about the paper's account of what 386-MATLAB computed"
+  ],
+  "negative_control": "built with -DNEG_ODE (a wrong constant 2m+3 instead of 2m+1 in the recurrence for acosh(1+z)^2), the coefficients become -1/5, -31/1050, ... and none after the first matches, the program exits 1",
+  "not_checked": [
+    "the paper's statements about 386-MATLAB: the error plot, 'the worst error is 74055679.7 ULPs at x = 1 - eps/2', the directed-rounding tables and the claim that the program loses 26 of 53 bits (these depend on a particular old MATLAB and its acos and acosh)",
+    "the remaining sections of the paper",
+    "convergence of the series (radius 1) beyond the nine terms; only nine coefficients are compared",
+    "Tier-4 and native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "exact integer arithmetic on ounce-core derives Kahan's nine printed Taylor coefficients of f at 1 and his two printed correct values. It does not test the paper's claims about roundoff assessment."
+}

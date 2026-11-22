@@ -1,0 +1,31 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The calculation of e to many significant digits",
+    "authors": ["A. H. J. Sale"],
+    "venue": "The Computer Journal 11(2), 229-230",
+    "year": 1968
+  },
+  "program": {
+    "source": "sale-e-spigot.c",
+    "how": "written for ounce-core from the method (e = 2 + sum 1/i! held in factorial-base digits all equal to 1, repeated multiplication by 10 with carries propagated from position N down to 2); small-integer arithmetic only; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "with N = 3300 factorial-base positions the spigot produces 10000 digits of e (the 2 and 9999 decimals), all equal to the digits listed in OEIS A001113"
+  ],
+  "expected_values_source": {
+    "what": "the decimal digits of e (sequence A001113), first 10000 digits, copied as data. Sale's article itself was not fetched; the method is the standard factorial-base spigot it describes.",
+    "url": "https://oeis.org/A001113/b001113.txt",
+    "fetched": "2026-11-19",
+    "note": "the digit list and the program are independent of each other"
+  },
+  "negative_control": "built with -DSALE_N=3000 (3000! has only about 9130 digits, so too few positions), the first difference is at digit 9135, a difference is reported and the program exits 1",
+  "not_checked": [
+    "more than 10000 digits, and Sale's own figures (not fetched)",
+    "the choice of N in general (the check uses N = 3300 chosen so that N! exceeds 10^10000 with margin)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the first 10000 digits of e with the spigot method. It does not show anything about other digit counts."
+}

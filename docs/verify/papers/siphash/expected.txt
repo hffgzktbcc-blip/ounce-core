@@ -1,0 +1,3 @@
+PASS paper example, 15 bytes: a129ca6149be45e5
+reference vectors: 64 of 64 match
+PASS

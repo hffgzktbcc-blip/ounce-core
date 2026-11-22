@@ -1,0 +1,40 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Parallel random numbers: as easy as 1, 2, 3 (Threefry generators)",
+    "authors": [
+      "John K. Salmon",
+      "Mark A. Moraes",
+      "Ron O. Dror",
+      "David E. Shaw"
+    ],
+    "venue": "Proceedings of SC '11 (International Conference for High Performance Computing, Networking, Storage and Analysis)",
+    "year": 2011
+  },
+  "program": {
+    "source": "threefry.c",
+    "how": "written for ounce-core from the paper's Threefry construction (counter + key, add/rotate/xor rounds on word pairs, key injection every 4 rounds, Threefish key-schedule parity constant); the rotation constants (which come from the Threefish reference sources) and the key-schedule parity were read as numbers from the authors' header; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Threefry 2x32, 4x32, 2x64 and 4x64 at 13, 20 and 32 (2-word) or 72 (4-word) rounds, each for the three counter/key pairs the authors list (all zeros, all ones, digits of pi): all 36 known-answer vectors match"
+  ],
+  "expected_values_source": {
+    "what": "the 36 threefry lines of the Random123 authors' tests/kat_vectors file",
+    "url": "https://raw.githubusercontent.com/DEShawResearch/random123/main/tests/kat_vectors",
+    "also": [
+      "https://raw.githubusercontent.com/DEShawResearch/random123/main/include/Random123/threefry.h"
+    ],
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers; the authors' header was read for the rotation constants and to confirm the key-injection layout and was not copied. The sibling Philox generator of the same paper is covered by the separate philox/ check (this folder does not repeat it). Note: in the kat_vectors lines for threefry4x64 at 20 and 72 rounds with the digits-of-pi counter, the fourth key word equals the third (be5466cf34e90c6c twice) where the 13-round line has c0ac29b7c97c50dd; the program uses the key exactly as the file lists it and the listed outputs match, so this looks like a harmless oddity in the test file, not an implementation difference"
+  },
+  "negative_control": "built with -DTF_INJECT=5 (a key injection after every 5 rounds instead of 4), 0 of 36 vectors match and the program exits 1 (checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the paper's statistical claims (BigCrush results for Threefry and Philox), its crush-resistance and security discussion, and the Philox generators",
+    "Threefry with a number of rounds other than the ones listed",
+    "the paper's counter-based API, streams and its performance tables",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 36 published Threefry known-answer vectors. It does not show the statistical claims hold."
+}

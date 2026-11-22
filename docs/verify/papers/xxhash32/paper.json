@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "xxHash algorithm specification, XXH32 (xxhash_spec.md version 0.2.0)",
+    "authors": ["Yann Collet"],
+    "venue": "xxHash project specification and sanity test vectors (not peer reviewed)",
+    "year": 2023
+  },
+  "program": {
+    "source": "xxhash32.c",
+    "how": "written for ounce-core from the algorithm description in the specification; no third-party code copied. The known-answer data is in vectors_seed0.inc and vectors_seed1.inc (numbers only)",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "XXH32 with seed 0 of the first n bytes of the project's pseudo-random test buffer outputs the 4161 published digests for every n = 0..4160",
+    "XXH32 with seed 0x9E3779B1 outputs the 4161 published digests for the same inputs (8322 digests in all)",
+    "the inputs cover every tail length, the short-input path, the stripe loop and the accumulator convergence"
+  ],
+  "expected_values_source": {
+    "what": "the XSUM_XXH32_testdata array of the project's sanity vectors (length, seed, digest), and the buffer generator XSUM_fillTestBuffer in the xsum_sanity_check.c next to it; the algorithm is from the specification",
+    "url": "https://raw.githubusercontent.com/Cyan4973/xxHash/dev/tests/sanity_test_vectors.h (also .../cli/xsum_sanity_check.c and .../doc/xxhash_spec.md)",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers by a script that also checked their order (length ascending, seeds 0 then 0x9E3779B1); the project's code was not copied"
+  },
+  "negative_control": "built with XXH32_P2=0x85EBCA79u (PRIME32_2 changed by two), 0 of 4161 digests match for each seed (first mismatch: length 0 gives 146a278c instead of 02cc5d05) and the program exits 1",
+  "not_checked": [
+    "the streaming (incremental) interface and inputs longer than 4160 bytes",
+    "the other xxHash members (XXH3, XXH128) and seeds other than 0 and 0x9E3779B1",
+    "dispersion or collision-quality claims, and speed figures (emulator run time says nothing about real hardware)",
+    "big-endian hosts; the program reads input as little-endian bytes as the specification requires",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 8322 digests the xxHash project publishes for XXH32. It does not show anything about hash quality."
+}

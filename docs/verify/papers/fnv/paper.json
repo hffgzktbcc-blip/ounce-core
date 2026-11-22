@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The FNV Non-Cryptographic Hash Algorithm (draft-eastlake-fnv-21)",
+    "authors": ["Glenn Fowler", "Landon Curt Noll", "Kiem-Phong Vo", "Donald Eastlake", "Tony Hansen"],
+    "venue": "IETF Internet-Draft, 7 January 2024 (the FNV hash itself dates from 1991)",
+    "year": 2024
+  },
+  "program": {
+    "source": "fnv.c",
+    "how": "written for ounce-core from the algorithm description in the draft: one generic n-bit FNV implementation with multi-limb arithmetic and the prime applied as shifts and adds; no code from the draft or other third parties copied. The two tables are included as hex strings in fnv_tables.inc (data only)",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "FNV-1a 32-bit and 64-bit of \"\", \"a\" and \"foobar\" match the 12 values of draft Appendix C (Table 3 without and Table 4 with a terminating zero byte)",
+    "the six FNV primes (32, 64, 128, 256, 512, 1024 bits) built from the stated form 2^s + 2^8 + b equal the hex values in Table 1",
+    "the six offset_basis values of Table 2 (32 to 1024 bits) are reproduced as the draft defines them, the n-bit FNV-0 hash of the 32 octets \"chongo <Landon Curt Noll> /\\../\\\" (the 1024-bit case exercises 32-limb arithmetic)"
+  ],
+  "expected_values_source": {
+    "what": "Appendix C (test vectors), Table 1 (FNV primes) and Table 2 (FNV offset_basis values), and the definition of the offset_basis in section 2.2 of the draft",
+    "url": "https://www.ietf.org/archive/id/draft-eastlake-fnv-21.txt",
+    "fetched": "2026-11-19",
+    "note": "the values are data copied from the draft (Table 1 and 2 by a script that checked each length). The draft prints the 64-bit value for \"foobar\" with a stray space as 0x85944171f 73967e8, which is the 16 digits 85944171f73967e8"
+  },
+  "negative_control": "built with FNV_B_ADJ=1 (low-byte term of the 32-bit prime 0x93 changed to 0x94), the 32-bit prime prints 01000194 instead of 01000193, the 32-bit offset_basis becomes 5c738010 instead of 811c9dc5, the program prints FAIL and exits 1",
+  "not_checked": [
+    "FNV-1 (multiply then xor) outputs and FNV-1a outputs for 128, 256, 512 and 1024 bits: the draft prints no test vectors for them (FNV-0 is exercised through the offset_basis check)",
+    "the draft's reference C code and its test driver, endianness conventions and XOR folding",
+    "hash quality, dispersion or collision claims, and speed figures (emulator run time says nothing about real hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the 24 numbers printed in the draft (12 test vectors, 6 primes, 6 offset_basis values derived by the draft's own definition). It does not show any quality claim about FNV."
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Camellia: A 128-Bit Block Cipher Suitable for Multiple Platforms - Design and Analysis (algorithm as specified in RFC 3713)",
+    "authors": [
+      "Kazumaro Aoki",
+      "Tetsuya Ichikawa",
+      "Masayuki Kanda",
+      "Mitsuru Matsui",
+      "Shiho Moriai",
+      "Junko Nakajima",
+      "Toshio Tokita"
+    ],
+    "venue": "Selected Areas in Cryptography (SAC) 2000, LNCS 2012; RFC 3713 (April 2004)",
+    "year": 2000
+  },
+  "program": {
+    "source": "camellia.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Camellia with 128-, 192- and 256-bit keys (18 and 24 rounds with FL/FLINV layers, key schedule with Sigma constants, SBOX1 and its derived SBOX2-4), written from RFC 3713, reproduces the 3 RFC 3713 Appendix A vectors",
+    "It also reproduces all 3,840 ciphertexts of the authors' (NTT) published test data: 10 keys per key size x 128 single-bit plaintexts, for each of the three key sizes (1,280 per key size)",
+    "Decryption (reversed subkey order) returns the plaintext for all 3,843 cases"
+  ],
+  "expected_values_source": {
+    "what": "RFC 3713 Appendix A (3 vectors, SBOX1 table) and the Camellia authors' test data file t_camellia.txt on the NTT Camellia page",
+    "url": "https://www.rfc-editor.org/rfc/rfc3713.txt and https://info.isl.ntt.co.jp/crypt/eng/camellia/dl/cryptrec/t_camellia.txt",
+    "fetched": "2026-11-19",
+    "note": "the vectors and the S-box are data, copied by script; the single-bit plaintext pattern of the NTT file was verified against the file by the generating script. The program was written from the RFC's description"
+  },
+  "negative_control": "built with -DCAM_SIGMA3=0xC6EF372FE94F82BFULL (one bit of the key-schedule constant Sigma3 changed), 0 of 1,280 vectors match for each key size and the program exits 1",
+  "not_checked": [
+    "the design paper's security claims (differential/linear bounds) and its hardware/software speed figures",
+    "keys beyond the 30 in the NTT file and the RFC's 3, and any modes of operation (CBC OIDs of RFC 3713 section 3 are not exercised)",
+    "speed (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 3,843 published Camellia ciphertexts and inverts them. It does not show the security claims hold."
+}

@@ -1,0 +1,44 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The SIMON and SPECK Families of Lightweight Block Ciphers",
+    "authors": [
+      "Ray Beaulieu",
+      "Douglas Shors",
+      "Jason Smith",
+      "Stefan Treatman-Clark",
+      "Bryan Weeks",
+      "Louis Wingers"
+    ],
+    "venue": "IACR Cryptology ePrint Archive 2013/404",
+    "year": 2013
+  },
+  "program": {
+    "source": "speck.c",
+    "how": "written for ounce-core from the algorithm description; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Speck64/96, Speck64/128, Speck128/128, Speck128/192 and Speck128/256 encrypt the five appendix plaintexts to the five published ciphertexts (5 of 5 vectors)",
+    "decrypting each of those ciphertexts returns the plaintext (5 of 5 round trips)"
+  ],
+  "expected_values_source": {
+    "what": "the five Speck known-answer vectors of the paper's appendix, as transcribed in the Linux kernel crypto self-test file (comment: \"taken from the original paper\") and in the Crypto++ test-vector file speck.txt; the two transcriptions agree on all 5 (compared programmatically). Both print the vectors byte-reversed relative to the paper's word notation (the kernel comment says the authors confirmed little-endian bytes and (y, x) word order); the program's tables are in the paper's printed word order, obtained by reversing the bytes of each whole string",
+    "url": "https://raw.githubusercontent.com/torvalds/linux/v4.19/crypto/testmgr.h",
+    "additional_sources": [
+      "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/speck.txt"
+    ],
+    "fetched": "2026-11-19",
+    "note": "the paper PDF itself was not fetched (eprint.iacr.org returns 403 here), so the numbers are the paper's as relayed by two public transcriptions; the vectors are data copied as numbers, no code was copied"
+  },
+  "negative_control": "built with SPECK_ALPHA=7 (rotation constant 7 instead of 8), 0 of 5 vectors match and the program exits 1 (the decrypt round trips still pass, 5 of 5, because encryption and decryption stay mutually inverse)",
+  "not_checked": [
+    "the Speck variants with 32-, 48- and 96-bit blocks (no public transcription of their vectors was fetched)",
+    "the Simon family (see the simon folder)",
+    "security claims, hardware or software performance figures",
+    "byte-order conventions other than the one fixed by the vectors",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "speed figures (emulator run time says nothing about the authors' hardware)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the five published Speck ciphertexts for their appendix inputs and inverts them. It does not show the cipher is secure."
+}

@@ -1,0 +1,4 @@
+digits produced: 2000
+first 50 digits: 31415926535897932384626433832795028841971693993751
+last 10 digits compared (1991-2000): 4780275900
+PASS spigot output equals the 2000 digits of pi in OEIS A000796

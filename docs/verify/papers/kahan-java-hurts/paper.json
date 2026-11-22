@@ -1,0 +1,38 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "How Java's Floating-Point Hurts Everyone Everywhere",
+    "authors": ["Joseph D. Darcy", "William Kahan"],
+    "venue": "work-in-progress note, University of California, Berkeley (version of 30 July 2004); invited talk, ACM 1998 Workshop on Java for High-Performance Network Computing",
+    "year": 2004,
+    "text_read": "https://people.eecs.berkeley.edu/~wkahan/JAVAhurt.pdf (fetched 2026-11-19; the program for A(x) on page 27-28, the f(x) example on page 35 and example 7 on pages 51-54 taken from the text)"
+  },
+  "program": {
+    "source": "javahurt.c",
+    "how": "written for ounce-core from the programs and data in the paper; exp, sin, tan are written here (no libm); double-double arithmetic (Knuth/Dekker algorithms, written here) gives the high-precision value; no third-party code",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "A(x) = (x-1)/(exp(x-1)-1) computed in binary32 by the paper's program (Y = X-1; Z = EXP(Y); if Z != 1 then Z = Y/(Z-1)), with x within 20000 ulps of 1 on both sides: the worst error is 2895.8 ulps (the paper: 'about +-2900 = 2^11.5 ULPs', read from its plot), below 2^12 ulps, so less than half of the 24 bits are lost",
+    "nearest point on a line (example 7): with every operation in float the first formula gives z = [1, 1, -1] as the paper says; with subexpressions in double and one rounding to float it gives the correctly rounded [1/3, 2/3, -4/3] (as floats)",
+    "f(x) = (tan(sin x) - sin(tan x))/x^7 at x = 0.0200000 equals 0.0333486813 to the printed 9 significant digits (double-double, about 32 digits), while plain double arithmetic gives 0.0333446378 (relative error 1.2e-4), so double precision does not suffice"
+  ],
+  "expected_values_source": {
+    "what": "numbers and data printed in the paper",
+    "url": "https://people.eecs.berkeley.edu/~wkahan/JAVAhurt.pdf",
+    "fetched": "2026-11-19",
+    "tolerance": "the 2900-ulp figure is read from a plot, so a window 2500..3300 ulps was fixed before the first run (the measured 2895.8 lies inside); z and f(x) digits are compared exactly (f(x) as printed, rounded or truncated at 9 digits)"
+  },
+  "observations": [
+    "the paper also prints z2 = [1.000000054, 1.000000054, -1.500000148] for its second formula in float; those numbers are not binary32 values (the spacing of floats near 1 is 1.2e-7), so they cannot come from an all-float computation and are not reproduced; my all-float evaluation of the second formula gives [1, 1, -1.5]",
+    "the paper's claim 'at least 19 sig. dec. must be carried' for f(x) is not tested; only that double is insufficient and double-double reproduces the printed value"
+  ],
+  "negative_control": "built with -DNEG_NOROUND (exp(y) replaced by 1 + y), the worst error of the A(x) program becomes 19992 ulps, the two A(x) checks fail and the program exits 1",
+  "not_checked": [
+    "the paper's other seven nearest-point examples, its complex-arithmetic and Java-language arguments, and its rounding-mode examples",
+    "the claim that A(x) is provably accurate to half the bits in general (only measured on 40001 floats near 1), and the exact value 2900 (only the stated window)",
+    "the 19-digit claim for f(x) and arithmetic in other precisions",
+    "Tier-4 and native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "ounce-core's binary32 and double arithmetic reproduce three numerical examples of the paper (the error bound of A(x), the all-float result of the line example and the printed value of f(x)). It does not show the paper's arguments about Java."
+}

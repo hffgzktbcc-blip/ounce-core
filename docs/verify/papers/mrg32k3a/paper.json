@@ -1,0 +1,39 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Good Parameters and Implementations for Combined Multiple Recursive Random Number Generators (MRG32k3a with the RngStreams package)",
+    "authors": [
+      "Pierre L'Ecuyer"
+    ],
+    "venue": "Operations Research 47(1); stream package: L'Ecuyer, Simard, Chen, Kelton, Operations Research 50(6), 2002",
+    "year": 1999
+  },
+  "program": {
+    "source": "mrg32k3a.c",
+    "how": "written for ounce-core from the two MRG32k3a recurrences and their moduli/multipliers (constants read as numbers from the authors' RngStream.c), with jump-ahead done by 3x3 matrix powers and inverse matrices computed in the program (no precomputed jump matrices copied); the test flow is a re-implementation of the behaviour of the authors' test2RngStream.c; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "replaying the authors' published test program, the complete output text (110 lines) equals the authors' published result file test2RngStream.res: 23 generator-state lines (including the initial states of three streams 2^127 apart, the state after an advance of 2^5+3 steps, and after jumping a stream backwards by 2^127), 13 printed U(0,1) values to 8 decimals, the integer sum 186, the sums 53.985902 (100 values), 50098.2241 (100000 double-precision values) and 50017.2232 (100000 antithetic values), the substream resets, and the final sum 23.705324"
+  ],
+  "expected_values_source": {
+    "what": "the authors' result file test2RngStream.res (and the test program test2RngStream.c that produced it) in the RngStream C package",
+    "url": "https://www.iro.umontreal.ca/~lecuyer/myftp/streams00/c/test2RngStream.res",
+    "also": [
+      "https://www.iro.umontreal.ca/~lecuyer/myftp/streams00/c/test2RngStream.c",
+      "https://www.iro.umontreal.ca/~lecuyer/myftp/streams00/c/RngStream.c"
+    ],
+    "fetched": "2026-11-19",
+    "note": "the expected text is data; the authors' code was read for constants (moduli, multipliers, normalisation 2.328306549295727688e-10, 2^-24 increased-precision factor) and for the semantics of AdvanceState, substreams and increased precision, and was not copied. The numbers are in the authors' package result file, not printed in the 1999 paper itself. The 2002 paper citation is the one named in RngStream.c's header"
+  },
+  "negative_control": "built with -DMRG_A12=1403581ULL (a12 = 1403581 instead of 1403580), 73 of 110 output lines still match (only labels and blank lines), the 37 lines carrying states and values differ, and the program exits 1 (checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the paper's period (about 2^191), lattice-structure and statistical-test claims",
+    "the other combined generators in the paper and in the RngStream package (RngStream.h's remaining functions)",
+    "the printed values beyond 8 (U(0,1)) / 4-6 (sums) decimals; the program matches the file's own printed precision only",
+    "double-precision accumulation order of the sums is the authors' test program's order; other orders would give different last digits",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the authors' published RngStream test output exactly (110 lines), including 2^76 and 2^127 jumps computed by matrix powers. It does not show the statistical claims hold."
+}

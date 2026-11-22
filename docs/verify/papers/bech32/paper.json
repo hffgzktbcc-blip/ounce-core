@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "BIP-0173: Base32 address format for native v0-16 witness outputs, and BIP-0350: Bech32m format for v1+ witness addresses (format specifications with published test vectors, not peer-reviewed papers)",
+    "authors": ["Pieter Wuille", "Greg Maxwell"],
+    "venue": "Bitcoin Improvement Proposals 173 (2017) and 350 (2020)",
+    "year": 2020
+  },
+  "program": {
+    "source": "bech32.c",
+    "how": "written for ounce-core from the BIPs' prose (string structure, 32-character table, BCH checksum over GF(32) with the generator constants, final xor 1 or 0x2bc830a3, 5-bit to 8-bit conversion rules, segwit address rules); the BIPs' Python reference code and the Bitcoin Core code were not copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "BIP-173: 7 valid Bech32 strings are accepted as Bech32 and rebuilt exactly by the encoder (7 of 7); 12 invalid strings are rejected, each with the published reason class (12 of 12)",
+    "BIP-173: 6 valid segwit addresses decode to the published scriptPubKey hex (6 of 6); 10 invalid addresses are rejected with the published reason class (10 of 10)",
+    "BIP-350: 7 valid Bech32m strings accepted as Bech32m and rebuilt by the encoder (7 of 7); 14 invalid strings rejected with the published reason class (14 of 14)",
+    "BIP-350: 8 valid segwit addresses (witness versions 0 to 16 rules) decode to the published scriptPubKey hex (8 of 8); 15 invalid addresses rejected with the published reason class (15 of 15)",
+    "Every valid Bech32 string decodes only as Bech32 and every valid Bech32m string only as Bech32m (7 of 7 and 7 of 7), as BIP-350 states"
+  ],
+  "expected_values_source": {
+    "what": "the test-vector sections of BIP-0173 and BIP-0350; vectors.inc is generated from the fetched BIP text by a script (strings with the few raw non-ASCII bytes spelled as octal escapes, reasons, scriptPubKeys)",
+    "url": "https://raw.githubusercontent.com/bitcoin/bips/master/bip-0173.mediawiki and https://raw.githubusercontent.com/bitcoin/bips/master/bip-0350.mediawiki",
+    "fetched": "2026-11-19",
+    "note": "79 published vectors in total (7+12+6+10+7+14+8+15). The 32-character table (qpzry9x8gf2tvdw0s3jn54khce6mua7l) was transcribed from the BIP-173 table in the fetched text and the generator constants 0x3b6a57b2 0x26508e6d 0x1ea119fa 0x3d4233dd 0x2a1462b3 and 0x2bc830a3 from the fetched BIPs. The published reasons are mapped to error classes by a table in the program (for example both 'Invalid data character' and 'Invalid character in checksum' map to 'bad character'); the BIPs give the reasons as prose, and the order in which checks are applied is my choice."
+  },
+  "negative_control": "built with -DNEG=1 (Bech32m final xor 0x2bc830a2) 0 of 7 valid Bech32m strings are accepted, 3 of 8 BIP-350 segwit addresses decode correctly and 9 of 15 invalid ones get the published reason; with -DNEG=2 (one generator constant off by one) no valid string of either variant is accepted (0 of 7 and 0 of 7) and the program exits 1",
+  "not_checked": [
+    "the checksum design claims of BIP-173 and the appendix of BIP-350 (detection of up to 4 substitution errors, the choice of the constant by search over error patterns)",
+    "error correction (the BIPs only specify detection here), the 'q' insertion weakness analysis",
+    "segwit script semantics, Base58Check addresses, other networks' human-readable parts",
+    "speed (emulator run time says nothing about real hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, accepts and rejects the Bech32 and Bech32m strings and segwit addresses exactly as the BIPs' 79 published test vectors say. It does not show the checksum has the claimed error-detection strength."
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Miscalculating Area and Angles of a Needle-like Triangle",
+    "authors": ["William Kahan"],
+    "venue": "lecture notes for introductory numerical analysis classes, University of California, Berkeley (version of 4 September 2014; the text is work in progress, not refereed)",
+    "year": 2014,
+    "text_read": "https://people.eecs.berkeley.edu/~wkahan/Triangle.pdf (fetched 2026-11-19; formulas of sections 1-3 and Table 1 of section 5 taken from the text)"
+  },
+  "program": {
+    "source": "needle.c",
+    "how": "written for ounce-core from the formulas in the paper; the paper's 10-significant-decimal arithmetic (an HP-15C) is emulated with 128-bit integers (round to nearest, ties away from zero); arctan is a small series written here",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "Table 1, Heron's area column (12 rows): sqrt(s(s-a)(s-b)(s-c)) with s = ((a+b)+c)/2 evaluated in 10-digit decimal arithmetic equals every printed value to its printed digits, including the three 'Error' rows and the four '0' rows (the published digits range from 3 to 10 significant)",
+    "Table 1, accurate area column (12 rows): Kahan's formula (1/4) sqrt((a+(b+c))(c-(a-b))(c+(a-b))(a+(b-c))) after sorting, with its Error test c-(a-b) < 0, equals every printed value digit for digit (12 of 12 exact, including the two 'Error' rows and the two '0' rows)",
+    "Table 1, accurate angle C column (12 rows): Kahan's formula 2 arctan(sqrt(((a-b)+c) mu/((a+(b+c))((a-c)+b)))) with mu = c-(a-b) or b-(a-c), evaluated in 10-digit decimal arithmetic and then arctan in double, is within relative 2e-9 of every printed value (12 of 12), and the two 'Error' rows are flagged"
+  ],
+  "expected_values_source": {
+    "what": "Table 1 of the paper (HP-15C results; the paper says a 12-digit HP-71B confirmed the accurate columns to at least nine significant digits)",
+    "url": "https://people.eecs.berkeley.edu/~wkahan/Triangle.pdf",
+    "fetched": "2026-11-19",
+    "tolerance": "decimal columns for the areas: exact at the printed digits (the 2e-9 relative tolerance for the accurate area column was declared as the fall-back and not needed: all 12 rows were exact). The angle column, which needs arctan in double after the decimal part, is within relative 2e-9, declared before the first run. The decimal rounding rule (half away from zero) was chosen before the first run."
+  },
+  "observations": [
+    "the paper's other columns (C'' by arccos and C' by the half-angle formula with s) were not reproduced: they need an arccos/arctan in the same decimal arithmetic",
+    "the angle column agrees to the digits shown only because the decimal part of the formula (all of the cancellation) is exact in 10 digits; the arctan itself is evaluated in double"
+  ],
+  "negative_control": "built with -DNEG_HERON_PARENS (Kahan's area formula with the parentheses removed, a+b+c, c-a+b, c+a-b, a+b-c), 4 of the 12 accurate-area rows no longer match (rows 3, 4, 11, 12) and the program exits 1",
+  "not_checked": [
+    "Tables 2, 3 and 5 of the paper (angle B, its roundoff uncertainty, the side c), and the paper's error-bound arguments",
+    "the paper's claims about other arithmetics (IEEE binary formats, CRAY) and about the HP-15C itself; this only emulates its 10-digit decimal arithmetic for these 12 triangles",
+    "Tier-4 and native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "a 10-digit decimal arithmetic emulated on ounce-core's integer unit reproduces the paper's Table 1 for Heron's and Kahan's area formulas digit for digit and the accurate angle column to 2e-9. It does not show the paper's formulas are accurate in binary arithmetic or beyond these 12 triangles."
+}

@@ -1,0 +1,28 @@
+(1) the literal 25.4 in four binary formats
+  4-byte float: 25.3999996185302734375
+  ok: paper's printed digits equal the exact expansion, truncated or rounded, for 4-byte float
+  8-byte double: 25.399999999999998578914528479799628257751464843750
+  ok: paper's printed digits equal the exact expansion, truncated or rounded, for 8-byte double
+  10-byte long double (64-bit significand): 25.39999999999999999965305530480463858111761510372161865234375
+  ok: paper's printed digits equal the exact expansion, truncated or rounded, for 10-byte long double (64-bit significand)
+  16-byte quadruple (113-bit significand): 25.399999999999999999999999999999998767404835592169054044174116745646516135614945142151555046439170837402343750
+  ok: documented discrepancy: the paper's quadruple string lacks one 9; with a 31st nine it equals the exact expansion rounded, as printed it does not
+  ok: the 24-bit significand equals the hardware float 25.4f
+  ok: the 53-bit significand equals the hardware double 25.4
+(2) 17-significant-decimal displays
+  0.8 -> 0.80000000000000004
+  0.0009875 -> 0.00098750000000000010 (17 digits), 0.0009875000000000001 (16 digits)
+  32200/32.2 -> 999.99999999999989
+  ok: "0.8" displays as 0.80000000000000004
+  ok: "0.0009875" displays as 0.0009875000000000001 with 16 digits (the paper's string has one zero too many; documented discrepancy)
+  ok: "32200/32.2" displays as 999.99999999999989
+(3) the doubles around 1024
+  lowest 1023.999999999999545253
+  highest 1024.000000000000454747
+  ok: lowest of the seven is 1024 - 4/2^43 = 1023.9999 9999 9999 5453... (paper)
+  ok: highest of the seven is 1024 + 4/2^43 = 1024.0000 0000 0000 4547... (paper)
+  all seven displayed with 16 significant decimals: 1024.000000000000
+  ok: 16 significant decimals do not distinguish the seven consecutive doubles
+  ok: 17 significant decimals distinguish them
+  ok: the neighbours on either side do display differently at 16 decimals (exactly seven)
+PASS

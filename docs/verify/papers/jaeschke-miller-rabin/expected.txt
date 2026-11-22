@@ -1,0 +1,14 @@
+PASS least odd composite strong pseudoprime to base 2 (exhaustive search): 2047 (psi_1 = 2047)
+PASS least odd composite strong pseudoprime to bases 2 and 3 (exhaustive search): 1373653 (psi_2 = 1373653)
+PASS psi_1 = 2047: strong pseudoprime to the first 1 primes yes, first rejecting base 3
+PASS psi_2 = 1373653: strong pseudoprime to the first 2 primes yes, first rejecting base 5
+PASS psi_3 = 25326001: strong pseudoprime to the first 3 primes yes, first rejecting base 7
+PASS psi_4 = 3215031751: strong pseudoprime to the first 4 primes yes, first rejecting base 11
+PASS psi_5 = 2152302898747: strong pseudoprime to the first 5 primes yes, first rejecting base 13
+PASS psi_6 = 3474749660383: strong pseudoprime to the first 6 primes yes, first rejecting base 17
+PASS psi_7 = 341550071728321: strong pseudoprime to the first 7 primes yes, first rejecting base 23
+PASS psi_8 = 341550071728321: strong pseudoprime to the first 8 primes yes, first rejecting base 23
+PASS psi_9 = 3825123056546413051: strong pseudoprime to the first 9 primes yes, first rejecting base 37
+PASS psi_10 = 3825123056546413051: strong pseudoprime to the first 10 primes yes, first rejecting base 37
+PASS psi_11 = 3825123056546413051: strong pseudoprime to the first 11 primes yes, first rejecting base 37
+PASS

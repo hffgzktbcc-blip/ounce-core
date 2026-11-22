@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Fast keyed hash/pseudo-random function using SIMD multiply and permute (HighwayHash)",
+    "authors": ["Jyrki Alakuijala", "Bill Cox", "Jan Wassenberg"],
+    "venue": "arXiv:1612.06257 (cs.CR), v3 of 6 Feb 2017",
+    "year": 2016
+  },
+  "program": {
+    "source": "highwayhash.c",
+    "how": "written for ounce-core from the paper's description of Update, ZipperMerge, finalization and initialization; the pi-derived state constants and the layout of the final partial packet are not printed in the paper and were taken from the authors' C reference code (constants as data, tail rule re-expressed); no code copied. The expected values are in vectors.inc (numbers only)",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "HighwayHash64 with key 00 01 .. 1f of the messages 00 01 02 ... of every length 0..64 outputs the 65 published values (every remainder length 0..31 and both the one-packet and two-packet-plus paths)",
+    "HighwayHash64 with the key {1,2,3,4} of the 33-byte message 0x80 0x81 .. 0xa0 outputs the published value 0x53c516cce478cad7",
+    "the zipper-merge permutation 7 8 6 9 D A 4 B 0 F 1 E 5 2 C 3 as printed in the paper, applied as a byte permutation, is the one that reproduces the authors' values"
+  ],
+  "expected_values_source": {
+    "what": "kExpected64 (65 values) and the extra 33-byte test in the authors' C test program for the 64-bit hash",
+    "url": "https://raw.githubusercontent.com/google/highwayhash/master/c/highwayhash_test.c (algorithm from https://arxiv.org/pdf/1612.06257; state constants and tail layout from .../c/highwayhash.c)",
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers by a script; the repository's code was not copied"
+  },
+  "negative_control": "built with HH_ROUNDS=3 (three finalization rounds instead of the paper's four), every one of the 65 length vectors fails (length 0 gives 823f44f0c46aa046 instead of 907a56de22c26e53), the extra vector fails and the program exits 1",
+  "not_checked": [
+    "the 128-bit and 256-bit output variants: the authors' C test program lists no expected values for them (it says they are to be added when frozen)",
+    "the paper's security, avalanche-bias and cryptanalysis claims, and its speed figures (5.2x SipHash): emulator run time says nothing about real hardware",
+    "keys and messages other than the 66 published ones, and the incremental (Cat) interface",
+    "the AVX2/SSE4.1 SIMD implementations: this is a scalar integer implementation of the same function",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the 66 HighwayHash64 values the authors publish. It does not show the paper's security or speed claims."
+}

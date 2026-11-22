@@ -1,0 +1,47 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The SKINNY Family of Block Ciphers and its Low-Latency Variant MANTIS",
+    "authors": [
+      "Christof Beierle",
+      "Jeremy Jean",
+      "Stefan Koelbl",
+      "Gregor Leander",
+      "Amir Moradi",
+      "Thomas Peyrin",
+      "Yu Sasaki",
+      "Pascal Sasdrich",
+      "Siang Meng Sim"
+    ],
+    "venue": "CRYPTO 2016",
+    "year": 2016
+  },
+  "program": {
+    "source": "skinny.c",
+    "how": "written for ounce-core from the algorithm description; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "SKINNY-128-256 (48 rounds) and SKINNY-128-384 (56 rounds) encrypt the plaintexts of Appendix B of the SKINNY-AEAD specification to the printed ciphertexts (2 of 2)",
+    "SKINNY-128-384+ (the 40-round variant used by Romulus) encrypts the Romulus specification's test plaintext to its printed ciphertext (1 of 1)",
+    "the 8-bit S-box rebuilt from its NOR/XOR bit-level description equals the Appendix A table (256 of 256)"
+  ],
+  "expected_values_source": {
+    "what": "Appendices A and B of the SKINNY-AEAD and SKINNY-Hash round-2 specification document (by the SKINNY designers), and the Skinny-128-384+ test vector of the Romulus final-round specification, parsed from the PDF text by a script",
+    "url": "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/skinny-spec-round2.pdf",
+    "additional_sources": [
+      "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/finalist-round/updated-spec-doc/romulus-spec-final.pdf"
+    ],
+    "fetched": "2026-11-20 (SKINNY document); 2026-11-19 (Romulus document, fetched again 2026-11-22)",
+    "note": "the algorithm is the one in section 2.3 of the SKINNY-AEAD document, not the CRYPTO 2016 paper (not fetched). The text extraction of that document dropped the overbar of the NOR in the S-box formula; the document itself calls the construction NOR/XOR, and the NOR form reproduces all 256 table entries. The 40-round Skinny-128-384+ vector belongs to the Romulus document, not to the SKINNY paper. Data copied as numbers; no code was copied"
+  },
+  "negative_control": "built with SKINNY_LFSR_TK2_TAP=4 (wrong tap in the TK2 LFSR), 0 of 3 vectors match and the program exits 1 (the S-box check still passes, 256 of 256)",
+  "not_checked": [
+    "the SKINNY-64 variants and SKINNY-128-128 (no vectors fetched)",
+    "the tweakable-block-cipher security claims, the AEAD and hash modes",
+    "decryption (not implemented)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "speed figures (emulator run time says nothing about the authors' hardware)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces three published SKINNY ciphertexts and the full published S-box. Three vectors are a thin test; it does not show SKINNY is secure."
+}
