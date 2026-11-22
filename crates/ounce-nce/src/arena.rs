@@ -139,7 +139,7 @@ mod imp {
         pub fn reserve_at(base: u64, size: u64) -> Result<Self, NceError> {
             // SAFETY: sysconf has no preconditions.
             let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
-            if base % page != 0 || size % page != 0 {
+            if !base.is_multiple_of(page) || !size.is_multiple_of(page) {
                 return Err(NceError::Range { va: base, len: size });
             }
             // SAFETY: a fresh anonymous PROT_NONE mapping at a hint; no MAP_FIXED, so nothing is replaced.
