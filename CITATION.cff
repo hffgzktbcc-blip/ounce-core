@@ -12,8 +12,8 @@ authors:
 repository-code: "https://github.com/hffgzktbcc-blip/ounce-core"
 url: "https://hffgzktbcc-blip.github.io/ounce-core/"
 license: MIT
-version: 0.10.0
-date-released: "2026-11-20"
+version: 0.11.0
+date-released: "2026-11-23"
 keywords:
   - aarch64
   - arm64

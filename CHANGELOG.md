@@ -2,7 +2,7 @@
 
 Notable changes to ounce-core. Evidence for each release lives under `docs/releases/`.
 
-## Unreleased
+## 0.11.0 — 2026-11-23 (released)
 
 - Added: typed Rust library API in `src/lib.rs` (`EngineKind`, `RunOptions`, `StopReport`, `StopClass`, `run_elf`, `run_nro`, `#539`) and `--report-json=-` pure JSON stdout output with diagnostics routed to `stderr` (`#537`), plus zero-dep ELF symbolication and frame-pointer backtraces (`#531`).
 - Changed: pure-Rust headless default build (`default = []`) with zero C system library dependencies; host audio (`cpal`) and controller input (`gilrs`) are now gated behind opt-in `--features host-io` (`#550`). Enforced workspace `unsafe_op_in_unsafe_fn`, `undocumented_unsafe_blocks`, and `missing_safety_doc` lints (`#538`), and slimmed PR CI / pruned obsolete workflows (`#541`, `#548`).
