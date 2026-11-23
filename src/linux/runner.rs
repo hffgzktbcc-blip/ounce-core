@@ -206,6 +206,17 @@ pub fn run(
     out: &mut dyn Output,
     log: &mut dyn FnMut(&str),
 ) -> Report {
+    run_with_stdin(elf_bytes, argv, opts, &[], out, log)
+}
+
+pub fn run_with_stdin(
+    elf_bytes: &[u8],
+    argv: &[String],
+    opts: &Options,
+    stdin: &[u8],
+    out: &mut dyn Output,
+    log: &mut dyn FnMut(&str),
+) -> Report {
     let mut mmu = Memory::new();
     let image = match elf::load(elf_bytes, &mut mmu) {
         Ok(i) => i,
@@ -221,8 +232,8 @@ pub fn run(
         }
     };
     let execfn = argv.first().map(String::as_str).unwrap_or("a.out");
-    let sp = match elf::build_stack(&mut mmu, &image, argv, &[], execfn) {
-        Ok(sp) => sp,
+    let (sp, auxv_bytes) = match elf::build_stack_with_auxv(&mut mmu, &image, argv, &[], execfn) {
+        Ok(res) => res,
         Err(e) => {
             return fail(
                 format!("cannot build process stack: {e}"),
@@ -248,6 +259,8 @@ pub fn run(
     } else {
         Process::new(image.brk_start)
     };
+    proc.set_auxv(auxv_bytes);
+    proc.set_stdin(stdin.to_vec());
     let (mut insns, mut syscalls) = (0u64, 0u64);
     loop {
         if insns >= opts.max_instructions {
@@ -411,14 +424,23 @@ pub fn cli(args: &[String]) -> i32 {
         ..Options::default()
     };
     let mut dump_regs = false;
+    let mut stdin_bytes = Vec::new();
     let mut path: Option<&String> = None;
     let mut guest: Vec<String> = Vec::new();
     let mut i = 0;
     while i < args.len() {
         let a = &args[i];
         if a == "--" {
-            guest.extend(args[i + 1..].iter().cloned());
-            break;
+            if path.is_none() {
+                if i + 1 < args.len() {
+                    path = Some(&args[i + 1]);
+                    guest.extend(args[i + 2..].iter().cloned());
+                }
+                break;
+            } else {
+                guest.extend(args[i + 1..].iter().cloned());
+                break;
+            }
         } else if let Some(v) = a.strip_prefix("--max-insns=") {
             match v.replace('_', "").parse() {
                 Ok(n) => opts.max_instructions = n,
@@ -433,6 +455,29 @@ pub fn cli(args: &[String]) -> i32 {
             opts.trace_syscalls = true;
         } else if a == "--dump-regs" {
             dump_regs = true;
+        } else if a == "--stdin" || a == "--stdin=-" {
+            use std::io::Read;
+            let mut buf = Vec::new();
+            if let Err(e) = std::io::stdin().take(64 << 20).read_to_end(&mut buf) {
+                eprintln!("run-elf: failed to read stdin: {e}");
+                return 2;
+            }
+            stdin_bytes = buf;
+        } else if let Some(p) = a.strip_prefix("--stdin=") {
+            use std::io::Read;
+            let f = match std::fs::File::open(p) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("run-elf: failed to open stdin file '{p}': {e}");
+                    return 2;
+                }
+            };
+            let mut buf = Vec::new();
+            if let Err(e) = f.take(64 << 20).read_to_end(&mut buf) {
+                eprintln!("run-elf: failed to read stdin file '{p}': {e}");
+                return 2;
+            }
+            stdin_bytes = buf;
         } else if a.starts_with("--") && path.is_none() {
             eprintln!("run-elf: unknown option '{a}'");
             return 2;
@@ -446,7 +491,7 @@ pub fn cli(args: &[String]) -> i32 {
     }
     let Some(path) = path else {
         eprintln!(
-            "usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [-- args...]"
+            "usage: ounce-core run-elf <static-aarch64-linux-ELF> [--cpu=interpreter|tier3|tier4] [--max-insns=N] [--trace-syscalls] [--deterministic] [--dump-regs] [--report-json=<path>] [--stdin[=<path>]] [-- args...]"
         );
         return 2;
     };
@@ -454,7 +499,7 @@ pub fn cli(args: &[String]) -> i32 {
         Ok(bytes) => {
             let mut argv = vec![path.clone()];
             argv.extend(guest);
-            run(&bytes, &argv, &opts, &mut HostOutput, &mut |l| {
+            run_with_stdin(&bytes, &argv, &opts, &stdin_bytes, &mut HostOutput, &mut |l| {
                 eprintln!("[run-elf] {l}")
             })
         }

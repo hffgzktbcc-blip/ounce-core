@@ -804,14 +804,367 @@ fn newfstatat_by_path_finds_nothing_but_fstat_of_a_descriptor_is_still_unimpleme
         ),
         Outcome::Return(-EFAULT)
     );
-    // fstat(1, &st) as newfstatat(1, "", &st, AT_EMPTY_PATH) asks about a descriptor: still unimplemented, by name
-    match proc.dispatch(
-        NEWFSTATAT,
-        [1, DATA + 0x100, DATA + 0x200, AT_EMPTY_PATH, 0, 0],
+    // fstat(1, &st) as newfstatat(1, "", &st, AT_EMPTY_PATH) asks about a descriptor: now implemented
+    assert_eq!(
+        proc.dispatch(
+            NEWFSTATAT,
+            [1, DATA + 0x100, DATA + 0x200, AT_EMPTY_PATH, 0, 0],
+            &mut mem,
+            &mut out,
+        ),
+        Outcome::Return(0)
+    );
+}
+
+#[test]
+fn hardware_fast_path_instructions_execute_across_all_tiers() {
+    assert_eq!(
+        crate::linux::elf::HWCAP_VALUE,
+        0x20093,
+        "AT_HWCAP must expose verified bits: FP | ASIMD | PMULL | CRC32 | SHA3"
+    );
+
+    // Assembly sequence testing PMULL, CRC32, and SHA3:
+    // pmull v0.8h, v1.8b, v2.8b    (0x0E22E020)
+    // pmull2 v0.8h, v1.16b, v2.16b  (0x4E22E020)
+    // pmull v0.1q, v1.1d, v2.1d     (0x0EE2E020)
+    // pmull2 v0.1q, v1.2d, v2.2d    (0x4EE2E020)
+    // crc32b w0, w1, w2             (0x1AC24020)
+    // crc32h w0, w1, w2             (0x1AC24420)
+    // crc32w w0, w1, w2             (0x1AC24820)
+    // crc32x w0, w1, x2             (0x9AC24C20)
+    // crc32cb w0, w1, w2            (0x1AC25020)
+    // crc32ch w0, w1, w2            (0x1AC25420)
+    // crc32cw w0, w1, w2            (0x1AC25820)
+    // crc32cx w0, w1, x2            (0x9AC25C20)
+    // eor3 v0.16b, v1.16b, v2.16b, v3.16b (0xCE020020)
+    // bcax v0.16b, v1.16b, v2.16b, v3.16b (0xCE220020)
+    // rax1 v0.2d, v1.2d, v2.2d      (0xCE628C20)
+    // xar v0.2d, v1.2d, v2.2d, #1   (0xCE820420)
+    // mov x8, #93 (exit); mov x0, #0; svc #0 (0xD2800BA8, 0xD2800000, 0xD4000001)
+    let code: [u32; 19] = [
+        0x0E22_E020,
+        0x4E22_E020,
+        0x0EE2_E020,
+        0x4EE2_E020,
+        0x1AC2_4020,
+        0x1AC2_4420,
+        0x1AC2_4820,
+        0x9AC2_4C20,
+        0x1AC2_5020,
+        0x1AC2_5420,
+        0x1AC2_5820,
+        0x9AC2_5C20,
+        0xCE02_0020,
+        0xCE22_0020,
+        0xCE62_8C20,
+        0xCE82_0420,
+        0xD280_0BA8,
+        0xD280_0000,
+        0xD400_0001,
+    ];
+    let elf = tiny_elf(&code);
+    for tier in TIERS {
+        let (r, _) = go(&elf, &["hwcap_probe"], tier);
+        assert_eq!(r.stop, Stop::Exited(0), "Failed on {tier:?}: {r:?}");
+    }
+}
+
+#[test]
+fn ppoll_handles_descriptors_and_bounds() {
+    use super::syscalls::{EFAULT, EINVAL, Outcome, Process, SYS_PPOLL};
+    use crate::mmu::{Memory, Permission};
+    let mut proc = Process::new(0x10_0000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x2000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+
+    // nfds > 1024 returns -EINVAL
+    assert_eq!(
+        proc.dispatch(SYS_PPOLL, [0x1000, 1025, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-EINVAL)
+    );
+
+    // sigmask with sigsetsize != 8 returns -EINVAL
+    assert_eq!(
+        proc.dispatch(SYS_PPOLL, [0x1000, 1, 0, 0x1500, 4, 0], &mut mem, &mut out),
+        Outcome::Return(-EINVAL)
+    );
+
+    // Bad sigmask pointer returns -EFAULT
+    assert_eq!(
+        proc.dispatch(SYS_PPOLL, [0x1000, 1, 0, 0x9000_0000, 8, 0], &mut mem, &mut out),
+        Outcome::Return(-EFAULT)
+    );
+
+    // Setup pollfd array:
+    // Entry 0: fd = -1, events = POLLIN (0x1) -> expect revents = 0
+    // Entry 1: fd = 50 (closed), events = POLLIN (0x1) -> expect revents = POLLNVAL (0x20)
+    // Entry 2: fd = 1 (stdout open), events = POLLOUT (0x4) -> expect revents = POLLOUT (0x4)
+    // Entry 3: fd = 0 (stdin open), events = POLLIN (0x1) -> expect revents = POLLIN (0x1)
+    let pfd = [
+        (-1i32, 0x0001i16, 0i16),
+        (50i32, 0x0001i16, 0i16),
+        (1i32, 0x0004i16, 0i16),
+        (0i32, 0x0001i16, 0i16),
+    ];
+    for (i, (fd, ev, rev)) in pfd.iter().enumerate() {
+        let base = 0x1000 + i as u64 * 8;
+        mem.write_bytes(base, &fd.to_le_bytes()).unwrap();
+        mem.write_bytes(base + 4, &ev.to_le_bytes()).unwrap();
+        mem.write_bytes(base + 6, &rev.to_le_bytes()).unwrap();
+    }
+
+    let ret = proc.dispatch(SYS_PPOLL, [0x1000, 4, 0, 0, 0, 0], &mut mem, &mut out);
+    // Entries 1, 2, 3 have non-zero revents -> count = 3
+    assert_eq!(ret, Outcome::Return(3));
+
+    let mut rev0 = [0u8; 2];
+    let mut rev1 = [0u8; 2];
+    let mut rev2 = [0u8; 2];
+    let mut rev3 = [0u8; 2];
+    mem.read_bytes(0x1006, &mut rev0).unwrap();
+    mem.read_bytes(0x100e, &mut rev1).unwrap();
+    mem.read_bytes(0x1016, &mut rev2).unwrap();
+    mem.read_bytes(0x101e, &mut rev3).unwrap();
+
+    assert_eq!(i16::from_le_bytes(rev0), 0);
+    assert_eq!(i16::from_le_bytes(rev1), 0x0020); // POLLNVAL
+    assert_eq!(i16::from_le_bytes(rev2), 0x0004); // POLLOUT
+    assert_eq!(i16::from_le_bytes(rev3), 0x0001); // POLLIN
+}
+
+#[test]
+fn proc_self_auxv_virtual_file_is_read_only_and_matches_stack() {
+    use super::syscalls::{EACCES, Outcome, Process, SYS_FSTAT, SYS_LSEEK, SYS_OPENAT, SYS_READ};
+    use crate::mmu::{Memory, Permission};
+    let mut proc = Process::new(0x10_0000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x2000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+
+    let fake_auxv = vec![0x12u8; 256];
+    proc.set_auxv(fake_auxv.clone());
+
+    mem.write_bytes(0x1000, b"/proc/self/auxv\0").unwrap();
+
+    // Opening with O_WRONLY (1) or O_RDWR (2) fails EACCES
+    assert_eq!(
+        proc.dispatch(SYS_OPENAT, [-100i64 as u64, 0x1000, 1, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-EACCES)
+    );
+
+    // Opening with O_RDONLY (0) succeeds
+    let fd = match proc.dispatch(SYS_OPENAT, [-100i64 as u64, 0x1000, 0, 0, 0, 0], &mut mem, &mut out) {
+        Outcome::Return(fd) => fd as u64,
+        other => panic!("expected fd, got {other:?}"),
+    };
+
+    // fstat reports 256 bytes size
+    assert_eq!(
+        proc.dispatch(SYS_FSTAT, [fd, 0x1500, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    let mut size_bytes = [0u8; 8];
+    mem.read_bytes(0x1500 + 48, &mut size_bytes).unwrap();
+    assert_eq!(i64::from_le_bytes(size_bytes), 256);
+
+    // read 256 bytes
+    let read_n = proc.dispatch(SYS_READ, [fd, 0x1100, 512, 0, 0, 0], &mut mem, &mut out);
+    assert_eq!(read_n, Outcome::Return(256));
+    let mut buf = vec![0u8; 256];
+    mem.read_bytes(0x1100, &mut buf).unwrap();
+    assert_eq!(buf, fake_auxv);
+
+    // second read is at EOF
+    assert_eq!(
+        proc.dispatch(SYS_READ, [fd, 0x1100, 512, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+
+    // lseek back to start
+    assert_eq!(
+        proc.dispatch(SYS_LSEEK, [fd, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    // read again succeeds
+    assert_eq!(
+        proc.dispatch(SYS_READ, [fd, 0x1100, 10, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(10)
+    );
+}
+
+#[test]
+fn ephemeral_scratch_vfs_supports_tmpfile_unlink_and_reclaims_memory() {
+    use super::syscalls::{
+        EBADF, ENOENT, Outcome, Process, SYS_CLOSE, SYS_LSEEK, SYS_OPENAT, SYS_READ, SYS_UNLINKAT, SYS_WRITE,
+    };
+    use crate::mmu::{Memory, Permission};
+    let mut proc = Process::new(0x10_0000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x2000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+
+    mem.write_bytes(0x1000, b"/tmp/probe_temp.txt\0").unwrap();
+
+    // 1. openat O_CREAT | O_RDWR (0x42)
+    let fd = match proc.dispatch(
+        SYS_OPENAT,
+        [-100i64 as u64, 0x1000, 0o102, 0o666, 0, 0],
         &mut mem,
         &mut out,
     ) {
-        Outcome::Unimplemented(why) => assert!(why.contains("newfstatat"), "{why}"),
-        other => panic!("{other:?}"),
+        Outcome::Return(fd) => fd as u64,
+        other => panic!("expected fd, got {other:?}"),
+    };
+
+    // 2. write data
+    let payload = b"ephemeral scratch buffer test";
+    mem.write_bytes(0x1200, payload).unwrap();
+    assert_eq!(
+        proc.dispatch(
+            SYS_WRITE,
+            [fd, 0x1200, payload.len() as u64, 0, 0, 0],
+            &mut mem,
+            &mut out
+        ),
+        Outcome::Return(payload.len() as i64)
+    );
+
+    // 3. unlinkat while open (POSIX tmpfile pattern)
+    assert_eq!(
+        proc.dispatch(SYS_UNLINKAT, [-100i64 as u64, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+
+    // Path lookup now fails ENOENT
+    assert_eq!(
+        proc.dispatch(SYS_OPENAT, [-100i64 as u64, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOENT)
+    );
+
+    // 4. Descriptor is STILL open, readable, seekable
+    assert_eq!(
+        proc.dispatch(SYS_LSEEK, [fd, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    let mut readback = vec![0u8; payload.len()];
+    assert_eq!(
+        proc.dispatch(
+            SYS_READ,
+            [fd, 0x1400, payload.len() as u64, 0, 0, 0],
+            &mut mem,
+            &mut out
+        ),
+        Outcome::Return(payload.len() as i64)
+    );
+    mem.read_bytes(0x1400, &mut readback).unwrap();
+    assert_eq!(readback, payload);
+
+    // 5. Close reclaims inode
+    assert_eq!(
+        proc.dispatch(SYS_CLOSE, [fd, 0, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+
+    // Reading closed fd fails EBADF
+    assert_eq!(
+        proc.dispatch(SYS_READ, [fd, 0x1400, 10, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-EBADF)
+    );
+}
+
+#[test]
+fn path_traversal_outside_sandbox_is_rejected_with_enoent() {
+    use super::syscalls::{ENOENT, Outcome, Process, SYS_NEWFSTATAT, SYS_OPENAT, SYS_UNLINKAT};
+    use crate::mmu::{Memory, Permission};
+    let mut proc = Process::new(0x10_0000);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x2000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+
+    let outside_paths: [&[u8]; 4] = [
+        b"/tmp/../etc/passwd\0",
+        b"/tmp/../../var/log\0",
+        b"/etc/shadow\0",
+        b"../secret.txt\0",
+    ];
+
+    for path in outside_paths {
+        mem.write_bytes(0x1000, path).unwrap();
+        assert_eq!(
+            proc.dispatch(SYS_OPENAT, [-100i64 as u64, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
+            Outcome::Return(-ENOENT)
+        );
+        assert_eq!(
+            proc.dispatch(
+                SYS_NEWFSTATAT,
+                [-100i64 as u64, 0x1000, 0x1500, 0, 0, 0],
+                &mut mem,
+                &mut out
+            ),
+            Outcome::Return(-ENOENT)
+        );
+        assert_eq!(
+            proc.dispatch(SYS_UNLINKAT, [-100i64 as u64, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
+            Outcome::Return(-ENOENT)
+        );
     }
+}
+
+#[test]
+fn sandboxed_stdin_returns_eof_by_default_and_reads_provided_data() {
+    use super::runner::run_with_stdin;
+    // Assembly:
+    // read(0, sp, 16):
+    //   mov x0, #0
+    //   mov x1, sp
+    //   mov x2, #16
+    //   mov x8, #63 (read)
+    //   svc #0
+    // exit(x0):
+    //   mov x8, #93
+    //   svc #0
+    let code = [
+        0xD280_0000, // mov x0, #0
+        0x9100_03E1, // mov x1, sp
+        0xD280_0202, // mov x2, #16
+        0xD280_07E8, // mov x8, #63
+        0xD400_0001, // svc #0
+        0xD280_0BA8, // mov x8, #93
+        0xD400_0001, // svc #0
+    ];
+    let elf = tiny_elf(&code);
+    let opts = Options::default();
+    let mut cap = Capture::default();
+
+    // Default: no stdin -> read returns 0 (EOF) -> exit(0)
+    let r = run_with_stdin(&elf, &["test".into()], &opts, &[], &mut cap, &mut |_| {});
+    assert_eq!(r.stop, Stop::Exited(0));
+
+    // With stdin -> read returns 16 -> exit(16)
+    let r2 = run_with_stdin(
+        &elf,
+        &["test".into()],
+        &opts,
+        b"hello 16-byte!!\n",
+        &mut cap,
+        &mut |_| {},
+    );
+    assert_eq!(r2.stop, Stop::Exited(16));
+}
+
+#[test]
+fn run_elf_cli_double_dash_argument_handling() {
+    use super::runner::cli;
+    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/linux-elf/bin/args.elf").to_string();
+
+    // ounce-core run-elf -- <elf>
+    assert_eq!(cli(&["--".into(), fixture.clone()]), 1);
+
+    // ounce-core run-elf -- <elf> arg1 arg2
+    assert_eq!(cli(&["--".into(), fixture, "a".into(), "b".into()]), 3);
+
+    // ounce-core run-elf -- (no elf) exits 2
+    assert_eq!(cli(&["--".into()]), 2);
 }
