@@ -336,6 +336,33 @@ pub enum Instruction {
     /// Floating-Point / GP Register Transfer: `FMOV Dd, Xn`, `FMOV Xd, Dn`, etc.
     FpMovGen { rd: u8, rn: u8, to_fp: bool, is_64: bool },
 
+    /// `FMOV Hd, Wn/Xn` and `FMOV Wd/Xd, Hn` (FEAT_FP16): the low 16 bits move as a bit pattern; the rest of the
+    /// destination is zero.
+    FpMovGenHalf { rd: u8, rn: u8, to_fp: bool, is_64: bool },
+
+    /// `FRINT{N,P,M,Z,A,X,I} Hd, Hn` (FEAT_FP16); `op` is bits 17..15 of the encoding as for `FpRound`.
+    FpRoundHalf { rd: u8, rn: u8, op: u8 },
+
+    /// Half-precision <-> integer register conversion: `FCVT{N,P,M,Z,A}{S,U} Wd/Xd, Hn`, `SCVTF`/`UCVTF Hd, Wn/Xn`.
+    /// `opcode` and `rmode` as for `FpIntConv`.
+    FpIntConvHalf {
+        rd: u8,
+        rn: u8,
+        opcode: u8,
+        rmode: u8,
+        is_64: bool,
+    },
+
+    /// Half-precision <-> fixed-point register conversion: `FCVTZS`/`FCVTZU Wd/Xd, Hn, #fbits` and
+    /// `SCVTF`/`UCVTF Hd, Wn/Xn, #fbits`; `opcode` and `fbits` as for `FpFixedConv`.
+    FpFixedConvHalf {
+        rd: u8,
+        rn: u8,
+        opcode: u8,
+        fbits: u8,
+        is_64: bool,
+    },
+
     /// Floating-Point Single Load / Store (Immediate unsigned offset): `LDR/STR St/Dt, [Xn, #offset]`
     FpLoadStoreImm {
         rt: u8,
