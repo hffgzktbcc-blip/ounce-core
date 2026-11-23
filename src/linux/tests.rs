@@ -870,6 +870,20 @@ fn hardware_fast_path_instructions_execute_across_all_tiers() {
     }
 }
 
+/// Known answers for PMULL/PMULL2 (8B, 1D), CRC32{B,H,W,X}, CRC32C{B,H,W,X}, EOR3, BCAX, RAX1 and XAR,
+/// three input sets each. `hwcap_kat.expected` was produced by the same source (`hwcap_kat_core.h`)
+/// compiled natively with clang on an Apple M3, so a wrong result on any tier fails here.
+#[test]
+fn hwcap_instructions_match_native_known_answers_on_every_tier() {
+    let elf = include_bytes!("../../tests/linux-elf/bin/hwcap_kat.elf");
+    let expected = include_str!("../../tests/linux-elf/hwcap_kat.expected");
+    for tier in TIERS {
+        let (r, out) = go(elf, &["hwcap_kat"], tier);
+        assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
+        assert_eq!(out, expected, "{tier:?} results differ from native hardware");
+    }
+}
+
 #[test]
 fn ppoll_handles_descriptors_and_bounds() {
     use super::syscalls::{EFAULT, EINVAL, Outcome, Process, SYS_PPOLL};
