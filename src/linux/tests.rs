@@ -760,3 +760,58 @@ fn tgkill_abort_sequence_ends_the_guest_with_status_134() {
         other => panic!("{other:?}"),
     }
 }
+
+/// MicroPython (and many other programs) look for a file with `stat` before using a built-in: it calls
+/// `newfstatat(AT_FDCWD, "random.py", ...)` and treats "no such file" as "not there". `run-elf` has no filesystem and
+/// already answers `openat` with ENOENT, but `newfstatat` stopped the run as an unimplemented syscall (exit 70).
+/// A stat by path now finds nothing; a stat of a descriptor (AT_EMPTY_PATH with an empty path) stays unimplemented.
+#[test]
+fn newfstatat_by_path_finds_nothing_but_fstat_of_a_descriptor_is_still_unimplemented() {
+    use super::syscalls::{EFAULT, ENOENT, Outcome, Process};
+    use crate::mmu::{Memory, Permission};
+    const DATA: u64 = 0x1000;
+    const NEWFSTATAT: u64 = 79;
+    const AT_FDCWD: u64 = -100i64 as u64;
+    const AT_EMPTY_PATH: u64 = 0x1000;
+    let mut proc = Process::new(0x10_0000);
+    let mut mem = Memory::new();
+    mem.map_range(DATA, 0x1000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    mem.write_bytes(DATA, b"random.py\0").unwrap();
+    mem.write_bytes(DATA + 0x100, b"\0").unwrap();
+    // newfstatat(AT_FDCWD, "random.py", &st, 0): nothing there
+    assert_eq!(
+        proc.dispatch(NEWFSTATAT, [AT_FDCWD, DATA, DATA + 0x200, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOENT)
+    );
+    // an empty path without AT_EMPTY_PATH is ENOENT in Linux too
+    assert_eq!(
+        proc.dispatch(
+            NEWFSTATAT,
+            [AT_FDCWD, DATA + 0x100, DATA + 0x200, 0, 0, 0],
+            &mut mem,
+            &mut out
+        ),
+        Outcome::Return(-ENOENT)
+    );
+    // a bad path pointer is EFAULT
+    assert_eq!(
+        proc.dispatch(
+            NEWFSTATAT,
+            [AT_FDCWD, 0x9000_0000, DATA + 0x200, 0, 0, 0],
+            &mut mem,
+            &mut out
+        ),
+        Outcome::Return(-EFAULT)
+    );
+    // fstat(1, &st) as newfstatat(1, "", &st, AT_EMPTY_PATH) asks about a descriptor: still unimplemented, by name
+    match proc.dispatch(
+        NEWFSTATAT,
+        [1, DATA + 0x100, DATA + 0x200, AT_EMPTY_PATH, 0, 0],
+        &mut mem,
+        &mut out,
+    ) {
+        Outcome::Unimplemented(why) => assert!(why.contains("newfstatat"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+}
