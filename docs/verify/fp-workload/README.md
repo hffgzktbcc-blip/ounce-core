@@ -35,7 +35,7 @@ docs/verify/fp-workload/run.sh <new out dir>      # from the repo root; ARM64 ho
 `FP_WORKLOAD_OPS="fadd.d fsqrt.s"` runs only those ops. `FP_WORKLOAD_TAMPER=<op>` edits one result in that op's host
 reference after it is written; that op must then come out `MISMATCH` on both tiers.
 
-**CI (#485):** the `fp-workload` job in [`fp-edge.yml`](../../../.github/workflows/fp-edge.yml) runs this on a Linux ARM64
+**CI (#485):** the `fp-workload` job (formerly in `fp-edge.yml`) ran this on a Linux ARM64
 runner (`ubuntu-24.04-arm`) for pull requests that touch the CPU engines, the ELF runner or this folder. It fails unless
 every op listed in [`gated-ops.txt`](gated-ops.txt) (all 199 ops, expanded from the original 48 once verified on Apple M3)
 is `identical` on both tiers (so `UNSUPPORTED` fails too) and no op is `OTHER-FAIL`. It runs the negative control with
