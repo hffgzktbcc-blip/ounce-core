@@ -2,8 +2,8 @@
 
 > **DRAFT. Nothing in this file is frozen.** Issue #481 asks for the v1.0 freeze of `ounce.run.v1`,
 > `ounce.repro.v1`, `ounce.trace.v1`, the exit codes and the DX flags. The freeze is an **owner decision**. This file
-> and `tests/contract_v1.rs` are the material for that decision: the exact contract as the code behaves on commit
-> `b24002b` plus the compatibility tests that would enforce it. Until the owner records a decision (see
+> and `tests/contract_v1.rs` are the material for that decision: the initial snapshot at commit
+> `b24002b`, updated for the v0.10.0 release, plus compatibility tests that would enforce it. Until the owner records a decision (see
 > [Owner questions](#owner-questions)), the schema docs and the code stay free to change.
 
 Every statement below was checked against the code or by running the binary; the last column of each table names the
@@ -33,14 +33,14 @@ Once a contract item is frozen:
 | Exit codes `0`, `2-5`, `10-17` | ounce-core's own process statuses are `0`, `1`, `2` (plus `70`-`73` on `run-elf`, and the guest's status). It never exits `3`, `4`, `5` or `10`-`17`. `10`-`17` are the value of the `exit_code` **field** in the report. The family roadmap calls `2..5` `ounce-hb` infrastructure exits. | `2-5` live in `ounce-hb` (not in this repo): not verifiable or testable here. See [Exit codes](#exit-codes). |
 | Flag `--timeout` | Not an option of `run` / `run-nro` / `run-elf` (`run` refuses it with status 2). Only `ounce-core ui --timeout SECS` exists. The roadmap puts it on `ounce-hb run`. | Pinned as "not a run flag here". |
 | Flag `--json` | Not an option of `run` / `run-nro` / `run-elf` (refused with status 2). `--json <path>` exists on `diverge` and `trace-diff`; `census --json` is a boolean switch. The run report flag is `--report-json=<path>` (or `OUNCE_REPORT_JSON`). | Owner decides whether `--report-json` joins the frozen flags. |
-| `ounce.repro.v1` | Appears in roadmap documents only. No schema doc, no code, no test in this repo (`ReproManifest` is `ounce-hb`'s). | Nothing to document or pin here. |
+| `ounce.repro.v1` | Ounce-Core now keeps ten metadata-only manifests under `tests/repro/` and checks them in `tests/repro_corpus.rs`; `ounce-hb` still owns the full repro-bundle/consumer contract. | The local corpus tests do not freeze the cross-project schema. |
 
 ## `ounce.run.v1`
 
 Schema doc: [OUNCE_RUN_V1_SCHEMA.md](OUNCE_RUN_V1_SCHEMA.md). Written by `run`, `run-nro` and `run-elf` with
 `--report-json=<path>`. Pinned by `run_v1_keys_and_json_types_are_pinned` against
 [`tests/contract/run-v1-keys.json`](../tests/contract/run-v1-keys.json): the key set is exact, each value has one of
-the listed types, and each listed type occurs in at least one of 16 representative runs (10 `run-nro`, 6 `run-elf`).
+the listed types, and each listed type occurs in at least one of 18 representative runs (11 `run-nro`, 7 `run-elf`).
 
 | Key | JSON type | First released |
 |---|---|---|
@@ -48,15 +48,18 @@ the listed types, and each listed type occurs in at least one of 16 representati
 | `silent_fallback` | bool | v0.9.0 |
 | `exit_code`, `insns_executed` | number | v0.9.0 |
 | `pc`, `opcode`, `fault_addr`, `svc_id`, `break_result` | number or null | v0.9.0 |
-| `frames_presented` | number | **unreleased** (#460) |
-| `framebuffer_hash` | string `fnv1a64:<16 hex>` or null | **unreleased** (#460, #486) |
-| `lr`, `sp` | number or null (set exactly when `pc` is) | **unreleased** (#475) |
-| `audio_frames_mixed` | number | **unreleased** (#478) |
-| `audio_hash` | string `fnv1a64:<16 hex>` or null | **unreleased** (#478) |
-| `guest_exit_status` | number or null (`run-elf` clean exit only) | **unreleased** (#473) |
+| `frames_presented` | number | v0.10.0 (#460) |
+| `framebuffer_hash` | string `fnv1a64:<16 hex>` or null | v0.10.0 (#460, #486) |
+| `lr`, `sp` | number or null (set exactly when `pc` is) | v0.10.0 (#475, #513) |
+| `fault_symbol` | string or null (resolved ELF `.symtab` symbol at `pc` on faults) | **unreleased** (#475) |
+| `backtrace` | string or null (bounded `X29`/`LR` frame chain on faults/`svc_break`) | **unreleased** (#475) |
+| `sm_service` | string or null (`unhandled_svc` / exit 14 after `sm:` / HIPC activity) | v0.10.0 (#475, #513) |
+| `cmif_cmd_id` | number or null (`unhandled_svc` / exit 14 after CMIF dispatch) | v0.10.0 (#475, #513) |
+| `audio_frames_mixed` | number | v0.10.0 (#478) |
+| `audio_hash` | string `fnv1a64:<16 hex>` or null | v0.10.0 (#478) |
+| `guest_exit_status` | number or null (`run-elf` clean exit only) | v0.10.0 (#473) |
 
-v0.9.0 (`4b63f7a`) had 14 keys; the 7 marked unreleased were added on `main` afterwards and have not shipped, so the
-owner can still change their names or types before freezing. `tier` is `interpreter`, `tier3`, `tier4` or `nce`
+v0.9.0 (`4b63f7a`) had 14 keys; nine additional fields shipped in v0.10.0 (`f94db69`) and two (`fault_symbol`, `backtrace`) were added afterwards on `main`. Shipping those fields does **not** freeze this proposed v1.0 contract. Changes to published fields should be deliberate, documented and tested; see the owner decisions below. `tier` is `interpreter`, `tier3`, `tier4` or `nce`
 (`CpuTier::report_label`); only `interpreter` and `tier3` are exercised by the tests, because `tier4` and `nce` need
 cargo features. Details pinned beyond the key set (`run_v1_stop_details_follow_the_stop`): a fault's `fault_addr`
 or `opcode`, `break_result` read from `info1` when `info2` is 4 (else null), `guest_exit_status` 42 with `exit_code` 0
@@ -113,8 +116,7 @@ Not produced by ounce-core as distinct codes (`2` is its usage-error status; `3`
 
 ## `ounce.trace.v1`
 
-Schema doc: [OUNCE_TRACE_V1_SCHEMA.md](OUNCE_TRACE_V1_SCHEMA.md). Status: ounce-core only, **unreleased** (#477,
-merged after v0.9.0), no second implementation and no consumer has checked it. Pinned by
+Schema doc: [OUNCE_TRACE_V1_SCHEMA.md](OUNCE_TRACE_V1_SCHEMA.md). Status: **released in ounce-core v0.10.0** (#477), but not frozen across projects; no second implementation or consumer has checked it. Pinned by
 `trace_v1_keys_and_json_types_are_pinned` against
 [`tests/contract/trace-v1-keys.json`](../tests/contract/trace-v1-keys.json): exact keys and types for the trace
 document, a step, the divergence summary (match, opcode divergence and register divergence documents) and a window
@@ -158,8 +160,8 @@ the flags the issue names and are not frozen by this draft.
    frozen too, or marked implementation detail?
 2. **`--timeout` and `--json` are `ounce-hb` flags.** Should the frozen set for ounce-core be `--max-frames`, `--sdmc`
    and `--report-json` instead, with `--timeout` / `--json` frozen in `ounce-hb`?
-3. **Freeze the seven unreleased `ounce.run.v1` keys now?** (`frames_presented`, `framebuffer_hash`, `lr`, `sp`,
-   `audio_frames_mixed`, `audio_hash`, `guest_exit_status`.) None has shipped. Specific doubts: `framebuffer_hash`
+3. **Which of the nine fields first shipped in v0.10.0 should join the frozen v1.0 contract?** (`frames_presented`, `framebuffer_hash`, `lr`, `sp`,
+   `sm_service`, `cmif_cmd_id`, `audio_frames_mixed`, `audio_hash`, `guest_exit_status`.) They are published but not yet frozen as a cross-project compatibility contract. Specific doubts: `framebuffer_hash`
    excludes width and height and is `null` for a `gpu-present` window outside deterministic mode; `lr` / `sp` mean
    "at the stop"; `guest_exit_status` is `run-elf` only.
 4. **`run` / `run-nro` load failures write no report.** Add a `loader_error` report (additive, status stays 1) before

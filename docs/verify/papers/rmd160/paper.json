@@ -1,0 +1,36 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "RIPEMD-160: a strengthened version of RIPEMD",
+    "authors": [
+      "Hans Dobbertin",
+      "Antoon Bosselaers",
+      "Bart Preneel"
+    ],
+    "venue": "Fast Software Encryption (FSE 1996), LNCS 1039, Springer",
+    "year": 1996
+  },
+  "program": {
+    "source": "rmd160.c",
+    "how": "written for ounce-core from the algorithm in the paper or standard; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "RIPEMD-160 of the 9 messages in the paper's Appendix B (\"\", \"a\", \"abc\", \"message digest\", the lowercase alphabet, the 56-character message, upper+lower+digits, 8 times \"1234567890\", and 1 million times \"a\") gives the 9 published 160-bit digests"
+  ],
+  "expected_values_source": {
+    "what": "the 9 RIPEMD-160 test values of Appendix B of the paper, and the selection, rotation and constant tables of its Appendix A pseudo-code (extracted from the PDF text as numbers; the constants K' and K were also checked on the host to equal the paper's floor(2^30 * sqrt or cube root) definitions)",
+    "url": "https://homes.esat.kuleuven.be/~bosselae/ripemd160/pdf/AB-9601/AB-9601.pdf",
+    "fetched": "2026-11-19",
+    "note": "digests and tables are data, copied as numbers; no third-party code was copied"
+  },
+  "negative_control": "built with -DRMD_S0=12 (first left-line rotation amount changed from 11 to 12), 0 of 9 values match and the program exits 1",
+  "not_checked": [
+    "security claims (the paper's design rationale and analysis of collision resistance)",
+    "RIPEMD-128 (the paper lists test values for it but gives no pseudo-code in the appendix; not implemented)",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "messages beyond the 9 in Appendix B",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 9 RIPEMD-160 digests published in the paper's Appendix B. It does not show the security claims hold."
+}

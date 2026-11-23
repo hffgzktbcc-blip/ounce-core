@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+#[cfg(feature = "host-io")]
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -26,6 +27,7 @@ pub struct HostAudioSink {
     pub samples_played: Arc<AtomicU64>,
     pub samples_dropped: Arc<AtomicU64>,
     pub max_capacity: usize,
+    #[cfg(feature = "host-io")]
     _stream: Option<cpal::Stream>,
     pub is_enabled: bool,
     /// Whether this sink asked the host for an output device. `false` for [`HostAudioSink::disabled`].
@@ -61,34 +63,40 @@ impl HostAudioSink {
         let samples_played = Arc::new(AtomicU64::new(0));
         let samples_dropped = Arc::new(AtomicU64::new(0));
 
-        let queue_clone = Arc::clone(&queue);
-        let underruns_clone = Arc::clone(&underruns);
-        let played_clone = Arc::clone(&samples_played);
-
-        let sample_rate = DEFAULT_SAMPLE_RATE;
-        let channels = DEFAULT_CHANNELS;
-
+        #[cfg(feature = "host-io")]
         let stream = if open_device {
-            Self::init_stream(queue_clone, underruns_clone, played_clone, sample_rate, channels).ok()
+            Self::init_stream(
+                Arc::clone(&queue),
+                Arc::clone(&underruns),
+                Arc::clone(&samples_played),
+                DEFAULT_SAMPLE_RATE,
+                DEFAULT_CHANNELS,
+            )
+            .ok()
         } else {
             None
         };
-
+        #[cfg(feature = "host-io")]
         let is_enabled = stream.is_some();
+        #[cfg(not(feature = "host-io"))]
+        let is_enabled = false;
+
         Self {
             queue,
             underruns,
             samples_played,
             samples_dropped,
             max_capacity,
+            #[cfg(feature = "host-io")]
             _stream: stream,
             is_enabled,
             open_attempted: open_device,
-            sample_rate,
-            channels,
+            sample_rate: DEFAULT_SAMPLE_RATE,
+            channels: DEFAULT_CHANNELS,
         }
     }
 
+    #[cfg(feature = "host-io")]
     fn init_stream(
         queue: Arc<Mutex<VecDeque<i16>>>,
         underruns: Arc<AtomicU64>,

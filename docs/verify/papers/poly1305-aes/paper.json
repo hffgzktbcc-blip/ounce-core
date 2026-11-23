@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The Poly1305-AES message-authentication code",
+    "authors": ["Daniel J. Bernstein"],
+    "venue": "FSE 2005 (Fast Software Encryption), LNCS 3557",
+    "year": 2005
+  },
+  "program": {
+    "source": "poly1305aes.c",
+    "how": "written for ounce-core from the paper's definition (section 2) and FIPS 197 AES-128 (S-box computed by GF(2^8) inversion, not tabulated); Poly1305 arithmetic mod 2^130-5 in five 26-bit limbs. No third-party code copied. The chain driver re-implements, in the program's own words, the short key/nonce/message feedback procedure that the author's test-poly1305aes.c uses to generate its output (the test source was read to learn the procedure, not copied)",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "the four examples of the paper's Appendix B (messages of 2, 0, 32 and 63 bytes) reproduce: the polynomial value m(r) mod 2^130-5, AES_k(n) and the 16-byte authenticator (12 of 12 values)",
+    "400 AES-128 known answers (NIST Monte Carlo keys and plaintexts, as printed by the author's test-aes.out) reproduce (400 of 400)",
+    "a chain of 10010 Poly1305-AES authenticators (message lengths 0 to 1000, ten rounds; each authenticator feeds the next key, nonce and message) is computed and 1001 of them (every tenth; each depends on all earlier ones) equal the published test-poly1305aes.out lines (1001 of 1001)"
+  ],
+  "expected_values_source": {
+    "what": "Appendix B examples parsed mechanically from the text of the fetched paper PDF; AES vectors and authenticators parsed from the author's published test outputs test-aes.out and test-poly1305aes.out (first 10010 lines, which the author's page says are the expected output)",
+    "url": "https://cr.yp.to/mac/poly1305-20050329.pdf ; https://cr.yp.to/mac/test-aes.out ; https://cr.yp.to/mac/test-poly1305aes.out ; page https://cr.yp.to/mac/test.html",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers; none of the author's code was copied"
+  },
+  "negative_control": "built with -DCLAMP_R3=31 (r[3] masked with 31 instead of 15), the 12 example values and 400 AES answers still match (their r[3] is below 16) but only 1 of 1001 chain values matches and the program exits 1; built with -DAES_ROUNDS=9, 4 of 12 example values, 0 of 400 AES and 0 of 1001 chain values match and the program exits 1",
+  "not_checked": [
+    "the paper's security bound (at most 14*D*ceil(L/16)/2^106) or any cryptanalysis",
+    "the 8,990 chain authenticators not compared one-by-one (they are covered only through the chain dependency) and the published md5 checksums of the longer outputs",
+    "speed figures (the paper's Athlon cycle counts say nothing about emulator run time)",
+    "AES-192/256 and Poly1305 with other ciphers; the later Poly1305 variants (ChaCha20-Poly1305) are a separate check",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the paper's Appendix B values and the author's published test outputs for the inputs listed. It does not show the MAC is secure."
+}

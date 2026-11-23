@@ -11,7 +11,7 @@ from ci_scope import classify
 
 class ScopeTest(unittest.TestCase):
     def test_metadata_does_not_need_rust_or_corpus(self):
-        result = classify(['PLAN.md', 'AGENTS.md', 'README.md', 'docs/guide.md'])
+        result = classify(['docs/PLAN.md', 'AGENTS.md', 'README.md', 'docs/guide.md'])
         self.assertFalse(result['runtime'])
         self.assertFalse(result['corpus'])
 
@@ -68,7 +68,7 @@ class ScopeTest(unittest.TestCase):
 
         def run():
             return subprocess.run([sys.executable, '-c', script], capture_output=True, text=True,
-                                  env=dict(os.environ, RESULTS=json.dumps(results))).returncode
+                                  env=dict(os.environ, RESULTS=json.dumps(results), GITHUB_EVENT_NAME='push')).returncode
 
         self.assertEqual(run(), 0)  # docs: heavy jobs intentionally skipped
         results['release-notice-packaging']['result'] = 'failure'

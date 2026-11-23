@@ -624,3 +624,194 @@ fn gettimeofday_writes_timeval_and_supports_deterministic_mode() {
     assert_eq!(sec2, 1_700_000_000);
     assert_eq!(usec2, 1_000); // 1 ms tick = 1000 microseconds
 }
+
+/// `abort()` in musl is: block every signal, `tkill(tid, SIGABRT)` (glibc: `tgkill`), restore the mask. The kernel keeps the blocked
+/// signal pending and, with the default action, ends the process when the mask is restored, which a shell reports as
+/// status 134. Before this, `tkill` (130) and `tgkill` (131) stopped `run-elf` as an unimplemented syscall (exit 70).
+/// libc-test and gcc.c-torture programs that call `abort()` showed it: qemu-aarch64 exits 134, ounce-core exited 70.
+#[test]
+fn tgkill_abort_sequence_ends_the_guest_with_status_134() {
+    use super::syscalls::{ESRCH, Outcome, PID, Process, SYS_RT_SIGPROCMASK};
+    use crate::mmu::{Memory, Permission};
+    const DATA: u64 = 0x1000;
+    const TGKILL: u64 = 131;
+    const TKILL: u64 = 130;
+    let mut proc = Process::new(0x10_0000);
+    let mut mem = Memory::new();
+    mem.map_range(DATA, 0x1000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    // sigprocmask(SIG_BLOCK, &all, &old, 8): block everything the guest may block
+    mem.write_u64(DATA, u64::MAX).unwrap();
+    assert_eq!(
+        proc.dispatch(SYS_RT_SIGPROCMASK, [0, DATA, DATA + 8, 8, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(mem.read_u64(DATA + 8).unwrap(), 0, "the old mask was empty");
+    // tgkill(pid, pid, SIGABRT) while blocked: accepted, nothing happens yet
+    assert_eq!(
+        proc.dispatch(TGKILL, [PID, PID, 6, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    // restoring the old mask (SIG_SETMASK) delivers it: default action, terminated by SIGABRT = status 134
+    assert_eq!(
+        proc.dispatch(SYS_RT_SIGPROCMASK, [2, DATA + 8, 0, 8, 0, 0], &mut mem, &mut out),
+        Outcome::Exit(128 + 6)
+    );
+
+    // unblocked, the default action takes effect at once
+    let mut proc = Process::new(0x10_0000);
+    assert_eq!(
+        proc.dispatch(TGKILL, [PID, PID, 6, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Exit(134)
+    );
+    let mut proc = Process::new(0x10_0000);
+    assert_eq!(
+        proc.dispatch(TGKILL, [PID, PID, 15, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Exit(143)
+    );
+    // musl's raise() uses tkill(tid, sig) rather than tgkill: the same effect, the same checks
+    let mut proc = Process::new(0x10_0000);
+    assert_eq!(
+        proc.dispatch(TKILL, [PID, 6, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Exit(134)
+    );
+    assert_eq!(
+        proc.dispatch(TKILL, [PID + 1, 6, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ESRCH)
+    );
+    assert_eq!(
+        proc.dispatch(TKILL, [PID, 65, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-super::syscalls::EINVAL)
+    );
+
+    // signals that are ignored by default, signal 0 (an existence check) and a wrong target change nothing
+    let mut proc = Process::new(0x10_0000);
+    for sig in [17, 18, 23, 28, 0] {
+        assert_eq!(
+            proc.dispatch(TGKILL, [PID, PID, sig, 0, 0, 0], &mut mem, &mut out),
+            Outcome::Return(0),
+            "{sig}"
+        );
+    }
+    assert_eq!(
+        proc.dispatch(TGKILL, [PID + 1, PID, 6, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ESRCH)
+    );
+    assert_eq!(
+        proc.dispatch(TGKILL, [PID, PID + 1, 6, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ESRCH)
+    );
+    assert_eq!(
+        proc.dispatch(TGKILL, [PID, PID, 65, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-super::syscalls::EINVAL)
+    );
+    assert_eq!(
+        proc.dispatch(TGKILL, [0, PID, 6, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-super::syscalls::EINVAL)
+    );
+
+    // SIG_IGN installed with rt_sigaction: the signal is discarded, also when it was blocked first
+    let mut proc = Process::new(0x10_0000);
+    mem.write_u64(DATA + 0x100, 1).unwrap(); // handler = SIG_IGN, flags/restorer/mask left zero
+    for off in [8, 16, 24] {
+        mem.write_u64(DATA + 0x100 + off, 0).unwrap();
+    }
+    assert_eq!(
+        proc.dispatch(
+            super::syscalls::SYS_RT_SIGACTION,
+            [6, DATA + 0x100, 0, 8, 0, 0],
+            &mut mem,
+            &mut out
+        ),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(TGKILL, [PID, PID, 6, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    mem.write_u64(DATA + 0x200, 1 << 5).unwrap(); // block SIGABRT, raise, unblock
+    assert_eq!(
+        proc.dispatch(SYS_RT_SIGPROCMASK, [0, DATA + 0x200, 0, 8, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(TGKILL, [PID, PID, 6, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+    assert_eq!(
+        proc.dispatch(SYS_RT_SIGPROCMASK, [1, DATA + 0x200, 0, 8, 0, 0], &mut mem, &mut out),
+        Outcome::Return(0)
+    );
+
+    // a real guest handler is not delivered by this layer: the run stops and names the signal
+    let mut proc = Process::new(0x10_0000);
+    mem.write_u64(DATA + 0x100, 0x4000).unwrap();
+    assert_eq!(
+        proc.dispatch(
+            super::syscalls::SYS_RT_SIGACTION,
+            [6, DATA + 0x100, 0, 8, 0, 0],
+            &mut mem,
+            &mut out
+        ),
+        Outcome::Return(0)
+    );
+    match proc.dispatch(TGKILL, [PID, PID, 6, 0, 0, 0], &mut mem, &mut out) {
+        Outcome::Unimplemented(why) => assert!(why.contains("signal 6") && why.contains("handler"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// MicroPython (and many other programs) look for a file with `stat` before using a built-in: it calls
+/// `newfstatat(AT_FDCWD, "random.py", ...)` and treats "no such file" as "not there". `run-elf` has no filesystem and
+/// already answers `openat` with ENOENT, but `newfstatat` stopped the run as an unimplemented syscall (exit 70).
+/// A stat by path now finds nothing; a stat of a descriptor (AT_EMPTY_PATH with an empty path) stays unimplemented.
+#[test]
+fn newfstatat_by_path_finds_nothing_but_fstat_of_a_descriptor_is_still_unimplemented() {
+    use super::syscalls::{EFAULT, ENOENT, Outcome, Process};
+    use crate::mmu::{Memory, Permission};
+    const DATA: u64 = 0x1000;
+    const NEWFSTATAT: u64 = 79;
+    const AT_FDCWD: u64 = -100i64 as u64;
+    const AT_EMPTY_PATH: u64 = 0x1000;
+    let mut proc = Process::new(0x10_0000);
+    let mut mem = Memory::new();
+    mem.map_range(DATA, 0x1000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    mem.write_bytes(DATA, b"random.py\0").unwrap();
+    mem.write_bytes(DATA + 0x100, b"\0").unwrap();
+    // newfstatat(AT_FDCWD, "random.py", &st, 0): nothing there
+    assert_eq!(
+        proc.dispatch(NEWFSTATAT, [AT_FDCWD, DATA, DATA + 0x200, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-ENOENT)
+    );
+    // an empty path without AT_EMPTY_PATH is ENOENT in Linux too
+    assert_eq!(
+        proc.dispatch(
+            NEWFSTATAT,
+            [AT_FDCWD, DATA + 0x100, DATA + 0x200, 0, 0, 0],
+            &mut mem,
+            &mut out
+        ),
+        Outcome::Return(-ENOENT)
+    );
+    // a bad path pointer is EFAULT
+    assert_eq!(
+        proc.dispatch(
+            NEWFSTATAT,
+            [AT_FDCWD, 0x9000_0000, DATA + 0x200, 0, 0, 0],
+            &mut mem,
+            &mut out
+        ),
+        Outcome::Return(-EFAULT)
+    );
+    // fstat(1, &st) as newfstatat(1, "", &st, AT_EMPTY_PATH) asks about a descriptor: still unimplemented, by name
+    match proc.dispatch(
+        NEWFSTATAT,
+        [1, DATA + 0x100, DATA + 0x200, AT_EMPTY_PATH, 0, 0],
+        &mut mem,
+        &mut out,
+    ) {
+        Outcome::Unimplemented(why) => assert!(why.contains("newfstatat"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+}

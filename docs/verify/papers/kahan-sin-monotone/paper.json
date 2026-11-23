@@ -1,0 +1,38 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Mathematics Written in Sand",
+    "authors": ["William Kahan"],
+    "venue": "Proc. Joint Statistical Meeting of the American Statistical Association, Statistical Computing Section, 1983 (the file is the version of 22 Nov. 1983, retypeset 9 January 2001)",
+    "year": 1983,
+    "text_read": "https://people.eecs.berkeley.edu/~wkahan/MathSand.pdf (fetched 2026-11-19; the x - SIN(x) example and its table taken from the text, around page 29)"
+  },
+  "program": {
+    "source": "sinmono.c",
+    "how": "written for ounce-core from the statement in the paper: every p-digit decimal x in [0.001, 1) is enumerated, sin(x) is computed in double (Taylor series, no libm) and rounded to p significant decimals, F(x) = x - SIN(x) is formed exactly in integers and checked for monotonicity between consecutive p-digit decimals; no third-party code",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "the four table rows: sin(0.100167) = 0.09999958095, sin(0.100168) = 0.1000005759, sin(0.010000) = 0.009999833334, sin(0.010001) = 0.01000083328, to the printed digits",
+    "p = 6: among all 2,700,000 six-digit decimals x in [0.001, 1) the only place where F(x) = x - SIN(x) decreases is x = 0.100167 -> 0.100168 (F = 0.0001674 then 0.0001670, as in the paper's table)",
+    "p = 5: the only decrease is at x = 0.010000 -> 0.010001 (F = 0.0000002 then 0)",
+    "p = 4: no decrease anywhere in [0.001, 1) (the paper: 'nowhere')",
+    "no value of sin(x) in the scan lies within 1e-8 (in units of the last place) of a rounding tie, so the decimal rounding of the double-precision sine is not in doubt"
+  ],
+  "expected_values_source": {
+    "what": "the statement and table in the paper",
+    "url": "https://people.eecs.berkeley.edu/~wkahan/MathSand.pdf",
+    "fetched": "2026-11-19",
+    "tolerance": "exact comparison of decimal digits and of the set of exceptions. The paper does not state the domain of x; [0.001, 1) was chosen before the first run (below 0.001 SIN(x) = x for every p tested, and F is 0 there; above 1 the slope of F is too large for an exception), so 'sole exception' is checked on that domain only."
+  },
+  "observations": [
+    "the 'sole exception' claims hold exactly on the chosen domain: 1 exception for p = 6, 1 for p = 5, 0 for p = 4"
+  ],
+  "negative_control": "built with -DNEG_TRUNC (SIN(x) truncated instead of correctly rounded), neither published exception is found, the p = 6 and p = 5 checks fail and the program exits 1",
+  "not_checked": [
+    "other precisions p, other decimal rounding rules, and x outside [0.001, 1)",
+    "the paper's other examples (VisiCalc table, the hp-15C matrix inverse, the discussion of correctly rounded arithmetic) and its argument about standards",
+    "Tier-4 and native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "ounce-core, running integer and double code, finds exactly the monotonicity failures Kahan reports for correctly rounded 6-digit and 5-digit sine and none for 4 digits, on the stated domain. It does not show the paper's wider argument."
+}

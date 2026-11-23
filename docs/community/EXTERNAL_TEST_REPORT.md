@@ -28,13 +28,15 @@ paths, hostnames and usernames from logs.
 - Ounce-Core commit (`git rev-parse HEAD`):
 - Rust version (`rustc --version`):
 - devkitA64 version (only if you used `--nro`):
-- Exact commands, in order:
+- Exact commands, in order (include `--nro` or `--nro-dir` if you tested guest engines):
 
 ```sh
 # paste commands here
 ```
 
 ### Result
+- Did an actual NRO run on guest engines? yes / no / blocked:
+- Per-engine statuses (`tier3`, `tier4`, `native`); include every skipped check:
 - Expected end line (from REPRODUCE.md):
 - What I observed:
 - First mismatch (harness, engine, first differing line), if any:

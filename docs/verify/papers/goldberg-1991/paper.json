@@ -1,0 +1,43 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "What Every Computer Scientist Should Know About Floating-Point Arithmetic",
+    "authors": ["David Goldberg"],
+    "venue": "ACM Computing Surveys 23(1), 5-48 (text and numbers as reproduced in Appendix D of the Sun Numerical Computation Guide)",
+    "year": 1991,
+    "text_read": "https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html (fetched 2026-11-19; the worked numerical examples taken from the text and its footnotes)"
+  },
+  "program": {
+    "source": "goldberg.c",
+    "how": "written for ounce-core from the examples in the text: a base-10 emulator with p digits (round to even or half up; subtraction with no, one or exact guard digits), and IEEE binary32 arithmetic for the compound-interest example, with exp and ln written in double and rounded to float; no third-party code, no libm",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf --cpu=tier3`; the same source also builds natively (-DHOST) for a bit-for-bit comparison"
+  },
+  "claims_checked": [
+    "Guard digits (beta=10, p=3): 10.1 - 9.93 is .2 without a guard digit and .17 with one; 2.15e12 - 1.25e-5 = 2.15e12; 110 - 8.59 gives 102 with one guard digit (exactly rounded 101, exact 101.41, relative error .0058 > epsilon = .005)",
+    "b^2 - 4ac with b=3.34, a=1.22, c=2.28: b^2 = 11.2, 4ac = 11.1, difference .1, exact .0292; the error is 708 ulps (the footnote's correction; the main text says 70)",
+    "Triangle a=9.0, b=c=4.53: computed s = 9.05 (true 9.03), area by formula (6) = 3.04 (70 ulps), by formula (7) = 2.35 (1 ulp, relative error 0.7 epsilon), true area 2.34216",
+    "12.35 -> 12.4, 8 x 12.4 = 99.2 (0.5 and 4.0 ulps, same relative error); 3.5 x 4.2 = 14.7 exact, 3.5 x 4.3 = 15.05 -> 15.0",
+    "Theorem 5: with round to even x_n = 1.00 for n = 1..1000; with round half up x_n rises by .01 per step (1.01, 1.02, ...), first reaches 9.45 at n = 845 and stays there (footnote: 9.45 + .555 = 10.0, 10.0 - .555 = 9.45)",
+    "Theorem 6 example (beta=10, p=4): b*b = 12.08, a*c = 12.05, computed difference .03 (480 ulps off the exactly rounded .03480); Dekker/Veltkamp splitting with m = 101 gives b = 3.5 - .024, a = 3.5 - .037, c = 3.5 - .021; the pieces 12.25 - .168 + .000576 and 12.25 - .2030 + .000777 and the term-by-term estimate 0 + .0350 - .000201 = .03480",
+    "Denormals (p=3, emin=-98): 6.87e-97 - 6.81e-97 = 6.0e-99 is below 1.00e-98 (flush to zero would give 0 although x != y; gradual underflow keeps .6e-98)",
+    "Compound interest, binary32, i = .06, n = 365: $37615.45 for (1+i/n)^n, $37617.26 for ln(1+x) ~ x, $37614.07 with the Theorem 4 formula, exact $37614.05 (so discrepancies $1.40 and $3.21)"
+  ],
+  "expected_values_source": {
+    "what": "numbers printed in the text of the paper and its footnotes",
+    "url": "https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html",
+    "fetched": "2026-11-19",
+    "tolerance": "decimal examples compared exactly. Dollar amounts: a computed value is accepted when it equals the published value rounded to cents or truncated to cents (the paper does not say; ln(1+x) ~ x gives 37617.2656 which matches only when truncated), a rule fixed before the first run. The binary32 amounts depend on the exp, ln and power routines the author used; ours (repeated multiplication for the power, exp and ln correct to double then rounded to float) match."
+  },
+  "observations": [
+    "the main text says the b^2 - 4ac error is 70 ulps; the footnote (editor's note) and arithmetic give 708 ulps; the check asserts 708",
+    "the paper evaluates s as a sum in an order it does not state; (b + c) + a reproduces the printed s = 9.05, the order a + b + c does not (it gives 9.00)",
+    "the Theorem 6 counterexample for a single guard digit in binary (p=3, x=7) was not reproduced: the text says 28 for 'a single guard digit' but that value arises with no guard digit; not investigated"
+  ],
+  "negative_control": "built with -DNEG_RNE_HALFUP (round half up forced everywhere), 3.5 x 4.3 becomes 15.1 instead of 15.0 and the round-to-even drift example no longer stays at 1.00, so the check fails and the program exits 1",
+  "not_checked": [
+    "the paper's theorems and proofs (Theorems 1-14), and its text on the IEEE standard, NaNs, exceptions and systems aspects",
+    "the compound-interest numbers with a different libm or power routine, and any other precision",
+    "speed claims, and Tier-4 or native ARM64 execution (the native comparison here is x86-64)"
+  ],
+  "what_a_pass_means": "ounce-core's integer unit running a small decimal emulator, and its IEEE binary32 arithmetic, reproduce the numerical examples in Goldberg's text (about 40 asserted values). It does not prove the theorems."
+}

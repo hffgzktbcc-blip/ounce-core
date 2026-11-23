@@ -1,0 +1,8 @@
+PASS Speck64/96: 9f7952ec4175946c
+PASS Speck64/128: 8c6fa548454e028b
+PASS Speck128/128: a65d9851797832657860fedf5c570d18
+PASS Speck128/192: 1be4cf3a13135566f9bc185de03c1886
+PASS Speck128/256: 4109010405c0f53e4eeeb48d9c188f43
+known-answer vectors: 5 of 5 match
+decrypt round trips: 5 of 5
+PASS

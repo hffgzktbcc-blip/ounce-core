@@ -1,0 +1,54 @@
+round constants: 24 of 24 match
+rho offsets: 25 of 25 match
+PASS example 1 round 0: 5 steps
+PASS example 1 round 1: 5 steps
+PASS example 1 round 2: 5 steps
+PASS example 1 round 3: 5 steps
+PASS example 1 round 4: 5 steps
+PASS example 1 round 5: 5 steps
+PASS example 1 round 6: 5 steps
+PASS example 1 round 7: 5 steps
+PASS example 1 round 8: 5 steps
+PASS example 1 round 9: 5 steps
+PASS example 1 round 10: 5 steps
+PASS example 1 round 11: 5 steps
+PASS example 1 round 12: 5 steps
+PASS example 1 round 13: 5 steps
+PASS example 1 round 14: 5 steps
+PASS example 1 round 15: 5 steps
+PASS example 1 round 16: 5 steps
+PASS example 1 round 17: 5 steps
+PASS example 1 round 18: 5 steps
+PASS example 1 round 19: 5 steps
+PASS example 1 round 20: 5 steps
+PASS example 1 round 21: 5 steps
+PASS example 1 round 22: 5 steps
+PASS example 1 round 23: 5 steps
+PASS example 1 output: e7dde140798f25f18a47c033f9ccd584eea95aa61e2698d54d49806f304715bd57d05362054e288bd46f8e7f2da497ffc44746a4a0e5fe90762e19d60cda5b8c9c05191bf7a630ad64fc8fd0b75a933035d617233fa95aeb0321710d26e6a6a95f55cfdb167ca58126c84703cd31b8439f56a5111a2ff20161aed9215a63e505f270c98cf2febe641166c47b95703661cb0ed04f555a7cb8c832cf1c8ae83e8c14263aae22790c94e409c5a224f94118c26504e72635f5163ba1307fe944f67549a2ec5c7bfff1ea
+PASS example 2 round 0: 5 steps
+PASS example 2 round 1: 5 steps
+PASS example 2 round 2: 5 steps
+PASS example 2 round 3: 5 steps
+PASS example 2 round 4: 5 steps
+PASS example 2 round 5: 5 steps
+PASS example 2 round 6: 5 steps
+PASS example 2 round 7: 5 steps
+PASS example 2 round 8: 5 steps
+PASS example 2 round 9: 5 steps
+PASS example 2 round 10: 5 steps
+PASS example 2 round 11: 5 steps
+PASS example 2 round 12: 5 steps
+PASS example 2 round 13: 5 steps
+PASS example 2 round 14: 5 steps
+PASS example 2 round 15: 5 steps
+PASS example 2 round 16: 5 steps
+PASS example 2 round 17: 5 steps
+PASS example 2 round 18: 5 steps
+PASS example 2 round 19: 5 steps
+PASS example 2 round 20: 5 steps
+PASS example 2 round 21: 5 steps
+PASS example 2 round 22: 5 steps
+PASS example 2 round 23: 5 steps
+PASS example 2 output: 3ccb6ef94d955c2d6db55770d02c336a6c6bd770128d3d0994d06955b2d9208a56f1e7e5994f9c4f38fb65daa2b957f90daf7512ae3d7785f710d8c347f2f4fa59879af7e69e1b1f25b498ee0fccfee4a168ceb9b661ce684f978fbac466eadef5b1af6e833dc433d9db1927045406e065128309f0a9f87c434717bfa64954fd404b99d833addd9774e70b5dfcd5ea483cb0b755eec8b8e3e9429e646e22a0917bddbae729310e90e8cca3fac59e2a20b63d1c4e4602345b59104ca4624e9f605cbf8f6ad26cd020
+total: 291 of 291 match
+PASS

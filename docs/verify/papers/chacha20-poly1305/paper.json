@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "ChaCha20 and Poly1305 for IETF Protocols (RFC 8439): ChaCha20 (Bernstein 2008) + Poly1305 (Bernstein 2005) in Langley's AEAD construction",
+    "authors": ["Yoav Nir", "Adam Langley"],
+    "venue": "IETF RFC 8439",
+    "year": 2018
+  },
+  "program": {
+    "source": "chacha20poly1305.c",
+    "how": "written for ounce-core from the RFC's descriptions of the ChaCha20 block function, Poly1305 (arithmetic mod 2^130-5 in five 26-bit limbs, own implementation) and the AEAD construction; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "RFC 8439 A.1: 5 of 5 ChaCha20 keystream blocks (IETF layout: 32-bit counter, 96-bit nonce) match",
+    "A.2: 3 of 3 encryption vectors (messages of 64, 375 and 127 bytes, counters 0, 1, 42) match",
+    "A.3: 11 of 11 Poly1305 vectors match, including the RFC's seven edge-case vectors (partial reduction, overflow of s, limb carries, results exactly 2^130-5 and 2^130-6, 131-bit intermediates)",
+    "A.4: 3 of 3 Poly1305 one-time-key generations match",
+    "A.5 and section 2.8.2: the received tag verifies and the 265-byte ciphertext decrypts to the printed plaintext (2 of 2); the section 2.8.2 AEAD example's one-time key, ciphertext and tag match (3 of 3). Total 27 of 27 values"
+  ],
+  "expected_values_source": {
+    "what": "RFC 8439 Appendix A and section 2.8.2, parsed mechanically from the fetched RFC text (hex dumps and the R/S/data/tag blocks of A.3 vectors 5-11)",
+    "url": "https://www.rfc-editor.org/rfc/rfc8439.txt",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers. The original-layout ChaCha (64-bit counter and nonce) is checked separately in the chacha folder; the Poly1305-AES vectors are in poly1305-aes"
+  },
+  "negative_control": "built with -DCC_ROT_B=11 (rotation 11 instead of 12 in the ChaCha quarter-round), 11 of 27 values match (the Poly1305-only vectors) and the program exits 1; built with -DPOLY_FOLD=4 (2^130 folded as 4 instead of 5 mod 2^130-5), 19 of 27 match and the program exits 1; check.sh reports NOT REPRODUCED for both",
+  "not_checked": [
+    "the security claims of ChaCha20, Poly1305 or the AEAD composition",
+    "XChaCha20-Poly1305 and the 64-bit-counter ChaCha variant (see chacha), ChaCha20 with counters wrapping past 2^32, and tag-mismatch rejection by a decrypt routine (A.5 compares the recomputed tag with the received one; no forged-input behaviour is exercised)",
+    "speed figures (emulator run time says nothing about any hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the values printed in RFC 8439's appendix and AEAD example. It does not show the construction is secure."
+}

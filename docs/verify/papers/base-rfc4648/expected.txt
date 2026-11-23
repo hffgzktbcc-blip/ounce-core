@@ -1,0 +1,7 @@
+alphabets (RFC Tables 1-4) matching: 4 of 4
+base64 vectors: encode 7/7, decode 7/7
+base32 vectors: encode 7/7, decode 7/7
+base32hex vectors: encode 7/7, decode 7/7
+base16 vectors: encode 7/7, decode 7/7
+section 9 worked examples: 3 of 3
+PASS

@@ -273,7 +273,7 @@ pub enum Instruction {
     FpData1 { rd: u8, rn: u8, op: u8, is_double: bool },
 
     /// Floating-Point 3-Source: `FMADD` (o1 0, o0 0), `FMSUB` (0, 1), `FNMADD` (1, 0), `FNMSUB` (1, 1),
-    /// fused (one rounding): `Dd = (o1 ? -Da : Da) + (o0 ? -Dn : Dn) * Dm`
+    /// fused (one rounding): `Dd = (o1 ? -Da : Da) + (o0 ? -Dn : Dn) * Dm` (`esize` is 16, 32, or 64).
     FpData3 {
         rd: u8,
         rn: u8,
@@ -281,7 +281,7 @@ pub enum Instruction {
         ra: u8,
         o1: bool,
         o0: bool,
-        is_double: bool,
+        esize: u8,
     },
 
     /// Floating-Point round to integral: `FRINT{N,P,M,Z,A,X,I}` (op = bits 17..15 of the encoding)
@@ -313,21 +313,21 @@ pub enum Instruction {
     /// toward zero, wrap modulo 2^32). Writes `NZCV` = `0 Z 0 0`: Z is set only when the conversion was exact.
     Fjcvtzs { rd: u8, rn: u8 },
 
-    /// Floating-Point Conditional Select: `FCSEL Dd/Sd, Dn/Sn, Dm/Sm, cond`
+    /// Floating-Point Conditional Select: `FCSEL Dd/Sd/Hd, Dn/Sn/Hn, Dm/Sm/Hm, cond` (`esize` is 16, 32, or 64)
     FpCondSelect {
         rd: u8,
         rn: u8,
         rm: u8,
         cond: Condition,
-        is_double: bool,
+        esize: u8,
     },
 
-    /// Floating-Point Compare: `FCMP Dn/Sn, Dm/Sm` or `FCMP Dn/Sn, #0.0`
+    /// Floating-Point Compare: `FCMP Dn/Sn/Hn, Dm/Sm/Hm` or `FCMP Dn/Sn/Hn, #0.0` (`esize` is 16, 32, or 64)
     FpCompare {
         rn: u8,
         rm: u8,
         is_zero: bool,
-        is_double: bool,
+        esize: u8,
         /// `FCMPE`: a quiet NaN also raises `FPSR.IOC`.
         signalling: bool,
     },
@@ -670,6 +670,8 @@ pub enum Instruction {
     },
     /// Scalar half-precision `FMAX/FMIN/FMAXNM/FMINNM Hd, Hn, Hm`.
     FpHalfMinMax { rd: u8, rn: u8, rm: u8, op: FpOp2 },
+    /// Vector `FABS`/`FNEG` on 16-bit lanes (FEAT_FP16): clears or flips each lane's sign bit; `q` picks .8H over .4H.
+    SimdFpAbsNegHalf { rd: u8, rn: u8, neg: bool, q: bool },
     SimdAcross {
         rd: u8,
         rn: u8,
@@ -793,7 +795,8 @@ pub enum Instruction {
         src_index: u8,
     },
 
-    /// `LD1`/`ST1` single structure (one lane) and `LD1R` (load one element into every lane)
+    /// `LD1`-`LD4`/`ST1`-`ST4` single structure (one lane of `nregs` consecutive registers) and `LD1R`-`LD4R`
+    /// (load one element into every lane of each register)
     SimdLoadStoreSingle {
         rt: u8,
         rn: u8,
@@ -805,6 +808,8 @@ pub enum Instruction {
         q: bool,
         is_load: bool,
         post_index: bool,
+        /// Number of registers in the structure, 1 to 4. The immediate post-index is `nregs * esize / 8`.
+        nregs: u8,
     },
 
     /// `UZP1/UZP2/TRN1/TRN2/ZIP1/ZIP2`
@@ -830,13 +835,13 @@ pub enum Instruction {
         scalar: bool,
     },
 
-    /// `FCCMP/FCCMPE Sn/Dn, Sm/Dm, #nzcv, cond`: compare when `cond` holds, else set the flags to `nzcv`
+    /// `FCCMP/FCCMPE Hn/Sn/Dn, Hm/Sm/Dm, #nzcv, cond`: compare when `cond` holds, else set the flags to `nzcv`
     FpCondCompare {
         rn: u8,
         rm: u8,
         nzcv: u8,
         cond: Condition,
-        is_double: bool,
+        esize: u8,
         /// `FCCMPE`: a quiet NaN also raises `FPSR.IOC`.
         signalling: bool,
     },
@@ -1049,6 +1054,11 @@ pub enum SimdFpOp3 {
     /// `FRECPS` (`2 - n*m`) and `FRSQRTS` (`(3 - n*m) / 2`), fused
     Frecps,
     Frsqrts,
+    /// `FMLAL`/`FMLSL`/`FMLAL2`/`FMLSL2` (FEAT_FHM): FP16 -> FP32 widening fused multiply-add/sub.
+    Fmlal,
+    Fmlsl,
+    Fmlal2,
+    Fmlsl2,
 }
 
 /// AdvSIMD floating-point two-register operations: zero compares, `FABS`/`FNEG`/`FSQRT`, and the

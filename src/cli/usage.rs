@@ -3,10 +3,17 @@
 use crate::*;
 
 pub(crate) fn print_banner() {
-    println!("============================================================");
-    println!("  OUNCE-CORE: NVIDIA Tegra T239 / Horizon Research Runtime");
-    println!("  Target: ARMv8.5-A AArch64 (PAC + BTI) | Horizon OS 64-bit Microkernel");
-    println!("============================================================\n");
+    if crate::run_report::is_stdout_report() {
+        eprintln!("============================================================");
+        eprintln!("  OUNCE-CORE: ARM64 Execution & Verification Runtime");
+        eprintln!("  Target: ARMv8.5-A AArch64 | Headless & Windowed Lab");
+        eprintln!("============================================================\n");
+    } else {
+        println!("============================================================");
+        println!("  OUNCE-CORE: ARM64 Execution & Verification Runtime");
+        println!("  Target: ARMv8.5-A AArch64 | Headless & Windowed Lab");
+        println!("============================================================\n");
+    }
 }
 
 #[allow(dead_code)]

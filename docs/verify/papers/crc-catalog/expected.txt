@@ -1,0 +1,6 @@
+PASS Williams guide section 6, checksum of 1101011011: e
+PASS Williams guide section 6, remainder of 11010110111110: 0
+PASS Williams guide, CRC-16 check: bb3d
+PASS Williams guide, CRC-32 check: cbf43926
+catalogue entries with matching check and residue: 113 of 113
+PASS

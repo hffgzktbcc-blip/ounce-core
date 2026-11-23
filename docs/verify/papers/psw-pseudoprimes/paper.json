@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The pseudoprimes to 25*10^9",
+    "authors": ["Carl Pomerance", "J. L. Selfridge", "Samuel S. Wagstaff, Jr."],
+    "venue": "Mathematics of Computation 35(151), 1003-1026",
+    "year": 1980
+  },
+  "program": {
+    "source": "psw-pseudoprimes.c",
+    "how": "written for ounce-core from the definitions in the paper (pseudoprime, Euler pseudoprime with the Jacobi symbol, strong pseudoprime, Carmichael number by Korselt's criterion); sieve of Eratosthenes for the odd composites below 10^7, modular exponentiation with 64-bit arithmetic; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Table I (page 1005): the counts P2(x), E2(x), E2(x)-S2(x), S2(x) and C(x) of base-2 pseudoprimes, Euler pseudoprimes, Euler-but-not-strong pseudoprimes, strong pseudoprimes and Carmichael numbers not exceeding x equal the paper's values for x = 10^3, 10^4, 10^5, 10^6 and 10^7: 25 of 25 entries (e.g. 750, 375, 213, 162, 105 at 10^7)",
+    "Figure 1 (page 1004): the least element of each of the six regions is 341, 2821, 1905, 561, 2047 and 15841 as printed (6 of 6)",
+    "the worked example in the text: n = 2284453 = 1069 * 2137 with e = (n-1)/2 = 1142226 satisfies 2^e = 7^e = -1 (mod n), 14^e = 1 and 14^(e/2) = 4275 (mod n)"
+  ],
+  "expected_values_source": {
+    "what": "Table I, Figure 1 and the example on page 1005 of the paper, read from the scanned PDF page images and copied as numbers; the base-2 counts agree with OEIS A055550, A055551, A055552 and A055553",
+    "url": "https://math.dartmouth.edu/~carlp/PDF/paper25.pdf",
+    "fetched": "2026-11-19",
+    "note": "the PDF is a scan with no text layer, so the numbers were read from the rendered page; they were cross-checked against OEIS A055550-A055553 and, independently, by the program reproducing all 25 entries"
+  },
+  "negative_control": "built with -DPSW_BASE=3 (base 3 instead of base 2), only 1 of the 25 Table I entries still matches (the 10^4 pseudoprime count 22), none of the six Figure 1 minima match and the program exits 1",
+  "not_checked": [
+    "the rows of Table I for 10^8, 10^9, 10^10 and 25*10^9 (too slow for the 2 billion instruction default budget)",
+    "the paper's theorems, its bounds on the counting functions, the other statements in the text (such as 4369 and 4371 being the only twin base-2 pseudoprimes below 25*10^9) and its primality-testing proposals",
+    "pseudoprimes to other bases",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces 25 entries of the paper's Table I (x up to 10^7), the six minima of its Figure 1 and its worked example. It does not show the paper's larger rows."
+}

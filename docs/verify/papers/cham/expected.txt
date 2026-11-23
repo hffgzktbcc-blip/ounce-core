@@ -1,0 +1,34 @@
+PASS CHAM-64/128 paper vector: 453c63bcdcfabf4e
+PASS CHAM-64/128 reference impl #1: cedad4dc00e3800d
+PASS CHAM-64/128 reference impl #2: e1afb96f30794233
+PASS CHAM-64/128 reference impl #3: 280d763b931bda81
+PASS CHAM-64/128 reference impl #4: 027786041b158cb9
+PASS CHAM-64/128 reference impl #5: 56842bf7606d67f8
+PASS CHAM-64/128 reference impl #6: 92632bf99819783a
+PASS CHAM-64/128 reference impl #7: f810fad080f019bd
+PASS CHAM-64/128 reference impl #8: e733fd94c357d36c
+PASS CHAM-64/128 reference impl #9: 5bc22475f93f6cc8
+PASS CHAM-128/128 paper vector: c3746034b55700c58d64ec32489332f7
+PASS CHAM-128/128 reference impl #1: 30269e994d70c5de7b0bc631a96a1458
+PASS CHAM-128/128 reference impl #2: 633b6cb900b390d8d1bb84cbd84b9ccf
+PASS CHAM-128/128 reference impl #3: b2b2194481c5becf091d3c08ee6d1749
+PASS CHAM-128/128 reference impl #4: 0416aae7302a5219cd20a3b86d879c22
+PASS CHAM-128/128 reference impl #5: 36d1dd06e42c583d9aea8e5808ee2f3b
+PASS CHAM-128/128 reference impl #6: 60f3dd59406e579ee45a2191526c5693
+PASS CHAM-128/128 reference impl #7: e3f879f58b41baf88b458da704343a03
+PASS CHAM-128/128 reference impl #8: 4ff2532c66a12b2e869f476eaab2d53f
+PASS CHAM-128/128 reference impl #9: 6fd504e7091aca2e32c887183e40b4a4
+PASS CHAM-128/256 paper vector: a899c8a0c929d55cab670d380c4f7ac8
+PASS CHAM-128/256 reference impl #1: c993c6821545b60c456af36cb97628e7
+PASS CHAM-128/256 reference impl #2: 6252cf6f6524f0ed0b3a272a33827bb4
+PASS CHAM-128/256 reference impl #3: c7c15e122287fd3d45875c14629a042c
+PASS CHAM-128/256 reference impl #4: 0887e5414b68e67fa46d19ff948290b6
+PASS CHAM-128/256 reference impl #5: 3cabb22e79c7ad8ed502abf874e7d3bf
+PASS CHAM-128/256 reference impl #6: 362a9742dd8238a8d916409a4a3c11a1
+PASS CHAM-128/256 reference impl #7: 5914594ddb44ba25ac0bfc051b92a9fe
+PASS CHAM-128/256 reference impl #8: bbe95a6706b38ff2898dfda841fe29c7
+PASS CHAM-128/256 reference impl #9: 2a7dab0b6769e989615789987e4be9a7
+paper's own vectors: 3 of 3 match
+all vectors: 30 of 30 match
+decrypt round trips: 30 of 30
+PASS

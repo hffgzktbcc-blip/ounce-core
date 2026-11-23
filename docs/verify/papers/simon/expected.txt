@@ -1,0 +1,8 @@
+PASS Simon64/96: 5ca2e27f111a8fc8
+PASS Simon64/128: 44c8fc20b9dfa07a
+PASS Simon128/128: 49681b1e1e54fe3f65aa832af84e0bbc
+PASS Simon128/192: c4ac61effcdc0d4f6c9c8d6e2597b85b
+PASS Simon128/256: 8d2b5579afc8a3a03bf72a87efe7b868
+known-answer vectors: 5 of 5 match
+decrypt round trips: 5 of 5
+PASS

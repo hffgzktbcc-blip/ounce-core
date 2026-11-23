@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "RFC 4648: The Base16, Base32, and Base64 Data Encodings",
+    "authors": ["Simon Josefsson"],
+    "venue": "IETF RFC 4648 (Standards Track)",
+    "year": 2006
+  },
+  "program": {
+    "source": "base_rfc4648.c",
+    "how": "written for ounce-core from the RFC's description of the bit grouping and padding; no third-party code copied (the RFC's own C implementation in section 11 was not used)",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "The Base64, Base64url, Base32 and Base32-hex alphabets built by rule equal Tables 1 to 4 of the RFC (4 of 4)",
+    "All 28 test vectors of section 10 (Base64, Base32, Base32-hex, Base16; the inputs \"\", f, fo, foo, foob, fooba, foobar) encode to the published strings (28 of 28) and decode back to the inputs (28 of 28)",
+    "The three Base64 worked examples of section 9 (0x14fb9c03d97e, 0x14fb9c03d9, 0x14fb9c03 -> FPucA9l+, FPucA9k=, FPucAw==) (3 of 3)"
+  ],
+  "expected_values_source": {
+    "what": "the alphabet tables (section 4 to 7), the worked examples (section 9) and the test vectors (section 10) of RFC 4648; vectors.inc is generated from the fetched RFC text by a script, not typed",
+    "url": "https://www.rfc-editor.org/rfc/rfc4648.txt",
+    "fetched": "2026-11-19",
+    "note": "the Base64url table in the RFC text shows its last two characters as '- (minus)' and '_ (underline)'; those two were set by hand in the generator"
+  },
+  "negative_control": "built with -DNEG=1 (pad with '.' instead of '='), 14 of the 28 encodings are wrong (the encode counts drop to base64 3/7, base32 2/7, base32hex 2/7), 2 of the 3 worked examples fail and the program exits 1; with -DNEG=2 (value 62 is '-' instead of '+') the alphabet comparison and one worked example fail",
+  "not_checked": [
+    "the RFC's rules for rejecting non-alphabet characters, line breaks and non-canonical padding bits (only valid inputs are decoded)",
+    "the 'canonical encoding' discussion of section 3.5 and the security considerations",
+    "speed (emulator run time says nothing about real hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the RFC's published encodings of the section 10 vectors and section 9 examples in both directions. It does not show that the encoder handles every input."
+}

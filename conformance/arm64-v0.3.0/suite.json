@@ -1,0 +1,259 @@
+{
+  "schema": "ounce-core/conformance-v2",
+  "version": "0.3.0",
+  "license": "MIT",
+  "scope": "Twelve measured single-instruction floating-point register-state cases with non-default FPCR inputs (RMode, FZ, DN, FZ16); not ISA certification or independent validation.",
+  "comparison": {
+    "x_excluded": [
+      18
+    ],
+    "v": "all 32 registers, raw 128-bit values",
+    "nzcv": "all four bits",
+    "fpsr_mask": "08000000",
+    "fpcr_input": "per-case non-default FPCR (TF trace format)",
+    "fpsr_input": "00000000",
+    "pc_sp_memory": "not compared"
+  },
+  "cases": [
+    {
+      "id": "rmode-rp-6eb2ece0",
+      "path": "cases/rmode-rp-6eb2ece0.trace",
+      "sha256": "00f2bc5c44d00a1ca71de7beb34e628da3afd2c3c607fa2f603b40eb38a46a5d",
+      "word": "6eb2ece0",
+      "fpcr": "00400000",
+      "fpcr_mode": "rmode-rp",
+      "instruction": "facgt.4s v0, v7, v18",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 179)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "rmode-rm-0e21b979",
+      "path": "cases/rmode-rm-0e21b979.trace",
+      "sha256": "09034ccaeb122f78fb824bf5ed1b3f15c9ed476fbba7a3b278c863d25c952467",
+      "word": "0e21b979",
+      "fpcr": "00800000",
+      "fpcr_mode": "rmode-rm",
+      "instruction": "fcvtms.2s v25, v11",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 26)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "rmode-rz-6ee1fb4d",
+      "path": "cases/rmode-rz-6ee1fb4d.trace",
+      "sha256": "6de37177be45d9c1ca809ce8373bd231bb890cec2d441d183eae4a5f78679f2f",
+      "word": "6ee1fb4d",
+      "fpcr": "00c00000",
+      "fpcr_mode": "rmode-rz",
+      "instruction": "fsqrt.2d v13, v26",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 9)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "fz-4ee18aec",
+      "path": "cases/fz-4ee18aec.trace",
+      "sha256": "6e3c27195a7edc5bf37efa901c160c452d8269e841db7c570a97b1ac95568d12",
+      "word": "4ee18aec",
+      "fpcr": "01000000",
+      "fpcr_mode": "fz",
+      "instruction": "frintp.2d v12, v23",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 44)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "dn-6ea0daa8",
+      "path": "cases/dn-6ea0daa8.trace",
+      "sha256": "ab201ff327ff5c76fe88da80de9e0f03030a074f835deae8e7c17f3594be54bc",
+      "word": "6ea0daa8",
+      "fpcr": "02000000",
+      "fpcr_mode": "dn",
+      "instruction": "fcmle.4s v8, v21, #0.0",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 144)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "fz-dn-1f43e4ef",
+      "path": "cases/fz-dn-1f43e4ef.trace",
+      "sha256": "674ea588d26be77fa57c44c0b23826807c29e26ef9459b27a1e6d790467bb535",
+      "word": "1f43e4ef",
+      "fpcr": "03000000",
+      "fpcr_mode": "fz-dn",
+      "instruction": "fmsub d15, d7, d3, d25",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 372)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "fz-dn-rz-4e217940",
+      "path": "cases/fz-dn-rz-4e217940.trace",
+      "sha256": "43f89ca49183d5a2dcfbe0771b8d034da49ab1f752440df444c78626e0ee4b20",
+      "word": "4e217940",
+      "fpcr": "03c00000",
+      "fpcr_mode": "fz-dn-rz",
+      "instruction": "fcvtl2 v0.4s, v10.8h",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 140)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "fz16-1fc1b5bf",
+      "path": "cases/fz16-1fc1b5bf.trace",
+      "sha256": "0e1e2d6620229e358e81ac2a21e44ca84ff1492ae45479bce2d7cbe18d4e6a2a",
+      "word": "1fc1b5bf",
+      "fpcr": "00080000",
+      "fpcr_mode": "fz16",
+      "instruction": "fmsub h31, h13, h1, h13",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 217)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "fz-dn-fz16-rz-1fca8937",
+      "path": "cases/fz-dn-fz16-rz-1fca8937.trace",
+      "sha256": "ecf8acf1f779f97ce532fb480bd1a70d3f92bca00b23024b05357810cb775ea5",
+      "word": "1fca8937",
+      "fpcr": "03c80000",
+      "fpcr_mode": "fz-dn-fz16-rz",
+      "instruction": "fmsub h23, h9, h10, h2",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 776)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "rmode-rp-2e3ffc7d",
+      "path": "cases/rmode-rp-2e3ffc7d.trace",
+      "sha256": "260ade74a1528a7b925e26c19c86b76e2b150295fed9b5fd4268e758ba3f5fd8",
+      "word": "2e3ffc7d",
+      "fpcr": "00400000",
+      "fpcr_mode": "rmode-rp",
+      "instruction": "fdiv.2s v29, v3, v31",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 188)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "fz-4e73c4cc",
+      "path": "cases/fz-4e73c4cc.trace",
+      "sha256": "e03c4af9a13dbe20848c83bbd478b4f2a8571c04325053d9bb24d29dfd11524a",
+      "word": "4e73c4cc",
+      "fpcr": "01000000",
+      "fpcr_mode": "fz",
+      "instruction": "fmaxnm.2d v12, v6, v19",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 121)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    },
+    {
+      "id": "dn-6e21a80d",
+      "path": "cases/dn-6e21a80d.trace",
+      "sha256": "680ae07df7374f86784a3757ada290ed5bae0b289aeaedb26561ba52a3cb0642",
+      "word": "6e21a80d",
+      "fpcr": "02000000",
+      "fpcr_mode": "dn",
+      "instruction": "fcvtnu.4s v13, v0",
+      "reference": {
+        "kind": "Apple Silicon hardware capture",
+        "generator": "docs/verify/insn-fuzzer/fuzz_host.c --seed 1 --count 6000 --fpcr-mix (trace line 262)",
+        "generator_sha256": "b8376ab980821fa74ba5e7c700f838a1dfcb5bcf86a37dd02481a573276798a0",
+        "host": "Apple M3",
+        "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+        "capture_date_utc": "2026-11-20T14:01:07Z",
+        "compiler": "Apple clang version 21.0.0 (clang-2100.4.1.1)",
+        "command": "cc -O1 -Wall -Wextra -o /tmp/fuzz-host-v030 docs/verify/insn-fuzzer/fuzz_host.c",
+        "summary": "fuzz_host seed=1 words=6000 executed=2428 undefined(SIGILL)=3572"
+      }
+    }
+  ]
+}

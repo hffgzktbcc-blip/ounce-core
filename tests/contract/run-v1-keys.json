@@ -14,7 +14,11 @@
     "sp": ["null", "number"],
     "opcode": ["null", "number"],
     "fault_addr": ["null", "number"],
+    "fault_symbol": ["null", "string"],
+    "backtrace": ["null", "string"],
     "svc_id": ["null", "number"],
+    "sm_service": ["null", "string"],
+    "cmif_cmd_id": ["null", "number"],
     "break_result": ["null", "number"],
     "insns_executed": ["number"],
     "frames_presented": ["number"],
@@ -41,5 +45,5 @@
     "window_closed": "needs a host window (--gui) that a test runner does not have",
     "cpu_halted": "nothing constructs StepResult::Halt in this tree, so no program can produce it"
   },
-  "added_after_v0_9_0": ["frames_presented", "framebuffer_hash", "lr", "sp", "audio_frames_mixed", "audio_hash", "guest_exit_status"]
+  "added_after_v0_9_0": ["frames_presented", "framebuffer_hash", "lr", "sp", "fault_symbol", "backtrace", "sm_service", "cmif_cmd_id", "audio_frames_mixed", "audio_hash", "guest_exit_status"]
 }

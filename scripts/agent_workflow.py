@@ -18,7 +18,7 @@ def git(*args):
     return subprocess.check_output(['git', *args], text=True).strip()
 
 
-def tasks(path=Path('PLAN.md')):
+def tasks(path=Path('docs/PLAN.md')):
     result = {}
     current = None
     for line in path.read_text().splitlines():
@@ -96,7 +96,7 @@ def done_search(args):
         log = merged_commits_citing(ref, needle, pattern)
         if log:
             print('Merged commits:\n' + log)
-        for name in ['CHANGELOG.md', 'PLAN.md', 'docs/history/PLAN-COMPLETED.md', 'docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md',
+        for name in ['CHANGELOG.md', 'docs/PLAN.md', 'docs/history/PLAN-COMPLETED.md', 'docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md',
                      'docs/roadmap/milestones.json', *sorted(str(p) for p in Path('docs/releases').glob('*.md'))]:
             path = Path(name)
             if not path.is_file():
@@ -119,7 +119,7 @@ def next_task(args):
     plan = tasks()
     if args.step:
         if args.step not in plan:
-            raise ValueError(f'unknown task {args.step}; see PLAN.md')
+            raise ValueError(f'unknown task {args.step}; see docs/PLAN.md')
         selected = plan[args.step]
     else:
         selected = next((task for task in plan.values() if ready(task, plan)), None)
@@ -132,7 +132,7 @@ def next_task(args):
         for detail in selected['details']:
             print(f'  {detail}')
     else:
-        print('\nNo ready task in PLAN.md. Other open work lives in open PRs and issues and in docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md; check scripts/done.sh before picking anything. Do not repeat completed work.')
+        print('\nNo ready task in docs/PLAN.md. Other open work lives in open PRs and issues and in docs/roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md; check scripts/done.sh before picking anything. Do not repeat completed work.')
     merged = recent_merged(8)
     if merged:
         print(f'\nRecently merged ({main_ref()}; run `git fetch` first for the latest). Check before starting work:')

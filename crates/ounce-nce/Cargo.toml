@@ -6,5 +6,8 @@ description = "Native code execution (NCE) for ounce-core on AArch64 hosts: gues
 license = "MIT"
 publish = false
 
+[lints]
+workspace = true
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.191"

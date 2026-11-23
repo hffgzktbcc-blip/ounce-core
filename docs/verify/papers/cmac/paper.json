@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The AES-CMAC Algorithm (RFC 4493; CMAC is the OMAC1 One-Key CBC-MAC of Iwata and Kurosawa, FSE 2003)",
+    "authors": ["Junhyuk Song", "Radha Poovendran", "Jicheol Lee", "Tetsu Iwata"],
+    "venue": "IETF RFC 4493",
+    "year": 2006
+  },
+  "program": {
+    "source": "cmac.c",
+    "how": "written for ounce-core from the algorithm in RFC 4493 section 2 and FIPS 197 AES (S-box computed by GF(2^8) inversion, AES-128/192/256 key schedules); no third-party code copied (the RFC's Appendix A test code was not used)",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "RFC 4493 Section 4: AES-128(K,0), subkeys K1 and K2, and the four tags (messages of 0, 16, 40 and 64 bytes) reproduce (7 of 7 values)",
+    "NIST's published CMAC examples for AES-128, AES-192 and AES-256 (4 messages each: 0, 16, 20, 64 bytes): for each of the 12 examples the intermediate L = AES_K(0), the printed subkey (K1 or K2) and the tag match (36 of 36 values)"
+  ],
+  "expected_values_source": {
+    "what": "RFC 4493 section 4 test vectors, and the NIST 'Block Cipher Modes of Operation: CMAC Mode for Authentication' example file (aes_cmac.pdf, parts CMAC-AES128/192/256), both parsed mechanically from the fetched texts",
+    "url": "https://www.rfc-editor.org/rfc/rfc4493.txt ; https://csrc.nist.gov/csrc/media/projects/cryptographic-standards-and-guidelines/documents/examples/aes_cmac.pdf",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers. The 128-bit RFC and NIST examples share keys and several messages; the 192/256-bit examples and the 20-byte message are only in the NIST file. The Iwata-Kurosawa paper itself was not fetched"
+  },
+  "negative_control": "built with -DCMAC_RB=0x86 (field constant 0x86 instead of 0x87), 28 of 43 values match (the AES(K,0) values and tags of messages whose subkey path is unaffected) and the program exits 1; check.sh reports NOT REPRODUCED",
+  "not_checked": [
+    "the security proofs of OMAC/CMAC, or any cryptanalysis",
+    "values printed in the Iwata-Kurosawa FSE 2003 paper (not fetched)",
+    "truncated tags, messages longer than 64 bytes or not of the listed lengths, and the TDEA CMAC examples in the NIST file",
+    "speed figures (emulator run time says nothing about any hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the values printed in RFC 4493 and in NIST's CMAC examples for the 16 listed message/key combinations. It does not show CMAC is secure."
+}

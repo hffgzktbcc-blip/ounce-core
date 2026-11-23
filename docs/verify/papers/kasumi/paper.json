@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "3GPP TS 35.202, Specification of the 3GPP Confidentiality and Integrity Algorithms; Document 2: KASUMI Specification (Release 16), with TS 35.203 Implementors' Test Data",
+    "authors": [
+      "3GPP / ETSI SAGE (algorithm designed on the basis of MISTY1)"
+    ],
+    "venue": "ETSI TS 135 202 and TS 135 203 V16.0.0, August 2020",
+    "year": 2020
+  },
+  "program": {
+    "source": "kasumi.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "KASUMI (8-round Feistel with FL, FO and FI, S7/S9 tables, key schedule with the C1-C8 constants) written from TS 35.202 reproduces TS 35.203 test sets 1-3: for each, all 64 round subkeys, every FL input/output (8), FO input/output (8), FI input/key/output (24 calls) and every FI 7-bit and 9-bit data-path value (24 calls x 12), plus the 64-bit output: 474 published values per set, 1,422 in all",
+    "Test set 4 (50 chained encryptions meant to touch every S-box entry) gives the published 738BAD4C4A690802",
+    "The specification's two worked S-box examples S7[38] = 58 and S9[138] = 339"
+  ],
+  "expected_values_source": {
+    "what": "3GPP TS 35.202 (S-box tables, key constants, structure) and TS 35.203 (test sets with intermediate values)",
+    "url": "https://www.etsi.org/deliver/etsi_ts/135200_135299/135202/16.00.00_60/ts_135202v160000p.pdf and https://www.etsi.org/deliver/etsi_ts/135200_135299/135203/16.00.00_60/ts_135203v160000p.pdf",
+    "fetched": "2026-11-20",
+    "note": "tables and test values were extracted from the PDF text by script and compiled in as data; the program was written from the specification text. Only the KASUMI block cipher is checked, not the f8/f9 modes in TS 35.203 sections 4 and 5, and not the S-box gate-logic equations"
+  },
+  "negative_control": "built with -DKAS_CFLIP=1 (the low bit of every key-schedule constant flipped), 1,262 of 1,425 compared values mismatch, test set 4 fails and the program exits 1",
+  "not_checked": [
+    "the f8 (confidentiality) and f9 (integrity) algorithms and their test data, which use KASUMI as a building block",
+    "the S-box tables against the gate-logic formulas given beside them (only the two worked examples)",
+    "security claims of KASUMI (including published attacks on it) and speed",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 1,425 values the 3GPP KASUMI specification and its test data publish. It does not show the security claims hold."
+}

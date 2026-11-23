@@ -1,0 +1,4 @@
+Mersenne exponents found by Lucas-Lehmer for odd primes p <= 1300: 2 3 5 7 13 17 19 31 61 89 107 127 521 607 1279
+odd primes tested: 210
+exponents found: 15, published (OEIS A000043, <= 1300): 15
+PASS exponent list identical to A000043

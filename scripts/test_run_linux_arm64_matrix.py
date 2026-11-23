@@ -186,7 +186,7 @@ class OriginalWorkloadManifestTests(unittest.TestCase):
         self.original = [h for h in matrix.select_harnesses(manifest) if h['name'].startswith('elf-')]
 
     def test_original_workloads_have_provenance_and_sources(self):
-        self.assertGreaterEqual(len(self.original), 17)
+        self.assertGreaterEqual(len(self.original), 23)
         readme = (VERIFY / 'elf-workloads' / 'README.md').read_text(encoding='utf-8')
         for h in self.original:
             name = h['name']
@@ -200,7 +200,7 @@ class OriginalWorkloadManifestTests(unittest.TestCase):
 
     def test_selected_harness_total_does_not_shrink(self):
         manifest = json.loads((VERIFY / 'differential.json').read_text(encoding='utf-8'))
-        self.assertGreaterEqual(len(matrix.select_harnesses(manifest)), 45)
+        self.assertGreaterEqual(len(matrix.select_harnesses(manifest)), 51)
 
 
 if __name__ == '__main__':

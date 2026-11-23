@@ -1,0 +1,24 @@
+floats tested in [1, 4): 1048576
+InvSqrt, R = 0x5F37642F, no iteration
+  ok: max |relative error| (paper (2.22): 0.03421281) = 3.421e-2, paper 3.421e-2
+--- extended-precision intermediates (emulating the paper's 32-bit x87 build) ---
+InvSqrt, R = 0x5F375A86 (paper (2.26))
+  ok: max |relative error| after 1 iteration (1.75118e-3) = 1.751e-3, paper 1.751e-3
+  ok: max |relative error| after 2 iterations (4.60e-6) = 4.653e-6, paper 4.600e-6
+InvSqrt1, 2 iterations (paper (7.1): -6.62e-7 .. 6.35e-7)
+  ok: lowest error = 6.610e-7, paper 6.620e-7
+  ok: highest error = 6.340e-7, paper 6.350e-7
+InvSqrt2, 2 iterations (paper (7.5): -6.21e-7 .. 6.53e-7)
+  ok: lowest error = 6.194e-7, paper 6.210e-7
+  ok: highest error = 6.528e-7, paper 6.530e-7
+after 1 iteration only (paper: InvSqrt1 +-8.76e-4, InvSqrt2 +-8.79e-4)
+  ok: InvSqrt1 max |error| = 8.764e-4, paper 8.760e-4
+  ok: InvSqrt2 max |error| = 8.792e-4, paper 8.790e-4
+InvSqrt / InvSqrt2 error ratio after 2 iterations = 7.128e0 (paper: about 7)
+  ok: ratio between 6 and 8
+--- strict binary32 arithmetic (SSE/aarch64 float, no extended intermediates) ---
+(the paper: a 64-bit build has error oscillations larger by about 1e-7)
+InvSqrt1 2-iteration error range width: extended 1.295e-6, strict 1.446e-6, difference 1.506e-7
+InvSqrt2 2-iteration error range width: extended 1.272e-6, strict 1.431e-6, difference 1.588e-7
+  ok: strict float is wider by about 1e-7 as the paper says
+PASS

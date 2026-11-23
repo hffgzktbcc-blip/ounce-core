@@ -1,0 +1,10 @@
+BLAKE2b unkeyed: 256 of 256 match
+BLAKE2b keyed: 256 of 256 match
+BLAKE2s unkeyed: 256 of 256 match
+BLAKE2s keyed: 256 of 256 match
+BLAKE2bp unkeyed: 256 of 256 match
+BLAKE2bp keyed: 256 of 256 match
+BLAKE2sp unkeyed: 256 of 256 match
+BLAKE2sp keyed: 256 of 256 match
+total: 2048 of 2048 match
+PASS

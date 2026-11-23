@@ -1,0 +1,11 @@
+PASS RFC 3720 B.4, 32 bytes of zeroes   : aa36918a
+PASS   residue over segment + its CRC: 1c2d19ed
+PASS RFC 3720 B.4, 32 bytes of ones     : 43aba862
+PASS   residue over segment + its CRC: 1c2d19ed
+PASS RFC 3720 B.4, 32 bytes 00..1f      : 4e79dd46
+PASS   residue over segment + its CRC: 1c2d19ed
+PASS RFC 3720 B.4, 32 bytes 1f..00      : 5cdb3f11
+PASS   residue over segment + its CRC: 1c2d19ed
+PASS RFC 3720 B.4, SCSI Read(10) PDU    : 563a96d9
+PASS   residue over segment + its CRC: 1c2d19ed
+PASS

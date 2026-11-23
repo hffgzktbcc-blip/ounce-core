@@ -1,15 +1,15 @@
-# Start here: five steps for a first-time reader
+# Understand Ounce-Core in five browser-only steps
 
-You only need a browser for steps 1 to 5.
+You can explore the project and propose a documentation fix without installing anything. A hardware reproduction requires additional tools and a suitable machine.
 
-1. **What it is.** Ounce-Core is an open-source ARM64 execution and verification lab in safe
-   Rust: it runs selected programs on several CPU engines and checks the results against real
-   hardware. Read [the vision](../VISION.md). It is not a general emulator and does not run
-   arbitrary ARM64 or Linux applications.
-2. **Inspect one bounded result.** Open [docs/verify](../verify/README.md) and pick a harness
-   such as LZ4. Each one says which inputs were compared and what matched. A result that exists
-   is evidence for those inputs only. A capability listed under "Roadmap" is a proposal, not a
-   result.
+1. **See what Ounce-Core does.** It runs selected ARM64 programs on multiple CPU engines,
+   compares their results with recorded references and helps developers investigate differences.
+   Read [the latest release](../releases/v0.10.0.md) and [vision](../VISION.md). It does not
+   run arbitrary ARM64 or Linux applications.
+2. **Inspect one real bug.** Read [why Lua calculated the wrong answer](LUA_FP_BUG_WALKTHROUGH.md):
+   it shows the initial mismatch, the fix and the recorded hardware-reference check. Or choose
+   a harness from [docs/verify](../verify/README.md) for more detail. Each recorded result applies
+   only to its stated inputs; a roadmap item is a proposal, not a passed test.
 3. **See the limits.** [LIMITS.md](../LIMITS.md) says, for each claim, what it does not prove,
    and gives the four maturity labels. Unfamiliar word? Try the [glossary](GLOSSARY.md).
 4. **Choose a first task.** Browse the open

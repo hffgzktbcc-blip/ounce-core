@@ -149,7 +149,7 @@ jobs:
 
 
       - name: Prebuild two-engine diagnostic test
-        run: cargo test --release --locked external_corpus_nro_probe_both_engines --no-run --message-format=json > "$RUNNER_TEMP/ounce-corpus-test-build.jsonl"
+        run: cargo test --release --locked --lib external_corpus_nro_probe_both_engines --no-run --message-format=json > "$RUNNER_TEMP/ounce-corpus-test-build.jsonl"
 
       - name: Probe all samples under interpreter and Tier-3
         env:
@@ -175,7 +175,7 @@ jobs:
           executables = {m["executable"] for m in messages
               if m.get("reason") == "compiler-artifact"
               and m.get("profile", {}).get("test")
-              and m.get("target", {}).get("name") == "ounce-core"
+              and m.get("target", {}).get("name") in ("ounce-core", "ounce_core")
               and m.get("executable")}
           if len(executables) != 1:
               raise SystemExit("Expected one compiled ounce-core test executable")
@@ -283,7 +283,7 @@ jobs:
              "$src/fs/romfs/romfs.nro" "$src/templates/application/application.nro" "$RUNNER_TEMP/oracle-nros/"
           sha256sum "$RUNNER_TEMP"/oracle-nros/*.nro
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: oracle-nros
           path: ${{ runner.temp }}/oracle-nros/
@@ -291,7 +291,7 @@ jobs:
 
       - name: Retain diagnostic evidence (no upstream source or NRO binaries)
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: external-corpus-probe
           path: ${{ runner.temp }}/ounce-corpus-evidence/
@@ -389,7 +389,7 @@ jobs:
                   shutil.copy2(builds / rel, out / rel)
           PY
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.corpus-nros.outcome == 'success' }}
         with:
           name: corpus-nros
@@ -398,7 +398,7 @@ jobs:
 
       - name: Retain oracle evidence (no upstream source or NRO binaries)
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: first-frame-oracles
           path: ${{ runner.temp }}/ounce-verify/evidence/
@@ -407,7 +407,7 @@ jobs:
 
       - name: Upload Ounce-Verify canonical report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ounce-verify-canonical-report
           path: ${{ runner.temp }}/ounce-verify/evidence/canonical-report.json
@@ -463,7 +463,7 @@ jobs:
 
       - name: Retain native evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-oracle-evidence
           path: ${{ runner.temp }}/native-evidence/
@@ -500,7 +500,7 @@ jobs:
           path: ${{ runner.temp }}/ounce-oracle-builds
 
       - name: Build oracle tests with nce
-        run: cargo test --release --locked --features nce corpus_first_frame_oracle --no-run --message-format=json > "$RUNNER_TEMP/build.jsonl"
+        run: cargo test --release --locked --lib --features nce corpus_first_frame_oracle --no-run --message-format=json > "$RUNNER_TEMP/build.jsonl"
 
       - name: Corpus oracles under --cpu=native
         run: |
@@ -509,7 +509,7 @@ jobs:
           import json, sys
           paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
                    if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
-                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
+                   and m.get("target", {}).get("name") in ("ounce-core", "ounce_core") and m.get("executable")}
           assert len(paths) == 1, paths
           print(paths.pop())' "$RUNNER_TEMP/build.jsonl")
           sysctl -n machdep.cpu.brand_string
@@ -522,7 +522,7 @@ jobs:
 
       - name: Retain native corpus evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-corpus-oracle-evidence
           path: ${{ runner.temp }}/native-corpus-evidence/
@@ -565,7 +565,7 @@ jobs:
           name: corpus-nros
           path: ${{ runner.temp }}/soak-nros
       - name: Build the soak test
-        run: cargo test --release --locked corpus_soak --no-run --message-format=json > "$RUNNER_TEMP/soak-build.jsonl"
+        run: cargo test --release --locked --lib corpus_soak --no-run --message-format=json > "$RUNNER_TEMP/soak-build.jsonl"
       - name: Soak smoke
         run: |
           set -euo pipefail
@@ -573,14 +573,14 @@ jobs:
           import json, sys
           paths = {m["executable"] for m in map(json.loads, open(sys.argv[1]))
                    if m.get("reason") == "compiler-artifact" and m.get("profile", {}).get("test")
-                   and m.get("target", {}).get("name") == "ounce-core" and m.get("executable")}
+                   and m.get("target", {}).get("name") in ("ounce-core", "ounce_core") and m.get("executable")}
           assert len(paths) == 1, paths
           print(paths.pop())' "$RUNNER_TEMP/soak-build.jsonl")
           python3 scripts/soak_corpus.py --smoke --ids "${{ matrix.id }}" --executable "$executable" \
             --builds "$RUNNER_TEMP/soak-nros" --evidence "$RUNNER_TEMP/soak-evidence"
       - name: Retain soak evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: corpus-soak-smoke-${{ matrix.id }}
           path: ${{ runner.temp }}/soak-evidence/
@@ -622,7 +622,7 @@ jobs:
           name: corpus-nros
           path: ${{ runner.temp }}/interaction-nros
       - name: Compile the interaction adapter
-        run: cargo test --release --locked --features gpu-present --no-run --message-format=json > "$RUNNER_TEMP/interaction-build.jsonl"
+        run: cargo test --release --locked --lib --features gpu-present --no-run --message-format=json > "$RUNNER_TEMP/interaction-build.jsonl"
       - name: Drive the unchanged menu into Triangle with bounded execution
         shell: bash
         env:
@@ -638,7 +638,7 @@ jobs:
           executables = {m["executable"] for m in messages
               if m.get("reason") == "compiler-artifact"
               and m.get("profile", {}).get("test")
-              and m.get("target", {}).get("name") == "ounce-core"
+              and m.get("target", {}).get("name") in ("ounce-core", "ounce_core")
               and m.get("executable")}
           if len(executables) != 1:
               raise SystemExit("Expected one compiled ounce-core test executable")
@@ -658,7 +658,7 @@ jobs:
           PY
       - name: Retain separate interaction evidence, including failures
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: interaction-triangle-${{ matrix.os }}
           path: ${{ runner.temp }}/interaction-evidence/
@@ -711,7 +711,7 @@ jobs:
             | tee "$RUNNER_TEMP/guest-gpu-oracle.log"
       - name: Retain host-execution evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: guest-host-gpu-${{ matrix.os }}
           path: ${{ runner.temp }}/guest-gpu-*.log

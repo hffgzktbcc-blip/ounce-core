@@ -1,0 +1,35 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The Art of Computer Programming, Volume 2: Seminumerical Algorithms, 3rd edition, Section 3.6 (ran_array, 2002 revision of ran_start)",
+    "authors": [
+      "Donald E. Knuth"
+    ],
+    "venue": "book (Addison-Wesley, 3rd ed.; the 2002 generator code is published on the author's site); not a journal or conference paper",
+    "year": 2002
+  },
+  "program": {
+    "source": "knuth-ran-array.c",
+    "how": "written for ounce-core from the lagged-Fibonacci recurrence y[n] = (y[n-100] - y[n-37]) mod 2^30; the ran_start seeding (polynomial squaring and reduction, 'multiply by z', 70-stream separation, 10 warm-up calls) was re-implemented from the author's published reference program rng.c, because the book's text for exercise 3.6-15 was not available; no code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "after ran_start(310952), 2009 calls of ran_array(a, 1009) leave ran_x[0] = 995235265, and 1009 calls of ran_array(a, 2009) after a fresh ran_start(310952) leave the same value (the value the author's program prints and says agrees with the book)"
+  ],
+  "expected_values_source": {
+    "what": "the value 995235265 in the comments of main() in the author's rng.c ('this main program corrected on 14 September 2019 to agree with TAOCP')",
+    "url": "https://www-cs-faculty.stanford.edu/~knuth/programs/rng.c",
+    "fetched": "2026-11-19",
+    "note": "the value is data, copied as a number; the author's code was read to learn the seeding and was not copied. This is a single published number (checked through two call patterns that, with this generator, consume the same total of 2027081 terms), so it is the thinnest check in this series; it still exercises the whole seeding and about 4 million recurrence steps. The book itself was not fetched"
+  },
+  "negative_control": "built with -DKNUTH_LL=38 (short lag 38 instead of 37), the program prints 00000000 instead of 3b5215c1 for both call patterns and exits 1 (checked on ounce-core Tier-3 and natively; a broken lag collapses the seeded state to zero, which is a failure, not a near miss)",
+  "not_checked": [
+    "the statistical quality of ran_array and the book's theory of lagged-Fibonacci generators",
+    "the original 1997 initialisation (the 2002 code is not backwards compatible with it)",
+    "ran_arr_next / ran_arr_cycle and the 1009-term quality buffering",
+    "any seed other than 310952",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the one value the author publishes for his reference program. It does not show the generator is statistically good."
+}

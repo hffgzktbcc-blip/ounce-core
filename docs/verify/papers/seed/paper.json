@@ -1,0 +1,38 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The SEED Encryption Algorithm (RFC 4269; the cipher is the KISA/TTA standard TTAS.KO-12.0004, 1998)",
+    "authors": [
+      "Hyangjin Lee",
+      "Sungjae Lee",
+      "Jaeho Yoon",
+      "Donghyeon Cheon",
+      "Jaeil Lee"
+    ],
+    "venue": "IETF RFC 4269 (Informational), December 2005",
+    "year": 2005
+  },
+  "program": {
+    "source": "seed.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "SEED (16-round Feistel, function G from the S-boxes S0/S1 and four masks, three-layer F, key schedule with KC1..KC16) written from RFC 4269 reproduces all four Appendix B test vectors: for each, all 16 pairs of round subkeys (Ki0, Ki1), all 16 states (L0, L1, R0, R1) at the start of each round, and the ciphertext (384 intermediate 32-bit words plus 4 ciphertexts)",
+    "The four extended SS-boxes of Appendix A.2 (1,024 entries) equal what the S0/S1 definition and masks give"
+  ],
+  "expected_values_source": {
+    "what": "RFC 4269 Appendix A (S0, S1, SS0-SS3), section 2.3 (KC table) and Appendix B (test vectors with intermediate values)",
+    "url": "https://www.rfc-editor.org/rfc/rfc4269.txt",
+    "fetched": "2026-11-19",
+    "note": "tables and vectors were copied as data by script from the fetched text; the program was written from the RFC's description. The Korean TTA standard itself was not fetched"
+  },
+  "negative_control": "built with -DSEED_M0=0xFD (mask m0 of function G changed from 0xFC), 512 of the 1,024 SS-box entries differ, 0 of 4 vectors match and the program exits 1",
+  "not_checked": [
+    "the cipher's security claims (the RFC only says no problem has been found) and the CRYPTREC evaluation",
+    "decryption (the RFC defines it as reversed subkey order; it is not exercised), other keys than the four, and modes or the OIDs of section 2.5",
+    "speed (emulator run time says nothing about any hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the subkeys, round states and ciphertexts RFC 4269 publishes for its four test vectors. It does not show the security claims hold."
+}

@@ -11,6 +11,12 @@ pub fn set_report_path(path: PathBuf) {
     let _ = REPORT_JSON_PATH.set(path);
 }
 
+/// Returns `true` when `--report-json=-` is configured so callers route diagnostics to `stderr`
+/// and keep `stdout` pure JSON.
+pub fn is_stdout_report() -> bool {
+    REPORT_JSON_PATH.get().is_some_and(|p| p == std::path::Path::new("-"))
+}
+
 pub fn set_audio_null(enabled: bool) {
     let _ = AUDIO_NULL.set(enabled);
 }
@@ -40,7 +46,15 @@ pub struct RunReport {
     pub sp: Option<u64>,
     pub opcode: Option<u32>,
     pub fault_addr: Option<u64>,
+    /// Resolved ELF symbol (`name` or `name+0xoff`) at `pc` on fault stops (#475).
+    pub fault_symbol: Option<String>,
+    /// Bounded AArch64 `X29`/`LR` frame-pointer chain (up to 16 frames) on fault/break stops (#475).
+    pub backtrace: Option<String>,
     pub svc_id: Option<u32>,
+    /// Last requested `sm` service name (or unimplemented HIPC interface) on `unhandled_svc` (exit 14) (#475).
+    pub sm_service: Option<String>,
+    /// Last dispatched CMIF command ID (or unimplemented HIPC command ID) on `unhandled_svc` (exit 14) (#475).
+    pub cmif_cmd_id: Option<u32>,
     pub break_result: Option<u32>,
     pub insns_executed: u64,
     pub frames_presented: u64,
@@ -87,7 +101,11 @@ pub fn to_json(report: &RunReport) -> serde_json::Value {
         "sp": report.sp,
         "opcode": report.opcode,
         "fault_addr": report.fault_addr,
+        "fault_symbol": report.fault_symbol,
+        "backtrace": report.backtrace,
         "svc_id": report.svc_id,
+        "sm_service": report.sm_service,
+        "cmif_cmd_id": report.cmif_cmd_id,
         "break_result": report.break_result,
         "insns_executed": report.insns_executed,
         "frames_presented": report.frames_presented,
@@ -99,12 +117,66 @@ pub fn to_json(report: &RunReport) -> serde_json::Value {
     })
 }
 
-/// Write `ounce.run.v1` JSON to the `--report-json` path if configured.
+/// Maximum number of frames walked along the AArch64 `X29`/`LR` frame-pointer chain (#475).
+pub const MAX_BACKTRACE_FRAMES: usize = 16;
+
+/// Walks up to `MAX_BACKTRACE_FRAMES` along the AArch64 AAPCS64 frame-pointer chain (`[x29] = prev_fp`,
+/// `[x29 + 8] = saved_lr`) starting at `pc`, formatting each frame as `0x<addr>` or `0x<addr> (<symbol>)`.
+pub fn format_backtrace<F>(pc: u64, lr: u64, mut fp: u64, mmu: &crate::mmu::Memory, mut resolve: F) -> Option<String>
+where
+    F: FnMut(u64) -> Option<String>,
+{
+    let mut frames = Vec::with_capacity(MAX_BACKTRACE_FRAMES);
+    let fmt_frame = |addr: u64, sym: Option<String>| match sym {
+        Some(s) => format!("{addr:#x} ({s})"),
+        None => format!("{addr:#x}"),
+    };
+    frames.push(fmt_frame(pc, resolve(pc)));
+
+    let mut walked_fp = false;
+    while frames.len() < MAX_BACKTRACE_FRAMES && fp != 0 && fp & 7 == 0 {
+        let Ok(next_fp) = mmu.read_u64(fp) else { break };
+        let Ok(saved_lr) = mmu.read_u64(fp.wrapping_add(8)) else {
+            break;
+        };
+        if saved_lr == 0 {
+            break;
+        }
+        walked_fp = true;
+        // Return address points to the instruction after BL/BLR; resolve saved_lr.saturating_sub(4) when non-zero.
+        let call_site = saved_lr.saturating_sub(4);
+        frames.push(fmt_frame(saved_lr, resolve(call_site).or_else(|| resolve(saved_lr))));
+        if next_fp == 0 || next_fp <= fp {
+            break;
+        }
+        fp = next_fp;
+    }
+
+    // If the leaf function did not push an AAPCS64 frame record, still include non-zero LR as caller.
+    if !walked_fp && lr != 0 && lr != pc && frames.len() < MAX_BACKTRACE_FRAMES {
+        let call_site = lr.saturating_sub(4);
+        frames.push(fmt_frame(lr, resolve(call_site).or_else(|| resolve(lr))));
+    }
+
+    Some(frames.join(" <- "))
+}
+
+/// Write `ounce.run.v1` JSON to the `--report-json` path (or `stdout` when `-`) if configured.
 pub fn write_if_configured(report: &RunReport) {
     let Some(path) = REPORT_JSON_PATH.get() else {
         return;
     };
     let payload = to_json(report);
+    if path == std::path::Path::new("-") {
+        use std::io::Write;
+        if let Ok(bytes) = serde_json::to_vec_pretty(&payload) {
+            let mut out = std::io::stdout().lock();
+            if let Err(err) = out.write_all(&bytes).and_then(|()| out.write_all(b"\n")) {
+                eprintln!("[Report] Failed to write stdout: {err}");
+            }
+        }
+        return;
+    }
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
     {
@@ -134,7 +206,11 @@ mod tests {
             sp: Some(0x7FFF_F000),
             opcode: Some(0xDEAD_BEEF),
             fault_addr: None,
+            fault_symbol: None,
+            backtrace: None,
             svc_id: None,
+            sm_service: None,
+            cmif_cmd_id: None,
             break_result: None,
             insns_executed: 42,
             frames_presented: 3,
@@ -207,5 +283,27 @@ mod tests {
         for (stop_kind, code) in rows {
             assert_eq!(exit_code_for(&stop_kind).to_string(), code, "{stop_kind}");
         }
+    }
+
+    #[test]
+    fn format_backtrace_walks_fp_chain_and_stops_on_cycles_and_limit() {
+        let mut mmu = crate::mmu::Memory::new();
+        mmu.map_range(0x10000, 0x2000, crate::mmu::Permission::READ_WRITE);
+        // Build a 20-frame chain and verify it caps at MAX_BACKTRACE_FRAMES (16).
+        for i in 0..20u64 {
+            let fp = 0x10000 + i * 16;
+            let next_fp = if i < 19 { fp + 16 } else { 0 };
+            mmu.write_u64(fp, next_fp).unwrap();
+            mmu.write_u64(fp + 8, 0x40_0100 + i * 4).unwrap();
+        }
+        let bt = format_backtrace(0x40_0080, 0, 0x10000, &mmu, |a| Some(format!("f_{a:x}"))).unwrap();
+        assert_eq!(bt.split(" <- ").count(), MAX_BACKTRACE_FRAMES);
+        assert!(bt.starts_with("0x400080 (f_400080) <- 0x400100 (f_4000fc)"));
+
+        // Non-monotonic cycle (next_fp <= fp) terminates cleanly after 1 step.
+        mmu.write_u64(0x11000, 0x11000).unwrap();
+        mmu.write_u64(0x11008, 0x40_0200).unwrap();
+        let cyclic = format_backtrace(0x40_0080, 0, 0x11000, &mmu, |_| None).unwrap();
+        assert_eq!(cyclic, "0x400080 <- 0x400200");
     }
 }

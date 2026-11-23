@@ -966,6 +966,9 @@ macro_rules! fp_lane_ops {
                     SimdFpOp3::Fcmgt => flag(a > b),
                     SimdFpOp3::Facge => flag(a.abs() >= b.abs()),
                     SimdFpOp3::Facgt => flag(a.abs() > b.abs()),
+                    SimdFpOp3::Fmlal | SimdFpOp3::Fmlsl | SimdFpOp3::Fmlal2 | SimdFpOp3::Fmlsl2 => {
+                        unreachable!("FMLAL/FMLSL handled in fp_three_same_soft")
+                    }
                 }
             }
 
@@ -1277,7 +1280,27 @@ pub fn fp_three_same_fpcr(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool
 /// Arithmetic and compare lanes under a non-default FPCR (RMode, FZ, DN): the soft-float path. Compares only see
 /// flushed denormals; FADD/FSUB/FMUL/FMULX/FDIV/FABD/FMLA/FMLS round under RMode and honour FZ and DN.
 fn fp_three_same_soft(op: SimdFpOp3, d: u128, n: u128, m: u128, double: bool, q: bool, fpcr: u32) -> u128 {
-    use super::softfp::{self, BinOp, Env, Fmt};
+    use super::softfp::{self, BinOp, Env, F16, F32, Fmt};
+    if matches!(
+        op,
+        SimdFpOp3::Fmlal | SimdFpOp3::Fmlsl | SimdFpOp3::Fmlal2 | SimdFpOp3::Fmlsl2
+    ) {
+        let env = Env::from_fpcr(fpcr);
+        let part2 = matches!(op, SimdFpOp3::Fmlal2 | SimdFpOp3::Fmlsl2);
+        let sub = matches!(op, SimdFpOp3::Fmlsl | SimdFpOp3::Fmlsl2);
+        let count = lanes(32, q);
+        let base = if part2 { count } else { 0 };
+        let mut out = 0u128;
+        for i in 0..count {
+            let elem = base + i;
+            let a_s = softfp::widen_f16_preserve_snan(env, lane(n, 16, elem));
+            let b_s = softfp::widen_f16_preserve_snan(env, lane(m, 16, elem));
+            let a_s = if sub { F32.neg(a_s) } else { a_s };
+            let acc = lane(d, 32, i);
+            set_lane(&mut out, 32, i, softfp::fma(F32, env, a_s, b_s, acc));
+        }
+        return out;
+    }
     let esize = if double { 64 } else { 32 };
     let (f, env) = (Fmt::from_esize(esize), Env::from_fpcr(fpcr));
     let count = lanes(esize, q);
@@ -1412,7 +1435,7 @@ fn fcvtxn_pair(d: u128, n: u128, q: bool, env: super::softfp::Env) -> u128 {
 /// `fp_two_misc` under FPCR: FSQRT rounds under RMode and honours FZ/DN, the compares against zero see flushed
 /// denormals, FCVTN/FCVTL convert under the mode. FCVTXN always rounds to odd.
 pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, fpcr: u32) -> u128 {
-    use super::softfp::{self, Env, F32, F64};
+    use super::softfp::{self, Env, F16, F32, F64};
     if fpcr & softfp::FPCR_ARITH_MASK == 0
         && !matches!(
             op,
@@ -1426,18 +1449,40 @@ pub fn fp_two_misc_fpcr(op: SimdFpOp2, d: u128, n: u128, double: bool, q: bool, 
     }
     let env = Env::from_fpcr(fpcr);
     match op {
-        SimdFpOp2::Fcvtn => {
+        SimdFpOp2::Fcvtn if double => {
             let lo = softfp::convert(F64, F32, env, lane(n, 64, 0)) as u128;
             let hi = softfp::convert(F64, F32, env, lane(n, 64, 1)) as u128;
             let pair = lo | hi << 32;
             if q { (d & u64::MAX as u128) | pair << 64 } else { pair }
         }
+        SimdFpOp2::Fcvtn => {
+            let mut half = 0u64;
+            for i in 0..4 {
+                let h = softfp::convert(F32, F16, env, lane(n, 32, i)) & 0xFFFF;
+                half |= h << (i * 16);
+            }
+            if q {
+                (d & u64::MAX as u128) | (half as u128) << 64
+            } else {
+                half as u128
+            }
+        }
         SimdFpOp2::Fcvtxn => fcvtxn_pair(d, n, q, env),
-        SimdFpOp2::Fcvtl => {
+        SimdFpOp2::Fcvtl if double => {
             let base = if q { 2 } else { 0 };
             let a = softfp::convert(F32, F64, env, lane(n, 32, base));
             let b = softfp::convert(F32, F64, env, lane(n, 32, base + 1));
             a as u128 | (b as u128) << 64
+        }
+        SimdFpOp2::Fcvtl => {
+            let env_f16 = Env::from_fpcr_f16(fpcr);
+            let base = if q { 4 } else { 0 };
+            let mut out = 0u128;
+            for i in 0..4 {
+                let s = softfp::convert(F16, F32, env_f16, lane(n, 16, base + i));
+                set_lane(&mut out, 32, i, s);
+            }
+            out
         }
         _ => {
             let esize = if double { 64 } else { 32 };
@@ -2662,6 +2707,54 @@ mod fp_vector_tests {
             fp_two_misc(SimdFpOp2::Fcvtl, 0, f4([1.5, -2.25, 3.0, 4.0]), true, true),
             f2d([3.0, 4.0])
         );
+        // FCVTN/FCVTN2 single -> half and FCVTL/FCVTL2 half -> single (#469)
+        let s4 = f4([1.5, -2.25, 0.5, 65504.0]);
+        let h4 = fp_two_misc_fpcr(SimdFpOp2::Fcvtn, 0, s4, false, false, 0);
+        // 1.5 = 0x3E00, -2.25 = 0xC080, 0.5 = 0x3800, 65504.0 = 0x7BFF
+        assert_eq!(h4, 0x7BFF_3800_C080_3E00u128);
+        let h8 = fp_two_misc_fpcr(SimdFpOp2::Fcvtn, 0x1111_2222_3333_4444u128, s4, false, true, 0);
+        assert_eq!(h8, (0x7BFF_3800_C080_3E00u128 << 64) | 0x1111_2222_3333_4444u128);
+        assert_eq!(fp_two_misc_fpcr(SimdFpOp2::Fcvtl, 0, h4, false, false, 0), s4);
+        assert_eq!(fp_two_misc_fpcr(SimdFpOp2::Fcvtl, 0, h8, false, true, 0), s4);
+    }
+
+    #[test]
+    fn fp_fmlal_fmlsl_and_snan_priority() {
+        // Low 4 H lanes: [1.5, -2.0, 0.5, 4.0]; High 4 H lanes: [2.0, 3.0, -1.0, 0.25]
+        let pack_h = |vals: [u16; 8]| -> u128 {
+            vals.iter()
+                .enumerate()
+                .fold(0u128, |acc, (i, &v)| acc | ((v as u128) << (i * 16)))
+        };
+        let n = pack_h([0x3E00, 0xC000, 0x3800, 0x4400, 0x4000, 0x4200, 0xBC00, 0x3400]);
+        let m = pack_h([0x4000, 0x3C00, 0x4400, 0x3800, 0x3E00, 0x4000, 0x4000, 0x4400]);
+        let acc = f4([10.0, 20.0, 30.0, 40.0]);
+        // FMLAL.4S: acc + n[0..4] * m[0..4] = [10+3, 20-2, 30+2, 40+2]
+        assert_eq!(
+            fp_three_same_fpcr(SimdFpOp3::Fmlal, acc, n, m, false, true, 0),
+            f4([13.0, 18.0, 32.0, 42.0])
+        );
+        // FMLSL.2S: acc[0..2] - n[0..2] * m[0..2], upper 64 bits zeroed
+        assert_eq!(
+            fp_three_same_fpcr(SimdFpOp3::Fmlsl, acc, n, m, false, false, 0),
+            f4([7.0, 22.0, 0.0, 0.0])
+        );
+        // FMLAL2.4S: acc + n[4..8] * m[4..8] = [10+3, 20+6, 30-2, 40+1]
+        assert_eq!(
+            fp_three_same_fpcr(SimdFpOp3::Fmlal2, acc, n, m, false, true, 0),
+            f4([13.0, 26.0, 28.0, 41.0])
+        );
+        // FMLSL2.2S: acc[0..2] - n[2..4] * m[2..4] = [10-2, 20-2], upper 64 bits zeroed
+        assert_eq!(
+            fp_three_same_fpcr(SimdFpOp3::Fmlsl2, acc, n, m, false, false, 0),
+            f4([8.0, 18.0, 0.0, 0.0])
+        );
+        // Hardware-verified Apple M3 edge case: F16 sNaN in operand beats F32 qNaN in accumulator.
+        let qnan_acc = f4([f32::from_bits(0xFFFF_8000), 0.0, 0.0, 0.0]);
+        let snan_n = pack_h([0x7D50, 0, 0, 0, 0, 0, 0, 0]); // F16 sNaN (bit 9 clear) -> quieted F32 0x7FEA_0000
+        let one_m = pack_h([0x3C00, 0, 0, 0, 0, 0, 0, 0]);
+        let res = fp_three_same_fpcr(SimdFpOp3::Fmlal, qnan_acc, snan_n, one_m, false, false, 0);
+        assert_eq!(u4(res)[0], 0x7FEA_0000);
     }
 }
 

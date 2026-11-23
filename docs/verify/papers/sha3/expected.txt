@@ -1,0 +1,8 @@
+SHA3-224: 46 of 46 match
+SHA3-256: 46 of 46 match
+SHA3-384: 51 of 51 match
+SHA3-512: 56 of 56 match
+SHAKE128: 46 of 46 match
+SHAKE256: 46 of 46 match
+total: 291 of 291 match
+PASS

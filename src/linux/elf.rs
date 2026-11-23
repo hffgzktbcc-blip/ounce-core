@@ -47,6 +47,152 @@ pub enum ElfError {
 }
 
 #[derive(Debug, Clone)]
+pub struct Symbol {
+    pub addr: u64,
+    pub size: u64,
+    pub name: String,
+}
+
+/// Zero-dependency pure safe Rust ELF64 `.symtab`/`.strtab` symbol table (#475).
+#[derive(Debug, Clone, Default)]
+pub struct SymbolTable {
+    symbols: Vec<Symbol>,
+}
+
+impl SymbolTable {
+    /// Parses `SHT_SYMTAB` and its linked `SHT_STRTAB` from an ELF64 little-endian image.
+    /// Returns an empty table for stripped binaries or malformed section tables (never fails loading).
+    pub fn parse(bytes: &[u8]) -> Self {
+        let Ok(shoff) = rd64(bytes, 40) else {
+            return Self::default();
+        };
+        let Ok(shentsize) = rd16(bytes, 58) else {
+            return Self::default();
+        };
+        let Ok(shnum) = rd16(bytes, 60) else {
+            return Self::default();
+        };
+        if shoff == 0 || shentsize != 64 || shnum == 0 {
+            return Self::default();
+        }
+        let sh_table_end = match shoff.checked_add(u64::from(shnum) * 64) {
+            Some(end) if end <= bytes.len() as u64 => end,
+            _ => return Self::default(),
+        };
+        let _ = sh_table_end;
+
+        const SHT_SYMTAB: u32 = 2;
+        const SHT_STRTAB: u32 = 3;
+        const STT_NOTYPE: u8 = 0;
+        const STT_FUNC: u8 = 2;
+
+        let mut symbols = Vec::new();
+        for i in 0..u64::from(shnum) {
+            let sh = (shoff + i * 64) as usize;
+            let Ok(sh_type) = rd32(bytes, sh + 4) else { continue };
+            if sh_type != SHT_SYMTAB {
+                continue;
+            }
+            let (Ok(sym_off), Ok(sym_size), Ok(sh_link), Ok(sym_entsize)) = (
+                rd64(bytes, sh + 24),
+                rd64(bytes, sh + 32),
+                rd32(bytes, sh + 40),
+                rd64(bytes, sh + 56),
+            ) else {
+                continue;
+            };
+            if sym_entsize != 24 || sh_link >= u32::from(shnum) {
+                continue;
+            }
+            let str_sh = (shoff + u64::from(sh_link) * 64) as usize;
+            let (Ok(str_type), Ok(str_off), Ok(str_size)) = (
+                rd32(bytes, str_sh + 4),
+                rd64(bytes, str_sh + 24),
+                rd64(bytes, str_sh + 32),
+            ) else {
+                continue;
+            };
+            if str_type != SHT_STRTAB {
+                continue;
+            }
+            let Some(strtab) = str_off
+                .checked_add(str_size)
+                .and_then(|end| bytes.get(str_off as usize..end as usize))
+            else {
+                continue;
+            };
+            let Some(symtab) = sym_off
+                .checked_add(sym_size)
+                .and_then(|end| bytes.get(sym_off as usize..end as usize))
+            else {
+                continue;
+            };
+            for entry in symtab.chunks_exact(24) {
+                let st_name = u32::from_le_bytes(entry[0..4].try_into().unwrap()) as usize;
+                let st_type = entry[4] & 0x0F;
+                let st_shndx = u16::from_le_bytes(entry[6..8].try_into().unwrap());
+                let st_value = u64::from_le_bytes(entry[8..16].try_into().unwrap());
+                let st_size = u64::from_le_bytes(entry[16..24].try_into().unwrap());
+                if st_shndx == 0 || st_value == 0 || (st_type != STT_FUNC && st_type != STT_NOTYPE) {
+                    continue;
+                }
+                let Some(tail) = strtab.get(st_name..) else { continue };
+                let end = tail.iter().position(|&b| b == 0).unwrap_or(tail.len());
+                let Ok(name) = std::str::from_utf8(&tail[..end]) else {
+                    continue;
+                };
+                // Skip empty names and AArch64 mapping symbols ($x, $d, $x.0, ...).
+                if name.is_empty() || name.starts_with("$x") || name.starts_with("$d") {
+                    continue;
+                }
+                symbols.push(Symbol {
+                    addr: st_value,
+                    size: st_size,
+                    name: name.to_string(),
+                });
+            }
+        }
+        symbols.sort_by(|a, b| a.addr.cmp(&b.addr).then_with(|| b.size.cmp(&a.size)));
+        Self { symbols }
+    }
+
+    /// Resolves `addr` to `name` or `name+0xoffset` if it falls inside a known symbol.
+    pub fn resolve(&self, addr: u64) -> Option<String> {
+        if self.symbols.is_empty() {
+            return None;
+        }
+        let idx = self.symbols.partition_point(|s| s.addr <= addr);
+        if idx == 0 {
+            return None;
+        }
+        // Scan backwards over any symbols sharing the same start address (preferring one whose size covers addr).
+        let mut fallback: Option<&Symbol> = None;
+        for sym in self.symbols[..idx].iter().rev() {
+            let offset = addr - sym.addr;
+            if sym.size > 0 {
+                if offset < sym.size {
+                    return Some(Self::format_sym(&sym.name, offset));
+                }
+            } else if offset < 0x10000 && fallback.is_none() {
+                fallback = Some(sym);
+            }
+            if offset >= 0x10000 {
+                break;
+            }
+        }
+        fallback.map(|sym| Self::format_sym(&sym.name, addr - sym.addr))
+    }
+
+    fn format_sym(name: &str, offset: u64) -> String {
+        if offset == 0 {
+            name.to_string()
+        } else {
+            format!("{name}+{offset:#x}")
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Image {
     pub entry: u64,
     /// First page-aligned address after the highest loaded segment (initial program break).
@@ -56,6 +202,8 @@ pub struct Image {
     pub phentsize: u64,
     #[allow(dead_code)] // retained for diagnostics and the loader limit report
     pub loaded_bytes: u64,
+    /// Parsed `.symtab`/`.strtab` symbols for fault symbolication (#475).
+    pub symbols: SymbolTable,
 }
 
 fn rd16(b: &[u8], o: usize) -> Result<u16, ElfError> {
@@ -256,6 +404,7 @@ pub fn load(bytes: &[u8], mmu: &mut Memory) -> Result<Image, ElfError> {
         phnum,
         phentsize,
         loaded_bytes,
+        symbols: SymbolTable::parse(bytes),
     })
 }
 

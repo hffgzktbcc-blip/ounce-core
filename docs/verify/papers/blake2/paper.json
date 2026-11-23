@@ -1,0 +1,40 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "BLAKE2: simpler, smaller, fast as MD5",
+    "authors": [
+      "Jean-Philippe Aumasson",
+      "Samuel Neves",
+      "Zooko Wilcox-O'Hearn",
+      "Christian Winnerlein"
+    ],
+    "venue": "Applied Cryptography and Network Security (ACNS 2013), LNCS 7954, Springer",
+    "year": 2013
+  },
+  "program": {
+    "source": "blake2.c",
+    "how": "written for ounce-core from the algorithm in the paper or standard; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "BLAKE2b (64-byte digest) of the messages 00 01 .. (n-1), n = 0..255, unkeyed and keyed with the 64-byte key 00 01 .. 3f: 512 published outputs",
+    "BLAKE2s (32-byte digest), same messages, unkeyed and keyed with the 32-byte key 00 01 .. 1f: 512 published outputs",
+    "the parallel modes BLAKE2bp (4 leaves) and BLAKE2sp (8 leaves) of the paper's Section 2.11, same messages and keys: 1024 published outputs",
+    "2048 published outputs in all"
+  ],
+  "expected_values_source": {
+    "what": "the 2048 known-answer outputs for blake2b, blake2s, blake2bp and blake2sp (256 unkeyed and 256 keyed each) in blake2-kat.json of the authors' reference repository; the IVs and the sigma permutations are the paper's Appendix A / Table 5",
+    "url": "https://raw.githubusercontent.com/BLAKE2/BLAKE2/master/testvectors/blake2-kat.json (algorithm text: https://www.blake2.net/blake2.pdf)",
+    "fetched": "2026-11-19",
+    "note": "the vectors are data, copied as numbers; the repository's code was not copied. One detail is not stated in the paper: whether the root node's parameter block of BLAKE2bp/sp carries the key length. The program sets it to the key length (the root never absorbs a key block); with 0 instead, the 512 keyed bp/sp vectors do not match (1536 of 2048 match), so the published vectors fix that choice"
+  },
+  "negative_control": "built with -DB2_ROT_B=25 (one BLAKE2b rotation constant changed from 24 to 25), the 1024 BLAKE2b and BLAKE2bp outputs do not match (1024 of 2048 match) and the program exits 1",
+  "not_checked": [
+    "the paper's security claims and its analysis of the reduced round counts",
+    "speed figures and cycles-per-byte tables (emulator run time says nothing about the authors' hardware)",
+    "salt, personalization, general tree modes beyond bp/sp, digest lengths other than 64 and 32 bytes, and BLAKE2X",
+    "messages longer than 255 bytes, and incremental (streaming) use; the program hashes whole buffers",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 2048 published BLAKE2b/2s/2bp/2sp outputs. It does not show the security claims hold."
+}

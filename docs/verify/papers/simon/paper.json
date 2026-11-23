@@ -1,0 +1,43 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "The SIMON and SPECK Families of Lightweight Block Ciphers",
+    "authors": [
+      "Ray Beaulieu",
+      "Douglas Shors",
+      "Jason Smith",
+      "Stefan Treatman-Clark",
+      "Bryan Weeks",
+      "Louis Wingers"
+    ],
+    "venue": "IACR Cryptology ePrint Archive 2013/404",
+    "year": 2013
+  },
+  "program": {
+    "source": "simon.c",
+    "how": "written for ounce-core from the algorithm description; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "Simon64/96, Simon64/128, Simon128/128, Simon128/192 and Simon128/256 encrypt the five appendix plaintexts to the five published ciphertexts (5 of 5 vectors)",
+    "decrypting each of those ciphertexts returns the plaintext (5 of 5 round trips)"
+  ],
+  "expected_values_source": {
+    "what": "the five Simon known-answer vectors of the paper's appendix as transcribed in the Crypto++ test-vector file simon.txt (entries labelled \"Appendix B (modified)\"; the modification is byte reversal relative to the paper's printed word notation, undone when the tables were generated). The key-schedule constant sequences z2, z3, z4 (hexadecimal, bit i = z_i) come from the Crypto++ source file simon.cpp",
+    "url": "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/simon.txt",
+    "additional_sources": [
+      "https://raw.githubusercontent.com/weidai11/cryptopp/master/simon.cpp"
+    ],
+    "fetched": "2026-11-19",
+    "note": "single transcription (the Linux kernel carries Speck but not Simon vectors); the paper PDF itself was not fetched (eprint 403). The z constants are data (constants of the cipher, copied as numbers); the five vectors exercise z2, z3 and z4 but not z0 and z1, so those two are not included. Vectors are data, no code was copied"
+  },
+  "negative_control": "built with SIMON_FROT1=2 (f(x) = (S^2 x & S^8 x) ^ S^2 x), 0 of 5 vectors match and the program exits 1",
+  "not_checked": [
+    "the Simon variants with 32-, 48- and 96-bit blocks (and z0, z1)",
+    "the Speck family (see the speck folder)",
+    "security claims, performance figures",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "speed figures (emulator run time says nothing about the authors' hardware)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the five published Simon ciphertexts for their appendix inputs and inverts them. The vectors have one public transcription only. It does not show the cipher is secure."
+}

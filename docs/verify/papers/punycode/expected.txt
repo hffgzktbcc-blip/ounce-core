@@ -1,0 +1,22 @@
+(A) encode ok, decode ok: egbpdaj6bu4bxfgehfvwxn
+(B) encode ok, decode ok: ihqwcrb4cv8a8dqg056pqjye
+(C) encode ok, decode ok: ihqwctvzc91f659drss3x8bo0yb
+(D) encode ok, decode ok: Proprostnemluvesky-uyb24dma41a
+(E) encode ok, decode ok: 4dbcagdahymbxekheh6e0a7fei0b
+(F) encode ok, decode ok: i1baa7eci9glrd9b2ae1bj0hfcgg6iyaf8o0a1dig0cd
+(G) encode ok, decode ok: n8jok5ay5dzabd5bym9f0cm5685rrjetr6pdxa
+(H) encode ok, decode ok: 989aomsvi5e83db1d2a355cv1e0vak1dwrv93d5xbh15a0dt30a5jpsd879ccm6fea98c
+(I) encode ok, decode ok: b1abfaaepdrnnbgefbaDotcwatmq2g4l
+(J) encode ok, decode ok: PorqunopuedensimplementehablarenEspaol-fmd56a
+(K) encode ok, decode ok: TisaohkhngthchnitingVit-kjcr8268qyxafd2f1b9g
+(L) encode ok, decode ok: 3B-ww4c5e180e575a65lsy2b
+(M) encode ok, decode ok: -with-SUPER-MONKEYS-pc58ag80a8qai00g7n9n
+(N) encode ok, decode ok: Hello-Another-Way--fc4qua05auwb3674vfr0b
+(O) encode ok, decode ok: 2-u9tlzr9756bt3uc0v
+(P) encode ok, decode ok: MajiKoi5-783gue6qz075azm5e
+(Q) encode ok, decode ok: de-jg4avhby1noc0d
+(R) encode ok, decode ok: d9juau41awczczp
+(S) encode ok, decode ok: -> $1.00 <--
+section 7.1 samples: encode 19/19, decode 19/19
+published trace steps (encoding: code point, delta, digits, bias; decoding: digits, delta, bias, string): 30 of 30
+PASS

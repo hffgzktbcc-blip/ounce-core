@@ -26,7 +26,11 @@ Every field is a flat scalar or `null`. Nested objects and arrays wait for the r
 | `sp` | `u64 \| null` | Stack pointer when the program stopped. Set exactly when `pc` is, `null` otherwise. Additive field (#475) |
 | `opcode` | `u32 \| null` | Raw instruction word for `unimplemented_insn` |
 | `fault_addr` | `u64 \| null` | Virtual address for `memory_fault` |
+| `fault_symbol` | `string \| null` | Resolved ELF `.symtab` symbol (`name` or `name+0xoffset`) for `pc` on fault stops (`run-elf` with unstripped `.symtab`); `null` when stripped, on homebrew `run` / `run-nro`, or on non-fault stops. Additive field (#475) |
+| `backtrace` | `string \| null` | Bounded AArch64 `X29`/`LR` frame-pointer chain (up to 16 frames, formatted as `0x<addr> (<sym>) <- ...`) on fault and `svc_break` stops; `null` on non-fault stops. Additive field (#475) |
 | `svc_id` | `u32 \| null` | Supervisor call number for `unhandled_svc`. `run-elf`: the Linux syscall number (`x8`) of an unimplemented syscall, or the immediate of a non-zero `SVC #imm` |
+| `sm_service` | `string \| null` | Last requested `sm` service name (or unimplemented HIPC interface name) when stopping on `unhandled_svc` (exit 14); `null` when no service was requested or for other stops (`run-elf` always writes `null`). Additive field (#475) |
+| `cmif_cmd_id` | `u32 \| null` | Last dispatched CMIF command ID (or unimplemented HIPC command ID) when stopping on `unhandled_svc` (exit 14); `null` when no CMIF request ran or for other stops (`run-elf` always writes `null`). Additive field (#475) |
 | `break_result` | `u32 \| null` | Horizon `Result` code read from `info1` on `svc_break` |
 | `insns_executed` | `u64` | Total guest instructions executed. An instruction that faults did not complete and is not counted, but the ones before it in the same run are: a fault at the fourth instruction reports 3 (before this was fixed, `run` / `run-nro` reported only the instructions of earlier slices, often 0). With `--deterministic` it is the same on every run, host and CPU tier |
 | `frames_presented` | `u64` | Frames the run loop presented (`0` when the run had no display or the guest never presented). `run` / `run-nro` have a display only with a window (`--gui`) or `--present=headless`; use the latter for comparisons. Additive field |

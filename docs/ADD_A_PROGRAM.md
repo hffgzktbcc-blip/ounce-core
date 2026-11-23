@@ -1,10 +1,19 @@
 # Add a program as a differential test
 
-The most useful thing you can do for Ounce-Core is run a real program in it and compare the result with a reference. That is how it found a prefetch instruction being decoded as a load, a floating-point instruction with the wrong sign, and several missing vector instructions. It takes an afternoon and needs no console, firmware or game files.
+**Test a supported ARM64 program and compare what it prints with a separately built reference.** This is how Ounce-Core has exposed incorrect instruction decoding, floating-point sign errors, and missing vector operations. A mismatch tells you something differs; it does not automatically identify which component caused the difference.
 
-**The idea.** Compile the same C test twice: once for your computer (the reference) and once as a Switch program (an NRO). Run the NRO in Ounce-Core. If the text output differs, there is a bug, and the first differing line says where to look.
+## Choose a program format
 
-## You need
+- **Static Linux ARM64 ELF (recommended for C-library maintainers):** use the [community verification guide](COMMUNITY_VERIFICATION_GUIDE.md) and [Linux ELF limits](verify/linux-elf/README.md). You do not need devkitPro, console files, or a console SDK. Only a bounded subset of static programs can run.
+- **Unencrypted original-Switch homebrew NRO:** follow the NRO-specific recipe below. It requires the open-source devkitPro toolchain, but no retail games, firmware, keys or physical console.
+
+Both paths can compare guest output with a host reference. **Direct native ARM64 hardware evidence requires an appropriate ARM64 machine**. A match between emulator engines alone is not a native-hardware validation.
+
+## NRO-specific recipe
+
+Compile the same C test twice: once for your host as the reference, and once as an unencrypted homebrew NRO. Run it on Ounce-Core's supported CPU engines and compare the outputs. If they differ, record the first differing output and use targeted tests to investigate where the calculation diverged.
+
+### You need
 - A Rust toolchain and this repository (`cargo build --release`).
 - devkitPro with `devkitA64` and `libnx` (https://devkitpro.org). It builds the NRO.
 - An ARM64 computer (Apple Silicon or Linux ARM) if you want to test native execution; any computer works for the reference.

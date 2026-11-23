@@ -1,0 +1,41 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "CHAM: A Family of Lightweight Block Ciphers for Resource-Constrained Devices",
+    "authors": [
+      "Bonwook Koo",
+      "Dongyoung Roh",
+      "Hyeonjin Kim",
+      "Younghoon Jung",
+      "Dong-Geon Lee",
+      "Daesung Kwon"
+    ],
+    "venue": "ICISC 2017",
+    "year": 2017
+  },
+  "program": {
+    "source": "cham.c",
+    "how": "written for ounce-core from the algorithm description; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "CHAM-64/128, CHAM-128/128 and CHAM-128/256 encrypt the three Appendix A test vectors to the published ciphertexts (3 of 3)",
+    "27 further vectors (9 per variant) that the Crypto++ file labels \"CHAM reference implementation\" match (27 of 27, 30 of 30 in all)",
+    "decrypting each of the 30 ciphertexts returns the plaintext (30 of 30 round trips)"
+  ],
+  "expected_values_source": {
+    "what": "the Crypto++ test-vector file cham.txt: entries labelled \"CHAM paper, Appendix A, test vector 1/2/3\" (printed word order) and 27 labelled \"CHAM reference implementation\"",
+    "url": "https://raw.githubusercontent.com/weidai11/cryptopp/master/TestVectors/cham.txt",
+    "fetched": "2026-11-19",
+    "note": "the paper PDF itself was not fetched; the 27 reference-implementation vectors are as labelled by Crypto++ and were not checked against the authors' repository. Data copied as numbers; no code was copied"
+  },
+  "negative_control": "built with CHAM_ROT_A=7 (rotation 7 instead of 8 in the round function), 0 of 3 paper vectors and 0 of 30 vectors match, program exits 1",
+  "not_checked": [
+    "security claims, hardware or software performance figures",
+    "other parameter sets (the paper defines only these three)",
+    "whether the 27 reference-implementation vectors are the authors' own outputs (taken as labelled)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)",
+    "speed figures (emulator run time says nothing about the authors' hardware)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces the three published CHAM test vectors and 27 more labelled reference vectors and inverts all 30. It does not show the cipher is secure."
+}

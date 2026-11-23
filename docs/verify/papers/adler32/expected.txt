@@ -1,0 +1,4 @@
+deferred-reduction block length NMAX derived from the 32-bit bound: 5552
+plain form: 43 of 43 golden values match
+deferred form: 43 of 43 golden values match
+PASS

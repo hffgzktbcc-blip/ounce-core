@@ -1,6 +1,6 @@
 //! Synchronous Linux AArch64 SIGSEGV delivery. Frames follow the Linux UAPI
 //! rt_sigframe/ucontext layout; guest handlers may return or siglongjmp away.
-use super::syscalls::{EFAULT, EINVAL, Process};
+use super::syscalls::{EFAULT, EINVAL, ESRCH, Outcome, PID, Process};
 use crate::cpu::{Cpu, CpuError};
 use crate::mmu::{Memory, MemoryError, Permission};
 
@@ -32,6 +32,67 @@ impl Process {
             self.alt_stack = [sp, flags as u64, size];
         }
         0
+    }
+
+    /// `tgkill(tgid, tid, sig)` and `tkill(tid, sig)` aimed at the guest's only thread, as `raise` and `abort` do
+    /// (musl uses `tkill`, glibc `tgkill`). A signal that is blocked stays pending until `rt_sigprocmask` unblocks it,
+    /// as in the kernel; `musl`'s `abort` relies on that order.
+    pub(super) fn sys_tgkill(&mut self, a: [u64; 6]) -> Outcome {
+        if (a[0] as i64) <= 0 {
+            return Outcome::Return(-EINVAL);
+        }
+        if a[0] != PID {
+            return Outcome::Return(-ESRCH);
+        }
+        self.sys_tkill([a[1], a[2], 0, 0, 0, 0])
+    }
+
+    pub(super) fn sys_tkill(&mut self, a: [u64; 6]) -> Outcome {
+        if (a[0] as i64) <= 0 || a[1] > 64 {
+            return Outcome::Return(-EINVAL);
+        }
+        if a[0] != PID {
+            return Outcome::Return(-ESRCH);
+        }
+        if a[1] == 0 {
+            return Outcome::Return(0);
+        }
+        self.signal_pending |= 1 << (a[1] - 1);
+        self.deliver_pending().unwrap_or(Outcome::Return(0))
+    }
+
+    /// Delivers the lowest pending, unblocked signal that has an effect. A default action that terminates the
+    /// process ends the guest with status `128 + signal`, as a shell reports it. Returns `None` when nothing
+    /// ends or stops the run. A guest handler for a raised signal, and the stop actions, are not implemented.
+    pub(super) fn deliver_pending(&mut self) -> Option<Outcome> {
+        const UNBLOCKABLE: u64 = 1 << 8 | 1 << 18; // SIGKILL, SIGSTOP
+        loop {
+            let ready = self.signal_pending & (!self.signal_mask | UNBLOCKABLE);
+            if ready == 0 {
+                return None;
+            }
+            let bit = ready.trailing_zeros() as u64;
+            let sig = bit + 1;
+            self.signal_pending &= !(1 << bit);
+            let handler = u64::from_le_bytes(self.sigactions[sig as usize][0..8].try_into().unwrap());
+            match handler {
+                1 => {} // SIG_IGN
+                0 => match sig {
+                    17 | 18 | 23 | 28 => {} // SIGCHLD, SIGCONT, SIGURG, SIGWINCH: ignored by default
+                    19..=22 => {
+                        return Some(Outcome::Unimplemented(format!(
+                            "default stop action of signal {sig} (tgkill)"
+                        )));
+                    }
+                    _ => return Some(Outcome::Exit(128 + sig as i32)),
+                },
+                _ => {
+                    return Some(Outcome::Unimplemented(format!(
+                        "delivery of signal {sig} to a guest handler (tgkill)"
+                    )));
+                }
+            }
+        }
     }
 
     pub(super) fn deliver_segv(&mut self, cpu: &mut Cpu, mmu: &mut Memory, pc: u64) -> bool {

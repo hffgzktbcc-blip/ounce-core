@@ -1,0 +1,33 @@
+// Generated from the text of RFC 4648 (fetched 2026-11-19): Tables 1-4 and the test vectors of section 10.
+static const char T64[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", T64URL[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", T32[]="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", T32HEX[]="0123456789ABCDEFGHIJKLMNOPQRSTUV";
+struct Vec { int kind; const char *in; const char *out; };  // kind 0=BASE64 1=BASE32 2=BASE32-HEX 3=BASE16
+static const struct Vec VEC[]={
+  {0,"",""},
+  {0,"f","Zg=="},
+  {0,"fo","Zm8="},
+  {0,"foo","Zm9v"},
+  {0,"foob","Zm9vYg=="},
+  {0,"fooba","Zm9vYmE="},
+  {0,"foobar","Zm9vYmFy"},
+  {1,"",""},
+  {1,"f","MY======"},
+  {1,"fo","MZXQ===="},
+  {1,"foo","MZXW6==="},
+  {1,"foob","MZXW6YQ="},
+  {1,"fooba","MZXW6YTB"},
+  {1,"foobar","MZXW6YTBOI======"},
+  {2,"",""},
+  {2,"f","CO======"},
+  {2,"fo","CPNG===="},
+  {2,"foo","CPNMU==="},
+  {2,"foob","CPNMUOG="},
+  {2,"fooba","CPNMUOJ1"},
+  {2,"foobar","CPNMUOJ1E8======"},
+  {3,"",""},
+  {3,"f","66"},
+  {3,"fo","666F"},
+  {3,"foo","666F6F"},
+  {3,"foob","666F6F62"},
+  {3,"fooba","666F6F6261"},
+  {3,"foobar","666F6F626172"},
+};

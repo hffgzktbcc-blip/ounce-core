@@ -1,0 +1,12 @@
+tinymt32, init(1), integers: 50 of 50 match
+tinymt32, init_by_array({1}), 0 <= r < 1: 50 of 50 match
+tinymt32, init_by_array({1}), 1 <= r < 2: 50 of 50 match
+tinymt32, init_by_array({1}), 0 < r <= 1: 50 of 50 match
+tinymt32, init_by_array({1}), 0 < r < 1: 50 of 50 match
+tinymt32, init_by_array({1}), 32-bit precision double, 0 <= r < 1: 50 of 50 match
+tinymt64, init(1), integers: 30 of 30 match
+tinymt64, init_by_array({1}), 0 <= r < 1: 48 of 48 match
+tinymt64, init_by_array({1}), 1 <= r < 2: 48 of 48 match
+tinymt64, init_by_array({1}), 0 < r <= 1: 48 of 48 match
+tinymt64, init_by_array({1}), 0 < r < 1: 48 of 48 match
+PASS

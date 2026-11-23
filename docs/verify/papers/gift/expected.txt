@@ -1,0 +1,6 @@
+PASS 40 of 40 round constants match the specification's table
+PASS 4 of 4 permutation rows are bijections
+PASS GIFT-128 test vector 1: a94af7f9ba181df9b2b00eb7dbfa93df
+PASS GIFT-128 test vector 2: 3331efc3a6604f9599ed42b7dbc02a38
+test vectors: 2 of 2 match
+PASS

@@ -1,0 +1,6 @@
+SB3/SB4 are the inverses of SB1/SB2: 512 of 512 entries
+PASS RFC example SB1(0x23): 26
+PASS RFC example SB4(0xef): d3
+A(A(x)) == x on 16 test inputs: PASS
+RFC 5794 Appendix A values compared (W0-W3, ek1-ek13, P1-P11 for the 128-bit key; 3 ciphertexts; 3 decryptions): 34, mismatches 0
+PASS

@@ -69,7 +69,7 @@ jobs:
   corpus:
     name: Canonical regression evidence
     needs: changes
-    if: needs.changes.outputs.corpus == 'true'
+    if: needs.changes.outputs.corpus == 'true' && github.event_name != 'pull_request'
     uses: ./.github/workflows/external-corpus.yml
   release-notice-packaging:
     name: Release notice packaging (${{ matrix.os }})
@@ -78,7 +78,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
@@ -129,7 +129,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -138,12 +138,6 @@ jobs:
         uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
-
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
@@ -221,6 +215,9 @@ jobs:
       - name: Clippy (gpu-present)
         run: cargo clippy --locked --workspace --all-targets --features gpu-present -- -D warnings
 
+      - name: Clippy (host-io)
+        run: cargo clippy --locked --workspace --all-targets --features host-io -- -D warnings
+
   msrv:
     name: Minimum supported Rust (1.89, default features)
     needs: changes
@@ -239,11 +236,6 @@ jobs:
         with:
           toolchain: 1.89.0
 
-      - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev
-
       - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
@@ -261,7 +253,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -315,7 +307,7 @@ jobs:
 
       - name: Retain native Mac app preview
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-app-preview
           path: ${{ runner.temp }}/macos-preview/
@@ -335,7 +327,7 @@ jobs:
       matrix:
         # ubuntu/windows are x86_64, macos-latest is Apple Silicon (MAP_JIT path) and
         # ubuntu-24.04-arm is AArch64 Linux, where Tier-4 output can be replayed on the host CPU.
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-24.04-arm"]') || fromJSON('["ubuntu-latest", "ubuntu-24.04-arm", "macos-latest", "windows-latest"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -344,12 +336,6 @@ jobs:
         uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
-
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
@@ -396,7 +382,7 @@ jobs:
       matrix:
         # macos-latest is Apple Silicon and ubuntu-24.04-arm is AArch64 Linux: guest code runs on the
         # host CPU there. ubuntu-latest (x86_64) builds the stubs and skips the native tests.
-        os: [macos-latest, ubuntu-24.04-arm, ubuntu-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-24.04-arm"]') || fromJSON('["macos-latest", "ubuntu-24.04-arm", "ubuntu-latest"]') }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -405,12 +391,6 @@ jobs:
         uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
-
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
@@ -509,6 +489,7 @@ jobs:
       - name: Check applicable results
         env:
           RESULTS: ${{ toJSON(needs) }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PYTHON'
           import json, os
@@ -517,7 +498,7 @@ jobs:
           scope = needs['changes'].get('outputs', {})
           if scope.get('runtime') == 'true':
               required += ['lint', 'msrv', 'test', 'gpu-present', 'native-jit', 'nce']
-          if scope.get('corpus') == 'true':
+          if scope.get('corpus') == 'true' and os.environ.get('GITHUB_EVENT_NAME') != 'pull_request':
               required += ['corpus']
           bad = {job: needs[job]['result'] for job in required if needs[job]['result'] != 'success'}
           print('Applicable checks:', ', '.join(required))

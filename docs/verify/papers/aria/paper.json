@@ -1,0 +1,48 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "New Block Cipher: ARIA (algorithm as specified in RFC 5794)",
+    "authors": [
+      "Daesung Kwon",
+      "Jaesung Kim",
+      "Sangwoo Park",
+      "Soo Hak Sung",
+      "Yaekwon Sohn",
+      "Jung Hwan Song",
+      "Yongjin Yeom",
+      "E-Joong Yoon",
+      "Sangjin Lee",
+      "Jaewon Lee",
+      "Seongtaek Chee",
+      "Daewan Han",
+      "Jin Hong"
+    ],
+    "venue": "ICISC 2003, LNCS 2971; RFC 5794 (March 2010)",
+    "year": 2003
+  },
+  "program": {
+    "source": "aria.c",
+    "how": "written for ounce-core from the algorithm in the paper or specification; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "ARIA (12/14/16 rounds, substitution layers SL1/SL2 over SB1-SB4, 16-byte diffusion layer A, 3-round Feistel key schedule with the C1-C3 constants, odd/even round functions FO/FE) written from RFC 5794 reproduces the Appendix A example data: for the 128-bit key W0-W3 (4), encryption round keys e1-e13 (13) and intermediate round values P1-P11 (11); and the ciphertexts for the 128-, 192- and 256-bit example keys (3)",
+    "Decryption with the derived decryption round keys returns the plaintext for the three example keys (3)",
+    "The RFC's statements that SB3/SB4 are the inverses of SB1/SB2 (512 entries), the two worked S-box examples, and that A is an involution (on 16 test inputs, a sample not a proof) hold for the table data"
+  ],
+  "expected_values_source": {
+    "what": "RFC 5794 section 2.2/2.4 (constants, S-boxes) and Appendix A (example data)",
+    "url": "https://www.rfc-editor.org/rfc/rfc5794.txt",
+    "fetched": "2026-11-19",
+    "note": "the tables and vectors were copied as data by script from the fetched text; the program was written from the RFC's description. The ICISC 2003 paper itself was not fetched; Appendix A gives intermediate values for the 128-bit key only, the 192- and 256-bit keys are checked at the ciphertext only"
+  },
+  "negative_control": "built with -DARIA_R19=18 (the first round-key rotation of 19 bits changed to 18), 18 published values mismatch including all three ciphertexts and the program exits 1",
+  "not_checked": [
+    "the paper's security and performance claims (resistance to differential/linear attacks, cycle counts)",
+    "that C1-C3 are the first 384 fractional bits of 1/pi (taken from the RFC as data, not recomputed)",
+    "other keys and plaintexts than the three RFC examples, modes of operation and the RFC's OIDs",
+    "speed (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 34 intermediate values, ciphertexts and decryptions RFC 5794 publishes for its examples. It does not show the security claims hold."
+}

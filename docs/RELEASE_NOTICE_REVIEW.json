@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "release_scope": "Default Linux x86-64, Linux arm64, macOS arm64 and Windows x86-64 binaries. Optional features excluded.",
-  "cargo_lock_sha256": "23e928d7a403f2c5c8a910a20ec025e4d2afd5565a2f3fbb55ce2eb1818da204",
+  "cargo_lock_sha256": "3b9dc0206ffaf2db2519b1b1455ea28bb5dc50e9f96a63620d55039ef27dc7c5",
   "notices_sha256": "b899daab8781da05181486b514bedcff973ef1a940c28341a53ef1077e196a9c",
   "status": "REVIEWED",
   "reviewer": "Project owner \u2014 chat direction dated 2026-11-09; distribution choice delegated",
@@ -1362,7 +1362,7 @@
     }
   ],
   "serialization": "Aggregate normalizes line endings and trailing whitespace. Per-source hashes identify original notice bytes.",
-  "cargo_manifest_sha256": "19abecd6d4db9c97735c8e7e064e346f8a8a8c753ca02fc6f040432f2c748518",
+  "cargo_manifest_sha256": "e4757d8b9a8ee9006593aab82659845527291767a9eb63ee9c7b58196eab6712",
   "notice_supplements": [
     {
       "path": "licenses/objc2-MIT.txt",

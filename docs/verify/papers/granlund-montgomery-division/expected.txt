@@ -1,0 +1,9 @@
+PASS d = 10: m = 3435973837 = (2^34+1)/5, shpost 3, l 4
+PASS d = 7: m = 4908534053 = (2^35+3)/7, above 2^32
+PASS d = 14: shpre 1, m = 2454267027 = (2^34+5)/7, shpost 2
+PASS d = 641: final shift 0 (paper: zero)
+PASS signed d = 3 (prec 31): shpost 0, m = 1431655766 = (2^32+2)/3
+PASS d = 100: dinv = 3264175145 = (19*2^32+1)/25, qmax = 85899344
+divisors tested: 65598, quotients compared: 6559800, wrong: 0
+divisibility by 100 tested on 4286632 values, wrong: 0
+PASS

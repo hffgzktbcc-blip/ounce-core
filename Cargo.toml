@@ -1,14 +1,29 @@
 [package]
 name = "ounce-core"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
+# Default features support Rust 1.89+; --workspace / --features native-jit requires current stable Rust.
+rust-version = "1.89"
 license = "MIT"
-description = "Homebrew systems research runtime and architecture compatibility layer for NVIDIA Tegra T239"
+description = "ARM64 execution and verification lab: run programs on three CPU engines and compare the output with real hardware"
+repository = "https://github.com/hffgzktbcc-blip/ounce-core"
+homepage = "https://hffgzktbcc-blip.github.io/ounce-core/"
+readme = "README.md"
+publish = false
 
 [workspace]
 members = [".", "crates/ounce-recompiler", "crates/ounce-nce"]
-# `cargo test` / `cargo run` at the root keep targeting ounce-core only.
-default-members = ["."]
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
+missing_safety_doc = "deny"
+chunks_exact_to_as_chunks = "allow"
+
+[lints]
+workspace = true
 
 [features]
 default = []
@@ -18,12 +33,14 @@ native-jit = ["dep:ounce-recompiler"]
 gpu-present = ["dep:wgpu", "dep:winit", "dep:pollster"]
 # Native execution on AArch64 hosts (`--cpu=native`, PLAN.md step 4). Off by default.
 nce = ["dep:ounce-nce"]
+# Host audio output (cpal/ALSA) and physical gamepad input (gilrs/udev). Off by default so headless builds need zero C system libraries.
+host-io = ["dep:cpal", "dep:gilrs"]
 
 [dependencies]
 ab_glyph = "0.2"
 byteorder = "1.5.0"
-cpal = "0.18.2"
-gilrs = "0.11.2"
+cpal = { version = "0.18.2", optional = true }
+gilrs = { version = "0.11.2", optional = true }
 minifb = "0.29.0"
 ounce-nce = { path = "crates/ounce-nce", optional = true }
 ounce-recompiler = { path = "crates/ounce-recompiler", optional = true }

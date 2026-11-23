@@ -1,0 +1,33 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "Tables of 64-bit Mersenne Twisters",
+    "authors": ["Takuji Nishimura"],
+    "venue": "ACM Transactions on Modeling and Computer Simulation 10(4)",
+    "year": 2000
+  },
+  "program": {
+    "source": "mt19937-64.c",
+    "how": "written for ounce-core from the paper's recurrence (n=312, m=156, r=31, twist constant b5026f5aa96619e9) and tempering; the init_by_array64 seeding was re-implemented from the authors' reference source, which defines its multipliers; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "after init_by_array64({0x12345, 0x23456, 0x34567, 0x45678}) the first 1000 outputs of the 64-bit generator equal the 1000 values the authors published",
+    "a default-seeded (5489) mt19937_64 produces 9981545732273789042 as its 10000th output, the value the C++ standard requires"
+  ],
+  "expected_values_source": {
+    "what": "the 1000 genrand64_int64() outputs in the authors' mt19937-64.out.txt; the 10000th-output value from the C++ standard draft ([rand.predef], mt19937_64)",
+    "url": "https://www.math.sci.hiroshima-u.ac.jp/m-mat/MT/mt19937-64.out.txt",
+    "also": ["https://raw.githubusercontent.com/cplusplus/draft/main/source/numerics.tex"],
+    "fetched": "2026-11-19",
+    "note": "the values are data, copied as numbers; the authors' code was read only to confirm the seeding constants and was not copied. The 10000th-output value comes from the C++ standard, not from the 2000 paper."
+  },
+  "negative_control": "built with -DMT_M=155 (middle offset 155 instead of 156), 0 of 1000 published outputs match, the 10000th-output check fails and the program exits 1 (checked on ounce-core Tier-3 and natively)",
+  "not_checked": [
+    "the paper's period and equidistribution tables, and the other Mersenne exponents it tabulates (only the 2^19937-1 member is run)",
+    "the real-valued outputs (genrand64_real*), which the authors' .out file also lists",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, produces exactly the 1000 published MT19937-64 outputs and the standard's 10000th value. It does not show the statistical claims hold."
+}

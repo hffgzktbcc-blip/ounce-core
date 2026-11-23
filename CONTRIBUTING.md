@@ -22,7 +22,7 @@ New to the project? Visit our [contributor landing page](https://hffgzktbcc-blip
 
 Start with [Vision](docs/VISION.md), [Limits](docs/LIMITS.md) and [Reproduction guide](docs/REPRODUCE.md). The current supported envelope is narrower than arbitrary ARM64/Linux applications. Ask in [Discussions](https://github.com/hffgzktbcc-blip/ounce-core/discussions) if stuck.
 
-Preserve independent expectations, source provenance and honest failure reports. Do not submit retail firmware, keys or protected assets. See [Code of conduct](CODE_OF_CONDUCT.md) and [Security](SECURITY.md).
+Preserve independent expectations, source provenance and honest failure reports. Do not submit retail firmware, keys or protected assets. When editing documentation, use [the plain-language and freshness checklist](docs/README.md#keep-live-documentation-clear-and-current). See [Code of conduct](CODE_OF_CONDUCT.md) and [Security](SECURITY.md).
 
 ---
 
@@ -86,19 +86,6 @@ Mark a PLAN task complete manually with its acceptance evidence. A green build,
 PR creation or agent assertion does not by itself complete the user's scenario.
 Outside dependencies block their dependent action, not all other work.
 
-## Automated repository bots
-
-The repository uses automated GitHub Actions workflows and scripts to streamline contributions:
-
-- **Issue triage** (`.github/workflows/issue-triage.yml`): Runs on newly opened issues. It verifies required reproduction fields (`program`, `version`, `command`, `output`), asks politely for any missing information, suggests existing repository labels, searches for potential duplicate open issues, and summarizes crash or problem reports with their likely code area.
-- **CI explainer** (`.github/workflows/ci-explainer.yml`): Runs when a pull request CI workflow run completes with failure. It posts or updates a single comment identifying the failing job and step, extracts relevant trailing log lines, explains the root cause using GitHub Models, and provides the local `scripts/gate.sh` command to reproduce the failure.
-- **Welcome** (`.github/workflows/welcome.yml`): Welcomes first-time contributors with a single comment on their first issue or pull request, explaining next steps, local test commands (`scripts/gate.sh --check quick`), links to `CONTRIBUTING.md` and `docs/community/TRY_THIS_WEEK.md`, and AI-assistance disclosure expectations for pull requests.
-- **Issue claim** (`.github/workflows/claim.yml`): Automatically self-assigns contributors when they comment phrases like "I'll take this", "can I work on this", or "claim" on open, unassigned issues with the `good first issue` or `help wanted` label. If an issue is already assigned, it politely explains so and points to other available starter issues.
-- **Inactivity nudge** (`.github/workflows/nudge.yml`): Weekly check that posts a single gentle check-in on open assigned issues if the assignee has had no comment, commit, or PR activity in 14 days. If silence persists for another 14 days, it unassigns the issue with a thank-you to keep tasks open for others. Maintainer assignments are skipped.
-- **Outside activity helper** (`scripts/outside_activity.py`): Read-only maintainer CLI tool using `gh` that lists new issues, pull requests, and comments from outside contributors since a timestamp cached in `~/.cache/ounce-outside-activity.json`.
-- **Shiftbot** (`.github/workflows/shiftbot.yml`): Provides status summaries of open pull request review states and checks.
-- **Community onboarding** (`.github/workflows/community.yml`): Welcomes first-time contributors and monitors beginner issue availability.
-
 ## Sources and integrity
 
 Permissively licensed code may be ported with notices in THIRD_PARTY.md and source
@@ -131,3 +118,11 @@ New to the project? Read [Start here](docs/community/START_HERE.md) for a five-s
 [glossary](docs/community/GLOSSARY.md) explains the terms, and the
 [external test report template](docs/community/EXTERNAL_TEST_REPORT.md) is for reporting a
 rerun, whether it matched, mismatched or could not run.
+
+## Git Blame Hygiene
+
+To skip tree-wide formatting commits (listed in [`.git-blame-ignore-revs`](.git-blame-ignore-revs)) when running `git blame`, configure Git once in your clone:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```

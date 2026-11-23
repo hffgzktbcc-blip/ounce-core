@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "On the rapid computation of various polylogarithmic constants (BBP formula); worked example and tables as stated in Bailey, \"The BBP Algorithm for Pi\" (2006)",
+    "authors": ["David H. Bailey", "Peter B. Borwein", "Simon Plouffe"],
+    "venue": "Mathematics of Computation 66(218), 903-913",
+    "year": 1997
+  },
+  "program": {
+    "source": "bbp-pi-hex.c",
+    "how": "written for ounce-core from the digit-extraction algorithm in the 2006 note (formulas (4)-(7)): exact integer modular exponentiation 16^(d-k) mod (8k+j), fractions summed in IEEE double; no third-party code copied",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "at d = 1,000,000 the four fractional parts {16^d S_j} (j = 1, 4, 5, 6) and {16^d pi} equal the values printed in the 2006 note (0.1810395338.., 0.7760655498.., 0.3624585640.., 0.3861386739.., 0.4234297975..) to within 1e-9 (fixed before the first run); the note labels the four S_j values S1, S2, S3, S4 but means S1, S4, S5, S6",
+    "the first 8 hex digits at position 1,000,001 are 6C65E52C, as in the note (6C65E52CB459350050E4BB1) and consistent with the first digits of its Table 1 row for position 10^6 (26C65E52CB4593)",
+    "at ten starting positions d = 0, 1, 2, 3, 10, 100, 1000, 5000, 10000, 19000 the 8 hex digits produced equal the hexadecimal expansion of pi listed in OEIS A062964 (10 of 10 positions, 80 hex digits)"
+  ],
+  "expected_values_source": {
+    "what": "worked example numbers and hex digits from the BBP note; hexadecimal expansion of pi from the OEIS data (first 20000 hex digits)",
+    "url": "https://www.davidhbailey.com/dhbpapers/bbp-alg.pdf ; https://oeis.org/A062964/b062964.txt",
+    "fetched": "2026-11-19",
+    "note": "the numbers are data, copied as numbers; no code was copied. The 1997 Mathematics of Computation article itself was not fetched (the AMS site returned 403); the worked example and Table 1 come from the author's 2006 note on the same algorithm."
+  },
+  "negative_control": "built with -DBBP_COEF4=3 (coefficient 3 instead of 4 on the first series of the BBP formula), {16^d pi} at d = 1,000,000 is 0.2423902637 instead of 0.4234297975, the hex digits come out as 3E0D49CF, all ten OEIS positions fail and the program exits 1",
+  "not_checked": [
+    "the table rows at positions 10^7 to 2.5x10^14 (too many terms for the 2 billion instruction default budget; double precision also limits d to about 1.2e7)",
+    "digits beyond the first 8 hex digits at each position (IEEE double gives about 9 to 10 correct hex digits, as the note says)",
+    "the BBP formula's proof, and binary or other-base digit extraction",
+    "speed figures (emulator run time says nothing about the authors' hardware)",
+    "Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the note's worked example at position 1,000,001 to the stated tolerance and the first 80 hex digits of pi at ten positions up to 19000. It does not show the formula holds elsewhere."
+}

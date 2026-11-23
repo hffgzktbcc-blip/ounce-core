@@ -19,6 +19,7 @@ pub const SYS_CLOSE: u64 = 57;
 pub const SYS_WRITE: u64 = 64;
 pub const SYS_WRITEV: u64 = 66;
 pub const SYS_READLINKAT: u64 = 78;
+pub const SYS_NEWFSTATAT: u64 = 79;
 pub const SYS_EXIT: u64 = 93;
 pub const SYS_EXIT_GROUP: u64 = 94;
 pub const SYS_SET_TID_ADDRESS: u64 = 96;
@@ -81,6 +82,8 @@ pub struct Process {
     /// Virtual anonymous mappings, including unbacked PROT_NONE reservations.
     mappings: Vec<(u64, u64)>,
     pub(super) signal_mask: u64,
+    /// Signals raised with `tgkill` while blocked, waiting for `rt_sigprocmask` to unblock them (bit `n - 1`).
+    pub(super) signal_pending: u64,
     pub(super) alt_stack: [u64; 3],
     pub(super) sigactions: [[u8; 32]; 65],
     started: Instant,
@@ -98,6 +101,7 @@ impl Process {
             mappings: Vec::new(),
             sigactions: [[0; 32]; 65],
             signal_mask: 0,
+            signal_pending: 0,
             alt_stack: [0, 2, 0],
             started: Instant::now(),
             deterministic_ticks: None,
@@ -168,11 +172,16 @@ impl Process {
                         1 => old & !mask,
                         _ => mask,
                     } & !(1 << 8 | 1 << 18);
+                    if let Some(outcome) = self.deliver_pending() {
+                        return outcome;
+                    }
                     0
                 } else {
                     -EFAULT
                 }
             }
+            130 => return self.sys_tkill(a),
+            131 => return self.sys_tgkill(a),
             132 => self.sys_sigaltstack(a, mmu),
             SYS_CLOSE => {
                 if a[0] <= 2 {
@@ -218,9 +227,27 @@ impl Process {
             SYS_SCHED_GETAFFINITY => sys_sched_getaffinity(a[0], a[1], a[2], mmu),
             // The guest has no filesystem.
             SYS_OPENAT | SYS_READLINKAT => -ENOENT,
+            // stat of a path: there is nothing to find. fstat on a descriptor (AT_EMPTY_PATH with an empty path) is a
+            // different question and stays unimplemented.
+            SYS_NEWFSTATAT => match self.newfstatat_is_path_lookup(a, mmu) {
+                Ok(true) => -ENOENT,
+                Ok(false) => return Outcome::Unimplemented(describe_unimplemented(nr, &a)),
+                Err(errno) => errno,
+            },
             _ => return Outcome::Unimplemented(describe_unimplemented(nr, &a)),
         };
         Outcome::Return(r)
+    }
+
+    /// `newfstatat(dirfd, path, statbuf, flags)`: `Ok(true)` for a lookup by path (which finds nothing here), `Ok(false)`
+    /// for `AT_EMPTY_PATH` with an empty path, which asks about a descriptor, and `Err(-EFAULT)` for a bad pointer.
+    fn newfstatat_is_path_lookup(&self, a: [u64; 6], mmu: &Memory) -> Result<bool, i64> {
+        const AT_EMPTY_PATH: u64 = 0x1000;
+        let mut first = [0u8; 1];
+        if mmu.read_bytes(a[1], &mut first).is_err() {
+            return Err(-EFAULT);
+        }
+        Ok(!(first[0] == 0 && a[3] & AT_EMPTY_PATH != 0))
     }
 
     fn sys_write(&mut self, a: [u64; 6], mmu: &mut Memory, out: &mut dyn Output) -> i64 {

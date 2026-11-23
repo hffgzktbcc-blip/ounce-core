@@ -55,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     defaults:
       run:
         shell: bash
@@ -131,7 +131,7 @@ jobs:
           for h in blake3 crypto-algorithms fastlz tinf jsmn sha3 picohttpparser inih coremark kissfft qoi tiny-aes heatshrink stb-image monocypher lua wasm3; do
             python3 scripts/verify_linux_elf.py --harness "$h" --qemu qemu-aarch64 --budget 4000000000 --work "$EVIDENCE_ROOT/linux-more/$h" --host-cc 'python3 -m ziglang cc' --elf-cc 'python3 -m ziglang cc -target aarch64-linux-musl'
           done
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: linux-elf-lz4-evidence-${{ matrix.os }}
@@ -143,7 +143,7 @@ jobs:
             ${{ env.EVIDENCE_ROOT }}/linux-lz4/*.stdout
             ${{ env.EVIDENCE_ROOT }}/linux-lz4/*.stderr
           if-no-files-found: warn
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: linux-elf-libs-evidence-${{ matrix.os }}
@@ -156,6 +156,7 @@ jobs:
 
   instruction-fuzzer:
     name: Instruction fuzzer (Apple Silicon)
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -183,7 +184,7 @@ jobs:
           for engine in interp tier3 tier4; do
             target/release/ounce-core fuzz-replay --engine "$engine" fuzz-results/default-nan-mul2d.trace
           done
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: instruction-fuzzer-apple-silicon
@@ -204,7 +205,7 @@ jobs:
           persist-credentials: false
       - name: Build every NRO
         run: python3 scripts/verify_differential.py --nro --build-only --nro-out nros
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: differential-nros
           path: nros/*.nro
@@ -217,7 +218,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04-arm, macos-latest]
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-24.04-arm"]') || fromJSON('["ubuntu-24.04-arm", "macos-latest"]') }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -244,13 +245,13 @@ jobs:
           path: nros
       - name: Run differential checks
         run: python3 scripts/verify_differential.py --nro-dir nros --json report.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: differential-report-${{ matrix.os }}
           path: report.json
           if-no-files-found: warn
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: differential-outputs-${{ matrix.os }}
@@ -295,8 +296,13 @@ jobs:
       - name: Build ounce-core
         run: cargo build --release --locked --features "nce native-jit"
       - name: Run Linux ARM64 ELF matrix
-        run: python3 scripts/run_linux_arm64_matrix.py --work "$EVIDENCE_ROOT/linux-arm64-matrix" --report "$EVIDENCE_ROOT/linux-arm64-matrix-report.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 scripts/run_linux_arm64_matrix.py --only lz4 xxhash lua --work "$EVIDENCE_ROOT/linux-arm64-matrix" --report "$EVIDENCE_ROOT/linux-arm64-matrix-report.json"
+          else
+            python3 scripts/run_linux_arm64_matrix.py --work "$EVIDENCE_ROOT/linux-arm64-matrix" --report "$EVIDENCE_ROOT/linux-arm64-matrix-report.json"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: linux-arm64-elf-matrix-report

@@ -1,0 +1,34 @@
+{
+  "schema": "ounce.paper-check.v0",
+  "paper": {
+    "title": "A Painless Guide to CRC Error Detection Algorithms (the parametrised CRC model) and the catalogue of CRC algorithms built on it",
+    "authors": ["Ross N. Williams"],
+    "venue": "Rocksoft Pty Ltd technical document, version 3, 19 August 1993 (the catalogue entries are from the RevEng project's Catalogue of parametrised CRC algorithms)",
+    "year": 1993
+  },
+  "program": {
+    "source": "crc_catalog.c",
+    "how": "written for ounce-core from the guide's parametrised model (width, poly, init, refin, refout, xorout) as a bit-serial register machine with 128-bit state so the 82-bit entry fits; no third-party code copied. The catalogue is included as data in catalog.inc",
+    "target": "static freestanding aarch64 Linux ELF, run with `ounce-core run-elf`"
+  },
+  "claims_checked": [
+    "the guide's section 6 worked example: message 1101011011 with the poly 10011 has checksum 1110, and the transmission 11010110111110 leaves remainder 0",
+    "the guide's two complete parameter sets with check values: CRC-16 (poly 8005, init 0000, reflected in and out, xorout 0000) gives BB3D and CRC-32 (poly 04C11DB7, init FFFFFFFF, reflected, xorout FFFFFFFF) gives CBF43926 for the ASCII string 123456789",
+    "all 113 entries of the RevEng catalogue (widths 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 21, 24, 30, 31, 32, 40, 64 and 82 bits, 40 of them reflected-input) give their published check value for 123456789 and their published residue (226 values), including the one entry whose refin and refout differ"
+  ],
+  "expected_values_source": {
+    "what": "the two check values and the worked example from sections 6 and 16 of the guide; the catalogue's per-entry parameters, check value and residue from the generated catalogue source of the crc-catalog Rust crate (src/algorithm.rs), which states it is generated from the RevEng Catalogue of parametrised CRC algorithms",
+    "url": "https://www.zlib.net/crc_v3.txt ; https://raw.githubusercontent.com/akhilles/crc-catalog/master/src/algorithm.rs",
+    "fetched": "2026-11-19",
+    "note": "the RevEng catalogue page itself (reveng.sourceforge.io) returned 403 and was not read; the catalogue numbers come through the Rust crate's generated source, a secondary copy. Parameters and numbers are data, copied by a script that also parsed all 113 entries; no code was copied"
+  },
+  "negative_control": "built with GUIDE_CRC32_POLY=0x04C11DB6 (poly of the guide's CRC-32 example off by one), the guide's CRC-32 check prints f3d97e44 instead of cbf43926, the program prints FAIL and exits 1. Built with CRC_IGNORE_REFIN (every byte fed most significant bit first), both guide checks fail and only 75 of 113 catalogue entries still match (the others are the reflected-input ones), exit 1",
+  "not_checked": [
+    "the guide's table-driven, reflected-table and slightly mangled implementations and its C code (this program is the bit-serial model only)",
+    "CRC error-detection properties (burst lengths, Hamming distance) and the guide's advice on choosing a poly",
+    "inputs other than the nine bytes 123456789 (and the two worked-example bit strings): the catalogue publishes no other test messages",
+    "the catalogue as published on the RevEng site (not reachable); only its copy in the crc-catalog crate was compared, and its entries newer than that copy are not covered",
+    "speed figures (emulator run time says nothing about real hardware), Tier-4 and native ARM64 execution (the native comparison is x86-64)"
+  ],
+  "what_a_pass_means": "this program, run on ounce-core, reproduces the worked example and two check values of the Williams guide and the check value and residue of all 113 catalogue entries (230 published numbers). It does not show any error-detection claim."
+}

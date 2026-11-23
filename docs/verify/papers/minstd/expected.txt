@@ -1,0 +1,3 @@
+PASS a = 16807, seed 1, 10000th value: 3e345911
+PASS a = 48271, seed 1, 10000th value: 17cc5ab9
+PASS

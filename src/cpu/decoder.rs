@@ -600,17 +600,25 @@ pub fn decode(raw: u32) -> Instruction {
         }
     }
 
-    // 14a1. Floating-Point 3-Source: 0 0 0 11111 ftype o1 Rm o0 Ra Rn Rd
-    if (raw & 0xFF00_0000) == 0x1F00_0000 && (raw >> 22) & 0x3 <= 1 {
-        return Instruction::FpData3 {
-            rd: (raw & 0x1F) as u8,
-            rn: ((raw >> 5) & 0x1F) as u8,
-            rm: ((raw >> 16) & 0x1F) as u8,
-            ra: ((raw >> 10) & 0x1F) as u8,
-            o1: raw & (1 << 21) != 0,
-            o0: raw & (1 << 15) != 0,
-            is_double: (raw >> 22) & 0x3 == 1,
+    // 14a1. Floating-Point 3-Source: 0 0 0 11111 ftype o1 Rm o0 Ra Rn Rd (ftype: 0=S, 1=D, 3=H)
+    if (raw & 0xFF00_0000) == 0x1F00_0000 {
+        let esize = match (raw >> 22) & 0x3 {
+            0 => Some(32),
+            1 => Some(64),
+            3 => Some(16),
+            _ => None,
         };
+        if let Some(esize) = esize {
+            return Instruction::FpData3 {
+                rd: (raw & 0x1F) as u8,
+                rn: ((raw >> 5) & 0x1F) as u8,
+                rm: ((raw >> 16) & 0x1F) as u8,
+                ra: ((raw >> 10) & 0x1F) as u8,
+                o1: raw & (1 << 21) != 0,
+                o0: raw & (1 << 15) != 0,
+                esize,
+            };
+        }
     }
 
     // 14a2. Floating-Point round to integral: FRINTx
@@ -690,32 +698,46 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
-    // 14b. Floating-Point Conditional Select: FCSEL
+    // 14b. Floating-Point Conditional Select: FCSEL (ftype: 0=S, 1=D, 3=H)
     // Pattern: 0 0 0 11110 ftype 1 Rm cond 11 Rn Rd
-    if (raw & 0xFF200C00) == 0x1E200C00 && (raw >> 22) & 0x3 <= 1 {
-        return Instruction::FpCondSelect {
-            rd: (raw & 0x1F) as u8,
-            rn: ((raw >> 5) & 0x1F) as u8,
-            rm: ((raw >> 16) & 0x1F) as u8,
-            cond: Condition::from_u8(((raw >> 12) & 0xF) as u8),
-            is_double: (raw >> 22) & 0x3 == 1,
+    if (raw & 0xFF200C00) == 0x1E200C00 {
+        let esize = match (raw >> 22) & 0x3 {
+            0 => Some(32),
+            1 => Some(64),
+            3 => Some(16),
+            _ => None,
         };
+        if let Some(esize) = esize {
+            return Instruction::FpCondSelect {
+                rd: (raw & 0x1F) as u8,
+                rn: ((raw >> 5) & 0x1F) as u8,
+                rm: ((raw >> 16) & 0x1F) as u8,
+                cond: Condition::from_u8(((raw >> 12) & 0xF) as u8),
+                esize,
+            };
+        }
     }
 
-    // 15. Floating-Point Compare: FCMP
+    // 15. Floating-Point Compare: FCMP / FCMPE (ftype: 0=S, 1=D, 3=H)
     // FCMP/FCMPE (bit 4 = signalling) with a register (bit 3 = 0) or #0.0 (bit 3 = 1) operand
-    if (raw & 0xFF20FC07) == 0x1E202000 && (raw >> 22) & 0x3 <= 1 {
-        let ftype = (raw >> 22) & 0x3;
-        let is_double = ftype == 1;
-        let rm = ((raw >> 16) & 0x1F) as u8;
-        let rn = ((raw >> 5) & 0x1F) as u8;
-        return Instruction::FpCompare {
-            rn,
-            rm,
-            is_zero: raw & 0x8 != 0,
-            is_double,
-            signalling: raw & 0x10 != 0,
+    if (raw & 0xFF20FC07) == 0x1E202000 {
+        let esize = match (raw >> 22) & 0x3 {
+            0 => Some(32),
+            1 => Some(64),
+            3 => Some(16),
+            _ => None,
         };
+        if let Some(esize) = esize {
+            let rm = ((raw >> 16) & 0x1F) as u8;
+            let rn = ((raw >> 5) & 0x1F) as u8;
+            return Instruction::FpCompare {
+                rn,
+                rm,
+                is_zero: raw & 0x8 != 0,
+                esize,
+                signalling: raw & 0x10 != 0,
+            };
+        }
     }
 
     // 16. System Register Read/Write: MRS Xt, <sysreg> / MSR <sysreg>, Xt
@@ -1210,23 +1232,24 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         }
     }
 
-    // 26b. LD1/ST1 (single structure) and LD1R: 0 Q 0011010 L 0 00000 opcode S size Rn Rt,
-    //      post-index 0 Q 0011011 L 0 Rm opcode S size Rn Rt
-    let single = (raw & 0xBFBF_0000) == 0x0D00_0000;
-    let single_post = (raw & 0xBFA0_0000) == 0x0D80_0000;
+    // 26b. LD1-LD4/ST1-ST4 (single structure) and LD1R-LD4R: 0 Q 0011010 L R 00000 opcode S size Rn Rt,
+    //      post-index 0 Q 0011011 L R Rm opcode S size Rn Rt. The register count is ((opcode<0> << 1) | R) + 1.
+    let single = (raw & 0xBF9F_0000) == 0x0D00_0000;
+    let single_post = (raw & 0xBF80_0000) == 0x0D80_0000;
     if single || single_post {
         let is_load = (raw & (1 << 22)) != 0;
         let opcode = (raw >> 13) & 0x7;
         let s_bit = (raw >> 12) & 1;
         let sz = (raw >> 10) & 0x3;
         let qb = (raw >> 30) & 1;
-        let (esize, index, replicate) = match opcode {
-            0b000 => (8u8, (qb << 3 | s_bit << 2 | sz) as u8, false),
-            0b010 if sz & 1 == 0 => (16, (qb << 2 | s_bit << 1 | sz >> 1) as u8, false),
-            0b100 if sz == 0 => (32, (qb << 1 | s_bit) as u8, false),
-            0b100 if sz == 1 && s_bit == 0 => (64, qb as u8, false),
-            0b110 if is_load && s_bit == 0 => (8u8 << sz, 0, true),
-            _ => return None, // LD2/LD3/LD4 single structure not implemented
+        let nregs = ((((opcode & 1) << 1) | ((raw >> 21) & 1)) + 1) as u8;
+        let (esize, index, replicate) = match opcode >> 1 {
+            0b00 => (8u8, (qb << 3 | s_bit << 2 | sz) as u8, false),
+            0b01 if sz & 1 == 0 => (16, (qb << 2 | s_bit << 1 | sz >> 1) as u8, false),
+            0b10 if sz == 0 => (32, (qb << 1 | s_bit) as u8, false),
+            0b10 if sz == 1 && s_bit == 0 => (64, qb as u8, false),
+            0b11 if is_load && s_bit == 0 => (8u8 << sz, 0, true),
+            _ => return None,
         };
         return Some(Instruction::SimdLoadStoreSingle {
             rt: rd,
@@ -1238,6 +1261,7 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             q,
             is_load,
             post_index: single_post,
+            nregs,
         });
     }
 
@@ -1253,16 +1277,24 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
-    // 21c. FCCMP/FCCMPE: 0 0 0 11110 ftype 1 Rm cond 01 Rn op nzcv (ftype 0 = single, 1 = double)
-    if (raw & 0xFF20_0C00) == 0x1E20_0400 && (size == 0 || size == 1) {
-        return Some(Instruction::FpCondCompare {
-            rn,
-            rm,
-            nzcv: (raw & 0xF) as u8,
-            cond: Condition::from_u8(((raw >> 12) & 0xF) as u8),
-            is_double: size == 1,
-            signalling: raw & 0x10 != 0,
-        });
+    // 21c. FCCMP/FCCMPE: 0 0 0 11110 ftype 1 Rm cond 01 Rn op nzcv (ftype 0 = single, 1 = double, 3 = half)
+    if (raw & 0xFF20_0C00) == 0x1E20_0400 {
+        let esize = match size {
+            0 => Some(32),
+            1 => Some(64),
+            3 => Some(16),
+            _ => None,
+        };
+        if let Some(esize) = esize {
+            return Some(Instruction::FpCondCompare {
+                rn,
+                rm,
+                nzcv: (raw & 0xF) as u8,
+                cond: Condition::from_u8(((raw >> 12) & 0xF) as u8),
+                esize,
+                signalling: raw & 0x10 != 0,
+            });
+        }
     }
 
     // 26a'. AdvSIMD vector x indexed element, floating point: 0 Q U 01111 1 sz L M Rm opcode H 0 Rn Rd
@@ -1685,14 +1717,17 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
     }
 
     // 27d. AdvSIMD three same, floating point (opcode >= 11000): 0 Q U 01110 a sz 1 Rm opcode 1 Rn Rd.
-    //      Half precision (the separate three-same-FP16 encoding) is not decoded.
+    //      Includes FEAT_FHM FMLAL/FMLSL/FMLAL2/FMLSL2 (sz=0).
     if (raw & 0x9F20_0400) == 0x0E20_0400 && (raw >> 11) & 0x1F >= 0b11000 {
         let a = (raw >> 23) & 1 == 1;
+        let double = (raw >> 22) & 1 == 1;
         let op = match ((raw >> 11) & 0x1F, u, a) {
             (0b11000, false, false) => SimdFpOp3::Fmaxnm,
             (0b11000, false, true) => SimdFpOp3::Fminnm,
             (0b11001, false, false) => SimdFpOp3::Fmla,
             (0b11001, false, true) => SimdFpOp3::Fmls,
+            (0b11001, true, false) if !double => SimdFpOp3::Fmlal2,
+            (0b11001, true, true) if !double => SimdFpOp3::Fmlsl2,
             (0b11010, false, false) => SimdFpOp3::Fadd,
             (0b11010, false, true) => SimdFpOp3::Fsub,
             (0b11000, true, false) => SimdFpOp3::Fmaxnmp,
@@ -1708,6 +1743,8 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11100, false, false) => SimdFpOp3::Fcmeq,
             (0b11100, true, false) => SimdFpOp3::Fcmge,
             (0b11100, true, true) => SimdFpOp3::Fcmgt,
+            (0b11101, false, false) if !double => SimdFpOp3::Fmlal,
+            (0b11101, false, true) if !double => SimdFpOp3::Fmlsl,
             (0b11101, true, false) => SimdFpOp3::Facge,
             (0b11101, true, true) => SimdFpOp3::Facgt,
             (0b11110, false, false) => SimdFpOp3::Fmax,
@@ -1715,7 +1752,6 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11111, true, false) => SimdFpOp3::Fdiv,
             _ => return None,
         };
-        let double = (raw >> 22) & 1 == 1;
         if double && !q {
             return None;
         }
@@ -1940,6 +1976,13 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
+    // 29b0. AdvSIMD two-register miscellaneous, half precision (FEAT_FP16), FABS/FNEG only:
+    //       0 Q U 01110 1 111100 01111 10 Rn Rd (U = 1 is FNEG). A sign-bit operation on each 16-bit lane, no
+    //       exceptions. The other half-precision forms of this group stay undecoded.
+    if (raw & 0x9FFF_FC00) == 0x0EF8_F800 {
+        return Some(Instruction::SimdFpAbsNegHalf { rd, rn, neg: u, q });
+    }
+
     // 29b. AdvSIMD two-register miscellaneous, floating point: 0 Q U 01110 a sz 10000 opcode 10 Rn Rd
     //      (half precision not decoded; FCVTN/FCVTL only in the double/single form)
     if (raw & 0x9F3E_0C00) == 0x0E20_0800 {
@@ -1968,9 +2011,9 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             (0b11110, true, false) => Some(SimdFpOp2::Frint32x),
             (0b11111, false, false) => Some(SimdFpOp2::Frint64z),
             (0b11111, true, false) => Some(SimdFpOp2::Frint64x),
-            (0b10110, false, false) if double => Some(SimdFpOp2::Fcvtn),
+            (0b10110, false, false) => Some(SimdFpOp2::Fcvtn),
             (0b10110, true, false) if double => Some(SimdFpOp2::Fcvtxn),
-            (0b10111, false, false) if double => Some(SimdFpOp2::Fcvtl),
+            (0b10111, false, false) => Some(SimdFpOp2::Fcvtl),
             _ => None,
         };
         if let Some(op) = fp {
@@ -2472,7 +2515,7 @@ mod tests {
                 rn: 0,
                 rm: 3,
                 cond: Condition::from_u8(0),
-                is_double: false
+                esize: 32
             }
         );
     }
@@ -3211,12 +3254,9 @@ mod fuzz_half_precision {
     #[test]
     fn half_precision_scalar_words_are_not_decoded_as_single() {
         for w in [
-            0x1ef1_4f22u32, // fcsel h2, h25, h17, vs
-            0x1ee2_03a6,    // fcvt s6, h29 (ftype 3 one-source)
+            0x1ee2_03a6u32, // fcvt s6, h29 (ftype 3 one-source)
             0x9ee0_00b4,    // fcvtns x20, h5
-            0x1efd_21e8,    // fcmp h15, h29
             0x1ee4_c16a,    // fneg/fabs class, half
-            0x1ef0_ef62,    // fcsel h2, h27, h16, al
         ] {
             assert!(
                 matches!(decode(w), Instruction::Unimplemented { .. }),
@@ -3224,23 +3264,80 @@ mod fuzz_half_precision {
                 decode(w)
             );
         }
+        // FCSEL H, FCMP H, FCCMP H now decode with esize == 16 (#469)
+        assert!(matches!(
+            decode(0x1ef1_4f22),
+            Instruction::FpCondSelect { esize: 16, .. }
+        )); // fcsel h2, h25, h17, vs
+        assert!(matches!(decode(0x1efd_21e8), Instruction::FpCompare { esize: 16, .. })); // fcmp h15, h29
+        assert!(matches!(
+            decode(0x1eeb_1486),
+            Instruction::FpCondCompare { esize: 16, .. }
+        )); // fccmp h4, h11, #6, ne
         // single and double still decode
         assert!(matches!(
             decode(0x1e22_0c20),
-            Instruction::FpCondSelect { is_double: false, .. }
+            Instruction::FpCondSelect { esize: 32, .. }
         )); // fcsel s0, s1, s2, eq
         assert!(matches!(
             decode(0x1e62_0c20),
-            Instruction::FpCondSelect { is_double: true, .. }
+            Instruction::FpCondSelect { esize: 64, .. }
         )); // fcsel d0, d1, d2, eq
-        assert!(matches!(
-            decode(0x1e22_2020),
-            Instruction::FpCompare { is_double: false, .. }
-        )); // fcmp s1, s2
+        assert!(matches!(decode(0x1e22_2020), Instruction::FpCompare { esize: 32, .. })); // fcmp s1, s2
         assert!(matches!(
             decode(0x1e21_c020),
             Instruction::FpData1 { is_double: false, .. }
         )); // fsqrt s0, s1
+        // half-precision 3-source (FMADD/FMSUB/FNMADD/FNMSUB H) now decodes with esize == 16 (#469)
+        assert!(matches!(
+            decode(0x1fc3_1041),
+            Instruction::FpData3 {
+                rd: 1,
+                rn: 2,
+                rm: 3,
+                ra: 4,
+                o1: false,
+                o0: false,
+                esize: 16
+            }
+        )); // fmadd h1, h2, h3, h4
+        // vector FMLAL/FMLSL/FMLAL2/FMLSL2 and FCVTN/FCVTL (4H <-> 4S) decode (#469)
+        assert!(matches!(
+            decode(0x0ea7_edca),
+            Instruction::SimdFpThreeSame {
+                op: SimdFpOp3::Fmlsl,
+                double: false,
+                q: false,
+                ..
+            }
+        ));
+        assert!(matches!(
+            decode(0x6e29_cea1),
+            Instruction::SimdFpThreeSame {
+                op: SimdFpOp3::Fmlal2,
+                double: false,
+                q: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            decode(0x4e21_6a91),
+            Instruction::SimdFpTwoMisc {
+                op: SimdFpOp2::Fcvtn,
+                double: false,
+                q: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            decode(0x0e21_799f),
+            Instruction::SimdFpTwoMisc {
+                op: SimdFpOp2::Fcvtl,
+                double: false,
+                q: false,
+                ..
+            }
+        ));
     }
 }
 

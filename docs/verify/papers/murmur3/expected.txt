@@ -1,0 +1,4 @@
+PASS MurmurHash3_x86_32  verification value: b0f57ee3
+PASS MurmurHash3_x86_128 verification value: b3ece62a
+PASS MurmurHash3_x64_128 verification value: 6384ba69
+PASS

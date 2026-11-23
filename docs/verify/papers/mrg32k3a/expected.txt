@@ -1,0 +1,2 @@
+published test2RngStream.res: 110 of 110 lines match
+PASS
