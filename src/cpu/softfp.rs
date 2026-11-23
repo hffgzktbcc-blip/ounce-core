@@ -586,10 +586,13 @@ pub fn int_to_fp(f: Fmt, env: Env, neg: bool, mag: u64, fbits: u32) -> u64 {
     round_pack(f, env, neg, -(fbits as i32), mag as u128, false)
 }
 
-/// `FCVT` between single and double. Widening is exact; narrowing rounds under `env`.
+/// `FCVT` between half, single, and double. Widening is exact; narrowing rounds under `env`.
+/// Per Arm ARM `FPConvert`, `FPCR.FZ` flushes single/double denormals, while half-precision inputs
+/// and outputs are never flushed by `FZ` or `FZ16`.
 pub fn convert(from: Fmt, to: Fmt, env: Env, a: u64) -> u64 {
-    // hardware (and the reference) flush a denormal input under FZ
-    let a = flush_input(from, env, a);
+    // hardware (and the reference) flush a single/double denormal input under FZ, never half
+    let in_env = if from == F16 { Env { fz: false, ..env } } else { env };
+    let a = flush_input(from, in_env, a);
     if from.is_nan(a) {
         if from.is_snan(a) {
             raise(IOC);
@@ -613,7 +616,8 @@ pub fn convert(from: Fmt, to: Fmt, env: Env, a: u64) -> u64 {
         return to.zero(from.sign(a));
     }
     let x = unpack(from, a);
-    round_pack(to, env, x.sign, x.exp, x.mant as u128, false)
+    let out_env = if to == F16 { Env { fz: false, ..env } } else { env };
+    round_pack(to, out_env, x.sign, x.exp, x.mant as u128, false)
 }
 
 /// Widens an `F16` value to `F32` for `FMLAL`/`FMLSL` (FEAT_FHM), preserving a signalling NaN's quiet bit
@@ -1167,5 +1171,27 @@ mod tests {
         assert_eq!(flush_input(F16, fz16, 0x0001), 0);
         assert_eq!(flush_input(F16, fz16, 0x8001), 0x8000);
         assert_eq!(take_flags(), 0, "FPCR.FZ16 on F16 does not raise IDC");
+    }
+
+    #[test]
+    fn fcvt_f16_fz_and_fz16_match_arm64_fpconvert() {
+        let _ = take_flags();
+        // Neither FPCR.FZ nor FPCR.FZ16 flushes F16 subnormals in FCVT (verified on Apple Silicon)
+        for fpcr in [0, FPCR_FZ16, FPCR_FZ, FPCR_FZ | FPCR_FZ16] {
+            let env = Env::from_fpcr(fpcr);
+            assert_eq!(convert(F16, F32, env, 0x0001), 0x3380_0000);
+            assert_eq!(take_flags(), 0);
+            assert_eq!(convert(F32, F16, env, 0x3800_0000), 0x0200);
+            assert_eq!(take_flags(), 0);
+            assert_eq!(convert(F64, F16, env, 0x3f00_0000_0000_0000), 0x0200);
+            assert_eq!(take_flags(), 0);
+        }
+        // Single/double denormal inputs DO flush under FPCR.FZ (raising IDC), not under FPCR.FZ16
+        assert_eq!(convert(F32, F16, Env::from_fpcr(FPCR_FZ16), 0x0000_0001), 0);
+        assert_eq!(take_flags(), UFC | IXC);
+        assert_eq!(convert(F32, F16, Env::from_fpcr(FPCR_FZ), 0x0000_0001), 0);
+        assert_eq!(take_flags(), IDC);
+        assert_eq!(convert(F64, F16, Env::from_fpcr(FPCR_FZ), 0x0000_0000_0000_0001), 0);
+        assert_eq!(take_flags(), IDC);
     }
 }
