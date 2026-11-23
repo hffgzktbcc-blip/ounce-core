@@ -2469,6 +2469,31 @@ mod tests {
     }
 
     #[test]
+    fn scalar_fp16_edge_forms_fall_back_in_all_tiers() {
+        let e = check_all_tiers(
+            &[
+                0xd2800020, // mov x0, #1
+                0x5ef9d820, // frecpe h0, h1
+                0x7ef9d840, // frsqrte h0, h2
+                0x5e423c60, // frecps h0, h3, h2
+                0x5ec23c80, // frsqrts h0, h4, h2
+                0x7ec214a0, // fabd h0, h5, h2
+                0x5ef8d8c0, // fcmeq h0, h6, #0.0
+                0x91000400, // add x0, x0, #1
+                0xd4000001, // svc #1
+            ],
+            |cpu| {
+                cpu.regs.v[1] = 0x3c00;
+                cpu.regs.v[2] = 0x3c00;
+                cpu.regs.v[3] = 0x4000;
+                cpu.regs.v[4] = 0x3c00;
+                cpu.regs.v[5] = 0x4000;
+            },
+        );
+        assert!(e.fallback_insns >= 6);
+    }
+
+    #[test]
     fn fp_and_simd_ops_match_all_tiers() {
         #[rustfmt::skip]
         let e = check_all_tiers(&[

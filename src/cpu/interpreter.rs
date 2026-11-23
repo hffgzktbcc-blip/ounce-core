@@ -2,7 +2,7 @@
 
 use super::instructions::{
     BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacModifier, PauthOp, ShiftType,
-    SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftOp,
+    SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftOp,
 };
 use super::pauth::{self, PointerAuth};
 use super::simd;
@@ -2772,11 +2772,19 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpAbd { rd, rn, rm, is_double } => {
-                // always the soft path: it raises the exception flags (IXC, IOC, ...) the host does at default FPCR too
-                let (f, env) = self.fp_env(is_double);
-                let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
-                let r = f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b));
+            Instruction::FpAbd { rd, rn, rm, esize } => {
+                let r = if esize == 16 {
+                    let f = softfp::F16;
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let a = (self.regs.read_q(rn) & 0xFFFF) as u64;
+                    let b = (self.regs.read_q(rm) & 0xFFFF) as u64;
+                    f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b)) & 0xFFFF
+                } else {
+                    let is_double = esize == 64;
+                    let (f, env) = self.fp_env(is_double);
+                    let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
+                    f.abs(softfp::binop(f, env, softfp::BinOp::Sub, a, b))
+                };
                 self.regs.write_q(rd, r as u128);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
@@ -2801,31 +2809,127 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpScalarThreeSame {
-                rd,
-                rn,
-                rm,
-                op,
-                is_double,
-            } => {
-                let e = if is_double { 64 } else { 32 };
-                let keep = simd::lane_mask(e);
-                // a scalar op reads lane 0 only: replicate it so the unread lane cannot raise exception flags
-                let n = simd::dup(simd::lane(self.regs.read_q(rn), e, 0), e, true);
-                let m = simd::dup(simd::lane(self.regs.read_q(rm), e, 0), e, true);
-                let raw = simd::fp_three_same_fpcr(op, 0, n, m, is_double, false, self.regs.fpcr);
-                self.regs.write_q(rd, raw & keep);
+            Instruction::FpScalarThreeSame { rd, rn, rm, op, esize } => {
+                if esize == 16 {
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let a = (self.regs.read_q(rn) & 0xFFFF) as u64;
+                    let b = (self.regs.read_q(rm) & 0xFFFF) as u64;
+                    let r = match op {
+                        SimdFpOp3::Frecps => (softfp::recip_step(softfp::F16, env, a, b) & 0xFFFF) as u128,
+                        SimdFpOp3::Frsqrts => (softfp::rsqrt_step(softfp::F16, env, a, b) & 0xFFFF) as u128,
+                        SimdFpOp3::Fcmeq
+                        | SimdFpOp3::Fcmge
+                        | SimdFpOp3::Fcmgt
+                        | SimdFpOp3::Facge
+                        | SimdFpOp3::Facgt => {
+                            let (va, vb) = if matches!(op, SimdFpOp3::Facge | SimdFpOp3::Facgt) {
+                                (softfp::F16.abs(a), softfp::F16.abs(b))
+                            } else {
+                                (a, b)
+                            };
+                            softfp::raise_compare(softfp::F16, va, vb, op != SimdFpOp3::Fcmeq);
+                            let fa = softfp::flush_input(softfp::F16, env, va);
+                            let fb = softfp::flush_input(softfp::F16, env, vb);
+                            let (n, z, _c, v) = softfp::compare_f16_nzcv(fa, fb);
+                            let pass = if v {
+                                false
+                            } else {
+                                match op {
+                                    SimdFpOp3::Fcmeq => z,
+                                    SimdFpOp3::Fcmge | SimdFpOp3::Facge => !n,
+                                    SimdFpOp3::Fcmgt | SimdFpOp3::Facgt => !n && !z,
+                                    _ => unreachable!(),
+                                }
+                            };
+                            if pass { 0xFFFFu128 } else { 0u128 }
+                        }
+                        _ => unreachable!("unsupported scalar three-same half op"),
+                    };
+                    self.regs.write_q(rd, r);
+                } else {
+                    let is_double = esize == 64;
+                    let e = if is_double { 64 } else { 32 };
+                    let keep = simd::lane_mask(e);
+                    // a scalar op reads lane 0 only: replicate it so the unread lane cannot raise exception flags
+                    let n = simd::dup(simd::lane(self.regs.read_q(rn), e, 0), e, true);
+                    let m = simd::dup(simd::lane(self.regs.read_q(rm), e, 0), e, true);
+                    let raw = simd::fp_three_same_fpcr(op, 0, n, m, is_double, false, self.regs.fpcr);
+                    self.regs.write_q(rd, raw & keep);
+                }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpScalarTwoMisc { rd, rn, op, is_double } => {
-                let e = if is_double { 64 } else { 32 };
-                let keep = simd::lane_mask(e);
-                // replicate lane 0 so the unread lane (zero would be a divide-by-zero for FRECPE) raises no flags
-                let n = simd::dup(simd::lane(self.regs.read_q(rn), e, 0), e, true);
-                let raw = simd::fp_two_misc_fpcr(op, 0, n, is_double, false, self.regs.fpcr);
-                self.regs.write_q(rd, raw & keep);
+            Instruction::FpScalarTwoMisc { rd, rn, op, esize } => {
+                if esize == 16 {
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let f = softfp::F16;
+                    let a = (self.regs.read_q(rn) & 0xFFFF) as u64;
+                    let r = match op {
+                        SimdFpOp2::Frecpe => {
+                            let a_in = softfp::flush_input(f, env, a);
+                            simd::special_op2_flags(SimdFpOp2::Frecpe, f, a_in, simd::Rm::Ne, env.fz);
+                            let res = simd::fp_recip_estimate(a_in, 16);
+                            let res = if env.dn && f.is_nan(res) {
+                                f.default_nan()
+                            } else if env.fz && f.is_denormal(res) {
+                                res & 0x8000
+                            } else if f.is_inf(res) && !f.is_zero(a_in) && !f.is_inf(a_in) && !f.is_nan(a_in) {
+                                // a tiny input overflows: infinity only when the mode rounds that way, else the largest finite
+                                let neg = res != f.infinity(false);
+                                let to_inf = match env.round {
+                                    softfp::Round::Nearest => true,
+                                    softfp::Round::Up => !neg,
+                                    softfp::Round::Down => neg,
+                                    _ => false,
+                                };
+                                if to_inf { res } else { res - 1 }
+                            } else {
+                                res
+                            };
+                            (res & 0xFFFF) as u128
+                        }
+                        SimdFpOp2::Frsqrte => {
+                            let a_in = softfp::flush_input(f, env, a);
+                            simd::special_op2_flags(SimdFpOp2::Frsqrte, f, a_in, simd::Rm::Ne, env.fz);
+                            let res = simd::fp_rsqrt_estimate(a_in, 16);
+                            let res = if env.dn && f.is_nan(res) { f.default_nan() } else { res };
+                            (res & 0xFFFF) as u128
+                        }
+                        SimdFpOp2::Fcmeq0
+                        | SimdFpOp2::Fcmge0
+                        | SimdFpOp2::Fcmgt0
+                        | SimdFpOp2::Fcmle0
+                        | SimdFpOp2::Fcmlt0 => {
+                            softfp::raise_compare(f, a, 0, op != SimdFpOp2::Fcmeq0);
+                            let a_flushed = softfp::flush_input(f, env, a);
+                            let (n, z, _c, v) = softfp::compare_f16_nzcv(a_flushed, 0);
+                            let pass = if v {
+                                false
+                            } else {
+                                match op {
+                                    SimdFpOp2::Fcmeq0 => z,
+                                    SimdFpOp2::Fcmge0 => !n,
+                                    SimdFpOp2::Fcmgt0 => !n && !z,
+                                    SimdFpOp2::Fcmle0 => n || z,
+                                    SimdFpOp2::Fcmlt0 => n,
+                                    _ => unreachable!(),
+                                }
+                            };
+                            if pass { 0xFFFFu128 } else { 0u128 }
+                        }
+                        _ => unreachable!("unsupported scalar two-misc half op"),
+                    };
+                    self.regs.write_q(rd, r);
+                } else {
+                    let is_double = esize == 64;
+                    let e = if is_double { 64 } else { 32 };
+                    let keep = simd::lane_mask(e);
+                    // replicate lane 0 so the unread lane (zero would be a divide-by-zero for FRECPE) raises no flags
+                    let n = simd::dup(simd::lane(self.regs.read_q(rn), e, 0), e, true);
+                    let raw = simd::fp_two_misc_fpcr(op, 0, n, is_double, false, self.regs.fpcr);
+                    self.regs.write_q(rd, raw & keep);
+                }
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -4479,5 +4583,25 @@ mod fuzz_scalar_nan {
         assert_eq!(run1(0x1ee2_c020, &[(1, 0x3e00)]).regs.v[0], 0x3ff8_0000_0000_0000);
         assert_eq!(run1(0x1e23_c020, &[(1, 0x3fc0_0000)]).regs.v[0], 0x3e00);
         assert_eq!(run1(0x1e63_c020, &[(1, 0x3ff8_0000_0000_0000)]).regs.v[0], 0x3e00);
+    }
+
+    #[test]
+    fn test_scalar_fp16_edge_forms() {
+        assert_eq!(run1(0x5ef9d820, &[(1, 0x3c00)]).regs.v[0], 0x3bfc); // frecpe h0, h1
+        assert_eq!(run1(0x7ef9d820, &[(1, 0x3c00)]).regs.v[0], 0x3bfc); // frsqrte h0, h1
+        assert_eq!(run1(0x5e423c20, &[(1, 0x3c00), (2, 0x4000)]).regs.v[0], 0); // frecps h0, h1, h2
+        assert_eq!(run1(0x5ec23c20, &[(1, 0x3c00), (2, 0x3c00)]).regs.v[0], 0x3c00); // frsqrts h0, h1, h2
+        assert_eq!(run1(0x7ec21420, &[(1, 0x3c00), (2, 0x4000)]).regs.v[0], 0x3c00); // fabd h0, h1, h2
+        assert_eq!(run1(0x5ef8d820, &[(1, 0x0000)]).regs.v[0], 0xffff); // fcmeq h0, h1, #0.0
+        // M3: frecpe of a tiny negative under RP overflows to -max, not -inf
+        let mut c = Cpu::new();
+        c.regs.fpcr = 1 << 22;
+        c.regs.v[1] = 0x8001;
+        let mut mmu = Memory::new();
+        mmu.map_range(0x1000, 0x1000, Permission::READ_WRITE_EXECUTE);
+        mmu.write_u32(0x1000, 0x5ef9d820).unwrap();
+        c.regs.pc = 0x1000;
+        c.step(&mut mmu).unwrap();
+        assert_eq!((c.regs.v[0], c.regs.fpsr & 0x9f), (0xfbff, 0x14));
     }
 }
