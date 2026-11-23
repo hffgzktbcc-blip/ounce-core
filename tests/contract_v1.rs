@@ -599,7 +599,7 @@ fn run_v1_stop_details_follow_the_stop() {
         0,
         "exit_code is how the engine stopped; the guest's own status is separate"
     );
-    assert_eq!(by_name("run-elf unknown syscall")["svc_id"], 278);
+    assert_eq!(by_name("run-elf unknown syscall")["svc_id"], 280);
     assert!(by_name("run-elf unknown syscall")["guest_exit_status"].is_null());
     assert!(by_name("run-elf not an ELF")["message"].is_string());
     let sym = by_name("run-elf symbolicated fault");

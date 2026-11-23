@@ -5,21 +5,42 @@ use super::elf::{MMAP_BASE, PAGE, STACK_SIZE, STACK_TOP, align_up};
 use crate::mmu::{Memory, Permission};
 use std::time::Instant;
 
+pub const EPERM: i64 = 1;
 pub const ENOENT: i64 = 2;
 pub const ESRCH: i64 = 3;
 pub const EBADF: i64 = 9;
 pub const ENOMEM: i64 = 12;
+pub const EACCES: i64 = 13;
 pub const EFAULT: i64 = 14;
+pub const EEXIST: i64 = 17;
+#[allow(dead_code)]
+pub const ENOTDIR: i64 = 20;
+pub const EISDIR: i64 = 21;
 pub const EINVAL: i64 = 22;
+pub const EMFILE: i64 = 24;
 pub const ENOTTY: i64 = 25;
+pub const EFBIG: i64 = 27;
+pub const ENOSPC: i64 = 28;
+pub const ESPIPE: i64 = 29;
+pub const ENAMETOOLONG: i64 = 36;
 
+pub const SYS_FCNTL: u64 = 25;
 pub const SYS_IOCTL: u64 = 29;
+pub const SYS_UNLINKAT: u64 = 35;
+pub const SYS_FTRUNCATE: u64 = 46;
 pub const SYS_OPENAT: u64 = 56;
 pub const SYS_CLOSE: u64 = 57;
+pub const SYS_LSEEK: u64 = 62;
+pub const SYS_READ: u64 = 63;
 pub const SYS_WRITE: u64 = 64;
+pub const SYS_READV: u64 = 65;
 pub const SYS_WRITEV: u64 = 66;
+pub const SYS_PREAD64: u64 = 67;
+pub const SYS_PWRITE64: u64 = 68;
+pub const SYS_PPOLL: u64 = 73;
 pub const SYS_READLINKAT: u64 = 78;
 pub const SYS_NEWFSTATAT: u64 = 79;
+pub const SYS_FSTAT: u64 = 80;
 pub const SYS_EXIT: u64 = 93;
 pub const SYS_EXIT_GROUP: u64 = 94;
 pub const SYS_SET_TID_ADDRESS: u64 = 96;
@@ -43,6 +64,59 @@ pub const SYS_MREMAP: u64 = 216;
 pub const SYS_MMAP: u64 = 222;
 pub const SYS_MPROTECT: u64 = 226;
 
+const O_ACCMODE: u32 = 0o3;
+const O_RDONLY: u32 = 0;
+const O_WRONLY: u32 = 1;
+const O_RDWR: u32 = 2;
+const O_CREAT: u32 = 0o100;
+const O_EXCL: u32 = 0o200;
+const O_TRUNC: u32 = 0o1000;
+const O_APPEND: u32 = 0o2000;
+const O_DIRECTORY: u32 = 0o200000;
+const O_CLOEXEC: u32 = 0o2000000;
+
+pub const MAX_OPEN_FDS: usize = 64;
+pub const MAX_SCRATCH_FILES: usize = 64;
+pub const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
+pub const MAX_TOTAL_SCRATCH_BYTES: usize = 64 * 1024 * 1024;
+
+#[allow(dead_code)]
+const AT_FDCWD: i64 = -100;
+const AT_EMPTY_PATH: u64 = 0x1000;
+
+#[derive(Debug, Clone)]
+enum InodeKind {
+    Regular(Vec<u8>),
+    DevNull,
+    ProcAuxv,
+    Directory,
+}
+
+#[derive(Debug, Clone)]
+struct Inode {
+    kind: InodeKind,
+    #[allow(dead_code)]
+    ino: u64,
+    mode: u32,
+    nlink: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FileKind {
+    Stdin,
+    Stdout,
+    Stderr,
+    Inode(u64),
+}
+
+#[derive(Debug, Clone)]
+struct OpenFile {
+    kind: FileKind,
+    offset: u64,
+    flags: u32,
+    cloexec: bool,
+}
+
 const MREMAP_MAYMOVE: u64 = 1;
 const MAP_FIXED: u64 = 0x10;
 const MAP_ANONYMOUS: u64 = 0x20;
@@ -55,6 +129,8 @@ const MAX_MMAP_CALL: u64 = 512 << 20;
 const MAX_MMAP_TOTAL: u64 = 1 << 30;
 const MAX_IO_CALL: u64 = 64 << 20;
 const MAX_IOV: u64 = 1024;
+const MAX_GETRANDOM: u64 = 256;
+const RNG_SEED: u64 = 0x6f75_6e63_655f_726e;
 pub const PID: u64 = 1;
 pub const UID: u64 = 1000;
 pub const GID: u64 = 1000;
@@ -88,10 +164,83 @@ pub struct Process {
     pub(super) sigactions: [[u8; 32]; 65],
     started: Instant,
     deterministic_ticks: Option<u64>,
+    pub auxv_data: Vec<u8>,
+    pub stdin_data: Vec<u8>,
+    files: std::collections::BTreeMap<u32, OpenFile>,
+    inodes: std::collections::BTreeMap<u64, Inode>,
+    dentries: std::collections::BTreeMap<String, u64>,
+    next_ino: u64,
+    rng: u64,
 }
 
 impl Process {
     pub fn new(brk_start: u64) -> Self {
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            0,
+            OpenFile {
+                kind: FileKind::Stdin,
+                offset: 0,
+                flags: O_RDONLY,
+                cloexec: false,
+            },
+        );
+        files.insert(
+            1,
+            OpenFile {
+                kind: FileKind::Stdout,
+                offset: 0,
+                flags: O_WRONLY,
+                cloexec: false,
+            },
+        );
+        files.insert(
+            2,
+            OpenFile {
+                kind: FileKind::Stderr,
+                offset: 0,
+                flags: O_WRONLY,
+                cloexec: false,
+            },
+        );
+
+        let mut inodes = std::collections::BTreeMap::new();
+        let mut dentries = std::collections::BTreeMap::new();
+
+        inodes.insert(
+            1,
+            Inode {
+                kind: InodeKind::DevNull,
+                ino: 1,
+                mode: 0o20666,
+                nlink: 1,
+            },
+        );
+        dentries.insert("/dev/null".to_string(), 1);
+
+        inodes.insert(
+            2,
+            Inode {
+                kind: InodeKind::ProcAuxv,
+                ino: 2,
+                mode: 0o100444,
+                nlink: 1,
+            },
+        );
+        dentries.insert("/proc/self/auxv".to_string(), 2);
+
+        inodes.insert(
+            3,
+            Inode {
+                kind: InodeKind::Directory,
+                ino: 3,
+                mode: 0o40777,
+                nlink: 2,
+            },
+        );
+        dentries.insert("/tmp".to_string(), 3);
+        dentries.insert("/var/tmp".to_string(), 3);
+
         Self {
             brk_start,
             brk_cur: brk_start,
@@ -105,7 +254,123 @@ impl Process {
             alt_stack: [0, 2, 0],
             started: Instant::now(),
             deterministic_ticks: None,
+            auxv_data: Vec::new(),
+            stdin_data: Vec::new(),
+            files,
+            inodes,
+            dentries,
+            next_ino: 10,
+            rng: RNG_SEED,
         }
+    }
+
+    pub fn set_auxv(&mut self, data: Vec<u8>) {
+        self.auxv_data = data;
+    }
+
+    pub fn set_stdin(&mut self, data: Vec<u8>) {
+        self.stdin_data = data;
+    }
+
+    pub fn is_fd_open(&self, fd: u64) -> bool {
+        u32::try_from(fd)
+            .map(|fd32| self.files.contains_key(&fd32))
+            .unwrap_or(false)
+    }
+
+    pub fn is_fd_readable(&self, fd: u64) -> bool {
+        let Ok(fd32) = u32::try_from(fd) else { return false };
+        let Some(f) = self.files.get(&fd32) else { return false };
+        match f.kind {
+            FileKind::Stdin => true,
+            FileKind::Stdout | FileKind::Stderr => false,
+            FileKind::Inode(ino) => {
+                if let Some(inode) = self.inodes.get(&ino) {
+                    match &inode.kind {
+                        InodeKind::DevNull | InodeKind::ProcAuxv => true,
+                        InodeKind::Regular(_) => f.flags & O_ACCMODE != O_WRONLY,
+                        InodeKind::Directory => false,
+                    }
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    pub fn is_fd_writable(&self, fd: u64) -> bool {
+        let Ok(fd32) = u32::try_from(fd) else { return false };
+        let Some(f) = self.files.get(&fd32) else { return false };
+        match f.kind {
+            FileKind::Stdin => false,
+            FileKind::Stdout | FileKind::Stderr => true,
+            FileKind::Inode(ino) => {
+                if let Some(inode) = self.inodes.get(&ino) {
+                    match &inode.kind {
+                        InodeKind::DevNull => true,
+                        InodeKind::ProcAuxv | InodeKind::Directory => false,
+                        InodeKind::Regular(_) => f.flags & O_ACCMODE != O_RDONLY,
+                    }
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    fn alloc_fd(&mut self, file: OpenFile, min_fd: u32) -> Result<u32, i64> {
+        if self.files.len() >= MAX_OPEN_FDS {
+            return Err(-EMFILE);
+        }
+        let mut fd = min_fd;
+        while fd < 1024 {
+            if let std::collections::btree_map::Entry::Vacant(e) = self.files.entry(fd) {
+                e.insert(file);
+                return Ok(fd);
+            }
+            fd += 1;
+        }
+        Err(-EMFILE)
+    }
+
+    fn close_fd(&mut self, fd: u32) -> i64 {
+        let Some(file) = self.files.remove(&fd) else {
+            return -EBADF;
+        };
+        if let FileKind::Inode(ino) = file.kind {
+            self.cleanup_inode(ino);
+        }
+        0
+    }
+
+    fn cleanup_inode(&mut self, ino: u64) {
+        let still_open = self.files.values().any(|f| f.kind == FileKind::Inode(ino));
+        if !still_open
+            && let Some(inode) = self.inodes.get(&ino)
+            && inode.nlink == 0
+        {
+            self.inodes.remove(&ino);
+        }
+    }
+
+    fn total_scratch_bytes(&self) -> usize {
+        self.inodes
+            .values()
+            .map(|i| {
+                if let InodeKind::Regular(data) = &i.kind {
+                    data.len()
+                } else {
+                    0
+                }
+            })
+            .sum()
+    }
+
+    fn regular_file_count(&self) -> usize {
+        self.inodes
+            .values()
+            .filter(|i| matches!(i.kind, InodeKind::Regular(_)))
+            .count()
     }
 
     /// Fixed virtual time for reproducible single-process experiments. Each successful
@@ -183,19 +448,27 @@ impl Process {
             130 => return self.sys_tkill(a),
             131 => return self.sys_tgkill(a),
             132 => self.sys_sigaltstack(a, mmu),
-            SYS_CLOSE => {
-                if a[0] <= 2 {
-                    0
-                } else {
-                    -EBADF
-                }
-            }
+            SYS_CLOSE => self.close_fd(a[0] as u32),
+            SYS_FCNTL => self.sys_fcntl(a[0], a[1], a[2]),
+            SYS_UNLINKAT => self.sys_unlinkat(a[0] as i64, a[1], a[2] as i32, mmu),
+            SYS_FTRUNCATE => self.sys_ftruncate(a[0], a[1]),
+            SYS_OPENAT => self.sys_openat(a, mmu),
+            SYS_LSEEK => self.sys_lseek(a[0], a[1] as i64, a[2]),
+            SYS_READ => self.sys_read(a[0], a[1], a[2], mmu),
+            SYS_READV => self.sys_readv(a[0], a[1], a[2], mmu),
+            SYS_PREAD64 => self.sys_pread64(a[0], a[1], a[2], a[3], mmu),
+            SYS_PWRITE64 => self.sys_pwrite64(a[0], a[1], a[2], a[3], mmu),
+            SYS_PPOLL => self.sys_ppoll(a, mmu),
+            SYS_READLINKAT => -ENOENT,
+            SYS_NEWFSTATAT => self.sys_newfstatat(a[0] as i64, a[1], a[2], a[3] as i32, mmu),
+            SYS_FSTAT => self.sys_fstat(a[0], a[1], mmu),
             SYS_SCHED_YIELD => 0,
             SYS_GETTIMEOFDAY => self.sys_gettimeofday(a[0], a[1], mmu),
             SYS_GETPID | SYS_GETTID => PID as i64,
             SYS_GETPPID => 0,
             SYS_GETUID | SYS_GETEUID => UID as i64,
             SYS_GETGID | SYS_GETEGID => GID as i64,
+            278 => self.sys_getrandom(a[0], a[1], a[2], mmu),
             261 => {
                 if a[0] != 0 && a[0] != PID {
                     -ESRCH
@@ -225,42 +498,715 @@ impl Process {
             SYS_CLOCK_GETTIME => self.sys_clock_gettime(a[0], a[1], mmu),
             SYS_UNAME => sys_uname(a[0], mmu),
             SYS_SCHED_GETAFFINITY => sys_sched_getaffinity(a[0], a[1], a[2], mmu),
-            // The guest has no filesystem.
-            SYS_OPENAT | SYS_READLINKAT => -ENOENT,
-            // stat of a path: there is nothing to find. fstat on a descriptor (AT_EMPTY_PATH with an empty path) is a
-            // different question and stays unimplemented.
-            SYS_NEWFSTATAT => match self.newfstatat_is_path_lookup(a, mmu) {
-                Ok(true) => -ENOENT,
-                Ok(false) => return Outcome::Unimplemented(describe_unimplemented(nr, &a)),
-                Err(errno) => errno,
-            },
+            220 => -38, // ENOSYS
             _ => return Outcome::Unimplemented(describe_unimplemented(nr, &a)),
         };
         Outcome::Return(r)
     }
 
-    /// `newfstatat(dirfd, path, statbuf, flags)`: `Ok(true)` for a lookup by path (which finds nothing here), `Ok(false)`
-    /// for `AT_EMPTY_PATH` with an empty path, which asks about a descriptor, and `Err(-EFAULT)` for a bad pointer.
-    fn newfstatat_is_path_lookup(&self, a: [u64; 6], mmu: &Memory) -> Result<bool, i64> {
-        const AT_EMPTY_PATH: u64 = 0x1000;
-        let mut first = [0u8; 1];
-        if mmu.read_bytes(a[1], &mut first).is_err() {
-            return Err(-EFAULT);
+    fn sys_openat(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
+        let (_dirfd, path_ptr, flags, mode) = (a[0] as i64, a[1], a[2] as u32, a[3] as u32);
+        let path_str = match read_path(path_ptr, mmu) {
+            Ok(p) => p,
+            Err(_) => return -ENOENT,
+        };
+        if path_str.is_empty() {
+            return -ENOENT;
         }
-        Ok(!(first[0] == 0 && a[3] & AT_EMPTY_PATH != 0))
+        let norm = normalize_path(&path_str);
+        if !is_allowed_path(&norm) {
+            return -ENOENT;
+        }
+        if norm == "/dev/null" {
+            let cloexec = flags & O_CLOEXEC != 0;
+            return match self.alloc_fd(
+                OpenFile {
+                    kind: FileKind::Inode(1),
+                    offset: 0,
+                    flags,
+                    cloexec,
+                },
+                0,
+            ) {
+                Ok(fd) => fd as i64,
+                Err(e) => e,
+            };
+        }
+        if norm == "/proc/self/auxv" {
+            if flags & O_ACCMODE != O_RDONLY {
+                return -EACCES;
+            }
+            let cloexec = flags & O_CLOEXEC != 0;
+            return match self.alloc_fd(
+                OpenFile {
+                    kind: FileKind::Inode(2),
+                    offset: 0,
+                    flags,
+                    cloexec,
+                },
+                0,
+            ) {
+                Ok(fd) => fd as i64,
+                Err(e) => e,
+            };
+        }
+        if norm == "/tmp" || norm == "/var/tmp" {
+            if flags & O_ACCMODE != O_RDONLY && flags & O_DIRECTORY == 0 {
+                return -EISDIR;
+            }
+            let cloexec = flags & O_CLOEXEC != 0;
+            return match self.alloc_fd(
+                OpenFile {
+                    kind: FileKind::Inode(3),
+                    offset: 0,
+                    flags,
+                    cloexec,
+                },
+                0,
+            ) {
+                Ok(fd) => fd as i64,
+                Err(e) => e,
+            };
+        }
+        if let Some(&ino) = self.dentries.get(&norm) {
+            if flags & O_CREAT != 0 && flags & O_EXCL != 0 {
+                return -EEXIST;
+            }
+            if let Some(inode) = self.inodes.get_mut(&ino)
+                && let InodeKind::Regular(buf) = &mut inode.kind
+                && flags & O_TRUNC != 0
+                && (flags & O_ACCMODE == O_WRONLY || flags & O_ACCMODE == O_RDWR)
+            {
+                buf.clear();
+            }
+            let cloexec = flags & O_CLOEXEC != 0;
+            match self.alloc_fd(
+                OpenFile {
+                    kind: FileKind::Inode(ino),
+                    offset: 0,
+                    flags,
+                    cloexec,
+                },
+                0,
+            ) {
+                Ok(fd) => fd as i64,
+                Err(e) => e,
+            }
+        } else {
+            if flags & O_CREAT == 0 {
+                return -ENOENT;
+            }
+            if self.regular_file_count() >= MAX_SCRATCH_FILES {
+                return -ENOSPC;
+            }
+            let ino = self.next_ino;
+            self.next_ino += 1;
+            self.inodes.insert(
+                ino,
+                Inode {
+                    kind: InodeKind::Regular(Vec::new()),
+                    ino,
+                    mode: 0o100000 | (mode & 0o777),
+                    nlink: 1,
+                },
+            );
+            self.dentries.insert(norm, ino);
+            let cloexec = flags & O_CLOEXEC != 0;
+            match self.alloc_fd(
+                OpenFile {
+                    kind: FileKind::Inode(ino),
+                    offset: 0,
+                    flags,
+                    cloexec,
+                },
+                0,
+            ) {
+                Ok(fd) => fd as i64,
+                Err(e) => e,
+            }
+        }
+    }
+
+    fn sys_unlinkat(&mut self, _dirfd: i64, path_ptr: u64, _flags: i32, mmu: &Memory) -> i64 {
+        let path_str = match read_path(path_ptr, mmu) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+        let norm = normalize_path(&path_str);
+        if !is_allowed_path(&norm) {
+            return -ENOENT;
+        }
+        if norm == "/dev/null" || norm == "/proc/self/auxv" || norm == "/tmp" || norm == "/var/tmp" {
+            return -EPERM;
+        }
+        if let Some(ino) = self.dentries.remove(&norm) {
+            if let Some(inode) = self.inodes.get_mut(&ino) {
+                inode.nlink = inode.nlink.saturating_sub(1);
+            }
+            self.cleanup_inode(ino);
+            0
+        } else {
+            -ENOENT
+        }
+    }
+
+    fn sys_read(&mut self, fd: u64, buf: u64, count: u64, mmu: &mut Memory) -> i64 {
+        let Ok(fd32) = u32::try_from(fd) else { return -EBADF };
+        let Some(file) = self.files.get_mut(&fd32) else {
+            return -EBADF;
+        };
+        if file.flags & O_ACCMODE == O_WRONLY {
+            return -EBADF;
+        }
+        let count = count.min(MAX_IO_CALL) as usize;
+        match file.kind {
+            FileKind::Stdin => {
+                let off = file.offset as usize;
+                if off >= self.stdin_data.len() {
+                    return 0;
+                }
+                let avail = (self.stdin_data.len() - off).min(count);
+                if mmu.write_bytes(buf, &self.stdin_data[off..off + avail]).is_err() {
+                    return -EFAULT;
+                }
+                file.offset += avail as u64;
+                avail as i64
+            }
+            FileKind::Stdout | FileKind::Stderr => -EBADF,
+            FileKind::Inode(ino) => {
+                let Some(inode) = self.inodes.get(&ino) else {
+                    return -EBADF;
+                };
+                match &inode.kind {
+                    InodeKind::DevNull => 0,
+                    InodeKind::ProcAuxv => {
+                        let off = file.offset as usize;
+                        if off >= self.auxv_data.len() {
+                            return 0;
+                        }
+                        let avail = (self.auxv_data.len() - off).min(count);
+                        if mmu.write_bytes(buf, &self.auxv_data[off..off + avail]).is_err() {
+                            return -EFAULT;
+                        }
+                        file.offset += avail as u64;
+                        avail as i64
+                    }
+                    InodeKind::Regular(data) => {
+                        let off = file.offset as usize;
+                        if off >= data.len() {
+                            return 0;
+                        }
+                        let avail = (data.len() - off).min(count);
+                        if mmu.write_bytes(buf, &data[off..off + avail]).is_err() {
+                            return -EFAULT;
+                        }
+                        file.offset += avail as u64;
+                        avail as i64
+                    }
+                    InodeKind::Directory => -EISDIR,
+                }
+            }
+        }
+    }
+
+    fn sys_pread64(&self, fd: u64, buf: u64, count: u64, offset: u64, mmu: &mut Memory) -> i64 {
+        let Ok(fd32) = u32::try_from(fd) else { return -EBADF };
+        let Some(file) = self.files.get(&fd32) else {
+            return -EBADF;
+        };
+        if file.flags & O_ACCMODE == O_WRONLY {
+            return -EBADF;
+        }
+        if offset > i64::MAX as u64 {
+            return -EINVAL;
+        }
+        let count = count.min(MAX_IO_CALL) as usize;
+        let off = offset as usize;
+        match file.kind {
+            FileKind::Stdin => {
+                if off >= self.stdin_data.len() {
+                    return 0;
+                }
+                let avail = (self.stdin_data.len() - off).min(count);
+                if mmu.write_bytes(buf, &self.stdin_data[off..off + avail]).is_err() {
+                    return -EFAULT;
+                }
+                avail as i64
+            }
+            FileKind::Stdout | FileKind::Stderr => -ESPIPE,
+            FileKind::Inode(ino) => {
+                let Some(inode) = self.inodes.get(&ino) else {
+                    return -EBADF;
+                };
+                match &inode.kind {
+                    InodeKind::DevNull => 0,
+                    InodeKind::ProcAuxv => {
+                        if off >= self.auxv_data.len() {
+                            return 0;
+                        }
+                        let avail = (self.auxv_data.len() - off).min(count);
+                        if mmu.write_bytes(buf, &self.auxv_data[off..off + avail]).is_err() {
+                            return -EFAULT;
+                        }
+                        avail as i64
+                    }
+                    InodeKind::Regular(data) => {
+                        if off >= data.len() {
+                            return 0;
+                        }
+                        let avail = (data.len() - off).min(count);
+                        if mmu.write_bytes(buf, &data[off..off + avail]).is_err() {
+                            return -EFAULT;
+                        }
+                        avail as i64
+                    }
+                    InodeKind::Directory => -EISDIR,
+                }
+            }
+        }
+    }
+
+    fn sys_readv(&mut self, fd: u64, iov: u64, cnt: u64, mmu: &mut Memory) -> i64 {
+        if cnt > MAX_IOV {
+            return -EINVAL;
+        }
+        let mut total = 0i64;
+        for i in 0..cnt {
+            let (Ok(base), Ok(len)) = (mmu.read_u64(iov + i * 16), mmu.read_u64(iov + i * 16 + 8)) else {
+                return -EFAULT;
+            };
+            if len == 0 {
+                continue;
+            }
+            let n = self.sys_read(fd, base, len, mmu);
+            if n < 0 {
+                return if total > 0 { total } else { n };
+            }
+            total += n;
+            if (n as u64) < len {
+                break;
+            }
+        }
+        total
     }
 
     fn sys_write(&mut self, a: [u64; 6], mmu: &mut Memory, out: &mut dyn Output) -> i64 {
         let (fd, buf, count) = (a[0], a[1], a[2].min(MAX_IO_CALL));
-        if fd != 1 && fd != 2 {
+        let Ok(fd32) = u32::try_from(fd) else { return -EBADF };
+        let Some(file) = self.files.get(&fd32) else {
+            return -EBADF;
+        };
+        if file.flags & O_ACCMODE == O_RDONLY {
             return -EBADF;
         }
         let mut data = vec![0u8; count as usize];
         if mmu.read_bytes(buf, &mut data).is_err() {
             return -EFAULT;
         }
-        out.write(fd, &data);
-        count as i64
+        match file.kind {
+            FileKind::Stdin => -EBADF,
+            FileKind::Stdout => {
+                out.write(1, &data);
+                count as i64
+            }
+            FileKind::Stderr => {
+                out.write(2, &data);
+                count as i64
+            }
+            FileKind::Inode(ino) => {
+                let is_append = file.flags & O_APPEND != 0;
+                let cur_offset = file.offset;
+                let total_scratch = self.total_scratch_bytes();
+                let Some(inode) = self.inodes.get_mut(&ino) else {
+                    return -EBADF;
+                };
+                match &mut inode.kind {
+                    InodeKind::DevNull => count as i64,
+                    InodeKind::ProcAuxv => -EACCES,
+                    InodeKind::Directory => -EISDIR,
+                    InodeKind::Regular(content) => {
+                        let write_at = if is_append { content.len() as u64 } else { cur_offset };
+                        let Some(new_end) = write_at.checked_add(count) else {
+                            return -EFBIG;
+                        };
+                        if new_end as usize > MAX_FILE_BYTES {
+                            return -EFBIG;
+                        }
+                        let cur_len = content.len();
+                        let growth = (new_end as usize).saturating_sub(cur_len);
+                        if total_scratch + growth > MAX_TOTAL_SCRATCH_BYTES {
+                            return -ENOSPC;
+                        }
+                        if (write_at as usize) > cur_len {
+                            content.resize(write_at as usize, 0);
+                        }
+                        if (new_end as usize) > content.len() {
+                            content.resize(new_end as usize, 0);
+                        }
+                        content[write_at as usize..new_end as usize].copy_from_slice(&data);
+                        let file_mut = self.files.get_mut(&fd32).unwrap();
+                        file_mut.offset = new_end;
+                        count as i64
+                    }
+                }
+            }
+        }
+    }
+
+    fn sys_pwrite64(&mut self, fd: u64, buf: u64, count: u64, offset: u64, mmu: &mut Memory) -> i64 {
+        let count = count.min(MAX_IO_CALL);
+        let Ok(fd32) = u32::try_from(fd) else { return -EBADF };
+        let Some(file) = self.files.get(&fd32) else {
+            return -EBADF;
+        };
+        if file.flags & O_ACCMODE == O_RDONLY {
+            return -EBADF;
+        }
+        if offset > i64::MAX as u64 {
+            return -EINVAL;
+        }
+        let mut data = vec![0u8; count as usize];
+        if mmu.read_bytes(buf, &mut data).is_err() {
+            return -EFAULT;
+        }
+        match file.kind {
+            FileKind::Stdin => -EBADF,
+            FileKind::Stdout | FileKind::Stderr => -ESPIPE,
+            FileKind::Inode(ino) => {
+                let total_scratch = self.total_scratch_bytes();
+                let Some(inode) = self.inodes.get_mut(&ino) else {
+                    return -EBADF;
+                };
+                match &mut inode.kind {
+                    InodeKind::DevNull => count as i64,
+                    InodeKind::ProcAuxv => -EACCES,
+                    InodeKind::Directory => -EISDIR,
+                    InodeKind::Regular(content) => {
+                        let write_at = offset;
+                        let Some(new_end) = write_at.checked_add(count) else {
+                            return -EFBIG;
+                        };
+                        if new_end as usize > MAX_FILE_BYTES {
+                            return -EFBIG;
+                        }
+                        let cur_len = content.len();
+                        let growth = (new_end as usize).saturating_sub(cur_len);
+                        if total_scratch + growth > MAX_TOTAL_SCRATCH_BYTES {
+                            return -ENOSPC;
+                        }
+                        if (write_at as usize) > cur_len {
+                            content.resize(write_at as usize, 0);
+                        }
+                        if (new_end as usize) > content.len() {
+                            content.resize(new_end as usize, 0);
+                        }
+                        content[write_at as usize..new_end as usize].copy_from_slice(&data);
+                        count as i64
+                    }
+                }
+            }
+        }
+    }
+
+    fn sys_lseek(&mut self, fd: u64, offset: i64, whence: u64) -> i64 {
+        let Ok(fd32) = u32::try_from(fd) else { return -EBADF };
+        let Some(file) = self.files.get_mut(&fd32) else {
+            return -EBADF;
+        };
+        let cur = file.offset as i64;
+        let len = match file.kind {
+            FileKind::Stdin => self.stdin_data.len() as i64,
+            FileKind::Stdout | FileKind::Stderr => return -ESPIPE,
+            FileKind::Inode(ino) => {
+                let Some(inode) = self.inodes.get(&ino) else {
+                    return -EBADF;
+                };
+                match &inode.kind {
+                    InodeKind::DevNull => 0,
+                    InodeKind::ProcAuxv => self.auxv_data.len() as i64,
+                    InodeKind::Regular(d) => d.len() as i64,
+                    InodeKind::Directory => 4096,
+                }
+            }
+        };
+        let new_offset = match whence {
+            0 => offset,
+            1 => cur.checked_add(offset).unwrap_or(-1),
+            2 => len.checked_add(offset).unwrap_or(-1),
+            _ => return -EINVAL,
+        };
+        if new_offset < 0 {
+            return -EINVAL;
+        }
+        file.offset = new_offset as u64;
+        new_offset
+    }
+
+    fn sys_ftruncate(&mut self, fd: u64, length: u64) -> i64 {
+        let Ok(fd32) = u32::try_from(fd) else { return -EBADF };
+        let Some(file) = self.files.get(&fd32) else {
+            return -EBADF;
+        };
+        if file.flags & O_ACCMODE == O_RDONLY {
+            return -EINVAL;
+        }
+        let ino = match file.kind {
+            FileKind::Inode(ino) => ino,
+            _ => return -EINVAL,
+        };
+        if length as usize > MAX_FILE_BYTES {
+            return -EFBIG;
+        }
+        let total_scratch = self.total_scratch_bytes();
+        let Some(inode) = self.inodes.get_mut(&ino) else {
+            return -EBADF;
+        };
+        let InodeKind::Regular(data) = &mut inode.kind else {
+            return -EINVAL;
+        };
+        let cur_len = data.len();
+        if length as usize > cur_len {
+            let growth = length as usize - cur_len;
+            if total_scratch + growth > MAX_TOTAL_SCRATCH_BYTES {
+                return -ENOSPC;
+            }
+        }
+        data.resize(length as usize, 0);
+        0
+    }
+
+    fn sys_fcntl(&mut self, fd: u64, cmd: u64, arg: u64) -> i64 {
+        let Ok(fd32) = u32::try_from(fd) else { return -EBADF };
+        let Some(file) = self.files.get(&fd32).cloned() else {
+            return -EBADF;
+        };
+        match cmd {
+            0 => match self.alloc_fd(OpenFile { cloexec: false, ..file }, arg as u32) {
+                Ok(new_fd) => new_fd as i64,
+                Err(e) => e,
+            },
+            1030 => match self.alloc_fd(OpenFile { cloexec: true, ..file }, arg as u32) {
+                Ok(new_fd) => new_fd as i64,
+                Err(e) => e,
+            },
+            1 => {
+                if file.cloexec {
+                    1
+                } else {
+                    0
+                }
+            }
+            2 => {
+                if let Some(f) = self.files.get_mut(&fd32) {
+                    f.cloexec = (arg & 1) != 0;
+                }
+                0
+            }
+            3 => file.flags as i64,
+            4 => {
+                if let Some(f) = self.files.get_mut(&fd32) {
+                    f.flags = (f.flags & !O_APPEND) | (arg as u32 & O_APPEND);
+                }
+                0
+            }
+            _ => 0,
+        }
+    }
+
+    /// Deterministic `getrandom`: a fixed-seed xorshift stream, never host entropy, so runs replay
+    /// byte for byte. Accepts GRND_NONBLOCK|GRND_RANDOM|GRND_INSECURE; other bits are EINVAL.
+    fn sys_getrandom(&mut self, buf: u64, len: u64, flags: u64, mmu: &mut Memory) -> i64 {
+        if flags & !0x7 != 0 {
+            return -EINVAL;
+        }
+        let n = len.min(MAX_GETRANDOM);
+        let mut data = Vec::with_capacity(n as usize);
+        while (data.len() as u64) < n {
+            let mut x = self.rng;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.rng = x;
+            data.extend_from_slice(&x.wrapping_mul(0x2545_F491_4F6C_DD1D).to_le_bytes());
+        }
+        data.truncate(n as usize);
+        if mmu.write_bytes(buf, &data).is_err() {
+            return -EFAULT;
+        }
+        n as i64
+    }
+
+    fn sys_ppoll(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
+        let (fds_ptr, nfds, tmo_ptr, sigmask_ptr, sigsetsize) = (a[0], a[1], a[2], a[3], a[4]);
+        if nfds > 1024 {
+            return -EINVAL;
+        }
+        if sigmask_ptr != 0 {
+            if sigsetsize != 8 {
+                return -EINVAL;
+            }
+            let mut mask = [0u8; 8];
+            if mmu.read_bytes(sigmask_ptr, &mut mask).is_err() {
+                return -EFAULT;
+            }
+        }
+        if tmo_ptr != 0 {
+            let mut ts = [0u8; 16];
+            if mmu.read_bytes(tmo_ptr, &mut ts).is_err() {
+                return -EFAULT;
+            }
+            let sec = i64::from_le_bytes(ts[0..8].try_into().unwrap());
+            let nsec = i64::from_le_bytes(ts[8..16].try_into().unwrap());
+            if sec < 0 || !(0..1_000_000_000).contains(&nsec) {
+                return -EINVAL;
+            }
+        }
+        let mut count = 0i64;
+        for i in 0..nfds {
+            let entry_addr = match fds_ptr.checked_add(i * 8) {
+                Some(addr) => addr,
+                None => return -EFAULT,
+            };
+            let mut buf = [0u8; 8];
+            if mmu.read_bytes(entry_addr, &mut buf).is_err() {
+                return -EFAULT;
+            }
+            let fd = i32::from_le_bytes(buf[0..4].try_into().unwrap());
+            let events = i16::from_le_bytes(buf[4..6].try_into().unwrap());
+            let revents: i16 = if fd < 0 {
+                0
+            } else if !self.is_fd_open(fd as u64) {
+                0x0020
+            } else {
+                let mut r = 0i16;
+                if self.is_fd_readable(fd as u64) {
+                    r |= events & (0x0001 | 0x0040);
+                }
+                if self.is_fd_writable(fd as u64) {
+                    r |= events & (0x0004 | 0x0100);
+                }
+                r
+            };
+            if mmu.write_bytes(entry_addr + 6, &revents.to_le_bytes()).is_err() {
+                return -EFAULT;
+            }
+            if revents != 0 {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn write_stat(
+        &self,
+        statbuf: u64,
+        dev: u64,
+        ino: u64,
+        mode: u32,
+        nlink: u32,
+        rdev: u64,
+        size: i64,
+        mmu: &mut Memory,
+    ) -> i64 {
+        let mut b = [0u8; 128];
+        b[0..8].copy_from_slice(&dev.to_le_bytes());
+        b[8..16].copy_from_slice(&ino.to_le_bytes());
+        b[16..20].copy_from_slice(&mode.to_le_bytes());
+        b[20..24].copy_from_slice(&nlink.to_le_bytes());
+        b[24..28].copy_from_slice(&(UID as u32).to_le_bytes());
+        b[28..32].copy_from_slice(&(GID as u32).to_le_bytes());
+        b[32..40].copy_from_slice(&rdev.to_le_bytes());
+        b[48..56].copy_from_slice(&size.to_le_bytes());
+        b[56..60].copy_from_slice(&4096i32.to_le_bytes());
+        let blocks = (size.max(0) + 511) / 512;
+        b[64..72].copy_from_slice(&blocks.to_le_bytes());
+        let (sec, nsec) = if let Some(ticks) = self.deterministic_ticks {
+            (1_700_000_000 + ticks / 1000, (ticks % 1000) * 1_000_000)
+        } else {
+            (1_700_000_000, 0)
+        };
+        b[72..80].copy_from_slice(&sec.to_le_bytes());
+        b[80..88].copy_from_slice(&nsec.to_le_bytes());
+        b[88..96].copy_from_slice(&sec.to_le_bytes());
+        b[96..104].copy_from_slice(&nsec.to_le_bytes());
+        b[104..112].copy_from_slice(&sec.to_le_bytes());
+        b[112..120].copy_from_slice(&nsec.to_le_bytes());
+        if mmu.write_bytes(statbuf, &b).is_err() {
+            -EFAULT
+        } else {
+            0
+        }
+    }
+
+    fn sys_fstat(&self, fd: u64, statbuf: u64, mmu: &mut Memory) -> i64 {
+        let Ok(fd32) = u32::try_from(fd) else { return -EBADF };
+        let Some(file) = self.files.get(&fd32) else {
+            return -EBADF;
+        };
+        match file.kind {
+            FileKind::Stdin => self.write_stat(statbuf, 1, 0, 0o100644, 1, 0, self.stdin_data.len() as i64, mmu),
+            FileKind::Stdout => self.write_stat(statbuf, 2, 1, 0o20620, 1, 0x0501, 0, mmu),
+            FileKind::Stderr => self.write_stat(statbuf, 2, 2, 0o20620, 1, 0x0501, 0, mmu),
+            FileKind::Inode(ino) => {
+                let Some(inode) = self.inodes.get(&ino) else {
+                    return -EBADF;
+                };
+                match &inode.kind {
+                    InodeKind::DevNull => self.write_stat(statbuf, 5, 1, 0o20666, 1, 0x0103, 0, mmu),
+                    InodeKind::ProcAuxv => {
+                        self.write_stat(statbuf, 6, 2, 0o100444, 1, 0, self.auxv_data.len() as i64, mmu)
+                    }
+                    InodeKind::Regular(d) => {
+                        self.write_stat(statbuf, 10, ino, inode.mode, inode.nlink, 0, d.len() as i64, mmu)
+                    }
+                    InodeKind::Directory => self.write_stat(statbuf, 10, ino, inode.mode, inode.nlink, 0, 4096, mmu),
+                }
+            }
+        }
+    }
+
+    fn sys_newfstatat(&self, dirfd: i64, path_ptr: u64, statbuf: u64, flags: i32, mmu: &mut Memory) -> i64 {
+        if flags as u64 & AT_EMPTY_PATH != 0 {
+            let mut first = [0u8; 1];
+            if mmu.read_bytes(path_ptr, &mut first).is_err() {
+                return -EFAULT;
+            }
+            if first[0] == 0 {
+                return self.sys_fstat(dirfd as u64, statbuf, mmu);
+            }
+        }
+        let path_str = match read_path(path_ptr, mmu) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+        if path_str.is_empty() {
+            return -ENOENT;
+        }
+        let norm = normalize_path(&path_str);
+        if !is_allowed_path(&norm) {
+            return -ENOENT;
+        }
+        if norm == "/dev/null" {
+            return self.write_stat(statbuf, 5, 1, 0o20666, 1, 0x0103, 0, mmu);
+        }
+        if norm == "/proc/self/auxv" {
+            return self.write_stat(statbuf, 6, 2, 0o100444, 1, 0, self.auxv_data.len() as i64, mmu);
+        }
+        if norm == "/tmp" || norm == "/var/tmp" {
+            return self.write_stat(statbuf, 10, 3, 0o40777, 2, 0, 4096, mmu);
+        }
+        if let Some(&ino) = self.dentries.get(&norm)
+            && let Some(inode) = self.inodes.get(&ino)
+        {
+            let size = if let InodeKind::Regular(d) = &inode.kind {
+                d.len() as i64
+            } else {
+                0
+            };
+            return self.write_stat(statbuf, 10, ino, inode.mode, inode.nlink, 0, size, mmu);
+        }
+        -ENOENT
     }
 
     fn sys_writev(&mut self, a: [u64; 6], mmu: &mut Memory, out: &mut dyn Output) -> i64 {
@@ -641,13 +1587,21 @@ fn sys_sched_getaffinity(pid: u64, len: u64, mask: u64, mmu: &mut Memory) -> i64
 pub fn syscall_name(nr: u64) -> Option<&'static str> {
     Some(match nr {
         25 => "fcntl",
+        35 => "unlinkat",
+        46 => "ftruncate",
         48 => "faccessat",
+        56 => "openat",
         57 => "close",
         62 => "lseek",
         63 => "read",
+        64 => "write",
         65 => "readv",
+        66 => "writev",
+        67 => "pread64",
+        68 => "pwrite64",
         72 => "pselect6",
         73 => "ppoll",
+        78 => "readlinkat",
         79 => "newfstatat",
         80 => "fstat",
         98 => "futex",
@@ -671,6 +1625,7 @@ pub fn syscall_name(nr: u64) -> Option<&'static str> {
         233 => "madvise",
         261 => "prlimit64",
         278 => "getrandom",
+        280 => "bpf",
         291 => "statx",
         293 => "rseq",
         435 => "clone3",
@@ -692,4 +1647,44 @@ fn protection(prot: u64) -> Permission {
         write: prot & PROT_WRITE != 0,
         execute: prot & PROT_EXEC != 0,
     }
+}
+
+fn read_path(ptr: u64, mmu: &Memory) -> Result<String, i64> {
+    let mut bytes = Vec::new();
+    for i in 0..4096 {
+        let mut b = [0u8; 1];
+        if mmu.read_bytes(ptr.wrapping_add(i), &mut b).is_err() {
+            return Err(-EFAULT);
+        }
+        if b[0] == 0 {
+            let s = std::str::from_utf8(&bytes).map_err(|_| -ENOENT)?;
+            return Ok(s.to_string());
+        }
+        bytes.push(b[0]);
+    }
+    Err(-ENAMETOOLONG)
+}
+
+fn normalize_path(raw: &str) -> String {
+    let mut parts = Vec::new();
+    for p in raw.split('/') {
+        if p.is_empty() || p == "." {
+            continue;
+        }
+        if p == ".." {
+            parts.pop();
+        } else {
+            parts.push(p);
+        }
+    }
+    format!("/{}", parts.join("/"))
+}
+
+fn is_allowed_path(path: &str) -> bool {
+    path == "/dev/null"
+        || path == "/proc/self/auxv"
+        || path == "/tmp"
+        || path.starts_with("/tmp/")
+        || path == "/var/tmp"
+        || path.starts_with("/var/tmp/")
 }
