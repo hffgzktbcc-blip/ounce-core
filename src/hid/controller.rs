@@ -2,6 +2,7 @@
 
 use crate::gpu::present::HostKey;
 use crate::mmu::{Memory, MemoryError, Permission};
+#[cfg(feature = "host-io")]
 use gilrs::{Axis, Button, Event, Gilrs};
 
 pub const HID_SHARED_MEM_ADDR: u64 = 0x10000000;
@@ -196,6 +197,7 @@ impl HidServer {
 
 /// Physical host USB / Bluetooth gamepad manager using gilrs.
 pub struct HostGamepadManager {
+    #[cfg(feature = "host-io")]
     gilrs: Option<Gilrs>,
     pub connected_gamepads: usize,
 }
@@ -208,15 +210,25 @@ impl Default for HostGamepadManager {
 
 impl HostGamepadManager {
     pub fn new() -> Self {
-        let gilrs = Gilrs::new().ok();
-        let connected_gamepads = gilrs.as_ref().map(|g| g.gamepads().count()).unwrap_or(0);
-        Self {
-            gilrs,
-            connected_gamepads,
+        #[cfg(feature = "host-io")]
+        {
+            let gilrs = Gilrs::new().ok();
+            let connected_gamepads = gilrs.as_ref().map(|g| g.gamepads().count()).unwrap_or(0);
+            Self {
+                gilrs,
+                connected_gamepads,
+            }
         }
+        #[cfg(not(feature = "host-io"))]
+        Self { connected_gamepads: 0 }
     }
 
     /// Polls physical host gamepads and applies inputs to the Horizon HID server.
+    #[cfg(not(feature = "host-io"))]
+    pub fn poll(&mut self, _hid: &mut HidServer) {}
+
+    /// Polls physical host gamepads and applies inputs to the Horizon HID server.
+    #[cfg(feature = "host-io")]
     pub fn poll(&mut self, hid: &mut HidServer) {
         if let Some(ref mut gilrs) = self.gilrs {
             while let Some(Event { .. }) = gilrs.next_event() {
@@ -305,6 +317,13 @@ impl HostGamepadManager {
     }
 
     /// Returns the name of the first connected physical host gamepad, if any.
+    #[cfg(not(feature = "host-io"))]
+    pub fn active_gamepad_name(&self) -> Option<String> {
+        None
+    }
+
+    /// Returns the name of the first connected physical host gamepad, if any.
+    #[cfg(feature = "host-io")]
     pub fn active_gamepad_name(&self) -> Option<String> {
         let gilrs = self.gilrs.as_ref()?;
         for (_id, gamepad) in gilrs.gamepads() {
