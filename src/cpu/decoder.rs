@@ -651,7 +651,7 @@ pub fn decode(raw: u32) -> Instruction {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
             op,
-            is_double: (raw >> 22) & 0x3 == 1,
+            esize: if (raw >> 22) & 0x3 == 1 { 64 } else { 32 },
         };
     }
 
@@ -1656,7 +1656,7 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             rd,
             rn,
             rm,
-            is_double: (raw >> 22) & 1 == 1,
+            esize: if (raw >> 22) & 1 == 1 { 64 } else { 32 },
         });
     }
 
@@ -1683,23 +1683,76 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
             rn,
             rm,
             op,
-            is_double: (raw >> 22) & 1 == 1,
+            esize: if (raw >> 22) & 1 == 1 { 64 } else { 32 },
         });
     }
 
-    // FRECPE / FRSQRTE (scalar): 01 U 11110 1 sz 10000 11101 10 Rn Rd (U = 0 FRECPE, U = 1 FRSQRTE)
-    if (raw & 0xDFBF_FC00) == 0x5EA1_D800 {
-        let op = if (raw >> 29) & 1 == 1 {
-            SimdFpOp2::Frsqrte
-        } else {
-            SimdFpOp2::Frecpe
+    // AdvSIMD scalar three same FP16: 0 1 U 11110 a 1 0 Rm opcode 1 Rn Rd (sz = 1 0)
+    if (raw & 0xDF60_0400) == 0x5E40_0400 {
+        let a = (raw >> 23) & 1 == 1;
+        let op = match ((raw >> 11) & 0x1F, u, a) {
+            (0b00111, false, false) => Some(SimdFpOp3::Frecps),
+            (0b00111, false, true) => Some(SimdFpOp3::Frsqrts),
+            (0b00010, true, true) => Some(SimdFpOp3::Fabd),
+            (0b00100, false, false) => Some(SimdFpOp3::Fcmeq),
+            (0b00100, true, false) => Some(SimdFpOp3::Fcmge),
+            (0b00100, true, true) => Some(SimdFpOp3::Fcmgt),
+            (0b00101, true, false) => Some(SimdFpOp3::Facge),
+            (0b00101, true, true) => Some(SimdFpOp3::Facgt),
+            _ => None,
         };
-        return Some(Instruction::FpScalarTwoMisc {
-            rd,
-            rn,
-            op,
-            is_double: (raw >> 22) & 1 == 1,
-        });
+        if let Some(op) = op {
+            if op == SimdFpOp3::Fabd {
+                return Some(Instruction::FpAbd { rd, rn, rm, esize: 16 });
+            } else {
+                return Some(Instruction::FpScalarThreeSame {
+                    rd,
+                    rn,
+                    rm,
+                    op,
+                    esize: 16,
+                });
+            }
+        }
+    }
+
+    // FRECPE / FRSQRTE / compare-to-zero (scalar): 01 U 11110 1 sz 10000 opcode 10 Rn Rd
+    if (raw & 0xDFBE_0C00) == 0x5EA0_0800 {
+        let op = match ((raw >> 12) & 0x1F, u) {
+            (0b11101, false) => Some(SimdFpOp2::Frecpe),
+            (0b11101, true) => Some(SimdFpOp2::Frsqrte),
+            (0b01101, false) => Some(SimdFpOp2::Fcmeq0),
+            (0b01101, true) => Some(SimdFpOp2::Fcmle0),
+            (0b01110, false) => Some(SimdFpOp2::Fcmlt0),
+            (0b01100, true) => Some(SimdFpOp2::Fcmge0),
+            (0b01100, false) => Some(SimdFpOp2::Fcmgt0),
+            _ => None,
+        };
+        if let Some(op) = op {
+            return Some(Instruction::FpScalarTwoMisc {
+                rd,
+                rn,
+                op,
+                esize: if (raw >> 22) & 1 == 1 { 64 } else { 32 },
+            });
+        }
+    }
+
+    // AdvSIMD scalar two-register miscellaneous FP16: 0 1 U 11110 1 11 11100 opcode 10 Rn Rd
+    if (raw & 0xDFFE_0C00) == 0x5EF8_0800 {
+        let op = match ((raw >> 12) & 0x1F, u) {
+            (0b11101, false) => Some(SimdFpOp2::Frecpe),
+            (0b11101, true) => Some(SimdFpOp2::Frsqrte),
+            (0b01101, false) => Some(SimdFpOp2::Fcmeq0),
+            (0b01101, true) => Some(SimdFpOp2::Fcmle0),
+            (0b01110, false) => Some(SimdFpOp2::Fcmlt0),
+            (0b01100, true) => Some(SimdFpOp2::Fcmge0),
+            (0b01100, false) => Some(SimdFpOp2::Fcmgt0),
+            _ => None,
+        };
+        if let Some(op) = op {
+            return Some(Instruction::FpScalarTwoMisc { rd, rn, op, esize: 16 });
+        }
     }
 
     // 27c. AdvSIMD scalar three same: 01 U 11110 size 1 Rm opcode 1 Rn Rd.
@@ -2756,7 +2809,7 @@ mod tests {
                 rd: 30,
                 rn: 30,
                 rm: 28,
-                is_double: true
+                esize: 64,
             }
         ); // fabd d30, d30, d28 (from cJSON_Compare)
         assert_eq!(
@@ -2765,9 +2818,18 @@ mod tests {
                 rd: 0,
                 rn: 1,
                 rm: 2,
-                is_double: false
+                esize: 32,
             }
         ); // fabd s0, s1, s2
+        assert_eq!(
+            decode(0x7EC21420),
+            Instruction::FpAbd {
+                rd: 0,
+                rn: 1,
+                rm: 2,
+                esize: 16,
+            }
+        ); // fabd h0, h1, h2 (#469)
     }
 
     #[test]
@@ -2775,26 +2837,32 @@ mod tests {
         use SimdFpOp2::*;
         use SimdFpOp3::*;
         let three = |w| match decode(w) {
-            Instruction::FpScalarThreeSame { op, is_double, .. } => Some((op, is_double)),
+            Instruction::FpScalarThreeSame { op, esize, .. } => Some((op, esize)),
             _ => None,
         };
-        assert_eq!(three(0x5E21_FC02), Some((Frecps, false)));
-        assert_eq!(three(0x5E61_FC02), Some((Frecps, true)));
-        assert_eq!(three(0x5EA1_FC02), Some((Frsqrts, false)));
-        assert_eq!(three(0x5EE1_FC02), Some((Frsqrts, true)));
+        assert_eq!(three(0x5E21_FC02), Some((Frecps, 32)));
+        assert_eq!(three(0x5E61_FC02), Some((Frecps, 64)));
+        assert_eq!(three(0x5EA1_FC02), Some((Frsqrts, 32)));
+        assert_eq!(three(0x5EE1_FC02), Some((Frsqrts, 64)));
+        assert_eq!(three(0x5E42_3C20), Some((Frecps, 16)));
+        assert_eq!(three(0x5EC2_3C20), Some((Frsqrts, 16)));
+        assert_eq!(three(0x5E42_2420), Some((Fcmeq, 16)));
         let two = |w| match decode(w) {
-            Instruction::FpScalarTwoMisc { op, is_double, .. } => Some((op, is_double)),
+            Instruction::FpScalarTwoMisc { op, esize, .. } => Some((op, esize)),
             _ => None,
         };
-        assert_eq!(two(0x5EA1_D802), Some((Frecpe, false)));
-        assert_eq!(two(0x5EE1_D802), Some((Frecpe, true)));
-        assert_eq!(two(0x7EA1_D802), Some((Frsqrte, false)));
-        assert_eq!(two(0x7EE1_D802), Some((Frsqrte, true)));
-        assert_eq!(two(0x1E28_4002), Some((Frint32z, false)));
-        assert_eq!(two(0x1E68_4002), Some((Frint32z, true)));
-        assert_eq!(two(0x1E28_C002), Some((Frint32x, false)));
-        assert_eq!(two(0x1E69_4002), Some((Frint64z, true)));
-        assert_eq!(two(0x1E69_C002), Some((Frint64x, true)));
+        assert_eq!(two(0x5EA1_D802), Some((Frecpe, 32)));
+        assert_eq!(two(0x5EE1_D802), Some((Frecpe, 64)));
+        assert_eq!(two(0x7EA1_D802), Some((Frsqrte, 32)));
+        assert_eq!(two(0x7EE1_D802), Some((Frsqrte, 64)));
+        assert_eq!(two(0x5EF9_D820), Some((Frecpe, 16)));
+        assert_eq!(two(0x7EF9_D820), Some((Frsqrte, 16)));
+        assert_eq!(two(0x5EF8_D820), Some((Fcmeq0, 16)));
+        assert_eq!(two(0x1E28_4002), Some((Frint32z, 32)));
+        assert_eq!(two(0x1E68_4002), Some((Frint32z, 64)));
+        assert_eq!(two(0x1E28_C002), Some((Frint32x, 32)));
+        assert_eq!(two(0x1E69_4002), Some((Frint64z, 64)));
+        assert_eq!(two(0x1E69_C002), Some((Frint64x, 64)));
         // neighbours stay what they were: FMULX scalar, scalar FRINTP, vector FRECPE
         assert!(matches!(decode(0x5E21_DC03), Instruction::FpMulx { .. }));
         assert!(matches!(decode(0x1E24_C021), Instruction::FpRound { .. }));
