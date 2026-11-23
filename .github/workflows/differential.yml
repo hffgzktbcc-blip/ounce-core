@@ -296,7 +296,12 @@ jobs:
       - name: Build ounce-core
         run: cargo build --release --locked --features "nce native-jit"
       - name: Run Linux ARM64 ELF matrix
-        run: python3 scripts/run_linux_arm64_matrix.py --work "$EVIDENCE_ROOT/linux-arm64-matrix" --report "$EVIDENCE_ROOT/linux-arm64-matrix-report.json"
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 scripts/run_linux_arm64_matrix.py --only lz4 xxhash lua --work "$EVIDENCE_ROOT/linux-arm64-matrix" --report "$EVIDENCE_ROOT/linux-arm64-matrix-report.json"
+          else
+            python3 scripts/run_linux_arm64_matrix.py --work "$EVIDENCE_ROOT/linux-arm64-matrix" --report "$EVIDENCE_ROOT/linux-arm64-matrix-report.json"
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
