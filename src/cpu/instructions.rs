@@ -419,6 +419,22 @@ pub enum Instruction {
         is_exclusive: bool,
     },
 
+    /// FEAT_LSE `LD<op>[A][L]` / `ST<op>` / `SWP[A][L]` (B/H/W/X): atomically `[Xn] = op([Xn], Rs)`, old value to Rt
+    /// (zero-extended; Rt = ZR discards it). Acquire/release bits do not matter on this single-core emulator.
+    AtomicRmw {
+        rs: u8,
+        rt: u8,
+        rn: u8,
+        size_bytes: u8,
+        op: AtomicOp,
+    },
+
+    /// FEAT_LSE `CAS[A][L][B|H]`: if `[Xn] == Rs` store Rt; Rs always receives the old value.
+    Cas { rs: u8, rt: u8, rn: u8, size_bytes: u8 },
+
+    /// FEAT_LSE `CASP[A][L]`: compare-and-swap of the even/odd register pair Rs,Rs+1 with Rt,Rt+1 (W or X pairs).
+    Casp { rs: u8, rt: u8, rn: u8, is_64: bool },
+
     /// SIMD&FP Load / Store Pair: `LDP/STP St/Dt/Qt, St2/Dt2/Qt2, [Xn, #offset]` (also `LDNP/STNP`)
     SimdLoadStorePair {
         rt1: u8,
@@ -1275,4 +1291,18 @@ pub enum Sha3Op {
     Bcax,
     Rax1,
     Xar(u8),
+}
+
+/// The operation of a FEAT_LSE read-modify-write atomic (`LDADD`, `LDCLR`, `LDEOR`, `LDSET`, `LD{S,U}{MAX,MIN}`, `SWP`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtomicOp {
+    Add,
+    Clr,
+    Eor,
+    Set,
+    Smax,
+    Smin,
+    Umax,
+    Umin,
+    Swp,
 }

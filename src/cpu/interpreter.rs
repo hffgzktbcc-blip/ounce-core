@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacModifier, PauthOp, ShiftType,
-    SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftOp,
+    AtomicOp, BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacModifier, PauthOp,
+    ShiftType, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdOp2, SimdShiftOp,
 };
 use super::pauth::{self, PointerAuth};
 use super::simd;
@@ -2026,6 +2026,105 @@ impl Cpu {
                         self.regs.write_w(rs, 0);
                     }
                 }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::AtomicRmw {
+                rs,
+                rt,
+                rn,
+                size_bytes,
+                op,
+            } => {
+                let addr = self.regs.read_x_or_sp(rn);
+                let mask = if size_bytes == 8 {
+                    u64::MAX
+                } else {
+                    (1u64 << (size_bytes * 8)) - 1
+                };
+                let old = match size_bytes {
+                    1 => mmu.read_u8(addr)? as u64,
+                    2 => mmu.read_u16(addr)? as u64,
+                    4 => mmu.read_u32(addr)? as u64,
+                    _ => mmu.read_u64(addr)?,
+                };
+                let operand = self.regs.read_x(rs) & mask;
+                let bits = size_bytes as u32 * 8;
+                let sext = |v: u64| ((v << (64 - bits)) as i64) >> (64 - bits);
+                let new = match op {
+                    AtomicOp::Add => old.wrapping_add(operand),
+                    AtomicOp::Clr => old & !operand,
+                    AtomicOp::Eor => old ^ operand,
+                    AtomicOp::Set => old | operand,
+                    AtomicOp::Smax => sext(old).max(sext(operand)) as u64,
+                    AtomicOp::Smin => sext(old).min(sext(operand)) as u64,
+                    AtomicOp::Umax => old.max(operand),
+                    AtomicOp::Umin => old.min(operand),
+                    AtomicOp::Swp => operand,
+                } & mask;
+                match size_bytes {
+                    1 => mmu.write_u8(addr, new as u8)?,
+                    2 => mmu.write_u16(addr, new as u16)?,
+                    4 => mmu.write_u32(addr, new as u32)?,
+                    _ => mmu.write_u64(addr, new)?,
+                }
+                self.regs.write_x(rt, old);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Cas { rs, rt, rn, size_bytes } => {
+                let addr = self.regs.read_x_or_sp(rn);
+                let mask = if size_bytes == 8 {
+                    u64::MAX
+                } else {
+                    (1u64 << (size_bytes * 8)) - 1
+                };
+                let old = match size_bytes {
+                    1 => mmu.read_u8(addr)? as u64,
+                    2 => mmu.read_u16(addr)? as u64,
+                    4 => mmu.read_u32(addr)? as u64,
+                    _ => mmu.read_u64(addr)?,
+                };
+                if old == self.regs.read_x(rs) & mask {
+                    let new = self.regs.read_x(rt);
+                    match size_bytes {
+                        1 => mmu.write_u8(addr, new as u8)?,
+                        2 => mmu.write_u16(addr, new as u16)?,
+                        4 => mmu.write_u32(addr, new as u32)?,
+                        _ => mmu.write_u64(addr, new)?,
+                    }
+                }
+                self.regs.write_x(rs, old);
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::Casp { rs, rt, rn, is_64 } => {
+                let addr = self.regs.read_x_or_sp(rn);
+                let (cmp, new) = (
+                    [self.regs.read_x(rs), self.regs.read_x(rs + 1)],
+                    [self.regs.read_x(rt), self.regs.read_x(rt + 1)],
+                );
+                let (old, hit) = if is_64 {
+                    let old = [mmu.read_u64(addr)?, mmu.read_u64(addr.wrapping_add(8))?];
+                    (old, old == cmp)
+                } else {
+                    let old = [mmu.read_u32(addr)? as u64, mmu.read_u32(addr.wrapping_add(4))? as u64];
+                    (old, old[0] == cmp[0] & 0xFFFF_FFFF && old[1] == cmp[1] & 0xFFFF_FFFF)
+                };
+                if hit {
+                    if is_64 {
+                        mmu.write_u64(addr, new[0])?;
+                        mmu.write_u64(addr.wrapping_add(8), new[1])?;
+                    } else {
+                        mmu.write_u32(addr, new[0] as u32)?;
+                        mmu.write_u32(addr.wrapping_add(4), new[1] as u32)?;
+                    }
+                }
+                self.regs.write_x(rs, old[0]);
+                self.regs.write_x(rs + 1, old[1]);
                 self.regs.advance_pc();
                 Ok(StepResult::Continue)
             }
@@ -4603,5 +4702,26 @@ mod fuzz_scalar_nan {
         c.regs.pc = 0x1000;
         c.step(&mut mmu).unwrap();
         assert_eq!((c.regs.v[0], c.regs.fpsr & 0x9f), (0xfbff, 0x14));
+    }
+
+    /// FEAT_LSE atomics were decoded as plain loads/stores; expected values are from Apple M3 (op.c: swp/ldadd/cas on bytes).
+    #[test]
+    fn lse_byte_atomics_match_m3() {
+        let run = |word: u32, mem: u8, x2: u64, x4: u64| {
+            let mut mmu = Memory::new();
+            let mut cpu = Cpu::new();
+            mmu.map_range(0x1000, 0x1000, Permission::READ_WRITE_EXECUTE);
+            mmu.write_u32(0x1000, word).unwrap();
+            mmu.write_u8(0x1800, mem).unwrap();
+            cpu.regs.pc = 0x1000;
+            (cpu.regs.x[0], cpu.regs.x[2], cpu.regs.x[4]) = (0x1800, x2, x4);
+            cpu.step(&mut mmu).unwrap();
+            (mmu.read_u8(0x1800).unwrap(), cpu.regs.x[2], cpu.regs.x[4])
+        };
+        assert_eq!(run(0x3822_0004, 1, 0xff, 0), (0, 0xff, 1)); // ldaddb w2, w4, [x0]
+        assert_eq!(run(0x3822_8004, 1, 2, 0), (2, 2, 1)); // swpb w2, w4, [x0]
+        assert_eq!(run(0x08e2_fc04, 5, 5, 9), (9, 5, 9)); // casalb hit
+        assert_eq!(run(0x08e2_fc04, 5, 7, 9), (5, 5, 9)); // casalb miss: w2 gets the old value
+        assert_eq!(run(0x38bf_c004, 0x81, 2, 7), (0x81, 2, 0x81)); // ldaprb w4, [x0] (FEAT_LRCPC): zero-extended load
     }
 }

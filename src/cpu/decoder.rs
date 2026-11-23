@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
 use super::instructions::{
-    BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier, PauthOp,
-    ShiftType, SimdAcrossOp, SimdElemOp, SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdLongOp, SimdNarrowOp,
-    SimdOp2, SimdOp3, SimdPermuteOp, SimdSatLongOp, SimdShiftExtOp, SimdShiftOp,
+    AtomicOp, BranchRegOp, Condition, DataProc1Op, FpOp2, Instruction, LogicalOp, MoveWideOp, PacKey, PacModifier,
+    PauthOp, ShiftType, SimdAcrossOp, SimdElemOp, SimdFpElementOp, SimdFpOp2, SimdFpOp3, SimdImmOp, SimdLongOp,
+    SimdNarrowOp, SimdOp2, SimdOp3, SimdPermuteOp, SimdSatLongOp, SimdShiftExtOp, SimdShiftOp,
 };
 
 /// Decodes a 32-bit little-endian ARMv8.2-A AArch64 opcode.
@@ -465,8 +465,59 @@ pub fn decode(raw: u32) -> Instruction {
     if (raw & 0x3F000000) == 0x38000000 {
         let size = ((raw >> 30) & 0x3) as u8;
         let opc = ((raw >> 22) & 0x3) as u8;
-        if size == 3 && opc == 2 {
+        if size == 3 && opc == 2 && ((raw >> 21) & 1 == 0 || (raw >> 10) & 3 != 0) {
             return Instruction::Nop; // PRFUM / PRFM (register): prefetch hints
+        }
+        // FEAT_LSE atomics: size 111 0 00 A R 1 Rs o3 opc 00 Rn Rt (bit 21 set, bits 11:10 clear).
+        if (raw & (1 << 21)) != 0 && ((raw >> 10) & 0x3) == 0b00 {
+            let rs = ((raw >> 16) & 0x1F) as u8;
+            let rn = ((raw >> 5) & 0x1F) as u8;
+            let rt = (raw & 0x1F) as u8;
+            let size_bytes = 1u8 << size;
+            let opc3 = (raw >> 12) & 0x7;
+            if (raw & (1 << 15)) == 0 {
+                let op = [
+                    AtomicOp::Add,
+                    AtomicOp::Clr,
+                    AtomicOp::Eor,
+                    AtomicOp::Set,
+                    AtomicOp::Smax,
+                    AtomicOp::Smin,
+                    AtomicOp::Umax,
+                    AtomicOp::Umin,
+                ][opc3 as usize];
+                return Instruction::AtomicRmw {
+                    rs,
+                    rt,
+                    rn,
+                    size_bytes,
+                    op,
+                };
+            }
+            if opc3 == 0 {
+                return Instruction::AtomicRmw {
+                    rs,
+                    rt,
+                    rn,
+                    size_bytes,
+                    op: AtomicOp::Swp,
+                };
+            }
+            if opc3 == 4 && rs == 31 && (raw >> 22) & 3 == 2 {
+                // FEAT_LRCPC LDAPR{B,H,}: a plain load on this single-core emulator.
+                return Instruction::LoadStoreImm {
+                    rt,
+                    rn,
+                    offset: 0,
+                    size_bytes,
+                    is_load: true,
+                    is_signed: false,
+                    is_64_target: size == 3,
+                    writeback: false,
+                    post_index: false,
+                };
+            }
+            return Instruction::Unimplemented { raw };
         }
         let is_load = opc != 0;
         let is_signed = opc == 2 || opc == 3;
@@ -541,6 +592,34 @@ pub fn decode(raw: u32) -> Instruction {
     // Pattern: size 001000 o2 L o1 Rs o0 Rt2 Rn Rt
     if (raw & 0x3F000000) == 0x08000000 {
         let size = ((raw >> 30) & 0x3) as u8;
+        if (raw & (1 << 21)) != 0 {
+            // o1 = 1: FEAT_LSE CAS (o2 = 1) / CASP (o2 = 0, size 0x); the exclusive pairs LDXP/STXP are not implemented.
+            let (rs, rn, rt) = (
+                ((raw >> 16) & 0x1F) as u8,
+                ((raw >> 5) & 0x1F) as u8,
+                (raw & 0x1F) as u8,
+            );
+            if (raw >> 10) & 0x1F != 0x1F {
+                return Instruction::Unimplemented { raw };
+            }
+            if (raw & (1 << 23)) != 0 {
+                return Instruction::Cas {
+                    rs,
+                    rt,
+                    rn,
+                    size_bytes: 1u8 << size,
+                };
+            }
+            if size < 2 && rs % 2 == 0 && rt % 2 == 0 {
+                return Instruction::Casp {
+                    rs,
+                    rt,
+                    rn,
+                    is_64: size == 1,
+                };
+            }
+            return Instruction::Unimplemented { raw };
+        }
         let is_exclusive = (raw & (1 << 23)) == 0;
         let is_load = (raw & (1 << 22)) != 0;
         let rs = ((raw >> 16) & 0x1F) as u8;
