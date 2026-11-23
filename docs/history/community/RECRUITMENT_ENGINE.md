@@ -12,7 +12,7 @@ These are designed to link to **open issues**, not a fixed list of IDs that inev
 
 ## Automation (starts after this PR is merged)
 
-[.github/workflows/community.yml](../../../.github/workflows/community.yml) has two narrowly scoped jobs:
+`.github/workflows/community.yml` (now retired) had two narrowly scoped jobs:
 
 1. **First-time PR welcome:** On a PR authored by a contributor GitHub identifies as a first-timer, post at most one helpful, clearly automated onboarding comment. Does not check out PR content, run untrusted code, grant permissions, auto-approve, auto-merge, or message a stranger outside this repository. A bot is skipped.
 2. **Starter inventory watch:** Mondays at 06:23 UTC (08:23 South African time) and via manual workflow dispatch, count *open* issues carrying `good first issue`. When fewer than three exist, open/reopen a **single** maintainer reminder; close it again when there are at least three. It never fabricates filler issues, relabels advanced work, creates jobs, sends unsolicited DMs or automatically admits contributors.
