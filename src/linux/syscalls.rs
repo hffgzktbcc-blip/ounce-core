@@ -129,6 +129,8 @@ const MAX_MMAP_CALL: u64 = 512 << 20;
 const MAX_MMAP_TOTAL: u64 = 1 << 30;
 const MAX_IO_CALL: u64 = 64 << 20;
 const MAX_IOV: u64 = 1024;
+const MAX_GETRANDOM: u64 = 256;
+const RNG_SEED: u64 = 0x6f75_6e63_655f_726e;
 pub const PID: u64 = 1;
 pub const UID: u64 = 1000;
 pub const GID: u64 = 1000;
@@ -168,6 +170,7 @@ pub struct Process {
     inodes: std::collections::BTreeMap<u64, Inode>,
     dentries: std::collections::BTreeMap<String, u64>,
     next_ino: u64,
+    rng: u64,
 }
 
 impl Process {
@@ -257,6 +260,7 @@ impl Process {
             inodes,
             dentries,
             next_ino: 10,
+            rng: RNG_SEED,
         }
     }
 
@@ -465,6 +469,7 @@ impl Process {
             SYS_GETPPID => 0,
             SYS_GETUID | SYS_GETEUID => UID as i64,
             SYS_GETGID | SYS_GETEGID => GID as i64,
+            278 => self.sys_getrandom(a[0], a[1], a[2], mmu),
             261 => {
                 if a[0] != 0 && a[0] != PID {
                     -ESRCH
@@ -1007,6 +1012,29 @@ impl Process {
             }
             _ => 0,
         }
+    }
+
+    /// Deterministic `getrandom`: a fixed-seed xorshift stream, never host entropy, so runs replay
+    /// byte for byte. Accepts GRND_NONBLOCK|GRND_RANDOM|GRND_INSECURE; other bits are EINVAL.
+    fn sys_getrandom(&mut self, buf: u64, len: u64, flags: u64, mmu: &mut Memory) -> i64 {
+        if flags & !0x7 != 0 {
+            return -EINVAL;
+        }
+        let n = len.min(MAX_GETRANDOM);
+        let mut data = Vec::with_capacity(n as usize);
+        while (data.len() as u64) < n {
+            let mut x = self.rng;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.rng = x;
+            data.extend_from_slice(&x.wrapping_mul(0x2545_F491_4F6C_DD1D).to_le_bytes());
+        }
+        data.truncate(n as usize);
+        if mmu.write_bytes(buf, &data).is_err() {
+            return -EFAULT;
+        }
+        n as i64
     }
 
     fn sys_ppoll(&mut self, a: [u64; 6], mmu: &mut Memory) -> i64 {
@@ -1597,6 +1625,7 @@ pub fn syscall_name(nr: u64) -> Option<&'static str> {
         233 => "madvise",
         261 => "prlimit64",
         278 => "getrandom",
+        280 => "bpf",
         291 => "statx",
         293 => "rseq",
         435 => "clone3",

@@ -90,7 +90,7 @@ fn unknown_syscall_is_diagnosed_by_number() {
             panic!("expected failure: {r:?}")
         };
         assert_eq!(status, 70);
-        assert!(diagnosis.contains("syscall 278 (getrandom)"), "{diagnosis}");
+        assert!(diagnosis.contains("syscall 280 (bpf)"), "{diagnosis}");
         assert!(diagnosis.contains("pc=0x"), "{diagnosis}");
     }
 }
@@ -442,9 +442,9 @@ fn unimplemented_syscall_reports_its_number_as_svc_id() {
     let report = r.to_run_report(CpuTier::Tier3);
     assert_eq!(
         (report.stop_kind, report.exit_code, report.svc_id),
-        ("unhandled_svc", 14, Some(278))
+        ("unhandled_svc", 14, Some(280))
     );
-    assert!(report.message.unwrap().contains("getrandom"));
+    assert!(report.message.unwrap().contains("bpf"));
     assert_eq!(report.pc, r.detail.regs.map(|regs| regs.pc));
 }
 
@@ -1167,4 +1167,30 @@ fn run_elf_cli_double_dash_argument_handling() {
 
     // ounce-core run-elf -- (no elf) exits 2
     assert_eq!(cli(&["--".into()]), 2);
+}
+
+#[test]
+fn getrandom_is_deterministic_validated_and_capped() {
+    use super::syscalls::{EFAULT, EINVAL, Outcome, Process};
+    use crate::mmu::{Memory, Permission};
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x2000, Permission::READ_WRITE);
+    let mut out = Capture::default();
+    let mut run = || {
+        let mut p = Process::new(0x10_0000);
+        assert_eq!(p.dispatch(278, [0x1000, 16, 4, 0, 0, 0], &mut mem, &mut out), Outcome::Return(16));
+        let mut b = [0u8; 16];
+        mem.read_bytes(0x1000, &mut b).unwrap();
+        b
+    };
+    let (a, b) = (run(), run());
+    assert_eq!(a, b, "fixed seed: identical bytes every run");
+    assert!(a.iter().any(|&x| x != 0));
+    let mut p = Process::new(0x10_0000);
+    for flags in [0, 1, 2, 4, 7] {
+        assert_eq!(p.dispatch(278, [0x1000, 8, flags, 0, 0, 0], &mut mem, &mut out), Outcome::Return(8));
+    }
+    assert_eq!(p.dispatch(278, [0x1000, 8, 8, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EINVAL));
+    assert_eq!(p.dispatch(278, [0x9000_0000, 8, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EFAULT));
+    assert_eq!(p.dispatch(278, [0x1000, 0x1000, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(256));
 }
