@@ -630,6 +630,15 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
+    // 14a2h. FRINT{N,P,M,Z,A,X,I} Hd, Hn (FEAT_FP16): the ftype 3 twin of the block above
+    if (raw & 0xFF3C7C00) == 0x1E244000 && ((raw >> 15) & 0x7) != 5 && (raw >> 22) & 0x3 == 3 {
+        return Instruction::FpRoundHalf {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            op: ((raw >> 15) & 0x7) as u8,
+        };
+    }
+
     // 14a3. FRINT32Z/FRINT32X/FRINT64Z/FRINT64X (scalar): 0 0 0 11110 ftype 1 0100 op2 10000 Rn Rd (FEAT_FRINTTS)
     if (raw & 0xFF3E_7C00) == 0x1E28_4000 && (raw >> 22) & 0x3 <= 1 {
         let op = match (raw >> 15) & 0x3 {
@@ -664,6 +673,39 @@ pub fn decode(raw: u32) -> Instruction {
                 is_double: (raw >> 22) & 0x3 == 1,
             };
         }
+    }
+
+    // 14a4h. The ftype 3 (half) twin of the fixed-point block above
+    if (raw & 0x7F200000) == 0x1E000000 && (raw >> 22) & 0x3 == 3 {
+        let rmode = ((raw >> 19) & 0x3) as u8;
+        let opcode = ((raw >> 16) & 0x7) as u8;
+        let scale = (raw >> 10) & 0x3F;
+        let is_64 = raw & (1 << 31) != 0;
+        let valid = matches!((rmode, opcode), (3, 0) | (3, 1) | (0, 2) | (0, 3)) && (is_64 || scale >= 32);
+        if valid {
+            return Instruction::FpFixedConvHalf {
+                rd: (raw & 0x1F) as u8,
+                rn: ((raw >> 5) & 0x1F) as u8,
+                opcode,
+                fbits: (64 - scale) as u8,
+                is_64,
+            };
+        }
+    }
+
+    // 14a3h. The ftype 3 (half) twin of the float <-> integer conversion block below
+    if (raw & 0x7F20FC00) == 0x1E200000
+        && ((raw >> 16) & 0x7) <= 5
+        && ((raw >> 16) & 0x7 <= 1 || (raw >> 19) & 0x3 == 0)
+        && (raw >> 22) & 0x3 == 3
+    {
+        return Instruction::FpIntConvHalf {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            opcode: ((raw >> 16) & 0x7) as u8,
+            rmode: ((raw >> 19) & 0x3) as u8,
+            is_64: raw & (1 << 31) != 0,
+        };
     }
 
     // 14a3. Float <-> integer conversion (FCVTxS/U, SCVTF, UCVTF, FCVTAS/AU); FMOV (opcodes 6, 7) is elsewhere
@@ -837,6 +879,16 @@ pub fn decode(raw: u32) -> Instruction {
         let rn = ((raw >> 5) & 0x1F) as u8;
         let rd = (raw & 0x1F) as u8;
         return Instruction::FpMovGen { rd, rn, to_fp, is_64 };
+    }
+
+    // 19h. FMOV Hd, Wn/Xn and FMOV Wd/Xd, Hn (FEAT_FP16): sf 0 0 11110 11 1 00 11x 000000 Rn Rd (ftype 3, rmode 0)
+    if (raw & 0x7FFE_FC00) == 0x1EE6_0000 {
+        return Instruction::FpMovGenHalf {
+            rd: (raw & 0x1F) as u8,
+            rn: ((raw >> 5) & 0x1F) as u8,
+            to_fp: ((raw >> 16) & 1) != 0,
+            is_64: (raw & (1 << 31)) != 0,
+        };
     }
 
     // 20. Floating-Point Scalar & 128-bit NEON Q Load / Store (Immediate unsigned offset):
@@ -1034,7 +1086,9 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         let imm = match (raw >> 22) & 0x3 {
             0 => a << 31 | (b ^ 1) << 30 | (if b != 0 { 0x1F } else { 0 }) << 25 | cd << 23 | efgh << 19,
             1 => a << 63 | (b ^ 1) << 62 | (if b != 0 { 0xFF } else { 0 }) << 54 | cd << 52 | efgh << 48,
-            _ => return None, // half precision is not modelled
+            // VFPExpandImm(N = 16): sign, NOT(b) : b : b : cd as the 5-bit exponent, efgh : 000000 as the fraction
+            3 => a << 15 | ((b ^ 1) << 4 | (if b != 0 { 3 } else { 0 }) << 2 | cd) << 10 | efgh << 6,
+            _ => return None,
         };
         return Some(Instruction::SimdModImm {
             rd,
@@ -3258,15 +3312,13 @@ mod fuzz_half_precision {
     use super::*;
 
     /// Found by the instruction fuzzer: scalar FP words with ftype 3 (half precision) were decoded as
-    /// single precision and gave wrong results. Half precision is not implemented, so they must be
-    /// Unimplemented (every word below ran fine on Apple Silicon).
+    /// single precision and gave wrong results (every such word ran fine on Apple Silicon). A half-precision
+    /// word must decode as its half form or as Unimplemented, never as single, and the invalid same-type
+    /// `FCVT` words below must stay Unimplemented.
     #[test]
     fn half_precision_scalar_words_are_not_decoded_as_single() {
         for w in [
-            0x1ee2_03a6u32, // scvtf h6, w29 (int->float H still unimplemented)
-            0x9ee0_00b4,    // fcvtns x20, h5 (float->int H still unimplemented)
-            0x1ee4_c16a,    // frint* H still unimplemented
-            0x1e22_4020,    // fcvt s0, s1 (same-type invalid)
+            0x1e22_4020u32, // fcvt s0, s1 (same-type invalid)
             0x1e62_c020,    // fcvt d0, d1 (same-type invalid)
             0x1ee3_c020,    // fcvt h0, h1 (same-type invalid)
         ] {
@@ -3276,6 +3328,20 @@ mod fuzz_half_precision {
                 decode(w)
             );
         }
+        // The fuzzer's three words are now decoded as half precision, never as single:
+        assert!(matches!(
+            decode(0x1ee2_03a6),
+            Instruction::FpIntConvHalf { opcode: 2, .. }
+        )); // scvtf h6, w29
+        assert!(matches!(
+            decode(0x9ee0_00b4),
+            Instruction::FpIntConvHalf {
+                opcode: 0,
+                is_64: true,
+                ..
+            }
+        )); // fcvtns x20, h5
+        assert!(matches!(decode(0x1ee4_c16a), Instruction::FpRoundHalf { op: 1, .. })); // frintp h10, h11
         // Scalar FP16 1-source & 2-source + FCVT H/S/D (#469)
         assert!(matches!(
             decode(0x1ee0_4020),

@@ -1575,6 +1575,165 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::FpMovGenHalf { rd, rn, to_fp, is_64 } => {
+                // a bit-pattern move of the low 16 bits; everything above them in the destination is zero
+                if to_fp {
+                    let bits = self.regs.read_x(rn) & 0xFFFF;
+                    self.regs.write_q(rd, bits as u128);
+                } else {
+                    let bits = (self.regs.read_q(rn) & 0xFFFF) as u64;
+                    if is_64 {
+                        self.regs.write_x(rd, bits);
+                    } else {
+                        self.regs.write_w(rd, bits as u32);
+                    }
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpRoundHalf { rd, rn, op } => {
+                // FRINTX/FRINTI (op 6, 7) round with FPCR.RMode; with FPCR.FZ16 a denormal input reads as zero
+                let f = softfp::F16;
+                let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                let inexact_flag = op == 6; // FRINTX raises IXC, FRINTI does not
+                let mode = if op >= 6 {
+                    match env.round {
+                        softfp::Round::Nearest => 0,
+                        softfp::Round::Up => 1,
+                        softfp::Round::Down => 2,
+                        softfp::Round::Zero => 3,
+                        softfp::Round::Odd => unreachable!("round-to-odd is not an FPCR mode"),
+                    }
+                } else {
+                    op
+                };
+                let src = softfp::flush_input(f, env, self.regs.read_q(rn) as u64 & 0xFFFF);
+                if f.is_nan(src) {
+                    // FPRoundInt: a NaN operand comes back quieted (the quiet bit of a half is bit 9); DN gives the default
+                    softfp::raise_round_int(f, src, 0.0, 0.0, false);
+                    let nan = if env.dn { f.default_nan() } else { src | 0x200 };
+                    self.regs.write_q(rd, nan as u128);
+                } else {
+                    // a half is exact in f64, and an integral value of a half is again exact as a half
+                    let widen = softfp::Env { fz: false, ..env };
+                    let v = f64::from_bits(softfp::convert(f, softfp::F64, widen, src));
+                    let r = match mode {
+                        1 => v.ceil(),
+                        2 => v.floor(),
+                        3 => v.trunc(),
+                        4 => v.round(),
+                        _ => v.round_ties_even(),
+                    };
+                    softfp::raise_round_int(f, src, v, r, inexact_flag);
+                    let bits = softfp::convert(softfp::F64, f, softfp::Env::DEFAULT, r.to_bits());
+                    self.regs.write_q(rd, bits as u128);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpIntConvHalf {
+                rd,
+                rn,
+                opcode,
+                rmode,
+                is_64,
+            } => {
+                let f = softfp::F16;
+                let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                if opcode == 2 || opcode == 3 {
+                    // SCVTF / UCVTF: integer register to half, rounded under FPCR.RMode
+                    let signed = opcode == 2;
+                    let x = if is_64 {
+                        self.regs.read_x(rn)
+                    } else {
+                        self.regs.read_w(rn) as u64
+                    };
+                    let x = if signed && !is_64 {
+                        x as u32 as i32 as i64 as u64
+                    } else {
+                        x
+                    };
+                    let neg = signed && (x as i64) < 0;
+                    let mag = if neg { (x as i64).unsigned_abs() } else { x };
+                    self.regs.write_q(rd, softfp::int_to_fp(f, env, neg, mag, 0) as u128);
+                } else {
+                    // half to integer with the rounding mode in rmode (opcodes 4/5 are ties-away)
+                    let src = softfp::flush_input(f, env, self.regs.read_q(rn) as u64 & 0xFFFF);
+                    let widen = softfp::Env { fz: false, ..env };
+                    let v = f64::from_bits(softfp::convert(f, softfp::F64, widen, src));
+                    let rounded = if opcode >= 4 {
+                        v.round()
+                    } else {
+                        match rmode {
+                            0 => v.round_ties_even(),
+                            1 => v.ceil(),
+                            2 => v.floor(),
+                            _ => v.trunc(),
+                        }
+                    };
+                    let signed = opcode == 0 || opcode == 4;
+                    softfp::raise_to_int(f, src, v, rounded, signed, is_64);
+                    let out: u64 = match (signed, is_64) {
+                        (true, true) => rounded as i64 as u64,
+                        (true, false) => rounded as i32 as u32 as u64,
+                        (false, true) => rounded as u64,
+                        (false, false) => rounded as u32 as u64,
+                    };
+                    self.regs.write_x(rd, out);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
+            Instruction::FpFixedConvHalf {
+                rd,
+                rn,
+                opcode,
+                fbits,
+                is_64,
+            } => {
+                let f = softfp::F16;
+                let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                if opcode >= 2 {
+                    // SCVTF / UCVTF: fixed-point integer register to half
+                    let x = if is_64 {
+                        self.regs.read_x(rn)
+                    } else {
+                        self.regs.read_w(rn) as u64
+                    };
+                    let sx = if is_64 { x as i64 } else { x as u32 as i32 as i64 };
+                    let neg = opcode == 2 && sx < 0;
+                    let mag = if opcode == 2 {
+                        sx.unsigned_abs()
+                    } else if is_64 {
+                        x
+                    } else {
+                        x as u32 as u64
+                    };
+                    self.regs
+                        .write_q(rd, softfp::int_to_fp(f, env, neg, mag, fbits as u32) as u128);
+                } else {
+                    // FCVTZS / FCVTZU: scale, then truncate toward zero with saturation
+                    let src = softfp::flush_input(f, env, self.regs.read_q(rn) as u64 & 0xFFFF);
+                    let widen = softfp::Env { fz: false, ..env };
+                    let v = f64::from_bits(softfp::convert(f, softfp::F64, widen, src));
+                    let scaled = v * 2f64.powi(fbits as i32);
+                    let t = scaled.trunc();
+                    softfp::raise_to_int(f, src, scaled, t, opcode == 0, is_64);
+                    let out: u64 = match (opcode == 0, is_64) {
+                        (true, true) => t as i64 as u64,
+                        (true, false) => t as i32 as u32 as u64,
+                        (false, true) => t as u64,
+                        (false, false) => t as u32 as u64,
+                    };
+                    self.regs.write_x(rd, out);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::FpLoadStoreImm {
                 rt,
                 rn,
@@ -3629,6 +3788,132 @@ mod tests {
         assert_eq!(cpu.regs.read_x(1), DATA + 0xC4);
         // a replicate form cannot store: the L = 0 twin of ld1r still has no decode
         assert!(format!("{:?}", super::super::decoder::decode(0x4d00_c949)).starts_with("Unimplemented"));
+    }
+
+    /// Scalar half precision (FEAT_FP16): `FMOV` between a half register and a general register, `FMOV #imm`,
+    /// `FRINT*` and the integer / fixed-point conversions. Compilers emit `FMOV Hd, Wn` for every `_Float16` that
+    /// arrives in a general register, and TestFloat's half-precision groups stopped on the others. Expected values
+    /// are worked out by hand from the Arm ARM definitions (VFPExpandImm, FPRoundInt, FPToFixed, FixedToFP).
+    #[test]
+    fn scalar_fp16_fmov_frint_and_integer_conversions() {
+        const IOC: u32 = 1;
+        const OFC: u32 = 1 << 2;
+        const IXC: u32 = 1 << 4;
+        const FZ16: u32 = 1 << 19;
+        const DN: u32 = 1 << 25;
+        const RP: u32 = 1 << 22;
+        const RM: u32 = 2 << 22;
+        const RZ: u32 = 3 << 22;
+        // one instruction with v1 = h, x1 = x, FPCR = fpcr; returns the CPU to look at
+        let one = |word: u32, h: u16, x: u64, fpcr: u32| {
+            let (cpu, _) = run(&[word], |c, _| {
+                c.regs.write_q(0, u128::MAX); // a dirty destination shows any bits left unwritten
+                c.regs.write_q(1, (u128::MAX << 16) | h as u128);
+                c.regs.write_x(0, u64::MAX);
+                c.regs.write_x(1, x);
+                c.regs.fpcr = fpcr;
+            });
+            cpu
+        };
+        // FMOV Hd, Wn/Xn: the low 16 bits, everything above them zero. FMOV Wd/Xd, Hn: zero-extended.
+        assert_eq!(one(0x1ee7_0020, 0, 0xDEAD_3C00, 0).regs.read_q(0), 0x3C00); // fmov h0, w1
+        assert_eq!(one(0x9ee7_0020, 0, 0x1234_5678_9ABC_DEF0, 0).regs.read_q(0), 0xDEF0); // fmov h0, x1
+        let c = one(0x1ee6_0020, 0xABCD, 0, 0); // fmov w0, h1: the high half of x0 is cleared
+        assert_eq!((c.regs.read_x(0), c.regs.fpsr), (0xABCD, 0));
+        assert_eq!(one(0x9ee6_0020, 0x7C01, 0, 0).regs.read_x(0), 0x7C01); // fmov x0, h1: a signalling NaN moves untouched
+        assert_eq!(one(0x9ee6_0020, 0x7C01, 0, 0).regs.fpsr, 0);
+        // FMOV Hd, #imm: 1.0, -2.0, 0.5, 31.0, -0.125
+        for (word, want) in [
+            (0x1eee_1000u32, 0x3C00u128),
+            (0x1ef0_1000, 0xC000),
+            (0x1eec_1000, 0x3800),
+            (0x1ee7_f000, 0x4FC0),
+            (0x1ef8_1000, 0xB000),
+        ] {
+            assert_eq!(one(word, 0, 0, 0).regs.read_q(0), want, "{word:#010x}");
+        }
+        // FRINT*: (word, input, FPCR, result, FPSR)
+        let cases: &[(u32, u16, u32, u16, u32)] = &[
+            (0x1ee4_4020, 0x4100, 0, 0x4000, 0),    // frintn 2.5 -> 2.0 (ties to even)
+            (0x1ee4_4020, 0x4300, 0, 0x4400, 0),    // frintn 3.5 -> 4.0
+            (0x1ee6_4020, 0x4100, 0, 0x4200, 0),    // frinta 2.5 -> 3.0 (ties away)
+            (0x1ee4_c020, 0xB800, 0, 0x8000, 0),    // frintp -0.5 -> -0.0
+            (0x1ee5_4020, 0xB800, 0, 0xBC00, 0),    // frintm -0.5 -> -1.0
+            (0x1ee5_c020, 0x41CD, 0, 0x4000, 0),    // frintz 2.8984375 -> 2.0
+            (0x1ee7_4020, 0x4100, 0, 0x4000, IXC),  // frintx 2.5 -> 2.0, inexact
+            (0x1ee7_4020, 0x4000, 0, 0x4000, 0),    // frintx 2.0 is exact
+            (0x1ee7_c020, 0x4100, RP, 0x4200, 0),   // frinti follows RMode: toward +inf, no inexact
+            (0x1ee7_c020, 0x41CD, RZ, 0x4000, 0),   // frinti toward zero
+            (0x1ee7_4020, 0xB800, RM, 0xBC00, IXC), // frintx toward -inf: -0.5 -> -1.0, inexact
+            (0x1ee4_4020, 0x7C01, 0, 0x7E01, IOC),  // a signalling NaN comes back quieted, invalid
+            (0x1ee4_4020, 0x7E05, 0, 0x7E05, 0),    // a quiet NaN keeps its payload
+            (0x1ee4_4020, 0x7C01, DN, 0x7E00, IOC), // DN: the default NaN
+            (0x1ee4_4020, 0x7C00, 0, 0x7C00, 0),    // +inf
+            (0x1ee4_4020, 0xFC00, 0, 0xFC00, 0),    // -inf
+            (0x1ee4_4020, 0x7BFF, 0, 0x7BFF, 0),    // the largest finite half is already integral
+        ];
+        for &(word, h, fpcr, want, flags) in cases {
+            let c = one(word, h, 0, fpcr);
+            assert_eq!(
+                (c.regs.read_q(0), c.regs.fpsr),
+                (want as u128, flags),
+                "{word:#010x} in={h:#06x} fpcr={fpcr:#x}"
+            );
+        }
+        // FZ16 reads a denormal input as zero: ceil(2^-24) is 1.0 without it, 0.0 with it
+        assert_eq!(one(0x1ee4_c020, 0x0001, 0, 0).regs.read_q(0), 0x3C00);
+        assert_eq!(one(0x1ee4_c020, 0x0001, 0, FZ16).regs.read_q(0), 0);
+        // SCVTF / UCVTF to half: (word, x, FPCR, result, FPSR)
+        let cases: &[(u32, u64, u32, u16, u32)] = &[
+            (0x1ee2_0020, 0xFFFF_FFFB, 0, 0xC500, 0),         // scvtf h0, w1: -5 -> -5.0
+            (0x9ee2_0020, 65519, 0, 0x7BFF, IXC),             // scvtf h0, x1: rounds to the largest finite half
+            (0x9ee2_0020, 65520, 0, 0x7C00, OFC | IXC),       // the first value that rounds to infinity
+            (0x9ee2_0020, 65520, RZ, 0x7BFF, IXC),            // toward zero it stays at the largest finite half
+            (0x1ee3_0020, 0xFFFF_FFFF, 0, 0x7C00, OFC | IXC), // ucvtf h0, w1: 4294967295 overflows
+            // toward zero it still overflows before rounding: FPRound raises OFC and returns the largest finite half
+            (0x1ee3_0020, 0xFFFF_FFFF, RZ, 0x7BFF, OFC | IXC),
+        ];
+        for &(word, x, fpcr, want, flags) in cases {
+            let c = one(word, 0, x, fpcr);
+            assert_eq!(
+                (c.regs.read_q(0), c.regs.fpsr),
+                (want as u128, flags),
+                "{word:#010x} x={x:#x} fpcr={fpcr:#x}"
+            );
+        }
+        // half to integer: (word, input, result, FPSR)
+        let cases: &[(u32, u16, u64, u32)] = &[
+            (0x1ef8_0020, 0xC500, 0xFFFF_FFFB, 0),   // fcvtzs w0, h1: -5.0
+            (0x1ef8_0020, 0x41CD, 2, IXC),           // 2.8984375 -> 2, inexact
+            (0x1ef8_0020, 0x7E00, 0, IOC),           // NaN -> 0, invalid
+            (0x1ef8_0020, 0x7C00, 0x7FFF_FFFF, IOC), // +inf saturates
+            (0x1ef8_0020, 0xFC00, 0x8000_0000, IOC), // -inf saturates
+            (0x1ef9_0020, 0xBC00, 0, IOC),           // fcvtzu w0, h1: -1.0 is out of range
+            (0x1ef9_0020, 0x7BFF, 65504, 0),         // 65504 is exact
+            (0x1ee0_0020, 0x4100, 2, IXC),           // fcvtns: 2.5 -> 2 (ties to even)
+            (0x1ee0_0020, 0x4300, 4, IXC),           // fcvtns: 3.5 -> 4
+            (0x1ee4_0020, 0x4100, 3, IXC),           // fcvtas: 2.5 -> 3 (ties away)
+            (0x1ee8_0020, 0x41CD, 3, IXC),           // fcvtps: 2.8984375 -> 3
+            (0x1ef0_0020, 0xB800, 0xFFFF_FFFF, IXC), // fcvtms: -0.5 -> -1
+            (0x9ef8_0020, 0x7BFF, 65504, 0),         // fcvtzs x0, h1
+        ];
+        for &(word, h, want, flags) in cases {
+            let c = one(word, h, 0, 0);
+            assert_eq!(
+                (c.regs.read_x(0), c.regs.fpsr),
+                (want, flags),
+                "{word:#010x} in={h:#06x}"
+            );
+        }
+        // fixed point: scvtf h0, w1, #8 and fcvtzs w0, h1, #4
+        assert_eq!(one(0x1ec2_e020, 0, 384, 0).regs.read_q(0), 0x3E00); // 384 / 256 = 1.5
+        assert_eq!(one(0x1ec2_e020, 0, (-384i32) as u32 as u64, 0).regs.read_q(0), 0xBE00);
+        let c = one(0x1ed8_f020, 0x3E00, 0, 0); // 1.5 * 16 = 24
+        assert_eq!((c.regs.read_x(0), c.regs.fpsr), (24, 0));
+        let c = one(0x1ed8_f020, 0x41CD, 0, 0); // 2.8984375 * 16 = 46.375 -> 46, inexact
+        assert_eq!((c.regs.read_x(0), c.regs.fpsr), (46, IXC));
+        // reserved encodings stay undecoded: FCVTAS with rmode 1
+        assert!(format!("{:?}", super::super::decoder::decode(0x1eec_0020)).starts_with("Unimplemented"));
     }
 
     #[test]
