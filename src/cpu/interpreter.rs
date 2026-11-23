@@ -978,13 +978,25 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpData2 {
-                rd,
-                rn,
-                rm,
-                op,
-                is_double,
-            } => {
+            Instruction::FpData2 { rd, rn, rm, op, esize } => {
+                if esize == 16 {
+                    let f = softfp::F16;
+                    let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                    let a = (self.regs.v[rn as usize] & 0xFFFF) as u64;
+                    let b = (self.regs.v[rm as usize] & 0xFFFF) as u64;
+                    let r = match op {
+                        FpOp2::Fadd => softfp::binop(f, env, softfp::BinOp::Add, a, b),
+                        FpOp2::Fsub => softfp::binop(f, env, softfp::BinOp::Sub, a, b),
+                        FpOp2::Fmul => softfp::binop(f, env, softfp::BinOp::Mul, a, b),
+                        FpOp2::Fdiv => softfp::binop(f, env, softfp::BinOp::Div, a, b),
+                        FpOp2::Fnmul => f.neg(softfp::binop(f, env, softfp::BinOp::Mul, a, b)),
+                        _ => unreachable!("FMAX/FMIN H decoded as FpHalfMinMax"),
+                    };
+                    self.regs.v[rd as usize] = r as u128;
+                    self.regs.advance_pc();
+                    return Ok(StepResult::Continue);
+                }
+                let is_double = esize == 64;
                 if matches!(op, FpOp2::Fadd | FpOp2::Fsub | FpOp2::Fmul | FpOp2::Fdiv | FpOp2::Fnmul) {
                     let (f, env) = self.fp_env(is_double);
                     let (a, b) = (self.fp_bits(rn, is_double), self.fp_bits(rm, is_double));
@@ -1158,25 +1170,48 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
-            Instruction::FpData1 { rd, rn, op, is_double } => {
-                if op == 3 || (op == 5 && !is_double) || (op == 4 && is_double) {
-                    let (f, env) = self.fp_env(is_double);
-                    let a = self.fp_bits(rn, is_double);
-                    match op {
-                        3 => self.set_fp_bits(rd, is_double, softfp::sqrt(f, env, a)),
-                        5 => self.set_fp_bits(rd, true, softfp::convert(softfp::F32, softfp::F64, env, a)),
-                        _ => self.set_fp_bits(rd, false, softfp::convert(softfp::F64, softfp::F32, env, a)),
+            Instruction::FpData1 { rd, rn, op, esize } => {
+                if op == 3 {
+                    if esize == 16 {
+                        let env = softfp::Env::from_fpcr_f16(self.regs.fpcr);
+                        let a = (self.regs.v[rn as usize] & 0xFFFF) as u64;
+                        self.regs.v[rd as usize] = softfp::sqrt(softfp::F16, env, a) as u128;
+                    } else {
+                        let is_double = esize == 64;
+                        let (f, env) = self.fp_env(is_double);
+                        let a = self.fp_bits(rn, is_double);
+                        self.set_fp_bits(rd, is_double, softfp::sqrt(f, env, a));
                     }
                     self.regs.advance_pc();
                     return Ok(StepResult::Continue);
                 }
-                match (op, is_double) {
-                    (0, false) => self.regs.write_s(rd, self.regs.read_s(rn)),
-                    (0, true) => self.regs.write_d(rd, self.regs.read_d(rn)),
-                    (1, false) => self.regs.write_s(rd, self.regs.read_s(rn).abs()),
-                    (1, true) => self.regs.write_d(rd, self.regs.read_d(rn).abs()),
-                    (2, false) => self.regs.write_s(rd, -self.regs.read_s(rn)),
-                    (2, true) => self.regs.write_d(rd, -self.regs.read_d(rn)),
+                if matches!(op, 4 | 5 | 7) {
+                    let env = softfp::Env::from_fpcr(self.regs.fpcr);
+                    let (src_fmt, src_bits) = match esize {
+                        16 => (softfp::F16, (self.regs.v[rn as usize] & 0xFFFF) as u64),
+                        32 => (softfp::F32, self.fp_bits(rn, false)),
+                        _ => (softfp::F64, self.fp_bits(rn, true)),
+                    };
+                    match op {
+                        4 => self.set_fp_bits(rd, false, softfp::convert(src_fmt, softfp::F32, env, src_bits)),
+                        5 => self.set_fp_bits(rd, true, softfp::convert(src_fmt, softfp::F64, env, src_bits)),
+                        _ => {
+                            self.regs.v[rd as usize] = softfp::convert(src_fmt, softfp::F16, env, src_bits) as u128;
+                        }
+                    }
+                    self.regs.advance_pc();
+                    return Ok(StepResult::Continue);
+                }
+                match (op, esize) {
+                    (0, 16) => self.regs.v[rd as usize] = self.regs.v[rn as usize] & 0xFFFF,
+                    (1, 16) => self.regs.v[rd as usize] = self.regs.v[rn as usize] & 0x7FFF,
+                    (2, 16) => self.regs.v[rd as usize] = (self.regs.v[rn as usize] & 0xFFFF) ^ 0x8000,
+                    (0, 32) => self.regs.write_s(rd, self.regs.read_s(rn)),
+                    (0, 64) => self.regs.write_d(rd, self.regs.read_d(rn)),
+                    (1, 32) => self.regs.write_s(rd, self.regs.read_s(rn).abs()),
+                    (1, 64) => self.regs.write_d(rd, self.regs.read_d(rn).abs()),
+                    (2, 32) => self.regs.write_s(rd, -self.regs.read_s(rn)),
+                    (2, 64) => self.regs.write_d(rd, -self.regs.read_d(rn)),
                     _ => {
                         return Err(CpuError::UnimplementedInstruction {
                             raw: 0,
@@ -4124,5 +4159,40 @@ mod fuzz_scalar_nan {
         assert_eq!(c.regs.v[0] & 0xffff_ffff_ffff_ffff, 0x7fc0_0000_7fc0_0001);
         let c = run1(0x6e62_fc20, &[(1, 0), (2, 0)]);
         assert_eq!(c.regs.v[0], 0x7ff8_0000_0000_0000_7ff8_0000_0000_0000);
+    }
+
+    #[test]
+    fn scalar_fp16_arithmetic_unary_sqrt_and_fcvt() {
+        let fz16 = 1 << 19;
+        let fz = 1 << 24;
+        // 1.5 (0x3e00) + 2.0 (0x4000) = 3.5 (0x4300); - 2.0 = -0.5 (0xb800); * 2.0 = 3.0 (0x4200)
+        assert_eq!(run1(0x1ee2_2820, &[(1, 0x3e00), (2, 0x4000)]).regs.v[0], 0x4300);
+        assert_eq!(run1(0x1ee2_3820, &[(1, 0x3e00), (2, 0x4000)]).regs.v[0], 0xb800);
+        assert_eq!(run1(0x1ee2_0820, &[(1, 0x3e00), (2, 0x4000)]).regs.v[0], 0x4200);
+        // 3.0 (0x4200) / 2.0 (0x4000) = 1.5 (0x3e00); fnmul(1.5, 2.0) = -3.0 (0xc200)
+        assert_eq!(run1(0x1ee2_1820, &[(1, 0x4200), (2, 0x4000)]).regs.v[0], 0x3e00);
+        assert_eq!(run1(0x1ee2_8820, &[(1, 0x3e00), (2, 0x4000)]).regs.v[0], 0xc200);
+        // fnmul h0, h1, h2 on qNaN flips the sign bit even without touching payload
+        assert_eq!(run1(0x1ee2_8820, &[(1, 0x7e01), (2, 0x3c00)]).regs.v[0], 0xfe01);
+        // FADD H honours FZ16 (flushes denormal without IDC), ignores FZ
+        let c = run_fpcr(0x1ee2_2820, fz16, &[(1, 0x0001), (2, 0x0000)]);
+        assert_eq!((c.regs.v[0], c.regs.fpsr), (0, 0));
+        let c = run_fpcr(0x1ee2_2820, fz, &[(1, 0x0001), (2, 0x0000)]);
+        assert_eq!((c.regs.v[0], c.regs.fpsr), (0x0001, 0));
+        // FMOV / FABS / FNEG H zero upper 112 bits and leave sNaN unquieted without IOC
+        let dirty_snan = (0xdead_beefu128 << 64) | 0xfd01;
+        let c = run1(0x1ee0_4020, &[(1, dirty_snan)]);
+        assert_eq!((c.regs.v[0], c.regs.fpsr), (0xfd01, 0));
+        let c = run1(0x1ee0_c020, &[(1, dirty_snan)]);
+        assert_eq!((c.regs.v[0], c.regs.fpsr), (0x7d01, 0));
+        let c = run1(0x1ee1_4020, &[(1, dirty_snan)]);
+        assert_eq!((c.regs.v[0], c.regs.fpsr), (0x7d01, 0));
+        // FSQRT H: sqrt(4.0 = 0x4400) = 2.0 (0x4000)
+        assert_eq!(run1(0x1ee1_c020, &[(1, 0x4400)]).regs.v[0], 0x4000);
+        // FCVT S<-H (0x1ee2_4020), D<-H (0x1ee2_c020), H<-S (0x1e23_c020), H<-D (0x1e63_c020)
+        assert_eq!(run1(0x1ee2_4020, &[(1, 0x3e00)]).regs.v[0], 0x3fc0_0000);
+        assert_eq!(run1(0x1ee2_c020, &[(1, 0x3e00)]).regs.v[0], 0x3ff8_0000_0000_0000);
+        assert_eq!(run1(0x1e23_c020, &[(1, 0x3fc0_0000)]).regs.v[0], 0x3e00);
+        assert_eq!(run1(0x1e63_c020, &[(1, 0x3ff8_0000_0000_0000)]).regs.v[0], 0x3e00);
     }
 }

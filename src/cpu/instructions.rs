@@ -259,18 +259,19 @@ pub enum Instruction {
     /// No Operation / Hint
     Nop,
 
-    /// Floating-Point 2-Source Arithmetic: `FADD/FSUB/FMUL/FDIV Dd/Sd, Dn/Sn, Dm/Sm`
+    /// Floating-Point 2-Source Arithmetic: `FADD/FSUB/FMUL/FDIV Dd/Sd/Hd, Dn/Sn/Hn, Dm/Sm/Hm`
+    /// (`esize` is 16, 32, or 64).
     FpData2 {
         rd: u8,
         rn: u8,
         rm: u8,
         op: FpOp2,
-        is_double: bool,
+        esize: u8,
     },
 
-    /// Floating-Point 1-Source: `FMOV`/`FABS`/`FNEG`/`FSQRT Dd/Sd, Dn/Sn` (op 0..3) and
-    /// `FCVT` (op = bits 17..15: 4 to single from double, 5 to double from single)
-    FpData1 { rd: u8, rn: u8, op: u8, is_double: bool },
+    /// Floating-Point 1-Source: `FMOV`/`FABS`/`FNEG`/`FSQRT Hd/Dd/Sd, Hn/Dn/Sn` (op 0..3) and
+    /// `FCVT` (op = bits 17..15: 4 to single, 5 to double, 7 to half; `esize` is source width 16/32/64).
+    FpData1 { rd: u8, rn: u8, op: u8, esize: u8 },
 
     /// Floating-Point 3-Source: `FMADD` (o1 0, o0 0), `FMSUB` (0, 1), `FNMADD` (1, 0), `FNMSUB` (1, 1),
     /// fused (one rounding): `Dd = (o1 ? -Da : Da) + (o0 ? -Dn : Dn) * Dm` (`esize` is 16, 32, or 64).

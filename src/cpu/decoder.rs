@@ -570,8 +570,13 @@ pub fn decode(raw: u32) -> Instruction {
                 op,
             };
         }
-        if ftype == 0 || ftype == 1 {
-            let is_double = ftype == 1;
+        let esize = match ftype {
+            0 => Some(32),
+            1 => Some(64),
+            3 => Some(16),
+            _ => None,
+        };
+        if let Some(esize) = esize {
             let rm = ((raw >> 16) & 0x1F) as u8;
             let opcode = (raw >> 12) & 0xF;
             let rn = ((raw >> 5) & 0x1F) as u8;
@@ -590,13 +595,7 @@ pub fn decode(raw: u32) -> Instruction {
                 _ => return Instruction::Unimplemented { raw },
             };
 
-            return Instruction::FpData2 {
-                rd,
-                rn,
-                rm,
-                op,
-                is_double,
-            };
+            return Instruction::FpData2 { rd, rn, rm, op, esize };
         }
     }
 
@@ -685,16 +684,26 @@ pub fn decode(raw: u32) -> Instruction {
         };
     }
 
-    // 14a. Floating-Point 1-Source: FMOV, FABS, FNEG, FSQRT (opcode 0000xx), FCVT single <-> double
-    // (opcode 0001 opc, opc = destination type: 100 to single, 101 to double)
+    // 14a. Floating-Point 1-Source: FMOV, FABS, FNEG, FSQRT (opcode 0000xx), FCVT between H/S/D
+    // (opcode 0001 opc, opc = destination type: 100 to single, 101 to double, 111 to half)
     // Pattern: 0 0 0 11110 ftype 1 opcode(6) 10000 Rn Rd
     let fp1_op = (raw >> 15) & 0x3F;
-    if (raw & 0xFF207C00) == 0x1E204000 && (fp1_op <= 5) && (raw >> 22) & 0x3 <= 1 {
+    let fp1_ftype = (raw >> 22) & 0x3;
+    let fp1_valid = matches!(
+        (fp1_op, fp1_ftype),
+        (0..=3, 0 | 1 | 3) | (4, 1 | 3) | (5, 0 | 3) | (7, 0 | 1)
+    );
+    if (raw & 0xFF207C00) == 0x1E204000 && fp1_valid {
+        let esize = match fp1_ftype {
+            0 => 32,
+            1 => 64,
+            _ => 16,
+        };
         return Instruction::FpData1 {
             rd: (raw & 0x1F) as u8,
             rn: ((raw >> 5) & 0x1F) as u8,
-            op: ((raw >> 15) & 0x7) as u8,
-            is_double: (raw >> 22) & 0x3 == 1,
+            op: fp1_op as u8,
+            esize,
         };
     }
 
@@ -2643,7 +2652,7 @@ mod tests {
                 rd: 16,
                 rn: 2,
                 op: 0,
-                is_double: false
+                esize: 32
             }
         )); // fmov s16, s2
         assert!(matches!(
@@ -2808,7 +2817,7 @@ mod tests {
                 rn: 1,
                 rm: 2,
                 op: FpOp2::Fadd,
-                is_double: true,
+                esize: 64,
             }
         );
     }
@@ -3254,9 +3263,12 @@ mod fuzz_half_precision {
     #[test]
     fn half_precision_scalar_words_are_not_decoded_as_single() {
         for w in [
-            0x1ee2_03a6u32, // fcvt s6, h29 (ftype 3 one-source)
-            0x9ee0_00b4,    // fcvtns x20, h5
-            0x1ee4_c16a,    // fneg/fabs class, half
+            0x1ee2_03a6u32, // scvtf h6, w29 (int->float H still unimplemented)
+            0x9ee0_00b4,    // fcvtns x20, h5 (float->int H still unimplemented)
+            0x1ee4_c16a,    // frint* H still unimplemented
+            0x1e22_4020,    // fcvt s0, s1 (same-type invalid)
+            0x1e62_c020,    // fcvt d0, d1 (same-type invalid)
+            0x1ee3_c020,    // fcvt h0, h1 (same-type invalid)
         ] {
             assert!(
                 matches!(decode(w), Instruction::Unimplemented { .. }),
@@ -3264,6 +3276,84 @@ mod fuzz_half_precision {
                 decode(w)
             );
         }
+        // Scalar FP16 1-source & 2-source + FCVT H/S/D (#469)
+        assert!(matches!(
+            decode(0x1ee0_4020),
+            Instruction::FpData1 { op: 0, esize: 16, .. }
+        )); // fmov h0, h1
+        assert!(matches!(
+            decode(0x1ee0_c020),
+            Instruction::FpData1 { op: 1, esize: 16, .. }
+        )); // fabs h0, h1
+        assert!(matches!(
+            decode(0x1ee1_4020),
+            Instruction::FpData1 { op: 2, esize: 16, .. }
+        )); // fneg h0, h1
+        assert!(matches!(
+            decode(0x1ee1_c020),
+            Instruction::FpData1 { op: 3, esize: 16, .. }
+        )); // fsqrt h0, h1
+        assert!(matches!(
+            decode(0x1ee2_43a6),
+            Instruction::FpData1 {
+                rd: 6,
+                rn: 29,
+                op: 4,
+                esize: 16
+            }
+        )); // fcvt s6, h29
+        assert!(matches!(
+            decode(0x1ee2_c020),
+            Instruction::FpData1 { op: 5, esize: 16, .. }
+        )); // fcvt d0, h1
+        assert!(matches!(
+            decode(0x1e23_c020),
+            Instruction::FpData1 { op: 7, esize: 32, .. }
+        )); // fcvt h0, s1
+        assert!(matches!(
+            decode(0x1e63_c020),
+            Instruction::FpData1 { op: 7, esize: 64, .. }
+        )); // fcvt h0, d1
+        assert!(matches!(
+            decode(0x1ee2_2820),
+            Instruction::FpData2 {
+                op: FpOp2::Fadd,
+                esize: 16,
+                ..
+            }
+        )); // fadd h0, h1, h2
+        assert!(matches!(
+            decode(0x1ee2_3820),
+            Instruction::FpData2 {
+                op: FpOp2::Fsub,
+                esize: 16,
+                ..
+            }
+        )); // fsub h0, h1, h2
+        assert!(matches!(
+            decode(0x1ee2_0820),
+            Instruction::FpData2 {
+                op: FpOp2::Fmul,
+                esize: 16,
+                ..
+            }
+        )); // fmul h0, h1, h2
+        assert!(matches!(
+            decode(0x1ee2_1820),
+            Instruction::FpData2 {
+                op: FpOp2::Fdiv,
+                esize: 16,
+                ..
+            }
+        )); // fdiv h0, h1, h2
+        assert!(matches!(
+            decode(0x1ee2_8820),
+            Instruction::FpData2 {
+                op: FpOp2::Fnmul,
+                esize: 16,
+                ..
+            }
+        )); // fnmul h0, h1, h2
         // FCSEL H, FCMP H, FCCMP H now decode with esize == 16 (#469)
         assert!(matches!(
             decode(0x1ef1_4f22),
@@ -3284,10 +3374,7 @@ mod fuzz_half_precision {
             Instruction::FpCondSelect { esize: 64, .. }
         )); // fcsel d0, d1, d2, eq
         assert!(matches!(decode(0x1e22_2020), Instruction::FpCompare { esize: 32, .. })); // fcmp s1, s2
-        assert!(matches!(
-            decode(0x1e21_c020),
-            Instruction::FpData1 { is_double: false, .. }
-        )); // fsqrt s0, s1
+        assert!(matches!(decode(0x1e21_c020), Instruction::FpData1 { esize: 32, .. })); // fsqrt s0, s1
         // half-precision 3-source (FMADD/FMSUB/FNMADD/FNMSUB H) now decodes with esize == 16 (#469)
         assert!(matches!(
             decode(0x1fc3_1041),
