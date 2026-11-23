@@ -139,12 +139,6 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev
-
       - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
@@ -221,6 +215,9 @@ jobs:
       - name: Clippy (gpu-present)
         run: cargo clippy --locked --workspace --all-targets --features gpu-present -- -D warnings
 
+      - name: Clippy (host-io)
+        run: cargo clippy --locked --workspace --all-targets --features host-io -- -D warnings
+
   msrv:
     name: Minimum supported Rust (1.89, default features)
     needs: changes
@@ -238,11 +235,6 @@ jobs:
         uses: dtolnay/rust-toolchain@d92bbbb03544f480ed5c7ba4b54020e4ed2c4f65 # 1.89.0
         with:
           toolchain: 1.89.0
-
-      - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
@@ -345,12 +337,6 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev
-
       - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
@@ -405,12 +391,6 @@ jobs:
         uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
-
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2

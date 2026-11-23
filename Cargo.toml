@@ -33,12 +33,14 @@ native-jit = ["dep:ounce-recompiler"]
 gpu-present = ["dep:wgpu", "dep:winit", "dep:pollster"]
 # Native execution on AArch64 hosts (`--cpu=native`, PLAN.md step 4). Off by default.
 nce = ["dep:ounce-nce"]
+# Host audio output (cpal/ALSA) and physical gamepad input (gilrs/udev). Off by default so headless builds need zero C system libraries.
+host-io = ["dep:cpal", "dep:gilrs"]
 
 [dependencies]
 ab_glyph = "0.2"
 byteorder = "1.5.0"
-cpal = "0.18.2"
-gilrs = "0.11.2"
+cpal = { version = "0.18.2", optional = true }
+gilrs = { version = "0.11.2", optional = true }
 minifb = "0.29.0"
 ounce-nce = { path = "crates/ounce-nce", optional = true }
 ounce-recompiler = { path = "crates/ounce-recompiler", optional = true }
