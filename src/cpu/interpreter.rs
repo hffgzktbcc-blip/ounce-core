@@ -1945,27 +1945,45 @@ impl Cpu {
                 q,
                 is_load,
                 post_index,
+                nregs,
             } => {
                 let base = self.regs.read_x_or_sp(rn);
                 let n = esize as usize / 8;
+                // The elements of one structure are consecutive in memory; register (rt + i) mod 32 takes element i.
+                // Load and store all of them before writing any register or the base, so a fault changes nothing.
+                let mut vals = [0u64; 4];
                 if is_load {
-                    let mut buf = [0u8; 8];
-                    mmu.read_bytes(base, &mut buf[..n])?;
-                    let v = u64::from_le_bytes(buf);
-                    let res = if replicate {
-                        simd::dup(v, esize as u32, q)
-                    } else {
-                        let mut d = self.regs.read_q(rt);
-                        simd::set_lane(&mut d, esize as u32, index as usize, v);
-                        d
-                    };
-                    self.regs.write_q(rt, res);
+                    for (i, val) in vals.iter_mut().enumerate().take(nregs as usize) {
+                        let mut buf = [0u8; 8];
+                        mmu.read_bytes(base.wrapping_add((i * n) as u64), &mut buf[..n])?;
+                        *val = u64::from_le_bytes(buf);
+                    }
+                    for (i, &v) in vals.iter().enumerate().take(nregs as usize) {
+                        let r = ((rt as usize + i) % 32) as u8;
+                        let res = if replicate {
+                            simd::dup(v, esize as u32, q)
+                        } else {
+                            let mut d = self.regs.read_q(r);
+                            simd::set_lane(&mut d, esize as u32, index as usize, v);
+                            d
+                        };
+                        self.regs.write_q(r, res);
+                    }
                 } else {
-                    let v = simd::lane(self.regs.read_q(rt), esize as u32, index as usize);
-                    mmu.write_bytes(base, &v.to_le_bytes()[..n])?;
+                    for (i, val) in vals.iter_mut().enumerate().take(nregs as usize) {
+                        let r = ((rt as usize + i) % 32) as u8;
+                        *val = simd::lane(self.regs.read_q(r), esize as u32, index as usize);
+                    }
+                    for (i, v) in vals.iter().enumerate().take(nregs as usize) {
+                        mmu.write_bytes(base.wrapping_add((i * n) as u64), &v.to_le_bytes()[..n])?;
+                    }
                 }
                 if post_index {
-                    let step = if rm == 31 { n as u64 } else { self.regs.read_x(rm) };
+                    let step = if rm == 31 {
+                        (n * nregs as usize) as u64
+                    } else {
+                        self.regs.read_x(rm)
+                    };
                     self.regs.write_x_or_sp(rn, base.wrapping_add(step));
                 }
                 self.regs.advance_pc();
@@ -3448,6 +3466,134 @@ mod tests {
         assert_eq!(cpu.regs.read_x(7), DATA + 0x120);
         assert_eq!(cpu.regs.read_q(9), super::simd::dup(0x5566_7788, 32, true));
         assert_eq!(mmu.read_u8(DATA + 8).unwrap(), 0x99); // x3 was advanced to DATA + 8
+    }
+
+    /// libpng's NEON row filters (`vst4_lane_u32`, `vld3_lane_u32`, ...) hit `LD2`-`LD4`/`ST2`-`ST4` single-structure
+    /// and `LD2R`-`LD4R` words, which were undecoded. Element `i` of a structure goes to register `rt + i` (mod 32)
+    /// and sits at `base + i * element size`; an immediate post-index is `registers * element size`.
+    /// Expected values are worked out by hand from that definition.
+    #[test]
+    fn libpng_neon_ld2_ld3_ld4_st2_st3_st4_single_structure_and_replicate() {
+        // st4 {v0.s-v3.s}[0], [x1], #16: only lane 0 of each register is stored, four words in a row
+        let (cpu, mmu) = run(&[0x0dbf_a020], |c, _| {
+            c.regs.write_q(0, 0x1111_1111);
+            c.regs.write_q(1, 0xFFFF_FFFFu128 << 32 | 0x2222_2222);
+            c.regs.write_q(2, 0x3333_3333);
+            c.regs.write_q(3, 0x4444_4444);
+            c.regs.write_x(1, DATA + 0x40);
+        });
+        for (i, want) in [0x1111_1111u32, 0x2222_2222, 0x3333_3333, 0x4444_4444, 0]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(mmu.read_u32(DATA + 0x40 + 4 * i as u64).unwrap(), want, "st4 word {i}");
+        }
+        assert_eq!(cpu.regs.read_x(1), DATA + 0x50);
+        // ld3 {v0.s-v2.s}[1], [x1]: lane 1 replaced, other lanes kept, no write-back
+        let (cpu, _) = run(&[0x0d40_b020], |c, m| {
+            m.write_u32(DATA + 0x20, 0xA0A1_A2A3).unwrap();
+            m.write_u32(DATA + 0x24, 0xB0B1_B2B3).unwrap();
+            m.write_u32(DATA + 0x28, 0xC0C1_C2C3).unwrap();
+            for r in 0..3 {
+                c.regs.write_q(r, u128::MAX);
+            }
+            c.regs.write_x(1, DATA + 0x20);
+        });
+        let with_lane1 = |w: u128| u128::MAX & !(0xFFFF_FFFFu128 << 32) | w << 32;
+        assert_eq!(cpu.regs.read_q(0), with_lane1(0xA0A1_A2A3));
+        assert_eq!(cpu.regs.read_q(1), with_lane1(0xB0B1_B2B3));
+        assert_eq!(cpu.regs.read_q(2), with_lane1(0xC0C1_C2C3));
+        assert_eq!(cpu.regs.read_x(1), DATA + 0x20);
+        // ld2 {v4.h, v5.h}[5], [x1], x2: halfword lane 5 is bits 80..95; the base moves by the register
+        let (cpu, _) = run(&[0x4de2_4824], |c, m| {
+            m.write_u16(DATA + 0x30, 0x1234).unwrap();
+            m.write_u16(DATA + 0x32, 0x5678).unwrap();
+            c.regs.write_x(1, DATA + 0x30);
+            c.regs.write_x(2, 0x100);
+        });
+        assert_eq!(cpu.regs.read_q(4), 0x1234u128 << 80);
+        assert_eq!(cpu.regs.read_q(5), 0x5678u128 << 80);
+        assert_eq!(cpu.regs.read_x(1), DATA + 0x130);
+        // st2 {v6.d, v7.d}[1], [x1]
+        let (_, mmu) = run(&[0x4d20_8426], |c, _| {
+            c.regs.write_q(6, 0x0102_0304_0506_0708u128 << 64 | 0xFFFF);
+            c.regs.write_q(7, 0x1112_1314_1516_1718u128 << 64);
+            c.regs.write_x(1, DATA + 0x80);
+        });
+        assert_eq!(mmu.read_u64(DATA + 0x80).unwrap(), 0x0102_0304_0506_0708);
+        assert_eq!(mmu.read_u64(DATA + 0x88).unwrap(), 0x1112_1314_1516_1718);
+        // ld4r {v8.4s-v11.4s}, [x1]: each register gets its own word in every lane
+        let words = [0x1020_3040u32, 0x5060_7080, 0x90A0_B0C0, 0xD0E0_F000];
+        let (cpu, _) = run(&[0x4d60_e828], |c, m| {
+            for (i, w) in words.iter().enumerate() {
+                m.write_u32(DATA + 0x40 + 4 * i as u64, *w).unwrap();
+            }
+            c.regs.write_x(1, DATA + 0x40);
+        });
+        for (i, w) in words.iter().enumerate() {
+            assert_eq!(
+                cpu.regs.read_q(8 + i as u8),
+                super::simd::dup(*w as u64, 32, true),
+                "ld4r v{}",
+                8 + i
+            );
+        }
+        // ld2r {v12.8b, v13.8b}, [x1], #2: Q = 0 leaves the upper half zero
+        let (cpu, _) = run(&[0x0dff_c02c], |c, m| {
+            m.write_u8(DATA + 0x60, 0xAB).unwrap();
+            m.write_u8(DATA + 0x61, 0xCD).unwrap();
+            c.regs.write_x(1, DATA + 0x60);
+            c.regs.write_q(12, u128::MAX);
+            c.regs.write_q(13, u128::MAX);
+        });
+        assert_eq!(cpu.regs.read_q(12), 0xABAB_ABAB_ABAB_ABAB);
+        assert_eq!(cpu.regs.read_q(13), 0xCDCD_CDCD_CDCD_CDCD);
+        assert_eq!(cpu.regs.read_x(1), DATA + 0x62);
+        // st3 {v30.b, v31.b, v0.b}[3], [x1]: the register list wraps from v31 to v0
+        let (_, mmu) = run(&[0x0d00_2c3e], |c, _| {
+            c.regs.write_q(30, 0x31u128 << 24);
+            c.regs.write_q(31, 0x32u128 << 24);
+            c.regs.write_q(0, 0x33u128 << 24);
+            c.regs.write_x(1, DATA + 0x90);
+        });
+        assert_eq!(
+            (0..4)
+                .map(|i| mmu.read_u8(DATA + 0x90 + i).unwrap())
+                .collect::<Vec<_>>(),
+            [0x31, 0x32, 0x33, 0]
+        );
+        // ld3r {v16.2d-v18.2d}, [x1], #24
+        let (cpu, _) = run(&[0x4ddf_ec30], |c, m| {
+            for (i, w) in [0x1111_2222_3333_4444u64, 0x5555_6666_7777_8888, 0x9999_AAAA_BBBB_CCCC]
+                .iter()
+                .enumerate()
+            {
+                m.write_u64(DATA + 0xA0 + 8 * i as u64, *w).unwrap();
+            }
+            c.regs.write_x(1, DATA + 0xA0);
+        });
+        assert_eq!(cpu.regs.read_q(16), super::simd::dup(0x1111_2222_3333_4444, 64, true));
+        assert_eq!(cpu.regs.read_q(17), super::simd::dup(0x5555_6666_7777_8888, 64, true));
+        assert_eq!(cpu.regs.read_q(18), super::simd::dup(0x9999_AAAA_BBBB_CCCC, 64, true));
+        assert_eq!(cpu.regs.read_x(1), DATA + 0xB8);
+        // ld4 {v20.b-v23.b}[15], [x1], #4: byte lane 15 is the top byte
+        let (cpu, _) = run(&[0x4dff_3c34], |c, m| {
+            for i in 0..4u64 {
+                m.write_u8(DATA + 0xC0 + i, 0x41 + i as u8).unwrap();
+            }
+            c.regs.write_x(1, DATA + 0xC0);
+        });
+        for i in 0..4u8 {
+            assert_eq!(
+                cpu.regs.read_q(20 + i),
+                (0x41u128 + i as u128) << 120,
+                "ld4 v{}",
+                20 + i
+            );
+        }
+        assert_eq!(cpu.regs.read_x(1), DATA + 0xC4);
+        // a replicate form cannot store: the L = 0 twin of ld1r still has no decode
+        assert!(format!("{:?}", super::super::decoder::decode(0x4d00_c949)).starts_with("Unimplemented"));
     }
 
     #[test]
