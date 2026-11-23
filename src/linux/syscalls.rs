@@ -81,6 +81,8 @@ pub struct Process {
     /// Virtual anonymous mappings, including unbacked PROT_NONE reservations.
     mappings: Vec<(u64, u64)>,
     pub(super) signal_mask: u64,
+    /// Signals raised with `tgkill` while blocked, waiting for `rt_sigprocmask` to unblock them (bit `n - 1`).
+    pub(super) signal_pending: u64,
     pub(super) alt_stack: [u64; 3],
     pub(super) sigactions: [[u8; 32]; 65],
     started: Instant,
@@ -98,6 +100,7 @@ impl Process {
             mappings: Vec::new(),
             sigactions: [[0; 32]; 65],
             signal_mask: 0,
+            signal_pending: 0,
             alt_stack: [0, 2, 0],
             started: Instant::now(),
             deterministic_ticks: None,
@@ -168,11 +171,16 @@ impl Process {
                         1 => old & !mask,
                         _ => mask,
                     } & !(1 << 8 | 1 << 18);
+                    if let Some(outcome) = self.deliver_pending() {
+                        return outcome;
+                    }
                     0
                 } else {
                     -EFAULT
                 }
             }
+            130 => return self.sys_tkill(a),
+            131 => return self.sys_tgkill(a),
             132 => self.sys_sigaltstack(a, mmu),
             SYS_CLOSE => {
                 if a[0] <= 2 {
