@@ -5,12 +5,7 @@ Run one homebrew program and, if you want a machine-readable result, write an
 [LIMITS.md](LIMITS.md). The family roadmap is in
 [roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md](roadmap/OUNCE_FAMILY_1_YEAR_ROADMAP.md).
 
-You need Rust 1.89 or newer (edition 2024). On Debian or Ubuntu, install the
-audio and device headers before building:
-
-```sh
-sudo apt-get install -y libasound2-dev libudev-dev
-```
+You need Rust 1.89 or newer (edition 2024). Default headless builds require zero C system libraries; pass `--features host-io` (which needs `libasound2-dev libudev-dev` on Debian or Ubuntu) only if you want desktop audio output and physical controller input.
 
 ```sh
 git clone https://github.com/hffgzktbcc-blip/ounce-core.git
@@ -37,7 +32,7 @@ cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture \
   --present=headless --report-json=run.json
 ```
 
-`run.json` is `ounce.run.v1`. Guest text stays on stdout and is flushed as the
+`run.json` is `ounce.run.v1` (pass `--report-json=-` to emit pure JSON to stdout while routing diagnostics to stderr). Guest text stays on stdout and is flushed as the
 guest writes it, so a hung program's output shows before a timeout stops it. The same path can be
 given as `OUNCE_REPORT_JSON`. `run`, `run-nro` and `run-elf` write the file.
 
