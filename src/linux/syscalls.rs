@@ -324,8 +324,8 @@ impl Process {
         }
         let mut fd = min_fd;
         while fd < 1024 {
-            if !self.files.contains_key(&fd) {
-                self.files.insert(fd, file);
+            if let std::collections::btree_map::Entry::Vacant(e) = self.files.entry(fd) {
+                e.insert(file);
                 return Ok(fd);
             }
             fd += 1;
@@ -345,12 +345,11 @@ impl Process {
 
     fn cleanup_inode(&mut self, ino: u64) {
         let still_open = self.files.values().any(|f| f.kind == FileKind::Inode(ino));
-        if !still_open {
-            if let Some(inode) = self.inodes.get(&ino) {
-                if inode.nlink == 0 {
-                    self.inodes.remove(&ino);
-                }
-            }
+        if !still_open
+            && let Some(inode) = self.inodes.get(&ino)
+            && inode.nlink == 0
+        {
+            self.inodes.remove(&ino);
         }
     }
 
@@ -573,12 +572,12 @@ impl Process {
             if flags & O_CREAT != 0 && flags & O_EXCL != 0 {
                 return -EEXIST;
             }
-            if let Some(inode) = self.inodes.get_mut(&ino) {
-                if let InodeKind::Regular(buf) = &mut inode.kind {
-                    if flags & O_TRUNC != 0 && (flags & O_ACCMODE == O_WRONLY || flags & O_ACCMODE == O_RDWR) {
-                        buf.clear();
-                    }
-                }
+            if let Some(inode) = self.inodes.get_mut(&ino)
+                && let InodeKind::Regular(buf) = &mut inode.kind
+                && flags & O_TRUNC != 0
+                && (flags & O_ACCMODE == O_WRONLY || flags & O_ACCMODE == O_RDWR)
+            {
+                buf.clear();
             }
             let cloexec = flags & O_CLOEXEC != 0;
             match self.alloc_fd(
@@ -1058,7 +1057,7 @@ impl Process {
             }
             let sec = i64::from_le_bytes(ts[0..8].try_into().unwrap());
             let nsec = i64::from_le_bytes(ts[8..16].try_into().unwrap());
-            if sec < 0 || nsec < 0 || nsec >= 1_000_000_000 {
+            if sec < 0 || !(0..1_000_000_000).contains(&nsec) {
                 return -EINVAL;
             }
         }
@@ -1098,6 +1097,7 @@ impl Process {
         count
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn write_stat(
         &self,
         statbuf: u64,
@@ -1119,7 +1119,7 @@ impl Process {
         b[32..40].copy_from_slice(&rdev.to_le_bytes());
         b[48..56].copy_from_slice(&size.to_le_bytes());
         b[56..60].copy_from_slice(&4096i32.to_le_bytes());
-        let blocks = ((size.max(0) + 511) / 512) as i64;
+        let blocks = (size.max(0) + 511) / 512;
         b[64..72].copy_from_slice(&blocks.to_le_bytes());
         let (sec, nsec) = if let Some(ticks) = self.deterministic_ticks {
             (1_700_000_000 + ticks / 1000, (ticks % 1000) * 1_000_000)
@@ -1196,15 +1196,15 @@ impl Process {
         if norm == "/tmp" || norm == "/var/tmp" {
             return self.write_stat(statbuf, 10, 3, 0o40777, 2, 0, 4096, mmu);
         }
-        if let Some(&ino) = self.dentries.get(&norm) {
-            if let Some(inode) = self.inodes.get(&ino) {
-                let size = if let InodeKind::Regular(d) = &inode.kind {
-                    d.len() as i64
-                } else {
-                    0
-                };
-                return self.write_stat(statbuf, 10, ino, inode.mode, inode.nlink, 0, size, mmu);
-            }
+        if let Some(&ino) = self.dentries.get(&norm)
+            && let Some(inode) = self.inodes.get(&ino)
+        {
+            let size = if let InodeKind::Regular(d) = &inode.kind {
+                d.len() as i64
+            } else {
+                0
+            };
+            return self.write_stat(statbuf, 10, ino, inode.mode, inode.nlink, 0, size, mmu);
         }
         -ENOENT
     }

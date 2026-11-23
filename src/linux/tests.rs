@@ -1178,7 +1178,10 @@ fn getrandom_is_deterministic_validated_and_capped() {
     let mut out = Capture::default();
     let mut run = || {
         let mut p = Process::new(0x10_0000);
-        assert_eq!(p.dispatch(278, [0x1000, 16, 4, 0, 0, 0], &mut mem, &mut out), Outcome::Return(16));
+        assert_eq!(
+            p.dispatch(278, [0x1000, 16, 4, 0, 0, 0], &mut mem, &mut out),
+            Outcome::Return(16)
+        );
         let mut b = [0u8; 16];
         mem.read_bytes(0x1000, &mut b).unwrap();
         b
@@ -1188,9 +1191,21 @@ fn getrandom_is_deterministic_validated_and_capped() {
     assert!(a.iter().any(|&x| x != 0));
     let mut p = Process::new(0x10_0000);
     for flags in [0, 1, 2, 4, 7] {
-        assert_eq!(p.dispatch(278, [0x1000, 8, flags, 0, 0, 0], &mut mem, &mut out), Outcome::Return(8));
+        assert_eq!(
+            p.dispatch(278, [0x1000, 8, flags, 0, 0, 0], &mut mem, &mut out),
+            Outcome::Return(8)
+        );
     }
-    assert_eq!(p.dispatch(278, [0x1000, 8, 8, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EINVAL));
-    assert_eq!(p.dispatch(278, [0x9000_0000, 8, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(-EFAULT));
-    assert_eq!(p.dispatch(278, [0x1000, 0x1000, 0, 0, 0, 0], &mut mem, &mut out), Outcome::Return(256));
+    assert_eq!(
+        p.dispatch(278, [0x1000, 8, 8, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-EINVAL)
+    );
+    assert_eq!(
+        p.dispatch(278, [0x9000_0000, 8, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(-EFAULT)
+    );
+    assert_eq!(
+        p.dispatch(278, [0x1000, 0x1000, 0, 0, 0, 0], &mut mem, &mut out),
+        Outcome::Return(256)
+    );
 }
