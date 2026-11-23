@@ -554,30 +554,25 @@ pub enum Instruction {
         fbits: u8,
     },
 
-    /// AdvSIMD scalar three same `FABD Sd/Dd, Sn/Dn, Sm/Dm`: `|n - m|` (NaN propagates), upper bits zeroed
-    FpAbd { rd: u8, rn: u8, rm: u8, is_double: bool },
+    /// AdvSIMD scalar three same `FABD Sd/Dd/Hd, Sn/Dn/Hn, Sm/Dm/Hm`: `|n - m|` (NaN propagates), upper bits zeroed
+    FpAbd { rd: u8, rn: u8, rm: u8, esize: u8 },
 
     /// AdvSIMD scalar three same `FMULX Sd/Dd, Sn/Dn, Sm/Dm`. `0 × ∞` is ±2.0 rather than a NaN.
     /// Lane 0 is written and the rest of `Vd` is zeroed.
     FpMulx { rd: u8, rn: u8, rm: u8, is_double: bool },
 
-    /// Scalar `FRECPS` / `FRSQRTS Sd/Dd, Sn/Dn, Sm/Dm` (AdvSIMD scalar three same). Lane 0 is written, the rest zeroed.
+    /// Scalar `FRECPS` / `FRSQRTS Sd/Dd/Hd, Sn/Dn/Hn, Sm/Dm/Hm` (AdvSIMD scalar three same). Lane 0 is written, the rest zeroed.
     FpScalarThreeSame {
         rd: u8,
         rn: u8,
         rm: u8,
         op: SimdFpOp3,
-        is_double: bool,
+        esize: u8,
     },
 
-    /// Scalar `FRECPE` / `FRSQRTE Sd/Dd, Sn/Dn` (AdvSIMD scalar two-register misc) and the scalar
+    /// Scalar `FRECPE` / `FRSQRTE Sd/Dd/Hd, Sn/Dn/Hn` (AdvSIMD scalar two-register misc) and the scalar
     /// `FRINT32Z/32X/64Z/64X` (FP data processing, one source). Lane 0 is written, the rest zeroed.
-    FpScalarTwoMisc {
-        rd: u8,
-        rn: u8,
-        op: SimdFpOp2,
-        is_double: bool,
-    },
+    FpScalarTwoMisc { rd: u8, rn: u8, op: SimdFpOp2, esize: u8 },
 
     /// `DUP Vd.<T>, Wn/Xn`
     SimdDupGeneral {
