@@ -862,16 +862,11 @@ impl Lowerer {
                 }
             }
 
-            Instruction::FpData2 {
-                rd,
-                rn,
-                rm,
-                op,
-                is_double,
-            } => {
-                if self.exact_fp {
+            Instruction::FpData2 { rd, rn, rm, op, esize } => {
+                if self.exact_fp || esize == 16 {
                     return Err(());
                 }
+                let is_double = esize == 64;
                 let a = self.b.get(Reg::VLo(rn));
                 let b = self.b.get(Reg::VLo(rm));
                 let fop = match op {
