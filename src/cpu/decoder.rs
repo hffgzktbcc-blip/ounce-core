@@ -1976,6 +1976,13 @@ fn decode_extra(raw: u32) -> Option<Instruction> {
         });
     }
 
+    // 29b0. AdvSIMD two-register miscellaneous, half precision (FEAT_FP16), FABS/FNEG only:
+    //       0 Q U 01110 1 111100 01111 10 Rn Rd (U = 1 is FNEG). A sign-bit operation on each 16-bit lane, no
+    //       exceptions. The other half-precision forms of this group stay undecoded.
+    if (raw & 0x9FFF_FC00) == 0x0EF8_F800 {
+        return Some(Instruction::SimdFpAbsNegHalf { rd, rn, neg: u, q });
+    }
+
     // 29b. AdvSIMD two-register miscellaneous, floating point: 0 Q U 01110 a sz 10000 opcode 10 Rn Rd
     //      (half precision not decoded; FCVTN/FCVTL only in the double/single form)
     if (raw & 0x9F3E_0C00) == 0x0E20_0800 {

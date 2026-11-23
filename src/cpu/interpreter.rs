@@ -2531,6 +2531,16 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::SimdFpAbsNegHalf { rd, rn, neg, q } => {
+                // pure sign-bit operations, including on NaNs: no exception flags and no FPCR dependence
+                let sign: u128 = 0x8000_8000_8000_8000_8000_8000_8000_8000;
+                let n = self.regs.read_q(rn);
+                let r = if neg { n ^ sign } else { n & !sign };
+                self.regs.write_q(rd, if q { r } else { r & u64::MAX as u128 });
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::FpHalfMinMax { rd, rn, rm, op } => {
                 let (n, m) = (
                     self.regs.read_q(rn) as u64 & 0xffff,

@@ -1,4 +1,5 @@
-//! Vector fixed-point `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU` and `FJCVTZS` (#469, #488).
+//! Vector fixed-point `SCVTF`/`UCVTF`/`FCVTZS`/`FCVTZU` and `FJCVTZS` (#469, #488), and vector half-precision
+//! `FABS`/`FNEG` (found by YARPGen at `-O3 -mcpu=apple_m1`, which turns a 16-bit sign flip into `FNEG Vd.8H`).
 //!
 //! Every expected value below is derived by hand from the Arm ARM pseudocode (`FixedToFP`, `FPToFixed`,
 //! `FPToFixedJS`) for the stated input, not by running the engines. Words are the ones the fp-workload names
@@ -692,4 +693,36 @@ fn fjcvtzs_matches_i64_truncation_modulo_2_pow_32() {
         assert_eq!(fpsr, flags, "{bits:#x}");
     }
     assert!(checked > 10_000);
+}
+
+fn h8(l: [u16; 8]) -> u128 {
+    l.iter()
+        .enumerate()
+        .fold(0u128, |acc, (i, x)| acc | (*x as u128) << (16 * i))
+}
+
+/// YARPGen `-O3 -mcpu=apple_m1` seeds 40, 95, 101, 145, 152, 178, 213 and 224 stopped on `0x6ef8f800`-class words
+/// (`FNEG Vd.8H, Vn.8H`). Lanes: 1.0, +0, qNaN, sNaN, -inf, a denormal, -0 and an all-ones NaN.
+/// Expected values are the Arm ARM definition (flip or clear bit 15 of each lane), done by hand.
+#[test]
+fn yarpgen_vector_fp16_fneg_fabs_flip_the_sign_bit_of_every_lane() {
+    let src = h8([0x3c00, 0x0000, 0x7e00, 0x7c01, 0xfc00, 0x0001, 0x8000, 0xffff]);
+    let neg = h8([0xbc00, 0x8000, 0xfe00, 0xfc01, 0x7c00, 0x8001, 0x0000, 0x7fff]);
+    let abs = h8([0x3c00, 0x0000, 0x7e00, 0x7c01, 0x7c00, 0x0001, 0x0000, 0x7fff]);
+    // no exception flags for any input (a signalling NaN included), whatever the FPCR flush bits say
+    for fpcr in [0, FZ, 1 << 19, FZ | 1 << 19 | 1 << 25] {
+        assert_eq!(vec_op(0x6ef8_f802, src, fpcr), (neg, 0), "fneg v2.8h fpcr={fpcr:#x}");
+        assert_eq!(vec_op(0x4ef8_f802, src, fpcr), (abs, 0), "fabs v2.8h fpcr={fpcr:#x}");
+        // .4H: the low four lanes only, and the upper 64 bits of the destination are zeroed
+        assert_eq!(
+            vec_op(0x2ef8_f802, src, fpcr),
+            (neg & u64::MAX as u128, 0),
+            "fneg v2.4h fpcr={fpcr:#x}"
+        );
+        assert_eq!(
+            vec_op(0x0ef8_f802, src, fpcr),
+            (abs & u64::MAX as u128, 0),
+            "fabs v2.4h fpcr={fpcr:#x}"
+        );
+    }
 }

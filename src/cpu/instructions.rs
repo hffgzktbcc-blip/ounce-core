@@ -670,6 +670,8 @@ pub enum Instruction {
     },
     /// Scalar half-precision `FMAX/FMIN/FMAXNM/FMINNM Hd, Hn, Hm`.
     FpHalfMinMax { rd: u8, rn: u8, rm: u8, op: FpOp2 },
+    /// Vector `FABS`/`FNEG` on 16-bit lanes (FEAT_FP16): clears or flips each lane's sign bit; `q` picks .8H over .4H.
+    SimdFpAbsNegHalf { rd: u8, rn: u8, neg: bool, q: bool },
     SimdAcross {
         rd: u8,
         rn: u8,
