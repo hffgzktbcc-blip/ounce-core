@@ -819,3 +819,18 @@ fn run_refuses_guest_arguments_for_targets_without_an_argv() {
     std::fs::remove_dir_all(&dir).unwrap();
     std::fs::remove_file(&file).unwrap();
 }
+
+#[test]
+fn version_banner_is_neutral_and_shows_features() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("ARM64 EXECUTION & VERIFICATION RUNTIME"));
+    assert!(!stdout.contains("TEGRA T239 HARDWARE & RUNTIME SYSTEM PROFILE"));
+    assert!(stdout.contains("native-jit"));
+    assert!(stdout.contains("nce"));
+    assert!(stdout.contains("host-io"));
+}
