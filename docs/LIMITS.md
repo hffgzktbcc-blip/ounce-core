@@ -24,8 +24,7 @@ per-harness README, the README wins.
 These are verified against the source at `main` (14b3c4d) and the [Big Tech run](verify/bigtech-2026-11-23.md):
 
 - **No `FEAT_AES`, `FEAT_SHA1` or `FEAT_SHA2`.** Programs that use them stop or skip. In the s2n-bignum run, 13 AES-dependent tests were skipped, not passed.
-- **`AT_HWCAP` is `0x20093`** (FP, ASIMD, PMULL, CRC32, SHA3). `HWCAP_ATOMICS` is not advertised, although `FEAT_LSE` atomics (`LD<op>`, `SWP`, `CAS`, `CASP`, `LDAPR`) execute correctly since #559. Programs that probe `HWCAP` will not select an LSE path.
-- **`LDXP` and `STXP` are unimplemented** and stop the run with an unimplemented-instruction diagnosis (before #559 they ran as wrong plain loads and stores).
+- **`AT_HWCAP` is `0x20193`** (FP, ASIMD, PMULL, CRC32, ATOMICS, SHA3). It does not advertise AES, SHA1 or SHA2.
 - **`futex` is not implemented**, and there are no threads or `clone`: run single-threaded guests only.
 - **Files are a bounded in-memory scratch area**: `/tmp` and `/var/tmp` (at most 64 files and 64 open descriptors, 16 MiB per file, 64 MiB in total), plus `/dev/null` and `/proc/self/auxv`. Other paths fail with `ENOENT`. Nothing reaches the host file system. Guest `getrandom` is a fixed stream, so a program that needs real entropy sees the same bytes every run.
 - **Standard input is empty** unless you pass `--stdin` or `--stdin=<path>` (64 MiB limit).

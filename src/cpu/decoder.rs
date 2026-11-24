@@ -593,7 +593,21 @@ pub fn decode(raw: u32) -> Instruction {
     if (raw & 0x3F000000) == 0x08000000 {
         let size = ((raw >> 30) & 0x3) as u8;
         if (raw & (1 << 21)) != 0 {
-            // o1 = 1: FEAT_LSE CAS (o2 = 1) / CASP (o2 = 0, size 0x); the exclusive pairs LDXP/STXP are not implemented.
+            // o1 = 1: FEAT_LSE CAS (o2 = 1) / CASP (o2 = 0, size 0x) / LDXP, STXP, LDAXP, STLXP (o2 = 0, size 1x).
+            if size >= 2 && (raw & (1 << 23)) == 0 {
+                // LDXP/LDAXP with Rt == Rt2 (including XZR, XZR) raise SIGILL on the Apple M3.
+                if (raw & (1 << 22)) != 0 && (raw & 0x1F) == (raw >> 10) & 0x1F {
+                    return Instruction::Unimplemented { raw };
+                }
+                return Instruction::LoadStoreExclusivePair {
+                    rt: (raw & 0x1F) as u8,
+                    rt2: ((raw >> 10) & 0x1F) as u8,
+                    rn: ((raw >> 5) & 0x1F) as u8,
+                    rs: ((raw >> 16) & 0x1F) as u8,
+                    is_64: size == 3,
+                    is_load: (raw & (1 << 22)) != 0,
+                };
+            }
             let (rs, rn, rt) = (
                 ((raw >> 16) & 0x1F) as u8,
                 ((raw >> 5) & 0x1F) as u8,

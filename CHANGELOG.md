@@ -2,6 +2,11 @@
 
 Notable changes to ounce-core. Evidence for each release lives under `docs/releases/`.
 
+## Unreleased
+
+- Added: `LDXP`, `LDAXP`, `STXP` and `STLXP` (W and X pairs), so C `__int128` atomics and `portable-atomic` 128-bit loops run. Pairs must be aligned to the whole pair; `LDXP Rt, Rt` (including `XZR, XZR`) stops as undefined, as it raises `SIGILL` on the Apple M3. Known-answer tested against M3 output on the interpreter, Tier-3 and Tier-4 (`lse_kat`).
+- Added: `AT_HWCAP` advertises `HWCAP_ATOMICS`, now `0x20193`. Rust and C programs built without `+lse` take the `FEAT_LSE` instructions through outline atomics; `lse_kat` value-checks every LSE form (`CAS{B,H,}`, `CASP`, `LD<op>`, `ST<op>`, `SWP`, `LDAPR`) against the M3.
+
 ## 0.12.0 — 2026-11-24 (released)
 
 - Added: `run-elf -- <elf> [args]`, so `[target.aarch64-unknown-linux-musl] runner = "ounce-core run-elf --"` runs `cargo test` binaries (`#557`). The Quick Start and README give the `RUSTFLAGS` macOS needs (`-C linker=rust-lld -C target-feature=+crt-static -C relocation-model=static`) and a recorded run of a three-test crate on an Apple M3.

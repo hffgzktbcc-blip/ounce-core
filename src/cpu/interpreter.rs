@@ -2030,6 +2030,50 @@ impl Cpu {
                 Ok(StepResult::Continue)
             }
 
+            Instruction::LoadStoreExclusivePair {
+                rt,
+                rt2,
+                rn,
+                rs,
+                is_64,
+                is_load,
+            } => {
+                let addr = self.regs.read_x_or_sp(rn);
+                let elem: u64 = if is_64 { 8 } else { 4 };
+                // Exclusive pairs fault unless aligned to the whole pair (16 bytes for X, 8 for W).
+                if addr & (elem * 2 - 1) != 0 {
+                    return Err(MemoryError::Misaligned {
+                        addr,
+                        size: (elem * 2) as usize,
+                    }
+                    .into());
+                }
+                if is_load {
+                    let (lo, hi) = if is_64 {
+                        (mmu.read_u64(addr)?, mmu.read_u64(addr.wrapping_add(8))?)
+                    } else {
+                        (mmu.read_u32(addr)? as u64, mmu.read_u32(addr.wrapping_add(4))? as u64)
+                    };
+                    self.exclusive = Some(addr);
+                    self.regs.write_x(rt, lo);
+                    self.regs.write_x(rt2, hi);
+                } else if self.exclusive.take() != Some(addr) {
+                    self.regs.write_w(rs, 1);
+                } else {
+                    let (lo, hi) = (self.regs.read_x(rt), self.regs.read_x(rt2));
+                    if is_64 {
+                        mmu.write_u64(addr, lo)?;
+                        mmu.write_u64(addr.wrapping_add(8), hi)?;
+                    } else {
+                        mmu.write_u32(addr, lo as u32)?;
+                        mmu.write_u32(addr.wrapping_add(4), hi as u32)?;
+                    }
+                    self.regs.write_w(rs, 0);
+                }
+                self.regs.advance_pc();
+                Ok(StepResult::Continue)
+            }
+
             Instruction::AtomicRmw {
                 rs,
                 rt,
