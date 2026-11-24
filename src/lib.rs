@@ -13,6 +13,7 @@ mod census;
 mod cli;
 mod cli_flow;
 mod cpu;
+mod disasm;
 mod diverge;
 mod fs;
 mod fuzz_replay;
