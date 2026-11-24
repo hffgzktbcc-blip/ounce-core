@@ -820,8 +820,8 @@ fn newfstatat_by_path_finds_nothing_but_fstat_of_a_descriptor_is_still_unimpleme
 fn hardware_fast_path_instructions_execute_across_all_tiers() {
     assert_eq!(
         crate::linux::elf::HWCAP_VALUE,
-        0x20093,
-        "AT_HWCAP must expose verified bits: FP | ASIMD | PMULL | CRC32 | SHA3"
+        0x20193,
+        "AT_HWCAP must expose verified bits: FP | ASIMD | PMULL | CRC32 | ATOMICS | SHA3"
     );
 
     // Assembly sequence testing PMULL, CRC32, and SHA3:
@@ -881,6 +881,49 @@ fn hwcap_instructions_match_native_known_answers_on_every_tier() {
         let (r, out) = go(elf, &["hwcap_kat"], tier);
         assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
         assert_eq!(out, expected, "{tier:?} results differ from native hardware");
+    }
+}
+
+/// Known answers for LDXP/LDAXP/STXP/STLXP (W and X pairs, XZR operands, a consumed monitor, 128-bit
+/// increment and CAS loops) and every FEAT_LSE form (`CAS{B,H,}`, `CASP`, `LD<op>`, `ST<op>`, `SWP`, `LDAPR`),
+/// compiled natively with clang on an Apple M3 from the same source (`lse_kat_core.h`).
+#[test]
+fn exclusive_pairs_and_lse_match_native_known_answers_on_every_tier() {
+    let elf = include_bytes!("../../tests/linux-elf/bin/lse_kat.elf");
+    let expected = include_str!("../../tests/linux-elf/lse_kat.expected");
+    for tier in TIERS {
+        let (r, out) = go(elf, &["lse_kat"], tier);
+        assert_eq!(r.stop, Stop::Exited(0), "{tier:?}: {r:?}");
+        assert_eq!(out, expected, "{tier:?} results differ from native hardware");
+    }
+}
+
+/// `LDXP x1, x1, [x0]` is UNDEFINED on the M3 (SIGILL), and an exclusive pair must be aligned to the whole
+/// pair (16 bytes for X, 8 for W): these stop the run on every tier instead of loading wrong data.
+#[test]
+fn exclusive_pair_undefined_and_misaligned_forms_stop() {
+    let mov_x0_sp = 0x9100_03E0u32;
+    let add_x0_sp_8 = 0x9100_23E0u32;
+    let ldxp_x1_x1 = 0xC87F_0401u32; // ldxp x1, x1, [x0]
+    let ldxp_x1_x2 = 0xC87F_0801u32; // ldxp x1, x2, [x0]
+    let ldaxp_w1_w2 = 0x887F_8801u32; // ldaxp w1, w2, [x0]
+    let stxp_w3_x1_x2 = 0xC823_0801u32; // stxp w3, x1, x2, [x0]
+    for (name, code) in [
+        ("ldxp x1, x1", vec![mov_x0_sp, ldxp_x1_x1]),
+        ("ldxp x, misaligned by 8", vec![add_x0_sp_8, ldxp_x1_x2]),
+        ("stxp x, misaligned by 8", vec![add_x0_sp_8, stxp_w3_x1_x2]),
+        ("ldaxp w, misaligned by 4", vec![0x9100_13E0, ldaxp_w1_w2]),
+    ] {
+        for tier in TIERS {
+            let (r, _) = go(&tiny_elf(&code), &["pair"], tier);
+            assert!(matches!(r.stop, Stop::Failed { .. }), "{name} on {tier:?}: {r:?}");
+        }
+    }
+    // The aligned forms of the same instructions run.
+    for tier in TIERS {
+        let code = [mov_x0_sp, ldxp_x1_x2, 0xD280_0BA8, 0xD280_0000, 0xD400_0001];
+        let (r, _) = go(&tiny_elf(&code), &["pair"], tier);
+        assert_eq!(r.stop, Stop::Exited(0), "aligned ldxp on {tier:?}: {r:?}");
     }
 }
 
