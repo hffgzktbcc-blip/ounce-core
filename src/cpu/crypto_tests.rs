@@ -1703,3 +1703,44 @@ fn crypto_hardware_vectors_all_tiers_and_register_aliases() {
         }
     }
 }
+
+/// `FMOV Xd, Vn.D[1]` and `FMOV Vd.D[1], Xn` (used by s2n-bignum's AES-XTS) were undecoded.
+#[test]
+fn fmov_top_half_all_tiers() {
+    let v = 0x1122334455667788_99aabbccddeeff00u128;
+    let tiers = if cfg!(feature = "native-jit") { 4 } else { 3 };
+    for tier in 1..=tiers {
+        // fmov v4.d[1], x3 with x3 = 0 on a fresh Cpu: the top half clears and the low half is kept.
+        run(
+            0x9eaf0004 | (3 << 5),
+            tier,
+            &[(4, v), (3, 0)],
+            4,
+            v & u128::from(u64::MAX),
+        );
+    }
+    assert_eq!(
+        decoder::decode(0x9eae00ca),
+        Instruction::FpMovTopHalf {
+            rd: 10,
+            rn: 6,
+            to_fp: false
+        }
+    );
+    let mut cpu = Cpu::new();
+    cpu.regs.v[6] = v;
+    cpu.regs.v[7] = v;
+    cpu.regs.write_x(5, 0xdead_beef_cafe_f00d);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE_EXECUTE);
+    mem.write_u32(0x1000, 0x9eae00ca).unwrap(); // fmov x10, v6.d[1]
+    mem.write_u32(0x1004, 0x9eaf00a7).unwrap(); // fmov v7.d[1], x5
+    cpu.regs.pc = 0x1000;
+    cpu.step(&mut mem).unwrap();
+    cpu.step(&mut mem).unwrap();
+    assert_eq!(cpu.regs.read_x(10), 0x1122334455667788);
+    assert_eq!(
+        cpu.regs.v[7],
+        (v & u128::from(u64::MAX)) | (0xdead_beef_cafe_f00du128 << 64)
+    );
+}
