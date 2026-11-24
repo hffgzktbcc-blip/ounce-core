@@ -26,6 +26,9 @@ pub fn decode(raw: u32) -> Instruction {
             op,
         };
     }
+    if let Some((op, rd, rn, rm)) = super::crypto::decode(raw) {
+        return Instruction::Crypto { rd, rn, rm, op };
+    }
     // 1. NOP / HINT / Barrier / Cache Maintenance check:
     //    0xD503201F (NOP), 0xD503245F (BTI c, checked by `Cpu::step` from the raw word), DSB/DMB/ISB (0xD5033xxx), DC/IC (0xD5087xxx / 0xD50B7xxx)
     // DC ZVA, Xt zeroes a cache-line-sized block, so it is not a no-op like the other cache operations.
