@@ -1045,3 +1045,66 @@ fn report_json_dash_emits_pure_json_to_stdout() {
     assert_eq!(parsed["stop_kind"], "clean_exit");
     assert_eq!(parsed["guest_exit_status"], 42);
 }
+
+/// Runs `ounce-core <args>` and requires stdout to be exactly one `ounce.run.v1` JSON document, with the
+/// guest's own output (`needle`) visible on stderr instead.
+fn assert_pure_json_stdout(args: &[&str], envs: &[(&str, &str)], needle: &str) {
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args(args)
+        .envs(envs.iter().copied())
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let parsed: Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("stdout must be only the JSON report ({args:?}, {envs:?}): {e}: {stdout:?}"));
+    assert_eq!(parsed["schema"], "ounce.run.v1");
+    assert_eq!(parsed["stop_kind"], "clean_exit");
+    assert!(
+        stderr.contains(needle),
+        "guest output must stay visible on stderr: {stderr:?}"
+    );
+}
+
+#[test]
+fn report_json_dash_keeps_guest_output_off_stdout() {
+    let elf = fixture("tests/linux-elf/bin/hello.elf");
+    let nro = fixture("tests/fixtures/nro/hello/hello.nro");
+    let (elf, nro) = (elf.to_str().unwrap(), nro.to_str().unwrap());
+    // run-elf: the guest writes to fd 1 (a flag and the environment variable both select stdout).
+    assert_pure_json_stdout(&["run-elf", elf, "--report-json=-"], &[], "hello from aarch64 linux");
+    assert_pure_json_stdout(
+        &["run-elf", elf],
+        &[("OUNCE_REPORT_JSON", "-")],
+        "hello from aarch64 linux",
+    );
+    // run-nro: guest debug output and the VM's own progress lines.
+    assert_pure_json_stdout(
+        &["run-nro", nro, "fixture", "--present=headless", "--report-json=-"],
+        &[],
+        "ounce-fixture result=0x00000EEE",
+    );
+    assert_pure_json_stdout(
+        &["run-nro", nro, "fixture", "--present=headless"],
+        &[("OUNCE_REPORT_JSON", "-")],
+        "ounce-fixture result=0x00000EEE",
+    );
+}
+
+#[test]
+fn report_json_file_leaves_guest_output_on_stdout() {
+    let elf = fixture("tests/linux-elf/bin/hello.elf");
+    let path = std::env::temp_dir().join(format!("ounce-report-file-{}.json", std::process::id()));
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_ounce-core"))
+        .args([
+            "run-elf",
+            elf.to_str().unwrap(),
+            &format!("--report-json={}", path.display()),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), "hello from aarch64 linux\n");
+    let report: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(report["schema"], "ounce.run.v1");
+    let _ = std::fs::remove_file(&path);
+}

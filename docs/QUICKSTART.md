@@ -32,7 +32,7 @@ cargo run --release -- run-nro tests/fixtures/nro/hello/hello.nro fixture \
 ```
 
 `run.json` is `ounce.run.v1` (pass `--report-json=-` to emit pure JSON to stdout while routing diagnostics to stderr). Guest text stays on stdout and is flushed as the
-guest writes it, so a hung program's output shows before a timeout stops it. The same path can be
+guest writes it (with `--report-json=-` the guest's stdout and stderr both go to stderr, so stdout is only the JSON), so a hung program's output shows before a timeout stops it. The same path can be
 given as `OUNCE_REPORT_JSON`. `run`, `run-nro` and `run-elf` write the file.
 
 `--audio=null` (or `OUNCE_AUDIO=null`) does not open a host audio device.
@@ -102,7 +102,7 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 ```
 
 This shows that small test binaries run; it does not show that every crate's tests do. Tests
-that spawn threads or need AES (`FEAT_AES` is not implemented) or other unsupported system
+that spawn threads or need other unsupported instructions or system
 calls stop with a diagnosis ([limits](LIMITS.md)).
 
 ## Where the other tools live

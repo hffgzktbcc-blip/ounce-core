@@ -1,0 +1,1746 @@
+//! FEAT_AES / SHA1 / SHA2 / SHA512: decoding, hardware known answers, and execution through every software tier.
+//! `HW_VECTORS` were produced on an Apple M3 by the matching `arm_neon.h` intrinsics, so they are hardware results, not
+//! results of this implementation.
+use super::instructions::CryptoOp;
+use super::simd_crypto;
+use super::*;
+use crate::mmu::{Memory, Permission};
+
+// Generated on an Apple M3 with arm_neon.h intrinsics (clang -march=armv8.4-a+crypto+sha3). (op, d, n, m, result)
+pub const HW_VECTORS: &[(CryptoOp, u128, u128, u128, u128)] = &[
+    (
+        CryptoOp::Aese,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x6363636363636363_6363636363636363,
+    ),
+    (
+        CryptoOp::Aesd,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x5252525252525252_5252525252525252,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+        0x0000000000000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Aese,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0x6363636363636363_6363636363636363,
+    ),
+    (
+        CryptoOp::Aesd,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0x5252525252525252_5252525252525252,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0x3fffffff3fffffe7_fffff39c3ffe739c,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0x3fffffff3fffffe7_fffff3993ffe72d9,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0x3fffffff3fffffe7_fffff39cfffe739c,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0x0000000000000000_00000000ffffffff,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffff00000000_0000000000000000,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xfffffffaaf57e9f9_6afe5473402ceed6,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xfffffffbef7ffdfb_ef3eedfbcfb7e195,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0x1ffffffe1ffffffe_1ffffffe1ffffffe,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0x00012fe500012fe5_003ffffd003ffffd,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xfffffffffffffffd_fff33ffffe7ffffd,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xfffffffffffffffd_ffffffdf7bfffffd,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0x01fffffffffffffe_01fffffffffffffe,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0xffffffffffffffff_ffffffffffffffff,
+        0x03fffffffffffffd_03fffffffffffffd,
+    ),
+    (
+        CryptoOp::Aese,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0x82d0101e2797e33f_90b28878d8312c6e,
+    ),
+    (
+        CryptoOp::Aesd,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0x359085ebfa67f6c2_e3d101dd8bc36568,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0xb67768051cdd6dc5_d90c0c1fbc6fd423,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0xe3a43dd6c3bdb2a5_a040755307446f08,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0xc2f79626e6b7c377_97f436e69be9a294,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0xadb747b51ce6ae0d_fa1aa3ad32d48f43,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0xc0e5ad6ccffaa837_3a2c0d70eaf54810,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0x0000000000000000_000000008f798778,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0x031ea651d0d2e6fa_37d6fc1cef62bc1e,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0xd18b0b44a501d4e0_802abdf5607d70fc,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0x8d246905c98a03a3_9dd03be440f862d4,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0x735483129fae75b2_ba2ab53e9e28b270,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0x4d78765cf7584036_bafcb654eeb14381,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0xbde2ac0c27732d32_c07c057a48b3ee75,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0x245b6cd41958542c_1a9f9c117b429488,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0xaaf3ab61808c46d6_eb1789bde63dad1b,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0xb6bbffe56cbb779e_e9834ec9847d853b,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0x08b8f55e770652c7_a63d9b18ab6361a7,
+        0x2586b8b76628c5e2_9b5dd9d93de61de2,
+        0x90fb8ad69a32a9df_9953925a33078f7e,
+        0xcdd41c1e4d015d69_5ad118380f674204,
+    ),
+    (
+        CryptoOp::Aese,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0xf7a80cc1f1a69109_cbc5a51d6985688d,
+    ),
+    (
+        CryptoOp::Aesd,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x15064cc9ae072672_2338919c0b0aaac6,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x3aa59b49d57354ff_cf84f097bdec4953,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x883829d4e77566f9_33c80cdb4026b499,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0xb52afb883723bc50_a6217d544ecf3722,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x5eb47286a6a9ffbe_a53b6ef6767c1686,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0xb76899016edf7254_83fc7e70134d02d0,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x0000000000000000_0000000028a87022,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0xd96a53bfb6c87bb8_14a8b2a5de1c32e7,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x8fa41cb31a5c45d3_5242129a5edbe4fc,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x2bcaff9a4c5a3a4f_b513cf0906da07e5,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x4d2710f58ca85541_31477c95e46de002,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x0e3d3ddd12daad54_242674efb2997cff,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x7f23162effde5249_19efd4a7a38bd158,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0xbb3241641d67c291_653213579d8325bc,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0xc6d2c659f88fbcec_1b51918474c352a9,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x7c82ae1a86d76696_5b96340a11649421,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0x9909eaa5f0206491_ff66449cfb64413c,
+        0x7d0e4678d6474dd1_d409b342a2a1c088,
+        0x946a0a58e449dfa1_72c71c9cd558174a,
+        0x2db01a7d6e16ada6_0d3a0792faa92f96,
+    ),
+    (
+        CryptoOp::Aese,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x12d110878384b100_0ee2bb50143952ca,
+    ),
+    (
+        CryptoOp::Aesd,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x0d700cbbe892d448_5b4901b8f857b97c,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x5e5bcb5f2fcb7457_4f44b2569003b08e,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x3c4ba94f588d0311_960c6b1e1001308c,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0xc7ff52ed39d88446_d28ee38f94994943,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0xc1ab4a123c80d955_ac8132779d490504,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x9801f2fe6e2c7798_ea7d8cea532df6ce,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x0000000000000000_00000000a7a3bfd0,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x3ca0de18751480d5_7955183625da8e7e,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x4c2846e3ff29b552_7ccd830a761b9292,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x1db4192587077e37_f02c9b1b1c67da91,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x6d509f838ec85a85_f58ce54279862668,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0xf94c179866795afc_7d324d5ef24ad9ff,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0xfcde1c8fc0fd2d12_38048a9d25f8a857,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x8ba0772218a07c17_c61e693ffb93c3de,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0xc4039011a7598f40_10e0c8db19ae6794,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x4c0123b718852a40_fd14ca9b08cf81e8,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0xd00fb1e334a03da0_339d027749c18352,
+        0x4b34e7090dfbc3f2_72cc4a1b9e8eff42,
+        0x9e6325e0df3a4237_9ac7aba258bb308c,
+        0x8f687a76eae350f9_16a5ddc6b5cb661d,
+    ),
+    (
+        CryptoOp::Aese,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0xaa4f4ae97b0dd874_e95c56ef3e5e2f1c,
+    ),
+    (
+        CryptoOp::Aesd,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0x3c74db3c517eb610_ab89a7d8d575fa88,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0xc2edaf890151ab80_7ca47f541fc10a71,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0x6d6600029f3835e9_704973b94b375e87,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0xbbe60f669876003f_981490ad6c8433b8,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0x6346451da589196d_aec4700fb55e408b,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0xbc390f6748f850ac_d85c656d7539bdcc,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0x0000000000000000_00000000db5a8a62,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0xa4a30dd4172027c3_fa5aea44a862198b,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0xe6fbd7e2a1e451e9_0299dd2a18a30315,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0xe9bed0c55e40e7fa_e76033c816a40f5c,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0xae33f91ed36bf4aa_37871c30da439a85,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0xfcf4331cea216835_0a556b6a6e2a55c6,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0x9a9d8a510fa51b01_3c6645fd5f0e4414,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0xb35344fc4d2e013d_797ab8f4b8de9be5,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0x53586c5dc3da22eb_d20a0543ff60871d,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0x7a5a0c64638e98ba_57add1efa093e01a,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0x6bdee8e46a8bedfb_095abaa48699754f,
+        0xba79c50f08165431_0ac8f4c56d6a298b,
+        0xc5b511f510c1e3b3_98deb8044470813f,
+        0x4d35f2fcbf80eb8d_b597574a2b863fe1,
+    ),
+    (
+        CryptoOp::Aese,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0xee4117cb3c1d76df_7e5f63f1d09337c1,
+    ),
+    (
+        CryptoOp::Aesd,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0xcfe15215909c3e61_f94fea0bb394fbc9,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0x4a686ea8b2a1f39e_141241b48c40021c,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0xda45fe85ad5dec62_5bbc0e1a822b0c77,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0xd0a8e5d3dc90199e_efea3f22062db317,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0xf0f6748e521ed1f4_fc45b84ceb57a942,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0x48a8e9d6ce1902be_a35ec723a50b574e,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0x0000000000000000_00000000e86c2414,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0x54eba6a22a4c8dea_d0965f6faf595029,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0xc7d2a4a19efd38c6_2375b7e203e92a9e,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0xbe4506e27de57bff_9134ea66d9eececb,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0xf2a8a83b8312e970_c5d8fa6f3d53dc12,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0x776214146feea3dc_91ffcc417bc62b32,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0x2d9cf694d6c7a3b5_241ffca6fc06a58d,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0x1c9bb983e624fefb_65e491c0bbb61649,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0x17aec51315d3398f_1dc376d7125e91dc,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0xa63367b66235858d_cc826dd8601b9254,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0xe00078cecffaebf4_476230ea2b6e178e,
+        0x8084779756d8eb1b_2a9a82c1a1b09053,
+        0x9e715cad4406f64d_77f4174b4bcdac53,
+        0x99b4b2f07970b3ec_05ca618ad29638cf,
+    ),
+    (
+        CryptoOp::Aese,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x8598477fa5c7ff21_8734da7e9e95b1b1,
+    ),
+    (
+        CryptoOp::Aesd,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0xbb3bbd05ef2eb903_0aeeffcf4c1813b9,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x7d42b01d2d278afb_cf2893e4464b4ce2,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x6425a97a877a20a6_a435f8f96ed96470,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x9c0820d6fc7049a8_aa53a502002989bf,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x528047428408506a_918877f65523ea75,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x1d0c10d300ee4d39_04556fc2b1e16e03,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x0000000000000000_00000000fc43e9be,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x2e473cbd6743bd63_bd502a80479fd5e1,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x7cb3ed6626f15bc8_333ca0562b44b38d,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x6b5ceca73d26ca34_aec674facdc8ad35,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x6756efda644762d4_2d4929c3b8b13b7c,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x159a5d0f0913ad1b_c5761faf9397f409,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x266a9ef9eca9512d_00a3edaaa09de81b,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x12de2869be714a2a_5b02c1aa1ec68839,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0xa573ffb8e94ad2f9_2c1f9f5bb5b16745,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x52fb16cd1de25947_e33045314b0bcd13,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0x151d453ed94d95b1_a77ebfe11b3eb0ad,
+        0xca353855bee0efca_8e9ce96bf10fa6fb,
+        0xb5c690e84f018e29_0f33d05f85ecf0fd,
+        0x1a5c25312f456e0f_38b4d96a5bc01910,
+    ),
+    (
+        CryptoOp::Aese,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0xb85b6fbd4a98bcdb_e9a9f6305faf1279,
+    ),
+    (
+        CryptoOp::Aesd,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x3cda4a804f3b5b6e_3720a5bfa744c11b,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0xc1dd364998860dbe_ab802ad3f33d57f2,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x30bbc72ffa666f5e_99d71884552cf1e3,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x9fe3eb61e66ff605_246d6253f6647e4a,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x43433eec2893893b_7c2c0949fe2e6314,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x9823f3710950f785_94905291a9229627,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x0000000000000000_00000000126d4eeb,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0xbb5bac3933cf819b_5bd8b1d822b4f055,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x9dfd814ee64cb513_524d4dd8a79ce4ed,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0xfb463100638eed23_61cf99e51c59dde0,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x379219f884837fd2_9cc510cef8694556,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x08b103b9a0df40a7_fd2e97ee04d45653,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x1a611a16e048a83a_ae2284a3fd937932,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x73d0068511207a1d_1006cee330a09138,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x15c7927b4d32b113_3cb11204ad8b422a,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x7dc030b5d9f348a8_a9592ac73331d310,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0xe962244a9ef3060e_2dce767da2573d03,
+        0x6dd55c8704e8d091_71994f7549b53bac,
+        0x23a0c706e489bc39_9f74e3ef1e10cb58,
+        0x821288421442899b_f7bceb1171c9a916,
+    ),
+    (
+        CryptoOp::Aese,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x2ad12a1fd967bd1a_18e16564d20624c8,
+    ),
+    (
+        CryptoOp::Aesd,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x287078596ba3c564_ada0adf02a298056,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0xed830e47382f42d5_576d41e37bec757d,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x4cbeaf7acbeab110_0f6319ed439e4d0f,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0xf79150aacc5fb77f_d51c5dbb7d3a3efd,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0xc4cea6c85565ec52_bf6aa15e1765e9d8,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0xb991dfa120915896_5f22f07ed8fe234d,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x0000000000000000_0000000011281bc5,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x81e472b683b7fffc_18b6dbfe11e68695,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x132af2c2e9d722cc_96b4a98671131e46,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x749521ccc329cd01_8c1691b863870b31,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x49e818e48555fe18_2815fd9c726661a5,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0xb45ec33b4bb55995_01e6f4ef24e10f40,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x0335b10f19262ac4_2fc0d9a3b9be9a9f,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x8b36761623310b0f_e8c411e6afafd0c0,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x904b758b9afa8cd6_9cd9d3e3110a9dc7,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0xa95046851c2b12c5_643d8c4540fd052e,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0x78866727738d3b8a_ad72d30a70aafaa5,
+        0x0766aaece62887c9_4823758644a06f14,
+        0xb1416017b49aab62_cd426fd312c147ba,
+        0x5599b45f7fa8e77e_c88eebbdd60d73e9,
+    ),
+    (
+        CryptoOp::Aese,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0xa875d8213e5a46e6_a9565b69af1bcb81,
+    ),
+    (
+        CryptoOp::Aesd,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0x2025da0344981577_06dbfaae5186e2ac,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0xf4a6ac91d3ca386d_f60430f20487dbac,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0x8f7ad74d5260b9c7_c3f10507552b8a00,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0x1acbac5dc7b36790_17a48b5645348c99,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0x6f2b4ebd9c909c2a_d6c9b14a206ffae5,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0x21bf546a26266b32_505b992d49d5bf72,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0x0000000000000000_00000000c2c8c9fe,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0xac9a0a4c05b39c99_bde9f4c17375d168,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0xbbb9f38b7fd1e51e_3da58741b98198b3,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0xceba5447db3c5e76_bfcc6e7c2be77b8c,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0x388a649b4b4a82e9_7a515773c5e2b921,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0xa2ea41eef82a9b7d_bffba93bdb0a950d,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0x17f0433026454eb1_e3f2f5e4eb8a5a4e,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0x471ffb45da7fd0fc_1917bfa430cc4c64,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0xdf97f51ee76434e6_8c15d81e0ea73e8d,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0xb0506eca10990217_621cf6f0772b1c47,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0x645d6176400c0b82_b19a9fd7bc650a6a,
+        0x7fe4f90d2f485c77_60a5c6330b2327fb,
+        0xa862ad094e9cb0e0_682e0a608f1cd080,
+        0x0216c2f160872385_7a1c74cc7975ad0a,
+    ),
+    (
+        CryptoOp::Aese,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0x5ae6c15cb67ddf7e_c390fa8a8336657e,
+    ),
+    (
+        CryptoOp::Aesd,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0x66779b89f88278cf_9835c95fafa661cf,
+    ),
+    (
+        CryptoOp::Aesmc,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0xa839e51607a7e188_15b552f1b0810d83,
+    ),
+    (
+        CryptoOp::Aesimc,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0x8785caaab21b5434_12be55fa7289cf8b,
+    ),
+    (
+        CryptoOp::Sha1c,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0xd386b8899303c722_a4973b8d868050a7,
+    ),
+    (
+        CryptoOp::Sha1p,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0xd1d73af44843ce74_ca3504cded6d6b47,
+    ),
+    (
+        CryptoOp::Sha1m,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0xde7686877172416c_20d45efc1220aa2f,
+    ),
+    (
+        CryptoOp::Sha1h,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0x0000000000000000_000000000936ff2f,
+    ),
+    (
+        CryptoOp::Sha1su0,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0x6c54be595d4663bb_3c3b18818ccde86b,
+    ),
+    (
+        CryptoOp::Sha1su1,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0xc83159742ab8437f_9f20489d9a6d7515,
+    ),
+    (
+        CryptoOp::Sha256h,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0x95b3f0d86f8363fb_9aada69428f6ce4d,
+    ),
+    (
+        CryptoOp::Sha256h2,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0xb5e068dfa5807afb_fad481f4b2597621,
+    ),
+    (
+        CryptoOp::Sha256su0,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0x82739b076118c6d2_51fa7de952c3bb98,
+    ),
+    (
+        CryptoOp::Sha256su1,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0x826f6c58cbd1fb3d_1164853b0821a849,
+    ),
+    (
+        CryptoOp::Sha512h,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0xa43913c3ad7a5b30_342b2f48e6c2824e,
+    ),
+    (
+        CryptoOp::Sha512h2,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0x13f604acb5478bef_0526dedceea4d409,
+    ),
+    (
+        CryptoOp::Sha512su0,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0xce86282200bfaa12_ec439a307be86c19,
+    ),
+    (
+        CryptoOp::Sha512su1,
+        0xfe75d9af2abf17b7_a30b277317c82136,
+        0xbfe336086c9b033d_dafe9bbc24dbfcbc,
+        0x48dffc4a532288b0_6145e65db1badeea,
+        0xe4d76160a18d18d9_af59caa0cebe0eaf,
+    ),
+];
+
+/// Base opcode (all register fields zero) and whether the form takes `Vm`.
+fn base(op: CryptoOp) -> (u32, bool) {
+    match op {
+        CryptoOp::Aese => (0x4e284800, false),
+        CryptoOp::Aesd => (0x4e285800, false),
+        CryptoOp::Aesmc => (0x4e286800, false),
+        CryptoOp::Aesimc => (0x4e287800, false),
+        CryptoOp::Sha1c => (0x5e000000, true),
+        CryptoOp::Sha1p => (0x5e001000, true),
+        CryptoOp::Sha1m => (0x5e002000, true),
+        CryptoOp::Sha1h => (0x5e280800, false),
+        CryptoOp::Sha1su0 => (0x5e003000, true),
+        CryptoOp::Sha1su1 => (0x5e281800, false),
+        CryptoOp::Sha256h => (0x5e004000, true),
+        CryptoOp::Sha256h2 => (0x5e005000, true),
+        CryptoOp::Sha256su0 => (0x5e282800, false),
+        CryptoOp::Sha256su1 => (0x5e006000, true),
+        CryptoOp::Sha512h => (0xce608000, true),
+        CryptoOp::Sha512h2 => (0xce608400, true),
+        CryptoOp::Sha512su0 => (0xcec08000, false),
+        CryptoOp::Sha512su1 => (0xce608800, true),
+    }
+}
+
+fn encode(op: CryptoOp, rd: u32, rn: u32, rm: u32) -> u32 {
+    let (b, three) = base(op);
+    b | rd | (rn << 5) | if three { rm << 16 } else { 0 }
+}
+
+#[test]
+fn crypto_decode() {
+    for op in HW_VECTORS.iter().map(|v| v.0).take(18) {
+        for (rd, rn, rm) in [(0, 0, 0), (31, 30, 29), (5, 5, 5), (1, 2, 3)] {
+            let (_, three) = base(op);
+            let want = Instruction::Crypto {
+                rd: rd as u8,
+                rn: rn as u8,
+                rm: if three { rm as u8 } else { 0 },
+                op,
+            };
+            assert_eq!(decoder::decode(encode(op, rd, rn, rm)), want, "{op:?}");
+        }
+    }
+    // Neighbouring encodings that are not implemented stay Unimplemented (and SHA3's RAX1 is untouched).
+    for raw in [
+        0x4e283800,             // AES opcode 0b00011
+        0x4e288800,             // AES opcode 0b10001
+        0x4e684800,             // AESE with size != 0
+        0x5e283800,             // SHA two-register opcode 3
+        0x5e007000,             // SHA three-register opcode 7
+        0x5e008000,             // SHA three-register with bit 15 set
+        0x5e000400,             // SHA three-register with bits 11:10 set
+        0x5e680800,             // SHA1H with size != 0
+        0xce608c00 ^ (1 << 22), // RAX1 with bit 22 cleared
+        0xcec08400,             // SHA512SU0 with bit 10 set
+    ] {
+        assert!(
+            !matches!(decoder::decode(raw), Instruction::Crypto { .. }),
+            "{raw:08x} must not decode as crypto"
+        );
+    }
+    assert!(matches!(
+        decoder::decode(0xce628c25),
+        Instruction::Sha3 {
+            op: super::instructions::Sha3Op::Rax1,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn crypto_matches_hardware_vectors_directly() {
+    for &(op, d, n, m, want) in HW_VECTORS {
+        assert_eq!(
+            simd_crypto::execute(op, d, n, m),
+            want,
+            "{op:?} d={d:032x} n={n:032x} m={m:032x}"
+        );
+    }
+}
+
+#[test]
+fn sbox_known_values() {
+    // FIPS-197 figure 7: S(00)=63, S(01)=7c, S(53)=ed, S(ff)=16; inverse S(63)=00.
+    let sub = |b: u8| simd_crypto::aese(0, u128::from(b)).to_le_bytes()[0];
+    assert_eq!([sub(0), sub(1), sub(0x53), sub(0xff)], [0x63, 0x7c, 0xed, 0x16]);
+    assert_eq!(simd_crypto::aesd(0, u128::from(0x63u8)).to_le_bytes()[0], 0x00);
+    // FIPS-197 section 5.1.3 MixColumns example column db 13 53 45 -> 8e 4d a1 bc.
+    let col = u128::from_le_bytes([0xdb, 0x13, 0x53, 0x45, 0xf2, 0x0a, 0x22, 0x5c, 1, 1, 1, 1, 0, 0, 0, 0]);
+    assert_eq!(
+        &simd_crypto::aesmc(col).to_le_bytes()[..8],
+        &[0x8e, 0x4d, 0xa1, 0xbc, 0x9f, 0xdc, 0x58, 0x9d]
+    );
+    assert_eq!(simd_crypto::aesimc(simd_crypto::aesmc(col)), col);
+}
+
+fn run(raw: u32, tier: u8, regs: &[(u8, u128)], check: u8, want: u128) {
+    let mut cpu = Cpu::new();
+    let mut memory = Memory::new();
+    memory.map_range(0x1000, 0x1000, Permission::READ_WRITE_EXECUTE);
+    memory.write_u32(0x1000, raw).unwrap();
+    memory.write_u32(0x1004, 0xd4000001).unwrap();
+    let mut t2 = Tier2JitEngine::new();
+    let mut t3 = Tier3JitEngine::new();
+    #[cfg(feature = "native-jit")]
+    let mut t4 = Tier4JitEngine::with_threshold(1);
+    for iteration in 0..=Tier3JitEngine::HOT_THRESHOLD {
+        cpu.regs.pc = 0x1000;
+        for (i, v) in cpu.regs.v.iter_mut().enumerate() {
+            *v = 0x0123456789abcdeffedcba9876543210u128.rotate_left(i as u32 * 7) ^ u128::from(iteration as u64);
+        }
+        for &(r, v) in regs {
+            cpu.regs.v[r as usize] = v;
+        }
+        cpu.regs.fpsr = 0x08000010;
+        let mut others = cpu.regs.v;
+        others[check as usize] = want;
+        match tier {
+            1 => {
+                assert!(matches!(cpu.step(&mut memory), Ok(StepResult::Continue)));
+                assert!(matches!(cpu.step(&mut memory), Ok(StepResult::Svc(0))));
+            }
+            2 => assert_eq!(
+                t2.run_slice(&mut cpu, &mut memory, 8),
+                (2, BlockExit::Svc { svc_id: 0 })
+            ),
+            3 => assert_eq!(
+                t3.run_slice(&mut cpu, &mut memory, 8),
+                (2, BlockExit::Svc { svc_id: 0 })
+            ),
+            #[cfg(feature = "native-jit")]
+            4 => assert_eq!(
+                t4.run_slice(&mut cpu, &mut memory, 8),
+                (2, BlockExit::Svc { svc_id: 0 })
+            ),
+            _ => unreachable!(),
+        }
+        assert_eq!(cpu.regs.v, others, "tier {tier} {raw:08x}: only Vd may change");
+        assert_eq!(cpu.regs.fpsr, 0x08000010);
+        assert_eq!(cpu.regs.pc, 0x1008);
+    }
+    // Crypto uses the verified interpreter implementation in every tier (Tier-4 falls back to Tier-3).
+    if tier == 3 {
+        assert!(t3.total_super_block_executions > 0);
+    }
+    #[cfg(feature = "native-jit")]
+    if tier == 4 {
+        assert!(t4.fallback_insns > 0);
+    }
+}
+
+#[test]
+fn crypto_hardware_vectors_all_tiers_and_register_aliases() {
+    let tiers = if cfg!(feature = "native-jit") { 4 } else { 3 };
+    for tier in 1..=tiers {
+        for &(op, d, n, m, want) in HW_VECTORS.iter().filter(|v| v.1 != 0 || v.2 != 0) {
+            // Distinct registers, then Vd aliasing Vn, Vm and both.
+            for (rd, rn, rm) in [(0u32, 1u32, 2u32), (3, 3, 4), (5, 6, 5), (7, 7, 7), (31, 30, 29)] {
+                let (_, three) = base(op);
+                let rm = if three { rm } else { 0 };
+                let mut regs = vec![(rn as u8, n)];
+                if three {
+                    regs.push((rm as u8, m));
+                }
+                regs.push((rd as u8, d));
+                // Later entries win, so when registers alias use the value the instruction really sees.
+                let (dv, nv, mv) = (
+                    regs.iter().rev().find(|r| r.0 == rd as u8).unwrap().1,
+                    regs.iter().rev().find(|r| r.0 == rn as u8).unwrap().1,
+                    regs.iter().rev().find(|r| r.0 == rm as u8).map_or(0, |r| r.1),
+                );
+                let expected = if (rd, rn, rm) == (0, 1, 2) || (rd, rn, rm) == (31, 30, 29) {
+                    want
+                } else {
+                    simd_crypto::execute(op, dv, nv, mv)
+                };
+                run(encode(op, rd, rn, rm), tier, &regs, rd as u8, expected);
+            }
+        }
+    }
+}
+
+/// `FMOV Xd, Vn.D[1]` and `FMOV Vd.D[1], Xn` were undecoded.
+#[test]
+fn fmov_top_half_all_tiers() {
+    let v = 0x1122334455667788_99aabbccddeeff00u128;
+    let tiers = if cfg!(feature = "native-jit") { 4 } else { 3 };
+    for tier in 1..=tiers {
+        // fmov v4.d[1], x3 with x3 = 0 on a fresh Cpu: the top half clears and the low half is kept.
+        run(
+            0x9eaf0004 | (3 << 5),
+            tier,
+            &[(4, v), (3, 0)],
+            4,
+            v & u128::from(u64::MAX),
+        );
+    }
+    assert_eq!(
+        decoder::decode(0x9eae00ca),
+        Instruction::FpMovTopHalf {
+            rd: 10,
+            rn: 6,
+            to_fp: false
+        }
+    );
+    let mut cpu = Cpu::new();
+    cpu.regs.v[6] = v;
+    cpu.regs.v[7] = v;
+    cpu.regs.write_x(5, 0xdead_beef_cafe_f00d);
+    let mut mem = Memory::new();
+    mem.map_range(0x1000, 0x1000, Permission::READ_WRITE_EXECUTE);
+    mem.write_u32(0x1000, 0x9eae00ca).unwrap(); // fmov x10, v6.d[1]
+    mem.write_u32(0x1004, 0x9eaf00a7).unwrap(); // fmov v7.d[1], x5
+    cpu.regs.pc = 0x1000;
+    cpu.step(&mut mem).unwrap();
+    cpu.step(&mut mem).unwrap();
+    assert_eq!(cpu.regs.read_x(10), 0x1122334455667788);
+    assert_eq!(
+        cpu.regs.v[7],
+        (v & u128::from(u64::MAX)) | (0xdead_beef_cafe_f00du128 << 64)
+    );
+}

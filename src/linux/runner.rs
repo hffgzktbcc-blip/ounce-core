@@ -401,13 +401,14 @@ fn diagnose_fault(cpu: &mut Cpu, mmu: &mut Memory, pc: u64, symbols: &elf::Symbo
     (format!("fault at {loc}, {word_text}: {reason}"), detail)
 }
 
-/// Writes guest fd 1 and 2 to the host's stdout and stderr.
+/// Writes guest fd 1 and 2 to the host's stdout and stderr. While `--report-json=-` owns stdout, guest fd 1 goes
+/// to stderr too, so stdout is only the JSON report.
 pub struct HostOutput;
 
 impl Output for HostOutput {
     fn write(&mut self, fd: u64, data: &[u8]) {
         use std::io::Write;
-        if fd == 2 {
+        if fd == 2 || crate::run_report::is_stdout_report() {
             let _ = std::io::stderr().write_all(data);
         } else {
             let mut so = std::io::stdout();
